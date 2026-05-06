@@ -133,6 +133,11 @@ const ALLOWED_STORY_KEYS = new Set([
   'description',
   'source',
   'sourceUrl',
+  // v4+ stable per-story-cluster identity (see shared/brief-envelope.js
+  // version-history doc-block). Required on v4 envelopes — checked
+  // below in the per-story validator. Optional on v1-v3 envelopes
+  // still in TTL.
+  'clusterId',
   'whyMatters',
 ]);
 
@@ -342,6 +347,23 @@ export function assertBriefEnvelope(envelope) {
           `envelope.data.stories[${i}].sourceUrl ${/** @type {Error} */ (err).message}`,
         );
       }
+    }
+    // clusterId is REQUIRED on v4 (the canonical-contract bump that
+    // wires per-cluster identity into the delivered-log + CI invariant)
+    // and OPTIONAL on v1-v3 envelopes still in the 7-day TTL window.
+    // When present on any version it must be a non-empty string —
+    // empty strings would silently collapse delivered-log keys across
+    // clusters and break the `digest.cards ⊆ brief.cards` invariant.
+    if (env.version === BRIEF_ENVELOPE_VERSION) {
+      if (!isNonEmptyString(st.clusterId)) {
+        throw new Error(
+          `envelope.data.stories[${i}].clusterId must be a non-empty string on v${BRIEF_ENVELOPE_VERSION} envelopes (got ${JSON.stringify(st.clusterId)})`,
+        );
+      }
+    } else if (st.clusterId !== undefined && !isNonEmptyString(st.clusterId)) {
+      throw new Error(
+        `envelope.data.stories[${i}].clusterId, when present on v${env.version}, must be a non-empty string (got ${JSON.stringify(st.clusterId)})`,
+      );
     }
   });
 

@@ -266,6 +266,25 @@ export function filterTopStories({ stories, sensitivity, maxStories = 12, maxPer
       continue;
     }
 
+    // v4 clusterId: REQUIRED on every story (assertBriefEnvelope
+    // enforces non-empty). U1 ships a transitional placeholder
+    // sourced from the upstream story's per-story `hash` (already
+    // plumbed through digestStoryToUpstreamTopStory at
+    // scripts/lib/brief-compose.mjs). For singleton clusters this is
+    // the same value U3 will emit (per the plan: "singleton cluster
+    // — clusterId equals the story's own hash"). U3 swaps the
+    // upstream source to `mergedHashes[0]` from materializeCluster
+    // so multi-story clusters collapse to a single shared clusterId.
+    //
+    // Fallback path: when upstream omits `hash` (the news:insights
+    // path that doesn't go through digestStoryToUpstreamTopStory),
+    // derive a deterministic placeholder from the validated sourceUrl
+    // — always present at this point in the filter. The clusterId
+    // contract only requires non-empty + stable across ticks for the
+    // SAME upstream story; sourceUrl uniqueness is the upstream's
+    // own invariant.
+    const upstreamHash = typeof raw.hash === 'string' && raw.hash.length > 0 ? raw.hash : null;
+    const clusterId = upstreamHash ?? `url:${sourceUrl}`;
     out.push({
       category,
       country,
@@ -274,6 +293,7 @@ export function filterTopStories({ stories, sensitivity, maxStories = 12, maxPer
       description,
       source,
       sourceUrl,
+      clusterId,
       // Stubbed at Phase 3a. Phase 3b replaces this with an LLM-
       // generated per-user rationale. The renderer requires a non-
       // empty string, so we emit a generic fallback rather than
