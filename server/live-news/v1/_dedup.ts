@@ -318,6 +318,33 @@ function extractJson(text: string): unknown | null {
 }
 
 /**
+ * Salvage individual `{ id, canonical }` entries from a truncated or
+ * malformed dedup response. When the LLM's output gets cut off mid-entry
+ * (e.g. token-budget exhaustion, response cancellation), strict JSON.parse
+ * throws and we'd previously discard the whole batch. This regex-walks the
+ * text for *complete* `{"id": "...", "canonical": "..."}` objects and
+ * accepts whatever was emitted before truncation.
+ *
+ * Permissive on whitespace and key order. Intentionally does NOT validate
+ * the canonical references (caller already does that). Returns an empty
+ * array if nothing parseable was found — caller treats that the same as
+ * "LLM returned nothing useful".
+ */
+function salvageDedupEntries(text: string): Array<{ id: string; canonical: string }> {
+  const out: Array<{ id: string; canonical: string }> = [];
+  // Match `{...}` blocks that contain both an id and canonical key. The
+  // hash ids are 64-hex SHA-256 strings; canonical is either "self" or a
+  // similar 64-hex hash.
+  const entryRe = /\{\s*"id"\s*:\s*"([^"]+)"\s*,\s*"canonical"\s*:\s*"([^"]+)"\s*\}/g;
+  let match: RegExpExecArray | null;
+  while ((match = entryRe.exec(text)) !== null) {
+    const [, id, canonical] = match;
+    if (id && canonical) out.push({ id, canonical });
+  }
+  return out;
+}
+
+/**
  * Classify the "unknown" items by country using the LLM, write decisions
  * to Redis. Caller fires-and-forgets so the digest response isn't blocked.
  *
@@ -423,12 +450,14 @@ export async function classifyUnknownsAsync(
   const result = await callGemini({
     system: SYSTEM_PROMPT,
     prompt: buildPrompt(llmGroups),
-    // 4 000 token cap for batch of 50 = 80 tokens / item.
-    // Each dedup decision is small (id + canonical hash + small overhead)
-    // — ~30–50 tokens with compact JSON, ~60–80 with Gemini's
-    // pretty-print. Bumped from 2 500 for headroom against full-batch
-    // 50-item passes.
-    maxTokens: 4000,
+    // 8 000 token cap for batch of 50 = 160 tokens / item — comfortable
+    // headroom on both compact and pretty-printed output. We hit
+    // truncation at 4 000 in production for full-batch 50-item passes
+    // (Gemini sometimes pretty-prints with extra whitespace, pushing
+    // duplicate-canonical entries — which carry a 64-char hash on the
+    // RHS — past the budget). 8 000 is well within Gemini Flash Lite's
+    // 65 535-token output limit and adds no measurable latency.
+    maxTokens: 8000,
     temperature: 0.1,
     // Keep the longer timeout — dedup is still the largest prompt in
     // the system. Gemini Flash Lite is ~3× faster than Claude Haiku in
@@ -450,14 +479,33 @@ export async function classifyUnknownsAsync(
   // wrapped `{ results: [...] }` we ask for. Accept both shapes.
   const parsed = extractJson(result.content);
   type DedupEntry = LlmResponse['results'][number];
-  const results: DedupEntry[] | null =
+  let results: DedupEntry[] | null =
     Array.isArray(parsed) ? (parsed as DedupEntry[])
     : (parsed && typeof parsed === 'object' && Array.isArray((parsed as { results?: unknown }).results)
         ? (parsed as { results: DedupEntry[] }).results
         : null);
+
+  // Strict JSON parse failed — try to salvage individual entries. This
+  // handles the case where Gemini truncated mid-response (token-budget
+  // exhaustion or cancellation): the entries before the truncation point
+  // are still valid and shouldn't be wasted.
   if (!results) {
-    console.warn('[live-news:dedup] failed to parse LLM JSON:', result.content.slice(0, 200));
-    return;
+    const salvaged = salvageDedupEntries(result.content);
+    if (salvaged.length > 0) {
+      results = salvaged;
+      console.warn(
+        `[live-news:dedup] strict parse failed, salvaged ${salvaged.length} entries · ` +
+        `responseLen=${result.content.length} · last200="${result.content.slice(-200).replace(/\s+/g, ' ')}"`,
+      );
+    } else {
+      console.warn(
+        `[live-news:dedup] failed to parse LLM JSON: ` +
+        `responseLen=${result.content.length} · ` +
+        `first200="${result.content.slice(0, 200).replace(/\s+/g, ' ')}" · ` +
+        `last200="${result.content.slice(-200).replace(/\s+/g, ' ')}"`,
+      );
+      return;
+    }
   }
 
   // Validate canonical references — the LLM might point at an id that
