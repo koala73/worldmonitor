@@ -63,7 +63,7 @@ const LLM_TIMEOUT_MS = 20_000;
 //     against the 1.7 GB ceiling
 // At 20 we can drain ~1 400 items per run; the initial 2 800-item backlog
 // clears in ~2 runs (~30 min) instead of ~10 runs (~2.5 h) at the original 5.
-const CONCURRENCY = 20;
+const CONCURRENCY = 40;
 
 // Soft ceiling — leaves ~20 s for the final Redis writes and JSON response
 // under the 300 s `maxDuration`. Past this point new tasks are skipped
