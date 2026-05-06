@@ -611,10 +611,8 @@ interface RefreshResult {
     newlyAdded: number;
     accumulatorSize: number;
   }>;
-  /** Sum of `newlyAdded` across all topics — drives whether to chain into enrich. */
+  /** Sum of `newlyAdded` across all topics — useful as a sanity-check log signal. */
   totalNewlyAdded: number;
-  /** Result of the chained enrich call (null if backfill or chain skipped). */
-  enrich?: unknown;
 }
 
 /** Walk back N batches (15 min apart) from a yyyymmddhhmmss timestamp. */
@@ -692,88 +690,15 @@ async function refreshIntelNews(backfill: number): Promise<RefreshResult> {
   return { batches: batchesDone, durationMs, totals, totalNewlyAdded };
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Enrichment chain — fire HTTP to enrich.ts and await its response so
-// the cron's "done" log reflects the full pipeline. Skipped on backfill
-// runs because the combined runtime would blow the 300 s function ceiling.
-// On steady-state cron (~1 s GKG + ~280 s enrich budget) we fit cleanly.
-// ─────────────────────────────────────────────────────────────────────────────
-
-function resolveOwnBaseUrl(): string | null {
-  // Prefer the canonical production URL (custom domain after Vercel's
-  // public domain mapping). Fall back to the deployment-specific URL.
-  const prodUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL;
-  if (prodUrl) return `https://${prodUrl}`;
-  const deployUrl = process.env.VERCEL_URL;
-  if (deployUrl) return `https://${deployUrl}`;
-  return null;
-}
-
-async function chainIntoEnrich(): Promise<unknown> {
-  const baseUrl = resolveOwnBaseUrl();
-  const cronSecret = process.env.CRON_SECRET;
-
-  if (!baseUrl) {
-    console.warn('[intel-news:refresh] enrich chain skipped — VERCEL_URL / VERCEL_PROJECT_PRODUCTION_URL unset');
-    return { skipped: 'no-base-url' };
-  }
-  if (!cronSecret) {
-    console.warn('[intel-news:refresh] enrich chain skipped — CRON_SECRET unset');
-    return { skipped: 'no-cron-secret' };
-  }
-
-  const url = `${baseUrl}/api/intel-news/v1/enrich`;
-  console.log(`[intel-news:refresh] chaining into enrich at ${url}`);
-  const t0 = Date.now();
-  try {
-    // Two layers of auth on this internal call:
-    //
-    //   1. `Authorization: Bearer <CRON_SECRET>` — our own handler-level
-    //      check inside enrich.ts to ensure only refresh / our own crons
-    //      can trigger enrichment.
-    //
-    //   2. `x-vercel-protection-bypass: <VERCEL_AUTOMATION_BYPASS_SECRET>`
-    //      — Vercel's platform-level Deployment Protection bypass token.
-    //      When Deployment Protection is on (Pro plan default), Vercel
-    //      blocks any HTTP request that doesn't carry either an active
-    //      Vercel auth session or this bypass token. Function-to-function
-    //      HTTP calls have neither by default, so without this header
-    //      Vercel returns its own generic 403 ({"error":"Forbidden"})
-    //      before the request ever reaches our handler — that's the
-    //      symptom we hit before adding this layer.
-    //
-    // The bypass secret is provisioned in Vercel: Project Settings →
-    // Deployment Protection → "Protection Bypass for Automation" → Add.
-    // Vercel auto-injects it as VERCEL_AUTOMATION_BYPASS_SECRET in env.
-    const bypassToken = process.env.VERCEL_AUTOMATION_BYPASS_SECRET ?? '';
-    const headers: Record<string, string> = {
-      Authorization: `Bearer ${cronSecret}`,
-    };
-    if (bypassToken) {
-      headers['x-vercel-protection-bypass'] = bypassToken;
-    }
-
-    const resp = await fetch(url, {
-      method: 'GET',
-      headers,
-      signal: AbortSignal.timeout(285_000),
-    });
-    if (!resp.ok) {
-      const body = await resp.text().catch(() => '');
-      const hint = (resp.status === 401 || resp.status === 403) && !bypassToken
-        ? ' · (hint: VERCEL_AUTOMATION_BYPASS_SECRET unset — see Vercel deployment protection settings)'
-        : '';
-      console.warn(`[intel-news:refresh] enrich HTTP ${resp.status}: ${body.slice(0, 200)}${hint}`);
-      return { error: `http-${resp.status}` };
-    }
-    const data = await resp.json().catch(() => null);
-    console.log(`[intel-news:refresh] enrich completed in ${Date.now() - t0}ms`);
-    return data ?? { error: 'unparseable' };
-  } catch (err) {
-    console.warn(`[intel-news:refresh] enrich call threw: ${(err as Error).message}`);
-    return { error: (err as Error).message };
-  }
-}
+// Enrichment is a SEPARATE cron (`/api/intel-news/v1/enrich`, scheduled at
+// 5/20/35/50 past the hour in vercel.json). That cron reads each topic's
+// accumulator, finds items missing `summary`, runs Gemini → Claude
+// fallback, and writes summaries back. Refresh and enrich are
+// independent crons because the previous "refresh chains into enrich"
+// pattern hit Vercel's Deployment Protection on the function-to-function
+// HTTP call. Independent crons sidestep the platform issue entirely
+// while preserving the same end-state: fresh items get summarized within
+// ~5 minutes of being added.
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Auth + handler
@@ -817,18 +742,10 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   try {
     const result = await refreshIntelNews(backfill);
 
-    // Chain into enrich on steady-state cron firings only. On backfill the
-    // GKG processing alone can take 80+ seconds; combined with enrich's
-    // ~280 s budget that exceeds the 300 s function ceiling. Backfill
-    // callers are expected to run enrich separately afterwards.
-    if (backfill <= 1 && result.totalNewlyAdded > 0) {
-      result.enrich = await chainIntoEnrich();
-    } else if (backfill > 1) {
-      console.log('[intel-news:refresh] skipping enrich chain (backfill mode — run /enrich separately)');
-    } else {
-      console.log('[intel-news:refresh] skipping enrich chain — 0 newly-added items');
-    }
-
+    // Refresh's responsibility ends at writing the accumulator. The
+    // separate `enrich` cron (5/20/35/50 past the hour) picks up items
+    // missing `summary` on its next firing — typically within 5 min of
+    // refresh adding them.
     res.statusCode = 200;
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify(result));
