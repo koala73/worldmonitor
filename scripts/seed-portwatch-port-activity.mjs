@@ -240,7 +240,24 @@ async function paginateWindowInto(portAccumMap, iso3, where, windowKind, { signa
       // dynamically via resolveArcgisDateField() at run start.
       outFields: `portid,portname,ISO3,${df},portcalls_tanker,import_tanker,export_tanker`,
       returnGeometry: 'false',
-      orderByFields: `portid ASC,${df} ASC`,
+      // NO orderByFields — DateOnly sort cliff (WM 2026-05-06 trap).
+      // ArcGIS migrated Daily_Ports_Data's `date` column to
+      // `esriFieldTypeDateOnly`. Server-side sort on DateOnly is 10-15×
+      // slower than no-sort: BRA 60d page = 46.6s with `portid ASC,date ASC`
+      // vs 4.0s with no orderBy. With 174 countries × ≥3 pages each + a 90s
+      // per-country cap, every per-country fetch was timing out (36+ errors
+      // per bundle run, container SIGTERM'd at the 540s budget).
+      //
+      // The aggregation below (paginateWindowInto's portAccumMap) is
+      // ORDER-INDEPENDENT — it sums portcalls/import/export per portId
+      // without caring about row order. So we don't even need a client-side
+      // sort fallback. ArcGIS still provides a consistent default order
+      // (ObjectId ASC) across pages, so resultOffset pagination remains
+      // correct.
+      //
+      // If a future caller of this endpoint genuinely needs ordered output
+      // (e.g. for a "latest N" tail query), do the sort client-side after
+      // pagination completes — orderBy on the request side is a 10× tax.
       resultRecordCount: String(PAGE_SIZE),
       resultOffset: String(offset),
       outSR: '4326',
