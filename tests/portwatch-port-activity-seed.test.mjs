@@ -64,9 +64,37 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     assert.doesNotMatch(src, /where:\s*`date_?\s*>\s*\$\{epochToTimestamp\(since\)\}`/);
   });
 
+  it('EP3 per-country query does NOT orderBy on the date field — DateOnly sort cliff', () => {
+    // WM 2026-05-06 trap: ArcGIS migrated Daily_Ports_Data's `date` column
+    // to esriFieldTypeDateOnly. Server-side sort on DateOnly is 10-15× slower
+    // than no-sort. With CONCURRENCY=12 and a 90s per-country cap, every
+    // per-country fetch was timing out (BRA 60d page = 46.6s with
+    // `portid ASC,date ASC` vs 4.0s with no orderBy → ~140s/country vs ~12s).
+    //
+    // The aggregation in paginateWindowInto is order-INdependent (sums into
+    // Map<portId, accum>), so dropping orderBy is safe AND fast. ArcGIS
+    // still returns rows in default ObjectId order across pages, so
+    // resultOffset pagination remains correct.
+    //
+    // If a future refactor genuinely needs ordered output, sort
+    // CLIENT-side after pagination — never re-add orderByFields with the
+    // ${df} (date) field on EP3, even with `${df} ASC` or `${df} DESC`.
+    assert.doesNotMatch(src, /orderByFields:\s*[`'][^`']*\$\{df\}/);
+    // Also forbid hardcoded date-field literals in the orderBy template.
+    assert.doesNotMatch(src, /orderByFields:\s*[`'][^`']*\b(date|date_)\s+(ASC|DESC)\b/i);
+  });
+
   it('EP4 refs query fetches all ports globally with where=1=1', () => {
     assert.match(src, /where:\s*'1=1'/);
     assert.match(src, /outFields:\s*'portid,ISO3,lat,lon'/);
+  });
+
+  it('EP4 refs query MAY orderBy portid (string field, not DateOnly)', () => {
+    // EP4 = PortWatch_ports_database (static port-reference table), no date
+    // column. Sorting by portid (string) is fine — the DateOnly cliff is
+    // specific to EP3. This test exists so a future "remove all orderBy
+    // everywhere" sweep doesn't blanket-remove this one.
+    assert.match(src, /orderByFields:\s*'portid ASC'/);
   });
 
   it('both paginators set returnGeometry:false', () => {
