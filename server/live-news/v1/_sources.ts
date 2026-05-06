@@ -92,6 +92,18 @@ export const US_NEWS_SOURCES: readonly NewsSource[] = [
   // High signal-to-noise on conflict and military operations.
   { name: 'Defense News',         url: 'https://www.defensenews.com/arc/outboundfeeds/rss/?outputType=xml', priority: 4 },
   { name: 'Long War Journal',     url: 'https://www.longwarjournal.org/feed',                        priority: 4 },
+  { name: 'SOFREP',               url: 'https://sofrep.com/feed/',                                   priority: 4 },
+  // SOFX is a Substack-style newsletter; standard `/feed` endpoint exposes
+  // RSS. If the host returns non-RSS we'll see it in the feed health logs
+  // and can drop the entry; user explicitly noted this one as "not really
+  // important" so soft-fail is fine.
+  { name: 'SOFX Newsletter',      url: 'https://newsletter.sofx.com/feed',                           priority: 4 },
+
+  // ── US national / tabloid (high-volume, mixed signal) ────────────────
+  // Note: NYPost runs heavy on celebrity / lifestyle stories alongside
+  // hard news. The dedup pipeline + region tagging keep it manageable in
+  // the feed; if it pollutes the feed in practice we can priority-demote.
+  { name: 'NYPost',               url: 'https://nypost.com/feed/',                                   priority: 3 },
 
   // ── Aggregator backstop (catches breaking before direct feeds update) ─
   { name: 'Google News (World)',  url: 'https://news.google.com/rss/headlines/section/topic/WORLD?hl=en-US&gl=US&ceid=US:en', priority: 4 },
