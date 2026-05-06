@@ -55,7 +55,7 @@ export interface IntelNewsItem {
    */
   sources?: IntelNewsAlternateSource[];
   /**
-   * 1-3 paragraph AI summary written by Gemini Flash (Claude Haiku
+   * 2-3 paragraph AI summary written by Gemini Flash (Claude Haiku
    * fallback) from the article body. Generated once per article by
    * the enrichment cron (`api/intel-news/v1/enrich.ts`) and persisted
    * in the accumulator so re-refreshes don't re-summarize. Optional —
@@ -63,6 +63,27 @@ export interface IntelNewsItem {
    * next enrichment pass).
    */
   summary?: string;
+  /**
+   * 8-region taxonomy code: one of `us`, `canada`, `latin_america`,
+   * `europe`, `middle_east`, `africa`, `asia`, `oceania`. Populated by
+   * the enrich cron alongside the summary — single LLM call returns
+   * both. iOS uses this directly (no country→region mapping needed).
+   */
+  region?: string;
+  /**
+   * ISO 3166-1 alpha-2 country code. Populated by the enrich cron for
+   * conflict-flagged items (used to look up a map pin if precise
+   * `lat`/`lng` aren't available). Optional for non-conflict items.
+   */
+  country?: string;
+  /**
+   * Estimated incident latitude, populated only for conflict items.
+   * The LLM returns a city-level approximation when the article names
+   * a specific location; otherwise the capital city of `country`.
+   */
+  lat?: number;
+  /** See `lat` — same provenance, longitude. */
+  lng?: number;
 }
 
 export interface IntelNewsTopicBucket {

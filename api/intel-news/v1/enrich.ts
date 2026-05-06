@@ -1,36 +1,39 @@
 /**
- * `GET /api/intel-news/v1/enrich` — AI-summary enrichment for intel-news items.
+ * `GET /api/intel-news/v1/enrich` — AI-summary + region enrichment cron.
  *
- * Reads each topic's accumulator, finds items where `summary` is absent,
- * fetches the article body (best-effort), and runs a 1–3 paragraph
- * summarization prompt through Gemini Flash (Claude Haiku as fallback).
- * Summaries are persisted back into the accumulator so subsequent
- * refresh + enrich cycles never re-summarize the same article.
+ * Two enrichment paths in the same handler:
  *
- * # Triggering
+ *   1. **Per-topic accumulators** — every 15 min, find items missing
+ *      summary/region across the 9 non-conflict topics and enrich them.
  *
- * Called automatically by `refresh.ts` at the end of each steady-state
- * cron firing (skipped on `?backfill=N` runs). Also reachable directly
- * with the cron secret for manual catch-up runs after a backfill, or to
- * retry items whose previous enrichment failed.
+ *   2. **Conflict-archive (GDELT bucket)** — same enrichment but for items
+ *      `refresh.ts` writes to `conflict:archive:v1:gdelt`. Conflict items
+ *      additionally extract country + lat/lng for the iOS map pin.
  *
- * Idempotent — items that already have `summary` are skipped. Failed
- * enrichments leave `summary` unset so the next run picks them up.
+ * Single LLM call returns:
+ *   { summary, region, country?, lat?, lng? }
+ *
+ * # Shared enrichment cache
+ *
+ * `enrichment-cache:v1:<sha256(link)>` — 30-day TTL. Before the LLM call,
+ * we check this cache and reuse a prior result if the same URL has already
+ * been enriched. Saves cost when the same article appears in multiple
+ * pipelines (e.g. live-news + GDELT both index the same Reuters story).
  *
  * # Self-contained
  *
- * Same "no relative imports" pattern as refresh.ts to avoid the
- * Node-ESM module-resolution issues we hit on the cron path. Redis,
- * LLM calls, HTML→text extraction are all inlined.
+ * Same "no relative imports" pattern as refresh.ts. Redis, LLM calls,
+ * HTML→text extraction, conflict-archive read/write are all inlined.
  */
 
 import type { IncomingMessage, ServerResponse } from 'http';
+import { createHash } from 'crypto';
 
 export const config = {
   // Pro-plan ceiling. Cron normally only fires ~150 enrichments per call
-  // (one batch's newly-added items); 280 s of budget gives concurrency-5
-  // workers plenty of room to finish them. Manual catch-up runs after a
-  // backfill (~14k items) need many calls to drain the queue.
+  // (one batch's newly-added items); 280 s of budget gives the worker pool
+  // plenty of room. Manual catch-up runs after a backfill (~14 k items)
+  // need many calls to drain the queue.
   maxDuration: 300,
 };
 
@@ -38,8 +41,11 @@ export const config = {
 // Topics — must match refresh.ts so accumulator keys line up.
 // ─────────────────────────────────────────────────────────────────────────────
 
+// `conflict` is intentionally absent — conflict items live in the
+// conflict-archive (gdelt key), not the per-topic accumulator. See the
+// dedicated processing path below.
 const TOPIC_IDS = [
-  'conflict', 'cyber', 'military', 'nuclear', 'sanctions', 'intelligence',
+  'cyber', 'military', 'nuclear', 'sanctions', 'intelligence',
   'maritime', 'business', 'scitech', 'entertainment',
 ] as const;
 
@@ -47,22 +53,31 @@ const accumulatorKey = (id: string): string => `intel-news:topic:v6:${id}:accumu
 
 const ACCUMULATOR_TTL_S = 7 * 24 * 60 * 60;
 
+// Conflict-archive (GDELT bucket) — must match the keys in
+// `server/conflict-archive/v1/_store.ts`. iOS reads this archive's
+// merged contents for the CONFLICT chip + map pins.
+const CONFLICT_ARCHIVE_GDELT_KEY = 'conflict:archive:v1:gdelt';
+const CONFLICT_ARCHIVE_TTL_S = 30 * 24 * 60 * 60;
+
+// Shared enrichment cache — keyed by sha256(link). Both pipelines read /
+// write it, so a URL enriched once in either pipeline is reused by the
+// other instead of re-paying the LLM call.
+const ENRICHMENT_CACHE_KEY = (link: string): string =>
+  `enrichment-cache:v1:${createHash('sha256').update(link).digest('hex')}`;
+const ENRICHMENT_CACHE_TTL_S = 30 * 24 * 60 * 60;
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Tunables
 // ─────────────────────────────────────────────────────────────────────────────
 
 const ARTICLE_FETCH_TIMEOUT_MS = 5_000;
-const LLM_TIMEOUT_MS = 20_000;
+const LLM_TIMEOUT_MS = 25_000;
 // Concurrency picked to roughly maximize throughput without overloading
 // downstream rate limits:
-//   • Gemini Flash Lite paid tier: thousands of requests/min — at 20
-//     concurrent × ~3-4 s avg = ~5-7 RPS = ~350 RPM, still well below limit
-//   • Article fetches: spread across many distinct domains, so per-domain
-//     rate limits don't apply at this scale
-//   • Vercel function memory: 20 in-flight × ~10 KB = ~200 KB — negligible
-//     against the 1.7 GB ceiling
-// At 20 we can drain ~1 400 items per run; the initial 2 800-item backlog
-// clears in ~2 runs (~30 min) instead of ~10 runs (~2.5 h) at the original 5.
+//   • Gemini Flash Lite paid tier: thousands of requests/min — at 40
+//     concurrent × ~3-4 s avg = ~10-13 RPS = ~700 RPM, well below limits
+//   • Article fetches: spread across many distinct domains
+//   • Vercel function memory: 40 in-flight × ~10 KB = ~400 KB — negligible
 const CONCURRENCY = 40;
 
 // Soft ceiling — leaves ~20 s for the final Redis writes and JSON response
@@ -71,11 +86,20 @@ const CONCURRENCY = 40;
 const BUDGET_MS = 280_000;
 
 const ARTICLE_BODY_MAX_CHARS = 5_000;
-const SUMMARY_MIN_LEN = 30;
-const SUMMARY_MAX_LEN = 2_500;
+const SUMMARY_MIN_LEN = 80;        // 2-3 paragraphs minimum
+const SUMMARY_MAX_LEN = 3_000;     // 2-3 paragraphs maximum
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Wire shape — must match refresh.ts / list-headlines.ts.
+// Region taxonomy — must match iOS `FeedRegion` rawValue strings.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const VALID_REGIONS = new Set<string>([
+  'us', 'canada', 'latin_america', 'europe', 'middle_east',
+  'africa', 'asia', 'oceania',
+]);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Wire shapes — must match refresh.ts / list-headlines.ts.
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface IntelNewsItem {
@@ -88,6 +112,38 @@ interface IntelNewsItem {
   tone: number | null;
   sources?: Array<{ source: string; title: string; link: string; publishedAt: number }>;
   summary?: string;
+  region?: string;
+  country?: string;
+  lat?: number;
+  lng?: number;
+}
+
+// Shape of `conflict:archive:v1:gdelt` entries — must match
+// `server/conflict-archive/v1/_store.ts`'s `ConflictArchiveItem`.
+interface ConflictArchiveItem {
+  id: string;
+  source: string;
+  title: string;
+  link: string;
+  publishedAt: number;
+  isAlert: boolean;
+  summary: string | null;
+  location: { latitude: number; longitude: number } | null;
+  locationName: string | null;
+  country: string | null;
+  region?: string | null;
+  sources: Array<{ source: string; title: string; link: string; publishedAt: number }> | null;
+  origin: 'live-news' | 'gdelt';
+}
+
+// LLM-returned structured payload. Stored verbatim in the shared
+// enrichment cache so downstream pipelines can reuse it.
+interface EnrichmentPayload {
+  summary: string;
+  region: string;
+  country?: string;
+  lat?: number;
+  lng?: number;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -139,9 +195,7 @@ async function redisSet(key: string, value: unknown, ttlSeconds: number): Promis
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// HTML → plain text — minimal regex extractor. Good enough for sending to
-// an LLM for summarization (we just need readable prose to feed into the
-// prompt). Not a full Readability port — that would be 1500+ lines.
+// HTML → plain text — minimal regex extractor.
 // ─────────────────────────────────────────────────────────────────────────────
 
 function htmlToText(html: string): string {
@@ -191,12 +245,10 @@ async function fetchArticleBody(url: string): Promise<string | null> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// LLM calls — Gemini Flash primary, Claude Haiku fallback. Inlined to keep
-// this file self-contained per the cron-isolation rule. Same env vars and
-// behavior as `server/_shared/llm.ts` for parity.
+// LLM calls — Gemini Flash primary with JSON mode, Claude Haiku fallback.
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function callGemini(system: string, prompt: string): Promise<string | null> {
+async function callGeminiJSON(system: string, prompt: string): Promise<string | null> {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) return null;
   const model = 'gemini-2.5-flash-lite';
@@ -208,7 +260,13 @@ async function callGemini(system: string, prompt: string): Promise<string | null
       body: JSON.stringify({
         contents: [{ role: 'user', parts: [{ text: prompt }] }],
         system_instruction: { parts: [{ text: system }] },
-        generationConfig: { temperature: 0.3, maxOutputTokens: 800 },
+        generationConfig: {
+          temperature: 0.3,
+          maxOutputTokens: 2_000,
+          // Forces a syntactically valid JSON response — eliminates the
+          // "wrapped in code fences" failure mode of free-form prompts.
+          responseMimeType: 'application/json',
+        },
       }),
       signal: AbortSignal.timeout(LLM_TIMEOUT_MS),
     });
@@ -224,7 +282,7 @@ async function callGemini(system: string, prompt: string): Promise<string | null
   }
 }
 
-async function callClaude(system: string, prompt: string): Promise<string | null> {
+async function callClaudeJSON(system: string, prompt: string): Promise<string | null> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) return null;
   try {
@@ -237,7 +295,7 @@ async function callClaude(system: string, prompt: string): Promise<string | null
       },
       body: JSON.stringify({
         model: 'claude-haiku-4-5',
-        max_tokens: 800,
+        max_tokens: 2_000,
         temperature: 0.3,
         system,
         messages: [{ role: 'user', content: prompt }],
@@ -256,57 +314,127 @@ async function callClaude(system: string, prompt: string): Promise<string | null
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Per-item enrichment
+// Prompt
 // ─────────────────────────────────────────────────────────────────────────────
 
-const SYSTEM_PROMPT =
-  'You are summarizing a news article for a world events tracking app. ' +
-  'Write a neutral, factual summary in 1–3 short paragraphs that captures ' +
-  'the key points: who, what, when, where, why. Match the tone of major ' +
-  'newswires (Reuters, AP, BBC). Avoid editorializing, speculation, or ' +
-  'opinion. Do not repeat the headline verbatim. Use plain prose only — ' +
-  'no bullet points, no markdown, no headers. Aim for 80–250 words. ' +
-  'If the source content is paywalled, garbled, or unrelated to the headline, ' +
-  'write a 2–3 sentence neutral overview based on the headline alone.';
+const SYSTEM_PROMPT = `You enrich a news article for a world events tracking app. Always return ONE JSON object with these fields:
 
-function buildPrompt(item: IntelNewsItem, body: string | null): string {
+  - summary: 2-3 paragraph neutral summary in plain prose (80-300 words). Match the tone of major newswires (Reuters, AP, BBC). Capture who/what/when/where/why. No bullet points, no markdown, no headers, no editorializing. Don't repeat the headline verbatim.
+
+  - region: ONE of these exact strings — choose the world region the story is most associated with:
+      "us"             — United States
+      "canada"         — Canada
+      "latin_america"  — Mexico, Central + South America, Caribbean
+      "europe"         — UK, EU, Russia, Ukraine, Balkans, Caucasus
+      "middle_east"    — Turkey, Israel, Arab states, Iran
+      "africa"         — All African nations
+      "asia"           — East/South/Southeast Asia, Central Asia
+      "oceania"        — Australia, NZ, Pacific islands
+    If genuinely global / unattributable, pick the region of the most prominent named entity. Always set this field.
+
+  - country: ISO 3166-1 alpha-2 code of the primary country in the story. ONLY include this field for stories about armed conflict, military operations, terrorist attacks, civil unrest, or any kinetic event with a clear geographic incident location. For other stories (business, sports, entertainment, etc.), OMIT this field entirely.
+
+  - lat, lng: estimated coordinates (decimal degrees) of the incident. ONLY include for the same conflict/kinetic-event stories where you set "country". When the article names a specific city, use that city's coordinates. Otherwise, use the capital city of "country". OMIT for non-conflict stories.
+
+If the article body is paywalled, garbled, or the source URL didn't return useful text, write a 2-3 sentence summary based on the headline alone — and still return region (best guess based on headline).
+
+Return JSON ONLY. No prose, no markdown, no code fences.`;
+
+function buildPrompt(item: { title: string; source: string; link: string }, body: string | null): string {
   const header = `Headline: ${item.title}\nSource: ${item.source}\n`;
   if (body) {
     return `${header}\nArticle text:\n${body}`;
   }
-  return `${header}\n(Article body unavailable — write a brief 2–3 sentence neutral overview of what this story is most likely about, based on the headline.)`;
-}
-
-function isValidSummary(s: string | null): s is string {
-  if (!s) return false;
-  const trimmed = s.trim();
-  if (trimmed.length < SUMMARY_MIN_LEN || trimmed.length > SUMMARY_MAX_LEN) return false;
-  // Reject obvious refusals / boilerplate.
-  if (/^(I cannot|I can't|I'm sorry|I apologize|As an AI)/i.test(trimmed)) return false;
-  return true;
-}
-
-async function enrichItem(item: IntelNewsItem): Promise<string | null> {
-  const body = await fetchArticleBody(item.link);
-  const prompt = buildPrompt(item, body);
-
-  let summary = await callGemini(SYSTEM_PROMPT, prompt);
-  if (!isValidSummary(summary)) {
-    summary = await callClaude(SYSTEM_PROMPT, prompt);
-    if (!isValidSummary(summary)) return null;
-  }
-  return summary.trim();
+  return `${header}\n(Article body unavailable — base your summary and classification on the headline alone.)`;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Main enrichment loop — concurrency-N worker pool over a global queue
+// Parse + validate the LLM's JSON output.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function parseEnrichmentJSON(raw: string | null): EnrichmentPayload | null {
+  if (!raw) return null;
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch {
+    // Strip code fences and retry — Claude sometimes wraps despite system prompt.
+    const stripped = raw.replace(/```(?:json)?\s*([\s\S]*?)\s*```/g, '$1').trim();
+    try { parsed = JSON.parse(stripped); } catch { return null; }
+  }
+  if (!parsed || typeof parsed !== 'object') return null;
+  const obj = parsed as Record<string, unknown>;
+
+  const summary = typeof obj.summary === 'string' ? obj.summary.trim() : '';
+  const region = typeof obj.region === 'string' ? obj.region.trim().toLowerCase() : '';
+
+  if (summary.length < SUMMARY_MIN_LEN || summary.length > SUMMARY_MAX_LEN) return null;
+  if (/^(I cannot|I can't|I'm sorry|I apologize|As an AI)/i.test(summary)) return null;
+  if (!VALID_REGIONS.has(region)) return null;
+
+  const result: EnrichmentPayload = { summary, region };
+
+  // Country — accept only valid 2-char alpha codes.
+  if (typeof obj.country === 'string') {
+    const c = obj.country.trim().toUpperCase();
+    if (/^[A-Z]{2}$/.test(c)) result.country = c;
+  }
+
+  // Coordinates — accept only when both are valid finite numbers in range.
+  const lat = typeof obj.lat === 'number' ? obj.lat : Number.NaN;
+  const lng = typeof obj.lng === 'number' ? obj.lng : Number.NaN;
+  if (Number.isFinite(lat) && Number.isFinite(lng) &&
+      lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180) {
+    result.lat = lat;
+    result.lng = lng;
+  }
+
+  return result;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Per-item enrichment with shared cache.
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface EnrichmentInput {
+  title: string;
+  source: string;
+  link: string;
+}
+
+async function enrichOne(item: EnrichmentInput): Promise<EnrichmentPayload | null> {
+  // Shared cache — same URL enriched in any pipeline reuses the result.
+  const cacheKey = ENRICHMENT_CACHE_KEY(item.link);
+  const cached = await redisGet<EnrichmentPayload>(cacheKey);
+  if (cached && cached.summary && cached.region && VALID_REGIONS.has(cached.region)) {
+    return cached;
+  }
+
+  // Cache miss — run the LLM call.
+  const body = await fetchArticleBody(item.link);
+  const prompt = buildPrompt(item, body);
+
+  let raw = await callGeminiJSON(SYSTEM_PROMPT, prompt);
+  let payload = parseEnrichmentJSON(raw);
+  if (!payload) {
+    raw = await callClaudeJSON(SYSTEM_PROMPT, prompt);
+    payload = parseEnrichmentJSON(raw);
+    if (!payload) return null;
+  }
+
+  // Persist to shared cache (fire-and-forget OK — write failure just means
+  // the next caller redoes the work).
+  await redisSet(cacheKey, payload, ENRICHMENT_CACHE_TTL_S);
+  return payload;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main enrichment loop — processes per-topic accumulators AND the
+// conflict-archive (gdelt key) in a single concurrency pool.
 // ─────────────────────────────────────────────────────────────────────────────
 
 interface PerTopicStats {
   toEnrich: number;
   succeeded: number;
   failed: number;
-  bodyFetched: number;
 }
 
 interface EnrichResult {
@@ -321,55 +449,84 @@ interface EnrichResult {
   perTopic: Record<string, PerTopicStats>;
 }
 
+// "Bucket" — a logical group of items the worker pool can process. Each
+// bucket has its own array of items + a Redis writeback key. Conflict
+// archive is a bucket alongside the per-topic ones.
+const CONFLICT_BUCKET_ID = 'conflict' as const;
+
+interface Bucket {
+  id: string;
+  items: Array<IntelNewsItem | ConflictArchiveItem>;
+  writebackKey: string;
+  ttl: number;
+  /** True when items in this bucket are ConflictArchiveItem (need different
+   *  field updates than IntelNewsItem). */
+  isConflict: boolean;
+}
+
 async function runEnrichment(): Promise<EnrichResult> {
   const start = Date.now();
 
-  // Load all 10 accumulators in parallel.
-  const topicData: Record<string, IntelNewsItem[]> = {};
-  await Promise.all(TOPIC_IDS.map(async (tid) => {
-    const items = await redisGet<IntelNewsItem[]>(accumulatorKey(tid));
-    topicData[tid] = Array.isArray(items) ? items : [];
-  }));
+  // Load all buckets in parallel: 9 per-topic accumulators + 1 conflict-archive.
+  const buckets: Bucket[] = await Promise.all([
+    ...TOPIC_IDS.map(async (tid): Promise<Bucket> => {
+      const items = await redisGet<IntelNewsItem[]>(accumulatorKey(tid));
+      return {
+        id: tid,
+        items: Array.isArray(items) ? items : [],
+        writebackKey: accumulatorKey(tid),
+        ttl: ACCUMULATOR_TTL_S,
+        isConflict: false,
+      };
+    }),
+    (async (): Promise<Bucket> => {
+      const items = await redisGet<ConflictArchiveItem[]>(CONFLICT_ARCHIVE_GDELT_KEY);
+      return {
+        id: CONFLICT_BUCKET_ID,
+        items: Array.isArray(items) ? items : [],
+        writebackKey: CONFLICT_ARCHIVE_GDELT_KEY,
+        ttl: CONFLICT_ARCHIVE_TTL_S,
+        isConflict: true,
+      };
+    })(),
+  ]);
 
-  // Build a flat queue of items to enrich. Tuple (topicId, index in array)
-  // so we can mutate the original array when the LLM returns.
-  //
-  // Queue ordering is ROUND-ROBIN across topics, not topic-by-topic. With
-  // a single 280 s budget per run and a backlog of ~2 800 items at first
-  // sync, a topic-sequential queue would spend the entire run inside the
-  // first topic (e.g. all 389 conflict items consume the whole budget,
-  // leaving 9 topics with 0 progress). Users would see chips fill in one
-  // at a time over many runs. Round-robin guarantees every topic makes
-  // proportional progress on every run.
-  interface QueueEntry { topicId: string; idx: number; }
+  // Build round-robin queue — one item per bucket per cursor tick. Items
+  // within each bucket are already sorted newest-first by upstream
+  // (refresh.ts for accumulators, store.ts for conflict-archive).
+  interface QueueEntry { bucketIdx: number; itemIdx: number; }
   const queue: QueueEntry[] = [];
   const perTopic: Record<string, PerTopicStats> = {};
 
-  // Per-topic lists of indices that need enrichment, in original order.
-  const perTopicQueues: Array<{ topicId: string; indices: number[] }> = [];
-  for (const tid of TOPIC_IDS) {
-    perTopic[tid] = { toEnrich: 0, succeeded: 0, failed: 0, bodyFetched: 0 };
-    const items = topicData[tid] ?? [];
+  // Per-bucket "needs enrichment" index lists.
+  const perBucketIndices: Array<{ bucketIdx: number; indices: number[] }> = [];
+  buckets.forEach((bucket, bucketIdx) => {
+    perTopic[bucket.id] = { toEnrich: 0, succeeded: 0, failed: 0 };
     const indices: number[] = [];
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
+    for (let i = 0; i < bucket.items.length; i++) {
+      const item = bucket.items[i];
       if (!item) continue;
-      if (!item.summary) indices.push(i);
+      // Treat as "needs enrichment" if EITHER summary OR region is missing.
+      // (region was added later, so existing summarized items get back-filled.)
+      const summary = bucket.isConflict
+        ? (item as ConflictArchiveItem).summary
+        : (item as IntelNewsItem).summary;
+      const region = bucket.isConflict
+        ? (item as ConflictArchiveItem).region
+        : (item as IntelNewsItem).region;
+      if (!summary || !region) indices.push(i);
     }
-    perTopic[tid].toEnrich = indices.length;
-    if (indices.length > 0) perTopicQueues.push({ topicId: tid, indices });
-  }
+    perTopic[bucket.id]!.toEnrich = indices.length;
+    if (indices.length > 0) perBucketIndices.push({ bucketIdx, indices });
+  });
 
-  // Interleave: take one from each non-empty topic in turn until all are
-  // drained. Order within a topic is preserved (newest items first since
-  // accumulators are sorted by publishedAt desc), so the most recent
-  // unsummarized item from each topic is always processed first.
+  // Round-robin interleave so every bucket gets proportional progress per run.
   let cursor2 = 0;
-  while (perTopicQueues.some((q) => cursor2 < q.indices.length)) {
-    for (const q of perTopicQueues) {
+  while (perBucketIndices.some((q) => cursor2 < q.indices.length)) {
+    for (const q of perBucketIndices) {
       if (cursor2 < q.indices.length) {
-        const idx = q.indices[cursor2];
-        if (idx !== undefined) queue.push({ topicId: q.topicId, idx });
+        const itemIdx = q.indices[cursor2];
+        if (itemIdx !== undefined) queue.push({ bucketIdx: q.bucketIdx, itemIdx });
       }
     }
     cursor2++;
@@ -377,7 +534,7 @@ async function runEnrichment(): Promise<EnrichResult> {
 
   const queued = queue.length;
   console.log(
-    `[intel-news:enrich] ${queued} items to enrich across ${TOPIC_IDS.length} topics ` +
+    `[intel-news:enrich] ${queued} items to enrich across ${buckets.length} buckets ` +
     `(concurrency=${CONCURRENCY}, budget=${BUDGET_MS}ms)`,
   );
 
@@ -396,26 +553,46 @@ async function runEnrichment(): Promise<EnrichResult> {
       }
       const entry = queue[idx];
       if (!entry) continue;
-      const items = topicData[entry.topicId];
-      if (!items) continue;
-      const item = items[entry.idx];
+      const bucket = buckets[entry.bucketIdx];
+      if (!bucket) continue;
+      const item = bucket.items[entry.itemIdx];
       if (!item) continue;
 
       try {
-        const summary = await enrichItem(item);
-        if (summary) {
-          item.summary = summary;
+        const payload = await enrichOne({
+          title: item.title,
+          source: item.source,
+          link: item.link,
+        });
+        if (payload) {
+          // Apply enrichment fields — different shape per bucket type.
+          if (bucket.isConflict) {
+            const ci = item as ConflictArchiveItem;
+            ci.summary = payload.summary;
+            ci.region = payload.region;
+            if (payload.country) ci.country = payload.country;
+            if (payload.lat != null && payload.lng != null) {
+              ci.location = { latitude: payload.lat, longitude: payload.lng };
+            }
+          } else {
+            const ni = item as IntelNewsItem;
+            ni.summary = payload.summary;
+            ni.region = payload.region;
+            if (payload.country) ni.country = payload.country;
+            if (payload.lat != null) ni.lat = payload.lat;
+            if (payload.lng != null) ni.lng = payload.lng;
+          }
           succeeded++;
-          const stats = perTopic[entry.topicId];
+          const stats = perTopic[bucket.id];
           if (stats) stats.succeeded++;
         } else {
           failed++;
-          const stats = perTopic[entry.topicId];
+          const stats = perTopic[bucket.id];
           if (stats) stats.failed++;
         }
       } catch (err) {
         failed++;
-        const stats = perTopic[entry.topicId];
+        const stats = perTopic[bucket.id];
         if (stats) stats.failed++;
         console.warn(`[intel-news:enrich] item threw: ${(err as Error).message}`);
       }
@@ -424,24 +601,21 @@ async function runEnrichment(): Promise<EnrichResult> {
 
   await Promise.all(Array.from({ length: CONCURRENCY }, () => runner()));
 
-  // Write back each accumulator that gained at least one summary. (We don't
-  // need to write back if nothing changed — saves Redis traffic.)
-  await Promise.all(TOPIC_IDS.map(async (tid) => {
-    const stats = perTopic[tid];
+  // Write back buckets that gained any progress.
+  await Promise.all(buckets.map(async (bucket) => {
+    const stats = perTopic[bucket.id];
     if (!stats || stats.succeeded === 0) return;
-    const items = topicData[tid];
-    if (!items) return;
-    await redisSet(accumulatorKey(tid), items, ACCUMULATOR_TTL_S);
+    await redisSet(bucket.writebackKey, bucket.items, bucket.ttl);
   }));
 
   const durationMs = Date.now() - start;
 
-  // Per-topic log summary, only for topics that did anything.
-  for (const tid of TOPIC_IDS) {
-    const s = perTopic[tid];
+  // Per-bucket log summary, only for buckets that did anything.
+  for (const bucket of buckets) {
+    const s = perTopic[bucket.id];
     if (!s || s.toEnrich === 0) continue;
     console.log(
-      `[intel-news:enrich] ${tid}: queued=${s.toEnrich} ✓${s.succeeded} ✗${s.failed}`,
+      `[intel-news:enrich] ${bucket.id}: queued=${s.toEnrich} ✓${s.succeeded} ✗${s.failed}`,
     );
   }
   console.log(
@@ -451,7 +625,13 @@ async function runEnrichment(): Promise<EnrichResult> {
 
   return {
     durationMs,
-    totals: { topics: TOPIC_IDS.length, queued, succeeded, failed, skippedBudget },
+    totals: {
+      topics: buckets.length,
+      queued,
+      succeeded,
+      failed,
+      skippedBudget,
+    },
     perTopic,
   };
 }

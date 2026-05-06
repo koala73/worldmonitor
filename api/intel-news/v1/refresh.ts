@@ -279,6 +279,86 @@ async function redisSet(key: string, value: unknown, ttlSeconds: number): Promis
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Conflict-archive (GDELT bucket) — see server/conflict-archive/v1/_store.ts
+// for the canonical schema. We write the GDELT slot here directly; enrich.ts
+// later fills in summary + region + country + lat/lng.
+// ─────────────────────────────────────────────────────────────────────────────
+
+const CONFLICT_ARCHIVE_GDELT_KEY = 'conflict:archive:v1:gdelt';
+const CONFLICT_ARCHIVE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+const CONFLICT_ARCHIVE_TTL_S = Math.floor(CONFLICT_ARCHIVE_RETENTION_MS / 1000);
+const CONFLICT_ARCHIVE_MAX_ITEMS = 1_000;
+
+/** Match `ConflictArchiveItem` in server/conflict-archive/v1/_store.ts. */
+interface ConflictArchiveItem {
+  id: string;
+  source: string;
+  title: string;
+  link: string;
+  publishedAt: number;
+  isAlert: boolean;
+  summary: string | null;
+  location: { latitude: number; longitude: number } | null;
+  locationName: string | null;
+  country: string | null;
+  region?: string | null;
+  sources: Array<{ source: string; title: string; link: string; publishedAt: number }> | null;
+  origin: 'live-news' | 'gdelt';
+}
+
+/** Idempotent merge into the conflict-archive (GDELT bucket). Existing items
+ *  with the same id are kept (preserving any enrichment they've already
+ *  accumulated); new items are added; the array is filtered to retention,
+ *  sorted newest-first, capped, and written back. */
+async function mergeIntoConflictArchive(freshItems: ConflictArchiveItem[]): Promise<{
+  added: number;
+  archiveSize: number;
+}> {
+  if (freshItems.length === 0) return { added: 0, archiveSize: 0 };
+
+  const cutoff = Date.now() - CONFLICT_ARCHIVE_RETENTION_MS;
+  const existing = await redisGet<ConflictArchiveItem[]>(CONFLICT_ARCHIVE_GDELT_KEY);
+  const existingById = new Map<string, ConflictArchiveItem>();
+  if (Array.isArray(existing)) {
+    for (const it of existing) {
+      if (it && typeof it.id === 'string' && typeof it.publishedAt === 'number') {
+        existingById.set(it.id, it);
+      }
+    }
+  }
+
+  let added = 0;
+  // Critical: when an id already exists, KEEP the existing entry (which may
+  // already have summary / country / location populated by enrich) rather
+  // than overwriting with the fresh-from-GDELT item that has those fields
+  // null. Same idempotency guarantee as the per-topic accumulator.
+  const byId = new Map<string, ConflictArchiveItem>(existingById);
+  for (const fresh of freshItems) {
+    if (!fresh.id || !fresh.link) continue;
+    if (existingById.has(fresh.id)) {
+      // Optional refresh of `sources` field — fresh GDELT may have picked
+      // up additional outlets. Preserve enrichment but update sources.
+      const prior = existingById.get(fresh.id)!;
+      byId.set(fresh.id, {
+        ...prior,
+        sources: fresh.sources ?? prior.sources,
+      });
+    } else {
+      byId.set(fresh.id, fresh);
+      added++;
+    }
+  }
+
+  const merged = [...byId.values()]
+    .filter((it) => it.publishedAt >= cutoff)
+    .sort((a, b) => b.publishedAt - a.publishedAt)
+    .slice(0, CONFLICT_ARCHIVE_MAX_ITEMS);
+
+  await redisSet(CONFLICT_ARCHIVE_GDELT_KEY, merged, CONFLICT_ARCHIVE_TTL_S);
+  return { added, archiveSize: merged.length };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // GKG fetch + parse
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -574,6 +654,12 @@ async function processBatch(gkgUrl: string): Promise<BatchResult | null> {
   console.log(`[intel-news:refresh] bucketed in ${Date.now() - tBucket}ms`);
 
   // Merge each non-empty bucket into Redis.
+  //
+  // Special case: the `conflict` topic does NOT go into the per-topic
+  // accumulator. Instead it goes to `conflict:archive:v1:gdelt` (30-day
+  // retention, link-based id) so the iOS CONFLICT chip + map pin layer
+  // can read it directly. The enrich cron picks up archive items and
+  // fills in summary / region / country / lat-lng.
   const perTopic: BatchResult['perTopic'] = {};
   for (const topic of INTEL_TOPICS) {
     const items = buckets.get(topic.id) ?? [];
@@ -582,6 +668,39 @@ async function processBatch(gkgUrl: string): Promise<BatchResult | null> {
       perTopic[topic.id] = { matched, afterDedup: 0, newlyAdded: 0, accumulatorSize: 0 };
       continue;
     }
+
+    if (topic.id === 'conflict') {
+      // Translate to ConflictArchiveItem shape (link as id, fields the iOS
+      // map / chip code already consumes) and write to the archive.
+      const archiveItems: ConflictArchiveItem[] = items.map((it) => ({
+        id: it.link,
+        source: it.source,
+        title: it.title,
+        link: it.link,
+        publishedAt: it.publishedAt,
+        isAlert: false,
+        summary: null,
+        location: null,
+        locationName: null,
+        country: null,
+        region: null,
+        sources: it.sources ?? null,
+        origin: 'gdelt',
+      }));
+      const merge = await mergeIntoConflictArchive(archiveItems);
+      perTopic[topic.id] = {
+        matched,
+        afterDedup: items.length,
+        newlyAdded: merge.added,
+        accumulatorSize: merge.archiveSize,
+      };
+      console.log(
+        `[intel-news:refresh] ${topic.id}: ${matched} matched → ${items.length} after dedup → ` +
+        `+${merge.added} new → ${merge.archiveSize} in conflict-archive (gdelt)`,
+      );
+      continue;
+    }
+
     const merge = await mergeIntoAccumulator(topic.id, items);
     perTopic[topic.id] = {
       matched,
