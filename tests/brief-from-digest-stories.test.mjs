@@ -838,9 +838,17 @@ describe('Sprint 1 U7 — digest projection invariant: digest.cards ⊆ brief.ca
    * derivation. If the live code changes, this helper changes; the U3
    * integration test in this same file is the cross-check.
    *
-   *   1. mergedHashes[0]  — canonical materializeCluster path
-   *   2. hash             — back-compat for non-clustered producers
-   *   3. (test should never reach this — empty input throws)
+   *   1. mergedHashes[0]   — canonical materializeCluster path
+   *   2. hash              — back-compat for non-clustered producers
+   *   3. `url:${sourceUrl}`— last-ditch fallback (matches shared/brief-filter.js;
+   *                          covers paths that omit hash entirely, e.g. news:
+   *                          insights ingestion)
+   *
+   * Codex PR #3614 P2 — pre-fix this helper threw on the 3rd-level
+   * fallback case ("test should never reach this"), leaving the
+   * url:${sourceUrl} branch uncovered by the U7 invariant. Now mirrors
+   * the live filter's full three-tier logic so a future producer that
+   * triggers level-3 in production is structurally testable.
    *
    * @param {object} digestStory
    * @returns {string}
@@ -855,8 +863,11 @@ describe('Sprint 1 U7 — digest projection invariant: digest.cards ⊆ brief.ca
     if (typeof digestStory?.hash === 'string' && digestStory.hash.length > 0) {
       return digestStory.hash;
     }
+    if (typeof digestStory?.sourceUrl === 'string' && digestStory.sourceUrl.length > 0) {
+      return `url:${digestStory.sourceUrl}`;
+    }
     throw new Error(
-      `projectDigestEmitClusterId: digest story has neither mergedHashes[0] nor hash; ` +
+      `projectDigestEmitClusterId: digest story has no mergedHashes[0], hash, or sourceUrl; ` +
       `cannot derive clusterId for invariant check. Story: ${JSON.stringify(digestStory)}`,
     );
   }
@@ -1098,17 +1109,58 @@ describe('Sprint 1 U7 — digest projection invariant: digest.cards ⊆ brief.ca
 
   // ── Error path companion: missing-clusterId on digest side throws clearly ──
 
-  it('error path: digest story with neither mergedHashes nor hash throws a clear diagnostic', () => {
+  it('error path: digest story with no mergedHashes, hash, or sourceUrl throws a clear diagnostic', () => {
     // Defends against a producer regression: if a future buildDigest variant
-    // omits `hash` from the per-story shape AND there's no mergedHashes,
-    // projectDigestEmitClusterId throws BEFORE the subset check runs — the
-    // consequence is otherwise a `Set([undefined])` membership glitch that
-    // would fail the subset check with a confusing "undefined not in set"
-    // message rather than naming the producer regression.
+    // omits `hash` from the per-story shape AND there's no mergedHashes
+    // AND no sourceUrl, projectDigestEmitClusterId throws BEFORE the subset
+    // check runs — the consequence is otherwise a `Set([undefined])`
+    // membership glitch that would fail the subset check with a confusing
+    // "undefined not in set" message rather than naming the producer
+    // regression. (Note: we use `link` not `sourceUrl` here to keep the
+    // story shape clearly absent of all three sources; a future digest
+    // story carrying `sourceUrl` would correctly fall through to the
+    // level-3 url-fallback covered below.)
     assert.throws(
       () => projectDigestEmitClusterId({ title: 'no hash here', link: 'https://example.com/x' }),
       /cannot derive clusterId/,
     );
+  });
+
+  // Codex PR #3614 P2 — level-3 fallback `url:${sourceUrl}` parity.
+  // Pre-fix the test helper threw on this case ("test should never reach
+  // this"), leaving the level-3 branch in shared/brief-filter.js
+  // structurally untested. Now both helper and live filter agree.
+  it('level-3 fallback: digest story with only sourceUrl returns url:<sourceUrl> (Codex PR #3614 P2)', () => {
+    const cid = projectDigestEmitClusterId({
+      title: 'producer omits hash',
+      sourceUrl: 'https://example.com/news/x',
+    });
+    assert.equal(cid, 'url:https://example.com/news/x');
+  });
+
+  it('source preference order: mergedHashes[0] beats hash beats sourceUrl', () => {
+    // The three-tier order is load-bearing: a multi-story cluster MUST
+    // resolve to mergedHashes[0] even when hash and sourceUrl would also
+    // produce a valid clusterId. If the order ever flips, multi-story
+    // clusters would shatter back into per-story clusterIds and the
+    // delivered-log key shape would explode.
+    const allThree = projectDigestEmitClusterId({
+      mergedHashes: ['rep-hash-canonical'],
+      hash: 'own-hash-fallback',
+      sourceUrl: 'https://example.com/level-3',
+    });
+    assert.equal(allThree, 'rep-hash-canonical');
+
+    const hashAndUrl = projectDigestEmitClusterId({
+      hash: 'own-hash-fallback',
+      sourceUrl: 'https://example.com/level-3',
+    });
+    assert.equal(hashAndUrl, 'own-hash-fallback');
+
+    const urlOnly = projectDigestEmitClusterId({
+      sourceUrl: 'https://example.com/level-3',
+    });
+    assert.equal(urlOnly, 'url:https://example.com/level-3');
   });
 
   // ── Integration: real chain end-to-end through assertBriefEnvelope ──

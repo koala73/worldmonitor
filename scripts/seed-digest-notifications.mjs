@@ -1801,7 +1801,10 @@ async function main() {
     // the divergence at the cost of multi-rule users seeing only the
     // winner rule's content per slot — confirmed during planning as the
     // intended subscriber-visible behaviour change.
-    const brief = briefByUser.get(rule.userId);
+    //
+    // Reuse briefForUser fetched above (Codex PR #3614 P2 — was a
+    // duplicate Map.get on the same key).
+    const brief = briefForUser;
     let briefSynthesis = null;  // full {lead, threads, signals} when synthesis succeeded
     let briefLead = null;       // string projection for non-email channels + parity log
     let synthesisLevel = 3;
