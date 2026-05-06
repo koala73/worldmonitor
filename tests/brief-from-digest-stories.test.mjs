@@ -12,6 +12,8 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import { composeBriefFromDigestStories, stripHeadlineSuffix } from '../scripts/lib/brief-compose.mjs';
 import { materializeCluster } from '../scripts/lib/brief-dedup-jaccard.mjs';
 
@@ -1191,6 +1193,84 @@ describe('Sprint 1 U7 — digest projection invariant: digest.cards ⊆ brief.ca
     assertDigestSubsetOfBrief(
       projectDigestEmitClusterIds(digestStories),
       envelopeClusterIds(env),
+    );
+  });
+});
+
+// ── Sprint 1 / U7 production-gap fix: source-text guard ────────────────────
+//
+// The U7 invariant proven above (via composeBriefFromDigestStories +
+// projectDigestEmitClusterIds) holds STRUCTURALLY. But the RUNTIME guarantee
+// that the live cron emits a digest body whose clusterIds are a subset of the
+// brief envelope's clusterIds depends on a separate fact:
+//
+//   `formatDigest` and `formatDigestHtml` in scripts/seed-digest-notifications
+//   .mjs MUST consume the brief envelope's `data.stories` slice (post-cap,
+//   post-filter, ≤ MAX_STORIES_PER_USER=12), NOT the raw `stories` pool from
+//   buildDigest (capped at DIGEST_MAX_ITEMS=30).
+//
+// Pre-fix, the formatters were called with `stories` (raw 30); the user could
+// see clusters that were never in the brief envelope. The U7 invariant
+// projection helper above models the brief side correctly, but didn't catch
+// the production-side regression — those formatters never produced a v4
+// envelope at all, so a structural test against the envelope can't see them.
+//
+// This source-text guard mirrors the U2 precedent at
+// tests/brief-composer-rule-dedup.test.mjs (`describe('Sprint 1 U2 source-
+// text guard', ...)`): assert the source code at the load-bearing call site
+// matches a regex. It can't be bypassed by Vitest mocks; it can't drift
+// silently if a future refactor "innocently" reverts the wiring. If the
+// regex stops matching, the test fails with a message that names the file
+// and lists the candidate lines for an operator to repair.
+//
+// Why source-text not behaviour: the cron's send loop pulls together
+// Upstash, Convex relay, Resend, Telegram, and DNS resolution. There's no
+// existing test harness that mocks all five together (documented in the
+// U7 header above). A behaviour test for THIS specific wiring would need
+// that whole harness; a source-text guard captures the same invariant in
+// 5 lines, with the trade-off that a future refactor that uses the brief
+// envelope via a DIFFERENT spelling (e.g. local variable rename) needs to
+// touch this regex too. That's a fair trade — the alternative is no test
+// at all, and an "everything works in unit tests, fails in production"
+// shape, which is exactly what this guard exists to prevent.
+
+describe('Sprint 1 U7 production-gap source-text guard — formatter call site', () => {
+  it('formatDigest + formatDigestHtml consume the brief-envelope-derived slice (NOT raw stories)', async () => {
+    const path = fileURLToPath(new URL('../scripts/seed-digest-notifications.mjs', import.meta.url));
+    const src = await readFile(path, 'utf8');
+
+    // We expect both call sites to consume `formatterStories` — the local
+    // variable populated from `briefStoriesToFormatterShape(brief.envelope.
+    // data.stories)`. Anything else (raw `stories`, a renamed local) would
+    // break the U7 invariant on the live send path.
+    assert.match(
+      src,
+      /formatDigest\(\s*formatterStories\s*,\s*nowMs\s*\)/,
+      'formatDigest call site must consume `formatterStories` (the brief-envelope-derived slice). ' +
+      'Pre-fix this read `stories` (raw pool); see U7 source-text guard rationale in this test header.',
+    );
+    assert.match(
+      src,
+      /formatDigestHtml\(\s*formatterStories\s*,\s*nowMs\s*\)/,
+      'formatDigestHtml call site must consume `formatterStories` (the brief-envelope-derived slice). ' +
+      'Pre-fix this read `stories` (raw pool); see U7 source-text guard rationale in this test header.',
+    );
+
+    // The shim itself must be wired against `brief.envelope.data.stories`.
+    // If a future refactor renames/relocates this access, this assertion
+    // must move with it — fail loudly so the operator notices and updates
+    // both the wiring AND this guard in lockstep.
+    assert.match(
+      src,
+      /briefStoriesToFormatterShape\(\s*briefEnvelopeStories\s*\)/,
+      'formatter shim must be applied to the brief envelope-derived stories ' +
+      '(local var `briefEnvelopeStories`, populated from `brief.envelope.data.stories`).',
+    );
+    assert.match(
+      src,
+      /brief\?\.envelope\?\.data\?\.stories/,
+      'the brief-envelope-derived slice must be read from `brief.envelope.data.stories` ' +
+      '(optional-chained for the compose-miss fallback path).',
     );
   });
 });

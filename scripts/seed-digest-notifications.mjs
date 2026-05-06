@@ -66,6 +66,10 @@ import {
 import { stripSourceSuffix } from './lib/brief-dedup-jaccard.mjs';
 import { writeReplayLog } from './lib/brief-dedup-replay-log.mjs';
 import { readStoryTracksChunked } from './lib/story-track-batch-reader.mjs';
+import {
+  aggregateResults as aggregateDeliveredResults,
+  writeDeliveredEntry,
+} from './lib/digest-delivered-log.mjs';
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -805,6 +809,75 @@ function formatDigestHtml(stories, nowMs) {
     </div>
   </div>
 </div>`;
+}
+
+// ── Sprint 1 / U7 production-gap shim: BriefStory → formatter shape ──
+//
+// The U7 invariant `digest.cards ⊆ brief.cards` only holds in
+// production if `formatDigest`/`formatDigestHtml` consume the brief
+// envelope's filtered slice (capped at MAX_STORIES_PER_USER=12, post-
+// compose, post-filter), NOT the raw `stories` pool from `buildDigest`
+// (capped at DIGEST_MAX_ITEMS=30).
+//
+// The two formatters above were written when there was no envelope —
+// they expect raw-shape stories with `{title, severity, sources, link,
+// description, phase}`. The brief envelope's `BriefStory` carries a
+// different field set: `{headline, threatLevel, source, sourceUrl,
+// description, clusterId, ...}`. This shim maps the envelope shape to
+// the formatter shape without touching the formatters themselves,
+// keeping the U7 invariant holdable on the live send path with the
+// minimum surgical change.
+//
+// Compatibility decisions:
+//   - `headline` → `title`. Direct rename.
+//   - `threatLevel` → `severity`. The values overlap (`critical`,
+//     `high`, `medium`); a `BriefStory` `low` falls into the formatter's
+//     `high` bucket fallback (line ~651 / ~692). That's a benign
+//     mis-bucket — the brief composer's filter already drops `low` from
+//     the pool today, so the production occurrence is zero.
+//   - `source` (single string) → `sources` (array). Wrap into a
+//     1-element array; empty when missing. Multi-source fan-out for the
+//     formatter's "+N" suffix is lost here — acceptable trade-off
+//     because the BriefStory schema only carries the primary source by
+//     design (per shared/brief-envelope.d.ts:112).
+//   - `sourceUrl` → `link`. Direct rename. Empty string when absent
+//     (the formatter renders unlinked text in that case).
+//   - `description` → `description`. Direct passthrough.
+//   - `clusterId` → `hash`. THIS IS THE U7-LOAD-BEARING MAPPING. The
+//     formatter doesn't consume `hash` for rendering, but the U7
+//     invariant projection (`projectDigestEmitClusterId` in the
+//     companion test) reads it as the per-card identity. Setting
+//     `hash = clusterId` makes the runtime emit set provably equal to
+//     the brief envelope's clusterId set.
+//   - `phase` is not on `BriefStory`. Default to `'sustained'` — a
+//     valid phase value with a dedicated PHASE_COLOR entry, no
+//     filtering effect (the only phase that filters is `'fading'`,
+//     and that filter lives in `buildDigest`, not the formatters).
+//
+// Why an inline shim and not a shared helper: this transformation is
+// load-bearing only for the cron's send loop. Any other consumer that
+// wants the formatter shape would convert via this function would couple
+// itself to the BriefStory→raw mapping that is not load-bearing
+// anywhere else. Keep it local until a second consumer appears.
+function briefStoriesToFormatterShape(briefStories) {
+  if (!Array.isArray(briefStories)) return [];
+  return briefStories.map((s) => {
+    const sources = typeof s?.source === 'string' && s.source.length > 0 ? [s.source] : [];
+    return {
+      title: typeof s?.headline === 'string' ? s.headline : '',
+      severity: typeof s?.threatLevel === 'string' ? s.threatLevel : 'high',
+      sources,
+      link: typeof s?.sourceUrl === 'string' ? s.sourceUrl : '',
+      description: typeof s?.description === 'string' ? s.description : '',
+      // 'sustained' has a defined PHASE_COLOR entry in the formatter
+      // and is NOT 'fading' (the only phase value that drops in
+      // buildDigest). The formatter only uses phase for cosmetic
+      // colour/label, never for filtering.
+      phase: 'sustained',
+      // Load-bearing for the U7 invariant — see header above.
+      hash: typeof s?.clusterId === 'string' ? s.clusterId : '',
+    };
+  });
 }
 
 // ── (Removed) standalone generateAISummary ───────────────────────────────────
@@ -1822,9 +1895,39 @@ async function main() {
       synthesisLevel = ruleResult.level;
     }
 
-    const storyListPlain = formatDigest(stories, nowMs);
+    // Sprint 1 / U7 production-gap fix.
+    //
+    // Pre-fix the formatters consumed the raw `stories` pool (capped
+    // at DIGEST_MAX_ITEMS=30 by buildDigest). Post-fix they consume
+    // the brief envelope's `data.stories` (capped at MAX_STORIES_PER_USER
+    // =12 by filterTopStories). This is what makes the U7 invariant
+    // `digest.cards ⊆ brief.cards` HOLD ON THE LIVE SEND PATH — without
+    // this swap the email body could surface clusterIds the brief
+    // envelope omitted (the 18-30 stories the cap dropped), which
+    // would orphan their delivered-log keys from the magazine side.
+    //
+    // briefForUser is guaranteed non-null in this branch (the
+    // canonical-rule filter at the top of the loop returned only when
+    // briefForUser was present). The compose-miss fallback path
+    // (briefForUser === undefined) does NOT reach here — that branch
+    // either skips the user or falls through with magazineUrl=null;
+    // the formatters in that fallback continue to consume the raw
+    // stories pool, accepting U7-invariant degradation as the cost of
+    // delivering SOMETHING for that one tick.
+    //
+    // Compatibility shim: briefStoriesToFormatterShape maps the
+    // BriefStory schema to the formatter's expected raw-shape fields.
+    // See the function header for field-by-field rationale + the
+    // load-bearing `clusterId → hash` mapping that makes the U7
+    // invariant projection work at runtime.
+    const briefEnvelopeStories = brief?.envelope?.data?.stories;
+    const formatterStories = Array.isArray(briefEnvelopeStories) && briefEnvelopeStories.length > 0
+      ? briefStoriesToFormatterShape(briefEnvelopeStories)
+      : stories; // fallback: brief envelope absent (compose-miss branch above)
+
+    const storyListPlain = formatDigest(formatterStories, nowMs);
     if (!storyListPlain) continue;
-    const htmlRaw = formatDigestHtml(stories, nowMs);
+    const htmlRaw = formatDigestHtml(formatterStories, nowMs);
 
     const magazineUrl = brief?.magazineUrl ?? null;
     const { text, telegramText, slackText, discordText } = buildChannelBodies(
@@ -1846,6 +1949,17 @@ async function main() {
     const subject = subjectForBrief({ briefLead, synthesisLevel, shortDate });
 
     let anyDelivered = false;
+    // Sprint 1 / U4 — per-channel/per-cluster delivered-log accumulator.
+    // We aggregate tri-state counts across every (channel, cluster)
+    // write for THIS user-rule send so the post-loop log line can
+    // report a single summary instead of one line per cluster (with
+    // ~12 clusters × ~5 channels that's 60 lines per user otherwise).
+    // This sits ALONGSIDE the existing `anyDelivered` write below — the
+    // delivered-log keys feed U5's cooldown evaluator (per-cluster
+    // grain), the `digest:last-sent:v1:{user}:{variant}` write feeds
+    // the cron's isDue gate (per-rule grain). Two separate concerns;
+    // both writes happen on success.
+    const deliveredLogResults = [];
 
     for (const ch of deliverableChannels) {
       let ok = false;
@@ -1855,7 +1969,7 @@ async function main() {
         // the long-form story list goes in the text message below so
         // it remains forwardable / quotable on its own.
         if (magazineUrl) {
-          const caption = `<b>WorldMonitor Brief — ${shortDate}</b>\n${stories.length} ${stories.length === 1 ? 'thread' : 'threads'} on the desk today.`;
+          const caption = `<b>WorldMonitor Brief — ${shortDate}</b>\n${formatterStories.length} ${formatterStories.length === 1 ? 'thread' : 'threads'} on the desk today.`;
           await sendTelegramBriefCarousel(rule.userId, ch.chatId, caption, magazineUrl);
         }
         ok = await sendTelegram(rule.userId, ch.chatId, telegramText);
@@ -1872,7 +1986,95 @@ async function main() {
         // parity).
         ok = await sendWebhook(rule.userId, ch.webhookEnvelope, stories, briefLead);
       }
-      if (ok) anyDelivered = true;
+      if (ok) {
+        anyDelivered = true;
+        // Sprint 1 / U4 — record one delivered-log entry per cluster
+        // surfaced in this channel's body. The brief envelope's stories
+        // are the canonical source set (post-cap, post-filter, ⊆ U7
+        // invariant); the formatter shim above maps them into the
+        // raw-shape used by formatDigest, which means the SAME stories
+        // were surfaced to the user.
+        //
+        // Order of operations: send first, write second. If the writer
+        // fails AFTER the channel succeeded, the story is eligible to
+        // re-air on the next tick. We accept that trade-off (extra
+        // edition beats silent suppression of a real delivery
+        // problem) — see digest-delivered-log.mjs's "Failure-mode
+        // trade-off" docblock for the canonical rationale.
+        //
+        // Per-cluster writer is awaited sequentially: under option (a)
+        // we ship ≤12 clusters × ≤5 channels per user, so the
+        // sequential cost is ~bounded at 60 SET commands per user.
+        // Parallelising via Promise.all would add bursty load to the
+        // same Upstash account that's serving the rest of the cron;
+        // sequential is simpler and the latency budget already
+        // tolerates it.
+        if (Array.isArray(briefEnvelopeStories) && briefEnvelopeStories.length > 0) {
+          for (const briefStory of briefEnvelopeStories) {
+            const clusterId = typeof briefStory?.clusterId === 'string'
+              ? briefStory.clusterId
+              : '';
+            if (!clusterId) {
+              // Defensive: a v4 envelope MUST carry clusterId per
+              // assertBriefEnvelope. If we ever land here it's a real
+              // invariant break — log loudly so the parity log catches
+              // it, but skip the write (malformed key would throw).
+              console.warn(
+                `[digest] U4 delivered-log: brief story missing clusterId — ` +
+                  `user=${rule.userId} channel=${ch.channelType} headline=${JSON.stringify(briefStory?.headline ?? '<missing>')}. ` +
+                  `Skipping log write for this cluster.`,
+              );
+              continue;
+            }
+            try {
+              const writeResult = await writeDeliveredEntry({
+                userId: rule.userId,
+                channel: ch.channelType,
+                ruleId: `${rule.variant ?? 'full'}:${rule.lang ?? 'en'}:${rule.sensitivity ?? 'high'}`,
+                clusterId,
+                sentAt: nowMs,
+                sourceCount: typeof briefStory?.source === 'string' && briefStory.source.length > 0 ? 1 : 0,
+                severity: typeof briefStory?.threatLevel === 'string' ? briefStory.threatLevel : 'unknown',
+              });
+              deliveredLogResults.push(writeResult);
+            } catch (err) {
+              // writeDeliveredEntry only throws on programmer error
+              // (empty key components). Network/Upstash failures map
+              // to {errors: 1} in the tri-state result. A throw here
+              // means a v4 envelope leaked through with bad fields;
+              // record as error in the aggregate so it surfaces in
+              // the summary line below.
+              console.warn(
+                `[digest] U4 delivered-log: writeDeliveredEntry threw for ` +
+                  `user=${rule.userId} channel=${ch.channelType} clusterId=${clusterId}: ${err?.message ?? err}`,
+              );
+              deliveredLogResults.push({ written: 0, conflicts: 0, errors: 1 });
+            }
+          }
+        }
+      }
+    }
+    // Sprint 1 / U4 summary — one line per user-rule send, not per
+    // (channel, cluster) write. Operators can tail this as a single
+    // line per user. Tri-state counters distinguish:
+    //   - written  = first-time delivered-log entries (cooldown table starts here)
+    //   - conflicts = NX-collide on existing keys (idempotent re-write,
+    //                 happens when the same (channel, rule, cluster)
+    //                 ships twice within the 30d±jitter TTL window —
+    //                 expected for sustained-narrative re-airs)
+    //   - errors   = Upstash transport failure or invariant break —
+    //                next tick re-airs the story to the affected
+    //                channel (see digest-delivered-log.mjs failure-mode
+    //                docblock).
+    if (deliveredLogResults.length > 0) {
+      const aggregate = aggregateDeliveredResults(deliveredLogResults);
+      const logFn = aggregate.errors > 0 ? console.warn : console.log;
+      logFn(
+        `[digest] U4 delivered-log user=${rule.userId} ` +
+          `rule=${rule.variant ?? 'full'}:${rule.lang ?? 'en'}:${rule.sensitivity ?? 'high'} ` +
+          `written=${aggregate.written} conflicts=${aggregate.conflicts} errors=${aggregate.errors} ` +
+          `total=${deliveredLogResults.length}`,
+      );
     }
 
     if (anyDelivered) {
@@ -1880,8 +2082,13 @@ async function main() {
         'SET', lastSentKey, JSON.stringify({ sentAt: nowMs }), 'EX', '691200', // 8 days
       );
       sentCount++;
+      // Story count reports the formatter-shape length (post-cap,
+      // post-filter slice) — what the user actually received in their
+      // digest. Pre-U7-fix this read `stories.length` (raw 30 from
+      // buildDigest), which over-counted by up to ~18 vs the cards
+      // the user saw.
       console.log(
-        `[digest] Sent ${stories.length} stories to ${rule.userId} (${rule.variant}, ${rule.digestMode})`,
+        `[digest] Sent ${formatterStories.length} stories to ${rule.userId} (${rule.variant}, ${rule.digestMode})`,
       );
       // Parity observability. Gated on AI_DIGEST_ENABLED + per-rule
       // aiDigestEnabled — without this guard, opt-out users (briefLead
