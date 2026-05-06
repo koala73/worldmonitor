@@ -267,24 +267,37 @@ export function filterTopStories({ stories, sensitivity, maxStories = 12, maxPer
     }
 
     // v4 clusterId: REQUIRED on every story (assertBriefEnvelope
-    // enforces non-empty). U1 ships a transitional placeholder
-    // sourced from the upstream story's per-story `hash` (already
-    // plumbed through digestStoryToUpstreamTopStory at
-    // scripts/lib/brief-compose.mjs). For singleton clusters this is
-    // the same value U3 will emit (per the plan: "singleton cluster
-    // — clusterId equals the story's own hash"). U3 swaps the
-    // upstream source to `mergedHashes[0]` from materializeCluster
-    // so multi-story clusters collapse to a single shared clusterId.
+    // enforces non-empty). Sprint 1 / U3 lands the canonical source:
+    // `raw.clusterRepHash` is `mergedHashes[0]` from materializeCluster
+    // (scripts/lib/brief-dedup-jaccard.mjs) — the deterministic
+    // cluster-rep hash shared across every member of a multi-story
+    // cluster. digestStoryToUpstreamTopStory at scripts/lib/brief-compose.mjs
+    // wires it onto the upstream story shape this filter consumes.
     //
-    // Fallback path: when upstream omits `hash` (the news:insights
-    // path that doesn't go through digestStoryToUpstreamTopStory),
-    // derive a deterministic placeholder from the validated sourceUrl
-    // — always present at this point in the filter. The clusterId
-    // contract only requires non-empty + stable across ticks for the
-    // SAME upstream story; sourceUrl uniqueness is the upstream's
-    // own invariant.
+    // Source preference (top wins):
+    //   1. raw.clusterRepHash — canonical, materializeCluster path.
+    //      Singleton clusters: equals the story's own hash by
+    //      construction (see digestStoryToUpstreamTopStory fallback).
+    //      Multi-story clusters: shared identity for every member.
+    //   2. raw.hash — back-compat for paths that bypass the cluster
+    //      materializer (e.g. composeBriefForRule against
+    //      news:insights:v1, which feeds raw upstream stories without
+    //      a clusterRepHash field). Singleton cluster identity is the
+    //      story's own hash, so the contract still holds.
+    //   3. `url:${sourceUrl}` — last-ditch deterministic fallback for
+    //      paths that omit hash entirely. sourceUrl is validated above
+    //      and is required for v2+ stories, so it is always present
+    //      at this point.
+    //
+    // The clusterId contract: non-empty string, stable across ticks
+    // for the SAME upstream cluster, distinct across distinct
+    // clusters. All three sources satisfy non-empty + stability; the
+    // ordering ensures multi-story clusters collapse to ONE shared
+    // clusterId (which raw.hash alone could not — it would give every
+    // member a distinct id).
+    const repHash = typeof raw.clusterRepHash === 'string' && raw.clusterRepHash.length > 0 ? raw.clusterRepHash : null;
     const upstreamHash = typeof raw.hash === 'string' && raw.hash.length > 0 ? raw.hash : null;
-    const clusterId = upstreamHash ?? `url:${sourceUrl}`;
+    const clusterId = repHash ?? upstreamHash ?? `url:${sourceUrl}`;
     out.push({
       category,
       country,

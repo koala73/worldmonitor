@@ -313,6 +313,20 @@ function digestStoryToUpstreamTopStory(s) {
     hash: typeof s?.hash === 'string' && s.hash.length > 0
       ? s.hash
       : (typeof s?.titleHash === 'string' ? s.titleHash : undefined),
+    // Sprint 1 / U3: canonical cluster-rep hash threaded into
+    // BriefStory.clusterId via filterTopStories. For multi-story
+    // clusters, materializeCluster (in brief-dedup-jaccard.mjs) sets
+    // `mergedHashes[]` on the rep — `mergedHashes[0]` is the
+    // deterministic cluster identity (sort: score DESC, mentionCount
+    // DESC, hash ASC), shared by every member that maps back to this
+    // rep. For singleton clusters (no clustering pass, or one-member
+    // result) `mergedHashes` is absent — fall back to the rep's own
+    // hash so singletons satisfy the plan invariant "clusterId equals
+    // the story's own hash" naturally.
+    clusterRepHash: Array.isArray(s?.mergedHashes) && s.mergedHashes.length > 0
+      && typeof s.mergedHashes[0] === 'string' && s.mergedHashes[0].length > 0
+      ? s.mergedHashes[0]
+      : (typeof s?.hash === 'string' && s.hash.length > 0 ? s.hash : undefined),
   };
 }
 

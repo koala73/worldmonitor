@@ -70,11 +70,28 @@ export function jaccardSimilarity(setA, setB) {
  * downstream. Accepts an array of story refs (already a single
  * cluster) and returns one story object.
  *
+ * Sort key (Sprint 1 / U3):
+ *   1. currentScore DESC      — primary editorial-importance signal
+ *   2. mentionCount DESC      — multi-source corroboration tiebreak
+ *   3. hash ASC               — fully-deterministic final tiebreak
+ *
+ * The hash tiebreak makes the result independent of input order.
+ * Without it, two inputs with identical score+mentionCount would
+ * resolve to whichever was first in the caller's array — and that
+ * order can vary across ticks (Map iteration over a mutable
+ * embedding-by-hash store, shuffled cluster membership, etc.).
+ * Since `mergedHashes[0]` is now threaded into BriefStory.clusterId,
+ * a non-deterministic rep would break the U3 idempotency invariant
+ * (same upstream cluster across two ticks → identical clusterId).
+ *
  * @param {Array<{hash:string, currentScore:number, mentionCount:number}>} items
  */
 export function materializeCluster(items) {
   const sorted = [...items].sort(
-    (a, b) => b.currentScore - a.currentScore || b.mentionCount - a.mentionCount,
+    (a, b) =>
+      b.currentScore - a.currentScore
+      || b.mentionCount - a.mentionCount
+      || (a.hash < b.hash ? -1 : a.hash > b.hash ? 1 : 0),
   );
   const best = { ...sorted[0] };
   if (sorted.length > 1) {

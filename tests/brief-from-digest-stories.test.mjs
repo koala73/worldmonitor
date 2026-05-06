@@ -13,6 +13,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { composeBriefFromDigestStories, stripHeadlineSuffix } from '../scripts/lib/brief-compose.mjs';
+import { materializeCluster } from '../scripts/lib/brief-dedup-jaccard.mjs';
 
 const NOW = 1_745_000_000_000; // 2026-04-18 ish, deterministic
 
@@ -520,5 +521,252 @@ describe('composeBriefFromDigestStories — synthesis splice', () => {
     // A and C keep their original relative order (A then C).
     assert.equal(env.data.stories[1].headline, 'Unranked A');
     assert.equal(env.data.stories[2].headline, 'Unranked C');
+  });
+});
+
+// ── Sprint 1 / U3 — stable clusterId wiring (canonical cluster-rep hash) ──
+//
+// Covers the U3 invariant: every BriefStory carries a clusterId derived
+// from `mergedHashes[0]` (the canonical cluster-rep hash from
+// materializeCluster). Replaces U1's transitional placeholder which
+// sourced from the per-story `raw.hash` directly. For singletons the
+// values coincide; for multi-story clusters all members must share ONE
+// shared clusterId.
+
+describe('Sprint 1 U3 — stable clusterId wiring through compose path', () => {
+  it('singleton cluster: clusterId equals the story\'s own hash', () => {
+    const env = composeBriefFromDigestStories(
+      rule(),
+      [digestStory({ hash: 'singleton-hash-1' })],
+      { clusters: 0, multiSource: 0 },
+      { nowMs: NOW },
+    );
+    assert.ok(env);
+    assert.equal(env.data.stories.length, 1);
+    assert.equal(
+      env.data.stories[0].clusterId,
+      'singleton-hash-1',
+      'singleton clusterId must equal the story\'s own hash',
+    );
+  });
+
+  it('multi-story cluster: all members share ONE clusterId matching mergedHashes[0]', () => {
+    // Simulate a cluster post-materialiseCluster: a representative story
+    // carries the canonical mergedHashes[] of all members. The compose
+    // path receives a SINGLE rep per cluster, but the rep's mergedHashes
+    // array drives the clusterId so a downstream split (if introduced)
+    // would still collapse to the same identity.
+    const rep = materializeCluster([
+      { hash: 'h-A', currentScore: 100, mentionCount: 5 },
+      { hash: 'h-B', currentScore: 90, mentionCount: 3 },
+      { hash: 'h-C', currentScore: 80, mentionCount: 1 },
+    ]);
+    assert.ok(Array.isArray(rep.mergedHashes), 'rep must carry mergedHashes');
+    assert.equal(rep.mergedHashes.length, 3);
+    const env = composeBriefFromDigestStories(
+      rule(),
+      [{ ...rep, title: 'Cluster headline', link: 'https://example.com/x', severity: 'critical', sources: ['Reuters'] }],
+      { clusters: 1, multiSource: 1 },
+      { nowMs: NOW },
+    );
+    assert.ok(env);
+    assert.equal(env.data.stories.length, 1);
+    assert.equal(
+      env.data.stories[0].clusterId,
+      rep.mergedHashes[0],
+      'multi-story cluster: clusterId must equal mergedHashes[0]',
+    );
+    // Discriminator: it must NOT equal one of the non-rep member hashes.
+    assert.notEqual(env.data.stories[0].clusterId, 'h-B');
+    assert.notEqual(env.data.stories[0].clusterId, 'h-C');
+  });
+
+  it('idempotency: same upstream cluster across two cron ticks → identical clusterId', () => {
+    // Two ticks, same cluster membership. The rep's mergedHashes[0] is
+    // determined by materializeCluster's deterministic sort
+    // (currentScore desc → mentionCount desc → hash asc tiebreak). The
+    // input order is varied to prove the determinism does not depend on
+    // caller-side iteration order.
+    const tick1Items = [
+      { hash: 'aaa', currentScore: 100, mentionCount: 5 },
+      { hash: 'bbb', currentScore: 100, mentionCount: 5 },
+      { hash: 'ccc', currentScore: 100, mentionCount: 5 },
+    ];
+    const tick2Items = [...tick1Items].reverse(); // intentional shuffle
+    const rep1 = materializeCluster(tick1Items);
+    const rep2 = materializeCluster(tick2Items);
+    const env1 = composeBriefFromDigestStories(
+      rule(),
+      [{ ...rep1, title: 'X', link: 'https://example.com/x', severity: 'critical' }],
+      { clusters: 1, multiSource: 1 },
+      { nowMs: NOW },
+    );
+    const env2 = composeBriefFromDigestStories(
+      rule(),
+      [{ ...rep2, title: 'X', link: 'https://example.com/x', severity: 'critical' }],
+      { clusters: 1, multiSource: 1 },
+      { nowMs: NOW + 30 * 60 * 1000 }, // next cron tick (30 min later)
+    );
+    assert.ok(env1 && env2);
+    assert.equal(
+      env1.data.stories[0].clusterId,
+      env2.data.stories[0].clusterId,
+      'same cluster across two ticks must produce identical clusterId',
+    );
+  });
+
+  it('different upstream clusters never share a clusterId', () => {
+    const repA = materializeCluster([
+      { hash: 'cluster-a-1', currentScore: 100, mentionCount: 5 },
+      { hash: 'cluster-a-2', currentScore: 90, mentionCount: 3 },
+    ]);
+    const repB = materializeCluster([
+      { hash: 'cluster-b-1', currentScore: 100, mentionCount: 5 },
+      { hash: 'cluster-b-2', currentScore: 90, mentionCount: 3 },
+    ]);
+    const env = composeBriefFromDigestStories(
+      rule(),
+      [
+        { ...repA, title: 'Story A', link: 'https://example.com/a', severity: 'critical', sources: ['SrcA'] },
+        { ...repB, title: 'Story B', link: 'https://example.com/b', severity: 'critical', sources: ['SrcB'] },
+      ],
+      { clusters: 2, multiSource: 2 },
+      { nowMs: NOW },
+    );
+    assert.ok(env);
+    assert.equal(env.data.stories.length, 2);
+    assert.notEqual(
+      env.data.stories[0].clusterId,
+      env.data.stories[1].clusterId,
+      'distinct upstream clusters must surface distinct clusterIds',
+    );
+  });
+
+  it('every BriefStory in a v4 envelope has a non-empty clusterId (happy path)', () => {
+    const env = composeBriefFromDigestStories(
+      rule(),
+      [
+        digestStory({ hash: 'h1', title: 'A', sources: ['SrcA'] }),
+        digestStory({ hash: 'h2', title: 'B', sources: ['SrcB'] }),
+        digestStory({ hash: 'h3', title: 'C', sources: ['SrcC'] }),
+      ],
+      { clusters: 3, multiSource: 0 },
+      { nowMs: NOW },
+    );
+    assert.ok(env);
+    for (const s of env.data.stories) {
+      assert.ok(typeof s.clusterId === 'string' && s.clusterId.length > 0, `clusterId must be non-empty (got ${JSON.stringify(s.clusterId)})`);
+    }
+  });
+
+  it('integration: full chain materializeCluster → compose → assertBriefEnvelope passes', async () => {
+    // Exercises the real chain without mocking. assertBriefEnvelope is
+    // the v4 contract enforcer; running it on a real composed envelope
+    // proves U3 wiring lands clusterId where U1's read-side validator
+    // expects it.
+    const { assertBriefEnvelope } = await import('../server/_shared/brief-render.js');
+    const repAlpha = materializeCluster([
+      { hash: 'alpha-1', currentScore: 100, mentionCount: 5 },
+      { hash: 'alpha-2', currentScore: 80, mentionCount: 2 },
+    ]);
+    const repBeta = materializeCluster([
+      { hash: 'beta-1', currentScore: 70, mentionCount: 4 },
+    ]);
+    const env = composeBriefFromDigestStories(
+      rule(),
+      [
+        { ...repAlpha, title: 'Alpha cluster', link: 'https://example.com/alpha', severity: 'critical', sources: ['SrcA'] },
+        { ...repBeta,  title: 'Beta singleton', link: 'https://example.com/beta', severity: 'high', sources: ['SrcB'] },
+      ],
+      { clusters: 2, multiSource: 1 },
+      { nowMs: NOW },
+    );
+    assert.ok(env);
+    // Round-trips through the v4 contract enforcer (throws on missing/empty clusterId).
+    assertBriefEnvelope(env);
+    // Singleton matches own hash; multi-story matches mergedHashes[0].
+    const byHeadline = Object.fromEntries(env.data.stories.map((s) => [s.headline, s]));
+    assert.equal(byHeadline['Alpha cluster'].clusterId, repAlpha.mergedHashes[0]);
+    assert.equal(byHeadline['Beta singleton'].clusterId, 'beta-1');
+  });
+
+  it('falls back to raw.hash when mergedHashes is absent (back-compat with non-clustered producers)', () => {
+    // The news:insights:v1 path (composeBriefForRule) does not run
+    // through materializeCluster; stories arrive without mergedHashes.
+    // The clusterId source must gracefully fall back to raw.hash so
+    // every BriefStory still carries a non-empty clusterId.
+    const env = composeBriefFromDigestStories(
+      rule(),
+      [digestStory({ hash: 'plain-hash-no-merge' })], // no mergedHashes
+      { clusters: 0, multiSource: 0 },
+      { nowMs: NOW },
+    );
+    assert.ok(env);
+    assert.equal(env.data.stories[0].clusterId, 'plain-hash-no-merge');
+  });
+});
+
+// ── Sprint 1 / U3 — materializeCluster determinism guarantee ─────────────
+//
+// U3 requires deterministic rep selection so the same cluster across two
+// cron ticks produces an identical clusterId regardless of input order.
+// The pre-U3 sort had two keys (currentScore desc, mentionCount desc); a
+// hash tiebreak was added to make the result independent of TimSort's
+// stability + caller iteration order.
+
+describe('Sprint 1 U3 — materializeCluster determinism', () => {
+  it('breaks fully-tied items by hash ascending (stable across input orderings)', () => {
+    // Three items with identical score AND mentionCount. Pre-tiebreak
+    // implementation would return whichever was first in the input
+    // array; with the hash tiebreak it's always the lexicographically
+    // smallest hash.
+    const items = [
+      { hash: 'zzz', currentScore: 50, mentionCount: 3 },
+      { hash: 'aaa', currentScore: 50, mentionCount: 3 },
+      { hash: 'mmm', currentScore: 50, mentionCount: 3 },
+    ];
+    const rep = materializeCluster(items);
+    assert.equal(rep.hash, 'aaa', 'fully-tied items must resolve by hash ASC');
+    // Reverse the input order — same answer.
+    const repReversed = materializeCluster([...items].reverse());
+    assert.equal(repReversed.hash, 'aaa');
+    // Shuffle — same answer.
+    const repShuffled = materializeCluster([items[2], items[0], items[1]]);
+    assert.equal(repShuffled.hash, 'aaa');
+  });
+
+  it('mergedHashes[0] is stable under input reordering (the U3 wire-through invariant)', () => {
+    const items = [
+      { hash: 'h-x', currentScore: 100, mentionCount: 5 },
+      { hash: 'h-y', currentScore: 100, mentionCount: 5 },
+      { hash: 'h-z', currentScore: 100, mentionCount: 5 },
+    ];
+    const r1 = materializeCluster(items);
+    const r2 = materializeCluster([...items].reverse());
+    const r3 = materializeCluster([items[2], items[0], items[1]]);
+    assert.equal(r1.mergedHashes[0], r2.mergedHashes[0]);
+    assert.equal(r1.mergedHashes[0], r3.mergedHashes[0]);
+    // And it's the smallest hash (lexicographic tiebreak).
+    assert.equal(r1.mergedHashes[0], 'h-x');
+  });
+
+  it('preserves score-desc as primary key (no regression)', () => {
+    const rep = materializeCluster([
+      { hash: 'low',  currentScore: 10,  mentionCount: 1 },
+      { hash: 'high', currentScore: 100, mentionCount: 1 },
+      { hash: 'mid',  currentScore: 50,  mentionCount: 1 },
+    ]);
+    assert.equal(rep.hash, 'high');
+    assert.deepEqual(rep.mergedHashes, ['high', 'mid', 'low']);
+  });
+
+  it('preserves mentionCount-desc as secondary key (no regression)', () => {
+    const rep = materializeCluster([
+      { hash: 'few',  currentScore: 50, mentionCount: 1 },
+      { hash: 'lots', currentScore: 50, mentionCount: 10 },
+      { hash: 'mid',  currentScore: 50, mentionCount: 5 },
+    ]);
+    assert.equal(rep.hash, 'lots');
+    assert.deepEqual(rep.mergedHashes, ['lots', 'mid', 'few']);
   });
 });
