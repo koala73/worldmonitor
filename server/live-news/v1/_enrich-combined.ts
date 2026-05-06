@@ -20,7 +20,6 @@
  * about that news, never work on it again."
  */
 
-import { createHash } from 'crypto';
 import { callGemini, callClaude } from '../../_shared/llm';
 import { getCachedJson, getCachedJsonBatch, setCachedJson } from '../../_shared/redis';
 import type { LiveNewsItem } from './_normalize';
@@ -51,8 +50,25 @@ const SUMMARY_MAX_LEN = 4_000;
 // intel-news's enrich.ts, so a URL enriched by either pipeline benefits
 // the other (RSS feeds and GDELT often surface the same article).
 // Version v2 matches intel-news; bumping is coordinated across pipelines.
-const SHARED_CACHE_KEY = (link: string): string =>
-  `enrichment-cache:v2:${createHash('sha256').update(link).digest('hex')}`;
+//
+// Uses Web Crypto (`globalThis.crypto.subtle`) instead of Node's
+// `crypto.createHash` because this module is transitively imported by
+// Edge functions (Vercel Edge doesn't expose Node built-ins). Same
+// SHA-256 output as `createHash('sha256').update(link).digest('hex')`,
+// just async — call sites already run inside async functions, so the
+// `await` is free.
+async function sha256Hex(input: string): Promise<string> {
+  const buf = new TextEncoder().encode(input);
+  const hash = await crypto.subtle.digest('SHA-256', buf);
+  return Array.from(new Uint8Array(hash))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+async function sharedCacheKey(link: string): Promise<string> {
+  return `enrichment-cache:v2:${await sha256Hex(link)}`;
+}
+
 const SHARED_CACHE_TTL_S = 30 * 24 * 60 * 60;
 
 /** Shape of values stored in the shared cross-pipeline cache. Same as the
@@ -446,9 +462,11 @@ interface CachedEnrichment extends CombinedEnrichment {} // alias for clarity
 export async function attachCachedEnrichment(items: LiveNewsItem[]): Promise<LiveNewsItem[]> {
   if (items.length === 0) return [];
 
-  // Issue both cache reads in parallel.
+  // Issue both cache reads in parallel. Shared-cache keys are computed
+  // up front (they're async because we use Web Crypto SHA-256 for Edge
+  // compatibility — see `sharedCacheKey` above).
   const ownKeys = items.map((it) => `${CACHE_PREFIX}${it.titleHash}`);
-  const sharedKeys = items.map((it) => SHARED_CACHE_KEY(it.link));
+  const sharedKeys = await Promise.all(items.map((it) => sharedCacheKey(it.link)));
 
   const [ownCache, sharedHits] = await Promise.all([
     getCachedJsonBatch(ownKeys),
@@ -643,9 +661,10 @@ async function enrichBatch(batch: LiveNewsItem[]): Promise<void> {
         lat: result.latitude,
         lng: result.longitude,
       };
+      const sharedKey = await sharedCacheKey(item.link);
       await Promise.all([
         setCachedJson(ownKey, result, ENRICHMENT_TTL_S),
-        setCachedJson(SHARED_CACHE_KEY(item.link), sharedPayload, SHARED_CACHE_TTL_S),
+        setCachedJson(sharedKey, sharedPayload, SHARED_CACHE_TTL_S),
       ]);
       written++;
     } else {
