@@ -341,4 +341,65 @@ describe('Sprint 1 U2 — multi-rule canonicalisation (option a) source guards',
       'send loop must document option (a) canonicalisation by name',
     );
   });
+
+  // Codex PR #3614 P1 regression — the canonical filter must NOT
+  // suppress digest delivery when briefByUser is empty (compose
+  // disabled, signing secret missing, per-user compose error caught).
+  // The fix gates the canonical filter on `if (briefForUser)` and
+  // falls through to the legacy per-rule send when missing, with a
+  // loud one-warn-per-user log so Sentry surfaces the compose-miss.
+  it('canonical filter is gated on briefForUser existence (compose-miss falls through)', () => {
+    // The fix shape: `if (briefForUser) { selectCanonicalSendRule(...) }`
+    // not `selectCanonicalSendRule(briefForUser, ...)` unconditionally.
+    // We assert the gating shape exists in the source.
+    assert.match(
+      cronSrc,
+      /if \(briefForUser\)\s*\{[\s\S]{0,400}?selectCanonicalSendRule/,
+      'canonical filter must be gated on briefForUser truthiness — Codex PR #3614 P1',
+    );
+  });
+
+  it('compose-miss path emits a loud one-per-user warn (not silent suppression)', () => {
+    // The fall-through path must be observable. We assert the warn
+    // string + the once-per-user dedup Set both exist in the source.
+    assert.match(
+      cronSrc,
+      /composeMissUsers/,
+      'cron must track which users have already been warned to dedup compose-miss logs to once per tick',
+    );
+    assert.match(
+      cronSrc,
+      /\[digest\] compose-miss user=/,
+      'cron must emit a [digest] compose-miss user=... warn line for Sentry breadcrumbs',
+    );
+    assert.match(
+      cronSrc,
+      /console\.warn[\s\S]{0,200}compose-miss/,
+      'compose-miss must use console.warn (not console.log) so Sentry promotes it to a breadcrumb',
+    );
+  });
+
+  it('compose-miss comment cites Codex PR #3614 P1 + names the failure modes', () => {
+    // Discoverability: a future operator hitting the warn must be
+    // able to find the rationale immediately. The docblock cites the
+    // review item by ID and names the three failure modes (signing
+    // secret, compose disabled, per-user compose error) so on-call
+    // can triage without spelunking through git history.
+    assert.match(
+      cronSrc,
+      /Codex PR #3614 P1/,
+      'fall-through docblock must cite the review item it addresses',
+    );
+    const flat = cronSrc.replace(/\s+/g, ' ');
+    assert.match(
+      flat,
+      /BRIEF_SIGNING_SECRET/,
+      'docblock must name BRIEF_SIGNING_SECRET as one of the compose-miss failure modes',
+    );
+    assert.match(
+      flat,
+      /per-user compose error/i,
+      'docblock must name caught-per-user-error as one of the compose-miss failure modes',
+    );
+  });
 });

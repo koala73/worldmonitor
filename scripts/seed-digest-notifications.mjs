@@ -1679,24 +1679,57 @@ async function main() {
   }
 
   let sentCount = 0;
+  // Sprint 1 / U2 hardening — track which users we've already warned
+  // about a compose-miss so each user gets ONE warn per cron tick, not
+  // one per rule iteration. See the briefForUser-missing branch below.
+  const composeMissUsers = new Set();
 
   for (const rule of rules) {
     if (!rule.userId || !rule.variant) continue;
 
-    // Sprint 1 / U2 — drop non-winner rules under option (a). The
-    // compose phase already picked ONE rule per user-slot; only that
-    // rule drives the send. Non-winner rules silently fall through
-    // here (their pools are absorbed into the winner's at the
-    // accumulator/dedup layer upstream — see brief-dedup.mjs). Users
-    // whose compose phase produced no winner (briefByUser miss, or
-    // chosenVariant absent) skip the send entirely; the next cron
-    // tick will recompose.
+    // Sprint 1 / U2 — drop non-winner rules under option (a) WHEN
+    // compose succeeded for this user. The compose phase already
+    // picked ONE rule per user-slot; only that rule drives the send.
+    // Non-winner rules silently fall through here (their pools are
+    // absorbed into the winner's at the accumulator/dedup layer
+    // upstream — see brief-dedup.mjs).
+    //
+    // Codex PR #3614 P1 — composeBriefsForRun returns an empty map
+    // when BRIEF_SIGNING_SECRET is missing OR brief compose is
+    // disabled OR a per-user compose error was caught upstream. The
+    // pre-fix canonical filter dropped EVERY rule for those users —
+    // turning a brief-compose outage / config disable into a digest-
+    // send outage. Now: when briefForUser is missing, the canonical
+    // filter is skipped and we fall through to the legacy per-rule
+    // send path (multi-rule divergence reappears for THAT USER ONLY
+    // for THIS TICK only — acceptable trade-off because silent
+    // suppression of an entire user's digest is worse than a one-
+    // tick divergence on the path back to recovery). magazineUrl
+    // resolves to null at line ~1793 (brief?.magazineUrl ?? null);
+    // the carousel + CTA paths already gate on magazineUrl being
+    // truthy, so this branch produces a brief-less email/text body
+    // that still delivers the curated story list.
     const briefForUser = briefByUser.get(rule.userId);
-    const canonicalRule = selectCanonicalSendRule(
-      briefForUser,
-      userRulesByUserId.get(rule.userId) ?? [],
-    );
-    if (!canonicalRule || canonicalRule !== rule) continue;
+    if (briefForUser) {
+      const canonicalRule = selectCanonicalSendRule(
+        briefForUser,
+        userRulesByUserId.get(rule.userId) ?? [],
+      );
+      if (!canonicalRule || canonicalRule !== rule) continue;
+    } else {
+      if (!composeMissUsers.has(rule.userId)) {
+        console.warn(
+          `[digest] compose-miss user=${rule.userId} — briefByUser has no entry. ` +
+            `Falling through to per-rule send (no magazineUrl, multi-rule users will see ` +
+            `pre-U2 per-rule body divergence for this tick). Investigate: ` +
+            `BRIEF_SIGNING_SECRET unset, brief compose disabled, OR composeBriefForUser ` +
+            `caught a per-user error (Sentry should carry the trace).`,
+        );
+        composeMissUsers.add(rule.userId);
+      }
+      // Fall through — no canonical filter; this rule iterates
+      // through isDue / isUserPro / buildDigest / send normally.
+    }
 
     const lastSentKey = `digest:last-sent:v1:${rule.userId}:${rule.variant}`;
     // Reuse the same getLastSentAt helper the compose pass used so

@@ -569,6 +569,47 @@ describe('renderBriefMagazine — v4 clusterId field (Sprint 1 canonical contrac
     );
   });
 
+  // Codex PR #3614 P2 regression — sourceUrl is required on v2+, not
+  // just on the latest version. Pre-fix (`env.version === BRIEF_ENVELOPE_VERSION`)
+  // exempted v2 + v3 envelopes from the required-sourceUrl check after
+  // the v4 bump, contradicting the v2+ contract. Tests below lock in
+  // the corrected `env.version >= 2` semantic.
+  it('rejects a v3 envelope where a story is missing sourceUrl (Codex PR #3614 P2)', () => {
+    const env = v3Envelope();
+    /** @type {any} */ (env.data.stories[0]).sourceUrl = undefined;
+    assert.throws(
+      () => renderBriefMagazine(env),
+      /envelope\.data\.stories\[0\]\.sourceUrl/,
+    );
+  });
+
+  it('rejects a v2-shaped envelope where a story is missing sourceUrl (Codex PR #3614 P2)', () => {
+    // v2 envelopes don't carry publicLead/publicSignals/publicThreads
+    // (that's v3) and don't carry clusterId (that's v4). Build the v2
+    // shape from v3Envelope by stripping v3-only public-share fields.
+    const v3 = v3Envelope();
+    const v2Stories = v3.data.stories.map(({ ...rest }) => rest);
+    const v2 = /** @type {any} */ ({
+      ...v3,
+      version: 2,
+      data: { ...v3.data, stories: v2Stories },
+    });
+    delete v2.data.publicLead;
+    delete v2.data.publicSignals;
+    delete v2.data.publicThreads;
+    /** @type {any} */ (v2.data.stories[0]).sourceUrl = undefined;
+    assert.throws(
+      () => renderBriefMagazine(v2),
+      /envelope\.data\.stories\[0\]\.sourceUrl/,
+    );
+  });
+
+  it('accepts a v3 envelope where every story has a valid sourceUrl (positive control)', () => {
+    const env = v3Envelope();
+    const html = renderBriefMagazine(env);
+    assert.ok(typeof html === 'string' && html.length > 0);
+  });
+
   it('rejects a v5 envelope (forward-incompatible — not in SUPPORTED_ENVELOPE_VERSIONS)', () => {
     // The v3 → v4 bump expanded the supported set to {1, 2, 3, 4}.
     // A v5 envelope is composer drift (or a future bump that hasn't

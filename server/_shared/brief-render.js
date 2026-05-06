@@ -334,12 +334,19 @@ export function assertBriefEnvelope(envelope) {
         `envelope.data.stories[${i}].threatLevel must be one of critical|high|medium|low (got ${JSON.stringify(st.threatLevel)})`,
       );
     }
-    // sourceUrl is required on v2 and absent on v1. When present on
-    // either version, it must parse cleanly — a malformed URL would
-    // break the href. On v1 it's expected to be absent; a v1 envelope
-    // that somehow carries a sourceUrl is still validated (cheap
-    // defence against composer regressions).
-    if (env.version === BRIEF_ENVELOPE_VERSION || st.sourceUrl !== undefined) {
+    // sourceUrl is required from v2 onward and absent on v1. When
+    // present on v1, it must still parse cleanly — a malformed URL
+    // would break the href. A v1 envelope that somehow carries a
+    // sourceUrl is still validated (cheap defence against composer
+    // regressions).
+    //
+    // Codex PR #3614 P2 — pre-fix used `env.version === BRIEF_ENVELOPE_VERSION`
+    // which only required sourceUrl on the LATEST version. Pre-U1
+    // (when BRIEF_ENVELOPE_VERSION === 3) v2 envelopes were already
+    // exempted; the v4 bump made it worse by also exempting v3. Both
+    // are wrong per the v2+ contract. Switched to `env.version >= 2`
+    // so every supported v2/v3/v4/... envelope enforces sourceUrl.
+    if (env.version >= 2 || st.sourceUrl !== undefined) {
       try {
         validateSourceUrl(st.sourceUrl);
       } catch (err) {
