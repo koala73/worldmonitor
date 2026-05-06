@@ -1,4 +1,17 @@
+// Reads are user-facing — a fast timeout means we fall back to the upstream
+// fetcher quickly when Redis is laggy. 1.5 s is well past Upstash's ~150 ms
+// p99 in normal operation, so it only kicks in when something is wrong.
 const REDIS_OP_TIMEOUT_MS = 1_500;
+
+// Writes are inside `cachedFetchJson`'s critical path — the caller awaits
+// them before returning the just-fetched payload to the user. A failed SET
+// here is recoverable (next request just refetches from upstream), but the
+// cost is a duplicate upstream call AND the wasted 1.5 s the caller spent
+// waiting. 3 s gives enough headroom that transient Upstash latency
+// (cold-start spike, parallel SET burst — e.g. live-sports doing 14
+// SETs at once after a cache miss) doesn't trigger noisy timeouts.
+const REDIS_SET_TIMEOUT_MS = 3_000;
+
 const REDIS_PIPELINE_TIMEOUT_MS = 5_000;
 
 function errMsg(err: unknown): string {
@@ -87,7 +100,7 @@ export async function setCachedJson(key: string, value: unknown, ttlSeconds: num
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(value),
-      signal: AbortSignal.timeout(REDIS_OP_TIMEOUT_MS),
+      signal: AbortSignal.timeout(REDIS_SET_TIMEOUT_MS),
     });
     if (!resp.ok) {
       const body = await resp.text().catch(() => '');
