@@ -185,7 +185,11 @@ test('retry honors retryDelayMs argument (small delay between retries)', async (
   await runFetchPipeline(CHOKEPOINTS, Date.now(), fetcher, 50);
   assert.equal(timestamps.length, 2, 'two retries fired');
   const gap = timestamps[1] - timestamps[0];
-  assert.ok(gap >= 40, `retry gap ${gap}ms includes ≥40ms delay (the 50ms argument minus scheduler jitter)`);
+  // Threshold = half the delay arg. Wider than 40ms to absorb scheduler
+  // jitter on slow/shared CI runners (Greptile P2 on PR #3611) without
+  // losing the signal that the delay actually fires (gap > 0 alone would
+  // pass even if retryDelayMs were ignored).
+  assert.ok(gap >= 25, `retry gap ${gap}ms includes ≥25ms delay (the 50ms argument minus scheduler jitter)`);
 });
 
 // ── Output shape (no regression on existing fetchAll contract) ───────────
