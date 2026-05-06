@@ -77,7 +77,6 @@ function channelInitials(name: string): string {
   return name.split(/[\s-]+/).map((w) => w[0] ?? '').join('').slice(0, 2).toUpperCase();
 }
 
-
 export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise<void> {
   const appEl = containerEl ?? document.getElementById('app');
   if (!appEl) return;
