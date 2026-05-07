@@ -21,7 +21,7 @@ import { loadEnvFile, runSeed, loadSharedConfig, imfSdmxFetchIndicator } from '.
 // IMF stores forecast YEAR (not observation year), so end-of-(year-1)
 // semantics are required to avoid future-dated rejection of fresh
 // current-year forecasts. See helper module header for derivation.
-import { imfWeoContentMeta, IMF_WEO_MAX_CONTENT_AGE_MIN } from './_imf-weo-content-age-helpers.mjs';
+import { imfWeoContentMeta, IMF_WEO_MAX_CONTENT_AGE_MIN, maxIntegerYear } from './_imf-weo-content-age-helpers.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -87,6 +87,15 @@ export function buildExternalCountries({
       importVolumePctChg: tm?.value ?? null,
       exportVolumePctChg: tx?.value ?? null,
       year: ca?.year ?? tm?.year ?? tx?.year ?? null,
+      // Codex PR #3604 P2 — `latestYear` carries the MAX forecast year
+      // across all available indicators for this country, not the
+      // priority-first fallback. Drives content-age via the WEO helper:
+      // a row with BCA=2024 + import-volume=2026 publishes year=2024
+      // (correct: BCA's primary metric vintage) but latestYear=2026
+      // (correct: the freshest forecast horizon stored). Without this,
+      // content-age maps the row to 2023-12-31 (~17mo old) when it
+      // actually carries a 2026 metric (~5mo old in May 2026).
+      latestYear: maxIntegerYear([ca?.year, tm?.year, tx?.year]),
     };
   }
   return countries;

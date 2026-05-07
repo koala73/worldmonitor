@@ -12,7 +12,7 @@
 
 import { loadEnvFile, runSeed, loadSharedConfig, imfSdmxFetchIndicator } from './_seed-utils.mjs';
 // Sprint 4 IMF/WEO cohort content-age helper — see header for forecast-year semantics.
-import { imfWeoContentMeta, IMF_WEO_MAX_CONTENT_AGE_MIN } from './_imf-weo-content-age-helpers.mjs';
+import { imfWeoContentMeta, IMF_WEO_MAX_CONTENT_AGE_MIN, maxIntegerYear } from './_imf-weo-content-age-helpers.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -72,6 +72,10 @@ export function buildLaborCountries({ unemployment = {}, population = {} }) {
       unemploymentPct: lur?.value ?? null,
       populationMillions: popMillions,
       year: lur?.year ?? lp?.year ?? null,
+      // Codex PR #3604 P2 — see seed-imf-external.mjs for the full
+      // rationale. `latestYear` = max forecast year across all this
+      // country's indicators; drives content-age in the WEO helper.
+      latestYear: maxIntegerYear([lur?.year, lp?.year]),
     };
   }
   return countries;

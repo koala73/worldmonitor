@@ -16,6 +16,7 @@ import {
   imfForecastYearToMs,
   imfWeoContentMeta,
   IMF_WEO_MAX_CONTENT_AGE_MIN,
+  maxIntegerYear,
 } from '../scripts/_imf-weo-content-age-helpers.mjs';
 
 const FIXED_NOW = Date.UTC(2026, 4, 5, 12);     // 2026-05-05T12:00 UTC
@@ -192,4 +193,101 @@ test('late-reporter cohort does NOT drag newestItemAt down (G7 freshness wins)',
     ageMin < IMF_WEO_MAX_CONTENT_AGE_MIN,
     'mixed-cadence dict: G7 freshness drives newestItemAt — late reporters do NOT cause false-positive page',
   );
+});
+
+// ── maxIntegerYear helper ───────────────────────────────────────────────
+
+test('maxIntegerYear returns max across mixed valid+null+string years', () => {
+  // Seeders pass each indicator's optional year to maxIntegerYear. Mix of
+  // numbers, numeric strings, null, undefined, NaN, out-of-range — only
+  // valid integer years 1900..9999 are considered.
+  assert.equal(maxIntegerYear([2024, 2026, 2025]), 2026);
+  assert.equal(maxIntegerYear([null, 2025, undefined, '2026', 2024]), 2026);
+  assert.equal(maxIntegerYear([null, undefined]), null);
+  assert.equal(maxIntegerYear([1899, 9999, 12345, NaN]), 9999);
+  assert.equal(maxIntegerYear([2024.5, '2024.5', 2024]), 2024);
+  assert.equal(maxIntegerYear(null), null);
+  assert.equal(maxIntegerYear([]), null);
+});
+
+// ── Codex PR #3604 P2 regression guard: mixed-indicator-year ─────────────
+
+test('mixed-indicator-year: latestYear (max forecast) drives content-age, not year (priority-first)', () => {
+  // Codex PR #3604 P2. Real-world shape from seed-imf-external: the country
+  // dict's `year` field is the priority-first non-null indicator's year
+  // (`ca?.year ?? tm?.year ?? tx?.year`). When the priority-first indicator
+  // (BCA) has only old data but a lower-priority indicator (TM_RPCH) has a
+  // fresh 2026 forecast, the legacy `year` field reads 2024 — content-age
+  // would map this to 2023-12-31 (~17mo old, near-stale) when the row
+  // actually carries a fresh 2026 metric (~5mo old in May 2026, fresh).
+  //
+  // The fix: seeders populate `entry.latestYear = maxIntegerYear([all
+  // indicator years])` and the helper prefers it over `entry.year`.
+  const dataWithLatestYear = {
+    countries: {
+      // Mirrors a country with stale BCA but fresh import-volume forecast.
+      US: { year: 2024, latestYear: 2026 },
+    },
+  };
+  const dataWithoutLatestYear = {
+    // Pre-fix shape (or downgraded cache during transition window): only
+    // `year` populated. Helper falls back to `year` for back-compat.
+    countries: { US: { year: 2024 } },
+  };
+  const cmWithLatest = imfWeoContentMeta(dataWithLatestYear, FIXED_NOW);
+  const cmWithoutLatest = imfWeoContentMeta(dataWithoutLatestYear, FIXED_NOW);
+
+  // With latestYear=2026 → end-of-2025 → ~5 months old in May 2026 → fresh.
+  const ageMinWithLatest = (FIXED_NOW - cmWithLatest.newestItemAt) / 60000;
+  assert.ok(
+    ageMinWithLatest < 7 * 30 * 24 * 60,
+    `latestYear-aware path must surface fresh metric (got ${(ageMinWithLatest / (30 * 24 * 60)).toFixed(1)}mo)`,
+  );
+
+  // Without latestYear → falls back to year=2024 → end-of-2023 → ~17mo old.
+  const ageMinWithoutLatest = (FIXED_NOW - cmWithoutLatest.newestItemAt) / 60000;
+  assert.ok(
+    ageMinWithoutLatest > 12 * 30 * 24 * 60,
+    `back-compat path (no latestYear) must read year (got ${(ageMinWithoutLatest / (30 * 24 * 60)).toFixed(1)}mo)`,
+  );
+
+  // newestItemAt must STRICTLY differ — proves the helper is reading
+  // latestYear, not silently equating it with year.
+  assert.ok(
+    cmWithLatest.newestItemAt > cmWithoutLatest.newestItemAt,
+    'latestYear must shift newestItemAt forward when fresher than year',
+  );
+});
+
+test('mixed-indicator-year: latestYear=null falls back to year (no panic on missing field)', () => {
+  // Defensive: maxIntegerYear returns null when no indicator year is valid
+  // (all-null country). Seeder writes `latestYear: null`. Helper should
+  // fall back to `year`, NOT crash and NOT return null for the country.
+  const data = {
+    countries: {
+      US: { year: 2025, latestYear: null },
+    },
+  };
+  const cm = imfWeoContentMeta(data, FIXED_NOW);
+  assert.ok(cm !== null, 'must not collapse to null when latestYear is null but year is valid');
+  assert.equal(cm.newestItemAt, Date.UTC(2024, 11, 31, 23, 59, 59, 999), 'must use year=2025 → end-of-2024');
+});
+
+test('mixed-indicator-year: cohort with mixed shapes — newestItemAt picks max latestYear across all', () => {
+  // Heterogeneous cohort exercising every code path simultaneously.
+  // newestItemAt must be the MAX across all valid years (latestYear when
+  // present, year when not). oldestItemAt must be the MIN.
+  const data = {
+    countries: {
+      US: { year: 2024, latestYear: 2026 },  // fresh metric tucked behind stale primary
+      GB: { year: 2025 },                     // pre-fix shape, no latestYear
+      VE: { year: 2024, latestYear: null },   // all-null indicators except primary
+      DE: { year: 2026, latestYear: 2026 },
+    },
+  };
+  const cm = imfWeoContentMeta(data, FIXED_NOW);
+  // Max year considered = 2026 (US.latestYear, DE.latestYear) → end-of-2025.
+  assert.equal(cm.newestItemAt, Date.UTC(2025, 11, 31, 23, 59, 59, 999));
+  // Min year considered = 2024 (VE.year fallback, GB had 2025) → end-of-2023.
+  assert.equal(cm.oldestItemAt, Date.UTC(2023, 11, 31, 23, 59, 59, 999));
 });

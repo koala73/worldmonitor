@@ -67,7 +67,25 @@ export function imfForecastYearToMs(year) {
  *   future. The skew check is defensive against a future seeder change
  *   that extends the forecast horizon (e.g. `currentYear + 1`).
  *
- * @param {{countries: Record<string, {year: number}>}} data
+ * Codex PR #3604 P2 — year semantics fix.
+ *
+ * Each entry's primary `year` is the priority-first non-null indicator's
+ * year (e.g. `ca?.year ?? tm?.year ?? tx?.year` in seed-imf-external).
+ * That's correct as the public payload's "primary metric vintage" but
+ * WRONG for content-age: BCA at 2024 + import-volume at 2026 publishes
+ * `year: 2024`, even though the country dict carries a fresh 2026 metric
+ * — content-age would map this to 2023-12-31 (~17mo old, near-stale)
+ * when there's a 2026 metric in the row that maps to 2025-12-31 (~5mo
+ * old, fresh).
+ *
+ * Fix: prefer `entry.latestYear` (the max across all the country's
+ * indicator years, populated by the seeder alongside `year`). Falls back
+ * to `entry.year` for back-compat during the transition window — old
+ * caches written before this PR don't carry `latestYear`, but the helper
+ * still produces a usable signal for them (just the conservative "primary
+ * metric year" answer).
+ *
+ * @param {{countries: Record<string, {year: number, latestYear?: number}>}} data
  * @param {number} nowMs - injectable "now" for deterministic tests
  */
 export function imfWeoContentMeta(data, nowMs = Date.now()) {
@@ -76,7 +94,13 @@ export function imfWeoContentMeta(data, nowMs = Date.now()) {
   const skewLimit = nowMs + 60 * 60 * 1000;
   let newest = -Infinity, oldest = Infinity, validCount = 0;
   for (const entry of Object.values(countries)) {
-    const ts = imfForecastYearToMs(entry?.year);
+    // Codex PR #3604 P2 — prefer latestYear (max across all indicators)
+    // over year (priority-first non-null) so a row with a fresh metric
+    // tucked behind a stale higher-priority indicator surfaces as fresh.
+    const yearForContentAge = Number.isInteger(entry?.latestYear)
+      ? entry.latestYear
+      : entry?.year;
+    const ts = imfForecastYearToMs(yearForContentAge);
     if (ts == null) continue;
     if (ts > skewLimit) continue;
     validCount++;
@@ -85,6 +109,28 @@ export function imfWeoContentMeta(data, nowMs = Date.now()) {
   }
   if (validCount === 0) return null;
   return { newestItemAt: newest, oldestItemAt: oldest };
+}
+
+/**
+ * Helper: max integer year across a list of optional year values.
+ *
+ * Used by IMF seeders to populate `entry.latestYear` alongside the
+ * priority-first `entry.year`. Returns null when no value is a usable
+ * integer year — the seeder writes the field as null in that case (or
+ * omits it; the consumer falls back to `year`).
+ *
+ * @param {Array<number|string|null|undefined>} years
+ * @returns {number|null}
+ */
+export function maxIntegerYear(years) {
+  if (!Array.isArray(years)) return null;
+  let max = null;
+  for (const y of years) {
+    const n = typeof y === 'string' ? Number(y) : y;
+    if (!Number.isInteger(n) || n < 1900 || n > 9999) continue;
+    if (max === null || n > max) max = n;
+  }
+  return max;
 }
 
 /**
