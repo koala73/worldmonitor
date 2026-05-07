@@ -1314,6 +1314,31 @@ describe('Sprint 1 U7 production-gap source-text guard — formatter call site',
     );
   });
 
+  // Codex PR #3617 round-5 P1 — webhook channel must consume
+  // formatterStories so its payload matches the U4/U5-covered set.
+  it('sendWebhook is called with formatterStories (NOT raw stories) — channel-coverage parity', async () => {
+    const path = fileURLToPath(new URL('../scripts/seed-digest-notifications.mjs', import.meta.url));
+    const src = await readFile(path, 'utf8');
+
+    // Pre-fix: `sendWebhook(rule.userId, ch.webhookEnvelope, stories, briefLead)`
+    // Post-fix: `sendWebhook(rule.userId, ch.webhookEnvelope, formatterStories, briefLead)`
+    // The pre-fix shape would have webhook users receiving up to
+    // DIGEST_MAX_ITEMS=30 raw cards while U4/U5 only saw the
+    // post-cap subset (≤12 under brief-success).
+    assert.match(
+      src,
+      /sendWebhook\([^)]*?,\s*formatterStories\s*,\s*briefLead\s*\)/,
+      'webhook channel must consume formatterStories so its payload matches U4/U5-covered set',
+    );
+    // Forbidden-pattern guard: if a future refactor reverts to passing
+    // raw `stories`, this fails loudly.
+    assert.doesNotMatch(
+      src,
+      /sendWebhook\([^)]*?,\s*stories\s*,\s*briefLead\s*\)/,
+      'webhook must NOT pass raw stories — that bypasses U4/U5 coverage for webhook users',
+    );
+  });
+
   // Codex PR #3617 round-4 P1 — writer uses SET not SET NX.
   it('U4 writer issues SET (NOT SET NX) so cooldown reads see refreshed lastDeliveredAt', async () => {
     const writerPath = fileURLToPath(new URL('../scripts/lib/digest-delivered-log.mjs', import.meta.url));

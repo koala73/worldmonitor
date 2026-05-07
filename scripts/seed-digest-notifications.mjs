@@ -2249,7 +2249,19 @@ async function main() {
         // briefLead — same string the email exec block + magazine
         // pull-quote use. Codex Round-1 Medium #6 (channel-scope
         // parity).
-        ok = await sendWebhook(rule.userId, ch.webhookEnvelope, stories, briefLead);
+        //
+        // Codex PR #3617 round-5 P1 — pass formatterStories (NOT raw
+        // stories). Pre-fix the webhook serialised the full raw pool
+        // (up to DIGEST_MAX_ITEMS=30) while every other channel
+        // consumed formatterStories (post-cap, post-filter — what
+        // U4/U5 also iterate via cooldownIterableStories). Webhook
+        // users were therefore receiving cards that were never
+        // shadow-evaluated and never seeded delivered-log rows for
+        // future cooldown enforcement. Aligning to formatterStories
+        // closes the channel-coverage gap so the webhook payload
+        // exactly matches what U4 stamped + U5 evaluated for that
+        // (user, rule, tick).
+        ok = await sendWebhook(rule.userId, ch.webhookEnvelope, formatterStories, briefLead);
       }
       if (ok) {
         anyDelivered = true;
