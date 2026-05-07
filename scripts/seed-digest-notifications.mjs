@@ -70,6 +70,9 @@ import {
   aggregateResults as aggregateDeliveredResults,
   writeDeliveredEntry,
 } from './lib/digest-delivered-log.mjs';
+import { readCooldownConfig } from './lib/digest-cooldown-config.mjs';
+import { evaluateCooldown } from './lib/digest-cooldown-decision.mjs';
+import { emitCooldownShadowLog } from './lib/digest-cooldown-shadow-log.mjs';
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -1757,6 +1760,27 @@ async function main() {
   // one per rule iteration. See the briefForUser-missing branch below.
   const composeMissUsers = new Set();
 
+  // Sprint 1 / U5 — cooldown mode resolved ONCE per cron tick. Operator
+  // surface is `DIGEST_COOLDOWN_MODE` ∈ {shadow, off}; default 'shadow'.
+  // Anything else (typo, garbage, even 'enforce' which Sprint 2 will
+  // introduce) fails closed to 'shadow' with `invalidRaw` populated for
+  // a startup warn — see `feedback_kill_switch_default_on_typo`.
+  //
+  // Resolved at the top of the run (not per rule) because the env value
+  // can't change mid-tick, and we want the typo-warn to fire ONCE per
+  // cron run, not once per user. The decision evaluator below is invoked
+  // with `mode` as a per-call option so a future per-user shadow-subset
+  // gate can short-circuit by passing `mode: 'off'` for excluded users
+  // (decision artifact becomes null → shadow logger silently skips them
+  // per `feedback_gate_on_ground_truth_not_configured_state`).
+  const cooldownConfig = readCooldownConfig(process.env);
+  if (cooldownConfig.invalidRaw !== null) {
+    console.warn(
+      `[digest] cooldown unrecognised DIGEST_COOLDOWN_MODE=${JSON.stringify(cooldownConfig.invalidRaw)} — ` +
+        `falling back to 'shadow' (safe default; Sprint 1 has no enforce mode). Valid: shadow | off.`,
+    );
+  }
+
   for (const rule of rules) {
     if (!rule.userId || !rule.variant) continue;
 
@@ -1948,6 +1972,121 @@ async function main() {
     const shortDate = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(nowMs));
     const subject = subjectForBrief({ briefLead, synthesisLevel, shortDate });
 
+    // Sprint 1 / U5 — cooldown shadow-mode evaluation (per-cluster,
+    // per-channel, BEFORE the channel send). The decision is computed
+    // and accumulated; the send loop below is unchanged. Sprint 2 will
+    // wire the decision into the send-loop guard. Until then, the
+    // accumulator's only consumer is the shadow log line emitted after
+    // the send loop completes for this user-rule.
+    //
+    // Why before the send (not after): the U4 delivered-log writes
+    // happen AFTER each channel's send returns true, and we want the
+    // cooldown evaluator to see the previous tick's row, not the row
+    // we're about to write. Moving the GET to "after send" would race
+    // with the writer and turn every re-send into a `conflicts: 1`
+    // observation — masking the real cooldown signal we're trying to
+    // measure.
+    //
+    // The evaluator is short-circuited by `mode === 'off'` (decision
+    // === null). When that happens we skip the per-cluster GET pipeline
+    // entirely — no Upstash traffic, no log line. This makes the
+    // operator-side kill switch instant: flip Railway env to 'off',
+    // next tick spends zero on cooldown.
+    const cooldownDecisions = [];
+    const ruleIdComposite = `${rule.variant ?? 'full'}:${rule.lang ?? 'en'}:${rule.sensitivity ?? 'high'}`;
+    // Slot string mirrors the brief composer: `issueSlotInTz(nowMs, tz)`.
+    // We use the same tz the composer used (rule.digestTimezone, default
+    // 'UTC') so the slot naming aligns 1:1 with the brief envelope's
+    // magazine URL slot. Operators grepping the shadow log by slot get
+    // the same slot string they'd see in `brief:${userId}:${issueSlot}`.
+    const cooldownSlot = issueSlotInTz(nowMs, rule.digestTimezone ?? 'UTC');
+    if (
+      cooldownConfig.mode === 'shadow'
+      && Array.isArray(briefEnvelopeStories)
+      && briefEnvelopeStories.length > 0
+    ) {
+      // Outer loop: one decision per (channel, cluster) tuple. Same
+      // shape as the U4 writer's iteration so the shadow log's
+      // `total` aligns with the writer's eventual write count under
+      // healthy paths. Sequential awaits — same rationale as the U4
+      // writer (≤12 clusters × ≤5 channels per user = ≤60 GETs;
+      // bursty parallelism would compete with the rest of the cron's
+      // Upstash traffic for no measurable latency win).
+      for (const ch of deliverableChannels) {
+        for (const briefStory of briefEnvelopeStories) {
+          const clusterId = typeof briefStory?.clusterId === 'string' ? briefStory.clusterId : '';
+          if (!clusterId) {
+            // Same defensive branch as the U4 writer below — a v4
+            // envelope MUST carry clusterId. Skip the GET here so we
+            // don't construct a malformed key; the U4-side warn will
+            // fire on the same iteration when the writer runs.
+            continue;
+          }
+          const key = `digest:sent:v1:${rule.userId}:${ch.channelType}:${ruleIdComposite}:${clusterId}`;
+          let lastDeliveredAt = null;
+          let lastDeliveredSourceCount = null;
+          let lastDeliveredTier = null;
+          try {
+            const raw = await upstashRest('GET', key);
+            if (typeof raw === 'string' && raw.length > 0) {
+              const parsed = JSON.parse(raw);
+              if (parsed && typeof parsed === 'object') {
+                if (Number.isFinite(parsed.sentAt)) lastDeliveredAt = parsed.sentAt;
+                if (Number.isFinite(parsed.sourceCount)) lastDeliveredSourceCount = parsed.sourceCount;
+                if (typeof parsed.severity === 'string') lastDeliveredTier = parsed.severity;
+              }
+            }
+          } catch (err) {
+            // GET failed (transient Upstash, JSON parse error). Treat
+            // as "no prior delivery" — the safe default in shadow mode
+            // is `decision='allow'`, which never affects subsequent
+            // sends. A real enforcement path (Sprint 2) will need to
+            // decide whether to fail-open or fail-closed here; shadow
+            // mode is fail-open by definition.
+            console.warn(
+              `[digest] U5 cooldown: GET failed for key=${key}: ${err?.message ?? err} — treating as no prior delivery`,
+            );
+          }
+          const sourceDomain = (() => {
+            const url = typeof briefStory?.sourceUrl === 'string' ? briefStory.sourceUrl : '';
+            if (!url) return '';
+            try {
+              return new URL(url).hostname.toLowerCase();
+            } catch {
+              return '';
+            }
+          })();
+          const severity = typeof briefStory?.threatLevel === 'string' ? briefStory.threatLevel : 'unknown';
+          const currentSourceCount = typeof briefStory?.source === 'string' && briefStory.source.length > 0 ? 1 : 0;
+          const decision = evaluateCooldown({
+            userId: rule.userId,
+            slot: cooldownSlot,
+            clusterId,
+            channel: ch.channelType,
+            ruleId: ruleIdComposite,
+            type: null, // invoke stub classifier
+            severity,
+            currentSourceCount,
+            currentTier: severity,
+            lastDeliveredAt,
+            lastDeliveredSourceCount,
+            lastDeliveredTier,
+            classifierInputs: {
+              sourceDomain,
+              headline: typeof briefStory?.headline === 'string' ? briefStory.headline : '',
+            },
+            options: { mode: cooldownConfig.mode, nowMs },
+          });
+          // `decision === null` is unreachable here (we guarded on
+          // `mode === 'shadow'` at the loop entry) but defensive —
+          // protects the shadow logger from a future code path that
+          // calls evaluateCooldown with mode='off' inside the shadow
+          // branch.
+          if (decision !== null) cooldownDecisions.push(decision);
+        }
+      }
+    }
+
     let anyDelivered = false;
     // Sprint 1 / U4 — per-channel/per-cluster delivered-log accumulator.
     // We aggregate tri-state counts across every (channel, cluster)
@@ -2076,6 +2215,25 @@ async function main() {
           `total=${deliveredLogResults.length}`,
       );
     }
+
+    // Sprint 1 / U5 — shadow-mode cooldown summary line. ONE line per
+    // user-rule send (not per cluster, not per channel) so a busy cron
+    // doesn't flood Sentry. Skipped entirely when no decisions were
+    // accumulated (mode='off' OR no brief envelope OR all clusters
+    // missing clusterId). The logger promotes to console.warn when
+    // any decision had `classificationMissing: true` — that's real
+    // signal for Sprint 3's classifier work.
+    //
+    // The line is independent of `anyDelivered` — we want the would-
+    // have-suppressed counter even on no-channel-success ticks (those
+    // are the operator-visible cases where shadow telemetry matters
+    // most: "we'd have suppressed even MORE if the send had succeeded").
+    emitCooldownShadowLog({
+      userId: rule.userId,
+      ruleId: ruleIdComposite,
+      slot: cooldownSlot,
+      decisions: cooldownDecisions,
+    });
 
     if (anyDelivered) {
       await upstashRest(
