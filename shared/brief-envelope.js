@@ -40,9 +40,21 @@
  * content. v2 envelopes already in TTL stay readable through
  * SUPPORTED_ENVELOPE_VERSIONS.
  *
- * @type {3}
+ * v4 (2026-05-06, Sprint 1 canonical contract): BriefStory.clusterId
+ * added. Stable per-story-cluster identity (rep `hash` from
+ * `mergedHashes[0]` after `materializeCluster`) enabling the
+ * per-channel/per-cluster delivered-log (`digest:sent:v1:...`) and
+ * the `digest.cards ⊆ brief.cards` CI invariant. clusterId is
+ * REQUIRED on v4 envelopes (write-time) and OPTIONAL on v1-v3
+ * envelopes still resident in Redis under the 7-day brief TTL
+ * window (read-time back-compat). The 7-day window covers every
+ * downstream TTL: brief:* (7d), story:track:v1:* (7d),
+ * digest:accumulator:v1:* (shorter). U3 wires the value through
+ * compose; U1 only adds the field + assertion plumbing.
+ *
+ * @type {4}
  */
-export const BRIEF_ENVELOPE_VERSION = 3;
+export const BRIEF_ENVELOPE_VERSION = 4;
 
 /**
  * Versions the renderer still accepts from Redis on READ. Must always
@@ -53,4 +65,4 @@ export const BRIEF_ENVELOPE_VERSION = 3;
  *
  * @type {ReadonlySet<number>}
  */
-export const SUPPORTED_ENVELOPE_VERSIONS = new Set([1, 2, 3]);
+export const SUPPORTED_ENVELOPE_VERSIONS = new Set([1, 2, 3, 4]);

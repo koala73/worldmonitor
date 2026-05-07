@@ -43,6 +43,7 @@ import {
   pickWinningCandidateWithPool,
   readTimeAgeCutoffMs,
   runSynthesisWithFallback,
+  selectCanonicalSendRule,
   shouldDropTrackByAge,
   subjectForBrief,
 } from './lib/digest-orchestration-helpers.mjs';
@@ -1660,10 +1661,75 @@ async function main() {
   // digest delivery.
   const { briefByUser, composeSuccess, composeFailed } = await composeBriefsForRun(rules, nowMs);
 
+  // Sprint 1 / U2 — option (a) canonical-send mapping. Build a per-user
+  // rule index ONCE so each iteration of the send loop can resolve the
+  // user's canonical winner rule in O(1). The compose phase already
+  // identified the winner via pickWinningCandidateWithPool and stamped
+  // its variant into briefByUser[userId].chosenVariant; we use that as
+  // the per-user filter below to drop non-winner rules from the send
+  // fan-out. Rules without a string userId are skipped here so the
+  // index lookup in the loop is a single map.get() rather than a re-
+  // filter each iteration.
+  const userRulesByUserId = new Map();
+  for (const rule of rules) {
+    if (!rule || typeof rule.userId !== 'string') continue;
+    const list = userRulesByUserId.get(rule.userId);
+    if (list) list.push(rule);
+    else userRulesByUserId.set(rule.userId, [rule]);
+  }
+
   let sentCount = 0;
+  // Sprint 1 / U2 hardening — track which users we've already warned
+  // about a compose-miss so each user gets ONE warn per cron tick, not
+  // one per rule iteration. See the briefForUser-missing branch below.
+  const composeMissUsers = new Set();
 
   for (const rule of rules) {
     if (!rule.userId || !rule.variant) continue;
+
+    // Sprint 1 / U2 — drop non-winner rules under option (a) WHEN
+    // compose succeeded for this user. The compose phase already
+    // picked ONE rule per user-slot; only that rule drives the send.
+    // Non-winner rules silently fall through here (their pools are
+    // absorbed into the winner's at the accumulator/dedup layer
+    // upstream — see brief-dedup.mjs).
+    //
+    // Codex PR #3614 P1 — composeBriefsForRun returns an empty map
+    // when BRIEF_SIGNING_SECRET is missing OR brief compose is
+    // disabled OR a per-user compose error was caught upstream. The
+    // pre-fix canonical filter dropped EVERY rule for those users —
+    // turning a brief-compose outage / config disable into a digest-
+    // send outage. Now: when briefForUser is missing, the canonical
+    // filter is skipped and we fall through to the legacy per-rule
+    // send path (multi-rule divergence reappears for THAT USER ONLY
+    // for THIS TICK only — acceptable trade-off because silent
+    // suppression of an entire user's digest is worse than a one-
+    // tick divergence on the path back to recovery). magazineUrl
+    // resolves to null at line ~1793 (brief?.magazineUrl ?? null);
+    // the carousel + CTA paths already gate on magazineUrl being
+    // truthy, so this branch produces a brief-less email/text body
+    // that still delivers the curated story list.
+    const briefForUser = briefByUser.get(rule.userId);
+    if (briefForUser) {
+      const canonicalRule = selectCanonicalSendRule(
+        briefForUser,
+        userRulesByUserId.get(rule.userId) ?? [],
+      );
+      if (!canonicalRule || canonicalRule !== rule) continue;
+    } else {
+      if (!composeMissUsers.has(rule.userId)) {
+        console.warn(
+          `[digest] compose-miss user=${rule.userId} — briefByUser has no entry. ` +
+            `Falling through to per-rule send (no magazineUrl, multi-rule users will see ` +
+            `pre-U2 per-rule body divergence for this tick). Investigate: ` +
+            `BRIEF_SIGNING_SECRET unset, brief compose disabled, OR composeBriefForUser ` +
+            `caught a per-user error (Sentry should carry the trace).`,
+        );
+        composeMissUsers.add(rule.userId);
+      }
+      // Fall through — no canonical filter; this rule iterates
+      // through isDue / isUserPro / buildDigest / send normally.
+    }
 
     const lastSentKey = `digest:last-sent:v1:${rule.userId}:${rule.variant}`;
     // Reuse the same getLastSentAt helper the compose pass used so
@@ -1710,27 +1776,35 @@ async function main() {
       continue;
     }
 
-    // Per-rule synthesis: each due rule's channel body must be
-    // internally consistent (lead derived from THIS rule's pool, not
-    // some other rule's). For multi-rule users, the compose flow
-    // picked ONE winning rule for the magazine envelope, but the
-    // send-loop body for a non-winner rule needs ITS OWN lead — else
-    // the email leads with one pool's narrative while listing stories
-    // from another pool. Cache absorbs the cost: when this is the
-    // winning rule, generateDigestProse hits the cache row written
-    // during the compose pass (same userId/sensitivity/pool/ctx) and
-    // no extra LLM call fires.
+    // Sprint 1 / U2 — option (a) canonical send.
     //
-    // The magazineUrl still points at the winner's envelope — that
-    // surface is the share-worthy alpha and remains a single brief
-    // per user per slot. Channel-body lead vs magazine lead may
-    // therefore differ for non-winner rules; users on those rules
-    // see their own coherent email + a magazine that shows the
-    // winner's editorial. Acceptable trade-off given multi-rule
-    // users are rare and the `(userId, issueSlot)` URL contract
-    // can't represent multiple per-rule briefs without an
-    // architectural change to the URL signer + Redis key.
-    const brief = briefByUser.get(rule.userId);
+    // We are guaranteed to be on the WINNING rule for this user-slot
+    // (the canonical-rule filter above dropped every non-winner). So:
+    //
+    //   - The synthesis we run here against `stories` is the canonical
+    //     synthesis that backs the magazine envelope. generateDigestProse
+    //     hits the same cache row the compose phase wrote (same
+    //     userId/sensitivity/pool/ctx), so this is a cache read, not a
+    //     second LLM call.
+    //   - Every channel body — email HTML + plain text + Telegram +
+    //     Slack + Discord + webhook — reads from this single synthesis
+    //     output. There is no per-rule fan-out, no winner-vs-non-winner
+    //     channel divergence, and no separate per-rule magazine URL.
+    //   - The magazine URL (briefByUser[userId].magazineUrl) points at
+    //     the SAME rule's envelope this synthesis was derived from, so
+    //     subscribers experience full email-body ↔ magazine consistency
+    //     for the first time.
+    //
+    // Pre-U2 (PR <U2-pr> reference), this block ran a fresh synthesis
+    // per enabled rule and accepted "channel-body lead vs magazine lead
+    // may differ for non-winner rules" as a trade-off. Option (a) closes
+    // the divergence at the cost of multi-rule users seeing only the
+    // winner rule's content per slot — confirmed during planning as the
+    // intended subscriber-visible behaviour change.
+    //
+    // Reuse briefForUser fetched above (Codex PR #3614 P2 — was a
+    // duplicate Map.get on the same key).
+    const brief = briefForUser;
     let briefSynthesis = null;  // full {lead, threads, signals} when synthesis succeeded
     let briefLead = null;       // string projection for non-email channels + parity log
     let synthesisLevel = 3;
@@ -1815,26 +1889,23 @@ async function main() {
       // (null !== '<envelope stub lead>'), flooding Sentry with
       // false positives. Greptile P1 on PR #3396.
       //
-      // Two distinct properties to track:
+      // Sprint 1 / U2 — option (a) made `winner_match=true` the
+      // UNIVERSAL invariant: the canonical-rule filter at the top of
+      // the loop ensures every send is the user's winning rule for
+      // this slot. Two consequences:
       //
-      // 1. CHANNEL parity (load-bearing): for ONE send, every channel
-      //    body of THIS rule (email HTML + plain text + Telegram +
-      //    Slack + Discord + webhook) reads the same `briefLead`
-      //    string. Verifiable by code review (single variable threaded
-      //    everywhere); logged here as `exec_len` for telemetry.
+      // 1. `winner_match=false` was previously "expected divergence
+      //    for a non-winner rule send"; under option (a) it can ONLY
+      //    indicate a bug — most likely briefByUser missing the user
+      //    OR chosenVariant drifting between compose and send. Treat
+      //    as a hard alarm, not a periodic mismatch warning.
+      // 2. `channels_equal=false` while `winner_match=true` retains
+      //    its pre-U2 meaning — canonical-synthesis cache row drift.
+      //    Same PARITY REGRESSION alarm semantics.
       //
-      // 2. WINNER parity (informational): when `winner_match=true`,
-      //    THIS rule is the same one the magazine envelope was
-      //    composed from — so channel lead == magazine lead (cache-
-      //    shared via generateDigestProse). When `winner_match=false`,
-      //    this is a non-winner rule send; channel lead reflects this
-      //    rule's pool while the magazine URL points at the winner's
-      //    editorial. Expected divergence, not a regression.
-      //
-      // PARITY REGRESSION fires only when winner_match=true AND the
-      // channel lead differs from the envelope lead (the canonical-
-      // synthesis cache row has drifted between compose and send
-      // passes — a real contract break).
+      // Both alarms warn on the same console.warn channel so Sentry's
+      // console-breadcrumb hook surfaces them without explicit
+      // captureMessage calls.
       if (AI_DIGEST_ENABLED && rule.aiDigestEnabled !== false) {
         const envLead = brief?.envelope?.data?.digest?.lead ?? '';
         const winnerVariant = brief?.chosenVariant ?? '';
@@ -1851,13 +1922,22 @@ async function main() {
             `channels_equal=${channelsEqual} ` +
             `public_lead_len=${publicLead.length}`,
         );
-        if (winnerMatch && !channelsEqual && briefLead && envLead) {
-          // Sentry alert candidate — winner_match=true means this rule
-          // composed the envelope, so its channel lead MUST match the
-          // envelope lead. Mismatch = canonical-synthesis cache drift
-          // or code regression. Logged loudly so Sentry's console-
-          // breadcrumb hook surfaces it without an explicit
-          // captureMessage call.
+        if (!winnerMatch) {
+          // Under option (a) this is unreachable in practice — the
+          // canonical-rule filter at the top of the loop drops every
+          // non-winner rule before this point. If we ever see it in
+          // production, the canonical-rule filter has been bypassed
+          // OR briefByUser/chosenVariant drifted between compose and
+          // send. Hard alarm.
+          console.warn(
+            `[digest] PARITY REGRESSION user=${rule.userId} — winner_match=false under option (a). ` +
+              `Expected: winner_variant=${winnerVariant || '<missing>'} === rule_variant=${rule.variant ?? 'full'}. ` +
+              `Investigate: canonical-rule filter bypass OR compose↔send chosenVariant drift.`,
+          );
+        } else if (!channelsEqual && briefLead && envLead) {
+          // Canonical-synthesis cache row drifted between compose and
+          // send passes — a real contract break. Same semantics as
+          // pre-U2 PARITY REGRESSION.
           console.warn(
             `[digest] PARITY REGRESSION user=${rule.userId} — winner-rule channel lead != envelope lead. ` +
               `Investigate: cache drift between compose pass and send pass?`,

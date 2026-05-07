@@ -133,6 +133,11 @@ const ALLOWED_STORY_KEYS = new Set([
   'description',
   'source',
   'sourceUrl',
+  // v4+ stable per-story-cluster identity (see shared/brief-envelope.js
+  // version-history doc-block). Required on v4 envelopes — checked
+  // below in the per-story validator. Optional on v1-v3 envelopes
+  // still in TTL.
+  'clusterId',
   'whyMatters',
 ]);
 
@@ -329,12 +334,19 @@ export function assertBriefEnvelope(envelope) {
         `envelope.data.stories[${i}].threatLevel must be one of critical|high|medium|low (got ${JSON.stringify(st.threatLevel)})`,
       );
     }
-    // sourceUrl is required on v2 and absent on v1. When present on
-    // either version, it must parse cleanly — a malformed URL would
-    // break the href. On v1 it's expected to be absent; a v1 envelope
-    // that somehow carries a sourceUrl is still validated (cheap
-    // defence against composer regressions).
-    if (env.version === BRIEF_ENVELOPE_VERSION || st.sourceUrl !== undefined) {
+    // sourceUrl is required from v2 onward and absent on v1. When
+    // present on v1, it must still parse cleanly — a malformed URL
+    // would break the href. A v1 envelope that somehow carries a
+    // sourceUrl is still validated (cheap defence against composer
+    // regressions).
+    //
+    // Codex PR #3614 P2 — pre-fix used `env.version === BRIEF_ENVELOPE_VERSION`
+    // which only required sourceUrl on the LATEST version. Pre-U1
+    // (when BRIEF_ENVELOPE_VERSION === 3) v2 envelopes were already
+    // exempted; the v4 bump made it worse by also exempting v3. Both
+    // are wrong per the v2+ contract. Switched to `env.version >= 2`
+    // so every supported v2/v3/v4/... envelope enforces sourceUrl.
+    if (env.version >= 2 || st.sourceUrl !== undefined) {
       try {
         validateSourceUrl(st.sourceUrl);
       } catch (err) {
@@ -342,6 +354,23 @@ export function assertBriefEnvelope(envelope) {
           `envelope.data.stories[${i}].sourceUrl ${/** @type {Error} */ (err).message}`,
         );
       }
+    }
+    // clusterId is REQUIRED on v4 (the canonical-contract bump that
+    // wires per-cluster identity into the delivered-log + CI invariant)
+    // and OPTIONAL on v1-v3 envelopes still in the 7-day TTL window.
+    // When present on any version it must be a non-empty string —
+    // empty strings would silently collapse delivered-log keys across
+    // clusters and break the `digest.cards ⊆ brief.cards` invariant.
+    if (env.version === BRIEF_ENVELOPE_VERSION) {
+      if (!isNonEmptyString(st.clusterId)) {
+        throw new Error(
+          `envelope.data.stories[${i}].clusterId must be a non-empty string on v${BRIEF_ENVELOPE_VERSION} envelopes (got ${JSON.stringify(st.clusterId)})`,
+        );
+      }
+    } else if (st.clusterId !== undefined && !isNonEmptyString(st.clusterId)) {
+      throw new Error(
+        `envelope.data.stories[${i}].clusterId, when present on v${env.version}, must be a non-empty string (got ${JSON.stringify(st.clusterId)})`,
+      );
     }
   });
 
