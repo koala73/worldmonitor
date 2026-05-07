@@ -68,6 +68,24 @@ const EXIT_TRANSPORT = 2;
  * @param {string[]} argv — process.argv.slice(2)
  * @returns {{ kind: 'ok', args: Record<string,string> } | { kind: 'err', message: string }}
  */
+// Codex PR #3617 P1 — Redis SCAN glob-injection guard.
+//
+// The scan pattern at buildScanPattern is `digest:sent:v1:${user}:*:*:${cluster}`.
+// If user OR cluster contains Redis glob metacharacters (* ? [ ] \), the
+// pattern broadens beyond the intended single-user-single-cluster scope.
+// `--cluster '*'` would match every key in the prefix; `--user 'foo*'`
+// would match every cluster for every user starting with `foo`. The
+// followup DEL loop would then wipe far more rows than the operator
+// intended.
+//
+// Reject these characters at parse time. The legitimate value space for
+// userId / clusterId / channel / ruleId is alphanumerics + a small
+// punctuation set (`:` for ruleId composites, `-` for hash IDs); none
+// of the Redis metacharacters belong here. Reason strings are free-form
+// (audit log) and don't reach the SCAN pattern, so they're exempt.
+const REDIS_GLOB_CHARS = /[*?[\]\\]/;
+const SCAN_KEY_FLAGS = new Set(['user', 'slot', 'cluster', 'channel', 'rule']);
+
 export function parseArgs(argv) {
   const allowedFlags = new Set(['--user', '--slot', '--cluster', '--channel', '--rule', '--reason']);
   const args = {};
@@ -80,7 +98,19 @@ export function parseArgs(argv) {
     if (typeof value !== 'string' || value.length === 0 || value.startsWith('--')) {
       return { kind: 'err', message: `flag ${flag} requires a non-empty value` };
     }
-    args[flag.slice(2)] = value;
+    const flagName = flag.slice(2);
+    // Codex PR #3617 P1 — block Redis glob metacharacters in any flag
+    // whose value reaches the SCAN/DEL pattern. The reason flag is
+    // free-form (audit log) and does not reach Redis, so it's exempt.
+    if (SCAN_KEY_FLAGS.has(flagName) && REDIS_GLOB_CHARS.test(value)) {
+      return {
+        kind: 'err',
+        message: `--${flagName} value contains Redis glob metacharacter (*, ?, [, ], or \\). ` +
+          `These would broaden the SCAN pattern beyond a single user-cluster scope and ` +
+          `delete unrelated keys. Got: ${JSON.stringify(value)}`,
+      };
+    }
+    args[flagName] = value;
     i++;
   }
 

@@ -526,6 +526,83 @@ describe('clear-delivered-entry — argument parsing', () => {
     assert.equal(r1.kind, 'err');
     assert.match(r1.message, /requires a non-empty value/);
   });
+
+  // Codex PR #3617 P1 — Redis SCAN glob-injection guard.
+  // The sweep-mode pattern is `digest:sent:v1:${user}:*:*:${cluster}`.
+  // If user OR cluster contains glob metacharacters (* ? [ ] \), the
+  // pattern broadens and the followup DEL loop wipes far more rows
+  // than the operator intended. Guard at parse time.
+  it('rejects --cluster value containing * (Redis glob char)', () => {
+    const r = parseArgs(['--user', 'u', '--slot', 's', '--cluster', '*', '--reason', 'oops']);
+    assert.equal(r.kind, 'err');
+    assert.match(r.message, /glob metacharacter/);
+    assert.match(r.message, /--cluster/);
+  });
+
+  it('rejects --cluster value containing prefix wildcard (foo*)', () => {
+    const r = parseArgs(['--user', 'u', '--slot', 's', '--cluster', 'foo*', '--reason', 'oops']);
+    assert.equal(r.kind, 'err');
+    assert.match(r.message, /glob metacharacter/);
+  });
+
+  it('rejects --user value containing * (would broaden across users)', () => {
+    const r = parseArgs(['--user', 'u*', '--slot', 's', '--cluster', 'c', '--reason', 'oops']);
+    assert.equal(r.kind, 'err');
+    assert.match(r.message, /--user/);
+    assert.match(r.message, /glob metacharacter/);
+  });
+
+  it('rejects --cluster value containing ? (single-char wildcard)', () => {
+    const r = parseArgs(['--user', 'u', '--slot', 's', '--cluster', 'c?', '--reason', 'oops']);
+    assert.equal(r.kind, 'err');
+    assert.match(r.message, /glob metacharacter/);
+  });
+
+  it('rejects --cluster value containing [ (character class)', () => {
+    const r = parseArgs(['--user', 'u', '--slot', 's', '--cluster', 'c[ab]', '--reason', 'oops']);
+    assert.equal(r.kind, 'err');
+    assert.match(r.message, /glob metacharacter/);
+  });
+
+  it('rejects --cluster value containing \\ (escape char)', () => {
+    const r = parseArgs(['--user', 'u', '--slot', 's', '--cluster', 'c\\x', '--reason', 'oops']);
+    assert.equal(r.kind, 'err');
+    assert.match(r.message, /glob metacharacter/);
+  });
+
+  it('rejects --channel containing glob char (even though channel is from a fixed set, defence-in-depth)', () => {
+    const r = parseArgs(['--user', 'u', '--slot', 's', '--cluster', 'c', '--channel', 'em*', '--rule', 'r', '--reason', 'oops']);
+    assert.equal(r.kind, 'err');
+    assert.match(r.message, /glob metacharacter|--channel must be one of/);
+  });
+
+  it('rejects --rule containing glob char', () => {
+    const r = parseArgs(['--user', 'u', '--slot', 's', '--cluster', 'c', '--channel', 'email', '--rule', 'full:*:high', '--reason', 'oops']);
+    assert.equal(r.kind, 'err');
+    assert.match(r.message, /glob metacharacter/);
+  });
+
+  it('--reason is exempt (audit log, never reaches Redis pattern)', () => {
+    // Operators may legitimately put glob chars in a reason string
+    // (e.g. "duplicate * in test fixture"). The reason is logged but
+    // never substituted into the SCAN pattern, so it's safe.
+    const r = parseArgs(['--user', 'u', '--slot', 's', '--cluster', 'c', '--reason', 'wildcard * cleanup']);
+    assert.equal(r.kind, 'ok');
+  });
+
+  it('legitimate values with `:` and `-` still parse cleanly (regression guard)', () => {
+    // The glob-char regex is /[*?[\]\\]/ — must not over-match into
+    // the legitimate ruleId-composite separator `:` or hash-id `-`.
+    const r = parseArgs([
+      '--user', 'user-abc-123',
+      '--slot', '2026-05-06-2001',
+      '--cluster', 'cluster-rep-hash-deadbeef',
+      '--channel', 'email',
+      '--rule', 'full:en:high',
+      '--reason', 'cleanup',
+    ]);
+    assert.equal(r.kind, 'ok');
+  });
 });
 
 describe('clear-delivered-entry — key shape helpers', () => {

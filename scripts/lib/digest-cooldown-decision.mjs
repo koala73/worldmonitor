@@ -136,12 +136,32 @@ export const REASON = Object.freeze({
   CLASSIFICATION_MISSING_DEFAULT_HIGH: 'classification_missing_default_high',
 });
 
-// Stub classifier domains. `*.edu` etc. are matched as a suffix.
+// Stub classifier domains. Each registered domain matches three host shapes:
+//   1. exact: `usni.org`
+//   2. www-prefixed: `www.usni.org`  (strip leading `www.` before exact match)
+//   3. subdomain: `editorial.usni.org`, `media.nature.com`  (suffix match)
+// Codex PR #3617 P2 — pre-fix only handled exact matches, so common
+// real-world hosts like `www.usni.org` and `www.nature.com` fell through
+// to the severity-derived fallback (high-event 18h floor) instead of
+// the analysis 7d hard floor. That broke shadow telemetry for the
+// dominant publication-host shape.
 const ANALYSIS_DOMAINS = Object.freeze([
   'usni.org', 'csis.org', 'brookings.edu', 'nature.com', 'sciencemag.org',
 ]);
 const ANALYSIS_DOMAIN_SUFFIXES = Object.freeze(['.edu']);
 const GOV_DOMAIN_SUFFIXES = Object.freeze(['.gov', '.gov.uk', '.gov.us']);
+
+/**
+ * Normalise a host for the analysis-domain checks: lowercase + strip a
+ * single leading `www.`. Other subdomain prefixes (editorial.usni.org,
+ * www2.csis.org) are caught by the suffix-match branch in classifyStub.
+ *
+ * @param {string} sourceDomain
+ * @returns {string}
+ */
+function stripWwwPrefix(sourceDomain) {
+  return sourceDomain.startsWith('www.') ? sourceDomain.slice(4) : sourceDomain;
+}
 const REGULATORY_HEADLINE_REGEX = /LICENSE NO\.|Final Rule|Notice of/;
 // Single-corporate earnings: deliberately restrictive — matches the
 // editorial-slot pattern (verb + forecast/estimate/profit). Avoids
@@ -172,11 +192,19 @@ export function classifyStub(args = {}) {
   // Rule 1 — Analysis domains (highest priority; a `.edu` domain
   // publishing a "beat forecast" headline is still an analysis essay,
   // not a corporate earnings update).
-  if (sourceDomain && (
-    ANALYSIS_DOMAINS.includes(sourceDomain) ||
-    ANALYSIS_DOMAIN_SUFFIXES.some((suffix) => sourceDomain.endsWith(suffix))
-  )) {
-    return { type: 'analysis', classificationMissing: false };
+  //
+  // Codex PR #3617 P2 — match three host shapes:
+  //   1. exact: `usni.org` → analysis
+  //   2. www-prefixed: `www.usni.org` → strip + exact match → analysis
+  //   3. subdomain: `editorial.usni.org`, `media.nature.com` → analysis
+  // The suffix match is `.${domain}` so `notmyusni.org` stays a miss.
+  if (sourceDomain) {
+    const stripped = stripWwwPrefix(sourceDomain);
+    const matchesAnalysisDomain = ANALYSIS_DOMAINS.some((d) => stripped === d || sourceDomain.endsWith(`.${d}`));
+    const matchesAnalysisSuffix = ANALYSIS_DOMAIN_SUFFIXES.some((suffix) => sourceDomain.endsWith(suffix));
+    if (matchesAnalysisDomain || matchesAnalysisSuffix) {
+      return { type: 'analysis', classificationMissing: false };
+    }
   }
 
   // Rule 2 — Government regulatory event (must be `.gov` AND headline

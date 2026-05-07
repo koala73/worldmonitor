@@ -1994,6 +1994,42 @@ async function main() {
     // next tick spends zero on cooldown.
     const cooldownDecisions = [];
     const ruleIdComposite = `${rule.variant ?? 'full'}:${rule.lang ?? 'en'}:${rule.sensitivity ?? 'high'}`;
+    // Codex PR #3617 P1 — real per-cluster source count for U4 writes
+    // and U5 cooldown evaluation.
+    //
+    // The brief envelope's BriefStory schema only carries a single
+    // `source` string (the primary wire) — the original cluster's full
+    // sources[] array is not preserved. Reading 0/1 off briefStory.source
+    // collapses real source counts (5, 10, 37+) and breaks U5's "+5
+    // sources within floor" evolution bypass: the delta from N to 0/1
+    // is always 0 or 1, never ≥5. Without this, today's shadow rows
+    // seed bad history that Sprint 2's enforce mode would inherit.
+    //
+    // Fix: derive sourceCount from the raw clustered `stories` pool
+    // (post-buildDigest, pre-filterTopStories) where the original
+    // sources[] is still attached. Match by cluster identity:
+    // mergedHashes[0] when present (rep's own hash by U3's contract),
+    // else the story's own hash (singletons). One Map build per send,
+    // O(1) lookup per cluster iteration.
+    const sourceCountByClusterId = new Map();
+    if (Array.isArray(stories)) {
+      for (const rawStory of stories) {
+        const repHash = Array.isArray(rawStory?.mergedHashes)
+          && rawStory.mergedHashes.length > 0
+          && typeof rawStory.mergedHashes[0] === 'string'
+          ? rawStory.mergedHashes[0]
+          : (typeof rawStory?.hash === 'string' ? rawStory.hash : '');
+        if (!repHash) continue;
+        const sources = Array.isArray(rawStory?.sources) ? rawStory.sources : [];
+        // Existing entry wins (first-rep-by-iteration order). Raw
+        // stories shouldn't duplicate clusterIds post-dedup, but the
+        // defensive first-write semantics protect against a future
+        // dedup bug double-counting sources.
+        if (!sourceCountByClusterId.has(repHash)) {
+          sourceCountByClusterId.set(repHash, sources.length);
+        }
+      }
+    }
     // Slot string mirrors the brief composer: `issueSlotInTz(nowMs, tz)`.
     // We use the same tz the composer used (rule.digestTimezone, default
     // 'UTC') so the slot naming aligns 1:1 with the brief envelope's
@@ -2057,7 +2093,12 @@ async function main() {
             }
           })();
           const severity = typeof briefStory?.threatLevel === 'string' ? briefStory.threatLevel : 'unknown';
-          const currentSourceCount = typeof briefStory?.source === 'string' && briefStory.source.length > 0 ? 1 : 0;
+          // Codex PR #3617 P1 — real source count from the raw clustered
+          // story (sources[].length), not the BriefStory.source 0/1 collapse.
+          // Falls back to 0 when the cluster doesn't appear in the raw
+          // stories Map (defensive — shouldn't happen on the option-(a)
+          // canonical-rule path, but a future bug shouldn't crash the cron).
+          const currentSourceCount = sourceCountByClusterId.get(clusterId) ?? 0;
           const decision = evaluateCooldown({
             userId: rule.userId,
             slot: cooldownSlot,
@@ -2172,7 +2213,11 @@ async function main() {
                 ruleId: `${rule.variant ?? 'full'}:${rule.lang ?? 'en'}:${rule.sensitivity ?? 'high'}`,
                 clusterId,
                 sentAt: nowMs,
-                sourceCount: typeof briefStory?.source === 'string' && briefStory.source.length > 0 ? 1 : 0,
+                // Codex PR #3617 P1 — real source count, not the
+                // 0/1 collapse from BriefStory.source. See the
+                // sourceCountByClusterId Map construction above the
+                // U5 cooldown loop for the full rationale.
+                sourceCount: sourceCountByClusterId.get(clusterId) ?? 0,
                 severity: typeof briefStory?.threatLevel === 'string' ? briefStory.threatLevel : 'unknown',
               });
               deliveredLogResults.push(writeResult);

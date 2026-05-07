@@ -1273,4 +1273,40 @@ describe('Sprint 1 U7 production-gap source-text guard — formatter call site',
       '(optional-chained for the compose-miss fallback path).',
     );
   });
+
+  // Codex PR #3617 P1 — real source count regression guard.
+  it('U4 writer + U5 evaluator both consume sourceCountByClusterId (not BriefStory.source 0/1 collapse)', async () => {
+    const path = fileURLToPath(new URL('../scripts/seed-digest-notifications.mjs', import.meta.url));
+    const src = await readFile(path, 'utf8');
+
+    // The Map must be built once before the cluster iteration loop, from
+    // the raw clustered `stories` pool (where sources[] is still attached).
+    assert.match(
+      src,
+      /const\s+sourceCountByClusterId\s*=\s*new\s+Map\(\s*\)/,
+      'sourceCountByClusterId Map must be built (per-send) for U4 writer + U5 evaluator',
+    );
+    assert.match(
+      src,
+      /sourceCountByClusterId\.set\(/,
+      'sourceCountByClusterId Map must be populated from raw stories',
+    );
+
+    // Both consumer sites must use the Map, NOT the BriefStory.source 0/1 collapse.
+    const collapsedPattern = /briefStory\?\.source\s*===\s*'string'\s*&&\s*briefStory\.source\.length\s*>\s*0\s*\?\s*1\s*:\s*0/;
+    assert.doesNotMatch(
+      src,
+      collapsedPattern,
+      'cron must NOT collapse source count to 0/1 from BriefStory.source — that breaks U5\'s +5-sources evolution bypass. ' +
+      'Use sourceCountByClusterId.get(clusterId) ?? 0 instead.',
+    );
+
+    // Both sites must read from the Map.
+    const getMatches = src.match(/sourceCountByClusterId\.get\(\s*clusterId\s*\)/g) ?? [];
+    assert.ok(
+      getMatches.length >= 2,
+      `expected ≥2 sourceCountByClusterId.get(clusterId) reads (U4 writer + U5 evaluator); ` +
+      `found ${getMatches.length}. If you removed one of them, the cooldown evolution bypass will break silently.`,
+    );
+  });
 });

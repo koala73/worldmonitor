@@ -59,6 +59,36 @@ describe('classifyStub — Rule 1: Analysis domains', () => {
   });
 });
 
+describe('classifyStub — Rule 1 host-shape coverage (Codex PR #3617 P2)', () => {
+  it('www-prefixed analysis domain: www.usni.org → analysis', () => {
+    assert.equal(classifyStub({ sourceDomain: 'www.usni.org', severity: 'high' }).type, 'analysis');
+  });
+
+  it('www-prefixed: www.nature.com → analysis', () => {
+    assert.equal(classifyStub({ sourceDomain: 'www.nature.com', severity: 'high' }).type, 'analysis');
+  });
+
+  it('subdomain: editorial.usni.org → analysis', () => {
+    assert.equal(classifyStub({ sourceDomain: 'editorial.usni.org', severity: 'high' }).type, 'analysis');
+  });
+
+  it('subdomain: media.brookings.edu → analysis (also covered by .edu suffix)', () => {
+    assert.equal(classifyStub({ sourceDomain: 'media.brookings.edu', severity: 'high' }).type, 'analysis');
+  });
+
+  it('false-positive guard: notmyusni.org does NOT match (suffix is `.${domain}`, not bare suffix)', () => {
+    // The fix uses .endsWith(`.${d}`) for subdomain matching, so a
+    // host that ends with the bare domain name without a dot
+    // separator (notmyusni.org) is correctly rejected.
+    const r = classifyStub({ sourceDomain: 'notmyusni.org', severity: 'high' });
+    assert.notEqual(r.type, 'analysis');
+  });
+
+  it('case-folded www-prefixed: WWW.USNI.ORG → analysis', () => {
+    assert.equal(classifyStub({ sourceDomain: 'WWW.USNI.ORG', severity: 'high' }).type, 'analysis');
+  });
+});
+
 describe('classifyStub — Rule 2: Government regulatory', () => {
   it('*.gov + LICENSE NO. → sanctions-regulatory', () => {
     const r = classifyStub({
