@@ -98,7 +98,14 @@ const COOLDOWN_TABLE = Object.freeze({
   'critical-developing':       { hours: 4,        hard: false, allowSourceCountEvolution: true,  allowNewFact: true, allowTierChange: true },
   'critical-sustained':        { hours: 24,       hard: true,  allowSourceCountEvolution: false, allowNewFact: true, allowTierChange: false },
   'high-event':                { hours: 18,       hard: false, allowSourceCountEvolution: true,  allowNewFact: true, allowTierChange: true },
-  'high-single-corporate':     { hours: 48,       hard: true,  allowSourceCountEvolution: false, allowNewFact: false, allowTierChange: true /* tier escalation = "real follow-up" trigger */ },
+  // Codex PR #3617 P2 — `tierChangeMode: 'escalation-only'` is the
+  // load-bearing signal. The table comment above ("real follow-up event
+  // = tier escalation") was the documented contract, but the pre-fix
+  // `allowTierChange: true` permitted ANY tier change including
+  // de-escalations, so a HIGH→MEDIUM earnings repeat inside 48h
+  // returned allow / severity_tier_change. Downgrade is editorial noise,
+  // not a follow-up signal.
+  'high-single-corporate':     { hours: 48,       hard: true,  allowSourceCountEvolution: false, allowNewFact: false, allowTierChange: true, tierChangeMode: 'escalation-only' },
   // Sanctions/regulatory are treated like high-event by default — they
   // get a floor + evolution bypasses. Sprint 3's classifier may split
   // this further (e.g., immediate-effect vs scheduled).
@@ -384,7 +391,19 @@ export function evaluateCooldown(input) {
   // edition even if no new sources came in. Single-corp's
   // allowTierChange is on (real follow-up event = tier escalation),
   // analysis's is off (the 7d hard floor really is the contract).
-  if (tableEntry.allowTierChange && tierChanged) {
+  //
+  // Codex PR #3617 P2 — `tierChangeMode: 'escalation-only'` opts a
+  // class out of the de-escalation bypass. high-single-corporate uses
+  // it: a HIGH→MEDIUM earnings repeat inside 48h is editorial noise
+  // (the original release was already shipped; the downgrade isn't a
+  // new event), not a "real follow-up". Other classes still honour
+  // the symmetric tier-change rule (a critical→high de-escalation IS
+  // editorial signal: "the situation cooled" is news).
+  const tierChangeMode = tableEntry.tierChangeMode ?? 'any';
+  const tierChangeAllowed = tableEntry.allowTierChange && tierChanged && (
+    tierChangeMode === 'any' || (tierChangeMode === 'escalation-only' && currentTierRank > lastTierRank)
+  );
+  if (tierChangeAllowed) {
     return {
       decision: 'allow',
       reason: REASON.SEVERITY_TIER_CHANGE,

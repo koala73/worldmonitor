@@ -427,6 +427,37 @@ describe('evaluateCooldown — hard floors (no evolution bypass)', () => {
     assert.equal(r.reason, REASON.SINGLE_CORP_48H_HARD);
   });
 
+  // Codex PR #3617 P2 regression — high-single-corporate downgrade
+  // (HIGH→MEDIUM) inside 48h must NOT bypass the hard floor. Pre-fix
+  // the bypass triggered on any tier change; post-fix it requires
+  // strict escalation (currentTierRank > lastTierRank).
+  it('high-single-corporate at 47h WITH tier DOWNGRADE (high→medium) → suppress (Codex PR #3617 P2)', () => {
+    const r = evaluateCooldown({
+      userId: 'u', slot: 's', clusterId: 'c', channel: 'email', ruleId: 'r',
+      type: 'high-single-corporate', severity: 'medium', currentSourceCount: 4, currentTier: 'medium',
+      lastDeliveredAt: NOW - 47 * HOUR_MS,
+      lastDeliveredSourceCount: 2, lastDeliveredTier: 'high',
+      options: { mode: 'shadow', nowMs: NOW },
+    });
+    assert.equal(r.decision, 'suppress');
+    assert.equal(r.reason, REASON.SINGLE_CORP_48H_HARD);
+  });
+
+  it('high-event tier downgrade (critical→high) inside floor → STILL allow (symmetric tier change for non-corp classes)', () => {
+    // Non-single-corp classes retain the symmetric tier-change rule:
+    // a critical→high de-escalation IS editorial signal ("the situation
+    // cooled" is news worth re-airing).
+    const r = evaluateCooldown({
+      userId: 'u', slot: 's', clusterId: 'c', channel: 'email', ruleId: 'r',
+      type: 'high-event', severity: 'high', currentSourceCount: 3, currentTier: 'high',
+      lastDeliveredAt: NOW - 6 * HOUR_MS,
+      lastDeliveredSourceCount: 3, lastDeliveredTier: 'critical',
+      options: { mode: 'shadow', nowMs: NOW },
+    });
+    assert.equal(r.decision, 'allow');
+    assert.equal(r.reason, REASON.SEVERITY_TIER_CHANGE);
+  });
+
   it('high-single-corporate at 47h WITH tier escalation (high→critical) → allow / severity_tier_change', () => {
     // The encoded "real follow-up event" trigger: a corporate-earnings
     // cluster that escalates to a higher tier (e.g. regulatory action

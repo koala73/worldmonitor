@@ -117,6 +117,43 @@ export function buildReplayRecords(stories, reps, embeddingByHash, cfg, tickCont
     }
   }
 
+  // Codex PR #3617 P1 — Sprint 1 / U6 cluster identity contract.
+  //
+  // Map storyHash → rep.hash so every record can carry the canonical
+  // stable cluster identity (the rep's own hash, which equals
+  // mergedHashes[0] by U3's contract from Sprint 1). The pre-fix
+  // writer only emitted a per-tick numeric clusterId and the rep's
+  // mergedHashes was unreachable from non-rep records; U6's harness
+  // had to guess at cluster identity by re-deriving from individual
+  // storyHashes, splitting clusters whenever a non-rep story got
+  // sampled.
+  //
+  // Now: every record carries `repHash` (stable across ticks). U6
+  // collapses by repHash to get one timeline per (ruleId, cluster)
+  // regardless of which member story happened to be in the dedup
+  // input that tick.
+  //
+  // We also retain a separate Map of rep.hash → mergedHashes so the
+  // record builder can stamp mergedHashes ONLY onto rep records (the
+  // mergedHashes set lives on the rep object, not on individual input
+  // stories — readers asking "which storyHashes are in this cluster?"
+  // need to consult the rep, not the member).
+  const repHashByStoryHash = new Map();
+  const mergedHashesByRepHash = new Map();
+  if (Array.isArray(reps)) {
+    for (const rep of reps) {
+      const hashes = Array.isArray(rep?.mergedHashes) ? rep.mergedHashes : [rep?.hash];
+      for (const h of hashes) {
+        if (typeof h === 'string' && typeof rep?.hash === 'string' && !repHashByStoryHash.has(h)) {
+          repHashByStoryHash.set(h, rep.hash);
+        }
+      }
+      if (typeof rep?.hash === 'string' && Array.isArray(rep?.mergedHashes)) {
+        mergedHashesByRepHash.set(rep.hash, rep.mergedHashes);
+      }
+    }
+  }
+
   const tickConfig = {
     mode: cfg?.mode ?? null,
     clustering: cfg?.clustering ?? null,
@@ -141,20 +178,43 @@ export function buildReplayRecords(stories, reps, embeddingByHash, cfg, tickCont
     // "embed path completed" from "embed path fell back to Jaccard".
     const hasEmbedding =
       embeddingByHash instanceof Map && embeddingByHash.has(story?.hash);
+    // Codex PR #3617 P1 — Sprint 1 / U6 fields. headline + sourceUrl
+    // are the canonical names U5's classifier expects (matches the
+    // BriefStory schema and the digest-cooldown-decision input shape).
+    // We keep `title` and `link` as legacy aliases for any older
+    // consumer that pinned to the v1 shape.
+    const link = typeof story?.link === 'string' ? story.link : null;
+    const sourceUrl = link;
+    const isRep = repHashes.has(story?.hash);
     records.push({
-      v: 1,
+      v: 2, // Codex PR #3617 P1 — bump to v2 for repHash + headline + sourceUrl additions
       briefTickId: tickContext.briefTickId,
       ruleId: tickContext.ruleId,
       tsMs: tickContext.tsMs,
       storyHash: story?.hash ?? null,
       originalIndex,
-      isRep: repHashes.has(story?.hash),
+      isRep,
       clusterId: clusterByHash.has(story?.hash)
         ? clusterByHash.get(story?.hash)
         : null,
+      // Codex PR #3617 P1 — stable cluster identity (rep's own hash)
+      // for every record, including non-rep cluster members. U6
+      // collapses timelines by this field.
+      repHash: repHashByStoryHash.has(story?.hash)
+        ? repHashByStoryHash.get(story?.hash)
+        : null,
+      // Only reps carry the full mergedHashes set. Non-reps get null
+      // (their cluster membership is preserved via repHash). The set
+      // lives on the rep object (looked up via mergedHashesByRepHash);
+      // input stories don't carry mergedHashes themselves.
+      mergedHashes: isRep && typeof story?.hash === 'string' && mergedHashesByRepHash.has(story.hash)
+        ? mergedHashesByRepHash.get(story.hash)
+        : null,
       title: rawTitle,
+      headline: rawTitle, // U5/U6 prefer this name; matches BriefStory.headline
       normalizedTitle,
-      link: typeof story?.link === 'string' ? story.link : null,
+      link,
+      sourceUrl, // U5/U6 prefer this name; matches BriefStory.sourceUrl
       severity: story?.severity ?? null,
       currentScore: Number(story?.currentScore ?? 0),
       mentionCount: Number(story?.mentionCount ?? 1),

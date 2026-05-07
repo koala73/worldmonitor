@@ -548,6 +548,55 @@ async function buildDigest(rule, windowStartMs) {
   // catch + early return when the flag is off, so awaiting is free on
   // the disabled path and bounded by the 10s Upstash pipeline timeout
   // on the enabled path.
+  // Codex PR #3617 P1 — hydrate sources on `dedupedAll` BEFORE
+  // writeReplayLog so the replay records carry the canonical source
+  // count Sprint 1 / U6 needs to evaluate +5-evolution bypasses. The
+  // pre-fix order wrote replay records with `sources: []` (hydration
+  // happened later, only on the post-cap `top` slice), which made U6
+  // structurally unable to detect source-count evolution.
+  //
+  // Implementation: run SMEMBERS for every rep's mergedHashes BEFORE
+  // the replay-log write. `top` (built later as a slice of dedupedAll)
+  // shares object references with the reps we're hydrating here, so the
+  // later "hydrate top.sources" block becomes a no-op and is removed
+  // below. Cost: one Upstash pipeline with ~30 SMEMBERS commands per
+  // tick — bounded by the dedup output size (typically 20-30 reps).
+  {
+    const preCmds = [];
+    const preIdx = [];
+    for (let i = 0; i < dedupedAll.length; i++) {
+      dedupedAll[i].sources = [];
+      const hashes = Array.isArray(dedupedAll[i].mergedHashes)
+        ? dedupedAll[i].mergedHashes
+        : [dedupedAll[i].hash];
+      for (const h of hashes) {
+        if (typeof h === 'string' && h.length > 0) {
+          preCmds.push(['SMEMBERS', `story:sources:v1:${h}`]);
+          preIdx.push(i);
+        }
+      }
+    }
+    if (preCmds.length > 0) {
+      try {
+        const preResults = await upstashPipeline(preCmds);
+        for (let j = 0; j < preResults.length; j++) {
+          const arr = preResults[j]?.result ?? [];
+          const target = dedupedAll[preIdx[j]];
+          for (const src of arr) {
+            if (!target.sources.includes(src)) target.sources.push(src);
+          }
+        }
+      } catch (err) {
+        // Best-effort: if the source pipeline fails, replay-log carries
+        // empty source arrays (the pre-fix shape). Cooldown evolution
+        // bypass goes blind for that tick — preferable to crashing the
+        // cron over a non-load-bearing diagnostic write.
+        console.warn(
+          `[digest] U6 pre-hydrate sources failed: ${err?.message ?? err} — replay records will carry empty sources for this tick`,
+        );
+      }
+    }
+  }
   const ruleKey = `${variant}:${lang}:${rule.sensitivity ?? 'high'}`;
   await writeReplayLog({
     stories,
@@ -624,23 +673,13 @@ async function buildDigest(rule, windowStartMs) {
     console.log(finalLog);
   }
 
-  const allSourceCmds = [];
-  const cmdIndex = [];
-  for (let i = 0; i < top.length; i++) {
-    const hashes = top[i].mergedHashes ?? [top[i].hash];
-    for (const h of hashes) {
-      allSourceCmds.push(['SMEMBERS', `story:sources:v1:${h}`]);
-      cmdIndex.push(i);
-    }
-  }
-  const sourceResults = await upstashPipeline(allSourceCmds);
-  for (let i = 0; i < top.length; i++) top[i].sources = [];
-  for (let j = 0; j < sourceResults.length; j++) {
-    const arr = sourceResults[j]?.result ?? [];
-    for (const src of arr) {
-      if (!top[cmdIndex[j]].sources.includes(src)) top[cmdIndex[j]].sources.push(src);
-    }
-  }
+  // Codex PR #3617 P1 — sources are already hydrated on `dedupedAll`
+  // BEFORE the writeReplayLog call above (so U6 replay records carry
+  // canonical source counts). `top` items are references to the same
+  // objects, so they already have `sources` populated. The redundant
+  // hydration block that lived here pre-fix has been removed; it would
+  // have RESET (top[i].sources = []) and re-fetched, doubling the
+  // SMEMBERS pipeline cost per tick for no functional benefit.
 
   return top;
 }

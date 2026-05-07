@@ -576,10 +576,15 @@ describe('clear-delivered-entry — argument parsing', () => {
     assert.match(r.message, /glob metacharacter|--channel must be one of/);
   });
 
-  it('rejects --rule containing glob char', () => {
+  // Codex PR #3617 P2 update — exact-DEL mode (both --channel + --rule)
+  // accepts glob chars in --rule because the resulting key is DEL'd
+  // literally (Redis treats DEL args as exact strings, not patterns).
+  // The pre-fix test rejected this case; the post-fix contract allows
+  // it for legitimate ruleId composites that may contain `?` etc.
+  it('exact-DEL mode (--channel + --rule) accepts --rule with glob char (post-Codex-P2)', () => {
     const r = parseArgs(['--user', 'u', '--slot', 's', '--cluster', 'c', '--channel', 'email', '--rule', 'full:*:high', '--reason', 'oops']);
-    assert.equal(r.kind, 'err');
-    assert.match(r.message, /glob metacharacter/);
+    assert.equal(r.kind, 'ok');
+    assert.equal(r.args.rule, 'full:*:high');
   });
 
   it('--reason is exempt (audit log, never reaches Redis pattern)', () => {
@@ -588,6 +593,56 @@ describe('clear-delivered-entry — argument parsing', () => {
     // never substituted into the SCAN pattern, so it's safe.
     const r = parseArgs(['--user', 'u', '--slot', 's', '--cluster', 'c', '--reason', 'wildcard * cleanup']);
     assert.equal(r.kind, 'ok');
+  });
+
+  // Codex PR #3617 P2 — exact-DEL mode must accept glob chars.
+  // Legitimate clusterIds can be the level-3 fallback `url:${sourceUrl}`
+  // (shared/brief-filter.js:300) and real URLs commonly contain `?` for
+  // query strings. Rejecting these in exact-DEL mode would make those
+  // delivered-log rows unrecoverable via this primitive. The guard is
+  // sweep-mode-only (no --channel + no --rule).
+  it('exact-DEL mode (--channel + --rule) accepts cluster with ? (URL-fallback clusterIds)', () => {
+    const r = parseArgs([
+      '--user', 'u',
+      '--slot', 's',
+      '--cluster', 'url:https://example.com/article?ref=rss',
+      '--channel', 'email',
+      '--rule', 'full:en:high',
+      '--reason', 'cleanup-of-rss-fallback',
+    ]);
+    assert.equal(r.kind, 'ok', `expected exact-DEL with ? in clusterId to parse OK, got: ${JSON.stringify(r)}`);
+    assert.equal(r.args.cluster, 'url:https://example.com/article?ref=rss');
+  });
+
+  it('exact-DEL mode accepts cluster with bracket chars (deep URL paths)', () => {
+    const r = parseArgs([
+      '--user', 'u',
+      '--slot', 's',
+      '--cluster', 'url:https://example.com/[breaking]/article',
+      '--channel', 'email',
+      '--rule', 'full:en:high',
+      '--reason', 'cleanup-of-bracketed-url',
+    ]);
+    assert.equal(r.kind, 'ok');
+  });
+
+  it('sweep mode (no --channel/--rule) STILL rejects glob chars in cluster (regression guard for the original Codex P1)', () => {
+    const r = parseArgs([
+      '--user', 'u',
+      '--slot', 's',
+      '--cluster', 'url:https://example.com/article?ref=rss',
+      '--reason', 'cleanup',
+    ]);
+    assert.equal(r.kind, 'err');
+    assert.match(r.message, /sweep mode/);
+    assert.match(r.message, /exact-DEL mode by also passing/);
+  });
+
+  it('sweep mode rejects --user with * (still guarded)', () => {
+    const r = parseArgs(['--user', 'u*', '--slot', 's', '--cluster', 'c', '--reason', 'oops']);
+    assert.equal(r.kind, 'err');
+    assert.match(r.message, /--user/);
+    assert.match(r.message, /sweep mode/);
   });
 
   it('legitimate values with `:` and `-` still parse cleanly (regression guard)', () => {

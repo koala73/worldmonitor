@@ -70,21 +70,28 @@ const EXIT_TRANSPORT = 2;
  */
 // Codex PR #3617 P1 — Redis SCAN glob-injection guard.
 //
-// The scan pattern at buildScanPattern is `digest:sent:v1:${user}:*:*:${cluster}`.
-// If user OR cluster contains Redis glob metacharacters (* ? [ ] \), the
-// pattern broadens beyond the intended single-user-single-cluster scope.
-// `--cluster '*'` would match every key in the prefix; `--user 'foo*'`
-// would match every cluster for every user starting with `foo`. The
-// followup DEL loop would then wipe far more rows than the operator
-// intended.
+// The sweep-mode scan pattern at buildScanPattern is
+// `digest:sent:v1:${user}:*:*:${cluster}`. If user OR cluster contains
+// Redis glob metacharacters (* ? [ ] \), the pattern broadens beyond
+// the intended single-user-single-cluster scope. `--cluster '*'` would
+// match every key in the prefix; `--user 'foo*'` would match every
+// cluster for every user starting with `foo`. The followup DEL loop
+// would then wipe far more rows than the operator intended.
 //
-// Reject these characters at parse time. The legitimate value space for
-// userId / clusterId / channel / ruleId is alphanumerics + a small
-// punctuation set (`:` for ruleId composites, `-` for hash IDs); none
-// of the Redis metacharacters belong here. Reason strings are free-form
-// (audit log) and don't reach the SCAN pattern, so they're exempt.
+// Codex PR #3617 P2 follow-up — the guard is SWEEP-MODE-ONLY. In
+// exact-DEL mode (both --channel AND --rule supplied), the DEL is
+// against a single literal key — Redis treats DEL arguments as exact
+// strings, not patterns. Legitimate clusterIds can be the level-3
+// fallback `url:${sourceUrl}` from `shared/brief-filter.js:300` and
+// real URLs commonly contain `?` (query strings). Rejecting glob chars
+// in exact-DEL mode would make those rows unrecoverable via this
+// primitive.
+//
+// Implementation: sweep-mode guard runs in validateScanFlags() AFTER
+// args are gathered (we know mode at that point). parseArgs only
+// rejects the universally-illegal cases (empty, missing required).
 const REDIS_GLOB_CHARS = /[*?[\]\\]/;
-const SCAN_KEY_FLAGS = new Set(['user', 'slot', 'cluster', 'channel', 'rule']);
+const SCAN_KEY_FLAGS = new Set(['user', 'cluster']);
 
 export function parseArgs(argv) {
   const allowedFlags = new Set(['--user', '--slot', '--cluster', '--channel', '--rule', '--reason']);
@@ -98,19 +105,7 @@ export function parseArgs(argv) {
     if (typeof value !== 'string' || value.length === 0 || value.startsWith('--')) {
       return { kind: 'err', message: `flag ${flag} requires a non-empty value` };
     }
-    const flagName = flag.slice(2);
-    // Codex PR #3617 P1 — block Redis glob metacharacters in any flag
-    // whose value reaches the SCAN/DEL pattern. The reason flag is
-    // free-form (audit log) and does not reach Redis, so it's exempt.
-    if (SCAN_KEY_FLAGS.has(flagName) && REDIS_GLOB_CHARS.test(value)) {
-      return {
-        kind: 'err',
-        message: `--${flagName} value contains Redis glob metacharacter (*, ?, [, ], or \\). ` +
-          `These would broaden the SCAN pattern beyond a single user-cluster scope and ` +
-          `delete unrelated keys. Got: ${JSON.stringify(value)}`,
-      };
-    }
-    args[flagName] = value;
+    args[flag.slice(2)] = value;
     i++;
   }
 
@@ -131,6 +126,27 @@ export function parseArgs(argv) {
   }
   if (hasChannel && !ALLOWED_CHANNELS.has(args.channel)) {
     return { kind: 'err', message: `--channel must be one of ${[...ALLOWED_CHANNELS].join(',')}; got ${JSON.stringify(args.channel)}` };
+  }
+  // Codex PR #3617 P2 — glob-char guard is sweep-mode-only.
+  // Sweep mode = no --channel + no --rule (we'll SCAN with a wildcard
+  // pattern). Exact-DEL mode = both supplied (we DEL a literal key, so
+  // Redis treats glob chars as plain bytes). The guard catches the
+  // sweep case where injection would broaden the SCAN pattern.
+  const isSweepMode = !hasChannel && !hasRule;
+  if (isSweepMode) {
+    for (const flagName of SCAN_KEY_FLAGS) {
+      const value = args[flagName];
+      if (typeof value === 'string' && REDIS_GLOB_CHARS.test(value)) {
+        return {
+          kind: 'err',
+          message: `--${flagName} value contains a Redis glob metacharacter (*, ?, [, ], or \\) ` +
+            `in sweep mode (no --channel/--rule). These would broaden the SCAN pattern beyond ` +
+            `a single user-cluster scope and delete unrelated keys. Got: ${JSON.stringify(value)}. ` +
+            `If the cluster ID legitimately contains glob chars (e.g. a url:* fallback), use ` +
+            `exact-DEL mode by also passing --channel and --rule.`,
+        };
+      }
+    }
   }
   return { kind: 'ok', args };
 }

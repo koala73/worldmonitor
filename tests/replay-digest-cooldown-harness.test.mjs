@@ -42,20 +42,68 @@ function rec(overrides = {}) {
 }
 
 describe('clusterIdFromRecord', () => {
-  it('uses mergedHashes[0] when present (multi-story cluster identity)', () => {
+  // Codex PR #3617 P1 — v2 records carry repHash on every record;
+  // collapse non-rep records by repHash so the U6 timeline aggregation
+  // doesn't split a multi-story cluster across its members.
+  it('v2: uses repHash when present (canonical cluster identity)', () => {
+    assert.equal(
+      clusterIdFromRecord({ storyHash: 'h-x', repHash: 'rep-a', mergedHashes: null }),
+      'rep-a',
+      'non-rep record should resolve to its rep via repHash',
+    );
+  });
+
+  it('v2: rep record with repHash + mergedHashes resolves to repHash', () => {
+    assert.equal(
+      clusterIdFromRecord({ storyHash: 'rep-a', repHash: 'rep-a', mergedHashes: ['rep-a', 'h-x'] }),
+      'rep-a',
+    );
+  });
+
+  it('v1 fallback: uses mergedHashes[0] when present (legacy v1 records still in 30d TTL)', () => {
     assert.equal(clusterIdFromRecord(rec({ storyHash: 'h-x', mergedHashes: ['rep-a', 'h-x'] })), 'rep-a');
   });
 
-  it('falls back to storyHash when mergedHashes is empty (singleton)', () => {
+  it('v1 fallback: falls back to storyHash when both repHash and mergedHashes are absent', () => {
     assert.equal(clusterIdFromRecord(rec({ storyHash: 'h-singleton', mergedHashes: [] })), 'h-singleton');
   });
 
-  it('falls back to storyHash when mergedHashes is absent', () => {
-    assert.equal(clusterIdFromRecord(rec({ storyHash: 'h-foo', mergedHashes: undefined })), 'h-foo');
+  it('returns empty string when all three identity sources are missing (caller filters)', () => {
+    assert.equal(clusterIdFromRecord({ tsMs: T0, ruleId: 'r' }), '');
+  });
+});
+
+describe('headline / sourceUrl reader (Codex PR #3617 P1 v2 alias compat)', () => {
+  it('v2 record with sourceUrl: classifier sees the URL via recordSourceUrl path', () => {
+    // Indirect test via the aggregator — pass a v2-shaped record where
+    // sourceUrl is set but link is absent; expect classifyStub to see
+    // the host and route it correctly.
+    const records = [
+      rec({ storyHash: 'h-1', mergedHashes: ['h-1'], repHash: 'h-1', sourceUrl: 'https://www.usni.org/2026/foo', link: undefined, severity: 'high', tsMs: T0 }),
+      rec({ storyHash: 'h-1', mergedHashes: ['h-1'], repHash: 'h-1', sourceUrl: 'https://www.usni.org/2026/foo', link: undefined, severity: 'high', tsMs: T0 + 6 * DAY_MS }),
+      rec({ storyHash: 'h-pad', mergedHashes: ['h-pad'], repHash: 'h-pad', tsMs: T0 + 14 * DAY_MS }),
+    ];
+    const agg = aggregateReplayDecisions(records, { minDaysCovered: 14 });
+    // www.usni.org should classify as analysis (Codex PR #3617 P2 fix)
+    // and the 6-day re-air sits inside the 7-day hard floor → suppress.
+    assert.equal(agg.suppressDecisions, 1);
+    assert.equal(agg.reasonHistogram['analysis_7d_hard'], 1);
   });
 
-  it('returns empty string when both are missing (caller filters)', () => {
-    assert.equal(clusterIdFromRecord({ tsMs: T0, ruleId: 'r' }), '');
+  it('v1 record with link: harness still reads it via legacy fallback', () => {
+    // Pre-Codex-P1 records carry `link` not `sourceUrl`. The harness
+    // must still consume them so the 30-day TTL window doesn't get
+    // truncated when v2 ships.
+    const records = [
+      // No `repHash` (v1), no `sourceUrl` (v1) — only legacy fields.
+      { storyHash: 'h-x', mergedHashes: ['h-x'], link: 'https://www.usni.org/2026/foo', severity: 'high', ruleId: 'full:en:high', tsMs: T0 },
+      { storyHash: 'h-x', mergedHashes: ['h-x'], link: 'https://www.usni.org/2026/foo', severity: 'high', ruleId: 'full:en:high', tsMs: T0 + 6 * DAY_MS },
+      { storyHash: 'h-pad', mergedHashes: ['h-pad'], ruleId: 'full:en:high', tsMs: T0 + 14 * DAY_MS },
+    ];
+    const agg = aggregateReplayDecisions(records, { minDaysCovered: 14 });
+    // v1 fallback path still produces the same analysis-domain
+    // classification via the link → sourceUrl alias.
+    assert.equal(agg.reasonHistogram['analysis_7d_hard'], 1);
   });
 });
 

@@ -83,15 +83,30 @@ const SCAN_PAGE_SIZE = 200;
  */
 
 /**
- * Build a stable cluster identity from a replay-log record. Uses
- * `mergedHashes[0]` when present (rep's own hash by U3's contract),
- * else falls back to the record's `storyHash` (singletons cluster
- * to themselves).
+ * Build a stable cluster identity from a replay-log record. Source
+ * preference (top wins; matches the writer's emit order):
+ *
+ *   1. `repHash` (v2+) — every record carries the rep's stable hash;
+ *      non-reps inherit it via repHashByStoryHash. This is the
+ *      canonical post-fix path: collapses cluster timelines uniformly
+ *      regardless of which member was sampled in the dedup input.
+ *   2. `mergedHashes[0]` (v2+ on reps) — equivalent to repHash for
+ *      reps but absent on non-reps.
+ *   3. `storyHash` (v1 fallback) — for records still in the 30-day TTL
+ *      window that pre-date the v2 writer bump. These will silently
+ *      split clusters by story (the original Codex PR #3617 P1 issue),
+ *      but rejecting them entirely would cost the harness 1+ days of
+ *      data right after the v2 cutover. Accept and degrade gracefully.
  *
  * @param {ReplayRecord} record
  * @returns {string}
  */
 export function clusterIdFromRecord(record) {
+  // Codex PR #3617 P1 — v2 records carry repHash on every record
+  // (rep AND non-rep), so this is the canonical cluster identity.
+  if (typeof record?.repHash === 'string' && record.repHash.length > 0) {
+    return record.repHash;
+  }
   if (Array.isArray(record?.mergedHashes) && record.mergedHashes.length > 0
     && typeof record.mergedHashes[0] === 'string' && record.mergedHashes[0].length > 0) {
     return record.mergedHashes[0];
@@ -99,6 +114,28 @@ export function clusterIdFromRecord(record) {
   if (typeof record?.storyHash === 'string' && record.storyHash.length > 0) {
     return record.storyHash;
   }
+  return '';
+}
+
+/**
+ * Read the headline from a replay-log record. v2 emits `headline`
+ * (matching BriefStory + the U5 classifier's input shape); v1 emits
+ * `title`. Accept either.
+ */
+function recordHeadline(record) {
+  if (typeof record?.headline === 'string' && record.headline.length > 0) return record.headline;
+  if (typeof record?.title === 'string' && record.title.length > 0) return record.title;
+  return '';
+}
+
+/**
+ * Read the source URL from a replay-log record. v2 emits `sourceUrl`
+ * (matching BriefStory + the U5 classifier's input shape); v1 emits
+ * `link`. Accept either.
+ */
+function recordSourceUrl(record) {
+  if (typeof record?.sourceUrl === 'string' && record.sourceUrl.length > 0) return record.sourceUrl;
+  if (typeof record?.link === 'string' && record.link.length > 0) return record.link;
   return '';
 }
 
@@ -203,10 +240,13 @@ export function aggregateReplayDecisions(records, options = {}) {
       }
 
       // Derive sourceDomain from sourceUrl host for the stub classifier.
+      // Codex PR #3617 P1 — read via recordSourceUrl/recordHeadline so
+      // both the v2 writer shape and v1 legacy records work correctly.
+      const sourceUrlForRecord = recordSourceUrl(r);
       let sourceDomain = '';
-      if (typeof r.sourceUrl === 'string' && r.sourceUrl.length > 0) {
+      if (sourceUrlForRecord) {
         try {
-          sourceDomain = new URL(r.sourceUrl).host.toLowerCase();
+          sourceDomain = new URL(sourceUrlForRecord).host.toLowerCase();
         } catch {
           sourceDomain = '';
         }
@@ -219,7 +259,7 @@ export function aggregateReplayDecisions(records, options = {}) {
         channel,
         ruleId: timeline.ruleId,
         // Let classifyStub run — replay records carry headline + sourceUrl
-        classifierInputs: { sourceDomain, headline: r.headline ?? '' },
+        classifierInputs: { sourceDomain, headline: recordHeadline(r) },
         severity,
         currentSourceCount: sourceCount,
         currentTier: severity,
