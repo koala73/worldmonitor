@@ -83,7 +83,11 @@ test('contentMeta excludes future-dated years beyond 1h clock-skew tolerance', (
     countries: {
       US: { value: 5.4, year: 2024 },
       GARBAGE: { value: 0, year: 2099 },
-      EDGE: { value: 0, year: 2026 },     // end-of-2026 = Dec 31 23:59:59 = past FIXED_NOW (May 5)
+      // EDGE: end-of-2026 = Dec 31 23:59:59 — that's ~7 months in the
+      // FUTURE of FIXED_NOW (2026-05-05), so it's outside the 1h skew
+      // tolerance and gets excluded. (Greptile PR #3603 P2 — pre-fix
+      // comment incorrectly said "past FIXED_NOW".)
+      EDGE: { value: 0, year: 2026 },
     },
   };
   const cm = wbCountryDictContentMeta(data, FIXED_NOW);

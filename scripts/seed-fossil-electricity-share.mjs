@@ -13,6 +13,11 @@
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 // Shared content-age helper for WB per-country annual seeders.
 import { wbCountryDictContentMeta } from './_wb-country-dict-content-age-helpers.mjs';
+// Greptile PR #3603 P2 — `import` declarations belong at the top of the
+// module, not after a `const`. ES module `import`s are hoisted regardless
+// of source order, but interleaving with declarations confuses readers
+// (the code "looks" sequential but the import actually executes first).
+import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
 
 // 48mo budget — verified against live WB API on 2026-05-05: max year for
 // EG.ELC.FOSL.ZS is 2023 (NOT 2024 like power-losses or low-carbon). That's
@@ -27,7 +32,6 @@ import { wbCountryDictContentMeta } from './_wb-country-dict-content-age-helpers
 // genuinely different cadences. Per-seeder constants prevent the
 // "tightest-cohort budget false-positives the slowest-cohort" trap.
 const MAX_CONTENT_AGE_MIN = 48 * 30 * 24 * 60;
-import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
 
 loadEnvFile(import.meta.url);
 
