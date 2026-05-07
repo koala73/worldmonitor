@@ -12,6 +12,8 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import { composeBriefFromDigestStories, stripHeadlineSuffix } from '../scripts/lib/brief-compose.mjs';
 import { materializeCluster } from '../scripts/lib/brief-dedup-jaccard.mjs';
 
@@ -1191,6 +1193,205 @@ describe('Sprint 1 U7 — digest projection invariant: digest.cards ⊆ brief.ca
     assertDigestSubsetOfBrief(
       projectDigestEmitClusterIds(digestStories),
       envelopeClusterIds(env),
+    );
+  });
+});
+
+// ── Sprint 1 / U7 production-gap fix: source-text guard ────────────────────
+//
+// The U7 invariant proven above (via composeBriefFromDigestStories +
+// projectDigestEmitClusterIds) holds STRUCTURALLY. But the RUNTIME guarantee
+// that the live cron emits a digest body whose clusterIds are a subset of the
+// brief envelope's clusterIds depends on a separate fact:
+//
+//   `formatDigest` and `formatDigestHtml` in scripts/seed-digest-notifications
+//   .mjs MUST consume the brief envelope's `data.stories` slice (post-cap,
+//   post-filter, ≤ MAX_STORIES_PER_USER=12), NOT the raw `stories` pool from
+//   buildDigest (capped at DIGEST_MAX_ITEMS=30).
+//
+// Pre-fix, the formatters were called with `stories` (raw 30); the user could
+// see clusters that were never in the brief envelope. The U7 invariant
+// projection helper above models the brief side correctly, but didn't catch
+// the production-side regression — those formatters never produced a v4
+// envelope at all, so a structural test against the envelope can't see them.
+//
+// This source-text guard mirrors the U2 precedent at
+// tests/brief-composer-rule-dedup.test.mjs (`describe('Sprint 1 U2 source-
+// text guard', ...)`): assert the source code at the load-bearing call site
+// matches a regex. It can't be bypassed by Vitest mocks; it can't drift
+// silently if a future refactor "innocently" reverts the wiring. If the
+// regex stops matching, the test fails with a message that names the file
+// and lists the candidate lines for an operator to repair.
+//
+// Why source-text not behaviour: the cron's send loop pulls together
+// Upstash, Convex relay, Resend, Telegram, and DNS resolution. There's no
+// existing test harness that mocks all five together (documented in the
+// U7 header above). A behaviour test for THIS specific wiring would need
+// that whole harness; a source-text guard captures the same invariant in
+// 5 lines, with the trade-off that a future refactor that uses the brief
+// envelope via a DIFFERENT spelling (e.g. local variable rename) needs to
+// touch this regex too. That's a fair trade — the alternative is no test
+// at all, and an "everything works in unit tests, fails in production"
+// shape, which is exactly what this guard exists to prevent.
+
+describe('Sprint 1 U7 production-gap source-text guard — formatter call site', () => {
+  it('formatDigest + formatDigestHtml consume the brief-envelope-derived slice (NOT raw stories)', async () => {
+    const path = fileURLToPath(new URL('../scripts/seed-digest-notifications.mjs', import.meta.url));
+    const src = await readFile(path, 'utf8');
+
+    // We expect both call sites to consume `formatterStories` — the local
+    // variable populated from `briefStoriesToFormatterShape(brief.envelope.
+    // data.stories)`. Anything else (raw `stories`, a renamed local) would
+    // break the U7 invariant on the live send path.
+    assert.match(
+      src,
+      /formatDigest\(\s*formatterStories\s*,\s*nowMs\s*\)/,
+      'formatDigest call site must consume `formatterStories` (the brief-envelope-derived slice). ' +
+      'Pre-fix this read `stories` (raw pool); see U7 source-text guard rationale in this test header.',
+    );
+    assert.match(
+      src,
+      /formatDigestHtml\(\s*formatterStories\s*,\s*nowMs\s*\)/,
+      'formatDigestHtml call site must consume `formatterStories` (the brief-envelope-derived slice). ' +
+      'Pre-fix this read `stories` (raw pool); see U7 source-text guard rationale in this test header.',
+    );
+
+    // The shim itself must be wired against `brief.envelope.data.stories`.
+    // If a future refactor renames/relocates this access, this assertion
+    // must move with it — fail loudly so the operator notices and updates
+    // both the wiring AND this guard in lockstep.
+    assert.match(
+      src,
+      /briefStoriesToFormatterShape\(\s*briefEnvelopeStories\s*\)/,
+      'formatter shim must be applied to the brief envelope-derived stories ' +
+      '(local var `briefEnvelopeStories`, populated from `brief.envelope.data.stories`).',
+    );
+    assert.match(
+      src,
+      /brief\?\.envelope\?\.data\?\.stories/,
+      'the brief-envelope-derived slice must be read from `brief.envelope.data.stories` ' +
+      '(optional-chained for the compose-miss fallback path).',
+    );
+  });
+
+  // Codex PR #3617 round-4 P2 — compose-miss fallback must run U4/U5.
+  it('cooldownIterableStories unifies brief-success + compose-miss for U4/U5 coverage', async () => {
+    const path = fileURLToPath(new URL('../scripts/seed-digest-notifications.mjs', import.meta.url));
+    const src = await readFile(path, 'utf8');
+
+    // The unified iterable is constructed from briefEnvelopeStories OR
+    // a normalized projection of raw `stories`. Pre-fix the U5/U4 loops
+    // gated on `briefEnvelopeStories.length > 0`, so compose-miss
+    // delivered cards without seeding cooldown rows or shadow decisions.
+    assert.match(
+      src,
+      /const\s+cooldownIterableStories\s*=/,
+      'cron must declare cooldownIterableStories — the unified U4/U5 iterable across both branches',
+    );
+
+    // Both U5 and U4 loops must iterate cooldownIterableStories, NOT
+    // briefEnvelopeStories. Pre-fix used briefEnvelopeStories which
+    // skipped the entire compose-miss path. Capture every
+    // `for (const briefStory of <name>)` and assert all instances
+    // iterate cooldownIterableStories — there should be exactly 2
+    // (U5 cooldown loop + U4 writer loop) but the contract is "NEVER
+    // iterate the brief-only briefEnvelopeStories".
+    const briefStoryLoops = [...src.matchAll(/for\s*\(\s*const\s+briefStory\s+of\s+(\w+)\s*\)/g)];
+    assert.ok(briefStoryLoops.length >= 2, `expected ≥2 briefStory loops (U5 + U4); found ${briefStoryLoops.length}`);
+    for (const m of briefStoryLoops) {
+      assert.equal(
+        m[1],
+        'cooldownIterableStories',
+        `every briefStory loop must iterate cooldownIterableStories (compose-miss coverage); got "${m[1]}"`,
+      );
+    }
+    // The U5 mode-gate must also use cooldownIterableStories for the
+    // length check (NOT briefEnvelopeStories).
+    assert.match(
+      src,
+      /cooldownConfig\.mode\s*===\s*'shadow'[\s\S]{0,800}?cooldownIterableStories\.length\s*>\s*0/,
+      'U5 mode-gate must check cooldownIterableStories.length, not briefEnvelopeStories',
+    );
+  });
+
+  // Codex PR #3617 round-5 P1 — webhook channel must consume
+  // formatterStories so its payload matches the U4/U5-covered set.
+  it('sendWebhook is called with formatterStories (NOT raw stories) — channel-coverage parity', async () => {
+    const path = fileURLToPath(new URL('../scripts/seed-digest-notifications.mjs', import.meta.url));
+    const src = await readFile(path, 'utf8');
+
+    // Pre-fix: `sendWebhook(rule.userId, ch.webhookEnvelope, stories, briefLead)`
+    // Post-fix: `sendWebhook(rule.userId, ch.webhookEnvelope, formatterStories, briefLead)`
+    // The pre-fix shape would have webhook users receiving up to
+    // DIGEST_MAX_ITEMS=30 raw cards while U4/U5 only saw the
+    // post-cap subset (≤12 under brief-success).
+    assert.match(
+      src,
+      /sendWebhook\([^)]*?,\s*formatterStories\s*,\s*briefLead\s*\)/,
+      'webhook channel must consume formatterStories so its payload matches U4/U5-covered set',
+    );
+    // Forbidden-pattern guard: if a future refactor reverts to passing
+    // raw `stories`, this fails loudly.
+    assert.doesNotMatch(
+      src,
+      /sendWebhook\([^)]*?,\s*stories\s*,\s*briefLead\s*\)/,
+      'webhook must NOT pass raw stories — that bypasses U4/U5 coverage for webhook users',
+    );
+  });
+
+  // Codex PR #3617 round-4 P1 — writer uses SET not SET NX.
+  it('U4 writer issues SET (NOT SET NX) so cooldown reads see refreshed lastDeliveredAt', async () => {
+    const writerPath = fileURLToPath(new URL('../scripts/lib/digest-delivered-log.mjs', import.meta.url));
+    const src = await readFile(writerPath, 'utf8');
+
+    // Look for the pipeline command construction. Must have SET ... EX
+    // (no NX between them). A regex hit on `'NX'` as a literal
+    // command argument is the bug signature; we forbid it.
+    assert.doesNotMatch(
+      src,
+      /pipeline\s*\(\s*\[\s*\[\s*'SET'[\s\S]{0,200}?,\s*'NX'/,
+      'writer must NOT use SET NX — that locks the row to its first value forever and breaks refresh-on-allow',
+    );
+    assert.match(
+      src,
+      /pipeline\s*\(\s*\[\s*\[\s*'SET'/,
+      'writer must use SET pipeline command',
+    );
+  });
+
+  // Codex PR #3617 P1 — real source count regression guard.
+  it('U4 writer + U5 evaluator both consume sourceCountByClusterId (not BriefStory.source 0/1 collapse)', async () => {
+    const path = fileURLToPath(new URL('../scripts/seed-digest-notifications.mjs', import.meta.url));
+    const src = await readFile(path, 'utf8');
+
+    // The Map must be built once before the cluster iteration loop, from
+    // the raw clustered `stories` pool (where sources[] is still attached).
+    assert.match(
+      src,
+      /const\s+sourceCountByClusterId\s*=\s*new\s+Map\(\s*\)/,
+      'sourceCountByClusterId Map must be built (per-send) for U4 writer + U5 evaluator',
+    );
+    assert.match(
+      src,
+      /sourceCountByClusterId\.set\(/,
+      'sourceCountByClusterId Map must be populated from raw stories',
+    );
+
+    // Both consumer sites must use the Map, NOT the BriefStory.source 0/1 collapse.
+    const collapsedPattern = /briefStory\?\.source\s*===\s*'string'\s*&&\s*briefStory\.source\.length\s*>\s*0\s*\?\s*1\s*:\s*0/;
+    assert.doesNotMatch(
+      src,
+      collapsedPattern,
+      'cron must NOT collapse source count to 0/1 from BriefStory.source — that breaks U5\'s +5-sources evolution bypass. ' +
+      'Use sourceCountByClusterId.get(clusterId) ?? 0 instead.',
+    );
+
+    // Both sites must read from the Map.
+    const getMatches = src.match(/sourceCountByClusterId\.get\(\s*clusterId\s*\)/g) ?? [];
+    assert.ok(
+      getMatches.length >= 2,
+      `expected ≥2 sourceCountByClusterId.get(clusterId) reads (U4 writer + U5 evaluator); ` +
+      `found ${getMatches.length}. If you removed one of them, the cooldown evolution bypass will break silently.`,
     );
   });
 });

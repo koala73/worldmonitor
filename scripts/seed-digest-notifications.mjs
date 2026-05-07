@@ -66,6 +66,13 @@ import {
 import { stripSourceSuffix } from './lib/brief-dedup-jaccard.mjs';
 import { writeReplayLog } from './lib/brief-dedup-replay-log.mjs';
 import { readStoryTracksChunked } from './lib/story-track-batch-reader.mjs';
+import {
+  aggregateResults as aggregateDeliveredResults,
+  writeDeliveredEntry,
+} from './lib/digest-delivered-log.mjs';
+import { readCooldownConfig } from './lib/digest-cooldown-config.mjs';
+import { evaluateCooldown } from './lib/digest-cooldown-decision.mjs';
+import { emitCooldownShadowLog } from './lib/digest-cooldown-shadow-log.mjs';
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -541,6 +548,55 @@ async function buildDigest(rule, windowStartMs) {
   // catch + early return when the flag is off, so awaiting is free on
   // the disabled path and bounded by the 10s Upstash pipeline timeout
   // on the enabled path.
+  // Codex PR #3617 P1 — hydrate sources on `dedupedAll` BEFORE
+  // writeReplayLog so the replay records carry the canonical source
+  // count Sprint 1 / U6 needs to evaluate +5-evolution bypasses. The
+  // pre-fix order wrote replay records with `sources: []` (hydration
+  // happened later, only on the post-cap `top` slice), which made U6
+  // structurally unable to detect source-count evolution.
+  //
+  // Implementation: run SMEMBERS for every rep's mergedHashes BEFORE
+  // the replay-log write. `top` (built later as a slice of dedupedAll)
+  // shares object references with the reps we're hydrating here, so the
+  // later "hydrate top.sources" block becomes a no-op and is removed
+  // below. Cost: one Upstash pipeline with ~30 SMEMBERS commands per
+  // tick — bounded by the dedup output size (typically 20-30 reps).
+  {
+    const preCmds = [];
+    const preIdx = [];
+    for (let i = 0; i < dedupedAll.length; i++) {
+      dedupedAll[i].sources = [];
+      const hashes = Array.isArray(dedupedAll[i].mergedHashes)
+        ? dedupedAll[i].mergedHashes
+        : [dedupedAll[i].hash];
+      for (const h of hashes) {
+        if (typeof h === 'string' && h.length > 0) {
+          preCmds.push(['SMEMBERS', `story:sources:v1:${h}`]);
+          preIdx.push(i);
+        }
+      }
+    }
+    if (preCmds.length > 0) {
+      try {
+        const preResults = await upstashPipeline(preCmds);
+        for (let j = 0; j < preResults.length; j++) {
+          const arr = preResults[j]?.result ?? [];
+          const target = dedupedAll[preIdx[j]];
+          for (const src of arr) {
+            if (!target.sources.includes(src)) target.sources.push(src);
+          }
+        }
+      } catch (err) {
+        // Best-effort: if the source pipeline fails, replay-log carries
+        // empty source arrays (the pre-fix shape). Cooldown evolution
+        // bypass goes blind for that tick — preferable to crashing the
+        // cron over a non-load-bearing diagnostic write.
+        console.warn(
+          `[digest] U6 pre-hydrate sources failed: ${err?.message ?? err} — replay records will carry empty sources for this tick`,
+        );
+      }
+    }
+  }
   const ruleKey = `${variant}:${lang}:${rule.sensitivity ?? 'high'}`;
   await writeReplayLog({
     stories,
@@ -617,23 +673,13 @@ async function buildDigest(rule, windowStartMs) {
     console.log(finalLog);
   }
 
-  const allSourceCmds = [];
-  const cmdIndex = [];
-  for (let i = 0; i < top.length; i++) {
-    const hashes = top[i].mergedHashes ?? [top[i].hash];
-    for (const h of hashes) {
-      allSourceCmds.push(['SMEMBERS', `story:sources:v1:${h}`]);
-      cmdIndex.push(i);
-    }
-  }
-  const sourceResults = await upstashPipeline(allSourceCmds);
-  for (let i = 0; i < top.length; i++) top[i].sources = [];
-  for (let j = 0; j < sourceResults.length; j++) {
-    const arr = sourceResults[j]?.result ?? [];
-    for (const src of arr) {
-      if (!top[cmdIndex[j]].sources.includes(src)) top[cmdIndex[j]].sources.push(src);
-    }
-  }
+  // Codex PR #3617 P1 — sources are already hydrated on `dedupedAll`
+  // BEFORE the writeReplayLog call above (so U6 replay records carry
+  // canonical source counts). `top` items are references to the same
+  // objects, so they already have `sources` populated. The redundant
+  // hydration block that lived here pre-fix has been removed; it would
+  // have RESET (top[i].sources = []) and re-fetched, doubling the
+  // SMEMBERS pipeline cost per tick for no functional benefit.
 
   return top;
 }
@@ -805,6 +851,75 @@ function formatDigestHtml(stories, nowMs) {
     </div>
   </div>
 </div>`;
+}
+
+// ── Sprint 1 / U7 production-gap shim: BriefStory → formatter shape ──
+//
+// The U7 invariant `digest.cards ⊆ brief.cards` only holds in
+// production if `formatDigest`/`formatDigestHtml` consume the brief
+// envelope's filtered slice (capped at MAX_STORIES_PER_USER=12, post-
+// compose, post-filter), NOT the raw `stories` pool from `buildDigest`
+// (capped at DIGEST_MAX_ITEMS=30).
+//
+// The two formatters above were written when there was no envelope —
+// they expect raw-shape stories with `{title, severity, sources, link,
+// description, phase}`. The brief envelope's `BriefStory` carries a
+// different field set: `{headline, threatLevel, source, sourceUrl,
+// description, clusterId, ...}`. This shim maps the envelope shape to
+// the formatter shape without touching the formatters themselves,
+// keeping the U7 invariant holdable on the live send path with the
+// minimum surgical change.
+//
+// Compatibility decisions:
+//   - `headline` → `title`. Direct rename.
+//   - `threatLevel` → `severity`. The values overlap (`critical`,
+//     `high`, `medium`); a `BriefStory` `low` falls into the formatter's
+//     `high` bucket fallback (line ~651 / ~692). That's a benign
+//     mis-bucket — the brief composer's filter already drops `low` from
+//     the pool today, so the production occurrence is zero.
+//   - `source` (single string) → `sources` (array). Wrap into a
+//     1-element array; empty when missing. Multi-source fan-out for the
+//     formatter's "+N" suffix is lost here — acceptable trade-off
+//     because the BriefStory schema only carries the primary source by
+//     design (per shared/brief-envelope.d.ts:112).
+//   - `sourceUrl` → `link`. Direct rename. Empty string when absent
+//     (the formatter renders unlinked text in that case).
+//   - `description` → `description`. Direct passthrough.
+//   - `clusterId` → `hash`. THIS IS THE U7-LOAD-BEARING MAPPING. The
+//     formatter doesn't consume `hash` for rendering, but the U7
+//     invariant projection (`projectDigestEmitClusterId` in the
+//     companion test) reads it as the per-card identity. Setting
+//     `hash = clusterId` makes the runtime emit set provably equal to
+//     the brief envelope's clusterId set.
+//   - `phase` is not on `BriefStory`. Default to `'sustained'` — a
+//     valid phase value with a dedicated PHASE_COLOR entry, no
+//     filtering effect (the only phase that filters is `'fading'`,
+//     and that filter lives in `buildDigest`, not the formatters).
+//
+// Why an inline shim and not a shared helper: this transformation is
+// load-bearing only for the cron's send loop. Any other consumer that
+// wants the formatter shape would convert via this function would couple
+// itself to the BriefStory→raw mapping that is not load-bearing
+// anywhere else. Keep it local until a second consumer appears.
+function briefStoriesToFormatterShape(briefStories) {
+  if (!Array.isArray(briefStories)) return [];
+  return briefStories.map((s) => {
+    const sources = typeof s?.source === 'string' && s.source.length > 0 ? [s.source] : [];
+    return {
+      title: typeof s?.headline === 'string' ? s.headline : '',
+      severity: typeof s?.threatLevel === 'string' ? s.threatLevel : 'high',
+      sources,
+      link: typeof s?.sourceUrl === 'string' ? s.sourceUrl : '',
+      description: typeof s?.description === 'string' ? s.description : '',
+      // 'sustained' has a defined PHASE_COLOR entry in the formatter
+      // and is NOT 'fading' (the only phase value that drops in
+      // buildDigest). The formatter only uses phase for cosmetic
+      // colour/label, never for filtering.
+      phase: 'sustained',
+      // Load-bearing for the U7 invariant — see header above.
+      hash: typeof s?.clusterId === 'string' ? s.clusterId : '',
+    };
+  });
 }
 
 // ── (Removed) standalone generateAISummary ───────────────────────────────────
@@ -1684,6 +1799,27 @@ async function main() {
   // one per rule iteration. See the briefForUser-missing branch below.
   const composeMissUsers = new Set();
 
+  // Sprint 1 / U5 — cooldown mode resolved ONCE per cron tick. Operator
+  // surface is `DIGEST_COOLDOWN_MODE` ∈ {shadow, off}; default 'shadow'.
+  // Anything else (typo, garbage, even 'enforce' which Sprint 2 will
+  // introduce) fails closed to 'shadow' with `invalidRaw` populated for
+  // a startup warn — see `feedback_kill_switch_default_on_typo`.
+  //
+  // Resolved at the top of the run (not per rule) because the env value
+  // can't change mid-tick, and we want the typo-warn to fire ONCE per
+  // cron run, not once per user. The decision evaluator below is invoked
+  // with `mode` as a per-call option so a future per-user shadow-subset
+  // gate can short-circuit by passing `mode: 'off'` for excluded users
+  // (decision artifact becomes null → shadow logger silently skips them
+  // per `feedback_gate_on_ground_truth_not_configured_state`).
+  const cooldownConfig = readCooldownConfig(process.env);
+  if (cooldownConfig.invalidRaw !== null) {
+    console.warn(
+      `[digest] cooldown unrecognised DIGEST_COOLDOWN_MODE=${JSON.stringify(cooldownConfig.invalidRaw)} — ` +
+        `falling back to 'shadow' (safe default; Sprint 1 has no enforce mode). Valid: shadow | off.`,
+    );
+  }
+
   for (const rule of rules) {
     if (!rule.userId || !rule.variant) continue;
 
@@ -1822,9 +1958,80 @@ async function main() {
       synthesisLevel = ruleResult.level;
     }
 
-    const storyListPlain = formatDigest(stories, nowMs);
+    // Sprint 1 / U7 production-gap fix.
+    //
+    // Pre-fix the formatters consumed the raw `stories` pool (capped
+    // at DIGEST_MAX_ITEMS=30 by buildDigest). Post-fix they consume
+    // the brief envelope's `data.stories` (capped at MAX_STORIES_PER_USER
+    // =12 by filterTopStories). This is what makes the U7 invariant
+    // `digest.cards ⊆ brief.cards` HOLD ON THE LIVE SEND PATH — without
+    // this swap the email body could surface clusterIds the brief
+    // envelope omitted (the 18-30 stories the cap dropped), which
+    // would orphan their delivered-log keys from the magazine side.
+    //
+    // briefForUser is guaranteed non-null in this branch (the
+    // canonical-rule filter at the top of the loop returned only when
+    // briefForUser was present). The compose-miss fallback path
+    // (briefForUser === undefined) does NOT reach here — that branch
+    // either skips the user or falls through with magazineUrl=null;
+    // the formatters in that fallback continue to consume the raw
+    // stories pool, accepting U7-invariant degradation as the cost of
+    // delivering SOMETHING for that one tick.
+    //
+    // Compatibility shim: briefStoriesToFormatterShape maps the
+    // BriefStory schema to the formatter's expected raw-shape fields.
+    // See the function header for field-by-field rationale + the
+    // load-bearing `clusterId → hash` mapping that makes the U7
+    // invariant projection work at runtime.
+    const briefEnvelopeStories = brief?.envelope?.data?.stories;
+    const formatterStories = Array.isArray(briefEnvelopeStories) && briefEnvelopeStories.length > 0
+      ? briefStoriesToFormatterShape(briefEnvelopeStories)
+      : stories; // fallback: brief envelope absent (compose-miss branch above)
+
+    // Codex PR #3617 round-4 P2 — unified iterable for U4/U5 coverage in
+    // both branches.
+    //
+    // Pre-fix the cooldown loop (U5) and delivered-log writer (U4) were
+    // both gated on `briefEnvelopeStories.length > 0`, so under
+    // compose-miss (brief absent) the digest cards were SENT to the
+    // user but the U4/U5 substrate skipped them entirely. Multi-tick
+    // compose outages (e.g. signing secret unset for 6h) accumulated
+    // un-tracked deliveries; when compose recovered, the cooldown
+    // saw "no prior delivery" and re-aired everything the user had
+    // received during the outage.
+    //
+    // Fix: build a unified `cooldownIterableStories` array that both
+    // branches feed. Under brief-success it's the v4 BriefStory shape
+    // directly (already has clusterId, threatLevel, source, sourceUrl,
+    // headline). Under compose-miss it's a normalized projection of
+    // the raw `stories` pool — fields mapped by hand from the
+    // post-buildDigest shape (severity → threatLevel, link → sourceUrl,
+    // title → headline, mergedHashes[0] || hash → clusterId).
+    //
+    // Same downstream iteration in both U4 and U5 loops; same
+    // sourceCountByClusterId Map (already keyed on repHash, which
+    // matches both branches' clusterId semantics).
+    const cooldownIterableStories = Array.isArray(briefEnvelopeStories) && briefEnvelopeStories.length > 0
+      ? briefEnvelopeStories
+      : (Array.isArray(stories) ? stories.map((rawStory) => {
+          const repHash = Array.isArray(rawStory?.mergedHashes)
+            && rawStory.mergedHashes.length > 0
+            && typeof rawStory.mergedHashes[0] === 'string'
+            ? rawStory.mergedHashes[0]
+            : (typeof rawStory?.hash === 'string' ? rawStory.hash : '');
+          const sources = Array.isArray(rawStory?.sources) ? rawStory.sources : [];
+          return {
+            clusterId: repHash,
+            threatLevel: typeof rawStory?.severity === 'string' ? rawStory.severity : 'unknown',
+            source: typeof sources[0] === 'string' ? sources[0] : '',
+            sourceUrl: typeof rawStory?.link === 'string' ? rawStory.link : '',
+            headline: typeof rawStory?.title === 'string' ? rawStory.title : '',
+          };
+        }) : []);
+
+    const storyListPlain = formatDigest(formatterStories, nowMs);
     if (!storyListPlain) continue;
-    const htmlRaw = formatDigestHtml(stories, nowMs);
+    const htmlRaw = formatDigestHtml(formatterStories, nowMs);
 
     const magazineUrl = brief?.magazineUrl ?? null;
     const { text, telegramText, slackText, discordText } = buildChannelBodies(
@@ -1845,7 +2052,189 @@ async function main() {
     const shortDate = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(nowMs));
     const subject = subjectForBrief({ briefLead, synthesisLevel, shortDate });
 
+    // Sprint 1 / U5 — cooldown shadow-mode evaluation (per-cluster,
+    // per-channel, BEFORE the channel send). The decision is computed
+    // and accumulated; the send loop below is unchanged. Sprint 2 will
+    // wire the decision into the send-loop guard. Until then, the
+    // accumulator's only consumer is the shadow log line emitted after
+    // the send loop completes for this user-rule.
+    //
+    // Why before the send (not after): the U4 delivered-log writes
+    // happen AFTER each channel's send returns true, and we want the
+    // cooldown evaluator to see the previous tick's row, not the row
+    // we're about to write. Moving the GET to "after send" would race
+    // with the writer and turn every re-send into a `conflicts: 1`
+    // observation — masking the real cooldown signal we're trying to
+    // measure.
+    //
+    // The evaluator is short-circuited by `mode === 'off'` (decision
+    // === null). When that happens we skip the per-cluster GET pipeline
+    // entirely — no Upstash traffic, no log line. This makes the
+    // operator-side kill switch instant: flip Railway env to 'off',
+    // next tick spends zero on cooldown.
+    const cooldownDecisions = [];
+    const ruleIdComposite = `${rule.variant ?? 'full'}:${rule.lang ?? 'en'}:${rule.sensitivity ?? 'high'}`;
+    // Codex PR #3617 P1 — real per-cluster source count for U4 writes
+    // and U5 cooldown evaluation.
+    //
+    // The brief envelope's BriefStory schema only carries a single
+    // `source` string (the primary wire) — the original cluster's full
+    // sources[] array is not preserved. Reading 0/1 off briefStory.source
+    // collapses real source counts (5, 10, 37+) and breaks U5's "+5
+    // sources within floor" evolution bypass: the delta from N to 0/1
+    // is always 0 or 1, never ≥5. Without this, today's shadow rows
+    // seed bad history that Sprint 2's enforce mode would inherit.
+    //
+    // Fix: derive sourceCount from the raw clustered `stories` pool
+    // (post-buildDigest, pre-filterTopStories) where the original
+    // sources[] is still attached. Match by cluster identity:
+    // mergedHashes[0] when present (rep's own hash by U3's contract),
+    // else the story's own hash (singletons). One Map build per send,
+    // O(1) lookup per cluster iteration.
+    const sourceCountByClusterId = new Map();
+    if (Array.isArray(stories)) {
+      for (const rawStory of stories) {
+        const repHash = Array.isArray(rawStory?.mergedHashes)
+          && rawStory.mergedHashes.length > 0
+          && typeof rawStory.mergedHashes[0] === 'string'
+          ? rawStory.mergedHashes[0]
+          : (typeof rawStory?.hash === 'string' ? rawStory.hash : '');
+        if (!repHash) continue;
+        const sources = Array.isArray(rawStory?.sources) ? rawStory.sources : [];
+        // Existing entry wins (first-rep-by-iteration order). Raw
+        // stories shouldn't duplicate clusterIds post-dedup, but the
+        // defensive first-write semantics protect against a future
+        // dedup bug double-counting sources.
+        if (!sourceCountByClusterId.has(repHash)) {
+          sourceCountByClusterId.set(repHash, sources.length);
+        }
+      }
+    }
+    // Slot string mirrors the brief composer: `issueSlotInTz(nowMs, tz)`.
+    // We use the same tz the composer used (rule.digestTimezone, default
+    // 'UTC') so the slot naming aligns 1:1 with the brief envelope's
+    // magazine URL slot. Operators grepping the shadow log by slot get
+    // the same slot string they'd see in `brief:${userId}:${issueSlot}`.
+    const cooldownSlot = issueSlotInTz(nowMs, rule.digestTimezone ?? 'UTC');
+    if (
+      cooldownConfig.mode === 'shadow'
+      && Array.isArray(cooldownIterableStories)
+      && cooldownIterableStories.length > 0
+    ) {
+      // Outer loop: one decision per (channel, cluster) tuple. Same
+      // shape as the U4 writer's iteration so the shadow log's
+      // `total` aligns with the writer's eventual write count under
+      // healthy paths. Sequential awaits — same rationale as the U4
+      // writer (≤12 clusters × ≤5 channels per user = ≤60 GETs;
+      // bursty parallelism would compete with the rest of the cron's
+      // Upstash traffic for no measurable latency win).
+      //
+      // Codex PR #3617 round-4 P2 — iterate cooldownIterableStories
+      // (NOT briefEnvelopeStories) so the compose-miss fallback path
+      // also gets U5 coverage. See the cooldownIterableStories
+      // construction above for the unified-shape rationale.
+      for (const ch of deliverableChannels) {
+        for (const briefStory of cooldownIterableStories) {
+          const clusterId = typeof briefStory?.clusterId === 'string' ? briefStory.clusterId : '';
+          if (!clusterId) {
+            // Same defensive branch as the U4 writer below — a v4
+            // envelope MUST carry clusterId. Skip the GET here so we
+            // don't construct a malformed key; the U4-side warn will
+            // fire on the same iteration when the writer runs.
+            continue;
+          }
+          const key = `digest:sent:v1:${rule.userId}:${ch.channelType}:${ruleIdComposite}:${clusterId}`;
+          let lastDeliveredAt = null;
+          let lastDeliveredSourceCount = null;
+          let lastDeliveredTier = null;
+          // Greptile PR #3617 P2 — read prior headline for the
+          // EVOLUTION_NEW_FACT bypass. Older v4 rows written before
+          // this fix won't carry the field; null is the safe default
+          // (the evaluator skips the bypass when either side is null).
+          let lastDeliveredHeadline = null;
+          try {
+            const raw = await upstashRest('GET', key);
+            if (typeof raw === 'string' && raw.length > 0) {
+              const parsed = JSON.parse(raw);
+              if (parsed && typeof parsed === 'object') {
+                if (Number.isFinite(parsed.sentAt)) lastDeliveredAt = parsed.sentAt;
+                if (Number.isFinite(parsed.sourceCount)) lastDeliveredSourceCount = parsed.sourceCount;
+                if (typeof parsed.severity === 'string') lastDeliveredTier = parsed.severity;
+                if (typeof parsed.headline === 'string' && parsed.headline.length > 0) {
+                  lastDeliveredHeadline = parsed.headline;
+                }
+              }
+            }
+          } catch (err) {
+            // GET failed (transient Upstash, JSON parse error). Treat
+            // as "no prior delivery" — the safe default in shadow mode
+            // is `decision='allow'`, which never affects subsequent
+            // sends. A real enforcement path (Sprint 2) will need to
+            // decide whether to fail-open or fail-closed here; shadow
+            // mode is fail-open by definition.
+            console.warn(
+              `[digest] U5 cooldown: GET failed for key=${key}: ${err?.message ?? err} — treating as no prior delivery`,
+            );
+          }
+          const sourceDomain = (() => {
+            const url = typeof briefStory?.sourceUrl === 'string' ? briefStory.sourceUrl : '';
+            if (!url) return '';
+            try {
+              return new URL(url).hostname.toLowerCase();
+            } catch {
+              return '';
+            }
+          })();
+          const severity = typeof briefStory?.threatLevel === 'string' ? briefStory.threatLevel : 'unknown';
+          // Codex PR #3617 P1 — real source count from the raw clustered
+          // story (sources[].length), not the BriefStory.source 0/1 collapse.
+          // Falls back to 0 when the cluster doesn't appear in the raw
+          // stories Map (defensive — shouldn't happen on the option-(a)
+          // canonical-rule path, but a future bug shouldn't crash the cron).
+          const currentSourceCount = sourceCountByClusterId.get(clusterId) ?? 0;
+          const decision = evaluateCooldown({
+            userId: rule.userId,
+            slot: cooldownSlot,
+            clusterId,
+            channel: ch.channelType,
+            ruleId: ruleIdComposite,
+            type: null, // invoke stub classifier
+            severity,
+            currentSourceCount,
+            currentTier: severity,
+            lastDeliveredAt,
+            lastDeliveredSourceCount,
+            lastDeliveredTier,
+            // Greptile PR #3617 P2 — drives EVOLUTION_NEW_FACT bypass.
+            lastDeliveredHeadline,
+            classifierInputs: {
+              sourceDomain,
+              headline: typeof briefStory?.headline === 'string' ? briefStory.headline : '',
+            },
+            options: { mode: cooldownConfig.mode, nowMs },
+          });
+          // `decision === null` is unreachable here (we guarded on
+          // `mode === 'shadow'` at the loop entry) but defensive —
+          // protects the shadow logger from a future code path that
+          // calls evaluateCooldown with mode='off' inside the shadow
+          // branch.
+          if (decision !== null) cooldownDecisions.push(decision);
+        }
+      }
+    }
+
     let anyDelivered = false;
+    // Sprint 1 / U4 — per-channel/per-cluster delivered-log accumulator.
+    // We aggregate tri-state counts across every (channel, cluster)
+    // write for THIS user-rule send so the post-loop log line can
+    // report a single summary instead of one line per cluster (with
+    // ~12 clusters × ~5 channels that's 60 lines per user otherwise).
+    // This sits ALONGSIDE the existing `anyDelivered` write below — the
+    // delivered-log keys feed U5's cooldown evaluator (per-cluster
+    // grain), the `digest:last-sent:v1:{user}:{variant}` write feeds
+    // the cron's isDue gate (per-rule grain). Two separate concerns;
+    // both writes happen on success.
+    const deliveredLogResults = [];
 
     for (const ch of deliverableChannels) {
       let ok = false;
@@ -1855,7 +2244,7 @@ async function main() {
         // the long-form story list goes in the text message below so
         // it remains forwardable / quotable on its own.
         if (magazineUrl) {
-          const caption = `<b>WorldMonitor Brief — ${shortDate}</b>\n${stories.length} ${stories.length === 1 ? 'thread' : 'threads'} on the desk today.`;
+          const caption = `<b>WorldMonitor Brief — ${shortDate}</b>\n${formatterStories.length} ${formatterStories.length === 1 ? 'thread' : 'threads'} on the desk today.`;
           await sendTelegramBriefCarousel(rule.userId, ch.chatId, caption, magazineUrl);
         }
         ok = await sendTelegram(rule.userId, ch.chatId, telegramText);
@@ -1870,18 +2259,158 @@ async function main() {
         // briefLead — same string the email exec block + magazine
         // pull-quote use. Codex Round-1 Medium #6 (channel-scope
         // parity).
-        ok = await sendWebhook(rule.userId, ch.webhookEnvelope, stories, briefLead);
+        //
+        // Codex PR #3617 round-5 P1 — pass formatterStories (NOT raw
+        // stories). Pre-fix the webhook serialised the full raw pool
+        // (up to DIGEST_MAX_ITEMS=30) while every other channel
+        // consumed formatterStories (post-cap, post-filter — what
+        // U4/U5 also iterate via cooldownIterableStories). Webhook
+        // users were therefore receiving cards that were never
+        // shadow-evaluated and never seeded delivered-log rows for
+        // future cooldown enforcement. Aligning to formatterStories
+        // closes the channel-coverage gap so the webhook payload
+        // exactly matches what U4 stamped + U5 evaluated for that
+        // (user, rule, tick).
+        ok = await sendWebhook(rule.userId, ch.webhookEnvelope, formatterStories, briefLead);
       }
-      if (ok) anyDelivered = true;
+      if (ok) {
+        anyDelivered = true;
+        // Sprint 1 / U4 — record one delivered-log entry per cluster
+        // surfaced in this channel's body. The brief envelope's stories
+        // are the canonical source set (post-cap, post-filter, ⊆ U7
+        // invariant); the formatter shim above maps them into the
+        // raw-shape used by formatDigest, which means the SAME stories
+        // were surfaced to the user.
+        //
+        // Order of operations: send first, write second. If the writer
+        // fails AFTER the channel succeeded, the story is eligible to
+        // re-air on the next tick. We accept that trade-off (extra
+        // edition beats silent suppression of a real delivery
+        // problem) — see digest-delivered-log.mjs's "Failure-mode
+        // trade-off" docblock for the canonical rationale.
+        //
+        // Per-cluster writer is awaited sequentially: under option (a)
+        // we ship ≤12 clusters × ≤5 channels per user, so the
+        // sequential cost is ~bounded at 60 SET commands per user.
+        // Parallelising via Promise.all would add bursty load to the
+        // same Upstash account that's serving the rest of the cron;
+        // sequential is simpler and the latency budget already
+        // tolerates it.
+        // Codex PR #3617 round-4 P2 — iterate cooldownIterableStories
+        // (unified across brief-success + compose-miss). See the
+        // cooldownIterableStories construction above for rationale.
+        if (Array.isArray(cooldownIterableStories) && cooldownIterableStories.length > 0) {
+          for (const briefStory of cooldownIterableStories) {
+            const clusterId = typeof briefStory?.clusterId === 'string'
+              ? briefStory.clusterId
+              : '';
+            if (!clusterId) {
+              // Defensive: a v4 envelope MUST carry clusterId per
+              // assertBriefEnvelope. Under compose-miss, clusterId is
+              // derived from raw mergedHashes[0]/hash — always present
+              // for valid raw stories. Skip the write on missing
+              // clusterId either way (malformed key would throw).
+              console.warn(
+                `[digest] U4 delivered-log: brief story missing clusterId — ` +
+                  `user=${rule.userId} channel=${ch.channelType} headline=${JSON.stringify(briefStory?.headline ?? '<missing>')}. ` +
+                  `Skipping log write for this cluster.`,
+              );
+              continue;
+            }
+            try {
+              const writeResult = await writeDeliveredEntry({
+                userId: rule.userId,
+                channel: ch.channelType,
+                ruleId: `${rule.variant ?? 'full'}:${rule.lang ?? 'en'}:${rule.sensitivity ?? 'high'}`,
+                clusterId,
+                sentAt: nowMs,
+                // Codex PR #3617 P1 — real source count, not the
+                // 0/1 collapse from BriefStory.source. See the
+                // sourceCountByClusterId Map construction above the
+                // U5 cooldown loop for the full rationale.
+                sourceCount: sourceCountByClusterId.get(clusterId) ?? 0,
+                severity: typeof briefStory?.threatLevel === 'string' ? briefStory.threatLevel : 'unknown',
+                // Greptile PR #3617 P2 — persist headline so the next
+                // tick's cooldown evaluator can drive the
+                // EVOLUTION_NEW_FACT bypass via string-equality
+                // compare. cooldownIterableStories carries the
+                // canonical headline in both branches (BriefStory
+                // shape under brief-success; synthesized from raw
+                // story.title under compose-miss).
+                headline: typeof briefStory?.headline === 'string' ? briefStory.headline : '',
+              });
+              deliveredLogResults.push(writeResult);
+            } catch (err) {
+              // writeDeliveredEntry only throws on programmer error
+              // (empty key components). Network/Upstash failures map
+              // to {errors: 1} in the tri-state result. A throw here
+              // means a v4 envelope leaked through with bad fields;
+              // record as error in the aggregate so it surfaces in
+              // the summary line below.
+              console.warn(
+                `[digest] U4 delivered-log: writeDeliveredEntry threw for ` +
+                  `user=${rule.userId} channel=${ch.channelType} clusterId=${clusterId}: ${err?.message ?? err}`,
+              );
+              deliveredLogResults.push({ written: 0, conflicts: 0, errors: 1 });
+            }
+          }
+        }
+      }
     }
+    // Sprint 1 / U4 summary — one line per user-rule send, not per
+    // (channel, cluster) write. Operators can tail this as a single
+    // line per user. Tri-state counters distinguish:
+    //   - written  = first-time delivered-log entries (cooldown table starts here)
+    //   - conflicts = NX-collide on existing keys (idempotent re-write,
+    //                 happens when the same (channel, rule, cluster)
+    //                 ships twice within the 30d±jitter TTL window —
+    //                 expected for sustained-narrative re-airs)
+    //   - errors   = Upstash transport failure or invariant break —
+    //                next tick re-airs the story to the affected
+    //                channel (see digest-delivered-log.mjs failure-mode
+    //                docblock).
+    if (deliveredLogResults.length > 0) {
+      const aggregate = aggregateDeliveredResults(deliveredLogResults);
+      const logFn = aggregate.errors > 0 ? console.warn : console.log;
+      logFn(
+        `[digest] U4 delivered-log user=${rule.userId} ` +
+          `rule=${rule.variant ?? 'full'}:${rule.lang ?? 'en'}:${rule.sensitivity ?? 'high'} ` +
+          `written=${aggregate.written} conflicts=${aggregate.conflicts} errors=${aggregate.errors} ` +
+          `total=${deliveredLogResults.length}`,
+      );
+    }
+
+    // Sprint 1 / U5 — shadow-mode cooldown summary line. ONE line per
+    // user-rule send (not per cluster, not per channel) so a busy cron
+    // doesn't flood Sentry. Skipped entirely when no decisions were
+    // accumulated (mode='off' OR no brief envelope OR all clusters
+    // missing clusterId). The logger promotes to console.warn when
+    // any decision had `classificationMissing: true` — that's real
+    // signal for Sprint 3's classifier work.
+    //
+    // The line is independent of `anyDelivered` — we want the would-
+    // have-suppressed counter even on no-channel-success ticks (those
+    // are the operator-visible cases where shadow telemetry matters
+    // most: "we'd have suppressed even MORE if the send had succeeded").
+    emitCooldownShadowLog({
+      userId: rule.userId,
+      ruleId: ruleIdComposite,
+      slot: cooldownSlot,
+      decisions: cooldownDecisions,
+    });
 
     if (anyDelivered) {
       await upstashRest(
         'SET', lastSentKey, JSON.stringify({ sentAt: nowMs }), 'EX', '691200', // 8 days
       );
       sentCount++;
+      // Story count reports the formatter-shape length (post-cap,
+      // post-filter slice) — what the user actually received in their
+      // digest. Pre-U7-fix this read `stories.length` (raw 30 from
+      // buildDigest), which over-counted by up to ~18 vs the cards
+      // the user saw.
       console.log(
-        `[digest] Sent ${stories.length} stories to ${rule.userId} (${rule.variant}, ${rule.digestMode})`,
+        `[digest] Sent ${formatterStories.length} stories to ${rule.userId} (${rule.variant}, ${rule.digestMode})`,
       );
       // Parity observability. Gated on AI_DIGEST_ENABLED + per-rule
       // aiDigestEnabled — without this guard, opt-out users (briefLead

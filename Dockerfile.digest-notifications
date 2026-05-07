@@ -49,6 +49,15 @@ RUN npm ci --prefix scripts --omit=dev
 COPY scripts/seed-digest-notifications.mjs ./scripts/
 COPY scripts/_digest-markdown.mjs ./scripts/
 COPY scripts/lib/ ./scripts/lib/
+# Sprint 1 / U4 operator one-shot — `clearDeliveredEntry` primitive
+# pairs with the delivered-log writer in scripts/lib/digest-delivered-
+# log.mjs (per skill_new_blocking_state_without_matching_clear_primitive).
+# Shipped here so an operator can `railway run node scripts/clear-
+# delivered-entry.mjs --user X --slot Y --cluster Z --reason "..."`
+# directly on the digest-notifications service container without
+# spinning up a separate one-off image. Read-only path: requires the
+# same UPSTASH_REDIS_REST_{URL,TOKEN} env this cron already has.
+COPY scripts/clear-delivered-entry.mjs ./scripts/
 
 # Brief envelope contract + filter + renderer assertion. These live
 # under shared/ and server/_shared/ in the repo and are imported from

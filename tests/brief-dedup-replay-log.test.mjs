@@ -168,6 +168,80 @@ describe('buildReplayRecords — record shape', () => {
     assert.equal(byHash.get('h3').isRep, true);
   });
 
+  // Codex PR #3617 P1 — Sprint 1 / U6 v2 shape: every record carries
+  // `repHash` (canonical stable cluster identity), reps additionally
+  // carry `mergedHashes`, and `headline`/`sourceUrl` aliases for the
+  // U5 classifier shape.
+  it('repHash is the rep\'s own hash, set on EVERY record (rep AND non-rep) — Codex PR #3617 P1', () => {
+    const records = buildReplayRecords(stories, reps, new Map(), cfg, tickContext);
+    const byHash = new Map(records.map((r) => [r.storyHash, r]));
+    assert.equal(byHash.get('h1').repHash, 'h1', 'rep h1 → repHash=h1');
+    assert.equal(byHash.get('h2').repHash, 'h1', 'non-rep h2 in cluster {h1,h2} → repHash=h1');
+    assert.equal(byHash.get('h3').repHash, 'h3', 'singleton h3 → repHash=h3');
+  });
+
+  it('mergedHashes is set on rep records, null on non-rep records', () => {
+    const records = buildReplayRecords(stories, reps, new Map(), cfg, tickContext);
+    const byHash = new Map(records.map((r) => [r.storyHash, r]));
+    assert.deepEqual(byHash.get('h1').mergedHashes, ['h1', 'h2']);
+    assert.equal(byHash.get('h2').mergedHashes, null, 'non-rep gets null mergedHashes');
+    assert.deepEqual(byHash.get('h3').mergedHashes, ['h3']);
+  });
+
+  it('headline aliases title; sourceUrl aliases link (U5 classifier-shape compat)', () => {
+    const sWithLink = { ...s1, link: 'https://example.com/n1' };
+    const repsWithLink = [rep('h1', ['h1'], { currentScore: 10 })];
+    const records = buildReplayRecords([sWithLink], repsWithLink, new Map(), cfg, tickContext);
+    assert.equal(records[0].headline, sWithLink.title);
+    assert.equal(records[0].sourceUrl, 'https://example.com/n1');
+    // Legacy fields preserved for back-compat.
+    assert.equal(records[0].title, sWithLink.title);
+    assert.equal(records[0].link, 'https://example.com/n1');
+  });
+
+  it('writer emits v=2 (Codex PR #3617 P1 bump)', () => {
+    const records = buildReplayRecords(stories, reps, new Map(), cfg, tickContext);
+    for (const r of records) assert.equal(r.v, 2, `record v should be 2; got ${r.v}`);
+  });
+
+  // Codex PR #3617 round-3 P1 — sources come from the REP's hydrated
+  // set, not from individual input stories. Pre-fix mutating
+  // dedupedAll[i].sources didn't reach the writer because it iterated
+  // input `stories` (which materializeCluster() never wrote back to).
+  it('sources are sourced from the rep object (not input story.sources)', () => {
+    // Rep with hydrated sources, input story with EMPTY sources.
+    // Pre-fix the writer would have emitted sources: [] (reading from
+    // the input story). Post-fix it reads from the rep.
+    const repWithSources = rep('h1', ['h1', 'h2'], { currentScore: 10, sources: ['Reuters', 'AP', 'BBC'] });
+    const recs = buildReplayRecords(
+      [story('a', { hash: 'h1', sources: [] }), story('b', { hash: 'h2', sources: [] })],
+      [repWithSources],
+      new Map(),
+      cfg,
+      tickContext,
+    );
+    const byHash = new Map(recs.map((r) => [r.storyHash, r]));
+    assert.deepEqual(byHash.get('h1').sources, ['Reuters', 'AP', 'BBC']);
+    // Non-rep gets the SAME hydrated sources (cluster source-count
+    // identity is uniform across members — the rep is the canonical view).
+    assert.deepEqual(byHash.get('h2').sources, ['Reuters', 'AP', 'BBC']);
+  });
+
+  it('falls back to story.sources when rep has none (defensive — fixture compatibility)', () => {
+    // Some test fixtures pass pre-populated input story.sources and
+    // omit them on the rep. The writer should still emit those rather
+    // than dropping them silently.
+    const repNoSources = { hash: 'h1', mergedHashes: ['h1'], currentScore: 5, mentionCount: 1 };
+    const recs = buildReplayRecords(
+      [story('a', { hash: 'h1', sources: ['fixture-source'] })],
+      [repNoSources],
+      new Map(),
+      cfg,
+      tickContext,
+    );
+    assert.deepEqual(recs[0].sources, ['fixture-source']);
+  });
+
   it('clusterId derives from rep.mergedHashes (s1+s2 → 0, s3 → 1)', () => {
     const records = buildReplayRecords(stories, reps, new Map(), cfg, tickContext);
     const byHash = new Map(records.map((r) => [r.storyHash, r]));
@@ -242,7 +316,10 @@ describe('buildReplayRecords — record shape', () => {
       assert.equal(r.briefTickId, 'tick-1');
       assert.equal(r.ruleId, 'full:en:high');
       assert.equal(r.tsMs, 1000);
-      assert.equal(r.v, 1);
+      // Codex PR #3617 P1 — bumped to v2 (added repHash + mergedHashes
+      // + headline + sourceUrl). v1 envelopes still in 30d TTL are
+      // accepted on read by the U6 harness via legacy-field fallbacks.
+      assert.equal(r.v, 2);
     }
   });
 
