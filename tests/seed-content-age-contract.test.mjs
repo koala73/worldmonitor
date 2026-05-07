@@ -298,6 +298,74 @@ test('content-meta with valid timestamps → newestItemAt/oldestItemAt populated
   assert.equal(meta.maxContentAgeMin, 1440);
 });
 
+// ── Greptile PR #3596 P1 regression: non-contract-mode seeders ──────────
+//
+// Pre-fix the seed-meta mirror gated on `envelopeMeta` (which is null for
+// non-contract-mode seeders), silently dropping the content-age trio for
+// every seeder that hadn't migrated to contract mode yet — defeating the
+// `contentMeta` opt-in for the majority of the cohort. Post-fix the seed-
+// meta mirror reads from the local content-age values (populated whenever
+// the seeder opted in, regardless of contractMode).
+
+test('non-contract seeder with contentMeta still mirrors content-age into seed-meta (Greptile PR #3596 P1)', async () => {
+  const NEWEST = Date.now() - 3 * 24 * 60 * 60 * 1000;
+  const OLDEST = Date.now() - 30 * 24 * 60 * 60 * 1000;
+
+  await runWithExitTrap(() =>
+    runSeed('test', 'non-contract-with-content-age',
+      'test:non-contract-with-content-age:v1',
+      async () => ({ items: [{ id: 1, ts: NEWEST }] }),
+      {
+        validateFn: (d) => d?.items?.length >= 1,
+        ttlSeconds: 3600,
+        // NOTE: no `declareRecords` / no `recordCount` → not in contract mode.
+        sourceVersion: 'non-contract-v1',
+        schemaVersion: 1,
+        maxStaleMin: 1440,
+        contentMeta: () => ({ newestItemAt: NEWEST, oldestItemAt: OLDEST }),
+        maxContentAgeMin: 4320, // 3 days
+      },
+    ),
+  );
+
+  const meta = lastMetaSetBody('non-contract-with-content-age');
+  assert.ok(meta, 'seed-meta written even for non-contract seeder');
+  assert.equal(meta.newestItemAt, NEWEST,
+    'newestItemAt MUST appear in seed-meta even when envelopeMeta is null (non-contract mode)');
+  assert.equal(meta.oldestItemAt, OLDEST,
+    'oldestItemAt MUST appear in seed-meta');
+  assert.equal(meta.maxContentAgeMin, 4320,
+    'maxContentAgeMin MUST appear — health classifier reads this as the opt-in signal');
+});
+
+test('non-contract seeder + contentMeta returning null → seed-meta carries newestItemAt:null + maxContentAgeMin', async () => {
+  // Even when the seeder declares the trio but content extraction returns
+  // null, the maxContentAgeMin opt-in signal must reach seed-meta so the
+  // health classifier surfaces STALE_CONTENT (not silently skip the check).
+  await runWithExitTrap(() =>
+    runSeed('test', 'non-contract-content-null',
+      'test:non-contract-content-null:v1',
+      async () => ({ items: [{ id: 1 }] }),
+      {
+        validateFn: (d) => d?.items?.length >= 1,
+        ttlSeconds: 3600,
+        sourceVersion: 'non-contract-v1',
+        schemaVersion: 1,
+        maxStaleMin: 1440,
+        contentMeta: () => null,
+        maxContentAgeMin: 4320,
+      },
+    ),
+  );
+
+  const meta = lastMetaSetBody('non-contract-content-null');
+  assert.ok(meta, 'seed-meta written');
+  assert.equal(meta.newestItemAt, null);
+  assert.equal(meta.oldestItemAt, null);
+  assert.equal(meta.maxContentAgeMin, 4320,
+    'opt-in signal must reach seed-meta even when contentMeta returns null');
+});
+
 // ── Anti-regression: legacy seeders unchanged ────────────────────────────
 
 test('legacy: seeder without contentMeta writes seed-meta in legacy shape (no content-age fields)', async () => {

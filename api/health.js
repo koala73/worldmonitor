@@ -587,12 +587,22 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
   if (meta && typeof meta.maxContentAgeMin === 'number') {
     const newestItemAt = (typeof meta.newestItemAt === 'number') ? meta.newestItemAt : null;
     const contentAgeMin = newestItemAt == null ? null : Math.round((now - newestItemAt) / 60_000);
+    // Future-dated newestItemAt (contentAgeMin < 0) is suspicious data, not
+    // fresh data: an upstream that publishes timestamps in the future is
+    // either confusing forecasts with observations, mishandling timezones,
+    // or running on a skewed clock. Treat as STALE so the signal surfaces
+    // — without this, `contentAgeMin > maxContentAgeMin` is false for any
+    // negative number and the staleness check silently passes. The
+    // negative `contentAgeMin` is preserved on the wire so operators can
+    // see HOW far in the future the timestamp was (a -10-minute drift is
+    // a clock-skew nit; -8760 minutes is a year-from-now corruption).
+    const isFutureDated = contentAgeMin != null && contentAgeMin < 0;
     contentAge = {
       newestItemAt,
       oldestItemAt: (typeof meta.oldestItemAt === 'number') ? meta.oldestItemAt : null,
       maxContentAgeMin: meta.maxContentAgeMin,
       contentAgeMin,
-      contentStale: contentAgeMin == null || contentAgeMin > meta.maxContentAgeMin,
+      contentStale: contentAgeMin == null || isFutureDated || contentAgeMin > meta.maxContentAgeMin,
     };
   }
   return { seedAge, seedStale, seedError: false, metaReadFailed: false, metaCount, contentAge };

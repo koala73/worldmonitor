@@ -91,6 +91,52 @@ test('readSeedMeta marks contentStale=true when newestItemAt is older than budge
   assert.equal(meta.contentAge.contentStale, true, '11d > 9d → contentStale');
 });
 
+// Greptile PR #3596 P2 regression — future-dated newestItemAt produces a
+// negative contentAgeMin. Pre-fix `contentAgeMin > maxContentAgeMin` was
+// false for any negative value (negative is not greater than any positive
+// budget), so a feed publishing future timestamps silently passed the
+// staleness check. Post-fix: future-dated newestItemAt is treated as
+// STALE so the suspicious-data signal surfaces.
+test('readSeedMeta marks contentStale=true when newestItemAt is in the future (suspicious-data signal)', () => {
+  const seedCfg = { key: 'seed-meta:future-dated', maxStaleMin: 2880 };
+  // newestItemAt 1 hour in the future — could be timezone bug, clock skew,
+  // or upstream confusing forecasts with observations. Pre-fix this would
+  // have computed contentAgeMin = -60 and slipped past the staleness check.
+  const newestItemAt = NOW + 60 * ONE_MIN_MS;
+  const ctx = makeCtx({
+    keyMetaValues: new Map([['seed-meta:future-dated', metaValueOf({
+      fetchedAt: NOW - 10 * ONE_MIN_MS,
+      recordCount: 50,
+      newestItemAt,
+      oldestItemAt: NOW - 60 * ONE_DAY_MS,
+      maxContentAgeMin: 12960,    // 9 days
+    })]]),
+  });
+  const meta = readSeedMeta(seedCfg, ctx.keyMetaValues, ctx.keyMetaErrors, ctx.now);
+  assert.equal(meta.contentAge.contentStale, true,
+    'future-dated newestItemAt must surface as STALE (suspicious data, not fresh data)');
+  assert.equal(meta.contentAge.contentAgeMin, -60,
+    'negative contentAgeMin preserved on the wire so operators see HOW far in the future');
+});
+
+test('readSeedMeta marks contentStale=true when newestItemAt is far in the future (year-from-now corruption)', () => {
+  const seedCfg = { key: 'seed-meta:far-future', maxStaleMin: 2880 };
+  const newestItemAt = NOW + 365 * ONE_DAY_MS; // a full year ahead — clear corruption
+  const ctx = makeCtx({
+    keyMetaValues: new Map([['seed-meta:far-future', metaValueOf({
+      fetchedAt: NOW - 10 * ONE_MIN_MS,
+      recordCount: 50,
+      newestItemAt,
+      oldestItemAt: NOW - 60 * ONE_DAY_MS,
+      maxContentAgeMin: 12960,
+    })]]),
+  });
+  const meta = readSeedMeta(seedCfg, ctx.keyMetaValues, ctx.keyMetaErrors, ctx.now);
+  assert.equal(meta.contentAge.contentStale, true);
+  assert.ok(meta.contentAge.contentAgeMin < 0,
+    'large negative contentAgeMin is the diagnostic signal — operators see year-scale future-dating');
+});
+
 test('readSeedMeta marks contentStale=true when newestItemAt is null (contentMeta returned null)', () => {
   const seedCfg = { key: 'seed-meta:all-undated', maxStaleMin: 2880 };
   const ctx = makeCtx({

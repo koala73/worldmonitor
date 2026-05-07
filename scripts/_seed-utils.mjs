@@ -1272,13 +1272,23 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     }
 
     // Mirror content-age fields into seed-meta when the seeder opted in.
-    // The contentAge object is the same one we just stamped into the canonical
-    // envelope above (envelopeMeta.{newestItemAt, oldestItemAt, maxContentAgeMin}),
-    // so seed-meta and the canonical _seed block stay in lockstep.
-    const successContentAge = (contentAgeOptedIn && envelopeMeta) ? {
-      newestItemAt: envelopeMeta.newestItemAt,
-      oldestItemAt: envelopeMeta.oldestItemAt,
-      maxContentAgeMin: envelopeMeta.maxContentAgeMin,
+    //
+    // Read content-age from the LOCAL `contentNewestAt`/`contentOldestAt`
+    // computed back at line ~1088 — NOT from `envelopeMeta`. The local
+    // values are populated whenever the seeder opted in (`contentAgeOptedIn`
+    // === true); `envelopeMeta` is null for non-contract-mode seeders, so
+    // gating on `envelopeMeta` silently dropped the content-age signal for
+    // every seeder that hadn't migrated to contract mode yet — defeating
+    // the opt-in for the majority of the cohort.
+    //
+    // Both branches publish the same trio (envelopeMeta carries the same
+    // values when contract mode populates it at line ~1141); reading from
+    // the local source unifies the two paths and makes the seed-meta
+    // mirror match the contract-mode envelope exactly.
+    const successContentAge = contentAgeOptedIn ? {
+      newestItemAt: contentNewestAt,
+      oldestItemAt: contentOldestAt,
+      maxContentAgeMin,
     } : undefined;
     const meta = await writeFreshnessMetadata(
       domain, resource, recordCount, opts.sourceVersion, ttlSeconds,
