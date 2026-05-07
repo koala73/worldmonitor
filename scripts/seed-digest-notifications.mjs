@@ -1988,6 +1988,47 @@ async function main() {
       ? briefStoriesToFormatterShape(briefEnvelopeStories)
       : stories; // fallback: brief envelope absent (compose-miss branch above)
 
+    // Codex PR #3617 round-4 P2 — unified iterable for U4/U5 coverage in
+    // both branches.
+    //
+    // Pre-fix the cooldown loop (U5) and delivered-log writer (U4) were
+    // both gated on `briefEnvelopeStories.length > 0`, so under
+    // compose-miss (brief absent) the digest cards were SENT to the
+    // user but the U4/U5 substrate skipped them entirely. Multi-tick
+    // compose outages (e.g. signing secret unset for 6h) accumulated
+    // un-tracked deliveries; when compose recovered, the cooldown
+    // saw "no prior delivery" and re-aired everything the user had
+    // received during the outage.
+    //
+    // Fix: build a unified `cooldownIterableStories` array that both
+    // branches feed. Under brief-success it's the v4 BriefStory shape
+    // directly (already has clusterId, threatLevel, source, sourceUrl,
+    // headline). Under compose-miss it's a normalized projection of
+    // the raw `stories` pool — fields mapped by hand from the
+    // post-buildDigest shape (severity → threatLevel, link → sourceUrl,
+    // title → headline, mergedHashes[0] || hash → clusterId).
+    //
+    // Same downstream iteration in both U4 and U5 loops; same
+    // sourceCountByClusterId Map (already keyed on repHash, which
+    // matches both branches' clusterId semantics).
+    const cooldownIterableStories = Array.isArray(briefEnvelopeStories) && briefEnvelopeStories.length > 0
+      ? briefEnvelopeStories
+      : (Array.isArray(stories) ? stories.map((rawStory) => {
+          const repHash = Array.isArray(rawStory?.mergedHashes)
+            && rawStory.mergedHashes.length > 0
+            && typeof rawStory.mergedHashes[0] === 'string'
+            ? rawStory.mergedHashes[0]
+            : (typeof rawStory?.hash === 'string' ? rawStory.hash : '');
+          const sources = Array.isArray(rawStory?.sources) ? rawStory.sources : [];
+          return {
+            clusterId: repHash,
+            threatLevel: typeof rawStory?.severity === 'string' ? rawStory.severity : 'unknown',
+            source: typeof sources[0] === 'string' ? sources[0] : '',
+            sourceUrl: typeof rawStory?.link === 'string' ? rawStory.link : '',
+            headline: typeof rawStory?.title === 'string' ? rawStory.title : '',
+          };
+        }) : []);
+
     const storyListPlain = formatDigest(formatterStories, nowMs);
     if (!storyListPlain) continue;
     const htmlRaw = formatDigestHtml(formatterStories, nowMs);
@@ -2077,8 +2118,8 @@ async function main() {
     const cooldownSlot = issueSlotInTz(nowMs, rule.digestTimezone ?? 'UTC');
     if (
       cooldownConfig.mode === 'shadow'
-      && Array.isArray(briefEnvelopeStories)
-      && briefEnvelopeStories.length > 0
+      && Array.isArray(cooldownIterableStories)
+      && cooldownIterableStories.length > 0
     ) {
       // Outer loop: one decision per (channel, cluster) tuple. Same
       // shape as the U4 writer's iteration so the shadow log's
@@ -2087,8 +2128,13 @@ async function main() {
       // writer (≤12 clusters × ≤5 channels per user = ≤60 GETs;
       // bursty parallelism would compete with the rest of the cron's
       // Upstash traffic for no measurable latency win).
+      //
+      // Codex PR #3617 round-4 P2 — iterate cooldownIterableStories
+      // (NOT briefEnvelopeStories) so the compose-miss fallback path
+      // also gets U5 coverage. See the cooldownIterableStories
+      // construction above for the unified-shape rationale.
       for (const ch of deliverableChannels) {
-        for (const briefStory of briefEnvelopeStories) {
+        for (const briefStory of cooldownIterableStories) {
           const clusterId = typeof briefStory?.clusterId === 'string' ? briefStory.clusterId : '';
           if (!clusterId) {
             // Same defensive branch as the U4 writer below — a v4
@@ -2228,16 +2274,20 @@ async function main() {
         // same Upstash account that's serving the rest of the cron;
         // sequential is simpler and the latency budget already
         // tolerates it.
-        if (Array.isArray(briefEnvelopeStories) && briefEnvelopeStories.length > 0) {
-          for (const briefStory of briefEnvelopeStories) {
+        // Codex PR #3617 round-4 P2 — iterate cooldownIterableStories
+        // (unified across brief-success + compose-miss). See the
+        // cooldownIterableStories construction above for rationale.
+        if (Array.isArray(cooldownIterableStories) && cooldownIterableStories.length > 0) {
+          for (const briefStory of cooldownIterableStories) {
             const clusterId = typeof briefStory?.clusterId === 'string'
               ? briefStory.clusterId
               : '';
             if (!clusterId) {
               // Defensive: a v4 envelope MUST carry clusterId per
-              // assertBriefEnvelope. If we ever land here it's a real
-              // invariant break — log loudly so the parity log catches
-              // it, but skip the write (malformed key would throw).
+              // assertBriefEnvelope. Under compose-miss, clusterId is
+              // derived from raw mergedHashes[0]/hash — always present
+              // for valid raw stories. Skip the write on missing
+              // clusterId either way (malformed key would throw).
               console.warn(
                 `[digest] U4 delivered-log: brief story missing clusterId — ` +
                   `user=${rule.userId} channel=${ch.channelType} headline=${JSON.stringify(briefStory?.headline ?? '<missing>')}. ` +

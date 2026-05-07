@@ -190,7 +190,26 @@ export async function writeDeliveredEntry(args) {
 
   let result;
   try {
-    result = await pipeline([['SET', key, value, 'NX', 'EX', String(ttl)]]);
+    // Codex PR #3617 round-4 P1 — SET (overwrite) semantics, NOT SET NX.
+    //
+    // Pre-fix used NX so the row "stuck" to its first value forever
+    // (within the 30d±jitter TTL). After a high-event re-air was
+    // ALLOWED at 19h post-floor, the Redis row still pointed to T0 —
+    // so the next re-air at 20h read lastDeliveredAt=T0 and saw "20h
+    // beyond 18h floor → allow", instead of "1h since last delivery
+    // → suppress". Production shadow telemetry diverged from U6
+    // replay (which correctly updates synthetic state on allow), and
+    // Sprint 2 enforce-mode would have inherited the divergence as
+    // under-suppression of high-rate clusters.
+    //
+    // Refresh semantics: every successful send overwrites the row
+    // with the new {sentAt, sourceCount, severity}. The same-tick
+    // double-write idempotency that NX provided was a non-concern
+    // (the second write has the same value structurally), so SET is
+    // strictly correct + simpler. The TTL is re-applied on each
+    // write (per-key jitter recomputed) so a cluster that re-airs
+    // every few days never permanently expires.
+    result = await pipeline([['SET', key, value, 'EX', String(ttl)]]);
   } catch (err) {
     // defaultRedisPipeline catches its own throws and returns null. If
     // a custom-injected pipeline DOES throw (test mock, future helper),
@@ -208,12 +227,15 @@ export async function writeDeliveredEntry(args) {
   if (cell && typeof cell === 'object' && 'error' in cell) {
     return { written: 0, conflicts: 0, errors: 1, key };
   }
-  // Upstash pipeline cells: { result: 'OK' } on new write, { result: null }
-  // when NX prevented overwrite. Anything else is an upstream surprise —
+  // Upstash pipeline cells: { result: 'OK' } on every successful SET
+  // (whether new or overwrite). Anything else is an upstream surprise —
   // count as error so the cron does not silently mark the story stamped.
+  // The `conflicts` counter is preserved at 0 in the return shape for
+  // back-compat with the U4 aggregator and existing call sites; under
+  // SET semantics it can never increment (every successful write IS a
+  // write, never an idempotent no-op).
   const cellResult = cell?.result;
   if (cellResult === 'OK') return { written: 1, conflicts: 0, errors: 0, key };
-  if (cellResult === null) return { written: 0, conflicts: 1, errors: 0, key };
   return { written: 0, conflicts: 0, errors: 1, key };
 }
 

@@ -1274,6 +1274,66 @@ describe('Sprint 1 U7 production-gap source-text guard — formatter call site',
     );
   });
 
+  // Codex PR #3617 round-4 P2 — compose-miss fallback must run U4/U5.
+  it('cooldownIterableStories unifies brief-success + compose-miss for U4/U5 coverage', async () => {
+    const path = fileURLToPath(new URL('../scripts/seed-digest-notifications.mjs', import.meta.url));
+    const src = await readFile(path, 'utf8');
+
+    // The unified iterable is constructed from briefEnvelopeStories OR
+    // a normalized projection of raw `stories`. Pre-fix the U5/U4 loops
+    // gated on `briefEnvelopeStories.length > 0`, so compose-miss
+    // delivered cards without seeding cooldown rows or shadow decisions.
+    assert.match(
+      src,
+      /const\s+cooldownIterableStories\s*=/,
+      'cron must declare cooldownIterableStories — the unified U4/U5 iterable across both branches',
+    );
+
+    // Both U5 and U4 loops must iterate cooldownIterableStories, NOT
+    // briefEnvelopeStories. Pre-fix used briefEnvelopeStories which
+    // skipped the entire compose-miss path. Capture every
+    // `for (const briefStory of <name>)` and assert all instances
+    // iterate cooldownIterableStories — there should be exactly 2
+    // (U5 cooldown loop + U4 writer loop) but the contract is "NEVER
+    // iterate the brief-only briefEnvelopeStories".
+    const briefStoryLoops = [...src.matchAll(/for\s*\(\s*const\s+briefStory\s+of\s+(\w+)\s*\)/g)];
+    assert.ok(briefStoryLoops.length >= 2, `expected ≥2 briefStory loops (U5 + U4); found ${briefStoryLoops.length}`);
+    for (const m of briefStoryLoops) {
+      assert.equal(
+        m[1],
+        'cooldownIterableStories',
+        `every briefStory loop must iterate cooldownIterableStories (compose-miss coverage); got "${m[1]}"`,
+      );
+    }
+    // The U5 mode-gate must also use cooldownIterableStories for the
+    // length check (NOT briefEnvelopeStories).
+    assert.match(
+      src,
+      /cooldownConfig\.mode\s*===\s*'shadow'[\s\S]{0,800}?cooldownIterableStories\.length\s*>\s*0/,
+      'U5 mode-gate must check cooldownIterableStories.length, not briefEnvelopeStories',
+    );
+  });
+
+  // Codex PR #3617 round-4 P1 — writer uses SET not SET NX.
+  it('U4 writer issues SET (NOT SET NX) so cooldown reads see refreshed lastDeliveredAt', async () => {
+    const writerPath = fileURLToPath(new URL('../scripts/lib/digest-delivered-log.mjs', import.meta.url));
+    const src = await readFile(writerPath, 'utf8');
+
+    // Look for the pipeline command construction. Must have SET ... EX
+    // (no NX between them). A regex hit on `'NX'` as a literal
+    // command argument is the bug signature; we forbid it.
+    assert.doesNotMatch(
+      src,
+      /pipeline\s*\(\s*\[\s*\[\s*'SET'[\s\S]{0,200}?,\s*'NX'/,
+      'writer must NOT use SET NX — that locks the row to its first value forever and breaks refresh-on-allow',
+    );
+    assert.match(
+      src,
+      /pipeline\s*\(\s*\[\s*\[\s*'SET'/,
+      'writer must use SET pipeline command',
+    );
+  });
+
   // Codex PR #3617 P1 — real source count regression guard.
   it('U4 writer + U5 evaluator both consume sourceCountByClusterId (not BriefStory.source 0/1 collapse)', async () => {
     const path = fileURLToPath(new URL('../scripts/seed-digest-notifications.mjs', import.meta.url));

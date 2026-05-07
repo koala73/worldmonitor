@@ -194,7 +194,9 @@ describe('writeDeliveredEntry — happy path', () => {
       'SET',
       'digest:sent:v1:user_abc:email:full:en:high:cluster-1',
       JSON.stringify({ sentAt: 1_700_000_000_000, sourceCount: 4, severity: 'high' }),
-      'NX',
+      // Codex PR #3617 round-4 P1 — SET (overwrite) semantics, NOT
+      // SET NX. Every successful send refreshes the row so subsequent
+      // cooldown reads see the most recent delivery.
       'EX',
       String(2_592_000 + Math.floor(0.5 * 259_200)),
     ]]);
@@ -226,27 +228,18 @@ describe('writeDeliveredEntry — happy path', () => {
   });
 });
 
-// ── writeDeliveredEntry — idempotency / conflict ───────────────────────────────
+// ── writeDeliveredEntry — refresh semantics (Codex PR #3617 round-4 P1) ────────
 
-describe('writeDeliveredEntry — idempotency via SET NX EX', () => {
-  it('second write of same key → { written: 0, conflicts: 1, errors: 0 } (NX rejected)', async () => {
-    const pipeline = mockPipeline({ responses: [{ result: null }] });
-    const result = await writeDeliveredEntry({
-      userId: 'u', channel: 'email', ruleId: 'r', clusterId: 'c',
-      sentAt: 1, sourceCount: 1, severity: 'high',
-      deps: { redisPipeline: pipeline.impl },
-    });
-    assert.deepEqual(result, {
-      written: 0,
-      conflicts: 1,
-      errors: 0,
-      key: 'digest:sent:v1:u:email:r:c',
-    });
-  });
+describe('writeDeliveredEntry — refresh-on-write semantics (post-Codex round-4 P1)', () => {
+  // Pre-fix used SET NX so the row stuck to its first value forever.
+  // After a high-event re-air was ALLOWED at 19h, the Redis row still
+  // pointed to T0 — so the next re-air at 20h saw "20h beyond 18h
+  // floor → allow" instead of "1h since last delivery → suppress".
+  // Post-fix: every successful send overwrites the row.
 
-  it('back-to-back writes: first OK then NX-collide → counters land at written=1, conflicts=1', async () => {
-    let call = 0;
-    const impl = async () => (call++ === 0 ? [{ result: 'OK' }] : [{ result: null }]);
+  it('back-to-back writes both succeed → counters land at written=2, conflicts=0', async () => {
+    // Both writes return OK under SET semantics (overwrite is fine).
+    const impl = async () => [{ result: 'OK' }];
     const r1 = await writeDeliveredEntry({
       userId: 'u', channel: 'email', ruleId: 'r', clusterId: 'c',
       sentAt: 1, sourceCount: 1, severity: 'high',
@@ -258,7 +251,49 @@ describe('writeDeliveredEntry — idempotency via SET NX EX', () => {
       deps: { redisPipeline: impl },
     });
     const agg = aggregateResults([r1, r2]);
-    assert.deepEqual(agg, { written: 1, conflicts: 1, errors: 0 });
+    // Post-fix: both writes succeed, conflicts always 0 under SET.
+    assert.deepEqual(agg, { written: 2, conflicts: 0, errors: 0 });
+  });
+
+  it('writer issues SET (NOT SET NX) — NX would lock the row to first value forever', async () => {
+    const pipeline = mockPipeline();
+    await writeDeliveredEntry({
+      userId: 'u', channel: 'email', ruleId: 'r', clusterId: 'c',
+      sentAt: 1, sourceCount: 1, severity: 'high',
+      deps: { redisPipeline: pipeline.impl, randomFn: () => 0 },
+    });
+    const cmd = pipeline.calls[0][0];
+    // Verify the literal command shape — must NOT include 'NX'.
+    assert.equal(cmd[0], 'SET');
+    assert.equal(cmd[3], 'EX', `expected SET ... EX (not SET ... NX). Got: ${JSON.stringify(cmd)}`);
+    assert.notEqual(cmd[3], 'NX', 'NX would lock the row; refresh requires plain SET');
+  });
+
+  it('refreshing the row updates {sentAt, sourceCount, severity} on each write', async () => {
+    // Two writes for the same key with different values. Pre-fix the
+    // second write was a no-op (NX). Post-fix the second value is what
+    // a downstream cooldown read would see.
+    const pipeline = mockPipeline();
+    await writeDeliveredEntry({
+      userId: 'u', channel: 'email', ruleId: 'r', clusterId: 'c',
+      sentAt: 1_700_000_000_000, sourceCount: 3, severity: 'high',
+      deps: { redisPipeline: pipeline.impl },
+    });
+    await writeDeliveredEntry({
+      userId: 'u', channel: 'email', ruleId: 'r', clusterId: 'c',
+      sentAt: 1_700_000_069_000, // 19h later
+      sourceCount: 8, // +5 sources evolution
+      severity: 'critical',
+      deps: { redisPipeline: pipeline.impl },
+    });
+    // Both writes were issued (refresh, not skip).
+    assert.equal(pipeline.calls.length, 2);
+    // Second write carries the updated value — this is what makes the
+    // subsequent cooldown read see lastDeliveredAt = 1700000069000.
+    const secondValue = JSON.parse(pipeline.calls[1][0][2]);
+    assert.equal(secondValue.sentAt, 1_700_000_069_000);
+    assert.equal(secondValue.sourceCount, 8);
+    assert.equal(secondValue.severity, 'critical');
   });
 });
 
