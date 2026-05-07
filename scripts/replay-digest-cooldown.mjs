@@ -192,9 +192,41 @@ export function aggregateReplayDecisions(records, options = {}) {
     );
   }
 
+  // Codex PR #3617 round-3 P1 — collapse multi-record-per-tick to ONE
+  // observation per (ruleId, repHash, tsMs). The replay-log writer
+  // emits one record per INPUT story (rep + each non-rep cluster
+  // member), so a 2-story cluster in one tick yields 2 records at the
+  // same tsMs. Pre-fix the timeline aggregator treated each record as
+  // a separate occurrence — the second record (same tsMs) read the
+  // first as `lastDeliveredAt` and produced a false "0-hour repeat"
+  // suppression. Result: every multi-member cluster doubled its
+  // suppression count in the report.
+  //
+  // Collapse: keep one record per (ruleId, repHash, tsMs). Prefer the
+  // rep record (isRep=true) so the headline/sourceUrl come from the
+  // canonical rep's view of the cluster. Falls back to the first-seen
+  // record when no rep is present (e.g. v1 records without isRep).
+  /** @type {Map<string, ReplayRecord>} */
+  const collapsed = new Map();
+  for (const record of sorted) {
+    const clusterId = clusterIdFromRecord(record);
+    if (!clusterId) continue;
+    const tickKey = `${record.ruleId}::${clusterId}::${record.tsMs}`;
+    const existing = collapsed.get(tickKey);
+    if (!existing) {
+      collapsed.set(tickKey, record);
+      continue;
+    }
+    // Replace if the new record is the rep and the existing isn't
+    // (the rep carries the canonical headline + sourceUrl + sources).
+    if (record?.isRep === true && existing?.isRep !== true) {
+      collapsed.set(tickKey, record);
+    }
+  }
+
   /** @type {Map<string, {records: ReplayRecord[], ruleId: string, clusterId: string}>} */
   const timelines = new Map();
-  for (const record of sorted) {
+  for (const record of collapsed.values()) {
     const clusterId = clusterIdFromRecord(record);
     if (!clusterId) continue;
     const key = `${record.ruleId}::${clusterId}`;
@@ -204,6 +236,13 @@ export function aggregateReplayDecisions(records, options = {}) {
       timelines.set(key, timeline);
     }
     timeline.records.push(record);
+  }
+  // Re-sort each timeline's records by tsMs after collapse — the
+  // collapse Map iteration order matches insertion order (which was
+  // already sorted), but defensive sort guards against future
+  // refactors that change Map iteration semantics.
+  for (const timeline of timelines.values()) {
+    timeline.records.sort((a, b) => a.tsMs - b.tsMs);
   }
 
   let allowDecisions = 0;

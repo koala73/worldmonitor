@@ -140,6 +140,16 @@ export function buildReplayRecords(stories, reps, embeddingByHash, cfg, tickCont
   // need to consult the rep, not the member).
   const repHashByStoryHash = new Map();
   const mergedHashesByRepHash = new Map();
+  // Codex PR #3617 round-3 P1 — sources live on REP objects (post
+  // pre-hydration in seed-digest-notifications), NOT on the original
+  // pre-dedup `stories` array. materializeCluster() in brief-dedup-jaccard
+  // copies the rep into a new object, so mutations to dedupedAll[i].sources
+  // never reach the input `stories[i]` references the writer iterates
+  // below. Build a sourcesByRepHash Map here so EVERY record (rep AND
+  // non-rep cluster member) gets the rep's hydrated source set —
+  // non-reps share the rep's source identity by definition (the rep
+  // is the cluster's canonical view).
+  const sourcesByRepHash = new Map();
   if (Array.isArray(reps)) {
     for (const rep of reps) {
       const hashes = Array.isArray(rep?.mergedHashes) ? rep.mergedHashes : [rep?.hash];
@@ -150,6 +160,9 @@ export function buildReplayRecords(stories, reps, embeddingByHash, cfg, tickCont
       }
       if (typeof rep?.hash === 'string' && Array.isArray(rep?.mergedHashes)) {
         mergedHashesByRepHash.set(rep.hash, rep.mergedHashes);
+      }
+      if (typeof rep?.hash === 'string' && Array.isArray(rep?.sources)) {
+        sourcesByRepHash.set(rep.hash, rep.sources);
       }
     }
   }
@@ -186,6 +199,17 @@ export function buildReplayRecords(stories, reps, embeddingByHash, cfg, tickCont
     const link = typeof story?.link === 'string' ? story.link : null;
     const sourceUrl = link;
     const isRep = repHashes.has(story?.hash);
+    // Codex PR #3617 round-3 P1 — read sources from the rep's hydrated
+    // set (sourcesByRepHash) keyed by repHash, NOT from the input
+    // story's `sources` field. The latter is empty at writeReplayLog
+    // call time because materializeCluster returned copied rep objects
+    // and pre-hydration mutates dedupedAll, not the input `stories`.
+    const repHashForStory = repHashByStoryHash.has(story?.hash)
+      ? repHashByStoryHash.get(story?.hash)
+      : null;
+    const repSources = repHashForStory && sourcesByRepHash.has(repHashForStory)
+      ? sourcesByRepHash.get(repHashForStory)
+      : null;
     records.push({
       v: 2, // Codex PR #3617 P1 — bump to v2 for repHash + headline + sourceUrl additions
       briefTickId: tickContext.briefTickId,
@@ -200,9 +224,7 @@ export function buildReplayRecords(stories, reps, embeddingByHash, cfg, tickCont
       // Codex PR #3617 P1 — stable cluster identity (rep's own hash)
       // for every record, including non-rep cluster members. U6
       // collapses timelines by this field.
-      repHash: repHashByStoryHash.has(story?.hash)
-        ? repHashByStoryHash.get(story?.hash)
-        : null,
+      repHash: repHashForStory,
       // Only reps carry the full mergedHashes set. Non-reps get null
       // (their cluster membership is preserved via repHash). The set
       // lives on the rep object (looked up via mergedHashesByRepHash);
@@ -219,7 +241,16 @@ export function buildReplayRecords(stories, reps, embeddingByHash, cfg, tickCont
       currentScore: Number(story?.currentScore ?? 0),
       mentionCount: Number(story?.mentionCount ?? 1),
       phase: story?.phase ?? null,
-      sources: Array.isArray(story?.sources) ? story.sources : [],
+      // Codex PR #3617 round-3 P1 — sources from the rep's hydrated
+      // set, not the input story's (empty by construction at this point).
+      // Non-rep records inherit the rep's set so cluster source-count
+      // identity is uniform across all member records. Falls back to
+      // the input story's sources when the rep map has no entry (e.g.
+      // a synthetic test fixture passing pre-hydrated input stories
+      // and bypass-rep-build paths) so existing tests don't break.
+      sources: Array.isArray(repSources)
+        ? repSources
+        : (Array.isArray(story?.sources) ? story.sources : []),
       embeddingCacheKey: cacheKey,
       hasEmbedding,
       // Per-record shallow copy so an in-memory consumer (future

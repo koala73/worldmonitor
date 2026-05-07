@@ -244,6 +244,91 @@ describe('aggregateReplayDecisions — coverage report shape', () => {
   });
 });
 
+describe('aggregateReplayDecisions — Codex PR #3617 round-3 P1 collapse', () => {
+  // The replay-log writer emits ONE record per input story (rep + each
+  // non-rep member), so a 2-story cluster in one tick yields 2 records
+  // at the same tsMs. Pre-fix the harness treated each as a separate
+  // occurrence — the second record (same tsMs) saw the first as
+  // `lastDeliveredAt` and produced a false 0-hour repeat suppression.
+  // Post-fix the harness collapses to one observation per
+  // (ruleId, repHash, tsMs).
+  it('multi-member cluster in one tick → ONE observation, NOT a 0-hour repeat (suppress)', () => {
+    const records = [
+      // Tick 1 — cluster {h-rep, h-mem1, h-mem2}, all at the same tsMs.
+      { storyHash: 'h-rep', repHash: 'h-rep', mergedHashes: ['h-rep', 'h-mem1', 'h-mem2'], isRep: true,
+        severity: 'high', sources: ['A','B','C'], ruleId: 'full:en:high', tsMs: T0 },
+      { storyHash: 'h-mem1', repHash: 'h-rep', isRep: false,
+        severity: 'high', sources: ['A','B','C'], ruleId: 'full:en:high', tsMs: T0 },
+      { storyHash: 'h-mem2', repHash: 'h-rep', isRep: false,
+        severity: 'high', sources: ['A','B','C'], ruleId: 'full:en:high', tsMs: T0 },
+      // Padding for coverage gate.
+      { storyHash: 'h-pad', repHash: 'h-pad', isRep: true, severity: 'high',
+        sources: [], ruleId: 'full:en:high', tsMs: T0 + 14 * DAY_MS },
+    ];
+    const agg = aggregateReplayDecisions(records, { minDaysCovered: 14 });
+    // Pre-fix: 3 records at T0 → 1 timeline with 3 records → 2
+    // synthetic suppress decisions (cooldown_floor at 0h elapsed).
+    // Post-fix: collapses to 1 record at T0 → 1 timeline with 1 record
+    // → no decision (single-occurrence timelines are skipped).
+    assert.equal(agg.totalDecisions, 0, 'multi-member in one tick must not produce false repeat decisions');
+    assert.equal(agg.suppressDecisions, 0);
+    assert.equal(agg.dropRatePct, 0);
+  });
+
+  it('genuine multi-tick cluster timeline still simulates correctly after collapse', () => {
+    const records = [
+      // Tick 1: 2-member cluster.
+      { storyHash: 'h-rep', repHash: 'h-rep', mergedHashes: ['h-rep', 'h-mem'], isRep: true,
+        severity: 'high', sources: ['A','B'], ruleId: 'full:en:high', tsMs: T0 },
+      { storyHash: 'h-mem', repHash: 'h-rep', isRep: false,
+        severity: 'high', sources: ['A','B'], ruleId: 'full:en:high', tsMs: T0 },
+      // Tick 2: same cluster re-airs 6h later (within 18h floor, no evolution).
+      { storyHash: 'h-rep', repHash: 'h-rep', mergedHashes: ['h-rep', 'h-mem'], isRep: true,
+        severity: 'high', sources: ['A','B'], ruleId: 'full:en:high', tsMs: T0 + 6 * HOUR_MS },
+      { storyHash: 'h-mem', repHash: 'h-rep', isRep: false,
+        severity: 'high', sources: ['A','B'], ruleId: 'full:en:high', tsMs: T0 + 6 * HOUR_MS },
+      // Padding.
+      { storyHash: 'h-pad', repHash: 'h-pad', isRep: true, severity: 'high',
+        sources: [], ruleId: 'full:en:high', tsMs: T0 + 14 * DAY_MS },
+    ];
+    const agg = aggregateReplayDecisions(records, { minDaysCovered: 14 });
+    // After collapse: tick-1 (1 record) + tick-2 (1 record) = 1
+    // legitimate within-floor re-air = 1 suppress decision (high-event
+    // 18h floor).
+    assert.equal(agg.totalDecisions, 1);
+    assert.equal(agg.suppressDecisions, 1);
+    assert.equal(agg.allowDecisions, 0);
+  });
+
+  it('rep record wins over non-rep when collapsing — uses canonical headline/sourceUrl', () => {
+    // Two records at the same (ruleId, repHash, tsMs). Verify the rep
+    // is the one preserved (it carries the canonical view; non-reps
+    // may have nulled-out fields).
+    const records = [
+      { storyHash: 'h-mem', repHash: 'h-rep', isRep: false, sourceUrl: 'https://reuters.com/x',
+        severity: 'high', sources: ['A','B'], ruleId: 'full:en:high', tsMs: T0 },
+      { storyHash: 'h-rep', repHash: 'h-rep', mergedHashes: ['h-rep', 'h-mem'], isRep: true,
+        sourceUrl: 'https://www.usni.org/article', // analysis domain
+        severity: 'high', sources: ['A','B'], ruleId: 'full:en:high', tsMs: T0 },
+      // Re-air 6 days later (within 7d analysis hard floor).
+      { storyHash: 'h-rep', repHash: 'h-rep', mergedHashes: ['h-rep'], isRep: true,
+        sourceUrl: 'https://www.usni.org/article',
+        severity: 'high', sources: ['A','B'], ruleId: 'full:en:high', tsMs: T0 + 6 * DAY_MS },
+      { storyHash: 'h-pad', repHash: 'h-pad', isRep: true, severity: 'high',
+        sources: [], ruleId: 'full:en:high', tsMs: T0 + 14 * DAY_MS },
+    ];
+    const agg = aggregateReplayDecisions(records, { minDaysCovered: 14 });
+    // The collapsed first-tick record must carry the rep's USNI URL
+    // (analysis domain) so the classifier routes correctly to the 7d
+    // hard floor. If the non-rep record won the collapse, the
+    // sourceUrl would be reuters.com and the classifier would route to
+    // high-event (18h soft floor) — the 6d re-air would then be allow
+    // (beyond floor) instead of suppress (within hard floor).
+    assert.equal(agg.suppressDecisions, 1);
+    assert.equal(agg.reasonHistogram['analysis_7d_hard'], 1);
+  });
+});
+
 describe('aggregateReplayDecisions — top-suppressed timelines', () => {
   it('reports top-10 timelines sorted by suppress count', () => {
     // Build 3 timelines with different suppress counts (3, 2, 1).

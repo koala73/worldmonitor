@@ -204,6 +204,44 @@ describe('buildReplayRecords — record shape', () => {
     for (const r of records) assert.equal(r.v, 2, `record v should be 2; got ${r.v}`);
   });
 
+  // Codex PR #3617 round-3 P1 — sources come from the REP's hydrated
+  // set, not from individual input stories. Pre-fix mutating
+  // dedupedAll[i].sources didn't reach the writer because it iterated
+  // input `stories` (which materializeCluster() never wrote back to).
+  it('sources are sourced from the rep object (not input story.sources)', () => {
+    // Rep with hydrated sources, input story with EMPTY sources.
+    // Pre-fix the writer would have emitted sources: [] (reading from
+    // the input story). Post-fix it reads from the rep.
+    const repWithSources = rep('h1', ['h1', 'h2'], { currentScore: 10, sources: ['Reuters', 'AP', 'BBC'] });
+    const recs = buildReplayRecords(
+      [story('a', { hash: 'h1', sources: [] }), story('b', { hash: 'h2', sources: [] })],
+      [repWithSources],
+      new Map(),
+      cfg,
+      tickContext,
+    );
+    const byHash = new Map(recs.map((r) => [r.storyHash, r]));
+    assert.deepEqual(byHash.get('h1').sources, ['Reuters', 'AP', 'BBC']);
+    // Non-rep gets the SAME hydrated sources (cluster source-count
+    // identity is uniform across members — the rep is the canonical view).
+    assert.deepEqual(byHash.get('h2').sources, ['Reuters', 'AP', 'BBC']);
+  });
+
+  it('falls back to story.sources when rep has none (defensive — fixture compatibility)', () => {
+    // Some test fixtures pass pre-populated input story.sources and
+    // omit them on the rep. The writer should still emit those rather
+    // than dropping them silently.
+    const repNoSources = { hash: 'h1', mergedHashes: ['h1'], currentScore: 5, mentionCount: 1 };
+    const recs = buildReplayRecords(
+      [story('a', { hash: 'h1', sources: ['fixture-source'] })],
+      [repNoSources],
+      new Map(),
+      cfg,
+      tickContext,
+    );
+    assert.deepEqual(recs[0].sources, ['fixture-source']);
+  });
+
   it('clusterId derives from rep.mergedHashes (s1+s2 → 0, s3 → 1)', () => {
     const records = buildReplayRecords(stories, reps, new Map(), cfg, tickContext);
     const byHash = new Map(records.map((r) => [r.storyHash, r]));
