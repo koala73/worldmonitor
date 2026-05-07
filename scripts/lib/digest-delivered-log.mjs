@@ -154,6 +154,14 @@ export async function writeDeliveredEntry(args) {
     sentAt,
     sourceCount,
     severity,
+    // Greptile PR #3617 P2 — `headline` (optional) lets U5's cooldown
+    // evaluator drive the EVOLUTION_NEW_FACT bypass via simple string
+    // comparison against the prior delivery. Sprint 1 ships this as
+    // a stub (string-equality on the canonical headline); Sprint 3's
+    // full classifier replaces with an LLM-driven fact-diff. Storing
+    // headline here is forward-compatible — older readers ignore the
+    // field; the contract surface is the JSON shape, not the schema.
+    headline,
     deps = {},
   } = args ?? {};
 
@@ -179,12 +187,23 @@ export async function writeDeliveredEntry(args) {
   const safeSeverity = typeof severity === 'string' && severity.length > 0
     ? severity
     : 'unknown';
+  // Headline is optional — only set when caller provides a non-empty
+  // string. Allows existing call sites without a headline arg to keep
+  // working (their stored row simply omits the field, and the U5
+  // evaluator treats `lastDeliveredHeadline = null` as "can't compare,
+  // skip the new-fact bypass").
+  const safeHeadline = typeof headline === 'string' && headline.length > 0
+    ? headline
+    : null;
 
-  const value = JSON.stringify({
+  /** @type {Record<string, unknown>} */
+  const valueShape = {
     sentAt,
     sourceCount: safeSourceCount,
     severity: safeSeverity,
-  });
+  };
+  if (safeHeadline !== null) valueShape.headline = safeHeadline;
+  const value = JSON.stringify(valueShape);
   const ttl = computeTtlSecondsWithJitter(deps.randomFn);
   const pipeline = deps.redisPipeline ?? defaultRedisPipeline;
 

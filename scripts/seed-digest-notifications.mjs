@@ -2147,6 +2147,11 @@ async function main() {
           let lastDeliveredAt = null;
           let lastDeliveredSourceCount = null;
           let lastDeliveredTier = null;
+          // Greptile PR #3617 P2 — read prior headline for the
+          // EVOLUTION_NEW_FACT bypass. Older v4 rows written before
+          // this fix won't carry the field; null is the safe default
+          // (the evaluator skips the bypass when either side is null).
+          let lastDeliveredHeadline = null;
           try {
             const raw = await upstashRest('GET', key);
             if (typeof raw === 'string' && raw.length > 0) {
@@ -2155,6 +2160,9 @@ async function main() {
                 if (Number.isFinite(parsed.sentAt)) lastDeliveredAt = parsed.sentAt;
                 if (Number.isFinite(parsed.sourceCount)) lastDeliveredSourceCount = parsed.sourceCount;
                 if (typeof parsed.severity === 'string') lastDeliveredTier = parsed.severity;
+                if (typeof parsed.headline === 'string' && parsed.headline.length > 0) {
+                  lastDeliveredHeadline = parsed.headline;
+                }
               }
             }
           } catch (err) {
@@ -2197,6 +2205,8 @@ async function main() {
             lastDeliveredAt,
             lastDeliveredSourceCount,
             lastDeliveredTier,
+            // Greptile PR #3617 P2 — drives EVOLUTION_NEW_FACT bypass.
+            lastDeliveredHeadline,
             classifierInputs: {
               sourceDomain,
               headline: typeof briefStory?.headline === 'string' ? briefStory.headline : '',
@@ -2320,6 +2330,14 @@ async function main() {
                 // U5 cooldown loop for the full rationale.
                 sourceCount: sourceCountByClusterId.get(clusterId) ?? 0,
                 severity: typeof briefStory?.threatLevel === 'string' ? briefStory.threatLevel : 'unknown',
+                // Greptile PR #3617 P2 — persist headline so the next
+                // tick's cooldown evaluator can drive the
+                // EVOLUTION_NEW_FACT bypass via string-equality
+                // compare. cooldownIterableStories carries the
+                // canonical headline in both branches (BriefStory
+                // shape under brief-success; synthesized from raw
+                // story.title under compose-miss).
+                headline: typeof briefStory?.headline === 'string' ? briefStory.headline : '',
               });
               deliveredLogResults.push(writeResult);
             } catch (err) {

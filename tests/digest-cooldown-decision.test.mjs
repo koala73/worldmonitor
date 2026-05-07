@@ -21,6 +21,7 @@ import {
 } from '../scripts/lib/digest-cooldown-decision.mjs';
 
 const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
 const NOW = 1_777_000_000_000; // 2026-04-23-ish, deterministic
 
 describe('classifyStub — Rule 1: Analysis domains', () => {
@@ -467,6 +468,118 @@ describe('evaluateCooldown — hard floors (no evolution bypass)', () => {
       type: 'high-single-corporate', severity: 'critical', currentSourceCount: 4, currentTier: 'critical',
       lastDeliveredAt: NOW - 47 * HOUR_MS,
       lastDeliveredSourceCount: 2, lastDeliveredTier: 'high',
+      options: { mode: 'shadow', nowMs: NOW },
+    });
+    assert.equal(r.decision, 'allow');
+    assert.equal(r.reason, REASON.SEVERITY_TIER_CHANGE);
+  });
+});
+
+// Greptile PR #3617 P2 — EVOLUTION_NEW_FACT bypass.
+//
+// Pre-fix: REASON.EVOLUTION_NEW_FACT was exported and allowNewFact
+// flags were set on COOLDOWN_TABLE cells, but no code path returned
+// the reason. Wire contract surface that nothing produced.
+//
+// Post-fix: when allowNewFact is true AND lastDeliveredHeadline is
+// present AND the current headline differs (case-insensitive,
+// whitespace-trimmed equality), the bypass fires.
+describe('evaluateCooldown — EVOLUTION_NEW_FACT bypass (Greptile PR #3617 P2)', () => {
+  it('high-event re-air at 6h (within 18h floor) WITH new headline → allow / evolution_new_fact', () => {
+    const r = evaluateCooldown({
+      userId: 'u', slot: 's', clusterId: 'c', channel: 'email', ruleId: 'r',
+      type: 'high-event', severity: 'high', currentSourceCount: 3, currentTier: 'high',
+      lastDeliveredAt: NOW - 6 * HOUR_MS,
+      lastDeliveredSourceCount: 3, lastDeliveredTier: 'high',
+      lastDeliveredHeadline: 'Iran threatens to close Strait of Hormuz',
+      classifierInputs: {
+        sourceDomain: 'reuters.com',
+        headline: 'Iran fires missiles into Strait of Hormuz', // genuinely different fact
+      },
+      options: { mode: 'shadow', nowMs: NOW },
+    });
+    assert.equal(r.decision, 'allow');
+    assert.equal(r.reason, REASON.EVOLUTION_NEW_FACT);
+  });
+
+  it('same headline (case-insensitive, whitespace-trimmed) → suppress (no bypass)', () => {
+    const r = evaluateCooldown({
+      userId: 'u', slot: 's', clusterId: 'c', channel: 'email', ruleId: 'r',
+      type: 'high-event', severity: 'high', currentSourceCount: 3, currentTier: 'high',
+      lastDeliveredAt: NOW - 6 * HOUR_MS,
+      lastDeliveredSourceCount: 3, lastDeliveredTier: 'high',
+      lastDeliveredHeadline: '  Iran threatens to close Strait of Hormuz  ',
+      classifierInputs: {
+        sourceDomain: 'reuters.com',
+        headline: 'IRAN threatens to close Strait of Hormuz',
+      },
+      options: { mode: 'shadow', nowMs: NOW },
+    });
+    assert.equal(r.decision, 'suppress');
+    assert.equal(r.reason, REASON.COOLDOWN_FLOOR);
+  });
+
+  it('lastDeliveredHeadline=null (older v4 row without the field) → no bypass, suppress as cooldown_floor', () => {
+    const r = evaluateCooldown({
+      userId: 'u', slot: 's', clusterId: 'c', channel: 'email', ruleId: 'r',
+      type: 'high-event', severity: 'high', currentSourceCount: 3, currentTier: 'high',
+      lastDeliveredAt: NOW - 6 * HOUR_MS,
+      lastDeliveredSourceCount: 3, lastDeliveredTier: 'high',
+      lastDeliveredHeadline: null,
+      classifierInputs: { sourceDomain: 'reuters.com', headline: 'Some new headline' },
+      options: { mode: 'shadow', nowMs: NOW },
+    });
+    assert.equal(r.decision, 'suppress');
+    assert.equal(r.reason, REASON.COOLDOWN_FLOOR);
+  });
+
+  it('analysis (allowNewFact=false) at 6d with NEW headline → still suppress (7d hard floor wins)', () => {
+    // The hard-floor classes have allowNewFact=false. New-fact bypass
+    // must NOT fire even when headlines differ.
+    const r = evaluateCooldown({
+      userId: 'u', slot: 's', clusterId: 'c', channel: 'email', ruleId: 'r',
+      type: 'analysis', severity: 'high', currentSourceCount: 1, currentTier: 'high',
+      lastDeliveredAt: NOW - 6 * DAY_MS,
+      lastDeliveredSourceCount: 1, lastDeliveredTier: 'high',
+      lastDeliveredHeadline: 'Original doctrine essay',
+      classifierInputs: {
+        sourceDomain: 'usni.org',
+        headline: 'Completely different doctrine essay headline',
+      },
+      options: { mode: 'shadow', nowMs: NOW },
+    });
+    assert.equal(r.decision, 'suppress');
+    assert.equal(r.reason, REASON.ANALYSIS_7D_HARD);
+  });
+
+  it('high-single-corporate (allowNewFact=false) inside 48h with NEW headline → still suppress', () => {
+    const r = evaluateCooldown({
+      userId: 'u', slot: 's', clusterId: 'c', channel: 'email', ruleId: 'r',
+      type: 'high-single-corporate', severity: 'high', currentSourceCount: 4, currentTier: 'high',
+      lastDeliveredAt: NOW - 24 * HOUR_MS,
+      lastDeliveredSourceCount: 2, lastDeliveredTier: 'high',
+      lastDeliveredHeadline: 'Hugo Boss tops profit forecasts',
+      classifierInputs: {
+        sourceDomain: 'reuters.com',
+        headline: 'Hugo Boss reports record Q3 results',
+      },
+      options: { mode: 'shadow', nowMs: NOW },
+    });
+    assert.equal(r.decision, 'suppress');
+    assert.equal(r.reason, REASON.SINGLE_CORP_48H_HARD);
+  });
+
+  it('tier-change still wins precedence over new-fact bypass', () => {
+    // Order of bypass precedence: tier change → new fact → source count.
+    // A tier change AND a new headline both fire — tier change should
+    // win the reason since it's the strongest editorial signal.
+    const r = evaluateCooldown({
+      userId: 'u', slot: 's', clusterId: 'c', channel: 'email', ruleId: 'r',
+      type: 'high-event', severity: 'high', currentSourceCount: 3, currentTier: 'high',
+      lastDeliveredAt: NOW - 6 * HOUR_MS,
+      lastDeliveredSourceCount: 3, lastDeliveredTier: 'critical', // tier downgraded
+      lastDeliveredHeadline: 'Old headline',
+      classifierInputs: { sourceDomain: 'reuters.com', headline: 'New headline' },
       options: { mode: 'shadow', nowMs: NOW },
     });
     assert.equal(r.decision, 'allow');

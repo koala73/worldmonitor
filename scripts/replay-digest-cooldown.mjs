@@ -274,7 +274,7 @@ export function aggregateReplayDecisions(records, options = {}) {
 
       if (i === 0) {
         // First occurrence — seed the synthesized delivered-log row.
-        lastDelivered = { sentAt: r.tsMs, sourceCount, severity };
+        lastDelivered = { sentAt: r.tsMs, sourceCount, severity, headline: recordHeadline(r) };
         continue;
       }
 
@@ -305,6 +305,11 @@ export function aggregateReplayDecisions(records, options = {}) {
         lastDeliveredAt: lastDelivered.sentAt,
         lastDeliveredSourceCount: lastDelivered.sourceCount,
         lastDeliveredTier: lastDelivered.severity,
+        // Greptile PR #3617 P2 — drives EVOLUTION_NEW_FACT bypass.
+        // Synthetic state tracks last delivered headline alongside
+        // sentAt/sourceCount/severity so replay matches the live
+        // evaluator's behavior under the new-fact bypass path.
+        lastDeliveredHeadline: lastDelivered.headline ?? null,
         options: { mode: 'shadow', nowMs: r.tsMs },
       });
 
@@ -314,7 +319,7 @@ export function aggregateReplayDecisions(records, options = {}) {
         allowDecisions += 1;
         timelineAllow += 1;
         // Allowed → simulated U4 write updates the synthesized state.
-        lastDelivered = { sentAt: r.tsMs, sourceCount, severity };
+        lastDelivered = { sentAt: r.tsMs, sourceCount, severity, headline: recordHeadline(r) };
       } else {
         suppressDecisions += 1;
         timelineSuppress += 1;

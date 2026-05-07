@@ -213,6 +213,46 @@ describe('writeDeliveredEntry — happy path', () => {
     assert.deepEqual(JSON.parse(sentValue), { sentAt: 42, sourceCount: 7, severity: 'critical' });
   });
 
+  // Greptile PR #3617 P2 — headline persistence for EVOLUTION_NEW_FACT.
+  it('persists headline when caller provides it (drives U5 new-fact bypass next tick)', async () => {
+    const pipeline = mockPipeline();
+    await writeDeliveredEntry({
+      userId: 'u', channel: 'email', ruleId: 'r', clusterId: 'c',
+      sentAt: 42, sourceCount: 7, severity: 'critical',
+      headline: 'Iran threatens to close Strait of Hormuz',
+      deps: { redisPipeline: pipeline.impl, randomFn: () => 0 },
+    });
+    const parsed = JSON.parse(pipeline.calls[0][0][2]);
+    assert.equal(parsed.headline, 'Iran threatens to close Strait of Hormuz');
+  });
+
+  it('omits headline field when caller passes empty string (forward-compat: no field at all)', async () => {
+    // Older readers must not see an unexpected empty-string headline
+    // and trip a "headline must be non-empty" check later. Cleanest
+    // forward-compat: omit the field entirely when absent on write.
+    const pipeline = mockPipeline();
+    await writeDeliveredEntry({
+      userId: 'u', channel: 'email', ruleId: 'r', clusterId: 'c',
+      sentAt: 42, sourceCount: 7, severity: 'critical',
+      headline: '',
+      deps: { redisPipeline: pipeline.impl, randomFn: () => 0 },
+    });
+    const parsed = JSON.parse(pipeline.calls[0][0][2]);
+    assert.equal(parsed.headline, undefined, 'empty-string headline must not be persisted');
+  });
+
+  it('omits headline field when caller does not pass headline at all (call-site back-compat)', async () => {
+    const pipeline = mockPipeline();
+    await writeDeliveredEntry({
+      userId: 'u', channel: 'email', ruleId: 'r', clusterId: 'c',
+      sentAt: 42, sourceCount: 7, severity: 'critical',
+      // no `headline` arg
+      deps: { redisPipeline: pipeline.impl, randomFn: () => 0 },
+    });
+    const parsed = JSON.parse(pipeline.calls[0][0][2]);
+    assert.equal(parsed.headline, undefined);
+  });
+
   it('writes to every channel in ALLOWED_CHANNELS', async () => {
     for (const ch of ALLOWED_CHANNELS) {
       const pipeline = mockPipeline();

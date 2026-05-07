@@ -282,6 +282,12 @@ export function classifyStub(args = {}) {
  * @param {number | null | undefined} input.lastDeliveredAt — epoch ms
  * @param {number | null | undefined} input.lastDeliveredSourceCount
  * @param {string | null | undefined} input.lastDeliveredTier
+ * @param {string | null | undefined} input.lastDeliveredHeadline
+ *   Greptile PR #3617 P2 — last-delivered headline (read from the U4
+ *   row's optional `headline` field). When present, drives the
+ *   EVOLUTION_NEW_FACT bypass via string-equality compare against the
+ *   current-airing headline. Sprint 1 stub; Sprint 3's full classifier
+ *   replaces with LLM-driven fact-diff.
  * @param {{ sourceDomain?: string, headline?: string }} [input.classifierInputs]
  * @param {{ mode?: 'shadow' | 'off', nowMs?: number }} [input.options]
  * @returns {(null | {
@@ -412,6 +418,49 @@ export function evaluateCooldown(input) {
       classifiedType,
       classificationMissing,
     };
+  }
+
+  // Greptile PR #3617 P2 — EVOLUTION_NEW_FACT bypass.
+  //
+  // The reason constant + per-class allowNewFact flag have been part
+  // of the wire contract since U5 shipped, but no code path produced
+  // the reason — exporting an unused contract surface is worse than
+  // not exporting it (downstream consumers couldn't rely on the
+  // reason ever firing). Sprint 1 stub: detect via string-equality
+  // compare on the canonical headline. The U4 writer now persists
+  // `headline` alongside {sentAt, sourceCount, severity} so the
+  // evaluator can read the prior airing's headline.
+  //
+  // Why string-equality (not LLM-diff): Sprint 3's full classifier
+  // ships an LLM-driven fact-diff that replaces this. For Sprint 1
+  // string-equality is the conservative stub — it only fires the
+  // bypass when the upstream feed produced a genuinely different
+  // headline (rephrased news, not just a wire-rewording duplicate).
+  // False negatives (rewordings that should fire) keep the
+  // suppression conservative — preferable to false positives
+  // (typo-edits firing the bypass and over-shipping).
+  //
+  // Compare semantic: case-insensitive, whitespace-trimmed equality.
+  // Both sides must be non-empty for the bypass to fire — when
+  // lastDeliveredHeadline is null (older v4 row without the field, or
+  // first send) we skip cleanly, leaving the source-count bypass and
+  // the suppress branch as the only paths.
+  if (tableEntry.allowNewFact && typeof input?.lastDeliveredHeadline === 'string'
+    && input.lastDeliveredHeadline.length > 0
+    && typeof input?.classifierInputs?.headline === 'string'
+    && input.classifierInputs.headline.length > 0) {
+    const currentHeadlineNorm = input.classifierInputs.headline.trim().toLowerCase();
+    const lastHeadlineNorm = input.lastDeliveredHeadline.trim().toLowerCase();
+    if (currentHeadlineNorm !== lastHeadlineNorm) {
+      return {
+        decision: 'allow',
+        reason: REASON.EVOLUTION_NEW_FACT,
+        cooldownHours,
+        evolutionDelta,
+        classifiedType,
+        classificationMissing,
+      };
+    }
   }
 
   if (tableEntry.allowSourceCountEvolution && sourceCountDelta >= SOURCE_COUNT_EVOLUTION_DELTA) {
