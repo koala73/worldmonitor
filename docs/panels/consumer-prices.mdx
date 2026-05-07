@@ -1,0 +1,61 @@
+---
+title: "Consumer Prices"
+description: "Retail grocery / essentials price tracking at the market level — overview, category breakdown, movers, retailer spreads, and source freshness — with 7 / 30 / 90-day windows."
+---
+
+The **Consumer Prices** panel is the retail-inflation and basket-pricing surface for the dashboard. It tracks actual shelf prices at the market (country) level, broken down by category and retailer, and exposes source freshness so a reader can see when the underlying scrapes last ran.
+
+## What the panel shows
+
+Five tabs under a market + basket selector and a time-range control:
+
+| Tab | What it answers |
+|---|---|
+| **Overview** | Current basket level, period-over-period change, and a sparkline across the selected range. |
+| **Categories** | Category-level snapshot (food, beverages, household, essentials, etc.) with period deltas. |
+| **Movers** | Top risers and top fallers across the basket for the selected window — the items driving the overall change. |
+| **Spread** | Retailer-level price spread on a fixed essentials basket — which retailer is cheapest, which is most expensive, and the gap. |
+| **Health** | Data-source freshness — when each upstream scrape last completed, with a clear indicator if data is stale. |
+
+Panel-level controls:
+
+- **Market bar** — a button per supported market (default `AE`; the full list comes from `MARKETS` in `src/services/consumer-prices`). Selecting a market implicitly sets the basket to that market's `essentials-<code>` variant (or the default basket when the `all` aggregate view is active) — there is no separate basket picker.
+- **Range bar** — `7d`, `30d`, or `90d`.
+- **Category filter** — click a category row on the **Categories** tab to scope the **Movers** tab to that category. A clear-filter affordance resets it.
+
+Settings persist across sessions in `localStorage` under `wm-consumer-prices-v1`.
+
+Panel id is `consumer-prices`; canonical component is `src/components/ConsumerPricesPanel.ts`.
+
+## How you reach it
+
+- **Cmd+K**: type *prices* or *consumer*.
+- **Availability by variant**: enabled by default in the **finance** and **commodity** variants. Registered but disabled (opt-in) in the **full/geopolitical** variant. Not registered in the tech or happy variants. Source: `FINANCE_PANELS`, `COMMODITY_PANELS`, `FULL_PANELS` in `src/config/panels.ts`.
+
+## Data sources
+
+Five RPCs back the five tabs:
+
+| Tab | RPC |
+|---|---|
+| Overview | `GET /api/consumer-prices/v1/get-consumer-price-overview` |
+| Categories | `GET /api/consumer-prices/v1/list-consumer-price-categories` |
+| Movers | `GET /api/consumer-prices/v1/list-consumer-price-movers` |
+| Spread | `GET /api/consumer-prices/v1/list-retailer-price-spreads` |
+| Health | `GET /api/consumer-prices/v1/get-consumer-price-freshness` |
+
+There is also a `get-consumer-price-basket-series` RPC used internally for the sparkline data. Upstream data is scraped from retailer price feeds and aggregated per market.
+
+## Refresh cadence
+
+The underlying seeders run roughly once per day per market+basket combination. The Consumer Prices keys in `api/health.js` allow up to **25 hours** (`maxStaleMin: 1500`) before the health surface escalates a warning, which gives the seeder a 1-hour grace window on top of the daily cadence.
+
+The Health tab inside the panel shows the per-source fetched-at timestamps so you can see staleness directly rather than relying on global health flags.
+
+## Tier & gating
+
+Consumer Prices is **free**. The panel is registered without a `premium` flag in `src/config/panels.ts`, so anyone — including unauthenticated readers — can see it on variants where it is enabled.
+
+## API reference
+
+- [Consumer Prices service](/api/ConsumerPricesService.openapi.yaml) — full OpenAPI for all 5+1 RPCs.

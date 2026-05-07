@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, writeSeedMeta } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -227,9 +227,13 @@ async function fetchAll() {
 
   if (ddos && (ddos.protocol.length > 0 || ddos.vector.length > 0)) {
     await writeExtraKeyWithMeta(DDOS_KEY, ddos, DDOS_TTL, ddos.protocol.length + ddos.vector.length);
+  } else if (ddos) {
+    await writeSeedMeta(DDOS_KEY, 0);
   }
   if (anomalies && anomalies.anomalies.length > 0) {
     await writeExtraKeyWithMeta(TRAFFIC_ANOMALIES_KEY, anomalies, ANOMALIES_TTL, anomalies.totalCount);
+  } else if (anomalies) {
+    await writeSeedMeta(TRAFFIC_ANOMALIES_KEY, 0);
   }
 
   return outagesResult.value;
@@ -239,10 +243,18 @@ function validate(data) {
   return data && Array.isArray(data.outages);
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.outages) ? data.outages.length : 0;
+}
+
 runSeed('infra', 'outages', CANONICAL_KEY, fetchAll, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
   sourceVersion: 'cloudflare-radar-7d',
+
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 30,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);

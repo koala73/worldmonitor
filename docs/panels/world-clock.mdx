@@ -1,0 +1,39 @@
+---
+title: "World Clock"
+description: "Market-open-aware world clock covering the major global exchanges, with open/closed indicators and concurrent session visibility."
+---
+
+The **World Clock** panel (internal id `world-clock`) is a market-aware clock — not just a timezone grid. Each entry shows the current local time for a major financial capital, the exchange code (NYSE, LSE, XETRA, HKEX, SGX, Tadawul, etc.), and whether that exchange is currently open based on its trading hours.
+
+## What the panel shows
+
+Rows for the 30 global market centres in `WORLD_CITIES` (`src/components/WorldClockPanel.ts:14-43`). Each row includes:
+
+- **City + exchange label** — e.g. New York / NYSE, London / LSE, Tokyo / TSE, Riyadh / Tadawul.
+- **Local time** — continuously updated.
+- **Market open / closed indicator** — derived from each city's `marketOpen` / `marketClose` hours in the entry config.
+
+The default coverage spans the Americas (New York, Chicago, São Paulo, Toronto, Mexico City), EMEA (London, Paris, Frankfurt, Zurich, Moscow, Istanbul), Middle East (Riyadh, Dubai), Asia-Pacific (Mumbai, Bangkok, Singapore, Hong Kong, Shanghai, Seoul, Tokyo), and Oceania (Sydney, Auckland).
+
+Panel id is `world-clock`; canonical component is `src/components/WorldClockPanel.ts`. Title from i18n (config name: "World Clock").
+
+## How you reach it
+
+- **Cmd+K**: type *clock*, *time*, or an exchange code.
+- **Availability by variant**: registered and enabled by default in the **full/geopolitical**, **tech**, **finance**, and **commodity** variants (all `priority: 2`). Not present in the happy variant. Source: `world-clock` entries in `FULL_PANELS`, `TECH_PANELS`, `FINANCE_PANELS`, `COMMODITY_PANELS` of `src/config/panels.ts`.
+
+## Data sources
+
+No external data — the panel runs locally. Time is computed from the browser clock using each city's IANA timezone (e.g. `America/New_York`, `Asia/Hong_Kong`). Exchange-open state is derived from the panel's built-in `marketOpen` / `marketClose` hours per city.
+
+## Refresh cadence
+
+Client-side tick; no network fetches.
+
+## Tier & gating
+
+**Free.** No `premium` flag in any variant registration.
+
+## API reference
+
+None — this panel is fully client-side.

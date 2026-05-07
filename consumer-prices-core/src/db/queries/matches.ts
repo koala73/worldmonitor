@@ -5,24 +5,50 @@ export async function upsertProductMatch(input: {
   canonicalProductId: string;
   basketItemId: string;
   matchScore: number;
-  matchStatus: 'auto' | 'approved';
+  matchStatus: 'auto' | 'approved' | 'candidate';
+  evidence?: Record<string, unknown>;
 }): Promise<void> {
   await query(
     `INSERT INTO product_matches
        (retailer_product_id, canonical_product_id, basket_item_id, match_score, match_status, evidence_json)
-     VALUES ($1,$2,$3,$4,$5,'{}')
+     VALUES ($1,$2,$3,$4,$5,$6)
      ON CONFLICT (retailer_product_id, canonical_product_id)
      DO UPDATE SET
        basket_item_id  = EXCLUDED.basket_item_id,
        match_score     = EXCLUDED.match_score,
-       match_status    = EXCLUDED.match_status,
-       pin_disabled_at = NULL`,
+       -- Curated states are immutable via the scrape upsert:
+       --   'approved' — human accepted the match
+       --   'review'   — validate-job quarantined on price outlier, or
+       --                human sent it back for review (see jobs/validate.ts)
+       --   'rejected' — human explicitly blocked this URL
+       -- Conflict key is (retailer_product_id, canonical_product_id), so
+       -- rediscovery is the normal path for these rows. Without this
+       -- guard a re-scrape writes 'auto' or 'candidate' and silently
+       -- re-enables a previously quarantined URL in aggregate queries
+       -- (aggregate.ts / snapshots filter on ('auto','approved')).
+       -- Only machine-written states ('auto', 'candidate') are allowed
+       -- to move to the fresh validator verdict.
+       match_status    = CASE
+         WHEN product_matches.match_status IN ('approved', 'review', 'rejected')
+           THEN product_matches.match_status
+         ELSE EXCLUDED.match_status
+       END,
+       evidence_json   = EXCLUDED.evidence_json,
+       -- Only clear pin_disabled_at when the row is actually moving back
+       -- to a machine-writable state. A 'review'/'rejected' row keeps
+       -- its disabled flag until the review workflow resolves it.
+       pin_disabled_at = CASE
+         WHEN product_matches.match_status IN ('review', 'rejected')
+           THEN product_matches.pin_disabled_at
+         ELSE NULL
+       END`,
     [
       input.retailerProductId,
       input.canonicalProductId,
       input.basketItemId,
       input.matchScore,
       input.matchStatus,
+      JSON.stringify(input.evidence ?? {}),
     ],
   );
   // Reset stale counters when Exa re-discovers a product — fresh match means the URL works.

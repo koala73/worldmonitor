@@ -13,6 +13,8 @@ export const config = { runtime: 'edge' };
 
 // @ts-expect-error — JS module, no declaration file
 import { getCorsHeaders } from './_cors.js';
+// @ts-expect-error — JS module, no declaration file
+import { captureSilentError } from './_sentry-edge.js';
 import { validateBearerToken } from '../server/auth-session';
 
 const CONVEX_SITE_URL =
@@ -31,7 +33,10 @@ function json(body: unknown, status: number, cors: Record<string, string>): Resp
   });
 }
 
-export default async function handler(req: Request): Promise<Response> {
+export default async function handler(
+  req: Request,
+  ctx?: { waitUntil: (p: Promise<unknown>) => void },
+): Promise<Response> {
   const cors = getCorsHeaders(req) as Record<string, string>;
 
   if (req.method === 'OPTIONS') {
@@ -103,12 +108,20 @@ export default async function handler(req: Request): Promise<Response> {
     const data = await resp.json();
     if (!resp.ok) {
       console.error('[create-checkout] Relay error:', resp.status, data);
+      if (resp.status === 409) {
+        return json({
+          error: data?.error || 'ACTIVE_SUBSCRIPTION_EXISTS',
+          message: data?.message || 'An active subscription already exists for this account.',
+          subscription: data?.subscription,
+        }, 409, cors);
+      }
       return json({ error: data?.error || 'Checkout creation failed' }, 502, cors);
     }
 
     return json(data, 200, cors);
   } catch (err) {
     console.error('[create-checkout] Relay failed:', (err as Error).message);
+    captureSilentError(err, { tags: { route: 'api/create-checkout', step: 'relay' }, ctx });
     return json({ error: 'Checkout service unavailable' }, 502, cors);
   }
 }

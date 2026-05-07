@@ -1,7 +1,7 @@
 import { getClerkToken } from '@/services/clerk';
 import { SITE_VARIANT } from '@/config/variant';
 
-export type ChannelType = 'telegram' | 'slack' | 'email' | 'discord';
+export type ChannelType = 'telegram' | 'slack' | 'email' | 'discord' | 'webhook' | 'web_push';
 export type Sensitivity = 'all' | 'high' | 'critical';
 export type QuietHoursOverride = 'critical_only' | 'silence_all' | 'batch_on_wake';
 export type DigestMode = 'realtime' | 'daily' | 'twice_daily' | 'weekly';
@@ -15,6 +15,12 @@ export interface NotificationChannel {
   slackChannelName?: string;
   slackTeamName?: string;
   slackConfigurationUrl?: string;
+  webhookLabel?: string;
+  // web_push identity fields
+  endpoint?: string;
+  p256dh?: string;
+  auth?: string;
+  userAgent?: string;
 }
 
 export interface AlertRule {
@@ -31,6 +37,7 @@ export interface AlertRule {
   digestMode?: DigestMode;
   digestHour?: number;
   digestTimezone?: string;
+  aiDigestEnabled?: boolean;
 }
 
 export interface ChannelsData {
@@ -87,6 +94,15 @@ export async function setSlackChannel(webhookEnvelope: string): Promise<void> {
     body: JSON.stringify({ action: 'set-channel', channelType: 'slack', webhookEnvelope }),
   });
   if (!res.ok) throw new Error(`set slack channel: ${res.status}`);
+}
+
+export async function setWebhookChannel(webhookUrl: string, label?: string): Promise<void> {
+  const res = await authFetch('/api/notification-channels', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'set-channel', channelType: 'webhook', webhookEnvelope: webhookUrl, webhookLabel: label }),
+  });
+  if (!res.ok) throw new Error(`set webhook channel: ${res.status}`);
 }
 
 export async function startSlackOAuth(): Promise<string> {
@@ -149,4 +165,50 @@ export async function setDigestSettings(settings: {
     body: JSON.stringify({ action: 'set-digest-settings', ...settings }),
   });
   if (!res.ok) throw new Error(`set digest settings: ${res.status}`);
+}
+
+/**
+ * Thrown when the server rejects a (digestMode, sensitivity) pair as incompatible
+ * — currently the (realtime, all) combination. UI catches this specifically to
+ * render the helper text inline rather than surfacing a generic error.
+ * See plans/forbid-realtime-all-events.md §1f.
+ */
+export class IncompatibleDeliveryError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'IncompatibleDeliveryError';
+  }
+}
+
+/**
+ * Atomic save of (digestMode, sensitivity) and any subset of the alert-rule /
+ * digest-schedule fields. Used by the settings UI's delivery-mode change flow
+ * — replaces the legacy two-call sequence (saveAlertRules + setDigestSettings)
+ * which races against the cross-field validator on `daily+all → realtime`.
+ */
+export async function setNotificationConfig(args: {
+  variant: string;
+  enabled?: boolean;
+  eventTypes?: string[];
+  sensitivity?: Sensitivity;
+  channels?: ChannelType[];
+  aiDigestEnabled?: boolean;
+  digestMode?: DigestMode;
+  digestHour?: number;
+  digestTimezone?: string;
+}): Promise<void> {
+  const res = await authFetch('/api/notification-channels', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'set-notification-config', ...args }),
+  });
+  if (res.ok) return;
+  let body: { error?: string; message?: string } = {};
+  try { body = await res.json(); } catch { /* keep default */ }
+  if (res.status === 400 && body.error === 'INCOMPATIBLE_DELIVERY') {
+    throw new IncompatibleDeliveryError(
+      body.message ?? 'Real-time delivery requires High or Critical sensitivity.',
+    );
+  }
+  throw new Error(`set notification config: ${res.status}`);
 }

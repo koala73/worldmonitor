@@ -1,0 +1,5 @@
+{
+  "name": "sub-saharan-lic",
+  "description": "Sub-Saharan low-income countries (LICs) — used in resilience cohort anti-inversion test (plan 2026-04-26-002 §U1) as the floor anchor for 'no G7 country should drop to within 10pt of the worst Sub-Saharan LIC'. Catches catastrophic recovery-domain regressions. Membership: 10 LICs picked across regions and conflict states; expand only with methodology justification.",
+  "iso2": ["TD", "CF", "NE", "ML", "BF", "SS", "GN", "SL", "BI", "MZ"]
+}

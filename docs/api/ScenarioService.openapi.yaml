@@ -1,0 +1,316 @@
+openapi: 3.1.0
+info:
+    title: ScenarioService API
+    version: 1.0.0
+paths:
+    /api/scenario/v1/run-scenario:
+        post:
+            tags:
+                - ScenarioService
+            summary: RunScenario
+            description: |-
+                RunScenario enqueues a scenario job on scenario-queue:pending. PRO-gated.
+                 The scenario-worker (scripts/scenario-worker.mjs) pulls jobs off the
+                 queue via BLMOVE and writes results under scenario-result:{job_id}.
+            operationId: RunScenario
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/RunScenarioRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/RunScenarioResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/scenario/v1/get-scenario-status:
+        get:
+            tags:
+                - ScenarioService
+            summary: GetScenarioStatus
+            description: |-
+                GetScenarioStatus polls a single job's result. PRO-gated.
+                 Returns status="pending" when no result key exists, mirroring the
+                 worker's lifecycle state once the key is written.
+            operationId: GetScenarioStatus
+            parameters:
+                - name: jobId
+                  in: query
+                  description: |-
+                    Job id of the form `scenario:{epoch_ms}:{8-char-suffix}`. Path-traversal
+                     guarded by JOB_ID_RE in the handler.
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetScenarioStatusResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/scenario/v1/list-scenario-templates:
+        get:
+            tags:
+                - ScenarioService
+            summary: ListScenarioTemplates
+            description: |-
+                ListScenarioTemplates returns the catalog of pre-defined scenarios.
+                 Not PRO-gated — used by documented public API consumers.
+            operationId: ListScenarioTemplates
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListScenarioTemplatesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+components:
+    schemas:
+        Error:
+            type: object
+            properties:
+                message:
+                    type: string
+                    description: Error message (e.g., 'user not found', 'database connection failed')
+            description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        FieldViolation:
+            type: object
+            properties:
+                field:
+                    type: string
+                    description: The field path that failed validation (e.g., 'user.email' for nested fields). For header validation, this will be the header name (e.g., 'X-API-Key')
+                description:
+                    type: string
+                    description: Human-readable description of the validation violation (e.g., 'must be a valid email address', 'required field missing')
+            required:
+                - field
+                - description
+            description: FieldViolation describes a single validation error for a specific field.
+        ValidationError:
+            type: object
+            properties:
+                violations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FieldViolation'
+                    description: List of validation violations
+            required:
+                - violations
+            description: ValidationError is returned when request validation fails. It contains a list of field violations describing what went wrong.
+        RunScenarioRequest:
+            type: object
+            properties:
+                scenarioId:
+                    type: string
+                    maxLength: 128
+                    minLength: 1
+                    description: Scenario template id — must match an entry in SCENARIO_TEMPLATES.
+                iso2:
+                    type: string
+                    pattern: ^([A-Z]{2})?$
+                    description: |-
+                        Optional 2-letter ISO country code to scope the impact computation.
+                         When absent, the worker computes for all countries with seeded exposure.
+            required:
+                - scenarioId
+            description: |-
+                RunScenarioRequest enqueues a scenario job on the scenario-queue:pending
+                 Upstash list for the async scenario-worker to pick up.
+        RunScenarioResponse:
+            type: object
+            properties:
+                jobId:
+                    type: string
+                    description: Generated job id of the form `scenario:{epoch_ms}:{8-char-suffix}`.
+                status:
+                    type: string
+                    description: Always "pending" at enqueue time.
+                statusUrl:
+                    type: string
+                    description: |-
+                        Convenience URL the caller can use to poll this job's status.
+                         Server-computed as `/api/scenario/v1/get-scenario-status?jobId=<job_id>`.
+                         Restored after the v1 → v1 sebuf migration because external callers
+                         may key off this field.
+            description: |-
+                RunScenarioResponse carries the enqueued job id. Clients poll
+                 GetScenarioStatus with this id until status != "pending".
+
+                 NOTE: the legacy (pre-sebuf) endpoint returned HTTP 202 Accepted on
+                 enqueue; the sebuf-generated server emits 200 OK for all successful
+                 responses (no per-RPC status-code configuration is available in the
+                 current sebuf HTTP annotations). The 202 → 200 shift on a same-version
+                 (v1 → v1) migration is called out in docs/api-scenarios.mdx and the
+                 OpenAPI bundle; external consumers keying off `response.status === 202`
+                 need to branch on response body shape instead.
+        GetScenarioStatusRequest:
+            type: object
+            properties:
+                jobId:
+                    type: string
+                    pattern: ^scenario:[0-9]{13}:[a-z0-9]{8}$
+                    description: |-
+                        Job id of the form `scenario:{epoch_ms}:{8-char-suffix}`. Path-traversal
+                         guarded by JOB_ID_RE in the handler.
+            required:
+                - jobId
+            description: GetScenarioStatusRequest polls the worker result for an enqueued job id.
+        GetScenarioStatusResponse:
+            type: object
+            properties:
+                status:
+                    type: string
+                result:
+                    $ref: '#/components/schemas/ScenarioResult'
+                error:
+                    type: string
+                    description: Populated only when status == "failed".
+            description: |-
+                GetScenarioStatusResponse reflects the worker's lifecycle state.
+                 "pending" — no key yet (job still queued or very-recent enqueue).
+                 "processing" — worker has claimed the job but hasn't completed compute.
+                 "done" — compute succeeded; `result` is populated.
+                 "failed" — compute errored; `error` is populated.
+        ScenarioResult:
+            type: object
+            properties:
+                affectedChokepointIds:
+                    type: array
+                    items:
+                        type: string
+                        description: Chokepoint ids disrupted by this scenario.
+                topImpactCountries:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ScenarioImpactCountry'
+                template:
+                    $ref: '#/components/schemas/ScenarioResultTemplate'
+            description: |-
+                ScenarioResult is the computed payload the scenario-worker writes back
+                 under the `scenario-result:{job_id}` Redis key. Populated only when
+                 GetScenarioStatusResponse.status == "done".
+        ScenarioImpactCountry:
+            type: object
+            properties:
+                iso2:
+                    type: string
+                    description: 2-letter ISO country code.
+                totalImpact:
+                    type: number
+                    format: double
+                    description: |-
+                        Raw weighted impact value aggregated across the country's exposed HS2
+                         chapters. Relative-only — not a currency amount.
+                impactPct:
+                    type: integer
+                    format: int32
+                    description: Impact as a 0-100 share of the worst-hit country.
+            description: ScenarioImpactCountry carries a single country's scenario impact score.
+        ScenarioResultTemplate:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: |-
+                        Display name (worker derives this from affected_chokepoint_ids; may be
+                         `tariff_shock` for tariff-type scenarios).
+                disruptionPct:
+                    type: integer
+                    format: int32
+                    description: 0-100 percent of chokepoint capacity blocked.
+                durationDays:
+                    type: integer
+                    format: int32
+                    description: Estimated duration of disruption in days.
+                costShockMultiplier:
+                    type: number
+                    format: double
+                    description: Freight cost multiplier applied on top of bypass corridor costs.
+            description: |-
+                ScenarioResultTemplate carries template parameters echoed into the worker's
+                 computed result so clients can render them without re-looking up the
+                 template registry.
+        ListScenarioTemplatesRequest:
+            type: object
+        ListScenarioTemplatesResponse:
+            type: object
+            properties:
+                templates:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ScenarioTemplate'
+        ScenarioTemplate:
+            type: object
+            properties:
+                id:
+                    type: string
+                name:
+                    type: string
+                affectedChokepointIds:
+                    type: array
+                    items:
+                        type: string
+                        description: |-
+                            Chokepoint ids this scenario disrupts. Empty for tariff-shock scenarios
+                             that have no physical chokepoint closure.
+                disruptionPct:
+                    type: integer
+                    format: int32
+                    description: 0-100 percent of chokepoint capacity blocked.
+                durationDays:
+                    type: integer
+                    format: int32
+                    description: Estimated duration of disruption in days.
+                affectedHs2:
+                    type: array
+                    items:
+                        type: string
+                        description: HS2 chapter codes affected. Empty means ALL sectors are affected.
+                costShockMultiplier:
+                    type: number
+                    format: double
+                    description: Freight cost multiplier applied on top of bypass corridor costs.
+            description: |-
+                ScenarioTemplate mirrors the catalog shape served by
+                 GET /api/scenario/v1/list-scenario-templates. The authoritative template
+                 registry lives in server/worldmonitor/supply-chain/v1/scenario-templates.ts.

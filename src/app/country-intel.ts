@@ -1,5 +1,7 @@
 import type { AppContext, AppModule, CountryBriefSignals } from '@/app/app-context';
 import { getRpcBaseUrl } from '@/services/rpc-client';
+import { premiumFetch } from '@/services/premium-fetch';
+import { IS_EMBEDDED_PREVIEW } from '@/utils/embedded-preview';
 import type { TimelineEvent } from '@/components/CountryTimeline';
 import { CountryTimeline } from '@/components/CountryTimeline';
 import type {
@@ -28,6 +30,10 @@ import { renderStoryToCanvas } from '@/services/story-renderer';
 import { openStoryModal } from '@/components/StoryModal';
 import { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
 import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
+import { TradeServiceClient } from '@/generated/client/worldmonitor/trade/v1/service_client';
+import { EconomicServiceClient } from '@/generated/client/worldmonitor/economic/v1/service_client';
+import { hasPremiumAccess } from '@/services/panel-gating';
+import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { showMapContextMenu } from '@/components/MapContextMenu';
 import { BETA_MODE } from '@/config/beta';
 import { MILITARY_BASES } from '@/config';
@@ -40,8 +46,11 @@ import type { StrategicPosturePanel } from '@/components/StrategicPosturePanel';
 import type { NewsItem } from '@/types';
 import { getNearbyInfrastructure } from '@/services/related-assets';
 import { toFlagEmoji } from '@/utils/country-flag';
+import { iso2ToIso3, iso2ToComtradeReporterCode } from '@/utils/country-codes';
 import { buildDependencyGraph } from '@/services/infrastructure-cascade';
 import { getActiveFrameworkForPanel, subscribeFrameworkChange } from '@/services/analysis-framework-store';
+import { fetchMultiSectorExposure, fetchCountryProducts, fetchMultiSectorCostShock } from '@/services/supply-chain';
+import { getImfCountryBundle, buildImfEconomicIndicators, type ImfCountryBundle } from '@/services/imf-country-data';
 
 type IntlDisplayNamesCtor = new (
   locales: string | string[],
@@ -63,6 +72,14 @@ export class CountryIntelManager implements AppModule {
   private briefRequestToken = 0;
   private frameworkUnsubscribe: (() => void) | null = null;
   private _fwDebounce: ReturnType<typeof setTimeout> | null = null;
+  // Re-fire PRO-gated country sections on false→true entitlement transition.
+  // Without this, a user who opens a country brief before Clerk resolves
+  // keeps seeing empty national-debt / sanctions / comtrade / tariff cards
+  // until they reselect the country or reload. Tracks the last-seen
+  // entitlement so unrelated auth events (session refresh, prefs sync)
+  // don't re-hammer fetchProSections.
+  private authUnsubscribe: (() => void) | null = null;
+  private lastHadPremium = false;
 
   constructor(ctx: AppContext) {
     this.ctx = ctx;
@@ -79,6 +96,20 @@ export class CountryIntelManager implements AppModule {
       if (this._fwDebounce) clearTimeout(this._fwDebounce);
       this._fwDebounce = setTimeout(() => void this.openCountryBriefByCode(code, name), 400);
     });
+
+    this.lastHadPremium = hasPremiumAccess(getAuthState());
+    this.authUnsubscribe = subscribeAuthState(() => {
+      const nowPremium = hasPremiumAccess(getAuthState());
+      if (nowPremium && !this.lastHadPremium) {
+        // Entitlement just resolved — refetch PRO sections for whatever
+        // country the user is currently viewing. No current country =
+        // nothing to retry; the next country open will pick up the new
+        // entitlement naturally.
+        const openCode = this.ctx.countryBriefPage?.getCode();
+        if (openCode) this.fetchProSections(openCode);
+      }
+      this.lastHadPremium = nowPremium;
+    });
   }
 
   destroy(): void {
@@ -88,6 +119,8 @@ export class CountryIntelManager implements AppModule {
     this.ctx.countryBriefPage = null;
     this.frameworkUnsubscribe?.();
     this.frameworkUnsubscribe = null;
+    this.authUnsubscribe?.();
+    this.authUnsubscribe = null;
   }
 
   private setupCountryIntel(): void {
@@ -221,11 +254,23 @@ export class CountryIntelManager implements AppModule {
       }))
       .catch(() => ({ available: false as const, code: '', symbol: '', indexName: '', price: '0', weekChangePercent: '0', currency: '' }));
 
+    let latestStock: CountryStockSnapshot | null = null;
+    let latestImf: ImfCountryBundle | null = null;
+
     stockPromise.then((stock) => {
+      latestStock = stock;
       if (this.ctx.countryBriefPage?.getCode() !== code) return;
       this.ctx.countryBriefPage.updateStock(stock);
-      this.ctx.countryBriefPage.updateEconomicIndicators?.(this.buildEconomicIndicators(code, score, stock));
+      this.ctx.countryBriefPage.updateEconomicIndicators?.(this.buildEconomicIndicators(code, score, stock, latestImf));
     });
+
+    // IMF WEO bundle (issue #3027): macro / growth / labor / external from
+    // the SDMX-3.0 seeded keys. Tolerant: missing data leaves card unchanged.
+    getImfCountryBundle(code).then((bundle) => {
+      latestImf = bundle;
+      if (this.ctx.countryBriefPage?.getCode() !== code) return;
+      this.ctx.countryBriefPage.updateEconomicIndicators?.(this.buildEconomicIndicators(code, score, latestStock, bundle));
+    }).catch(() => { /* non-fatal */ });
 
     fetchCountryMarkets(country)
       .then((markets) => {
@@ -282,6 +327,168 @@ export class CountryIntelManager implements AppModule {
           languages: [], currencies: [], areaSqKm: 0, countryName: '',
         });
       });
+
+    intelClient.getCountryEnergyProfile({ countryCode: code })
+      .then((profile) => {
+        if (this.ctx.countryBriefPage?.getCode() !== code) return;
+        this.ctx.countryBriefPage.updateEnergyProfile?.({
+          mixAvailable: profile.mixAvailable,
+          mixYear: profile.mixYear,
+          coalShare: profile.coalShare,
+          gasShare: profile.gasShare,
+          oilShare: profile.oilShare,
+          nuclearShare: profile.nuclearShare,
+          renewShare: profile.renewShare,
+          windShare: profile.windShare,
+          solarShare: profile.solarShare,
+          hydroShare: profile.hydroShare,
+          importShare: profile.importShare,
+          gasStorageAvailable: profile.gasStorageAvailable,
+          gasStorageFillPct: profile.gasStorageFillPct,
+          gasStorageChange1d: profile.gasStorageChange1d,
+          gasStorageTrend: profile.gasStorageTrend,
+          gasStorageDate: profile.gasStorageDate,
+          electricityAvailable: profile.electricityAvailable,
+          electricityPriceMwh: profile.electricityPriceMwh,
+          electricitySource: profile.electricitySource,
+          electricityDate: profile.electricityDate,
+          jodiOilAvailable: profile.jodiOilAvailable,
+          jodiOilDataMonth: profile.jodiOilDataMonth,
+          gasolineDemandKbd: profile.gasolineDemandKbd,
+          gasolineImportsKbd: profile.gasolineImportsKbd,
+          dieselDemandKbd: profile.dieselDemandKbd,
+          dieselImportsKbd: profile.dieselImportsKbd,
+          jetDemandKbd: profile.jetDemandKbd,
+          jetImportsKbd: profile.jetImportsKbd,
+          lpgDemandKbd: profile.lpgDemandKbd,
+          lpgImportsKbd: profile.lpgImportsKbd,
+          crudeImportsKbd: profile.crudeImportsKbd,
+          jodiGasAvailable: profile.jodiGasAvailable,
+          jodiGasDataMonth: profile.jodiGasDataMonth,
+          gasTotalDemandTj: profile.gasTotalDemandTj,
+          gasLngImportsTj: profile.gasLngImportsTj,
+          gasPipeImportsTj: profile.gasPipeImportsTj,
+          gasLngShare: profile.gasLngShare,
+          ieaStocksAvailable: profile.ieaStocksAvailable,
+          ieaStocksDataMonth: profile.ieaStocksDataMonth,
+          ieaDaysOfCover: profile.ieaDaysOfCover,
+          ieaNetExporter: profile.ieaNetExporter,
+          ieaBelowObligation: profile.ieaBelowObligation,
+          emberFossilShare: profile.emberFossilShare,
+          emberRenewShare: profile.emberRenewShare,
+          emberNuclearShare: profile.emberNuclearShare,
+          emberCoalShare: profile.emberCoalShare,
+          emberGasShare: profile.emberGasShare,
+          emberDemandTwh: profile.emberDemandTwh,
+          emberDataMonth: profile.emberDataMonth,
+          emberAvailable: profile.emberAvailable,
+          sprRegime: profile.sprRegime,
+          sprCapacityMb: profile.sprCapacityMb,
+          sprOperator: profile.sprOperator,
+          sprIeaMember: profile.sprIeaMember,
+          sprStockholdingModel: profile.sprStockholdingModel,
+          sprNote: profile.sprNote,
+          sprSource: profile.sprSource,
+          sprAsOf: profile.sprAsOf,
+          sprAvailable: profile.sprAvailable,
+        });
+      })
+      .catch(() => {
+        if (this.ctx.countryBriefPage?.getCode() !== code) return;
+        this.ctx.countryBriefPage.updateEnergyProfile?.({
+          mixAvailable: false, mixYear: 0, coalShare: 0, gasShare: 0, oilShare: 0,
+          nuclearShare: 0, renewShare: 0, windShare: 0, solarShare: 0, hydroShare: 0,
+          importShare: 0, gasStorageAvailable: false, gasStorageFillPct: 0,
+          gasStorageChange1d: 0, gasStorageTrend: '', gasStorageDate: '', electricityAvailable: false,
+          electricityPriceMwh: 0, electricitySource: '', electricityDate: '',
+          jodiOilAvailable: false, jodiOilDataMonth: '', gasolineDemandKbd: 0,
+          gasolineImportsKbd: 0, dieselDemandKbd: 0, dieselImportsKbd: 0,
+          jetDemandKbd: 0, jetImportsKbd: 0, lpgDemandKbd: 0, lpgImportsKbd: 0,
+          crudeImportsKbd: 0, jodiGasAvailable: false, jodiGasDataMonth: '',
+          gasTotalDemandTj: 0, gasLngImportsTj: 0, gasPipeImportsTj: 0,
+          gasLngShare: 0, ieaStocksAvailable: false, ieaStocksDataMonth: '',
+          ieaDaysOfCover: 0, ieaNetExporter: false, ieaBelowObligation: false,
+          emberFossilShare: 0, emberRenewShare: 0, emberNuclearShare: 0,
+          emberCoalShare: 0, emberGasShare: 0, emberDemandTwh: 0,
+          emberDataMonth: '', emberAvailable: false,
+          sprRegime: 'unknown', sprCapacityMb: 0, sprOperator: '', sprIeaMember: false,
+          sprStockholdingModel: '', sprNote: '', sprSource: '', sprAsOf: '',
+          sprAvailable: false,
+        });
+      });
+
+    intelClient.getCountryPortActivity({ countryCode: code })
+      .then((activity) => {
+        if (this.ctx.countryBriefPage?.getCode() !== code) return;
+        this.ctx.countryBriefPage.updateMaritimeActivity?.({
+          available: activity.available,
+          ports: (activity.ports ?? []).map((p) => ({
+            portId: p.portId,
+            portName: p.portName,
+            lat: p.lat,
+            lon: p.lon,
+            tankerCalls30d: p.tankerCalls30d,
+            trendDeltaPct: p.trendDeltaPct,
+            importTankerDwt: p.importTankerDwt,
+            exportTankerDwt: p.exportTankerDwt,
+            anomalySignal: p.anomalySignal,
+          })),
+          fetchedAt: activity.fetchedAt,
+        });
+      })
+      .catch(() => {
+        if (this.ctx.countryBriefPage?.getCode() !== code) return;
+        this.ctx.countryBriefPage.updateMaritimeActivity?.({ available: false, ports: [], fetchedAt: '' });
+      });
+
+    // Fetch multi-sector exposure (all 10 seeded HS2 codes in parallel)
+    fetchMultiSectorExposure(code)
+      .then((sectors) => {
+        if (this.ctx.countryBriefPage?.getCode() !== code) return;
+        if (sectors.length === 0) {
+          this.ctx.countryBriefPage.updateTradeExposure?.(null);
+          if (hasPremiumAccess(getAuthState())) this.ctx.countryBriefPage.updateMultiSectorCostShock?.(null);
+          return;
+        }
+        // Build a synthetic compat response from sector data (no extra fetch needed)
+        const top = sectors[0]!;
+        const syntheticResponse = {
+          iso2: code,
+          hs2: top.hs2,
+          exposures: sectors.slice(0, 3).map(s => ({
+            chokepointId: s.primaryChokepointId,
+            chokepointName: s.primaryChokepointName,
+            exposureScore: s.exposureScore,
+            coastSide: '',
+            shockSupported: s.hs2 === '27',
+          })),
+          primaryChokepointId: top.primaryChokepointId,
+          vulnerabilityIndex: top.vulnerabilityIndex,
+          fetchedAt: new Date().toISOString(),
+        };
+        this.ctx.countryBriefPage.updateTradeExposure?.(syntheticResponse, sectors);
+
+        // Trigger multi-sector cost shock calculator from the same primary chokepoint.
+        if (hasPremiumAccess(getAuthState()) && top.primaryChokepointId) {
+          fetchMultiSectorCostShock(code, top.primaryChokepointId, 30).then(multi => {
+            if (this.ctx.countryBriefPage?.getCode() !== code) return;
+            this.ctx.countryBriefPage.updateMultiSectorCostShock?.(multi);
+          }).catch(() => {
+            if (this.ctx.countryBriefPage?.getCode() === code) this.ctx.countryBriefPage.updateMultiSectorCostShock?.(null);
+          });
+        } else if (hasPremiumAccess(getAuthState())) {
+          this.ctx.countryBriefPage.updateMultiSectorCostShock?.(null);
+        }
+      })
+      .catch(() => {
+        if (this.ctx.countryBriefPage?.getCode() !== code) return;
+        this.ctx.countryBriefPage.updateTradeExposure?.(null);
+        if (hasPremiumAccess(getAuthState())) this.ctx.countryBriefPage.updateMultiSectorCostShock?.(null);
+      });
+
+    if (hasPremiumAccess(getAuthState())) {
+      this.fetchProSections(code);
+    }
 
     this.mountCountryTimeline(code, country);
 
@@ -397,6 +604,132 @@ export class CountryIntelManager implements AppModule {
       this.ctx.countryBriefPage?.updateBrief({ brief: '', country, code, error: 'Failed to generate brief' });
     }
   }
+
+  private fetchProSections(code: string): void {
+    // /pro live-preview iframe can't carry a Clerk session, so every pro
+    // section call would 401. Skip the RPCs entirely so the embedded
+    // preview doesn't spam the parent /pro console with expected failures.
+    if (IS_EMBEDDED_PREVIEW) return;
+
+    const rpcBase = getRpcBaseUrl();
+    // Pro-section endpoints (national-debt, regional briefs, comtrade flows)
+    // are premium-gated — premiumFetch injects the Clerk bearer / API key so
+    // signed-in pro users actually get data instead of 401.
+    const economicClient = new EconomicServiceClient(rpcBase, { fetch: premiumFetch });
+    const intelClientPro = new IntelligenceServiceClient(rpcBase, { fetch: premiumFetch });
+    const tradeClient = new TradeServiceClient(rpcBase, { fetch: premiumFetch });
+    const iso3 = iso2ToIso3(code);
+
+    economicClient.getNationalDebt({}).then(resp => {
+      if (this.ctx.countryBriefPage?.getCode() !== code) return;
+      const entry = iso3 ? resp.entries?.find(e => e.iso3 === iso3) : null;
+      this.ctx.countryBriefPage.updateNationalDebt?.(entry ? {
+        debtToGdp: entry.debtToGdp,
+        debtUsd: entry.debtUsd,
+        annualGrowth: entry.annualGrowth,
+        source: entry.source,
+      } : null);
+    }).catch(() => {
+      if (this.ctx.countryBriefPage?.getCode() === code) this.ctx.countryBriefPage.updateNationalDebt?.(null);
+    });
+
+    intelClientPro.getCountryRisk({ countryCode: code }).then(resp => {
+      if (this.ctx.countryBriefPage?.getCode() !== code) return;
+      this.ctx.countryBriefPage.updateSanctionsPressure?.(resp.sanctionsCount > 0 ? {
+        entryCount: resp.sanctionsCount,
+        sanctionsActive: resp.sanctionsActive,
+      } : null);
+    }).catch(() => {
+      if (this.ctx.countryBriefPage?.getCode() === code) this.ctx.countryBriefPage.updateSanctionsPressure?.(null);
+    });
+
+    const unCode = iso2ToComtradeReporterCode(code);
+    // Trade RPCs (listComtradeFlows + getTariffTrends) are PRO-gated and
+    // 401 for anonymous/free users. Mirror the hasPremiumAccess() guard
+    // already used above for the other premium country-brief cards so we
+    // don't spray the console with 401s on every country click.
+    const hasPremium = hasPremiumAccess(getAuthState());
+    if (unCode && hasPremium) {
+      tradeClient.listComtradeFlows({ reporterCode: unCode, cmdCode: '', anomaliesOnly: false }).then(resp => {
+        if (this.ctx.countryBriefPage?.getCode() !== code) return;
+        const topFlows = (resp.flows || [])
+          .sort((a, b) => b.tradeValueUsd - a.tradeValueUsd)
+          .slice(0, 5)
+          .map(f => ({ partnerName: f.partnerName, cmdDesc: f.cmdDesc, tradeValueUsd: f.tradeValueUsd, yoyChange: f.yoyChange }));
+        this.ctx.countryBriefPage.updateComtradeFlows?.(topFlows.length > 0 ? topFlows : null);
+      }).catch(() => {
+        if (this.ctx.countryBriefPage?.getCode() === code) this.ctx.countryBriefPage.updateComtradeFlows?.(null);
+      });
+
+      tradeClient.getTariffTrends({ reportingCountry: unCode, productSector: '', years: 10, partnerCountry: '' }).then(resp => {
+        if (this.ctx.countryBriefPage?.getCode() !== code) return;
+        const pts = resp.datapoints || [];
+        const latest = pts[pts.length - 1];
+        this.ctx.countryBriefPage.updateTariffTrends?.(latest ? {
+          currentRate: resp.effectiveTariffRate?.tariffRate ?? latest.tariffRate,
+          trend: pts.length >= 2 && pts[pts.length - 1]!.tariffRate > pts[pts.length - 2]!.tariffRate ? 'rising' : 'falling',
+          datapoints: pts.map(p => ({ year: p.year, tariffRate: p.tariffRate })),
+        } : null);
+      }).catch(() => {
+        if (this.ctx.countryBriefPage?.getCode() === code) this.ctx.countryBriefPage.updateTariffTrends?.(null);
+      });
+    } else {
+      this.ctx.countryBriefPage?.updateComtradeFlows?.(null);
+      this.ctx.countryBriefPage?.updateTariffTrends?.(null);
+    }
+
+    fetchCountryProducts(code).then(resp => {
+      if (this.ctx.countryBriefPage?.getCode() !== code) return;
+      this.ctx.countryBriefPage.updateProductImports?.(resp.products.length > 0 ? resp : null);
+    }).catch(() => {
+      if (this.ctx.countryBriefPage?.getCode() === code) {
+        this.ctx.countryBriefPage.updateProductImports?.(null);
+      }
+    });
+
+    // Housing cycle tile — BIS WS_SPP (residential), WS_CPP (commercial), WS_DSR.
+    // All three keys are seeded by the bis-extended cron and exposed via the
+    // public bootstrap endpoint, so one scoped bootstrap call covers the tile.
+    this.fetchHousingCycle(code);
+  }
+
+  private fetchHousingCycle(code: string): void {
+    const page = this.ctx.countryBriefPage;
+    if (!page?.updateHousingCycle) return;
+    const keys = 'bisDsr,bisPropertyResidential,bisPropertyCommercial';
+    fetch(toApiUrl(`/api/bootstrap?keys=${keys}`), {
+      method: 'GET',
+      headers: { Accept: 'application/json' },
+      signal: page.signal,
+    }).then(async resp => {
+      if (!resp.ok) return null;
+      return resp.json() as Promise<{ data?: {
+        bisDsr?: { entries?: Array<{ countryCode: string; dsrPct: number; change: number | null; period: string }> };
+        bisPropertyResidential?: { entries?: Array<{ countryCode: string; indexValue: number; qoqChange: number | null; yoyChange: number | null; period: string }> };
+        bisPropertyCommercial?: { entries?: Array<{ countryCode: string; indexValue: number; qoqChange: number | null; yoyChange: number | null; period: string }> };
+      } }>;
+    }).then(body => {
+      if (!body || this.ctx.countryBriefPage?.getCode() !== code) return;
+      const pick = <T extends { countryCode: string }>(arr: T[] | undefined, cc: string): T | null =>
+        arr?.find(e => e?.countryCode === cc) ?? null;
+      // Euro area (XM) fallback for EU countries that BIS only publishes as a bloc aggregate.
+      const EURO_AREA = new Set(['DE', 'FR', 'IT', 'ES', 'NL', 'BE', 'AT', 'IE', 'PT', 'GR', 'FI', 'SK', 'SI', 'LV', 'LT', 'EE', 'CY', 'MT', 'LU', 'HR']);
+      const fallbackCC = EURO_AREA.has(code) ? 'XM' : null;
+      const res = pick(body.data?.bisPropertyResidential?.entries, code) ?? (fallbackCC ? pick(body.data?.bisPropertyResidential?.entries, fallbackCC) : null);
+      const com = pick(body.data?.bisPropertyCommercial?.entries, code) ?? (fallbackCC ? pick(body.data?.bisPropertyCommercial?.entries, fallbackCC) : null);
+      const dsr = pick(body.data?.bisDsr?.entries, code) ?? (fallbackCC ? pick(body.data?.bisDsr?.entries, fallbackCC) : null);
+      this.ctx.countryBriefPage?.updateHousingCycle?.({
+        residential: res ? { indexValue: res.indexValue, qoqChange: res.qoqChange, yoyChange: res.yoyChange, period: res.period } : null,
+        commercial: com ? { indexValue: com.indexValue, qoqChange: com.qoqChange, yoyChange: com.yoyChange, period: com.period } : null,
+        dsr: dsr ? { dsrPct: dsr.dsrPct, change: dsr.change, period: dsr.period } : null,
+      });
+    }).catch(() => {
+      if (this.ctx.countryBriefPage?.getCode() === code) {
+        this.ctx.countryBriefPage.updateHousingCycle?.(null);
+      }
+    });
+  }
+
 
   refreshOpenBrief(): void {
     const page = this.ctx.countryBriefPage;
@@ -690,11 +1023,19 @@ export class CountryIntelManager implements AppModule {
 
     let militaryFlights = 0;
     let militaryVessels = 0;
+    let militaryFlightsInCountry = 0;
+    let militaryVesselsInCountry = 0;
     if (this.ctx.intelligenceCache.military) {
       militaryFlights = this.ctx.intelligenceCache.military.flights.filter((f) =>
-        hasGeoShape ? this.isInCountry(f.lat, f.lon, code) : f.operatorCountry?.toUpperCase() === code
+        hasGeoShape ? this.isNearCountry(f.lat, f.lon, code) : f.operatorCountry?.toUpperCase() === code
       ).length;
       militaryVessels = this.ctx.intelligenceCache.military.vessels.filter((v) =>
+        hasGeoShape ? this.isNearCountry(v.lat, v.lon, code) : v.operatorCountry?.toUpperCase() === code
+      ).length;
+      militaryFlightsInCountry = this.ctx.intelligenceCache.military.flights.filter((f) =>
+        hasGeoShape ? this.isInCountry(f.lat, f.lon, code) : f.operatorCountry?.toUpperCase() === code
+      ).length;
+      militaryVesselsInCountry = this.ctx.intelligenceCache.military.vessels.filter((v) =>
         hasGeoShape ? this.isInCountry(v.lat, v.lon, code) : v.operatorCountry?.toUpperCase() === code
       ).length;
     }
@@ -773,6 +1114,8 @@ export class CountryIntelManager implements AppModule {
       protests,
       militaryFlights,
       militaryVessels,
+      militaryFlightsInCountry,
+      militaryVesselsInCountry,
       outages,
       aisDisruptions: signalTypeCounts.aisDisruptions,
       satelliteFires: signalTypeCounts.satelliteFires,
@@ -884,6 +1227,7 @@ export class CountryIntelManager implements AppModule {
     code: string,
     score: CountryScore | null,
     stock: CountryStockSnapshot | null,
+    imfBundle?: ImfCountryBundle | null,
   ): CountryDeepDiveEconomicIndicator[] {
     const indicators: CountryDeepDiveEconomicIndicator[] = [];
 
@@ -932,7 +1276,16 @@ export class CountryIntelManager implements AppModule {
       });
     }
 
-    return indicators.slice(0, 3);
+    // IMF WEO indicators (issue #3027): real GDP growth, inflation,
+    // unemployment, GDP/capita. Appended after the live signals so that
+    // markets-driven rows take priority on the limited card surface.
+    if (imfBundle) {
+      for (const ind of buildImfEconomicIndicators(imfBundle)) {
+        indicators.push(ind);
+      }
+    }
+
+    return indicators.slice(0, 6);
   }
 
   private sameCountry(code: string, country: string, raw: string | undefined): boolean {
@@ -1025,6 +1378,18 @@ export class CountryIntelManager implements AppModule {
     const b = CountryIntelManager.COUNTRY_BOUNDS[code];
     if (!b) return false;
     return lat >= b.s && lat <= b.n && lon >= b.w && lon <= b.e;
+  }
+
+  // Near = bounding-box padded by ~2° (~220 km). Captures vessels/aircraft in
+  // adjacent waters/airspace so the risk chip reflects proximity, not just
+  // strict territory. See issue #2972 bug 2.
+  private static readonly NEAR_BUFFER_DEG = 2;
+  private isNearCountry(lat: number, lon: number, code: string): boolean {
+    if (this.isInCountry(lat, lon, code)) return true;
+    const b = CountryIntelManager.COUNTRY_BOUNDS[code];
+    if (!b) return false;
+    const pad = CountryIntelManager.NEAR_BUFFER_DEG;
+    return lat >= b.s - pad && lat <= b.n + pad && lon >= b.w - pad && lon <= b.e + pad;
   }
 
   static COUNTRY_BOUNDS: Record<string, { n: number; s: number; e: number; w: number }> = {

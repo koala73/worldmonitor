@@ -1,5 +1,6 @@
 import type { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
 import { Panel } from './Panel';
+import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
 
 let _client: MarketServiceClient | null = null;
@@ -125,7 +126,7 @@ export class EarningsCalendarPanel extends Panel {
   private _hasData = false;
 
   constructor() {
-    super({ id: 'earnings-calendar', title: 'Earnings Calendar', showCount: false });
+    super({ id: 'earnings-calendar', title: 'Earnings Calendar', showCount: false, infoTooltip: t('components.earningsCalendar.infoTooltip') });
   }
 
   public async fetchData(): Promise<boolean> {

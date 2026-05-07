@@ -24,6 +24,7 @@ function emptyCtx(): AnalystContext {
     countryBrief: '',
     liveHeadlines: '',
     relevantArticles: '',
+    energyExposure: '',
     activeSources: [],
     degraded: false,
   };
@@ -42,7 +43,8 @@ function fullCtx(): AnalystContext {
     countryBrief: 'Country Focus — UA:\nAnalysis of Ukraine situation.',
     liveHeadlines: 'Latest Headlines:\n- Missile strikes reported',
     relevantArticles: '',
-    activeSources: ['Brief', 'Risk', 'Signals', 'Forecasts', 'Markets', 'Macro', 'Prediction', 'Country', 'Live'],
+    energyExposure: 'Energy Generation Mix — 2023 data:\nGas-dependent (% electricity from gas): Italy 46%, Netherlands 39%\nCoal-dependent: South Africa 88%, Poland 65%\n(Gas figures are total gas mix; LNG vs. pipeline split not in this dataset.)',
+    activeSources: ['Brief', 'Risk', 'Signals', 'Forecasts', 'Markets', 'EnergyMix', 'Macro', 'Prediction', 'Country', 'Live'],
     degraded: false,
   };
 }
@@ -62,45 +64,50 @@ describe('buildAnalystSystemPrompt — domain filtering', () => {
     assert.ok(prompt.includes('Prediction Markets'), 'should include predictionMarkets');
     assert.ok(prompt.includes('Country Focus'), 'should include countryBrief');
     assert.ok(prompt.includes('Latest Headlines'), 'should include liveHeadlines');
+    assert.ok(prompt.includes('Energy Exposure'), 'should include energyExposure');
   });
 
-  it('"market" domain excludes worldBrief but includes marketData and macroSignals', () => {
+  it('"market" domain excludes worldBrief and energyExposure but includes marketData and macroSignals', () => {
     const prompt = buildAnalystSystemPrompt(fullCtx(), 'market');
     assert.ok(!prompt.includes('Global tensions elevated'), 'should exclude worldBrief');
     assert.ok(!prompt.includes('Country Focus'), 'should exclude countryBrief');
+    assert.ok(!prompt.includes('Energy Exposure'), 'should exclude energyExposure');
     assert.ok(prompt.includes('Market Data'), 'should include marketData');
     assert.ok(prompt.includes('Macro Signals'), 'should include macroSignals');
     assert.ok(prompt.includes('AI Market Signals'), 'should include marketImplications');
     assert.ok(prompt.includes('Latest Headlines'), 'should include liveHeadlines');
   });
 
-  it('"geo" domain excludes marketData and macroSignals but includes worldBrief', () => {
+  it('"geo" domain excludes marketData and macroSignals but includes worldBrief and energyExposure', () => {
     const prompt = buildAnalystSystemPrompt(fullCtx(), 'geo');
     assert.ok(prompt.includes('Global tensions elevated'), 'should include worldBrief');
     assert.ok(prompt.includes('Top Risk Countries'), 'should include riskScores');
     assert.ok(prompt.includes('Country Focus'), 'should include countryBrief');
+    assert.ok(prompt.includes('Energy Exposure'), 'should include energyExposure');
     assert.ok(!prompt.includes('Market Data'), 'should exclude marketData');
     assert.ok(!prompt.includes('Macro Signals'), 'should exclude macroSignals');
     assert.ok(prompt.includes('Latest Headlines'), 'should include liveHeadlines');
   });
 
-  it('"military" domain excludes marketData and marketImplications but includes worldBrief', () => {
+  it('"military" domain excludes marketData, marketImplications, and energyExposure but includes worldBrief', () => {
     const prompt = buildAnalystSystemPrompt(fullCtx(), 'military');
     assert.ok(prompt.includes('Global tensions elevated'), 'should include worldBrief');
     assert.ok(prompt.includes('Top Risk Countries'), 'should include riskScores');
     assert.ok(!prompt.includes('Market Data'), 'should exclude marketData');
     assert.ok(!prompt.includes('AI Market Signals'), 'should exclude marketImplications');
     assert.ok(!prompt.includes('Macro Signals'), 'should exclude macroSignals');
+    assert.ok(!prompt.includes('Energy Exposure'), 'should exclude energyExposure');
     assert.ok(prompt.includes('Latest Headlines'), 'should include liveHeadlines');
   });
 
-  it('"economic" domain excludes worldBrief and predictionMarkets but includes marketData', () => {
+  it('"economic" domain excludes worldBrief and predictionMarkets but includes marketData and energyExposure', () => {
     const prompt = buildAnalystSystemPrompt(fullCtx(), 'economic');
     assert.ok(!prompt.includes('Global tensions elevated'), 'should exclude worldBrief');
     assert.ok(!prompt.includes('Prediction Markets'), 'should exclude predictionMarkets');
     assert.ok(prompt.includes('Market Data'), 'should include marketData');
     assert.ok(prompt.includes('Macro Signals'), 'should include macroSignals');
     assert.ok(prompt.includes('Top Risk Countries'), 'should include riskScores');
+    assert.ok(prompt.includes('Energy Exposure'), 'should include energyExposure');
     assert.ok(prompt.includes('Latest Headlines'), 'should include liveHeadlines');
   });
 

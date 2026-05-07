@@ -4,7 +4,7 @@
 
 World Monitor is a real-time global intelligence dashboard that brings together news, markets, military activity, infrastructure data, and AI-powered analysis into a single, interactive map interface. Think of it as a situational awareness tool that was previously only available to government agencies and large corporations with six-figure OSINT budgets, now accessible to journalists, analysts, researchers, and curious citizens through a web browser or desktop app.
 
-The platform monitors over 200 countries using 435+ news feeds, 30+ live video streams, satellite tracking, military flight and naval vessel data, prediction markets, and dozens of specialized data layers. All of this is visualized on either a photorealistic 3D globe or a flat WebGL map, with AI summarization that distills thousands of headlines into actionable intelligence briefs.
+The platform monitors over 200 countries using 500+ news feeds, 30+ live video streams, satellite tracking, military flight and naval vessel data, prediction markets, and dozens of specialized data layers. All of this is visualized on either a photorealistic 3D globe or a flat WebGL map, with AI summarization that distills thousands of headlines into actionable intelligence briefs.
 
 ---
 
@@ -48,7 +48,7 @@ World Monitor aggregates publicly available data from dozens of sources. No prop
 
 ### News & Media
 
-- **435+ RSS feeds** from Reuters, AP, BBC, Al Jazeera, CNN, The Guardian, and dozens of specialized outlets
+- **500+ RSS feeds** from Reuters, AP, BBC, Al Jazeera, CNN, The Guardian, and dozens of specialized outlets
 - **30+ live video streams** from major news networks
 - **22 live webcams** from geopolitical hotspots
 - **26 Telegram OSINT channels** including BNO News, Aurora Intel, DeepState, and Bellingcat
@@ -112,7 +112,7 @@ World Monitor aggregates publicly available data from dozens of sources. No prop
 
 | Metric | Value |
 |--------|-------|
-| News feeds monitored | 435+ |
+| News feeds monitored | 500+ |
 | Live video streams | 30+ |
 | Data layers on map | 45+ |
 | Countries monitored | 200+ |

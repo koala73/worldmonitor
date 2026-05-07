@@ -1,0 +1,78 @@
+---
+title: "Rate Limits"
+description: "Per-endpoint, per-key, and per-IP rate limits across the WorldMonitor API surface."
+---
+
+Rate limits are enforced at the Vercel Edge runtime using Upstash Redis sliding-window counters. All limits are **sliding 60-second windows** unless noted.
+
+## Default public API rate limit
+
+| Scope | Limit | Window |
+|-------|-------|--------|
+| Per IP (default) | **600 requests** | 60 s |
+
+Applies to all `/api/*` routes that don't have a stricter override. Implemented by `api/_rate-limit.js` / `api/_ip-rate-limit.js`.
+
+## MCP server
+
+| Scope | Limit | Window |
+|-------|-------|--------|
+| Per API key (MCP tools) | **60 requests** | 60 s |
+
+See [MCP](/mcp-server) for details.
+
+## OAuth endpoints
+
+| Endpoint | Limit | Window | Scope |
+|----------|-------|--------|-------|
+| `POST /api/oauth/register` | 5 | 60 s | Per IP |
+| `GET /api/oauth/authorize` | 10 | 60 s | Per IP |
+| `POST /api/oauth/token` | 10 | 60 s | Per IP |
+
+Matches the implementations in `api/oauth/{register,authorize,token}.js`.
+
+Exceeding any of these during the OAuth flow will cause the MCP client to fail the connection handshake — wait 60 s and retry.
+
+## Write endpoints
+
+| Endpoint | Limit | Window | Scope |
+|----------|-------|--------|-------|
+| `POST /api/scenario/v1/run-scenario` | 10 | 60 s | Per IP |
+| `POST /api/scenario/v1/run-scenario` (queue depth) | 100 in-flight | — | Global |
+| `POST /api/leads/v1/register-interest` | 5 | 60 min | Per IP + Turnstile (desktop sources bypass Turnstile) |
+| `POST /api/leads/v1/submit-contact` | 3 | 60 min | Per IP + Turnstile |
+
+Other write endpoints (`/api/brief/share-url`, `/api/notification-channels`, `/api/create-checkout`, `/api/customer-portal`, etc.) fall back to the default per-IP limit above.
+
+## Bootstrap / health
+
+These are cached aggressively and have no custom limit beyond the default:
+
+- `GET /api/bootstrap` — `s-maxage=30`
+- `GET /api/health` — `s-maxage=15`
+- `GET /api/version` — `s-maxage=60`
+
+## Response when limited
+
+HTTP 429 with:
+
+```
+Retry-After: <seconds>
+Content-Type: application/json
+
+{ "error": "Rate limit exceeded" }
+```
+
+## Retry guidance
+
+- Respect `Retry-After`. Don't pound on a 429.
+- For batch work, pace yourself: at 600 req/min/IP the default gives you ~10 req/s headroom.
+- For MCP, 60/min is generous for conversational use but tight for scripted batch fetches — prefer the REST API for batch.
+- Spurious 429s often mean you're sharing an egress IP (corporate proxy, CI runner). Contact support for a per-key limit bump if needed.
+
+## Hard caps (not soft limits)
+
+- Webhook callback URLs must be HTTPS (except localhost).
+- `api/download` file sizes capped at ~50 MB per request.
+- `POST /api/scenario/v1/run-scenario` globally pauses new jobs when the pending queue exceeds **100** — returns 429.
+- `api/v2/shipping/webhooks` TTL is **30 days** — re-register to extend.

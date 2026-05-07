@@ -122,11 +122,19 @@ function validate(data) {
 
 const isMain = process.argv[1]?.endsWith('seed-gie-gas-storage.mjs');
 
+export function declareRecords(data) {
+  return Number.isFinite(data?.fillPct) ? 1 : 0;
+}
+
 if (isMain) {
   runSeed('economic', 'eu-gas-storage', CANONICAL_KEY, fetchEuGasStorage, {
     validateFn: validate,
     ttlSeconds: TTL,
     sourceVersion: 'gie-agsi-plus',
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 2880,
   }).catch((err) => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + cause);

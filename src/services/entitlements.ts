@@ -7,7 +7,7 @@
  * is not configured or ConvexClient is unavailable.
  */
 
-import { getConvexClient, getConvexApi } from './convex-client';
+import { getConvexClient, getConvexApi, waitForConvexAuth } from './convex-client';
 
 export interface EntitlementState {
   planKey: string;
@@ -46,6 +46,18 @@ export async function initEntitlementSubscription(_userId?: string): Promise<voi
     const api = await getConvexApi();
     if (!api) {
       console.log('[entitlements] Could not load Convex API — skipping subscription');
+      return;
+    }
+
+    // Wait for Convex to confirm auth before subscribing. Otherwise the first
+    // getEntitlementsForUser snapshot runs unauthenticated and returns
+    // FREE_TIER_DEFAULTS, which can race with the post-payment panel gating
+    // decision (the UI renders as free before the auth-ready pro snapshot
+    // arrives). Unauthenticated visitors time out after 10s and we skip the
+    // subscription entirely — they don't need entitlement updates.
+    const authed = await waitForConvexAuth(10_000);
+    if (!authed) {
+      console.log('[entitlements] Convex auth not established — skipping subscription');
       return;
     }
 
@@ -148,4 +160,23 @@ export function isEntitled(): boolean {
     currentState.planKey !== 'free' &&
     currentState.validUntil >= Date.now()
   );
+}
+
+/**
+ * Decides whether to reload the page when an entitlement snapshot arrives.
+ *
+ * Rules:
+ *   - First snapshot ever (last === null): never reload. A legacy-pro user
+ *     whose first snapshot is already `true` must not trigger a reload loop
+ *     on every page load.
+ *   - Free → pro transition (last === false, next === true): reload. This is
+ *     the post-payment activation case — panels rendered against free-tier
+ *     gating need to re-render to pick up the new entitlement.
+ *   - Everything else (free→free, pro→pro, pro→free): no reload.
+ */
+export function shouldReloadOnEntitlementChange(
+  last: boolean | null,
+  next: boolean,
+): boolean {
+  return last === false && next === true;
 }

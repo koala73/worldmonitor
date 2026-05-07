@@ -123,12 +123,20 @@ function validate(data) {
   });
 }
 
+export function declareRecords(data) {
+  return Object.keys(data?.rates || {}).length;
+}
+
 if (process.argv[1]?.endsWith('seed-ecb-fx-rates.mjs')) {
   runSeed('economic', 'ecb-fx-rates', CANONICAL_KEY, fetchEcbFxRates, {
     validateFn: validate,
     ttlSeconds: TTL,
     sourceVersion: 'ecb-data-portal',
     recordCount: (data) => Object.keys(data?.rates ?? {}).length,
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 5760,
   }).catch(err => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + cause);

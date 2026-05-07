@@ -82,6 +82,14 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
     it('suppresses safari-web-extension', () => {
       assert.ok(suppress('enforce', 'script-src', 'safari-web-extension://abc', '', false));
     });
+
+    it('suppresses ms-browser-extension blocked URI (Edge)', () => {
+      assert.ok(suppress('enforce', 'font-src', 'ms-browser-extension://abc/font.woff2', '', false));
+    });
+
+    it('suppresses ms-browser-extension source file (Edge)', () => {
+      assert.ok(suppress('enforce', 'script-src', 'https://x.com/a.js', 'ms-browser-extension://abc/inject.js', false));
+    });
   });
 
   describe('scheme-only and special values', () => {
@@ -116,6 +124,18 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
     it('suppresses android-webview-video-poster', () => {
       assert.ok(suppress('enforce', 'img-src', 'android-webview-video-poster', '', false));
     });
+
+    it('suppresses about (scheme-only) for frame-src — Smart TV browsers / extensions', () => {
+      assert.ok(suppress('enforce', 'frame-src', 'about', '', false));
+    });
+
+    it('suppresses about:blank frame-src', () => {
+      assert.ok(suppress('enforce', 'frame-src', 'about:blank', '', false));
+    });
+
+    it('suppresses about:srcdoc frame-src', () => {
+      assert.ok(suppress('enforce', 'frame-src', 'about:srcdoc', '', false));
+    });
   });
 
   describe('third-party noise', () => {
@@ -138,6 +158,27 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
     it('suppresses manifest.webmanifest', () => {
       assert.ok(suppress('enforce', 'default-src', 'https://www.worldmonitor.app/manifest.webmanifest', '', false));
     });
+
+    it('suppresses third-party stylesheet injection from cdn.jsdelivr.net (style-src-elem)', () => {
+      // WORLDMONITOR-J0: extension/bookmarklet injecting antd@4 CSS on
+      // finance.worldmonitor.app — 270 events / 26 users. We never load
+      // CSS from jsDelivr (only JSON atlases + chart.js JS).
+      assert.ok(suppress('enforce', 'style-src-elem', 'https://cdn.jsdelivr.net/npm/antd@4/dist/antd.min.css', '', false));
+    });
+
+    it('suppresses cdn.jsdelivr.net for plain style-src directive too', () => {
+      // Older browsers / legacy CSP fall back to `style-src` rather than
+      // `style-src-elem`; same suppression should apply.
+      assert.ok(suppress('enforce', 'style-src', 'https://cdn.jsdelivr.net/npm/bootstrap@5/dist/css/bootstrap.min.css', '', false));
+    });
+
+    it('does NOT suppress jsDelivr for legitimate directive (script-src world-atlas / chart.js)', () => {
+      // We DO load JSON + JS from jsdelivr legitimately. Only style-src*
+      // is blanket-filtered. A real script-src block here would be a
+      // vendor-CDN CSP regression we want to see.
+      assert.ok(!suppress('enforce', 'script-src', 'https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js', '', false));
+      assert.ok(!suppress('enforce', 'connect-src', 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json', '', false));
+    });
   });
 
   describe('localhost/loopback', () => {
@@ -151,6 +192,67 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
 
     it('suppresses https://localhost:3000', () => {
       assert.ok(suppress('enforce', 'connect-src', 'https://localhost:3000/dev', '', false));
+    });
+  });
+
+  describe('first-party infrastructure (mutated user CSP)', () => {
+    // Corporate proxies / privacy extensions strip bare `https:` from connect-src in
+    // the user's effective policy, blocking our first-party Convex backend even though
+    // our policy allows it. Suppress unconditionally for our exact configured Convex
+    // host so we don't drown Sentry in events from those users (WORLDMONITOR-HN).
+    // Convex is multi-tenant — must NOT broaden to all *.convex.cloud (would silently
+    // suppress blocks to foreign / attacker-controlled tenants).
+    const FIRST_PARTY_CONVEX = 'tacit-curlew-777.convex.cloud';
+
+    it('suppresses connect-src to OUR configured convex host', () => {
+      assert.ok(suppress('enforce', 'connect-src', 'https://tacit-curlew-777.convex.cloud/api/1.34.0/sync', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('does NOT suppress connect-src to a DIFFERENT *.convex.cloud tenant (multi-tenant safety)', () => {
+      // Multi-tenant Convex: any other adjective-noun-N.convex.cloud is a foreign
+      // project. A real user-side block to one of these is signal, not noise.
+      assert.ok(!suppress('enforce', 'connect-src', 'https://abc-def-123.convex.cloud/api/x', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('does NOT suppress connect-src to a similarly-named *.convex.cloud tenant', () => {
+      // e.g. attacker-controlled `tacit-curlew-778.convex.cloud` — exact-hostname
+      // match prevents a typo/lookalike from being whitelisted.
+      assert.ok(!suppress('enforce', 'connect-src', 'https://tacit-curlew-778.convex.cloud/api/1.34.0/sync', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('does NOT suppress connect-src to suffix-spoof lookalike `convex.cloud.evil.com`', () => {
+      assert.ok(!suppress('enforce', 'connect-src', 'https://convex.cloud.evil.com/api', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('does NOT suppress connect-src to OUR convex host when firstPartyConvexHost is null (env unconfigured)', () => {
+      // Dev/test environments without VITE_CONVEX_URL set should leave the filter
+      // open — falls through to other rules (extension, blob, etc.) instead of
+      // accidentally whitelisting on a stale closure.
+      assert.ok(!suppress('enforce', 'connect-src', 'https://tacit-curlew-777.convex.cloud/api/1.34.0/sync', '', false, null));
+    });
+
+    it('suppresses script-src-elem for YouTube IFrame API loader', () => {
+      assert.ok(suppress('enforce', 'script-src-elem', 'https://www.youtube.com/iframe_api', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('suppresses script-src-elem for YouTube IFrame API with cache-buster', () => {
+      assert.ok(suppress('enforce', 'script-src-elem', 'https://www.youtube.com/iframe_api?ver=1', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('suppresses script-src for YouTube IFrame API loader (browser-variant directive)', () => {
+      assert.ok(suppress('enforce', 'script-src', 'https://www.youtube.com/iframe_api', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('does NOT suppress other youtube.com paths under script-src-elem', () => {
+      assert.ok(!suppress('enforce', 'script-src-elem', 'https://www.youtube.com/embed/abc', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('suppresses frame-src for Zscaler corporate proxy injection', () => {
+      assert.ok(suppress('enforce', 'frame-src', 'https://gateway.zscloud.net/auth/sso', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('does NOT suppress connect-src to Zscaler (only frame-src is the injection)', () => {
+      assert.ok(!suppress('enforce', 'connect-src', 'https://gateway.zscloud.net/api', '', false, FIRST_PARTY_CONVEX));
     });
   });
 

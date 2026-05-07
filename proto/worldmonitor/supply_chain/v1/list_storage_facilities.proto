@@ -1,0 +1,123 @@
+syntax = "proto3";
+
+package worldmonitor.supply_chain.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+// ListStorageFacilities returns the curated strategic storage registry
+// (underground gas storage, strategic petroleum reserves, LNG terminals,
+// crude tank farms) with evidence-based status per asset. Registry is
+// curated (see docs/methodology/storage.mdx) and refreshed weekly by
+// scripts/seed-storage-facilities.mjs. Typical consumer:
+// StorageFacilityMapPanel rendering the DeckGL ScatterplotLayer.
+//
+// Like pipelines, the public badge is DERIVED from the evidence bundle
+// server-side at read time. Callers MUST use `public_badge` for display
+// rather than inventing their own derivation from `evidence` fields, so
+// the atlas and MCP clients stay consistent and versioned together.
+message ListStorageFacilitiesRequest {
+  // Filter to one facility type. Accepts:
+  //   "ugs" | "spr" | "lng_export" | "lng_import" | "crude_tank_farm"
+  // Omit (or pass empty) to receive all types.
+  string facility_type = 1 [(sebuf.http.query) = {name: "facilityType"}];
+}
+
+message ListStorageFacilitiesResponse {
+  repeated StorageFacilityEntry facilities = 1;
+  string fetched_at = 2;
+  string classifier_version = 3;
+  bool upstream_unavailable = 4;
+}
+
+// GetStorageFacilityDetail returns a single facility with its full evidence
+// bundle + revision log. Revisions land in Week 3 alongside the disruption
+// event log (Week 3 milestone — empty array in v1).
+message GetStorageFacilityDetailRequest {
+  string facility_id = 1 [
+    (buf.validate.field).required = true,
+    (sebuf.http.query) = {name: "facilityId"}
+  ];
+}
+
+message GetStorageFacilityDetailResponse {
+  StorageFacilityEntry facility = 1;
+  repeated StorageFacilityRevisionEntry revisions = 2;
+  string fetched_at = 3;
+  bool unavailable = 4;
+}
+
+message StorageFacilityEntry {
+  string id = 1;
+  string name = 2;
+  string operator = 3;
+  // One of: "ugs" | "spr" | "lng_export" | "lng_import" | "crude_tank_farm"
+  string facility_type = 4;
+  string country = 5;                   // ISO 3166-1 alpha-2
+  StorageLatLon location = 6;
+  // Working capacity in the facility's native unit (see working_capacity_unit).
+  // Exactly ONE of these is populated per facility, chosen by facility_type:
+  //   ugs                              → capacity_twh
+  //   spr, crude_tank_farm             → capacity_mb
+  //   lng_export, lng_import           → capacity_mtpa
+  double capacity_twh = 7;
+  double capacity_mb = 8;
+  double capacity_mtpa = 9;
+  // One of: "TWh" | "Mb" | "Mtpa"
+  string working_capacity_unit = 10;
+  int32 in_service = 11;
+  StorageEvidence evidence = 12;
+  // Server-derived public badge. One of:
+  //   "operational" | "reduced" | "offline" | "disputed"
+  string public_badge = 13;
+}
+
+message StorageLatLon {
+  double lat = 1;
+  double lon = 2;
+}
+
+message StorageEvidence {
+  // One of: "operational" | "reduced" | "offline" | "under_construction" | "unknown"
+  string physical_state = 1;
+  // One of: "operator" | "regulator" | "press" | "satellite" | "ais-relay"
+  string physical_state_source = 2;
+  StorageOperatorStatement operator_statement = 3;
+  // One of: "under_contract" | "expired" | "suspended" | "unknown"
+  string commercial_state = 4;
+  repeated StorageSanctionRef sanction_refs = 5;
+  // Whether working-gas / stock-level fill is publicly disclosed for this
+  // asset. LNG export terminals, for instance, tend NOT to disclose; UGS
+  // sites in Europe are required to disclose via GIE AGSI+.
+  bool fill_disclosed = 6;
+  // Source of the disclosed fill series ("GIE AGSI+", "EIA SPR weekly
+  // stock report", etc.). Empty when fill_disclosed=false.
+  string fill_source = 7;
+  string last_evidence_update = 8;      // ISO8601
+  string classifier_version = 9;
+  double classifier_confidence = 10;    // 0..1
+}
+
+message StorageOperatorStatement {
+  string text = 1;
+  string url = 2;
+  string date = 3;                      // ISO8601
+}
+
+message StorageSanctionRef {
+  string authority = 1;                 // "EU" | "US" | "UK" | etc.
+  string list_id = 2;
+  string date = 3;                      // ISO8601
+  string url = 4;
+}
+
+message StorageFacilityRevisionEntry {
+  string date = 1;                      // ISO8601
+  string field_changed = 2;
+  string previous_value = 3;
+  string new_value = 4;
+  // One of: "classifier" | "source" | "decay" | "override"
+  string trigger = 5;
+  repeated string sources_used = 6;
+  string classifier_version = 7;
+}

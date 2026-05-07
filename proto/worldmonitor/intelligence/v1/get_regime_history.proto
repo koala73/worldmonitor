@@ -1,0 +1,60 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+// GetRegimeHistoryRequest asks for the recent regime transition log for a
+// region. Returns newest-first. Phase 3 PR1 — see
+// scripts/regional-snapshot/regime-history.mjs for the writer that
+// populates the underlying Redis list on every regime change.
+message GetRegimeHistoryRequest {
+  // Display region id (e.g. "mena", "east-asia", "europe"). See shared/geography.js.
+  // Kebab-case: lowercase alphanumeric groups separated by single hyphens, no
+  // trailing or consecutive hyphens.
+  string region_id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 32,
+    (buf.validate.field).string.pattern = "^[a-z][a-z0-9]*(-[a-z0-9]+)*$",
+    (sebuf.http.query) = {name: "region_id"}
+  ];
+
+  // Optional cap on how many entries to return. Defaults to 50 server-side
+  // when omitted or <= 0. Hard cap enforced by the handler at 100 (= the
+  // writer-side LTRIM cap in regime-history.mjs).
+  int32 limit = 2 [
+    (buf.validate.field).int32.gte = 0,
+    (buf.validate.field).int32.lte = 100,
+    (sebuf.http.query) = {name: "limit"}
+  ];
+}
+
+// GetRegimeHistoryResponse returns the region's regime transition log
+// newest-first. The list is append-only from the seed writer's perspective:
+// only diffs with regime_changed set produce an entry, so this is a pure
+// transition stream (no steady-state noise).
+message GetRegimeHistoryResponse {
+  repeated RegimeTransition transitions = 1;
+}
+
+// RegimeTransition is a single recorded regime change moment. One of these
+// lands in the log each time diffRegionalSnapshot() reports regime_changed.
+message RegimeTransition {
+  string region_id = 1;
+  // Current regime label (the label the region just moved INTO).
+  string label = 2;
+  // Previous regime label (the label the region was in before). Empty for
+  // the first-ever recorded transition for a region.
+  string previous_label = 3;
+  // Unix ms when the transition was recorded. Mirrors
+  // snapshot.regime.transitioned_at when available.
+  int64 transitioned_at = 4 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Free-text driver string from the seed writer (e.g. "cross_source_surge").
+  // May be empty.
+  string transition_driver = 5;
+  // Snapshot id that materialized this transition. Points back to the
+  // full snapshot via intelligence:snapshot-by-id:v1:{snapshot_id}.
+  string snapshot_id = 6;
+}

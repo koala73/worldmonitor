@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const prefSrc = readFileSync(
-  resolve(__dirname, '../src/services/preferences-content.ts'),
+  resolve(__dirname, '../src/services/notifications-settings.ts'),
   'utf-8',
 );
 const alertRulesSrc = readFileSync(

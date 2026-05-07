@@ -43,7 +43,19 @@ jobs:
       - run: npm run lint:unicode
       - run: npm run lint
       - run: npm run lint:boundaries
+      - run: npm run lint:api-contract
+      - run: npm run lint:rate-limit-policies
+      - run: npm run lint:premium-fetch
       - name: Markdown lint
         run: npm run lint:md
       - name: Version sync check
         run: npm run version:check
+
+  mintlify-slugs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: node scripts/enforce-mintlify-reserved-slugs.mjs

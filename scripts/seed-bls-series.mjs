@@ -108,6 +108,10 @@ async function afterPublish(data, _meta) {
   }
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.series) ? data.series.length : 0;
+}
+
 if (process.argv[1]?.endsWith('seed-bls-series.mjs')) {
   runSeed('economic', 'bls-series', CANONICAL_KEY, fetchAllSeries, {
     validateFn: validate,
@@ -115,6 +119,10 @@ if (process.argv[1]?.endsWith('seed-bls-series.mjs')) {
     sourceVersion: 'fred-v1',
     publishTransform,
     afterPublish,
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 2880,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);

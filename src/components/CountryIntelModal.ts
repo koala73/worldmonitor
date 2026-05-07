@@ -51,6 +51,8 @@ export class CountryIntelModal {
   constructor() {
     this.overlay = document.createElement('div');
     this.overlay.className = 'country-intel-overlay';
+    this.overlay.setAttribute('role', 'dialog');
+    this.overlay.setAttribute('aria-modal', 'true');
     this.overlay.innerHTML = `
       <div class="country-intel-modal">
         <div class="country-intel-header">

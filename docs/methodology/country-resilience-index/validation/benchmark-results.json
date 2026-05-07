@@ -1,0 +1,9 @@
+{
+  "generatedAt": 0,
+  "license": "FSI data: Fund for Peace, non-commercial academic license. For internal validation only.",
+  "hypotheses": [],
+  "correlations": {},
+  "outliers": [],
+  "sourceStatus": {},
+  "_note": "Placeholder. Run `node scripts/benchmark-resilience-external.mjs` to populate with live data."
+}

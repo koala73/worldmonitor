@@ -64,10 +64,18 @@ function validate(data) {
   return Array.isArray(data?.alerts) && data.alerts.length >= 1;
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.alerts) ? data.alerts.length : 0;
+}
+
 runSeed('weather', 'alerts', CANONICAL_KEY, fetchAlerts, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
   sourceVersion: 'nws-active',
+
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 45,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);

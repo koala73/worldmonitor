@@ -48,6 +48,7 @@ import { pinWebcam, isPinned } from '@/services/webcams/pinned-store';
 import type { WebcamEntry, WebcamCluster } from '@/generated/client/worldmonitor/webcam/v1/service_client';
 import { tokenizeForMatch, matchKeyword, findMatchingKeywords } from '@/utils/keyword-match';
 import { MapPopup } from './MapPopup';
+import type { GetChokepointStatusResponse } from '@/services/supply-chain';
 import {
   updateHotspotEscalation,
   getHotspotEscalation,
@@ -60,6 +61,7 @@ import { getAlertsNearLocation } from '@/services/geo-convergence';
 import { getCountryAtCoordinates, getCountryBbox } from '@/services/country-geometry';
 import type { CountryClickPayload } from './DeckGLMap';
 import { t } from '@/services/i18n';
+import type { ScenarioVisualState } from '@/config/scenario-templates';
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
 export type MapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
@@ -382,7 +384,11 @@ export class MapComponent {
       'bases', 'nuclear', 'irradiators',                 // military/strategic
       'military',                                         // military tracking (flights + vessels)
       'cables', 'pipelines', 'outages', 'datacenters',   // infrastructure
-      // cyberThreats is intentionally hidden on SVG/mobile fallback (DeckGL desktop only)
+      // cyberThreats is intentionally hidden on SVG/mobile fallback (DeckGL desktop only).
+      // storageFacilities + fuelShortages are also DeckGL-only — this file has no
+      // SVG render path for them (see grep for existing 'pipelines' render at :1100).
+      // Adding them here would surface a toggle that produces zero output. They're
+      // already restricted to ['flat'] in LAYER_REGISTRY to hide from globe mode too.
       'ais', 'flights', 'gpsJamming',                      // transport/interference
       'natural', 'weather',                               // natural
       'economic',                                         // economic
@@ -404,7 +410,27 @@ export class MapComponent {
     const happyLayers: (keyof MapLayers)[] = [
       'positiveEvents', 'kindness', 'happiness', 'speciesRecovery', 'renewableInstallations',
     ];
-    const layers = SITE_VARIANT === 'tech' ? techLayers : SITE_VARIANT === 'finance' ? financeLayers : SITE_VARIANT === 'happy' ? happyLayers : fullLayers;
+    // Energy variant — SVG/mobile fallback. Only include keys that actually render
+    // in this file (commodityPorts/climate/tradeRoutes/resilienceScore/dayNight do
+    // not, so they're omitted). Mirrors VARIANT_LAYER_ORDER.energy in
+    // src/config/map-layer-definitions.ts but filtered to the SVG-capable subset.
+    const energyLayers: (keyof MapLayers)[] = [
+      'pipelines',                            // oil + gas pipeline registry (Week 2)
+      'waterways',                            // strategic chokepoints
+      'ais',                                  // tanker positions at chokepoints
+      'commodityHubs',                        // energy exchanges / hubs
+      'minerals',                             // critical-minerals + energy-transition overlap
+      'sanctions',                            // energy sanctions flows
+      'outages',                              // power / energy system status
+      'natural',                              // earthquakes near energy infrastructure
+      'weather', 'fires',                     // operational risk
+      'economic',                             // infrastructure context
+    ];
+    const layers = SITE_VARIANT === 'tech' ? techLayers
+                 : SITE_VARIANT === 'finance' ? financeLayers
+                 : SITE_VARIANT === 'happy' ? happyLayers
+                 : SITE_VARIANT === 'energy' ? energyLayers
+                 : fullLayers;
     const layerLabelKeys: Partial<Record<keyof MapLayers, string>> = {
       hotspots: 'components.deckgl.layers.intelHotspots',
       conflicts: 'components.deckgl.layers.conflictZones',
@@ -3400,6 +3426,14 @@ export class MapComponent {
     if (btn) {
       (btn as HTMLElement).style.display = 'none';
     }
+  }
+
+  public setChokepointData(data: GetChokepointStatusResponse | null): void {
+    this.popup.setChokepointData(data);
+  }
+
+  public setScenarioState(_state: ScenarioVisualState | null): void {
+    // SVG renderer: scenario fill deferred (no iso2 data binding on country elements)
   }
 
   public setLayerLoading(layer: keyof MapLayers, loading: boolean): void {

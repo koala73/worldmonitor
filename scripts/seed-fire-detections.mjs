@@ -52,13 +52,21 @@ function parseDetectedAt(acqDate, acqTime) {
 
 async function fetchRegionSource(apiKey, regionName, bbox, source) {
   const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${apiKey}/${source}/${bbox}/1`;
-  const res = await fetch(url, {
-    headers: { Accept: 'text/csv', 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(30_000),
-  });
-  if (!res.ok) throw new Error(`FIRMS ${res.status} for ${regionName}/${source}`);
-  const csv = await res.text();
-  return parseCSV(csv);
+  let lastErr;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const res = await fetch(url, {
+        headers: { Accept: 'text/csv', 'User-Agent': CHROME_UA },
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!res.ok) throw new Error(`FIRMS ${res.status} for ${regionName}/${source}`);
+      return parseCSV(await res.text());
+    } catch (err) {
+      lastErr = err;
+      if (attempt < 2) await sleep(6_000); // match inter-call pacing so retry stays within FIRMS 10 req/min budget
+    }
+  }
+  throw lastErr;
 }
 
 async function fetchAllRegions(apiKey) {
@@ -78,19 +86,22 @@ async function fetchAllRegions(apiKey) {
           if (seen.has(id)) continue;
           seen.add(id);
           const detectedAt = parseDetectedAt(row.acq_date || '', row.acq_time || '');
+          const brightness = parseFloat(row.bright_ti4 ?? '0') || 0;
+          const frp = parseFloat(row.frp ?? '0') || 0;
           fireDetections.push({
             id,
             location: {
               latitude: parseFloat(row.latitude ?? '0') || 0,
               longitude: parseFloat(row.longitude ?? '0') || 0,
             },
-            brightness: parseFloat(row.bright_ti4 ?? '0') || 0,
-            frp: parseFloat(row.frp ?? '0') || 0,
+            brightness,
+            frp,
             confidence: mapConfidence(row.confidence || ''),
             satellite: row.satellite || '',
             detectedAt,
             region: regionName,
             dayNight: row.daynight || '',
+            possibleExplosion: frp > 80 && brightness > 380,
           });
         }
       } catch (err) {
@@ -105,6 +116,10 @@ async function fetchAllRegions(apiKey) {
   return { fireDetections, pagination: undefined };
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.fireDetections) ? data.fireDetections.length : 0;
+}
+
 async function main() {
   const apiKey = process.env.NASA_FIRMS_API_KEY || process.env.FIRMS_API_KEY || '';
   if (!apiKey) {
@@ -117,8 +132,11 @@ async function main() {
   await runSeed('wildfire', 'fires', CANONICAL_KEY, () => fetchAllRegions(apiKey), {
     validateFn: (data) => Array.isArray(data?.fireDetections) && data.fireDetections.length > 0,
     ttlSeconds: 7200,
-    lockTtlMs: 600_000, // 10 min — 27 calls × (6s pace + up to 30s timeout) can exceed 5 min under partial slowness
+    lockTtlMs: 2_400_000, // 40 min — 27 slots × ~72s worst case (30s timeout + 6s backoff + 30s retry + 6s pace) ≈ 32.4 min; pad headroom. Next cron tick sees lock held and safely skips.
     sourceVersion: FIRMS_SOURCES.join('+'),
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 360,
   });
 }
 

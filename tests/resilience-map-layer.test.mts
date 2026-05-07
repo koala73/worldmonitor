@@ -69,6 +69,68 @@ describe('resilience choropleth thresholds', () => {
   });
 });
 
+describe('resilience non-DeckGL sanitization', () => {
+  function simulateSanitize(layers: Record<string, boolean>, isDeckGLActive: boolean) {
+    if (layers.resilienceScore && !isDeckGLActive) {
+      return { ...layers, resilienceScore: false };
+    }
+    return { ...layers };
+  }
+
+  it('strips resilienceScore from layer state when DeckGL is not active', () => {
+    const layers = { ...baseLayers(), resilienceScore: true };
+    const result = simulateSanitize(layers, false);
+    assert.equal(result.resilienceScore, false);
+  });
+
+  it('preserves resilienceScore when DeckGL is active', () => {
+    const layers = { ...baseLayers(), resilienceScore: true };
+    const result = simulateSanitize(layers, true);
+    assert.equal(result.resilienceScore, true);
+  });
+
+  it('does not affect other layers when stripping resilienceScore', () => {
+    const layers = { ...baseLayers(), resilienceScore: true, ciiChoropleth: true, flights: true };
+    const result = simulateSanitize(layers, false);
+    assert.equal(result.resilienceScore, false);
+    assert.equal(result.ciiChoropleth, true);
+    assert.equal(result.flights, true);
+  });
+
+  it('URL restore with resilienceScore=true on non-DeckGL produces false in sanitized state', () => {
+    const urlLayers = { ...baseLayers(), resilienceScore: true };
+    const normalized = normalizeExclusiveChoropleths(urlLayers, null);
+    const sanitized = simulateSanitize(normalized, false);
+    assert.equal(sanitized.resilienceScore, false);
+  });
+
+  it('mode switch from DeckGL to globe strips resilienceScore', () => {
+    const deckGlState = { ...baseLayers(), resilienceScore: true };
+    const afterSwitch = simulateSanitize(deckGlState, false);
+    assert.equal(afterSwitch.resilienceScore, false);
+  });
+
+  function baseLayers() {
+    return {
+      conflicts: false, bases: false, cables: false, pipelines: false,
+      hotspots: false, ais: false, nuclear: false, irradiators: false,
+      radiationWatch: false, sanctions: false, weather: false, economic: false,
+      waterways: false, outages: false, cyberThreats: false, datacenters: false,
+      protests: false, flights: false, military: false, natural: false,
+      spaceports: false, minerals: false, fires: false, ucdpEvents: false,
+      displacement: false, climate: false, startupHubs: false, cloudRegions: false,
+      accelerators: false, techHQs: false, techEvents: false, stockExchanges: false,
+      financialCenters: false, centralBanks: false, commodityHubs: false,
+      gulfInvestments: false, positiveEvents: false, kindness: false,
+      happiness: false, speciesRecovery: false, renewableInstallations: false,
+      tradeRoutes: false, iranAttacks: false, gpsJamming: false, satellites: false,
+      ciiChoropleth: false, resilienceScore: false, dayNight: false,
+      miningSites: false, processingPlants: false, commodityPorts: false,
+      webcams: false, weatherRadar: false, diseaseOutbreaks: false,
+    };
+  }
+});
+
 describe('resilience choropleth exclusivity', () => {
   function baseLayers() {
     return {

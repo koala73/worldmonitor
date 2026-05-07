@@ -1,0 +1,48 @@
+---
+title: "Trade Policy"
+description: "Six-tab trade-policy surface covering restrictions, tariff trends, trade flows, non-tariff barriers, US customs revenue, and bilateral Comtrade flows."
+---
+
+The **Trade Policy** panel (internal id `trade-policy`) is the dashboard's go-to surface for live trade-policy context — what's getting restricted, where tariffs are moving, how flows are shifting, what barriers exist, and how US customs revenue is tracking as a real-time signal of tariff pass-through.
+
+## What the panel shows
+
+Six tabs across one data-dense panel (`defaultRowSpan: 2`):
+
+| Tab id | Shows |
+|---|---|
+| `restrictions` | Active trade restrictions — the default tab on mount. |
+| `tariffs` | Tariff trends (`TariffDataPoint[]`) and `EffectiveTariffRate` series. |
+| `flows` | Bilateral trade flows — `GetTradeFlowsResponse`. |
+| `barriers` | Non-tariff barriers — `GetTradeBarriersResponse`. |
+| `revenue` | US Treasury customs revenue — monthly data with FYTD year-over-year comparison and spike highlighting. |
+| `comtrade` | Full Comtrade bilateral flow search — `ListComtradeFlowsResponse`. |
+
+`TabId` is the union `'restrictions' | 'tariffs' | 'flows' | 'barriers' | 'revenue' | 'comtrade'` (`src/components/TradePolicyPanel.ts:17`).
+
+Panel id is `trade-policy`; canonical component is `src/components/TradePolicyPanel.ts`. Title resolves from i18n (`panels.tradePolicy`).
+
+## How you reach it
+
+- **Cmd+K**: type *trade*, *tariff*, or *customs*.
+- **Availability by variant**: registered and enabled by default in the **full/geopolitical** (`priority: 1`), **finance** (`priority: 1`), and **commodity** (`priority: 1`) variants. Not present in the tech or happy variants. Source: `'trade-policy'` entries in `FULL_PANELS`, `FINANCE_PANELS`, `COMMODITY_PANELS` of `src/config/panels.ts`.
+
+## Data sources
+
+Six response shapes from `@/services/trade`, each backed by the Trade service:
+
+- `GetTradeRestrictionsResponse` / `GetTariffTrendsResponse` / `GetTradeFlowsResponse` / `GetTradeBarriersResponse` / `GetCustomsRevenueResponse` / `ListComtradeFlowsResponse`.
+
+The `revenue` tab's US-Treasury feed is particularly sensitive — see the changelog entry for "US Treasury customs revenue in Trade Policy panel" (`#1663`).
+
+## Refresh cadence
+
+Per-tab fetches on mount and on tab switch; no polling. Upstream seeders run on varying cadences per dataset (tariffs daily, Comtrade monthly).
+
+## Tier & gating
+
+**Free.** No `premium` flag in variant registrations. Trade service RPCs are public.
+
+## API reference
+
+- [Trade service](/api/TradeService.openapi.yaml) — full OpenAPI for all six tab-backing RPCs.

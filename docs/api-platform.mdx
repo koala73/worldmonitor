@@ -1,0 +1,155 @@
+---
+title: "Platform Endpoints"
+description: "Bootstrap, health, versioning, cache-purge, and user preferences — the plumbing endpoints every WorldMonitor client talks to."
+---
+
+These endpoints are not part of a domain RPC service — they sit at the root of the API surface and handle platform concerns.
+
+## Bootstrap
+
+### `GET /api/bootstrap`
+
+Single round-trip hydration for the dashboard. Returns **all bootstrap-registered Redis cache keys** unwrapped from their seed envelopes in one response.
+
+- **Auth**: browser origin OR `X-WorldMonitor-Key`
+- **Cache**: `Cache-Control: public, max-age=30, s-maxage=30`
+- **Shape**: `{ earthquakes, outages, marketQuotes, commodityQuotes, imfMacro, bisPolicy, ... }` — ~40+ top-level fields, each the unwrapped payload of one seeded domain.
+
+Use this on initial page load to avoid 40 parallel RPC calls.
+
+## Version
+
+### `GET /api/version`
+
+Returns the latest **GitHub Release** of `koala73/worldmonitor`. Used by the desktop app to detect a newer published release and prompt the user to update. It is **not** the currently-deployed Vercel commit.
+
+```json
+{
+  "version": "2.6.7",
+  "tag": "v2.6.7",
+  "url": "https://github.com/koala73/worldmonitor/releases/tag/v2.6.7",
+  "prerelease": false
+}
+```
+
+Cached `public, s-maxage=300, stale-while-revalidate=60, stale-if-error=3600`. Returns `502 { "error": "upstream" }` or `502 { "error": "fetch_failed" }` when the GitHub API is unreachable.
+
+## Cache purge
+
+### `POST /api/cache-purge`
+
+Internal. Invalidates Redis cache keys by explicit list or glob patterns.
+
+- **Auth**: `Authorization: Bearer $RELAY_SHARED_SECRET` (timing-safe compared). Anything else returns `401`.
+- **Body** (at least one of `keys` / `patterns` required):
+  ```json
+  {
+    "keys":     ["market:stocks-bootstrap:v1", "infra:outages:v1"],
+    "patterns": ["market:sectors:*"],
+    "dryRun":   false
+  }
+  ```
+- **Limits**: up to 20 explicit keys, up to 3 patterns (each must end in `*`, bare `*` rejected), up to 200 deletions total, up to 5 SCAN iterations per pattern.
+- **Safety**: keys with prefixes `rl:` / `__` are always skipped; patterns that would match `military:bases:*`, `conflict:iran-events:*`, `conflict:ucdp-events:*` (durable seeds) are skipped.
+- **Non-production**: on preview / development deploys, keys are auto-prefixed with `{env}:{git-sha}:` so purges can't affect production data.
+- **Response**:
+  ```json
+  { "matched": 4, "deleted": 4, "keys": ["..."], "dryRun": false, "truncated": false }
+  ```
+
+## Health
+
+### `GET /api/health`
+
+Aggregated freshness report for **all registered seed keys**. Returns `HEALTHY`, `WARNING` (stale), or `CRIT` (missing / empty with `emptyDataIsFailure`).
+
+Monitor via UptimeRobot / Better Stack — alert on any status other than `HEALTHY`.
+
+```json
+{
+  "status": "HEALTHY",
+  "checkedAt": "2026-04-19T12:00:00Z",
+  "keys": {
+    "market:stocks-bootstrap:v1": { "status": "HEALTHY", "fetchedAt": "...", "recordCount": 78 },
+    "seismology:earthquakes:v1":  { "status": "WARNING", "staleMin": 12 }
+  }
+}
+```
+
+### `GET /api/seed-health`
+
+Parallel registry for Railway-cron-driven seeders with their own cadence thresholds. Distinct from `/api/health` — both must be updated when cadence changes. See [health endpoints](/health-endpoints).
+
+### `POST /api/seed-contract-probe`
+
+Internal probe that validates each seed producer's envelope shape matches its consumers. Returns violations if any consumer reads a field the producer no longer emits.
+
+## User preferences
+
+### `GET /api/user-prefs`
+### `POST /api/user-prefs`
+
+Per-user dashboard preferences (layout, toggles, filters). Clerk bearer required. Backed by Convex.
+
+```json
+{
+  "layout": "classic",
+  "enabledLayers": ["conflict", "aviation", "maritime"],
+  "defaultCountry": "US"
+}
+```
+
+## API key cache invalidation
+
+### `POST /api/invalidate-user-api-key-cache`
+
+Invalidates a user's entitlement cache after a subscription change (Dodo webhook → Convex → this endpoint). Internal — requires `RELAY_SHARED_SECRET`.
+
+## Geo utilities
+
+### `GET /api/geo?iso2=US`
+
+Returns country metadata: centroid, bbox, capital, ISO codes.
+
+### `GET /api/reverse-geocode?lat=40.7&lon=-74.0`
+
+Reverse geocodes a lat/lon to the nearest country + city using the bundled coordinate dataset.
+
+### `GET /api/data/city-coords?q=Tokyo`
+
+City name → coordinates lookup.
+
+## Utilities
+
+### `GET /api/download?platform=<id>&variant=<id>`
+
+Redirects to the matching asset on the latest GitHub release of `koala73/worldmonitor`. Returns `302` to the asset URL on success, or `302` to [releases/latest](https://github.com/koala73/worldmonitor/releases/latest) on any failure (unknown platform, no match, GitHub error).
+
+**`platform`** (required, exact string):
+
+| value | matches |
+|-------|---------|
+| `windows-exe` | `*_x64-setup.exe` |
+| `windows-msi` | `*_x64_en-US.msi` |
+| `macos-arm64` | `*_aarch64.dmg` |
+| `macos-x64` | `*_x64.dmg` (excluding `*setup*`) |
+| `linux-appimage` | `*_amd64.AppImage` |
+| `linux-appimage-arm64` | `*_aarch64.AppImage` |
+
+**`variant`** (optional):
+
+| value | filters asset name to |
+|-------|-----------------------|
+| `full` / `world` | `worldmonitor` |
+| `tech` | `techmonitor` |
+| `finance` | `financemonitor` |
+
+Caches the 302 for 5 minutes (`s-maxage=300`, `stale-while-revalidate=60`, `stale-if-error=600`).
+
+### `POST /api/leads/v1/submit-contact`
+
+Public enterprise contact form. Turnstile-verified, rate-limited per IP. Part of `LeadsService`.
+
+### `POST /api/leads/v1/register-interest`
+
+Captures email for Pro-waitlist signup. Writes to Convex and sends a confirmation email. Part of `LeadsService`.

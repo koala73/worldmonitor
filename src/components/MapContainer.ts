@@ -47,6 +47,13 @@ import type { ImageryScene } from '@/generated/server/worldmonitor/imagery/v1/se
 import type { WebcamEntry, WebcamCluster } from '@/generated/client/worldmonitor/webcam/v1/service_client';
 import type { TrafficAnomaly as ProtoTrafficAnomaly, DdosLocationHit } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
 import type { DiseaseOutbreakItem } from '@/services/disease-outbreaks';
+import type { GetChokepointStatusResponse } from '@/services/supply-chain';
+import type { ScenarioVisualState, ScenarioResult } from '@/config/scenario-templates';
+import { getAuthState } from '@/services/auth-state';
+import { hasPremiumAccess } from '@/services/panel-gating';
+import { trackGateHit } from '@/services/analytics';
+
+export type { ScenarioVisualState, ScenarioResult };
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
 export type MapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
@@ -86,6 +93,7 @@ export class MapContainer {
   private deckGLMap: DeckGLMap | null = null;
   private svgMap: MapComponent | null = null;
   private globeMap: GlobeMap | null = null;
+  private supplyChainPanel: import('@/components/SupplyChainPanel').SupplyChainPanel | null = null;
   private initialState: MapContainerState;
   private useDeckGL: boolean;
   private useGlobe: boolean;
@@ -135,6 +143,7 @@ export class MapContainer {
   private cachedHappinessScores: HappinessData | null = null;
   private cachedCIIScores: CIIScore[] | null = null;
   private cachedResilienceRanking: ResilienceRankingItem[] | null = null;
+  private cachedResilienceGreyedOut: ResilienceRankingItem[] = [];
   private cachedSpeciesRecovery: SpeciesRecovery[] | null = null;
   private cachedRenewableInstallations: RenewableInstallation[] | null = null;
   private cachedHotspotActivity: NewsItem[] | null = null;
@@ -149,8 +158,11 @@ export class MapContainer {
     this.isMobile = isMobileDevice();
     this.useGlobe = preferGlobe && this.hasWebGLSupport();
 
-    // Use deck.gl on desktop with WebGL support, SVG on mobile
     this.useDeckGL = !this.useGlobe && this.shouldUseDeckGL();
+
+    if (!this.useDeckGL && this.initialState.layers?.resilienceScore) {
+      this.initialState = { ...this.initialState, layers: { ...this.initialState.layers, resilienceScore: false } };
+    }
 
     this.init();
   }
@@ -301,7 +313,7 @@ export class MapContainer {
     if (this.cachedKindnessData) this.setKindnessData(this.cachedKindnessData);
     if (this.cachedHappinessScores) this.setHappinessScores(this.cachedHappinessScores);
     if (this.cachedCIIScores) this.setCIIScores(this.cachedCIIScores);
-    if (this.cachedResilienceRanking) this.setResilienceRanking(this.cachedResilienceRanking);
+    if (this.cachedResilienceRanking) this.setResilienceRanking(this.cachedResilienceRanking, this.cachedResilienceGreyedOut);
     if (this.cachedSpeciesRecovery) this.setSpeciesRecoveryZones(this.cachedSpeciesRecovery);
     if (this.cachedRenewableInstallations) this.setRenewableInstallations(this.cachedRenewableInstallations);
     if (this.cachedHotspotActivity) this.updateHotspotActivity(this.cachedHotspotActivity);
@@ -394,8 +406,9 @@ export class MapContainer {
   }
 
   public setLayers(layers: MapLayers): void {
-    if (this.useGlobe) { this.globeMap?.setLayers(layers); return; }
-    if (this.useDeckGL) { this.deckGLMap?.setLayers(layers); } else { this.svgMap?.setLayers(layers); }
+    const sanitized = !this.useDeckGL && layers.resilienceScore ? { ...layers, resilienceScore: false } : layers;
+    if (this.useGlobe) { this.globeMap?.setLayers(sanitized); return; }
+    if (this.useDeckGL) { this.deckGLMap?.setLayers(sanitized); } else { this.svgMap?.setLayers(sanitized); }
   }
 
   public getState(): MapContainerState {
@@ -661,16 +674,23 @@ export class MapContainer {
     // SVG map does not support choropleth overlay
   }
 
+  public setChokepointData(data: GetChokepointStatusResponse | null): void {
+    if (this.useGlobe) { this.globeMap?.setChokepointData(data); return; }
+    if (this.useDeckGL) { this.deckGLMap?.setChokepointData(data); return; }
+    this.svgMap?.setChokepointData(data);
+  }
+
   public setCIIScores(scores: CIIScore[]): void {
     this.cachedCIIScores = scores;
     if (this.useGlobe) { this.globeMap?.setCIIScores(scores); return; }
     if (this.useDeckGL) { this.deckGLMap?.setCIIScores(scores); }
   }
 
-  public setResilienceRanking(items: ResilienceRankingItem[]): void {
+  public setResilienceRanking(items: ResilienceRankingItem[], greyedOut: ResilienceRankingItem[] = []): void {
     this.cachedResilienceRanking = items;
+    this.cachedResilienceGreyedOut = greyedOut;
     if (this.useDeckGL) {
-      this.deckGLMap?.setResilienceRanking(items);
+      this.deckGLMap?.setResilienceRanking(items, greyedOut);
     }
   }
 
@@ -831,6 +851,7 @@ export class MapContainer {
 
   // Layer enable/disable and trigger methods
   public enableLayer(layer: keyof MapLayers): void {
+    if (layer === 'resilienceScore' && !this.useDeckGL) return;
     if (this.useGlobe) { this.globeMap?.enableLayer(layer); return; }
     if (this.useDeckGL) {
       this.deckGLMap?.enableLayer(layer);
@@ -949,6 +970,67 @@ export class MapContainer {
     if (this.useDeckGL) {
       this.deckGLMap?.setRenderPaused(paused);
     }
+  }
+
+  // ─── Route Highlight ─────────────────────────────────────────────────────────
+
+  public highlightRoute(routeIds: string[]): void {
+    this.deckGLMap?.highlightRoute(routeIds);
+  }
+
+  public clearHighlightedRoute(): void {
+    this.deckGLMap?.clearHighlightedRoute();
+  }
+
+  public setBypassRoutes(corridors: Array<{fromPort: [number, number]; toPort: [number, number]}>): void {
+    this.deckGLMap?.setBypassRoutes(corridors);
+  }
+
+  public clearBypassRoutes(): void {
+    this.deckGLMap?.clearBypassRoutes();
+  }
+
+  public zoomToRoutes(routeIds: string[]): void {
+    this.deckGLMap?.zoomToRoutes(routeIds);
+  }
+
+  // ─── Scenario Engine ─────────────────────────────────────────────────────────
+
+  public setSupplyChainPanel(panel: import('@/components/SupplyChainPanel').SupplyChainPanel): void {
+    this.supplyChainPanel = panel;
+  }
+
+  /**
+   * Activate a scenario across all active renderers.
+   * PRO-gated — free users trigger `trackGateHit('scenario-engine')` only.
+   *
+   * @param scenarioId  Template ID from scenario-templates.ts
+   * @param result      Computed result from the scenario worker
+   */
+  public activateScenario(scenarioId: string, result: ScenarioResult): void {
+    if (!hasPremiumAccess(getAuthState())) {
+      trackGateHit('scenario-engine');
+      return;
+    }
+    const state: ScenarioVisualState = {
+      scenarioId,
+      disruptedChokepointIds: result.affectedChokepointIds,
+      affectedIso2s: result.topImpactCountries.map((c: { iso2: string }) => c.iso2),
+    };
+    this.deckGLMap?.setScenarioState(state);
+    this.svgMap?.setScenarioState(state);
+    this.globeMap?.setScenarioState(state);
+    this.supplyChainPanel?.showScenarioSummary(scenarioId, result);
+  }
+
+  /**
+   * Deactivate the current scenario and restore normal visual state.
+   */
+  public deactivateScenario(): void {
+    this.deckGLMap?.setScenarioState(null);
+    this.svgMap?.setScenarioState(null);
+    this.globeMap?.setScenarioState(null);
+    this.supplyChainPanel?.hideScenarioSummary();
   }
 
   // Utility methods

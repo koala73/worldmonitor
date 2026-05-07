@@ -9,6 +9,7 @@
 import { MutationCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { getFeaturesForPlan } from "../lib/entitlements";
+import { PLAN_PRECEDENCE } from "../config/productCatalog";
 import { verifyUserId } from "../lib/identitySigning";
 import { DEV_USER_ID, isDev } from "../lib/auth";
 
@@ -24,11 +25,16 @@ interface DodoCustomer {
 interface DodoSubscriptionData {
   subscription_id: string;
   product_id: string;
+  status?: string;
   customer?: DodoCustomer;
   previous_billing_date?: string | number | Date;
   next_billing_date?: string | number | Date;
   cancelled_at?: string | number | Date;
   metadata?: Record<string, string>;
+  recurring_pre_tax_amount?: number;
+  currency?: string;
+  tax_inclusive?: boolean;
+  discount_id?: string | null;
 }
 
 interface DodoPaymentData {
@@ -117,6 +123,135 @@ export async function upsertEntitlements(
       { userId, planKey, features, validUntil },
     );
   }
+}
+
+// ---------------------------------------------------------------------------
+// Coverage helpers
+// ---------------------------------------------------------------------------
+
+type SubscriptionRow = {
+  _id: import("../_generated/dataModel").Id<"subscriptions">;
+  userId: string;
+  dodoSubscriptionId: string;
+  planKey: string;
+  status: "active" | "on_hold" | "cancelled" | "expired";
+  currentPeriodEnd: number;
+};
+
+/**
+ * A subscription is "still covering" the user when it is active, on-hold
+ * (payment retry window — entitlement preserved per business policy), or
+ * cancelled-but-paid-through (currentPeriodEnd in the future).
+ */
+function isCoveringAt<T extends Pick<SubscriptionRow, "status" | "currentPeriodEnd">>(
+  s: T,
+  at: number,
+): boolean {
+  return (
+    s.status === "active" ||
+    s.status === "on_hold" ||
+    (s.status === "cancelled" && s.currentPeriodEnd > at)
+  );
+}
+
+/**
+ * Deterministic comparator over covering subscriptions. Returns positive when
+ * `a` outranks `b`, negative when `b` outranks `a`, zero only when fully
+ * indistinguishable. Tie-break order:
+ *
+ *   1. higher `features.tier` wins (primary)
+ *   2. higher `PLAN_PRECEDENCE[planKey]` wins (capability tie-break — e.g.
+ *      api_business beats api_starter at tier 2; pro_annual beats pro_monthly
+ *      at tier 1)
+ *   3. later `currentPeriodEnd` wins (duration tie-break — keep the longest-
+ *      lived covering sub)
+ *
+ * Exported for testing; use `pickBestCoveringSub` for the picker.
+ */
+export function compareSubscriptionsByCoverage<
+  T extends Pick<SubscriptionRow, "planKey" | "currentPeriodEnd">,
+>(a: T, b: T): number {
+  const tierDelta = getFeaturesForPlan(a.planKey).tier - getFeaturesForPlan(b.planKey).tier;
+  if (tierDelta !== 0) return tierDelta;
+  const rankDelta = (PLAN_PRECEDENCE[a.planKey] ?? 0) - (PLAN_PRECEDENCE[b.planKey] ?? 0);
+  if (rankDelta !== 0) return rankDelta;
+  return a.currentPeriodEnd - b.currentPeriodEnd;
+}
+
+/**
+ * Picks the strongest covering subscription for a user, or null if none
+ * cover. Reads ALL of the user's subscriptions via `by_userId`; pass the
+ * post-write timestamp so a sub that was just patched (e.g. expired) is
+ * correctly excluded.
+ */
+async function pickBestCoveringSub(
+  ctx: MutationCtx,
+  userId: string,
+  at: number,
+): Promise<SubscriptionRow | null> {
+  const candidates = await ctx.db
+    .query("subscriptions")
+    .withIndex("by_userId", (q) => q.eq("userId", userId))
+    .collect();
+
+  let best: SubscriptionRow | null = null;
+  for (const s of candidates) {
+    if (!isCoveringAt(s, at)) continue;
+    if (best === null || compareSubscriptionsByCoverage(s, best) > 0) {
+      best = s as SubscriptionRow;
+    }
+  }
+  return best;
+}
+
+/**
+ * Recomputes the user's entitlement from ALL of their subscriptions.
+ *
+ * This is the ONE entitlement-write path for subscription event handlers.
+ * It exists because the `entitlements` table is one-row-per-user but a single
+ * user can hold multiple concurrent Dodo subscriptions on the same userId
+ * (e.g. upgraded by buying a higher-tier plan instead of plan-change in the
+ * customer portal). A naive per-event `upsertEntitlements(userId, planKey, ...)`
+ * silently clobbers the entitlement row with the *event's* sub even when
+ * another paid sub still covers the user — see review feedback on PR #3470.
+ *
+ * Algorithm:
+ *   1. Honor a standing comp floor: if compUntil is in the future, leave
+ *      the entitlement untouched (goodwill credit outlives Dodo state).
+ *   2. Pick the strongest covering sub via the deterministic comparator
+ *      (tier > PLAN_PRECEDENCE > currentPeriodEnd).
+ *   3. If a covering sub exists, write its (planKey, currentPeriodEnd).
+ *   4. Otherwise downgrade to free.
+ *
+ * Note: callers MUST persist their own subscription row patch BEFORE calling
+ * this helper so the recompute sees the post-event state.
+ */
+export async function recomputeEntitlementFromAllSubs(
+  ctx: MutationCtx,
+  userId: string,
+  eventTimestamp: number,
+): Promise<void> {
+  const entitlement = await ctx.db
+    .query("entitlements")
+    .withIndex("by_userId", (q) => q.eq("userId", userId))
+    .first();
+  if (entitlement?.compUntil && entitlement.compUntil > eventTimestamp) {
+    console.log(
+      `[subscriptionHelpers] recompute for ${userId} — comp floor active until ${new Date(entitlement.compUntil).toISOString()}, preserving entitlement`,
+    );
+    return;
+  }
+
+  const best = await pickBestCoveringSub(ctx, userId, eventTimestamp);
+  if (best) {
+    await upsertEntitlements(ctx, userId, best.planKey, best.currentPeriodEnd, eventTimestamp);
+    return;
+  }
+
+  // No covering sub — downgrade to free. validUntil = eventTimestamp marks the
+  // immediate-revoke point; entitlement queries fall back to free-tier defaults
+  // when validUntil is in the past.
+  await upsertEntitlements(ctx, userId, "free", eventTimestamp, eventTimestamp);
 }
 
 // ---------------------------------------------------------------------------
@@ -287,13 +422,55 @@ export async function handleSubscriptionActive(
       rawPayload: data,
       updatedAt: eventTimestamp,
     });
+
+    // Referral attribution on conversion (Phase 9 / Todo #223).
+    // When a /pro?ref=<code> visitor checks out, Dodo carries the
+    // code through as metadata.affonso_referral (see
+    // convex/payments/checkout.ts). On the FIRST activation of their
+    // subscription we look up the code in userReferralCodes and
+    // insert a userReferralCredits row crediting the sharer. The
+    // `else` branch guards against double-crediting on webhook
+    // replays — existing subscription rows skip this path.
+    //
+    // `affonso_referral` is the Dodo ↔ Affonso vendor contract key —
+    // DO NOT RENAME here or on the write side in checkout.ts. A
+    // rename desyncs writer/reader and silently breaks every
+    // conversion-path credit.
+    const referralCode = data.metadata?.affonso_referral;
+    if (typeof referralCode === "string" && referralCode.length > 0) {
+      const referrer = await ctx.db
+        .query("userReferralCodes")
+        .withIndex("by_code", (q) => q.eq("code", referralCode))
+        .first();
+      if (referrer) {
+        const refereeEmail = (data.customer?.email ?? "").trim().toLowerCase();
+        if (refereeEmail) {
+          const existingCredit = await ctx.db
+            .query("userReferralCredits")
+            .withIndex("by_referrer_email", (q) =>
+              q.eq("referrerUserId", referrer.userId).eq("refereeEmail", refereeEmail),
+            )
+            .first();
+          if (!existingCredit) {
+            await ctx.db.insert("userReferralCredits", {
+              referrerUserId: referrer.userId,
+              refereeEmail,
+              createdAt: eventTimestamp,
+            });
+          }
+        }
+      }
+    }
   }
 
-  await upsertEntitlements(ctx, userId, planKey, currentPeriodEnd, eventTimestamp);
+  // Recompute from ALL subs on this userId — the event's sub may be a
+  // duplicate or lower-tier than another active sub (multi-active-sub guard).
+  await recomputeEntitlementFromAllSubs(ctx, userId, eventTimestamp);
 
   // Upsert customer record so portal session creation can find dodoCustomerId
   const dodoCustomerId = data.customer?.customer_id;
   const email = data.customer?.email ?? "";
+  const normalizedEmail = email.trim().toLowerCase();
 
   if (dodoCustomerId) {
     const existingCustomer = await ctx.db
@@ -307,6 +484,7 @@ export async function handleSubscriptionActive(
       await ctx.db.patch(existingCustomer._id, {
         userId,
         email,
+        normalizedEmail,
         updatedAt: eventTimestamp,
       });
     } else {
@@ -314,10 +492,34 @@ export async function handleSubscriptionActive(
         userId,
         dodoCustomerId,
         email,
+        normalizedEmail,
         createdAt: eventTimestamp,
         updatedAt: eventTimestamp,
       });
     }
+  }
+
+  // Schedule welcome + admin notification emails (non-blocking, new subscriptions only)
+  if (!email) {
+    console.warn(
+      `[subscriptionHelpers] subscription.active: no customer email — skipping welcome email (subscriptionId=${data.subscription_id})`,
+    );
+  } else if (existing) {
+    console.log(`[subscriptionHelpers] subscription.active: reactivation — skipping welcome email (subscriptionId=${data.subscription_id})`);
+  } else if (process.env.RESEND_API_KEY) {
+    await ctx.scheduler.runAfter(
+      0,
+      internal.payments.subscriptionEmails.sendSubscriptionEmails,
+      {
+        userEmail: email,
+        planKey,
+        userId,
+        recurringPreTaxAmount: data.recurring_pre_tax_amount,
+        currency: data.currency,
+        taxInclusive: data.tax_inclusive,
+        discountId: data.discount_id ?? undefined,
+      },
+    );
   }
 }
 
@@ -357,14 +559,9 @@ export async function handleSubscriptionRenewed(
     updatedAt: eventTimestamp,
   });
 
-  // Resolve userId from subscription record
-  await upsertEntitlements(
-    ctx,
-    existing.userId,
-    existing.planKey,
-    currentPeriodEnd,
-    eventTimestamp,
-  );
+  // Recompute from ALL subs — a renewal on a lower-tier sub must NOT
+  // clobber a higher-tier active sub on the same userId.
+  await recomputeEntitlementFromAllSubs(ctx, existing.userId, eventTimestamp);
 }
 
 /**
@@ -480,13 +677,10 @@ export async function handleSubscriptionPlanChanged(
     updatedAt: eventTimestamp,
   });
 
-  await upsertEntitlements(
-    ctx,
-    existing.userId,
-    newPlanKey,
-    existing.currentPeriodEnd,
-    eventTimestamp,
-  );
+  // Recompute from ALL subs — the new plan may be lower-tier than another
+  // active sub on the same userId, in which case we must NOT clobber the
+  // entitlement with the downgrade.
+  await recomputeEntitlementFromAllSubs(ctx, existing.userId, eventTimestamp);
 }
 
 /**
@@ -522,8 +716,69 @@ export async function handleSubscriptionExpired(
     updatedAt: eventTimestamp,
   });
 
-  // Revoke entitlements by downgrading to free tier
-  await upsertEntitlements(ctx, existing.userId, "free", eventTimestamp, eventTimestamp);
+  // Recompute from ALL subs (post-patch). The expired sub is now status:
+  // "expired" so it's automatically excluded by isCoveringAt; if any other
+  // sub still covers the user we keep them on its tier, else free-downgrade.
+  // The recompute helper also honours the comp-floor for goodwill credits.
+  await recomputeEntitlementFromAllSubs(ctx, existing.userId, eventTimestamp);
+}
+
+/**
+ * Handles `subscription.updated` -- Dodo's catch-all "any field changed"
+ * event (per their webhook docs, this fires for real-time sync without
+ * polling). We dispatch by the payload's `status` field to reuse the
+ * dedicated lifecycle handlers AND inherit their policy invariants:
+ *
+ *   - paid-through cancellation: `handleSubscriptionCancelled` preserves
+ *     entitlement until `currentPeriodEnd`, NOT immediate revocation. A
+ *     `subscription.updated` carrying `status='cancelled'` mid-period
+ *     therefore does NOT downgrade until the period ends — same behavior
+ *     as a dedicated `subscription.cancelled` event.
+ *   - out-of-order protection: each lifecycle handler enforces
+ *     `isNewerEvent(existing.updatedAt, eventTimestamp)`, so a delayed
+ *     `subscription.updated` for an old state is rejected.
+ *
+ * Unknown statuses fall to a defensive recompute path: patch the row's
+ * rawPayload + updatedAt so we don't lose the event, recompute the
+ * entitlement, and console.error so ops can decide if a new dedicated
+ * handler is needed.
+ */
+export async function handleSubscriptionUpdated(
+  ctx: MutationCtx,
+  data: DodoSubscriptionData,
+  eventTimestamp: number,
+): Promise<void> {
+  const status = (data.status ?? "").toString();
+  switch (status) {
+    case "active":
+      return handleSubscriptionActive(ctx, data, eventTimestamp);
+    case "on_hold":
+      return handleSubscriptionOnHold(ctx, data, eventTimestamp);
+    case "cancelled":
+      return handleSubscriptionCancelled(ctx, data, eventTimestamp);
+    case "expired":
+      return handleSubscriptionExpired(ctx, data, eventTimestamp);
+    default: {
+      console.error(
+        `[handleSubscriptionUpdated] unhandled status="${status}" sub=${data.subscription_id}; ` +
+        `recomputing entitlement defensively. Add a dedicated dispatch case if this status starts ` +
+        `appearing regularly.`,
+      );
+      const existing = await ctx.db
+        .query("subscriptions")
+        .withIndex("by_dodoSubscriptionId", (q) =>
+          q.eq("dodoSubscriptionId", data.subscription_id),
+        )
+        .unique();
+      if (existing && isNewerEvent(existing.updatedAt, eventTimestamp)) {
+        await ctx.db.patch(existing._id, {
+          rawPayload: data,
+          updatedAt: eventTimestamp,
+        });
+        await recomputeEntitlementFromAllSubs(ctx, existing.userId, eventTimestamp);
+      }
+    }
+  }
 }
 
 /**
@@ -560,6 +815,113 @@ export async function handlePaymentOrRefundEvent(
     rawPayload: data,
     occurredAt: eventTimestamp,
   });
+
+  // Refund-without-prior-cancellation alert. Dodo Payments treats refund
+  // and subscription cancellation as separate operations — refunding a
+  // subscription payment does NOT cancel the subscription. Their own docs
+  // (and the SaaS Refund Management blog) recommend "cancel first, then
+  // refund." When operators forget the cancel step, the user keeps Pro
+  // access until manual cleanup (we hit this 2026-04-29 with
+  // nokzbtl@gmail.com — the entitlement only downgraded after the operator
+  // manually cancelled on Dodo).
+  //
+  // Alert-only (per ops decision) — do NOT auto-revoke. Auto-revoke would
+  // hide the operator-process gap. Surface it loudly via Sentry instead so
+  // it gets noticed within minutes, not days.
+  if (eventType === "refund.succeeded" && data.subscription_id) {
+    const sub = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_dodoSubscriptionId", (q) =>
+        q.eq("dodoSubscriptionId", data.subscription_id ?? ""),
+      )
+      .unique();
+    const decision = classifyRefundAlert({
+      subStatus: sub?.status,
+      subCancelledAt: sub?.cancelledAt,
+      subRawPayload: sub?.rawPayload,
+      subUserId: sub?.userId,
+      refundAmount: data.total_amount ?? data.amount ?? 0,
+    });
+    if (decision.kind === "alert") {
+      console.error(
+        `[refund-alert] full refund without prior cancellation: ` +
+        `subId=${data.subscription_id} userId=${decision.userId} ` +
+        `refund=${decision.refundAmount} subAmount=${decision.subAmount} ` +
+        `paymentId=${data.payment_id}. Operator likely forgot to cancel ` +
+        `before refund — entitlement remains active until manual cleanup.`,
+      );
+      // Convex auto-Sentry captures console.error.
+    } else if (decision.kind === "warn-amount-unknown") {
+      // rawPayload missing recurring_pre_tax_amount — can't classify
+      // amount comparison. Don't false-positive; log warn so we know the
+      // case exists.
+      console.warn(
+        `[refund-alert] refund on active sub but cannot classify amount: ` +
+        `subId=${data.subscription_id} userId=${decision.userId} ` +
+        `refund=${decision.refundAmount} (rawPayload.recurring_pre_tax_amount missing)`,
+      );
+    }
+  }
+}
+
+/**
+ * Pure helper exported for unit tests. Decides whether a `refund.succeeded`
+ * event on a subscription warrants a Sentry alert.
+ *
+ * The decision is intentionally tri-state:
+ *   - 'alert'              → full refund on an active uncancelled sub; ops paged
+ *   - 'warn-amount-unknown' → active sub but rawPayload lacks the price field;
+ *                              don't false-positive, but don't silently drop
+ *   - 'no-op'              → partial refund, already-cancelled sub, no sub, etc.
+ *
+ * `recurring_pre_tax_amount` is NOT a top-level column on the `subscriptions`
+ * schema (verified against schema.ts:286-297) — it only appears in `rawPayload`,
+ * preserved as the Dodo subscription webhook's snake_case payload.
+ */
+export type RefundAlertDecision =
+  | { kind: "alert"; userId: string; refundAmount: number; subAmount: number }
+  | { kind: "warn-amount-unknown"; userId: string; refundAmount: number }
+  | { kind: "no-op"; reason: string };
+
+export function classifyRefundAlert(input: {
+  subStatus: string | undefined;
+  subCancelledAt: number | undefined;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  subRawPayload: any;
+  subUserId: string | undefined;
+  refundAmount: number;
+}): RefundAlertDecision {
+  if (!input.subStatus || !input.subUserId) {
+    return { kind: "no-op", reason: "no-subscription" };
+  }
+  if (input.subStatus !== "active") {
+    return { kind: "no-op", reason: `sub-status-${input.subStatus}` };
+  }
+  if (input.subCancelledAt) {
+    return { kind: "no-op", reason: "already-cancelled" };
+  }
+  const subAmount = typeof input.subRawPayload?.recurring_pre_tax_amount === "number"
+    ? input.subRawPayload.recurring_pre_tax_amount
+    : 0;
+  if (subAmount <= 0) {
+    return {
+      kind: "warn-amount-unknown",
+      userId: input.subUserId,
+      refundAmount: input.refundAmount,
+    };
+  }
+  // 1% tolerance for tax/rounding (e.g. integer-minor-unit currencies where
+  // a 99.7%-of-amount refund is the closest representable full refund).
+  const isFullRefund = input.refundAmount >= subAmount * 0.99;
+  if (!isFullRefund) {
+    return { kind: "no-op", reason: "partial-refund" };
+  }
+  return {
+    kind: "alert",
+    userId: input.subUserId,
+    refundAmount: input.refundAmount,
+    subAmount,
+  };
 }
 
 /**

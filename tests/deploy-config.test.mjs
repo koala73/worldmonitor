@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -16,7 +16,7 @@ const getCacheHeaderValue = (sourcePath) => {
 
 describe('deploy/cache configuration guardrails', () => {
   it('disables caching for HTML entry routes on Vercel', () => {
-    const spaNoCache = getCacheHeaderValue('/((?!api|mcp|oauth|assets|blog|docs|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|\\.well-known|wm-widget-sandbox\\.html).*)');
+    const spaNoCache = getCacheHeaderValue('/((?!api|mcp|oauth|assets|blog|docs|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|\\.well-known|wm-widget-sandbox\\.html).*)');
     assert.equal(spaNoCache, 'no-cache, no-store, must-revalidate');
   });
 
@@ -101,11 +101,11 @@ describe('security header guardrails', () => {
       'idle-detection=()',
       'magnetometer=()',
       'midi=()',
-      'payment=()',
+      'payment=(self "https://checkout.dodopayments.com" "https://test.checkout.dodopayments.com" "https://pay.google.com" "https://hooks.stripe.com" "https://js.stripe.com")',
       'screen-wake-lock=()',
       'serial=()',
       'usb=()',
-      'xr-spatial-tracking=()',
+      'xr-spatial-tracking=("https://challenges.cloudflare.com")',
     ];
     for (const directive of expectedDisabled) {
       assert.ok(policy.includes(directive), `Permissions-Policy missing: ${directive}`);
@@ -127,11 +127,11 @@ describe('security header guardrails', () => {
       policy.includes('geolocation=(self)'),
       'Permissions-Policy should delegate geolocation to self'
     );
-    // picture-in-picture delegates to self + YouTube
+    // picture-in-picture delegates to self + YouTube + Turnstile
     assert.match(
       policy,
-      /picture-in-picture=\(self "https:\/\/www\.youtube\.com" "https:\/\/www\.youtube-nocookie\.com"\)/,
-      'Permissions-Policy should delegate picture-in-picture to YouTube origins'
+      /picture-in-picture=\(self "https:\/\/www\.youtube\.com" "https:\/\/www\.youtube-nocookie\.com" "https:\/\/challenges\.cloudflare\.com"\)/,
+      'Permissions-Policy should delegate picture-in-picture to YouTube + Turnstile origins'
     );
   });
 
@@ -223,5 +223,330 @@ describe('security header guardrails', () => {
     const secTxt = readFileSync(resolve(__dirname, '../public/.well-known/security.txt'), 'utf-8');
     assert.match(secTxt, /^Contact:/m, 'security.txt must have a Contact field');
     assert.match(secTxt, /^Expires:/m, 'security.txt must have an Expires field');
+  });
+});
+
+// Per-route CSP override for the hosted brief magazine. The renderer
+// emits an inline <script> (swipe/arrow/wheel/touch nav IIFE) whose
+// hash is NOT on the global script-src allowlist, so the catch-all
+// CSP silently blocks it. This rule relaxes script-src to
+// 'unsafe-inline' for /api/brief/* only. All Redis-sourced content
+// flows through escapeHtml() in brief-render.js before interpolation,
+// so unsafe-inline doesn't open an XSS surface.
+const getBriefSecurityHeaders = () => {
+  const rule = vercelConfig.headers.find((entry) => entry.source === '/api/brief/(.*)');
+  return rule?.headers ?? [];
+};
+
+const getBriefCspValue = () => {
+  const headers = getBriefSecurityHeaders();
+  const header = headers.find((h) => h.key.toLowerCase() === 'content-security-policy');
+  return header?.value ?? null;
+};
+
+describe('brief magazine CSP override', () => {
+  it('rule exists for /api/brief/(.*) with a Content-Security-Policy header', () => {
+    const csp = getBriefCspValue();
+    assert.ok(csp, 'Missing per-route CSP override for /api/brief/(.*) — the magazine nav IIFE will be blocked');
+  });
+
+  it('script-src includes unsafe-inline so the nav IIFE can execute', () => {
+    const csp = getBriefCspValue();
+    const scriptSrc = csp.match(/script-src\s+([^;]+)/)?.[1] ?? '';
+    assert.ok(
+      scriptSrc.includes("'unsafe-inline'"),
+      "brief CSP script-src must include 'unsafe-inline' — without it swipe/arrow nav is silently blocked",
+    );
+  });
+
+  it('connect-src allows Cloudflare Insights analytics beacon to POST', () => {
+    const csp = getBriefCspValue();
+    const connectSrc = csp.match(/connect-src\s+([^;]+)/)?.[1] ?? '';
+    assert.ok(
+      connectSrc.includes('https://cloudflareinsights.com'),
+      'brief CSP connect-src must allow cloudflareinsights.com so the CF beacon can POST to /cdn-cgi/rum',
+    );
+  });
+
+  it('keeps tight defaults for non-script directives', () => {
+    const csp = getBriefCspValue();
+    for (const directive of [
+      "default-src 'self'",
+      "object-src 'none'",
+      "form-action 'none'",
+      "base-uri 'self'",
+    ]) {
+      assert.ok(csp.includes(directive), `brief CSP missing tight directive: ${directive}`);
+    }
+  });
+});
+
+// Agent readiness: RFC 9727 API catalog at /.well-known/api-catalog and
+// the build-time copy of the OpenAPI spec from docs/api/ into public/.
+// These guardrails protect against:
+//   (1) the status endpoint href drifting away from /api/health (the
+//       real JSON endpoint; the apex /health serves the SPA HTML);
+//   (2) variant build scripts dropping the `npm run build:openapi`
+//       prefix and silently shipping web bundles without the spec;
+//   (3) the openapi source under docs/ being deleted without a
+//       matching removal of the build step.
+describe('agent readiness: api-catalog + openapi build', () => {
+  const apiCatalog = JSON.parse(
+    readFileSync(resolve(__dirname, '../public/.well-known/api-catalog'), 'utf-8')
+  );
+  const pkg = JSON.parse(readFileSync(resolve(__dirname, '../package.json'), 'utf-8'));
+
+  it('api anchor is first and points at the api host root', () => {
+    assert.equal(apiCatalog.linkset[0].anchor, 'https://api.worldmonitor.app/');
+  });
+
+  it('status href points at /api/health (SPA lives at /health — would 200 HTML and look healthy)', () => {
+    const statusHref = apiCatalog.linkset[0].status[0].href;
+    assert.ok(
+      statusHref.startsWith('https://api.worldmonitor.app'),
+      `status href must be on api.worldmonitor.app, got: ${statusHref}`
+    );
+    assert.ok(
+      statusHref.endsWith('/api/health'),
+      `status href must end with /api/health (real JSON endpoint), got: ${statusHref}`
+    );
+  });
+
+  it('service-desc points at /openapi.yaml with the OpenAPI media type', () => {
+    const serviceDesc = apiCatalog.linkset[0]['service-desc'][0];
+    assert.ok(
+      serviceDesc.href.endsWith('/openapi.yaml'),
+      `service-desc href must end with /openapi.yaml, got: ${serviceDesc.href}`
+    );
+    assert.equal(serviceDesc.type, 'application/vnd.oai.openapi');
+  });
+
+  it('has a second anchor for the MCP server-card', () => {
+    const mcpEntry = apiCatalog.linkset.find((entry) => entry.anchor === 'https://worldmonitor.app/mcp');
+    assert.ok(mcpEntry, 'linkset must contain an anchor for https://worldmonitor.app/mcp');
+    const mcpServiceDesc = mcpEntry['service-desc']?.[0];
+    assert.ok(mcpServiceDesc, 'mcp anchor must have a service-desc entry');
+    assert.ok(
+      mcpServiceDesc.href.endsWith('/.well-known/mcp/server-card.json'),
+      `mcp service-desc href must end with /.well-known/mcp/server-card.json, got: ${mcpServiceDesc.href}`
+    );
+  });
+
+  it('exposes a build:openapi script that copies docs/api → public/openapi.yaml', () => {
+    const buildOpenapi = pkg.scripts['build:openapi'];
+    assert.ok(buildOpenapi, 'package.json must define scripts["build:openapi"]');
+    assert.ok(
+      buildOpenapi.includes('docs/api/worldmonitor.openapi.yaml'),
+      `build:openapi must reference docs/api/worldmonitor.openapi.yaml, got: ${buildOpenapi}`
+    );
+    assert.ok(
+      buildOpenapi.includes('public/openapi.yaml'),
+      `build:openapi must write to public/openapi.yaml, got: ${buildOpenapi}`
+    );
+  });
+
+  it('every web-variant build chains npm run build:openapi', () => {
+    // build:desktop and build:pro are intentionally excluded — Tauri
+    // sidecar builds and the standalone pro-test workspace don't ship
+    // the OpenAPI spec.
+    const webVariants = ['build:full', 'build:tech', 'build:finance', 'build:happy', 'build:commodity'];
+    for (const variant of webVariants) {
+      const script = pkg.scripts[variant];
+      assert.ok(script, `package.json must define scripts["${variant}"]`);
+      assert.ok(
+        script.includes('npm run build:openapi'),
+        `scripts["${variant}"] must chain "npm run build:openapi" so the web bundle ships the spec; got: ${script}`
+      );
+    }
+  });
+
+  it('keeps a prebuild hook so the default `npm run build` path also copies the spec', () => {
+    assert.ok(pkg.scripts.prebuild, 'package.json must define scripts["prebuild"] (default build path uses it)');
+  });
+
+  it('openapi source exists at docs/api/worldmonitor.openapi.yaml', () => {
+    // Catches the class of regression where someone cleans generated
+    // artifacts and forgets to regenerate before committing — the
+    // prebuild step would then fail silently at deploy time.
+    const openapiPath = resolve(__dirname, '../docs/api/worldmonitor.openapi.yaml');
+    assert.ok(
+      existsSync(openapiPath),
+      `docs/api/worldmonitor.openapi.yaml must exist — without it, build:openapi fails at deploy time`
+    );
+  });
+});
+
+// The MCP endpoint and OAuth protected-resource metadata must be
+// self-consistent per host. The static file that used to live at
+// public/.well-known/oauth-protected-resource was replaced with a
+// dynamic edge function at api/oauth-protected-resource.ts that
+// derives `resource` and `authorization_servers` from the request
+// Host header, so every origin (apex / www / api) sees same-origin
+// metadata regardless of which host the scanner entered from.
+// Scanners like isitagentready.com (and Cloudflare's reference at
+// mcp.cloudflare.com) enforce that `authorization_servers[*]` share
+// origin with `resource` — this construction guarantees that.
+describe('agent readiness: MCP/OAuth origin alignment', () => {
+  it('oauth-protected-resource handler returns origin-matching metadata per host', async () => {
+    // Runtime test (not source-regex): dynamically import the edge handler
+    // and invoke it against synthetic Host headers to prove the response
+    // is actually same-origin per host, with correct Vary + Content-Type.
+    const mod = await import('../api/oauth-protected-resource.ts');
+    const handler = mod.default;
+    assert.equal(typeof handler, 'function', 'handler must be the default export');
+
+    const hosts = ['worldmonitor.app', 'www.worldmonitor.app', 'api.worldmonitor.app'];
+    for (const host of hosts) {
+      const req = new Request(`https://${host}/.well-known/oauth-protected-resource`, {
+        headers: { host },
+      });
+      const res = await handler(req);
+      assert.equal(res.status, 200, `status 200 for ${host}`);
+      assert.equal(res.headers.get('content-type'), 'application/json', `JSON for ${host}`);
+      assert.equal(res.headers.get('vary'), 'Host', `Vary: Host for ${host}`);
+      const json = await res.json();
+      assert.equal(json.resource, `https://${host}`, `resource matches ${host}`);
+      assert.deepEqual(json.authorization_servers, [`https://${host}`], `auth_servers match ${host}`);
+      assert.deepEqual(json.bearer_methods_supported, ['header']);
+      assert.deepEqual(json.scopes_supported, ['mcp']);
+    }
+  });
+
+  it('MCP server card authentication.resource is a valid https URL on a known host', () => {
+    const mcpCard = JSON.parse(
+      readFileSync(resolve(__dirname, '../public/.well-known/mcp/server-card.json'), 'utf-8')
+    );
+    const u = new URL(mcpCard.authentication.resource);
+    assert.equal(u.protocol, 'https:');
+    assert.ok(
+      ['worldmonitor.app', 'www.worldmonitor.app', 'api.worldmonitor.app'].includes(u.host),
+      `unexpected host: ${u.host}`
+    );
+  });
+
+  it('api/mcp.ts resource_metadata is host-derived, not hardcoded', () => {
+    const source = readFileSync(resolve(__dirname, '../api/mcp.ts'), 'utf-8');
+    // Must NOT contain a hardcoded apex or api URL for resource_metadata —
+    // that regressed once (PR #3351 review: apex pointer emitted from
+    // api.worldmonitor.app/mcp 401s) and the grep-only test didn't catch it.
+    assert.ok(
+      !/resource_metadata="https:\/\/(?:api\.)?worldmonitor\.app\/\.well-known\//.test(source),
+      'api/mcp.ts must not hardcode resource_metadata URL — derive from request host'
+    );
+    // Must contain a template-literal construction that uses a host variable.
+    assert.match(
+      source,
+      /resource_metadata="\$\{[A-Za-z_][A-Za-z0-9_]*\}"|`[^`]*resource_metadata="\$\{[^}]+\}"/,
+      'api/mcp.ts must construct resource_metadata from a host-derived variable'
+    );
+    // Must actually read the request host header somewhere in the file.
+    assert.match(
+      source,
+      /request\.headers\.get\(['"]host['"]\)|req\.headers\.get\(['"]host['"]\)/i,
+      'api/mcp.ts should read the request host header'
+    );
+  });
+
+  it('vercel.json rewrites /.well-known/oauth-protected-resource to the edge fn', () => {
+    const rewrite = vercelConfig.rewrites.find(
+      (r) => r.source === '/.well-known/oauth-protected-resource'
+    );
+    assert.ok(rewrite, 'expected a rewrite for /.well-known/oauth-protected-resource');
+    assert.equal(rewrite.destination, '/api/oauth-protected-resource');
+  });
+});
+
+// PR history: #3204 / #3206 forced the resvg linux-x64-gnu native
+// binding into the carousel function via vercel.json
+// `functions.includeFiles`. That entire workaround became unnecessary
+// once the route moved to @vercel/og on Edge runtime (see
+// api/brief/carousel/...), which bundles satori + resvg-wasm with
+// Vercel-native support. The `functions` block was removed.
+//
+// If any future route ever needs a Vercel `functions` config, keep
+// in mind: the keys are micromatch globs, NOT literal paths.
+// `[userId]` is a character class (match one of u/s/e/r/I/d), not a
+// dynamic segment placeholder. Use `api/foo/**` for routes with
+// dynamic brackets. See skill `vercel-native-binding-peer-dep-missing`
+// for the full story.
+describe('vercel.json functions config (none expected after carousel moved to edge)', () => {
+  it('does not define any `functions` block (carousel now uses @vercel/og on edge)', () => {
+    assert.equal(
+      vercelConfig.functions,
+      undefined,
+      'No routes currently require a functions config. If adding one, ' +
+        'remember Vercel treats the key as a micromatch glob — ' +
+        '`[userId]` will silently match one of {u,s,e,r,I,d} and your ' +
+        'rule will apply to nothing. See skill ' +
+        'vercel-native-binding-peer-dep-missing for the gotcha.',
+    );
+  });
+});
+
+// Agent readiness: RFC 8288 Link response headers on the homepage.
+// Scanners like isitagentready.com fetch GET / and expect a Link
+// header advertising every well-known resource. Each rel is either
+// an IANA-registered token (api-catalog, service-desc, service-doc,
+// status) or the full IANA URI form (RFC 9728 OAuth rels). The MCP
+// card rel carries anchor="/mcp" because the server card describes
+// the /mcp endpoint, not the homepage.
+describe('agent readiness: homepage Link headers', () => {
+  const vercel = JSON.parse(readFileSync(resolve(__dirname, '../vercel.json'), 'utf-8'));
+
+  for (const source of ['/', '/index.html']) {
+    it(`${source} emits a Link header`, () => {
+      const entry = vercel.headers.find((h) => h.source === source);
+      assert.ok(entry, `expected a headers entry for ${source}`);
+      const linkHeader = entry.headers.find((h) => h.key === 'Link');
+      assert.ok(linkHeader, `expected a Link header on ${source}`);
+
+      // Must advertise each required rel at least once
+      const requiredRels = [
+        'rel="api-catalog"',
+        'rel="service-desc"',
+        'rel="service-doc"',
+        'rel="status"',
+        'rel="http://www.iana.org/assignments/relation/oauth-protected-resource"',
+        'rel="http://www.iana.org/assignments/relation/oauth-authorization-server"',
+        'rel="mcp-server-card"',
+        'rel="agent-skills-index"',
+      ];
+      for (const rel of requiredRels) {
+        assert.ok(
+          linkHeader.value.includes(rel),
+          `Link header missing ${rel}`
+        );
+      }
+
+      // MCP card rel must carry anchor="/mcp" (server card describes /mcp, not homepage)
+      assert.match(
+        linkHeader.value,
+        /<\/\.well-known\/mcp\/server-card\.json>[^,]*anchor="\/mcp"/,
+        'mcp-server-card rel must carry anchor="/mcp"'
+      );
+
+      // Target URIs must be root-relative (start with /, not http://)
+      const targetMatches = [...linkHeader.value.matchAll(/<([^>]+)>/g)];
+      assert.strictEqual(
+        targetMatches.length,
+        requiredRels.length,
+        `expected exactly ${requiredRels.length} link targets, got ${targetMatches.length}`
+      );
+      for (const [, target] of targetMatches) {
+        assert.ok(
+          target.startsWith('/'),
+          `link target must be root-relative, got ${target}`
+        );
+      }
+    });
+  }
+
+  // / and /index.html serve the same document; their Link headers must
+  // stay in lockstep. Hardcoded duplication in vercel.json otherwise
+  // silently drifts — this guard catches the drift at CI time.
+  it('/ and /index.html Link headers are identical', () => {
+    const slash = vercel.headers.find((h) => h.source === '/').headers.find((h) => h.key === 'Link');
+    const index = vercel.headers.find((h) => h.source === '/index.html').headers.find((h) => h.key === 'Link');
+    assert.strictEqual(slash.value, index.value);
   });
 });

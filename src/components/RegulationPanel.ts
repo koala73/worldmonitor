@@ -14,7 +14,7 @@ export class RegulationPanel extends Panel {
   private viewMode: 'timeline' | 'deadlines' | 'regulations' | 'countries' = 'timeline';
 
   constructor(id: string) {
-    super({ id, title: t('panels.regulation') });
+    super({ id, title: t('panels.regulation'), infoTooltip: t('components.regulation.infoTooltip') });
     this.render();
   }
 

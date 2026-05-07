@@ -160,6 +160,8 @@ describe('Product ID guard', () => {
     const result = execSync(
       `grep -rn 'pdt_' --include='*.ts' --include='*.tsx' --include='*.mjs' --include='*.js' . ` +
       `| grep -v node_modules ` +
+      `| grep -v '.claude/worktrees/' ` +
+      `| grep -v 'convex/_generated/' ` +
       `| grep -v 'convex/config/productCatalog' ` +
       `| grep -v 'api/product-catalog' ` +
       `| grep -v 'api/_product-fallback-prices' ` +

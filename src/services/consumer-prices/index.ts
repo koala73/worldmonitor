@@ -257,8 +257,17 @@ export async function fetchConsumerPriceFreshness(
   }
 }
 
+const allMarketsBreaker = createCircuitBreaker<GetConsumerPriceOverviewResponse[]>({
+  name: 'All Markets Overview',
+  cacheTtlMs: 30 * 60 * 1000,
+  persistCache: true,
+});
+
 export async function fetchAllMarketsOverview(): Promise<GetConsumerPriceOverviewResponse[]> {
-  return Promise.all(
-    SINGLE_MARKETS.map((m) => fetchConsumerPriceOverview(m.code, `essentials-${m.code}`)),
+  return allMarketsBreaker.execute(
+    () => Promise.all(
+      SINGLE_MARKETS.map((m) => fetchConsumerPriceOverview(m.code, `essentials-${m.code}`)),
+    ),
+    [],
   );
 }

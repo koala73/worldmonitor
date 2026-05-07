@@ -1,4 +1,5 @@
 import { Panel } from './Panel';
+import { t } from '@/services/i18n';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { fetchSocialVelocity, type SocialVelocityPost } from '@/services/social-velocity';
 
@@ -29,7 +30,7 @@ export class SocialVelocityPanel extends Panel {
   private _hasData = false;
 
   constructor() {
-    super({ id: 'social-velocity', title: 'Social Velocity', showCount: false });
+    super({ id: 'social-velocity', title: 'Social Velocity', showCount: false, infoTooltip: t('components.socialVelocity.infoTooltip') });
   }
 
   public async fetchData(): Promise<boolean> {

@@ -3,11 +3,14 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { buildHistory } from '../scripts/seed-portwatch.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const FIXTURE_DIR = resolve(__dirname, 'fixtures');
 const root = resolve(__dirname, '..');
 const src = readFileSync(resolve(root, 'server/worldmonitor/supply-chain/v1/_portwatch-upstream.ts'), 'utf-8');
 const relaySrc = readFileSync(resolve(root, 'scripts/ais-relay.cjs'), 'utf-8');
+const seederSrc = readFileSync(resolve(root, 'scripts/seed-portwatch.mjs'), 'utf-8');
 
 function classifyVesselType(name) {
   const lower = name.toLowerCase();
@@ -55,44 +58,64 @@ describe('PortWatch type exports', () => {
     assert.match(src, /export\s+interface\s+PortWatchChokepointData/);
   });
 
-  it('does not contain fetch logic (moved to relay)', () => {
+  it('does not contain fetch logic (moved to seed-portwatch.mjs)', () => {
     assert.doesNotMatch(src, /cachedFetchJson/);
     assert.doesNotMatch(src, /getPortWatchTransits/);
     assert.doesNotMatch(src, /fetchAllPages/);
   });
 });
 
-describe('PortWatch relay seed loop', () => {
+describe('PortWatch standalone seeder (seed-portwatch.mjs)', () => {
+  it('exports fetchAll and validateFn', () => {
+    assert.match(seederSrc, /export\s+async\s+function\s+fetchAll/);
+    assert.match(seederSrc, /export\s+function\s+validateFn/);
+  });
+
   it('uses ArcGIS FeatureServer endpoint', () => {
-    assert.match(relaySrc, /arcgis\.com.*FeatureServer/);
+    assert.match(seederSrc, /arcgis\.com.*FeatureServer/);
   });
 
   it('writes to supply_chain:portwatch:v1 Redis key', () => {
+    assert.match(seederSrc, /supply_chain:portwatch:v1/);
+  });
+
+  it('fetches all 5 vessel type count fields', () => {
+    assert.match(seederSrc, /n_container/);
+    assert.match(seederSrc, /n_dry_bulk/);
+    assert.match(seederSrc, /n_general_cargo/);
+    assert.match(seederSrc, /n_roro/);
+    assert.match(seederSrc, /n_tanker/);
+  });
+
+  it('fetches all 5 DWT capacity fields', () => {
+    assert.match(seederSrc, /capacity_container/);
+    assert.match(seederSrc, /capacity_dry_bulk/);
+    assert.match(seederSrc, /capacity_general_cargo/);
+    assert.match(seederSrc, /capacity_roro/);
+    assert.match(seederSrc, /capacity_tanker/);
+  });
+
+  it('computes week-over-week change percentage', () => {
+    assert.match(seederSrc, /computeWow/);
+  });
+
+  it('uses ArcGIS timestamp syntax for date filter', () => {
+    assert.match(seederSrc, /epochToTimestamp/);
+    assert.match(seederSrc, /timestamp '/);
+  });
+
+  it('covers 180 days of history', () => {
+    assert.match(seederSrc, /HISTORY_DAYS\s*=\s*180/);
+  });
+
+  it('relay no longer defines startPortWatchSeedLoop', () => {
+    assert.doesNotMatch(relaySrc, /function startPortWatchSeedLoop/);
+  });
+
+  it('relay reads PORTWATCH_REDIS_KEY fresh every seedTransitSummaries cycle (no stale in-memory guard)', () => {
     assert.match(relaySrc, /supply_chain:portwatch:v1/);
-  });
-
-  it('writes seed-meta for portwatch', () => {
-    assert.match(relaySrc, /seed-meta:supply_chain:portwatch/);
-  });
-
-  it('defines startPortWatchSeedLoop', () => {
-    assert.match(relaySrc, /function startPortWatchSeedLoop/);
-  });
-
-  it('reads pre-aggregated n_tanker/n_cargo/n_total columns', () => {
-    assert.match(relaySrc, /n_tanker/);
-    assert.match(relaySrc, /n_cargo/);
-    assert.match(relaySrc, /n_total/);
-  });
-
-  it('computes week-over-week change percentage in relay', () => {
-    assert.match(relaySrc, /pwComputeWowChangePct/);
-  });
-
-  it('uses ArcGIS timestamp syntax for date filter (not raw epoch)', () => {
-    assert.match(relaySrc, /pwEpochToTimestamp/);
-    assert.match(relaySrc, /timestamp '/);
-    assert.doesNotMatch(relaySrc, /date >= \$\{sinceEpoch\}/);
+    assert.doesNotMatch(relaySrc, /let latestPortwatchData/);
+    assert.doesNotMatch(relaySrc, /if\s*\(\s*!latestPortwatchData\s*\)/);
   });
 });
 
@@ -173,5 +196,60 @@ describe('detectTrafficAnomaly', () => {
     const history = [...makeDays(7, 0, 0), ...makeDays(30, 1, 7)];
     const result = detectTrafficAnomaly(history, 'war_zone');
     assert.equal(result.signal, false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Golden fixture: upstream ArcGIS FeatureServer format regression guard
+// ---------------------------------------------------------------------------
+
+describe('golden fixture (PortWatch ArcGIS JSON)', () => {
+  const fixture = JSON.parse(readFileSync(resolve(FIXTURE_DIR, 'portwatch-arcgis-sample.json'), 'utf-8'));
+
+  it('fixture has features array', () => {
+    assert.ok(Array.isArray(fixture.features), 'features should be an array');
+    assert.ok(fixture.features.length >= 1, `expected >=1 feature, got ${fixture.features.length}`);
+  });
+
+  it('each feature has attributes with required fields', () => {
+    for (const f of fixture.features) {
+      assert.ok(f.attributes != null, 'attributes missing');
+      assert.ok('date' in f.attributes, 'date missing');
+      assert.ok('n_container' in f.attributes, 'n_container missing');
+      assert.ok('n_dry_bulk' in f.attributes, 'n_dry_bulk missing');
+      assert.ok('n_tanker' in f.attributes, 'n_tanker missing');
+      assert.ok('n_total' in f.attributes, 'n_total missing');
+      assert.ok('capacity_container' in f.attributes, 'capacity_container missing');
+      assert.ok('capacity_tanker' in f.attributes, 'capacity_tanker missing');
+    }
+  });
+
+  it('buildHistory produces entries with expected shape', () => {
+    const history = buildHistory(fixture.features);
+    assert.ok(history.length >= 1, 'expected >=1 history entry');
+    const entry = history[0];
+    assert.ok('date' in entry, 'date missing');
+    assert.ok('container' in entry, 'container missing');
+    assert.ok('dryBulk' in entry, 'dryBulk missing');
+    assert.ok('tanker' in entry, 'tanker missing');
+    assert.ok('total' in entry, 'total missing');
+    assert.ok('cargo' in entry, 'cargo missing');
+    assert.ok('capContainer' in entry, 'capContainer missing');
+    assert.ok('capTanker' in entry, 'capTanker missing');
+  });
+
+  it('buildHistory date format is YYYY-MM-DD', () => {
+    const history = buildHistory(fixture.features);
+    for (const entry of history) {
+      assert.match(entry.date, /^\d{4}-\d{2}-\d{2}$/, `date format wrong: ${entry.date}`);
+    }
+  });
+
+  it('buildHistory total matches n_total from attributes', () => {
+    const history = buildHistory(fixture.features);
+    const expected = fixture.features[0].attributes;
+    const entry = history.find(e => e.date === '2024-05-01');
+    assert.ok(entry != null, 'entry for 2024-05-01 missing');
+    assert.equal(entry.total, expected.n_total);
   });
 });

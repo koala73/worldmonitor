@@ -158,6 +158,11 @@ const LOCATION_COORDS = {
   'kafr qasim':    { lat: 32.1161, lon: 34.9750 },
   'taybad':        { lat: 35.1884, lon: 60.7814 },
   'sweihan':       { lat: 24.4041, lon: 55.3325 },
+  'mahshahr':      { lat: 30.5630, lon: 49.1980 },
+  'bandar khamir': { lat: 26.9592, lon: 55.8981 },
+  'shalamcheh':    { lat: 30.5244, lon: 47.9297 },
+  'ramat gan':     { lat: 32.0704, lon: 34.8237 },
+  'shuwaikh':      { lat: 29.3636, lon: 47.9417 },
 };
 
 const CATEGORY_MAP = {
@@ -235,10 +240,18 @@ function validate(data) {
   return Array.isArray(data?.events) && data.events.length >= 1;
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.events) ? data.events.length : 0;
+}
+
 runSeed('conflict', 'iran-events', CANONICAL_KEY, fetchIranEvents, {
   validateFn: validate,
   ttlSeconds: 172800,
   sourceVersion: 'liveuamap-manual-v1',
+
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 20160,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(0);

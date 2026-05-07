@@ -7,7 +7,8 @@ import { MapboxOverlay } from '@deck.gl/mapbox';
 import type { Layer, LayersList, PickingInfo } from '@deck.gl/core';
 import { GeoJsonLayer, ScatterplotLayer, PathLayer, IconLayer, TextLayer, PolygonLayer } from '@deck.gl/layers';
 import maplibregl from 'maplibre-gl';
-import { registerPMTilesProtocol, FALLBACK_DARK_STYLE, FALLBACK_LIGHT_STYLE, getMapProvider, getMapTheme, getStyleForProvider, isLightMapTheme } from '@/config/basemap';
+import { FALLBACK_DARK_STYLE, FALLBACK_LIGHT_STYLE, getMapProvider, getMapTheme, isLightMapTheme } from '@/config/basemap';
+import { registerPMTilesProtocol, getStyleForProvider } from '@/config/basemap-styles';
 import Supercluster from 'supercluster';
 import type {
   MapLayers,
@@ -54,10 +55,25 @@ import type { ClimateAnomaly } from '@/services/climate';
 import type { RadiationObservation } from '@/services/radiation';
 import { ArcLayer } from '@deck.gl/layers';
 import { HeatmapLayer } from '@deck.gl/aggregation-layers';
-import { H3HexagonLayer } from '@deck.gl/geo-layers';
+import { H3HexagonLayer, TripsLayer } from '@deck.gl/geo-layers';
 import { PathStyleExtension } from '@deck.gl/extensions';
 import type { WeatherAlert } from '@/services/weather';
 import { escapeHtml } from '@/utils/sanitize';
+import {
+  derivePipelinePublicBadge,
+  type PipelineEvidenceInput,
+  type PipelinePublicBadge,
+} from '@/shared/pipeline-evidence';
+import { getCachedPipelineRegistries } from '@/shared/pipeline-registry-store';
+import {
+  deriveStoragePublicBadge,
+  type StorageEvidenceInput,
+  type StoragePublicBadge,
+} from '@/shared/storage-evidence';
+import { getCachedStorageFacilityRegistry } from '@/shared/storage-facility-registry-store';
+import { getCachedFuelShortageRegistry } from '@/shared/fuel-shortage-registry-store';
+// getCountryCentroid is imported lower in the file alongside other
+// country-geometry helpers; don't re-import it here.
 import { tokenizeForMatch, matchKeyword, matchesAnyKeyword, findMatchingKeywords } from '@/utils/keyword-match';
 import { t } from '@/services/i18n';
 import { debounce, rafSchedule, getCurrentTheme } from '@/utils/index';
@@ -95,11 +111,15 @@ import {
   SANCTIONED_COUNTRIES_ALPHA2,
 } from '@/config';
 import type { GulfInvestment } from '@/types';
-import { resolveTradeRouteSegments, TRADE_ROUTES as TRADE_ROUTES_LIST, type TradeRouteSegment } from '@/config/trade-routes';
+import { resolveTradeRouteSegments, TRADE_ROUTES as TRADE_ROUTES_LIST, type TradeRouteSegment, type TradeRouteStatus } from '@/config/trade-routes';
+import type { ScenarioVisualState } from '@/config/scenario-templates';
 import { getLayersForVariant, resolveLayerLabel, bindLayerSearch, type MapVariant } from '@/config/map-layer-definitions';
-import { getAuthState } from '@/services/auth-state';
+import { getAuthState, subscribeAuthState } from '@/services/auth-state';
+import { onEntitlementChange } from '@/services/entitlements';
 import { hasPremiumAccess } from '@/services/panel-gating';
+import { trackGateHit } from '@/services/analytics';
 import { MapPopup, type PopupType } from './MapPopup';
+import type { GetChokepointStatusResponse } from '@/services/supply-chain';
 import {
   updateHotspotEscalation,
   getHotspotEscalation,
@@ -334,6 +354,59 @@ function ensureClosedRing(ring: [number, number][]): [number, number][] {
   return [...ring, first];
 }
 
+/** Module-level Map from routeId → waypoint IDs. Built once, reused across all layer renders. */
+const ROUTE_WAYPOINTS_MAP = new Map<string, string[]>(
+  TRADE_ROUTES_LIST.map(r => [r.id, r.waypoints]),
+);
+
+interface TripData {
+  path: [number, number][];
+  timestamps: number[];
+  color: [number, number, number, number];
+  width: number;
+}
+
+type HighlightedMarker = { id: string; lon: number; lat: number; name: string; score: number };
+
+interface BypassArcDatum {
+  source: [number, number];
+  target: [number, number];
+}
+
+function interpolateGreatCircle(
+  start: [number, number],
+  end: [number, number],
+  numPoints: number,
+): [number, number][] {
+  const toRad = (d: number) => d * Math.PI / 180;
+  const toDeg = (r: number) => r * 180 / Math.PI;
+  const [lon1, lat1] = [toRad(start[0]), toRad(start[1])];
+  const [lon2, lat2] = [toRad(end[0]), toRad(end[1])];
+  const d = 2 * Math.asin(Math.sqrt(
+    Math.sin((lat2 - lat1) / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin((lon2 - lon1) / 2) ** 2,
+  ));
+  if (d < 1e-10) return [start, end];
+  const points: [number, number][] = [];
+  for (let i = 0; i <= numPoints; i++) {
+    const f = i / numPoints;
+    const A = Math.sin((1 - f) * d) / Math.sin(d);
+    const B = Math.sin(f * d) / Math.sin(d);
+    const x = A * Math.cos(lat1) * Math.cos(lon1) + B * Math.cos(lat2) * Math.cos(lon2);
+    const y = A * Math.cos(lat1) * Math.sin(lon1) + B * Math.cos(lat2) * Math.sin(lon2);
+    const z = A * Math.sin(lat1) + B * Math.sin(lat2);
+    points.push([toDeg(Math.atan2(y, x)), toDeg(Math.atan2(z, Math.sqrt(x * x + y * y)))]);
+  }
+  return points;
+}
+
+const TRADE_ANIMATION_CYCLE = 1000;
+const TRADE_TRAIL_LENGTH = 200;
+const TRADE_ANIMATION_SPEED = 0.3;
+const TRADE_GC_INTERPOLATION_POINTS = 20;
+const CHOKEPOINT_PULSE_FREQ = 0.01;
+const CHOKEPOINT_PULSE_AMP = 0.3;
+
 export class DeckGLMap {
   private static readonly MAX_CLUSTER_LEAVES = 200;
 
@@ -356,16 +429,24 @@ export class DeckGLMap {
   private cyberThreats: CyberThreat[] = [];
   private aptGroups: import('@/types').APTGroup[] = [];
   private aptGroupsLoaded = false;
+  private _unsubscribeAuthState: (() => void) | null = null;
+  private _unsubscribeEntitlement: (() => void) | null = null;
   private aptGroupsLayerFailed = false;
+  private satelliteImageryLayerFailed = false;
   private iranEvents: IranEvent[] = [];
   private aisDisruptions: AisDisruptionEvent[] = [];
   private aisDensity: AisDensityZone[] = [];
+  private liveTankers: Array<{ mmsi: string; lat: number; lon: number; speed: number; shipType: number; name: string }> = [];
+  private liveTankersAbort: AbortController | null = null;
+  private liveTankersTimer: ReturnType<typeof setInterval> | null = null;
   private cableAdvisories: CableAdvisory[] = [];
   private repairShips: RepairShip[] = [];
   private healthByCableId: Record<string, CableHealthRecord> = {};
   private protests: SocialUnrestEvent[] = [];
   private militaryFlights: MilitaryFlight[] = [];
   private militaryFlightClusters: MilitaryFlightCluster[] = [];
+  private activeFlightTrails = new Set<string>();
+  private clearTrailsBtn: HTMLButtonElement | null = null;
   private militaryVessels: MilitaryVessel[] = [];
   private militaryVesselClusters: MilitaryVesselCluster[] = [];
   private serverBases: MilitaryBaseEnriched[] = [];
@@ -387,6 +468,16 @@ export class DeckGLMap {
   private radiationObservations: RadiationObservation[] = [];
   private diseaseOutbreaks: DiseaseOutbreakItem[] = [];
   private tradeRouteSegments: TradeRouteSegment[] = resolveTradeRouteSegments();
+  private tradeTrips: TripData[] = [];
+  private tradeAnimationTime = 0;
+  private tradeAnimationFrame: number | null = null;
+  private tradeAnimationFrameCount = 0;
+  private storedChokepointData: GetChokepointStatusResponse | null = null;
+  private highlightedRouteIds: Set<string> = new Set();
+  private highlightedMarkers: HighlightedMarker[] = [];
+  private bypassArcData: BypassArcDatum[] = [];
+  private scenarioState: ScenarioVisualState | null = null;
+  private affectedIso2Set: Set<string> = new Set();
   private positiveEvents: PositiveGeoEvent[] = [];
   private kindnessPoints: KindnessPoint[] = [];
   private imageryScenes: ImageryScene[] = [];
@@ -418,6 +509,7 @@ export class DeckGLMap {
 
   // Callbacks
   private onHotspotClick?: (hotspot: Hotspot) => void;
+  private onTradeArcClick?: (segment: TradeRouteSegment, waypoints: string[], x: number, y: number) => void;
   private onTimeRangeChange?: (range: TimeRange) => void;
   private onCountryClick?: (country: CountryClickPayload) => void;
   private onMapContextMenu?: (payload: { lat: number; lon: number; screenX: number; screenY: number; countryCode?: string; countryName?: string }) => void;
@@ -481,6 +573,12 @@ export class DeckGLMap {
   private radarRefreshIntervalId: ReturnType<typeof setInterval> | null = null;
   private radarActive = false;
   private radarTileUrl = '';
+  // Drop duplicate `once('idle', applyRadarLayer)` registrations when
+  // the source isn't loaded yet. Without this, both the style.load
+  // callback and the 5-minute refresh can register listeners in the
+  // same load window — they'd all fire on the next idle and call
+  // setTiles back-to-back. Idempotent today but wasteful.
+  private radarIdlePending = false;
   private readonly startupTime = Date.now();
   private lastCableHighlightSignature = '';
   private lastCableHealthSignature = '';
@@ -563,7 +661,7 @@ export class DeckGLMap {
     if (this.state.layers.dayNight) {
       this.startDayNightTimer();
     }
-    if (this.state.layers.weatherRadar) {
+    if (this.state.layers.weather) {
       this.startWeatherRadar();
     }
     // Kick off lazy APT load if cyberThreats is already on at init (e.g. from URL/localStorage)
@@ -616,29 +714,52 @@ export class DeckGLMap {
         this.radarTileUrl = `${data.host}${latest.path}/256/{z}/{x}/{y}/6/1_1.png`;
         this.applyRadarLayer();
       })
-      .catch(() => {});
+      .catch((err) => console.warn('[DeckGLMap] weather radar fetch failed:', err?.message || err));
   }
 
   private applyRadarLayer(): void {
     if (!this.maplibreMap || !this.radarActive || !this.radarTileUrl) return;
-    const existing = this.maplibreMap.getSource('weather-radar') as (maplibregl.RasterTileSource & { setTiles: (tiles: string[]) => void }) | undefined;
-    if (existing) {
-      existing.setTiles([this.radarTileUrl]);
+    if (!this.maplibreMap.isStyleLoaded()) {
+      this.maplibreMap.once('style.load', () => this.applyRadarLayer());
       return;
     }
-    this.maplibreMap.addSource('weather-radar', {
-      type: 'raster',
-      tiles: [this.radarTileUrl],
-      tileSize: 256,
-      attribution: '© RainViewer',
-    });
-    const beforeId = this.maplibreMap.getLayer('country-interactive') ? 'country-interactive' : undefined;
-    this.maplibreMap.addLayer({
-      id: 'weather-radar-layer',
-      type: 'raster',
-      source: 'weather-radar',
-      paint: { 'raster-opacity': 0.65 },
-    }, beforeId);
+    try {
+      const existing = this.maplibreMap.getSource('weather-radar') as (maplibregl.RasterTileSource & { setTiles: (tiles: string[]) => void }) | undefined;
+      if (existing) {
+        // Guard against the source existing in the style registry while
+        // its underlying texture is mid-load or being torn down. Calling
+        // setTiles in that window triggers a render-frame crash inside
+        // MapLibre at fa() / texture.bind() (Sentry WORLDMONITOR-P6:
+        // Firefox 149, hit on the 5-minute radar refresh interval).
+        // isSourceLoaded(id) is MapLibre's official "tiles fetched +
+        // applied to GL state" check; defer to the next idle if false.
+        if (!this.maplibreMap.isSourceLoaded('weather-radar')) {
+          if (!this.radarIdlePending) {
+            this.radarIdlePending = true;
+            this.maplibreMap.once('idle', () => {
+              this.radarIdlePending = false;
+              this.applyRadarLayer();
+            });
+          }
+          return;
+        }
+        existing.setTiles([this.radarTileUrl]);
+        return;
+      }
+      this.maplibreMap.addSource('weather-radar', {
+        type: 'raster',
+        tiles: [this.radarTileUrl],
+        tileSize: 256,
+        attribution: '© RainViewer',
+      });
+      const beforeId = this.maplibreMap.getLayer('country-interactive') ? 'country-interactive' : undefined;
+      this.maplibreMap.addLayer({
+        id: 'weather-radar-layer',
+        type: 'raster',
+        source: 'weather-radar',
+        paint: { 'raster-opacity': 0.65 },
+      }, beforeId);
+    } catch (err) { console.warn('[DeckGLMap] radar layer apply failed:', (err as Error)?.message); }
   }
 
   private removeRadarLayer(): void {
@@ -832,6 +953,11 @@ export class DeckGLMap {
         console.warn('[DeckGLMap] Render error (non-fatal):', error.message);
         if (error.message.includes('apt-groups-layer')) {
           this.aptGroupsLayerFailed = true;
+        }
+        if (error.message.includes('satellite-imagery-layer')) {
+          this.satelliteImageryLayerFailed = true;
+          console.warn('[DeckGLMap] Satellite imagery layer failed (likely Intel GPU driver incompatibility) — rebuilding layer stack without it');
+          try { this.deckOverlay?.setProps({ layers: this.buildLayers() }); } catch { /* map mid-teardown */ }
         }
       },
     });
@@ -1376,7 +1502,16 @@ export class DeckGLMap {
     const { layers: mapLayers } = this.state;
     const filteredEarthquakes = mapLayers.natural ? this.filterByTimeCached(this.earthquakes, (eq) => eq.occurredAt) : [];
     const filteredNaturalEvents = mapLayers.natural ? this.filterByTimeCached(this.naturalEvents, (event) => event.date) : [];
-    const filteredDiseaseOutbreaks = mapLayers.diseaseOutbreaks ? this.filterByTimeCached(this.diseaseOutbreaks, (item) => item.publishedAt) : [];
+    // Disease outbreaks are sparse-by-nature — WHO Disease Outbreak News
+    // publishes 1-2 alerts/week, CDC HAN alerts are infrequent, and the
+    // upstream ThinkGlobalHealth tracker carries 90 days of ProMED items.
+    // Applying the global time-range filter (max '7d' in the dropdown)
+    // wholesale-zeroes the layer when the most recent WHO/CDC update is
+    // 8+ days old, which is normal for these sources. Show all items in
+    // the cache; the seeder's TTL + per-source lookback already bound
+    // freshness at write time. PR #3593: production saw 50 valid records
+    // cached but 0 rendered because the newest CDC item was 11d old.
+    const filteredDiseaseOutbreaks = mapLayers.diseaseOutbreaks ? this.diseaseOutbreaks : [];
     const filteredRadiationObservations = mapLayers.radiationWatch ? this.filterByTimeCached(this.radiationObservations, (obs) => obs.observedAt) : [];
     const filteredPositiveEvents = mapLayers.positiveEvents ? this.filterByTimeCached(this.positiveEvents, (e) => e.timestamp) : [];
     const filteredIranEvents = mapLayers.iranAttacks ? this.filterByTimeCached(this.iranEvents, (e) => e.timestamp) : [];
@@ -1411,11 +1546,60 @@ export class DeckGLMap {
       this.layerCache.delete('cables-layer');
     }
 
-    // Pipelines layer
+    // Pipelines layer — Redis-backed evidence registry (seed-pipelines-{gas,oil}.mjs),
+    // colored by derived publicBadge. Available on every variant that toggles
+    // `pipelines: true`. The legacy static `PIPELINES` fallback was retired in
+    // the gap #3B rollout (plan §R/#3 decision B); createPipelinesLayer is kept
+    // in this file as a dead-code reference until the next cleanup pass.
     if (mapLayers.pipelines) {
-      layers.push(this.createPipelinesLayer());
+      layers.push(this.createEnergyPipelinesLayer());
     } else {
       this.layerCache.delete('pipelines-layer');
+    }
+
+    // Storage facilities layer. Registry is seeded weekly by
+    // scripts/seed-storage-facilities.mjs; colors by derived publicBadge
+    // identical to the panel's evidence deriver so first-paint map dots match
+    // panel status exactly. Available on any variant with
+    // `mapLayers.storageFacilities: true` (plan §R/#3 decision B).
+    if (mapLayers.storageFacilities) {
+      const storageLayer = this.createEnergyStorageLayer();
+      if (storageLayer) layers.push(storageLayer);
+    } else {
+      this.layerCache.delete('storage-facilities-layer');
+    }
+
+    // Fuel shortage pins. One pin per active shortage placed at the country
+    // centroid. Color by severity; click opens the FuelShortagePanel drawer
+    // via event. Available on any variant with `mapLayers.fuelShortages: true`
+    // (plan §R/#3 decision B).
+    if (mapLayers.fuelShortages) {
+      const shortageLayer = this.createEnergyShortagePinsLayer();
+      if (shortageLayer) layers.push(shortageLayer);
+    } else {
+      this.layerCache.delete('fuel-shortages-layer');
+    }
+
+    // Live tanker positions inside chokepoint bounding boxes. AIS ship type
+    // 80-89 (tanker class). Refreshed every 60s; one Map<chokepointId, ...>
+    // fetch per layer-tick. deckGLOnly per src/config/map-layer-definitions.ts.
+    // Powered by the relay's tankerReports field (added in PR 3 U7 alongside
+    // the existing military-only candidateReports). Energy Atlas parity-push.
+    if (mapLayers.liveTankers) {
+      // Start (or keep) the refresh loop while the layer is on. The
+      // ensure helper handles the "first time on" kick + the 60s
+      // setInterval; idempotent so calling it on every layers update is
+      // safe. Render immediately if we already have data; the interval
+      // re-renders when fresh data arrives.
+      this.ensureLiveTankersLoop();
+      if (this.liveTankers.length > 0) {
+        layers.push(this.createLiveTankersLayer());
+      }
+    } else {
+      // Layer toggled off → tear down the timer so we stop hitting the
+      // relay even when the map is still on screen.
+      this.stopLiveTankersLoop();
+      this.layerCache.delete('live-tankers-layer');
     }
 
     // Conflict zones layer
@@ -1581,6 +1765,11 @@ export class DeckGLMap {
       layers.push(this.createMilitaryVesselClustersLayer(filteredMilitaryVesselClusters));
     }
 
+    // Military flight trails (rendered beneath dots)
+    if (mapLayers.military && this.activeFlightTrails.size > 0 && filteredMilitaryFlights.length > 0) {
+      layers.push(this.createMilitaryFlightTrailsLayer(filteredMilitaryFlights));
+    }
+
     // Military flights layer
     if (mapLayers.military && filteredMilitaryFlights.length > 0) {
       layers.push(this.createMilitaryFlightsLayer(filteredMilitaryFlights));
@@ -1654,10 +1843,20 @@ export class DeckGLMap {
     // Trade routes layer
     if (mapLayers.tradeRoutes) {
       layers.push(this.createTradeRoutesLayer());
+      layers.push(this.createTradeRouteTripsLayer());
       layers.push(this.createTradeChokepointsLayer());
+      const hlMarkers = this.createHighlightedChokepointMarkers();
+      if (hlMarkers) layers.push(hlMarkers);
+      const bypassArcs = this.createBypassArcsLayer();
+      if (bypassArcs) layers.push(bypassArcs);
+      this.startTradeAnimation();
     } else {
+      this.stopTradeAnimation();
       this.layerCache.delete('trade-routes-layer');
+      this.layerCache.delete('trade-route-trips-layer');
       this.layerCache.delete('trade-chokepoints-layer');
+      this.layerCache.delete('highlighted-chokepoint-markers');
+      this.layerCache.delete('bypass-arcs-layer');
     }
 
     // Tech variant layers (Supercluster-based deck.gl layers for HQs and events)
@@ -1713,6 +1912,9 @@ export class DeckGLMap {
       const sanctionsLayer = this.createSanctionsChoroplethLayer();
       if (sanctionsLayer) layers.push(sanctionsLayer);
     }
+    // Scenario heat layer (affected countries tint)
+    const scenarioHeat = this.scenarioState ? this.createScenarioHeatLayer() : null;
+    if (scenarioHeat) layers.push(scenarioHeat);
     // Phase 8: Species recovery zones
     if (mapLayers.speciesRecovery && this.speciesRecoveryZones.length > 0) {
       layers.push(this.createSpeciesRecoveryLayer());
@@ -1722,7 +1924,7 @@ export class DeckGLMap {
       layers.push(this.createRenewableInstallationsLayer());
     }
 
-    if (mapLayers.satellites && filteredImageryScenes.length > 0) {
+    if (mapLayers.satellites && filteredImageryScenes.length > 0 && !this.satelliteImageryLayerFailed) {
       layers.push(this.createImageryFootprintLayer(filteredImageryScenes));
     }
 
@@ -1821,6 +2023,352 @@ export class DeckGLMap {
     this.lastPipelineHighlightSignature = highlightSignature;
     this.layerCache.set(cacheKey, layer);
     return layer;
+  }
+
+  // Energy-variant override for the pipelines map layer. Instead of the
+  // static PIPELINES config (colored by oil/gas type), this reads the
+  // evidence-backed pipeline registries seeded by scripts/seed-pipelines-
+  // {gas,oil}.mjs and colors each path by its derived publicBadge —
+  // flowing/reduced/offline/disputed. Click dispatches an
+  // `open-pipeline-detail` window event that PipelineStatusPanel listens
+  // for to open its drawer. Falls back to the static layer if bootstrap
+  // hasn't hydrated yet (e.g. variant switch before the fetch completes).
+  private createEnergyPipelinesLayer(): PathLayer {
+    const cacheKey = 'pipelines-layer';
+    const highlightedPipelines = this.highlightedAssets.pipeline;
+    const highlightSignature = this.getSetSignature(highlightedPipelines);
+
+    interface RawEntry {
+      id?: string; name?: string; commodityType?: string;
+      startPoint?: { lat?: number; lon?: number };
+      endPoint?:   { lat?: number; lon?: number };
+      waypoints?:  Array<{ lat?: number; lon?: number }>;
+      operator?: string;
+      evidence?: PipelineEvidenceInput;
+    }
+    interface EnergyPipeline {
+      id: string;
+      name: string;
+      operator: string;
+      commodityType: string;
+      points: Array<[number, number]>;
+      badge: PipelinePublicBadge;
+    }
+
+    // Read through the shared store instead of getHydratedData directly —
+    // getHydratedData is single-use (deletes on first read), and this same
+    // data is also consumed by PipelineStatusPanel. The store memoizes so
+    // both consumers see identical data regardless of mount order.
+    const { gas, oil } = getCachedPipelineRegistries() as {
+      gas: { pipelines?: Record<string, RawEntry> } | undefined;
+      oil: { pipelines?: Record<string, RawEntry> } | undefined;
+    };
+    const rawEntries: RawEntry[] = [
+      ...Object.values(gas?.pipelines ?? {}),
+      ...Object.values(oil?.pipelines ?? {}),
+    ];
+
+    // Bootstrap not hydrated yet → fall back to the static layer so the
+    // map always has some representation of the pipelines toggle.
+    if (rawEntries.length === 0) return this.createPipelinesLayer();
+
+    const data: EnergyPipeline[] = rawEntries
+      .map(raw => {
+        const id = typeof raw.id === 'string' ? raw.id : '';
+        if (!id) return null;
+        const start = raw.startPoint;
+        const end = raw.endPoint;
+        if (!start || !end || typeof start.lat !== 'number' || typeof start.lon !== 'number' ||
+            typeof end.lat !== 'number' || typeof end.lon !== 'number') return null;
+        const points: Array<[number, number]> = [[start.lon, start.lat]];
+        if (Array.isArray(raw.waypoints)) {
+          for (const wp of raw.waypoints) {
+            if (wp && typeof wp.lat === 'number' && typeof wp.lon === 'number') {
+              points.push([wp.lon, wp.lat]);
+            }
+          }
+        }
+        points.push([end.lon, end.lat]);
+        return {
+          id,
+          name: raw.name || id,
+          operator: raw.operator || '',
+          commodityType: raw.commodityType || 'gas',
+          points,
+          badge: derivePipelinePublicBadge(raw.evidence),
+        } as EnergyPipeline;
+      })
+      .filter((p): p is EnergyPipeline => p != null);
+
+    const HIGHLIGHT_COLOR: [number, number, number, number] = [255, 100, 100, 240];
+    const badgeColor = (b: PipelinePublicBadge): [number, number, number, number] => {
+      switch (b) {
+        case 'flowing':  return [46, 204, 113, 200];  // green
+        case 'reduced':  return [243, 156, 18, 220];  // amber
+        case 'offline':  return [231, 76, 60, 230];   // red
+        case 'disputed': return [155, 89, 182, 220];  // purple
+      }
+    };
+
+    const layer = new PathLayer<EnergyPipeline>({
+      id: cacheKey,
+      data,
+      getPath: d => d.points,
+      getColor: d => highlightedPipelines.has(d.id) ? HIGHLIGHT_COLOR : badgeColor(d.badge),
+      getWidth: d => {
+        if (highlightedPipelines.has(d.id)) return 4;
+        return (d.badge === 'offline' || d.badge === 'disputed') ? 3 : 2;
+      },
+      widthMinPixels: 1.5,
+      widthMaxPixels: 6,
+      pickable: true,
+      // updateTriggers make DeckGL recompute per-path getColor/getWidth
+      // when the highlight set changes; without this, flashAssets() /
+      // highlightAssets() would have no visible effect on the energy layer.
+      updateTriggers: {
+        getColor: highlightSignature,
+        getWidth: highlightSignature,
+      },
+      onClick: info => {
+        const obj = info?.object as EnergyPipeline | undefined;
+        if (!obj?.id) return false;
+        // Emit an event; PipelineStatusPanel listens and opens its drawer.
+        // Cross-component coupling stays loose — no direct reference to the
+        // panel class, and if the panel isn't mounted the event is a no-op.
+        try {
+          window.dispatchEvent(new CustomEvent('energy:open-pipeline-detail', {
+            detail: { pipelineId: obj.id },
+          }));
+        } catch {
+          // Non-browser / tauri edge cases — silent no-op.
+        }
+        return true;
+      },
+    });
+
+    // Intentionally NOT caching this layer: the underlying registries can
+    // update via setCachedPipelineRegistries() when the panel's RPC lands,
+    // and cached layers keyed only on highlightSignature would serve stale
+    // data. With ~25 critical-asset pipelines, rebuild cost per render is
+    // trivial (far cheaper than a stale-data UI bug).
+    return layer;
+  }
+
+  /**
+   * Storage facilities scatterplot layer (energy variant only). Reads
+   * through the shared store so this layer and StorageFacilityMapPanel
+   * both see the same bootstrap-hot registry without racing on
+   * getHydratedData's single-use drain.
+   *
+   * Dot radius = log(capacity) so Ras Laffan (77 Mtpa) visually dominates
+   * Chiren (6.5 TWh) without blowing out small sites to invisibility.
+   * Color = derived publicBadge, same deriver as the server handler.
+   */
+  private createEnergyStorageLayer(): ScatterplotLayer | null {
+    const cacheKey = 'storage-facilities-layer';
+
+    interface RawEntry {
+      id?: string; name?: string; operator?: string;
+      facilityType?: string; country?: string;
+      location?: { lat?: number; lon?: number };
+      capacityTwh?: number; capacityMb?: number; capacityMtpa?: number;
+      evidence?: StorageEvidenceInput;
+    }
+    interface EnergyStorageDot {
+      id: string;
+      name: string;
+      operator: string;
+      facilityType: string;
+      country: string;
+      position: [number, number];
+      capacityDisplay: string;
+      radius: number;
+      badge: StoragePublicBadge;
+    }
+
+    const { registry } = getCachedStorageFacilityRegistry() as {
+      registry: { facilities?: Record<string, RawEntry> } | undefined;
+    };
+    const rawEntries: RawEntry[] = Object.values(registry?.facilities ?? {});
+    if (rawEntries.length === 0) return null;
+
+    const data: EnergyStorageDot[] = rawEntries
+      .map(raw => {
+        const id = typeof raw.id === 'string' ? raw.id : '';
+        if (!id) return null;
+        const loc = raw.location;
+        if (!loc || typeof loc.lat !== 'number' || typeof loc.lon !== 'number') return null;
+
+        // Capacity → radius. Each facility type has its own unit, so
+        // normalize to a common "relative size" before log — Mtpa is
+        // already the largest numerically; TWh and Mb are comparable.
+        let cap = 0;
+        let capDisplay = '—';
+        if (raw.facilityType === 'ugs' && typeof raw.capacityTwh === 'number' && raw.capacityTwh > 0) {
+          cap = raw.capacityTwh;
+          capDisplay = `${raw.capacityTwh.toFixed(1)} TWh`;
+        } else if ((raw.facilityType === 'spr' || raw.facilityType === 'crude_tank_farm')
+                   && typeof raw.capacityMb === 'number' && raw.capacityMb > 0) {
+          cap = raw.capacityMb;
+          capDisplay = `${raw.capacityMb.toLocaleString()} Mb`;
+        } else if ((raw.facilityType === 'lng_export' || raw.facilityType === 'lng_import')
+                   && typeof raw.capacityMtpa === 'number' && raw.capacityMtpa > 0) {
+          cap = raw.capacityMtpa;
+          capDisplay = `${raw.capacityMtpa.toFixed(1)} Mtpa`;
+        }
+        // log-scale radius so small sites stay visible; floor + ceiling to
+        // keep hit targets reasonable at all zoom levels.
+        const radius = Math.max(6000, Math.min(26000, 5000 + Math.log(Math.max(cap, 1)) * 5500));
+
+        return {
+          id,
+          name: raw.name || id,
+          operator: raw.operator || '',
+          facilityType: raw.facilityType || 'unknown',
+          country: raw.country || '',
+          position: [loc.lon, loc.lat] as [number, number],
+          capacityDisplay: capDisplay,
+          radius,
+          badge: deriveStoragePublicBadge(raw.evidence),
+        } as EnergyStorageDot;
+      })
+      .filter((d): d is EnergyStorageDot => d != null);
+
+    const badgeColor = (b: StoragePublicBadge): [number, number, number, number] => {
+      switch (b) {
+        case 'operational': return [46, 204, 113, 220];  // green
+        case 'reduced':     return [243, 156, 18, 230];  // amber
+        case 'offline':     return [231, 76, 60, 240];   // red
+        case 'disputed':    return [155, 89, 182, 230];  // purple
+      }
+    };
+
+    return new ScatterplotLayer<EnergyStorageDot>({
+      id: cacheKey,
+      data,
+      getPosition: d => d.position,
+      getFillColor: d => badgeColor(d.badge),
+      getRadius: d => d.radius,
+      stroked: true,
+      getLineColor: [255, 255, 255, 200],
+      lineWidthMinPixels: 1,
+      radiusMinPixels: 5,
+      radiusMaxPixels: 28,
+      pickable: true,
+      onClick: info => {
+        const obj = info?.object as EnergyStorageDot | undefined;
+        if (!obj?.id) return false;
+        // Dispatch to StorageFacilityMapPanel — same loose-coupling
+        // pattern as the pipelines layer.
+        try {
+          window.dispatchEvent(new CustomEvent('energy:open-storage-facility-detail', {
+            detail: { facilityId: obj.id },
+          }));
+        } catch {
+          // Silent no-op on non-browser runtimes.
+        }
+        return true;
+      },
+    });
+  }
+
+  /**
+   * Fuel shortage pins (energy variant only). One dot per active shortage
+   * placed at the country centroid. Color by severity (confirmed = red,
+   * watch = amber). Click dispatches 'energy:open-fuel-shortage-detail'
+   * which FuelShortagePanel listens for.
+   *
+   * Multiple shortages in the same country stack with a small angular
+   * offset so they don't render as one overlapping dot.
+   */
+  private createEnergyShortagePinsLayer(): ScatterplotLayer | null {
+    const cacheKey = 'fuel-shortages-layer';
+
+    interface RawEntry {
+      id?: string; country?: string; product?: string; severity?: string;
+      shortDescription?: string;
+      resolvedAt?: string | null;
+    }
+    interface ShortagePin {
+      id: string;
+      country: string;
+      product: string;
+      severity: string;
+      description: string;
+      position: [number, number];
+    }
+
+    const { registry } = getCachedFuelShortageRegistry() as {
+      registry: { shortages?: Record<string, RawEntry> } | undefined;
+    };
+    // Exclude resolved shortages — a pin on the map is a claim of an
+    // ACTIVE crisis, and rendering resolved entries as active inflates
+    // severity counts and shows stale crisis data. Classifier writes
+    // resolvedAt as ISO string on resolution; raw seed uses null.
+    const rawEntries: RawEntry[] = Object.values(registry?.shortages ?? {})
+      .filter(s => !s.resolvedAt);
+    if (rawEntries.length === 0) return null;
+
+    // Stack multiple shortages per country by offsetting longitudes.
+    const perCountryCount = new Map<string, number>();
+
+    const data: ShortagePin[] = rawEntries
+      .map(raw => {
+        const id = typeof raw.id === 'string' ? raw.id : '';
+        if (!id) return null;
+        const country = raw.country;
+        if (typeof country !== 'string' || country.length !== 2) return null;
+        const centroid = getCountryCentroid(country);
+        if (!centroid) return null;
+        const idx = perCountryCount.get(country) ?? 0;
+        perCountryCount.set(country, idx + 1);
+        // ~0.8° offset per additional pin in the same country.
+        const offsetLon = idx === 0 ? 0 : (idx * 0.8 * (idx % 2 === 0 ? 1 : -1));
+        return {
+          id,
+          country,
+          product: raw.product || '',
+          severity: raw.severity || 'watch',
+          description: raw.shortDescription || '',
+          position: [centroid.lon + offsetLon, centroid.lat] as [number, number],
+        };
+      })
+      .filter((d): d is ShortagePin => d != null);
+
+    const severityColor = (sev: string): [number, number, number, number] => {
+      switch (sev) {
+        case 'confirmed': return [231, 76, 60, 240];  // red
+        case 'watch':     return [243, 156, 18, 230]; // amber
+        default:          return [127, 140, 141, 200]; // grey
+      }
+    };
+
+    return new ScatterplotLayer<ShortagePin>({
+      id: cacheKey,
+      data,
+      getPosition: d => d.position,
+      getFillColor: d => severityColor(d.severity),
+      // Confirmed pins slightly larger than watch to pre-attentively indicate weight.
+      getRadius: d => d.severity === 'confirmed' ? 55000 : 38000,
+      stroked: true,
+      getLineColor: [255, 255, 255, 230],
+      lineWidthMinPixels: 1.5,
+      radiusMinPixels: 7,
+      radiusMaxPixels: 24,
+      pickable: true,
+      onClick: info => {
+        const obj = info?.object as ShortagePin | undefined;
+        if (!obj?.id) return false;
+        try {
+          window.dispatchEvent(new CustomEvent('energy:open-fuel-shortage-detail', {
+            detail: { shortageId: obj.id },
+          }));
+        } catch {
+          // Silent no-op on non-browser runtimes.
+        }
+        return true;
+      },
+    });
   }
 
   private buildConflictZoneGeoJson(): GeoJSON.FeatureCollection {
@@ -2466,6 +3014,105 @@ export class DeckGLMap {
     });
   }
 
+  private createLiveTankersLayer(): ScatterplotLayer {
+    return new ScatterplotLayer({
+      id: 'live-tankers-layer',
+      data: this.liveTankers,
+      getPosition: (d) => [d.lon, d.lat],
+      // Radius scales loosely with deadweight class: VLCC > Aframax > Handysize.
+      // AIS ship type 80-89 covers all tanker subtypes; we have no DWT field
+      // in the AIS message itself, so this is a constant fallback. Future
+      // enhancement: enrich via a vessel-registry lookup.
+      getRadius: 2500,
+      getFillColor: (d) => {
+        // Anchored (speed < 0.5 kn) — orange, signals waiting / loading /
+        // potential congestion. Underway (speed >= 0.5 kn) — cyan, normal
+        // transit. Unknown / missing speed — gray.
+        if (!Number.isFinite(d.speed)) return [127, 140, 141, 200] as [number, number, number, number];
+        if (d.speed < 0.5) return [255, 183, 3, 220] as [number, number, number, number]; // amber
+        return [0, 209, 255, 220] as [number, number, number, number]; // cyan
+      },
+      radiusMinPixels: 3,
+      radiusMaxPixels: 8,
+      pickable: true,
+    });
+  }
+
+  /**
+   * Idempotent: ensures the 60s tanker-refresh loop is running. Called
+   * each time the layer is observed enabled in the layers update. First
+   * call kicks an immediate load; subsequent calls no-op. Pairs with
+   * stopLiveTankersLoop() in destroy() and on layer-disable.
+   */
+  private ensureLiveTankersLoop(): void {
+    if (this.liveTankersTimer !== null) return; // already running
+    void this.loadLiveTankers();
+    this.liveTankersTimer = setInterval(() => {
+      void this.loadLiveTankers();
+    }, 60_000);
+  }
+
+  /**
+   * Stop the refresh loop and abort any in-flight fetch. Called when the
+   * layer is toggled off (and from destroy()) to keep the relay traffic
+   * scoped to active viewers.
+   */
+  private stopLiveTankersLoop(): void {
+    if (this.liveTankersTimer !== null) {
+      clearInterval(this.liveTankersTimer);
+      this.liveTankersTimer = null;
+    }
+    if (this.liveTankersAbort) {
+      this.liveTankersAbort.abort();
+      this.liveTankersAbort = null;
+    }
+  }
+
+  /**
+   * Tanker loader — called externally (or on a 60s tick) to refresh
+   * `this.liveTankers`. Imports lazily so the service module isn't pulled
+   * into the bundle for variants where the layer is disabled.
+   */
+  public async loadLiveTankers(): Promise<void> {
+    // Cancel any in-flight tick before starting another. Per skill
+    // closure-scoped-state-teardown-order: don't null out the abort
+    // controller before calling abort.
+    if (this.liveTankersAbort) {
+      this.liveTankersAbort.abort();
+    }
+    const controller = new AbortController();
+    this.liveTankersAbort = controller;
+    try {
+      const { fetchLiveTankers } = await import('@/services/live-tankers');
+      // Thread the signal so the in-flight RPC actually cancels when a
+      // newer tick starts (or the layer toggles off). Without this, a
+      // slow older refresh can race-write stale data after a newer one
+      // already populated this.liveTankers.
+      const zones = await fetchLiveTankers(undefined, { signal: controller.signal });
+      // Drop the result if this controller was aborted mid-flight or if
+      // a newer load has already replaced us. Without this guard, an
+      // older fetch that completed despite signal.aborted (e.g. the
+      // service returned cached data without checking the signal) would
+      // overwrite the newer one's data.
+      if (controller.signal.aborted || this.liveTankersAbort !== controller) {
+        return;
+      }
+      const flat = zones.flatMap((z) => z.tankers).map((t) => ({
+        mmsi: t.mmsi,
+        lat: t.lat,
+        lon: t.lon,
+        speed: t.speed,
+        shipType: t.shipType,
+        name: t.name,
+      }));
+      this.liveTankers = flat;
+      this.updateLayers();
+    } catch {
+      // Graceful: leave existing tankers in place; layer will continue
+      // rendering last-known data until the next successful tick.
+    }
+  }
+
   private createGpsJammingLayer(): H3HexagonLayer {
     return new H3HexagonLayer({
       id: 'gps-jamming-layer',
@@ -2603,6 +3250,22 @@ export class DeckGLMap {
       radiusMinPixels: 4,
       radiusMaxPixels: 12,
       pickable: true,
+    });
+  }
+
+  private createMilitaryFlightTrailsLayer(flights: MilitaryFlight[]): PathLayer {
+    const trailed = flights.filter(f => this.activeFlightTrails.has(f.hexCode.toLowerCase()) && f.track && f.track.length > 1);
+    return new PathLayer({
+      id: 'military-flight-trails-layer',
+      data: trailed,
+      getPath: (d) => d.track!.map(([lat, lon]: [number, number]) => [lon, lat]),
+      getColor: (d) => { const [r, g, b] = altitudeToColor(d.altitude); return [r, g, b, 140] as [number, number, number, number]; },
+      getWidth: 2,
+      widthUnits: 'pixels' as const,
+      getDashArray: [6, 4],
+      dashJustified: true,
+      pickable: false,
+      extensions: [new PathStyleExtension({ dash: true })],
     });
   }
 
@@ -3479,6 +4142,23 @@ export class DeckGLMap {
     });
   }
 
+  private createScenarioHeatLayer(): GeoJsonLayer | null {
+    if (!this.affectedIso2Set.size || !this.countriesGeoJsonData) return null;
+    return new GeoJsonLayer({
+      id: 'scenario-heat-layer',
+      data: this.countriesGeoJsonData,
+      stroked: false,
+      filled: true,
+      extruded: false,
+      pickable: false,
+      getFillColor: (feature: { properties?: Record<string, unknown> }) => {
+        const code = feature.properties?.['ISO3166-1-Alpha-2'] as string | undefined;
+        return (code && this.affectedIso2Set.has(code) ? [220, 60, 40, 80] : [0, 0, 0, 0]) as [number, number, number, number];
+      },
+      updateTriggers: { getFillColor: [this.scenarioState?.scenarioId ?? null] },
+    });
+  }
+
   private createSpeciesRecoveryLayer(): ScatterplotLayer {
     return new ScatterplotLayer({
       id: 'species-recovery-layer',
@@ -3613,15 +4293,37 @@ export class DeckGLMap {
       case 'cables-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${t('components.deckgl.tooltip.underseaCable')}</div>` };
       case 'pipelines-layer': {
-        const pipelineType = String(obj.type || '').toLowerCase();
-        const pipelineTypeLabel = pipelineType === 'oil'
+        // Energy variant emits objects with {commodityType, badge}; other
+        // variants emit the static-config shape {type}. Differentiate by
+        // checking for the evidence-derived badge field.
+        const hasBadge = typeof obj.badge === 'string';
+        const commodity = hasBadge ? String(obj.commodityType || '').toLowerCase() : String(obj.type || '').toLowerCase();
+        const commodityLabel = commodity === 'oil'
           ? t('popups.pipeline.types.oil')
-          : pipelineType === 'gas'
+          : commodity === 'gas'
             ? t('popups.pipeline.types.gas')
-            : pipelineType === 'products'
+            : commodity === 'products'
               ? t('popups.pipeline.types.products')
-              : `${text(obj.type)} ${t('components.deckgl.tooltip.pipeline')}`;
-        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${pipelineTypeLabel}</div>` };
+              : `${text(commodity)} ${t('components.deckgl.tooltip.pipeline')}`.trim();
+        if (hasBadge) {
+          const badge = String(obj.badge).toUpperCase();
+          return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${commodityLabel} · <strong>${text(badge)}</strong></div>` };
+        }
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${commodityLabel}</div>` };
+      }
+      case 'storage-facilities-layer': {
+        const typeLabel = {
+          ugs: 'UGS', spr: 'SPR',
+          lng_export: 'LNG export', lng_import: 'LNG import',
+          crude_tank_farm: 'Crude hub',
+        }[String(obj.facilityType)] ?? text(obj.facilityType);
+        const badge = String(obj.badge || 'disputed').toUpperCase();
+        const cap = text(obj.capacityDisplay || '—');
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.name)}</strong><br/>${typeLabel} · ${text(obj.country)} · ${cap}<br/><strong>${text(badge)}</strong></div>` };
+      }
+      case 'fuel-shortages-layer': {
+        const severity = String(obj.severity || 'watch').toUpperCase();
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.country)} · ${text(obj.product)}</strong><br/>${text(obj.description)}<br/><strong>${text(severity)}</strong></div>` };
       }
       case 'conflict-zones-layer': {
         const props = obj.properties || obj;
@@ -3769,6 +4471,9 @@ export class DeckGLMap {
         if (!resilienceEntry) {
           return { html: `<div class="deckgl-tooltip"><strong>${text(resilienceName)}</strong><br/><span style="opacity:.7">No resilience data</span></div>` };
         }
+        if (resilienceEntry.level === 'insufficient_data') {
+          return { html: `<div class="deckgl-tooltip"><strong>${text(resilienceName)}</strong><br/><span style="opacity:.7">Insufficient data</span></div>` };
+        }
         const [red, green, blue] = RESILIENCE_CHOROPLETH_COLORS[resilienceEntry.level];
         const levelColor = `rgb(${red}, ${green}, ${blue})`;
         return {
@@ -3822,6 +4527,7 @@ export class DeckGLMap {
   private static readonly CHOROPLETH_LAYER_IDS = new Set([
     'cii-choropleth-layer',
     'happiness-choropleth-layer',
+    'resilience-choropleth-layer',
   ]);
 
   private handleClick(info: PickingInfo): void {
@@ -4003,6 +4709,18 @@ export class DeckGLMap {
       return;
     }
 
+    if (layerId === 'trade-routes-layer') {
+      const segment = info.object as TradeRouteSegment;
+      if (!hasPremiumAccess(getAuthState())) {
+        trackGateHit('trade-arc-intel');
+        return;
+      }
+      const waypoints = ROUTE_WAYPOINTS_MAP.get(segment.routeId) ?? [];
+      this.popup.showRouteBreakdown(segment, waypoints, info.x, info.y);
+      this.onTradeArcClick?.(segment, waypoints, info.x, info.y);
+      return;
+    }
+
     // Map layer IDs to popup types
     const layerToPopupType: Record<string, PopupType> = {
       'conflict-zones-layer': 'conflict',
@@ -4079,6 +4797,12 @@ export class DeckGLMap {
     // Get click coordinates relative to container
     const x = info.x ?? 0;
     const y = info.y ?? 0;
+
+    // Toggle flight trail on military flight click
+    if (popupType === 'militaryFlight') {
+      const hex = (data as MilitaryFlight).hexCode;
+      if (hex) this.toggleFlightTrail(hex);
+    }
 
     this.popup.show({
       type: popupType,
@@ -4217,6 +4941,14 @@ export class DeckGLMap {
     viewSelect.addEventListener('change', () => {
       this.setView(viewSelect.value as DeckMapView);
     });
+
+    // Clear flight trails button (hidden by default)
+    this.clearTrailsBtn = document.createElement('button');
+    this.clearTrailsBtn.className = 'map-clear-trails-btn';
+    this.clearTrailsBtn.textContent = t('components.map.clearTrails');
+    this.clearTrailsBtn.style.display = 'none';
+    this.clearTrailsBtn.addEventListener('click', () => this.clearFlightTrails());
+    controls.appendChild(this.clearTrailsBtn);
   }
 
   private createTimeSlider(): void {
@@ -4293,12 +5025,46 @@ export class DeckGLMap {
 
     this.container.appendChild(toggles);
 
+    // Unlock premium layers when Pro status resolves. Pro can come from EITHER:
+    //   1. Clerk role === 'pro' (subscribeAuthState fires on Clerk changes)
+    //   2. Convex entitlement tier >= 1 (onEntitlementChange fires on Convex changes)
+    // Subscribing to BOTH covers Dodo subscribers whose Pro flag arrives via
+    // Convex (NOT via Clerk role). User-reported on energy.worldmonitor.app:
+    // "Pro Monthly" in settings UI but Resilience layer still showed the lock
+    // because subscribeAuthState alone never fires on Convex transitions.
+    //
+    // Whichever signal resolves Pro first does the unlock; the other becomes
+    // a no-op (early-return when not Pro; no-op .remove on already-removed
+    // class). queueMicrotask defers self-unsubscribe so both _unsubscribe*
+    // assignments complete before the unsubscribe runs. Greptile P2 fix:
+    // single helper instead of duplicated callback bodies.
+    const unlockIfPro = (): void => {
+      if (!hasPremiumAccess(getAuthState())) return;
+      toggles.querySelectorAll('.layer-toggle-locked').forEach(label => {
+        label.classList.remove('layer-toggle-locked');
+        const input = label.querySelector('input') as HTMLInputElement | null;
+        if (input) input.disabled = false;
+        const labelSpan = label.querySelector('.toggle-label');
+        if (labelSpan) labelSpan.textContent = labelSpan.textContent!.replace(' \uD83D\uDD12', '');
+      });
+      queueMicrotask(() => {
+        this._unsubscribeAuthState?.();
+        this._unsubscribeAuthState = null;
+        this._unsubscribeEntitlement?.();
+        this._unsubscribeEntitlement = null;
+      });
+    };
+    this._unsubscribeAuthState = subscribeAuthState(() => unlockIfPro());
+    this._unsubscribeEntitlement = onEntitlementChange(() => unlockIfPro());
+
     // Bind toggle events
     toggles.querySelectorAll('.layer-toggle input').forEach(input => {
       input.addEventListener('change', () => {
         const layer = (input as HTMLInputElement).closest('.layer-toggle')?.getAttribute('data-layer') as keyof MapLayers;
         if (layer) {
           const enabled = (input as HTMLInputElement).checked;
+          const prevRadar = this.state.layers.weather;
+          const prevCyber = this.state.layers.cyberThreats;
           if (enabled && (layer === 'resilienceScore' || layer === 'ciiChoropleth')) {
             const conflictingLayer = layer === 'resilienceScore' ? 'ciiChoropleth' : 'resilienceScore';
             if (this.state.layers[conflictingLayer]) {
@@ -4310,7 +5076,11 @@ export class DeckGLMap {
             }
           }
           this.state.layers[layer] = enabled;
+          if (layer === 'military' && !enabled) this.clearFlightTrails();
           if (layer === 'flights') this.manageAircraftTimer(enabled);
+          if (this.state.layers.weather && !prevRadar) this.startWeatherRadar();
+          else if (!this.state.layers.weather && prevRadar) this.stopWeatherRadar();
+          if (this.state.layers.cyberThreats && !prevCyber && !this.aptGroupsLoaded) this.loadAptGroups();
           this.render();
           this.updateLegend();
           this.onLayerChange?.(layer, enabled, 'user');
@@ -4775,12 +5545,13 @@ export class DeckGLMap {
   }
 
   public setLayers(layers: MapLayers): void {
-    const prevRadar = this.state.layers.weatherRadar;
+    const prevRadar = this.state.layers.weather;
     const prevCyber = this.state.layers.cyberThreats;
     this.state.layers = normalizeExclusiveChoropleths(layers, this.state.layers);
+    if (!this.state.layers.military) this.clearFlightTrails();
     this.manageAircraftTimer(this.state.layers.flights);
-    if (this.state.layers.weatherRadar && !prevRadar) this.startWeatherRadar();
-    else if (!this.state.layers.weatherRadar && prevRadar) this.stopWeatherRadar();
+    if (this.state.layers.weather && !prevRadar) this.startWeatherRadar();
+    else if (!this.state.layers.weather && prevRadar) this.stopWeatherRadar();
     if (this.state.layers.cyberThreats && !prevCyber && !this.aptGroupsLoaded) this.loadAptGroups();
     this.render(); // Debounced
     this.updateLegend();
@@ -4880,29 +5651,190 @@ export class DeckGLMap {
     const active: [number, number, number, number] = getCurrentTheme() === 'light' ? [30, 100, 180, 200] : [100, 200, 255, 160];
     const disrupted: [number, number, number, number] = getCurrentTheme() === 'light' ? [200, 40, 40, 220] : [255, 80, 80, 200];
     const highRisk: [number, number, number, number] = getCurrentTheme() === 'light' ? [200, 140, 20, 200] : [255, 180, 50, 180];
+    const scenario: [number, number, number, number] = getCurrentTheme() === 'light' ? [220, 100, 20, 230] : [255, 140, 50, 210];
     const colorFor = (status: string): [number, number, number, number] =>
       status === 'disrupted' ? disrupted : status === 'high_risk' ? highRisk : active;
+
+    // When a scenario is active, override colors for routes that transit disrupted chokepoints.
+    // ROUTE_WAYPOINTS_MAP is module-level so getColor() is O(1) per segment instead of O(n) per frame.
+    const scenarioDisrupted = this.scenarioState
+      ? new Set(this.scenarioState.disruptedChokepointIds)
+      : null;
+
+    const hlActive = this.highlightedRouteIds.size > 0;
+    const hlIds = this.highlightedRouteIds;
+
+    const dimColor = (c: [number, number, number, number]): [number, number, number, number] =>
+      [c[0], c[1], c[2], 40];
+
+    const getColor = (d: TradeRouteSegment): [number, number, number, number] => {
+      let base: [number, number, number, number];
+      if (scenarioDisrupted && scenarioDisrupted.size > 0) {
+        const waypoints = ROUTE_WAYPOINTS_MAP.get(d.routeId);
+        if (waypoints && waypoints.some(wp => scenarioDisrupted.has(wp))) {
+          base = scenario;
+        } else if (!hasPremiumAccess(getAuthState())) {
+          base = active;
+        } else {
+          base = colorFor(d.status);
+        }
+      } else if (!hasPremiumAccess(getAuthState())) {
+        base = active;
+      } else {
+        base = colorFor(d.status);
+      }
+      if (hlActive && !hlIds.has(d.routeId)) return dimColor(base);
+      return base;
+    };
 
     return new ArcLayer<TradeRouteSegment>({
       id: 'trade-routes-layer',
       data: this.tradeRouteSegments,
       getSourcePosition: (d) => d.sourcePosition,
       getTargetPosition: (d) => d.targetPosition,
-      getSourceColor: (d) => colorFor(d.status),
-      getTargetColor: (d) => colorFor(d.status),
-      getWidth: (d) => d.category === 'energy' ? 3 : 2,
+      getSourceColor: getColor,
+      getTargetColor: getColor,
+      getWidth: (d) => {
+        if (hlActive && hlIds.has(d.routeId)) return 6;
+        return d.category === 'energy' ? 3 : 2;
+      },
       widthMinPixels: 1,
-      widthMaxPixels: 6,
+      widthMaxPixels: 8,
       greatCircle: true,
+      pickable: true,
+    });
+  }
+
+  private buildTradeTrips(): void {
+    const activeColor: [number, number, number, number] = [100, 200, 255, 140];
+    const disruptedColor: [number, number, number, number] = [255, 80, 80, 180];
+    const highRiskColor: [number, number, number, number] = [255, 180, 50, 160];
+    const scenarioColor: [number, number, number, number] = [255, 140, 50, 170];
+
+    const isPremium = hasPremiumAccess(getAuthState());
+
+    const scenarioDisrupted = this.scenarioState
+      ? new Set(this.scenarioState.disruptedChokepointIds)
+      : null;
+
+    const hlActive = this.highlightedRouteIds.size > 0;
+    const hlIds = this.highlightedRouteIds;
+
+    const colorForRoute = (routeId: string, status: string): [number, number, number, number] => {
+      let base: [number, number, number, number];
+      if (scenarioDisrupted && scenarioDisrupted.size > 0) {
+        const waypoints = ROUTE_WAYPOINTS_MAP.get(routeId);
+        if (waypoints && waypoints.some(wp => scenarioDisrupted.has(wp))) {
+          base = scenarioColor;
+        } else if (!isPremium) {
+          base = activeColor;
+        } else {
+          base = status === 'disrupted' ? disruptedColor : status === 'high_risk' ? highRiskColor : activeColor;
+        }
+      } else if (!isPremium) {
+        base = activeColor;
+      } else {
+        base = status === 'disrupted' ? disruptedColor : status === 'high_risk' ? highRiskColor : activeColor;
+      }
+      if (hlActive && !hlIds.has(routeId)) return [base[0], base[1], base[2], 40];
+      return base;
+    };
+
+    const widthFor = (category: string): number =>
+      category === 'energy' ? 4 : category === 'container' ? 2.5 : 2;
+
+    const routeGroups = new Map<string, TradeRouteSegment[]>();
+    for (const seg of this.tradeRouteSegments) {
+      const existing = routeGroups.get(seg.routeId);
+      if (existing) existing.push(seg);
+      else routeGroups.set(seg.routeId, [seg]);
+    }
+
+    const trips: TripData[] = [];
+    for (const [, segments] of routeGroups) {
+      const sorted = segments.sort((a, b) => a.segmentIndex - b.segmentIndex);
+      const fullPath: [number, number][] = [];
+      for (let i = 0; i < sorted.length; i++) {
+        const seg = sorted[i]!;
+        const arcPoints = interpolateGreatCircle(
+          seg.sourcePosition,
+          seg.targetPosition,
+          TRADE_GC_INTERPOLATION_POINTS,
+        );
+        if (i === 0) {
+          fullPath.push(...arcPoints);
+        } else {
+          fullPath.push(...arcPoints.slice(1));
+        }
+      }
+
+      const timestamps: number[] = [];
+      for (let i = 0; i < fullPath.length; i++) {
+        timestamps.push((i / (fullPath.length - 1)) * TRADE_ANIMATION_CYCLE);
+      }
+
+      const first = sorted[0]!;
+
+      trips.push({
+        path: fullPath,
+        timestamps,
+        color: colorForRoute(first.routeId, first.status),
+        width: widthFor(first.category),
+      });
+    }
+    this.tradeTrips = trips;
+  }
+
+  private createTradeRouteTripsLayer(): TripsLayer<TripData> | null {
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (prefersReducedMotion) return null;
+
+    if (this.tradeTrips.length === 0) this.buildTradeTrips();
+
+    return new TripsLayer<TripData>({
+      id: 'trade-route-trips-layer',
+      data: this.tradeTrips,
+      getPath: (d: TripData) => d.path,
+      getTimestamps: (d: TripData) => d.timestamps,
+      getColor: (d: TripData) => d.color,
+      getWidth: (d: TripData) => d.width,
+      widthMinPixels: 2,
+      currentTime: this.tradeAnimationTime,
+      trailLength: TRADE_TRAIL_LENGTH,
       pickable: false,
     });
+  }
+
+  private startTradeAnimation(): void {
+    if (this.tradeAnimationFrame !== null) return;
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (prefersReducedMotion) return;
+
+    let lastTime = performance.now();
+    const animate = (now: number) => {
+      const delta = now - lastTime;
+      lastTime = now;
+      this.tradeAnimationTime = (this.tradeAnimationTime + delta * TRADE_ANIMATION_SPEED) % TRADE_ANIMATION_CYCLE;
+      this.tradeAnimationFrame = requestAnimationFrame(animate);
+      this.tradeAnimationFrameCount++;
+      if (this.tradeAnimationFrameCount % 2 === 0) this.render();
+    };
+    this.tradeAnimationFrame = requestAnimationFrame(animate);
+  }
+
+  private stopTradeAnimation(): void {
+    if (this.tradeAnimationFrame !== null) {
+      cancelAnimationFrame(this.tradeAnimationFrame);
+      this.tradeAnimationFrame = null;
+    }
+    this.tradeAnimationTime = 0;
   }
 
   private createTradeChokepointsLayer(): ScatterplotLayer {
     const routeWaypointIds = new Set<string>();
     for (const seg of this.tradeRouteSegments) {
-      const route = TRADE_ROUTES_LIST.find(r => r.id === seg.routeId);
-      if (route) for (const wp of route.waypoints) routeWaypointIds.add(wp);
+      const waypoints = ROUTE_WAYPOINTS_MAP.get(seg.routeId);
+      if (waypoints) for (const wp of waypoints) routeWaypointIds.add(wp);
     }
     const chokepoints = STRATEGIC_WATERWAYS.filter(w => routeWaypointIds.has(w.id));
     const isLight = getCurrentTheme() === 'light';
@@ -4922,11 +5854,69 @@ export class DeckGLMap {
     });
   }
 
-  /**
-   * Compute the solar terminator polygon (night side of the Earth).
-   * Uses standard astronomical formulas to find the subsolar point,
-   * then traces the terminator line and closes around the dark pole.
-   */
+  private rebuildHighlightedMarkers(): void {
+    if (this.highlightedRouteIds.size === 0) { this.highlightedMarkers = []; return; }
+    const cpIds = new Set<string>();
+    for (const routeId of this.highlightedRouteIds) {
+      const waypoints = ROUTE_WAYPOINTS_MAP.get(routeId);
+      if (waypoints) for (const wp of waypoints) cpIds.add(wp);
+    }
+    this.highlightedMarkers = STRATEGIC_WATERWAYS
+      .filter(w => cpIds.has(w.id))
+      .map(w => {
+        const score = this.storedChokepointData?.chokepoints?.find(cp => cp.id === w.id)?.disruptionScore ?? 0;
+        return { id: w.id, lon: w.lon, lat: w.lat, name: w.name, score };
+      });
+  }
+
+  private createHighlightedChokepointMarkers(): ScatterplotLayer | null {
+    if (this.highlightedMarkers.length === 0) return null;
+
+    const pulse = Math.sin(this.tradeAnimationTime * CHOKEPOINT_PULSE_FREQ) * CHOKEPOINT_PULSE_AMP + 1;
+
+    return new ScatterplotLayer({
+      id: 'highlighted-chokepoint-markers',
+      data: this.highlightedMarkers,
+      getPosition: (d: HighlightedMarker) => [d.lon, d.lat],
+      getRadius: (d: HighlightedMarker) => (d.score >= 70 ? 12000 : d.score > 30 ? 10000 : 8000) * pulse,
+      getFillColor: (d: HighlightedMarker) => d.score >= 70
+        ? [255, 60, 60, 180] as [number, number, number, number]
+        : d.score > 30
+          ? [255, 180, 50, 160] as [number, number, number, number]
+          : [60, 200, 120, 140] as [number, number, number, number],
+      radiusUnits: 'meters' as const,
+      pickable: false,
+      stroked: true,
+      getLineColor: (d: HighlightedMarker) => d.score >= 70
+        ? [255, 80, 80, 255] as [number, number, number, number]
+        : d.score > 30
+          ? [255, 200, 80, 255] as [number, number, number, number]
+          : [80, 220, 140, 255] as [number, number, number, number],
+      getLineWidth: 2,
+      lineWidthUnits: 'pixels' as const,
+      updateTriggers: {
+        getRadius: [this.tradeAnimationTime],
+        getFillColor: [this.storedChokepointData],
+      },
+    });
+  }
+
+  private createBypassArcsLayer(): ArcLayer | null {
+    if (this.bypassArcData.length === 0) return null;
+    return new ArcLayer({
+      id: 'bypass-arcs-layer',
+      data: this.bypassArcData,
+      getSourcePosition: (d: BypassArcDatum) => d.source,
+      getTargetPosition: (d: BypassArcDatum) => d.target,
+      getSourceColor: [60, 200, 120, 160],
+      getTargetColor: [60, 200, 120, 160],
+      getWidth: 3,
+      widthMinPixels: 2,
+      greatCircle: true,
+      pickable: false,
+    });
+  }
+
   private computeNightPolygon(): [number, number][] {
     const now = new Date();
     const JD = now.getTime() / 86400000 + 2440587.5;
@@ -5083,7 +6073,38 @@ export class DeckGLMap {
   public setMilitaryFlights(flights: MilitaryFlight[], clusters: MilitaryFlightCluster[] = []): void {
     this.militaryFlights = flights;
     this.militaryFlightClusters = clusters;
+    // Prune trails for aircraft no longer in the dataset
+    if (this.activeFlightTrails.size > 0) {
+      const currentHexes = new Set(flights.map(f => f.hexCode.toLowerCase()));
+      for (const hex of this.activeFlightTrails) {
+        if (!currentHexes.has(hex)) this.activeFlightTrails.delete(hex);
+      }
+      this.updateClearTrailsBtn();
+    }
     this.render();
+  }
+
+  public toggleFlightTrail(hexCode: string): void {
+    const key = hexCode.toLowerCase();
+    if (this.activeFlightTrails.has(key)) {
+      this.activeFlightTrails.delete(key);
+    } else {
+      this.activeFlightTrails.add(key);
+    }
+    this.updateClearTrailsBtn();
+    this.render();
+  }
+
+  public clearFlightTrails(): void {
+    if (this.activeFlightTrails.size === 0) return;
+    this.activeFlightTrails.clear();
+    this.updateClearTrailsBtn();
+    this.render();
+  }
+
+  private updateClearTrailsBtn(): void {
+    if (!this.clearTrailsBtn) return;
+    this.clearTrailsBtn.style.display = this.activeFlightTrails.size > 0 ? '' : 'none';
   }
 
   public setMilitaryVessels(vessels: MilitaryVessel[], clusters: MilitaryVesselCluster[] = []): void {
@@ -5258,6 +6279,93 @@ export class DeckGLMap {
     this.render();
   }
 
+  public setChokepointData(data: GetChokepointStatusResponse | null): void {
+    this.popup.setChokepointData(data);
+    this.storedChokepointData = data;
+    this.rebuildHighlightedMarkers();
+    if (this.storedChokepointData) this.refreshTradeRouteStatus(this.storedChokepointData);
+  }
+
+  private refreshTradeRouteStatus(data: GetChokepointStatusResponse): void {
+    const scoreMap = new Map(data.chokepoints.map(cp => [cp.id, cp.disruptionScore ?? 0]));
+    const initialSegments = resolveTradeRouteSegments();
+    this.tradeRouteSegments = initialSegments.map(seg => {
+      const waypoints = ROUTE_WAYPOINTS_MAP.get(seg.routeId) ?? [];
+      const maxScore = waypoints.reduce((max, id) => Math.max(max, scoreMap.get(id) ?? 0), 0);
+      const status: TradeRouteStatus = maxScore >= 70 ? 'disrupted' : maxScore > 30 ? 'high_risk' : 'active';
+      return { ...seg, status };
+    });
+    this.buildTradeTrips();
+    this.render();
+  }
+
+  /**
+   * Activate or deactivate a scenario visual overlay.
+   * When active, trade route arcs transiting disrupted chokepoints shift to
+   * an orange scenario color. Pass null to restore normal colors.
+   */
+  public setScenarioState(state: ScenarioVisualState | null): void {
+    this.scenarioState = state;
+    this.affectedIso2Set = new Set(state?.affectedIso2s ?? []);
+    this.buildTradeTrips();
+    this.render();
+  }
+
+  public highlightRoute(routeIds: string[]): void {
+    this.highlightedRouteIds = new Set(routeIds);
+    this.rebuildHighlightedMarkers();
+    this.buildTradeTrips();
+    this.render();
+  }
+
+  public clearHighlightedRoute(): void {
+    if (this.highlightedRouteIds.size === 0) return;
+    this.highlightedRouteIds.clear();
+    this.rebuildHighlightedMarkers();
+    this.buildTradeTrips();
+    this.render();
+  }
+
+  public setBypassRoutes(corridors: Array<{fromPort: [number, number]; toPort: [number, number]}>): void {
+    this.bypassArcData = corridors.map(c => ({
+      source: c.fromPort,
+      target: c.toPort,
+    }));
+    this.render();
+  }
+
+  public clearBypassRoutes(): void {
+    if (this.bypassArcData.length === 0) return;
+    this.bypassArcData = [];
+    this.render();
+  }
+
+  public zoomToRoutes(routeIds: string[]): void {
+    if (!this.maplibreMap || routeIds.length === 0) return;
+    const ids = new Set(routeIds);
+    let minLng = 180, maxLng = -180, minLat = 90, maxLat = -90;
+    let found = false;
+    for (const seg of this.tradeRouteSegments) {
+      if (!ids.has(seg.routeId)) continue;
+      found = true;
+      const [sLng, sLat] = seg.sourcePosition;
+      const [tLng, tLat] = seg.targetPosition;
+      if (sLng < minLng) minLng = sLng;
+      if (sLng > maxLng) maxLng = sLng;
+      if (sLat < minLat) minLat = sLat;
+      if (sLat > maxLat) maxLat = sLat;
+      if (tLng < minLng) minLng = tLng;
+      if (tLng > maxLng) maxLng = tLng;
+      if (tLat < minLat) minLat = tLat;
+      if (tLat > maxLat) maxLat = tLat;
+    }
+    if (!found) return;
+    this.maplibreMap.fitBounds([[minLng, minLat], [maxLng, maxLat]], {
+      padding: 60,
+      duration: 1000,
+    });
+  }
+
   public setHappinessScores(data: HappinessData): void {
     this.happinessScores = data.scores;
     this.happinessYear = data.year;
@@ -5271,8 +6379,8 @@ export class DeckGLMap {
     this.render();
   }
 
-  public setResilienceRanking(items: ResilienceRankingItem[]): void {
-    this.resilienceScoresMap = buildResilienceChoroplethMap(items);
+  public setResilienceRanking(items: ResilienceRankingItem[], greyedOut: ResilienceRankingItem[] = []): void {
+    this.resilienceScoresMap = buildResilienceChoroplethMap(items, greyedOut);
     this.resilienceScoresVersion++;
     this.render();
   }
@@ -5393,6 +6501,10 @@ export class DeckGLMap {
     this.onHotspotClick = callback;
   }
 
+  public setOnTradeArcClick(cb: (segment: TradeRouteSegment, waypoints: string[], x: number, y: number) => void): void {
+    this.onTradeArcClick = cb;
+  }
+
   public setOnTimeRangeChange(callback: (range: TimeRange) => void): void {
     this.onTimeRangeChange = callback;
   }
@@ -5508,6 +6620,9 @@ export class DeckGLMap {
       this.state.layers[layer] = true;
       const toggle = this.container.querySelector(`.layer-toggle[data-layer="${layer}"] input`) as HTMLInputElement;
       if (toggle) toggle.checked = true;
+      if (layer === 'weather') this.startWeatherRadar();
+      if (layer === 'cyberThreats' && !this.aptGroupsLoaded) this.loadAptGroups();
+      if (layer === 'flights') this.manageAircraftTimer(true);
       this.render();
       this.updateLegend();
       this.onLayerChange?.(layer, true, 'programmatic');
@@ -5517,6 +6632,8 @@ export class DeckGLMap {
 
   // Toggle layer on/off programmatically
   public toggleLayer(layer: keyof MapLayers): void {
+    const prevRadar = this.state.layers.weather;
+    const prevCyber = this.state.layers.cyberThreats;
     const nextEnabled = !this.state.layers[layer];
     if (nextEnabled && layer === 'resilienceScore' && this.state.layers.ciiChoropleth) {
       this.state.layers.ciiChoropleth = false;
@@ -5532,8 +6649,13 @@ export class DeckGLMap {
       this.onLayerChange?.('resilienceScore', false, 'programmatic');
     }
     this.state.layers[layer] = !this.state.layers[layer];
+    if (layer === 'military' && !this.state.layers[layer]) this.clearFlightTrails();
     const toggle = this.container.querySelector(`.layer-toggle[data-layer="${layer}"] input`) as HTMLInputElement;
     if (toggle) toggle.checked = this.state.layers[layer];
+    if (this.state.layers.weather && !prevRadar) this.startWeatherRadar();
+    else if (!this.state.layers.weather && prevRadar) this.stopWeatherRadar();
+    if (this.state.layers.cyberThreats && !prevCyber && !this.aptGroupsLoaded) this.loadAptGroups();
+    if (layer === 'flights') this.manageAircraftTimer(this.state.layers.flights);
     this.render();
     this.updateLegend();
     this.onLayerChange?.(layer, this.state.layers[layer], 'programmatic');
@@ -6016,6 +7138,13 @@ export class DeckGLMap {
   }
 
   public destroy(): void {
+    this.stopTradeAnimation();
+    this.activeFlightTrails.clear();
+    this.clearTrailsBtn = null;
+    this._unsubscribeAuthState?.();
+    this._unsubscribeAuthState = null;
+    this._unsubscribeEntitlement?.();
+    this._unsubscribeEntitlement = null;
     window.removeEventListener('theme-changed', this.handleThemeChange);
     window.removeEventListener('map-theme-changed', this.handleMapThemeChange);
     this.debouncedRebuildLayers.cancel();
@@ -6049,6 +7178,7 @@ export class DeckGLMap {
       clearInterval(this.aircraftFetchTimer);
       this.aircraftFetchTimer = null;
     }
+    this.stopLiveTankersLoop();
 
 
     this.layerCache.clear();

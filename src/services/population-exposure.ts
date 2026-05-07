@@ -1,45 +1,58 @@
-import { createCircuitBreaker } from '@/utils';
-import { getRpcBaseUrl } from '@/services/rpc-client';
-import type { CountryPopulation, PopulationExposure } from '@/types';
-import { DisplacementServiceClient } from '@/generated/client/worldmonitor/displacement/v1/service_client';
-import type { GetPopulationExposureResponse } from '@/generated/client/worldmonitor/displacement/v1/service_client';
+import type { PopulationExposure } from '@/types';
 
-const client = new DisplacementServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
+const PRIORITY_COUNTRIES: Record<string, { name: string; pop: number; area: number }> = {
+  UKR: { name: 'Ukraine', pop: 37000000, area: 603550 },
+  RUS: { name: 'Russia', pop: 144100000, area: 17098242 },
+  ISR: { name: 'Israel', pop: 9800000, area: 22072 },
+  PSE: { name: 'Palestine', pop: 5400000, area: 6020 },
+  SYR: { name: 'Syria', pop: 22100000, area: 185180 },
+  IRN: { name: 'Iran', pop: 88600000, area: 1648195 },
+  TWN: { name: 'Taiwan', pop: 23600000, area: 36193 },
+  ETH: { name: 'Ethiopia', pop: 126500000, area: 1104300 },
+  SDN: { name: 'Sudan', pop: 48100000, area: 1861484 },
+  SSD: { name: 'South Sudan', pop: 11400000, area: 619745 },
+  SOM: { name: 'Somalia', pop: 18100000, area: 637657 },
+  YEM: { name: 'Yemen', pop: 34400000, area: 527968 },
+  AFG: { name: 'Afghanistan', pop: 42200000, area: 652230 },
+  PAK: { name: 'Pakistan', pop: 240500000, area: 881913 },
+  IND: { name: 'India', pop: 1428600000, area: 3287263 },
+  MMR: { name: 'Myanmar', pop: 54200000, area: 676578 },
+  COD: { name: 'DR Congo', pop: 102300000, area: 2344858 },
+  NGA: { name: 'Nigeria', pop: 223800000, area: 923768 },
+  MLI: { name: 'Mali', pop: 22600000, area: 1240192 },
+  BFA: { name: 'Burkina Faso', pop: 22700000, area: 274200 },
+};
 
-const countriesBreaker = createCircuitBreaker<GetPopulationExposureResponse>({ name: 'WorldPop Countries', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
+const EXPOSURE_CENTROIDS: Record<string, [number, number]> = {
+  UKR: [48.4, 31.2], RUS: [61.5, 105.3], ISR: [31.0, 34.8], PSE: [31.9, 35.2],
+  SYR: [35.0, 38.0], IRN: [32.4, 53.7], TWN: [23.7, 121.0], ETH: [9.1, 40.5],
+  SDN: [15.5, 32.5], SSD: [6.9, 31.3], SOM: [5.2, 46.2], YEM: [15.6, 48.5],
+  AFG: [33.9, 67.7], PAK: [30.4, 69.3], IND: [20.6, 79.0], MMR: [19.8, 96.7],
+  COD: [-4.0, 21.8], NGA: [9.1, 7.5], MLI: [17.6, -4.0], BFA: [12.3, -1.6],
+};
 
-const exposureBreaker = createCircuitBreaker<ExposureResponse | null>({
-  name: 'PopExposure',
-  cacheTtlMs: 6 * 60 * 60 * 1000,
-  persistCache: true,
-  maxCacheEntries: 256,
-});
+function computeExposure(lat: number, lon: number, radiusKm: number) {
+  let bestMatch: string | null = null;
+  let bestDist = Infinity;
 
-export async function fetchCountryPopulations(): Promise<CountryPopulation[]> {
-  const result = await countriesBreaker.execute(async () => {
-    return client.getPopulationExposure({ mode: 'countries', lat: 0, lon: 0, radius: 0 });
-  }, { success: false, countries: [] });
+  for (const [code, [cLat, cLon]] of Object.entries(EXPOSURE_CENTROIDS)) {
+    const dist = Math.sqrt((lat - cLat) ** 2 + (lon - cLon) ** 2);
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestMatch = code;
+    }
+  }
 
-  return result.countries;
-}
+  const info = bestMatch ? PRIORITY_COUNTRIES[bestMatch]! : { pop: 50_000_000, area: 500_000 };
+  const density = info.pop / info.area;
+  const areaKm2 = Math.PI * radiusKm * radiusKm;
 
-interface ExposureResponse {
-  exposedPopulation: number;
-  exposureRadiusKm: number;
-  nearestCountry: string;
-  densityPerKm2: number;
-}
-
-export async function fetchExposure(lat: number, lon: number, radiusKm: number): Promise<ExposureResponse | null> {
-  const cacheKey = `${lat.toFixed(1)},${lon.toFixed(1)},${radiusKm}`;
-  return exposureBreaker.execute(
-    async () => {
-      const result = await client.getPopulationExposure({ mode: 'exposure', lat, lon, radius: radiusKm });
-      return result.exposure ?? null;
-    },
-    null,
-    { cacheKey },
-  );
+  return {
+    exposedPopulation: Math.round(density * areaKm2),
+    exposureRadiusKm: radiusKm,
+    nearestCountry: bestMatch || '',
+    densityPerKm2: Math.round(density),
+  };
 }
 
 interface EventForExposure {
@@ -70,37 +83,24 @@ function getRadiusForEventType(type: string): number {
   }
 }
 
-export async function enrichEventsWithExposure(
+export function enrichEventsWithExposure(
   events: EventForExposure[],
-): Promise<PopulationExposure[]> {
-  const MAX_CONCURRENT = 10;
-  const results: PopulationExposure[] = [];
-
-  for (let i = 0; i < events.length; i += MAX_CONCURRENT) {
-    const batch = events.slice(i, i + MAX_CONCURRENT);
-    const batchResults = await Promise.allSettled(
-      batch.map(async (event) => {
-        const radius = getRadiusForEventType(event.type);
-        const exposure = await fetchExposure(event.lat, event.lon, radius);
-        if (!exposure) return null;
-        return {
-          eventId: event.id,
-          eventName: event.name,
-          eventType: event.type,
-          lat: event.lat,
-          lon: event.lon,
-          exposedPopulation: exposure.exposedPopulation,
-          exposureRadiusKm: radius,
-        } as PopulationExposure;
-      })
-    );
-
-    for (const r of batchResults) {
-      if (r.status === 'fulfilled' && r.value) results.push(r.value);
-    }
-  }
-
-  return results.sort((a, b) => b.exposedPopulation - a.exposedPopulation);
+): PopulationExposure[] {
+  return events
+    .map((event) => {
+      const radius = getRadiusForEventType(event.type);
+      const exposure = computeExposure(event.lat, event.lon, radius);
+      return {
+        eventId: event.id,
+        eventName: event.name,
+        eventType: event.type,
+        lat: event.lat,
+        lon: event.lon,
+        exposedPopulation: exposure.exposedPopulation,
+        exposureRadiusKm: radius,
+      } as PopulationExposure;
+    })
+    .sort((a, b) => b.exposedPopulation - a.exposedPopulation);
 }
 
 export function formatPopulation(n: number): string {

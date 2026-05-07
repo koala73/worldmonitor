@@ -192,12 +192,20 @@ function validate(data) {
 }
 
 const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^file:\/\//, ''));
+export function declareRecords(data) {
+  return Array.isArray(data?.monitoring?.trend12m) ? data.monitoring.trend12m.length : 0;
+}
+
 if (isMain) {
   runSeed('climate', 'co2-monitoring', CO2_MONITORING_KEY, fetchCo2Monitoring, {
     validateFn: validate,
     ttlSeconds: CACHE_TTL,
     recordCount: (data) => data?.monitoring?.trend12m?.length ?? 0,
     sourceVersion: 'noaa-gml-co2-ch4-n2o-v1',
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 4320,
   }).catch((err) => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + cause);

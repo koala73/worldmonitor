@@ -5,12 +5,13 @@ import {
   type ResilienceDomain,
   type ResilienceDimension,
   type ResilienceRankingItem,
+  type ScoreInterval,
 } from '@/generated/client/worldmonitor/resilience/v1/service_client';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 
 export type ResilienceScoreResponse = GetResilienceScoreResponse;
 export type ResilienceRankingResponse = GetResilienceRankingResponse;
-export type { ResilienceDomain, ResilienceDimension, ResilienceRankingItem };
+export type { ResilienceDomain, ResilienceDimension, ResilienceRankingItem, ScoreInterval };
 
 let _client: ResilienceServiceClient | null = null;
 

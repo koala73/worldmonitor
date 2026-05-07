@@ -576,11 +576,19 @@ function validate(data) {
   return Array.isArray(data?.threats) && data.threats.length >= 1;
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.threats) ? data.threats.length : 0;
+}
+
 runSeed('cyber', 'threats', CANONICAL_KEY, fetchAllThreats, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
   sourceVersion: 'multi-ioc-v2',
-  extraKeys: [{ key: BOOTSTRAP_KEY }],
+  extraKeys: [{ key: BOOTSTRAP_KEY, declareRecords }],
+
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 240,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);

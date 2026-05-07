@@ -10,6 +10,8 @@ import { readJsonFromUpstash } from './_upstash-json.js';
 import { resolveApiKeyFromBearer } from './_oauth-token.js';
 // @ts-expect-error — JS module, no declaration file
 import { timingSafeIncludes } from './_crypto.js';
+// @ts-expect-error — JS module, no declaration file
+import { captureSilentError } from './_sentry-edge.js';
 import COUNTRY_BBOXES from '../shared/country-bboxes.js';
 // @ts-expect-error — generated JS module, no declaration file
 import MINING_SITES_RAW from '../shared/mining-sites.js';
@@ -82,7 +84,7 @@ const TOOL_REGISTRY: ToolDef[] = [
       'market:stocks-bootstrap:v1',
       'market:commodities-bootstrap:v1',
       'market:crypto:v1',
-      'market:sectors:v1',
+      'market:sectors:v2',
       'market:etf-flows:v1',
       'market:gulf-quotes:v1',
       'market:fear-greed:v1',
@@ -154,7 +156,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_economic_data',
-    description: 'Macro economic indicators: Fed Funds rate (FRED), economic calendar events, fuel prices, ECB FX rates, EU yield curve, earnings calendar, COT positioning, and energy storage data.',
+    description: 'Macro economic indicators: Fed Funds rate (FRED), economic calendar events, fuel prices, ECB FX rates, EU yield curve, earnings calendar, COT positioning, energy storage data, BIS household debt service ratio (DSR, quarterly, leading indicator of household financial stress across ~40 advanced economies), and BIS residential + commercial property price indices (real, quarterly).',
     inputSchema: { type: 'object', properties: {}, required: [] },
     _cacheKeys: [
       'economic:fred:v1:FEDFUNDS:0',
@@ -165,9 +167,65 @@ const TOOL_REGISTRY: ToolDef[] = [
       'economic:spending:v1',
       'market:earnings-calendar:v1',
       'market:cot:v1',
+      'economic:bis:dsr:v1',
+      'economic:bis:property-residential:v1',
+      'economic:bis:property-commercial:v1',
     ],
     _seedMetaKey: 'seed-meta:economic:econ-calendar',
     _maxStaleMin: 1440,
+    _freshnessChecks: [
+      { key: 'seed-meta:economic:econ-calendar', maxStaleMin: 1440 },
+      // Per-dataset BIS seed-meta keys — the aggregate
+      // `seed-meta:economic:bis-extended` would report "fresh" even if only
+      // one of the three datasets (DSR / SPP / CPP) is current, matching the
+      // false-freshness bug already fixed for /api/health and resilience.
+      { key: 'seed-meta:economic:bis-dsr', maxStaleMin: 1440 }, // 12h cron × 2
+      { key: 'seed-meta:economic:bis-property-residential', maxStaleMin: 1440 },
+      { key: 'seed-meta:economic:bis-property-commercial', maxStaleMin: 1440 },
+    ],
+  },
+  {
+    name: 'get_country_macro',
+    description: 'Per-country macroeconomic indicators from IMF WEO (~210 countries, monthly cadence). Bundles fiscal/external balance (inflation, current account, gov revenue/expenditure/primary balance, CPI), growth & per-capita (real GDP growth, GDP/capita USD & PPP, savings & investment rates, savings-investment gap), labor & demographics (unemployment, population), and external trade (current account USD, import/export volume % changes). Latest available year per series. Use for country-level economic screening, peer benchmarking, and stagflation/imbalance flags. NOTE: export/import LEVELS in USD (exportsUsd, importsUsd, tradeBalanceUsd) are returned as null — WEO retracted broad coverage for BX/BM indicators in 2026-04; use currentAccountUsd or volume changes (import/exportVolumePctChg) instead.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+    _cacheKeys: [
+      'economic:imf:macro:v2',
+      'economic:imf:growth:v1',
+      'economic:imf:labor:v1',
+      'economic:imf:external:v1',
+    ],
+    _seedMetaKey: 'seed-meta:economic:imf-macro',
+    _maxStaleMin: 100800, // monthly WEO release; 70d = 2× interval (absorbs one missed run)
+    _freshnessChecks: [
+      { key: 'seed-meta:economic:imf-macro', maxStaleMin: 100800 },
+      { key: 'seed-meta:economic:imf-growth', maxStaleMin: 100800 },
+      { key: 'seed-meta:economic:imf-labor', maxStaleMin: 100800 },
+      { key: 'seed-meta:economic:imf-external', maxStaleMin: 100800 },
+    ],
+  },
+  {
+    name: 'get_eu_housing_cycle',
+    description: 'Eurostat annual house price index (prc_hpi_a, base 2015=100) for all 27 EU members plus EA20 and EU27_2020 aggregates. Each country entry includes the latest value, prior value, date, unit, and a 10-year sparkline series. Complements BIS WS_SPP with broader EU coverage for the Housing cycle tile.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+    _cacheKeys: ['economic:eurostat:house-prices:v1'],
+    _seedMetaKey: 'seed-meta:economic:eurostat-house-prices',
+    _maxStaleMin: 60 * 24 * 50, // weekly cron, annual data
+  },
+  {
+    name: 'get_eu_quarterly_gov_debt',
+    description: 'Eurostat quarterly general government gross debt (gov_10q_ggdebt, %GDP) for all 27 EU members plus EA20 and EU27_2020 aggregates. Each country entry includes latest value, prior value, quarter label, and an 8-quarter sparkline series. Provides fresher debt-trajectory signal than annual IMF GGXWDG_NGDP for EU panels.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+    _cacheKeys: ['economic:eurostat:gov-debt-q:v1'],
+    _seedMetaKey: 'seed-meta:economic:eurostat-gov-debt-q',
+    _maxStaleMin: 60 * 24 * 14, // quarterly data, 2-day cron
+  },
+  {
+    name: 'get_eu_industrial_production',
+    description: 'Eurostat monthly industrial production index (sts_inpr_m, NACE B-D industry excl. construction, SCA, base 2021=100) for all 27 EU members plus EA20 and EU27_2020 aggregates. Each country entry includes latest value, prior value, month label, and a 12-month sparkline series. Leading indicator of real-economy activity used by the "Real economy pulse" sparkline.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+    _cacheKeys: ['economic:eurostat:industrial-production:v1'],
+    _seedMetaKey: 'seed-meta:economic:eurostat-industrial-production',
+    _maxStaleMin: 60 * 24 * 5, // monthly data, daily cron
   },
   {
     name: 'get_prediction_markets',
@@ -187,15 +245,18 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_climate_data',
-    description: 'Climate anomalies, NOAA atmospheric greenhouse gas monitoring (CO2 ppm, methane ppb, N2O ppb, Mauna Loa 12-month trend), Arctic sea ice and ocean heat indicators, weather alerts, and natural environmental events from WorldMonitor climate feeds.',
+    description: 'Climate intelligence: temperature/precipitation anomalies (vs 30-year WMO normals), climate-relevant disaster alerts (ReliefWeb/GDACS/FIRMS), atmospheric CO2 trend (NOAA Mauna Loa), air quality (OpenAQ/WAQI PM2.5 stations), Arctic sea ice extent and ocean heat indicators (NSIDC/NOAA), weather alerts, and climate news.',
     inputSchema: { type: 'object', properties: {}, required: [] },
-    _cacheKeys: ['climate:anomalies:v2', 'climate:co2-monitoring:v1', 'climate:ocean-ice:v1', 'weather:alerts:v1'],
+    _cacheKeys: ['climate:anomalies:v2', 'climate:disasters:v1', 'climate:co2-monitoring:v1', 'climate:air-quality:v1', 'climate:ocean-ice:v1', 'climate:news-intelligence:v1', 'weather:alerts:v1'],
     _seedMetaKey: 'seed-meta:climate:co2-monitoring',
     _maxStaleMin: 2880,
     _freshnessChecks: [
       { key: 'seed-meta:climate:anomalies', maxStaleMin: 120 },
+      { key: 'seed-meta:climate:disasters', maxStaleMin: 720 },
       { key: 'seed-meta:climate:co2-monitoring', maxStaleMin: 2880 },
+      { key: 'seed-meta:health:air-quality', maxStaleMin: 180 },
       { key: 'seed-meta:climate:ocean-ice', maxStaleMin: 1440 },
+      { key: 'seed-meta:climate:news-intelligence', maxStaleMin: 90 },
       { key: 'seed-meta:weather:alerts', maxStaleMin: 45 },
     ],
   },
@@ -269,7 +330,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   // -------------------------------------------------------------------------
   {
     name: 'get_world_brief',
-    description: 'AI-generated world intelligence brief. Fetches the latest geopolitical headlines and produces an LLM-summarized brief. Supply an optional geo_context to focus on a region or topic.',
+    description: 'AI-generated world intelligence brief. Fetches the latest geopolitical headlines along with their RSS article bodies and produces a grounded LLM-summarized brief. Supply an optional geo_context to focus on a region or topic.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -285,13 +346,17 @@ const TOOL_REGISTRY: ToolDef[] = [
         signal: AbortSignal.timeout(6_000),
       });
       if (!digestRes.ok) throw new Error(`feed-digest HTTP ${digestRes.status}`);
-      type DigestPayload = { categories?: Record<string, { items?: { title?: string }[] }> };
+      type DigestPayload = { categories?: Record<string, { items?: { title?: string; snippet?: string }[] }> };
       const digest = await digestRes.json() as DigestPayload;
-      const headlines = Object.values(digest.categories ?? {})
+      // Pair headlines with their RSS snippets so the LLM grounds per-story
+      // on article bodies instead of hallucinating across unrelated titles.
+      const pairs = Object.values(digest.categories ?? {})
         .flatMap(cat => cat.items ?? [])
-        .map(item => item.title ?? '')
-        .filter(Boolean)
+        .map(item => ({ title: item.title ?? '', snippet: item.snippet ?? '' }))
+        .filter(p => p.title.length > 0)
         .slice(0, 10);
+      const headlines = pairs.map(p => p.title);
+      const bodies = pairs.map(p => p.snippet);
       // Step 2: summarize with LLM (budget: 18 s — combined 24 s, well under 30 s edge ceiling)
       const briefRes = await fetch(`${base}/api/news/v1/summarize-article`, {
         method: 'POST',
@@ -299,6 +364,7 @@ const TOOL_REGISTRY: ToolDef[] = [
         body: JSON.stringify({
           provider: 'openrouter',
           headlines,
+          bodies,
           mode: 'brief',
           geoContext: String(params.geo_context ?? ''),
           variant: 'geo',
@@ -747,7 +813,10 @@ async function executeTool(tool: CacheToolDef): Promise<{ cached_at: string | nu
 // ---------------------------------------------------------------------------
 // Main handler
 // ---------------------------------------------------------------------------
-export default async function handler(req: Request): Promise<Response> {
+export default async function handler(
+  req: Request,
+  ctx?: { waitUntil: (p: Promise<unknown>) => void },
+): Promise<Response> {
   // MCP is a public API endpoint secured by API key — allow all origins (claude.ai, Claude Desktop, custom agents)
   const corsHeaders = getPublicCorsHeaders('POST, OPTIONS');
 
@@ -771,6 +840,13 @@ export default async function handler(req: Request): Promise<Response> {
   if (origin && origin !== 'https://claude.ai' && origin !== 'https://claude.com') {
     return new Response('Forbidden', { status: 403, headers: corsHeaders });
   }
+  // Host-derived resource_metadata pointer: a client probing api.worldmonitor.app/mcp
+  // must see a pointer at its own origin, not the apex — otherwise the 401's
+  // WWW-Authenticate points at apex metadata whose `resource` field is apex too,
+  // and same-origin scanners (isitagentready.com, Cloudflare mcp.cloudflare.com)
+  // flag the mismatch. Matches the host-extraction in api/oauth-protected-resource.ts.
+  const requestHost = req.headers.get('host') ?? new URL(req.url).host;
+  const resourceMetadataUrl = `https://${requestHost}/.well-known/oauth-protected-resource`;
   // Auth chain (in priority order):
   //   1. Authorization: Bearer <oauth_token> — issued by /oauth/token (spec-compliant OAuth 2.0)
   //   2. X-WorldMonitor-Key header — direct API key (curl, custom integrations)
@@ -794,7 +870,7 @@ export default async function handler(req: Request): Promise<Response> {
       // Bearer token present but unresolvable — expired or invalid UUID
       return new Response(
         JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Invalid or expired OAuth token. Re-authenticate via /oauth/token.' } }),
-        { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': 'Bearer realm="worldmonitor", error="invalid_token", resource_metadata="https://api.worldmonitor.app/.well-known/oauth-protected-resource"', ...corsHeaders } }
+        { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': `Bearer realm="worldmonitor", error="invalid_token", resource_metadata="${resourceMetadataUrl}"`, ...corsHeaders } }
       );
     }
   } else {
@@ -802,7 +878,7 @@ export default async function handler(req: Request): Promise<Response> {
     if (!candidateKey) {
       return new Response(
         JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Authentication required. Use OAuth (/oauth/token) or pass your API key via X-WorldMonitor-Key header.' } }),
-        { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': 'Bearer realm="worldmonitor", resource_metadata="https://api.worldmonitor.app/.well-known/oauth-protected-resource"', ...corsHeaders } }
+        { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': `Bearer realm="worldmonitor", resource_metadata="${resourceMetadataUrl}"`, ...corsHeaders } }
       );
     }
     const validKeys = (process.env.WORLDMONITOR_VALID_KEYS || '').split(',').filter(Boolean);
@@ -882,6 +958,10 @@ export default async function handler(req: Request): Promise<Response> {
         }, corsHeaders);
       } catch (err: unknown) {
         console.error('[mcp] tool execution error:', err);
+        captureSilentError(err, {
+          tags: { route: 'api/mcp', step: 'tool-execution', tool: tool.name },
+          ctx,
+        });
         return rpcError(id, -32603, 'Internal error: data fetch failed');
       }
     }

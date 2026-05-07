@@ -1,0 +1,19 @@
+{
+  "$schema": "https://agentskills.io/schemas/v0.2.0/index.json",
+  "skills": [
+    {
+      "name": "fetch-country-brief",
+      "type": "task",
+      "description": "Retrieve the current AI-generated strategic intelligence brief for a country, keyed by ISO 3166-1 alpha-2 code.",
+      "url": "https://worldmonitor.app/.well-known/agent-skills/fetch-country-brief/SKILL.md",
+      "sha256": "82a76d25398856adaf72b5977d58585259caae7ce8cad24f5c2603fb2a3c76e0"
+    },
+    {
+      "name": "fetch-resilience-score",
+      "type": "task",
+      "description": "Retrieve the composite country resilience score (0-100) and its domain/pillar breakdown for a single country.",
+      "url": "https://worldmonitor.app/.well-known/agent-skills/fetch-resilience-score/SKILL.md",
+      "sha256": "693cc336e0f5212de6ee462be69e6d987d652320f7770e1db2316800e31f21c0"
+    }
+  ]
+}

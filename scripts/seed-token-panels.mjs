@@ -103,26 +103,47 @@ async function fetchTokenPanels() {
   return { defi, ai, other, total };
 }
 
-function validate(data) {
+// validate() runs on the POST-publishTransform payload (the canonical defi
+// panel itself, shape {tokens, ...}) — NOT the pre-transform {defi, ai, other}
+// shape. The prior body checked data.defi/.ai/.other and silently forced the
+// skipped-write path every run. AI/OTHER panels are validated implicitly by
+// their own extraKey declareRecords on write.
+export function validate(data) {
   return (
-    Array.isArray(data?.defi?.tokens) &&
-    data.defi.tokens.length >= 1 &&
-    (data.defi.tokens.some((t) => t.price > 0) ||
-      data.ai.tokens.some((t) => t.price > 0) ||
-      data.other.tokens.some((t) => t.price > 0))
+    Array.isArray(data?.tokens) &&
+    data.tokens.length >= 1 &&
+    data.tokens.some((t) => t.price > 0)
   );
 }
 
-runSeed('market', 'token-panels', DEFI_KEY, fetchTokenPanels, {
+// Canonical key (DEFI_KEY) holds the defi panel object `{tokens, ...}` after
+// publishTransform. declareRecords must match the POST-transform shape;
+// counting `data.defi/ai/other` on the transformed payload returned 0 and
+// forced runSeed into RETRY, leaving all 3 token keys stale.
+export function declareRecords(data) {
+  return Array.isArray(data?.tokens) ? data.tokens.length : 0;
+}
+
+// isMain guard — required so tests/agents can `import` declareRecords without
+// firing runSeed on module load (which would touch Redis and process.exit).
+const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^file:\/\//, ''));
+if (isMain) runSeed('market', 'token-panels', DEFI_KEY, fetchTokenPanels, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
   sourceVersion: 'coingecko-paprika-fallback',
   recordCount: (data) => data.total,
   publishTransform: (data) => data.defi,
   extraKeys: [
-    { key: AI_KEY, transform: (data) => data.ai, ttl: CACHE_TTL },
-    { key: OTHER_KEY, transform: (data) => data.other, ttl: CACHE_TTL },
+    // Each panel has its own {tokens, ...} shape — reuse canonical declareRecords
+    // since the transformed extra-key payloads are structurally identical to the
+    // canonical one (a single panel).
+    { key: AI_KEY,    transform: (data) => data.ai,    ttl: CACHE_TTL, declareRecords },
+    { key: OTHER_KEY, transform: (data) => data.other, ttl: CACHE_TTL, declareRecords },
   ],
+
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 90,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
   console.error('FATAL:', (err.message || err) + _cause);

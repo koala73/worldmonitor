@@ -1,5 +1,6 @@
 import type { EconomicServiceClient } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import { Panel } from './Panel';
+import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
 
 let _client: EconomicServiceClient | null = null;
@@ -234,7 +235,7 @@ export class YieldCurvePanel extends Panel {
   private _rateRows: RateRow[] = [];
 
   constructor() {
-    super({ id: 'yield-curve', title: 'Yield Curve & Rates', showCount: false });
+    super({ id: 'yield-curve', title: 'Yield Curve & Rates', showCount: false, infoTooltip: t('components.yieldCurve.infoTooltip') });
 
     this.content.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-tab]');

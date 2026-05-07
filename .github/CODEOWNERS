@@ -1,0 +1,6 @@
+# Adding or modifying api-route-exceptions.json opts an endpoint out of the
+# sebuf contract. Every change here needs review to prevent drift.
+/api/api-route-exceptions.json @SebastienMelki
+
+# The enforcement script and its CI wiring are the teeth behind the manifest.
+/scripts/enforce-sebuf-api-contract.mjs @SebastienMelki

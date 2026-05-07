@@ -4,7 +4,8 @@
 
 import crypto from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { loadEnvFile, runSeed, CHROME_UA } from './_seed-utils.mjs';
+import { loadEnvFile, runSeed, CHROME_UA, withRetry } from './_seed-utils.mjs';
+import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { tagRegions } from './_prediction-scoring.mjs';
 import { resolveR2StorageConfig, putR2JsonObject, getR2JsonObject } from './_r2-storage.mjs';
 import { extractFirstJsonObject, extractFirstJsonArray, cleanJsonText } from './_llm-json.mjs';
@@ -185,7 +186,7 @@ function getTheaterGeoGroup(marketRegion) {
 const MARKET_INPUT_KEYS = {
   stocks: 'market:stocks-bootstrap:v1',
   commodities: 'market:commodities-bootstrap:v1',
-  sectors: 'market:sectors:v1',
+  sectors: 'market:sectors:v2',
   gulfQuotes: 'market:gulf-quotes:v1',
   etfFlows: 'market:etf-flows:v1',
   crypto: 'market:crypto:v1',
@@ -616,7 +617,7 @@ async function redisGet(url, token, key) {
   if (!resp.ok) return null;
   const data = await resp.json();
   if (!data?.result) return null;
-  try { return JSON.parse(data.result); } catch { return null; }
+  try { return unwrapEnvelope(JSON.parse(data.result)).data; } catch { return null; }
 }
 
 async function redisDel(url, token, key) {
@@ -693,18 +694,51 @@ async function readInputKeys() {
     'conflict:ema-windows:v1',
     ...fredKeys,
   ];
-  const pipeline = keys.map(k => ['GET', k]);
-  const resp = await fetch(`${url}/pipeline`, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(pipeline),
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!resp.ok) throw new Error(`Redis pipeline failed: ${resp.status}`);
-  const results = await resp.json();
+  // Sized for Upstash REST /pipeline payload limits.
+  //
+  // STRLEN audit 2026-04-14: 40 input keys total ~2.27 MB; top 5 keys
+  // (ucdp 657KB + chokepoints 500KB + cyber 390KB + commodities 192KB +
+  // gpsjam 174KB) = 90% of payload. Because BATCH_SIZE divides the keys
+  // array deterministically by index, the worst batch is fixed by array
+  // order — currently batch 2 (indices 5-9: chokepoints + iran + ucdp +
+  // unrest + outages) at **1.17 MB** verified live. Not random
+  // co-location — deterministic.
+  //
+  // The original 10s timeout deterministically failed every retry on this
+  // batch at Upstash REST's observed slow-spike floor of ~100 KB/s
+  // (Railway log 2026-04-14 10:01 UTC: 12 consecutive abort-timeouts).
+  // At 100 KB/s, 1.17 MB takes ~12s. 45s gives ~3.7× headroom.
+  //
+  // Future improvement: interleave heavy keys (chokepoints + ucdp) with
+  // smalls in the keys array above. Would split the deterministic
+  // worst-case across two batches, halving the per-request payload.
+  // Tracked as follow-up; not in scope for this hotfix.
+  const BATCH_SIZE = 5;
+  const results = [];
+  for (let i = 0; i < keys.length; i += BATCH_SIZE) {
+    const batchNum = i / BATCH_SIZE + 1;
+    const batch = keys.slice(i, i + BATCH_SIZE).map(k => ['GET', k]);
+    const batchResults = await withRetry(async () => {
+      const resp = await fetch(`${url}/pipeline`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify(batch),
+        signal: AbortSignal.timeout(45_000),
+      });
+      if (!resp.ok) throw new Error(`Redis pipeline batch ${batchNum} failed: ${resp.status}`);
+      return resp.json();
+    }, 2, 1000);
+    results.push(...batchResults);
+  }
 
   const parse = (i) => {
-    try { return results[i]?.result ? JSON.parse(results[i].result) : null; } catch { return null; }
+    try {
+      const raw = results[i]?.result;
+      if (!raw) return null;
+      // Envelope-aware: pipeline batch reads must strip _seed for contract-mode
+      // writers. unwrapEnvelope is a no-op on legacy bare-shape values.
+      return unwrapEnvelope(JSON.parse(raw)).data;
+    } catch { return null; }
   };
   const parsedByKey = Object.fromEntries(keys.map((key, index) => [key, parse(index)]));
   const fredSeries = Object.fromEntries(
@@ -15649,9 +15683,10 @@ async function runImpactExpansionPromptRefinement({ candidatePackets, validation
 async function processNextDeepForecastTask(options = {}) {
   const workerId = options.workerId || `worker-${process.pid}-${Date.now()}`;
   const queuedRunIds = options.runId ? [options.runId] : await listQueuedDeepForecastTasks(10);
+  console.log(`  [DeepForecast] Queue check: ${queuedRunIds.length} task(s) in ${FORECAST_DEEP_TASK_QUEUE_KEY}`);
   for (const runId of queuedRunIds) {
     const task = await claimDeepForecastTask(runId, workerId);
-    if (!task) continue;
+    if (!task) { console.log(`  [DeepForecast] ${runId}: already claimed or completed`); continue; }
     try {
       const result = await processDeepForecastTask(task);
       await completeDeepForecastTask(runId);
@@ -15986,6 +16021,10 @@ async function buildAndSeedMarketImplications(inputs) {
   console.log(`  [MarketImplications] Published ${cards.length} cards to ${MARKET_IMPLICATIONS_KEY} (${Math.round(durationMs)}ms, model=${result.model || 'unknown'})`);
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.predictions) ? data.predictions.length : 0;
+}
+
 if (_isDirectRun) {
   const refreshRequest = await readForecastRefreshRequest();
   const triggerContext = buildForecastTriggerContext(refreshRequest);
@@ -16001,6 +16040,10 @@ if (_isDirectRun) {
     ttlSeconds: TTL_SECONDS,
     lockTtlMs: 180_000,
     validateFn: (data) => Array.isArray(data?.predictions) && data.predictions.length > 0,
+    declareRecords,
+    sourceVersion: 'detectors+llm-pipeline',
+    schemaVersion: 1,
+    maxStaleMin: 90,
     publishTransform: buildPublishedSeedPayload,
     afterPublish: async (data, meta) => {
       if (triggerContext.triggerRequest) {
@@ -16102,6 +16145,7 @@ if (_isDirectRun) {
           predictions: data.predictions.map(buildPriorForecastSnapshot),
         }),
         ttl: 7200,
+        declareRecords,
       },
     ],
   });
@@ -16528,16 +16572,22 @@ local raw = redis.call('GET', KEYS[1])
 if not raw then return 'MISSING' end
 local ok, payload = pcall(cjson.decode, raw)
 if not ok then return 'MISSING' end
-if type(payload.predictions) ~= 'table' then return 'MISSING' end
+-- Envelope-aware: PR #3097 wraps canonical writes via runSeed in {_seed, data}.
+-- Legacy bare values (older snapshots) still pass through. Detect once + unwrap;
+-- re-wrap on write so the envelope shape persists.
+local enveloped = type(payload._seed) == 'table' and type(payload.data) == 'table'
+local inner = payload
+if enveloped then inner = payload.data end
+if type(inner.predictions) ~= 'table' then return 'MISSING' end
 local runTs = tonumber(ARGV[1]) or 0
-local pubTs = tonumber(payload.generatedAt) or 0
+local pubTs = tonumber(inner.generatedAt) or 0
 if runTs > 0 and pubTs > runTs then
   return 'SKIPPED:' .. tostring(pubTs)
 end
 local ok2, decs = pcall(cjson.decode, ARGV[2])
 if not ok2 then return 'MISSING' end
 local patched = 0
-for _, pred in ipairs(payload.predictions) do
+for _, pred in ipairs(inner.predictions) do
   local id = pred.id
   local dec = decs[id]
   local newAdj  = dec and tonumber(dec.simulationAdjustment) or 0
@@ -16552,7 +16602,12 @@ for _, pred in ipairs(payload.predictions) do
 end
 if patched == 0 then return 'UNCHANGED' end
 local ttl = tonumber(ARGV[3]) or 21600
-redis.call('SET', KEYS[1], cjson.encode(payload), 'EX', ttl)
+if enveloped then
+  payload.data = inner
+  redis.call('SET', KEYS[1], cjson.encode(payload), 'EX', ttl)
+else
+  redis.call('SET', KEYS[1], cjson.encode(inner), 'EX', ttl)
+end
 return 'PATCHED:' .. tostring(patched)
 `.trim();
 
@@ -16579,14 +16634,23 @@ return 'PATCHED:' .. tostring(patched)
  */
 async function redisAtomicPatchSimDecorations(url, token, canonicalKey, byForecastId, runGeneratedAt, ttlSeconds) {
   // ── Test path: JavaScript equivalent (no real concurrency in tests) ──────────
+  // Mirror the production Lua's envelope-aware unwrap/rewrap so test fixtures
+  // can exercise both legacy bare and PR-#3097 enveloped canonical shapes.
   if (_testRedisStore) {
     const published = _testRedisStore[canonicalKey] ?? null;
-    if (!Array.isArray(published?.predictions)) return 'MISSING';
+    if (!published || typeof published !== 'object') return 'MISSING';
+    // Match Lua's strict `type(payload._seed) == 'table'` / `type(payload.data)
+    // == 'table'` checks — any looser JS guard (e.g., truthy on `_seed: true`)
+    // would mask Lua regressions that bisect on fixture shape.
+    const enveloped = !!published._seed && typeof published._seed === 'object' && !Array.isArray(published._seed)
+      && typeof published.data === 'object' && published.data !== null && !Array.isArray(published.data);
+    const inner = enveloped ? published.data : published;
+    if (!Array.isArray(inner?.predictions)) return 'MISSING';
     const runTs = typeof runGeneratedAt === 'number' ? runGeneratedAt : 0;
-    const pubTs = typeof published.generatedAt === 'number' ? published.generatedAt : 0;
+    const pubTs = typeof inner.generatedAt === 'number' ? inner.generatedAt : 0;
     if (runTs > 0 && pubTs > runTs) return `SKIPPED:${pubTs}`;
     let patched = 0;
-    for (const pred of published.predictions) {
+    for (const pred of inner.predictions) {
       const dec = byForecastId[pred.id];
       const newAdj  = dec ? Number(dec.simulationAdjustment || 0) : 0;
       const newConf = dec ? Number(dec.simPathConfidence ?? 0) : 0;
@@ -16599,7 +16663,12 @@ async function redisAtomicPatchSimDecorations(url, token, canonicalKey, byForeca
       }
     }
     if (patched === 0) return 'UNCHANGED';
-    _testRedisStore[canonicalKey] = JSON.parse(JSON.stringify(published));
+    if (enveloped) {
+      published.data = inner;
+      _testRedisStore[canonicalKey] = JSON.parse(JSON.stringify(published));
+    } else {
+      _testRedisStore[canonicalKey] = JSON.parse(JSON.stringify(inner));
+    }
     return `PATCHED:${patched}`;
   }
   // ── Production path: Lua EVAL (atomic) ───────────────────────────────────────
@@ -16942,6 +17011,7 @@ function sanitizeKeyActorRoles(rawRoles, allowedRoles) {
 async function processNextSimulationTask(options = {}) {
   const workerId = options.workerId || `sim-worker-${process.pid}-${Date.now()}`;
   const queuedRunIds = options.runId ? [options.runId] : await listQueuedSimulationTasks(10);
+  console.log(`  [Simulation] Queue check: ${queuedRunIds.length} task(s) in ${SIMULATION_TASK_QUEUE_KEY}`);
 
   for (const runId of queuedRunIds) {
     if (!validateRunId(runId)) {
@@ -16949,7 +17019,7 @@ async function processNextSimulationTask(options = {}) {
       continue;
     }
     const task = await claimSimulationTask(runId, workerId);
-    if (!task) continue;
+    if (!task) { console.log(`  [Simulation] ${runId}: already claimed or completed`); continue; }
 
     try {
       const { url, token } = getRedisCredentials();

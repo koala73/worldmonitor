@@ -9,6 +9,7 @@ import {
   type GetCo2MonitoringResponse,
   type GetOceanIceDataResponse,
   type ListClimateAnomaliesResponse,
+  type ListClimateDisastersResponse,
 } from '@/generated/client/worldmonitor/climate/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
@@ -107,6 +108,10 @@ export async function fetchCo2Monitoring(): Promise<Co2Monitoring | null> {
   }, emptyCo2Fallback, { shouldCache: (result) => Boolean(result.monitoring?.currentPpm) });
 
   return response.monitoring ? toDisplayCo2Monitoring(response.monitoring) : null;
+}
+
+export function getHydratedClimateDisasters(): ListClimateDisastersResponse | undefined {
+  return getHydratedData('climateDisasters') as ListClimateDisastersResponse | undefined;
 }
 
 export async function fetchOceanIceData(): Promise<OceanIceIndicators | null> {

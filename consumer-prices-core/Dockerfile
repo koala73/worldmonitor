@@ -1,8 +1,9 @@
 FROM node:20-slim AS base
 WORKDIR /app
 
-# Install Playwright dependencies
-RUN apt-get update && apt-get install -y \
+# Install Playwright dependencies. Tolerate transient Ubuntu mirror failures
+# (2026-04-17: noble-security CDN hash-sum mismatch blocked all Railway builds).
+RUN (apt-get update || true) && apt-get install -y --fix-missing \
     chromium \
     fonts-liberation \
     libatk-bridge2.0-0 \

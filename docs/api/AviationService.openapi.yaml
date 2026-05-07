@@ -67,8 +67,12 @@ paths:
                   in: query
                   description: IATA airport codes to query (e.g., ["IST", "ESB", "LHR"]).
                   required: false
+                  style: form
+                  explode: true
                   schema:
-                    type: string
+                    type: array
+                    items:
+                        type: string
             responses:
                 "200":
                     description: Successful response
@@ -146,8 +150,12 @@ paths:
                   in: query
                   description: IATA airport codes to aggregate carrier metrics from.
                   required: false
+                  style: form
+                  explode: true
                   schema:
-                    type: string
+                    type: array
+                    items:
+                        type: string
                 - name: min_flights
                   in: query
                   description: 'Minimum number of flights required to include a carrier (default: 1).'
@@ -426,8 +434,12 @@ paths:
                   in: query
                   description: Entities to filter by (airline names, airport codes, route strings).
                   required: false
+                  style: form
+                  explode: true
                   schema:
-                    type: string
+                    type: array
+                    items:
+                        type: string
                 - name: window_hours
                   in: query
                   description: Time window in hours to look back (1-168).
@@ -515,8 +527,12 @@ paths:
                   in: query
                   description: Airline IATA codes to filter by (e.g. ["BA", "AA"]).
                   required: false
+                  style: form
+                  explode: true
                   schema:
-                    type: string
+                    type: array
+                    items:
+                        type: string
                 - name: sort_by
                   in: query
                   description: 'Sort order: CHEAPEST, DURATION, DEPARTURE_TIME, or ARRIVAL_TIME.'
@@ -616,8 +632,12 @@ paths:
                   in: query
                   description: Airline IATA codes to filter by (e.g. ["BA", "AA"]).
                   required: false
+                  style: form
+                  explode: true
                   schema:
-                    type: string
+                    type: array
+                    items:
+                        type: string
                 - name: sort_by_price
                   in: query
                   description: Whether to sort results by price (lowest first).

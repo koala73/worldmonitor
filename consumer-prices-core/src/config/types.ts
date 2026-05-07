@@ -100,6 +100,11 @@ export const BasketItemSchema = z.object({
   substitutionGroup: z.string().optional(),
   minBaseQty: z.number().optional(),
   maxBaseQty: z.number().optional(),
+  // Lowercase tokens that, if present in an extracted productName, mark the hit
+  // as a class mismatch (e.g. "canned" for fresh tomatoes). Intended for obvious
+  // class errors; product-taxonomy distinctions like plain vs greek yogurt
+  // belong in separate substitutionGroup values, not here.
+  negativeTokens: z.array(z.string()).optional(),
   qualificationRules: z.record(z.string(), z.unknown()).optional(),
 });
 

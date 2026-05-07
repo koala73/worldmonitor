@@ -8,7 +8,17 @@ import { CLIMATE_ZONE_NORMALS_KEY } from './seed-climate-zone-normals.mjs';
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'climate:anomalies:v2';
-const CACHE_TTL = 10800; // 3h
+// 9h = 3× the 3h bundle cron cadence (seed-bundle-climate fires every 3h).
+// Co-pinned to api/health.js's `climateAnomalies.maxStaleMin: 540` so the
+// data key survives at least until the alarm fires — no silent-EMPTY window
+// between TTL_DATA expiry and STALE_SEED trigger. The previous 10800 (3h)
+// equalled cron cadence exactly, so any cron jitter (1-3min normal Railway
+// variance) meant the data key expired in Redis before the next cron could
+// refresh it — health emitted status=EMPTY (records=0, display-forced)
+// during routine drift, and UptimeRobot's HEALTHY-substring check stayed
+// green. Production logs 2026-04-27T00:00:59 + 03:03:35 show the 3h+3min
+// drift pattern that produced the 2026-04-27 silent-EMPTY incident.
+const CACHE_TTL = 32400; // 9h
 const ANOMALY_BATCH_SIZE = 8;
 const ANOMALY_BATCH_DELAY_MS = 750;
 // Daily precipitation deltas are in mm/day (Open-Meteo daily precipitation_sum).
@@ -170,11 +180,19 @@ function validate(data) {
 }
 
 const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^file:\/\//, ''));
+export function declareRecords(data) {
+  return Array.isArray(data?.anomalies) ? data.anomalies.length : 0;
+}
+
 if (isMain) {
   runSeed('climate', 'anomalies', CANONICAL_KEY, fetchClimateAnomalies, {
     validateFn: validate,
     ttlSeconds: CACHE_TTL,
     sourceVersion: 'open-meteo-archive-wmo-1991-2020-v1',
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 240,
   }).catch((err) => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + cause);

@@ -31,6 +31,7 @@ const SOURCE_KEYS = [
   'gdelt:intel:tone:maritime',
   'weather:alerts:v1',
   'risk:scores:sebuf:stale:v1',
+  'regulatory:actions:v1',
 ];
 
 // ── Theater classification helpers ────────────────────────────────────────────
@@ -109,6 +110,7 @@ const TYPE_CATEGORY = {
   CROSS_SOURCE_SIGNAL_TYPE_WEATHER_EXTREME: 'natural',
   CROSS_SOURCE_SIGNAL_TYPE_MEDIA_TONE_DETERIORATION: 'information',
   CROSS_SOURCE_SIGNAL_TYPE_RISK_SCORE_SPIKE: 'intelligence',
+  CROSS_SOURCE_SIGNAL_TYPE_REGULATORY_ACTION: 'policy',
 };
 
 // Base severity weights for each signal type
@@ -139,6 +141,7 @@ const BASE_WEIGHT = {
   CROSS_SOURCE_SIGNAL_TYPE_FORECAST_DETERIORATION: 1.5, // predictive — lower confidence
   CROSS_SOURCE_SIGNAL_TYPE_WEATHER_EXTREME: 1.5,        // environmental — regional
   CROSS_SOURCE_SIGNAL_TYPE_MEDIA_TONE_DETERIORATION: 1.5, // sentiment — lagging
+  CROSS_SOURCE_SIGNAL_TYPE_REGULATORY_ACTION: 2.0,      // policy action — direct market impact
 };
 
 function scoreTier(score) {
@@ -713,6 +716,42 @@ function extractRiskScoreSpike(d) {
   });
 }
 
+function extractRegulatoryAction(d) {
+  const payload = d['regulatory:actions:v1'];
+  if (!payload) return [];
+  const cutoff = Date.now() - 48 * 3600 * 1000;
+  const tierPriority = { high: 0, medium: 1 };
+  const actions = Array.isArray(payload.actions) ? payload.actions : [];
+  const recent = actions
+    .map((action) => ({
+      action,
+      publishedAtTs: safeNum(Date.parse(action.publishedAt)),
+    }))
+    .filter(({ action, publishedAtTs }) => (action.tier === 'high' || action.tier === 'medium') && publishedAtTs > cutoff)
+    .sort((a, b) => {
+      const tierOrder = tierPriority[a.action.tier] - tierPriority[b.action.tier];
+      if (tierOrder !== 0) return tierOrder;
+      return b.publishedAtTs - a.publishedAtTs;
+    })
+    .slice(0, 3);
+  if (recent.length === 0) return [];
+  return recent.map(({ action, publishedAtTs }) => {
+    const tierMult = action.tier === 'high' ? 1.5 : 1.0;
+    const score = BASE_WEIGHT.CROSS_SOURCE_SIGNAL_TYPE_REGULATORY_ACTION * tierMult;
+    return {
+      id: `regulatory:${action.id ?? 'unknown'}`,
+      type: 'CROSS_SOURCE_SIGNAL_TYPE_REGULATORY_ACTION',
+      theater: 'Global Markets',
+      summary: `${action.agency ?? 'Unknown agency'}: ${action.title ?? 'No title'}`,
+      severity: scoreTier(score),
+      severityScore: score,
+      detectedAt: publishedAtTs,
+      contributingTypes: [],
+      signalCount: 0,
+    };
+  });
+}
+
 // ── Composite escalation detector ─────────────────────────────────────────────
 // Fires when >=3 signals from DIFFERENT categories share the same theater.
 function detectCompositeEscalation(signals) {
@@ -790,6 +829,7 @@ async function aggregateCrossSourceSignals() {
     extractWeatherExtreme,
     extractMediaToneDeterioration,
     extractRiskScoreSpike,
+    extractRegulatoryAction,
   ];
 
   for (const extractor of extractors) {
@@ -827,6 +867,10 @@ function validate(data) {
   return Array.isArray(data?.signals);
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.signals) ? data.signals.length : 0;
+}
+
 runSeed('intelligence', 'cross-source-signals', CANONICAL_KEY, aggregateCrossSourceSignals, {
   ttlSeconds: CACHE_TTL,
   validateFn: validate,
@@ -843,4 +887,8 @@ runSeed('intelligence', 'cross-source-signals', CANONICAL_KEY, aggregateCrossSou
       signal: AbortSignal.timeout(5_000),
     }).catch(err => console.warn(`  seed-meta write failed: ${err.message}`));
   },
+
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 30,
 });

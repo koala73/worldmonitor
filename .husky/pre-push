@@ -54,6 +54,13 @@ npm run typecheck || exit 1
 echo "Running API type check..."
 npm run typecheck:api || exit 1
 
+echo "Running Convex type check..."
+# Catches stale convex/_generated/api.d.ts (forgotten `npx convex codegen`
+# after adding a module) and any drift between convex/schema.ts and the
+# code that reads it. Pre-push is the right gate — these errors surface
+# only at convex deploy time otherwise, deep into a release window.
+npx tsc --noEmit -p convex/tsconfig.json || exit 1
+
 echo "Running CJS syntax check..."
 for f in scripts/*.cjs; do
   [ -f "$f" ] && node -c "$f" || exit 1
@@ -65,6 +72,15 @@ node scripts/check-unicode-safety.mjs || exit 1
 echo "Running architectural boundary check..."
 npm run lint:boundaries || exit 1
 
+echo "Running Sentry-coverage check..."
+node scripts/check-sentry-coverage.mjs || exit 1
+
+echo "Running rate-limit policy coverage check..."
+npm run lint:rate-limit-policies || exit 1
+
+echo "Running premium-fetch parity check..."
+npm run lint:premium-fetch || exit 1
+
 echo "Running edge function bundle check..."
 while IFS= read -r f; do
   npx esbuild "$f" --bundle --format=esm --platform=browser --outfile=/dev/null 2>/dev/null || {
@@ -74,24 +90,97 @@ while IFS= read -r f; do
   }
 done < <(find api/ -name "*.js" -not -name "_*"; find api/ -maxdepth 1 -name "*.ts" -not -name "_*")
 
-echo "Running unit tests..."
-npm run test:data || exit 1
+CHANGED_FILES=$(git diff --name-only origin/main...HEAD 2>/dev/null || echo "")
+if [ -z "$CHANGED_FILES" ]; then
+  CHANGED_FILES=$(git diff --name-only HEAD~1 2>/dev/null || echo "")
+fi
+if [ -z "$CHANGED_FILES" ]; then
+  echo "WARNING: Could not determine changed files, running full test suite as safety fallback."
+  RUN_ALL=true
+fi
+
+# Determine which test categories to run based on changed files
+RUN_RESILIENCE=false
+RUN_SEED=false
+RUN_SERVER=false
+RUN_FRONTEND=false
+${RUN_ALL:=false}
+
+if echo "$CHANGED_FILES" | grep -q "^scripts/"; then RUN_SEED=true; fi
+if echo "$CHANGED_FILES" | grep -q "^server/"; then RUN_SERVER=true; fi
+if echo "$CHANGED_FILES" | grep -q "resilience"; then RUN_RESILIENCE=true; fi
+if echo "$CHANGED_FILES" | grep -q "^src/\|^api/"; then RUN_FRONTEND=true; fi
+if echo "$CHANGED_FILES" | grep -q "^tests/\|package.json\|tsconfig"; then RUN_ALL=true; fi
+
+if [ "$RUN_ALL" = true ]; then
+  echo "Running full unit test suite (test files or config changed)..."
+  timeout 300 npx tsx --test tests/*.test.mjs tests/*.test.mts || exit 1
+else
+  if [ "$RUN_RESILIENCE" = true ]; then
+    echo "Running resilience tests (resilience files changed)..."
+    timeout 120 npx tsx --test tests/resilience-*.test.mjs tests/resilience-*.test.mts || exit 1
+  fi
+  if [ "$RUN_SEED" = true ]; then
+    echo "Running seed tests (scripts/ changed)..."
+    SEED_TESTS=$(echo "$CHANGED_FILES" | grep "^scripts/" | sed 's|scripts/seed-\(.*\)\.mjs|tests/\1-seed.test.mjs|' | grep "^tests/" | while read -r t; do [ -f "$t" ] && echo "$t"; done)
+    if [ -n "$SEED_TESTS" ]; then
+      timeout 120 npx tsx --test $SEED_TESTS || exit 1
+    else
+      echo "  No matching seed tests found, skipping."
+    fi
+  fi
+  if [ "$RUN_SERVER" = true ]; then
+    echo "Running server handler tests (server/ changed)..."
+    timeout 120 npx tsx --test tests/handlers.test.mts tests/server-handlers.test.mjs || exit 1
+  fi
+  if [ "$RUN_RESILIENCE" = false ] && [ "$RUN_SEED" = false ] && [ "$RUN_SERVER" = false ]; then
+    echo "Skipping unit tests (frontend-only changes)."
+  fi
+fi
 
 echo "Running edge function tests..."
-node --test tests/edge-functions.test.mjs || exit 1
+if [ "$RUN_FRONTEND" = true ] || [ "$RUN_ALL" = true ]; then
+  node --test tests/edge-functions.test.mjs || exit 1
+else
+  echo "  Skipped (no api/ or src/ changes)."
+fi
 
 echo "Running markdown lint..."
-npm run lint:md || exit 1
+if echo "$CHANGED_FILES" | grep -qE "\.md$|\.mdx$" || [ "$RUN_ALL" = true ]; then
+  npm run lint:md || exit 1
+else
+  echo "  Skipped (no markdown changes)."
+fi
 
 echo "Running MDX lint (Mintlify compatibility)..."
-node --test tests/mdx-lint.test.mjs || exit 1
+if echo "$CHANGED_FILES" | grep -q "\.mdx$" || [ "$RUN_ALL" = true ]; then
+  node --test tests/mdx-lint.test.mjs || exit 1
+else
+  echo "  Skipped (no MDX changes)."
+fi
 
 echo "Running proto freshness check..."
 if git diff --name-only origin/main -- proto/ src/generated/ docs/api/ Makefile | grep -q .; then
-  if command -v buf >/dev/null 2>&1 || [ -x "$HOME/go/bin/buf" ]; then
+  # Only prepend $HOME/go/bin when buf is NOT already resolvable on the
+  # caller's PATH. An unconditional prepend would shadow a developer's
+  # preferred `buf` (e.g. Homebrew) with a potentially stale
+  # ~/go/bin/buf left over from an older `go install buf@<old>`, which
+  # is the exact mixed-version failure this PR is trying to eliminate.
+  # Plugin resolution is handled inside `make generate` via a pinned
+  # PLUGIN_DIR, so the hook no longer needs to prepend for plugin
+  # discovery — only for the `buf` binary itself, and only when there's
+  # no other candidate.
+  if ! command -v buf >/dev/null 2>&1 && [ -x "$HOME/go/bin/buf" ]; then
     export PATH="$HOME/go/bin:$PATH"
   fi
-  if command -v buf &>/dev/null && command -v protoc-gen-ts-client &>/dev/null; then
+  # Plugin-presence check: consider a plugin "available" if it's on
+  # PATH OR at the default `go install` location ($HOME/go/bin).
+  # `make generate` resolves plugins via its own PLUGIN_DIR (GOBIN,
+  # then first-entry GOPATH/bin), which matches the $HOME/go/bin
+  # default on almost every dev setup. Anything exotic (custom GOBIN
+  # not on PATH) still runs `make generate` cleanly because the
+  # Makefile's own plugin-executable guard fires there.
+  if command -v buf &>/dev/null && { command -v protoc-gen-ts-client &>/dev/null || [ -x "$HOME/go/bin/protoc-gen-ts-client" ]; }; then
     make generate
     if ! git diff --exit-code src/generated/ docs/api/; then
       echo ""
@@ -118,6 +207,60 @@ if git diff --name-only origin/main -- proto/ src/generated/ docs/api/ Makefile 
   fi
 else
   echo "No proto-related changes, skipping."
+fi
+
+echo "Running pro-test bundle freshness check..."
+# public/pro/ is NOT built by Vercel — the root build script only runs the
+# main app's vite build. The /pro marketing app under pro-test/ must be
+# rebuilt manually and its output committed to public/pro/. If source
+# changes ship without the rebuild, production /pro serves the old bundle
+# (see PR #3227 → #3228: source fix merged but deploy still broken because
+# public/pro/ was stale).
+#
+# Scope to the BRANCH delta ($CHANGED_FILES, computed earlier from
+# `git diff origin/main...HEAD`), not the worktree, so unstaged local
+# pro-test/ scratch edits don't trigger a slow rebuild on unrelated
+# branches. RUN_ALL forces the check when the branch delta couldn't be
+# computed (matches the safety fallback used by the test runners above).
+#
+# Trigger on EITHER pro-test/ OR public/pro/ to match the CI workflow's
+# path filter — a bundle-only PR that edits public/pro/ without touching
+# pro-test/ (e.g. a fix-forward rebuild, or a hand-edit) is exactly the
+# class of change this guard is meant to validate.
+if [ "$RUN_ALL" = true ] || echo "$CHANGED_FILES" | grep -qE "^(pro-test|public/pro)/"; then
+  if [ ! -d pro-test/node_modules ]; then
+    echo "  Installing pro-test deps..."
+    (cd pro-test && npm install --prefer-offline) || exit 1
+  fi
+  (cd pro-test && npm run build >/dev/null) || {
+    echo "ERROR: pro-test build failed"
+    exit 1
+  }
+  if ! git diff --exit-code public/pro/; then
+    echo ""
+    echo "============================================================"
+    echo "ERROR: pro-test sources changed but public/pro/ is stale."
+    echo "Vercel ships whatever is committed under public/pro/ —"
+    echo "it does NOT rebuild pro-test on deploy."
+    echo "Fix:"
+    echo "  cd pro-test && npm run build && cd .."
+    echo "  git add public/pro/ && git commit --amend --no-edit"
+    echo "============================================================"
+    exit 1
+  fi
+  UNTRACKED=$(git ls-files --others --exclude-standard public/pro/)
+  if [ -n "$UNTRACKED" ]; then
+    echo ""
+    echo "============================================================"
+    echo "ERROR: Untracked files in public/pro/ after rebuild:"
+    echo "$UNTRACKED"
+    echo "Run: git add public/pro/ && git commit --amend --no-edit"
+    echo "============================================================"
+    exit 1
+  fi
+  echo "  pro-test bundle is up to date."
+else
+  echo "  Skipped (no pro-test/ or public/pro/ changes in branch)."
 fi
 
 echo "Running version sync check..."

@@ -1,0 +1,121 @@
+---
+title: "Agent Discovery"
+description: "Point any AI agent, codegen tool, or MCP client at worldmonitor.app and discover every API, OpenAPI spec, MCP server, and OAuth endpoint from a single root URL."
+---
+
+WorldMonitor is built to be **agent-native**. An autonomous agent — Claude, Cursor, an MCP client, or your own LangChain / LangGraph workflow — can start from a single root URL and discover everything it needs: REST schemas, MCP transport, OAuth flow, skill bundles, and human-readable briefings.
+
+No prior knowledge required. Just `GET https://worldmonitor.app/`.
+
+## The one URL to remember
+
+```
+https://worldmonitor.app/
+```
+
+The HTTP response carries an [RFC 8288](https://datatracker.ietf.org/doc/html/rfc8288) `Link:` header with `rel` values pointing at every machine-readable surface below. An agent that follows the links resolves the full picture without hardcoding a single path.
+
+```bash
+curl -sI https://worldmonitor.app/ | grep -i '^link:'
+```
+
+You'll see entries like:
+
+```
+Link: </.well-known/api-catalog>; rel="api-catalog"; type="application/linkset+json",
+      </openapi.yaml>; rel="service-desc"; type="application/vnd.oai.openapi",
+      </docs/documentation>; rel="service-doc"; type="text/html",
+      </api/health>; rel="status"; type="application/json",
+      </.well-known/oauth-protected-resource>; rel="...oauth-protected-resource",
+      </.well-known/oauth-authorization-server>; rel="...oauth-authorization-server",
+      </.well-known/mcp/server-card.json>; rel="mcp-server-card"; anchor="/mcp",
+      </.well-known/agent-skills/index.json>; rel="agent-skills-index"; type="application/json"
+```
+
+## Discovery endpoints
+
+| Endpoint | Standard | What it returns |
+|---|---|---|
+| [`/.well-known/api-catalog`](https://worldmonitor.app/.well-known/api-catalog) | [RFC 9727](https://datatracker.ietf.org/doc/html/rfc9727) | JSON linkset bundling every other discovery URL — start here if you want one fetch and a map |
+| [`/openapi.yaml`](https://www.worldmonitor.app/openapi.yaml) | OpenAPI 3.1 | Single bundled spec covering **every** REST service (Conflict, Resilience, Market, Economic, Maritime, Aviation, Climate, …) — feed it to any code-generator |
+| [`/.well-known/mcp/server-card.json`](https://worldmonitor.app/.well-known/mcp/server-card.json) | MCP | Transport (`streamableHttp`), endpoint, OAuth resource, scopes, capability flags |
+| [`/.well-known/oauth-authorization-server`](https://api.worldmonitor.app/.well-known/oauth-authorization-server) | [RFC 8414](https://datatracker.ietf.org/doc/html/rfc8414) | OAuth 2.1 authorization-server metadata (PKCE, DCR, token endpoints) |
+| [`/.well-known/oauth-protected-resource`](https://worldmonitor.app/.well-known/oauth-protected-resource) | [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) | Resource metadata for `https://worldmonitor.app/mcp` |
+| [`/.well-known/agent-skills/index.json`](https://worldmonitor.app/.well-known/agent-skills/index.json) | (custom) | Index of pre-packaged agent skills (`fetch-country-brief`, `fetch-resilience-score`, …) — each skill is a self-contained recipe |
+| [`/llms.txt`](https://worldmonitor.app/llms.txt) | [llmstxt.org](https://llmstxt.org) | LLM-friendly markdown briefing — overview, capabilities, links |
+| [`/llms-full.txt`](https://worldmonitor.app/llms-full.txt) | (extension) | Long-form variant covering all data layers, panels, and data sources |
+| [`/api/health`](https://api.worldmonitor.app/api/health) | (custom) | Per-key seed status, freshness, record counts — agents can gate fetches on this |
+
+All endpoints serve `Access-Control-Allow-Origin: *`. The static discovery assets (`.well-known/*`, `/openapi.yaml`, `/llms*.txt`) are cached `public, max-age=3600` — safe to memoize. `/api/health` is **not** cached (`private, no-store`) because it reflects real-time seed freshness; agents should hit it fresh whenever they need to gate on data availability.
+
+## Agent walkthroughs
+
+### Codegen a REST client for every service
+
+```bash
+# 1. Discover the bundled OpenAPI URL
+curl -s https://worldmonitor.app/.well-known/api-catalog \
+  | jq -r '.linkset[0]."service-desc"[0].href'
+# → https://www.worldmonitor.app/openapi.yaml
+
+# 2. Generate clients
+curl -s https://www.worldmonitor.app/openapi.yaml -o worldmonitor.openapi.yaml
+npx @openapitools/openapi-generator-cli generate \
+  -i worldmonitor.openapi.yaml -g typescript-fetch -o ./client
+```
+
+The bundled spec covers all 30+ services in a single document, so one codegen pass produces typed clients for everything.
+
+### Connect an MCP client to live data
+
+```bash
+# 1. Read the server card — this is the canonical descriptor for MCP
+curl -s https://worldmonitor.app/.well-known/mcp/server-card.json
+# → endpoint (https://worldmonitor.app/mcp), transport, OAuth scopes,
+#   and authorization_servers: ["https://api.worldmonitor.app"]
+
+# 2. Fetch authorization-server metadata from that host
+curl -s https://api.worldmonitor.app/.well-known/oauth-authorization-server
+# → token / authorize / registration endpoints, PKCE required, etc.
+```
+
+`/.well-known/oauth-protected-resource` is also available, but its `authorization_servers` field is derived from the request `Host` header so each origin (apex, www, api) reports itself — same-origin metadata that satisfies strict MCP scanners. Use the **MCP server card** for the cross-origin auth-server URL the actual MCP endpoint expects.
+
+Or skip the manual flow entirely — most clients (Claude Desktop, claude.ai, Cursor, MCP Inspector, Claude Code) accept the MCP URL directly and run discovery + OAuth automatically:
+
+```
+https://worldmonitor.app/mcp
+```
+
+See [MCP Server](/mcp-server) for client-specific config snippets.
+
+### Server-side with a direct API key
+
+If you don't want OAuth, every REST endpoint and the MCP endpoint accept `X-WorldMonitor-Key: wm_live_...`:
+
+```bash
+curl -s https://api.worldmonitor.app/api/resilience/v1/get-resilience-ranking \
+  -H "X-WorldMonitor-Key: $WM_KEY"
+```
+
+PRO subscribers get a key from [worldmonitor.app/pro](https://www.worldmonitor.app/pro). See [Authentication](/usage-auth).
+
+### Drop-in agent skills
+
+`/.well-known/agent-skills/index.json` lists pre-packaged skills — each is a self-contained recipe an agent can ingest without reading the OpenAPI. Useful for narrow tasks where you'd rather hand the agent "fetch a country brief" than "read 30 OpenAPI specs and figure it out." Today's catalog includes `fetch-country-brief` and `fetch-resilience-score`; more land over time.
+
+## Why this matters
+
+The point isn't novelty — RFCs 8414, 8288, 9727, 9728 are old. The point is that **every** WorldMonitor surface (REST, MCP, OAuth, skills, LLM briefings) is reachable from one root URL via well-known conventions, with no out-of-band setup. An agent can:
+
+- Discover the API without reading our docs.
+- Authenticate without us telling it which OAuth flow we use.
+- Pick the right transport (REST vs MCP) based on its own preferences.
+- Stay current — when we ship a new service, the bundled `/openapi.yaml` and the api-catalog reflect it on the next deploy. No version pinning, no client SDK release cycle.
+
+## Related
+
+- [MCP Server](/mcp-server) — full client setup (Claude Desktop, Cursor, claude.ai, MCP Inspector, Claude Code)
+- [API Reference](/api-reference) — human-readable service catalog and MCP→REST tool mapping
+- [Authentication](/usage-auth) — browser, API key, and OAuth modes
+- [Quickstart](/usage-quickstart) — first call in under a minute

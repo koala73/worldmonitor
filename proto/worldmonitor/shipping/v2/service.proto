@@ -1,0 +1,42 @@
+syntax = "proto3";
+
+package worldmonitor.shipping.v2;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/shipping/v2/route_intelligence.proto";
+import "worldmonitor/shipping/v2/register_webhook.proto";
+import "worldmonitor/shipping/v2/list_webhooks.proto";
+
+// ShippingV2Service is the partner-facing (vendor) surface for chokepoint
+// route intelligence and disruption-alert webhooks. PRO-gated, authenticated
+// via X-WorldMonitor-Key (server-to-server; browser origins are NOT exempt).
+//
+// The base_path intentionally reverses the usual /api/{domain}/v{N} ordering
+// because the existing partner contract is /api/v2/shipping/*. The proto does
+// not model the path-parameter endpoints that also live on this surface
+// (GET /webhooks/{id}, POST /webhooks/{id}/rotate-secret, POST /webhooks/{id}/reactivate);
+// those remain on the legacy file layout until sebuf path-params are supported.
+service ShippingV2Service {
+  option (sebuf.http.service_config) = {base_path: "/api/v2/shipping"};
+
+  // RouteIntelligence scores a country-pair trade route for chokepoint exposure
+  // and current disruption risk. Partner-facing; wire shape is byte-compatible
+  // with the pre-migration JSON response documented at docs/api-shipping-v2.mdx.
+  rpc RouteIntelligence(RouteIntelligenceRequest) returns (RouteIntelligenceResponse) {
+    option (sebuf.http.config) = {path: "/route-intelligence", method: HTTP_METHOD_GET};
+  }
+
+  // RegisterWebhook subscribes a callback URL to chokepoint disruption alerts.
+  // Returns the subscriberId and the raw HMAC secret — the secret is never
+  // returned again except via rotate-secret.
+  rpc RegisterWebhook(RegisterWebhookRequest) returns (RegisterWebhookResponse) {
+    option (sebuf.http.config) = {path: "/webhooks", method: HTTP_METHOD_POST};
+  }
+
+  // ListWebhooks returns the caller's registered webhooks filtered by the
+  // SHA-256 owner tag of the calling API key. The `secret` is intentionally
+  // omitted from the response; use rotate-secret to obtain a new one.
+  rpc ListWebhooks(ListWebhooksRequest) returns (ListWebhooksResponse) {
+    option (sebuf.http.config) = {path: "/webhooks", method: HTTP_METHOD_GET};
+  }
+}

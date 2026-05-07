@@ -57,7 +57,7 @@ npm run typecheck:api    # Typecheck API layer separately
 npm run test:data        # Run unit/integration tests
 npm run test:sidecar     # Run sidecar + API handler tests
 npm run test:e2e         # Run all Playwright E2E tests
-make generate            # Regenerate proto stubs (requires buf + sebuf plugins)
+make generate            # Regenerate proto stubs + per-service & unified OpenAPI specs (requires buf + sebuf v0.11.0 plugins)
 ```
 
 ## Architecture Rules

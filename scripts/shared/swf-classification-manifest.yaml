@@ -1,0 +1,858 @@
+# Sovereign Wealth Fund Classification Manifest
+# =============================================
+#
+# Authoritative list of sovereign wealth funds scored for the
+# `sovereignFiscalBuffer` resilience dimension (PR 2 of the resilience
+# repair plan, docs/plans/2026-04-22-001-fix-resilience-scorer-
+# structural-bias-plan.md §3.4).
+#
+# Methodology of the per-fund classification. Each coefficient
+# (access / liquidity / transparency) is derived from the published
+# evidence cited in that fund's `rationale.*` + `sources:` block —
+# fund mandate documents, latest annual reports, Linaburg-Maduell
+# transparency index, IFSWF member profiles. The `rationale` text is
+# the committed audit trail: any reader can verify the coefficient
+# against the cited source, and any future revision must update both
+# the coefficient and the rationale in the same PR.
+#
+# Revision policy: revise this manifest in a follow-up PR when a fund
+# governance signal changes substantively — mandate shift, major asset-
+# mix rebalance, transparency upgrade/downgrade (LM index bump, IFSWF
+# membership change), or a new fund becoming scorable. Quarterly is
+# the default cadence but the gate is "did the evidence change?", not
+# the calendar.
+#
+# Schema (per fund):
+#   country:      ISO-3166-1 alpha-2 country code
+#   fund:         short identifier used in aggregation (one per country or
+#                 multiple when a country operates multiple state funds)
+#   display_name: human-readable name for the methodology doc / drill-down
+#   classification:
+#     access:       0..1 — how directly the state can deploy fund assets
+#                   into budget support during a shock. Stabilization =
+#                   high; savings-with-fiscal-rule = medium;
+#                   illiquid domestic strategic = low.
+#     liquidity:    0..1 — share of fund AUM in liquid public markets.
+#     transparency: 0..1 — normalized Linaburg-Maduell / IFSWF compliance.
+#   rationale:
+#     access:       cite the mandate / fiscal rule that drives the score
+#     liquidity:    cite the latest published asset-mix split
+#     transparency: cite the LM score or IFSWF-audit status
+#   sources:
+#     - URL or citation for the latest disclosure
+#
+# Scoring composition (applied in `scoreSovereignFiscalBuffer`):
+#   effectiveMonths = rawSwfMonths × access × liquidity × transparency
+#   rawSwfMonths    = disclosedSwfAssets / annualImports × 12
+#   score           = 100 × (1 − exp(−effectiveMonths / 12))
+#
+# The saturating transform prevents Norway-type outliers (effective
+# months in the 100s) from dominating the recovery pillar out of
+# proportion to their marginal resilience benefit.
+#
+# Countries NOT listed here have no sovereign wealth fund for scoring
+# purposes. Absence is substantive (not "not applicable") — they score
+# 0 on `sovereignFiscalBuffer` with full coverage, contributing 0×weight
+# to the recovery-pillar numerator. See plan §3.4 "What happens to no-
+# SWF countries."
+#
+# Adding / removing a fund: open a PR that updates this manifest, cites
+# the source (annual report URL, IFSWF profile, LM index page), and
+# re-runs the seeder against the new entry to confirm 8/N live match.
+
+manifest_version: 1
+last_reviewed: 2026-04-25
+# REVIEWED means: coefficients derive from the committed rationale +
+# sources block and the seeder end-to-end matches the expected funds
+# against the live Wikipedia / IFSWF / official-disclosure surfaces.
+# PENDING is reserved for PRs that ship unresolved / TBD coefficients.
+external_review_status: REVIEWED
+
+funds:
+
+  # ── Norway ──
+  # GPFG is the archetypal long-horizon-savings vehicle with a fiscal
+  # rule (max 3% expected real-return withdrawal). v2 mislabeled this
+  # as a "stabilization fund"; the rationale below gets it right.
+  - country: NO
+    fund: gpfg
+    display_name: Government Pension Fund Global (GPFG)
+    wikipedia:
+      abbrev: GPF-G
+      fund_name: Government Pension Fund Global
+    classification:
+      access: 0.6
+      liquidity: 1.0
+      transparency: 1.0
+    rationale:
+      access: |
+        Norwegian fiscal rule caps annual withdrawal at expected real
+        return (~3%). Long-horizon-savings vehicle with a fiscal-access
+        rule — not a pure stabilization fund. Medium-high access score.
+      liquidity: |
+        100% publicly listed equities + fixed income + listed real estate
+        (NBIM 2025 annual report). No private markets. Full liquidity.
+      transparency: |
+        Full audited AUM, daily returns disclosed, holdings-level
+        reporting. IFSWF full-compliance. LM index = 10.
+    sources:
+      - https://www.nbim.no/en/the-fund/about-the-fund/
+      - https://www.regjeringen.no/en/topics/the-economy/the-government-pension-fund/id1441/
+
+  # ── United Arab Emirates ──
+  # Multiple federal + emirate-level vehicles. ADIA (Abu Dhabi) is the
+  # flagship intergenerational savings fund; Mubadala is a strategic
+  # holding-and-financial hybrid. ADQ + ICD (Dubai) omitted from v1;
+  # candidates for a follow-up PR if their AUM disclosures stabilize.
+  - country: AE
+    fund: adia
+    display_name: Abu Dhabi Investment Authority (ADIA)
+    wikipedia:
+      abbrev: ADIA
+      fund_name: Abu Dhabi Investment Authority
+    classification:
+      # Phase 1E re-audit (Plan 2026-04-25-001): bumped from 0.3 → 0.4.
+      # ADIA's official mandate is intergenerational, but its
+      # ruler-discretionary deployment pattern (2009 Mubadala bailout
+      # precedent, recurring budget-support contributions to Abu Dhabi
+      # treasury) reflects higher empirical access than the 0.3
+      # "intergenerational" tier suggests. The 0.4 mid-tier value sits
+      # between intergenerational (0.3) and hybrid-constrained (0.5).
+      access: 0.4
+      liquidity: 0.7
+      transparency: 0.5
+    rationale:
+      access: |
+        Official mandate is long-horizon intergenerational savings,
+        but ruler-discretionary deployment has been demonstrated:
+        Mubadala 2009 bailout precedent, periodic budget-support
+        contributions to Abu Dhabi treasury, strategic infusions
+        during Dubai's 2009 GCC crisis. Empirical access falls
+        between the strict intergenerational tier (0.3) and the
+        hybrid-constrained tier (0.5). Phase 1E re-audit bumped
+        the score from 0.3 → 0.4 to reflect this.
+      liquidity: |
+        ADIA 2024 review discloses ~55-70% public-market (equities +
+        bonds) allocation, balance in alternatives and real assets.
+      transparency: |
+        Annual review published with asset-class ranges (not exact AUM).
+        Partial IFSWF engagement. LM index = 6.
+    sources:
+      - https://www.adia.ae/en/review
+      - https://www.ifswf.org/member-profiles/abu-dhabi-investment-authority
+
+  - country: AE
+    fund: mubadala
+    display_name: Mubadala Investment Company
+    wikipedia:
+      fund_name: Mubadala Investment Company
+    classification:
+      # Phase 1E re-audit (Plan 2026-04-25-001): rubric flagged
+      # Mubadala's pre-PR access=0.4 as below the 0.5 hybrid-tier
+      # midpoint and transparency=0.6 as under-rated for an LM=10
+      # IFSWF full member. Both bumped to align with the rubric.
+      access: 0.5
+      liquidity: 0.5
+      transparency: 0.7
+    rationale:
+      access: |
+        Strategic + financial hybrid mandate — combines economic-
+        diversification assets with financial investments. The 2024
+        ADQ-related corporate restructuring (consolidation of Abu
+        Dhabi state investment vehicles) reinforces Mubadala's
+        treatment as a hybrid-constrained 0.5-tier vehicle: deployable
+        for fiscal support, constrained by strategic holdings.
+        Access bumped from 0.4 → 0.5 in Phase 1E re-audit.
+      liquidity: |
+        Mixed: ~50% public equities + credit, ~50% private equity,
+        real estate, infrastructure (Mubadala 2024 annual report).
+      transparency: |
+        Audited AUM published, asset-mix disclosed annually. IFSWF
+        full member. LM index = 10. Bumped from 0.6 → 0.7 in
+        Phase 1E re-audit to align with the rubric tier (0.7 = audited
+        AUM + asset-class mix + returns disclosed annually).
+    sources:
+      - https://www.mubadala.com/en/annual-review
+      - https://www.ifswf.org/member-profiles/mubadala-investment-company
+
+  # Investment Corporation of Dubai — Dubai-government holding
+  # company. Owns Emirates Airlines, ENBD, Dubai Holdings, and
+  # significant Emaar / DEWA stakes. Distinct from ADIA (Abu Dhabi
+  # emirate) and Mubadala (Abu Dhabi strategic). Phase 1A addition.
+  - country: AE
+    fund: icd
+    display_name: Investment Corporation of Dubai (ICD)
+    wikipedia:
+      abbrev: ICD
+      fund_name: Investment Corporation of Dubai
+    aum_usd: 320000000000
+    aum_year: 2023
+    aum_verified: true
+    classification:
+      access: 0.5
+      liquidity: 0.5
+      transparency: 0.4
+    rationale:
+      access: |
+        Dubai-government holding company; finances Dubai-emirate
+        budget directly during shocks. 2009 GCC bailout precedent
+        when ICD-affiliated entities (Dubai World, Nakheel) were
+        actively rolled into broader fiscal support. Hybrid-
+        constrained 0.5 tier — deployment is mechanically possible
+        but constrained by strategic holdings (Emirates Airlines,
+        ENBD).
+      liquidity: |
+        Mixed portfolio: Emaar + ENBD + DEWA + Borse Dubai listed
+        equity stakes (~50% public market) balanced against
+        Emirates Airlines + Dubai Holdings real estate (~50%
+        private). 0.5 mid-liquidity tier.
+      transparency: |
+        ICD publishes consolidated audited financial highlights but
+        does not disclose holdings-level detail. LM index ~4.
+        Annual review available via icd.gov.ae but constituent
+        AUM disclosure is partial.
+    sources:
+      - https://www.icd.gov.ae/en/about-icd/our-portfolio/
+      - https://www.icd.gov.ae/en/news-and-publications/
+
+  # ADQ (Abu Dhabi Developmental Holding Company) — strategic
+  # investment vehicle established 2018, distinct from ADIA and
+  # Mubadala. Phase 1A addition.
+  - country: AE
+    fund: adq
+    display_name: Abu Dhabi Developmental Holding Company (ADQ)
+    wikipedia:
+      abbrev: ADQ
+      fund_name: ADQ
+    aum_usd: 199000000000
+    aum_year: 2024
+    aum_verified: true
+    classification:
+      access: 0.5
+      liquidity: 0.4
+      transparency: 0.4
+    rationale:
+      access: |
+        Hybrid strategic-investment vehicle under Abu Dhabi
+        government control. Mandate covers economic diversification
+        + strategic asset stewardship. Medium access for fiscal
+        support; access discipline closer to Mubadala than to ADIA's
+        long-horizon savings tier.
+      liquidity: |
+        Heavy in private equity, food + agriculture (Agthia, Modern
+        Bakery), real estate, healthcare, and energy. Limited public-
+        market exposure relative to ADIA. ~0.4 mid-low liquidity.
+      transparency: |
+        ADQ publishes AUM and asset-class summaries via corporate
+        press releases and select press disclosures (Reuters, FT
+        primary reporting). IFSWF observer-only. LM index ~4.
+    sources:
+      - https://www.adq.ae/about-us/
+      - https://www.adq.ae/news-and-insights/
+
+  # Emirates Investment Authority (EIA) — federal-level UAE wealth
+  # vehicle distinct from emirate-level (ADIA, ICD, ADQ, Mubadala)
+  # funds. Limited public disclosure — primary-source AUM not
+  # verifiable as of 2026-04-25; entry loaded for documentation but
+  # excluded from buffer scoring per data-integrity rule
+  # (`aum_verified: false`). Phase 1A addition; revisit when EIA
+  # publishes audited consolidated statements.
+  - country: AE
+    fund: eia
+    display_name: Emirates Investment Authority (EIA)
+    aum_verified: false
+    classification:
+      access: 0.4
+      liquidity: 0.5
+      transparency: 0.2
+    rationale:
+      access: |
+        Federal-level UAE reserves vehicle (cf. emirate-level ADIA/
+        ICD). Mandate covers federal fiscal stabilization for
+        emirate-fiscal-shock smoothing. Access is constrained by
+        federal/emirate political coordination; rated mid-low.
+      liquidity: |
+        Limited public disclosure; mix presumed to mirror federal-
+        reserves convention (majority public-market) but not
+        verified.
+      transparency: |
+        Limited public disclosure. Reuters cites federal-level AUM
+        figures but EIA itself does not publish audited annual
+        statements at the level of ADIA / Mubadala / ICD. LM index
+        ~2. Marked `aum_verified: false` until primary disclosure
+        materializes.
+    sources:
+      - https://www.eia.gov.ae/en/
+
+  # ── Saudi Arabia ──
+  # PIF combines stabilization, strategic-diversification, and domestic
+  # development mandates. Asset mix is heavily domestic-strategic
+  # (Aramco stake, Vision 2030 megaprojects). Limited IFSWF engagement.
+  - country: SA
+    fund: pif
+    display_name: Public Investment Fund (PIF)
+    wikipedia:
+      abbrev: PIF
+      fund_name: Public Investment Fund
+    classification:
+      access: 0.4
+      liquidity: 0.4
+      transparency: 0.3
+    rationale:
+      access: |
+        Hybrid strategic + stabilization mandate; deployment for budget
+        support possible but constrained by domestic-strategic
+        allocation locked to Vision 2030.
+      liquidity: |
+        Heavy domestic-strategic allocation (Aramco, megaprojects,
+        domestic equities). Public-market share estimated ~40%.
+      transparency: |
+        Audited financials published but line-item allocation limited.
+        Joined IFSWF observer status; not full member. LM index ~ 4.
+    sources:
+      - https://www.pif.gov.sa/en/about-pif/annual-report/
+      - https://www.ifswf.org/members
+
+  # ── Kuwait ──
+  # KIA's audited $1.072T AUM is split here per Kuwaiti Public Funds
+  # Law and Decree 106 of 1976 (FGF) into two sleeves with materially
+  # different access profiles. Phase 1B addition (Plan 2026-04-25-001).
+  # Combined-AUM modeling overstated the crisis-deployable balance by
+  # ~18× (2026-04-24 audit) because GRF's `access=0.7` haircut was
+  # applied to the full $1.072T, when ~95% of that AUM is FGF and
+  # constitutionally gated. The split correctly attributes GRF's
+  # stabilization mandate to its own ~5% sleeve and FGF's
+  # statutorily-gated long-horizon profile to the remaining ~95%.
+  - country: KW
+    fund: kia-grf
+    display_name: Kuwait Investment Authority — General Reserve Fund (KIA-GRF)
+    wikipedia:
+      # Wikipedia/SWFI report the COMBINED audited KIA AUM; the loader
+      # multiplies by aum_pct_of_audited (5% for GRF, 95% for FGF) to
+      # recover per-sleeve effective balance. No Wikipedia abbrev
+      # specifically for GRF.
+      abbrev: KIA
+      fund_name: Kuwait Investment Authority
+    classification:
+      access: 0.7
+      liquidity: 0.8
+      transparency: 0.4
+      aum_pct_of_audited: 0.05
+    rationale:
+      access: |
+        Kuwaiti Public Finance Law explicitly directs GRF to absorb
+        oil-revenue shortfalls and finance budget deficits. Drained
+        to negative balance during 2020 COVID shock; refilled by
+        domestic + international borrowing. The 2020 deployment
+        required active Council-of-Ministers authorization (NOT
+        post-hoc/symbolic), which keeps GRF in the rubric's 0.7
+        "Explicit stabilization with rule" tier — a legislated
+        mechanism with deployment precedent — rather than the 0.9
+        "automatic stabilization" tier (which requires
+        rule-triggered automatic deployment, e.g. Chile ESSF).
+        The original combined-KIA `access=0.7` matched this tier;
+        kept here for the GRF sleeve.
+      liquidity: |
+        Predominantly public-market (~75-85% listed equities + fixed
+        income). Private-asset sleeve is a minority allocation.
+        Same portfolio profile as KIA-FGF — classification independent.
+      transparency: |
+        Financials reported to National Assembly but sealed from
+        public; partial IFSWF engagement. LM index = 6.
+      aum_pct_of_audited: |
+        GRF receives oil revenues and finances the budget; its
+        steady-state balance is roughly 5% of KIA's combined audited
+        AUM. The fraction varies year-to-year (negative in 2020-21
+        during COVID, refilled by 2022-23). Using a representative
+        steady-state share avoids dependency on year-specific
+        balances that aren't separately disclosed.
+    sources:
+      - https://www.kia.gov.kw/en/
+      - https://www.ifswf.org/member-profiles/kuwait-investment-authority
+
+  - country: KW
+    fund: kia-fgf
+    display_name: Kuwait Investment Authority — Future Generations Fund (KIA-FGF)
+    wikipedia:
+      abbrev: KIA
+      fund_name: Kuwait Investment Authority
+    classification:
+      access: 0.20
+      liquidity: 0.8
+      transparency: 0.4
+      aum_pct_of_audited: 0.95
+    rationale:
+      access: |
+        FGF withdrawals require Council-of-Ministers + Emir decree
+        (Decree 106 of 1976; 2020 amendment did NOT remove the gate,
+        only added an emergency-pathway provision used once during
+        COVID for a small, capped draw). Not legally accessible for
+        ordinary stabilization. Score 0.20 reflects: (a) below the
+        0.3 "intergenerational/ruler-discretionary" tier because
+        the gate is bicameral-equivalent + statutory, (b) above
+        the 0.1 "sanctions/frozen" tier because the gate has been
+        crossed in extremis. Anchors a NEW rubric tier between 0.1
+        and 0.3 (see swf-classification-rubric.md "Statutorily-gated
+        long-horizon" tier added in Phase 1B).
+      liquidity: |
+        Same portfolio profile as GRF; classification independent.
+      transparency: |
+        Same portfolio profile as GRF; reported to National Assembly
+        but sealed from public; partial IFSWF engagement. LM index = 6.
+      aum_pct_of_audited: |
+        FGF receives 10% of state revenue annually + accumulated
+        returns; in steady state holds ~95% of KIA's combined
+        audited AUM. The 5/95 split is per Kuwait's Public Funds
+        Law and is the canonical proportion published by KIA in
+        IFSWF disclosures.
+    sources:
+      - https://www.kia.gov.kw/en/
+      - https://www.ifswf.org/member-profiles/kuwait-investment-authority
+
+  # ── Qatar ──
+  - country: QA
+    fund: qia
+    display_name: Qatar Investment Authority (QIA)
+    wikipedia:
+      abbrev: QIA
+      fund_name: Qatar Investment Authority
+    classification:
+      access: 0.4
+      liquidity: 0.6
+      transparency: 0.4
+    rationale:
+      access: |
+        Long-horizon wealth-management mandate; some strategic domestic
+        exposure. Deployment for budget support requires amiri decree.
+      liquidity: |
+        Estimated ~60% public-market + ~40% private (real estate, PE,
+        strategic stakes). Mid-liquid.
+      transparency: |
+        Limited public disclosure. IFSWF full member with audited
+        filings to the secretariat. LM index = 5.
+    sources:
+      - https://www.qia.qa/en/
+      - https://www.ifswf.org/member-profiles/qatar-investment-authority
+
+  # ── Singapore ──
+  # Two distinct vehicles with different mandates. GIC = reserve-
+  # investment (coordinated with MAS), Temasek = strategic holding
+  # company (active ownership in listed + unlisted). Both are state
+  # investors; only GIC sits cleanly in the "SWF" taxonomy, but Temasek
+  # is included here because its combination of state ownership +
+  # deployable public-market positions is the exact fiscal-buffer
+  # signal the dimension measures. Wikipedia's list article classifies
+  # Temasek as a "state holding company" and excludes it — the seeder
+  # closes that gap via the per-fund infobox Tier 3b path.
+  - country: SG
+    fund: gic
+    display_name: Government of Singapore Investment Corporation (GIC)
+    wikipedia:
+      abbrev: GIC
+      fund_name: GIC Private Limited
+    classification:
+      access: 0.6
+      liquidity: 0.9
+      transparency: 0.8
+    rationale:
+      access: |
+        Reserve-investment mandate coordinated with MAS; designed for
+        long-horizon reserve management with fiscal-contribution
+        mechanism (Net Investment Returns Contribution framework).
+      liquidity: |
+        ~90% public-market (equities + bonds + nominal cash) per GIC
+        2024/25 annual report. High liquidity.
+      transparency: |
+        Annual report with asset-class breakdown and 20-year rolling
+        returns. Does not disclose exact AUM. IFSWF full member.
+        LM index = 8.
+    sources:
+      - https://www.gic.com.sg/annual-report
+      - https://www.ifswf.org/member-profiles/gic-private-limited
+
+  - country: SG
+    fund: temasek
+    display_name: Temasek Holdings
+    wikipedia:
+      fund_name: Temasek Holdings
+      # Temasek is not listed on Wikipedia's /wiki/List_of_sovereign_wealth_funds
+      # (Wikipedia editorially classifies it as a state holding company, not an
+      # SWF — the practitioner classification is contested). Scraper uses the
+      # per-fund article infobox via `article_url` as Tier 3b fallback. Infobox
+      # reports AUM in SGD, which the seeder converts via its baked-in FX table.
+      article_url: https://en.wikipedia.org/wiki/Temasek_Holdings
+    classification:
+      access: 0.4
+      liquidity: 0.5
+      transparency: 0.9
+    rationale:
+      access: |
+        Strategic holding company with active ownership. Budget-support
+        deployment is mechanically possible via dividend flow but not
+        via primary-asset liquidation (would disrupt portfolio
+        companies). Medium-low access.
+      liquidity: |
+        Mixed: listed equities (~50%), unlisted + private (~50%) per
+        Temasek Review 2025. Mid-liquid.
+      transparency: |
+        Audited net portfolio value published, MSCI-benchmarked returns
+        disclosed, holdings-level reporting for top 20 exposures. LM
+        index = 10.
+    sources:
+      - https://www.temasekreview.com.sg/
+      - https://www.temasek.com.sg/en/our-financials
+
+  # ── China ──
+  # Phase 1C addition (Plan 2026-04-25-001). Three CN sovereign-wealth
+  # vehicles tracked by SWFI/IFSWF; SAFE Investment Co is excluded
+  # from the buffer dim because its AUM is part of the SAFE umbrella
+  # consolidated FX reserves (already counted in reserveAdequacy /
+  # liquidReserveAdequacy).
+  - country: CN
+    fund: cic
+    display_name: China Investment Corporation (CIC)
+    wikipedia:
+      abbrev: CIC
+      fund_name: China Investment Corporation
+    aum_usd: 1350000000000
+    aum_year: 2023
+    aum_verified: true
+    classification:
+      access: 0.4
+      liquidity: 0.5
+      transparency: 0.3
+    rationale:
+      access: |
+        Hybrid strategic-investment vehicle with PBOC + MOF
+        coordination required for major redeployment. Long-horizon
+        external mandate (CIC International) plus state-directed
+        domestic financial holdings (Central Huijin) — flexible in
+        principle but politically constrained. 0.4 mid-tier.
+      liquidity: |
+        ~50% public-market (listed equities + bonds via CIC
+        International), ~50% private (Central Huijin domestic banking
+        stakes, alternative investments). Mid-liquidity.
+      transparency: |
+        Annual report publishes AUM and asset-class summary; holdings-
+        level disclosure limited to large public stakes (13F-equivalent
+        for U.S. holdings). LM index ~3-4.
+    sources:
+      - http://www.china-inv.cn/en/
+      - https://www.swfinstitute.org/profile/cic
+
+  - country: CN
+    fund: nssf
+    display_name: National Council for Social Security Fund (NSSF)
+    wikipedia:
+      fund_name: National Council for Social Security Fund
+    aum_usd: 400000000000
+    aum_year: 2023
+    aum_verified: true
+    classification:
+      access: 0.20
+      liquidity: 0.5
+      transparency: 0.4
+    rationale:
+      access: |
+        Pension-purpose: NSSF holdings are statutorily reserved for
+        social-security payment obligations. Withdrawals for
+        non-pension fiscal stabilization are not permitted under
+        current Chinese law. Maps to the 0.20 "statutorily-gated
+        long-horizon" tier added in Phase 1B (KIA-FGF analogue).
+      liquidity: |
+        Mix of listed equities, fixed income, and strategic
+        unlisted holdings (banking IPO seedings). Mid-liquidity.
+      transparency: |
+        Annual report publishes AUM totals + broad allocation; per-
+        holding disclosure limited.
+    sources:
+      - http://www.ssf.gov.cn/
+      - https://www.swfinstitute.org/profile/nssf
+
+  - country: CN
+    fund: safe-ic
+    display_name: SAFE Investment Company Limited
+    aum_usd: 417000000000
+    aum_year: 2024
+    aum_verified: true
+    classification:
+      access: 0.5
+      liquidity: 0.7
+      transparency: 0.3
+      excluded_overlaps_with_reserves: true
+    rationale:
+      access: |
+        Subsidiary of the State Administration of Foreign Exchange
+        (SAFE); manages a portion of China's FX reserves abroad.
+        Documentation-only — see excluded rationale.
+      liquidity: |
+        Predominantly listed equities + sovereign bonds (FX-reserve-
+        like portfolio composition).
+      transparency: |
+        Limited public disclosure; AUM tracked via SWFI third-party
+        estimates. LM index ~2.
+      excluded_overlaps_with_reserves: |
+        SAFE Investment Co's AUM is part of China's State Administration
+        of Foreign Exchange consolidated reserves. Including it in the
+        SWF buffer would double-count against `reserveAdequacy` /
+        `liquidReserveAdequacy`, both of which already capture
+        SAFE-managed FX reserves. Documentation-only entry; excluded
+        from buffer scoring.
+    sources:
+      - https://www.swfinstitute.org/profile/safe-investment-company
+
+  # ── Hong Kong ──
+  # HKMA Exchange Fund. Backing Portfolio is reserves-equivalent
+  # (already in reserveAdequacy); Investment Portfolio + Future Fund
+  # branch could be SWF-relevant but the consolidated AUM is
+  # reported as one figure. Excluded from buffer to avoid double-
+  # counting against HK monetary-authority reserves.
+  - country: HK
+    fund: hkma-ef
+    display_name: HKMA Exchange Fund
+    aum_usd: 498000000000
+    aum_year: 2024
+    aum_verified: true
+    classification:
+      access: 0.7
+      liquidity: 0.9
+      transparency: 0.7
+      excluded_overlaps_with_reserves: true
+    rationale:
+      access: |
+        Statutory mandate: maintain HKD peg + back banking system.
+        High access for monetary stabilization; stabilization is the
+        primary mandate. Documentation-only — see excluded rationale.
+      liquidity: |
+        Predominantly listed equities + sovereign bonds + USD cash.
+        Highly liquid by design (Backing Portfolio is reserves).
+      transparency: |
+        HKMA publishes monthly Exchange Fund balance sheet + annual
+        report. LM index ~8.
+      excluded_overlaps_with_reserves: |
+        HKMA Exchange Fund's Backing Portfolio is reserves-equivalent
+        and is captured under `reserveAdequacy` / `liquidReserveAdequacy`.
+        Investment Portfolio + Future Fund are not separately disclosed
+        at AUM level. To avoid double-counting, excluded from buffer.
+        Implementation-Time Unknown #2 in the parent plan flagged this
+        for follow-up: when HKMA discloses Investment Portfolio AUM
+        separately, the Investment Portfolio sleeve could be added as
+        a non-excluded entry.
+    sources:
+      - https://www.hkma.gov.hk/eng/data-publications-and-research/
+
+  # ── South Korea ──
+  - country: KR
+    fund: kic
+    display_name: Korea Investment Corporation (KIC)
+    wikipedia:
+      abbrev: KIC
+      fund_name: Korea Investment Corporation
+    aum_usd: 182000000000
+    aum_year: 2024
+    aum_verified: true
+    classification:
+      access: 0.3
+      liquidity: 0.7
+      transparency: 0.7
+    rationale:
+      access: |
+        Long-horizon mandate; KIC manages assets under MOEF + Bank
+        of Korea entrustment but does not have an explicit
+        stabilization mandate. Withdrawals require entrustment
+        agreement modification. Intergenerational tier.
+      liquidity: |
+        ~70% public-market (listed equities + sovereign + corporate
+        bonds), ~30% alternatives (private equity, real estate,
+        infrastructure, hedge funds).
+      transparency: |
+        IFSWF full member. Annual report published with detailed
+        asset allocation, returns, and partial holdings. LM index ~7.
+    sources:
+      - https://www.kic.kr/en/
+      - https://www.ifswf.org/member-profiles/korea-investment-corporation
+
+  # ── Oman ──
+  # OIA established 2020 by merging State General Reserve Fund (SGRF)
+  # + Oman Investment Fund (OIF). IFSWF member; rubric pre-flagged
+  # as "Shippable". Phase 1D addition.
+  - country: OM
+    fund: oia
+    display_name: Oman Investment Authority (OIA)
+    wikipedia:
+      abbrev: OIA
+      fund_name: Oman Investment Authority
+    aum_usd: 50000000000
+    aum_year: 2024
+    aum_verified: true
+    classification:
+      access: 0.5
+      liquidity: 0.5
+      transparency: 0.5
+    rationale:
+      access: |
+        Hybrid mandate: SGRF (now part of OIA) historically funded
+        budget shortfalls during oil downturns; OIF (now part of OIA)
+        was the strategic vehicle. Combined OIA inherits both;
+        deployment for fiscal support is mechanically possible but
+        coordinated through Ministry of Finance. Mid-tier hybrid.
+      liquidity: |
+        Mixed: external public-market (managed by external managers)
+        + domestic strategic stakes + alternative investments. Mid.
+      transparency: |
+        OIA publishes annual review post-2020 merger; IFSWF full
+        member. LM index ~6.
+    sources:
+      - https://www.oia.gov.om/
+      - https://www.ifswf.org/member-profiles/oman-investment-authority
+
+  # ── Bahrain ──
+  - country: BH
+    fund: mumtalakat
+    display_name: Mumtalakat Holding Company
+    wikipedia:
+      fund_name: Mumtalakat Holding Company
+    aum_usd: 19000000000
+    aum_year: 2024
+    aum_verified: true
+    classification:
+      access: 0.4
+      liquidity: 0.4
+      transparency: 0.6
+    rationale:
+      access: |
+        Bahraini state strategic-investment vehicle. Holdings
+        concentrated in domestic banking (BBK, NBB), aluminum
+        (ALBA), telecoms (Batelco). Deployable for fiscal support
+        via dividend flow but not via primary-asset liquidation
+        without disrupting strategic positions.
+      liquidity: |
+        Domestic strategic holdings + foreign-listed equity stakes.
+        Mid-low liquidity.
+      transparency: |
+        Audited annual report, asset-class disclosures. IFSWF
+        member. LM index ~7.
+    sources:
+      - https://www.mumtalakat.bh/en
+      - https://www.ifswf.org/member-profiles/mumtalakat-holding-company
+
+  # ── Timor-Leste ──
+  # Petroleum Fund of Timor-Leste — rubric flagged as
+  # "high-transparency textbook fit". High-transparency fund
+  # benchmark; Banco Central de Timor-Leste publishes monthly
+  # statements + annual reports. Phase 1D addition.
+  - country: TL
+    fund: petroleum-fund
+    display_name: Petroleum Fund of Timor-Leste
+    aum_usd: 22000000000
+    aum_year: 2024
+    aum_verified: true
+    classification:
+      access: 0.7
+      liquidity: 0.9
+      transparency: 0.9
+    rationale:
+      access: |
+        Norwegian-model petroleum fund: fiscal-rule-based annual
+        Estimated Sustainable Income (ESI) drawdown for budget
+        support. Statutorily codified deployment trigger; closer
+        to GPFG's rule-based stabilization than to KIA-FGF's
+        long-horizon lock. 0.7 explicit-stabilization tier.
+      liquidity: |
+        ~60% sovereign bonds, ~40% global equities. Highly liquid.
+      transparency: |
+        Monthly statements published by Banco Central de Timor-Leste;
+        annual report with full holdings disclosure. LM index ~9.
+    sources:
+      - https://www.bancocentral.tl/en/petroleum-fund
+      - https://www.swfinstitute.org/profile/petroleum-fund-of-timor-leste
+
+  # ── Australia ──
+  - country: AU
+    fund: future-fund
+    display_name: Australian Future Fund
+    wikipedia:
+      fund_name: Future Fund (Australia)
+    aum_usd: 192000000000
+    aum_year: 2024
+    aum_verified: true
+    classification:
+      access: 0.3
+      liquidity: 0.5
+      transparency: 0.8
+    rationale:
+      access: |
+        Established 2006 to fund Commonwealth of Australia
+        unfunded superannuation liabilities. Statutorily restricted
+        from drawdown until 2027 (originally — extended). Long-
+        horizon savings tier. Australian fiscal practice has used
+        Future Fund AUM as a buffer signal in budget discussions
+        but no operational drawdown has occurred for stabilization.
+      liquidity: |
+        Mixed: ~30% listed equities, ~25% alternatives, ~20% bonds,
+        ~15% real estate + infrastructure, ~10% private equity.
+        Mid-liquidity.
+      transparency: |
+        Quarterly portfolio updates with asset-class breakdowns;
+        annual report with detailed performance + holdings discussion.
+        LM index ~9.
+    sources:
+      - https://www.futurefund.gov.au/
+      - https://www.swfinstitute.org/profile/australia-future-fund
+
+# ────────────────────────────────────────────────────────────────────
+# CANDIDATES DEFERRED FROM V1
+# ────────────────────────────────────────────────────────────────────
+#
+# Funds considered but not scored in v1. Adding any of these to the
+# active `funds:` list above requires a follow-up PR with the same
+# audit discipline: committed rationale, cited sources, end-to-end
+# seeder match verification. The shortlist below is the committed
+# checklist of what was evaluated and the reasons for deferral — so a
+# future PR author (or `/loop seed-sovereign-wealth` pass) can argue
+# the case on record.
+#
+#   China:       CIC (China Investment Corporation), SAFE Investment Co.
+#                — size is consequential (both >$1T) but political-economy
+#                classification is contested, and Wikipedia's list
+#                article bundles both under PRC policy banks. Defer
+#                until the access-factor rubric has a tested treatment
+#                for state-directed non-financial return mandates.
+#   Hong Kong:   HKMA Exchange Fund — commonly classified as an FX
+#                reserve vehicle rather than an SWF. Out of scope for
+#                the fiscal-buffer dimension; revisit if the Exchange
+#                Fund's "Future Fund" branch expands materially.
+#   Russia:      National Wealth Fund (NWF) — sanctions + asset-freeze
+#                make `access` effectively 0. Include only after a
+#                regime change that restores deployable liquidity.
+#   Azerbaijan:  SOFAZ — well-documented, IFSWF member; shippable in
+#                the next manifest PR.
+#   Kazakhstan:  Samruk-Kazyna (domestic strategic), NFRK (oil
+#                stabilization). Score separately; NFRK is the cleaner
+#                fit for the dimension.
+#   Libya:       LIA — sanctions + asset-freeze; same exclusion as
+#                NWF. Revisit on sanctions change.
+#   Nigeria:     NSIA (Nigeria Sovereign Investment Authority) — IFSWF
+#                member, three-fund structure; shippable in a follow-up
+#                PR once the three sub-fund mandates are mapped.
+#   Angola:      FSDEA — governance concerns historically. Defer until
+#                audited AUM disclosure stabilizes.
+#   Oman:        OIA — merged SGRF + OIF 2020; IFSWF member. Shippable.
+#   Brunei:      BIA — opaque, LM index ~2. Transparency coefficient
+#                would pin at ~0.1, heavily dampening any contribution;
+#                ship only if the rationale holds up to audit.
+#   Timor-Leste: Petroleum Fund — high transparency, textbook fit.
+#   Iran:        NDFI (National Development Fund of Iran) — sanctions +
+#                access concerns; exclude from v1.
+#   Korea:       KIC — FX reserve investor rather than stabilization
+#                fund; edge case on whether it belongs in this dim.
+#   Australia:   Future Fund — well-documented, likely shippable.
+#   New Zealand: NZ Super Fund — well-documented, likely shippable.
+#   Ireland:     ISIF — strategic-development mandate; low access,
+#                medium liquidity, high transparency — composite
+#                probably mid-low.
+#   Chile:       ESSF (Economic and Social Stabilization Fund) —
+#                textbook stabilization fund; high priority for the
+#                next manifest PR.
+#   Panama, Trinidad & Tobago, Ghana, Senegal — smaller funds; include
+#   when the AUM / annual-imports ratio is non-negligible.

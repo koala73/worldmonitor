@@ -16,6 +16,7 @@ import { FirecrawlProvider } from '../acquisition/firecrawl.js';
 import type { AdapterContext } from '../adapters/types.js';
 import { upsertCanonicalProduct } from '../db/queries/products.js';
 import { getBasketItemId, getPinnedUrlsForRetailer, upsertProductMatch } from '../db/queries/matches.js';
+import { AUTO_MATCH_THRESHOLD, type ValidatorResult } from '../adapters/validator.js';
 
 const logger = {
   info: (msg: string, ...args: unknown[]) => console.log(`[scrape] ${msg}`, ...args),
@@ -144,6 +145,29 @@ export async function scrapeRetailer(slug: string) {
         // so this correctly distinguishes "pin worked" from "pin failed, Exa used instead".
         const wasDirectHit = isDirect && product.rawPayload.direct === true;
 
+        // Direct-hit validator enforcement — the pin path's common steady
+        // state. The legacy isTitlePlausible gate inside _extractFromUrl
+        // already let this hit through, so the strict validator here acts
+        // as a second opinion that specifically catches pins that have
+        // drifted onto the wrong product (e.g. "White Sugar 1kg" now
+        // resolving to "mango sugar baby india"). If the validator
+        // disagrees, skip the observation entirely and route this target
+        // through the existing pin-error counter so the pin soft-disables
+        // after repeated failures. Aggregates never see the bad price.
+        if (wasDirectHit) {
+          const v = product.rawPayload.validator as ValidatorResult | undefined;
+          if (v && !v.ok) {
+            logger.warn(
+              `  [${target.id}] pin validator reject — skipping observation, counting as pin error. reasons=${v.reasons.join(',')} score=${v.score.toFixed(2)} title="${product.rawTitle}"`,
+            );
+            errorsCount++;
+            if (pinnedProductId && pinnedMatchId) {
+              await handlePinError(pinnedProductId, pinnedMatchId, target.id);
+            }
+            continue;
+          }
+        }
+
         const productId = await upsertRetailerProduct({
           retailerId,
           retailerSku: product.retailerSku,
@@ -220,12 +244,31 @@ export async function scrapeRetailer(slug: string) {
               product.rawPayload.canonicalName as string,
             );
             if (basketItemId) {
+              // Use the validator result threaded through the adapter payload
+              // to pick the match state. No validator = legacy fallback at
+              // score 1.0 / auto (keeps the pre-validator adapters working
+              // unchanged). The strict path scores real hits and downgrades
+              // weak ones to 'candidate' so they never enter aggregates.
+              const validator = product.rawPayload.validator as ValidatorResult | undefined;
+              const hasValidator = validator != null;
+              const score = hasValidator ? validator.score : 1.0;
+              const status: 'auto' | 'candidate' =
+                !hasValidator || (validator.ok && score >= AUTO_MATCH_THRESHOLD) ? 'auto' : 'candidate';
+              const evidence = hasValidator
+                ? { validator: { reasons: validator.reasons, signals: validator.signals } }
+                : {};
+              if (status === 'candidate') {
+                logger.warn(
+                  `  [${target.id}] downgraded to candidate score=${score.toFixed(2)} reasons=${validator?.reasons.join(',')}`,
+                );
+              }
               await upsertProductMatch({
                 retailerProductId: productId,
                 canonicalProductId: canonicalId,
                 basketItemId,
-                matchScore: 1.0,
-                matchStatus: 'auto',
+                matchScore: score,
+                matchStatus: status,
+                evidence,
               });
             }
           } catch (matchErr) {

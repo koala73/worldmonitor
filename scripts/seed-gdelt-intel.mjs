@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed, sleep, verifySeedKey, writeExtraKey } from './_seed-utils.mjs';
+import { loadEnvFile, runSeed, sleep, verifySeedKey, writeExtraKey, extendExistingTtl } from './_seed-utils.mjs';
+import { fetchGdeltJson } from './_gdelt-fetch.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -50,14 +51,10 @@ async function fetchTopicArticles(topic) {
   url.searchParams.set('sort', 'date');
   url.searchParams.set('timespan', '24h');
 
-  const resp = await fetch(url.toString(), {
-    headers: { 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(15_000),
-  });
-
-  if (!resp.ok) throw new Error(`GDELT ${topic.id}: HTTP ${resp.status}`);
-
-  const data = await resp.json();
+  // fetchGdeltJson does direct retry + curl proxy multi-retry internally.
+  // Throws on exhaustion with HTTP 429 in message — outer fetchWithRetry's
+  // is429 substring match still works against the new error format.
+  const data = await fetchGdeltJson(url.toString(), { label: topic.id });
   const articles = (data.articles || [])
     .map(normalizeArticle)
     .filter(Boolean);
@@ -85,34 +82,43 @@ async function fetchTopicTimeline(topic, mode) {
   url.searchParams.set('timespan', '14d');
 
   try {
-    const resp = await fetch(url.toString(), {
-      headers: { 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(15_000),
+    // Best-effort: timelines degrade silently to [] on any failure.
+    // Pre-helper code did a single direct fetch with no retry. The
+    // article-fetch defaults (3 direct retries + 5 proxy attempts ≈ 90s)
+    // are too aggressive for discarded-on-failure data — would burn up to
+    // ~18 min/seed-run across 12 timeline calls under GDELT 429 storms.
+    //
+    // Compromise: 1 direct + 2 proxy (Decodo session rotation) attempts.
+    // Worst case ~25s per call × 12 = ~5 min ceiling. Gives timelines a
+    // realistic chance to succeed via proxy without blocking the seeder
+    // for the full article-fetch budget.
+    const data = await fetchGdeltJson(url.toString(), {
+      label: `${topic.id}/${mode}`,
+      maxRetries: 0,
+      proxyMaxAttempts: 2,
     });
-    if (!resp.ok) return [];
-    const data = await resp.json();
     return normalizeTimeline(data, mode === 'TimelineTone' ? 'tone' : 'value');
   } catch {
     return [];
   }
 }
 
-async function fetchWithRetry(topic, maxRetries = 3) {
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      return await fetchTopicArticles(topic);
-    } catch (err) {
-      const is429 = err.message?.includes('429');
-      if (!is429 || attempt === maxRetries) {
-        console.warn(`    ${topic.id}: giving up after ${attempt + 1} attempts (${err.message})`);
-        // exhausted:true only when 429 was the reason — post-exhaust cooldown is only relevant for rate-limit windows
-        return { id: topic.id, articles: [], fetchedAt: new Date().toISOString(), exhausted: is429 };
-      }
-      // Exponential backoff: 60s, 120s, 240s — GDELT rate limit windows exceed 50s
-      const backoff = 60_000 * Math.pow(2, attempt);
-      console.log(`    429 rate-limited, waiting ${backoff / 1000}s... (attempt ${attempt + 1}/${maxRetries + 1})`);
-      await sleep(backoff);
-    }
+async function fetchWithRetry(topic) {
+  // Pre-helper: this function did 3 outer retries with 60/120/240s backoff
+  // on top of fetchTopicArticles. Now fetchGdeltJson handles ALL retry +
+  // proxy multi-retry internally (3 direct retries + 5 curl proxy attempts
+  // per call), so the outer loop is gone. This function's only remaining
+  // job is to translate thrown exhaustion into the {exhausted, articles:[]}
+  // shape that fetchAllTopics expects (used to drive POST_EXHAUST_DELAY_MS
+  // cooldown decisions).
+  try {
+    return await fetchTopicArticles(topic);
+  } catch (err) {
+    // Helper's exhausted-throw includes "HTTP 429" in the message when
+    // 429 was the upstream signal — substring match preserved.
+    const is429 = err.message?.includes('429');
+    console.warn(`    ${topic.id}: giving up (${err.message})`);
+    return { id: topic.id, articles: [], fetchedAt: new Date().toISOString(), exhausted: is429 };
   }
 }
 
@@ -177,17 +183,43 @@ function publishTransform(data) {
   };
 }
 
-// Write per-topic tone/vol timeline keys (1h TTL) — separate from the 24h canonical key.
+// Write per-topic tone/vol timeline keys (TIMELINE_TTL, separate from the
+// 24h canonical key). When GDELT rate-limits a topic's TimelineTone/Vol
+// sub-fetch, _tone / _vol arrive empty for that topic — rather than let
+// the existing Redis key silently expire mid-cycle, extend its TTL with
+// EXPIRE so downstream consumers (cross-source-signals, etc.) keep seeing
+// the last successful snapshot until the next cron cycle refreshes it.
 async function afterPublish(data, _meta) {
+  const toneKeysToExtend = [];
+  const volKeysToExtend = [];
   for (const topic of data.topics ?? []) {
     const fetchedAt = topic.fetchedAt ?? data.fetchedAt;
+    const toneKey = `gdelt:intel:tone:${topic.id}`;
+    const volKey = `gdelt:intel:vol:${topic.id}`;
+
     if (Array.isArray(topic._tone) && topic._tone.length > 0) {
-      await writeExtraKey(`gdelt:intel:tone:${topic.id}`, { data: topic._tone, fetchedAt }, TIMELINE_TTL);
+      await writeExtraKey(toneKey, { data: topic._tone, fetchedAt }, TIMELINE_TTL);
+    } else {
+      toneKeysToExtend.push(toneKey);
     }
     if (Array.isArray(topic._vol) && topic._vol.length > 0) {
-      await writeExtraKey(`gdelt:intel:vol:${topic.id}`, { data: topic._vol, fetchedAt }, TIMELINE_TTL);
+      await writeExtraKey(volKey, { data: topic._vol, fetchedAt }, TIMELINE_TTL);
+    } else {
+      volKeysToExtend.push(volKey);
     }
   }
+  if (toneKeysToExtend.length > 0) {
+    console.log(`  Extending tone TTL for ${toneKeysToExtend.length} rate-limited topic(s): ${toneKeysToExtend.map((k) => k.split(':').pop()).join(', ')}`);
+    await extendExistingTtl(toneKeysToExtend, TIMELINE_TTL);
+  }
+  if (volKeysToExtend.length > 0) {
+    console.log(`  Extending vol TTL for ${volKeysToExtend.length} rate-limited topic(s): ${volKeysToExtend.map((k) => k.split(':').pop()).join(', ')}`);
+    await extendExistingTtl(volKeysToExtend, TIMELINE_TTL);
+  }
+}
+
+export function declareRecords(data) {
+  return Array.isArray(data?.topics) ? data.topics.length : 0;
 }
 
 if (process.argv[1]?.endsWith('seed-gdelt-intel.mjs')) {
@@ -197,6 +229,10 @@ if (process.argv[1]?.endsWith('seed-gdelt-intel.mjs')) {
     sourceVersion: 'gdelt-doc-v2',
     publishTransform,
     afterPublish,
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 420,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);

@@ -1,17 +1,14 @@
 #!/usr/bin/env node
+// rebuild-trigger: 2026-04-23
 
 import { readFileSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
-import * as net from 'node:net';
-import * as tls from 'node:tls';
-import * as https from 'node:https';
-import { promisify } from 'node:util';
-import { gunzip as _gunzip } from 'node:zlib';
 
-const gunzip = promisify(_gunzip);
+import { buildEnvelope, unwrapEnvelope } from './_seed-envelope-source.mjs';
+import { resolveRecordCount } from './_seed-contract.mjs';
 
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
 const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024; // 5MB per key
@@ -19,6 +16,58 @@ const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024; // 5MB per key
 const __seed_dirname = dirname(fileURLToPath(import.meta.url));
 
 export { CHROME_UA };
+
+/**
+ * Unwrap fetch / network errors so log lines surface the actual cause
+ * (DNS / TCP reset / TLS abort) instead of undici's bare "fetch failed".
+ * Pulls `err.cause.code` (preferred — `ENOTFOUND`, `ECONNRESET`, etc.),
+ * `err.cause.errno`, or `err.cause.message` in that order; falls back to
+ * the outer error message when no cause is attached. Used by seeders
+ * with multi-tier fallback chains (FATF, GDELT) where the failure mode
+ * dictates the next-tier decision and operators need to distinguish
+ * routing / DNS / handshake failures from per-host throttling.
+ *
+ * @param {unknown} err
+ * @returns {string}
+ */
+export function describeErr(err) {
+  if (!err) return 'unknown';
+  const cause = err.cause;
+  const causeCode = cause?.code || cause?.errno || cause?.message || (typeof cause === 'string' ? cause : null);
+  return causeCode ? `${err.message} (cause: ${causeCode})` : (err.message || String(err));
+}
+
+/**
+ * Return the bundle-run start timestamp injected by `_bundle-runner.mjs`
+ * as the `BUNDLE_RUN_STARTED_AT_MS` env var, or `null` when the seeder
+ * is running STANDALONE (manual invocation outside the bundle).
+ *
+ * All sibling seeders in a single bundle run share ONE value (captured
+ * at `runBundle` start, not at spawn time). Use this when a consumer
+ * seeder reads a peer's output inside the same bundle and must detect
+ * stale data from a previous bundle tick:
+ *
+ *   const bundleStartMs = getBundleRunStartedAtMs();
+ *   if (bundleStartMs != null && fetchedAt < bundleStartMs) {
+ *     // in-bundle context + peer did NOT run in THIS bundle → fallback
+ *   }
+ *
+ * The null-on-unset contract matters. Earlier designs fell back to
+ * `Date.now()` when the env was absent, which regressed standalone
+ * runs: a sibling seeder invoked manually just before the consumer
+ * wrote `fetchedAt = (process start - 5s)`, and the consumer's own
+ * `bundleStartMs = Date.now()` rejected that perfectly-fresh peer
+ * envelope as "stale". Returning null keeps the gate scoped to its
+ * real purpose: protecting against across-bundle-tick staleness,
+ * which has no analog outside a bundle context.
+ *
+ * @returns {number | null} epoch milliseconds when spawned by the
+ *   bundle runner; null when running standalone.
+ */
+export function getBundleRunStartedAtMs() {
+  const raw = Number(process.env.BUNDLE_RUN_STARTED_AT_MS);
+  return Number.isFinite(raw) && raw > 0 ? raw : null;
+}
 
 // Canonical FX fallback rates — used when Yahoo Finance returns null/zero.
 // Single source of truth shared by seed-bigmac, seed-grocery-basket, seed-fx-rates.
@@ -108,7 +157,12 @@ async function redisGet(url, token, key) {
   });
   if (!resp.ok) return null;
   const data = await resp.json();
-  return data.result ? JSON.parse(data.result) : null;
+  if (!data.result) return null;
+  // Envelope-aware: returns inner `data` for seeded keys written in contract
+  // mode, passes through legacy (bare-shape) values unchanged. Fixes WoW/cross-
+  // seed reads that were silently getting `{_seed, data}` after PR 2a enveloped
+  // the writer side of 91 canonical keys.
+  return unwrapEnvelope(JSON.parse(data.result)).data;
 }
 
 async function redisSet(url, token, key, value, ttlSeconds) {
@@ -166,16 +220,10 @@ export async function releaseLock(domain, runId) {
   }
 }
 
-export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds) {
+export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds, options = {}) {
   const { url, token } = getRedisCredentials();
   const runId = String(Date.now());
   const stagingKey = `${canonicalKey}:staging:${runId}`;
-
-  const payload = JSON.stringify(data);
-  const payloadBytes = Buffer.byteLength(payload, 'utf8');
-  if (payloadBytes > MAX_PAYLOAD_BYTES) {
-    throw new Error(`Payload too large: ${(payloadBytes / 1024 / 1024).toFixed(1)}MB > 5MB limit`);
-  }
 
   if (validateFn) {
     const valid = validateFn(data);
@@ -184,8 +232,22 @@ export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds) 
     }
   }
 
+  // When the seeder opts into the contract (options.envelopeMeta provided), wrap
+  // the payload in the seed envelope before publishing so the data key and its
+  // freshness metadata share one lifecycle. Legacy seeders pass no envelopeMeta
+  // and publish bare data, preserving pre-contract behavior. seed-meta:* keys
+  // are always kept bare (shouldEnvelopeKey invariant).
+  const payloadValue = options.envelopeMeta && shouldEnvelopeKey(canonicalKey)
+    ? buildEnvelope({ ...options.envelopeMeta, data })
+    : data;
+  const payload = JSON.stringify(payloadValue);
+  const payloadBytes = Buffer.byteLength(payload, 'utf8');
+  if (payloadBytes > MAX_PAYLOAD_BYTES) {
+    throw new Error(`Payload too large: ${(payloadBytes / 1024 / 1024).toFixed(1)}MB > 5MB limit`);
+  }
+
   // Write to staging key
-  await redisSet(url, token, stagingKey, data, 300); // 5 min staging TTL
+  await redisSet(url, token, stagingKey, payloadValue, 300); // 5 min staging TTL
 
   // Overwrite canonical key
   if (ttlSeconds) {
@@ -200,16 +262,64 @@ export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds) 
   return { payloadBytes, recordCount: Array.isArray(data) ? data.length : null };
 }
 
-export async function writeFreshnessMetadata(domain, resource, count, source) {
+export async function writeFreshnessMetadata(domain, resource, count, source, ttlSeconds, fetchedAtOverride) {
   const { url, token } = getRedisCredentials();
   const metaKey = `seed-meta:${domain}:${resource}`;
   const meta = {
-    fetchedAt: Date.now(),
+    // Default to now; callers that want to mirror an existing canonical
+    // envelope (validate-fail branch in runSeed) pass the canonical's
+    // original fetchedAt so health doesn't lie about freshness — see
+    // readCanonicalEnvelopeMeta() and the skipped-validate path below.
+    fetchedAt: typeof fetchedAtOverride === 'number' ? fetchedAtOverride : Date.now(),
     recordCount: count,
     sourceVersion: source || '',
   };
-  await redisSet(url, token, metaKey, meta, 86400 * 7); // 7 day TTL on metadata
+  // Use the data TTL if it exceeds 7 days so monthly/annual seeds don't lose
+  // their meta key before the health check maxStaleMin threshold is reached.
+  const metaTtl = Math.max(86400 * 7, ttlSeconds || 0);
+  await redisSet(url, token, metaKey, meta, metaTtl);
   return meta;
+}
+
+/**
+ * Read the canonical key's contract-mode envelope meta. Used by runSeed's
+ * validate-fail branch to mirror canonical state into seed-meta instead
+ * of overwriting it with recordCount=0 (which makes /api/health report
+ * EMPTY_DATA when the canonical key still holds last-good data — see
+ * PR #3581 for the production incident).
+ *
+ * Returns the {fetchedAt, recordCount, sourceVersion} block when canonicalKey
+ * is contract-mode (envelope dual-write) AND has a valid recordCount > 0.
+ * Returns null for legacy (bare-shape) keys, missing keys, parse errors,
+ * or zero envelopes — caller falls back to its existing default behavior.
+ *
+ * Defensive: any read/parse error → null. No throws bubble up.
+ */
+export async function readCanonicalEnvelopeMeta(canonicalKey) {
+  try {
+    const { url, token } = getRedisCredentials();
+    const resp = await fetch(`${url}/get/${encodeURIComponent(canonicalKey)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    if (!data || !data.result) return null;
+    let parsed;
+    try { parsed = JSON.parse(data.result); } catch { return null; }
+    if (!parsed || typeof parsed !== 'object') return null;
+    const seed = parsed._seed;
+    if (!seed || typeof seed !== 'object') return null;
+    if (typeof seed.fetchedAt !== 'number' || typeof seed.recordCount !== 'number') return null;
+    if (seed.recordCount <= 0) return null;
+    return {
+      fetchedAt: seed.fetchedAt,
+      recordCount: seed.recordCount,
+      sourceVersion: typeof seed.sourceVersion === 'string' ? seed.sourceVersion : '',
+    };
+  } catch {
+    return null;
+  }
 }
 
 export async function withRetry(fn, maxRetries = 3, delayMs = 1000) {
@@ -241,15 +351,43 @@ export function logSeedResult(domain, count, durationMs, extra = {}) {
   }));
 }
 
-export async function verifySeedKey(key) {
+/**
+ * Shared envelope-aware reader for cross-seed consumers (e.g. seed-forecasts
+ * reading ~40 migrated input keys, seed-chokepoint-flows reading portwatch,
+ * seed-thermal-escalation reading wildfire:fires). Returns the inner `data`
+ * payload for contract-mode writes; passes legacy bare-shape values through
+ * unchanged. Callers MUST NOT parse the envelope themselves.
+ */
+export async function readCanonicalValue(key) {
   const { url, token } = getRedisCredentials();
-  const data = await redisGet(url, token, key);
-  return data;
+  return redisGet(url, token, key);
 }
 
-export async function writeExtraKey(key, data, ttl) {
+export async function verifySeedKey(key) {
+  // redisGet() now unwraps envelopes internally, so callers that read migrated
+  // canonical keys (e.g. seed-climate-anomalies reading climate:zone-normals:v1,
+  // seed-thermal-escalation reading wildfire:fires:v1) see bare legacy-shape
+  // payloads regardless of whether the writer has migrated to contract mode.
   const { url, token } = getRedisCredentials();
-  const payload = JSON.stringify(data);
+  return redisGet(url, token, key);
+}
+
+/**
+ * Invariant: `seed-meta:*` keys MUST be bare-shape `{fetchedAt, recordCount, ...}`.
+ * Health + bundle runner + every legacy reader parses them as top-level.
+ * Enveloping them turns every downstream read into `{_seed, data}` which breaks
+ * the whole freshness-registry flow. Enforced at the helper boundary so future
+ * callers can't regress this by passing an envelopeMeta that happens to target
+ * a seed-meta key (seed-iea-oil-stocks' ANALYSIS_META_EXTRA_KEY did exactly that).
+ */
+export function shouldEnvelopeKey(key) {
+  return typeof key === 'string' && !key.startsWith('seed-meta:');
+}
+
+export async function writeExtraKey(key, data, ttl, envelopeMeta) {
+  const { url, token } = getRedisCredentials();
+  const value = envelopeMeta && shouldEnvelopeKey(key) ? buildEnvelope({ ...envelopeMeta, data }) : data;
+  const payload = JSON.stringify(value);
   const resp = await fetch(url, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -260,18 +398,23 @@ export async function writeExtraKey(key, data, ttl) {
   console.log(`  Extra key ${key}: written`);
 }
 
-export async function writeExtraKeyWithMeta(key, data, ttl, recordCount, metaKeyOverride) {
-  await writeExtraKey(key, data, ttl);
+export async function writeSeedMeta(dataKey, recordCount, metaKeyOverride, metaTtlSeconds) {
   const { url, token } = getRedisCredentials();
-  const metaKey = metaKeyOverride || `seed-meta:${key.replace(/:v\d+$/, '')}`;
+  const metaKey = metaKeyOverride || `seed-meta:${dataKey.replace(/:v\d+$/, '')}`;
   const meta = { fetchedAt: Date.now(), recordCount: recordCount ?? 0 };
+  const metaTtl = metaTtlSeconds ?? 86400 * 7;
   const resp = await fetch(url, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify(['SET', metaKey, JSON.stringify(meta), 'EX', 86400 * 7]),
+    body: JSON.stringify(['SET', metaKey, JSON.stringify(meta), 'EX', metaTtl]),
     signal: AbortSignal.timeout(5_000),
   });
   if (!resp.ok) console.warn(`  seed-meta ${metaKey}: write failed`);
+}
+
+export async function writeExtraKeyWithMeta(key, data, ttl, recordCount, metaKeyOverride, metaTtlSeconds) {
+  await writeExtraKey(key, data, ttl);
+  await writeSeedMeta(key, recordCount, metaKeyOverride, metaTtlSeconds);
 }
 
 export async function extendExistingTtl(keys, ttlSeconds = 600) {
@@ -308,13 +451,6 @@ export function sleep(ms) {
 }
 
 // ─── Proxy helpers for sources that block Railway container IPs ───
-// TODO: consolidate all fetch+proxy logic into a single proxyFetch(url, options) helper.
-// Current state: _seed-utils has fredFetchJson (fixed: direct-first, proxy fallback) and
-// curlFetch (curl-only, relay container). seed-disease-outbreaks.mjs and seed-fear-greed.mjs
-// each define their own local curlFetch that silently fails with ENOENT in seeder containers
-// (curl not in node:22-alpine). Each of those scripts should use a shared fetchWithProxyFallback
-// that tries native fetch first and falls back to httpsProxyFetchJson — same pattern as
-// fredFetchJson after this fix. Tracked: consolidate into one exported function.
 const { resolveProxyString, resolveProxyStringConnect } = createRequire(import.meta.url)('./_proxy-utils.cjs');
 
 export function resolveProxy() {
@@ -327,11 +463,15 @@ export function resolveProxyForConnect() {
 }
 
 // curl-based fetch; throws on non-2xx. Returns response body as string.
-// NOTE: requires curl binary — only available in Dockerfile.relay (apk add curl).
-// Do NOT call from standalone seed scripts; use fredFetchJson or httpsProxyFetchJson instead.
+// NOTE: requires curl binary — available in Dockerfile.relay (apk add curl) and Railway.
+// Prefer httpsProxyFetchJson (pure Node.js) when possible; use curlFetch when curl-specific
+// features are needed (e.g. --compressed, -L redirect following with proxy).
 export function curlFetch(url, proxyAuth, headers = {}) {
   const args = ['-sS', '--compressed', '--max-time', '15', '-L'];
-  if (proxyAuth) args.push('-x', `http://${proxyAuth}`);
+  if (proxyAuth) {
+    const proxyUrl = /^https?:\/\//i.test(proxyAuth) ? proxyAuth : `http://${proxyAuth}`;
+    args.push('-x', proxyUrl);
+  }
   for (const [k, v] of Object.entries(headers)) args.push('-H', `${k}: ${v}`);
   args.push('-w', '\n%{http_code}');
   args.push(url);
@@ -349,117 +489,158 @@ export function curlFetch(url, proxyAuth, headers = {}) {
 // Bare/undeclared-scheme proxies always use TLS (Decodo gate.decodo.com requires it).
 // Explicit http:// proxies use plain TCP to avoid breaking non-TLS setups.
 async function httpsProxyFetchJson(url, proxyAuth) {
-  const targetUrl = new URL(url);
+  const { buffer } = await httpsProxyFetchRaw(url, proxyAuth, { accept: 'application/json' });
+  return JSON.parse(buffer.toString('utf8'));
+}
 
-  // Detect whether the proxy URL specifies http:// explicitly (plain TCP) or not
-  // (bare format or https:// → TLS). User instruction: bare → always TLS.
-  const explicitHttp = proxyAuth.startsWith('http://') && !proxyAuth.startsWith('https://');
-  const useTls = !explicitHttp;
-
-  // Strip scheme prefix, parse user:pass@host:port.
-  let proxyAuthStr = proxyAuth;
-  if (proxyAuth.startsWith('https://') || proxyAuth.startsWith('http://')) {
-    const u = new URL(proxyAuth);
-    proxyAuthStr = (u.username ? `${decodeURIComponent(u.username)}:${decodeURIComponent(u.password)}@` : '') + `${u.hostname}:${u.port}`;
-  }
-
-  const atIdx = proxyAuthStr.lastIndexOf('@');
-  const credentials = atIdx >= 0 ? proxyAuthStr.slice(0, atIdx) : '';
-  const hostPort = atIdx >= 0 ? proxyAuthStr.slice(atIdx + 1) : proxyAuthStr;
-  const colonIdx = hostPort.lastIndexOf(':');
-  const proxyHost = hostPort.slice(0, colonIdx);
-  const proxyPort = parseInt(hostPort.slice(colonIdx + 1), 10);
-
-  // Step 1: Open socket to proxy (TLS for https:// or bare, plain TCP for http://).
-  const proxySock = await new Promise((resolve, reject) => {
-    if (useTls) {
-      const s = tls.connect({ host: proxyHost, port: proxyPort, servername: proxyHost, ALPNProtocols: ['http/1.1'] }, () => resolve(s));
-      s.on('error', reject);
-    } else {
-      const s = net.connect({ host: proxyHost, port: proxyPort }, () => resolve(s));
-      s.on('error', reject);
-    }
-  });
-
-  // Step 2: Send HTTP CONNECT manually (avoids Node.js http.request auto-setting
-  // Host to the proxy hostname, which Decodo rejects with SOCKS5 bytes).
-  const authHeader = credentials ? `\r\nProxy-Authorization: Basic ${Buffer.from(credentials).toString('base64')}` : '';
-  proxySock.write(`CONNECT ${targetUrl.hostname}:443 HTTP/1.1\r\nHost: ${targetUrl.hostname}:443${authHeader}\r\n\r\n`);
-
-  // Step 3: Buffer until the full CONNECT response headers arrive (\r\n\r\n).
-  // Using a single 'data' event is not safe — headers may arrive fragmented across
-  // multiple packets, leaving unread bytes that corrupt the subsequent TLS handshake.
-  await new Promise((resolve, reject) => {
-    let buf = '';
-    const onData = (chunk) => {
-      buf += chunk.toString('ascii');
-      if (!buf.includes('\r\n\r\n')) return;
-      proxySock.removeListener('data', onData);
-      const statusLine = buf.split('\r\n')[0];
-      if (!statusLine.startsWith('HTTP/1.1 200') && !statusLine.startsWith('HTTP/1.0 200')) {
-        proxySock.destroy();
-        return reject(Object.assign(new Error(`Proxy CONNECT: ${statusLine}`), { status: parseInt(statusLine.split(' ')[1]) || 0 }));
-      }
-      proxySock.pause();
-      resolve();
-    };
-    proxySock.on('data', onData);
-    proxySock.on('error', reject);
-  });
-
-  // Step 4: TLS over the proxy tunnel (TLS-in-TLS) to reach the target server.
-  const tlsSock = tls.connect({ socket: proxySock, servername: targetUrl.hostname, ALPNProtocols: ['http/1.1'] });
-  await new Promise((resolve, reject) => {
-    tlsSock.on('secureConnect', resolve);
-    tlsSock.on('error', reject);
-  });
-  proxySock.resume();
-
-  return new Promise((resolve, reject) => {
-    const timer = setTimeout(() => { tlsSock.destroy(); reject(new Error('FRED proxy fetch timeout')); }, 20000);
-    const fail = (e) => { clearTimeout(timer); tlsSock.destroy(); reject(e); };
-
-    https.request({
-      host: targetUrl.hostname,
-      path: targetUrl.pathname + targetUrl.search,
-      method: 'GET',
-      headers: { Accept: 'application/json', 'Accept-Encoding': 'gzip', 'User-Agent': CHROME_UA },
-      createConnection: () => tlsSock,
-    }, (resp) => {
-      clearTimeout(timer);
-      if (resp.statusCode < 200 || resp.statusCode >= 300) {
-        resp.resume();
-        return reject(Object.assign(new Error(`HTTP ${resp.statusCode}`), { status: resp.statusCode }));
-      }
-      const chunks = [];
-      resp.on('data', c => chunks.push(c));
-      resp.on('end', () => {
-        const body = Buffer.concat(chunks);
-        const isGzip = (resp.headers['content-encoding'] || '').includes('gzip');
-        (isGzip ? gunzip(body) : Promise.resolve(body))
-          .then(data => { try { resolve(JSON.parse(data.toString('utf8'))); } catch (e) { fail(e); } })
-          .catch(fail);
-      });
-      resp.on('error', fail);
-    }).on('error', fail).end();
-  });
+export async function httpsProxyFetchRaw(url, proxyAuth, { accept = '*/*', timeoutMs = 20_000, signal } = {}) {
+  const { proxyFetch, parseProxyConfig } = createRequire(import.meta.url)('./_proxy-utils.cjs');
+  const proxyConfig = parseProxyConfig(proxyAuth);
+  if (!proxyConfig) throw new Error('Invalid proxy auth string');
+  const result = await proxyFetch(url, proxyConfig, { accept, timeoutMs, signal, headers: { 'User-Agent': CHROME_UA } });
+  if (!result.ok) throw Object.assign(new Error(`HTTP ${result.status}`), { status: result.status });
+  return { buffer: result.buffer, contentType: result.contentType };
 }
 
 // Fetch JSON from a FRED URL, routing through proxy when available.
+// Proxy-first: FRED consistently blocks/throttles Railway datacenter IPs,
+// so try proxy first to avoid 20s timeout on every direct attempt.
 export async function fredFetchJson(url, proxyAuth) {
-  try {
-    const r = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(20_000) });
-    if (r.ok) return r.json();
-    throw Object.assign(new Error(`HTTP ${r.status}`), { status: r.status });
-  } catch (directErr) {
-    if (!proxyAuth) throw directErr;
-    console.warn(`  [fredFetch] direct failed (${directErr.message}) — retrying via proxy`);
+  if (proxyAuth) {
+    // Decodo proxy flaps on 5xx/522 — retry up to 3 times with backoff before falling back direct.
+    let lastProxyErr;
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        return await httpsProxyFetchJson(url, proxyAuth);
+      } catch (proxyErr) {
+        lastProxyErr = proxyErr;
+        const transient = /HTTP 5\d{2}|522|timeout|ECONNRESET|ETIMEDOUT|EAI_AGAIN/i.test(proxyErr.message || '');
+        if (attempt < 3 && transient) {
+          await new Promise((r) => setTimeout(r, 400 * attempt + Math.random() * 300));
+          continue;
+        }
+        break;
+      }
+    }
+    console.warn(`  [fredFetch] proxy failed after retries (${lastProxyErr?.message}) — retrying direct`);
     try {
-      return await httpsProxyFetchJson(url, proxyAuth);
-    } catch (proxyErr) {
-      throw Object.assign(new Error(`proxy: ${proxyErr.message}`), { cause: proxyErr });
+      const r = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(20_000) });
+      if (r.ok) return r.json();
+      throw Object.assign(new Error(`HTTP ${r.status}`), { status: r.status });
+    } catch (directErr) {
+      throw Object.assign(new Error(`direct: ${directErr.message}`), { cause: directErr });
     }
   }
+  const r = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(20_000) });
+  if (r.ok) return r.json();
+  throw Object.assign(new Error(`HTTP ${r.status}`), { status: r.status });
+}
+
+// Fetch JSON from an IMF DataMapper URL, direct-first with proxy fallback.
+// Direct timeout is short (10s) since IMF blocks Railway IPs with 403 quickly.
+export async function imfFetchJson(url, proxyAuth) {
+  try {
+    const r = await fetch(url, {
+      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
+      signal: AbortSignal.timeout(10_000),
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    return await r.json();
+  } catch (directErr) {
+    if (!proxyAuth) throw directErr;
+    console.warn(`  [IMF] Direct fetch failed (${directErr.message}); retrying via proxy`);
+    return httpsProxyFetchJson(url, proxyAuth);
+  }
+}
+
+// ---------------------------------------------------------------------------
+// IMF SDMX 3.0 API (api.imf.org) — replaces blocked DataMapper API
+// ---------------------------------------------------------------------------
+const IMF_SDMX_BASE = 'https://api.imf.org/external/sdmx/3.0';
+
+/**
+ * Normalize an SDMX 3.0 monthly period from `YYYY-MMM` (the on-the-wire
+ * shape, e.g. `2026-M03`) to ISO `YYYY-MM` so downstream date math —
+ * `period.split('-')`, `parseInt(month, 10)`, key comparisons — works
+ * without special-casing. The M-prefix silently corrupts these
+ * computations: `parseInt("M03", 10)` returns NaN, so 12-month delta
+ * lookups against `byMonth[priorMonth]` always miss.
+ *
+ * Other SDMX 3.0 frequencies pass through unchanged:
+ *   - Annual:    `YYYY`               (e.g. `2024`) — used by WEO/FM
+ *   - Quarterly: `YYYY-Q1..Q4`        (e.g. `2024-Q3`) — sortable as-is
+ *   - Daily:     `YYYY-MM-DD`         (e.g. `2024-03-15`) — used by ECB
+ *   - Monthly:   `YYYY-MMM` → YYYY-MM (e.g. `2026-M03` → `2026-03`)
+ *
+ * Future monthly/quarterly SDMX consumers MUST call this at ingest
+ * (right after reading `timeValues[parseInt(obsKey, 10)]`) so callers
+ * downstream can keep using simple string comparisons and ISO splits.
+ *
+ * @param {string|null|undefined} period
+ * @returns {string|null|undefined} Normalized period (or input unchanged for falsy/non-string)
+ */
+export function normalizeSdmxPeriod(period) {
+  if (typeof period !== 'string') return period;
+  return period.replace(/-M(\d{2})$/, '-$1');
+}
+
+/**
+ * IMF WEO/FM annual indicator fetcher. Hardcoded to annual frequency by URL
+ * construction (`*.${indicator}.A`) — period values come back as bare year
+ * strings (`"2024"`), so no SDMX-period normalization is required here.
+ *
+ * NOTE for future extensions: if you need IMF monthly or quarterly data
+ * (e.g. IRFCL, IFS, BOP), do NOT bolt frequency onto this helper — the
+ * dimension layout differs (e.g. IRFCL is 4-dim COUNTRY.INDICATOR.SECTOR.FREQUENCY,
+ * not WEO's 2-dim COUNTRY.INDICATOR). Roll a custom fetch and call
+ * `normalizeSdmxPeriod()` on every period before storing it as a key.
+ * See `scripts/seed-gold-cb-reserves.mjs::fetchIrfclMonthlySeries` for the
+ * canonical monthly pattern.
+ */
+export async function imfSdmxFetchIndicator(indicator, { database = 'WEO', years } = {}) {
+  const agencyMap = { WEO: 'IMF.RES', FM: 'IMF.FAD' };
+  const agency = agencyMap[database] || 'IMF.RES';
+  const url = `${IMF_SDMX_BASE}/data/dataflow/${agency}/${database}/+/*.${indicator}.A?dimensionAtObservation=TIME_PERIOD&attributes=dsd&measures=all`;
+
+  const json = await withRetry(async () => {
+    const r = await fetch(url, {
+      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!r.ok) throw new Error(`IMF SDMX ${indicator}: HTTP ${r.status}`);
+    return r.json();
+  }, 2, 2000);
+
+  const struct = json?.data?.structures?.[0];
+  const ds = json?.data?.dataSets?.[0];
+  if (!struct || !ds?.series) return {};
+
+  const countryDim = struct.dimensions.series.find(d => d.id === 'COUNTRY');
+  const countryDimPos = struct.dimensions.series.findIndex(d => d.id === 'COUNTRY');
+  const timeDim = struct.dimensions.observation.find(d => d.id === 'TIME_PERIOD');
+  if (!countryDim || countryDimPos === -1 || !timeDim) return {};
+
+  const countryValues = countryDim.values.map(v => v.id);
+  const timeValues = timeDim.values.map(v => v.value || v.id);
+  const yearSet = years ? new Set(years.map(String)) : null;
+
+  const result = {};
+  for (const [seriesKey, seriesData] of Object.entries(ds.series)) {
+    const keyParts = seriesKey.split(':');
+    const countryIdx = parseInt(keyParts[countryDimPos], 10);
+    const iso3 = countryValues[countryIdx];
+    if (!iso3) continue;
+
+    const byYear = {};
+    for (const [obsKey, obsVal] of Object.entries(seriesData.observations || {})) {
+      const year = timeValues[parseInt(obsKey, 10)];
+      if (!year || (yearSet && !yearSet.has(year))) continue;
+      const v = obsVal?.[0];
+      if (v != null) byYear[year] = parseFloat(v);
+    }
+    if (Object.keys(byYear).length > 0) result[iso3] = byYear;
+  }
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -670,10 +851,50 @@ export async function readSeedSnapshot(canonicalKey) {
     });
     if (!resp.ok) return null;
     const { result } = await resp.json();
-    return result ? JSON.parse(result) : null;
+    if (!result) return null;
+    // Envelope-aware: WoW/prev baselines (bigmac, grocery-basket, fear-greed)
+    // must see bare legacy-shape data whether the last write was pre- or post-
+    // contract-migration. unwrapEnvelope is a no-op on legacy values.
+    return unwrapEnvelope(JSON.parse(result)).data;
   } catch {
     return null;
   }
+}
+
+/**
+ * Resolve recordCount for runSeed's freshness metadata write.
+ *
+ * Resolution order:
+ *   1. opts.recordCount (function or number) — the seeder declared it explicitly
+ *   2. Auto-detect from a known shape (Array.isArray, .predictions, .events, ...)
+ *   3. payloadBytes > 0 → 1 (proven-payload fallback) + warn so the seeder author
+ *      adds an explicit opts.recordCount
+ *   4. 0
+ *
+ * The fallback exists because seeders publishing custom shapes would otherwise
+ * trigger phantom EMPTY_DATA in /api/health even though the payload is fully
+ * populated. See ~/.claude/skills/seed-recordcount-autodetect-phantom-empty.
+ *
+ * Pure function — extracted from runSeed for unit testing.
+ */
+export function computeRecordCount({ opts = {}, data, payloadBytes = 0, topicArticleCount, onPhantomFallback }) {
+  if (opts.recordCount != null) {
+    return typeof opts.recordCount === 'function' ? opts.recordCount(data) : opts.recordCount;
+  }
+  const detectedFromShape = Array.isArray(data)
+    ? data.length
+    : (topicArticleCount
+      ?? data?.predictions?.length
+      ?? data?.events?.length ?? data?.earthquakes?.length ?? data?.outages?.length
+      ?? data?.fireDetections?.length ?? data?.anomalies?.length ?? data?.threats?.length
+      ?? data?.quotes?.length ?? data?.stablecoins?.length
+      ?? data?.cables?.length);
+  if (detectedFromShape != null) return detectedFromShape;
+  if (payloadBytes > 0) {
+    if (typeof onPhantomFallback === 'function') onPhantomFallback();
+    return 1;
+  }
+  return 0;
 }
 
 export function parseYahooChart(data, symbol) {
@@ -698,13 +919,31 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     extraKeys,
     afterPublish,
     publishTransform,
+    declareRecords,        // new — contract opt-in. When present, runSeed enters
+                           // envelope-dual-write path: writes `{_seed, data}` to
+                           // canonicalKey alongside legacy `seed-meta:*` key.
+    sourceVersion,         // new — required when declareRecords is passed
+    schemaVersion,         // new — required when declareRecords is passed
+    zeroIsValid = false,   // new — when true, recordCount=0 is OK_ZERO, not RETRY
   } = opts;
+  const contractMode = typeof declareRecords === 'function';
+  if (contractMode) {
+    // Soft-warn (PR 2) on other mandatory contract fields; PR 3 hard-aborts.
+    const missing = [];
+    if (typeof sourceVersion !== 'string' || sourceVersion.trim() === '') missing.push('sourceVersion');
+    if (!Number.isInteger(schemaVersion) || schemaVersion < 1) missing.push('schemaVersion');
+    if (typeof opts.maxStaleMin !== 'number') missing.push('maxStaleMin');
+    if (missing.length) {
+      console.warn(`  [seed-contract] ${domain}:${resource} missing fields: ${missing.join(', ')} — required in PR 3`);
+    }
+  }
   const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const startMs = Date.now();
 
   console.log(`=== ${domain}:${resource} Seed ===`);
   console.log(`  Run ID:  ${runId}`);
   console.log(`  Key:     ${canonicalKey}`);
+  if (contractMode) console.log(`  Mode:    contract (envelope dual-write)`);
 
   // Acquire lock
   const lockResult = await acquireLockSafely(`${domain}:${resource}`, runId, lockTtlMs, {
@@ -718,11 +957,67 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     process.exit(0);
   }
 
+  // SIGTERM handler — installed BEFORE fetch and KEPT installed through
+  // publish. _bundle-runner.mjs sends SIGTERM when a section's timeout
+  // fires, then SIGKILL after KILL_GRACE_MS (5s). Without a publish-phase
+  // handler, a timeout that fires during atomicPublish or extendExistingTtl
+  // leaves seed-lock:<domain>:<resource> dangling for the full lockTtlMs
+  // (default 120s). For seeders bundled in fast-firing crons (e.g.
+  // seed-bis-lbs.mjs in seed-bundle-macro.mjs) the next tick can collide
+  // with that orphaned lock and SKIP repeatedly — the canonical key never
+  // gets published and /api/health reports `EMPTY`.
+  //
+  // The handler is phase-aware so it preserves the strict-floor invariant
+  // (emptyDataIsFailure seeders MUST NOT refresh seed-meta on validation
+  // reject — see imf-external Railway log 2026-04-13). During fetch we
+  // release lock + extend existing-data TTL so consumers keep seeing
+  // last-good. During publish we release lock ONLY: data was fetched but
+  // not yet stored; refreshing TTL here would silently re-anchor stale
+  // data and corrupt the strict-floor retry path.
+  //
+  // Releases run in parallel (disjoint keys; serializing compounds Upstash
+  // latency during the exact failure mode this handler exists to handle).
+  // Exit 143 = POSIX convention for SIGTERM-terminated process.
+  let currentPhase = 'fetch';
+  const sigTermHandler = async () => {
+    console.error(`  [${domain}:${resource}] SIGTERM received during ${currentPhase} phase — releasing lock runId=${runId}`);
+    try {
+      if (currentPhase === 'fetch') {
+        const ttl = ttlSeconds || 600;
+        const keys = [canonicalKey, `seed-meta:${domain}:${resource}`];
+        if (extraKeys) keys.push(...extraKeys.map((ek) => ek.key));
+        await Promise.allSettled([
+          releaseLock(`${domain}:${resource}`, runId),
+          extendExistingTtl(keys, ttl),
+        ]);
+      } else {
+        await releaseLock(`${domain}:${resource}`, runId);
+      }
+    } catch (err) {
+      console.error(`  [${domain}:${resource}] SIGTERM cleanup error: ${err?.message || err}`);
+    } finally {
+      process.exit(143);
+    }
+  };
+  process.once('SIGTERM', sigTermHandler);
+
   // Phase 1: Fetch data (graceful on failure — extend TTL on stale data)
   let data;
   try {
     data = await withRetry(fetchFn);
   } catch (err) {
+    // Keep the SIGTERM handler installed across the fetch-failure
+    // cleanup. Earlier code did `process.off('SIGTERM', sigTermHandler)`
+    // here, which opened a new leak window: SIGTERM during the
+    // releaseLock + extendExistingTtl awaits below would fall through
+    // to Node's default termination and could strand seed-lock or skip
+    // the TTL extension. Both paths (this catch's manual ops and the
+    // handler's parallel ops) are idempotent — the LUA verify-and-DEL
+    // releases at most once for a given runId, and EXPIRE pipelines on
+    // existing keys are safely re-runnable — so a race between the
+    // catch path and the handler converges on the correct end state.
+    // process.exit(0) below terminates before any pending SIGTERM can
+    // fire on the success path of cleanup.
     await releaseLock(`${domain}:${resource}`, runId);
     const durationMs = Date.now() - startMs;
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
@@ -736,42 +1031,160 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     console.log(`\n=== Failed gracefully (${Math.round(durationMs)}ms) ===`);
     process.exit(0);
   }
+  // Transition to publish phase — handler stays installed but switches
+  // behavior via the phase tracker.
+  currentPhase = 'publish';
 
   // Phase 2: Publish to Redis (rethrow on failure — data was fetched but not stored)
   try {
     const publishData = publishTransform ? publishTransform(data) : data;
-    const publishResult = await atomicPublish(canonicalKey, publishData, validateFn, ttlSeconds);
+
+    // In contract mode, resolve recordCount from declareRecords BEFORE publish so
+    // the envelope carries the correct state. RETRY-on-empty paths skip the
+    // publish entirely (leaving the previous envelope in place).
+    let contractState = null;   // 'OK' | 'OK_ZERO' | 'RETRY'
+    let contractRecordCount = null;
+    let envelopeMeta = null;
+    if (contractMode) {
+      try {
+        contractRecordCount = resolveRecordCount(declareRecords, publishData);
+      } catch (err) {
+        // Contract violation — declareRecords returned non-int / threw. HARD FAIL.
+        await releaseLock(`${domain}:${resource}`, runId);
+        console.error(`  CONTRACT VIOLATION: ${err.message || err}`);
+        process.exit(1);
+      }
+      if (contractRecordCount > 0) {
+        contractState = 'OK';
+      } else if (zeroIsValid) {
+        contractState = 'OK_ZERO';
+      } else {
+        contractState = 'RETRY';
+      }
+      if (contractState !== 'RETRY') {
+        envelopeMeta = {
+          fetchedAt: Date.now(),
+          recordCount: contractRecordCount,
+          sourceVersion: sourceVersion || '',
+          schemaVersion: schemaVersion || 1,
+          state: contractState,
+        };
+      }
+    }
+
+    // Contract RETRY on empty (no zeroIsValid) — skip publish, extend TTL, exit 0.
+    if (contractState === 'RETRY') {
+      const durationMs = Date.now() - startMs;
+      const keys = [canonicalKey, `seed-meta:${domain}:${resource}`];
+      if (extraKeys) keys.push(...extraKeys.map(ek => ek.key));
+      await extendExistingTtl(keys, ttlSeconds || 600);
+      console.log(`  RETRY: declareRecords returned 0 (zeroIsValid=false) — envelope unchanged, TTL extended, bundle will retry next cycle`);
+      console.log(`\n=== Done (${Math.round(durationMs)}ms, RETRY) ===`);
+      await releaseLock(`${domain}:${resource}`, runId);
+      process.exit(0);
+    }
+
+    const publishResult = await atomicPublish(canonicalKey, publishData, validateFn, ttlSeconds, { envelopeMeta });
     if (publishResult.skipped) {
       const durationMs = Date.now() - startMs;
       const keys = [canonicalKey, `seed-meta:${domain}:${resource}`];
       if (extraKeys) keys.push(...extraKeys.map(ek => ek.key));
       await extendExistingTtl(keys, ttlSeconds || 600);
-      // Always write seed-meta even when data is empty so health checks can
-      // distinguish "seeder ran but nothing to publish" from "seeder stopped".
-      await writeFreshnessMetadata(domain, resource, 0, opts.sourceVersion);
-      console.log(`  SKIPPED: validation failed (empty data) — seed-meta refreshed, existing cache TTL extended`);
+      const strictFailure = Boolean(opts.emptyDataIsFailure);
+      if (strictFailure) {
+        // Strict-floor seeders (e.g. IMF-External, floor=180 countries) treat
+        // empty data as a real upstream failure. Do NOT refresh seed-meta —
+        // letting fetchedAt stay stale lets bundles retry on their next cron
+        // fire and lets health flip to STALE_SEED. Writing fresh meta here
+        // caused imf-external to skip for the full 30-day interval after a
+        // single transient failure (Railway log 2026-04-13).
+        console.error(`  FAILURE: validation failed (empty data) — seed-meta NOT refreshed; bundle will retry next cycle`);
+      } else {
+        // Write seed-meta even when data is empty so health can distinguish
+        // "seeder ran but nothing to publish" from "seeder stopped" (quiet-
+        // period feeds: news, events, sparse indicators).
+        //
+        // BUT — when the canonical key still holds last-good contract-mode
+        // data with recordCount > 0, mirror its (fetchedAt, recordCount)
+        // into seed-meta instead of writing zero. This keeps /api/health
+        // reporting an accurate count when validateFn rejects a transient
+        // upstream blip (e.g. WB late-reporter variation that drops a
+        // resilience indicator from 153 → 149 countries when the floor was
+        // 150 — production incident 2026-05-03 for resilience:power-losses
+        // where canonical had 216 countries but seed-meta got overwritten
+        // with 0 → EMPTY_DATA). The mirrored fetchedAt is canonical's
+        // ORIGINAL fetch time, NOT now, so STALE_SEED still fires naturally
+        // once the canonical data ages past maxStaleMin — preserving the
+        // strict-floor honesty WITHOUT punishing a transient blip with a
+        // misleading zero.
+        //
+        // Falls back to writing 0 (legacy quiet-period behavior) when:
+        //   - canonical key is missing
+        //   - canonical envelope is malformed / legacy bare shape
+        //   - canonical envelope has recordCount <= 0
+        const canonicalMeta = await readCanonicalEnvelopeMeta(canonicalKey);
+        if (canonicalMeta) {
+          await writeFreshnessMetadata(
+            domain, resource, canonicalMeta.recordCount,
+            canonicalMeta.sourceVersion || opts.sourceVersion,
+            ttlSeconds,
+            canonicalMeta.fetchedAt,
+          );
+          console.log(
+            `  SKIPPED: validation failed (empty/partial fetch) — seed-meta mirrors canonical ` +
+            `(fetchedAt=${new Date(canonicalMeta.fetchedAt).toISOString()}, recordCount=${canonicalMeta.recordCount}); ` +
+            `existing cache TTL extended`,
+          );
+        } else {
+          await writeFreshnessMetadata(domain, resource, 0, opts.sourceVersion, ttlSeconds);
+          console.log(`  SKIPPED: validation failed (empty data) — seed-meta refreshed (recordCount=0), existing cache TTL extended`);
+        }
+      }
       console.log(`\n=== Done (${Math.round(durationMs)}ms, no write) ===`);
       await releaseLock(`${domain}:${resource}`, runId);
-      process.exit(0);
+      // Strict path exits non-zero so _bundle-runner counts it as failed++
+      // (otherwise the bundle summary hides upstream outages behind ran++).
+      process.exit(strictFailure ? 1 : 0);
     }
     const { payloadBytes } = publishResult;
     const topicArticleCount = Array.isArray(data?.topics)
       ? data.topics.reduce((n, t) => n + (t?.articles?.length || t?.events?.length || 0), 0)
       : undefined;
-    const recordCount = opts.recordCount != null
-      ? (typeof opts.recordCount === 'function' ? opts.recordCount(data) : opts.recordCount)
-      : Array.isArray(data) ? data.length
-      : (topicArticleCount
-        ?? data?.predictions?.length
-        ?? data?.events?.length ?? data?.earthquakes?.length ?? data?.outages?.length
-        ?? data?.fireDetections?.length ?? data?.anomalies?.length ?? data?.threats?.length
-        ?? data?.quotes?.length ?? data?.stablecoins?.length
-        ?? data?.cables?.length ?? 0);
+    const recordCount = contractMode
+      ? contractRecordCount
+      : computeRecordCount({
+          opts, data, payloadBytes, topicArticleCount,
+          onPhantomFallback: () => console.warn(
+            `  [recordCount] auto-detect did not match a known shape (payloadBytes=${payloadBytes}); falling back to 1. Add opts.recordCount to ${domain}:${resource} for accurate health metrics.`
+          ),
+        });
 
-    // Write extra keys (e.g., bootstrap hydration keys)
+    // Write extra keys (e.g., bootstrap hydration keys). In contract mode each
+    // extra key gets its own envelope; declareRecords may be per-key or reuse
+    // the canonical one.
     if (extraKeys) {
       for (const ek of extraKeys) {
-        await writeExtraKey(ek.key, ek.transform ? ek.transform(data) : data, ek.ttl || ttlSeconds);
+        const ekData = ek.transform ? ek.transform(data) : data;
+        let ekEnvelope = null;
+        if (contractMode) {
+          const ekDeclare = typeof ek.declareRecords === 'function' ? ek.declareRecords : declareRecords;
+          let ekCount;
+          try {
+            ekCount = resolveRecordCount(ekDeclare, ekData);
+          } catch (err) {
+            await releaseLock(`${domain}:${resource}`, runId);
+            console.error(`  CONTRACT VIOLATION on extraKey ${ek.key}: ${err.message || err}`);
+            process.exit(1);
+          }
+          ekEnvelope = {
+            fetchedAt: envelopeMeta.fetchedAt,
+            recordCount: ekCount,
+            sourceVersion: sourceVersion || '',
+            schemaVersion: schemaVersion || 1,
+            state: ekCount > 0 ? 'OK' : (zeroIsValid ? 'OK_ZERO' : 'OK'),
+          };
+        }
+        await writeExtraKey(ek.key, ekData, ek.ttl || ttlSeconds, ekEnvelope);
       }
     }
 
@@ -779,10 +1192,10 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       await afterPublish(data, { canonicalKey, ttlSeconds, recordCount, runId });
     }
 
-    const meta = await writeFreshnessMetadata(domain, resource, recordCount, opts.sourceVersion);
+    const meta = await writeFreshnessMetadata(domain, resource, recordCount, opts.sourceVersion, ttlSeconds);
 
     const durationMs = Date.now() - startMs;
-    logSeedResult(domain, recordCount, durationMs, { payloadBytes });
+    logSeedResult(domain, recordCount, durationMs, { payloadBytes, contractMode, state: contractState || 'LEGACY' });
 
     // Verify (best-effort: write already succeeded, don't fail the job on transient read issues)
     let verified = false;

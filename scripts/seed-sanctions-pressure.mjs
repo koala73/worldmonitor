@@ -545,6 +545,10 @@ function validate(data) {
   return (data?.totalCount ?? 0) > 0;
 }
 
+export function declareRecords(data) {
+  return data?.totalCount ?? 0;
+}
+
 runSeed('sanctions', 'pressure', CANONICAL_KEY, fetchSanctionsPressure, {
   ttlSeconds: CACHE_TTL,
   validateFn: validate,
@@ -593,4 +597,8 @@ runSeed('sanctions', 'pressure', CANONICAL_KEY, fetchSanctionsPressure, {
     delete data._entityIndex;
     delete data._countryCounts;
   },
+
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 720,
 });

@@ -10,9 +10,9 @@ const DOMAIN_EMPHASIS: Record<string, string> = {
 /** Context fields included per domain. 'all' includes everything. */
 const DOMAIN_SECTIONS: Record<string, Set<string>> = {
   market:   new Set(['relevantArticles', 'marketData', 'macroSignals', 'marketImplications', 'predictionMarkets', 'forecasts', 'liveHeadlines']),
-  geo:      new Set(['relevantArticles', 'worldBrief', 'riskScores', 'forecasts', 'predictionMarkets', 'countryBrief', 'liveHeadlines']),
+  geo:      new Set(['relevantArticles', 'worldBrief', 'riskScores', 'forecasts', 'predictionMarkets', 'countryBrief', 'energyExposure', 'coalSpotPrice', 'gasSpotTtf', 'liveHeadlines', 'gasStorage', 'energyIntelligence', 'productSupply', 'gasFlows', 'electricityMix']),
   military: new Set(['relevantArticles', 'worldBrief', 'riskScores', 'forecasts', 'countryBrief', 'liveHeadlines']),
-  economic: new Set(['relevantArticles', 'marketData', 'macroSignals', 'marketImplications', 'riskScores', 'liveHeadlines']),
+  economic: new Set(['relevantArticles', 'marketData', 'macroSignals', 'marketImplications', 'riskScores', 'energyExposure', 'coalSpotPrice', 'gasSpotTtf', 'liveHeadlines', 'gasStorage', 'electricityPrices', 'energyIntelligence', 'sprLevel', 'refineryUtil', 'productSupply', 'gasFlows', 'oilStocksCover', 'electricityMix']),
 };
 
 export function buildAnalystSystemPrompt(ctx: AnalystContext, domainFocus?: string): string {
@@ -42,6 +42,32 @@ export function buildAnalystSystemPrompt(ctx: AnalystContext, domainFocus?: stri
     contextSections.push(`## ${ctx.marketData}`);
   if (ctx.macroSignals && include('macroSignals'))
     contextSections.push(`## ${ctx.macroSignals}`);
+  if (ctx.energyExposure && include('energyExposure'))
+    contextSections.push(`## Energy Exposure\n${ctx.energyExposure}`);
+  if ((ctx.gasSpotTtf || ctx.coalSpotPrice) && (include('gasSpotTtf') || include('coalSpotPrice'))) {
+    const parts: string[] = [];
+    if (ctx.gasSpotTtf && include('gasSpotTtf')) parts.push(ctx.gasSpotTtf);
+    if (ctx.coalSpotPrice && include('coalSpotPrice')) parts.push(ctx.coalSpotPrice);
+    if (parts.length) contextSections.push(`## Energy Spot Prices\n${parts.join(' | ')}`);
+  }
+  if (ctx.gasStorage && include('gasStorage'))
+    contextSections.push(`## Gas Storage\n${ctx.gasStorage}`);
+  if (ctx.electricityPrices && include('electricityPrices'))
+    contextSections.push(`## Electricity Prices\n${ctx.electricityPrices}`);
+  if (ctx.sprLevel && include('sprLevel'))
+    contextSections.push(`## US Strategic Petroleum Reserve\n${ctx.sprLevel}`);
+  if (ctx.refineryUtil && include('refineryUtil'))
+    contextSections.push(`## Refinery Utilization\n${ctx.refineryUtil}`);
+  if (ctx.energyIntelligence && include('energyIntelligence'))
+    contextSections.push(`## Energy Intelligence\n${ctx.energyIntelligence}`);
+  {
+    const energyDataParts: string[] = [];
+    if (ctx.productSupply && include('productSupply')) energyDataParts.push(ctx.productSupply);
+    if (ctx.gasFlows && include('gasFlows')) energyDataParts.push(ctx.gasFlows);
+    if (ctx.oilStocksCover && include('oilStocksCover')) energyDataParts.push(ctx.oilStocksCover);
+    if (ctx.electricityMix && include('electricityMix')) energyDataParts.push(ctx.electricityMix);
+    if (energyDataParts.length) contextSections.push(`## Country Energy Data\n${energyDataParts.join('\n')}`);
+  }
   if (ctx.predictionMarkets && include('predictionMarkets'))
     contextSections.push(`## ${ctx.predictionMarkets}`);
   if (ctx.countryBrief && include('countryBrief'))

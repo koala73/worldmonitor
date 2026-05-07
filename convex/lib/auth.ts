@@ -1,3 +1,4 @@
+import { ConvexError } from "convex/values";
 import { QueryCtx, MutationCtx, ActionCtx } from "../_generated/server";
 
 export const DEV_USER_ID = "test-user-001";
@@ -55,7 +56,11 @@ export async function requireUserId(
 ): Promise<string> {
   const userId = await resolveUserId(ctx);
   if (!userId) {
-    throw new Error("Authentication required");
+    // Throw as ConvexError so Convex's server-side Sentry integration treats it
+    // as an expected business error (WebSocket/auth races on query fire) rather
+    // than reporting every unauthed query fire as an unhandled exception
+    // (WORLDMONITOR-N3).
+    throw new ConvexError("AUTH_REQUIRED");
   }
   return userId;
 }

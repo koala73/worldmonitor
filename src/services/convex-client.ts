@@ -33,7 +33,21 @@ export async function getConvexClient(): Promise<ConvexClient | null> {
   authReadyPromise = new Promise<void>((resolve) => { authReadyResolve = resolve; });
 
   const { ConvexClient: CC } = await import('convex/browser');
-  client = new CC(convexUrl);
+  try {
+    client = new CC(convexUrl);
+  } catch (err) {
+    // Firefox 149/Linux has been observed to reject the Convex constructor with
+    // "t is not a constructor" (WORLDMONITOR-N0/MX). Degrade to the null-client
+    // path instead of letting init error-bubble into Sentry — subscription features
+    // silently no-op, which matches the behavior when VITE_CONVEX_URL is unset.
+    // Also reset authReadyPromise: it was just created at the top of this function
+    // and would otherwise leave waitForConvexAuth() blocking for the full timeout
+    // for any future caller that doesn't pre-check the client is non-null.
+    console.warn('[convex-client] ConvexClient constructor rejected:', (err as Error).message);
+    authReadyPromise = null;
+    authReadyResolve = null;
+    return null;
+  }
   client.setAuth(
     async ({ forceRefreshToken }: { forceRefreshToken?: boolean } = {}) => {
       if (forceRefreshToken) {

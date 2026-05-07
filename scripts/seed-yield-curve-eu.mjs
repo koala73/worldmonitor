@@ -106,12 +106,20 @@ function validate(data) {
   return valid.length >= 4; // require at least 4 of 6 tenors
 }
 
+export function declareRecords(data) {
+  return Object.keys(data?.rates || {}).length;
+}
+
 if (process.argv[1]?.endsWith('seed-yield-curve-eu.mjs')) {
   runSeed('economic', 'yield-curve-eu', CANONICAL_KEY, fetchEcbYieldCurve, {
     validateFn: validate,
     ttlSeconds: TTL,
     sourceVersion: 'ecb-sdmx-v1',
     recordCount: (data) => Object.keys(data?.rates ?? {}).length,
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 4320,
   }).catch((err) => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + cause);

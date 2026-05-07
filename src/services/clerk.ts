@@ -108,17 +108,59 @@ export function openSignIn(): void {
   clerkInstance?.openSignIn({ appearance: getAppearance() });
 }
 
+/**
+ * Open the Clerk sign-up modal.
+ *
+ * No-op if Clerk is not loaded OR if sign-up is disabled in the Clerk
+ * dashboard. Symmetric with openSignIn — used by the "Create account"
+ * CTA in AuthHeaderWidget to make the register funnel an explicit
+ * first-class action rather than hiding it behind Clerk's sign-in
+ * footer link.
+ */
+export function openSignUp(): void {
+  clerkInstance?.openSignUp({ appearance: getAppearance() });
+}
+
+/**
+ * Epoch ms of the current Clerk user's account creation, or null when
+ * signed out. Read at the source rather than projected through
+ * getCurrentClerkUser() so analytics can gate fresh-signup detection on
+ * a timestamp without widening the UI projection.
+ */
+export function getClerkUserCreatedAt(): number | null {
+  const user = clerkInstance?.user;
+  const createdAt = user?.createdAt;
+  if (!createdAt) return null;
+  return createdAt instanceof Date ? createdAt.getTime() : Number(createdAt);
+}
+
 /** Sign out the current user. */
 export async function signOut(): Promise<void> {
   _cachedToken = null;
   _cachedTokenAt = 0;
+  _tokenInflight = null;
+  _tokenGen++;
   await clerkInstance?.signOut();
 }
 
-/** Clear the cached Clerk token (call when Convex signals a 401 via forceRefreshToken). */
+/**
+ * Clear the cached Clerk token. Call when:
+ *   - Convex signals a 401 via forceRefreshToken
+ *   - The observed Clerk user changes (account switch / sign-out)
+ *
+ * Bumping _tokenGen invalidates any promise that was already awaiting
+ * session.getToken() before the clear. When that promise resolves, its
+ * closure compares its captured generation to the current one and
+ * refuses to write the stale token into the cache or return it to its
+ * (now detached) callers. Without the generation check, an A→B switch
+ * mid-fetch would let the old promise land A's JWT as B's cache entry
+ * and poison the next 50 seconds of requests.
+ */
 export function clearClerkTokenCache(): void {
   _cachedToken = null;
   _cachedTokenAt = 0;
+  _tokenInflight = null;
+  _tokenGen++;
 }
 
 /**
@@ -128,10 +170,14 @@ export function clearClerkTokenCache(): void {
  *
  * Tokens are cached for 50s (Clerk tokens expire at 60s) with in-flight
  * deduplication to prevent concurrent panels from racing against Clerk.
+ * A monotonic _tokenGen counter lets clearClerkTokenCache() invalidate
+ * any mid-flight fetch whose result would otherwise paint the previous
+ * user's JWT into the new session.
  */
 let _cachedToken: string | null = null;
 let _cachedTokenAt = 0;
 let _tokenInflight: Promise<string | null> | null = null;
+let _tokenGen = 0;
 const TOKEN_CACHE_TTL_MS = 50_000;
 
 export async function getClerkToken(): Promise<string | null> {
@@ -140,14 +186,16 @@ export async function getClerkToken(): Promise<string | null> {
   }
   if (_tokenInflight) return _tokenInflight;
 
-  _tokenInflight = (async () => {
+  const myGen = _tokenGen;
+  const promise: Promise<string | null> = (async () => {
     if (!clerkInstance && PUBLISHABLE_KEY) {
       try { await initClerk(); } catch { /* Clerk load failed, proceed with null */ }
     }
+    // If a session invalidation fired during initClerk(), abandon.
+    if (myGen !== _tokenGen) return null;
     const session = clerkInstance?.session;
     if (!session) {
       console.warn(`[clerk] getClerkToken: no session (clerkInstance=${!!clerkInstance}, user=${!!clerkInstance?.user})`);
-      _tokenInflight = null;
       return null;
     }
     try {
@@ -155,6 +203,10 @@ export async function getClerkToken(): Promise<string | null> {
       // Fall back to the standard session token if the template isn't configured in Clerk.
       const token = (await session.getToken({ template: 'convex' }).catch(() => null))
         ?? await session.getToken().catch(() => null);
+      // If the session generation advanced while getToken() was in
+      // flight, this JWT belongs to the previous user. Drop it on the
+      // floor — do not cache, do not return.
+      if (myGen !== _tokenGen) return null;
       if (token) {
         _cachedToken = token;
         _cachedTokenAt = Date.now();
@@ -163,11 +215,17 @@ export async function getClerkToken(): Promise<string | null> {
     } catch {
       return null;
     } finally {
-      _tokenInflight = null;
+      // Only clear _tokenInflight if we are still the current generation.
+      // If clearClerkTokenCache() fired during our await it has already
+      // nulled _tokenInflight AND bumped _tokenGen; a newer caller may
+      // have assigned a fresh promise that we must not clobber.
+      if (myGen === _tokenGen) _tokenInflight = null;
     }
   })();
-  return _tokenInflight;
+  _tokenInflight = promise;
+  return promise;
 }
+
 
 /** Get current Clerk user metadata. Returns null if signed out. */
 export function getCurrentClerkUser(): { id: string; name: string; email: string; image: string | null; plan: 'free' | 'pro' } | null {
@@ -198,8 +256,15 @@ export function subscribeClerk(callback: () => void): () => void {
  */
 export function mountUserButton(el: HTMLDivElement): () => void {
   if (!clerkInstance) return () => {};
+  // Pin the after-sign-out destination to the origin root rather than
+  // `window.location.href`. The current page URL may carry stale
+  // checkout params (e.g., a subscription_id/status query that
+  // handleCheckoutReturn hasn't cleaned yet at sign-out time) or
+  // transient session fragments that shouldn't persist into a
+  // signed-out state. Origin-root is unambiguous and identical on
+  // Tauri desktop (same absolute URL resolves correctly in WKWebView).
   clerkInstance.mountUserButton(el, {
-    afterSignOutUrl: window.location.href,
+    afterSignOutUrl: new URL('/', window.location.origin).toString(),
     appearance: getAppearance(),
   });
   return () => clerkInstance?.unmountUserButton(el);

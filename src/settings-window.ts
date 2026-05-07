@@ -32,6 +32,11 @@ export function initSettingsWindow(): void {
     STORAGE_KEYS.panels,
     DEFAULT_PANELS
   );
+  // Prune stale panel keys not in current registry (e.g. renamed panels)
+  const validPanelKeys = new Set(Object.keys(ALL_PANELS));
+  for (const key of Object.keys(panelSettings)) {
+    if (!validPanelKeys.has(key) && key !== 'runtime-config') delete panelSettings[key];
+  }
   const variantDefaults = new Set(VARIANT_DEFAULTS[SITE_VARIANT] ?? []);
   for (const key of Object.keys(ALL_PANELS)) {
     if (!(key in panelSettings)) {

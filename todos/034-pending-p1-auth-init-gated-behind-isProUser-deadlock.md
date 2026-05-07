@@ -1,5 +1,5 @@
 ---
-status: pending
+status: done
 priority: p1
 issue_id: "034"
 tags: [code-review, bug, auth, clerk]

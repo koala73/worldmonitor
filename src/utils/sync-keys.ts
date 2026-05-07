@@ -18,6 +18,14 @@ export const CLOUD_SYNC_KEYS = [
   'wm-globe-visual-preset',
   'wm-stream-quality',
   'wm-ai-flow-cloud-llm',
+  // Sister AI-flow toggles. Without these, the user's "Browser Local Model"
+  // and "Headline Memory" prefs reset per variant and disagree with the
+  // already-synced Cloud AI toggle — e.g. Headline Memory left on for the
+  // full variant silently runs the local ML worker (HuggingFace model
+  // downloads) on every page load, but switching to the tech variant shows
+  // the toggle as off because tech-variant localStorage is fresh.
+  'wm-ai-flow-browser-model',
+  'wm-headline-memory',
   'wm-analysis-frameworks',
   'wm-panel-frameworks',
   // Provider-specific map themes (wm-map-theme:<provider>)

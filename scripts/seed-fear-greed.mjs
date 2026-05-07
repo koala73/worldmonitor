@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, runSeed, readSeedSnapshot, sleep, resolveProxyForConnect } from './_seed-utils.mjs';
+import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 loadEnvFile(import.meta.url);
 
 const _proxyAuth = resolveProxyForConnect();
@@ -138,7 +139,7 @@ async function readFred(seriesId) {
     if (!resp.ok) return null;
     const { result } = await resp.json();
     if (!result) return null;
-    const parsed = JSON.parse(result);
+    const parsed = unwrapEnvelope(JSON.parse(result)).data;
     const obs = parsed?.series?.observations;
     if (!obs?.length) return null;
     return obs;
@@ -156,7 +157,7 @@ async function readMacroSignals() {
     });
     if (!resp.ok) return null;
     const { result } = await resp.json();
-    return result ? JSON.parse(result) : null;
+    return result ? unwrapEnvelope(JSON.parse(result)).data : null;
   } catch { return null; }
 }
 
@@ -478,10 +479,18 @@ function validate(data) {
   return data?.composite?.score != null && data.timestamp != null;
 }
 
+export function declareRecords(data) {
+  return data?.composite?.score != null ? 1 : 0;
+}
+
 runSeed('market', 'fear-greed', FEAR_GREED_KEY, fetchAll, {
   validateFn: validate,
   ttlSeconds: FEAR_GREED_TTL,
   sourceVersion: 'yahoo-cboe-cnn-fred-v1',
+
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 720,
 }).catch((err) => {
   console.error('FATAL:', err.message || err);
   process.exit(1);

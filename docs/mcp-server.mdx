@@ -1,0 +1,244 @@
+---
+title: "MCP Server"
+description: "Connect Claude, Cursor, and other MCP-compatible clients to WorldMonitor's live global-intelligence data via the Model Context Protocol."
+---
+
+WorldMonitor exposes its intelligence stack as a [Model Context Protocol](https://modelcontextprotocol.io) server so any MCP-compatible client (Claude Desktop, Claude web, Cursor, MCP Inspector, custom agents) can pull live conflict, market, aviation, maritime, economic, and forecasting data directly into a model's context.
+
+<Info>
+The MCP server is gated behind **PRO**. Free-tier users see a 401 at the OAuth step.
+</Info>
+
+## Endpoints
+
+| Endpoint | Purpose |
+|----------|---------|
+| `https://worldmonitor.app/mcp` | JSON-RPC server (Streamable HTTP transport, protocol `2025-03-26`) |
+| `https://api.worldmonitor.app/api/oauth/register` | Dynamic Client Registration (RFC 7591) |
+| `https://api.worldmonitor.app/api/oauth/authorize` | OAuth 2.1 authorization endpoint (PKCE required) |
+| `https://api.worldmonitor.app/api/oauth/token` | Token endpoint (authorization_code + refresh_token) |
+| `https://api.worldmonitor.app/.well-known/oauth-authorization-server` | AS metadata (RFC 8414) |
+| `https://worldmonitor.app/.well-known/oauth-protected-resource` | Resource server metadata (RFC 9728) |
+
+Protocol version: `2025-03-26`. Server identifier: `worldmonitor` v1.0.
+
+## Authentication
+
+The MCP handler accepts two auth modes, in priority order:
+
+1. **OAuth 2.1 bearer** — `Authorization: Bearer <token>` where `<token>` was issued by `/api/oauth/token`. This is what Claude Desktop, claude.ai, Cursor, and MCP Inspector use automatically. Required for any client that hits MCP from a browser origin.
+2. **Direct API key** — `X-WorldMonitor-Key: wm_live_...`. Intended for server-side scripts, `curl`, and custom integrations. Do **not** send a `wm_live_...` key as a `Bearer` token — it will fail OAuth resolution and return `401 invalid_token`.
+
+Both modes check the same PRO entitlement before every tool call, so a subscription downgrade revokes access on the next request.
+
+### Redirect URI allowlist
+
+Dynamic Client Registration is **not** open to arbitrary HTTPS redirects. Only these prefixes are accepted:
+
+- `https://claude.ai/api/mcp/auth_callback`
+- `https://claude.com/api/mcp/auth_callback`
+- `http://localhost:<port>` / `http://127.0.0.1:<port>` (any port) — for Claude Code, MCP Inspector, local development
+
+Other clients must proxy via one of these redirects or run locally.
+
+### Token lifetimes
+
+| Artifact | TTL |
+|----------|-----|
+| Authorization code | 10 min |
+| Access token | 1 hour |
+| Refresh token | 7 days |
+| Registered client record | 90 days (sliding) |
+
+## Rate limits
+
+- **MCP calls**: 60 requests / minute / API key (sliding window)
+- **OAuth authorize**: 10 requests / minute / IP
+- **OAuth token**: 10 requests / minute / IP
+- **Dynamic registration**: 5 registrations / minute / IP
+
+Exceeding returns `429` with a `Retry-After` header.
+
+## Client setup
+
+### Claude Desktop
+
+`~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) — use the remote MCP entry:
+
+```json
+{
+  "mcpServers": {
+    "worldmonitor": {
+      "url": "https://worldmonitor.app/mcp"
+    }
+  }
+}
+```
+
+Claude Desktop handles the OAuth flow automatically on first connection.
+
+### Claude web (claude.ai)
+
+Add via **Settings → Connectors → Add custom connector**:
+
+- Name: `WorldMonitor`
+- URL: `https://worldmonitor.app/mcp`
+
+### Cursor
+
+`~/.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "worldmonitor": {
+      "url": "https://worldmonitor.app/mcp"
+    }
+  }
+}
+```
+
+### MCP Inspector (debugging)
+
+```bash
+npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
+```
+
+## Tool catalog
+
+The server exposes 32 tools. Most are cache-reads over pre-seeded Redis keys (sub-second). Six (`get_world_brief`, `get_country_brief`, `analyze_situation`, `generate_forecasts`, `search_flights`, `search_flight_prices_by_date`) call live LLMs or external APIs and are slower.
+
+### Markets & economy
+
+| Tool | Description |
+|------|-------------|
+| `get_market_data` | Equity quotes, commodity prices (incl. gold GC=F), crypto, FX, sector performance, ETF flows, Gulf markets. |
+| `get_economic_data` | Fed Funds, economic calendar, fuel prices, ECB FX, EU yield curve, earnings, COT, energy storage, BIS DSR + property prices. |
+| `get_country_macro` | IMF WEO bundle per country: inflation, current account, GDP/capita, unemployment, savings-investment gap (~210 countries). |
+| `get_eu_housing_cycle` | Eurostat annual house price index (prc_hpi_a), 10-yr sparkline per EU member + EA20/EU27. |
+| `get_eu_quarterly_gov_debt` | Eurostat quarterly gross government debt (%GDP), 8-quarter sparkline. |
+| `get_eu_industrial_production` | Eurostat monthly industrial production index, 12-month sparkline. |
+| `get_prediction_markets` | Active Polymarket event contracts with live probabilities. |
+| `get_supply_chain_data` | Dry bulk shipping stress index, customs flows, COMTRADE bilateral trade. |
+| `get_commodity_geo` | 71 major mining sites worldwide (gold, silver, copper, lithium, uranium, coal). |
+
+### Geopolitical & security
+
+| Tool | Description |
+|------|-------------|
+| `get_conflict_events` | Active UCDP/Iran conflicts, unrest w/ geo-coords, country risk scores. |
+| `get_country_risk` | CII score 0-100, component breakdown, travel advisory, OFAC exposure per country. Fast, no LLM. |
+| `get_military_posture` | Theater posture + military risk scores. |
+| `get_cyber_threats` | URLhaus/Feodotracker malware IOCs, CISA KEV catalog, active C2 infra. |
+| `get_sanctions_data` | OFAC SDN entities + sanctions pressure scores by country. |
+| `get_news_intelligence` | AI-classified threat news, GDELT signals, cross-source intel. |
+| `get_positive_events` | Diplomatic agreements, humanitarian aid, peace initiatives. |
+| `get_social_velocity` | Reddit r/worldnews + r/geopolitics top posts, engagement scores. |
+
+### Movement & infrastructure
+
+| Tool | Description |
+|------|-------------|
+| `get_airspace` | Live ADS-B over a country. Params: `iso2` (2-letter code), `filter` (`all`/`civilian`/`military`). |
+| `get_maritime_activity` | AIS density zones, dark-ship events, chokepoint congestion per country. Params: `iso2`. |
+| `get_aviation_status` | FAA airport delays, NOTAM closures, tracked military aircraft. |
+| `get_infrastructure_status` | Cloudflare Radar outages, major cloud/internet service status. |
+| `search_flights` | Google Flights real-time search between IATA airport codes on a specific date. |
+| `search_flight_prices_by_date` | Date-grid cheapest-day pricing across a range. |
+
+### Environment & science
+
+| Tool | Description |
+|------|-------------|
+| `get_natural_disasters` | USGS earthquakes, NASA FIRMS wildfires, hazard events. |
+| `get_climate_data` | Temp/precip anomalies vs WMO normals, GDACS/FIRMS alerts, Mauna Loa CO2, OpenAQ PM2.5, sea ice, ocean heat. |
+| `get_radiation_data` | Global radiation monitoring station readings + anomaly flags. |
+| `get_research_signals` | Emerging technology events from curated research feeds. |
+
+### AI intelligence (live LLM)
+
+| Tool | Description | Cost |
+|------|-------------|------|
+| `get_world_brief` | AI-summarized world intel brief. Optional `geo_context` param. | LLM |
+| `get_country_brief` | Per-country geopolitical + economic assessment. Supports analytical frameworks. | LLM |
+| `analyze_situation` | Ad-hoc geopolitical deduction from a query + context. Returns confidence + supporting signals. | LLM |
+| `generate_forecasts` | Fresh probability estimates (bypasses cache). | LLM |
+| `get_forecast_predictions` | Pre-computed cached forecasts. Fast. | Cache |
+
+## JSON-RPC example
+
+Server-side with a direct API key — send it as `X-WorldMonitor-Key`, **not** as a bearer token.
+
+```bash
+WM_KEY="wm_live_..."
+
+# 1. List tools
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+
+# 2. Call a cache tool
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":2,
+    "method":"tools/call",
+    "params":{"name":"get_country_risk","arguments":{"iso2":"IR"}}
+  }'
+```
+
+If instead you've completed the OAuth flow and hold an access token from `/api/oauth/token`, pass it as `Authorization: Bearer $TOKEN`.
+
+## Response shape
+
+Tool responses use the standard MCP content block format:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "result": {
+    "content": [
+      { "type": "text", "text": "{...json payload...}" }
+    ],
+    "isError": false
+  }
+}
+```
+
+For cache tools, the JSON payload includes `_meta` with `fetchedAt` and `staleness` so the model can reason about freshness.
+
+## Data freshness
+
+All cache tools read from Redis keys written by Railway cron seeders. Typical freshness:
+
+| Domain | Typical freshness |
+|--------|-------------------|
+| Markets (intraday) | 1–5 min |
+| Flights (ADS-B) | 1–3 min |
+| Maritime (AIS) | 5–15 min |
+| Conflicts / unrest | 15–60 min |
+| Macro / BIS / Eurostat | daily–weekly |
+| IMF WEO | monthly |
+
+Seed-level health per key: [status.worldmonitor.app](https://status.worldmonitor.app/).
+
+## Errors
+
+| Code | Meaning |
+|------|---------|
+| 401 | Invalid / missing token |
+| 403 | Token valid but account not PRO |
+| 404 | Unknown tool name |
+| 429 | Rate limited (60 req/min/key) |
+| 503 | Upstream cache unavailable |
+
+Tool-level errors return `isError: true` with a text explanation in `content`.
+
+## Related
+
+- [Authentication overview](/authentication) — browser vs bearer vs OAuth
+- [API Reference](/api-reference) — the same data via REST
+- [Pro features](https://www.worldmonitor.app/pro)

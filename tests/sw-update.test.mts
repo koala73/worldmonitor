@@ -1,6 +1,6 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { installSwUpdateHandler } from '../src/bootstrap/sw-update.ts';
+import { installSwUpdateHandler, OPEN_MODAL_SELECTOR } from '../src/bootstrap/sw-update.ts';
 
 // ---------------------------------------------------------------------------
 // Fake environment
@@ -17,14 +17,35 @@ interface FakeElement {
   remove(): void;
   addEventListener(type: string, cb: (e: unknown) => void): void;
   closest(sel: string): { dataset: Record<string, string> } | null;
+  checkVisibility?: () => boolean;
+  getClientRects?: () => { length: number };
 }
 
 interface FakeEnv {
   doc: {
     visibilityState: string;
     setVisibilityState(v: string): void;
+    /**
+     * Test helpers modeling modal state. Overlays in this app are always
+     * `position: fixed`, so `offsetParent` would always be null — the
+     * visibility check must use `checkVisibility()` or `getClientRects()`.
+     *
+     * - modalMounted: element exists in DOM (matches OPEN_MODAL_SELECTOR
+     *   on query). Maps to UnifiedSettings, SignalModal, etc. — mounted in
+     *   their constructor at app startup and left in the DOM for the whole
+     *   session.
+     * - modalVisible: the mounted element is actually rendered
+     *   (checkVisibility() returns true / getClientRects().length > 0).
+     * - supportsCheckVisibility: test knob. When false, the fake element
+     *   omits `checkVisibility` so the code path exercises the
+     *   `getClientRects` fallback (simulates Firefox <125 / Safari <17.4).
+     */
+    modalMounted: boolean;
+    modalVisible: boolean;
+    supportsCheckVisibility: boolean;
     _removedListeners: Array<() => void>;
     querySelector(sel: string): FakeElement | null;
+    querySelectorAll(sel: string): Iterable<FakeElement>;
     createElement(tag: string): FakeElement;
     body: {
       appendChild(el: FakeElement): void;
@@ -56,11 +77,43 @@ function makeEnv(): FakeEnv {
   const doc: FakeEnv['doc'] = {
     get visibilityState() { return _visibilityState; },
     setVisibilityState(v: string) { _visibilityState = v; },
+    modalMounted: false,
+    modalVisible: false,
+    supportsCheckVisibility: true,
     _removedListeners: [],
 
     querySelector(sel: string): FakeElement | null {
       if (sel === '.update-toast') return appendedToasts.at(-1) ?? null;
       return null;
+    },
+
+    querySelectorAll(sel: string): Iterable<FakeElement> {
+      if (sel !== OPEN_MODAL_SELECTOR) return [];
+      if (!this.modalMounted && !this.modalVisible) return [];
+      const isVisible = this.modalVisible;
+      const el: FakeElement = {
+        tagName: 'DIV',
+        className: '',
+        innerHTML: '',
+        dataset: {},
+        _listeners: {},
+        _removed: false,
+        classList: {
+          _classes: new Set<string>(),
+          add() {}, remove() {}, has() { return false; },
+        },
+        remove() {},
+        addEventListener() {},
+        closest() { return null; },
+        // getClientRects is always available in real DOM; mirrors `display: none`
+        // semantics (empty list when hidden, non-empty when rendered — including
+        // `position: fixed` elements, unlike offsetParent).
+        getClientRects: () => ({ length: isVisible ? 1 : 0 }),
+      };
+      if (this.supportsCheckVisibility) {
+        el.checkVisibility = () => isVisible;
+      }
+      return [el];
     },
 
     createElement(_tag: string): FakeElement {
@@ -467,6 +520,112 @@ describe('installSwUpdateHandler', () => {
     env.doc.setVisibilityState('hidden');
     fireVisibility(env);
     assert.equal(env.reloadCalls.length, 1, 'reload fires when user switches away after seeing toast');
+  });
+
+  // --- modal-open guard (preserves Clerk sign-in, Settings, etc.) ------------
+
+  it('does NOT auto-reload when a modal is visibly open while the tab goes hidden', () => {
+    env.swContainer._controller = {};
+    install(env);
+    env.swContainer.fireControllerChange();
+    fireDwellTimer(env); // autoReloadAllowed = true
+
+    // Simulate e.g. Clerk sign-in modal: mounted AND visible
+    env.doc.modalMounted = true;
+    env.doc.modalVisible = true;
+
+    env.doc.setVisibilityState('hidden');
+    fireVisibility(env);
+    assert.equal(env.reloadCalls.length, 0, 'reload suppressed while modal is visibly open');
+  });
+
+  it('DOES auto-reload when a modal is mounted-but-hidden (persistent dialog case)', () => {
+    // Regression for the reviewer-flagged bug: UnifiedSettings mounts in its
+    // constructor with role="dialog" and stays in the DOM forever, but hides
+    // via `display: none` when .active is not set. A naive selector match
+    // would permanently disable auto-reload. The visibility filter fixes this.
+    env.swContainer._controller = {};
+    install(env);
+    env.swContainer.fireControllerChange();
+    fireDwellTimer(env);
+
+    env.doc.modalMounted = true;   // dialog element exists in DOM
+    env.doc.modalVisible = false;  // but it's hidden (display:none, no .active)
+
+    env.doc.setVisibilityState('hidden');
+    fireVisibility(env);
+    assert.equal(env.reloadCalls.length, 1, 'reload fires when mounted dialog is not actually visible');
+  });
+
+  it('auto-reloads on the NEXT tab-hide after the modal is closed (hidden)', () => {
+    env.swContainer._controller = {};
+    install(env);
+    env.swContainer.fireControllerChange();
+    fireDwellTimer(env);
+
+    // First hide with modal visibly open — suppressed
+    env.doc.modalMounted = true;
+    env.doc.modalVisible = true;
+    env.doc.setVisibilityState('hidden');
+    fireVisibility(env);
+    assert.equal(env.reloadCalls.length, 0);
+
+    // User returns, closes modal (mounted stays true, visible goes false),
+    // then switches tabs again
+    env.doc.setVisibilityState('visible');
+    fireVisibility(env);
+    env.doc.modalVisible = false;
+    env.doc.setVisibilityState('hidden');
+    fireVisibility(env);
+    assert.equal(env.reloadCalls.length, 1, 'reload fires on next hide after modal hidden');
+  });
+
+  it('manual Reload button click still works while a modal is open', () => {
+    env.swContainer._controller = {};
+    install(env);
+    env.swContainer.fireControllerChange();
+
+    env.doc.modalMounted = true;
+    env.doc.modalVisible = true;
+    clickToastButton(env, 'reload');
+    assert.equal(env.reloadCalls.length, 1, 'explicit click bypasses modal guard');
+  });
+
+  // --- fallback path (engines without Element.checkVisibility) ---------------
+
+  it('uses getClientRects() fallback to detect visible position:fixed modals', () => {
+    // Regression for the reviewer-flagged fallback bug: offsetParent would
+    // return null for every `position: fixed` overlay even when visible, so
+    // on Firefox <125 / Safari <17.4 the modal guard would false-negative
+    // and auto-reload would wipe the Clerk sign-in. getClientRects() does
+    // not have this flaw.
+    env.swContainer._controller = {};
+    install(env);
+    env.swContainer.fireControllerChange();
+    fireDwellTimer(env);
+
+    env.doc.supportsCheckVisibility = false;   // simulate older engine
+    env.doc.modalMounted = true;
+    env.doc.modalVisible = true;                // fixed-position overlay, visible
+
+    env.doc.setVisibilityState('hidden');
+    fireVisibility(env);
+    assert.equal(env.reloadCalls.length, 0, 'reload suppressed via getClientRects fallback');
+  });
+
+  it('fallback path still allows reload when a mounted modal is hidden', () => {
+    env.swContainer._controller = {};
+    install(env);
+    env.swContainer.fireControllerChange();
+    fireDwellTimer(env);
+
+    env.doc.supportsCheckVisibility = false;
+    env.doc.modalMounted = true;
+    env.doc.modalVisible = false;               // display:none → getClientRects().length === 0
+
+    env.doc.setVisibilityState('hidden');
+    fireVisibility(env);
+    assert.equal(env.reloadCalls.length, 1, 'reload fires when fallback reports not-rendered');
   });
 
   // --- listener leak regression -----------------------------------------------

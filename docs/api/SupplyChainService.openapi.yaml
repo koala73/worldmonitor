@@ -53,6 +53,41 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/supply-chain/v1/get-chokepoint-history:
+        get:
+            tags:
+                - SupplyChainService
+            summary: GetChokepointHistory
+            description: |-
+                GetChokepointHistory returns transit-count history for a single chokepoint,
+                 loaded lazily on card expand. Keeps the status RPC compact (no 180-day
+                 history per chokepoint on every call).
+            operationId: GetChokepointHistory
+            parameters:
+                - name: chokepointId
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetChokepointHistoryResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
     /api/supply-chain/v1/get-critical-minerals:
         get:
             tags:
@@ -92,6 +127,625 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/GetShippingStressResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/supply-chain/v1/get-country-chokepoint-index:
+        get:
+            tags:
+                - SupplyChainService
+            summary: GetCountryChokepointIndex
+            description: GetCountryChokepointIndex returns per-chokepoint exposure scores for a country. PRO-gated.
+            operationId: GetCountryChokepointIndex
+            parameters:
+                - name: iso2
+                  in: query
+                  description: ISO 3166-1 alpha-2 country code (uppercase).
+                  required: false
+                  schema:
+                    type: string
+                - name: hs2
+                  in: query
+                  description: HS2 chapter (2-digit string). Defaults to "27" (energy/mineral fuels) when absent.
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetCountryChokepointIndexResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/supply-chain/v1/get-bypass-options:
+        get:
+            tags:
+                - SupplyChainService
+            summary: GetBypassOptions
+            description: GetBypassOptions returns ranked bypass corridors for a chokepoint. PRO-gated.
+            operationId: GetBypassOptions
+            parameters:
+                - name: chokepointId
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: cargoType
+                  in: query
+                  description: 'container | tanker | bulk | roro  (default: "container")'
+                  required: false
+                  schema:
+                    type: string
+                - name: closurePct
+                  in: query
+                  description: '0-100, percent of capacity blocked (default: 100)'
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetBypassOptionsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/supply-chain/v1/get-country-cost-shock:
+        get:
+            tags:
+                - SupplyChainService
+            summary: GetCountryCostShock
+            description: GetCountryCostShock returns cost shock and war risk data for a country+chokepoint. PRO-gated.
+            operationId: GetCountryCostShock
+            parameters:
+                - name: iso2
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: chokepointId
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: hs2
+                  in: query
+                  description: 'HS2 chapter (default: "27")'
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetCountryCostShockResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/supply-chain/v1/get-country-products:
+        get:
+            tags:
+                - SupplyChainService
+            summary: GetCountryProducts
+            description: GetCountryProducts returns the seeded bilateral-HS4 import basket for a country. PRO-gated.
+            operationId: GetCountryProducts
+            parameters:
+                - name: iso2
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetCountryProductsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/supply-chain/v1/get-multi-sector-cost-shock:
+        get:
+            tags:
+                - SupplyChainService
+            summary: GetMultiSectorCostShock
+            description: |-
+                GetMultiSectorCostShock returns per-sector cost-shock estimates for a
+                 country+chokepoint+closure-window. PRO-gated.
+            operationId: GetMultiSectorCostShock
+            parameters:
+                - name: iso2
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: chokepointId
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: closureDays
+                  in: query
+                  description: Closure-window duration in days. Server clamps to [1, 365]. Defaults to 30.
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetMultiSectorCostShockResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/supply-chain/v1/get-sector-dependency:
+        get:
+            tags:
+                - SupplyChainService
+            summary: GetSectorDependency
+            description: GetSectorDependency returns dependency flags and risk profile for a country+HS2 sector. PRO-gated.
+            operationId: GetSectorDependency
+            parameters:
+                - name: iso2
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: hs2
+                  in: query
+                  description: HS2 chapter code, e.g. "27" (mineral fuels), "85" (electronics)
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetSectorDependencyResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/supply-chain/v1/get-route-explorer-lane:
+        get:
+            tags:
+                - SupplyChainService
+            summary: GetRouteExplorerLane
+            description: |-
+                GetRouteExplorerLane returns the primary maritime route, chokepoint exposures,
+                 bypass options with geometry, war risk, and static transit/freight estimates for
+                 a country pair + HS2 + cargo type. PRO-gated. Wraps the route-intelligence vendor
+                 endpoint's compute with browser-callable auth and adds fields needed by the
+                 Route Explorer UI.
+            operationId: GetRouteExplorerLane
+            parameters:
+                - name: fromIso2
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: toIso2
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: hs2
+                  in: query
+                  description: HS2 chapter code, e.g. "27", "85"
+                  required: false
+                  schema:
+                    type: string
+                - name: cargoType
+                  in: query
+                  description: 'One of: container, tanker, bulk, roro'
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetRouteExplorerLaneResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/supply-chain/v1/get-route-impact:
+        get:
+            tags:
+                - SupplyChainService
+            summary: GetRouteImpact
+            operationId: GetRouteImpact
+            parameters:
+                - name: fromIso2
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: toIso2
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: hs2
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetRouteImpactResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/supply-chain/v1/list-pipelines:
+        get:
+            tags:
+                - SupplyChainService
+            summary: ListPipelines
+            description: |-
+                ListPipelines returns the curated oil & gas pipeline registry for the
+                 Energy Atlas PathLayer. Public badges are DERIVED from evidence bundles
+                 server-side and versioned (classifier_version). Free-tier; see
+                 docs/methodology/pipelines.mdx for data + classifier spec.
+            operationId: ListPipelines
+            parameters:
+                - name: commodityType
+                  in: query
+                  description: Filter to one commodity. Omit (or pass empty) to receive both.
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListPipelinesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/supply-chain/v1/get-pipeline-detail:
+        get:
+            tags:
+                - SupplyChainService
+            summary: GetPipelineDetail
+            description: |-
+                GetPipelineDetail returns a single pipeline with full evidence bundle
+                 + auto-revision-log entries. Loaded lazily on drawer open.
+            operationId: GetPipelineDetail
+            parameters:
+                - name: pipelineId
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetPipelineDetailResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/supply-chain/v1/list-storage-facilities:
+        get:
+            tags:
+                - SupplyChainService
+            summary: ListStorageFacilities
+            description: |-
+                ListStorageFacilities returns the curated strategic storage registry
+                 (UGS + SPR + LNG + crude tank farms) for the Energy Atlas DeckGL
+                 ScatterplotLayer. Public badges are DERIVED from evidence bundles
+                 server-side and versioned (classifier_version). Free-tier; see
+                 docs/methodology/storage.mdx.
+            operationId: ListStorageFacilities
+            parameters:
+                - name: facilityType
+                  in: query
+                  description: |-
+                    Filter to one facility type. Accepts:
+                       "ugs" | "spr" | "lng_export" | "lng_import" | "crude_tank_farm"
+                     Omit (or pass empty) to receive all types.
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListStorageFacilitiesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/supply-chain/v1/get-storage-facility-detail:
+        get:
+            tags:
+                - SupplyChainService
+            summary: GetStorageFacilityDetail
+            description: |-
+                GetStorageFacilityDetail returns a single facility with full evidence
+                 bundle + revision log. Loaded lazily on drawer open.
+            operationId: GetStorageFacilityDetail
+            parameters:
+                - name: facilityId
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetStorageFacilityDetailResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/supply-chain/v1/list-fuel-shortages:
+        get:
+            tags:
+                - SupplyChainService
+            summary: ListFuelShortages
+            description: |-
+                ListFuelShortages returns the global fuel-shortage alert registry.
+                 Curated-only: severity ("confirmed" | "watch") is a row field authored
+                 at curation time, not a client-side derivation. Free tier.
+            operationId: ListFuelShortages
+            parameters:
+                - name: country
+                  in: query
+                  description: Filter to one ISO 3166-1 alpha-2 country. Omit for global.
+                  required: false
+                  schema:
+                    type: string
+                - name: product
+                  in: query
+                  description: |-
+                    Filter to one product. Accepts: "petrol" | "diesel" | "jet" | "heating_oil".
+                     Omit for all products.
+                  required: false
+                  schema:
+                    type: string
+                - name: severity
+                  in: query
+                  description: 'Filter to one severity. Accepts: "confirmed" | "watch". Omit for both.'
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListFuelShortagesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/supply-chain/v1/get-fuel-shortage-detail:
+        get:
+            tags:
+                - SupplyChainService
+            summary: GetFuelShortageDetail
+            description: |-
+                GetFuelShortageDetail returns a single shortage with full evidence
+                 bundle and citation timeline. Loaded lazily on drawer open.
+            operationId: GetFuelShortageDetail
+            parameters:
+                - name: shortageId
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetFuelShortageDetailResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/supply-chain/v1/list-energy-disruptions:
+        get:
+            tags:
+                - SupplyChainService
+            summary: ListEnergyDisruptions
+            description: |-
+                ListEnergyDisruptions returns the disruption event log for pipelines
+                 and storage facilities. Supports per-asset or per-asset-type filtering
+                 so panel drawers can fetch a scoped timeline without pulling the
+                 full registry.
+            operationId: ListEnergyDisruptions
+            parameters:
+                - name: assetId
+                  in: query
+                  description: |-
+                    Filter to one asset. Omit for all. When set, also narrows to the
+                     matching asset_type if provided.
+                  required: false
+                  schema:
+                    type: string
+                - name: assetType
+                  in: query
+                  description: 'Filter to one asset type. Accepts: "pipeline" | "storage".'
+                  required: false
+                  schema:
+                    type: string
+                - name: ongoingOnly
+                  in: query
+                  description: If true, only return events with endAt empty (still ongoing).
+                  required: false
+                  schema:
+                    type: boolean
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ListEnergyDisruptionsResponse'
                 "400":
                     description: Validation error
                     content:
@@ -237,6 +891,23 @@ components:
                         $ref: '#/components/schemas/DirectionalDwt'
                 transitSummary:
                     $ref: '#/components/schemas/TransitSummary'
+                flowEstimate:
+                    $ref: '#/components/schemas/FlowEstimate'
+                warRiskTier:
+                    type: string
+                    enum:
+                        - WAR_RISK_TIER_UNSPECIFIED
+                        - WAR_RISK_TIER_NORMAL
+                        - WAR_RISK_TIER_ELEVATED
+                        - WAR_RISK_TIER_HIGH
+                        - WAR_RISK_TIER_CRITICAL
+                        - WAR_RISK_TIER_WAR_ZONE
+                    description: |-
+                        *
+                         War risk tier derived from Lloyd's JWC Listed Areas + OSINT threat classification.
+                         This is a FREE field (no PRO gate) — it exposes the existing server-internal
+                         threatLevel from ChokepointConfig, making it available to clients for badges
+                         and bypass corridor scoring.
         DirectionalDwt:
             type: object
             properties:
@@ -282,6 +953,13 @@ components:
                     type: string
                 riskReportAction:
                     type: string
+                dataAvailable:
+                    type: boolean
+                    description: |-
+                        False when the upstream portwatch/relay source did not return data for
+                         this chokepoint in the current cycle — the summary fields are zero-state
+                         fill, not a genuine "zero traffic" reading. Client should render a
+                         "transit data unavailable" indicator and skip stat/chart rendering.
         TransitDayCount:
             type: object
             properties:
@@ -299,6 +977,76 @@ components:
                 total:
                     type: integer
                     format: int32
+                container:
+                    type: integer
+                    format: int32
+                dryBulk:
+                    type: integer
+                    format: int32
+                generalCargo:
+                    type: integer
+                    format: int32
+                roro:
+                    type: integer
+                    format: int32
+                capContainer:
+                    type: number
+                    format: double
+                capDryBulk:
+                    type: number
+                    format: double
+                capGeneralCargo:
+                    type: number
+                    format: double
+                capRoro:
+                    type: number
+                    format: double
+                capTanker:
+                    type: number
+                    format: double
+        FlowEstimate:
+            type: object
+            properties:
+                currentMbd:
+                    type: number
+                    format: double
+                baselineMbd:
+                    type: number
+                    format: double
+                flowRatio:
+                    type: number
+                    format: double
+                disrupted:
+                    type: boolean
+                source:
+                    type: string
+                hazardAlertLevel:
+                    type: string
+                hazardAlertName:
+                    type: string
+        GetChokepointHistoryRequest:
+            type: object
+            properties:
+                chokepointId:
+                    type: string
+            required:
+                - chokepointId
+            description: |-
+                GetChokepointHistory returns the transit-count history for a single
+                 chokepoint. Loaded lazily on card expand so the main chokepoint-status
+                 response can stay compact (no 180-day history per chokepoint).
+        GetChokepointHistoryResponse:
+            type: object
+            properties:
+                chokepointId:
+                    type: string
+                history:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/TransitDayCount'
+                fetchedAt:
+                    type: string
+                    format: int64
         GetCriticalMineralsRequest:
             type: object
         GetCriticalMineralsResponse:
@@ -394,3 +1142,1203 @@ components:
                         format: double
                         description: 30-day price sparkline.
             description: ShippingStressCarrier represents market stress data for a carrier or shipping index.
+        GetCountryChokepointIndexRequest:
+            type: object
+            properties:
+                iso2:
+                    type: string
+                    pattern: ^[A-Z]{2}$
+                    description: ISO 3166-1 alpha-2 country code (uppercase).
+                hs2:
+                    type: string
+                    description: HS2 chapter (2-digit string). Defaults to "27" (energy/mineral fuels) when absent.
+            required:
+                - iso2
+            description: GetCountryChokepointIndexRequest specifies the country and optional HS2 chapter.
+        GetCountryChokepointIndexResponse:
+            type: object
+            properties:
+                iso2:
+                    type: string
+                    description: ISO 3166-1 alpha-2 country code echoed from the request.
+                hs2:
+                    type: string
+                    description: HS2 chapter used for the computation.
+                exposures:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ChokepointExposureEntry'
+                primaryChokepointId:
+                    type: string
+                    description: Canonical ID of the chokepoint with the highest exposure score.
+                vulnerabilityIndex:
+                    type: number
+                    format: double
+                    description: Composite vulnerability index 0–100 (weighted sum of top-3 exposures).
+                fetchedAt:
+                    type: string
+                    description: ISO timestamp of when this data was last seeded.
+            description: GetCountryChokepointIndexResponse returns exposure scores for all relevant chokepoints.
+        ChokepointExposureEntry:
+            type: object
+            properties:
+                chokepointId:
+                    type: string
+                    description: Canonical chokepoint ID from the chokepoint registry.
+                chokepointName:
+                    type: string
+                    description: Human-readable chokepoint name.
+                exposureScore:
+                    type: number
+                    format: double
+                    description: Exposure score 0–100; higher = more dependent on this chokepoint.
+                coastSide:
+                    type: string
+                    description: Which ocean/basin side the country's ports face (atlantic, pacific, indian, med, multi, landlocked).
+                shockSupported:
+                    type: boolean
+                    description: Whether the shock model is supported for this chokepoint + hs2 combination.
+            description: ChokepointExposureEntry holds per-chokepoint exposure data for a country.
+        GetBypassOptionsRequest:
+            type: object
+            properties:
+                chokepointId:
+                    type: string
+                cargoType:
+                    type: string
+                    description: 'container | tanker | bulk | roro  (default: "container")'
+                closurePct:
+                    type: integer
+                    format: int32
+                    description: '0-100, percent of capacity blocked (default: 100)'
+            required:
+                - chokepointId
+        GetBypassOptionsResponse:
+            type: object
+            properties:
+                chokepointId:
+                    type: string
+                cargoType:
+                    type: string
+                closurePct:
+                    type: integer
+                    format: int32
+                options:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/BypassOption'
+                fetchedAt:
+                    type: string
+                primaryChokepointWarRiskTier:
+                    type: string
+                    enum:
+                        - WAR_RISK_TIER_UNSPECIFIED
+                        - WAR_RISK_TIER_NORMAL
+                        - WAR_RISK_TIER_ELEVATED
+                        - WAR_RISK_TIER_HIGH
+                        - WAR_RISK_TIER_CRITICAL
+                        - WAR_RISK_TIER_WAR_ZONE
+                    description: |-
+                        *
+                         War risk tier derived from Lloyd's JWC Listed Areas + OSINT threat classification.
+                         This is a FREE field (no PRO gate) — it exposes the existing server-internal
+                         threatLevel from ChokepointConfig, making it available to clients for badges
+                         and bypass corridor scoring.
+        BypassOption:
+            type: object
+            properties:
+                id:
+                    type: string
+                name:
+                    type: string
+                type:
+                    type: string
+                addedTransitDays:
+                    type: integer
+                    format: int32
+                addedCostMultiplier:
+                    type: number
+                    format: double
+                capacityConstraintTonnage:
+                    type: string
+                    format: int64
+                suitableCargoTypes:
+                    type: array
+                    items:
+                        type: string
+                activationThreshold:
+                    type: string
+                waypointChokepointIds:
+                    type: array
+                    items:
+                        type: string
+                liveScore:
+                    type: number
+                    format: double
+                bypassWarRiskTier:
+                    type: string
+                    enum:
+                        - WAR_RISK_TIER_UNSPECIFIED
+                        - WAR_RISK_TIER_NORMAL
+                        - WAR_RISK_TIER_ELEVATED
+                        - WAR_RISK_TIER_HIGH
+                        - WAR_RISK_TIER_CRITICAL
+                        - WAR_RISK_TIER_WAR_ZONE
+                    description: |-
+                        *
+                         War risk tier derived from Lloyd's JWC Listed Areas + OSINT threat classification.
+                         This is a FREE field (no PRO gate) — it exposes the existing server-internal
+                         threatLevel from ChokepointConfig, making it available to clients for badges
+                         and bypass corridor scoring.
+                notes:
+                    type: string
+        GetCountryCostShockRequest:
+            type: object
+            properties:
+                iso2:
+                    type: string
+                    pattern: ^[A-Z]{2}$
+                chokepointId:
+                    type: string
+                hs2:
+                    type: string
+                    description: 'HS2 chapter (default: "27")'
+            required:
+                - iso2
+                - chokepointId
+        GetCountryCostShockResponse:
+            type: object
+            properties:
+                iso2:
+                    type: string
+                chokepointId:
+                    type: string
+                hs2:
+                    type: string
+                supplyDeficitPct:
+                    type: number
+                    format: double
+                    description: Average refined-product supply deficit % under full closure (Gasoline/Diesel/Jet fuel/LPG average; HS 27 only)
+                coverageDays:
+                    type: integer
+                    format: int32
+                    description: Energy stockpile coverage in days (IEA data, HS 27 only; 0 for non-energy sectors or net exporters)
+                warRiskPremiumBps:
+                    type: integer
+                    format: int32
+                    description: War risk insurance premium in basis points for this chokepoint
+                warRiskTier:
+                    type: string
+                    enum:
+                        - WAR_RISK_TIER_UNSPECIFIED
+                        - WAR_RISK_TIER_NORMAL
+                        - WAR_RISK_TIER_ELEVATED
+                        - WAR_RISK_TIER_HIGH
+                        - WAR_RISK_TIER_CRITICAL
+                        - WAR_RISK_TIER_WAR_ZONE
+                    description: |-
+                        *
+                         War risk tier derived from Lloyd's JWC Listed Areas + OSINT threat classification.
+                         This is a FREE field (no PRO gate) — it exposes the existing server-internal
+                         threatLevel from ChokepointConfig, making it available to clients for badges
+                         and bypass corridor scoring.
+                hasEnergyModel:
+                    type: boolean
+                    description: Whether supply_deficit_pct and coverage_days are modelled (true) or unavailable (false)
+                unavailableReason:
+                    type: string
+                    description: Null/unavailable explanation for non-energy sectors
+                fetchedAt:
+                    type: string
+        GetCountryProductsRequest:
+            type: object
+            properties:
+                iso2:
+                    type: string
+                    pattern: ^[A-Z]{2}$
+            required:
+                - iso2
+        GetCountryProductsResponse:
+            type: object
+            properties:
+                iso2:
+                    type: string
+                products:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CountryProduct'
+                fetchedAt:
+                    type: string
+                    description: ISO timestamp from the seeded payload (empty when no data is cached).
+        CountryProduct:
+            type: object
+            properties:
+                hs4:
+                    type: string
+                description:
+                    type: string
+                totalValue:
+                    type: number
+                    format: double
+                topExporters:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ProductExporter'
+                year:
+                    type: integer
+                    format: int32
+        ProductExporter:
+            type: object
+            properties:
+                partnerCode:
+                    type: integer
+                    format: int32
+                partnerIso2:
+                    type: string
+                value:
+                    type: number
+                    format: double
+                share:
+                    type: number
+                    format: double
+        GetMultiSectorCostShockRequest:
+            type: object
+            properties:
+                iso2:
+                    type: string
+                    pattern: ^[A-Z]{2}$
+                chokepointId:
+                    type: string
+                closureDays:
+                    type: integer
+                    format: int32
+                    description: Closure-window duration in days. Server clamps to [1, 365]. Defaults to 30.
+            required:
+                - iso2
+                - chokepointId
+        GetMultiSectorCostShockResponse:
+            type: object
+            properties:
+                iso2:
+                    type: string
+                chokepointId:
+                    type: string
+                closureDays:
+                    type: integer
+                    format: int32
+                    description: Server-clamped closure-window duration in days (1-365).
+                warRiskTier:
+                    type: string
+                    enum:
+                        - WAR_RISK_TIER_UNSPECIFIED
+                        - WAR_RISK_TIER_NORMAL
+                        - WAR_RISK_TIER_ELEVATED
+                        - WAR_RISK_TIER_HIGH
+                        - WAR_RISK_TIER_CRITICAL
+                        - WAR_RISK_TIER_WAR_ZONE
+                    description: |-
+                        *
+                         War risk tier derived from Lloyd's JWC Listed Areas + OSINT threat classification.
+                         This is a FREE field (no PRO gate) — it exposes the existing server-internal
+                         threatLevel from ChokepointConfig, making it available to clients for badges
+                         and bypass corridor scoring.
+                sectors:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/MultiSectorCostShock'
+                totalAddedCost:
+                    type: number
+                    format: double
+                    description: Sum of total_cost_shock across all sectors.
+                fetchedAt:
+                    type: string
+                unavailableReason:
+                    type: string
+                    description: Populated when no seeded import data is available for the country.
+        MultiSectorCostShock:
+            type: object
+            properties:
+                hs2:
+                    type: string
+                    description: HS2 chapter code (e.g. "27" mineral fuels, "85" electronics).
+                hs2Label:
+                    type: string
+                    description: Friendly chapter label (e.g. "Energy", "Electronics").
+                importValueAnnual:
+                    type: number
+                    format: double
+                    description: Total annual import value (USD) for this sector.
+                freightAddedPctPerTon:
+                    type: number
+                    format: double
+                    description: Bypass-corridor freight uplift fraction (0.10 == +10% per ton).
+                warRiskPremiumBps:
+                    type: integer
+                    format: int32
+                    description: War-risk insurance premium (basis points) sourced from the chokepoint tier.
+                addedTransitDays:
+                    type: integer
+                    format: int32
+                    description: Bypass-corridor transit penalty (informational).
+                totalCostShockPerDay:
+                    type: number
+                    format: double
+                totalCostShock30Days:
+                    type: number
+                    format: double
+                totalCostShock90Days:
+                    type: number
+                    format: double
+                totalCostShock:
+                    type: number
+                    format: double
+                    description: Cost for the requested closure_days window.
+                closureDays:
+                    type: integer
+                    format: int32
+                    description: Echoes the clamped closure duration used for total_cost_shock (1-365).
+        GetSectorDependencyRequest:
+            type: object
+            properties:
+                iso2:
+                    type: string
+                    pattern: ^[A-Z]{2}$
+                hs2:
+                    type: string
+                    description: HS2 chapter code, e.g. "27" (mineral fuels), "85" (electronics)
+            required:
+                - iso2
+                - hs2
+        GetSectorDependencyResponse:
+            type: object
+            properties:
+                iso2:
+                    type: string
+                hs2:
+                    type: string
+                hs2Label:
+                    type: string
+                    description: Human-readable HS2 chapter name.
+                flags:
+                    type: array
+                    items:
+                        type: string
+                        enum:
+                            - DEPENDENCY_FLAG_UNSPECIFIED
+                            - DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL
+                            - DEPENDENCY_FLAG_SINGLE_CORRIDOR_CRITICAL
+                            - DEPENDENCY_FLAG_COMPOUND_RISK
+                            - DEPENDENCY_FLAG_DIVERSIFIABLE
+                        description: DependencyFlag classifies how a country+sector dependency can fail.
+                primaryExporterIso2:
+                    type: string
+                    description: ISO2 of the country supplying the largest share of this sector's imports.
+                primaryExporterShare:
+                    type: number
+                    format: double
+                    description: Share of imports from the primary exporter (0–1). 0 = no Comtrade data available.
+                primaryChokepointId:
+                    type: string
+                    description: Chokepoint ID with the highest exposure score for this country+sector.
+                primaryChokepointExposure:
+                    type: number
+                    format: double
+                    description: Exposure score for the primary chokepoint (0–100).
+                hasViableBypass:
+                    type: boolean
+                    description: Whether at least one viable bypass corridor exists for the primary chokepoint.
+                fetchedAt:
+                    type: string
+        GetRouteExplorerLaneRequest:
+            type: object
+            properties:
+                fromIso2:
+                    type: string
+                    pattern: ^[A-Z]{2}$
+                toIso2:
+                    type: string
+                    pattern: ^[A-Z]{2}$
+                hs2:
+                    type: string
+                    description: HS2 chapter code, e.g. "27", "85"
+                cargoType:
+                    type: string
+                    description: 'One of: container, tanker, bulk, roro'
+            required:
+                - fromIso2
+                - toIso2
+                - hs2
+                - cargoType
+        GetRouteExplorerLaneResponse:
+            type: object
+            properties:
+                fromIso2:
+                    type: string
+                toIso2:
+                    type: string
+                hs2:
+                    type: string
+                cargoType:
+                    type: string
+                primaryRouteId:
+                    type: string
+                    description: Primary trade route ID from TRADE_ROUTES config. Empty when no modeled lane.
+                primaryRouteGeometry:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GeoPoint'
+                chokepointExposures:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ChokepointExposureSummary'
+                bypassOptions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/BypassCorridorOption'
+                warRiskTier:
+                    type: string
+                disruptionScore:
+                    type: number
+                    format: double
+                estTransitDaysRange:
+                    $ref: '#/components/schemas/NumberRange'
+                estFreightUsdPerTeuRange:
+                    $ref: '#/components/schemas/NumberRange'
+                noModeledLane:
+                    type: boolean
+                    description: |-
+                        True when the wrapper fell back to the origin's first route (no shared route
+                         between origin and destination clusters). Signals "no modeled lane" to the UI.
+                fetchedAt:
+                    type: string
+        GeoPoint:
+            type: object
+            properties:
+                lon:
+                    type: number
+                    format: double
+                lat:
+                    type: number
+                    format: double
+            description: GeoPoint is a [longitude, latitude] pair.
+        ChokepointExposureSummary:
+            type: object
+            properties:
+                chokepointId:
+                    type: string
+                chokepointName:
+                    type: string
+                exposurePct:
+                    type: integer
+                    format: int32
+        BypassCorridorOption:
+            type: object
+            properties:
+                id:
+                    type: string
+                name:
+                    type: string
+                type:
+                    type: string
+                addedTransitDays:
+                    type: integer
+                    format: int32
+                addedCostMultiplier:
+                    type: number
+                    format: double
+                warRiskTier:
+                    type: string
+                status:
+                    type: string
+                    enum:
+                        - CORRIDOR_STATUS_UNSPECIFIED
+                        - CORRIDOR_STATUS_ACTIVE
+                        - CORRIDOR_STATUS_PROPOSED
+                        - CORRIDOR_STATUS_UNAVAILABLE
+                    description: |-
+                        Status of a bypass corridor for UI labeling. "active" means usable today;
+                         "proposed" means documented but not yet built/operational; "unavailable"
+                         means blockaded or otherwise blocked from use.
+                fromPort:
+                    $ref: '#/components/schemas/GeoPoint'
+                toPort:
+                    $ref: '#/components/schemas/GeoPoint'
+            description: |-
+                BypassCorridorOption is a single enriched bypass corridor for the Route Explorer UI.
+                 Includes coordinate endpoints so the client can call MapContainer.setBypassRoutes
+                 directly without any client-side geometry lookup.
+        NumberRange:
+            type: object
+            properties:
+                min:
+                    type: integer
+                    format: int32
+                max:
+                    type: integer
+                    format: int32
+            description: Inclusive integer range for transit days / freight USD estimates.
+        GetRouteImpactRequest:
+            type: object
+            properties:
+                fromIso2:
+                    type: string
+                    pattern: ^[A-Z]{2}$
+                toIso2:
+                    type: string
+                    pattern: ^[A-Z]{2}$
+                hs2:
+                    type: string
+            required:
+                - fromIso2
+                - toIso2
+                - hs2
+        GetRouteImpactResponse:
+            type: object
+            properties:
+                laneValueUsd:
+                    type: number
+                    format: double
+                primaryExporterIso2:
+                    type: string
+                primaryExporterShare:
+                    type: number
+                    format: double
+                topStrategicProducts:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/StrategicProduct'
+                resilienceScore:
+                    type: number
+                    format: double
+                dependencyFlags:
+                    type: array
+                    items:
+                        type: string
+                        enum:
+                            - DEPENDENCY_FLAG_UNSPECIFIED
+                            - DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL
+                            - DEPENDENCY_FLAG_SINGLE_CORRIDOR_CRITICAL
+                            - DEPENDENCY_FLAG_COMPOUND_RISK
+                            - DEPENDENCY_FLAG_DIVERSIFIABLE
+                        description: DependencyFlag classifies how a country+sector dependency can fail.
+                hs2InSeededUniverse:
+                    type: boolean
+                comtradeSource:
+                    type: string
+                fetchedAt:
+                    type: string
+        StrategicProduct:
+            type: object
+            properties:
+                hs4:
+                    type: string
+                label:
+                    type: string
+                totalValueUsd:
+                    type: number
+                    format: double
+                topExporterIso2:
+                    type: string
+                topExporterShare:
+                    type: number
+                    format: double
+                primaryChokepointId:
+                    type: string
+        ListPipelinesRequest:
+            type: object
+            properties:
+                commodityType:
+                    type: string
+                    description: Filter to one commodity. Omit (or pass empty) to receive both.
+            description: |-
+                ListPipelines returns the full oil and/or gas pipeline registry with
+                 evidence-based status per asset. Registry is curated (see
+                 docs/methodology/pipelines.mdx) and refreshed weekly by
+                 scripts/seed-pipelines-{gas,oil}.mjs. Typical consumer: PipelineStatusPanel
+                 rendering the DeckGL PathLayer.
+
+                 The public badge is DERIVED from the evidence bundle server-side at
+                 read time — callers MUST use `public_badge` for display, not invent
+                 their own derivation from `evidence` fields. This keeps the atlas and
+                 MCP clients consistent and versioned together.
+        ListPipelinesResponse:
+            type: object
+            properties:
+                pipelines:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/PipelineEntry'
+                fetchedAt:
+                    type: string
+                classifierVersion:
+                    type: string
+                upstreamUnavailable:
+                    type: boolean
+        PipelineEntry:
+            type: object
+            properties:
+                id:
+                    type: string
+                name:
+                    type: string
+                operator:
+                    type: string
+                commodityType:
+                    type: string
+                    description: Either "gas" or "oil".
+                fromCountry:
+                    type: string
+                toCountry:
+                    type: string
+                transitCountries:
+                    type: array
+                    items:
+                        type: string
+                capacityBcmYr:
+                    type: number
+                    format: double
+                capacityMbd:
+                    type: number
+                    format: double
+                lengthKm:
+                    type: integer
+                    format: int32
+                inService:
+                    type: integer
+                    format: int32
+                startPoint:
+                    $ref: '#/components/schemas/LatLon'
+                endPoint:
+                    $ref: '#/components/schemas/LatLon'
+                waypoints:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/LatLon'
+                evidence:
+                    $ref: '#/components/schemas/PipelineEvidence'
+                publicBadge:
+                    type: string
+                    description: |-
+                        Server-derived public badge. One of:
+                           "flowing" | "reduced" | "offline" | "disputed"
+        LatLon:
+            type: object
+            properties:
+                lat:
+                    type: number
+                    format: double
+                lon:
+                    type: number
+                    format: double
+        PipelineEvidence:
+            type: object
+            properties:
+                physicalState:
+                    type: string
+                    description: 'One of: "flowing" | "reduced" | "offline" | "unknown"'
+                physicalStateSource:
+                    type: string
+                    description: 'One of: "operator" | "regulator" | "press" | "satellite" | "ais-relay"'
+                operatorStatement:
+                    $ref: '#/components/schemas/OperatorStatement'
+                commercialState:
+                    type: string
+                    description: 'One of: "under_contract" | "expired" | "suspended" | "unknown"'
+                sanctionRefs:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SanctionRef'
+                lastEvidenceUpdate:
+                    type: string
+                classifierVersion:
+                    type: string
+                classifierConfidence:
+                    type: number
+                    format: double
+        OperatorStatement:
+            type: object
+            properties:
+                text:
+                    type: string
+                url:
+                    type: string
+                date:
+                    type: string
+        SanctionRef:
+            type: object
+            properties:
+                authority:
+                    type: string
+                listId:
+                    type: string
+                date:
+                    type: string
+                url:
+                    type: string
+        GetPipelineDetailRequest:
+            type: object
+            properties:
+                pipelineId:
+                    type: string
+            required:
+                - pipelineId
+            description: |-
+                GetPipelineDetail returns a single pipeline with its full evidence bundle.
+                 Evidence surface here is richer than ListPipelinesResponse — the list view
+                 is designed for the map layer's compact shape; detail is designed for the
+                 click-through drawer.
+        GetPipelineDetailResponse:
+            type: object
+            properties:
+                pipeline:
+                    $ref: '#/components/schemas/PipelineEntry'
+                revisions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/PipelineRevisionEntry'
+                fetchedAt:
+                    type: string
+                unavailable:
+                    type: boolean
+        PipelineRevisionEntry:
+            type: object
+            properties:
+                date:
+                    type: string
+                fieldChanged:
+                    type: string
+                previousValue:
+                    type: string
+                newValue:
+                    type: string
+                trigger:
+                    type: string
+                    description: 'One of: "classifier" | "source" | "decay" | "override"'
+                sourcesUsed:
+                    type: array
+                    items:
+                        type: string
+                classifierVersion:
+                    type: string
+        ListStorageFacilitiesRequest:
+            type: object
+            properties:
+                facilityType:
+                    type: string
+                    description: |-
+                        Filter to one facility type. Accepts:
+                           "ugs" | "spr" | "lng_export" | "lng_import" | "crude_tank_farm"
+                         Omit (or pass empty) to receive all types.
+            description: |-
+                ListStorageFacilities returns the curated strategic storage registry
+                 (underground gas storage, strategic petroleum reserves, LNG terminals,
+                 crude tank farms) with evidence-based status per asset. Registry is
+                 curated (see docs/methodology/storage.mdx) and refreshed weekly by
+                 scripts/seed-storage-facilities.mjs. Typical consumer:
+                 StorageFacilityMapPanel rendering the DeckGL ScatterplotLayer.
+
+                 Like pipelines, the public badge is DERIVED from the evidence bundle
+                 server-side at read time. Callers MUST use `public_badge` for display
+                 rather than inventing their own derivation from `evidence` fields, so
+                 the atlas and MCP clients stay consistent and versioned together.
+        ListStorageFacilitiesResponse:
+            type: object
+            properties:
+                facilities:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/StorageFacilityEntry'
+                fetchedAt:
+                    type: string
+                classifierVersion:
+                    type: string
+                upstreamUnavailable:
+                    type: boolean
+        StorageFacilityEntry:
+            type: object
+            properties:
+                id:
+                    type: string
+                name:
+                    type: string
+                operator:
+                    type: string
+                facilityType:
+                    type: string
+                    description: 'One of: "ugs" | "spr" | "lng_export" | "lng_import" | "crude_tank_farm"'
+                country:
+                    type: string
+                location:
+                    $ref: '#/components/schemas/StorageLatLon'
+                capacityTwh:
+                    type: number
+                    format: double
+                    description: |-
+                        Working capacity in the facility's native unit (see working_capacity_unit).
+                         Exactly ONE of these is populated per facility, chosen by facility_type:
+                           ugs                              → capacity_twh
+                           spr, crude_tank_farm             → capacity_mb
+                           lng_export, lng_import           → capacity_mtpa
+                capacityMb:
+                    type: number
+                    format: double
+                capacityMtpa:
+                    type: number
+                    format: double
+                workingCapacityUnit:
+                    type: string
+                    description: 'One of: "TWh" | "Mb" | "Mtpa"'
+                inService:
+                    type: integer
+                    format: int32
+                evidence:
+                    $ref: '#/components/schemas/StorageEvidence'
+                publicBadge:
+                    type: string
+                    description: |-
+                        Server-derived public badge. One of:
+                           "operational" | "reduced" | "offline" | "disputed"
+        StorageLatLon:
+            type: object
+            properties:
+                lat:
+                    type: number
+                    format: double
+                lon:
+                    type: number
+                    format: double
+        StorageEvidence:
+            type: object
+            properties:
+                physicalState:
+                    type: string
+                    description: 'One of: "operational" | "reduced" | "offline" | "under_construction" | "unknown"'
+                physicalStateSource:
+                    type: string
+                    description: 'One of: "operator" | "regulator" | "press" | "satellite" | "ais-relay"'
+                operatorStatement:
+                    $ref: '#/components/schemas/StorageOperatorStatement'
+                commercialState:
+                    type: string
+                    description: 'One of: "under_contract" | "expired" | "suspended" | "unknown"'
+                sanctionRefs:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/StorageSanctionRef'
+                fillDisclosed:
+                    type: boolean
+                    description: |-
+                        Whether working-gas / stock-level fill is publicly disclosed for this
+                         asset. LNG export terminals, for instance, tend NOT to disclose; UGS
+                         sites in Europe are required to disclose via GIE AGSI+.
+                fillSource:
+                    type: string
+                    description: |-
+                        Source of the disclosed fill series ("GIE AGSI+", "EIA SPR weekly
+                         stock report", etc.). Empty when fill_disclosed=false.
+                lastEvidenceUpdate:
+                    type: string
+                classifierVersion:
+                    type: string
+                classifierConfidence:
+                    type: number
+                    format: double
+        StorageOperatorStatement:
+            type: object
+            properties:
+                text:
+                    type: string
+                url:
+                    type: string
+                date:
+                    type: string
+        StorageSanctionRef:
+            type: object
+            properties:
+                authority:
+                    type: string
+                listId:
+                    type: string
+                date:
+                    type: string
+                url:
+                    type: string
+        GetStorageFacilityDetailRequest:
+            type: object
+            properties:
+                facilityId:
+                    type: string
+            required:
+                - facilityId
+            description: |-
+                GetStorageFacilityDetail returns a single facility with its full evidence
+                 bundle + revision log. Revisions land in Week 3 alongside the disruption
+                 event log (Week 3 milestone — empty array in v1).
+        GetStorageFacilityDetailResponse:
+            type: object
+            properties:
+                facility:
+                    $ref: '#/components/schemas/StorageFacilityEntry'
+                revisions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/StorageFacilityRevisionEntry'
+                fetchedAt:
+                    type: string
+                unavailable:
+                    type: boolean
+        StorageFacilityRevisionEntry:
+            type: object
+            properties:
+                date:
+                    type: string
+                fieldChanged:
+                    type: string
+                previousValue:
+                    type: string
+                newValue:
+                    type: string
+                trigger:
+                    type: string
+                    description: 'One of: "classifier" | "source" | "decay" | "override"'
+                sourcesUsed:
+                    type: array
+                    items:
+                        type: string
+                classifierVersion:
+                    type: string
+        ListFuelShortagesRequest:
+            type: object
+            properties:
+                country:
+                    type: string
+                    description: Filter to one ISO 3166-1 alpha-2 country. Omit for global.
+                product:
+                    type: string
+                    description: |-
+                        Filter to one product. Accepts: "petrol" | "diesel" | "jet" | "heating_oil".
+                         Omit for all products.
+                severity:
+                    type: string
+                    description: 'Filter to one severity. Accepts: "confirmed" | "watch". Omit for both.'
+            description: |-
+                ListFuelShortages returns the global fuel-shortage alert registry.
+                 Seeded from a curated JSON file (scripts/data/fuel-shortages.json).
+                 An LLM classifier extension was scoped but not shipped — the registry
+                 is curated-only today. Severity ("confirmed" or "watch") is a row
+                 field authored at curation time; the evidence is shipped alongside
+                 so agents and humans can audit the grounds for a severity label.
+
+                 See docs/methodology/shortages.mdx for the evidence-threshold spec.
+        ListFuelShortagesResponse:
+            type: object
+            properties:
+                shortages:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FuelShortageEntry'
+                fetchedAt:
+                    type: string
+                classifierVersion:
+                    type: string
+                upstreamUnavailable:
+                    type: boolean
+        FuelShortageEntry:
+            type: object
+            properties:
+                id:
+                    type: string
+                country:
+                    type: string
+                product:
+                    type: string
+                    description: 'One of: "petrol" | "diesel" | "jet" | "heating_oil"'
+                severity:
+                    type: string
+                    description: 'One of: "confirmed" | "watch"  (classifier output — not a client-side derivation)'
+                firstSeen:
+                    type: string
+                lastConfirmed:
+                    type: string
+                resolvedAt:
+                    type: string
+                    description: Empty string when not yet resolved.
+                impactTypes:
+                    type: array
+                    items:
+                        type: string
+                        description: |-
+                            Observable consumer-facing impacts. Subset of:
+                               "stations_closed" | "rationing" | "flights_cancelled" | "import_cut" | "price_spike"
+                causeChain:
+                    type: array
+                    items:
+                        type: string
+                        description: |-
+                            Contributing root causes, ordered primary-first. Subset of:
+                               "upstream_refinery" | "logistics" | "policy" | "chokepoint" |
+                               "sanction" | "war" | "import_cut"
+                shortDescription:
+                    type: string
+                evidence:
+                    $ref: '#/components/schemas/FuelShortageEvidence'
+        FuelShortageEvidence:
+            type: object
+            properties:
+                evidenceSources:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FuelShortageEvidenceSource'
+                firstRegulatorConfirmation:
+                    type: string
+                    description: |-
+                        ISO date of the first regulator confirmation, if any. Empty when
+                         severity is "watch" on press-only signal.
+                classifierVersion:
+                    type: string
+                classifierConfidence:
+                    type: number
+                    format: double
+                lastEvidenceUpdate:
+                    type: string
+        FuelShortageEvidenceSource:
+            type: object
+            properties:
+                authority:
+                    type: string
+                title:
+                    type: string
+                url:
+                    type: string
+                date:
+                    type: string
+                sourceType:
+                    type: string
+                    description: 'One of: "regulator" | "operator" | "press" | "ais-relay" | "satellite"'
+        GetFuelShortageDetailRequest:
+            type: object
+            properties:
+                shortageId:
+                    type: string
+            required:
+                - shortageId
+            description: |-
+                GetFuelShortageDetail returns a single shortage with full evidence
+                 bundle + citation timeline. Loaded lazily on drawer open.
+        GetFuelShortageDetailResponse:
+            type: object
+            properties:
+                shortage:
+                    $ref: '#/components/schemas/FuelShortageEntry'
+                fetchedAt:
+                    type: string
+                unavailable:
+                    type: boolean
+        ListEnergyDisruptionsRequest:
+            type: object
+            properties:
+                assetId:
+                    type: string
+                    description: |-
+                        Filter to one asset. Omit for all. When set, also narrows to the
+                         matching asset_type if provided.
+                assetType:
+                    type: string
+                    description: 'Filter to one asset type. Accepts: "pipeline" | "storage".'
+                ongoingOnly:
+                    type: boolean
+                    description: If true, only return events with endAt empty (still ongoing).
+            description: |-
+                ListEnergyDisruptions returns the energy disruption event log — state
+                 transitions for pipelines and storage facilities (sabotage, sanction,
+                 maintenance, mechanical, weather, commercial, war). Each event ties
+                 back to an assetId seeded by the pipeline or storage registry, so the
+                 panel drawer can render an asset-scoped timeline without a second RPC.
+
+                 Seeded from a curated JSON file (scripts/data/energy-disruptions.json).
+                 An automated state-transition classifier was scoped but not shipped —
+                 the log is curated-only today.
+
+                 See docs/methodology/disruptions.mdx.
+        ListEnergyDisruptionsResponse:
+            type: object
+            properties:
+                events:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/EnergyDisruptionEntry'
+                fetchedAt:
+                    type: string
+                classifierVersion:
+                    type: string
+                upstreamUnavailable:
+                    type: boolean
+        EnergyDisruptionEntry:
+            type: object
+            properties:
+                id:
+                    type: string
+                assetId:
+                    type: string
+                    description: Maps to a pipeline or storage-facility id seeded elsewhere.
+                assetType:
+                    type: string
+                    description: 'One of: "pipeline" | "storage"'
+                eventType:
+                    type: string
+                    description: |-
+                        One of: "sabotage" | "sanction" | "maintenance" | "mechanical" |
+                                 "weather" | "commercial" | "war" | "other"
+                startAt:
+                    type: string
+                endAt:
+                    type: string
+                    description: Empty string when event is still ongoing.
+                capacityOfflineBcmYr:
+                    type: number
+                    format: double
+                    description: Headline-offline capacity (contextual — 0 when not applicable).
+                capacityOfflineMbd:
+                    type: number
+                    format: double
+                causeChain:
+                    type: array
+                    items:
+                        type: string
+                        description: Contributing causes, primary-first.
+                shortDescription:
+                    type: string
+                sources:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/EnergyDisruptionSource'
+                classifierVersion:
+                    type: string
+                classifierConfidence:
+                    type: number
+                    format: double
+                lastEvidenceUpdate:
+                    type: string
+                countries:
+                    type: array
+                    items:
+                        type: string
+                        description: |-
+                            Countries touched by the referenced asset (pipeline: fromCountry +
+                             toCountry + transitCountries; storage: country). Denormalised at seed
+                             time so CountryDeepDivePanel can filter events without a second RPC.
+                             Always non-empty in well-formed payloads; empty only if the upstream
+                             asset was removed without an event update. Per plan §R/#5 decision B.
+        EnergyDisruptionSource:
+            type: object
+            properties:
+                authority:
+                    type: string
+                title:
+                    type: string
+                url:
+                    type: string
+                date:
+                    type: string
+                sourceType:
+                    type: string

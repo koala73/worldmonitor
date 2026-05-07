@@ -1,0 +1,683 @@
+# Resilience scorer indicator-source manifest (PR 0 scaffold, 2026-04-22).
+#
+# One entry per sub-indicator used inside a dimension scorer. Each entry
+# answers the mechanism test from docs/plans/2026-04-22-001-fix-resilience-
+# scorer-structural-bias-plan.md §1.1: what direct shock channel does this
+# measure?
+#
+# Fields:
+#   indicator              — scorer variable name (matches the weighted-blend entry)
+#   dimension              — parent dimension id (matches RESILIENCE_DIMENSION_ORDER)
+#   domain                 — parent domain id
+#   weight                 — current nominal weight inside the dimension blend
+#   direction              — higher-better | lower-better | composite
+#   source                 — authority that publishes the series
+#   seriesId               — canonical series id where applicable (e.g. EG.IMP.CONS.ZS)
+#   seriesUrl              — direct link to source documentation
+#   coveragePct            — observed-data coverage across the 222-country static index (first-pass estimate; authoritative value lives in the matching seeder's seed-meta.coverage field)
+#   lastObservedYear       — most-recent year with global data in the source
+#   license                — reuse license (CC-BY, CC0, OGL, Proprietary-with-fair-use, etc.)
+#   mechanismTestRationale — one-sentence answer to "what direct shock channel does this measure?"
+#   constructStatus        — observed-mechanism | wealth-proxy | imputed-floor | regional-only | dead-signal
+#
+# constructStatus is the v3-plan classification:
+#   observed-mechanism  — passes the mechanism test; kept as-is pending goalpost review
+#   wealth-proxy        — fails the mechanism test; slated for removal or threshold-transform
+#   imputed-floor       — data source not wired; producing only the imputed midpoint
+#   regional-only       — data source covers <50% of scorable countries
+#   dead-signal         — saturated or compressed; signal collapsed across the ranking
+
+# ECONOMIC DOMAIN (weight 0.17) -------------------------------------------
+
+- indicator: govRevenuePct
+  dimension: macroFiscal
+  domain: economic
+  weight: 0.50
+  direction: higher-better
+  source: IMF
+  seriesId: GGR_G01_GDP_PT
+  seriesUrl: https://www.imf.org/external/datamapper/GGR_G01_GDP_PT@FM/
+  coveragePct: 0.90
+  lastObservedYear: 2024
+  license: Proprietary-with-fair-use
+  mechanismTestRationale: Government revenue % GDP is the policy-response headroom a state can deploy during a fiscal shock; higher = more ability to absorb.
+  constructStatus: observed-mechanism
+  reviewNotes: Goalpost 5-45 is probably too wide at the top; Nordic revenue/GDP ≥ 50% saturates. Review in PR 4 goalpost pass.
+
+- indicator: debtGrowthRate
+  dimension: macroFiscal
+  domain: economic
+  weight: 0.20
+  direction: lower-better
+  source: National debt databases (IMF + WB cross-source)
+  seriesId: TBD
+  seriesUrl: TBD
+  coveragePct: 0.80
+  lastObservedYear: 2024
+  license: Mixed (per-source)
+  mechanismTestRationale: Rising debt growth indicates deteriorating fiscal trajectory and reduced capacity to finance a shock response.
+  constructStatus: observed-mechanism
+
+- indicator: currentAccountPct
+  dimension: macroFiscal
+  domain: economic
+  weight: 0.30
+  direction: higher-better
+  source: IMF
+  seriesId: BCA_NGDPD
+  seriesUrl: https://www.imf.org/external/datamapper/BCA_NGDPD@WEO/
+  coveragePct: 0.85
+  lastObservedYear: 2024
+  license: Proprietary-with-fair-use
+  mechanismTestRationale: Current account surplus indicates external-payments resilience; deficit indicates vulnerability to external-finance shocks.
+  constructStatus: observed-mechanism
+
+- indicator: fxVolatility
+  dimension: currencyExternal
+  domain: economic
+  weight: 0.60
+  direction: lower-better
+  source: BIS Data Portal
+  seriesId: Broad Effective Exchange Rate
+  seriesUrl: https://data.bis.org/topics/EER
+  coveragePct: 0.30  # BIS covers 64 economies
+  lastObservedYear: 2024
+  license: CC-BY
+  mechanismTestRationale: FX volatility measures monetary-shock transmission risk.
+  constructStatus: regional-only
+  reviewNotes: BIS EER covers only 64 economies. Replace with FR.INR.RINR (real interest rate) or IMF inflation volatility in PR 3.
+
+- indicator: fxDeviation
+  dimension: currencyExternal
+  domain: economic
+  weight: 0.25
+  direction: lower-better
+  source: BIS Data Portal
+  seriesId: EER deviation from equilibrium
+  seriesUrl: https://data.bis.org/topics/EER
+  coveragePct: 0.30
+  lastObservedYear: 2024
+  license: CC-BY
+  mechanismTestRationale: EER deviation from equilibrium proxies mis-aligned exchange rates that create abrupt-correction risk.
+  constructStatus: regional-only
+  reviewNotes: Same 64-economy limitation. Retire in PR 3.
+
+- indicator: fxReservesAdequacy
+  dimension: currencyExternal
+  domain: economic
+  weight: 0.15
+  direction: higher-better
+  source: World Bank
+  seriesId: FI.RES.TOTL.MO
+  seriesUrl: https://data.worldbank.org/indicator/FI.RES.TOTL.MO
+  coveragePct: 0.85
+  lastObservedYear: 2023
+  license: CC-BY-4.0
+  mechanismTestRationale: Reserves in months of imports directly measures immediate external-finance cushion.
+  constructStatus: observed-mechanism
+  reviewNotes: Also enters reserveAdequacy at 1.0 weight. Double-counting risk across dimensions; review in PR 2.
+
+# tradeSanctions → tradePolicy renamed in plan 2026-04-25-004 Phase 1
+# (Ship 1). The OFAC `sanctionCount` indicator was DROPPED — counting
+# designated-party domicile locations is a corporate-finance liability
+# metric, not a country-resilience indicator (a transit-hub country like
+# UAE or Singapore hosts many shell-company entries without that
+# reflecting on the host country's structural resilience). The OFAC
+# source itself is preserved (still consumed by country-brief generation
+# and ad-hoc analysis); only the resilience-scorer binding was removed.
+# A separate `financialSystemExposure` dim (plan Phase 2) will add
+# structural sanctions-vulnerability via BIS Locational Banking
+# Statistics + WB IDS short-term external debt + FATF AML/CFT listing
+# status. Remaining 3 components reweighted to total 1.0:
+- indicator: tradeRestrictions
+  dimension: tradePolicy
+  domain: economic
+  weight: 0.30
+  direction: lower-better
+  source: WTO
+  seriesId: Trade Monitoring Database
+  seriesUrl: https://www.wto.org/english/tratop_e/tpr_e/trade_monitoring_e.htm
+  coveragePct: 0.75
+  lastObservedYear: 2025
+  license: Open
+  mechanismTestRationale: Active trade restrictions (in-force, weighted 3×) directly measure market-access loss.
+  constructStatus: observed-mechanism
+
+- indicator: tradeBarriers
+  dimension: tradePolicy
+  domain: economic
+  weight: 0.30
+  direction: lower-better
+  source: WTO
+  seriesId: Trade Barriers Notifications
+  seriesUrl: https://tradebarriers.wto.org/
+  coveragePct: 0.70
+  lastObservedYear: 2025
+  license: Open
+  mechanismTestRationale: Notified trade barriers (not yet in force) indicate near-term market-access risk.
+  constructStatus: observed-mechanism
+
+- indicator: appliedTariffRate
+  dimension: tradePolicy
+  domain: economic
+  weight: 0.40
+  direction: lower-better
+  source: World Bank / WITS
+  seriesId: TM.TAX.MRCH.WM.AR.ZS
+  seriesUrl: https://data.worldbank.org/indicator/TM.TAX.MRCH.WM.AR.ZS
+  coveragePct: 0.90
+  lastObservedYear: 2023
+  license: CC-BY-4.0
+  mechanismTestRationale: Applied tariff rates measure cost of trade restriction on imports.
+  constructStatus: observed-mechanism
+
+# INFRASTRUCTURE DOMAIN (weight 0.15) -------------------------------------
+
+- indicator: cyberThreats
+  dimension: cyberDigital
+  domain: infrastructure
+  weight: 0.45
+  direction: lower-better
+  source: Cyber threat feeds (mixed Western-origin)
+  seriesId: severity-weighted count (critical 3×, high 2×, medium 1×, low 0.5×)
+  seriesUrl: Internal seed
+  coveragePct: 0.70
+  lastObservedYear: 2026
+  license: Proprietary feeds (aggregated)
+  mechanismTestRationale: Severity-weighted cyber threat count directly measures ongoing cyber-attack pressure on national digital infrastructure.
+  constructStatus: observed-mechanism
+  reviewNotes: Western-feed bias; non-English cyber activity under-represented. PR 4 §4.8 tracks this.
+
+- indicator: internetOutages
+  dimension: cyberDigital
+  domain: infrastructure
+  weight: 0.35
+  direction: lower-better
+  source: Cloudflare Radar + internal monitoring
+  seriesId: Outage penalty (total 4×, major 2×, partial 1×)
+  seriesUrl: https://radar.cloudflare.com/
+  coveragePct: 0.95
+  lastObservedYear: 2026
+  license: CC-BY-4.0
+  mechanismTestRationale: Internet outages directly measure digital-infrastructure availability under current stress.
+  constructStatus: observed-mechanism
+
+- indicator: gpsJamming
+  dimension: cyberDigital
+  domain: infrastructure
+  weight: 0.20
+  direction: lower-better
+  source: GPSJam
+  seriesId: Hex penalty (high 3×, medium 1×)
+  seriesUrl: https://gpsjam.org/
+  coveragePct: 0.95
+  lastObservedYear: 2026
+  license: Open data
+  mechanismTestRationale: GPS jamming intensity measures electronic-warfare / navigation-disruption exposure.
+  constructStatus: observed-mechanism
+
+- indicator: logisticsPerformanceIndex
+  dimension: logisticsSupply
+  domain: infrastructure
+  weight: TBD
+  direction: higher-better
+  source: World Bank LPI
+  seriesId: LP.LPI.OVRL.XQ
+  seriesUrl: https://lpi.worldbank.org/
+  coveragePct: 0.85
+  lastObservedYear: 2023
+  license: CC-BY-4.0
+  mechanismTestRationale: Logistics Performance Index measures functional capacity to move goods; directly shocks during supply-chain disruptions.
+  constructStatus: observed-mechanism
+  reviewNotes: Goalpost anchors OECD-centric; PR 4 review.
+
+- indicator: infrastructureSubcomponents
+  dimension: infrastructure
+  domain: infrastructure
+  weight: TBD
+  direction: higher-better
+  source: World Bank + WEF Global Competitiveness
+  seriesId: Composite
+  seriesUrl: TBD
+  coveragePct: 0.80
+  lastObservedYear: 2024
+  license: Mixed
+  mechanismTestRationale: Physical infrastructure quality is the baseline capacity for delivering services during normal and crisis periods.
+  constructStatus: observed-mechanism
+
+# ENERGY DOMAIN (weight 0.11) --------------------------------------------
+
+- indicator: dependency
+  dimension: energy
+  domain: energy
+  weight: 0.25
+  direction: lower-better
+  source: IEA (via static seed)
+  seriesId: Energy import dependency (%)
+  seriesUrl: https://www.iea.org/data-and-statistics/data-browser
+  coveragePct: 0.50  # IEA detail covers OECD + major non-OECD
+  lastObservedYear: 2023
+  license: Proprietary-with-fair-use
+  mechanismTestRationale: Share of energy consumption that is imported; direct supply-shock exposure.
+  constructStatus: observed-mechanism
+  reviewNotes: PR 1 §3.2 replaces with World Bank EG.IMP.CONS.ZS (better coverage) as part of importedFossilDependence composite.
+
+- indicator: gasShare
+  dimension: energy
+  domain: energy
+  weight: 0.12
+  direction: lower-better
+  source: IEA World Energy Balances via static seed
+  seriesId: Natural gas share of primary energy
+  seriesUrl: https://www.iea.org/data-and-statistics/data-browser
+  coveragePct: 0.85
+  lastObservedYear: 2023
+  license: Proprietary-with-fair-use
+  mechanismTestRationale: CURRENT SCORER applies this as a vulnerability (lower-better) but it CONFLATES fossil-dominance with fossil-import-dependence. Domestic gas is a resilience asset, not a vulnerability.
+  constructStatus: wealth-proxy
+  reviewNotes: PR 1 §3.2 removes as standalone input; folds into importedFossilDependence under power-system framing.
+
+- indicator: coalShare
+  dimension: energy
+  domain: energy
+  weight: 0.08
+  direction: lower-better
+  source: IEA World Energy Balances via static seed
+  seriesId: Coal share of primary energy
+  seriesUrl: https://www.iea.org/data-and-statistics/data-browser
+  coveragePct: 0.85
+  lastObservedYear: 2023
+  license: Proprietary-with-fair-use
+  mechanismTestRationale: Same concern as gasShare — penalty is climate-frame, not resilience-frame. Fails mechanism test under absolute-resilience contract.
+  constructStatus: wealth-proxy
+  reviewNotes: PR 1 §3.2 removes.
+
+- indicator: renewShare
+  dimension: energy
+  domain: energy
+  weight: 0.05
+  direction: higher-better
+  source: IEA / World Bank
+  seriesId: EG.ELC.RNEW.ZS
+  seriesUrl: https://data.worldbank.org/indicator/EG.ELC.RNEW.ZS
+  coveragePct: 0.85
+  lastObservedYear: 2023
+  license: CC-BY-4.0
+  mechanismTestRationale: Share of electricity from renewables, proxies low-carbon-firm-generation capacity (for hydro/geothermal) and diversity-of-supply (for wind/solar).
+  constructStatus: observed-mechanism
+  reviewNotes: PR 1 §3.3 collapses with nuclearShare (currently missing) into one lowCarbonGenerationShare indicator.
+
+- indicator: storageStress
+  dimension: energy
+  domain: energy
+  weight: 0.10
+  direction: lower-better
+  source: GIE AGSI+
+  seriesId: EU gas storage fill % (per country)
+  seriesUrl: https://agsi.gie.eu/
+  coveragePct: 0.15  # EU + UK + a handful
+  lastObservedYear: 2026
+  license: Open
+  mechanismTestRationale: EU gas storage fill directly measures winter-heating-shock buffer. European-only platform.
+  constructStatus: regional-only
+  reviewNotes: PR 1 §3.5 renames to euGasStorageStress and scopes to EU-only (weight 0 for non-EU).
+
+- indicator: exposedEnergyStress
+  dimension: energy
+  domain: energy
+  weight: 0.10
+  direction: composite
+  source: Internal composite (energy-price-stress × import-exposure)
+  seriesId: Derived
+  seriesUrl: Internal seed
+  coveragePct: 0.70
+  lastObservedYear: 2026
+  license: Internal
+  mechanismTestRationale: Combines energy-price shocks with import-exposure to measure price-shock transmission.
+  constructStatus: observed-mechanism
+  reviewNotes: PR 1 may simplify given importedFossilDependence covers import-exposure directly.
+
+- indicator: electricityConsumption
+  dimension: energy
+  domain: energy
+  weight: 0.30
+  direction: higher-better
+  source: World Bank
+  seriesId: EG.USE.ELEC.KH.PC
+  seriesUrl: https://data.worldbank.org/indicator/EG.USE.ELEC.KH.PC
+  coveragePct: 0.90
+  lastObservedYear: 2022
+  license: CC-BY-4.0
+  mechanismTestRationale: FAILS the mechanism test. Per-capita electricity consumption tracks GDP per capita; it is a level-of-load measure not a resilience mechanism. IEA energy-security framing treats EFFICIENCY (lower load for same output) as resilience, which this indicator inversely rewards.
+  constructStatus: wealth-proxy
+  reviewNotes: PR 1 §3.1 removes. Replaced with powerLossesPct (EG.ELC.LOSS.ZS), reserveMarginPct (IEA), and accessToElectricityPct (EG.ELC.ACCS.ZS) moved to infrastructure domain.
+
+# SOCIAL-GOVERNANCE DOMAIN (weight 0.19) ---------------------------------
+
+- indicator: wgiComposite
+  dimension: governanceInstitutional
+  domain: social-governance
+  weight: 1.0
+  direction: higher-better
+  source: World Bank WGI
+  seriesId: Voice/Accountability, Political Stability, Government Effectiveness, Regulatory Quality, Rule of Law, Control of Corruption
+  seriesUrl: https://info.worldbank.org/governance/wgi/
+  coveragePct: 0.98
+  lastObservedYear: 2023
+  license: CC-BY-4.0
+  mechanismTestRationale: WGI subscores measure state capacity to design and enforce policy response to shocks. Passes the mechanism test conditionally — the composite is a direct policy-response-capacity signal.
+  constructStatus: observed-mechanism
+  reviewNotes: Weights review in PR 4. Individual WGI subscores may need separate weighting vs equal-blend.
+
+- indicator: gpiScore
+  dimension: socialCohesion
+  domain: social-governance
+  weight: 0.40  # approximate
+  direction: lower-better
+  source: Institute for Economics and Peace
+  seriesId: Global Peace Index
+  seriesUrl: https://www.visionofhumanity.org/
+  coveragePct: 0.75
+  lastObservedYear: 2024
+  license: Proprietary-with-fair-use
+  mechanismTestRationale: GPI measures internal conflict, militarization, and external conflict intensity — direct social-cohesion-shock exposure.
+  constructStatus: observed-mechanism
+  reviewNotes: Known Western-democracy bias in GPI methodology; PR 4 review.
+
+- indicator: displacementMetric
+  dimension: socialCohesion
+  domain: social-governance
+  weight: 0.30  # approximate
+  direction: lower-better
+  source: UNHCR
+  seriesId: totalDisplaced
+  seriesUrl: https://data.unhcr.org/
+  coveragePct: 0.95
+  lastObservedYear: 2025
+  license: Open
+  mechanismTestRationale: Total displaced persons directly measures ongoing forced-migration pressure. BIAS: currently blends origin + host; penalizes Jordan/Turkey/Germany for HOSTING.
+  constructStatus: wealth-proxy  # classified as biased — bias label
+  reviewNotes: PR 4 §4.2 splits origin (negative signal) from host (mixed signal).
+
+- indicator: unrestMetric
+  dimension: socialCohesion
+  domain: social-governance
+  weight: 0.30  # approximate
+  direction: lower-better
+  source: Internal unrest seed (cross-source signals + UCDP)
+  seriesId: unrestCount + sqrt(fatalities)
+  seriesUrl: Internal seed
+  coveragePct: 0.85
+  lastObservedYear: 2026
+  license: Mixed
+  mechanismTestRationale: Active unrest events measure current social-cohesion stress.
+  constructStatus: observed-mechanism
+
+- indicator: borderSecuritySubs
+  dimension: borderSecurity
+  domain: social-governance
+  weight: TBD
+  direction: composite
+  source: Composite (UNHCR displacement + UCDP conflict + governance)
+  seriesId: Derived
+  seriesUrl: Internal seed
+  coveragePct: 0.80
+  lastObservedYear: 2026
+  license: Mixed
+  mechanismTestRationale: Border-security composite captures cross-border shock transmission exposure.
+  constructStatus: observed-mechanism
+  reviewNotes: Inherits displacement host-vs-sending bias from socialCohesion. PR 4 fix.
+
+- indicator: rsfPressFreedom
+  dimension: informationCognitive
+  domain: social-governance
+  weight: TBD
+  direction: higher-better
+  source: Reporters Sans Frontieres
+  seriesId: Press Freedom Index
+  seriesUrl: https://rsf.org/en/index
+  coveragePct: 0.85
+  lastObservedYear: 2024
+  license: Proprietary-with-fair-use
+  mechanismTestRationale: Press freedom proxies quality of information-shock response and independent verification capacity.
+  constructStatus: observed-mechanism
+
+- indicator: languageNormalizedSocialVelocity
+  dimension: informationCognitive
+  domain: social-governance
+  weight: TBD
+  direction: composite
+  source: Reddit + cross-source + internal language-coverage-weighting
+  seriesId: Internal
+  seriesUrl: Internal seed
+  coveragePct: 0.95
+  lastObservedYear: 2026
+  license: Mixed
+  mechanismTestRationale: Language-normalized social-information velocity measures information-shock propagation speed adjusted for source-density bias.
+  constructStatus: observed-mechanism
+
+# HEALTH-FOOD DOMAIN (weight 0.13) ---------------------------------------
+
+- indicator: whoHealthExpenditure
+  dimension: healthPublicService
+  domain: health-food
+  weight: TBD
+  direction: higher-better
+  source: WHO Global Health Observatory
+  seriesId: Current health expenditure per capita, PPP
+  seriesUrl: https://www.who.int/data/gho
+  coveragePct: 0.95
+  lastObservedYear: 2022
+  license: CC-BY-4.0
+  mechanismTestRationale: Health expenditure per capita proxies health-system capacity. FAILS the strict mechanism test — it measures SPEND, not CAPACITY. Should be replaced with surge-capacity / bed-density / ICU-density threshold signal.
+  constructStatus: wealth-proxy
+  reviewNotes: PR 4 §4.9 replacement.
+
+- indicator: ipcPhase
+  dimension: foodWater
+  domain: health-food
+  weight: 0.15
+  direction: lower-better
+  source: FAO IPC (Integrated Food Security Phase Classification)
+  seriesId: IPC Phase (1-5)
+  seriesUrl: https://www.ipcinfo.org/
+  coveragePct: 0.40  # IPC covers acutely-affected countries
+  lastObservedYear: 2025
+  license: Open
+  mechanismTestRationale: IPC phase directly measures current food-security-crisis severity.
+  constructStatus: observed-mechanism
+  reviewNotes: Coverage is inherently partial — IPC only tracks countries with current/imminent food crises. Imputed to a resilient-default for non-tracked countries.
+
+- indicator: aquastatWaterStress
+  dimension: foodWater
+  domain: health-food
+  weight: 0.25
+  direction: lower-better
+  source: FAO AQUASTAT
+  seriesId: Water stress (withdrawal / renewable resources)
+  seriesUrl: https://www.fao.org/aquastat/
+  coveragePct: 0.85
+  lastObservedYear: 2020
+  license: Open
+  mechanismTestRationale: Water stress directly measures water-supply-shock exposure.
+  constructStatus: observed-mechanism
+
+- indicator: aquastatWaterAvailability
+  dimension: foodWater
+  domain: health-food
+  weight: 0.15
+  direction: higher-better
+  source: FAO AQUASTAT
+  seriesId: Water availability (m³/capita)
+  seriesUrl: https://www.fao.org/aquastat/
+  coveragePct: 0.85
+  lastObservedYear: 2020
+  license: Open
+  mechanismTestRationale: Water availability per capita proxies baseline water-security-shock buffer.
+  constructStatus: observed-mechanism
+
+# RECOVERY DOMAIN (weight 0.25) ------------------------------------------
+
+- indicator: recoveryGovRevenue
+  dimension: fiscalSpace
+  domain: recovery
+  weight: 0.40
+  direction: higher-better
+  source: IMF
+  seriesId: GGR_G01_GDP_PT
+  seriesUrl: https://www.imf.org/external/datamapper/GGR_G01_GDP_PT@FM/
+  coveragePct: 0.90
+  lastObservedYear: 2024
+  license: Proprietary-with-fair-use
+  mechanismTestRationale: Government revenue % GDP for recovery scenarios — policy-response fiscal headroom.
+  constructStatus: observed-mechanism
+  reviewNotes: Duplicate with macroFiscal.govRevenuePct. PR 4 may de-duplicate.
+
+- indicator: recoveryFiscalBalance
+  dimension: fiscalSpace
+  domain: recovery
+  weight: 0.30
+  direction: higher-better
+  source: IMF
+  seriesId: GGXCNL_G01_GDP_PT
+  seriesUrl: https://www.imf.org/external/datamapper/GGXCNL_G01_GDP_PT@FM/
+  coveragePct: 0.85
+  lastObservedYear: 2024
+  license: Proprietary-with-fair-use
+  mechanismTestRationale: General government net lending/borrowing as % of GDP — direct fiscal-response-capacity signal.
+  constructStatus: observed-mechanism
+
+- indicator: recoveryDebtToGdp
+  dimension: fiscalSpace
+  domain: recovery
+  weight: 0.30
+  direction: lower-better
+  source: IMF
+  seriesId: GGXWDG_NGDP_PT
+  seriesUrl: https://www.imf.org/external/datamapper/GGXWDG_NGDP_PT@FM/
+  coveragePct: 0.90
+  lastObservedYear: 2024
+  license: Proprietary-with-fair-use
+  mechanismTestRationale: General government gross debt to GDP — fiscal-stress cushion.
+  constructStatus: observed-mechanism
+  reviewNotes: Goalpost 0-150 is too linear; Japan at 260% (mostly domestic, yen-denominated) scores 0 despite weak real fiscal-stress risk. PR 4 §4.4 adds holder-composition modifier.
+
+- indicator: recoveryReserveMonths
+  dimension: reserveAdequacy
+  domain: recovery
+  weight: 1.00
+  direction: higher-better
+  source: World Bank
+  seriesId: FI.RES.TOTL.MO
+  seriesUrl: https://data.worldbank.org/indicator/FI.RES.TOTL.MO
+  coveragePct: 0.85
+  lastObservedYear: 2023
+  license: CC-BY-4.0
+  mechanismTestRationale: Central-bank reserves in months of imports — immediate external-liquidity cushion.
+  constructStatus: observed-mechanism
+  reviewNotes: PR 2 §3.4 renames to liquidReserveAdequacy; new dimension sovereignFiscalBuffer added.
+
+- indicator: recoveryDebtToReserves
+  dimension: externalDebtCoverage
+  domain: recovery
+  weight: 1.00
+  direction: lower-better
+  source: World Bank
+  seriesId: DT.DOD.DSTC.CD / FI.RES.TOTL.CD
+  seriesUrl: https://data.worldbank.org/indicator/DT.DOD.DSTC.CD
+  coveragePct: 0.75
+  lastObservedYear: 2023
+  license: CC-BY-4.0
+  mechanismTestRationale: Short-term external debt to reserves ratio — rollover-shock exposure. Goalpost anchored on Greenspan-Guidotti (ratio≥1 = reserve inadequacy).
+  constructStatus: observed-mechanism
+  reviewNotes: PR 3 §3.5 point 3 re-goalposted from (0..5) to (0..2). Old goalpost saturated at 100 across the 9-country probe including stressed states; new anchor maps ratio=1.0 to score 50 and ratio=2.0 to score 0.
+
+- indicator: recoveryImportHhi
+  dimension: importConcentration
+  domain: recovery
+  weight: 1.00
+  direction: lower-better
+  source: UN Comtrade
+  seriesId: HS2 bilateral Herfindahl-Hirschman Index
+  seriesUrl: https://comtrade.un.org/
+  coveragePct: 0.70
+  lastObservedYear: 2023
+  license: Open
+  mechanismTestRationale: Import-partner concentration (HHI) — supplier-shock exposure.
+  constructStatus: observed-mechanism
+  reviewNotes: Coverage gap for UAE and small-island states; PR 1+ audit.
+
+- indicator: recoveryWgiContinuity
+  dimension: stateContinuity
+  domain: recovery
+  weight: 0.50
+  direction: higher-better
+  source: World Bank WGI
+  seriesId: Mean of WGI subscores
+  seriesUrl: https://info.worldbank.org/governance/wgi/
+  coveragePct: 0.98
+  lastObservedYear: 2023
+  license: CC-BY-4.0
+  mechanismTestRationale: WGI composite as state-continuity proxy — institutional durability through shocks.
+  constructStatus: observed-mechanism
+  reviewNotes: Duplicate with governanceInstitutional.wgiComposite. PR 4 de-duplicate.
+
+- indicator: recoveryConflictPressure
+  dimension: stateContinuity
+  domain: recovery
+  weight: 0.30
+  direction: lower-better
+  source: UCDP
+  seriesId: Armed conflict events / fatalities
+  seriesUrl: https://ucdp.uu.se/
+  coveragePct: 0.95
+  lastObservedYear: 2026
+  license: Open
+  mechanismTestRationale: UCDP conflict intensity — direct state-continuity-shock metric.
+  constructStatus: observed-mechanism
+
+- indicator: recoveryDisplacementVelocity
+  dimension: stateContinuity
+  domain: recovery
+  weight: 0.20
+  direction: lower-better
+  source: UNHCR
+  seriesId: Displacement as share of population
+  seriesUrl: https://data.unhcr.org/
+  coveragePct: 0.95
+  lastObservedYear: 2025
+  license: Open
+  mechanismTestRationale: Displacement velocity — population-scale state-continuity stress.
+  constructStatus: observed-mechanism
+  reviewNotes: Inherits host-vs-sending bias. PR 4 §4.2 fix.
+
+- indicator: recoveryFuelStockDays
+  dimension: fuelStockDays
+  domain: recovery
+  weight: 1.00
+  direction: higher-better
+  source: IEA / EIA
+  seriesId: Days of fuel stock cover
+  seriesUrl: https://www.iea.org/data-and-statistics/data-tools/oil-stocks-of-iea-countries
+  coveragePct: 0.30  # imputed for every country
+  lastObservedYear: null
+  license: Proprietary
+  mechanismTestRationale: Days of fuel stock for import-shock coverage. IEA rules bind only net importers; net exporters get no observed value.
+  constructStatus: imputed-floor
+  reviewNotes: PR 3 §3.5 retires from core score (permanent). Enrichment-only if IEA/EIA connector ever wires.
+
+# PENDING ADDITIONS FOR PR 1+ --------------------------------------------
+
+# PR 1 additions (not yet in the scorer):
+# - powerLossesPct       → EG.ELC.LOSS.ZS (transmission+distribution losses, lower-better)
+# - reserveMarginPct     → IEA electricity balance (generation reserve margin, higher-better)
+# - accessToElectricityPct → EG.ELC.ACCS.ZS (threshold/saturating, moved to infrastructure domain)
+# - importedFossilDependence → EG.IMP.CONS.ZS × fossil-generation-share (Option B power-system framing)
+# - lowCarbonGenerationShare → EG.ELC.NUCL.ZS + EG.ELC.RNEW.ZS (higher-better)
+
+# PR 2 additions (not yet in the scorer):
+# - liquidReserveAdequacy  → FI.RES.TOTL.MO (rename of current reserveMonths)
+# - sovereignFiscalBuffer  → IFSWF + official disclosures × access × liquidity × transparency
+
+# PR 3 replacements (not yet in the scorer):
+# - realInterestRate       → FR.INR.RINR (replaces currencyExternal for non-BIS countries)

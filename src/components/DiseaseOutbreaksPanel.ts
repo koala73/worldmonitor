@@ -1,4 +1,5 @@
 import { Panel } from './Panel';
+import { t } from '@/services/i18n';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { fetchDiseaseOutbreaks, type DiseaseOutbreakItem } from '@/services/disease-outbreaks';
 
@@ -30,7 +31,7 @@ export class DiseaseOutbreaksPanel extends Panel {
   private _filter: string = '';
 
   constructor() {
-    super({ id: 'disease-outbreaks', title: 'Disease Outbreaks', showCount: false });
+    super({ id: 'disease-outbreaks', title: 'Disease Outbreaks', showCount: false, infoTooltip: t('components.diseaseOutbreaks.infoTooltip') });
     this.content.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-filter]');
       if (btn) {

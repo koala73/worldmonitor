@@ -1,0 +1,43 @@
+---
+title: "Supply Chain"
+description: "Shipping-stress composite, carrier / ETF tracking, critical minerals, chokepoint cards, and the Scenario Engine trigger surface — the dashboard's supply-chain command surface."
+---
+
+The **Supply Chain** panel (internal id `supply-chain`) is the main entry point for everything supply-chain related: a composite shipping-stress score, carrier and ETF rows with price movement, a minerals concentration view, and — most importantly — the **[Scenario Engine](/scenario-engine)** trigger buttons that let PRO users activate pre-built disruption scenarios across the map and the panel state.
+
+## What the panel shows
+
+Across the composite:
+
+- **Shipping-stress header** — a composite-stress score (0–100) with a tinted gauge, colour-bucketed by level (`critical` / `elevated` / `moderate` / `normal`).
+- **Carrier / ETF / index rows** — per-symbol price, per-cent change (`▲`/`▼` arrow with bullish/bearish tint), a compact sparkline, and a type badge (`ETF` / `IDX` / `CARR`).
+- **Critical minerals rows** — per-mineral top-3 producer concentration, HHI, and risk rating (`critical` / `high` / `moderate` / `low`).
+- **Scenario Engine trigger cards** — per-scenario trigger buttons (`sc-scenario-trigger` / `sc-scenario-btn`) that dispatch a template id to the scenario worker. Free users see the buttons but hit the PRO gate at activation. See [Scenario Engine](/scenario-engine) for the full workflow.
+- **Active-scenario banner** (when a scenario is running) — icon, scenario name, optional params chip (duration + cost bump), top impacted countries, dismiss ×. When template parameters are populated, an additional "Simulating …" tagline renders. Banner construction lives in `renderScenarioBanner()` in `src/components/SupplyChainPanel.ts`.
+
+Panel id is `supply-chain`; canonical component is `src/components/SupplyChainPanel.ts`. Title per variant: "Supply Chain" (full/finance) or "Supply Chain & Logistics" (commodity).
+
+## How you reach it
+
+- **Cmd+K**: type *supply chain*, *shipping*, or *logistics*.
+- **Availability by variant**: registered and enabled by default in the **full/geopolitical** (priority 1), **finance** (priority 1), and **commodity** (priority 1) variants. Not present in the tech or happy variants. Source: `'supply-chain'` entries in `FULL_PANELS`, `FINANCE_PANELS`, `COMMODITY_PANELS`. On desktop the full-variant registration additionally layers `premium: 'enhanced'` (`_desktop &&` clause in `src/config/panels.ts`).
+
+## Data sources
+
+Reads the cached supply-chain dataset (composite stress, carrier list, minerals, scenario templates). The Scenario Engine triggers call `POST /api/scenario/v1/run-scenario` and poll `GET /api/scenario/v1/get-scenario-status` — see [Scenarios API](/api-scenarios) for the HTTP contract.
+
+## Refresh cadence
+
+Panel reads on mount and on user-triggered refresh. Scenario Engine jobs are async; the panel polls the job status endpoint and paints the banner once the worker writes `status: "done"`.
+
+## Tier & gating
+
+The Supply Chain panel itself is **free** on web (full / finance / commodity variants). On desktop, the full-variant registration layers `premium: 'enhanced'`. **The Scenario Engine activation is PRO** regardless of web vs desktop — free users see the trigger buttons but hit the `scenario-engine` gate on activation.
+
+## Related
+
+- [Scenario Engine](/scenario-engine) — the activation workflow + template catalogue.
+- [Route Explorer](/route-explorer) — per-lane chokepoint + bypass analysis.
+- [Supply Chain service](/api/SupplyChainService.openapi.yaml) — the backing RPC family.
+- [Scenarios API](/api-scenarios) — async job contract for scenario runs.
+- [Hormuz Trade Tracker](/panels/hormuz-tracker) — chokepoint-specific drill-down.

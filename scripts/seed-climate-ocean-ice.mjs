@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, runSeed, getRedisCredentials } from './_seed-utils.mjs';
+import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -443,7 +444,7 @@ async function readPriorCache() {
     });
     if (!resp.ok) return null;
     const data = await resp.json();
-    return data.result ? JSON.parse(data.result) : null;
+    return data.result ? unwrapEnvelope(JSON.parse(data.result)).data : null;
   } catch {
     return null;
   }
@@ -492,12 +493,20 @@ function validate(data) {
 }
 
 const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^file:\/\//, ''));
+export function declareRecords(data) {
+  return typeof countIndicators === "function" ? countIndicators(data) : 0;
+}
+
 if (isMain) {
   runSeed('climate', 'ocean-ice', CLIMATE_OCEAN_ICE_KEY, fetchOceanIceData, {
     validateFn: validate,
     ttlSeconds: CACHE_TTL,
     recordCount: countIndicators,
     sourceVersion: 'nsidc-sea-ice_v4-climatology-noaa-ohc-nasa-gmsl-noaa-global-ocean-v6-v51-baseline-v3',
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 2880,
   }).catch((err) => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + cause);

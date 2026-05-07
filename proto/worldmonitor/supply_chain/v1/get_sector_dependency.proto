@@ -1,0 +1,52 @@
+syntax = "proto3";
+package worldmonitor.supply_chain.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+// DependencyFlag classifies how a country+sector dependency can fail.
+enum DependencyFlag {
+  DEPENDENCY_FLAG_UNSPECIFIED = 0;
+  // >80% of imports come from a single exporter country.
+  DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL = 1;
+  // >80% of imports transit a single chokepoint with no viable bypass route.
+  DEPENDENCY_FLAG_SINGLE_CORRIDOR_CRITICAL = 2;
+  // Both SINGLE_SOURCE_CRITICAL and SINGLE_CORRIDOR_CRITICAL apply.
+  DEPENDENCY_FLAG_COMPOUND_RISK = 3;
+  // Viable bypass exists AND multiple exporters are available.
+  DEPENDENCY_FLAG_DIVERSIFIABLE = 4;
+}
+
+message GetSectorDependencyRequest {
+  string iso2 = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.len = 2,
+    (buf.validate.field).string.pattern = "^[A-Z]{2}$",
+    (sebuf.http.query) = {name: "iso2"}
+  ];
+  // HS2 chapter code, e.g. "27" (mineral fuels), "85" (electronics)
+  string hs2 = 2 [
+    (buf.validate.field).required = true,
+    (sebuf.http.query) = {name: "hs2"}
+  ];
+}
+
+message GetSectorDependencyResponse {
+  string iso2 = 1;
+  string hs2 = 2;
+  // Human-readable HS2 chapter name.
+  string hs2_label = 3;
+  // One or more dependency flags; empty means no critical dependency identified.
+  repeated DependencyFlag flags = 4;
+  // ISO2 of the country supplying the largest share of this sector's imports.
+  string primary_exporter_iso2 = 5;
+  // Share of imports from the primary exporter (0–1). 0 = no Comtrade data available.
+  double primary_exporter_share = 6;
+  // Chokepoint ID with the highest exposure score for this country+sector.
+  string primary_chokepoint_id = 7;
+  // Exposure score for the primary chokepoint (0–100).
+  double primary_chokepoint_exposure = 8;
+  // Whether at least one viable bypass corridor exists for the primary chokepoint.
+  bool has_viable_bypass = 9;
+  string fetched_at = 10;
+}

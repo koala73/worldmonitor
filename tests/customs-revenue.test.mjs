@@ -50,6 +50,40 @@ describe('Customs revenue seed', () => {
     assert.match(seedSrc, /\.reverse\(\)/);
   });
 
+  it('retries the Treasury fetch with backoff to survive transient Railway-egress failures', () => {
+    // Single-attempt fetch left the customs branch failing for 30+ hours
+    // after a one-off transient blip — by the next 6h cron tick the data
+    // had TTL'd out (24h) and the panel went empty. Three attempts with
+    // 5s/10s linear backoff covers the realistic transient envelope.
+    assert.match(seedSrc, /attempt\s*<=\s*3/, 'retry loop must use a 3-attempt cap');
+    assert.match(seedSrc, /Treasury MTS exhausted 3 attempts/, 'final error must include attempt count for triage');
+    assert.match(seedSrc, /attempt \* 5_000/, 'backoff must be linear (5s, 10s) on attempt 1 and 2');
+  });
+
+  it('factors row parsing into a separate function so retry success path stays clean', () => {
+    assert.match(seedSrc, /function parseCustomsRows\(rows\)/);
+    assert.match(seedSrc, /return parseCustomsRows\(rows\);/);
+  });
+
+  it('marks 4xx (except 429) as non-retryable so deterministic failures short-circuit the retry loop', () => {
+    // Without this, a malformed URL or removed endpoint would burn 5s + 10s
+    // of backoff per cron run before propagating — and emit two misleading
+    // "retrying in …" warns that hide the real (deterministic) cause.
+    assert.match(
+      seedSrc,
+      /resp\.status\s*>=\s*400\s*&&\s*resp\.status\s*<\s*500\s*&&\s*resp\.status\s*!==\s*429/,
+      'expected 4xx-except-429 client-error short-circuit',
+    );
+    assert.match(seedSrc, /__retryable\s*=\s*false/, 'expected __retryable marker on the thrown error');
+    assert.match(seedSrc, /err\?\.__retryable\s*===\s*false/, 'expected catch block to honor the marker');
+  });
+
+  it('marks schema-drift row-count violation as non-retryable', () => {
+    // A second fetch will return the same upstream response shape — row-count
+    // violations are an upstream contract change, not transient.
+    assert.match(seedSrc, /rows\.length > 100[\s\S]{0,400}__retryable\s*=\s*false/);
+  });
+
   it('writes customs revenue as extra key with seed-meta', () => {
     assert.match(seedSrc, /writeExtraKeyWithMeta\(KEYS\.customsRevenue/);
   });

@@ -78,6 +78,13 @@ async function fetchEcbCiss() {
   };
 }
 
+// Contract opt-in: canonical record count for envelope + health.
+// FSI-EU payload is `{latestValue, latestDate, label, history[], ...}`.
+// Records = weekly CISS observations in the history array.
+export function declareRecords(data) {
+  return Array.isArray(data?.history) ? data.history.length : 0;
+}
+
 function validate(data) {
   return (
     data?.latestValue != null &&
@@ -97,6 +104,9 @@ if (isMain) {
     validateFn: validate,
     ttlSeconds: FSI_EU_TTL,
     sourceVersion: 'ecb-ciss-sdmx-v1',
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 20160, // 14 days — matches api/health.js SEED_META threshold
   }).catch((err) => {
     console.error('FATAL:', err.message || err);
     process.exit(1);

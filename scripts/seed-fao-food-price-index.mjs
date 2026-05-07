@@ -91,10 +91,19 @@ async function fetchFaoFfpi() {
 }
 
 const isMain = process.argv[1]?.endsWith('seed-fao-food-price-index.mjs');
+export function declareRecords(data) {
+  return Array.isArray(data?.points) ? data.points.length : 0;
+}
+
 if (isMain) {
   await runSeed('economic', 'fao-ffpi', CANONICAL_KEY, fetchFaoFfpi, {
     ttlSeconds: CACHE_TTL,
     validateFn: (data) => data?.points?.length > 0,
     recordCount: (data) => data?.points?.length || 0,
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 86400,
+    sourceVersion: 'fao-ffpi-v1',
   });
 }

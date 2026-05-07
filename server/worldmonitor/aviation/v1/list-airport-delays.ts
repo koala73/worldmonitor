@@ -111,9 +111,13 @@ export async function listAirportDelays(
     }
   }
 
-  // Write bootstrap key for initial page load hydration
+  // Write bootstrap key for initial page load hydration. Canonical writer is
+  // scripts/seed-aviation.mjs (BOOTSTRAP_TTL=7200). This RPC-side write is a
+  // courtesy mid-tick refresh — TTL kept in lockstep so a user-triggered RPC
+  // doesn't shorten the seeder's expiry and re-create the EMPTY-on-quiet-traffic
+  // failure mode that motivated the canonical seeder write.
   try {
-    await setCachedJson('aviation:delays-bootstrap:v1', { alerts: allAlerts }, 1800);
+    await setCachedJson('aviation:delays-bootstrap:v1', { alerts: allAlerts }, 7200);
   } catch { /* non-critical */ }
 
   return { alerts: allAlerts };

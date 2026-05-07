@@ -216,6 +216,18 @@ export class NationalDebtPanel extends Panel {
     return this.entries.reduce((sum, e) => sum + getCurrentDebt(e), 0);
   }
 
+  private getSourceLabel(): string {
+    // Prefer the richest source label present in the seeded entries (USA entry
+    // carries the combined "IMF WEO <year> + US Treasury FiscalData" string).
+    let best = '';
+    for (const e of this.entries) {
+      const s = e.source?.trim();
+      if (!s) continue;
+      if (s.length > best.length) best = s;
+    }
+    return best || 'IMF WEO';
+  }
+
   private render(): void {
     if (this.entries.length === 0) {
       this.showError('No data available');
@@ -255,7 +267,7 @@ export class NationalDebtPanel extends Panel {
           <span class="debt-load-more-count">(${this.filteredEntries.length - this.visibleCount} remaining)</span>
         </button>` : ''}
         <div class="debt-footer">
-          <span class="debt-source">Source: IMF WEO 2024 + US Treasury FiscalData</span>
+          <span class="debt-source">Source: ${escapeHtml(this.getSourceLabel())}</span>
           <span class="debt-updated">Updated: ${new Date(this.lastFetch).toLocaleDateString()}</span>
         </div>
       </div>

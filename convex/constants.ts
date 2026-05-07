@@ -5,6 +5,8 @@ export const channelTypeValidator = v.union(
   v.literal("slack"),
   v.literal("email"),
   v.literal("discord"),
+  v.literal("webhook"),
+  v.literal("web_push"),
 );
 
 export const sensitivityValidator = v.union(

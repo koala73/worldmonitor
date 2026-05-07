@@ -1,0 +1,64 @@
+{
+  "capturedAt": "2026-04-21",
+  "source": "Published reference tables, dated 2026-04-21. The rows here are the exact figures used in the top-10 / bottom-10 / major-economies tables published alongside the reference-grade rollout. Run scripts/freeze-resilience-ranking.mjs against the live API to regenerate; this frozen copy exists so those specific published figures can be regression-verified against any future code change. Until the refresh script is run against the live API, treat this file as a claim artifact (source=published-tables), not as a live-API capture.",
+  "commitSha": "048bb8bb525393dc4a9c1998b9877c1f8cc8c011",
+  "schemaVersion": "2.0",
+  "methodology": {
+    "overallScoreFormula": "sum(domain.score * domain.weight) across 6 domains; weights: economic=0.17, infrastructure=0.15, energy=0.11, social-governance=0.19, health-food=0.13, recovery=0.25 (sum=1.00).",
+    "domainCount": 6,
+    "dimensionCount": 19,
+    "pillarCount": 3,
+    "coverageLabel": "Mean dimension coverage (avg of the 19 per-dimension coverage values); labelled 'Dimension coverage' rather than 'Data coverage' per the 2026-04-21 review followup.",
+    "greyOutThreshold": 0.40,
+    "notes": [
+      "overallScore uses the 6-domain weighted aggregate, NOT the 3-pillar combine. The pillar combine (penalizedPillarScore) is staged in _shared.ts and validated via scripts/validate-resilience-sensitivity.mjs; activation is a separate PR.",
+      "Recovery carries the highest single-domain weight (0.25). This is the mechanical reason fiscally strong small states cluster at the top and fragile states separate cleanly at the bottom.",
+      "Displayed scores round to one decimal; stored overallScore rounds to two decimals, which is why visible ties (e.g. three 77.8 entries) do not imply a sort bug."
+    ]
+  },
+  "tables": {
+    "topTen": [
+      { "rank": 1,  "countryCode": "IS", "countryName": "Iceland",     "overallScore": 79.3, "dimensionCoverage": 0.79 },
+      { "rank": 2,  "countryCode": "NO", "countryName": "Norway",      "overallScore": 78.6, "dimensionCoverage": 0.76 },
+      { "rank": 3,  "countryCode": "NZ", "countryName": "New Zealand", "overallScore": 77.8, "dimensionCoverage": 0.85 },
+      { "rank": 4,  "countryCode": "CH", "countryName": "Switzerland", "overallScore": 77.8, "dimensionCoverage": 0.83 },
+      { "rank": 5,  "countryCode": "DK", "countryName": "Denmark",     "overallScore": 77.8, "dimensionCoverage": 0.84 },
+      { "rank": 6,  "countryCode": "FI", "countryName": "Finland",     "overallScore": 77.1, "dimensionCoverage": 0.86 },
+      { "rank": 7,  "countryCode": "SE", "countryName": "Sweden",      "overallScore": 76.7, "dimensionCoverage": 0.86 },
+      { "rank": 8,  "countryCode": "CZ", "countryName": "Czechia",     "overallScore": 76.0, "dimensionCoverage": 0.86 },
+      { "rank": 9,  "countryCode": "LU", "countryName": "Luxembourg",  "overallScore": 75.6, "dimensionCoverage": 0.86 },
+      { "rank": 10, "countryCode": "PT", "countryName": "Portugal",    "overallScore": 75.5, "dimensionCoverage": 0.86 }
+    ],
+    "bottomTen": [
+      { "rank": 208, "countryCode": "BF", "countryName": "Burkina Faso",             "overallScore": 43.9, "dimensionCoverage": 0.76 },
+      { "rank": 209, "countryCode": "CF", "countryName": "Central African Republic", "overallScore": 42.8, "dimensionCoverage": 0.83 },
+      { "rank": 210, "countryCode": "ML", "countryName": "Mali",                     "overallScore": 42.4, "dimensionCoverage": 0.75 },
+      { "rank": 211, "countryCode": "ET", "countryName": "Ethiopia",                 "overallScore": 41.9, "dimensionCoverage": 0.80 },
+      { "rank": 212, "countryCode": "NE", "countryName": "Niger",                    "overallScore": 41.6, "dimensionCoverage": 0.76 },
+      { "rank": 213, "countryCode": "BI", "countryName": "Burundi",                  "overallScore": 40.7, "dimensionCoverage": 0.76 },
+      { "rank": 214, "countryCode": "YE", "countryName": "Yemen",                    "overallScore": 37.5, "dimensionCoverage": 0.77 },
+      { "rank": 215, "countryCode": "CD", "countryName": "DR Congo",                 "overallScore": 34.7, "dimensionCoverage": 0.76 },
+      { "rank": 216, "countryCode": "SO", "countryName": "Somalia",                  "overallScore": 32.5, "dimensionCoverage": 0.70 },
+      { "rank": 217, "countryCode": "SD", "countryName": "Sudan",                    "overallScore": 26.8, "dimensionCoverage": 0.79 }
+    ],
+    "majorEconomies": [
+      { "rank": 17,  "countryCode": "JP", "countryName": "Japan",         "overallScore": 75.2, "dimensionCoverage": 0.88 },
+      { "rank": 19,  "countryCode": "AU", "countryName": "Australia",     "overallScore": 74.7, "dimensionCoverage": 0.88 },
+      { "rank": 66,  "countryCode": "DE", "countryName": "Germany",       "overallScore": 69.1, "dimensionCoverage": 0.86 },
+      { "rank": 71,  "countryCode": "GB", "countryName": "United Kingdom","overallScore": 68.6, "dimensionCoverage": 0.89 },
+      { "rank": 80,  "countryCode": "KR", "countryName": "South Korea",   "overallScore": 67.2, "dimensionCoverage": 0.89 },
+      { "rank": 86,  "countryCode": "SG", "countryName": "Singapore",     "overallScore": 66.6, "dimensionCoverage": 0.84 },
+      { "rank": 89,  "countryCode": "FR", "countryName": "France",        "overallScore": 66.4, "dimensionCoverage": 0.82 },
+      { "rank": 97,  "countryCode": "US", "countryName": "United States", "overallScore": 65.4, "dimensionCoverage": 0.80 },
+      { "rank": 109, "countryCode": "CN", "countryName": "China",         "overallScore": 63.4, "dimensionCoverage": 0.84 },
+      { "rank": 136, "countryCode": "BR", "countryName": "Brazil",        "overallScore": 60.3, "dimensionCoverage": 0.84 },
+      { "rank": 160, "countryCode": "TR", "countryName": "Turkey",        "overallScore": 55.7, "dimensionCoverage": 0.86 },
+      { "rank": 162, "countryCode": "RU", "countryName": "Russia",        "overallScore": 54.9, "dimensionCoverage": 0.80 },
+      { "rank": 178, "countryCode": "IN", "countryName": "India",         "overallScore": 52.2, "dimensionCoverage": 0.84 }
+    ]
+  },
+  "totals": {
+    "rankedCountries": 217,
+    "greyedOutCount": null
+  }
+}

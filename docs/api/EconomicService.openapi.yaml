@@ -114,8 +114,12 @@ paths:
                   in: query
                   description: Optional commodity filter. Empty returns all tracked commodities.
                   required: false
+                  style: form
+                  explode: true
                   schema:
-                    type: string
+                    type: array
+                    items:
+                        type: string
             responses:
                 "200":
                     description: Successful response
@@ -175,8 +179,12 @@ paths:
                     Energy source codes to query (e.g., "SUN", "WND", "COL").
                      Empty returns all tracked sources (SUN, WND, COL).
                   required: false
+                  style: form
+                  explode: true
                   schema:
-                    type: string
+                    type: array
+                    items:
+                        type: string
                 - name: years
                   in: query
                   description: Number of years of historical data. Default 20 if not set.
@@ -716,6 +724,96 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/GetFaoFoodPriceIndexResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/economic/v1/get-oil-stocks-analysis:
+        get:
+            tags:
+                - EconomicService
+            summary: GetOilStocksAnalysis
+            description: GetOilStocksAnalysis retrieves the IEA oil stocks days-of-cover ranking and regional summary.
+            operationId: GetOilStocksAnalysis
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetOilStocksAnalysisResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/economic/v1/get-oil-inventories:
+        get:
+            tags:
+                - EconomicService
+            summary: GetOilInventories
+            operationId: GetOilInventories
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetOilInventoriesResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/economic/v1/get-energy-crisis-policies:
+        get:
+            tags:
+                - EconomicService
+            summary: GetEnergyCrisisPolicies
+            description: GetEnergyCrisisPolicies retrieves government policy responses to the 2026 energy crisis from the IEA tracker.
+            operationId: GetEnergyCrisisPolicies
+            parameters:
+                - name: country_code
+                  in: query
+                  description: Optional ISO-2 country code filter.
+                  required: false
+                  schema:
+                    type: string
+                - name: category
+                  in: query
+                  description: 'Optional category filter: "conservation" or "consumer_support".'
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetEnergyCrisisPoliciesResponse'
                 "400":
                     description: Validation error
                     content:
@@ -1988,3 +2086,306 @@ components:
                 sugar:
                     type: number
                     format: double
+        GetOilStocksAnalysisRequest:
+            type: object
+            description: GetOilStocksAnalysisRequest is empty — returns the latest global analysis snapshot.
+        GetOilStocksAnalysisResponse:
+            type: object
+            properties:
+                updatedAt:
+                    type: string
+                    description: UTC ISO-8601 timestamp when this analysis was written.
+                dataMonth:
+                    type: string
+                    description: 'Data month in YYYY-MM format (source: IEA monthly release).'
+                ieaMembers:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/OilStocksAnalysisMember'
+                belowObligation:
+                    type: array
+                    items:
+                        type: string
+                        description: ISO2 codes of countries currently below the 90-day obligation.
+                regionalSummary:
+                    $ref: '#/components/schemas/OilStocksRegionalSummary'
+                unavailable:
+                    type: boolean
+                    description: True when upstream seed data is unavailable (fallback result).
+            description: GetOilStocksAnalysisResponse contains the IEA oil stocks days-of-cover analysis.
+        OilStocksAnalysisMember:
+            type: object
+            properties:
+                iso2:
+                    type: string
+                    description: ISO 3166-1 alpha-2 country code.
+                daysOfCover:
+                    type: integer
+                    format: int32
+                    description: Days of supply cover (absent when country is a net exporter or data anomaly).
+                netExporter:
+                    type: boolean
+                    description: True when the country is classified as a net exporter by IEA.
+                belowObligation:
+                    type: boolean
+                    description: True when days_of_cover < 90 (IEA 90-day obligation threshold).
+                obligationMet:
+                    type: boolean
+                    description: True when the 90-day obligation is met (net exporters always true).
+                rank:
+                    type: integer
+                    format: int32
+                    description: Rank within the IEA member ranking (1-indexed, net exporters ranked last).
+                vsObligation:
+                    type: integer
+                    format: int32
+                    description: days_of_cover - 90; absent for net exporters.
+            description: OilStocksAnalysisMember holds days-of-cover data and obligation status for one IEA member country.
+        OilStocksRegionalSummary:
+            type: object
+            properties:
+                europe:
+                    $ref: '#/components/schemas/OilStocksRegionalSummaryEurope'
+                asiaPacific:
+                    $ref: '#/components/schemas/OilStocksRegionalSummaryAsiaPacific'
+                northAmerica:
+                    $ref: '#/components/schemas/OilStocksRegionalSummaryNorthAmerica'
+            description: OilStocksRegionalSummary holds regional aggregates for the three IEA regions.
+        OilStocksRegionalSummaryEurope:
+            type: object
+            properties:
+                avgDays:
+                    type: integer
+                    format: int32
+                    description: Mean days of cover across non-net-exporter European members.
+                minDays:
+                    type: integer
+                    format: int32
+                    description: Minimum days of cover across non-net-exporter European members.
+                countBelowObligation:
+                    type: integer
+                    format: int32
+                    description: Count of European members below the 90-day obligation.
+            description: OilStocksRegionalSummaryEurope aggregates days-of-cover for European IEA members.
+        OilStocksRegionalSummaryAsiaPacific:
+            type: object
+            properties:
+                avgDays:
+                    type: integer
+                    format: int32
+                    description: Mean days of cover across Asia-Pacific members (AU, JP, KR, NZ).
+                minDays:
+                    type: integer
+                    format: int32
+                    description: Minimum days of cover across Asia-Pacific members.
+                countBelowObligation:
+                    type: integer
+                    format: int32
+                    description: Count of Asia-Pacific members below the 90-day obligation.
+            description: OilStocksRegionalSummaryAsiaPacific aggregates days-of-cover for Asia-Pacific IEA members.
+        OilStocksRegionalSummaryNorthAmerica:
+            type: object
+            properties:
+                netExporters:
+                    type: integer
+                    format: int32
+                    description: Count of net exporters in North America (CA, MX, US).
+                avgDays:
+                    type: integer
+                    format: int32
+                    description: Average days of cover for non-exporter North American members (if any).
+            description: OilStocksRegionalSummaryNorthAmerica aggregates data for North American IEA members.
+        GetOilInventoriesRequest:
+            type: object
+        GetOilInventoriesResponse:
+            type: object
+            properties:
+                crudeWeeks:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/CrudeInventoryWeekRef'
+                spr:
+                    $ref: '#/components/schemas/OilInventoriesSprSnapshot'
+                natGasWeeks:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/NatGasWeekRef'
+                euGas:
+                    $ref: '#/components/schemas/OilInventoriesEuGas'
+                ieaStocks:
+                    $ref: '#/components/schemas/OilInventoriesIeaStocks'
+                refinery:
+                    $ref: '#/components/schemas/OilInventoriesRefinery'
+                updatedAt:
+                    type: string
+        CrudeInventoryWeekRef:
+            type: object
+            properties:
+                period:
+                    type: string
+                stocksMb:
+                    type: number
+                    format: double
+                weeklyChangeMb:
+                    type: number
+                    format: double
+        OilInventoriesSprSnapshot:
+            type: object
+            properties:
+                latestStocksMb:
+                    type: number
+                    format: double
+                changeWow:
+                    type: number
+                    format: double
+                weeks:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/OilInventoriesSprWeek'
+        OilInventoriesSprWeek:
+            type: object
+            properties:
+                period:
+                    type: string
+                stocksMb:
+                    type: number
+                    format: double
+        NatGasWeekRef:
+            type: object
+            properties:
+                period:
+                    type: string
+                storBcf:
+                    type: number
+                    format: double
+                weeklyChangeBcf:
+                    type: number
+                    format: double
+        OilInventoriesEuGas:
+            type: object
+            properties:
+                fillPct:
+                    type: number
+                    format: double
+                fillPctChange1d:
+                    type: number
+                    format: double
+                trend:
+                    type: string
+                history:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/OilInventoriesEuGasDay'
+        OilInventoriesEuGasDay:
+            type: object
+            properties:
+                date:
+                    type: string
+                fillPct:
+                    type: number
+                    format: double
+        OilInventoriesIeaStocks:
+            type: object
+            properties:
+                dataMonth:
+                    type: string
+                members:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/OilInventoriesIeaMember'
+                europe:
+                    $ref: '#/components/schemas/OilInventoriesRegionStats'
+                asiaPacific:
+                    $ref: '#/components/schemas/OilInventoriesRegionStats'
+                northAmerica:
+                    $ref: '#/components/schemas/OilInventoriesRegionStats'
+        OilInventoriesIeaMember:
+            type: object
+            properties:
+                iso2:
+                    type: string
+                daysOfCover:
+                    type: number
+                    format: double
+                netExporter:
+                    type: boolean
+                belowObligation:
+                    type: boolean
+        OilInventoriesRegionStats:
+            type: object
+            properties:
+                avgDays:
+                    type: number
+                    format: double
+                minDays:
+                    type: number
+                    format: double
+                countBelowObligation:
+                    type: integer
+                    format: int32
+        OilInventoriesRefinery:
+            type: object
+            properties:
+                inputsMbpd:
+                    type: number
+                    format: double
+                period:
+                    type: string
+        GetEnergyCrisisPoliciesRequest:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                    description: Optional ISO-2 country code filter.
+                category:
+                    type: string
+                    description: 'Optional category filter: "conservation" or "consumer_support".'
+            description: GetEnergyCrisisPoliciesRequest allows optional filtering by country or category.
+        GetEnergyCrisisPoliciesResponse:
+            type: object
+            properties:
+                source:
+                    type: string
+                    description: Source attribution.
+                sourceUrl:
+                    type: string
+                    description: Source URL.
+                context:
+                    type: string
+                    description: Context description.
+                policies:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/EnergyCrisisPolicy'
+                updatedAt:
+                    type: string
+                    description: UTC ISO-8601 timestamp when this data was last updated.
+                unavailable:
+                    type: boolean
+                    description: True when upstream seed data is unavailable (fallback result).
+            description: GetEnergyCrisisPoliciesResponse contains energy crisis policy data from the IEA tracker.
+        EnergyCrisisPolicy:
+            type: object
+            properties:
+                country:
+                    type: string
+                    description: Country name.
+                countryCode:
+                    type: string
+                    description: ISO 3166-1 alpha-2 country code.
+                category:
+                    type: string
+                    description: 'Policy category: "conservation" or "consumer_support".'
+                sector:
+                    type: string
+                    description: 'Affected sector: transport, buildings, industry, electricity, agriculture, general.'
+                measure:
+                    type: string
+                    description: Description of the policy measure.
+                dateAnnounced:
+                    type: string
+                    description: Date announced in ISO-8601 (YYYY-MM-DD) format.
+                status:
+                    type: string
+                    description: 'Status of the policy: active, planned, or ended.'
+            description: EnergyCrisisPolicy represents a single government policy response to the 2026 energy crisis.

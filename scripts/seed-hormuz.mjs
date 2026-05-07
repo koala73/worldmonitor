@@ -294,7 +294,16 @@ async function buildPayload() {
   };
 }
 
+export function declareRecords(data) {
+  return (data?.charts || []).reduce((s, c) => s + (c.series?.length || 0), 0);
+}
+
 await runSeed('supply_chain', 'hormuz_tracker', CANONICAL_KEY, buildPayload, {
   ttlSeconds: CACHE_TTL,
   validateFn: (d) => !!(d?.updatedDate || d?.summary || d?.title) && d?.charts?.some(c => (c.series?.length ?? 0) > 0),
+
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 2880,
+  sourceVersion: 'hormuz-tracker-v1',
 });

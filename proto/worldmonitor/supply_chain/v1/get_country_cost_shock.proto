@@ -1,0 +1,39 @@
+syntax = "proto3";
+package worldmonitor.supply_chain.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+import "worldmonitor/supply_chain/v1/supply_chain_data.proto";
+
+message GetCountryCostShockRequest {
+  string iso2 = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.len = 2,
+    (buf.validate.field).string.pattern = "^[A-Z]{2}$",
+    (sebuf.http.query) = {name: "iso2"}
+  ];
+  string chokepoint_id = 2 [
+    (buf.validate.field).required = true,
+    (sebuf.http.query) = {name: "chokepointId"}
+  ];
+  // HS2 chapter (default: "27")
+  string hs2 = 3 [(sebuf.http.query) = {name: "hs2"}];
+}
+
+message GetCountryCostShockResponse {
+  string iso2 = 1;
+  string chokepoint_id = 2;
+  string hs2 = 3;
+  // Average refined-product supply deficit % under full closure (Gasoline/Diesel/Jet fuel/LPG average; HS 27 only)
+  double supply_deficit_pct = 4;
+  // Energy stockpile coverage in days (IEA data, HS 27 only; 0 for non-energy sectors or net exporters)
+  int32 coverage_days = 5;
+  // War risk insurance premium in basis points for this chokepoint
+  int32 war_risk_premium_bps = 6;
+  WarRiskTier war_risk_tier = 7;
+  // Whether supply_deficit_pct and coverage_days are modelled (true) or unavailable (false)
+  bool has_energy_model = 8;
+  // Null/unavailable explanation for non-energy sectors
+  string unavailable_reason = 9;
+  string fetched_at = 10;
+}

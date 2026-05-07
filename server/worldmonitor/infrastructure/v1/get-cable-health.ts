@@ -444,13 +444,28 @@ export async function getCableHealth(
     if (result) {
       // Write seed-meta on every successful response (cache hit or fresh) so the
       // 30-min warm-ping keeps seed-meta within the 90-min health.js stale window.
+      // recordCount reflects the actual cable count — previous Math.max(count, 1)
+      // misrepresented empty responses as having 1 record; now writeback-path
+      // below keeps the canonical key populated (strlen > 10) so health.js
+      // reads hasData=true without needing a fake recordCount floor.
       const count = result.cables ? Object.keys(result.cables).length : 0;
-      setCachedJson('seed-meta:cable-health', { fetchedAt: Date.now(), recordCount: Math.max(count, 1) }, 604800).catch(() => {});
+      setCachedJson('seed-meta:cable-health', { fetchedAt: Date.now(), recordCount: count }, 604800).catch(() => {});
       fallbackCache = result;
       return result;
     }
 
-    return fallbackCache || { generatedAt: Date.now(), cables: {} };
+    // NGA upstream failed (cachedFetchJson stored NEG_SENTINEL in cable-health-v1
+    // for 2 min). Without writeback, api/health.js sees strlen=10 (NEG_SENTINEL
+    // length) → strlenIsData=false → records=0 → EMPTY alarm even though we're
+    // serving a valid fallbackCache response to the client. Refresh both the
+    // canonical key AND seed-meta with fallbackCache so health reflects the
+    // response the user is actually receiving. Short TTL (matches NEG_SENTINEL)
+    // so a recovered NGA fetch can immediately overwrite with fresh data.
+    const fallback = fallbackCache || { generatedAt: Date.now(), cables: {} };
+    const fbCount = fallback.cables ? Object.keys(fallback.cables).length : 0;
+    setCachedJson(CACHE_KEY, fallback, 120).catch(() => {});
+    setCachedJson('seed-meta:cable-health', { fetchedAt: Date.now(), recordCount: fbCount }, 604800).catch(() => {});
+    return fallback;
   } catch {
     if (fallbackCache) return fallbackCache;
     return { generatedAt: Date.now(), cables: {} };

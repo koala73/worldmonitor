@@ -7,6 +7,8 @@ import { getAiFlowSettings } from '@/services/ai-flow-settings';
 import { getSecretState } from '@/services/runtime-config';
 import { PanelGateReason } from '@/services/panel-gating';
 
+export type PanelSeverity = 'critical' | 'high' | 'medium' | 'low' | 'none';
+
 export interface PanelOptions {
   id: string;
   title: string;
@@ -201,6 +203,8 @@ export class Panel {
   protected countEl: HTMLElement | null = null;
   protected statusBadgeEl: HTMLElement | null = null;
   protected newBadgeEl: HTMLElement | null = null;
+  private severityDotEl: HTMLElement | null = null;
+  private currentSeverity: PanelSeverity = 'none';
   protected panelId: string;
   private abortController: AbortController = new AbortController();
   private tooltipCloseHandler: (() => void) | null = null;
@@ -253,6 +257,11 @@ export class Panel {
     title.className = 'panel-title';
     title.textContent = options.title;
     headerLeft.appendChild(title);
+
+    this.severityDotEl = document.createElement('span');
+    this.severityDotEl.className = 'panel-severity-dot';
+    this.severityDotEl.setAttribute('aria-hidden', 'true');
+    headerLeft.appendChild(this.severityDotEl);
 
     if (options.infoTooltip) {
       const infoBtn = h('button', { className: 'panel-info-btn', 'aria-label': t('components.panel.showMethodologyInfo') }, '?');
@@ -1076,6 +1085,20 @@ export class Panel {
    */
   public clearNewBadge(): void {
     this.setNewBadge(0);
+  }
+
+  /**
+   * Set the panel's severity level, controlling the header pulse dot speed.
+   * critical = 0.6s, high = 1s, medium = 1.8s, low = 2.5s, none = hidden.
+   */
+  public setSeverity(level: PanelSeverity): void {
+    if (level === this.currentSeverity) return;
+    this.currentSeverity = level;
+    if (!this.severityDotEl) return;
+    this.severityDotEl.className = 'panel-severity-dot';
+    if (level !== 'none') {
+      this.severityDotEl.classList.add(`severity-${level}`);
+    }
   }
 
   /**

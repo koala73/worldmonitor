@@ -9,6 +9,7 @@ import type {
 } from './types';
 import { haversineKm } from '@/utils/distance';
 import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
+import { premiumFetch } from '@/services/premium-fetch';
 import { hasPremiumAccess } from '@/services/panel-gating';
 
 const LLM_SCORE_THRESHOLD = 60;
@@ -30,8 +31,11 @@ export class CorrelationEngine {
   private llmInFlight = 0;
 
   constructor() {
-    // Use '' base URL — requests go to current origin, same as other panels
-    this.intelligenceClient = new IntelligenceServiceClient('');
+    // Use '' base URL — requests go to current origin, same as other panels.
+    // premiumFetch — deductSituation is in PREMIUM_RPC_PATHS. globalThis.fetch
+    // (the generated default) would 401 signed-in browser pros so the LLM
+    // assessment never lands. See #3242 review HIGH(new) #1 for the bug class.
+    this.intelligenceClient = new IntelligenceServiceClient('', { fetch: premiumFetch });
   }
 
   registerAdapter(adapter: DomainAdapter): void {

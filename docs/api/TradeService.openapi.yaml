@@ -15,8 +15,12 @@ paths:
                   in: query
                   description: WTO member codes to filter by. Empty = all.
                   required: false
+                  style: form
+                  explode: true
                   schema:
-                    type: string
+                    type: array
+                    items:
+                        type: string
                 - name: limit
                   in: query
                   description: Max results to return (server caps at 100).
@@ -153,8 +157,12 @@ paths:
                   in: query
                   description: WTO member codes to filter by. Empty = all.
                   required: false
+                  style: form
+                  explode: true
                   schema:
-                    type: string
+                    type: array
+                    items:
+                        type: string
                 - name: measure_type
                   in: query
                   description: 'Filter by measure type: "SPS", "TBT", or empty for both.'

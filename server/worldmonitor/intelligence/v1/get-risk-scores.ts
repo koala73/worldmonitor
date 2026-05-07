@@ -597,7 +597,7 @@ export async function getRiskScores(
   _req: GetRiskScoresRequest,
 ): Promise<GetRiskScoresResponse> {
   try {
-    const { data: result } = await cachedFetchJsonWithMeta<GetRiskScoresResponse>(
+    const { data: result, source } = await cachedFetchJsonWithMeta<GetRiskScoresResponse>(
       RISK_CACHE_KEY,
       RISK_CACHE_TTL,
       async () => {
@@ -612,6 +612,37 @@ export async function getRiskScores(
     );
     if (result) {
       await setCachedJson(RISK_STALE_CACHE_KEY, result, RISK_STALE_TTL).catch(() => {});
+      // Write seed-meta on every FRESH upstream fetch so /api/health.riskScores
+      // stays green from real user traffic, independent of the ais-relay
+      // CII warm-ping. Pre-2026-05-02 the warm-ping was the SOLE writer of
+      // this seed-meta — when the relay → api.worldmonitor.app auth path
+      // broke (all warm-ping types started returning HTTP 401 simultaneously),
+      // riskScores was the only key that flipped STALE because cable-health
+      // and chokepoints had RPC-side seed-meta writes keeping them fresh
+      // via real user traffic. This brings riskScores into the same pattern
+      // as those two: defense-in-depth, no single point of freshness failure.
+      //
+      // Gated on source === 'fresh' (PR #3562 review P2): cachedFetchJsonWithMeta
+      // returns immediately on cache hits with `source: 'cache'`. Stamping
+      // `fetchedAt: Date.now()` on cache hits would conflate "data was
+      // recently re-fetched" with "data was recently served," letting
+      // health.riskScores stay fresh even when upstream stopped responding
+      // (cache would be served until its TTL=600s expired, after which the
+      // first request triggers a fresh fetch and surfaces the failure
+      // properly — but only if seed-meta wasn't already advanced by a cache
+      // hit). Only stamp on actual upstream re-fetches.
+      // 7-day TTL matches the warm-ping write so health.maxStaleMin (30min)
+      // logic is unchanged.
+      if (source === 'fresh') {
+        const count = result.ciiScores?.length || 0;
+        if (count > 0) {
+          await setCachedJson(
+            'seed-meta:intelligence:risk-scores',
+            { fetchedAt: Date.now(), recordCount: count },
+            604800,
+          ).catch(() => {});
+        }
+      }
       return result;
     }
   } catch { /* upstream failed, fall through to stale */ }

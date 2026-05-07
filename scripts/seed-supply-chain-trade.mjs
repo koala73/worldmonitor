@@ -1,7 +1,6 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep, verifySeedKey, resolveProxyForConnect, fredFetchJson } from './_seed-utils.mjs';
-import { BUDGET_LAB_TARIFFS_URL, htmlToPlainText, toIsoDate, parseBudgetLabEffectiveTariffHtml } from './_trade-parse-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -15,19 +14,55 @@ const KEYS = {
   customsRevenue: 'trade:customs-revenue:v1',
 };
 
-const SHIPPING_TTL = 3600;
-const TRADE_TTL = 21600;
+const SHIPPING_TTL = 28800; // 8h — 2h buffer over 6h cron cadence (was 1h = 5h expired gap)
+const TRADE_TTL = 28800; // 8h — 2h buffer over 6h cron cadence (was 6h = 0 buffer)
 const TARIFF_TTL = 28800; // 8h — 2h buffer over 6h cron cadence (was TRADE_TTL=6h = 0 buffer)
 const CUSTOMS_TTL = 86400; // 24h — monthly Treasury data, matches maxStaleMin:1440 (was TRADE_TTL=6h = 0 buffer)
 
-const MAJOR_REPORTERS = ['840', '156', '276', '392', '826', '356', '076', '643', '410', '036', '124', '484', '250', '380', '528'];
+// Reporter list fetched dynamically from WTO API at startup.
+// WorldMonitor = WORLD coverage — use whatever the WTO API supports.
+import { readFileSync as _readFileSync } from 'node:fs';
+import { dirname as _dirname, join as _join } from 'node:path';
+import { fileURLToPath as _fileURLToPath } from 'node:url';
+const __dirname = _dirname(_fileURLToPath(import.meta.url));
+const _un2iso2 = JSON.parse(_readFileSync(_join(__dirname, 'shared', 'un-to-iso2.json'), 'utf8'));
 
-const WTO_MEMBER_CODES = {
-  '840': 'United States', '156': 'China', '276': 'Germany', '392': 'Japan',
-  '826': 'United Kingdom', '250': 'France', '356': 'India', '643': 'Russia',
-  '076': 'Brazil', '410': 'South Korea', '036': 'Australia', '124': 'Canada',
-  '484': 'Mexico', '380': 'Italy', '528': 'Netherlands', '000': 'World',
-};
+// Populated by fetchWtoReporters() before any data fetches
+let ALL_REPORTERS = [];
+
+// Test-only seam — lets regression tests for fetchTariffTrends /
+// fetchTradeRestrictions exercise the real batch loop without first
+// running fetchWtoReporters (which would also hit the network). Production
+// code never calls this; the leading underscore + ForTesting suffix make
+// the intent explicit.
+export function _setAllReportersForTesting(reporters) {
+  ALL_REPORTERS = Array.isArray(reporters) ? reporters : [];
+}
+
+async function fetchWtoReporters() {
+  const apiKey = process.env.WTO_API_KEY;
+  if (!apiKey) { console.warn('[WTO] WTO_API_KEY not set'); return; }
+  try {
+    const resp = await fetch('https://api.wto.org/timeseries/v1/reporters', {
+      headers: { 'Ocp-Apim-Subscription-Key': apiKey, 'User-Agent': CHROME_UA },
+      signal: AbortSignal.timeout(15_000),
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+    ALL_REPORTERS = data.map(r => String(r.code)).filter(c => /^\d+$/.test(c) && c !== '000');
+    console.log(`  WTO reporters: ${ALL_REPORTERS.length} economies`);
+  } catch (err) {
+    console.warn(`[WTO] Failed to fetch reporter list: ${err.message}, using un-to-iso2.json fallback`);
+    ALL_REPORTERS = Object.keys(_un2iso2);
+  }
+}
+
+// ISO2 lookup for cache keys — derived from the same un-to-iso2.json
+const WTO_CODE_TO_ISO2 = { ..._un2iso2 };
+
+function getReporterIso2() {
+  return ALL_REPORTERS.map(c => WTO_CODE_TO_ISO2[c]).filter(Boolean);
+}
 
 // ─── Shipping Rates (FRED) ───
 
@@ -224,40 +259,91 @@ function accumulateHistory(newIndices, previousPayload) {
 
 // ─── WTO helpers ───
 
-async function wtoFetch(path, params) {
+// Returns parsed JSON on success, null on any failure (HTTP error, timeout,
+// network abort, JSON parse). The null contract lets every batch-loop caller
+// — `fetchTariffTrends`, `fetchTradeRestrictions`, `fetchTradeBarriers` —
+// degrade gracefully on a single bad batch via their existing `if (!data)`
+// guards. Pre-2026-05-01 this only caught HTTP errors and let timeouts
+// throw, so one slow batch (e.g. WTO p99 latency spike) sank an entire
+// 10-batch loop and silently expired the downstream canonical keys (8h TTL)
+// while the seeder kept "succeeding" via shipping/customs alone.
+//
+// Timeout is 60s per batch — WTO p99 latency for a 30-reporter `TP_A_0010`
+// query observed at 21s under normal load, with occasional spikes >15s.
+// Total budget across 10 batches × 60s + 1s sleeps = ~10m worst case,
+// well inside the 6h cron interval.
+export async function wtoFetch(path, params) {
   const apiKey = process.env.WTO_API_KEY;
   if (!apiKey) { console.warn('[WTO] WTO_API_KEY not set'); return null; }
   const url = new URL(`https://api.wto.org/timeseries/v1${path}`);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-  const resp = await fetch(url.toString(), {
-    headers: { 'Ocp-Apim-Subscription-Key': apiKey, 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (resp.status === 204) return { Dataset: [] };
-  if (!resp.ok) { console.warn(`[WTO] HTTP ${resp.status} for ${path}`); return null; }
-  return resp.json();
+  const indicator = params?.i || 'unknown';
+  const reporterCount = typeof params?.r === 'string' ? params.r.split(',').length : '?';
+  try {
+    const resp = await fetch(url.toString(), {
+      headers: { 'Ocp-Apim-Subscription-Key': apiKey, 'User-Agent': CHROME_UA },
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (resp.status === 204) return { Dataset: [] };
+    if (!resp.ok) {
+      console.warn(`[WTO] HTTP ${resp.status} for ${path} i=${indicator} reporters=${reporterCount}`);
+      return null;
+    }
+    return await resp.json();
+  } catch (err) {
+    const cause = err?.name === 'TimeoutError' || err?.name === 'AbortError'
+      ? 'timeout'
+      : (err?.cause?.code || err?.code || err?.message || 'unknown');
+    console.warn(`[WTO] FAIL ${path} i=${indicator} reporters=${reporterCount} cause=${cause}`);
+    return null;
+  }
 }
 
-async function fetchBudgetLabEffectiveTariffRate() {
+// US effective tariff rate from FRED: customs duties / goods imports × 100
+// B235RC1Q027SBEA = customs duties (quarterly, SAAR billions)
+// IEAMGSN = goods imports (quarterly, SAAR billions)
+const FRED_CUSTOMS_SERIES = 'B235RC1Q027SBEA';
+const FRED_IMPORTS_SERIES = 'A255RC1Q027SBEA'; // Imports of goods, Billions, Quarterly, SAAR (matches customs units)
+
+function fredSeriesUrl(seriesId) {
+  const key = process.env.FRED_API_KEY;
+  if (!key) return null;
+  return `https://api.stlouisfed.org/fred/series/observations?series_id=${seriesId}&api_key=${key}&file_type=json&sort_order=desc&limit=20`;
+}
+
+async function fetchEffectiveTariffRateFromFred() {
   try {
-    const resp = await fetch(BUDGET_LAB_TARIFFS_URL, {
-      headers: { Accept: 'text/html', 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(15_000),
-    });
-    if (!resp.ok) {
-      console.warn(`  Budget Lab tariffs: HTTP ${resp.status}`);
+    const customsUrl = fredSeriesUrl(FRED_CUSTOMS_SERIES);
+    const importsUrl = fredSeriesUrl(FRED_IMPORTS_SERIES);
+    if (!customsUrl || !importsUrl) { console.warn('  FRED tariff rate: FRED_API_KEY not set'); return null; }
+    const [customsResp, importsResp] = await Promise.all([
+      fredFetchJson(customsUrl, _proxyAuth),
+      fredFetchJson(importsUrl, _proxyAuth),
+    ]);
+    const customs = customsResp?.observations ?? [];
+    const imports = importsResp?.observations ?? [];
+    if (!customs?.length || !imports?.length) {
+      console.warn('  FRED tariff rate: no data from one or both series');
       return null;
     }
-    const html = await resp.text();
-    const parsed = parseBudgetLabEffectiveTariffHtml(html);
-    if (!parsed) {
-      console.warn('  Budget Lab tariffs: effective tariff rate not found in page content');
-      return null;
-    }
-    console.log(`  Budget Lab effective tariff: ${parsed.tariffRate.toFixed(1)}%${parsed.observationPeriod ? ` (${parsed.observationPeriod})` : ''}`);
-    return parsed;
+    // Both series are quarterly; match by date
+    const importsMap = new Map(imports.map(o => [o.date, parseFloat(o.value)]));
+    const latest = customs
+      .map(o => ({ date: o.date, customs: parseFloat(o.value), imports: importsMap.get(o.date) }))
+      .filter(o => Number.isFinite(o.customs) && Number.isFinite(o.imports) && o.imports > 0)
+      .sort((a, b) => b.date.localeCompare(a.date))[0];
+    if (!latest) { console.warn('  FRED tariff rate: no matching quarters'); return null; }
+    const rate = (latest.customs / latest.imports) * 100;
+    console.log(`  FRED effective tariff: ${rate.toFixed(1)}% (${latest.date})`);
+    return {
+      sourceName: 'FRED (BEA)',
+      sourceUrl: `https://fred.stlouisfed.org/series/${FRED_CUSTOMS_SERIES}`,
+      observationPeriod: latest.date,
+      updatedAt: latest.date,
+      tariffRate: Math.round(rate * 100) / 100,
+    };
   } catch (e) {
-    console.warn(`  Budget Lab tariffs: ${e.message}`);
+    console.warn(`  FRED tariff rate: ${e.message}`);
     return null;
   }
 }
@@ -282,24 +368,29 @@ function parseFlowRows(data, indicator) {
   return dataset.map(row => {
     const year = parseInt(row.Year ?? row.year ?? '', 10);
     const value = parseFloat(row.Value ?? row.value ?? '');
-    return !Number.isNaN(year) && !Number.isNaN(value) ? { year, indicator, value } : null;
+    if (Number.isNaN(year) || Number.isNaN(value)) return null;
+    return { year, indicator, value, reporterName: row.ReportingEconomy ?? '', partnerName: row.PartnerEconomy ?? '' };
   }).filter(Boolean);
 }
 
 function buildFlowRecords(rows, reporterCode, partnerCode) {
   const byYear = new Map();
+  let reporterName = reporterCode;
+  let partnerName = partnerCode === '000' ? 'World' : partnerCode;
   for (const row of rows) {
     if (!byYear.has(row.year)) byYear.set(row.year, { exports: 0, imports: 0 });
     const e = byYear.get(row.year);
     if (row.indicator === 'ITS_MTV_AX') e.exports = row.value; else e.imports = row.value;
+    if (row.reporterName) reporterName = row.reporterName;
+    if (row.partnerName && partnerCode !== '000') partnerName = row.partnerName;
   }
   const sortedYears = [...byYear.keys()].sort((a, b) => a - b);
   return sortedYears.map((year, i) => {
     const cur = byYear.get(year);
     const prev = i > 0 ? byYear.get(sortedYears[i - 1]) : null;
     return {
-      reportingCountry: WTO_MEMBER_CODES[reporterCode] ?? reporterCode,
-      partnerCountry: partnerCode === '000' ? 'World' : (WTO_MEMBER_CODES[partnerCode] ?? partnerCode),
+      reportingCountry: reporterName,
+      partnerCountry: partnerName,
       year, exportValueUsd: cur.exports, importValueUsd: cur.imports,
       yoyExportChange: prev?.exports > 0 ? Math.round(((cur.exports - prev.exports) / prev.exports) * 10000) / 100 : 0,
       yoyImportChange: prev?.imports > 0 ? Math.round(((cur.imports - prev.imports) / prev.imports) * 10000) / 100 : 0,
@@ -330,7 +421,7 @@ async function fetchTradeFlows() {
   const flows = {};
   const years = 10;
 
-  for (const reporter of MAJOR_REPORTERS) {
+  for (const reporter of ALL_REPORTERS) {
     await fetchFlowPair(reporter, '000', years, flows);
     await sleep(500);
   }
@@ -340,7 +431,7 @@ async function fetchTradeFlows() {
     await sleep(500);
   }
 
-  console.log(`  Trade flows: ${Object.keys(flows).length} pairs (${MAJOR_REPORTERS.length} world + ${BILATERAL_PAIRS.length} bilateral)`);
+  console.log(`  Trade flows: ${Object.keys(flows).length} pairs (${ALL_REPORTERS.length} world + ${BILATERAL_PAIRS.length} bilateral)`);
   return flows;
 }
 
@@ -348,14 +439,22 @@ async function fetchTradeFlows() {
 
 async function fetchTradeBarriers() {
   const currentYear = new Date().getFullYear();
-  const reporters = MAJOR_REPORTERS.join(',');
-
-  const [agriResult, nonAgriResult] = await Promise.allSettled([
-    wtoFetch('/data', { i: 'TP_A_0160', r: reporters, ps: `${currentYear - 3}-${currentYear}`, fmt: 'json', mode: 'full', max: '500' }),
-    wtoFetch('/data', { i: 'TP_A_0430', r: reporters, ps: `${currentYear - 3}-${currentYear}`, fmt: 'json', mode: 'full', max: '500' }),
-  ]);
-  const agriData = agriResult.status === 'fulfilled' ? agriResult.value : null;
-  const nonAgriData = nonAgriResult.status === 'fulfilled' ? nonAgriResult.value : null;
+  const BATCH = 30;
+  const allAgri = [];
+  const allNonAgri = [];
+  for (let i = 0; i < ALL_REPORTERS.length; i += BATCH) {
+    const batch = ALL_REPORTERS.slice(i, i + BATCH).join(',');
+    const [agriResult, nonAgriResult] = await Promise.allSettled([
+      wtoFetch('/data', { i: 'TP_A_0160', r: batch, ps: `${currentYear - 3}-${currentYear}`, fmt: 'json', mode: 'full', max: '5000' }),
+      wtoFetch('/data', { i: 'TP_A_0430', r: batch, ps: `${currentYear - 3}-${currentYear}`, fmt: 'json', mode: 'full', max: '5000' }),
+    ]);
+    if (agriResult.status === 'fulfilled' && agriResult.value) allAgri.push(agriResult.value);
+    if (nonAgriResult.status === 'fulfilled' && nonAgriResult.value) allNonAgri.push(nonAgriResult.value);
+    await sleep(1000);
+  }
+  const mergeDatasets = (results) => results.flatMap(d => Array.isArray(d) ? d : d?.Dataset ?? d?.dataset ?? []);
+  const agriData = allAgri.length > 0 ? { Dataset: mergeDatasets(allAgri) } : null;
+  const nonAgriData = allNonAgri.length > 0 ? { Dataset: mergeDatasets(allNonAgri) } : null;
   if (!agriData && !nonAgriData) return null;
 
   const parseRows = (data) => {
@@ -364,7 +463,7 @@ async function fetchTradeBarriers() {
       const year = parseInt(row.Year ?? row.year ?? '0', 10);
       const value = parseFloat(row.Value ?? row.value ?? '');
       const cc = String(row.ReportingEconomyCode ?? '');
-      return !Number.isNaN(year) && !Number.isNaN(value) && cc ? { country: WTO_MEMBER_CODES[cc] ?? '', countryCode: cc, year, value } : null;
+      return !Number.isNaN(year) && !Number.isNaN(value) && cc ? { country: String(row.ReportingEconomy ?? ''), countryCode: cc, year, value } : null;
     }).filter(Boolean);
   };
 
@@ -404,20 +503,27 @@ async function fetchTradeBarriers() {
     return gapB - gapA;
   });
   console.log(`  Trade barriers: ${barriers.length} countries`);
-  return { barriers: barriers.slice(0, 50), fetchedAt: new Date().toISOString(), upstreamUnavailable: false };
+  return { barriers, _reporterCountries: getReporterIso2(), fetchedAt: new Date().toISOString(), upstreamUnavailable: false };
 }
 
 // ─── Trade Restrictions (WTO) ───
 
 async function fetchTradeRestrictions() {
   const currentYear = new Date().getFullYear();
-  const data = await wtoFetch('/data', {
-    i: 'TP_A_0010', r: MAJOR_REPORTERS.join(','),
-    ps: `${currentYear - 3}-${currentYear}`, fmt: 'json', mode: 'full', max: '500',
-  });
-  if (!data) return null;
+  const BATCH = 30;
+  const allResults = [];
+  for (let i = 0; i < ALL_REPORTERS.length; i += BATCH) {
+    const batch = ALL_REPORTERS.slice(i, i + BATCH).join(',');
+    const data = await wtoFetch('/data', {
+      i: 'TP_A_0010', r: batch,
+      ps: `${currentYear - 3}-${currentYear}`, fmt: 'json', mode: 'full', max: '5000',
+    });
+    if (data) allResults.push(data);
+    await sleep(1000);
+  }
+  if (allResults.length === 0) return null;
 
-  const dataset = Array.isArray(data) ? data : data?.Dataset ?? data?.dataset ?? [];
+  const dataset = allResults.flatMap(d => Array.isArray(d) ? d : d?.Dataset ?? d?.dataset ?? []);
   const latestByCountry = new Map();
   for (const row of dataset) {
     const code = String(row.ReportingEconomyCode ?? '');
@@ -433,7 +539,7 @@ async function fetchTradeRestrictions() {
     const year = String(row.Year ?? row.year ?? '');
     return {
       id: `${cc}-${year}-${row.IndicatorCode ?? ''}`,
-      reportingCountry: WTO_MEMBER_CODES[cc] ?? String(row.ReportingEconomy ?? ''),
+      reportingCountry: String(row.ReportingEconomy ?? cc),
       affectedCountry: 'All trading partners', productSector: 'All products',
       measureType: 'WTO MFN Baseline', description: `WTO MFN baseline: ${value.toFixed(1)}%`,
       status: value > 10 ? 'high' : value > 5 ? 'moderate' : 'low',
@@ -443,49 +549,63 @@ async function fetchTradeRestrictions() {
     const rateA = parseFloat(a.description.match(/[\d.]+/)?.[0] ?? '0');
     const rateB = parseFloat(b.description.match(/[\d.]+/)?.[0] ?? '0');
     return rateB - rateA;
-  }).slice(0, 50);
+  });
 
   console.log(`  Trade restrictions: ${restrictions.length} countries`);
-  return { restrictions, fetchedAt: new Date().toISOString(), upstreamUnavailable: false };
+  return { restrictions, _reporterCountries: getReporterIso2(), fetchedAt: new Date().toISOString(), upstreamUnavailable: false };
 }
 
 // ─── Tariff Trends (WTO) — pre-seed major reporters ───
 
-async function fetchTariffTrends() {
+export async function fetchTariffTrends() {
   const currentYear = new Date().getFullYear();
   const trends = {};
-  const usEffectiveTariffRate = await fetchBudgetLabEffectiveTariffRate();
+  const usEffectiveTariffRate = await fetchEffectiveTariffRateFromFred();
 
-  for (const reporter of MAJOR_REPORTERS) {
-    const years = 10;
+  // Batch WTO requests in groups of 30 to avoid URL length limits
+  const BATCH_SIZE = 30;
+  const years = 10;
+  for (let i = 0; i < ALL_REPORTERS.length; i += BATCH_SIZE) {
+    const batch = ALL_REPORTERS.slice(i, i + BATCH_SIZE);
     const data = await wtoFetch('/data', {
-      i: 'TP_A_0010', r: reporter,
-      ps: `${currentYear - years}-${currentYear}`, fmt: 'json', mode: 'full', max: '500',
+      i: 'TP_A_0010', r: batch.join(','),
+      ps: `${currentYear - years}-${currentYear}`, fmt: 'json', mode: 'full', max: '5000',
     });
-    if (!data) { await sleep(500); continue; }
+    if (!data) { await sleep(1000); continue; }
     const dataset = Array.isArray(data) ? data : data?.Dataset ?? data?.dataset ?? [];
-    const datapoints = dataset.map(row => {
-      const year = parseInt(row.Year ?? row.year ?? '', 10);
-      const tariffRate = parseFloat(row.Value ?? row.value ?? '');
-      if (Number.isNaN(year) || Number.isNaN(tariffRate)) return null;
-      return {
-        reportingCountry: WTO_MEMBER_CODES[reporter] ?? reporter,
-        partnerCountry: 'World', productSector: 'All products',
-        year, tariffRate: Math.round(tariffRate * 100) / 100,
-        boundRate: 0, indicatorCode: 'TP_A_0010',
-      };
-    }).filter(Boolean).sort((a, b) => a.year - b.year);
 
-    if (datapoints.length > 0) {
-      const cacheKey = `trade:tariffs:v1:${reporter}:all:${years}`;
-      trends[cacheKey] = {
-        datapoints,
-        ...(reporter === '840' && usEffectiveTariffRate ? { effectiveTariffRate: usEffectiveTariffRate } : {}),
-        fetchedAt: new Date().toISOString(),
-        upstreamUnavailable: false,
-      };
+    // Group by reporter code
+    const byReporter = new Map();
+    for (const row of dataset) {
+      const code = String(row.ReportingEconomyCode ?? '');
+      if (!byReporter.has(code)) byReporter.set(code, []);
+      byReporter.get(code).push(row);
     }
-    await sleep(500);
+
+    for (const [reporter, rows] of byReporter) {
+      const datapoints = rows.map(row => {
+        const year = parseInt(row.Year ?? row.year ?? '', 10);
+        const tariffRate = parseFloat(row.Value ?? row.value ?? '');
+        if (Number.isNaN(year) || Number.isNaN(tariffRate)) return null;
+        return {
+          reportingCountry: row.ReportingEconomy ?? reporter,
+          partnerCountry: 'World', productSector: 'All products',
+          year, tariffRate: Math.round(tariffRate * 100) / 100,
+          boundRate: 0, indicatorCode: 'TP_A_0010',
+        };
+      }).filter(Boolean).sort((a, b) => a.year - b.year);
+
+      if (datapoints.length > 0) {
+        const cacheKey = `trade:tariffs:v1:${reporter}:all:${years}`;
+        trends[cacheKey] = {
+          datapoints,
+          ...(reporter === '840' && usEffectiveTariffRate ? { effectiveTariffRate: usEffectiveTariffRate } : {}),
+          fetchedAt: new Date().toISOString(),
+          upstreamUnavailable: false,
+        };
+      }
+    }
+    await sleep(1000);
   }
   console.log(`  Tariff trends: ${Object.keys(trends).length} countries`);
   return trends;
@@ -500,15 +620,69 @@ async function fetchCustomsRevenue() {
   const fields = 'record_date,current_month_rcpt_outly_amt,current_fytd_rcpt_outly_amt,record_fiscal_year,record_calendar_year,record_calendar_month';
   const url = `${TREASURY_MTS_URL}?fields=${fields}&filter=classification_desc:eq:Customs%20Duties,record_date:gte:${threeYearsAgo}&sort=-record_date&page[size]=50`;
 
-  const resp = await fetch(url, {
-    headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!resp.ok) throw new Error(`Treasury MTS HTTP ${resp.status}`);
-  const json = await resp.json();
-  const rows = json.data;
-  if (!Array.isArray(rows) || rows.length === 0) throw new Error('Treasury MTS returned no data');
-  if (rows.length > 100) throw new Error(`Treasury MTS returned unexpected row count: ${rows.length}`);
+  // Treasury MTS occasionally trips up on Railway egress (transient connect /
+  // 5xx / TLS resets). 30+ hour stale windows traced back to a single rejected
+  // fetch followed by no retry until the next 6h cron tick — by which point
+  // the 24h data TTL had expired and the panel went empty. Three attempts
+  // with linear backoff (5s, 10s) plus the existing 15s per-attempt timeout
+  // give a worst-case ~60s budget per cron run, well within the bundle window.
+  // The final rejection re-throws with attempt count + last status / error
+  // so the rejection log line at fetchAll() + Sentry have enough context to
+  // triage from health output alone.
+  //
+  // Deterministic failures (4xx other than 429, schema-drift row-count
+  // violation) skip the retry loop — they cannot recover by waiting.
+  // Marking them with `{ __retryable: false }` lets the catch block
+  // short-circuit instead of burning ~30s of cron time and emitting
+  // misleading "retrying in 5000ms" warns for what is actually a fixed
+  // upstream / contract-violation condition.
+  let lastErr = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const resp = await fetch(url, {
+        headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!resp.ok) {
+        // 4xx client errors (except 429 rate-limit) are deterministic — the
+        // request is malformed or the resource is gone; retry can't fix it.
+        const isClient4xx = resp.status >= 400 && resp.status < 500 && resp.status !== 429;
+        const err = new Error(`Treasury MTS HTTP ${resp.status}`);
+        if (isClient4xx) err.__retryable = false;
+        throw err;
+      }
+      const json = await resp.json();
+      const rows = json.data;
+      // Empty array MAY be transient (deploy gap, reseed window) — keep retryable.
+      if (!Array.isArray(rows) || rows.length === 0) throw new Error('Treasury MTS returned no data');
+      // Row-count > 100 means schema drift / new MTS response shape; second
+      // request will return the same number, so don't waste cron time.
+      if (rows.length > 100) {
+        const err = new Error(`Treasury MTS returned unexpected row count: ${rows.length}`);
+        err.__retryable = false;
+        throw err;
+      }
+      // Success — break out, fall through to parse below.
+      return parseCustomsRows(rows);
+    } catch (err) {
+      lastErr = err;
+      const msg = err?.message || String(err);
+      // Skip the rest of the retry budget on deterministic failures.
+      if (err?.__retryable === false) {
+        console.warn(`  Treasury customs attempt ${attempt}/3 hit non-retryable error (${msg}); aborting retry`);
+        break;
+      }
+      if (attempt < 3) {
+        const backoffMs = attempt * 5_000; // 5s, 10s
+        console.warn(`  Treasury customs attempt ${attempt}/3 failed (${msg}); retrying in ${backoffMs}ms`);
+        await new Promise((r) => setTimeout(r, backoffMs));
+      }
+    }
+  }
+  throw new Error(`Treasury MTS exhausted 3 attempts: ${lastErr?.message || lastErr}`);
+}
+
+function parseCustomsRows(rows) {
 
   const months = rows
     .map(r => {
@@ -534,6 +708,7 @@ async function fetchCustomsRevenue() {
 // ─── Main ───
 
 async function fetchAll() {
+  await fetchWtoReporters();
   const [shipping, scfi, ccfi, bdi, barriers, restrictions, flows, tariffs, customs] = await Promise.allSettled([
     fetchShippingRates(),
     fetchSCFI(),
@@ -597,11 +772,24 @@ function validate(data) {
   return data?.indices?.length > 0;
 }
 
-runSeed('supply_chain', 'shipping', KEYS.shipping, fetchAll, {
-  validateFn: validate,
-  ttlSeconds: SHIPPING_TTL,
-  sourceVersion: 'fred-wto-sse-bdi-budgetlab',
-}).catch((err) => {
-  const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
-  process.exit(1);
-});
+export function declareRecords(data) {
+  return Array.isArray(data?.indices) ? data.indices.length : 0;
+}
+
+// Standalone entrypoint guard. Without this, importing this file from tests
+// kicks off the whole seeder (Redis lock acquisition, external API calls,
+// Redis writes) at module-load time, which hangs the test runner.
+if (process.argv[1]?.endsWith('seed-supply-chain-trade.mjs')) {
+  runSeed('supply_chain', 'shipping', KEYS.shipping, fetchAll, {
+    validateFn: validate,
+    ttlSeconds: SHIPPING_TTL,
+    sourceVersion: 'fred-wto-sse-bdi-budgetlab',
+
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 420,
+  }).catch((err) => {
+    const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
+    process.exit(1);
+  });
+}

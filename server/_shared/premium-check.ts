@@ -2,6 +2,7 @@
 import { validateApiKey } from '../../api/_api-key.js';
 import { validateBearerToken } from '../auth-session';
 import { getEntitlements } from './entitlement-check';
+import { validateUserApiKey } from './user-api-key';
 
 /**
  * Returns true when the caller has a valid API key OR a PRO bearer token.
@@ -11,14 +12,26 @@ import { getEntitlements } from './entitlement-check';
 export async function isCallerPremium(request: Request): Promise<boolean> {
   // Browser tester keys — validateApiKey returns required:false for trusted origins
   // even when a valid key is present, so we check the header directly first.
-  const wmKey = request.headers.get('X-WorldMonitor-Key') ?? '';
+  const wmKey =
+    request.headers.get('X-WorldMonitor-Key') ??
+    request.headers.get('X-Api-Key') ??
+    '';
   if (wmKey) {
     const validKeys = (process.env.WORLDMONITOR_VALID_KEYS ?? '')
       .split(',').map((k) => k.trim()).filter(Boolean);
     if (validKeys.length > 0 && validKeys.includes(wmKey)) return true;
+
+    // Check user-owned API keys (wm_ prefix) via Convex lookup.
+    // Key existence alone is not sufficient — verify the owner's entitlement.
+    const userKey = await validateUserApiKey(wmKey);
+    if (userKey) {
+      const ent = await getEntitlements(userKey.userId);
+      if (ent && ent.features.apiAccess === true) return true;
+      return false;
+    }
   }
 
-  const keyCheck = validateApiKey(request, {}) as { valid: boolean; required: boolean };
+  const keyCheck = (await validateApiKey(request, {})) as { valid: boolean; required: boolean };
   // Only treat as premium when an explicit API key was validated (required: true).
   // Trusted-origin short-circuits (required: false) do NOT imply PRO entitlement.
   if (keyCheck.valid && keyCheck.required) return true;

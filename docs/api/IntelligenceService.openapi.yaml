@@ -678,6 +678,240 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/get-country-energy-profile:
+        get:
+            tags:
+                - IntelligenceService
+            summary: GetCountryEnergyProfile
+            description: GetCountryEnergyProfile aggregates Phase 1/2/2.5 energy data per country.
+            operationId: GetCountryEnergyProfile
+            parameters:
+                - name: country_code
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetCountryEnergyProfileResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/compute-energy-shock:
+        get:
+            tags:
+                - IntelligenceService
+            summary: ComputeEnergyShockScenario
+            description: ComputeEnergyShockScenario computes on-demand product supply shock for a given country + chokepoint.
+            operationId: ComputeEnergyShockScenario
+            parameters:
+                - name: country_code
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: chokepoint_id
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: disruption_pct
+                  in: query
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+                - name: fuel_mode
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ComputeEnergyShockScenarioResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/get-country-port-activity:
+        get:
+            tags:
+                - IntelligenceService
+            summary: GetCountryPortActivity
+            description: GetCountryPortActivity returns port-level tanker traffic and trade volumes for a country.
+            operationId: GetCountryPortActivity
+            parameters:
+                - name: country_code
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/CountryPortActivityResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/get-regional-snapshot:
+        get:
+            tags:
+                - IntelligenceService
+            summary: GetRegionalSnapshot
+            description: |-
+                GetRegionalSnapshot returns the latest persisted RegionalSnapshot for a
+                 region. The snapshot is written every 6h by scripts/seed-regional-snapshots.mjs;
+                 this handler only reads canonical state. Premium-gated.
+            operationId: GetRegionalSnapshot
+            parameters:
+                - name: region_id
+                  in: query
+                  description: |-
+                    Display region id (e.g. "mena", "east-asia", "europe"). See shared/geography.js.
+                     Kebab-case: lowercase alphanumeric groups separated by single hyphens, no
+                     trailing or consecutive hyphens.
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetRegionalSnapshotResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/get-regime-history:
+        get:
+            tags:
+                - IntelligenceService
+            summary: GetRegimeHistory
+            description: |-
+                GetRegimeHistory returns the region's regime transition log newest-first.
+                 Entries are append-only from the seed writer, recorded only when
+                 diffRegionalSnapshot reports regime_changed. Premium-gated.
+            operationId: GetRegimeHistory
+            parameters:
+                - name: region_id
+                  in: query
+                  description: |-
+                    Display region id (e.g. "mena", "east-asia", "europe"). See shared/geography.js.
+                     Kebab-case: lowercase alphanumeric groups separated by single hyphens, no
+                     trailing or consecutive hyphens.
+                  required: false
+                  schema:
+                    type: string
+                - name: limit
+                  in: query
+                  description: |-
+                    Optional cap on how many entries to return. Defaults to 50 server-side
+                     when omitted or <= 0. Hard cap enforced by the handler at 100 (= the
+                     writer-side LTRIM cap in regime-history.mjs).
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetRegimeHistoryResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/intelligence/v1/get-regional-brief:
+        get:
+            tags:
+                - IntelligenceService
+            summary: GetRegionalBrief
+            description: |-
+                GetRegionalBrief returns the latest weekly intelligence brief for a region.
+                 Written by scripts/seed-regional-briefs.mjs on a weekly cron. Premium-gated.
+            operationId: GetRegionalBrief
+            parameters:
+                - name: region_id
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetRegionalBriefResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -1968,3 +2202,945 @@ components:
                     format: int64
                     description: 'Unix epoch milliseconds when posted.. Warning: Values > 2^53 may lose precision in JavaScript'
             description: SocialVelocityPost represents a trending Reddit post with velocity scoring.
+        GetCountryEnergyProfileRequest:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+        GetCountryEnergyProfileResponse:
+            type: object
+            properties:
+                mixAvailable:
+                    type: boolean
+                    description: Phase 1 — OWID structural mix (~200 countries)
+                mixYear:
+                    type: integer
+                    format: int32
+                coalShare:
+                    type: number
+                    format: double
+                gasShare:
+                    type: number
+                    format: double
+                oilShare:
+                    type: number
+                    format: double
+                nuclearShare:
+                    type: number
+                    format: double
+                renewShare:
+                    type: number
+                    format: double
+                windShare:
+                    type: number
+                    format: double
+                solarShare:
+                    type: number
+                    format: double
+                hydroShare:
+                    type: number
+                    format: double
+                importShare:
+                    type: number
+                    format: double
+                gasStorageAvailable:
+                    type: boolean
+                    description: Phase 2 — EU gas storage
+                gasStorageFillPct:
+                    type: number
+                    format: double
+                gasStorageChange1d:
+                    type: number
+                    format: double
+                gasStorageTrend:
+                    type: string
+                gasStorageDate:
+                    type: string
+                electricityAvailable:
+                    type: boolean
+                    description: |-
+                        Phase 2 — EU electricity (ENTSO-E countries: DE FR ES IT NL BE PL PT GB NO SE)
+                         US electricity is stored by EIA balancing area, not ISO2 — not available here
+                electricityPriceMwh:
+                    type: number
+                    format: double
+                electricitySource:
+                    type: string
+                electricityDate:
+                    type: string
+                jodiOilAvailable:
+                    type: boolean
+                    description: Phase 2.5 — JODI Oil (~90+ countries)
+                jodiOilDataMonth:
+                    type: string
+                gasolineDemandKbd:
+                    type: number
+                    format: double
+                gasolineImportsKbd:
+                    type: number
+                    format: double
+                dieselDemandKbd:
+                    type: number
+                    format: double
+                dieselImportsKbd:
+                    type: number
+                    format: double
+                jetDemandKbd:
+                    type: number
+                    format: double
+                jetImportsKbd:
+                    type: number
+                    format: double
+                lpgDemandKbd:
+                    type: number
+                    format: double
+                crudeImportsKbd:
+                    type: number
+                    format: double
+                lpgImportsKbd:
+                    type: number
+                    format: double
+                jodiGasAvailable:
+                    type: boolean
+                    description: Phase 2.5 — JODI Gas
+                jodiGasDataMonth:
+                    type: string
+                gasTotalDemandTj:
+                    type: number
+                    format: double
+                gasLngImportsTj:
+                    type: number
+                    format: double
+                gasPipeImportsTj:
+                    type: number
+                    format: double
+                gasLngShare:
+                    type: number
+                    format: double
+                ieaStocksAvailable:
+                    type: boolean
+                    description: Phase 2.5 — IEA oil stocks (~31 IEA members)
+                ieaStocksDataMonth:
+                    type: string
+                ieaDaysOfCover:
+                    type: integer
+                    format: int32
+                ieaNetExporter:
+                    type: boolean
+                ieaBelowObligation:
+                    type: boolean
+                emberFossilShare:
+                    type: number
+                    format: double
+                    description: Phase 3 — Ember monthly electricity mix
+                emberRenewShare:
+                    type: number
+                    format: double
+                emberNuclearShare:
+                    type: number
+                    format: double
+                emberCoalShare:
+                    type: number
+                    format: double
+                emberGasShare:
+                    type: number
+                    format: double
+                emberDemandTwh:
+                    type: number
+                    format: double
+                emberDataMonth:
+                    type: string
+                emberAvailable:
+                    type: boolean
+                sprRegime:
+                    type: string
+                    description: Phase 4 — SPR policy classification
+                sprCapacityMb:
+                    type: number
+                    format: double
+                sprOperator:
+                    type: string
+                sprIeaMember:
+                    type: boolean
+                sprStockholdingModel:
+                    type: string
+                sprNote:
+                    type: string
+                sprSource:
+                    type: string
+                sprAsOf:
+                    type: string
+                sprAvailable:
+                    type: boolean
+        ComputeEnergyShockScenarioRequest:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                chokepointId:
+                    type: string
+                disruptionPct:
+                    type: integer
+                    format: int32
+                fuelMode:
+                    type: string
+        ComputeEnergyShockScenarioResponse:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                chokepointId:
+                    type: string
+                disruptionPct:
+                    type: integer
+                    format: int32
+                gulfCrudeShare:
+                    type: number
+                    format: double
+                crudeLossKbd:
+                    type: number
+                    format: double
+                products:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ProductImpact'
+                effectiveCoverDays:
+                    type: integer
+                    format: int32
+                assessment:
+                    type: string
+                dataAvailable:
+                    type: boolean
+                jodiOilCoverage:
+                    type: boolean
+                    description: v2 fields
+                comtradeCoverage:
+                    type: boolean
+                ieaStocksCoverage:
+                    type: boolean
+                portwatchCoverage:
+                    type: boolean
+                coverageLevel:
+                    type: string
+                limitations:
+                    type: array
+                    items:
+                        type: string
+                degraded:
+                    type: boolean
+                chokepointConfidence:
+                    type: string
+                liveFlowRatio:
+                    type: number
+                    format: double
+                gasImpact:
+                    $ref: '#/components/schemas/GasImpact'
+        ProductImpact:
+            type: object
+            properties:
+                product:
+                    type: string
+                outputLossKbd:
+                    type: number
+                    format: double
+                demandKbd:
+                    type: number
+                    format: double
+                deficitPct:
+                    type: number
+                    format: double
+        GasImpact:
+            type: object
+            properties:
+                lngShareOfImports:
+                    type: number
+                    format: double
+                lngImportsTj:
+                    type: number
+                    format: double
+                lngDisruptionTj:
+                    type: number
+                    format: double
+                totalDemandTj:
+                    type: number
+                    format: double
+                deficitPct:
+                    type: number
+                    format: double
+                dataAvailable:
+                    type: boolean
+                assessment:
+                    type: string
+                storage:
+                    $ref: '#/components/schemas/GasStorageBuffer'
+                dataSource:
+                    type: string
+        GasStorageBuffer:
+            type: object
+            properties:
+                fillPct:
+                    type: number
+                    format: double
+                gasTwh:
+                    type: number
+                    format: double
+                bufferDays:
+                    type: number
+                    format: double
+                trend:
+                    type: string
+                date:
+                    type: string
+                scope:
+                    type: string
+        GetCountryPortActivityRequest:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+        CountryPortActivityResponse:
+            type: object
+            properties:
+                ports:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/PortActivityEntry'
+                fetchedAt:
+                    type: string
+                available:
+                    type: boolean
+        PortActivityEntry:
+            type: object
+            properties:
+                portId:
+                    type: string
+                portName:
+                    type: string
+                lat:
+                    type: number
+                    format: double
+                lon:
+                    type: number
+                    format: double
+                tankerCalls30d:
+                    type: integer
+                    format: int32
+                trendDeltaPct:
+                    type: number
+                    format: double
+                importTankerDwt:
+                    type: number
+                    format: double
+                exportTankerDwt:
+                    type: number
+                    format: double
+                anomalySignal:
+                    type: boolean
+        GetRegionalSnapshotRequest:
+            type: object
+            properties:
+                regionId:
+                    type: string
+                    maxLength: 32
+                    minLength: 1
+                    pattern: ^[a-z][a-z0-9]*(-[a-z0-9]+)*$
+                    description: |-
+                        Display region id (e.g. "mena", "east-asia", "europe"). See shared/geography.js.
+                         Kebab-case: lowercase alphanumeric groups separated by single hyphens, no
+                         trailing or consecutive hyphens.
+            required:
+                - regionId
+            description: |-
+                GetRegionalSnapshotRequest asks for the latest persisted RegionalSnapshot
+                 for a given region. See shared/geography.ts for the canonical region ids.
+        GetRegionalSnapshotResponse:
+            type: object
+            properties:
+                snapshot:
+                    $ref: '#/components/schemas/RegionalSnapshot'
+            description: |-
+                GetRegionalSnapshotResponse returns the latest RegionalSnapshot for the
+                 requested region. The snapshot is written by scripts/seed-regional-snapshots.mjs
+                 on a 6h cron; this handler only reads canonical state.
+        RegionalSnapshot:
+            type: object
+            properties:
+                regionId:
+                    type: string
+                generatedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                meta:
+                    $ref: '#/components/schemas/SnapshotMeta'
+                regime:
+                    $ref: '#/components/schemas/RegimeState'
+                balance:
+                    $ref: '#/components/schemas/BalanceVector'
+                actors:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ActorState'
+                leverageEdges:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/LeverageEdge'
+                scenarioSets:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ScenarioSet'
+                transmissionPaths:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/TransmissionPath'
+                triggers:
+                    $ref: '#/components/schemas/TriggerLadder'
+                mobility:
+                    $ref: '#/components/schemas/MobilityState'
+                evidence:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/EvidenceItem'
+                narrative:
+                    $ref: '#/components/schemas/RegionalNarrative'
+            description: |-
+                RegionalSnapshot is the canonical intelligence object for one region.
+                 See docs/internal/pro-regional-intelligence-upgrade.md for the full spec
+                 and shared/regions.types.d.ts for the authoritative TypeScript contract.
+        SnapshotMeta:
+            type: object
+            properties:
+                snapshotId:
+                    type: string
+                modelVersion:
+                    type: string
+                scoringVersion:
+                    type: string
+                geographyVersion:
+                    type: string
+                snapshotConfidence:
+                    type: number
+                    format: double
+                missingInputs:
+                    type: array
+                    items:
+                        type: string
+                staleInputs:
+                    type: array
+                    items:
+                        type: string
+                validUntil:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                triggerReason:
+                    type: string
+                    description: |-
+                        trigger_reason: scheduled_6h | regime_shift | trigger_activation |
+                                         corridor_break | leverage_shift
+                narrativeProvider:
+                    type: string
+                narrativeModel:
+                    type: string
+            description: |-
+                SnapshotMeta carries the trust trail (versions, confidence, input freshness,
+                 narrative provenance, idempotency id).
+        RegimeState:
+            type: object
+            properties:
+                label:
+                    type: string
+                    description: |-
+                        label: calm | stressed_equilibrium | coercive_stalemate |
+                                fragmentation_risk | managed_deescalation | escalation_ladder
+                previousLabel:
+                    type: string
+                transitionedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                transitionDriver:
+                    type: string
+            description: RegimeState captures the current regime label and transition history.
+        BalanceVector:
+            type: object
+            properties:
+                coercivePressure:
+                    type: number
+                    format: double
+                    description: Pressures (high = bad)
+                domesticFragility:
+                    type: number
+                    format: double
+                capitalStress:
+                    type: number
+                    format: double
+                energyVulnerability:
+                    type: number
+                    format: double
+                allianceCohesion:
+                    type: number
+                    format: double
+                    description: Buffers (high = good)
+                maritimeAccess:
+                    type: number
+                    format: double
+                energyLeverage:
+                    type: number
+                    format: double
+                netBalance:
+                    type: number
+                    format: double
+                    description: 'Derived: mean(buffers) - mean(pressures), range [-1, +1]'
+                pressures:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/BalanceDriver'
+                buffers:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/BalanceDriver'
+            description: |-
+                BalanceVector is the 7-axis regional balance score with pressures/buffers
+                 split. See docs/internal/pro-regional-intelligence-appendix-scoring.md for
+                 the per-axis formulas.
+        BalanceDriver:
+            type: object
+            properties:
+                axis:
+                    type: string
+                description:
+                    type: string
+                magnitude:
+                    type: number
+                    format: double
+                evidenceIds:
+                    type: array
+                    items:
+                        type: string
+                orientation:
+                    type: string
+                    description: 'orientation: "pressure" | "buffer"'
+            description: BalanceDriver is one contributor to an axis score. Links back to evidence.
+        ActorState:
+            type: object
+            properties:
+                actorId:
+                    type: string
+                name:
+                    type: string
+                role:
+                    type: string
+                    description: 'role: aggressor | stabilizer | swing | broker'
+                leverageDomains:
+                    type: array
+                    items:
+                        type: string
+                        description: 'leverage_domains: energy | military | diplomatic | economic | maritime'
+                leverageScore:
+                    type: number
+                    format: double
+                delta:
+                    type: number
+                    format: double
+                evidenceIds:
+                    type: array
+                    items:
+                        type: string
+            description: ActorState is one geopolitical actor's leverage score in the region.
+        LeverageEdge:
+            type: object
+            properties:
+                fromActorId:
+                    type: string
+                toActorId:
+                    type: string
+                mechanism:
+                    type: string
+                    description: 'mechanism: sanctions | naval_posture | energy_supply | alliance_shift | trade_friction'
+                strength:
+                    type: number
+                    format: double
+                evidenceIds:
+                    type: array
+                    items:
+                        type: string
+            description: LeverageEdge is a directed influence relationship between two actors.
+        ScenarioSet:
+            type: object
+            properties:
+                horizon:
+                    type: string
+                    description: 'horizon: 24h | 7d | 30d'
+                lanes:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ScenarioLane'
+            description: |-
+                ScenarioSet bundles scenario lanes for one time horizon. Lane probabilities
+                 sum to 1.0 within a set.
+        ScenarioLane:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'name: base | escalation | containment | fragmentation'
+                probability:
+                    type: number
+                    format: double
+                triggerIds:
+                    type: array
+                    items:
+                        type: string
+                consequences:
+                    type: array
+                    items:
+                        type: string
+                transmissions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/TransmissionPath'
+            description: ScenarioLane is one outcome branch within a horizon set.
+        TransmissionPath:
+            type: object
+            properties:
+                start:
+                    type: string
+                mechanism:
+                    type: string
+                end:
+                    type: string
+                severity:
+                    type: string
+                    description: 'severity: critical | high | medium | low'
+                corridorId:
+                    type: string
+                confidence:
+                    type: number
+                    format: double
+                latencyHours:
+                    type: integer
+                    format: int32
+                impactedAssetClass:
+                    type: string
+                    description: 'impacted_asset_class: crude | lng | container | fx | equity | agri | metals | ...'
+                impactedRegions:
+                    type: array
+                    items:
+                        type: string
+                magnitudeLow:
+                    type: number
+                    format: double
+                magnitudeHigh:
+                    type: number
+                    format: double
+                magnitudeUnit:
+                    type: string
+                    description: 'magnitude_unit: usd_bbl | pct | usd_teu | basis_points | ...'
+                templateId:
+                    type: string
+                templateVersion:
+                    type: string
+            description: |-
+                TransmissionPath describes how a regional event propagates to markets,
+                 logistics, mobility, or other domains. Typed for ranking and calibration.
+        TriggerLadder:
+            type: object
+            properties:
+                active:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Trigger'
+                watching:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Trigger'
+                dormant:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/Trigger'
+            description: TriggerLadder buckets triggers by activation state.
+        Trigger:
+            type: object
+            properties:
+                id:
+                    type: string
+                description:
+                    type: string
+                threshold:
+                    $ref: '#/components/schemas/TriggerThreshold'
+                activated:
+                    type: boolean
+                activatedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                scenarioLane:
+                    type: string
+                    description: 'scenario_lane: base | escalation | containment | fragmentation'
+                evidenceIds:
+                    type: array
+                    items:
+                        type: string
+            description: Trigger is a structured threshold assertion against a named metric.
+        TriggerThreshold:
+            type: object
+            properties:
+                metric:
+                    type: string
+                operator:
+                    type: string
+                    description: 'operator: gt | gte | lt | lte | delta_gt | delta_lt'
+                value:
+                    type: number
+                    format: double
+                windowMinutes:
+                    type: integer
+                    format: int32
+                baseline:
+                    type: string
+                    description: 'baseline: trailing_7d | trailing_30d | fixed'
+            description: |-
+                TriggerThreshold defines the metric/operator/value/window/baseline for
+                 deterministic trigger evaluation.
+        MobilityState:
+            type: object
+            properties:
+                airspace:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/AirspaceStatus'
+                flightCorridors:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FlightCorridorStress'
+                airports:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/AirportNodeStatus'
+                rerouteIntensity:
+                    type: number
+                    format: double
+                notamClosures:
+                    type: array
+                    items:
+                        type: string
+            description: |-
+                MobilityState captures airspace, flight corridor, and airport node status
+                 for the region. Phase 0 ships empty; Phase 2 wires the data plane.
+        AirspaceStatus:
+            type: object
+            properties:
+                airspaceId:
+                    type: string
+                status:
+                    type: string
+                    description: 'status: open | restricted | closed'
+                reason:
+                    type: string
+            description: AirspaceStatus captures FIR-level airspace state.
+        FlightCorridorStress:
+            type: object
+            properties:
+                corridor:
+                    type: string
+                stressLevel:
+                    type: number
+                    format: double
+                reroutedFlights24h:
+                    type: integer
+                    format: int32
+            description: FlightCorridorStress captures per-corridor reroute intensity.
+        AirportNodeStatus:
+            type: object
+            properties:
+                icao:
+                    type: string
+                name:
+                    type: string
+                status:
+                    type: string
+                    description: 'status: normal | disrupted | closed'
+                disruptionReason:
+                    type: string
+            description: AirportNodeStatus captures airport-level disruption state.
+        EvidenceItem:
+            type: object
+            properties:
+                id:
+                    type: string
+                type:
+                    type: string
+                    description: |-
+                        type: vessel_track | flight_surge | news_headline | cii_spike |
+                               chokepoint_status | sanctions_move | market_signal | mobility_disruption
+                source:
+                    type: string
+                    description: 'source: AIS | ADSB | GDELT | ACLED | Yahoo | OREF | NOTAM | ...'
+                summary:
+                    type: string
+                confidence:
+                    type: number
+                    format: double
+                observedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                theater:
+                    type: string
+                corridor:
+                    type: string
+            description: |-
+                EvidenceItem is one upstream data point linked from balance drivers,
+                 narrative sections, and triggers.
+        RegionalNarrative:
+            type: object
+            properties:
+                situation:
+                    $ref: '#/components/schemas/NarrativeSection'
+                balanceAssessment:
+                    $ref: '#/components/schemas/NarrativeSection'
+                outlook24h:
+                    $ref: '#/components/schemas/NarrativeSection'
+                outlook7d:
+                    $ref: '#/components/schemas/NarrativeSection'
+                outlook30d:
+                    $ref: '#/components/schemas/NarrativeSection'
+                watchItems:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/NarrativeSection'
+            description: |-
+                RegionalNarrative is the LLM-synthesized narrative layer. Every section
+                 links back to evidence via evidence_ids.
+        NarrativeSection:
+            type: object
+            properties:
+                text:
+                    type: string
+                evidenceIds:
+                    type: array
+                    items:
+                        type: string
+            description: NarrativeSection is one block of narrative text plus its supporting evidence.
+        GetRegimeHistoryRequest:
+            type: object
+            properties:
+                regionId:
+                    type: string
+                    maxLength: 32
+                    minLength: 1
+                    pattern: ^[a-z][a-z0-9]*(-[a-z0-9]+)*$
+                    description: |-
+                        Display region id (e.g. "mena", "east-asia", "europe"). See shared/geography.js.
+                         Kebab-case: lowercase alphanumeric groups separated by single hyphens, no
+                         trailing or consecutive hyphens.
+                limit:
+                    type: integer
+                    maximum: 100
+                    minimum: 0
+                    format: int32
+                    description: |-
+                        Optional cap on how many entries to return. Defaults to 50 server-side
+                         when omitted or <= 0. Hard cap enforced by the handler at 100 (= the
+                         writer-side LTRIM cap in regime-history.mjs).
+            required:
+                - regionId
+            description: |-
+                GetRegimeHistoryRequest asks for the recent regime transition log for a
+                 region. Returns newest-first. Phase 3 PR1 — see
+                 scripts/regional-snapshot/regime-history.mjs for the writer that
+                 populates the underlying Redis list on every regime change.
+        GetRegimeHistoryResponse:
+            type: object
+            properties:
+                transitions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/RegimeTransition'
+            description: |-
+                GetRegimeHistoryResponse returns the region's regime transition log
+                 newest-first. The list is append-only from the seed writer's perspective:
+                 only diffs with regime_changed set produce an entry, so this is a pure
+                 transition stream (no steady-state noise).
+        RegimeTransition:
+            type: object
+            properties:
+                regionId:
+                    type: string
+                label:
+                    type: string
+                    description: Current regime label (the label the region just moved INTO).
+                previousLabel:
+                    type: string
+                    description: |-
+                        Previous regime label (the label the region was in before). Empty for
+                         the first-ever recorded transition for a region.
+                transitionedAt:
+                    type: integer
+                    format: int64
+                    description: |-
+                        Unix ms when the transition was recorded. Mirrors
+                         snapshot.regime.transitioned_at when available.. Warning: Values > 2^53 may lose precision in JavaScript
+                transitionDriver:
+                    type: string
+                    description: |-
+                        Free-text driver string from the seed writer (e.g. "cross_source_surge").
+                         May be empty.
+                snapshotId:
+                    type: string
+                    description: |-
+                        Snapshot id that materialized this transition. Points back to the
+                         full snapshot via intelligence:snapshot-by-id:v1:{snapshot_id}.
+            description: |-
+                RegimeTransition is a single recorded regime change moment. One of these
+                 lands in the log each time diffRegionalSnapshot() reports regime_changed.
+        GetRegionalBriefRequest:
+            type: object
+            properties:
+                regionId:
+                    type: string
+                    maxLength: 32
+                    minLength: 1
+                    pattern: ^[a-z][a-z0-9]*(-[a-z0-9]+)*$
+            required:
+                - regionId
+        GetRegionalBriefResponse:
+            type: object
+            properties:
+                brief:
+                    $ref: '#/components/schemas/RegionalBrief'
+        RegionalBrief:
+            type: object
+            properties:
+                regionId:
+                    type: string
+                generatedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                periodStart:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                periodEnd:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                situationRecap:
+                    type: string
+                regimeTrajectory:
+                    type: string
+                keyDevelopments:
+                    type: array
+                    items:
+                        type: string
+                riskOutlook:
+                    type: string
+                provider:
+                    type: string
+                model:
+                    type: string
+            description: |-
+                RegionalBrief is a weekly LLM-synthesized intelligence summary for one
+                 region. Written by scripts/seed-regional-briefs.mjs on a weekly cron.

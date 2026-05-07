@@ -1,0 +1,105 @@
+name: Convex Deploy
+
+# Auto-deploy `convex/` changes to the Convex production deployment on every
+# merge to `main`. Required because Vercel's build step only deploys api/, src/,
+# and other Vercel-served code — the Convex backend has its own deployment
+# pipeline that must be triggered separately. Without this workflow,
+# `convex/<module>.ts` changes silently merged into main without ever running
+# in production. Surfaced concretely as PR #3460 / #3466: the structured-data
+# `ConvexError({ kind, ... })` fix sat in main for 30+ minutes while
+# `WORLDMONITOR-PD` kept growing because Convex prod was still running the old
+# string-data throws.
+#
+# Setup required (one-time): add `CONVEX_DEPLOY_KEY` to the repo's GitHub
+# Actions secrets. Generate via `npx convex deploy --once-create-deploy-key`
+# against the prod deployment, or via the Convex dashboard → Settings →
+# Deploy Keys → "Production: deploy" scope.
+
+on:
+  push:
+    branches: [main]
+  # Manual fallback so the operator can re-run a deploy without a code change
+  # (e.g. recover from a failed deploy or push a hotfix off-cycle).
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # Serialize deploys so two back-to-back merges don't race against each other.
+  # `cancel-in-progress: false` is intentional — every merge that touches
+  # convex/ should reach prod, even if a later merge follows quickly.
+  group: convex-deploy-prod
+  cancel-in-progress: false
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      convex: ${{ steps.diff.outputs.convex }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need both BEFORE and AFTER commits locally so `git diff` can name
+          # the changed files authoritatively. `fetch-depth: 0` (full history)
+          # is the cheapest way; the alternative — `gh api compare` — paginates
+          # at 300 files and silently empties on API failure, which fails OPEN
+          # (would skip a real convex/ change → recreates the exact drift this
+          # workflow is meant to prevent). git diff fails CLOSED: if it can't
+          # answer, the job errors and the deploy doesn't silently skip.
+          fetch-depth: 0
+      - id: diff
+        run: |
+          set -euo pipefail
+          # workflow_dispatch always deploys; nothing to diff.
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "convex=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          BEFORE="${{ github.event.before }}"
+          AFTER="${{ github.event.after }}"
+          # Brand-new branch / first push (BEFORE is the all-zero SHA): we
+          # can't diff against a non-existent prior state. Fall through to
+          # deploy — this is the safe default for first-push scenarios.
+          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            echo "convex=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Force-push or rebase can leave BEFORE unreachable in our local
+          # clone even at fetch-depth: 0. Verify both SHAs are present;
+          # if not, deploy (fail-CLOSED — better a redundant deploy than a
+          # missed one).
+          if ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null \
+              || ! git cat-file -e "$AFTER^{commit}" 2>/dev/null; then
+            echo "::warning::commit not in fetched history (force-push?), deploying defensively"
+            echo "convex=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # Authoritative path-scoped diff. `--` separates revisions from
+          # pathspecs, so `convex/` is interpreted as a path filter even if
+          # something weird is going on with the SHAs.
+          if git diff --name-only "$BEFORE" "$AFTER" -- 'convex/' | grep -q .; then
+            echo "convex=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "convex=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  deploy:
+    needs: changes
+    if: needs.changes.outputs.convex == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci --no-audit --no-fund
+      - name: Convex deploy (prod)
+        # `--yes` skips the interactive "Are you sure?" prompt. The deploy
+        # key in CONVEX_DEPLOY_KEY pins the target deployment, so there is
+        # no ambiguity about which environment we're pushing to.
+        run: npx convex deploy --yes
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}

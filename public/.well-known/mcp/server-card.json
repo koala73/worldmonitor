@@ -1,0 +1,21 @@
+{
+  "serverInfo": {
+    "name": "worldmonitor",
+    "version": "1.0"
+  },
+  "transport": {
+    "type": "streamableHttp",
+    "endpoint": "https://worldmonitor.app/mcp"
+  },
+  "capabilities": {
+    "tools": true,
+    "resources": false,
+    "prompts": false
+  },
+  "authentication": {
+    "type": "oauth2",
+    "authorization_servers": ["https://api.worldmonitor.app"],
+    "resource": "https://worldmonitor.app",
+    "scopes": ["mcp"]
+  }
+}

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync, existsSync } from 'node:fs';
+import { readFileSync, readdirSync, existsSync, statSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -23,19 +23,44 @@ const oauthEdgeFunctions = readdirSync(apiOauthDir)
 
 const allEdgeFunctions = [...edgeFunctions, ...oauthEdgeFunctions];
 
-// ALL .js AND .ts files in api/ root — used for node: built-in checks.
-// Note: .ts edge functions (e.g. widget-agent.ts) are intentionally excluded from the
+// ALL .js AND .ts files under api/ (recursively) — used for node: built-in checks.
+// Note: .ts edge functions are intentionally excluded from the
 // module-isolation describe below because Vercel bundles them at build time, so
-// imports from '../server/' are valid. The node: built-in check still applies.
-const allApiFiles = [
-  ...readdirSync(apiDir)
-    .filter((f) => (f.endsWith('.js') || f.endsWith('.ts')) && !f.startsWith('_'))
-    .map((f) => ({ name: f, path: join(apiDir, f) })),
-  ...oauthEdgeFunctions,
-];
+// imports from '../server/' are valid. The node: built-in check still applies
+// regardless of depth, since Vercel Edge Runtime rejects node: imports at runtime.
+function walkApi(dir, relPrefix = '') {
+  const out = [];
+  for (const entry of readdirSync(dir)) {
+    if (entry.startsWith('_')) continue; // underscore helpers are not routed
+    const full = join(dir, entry);
+    const rel = relPrefix ? `${relPrefix}/${entry}` : entry;
+    if (statSync(full).isDirectory()) {
+      out.push(...walkApi(full, rel));
+    } else if (entry.endsWith('.js') || entry.endsWith('.ts')) {
+      out.push({ name: rel, path: full });
+    }
+  }
+  return out;
+}
+
+const allApiFiles = walkApi(apiDir);
 
 describe('scripts/shared/ stays in sync with shared/', () => {
-  const sharedFiles = readdirSync(sharedDir).filter((f) => f.endsWith('.json') || f.endsWith('.cjs'));
+  // Historical scope: .json (data) + .cjs (helpers).
+  // Explicit additions (must be mirrored): edge-safe modules the cron consumes
+  // (e.g. brief-llm-core.js + its .d.ts). Other .js files in shared/ are
+  // client-only and intentionally NOT mirrored — grow this list only when a
+  // new file is imported from `scripts/`.
+  const explicitMirroredFiles = new Set([
+    'brief-llm-core.js',
+    'brief-llm-core.d.ts',
+    // U6/U7: pure URL classifier consumed by the brief filter (edge) AND
+    // by the audit script under scripts/. Must stay byte-identical.
+    'url-classifier.js',
+  ]);
+  const sharedFiles = readdirSync(sharedDir).filter(
+    (f) => f.endsWith('.json') || f.endsWith('.cjs') || explicitMirroredFiles.has(f),
+  );
   for (const file of sharedFiles) {
     it(`scripts/shared/${file} matches shared/${file}`, () => {
       const srcPath = join(scriptsSharedDir, file);
@@ -70,60 +95,10 @@ describe('Edge Function no node: built-ins', () => {
   }
 });
 
-describe('Legacy api/*.js endpoint allowlist', () => {
-  const ALLOWED_LEGACY_ENDPOINTS = new Set([
-    'ais-snapshot.js',
-    'bootstrap.js',
-    'cache-purge.js',
-    'contact.js',
-    'download.js',
-    'fwdstart.js',
-    'geo.js',
-    'gpsjam.js',
-    'health.js',
-    'military-flights.js',
-    'og-story.js',
-    'opensky.js',
-    'oref-alerts.js',
-    'polymarket.js',
-    'product-catalog.js',
-    'register-interest.js',
-    'reverse-geocode.js',
-    'mcp-proxy.js',
-    'rss-proxy.js',
-    'satellites.js',
-    'seed-health.js',
-    'story.js',
-    'telegram-feed.js',
-    'sanctions-entity-search.js',
-    'version.js',
-  ]);
-
-  const currentEndpoints = readdirSync(apiDir).filter(
-    (f) => f.endsWith('.js') && !f.startsWith('_'),
-  );
-
-  for (const file of currentEndpoints) {
-    it(`${file} is in the legacy endpoint allowlist`, () => {
-      assert.ok(
-        ALLOWED_LEGACY_ENDPOINTS.has(file),
-        `${file} is a new api/*.js endpoint not in the allowlist. ` +
-          'New data endpoints must use the sebuf protobuf RPC pattern ' +
-          '(proto definition → buf generate → handler in server/worldmonitor/{domain}/v1/ → wired in handler.ts). ' +
-          'If this is a non-data ops endpoint, add it to ALLOWED_LEGACY_ENDPOINTS in tests/edge-functions.test.mjs.',
-      );
-    });
-  }
-
-  it('allowlist has no stale entries (all listed files exist)', () => {
-    for (const file of ALLOWED_LEGACY_ENDPOINTS) {
-      assert.ok(
-        existsSync(join(apiDir, file)),
-        `${file} is in ALLOWED_LEGACY_ENDPOINTS but does not exist in api/ — remove it from the allowlist.`,
-      );
-    }
-  });
-});
+// The legacy api/*.js allowlist that previously lived here was replaced by
+// api/api-route-exceptions.json + scripts/enforce-sebuf-api-contract.mjs (see
+// docs/adding-endpoints.mdx). The new check covers nested paths and .ts files,
+// which this block missed.
 
 describe('reverse-geocode Redis write', () => {
   const geocodePath = join(apiDir, 'reverse-geocode.js');
@@ -340,3 +315,10 @@ describe('Edge Function module isolation', () => {
     });
   }
 });
+
+// Scenario endpoints (run / status / templates) were migrated from literal-filename
+// edge functions to ScenarioService RPCs in PR #3207 commit 7. See
+// tests/scenario-handler.test.mjs for the handler-level coverage that preserves
+// the security invariants (405/POST guard via sebuf service-config, scenarioId +
+// iso2 validation, JOB_ID_RE path-traversal guard, per-IP 10/min rate limit via
+// gateway, queue-depth backpressure, AbortSignal.timeout on Redis pipelines).

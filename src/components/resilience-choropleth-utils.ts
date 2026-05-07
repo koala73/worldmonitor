@@ -1,7 +1,7 @@
 import type { ResilienceRankingItem } from '@/services/resilience';
 import type { MapLayers } from '@/types';
 
-export type ResilienceChoroplethLevel = 'very_low' | 'low' | 'moderate' | 'high' | 'very_high';
+export type ResilienceChoroplethLevel = 'very_low' | 'low' | 'moderate' | 'high' | 'very_high' | 'insufficient_data';
 
 export interface ResilienceChoroplethEntry {
   overallScore: number;
@@ -16,6 +16,7 @@ export const RESILIENCE_CHOROPLETH_COLORS: Record<ResilienceChoroplethLevel, [nu
   moderate: [234, 179, 8, 160],
   high: [132, 204, 22, 160],
   very_high: [34, 197, 94, 160],
+  insufficient_data: [120, 120, 120, 60],
 };
 
 function clampScore(score: number): number {
@@ -34,7 +35,10 @@ export function formatResilienceChoroplethLevel(level: ResilienceChoroplethLevel
   return level.replace(/_/g, ' ');
 }
 
-export function buildResilienceChoroplethMap(items: ResilienceRankingItem[]): Map<string, ResilienceChoroplethEntry> {
+export function buildResilienceChoroplethMap(
+  items: ResilienceRankingItem[],
+  greyedOut: ResilienceRankingItem[] = [],
+): Map<string, ResilienceChoroplethEntry> {
   const scores = new Map<string, ResilienceChoroplethEntry>();
 
   for (const item of items) {
@@ -48,6 +52,17 @@ export function buildResilienceChoroplethMap(items: ResilienceRankingItem[]): Ma
       level: getResilienceChoroplethLevel(normalizedScore),
       serverLevel: String(item.level || 'unknown'),
       lowConfidence: Boolean(item.lowConfidence),
+    });
+  }
+
+  for (const item of greyedOut) {
+    const countryCode = String(item.countryCode || '').trim().toUpperCase();
+    if (!/^[A-Z]{2}$/.test(countryCode)) continue;
+    scores.set(countryCode, {
+      overallScore: 0,
+      level: 'insufficient_data',
+      serverLevel: 'insufficient_data',
+      lowConfidence: true,
     });
   }
 

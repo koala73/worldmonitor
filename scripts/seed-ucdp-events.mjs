@@ -3,6 +3,7 @@
 import { readFileSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -256,7 +257,7 @@ async function main() {
   if (getResp.ok) {
     const getData = await getResp.json();
     if (getData.result) {
-      const parsed = JSON.parse(getData.result);
+      const parsed = unwrapEnvelope(JSON.parse(getData.result)).data;
       console.log(`\n  Verified: ${parsed.events?.length} events in Redis`);
       console.log(`  Version: ${parsed.version} | fetchedAt: ${new Date(parsed.fetchedAt).toISOString()}`);
     }

@@ -15,8 +15,12 @@ paths:
                   in: query
                   description: Ticker symbols to retrieve (e.g., ["AAPL", "^GSPC"]). Empty returns defaults.
                   required: false
+                  style: form
+                  explode: true
                   schema:
-                    type: string
+                    type: array
+                    items:
+                        type: string
             responses:
                 "200":
                     description: Successful response
@@ -48,8 +52,12 @@ paths:
                   in: query
                   description: Cryptocurrency IDs to retrieve (CoinGecko IDs). Empty returns defaults.
                   required: false
+                  style: form
+                  explode: true
                   schema:
-                    type: string
+                    type: array
+                    items:
+                        type: string
             responses:
                 "200":
                     description: Successful response
@@ -81,8 +89,12 @@ paths:
                   in: query
                   description: Commodity symbols to retrieve (Yahoo symbols). Empty returns defaults.
                   required: false
+                  style: form
+                  explode: true
                   schema:
-                    type: string
+                    type: array
+                    items:
+                        type: string
             responses:
                 "200":
                     description: Successful response
@@ -147,8 +159,12 @@ paths:
                   in: query
                   description: CoinGecko IDs to retrieve (e.g. "tether,usd-coin"). Empty returns defaults.
                   required: false
+                  style: form
+                  explode: true
                   schema:
-                    type: string
+                    type: array
+                    items:
+                        type: string
             responses:
                 "200":
                     description: Successful response
@@ -306,8 +322,12 @@ paths:
                 - name: symbols
                   in: query
                   required: false
+                  style: form
+                  explode: true
                   schema:
-                    type: string
+                    type: array
+                    items:
+                        type: string
                 - name: limit_per_symbol
                   in: query
                   required: false
@@ -392,8 +412,12 @@ paths:
                 - name: symbols
                   in: query
                   required: false
+                  style: form
+                  explode: true
                   schema:
-                    type: string
+                    type: array
+                    items:
+                        type: string
                 - name: eval_window_days
                   in: query
                   required: false
@@ -600,6 +624,116 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/GetCotPositioningResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/market/v1/get-insider-transactions:
+        get:
+            tags:
+                - MarketService
+            summary: GetInsiderTransactions
+            description: GetInsiderTransactions retrieves SEC insider buy/sell activity from Finnhub.
+            operationId: GetInsiderTransactions
+            parameters:
+                - name: symbol
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetInsiderTransactionsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/market/v1/get-market-breadth-history:
+        get:
+            tags:
+                - MarketService
+            summary: GetMarketBreadthHistory
+            description: GetMarketBreadthHistory retrieves historical % of S&P 500 stocks above 20/50/200-day SMAs.
+            operationId: GetMarketBreadthHistory
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetMarketBreadthHistoryResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/market/v1/get-gold-intelligence:
+        get:
+            tags:
+                - MarketService
+            summary: GetGoldIntelligence
+            description: GetGoldIntelligence retrieves gold pricing, cross-currency XAU, ratios, and CFTC positioning.
+            operationId: GetGoldIntelligence
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetGoldIntelligenceResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/market/v1/get-hyperliquid-flow:
+        get:
+            tags:
+                - MarketService
+            summary: GetHyperliquidFlow
+            description: GetHyperliquidFlow retrieves Hyperliquid perp positioning flow (funding/OI/basis composite scores).
+            operationId: GetHyperliquidFlow
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetHyperliquidFlowResponse'
                 "400":
                     description: Validation error
                     content:
@@ -1224,6 +1358,32 @@ components:
                     format: double
                 engineVersion:
                     type: string
+                analystConsensus:
+                    $ref: '#/components/schemas/AnalystConsensus'
+                priceTarget:
+                    $ref: '#/components/schemas/PriceTarget'
+                recentUpgrades:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/UpgradeDowngrade'
+                dividendYield:
+                    type: number
+                    format: double
+                trailingAnnualDividendRate:
+                    type: number
+                    format: double
+                exDividendDate:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                payoutRatio:
+                    type: number
+                    format: double
+                dividendFrequency:
+                    type: string
+                dividendCagr:
+                    type: number
+                    format: double
         StockAnalysisHeadline:
             type: object
             properties:
@@ -1234,6 +1394,65 @@ components:
                 link:
                     type: string
                 publishedAt:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+        AnalystConsensus:
+            type: object
+            properties:
+                strongBuy:
+                    type: integer
+                    format: int32
+                buy:
+                    type: integer
+                    format: int32
+                hold:
+                    type: integer
+                    format: int32
+                sell:
+                    type: integer
+                    format: int32
+                strongSell:
+                    type: integer
+                    format: int32
+                total:
+                    type: integer
+                    format: int32
+                period:
+                    type: string
+        PriceTarget:
+            type: object
+            properties:
+                high:
+                    type: number
+                    format: double
+                low:
+                    type: number
+                    format: double
+                mean:
+                    type: number
+                    format: double
+                median:
+                    type: number
+                    format: double
+                current:
+                    type: number
+                    format: double
+                numberOfAnalysts:
+                    type: integer
+                    format: int32
+        UpgradeDowngrade:
+            type: object
+            properties:
+                firm:
+                    type: string
+                toGrade:
+                    type: string
+                fromGrade:
+                    type: string
+                action:
+                    type: string
+                epochGradeDate:
                     type: integer
                     format: int64
                     description: 'Warning: Values > 2^53 may lose precision in JavaScript'
@@ -1642,3 +1861,412 @@ components:
                 netPct:
                     type: number
                     format: double
+        GetInsiderTransactionsRequest:
+            type: object
+            properties:
+                symbol:
+                    type: string
+                    maxLength: 32
+                    minLength: 1
+            required:
+                - symbol
+        GetInsiderTransactionsResponse:
+            type: object
+            properties:
+                unavailable:
+                    type: boolean
+                symbol:
+                    type: string
+                totalBuys:
+                    type: number
+                    format: double
+                totalSells:
+                    type: number
+                    format: double
+                netValue:
+                    type: number
+                    format: double
+                transactions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/InsiderTransaction'
+                fetchedAt:
+                    type: string
+        InsiderTransaction:
+            type: object
+            properties:
+                name:
+                    type: string
+                shares:
+                    type: integer
+                    format: int64
+                    description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                value:
+                    type: number
+                    format: double
+                transactionCode:
+                    type: string
+                transactionDate:
+                    type: string
+        GetMarketBreadthHistoryRequest:
+            type: object
+        GetMarketBreadthHistoryResponse:
+            type: object
+            properties:
+                currentPctAbove20d:
+                    type: number
+                    format: double
+                currentPctAbove50d:
+                    type: number
+                    format: double
+                currentPctAbove200d:
+                    type: number
+                    format: double
+                updatedAt:
+                    type: string
+                history:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/BreadthSnapshot'
+                unavailable:
+                    type: boolean
+        BreadthSnapshot:
+            type: object
+            properties:
+                date:
+                    type: string
+                pctAbove20d:
+                    type: number
+                    format: double
+                    description: |-
+                        Optional so a missing/failed Barchart reading serializes as JSON null
+                         instead of collapsing to 0, which would render identically to a real 0%
+                         reading (severe market dislocation with no S&P stocks above SMA).
+                pctAbove50d:
+                    type: number
+                    format: double
+                pctAbove200d:
+                    type: number
+                    format: double
+        GetGoldIntelligenceRequest:
+            type: object
+        GetGoldIntelligenceResponse:
+            type: object
+            properties:
+                goldPrice:
+                    type: number
+                    format: double
+                goldChangePct:
+                    type: number
+                    format: double
+                goldSparkline:
+                    type: array
+                    items:
+                        type: number
+                        format: double
+                silverPrice:
+                    type: number
+                    format: double
+                platinumPrice:
+                    type: number
+                    format: double
+                palladiumPrice:
+                    type: number
+                    format: double
+                goldSilverRatio:
+                    type: number
+                    format: double
+                goldPlatinumPremiumPct:
+                    type: number
+                    format: double
+                crossCurrencyPrices:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GoldCrossCurrencyPrice'
+                cot:
+                    $ref: '#/components/schemas/GoldCotPositioning'
+                updatedAt:
+                    type: string
+                unavailable:
+                    type: boolean
+                session:
+                    $ref: '#/components/schemas/GoldSessionRange'
+                returns:
+                    $ref: '#/components/schemas/GoldReturns'
+                range52w:
+                    $ref: '#/components/schemas/GoldRange52w'
+                drivers:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GoldDriver'
+                etfFlows:
+                    $ref: '#/components/schemas/GoldEtfFlows'
+                cbReserves:
+                    $ref: '#/components/schemas/GoldCbReserves'
+        GoldCrossCurrencyPrice:
+            type: object
+            properties:
+                currency:
+                    type: string
+                flag:
+                    type: string
+                price:
+                    type: number
+                    format: double
+        GoldCotPositioning:
+            type: object
+            properties:
+                reportDate:
+                    type: string
+                nextReleaseDate:
+                    type: string
+                openInterest:
+                    type: string
+                    format: int64
+                managedMoney:
+                    $ref: '#/components/schemas/GoldCotCategory'
+                producerSwap:
+                    $ref: '#/components/schemas/GoldCotCategory'
+        GoldCotCategory:
+            type: object
+            properties:
+                longPositions:
+                    type: string
+                    format: int64
+                shortPositions:
+                    type: string
+                    format: int64
+                netPct:
+                    type: number
+                    format: double
+                oiSharePct:
+                    type: number
+                    format: double
+                wowNetDelta:
+                    type: string
+                    format: int64
+        GoldSessionRange:
+            type: object
+            properties:
+                dayHigh:
+                    type: number
+                    format: double
+                dayLow:
+                    type: number
+                    format: double
+                prevClose:
+                    type: number
+                    format: double
+        GoldReturns:
+            type: object
+            properties:
+                w1:
+                    type: number
+                    format: double
+                m1:
+                    type: number
+                    format: double
+                ytd:
+                    type: number
+                    format: double
+                y1:
+                    type: number
+                    format: double
+        GoldRange52w:
+            type: object
+            properties:
+                hi:
+                    type: number
+                    format: double
+                lo:
+                    type: number
+                    format: double
+                positionPct:
+                    type: number
+                    format: double
+        GoldDriver:
+            type: object
+            properties:
+                symbol:
+                    type: string
+                label:
+                    type: string
+                value:
+                    type: number
+                    format: double
+                changePct:
+                    type: number
+                    format: double
+                correlation30d:
+                    type: number
+                    format: double
+        GoldEtfFlows:
+            type: object
+            properties:
+                asOfDate:
+                    type: string
+                tonnes:
+                    type: number
+                    format: double
+                aumUsd:
+                    type: number
+                    format: double
+                nav:
+                    type: number
+                    format: double
+                changeW1Tonnes:
+                    type: number
+                    format: double
+                changeM1Tonnes:
+                    type: number
+                    format: double
+                changeY1Tonnes:
+                    type: number
+                    format: double
+                changeW1Pct:
+                    type: number
+                    format: double
+                changeM1Pct:
+                    type: number
+                    format: double
+                changeY1Pct:
+                    type: number
+                    format: double
+                sparkline90d:
+                    type: array
+                    items:
+                        type: number
+                        format: double
+        GoldCbReserves:
+            type: object
+            properties:
+                asOfMonth:
+                    type: string
+                totalTonnes:
+                    type: number
+                    format: double
+                topHolders:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GoldCbHolder'
+                topBuyers12m:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GoldCbMover'
+                topSellers12m:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/GoldCbMover'
+        GoldCbHolder:
+            type: object
+            properties:
+                iso3:
+                    type: string
+                name:
+                    type: string
+                tonnes:
+                    type: number
+                    format: double
+                pctOfReserves:
+                    type: number
+                    format: double
+        GoldCbMover:
+            type: object
+            properties:
+                iso3:
+                    type: string
+                name:
+                    type: string
+                deltaTonnes12m:
+                    type: number
+                    format: double
+        GetHyperliquidFlowRequest:
+            type: object
+        GetHyperliquidFlowResponse:
+            type: object
+            properties:
+                ts:
+                    type: string
+                    format: int64
+                fetchedAt:
+                    type: string
+                warmup:
+                    type: boolean
+                assetCount:
+                    type: integer
+                    format: int32
+                assets:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/HyperliquidAssetFlow'
+                unavailable:
+                    type: boolean
+        HyperliquidAssetFlow:
+            type: object
+            properties:
+                symbol:
+                    type: string
+                display:
+                    type: string
+                assetClass:
+                    type: string
+                group:
+                    type: string
+                funding:
+                    type: string
+                    description: Raw metrics (nullable as strings to preserve precision; "" = unavailable)
+                openInterest:
+                    type: string
+                markPx:
+                    type: string
+                oraclePx:
+                    type: string
+                dayNotional:
+                    type: string
+                fundingScore:
+                    type: number
+                    format: double
+                    description: Component scores 0-100
+                volumeScore:
+                    type: number
+                    format: double
+                oiScore:
+                    type: number
+                    format: double
+                basisScore:
+                    type: number
+                    format: double
+                composite:
+                    type: number
+                    format: double
+                sparkFunding:
+                    type: array
+                    items:
+                        type: number
+                        format: double
+                        description: Sparkline arrays (most recent last); up to 60 samples (5h @ 5min)
+                sparkOi:
+                    type: array
+                    items:
+                        type: number
+                        format: double
+                sparkScore:
+                    type: array
+                    items:
+                        type: number
+                        format: double
+                warmup:
+                    type: boolean
+                    description: State flags
+                stale:
+                    type: boolean
+                staleSince:
+                    type: string
+                    format: int64
+                missingPolls:
+                    type: integer
+                    format: int32
+                alerts:
+                    type: array
+                    items:
+                        type: string

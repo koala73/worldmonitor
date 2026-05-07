@@ -164,24 +164,18 @@ describe('Cache keys bumped to v2', () => {
     assert.match(bootstrapSrc, /minerals:\s*'supply_chain:minerals:v2'/);
   });
 
-  it('bootstrap.js has chokepointTransits key', () => {
-    assert.match(bootstrapSrc, /chokepointTransits:\s*'supply_chain:chokepoint_transits:v1'/);
-  });
-
   it('cache-keys.ts chokepoints key is v4', () => {
+    // BOOTSTRAP_CACHE_KEYS must keep the raw string literal (bootstrap.test.mjs enforces string-literal values)
     assert.match(cacheKeysSrc, /chokepoints:\s*'supply_chain:chokepoints:v4'/);
-  });
-
-  it('cache-keys.ts has chokepointTransits key', () => {
-    assert.match(cacheKeysSrc, /chokepointTransits:\s*'supply_chain:chokepoint_transits:v1'/);
   });
 
   it('cache-keys.ts minerals key is v2', () => {
     assert.match(cacheKeysSrc, /minerals:\s*'supply_chain:minerals:v2'/);
   });
 
-  it('chokepoint handler uses v4 redis key', () => {
-    assert.match(chokepointSrc, /REDIS_CACHE_KEY\s*=\s*'supply_chain:chokepoints:v4'/);
+  it('chokepoint handler uses CHOKEPOINT_STATUS_KEY constant', () => {
+    // Handler now imports CHOKEPOINT_STATUS_KEY from cache-keys.ts instead of defining a local duplicate
+    assert.match(chokepointSrc, /CHOKEPOINT_STATUS_KEY\s+as\s+REDIS_CACHE_KEY/);
   });
 
   it('minerals handler uses v2 redis key', () => {
@@ -342,8 +336,8 @@ describe('Gateway daily cache tier', () => {
     assert.match(src, /\/api\/supply-chain\/v1\/get-chokepoint-status':\s*'medium'/);
   });
 
-  it('shipping rates route still uses static tier', () => {
-    assert.match(src, /\/api\/supply-chain\/v1\/get-shipping-rates':\s*'static'/);
+  it('shipping rates route uses daily tier (24h seed interval)', () => {
+    assert.match(src, /\/api\/supply-chain\/v1\/get-shipping-rates':\s*'daily'/);
   });
 });
 

@@ -6,16 +6,46 @@ const SOCIAL_PREVIEW_UA =
 
 const SOCIAL_PREVIEW_PATHS = new Set(['/api/story', '/api/og-story']);
 
-const PUBLIC_API_PATHS = new Set(['/api/version', '/api/health']);
+// Paths that bypass bot/script UA filtering below. Each must carry its own
+// auth (API key, shared secret, or intentionally-public semantics) because
+// this list disables the middleware's generic bot gate.
+// - /api/version, /api/health: intentionally public, monitoring-friendly.
+// - /api/seed-contract-probe: requires RELAY_SHARED_SECRET header; called by
+//   UptimeRobot + ops curl. Was blocked by the curl/bot UA regex before this
+//   exception landed (Vercel log 2026-04-15: "Middleware 403 Forbidden" on
+//   /api/seed-contract-probe).
+// - /api/internal/brief-why-matters: requires RELAY_SHARED_SECRET Bearer
+//   (subtle-crypto HMAC timing-safe compare in server/_shared/internal-auth.ts).
+//   Called from the Railway digest-notifications cron whose fetch() uses the
+//   Node undici default UA, which is short enough to trip the "no UA or
+//   suspiciously short" 403 below (Railway log 2026-04-21 post-#3248 merge:
+//   every cron call returned 403 and silently fell back to legacy Gemini).
+const PUBLIC_API_PATHS = new Set([
+  '/api/version',
+  '/api/health',
+  '/api/seed-contract-probe',
+  '/api/internal/brief-why-matters',
+]);
 
 const SOCIAL_IMAGE_UA =
   /Slack-ImgProxy|Slackbot|twitterbot|facebookexternalhit|linkedinbot|telegrambot|whatsapp|discordbot|redditbot/i;
+
+// Must match the exact route shape enforced by
+// api/brief/carousel/[userId]/[issueDate]/[page].ts:
+//   /api/brief/carousel/<userId>/YYYY-MM-DD-HHMM/<0|1|2>
+// The issueDate segment is a per-run slot (date + HHMM in the user's
+// tz) so same-day digests produce distinct carousel URLs.
+// pageFromIndex() in brief-carousel-render.ts accepts only 0/1/2, so
+// the trailing segment is tightly bounded.
+const BRIEF_CAROUSEL_PATH_RE =
+  /^\/api\/brief\/carousel\/[^/]+\/\d{4}-\d{2}-\d{2}-\d{4}\/[0-2]\/?$/;
 
 const VARIANT_HOST_MAP: Record<string, string> = {
   'tech.worldmonitor.app': 'tech',
   'finance.worldmonitor.app': 'finance',
   'commodity.worldmonitor.app': 'commodity',
   'happy.worldmonitor.app': 'happy',
+  'energy.worldmonitor.app': 'energy',
 };
 
 // Source of truth: src/config/variant-meta.ts — keep in sync when variant metadata changes.
@@ -43,6 +73,12 @@ const VARIANT_OG: Record<string, { title: string; description: string; image: st
     description: 'Curated positive news, progress data, and uplifting stories from around the world.',
     image: 'https://happy.worldmonitor.app/favico/happy/og-image.png',
     url: 'https://happy.worldmonitor.app/',
+  },
+  energy: {
+    title: 'Energy Atlas - Real-Time Global Energy Intelligence Dashboard',
+    description: 'Real-time global energy atlas tracking oil and gas pipelines, storage facilities, chokepoints, fuel shortages, tanker flows, and disruption events worldwide.',
+    image: 'https://energy.worldmonitor.app/favico/energy/og-image.png',
+    url: 'https://energy.worldmonitor.app/',
   },
 };
 
@@ -101,8 +137,26 @@ export default function middleware(request: Request) {
     return;
   }
 
-  // Allow social preview/image bots on OG image assets
-  if (path.startsWith('/favico/') || path.endsWith('.png')) {
+  // Allow social preview/image bots on OG image assets.
+  //
+  // Image-returning API routes that don't end in `.png` also need
+  // an explicit carve-out — otherwise server-side fetches from
+  // Slack / Telegram / Discord / LinkedIn / WhatsApp / Facebook /
+  // Twitter / Reddit all trip the BOT_UA gate below. Telegram
+  // surfaces it as error 400 "WEBPAGE_CURL_FAILED" on sendMediaGroup;
+  // the others silently drop the preview image.
+  //
+  // Only the brief carousel route shape is allowlisted — a strict
+  // regex (same shape enforced by the handler) prevents a future
+  // /api/brief/carousel/admin or similar sibling from accidentally
+  // inheriting this bypass. HMAC token in the URL is the real auth;
+  // this allowlist is defence-in-depth for any well-shaped request
+  // whose UA happens to be in SOCIAL_IMAGE_UA.
+  if (
+    path.startsWith('/favico/') ||
+    path.endsWith('.png') ||
+    BRIEF_CAROUSEL_PATH_RE.test(path)
+  ) {
     if (SOCIAL_IMAGE_UA.test(ua)) {
       return;
     }
@@ -115,6 +169,22 @@ export default function middleware(request: Request) {
 
   // Public endpoints bypass all bot filtering
   if (PUBLIC_API_PATHS.has(path)) {
+    return;
+  }
+
+  // Authenticated Pro API clients bypass UA filtering. This is a cheap
+  // edge heuristic, not auth — real validation (SHA-256 hash vs Convex
+  // userApiKeys + entitlement) happens in server/gateway.ts. To keep the
+  // bot-UA shield meaningful, require the exact key shape emitted by
+  // src/services/api-keys.ts:generateKey: `wm_` + 40 lowercase hex chars.
+  // A random scraper would have to guess a specific 43-char format, and
+  // spoofed-but-well-shaped keys still 401 at the gateway.
+  const WM_KEY_SHAPE = /^wm_[a-f0-9]{40}$/;
+  const apiKey =
+    request.headers.get('x-worldmonitor-key') ??
+    request.headers.get('x-api-key') ??
+    '';
+  if (WM_KEY_SHAPE.test(apiKey)) {
     return;
   }
 

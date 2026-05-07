@@ -1,6 +1,7 @@
 import { loadFromStorage, saveToStorage } from '@/utils';
 import { sanitizeWidgetHtml } from '@/utils/widget-sanitizer';
 import { getAuthState } from '@/services/auth-state';
+import { isEntitled } from '@/services/entitlements';
 
 const STORAGE_KEY = 'wm-custom-widgets';
 const PANEL_SPANS_KEY = 'worldmonitor-panel-spans';
@@ -168,7 +169,12 @@ export function isProWidgetEnabled(): boolean {
 }
 
 export function isProUser(): boolean {
-  return isWidgetFeatureEnabled() || isProWidgetEnabled() || getAuthState().user?.role === 'pro';
+  return (
+    isWidgetFeatureEnabled() ||
+    isProWidgetEnabled() ||
+    getAuthState().user?.role === 'pro' ||
+    isEntitled()
+  );
 }
 
 export function getProWidgetKey(): string {

@@ -64,6 +64,15 @@
             ]
           },
           {
+            "group": "Usage",
+            "pages": [
+              "usage-quickstart",
+              "usage-auth",
+              "usage-rate-limits",
+              "usage-errors"
+            ]
+          },
+          {
             "group": "Platform & Features",
             "pages": [
               "overview",
@@ -77,9 +86,23 @@
               "signal-intelligence",
               "ai-intelligence",
               "country-instability-index",
+              "methodology/country-resilience-index",
+              "methodology/chokepoints",
+              "methodology/pipelines",
+              "methodology/storage",
+              "methodology/shortages",
+              "methodology/disruptions",
+              "corrections",
               "geographic-convergence",
               "strategic-risk",
               "algorithms"
+            ]
+          },
+          {
+            "group": "Workflows",
+            "pages": [
+              "route-explorer",
+              "scenario-engine"
             ]
           },
           {
@@ -104,9 +127,73 @@
             ]
           },
           {
+            "group": "Panels — AI & PRO",
+            "pages": [
+              "panels/latest-brief",
+              "panels/forecast",
+              "panels/chat-analyst",
+              "panels/market-implications",
+              "panels/deduction",
+              "panels/daily-market-brief",
+              "panels/regional-intelligence",
+              "panels/strategic-posture",
+              "panels/stock-analysis",
+              "panels/stock-backtest",
+              "panels/wsb-ticker-scanner"
+            ]
+          },
+          {
+            "group": "Panels — Data & Tracking",
+            "pages": [
+              "panels/consumer-prices",
+              "panels/disease-outbreaks",
+              "panels/radiation-watch",
+              "panels/thermal-escalation",
+              "panels/airline-intel",
+              "panels/tech-readiness",
+              "panels/trade-policy",
+              "panels/supply-chain",
+              "panels/sanctions-pressure",
+              "panels/hormuz-tracker",
+              "panels/energy-crisis",
+              "panels/world-clock",
+              "panels/monitors",
+              "panels/oref-sirens",
+              "panels/telegram-intel",
+              "panels/fsi"
+            ]
+          },
+          {
+            "group": "Panels — Catalogues",
+            "pages": [
+              "panels/news-feeds",
+              "panels/indicators-and-signals"
+            ]
+          },
+          {
             "group": "Desktop Application",
             "pages": [
               "desktop-app"
+            ]
+          },
+          {
+            "group": "MCP & Integrations",
+            "pages": [
+              "agent-discovery",
+              "mcp-server",
+              "api-oauth",
+              "api-notifications"
+            ]
+          },
+          {
+            "group": "HTTP API",
+            "pages": [
+              "api-platform",
+              "api-brief",
+              "api-commerce",
+              "api-scenarios",
+              "api-shipping-v2",
+              "api-proxies"
             ]
           },
           {
@@ -135,6 +222,12 @@
         "tab": "API Reference",
         "groups": [
           {
+            "group": "Overview",
+            "pages": [
+              "api-reference"
+            ]
+          },
+          {
             "group": "Geopolitical",
             "pages": [
               {
@@ -160,6 +253,10 @@
               {
                 "group": "Cyber",
                 "openapi": "api/CyberService.openapi.yaml"
+              },
+              {
+                "group": "Sanctions",
+                "openapi": "api/SanctionsService.openapi.yaml"
               }
             ]
           },
@@ -181,6 +278,14 @@
               {
                 "group": "Wildfires",
                 "openapi": "api/WildfireService.openapi.yaml"
+              },
+              {
+                "group": "Radiation",
+                "openapi": "api/RadiationService.openapi.yaml"
+              },
+              {
+                "group": "Thermal",
+                "openapi": "api/ThermalService.openapi.yaml"
               }
             ]
           },
@@ -204,8 +309,16 @@
                 "openapi": "api/SupplyChainService.openapi.yaml"
               },
               {
+                "group": "Consumer Prices",
+                "openapi": "api/ConsumerPricesService.openapi.yaml"
+              },
+              {
                 "group": "Predictions",
                 "openapi": "api/PredictionService.openapi.yaml"
+              },
+              {
+                "group": "Forecasts",
+                "openapi": "api/ForecastService.openapi.yaml"
               }
             ]
           },
@@ -223,6 +336,27 @@
               {
                 "group": "Infrastructure",
                 "openapi": "api/InfrastructureService.openapi.yaml"
+              },
+              {
+                "group": "Resilience",
+                "openapi": "api/ResilienceService.openapi.yaml"
+              }
+            ]
+          },
+          {
+            "group": "Health & Environment",
+            "pages": [
+              {
+                "group": "Public Health",
+                "openapi": "api/HealthService.openapi.yaml"
+              },
+              {
+                "group": "Imagery",
+                "openapi": "api/ImageryService.openapi.yaml"
+              },
+              {
+                "group": "Webcams",
+                "openapi": "api/WebcamService.openapi.yaml"
               }
             ]
           },

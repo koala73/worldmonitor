@@ -4,6 +4,7 @@ import { getCo2Monitoring } from './get-co2-monitoring';
 import { getOceanIceData } from './get-ocean-ice-data';
 import { listAirQualityData } from './list-air-quality-data';
 import { listClimateAnomalies } from './list-climate-anomalies';
+import { listClimateDisasters } from './list-climate-disasters';
 import { listClimateNews } from './list-climate-news';
 
 export const climateHandler: ClimateServiceHandler = {
@@ -11,5 +12,6 @@ export const climateHandler: ClimateServiceHandler = {
   getOceanIceData,
   listAirQualityData,
   listClimateAnomalies,
+  listClimateDisasters,
   listClimateNews,
 };

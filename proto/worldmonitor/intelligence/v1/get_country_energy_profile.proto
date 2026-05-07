@@ -1,0 +1,85 @@
+syntax = "proto3";
+package worldmonitor.intelligence.v1;
+import "sebuf/http/annotations.proto";
+
+message GetCountryEnergyProfileRequest {
+  string country_code = 1 [(sebuf.http.query) = {name: "country_code"}];
+}
+
+message GetCountryEnergyProfileResponse {
+  // Phase 1 — OWID structural mix (~200 countries)
+  bool   mix_available    = 1;
+  int32  mix_year         = 2;
+  double coal_share       = 3;
+  double gas_share        = 4;
+  double oil_share        = 5;
+  double nuclear_share    = 6;
+  double renew_share      = 7;
+  double wind_share       = 8;
+  double solar_share      = 9;
+  double hydro_share      = 10;
+  double import_share     = 11;
+
+  // Phase 2 — EU gas storage
+  bool   gas_storage_available  = 12;
+  double gas_storage_fill_pct   = 13;
+  double gas_storage_change_1d  = 14;
+  string gas_storage_trend      = 15;
+  string gas_storage_date       = 16;
+
+  // Phase 2 — EU electricity (ENTSO-E countries: DE FR ES IT NL BE PL PT GB NO SE)
+  // US electricity is stored by EIA balancing area, not ISO2 — not available here
+  bool   electricity_available  = 17;
+  double electricity_price_mwh  = 18;
+  string electricity_source     = 19;
+  string electricity_date       = 20;
+
+  // Phase 2.5 — JODI Oil (~90+ countries)
+  bool   jodi_oil_available     = 21;
+  string jodi_oil_data_month    = 22;
+  double gasoline_demand_kbd    = 23;
+  double gasoline_imports_kbd   = 24;
+  double diesel_demand_kbd      = 25;
+  double diesel_imports_kbd     = 26;
+  double jet_demand_kbd         = 27;
+  double jet_imports_kbd        = 28;
+  double lpg_demand_kbd         = 29;
+  double crude_imports_kbd      = 30;
+  double lpg_imports_kbd        = 42;
+
+  // Phase 2.5 — JODI Gas
+  bool   jodi_gas_available     = 31;
+  string jodi_gas_data_month    = 32;
+  double gas_total_demand_tj    = 33;
+  double gas_lng_imports_tj     = 34;
+  double gas_pipe_imports_tj    = 35;
+  double gas_lng_share          = 36;   // LNG as % of total imports (0–100), not 0–1 fraction
+
+  // Phase 2.5 — IEA oil stocks (~31 IEA members)
+  bool   iea_stocks_available   = 37;
+  string iea_stocks_data_month  = 38;
+  int32  iea_days_of_cover      = 39;
+  bool   iea_net_exporter       = 40;
+  bool   iea_below_obligation   = 41;
+
+  // Phase 3 — Ember monthly electricity mix
+  double ember_fossil_share   = 43;
+  double ember_renew_share    = 44;
+  double ember_nuclear_share  = 45;
+  double ember_coal_share     = 46;
+  double ember_gas_share      = 47;
+  double ember_demand_twh     = 48;
+  string ember_data_month     = 49;
+  bool   ember_available      = 50;  // true when Ember monthly data exists for this country
+
+  // Phase 4 — SPR policy classification
+  string spr_regime            = 51;  // "mandatory_stockholding"|"government_spr"|"spare_capacity"|"commercial_only"|"none"|"unknown"
+  double spr_capacity_mb       = 52;  // million barrels capacity (0 if unknown)
+  string spr_operator          = 53;  // operator name (empty if unknown)
+  bool   spr_iea_member        = 54;  // IEA member country
+  string spr_stockholding_model = 55; // "government"|"mixed_public_private"|"industry"|"none"
+  string spr_note              = 56;  // human-readable context
+  string spr_source            = 57;  // data source citation
+  string spr_as_of             = 58;  // date string (YYYY-MM)
+  bool   spr_available         = 59;  // true when registry has classified data (not 'unknown')
+}

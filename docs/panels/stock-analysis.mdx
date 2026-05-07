@@ -1,0 +1,48 @@
+---
+title: "Premium Stock Analysis"
+description: "On-demand equity analysis per ticker with buy/hold/sell signal, price targets, analyst consensus, upgrades/downgrades, insider transactions, and price sparklines."
+---
+
+The **Premium Stock Analysis** panel (internal id `stock-analysis`) is the dashboard's per-ticker deep-dive: one analysis at a time, with a structured synthesis of signal (buy / hold / sell), price targets, analyst consensus, recent upgrades/downgrades, insider transactions, and a price sparkline. Backed by the Market service's analyst / price-target / insider RPCs.
+
+## What the panel shows
+
+An analysis card per selected symbol. Each card renders:
+
+- **Symbol + price** — current price with currency formatting (`formatPrice()`), percent change today (`formatChange()`).
+- **Signal badge** — `Buy` / `Hold` / `Watch` / `Sell` classified via `stockSignalClass()` into bullish / neutral / bearish visual buckets.
+- **Thesis bullets** — rendered with `list()` into sanitised `<ul>`.
+- **Analyst consensus** — the `AnalystConsensus` shape from the generated Market service client.
+- **Price targets** — low / avg / high from `PriceTarget[]`.
+- **Recent upgrades / downgrades** — `UpgradeDowngrade[]` list.
+- **Insider transactions** — filings from `InsiderTransactionsResult`, attached separately via `setInsiderData(symbol, data)`.
+- **Sparkline** — price history rendered via `@/utils/sparkline`.
+- **History** — previous analyses for the same symbol are kept in `StockAnalysisHistory`.
+
+Panel id is `stock-analysis`; canonical component is `src/components/StockAnalysisPanel.ts`. Title "Premium Stock Analysis" per the panel's own `super({...})` call.
+
+## How you reach it
+
+- **Cmd+K**: type *stock* or the ticker symbol.
+- **Availability by variant**: registered and enabled by default in the **full/geopolitical** and **finance** variants — locked in both. Not present in the tech, commodity, or happy variants. Source: `'stock-analysis'` entries in `FULL_PANELS` and `FINANCE_PANELS` at `src/config/panels.ts:49` and `:422`.
+
+## Data sources
+
+All fields come from the generated `MarketServiceClient`:
+
+- `analyst_consensus`, `price_targets`, `upgrade_downgrades` — Market service RPCs.
+- Insider transactions — `@/services/insider-transactions` wrapper, bound via `setInsiderData()`.
+- Price + sparkline — Market service quote/series RPCs.
+
+## Refresh cadence
+
+Analyses are on-demand; no polling. The panel caches previous analyses in `StockAnalysisHistory` so re-opening a symbol shows the last analysis immediately while a fresh one fetches.
+
+## Tier & gating
+
+**PRO (hard-locked).** `premium: 'locked'` on both variant registrations. `isPanelEntitled` unlocks it when **either** a valid `WORLDMONITOR_API_KEY` is present **or** `isPro` is true (`stock-analysis` is in the `apiKeyPanels` allowlist at `src/config/panels.ts:973`).
+
+## API reference
+
+- [Markets service](/api/MarketService.openapi.yaml) — analyst consensus, price targets, upgrades/downgrades, quote RPCs.
+- Related: [Premium Backtesting](/panels/stock-backtest) — the backtest side of the same dataset.

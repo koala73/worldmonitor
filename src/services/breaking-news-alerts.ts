@@ -1,3 +1,9 @@
+// @notification-source: rss (list-feed-digest)
+//   /api/notify fetch in this file forwards RSS NewsItem objects as
+//   rss_alert notifications. `payload.description` is set when the upstream
+//   NewsItem carried a snippet (post-RSS-description-fix, 2026-04-24), so
+//   the relay can render a context line without a second Redis lookup.
+//   Enforced by tests/notification-relay-payload-audit.test.mjs.
 import type { NewsItem } from '@/types';
 import type { OrefAlert } from '@/services/oref-alerts';
 import { getSourceTier } from '@/config/feeds';
@@ -14,6 +20,13 @@ export interface BreakingAlert {
   timestamp: Date;
   origin: 'rss_alert' | 'keyword_spike' | 'hotspot_escalation' | 'military_surge' | 'oref_siren';
   importanceScore?: number;
+  /**
+   * RSS article description (cleaned, ≤400 chars). Present on rss_alert
+   * origins when the upstream NewsItem carried a snippet. Enables the relay
+   * to render a context line under the push/Telegram title without a second
+   * lookup. Absent/empty → relay renders title-only today.
+   */
+  description?: string;
 }
 
 export interface AlertSettings {
@@ -169,9 +182,17 @@ function dispatchAlert(alert: BreakingAlert): void {
     void (async () => {
       const token = await getClerkToken();
       if (!token) { console.warn('[breaking-news-alerts] no Clerk token, skipping notify'); return; }
+      // source: rss (list-feed-digest) — RSS-origin producer; carries
+      // `description` when the upstream NewsItem had a snippet so the relay
+      // can render a context line without a secondary Redis lookup.
       const body = JSON.stringify({
         eventType: alert.origin,
-        payload: { title: alert.headline, source: alert.source, link: alert.link },
+        payload: {
+          title: alert.headline,
+          source: alert.source,
+          link: alert.link,
+          ...(alert.description ? { description: alert.description } : {}),
+        },
         severity: alert.threatLevel,
         variant: SITE_VARIANT,
       });
@@ -248,6 +269,7 @@ export function checkBatchForBreakingAlerts(items: NewsItem[]): void {
         timestamp: item.pubDate,
         origin: 'rss_alert',
         importanceScore: item.importanceScore,
+        ...(item.snippet ? { description: item.snippet } : {}),
       };
     }
   }

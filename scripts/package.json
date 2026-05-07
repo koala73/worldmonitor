@@ -6,10 +6,11 @@
   "scripts": {
     "start": "node ais-relay.cjs",
     "notification-relay": "node notification-relay.cjs",
-    "telegram:session": "node telegram/session-auth.mjs"
+    "telegram:session": "node telegram/session-auth.mjs",
+    "seed-bundle-regional": "node seed-bundle-regional.mjs"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.79.0",
+    "@anthropic-ai/sdk": "^0.82.0",
     "@aws-sdk/client-s3": "^3.1009.0",
     "convex": "^1",
     "exceljs": "^4.4.0",
@@ -17,8 +18,11 @@
     "resend": "^4",
     "sax": "^1.6.0",
     "telegram": "^2.22.2",
+    "tsx": "^4.21.0",
     "undici": "^7.0.0",
-    "ws": "^8.18.0"
+    "web-push": "^3.6.7",
+    "ws": "^8.18.0",
+    "yaml": "^2.8.3"
   },
   "engines": {
     "node": ">=20"

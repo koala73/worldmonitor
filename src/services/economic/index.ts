@@ -8,6 +8,7 @@
  */
 
 import { getRpcBaseUrl } from '@/services/rpc-client';
+import { premiumFetch } from '@/services/premium-fetch';
 import {
   EconomicServiceClient,
   ApiError,
@@ -37,6 +38,12 @@ import {
   type EuGasStorageHistoryEntry,
   type GetEurostatCountryDataResponse,
   type EurostatCountryEntry,
+  type GetOilStocksAnalysisResponse,
+  type OilStocksAnalysisMember,
+  type OilStocksRegionalSummary,
+  type OilStocksRegionalSummaryEurope,
+  type OilStocksRegionalSummaryAsiaPacific,
+  type OilStocksRegionalSummaryNorthAmerica,
 } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 import { getCSSColor } from '@/utils';
@@ -44,10 +51,18 @@ import { isFeatureAvailable } from '../runtime-config';
 import { dataFreshness } from '../data-freshness';
 import { getHydratedData } from '@/services/bootstrap';
 import { toApiUrl } from '@/services/runtime';
+import { hasPremiumAccess } from '@/services/panel-gating';
 
 // ---- Client + Circuit Breakers ----
 
-const client = new EconomicServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
+// premiumFetch for the whole client: 1 of ~16 methods (getNationalDebt) targets a
+// PREMIUM_RPC_PATHS path. globalThis.fetch here would 401 signed-in browser pros
+// on getNationalDebt with no WORLDMONITOR_API_KEY (gateway runs validateApiKey
+// with forceKey=true on premium paths). premiumFetch no-ops safely when no
+// credentials are available, so the public methods (FRED, BLS, energy, BIS,
+// EU, oil) keep working unchanged. See src/services/supply-chain/index.ts for
+// the same pattern + #3242 review HIGH(new) #1 for the bug class this prevents.
+const client = new EconomicServiceClient(getRpcBaseUrl(), { fetch: premiumFetch });
 const WB_BREAKERS_WARN_THRESHOLD = 50;
 const wbBreakers = new Map<string, ReturnType<typeof createCircuitBreaker<ListWorldBankIndicatorsResponse>>>();
 
@@ -90,6 +105,14 @@ const emptyCapacityFallback: GetEnergyCapacityResponse = { series: [] };
 const emptyBisPolicyFallback: GetBisPolicyRatesResponse = { rates: [] };
 const emptyBisEerFallback: GetBisExchangeRatesResponse = { rates: [] };
 const emptyBisCreditFallback: GetBisCreditResponse = { entries: [] };
+const emptyOilStocksAnalysisFallback: GetOilStocksAnalysisResponse = {
+  updatedAt: '',
+  dataMonth: '',
+  ieaMembers: [],
+  belowObligation: [],
+  unavailable: true,
+};
+const oilStocksAnalysisBreaker = createCircuitBreaker<GetOilStocksAnalysisResponse>({ name: 'IEA Oil Stocks Analysis', cacheTtlMs: 4 * 60 * 60 * 1000, persistCache: true });
 
 // ========================================================================
 // FRED -- replaces src/services/fred.ts
@@ -653,26 +676,30 @@ export async function getTechReadinessRankings(
 ): Promise<TechReadinessScore[]> {
   // Fast path: bootstrap-hydrated data available on first page load
   const hydrated = getHydratedData('techReadiness') as TechReadinessScore[] | undefined;
-  if (hydrated?.length && !countries) return hydrated;
+  if (hydrated?.length) {
+    return countries ? hydrated.filter(s => countries.includes(s.country)) : hydrated;
+  }
 
-  // Fallback: fetch the pre-computed seed key directly from bootstrap endpoint.
-  // Data is seeded by seed-wb-indicators.mjs — never call WB API from frontend.
-  try {
-    const resp = await fetch(toApiUrl('/api/bootstrap?keys=techReadiness'), {
-      signal: AbortSignal.timeout(5_000),
-    });
-    if (resp.ok) {
-      const { data } = (await resp.json()) as { data: { techReadiness?: TechReadinessScore[] } };
-      if (data.techReadiness?.length) {
-        const scores = countries
-          ? data.techReadiness.filter(s => countries.includes(s.country))
-          : data.techReadiness;
-        return scores;
-      }
-    }
-  } catch { /* fall through */ }
-
-  return [];
+  // Fallback: fetch the pre-computed seed key directly from the bootstrap
+  // endpoint. Data is seeded by seed-wb-indicators.mjs — never call the WB
+  // API from the frontend.
+  //
+  // Errors propagate. The previous shape collapsed HTTP failures, fetch
+  // aborts, and JSON parse errors into the same silent `return []` as a
+  // legitimate empty payload, so the panel could not distinguish "network
+  // failed, retry me" from "server says 0 records." That made a single
+  // transient blip render as a permanent empty state until app restart.
+  // Callers now decide UX: a thrown error → retry; an empty array →
+  // genuine empty state.
+  const resp = await fetch(toApiUrl('/api/bootstrap?keys=techReadiness'), {
+    signal: AbortSignal.timeout(5_000),
+  });
+  if (!resp.ok) {
+    throw new Error(`tech-readiness bootstrap HTTP ${resp.status}`);
+  }
+  const { data } = (await resp.json()) as { data: { techReadiness?: TechReadinessScore[] } };
+  const list = data.techReadiness ?? [];
+  return countries ? list.filter(s => countries.includes(s.country)) : list;
 }
 
 export async function getCountryComparison(
@@ -730,6 +757,15 @@ async function _fetchNationalDebt(): Promise<GetNationalDebtResponse> {
       if (data.nationalDebt?.entries?.length) return data.nationalDebt;
     }
   } catch { /* fall through to RPC */ }
+
+  // Anonymous (non-premium) users: do NOT call the Pro-gated RPC.
+  // /api/economic/v1/get-national-debt is in PREMIUM_RPC_PATHS, so the
+  // call deterministically 401s for an anonymous client and the breaker
+  // returns emptyNationalDebtFallback anyway — same outcome as us, minus
+  // the Sentry/console noise on every page load.
+  if (!hasPremiumAccess()) {
+    return emptyNationalDebtFallback;
+  }
 
   try {
     return await nationalDebtBreaker.execute(async () => {
@@ -835,4 +871,50 @@ export async function getEurostatCountryData(): Promise<GetEurostatCountryDataRe
   } catch {
     return emptyEurostatFallback;
   }
+}
+
+// ========================================================================
+// IEA Oil Stocks Analysis (Days of Cover)
+// ========================================================================
+
+export type { GetOilStocksAnalysisResponse, OilStocksAnalysisMember, OilStocksRegionalSummary, OilStocksRegionalSummaryEurope, OilStocksRegionalSummaryAsiaPacific, OilStocksRegionalSummaryNorthAmerica };
+
+export async function getOilStocksAnalysisData(): Promise<GetOilStocksAnalysisResponse> {
+  const hydrated = getHydratedData('oilStocksAnalysis') as GetOilStocksAnalysisResponse | undefined;
+  if (hydrated && !hydrated.unavailable && hydrated.ieaMembers.length > 0) return hydrated;
+
+  try {
+    return await oilStocksAnalysisBreaker.execute(
+      () => client.getOilStocksAnalysis({}, { signal: AbortSignal.timeout(12_000) }),
+      emptyOilStocksAnalysisFallback,
+      { shouldCache: (r) => !r.unavailable && r.ieaMembers.length > 0 },
+    );
+  } catch {
+    return emptyOilStocksAnalysisFallback;
+  }
+}
+
+// ========================================================================
+// LNG Vulnerability (JODI Gas seeder)
+// ========================================================================
+
+export interface LngVulnerabilityEntry {
+  iso2: string;
+  lngShareOfImports: number;
+  lngImportsTj: number;
+  pipeImportsTj?: number;
+}
+
+export interface LngVulnerabilityData {
+  updatedAt: string;
+  dataMonth: string;
+  top20LngDependent: LngVulnerabilityEntry[];
+  top20PipelineDependent: Array<{ iso2: string; lngShareOfImports: number; pipeImportsTj: number }>;
+}
+
+export async function fetchLngVulnerability(): Promise<LngVulnerabilityData | null> {
+  const hydrated = getHydratedData('lngVulnerability') as LngVulnerabilityData | undefined;
+  if (hydrated?.top20LngDependent?.length) return hydrated;
+
+  return null;
 }

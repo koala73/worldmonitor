@@ -97,11 +97,18 @@ function validate(data) {
   return Array.isArray(data?.patents) && data.patents.length > 0;
 }
 
+export function declareRecords(data) {
+  return data?.patents?.length ?? 0;
+}
+
 runSeed('military', 'defense-patents', CANONICAL_KEY, fetchAllPatents, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
   sourceVersion: 'patentsview-v1',
   recordCount: (d) => d?.patents?.length ?? 0,
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 25200,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
   console.error('FATAL:', (err.message || err) + _cause);

@@ -1,0 +1,115 @@
+---
+title: "Notifications & Integrations"
+description: "Notification channels, webhook delivery, and Telegram/Slack/Discord/YouTube integration endpoints."
+---
+
+## Notification channels
+
+Users can register multiple delivery channels (webhook, Telegram, Slack, Discord, email) and bind alert rules to them.
+
+### `GET /api/notification-channels`
+
+Lists the caller's registered channels and alert rules.
+
+```json
+{
+  "channels": [
+    { "id": "chn_01", "type": "webhook", "url": "https://hooks.example.com/...", "active": true },
+    { "id": "chn_02", "type": "telegram", "chatId": "@alerts_xyz", "active": true }
+  ],
+  "alertRules": [
+    { "id": "rul_01", "channelId": "chn_01", "trigger": "brief_ready", "filter": null }
+  ]
+}
+```
+
+### `POST /api/notification-channels`
+
+Action-dispatched writer. The body's `action` field selects the mutation:
+
+| action | Purpose |
+|--------|---------|
+| `create-pairing-token` | Mint a one-time pairing token (optional `variant`) for the mobile / Tauri client to bind a push channel. |
+| `set-channel` | Register or update a channel. For `webhook` channels the `webhookEnvelope` URL is validated HTTPS-only, must not resolve to a private/loopback address, and is AES-256-GCM encrypted before storage. Optional `email`, `webhookLabel` (truncated to 100 chars). |
+| `set-web-push` | Register a browser Web Push subscription for the signed-in user. |
+| `delete-channel` | Remove a channel by type (`email`, `webhook`, `telegram`, `web-push`, etc.). |
+| `set-alert-rules` | Replace the caller's alert-rules set in one shot. |
+| `set-quiet-hours` | Set do-not-disturb windows. |
+| `set-digest-settings` | Configure digest cadence and channel routing. |
+
+All actions require Clerk bearer + PRO (`tier >= 1`). Invalid actions return `400 Unknown action`. Requests are forwarded to Convex via `RELAY_SHARED_SECRET`.
+
+## Webhook delivery contract
+
+When an alert fires, registered webhook URLs receive:
+
+- **Method**: `POST`
+- **Headers**:
+  - `Content-Type: application/json`
+  - `X-WM-Signature: sha256=<HMAC-SHA256(body, channelSecret)>`
+  - `X-WM-Delivery-Id: <ulid>`
+  - `X-WM-Event: <event-name>`
+- **Body** (envelope v1):
+  ```json
+  {
+    "envelope": 1,
+    "event": "brief_ready",
+    "deliveryId": "01HX...",
+    "occurredAt": "2026-04-19T06:00:00Z",
+    "data": { "issueDate": "2026-04-19", "magazineUrl": "..." }
+  }
+  ```
+
+Signature verification: `hmac_sha256(rawBody, channelSecret) == X-WM-Signature[7:]`.
+
+<Warning>
+The envelope version is **shared across two producers** (`notification-relay`, `seed-digest-notifications`). Bumping it requires coordinated updates.
+</Warning>
+
+### `POST /api/notify`
+
+Internal ingestion endpoint called by Railway producers to enqueue a notification. Requires `RELAY_SHARED_SECRET`. Not a public API.
+
+## Telegram
+
+### `GET /api/telegram-feed?userId=...`
+
+Returns the pre-rendered brief feed for a given Telegram-linked user. Used by the Telegram mini-app.
+
+## YouTube
+
+### `GET /api/youtube/embed?videoId=...`
+
+SSR'd YouTube embed iframe with CSP-compatible wrapping. Used to bypass WKWebView autoplay restrictions on the desktop app.
+
+### `GET /api/youtube/live?channel=<handle>` or `?videoId=<11-char-id>`
+
+Returns live-stream metadata for a YouTube channel (`channel` — handle with or without `@` prefix) or a specific video (`videoId` — 11-char YouTube id). At least one of the two params is required; returns `400 Missing channel or videoId parameter` otherwise. Response cached 10 min for channel lookups, 1 hour for videoId lookups.
+
+Proxies to the Railway relay first (residential proxy for YouTube scraping). On relay failure, falls back to YouTube oEmbed (for `videoId`) or direct channel scraping — both are unreliable from datacenter IPs.
+
+## Slack integration
+
+### `POST /api/slack/oauth/start`
+
+Authenticated (Clerk JWT + PRO). Body is empty. Server generates a one-time CSRF state token, stores the caller's userId in Upstash keyed by that state (10-min TTL), and returns the Slack authorize URL for the frontend to open in a popup.
+
+```json
+{ "oauthUrl": "https://slack.com/oauth/v2/authorize?client_id=...&scope=incoming-webhook&..." }
+```
+
+Errors: 401 (missing/invalid JWT), 403 `pro_required`, 503 (OAuth not configured or Upstash unavailable).
+
+### `GET /api/slack/oauth/callback`
+
+Unauthenticated — the popup lands here after Slack redirects. Validates the state token, exchanges `code` for an incoming-webhook URL, AES-256-GCM encrypts the webhook, and stores it in Convex. Returns a tiny HTML page that `postMessage`s the opener and closes.
+
+## Discord integration
+
+### `POST /api/discord/oauth/start`
+
+Authenticated (Clerk JWT + PRO). Same shape as the Slack start route — returns `{ oauthUrl }` for a popup.
+
+### `GET /api/discord/oauth/callback`
+
+Unauthenticated. Exchanges `code`, stores the guild webhook, and `postMessage`s the opener.

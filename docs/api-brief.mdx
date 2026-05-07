@@ -1,0 +1,81 @@
+---
+title: "AI Brief Endpoints"
+description: "Read, share, and render the AI-composed daily intelligence brief."
+---
+
+WorldMonitor composes a per-user **daily intelligence brief** on Railway, stores it in Redis at `brief:{userId}:{issueDate}`, and exposes these routes for dashboard readback, public sharing, and Telegram/Slack carousel rendering.
+
+<Info>
+All read routes require a valid Clerk session and a PRO tier, except the public share route (`/api/brief/public/{hash}`).
+</Info>
+
+## Latest brief (authenticated)
+
+### `GET /api/latest-brief`
+
+Returns a short summary of the caller's most recent composed brief, or `{ status: "composing" }` if today's run hasn't produced a brief yet.
+
+| Status | Response |
+|--------|----------|
+| 200 OK | `{ issueDate, dateLong, greeting, threadCount, magazineUrl }` |
+| 200 OK | `{ status: "composing" }` — no brief for today yet |
+| 401 | Missing / invalid Clerk JWT |
+| 403 | `pro_required` |
+| 503 | `BRIEF_URL_SIGNING_SECRET` not configured |
+
+The `magazineUrl` is a freshly-signed URL — the HMAC binds `{userId, issueDate}` so it only works for the authenticated owner.
+
+### `GET /api/brief/{userId}/{issueDate}`
+
+Full brief body for `issueDate` (YYYY-MM-DD). HMAC-signed URL required. Returns the structured brief JSON used by the magazine reader view.
+
+## Sharing
+
+### `POST /api/brief/share-url?date=YYYY-MM-DD`
+
+Materialises a public share pointer for the caller's brief on `date`. Idempotent — hash is a pure function of `{userId, issueDate, BRIEF_SHARE_SECRET}`.
+
+| Status | Response |
+|--------|----------|
+| 200 | `{ shareUrl, hash, issueDate }` |
+| 400 | `invalid_date_shape` / `invalid_payload` |
+| 401 | `UNAUTHENTICATED` |
+| 403 | `pro_required` |
+| 404 | `brief_not_found` — reader can't share what doesn't exist |
+| 503 | `service_unavailable` |
+
+### `GET /api/brief/public/{hash}`
+
+**Unauthenticated** public read of a previously-shared brief. The hash resolves to a `brief:public:{hash} → {userId, issueDate}` Redis pointer; if absent, the brief was never shared. Share pointers are written lazily (on share, not on compose).
+
+## Carousel (images for social)
+
+### `GET /api/brief/carousel/{userId}/{issueDate}/{page}.png`
+
+Server-rendered PNG page (`page` = 1..N) of the brief, intended for Telegram `sendMediaGroup`, Slack `chat.postMessage`, LinkedIn, etc.
+
+- Rendered via `@resvg/resvg-js` with the bundled Linux native binding.
+- `Content-Type: image/png`, 1080×1350 (4:5 portrait).
+- Not gated — uses the HMAC'd path as the capability.
+
+## Ancillary
+
+### `GET /api/story?date=YYYY-MM-DD`
+
+Public read-only "story view" (web reader) for a shared brief. SEO-friendly HTML response.
+
+### `GET /api/og-story?date=YYYY-MM-DD`
+
+Open Graph preview image for `/api/story`. Returns `image/png`, cached aggressively.
+
+### `POST /api/chat-analyst`
+
+Streaming chat endpoint for the "Ask the analyst" in-dashboard assistant. Takes a user prompt + recent-signal context; returns SSE tokens.
+
+- Auth: Clerk JWT + PRO
+- Streams: `text/event-stream`
+- Back-end: `intelligence/v1/chat-analyst-*` handlers compose context + prompt
+
+### `POST /api/widget-agent`
+
+Single-shot completion endpoint used by embedded widget iframes. Auth via `X-WorldMonitor-Key` (partner keys). Rate-limited per key.

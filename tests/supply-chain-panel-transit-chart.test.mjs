@@ -81,19 +81,43 @@ describe('SupplyChainPanel transit chart mount contract', () => {
     assert.ok(body.includes('disconnect'), 'observer callback must disconnect itself');
   });
 
-  it('mountTransitChart checks for chart element and transit history before mounting', () => {
-    // The mount function should guard against missing DOM elements and missing data
+  it('mountTransitChart lazy-loads history via fetchChokepointHistory and mounts on resolve', () => {
+    // After the payload-split: history is NOT part of the main status RPC.
+    // mountTransitChart must (1) find the chart element by cp name,
+    // (2) check a session cache, (3) call fetchChokepointHistory on miss,
+    // (4) mount the chart on the live element when the fetch resolves.
     assert.ok(
       panelSrc.includes('querySelector(`[data-chart-cp='),
       'must query for chart container element by chokepoint name'
     );
     assert.ok(
-      panelSrc.includes('transitSummary?.history?.length'),
-      'must check transitSummary.history exists before mounting'
+      panelSrc.includes('fetchChokepointHistory('),
+      'must lazy-fetch history via fetchChokepointHistory RPC'
+    );
+    assert.ok(
+      panelSrc.includes('this.historyCache'),
+      'must cache history results for the session (avoid refetch on re-expand)'
     );
     assert.ok(
       panelSrc.includes('transitChart.mount('),
-      'must call transitChart.mount with element and history data'
+      'must call transitChart.mount when history resolves'
+    );
+  });
+
+  it('does NOT cache empty/error results — session-sticky regression guard', () => {
+    // Caching [] or on error would poison the chokepoint for the whole
+    // session (transient miss → never retries). Only cache on non-empty
+    // success. Empty/error show the "unavailable" placeholder but leave
+    // the cache untouched so the next re-expand retries.
+    assert.ok(
+      !panelSrc.match(/historyCache\.set\([^,]+,\s*\[\]\)/),
+      'panel must NOT cache empty arrays'
+    );
+    // The success branch gates the set() on resp.history.length — match the
+    // conditional-set pattern inside the .then() block.
+    assert.ok(
+      /if\s*\(resp\.history\.length\)\s*\{[\s\S]*?historyCache\.set\(/.test(panelSrc),
+      'panel must only cache on resp.history.length > 0'
     );
   });
 

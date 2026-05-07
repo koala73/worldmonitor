@@ -14,6 +14,10 @@ import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { jsonResponse } from './_json-response.js';
 import { validateBearerToken } from '../server/auth-session';
+import { getEntitlements } from '../server/_shared/entitlement-check';
+
+const VALID_SEVERITIES = new Set(['critical', 'high', 'medium', 'low', 'info']);
+const INTERNAL_EVENT_TYPES = new Set(['flush_quiet_held', 'channel_welcome']);
 
 export default async function handler(req: Request): Promise<Response> {
   if (isDisallowedOrigin(req)) {
@@ -41,6 +45,11 @@ export default async function handler(req: Request): Promise<Response> {
     return jsonResponse({ error: 'UNAUTHENTICATED' }, 401, cors);
   }
 
+  const ent = await getEntitlements(session.userId);
+  if (!ent || ent.features.tier < 1) {
+    return jsonResponse({ error: 'pro_required', message: 'Event publishing is available on the Pro plan.', upgradeUrl: 'https://worldmonitor.app/pro' }, 403, cors);
+  }
+
   let body: { eventType?: unknown; payload?: unknown; severity?: unknown; variant?: unknown };
   try {
     body = await req.json();
@@ -50,6 +59,14 @@ export default async function handler(req: Request): Promise<Response> {
 
   if (typeof body.eventType !== 'string' || !body.eventType || body.eventType.length > 64) {
     return jsonResponse({ error: 'eventType required (string, max 64 chars)' }, 400, cors);
+  }
+
+  // Reject internal relay control events. These are dispatched by Railway
+  // cron scripts (seed-digest-notifications, quiet-hours) and must never be
+  // user-submittable. flush_quiet_held would let a Pro user force-drain their
+  // held queue on demand, bypassing batch_on_wake behaviour.
+  if (INTERNAL_EVENT_TYPES.has(body.eventType)) {
+    return jsonResponse({ error: 'Reserved event type' }, 403, cors);
   }
 
   if (typeof body.payload !== 'object' || body.payload === null || Array.isArray(body.payload)) {
@@ -63,8 +80,18 @@ export default async function handler(req: Request): Promise<Response> {
     return jsonResponse({ error: 'Service unavailable' }, 503, cors);
   }
 
-  const { eventType, payload } = body;
-  const severity = typeof body.severity === 'string' ? body.severity : 'high';
+  const { eventType } = body;
+
+  // Strip relay-internal scoring fields from user-supplied payload. These are
+  // computed server-side by the relay's importanceScore pipeline; allowing
+  // user-supplied values would let a Pro user bypass the IMPORTANCE_SCORE_MIN
+  // gate and fan out arbitrary alerts to every subscriber.
+  const payload = { ...(body.payload as Record<string, unknown>) };
+  delete payload.importanceScore;
+  delete payload.corroborationCount;
+
+  const rawSeverity = typeof body.severity === 'string' ? body.severity : 'high';
+  const severity = VALID_SEVERITIES.has(rawSeverity) ? rawSeverity : 'high';
   const variant = typeof body.variant === 'string' ? body.variant : undefined;
 
   const msg = JSON.stringify({
