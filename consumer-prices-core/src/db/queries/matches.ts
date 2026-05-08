@@ -111,3 +111,63 @@ export async function getPinnedUrlsForRetailer(
   }
   return map;
 }
+
+/**
+ * Returns disabled pins for recovery probing — pins where the scrape job
+ * stopped fetching due to the 3-strike disable rule, paired with the new
+ * auto-recovery counter (consecutive_in_stock).
+ *
+ * Without this path, decay restarts after the migration: once a pin gets
+ * disabled, getPinnedUrlsForRetailer excludes it forever, the scrape job
+ * never observes it again, the recovery counter never increments, and the
+ * sticky marker is never cleared. See PR #3627 fresh-eyes review (P1).
+ *
+ * Bounded by `limit` so a retailer with hundreds of disabled pins doesn't
+ * explode the scrape budget. Recovery probes get one fetch per cycle each;
+ * with `limit=10` and ~30 disabled pins per retailer, full coverage is
+ * ~3 days, recovery to 3-in-stock is ~9 days. Acceptable for a daily-cron
+ * scrape; tunable if budget allows.
+ *
+ * Aggregation queries (worldmonitor.ts buildSpreadSnapshot etc.) continue
+ * to filter `pm.pin_disabled_at IS NULL`, so disabled pins probed here
+ * still don't affect spread quality during the recovery window.
+ *
+ * Ordered by oldest disable first (FIFO) so recovery is fair across the
+ * disabled set — no pin sits permanently at the back of the queue.
+ */
+export async function getDisabledPinsForRecovery(
+  retailerId: string,
+  limit: number,
+): Promise<Map<string, { sourceUrl: string; productId: string; matchId: string }>> {
+  const result = await query<{
+    canonical_name: string;
+    basket_slug: string;
+    source_url: string;
+    product_id: string;
+    match_id: string;
+  }>(
+    `SELECT DISTINCT ON (pm.basket_item_id)
+       cp.canonical_name,
+       b.slug AS basket_slug,
+       rp.source_url,
+       rp.id AS product_id,
+       pm.id AS match_id
+     FROM product_matches pm
+     JOIN retailer_products rp ON rp.id = pm.retailer_product_id
+     JOIN basket_items bi ON bi.id = pm.basket_item_id
+     JOIN baskets b ON b.id = bi.basket_id
+     JOIN canonical_products cp ON cp.id = bi.canonical_product_id
+     WHERE rp.retailer_id = $1
+       AND pm.match_status IN ('auto', 'approved')
+       AND pm.pin_disabled_at IS NOT NULL
+     ORDER BY pm.basket_item_id, pm.pin_disabled_at ASC
+     LIMIT $2`,
+    [retailerId, limit],
+  );
+  const map = new Map<string, { sourceUrl: string; productId: string; matchId: string }>();
+  for (const row of result.rows) {
+    const key = `${row.basket_slug}:${row.canonical_name}`;
+    map.set(key, { sourceUrl: row.source_url, productId: row.product_id, matchId: row.match_id });
+  }
+  return map;
+}
