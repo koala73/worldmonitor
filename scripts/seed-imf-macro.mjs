@@ -121,7 +121,9 @@ if (process.argv[1]?.endsWith('seed-imf-macro.mjs')) {
     emptyDataIsFailure: true,
   
     declareRecords,
-    schemaVersion: 1,
+    // schemaVersion bumped 1→2 in Codex PR #3604 review fix: see
+    // seed-imf-external.mjs for the rationale (new `latestYear` field).
+    schemaVersion: 2,
     maxStaleMin: 100800,
 
     // ── Content-age contract (Sprint 4 IMF/WEO cohort) ──

@@ -139,7 +139,13 @@ if (process.argv[1]?.endsWith('seed-imf-external.mjs')) {
     emptyDataIsFailure: true,
   
     declareRecords,
-    schemaVersion: 1,
+    // schemaVersion bumped 1→2 in Codex PR #3604 review fix: the per-country
+    // dict gained a new `latestYear` field (Codex P2). Adding the field is
+    // back-compat for readers (helper falls back to `year`), but the
+    // envelope's `newestItemAt` math now differs under the same shape — so
+    // bump forces a clean republish on rollout and makes any rollback
+    // observable via cache invalidation rather than silent envelope drift.
+    schemaVersion: 2,
     maxStaleMin: 100800,
 
     // ── Content-age contract (Sprint 4 IMF/WEO cohort) ──

@@ -273,6 +273,52 @@ test('mixed-indicator-year: latestYear=null falls back to year (no panic on miss
   assert.equal(cm.newestItemAt, Date.UTC(2024, 11, 31, 23, 59, 59, 999), 'must use year=2025 → end-of-2024');
 });
 
+// ── Horizon-extension regression-guard (Sprint 4 + Codex PR #3604 review) ──
+
+test('horizon extension regression-guard: currentYear+1 forecast WOULD silently false-page under current skew filter', () => {
+  // Tripwire: if a future Sprint extends `weoYears()` to include
+  // `currentYear+1` to surface forward forecasts, this test will start
+  // failing and force a revisit of the helper's skew filter.
+  //
+  // Concrete trap (under FIXED_NOW = 2026-05-05): pretend the seeder
+  // populated entries with `year: 2027` (April 2026 release's frontmost
+  // forecast horizon). The helper maps 2027 → end-of-2026 = Dec 31 2026 =
+  // ~7mo future relative to FIXED_NOW. The 1h skew filter excludes this
+  // entry. validCount=0 → returns null → envelope newestItemAt=null →
+  // health classifier reads STALE_CONTENT for a genuinely-fresh cache.
+  //
+  // Today this is harmless because no seeder writes year=2027 in May
+  // 2026 (weoYears = [2026, 2025, 2024]). Documenting it here so any
+  // change to weoYears() to include +1 is forced to come revisit this
+  // filter (either widen skew tolerance, or shift the year→ms mapping).
+  const futureHorizon = { countries: { US: { year: 2027 }, GB: { year: 2027 } } };
+  const cm = imfWeoContentMeta(futureHorizon, FIXED_NOW);
+  assert.equal(
+    cm,
+    null,
+    'currentYear+1 cohort currently collapses to null — regression test asserts the trap shape, NOT desired behavior',
+  );
+
+  // Mixed cohort: one fresh +1 entry alongside a stale -2 entry. Skew
+  // filter excludes the +1, so newestItemAt regresses to the laggard.
+  const mixedTrap = {
+    countries: {
+      US: { year: 2027 },          // fresh +1, gets filtered out
+      VE: { year: 2024 },          // stale -2
+    },
+  };
+  const cmMixed = imfWeoContentMeta(mixedTrap, FIXED_NOW);
+  assert.ok(cmMixed !== null, 'mixed cohort with one valid entry must not collapse');
+  // newestItemAt comes from VE=2024 (the only entry that passed the filter)
+  // → end-of-2023 ≈ 17mo old. If horizon extension lands without revisiting
+  // the filter, fresh data masquerades as stale.
+  assert.equal(
+    cmMixed.newestItemAt,
+    Date.UTC(2023, 11, 31, 23, 59, 59, 999),
+    'mixed cohort newestItemAt regresses to laggard when +1 is filtered — trap is real',
+  );
+});
+
 test('mixed-indicator-year: cohort with mixed shapes — newestItemAt picks max latestYear across all', () => {
   // Heterogeneous cohort exercising every code path simultaneously.
   // newestItemAt must be the MAX across all valid years (latestYear when

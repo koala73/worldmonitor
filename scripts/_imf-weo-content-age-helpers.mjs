@@ -102,6 +102,19 @@ export function imfWeoContentMeta(data, nowMs = Date.now()) {
       : entry?.year;
     const ts = imfForecastYearToMs(yearForContentAge);
     if (ts == null) continue;
+    // ⚠ HORIZON-EXTENSION TRAP — see imf-weo-content-age.test.mjs
+    // ('horizon extension regression-guard'). Today this filter is purely
+    // defensive: all 4 seeders' `weoYears()` returns
+    // `[currentYear, currentYear-1, currentYear-2]`, so max year = currentYear,
+    // so end-of-(year-1) = end-of-last-calendar-year, never future.
+    //
+    // If a future contributor extends `weoYears()` to include `currentYear+1`
+    // to surface forward forecasts, this filter SILENTLY drops every fresh
+    // currentYear+1 entry — the cohort dict's newestItemAt then lags by a
+    // year, producing FALSE STALE_CONTENT for genuinely-fresh data. Any
+    // change to the seeder's year horizon MUST revisit this filter (either
+    // widen the skew tolerance to encompass the new horizon, or change the
+    // forecast-year-to-ms mapping for the new vintage).
     if (ts > skewLimit) continue;
     validCount++;
     if (ts > newest) newest = ts;
