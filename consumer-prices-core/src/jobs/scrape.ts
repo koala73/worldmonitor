@@ -15,7 +15,7 @@ import { ExaProvider } from '../acquisition/exa.js';
 import { FirecrawlProvider } from '../acquisition/firecrawl.js';
 import type { AdapterContext } from '../adapters/types.js';
 import { upsertCanonicalProduct } from '../db/queries/products.js';
-import { getBasketItemId, getPinnedUrlsForRetailer, upsertProductMatch } from '../db/queries/matches.js';
+import { getBasketItemId, getPinnedUrlsForRetailer, getDisabledPinsForRecovery, upsertProductMatch } from '../db/queries/matches.js';
 import { AUTO_MATCH_THRESHOLD, type ValidatorResult } from '../adapters/validator.js';
 
 const logger = {
@@ -63,18 +63,10 @@ async function updateScrapeRun(
   );
 }
 
-async function handlePinError(productId: string, matchId: string, targetId: string) {
-  const { rows } = await query<{ c: string }>(
-    `UPDATE retailer_products SET pin_error_count = pin_error_count + 1
-     WHERE id = $1 RETURNING pin_error_count AS c`,
-    [productId],
-  );
-  const count = parseInt(rows[0]?.c ?? '0', 10);
-  if (count >= 3) {
-    await query(`UPDATE product_matches SET pin_disabled_at = NOW() WHERE id = $1`, [matchId]);
-    logger.info(`  [pin] soft-disabled stale pin for ${targetId} (${count}x errors)`);
-  }
-}
+// Pin disable + auto-recovery helpers extracted to ./scrape-pin-recovery.ts
+// for unit-testability (avoids pulling scrape.ts's heavy transitive deps —
+// exa-js, playwright, etc. — into the test environment).
+import { handleStaleOnInStock, handleStaleOnOutOfStock, handlePinError } from './scrape-pin-recovery.js';
 
 export async function scrapeRetailer(slug: string) {
   const config = loadRetailerConfig(slug);
@@ -100,8 +92,30 @@ export async function scrapeRetailer(slug: string) {
   const runId = await createScrapeRun(retailerId);
   logger.info(`Run ${runId} started for ${slug}`);
 
-  const pinnedUrls = await getPinnedUrlsForRetailer(retailerId);
-  logger.info(`${slug}: ${pinnedUrls.size} pins loaded`);
+  // Active pins (healthy) — every cycle.
+  const activePins = await getPinnedUrlsForRetailer(retailerId);
+  // Recovery probes (sticky-disabled) — bounded slice per cycle so the
+  // disable trap can't make decay permanent (PR #3627 P1 review). The
+  // recovery counter (consecutive_in_stock) accumulates over multiple
+  // probe cycles; after 3 successful in-stock observations,
+  // handleStaleOnInStock clears pin_disabled_at and the pin returns to
+  // active rotation. Aggregation gates (worldmonitor.ts) keep filtering
+  // pin_disabled_at IS NULL so probed-but-still-disabled pins don't leak
+  // into spread until they've fully recovered.
+  const RECOVERY_PROBE_LIMIT = 10;
+  const recoveryPins = await getDisabledPinsForRecovery(retailerId, RECOVERY_PROBE_LIMIT);
+  // Merge: active pins take precedence on key collision (active set is
+  // healthier; collision is rare but possible if two retailer_products
+  // both match the same basket item).
+  const pinnedUrls = new Map(activePins);
+  let recoveryAdded = 0;
+  for (const [key, val] of recoveryPins) {
+    if (!pinnedUrls.has(key)) {
+      pinnedUrls.set(key, val);
+      recoveryAdded++;
+    }
+  }
+  logger.info(`${slug}: ${activePins.size} active pins + ${recoveryAdded} recovery probes (${pinnedUrls.size} total)`);
 
   const adapter =
     config.adapter === 'search'
@@ -198,24 +212,15 @@ export async function scrapeRetailer(slug: string) {
         });
 
         // Stale-pin maintenance — only when the pin URL was actually used (not Exa fallback).
+        // Symmetric disable + auto-recovery (3 consecutive observations either way).
+        // See migration 009 + memory `sticky-disable-without-auto-recovery-decays`
+        // for why both halves matter: code alone leaves historical sticky-decay,
+        // migration alone restarts decay immediately on next nightly scrape.
         if (wasDirectHit && pinnedProductId && pinnedMatchId) {
           if (product.inStock) {
-            await query(
-              `UPDATE retailer_products SET consecutive_out_of_stock = 0, pin_error_count = 0 WHERE id = $1`,
-              [pinnedProductId],
-            );
+            await handleStaleOnInStock(pinnedProductId, pinnedMatchId, target.id);
           } else {
-            const { rows } = await query<{ c: string }>(
-              `UPDATE retailer_products
-               SET consecutive_out_of_stock = consecutive_out_of_stock + 1
-               WHERE id = $1 RETURNING consecutive_out_of_stock AS c`,
-              [pinnedProductId],
-            );
-            const count = parseInt(rows[0]?.c ?? '0', 10);
-            if (count >= 3) {
-              await query(`UPDATE product_matches SET pin_disabled_at = NOW() WHERE id = $1`, [pinnedMatchId]);
-              logger.info(`  [pin] soft-disabled stale pin for ${target.id} (${count}x out-of-stock)`);
-            }
+            await handleStaleOnOutOfStock(pinnedProductId, pinnedMatchId, target.id);
           }
         }
 
