@@ -63,6 +63,7 @@ import { getCachedGpsInterference } from '@/services/gps-interference';
 import { dataFreshness } from '@/services/data-freshness';
 import { mlWorker } from '@/services/ml-worker';
 import { UnifiedSettings } from '@/components/UnifiedSettings';
+import { WM_OPEN_NOTIFICATIONS_FOR_COUNTRY } from '@/utils/notify-country-link';
 import { AuthLauncher } from '@/components/AuthLauncher';
 import { AuthHeaderWidget } from '@/components/AuthHeaderWidget';
 import { t } from '@/services/i18n';
@@ -1114,6 +1115,16 @@ export class EventHandlerManager implements AppModule {
     if (mobileBtn) {
       mobileBtn.addEventListener('click', () => this.ctx.unifiedSettings?.open());
     }
+
+    // U8 (degraded path) — listen for the deep-dive "Notify me about this
+    // country" sub-action and open the notifications tab. Today the
+    // event detail.country is informational only; when the alertRules
+    // schema PR lands, the future PR will read it here and forward to
+    // a pre-filled create-form open. See plan U8 R9 + the TODO inside
+    // src/utils/notify-country-link.ts.
+    window.addEventListener(WM_OPEN_NOTIFICATIONS_FOR_COUNTRY, () => {
+      this.ctx.unifiedSettings?.open('notifications');
+    });
   }
 
   setupAuthWidget(): void {

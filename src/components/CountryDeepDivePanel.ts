@@ -44,6 +44,7 @@ import type { MapContainer } from './MapContainer';
 import { ResilienceWidget } from './ResilienceWidget';
 import { dedupeHeadlines } from './CountryDeepDivePanel-news-utils';
 import { renderFollowButton } from '@/utils/follow-button';
+import { renderNotifyCountryLink } from '@/utils/notify-country-link';
 
 const DEPENDENCY_FLAG_LABELS: Record<string, { text: string; cls: string }> = {
   DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL:   { text: 'Single Source',   cls: 'cdp-dep-critical' },
@@ -147,6 +148,9 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   // long-lived (singleton on `document.body`), so this teardown must
   // fire BEFORE the skeleton is wiped and on `hide()`.
   private followButtonTeardown: (() => void) | null = null;
+  // Sibling teardown for the U8 "Notify me about this country" sub-action
+  // mounted alongside the FollowButton. Same lifecycle constraints.
+  private notifyLinkTeardown: (() => void) | null = null;
 
   private readonly handleGlobalKeydown = (event: KeyboardEvent): void => {
     if (!this.panel.classList.contains('active')) return;
@@ -2359,7 +2363,22 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     followHost.innerHTML = handle.html;
     this.followButtonTeardown = handle.attach(followHost);
 
-    left.append(flag, titleWrap, followHost);
+    // U8 (degraded path) — "Notify me about this country" sub-action.
+    // Visible only when the user is currently following this country.
+    // The schema PR for `alertRules.countries` has NOT merged, so the
+    // click just opens the existing notifications settings tab — no
+    // pre-fill. See plan U8 R9 + the TODO inside notify-country-link.ts
+    // for the future pre-fill injection point.
+    const notifyHost = this.el('span', 'cdp-notify-link-host');
+    notifyHost.dataset.country = code;
+    const notifyHandle = renderNotifyCountryLink({
+      countryCode: code,
+      countryName: country,
+    });
+    notifyHost.innerHTML = notifyHandle.html;
+    this.notifyLinkTeardown = notifyHandle.attach(notifyHost);
+
+    left.append(flag, titleWrap, followHost, notifyHost);
 
     const right = this.el('div', 'cdp-header-right');
 
@@ -2530,6 +2549,14 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         /* swallow */
       }
       this.followButtonTeardown = null;
+    }
+    if (this.notifyLinkTeardown) {
+      try {
+        this.notifyLinkTeardown();
+      } catch {
+        /* swallow */
+      }
+      this.notifyLinkTeardown = null;
     }
   }
 

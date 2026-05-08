@@ -23636,6 +23636,63 @@ body.map-width-resizing {
 }
 
 /* ---------------------------------------------------------------------------
+ * NotifyCountryLink (PR B / U8 — degraded path)
+ *
+ * Inline secondary CTA mounted alongside the FollowButton on the Country
+ * Deep Dive header. Visible only while the user is following the
+ * country (the helper itself decides; CSS just styles the rendered
+ * button). Visually understated — the FollowButton is the primary
+ * action; this link is the bridge to "configure notifications."
+ *
+ * Empty hosts (feature flag off OR not-following → handle.html === '')
+ * stay zero-impact via `:not(:empty)`-gated layout rules.
+ * ------------------------------------------------------------------------ */
+.cdp-notify-link-host {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+}
+
+.cdp-notify-link-host:not(:empty) {
+  /* Only contribute spacing when actually rendering content; rely on
+   * the parent flex `gap` for separation otherwise. */
+}
+
+.cdp-notify-link {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 4px;
+  font-size: 12px;
+  line-height: 1.3;
+  text-decoration: underline dotted;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  transition: color 0.15s ease;
+}
+
+.cdp-notify-link:hover {
+  color: var(--semantic-info);
+  text-decoration-style: solid;
+}
+
+.cdp-notify-link:focus-visible {
+  outline: 2px solid var(--semantic-info);
+  outline-offset: 1px;
+}
+
+.cdp-notify-link-icon {
+  display: block;
+  flex-shrink: 0;
+}
+
+/* ---------------------------------------------------------------------------
  * FollowedOnlyChip (PR B / U7)
  *
  * Compact pill chip mounted in panel headers. Mirrors the FollowButton
