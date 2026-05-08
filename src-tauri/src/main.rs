@@ -11,6 +11,8 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+#[cfg(target_os = "linux")]
+use keyring::keyutils::KeyutilsCredential;
 use keyring::Entry;
 use reqwest::Url;
 use serde::Serialize;
@@ -58,6 +60,67 @@ const SUPPORTED_SECRET_KEYS: [&str; 28] = [
     "ICAO_API_KEY",
 ];
 
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn is_missing_linux_secret_service_message(message: &str) -> bool {
+    let normalized = message.to_ascii_lowercase();
+    normalized.contains("dbus")
+        && (normalized.contains("name is not activatable")
+            || normalized.contains("serviceunknown")
+            || normalized.contains("name has no owner")
+            || (normalized.contains("org.freedesktop.secrets")
+                && normalized.contains("not provided by any .service files")))
+}
+
+#[cfg(target_os = "linux")]
+fn is_linux_secret_service_unavailable(err: &keyring::Error) -> bool {
+    let mut current: Option<&(dyn std::error::Error + 'static)> = Some(err);
+    while let Some(source) = current {
+        if is_missing_linux_secret_service_message(&source.to_string()) {
+            return true;
+        }
+        current = source.source();
+    }
+    false
+}
+
+#[cfg(target_os = "linux")]
+fn linux_keyutils_vault_entry() -> Result<Entry, String> {
+    let credential = KeyutilsCredential::new_with_target(None, KEYRING_SERVICE, "secrets-vault")
+        .map_err(|e| format!("Failed to initialize Linux keyutils fallback: {e}"))?;
+    Ok(Entry::new_with_credential(Box::new(credential)))
+}
+
+fn sanitize_secret_vault(map: HashMap<String, String>) -> HashMap<String, String> {
+    map.into_iter()
+        .filter(|(k, v)| SUPPORTED_SECRET_KEYS.contains(&k.as_str()) && !v.trim().is_empty())
+        .map(|(k, v)| (k, v.trim().to_string()))
+        .collect()
+}
+
+#[cfg(target_os = "linux")]
+fn load_linux_keyutils_vault() -> Option<HashMap<String, String>> {
+    let entry = linux_keyutils_vault_entry().ok()?;
+    let json = entry.get_password().ok()?;
+    serde_json::from_str::<HashMap<String, String>>(&json)
+        .ok()
+        .map(sanitize_secret_vault)
+}
+
+#[cfg(target_os = "linux")]
+fn delete_linux_keyutils_vault() {
+    if let Ok(entry) = linux_keyutils_vault_entry() {
+        let _ = entry.delete_credential();
+    }
+}
+
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn log_secret_storage_fallback(app: Option<&AppHandle>, message: &str) {
+    if let Some(app) = app {
+        append_desktop_log(app, "WARN", message);
+    }
+    eprintln!("[tauri] {message}");
+}
+
 struct LocalApiState {
     child: Mutex<Option<Child>>,
     token: Mutex<Option<String>>,
@@ -103,18 +166,18 @@ impl SecretsCache {
         if let Ok(entry) = Entry::new(KEYRING_SERVICE, "secrets-vault") {
             if let Ok(json) = entry.get_password() {
                 if let Ok(map) = serde_json::from_str::<HashMap<String, String>>(&json) {
-                    let secrets: HashMap<String, String> = map
-                        .into_iter()
-                        .filter(|(k, v)| {
-                            SUPPORTED_SECRET_KEYS.contains(&k.as_str()) && !v.trim().is_empty()
-                        })
-                        .map(|(k, v)| (k, v.trim().to_string()))
-                        .collect();
                     return SecretsCache {
-                        secrets: Mutex::new(secrets),
+                        secrets: Mutex::new(sanitize_secret_vault(map)),
                     };
                 }
             }
+        }
+
+        #[cfg(target_os = "linux")]
+        if let Some(secrets) = load_linux_keyutils_vault() {
+            return SecretsCache {
+                secrets: Mutex::new(secrets),
+            };
         }
 
         // Migration: read individual keys (old format), consolidate into vault.
@@ -134,12 +197,26 @@ impl SecretsCache {
         // Write consolidated vault and clean up individual entries
         if !secrets.is_empty() {
             if let Ok(json) = serde_json::to_string(&secrets) {
-                if let Ok(vault_entry) = Entry::new(KEYRING_SERVICE, "secrets-vault") {
-                    if vault_entry.set_password(&json).is_ok() {
-                        for key in SUPPORTED_SECRET_KEYS.iter() {
-                            if let Ok(entry) = Entry::new(KEYRING_SERVICE, key) {
-                                let _ = entry.delete_credential();
+                let wrote_vault = if let Ok(vault_entry) = Entry::new(KEYRING_SERVICE, "secrets-vault") {
+                    match vault_entry.set_password(&json) {
+                        Ok(()) => true,
+                        #[cfg(target_os = "linux")]
+                        Err(err) if is_linux_secret_service_unavailable(&err) => {
+                            if let Ok(fallback_entry) = linux_keyutils_vault_entry() {
+                                fallback_entry.set_password(&json).is_ok()
+                            } else {
+                                false
                             }
+                        }
+                        Err(_) => false,
+                    }
+                } else {
+                    false
+                };
+                if wrote_vault {
+                    for key in SUPPORTED_SECRET_KEYS.iter() {
+                        if let Ok(entry) = Entry::new(KEYRING_SERVICE, key) {
+                            let _ = entry.delete_credential();
                         }
                     }
                 }
@@ -214,15 +291,40 @@ struct DesktopRuntimeInfo {
     local_api_port: Option<u16>,
 }
 
-fn save_vault(cache: &HashMap<String, String>) -> Result<(), String> {
+fn save_vault(cache: &HashMap<String, String>, app: Option<&AppHandle>) -> Result<(), String> {
+    #[cfg(not(target_os = "linux"))]
+    let _ = app;
+
     let json =
         serde_json::to_string(cache).map_err(|e| format!("Failed to serialize vault: {e}"))?;
     let entry = Entry::new(KEYRING_SERVICE, "secrets-vault")
         .map_err(|e| format!("Keyring init failed: {e}"))?;
-    entry
-        .set_password(&json)
-        .map_err(|e| format!("Failed to write vault: {e}"))?;
-    Ok(())
+    match entry.set_password(&json) {
+        Ok(()) => {
+            #[cfg(target_os = "linux")]
+            delete_linux_keyutils_vault();
+            Ok(())
+        }
+        Err(err) => {
+            #[cfg(target_os = "linux")]
+            if is_linux_secret_service_unavailable(&err) {
+                // Keep saves working in Wayland/headless sessions that lack an
+                // activatable Secret Service backend. This falls back to the
+                // Linux kernel keyring, which is secure and works without DBus.
+                let fallback_entry = linux_keyutils_vault_entry()?;
+                fallback_entry
+                    .set_password(&json)
+                    .map_err(|fallback_err| format!("Failed to write vault: {fallback_err}"))?;
+                log_secret_storage_fallback(
+                    app,
+                    "Secret Service is unavailable on this Linux session; using the Linux kernel keyring fallback for API keys.",
+                );
+                return Ok(());
+            }
+
+            Err(format!("Failed to write vault: {err}"))
+        }
+    }
 }
 
 fn generate_local_token() -> String {
@@ -328,7 +430,8 @@ fn set_secret(
     } else {
         proposed.insert(key, trimmed);
     }
-    save_vault(&proposed)?;
+    let app = webview.app_handle();
+    save_vault(&proposed, Some(&app))?;
     *secrets = proposed;
     Ok(())
 }
@@ -345,7 +448,8 @@ fn delete_secret(webview: Webview, key: String, cache: tauri::State<'_, SecretsC
         .map_err(|_| "Lock poisoned".to_string())?;
     let mut proposed = secrets.clone();
     proposed.remove(&key);
-    save_vault(&proposed)?;
+    let app = webview.app_handle();
+    save_vault(&proposed, Some(&app))?;
     *secrets = proposed;
     Ok(())
 }
@@ -902,6 +1006,23 @@ mod sanitize_path_tests {
             sanitize_path_for_node(raw),
             r"C:\Users\alice\sidecar\local-api-server.mjs".to_string()
         );
+    }
+}
+
+#[cfg(test)]
+mod secret_storage_tests {
+    use super::is_missing_linux_secret_service_message;
+
+    #[test]
+    fn matches_missing_secret_service_backend_error() {
+        let message = "Platform secure storage failure: DBus error: The name is not activatable";
+        assert!(is_missing_linux_secret_service_message(message));
+    }
+
+    #[test]
+    fn ignores_other_storage_errors() {
+        let message = "Platform secure storage failure: permission denied";
+        assert!(!is_missing_linux_secret_service_message(message));
     }
 }
 
