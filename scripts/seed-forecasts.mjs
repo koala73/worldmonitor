@@ -15718,7 +15718,14 @@ async function runDeepForecastWorker({ once = false, runId = '' } = {}) {
 // ---------------------------------------------------------------------------
 
 const MARKET_IMPLICATIONS_KEY = 'intelligence:market-implications:v1';
-const MARKET_IMPLICATIONS_TTL = 75 * 60; // 75 minutes
+// 180min = 3× the ~60min cron cadence (api/health.js:416 sets
+// maxStaleMin=120 = 2× cron). Pre-fix at 75min the canonical TTL was only
+// 1.25× cron, so any cron drift or LLM-call slowness left canonical
+// TTL'd-out before the next write — seed-meta survived (rc=3, 78min old)
+// while the canonical was missing, manifesting as `marketImplications:
+// EMPTY records=0`. Same trap shape as BIS PR #3610 + iranEvents below;
+// see memory `seed-meta-populated-canonical-missing-ttl-cron-match`.
+const MARKET_IMPLICATIONS_TTL = 180 * 60;
 
 const ALLOWED_INSTRUMENTS = {
   equities: ['SPY', 'QQQ', 'DIA', 'IWM', 'EEM', 'VWO', 'EFA', 'GLD', 'SLV', 'USO', 'UNG', 'TLT', 'HYG', 'LQD',

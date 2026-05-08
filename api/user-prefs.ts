@@ -361,6 +361,12 @@ export function buildSentryContext(
     // case-sensitive.
     ?? (/UNAUTHENTICATED|"code":"Unauthenticated"/.test(msg) ? 'convex_auth_drift'
       : /"code":"ServiceUnavailable"/.test(msg) ? 'convex_service_unavailable'
+      // Convex platform 500 — runtime can't recover the request. Same
+      // 503-with-Retry-After remediation as ServiceUnavailable in
+      // _convex-error.js, but kept as its own Sentry bucket so on-call can
+      // tell internal-500s apart from genuine 503s when triaging
+      // (WORLDMONITOR-PG/PH).
+      : /"code":"InternalServerError"/.test(msg) ? 'convex_internal_error'
       : /\[Request ID:\s*[a-f0-9]+\]\s*Server Error/i.test(msg) ? 'convex_server_error'
       : /timeout|timed out|aborted/i.test(msg) ? 'transport_timeout'
       : /fetch failed|network|ECONN|ENOTFOUND|getaddrinfo/i.test(msg) ? 'transport_network'

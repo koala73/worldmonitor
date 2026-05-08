@@ -9,11 +9,16 @@ import { installUtmInterceptor } from './utils/utm';
 const sentryDsn = import.meta.env.VITE_SENTRY_DSN?.trim();
 
 // Known third-party hosts fetched by MapLibre (tiles, styles, glyphs, sprites).
-// Used by the beforeSend `Failed to fetch (<host>)` filter to avoid suppressing
-// failures from our self-hosted R2 PMTiles bucket or any api.worldmonitor.app
-// fetches that happen to land on a maplibre-framed stack.
-const MAPLIBRE_THIRD_PARTY_TILE_HOSTS = new Set([
+// Hosts whose `Failed to fetch (<host>)` errors are suppressed in beforeSend.
+// Originally maplibre-only (transient tile/style failures), expanded to cover
+// first-party callers that hit the same hosts directly (e.g.
+// `MapContainer.fetchAndApplyRadar` → `api.rainviewer.com`). The set IS the
+// safety: only known third-party hosts are suppressed; first-party fetches
+// to `api.worldmonitor.app` and the self-hosted R2 PMTiles bucket are NOT
+// in the set, so genuine basemap / API regressions still surface.
+const THIRD_PARTY_FETCH_HOST_ALLOWLIST = new Set([
   'tilecache.rainviewer.com',
+  'api.rainviewer.com', // weather radar API used by MapContainer.fetchAndApplyRadar — WORLDMONITOR-QG
   'basemaps.cartocdn.com',
   'tiles.openfreemap.org',
   'protomaps.github.io',
@@ -99,6 +104,11 @@ Sentry.init({
     /setting 'luma'/,
     /ML request .* timed out/,
     /(?:AbortError: )?The operation was aborted\.?\s*$/,
+    // Bare `Uncaught Error: AbortError` (no message body) from Convex
+    // server-side action timeouts auto-captured by Convex's Sentry
+    // integration. Zero-frame, environment 'prod', no actionable context
+    // — the action retries cleanly. WORLDMONITOR-QH.
+    /^Uncaught Error: AbortError$/,
     /Unexpected end of script/,
     /Style is not done loading/,
     /Event `CustomEvent`.*captured as promise rejection/,
@@ -301,22 +311,32 @@ Sentry.init({
     // so a self-hosted R2 PMTiles / first-party basemap regression isn't silently dropped just
     // because its stack happens to be all-vendor frames (WORLDMONITOR-NE/NF follow-up).
     const excType = event.exception?.values?.[0]?.type ?? '';
-    const isMaplibreAjaxFailure = excType === 'TypeError' && /^Failed to fetch \([^)]+\)$/.test(msg);
-    if (!isMaplibreAjaxFailure
+    // `TypeError: Failed to fetch (<host>)` shape — emitted by maplibre's AJAX
+    // wrapper AND by first-party fetch callers that surface a host-suffixed
+    // network error. The host allowlist below is the load-bearing safety;
+    // this match is just the shape detector.
+    const isHostScopedFetchFailure = excType === 'TypeError' && /^Failed to fetch \([^)]+\)$/.test(msg);
+    if (!isHostScopedFetchFailure
         && (excType === 'TypeError' || excType === 'RangeError' || /^(?:TypeError|RangeError):/.test(msg))
         && frames.length > 0) {
       if (nonInfraFrames.length > 0 && nonInfraFrames.every(f => /\/(map|maplibre|deck-stack)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
     }
-    // Suppress MapLibre AJAXError for third-party tile fetches: maplibre wraps transient
-    // network errors as `Failed to fetch (<hostname>)` and rethrows in a Generator-backed
-    // Promise that leaks to onunhandledrejection even though DeckGLMap's map-error handler
-    // already logs it as a warning. Allowlist KNOWN third-party tile/style/glyph hosts —
-    // leaves first-party fetch failures (self-hosted R2 PMTiles bucket, api.worldmonitor.app)
-    // to surface so a real basemap regression is never silently dropped (WORLDMONITOR-NE/NF).
-    if (isMaplibreAjaxFailure && frames.some(f => /\/maplibre-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) {
+    // Suppress `Failed to fetch (<host>)` for known third-party hosts. Originally
+    // scoped to maplibre's tile/style/glyph fetches (which wrap transient network
+    // errors and rethrow in a Generator-backed Promise that leaks to
+    // onunhandledrejection even though DeckGLMap's map-error handler already
+    // logs the warning). Expanded (WORLDMONITOR-QG) to also cover first-party
+    // call sites that fetch the same allowlisted hosts directly — e.g.
+    // `MapContainer.fetchAndApplyRadar` hitting `api.rainviewer.com`. The
+    // host-allowlist set is the load-bearing safety: only known third-party
+    // hosts get suppressed; first-party fetch failures (self-hosted R2 PMTiles
+    // bucket, `api.worldmonitor.app`) are intentionally NOT in the set so a
+    // real basemap / API regression is never silently dropped
+    // (WORLDMONITOR-NE/NF, WORLDMONITOR-QG).
+    if (isHostScopedFetchFailure) {
       const hostMatch = msg.match(/^Failed to fetch \(([^)]+)\)$/);
       const host = hostMatch?.[1];
-      if (host && MAPLIBRE_THIRD_PARTY_TILE_HOSTS.has(host)) return null;
+      if (host && THIRD_PARTY_FETCH_HOST_ALLOWLIST.has(host)) return null;
     }
     // Suppress Three.js/globe.gl TypeError crashes in main bundle (reading 'type'/'pathType'/'count'/'__globeObjType' on undefined during WebGL traversal/raycast).
     // __globeObjType is exclusively set by three-globe on its own objects and we have no user onClick/onHover handler, so it is always globe.gl internal even when the stack shows the bundled main chunk (WORLDMONITOR-ME).
@@ -509,7 +529,7 @@ Sentry.init({
         // failing in our shipped code surfaces with at least one
         // source-mapped .ts frame on the rejection (the awaiting site).
         // The hostname-suffixed variant `Failed to fetch (<host>)` is
-        // handled above by `isMaplibreAjaxFailure` which does its own
+        // handled above by `isHostScopedFetchFailure` which does its own
         // first-party-host allowlist (WORLDMONITOR-KM).
         || /^(?:TypeError: )?Failed to fetch$/.test(msg)
       )
