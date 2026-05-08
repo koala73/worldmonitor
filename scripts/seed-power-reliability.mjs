@@ -13,6 +13,10 @@
 
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
+// Pure contentMeta + year parser live in their own module so tests can
+// import the real code (no replicas, no drift). Per-country annual shape:
+// each country reports its own year; newestItemAt = max year across all.
+import { powerReliabilityContentMeta, POWER_RELIABILITY_MAX_CONTENT_AGE_MIN } from './_power-reliability-helpers.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -94,6 +98,25 @@ if (process.argv[1]?.endsWith('seed-power-reliability.mjs')) {
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: 8 * 24 * 60,
+
+    // ── Content-age contract (Sprint 4 of the 2026-05-04 health-readiness plan) ──
+    //
+    // 36-month budget = 30mo steady-state ceiling + 6mo slack.
+    //
+    // The 30mo ceiling comes from the WB publication-lag-plus-cycle math:
+    // year N+1 can normally publish as late as end-of-(N+1) + 18mo =
+    // end-of-N + 30mo, so a cache holding year N can legitimately reach
+    // 30mo of age before year N+1 arrives. Anything tighter than 30mo
+    // false-positives mid-cycle. See helper module's JSDoc for the full
+    // derivation + the verification against live WB data on 2026-05-05.
+    //
+    // STALE_CONTENT trips only on multi-cycle silent upstream stalls,
+    // never during normal "year N+1 ran late" cycles.
+    //
+    // powerReliabilityContentMeta scans data.countries per-country years
+    // and returns end-of-(max year) UTC ms as newestItemAt.
+    contentMeta: powerReliabilityContentMeta,
+    maxContentAgeMin: POWER_RELIABILITY_MAX_CONTENT_AGE_MIN,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);
