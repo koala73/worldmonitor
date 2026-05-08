@@ -12806,6 +12806,41 @@ a.prediction-link:hover {
   cursor: help;
 }
 
+/* U6 — CIIPanel followed-countries pin-to-top section labels.
+ *
+ * Inserted between the followed-group and the unfollowed-group when BOTH
+ * are non-empty (zero-followed and all-followed cases skip the labels so
+ * the panel renders identically to the pre-U6 unpartitioned list). Mirrors
+ * the visual language of `.cp-section-label` (uppercase / letter-spaced
+ * / dim) plus a hairline divider via `::after` so the section break is
+ * clearly intentional and not a render glitch. */
+.cii-section-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  padding: 0 4px;
+  margin: 4px 0 0;
+}
+
+.cii-section-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* The very first label (Following) sits flush against the panel top, so
+ * collapse its top margin. The second label (All) keeps the 4px to vent
+ * the divider away from the preceding row. */
+.cii-list > .cii-section-label:first-child {
+  margin-top: 0;
+}
+
 /* CII Learning Mode */
 .cii-learning-banner {
   display: flex;
