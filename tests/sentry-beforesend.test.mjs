@@ -29,10 +29,10 @@ const fnBody = mainSrc.slice(bsStart + 'beforeSend(event) '.length, bsEnd)
   .replace(/as\s+\w+(\[\])?/g, '')        // type assertions
   .replace(/<[A-Z]\w*>/g, '');            // generic type params
 
-// Extract the MAPLIBRE_THIRD_PARTY_TILE_HOSTS Set so the test harness can evaluate
+// Extract the THIRD_PARTY_FETCH_HOST_ALLOWLIST Set so the test harness can evaluate
 // beforeSend with the same allowlist the real module has.
-const tpMatch = mainSrc.match(/const MAPLIBRE_THIRD_PARTY_TILE_HOSTS = new Set\(\[[^\]]*\]\);/);
-assert.ok(tpMatch, 'MAPLIBRE_THIRD_PARTY_TILE_HOSTS must be defined in src/main.ts');
+const tpMatch = mainSrc.match(/const THIRD_PARTY_FETCH_HOST_ALLOWLIST = new Set\(\[[^\]]*\]\);/);
+assert.ok(tpMatch, 'THIRD_PARTY_FETCH_HOST_ALLOWLIST must be defined in src/main.ts');
 
 // Build a callable version. Input: a Sentry-shaped event object. Returns event or null.
 // eslint-disable-next-line no-new-func
@@ -263,7 +263,7 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
     // fetch failures surface with a source-mapped frame on the awaiting
     // site (WORLDMONITOR-KM 10ev/8u). The host-suffixed variant
     // `Failed to fetch (<host>)` has its own first-party allowlist
-    // earlier in beforeSend (isMaplibreAjaxFailure), so doesn't go
+    // earlier in beforeSend (isHostScopedFetchFailure), so doesn't go
     // through this gate.
     ['Failed to fetch', 'TypeError'],
     ['TypeError: Failed to fetch', 'TypeError'],
