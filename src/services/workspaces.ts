@@ -25,6 +25,33 @@ export function setActiveWorkspaceId(id: string | null): void {
   }
 }
 
+export function backupMainWorkspace(): void {
+  const panelSettings = loadFromStorage<Record<string, any>>(STORAGE_KEYS.panels, {});
+  let panelOrder: string[] | undefined = undefined;
+  const savedOrder = localStorage.getItem('panel-order');
+  if (savedOrder) {
+    try {
+      panelOrder = JSON.parse(savedOrder);
+    } catch { }
+  }
+  saveToStorage(STORAGE_KEYS.mainWorkspaceBackup, { panelSettings, panelOrder });
+}
+
+export function restoreMainWorkspace(): void {
+  const backup = loadFromStorage<{ panelSettings?: Record<string, any>, panelOrder?: string[] } | null>(STORAGE_KEYS.mainWorkspaceBackup, null);
+  if (backup && backup.panelSettings) {
+    saveToStorage(STORAGE_KEYS.panels, backup.panelSettings);
+    if (backup.panelOrder) {
+      localStorage.setItem('panel-order', JSON.stringify(backup.panelOrder));
+    } else {
+      localStorage.removeItem('panel-order');
+    }
+  } else {
+    localStorage.removeItem(STORAGE_KEYS.panels);
+    localStorage.removeItem('panel-order');
+  }
+}
+
 export function createWorkspace(name: string): WorkspaceTab {
   const id = 'workspace-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9);
   const panelSettings = loadFromStorage<Record<string, any>>(STORAGE_KEYS.panels, {});
@@ -61,6 +88,10 @@ export function loadWorkspace(id: string, newWindow = false): void {
     return;
   }
   
+  if (getActiveWorkspaceId() === null) {
+    backupMainWorkspace();
+  }
+  
   // Apply to local storage and reload
   saveToStorage(STORAGE_KEYS.panels, tab.panelSettings);
   if (tab.panelOrder) {
@@ -78,6 +109,8 @@ export function deleteWorkspace(id: string): void {
   saveWorkspaces(newTabs);
   if (getActiveWorkspaceId() === id) {
     setActiveWorkspaceId(null);
+    restoreMainWorkspace();
+    window.location.reload();
   }
 }
 

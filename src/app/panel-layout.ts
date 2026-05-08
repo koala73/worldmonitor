@@ -128,6 +128,7 @@ import {
   setActiveWorkspaceId,
   updateActiveWorkspace,
   renameWorkspace,
+  restoreMainWorkspace,
 } from '@/services/workspaces';
 
 
@@ -774,7 +775,7 @@ export class PanelLayoutManager implements AppModule {
         } else {
           if (activeId !== null) {
             setActiveWorkspaceId(null);
-            localStorage.removeItem('worldmonitor-panels');
+            restoreMainWorkspace();
             window.location.reload();
           }
         }

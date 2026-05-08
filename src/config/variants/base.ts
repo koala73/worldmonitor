@@ -109,6 +109,7 @@ export const STORAGE_KEYS = {
   webcamPrefs: 'worldmonitor-webcam-prefs',
   workspaceTabs: 'worldmonitor-workspace-tabs',
   activeWorkspaceTab: 'worldmonitor-active-workspace-tab',
+  mainWorkspaceBackup: 'worldmonitor-main-workspace-backup',
 } as const;
 
 // Type definitions for variant configs

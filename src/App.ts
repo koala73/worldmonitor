@@ -99,6 +99,8 @@ import {
   disasterAdapter,
 } from '@/services/correlation-engine';
 import type { CorrelationPanel } from '@/components/CorrelationPanel';
+import type { WorkspaceTab } from '@/types';
+import { backupMainWorkspace } from '@/services/workspaces';
 
 const CYBER_LAYER_ENABLED = import.meta.env.VITE_ENABLE_CYBER_LAYER === 'true';
 
@@ -484,9 +486,13 @@ export class App {
     const urlParams = new URLSearchParams(window.location.search);
     const tabId = urlParams.get('tab');
     if (tabId) {
-      const tabs = loadFromStorage<{id: string, panelSettings: any, panelOrder?: string[]}[]>(STORAGE_KEYS.workspaceTabs, []);
+      const tabs = loadFromStorage<WorkspaceTab[]>(STORAGE_KEYS.workspaceTabs, []);
       const tab = tabs.find(t => t.id === tabId);
       if (tab) {
+        const currentActive = localStorage.getItem(STORAGE_KEYS.activeWorkspaceTab);
+        if (!currentActive) {
+          backupMainWorkspace();
+        }
         saveToStorage(STORAGE_KEYS.panels, tab.panelSettings);
         if (tab.panelOrder) localStorage.setItem(PANEL_ORDER_KEY, JSON.stringify(tab.panelOrder));
         else localStorage.removeItem(PANEL_ORDER_KEY);
