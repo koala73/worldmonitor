@@ -666,14 +666,16 @@ fn open_settings_window(app: &AppHandle) -> Result<(), String> {
         return Ok(());
     }
 
-    let _settings_window = WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("settings.html".into()))
+    #[allow(unused_mut)]
+    let mut settings_builder = WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("settings.html".into()))
         .title("World Monitor Settings")
-        .title_bar_style(tauri::TitleBarStyle::Overlay)
         .inner_size(980.0, 600.0)
         .min_inner_size(820.0, 480.0)
         .resizable(true)
-        .background_color(tauri::webview::Color(26, 28, 30, 255))
-        .build()
+        .background_color(tauri::webview::Color(26, 28, 30, 255));
+    #[cfg(target_os = "macos")]
+    { settings_builder = settings_builder.title_bar_style(tauri::TitleBarStyle::Overlay); }
+    let _settings_window = settings_builder.build()
         .map_err(|e| format!("Failed to create settings window: {e}"))?;
 
     // On Windows/Linux, menus are per-window. Remove the inherited app menu
@@ -704,15 +706,17 @@ fn open_live_channels_window(app: &AppHandle, base_url: Option<String>) -> Resul
         _ => WebviewUrl::App("live-channels.html".into()),
     };
 
-    let _live_channels_window = WebviewWindowBuilder::new(app, "live-channels", url)
-    .title("Channel management - World Monitor")
-    .title_bar_style(tauri::TitleBarStyle::Overlay)
-    .inner_size(680.0, 760.0)
-    .min_inner_size(520.0, 600.0)
-    .resizable(true)
-    .background_color(tauri::webview::Color(26, 28, 30, 255))
-    .build()
-    .map_err(|e| format!("Failed to create live channels window: {e}"))?;
+    #[allow(unused_mut)]
+    let mut channels_builder = WebviewWindowBuilder::new(app, "live-channels", url)
+        .title("Channel management - World Monitor")
+        .inner_size(680.0, 760.0)
+        .min_inner_size(520.0, 600.0)
+        .resizable(true)
+        .background_color(tauri::webview::Color(26, 28, 30, 255));
+    #[cfg(target_os = "macos")]
+    { channels_builder = channels_builder.title_bar_style(tauri::TitleBarStyle::Overlay); }
+    let _live_channels_window = channels_builder.build()
+        .map_err(|e| format!("Failed to create live channels window: {e}"))?;
 
     #[cfg(not(target_os = "macos"))]
     let _ = _live_channels_window.remove_menu();
