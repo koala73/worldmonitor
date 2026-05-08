@@ -14,6 +14,7 @@ const sentryDsn = import.meta.env.VITE_SENTRY_DSN?.trim();
 // fetches that happen to land on a maplibre-framed stack.
 const MAPLIBRE_THIRD_PARTY_TILE_HOSTS = new Set([
   'tilecache.rainviewer.com',
+  'api.rainviewer.com', // weather radar API used by MapContainer.fetchAndApplyRadar — WORLDMONITOR-QG
   'basemaps.cartocdn.com',
   'tiles.openfreemap.org',
   'protomaps.github.io',
@@ -99,6 +100,11 @@ Sentry.init({
     /setting 'luma'/,
     /ML request .* timed out/,
     /(?:AbortError: )?The operation was aborted\.?\s*$/,
+    // Bare `Uncaught Error: AbortError` (no message body) from Convex
+    // server-side action timeouts auto-captured by Convex's Sentry
+    // integration. Zero-frame, environment 'prod', no actionable context
+    // — the action retries cleanly. WORLDMONITOR-QH.
+    /^Uncaught Error: AbortError$/,
     /Unexpected end of script/,
     /Style is not done loading/,
     /Event `CustomEvent`.*captured as promise rejection/,
@@ -313,7 +319,15 @@ Sentry.init({
     // already logs it as a warning. Allowlist KNOWN third-party tile/style/glyph hosts —
     // leaves first-party fetch failures (self-hosted R2 PMTiles bucket, api.worldmonitor.app)
     // to surface so a real basemap regression is never silently dropped (WORLDMONITOR-NE/NF).
-    if (isMaplibreAjaxFailure && frames.some(f => /\/maplibre-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) {
+    //
+    // The maplibre-frame requirement was dropped (WORLDMONITOR-QG) — first-party
+    // call sites that fetch the same allowlisted hosts directly (e.g.
+    // `MapContainer.fetchAndApplyRadar` hitting `api.rainviewer.com`) get the same
+    // transient-network-failure behavior as the maplibre AJAX path. The
+    // host-allowlist set is the load-bearing safety: only known third-party hosts
+    // get suppressed; `api.worldmonitor.app` is intentionally NOT in the set so
+    // first-party API regressions still surface.
+    if (isMaplibreAjaxFailure) {
       const hostMatch = msg.match(/^Failed to fetch \(([^)]+)\)$/);
       const host = hostMatch?.[1];
       if (host && MAPLIBRE_THIRD_PARTY_TILE_HOSTS.has(host)) return null;

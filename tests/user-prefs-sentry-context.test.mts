@@ -130,6 +130,17 @@ describe('buildSentryContext — backwards-compat for non-CONFLICT callers', () 
     assert.equal(ctx.tags.error_shape, 'convex_service_unavailable');
   });
 
+  it('JSON-shape "code":"InternalServerError" classifies as convex_internal_error', () => {
+    // WORLDMONITOR-PG/PH: Convex runtime 500 was previously bucketed as
+    // 'unknown' in the dashboard, conflating a transient platform failure
+    // with genuinely-novel error shapes. Its own bucket + the
+    // SERVICE_UNAVAILABLE mapping in `_convex-error.js` mean on-call sees
+    // these tagged distinctly without a 500 → 503 user-impact regression.
+    const err = new Error('{"code":"InternalServerError","message":"Your request couldn\'t be completed. Try again later."}');
+    const ctx = buildSentryContext(err, err.message, baseOpts);
+    assert.equal(ctx.tags.error_shape, 'convex_internal_error');
+  });
+
   it('JSON-shape "code":"Unauthenticated" classifies as convex_auth_drift (mixed-case OIDC failure)', () => {
     // WORLDMONITOR-PG: Convex platform-level 401 ships a JSON body
     //   `{"code":"Unauthenticated","message":"Could not verify OIDC token claim..."}`
