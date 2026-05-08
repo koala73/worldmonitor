@@ -36,10 +36,38 @@
 ALTER TABLE retailer_products
   ADD COLUMN IF NOT EXISTS consecutive_in_stock INT NOT NULL DEFAULT 0;
 
--- One-time data reset. Wrapped in a single statement — atomic.
+-- One-time data reset (HALF 1): clear sticky pin_disabled_at markers.
 -- Pre-fix snapshot (run before applying):
 --   SELECT COUNT(*) FROM product_matches WHERE pin_disabled_at IS NOT NULL;
 -- (WM 2026-05-08: 237 across the system; 8 baskets affected.)
 UPDATE product_matches
    SET pin_disabled_at = NULL
  WHERE pin_disabled_at IS NOT NULL;
+
+-- One-time data reset (HALF 2): also reset the trigger counters.
+-- ────────────────────────────────────────────────────────────────────────
+-- CRITICAL: clearing pin_disabled_at alone is NOT enough. Two SECOND-LEVEL
+-- gates in src/db/queries/matches.ts::getPinnedUrlsForRetailer ALSO exclude
+-- products from the pinned URL set:
+--
+--     AND rp.consecutive_out_of_stock < 3
+--     AND rp.pin_error_count < 3
+--
+-- Without resetting these counters, formerly-disabled products would have
+-- pin_disabled_at = NULL but counters at threshold (3+) — the scrape job
+-- would still skip them, the new auto-recovery code in scrape.ts would
+-- never run on them, and they'd remain effectively disabled despite the
+-- markers being cleared.
+--
+-- WM 2026-05-08 audit: 230 of 237 disabled matches (97%) have at least
+-- one counter ≥3 — without this reset, the migration is a no-op for
+-- 97% of the cases it's meant to fix.
+--
+-- Reset for ALL retailer_products (not just those with disabled matches):
+-- the existing 3-strike gate logic in scrape.ts will re-fire for any
+-- retailer_product that's still genuinely broken within ~3 days.
+UPDATE retailer_products
+   SET consecutive_out_of_stock = 0,
+       pin_error_count = 0
+ WHERE consecutive_out_of_stock > 0
+    OR pin_error_count > 0;

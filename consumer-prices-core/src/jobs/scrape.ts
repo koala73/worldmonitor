@@ -63,18 +63,10 @@ async function updateScrapeRun(
   );
 }
 
-async function handlePinError(productId: string, matchId: string, targetId: string) {
-  const { rows } = await query<{ c: string }>(
-    `UPDATE retailer_products SET pin_error_count = pin_error_count + 1
-     WHERE id = $1 RETURNING pin_error_count AS c`,
-    [productId],
-  );
-  const count = parseInt(rows[0]?.c ?? '0', 10);
-  if (count >= 3) {
-    await query(`UPDATE product_matches SET pin_disabled_at = NOW() WHERE id = $1`, [matchId]);
-    logger.info(`  [pin] soft-disabled stale pin for ${targetId} (${count}x errors)`);
-  }
-}
+// Pin disable + auto-recovery helpers extracted to ./scrape-pin-recovery.ts
+// for unit-testability (avoids pulling scrape.ts's heavy transitive deps —
+// exa-js, playwright, etc. — into the test environment).
+import { handleStaleOnInStock, handleStaleOnOutOfStock, handlePinError } from './scrape-pin-recovery.js';
 
 export async function scrapeRetailer(slug: string) {
   const config = loadRetailerConfig(slug);
@@ -204,46 +196,9 @@ export async function scrapeRetailer(slug: string) {
         // migration alone restarts decay immediately on next nightly scrape.
         if (wasDirectHit && pinnedProductId && pinnedMatchId) {
           if (product.inStock) {
-            // Tick the in-stock counter; reset OOS + pin-error counters atomically.
-            const { rows } = await query<{ in_stock_count: string }>(
-              `UPDATE retailer_products
-                  SET consecutive_in_stock = consecutive_in_stock + 1,
-                      consecutive_out_of_stock = 0,
-                      pin_error_count = 0
-                WHERE id = $1
-            RETURNING consecutive_in_stock AS in_stock_count`,
-              [pinnedProductId],
-            );
-            const inStockCount = parseInt(rows[0]?.in_stock_count ?? '0', 10);
-            // Mirror the disable threshold (3): after 3 consecutive in-stock
-            // observations, clear the sticky pin_disabled_at. Idempotent —
-            // the WHERE-IS-NOT-NULL clause makes this a no-op for non-disabled
-            // matches, so we don't bump reviewed_at on already-active rows.
-            if (inStockCount >= 3) {
-              const { rowCount } = await query(
-                `UPDATE product_matches
-                    SET pin_disabled_at = NULL
-                  WHERE id = $1 AND pin_disabled_at IS NOT NULL`,
-                [pinnedMatchId],
-              );
-              if (rowCount && rowCount > 0) {
-                logger.info(`  [pin] auto-recovered stale pin for ${target.id} (${inStockCount}x in-stock)`);
-              }
-            }
+            await handleStaleOnInStock(pinnedProductId, pinnedMatchId, target.id);
           } else {
-            const { rows } = await query<{ c: string }>(
-              `UPDATE retailer_products
-                  SET consecutive_out_of_stock = consecutive_out_of_stock + 1,
-                      consecutive_in_stock = 0
-                WHERE id = $1
-            RETURNING consecutive_out_of_stock AS c`,
-              [pinnedProductId],
-            );
-            const count = parseInt(rows[0]?.c ?? '0', 10);
-            if (count >= 3) {
-              await query(`UPDATE product_matches SET pin_disabled_at = NOW() WHERE id = $1`, [pinnedMatchId]);
-              logger.info(`  [pin] soft-disabled stale pin for ${target.id} (${count}x out-of-stock)`);
-            }
+            await handleStaleOnOutOfStock(pinnedProductId, pinnedMatchId, target.id);
           }
         }
 
