@@ -555,12 +555,12 @@ function strlenIsData(strlen) {
 
 function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
   if (!seedCfg) {
-    return { seedAge: null, seedStale: null, seedError: false, metaReadFailed: false, metaCount: null };
+    return { seedAge: null, seedStale: null, seedError: false, metaReadFailed: false, metaCount: null, contentAge: null };
   }
   // Per-command Redis errors on the GET seed-meta half of the pipeline must
   // not silently fall through to STALE_SEED — promote to REDIS_PARTIAL.
   if (keyMetaErrors.get(seedCfg.key)) {
-    return { seedAge: null, seedStale: null, seedError: false, metaReadFailed: true, metaCount: null };
+    return { seedAge: null, seedStale: null, seedError: false, metaReadFailed: true, metaCount: null, contentAge: null };
   }
   // Unwrap through the envelope helper. Legacy seed-meta is a bare
   // `{ fetchedAt, recordCount, sourceVersion, status? }` object with no `_seed`
@@ -569,7 +569,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
   // the dependency so behavior stays byte-identical in PR 1.
   const meta = unwrapEnvelope(parseRedisValue(keyMetaValues.get(seedCfg.key))).data;
   if (meta?.status === 'error') {
-    return { seedAge: null, seedStale: true, seedError: true, metaReadFailed: false, metaCount: null };
+    return { seedAge: null, seedStale: true, seedError: true, metaReadFailed: false, metaCount: null, contentAge: null };
   }
   let seedAge = null;
   let seedStale = true;
@@ -578,7 +578,34 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
     seedStale = seedAge > seedCfg.maxStaleMin;
   }
   const metaCount = meta?.count ?? meta?.recordCount ?? null;
-  return { seedAge, seedStale, seedError: false, metaReadFailed: false, metaCount };
+  // Content-age trio (2026-05-04 health-readiness plan). Presence of
+  // maxContentAgeMin is the opt-in signal — legacy seeders without it
+  // get contentAge: null and skip the STALE_CONTENT branch in classifyKey.
+  // newestItemAt may be explicit null when seeder's contentMeta returned null
+  // (no usable item timestamps); classifier reads that as STALE_CONTENT.
+  let contentAge = null;
+  if (meta && typeof meta.maxContentAgeMin === 'number') {
+    const newestItemAt = (typeof meta.newestItemAt === 'number') ? meta.newestItemAt : null;
+    const contentAgeMin = newestItemAt == null ? null : Math.round((now - newestItemAt) / 60_000);
+    // Future-dated newestItemAt (contentAgeMin < 0) is suspicious data, not
+    // fresh data: an upstream that publishes timestamps in the future is
+    // either confusing forecasts with observations, mishandling timezones,
+    // or running on a skewed clock. Treat as STALE so the signal surfaces
+    // — without this, `contentAgeMin > maxContentAgeMin` is false for any
+    // negative number and the staleness check silently passes. The
+    // negative `contentAgeMin` is preserved on the wire so operators can
+    // see HOW far in the future the timestamp was (a -10-minute drift is
+    // a clock-skew nit; -8760 minutes is a year-from-now corruption).
+    const isFutureDated = contentAgeMin != null && contentAgeMin < 0;
+    contentAge = {
+      newestItemAt,
+      oldestItemAt: (typeof meta.oldestItemAt === 'number') ? meta.oldestItemAt : null,
+      maxContentAgeMin: meta.maxContentAgeMin,
+      contentAgeMin,
+      contentStale: contentAgeMin == null || isFutureDated || contentAgeMin > meta.maxContentAgeMin,
+    };
+  }
+  return { seedAge, seedStale, seedError: false, metaReadFailed: false, metaCount, contentAge };
 }
 
 function isCascadeCovered(name, hasData, keyStrens, keyErrors) {
@@ -612,7 +639,7 @@ function classifyKey(name, redisKey, opts, ctx) {
 
   const strlen = keyStrens.get(redisKey) ?? 0;
   const hasData = strlenIsData(strlen);
-  const { seedAge, seedStale, seedError, metaCount } = meta;
+  const { seedAge, seedStale, seedError, metaCount, contentAge } = meta;
 
   // When the data key is gone the meta count is meaningless; force records=0
   // so we never display the contradictory "EMPTY records=N>0" pair (item 1).
@@ -639,12 +666,29 @@ function classifyKey(name, redisKey, opts, ctx) {
   // to COVERAGE_PARTIAL (warn) instead of reporting OK. Producer must write
   // seed-meta.recordCount using the *covered* count, not the shape size.
   else if (seedCfg?.minRecordCount != null && records < seedCfg.minRecordCount) status = 'COVERAGE_PARTIAL';
+  // Content-age check (opt-in via runSeed contentMeta + maxContentAgeMin).
+  // Fires AFTER all earlier failure paths so STALE_SEED, COVERAGE_PARTIAL,
+  // EMPTY_*, etc. take precedence — STALE_CONTENT is "the seeder is healthy
+  // and the data set is sized correctly, but the content itself is older than
+  // the seeder's content-age budget" (e.g. WHO Disease Outbreak News hasn't
+  // published in >9 days for the disease-outbreaks pilot).
+  // The opt-in signal is contentAge being non-null in seed-meta (presence of
+  // meta.maxContentAgeMin); legacy seeders without it skip this branch.
+  // 2026-05-04 health-readiness plan, Sprint 1.
+  else if (contentAge && contentAge.contentStale) status = 'STALE_CONTENT';
   else status = 'OK';
 
   const entry = { status, records };
   if (seedAge !== null) entry.seedAgeMin = seedAge;
   if (seedCfg) entry.maxStaleMin = seedCfg.maxStaleMin;
   if (seedCfg?.minRecordCount != null) entry.minRecordCount = seedCfg.minRecordCount;
+  // Surface content-age fields when seeder opted in (presence of
+  // meta.maxContentAgeMin). Operators can distinguish "stale content" from
+  // "stale seeder run" at a glance.
+  if (contentAge) {
+    entry.contentAgeMin = contentAge.contentAgeMin;          // null when contentMeta returned null
+    entry.maxContentAgeMin = contentAge.maxContentAgeMin;
+  }
   return entry;
 }
 
@@ -656,6 +700,11 @@ const STATUS_COUNTS = {
   EMPTY_ON_DEMAND: 'warn',
   REDIS_PARTIAL: 'warn',
   COVERAGE_PARTIAL: 'warn',
+  // Content-age signal — seeder is healthy but upstream stopped publishing.
+  // Operator can't fix upstream cadence, so de-rank vs. STALE_SEED in alerting
+  // (both bucket to 'warn' — overall status is `degraded`, not `critical`).
+  // 2026-05-04 health-readiness plan, Sprint 1.
+  STALE_CONTENT: 'warn',
   EMPTY: 'crit',
   EMPTY_DATA: 'crit',
 };
@@ -836,3 +885,13 @@ export default async function handler(req, ctx) {
     headers,
   });
 }
+
+// Test-only exports. Not part of the public edge handler surface — Vercel's
+// runtime invokes only `default export`. These let scoped unit tests exercise
+// the classifier without standing up the full bootstrap-keys + Redis pipeline.
+// 2026-05-04 health-readiness plan, Sprint 1 test plan (Codex round 2 P1).
+export const __testing__ = {
+  readSeedMeta,
+  classifyKey,
+  STATUS_COUNTS,
+};
