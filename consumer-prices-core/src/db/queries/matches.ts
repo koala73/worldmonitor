@@ -132,8 +132,17 @@ export async function getPinnedUrlsForRetailer(
  * to filter `pm.pin_disabled_at IS NULL`, so disabled pins probed here
  * still don't affect spread quality during the recovery window.
  *
- * Ordered by oldest disable first (FIFO) so recovery is fair across the
- * disabled set — no pin sits permanently at the back of the queue.
+ * GLOBAL FIFO: ranked CTE picks the OLDEST-disabled match per basket_item
+ * (one representative per item to avoid duplicate probes for the same
+ * basket entry), then orders globally by pin_disabled_at ASC and applies
+ * the LIMIT.
+ *
+ * NOT to be replaced with `DISTINCT ON (pm.basket_item_id) ORDER BY
+ * pm.basket_item_id, pm.pin_disabled_at ASC` — that ORDER BY-then-LIMIT
+ * sorts the deduped set by basket_item_id (UUID order), not pin_disabled_at,
+ * so the lowest-UUID basket_items would be probed every cycle while
+ * higher-UUID disabled pins would starve forever. This bug was caught in
+ * PR #3627 review (P1). Ranked-CTE + outer ORDER BY is the right shape.
  */
 export async function getDisabledPinsForRecovery(
   retailerId: string,
@@ -146,22 +155,31 @@ export async function getDisabledPinsForRecovery(
     product_id: string;
     match_id: string;
   }>(
-    `SELECT DISTINCT ON (pm.basket_item_id)
-       cp.canonical_name,
-       b.slug AS basket_slug,
-       rp.source_url,
-       rp.id AS product_id,
-       pm.id AS match_id
-     FROM product_matches pm
-     JOIN retailer_products rp ON rp.id = pm.retailer_product_id
-     JOIN basket_items bi ON bi.id = pm.basket_item_id
-     JOIN baskets b ON b.id = bi.basket_id
-     JOIN canonical_products cp ON cp.id = bi.canonical_product_id
-     WHERE rp.retailer_id = $1
-       AND pm.match_status IN ('auto', 'approved')
-       AND pm.pin_disabled_at IS NOT NULL
-     ORDER BY pm.basket_item_id, pm.pin_disabled_at ASC
-     LIMIT $2`,
+    `SELECT canonical_name, basket_slug, source_url, product_id, match_id
+       FROM (
+         SELECT
+           cp.canonical_name,
+           b.slug AS basket_slug,
+           rp.source_url,
+           rp.id AS product_id,
+           pm.id AS match_id,
+           pm.pin_disabled_at,
+           ROW_NUMBER() OVER (
+             PARTITION BY pm.basket_item_id
+             ORDER BY pm.pin_disabled_at ASC
+           ) AS rn
+         FROM product_matches pm
+         JOIN retailer_products rp ON rp.id = pm.retailer_product_id
+         JOIN basket_items bi ON bi.id = pm.basket_item_id
+         JOIN baskets b ON b.id = bi.basket_id
+         JOIN canonical_products cp ON cp.id = bi.canonical_product_id
+         WHERE rp.retailer_id = $1
+           AND pm.match_status IN ('auto', 'approved')
+           AND pm.pin_disabled_at IS NOT NULL
+       ) ranked
+      WHERE rn = 1
+      ORDER BY pin_disabled_at ASC
+      LIMIT $2`,
     [retailerId, limit],
   );
   const map = new Map<string, { sourceUrl: string; productId: string; matchId: string }>();
