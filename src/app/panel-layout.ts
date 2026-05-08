@@ -129,6 +129,7 @@ import {
   updateActiveWorkspace,
   renameWorkspace,
   restoreMainWorkspace,
+  backupMainWorkspace,
 } from '@/services/workspaces';
 
 
@@ -782,7 +783,9 @@ export class PanelLayoutManager implements AppModule {
       });
     });
 
+    let isCancelled = false;
     const handleRename = (input: HTMLInputElement) => {
+      if (isCancelled) return;
       const newName = input.value.trim();
       const id = input.dataset.id;
       if (id && newName) {
@@ -798,6 +801,7 @@ export class PanelLayoutManager implements AppModule {
         if (e.key === 'Enter') {
           input.blur();
         } else if (e.key === 'Escape') {
+          isCancelled = true;
           this.renderWorkspaceTabs(); // exit without saving
         }
       });
@@ -827,6 +831,9 @@ export class PanelLayoutManager implements AppModule {
     });
 
     document.getElementById('workspaceSaveCurrentBtn')?.addEventListener('click', () => {
+      if (getActiveWorkspaceId() === null) {
+        backupMainWorkspace();
+      }
       const tab = createWorkspace('New Tab');
       setActiveWorkspaceId(tab.id);
       this.renderWorkspaceTabs(tab.id);
