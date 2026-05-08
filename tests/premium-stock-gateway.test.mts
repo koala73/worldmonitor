@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createServer, type Server } from 'node:http';
-import { afterEach, describe, it, before, after, mock } from 'node:test';
+import { afterEach, describe, it, before, after } from 'node:test';
 import { generateKeyPair, exportJWK, SignJWT } from 'jose';
 
 import { createDomainGateway } from '../server/gateway.ts';
@@ -132,6 +132,28 @@ describe('premium gateway API key enforcement', () => {
       assert.notEqual(res.status, 200, `wms_ MUST NOT unlock ${path} (got ${res.status})`);
     }
   });
+
+  it('strips client-supplied x-user-id before route handlers (#3548)', async () => {
+    const handler = createDomainGateway([
+      {
+        method: 'GET',
+        path: '/api/market/v1/list-market-quotes',
+        handler: async (req) => new Response(JSON.stringify({ userId: req.headers.get('x-user-id') }), { status: 200 }),
+      },
+    ]);
+
+    const res = await handler(new Request('https://worldmonitor.app/api/market/v1/list-market-quotes?symbols=AAPL', {
+      headers: {
+        Origin: 'https://worldmonitor.app',
+        'X-WorldMonitor-Key': SESSION_TOKEN,
+        'x-user-id': 'victim-user',
+      },
+    }));
+
+    assert.equal(res.status, 200);
+    const body = await res.json() as { userId: string | null };
+    assert.equal(body.userId, null);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -186,7 +208,7 @@ describe('premium gateway bearer token auth', () => {
       {
         method: 'GET',
         path: '/api/resilience/v1/get-resilience-score',
-        handler: async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
+        handler: async (req) => new Response(JSON.stringify({ ok: true, userId: req.headers.get('x-user-id') }), { status: 200 }),
       },
       {
         method: 'GET',
@@ -328,5 +350,21 @@ describe('premium gateway bearer token auth', () => {
       },
     }));
     assert.equal(rankingRes.status, 200);
+  });
+
+  it('rewrites client-supplied x-user-id on legacy bearer auth (#3548)', async () => {
+    const token = await signToken({ sub: 'user_pro', plan: 'pro' });
+
+    const res = await handler(new Request('https://worldmonitor.app/api/resilience/v1/get-resilience-score?countryCode=US', {
+      headers: {
+        Origin: 'https://worldmonitor.app',
+        Authorization: `Bearer ${token}`,
+        'x-user-id': 'victim-user',
+      },
+    }));
+
+    assert.equal(res.status, 200);
+    const body = await res.json() as { userId: string | null };
+    assert.equal(body.userId, 'user_pro');
   });
 });

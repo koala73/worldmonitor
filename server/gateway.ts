@@ -301,13 +301,32 @@ import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths';
  */
 export type GatewayCtx = { waitUntil: (p: Promise<unknown>) => void };
 
+const INTERNAL_USER_ID_HEADER = 'x-user-id';
+
+function cloneRequestWithHeaders(request: Request, headers: Headers): Request {
+  return new Request(request, { headers });
+}
+
+function stripClientUserIdHeader(request: Request): Request {
+  if (!request.headers.has(INTERNAL_USER_ID_HEADER)) return request;
+  const headers = new Headers(request.headers);
+  headers.delete(INTERNAL_USER_ID_HEADER);
+  return cloneRequestWithHeaders(request, headers);
+}
+
+function withAuthenticatedUserId(request: Request, userId: string): Request {
+  const headers = new Headers(request.headers);
+  headers.set(INTERNAL_USER_ID_HEADER, userId);
+  return cloneRequestWithHeaders(request, headers);
+}
+
 export function createDomainGateway(
   routes: RouteDescriptor[],
 ): (req: Request, ctx?: GatewayCtx) => Promise<Response> {
   const router = createRouter(routes);
 
   return async function handler(originalRequest: Request, ctx?: GatewayCtx): Promise<Response> {
-    let request = originalRequest;
+    let request = stripClientUserIdHeader(originalRequest);
     const rawPathname = new URL(request.url).pathname;
     const pathname = rawPathname.length > 1 ? rawPathname.replace(/\/+$/, '') : rawPathname;
     const t0 = Date.now();
@@ -412,15 +431,7 @@ export function createDomainGateway(
       usage.sessionUserId = sessionUserId;
       usage.clerkOrgId = session?.orgId ?? null;
       if (sessionUserId) {
-        request = new Request(request.url, {
-          method: request.method,
-          headers: (() => {
-            const h = new Headers(request.headers);
-            h.set('x-user-id', sessionUserId);
-            return h;
-          })(),
-          body: request.body,
-        });
+        request = withAuthenticatedUserId(request, sessionUserId);
       }
     }
 
@@ -457,15 +468,7 @@ export function createDomainGateway(
         if (!sessionUserId) {
           sessionUserId = userKeyResult.userId;
           usage.sessionUserId = sessionUserId;
-          request = new Request(request.url, {
-            method: request.method,
-            headers: (() => {
-              const h = new Headers(request.headers);
-              h.set('x-user-id', sessionUserId);
-              return h;
-            })(),
-            body: request.body,
-          });
+          request = withAuthenticatedUserId(request, sessionUserId);
         }
       }
     }
@@ -512,6 +515,7 @@ export function createDomainGateway(
           if (session.userId) {
             sessionUserId = session.userId;
             usage.sessionUserId = session.userId;
+            request = withAuthenticatedUserId(request, session.userId);
           }
           // Accept EITHER a Clerk 'pro' role OR a Convex Dodo entitlement with
           // tier >= 1. The Dodo webhook pipeline writes Convex entitlements but
@@ -566,7 +570,7 @@ export function createDomainGateway(
     // freely mintable by any caller and are NOT user-bound (PR #3557 review).
     const isEnterpriseAuth = keyCheck.valid && wmKey && !isUserApiKey && keyCheck.kind === 'enterprise';
     if (!isEnterpriseAuth) {
-      const entitlementResponse = await checkEntitlement(request, pathname, corsHeaders);
+      const entitlementResponse = await checkEntitlement(sessionUserId, pathname, corsHeaders);
       if (entitlementResponse) {
         const entReason: RequestReason =
           entitlementResponse.status === 401 ? 'auth_401'

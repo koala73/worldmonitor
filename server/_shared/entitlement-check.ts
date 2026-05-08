@@ -176,7 +176,7 @@ async function _getEntitlementsImpl(userId: string): Promise<CachedEntitlements 
 }
 
 /**
- * Checks whether the current request is allowed based on tier entitlements.
+ * Checks whether the resolved user is allowed based on tier entitlements.
  *
  * Returns:
  *   - null if the request is allowed (unrestricted endpoint or sufficient tier)
@@ -184,7 +184,7 @@ async function _getEntitlementsImpl(userId: string): Promise<CachedEntitlements 
  *     or the user's tier is below the required tier (fail-closed)
  */
 export async function checkEntitlement(
-  request: Request,
+  userId: string | null | undefined,
   pathname: string,
   corsHeaders: Record<string, string>,
 ): Promise<Response | null> {
@@ -194,9 +194,8 @@ export async function checkEntitlement(
     return null;
   }
 
-  // Extract userId from request header (set by session middleware).
-  // Fail-closed: if no userId on a gated endpoint, block the request.
-  const userId = request.headers.get('x-user-id');
+  // Gateway auth resolution owns user identity. Do not read identity from
+  // request headers here; inbound headers are client-controlled.
   if (!userId) {
     return new Response(
       JSON.stringify({ error: 'Authentication required', requiredTier }),
