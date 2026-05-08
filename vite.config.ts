@@ -994,12 +994,36 @@ export default defineConfig(({ mode }) => {
               // before the cluster split can ship. See ce-doc-review followup.
               return 'panels';
             }
-            // Give lazy-loaded locale chunks a recognizable prefix so the
-            // service worker can exclude them from precache (en.json is
-            // statically imported into the main bundle).
-            const localeMatch = id.match(/\/locales\/(\w+)\.json$/);
-            if (localeMatch && localeMatch[1] !== 'en') {
-              return `locale-${localeMatch[1]}`;
+            // Locale chunk naming has two distinct cohorts with different
+            // SW caching needs:
+            //
+            // 1. en.rest.json → `i18n-en-rest`. Every user needs the
+            //    English fallback dictionary on every page-load (it's the
+            //    fallback for every t() call regardless of detected
+            //    language and initI18n awaits it before the app renders).
+            //    Naming it outside the `locale-*` family keeps it inside
+            //    the default precache glob (**/*.js) — matching the
+            //    pre-split behavior where these strings rode in the
+            //    precached i18n-*.js chunk. Otherwise the SW's
+            //    `globIgnores: ['**/locale-*.js']` would silently exclude
+            //    it from precache and an offline boot would hang on the
+            //    awaited dynamic import.
+            //
+            // 2. Other-language files (fr, ar, …) → `locale-<lang>`.
+            //    User-selected, only loaded when changeLanguage('lang')
+            //    fires. globIgnores keeps them out of precache; the
+            //    /assets/locale-.*\.js/ runtime CacheFirst rule below
+            //    caches them on first use.
+            //
+            // en.shell.json is statically imported and inlined into the
+            // i18n chunk, so it never reaches manualChunks here.
+            const localeMatch = id.match(/\/locales\/([a-z]+(?:\.[a-z]+)?)\.json$/);
+            if (localeMatch) {
+              const name = localeMatch[1];
+              if (name === 'en.rest') return 'i18n-en-rest';
+              if (name !== 'en' && name !== 'en.shell') {
+                return `locale-${name.replace('.', '-')}`;
+              }
             }
             return undefined;
           },
