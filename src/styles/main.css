@@ -284,6 +284,116 @@ canvas,
   flex-shrink: 0;
 }
 
+/* Workspace Tabs */
+.workspace-tabs-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  height: 32px;
+  flex-shrink: 0;
+  padding: 0 16px;
+  font-size: 11px;
+}
+
+.workspace-tabs-scroll {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.workspace-tabs-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.workspace-tab-group {
+  display: flex;
+  align-items: center;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.workspace-tab-group.active {
+  background: rgba(68, 255, 136, 0.1);
+  border-color: var(--green);
+}
+
+.workspace-tab {
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  padding: 4px 8px;
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.workspace-tab-input {
+  background: var(--surface);
+  border: 1px solid var(--green);
+  color: var(--text);
+  padding: 3px 7px;
+  font-family: inherit;
+  font-size: 11px;
+  width: 100px;
+  border-radius: 4px;
+  outline: none;
+}
+.workspace-tabs-scroll > .workspace-tab {
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.workspace-tab:hover {
+  color: var(--text);
+}
+.workspace-tabs-scroll > .workspace-tab.active, .workspace-tab-group.active .workspace-tab {
+  background: rgba(68, 255, 136, 0.1);
+  border-color: var(--green);
+  color: var(--green);
+}
+
+.workspace-tab-popout, .workspace-tab-close {
+  background: transparent;
+  border: none;
+  border-left: 1px solid var(--border);
+  color: var(--text-dim);
+  padding: 4px 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.workspace-tab-popout:hover, .workspace-tab-close:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+.workspace-tab-group.active .workspace-tab-popout, .workspace-tab-group.active .workspace-tab-close {
+  border-color: rgba(68, 255, 136, 0.2);
+}
+
+.workspace-tabs-actions {
+  display: flex;
+  gap: 8px;
+}
+
+#workspaceSaveCurrentBtn, #workspaceUpdateCurrentBtn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11px;
+}
+#workspaceSaveCurrentBtn:hover, #workspaceUpdateCurrentBtn:hover {
+  color: var(--text);
+  border-color: var(--text);
+}
+
 /* -- Tauri desktop: separate title bar for traffic lights -- */
 .tauri-titlebar {
   height: 28px;

@@ -1515,3 +1515,10 @@ export interface CountryBriefSignals {
   sanctionsDesignations: number;
   sanctionsNewDesignations: number;
 }
+
+export interface WorkspaceTab {
+  id: string;
+  name: string;
+  panelSettings: Record<string, PanelConfig>;
+  panelOrder?: string[];
+}

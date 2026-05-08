@@ -119,6 +119,17 @@ import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import type { AuthSession } from '@/services/auth-state';
 import { PanelGateReason, getPanelGateReason, hasPremiumAccess } from '@/services/panel-gating';
 import type { Panel } from '@/components/Panel';
+import {
+  getWorkspaces,
+  createWorkspace,
+  loadWorkspace,
+  deleteWorkspace,
+  getActiveWorkspaceId,
+  setActiveWorkspaceId,
+  updateActiveWorkspace,
+  renameWorkspace,
+} from '@/services/workspaces';
+
 
 /**
  * Panels that require premium access on web. Auth-based gating applies to
@@ -578,6 +589,7 @@ export class PanelLayoutManager implements AppModule {
           <span id="authWidgetMount"></span>
         </div>
       </div>
+      <div class="workspace-tabs-bar" id="workspaceTabsBar"></div>
       <div class="mobile-menu-overlay" id="mobileMenuOverlay"></div>
       <nav class="mobile-menu" id="mobileMenu">
         <div class="mobile-menu-header">
@@ -706,11 +718,127 @@ export class PanelLayoutManager implements AppModule {
     `;
 
     await this.createPanels();
+    this.renderWorkspaceTabs();
 
     if (this.ctx.isMobile) {
       this.setupMobileMapToggle();
     }
   }
+
+  private renderWorkspaceTabs(editingId?: string): void {
+    const container = document.getElementById('workspaceTabsBar');
+    if (!container) return;
+    
+    const tabs = getWorkspaces();
+    const activeId = getActiveWorkspaceId();
+    
+    container.innerHTML = `
+      <div class="workspace-tabs-scroll">
+        <button class="workspace-tab ${!activeId ? 'active' : ''}" data-id="">
+          Main Layout
+        </button>
+        ${tabs.map(tab => `
+          <div class="workspace-tab-group ${tab.id === activeId ? 'active' : ''}">
+            ${editingId === tab.id
+              ? '<input type="text" class="workspace-tab-input" data-id="' + escapeHtml(tab.id) + '" value="' + escapeHtml(tab.name) + '" />'
+              : '<button class="workspace-tab" data-id="' + escapeHtml(tab.id) + '">' + escapeHtml(tab.name) + '</button>'
+            }
+            <button class="workspace-tab-popout" data-popout="${escapeHtml(tab.id)}" title="Open in new window">⛶</button>
+            <button class="workspace-tab-close" data-delete="${escapeHtml(tab.id)}" title="Delete tab">×</button>
+          </div>
+        `).join('')}
+      </div>
+      <div class="workspace-tabs-actions">
+        ${activeId ? '<button id="workspaceUpdateCurrentBtn" title="Update active tab with current panels">Update Tab</button>' : ''}
+        <button id="workspaceSaveCurrentBtn" title="Save current panels as a new tab">+ Save Tab</button>
+      </div>
+    `;
+
+    container.querySelectorAll('.workspace-tab').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const id = (e.currentTarget as HTMLButtonElement).dataset.id;
+        if (id) {
+          if (id === activeId) {
+            // Already active, enter edit mode
+            this.renderWorkspaceTabs(id);
+            setTimeout(() => {
+              const input = document.querySelector('.workspace-tab-input') as HTMLInputElement;
+              if (input) {
+                input.focus();
+                input.select();
+              }
+            }, 0);
+          } else {
+            loadWorkspace(id);
+          }
+        } else {
+          if (activeId !== null) {
+            setActiveWorkspaceId(null);
+            localStorage.removeItem('worldmonitor-panels');
+            window.location.reload();
+          }
+        }
+      });
+    });
+
+    const handleRename = (input: HTMLInputElement) => {
+      const newName = input.value.trim();
+      const id = input.dataset.id;
+      if (id && newName) {
+        renameWorkspace(id, newName);
+      }
+      this.renderWorkspaceTabs(); // exit edit mode
+    };
+
+    container.querySelectorAll('.workspace-tab-input').forEach(inputNode => {
+      const input = inputNode as HTMLInputElement;
+      input.addEventListener('blur', () => handleRename(input));
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          input.blur();
+        } else if (e.key === 'Escape') {
+          this.renderWorkspaceTabs(); // exit without saving
+        }
+      });
+    });
+
+    container.querySelectorAll('.workspace-tab-popout').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const id = (e.currentTarget as HTMLButtonElement).dataset.popout;
+        if (id) loadWorkspace(id, true);
+      });
+    });
+
+    container.querySelectorAll('.workspace-tab-close').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const id = (e.currentTarget as HTMLButtonElement).dataset.delete;
+        if (id && confirm('Delete this tab?')) {
+          deleteWorkspace(id);
+          this.renderWorkspaceTabs();
+        }
+      });
+    });
+
+    document.getElementById('workspaceUpdateCurrentBtn')?.addEventListener('click', () => {
+      updateActiveWorkspace();
+      alert('Tab updated with current panel settings!');
+      this.renderWorkspaceTabs();
+    });
+
+    document.getElementById('workspaceSaveCurrentBtn')?.addEventListener('click', () => {
+      const tab = createWorkspace('New Tab');
+      setActiveWorkspaceId(tab.id);
+      this.renderWorkspaceTabs(tab.id);
+      setTimeout(() => {
+        const input = document.querySelector('.workspace-tab-input') as HTMLInputElement;
+        if (input) {
+          input.focus();
+          input.select();
+        }
+      }, 0);
+    });
+  }
+
 
   private setupMobileMapToggle(): void {
     const mapSection = document.getElementById('mapSection');

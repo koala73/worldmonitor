@@ -481,6 +481,23 @@ export class App {
     const PANEL_ORDER_KEY = 'panel-order';
     const PANEL_SPANS_KEY = 'worldmonitor-panel-spans';
 
+    const urlParams = new URLSearchParams(window.location.search);
+    const tabId = urlParams.get('tab');
+    if (tabId) {
+      const tabs = loadFromStorage<{id: string, panelSettings: any, panelOrder?: string[]}[]>(STORAGE_KEYS.workspaceTabs, []);
+      const tab = tabs.find(t => t.id === tabId);
+      if (tab) {
+        saveToStorage(STORAGE_KEYS.panels, tab.panelSettings);
+        if (tab.panelOrder) localStorage.setItem(PANEL_ORDER_KEY, JSON.stringify(tab.panelOrder));
+        else localStorage.removeItem(PANEL_ORDER_KEY);
+        localStorage.setItem(STORAGE_KEYS.activeWorkspaceTab, tabId);
+        urlParams.delete('tab');
+        const searchString = urlParams.toString();
+        const newUrl = window.location.pathname + (searchString ? '?' + searchString : '');
+        window.history.replaceState({}, '', newUrl);
+      }
+    }
+
     const isMobile = isMobileDevice();
     const isDesktopApp = isDesktopRuntime();
     const monitors = loadFromStorage<Monitor[]>(STORAGE_KEYS.monitors, []);
