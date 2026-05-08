@@ -1,21 +1,51 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head><meta charset="utf-8"></head>
 <body>
 <script>
-(function () {
+(() => {
+  var params = new URLSearchParams(window.location.hash.slice(1));
+  var id = params.get('id') || '';
+  var token = params.get('token') || '';
   var handled = false;
-  window.addEventListener('message', function (e) {
+
+  function isAllowedParentOrigin(origin) {
+    return (
+      /^https:\/\/([a-z0-9-]+\.)?worldmonitor\.app$/i.test(origin) ||
+      /^https?:\/\/localhost(:\d+)?$/i.test(origin) ||
+      /^https?:\/\/127\.0\.0\.1(:\d+)?$/i.test(origin)
+    );
+  }
+
+  function getParentOrigin() {
+    try {
+      return new URL(document.referrer).origin;
+    } catch (_err) {
+      return '';
+    }
+  }
+
+  window.addEventListener('message', (e) => {
     if (handled) return;
     if (!e.data || e.data.type !== 'wm-html') return;
+    if (e.source !== window.parent) return;
+    if (e.data.id !== id || e.data.token !== token) return;
+    if (typeof e.data.html !== 'string') return;
+
     var origin = e.origin || '';
-    if (!origin.endsWith('worldmonitor.app') && !/^https?:\/\/localhost/.test(origin)) return;
+    if (!isAllowedParentOrigin(origin)) return;
+
     handled = true;
     document.open();
     document.write(e.data.html);
     document.close();
   });
-}());
+
+  var parentOrigin = getParentOrigin();
+  if (id && token && parentOrigin && isAllowedParentOrigin(parentOrigin)) {
+    window.parent.postMessage({ type: 'wm-widget-ready', id: id, token: token }, parentOrigin);
+  }
+})();
 </script>
 </body>
 </html>

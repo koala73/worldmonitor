@@ -1009,6 +1009,7 @@ describe('PRO widget — relay auth and configuration', () => {
 describe('PRO widget — store and sanitizer', () => {
   const store = src('src/services/widget-store.ts');
   const san = src('src/utils/widget-sanitizer.ts');
+  const sandbox = src('public/wm-widget-sandbox.html');
 
   it('MAX_HTML_CHARS_PRO is 80000', () => {
     const match = store.match(/MAX_HTML_CHARS_PRO\s*=\s*([\d_]+)/);
@@ -1123,16 +1124,58 @@ describe('PRO widget — store and sanitizer', () => {
     );
   });
 
-  it('wrapProWidgetHtml uses sandbox page src (not srcdoc) for CSP isolation', () => {
+  it('wrapProWidgetHtml keeps sandbox page transport and avoids srcdoc CSP inheritance', () => {
     const fnIdx = san.indexOf('wrapProWidgetHtml');
     const fnBody = san.slice(fnIdx, fnIdx + 500);
     assert.ok(
-      fnBody.includes('wm-widget-sandbox.html'),
-      'wrapProWidgetHtml must load the dedicated sandbox page (not srcdoc) to get its own CSP',
+      san.includes('wm-widget-sandbox.html'),
+      'PRO widget mount must load the dedicated sandbox page to get its own CSP',
     );
     assert.ok(
       !fnBody.includes('srcdoc'),
       'wrapProWidgetHtml must NOT use srcdoc — srcdoc inherits parent CSP',
+    );
+  });
+
+  it('PRO iframe HTML delivery is gated by sandbox nonce handshake', () => {
+    assert.ok(
+      san.includes('createWidgetToken'),
+      'PRO widgets must generate a per-widget token before loading the sandbox',
+    );
+    assert.ok(
+      san.includes("data.type !== 'wm-widget-ready'"),
+      'parent must wait for an explicit sandbox-ready message',
+    );
+    assert.ok(
+      san.includes('event.source !== mounted.iframe.contentWindow'),
+      'parent must verify the ready message came from the mounted iframe window',
+    );
+    assert.ok(
+      san.includes('data.token !== mounted.token'),
+      'parent must verify the per-widget token before sending HTML',
+    );
+  });
+
+  it('sandbox page verifies origin and nonce before writing widget HTML', () => {
+    assert.ok(
+      sandbox.includes("e.data.type !== 'wm-html'"),
+      'sandbox must only accept wm-html messages',
+    );
+    assert.ok(
+      sandbox.includes('e.data.id !== id || e.data.token !== token'),
+      'sandbox must verify id and token before document.write',
+    );
+    assert.ok(
+      sandbox.includes('e.source !== window.parent'),
+      'sandbox must only accept widget HTML from the embedding parent window',
+    );
+    assert.ok(
+      sandbox.includes("typeof e.data.html !== 'string'"),
+      'sandbox must reject malformed wm-html payloads before document.write',
+    );
+    assert.ok(
+      sandbox.includes('isAllowedParentOrigin(origin)'),
+      'sandbox must verify the parent origin before processing HTML',
     );
   });
 
