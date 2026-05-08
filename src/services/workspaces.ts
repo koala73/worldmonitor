@@ -11,9 +11,6 @@ export function saveWorkspaces(tabs: WorkspaceTab[]): void {
 }
 
 export function getActiveWorkspaceId(): string | null {
-  const urlParams = new URLSearchParams(window.location.search);
-  const tabId = urlParams.get('tab');
-  if (tabId) return tabId;
   return localStorage.getItem(STORAGE_KEYS.activeWorkspaceTab);
 }
 

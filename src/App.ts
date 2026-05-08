@@ -497,11 +497,11 @@ export class App {
         if (tab.panelOrder) localStorage.setItem(PANEL_ORDER_KEY, JSON.stringify(tab.panelOrder));
         else localStorage.removeItem(PANEL_ORDER_KEY);
         localStorage.setItem(STORAGE_KEYS.activeWorkspaceTab, tabId);
-        urlParams.delete('tab');
-        const searchString = urlParams.toString();
-        const newUrl = window.location.pathname + (searchString ? '?' + searchString : '');
-        window.history.replaceState({}, '', newUrl);
       }
+      urlParams.delete('tab');
+      const searchString = urlParams.toString();
+      const newUrl = window.location.pathname + (searchString ? '?' + searchString : '');
+      window.history.replaceState({}, '', newUrl);
     }
 
     const isMobile = isMobileDevice();
