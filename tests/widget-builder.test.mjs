@@ -1156,6 +1156,29 @@ describe('PRO widget — store and sanitizer', () => {
     );
   });
 
+  it('PRO iframe registry prunes disconnected sandbox iframes', () => {
+    assert.ok(
+      san.includes('pendingRemovedWidgetIframes'),
+      'removed PRO iframe elements must be tracked for cleanup',
+    );
+    assert.ok(
+      san.includes('queueMicrotask(cleanupRemovedProWidgets)'),
+      'cleanup must run after the mutation batch so DOM moves can reconnect',
+    );
+    assert.ok(
+      san.includes('!iframe.isConnected'),
+      'cleanup must only delete iframes that stayed disconnected',
+    );
+    assert.ok(
+      san.includes('mounted?.iframe === iframe'),
+      'cleanup must only remove the registry entry for the exact iframe instance',
+    );
+    assert.ok(
+      san.includes('mountedWidgetDocs.delete(id)'),
+      'stale mounted widget entries must be removed to avoid retaining iframe HTML',
+    );
+  });
+
   it('sandbox page verifies origin and nonce before writing widget HTML', () => {
     assert.ok(
       sandbox.includes("e.data.type !== 'wm-html'"),

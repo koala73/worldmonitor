@@ -56,7 +56,9 @@ const mountedWidgetDocs = new Map<string, {
   html: string;
   token: string;
 }>();
+const pendingRemovedWidgetIframes = new Set<HTMLIFrameElement>();
 let widgetMessageListenerStarted = false;
+let removedWidgetCleanupScheduled = false;
 
 function createWidgetToken(): string {
   const bytes = new Uint8Array(16);
@@ -123,6 +125,26 @@ function ensureWidgetMessageListener(): void {
   widgetMessageListenerStarted = true;
 }
 
+function cleanupRemovedProWidgets(): void {
+  removedWidgetCleanupScheduled = false;
+  for (const iframe of pendingRemovedWidgetIframes) {
+    const id = iframe.dataset.wmId;
+    if (!id) continue;
+    const mounted = mountedWidgetDocs.get(id);
+    if (mounted?.iframe === iframe && !iframe.isConnected) {
+      mountedWidgetDocs.delete(id);
+    }
+  }
+  pendingRemovedWidgetIframes.clear();
+}
+
+function scheduleRemovedProWidgetCleanup(iframe: HTMLIFrameElement): void {
+  pendingRemovedWidgetIframes.add(iframe);
+  if (removedWidgetCleanupScheduled) return;
+  removedWidgetCleanupScheduled = true;
+  queueMicrotask(cleanupRemovedProWidgets);
+}
+
 function mountProWidget(iframe: HTMLIFrameElement): void {
   const id = iframe.dataset.wmId;
   if (!id) return;
@@ -142,9 +164,21 @@ function mountProWidget(iframe: HTMLIFrameElement): void {
   iframe.src = `/wm-widget-sandbox.html#${fragment}`;
 }
 
+function scheduleRemovedProWidgets(node: Node): void {
+  if (!(node instanceof Element)) return;
+  if (node instanceof HTMLIFrameElement && node.dataset.wmId) {
+    scheduleRemovedProWidgetCleanup(node);
+  } else {
+    node.querySelectorAll<HTMLIFrameElement>('iframe[data-wm-id]').forEach(scheduleRemovedProWidgetCleanup);
+  }
+}
+
 if (typeof document !== 'undefined') {
   const observer = new MutationObserver((mutations) => {
     for (const mut of mutations) {
+      for (const node of mut.removedNodes) {
+        scheduleRemovedProWidgets(node);
+      }
       for (const node of mut.addedNodes) {
         if (!(node instanceof Element)) continue;
         if (node instanceof HTMLIFrameElement && node.dataset.wmId) {
