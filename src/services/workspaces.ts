@@ -27,7 +27,7 @@ export function setActiveWorkspaceId(id: string | null): void {
 
 export function backupMainWorkspace(): void {
   const panelSettings = loadFromStorage<Record<string, any>>(STORAGE_KEYS.panels, {});
-  let panelOrder: string[] | undefined = undefined;
+  let panelOrder: string[] | undefined ;
   const savedOrder = localStorage.getItem('panel-order');
   if (savedOrder) {
     try {
@@ -39,7 +39,7 @@ export function backupMainWorkspace(): void {
 
 export function restoreMainWorkspace(): void {
   const backup = loadFromStorage<{ panelSettings?: Record<string, any>, panelOrder?: string[] } | null>(STORAGE_KEYS.mainWorkspaceBackup, null);
-  if (backup && backup.panelSettings) {
+  if (backup?.panelSettings) {
     saveToStorage(STORAGE_KEYS.panels, backup.panelSettings);
     if (backup.panelOrder) {
       localStorage.setItem('panel-order', JSON.stringify(backup.panelOrder));
@@ -55,7 +55,7 @@ export function restoreMainWorkspace(): void {
 export function createWorkspace(name: string): WorkspaceTab {
   const id = 'workspace-' + Date.now() + '-' + Math.random().toString(36).substring(2, 9);
   const panelSettings = loadFromStorage<Record<string, any>>(STORAGE_KEYS.panels, {});
-  let panelOrder: string[] | undefined = undefined;
+  let panelOrder: string[] | undefined ;
   const savedOrder = localStorage.getItem('panel-order');
   if (savedOrder) {
     try {
@@ -123,7 +123,7 @@ export function updateActiveWorkspace(): void {
   if (tabIndex === -1) return;
   
   const panelSettings = loadFromStorage<Record<string, any>>(STORAGE_KEYS.panels, {});
-  let panelOrder: string[] | undefined = undefined;
+  let panelOrder: string[] | undefined ;
   const savedOrder = localStorage.getItem('panel-order');
   if (savedOrder) {
     try {
