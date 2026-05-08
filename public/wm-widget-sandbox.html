@@ -44,6 +44,8 @@
   var parentOrigin = getParentOrigin();
   if (id && token && parentOrigin && isAllowedParentOrigin(parentOrigin)) {
     window.parent.postMessage({ type: 'wm-widget-ready', id: id, token: token }, parentOrigin);
+  } else {
+    console.warn('[WorldMonitor] PRO widget sandbox handshake blocked: missing or disallowed parent origin.');
   }
 })();
 </script>

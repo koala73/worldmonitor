@@ -1200,6 +1200,10 @@ describe('PRO widget — store and sanitizer', () => {
       sandbox.includes('isAllowedParentOrigin(origin)'),
       'sandbox must verify the parent origin before processing HTML',
     );
+    assert.ok(
+      sandbox.includes('console.warn'),
+      'sandbox must surface handshake failures instead of rendering blank silently',
+    );
   });
 
   it('widget document builder injects panel CSS classes for design-system alignment', () => {

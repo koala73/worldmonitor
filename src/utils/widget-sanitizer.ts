@@ -157,6 +157,8 @@ function mountProWidget(iframe: HTMLIFrameElement): void {
   widgetBodyStore.delete(id);
   widgetTokenStore.delete(id);
   const html = buildWidgetDoc(body);
+  // Keep the mounted entry while the iframe remains connected so sandbox
+  // reloads after DOM moves can request the same document again.
   mountedWidgetDocs.set(id, { iframe, html, token });
   ensureWidgetMessageListener();
 
