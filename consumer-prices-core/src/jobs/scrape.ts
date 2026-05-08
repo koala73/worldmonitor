@@ -198,17 +198,45 @@ export async function scrapeRetailer(slug: string) {
         });
 
         // Stale-pin maintenance — only when the pin URL was actually used (not Exa fallback).
+        // Symmetric disable + auto-recovery (3 consecutive observations either way).
+        // See migration 009 + memory `sticky-disable-without-auto-recovery-decays`
+        // for why both halves matter: code alone leaves historical sticky-decay,
+        // migration alone restarts decay immediately on next nightly scrape.
         if (wasDirectHit && pinnedProductId && pinnedMatchId) {
           if (product.inStock) {
-            await query(
-              `UPDATE retailer_products SET consecutive_out_of_stock = 0, pin_error_count = 0 WHERE id = $1`,
+            // Tick the in-stock counter; reset OOS + pin-error counters atomically.
+            const { rows } = await query<{ in_stock_count: string }>(
+              `UPDATE retailer_products
+                  SET consecutive_in_stock = consecutive_in_stock + 1,
+                      consecutive_out_of_stock = 0,
+                      pin_error_count = 0
+                WHERE id = $1
+            RETURNING consecutive_in_stock AS in_stock_count`,
               [pinnedProductId],
             );
+            const inStockCount = parseInt(rows[0]?.in_stock_count ?? '0', 10);
+            // Mirror the disable threshold (3): after 3 consecutive in-stock
+            // observations, clear the sticky pin_disabled_at. Idempotent —
+            // the WHERE-IS-NOT-NULL clause makes this a no-op for non-disabled
+            // matches, so we don't bump reviewed_at on already-active rows.
+            if (inStockCount >= 3) {
+              const { rowCount } = await query(
+                `UPDATE product_matches
+                    SET pin_disabled_at = NULL
+                  WHERE id = $1 AND pin_disabled_at IS NOT NULL`,
+                [pinnedMatchId],
+              );
+              if (rowCount && rowCount > 0) {
+                logger.info(`  [pin] auto-recovered stale pin for ${target.id} (${inStockCount}x in-stock)`);
+              }
+            }
           } else {
             const { rows } = await query<{ c: string }>(
               `UPDATE retailer_products
-               SET consecutive_out_of_stock = consecutive_out_of_stock + 1
-               WHERE id = $1 RETURNING consecutive_out_of_stock AS c`,
+                  SET consecutive_out_of_stock = consecutive_out_of_stock + 1,
+                      consecutive_in_stock = 0
+                WHERE id = $1
+            RETURNING consecutive_out_of_stock AS c`,
               [pinnedProductId],
             );
             const count = parseInt(rows[0]?.c ?? '0', 10);
