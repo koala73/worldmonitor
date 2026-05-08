@@ -50,7 +50,8 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+const __filename = fileURLToPath(import.meta.url);     // ESM: must declare explicitly (Greptile P1 on PR #3625)
+const __dirname = dirname(__filename);
 const ROOT = resolve(__dirname, '..');
 const SCRIPTS_DIR = join(ROOT, 'scripts');
 
@@ -171,12 +172,34 @@ function resolveExpr(src, expr, scope = {}, _seen = new Set()) {
   return safeEval(expr, expanded);
 }
 
+/**
+ * Extract bundle sections via brace-balanced scan from each `{ label: '...'`
+ * anchor. The non-greedy `\{...?\}` regex would match at the first inner
+ * `}` for sections containing nested objects (e.g. `extraHeaders: {...}`),
+ * silently dropping them — which would let a real new violation slip past
+ * the guard. Greptile P2 on PR #3625.
+ */
 function extractBundleSections(bundleSrc) {
   const sections = [];
-  const blockRe = /\{\s*label:\s*'([^']+)'[\s\S]*?\}/g;
-  for (const m of bundleSrc.matchAll(blockRe)) {
-    const block = m[0];
+  const anchorRe = /\{\s*label:\s*'([^']+)'/g;
+  for (const m of bundleSrc.matchAll(anchorRe)) {
     const label = m[1];
+    const startIdx = m.index;
+    // Walk forward balancing braces, respecting string literals.
+    let depth = 0, endIdx = -1, inStr = false, strCh = '';
+    for (let i = startIdx; i < bundleSrc.length; i++) {
+      const c = bundleSrc[i];
+      if (inStr) {
+        if (c === '\\') i++;     // skip escape
+        else if (c === strCh) inStr = false;
+        continue;
+      }
+      if (c === '"' || c === "'" || c === '`') { inStr = true; strCh = c; continue; }
+      if (c === '{') depth++;
+      else if (c === '}') { depth--; if (depth === 0) { endIdx = i; break; } }
+    }
+    if (endIdx < 0) continue;     // unbalanced — skip
+    const block = bundleSrc.slice(startIdx, endIdx + 1);
     const scriptM = block.match(/script:\s*'([^']+)'/);
     const intervalM = block.match(/intervalMs:\s*([^,}\n]+)/);
     if (!scriptM || !intervalM) continue;
@@ -200,7 +223,11 @@ test('every bundle section using runSeed has canonical TTL ≥ 3× cron interval
 
   const newViolations = [];     // (a) new violations not in allowlist → fail
   const resolvedAllowlistEntries = [];     // (b) allowlist entries no longer violating → fail
-  const stillViolating = new Set();        // tracks which allowlist keys we observed violating
+  const stillViolating = new Set();        // allowKeys observed as currently-violating
+  const skippedAllowKeys = new Set();      // allowKeys that hit a SKIP path; exclude from hygiene check
+                                            // (Greptile P1 on PR #3625: a skipped section in the
+                                            // allowlist must not be treated as "no longer violating"
+                                            // — we just don't have evidence either way)
   const skipped = [];
   let checked = 0;
 
@@ -209,32 +236,28 @@ test('every bundle section using runSeed has canonical TTL ≥ 3× cron interval
     const sections = extractBundleSections(bundleSrc);
 
     for (const sec of sections) {
+      const allowKey = `${sec.label}:${sec.script}`;
+      const skipReason = (reason) => {
+        skipped.push(`${sec.label} (${sec.script}): ${reason}`);
+        if (allowKey in KNOWN_VIOLATIONS) skippedAllowKeys.add(allowKey);
+      };
+
       const intervalMs = resolveExpr(bundleSrc, sec.intervalMsExpr);
-      if (intervalMs == null) {
-        skipped.push(`${sec.label} (${sec.script}): unresolvable intervalMs="${sec.intervalMsExpr}"`);
-        continue;
-      }
+      if (intervalMs == null) { skipReason(`unresolvable intervalMs="${sec.intervalMsExpr}"`); continue; }
 
       let seederSrc;
       try { seederSrc = readFileSync(join(SCRIPTS_DIR, sec.script), 'utf-8'); }
-      catch { skipped.push(`${sec.label}: script file ${sec.script} not found`); continue; }
+      catch { skipReason(`script file ${sec.script} not found`); continue; }
 
       const ttlExpr = extractRunSeedTtl(seederSrc);
-      if (ttlExpr == null) {
-        skipped.push(`${sec.label} (${sec.script}): no runSeed ttlSeconds — likely non-runSeed writer`);
-        continue;
-      }
+      if (ttlExpr == null) { skipReason('no runSeed ttlSeconds — likely non-runSeed writer'); continue; }
 
       const ttlSeconds = resolveExpr(seederSrc, ttlExpr);
-      if (ttlSeconds == null) {
-        skipped.push(`${sec.label} (${sec.script}): ttlSeconds expr "${ttlExpr}" unresolvable — resolver gap (extending the test)`);
-        continue;
-      }
+      if (ttlSeconds == null) { skipReason(`ttlSeconds expr "${ttlExpr}" unresolvable — resolver gap (extend the test)`); continue; }
 
       checked++;
       const ttlMs = ttlSeconds * 1000;
       const required = SAFETY_FACTOR * intervalMs;
-      const allowKey = `${sec.label}:${sec.script}`;
 
       if (ttlMs < required) {
         const ttlH = (ttlMs / 1000 / 3600).toFixed(1);
@@ -254,11 +277,15 @@ test('every bundle section using runSeed has canonical TTL ≥ 3× cron interval
 
   // Allowlist hygiene: any KNOWN_VIOLATIONS entry not still violating means
   // the seeder was fixed but the entry wasn't removed — the allowlist drifts.
+  // Exclude entries whose section was SKIPPED (resolver gap, missing file,
+  // unresolvable expression) — those don't have evidence either way; only
+  // entries that resolved cleanly + passed the threshold count as "fixed."
   for (const allowKey of Object.keys(KNOWN_VIOLATIONS)) {
+    if (skippedAllowKeys.has(allowKey)) continue;
     if (!stillViolating.has(allowKey)) {
       resolvedAllowlistEntries.push(
-        `${allowKey} is in KNOWN_VIOLATIONS but is NO LONGER violating (or no longer detected). ` +
-        `Remove it from the allowlist in ${__filename.split('/').pop()}.`,
+        `${allowKey} is in KNOWN_VIOLATIONS but is NO LONGER violating. ` +
+        `Remove it from the allowlist in tests/seeder-canonical-ttl-vs-cron.test.mjs.`,
       );
     }
   }
@@ -333,4 +360,42 @@ export const SECTIONS = [
   assert.equal(sections.length, 2);
   assert.equal(sections[0].label, 'A');
   assert.equal(sections[1].intervalMsExpr, '12 * HOUR');
+});
+
+test('extractBundleSections: handles sections with nested objects (Greptile P2)', () => {
+  // Pre-fix the regex `\{ ... \}` non-greedy match would END at the first
+  // inner `}` (the close of `{ 'X-Auth': '...' }`), leaving the outer
+  // section's `script:` and `intervalMs:` outside the captured block →
+  // section silently dropped → real new violation could slip past the guard.
+  const sample = `
+const HOUR = 60 * 60 * 1000;
+export const SECTIONS = [
+  {
+    label: 'WithNested',
+    script: 'seed-with-nested.mjs',
+    extraHeaders: { 'X-Auth': 'Bearer xxx', 'Content-Type': 'application/json' },
+    intervalMs: 6 * HOUR,
+    timeoutMs: 300_000,
+  },
+];
+`;
+  const sections = extractBundleSections(sample);
+  assert.equal(sections.length, 1, 'section with nested object must be detected');
+  assert.equal(sections[0].label, 'WithNested');
+  assert.equal(sections[0].script, 'seed-with-nested.mjs');
+  assert.equal(sections[0].intervalMsExpr, '6 * HOUR');
+});
+
+test('extractBundleSections: handles strings containing braces', () => {
+  // Defensive: if a string literal contains `{` or `}`, brace-counting
+  // must not be confused.
+  const sample = `
+const SECTIONS = [
+  { label: 'StrWithBrace', script: 'seed-str.mjs', regexFilter: 'foo\\\\{bar}', intervalMs: 1000 },
+];
+`;
+  const sections = extractBundleSections(sample);
+  assert.equal(sections.length, 1);
+  assert.equal(sections[0].script, 'seed-str.mjs');
+  assert.equal(sections[0].intervalMsExpr, '1000');
 });
