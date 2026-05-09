@@ -10,7 +10,14 @@ retailer:
   searchConfig:
     numResults: 5
     queryTemplate: "{canonicalName} supermercado brasil {currency} preço"
-    urlPathContains: /p/
+    # mercado.carrefour.com.br is a VTEX storefront. Two valid product URL
+    # shapes coexist: legacy `/produto/<slug>` and modern `<slug>/p` (no
+    # trailing slash). The previous single substring `/p/` matched neither
+    # and rejected every Exa result for years (logged 2026-05-09: "5 URLs
+    # from Exa, 0 passed domain check" for every basket item).
+    urlPathContains:
+      - "/produto/"
+      - "/p"
 
   rateLimit:
     requestsPerMinute: 10
