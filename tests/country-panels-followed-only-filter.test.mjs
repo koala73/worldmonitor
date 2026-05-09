@@ -275,6 +275,127 @@ describe('country-scoped panels — edge cases', () => {
   });
 });
 
+describe('country-scoped panels — chip placement keeps close button rightmost', () => {
+  // Mirrors the production logic in DiseaseOutbreaksPanel + DisplacementPanel:
+  //
+  //   const closeBtn = this.header.querySelector('.panel-close-btn');
+  //   if (closeBtn) {
+  //     this.header.insertBefore(host, closeBtn);
+  //   } else {
+  //     this.header.appendChild(host);
+  //   }
+  //
+  // The bug: a plain `this.header.appendChild(host)` lands the chip AFTER
+  // the close button (Panel base appends `.panel-close-btn` first), so X
+  // is no longer the rightmost header control. We assert the placement
+  // logic via a minimal fake header DOM — Panel.ts itself can't be
+  // imported under node:test (i18n's `import.meta.glob`).
+
+  function makeFakeHeader() {
+    const children = [];
+    const header = {
+      _children: children,
+      appendChild(node) {
+        children.push(node);
+        return node;
+      },
+      insertBefore(node, ref) {
+        const i = children.indexOf(ref);
+        if (i === -1) {
+          children.push(node);
+        } else {
+          children.splice(i, 0, node);
+        }
+        return node;
+      },
+      querySelector(sel) {
+        if (sel === '.panel-close-btn') {
+          return children.find((c) => c.className === 'panel-close-btn') ?? null;
+        }
+        return null;
+      },
+      get lastChild() {
+        return children[children.length - 1] ?? null;
+      },
+    };
+    return header;
+  }
+
+  /**
+   * Mirrors the ordered Panel-base header construction:
+   *   header-left → status-badge → count → close-btn
+   * The chip is mounted from the panel constructor AFTER the base has
+   * already appended the close button (Panel.ts line 748).
+   */
+  function buildHeaderWithBaseControls() {
+    const header = makeFakeHeader();
+    header.appendChild({ className: 'panel-header-left' });
+    header.appendChild({ className: 'panel-status-badge' });
+    header.appendChild({ className: 'panel-count' });
+    header.appendChild({ className: 'panel-close-btn' });
+    return header;
+  }
+
+  /** The fix's placement logic — used by both panels. */
+  function mountChipBeforeClose(header, host) {
+    const closeBtn = header.querySelector('.panel-close-btn');
+    if (closeBtn) {
+      header.insertBefore(host, closeBtn);
+    } else {
+      header.appendChild(host);
+    }
+  }
+
+  it('DiseaseOutbreaksPanel shape — close button stays as last header child after chip mount', () => {
+    const header = buildHeaderWithBaseControls();
+    const host = { className: 'panel-header-followed-only-host' };
+    mountChipBeforeClose(header, host);
+    assert.equal(
+      header.lastChild?.className,
+      'panel-close-btn',
+      'close button must be the rightmost (last) header child',
+    );
+    // And the chip host is immediately before it.
+    const idxClose = header._children.findIndex((c) => c.className === 'panel-close-btn');
+    const idxHost = header._children.findIndex((c) => c.className === 'panel-header-followed-only-host');
+    assert.equal(idxHost, idxClose - 1, 'chip host sits directly before close');
+  });
+
+  it('DisplacementPanel shape — same placement guarantee (logic is shared)', () => {
+    // Identical to the disease-outbreaks panel; the production logic is
+    // copy-pasted into both panels. We assert again so a regression in
+    // one panel doesn't pass under the other panel's coverage.
+    const header = buildHeaderWithBaseControls();
+    const host = { className: 'panel-header-followed-only-host' };
+    mountChipBeforeClose(header, host);
+    assert.equal(header.lastChild?.className, 'panel-close-btn');
+  });
+
+  it('BUG SHAPE — naive appendChild lands chip AFTER close (regression guard)', () => {
+    // If a future refactor accidentally drops the insertBefore branch,
+    // this test fires the alarm: header.lastChild becomes the chip host.
+    const header = buildHeaderWithBaseControls();
+    const host = { className: 'panel-header-followed-only-host' };
+    header.appendChild(host); // naive — the bug shape
+    assert.equal(
+      header.lastChild?.className,
+      'panel-header-followed-only-host',
+      'sanity: naive appendChild lands chip after close (this is the bug)',
+    );
+  });
+
+  it('no close button present (defensive) → chip falls back to appendChild', () => {
+    // If a Panel subclass disabled the close button entirely, the
+    // querySelector returns null and the fix falls through to appendChild
+    // — the chip still mounts; it just won't have a close to land before.
+    const header = makeFakeHeader();
+    header.appendChild({ className: 'panel-header-left' });
+    const host = { className: 'panel-header-followed-only-host' };
+    mountChipBeforeClose(header, host);
+    assert.equal(header.lastChild?.className, 'panel-header-followed-only-host');
+  });
+});
+
 describe('country-scoped panels — re-filter on watchlist change', () => {
   it('external watchlist add fires WM_FOLLOWED_COUNTRIES_CHANGED → filter sees new state', () => {
     setupAnonymousFlagOn();

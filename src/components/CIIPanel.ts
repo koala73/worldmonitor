@@ -8,6 +8,7 @@ import { toCountryScore } from '@/services/cached-risk-scores';
 import { renderFollowButton } from '@/utils/follow-button';
 import {
   getFollowed,
+  isFollowFeatureEnabled,
   subscribe as subscribeFollowed,
 } from '@/services/followed-countries';
 import {
@@ -178,7 +179,15 @@ export class CIIPanel extends Panel {
    * subscriptions must be released first).
    */
   private buildList(scores: CountryScore[]): HTMLElement {
-    const partition = partitionByFollowed(scores, getFollowed());
+    // Gate the partition input on the feature flag — `getFollowed()` reads
+    // localStorage even when the flag is off (anonymous mode reads aren't
+    // short-circuited, only mutations are). When the flag is OFF, treat
+    // the followed list as `[]` so partitionByFollowed becomes a no-op:
+    // rows render in the original score order, no FOLLOWING / ALL labels.
+    // Without this gate, flag-off users would see partitioning + section
+    // labels even though the FollowButton / chip surface is hidden.
+    const followedCodes = isFollowFeatureEnabled() ? getFollowed() : [];
+    const partition = partitionByFollowed(scores, followedCodes);
 
     if (!shouldRenderSectionLabels(partition)) {
       // Zero-followed OR all-followed → render the original order with

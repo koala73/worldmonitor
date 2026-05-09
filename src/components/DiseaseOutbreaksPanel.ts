@@ -82,7 +82,16 @@ export class DiseaseOutbreaksPanel extends Panel {
       return;
     }
     host.innerHTML = this._followedOnlyChip.html;
-    this.header.appendChild(host);
+    // Insert BEFORE the close button so close stays rightmost. The Panel
+    // base appends `.panel-close-btn` first; a plain `appendChild` would
+    // land the chip after close and break the user expectation that X
+    // is always the last header control.
+    const closeBtn = this.header.querySelector('.panel-close-btn');
+    if (closeBtn) {
+      this.header.insertBefore(host, closeBtn);
+    } else {
+      this.header.appendChild(host);
+    }
     this._followedOnlyTeardown = this._followedOnlyChip.attach(host);
     // Re-filter on external watchlist change too — the chip itself
     // already re-renders disabled state via its own subscription, but

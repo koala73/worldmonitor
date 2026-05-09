@@ -329,6 +329,144 @@ describe('renderNotifyCountryLink — click invokes open-helper', () => {
   });
 });
 
+describe('event-handlers — WM_OPEN_NOTIFICATIONS_FOR_COUNTRY listener teardown', () => {
+  // Guards against a listener-leak bug: `setupUnifiedSettings` adds an
+  // inline anonymous handler with `window.addEventListener(...)` that the
+  // old EventHandlerManager.destroy() didn't remove. Same-document reinit
+  // (HMR / test harnesses / multiple App instances) accumulated listeners
+  // that retained the stale AppContext closure — every dispatched event
+  // fired ALL accumulated listeners against stale state.
+  //
+  // We don't spin up the real EventHandlerManager (it transitively pulls
+  // i18n's `import.meta.glob` which the node:test runner can't resolve).
+  // Instead we simulate the install/destroy contract: a bound handler
+  // field that's added in install and removed in destroy. The test asserts
+  // the bug shape (N installs → N fires) on a naive setup AND that the
+  // matched-pair shape (install → destroy → re-install) leaves exactly
+  // ONE active listener.
+
+  function makeFakeWindow() {
+    const target = new EventTarget();
+    return {
+      addEventListener: (...args) => target.addEventListener(...args),
+      removeEventListener: (...args) => target.removeEventListener(...args),
+      dispatchEvent: (ev) => target.dispatchEvent(ev),
+    };
+  }
+
+  /**
+   * Mirrors EventHandlerManager's bound-field pattern.
+   * Returns the (install, destroy) pair so tests can drive lifecycle.
+   */
+  function makeInstaller(fakeWindow, ctxLabel, fires) {
+    let bound = null;
+    return {
+      install() {
+        bound = (ev) => {
+          fires.push({ ctxLabel, detail: ev?.detail ?? null });
+        };
+        fakeWindow.addEventListener(
+          WM_OPEN_NOTIFICATIONS_FOR_COUNTRY,
+          bound,
+        );
+      },
+      destroy() {
+        if (bound) {
+          fakeWindow.removeEventListener(
+            WM_OPEN_NOTIFICATIONS_FOR_COUNTRY,
+            bound,
+          );
+          bound = null;
+        }
+      },
+    };
+  }
+
+  it('BUG SHAPE: anonymous-handler installs without destroy → N installs fire N times', () => {
+    // Reproduces the pre-fix behaviour: the listener added with an inline
+    // anonymous function and never removed. Two sequential installs leak.
+    const fakeWindow = makeFakeWindow();
+    const fires = [];
+    const handlerA = (ev) => fires.push({ ctxLabel: 'A', detail: ev.detail });
+    const handlerB = (ev) => fires.push({ ctxLabel: 'B', detail: ev.detail });
+    fakeWindow.addEventListener(WM_OPEN_NOTIFICATIONS_FOR_COUNTRY, handlerA);
+    fakeWindow.addEventListener(WM_OPEN_NOTIFICATIONS_FOR_COUNTRY, handlerB);
+
+    fakeWindow.dispatchEvent(
+      new CustomEvent(WM_OPEN_NOTIFICATIONS_FOR_COUNTRY, {
+        detail: { country: 'US' },
+      }),
+    );
+
+    // Both listeners fire — this is the bug.
+    assert.equal(fires.length, 2);
+    assert.deepEqual(fires.map((f) => f.ctxLabel).sort(), ['A', 'B']);
+  });
+
+  it('FIX: install → destroy → install leaves exactly one active listener', () => {
+    const fakeWindow = makeFakeWindow();
+    const fires = [];
+    const inst1 = makeInstaller(fakeWindow, 'ctx1', fires);
+    inst1.install();
+    inst1.destroy();
+
+    const inst2 = makeInstaller(fakeWindow, 'ctx2', fires);
+    inst2.install();
+
+    fakeWindow.dispatchEvent(
+      new CustomEvent(WM_OPEN_NOTIFICATIONS_FOR_COUNTRY, {
+        detail: { country: 'GB' },
+      }),
+    );
+
+    // Only the live ctx2 handler fires — the destroyed ctx1 is gone.
+    assert.equal(fires.length, 1);
+    assert.equal(fires[0].ctxLabel, 'ctx2');
+    assert.deepEqual(fires[0].detail, { country: 'GB' });
+
+    inst2.destroy();
+  });
+
+  it('FIX: destroy() is idempotent — calling twice does not throw and does not re-fire', () => {
+    const fakeWindow = makeFakeWindow();
+    const fires = [];
+    const inst = makeInstaller(fakeWindow, 'once', fires);
+    inst.install();
+    inst.destroy();
+    inst.destroy(); // must not throw
+
+    fakeWindow.dispatchEvent(
+      new CustomEvent(WM_OPEN_NOTIFICATIONS_FOR_COUNTRY, {
+        detail: { country: 'FR' },
+      }),
+    );
+    assert.equal(fires.length, 0, 'no listener active after destroy');
+  });
+
+  it('FIX: HMR shape — N install/destroy cycles + one live → exactly one fire', () => {
+    const fakeWindow = makeFakeWindow();
+    const fires = [];
+    // Simulate 5 HMR-driven re-mounts.
+    for (let i = 0; i < 5; i += 1) {
+      const inst = makeInstaller(fakeWindow, `gen${i}`, fires);
+      inst.install();
+      inst.destroy();
+    }
+    const live = makeInstaller(fakeWindow, 'live', fires);
+    live.install();
+
+    fakeWindow.dispatchEvent(
+      new CustomEvent(WM_OPEN_NOTIFICATIONS_FOR_COUNTRY, {
+        detail: { country: 'JP' },
+      }),
+    );
+
+    assert.equal(fires.length, 1);
+    assert.equal(fires[0].ctxLabel, 'live');
+    live.destroy();
+  });
+});
+
 describe('renderNotifyCountryLink — teardown', () => {
   it('teardown removes click listener and unsubscribes from watchlist', () => {
     setupAnonymousFlagOn();

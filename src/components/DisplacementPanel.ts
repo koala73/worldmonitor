@@ -56,7 +56,16 @@ export class DisplacementPanel extends Panel {
     });
     if (this.followedOnlyChip.html === '') return;
     host.innerHTML = this.followedOnlyChip.html;
-    this.header.appendChild(host);
+    // Insert BEFORE the close button so close stays rightmost. The Panel
+    // base appends `.panel-close-btn` first; a plain `appendChild` would
+    // land the chip after close and break the user expectation that X
+    // is always the last header control.
+    const closeBtn = this.header.querySelector('.panel-close-btn');
+    if (closeBtn) {
+      this.header.insertBefore(host, closeBtn);
+    } else {
+      this.header.appendChild(host);
+    }
     this.followedOnlyTeardown = this.followedOnlyChip.attach(host);
     // Re-filter on external watchlist change so a follow/unfollow from
     // another surface refreshes the displacement table immediately.

@@ -93,6 +93,7 @@ const { partitionByFollowed, shouldRenderSectionLabels } = partitionMod;
 const svc = await import('../src/services/followed-countries.ts');
 const {
   getFollowed,
+  isFollowFeatureEnabled,
   subscribe,
   FOLLOWED_COUNTRIES_STORAGE_KEY,
   WM_FOLLOWED_COUNTRIES_CHANGED,
@@ -368,6 +369,60 @@ describe('partition + service integration — reactive watchlist', () => {
     unsubscribe();
     _window.dispatchEvent(new CustomEvent(WM_FOLLOWED_COUNTRIES_CHANGED));
     assert.equal(handlerCalls, 1, 'no further calls after teardown');
+  });
+
+  it('flag OFF + populated localStorage → CIIPanel gates partition input to [] → identity passthrough, no labels', () => {
+    // Mirrors the panel-side gating from CIIPanel.buildList:
+    //
+    //   const followed = isFollowFeatureEnabled() ? getFollowed() : [];
+    //   const partition = partitionByFollowed(scores, followed);
+    //
+    // The bug this guards against: `getFollowed()` reads localStorage in
+    // anonymous mode regardless of the flag (only mutations are
+    // short-circuited), so a panel that calls partitionByFollowed(scores,
+    // getFollowed()) without the flag gate would reorder rows + render
+    // FOLLOWING / ALL section labels even when the feature is off and
+    // FollowButton is hidden.
+    setupAnonymousFreeWithFlagOff();
+    _localStorage.setItem(
+      FOLLOWED_COUNTRIES_STORAGE_KEY,
+      JSON.stringify({ countries: ['US', 'GB'] }),
+    );
+
+    // Sanity: flag is reported off; getFollowed() still leaks localStorage.
+    assert.equal(isFollowFeatureEnabled(), false);
+    assert.deepEqual(getFollowed().sort(), ['GB', 'US']);
+
+    // Apply the panel's gate.
+    const followed = isFollowFeatureEnabled() ? getFollowed() : [];
+    const partition = partitionByFollowed(SCORES_5, followed);
+
+    // Identity passthrough — original scores order preserved.
+    assert.equal(partition.followed.length, 0, 'no rows pinned when flag off');
+    assert.deepEqual(
+      partition.unfollowed.map((s) => s.code),
+      ['US', 'CN', 'RU', 'GB', 'FR'],
+      'unfollowed group is the original scores order, untouched',
+    );
+    // Both groups → no FOLLOWING / ALL labels.
+    assert.equal(
+      shouldRenderSectionLabels(partition),
+      false,
+      'no section labels when flag off (matches pre-PR-B behaviour)',
+    );
+
+    // Same gate is the single source of truth for both render paths
+    // (buildList from refresh() AND rerenderRows() from the watchlist
+    // subscription). Re-running the gate after a simulated watchlist
+    // change must still produce identity passthrough.
+    _localStorage.setItem(
+      FOLLOWED_COUNTRIES_STORAGE_KEY,
+      JSON.stringify({ countries: ['US', 'GB', 'FR'] }),
+    );
+    const followed2 = isFollowFeatureEnabled() ? getFollowed() : [];
+    const partition2 = partitionByFollowed(SCORES_5, followed2);
+    assert.equal(partition2.followed.length, 0);
+    assert.equal(shouldRenderSectionLabels(partition2), false);
   });
 
   it('partition reflects the pre-mutation list before dispatch (no premature update)', () => {
