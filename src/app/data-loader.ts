@@ -1049,27 +1049,26 @@ export class DataLoaderManager implements AppModule {
     if (SITE_VARIANT === 'happy') {
       this.ctx.happyAllItems = [];
     }
-
-    // Fire digest fetch early (non-blocking) — await before category loop
+    // Fire digest and category loading in parallel — do NOT await digest before
+    // the category loop. The old code blocked ALL news rendering on digest
+    // (up to 8s timeout), even though most categories do not need digest data.
     const digestPromise = this.tryFetchDigest();
-
     const categories = Object.entries(FEEDS)
       .filter((entry): entry is [string, typeof FEEDS[keyof typeof FEEDS]] => Array.isArray(entry[1]) && entry[1].length > 0)
       .map(([key, feeds]) => ({ key, feeds }));
-
-    const digest = await digestPromise;
-
+    // Load all categories in parallel (digest is still fetching in background)
     const maxCategoryConcurrency = SITE_VARIANT === 'tech' ? 4 : 5;
     const categoryConcurrency = Math.max(1, Math.min(maxCategoryConcurrency, categories.length));
     const categoryResults: PromiseSettledResult<NewsItem[]>[] = [];
     for (let i = 0; i < categories.length; i += categoryConcurrency) {
       const chunk = categories.slice(i, i + categoryConcurrency);
       const chunkResults = await Promise.allSettled(
-        chunk.map(({ key, feeds }) => this.loadNewsCategory(key, feeds, digest))
+        chunk.map(({ key, feeds }) => this.loadNewsCategory(key, feeds, /* digest */ undefined))
       );
       categoryResults.push(...chunkResults);
     }
-
+    // NOW await digest — categories already rendered without it
+    const digest = await digestPromise;
     const collectedNews: NewsItem[] = [];
     categoryResults.forEach((result, idx) => {
       if (result.status === 'fulfilled') {
