@@ -1,0 +1,23 @@
+name: CSP Sync Check
+on: [push, pull_request]
+jobs:
+  check-csp-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extract Vercel CSP script-src
+        run: |
+          VERCEL_SCRIPT_SRC=$(jq -r '.headers[] | select(.value | contains("script-src")) | .value' vercel.json | grep -oP "script-src \K[^;]*" | tr ' ' '\n' | sort | tr '\n' ' ')
+          echo "VERCEL_SCRIPT_SRC=$VERCEL_SCRIPT_SRC" >> $GITHUB_ENV
+      - name: Extract Nginx CSP script-src
+        run: |
+          NGINX_SCRIPT_SRC=$(grep -oP "script-src \K[^;]*" docker/nginx-security-headers.conf | tr ' ' '\n' | sort | tr '\n' ' ')
+          echo "NGINX_SCRIPT_SRC=$NGINX_SCRIPT_SRC" >> $GITHUB_ENV
+      - name: Compare CSP script-src
+        run: |
+          if [ "$VERCEL_SCRIPT_SRC" != "$NGINX_SCRIPT_SRC" ]; then
+            echo "::error::CSP script-src drift detected between vercel.json and nginx-security-headers.conf"
+            echo "Vercel: $VERCEL_SCRIPT_SRC"
+            echo "Nginx: $NGINX_SCRIPT_SRC"
+            exit 1
+          fi
