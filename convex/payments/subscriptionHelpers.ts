@@ -9,7 +9,7 @@
 import { MutationCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { getFeaturesForPlan } from "../lib/entitlements";
-import { PLAN_PRECEDENCE } from "../config/productCatalog";
+import { PLAN_PRECEDENCE, LEGACY_PRODUCT_ALIASES } from "../config/productCatalog";
 import { verifyUserId } from "../lib/identitySigning";
 import { DEV_USER_ID, isDev } from "../lib/auth";
 
@@ -274,8 +274,11 @@ async function resolvePlanKey(
     .unique();
   if (mapping) return mapping.planKey;
 
-  // Fallback: check legacy aliases for old/rotated product IDs
-  const { LEGACY_PRODUCT_ALIASES } = await import("../config/productCatalog");
+  // Fallback: check legacy aliases for old/rotated product IDs.
+  // NOTE: must use the static import — Convex's V8 isolate throws
+  // `TypeError: dynamic module import unsupported` on `await import(...)`,
+  // which would silently break the legacy-alias path on every webhook
+  // for users on rotated product IDs (WORLDMONITOR-QM, 13 events / 1 user).
   const aliasedPlan = LEGACY_PRODUCT_ALIASES[dodoProductId];
   if (aliasedPlan) {
     console.warn(
