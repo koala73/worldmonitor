@@ -28,6 +28,7 @@ const DIGEST_DIPLOMACY_DATA = require('../shared/diplomacy-keywords.json');
 const { decrypt } = require('./lib/crypto.cjs');
 const { callLLM } = require('./lib/llm-chain.cjs');
 const { fetchUserPreferences, extractUserContext, formatUserProfile } = require('./lib/user-context.cjs');
+const { fetchFollowedCountries } = require('./lib/followed-countries-fetch.cjs');
 const { Resend } = require('resend');
 const { normalizeResendSender } = require('./lib/resend-from.cjs');
 import { readRawJsonFromUpstash, redisPipeline } from '../api/_upstash-json.js';
@@ -168,6 +169,18 @@ const BRIEF_SIGNING_SECRET_MISSING =
 // toggled independently (e.g. kill the brief LLM without silencing
 // the email's AI summary during a provider outage).
 const BRIEF_LLM_ENABLED = process.env.BRIEF_LLM_ENABLED !== '0';
+
+// Free-tier follow limit (PR C / U10). Mirrors the UI cap at
+// `src/components/FollowCountryButton.ts` and the server-side mutation
+// cap at `convex/followedCountries.ts::followCountry`. Three layers
+// total — UI / mutation / composer — per the
+// `paywalled-feature-needs-three-layer-entitlement-gate` pattern. The
+// composer clamp catches the post-downgrade case: a user accumulated
+// >3 follows as Pro then downgraded to free; existing rows are
+// grandfathered (mutation only blocks NEW writes), but the composer
+// must still bias only the first 3 in addedAt order so the soft uplift
+// matches what's gated.
+const FREE_TIER_FOLLOW_LIMIT = 3;
 
 // Phase 3c — analyst-backed whyMatters enrichment via an internal Vercel
 // edge endpoint. When the endpoint is reachable + returns a string, it
@@ -1386,11 +1399,28 @@ async function sendWebhook(userId, webhookEnvelope, stories, aiSummary) {
 
 // ── Entitlement check ────────────────────────────────────────────────────────
 
-async function isUserPro(userId) {
+/**
+ * Resolve the caller's entitlement tier (0 = free, 1 = pro, etc).
+ * Reads the relay:entitlement:{userId} cache first; falls back to the
+ * /relay/entitlement HTTP action and back-fills the cache.
+ *
+ * Failure mode: returns `null` when neither cache nor relay yields a
+ * usable number. Callers MUST treat null as "unknown" — never "free"
+ * — so a transient relay outage doesn't accidentally clamp legitimate
+ * paying users out of paywalled affordances. The digest cron's
+ * `isUserPro` uses null → fail-open (true); the followed-country
+ * composer clamp uses null → "skip clamp" (treat as Pro for the
+ * duration of the outage). Same fail-open polarity in both call
+ * sites, but explicit so future readers can audit the choice.
+ */
+async function getUserTier(userId) {
   const cacheKey = `relay:entitlement:${userId}`;
   try {
     const cached = await upstashRest('GET', cacheKey);
-    if (cached !== null) return Number(cached) >= 1;
+    if (cached !== null) {
+      const n = Number(cached);
+      if (Number.isFinite(n)) return n;
+    }
   } catch { /* miss */ }
   try {
     const res = await fetch(`${CONVEX_SITE_URL}/relay/entitlement`, {
@@ -1399,13 +1429,20 @@ async function isUserPro(userId) {
       body: JSON.stringify({ userId }),
       signal: AbortSignal.timeout(5000),
     });
-    if (!res.ok) return true; // fail-open
+    if (!res.ok) return null; // unknown — caller decides fail-open polarity
     const { tier } = await res.json();
-    await upstashRest('SET', cacheKey, String(tier ?? 0), 'EX', String(ENTITLEMENT_CACHE_TTL));
-    return (tier ?? 0) >= 1;
+    const safeTier = Number.isFinite(tier) ? tier : 0;
+    await upstashRest('SET', cacheKey, String(safeTier), 'EX', String(ENTITLEMENT_CACHE_TTL));
+    return safeTier;
   } catch {
-    return true; // fail-open
+    return null;
   }
+}
+
+async function isUserPro(userId) {
+  const tier = await getUserTier(userId);
+  if (tier === null) return true; // fail-open — preserve historic polarity
+  return tier >= 1;
 }
 
 // ── Per-channel body composition ─────────────────────────────────────────────
@@ -1730,6 +1767,32 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
     }
   }
 
+  // PR C / U10: fetch the user's followed-countries watchlist, then
+  // apply the free-tier safety-net clamp. Three-layer gate: UI cap
+  // (FollowCountryButton) + mutation cap (followedCountries.ts) +
+  // this composer clamp (post-downgrade safety). Memory:
+  // `paywalled-feature-needs-three-layer-entitlement-gate`.
+  //
+  // Failure modes are absorbed by fetchFollowedCountries (it returns
+  // [] on any soft error, never throws) — the bias is purely an
+  // uplift, so missing data degrades to today's behavior, not to a
+  // wrong brief.
+  let followedCountriesUsed = [];
+  try {
+    const followed = await fetchFollowedCountries(userId);
+    if (followed.length > 0) {
+      const tier = await getUserTier(userId);
+      // tier === null (relay unreachable) → fail-open: skip the clamp,
+      // honor the user's full followed list. Same polarity as
+      // isUserPro's fail-open (true = Pro). A transient outage must
+      // not silently demote a paying user's bias.
+      const isFree = tier !== null && tier < 1;
+      followedCountriesUsed = isFree ? followed.slice(0, FREE_TIER_FOLLOW_LIMIT) : followed;
+    }
+  } catch (err) {
+    console.warn(`[digest] brief: followed-countries fetch threw for ${userId}:`, err?.message);
+  }
+
   // Compose envelope with synthesis pre-baked. The composer applies
   // severity/topic-cluster ordering BEFORE the cap, with
   // rankedStoryHashes only as a tie-breaker inside similarly severe
@@ -1763,8 +1826,23 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
             publicThreads: publicLead?.threads ?? undefined,
           }
         : undefined,
+      followedCountries: followedCountriesUsed,
     },
   );
+
+  // Operator-visible signal that the followed-country bias did
+  // (or did not) participate in this user's compose. Distinct log
+  // line so the brief-filter-drops grep stays clean. Captures the
+  // clamped list (post free-tier truncation) so an operator
+  // reading the log can recompute "why was this story boosted".
+  // Empty list → no-op (and we don't log to keep volume sane).
+  if (followedCountriesUsed.length > 0) {
+    console.log(
+      `[digest] brief followed-bias user=${userId} ` +
+        `count=${followedCountriesUsed.length} ` +
+        `countries=${followedCountriesUsed.join(',')}`,
+    );
+  }
 
   // Per-attempt filter-drop line for the winning candidate. Same
   // shape today's log emits — operators can keep their existing
