@@ -38,7 +38,11 @@ describe('handleStaleOnInStock', () => {
     expect(mockQuery).toHaveBeenCalledOnce();
     const sql = mockQuery.mock.calls[0][0] as string;
     expect(sql).toContain('UPDATE retailer_products');
-    expect(sql).toContain('consecutive_in_stock = consecutive_in_stock + 1');
+    // Counter is capped at the recovery threshold (3) so it doesn't grow
+    // unbounded for always-active pins. The clear query is idempotent
+    // (`WHERE pin_disabled_at IS NOT NULL`), so capping is behavior-neutral
+    // — it only stops the unbounded INT growth flagged in PR #3633 review.
+    expect(sql).toContain('consecutive_in_stock = LEAST(consecutive_in_stock + 1, 3)');
     expect(sql).toContain('consecutive_out_of_stock = 0');
     expect(sql).toContain('pin_error_count = 0');
     expect(sql).toContain('RETURNING consecutive_in_stock AS in_stock_count');

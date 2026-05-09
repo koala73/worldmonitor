@@ -104,4 +104,21 @@ describe('matchesAnyPathFilter', () => {
   it('rejects when no filter matches', () => {
     expect(matchesAnyPathFilter('https://x.com/category/foo', ['/product/', '/item/'])).toBe(false);
   });
+
+  // Documents a known tradeoff for the carrefour_br fix: `/p` over-matches
+  // non-product paths like `/promo/`, `/pages/`, `/popular/`, `/help/`.
+  // Acceptable because (a) the host check already pins us to the storefront,
+  // (b) Firecrawl extraction rejects pages with no price/title at the next
+  // stage. Cost is one extra Firecrawl call per false-positive URL. If this
+  // ever shows up as material API spend, swap to regex with `/p$` anchor.
+  // Update: PR review (codex) round 2 P2 — see carrefour_br.yaml comment.
+  it('Carrefour BR `/p` filter: known over-match cases (acceptable tradeoff)', () => {
+    const filters = ['/produto/', '/p'];
+    // These are NOT product URLs but the loose `/p` substring matches them.
+    // Documenting so a future tightening (regex `/p$`) has a regression test
+    // to flip — these should become `false` once the filter is anchored.
+    expect(matchesAnyPathFilter('https://mercado.carrefour.com.br/promocoes/semana', filters)).toBe(true);
+    expect(matchesAnyPathFilter('https://mercado.carrefour.com.br/pages/about', filters)).toBe(true);
+    expect(matchesAnyPathFilter('https://mercado.carrefour.com.br/popular/today', filters)).toBe(true);
+  });
 });
