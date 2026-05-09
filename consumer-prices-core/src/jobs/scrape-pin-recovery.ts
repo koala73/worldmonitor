@@ -27,9 +27,15 @@ const logger = {
  * or otherwise touch rows that were never disabled.
  */
 export async function handleStaleOnInStock(productId: string, matchId: string, targetId: string): Promise<void> {
+  // Cap at 3 — the recovery threshold. Once a pin is past the threshold,
+  // there's no point in continuing to increment (it wastes a write per
+  // scrape per always-active pin). The clear query below is idempotent
+  // (`WHERE pin_disabled_at IS NOT NULL`), so capping doesn't change
+  // behavior, just stops the unbounded INT growth that PR #3633 review
+  // (codex round 2 P3) flagged.
   const { rows } = await query<{ in_stock_count: string }>(
     `UPDATE retailer_products
-        SET consecutive_in_stock = consecutive_in_stock + 1,
+        SET consecutive_in_stock = LEAST(consecutive_in_stock + 1, 3),
             consecutive_out_of_stock = 0,
             pin_error_count = 0
       WHERE id = $1

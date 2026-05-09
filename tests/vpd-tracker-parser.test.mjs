@@ -58,11 +58,11 @@ describe('seed-vpd-tracker: parseRealtimeAlerts (post-2026-04 bundle format)', (
     assert.equal(madrid.cases, 1234, 'comma-separated "1,234" must parse to 1234');
   });
 
-  it('throws a clear error when no eval block matches realtime schema (upstream format drift)', () => {
+  it('throws a clear error when no matching array block for realtime schema (upstream format drift)', () => {
     const bundle = '/* bundle with no eval var-res blocks */';
     assert.throws(
       () => parseRealtimeAlerts(bundle),
-      /no eval block matches realtime schema \(Alert_ID, lat, lng, diseases\)/,
+      /no matching array block for realtime schema \(Alert_ID, lat, lng, diseases\)/,
     );
   });
 
@@ -74,7 +74,7 @@ describe('seed-vpd-tracker: parseRealtimeAlerts (post-2026-04 bundle format)', (
     const bundle = `eval("${escaped}")`;
     assert.throws(
       () => parseRealtimeAlerts(bundle),
-      /no eval block matches realtime schema/,
+      /no matching array block for realtime schema/,
     );
   });
 });
@@ -102,7 +102,7 @@ describe('seed-vpd-tracker: parseHistoricalData (post-2026-04 bundle format)', (
     assert.equal(aus.cases, 9);
   });
 
-  it('throws a clear error when no eval block matches historical schema', () => {
+  it('throws a clear error when no matching array block for historical schema', () => {
     // Bundle has an Alert_ID block, but no historical-shaped block.
     const realtime = [{ Alert_ID: '1', lat: '0', lng: '0', diseases: 'Measles', place_name: '', country: '', date: '', cases: '', link: '', Type: '', summary: '' }];
     const inner = `var res = ${JSON.stringify(realtime)}`;
@@ -110,7 +110,7 @@ describe('seed-vpd-tracker: parseHistoricalData (post-2026-04 bundle format)', (
     const bundle = `eval("${escaped}")`;
     assert.throws(
       () => parseHistoricalData(bundle),
-      /no eval block matches historical schema/,
+      /no matching array block for historical schema/,
     );
   });
 });
@@ -273,24 +273,99 @@ describe('seed-vpd-tracker: REGRESSION — JSON-escaped quotes inside string val
   });
 });
 
-describe('seed-vpd-tracker: REGRESSION — pre-2026-04 bundle shape now throws clearly', () => {
-  // The OLD format: `var a=[{Alert_ID:"...",...}]; a.columns=["Alert_ID",...]`
-  // and `[{country:"Afghanistan",...}]`. The pre-fix parser anchored on these.
-  // Post-fix, the same input throws a clear "anchor not found" message instead
-  // of attempting to parse and producing a confusing downstream error.
-  it('rejects the pre-2026-04 var-a format with a clear message', () => {
-    const oldShape = [
-      'var a=[{Alert_ID:"8731706",lat:"56.85",lng:"24.92",diseases:"Measles"}];',
-      'a.columns=["Alert_ID","lat","lng","diseases"];',
-      '[{country:"Afghanistan",iso:"AF",disease:"Diphtheria",year:"2024",cases:"207"}]',
-    ].join('\n');
-    assert.throws(
-      () => parseRealtimeAlerts(oldShape),
-      /no eval block matches realtime schema/,
+describe('seed-vpd-tracker: plain-JS var-a format (pre-2026-04 / 2026-05-revert)', () => {
+  // The bundle on 2026-05-09 reverted to plain JS object literals (or shipped
+  // a third variant after the April webpack rebuild): unquoted keys, mixed
+  // `"..."`/`'...'` string values, no eval wrapper. The parser now supports
+  // BOTH this format AND the eval+escaped-JSON format from the April
+  // rewrite — both iterate via findArrayBySchema. WM 2026-05-09 detected
+  // via /api/health: vpdTrackerRealtime stale 72h while bundle siblings
+  // (Disease-Outbreaks, Displacement) ran fine in the same bundle.
+  it('parses unquoted-keys realtime alerts (var a=[{Alert_ID:...}])', () => {
+    const bundle = [
+      'function(e,s){var a=[{Alert_ID:"8731706",lat:"56.85",lng:"24.92",',
+      'diseases:"Measles",place_name:"Riga, Latvia",country:"Latvia",',
+      'date:"5/2/2026",cases:"3",link:"https://example.com/x",',
+      'summary:"Three measles cases reported."},',
+      '{Alert_ID:"8731707",lat:"40.1",lng:"-74.2",diseases:"Mumps",',
+      'place_name:"Trenton, NJ",country:"United States",date:"5/3/2026",',
+      'cases:"7",link:"https://example.com/y",summary:"Mumps cluster."}]}',
+    ].join('');
+    const out = parseRealtimeAlerts(bundle);
+    assert.strictEqual(out.length, 2);
+    assert.strictEqual(out[0].alertId, '8731706');
+    assert.strictEqual(out[0].disease, 'Measles');
+    assert.strictEqual(out[0].cases, 3);
+    assert.strictEqual(out[1].country, 'United States');
+  });
+
+  it('parses single-quoted JS values (used when value contains literal ")', () => {
+    // Bundle uses `'...'` for any value with embedded double quotes, e.g.
+    // summaries that quote source phrases. JSON requires `"..."` so the
+    // normalizer rewrites quote style and re-escapes embedded `"`.
+    const bundle = [
+      'function(e,s){var a=[{Alert_ID:"X1",lat:"40",lng:"-74",',
+      'diseases:"Measles",place_name:"Riga",country:"Latvia",',
+      'date:"5/2/2026",cases:"3",link:"https://e.com",',
+      'summary:\'A measles exposure linked to an "alternative wellness" seminar.\'}]}',
+    ].join('');
+    const out = parseRealtimeAlerts(bundle);
+    assert.strictEqual(out.length, 1);
+    assert.strictEqual(
+      out[0].summary,
+      'A measles exposure linked to an "alternative wellness" seminar.',
     );
-    assert.throws(
-      () => parseHistoricalData(oldShape),
-      /no eval block matches historical schema/,
+  });
+
+  it('parses unquoted-keys historical (var a=[{country:...}])', () => {
+    const bundle = [
+      'function(e,s){var a=[{country:"Afghanistan",iso:"AF",',
+      'disease:"Diphtheria",year:"2024",cases:"207"},',
+      '{country:"Albania",iso:"AL",disease:"Measles",year:"2024",cases:"0"}]}',
+    ].join('');
+    const out = parseHistoricalData(bundle);
+    assert.strictEqual(out.length, 2);
+    assert.strictEqual(out[0].country, 'Afghanistan');
+    assert.strictEqual(out[0].cases, 207);
+  });
+
+  it('still throws clearly when no block matches either format', () => {
+    // No eval wrapper, no var-array with the matching schema fingerprint.
+    const garbage = 'function(e,s){var x = "irrelevant"; var n=[1,2,3]}';
+    assert.throws(() => parseRealtimeAlerts(garbage), /no matching array block for realtime schema/);
+    assert.throws(() => parseHistoricalData(garbage), /no matching array block for historical schema/);
+  });
+
+  // Regression test for codex round 4 P2: the prior two-pass implementation
+  // (string-quote-normalize, then a regex `s/([{,])\s*(<ident>):/$1"\$2":/g`)
+  // would corrupt summary fields whose body contained a `,<word>:` sequence
+  // because the regex had no string-state awareness. The single-pass
+  // jsLiteralToJSON walker now tracks inString and only quotes keys when
+  // out-of-string, so this case parses cleanly.
+  it('does NOT misquote `,ident:` sequences inside string values (round-4 P2)', () => {
+    const bundle = [
+      'function(e,s){var a=[{Alert_ID:"X1",lat:"40",lng:"-74",',
+      'diseases:"Measles",place_name:"NYC",country:"USA",',
+      'date:"5/2/2026",cases:"3",link:"https://e.com",',
+      // The summary contains a literal `, date:` sequence — exactly the
+      // pattern the old regex would have falsely quoted. The single-pass
+      // walker is in `inString=true` here so it must NOT touch this.
+      'summary:"Cases linked to event, date: 2026-05-01, source confirmed."}]}',
+    ].join('');
+    const out = parseRealtimeAlerts(bundle);
+    assert.strictEqual(out.length, 1);
+    assert.strictEqual(
+      out[0].summary,
+      'Cases linked to event, date: 2026-05-01, source confirmed.',
     );
+  });
+
+  it('handles bundle truncation at a backslash without overshooting EOF (round-4 P3)', () => {
+    // If the bundle is truncated mid-escape-sequence, the brace walker
+    // must not advance past the end of the string when it hits `\` as the
+    // last byte. Result: walker returns -1 cleanly, candidate is skipped,
+    // findArrayBySchema falls through to the throw.
+    const truncated = 'function(e,s){var a=[{Alert_ID:"foo",lat:"1",lng:"2",diseases:"X\\';
+    assert.throws(() => parseRealtimeAlerts(truncated), /no matching array block/);
   });
 });

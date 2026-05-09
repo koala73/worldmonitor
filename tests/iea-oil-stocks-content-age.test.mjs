@@ -15,12 +15,15 @@ import {
 
 const FIXED_NOW = 1700000000000;     // 2023-11-14T22:13:20.000Z — stable test "now"
 
-test('IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN is 90 days', () => {
-  // 90d = ~60d natural M+2 lag + ~30d missed-publication slack. See helper
-  // module's JSDoc on the threshold. Initial PR shipped 45d, which was
-  // wrong: every fresh seed run would have tripped STALE_CONTENT because
-  // 45d < the natural lag. Greptile P1 caught it on PR #3599.
-  assert.equal(IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN, 90 * 24 * 60);
+test('IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN is 120 days', () => {
+  // 120d = ~60d natural M+2 lag + ~60d slack for up-to-two missed
+  // publications. See helper module's JSDoc for the iteration history
+  // (45d → 90d → 120d). The 2026-05-09 bump from 90d → 120d followed an
+  // IEA Feb 2026 publication delay confirmed via direct upstream probe:
+  // `https://api.iea.org/netimports/monthly/?year=2026&month=02` returned
+  // `[]`, so the staleness was a real upstream delay rather than a
+  // parser/network bug.
+  assert.equal(IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN, 120 * 24 * 60);
 });
 
 // ── dataMonthToEndOfMonthMs ──────────────────────────────────────────────
@@ -134,11 +137,14 @@ test('pilot threshold: dataMonth ~14 days old is within 90-day budget (no false 
   );
 });
 
-test('pilot threshold: dataMonth ~120d old (multiple missed publications) trips STALE_CONTENT', () => {
-  // FIXED_NOW = 2023-11-14T22:13:20Z. "2023-07" → end-of-Jul = ~106d ago,
-  // past the 90d budget. Simulates "Aug AND Sept data both missed" or "Aug
-  // arrived very late" scenarios where on-call should be paged.
-  const cm = ieaOilStocksContentMeta({ dataMonth: '2023-07' }, FIXED_NOW);
+test('threshold: dataMonth ~168d old (multiple missed publications) trips STALE_CONTENT', () => {
+  // FIXED_NOW = 2023-11-14T22:13:20Z. "2023-05" → end-of-May = ~168d ago,
+  // past the 120d budget. Simulates "Jun, Jul AND Aug data all missed" or
+  // "Jun arrived very late" — at least three monthly publications late, on-call
+  // should be paged. Pre-bump this test used "2023-07" (~106d) which was past
+  // the old 90d budget but well WITHIN the new 120d budget; pushed back two
+  // months so the trip remains decisive.
+  const cm = ieaOilStocksContentMeta({ dataMonth: '2023-05' }, FIXED_NOW);
   const ageMin = (FIXED_NOW - cm.newestItemAt) / 60000;
   assert.ok(
     ageMin > IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN,
@@ -146,16 +152,18 @@ test('pilot threshold: dataMonth ~120d old (multiple missed publications) trips 
   );
 });
 
-test('pilot threshold: M+2 lag scenario — Sept data still in cache by Feb 1 (5 months later) trips STALE_CONTENT', () => {
-  // Realistic incident pattern: cache holds dataMonth="2023-09" (Sept data,
-  // M+2 publication = late Nov 2023). By Feb 1 2024 — three months past
-  // expected publication of Oct AND Nov data — staleness is unambiguous.
-  // 154d > 90d budget: clearly trips.
+test('threshold: M+2 lag scenario — Aug data still in cache by Feb 1 (5+ months later) trips STALE_CONTENT', () => {
+  // Realistic incident pattern: cache holds dataMonth="2023-08" (Aug data,
+  // M+2 publication = late Oct 2023). By Feb 1 2024 — three full months past
+  // expected publication of Sep AND Oct data — staleness is unambiguous.
+  // ~154d > 120d budget: clearly trips. Pre-bump this used dataMonth="2023-09"
+  // (~122d), which was only 2d past the new 120d budget — too close to the
+  // boundary to be a useful regression guard. Pushed back one month.
   const FIXED_FUTURE = Date.UTC(2024, 1, 1);     // Feb 1 2024 UTC
-  const cm = ieaOilStocksContentMeta({ dataMonth: '2023-09' }, FIXED_FUTURE);
+  const cm = ieaOilStocksContentMeta({ dataMonth: '2023-08' }, FIXED_FUTURE);
   const ageMin = (FIXED_FUTURE - cm.newestItemAt) / 60000;
   assert.ok(
     ageMin > IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN,
-    `Sept 2023 data on Feb 1 2024: ${Math.round(ageMin / 60 / 24)}d > ${IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN / 60 / 24}d budget — STALE_CONTENT trips`,
+    `Aug 2023 data on Feb 1 2024: ${Math.round(ageMin / 60 / 24)}d > ${IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN / 60 / 24}d budget — STALE_CONTENT trips`,
   );
 });

@@ -173,6 +173,180 @@ function* iterateEvalResArrays(bundle) {
 }
 
 /**
+ * Brace-walk a plain-JS array literal starting at `arrayOpen` (the `[` byte)
+ * and return the index of the matching `]`, or -1 on truncation.
+ *
+ * This is a separate scanner from findArrayCloseInEscapedForm: that one
+ * operates over JS-string-escaped JSON (the eval-wrapped format added in
+ * the April 2026 webpack rewrite). This scanner operates over plain JS
+ * source where strings use `"..."` with `\"` for embedded quotes and
+ * brackets inside strings must NOT shift depth.
+ *
+ * Bundle 2026-05 reverted to this format (or shipped a third variant).
+ * Verified against the 4MB index_bundle.js on 2026-05-09 — `var a=[{Alert_ID:"...",...},...]`
+ * with unquoted keys and direct double-quoted values, no eval wrapper.
+ */
+function findArrayCloseInPlainJS(bundle, arrayOpen) {
+  let depth = 0;
+  let stringQuote = null; // null | '"' | "'"
+  let i = arrayOpen;
+  while (i < bundle.length) {
+    const ch = bundle[i];
+    if (stringQuote !== null) {
+      if (ch === '\\') {
+        // Bundle-truncation guard: if `\` is the last byte, don't overshoot
+        // EOF on the +2 advance — break and let the outer "no close found"
+        // path return -1.
+        if (i + 1 >= bundle.length) break;
+        i += 2;
+        continue;
+      }
+      if (ch === stringQuote) stringQuote = null;
+    } else {
+      if (ch === '"' || ch === "'") stringQuote = ch;
+      else if (ch === '[') depth++;
+      else if (ch === ']') {
+        depth--;
+        if (depth === 0) return i;
+      }
+    }
+    i++;
+  }
+  return -1;
+}
+
+/**
+ * Convert a plain-JS array literal into pure JSON in a single pass:
+ *   1. `'...'` string values   → `"..."` JSON strings (with proper re-escaping
+ *      of any literal `"` that appeared inside the single-quoted body).
+ *   2. Unquoted keys after `{` or `,` → `"key":`
+ *
+ * Both transforms in one walker so the key-quoting step CANNOT misfire on
+ * `, identifier:` sequences embedded inside string values (e.g. a summary
+ * field containing "Cases linked, date: 2026-05-01"). The walker tracks
+ * `inString` and only inserts key quotes when out-of-string.
+ *
+ * Pre-PR-3636 these were two separate passes (a regex over the post-string-
+ * normalized output). Codex review round 1 P2 flagged that the regex pass
+ * had no string-state awareness and could corrupt summary fields that
+ * happened to contain `,<word>:` sequences. This single-pass walker
+ * eliminates the class of bug.
+ */
+function jsLiteralToJSON(literal) {
+  let out = '';
+  let i = 0;
+  // Tracks the last non-whitespace char emitted at top level (out-of-string).
+  // Only `{` and `,` are valid contexts where an unquoted key may follow;
+  // any other prior char (e.g. `:` after a value, `[` opening a nested
+  // array) means an identifier here is NOT a key — leave it alone.
+  let lastTopChar = '';
+
+  while (i < literal.length) {
+    const c = literal[i];
+
+    // ---- String value handling ----
+    if (c === "'" || c === '"') {
+      const quote = c;
+      out += '"';
+      i++;
+      while (i < literal.length) {
+        const ch = literal[i];
+        if (ch === '\\') {
+          // JSON accepts `\\`, `\"`, `\/`, `\n`, `\t`, `\r`, `\b`, `\f`,
+          // `\uXXXX` — pass through. `\'` is invalid in JSON: convert to
+          // bare `'`. Bundle-truncation guard: don't overshoot EOF.
+          if (i + 1 >= literal.length) { i += 1; break; }
+          if (literal[i + 1] === "'") { out += "'"; i += 2; continue; }
+          out += ch + literal[i + 1];
+          i += 2;
+          continue;
+        }
+        if (ch === quote) { out += '"'; i++; break; }
+        // Single-quoted source body containing a literal `"` must be escaped
+        // for JSON. Double-quoted source bodies don't need this — `'` is
+        // valid in both JS and JSON strings.
+        if (quote === "'" && ch === '"') { out += '\\"'; i++; continue; }
+        out += ch;
+        i++;
+      }
+      lastTopChar = '"'; // string just closed
+      continue;
+    }
+
+    // ---- Out-of-string: maybe an unquoted key starts here ----
+    // Trigger conditions:
+    //   - lastTopChar is `{` or `,` (we just opened an object or finished
+    //     a previous key/value pair)
+    //   - current char starts an identifier
+    if ((lastTopChar === '{' || lastTopChar === ',')
+        && /[A-Za-z_]/.test(c)) {
+      // Read the identifier
+      let j = i;
+      while (j < literal.length && /[A-Za-z0-9_]/.test(literal[j])) j++;
+      // Skip whitespace, expect `:`
+      let k = j;
+      while (k < literal.length && /\s/.test(literal[k])) k++;
+      if (literal[k] === ':') {
+        out += '"' + literal.slice(i, j) + '"' + literal.slice(j, k + 1);
+        i = k + 1;
+        lastTopChar = ':';
+        continue;
+      }
+      // Identifier without trailing `:` → not a key (probably a literal
+      // value like `null`, `true`, `false`, or unquoted JS that JSON.parse
+      // will reject downstream). Pass through as-is.
+      out += literal.slice(i, j);
+      i = j;
+      lastTopChar = literal[j - 1];
+      continue;
+    }
+
+    // ---- Default pass-through ----
+    out += c;
+    if (!/\s/.test(c)) lastTopChar = c;
+    i++;
+  }
+  return out;
+}
+
+/**
+ * Enumerate every `var <name>=[{<key>:...},...]` plain-JS array in the bundle.
+ * Sibling of iterateEvalResArrays for the pre-2026-04 / post-2026-05-revert
+ * bundle format (plain JS object literals with unquoted keys, no eval
+ * wrapper). Tries to JSON-ify each candidate by quoting unquoted keys, then
+ * JSON.parse; silently skips candidates that don't parse.
+ */
+function* iteratePlainJSArrays(bundle) {
+  // Anchor: word boundary + `var ` + identifier + `=[{` + key-like identifier + `:`
+  // The trailing `<id>:` is what excludes unrelated `var x=[1,2,3]` arrays —
+  // we only want object-of-objects arrays which is what VPD ships.
+  const re = /\bvar\s+[A-Za-z_$][A-Za-z0-9_$]*\s*=\s*(\[)\s*\{\s*[A-Za-z_][A-Za-z0-9_]*\s*:/g;
+  let m;
+  while ((m = re.exec(bundle)) !== null) {
+    const arrayOpen = m.index + m[0].lastIndexOf('[');
+    const arrayClose = findArrayCloseInPlainJS(bundle, arrayOpen);
+    if (arrayClose === -1) continue;
+    const literal = bundle.slice(arrayOpen, arrayClose + 1);
+    // Single-pass walker: converts JS string quoting → JSON string quoting
+    // AND quotes unquoted keys after `{` or `,`. The walker tracks string
+    // state, so the key-quoting step cannot misfire on a `,<ident>:` that
+    // happens to live inside a string value (e.g. summary fields like
+    // "Cases linked, date: 2026-05-01"). Pre-fix this was two passes and
+    // codex round 4 P2 flagged the string-corruption hazard.
+    const jsonForm = jsLiteralToJSON(literal);
+    try {
+      const array = JSON.parse(jsonForm);
+      if (Array.isArray(array)) yield { array };
+    } catch {
+      // Bundle drift (e.g. an unquoted JS value like `undefined`/`NaN` or a
+      // trailing comma) — skip and keep searching. The schema-fingerprint
+      // matcher in findArrayBySchema will surface a clear error if no other
+      // candidate matches.
+    }
+  }
+}
+
+/**
  * Find the first eval-block array whose records contain ALL of the named
  * fields. Schema-based identification — independent of key order within
  * objects, eval-block order in the bundle, and minor bundler shuffles.
@@ -183,21 +357,28 @@ function* iterateEvalResArrays(bundle) {
  */
 function findArrayBySchema(bundle, requiredFields) {
   const needed = new Set(requiredFields);
-  for (const { array } of iterateEvalResArrays(bundle)) {
-    if (array.length === 0) continue;
-    // Sample up to 5 records to tolerate sparse fields on any single row.
-    const sampleSize = Math.min(5, array.length);
-    const seen = new Set();
-    for (let i = 0; i < sampleSize; i++) {
-      const r = array[i];
-      if (!r || typeof r !== 'object') continue;
-      for (const k of Object.keys(r)) seen.add(k);
+  // Try both bundle formats. The eval-wrapped form was added in the April
+  // 2026 webpack rewrite; the plain-JS form is the pre-rewrite (and
+  // post-2026-05-revert) shape. Either may be present in any given bundle
+  // build, so we iterate both and accept the first schema match.
+  const iterators = [iterateEvalResArrays(bundle), iteratePlainJSArrays(bundle)];
+  for (const iterator of iterators) {
+    for (const { array } of iterator) {
+      if (array.length === 0) continue;
+      // Sample up to 5 records to tolerate sparse fields on any single row.
+      const sampleSize = Math.min(5, array.length);
+      const seen = new Set();
+      for (let i = 0; i < sampleSize; i++) {
+        const r = array[i];
+        if (!r || typeof r !== 'object') continue;
+        for (const k of Object.keys(r)) seen.add(k);
+      }
+      let allPresent = true;
+      for (const f of needed) {
+        if (!seen.has(f)) { allPresent = false; break; }
+      }
+      if (allPresent) return array;
     }
-    let allPresent = true;
-    for (const f of needed) {
-      if (!seen.has(f)) { allPresent = false; break; }
-    }
-    if (allPresent) return array;
   }
   return null;
 }
@@ -208,7 +389,7 @@ export function parseRealtimeAlerts(bundle) {
   // records) is fine; only a real schema change (renamed field) breaks us.
   const rows = findArrayBySchema(bundle, ['Alert_ID', 'lat', 'lng', 'diseases']);
   if (!rows) {
-    throw new Error('[VPD] no eval block matches realtime schema (Alert_ID, lat, lng, diseases) — upstream format drift?');
+    throw new Error('[VPD] no matching array block for realtime schema (Alert_ID, lat, lng, diseases) — tried both eval-wrapped + plain-JS formats; upstream format drift?');
   }
   return rows
     .filter((r) => r.lat && r.lng)
@@ -232,7 +413,7 @@ export function parseHistoricalData(bundle) {
   // schema fingerprint — the iso/disease/year combo is unique to historical.
   const rows = findArrayBySchema(bundle, ['country', 'iso', 'disease', 'year', 'cases']);
   if (!rows) {
-    throw new Error('[VPD] no eval block matches historical schema (country, iso, disease, year, cases) — upstream format drift?');
+    throw new Error('[VPD] no matching array block for historical schema (country, iso, disease, year, cases) — tried both eval-wrapped + plain-JS formats; upstream format drift?');
   }
   return rows.map((r) => ({
     country: r.country,

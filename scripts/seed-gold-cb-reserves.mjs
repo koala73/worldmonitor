@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed, withRetry, normalizeSdmxPeriod } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, withRetry, normalizeSdmxPeriod, imfAuthHeaders, PERMANENT_4XX_STATUSES, parseRetryAfterMs } from './_seed-utils.mjs';
 loadEnvFile(import.meta.url);
 
 // Re-exported for the test suite. The shared normalizer lives in _seed-utils
@@ -11,9 +11,11 @@ const CB_KEY = 'market:gold-cb-reserves:v1';
 const CB_TTL = 2_592_000; // 30 days — data is monthly, TTL long to survive missed runs
 
 // IMF IRFCL (International Reserves and Foreign Currency Liquidity) dataflow
-// via SDMX 3.0 — public, no auth. The original PR (#3038) targeted
-// IMF.STA/IFS which returns HTTP 404 — IFS isn't an exposed dataflow on
-// api.imf.org; gold-reserves data lives under IMF.STA/IRFCL.
+// via SDMX 3.0. Set IMF_API_KEY for forward-compatibility — see
+// imfAuthHeaders in _seed-utils.mjs for the auth-status backstory. The
+// original PR (#3038) targeted IMF.STA/IFS which returns HTTP 404 — IFS
+// isn't an exposed dataflow on api.imf.org; gold-reserves data lives under
+// IMF.STA/IRFCL.
 //
 // Dimensions: COUNTRY.INDICATOR.SECTOR.FREQUENCY (4, not 3). Key pattern
 // requires explicit wildcards `*.<indicator>.*.M`; empty segments return
@@ -65,10 +67,18 @@ async function fetchIrfclMonthlySeries(indicator) {
 
   const json = await withRetry(async () => {
     const r = await fetch(url, {
-      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
+      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json', ...imfAuthHeaders() },
       signal: AbortSignal.timeout(90_000),
     });
-    if (!r.ok) throw new Error(`IMF IRFCL ${indicator}: HTTP ${r.status}`);
+    if (!r.ok) {
+      const err = new Error(`IMF IRFCL ${indicator}: HTTP ${r.status}`);
+      if (PERMANENT_4XX_STATUSES.has(r.status)) err.nonRetryable = true;
+      // 429 (rate limit) and 503 (overloaded) typically carry Retry-After.
+      if (r.status === 429 || r.status === 503) {
+        err.retryAfterMs = parseRetryAfterMs(r.headers.get('retry-after'));
+      }
+      throw err;
+    }
     return r.json();
   }, 2, 3000);
 

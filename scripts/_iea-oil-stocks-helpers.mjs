@@ -64,7 +64,7 @@ export function ieaOilStocksContentMeta(data, nowMs = Date.now()) {
 }
 
 /**
- * Sprint 3b pilot threshold (90 days).
+ * Threshold for STALE_CONTENT alerting (120 days).
  *
  * IEA monthly oil stocks publish on an M+2 cadence — August data
  * (`dataMonth = "2024-08"`, end-of-month = Aug 31) ships in late Oct
@@ -72,13 +72,24 @@ export function ieaOilStocksContentMeta(data, nowMs = Date.now()) {
  * That means at fresh-arrival the helper's `newestItemAt` is already
  * 60d old, before any real staleness has accrued.
  *
- * The budget therefore needs ~60d to cover the natural M+2 lag PLUS
- * ~30d slack for one missed publication = 90d total. STALE_CONTENT
- * trips when a month is missed entirely (e.g. cache stuck at
- * "2024-08" past mid-Jan when "2024-10" should have landed).
+ * Budget breakdown: ~60d for the natural M+2 lag + ~60d slack for
+ * up-to-two missed publications = 120d total. STALE_CONTENT trips
+ * when more than two months are missed (e.g. cache stuck at
+ * "2024-08" past mid-Feb when "2024-11" should have landed).
  *
- * (Sprint 3b initial PR shipped 45d, which would have fired
- * STALE_CONTENT on every fresh seed because 45d < natural lag.
- * Greptile P1 caught it; #3599 review.)
+ * Iteration history:
+ *   - Sprint 3b initial PR (#3599) shipped 45d, which would have
+ *     fired STALE_CONTENT on every fresh seed because 45d < natural
+ *     lag. Greptile P1 caught it.
+ *   - Sprint 3b shipped at 90d (60d M+2 lag + 30d slack for one
+ *     missed publication).
+ *   - 2026-05-09: bumped to 120d after IEA delayed Feb 2026 data by
+ *     >24 days past expected mid-April publish window. Direct probe
+ *     of `https://api.iea.org/netimports/monthly/?year=2026&month=02`
+ *     returned `[]` (no data on the upstream itself), confirming this
+ *     was a real publication delay, not a parser/network bug. The 90d
+ *     budget was sized for "one missed publication"; IEA's recent
+ *     pattern of 1-2 month delays makes 120d a better fit. Real
+ *     "IEA went silent" incidents (>2 month gaps) still surface.
  */
-export const IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN = 90 * 24 * 60;
+export const IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN = 120 * 24 * 60;
