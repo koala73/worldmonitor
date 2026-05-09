@@ -604,16 +604,54 @@ function buildTrackedSourceUrl(raw, issueDate, rank) {
 }
 
 /**
- * @param {{ story: BriefStory; rank: number; palette: 'light' | 'dark'; pageIndex: number; totalPages: number; issueDate: string }} opts
+ * Extract ISO-2 country tokens from a `BriefStory.country` string.
+ * The contract allows composite forms like "IL / LB" and "IL/LB" —
+ * we split on whitespace and `/` and keep tokens that are exactly
+ * two ASCII letters. Used solely to compute the `data-followed`
+ * stamp on the magazine source-link; never affects visible content.
+ *
+ * @param {string} country
+ * @returns {string[]} uppercase ISO-2 tokens (may be empty)
  */
-function renderStoryPage({ story, rank, palette, pageIndex, totalPages, issueDate }) {
+function extractIso2Tokens(country) {
+  if (typeof country !== 'string' || country.length === 0) return [];
+  /** @type {string[]} */
+  const out = [];
+  for (const raw of country.split(/[\s/]+/)) {
+    if (raw.length === 2 && /^[a-zA-Z]{2}$/.test(raw)) {
+      out.push(raw.toUpperCase());
+    }
+  }
+  return out;
+}
+
+/**
+ * @param {{ story: BriefStory; rank: number; palette: 'light' | 'dark'; pageIndex: number; totalPages: number; issueDate: string; followedSet: Set<string> }} opts
+ */
+function renderStoryPage({ story, rank, palette, pageIndex, totalPages, issueDate, followedSet }) {
   const threatClass = HIGHLIGHTED_LEVELS.has(story.threatLevel) ? ' crit' : '';
   const threatLabel = THREAT_LABELS[story.threatLevel];
+  // U11 telemetry stamps. Pick the first ISO-2 token as the primary
+  // country (composite stories like "IL / LB" still get a single
+  // primary-country event property; a secondary country whose only
+  // role is to qualify the headline is dropped to keep the analytics
+  // dimension cardinality bounded). `followed` is true when ANY
+  // token in the story's country field appears in the recipient's
+  // watchlist — composite stories that mention a followed country
+  // count as followed even if the primary token doesn't.
+  const iso2Tokens = extractIso2Tokens(story.country);
+  const primaryCountry = iso2Tokens[0] ?? '';
+  const followed = iso2Tokens.some((c) => followedSet.has(c));
+  const dataAttrs =
+    ' data-thread-open="1"' +
+    (primaryCountry ? ` data-country="${escapeHtml(primaryCountry)}"` : '') +
+    ` data-severity="${escapeHtml(story.threatLevel)}"` +
+    ` data-followed="${followed ? '1' : '0'}"`;
   // v1 envelopes don't carry sourceUrl — render the source as plain
   // text (matching pre-v2 appearance). v2 envelopes always have a
   // validated URL, so we wrap in a UTM-tracked anchor.
   const sourceBlock = story.sourceUrl
-    ? `<a class="source-link" href="${escapeHtml(buildTrackedSourceUrl(story.sourceUrl, issueDate, rank))}" target="_blank" rel="noopener noreferrer">${escapeHtml(story.source)}</a>`
+    ? `<a class="source-link" href="${escapeHtml(buildTrackedSourceUrl(story.sourceUrl, issueDate, rank))}" target="_blank" rel="noopener noreferrer"${dataAttrs}>${escapeHtml(story.source)}</a>`
     : escapeHtml(story.source);
   return (
     `<section class="page story ${palette}">` +
@@ -1129,6 +1167,58 @@ const SHARE_SCRIPT = `<script>
 })();
 </script>`;
 
+// Umami analytics loader, mirroring the production snippet in
+// index.html. Hosted magazine pages are served from worldmonitor.app
+// (the auth'd route) and the public-share hash mirror — both within
+// `data-domains`. The `async` script never blocks rendering; if it's
+// blocked by an extension, BRIEF_THREAD_OPEN_SCRIPT silently no-ops.
+// Same data-website-id as the dashboard so events land in the same
+// project — segmentation is via event properties, not website ids.
+const UMAMI_LOADER = '<script async src="https://abacus.worldmonitor.app/script.js" data-website-id="e8800335-c853-46a8-8497-c993ed2f58bc" data-domains="worldmonitor.app,tech.worldmonitor.app,finance.worldmonitor.app,commodity.worldmonitor.app,happy.worldmonitor.app"></script>';
+
+/**
+ * U11 telemetry: emit a `brief-thread-open` event whenever a story
+ * source-link is clicked from inside the magazine. Properties are
+ * baked at render time as `data-*` attributes on the anchor:
+ *   - data-country  : ISO-2 (or absent on stories without one)
+ *   - data-severity : 'critical' | 'high' | 'medium' | 'low'
+ *   - data-followed : '1' | '0' (renderer reads recipient watchlist)
+ *
+ * Fire-and-forget. `window.umami?.track(...)` short-circuits when
+ * the script blocked / hasn't loaded — the click then proceeds to
+ * navigation as if no tracker existed. We do NOT preventDefault
+ * even on transient analytics failure: the user clicked a source
+ * link and they get the source.
+ */
+const BRIEF_THREAD_OPEN_SCRIPT = `<script>
+(function() {
+  function emit(el) {
+    try {
+      if (!window.umami || typeof window.umami.track !== 'function') return;
+      var country = el.dataset.country || null;
+      var severity = el.dataset.severity || null;
+      var followed = el.dataset.followed === '1';
+      window.umami.track('brief-thread-open', {
+        country: country,
+        followed: followed,
+        severity: severity,
+        source: 'magazine',
+      });
+    } catch (e) { /* swallow — never break navigation */ }
+  }
+  document.addEventListener('click', function(ev) {
+    var el = ev.target;
+    while (el && el.nodeType === 1) {
+      if (el.dataset && el.dataset.threadOpen === '1') {
+        emit(el);
+        return;
+      }
+      el = el.parentNode;
+    }
+  }, { capture: true });
+})();
+</script>`;
+
 const NAV_SCRIPT = `<script>
 (function() {
   var deck = document.getElementById('deck');
@@ -1294,6 +1384,25 @@ export function renderBriefMagazine(envelope, options = {}) {
   const shareUrl = !publicMode && typeof options.shareUrl === 'string' && options.shareUrl.length > 0
     ? options.shareUrl
     : '';
+  // U11 telemetry plumbing. The auth'd magazine route fetches the
+  // recipient's followed-countries via the relay and passes them
+  // here; the public-mirror route MUST NOT (no recipient identity).
+  // Defensive filter: each entry must be a non-empty string we can
+  // upper-case — anything else (null, number, the symbol-shaped
+  // entry an upstream regression once produced) gets dropped before
+  // the Set is built so a renderer crash can't leak from a relay bug.
+  const rawFollowed = Array.isArray(options.followedCountries)
+    ? options.followedCountries
+    : [];
+  /** @type {Set<string>} */
+  const followedSet = new Set();
+  if (!publicMode) {
+    for (const entry of rawFollowed) {
+      if (typeof entry === 'string' && entry.length > 0) {
+        followedSet.add(entry.toUpperCase());
+      }
+    }
+  }
   const rawData = publicMode ? redactForPublic(envelope.data) : envelope.data;
   const { user, issue, date, dateLong, digest, stories } = rawData;
   const [, month, day] = date.split('-');
@@ -1396,6 +1505,7 @@ export function renderBriefMagazine(envelope, options = {}) {
         pageIndex: ++p,
         totalPages,
         issueDate: date,
+        followedSet,
       }),
     );
   });
@@ -1453,6 +1563,7 @@ export function renderBriefMagazine(envelope, options = {}) {
     '<link rel="preconnect" href="https://fonts.googleapis.com">' +
     '<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>' +
     `<link href="${FONTS_HREF}" rel="stylesheet">` +
+    UMAMI_LOADER +
     STYLE_BLOCK +
     '</head>' +
     '<body>' +
@@ -1465,6 +1576,7 @@ export function renderBriefMagazine(envelope, options = {}) {
     '<div class="nav-dots" id="navDots"></div>' +
     '<div class="hint">← → / swipe / scroll</div>' +
     (shareUrl ? SHARE_SCRIPT : '') +
+    BRIEF_THREAD_OPEN_SCRIPT +
     NAV_SCRIPT +
     '</body>' +
     '</html>'

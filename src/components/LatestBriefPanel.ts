@@ -24,6 +24,7 @@ import { getClerkToken, clearClerkTokenCache } from '@/services/clerk';
 import { PanelGateReason, hasPremiumAccess } from '@/services/panel-gating';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { hasTier, getEntitlementState } from '@/services/entitlements';
+import { trackBriefThreadOpen } from '@/services/analytics';
 import { h, rawHtml, replaceChildren, clearChildren } from '@/utils/dom-utils';
 
 interface LatestBriefReady {
@@ -412,6 +413,24 @@ export class LatestBriefPanel extends Panel {
       target: '_blank',
       rel: 'noopener noreferrer',
       'aria-label': `Open today's brief — ${threadLabel}`,
+      // U11 telemetry: dashboard → magazine pull-through. The cover
+      // card is the panel's only click site; the per-story `country` /
+      // `severity` properties are only meaningful inside the magazine
+      // (which has its own per-story tracker), so the dashboard event
+      // carries nulls for those and `source: 'dashboard'`.
+      onclick: () => {
+        try {
+          trackBriefThreadOpen({
+            country: null,
+            followed: false,
+            severity: null,
+            source: 'dashboard',
+          });
+        } catch {
+          // Analytics outage must NOT break the click — the anchor
+          // navigates regardless of this handler.
+        }
+      },
     },
       h('div', { className: 'latest-brief-cover' },
         coverLogo,

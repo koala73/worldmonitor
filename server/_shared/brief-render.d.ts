@@ -25,6 +25,16 @@ export interface RenderBriefMagazineOptions {
   publicMode?: boolean;
   refCode?: string;
   shareUrl?: string;
+  /**
+   * ISO-2 country codes the recipient currently follows. Optional;
+   * the renderer accepts an empty / missing list as "no follows
+   * known" and stamps every story with `data-followed="0"`. Used
+   * solely to bake the `followed` flag into the U11 `brief-thread-open`
+   * telemetry event emitted from the magazine — never affects layout
+   * or visible content. Public-mode (`/api/brief/public/{hash}`) MUST
+   * NOT pass this; the public mirror has no recipient identity.
+   */
+  followedCountries?: readonly string[];
 }
 
 export function renderBriefMagazine(
