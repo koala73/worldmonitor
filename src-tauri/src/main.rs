@@ -254,11 +254,26 @@ fn save_vault(cache: &HashMap<String, String>, app_data_dir: &Path) -> Result<()
         .map_err(|e| format!("Keyring init failed: {e}"))?;
     match entry.set_password(&json) {
         Ok(()) => Ok(()),
-        Err(keyring_err) => {
-            // Linux/DBus fallback: write vault to app data dir as plaintext JSON file
+        Err(_keyring_err) => {
+            // Linux/DBus fallback: write vault to app data dir as plaintext JSON.
+            // SECURITY NOTE: secrets are stored unencrypted — any process or user that
+            // can read the app data directory can read all stored API keys. The file
+            // is created with owner-only permissions (0o600) as a best-effort measure.
+            if app_data_dir.as_os_str().is_empty() {
+                return Err(
+                    "app_data_dir unavailable and keyring write failed; cannot persist secrets"
+                        .to_string(),
+                );
+            }
             let vault_path = app_data_dir.join("secrets-vault.json");
+            std::fs::create_dir_all(app_data_dir)
+                .map_err(|e| format!("Failed to create app data directory: {e}"))?;
             std::fs::write(&vault_path, &json)
                 .map_err(|e| format!("Failed to write vault file {}: {e}", vault_path.display()))?;
+            // Restrict permissions: owner read/write only (no group/other access).
+            #[cfg(unix)]
+            std::fs::set_permissions(&vault_path, std::os::unix::fs::PermissionsExt::from_mode(0o600))
+                .ok();
             Ok(())
         }
     }
