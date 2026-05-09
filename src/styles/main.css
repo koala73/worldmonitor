@@ -7739,6 +7739,19 @@ a.prediction-link:hover {
   text-decoration: underline;
 }
 
+.popup-source-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.popup-source-links .popup-link,
+.cluster-source-link {
+  margin-top: 0;
+  font-size: 10px;
+}
+
 /* Hotspot subtitles on map */
 .hotspot-subtext {
   position: absolute;
@@ -20700,6 +20713,7 @@ body.map-width-resizing {
 }
 
 .widget-chat-readiness {
+  flex-shrink: 0;
   margin: 12px 12px 0;
   padding: 10px 12px;
   border-radius: 10px;
@@ -20777,6 +20791,7 @@ body.map-width-resizing {
 }
 
 .widget-chat-examples {
+  flex-shrink: 0;
   padding: 0 12px 12px;
   display: grid;
   gap: 8px;
@@ -20944,6 +20959,7 @@ body.map-width-resizing {
 }
 
 .widget-chat-input-row {
+  flex-shrink: 0;
   display: flex;
   gap: 8px;
   padding: 12px;

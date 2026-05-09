@@ -426,9 +426,17 @@ export function createDomainGateway(
 
     // API key validation — tier-gated endpoints require EITHER an API key OR a valid bearer token.
     // Authenticated users (sessionUserId present) bypass the API key requirement.
-    let keyCheck = validateApiKey(request, {
+    let keyCheck = (await validateApiKey(request, {
       forceKey: (isTierGated && !sessionUserId) || needsLegacyProBearerGate,
-    }) as { valid: boolean; required: boolean; error?: string };
+    })) as { valid: boolean; required: boolean; error?: string; kind?: 'enterprise' | 'session' | 'user' };
+
+    // Clerk session is itself proof of authentication (validated at line 410).
+    // validateApiKey is strict-no-trust-of-headers per #3541 and would 401 every
+    // Clerk-authenticated user who hasn't also minted a wms_ session token.
+    // Override: tier-gated routes with a resolved sessionUserId pass this layer.
+    if (isTierGated && sessionUserId && keyCheck.required && !keyCheck.valid) {
+      keyCheck = { valid: true, required: false };
+    }
 
     // User-owned API keys (wm_ prefix): when the static WORLDMONITOR_VALID_KEYS
     // check fails, try async Convex-backed validation for user-issued keys.
@@ -462,9 +470,12 @@ export function createDomainGateway(
       }
     }
 
-    // Enterprise API key (WORLDMONITOR_VALID_KEYS): keyCheck.valid + wmKey present
-    // and not a wm_-prefixed user key.
-    if (keyCheck.valid && wmKey && !isUserApiKey && !wmKey.startsWith('wm_')) {
+    // Enterprise API key (WORLDMONITOR_VALID_KEYS): require kind === 'enterprise'.
+    // Without this, anonymous wms_ tokens slipped through (validateApiKey marks
+    // them valid, wmKey is set, !isUserApiKey, and 'wms_' doesn't startsWith
+    // 'wm_'), so telemetry mislabelled them as enterprise_api_key with
+    // customer_id='enterprise-unmapped'. PR #3557 round-3 review.
+    if (keyCheck.valid && wmKey && !isUserApiKey && keyCheck.kind === 'enterprise') {
       usage.enterpriseApiKey = wmKey;
     }
 
@@ -549,9 +560,12 @@ export function createDomainGateway(
     }
 
     // Entitlement check — blocks tier-gated endpoints for users below required tier.
-    // Admin API-key holders (WORLDMONITOR_VALID_KEYS) bypass entitlement checks.
+    // Admin API-key holders (WORLDMONITOR_VALID_KEYS, kind: 'enterprise') bypass.
     // User API keys do NOT bypass — the key owner's tier is checked normally.
-    if (!(keyCheck.valid && wmKey && !isUserApiKey)) {
+    // Anonymous wms_ session tokens (kind: 'session') do NOT bypass — they are
+    // freely mintable by any caller and are NOT user-bound (PR #3557 review).
+    const isEnterpriseAuth = keyCheck.valid && wmKey && !isUserApiKey && keyCheck.kind === 'enterprise';
+    if (!isEnterpriseAuth) {
       const entitlementResponse = await checkEntitlement(request, pathname, corsHeaders);
       if (entitlementResponse) {
         const entReason: RequestReason =
@@ -667,8 +681,26 @@ export function createDomainGateway(
 
       // Skip CDN caching for upstream-unavailable / empty responses so CF
       // doesn't serve stale error data for hours.
+      //
+      // Two field names are in active use across the RPC handlers because the
+      // codebase grew two fallback conventions in parallel:
+      //   - `upstreamUnavailable: true` — used by consumer-prices/intelligence/
+      //     trade handlers that return ad-hoc JSON shapes.
+      //   - `unavailable: true` — proto-typed handlers (every economic RPC
+      //     including get-macro-signals — `bool unavailable = N` in the proto).
+      // The original check only matched the first form, so proto-typed
+      // fallback responses were getting full `medium` cache tier (CF s-maxage
+      // 1200s, browser max-age 1800s). Production incident 2026-05-03: a
+      // 30-min window of auth bug (PR #3541's wm-session interceptor) caused
+      // every macroSignals RPC to return the fallback. Those responses got
+      // cached for 30 min. Even after auth was fixed (PR #3574), browsers
+      // and CF POPs kept serving "Upstream API unavailable" until the cache
+      // TTL expired naturally — 30 min of false-bad UX per affected user.
+      // Detecting both field names closes that window.
       const bodyStr = new TextDecoder().decode(bodyBytes);
-      const isUpstreamUnavailable = bodyStr.includes('"upstreamUnavailable":true');
+      const isUpstreamUnavailable =
+        bodyStr.includes('"upstreamUnavailable":true') ||
+        bodyStr.includes('"unavailable":true');
 
       if (mergedHeaders.get('X-No-Cache') || isUpstreamUnavailable) {
         mergedHeaders.set('Cache-Control', 'no-store');

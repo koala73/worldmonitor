@@ -13,6 +13,10 @@
 
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
+// Pure contentMeta + year parser live in their own module so tests can
+// import the real code (no replicas, no drift). Per-country annual shape:
+// each country reports its own year; newestItemAt = max year across all.
+import { powerReliabilityContentMeta, POWER_RELIABILITY_MAX_CONTENT_AGE_MIN } from './_power-reliability-helpers.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -68,8 +72,17 @@ async function fetchPowerLosses() {
   return { countries, seededAt: new Date().toISOString() };
 }
 
+// Threshold lowered 150 → 100 on 2026-05-03: prior threshold sat at ~70%
+// of typical coverage (canonical key carries ~216 countries), so a normal
+// WB late-reporter blip that drops the fetch to 149 wholesale-rejected
+// the run. validateFn=false → atomicPublish skipped → seed-meta refreshed
+// with recordCount=0 (per the "quiet-period feeds" branch in runSeed) →
+// /api/health reports EMPTY_DATA even though the canonical key still
+// holds last-good 216-country data. 100 keeps a meaningful coverage
+// signal (anything below is a real upstream regression) while tolerating
+// the day-to-day WB variation in late-publishing economies.
 function validate(data) {
-  return typeof data?.countries === 'object' && Object.keys(data.countries).length >= 150;
+  return typeof data?.countries === 'object' && Object.keys(data.countries).length >= 100;
 }
 
 export function declareRecords(data) {
@@ -85,6 +98,25 @@ if (process.argv[1]?.endsWith('seed-power-reliability.mjs')) {
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: 8 * 24 * 60,
+
+    // ── Content-age contract (Sprint 4 of the 2026-05-04 health-readiness plan) ──
+    //
+    // 36-month budget = 30mo steady-state ceiling + 6mo slack.
+    //
+    // The 30mo ceiling comes from the WB publication-lag-plus-cycle math:
+    // year N+1 can normally publish as late as end-of-(N+1) + 18mo =
+    // end-of-N + 30mo, so a cache holding year N can legitimately reach
+    // 30mo of age before year N+1 arrives. Anything tighter than 30mo
+    // false-positives mid-cycle. See helper module's JSDoc for the full
+    // derivation + the verification against live WB data on 2026-05-05.
+    //
+    // STALE_CONTENT trips only on multi-cycle silent upstream stalls,
+    // never during normal "year N+1 ran late" cycles.
+    //
+    // powerReliabilityContentMeta scans data.countries per-country years
+    // and returns end-of-(max year) UTC ms as newestItemAt.
+    contentMeta: powerReliabilityContentMeta,
+    maxContentAgeMin: POWER_RELIABILITY_MAX_CONTENT_AGE_MIN,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);

@@ -9,6 +9,7 @@ const GDELT_GKG_URL = 'https://api.gdeltproject.org/api/v1/gkg_geojson';
 const ACLED_API_URL = 'https://acleddata.com/api/acled/read';
 const CANONICAL_KEY = 'unrest:events:v1';
 const CACHE_TTL = 16200; // 4.5h — 6x the 45 min cron interval (was 1.3x)
+const MAX_SOURCE_URLS = 5;
 
 // ---------- ACLED Event Type Mapping (from _shared.ts) ----------
 
@@ -44,6 +45,50 @@ function classifyGdeltEventType(name) {
   return 'UNREST_EVENT_TYPE_PROTEST';
 }
 
+function normalizeSourceUrl(value) {
+  if (typeof value !== 'string') return '';
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return '';
+    if (parsed.username || parsed.password) return '';
+    parsed.hash = '';
+    return parsed.toString();
+  } catch {
+    return '';
+  }
+}
+
+function uniqueSourceUrls(values) {
+  return [...new Set(values.map(normalizeSourceUrl).filter(Boolean))];
+}
+
+function extractAcledSourceUrls(event) {
+  return mergeSourceUrls([
+    event.source_url,
+    event.sourceUrl,
+    event.url,
+    event.link,
+  ]);
+}
+
+function extractGdeltSourceUrls(properties = {}) {
+  return mergeSourceUrls([
+    properties.url,
+    properties.source_url,
+    properties.sourceUrl,
+    properties.document_url,
+    properties.documentUrl,
+    properties.article_url,
+    properties.articleUrl,
+  ]);
+}
+
+function mergeSourceUrls(...groups) {
+  return uniqueSourceUrls(groups.flatMap((group) => Array.isArray(group) ? group : [])).slice(0, MAX_SOURCE_URLS);
+}
+
 // ---------- Deduplication (from _shared.ts) ----------
 
 function deduplicateEvents(events) {
@@ -61,11 +106,14 @@ function deduplicateEvents(events) {
       unique.set(key, event);
     } else if (event.sourceType === 'UNREST_SOURCE_TYPE_ACLED' && existing.sourceType !== 'UNREST_SOURCE_TYPE_ACLED') {
       event.sources = [...new Set([...event.sources, ...existing.sources])];
+      event.sourceUrls = mergeSourceUrls(event.sourceUrls, existing.sourceUrls);
       unique.set(key, event);
     } else if (existing.sourceType === 'UNREST_SOURCE_TYPE_ACLED') {
       existing.sources = [...new Set([...existing.sources, ...event.sources])];
+      existing.sourceUrls = mergeSourceUrls(existing.sourceUrls, event.sourceUrls);
     } else {
       existing.sources = [...new Set([...existing.sources, ...event.sources])];
+      existing.sourceUrls = mergeSourceUrls(existing.sourceUrls, event.sourceUrls);
       if (existing.sources.length >= 2) existing.confidence = 'CONFIDENCE_LEVEL_HIGH';
     }
   }
@@ -153,6 +201,7 @@ async function fetchAcledProtests() {
         tags: e.tags?.split(';').map((t) => t.trim()).filter(Boolean) ?? [],
         actors: [e.actor1, e.actor2].filter(Boolean),
         confidence: 'CONFIDENCE_LEVEL_HIGH',
+        sourceUrls: extractAcledSourceUrls(e),
       };
     });
 }
@@ -246,8 +295,16 @@ export async function fetchGdeltEvents(opts = {}) {
       if (feature.properties?.urltone < existing.worstTone) {
         existing.worstTone = feature.properties.urltone;
       }
+      existing.sourceUrls = mergeSourceUrls(existing.sourceUrls, extractGdeltSourceUrls(feature.properties));
     } else {
-      locationMap.set(key, { name, lat, lon, count: 1, worstTone: feature.properties?.urltone ?? 0 });
+      locationMap.set(key, {
+        name,
+        lat,
+        lon,
+        count: 1,
+        worstTone: feature.properties?.urltone ?? 0,
+        sourceUrls: mergeSourceUrls(extractGdeltSourceUrls(feature.properties)),
+      });
     }
   }
 
@@ -273,6 +330,7 @@ export async function fetchGdeltEvents(opts = {}) {
       tags: [],
       actors: [],
       confidence: loc.count > 20 ? 'CONFIDENCE_LEVEL_HIGH' : 'CONFIDENCE_LEVEL_MEDIUM',
+      sourceUrls: loc.sourceUrls,
     });
   }
 

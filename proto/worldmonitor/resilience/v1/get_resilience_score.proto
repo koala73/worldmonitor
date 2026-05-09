@@ -41,4 +41,14 @@ message GetResilienceScoreResponse {
   // release cycle. Controlled at response build time by the
   // RESILIENCE_SCHEMA_V2_ENABLED env flag (defaults to "true" → v2).
   string schema_version = 16;
+  // Plan 2026-04-26-002 §U3 (PR 2) — eligibility flag for headline
+  // ranking inclusion. PR 2 introduces the field populated `true` for
+  // every country (no behavior change). PR 6 / §U7 swaps the population
+  // logic to coverage ≥ 0.65 AND (population ≥ 200k OR coverage ≥ 0.85)
+  // AND !lowConfidence; the headline ranking endpoint then filters by
+  // `headlineEligible: true`. Raw API endpoints keep returning the full
+  // set unfiltered. Widget consumes the field starting in PR 6 to show
+  // a "Low confidence — outside headline ranking" badge for
+  // `headlineEligible: false` countries on country detail pages.
+  bool headline_eligible = 17;
 }

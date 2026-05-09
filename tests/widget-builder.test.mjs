@@ -1296,3 +1296,421 @@ describe('PRO widget — i18n keys and CSS', () => {
     );
   });
 });
+
+// ---------------------------------------------------------------------------
+// PRO widget — edge-proxy auth (Convex entitlement fallback for paid users)
+// ---------------------------------------------------------------------------
+//
+// Dodo webhook does NOT sync Clerk publicMetadata.plan, so a paying subscriber's
+// Clerk session.role stays 'free' indefinitely. The edge proxy at
+// api/widget-agent.ts must accept EITHER Clerk role==='pro' OR Convex
+// entitlement tier>=1, mirroring server/_shared/premium-check.ts::isCallerPremium
+// and server/gateway.ts:521-526. A regression here surfaces as a misleading
+// "PRO key rejected. Update wm-pro-key…" 403 in the modal — the user has no
+// tester key, so the suggested action is a dead end.
+describe('widget-agent edge proxy — Convex entitlement fallback', () => {
+  const edge = src('api/widget-agent.ts');
+
+  it('imports getEntitlements from server/_shared/entitlement-check', () => {
+    assert.ok(
+      /import\s*\{[^}]*\bgetEntitlements\b[^}]*\}\s*from\s*['"][^'"]*entitlement-check['"]/.test(edge),
+      'api/widget-agent.ts must import getEntitlements for Dodo entitlement fallback',
+    );
+  });
+
+  it('Clerk JWT path falls back to Convex entitlement when role !== "pro"', () => {
+    const bearerIdx = edge.indexOf("authHeader?.startsWith('Bearer ')");
+    assert.ok(bearerIdx !== -1, 'Bearer-token branch not found in api/widget-agent.ts');
+    // Constrain the search to the bearer-token branch only.
+    const region = edge.slice(bearerIdx, bearerIdx + 2000);
+    assert.ok(
+      region.includes('getEntitlements(session.userId)'),
+      'Bearer-token branch must call getEntitlements(session.userId) when Clerk role !== "pro"',
+    );
+    assert.ok(
+      /features\.tier\s*>=\s*1/.test(region),
+      'Bearer-token branch must accept Convex entitlement tier >= 1',
+    );
+  });
+
+  it('does NOT 403 immediately on session.role !== "pro"', () => {
+    // The legacy shape `if (session.role !== 'pro') return 403` is the bug —
+    // it would short-circuit before the Convex fallback. Lock it out.
+    assert.ok(
+      !/if\s*\(\s*session\.role\s*!==\s*['"]pro['"]\s*\)\s*\{\s*return\s+json\([^}]*403/.test(edge),
+      'api/widget-agent.ts must NOT 403 on session.role !== "pro" without checking Convex entitlement',
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// entitlement-check — cache-write failure must NOT collapse to "no entitlement"
+// ---------------------------------------------------------------------------
+//
+// getEntitlements() returns null on three different failure modes — Convex
+// said no, Convex unreachable, and (the trap this test guards) cache-write
+// failed AFTER Convex confirmed the entitlement. Once Convex returns a valid
+// entitlement, an Upstash hiccup or any error inside setCachedJson must NOT
+// turn that yes into a null-meaning-no — that would 403 paying customers on
+// every call path this file gates, including the widget-agent fallback PR
+// #3505 just added.
+// ---------------------------------------------------------------------------
+// widget-agent relay — error classifier (no more opaque "Agent error")
+// ---------------------------------------------------------------------------
+//
+// The relay used to swallow ALL agent errors as a generic "Agent error" SSE
+// message. With nothing in Railway logs to grep and nothing useful in the
+// client, real failures (auth, rate limit, model availability, payload shape)
+// were impossible to triage. Lock in the classifier so future regressions
+// can't re-collapse the error surface.
+describe('widget-agent relay — error classifier', () => {
+  const relay = src('scripts/ais-relay.cjs');
+
+  it('classifyWidgetAgentError function is defined', () => {
+    assert.ok(
+      /function\s+classifyWidgetAgentError\s*\(/.test(relay),
+      'classifyWidgetAgentError(err, model) helper must exist',
+    );
+  });
+
+  it('catch block routes through classifyWidgetAgentError instead of hardcoded "Agent error"', () => {
+    // Find the catch block in the widget-agent handler.
+    const catchIdx = relay.indexOf("classifyWidgetAgentError");
+    assert.ok(catchIdx !== -1, 'classifyWidgetAgentError must be called somewhere in the relay');
+    // The catch site must NOT still emit the literal "Agent error" string as
+    // its primary message — the classifier covers the fallback case itself.
+    // Allow the literal in the classifier's last-resort branch only.
+    const handlerStart = relay.indexOf('async function handleWidgetAgentRequest');
+    const handlerEnd = relay.indexOf('async function ', handlerStart + 1);
+    const handlerRegion = relay.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : handlerStart + 5000);
+    assert.ok(
+      !/sendWidgetSSE\([^)]*'error'[^)]*'Agent error'/.test(handlerRegion),
+      'catch site must NOT hardcode "Agent error" — route through classifyWidgetAgentError so the client sees actionable diagnostics',
+    );
+  });
+
+  it('classifier maps Anthropic 401 to an operator-facing API-key hint', () => {
+    const fnIdx = relay.indexOf('function classifyWidgetAgentError');
+    const region = relay.slice(fnIdx, fnIdx + 3000);
+    assert.ok(
+      /status\s*===\s*401|authentication_error/.test(region),
+      'Classifier must branch on status 401 / authentication_error',
+    );
+    assert.ok(
+      /ANTHROPIC_API_KEY|API key/i.test(region),
+      'Classifier 401 branch must hint at the env-var/credential to check',
+    );
+  });
+
+  it('classifier surfaces 400 invalid_request_error with the SDK message (capped)', () => {
+    const fnIdx = relay.indexOf('function classifyWidgetAgentError');
+    const region = relay.slice(fnIdx, fnIdx + 3000);
+    assert.ok(
+      /status\s*===\s*400|invalid_request_error/.test(region),
+      'Classifier must branch on status 400 / invalid_request_error',
+    );
+    assert.ok(
+      /Invalid request to AI backend/.test(region),
+      'Classifier must include human-readable phrasing for invalid-request errors',
+    );
+  });
+
+  it('classifier scrubs Claude API keys from any fallback message', () => {
+    const fnIdx = relay.indexOf('function classifyWidgetAgentError');
+    const region = relay.slice(fnIdx, fnIdx + 3000);
+    assert.ok(
+      /sk-(?:ant-)?\[A-Za-z0-9_-\]\{20,?\}/.test(region) || /sk-\(\?:ant-\)\?\[A-Za-z0-9_-\]/.test(region),
+      'Classifier fallback must redact `sk-…` / `sk-ant-…` API keys before surfacing the message',
+    );
+    assert.ok(
+      /\[REDACTED\]/.test(region),
+      'Classifier must replace scrubbed token with a [REDACTED] sentinel',
+    );
+  });
+
+  it('classifier scrubs API keys in the 400 branch (defence-in-depth on every rawMsg interpolation)', () => {
+    // Round-trip the function for runtime check: the 400 message must redact a Claude key.
+    const fnMatch = relay.match(/function classifyWidgetAgentError[\s\S]*?\n\}/);
+    assert.ok(fnMatch, 'classifyWidgetAgentError function not extractable');
+    const fn = new Function(`${fnMatch[0]}; return classifyWidgetAgentError;`)();
+    const out = fn(
+      { status: 400, error: { type: 'invalid_request_error' }, message: 'bad header sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA was rejected' },
+      'claude-sonnet-4-6',
+    );
+    assert.ok(
+      /\[REDACTED\]/.test(out),
+      `400 branch must scrub sk-(ant-)? tokens before surfacing rawMsg, got: ${out}`,
+    );
+    assert.ok(
+      !/sk-ant-api03-AAAAAAAAAA/.test(out),
+      '400 branch must not leak the raw API key in any form',
+    );
+  });
+
+  it('classifier handles Anthropic APITimeoutError (status 408) — does not fall through to fallback', () => {
+    const fnMatch = relay.match(/function classifyWidgetAgentError[\s\S]*?\n\}/);
+    assert.ok(fnMatch, 'classifyWidgetAgentError function not extractable');
+    const fn = new Function(`${fnMatch[0]}; return classifyWidgetAgentError;`)();
+    // Real Anthropic Node SDK timeout shape: name='APITimeoutError', status=408
+    const apiTimeout = fn({ name: 'APITimeoutError', status: 408, message: 'Request timeout.' }, 'claude-sonnet-4-6');
+    assert.equal(apiTimeout, 'AI backend timed out', 'APITimeoutError must classify as timed-out, not fallback');
+    // AbortSignal.timeout() shape (DOMException): name='TimeoutError'
+    const abortTimeout = fn({ name: 'TimeoutError', message: 'The operation timed out.' }, 'claude-sonnet-4-6');
+    assert.equal(abortTimeout, 'AI backend timed out', 'AbortSignal TimeoutError must also classify as timed-out');
+    // Bare 408 status (some HTTP layers expose only the code) — same branch.
+    const bare408 = fn({ status: 408 }, 'claude-sonnet-4-6');
+    assert.equal(bare408, 'AI backend timed out', 'Bare status 408 must classify as timed-out');
+  });
+
+  it('400 branch does NOT pre-empt timeout: APITimeoutError-with-status-400 stays a timeout (rare but defensive)', () => {
+    // Belt-and-suspenders: the timeout check sits BEFORE the 400 branch, so
+    // an APITimeoutError tagged with status 400 (defensive against future SDK
+    // shape changes) still classifies as a timeout, not "Invalid request".
+    const fnMatch = relay.match(/function classifyWidgetAgentError[\s\S]*?\n\}/);
+    const fn = new Function(`${fnMatch[0]}; return classifyWidgetAgentError;`)();
+    const out = fn({ name: 'APITimeoutError', status: 400, message: 'timeout' }, 'claude-sonnet-4-6');
+    assert.equal(out, 'AI backend timed out', 'APITimeoutError must beat the 400 branch regardless of status');
+  });
+
+  it('handler logs structured error context with status + type + model', () => {
+    const handlerStart = relay.indexOf('async function handleWidgetAgentRequest');
+    const handlerEnd = relay.indexOf('async function ', handlerStart + 1);
+    const region = relay.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : handlerStart + 8000);
+    // Look for the structured console.error inside the catch.
+    assert.ok(
+      /console\.error\([^)]*\[widget-agent\][^)]*Error/.test(region),
+      'Catch must log a `[widget-agent] Error:` line for Railway operators to grep',
+    );
+    assert.ok(
+      /\bstatus\b/.test(region) && /\btype\b/.test(region) && /\bmodel\b/.test(region),
+      'Structured error log must include status + type + model so Railway logs are diagnosable without server-side reproduction',
+    );
+  });
+
+  it('toolCallCount is declared OUTSIDE the try whose catch reads it (scoping regression guard)', () => {
+    // Bug history: an earlier revision declared `let toolCallCount = 0` INSIDE the
+    // outer agent-loop try block but read it from the catch. JavaScript `let`/`const`
+    // is block-scoped, so the catch's structured log threw a ReferenceError every
+    // time, which the inner log-try then caught and emitted the useless
+    // "[widget-agent] Error (log-failed)" fallback — defeating the entire
+    // diagnostic value of this PR. Lock the declaration position.
+    const handlerStart = relay.indexOf('async function handleWidgetAgentRequest');
+    assert.ok(handlerStart !== -1, 'handler not found');
+    const handlerEnd = relay.indexOf('async function ', handlerStart + 1);
+    const region = relay.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : handlerStart + 12000);
+
+    const declIdx = region.indexOf('let toolCallCount');
+    assert.ok(declIdx !== -1, 'toolCallCount declaration not found');
+
+    // The outer agent-loop try is the one whose first statement imports the
+    // Anthropic SDK. Anchor on that specific shape so we ignore unrelated
+    // try/catch blocks (request-body parse, search-tool fetch, log-fallback).
+    const outerTryMatch = region.match(/try\s*\{\s*\n\s*const\s*\{\s*default:\s*Anthropic/);
+    assert.ok(outerTryMatch, 'Outer agent-loop try block not found by anchor');
+    const outerTryIdx = outerTryMatch.index;
+
+    assert.ok(
+      declIdx < outerTryIdx,
+      `toolCallCount (declared at ${declIdx}) must be declared BEFORE the outer agent-loop try (try at ${outerTryIdx}). Putting it inside the try makes it inaccessible to the catch — the structured log throws ReferenceError and falls through to the useless "Error (log-failed)" fallback.`,
+    );
+
+    // Sanity-check: the catch payload still references toolCallCount, so this
+    // test is actually guarding the load-bearing reference.
+    assert.ok(
+      /catch\s*\(\s*err[^)]*\)[\s\S]*?toolCallCount/.test(region),
+      'Catch payload must still reference toolCallCount, otherwise this test is guarding nothing',
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// panel-layout — Pro CTAs must re-evaluate on Convex entitlement updates
+// ---------------------------------------------------------------------------
+//
+// "Create Interactive Widget" (proBlock) and "Connect MCP" (mcpBlock) are
+// gated by applyProBlockGating(hasPremiumAccess(...)). For a paying Dodo
+// subscriber whose Clerk publicMetadata.plan is never written, hasPremiumAccess
+// only flips true once the Convex entitlement snapshot lands via
+// onEntitlementChange — NOT via subscribeAuthState. Subscribing only to
+// subscribeAuthState (the prior shape) meant the CTAs stayed display:none for
+// the entire page lifetime for paying users. Lock the dual-subscription.
+describe('panel-layout — Pro add-block gating reacts to entitlement updates', () => {
+  const layout = src('src/app/panel-layout.ts');
+
+  it('imports onEntitlementChange', () => {
+    assert.ok(
+      /import\s*\{[^}]*\bonEntitlementChange\b[^}]*\}\s*from\s*['"][^'"]*entitlements['"]/.test(layout),
+      'panel-layout must import onEntitlementChange to re-evaluate Pro CTA gating on Convex snapshots',
+    );
+  });
+
+  it('proBlock + mcpBlock gating subscribes to BOTH auth and entitlement changes', () => {
+    // Anchor on the gating function to scope the search to its surroundings.
+    const gateFnIdx = layout.indexOf('applyProBlockGating');
+    assert.ok(gateFnIdx !== -1, 'applyProBlockGating not found in panel-layout');
+    const region = layout.slice(gateFnIdx, gateFnIdx + 1500);
+    assert.ok(
+      region.includes('subscribeAuthState'),
+      'Pro CTA gating must subscribe to subscribeAuthState (legacy auth-driven path)',
+    );
+    assert.ok(
+      region.includes('onEntitlementChange'),
+      'Pro CTA gating MUST subscribe to onEntitlementChange so paying Dodo users flip from hidden->visible when the Convex entitlement snapshot lands',
+    );
+  });
+
+  it('teardown clears the entitlement subscription so a destroyed layout does not leak callbacks', () => {
+    assert.ok(
+      layout.includes('proBlockEntitlementUnsubscribe'),
+      'panel-layout must hold a proBlockEntitlementUnsubscribe handle and clear it in destroy()',
+    );
+    // Look for the destroy() block
+    const destroyIdx = layout.indexOf('destroy(): void {');
+    assert.ok(destroyIdx !== -1, 'destroy() not found');
+    const destroyRegion = layout.slice(destroyIdx, destroyIdx + 2000);
+    assert.ok(
+      destroyRegion.includes('proBlockEntitlementUnsubscribe'),
+      'destroy() must invoke proBlockEntitlementUnsubscribe to avoid leaking callbacks across layout init/destroy cycles',
+    );
+  });
+});
+
+describe('entitlement-check — cache-write failure does not collapse confirmed entitlement', () => {
+  const src_ = src('server/_shared/entitlement-check.ts');
+
+  it('setCachedJson call is wrapped in its own try/catch', () => {
+    // Find the success-path block: `if (result) { … setCachedJson(…) … return result }`
+    const successIdx = src_.indexOf('if (result) {');
+    assert.ok(successIdx !== -1, 'success-path "if (result)" branch not found');
+    const region = src_.slice(successIdx, successIdx + 1500);
+
+    const setIdx = region.indexOf('setCachedJson(');
+    assert.ok(setIdx !== -1, 'setCachedJson call missing from success path');
+
+    // Walk backward from setCachedJson to find the nearest enclosing `try {`
+    // BEFORE the outer catch. The outer try is at the top of the function,
+    // far away — we want a LOCAL try/catch around the cache write so the
+    // safety property is explicit at the call site.
+    const beforeSet = region.slice(0, setIdx);
+    const lastTry = beforeSet.lastIndexOf('try {');
+    const lastCatch = beforeSet.lastIndexOf('catch');
+    assert.ok(
+      lastTry !== -1 && lastTry > lastCatch,
+      'setCachedJson must be inside a LOCAL try/catch within the success branch — relying on setCachedJson to swallow its own errors is fragile',
+    );
+
+    // The success-path return must come AFTER the try/catch, not inside the catch.
+    const returnIdx = region.indexOf('return result', setIdx);
+    assert.ok(
+      returnIdx !== -1,
+      '`return result` must follow the cache-write try/catch so a swallowed cache error still returns the confirmed entitlement',
+    );
+  });
+
+  it('cache-write catch logs but does not return null or throw', () => {
+    const successIdx = src_.indexOf('if (result) {');
+    const region = src_.slice(successIdx, successIdx + 1500);
+    // The catch block for cache write must NOT contain `return null` — that
+    // would re-introduce the bug. It also must not rethrow.
+    const cacheCatchMatch = region.match(/catch\s*\(\s*cacheErr[^)]*\)\s*\{([^}]*)\}/);
+    assert.ok(cacheCatchMatch, 'cache-write catch block must be named distinctly (e.g. cacheErr) so future readers see the intent');
+    const cacheCatchBody = cacheCatchMatch[1];
+    assert.ok(
+      !/return\s+null/.test(cacheCatchBody),
+      'cache-write catch must NOT return null — a confirmed entitlement must survive cache-write failure',
+    );
+    assert.ok(
+      !/throw\b/.test(cacheCatchBody),
+      'cache-write catch must NOT rethrow — that would bubble to the outer catch and collapse to null',
+    );
+  });
+});
+
+describe('WidgetChatModal — preflight 403 message branches on auth mode', () => {
+  const modal = src('src/components/WidgetChatModal.ts');
+  const en = JSON.parse(src('src/locales/en.json'));
+
+  it('buildWidgetAuthHeaders returns usedTesterKey flag', () => {
+    assert.ok(
+      modal.includes('usedTesterKey'),
+      'buildWidgetAuthHeaders must report whether a tester key was used so the 403 message can branch',
+    );
+  });
+
+  it('resolvePreflightMessage takes usedTesterKey and branches Clerk path on isPro', () => {
+    const fnIdx = modal.indexOf('function resolvePreflightMessage');
+    assert.ok(fnIdx !== -1, 'resolvePreflightMessage not found');
+    const region = modal.slice(fnIdx, fnIdx + 1200);
+    assert.ok(
+      region.includes('usedTesterKey'),
+      'resolvePreflightMessage must take usedTesterKey to branch on auth mode',
+    );
+    assert.ok(
+      region.includes('preflightProSubscriptionRequired'),
+      'Clerk-auth 403 (isPro=true) must surface preflightProSubscriptionRequired',
+    );
+    assert.ok(
+      region.includes('preflightProRequired'),
+      'Clerk-auth 403 (isPro=false, free user) must surface preflightProRequired (clean upgrade ask, no "just upgraded" language)',
+    );
+  });
+
+  it('en.json defines widgets.preflightProSubscriptionRequired (just-upgraded / outage)', () => {
+    assert.ok(
+      typeof en.widgets?.preflightProSubscriptionRequired === 'string'
+        && en.widgets.preflightProSubscriptionRequired.length > 0,
+      'en.json must define widgets.preflightProSubscriptionRequired',
+    );
+    assert.ok(
+      !/wm-pro-key/i.test(en.widgets.preflightProSubscriptionRequired),
+      'preflightProSubscriptionRequired must not mention wm-pro-key — Clerk users have no tester key',
+    );
+  });
+
+  it('en.json defines widgets.preflightProRequired (free-user upgrade ask, no "just upgraded" language)', () => {
+    assert.ok(
+      typeof en.widgets?.preflightProRequired === 'string'
+        && en.widgets.preflightProRequired.length > 0,
+      'en.json must define widgets.preflightProRequired',
+    );
+    assert.ok(
+      !/wm-pro-key/i.test(en.widgets.preflightProRequired),
+      'preflightProRequired must not mention wm-pro-key',
+    );
+    assert.ok(
+      !/just upgraded|refresh the page|contact support/i.test(en.widgets.preflightProRequired),
+      'preflightProRequired is for genuinely-free users — must not include "just upgraded / refresh / contact support" language',
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// widget-agent edge proxy — observability for fail-closed entitlement 403s
+// ---------------------------------------------------------------------------
+//
+// When getEntitlements returns null, callers can't tell "user genuinely not
+// entitled" from "entitlement service degraded" — both shapes 403 paying users
+// during a Convex/Upstash outage. Emit a structured log at the 403 site so
+// on-call can grep Vercel logs and disambiguate incident vs not-entitled
+// without waiting for refund tickets.
+describe('widget-agent edge proxy — fail-closed observability', () => {
+  const edge = src('api/widget-agent.ts');
+
+  it('403 site emits a structured log with reason + userId + entitlementTier', () => {
+    const idx = edge.indexOf("error: 'Pro subscription required'");
+    assert.ok(idx !== -1, 'Pro-required 403 site not found');
+    // Walk backward from the 403 to find the preceding console.warn — must
+    // sit in the same allowed-check block, not in some unrelated error path.
+    const before = edge.slice(Math.max(0, idx - 1500), idx);
+    assert.ok(
+      /console\.warn\([^)]*widget-agent[^)]*pro-required/i.test(before),
+      'A console.warn naming "widget-agent" + "pro-required" must precede the 403 return',
+    );
+    assert.ok(before.includes('reason'), 'Structured log must include "reason" field (not_entitled vs service_unavailable)');
+    assert.ok(before.includes('userId'), 'Structured log must include userId for grep/correlation');
+    assert.ok(
+      before.includes('service_unavailable') && before.includes('not_entitled'),
+      'Structured log must distinguish service_unavailable (Convex/Redis down) from not_entitled (real free user)',
+    );
+  });
+});

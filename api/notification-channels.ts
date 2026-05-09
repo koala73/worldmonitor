@@ -14,7 +14,7 @@ export const config = { runtime: 'edge' };
 // @ts-expect-error — JS module, no declaration file
 import { getCorsHeaders } from './_cors.js';
 // @ts-expect-error — JS module, no declaration file
-import { captureEdgeException } from './_sentry-edge.js';
+import { captureEdgeException, captureSilentError } from './_sentry-edge.js';
 import { validateBearerToken } from '../server/auth-session';
 import { getEntitlements } from '../server/_shared/entitlement-check';
 
@@ -97,6 +97,11 @@ async function publishWelcome(userId: string, channelType: string): Promise<void
     console.log(`[notification-channels] publishWelcome LPUSH: status=${res.status} result=${JSON.stringify(data?.result)}`);
   } catch (err) {
     console.error('[notification-channels] publishWelcome LPUSH failed:', (err as Error).message);
+    // publishWelcome runs inside the handler's ctx.waitUntil chain; await
+    // keeps that chain pending until Sentry delivery completes.
+    await captureSilentError(err, {
+      tags: { route: 'api/notification-channels', step: 'publish-welcome' },
+    });
   }
 }
 
@@ -111,6 +116,9 @@ async function publishFlushHeld(userId: string, variant: string): Promise<void> 
     });
   } catch (err) {
     console.warn('[notification-channels] publishFlushHeld LPUSH failed:', (err as Error).message);
+    await captureSilentError(err, {
+      tags: { route: 'api/notification-channels', step: 'publish-flush-held', severity: 'warn' },
+    });
   }
 }
 
@@ -200,7 +208,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
       return json(data, 200, corsHeaders, true);
     } catch (err) {
       console.error('[notification-channels] GET error:', err);
-      void captureEdgeException(err, { handler: 'notification-channels', method: 'GET' });
+      captureEdgeException(err, { handler: 'notification-channels', method: 'GET' }, ctx);
       return json({ error: 'Failed to fetch' }, 500, corsHeaders);
     }
   }
@@ -403,10 +411,60 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
         return json({ ok: true }, 200, corsHeaders);
       }
 
+      // Atomic update of (digestMode, sensitivity) and any subset of the alert-rule
+      // fields. The UI's delivery-mode change flow uses this to avoid the two-call
+      // race against the cross-field validator.
+      // Critical: 400 responses from the relay must pass through with their body
+      // intact so the client can render INCOMPATIBLE_DELIVERY helper text.
+      // See plans/forbid-realtime-all-events.md §1f.
+      if (action === 'set-notification-config') {
+        const VALID_SENSITIVITY = new Set(['all', 'high', 'critical']);
+        const VALID_DIGEST_MODE = new Set(['realtime', 'daily', 'twice_daily', 'weekly']);
+        const { variant, enabled, eventTypes, sensitivity, channels, aiDigestEnabled, digestMode, digestHour, digestTimezone } = body;
+        if (!variant) return json({ error: 'variant required' }, 400, corsHeaders);
+        if (sensitivity !== undefined && !VALID_SENSITIVITY.has(sensitivity)) {
+          return json({ error: 'invalid sensitivity' }, 400, corsHeaders);
+        }
+        if (digestMode !== undefined && !VALID_DIGEST_MODE.has(digestMode)) {
+          return json({ error: 'invalid digestMode' }, 400, corsHeaders);
+        }
+        const resp = await convexRelay({
+          action: 'set-notification-config',
+          userId: session.userId,
+          variant,
+          enabled,
+          eventTypes,
+          sensitivity,
+          channels,
+          aiDigestEnabled,
+          digestMode,
+          digestHour,
+          digestTimezone,
+        });
+        if (!resp.ok) {
+          // 400 from convex/http means user-facing validation failure (e.g.
+          // INCOMPATIBLE_DELIVERY). 402 means paywall (PRO_REQUIRED). Both
+          // must pass through with body intact so the client renders the
+          // real reason — inline helper text for 400, upgrade-flow modal
+          // for 402 — instead of a generic toast.
+          if (resp.status === 400 || resp.status === 402) {
+            const text = await resp.text().catch(() => '');
+            let payload: unknown = { error: 'Validation failed' };
+            if (text) {
+              try { payload = JSON.parse(text); } catch { /* keep default */ }
+            }
+            return json(payload, resp.status, corsHeaders);
+          }
+          console.error('[notification-channels] POST set-notification-config relay error:', resp.status);
+          return json({ error: 'Operation failed' }, 500, corsHeaders);
+        }
+        return json({ ok: true }, 200, corsHeaders);
+      }
+
       return json({ error: 'Unknown action' }, 400, corsHeaders);
     } catch (err) {
       console.error('[notification-channels] POST error:', err);
-      void captureEdgeException(err, { handler: 'notification-channels', method: 'POST' });
+      captureEdgeException(err, { handler: 'notification-channels', method: 'POST' }, ctx);
       return json({ error: 'Operation failed' }, 500, corsHeaders);
     }
   }

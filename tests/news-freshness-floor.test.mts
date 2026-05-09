@@ -1,11 +1,14 @@
 // U3 from docs/plans/2026-04-26-001-fix-brief-static-page-contamination-plan.md
 //
-// Hard freshness floor (default 48h, env override `NEWS_MAX_AGE_HOURS`)
+// Hard freshness floor (default 96h, env override `NEWS_MAX_AGE_HOURS`)
 // applied in buildDigest before corroboration counting. Belt-and-suspenders
 // against feeds carrying valid-but-stale dates that would otherwise pass U2's
 // undated-drop gate. Tests the env-resolver helper directly; the in-flow
 // drop is exercised by parseRssXml + integration smoke (covered in PR-1
 // finalize via the existing smoke suite).
+//
+// Default bumped 48 → 96h on 2026-05-03 (PR #3577): see resolveMaxAgeMs()
+// header in list-feed-digest.ts for the weekend-empty-panel rationale.
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
@@ -28,9 +31,9 @@ function withEnv<T>(key: string, value: string | undefined, fn: () => T): T {
 }
 
 describe('resolveMaxAgeMs — env override', () => {
-  it('defaults to 48h when NEWS_MAX_AGE_HOURS is unset', () => {
+  it('defaults to 96h when NEWS_MAX_AGE_HOURS is unset', () => {
     withEnv('NEWS_MAX_AGE_HOURS', undefined, () => {
-      assert.equal(resolveMaxAgeMs(), 48 * HOUR);
+      assert.equal(resolveMaxAgeMs(), 96 * HOUR);
     });
   });
 
@@ -42,25 +45,25 @@ describe('resolveMaxAgeMs — env override', () => {
 
   it('falls back to default for non-numeric values', () => {
     withEnv('NEWS_MAX_AGE_HOURS', 'foo', () => {
-      assert.equal(resolveMaxAgeMs(), 48 * HOUR);
+      assert.equal(resolveMaxAgeMs(), 96 * HOUR);
     });
   });
 
   it('falls back to default for empty string', () => {
     withEnv('NEWS_MAX_AGE_HOURS', '', () => {
-      assert.equal(resolveMaxAgeMs(), 48 * HOUR);
+      assert.equal(resolveMaxAgeMs(), 96 * HOUR);
     });
   });
 
   it('falls back to default for zero (out of range)', () => {
     withEnv('NEWS_MAX_AGE_HOURS', '0', () => {
-      assert.equal(resolveMaxAgeMs(), 48 * HOUR);
+      assert.equal(resolveMaxAgeMs(), 96 * HOUR);
     });
   });
 
   it('falls back to default for negative values', () => {
     withEnv('NEWS_MAX_AGE_HOURS', '-5', () => {
-      assert.equal(resolveMaxAgeMs(), 48 * HOUR);
+      assert.equal(resolveMaxAgeMs(), 96 * HOUR);
     });
   });
 
@@ -81,7 +84,7 @@ describe('freshness floor — boundary semantics', () => {
   // The freshness filter uses `publishedAt >= cutoff`. These boundary cases
   // document the inequality direction so a future refactor doesn't silently
   // flip the strictness.
-  it('48h boundary: cutoff = now - 48h, an item exactly at cutoff passes (>=)', () => {
+  it('default boundary: cutoff = now - 96h, an item exactly at cutoff passes (>=)', () => {
     withEnv('NEWS_MAX_AGE_HOURS', undefined, () => {
       const max = resolveMaxAgeMs();
       const cutoff = Date.now() - max;

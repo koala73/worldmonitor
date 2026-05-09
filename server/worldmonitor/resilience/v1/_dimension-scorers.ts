@@ -274,7 +274,7 @@ const RESILIENCE_TRANSIT_SUMMARIES_KEY = 'supply_chain:transit-summaries:v1';
 const RESILIENCE_BIS_DSR_KEY = 'economic:bis:dsr:v1';
 const RESILIENCE_NATIONAL_DEBT_KEY = 'economic:national-debt:v1';
 const RESILIENCE_IMF_MACRO_KEY = 'economic:imf:macro:v2';
-const RESILIENCE_IMF_LABOR_KEY = 'economic:imf:labor:v1';
+export const RESILIENCE_IMF_LABOR_KEY = 'economic:imf:labor:v1';
 // RETIRED in plan 2026-04-25-004 Phase 1: the `RESILIENCE_SANCTIONS_KEY`
 // constant ('sanctions:country-counts:v1') is no longer read by any scorer
 // in this module — scoreTradePolicy dropped the OFAC component. The seed
@@ -305,6 +305,16 @@ const RESILIENCE_RECOVERY_FISCAL_SPACE_KEY = 'resilience:recovery:fiscal-space:v
 const RESILIENCE_RECOVERY_RESERVE_ADEQUACY_KEY = 'resilience:recovery:reserve-adequacy:v1';
 const RESILIENCE_RECOVERY_EXTERNAL_DEBT_KEY = 'resilience:recovery:external-debt:v1';
 const RESILIENCE_RECOVERY_IMPORT_HHI_KEY = 'resilience:recovery:import-hhi:v1';
+// Re-export-share map (Comtrade-backed, written by
+// scripts/seed-recovery-reexport-share.mjs from PR #3385). Per-country
+// shape: { reexportShareOfImports: number ∈ [0,1), year, ... }. Today
+// covers AE + PA — the two designated re-export hubs. Consumed by
+// scoreSovereignFiscalBuffer's seeder (net-imports denominator, PR
+// #3380) AND by scoreLiquidReserveAdequacy here at score time so both
+// reserve-buffer dimensions use the same hub-corrected denominator.
+// Countries absent from the map score against the raw WB
+// FI.RES.TOTL.MO value (status-quo behaviour for non-hubs).
+const RESILIENCE_RECOVERY_REEXPORT_SHARE_KEY = 'resilience:recovery:reexport-share:v1';
 // PR 2 §3.4 — new SWF seed populated by scripts/seed-sovereign-wealth.mjs
 // (landed in #3305, wired into the resilience-recovery Railway bundle in
 // #3319). Per-country shape: { funds: [...], totalEffectiveMonths,
@@ -783,6 +793,65 @@ function getImfLaborEntry(raw: unknown, countryCode: string): ImfLaborEntry | nu
   const countries = (raw as { countries?: Record<string, ImfLaborEntry> } | null)?.countries;
   if (!countries || typeof countries !== 'object') return null;
   return (countries[countryCode] as ImfLaborEntry | undefined) ?? null;
+}
+
+/**
+ * Plan 2026-04-26-002 §U6 — robust population-in-millions reader for the
+ * per-capita normalization in scoreSocialCohesion + scoreBorderSecurity.
+ *
+ * Always returns a number ≥ 0.5 (the plan's tiny-state floor).
+ *
+ * Defensive raw-persons detection: the historical IMF labor seed stored
+ * the LP indicator's raw-persons value in a field misleadingly named
+ * `populationMillions` (e.g. US ≈ 342_594_000 instead of 342.6). The
+ * seeder is fixed in the same PR, but cached payloads from prior cron
+ * runs may still carry raw persons until the next refresh. Any value
+ * >= 10_000 is impossible as "millions" (China = ~1430 millions = the
+ * realistic ceiling), so treat it as raw persons and divide by 1e6.
+ * The threshold is INCLUSIVE: live cache currently has TV's value at
+ * exactly 10_000 (Tuvalu's actual headcount), and a `> 10_000` check
+ * would let it through as "10000M" instead of converting to 0.01M.
+ * The IMF labor bundle is 30-day gated; without inclusive comparison
+ * a microstate is mis-handled until the next bundle refresh.
+ *
+ * Once the cache cycles to post-fix values (everything in the 0.01-1500
+ * range), this branch becomes a no-op.
+ */
+function readPopulationMillions(imfLaborRaw: unknown, countryCode: string): number {
+  const raw = safeNum(getImfLaborEntry(imfLaborRaw, countryCode)?.populationMillions);
+  if (raw == null) return 0.5;
+  const millions = raw >= 10_000 ? raw / 1_000_000 : raw;
+  return Math.max(millions, 0.5);
+}
+
+/**
+ * Plan 2026-04-26-002 §U7 (PR 6) — population reader for the headline-
+ * eligible gate. Differs from `readPopulationMillions` in two ways:
+ *
+ *   1. Returns `null` when no IMF labor entry exists for the country
+ *      (instead of the §U6 0.5M default). The gate's "population >= 200k"
+ *      branch needs to distinguish "country with known small population"
+ *      from "country with unknown population"; defaulting to 0.5M (above
+ *      the 200k threshold) would incorrectly admit every unknown-pop
+ *      country to the headline ranking.
+ *
+ *   2. Does NOT apply the §U6 0.5M tiny-state floor. The §U6 floor is
+ *      a per-capita-math safety device (prevent /0 and amplification);
+ *      the headline gate needs the REAL population to decide eligibility.
+ *      Tuvalu's actual headcount of ~10k is below 200k → not eligible
+ *      via the population branch (it can still pass via the coverage>=0.85
+ *      branch if data quality is high enough).
+ *
+ * Defensive raw-persons detection mirrors `readPopulationMillions`
+ * (>= 10_000 is impossible as "millions" → divide by 1e6).
+ */
+export function readCountryPopulationMillionsForGate(
+  imfLaborRaw: unknown,
+  countryCode: string,
+): number | null {
+  const raw = safeNum(getImfLaborEntry(imfLaborRaw, countryCode)?.populationMillions);
+  if (raw == null) return null;
+  return raw >= 10_000 ? raw / 1_000_000 : raw;
 }
 
 // getCountryBisExchangeRates() removed in PR 3 §3.5: only scoreCurrencyExternal
@@ -1646,16 +1715,28 @@ export async function scoreSocialCohesion(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
 ): Promise<ResilienceDimensionScore> {
-  const [staticRecord, displacementRaw, unrestRaw] = await Promise.all([
+  const [staticRecord, displacementRaw, unrestRaw, imfLaborRaw] = await Promise.all([
     readStaticCountry(countryCode, reader),
     reader(`${RESILIENCE_DISPLACEMENT_PREFIX}:${new Date().getFullYear()}`),
     reader(RESILIENCE_UNREST_KEY),
+    reader(RESILIENCE_IMF_LABOR_KEY),
   ]);
   const gpiScore = safeNum(staticRecord?.gpi?.score);
   const displacement = getCountryDisplacement(displacementRaw, countryCode);
   const unrest = summarizeUnrest(unrestRaw, countryCode);
   const displacementMetric = safeNum(displacement?.totalDisplaced);
-  const unrestMetric = unrest.unrestCount + Math.sqrt(unrest.fatalities);
+  // Plan 2026-04-26-002 §U6 — per-capita normalization. Event counts are
+  // divided by max(populationMillions, 0.5) so 0 events on TV (12k pop)
+  // does not score above 5 events on Yemen (33M pop). The 0.5-million
+  // floor protects against divide-by-zero/inflation for tiny states
+  // (Tuvalu/Nauru/Palau ≈ 0.01M-0.02M); the floor's effect is to anchor
+  // micro-state per-capita rates at "as-if 500k population" rather than
+  // amplifying single events into towering rates. Goalposts re-anchored
+  // 0..10 events/M; Iceland ≈ 0 events/M, Yemen ≈ 6 events/M, Lebanon
+  // outliers ≈ 10 events/M (calibrated empirically against the live
+  // unrest:events:v1 distribution).
+  const popDenominator = readPopulationMillions(imfLaborRaw, countryCode);
+  const unrestMetric = (unrest.unrestCount + Math.sqrt(unrest.fatalities)) / popDenominator;
 
   // GPI empirical range: 1.1 (Iceland) – 3.4 (Yemen 2024). Anchor worst=3.6 (slightly
   // above observed max) so the worst-peace countries score near 0, not 20.
@@ -1729,12 +1810,29 @@ export async function scoreSocialCohesion(
     // "we have no signal that displacement is unusual" — only case (b) is the
     // intentional cohort de-rate.
     if (displacementRaw != null && displacementMetric == null) {
+      // Plan 2026-04-26-002 §U5 — non-comprehensive source fallback.
+      // The unrest:events:v1 source is non-comprehensive (event-scraping
+      // feed, English-biased, ACLED-style coverage gaps), so per the
+      // plan, absence of unrest data does NOT impute at the stable-
+      // absence anchor (70/0.5). It falls back to unmonitored (50/0.3),
+      // pulling the GPI-only blend down for tiny peaceful states (TV/PW/
+      // NR/MC) that previously rode the 70 anchor to a near-perfect dim
+      // score; comprehensive-source countries are unaffected.
+      //
+      // The §U5 contract is enforced by the registry assertion in
+      // tests/resilience-source-comprehensive-flag.test.mts (unrestEvents
+      // pinned `comprehensive: false`); IF a future PR ever flips that
+      // flag, the pinning test fires and the contributor must also
+      // restore the higher-anchor IMPUTE here. Inlining (rather than
+      // wrapping in `isIndicatorComprehensive('unrestEvents') ? ...`)
+      // keeps the code path active and tested instead of relying on a
+      // dead-by-construction conditional.
       unrestRow = {
-        score: IMPUTE.socialCohesionGpiOnlyUnrest.score,
+        score: IMPUTATION.curated_list_absent.score,
         weight: 0.2,
-        certaintyCoverage: IMPUTE.socialCohesionGpiOnlyUnrest.certaintyCoverage,
+        certaintyCoverage: IMPUTATION.curated_list_absent.certaintyCoverage,
         imputed: true,
-        imputationClass: IMPUTE.socialCohesionGpiOnlyUnrest.imputationClass,
+        imputationClass: IMPUTATION.curated_list_absent.imputationClass,
       };
     } else {
       unrestRow = {
@@ -1746,9 +1844,11 @@ export async function scoreSocialCohesion(
       };
     }
   } else {
-    // Observed unrest events — score directly.
+    // Observed unrest events — score directly. Plan §U6 per-capita
+    // anchor: 10 events/M = "worst" (Lebanon-class), 0 events/M = "best"
+    // (Iceland). Was 0..20 in raw event-count units before §U6.
     unrestRow = {
-      score: normalizeLowerBetter(unrestMetric, 0, 20),
+      score: normalizeLowerBetter(unrestMetric, 0, 10),
       weight: 0.2,
     };
   }
@@ -1760,17 +1860,31 @@ export async function scoreBorderSecurity(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
 ): Promise<ResilienceDimensionScore> {
-  const [ucdpRaw, displacementRaw] = await Promise.all([
+  const [ucdpRaw, displacementRaw, imfLaborRaw] = await Promise.all([
     reader(RESILIENCE_UCDP_KEY),
     reader(`${RESILIENCE_DISPLACEMENT_PREFIX}:${new Date().getFullYear()}`),
+    reader(RESILIENCE_IMF_LABOR_KEY),
   ]);
   const ucdp = summarizeUcdp(ucdpRaw, countryCode);
   const displacement = getCountryDisplacement(displacementRaw, countryCode);
-  const conflictMetric = ucdp.eventCount * 2 + ucdp.typeWeight + Math.sqrt(ucdp.deaths);
+  // Plan 2026-04-26-002 §U6 — UCDP per-capita event normalization, same
+  // pattern as scoreSocialCohesion above. eventCount and deaths are
+  // population-normalized so 0 events on TV doesn't ride above 5 events
+  // on Yemen. typeWeight is dimensionless (severity tag, not a count) so
+  // it stays as-is. Goalposts re-anchored 0..15 events/M (slightly higher
+  // ceiling than socialCohesion because UCDP eventCount * 2 multiplier
+  // already lifts the metric magnitude).
+  const popDenominator = readPopulationMillions(imfLaborRaw, countryCode);
+  // Plan §U6 review fix: typeWeight is event-count-scaled (incremented
+  // per-event in summarizeUcdp:907), not a per-event severity tag, so it
+  // must scale per-capita too. Pre-fix the unnormalized typeWeight could
+  // dominate the per-capita metric for high-event countries (US/IN type
+  // peaceful but high-volume), defeating §U6's intended scaling.
+  const conflictMetric = (ucdp.eventCount * 2 + ucdp.typeWeight + Math.sqrt(ucdp.deaths)) / popDenominator;
   const displacementMetric = safeNum(displacement?.hostTotal) ?? safeNum(displacement?.totalDisplaced);
 
   return weightedBlend([
-    { score: ucdpRaw != null ? normalizeLowerBetter(conflictMetric, 0, 30) : null, weight: 0.65 },
+    { score: ucdpRaw != null ? normalizeLowerBetter(conflictMetric, 0, 15) : null, weight: 0.65 },
     // Not in UNHCR displacement registry → crisis_monitoring_absent (country is not a
     // significant refugee source or host). Only impute if source was loaded; null source
     // means seed outage, not country absence.
@@ -1954,6 +2068,31 @@ export async function scoreReserveAdequacy(
 // months." A country at 12+ months clamps at 100; a country at 1 month
 // clamps at 0. Twelve months = ballpark IMF "full reserve adequacy"
 // benchmark for a diversified emerging-market importer.
+// Re-export adjustment for the reserves-in-months denominator. Mirrors
+// the `computeNetImports` correction that PR #3380 + #3385 wired into
+// `scoreSovereignFiscalBuffer` via the SWF seeder. Reserves-in-months
+// (WB FI.RES.TOTL.MO) is computed at WB source against gross imports;
+// for re-export hubs (AE ≈35% re-export share, PA similar) the gross
+// figure double-counts goods that flow through the territory without
+// settling as domestic consumption, artificially shortening the
+// implied buffer runway. Multiplying months by 1/(1-share) is the
+// algebraic inverse of dividing the denominator by (1-share) — yields
+// the same adjusted-months a custom reserves/(net-imports/12) calc
+// would produce, without re-fetching raw FI.RES.TOTL.CD + raw
+// BM.GSR.GNFS.CD series. Returns null for non-hub countries and for
+// any malformed share value (defensive: clamp to [0, 1)).
+async function readReexportShareForCountry(
+  countryCode: string,
+  reader: ResilienceSeedReader,
+): Promise<number | null> {
+  const raw = await reader(RESILIENCE_RECOVERY_REEXPORT_SHARE_KEY);
+  const payload = raw as { countries?: Record<string, { reexportShareOfImports?: number | null } | undefined> } | null | undefined;
+  const share = payload?.countries?.[countryCode]?.reexportShareOfImports;
+  if (typeof share !== 'number' || !Number.isFinite(share)) return null;
+  if (share < 0 || share >= 1) return null;
+  return share;
+}
+
 export async function scoreLiquidReserveAdequacy(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
@@ -1970,8 +2109,12 @@ export async function scoreLiquidReserveAdequacy(
       freshness: { lastObservedAtMs: 0, staleness: '' },
     };
   }
+  const reexportShare = await readReexportShareForCountry(countryCode, reader);
+  const adjustedMonths = reexportShare !== null
+    ? entry.reserveMonths / (1 - reexportShare)
+    : entry.reserveMonths;
   return weightedBlend([
-    { score: normalizeHigherBetter(Math.min(entry.reserveMonths, 12), 1, 12), weight: 1.0 },
+    { score: normalizeHigherBetter(Math.min(adjustedMonths, 12), 1, 12), weight: 1.0 },
   ]);
 }
 

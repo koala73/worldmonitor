@@ -238,32 +238,35 @@ describe('cohort anti-inversion against live ranking (Plan 2026-04-26-002 §U1)'
 
   // Each invariant runs as a separate `it` so failures isolate.
 
-  it('PERMISSIVE: median(G7) > median(microstate-territories) - 10pt [tracks current v15 inversion; PR 3 tightens to +10pt]', () => {
+  it('TIGHTENED (plan 002 PR 3+4+5): median(G7) > median(microstate-territories) + 15pt', () => {
     if (!ranking) return;
     const g7Median = median(scoresFor(cohorts.g7, ranking));
     const microMedian = median(scoresFor(cohorts.microstateTerritories, ranking));
     console.log(`[cohort-anti-inversion] median(G7) = ${g7Median.toFixed(2)}, median(microstate) = ${microMedian.toFixed(2)}, gap = ${(g7Median - microMedian).toFixed(2)}`);
-    // Current v15 has median(G7) ~69.5 < median(microstate) ~75 — that's
-    // the STRUCTURAL inversion this rebuild exists to fix. PR 0 baseline
-    // tolerates the inversion up to 10pt so the test passes on the
-    // current state. PR 3 (coverage penalty) is expected to flip the
-    // sign and tighten this assertion to `g7Median > microMedian + 10`.
-    // If this assertion fails, the rebuild has REGRESSED past current
-    // v15 — investigate before merge.
-    assert.ok(g7Median > microMedian - 10,
-      `REGRESSION PAST v15 BASELINE: median(G7)=${g7Median} fell more than 10pt below median(microstate-territories)=${microMedian}. v15 baseline gap was ~-5.5pt; current is ${(g7Median - microMedian).toFixed(2)}. The rebuild has regressed past the current state.`);
+    // Plan 2026-04-26-002 §U4+U5+U6 (combined PR 3+4+5) eliminates the
+    // structural inversion: median(G7) must now exceed median(microstate-
+    // territories) by 15pt+. The fix is empirically expected via three
+    // levers: (U4) coverage penalty halves imputed-dim weight so micro-
+    // states' stable-absence inflated stats lose grip; (U5) source-
+    // comprehensiveness flag drops unrest impute from 70 → 50 for
+    // tiny states; (U6) per-capita normalization stops 0-event micros
+    // from out-scoring low-rate large states.
+    assert.ok(g7Median > microMedian + 15,
+      `STRUCTURAL FAIL: median(G7)=${g7Median.toFixed(2)} did not exceed median(microstate-territories)=${microMedian.toFixed(2)} by ≥15pt. Gap=${(g7Median - microMedian).toFixed(2)}. Plan 002 PR 3+4+5 must produce this separation; if it doesn't, U4/U5/U6 levers are mis-calibrated.`);
   });
 
-  it('PERMISSIVE: median(Nordics) >= median(GCC) - 30pt [PR 5 tightens to -5pt]', () => {
+  it('TIGHTENED (plan 002 PR 3+4+5): median(Nordics) >= median(GCC) - 5pt', () => {
     if (!ranking) return;
     const nordicMedian = median(scoresFor(cohorts.nordics, ranking));
     const gccMedian = median(scoresFor(cohorts.gcc, ranking));
     console.log(`[cohort-anti-inversion] median(Nordics) = ${nordicMedian.toFixed(2)}, median(GCC) = ${gccMedian.toFixed(2)}, gap = ${(nordicMedian - gccMedian).toFixed(2)}`);
-    assert.ok(nordicMedian >= gccMedian - 30,
-      `Nordics median ${nordicMedian} dropped >30pt below GCC median ${gccMedian}. Catastrophic Nordic regression — investigate before merge.`);
+    // Plan 002: Nordic median should be at least within 5pt of GCC.
+    // GCC small-state inflation should be largely corrected via U4+U6.
+    assert.ok(nordicMedian >= gccMedian - 5,
+      `STRUCTURAL FAIL: Nordics median ${nordicMedian.toFixed(2)} dropped >5pt below GCC median ${gccMedian.toFixed(2)}. After plan 002 §U4+U6, GCC inflation should be largely corrected.`);
   });
 
-  it('PERMISSIVE: min(G7) >= max(Sub-Saharan-LIC) - 20pt [PR 3 tightens to -10pt]', () => {
+  it('TIGHTENED (plan 002 PR 3): min(G7) >= max(Sub-Saharan-LIC) - 10pt', () => {
     if (!ranking) return;
     const g7Scores = scoresFor(cohorts.g7, ranking);
     const licScores = scoresFor(cohorts.subSaharanLic, ranking);
@@ -274,20 +277,23 @@ describe('cohort anti-inversion against live ranking (Plan 2026-04-26-002 §U1)'
     const g7Min = Math.min(...g7Scores);
     const licMax = Math.max(...licScores);
     console.log(`[cohort-anti-inversion] min(G7) = ${g7Min.toFixed(2)}, max(Sub-Saharan-LIC) = ${licMax.toFixed(2)}, gap = ${(g7Min - licMax).toFixed(2)}`);
-    assert.ok(g7Min >= licMax - 20,
-      `Catastrophic floor regression: min(G7)=${g7Min} fell within 20pt of max(Sub-Saharan-LIC)=${licMax}. Recovery domain or coverage handling has regressed.`);
+    assert.ok(g7Min >= licMax - 10,
+      `Catastrophic floor regression: min(G7)=${g7Min.toFixed(2)} fell within 10pt of max(Sub-Saharan-LIC)=${licMax.toFixed(2)}. Recovery domain or coverage handling has regressed.`);
   });
 
-  it('REPORT-ONLY: count(microstate-territories) in top 20 [PR 5 will assert <= 1]', () => {
+  it('TIGHTENED (plan 002 PR 5): count(microstate-territories) in top 20 <= 1', () => {
     if (!ranking) return;
     const microSet = new Set(cohorts.microstateTerritories.iso2);
     const sorted = [...ranking.entries()]
       .sort((a, b) => b[1].score - a[1].score)
       .slice(0, 20);
     const microInTop20 = sorted.filter(([iso]) => microSet.has(iso));
-    console.log(`[cohort-anti-inversion] microstate-territories in top 20: ${microInTop20.length} (${microInTop20.map(([i]) => i).join(', ')}) [no assertion in PR 0; PR 5 will assert <= 1]`);
-    // No assertion yet — PR 5 lands the <= 1 threshold after per-capita normalization.
-    assert.ok(true);
+    console.log(`[cohort-anti-inversion] microstate-territories in top 20: ${microInTop20.length} (${microInTop20.map(([i]) => i).join(', ')})`);
+    // Per-capita normalization (U6) should ensure no more than 1 micro-
+    // state appears in the top 20. If multiple do, U6's pop-floor
+    // calibration or U4's imputation factor needs adjustment.
+    assert.ok(microInTop20.length <= 1,
+      `STRUCTURAL FAIL: ${microInTop20.length} microstate-territories appeared in top 20 (${microInTop20.map(([i]) => i).join(', ')}). Plan 002 §U6 per-capita normalization should keep this ≤ 1.`);
   });
 
   it('REPORT-ONLY: per-cohort coverage in the live ranking [diagnostic]', () => {

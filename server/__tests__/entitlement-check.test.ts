@@ -61,8 +61,13 @@ function makeEntitlements(tier: number, planKey = "free") {
 // ---------------------------------------------------------------------------
 
 describe("gateway entitlement check", () => {
-  test("getRequiredTier returns tier for gated endpoint", () => {
-    expect(getRequiredTier("/api/market/v1/analyze-stock")).toBe(2);
+  test.each([
+    "/api/market/v1/analyze-stock",
+    "/api/market/v1/get-stock-analysis-history",
+    "/api/market/v1/backtest-stock",
+    "/api/market/v1/list-stored-stock-backtests",
+  ])("getRequiredTier returns 1 for %s (regression-lock against tier-2 revert)", (path) => {
+    expect(getRequiredTier(path)).toBe(1);
   });
 
   test("getRequiredTier returns null for ungated endpoint", () => {
@@ -83,7 +88,7 @@ describe("gateway entitlement check", () => {
 
     const body = await result!.json();
     expect(body.error).toBe("Authentication required");
-    expect(body.requiredTier).toBe(2);
+    expect(body.requiredTier).toBe(1);
   });
 
   test("checkEntitlement returns 403 when getEntitlements returns null (fail-closed)", async () => {
@@ -95,7 +100,7 @@ describe("gateway entitlement check", () => {
 
     const body = await result!.json();
     expect(body.error).toBe("Unable to verify entitlements");
-    expect(body.requiredTier).toBe(2);
+    expect(body.requiredTier).toBe(1);
   });
 
   test("checkEntitlement returns 403 for insufficient tier", async () => {
@@ -109,8 +114,19 @@ describe("gateway entitlement check", () => {
 
     const body = await result!.json();
     expect(body.error).toBe("Upgrade required");
-    expect(body.requiredTier).toBe(2);
+    expect(body.requiredTier).toBe(1);
     expect(body.currentTier).toBe(0);
+  });
+
+  test("checkEntitlement returns null for Pro tier (tier=1) on stock analysis", async () => {
+    // Regression: previous tier=2 requirement 403'd real Pro subscribers
+    // calling via Clerk session (no tester key in localStorage). Stock
+    // analysis is marketed as a Pro feature and must accept tier >= 1.
+    vi.mocked(getCachedJson).mockResolvedValueOnce(makeEntitlements(1, "pro_monthly"));
+
+    const req = makeRequest("/api/market/v1/analyze-stock", { "x-user-id": "test-user" });
+    const result = await checkEntitlement(req, "/api/market/v1/analyze-stock", {});
+    expect(result).toBeNull();
   });
 
   test("checkEntitlement returns null for sufficient tier", async () => {

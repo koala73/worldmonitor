@@ -52,6 +52,11 @@ message ResilienceRankingItem {
   bool low_confidence = 4;
   double overall_coverage = 5;
   bool rank_stable = 6;
+  // Plan 2026-04-26-002 §U3 (PR 2) — eligibility flag for headline
+  // ranking. PR 2 populates `true` for every country; PR 6 / §U7 swaps
+  // to coverage-and-population logic and the headline endpoint then
+  // filters by this field.
+  bool headline_eligible = 7;
 }
 
 // Phase 2 T2.1/T2.3 of the country-resilience reference-grade upgrade plan.

@@ -21,6 +21,14 @@ export interface SeedMeta {
   failedDatasets?: string[];
   errorReason?: string;
   groupId?: string;
+  // Content-age trio (opt-in via runSeed `contentMeta` + `maxContentAgeMin`).
+  // Presence of `maxContentAgeMin` is the opt-in signal. `newestItemAt` /
+  // `oldestItemAt` may be explicit `null` when contentMeta returned null
+  // (no usable item timestamps), which the health classifier reads as
+  // STALE_CONTENT. See docs/plans/2026-05-04-001-feat-health-readiness-probe-content-age-plan.md
+  newestItemAt?: number | null;
+  oldestItemAt?: number | null;
+  maxContentAgeMin?: number;
 }
 
 export interface SeedEnvelope<T = unknown> {
@@ -66,12 +74,20 @@ export function buildEnvelope(input: {
   failedDatasets?: string[];
   errorReason?: string;
   groupId?: string;
+  newestItemAt?: number | null;
+  oldestItemAt?: number | null;
+  maxContentAgeMin?: number;
   data: unknown;
 }): SeedEnvelope {
-  const { fetchedAt, recordCount, sourceVersion, schemaVersion, state, failedDatasets, errorReason, groupId, data } = input;
+  const { fetchedAt, recordCount, sourceVersion, schemaVersion, state, failedDatasets, errorReason, groupId, newestItemAt, oldestItemAt, maxContentAgeMin, data } = input;
   const _seed: SeedMeta = { fetchedAt, recordCount, sourceVersion, schemaVersion, state };
   if (failedDatasets != null) _seed.failedDatasets = failedDatasets;
   if (errorReason != null) _seed.errorReason = errorReason;
   if (groupId != null) _seed.groupId = groupId;
+  if (maxContentAgeMin !== undefined) {
+    _seed.newestItemAt = newestItemAt ?? null;
+    _seed.oldestItemAt = oldestItemAt ?? null;
+    _seed.maxContentAgeMin = maxContentAgeMin;
+  }
   return { _seed, data };
 }

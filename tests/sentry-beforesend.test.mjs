@@ -29,10 +29,10 @@ const fnBody = mainSrc.slice(bsStart + 'beforeSend(event) '.length, bsEnd)
   .replace(/as\s+\w+(\[\])?/g, '')        // type assertions
   .replace(/<[A-Z]\w*>/g, '');            // generic type params
 
-// Extract the MAPLIBRE_THIRD_PARTY_TILE_HOSTS Set so the test harness can evaluate
+// Extract the THIRD_PARTY_FETCH_HOST_ALLOWLIST Set so the test harness can evaluate
 // beforeSend with the same allowlist the real module has.
-const tpMatch = mainSrc.match(/const MAPLIBRE_THIRD_PARTY_TILE_HOSTS = new Set\(\[[^\]]*\]\);/);
-assert.ok(tpMatch, 'MAPLIBRE_THIRD_PARTY_TILE_HOSTS must be defined in src/main.ts');
+const tpMatch = mainSrc.match(/const THIRD_PARTY_FETCH_HOST_ALLOWLIST = new Set\(\[[^\]]*\]\);/);
+assert.ok(tpMatch, 'THIRD_PARTY_FETCH_HOST_ALLOWLIST must be defined in src/main.ts');
 
 // Build a callable version. Input: a Sentry-shaped event object. Returns event or null.
 // eslint-disable-next-line no-new-func
@@ -133,14 +133,14 @@ describe('first-party file detection', () => {
 // ─── P1: empty-stack behavior for network/timeout errors ─────────────────
 
 describe('empty-stack network/timeout errors are NOT suppressed', () => {
+  // Note: dynamic-module-import failures are intentionally suppressed even with empty
+  // stacks — that exact phrase is emitted only by the runtime on stale-chunk-after-
+  // deploy, which the chunk-reload guard already auto-recovers. See the dedicated
+  // suite below for that case (WORLDMONITOR-Q / WORLDMONITOR-15).
   const networkErrors = [
-    'TypeError: Failed to fetch',
     'TypeError: NetworkError when attempting to fetch resource.',
     'Could not connect to the server',
-    'Failed to fetch dynamically imported module: https://worldmonitor.app/assets/panels-abc.js',
-    'Importing a module script failed.',
     'Operation timed out',
-    'signal timed out',
     'Invalid or unexpected token',
   ];
 
@@ -197,15 +197,101 @@ describe('empty-stack network/timeout errors are NOT suppressed', () => {
   }
 });
 
+// ─── Stale-chunk-after-deploy: dynamic-module-import failures ────────────
+//
+// Modulepreload / dynamic-import failures arrive with no stack trace because the
+// browser fires them as synthetic TypeErrors at fetch time, not at any first-party
+// call site. The chunk-reload guard auto-reloads the page, so the user is unaffected
+// — but the Sentry event is still captured. We suppress these even with empty stacks
+// because the exact phrase is only emitted by the runtime, never by our shipped code
+// (WORLDMONITOR-Q / WORLDMONITOR-15).
+
+describe('dynamic-module-import failures (stale chunk after deploy)', () => {
+  const dynamicImportErrors = [
+    'Failed to fetch dynamically imported module: https://worldmonitor.app/assets/panels-abc.js',
+    'Failed to fetch dynamically imported module: https://www.worldmonitor.app/assets/index-DSkSc57y.js',
+    'Importing a module script failed.',
+    'TypeError: Importing a module script failed.',
+    'error loading dynamically imported module',
+  ];
+
+  for (const msg of dynamicImportErrors) {
+    it(`suppresses "${msg.slice(0, 60)}..." with empty stack`, () => {
+      const event = makeEvent(msg, 'TypeError', []);
+      assert.equal(beforeSend(event), null, `"${msg}" with empty stack should be suppressed (chunk-reload guard handles it)`);
+    });
+
+    it(`suppresses "${msg.slice(0, 60)}..." with confirmed third-party stack`, () => {
+      const event = makeEvent(msg, 'TypeError', [extensionFrame()]);
+      assert.equal(beforeSend(event), null);
+    });
+
+    it(`lets through "${msg.slice(0, 60)}..." with first-party stack`, () => {
+      const event = makeEvent(msg, 'TypeError', [firstPartyFrame()]);
+      assert.ok(beforeSend(event) !== null, `"${msg}" with first-party stack should NOT be suppressed`);
+    });
+  }
+});
+
+// ─── Zero-frame async-rejection patterns: AbortSignal timeouts + DOMException(NotSupportedError) ───
+//
+// AbortSignal.timeout() rejections and DOMException(NotSupportedError) bubble
+// up via onunhandledrejection without first-party frames captured (browser
+// fires them from internal infra at the timer boundary). Both phrases are
+// runtime-emitted only — our shipped code cannot synthesize them
+// (WORLDMONITOR-66 / WORLDMONITOR-62).
+
+describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DOM-walker / wrapper-injected timeout)', () => {
+  const zeroFrameErrors = [
+    ['signal timed out', 'TimeoutError'],
+    ['NotSupportedError: The operation is not supported.', 'Error'],
+    // Firefox setInterval mechanism, no captured frames (WORLDMONITOR-KE)
+    ['out of memory', 'Error'],
+    // Apple Mail privacy proxy DOM walker (WORLDMONITOR-P2). Frames in
+    // production are [sentry-chunk, [native code]] which fully filter out
+    // of `nonInfraFrames` so empty-stack semantics apply.
+    [".toLowerCase is not a function. (In 'el.className.toLowerCase()', 'el.className.toLowerCase' is undefined)", 'TypeError'],
+    ['.trim is not a function', 'TypeError'],
+    ['.indexOf is not a function', 'TypeError'],
+    ['.findIndex is not a function', 'TypeError'],
+    // Third-party Electron wrapper polling endpoints we don't serve
+    // (WORLDMONITOR-PW: /api/setIsSelect from Electron 39.2.7).
+    ['Request timeout: /api/setIsSelect', 'Error'],
+    ['Error: Request timeout: /api/whatever', 'Error'],
+    // Bare `Failed to fetch` with zero frames = service worker /
+    // extension / in-app webview / stale pre-deploy bundle. First-party
+    // fetch failures surface with a source-mapped frame on the awaiting
+    // site (WORLDMONITOR-KM 10ev/8u). The host-suffixed variant
+    // `Failed to fetch (<host>)` has its own first-party allowlist
+    // earlier in beforeSend (isHostScopedFetchFailure), so doesn't go
+    // through this gate.
+    ['Failed to fetch', 'TypeError'],
+    ['TypeError: Failed to fetch', 'TypeError'],
+  ];
+
+  for (const [msg, type] of zeroFrameErrors) {
+    it(`suppresses "${msg.slice(0, 60)}..." with empty stack`, () => {
+      const event = makeEvent(msg, type, []);
+      assert.equal(beforeSend(event), null, `"${msg}" with empty stack should be suppressed`);
+    });
+
+    it(`suppresses "${msg.slice(0, 60)}..." with confirmed third-party stack`, () => {
+      const event = makeEvent(msg, type, [extensionFrame()]);
+      assert.equal(beforeSend(event), null);
+    });
+
+    it(`lets through "${msg.slice(0, 60)}..." with first-party stack`, () => {
+      const event = makeEvent(msg, type, [firstPartyFrame()]);
+      assert.ok(beforeSend(event) !== null, `"${msg}" with first-party stack should NOT be suppressed`);
+    });
+  }
+});
+
 // ─── All ambiguous errors require confirmed third-party stack ────────────
 
 describe('ambiguous runtime errors', () => {
   const ambiguousErrors = [
-    '.trim is not a function',
-    'e.toLowerCase is not a function',
-    '.indexOf is not a function',
     'Maximum call stack size exceeded',
-    'out of memory',
     'Cannot add property x, object is not extensible',
     'TypeError: Internal error',
     'Key not found',

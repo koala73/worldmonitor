@@ -76,6 +76,39 @@ test('formatResilienceConfidence shows sparse-data copy when low confidence is s
   );
 });
 
+// Plan 2026-04-26-002 §U7 (PR #3469) + §U8 widget polish:
+// headlineEligible=false surfaces a distinct badge ("Outside headline
+// ranking") rather than reusing the sparse-data copy. The two reasons
+// are different and the user should see them as different.
+//   - lowConfidence=true → data we have is too sparse / volatile.
+//   - headlineEligible=false → country is correctly tracked but failed
+//     the universe gate (population<200k AND coverage<85%, or
+//     coverage<65%). Microstates land here.
+// Order matters: lowConfidence is more specific so it wins when both
+// flags fire on the same country.
+test('formatResilienceConfidence: headlineEligible=false renders the outside-ranking badge', () => {
+  assert.equal(
+    formatResilienceConfidence({ ...baseResponse, headlineEligible: false }),
+    'Outside headline ranking',
+  );
+});
+
+test('formatResilienceConfidence: lowConfidence wins when both flags fire (specificity precedence)', () => {
+  assert.equal(
+    formatResilienceConfidence({ ...baseResponse, lowConfidence: true, headlineEligible: false }),
+    'Low confidence — sparse data',
+  );
+});
+
+test('formatResilienceConfidence: headlineEligible=true is the silent normal case (Coverage % ✓)', () => {
+  // Regression guard: verifying the eligible path doesn't accidentally
+  // trip the new false-branch.
+  assert.equal(
+    formatResilienceConfidence({ ...baseResponse, headlineEligible: true }),
+    'Coverage 90% ✓',
+  );
+});
+
 // PR 3 §3.5 follow-up: retired dimensions (fuelStockDays, post-PR-3)
 // return coverage=0 structurally (by design, not by sparsity) and
 // contribute zero weight to domain scoring. The widget's displayed

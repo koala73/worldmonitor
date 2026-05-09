@@ -428,12 +428,46 @@ function notifySimpleHash(str) {
   return Math.abs(h).toString(36);
 }
 
+/**
+ * Slot B helper: derive a coalesce-family key from an NWS VTEC string.
+ *
+ * NWS VTEC format (https://www.weather.gov/vtec/):
+ *   /O.NEW.KSGF.SV.W.0034.250427T1257Z-250427T1330Z/
+ *    │  │   │   │  │  │
+ *    │  │   │   │  │  └── event tracking number (per-office, per-phenomenon, per-significance)
+ *    │  │   │   │  └───── significance: W=warning, A=watch, Y=advisory, etc.
+ *    │  │   │   └──────── phenomenon: SV=severe thunderstorm, TO=tornado, FF=flash flood, etc.
+ *    │  │   └──────────── forecast office (4-letter ICAO)
+ *    │  └──────────────── action: NEW, CON (continued), CAN (cancel), EXP (expired), etc.
+ *    └─────────────────── product status: O=operational, T=test, E=exercise, X=experimental
+ *
+ * The (office, phenomenon, significance, eventID) tuple identifies one logical
+ * event across adjacent zones — exactly what we want to coalesce. We drop the
+ * action so NEW + CON + CAN bulletins for the same event also collapse.
+ *
+ * Returns a stable family key like "nws:KSGF.SV.W.0034" or undefined if the
+ * VTEC string is missing or malformed.
+ */
+function deriveWeatherCoalesceKey(vtec) {
+  if (typeof vtec !== 'string') return undefined;
+  const m = vtec.match(/\/[OTEX]\.[A-Z]+\.([A-Z]{4})\.([A-Z]{2})\.([A-Z])\.(\d{4})\./);
+  if (!m) return undefined;
+  return `nws:${m[1]}.${m[2]}.${m[3]}.${m[4]}`;
+}
+
 async function publishNotificationEvent({ eventType, payload, severity, variant, dedupTtl = 1800 }) {
   try {
     // Include variant in dedup key so each variant can independently publish the same title
-    // (e.g. finance and world users both receive an alert for the same headline)
+    // (e.g. finance and world users both receive an alert for the same headline).
+    // Slot B: when payload.coalesceKey is set (e.g. NWS VTEC family), key on it
+    // instead of the title hash so adjacent-zone alerts for the same logical
+    // event collapse at the publisher (queue stays clean) instead of N times
+    // per recipient at the relay.
     const variantSuffix = variant ? `:${variant}` : '';
-    const dedupKey = `wm:notif:scan-dedup:${eventType}${variantSuffix}:${notifySimpleHash(`${eventType}:${payload.title ?? ''}`)}`;
+    const dedupMaterial = payload?.coalesceKey
+      ? `coalesce:${payload.coalesceKey}`
+      : `${eventType}:${payload.title ?? ''}`;
+    const dedupKey = `wm:notif:scan-dedup:${eventType}${variantSuffix}:${notifySimpleHash(dedupMaterial)}`;
     const isNew = await upstashSetNx(dedupKey, '1', dedupTtl);
     if (!isNew) {
       console.log(`[Notify] Dedup hit — ${eventType}: ${String(payload.title ?? '').slice(0, 60)}`);
@@ -3125,17 +3159,21 @@ function matchCountryNamesInText(text) {
   return [];
 }
 
-// v4 (2026-04-26): bumped from v3 in lockstep with
+// v5 (2026-04-28): bumped from v4 in lockstep with
 // server/worldmonitor/intelligence/v1/_shared.ts and
 // server/worldmonitor/news/v1/list-feed-digest.ts to evict cache entries
-// that previously promoted static-page titles to high/critical via the
-// LLM classifier. The relay maintains its own inline helper because
-// .cjs cannot import from .ts; the prefix-audit static-analysis test
+// that landed under the pre-publisher-prefix-fix classifier (PR #3480).
+// Brand-prefixed retrospective titles ("CBS News Radio flashback: ...")
+// had been promoted to severity=critical via the `invasion` keyword;
+// the new brand-prefix branch in _classifier.ts re-rules those rows on
+// next touch.
+// The relay maintains its own inline helper because .cjs cannot import
+// from .ts; the prefix-audit static-analysis test
 // (tests/news-classify-cache-prefix-audit.test.mjs) cross-checks all
-// three sites. See U4 of the plan.
+// three sites.
 function classifyCacheKey(title) {
   const hash = crypto.createHash('sha256').update(title.toLowerCase()).digest('hex').slice(0, 16);
-  return `classify:sebuf:v4:${hash}`;
+  return `classify:sebuf:v5:${hash}`;
 }
 
 // LLM provider fallback chain — mirrors seed-insights.mjs LLM_PROVIDERS
@@ -4040,6 +4078,48 @@ function startTheaterPostureSeedLoop() {
 }
 
 // ─────────────────────────────────────────────────────────────
+// Warm-ping shared auth — relay → api.worldmonitor.app
+//
+// All warm-pings call api.worldmonitor.app/api/* edge functions. Pre-2026-05-02
+// these used Origin-trust alone (the relay sent `Origin: https://worldmonitor.app`
+// which `api/_api-key.js::validateApiKey` accepts via BROWSER_ORIGIN_PATTERNS).
+// On 2026-05-02 ALL three warm-pings (CII + Chokepoints + CableHealth) started
+// returning HTTP 401 simultaneously despite the relay sending the correct
+// Origin header. Root cause unclear (Vercel firewall change, CDN cache
+// poisoning, deploy mismatch) — but Origin-trust is fragile by nature: any
+// intermediary (CF, Vercel firewall, future CDN) can strip or rewrite Origin
+// without leaving a trace.
+//
+// Defense-in-depth: send an explicit X-WorldMonitor-Key in addition to the
+// Origin header. The gateway accepts EITHER, so when Origin trust breaks
+// the key carries the auth. When the key isn't configured, fall through to
+// Origin-only — preserves backward compatibility for local dev / before the
+// env var is provisioned on Railway.
+//
+// Required env var on Railway ais-relay service:
+//   WORLDMONITOR_RELAY_KEY=<value present in Vercel WORLDMONITOR_VALID_KEYS>
+// ─────────────────────────────────────────────────────────────
+const RELAY_API_KEY = process.env.WORLDMONITOR_RELAY_KEY || '';
+// Surface the auth-mode at boot so misconfig (env var on wrong service,
+// typo'd name, missing on a fresh Railway deploy) is visible in the first
+// log lines instead of waiting for the first 401. PR #3565 review P2.
+if (!RELAY_API_KEY) {
+  console.warn('[Relay] WORLDMONITOR_RELAY_KEY not set — warm-pings will rely on Origin-trust only (fragile against CDN/firewall changes)');
+} else {
+  console.log('[Relay] WORLDMONITOR_RELAY_KEY configured — warm-pings will send X-WorldMonitor-Key');
+}
+
+function warmPingHeaders(extra = {}) {
+  const h = {
+    'User-Agent': CHROME_UA,
+    Origin: 'https://worldmonitor.app',
+    ...extra,
+  };
+  if (RELAY_API_KEY) h['X-WorldMonitor-Key'] = RELAY_API_KEY;
+  return h;
+}
+
+// ─────────────────────────────────────────────────────────────
 // CII Risk Scores warm-ping — keeps RPC cache fresh so
 // bootstrap stale key never expires.
 // The RPC handler itself refreshes the stale key on every call.
@@ -4050,14 +4130,11 @@ const CII_RPC_URL = 'https://api.worldmonitor.app/api/intelligence/v1/get-risk-s
 async function seedCiiWarmPing() {
   try {
     const resp = await fetch(CII_RPC_URL, {
-      headers: {
-        'User-Agent': CHROME_UA,
-        Origin: 'https://worldmonitor.app',
-      },
+      headers: warmPingHeaders(),
       signal: AbortSignal.timeout(60_000),
     });
     if (!resp.ok) {
-      console.warn(`[CII] Warm-ping failed: HTTP ${resp.status}`);
+      console.warn(`[CII] Warm-ping failed: HTTP ${resp.status}${RELAY_API_KEY ? '' : ' (no WORLDMONITOR_RELAY_KEY set; relying on Origin-trust)'}`);
       return;
     }
     const data = await resp.json();
@@ -4092,12 +4169,12 @@ async function seedChokepointWarmPing() {
   try {
     const resp = await fetch(CHOKEPOINT_RPC_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'User-Agent': CHROME_UA, Origin: 'https://worldmonitor.app' },
+      headers: warmPingHeaders({ 'Content-Type': 'application/json' }),
       body: '{}',
       signal: AbortSignal.timeout(60_000),
     });
     if (!resp.ok) {
-      console.warn(`[Chokepoints] Warm-ping failed: HTTP ${resp.status}`);
+      console.warn(`[Chokepoints] Warm-ping failed: HTTP ${resp.status}${RELAY_API_KEY ? '' : ' (no WORLDMONITOR_RELAY_KEY set; relying on Origin-trust)'}`);
       return;
     }
     const data = await resp.json();
@@ -4130,12 +4207,12 @@ async function seedCableHealthWarmPing() {
   try {
     const resp = await fetch(CABLE_HEALTH_RPC_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'User-Agent': CHROME_UA, Origin: 'https://worldmonitor.app' },
+      headers: warmPingHeaders({ 'Content-Type': 'application/json' }),
       body: '{}',
       signal: AbortSignal.timeout(60_000),
     });
     if (!resp.ok) {
-      console.warn(`[CableHealth] Warm-ping failed: HTTP ${resp.status}`);
+      console.warn(`[CableHealth] Warm-ping failed: HTTP ${resp.status}${RELAY_API_KEY ? '' : ' (no WORLDMONITOR_RELAY_KEY set; relying on Origin-trust)'}`);
       return;
     }
     const data = await resp.json();
@@ -4202,11 +4279,17 @@ async function seedWeatherAlerts() {
         const centroid = coords.length > 0
           ? [coords.reduce((s, c) => s + c[0], 0) / coords.length, coords.reduce((s, c) => s + c[1], 0) / coords.length]
           : undefined;
+        // Slot B: NWS VTEC string. NWS wraps VTEC in an array under
+        // properties.parameters.VTEC; pick the first entry (most alerts have one;
+        // multi-VTEC alerts use the primary). Used to derive a coalesce family key
+        // so adjacent-zone alerts for the same logical event collapse at the
+        // publisher and at the per-user dedup.
+        const vtec = Array.isArray(p?.parameters?.VTEC) ? p.parameters.VTEC[0] : undefined;
         return {
           id: f.id || '', event: p.event || '', severity: p.severity || 'Unknown',
           headline: p.headline || '', description: (p.description || '').slice(0, 500),
           areaDesc: p.areaDesc || '', onset: p.onset || '', expires: p.expires || '',
-          coordinates: coords, centroid,
+          coordinates: coords, centroid, vtec,
         };
       });
     if (alerts.length === 0) {
@@ -4221,10 +4304,40 @@ async function seedWeatherAlerts() {
     const ok2 = await upstashSet('seed-meta:weather:alerts', { fetchedAt: Date.now(), recordCount: alerts.length }, 604800);
     console.log(`[Weather] Seeded ${alerts.length} alerts (redis: ${ok1 && ok2 ? 'OK' : 'PARTIAL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
     const highSeverityAlerts = alerts.filter(a => a.severity === 'Extreme' || a.severity === 'Severe');
-    for (const a of highSeverityAlerts.slice(0, 3)) {
+    // Pick up to 3 DISTINCT event families before publishing. The naive
+    // `slice(0, 3)` would silently lose distinct families: if the first 3 raw
+    // alerts are adjacent-zone duplicates for one VTEC family (one storm
+    // crossing 3 counties), the publisher-side dedup collapses them to 1
+    // notification and a 4th genuinely-distinct family (tornado / flood /
+    // different storm) sitting at index 3+ would NEVER be considered.
+    // Dedupe by coalesceKey FIRST, then take the top 3 distinct families.
+    // Slot B regression fix from PR #3467 review.
+    const seenFamilyKeys = new Set();
+    const distinctFamilyAlerts = [];
+    for (const a of highSeverityAlerts) {
+      // Family key: prefer VTEC-derived coalesce key; fall back to a stable
+      // identity from the alert (NWS feature.id, then headline/event) so
+      // VTEC-less alerts still deduplicate against themselves.
+      const familyKey = deriveWeatherCoalesceKey(a.vtec)
+        ?? `nws:fallback:${a.id || a.headline || a.event || ''}`;
+      if (seenFamilyKeys.has(familyKey)) continue;
+      seenFamilyKeys.add(familyKey);
+      distinctFamilyAlerts.push(a);
+      if (distinctFamilyAlerts.length >= 3) break;
+    }
+    for (const a of distinctFamilyAlerts) {
+      // Slot B: derive a coalesceKey from the NWS VTEC string (when present)
+      // so adjacent-zone bulletins for the same logical event collapse to one
+      // notification per user. Falls back to title-based dedup when VTEC is
+      // absent (rare advisory types or missing parameters).
+      const coalesceKey = deriveWeatherCoalesceKey(a.vtec);
       publishNotificationEvent({
         eventType: 'weather_alert',
-        payload: { title: a.headline || a.event || 'Weather alert', source: 'NWS' },
+        payload: {
+          title: a.headline || a.event || 'Weather alert',
+          source: 'NWS',
+          ...(coalesceKey ? { coalesceKey } : {}),
+        },
         severity: a.severity === 'Extreme' ? 'critical' : 'high',
         variant: undefined,
       }).catch(e => console.warn('[Notify] Weather publish error:', e?.message));
@@ -9245,7 +9358,16 @@ const server = http.createServer(async (req, res) => {
             'Accept-Language': 'en-US,en;q=0.9',
             ...conditionalHeaders,
           },
-          timeout: 15000
+          timeout: 15000,
+          // Bumped from Node's 16KB default. Some publishers (Substack, big-CDN-
+          // fronted feeds) chain Set-Cookie + CSP + Permissions-Policy + tracking
+          // headers that exceed 16KB, which makes Node's HTTP parser throw
+          // `Parse Error: Header overflow` and fail every fetch from this relay.
+          // The relay's in-memory rssResponseCache used to mask this on long-
+          // running deploys; a redeploy clears the cache and the broken feeds
+          // surface immediately. 64KB is well above any legitimate header set,
+          // and is per-request (no process-level Node flag needed).
+          maxHeaderSize: 65536,
         }, (response) => {
           if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location) {
             const redirectUrl = response.headers.location.startsWith('http')
@@ -10339,6 +10461,14 @@ async function handleWidgetAgentRequest(req, res) {
     if (!res.writableEnded) res.end();
   }, timeoutMs);
 
+  // Hoisted out of the try block so the catch's structured-log payload can
+  // read it. `let` is block-scoped — declaring `toolCallCount` inside the
+  // try would make any reference from the catch throw a ReferenceError,
+  // which the inner log-fallback would silently swallow into "[widget-agent]
+  // Error (log-failed)" — defeating the entire diagnostic value of this
+  // log line. `completed` doesn't need hoisting (not read in catch).
+  let toolCallCount = 0;
+
   try {
     const { default: Anthropic } = await import('@anthropic-ai/sdk');
     const client = new Anthropic({ apiKey: WIDGET_ANTHROPIC_KEY });
@@ -10358,7 +10488,6 @@ async function handleWidgetAgentRequest(req, res) {
     messages.push({ role: 'user', content: String(prompt).slice(0, 2000) });
 
     let completed = false;
-    let toolCallCount = 0;
     for (let turn = 0; turn < maxTurns; turn++) {
       if (cancelled) break;
 
@@ -10468,12 +10597,94 @@ async function handleWidgetAgentRequest(req, res) {
       }
     }
   } catch (err) {
-    if (!cancelled) sendWidgetSSE(res, 'error', { message: 'Agent error' });
-    console.error('[widget-agent] Error:', err.message);
+    // Classify the error so the client gets an actionable message instead
+    // of the opaque "Agent error" that leaves the user (and operator) blind.
+    // Anthropic SDK errors expose .status / .error.type / .message; none of
+    // those leak the API key, but the fallback path scrubs sk-* tokens just
+    // in case the SDK changes its error shape.
+    if (!cancelled) {
+      sendWidgetSSE(res, 'error', { message: classifyWidgetAgentError(err, model) });
+    }
+    // Verbose structured log so Railway operators can diagnose without
+    // server-side reproduction. Includes status + type + request shape;
+    // omits headers/body to avoid leaking the prompt or auth headers.
+    try {
+      console.error('[widget-agent] Error:', JSON.stringify({
+        message: err && err.message ? String(err.message).slice(0, 500) : String(err).slice(0, 500),
+        status: err && typeof err.status === 'number' ? err.status : null,
+        type: (err && err.error && err.error.type) || (err && err.type) || null,
+        name: err && err.name ? String(err.name) : null,
+        isPro,
+        model,
+        toolCallCount,
+        promptLen: typeof prompt === 'string' ? prompt.length : 0,
+        historyLen: Array.isArray(conversationHistory) ? conversationHistory.length : 0,
+      }));
+      if (err && err.stack) console.error('[widget-agent] Stack:', err.stack);
+    } catch (logErr) {
+      console.error('[widget-agent] Error (log-failed):', err && err.message);
+    }
   } finally {
     clearTimeout(timeout);
     if (!cancelled && !res.writableEnded) res.end();
   }
+}
+
+// Map a thrown error from the agent loop to a user-facing message.
+// Inputs:
+//   err   - any thrown value (Anthropic SDK error, Error, string, ...)
+//   model - the model identifier we attempted, surfaced in the model-not-found path
+// Output: a short, actionable string safe to send to the client.
+function classifyWidgetAgentError(err, model) {
+  if (err && err.name === 'AbortError') return 'Request cancelled';
+  const status = err && typeof err.status === 'number' ? err.status : null;
+  const type = (err && err.error && err.error.type) || (err && err.type) || null;
+  const rawMsg = err && err.message ? String(err.message) : String(err || '');
+  // Scrub `sk-…` / `sk-ant-…` Claude API keys before surfacing ANY rawMsg
+  // to the client. Today the SDK does not bubble keys into thrown messages,
+  // but we apply this on every branch that interpolates rawMsg (400 +
+  // fallback) so a future SDK change can't leak the key in a single round.
+  const scrub = (s) => String(s || '').replace(/sk-(?:ant-)?[A-Za-z0-9_-]{20,}/g, '[REDACTED]');
+  if (status === 401 || type === 'authentication_error') {
+    // Operator hint without revealing which env var or its value.
+    return 'AI backend rejected the API key. Operator: check ANTHROPIC_API_KEY on the relay.';
+  }
+  if (status === 403 || type === 'permission_error') {
+    return 'AI backend denied access (permission_error).';
+  }
+  if (status === 429 || type === 'rate_limit_error') {
+    return 'AI backend rate limit reached. Try again in a moment.';
+  }
+  if (status === 404 || type === 'not_found_error' || /model.*not.*found|not_found_error/i.test(rawMsg)) {
+    return `AI model "${model}" unavailable on this account. Operator: verify model availability.`;
+  }
+  // Anthropic SDK APITimeoutError carries status 408. We catch it BEFORE the
+  // generic 400 branch so request-level timeouts surface as the friendlier
+  // "timed out" message instead of "Invalid request to AI backend".
+  if (
+    status === 408
+    || (err && (err.name === 'TimeoutError' || err.name === 'APITimeoutError'))
+  ) {
+    return 'AI backend timed out';
+  }
+  if (status === 400 || type === 'invalid_request_error') {
+    // Pass through the SDK's own description (it explains shape issues —
+    // wrong tool definition, malformed messages, oversized prompt — that
+    // are the most useful diagnostics). Cap to 200 chars defensively AND
+    // scrub keys: today Anthropic's 400 messages describe request-shape,
+    // not credentials, but this is on the data path that ends at the
+    // user's screen — keep the same scrub hardening as the fallback.
+    return `Invalid request to AI backend: ${scrub(rawMsg).slice(0, 200)}`;
+  }
+  if ((status !== null && status >= 500) || type === 'api_error' || type === 'overloaded_error') {
+    return 'AI backend temporarily unavailable. Try again in a moment.';
+  }
+  if (/ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENOTFOUND/i.test(rawMsg)) {
+    return 'Network error reaching AI backend. Try again in a moment.';
+  }
+  // Last-resort fallback for anything we did not classify above.
+  const safe = scrub(rawMsg).slice(0, 200);
+  return safe ? `Agent error: ${safe}` : 'Agent error';
 }
 
 const WIDGET_PRO_SYSTEM_PROMPT = `You are a WorldMonitor PRO widget builder. Your job is to fetch live data and generate an interactive HTML widget body with inline JavaScript.

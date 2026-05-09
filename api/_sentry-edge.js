@@ -1,60 +1,56 @@
 /**
- * Minimal Sentry error reporter for Vercel Edge functions.
- * Uses the Sentry store endpoint directly via fetch (no SDK dependency).
- * DSN is read from VITE_SENTRY_DSN (available in edge runtime as a process env).
+ * Sentry capture for Vercel edge-runtime API functions.
+ *
+ * Thin wrapper over `_sentry-common.js`. The shared module owns the
+ * envelope format, stack parsing, and fire-and-forget fetch (with
+ * `keepalive: true` so events survive isolate teardown). This file just
+ * binds runtime tags.
+ *
+ * Public surface:
+ *   - `captureSilentError(err, { tags?, extra?, ctx? })` — preferred.
+ *     Pass the Vercel handler's `ctx` so the helper can register the
+ *     delivery via `ctx.waitUntil`. When ctx is absent (local tests,
+ *     sidecar invocations, non-Vercel callers), the helper falls back
+ *     to fire-and-forget — `keepalive: true` on the underlying fetch
+ *     is the transport-level safety net, and the unhandled-rejection
+ *     defuse keeps Node's test runner happy.
+ *
+ *       captureSilentError(err, {
+ *         tags: { route: 'api/foo', step: 'bar' },
+ *         ctx, // optional — required for guaranteed delivery on Vercel
+ *       });
+ *
+ *   - `captureEdgeException(err, context, ctx?)` — backwards-compat
+ *     alias for the original (pre-sweep) shape. Existing callers in
+ *     `notification-channels.ts` keep working unchanged; new callers
+ *     should use `captureSilentError`.
+ *
+ * Sentry project: same DSN as the frontend (`VITE_SENTRY_DSN`). Events
+ * are tagged `surface: api`, `runtime: edge` for filtering. The DSN is
+ * already public in the browser bundle, so reusing it server-side adds
+ * no exposure.
  */
 
-let _key = '';
-let _storeUrl = '';
+import { makeCaptureSilentError } from './_sentry-common.js';
 
-(function parseDsn() {
-  const dsn = process.env.VITE_SENTRY_DSN ?? '';
-  if (!dsn) return;
-  try {
-    const u = new URL(dsn);
-    _key = u.username;
-    const projectId = u.pathname.replace(/^\//, '');
-    _storeUrl = `${u.protocol}//${u.host}/api/${projectId}/store/`;
-  } catch {}
-})();
+export const captureSilentError = makeCaptureSilentError({
+  runtime: 'edge',
+  platform: 'javascript',
+  logPrefix: '[sentry-edge]',
+});
 
 /**
+ * Backwards-compat alias for the pre-sweep call shape. Existing callers
+ * pass `(err, contextObject)` — we coerce contextObject into `extra` so
+ * data still lands in Sentry. Prefer `captureSilentError` in new code.
+ *
  * @param {unknown} err
  * @param {Record<string, unknown>} [context]
+ * @param {{ waitUntil: (p: Promise<unknown>) => void }} [vctx]
+ *   Optional Vercel handler context. Passed through to
+ *   `captureSilentError` so the isolate is held alive for delivery.
  * @returns {Promise<void>}
  */
-export async function captureEdgeException(err, context = {}) {
-  if (!_storeUrl || !_key) return;
-  const errMsg = err instanceof Error ? err.message : String(err);
-  const errType = err instanceof Error ? err.constructor.name : 'Error';
-  try {
-    const res = await fetch(_storeUrl, {
-      method: 'POST',
-      signal: AbortSignal.timeout(2000),
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Sentry-Auth': `Sentry sentry_version=7, sentry_key=${_key}`,
-      },
-      body: JSON.stringify({
-        event_id: crypto.randomUUID().replace(/-/g, ''),
-        timestamp: new Date().toISOString(),
-        level: 'error',
-        platform: 'javascript',
-        environment: process.env.VERCEL_ENV ?? 'production',
-        exception: { values: [{ type: errType, value: errMsg }] },
-        extra: context,
-        tags: { runtime: 'edge' },
-      }),
-    });
-    if (!res.ok) {
-      const hint = res.status === 401 || res.status === 403
-        ? ' — check VITE_SENTRY_DSN and auth key'
-        : res.status === 429
-          ? ' — rate limited by Sentry'
-          : ' — Sentry outage or transient error';
-      console.warn(`[sentry-edge] non-2xx response ${res.status}${hint}`);
-    }
-  } catch (fetchErr) {
-    console.warn('[sentry-edge] failed to deliver event:', fetchErr instanceof Error ? fetchErr.message : fetchErr);
-  }
+export async function captureEdgeException(err, context = {}, vctx) {
+  await captureSilentError(err, { extra: context, ctx: vctx });
 }

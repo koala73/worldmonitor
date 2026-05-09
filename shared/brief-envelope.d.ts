@@ -19,7 +19,7 @@
 // stripped at compose time. See PR #3143 for the notify-endpoint fix
 // that established this rule.
 
-export const BRIEF_ENVELOPE_VERSION: 3;
+export const BRIEF_ENVELOPE_VERSION: 4;
 
 /**
  * Versions the renderer accepts from Redis on READ. Always contains
@@ -120,6 +120,22 @@ export interface BriefStory {
    * remain banned in `data`.
    */
   sourceUrl?: string;
+  /**
+   * Stable per-story-cluster identity (v4+). Sourced from the rep
+   * `hash` of `mergedHashes[0]` after `materializeCluster` — survives
+   * wire rewordings at the upstream ingester's identity layer, stable
+   * across ticks (unlike the per-tick numeric `clusterId` produced by
+   * brief-dedup-replay-log). Drives the per-channel/per-cluster
+   * delivered-log key (`digest:sent:v1:{userId}:{channel}:{ruleId}:
+   * {clusterId}`) and the `digest.cards ⊆ brief.cards` CI invariant.
+   *
+   * REQUIRED on v4 envelopes (write-time enforced). OPTIONAL on
+   * v1-v3 envelopes still resident in Redis under the 7-day brief
+   * TTL window (read-time back-compat). Composers must never write
+   * an empty string — write-time validation rejects "" the same as
+   * undefined for v4.
+   */
+  clusterId?: string;
   /** Per-user LLM-generated rationale. */
   whyMatters: string;
 }

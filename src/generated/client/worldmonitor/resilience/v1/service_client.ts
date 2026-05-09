@@ -21,6 +21,7 @@ export interface GetResilienceScoreResponse {
   scoreInterval?: ScoreInterval;
   pillars: ResiliencePillar[];
   schemaVersion: string;
+  headlineEligible: boolean;
 }
 
 export interface ResilienceDomain {
@@ -73,6 +74,7 @@ export interface ResilienceRankingItem {
   lowConfidence: boolean;
   overallCoverage: number;
   rankStable: boolean;
+  headlineEligible: boolean;
 }
 
 export interface FieldViolation {

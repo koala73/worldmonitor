@@ -31,6 +31,8 @@ export const config = { runtime: 'edge' };
 import { getCorsHeaders, isDisallowedOrigin } from '../_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { jsonResponse } from '../_json-response.js';
+// @ts-expect-error — JS module, no declaration file
+import { captureSilentError } from '../_sentry-edge.js';
 import { validateBearerToken } from '../../server/auth-session';
 import { getReferralCodeForUser, buildShareUrl } from '../../server/_shared/referral-code';
 
@@ -117,6 +119,7 @@ export default async function handler(
     code = await getReferralCodeForUser(session.userId, secret);
   } catch (err) {
     console.error('[api/referral/me] code generation failed:', (err as Error).message);
+    captureSilentError(err, { tags: { route: 'api/referral/me', step: 'code-generation' }, ctx });
     return jsonResponse({ error: 'service_unavailable' }, 503, cors);
   }
 

@@ -66,7 +66,9 @@ import { preloadCountryGeometry, getCountryNameByCode } from '@/services/country
 import { initI18n, t } from '@/services/i18n';
 
 import { computeDefaultDisabledSources, getLocaleBoostedSources, getTotalFeedCount, FEEDS, INTEL_SOURCES } from '@/config/feeds';
+import { selectSourcesUnderCap, findFullyDisabledCategories } from '@/services/source-cap';
 import { fetchBootstrapData, getBootstrapHydrationState, markBootstrapAsLive, type BootstrapHydrationState } from '@/services/bootstrap';
+import { ensureWmSession, installWmSessionFetchInterceptor } from '@/services/wm-session';
 import { describeFreshness } from '@/services/persistent-cache';
 import { DesktopUpdater } from '@/app/desktop-updater';
 import { CountryIntelManager } from '@/app/country-intel';
@@ -897,7 +899,11 @@ export class App {
       if (BETA_MODE) mlWorker.loadModel('summarization-beta').catch(() => { });
     }
 
-    if (aiFlow.headlineMemory) {
+    // Headline Memory requires Browser Local Model to be ON — `isHeadlineMemoryEnabled()`
+    // ANDs both flags. Without this gate, leaving Headline Memory on while turning
+    // Browser Local Model off would silently download/run an embeddings model the user
+    // opted out of via the parent toggle.
+    if (isHeadlineMemoryEnabled()) {
       mlWorker.init().then(ok => {
         if (ok) mlWorker.loadModel('embeddings').catch(() => { });
       }).catch(() => { });
@@ -907,8 +913,16 @@ export class App {
       if (key === 'browserModel') {
         const s = getAiFlowSettings();
         if (s.browserModel) {
-          mlWorker.init();
-        } else if (!isHeadlineMemoryEnabled()) {
+          mlWorker.init().then(ok => {
+            // Re-honor Headline Memory's persisted value on parent re-enable.
+            if (ok && isHeadlineMemoryEnabled()) {
+              mlWorker.loadModel('embeddings').catch(() => { });
+            }
+          }).catch(() => { });
+        } else if (!isDesktopRuntime()) {
+          // Browser Local Model is the parent toggle for ALL local-model use,
+          // including Headline Memory. Terminate unconditionally on web —
+          // any persisted Headline Memory value is now non-effective.
           mlWorker.terminate();
         }
       }
@@ -937,6 +951,17 @@ export class App {
     // Wait for sidecar readiness on desktop so bootstrap hits a live server
     if (isDesktopRuntime()) {
       await waitForSidecarReady(3000);
+    }
+
+    // Anonymous browser session token (issue #3541). Server's validateApiKey
+    // no longer trusts header-only signals (Origin / Referer / Sec-Fetch-Site
+    // are all forgeable). Install a fetch interceptor ONCE, then mint a
+    // wms_-prefixed HMAC token before the first API call. Desktop has its own
+    // API key path and doesn't need this; Clerk-authenticated users will pass
+    // their JWT in a Bearer header and the interceptor steps aside.
+    if (!isDesktopRuntime()) {
+      installWmSessionFetchInterceptor();
+      await ensureWmSession();
     }
 
     // Hydrate in-memory cache from bootstrap endpoint (before panels construct and fetch)
@@ -1042,8 +1067,10 @@ export class App {
     const resolvedRegion = await resolveUserRegion();
     this.state.resolvedLocation = resolvedRegion;
 
-    // Phase 1: Layout (creates map + panels — they'll find hydrated data)
-    this.panelLayout.init();
+    // Phase 1: Layout (creates map + panels — they'll find hydrated data).
+    // init() is async so the dynamic MapContainer import can resolve before
+    // downstream code (e.g. mobileGeoCoords→state.map.setCenter) reads ctx.map.
+    await this.panelLayout.init();
     showProBanner(this.state.container);
     this.updateConnectivityUi();
     window.addEventListener('online', this.handleConnectivityChange);
@@ -1214,6 +1241,36 @@ export class App {
    * Safe to call multiple times (idempotent) — e.g. on auth state changes.
    */
   private enforceFreeTierLimits(): void {
+    // ── One-time v1 cap-bug recovery ──────────────────────────────────
+    // Pre-2026-05-01 the source cap was enforced by Array.sort().slice(),
+    // which silently auto-disabled every source past alphabetical position
+    // FREE_MAX_SOURCES — catastrophically erasing late-alphabet categories
+    // (Layoffs, Semiconductors, IPO, Funding, Product Hunt, …). Storage
+    // didn't track auto-disabled vs user-disabled, so a heuristic that runs
+    // on every load would silently undo a user who legitimately disabled
+    // every source in a category — and re-undo it on every refresh forever.
+    //
+    // Migration approach: run findFullyDisabledCategories ONCE, gated by
+    // disabledFeedsSchema version. After the migration completes, bump
+    // schema → 1 so subsequent loads skip recovery entirely. Users who
+    // explicitly toggle off every source in a category post-migration
+    // keep that preference permanently. Trade-off: a user who BEFORE the
+    // migration legitimately disabled every source in a category will lose
+    // those preferences once. That's acceptable since v1 victims have been
+    // suffering silent breakage and the explicit-full-category-disable
+    // pattern is rare (users typically hide the whole panel instead).
+    const schemaVersion = loadFromStorage<number>(STORAGE_KEYS.disabledFeedsSchema, 0);
+    if (schemaVersion < 1) {
+      const disabled = new Set(loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
+      const recoverable = findFullyDisabledCategories(FEEDS, disabled);
+      if (recoverable.length > 0) {
+        for (const name of recoverable) disabled.delete(name);
+        saveToStorage(STORAGE_KEYS.disabledFeeds, Array.from(disabled));
+        console.log(`[App] One-time v1-cap-bug migration: re-enabled ${recoverable.length} source(s) from fully-disabled categories. This will not run again.`);
+      }
+      saveToStorage(STORAGE_KEYS.disabledFeedsSchema, 1);
+    }
+
     if (isProUser()) return;
 
     // --- Panel limit ---
@@ -1239,22 +1296,35 @@ export class App {
     if (cwDisabled || needsTrim) saveToStorage(STORAGE_KEYS.panels, panelSettings);
 
     // --- Source limit ---
+    // Free-tier 80-source cap. Pre-2026-05-01 this used `Array.sort().slice()`
+    // which silently auto-disabled every source past alphabetical position 80,
+    // catastrophically erasing late-alphabet categories (Layoffs, Semiconductors,
+    // IPO & SPAC, Funding & VC, Product Hunt, …) and producing the "All sources
+    // disabled" red panel state on the homepage with no user explanation.
+    // Replaced with round-robin per-category distribution from `selectSourcesUnderCap`.
+    // (v1-bug recovery for stuck localStorage state is handled once at the top
+    // of this function via the schema-version migration.)
     const disabledSources = new Set(loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
-    const allSourceNames = (() => {
+    const totalEligible = (() => {
       const s = new Set<string>();
-      Object.values(FEEDS).forEach(feeds => feeds?.forEach(f => s.add(f.name)));
-      INTEL_SOURCES.forEach(f => s.add(f.name));
-      return Array.from(s).sort((a, b) => a.localeCompare(b));
+      Object.values(FEEDS).forEach((feeds) => feeds?.forEach((f) => s.add(f.name)));
+      INTEL_SOURCES.forEach((f) => s.add(f.name));
+      let count = 0;
+      for (const name of s) if (!disabledSources.has(name)) count++;
+      return count;
     })();
-    const currentlyEnabled = allSourceNames.filter(n => !disabledSources.has(n));
-    const enabledCount = currentlyEnabled.length;
-    if (enabledCount > FREE_MAX_SOURCES) {
-      const toDisable = enabledCount - FREE_MAX_SOURCES;
-      for (const name of currentlyEnabled.slice(FREE_MAX_SOURCES)) {
-        disabledSources.add(name);
+    if (totalEligible > FREE_MAX_SOURCES) {
+      const { keep, autoDisabled } = selectSourcesUnderCap(FEEDS, INTEL_SOURCES, disabledSources, FREE_MAX_SOURCES);
+      // Defense in depth: feeds.ts has 35+ source names that appear in
+      // multiple category buckets. The helper guarantees keep ∩ autoDisabled
+      // = ∅, but a regression there would silently re-disable a kept source
+      // here. The keep.has() guard makes the cross-set invariant explicit
+      // at the caller too — if it ever fires it's a helper-bug signal.
+      for (const name of autoDisabled) {
+        if (!keep.has(name)) disabledSources.add(name);
       }
       saveToStorage(STORAGE_KEYS.disabledFeeds, Array.from(disabledSources));
-      console.log(`[App] Free tier: disabled ${toDisable} source(s) to enforce ${FREE_MAX_SOURCES}-source limit`);
+      console.log(`[App] Free tier: round-robin disabled ${autoDisabled.size} source(s) to enforce ${FREE_MAX_SOURCES}-source limit (per-category fairness)`);
     }
   }
 
@@ -1567,6 +1637,48 @@ export class App {
       () => (this.state.panels['oil-inventories'] as OilInventoriesPanel).fetchData(),
       REFRESH_INTERVALS.oilInventories,
       () => this.isPanelNearViewport('oil-inventories')
+    );
+
+    this.refreshScheduler.scheduleRefresh(
+      'pipeline-status',
+      () => (this.state.panels['pipeline-status'] as PipelineStatusPanel).fetchData(),
+      REFRESH_INTERVALS.pipelineStatus,
+      () => this.isPanelNearViewport('pipeline-status')
+    );
+
+    this.refreshScheduler.scheduleRefresh(
+      'storage-facility-map',
+      () => (this.state.panels['storage-facility-map'] as StorageFacilityMapPanel).fetchData(),
+      REFRESH_INTERVALS.storageFacilityMap,
+      () => this.isPanelNearViewport('storage-facility-map')
+    );
+
+    this.refreshScheduler.scheduleRefresh(
+      'fuel-shortages',
+      () => (this.state.panels['fuel-shortages'] as FuelShortagePanel).fetchData(),
+      REFRESH_INTERVALS.fuelShortages,
+      () => this.isPanelNearViewport('fuel-shortages')
+    );
+
+    this.refreshScheduler.scheduleRefresh(
+      'energy-disruptions',
+      () => (this.state.panels['energy-disruptions'] as EnergyDisruptionsPanel).fetchData(),
+      REFRESH_INTERVALS.energyDisruptions,
+      () => this.isPanelNearViewport('energy-disruptions')
+    );
+
+    this.refreshScheduler.scheduleRefresh(
+      'energy-risk-overview',
+      () => (this.state.panels['energy-risk-overview'] as EnergyRiskOverviewPanel).fetchData(),
+      REFRESH_INTERVALS.energyRiskOverview,
+      () => this.isPanelNearViewport('energy-risk-overview')
+    );
+
+    this.refreshScheduler.scheduleRefresh(
+      'chokepoint-strip',
+      () => (this.state.panels['chokepoint-strip'] as ChokepointStripPanel).fetchData(),
+      REFRESH_INTERVALS.chokepointStrip,
+      () => this.isPanelNearViewport('chokepoint-strip')
     );
 
     this.refreshScheduler.scheduleRefresh(

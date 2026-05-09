@@ -2,6 +2,11 @@
 // @ts-check
 
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+// Pure contentMeta + dataMonth parser live in their own module so tests
+// can import the real code (no replicas, no drift). See helpers module
+// header for the shape contract — IEA is a single-snapshot seeder where
+// the top-level dataMonth string IS the content-age signal.
+import { ieaOilStocksContentMeta, IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN } from './_iea-oil-stocks-helpers.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -265,6 +270,20 @@ if (isMain) {
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: 57600,
+
+    // ── Content-age contract (Sprint 3b of the 2026-05-04 health-readiness plan) ──
+    //
+    // 90-day budget = ~60d natural M+2 lag + ~30d missed-publication slack.
+    // August data (dataMonth="2024-08", end-of-month Aug 31) ships in late
+    // Oct/early Nov, so at fresh-arrival `newestItemAt` is already ~60d
+    // old. STALE_CONTENT trips only when a month is missed entirely (e.g.
+    // cache stuck at "2024-08" past mid-Jan when "2024-10" should have
+    // landed → /api/health surfaces STALE_CONTENT).
+    //
+    // ieaOilStocksContentMeta parses data.dataMonth ("YYYY-MM") into
+    // end-of-month UTC ms. Single-snapshot shape: newest === oldest.
+    contentMeta: ieaOilStocksContentMeta,
+    maxContentAgeMin: IEA_OIL_STOCKS_MAX_CONTENT_AGE_MIN,
   }).catch((err) => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + cause);

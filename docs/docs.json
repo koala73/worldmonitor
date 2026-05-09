@@ -179,7 +179,8 @@
           {
             "group": "MCP & Integrations",
             "pages": [
-              "mcp",
+              "agent-discovery",
+              "mcp-server",
               "api-oauth",
               "api-notifications"
             ]
@@ -220,6 +221,12 @@
       {
         "tab": "API Reference",
         "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api-reference"
+            ]
+          },
           {
             "group": "Geopolitical",
             "pages": [

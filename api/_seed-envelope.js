@@ -29,10 +29,15 @@ export function stripSeedEnvelope(raw) {
   return unwrapEnvelope(raw).data;
 }
 
-export function buildEnvelope({ fetchedAt, recordCount, sourceVersion, schemaVersion, state, failedDatasets, errorReason, groupId, data }) {
+export function buildEnvelope({ fetchedAt, recordCount, sourceVersion, schemaVersion, state, failedDatasets, errorReason, groupId, newestItemAt, oldestItemAt, maxContentAgeMin, data }) {
   const _seed = { fetchedAt, recordCount, sourceVersion, schemaVersion, state };
   if (failedDatasets != null) _seed.failedDatasets = failedDatasets;
   if (errorReason != null) _seed.errorReason = errorReason;
   if (groupId != null) _seed.groupId = groupId;
+  if (maxContentAgeMin !== undefined) {
+    _seed.newestItemAt = newestItemAt ?? null;
+    _seed.oldestItemAt = oldestItemAt ?? null;
+    _seed.maxContentAgeMin = maxContentAgeMin;
+  }
   return { _seed, data };
 }

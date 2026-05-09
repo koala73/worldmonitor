@@ -44,21 +44,57 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     assert.match(src, /PortWatch_ports_database/);
   });
 
-  it('EP3 per-country WHERE uses ISO3 index + date filter', () => {
+  it('EP3 per-country WHERE uses ISO3 index + dynamic date field', () => {
     // After the PR #3225 globalisation failed in prod, we restored the
     // per-country shape because ArcGIS has an ISO3 index but NO date
     // index — the per-country filter is what keeps queries fast.
     // H+F refactor: the WHERE clause is now built inline at the
     // paginateWindowInto call site (not as a `where:` param in a params
     // bag) because each window has a different date predicate.
-    assert.match(src, /`ISO3='\$\{iso3\}'\s+AND\s+date\s*>/);
+    // Post-2026-04-29 (IMF reserved-keyword flap): the date field name is
+    // resolved DYNAMICALLY at run start via resolveArcgisDateField — the
+    // WHERE template must interpolate the resolved name (`${df}`), NOT a
+    // hardcoded literal, so the seeder survives a `date` ↔ `date_` flap.
+    assert.match(src, /`ISO3='\$\{iso3\}'\s+AND\s+\$\{df\}\s*>/);
+    // Hardcoded `date` or `date_` literals in the WHERE template are
+    // exactly the bug class this dynamic-resolution change exists to
+    // prevent. Lock that out at test time.
+    assert.doesNotMatch(src, /`ISO3='\$\{iso3\}'\s+AND\s+date_?\s*>/);
     // Global where=date>X shape (PR #3225) must NOT be present.
-    assert.doesNotMatch(src, /where:\s*`date\s*>\s*\$\{epochToTimestamp\(since\)\}`/);
+    assert.doesNotMatch(src, /where:\s*`date_?\s*>\s*\$\{epochToTimestamp\(since\)\}`/);
+  });
+
+  it('EP3 per-country query does NOT orderBy on the date field — DateOnly sort cliff', () => {
+    // WM 2026-05-06 trap: ArcGIS migrated Daily_Ports_Data's `date` column
+    // to esriFieldTypeDateOnly. Server-side sort on DateOnly is 10-15× slower
+    // than no-sort. With CONCURRENCY=12 and a 90s per-country cap, every
+    // per-country fetch was timing out (BRA 60d page = 46.6s with
+    // `portid ASC,date ASC` vs 4.0s with no orderBy → ~140s/country vs ~12s).
+    //
+    // The aggregation in paginateWindowInto is order-INdependent (sums into
+    // Map<portId, accum>), so dropping orderBy is safe AND fast. ArcGIS
+    // still returns rows in default ObjectId order across pages, so
+    // resultOffset pagination remains correct.
+    //
+    // If a future refactor genuinely needs ordered output, sort
+    // CLIENT-side after pagination — never re-add orderByFields with the
+    // ${df} (date) field on EP3, even with `${df} ASC` or `${df} DESC`.
+    assert.doesNotMatch(src, /orderByFields:\s*[`'][^`']*\$\{df\}/);
+    // Also forbid hardcoded date-field literals in the orderBy template.
+    assert.doesNotMatch(src, /orderByFields:\s*[`'][^`']*\b(date|date_)\s+(ASC|DESC)\b/i);
   });
 
   it('EP4 refs query fetches all ports globally with where=1=1', () => {
     assert.match(src, /where:\s*'1=1'/);
     assert.match(src, /outFields:\s*'portid,ISO3,lat,lon'/);
+  });
+
+  it('EP4 refs query MAY orderBy portid (string field, not DateOnly)', () => {
+    // EP4 = PortWatch_ports_database (static port-reference table), no date
+    // column. Sorting by portid (string) is fine — the DateOnly cliff is
+    // specific to EP3. This test exists so a future "remove all orderBy
+    // everywhere" sweep doesn't blanket-remove this one.
+    assert.match(src, /orderByFields:\s*'portid ASC'/);
   });
 
   it('both paginators set returnGeometry:false', () => {
@@ -129,7 +165,11 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
   it('fetchMaxDate preflight uses outStatistics for cheap cache invalidation', () => {
     assert.match(src, /async function fetchMaxDate/);
     assert.match(src, /statisticType:\s*'max'/);
-    assert.match(src, /onStatisticField:\s*'date'/);
+    // Same dynamic-resolution invariant as the WHERE clause: onStatisticField
+    // must use the resolved `df`, not a hardcoded literal — the IMF
+    // 2026-04-29 flap proved either name can appear within hours.
+    assert.match(src, /onStatisticField:\s*df\b/);
+    assert.doesNotMatch(src, /onStatisticField:\s*'date_?'/);
   });
 
   it('fetchAll cache path: MGET preflight + maxDate check + reuse payload', () => {
@@ -208,12 +248,38 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     assert.match(src, /const anchor = anchorEpochMs \?\? Date\.now\(\)/);
   });
 
-  it('fetchCountryAccum receives anchorEpochMs at the call site', () => {
+  it('fetchCountryAccum receives anchorEpochMs and dateField at the call site', () => {
     // The call site must thread the parsed maxDate anchor into
     // fetchCountryAccum — otherwise the windows default to Date.now()
     // and cache reuse serves stale data (defeats the H-path entirely).
+    // The call site must also thread the run-resolved dateField so each
+    // country fetch uses the same resolved name and one introspection
+    // round-trip serves the whole run.
     assert.match(src, /parseMaxDateToAnchor\(upstreamMaxDate\)/);
-    assert.match(src, /fetchCountryAccum\(iso3,\s*\{\s*signal:\s*childSignal,\s*anchorEpochMs\s*\}\)/);
+    assert.match(
+      src,
+      /fetchCountryAccum\(iso3,\s*\{\s*signal:\s*childSignal,\s*anchorEpochMs,\s*dateField\s*\}\)/,
+    );
+  });
+
+  it('fetchAll resolves the ArcGIS date field once at run start', () => {
+    // The dynamic-resolution invariant: resolveArcgisDateField must be
+    // called BEFORE any country-level fetch (preflight or batches) so
+    // every per-country call within the run sees the same resolved name.
+    // This is the single source of truth that survives an IMF schema flap.
+    // Resolver is exported as a sync function that returns the cached
+    // in-flight promise (Greptile P2 fix on PR #3496) — the actual
+    // schema-fetch lives in `_doResolveArcgisDateField`. Both must be
+    // present, but only the former is the public entry point.
+    assert.match(src, /export function resolveArcgisDateField/);
+    assert.match(src, /async function _doResolveArcgisDateField/);
+    // Called inside fetchAll before refs/preflight/activity stages.
+    assert.match(
+      src,
+      /export async function fetchAll[\s\S]{0,400}?resolveArcgisDateField\(/,
+    );
+    // Both per-country fetchers receive dateField from the resolved value.
+    assert.match(src, /fetchMaxDate\(iso3,\s*\{\s*signal,\s*dateField\s*\}\)/);
   });
 
   it('TTL is 259200 (3 days)', () => {
@@ -480,5 +546,148 @@ describe('validateFn', () => {
     const data = null;
     const valid = !!(data && Array.isArray(data.countries) && data.countries.length >= 50);
     assert.equal(valid, false);
+  });
+});
+
+describe('resolveArcgisDateField (runtime, schema-flap defence)', () => {
+  let resolveArcgisDateField, _resetArcgisDateFieldCache;
+  let originalFetch;
+
+  before(async () => {
+    ({ resolveArcgisDateField, _resetArcgisDateFieldCache } = await import(
+      '../scripts/seed-portwatch-port-activity.mjs'
+    ));
+    originalFetch = globalThis.fetch;
+  });
+
+  // Sets globalThis.fetch to a stub returning `body`. Stays installed
+  // until restoreFetch() — name reflects that (Greptile P2 on PR #3496:
+  // the original `mockFetchOnce` name implied auto-reset semantics it
+  // didn't enforce, masking accidental cache hits in future edits).
+  function mockFetch(body) {
+    globalThis.fetch = async () => ({
+      ok: true,
+      status: 200,
+      json: async () => body,
+    });
+  }
+
+  function restoreFetch() {
+    globalThis.fetch = originalFetch;
+  }
+
+  it('returns "date" when schema reports name=date alias=date (post-revert state)', async () => {
+    _resetArcgisDateFieldCache();
+    mockFetch({
+      fields: [
+        { name: 'date', alias: 'date', type: 'esriFieldTypeDateOnly' },
+        { name: 'portid', alias: 'portid', type: 'esriFieldTypeString' },
+      ],
+    });
+    try {
+      const df = await resolveArcgisDateField();
+      assert.equal(df, 'date');
+    } finally { restoreFetch(); }
+  });
+
+  it('returns "date_" when schema reports name=date_ alias=date (post-rename state)', async () => {
+    _resetArcgisDateFieldCache();
+    mockFetch({
+      fields: [
+        { name: 'date_', alias: 'date', type: 'esriFieldTypeDateOnly' },
+        { name: 'portid', alias: 'portid', type: 'esriFieldTypeString' },
+      ],
+    });
+    try {
+      const df = await resolveArcgisDateField();
+      assert.equal(df, 'date_');
+    } finally { restoreFetch(); }
+  });
+
+  it('memoises the resolved value across calls within a run', async () => {
+    _resetArcgisDateFieldCache();
+    let calls = 0;
+    globalThis.fetch = async () => {
+      calls++;
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          fields: [{ name: 'date_', alias: 'date', type: 'esriFieldTypeDateOnly' }],
+        }),
+      };
+    };
+    try {
+      const a = await resolveArcgisDateField();
+      const b = await resolveArcgisDateField();
+      const c = await resolveArcgisDateField();
+      assert.equal(a, 'date_');
+      assert.equal(b, 'date_');
+      assert.equal(c, 'date_');
+      assert.equal(calls, 1, 'schema endpoint must be hit at most once per run');
+    } finally { restoreFetch(); }
+  });
+
+  it('falls back to "date" when schema introspection throws', async () => {
+    _resetArcgisDateFieldCache();
+    globalThis.fetch = async () => { throw new Error('schema endpoint timeout'); };
+    try {
+      const df = await resolveArcgisDateField();
+      assert.equal(df, 'date');
+    } finally { restoreFetch(); }
+  });
+
+  it('falls back to "date" when schema response has no date field', async () => {
+    _resetArcgisDateFieldCache();
+    mockFetch({
+      fields: [
+        { name: 'portid', alias: 'portid', type: 'esriFieldTypeString' },
+        { name: 'ISO3', alias: 'ISO3', type: 'esriFieldTypeString' },
+      ],
+    });
+    try {
+      const df = await resolveArcgisDateField();
+      assert.equal(df, 'date');
+    } finally { restoreFetch(); }
+  });
+
+  it('concurrent first-callers share one schema round-trip (promise-cache)', async () => {
+    // Greptile P2 on PR #3496: cache the in-flight promise, not the
+    // resolved value, so `Promise.all([resolve(), resolve(), resolve()])`
+    // dispatches a single fetch. Without this, three null-checks fire
+    // before any fetch settles → three round-trips.
+    _resetArcgisDateFieldCache();
+    let calls = 0;
+    let resolveFetch;
+    globalThis.fetch = () => {
+      calls++;
+      // Hold the fetch open so all three callers race against the same
+      // unresolved promise — the bug-class this guards against.
+      return new Promise((r) => {
+        resolveFetch = () => r({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            fields: [{ name: 'date', alias: 'date', type: 'esriFieldTypeDateOnly' }],
+          }),
+        });
+      });
+    };
+    try {
+      const racing = Promise.all([
+        resolveArcgisDateField(),
+        resolveArcgisDateField(),
+        resolveArcgisDateField(),
+      ]);
+      // Microtask flush so the three calls have all entered the resolver
+      // and registered their continuations on the cached promise.
+      await Promise.resolve();
+      resolveFetch();
+      const [a, b, c] = await racing;
+      assert.equal(a, 'date');
+      assert.equal(b, 'date');
+      assert.equal(c, 'date');
+      assert.equal(calls, 1, 'three concurrent first-callers must share ONE schema fetch');
+    } finally { restoreFetch(); }
   });
 });

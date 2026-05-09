@@ -29,7 +29,24 @@ const KEYS = {
   credit:   'economic:bis:credit:v1',
 };
 
-const TTL = 43200; // 12 hours
+// 36 hours = 3× the bundle's 12h interval gate (seed-bundle-macro.mjs:5,
+// `intervalMs: 12 * HOUR`). Per the gold-standard "TTL >= 3× cron interval"
+// recipe — earlier TTL=43200 (12h) matched the gate exactly, so any cron
+// drift left the canonical key TTL'd-out for a window where /api/health
+// reported `economic:bis:policy:v1`/`eer:v1`/`credit:v1` as missing while
+// `seed-meta:economic:bis` still carried last-good `recordCount` (verified
+// 2026-05-06: seed-meta showed recordCount=11 + a recent fetchedAt, but
+// all 3 canonical GETs returned nil from Upstash because the bundle ran
+// ~13.7h after the last successful tick instead of exactly 12h). 36h
+// covers cron drift + one degraded-to-24h cycle (matches the rationale
+// already applied to bisDsr/bisProperty* maxStaleMin in api/health.js
+// circa 2026-04-27, just on the canonical-key-TTL side instead of the
+// health-threshold side).
+//
+// All 3 canonical writes (policy via atomicPublish, eer + credit via
+// writeExtraKey in afterPublish) reuse this constant, so the bump fixes
+// all three simultaneously.
+const TTL = 129600;
 
 async function fetchBisCSV(dataset, key) {
   const separator = key.includes('?') ? '&' : '?';

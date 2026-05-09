@@ -24,6 +24,8 @@ export const config = { runtime: 'edge' };
 import { getCorsHeaders } from './_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { jsonResponse } from './_json-response.js';
+// @ts-expect-error — JS module, no declaration file
+import { issueSessionToken } from './_session.js';
 
 type ProbeShape = 'envelope' | 'bare';
 
@@ -161,19 +163,28 @@ const BOUNDARY_CHECKS: BoundaryCheck[] = [
 ];
 
 export async function checkPublicBoundary(origin: string): Promise<BoundaryResult[]> {
+  // Endpoints behind validateApiKey() (e.g. /api/bootstrap) used to accept the
+  // trusted-browser-origin path without a key. PR #3557 closed that bypass: the
+  // ONLY no-Pro path now is a wms_-prefixed HMAC-signed session token. Mint one
+  // here ourselves — we share the WM_SESSION_SECRET environment with the
+  // /api/wm-session endpoint, so an in-process issue is equivalent to round-
+  // tripping through it (and avoids the extra network hop).
+  // If WM_SESSION_SECRET isn't configured, fall back to the bare request — the
+  // boundary check will surface the missing-secret error as a 401 from
+  // /api/bootstrap, which is the right operator signal.
+  let sessionToken: string | null = null;
+  try { sessionToken = (await issueSessionToken()).token; } catch { /* no-op */ }
+
   return Promise.all(BOUNDARY_CHECKS.map(async ({ endpoint, requireSourceHeader }): Promise<BoundaryResult> => {
     try {
-      // Send Origin of the canonical public host so endpoints that gate
-      // behind validateApiKey() (e.g. /api/bootstrap) take the trusted-browser
-      // branch instead of demanding an API key. The probe runs edge-side with
-      // internal auth; we intentionally emulate a trusted browser for boundary
-      // verification only.
+      const headers: Record<string, string> = {
+        Origin: 'https://worldmonitor.app',
+        'User-Agent': 'WorldMonitor-SeedContractProbe/1.0',
+      };
+      if (sessionToken) headers['X-WorldMonitor-Key'] = sessionToken;
       const r = await fetch(`${origin}${endpoint}`, {
         signal: AbortSignal.timeout(5_000),
-        headers: {
-          Origin: 'https://worldmonitor.app',
-          'User-Agent': 'WorldMonitor-SeedContractProbe/1.0',
-        },
+        headers,
       });
       const text = await r.text();
       // Detect any envelope leak in the response body. A substring match on

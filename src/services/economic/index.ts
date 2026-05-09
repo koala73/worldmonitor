@@ -51,6 +51,7 @@ import { isFeatureAvailable } from '../runtime-config';
 import { dataFreshness } from '../data-freshness';
 import { getHydratedData } from '@/services/bootstrap';
 import { toApiUrl } from '@/services/runtime';
+import { hasPremiumAccess } from '@/services/panel-gating';
 
 // ---- Client + Circuit Breakers ----
 
@@ -675,26 +676,30 @@ export async function getTechReadinessRankings(
 ): Promise<TechReadinessScore[]> {
   // Fast path: bootstrap-hydrated data available on first page load
   const hydrated = getHydratedData('techReadiness') as TechReadinessScore[] | undefined;
-  if (hydrated?.length && !countries) return hydrated;
+  if (hydrated?.length) {
+    return countries ? hydrated.filter(s => countries.includes(s.country)) : hydrated;
+  }
 
-  // Fallback: fetch the pre-computed seed key directly from bootstrap endpoint.
-  // Data is seeded by seed-wb-indicators.mjs — never call WB API from frontend.
-  try {
-    const resp = await fetch(toApiUrl('/api/bootstrap?keys=techReadiness'), {
-      signal: AbortSignal.timeout(5_000),
-    });
-    if (resp.ok) {
-      const { data } = (await resp.json()) as { data: { techReadiness?: TechReadinessScore[] } };
-      if (data.techReadiness?.length) {
-        const scores = countries
-          ? data.techReadiness.filter(s => countries.includes(s.country))
-          : data.techReadiness;
-        return scores;
-      }
-    }
-  } catch { /* fall through */ }
-
-  return [];
+  // Fallback: fetch the pre-computed seed key directly from the bootstrap
+  // endpoint. Data is seeded by seed-wb-indicators.mjs — never call the WB
+  // API from the frontend.
+  //
+  // Errors propagate. The previous shape collapsed HTTP failures, fetch
+  // aborts, and JSON parse errors into the same silent `return []` as a
+  // legitimate empty payload, so the panel could not distinguish "network
+  // failed, retry me" from "server says 0 records." That made a single
+  // transient blip render as a permanent empty state until app restart.
+  // Callers now decide UX: a thrown error → retry; an empty array →
+  // genuine empty state.
+  const resp = await fetch(toApiUrl('/api/bootstrap?keys=techReadiness'), {
+    signal: AbortSignal.timeout(5_000),
+  });
+  if (!resp.ok) {
+    throw new Error(`tech-readiness bootstrap HTTP ${resp.status}`);
+  }
+  const { data } = (await resp.json()) as { data: { techReadiness?: TechReadinessScore[] } };
+  const list = data.techReadiness ?? [];
+  return countries ? list.filter(s => countries.includes(s.country)) : list;
 }
 
 export async function getCountryComparison(
@@ -752,6 +757,15 @@ async function _fetchNationalDebt(): Promise<GetNationalDebtResponse> {
       if (data.nationalDebt?.entries?.length) return data.nationalDebt;
     }
   } catch { /* fall through to RPC */ }
+
+  // Anonymous (non-premium) users: do NOT call the Pro-gated RPC.
+  // /api/economic/v1/get-national-debt is in PREMIUM_RPC_PATHS, so the
+  // call deterministically 401s for an anonymous client and the breaker
+  // returns emptyNationalDebtFallback anyway — same outcome as us, minus
+  // the Sentry/console noise on every page load.
+  if (!hasPremiumAccess()) {
+    return emptyNationalDebtFallback;
+  }
 
   try {
     return await nationalDebtBreaker.execute(async () => {

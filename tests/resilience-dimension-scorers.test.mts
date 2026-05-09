@@ -7,6 +7,7 @@ import {
   type ImputationClass,
   RESILIENCE_DIMENSION_ORDER,
   RESILIENCE_DIMENSION_TYPES,
+  type ResilienceSeedReader,
   scoreAllDimensions,
   scoreBorderSecurity,
   scoreCurrencyExternal,
@@ -663,7 +664,7 @@ describe('resilience dimension scorers', () => {
       };
     }
 
-    it('TV (GPI 1.3, no displacement registry entry, no unrest events) → blended ~80, dim-level imputationClass null', async () => {
+    it('TV (GPI 1.3, no displacement registry entry, no unrest events) → blended ~76, dim-level imputationClass null', async () => {
       const reader = makeReader({
         gpi: 1.3,
         countryCode: 'TV',
@@ -672,9 +673,12 @@ describe('resilience dimension scorers', () => {
       });
       const result = await scoreSocialCohesion('TV', reader);
       // GPI 1.3 → norm(1.3, 1.0, 3.6) = (3.6-1.3)/(3.6-1.0) = 2.3/2.6 ≈ 88.46
-      // Blended: 88.46*0.55 + 70*0.25 + 70*0.20 = 48.65 + 17.5 + 14 = 80.15
-      assert.ok(result.score <= 83 && result.score >= 78,
-        `TV must blend to ~80 (got ${result.score}); plan §U2 cohort target is ≤83 with ≥8pt drop from v14 ~93`);
+      // Plan 2026-04-26-002 §U5 dropped GPI-only unrest impute from 70 → 50
+      // (unrest:events:v1 is non-comprehensive). Blended: 88.46*0.55 +
+      // 70*0.25 + 50*0.20 = 48.65 + 17.5 + 10 = 76.15. Plan target was
+      // "TV socialCohesion ≤ 80" (per AE4 in plan 002), satisfied.
+      assert.ok(result.score <= 80 && result.score >= 73,
+        `TV must blend to ~76 (got ${result.score}); plan 002 §U5 cohort target is ≤80 (was ≤83 in plan 001 §U2)`);
       // Dim-level imputationClass MUST be null because GPI is observed.
       // Per-row imputed:true is set on displacement+unrest rows but
       // weightedBlend correctly null-s the dim-level class when observedWeight > 0.
@@ -1347,6 +1351,66 @@ describe('resilience source-failure aggregation (T1.7)', () => {
     assert.equal(score.imputationClass, 'unmonitored');
     assert.equal(score.observedWeight, 0);
     assert.equal(score.imputedWeight, 1);
+  });
+
+  // U8.1 (plan 2026-04-26-002 follow-up) — extends the net-imports
+  // denominator from sovereignFiscalBuffer (PR #3380) to
+  // liquidReserveAdequacy. WB FI.RES.TOTL.MO is computed at WB source
+  // against gross imports; for re-export hubs (AE ≈35.5% share, PA
+  // similar) the gross figure double-counts goods that don't settle
+  // as domestic consumption, artificially shortening the implied
+  // buffer runway. Scorer reads `resilience:recovery:reexport-share:v1`
+  // (already populated for SWF use) and multiplies months by
+  // 1/(1−share) — algebraic inverse of dividing the denominator —
+  // yielding the same number a custom reserves/(net-imports/12)
+  // calc would produce, without re-fetching raw FI.RES.TOTL.CD +
+  // BM.GSR.GNFS.CD series.
+  describe('scoreLiquidReserveAdequacy: re-export adjustment (U8.1)', () => {
+    function makeReader(reserveMonths: number, reexportShare: number | null): ResilienceSeedReader {
+      return async (key: string) => {
+        if (key === 'resilience:recovery:reserve-adequacy:v1') {
+          return { countries: { AE: { reserveMonths, year: 2024 } }, seededAt: '2026-04-28T00:00:00.000Z' };
+        }
+        if (key === 'resilience:recovery:reexport-share:v1') {
+          return reexportShare === null
+            ? null
+            : { countries: { AE: { reexportShareOfImports: reexportShare, year: 2023 } } };
+        }
+        return null;
+      };
+    }
+
+    it('non-hub country (no reexport-share entry) scores against raw months — status quo', async () => {
+      const reader = makeReader(5.18, null); // AE pre-fix observed reserve months
+      const score = await scoreLiquidReserveAdequacy('AE', reader);
+      // normalize 1..12 → (5.18 − 1) / 11 = 0.380 → ~38
+      assert.ok(score.score >= 37 && score.score <= 39, `expected ~38 for raw months, got ${score.score}`);
+    });
+
+    it('hub country (AE 35.5% share) scores against net-import-adjusted months', async () => {
+      const reader = makeReader(5.18, 0.355);
+      const score = await scoreLiquidReserveAdequacy('AE', reader);
+      // adjusted months = 5.18 / (1 − 0.355) = 8.03
+      // normalize 1..12 → (8.03 − 1) / 11 = 0.639 → ~64
+      assert.ok(score.score >= 62 && score.score <= 66, `expected ~64 with re-export adjustment, got ${score.score}`);
+      assert.equal(score.imputationClass, null, 'observed path must not carry imputation class');
+    });
+
+    it('clamps to anchor ceiling when adjusted months exceed 12', async () => {
+      const reader = makeReader(10, 0.4); // 10 / 0.6 = 16.67 → clamped to 12 → 100
+      const score = await scoreLiquidReserveAdequacy('AE', reader);
+      assert.equal(score.score, 100, 'adjusted months >12 must clamp at the anchor ceiling');
+    });
+
+    it('rejects malformed share values defensively (negative, ≥1, non-finite)', async () => {
+      for (const bad of [-0.1, 1.0, 1.5, NaN, Infinity]) {
+        const reader = makeReader(5.18, bad);
+        const score = await scoreLiquidReserveAdequacy('AE', reader);
+        // Falls through to raw-months path → ~38 (status quo)
+        assert.ok(score.score >= 37 && score.score <= 39,
+          `malformed share=${bad} must fall back to raw months, got score ${score.score}`);
+      }
+    });
   });
 
   // PR 2 §3.4 — retired scoreReserveAdequacy shape. Mirrors the

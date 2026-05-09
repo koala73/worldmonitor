@@ -38,6 +38,11 @@ function story(overrides = {}) {
       'Tehran publicly reopened the Strait of Hormuz to commercial shipping today.',
     source: 'Multiple wires',
     sourceUrl: 'https://example.com/hormuz-open',
+    // v4: clusterId required. Tests that exercise clusterId-specific
+    // failure modes override this field directly. Default fixture must
+    // remain a VALID v4 envelope so the bulk of the suite keeps testing
+    // rendering, not validation.
+    clusterId: 'cluster-energy-hormuz-001',
     whyMatters:
       'Hormuz is roughly a fifth of global seaborne oil — a 9% move in a single session is a repricing, not a wobble.',
     ...overrides,
@@ -414,14 +419,16 @@ describe('renderBriefMagazine — envelope validation', () => {
 });
 
 describe('BRIEF_ENVELOPE_VERSION', () => {
-  it('is the literal 3 (bump requires cross-producer coordination)', () => {
-    // Bumped 2 → 3 (2026-04-25) when BriefDigest gained the optional
-    // `publicLead` field for the share-URL surface. v2 envelopes still
-    // in the 7-day TTL window remain readable — see
-    // SUPPORTED_ENVELOPE_VERSIONS = [1, 2, 3]. Test below covers v1
-    // back-compat; v2 back-compat is exercised by the missing-publicLead
-    // path in the BriefDigest validator (publicLead === undefined is OK).
-    assert.equal(BRIEF_ENVELOPE_VERSION, 3);
+  it('is the literal 4 (bump requires cross-producer coordination)', () => {
+    // Bumped 3 → 4 (2026-05-06, Sprint 1 canonical contract) when
+    // BriefStory gained the required `clusterId` field. v1-v3
+    // envelopes still in the 7-day TTL window remain readable — see
+    // SUPPORTED_ENVELOPE_VERSIONS = [1, 2, 3, 4] — but composers
+    // ONLY ever emit version=4 from this point. clusterId is the
+    // stable rep `hash` (mergedHashes[0]) per the Sprint-1 plan;
+    // U3 wires the value, U1 (this commit) only adds the schema +
+    // assertion plumbing.
+    assert.equal(BRIEF_ENVELOPE_VERSION, 4);
   });
 });
 
@@ -467,17 +474,172 @@ describe('renderBriefMagazine — v3 publicLead field (Codex Round-3 Medium #2)'
   });
 });
 
+describe('renderBriefMagazine — v4 clusterId field (Sprint 1 canonical contract)', () => {
+  /**
+   * Build a v4-shaped envelope: every story carries `clusterId`. The
+   * default `envelope()` factory already produces v4 (since the v3→v4
+   * bump in this PR), so v4Envelope() is a thin alias that exists
+   * mostly to make the back-compat shape contrast obvious.
+   */
+  function v4Envelope() {
+    return envelope();
+  }
+
+  /**
+   * Build a v3-shaped envelope (no clusterId on stories). Emulates
+   * what's still resident in Redis under the 7-day brief TTL at the
+   * moment the v4 renderer deploys — the renderer must keep accepting
+   * the v3 shape for the full back-compat window before
+   * SUPPORTED_ENVELOPE_VERSIONS can shrink. Mirrors the v1 back-compat
+   * pattern below.
+   */
+  function v3Envelope() {
+    const v4 = v4Envelope();
+    const stories = v4.data.stories.map(({ clusterId: _ignore, ...rest }) => rest);
+    return /** @type {any} */ ({ ...v4, version: 3, data: { ...v4.data, stories } });
+  }
+
+  it('accepts a v4 envelope where every story carries a non-empty clusterId', () => {
+    const env = v4Envelope();
+    const html = renderBriefMagazine(env);
+    assert.ok(typeof html === 'string' && html.length > 0);
+  });
+
+  it('rejects a v4 envelope when ANY story is missing clusterId', () => {
+    const env = v4Envelope();
+    /** @type {any} */ (env.data.stories[0]).clusterId = undefined;
+    assert.throws(
+      () => renderBriefMagazine(env),
+      /envelope\.data\.stories\[0\]\.clusterId must be a non-empty string on v4 envelopes/,
+    );
+  });
+
+  it('rejects a v4 envelope when clusterId is the empty string', () => {
+    const env = v4Envelope();
+    /** @type {any} */ (env.data.stories[1]).clusterId = '';
+    assert.throws(
+      () => renderBriefMagazine(env),
+      /envelope\.data\.stories\[1\]\.clusterId must be a non-empty string on v4 envelopes/,
+    );
+  });
+
+  it('rejects a v4 envelope when clusterId is null', () => {
+    const env = v4Envelope();
+    /** @type {any} */ (env.data.stories[0]).clusterId = null;
+    assert.throws(
+      () => renderBriefMagazine(env),
+      /envelope\.data\.stories\[0\]\.clusterId must be a non-empty string on v4 envelopes/,
+    );
+  });
+
+  it('rejects a v4 envelope when clusterId is a non-string type', () => {
+    const env = v4Envelope();
+    /** @type {any} */ (env.data.stories[0]).clusterId = 12345;
+    assert.throws(
+      () => renderBriefMagazine(env),
+      /envelope\.data\.stories\[0\]\.clusterId must be a non-empty string on v4 envelopes/,
+    );
+  });
+
+  // Characterization snapshot: v3 envelopes still in the 7-day TTL
+  // window MUST keep rendering after the v4 bump — this is the
+  // back-compat regression guard. If a future change tightens
+  // assertBriefEnvelope to refuse the absence of clusterId on v3,
+  // this test fails loudly. The 7d brief TTL covers every downstream
+  // TTL (story:track:v1 7d, digest:accumulator:v1 shorter, panel
+  // circuit-breaker shorter), so we don't need a longer window here.
+  it('accepts a v3 envelope WITHOUT clusterId on any story (7d TTL back-compat)', () => {
+    const env = v3Envelope();
+    const html = renderBriefMagazine(env);
+    assert.ok(typeof html === 'string' && html.length > 0);
+    // Sanity: the rendered HTML still emits a source line per story.
+    const labelCount = (html.match(/<div class="source">/g) ?? []).length;
+    assert.equal(labelCount, env.data.stories.length);
+  });
+
+  it('rejects a v3 envelope where a story carries an empty-string clusterId (defence-in-depth)', () => {
+    // A v3 envelope shouldn't carry clusterId at all; if a composer
+    // bug somehow stamps an empty string, surface it loudly rather
+    // than poisoning the dedup key in U4.
+    const env = v3Envelope();
+    /** @type {any} */ (env.data.stories[0]).clusterId = '';
+    assert.throws(
+      () => renderBriefMagazine(env),
+      /envelope\.data\.stories\[0\]\.clusterId, when present on v3, must be a non-empty string/,
+    );
+  });
+
+  // Codex PR #3614 P2 regression — sourceUrl is required on v2+, not
+  // just on the latest version. Pre-fix (`env.version === BRIEF_ENVELOPE_VERSION`)
+  // exempted v2 + v3 envelopes from the required-sourceUrl check after
+  // the v4 bump, contradicting the v2+ contract. Tests below lock in
+  // the corrected `env.version >= 2` semantic.
+  it('rejects a v3 envelope where a story is missing sourceUrl (Codex PR #3614 P2)', () => {
+    const env = v3Envelope();
+    /** @type {any} */ (env.data.stories[0]).sourceUrl = undefined;
+    assert.throws(
+      () => renderBriefMagazine(env),
+      /envelope\.data\.stories\[0\]\.sourceUrl/,
+    );
+  });
+
+  it('rejects a v2-shaped envelope where a story is missing sourceUrl (Codex PR #3614 P2)', () => {
+    // v2 envelopes don't carry publicLead/publicSignals/publicThreads
+    // (that's v3) and don't carry clusterId (that's v4). Build the v2
+    // shape from v3Envelope by stripping v3-only public-share fields.
+    const v3 = v3Envelope();
+    const v2Stories = v3.data.stories.map(({ ...rest }) => rest);
+    const v2 = /** @type {any} */ ({
+      ...v3,
+      version: 2,
+      data: { ...v3.data, stories: v2Stories },
+    });
+    delete v2.data.publicLead;
+    delete v2.data.publicSignals;
+    delete v2.data.publicThreads;
+    /** @type {any} */ (v2.data.stories[0]).sourceUrl = undefined;
+    assert.throws(
+      () => renderBriefMagazine(v2),
+      /envelope\.data\.stories\[0\]\.sourceUrl/,
+    );
+  });
+
+  it('accepts a v3 envelope where every story has a valid sourceUrl (positive control)', () => {
+    const env = v3Envelope();
+    const html = renderBriefMagazine(env);
+    assert.ok(typeof html === 'string' && html.length > 0);
+  });
+
+  it('rejects a v5 envelope (forward-incompatible — not in SUPPORTED_ENVELOPE_VERSIONS)', () => {
+    // The v3 → v4 bump expanded the supported set to {1, 2, 3, 4}.
+    // A v5 envelope is composer drift (or a future bump that hasn't
+    // shipped a matching renderer) and must be rejected at the version
+    // gate before any per-story validation runs.
+    const env = /** @type {any} */ (v4Envelope());
+    env.version = 5;
+    assert.throws(
+      () => renderBriefMagazine(env),
+      /is not in supported set/,
+    );
+  });
+});
+
 describe('renderBriefMagazine — v1 envelopes (back-compat window)', () => {
   /**
    * Build a v1-shaped envelope: version=1 and stories carry no
    * sourceUrl. Emulates what's still resident in Redis under the 7-day
    * TTL at the moment the v2 renderer deploys — the renderer must
    * degrade gracefully instead of 404ing the still-live link.
+   *
+   * v1 envelopes also don't carry clusterId (a v4 field) — strip it
+   * here so the fixture matches the historical Redis shape exactly.
+   * The validator's "absent OR non-empty string" rule for clusterId
+   * on v1-v3 envelopes is exercised by the v4 back-compat block above.
    */
   function v1Envelope() {
-    const v2 = envelope();
-    const stories = v2.data.stories.map(({ sourceUrl: _ignore, ...rest }) => rest);
-    return /** @type {any} */ ({ ...v2, version: 1, data: { ...v2.data, stories } });
+    const v4 = envelope();
+    const stories = v4.data.stories.map(({ sourceUrl: _ignoreUrl, clusterId: _ignoreCluster, ...rest }) => rest);
+    return /** @type {any} */ ({ ...v4, version: 1, data: { ...v4.data, stories } });
   }
 
   it('accepts version=1 without sourceUrl and renders plain source line (no anchor)', () => {

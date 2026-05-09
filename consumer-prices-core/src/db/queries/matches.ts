@@ -111,3 +111,81 @@ export async function getPinnedUrlsForRetailer(
   }
   return map;
 }
+
+/**
+ * Returns disabled pins for recovery probing — pins where the scrape job
+ * stopped fetching due to the 3-strike disable rule, paired with the new
+ * auto-recovery counter (consecutive_in_stock).
+ *
+ * Without this path, decay restarts after the migration: once a pin gets
+ * disabled, getPinnedUrlsForRetailer excludes it forever, the scrape job
+ * never observes it again, the recovery counter never increments, and the
+ * sticky marker is never cleared. See PR #3627 fresh-eyes review (P1).
+ *
+ * Bounded by `limit` so a retailer with hundreds of disabled pins doesn't
+ * explode the scrape budget. Recovery probes get one fetch per cycle each;
+ * with `limit=10` and ~30 disabled pins per retailer, full coverage is
+ * ~3 days, recovery to 3-in-stock is ~9 days. Acceptable for a daily-cron
+ * scrape; tunable if budget allows.
+ *
+ * Aggregation queries (worldmonitor.ts buildSpreadSnapshot etc.) continue
+ * to filter `pm.pin_disabled_at IS NULL`, so disabled pins probed here
+ * still don't affect spread quality during the recovery window.
+ *
+ * GLOBAL FIFO: ranked CTE picks the OLDEST-disabled match per basket_item
+ * (one representative per item to avoid duplicate probes for the same
+ * basket entry), then orders globally by pin_disabled_at ASC and applies
+ * the LIMIT.
+ *
+ * NOT to be replaced with `DISTINCT ON (pm.basket_item_id) ORDER BY
+ * pm.basket_item_id, pm.pin_disabled_at ASC` — that ORDER BY-then-LIMIT
+ * sorts the deduped set by basket_item_id (UUID order), not pin_disabled_at,
+ * so the lowest-UUID basket_items would be probed every cycle while
+ * higher-UUID disabled pins would starve forever. This bug was caught in
+ * PR #3627 review (P1). Ranked-CTE + outer ORDER BY is the right shape.
+ */
+export async function getDisabledPinsForRecovery(
+  retailerId: string,
+  limit: number,
+): Promise<Map<string, { sourceUrl: string; productId: string; matchId: string }>> {
+  const result = await query<{
+    canonical_name: string;
+    basket_slug: string;
+    source_url: string;
+    product_id: string;
+    match_id: string;
+  }>(
+    `SELECT canonical_name, basket_slug, source_url, product_id, match_id
+       FROM (
+         SELECT
+           cp.canonical_name,
+           b.slug AS basket_slug,
+           rp.source_url,
+           rp.id AS product_id,
+           pm.id AS match_id,
+           pm.pin_disabled_at,
+           ROW_NUMBER() OVER (
+             PARTITION BY pm.basket_item_id
+             ORDER BY pm.pin_disabled_at ASC
+           ) AS rn
+         FROM product_matches pm
+         JOIN retailer_products rp ON rp.id = pm.retailer_product_id
+         JOIN basket_items bi ON bi.id = pm.basket_item_id
+         JOIN baskets b ON b.id = bi.basket_id
+         JOIN canonical_products cp ON cp.id = bi.canonical_product_id
+         WHERE rp.retailer_id = $1
+           AND pm.match_status IN ('auto', 'approved')
+           AND pm.pin_disabled_at IS NOT NULL
+       ) ranked
+      WHERE rn = 1
+      ORDER BY pin_disabled_at ASC
+      LIMIT $2`,
+    [retailerId, limit],
+  );
+  const map = new Map<string, { sourceUrl: string; productId: string; matchId: string }>();
+  for (const row of result.rows) {
+    const key = `${row.basket_slug}:${row.canonical_name}`;
+    map.set(key, { sourceUrl: row.source_url, productId: row.product_id, matchId: row.match_id });
+  }
+  return map;
+}

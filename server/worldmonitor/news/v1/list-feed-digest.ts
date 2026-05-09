@@ -8,7 +8,7 @@ import type {
   StoryMeta as ProtoStoryMeta,
   StoryPhase as ProtoStoryPhase,
 } from '../../../../src/generated/server/worldmonitor/news/v1/service_server';
-import { cachedFetchJson, getCachedJsonBatch, runRedisPipeline } from '../../../_shared/redis';
+import { cachedFetchJson, getCachedJson, setCachedJson, getCachedJsonBatch, runRedisPipeline } from '../../../_shared/redis';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
 import { sha256Hex } from '../../../_shared/hash';
 import { CHROME_UA } from '../../../_shared/constants';
@@ -37,15 +37,28 @@ const FEED_TIMEOUT_MS = 8_000;
 const OVERALL_DEADLINE_MS = 25_000;
 const BATCH_CONCURRENCY = 20;
 
-// U3 — hard freshness floor (default 48h, env override NEWS_MAX_AGE_HOURS).
+// U3 — hard freshness floor (default 96h, env override NEWS_MAX_AGE_HOURS).
 // Items older than this are dropped before scoring. The 24h `recencyScore`
 // component already treats anything older than 24h as zero recency, so the
-// 48h default is a soft buffer beyond that. Out-of-range / unparseable env
-// values fall back to the default silently. See R3 in
-// docs/plans/2026-04-26-001-fix-brief-static-page-contamination-plan.md.
+// freshness floor is purely a "don't surface week-old news" guard, not a
+// scoring input.
+//
+// 2026-05-03: bumped 48 → 96 after a production incident where every
+// single-source category panel (GitHub Trending: github.blog/feed/, Product
+// Hunt: producthunt.com/feed) went UNAVAILABLE over a weekend. Both feeds
+// publish on a weekday cadence; over a Sat-Sun window their newest item
+// sits at ~50-70h old, which the 48h floor wholesale dropped → category
+// renders zero items → panel reads "UNAVAILABLE". 96h covers a Fri→Mon
+// weekend with margin so we don't flip empty on Sunday-night dashboard
+// checks. The 24h recencyScore still naturally de-ranks 48-96h items vs
+// anything fresher, so the visible-but-de-ranked outcome is correct:
+// better than "no news" but lower priority than today.
+//
+// Out-of-range / unparseable env values fall back to the default silently.
+// See R3 in docs/plans/2026-04-26-001-fix-brief-static-page-contamination-plan.md.
 function resolveMaxAgeMs(): number {
   const raw = Number.parseInt(process.env.NEWS_MAX_AGE_HOURS ?? '', 10);
-  const hours = Number.isInteger(raw) && raw > 0 ? raw : 48;
+  const hours = Number.isInteger(raw) && raw > 0 ? raw : 96;
   return hours * 60 * 60 * 1000;
 }
 
@@ -186,6 +199,36 @@ function createTimeoutLinkedController(parentSignal: AbortSignal): {
   };
 }
 
+/**
+ * Sniff a response body to decide whether it looks like RSS/Atom/RDF.
+ *
+ * Some upstreams (Cloudflare-protected sites, captcha gateways, login walls)
+ * return HTTP 200 with an HTML interstitial body when the requesting IP is
+ * challenged — Vercel egress IPs are common targets. Without sniffing, the
+ * caller forwards the HTML to parseRssXml, which finds zero `<item>` tags
+ * and returns an empty ParseResult. That empty result then sits in Redis
+ * cache for the full feed TTL (1h), pinning the panel to "No news available"
+ * for an hour even after upstream recovers. Sniffing rejects these bodies
+ * up front so the relay-fallback path fires and the cache stays clean.
+ *
+ * Heuristic:
+ *   - Reject `<!DOCTYPE html>` / `<html ...>` (HTML wall pages)
+ *   - Accept `<rss ...>` (RSS 2.0)
+ *   - Accept `<feed ...>` (Atom 1.0)
+ *   - Accept `<rdf:RDF ...>` (RSS 1.0 / Dublin Core RDF — Nature News,
+ *     Asahi Shimbun, Slashdot, and other long-running feeds still emit
+ *     this dialect; parseRssXml handles their `<item>` blocks fine)
+ *   - Reject everything else as ambiguous (defensive — a feed without
+ *     any of these signatures in the first 2KB is implausible)
+ *
+ * Exported for direct unit testing.
+ */
+export function looksLikeRssXml(text: string): boolean {
+  const head = text.slice(0, 2048).toLowerCase();
+  if (/<!doctype\s+html|<html[\s>]/.test(head)) return false;
+  return /<rss[\s>]|<feed[\s>]|<rdf:rdf[\s>]/.test(head);
+}
+
 async function fetchRssText(
   url: string,
   signal: AbortSignal,
@@ -202,7 +245,12 @@ async function fetchRssText(
       signal: controller.signal,
     });
     if (!resp.ok) return null;
-    return await resp.text();
+    const text = await resp.text();
+    // Defensive: upstream may return HTTP 200 with an HTML interstitial
+    // (Cloudflare bot challenge, captcha page). Reject up front so the
+    // caller's relay fallback fires instead of caching an empty parse.
+    if (!looksLikeRssXml(text)) return null;
+    return text;
   } finally {
     cleanup();
   }
@@ -220,44 +268,109 @@ interface ParseResult {
   droppedUndated: number;  // count dropped because every recognized date tag was empty/unparseable/future
 }
 
+// Cache TTLs: a successful parse (parsedTotal > 0) caches for an hour to
+// match the existing aggressive-caching behaviour. A zero-from-zero result
+// (no `<item>` tags found at all) caches for only 5 minutes — without this
+// split, a single upstream-CF-challenge or transient outage would pin the
+// panel to "No news available" for the full hour. 5min keeps load on
+// upstream bounded while still recovering quickly when upstream heals.
+const CACHE_TTL_HEALTHY_S = 3600;
+const CACHE_TTL_EMPTY_S = 300;
+
 async function fetchAndParseRss(
   feed: ServerFeed,
   variant: string,
   signal: AbortSignal,
 ): Promise<ParseResult> {
-  // v2 cache shape carries items + stats; bump prevents v1 array values
-  // from being mistyped as the new struct after deploy. Old v1 entries
-  // TTL-expire within 1h.
-  const cacheKey = `rss:feed:v2:${variant}:${feed.url}`;
+  // v3 cache shape: identical struct to v2 but a new prefix invalidates
+  // every pre-fix entry on deploy. Pre-fix v2 entries could be poisoned
+  // (non-RSS body cached at the long TTL via the old cachedFetchJson path
+  // — the bug this PR fixes). Their unprefixed v2 keys remain in Redis
+  // until they TTL-expire naturally over the next hour; v3 reads/writes
+  // ignore them. Without this prefix bump we'd need a runtime guard to
+  // distinguish "recently confirmed empty (honor short TTL)" from
+  // "old poisoned long-TTL entry" — and that runtime guard regressed
+  // throttling because every parsedTotal=0 read fell through to a live
+  // upstream fetch (PR #3556 review P1: short TTL never throttled).
+  const cacheKey = `rss:feed:v3:${variant}:${feed.url}`;
 
   try {
-    const cached = await cachedFetchJson<ParseResult>(cacheKey, 3600, async () => {
-      // Try direct fetch first
-      let text = await fetchRssText(feed.url, signal).catch(() => null);
+    // Read cache unconditionally — the v3 prefix guarantees pre-fix
+    // poisoning can't reach this read, so we don't need a parsedTotal
+    // bypass. Honoring cached zero-from-zero entries IS the throttle:
+    // setCachedJson below writes them with CACHE_TTL_EMPTY_S, so the next
+    // request within 5 minutes hits cache instead of upstream. This is
+    // what the PR description claimed and what review P1 flagged was
+    // missing.
+    const cached = (await getCachedJson(cacheKey)) as ParseResult | null;
+    if (cached) return cached;
 
-      // Fallback: route through Railway relay (different IP, avoids Vercel blocks)
-      if (!text) {
-        const relayBase = getRelayBaseUrl();
-        if (relayBase) {
-          const relayUrl = `${relayBase}/rss?url=${encodeURIComponent(feed.url)}`;
-          const { controller, cleanup } = createTimeoutLinkedController(signal);
-          try {
-            const resp = await fetch(relayUrl, {
-              headers: getRelayHeaders({ Accept: RSS_ACCEPT }),
-              signal: controller.signal,
-            });
-            if (resp.ok) text = await resp.text();
-          } catch { /* relay also failed */ } finally {
-            cleanup();
+    // Try direct fetch first
+    let text = await fetchRssText(feed.url, signal).catch(() => null);
+    let source: 'direct' | 'relay' | 'both-failed' = text ? 'direct' : 'both-failed';
+    let relayStatus: number | null = null;
+    let relayBodyShape: 'rss' | 'html-or-empty' | 'no-relay' | 'fetch-error' = 'no-relay';
+
+    // Fallback: route through Railway relay (different IP, avoids Vercel blocks)
+    if (!text) {
+      const relayBase = getRelayBaseUrl();
+      if (relayBase) {
+        relayBodyShape = 'fetch-error';
+        const relayUrl = `${relayBase}/rss?url=${encodeURIComponent(feed.url)}`;
+        const { controller, cleanup } = createTimeoutLinkedController(signal);
+        try {
+          const resp = await fetch(relayUrl, {
+            headers: getRelayHeaders({ Accept: RSS_ACCEPT }),
+            signal: controller.signal,
+          });
+          relayStatus = resp.status;
+          if (resp.ok) {
+            const relayText = await resp.text();
+            // Relay can also return CF-challenge HTML if the relay's IP is
+            // challenged — apply the same sniff to keep the cache clean.
+            if (looksLikeRssXml(relayText)) {
+              text = relayText;
+              source = 'relay';
+              relayBodyShape = 'rss';
+            } else {
+              relayBodyShape = 'html-or-empty';
+            }
           }
+        } catch { /* relay also failed */ } finally {
+          cleanup();
         }
       }
+    }
 
-      if (!text) return null;
-      return parseRssXml(text, feed, variant);
-    });
+    // Per-feed observability: surfaces which path won the fetch in Vercel
+    // function logs. Critical when panels show 0 items — without this
+    // breadcrumb you can't tell apart "direct blocked + relay env unset"
+    // from "direct blocked + relay 403/429" from "relay returned HTML".
+    // Filter logs by `[feed-fetch]` to triage. Volume: one line per cache
+    // miss per feed (capped by CACHE_TTL_EMPTY_S=300s + healthy=3600s).
+    if (source !== 'direct') {
+      const host = (() => { try { return new URL(feed.url).hostname; } catch { return 'invalid-url'; } })();
+      console.log(`[feed-fetch] variant=${variant} category=? host=${host} source=${source} relay_status=${relayStatus ?? 'n/a'} relay_shape=${relayBodyShape} feed=${feed.name}`);
+    }
 
-    return cached ?? { items: [], parsedTotal: 0, droppedUndated: 0 };
+    if (!text) {
+      // Both direct and relay failed. Cache empty short so we retry sooner
+      // than the healthy-result TTL.
+      const empty: ParseResult = { items: [], parsedTotal: 0, droppedUndated: 0 };
+      await setCachedJson(cacheKey, empty, CACHE_TTL_EMPTY_S);
+      return empty;
+    }
+
+    // parseRssXml returns null on hard parse failure (malformed XML even
+    // after surviving the body-shape sniff). Treat that the same as a
+    // network failure: cache empty short so we retry sooner.
+    const parsed = parseRssXml(text, feed, variant);
+    const result: ParseResult = parsed ?? { items: [], parsedTotal: 0, droppedUndated: 0 };
+    // Long cache only for healthy parses; short cache for zero-from-zero so
+    // transient upstream issues don't sticky-fail for an hour.
+    const ttl = result.parsedTotal > 0 ? CACHE_TTL_HEALTHY_S : CACHE_TTL_EMPTY_S;
+    await setCachedJson(cacheKey, result, ttl);
+    return result;
   } catch {
     return { items: [], parsedTotal: 0, droppedUndated: 0 };
   }
@@ -508,7 +621,7 @@ async function enrichWithAiCache(items: ParsedItem[]): Promise<void> {
   if (candidates.length === 0) return;
 
   // Use the canonical buildClassifyCacheKey from intelligence/v1/_shared
-  // so the cache prefix (currently classify:sebuf:v4:) lives in exactly
+  // so the cache prefix (currently classify:sebuf:v5:) lives in exactly
   // one place — bumping it again only requires touching _shared.ts and
   // the relay's independent .cjs helper. See U4 of the plan.
   const keyMap = new Map<string, ParsedItem[]>();

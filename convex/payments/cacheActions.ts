@@ -80,7 +80,13 @@ export const syncEntitlementCache = internalAction({
       );
 
       if (!resp.ok) {
-        console.warn(
+        // Throw so Convex auto-Sentry surfaces this; the action is
+        // scheduled by upsertEntitlements (fire-and-forget) and the
+        // SET is idempotent, so retry-on-error is safe and correct.
+        // The previous silent `console.warn` left persistent Redis
+        // outages invisible — users who upgraded would not see PRO
+        // features until next manual cache rebuild.
+        throw new Error(
           `[cacheActions] Redis SET failed: HTTP ${resp.status} for user ${args.userId}`,
         );
       }
@@ -89,6 +95,9 @@ export const syncEntitlementCache = internalAction({
         "[cacheActions] Redis cache sync failed:",
         err instanceof Error ? err.message : String(err),
       );
+      // Re-throw so Convex auto-Sentry captures (the warn above stays
+      // for ops visibility in the Convex log dashboard).
+      throw err;
     } finally {
       clearTimeout(timeout);
     }
@@ -124,7 +133,9 @@ export const deleteEntitlementCache = internalAction({
       );
 
       if (!resp.ok) {
-        console.warn(
+        // Same rationale as the SET path — surface persistent failures
+        // via Convex auto-Sentry. DEL is idempotent so retry is safe.
+        throw new Error(
           `[cacheActions] Redis DEL failed: HTTP ${resp.status} for key ${key}`,
         );
       }
@@ -133,6 +144,7 @@ export const deleteEntitlementCache = internalAction({
         "[cacheActions] Redis cache delete failed:",
         err instanceof Error ? err.message : String(err),
       );
+      throw err;
     } finally {
       clearTimeout(timeout);
     }

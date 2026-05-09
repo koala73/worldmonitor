@@ -146,7 +146,7 @@ http.route({
     }
 
     try {
-      const result = await ctx.runMutation(
+      const result = (await ctx.runMutation(
         anyApi.userPreferences!.setPreferences as any,
         {
           variant: body.variant,
@@ -154,10 +154,33 @@ http.route({
           expectedSyncVersion: body.expectedSyncVersion,
           schemaVersion: body.schemaVersion,
         },
+      )) as
+        | { ok: true; syncVersion: number }
+        | { ok: false; reason: "CONFLICT"; actualSyncVersion: number };
+      // PR 3 (post-launch-stabilization): setPreferences now returns a
+      // discriminated result for CONFLICT instead of throwing. Mirror the
+      // wire shape from api/user-prefs.ts (Vercel) so clients see the same
+      // 409 + actualSyncVersion regardless of which `/api/user-prefs` host
+      // they hit.
+      if (result.ok === false) {
+        return new Response(
+          JSON.stringify({
+            error: "CONFLICT",
+            actualSyncVersion: result.actualSyncVersion,
+          }),
+          { status: 409, headers },
+        );
+      }
+      return new Response(
+        JSON.stringify({ syncVersion: result.syncVersion }),
+        { status: 200, headers },
       );
-      return new Response(JSON.stringify(result), { status: 200, headers });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
+      // Defensive: keep CONFLICT-throw fallback for the deploy-ordering
+      // window where this http action may run against an older Convex
+      // deployment that still throws. Once both layers have soaked, this
+      // branch is unreachable and can be removed.
       if (msg.includes("CONFLICT")) {
         return new Response(JSON.stringify({ error: "CONFLICT" }), {
           status: 409,
@@ -501,7 +524,14 @@ http.route({
           variant: body.variant,
           enabled: body.enabled,
           eventTypes: body.eventTypes as string[],
-          sensitivity: (body.sensitivity ?? "all") as "all" | "high" | "critical",
+          // Pass body.sensitivity through unchanged (may be undefined).
+          // setAlertRulesForUser now accepts optional sensitivity and uses
+          // resolveEffectivePair to preserve existing.sensitivity on patch and
+          // default to 'high' only on fresh insert. A blind '?? "all"' fallback
+          // here would silently narrow existing daily+all digest users to
+          // daily+high whenever a caller omits the field.
+          // See plans/forbid-realtime-all-events.md §1c.
+          sensitivity: body.sensitivity as "all" | "high" | "critical" | undefined,
           channels: body.channels as Array<"telegram" | "slack" | "email">,
           aiDigestEnabled: typeof body.aiDigestEnabled === "boolean" ? body.aiDigestEnabled : undefined,
         });
@@ -543,6 +573,67 @@ http.route({
           digestHour: typeof body.digestHour === "number" ? body.digestHour : undefined,
           digestTimezone: typeof body.digestTimezone === "string" ? body.digestTimezone : undefined,
         });
+        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+
+      // Atomic update of (digestMode, sensitivity) and any subset of the alert-rule /
+      // digest-schedule fields. Used by the settings UI's delivery-mode change flow
+      // to avoid the two-call race that the legacy set-alert-rules + set-digest-settings
+      // pair has against the cross-field validator.
+      // See plans/forbid-realtime-all-events.md §1d, §1f.
+      if (action === "set-notification-config") {
+        const VALID_SENSITIVITY = new Set(["all", "high", "critical"]);
+        const VALID_DIGEST_MODE = new Set(["realtime", "daily", "twice_daily", "weekly"]);
+        if (typeof body.variant !== "string" || !body.variant) {
+          return new Response(JSON.stringify({ error: "MISSING_VARIANT" }), { status: 400, headers: { "Content-Type": "application/json" } });
+        }
+        if (body.sensitivity !== undefined && !VALID_SENSITIVITY.has(body.sensitivity as string)) {
+          return new Response(JSON.stringify({ error: "INVALID_SENSITIVITY" }), { status: 400, headers: { "Content-Type": "application/json" } });
+        }
+        if (body.digestMode !== undefined && !VALID_DIGEST_MODE.has(body.digestMode as string)) {
+          return new Response(JSON.stringify({ error: "INVALID_DIGEST_MODE" }), { status: 400, headers: { "Content-Type": "application/json" } });
+        }
+        try {
+          await ctx.runMutation((internal as any).alertRules.setNotificationConfigForUser, {
+            userId,
+            variant: body.variant,
+            enabled: typeof body.enabled === "boolean" ? body.enabled : undefined,
+            eventTypes: Array.isArray(body.eventTypes) ? (body.eventTypes as string[]) : undefined,
+            sensitivity: body.sensitivity as "all" | "high" | "critical" | undefined,
+            channels: Array.isArray(body.channels) ? (body.channels as Array<"telegram" | "slack" | "email" | "discord" | "webhook" | "web_push">) : undefined,
+            aiDigestEnabled: typeof body.aiDigestEnabled === "boolean" ? body.aiDigestEnabled : undefined,
+            digestMode: body.digestMode as "realtime" | "daily" | "twice_daily" | "weekly" | undefined,
+            digestHour: typeof body.digestHour === "number" ? body.digestHour : undefined,
+            digestTimezone: typeof body.digestTimezone === "string" ? body.digestTimezone : undefined,
+          });
+        } catch (err: unknown) {
+          // Translate structured ConvexError codes into machine-readable HTTP
+          // responses so the UI can route to inline helper text (400) or to
+          // the upgrade flow (402). Do NOT swallow as a generic 500 — the
+          // client needs the structured `error` field to render the right
+          // surface.
+          const data = (err as { data?: unknown } | undefined)?.data;
+          if (data && typeof data === "object") {
+            const errPayload = data as { code?: string; message?: string };
+            if (errPayload.code === "INCOMPATIBLE_DELIVERY") {
+              return new Response(
+                JSON.stringify({ error: errPayload.code, message: errPayload.message ?? "" }),
+                { status: 400, headers: { "Content-Type": "application/json" } },
+              );
+            }
+            if (errPayload.code === "PRO_REQUIRED") {
+              // 402 Payment Required — the canonical HTTP status for
+              // paywall-gated content. Client reads `error: "PRO_REQUIRED"`
+              // to route to the upgrade flow rather than show a generic
+              // failure toast.
+              return new Response(
+                JSON.stringify({ error: errPayload.code, message: errPayload.message ?? "" }),
+                { status: 402, headers: { "Content-Type": "application/json" } },
+              );
+            }
+          }
+          throw err;
+        }
         return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
 
@@ -744,8 +835,13 @@ http.route({
     );
 
     if (result) {
-      // Fire-and-forget: update lastUsedAt (don't await, don't block response)
-      void ctx.runMutation((internal as any).apiKeys.touchKeyLastUsed, { keyId: result.id });
+      try {
+        await ctx.scheduler.runAfter(0, (internal as any).apiKeys.touchKeyLastUsed, { keyId: result.id });
+      } catch (err) {
+        // sentry-coverage-ok: re-throwing here would 500 the gateway, which coerces to null
+        // and stamps a 60s negative-cache sentinel for a valid key. lastUsedAt is best-effort telemetry.
+        console.warn("[validate-api-key] touchKeyLastUsed schedule failed:", err instanceof Error ? err.message : String(err));
+      }
     }
 
     return new Response(JSON.stringify(result), {

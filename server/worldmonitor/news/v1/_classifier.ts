@@ -230,14 +230,52 @@ function matchKeywords(
  *   - "On this day: Iraq invasion 5 years ago"
  * Both contain a CRITICAL keyword AND an unmistakable retrospective marker.
  */
-// Highly-specific retrospective prefixes — bare "Today in" / "This day in"
+// Highly-specific retrospective markers — bare "Today in" / "This day in"
 // were intentionally REMOVED after PR #3429 review (round 2). Both have
 // legitimate current-event uses ("Today in Ukraine: Russian missile strikes
 // Kyiv") that would have falsely downgraded real critical alerts. Only
 // patterns whose retrospective intent is unambiguous remain:
 //   - "Science history:" — Live Science series tag, never current.
-//   - "Throwback" / "Flashback" — always retrospective by definition.
-const HISTORICAL_PREFIX_RE = /^(?:science history|throwback|flashback)\s*:?/i;
+//   - "Throwback" / "Flashback" — always retrospective when used as an
+//     editorial-slot title (anchored at start, OR after a brand prefix).
+//
+// Two branches handle this:
+//
+//   1. ANCHORED form — the marker is at title position 0:
+//        "Throwback Thursday: 9/11 reflections"
+//        "Flashback: 1986 Iran-Contra disclosure"
+//        "Science history: Chernobyl meltdown"
+//
+//   2. BRAND-PREFIX form — the marker follows 1-4 Title Case brand
+//      words and the slot ends with a colon. Brief 2026-04-28-0801
+//      surfaced "CBS News Radio flashback: D-Day, Invasion of Normandy
+//      in 1944" because the original anchored regex missed this shape.
+//        "CBS News Radio flashback: D-Day, Invasion of Normandy in 1944"
+//        "BBC Throwback Thursday: the fall of Saigon"
+//        "NPR Flashback Friday: Watergate hearings"
+//
+// The brand-prefix branch deliberately requires:
+//   (a) Title-Case prefix words (rejects sentence-form like
+//       "markets see flashback to 2008 crisis"), AND
+//   (b) an editorial-slot colon after the marker (rejects
+//       "Markets See Flashback To 2008 Crisis As Bonds Tumble" — no
+//       colon, this is a sentence headline using flashback as a
+//       comparison, not a retrospective slot title).
+//
+// This matters because hasHistoricalMarker is also reused at
+// list-feed-digest.ts in the L3b LLM-cache guard (PR #3429), where
+// it force-demotes ANY cached LLM hit to info. Without the colon /
+// Title-Case constraint, current-event headlines that happen to use
+// "flashback" / "throwback" as a comparison word would be wrongly
+// suppressed at full severity.
+const HISTORICAL_ANCHORED_PREFIX_RE =
+  /^(?:science history|throwback|flashback)\s*:?/i;
+// No `i` flag — Title-Case enforcement on the brand prefix is
+// load-bearing. Marker token itself is matched in either case via
+// the [Tt]/[Ff] character classes (publishers ship both "Flashback"
+// title-case and "flashback" all-lowercase forms).
+const HISTORICAL_BRAND_PREFIX_RE =
+  /^(?:[A-Z][\w'&-]*\s+){1,4}(?:[Tt]hrowback|[Ff]lashback)(?:\s+[A-Za-z]+)?\s*:/;
 
 // "On this day in YYYY" requires a YEAR after the prefix — narrows out
 // "On this day, Iran fires missile" (current event) while keeping
@@ -286,7 +324,8 @@ function isPastRetrospectiveYear(year: number, nowMs: number): boolean {
  * other than classifyByKeyword and enrichWithAiCache.
  */
 export function hasHistoricalMarker(title: string, nowMs: number = Date.now()): boolean {
-  if (HISTORICAL_PREFIX_RE.test(title)) return true;
+  if (HISTORICAL_ANCHORED_PREFIX_RE.test(title)) return true;
+  if (HISTORICAL_BRAND_PREFIX_RE.test(title)) return true;
   if (HISTORICAL_PREFIX_WITH_YEAR_RE.test(title)) return true;
   if (THIS_DAY_IN_HISTORY_RE.test(title)) return true;
   if (HISTORICAL_PHRASE_RE.test(title)) return true;

@@ -37,7 +37,7 @@ export default async function handler(req: Request): Promise<Response> {
     });
   }
 
-  const apiKeyResult = validateApiKey(req, { forceKey: true });
+  const apiKeyResult = await validateApiKey(req, { forceKey: true });
   if (apiKeyResult.required && !apiKeyResult.valid) {
     return new Response(JSON.stringify({ error: apiKeyResult.error ?? 'API key required' }), {
       status: 401,

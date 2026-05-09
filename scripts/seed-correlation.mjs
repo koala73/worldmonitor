@@ -533,7 +533,11 @@ function clusterByEntity(signals) {
 }
 
 // ── Scoring ─────────────────────────────────────────────────
-function scoreClusters(clusters, weights, threshold) {
+// Returns ALL scored clusters (un-thresholded). Callers apply the threshold
+// filter so observability logs can report `topScore` even when zero cards
+// pass — distinguishing "clusters formed, score below threshold" from
+// "no clusters formed at all" without re-running the scoring pass.
+function scoreClusters(clusters, weights, _threshold) {
   return clusters
     .map(cluster => {
       const perType = new Map();
@@ -565,8 +569,7 @@ function scoreClusters(clusters, weights, threshold) {
       const key = cluster.country ?? cluster.entityKey ?? `${centroidLat?.toFixed(1)},${centroidLon?.toFixed(1)}`;
 
       return { cluster, score, countries, centroidLat, centroidLon, key };
-    })
-    .filter(c => c.score >= threshold);
+    });
 }
 
 // ── Card Generation ─────────────────────────────────────────
@@ -665,31 +668,60 @@ async function computeCorrelation() {
     lon: s.lon,
   }));
 
+  // Observability — raw inputs at the seam between fetchInputData and the
+  // per-domain pipelines. Without this it was impossible to tell whether
+  // 0-card domains meant "no input signals" vs "scored too low against
+  // threshold" vs "no clusters formed". news-with-coords is broken out
+  // because escalation/disaster spatial paths depend on it.
+  const newsWithCoords = newsClusters.filter(c => c.lat != null && c.lon != null).length;
+  console.log(
+    `  [Correlation] inputs: flights=${rawFlights.length} protests=${protests.length} ` +
+    `outages=${outages.length} quakes=${earthquakes.length} markets=${allMarkets.length} ` +
+    `news=${newsClusters.length} (${newsWithCoords} with lat/lon)`,
+  );
+
   const result = { military: [], escalation: [], economic: [], disaster: [], computedAt: Date.now() };
+
+  // Helper — apply threshold + emit one diagnostic line per domain.
+  // Logs signals, clusters, topScore (max regardless of threshold), and
+  // cards (count clearing threshold). topScore=0 when no clusters formed,
+  // distinguishing "scoring rejected everything" from "nothing to score".
+  const buildDomain = (domain, signals, clusters, scored, threshold, titleFn) => {
+    const topScore = scored.length > 0
+      ? Math.round(Math.max(...scored.map(s => s.score)))
+      : 0;
+    const passing = scored.filter(s => s.score >= threshold);
+    const cards = passing.map(s => toCard(s, domain, titleFn)).sort((a, b) => b.score - a.score);
+    console.log(
+      `  [Correlation] ${domain.padEnd(10)} signals=${signals.length} ` +
+      `clusters=${scored.length} topScore=${topScore} threshold=${threshold} cards=${cards.length}`,
+    );
+    return cards;
+  };
 
   // Military
   const milSignals = collectMilitarySignals(rawFlights);
   const milClusters = clusterByProximity(milSignals, 500);
   const milScored = scoreClusters(milClusters, DOMAINS.military.weights, DOMAINS.military.threshold);
-  result.military = milScored.map(s => toCard(s, 'military', generateMilitaryTitle)).sort((a, b) => b.score - a.score);
+  result.military = buildDomain('military', milSignals, milClusters, milScored, DOMAINS.military.threshold, generateMilitaryTitle);
 
   // Escalation
   const escSignals = collectEscalationSignals(protests, outages, newsClusters);
   const escClusters = clusterByCountry(escSignals);
   const escScored = scoreClusters(escClusters, DOMAINS.escalation.weights, DOMAINS.escalation.threshold);
-  result.escalation = escScored.map(s => toCard(s, 'escalation', generateEscalationTitle)).sort((a, b) => b.score - a.score);
+  result.escalation = buildDomain('escalation', escSignals, escClusters, escScored, DOMAINS.escalation.threshold, generateEscalationTitle);
 
   // Economic
   const ecoSignals = collectEconomicSignals(allMarkets, newsClusters);
   const ecoClusters = clusterByEntity(ecoSignals);
   const ecoScored = scoreClusters(ecoClusters, DOMAINS.economic.weights, DOMAINS.economic.threshold);
-  result.economic = ecoScored.map(s => toCard(s, 'economic', generateEconomicTitle)).sort((a, b) => b.score - a.score);
+  result.economic = buildDomain('economic', ecoSignals, ecoClusters, ecoScored, DOMAINS.economic.threshold, generateEconomicTitle);
 
   // Disaster
   const disSignals = collectDisasterSignals(earthquakes, outages, protests);
   const disClusters = clusterByProximity(disSignals, 500);
   const disScored = scoreClusters(disClusters, DOMAINS.disaster.weights, DOMAINS.disaster.threshold);
-  result.disaster = disScored.map(s => toCard(s, 'disaster', generateDisasterTitle)).sort((a, b) => b.score - a.score);
+  result.disaster = buildDomain('disaster', disSignals, disClusters, disScored, DOMAINS.disaster.threshold, generateDisasterTitle);
 
   return result;
 }
