@@ -6,6 +6,15 @@ import { h, replaceChildren, rawHtml } from '@/utils/dom-utils';
 import type { CachedRiskScores } from '@/services/cached-risk-scores';
 import { toCountryScore } from '@/services/cached-risk-scores';
 import { renderFollowButton } from '@/utils/follow-button';
+import {
+  getFollowed,
+  isFollowFeatureEnabled,
+  subscribe as subscribeFollowed,
+} from '@/services/followed-countries';
+import {
+  partitionByFollowed,
+  shouldRenderSectionLabels,
+} from './_cii-panel-partition';
 
 export class CIIPanel extends Panel {
   private scores: CountryScore[] = [];
@@ -19,6 +28,11 @@ export class CIIPanel extends Panel {
   // FollowButton's watchlist + entitlement subscriptions leak each
   // refresh tick — CIIPanel re-renders very frequently.
   private followButtonTeardowns = new Map<string, () => void>();
+  // U6 — teardown for the watchlist subscription installed in the
+  // constructor. Re-renders the current rows whenever the followed list
+  // changes (anonymous: localStorage write or cross-tab `storage` event;
+  // signed-in: Convex `listFollowed` snapshot). Fired on `destroy()`.
+  private followedUnsubscribe: (() => void) | null = null;
 
   constructor() {
     super({
@@ -28,6 +42,15 @@ export class CIIPanel extends Panel {
       defaultRowSpan: 2,
     });
     this.showLoading(t('common.loading'));
+
+    // U6 — re-render rows on every watchlist mutation so the pinned-to-top
+    // group stays in sync. We re-render the cached scores in place rather
+    // than re-fetch — the data hasn't changed, only the partition order.
+    // The handler is a no-op until `this.scores` is populated by the first
+    // `refresh()` / `renderFromCached()` call.
+    this.followedUnsubscribe = subscribeFollowed(() => {
+      this.rerenderRows();
+    });
   }
 
   public setShareStoryHandler(handler: (code: string, name: string) => void): void {
@@ -135,6 +158,78 @@ export class CIIPanel extends Panel {
     this.followButtonTeardowns.clear();
   }
 
+  /**
+   * U6 — Build the list element from already-loaded scores. Inserts a
+   * single "Following" / "All" section pair when BOTH groups are
+   * non-empty; otherwise renders the unpartitioned list (no divider, no
+   * label) so the zero-followed and all-followed cases match today's UX.
+   *
+   * Partition logic lives in `_cii-panel-partition.ts` so it's
+   * unit-testable without the Panel/DOM/i18n transitive deps.
+   *
+   * Caller must call `tearDownFollowButtons()` BEFORE invoking this
+   * (every row mounts a fresh FollowButton; the previous batch's
+   * subscriptions must be released first).
+   */
+  private buildList(scores: CountryScore[]): HTMLElement {
+    // Gate the partition input on the feature flag — `getFollowed()` reads
+    // localStorage even when the flag is off (anonymous mode reads aren't
+    // short-circuited, only mutations are). When the flag is OFF, treat
+    // the followed list as `[]` so partitionByFollowed becomes a no-op:
+    // rows render in the original score order, no FOLLOWING / ALL labels.
+    // Without this gate, flag-off users would see partitioning + section
+    // labels even though the FollowButton / chip surface is hidden.
+    const followedCodes = isFollowFeatureEnabled() ? getFollowed() : [];
+    const partition = partitionByFollowed(scores, followedCodes);
+
+    if (!shouldRenderSectionLabels(partition)) {
+      // Zero-followed OR all-followed → render the original order with
+      // no divider. Behaviour identical to pre-U6.
+      return h(
+        'div',
+        { className: 'cii-list' },
+        ...scores.map((s) => this.buildCountry(s)),
+      );
+    }
+
+    const { followed, unfollowed } = partition;
+    const followingLabel = h(
+      'div',
+      { className: 'cii-section-label' },
+      t('components.cii.sectionFollowing'),
+    );
+    const allLabel = h(
+      'div',
+      { className: 'cii-section-label' },
+      t('components.cii.sectionAll'),
+    );
+
+    return h(
+      'div',
+      { className: 'cii-list' },
+      followingLabel,
+      ...followed.map((s) => this.buildCountry(s)),
+      allLabel,
+      ...unfollowed.map((s) => this.buildCountry(s)),
+    );
+  }
+
+  /**
+   * U6 — Cheap re-render path used by the watchlist subscription. Rebuilds
+   * the row list from the cached `this.scores` (no re-fetch) so the
+   * partition order updates in one tick. No-op if no scores have been
+   * loaded yet (the next refresh / renderFromCached will pick up the
+   * watchlist on its own).
+   */
+  private rerenderRows(): void {
+    if (this.scores.length === 0) return;
+    const withData = this.scores.filter((s) => s.score > 0);
+    if (withData.length === 0) return;
+    this.tearDownFollowButtons();
+    replaceChildren(this.content, this.buildList(withData));
+    this.bindShareButtons();
+  }
+
   private bindShareButtons(): void {
     if (!this.onShareStory && !this.onCountryClick) return;
 
@@ -193,8 +288,7 @@ export class CIIPanel extends Panel {
       // Tear down the previous batch of FollowButtons BEFORE we
       // construct fresh rows; `buildCountry` will repopulate the map.
       this.tearDownFollowButtons();
-      const listEl = h('div', { className: 'cii-list' }, ...withData.map(s => this.buildCountry(s)));
-      replaceChildren(this.content, listEl);
+      replaceChildren(this.content, this.buildList(withData));
       this.bindShareButtons();
     } catch (error) {
       console.error('[CIIPanel] Refresh error:', error);
@@ -211,8 +305,7 @@ export class CIIPanel extends Panel {
     this.setErrorState(false);
     // Tear down previous FollowButtons before mounting the new batch.
     this.tearDownFollowButtons();
-    const listEl = h('div', { className: 'cii-list' }, ...scores.map(s => this.buildCountry(s)));
-    replaceChildren(this.content, listEl);
+    replaceChildren(this.content, this.buildList(scores));
     this.bindShareButtons();
     console.log(`[CIIPanel] Rendered ${scores.length} countries from cached/bootstrap data`);
   }
@@ -223,6 +316,14 @@ export class CIIPanel extends Panel {
 
   public override destroy(): void {
     this.tearDownFollowButtons();
+    if (this.followedUnsubscribe) {
+      try {
+        this.followedUnsubscribe();
+      } catch {
+        /* swallow — unsubscribe should never throw, but be defensive */
+      }
+      this.followedUnsubscribe = null;
+    }
     super.destroy();
   }
 }

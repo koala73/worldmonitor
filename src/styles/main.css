@@ -12806,6 +12806,41 @@ a.prediction-link:hover {
   cursor: help;
 }
 
+/* U6 — CIIPanel followed-countries pin-to-top section labels.
+ *
+ * Inserted between the followed-group and the unfollowed-group when BOTH
+ * are non-empty (zero-followed and all-followed cases skip the labels so
+ * the panel renders identically to the pre-U6 unpartitioned list). Mirrors
+ * the visual language of `.cp-section-label` (uppercase / letter-spaced
+ * / dim) plus a hairline divider via `::after` so the section break is
+ * clearly intentional and not a render glitch. */
+.cii-section-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-dim);
+  padding: 0 4px;
+  margin: 4px 0 0;
+}
+
+.cii-section-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+/* The very first label (Following) sits flush against the panel top, so
+ * collapse its top margin. The second label (All) keeps the 4px to vent
+ * the divider away from the preceding row. */
+.cii-list > .cii-section-label:first-child {
+  margin-top: 0;
+}
+
 /* CII Learning Mode */
 .cii-learning-banner {
   display: flex;
@@ -23400,4 +23435,140 @@ body.map-width-resizing {
 .country-intel-follow-host {
   display: inline-flex;
   align-items: center;
+}
+
+/* ---------------------------------------------------------------------------
+ * NotifyCountryLink (PR B / U8 — degraded path)
+ *
+ * Inline secondary CTA mounted alongside the FollowButton on the Country
+ * Deep Dive header. Visible only while the user is following the
+ * country (the helper itself decides; CSS just styles the rendered
+ * button). Visually understated — the FollowButton is the primary
+ * action; this link is the bridge to "configure notifications."
+ *
+ * Empty hosts (feature flag off OR not-following → handle.html === '')
+ * stay zero-impact via `:not(:empty)`-gated layout rules.
+ * ------------------------------------------------------------------------ */
+.cdp-notify-link-host {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+}
+
+.cdp-notify-link-host:not(:empty) {
+  /* Only contribute spacing when actually rendering content; rely on
+   * the parent flex `gap` for separation otherwise. */
+}
+
+.cdp-notify-link {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 4px;
+  font-size: 12px;
+  line-height: 1.3;
+  text-decoration: underline dotted;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  transition: color 0.15s ease;
+}
+
+.cdp-notify-link:hover {
+  color: var(--semantic-info);
+  text-decoration-style: solid;
+}
+
+.cdp-notify-link:focus-visible {
+  outline: 2px solid var(--semantic-info);
+  outline-offset: 1px;
+}
+
+.cdp-notify-link-icon {
+  display: block;
+  flex-shrink: 0;
+}
+
+/* ---------------------------------------------------------------------------
+ * FollowedOnlyChip (PR B / U7)
+ *
+ * Compact pill chip mounted in panel headers. Mirrors the FollowButton
+ * visual conventions (transparent + 1px border + var(--border) +
+ * var(--text-muted) text + var(--semantic-info) when active/hover).
+ * Same border-radius family as `.cii-share-btn` / `.wm-follow-btn`,
+ * pill-shaped via larger horizontal padding.
+ *
+ * Empty hosts (feature flag off → handle.html === '') stay zero-impact
+ * via `:not(:empty)`-gated layout rules on the per-panel host class.
+ * ------------------------------------------------------------------------ */
+.wm-followed-only-chip {
+  appearance: none;
+  -webkit-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  border-radius: 12px;
+  cursor: pointer;
+  padding: 2px 8px;
+  font-size: 11px;
+  line-height: 1.3;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.wm-followed-only-chip:hover {
+  color: var(--semantic-info);
+  border-color: var(--semantic-info);
+}
+
+.wm-followed-only-chip:focus-visible {
+  outline: 2px solid var(--semantic-info);
+  outline-offset: 1px;
+}
+
+.wm-followed-only-chip--active {
+  color: var(--semantic-info);
+  border-color: var(--semantic-info);
+  background: color-mix(in srgb, var(--semantic-info) 12%, transparent);
+}
+
+.wm-followed-only-chip--active:hover {
+  /* On hover an active chip hints at clearing → desaturate. */
+  color: var(--text-muted);
+  border-color: var(--border);
+  background: transparent;
+}
+
+.wm-followed-only-chip--disabled,
+.wm-followed-only-chip[disabled] {
+  cursor: not-allowed;
+  opacity: 0.5;
+  pointer-events: auto; /* keep tooltip discoverable on hover */
+}
+
+.wm-followed-only-chip-icon {
+  display: block;
+  flex-shrink: 0;
+}
+
+.wm-followed-only-chip-label {
+  white-space: nowrap;
+}
+
+/* Generic header host — empty hosts (feature flag off) collapse to zero
+ * width via `:not(:empty)`. Spacing inherited from `.panel-header`'s
+ * existing flex layout; `margin-left: auto` would push it to the right
+ * but `.panel-header` already manages its own ordering, so we just sit
+ * inline with the previous sibling. */
+.panel-header-followed-only-host:not(:empty) {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
 }

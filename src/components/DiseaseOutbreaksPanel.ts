@@ -2,6 +2,9 @@ import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { fetchDiseaseOutbreaks, type DiseaseOutbreakItem } from '@/services/disease-outbreaks';
+import { renderFollowedOnlyChip, type FollowedOnlyChipHandle } from '@/utils/followed-only-chip';
+import { isFollowed, subscribe as subscribeFollowed } from '@/services/followed-countries';
+import { toIso2 } from '@/utils/country-codes';
 
 function alertColor(level: string): string {
   if (level === 'alert') return '#e74c3c';
@@ -29,6 +32,10 @@ export class DiseaseOutbreaksPanel extends Panel {
   private _outbreaks: DiseaseOutbreakItem[] = [];
   private _hasData = false;
   private _filter: string = '';
+  private _followedOnlyChip: FollowedOnlyChipHandle | null = null;
+  private _followedOnlyHost: HTMLElement | null = null;
+  private _followedOnlyTeardown: (() => void) | null = null;
+  private _followedUnsub: (() => void) | null = null;
 
   constructor() {
     super({ id: 'disease-outbreaks', title: 'Disease Outbreaks', showCount: false, infoTooltip: t('components.diseaseOutbreaks.infoTooltip') });
@@ -45,6 +52,47 @@ export class DiseaseOutbreaksPanel extends Panel {
         this._filter = inp.value.trim().toLowerCase();
         this._render();
       }
+    });
+    this._mountFollowedOnlyChip();
+  }
+
+  /**
+   * Mount the U7 "Followed only" chip into the panel header. The chip
+   * persists per `panelId` so the user's choice survives reload but
+   * doesn't bleed across unrelated panels. Re-render on toggle and on
+   * watchlist change so the row filter follows the chip state.
+   */
+  private _mountFollowedOnlyChip(): void {
+    const host = document.createElement('span');
+    host.className = 'panel-header-followed-only-host';
+    this._followedOnlyHost = host;
+    this._followedOnlyChip = renderFollowedOnlyChip({
+      panelId: 'disease-outbreaks',
+      onChange: () => {
+        if (this._hasData) this._render();
+      },
+    });
+    if (this._followedOnlyChip.html === '') {
+      // Feature flag off — don't even insert the host.
+      return;
+    }
+    host.innerHTML = this._followedOnlyChip.html;
+    // Insert BEFORE the close button so close stays rightmost. The Panel
+    // base appends `.panel-close-btn` first; a plain `appendChild` would
+    // land the chip after close and break the user expectation that X
+    // is always the last header control.
+    const closeBtn = this.header.querySelector('.panel-close-btn');
+    if (closeBtn) {
+      this.header.insertBefore(host, closeBtn);
+    } else {
+      this.header.appendChild(host);
+    }
+    this._followedOnlyTeardown = this._followedOnlyChip.attach(host);
+    // Re-filter on external watchlist change too — the chip itself
+    // already re-renders disabled state via its own subscription, but
+    // the panel still needs to refresh its row pass.
+    this._followedUnsub = subscribeFollowed(() => {
+      if (this._hasData) this._render();
     });
   }
 
@@ -92,7 +140,7 @@ export class DiseaseOutbreaksPanel extends Panel {
     }
 
     const alertLevels = new Set(['alert', 'warning', 'watch']);
-    const filtered = this._filter
+    let filtered = this._filter
       ? alertLevels.has(this._filter)
         ? this._outbreaks.filter(o => o.alertLevel === this._filter)
         : this._outbreaks.filter(o =>
@@ -101,6 +149,18 @@ export class DiseaseOutbreaksPanel extends Panel {
             o.countryCode?.toLowerCase().includes(this._filter)
           )
       : this._outbreaks;
+
+    // U7 — "Followed only" filter chip. Hide rows whose `countryCode`
+    // is not in the user's watchlist. Items without a country code are
+    // always dropped when the chip is active (we can't prove they
+    // belong to a followed country).
+    const followedOnlyActive = this._followedOnlyChip?.isActive() === true;
+    if (followedOnlyActive) {
+      filtered = filtered.filter(o => {
+        const code = toIso2(o.countryCode ?? '');
+        return code ? isFollowed(code) : false;
+      });
+    }
 
     const filterBar = `<div style="display:flex;gap:4px;margin-bottom:8px;flex-wrap:wrap;align-items:center">
       ${counts.alert > 0 ? `<button data-filter="alert" style="font-size:10px;padding:2px 8px;border-radius:10px;border:1px solid rgba(231,76,60,0.4);background:${this._filter === 'alert' ? 'rgba(231,76,60,0.2)' : 'transparent'};color:#e74c3c;cursor:pointer">${counts.alert} Alert</button>` : ''}
@@ -132,8 +192,11 @@ export class DiseaseOutbreaksPanel extends Panel {
       </div>`;
     }).join('');
 
+    const emptyMessage = followedOnlyActive
+      ? 'No items in your followed countries. Add countries by tapping the star, or turn off this filter.'
+      : 'No outbreaks match filter';
     const empty = filtered.length === 0
-      ? `<div style="padding:16px;text-align:center;color:var(--text-dim);font-size:12px">No outbreaks match filter</div>`
+      ? `<div style="padding:16px;text-align:center;color:var(--text-dim);font-size:12px">${escapeHtml(emptyMessage)}</div>`
       : '';
 
     this.setContent(`
@@ -143,5 +206,30 @@ export class DiseaseOutbreaksPanel extends Panel {
       </div>
       <div style="margin-top:6px;font-size:9px;color:var(--text-dim)">WHO · ProMED · HealthMap</div>
     `);
+  }
+
+  public override destroy(): void {
+    if (this._followedOnlyTeardown) {
+      try {
+        this._followedOnlyTeardown();
+      } catch {
+        /* swallow */
+      }
+      this._followedOnlyTeardown = null;
+    }
+    if (this._followedUnsub) {
+      try {
+        this._followedUnsub();
+      } catch {
+        /* swallow */
+      }
+      this._followedUnsub = null;
+    }
+    if (this._followedOnlyHost && this._followedOnlyHost.parentElement) {
+      this._followedOnlyHost.parentElement.removeChild(this._followedOnlyHost);
+    }
+    this._followedOnlyHost = null;
+    this._followedOnlyChip = null;
+    super.destroy();
   }
 }
