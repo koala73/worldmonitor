@@ -173,6 +173,129 @@ function* iterateEvalResArrays(bundle) {
 }
 
 /**
+ * Brace-walk a plain-JS array literal starting at `arrayOpen` (the `[` byte)
+ * and return the index of the matching `]`, or -1 on truncation.
+ *
+ * This is a separate scanner from findArrayCloseInEscapedForm: that one
+ * operates over JS-string-escaped JSON (the eval-wrapped format added in
+ * the April 2026 webpack rewrite). This scanner operates over plain JS
+ * source where strings use `"..."` with `\"` for embedded quotes and
+ * brackets inside strings must NOT shift depth.
+ *
+ * Bundle 2026-05 reverted to this format (or shipped a third variant).
+ * Verified against the 4MB index_bundle.js on 2026-05-09 — `var a=[{Alert_ID:"...",...},...]`
+ * with unquoted keys and direct double-quoted values, no eval wrapper.
+ */
+function findArrayCloseInPlainJS(bundle, arrayOpen) {
+  let depth = 0;
+  let stringQuote = null; // null | '"' | "'"
+  let i = arrayOpen;
+  while (i < bundle.length) {
+    const ch = bundle[i];
+    if (stringQuote !== null) {
+      if (ch === '\\') { i += 2; continue; } // skip escape sequence
+      if (ch === stringQuote) stringQuote = null;
+    } else {
+      if (ch === '"' || ch === "'") stringQuote = ch;
+      else if (ch === '[') depth++;
+      else if (ch === ']') {
+        depth--;
+        if (depth === 0) return i;
+      }
+    }
+    i++;
+  }
+  return -1;
+}
+
+/**
+ * Convert a JS array literal that mixes single-quoted and double-quoted
+ * string values into pure JSON. Walks character-by-character so embedded
+ * quote characters inside strings (e.g. `summary:'... "alt wellness" ...'`)
+ * stay correctly escaped in the resulting JSON.
+ *
+ * Does NOT touch unquoted keys — the caller's existing regex pass handles
+ * `{key:` → `{"key":` after this normalization.
+ */
+function normalizeJSStringQuotesToJSON(literal) {
+  let out = '';
+  let i = 0;
+  while (i < literal.length) {
+    const c = literal[i];
+    if (c === "'" || c === '"') {
+      const quote = c;
+      out += '"';
+      i++;
+      while (i < literal.length) {
+        const ch = literal[i];
+        if (ch === '\\') {
+          // Pass escape sequence through unchanged. JSON accepts the same
+          // single-char escapes (\\, \", \/, \n, \t, \r, \b, \f, \uXXXX)
+          // that JS uses, except `\'` which JSON does not allow — convert
+          // that to a bare `'` (no JSON escape needed for a single quote
+          // inside a JSON string).
+          if (literal[i + 1] === "'") { out += "'"; i += 2; continue; }
+          out += ch + (literal[i + 1] ?? '');
+          i += 2;
+          continue;
+        }
+        if (ch === quote) { out += '"'; i++; break; }
+        // If we entered via `'`, any literal `"` in the body must be escaped
+        // for JSON output. (Conversely, a `'` in a `"`-quoted source is fine
+        // both in JS and JSON, no transform needed.)
+        if (quote === "'" && ch === '"') { out += '\\"'; i++; continue; }
+        out += ch;
+        i++;
+      }
+    } else {
+      out += c;
+      i++;
+    }
+  }
+  return out;
+}
+
+/**
+ * Enumerate every `var <name>=[{<key>:...},...]` plain-JS array in the bundle.
+ * Sibling of iterateEvalResArrays for the pre-2026-04 / post-2026-05-revert
+ * bundle format (plain JS object literals with unquoted keys, no eval
+ * wrapper). Tries to JSON-ify each candidate by quoting unquoted keys, then
+ * JSON.parse; silently skips candidates that don't parse.
+ */
+function* iteratePlainJSArrays(bundle) {
+  // Anchor: word boundary + `var ` + identifier + `=[{` + key-like identifier + `:`
+  // The trailing `<id>:` is what excludes unrelated `var x=[1,2,3]` arrays —
+  // we only want object-of-objects arrays which is what VPD ships.
+  const re = /\bvar\s+[A-Za-z_$][A-Za-z0-9_$]*\s*=\s*(\[)\s*\{\s*[A-Za-z_][A-Za-z0-9_]*\s*:/g;
+  let m;
+  while ((m = re.exec(bundle)) !== null) {
+    const arrayOpen = m.index + m[0].lastIndexOf('[');
+    const arrayClose = findArrayCloseInPlainJS(bundle, arrayOpen);
+    if (arrayClose === -1) continue;
+    const literal = bundle.slice(arrayOpen, arrayClose + 1);
+    // Pass 1: normalize JS string quoting → JSON string quoting. Bundle uses
+    // `'...'` for any value containing literal `"` (e.g. summary fields with
+    // embedded quoted phrases) — JSON only allows `"..."`, so we walk strings
+    // character-by-character and re-emit with JSON-compatible escaping.
+    const stringNormalized = normalizeJSStringQuotesToJSON(literal);
+    // Pass 2: quote unquoted keys. `{Foo_Bar:` or `,Foo_Bar:` → `{"Foo_Bar":` /
+    // `,"Foo_Bar":`. The `{|,` boundary excludes mid-value false positives —
+    // any `:` inside a string literal is now safely inside double quotes from
+    // pass 1 and the boundary won't fire there.
+    const quoted = stringNormalized.replace(/([{,])\s*([A-Za-z_][A-Za-z0-9_]*)\s*:/g, '$1"$2":');
+    try {
+      const array = JSON.parse(quoted);
+      if (Array.isArray(array)) yield { array };
+    } catch {
+      // Bundle drift (e.g. an unquoted JS value like `undefined`/`NaN` or a
+      // trailing comma) — skip and keep searching. The schema-fingerprint
+      // matcher in findArrayBySchema will surface a clear error if no other
+      // candidate matches.
+    }
+  }
+}
+
+/**
  * Find the first eval-block array whose records contain ALL of the named
  * fields. Schema-based identification — independent of key order within
  * objects, eval-block order in the bundle, and minor bundler shuffles.
@@ -183,21 +306,28 @@ function* iterateEvalResArrays(bundle) {
  */
 function findArrayBySchema(bundle, requiredFields) {
   const needed = new Set(requiredFields);
-  for (const { array } of iterateEvalResArrays(bundle)) {
-    if (array.length === 0) continue;
-    // Sample up to 5 records to tolerate sparse fields on any single row.
-    const sampleSize = Math.min(5, array.length);
-    const seen = new Set();
-    for (let i = 0; i < sampleSize; i++) {
-      const r = array[i];
-      if (!r || typeof r !== 'object') continue;
-      for (const k of Object.keys(r)) seen.add(k);
+  // Try both bundle formats. The eval-wrapped form was added in the April
+  // 2026 webpack rewrite; the plain-JS form is the pre-rewrite (and
+  // post-2026-05-revert) shape. Either may be present in any given bundle
+  // build, so we iterate both and accept the first schema match.
+  const iterators = [iterateEvalResArrays(bundle), iteratePlainJSArrays(bundle)];
+  for (const iterator of iterators) {
+    for (const { array } of iterator) {
+      if (array.length === 0) continue;
+      // Sample up to 5 records to tolerate sparse fields on any single row.
+      const sampleSize = Math.min(5, array.length);
+      const seen = new Set();
+      for (let i = 0; i < sampleSize; i++) {
+        const r = array[i];
+        if (!r || typeof r !== 'object') continue;
+        for (const k of Object.keys(r)) seen.add(k);
+      }
+      let allPresent = true;
+      for (const f of needed) {
+        if (!seen.has(f)) { allPresent = false; break; }
+      }
+      if (allPresent) return array;
     }
-    let allPresent = true;
-    for (const f of needed) {
-      if (!seen.has(f)) { allPresent = false; break; }
-    }
-    if (allPresent) return array;
   }
   return null;
 }
