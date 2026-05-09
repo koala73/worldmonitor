@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed, withRetry, normalizeSdmxPeriod, imfAuthHeaders } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, runSeed, withRetry, normalizeSdmxPeriod, imfAuthHeaders, PERMANENT_4XX_STATUSES, parseRetryAfterMs } from './_seed-utils.mjs';
 loadEnvFile(import.meta.url);
 
 // Re-exported for the test suite. The shared normalizer lives in _seed-utils
@@ -72,7 +72,11 @@ async function fetchIrfclMonthlySeries(indicator) {
     });
     if (!r.ok) {
       const err = new Error(`IMF IRFCL ${indicator}: HTTP ${r.status}`);
-      if (r.status >= 400 && r.status < 500) err.nonRetryable = true;
+      if (PERMANENT_4XX_STATUSES.has(r.status)) err.nonRetryable = true;
+      // 429 (rate limit) and 503 (overloaded) typically carry Retry-After.
+      if (r.status === 429 || r.status === 503) {
+        err.retryAfterMs = parseRetryAfterMs(r.headers.get('retry-after'));
+      }
       throw err;
     }
     return r.json();

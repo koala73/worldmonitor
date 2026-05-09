@@ -344,6 +344,41 @@ export async function readCanonicalEnvelopeMeta(canonicalKey) {
   }
 }
 
+// HTTP statuses where retrying CAN'T succeed because the failure is in the
+// caller's request shape, not server load:
+//   400 malformed query   401 bad auth      403 forbidden
+//   404 missing path      410 permanently gone
+//   422 semantic error    451 legal block
+// 408 Request Timeout and 429 Too Many Requests are deliberately excluded —
+// both are explicit "back off and retry" signals, often paired with a
+// Retry-After header. Tagging them nonRetryable would convert transient
+// rate-limits into immediate seed failures (especially under parallel
+// fetches like seed-imf-* WEO bundles).
+export const PERMANENT_4XX_STATUSES = new Set([400, 401, 403, 404, 410, 422, 451]);
+
+// Cap upstream Retry-After hints so a stuck/abusive header can't park the
+// bundle past its section timeoutMs. Mirrors _yahoo-fetch.mjs convention.
+const MAX_RETRY_AFTER_MS = 60_000;
+
+/**
+ * Parse `Retry-After` header value (seconds OR HTTP-date). Returns null
+ * when missing/unparseable so callers can fall back to default backoff.
+ * Duplicates exist in _yahoo-fetch / _gdelt-fetch / _open-meteo-archive —
+ * those predate this helper; consolidating them is a separate refactor.
+ */
+export function parseRetryAfterMs(value) {
+  if (!value) return null;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds > 0) {
+    return Math.min(seconds * 1000, MAX_RETRY_AFTER_MS);
+  }
+  const retryAt = Date.parse(value);
+  if (Number.isFinite(retryAt)) {
+    return Math.min(Math.max(retryAt - Date.now(), 1000), MAX_RETRY_AFTER_MS);
+  }
+  return null;
+}
+
 export async function withRetry(fn, maxRetries = 3, delayMs = 1000) {
   let lastErr;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -356,7 +391,12 @@ export async function withRetry(fn, maxRetries = 3, delayMs = 1000) {
       // so the loop fails in ~10ms instead of waiting through every backoff.
       if (err?.nonRetryable) throw err;
       if (attempt < maxRetries) {
-        const wait = delayMs * 2 ** attempt;
+        // Honor upstream `Retry-After` hint when caller attached it
+        // (typically 429 / 503). Take whichever is longer — the upstream
+        // hint OR the exponential backoff — so a generous server hint
+        // isn't undercut, and a missing/short hint still gets back-off.
+        const baseWait = delayMs * 2 ** attempt;
+        const wait = err?.retryAfterMs ? Math.max(baseWait, err.retryAfterMs) : baseWait;
         const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
         console.warn(`  Retry ${attempt + 1}/${maxRetries} in ${wait}ms: ${err.message || err}${cause}`);
         await new Promise(r => setTimeout(r, wait));
@@ -657,7 +697,12 @@ export async function imfSdmxFetchIndicator(indicator, { database = 'WEO', years
     });
     if (!r.ok) {
       const err = new Error(`IMF SDMX ${indicator}: HTTP ${r.status}`);
-      if (r.status >= 400 && r.status < 500) err.nonRetryable = true;
+      if (PERMANENT_4XX_STATUSES.has(r.status)) err.nonRetryable = true;
+      // 429 (rate limit) and 503 (overloaded) typically carry Retry-After;
+      // attach so withRetry can honor the upstream hint.
+      if (r.status === 429 || r.status === 503) {
+        err.retryAfterMs = parseRetryAfterMs(r.headers.get('retry-after'));
+      }
       throw err;
     }
     return r.json();
