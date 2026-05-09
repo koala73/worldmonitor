@@ -193,7 +193,14 @@ function findArrayCloseInPlainJS(bundle, arrayOpen) {
   while (i < bundle.length) {
     const ch = bundle[i];
     if (stringQuote !== null) {
-      if (ch === '\\') { i += 2; continue; } // skip escape sequence
+      if (ch === '\\') {
+        // Bundle-truncation guard: if `\` is the last byte, don't overshoot
+        // EOF on the +2 advance — break and let the outer "no close found"
+        // path return -1.
+        if (i + 1 >= bundle.length) break;
+        i += 2;
+        continue;
+      }
       if (ch === stringQuote) stringQuote = null;
     } else {
       if (ch === '"' || ch === "'") stringQuote = ch;
@@ -209,19 +216,35 @@ function findArrayCloseInPlainJS(bundle, arrayOpen) {
 }
 
 /**
- * Convert a JS array literal that mixes single-quoted and double-quoted
- * string values into pure JSON. Walks character-by-character so embedded
- * quote characters inside strings (e.g. `summary:'... "alt wellness" ...'`)
- * stay correctly escaped in the resulting JSON.
+ * Convert a plain-JS array literal into pure JSON in a single pass:
+ *   1. `'...'` string values   → `"..."` JSON strings (with proper re-escaping
+ *      of any literal `"` that appeared inside the single-quoted body).
+ *   2. Unquoted keys after `{` or `,` → `"key":`
  *
- * Does NOT touch unquoted keys — the caller's existing regex pass handles
- * `{key:` → `{"key":` after this normalization.
+ * Both transforms in one walker so the key-quoting step CANNOT misfire on
+ * `, identifier:` sequences embedded inside string values (e.g. a summary
+ * field containing "Cases linked, date: 2026-05-01"). The walker tracks
+ * `inString` and only inserts key quotes when out-of-string.
+ *
+ * Pre-PR-3636 these were two separate passes (a regex over the post-string-
+ * normalized output). Codex review round 1 P2 flagged that the regex pass
+ * had no string-state awareness and could corrupt summary fields that
+ * happened to contain `,<word>:` sequences. This single-pass walker
+ * eliminates the class of bug.
  */
-function normalizeJSStringQuotesToJSON(literal) {
+function jsLiteralToJSON(literal) {
   let out = '';
   let i = 0;
+  // Tracks the last non-whitespace char emitted at top level (out-of-string).
+  // Only `{` and `,` are valid contexts where an unquoted key may follow;
+  // any other prior char (e.g. `:` after a value, `[` opening a nested
+  // array) means an identifier here is NOT a key — leave it alone.
+  let lastTopChar = '';
+
   while (i < literal.length) {
     const c = literal[i];
+
+    // ---- String value handling ----
     if (c === "'" || c === '"') {
       const quote = c;
       out += '"';
@@ -229,28 +252,59 @@ function normalizeJSStringQuotesToJSON(literal) {
       while (i < literal.length) {
         const ch = literal[i];
         if (ch === '\\') {
-          // Pass escape sequence through unchanged. JSON accepts the same
-          // single-char escapes (\\, \", \/, \n, \t, \r, \b, \f, \uXXXX)
-          // that JS uses, except `\'` which JSON does not allow — convert
-          // that to a bare `'` (no JSON escape needed for a single quote
-          // inside a JSON string).
+          // JSON accepts `\\`, `\"`, `\/`, `\n`, `\t`, `\r`, `\b`, `\f`,
+          // `\uXXXX` — pass through. `\'` is invalid in JSON: convert to
+          // bare `'`. Bundle-truncation guard: don't overshoot EOF.
+          if (i + 1 >= literal.length) { i += 1; break; }
           if (literal[i + 1] === "'") { out += "'"; i += 2; continue; }
-          out += ch + (literal[i + 1] ?? '');
+          out += ch + literal[i + 1];
           i += 2;
           continue;
         }
         if (ch === quote) { out += '"'; i++; break; }
-        // If we entered via `'`, any literal `"` in the body must be escaped
-        // for JSON output. (Conversely, a `'` in a `"`-quoted source is fine
-        // both in JS and JSON, no transform needed.)
+        // Single-quoted source body containing a literal `"` must be escaped
+        // for JSON. Double-quoted source bodies don't need this — `'` is
+        // valid in both JS and JSON strings.
         if (quote === "'" && ch === '"') { out += '\\"'; i++; continue; }
         out += ch;
         i++;
       }
-    } else {
-      out += c;
-      i++;
+      lastTopChar = '"'; // string just closed
+      continue;
     }
+
+    // ---- Out-of-string: maybe an unquoted key starts here ----
+    // Trigger conditions:
+    //   - lastTopChar is `{` or `,` (we just opened an object or finished
+    //     a previous key/value pair)
+    //   - current char starts an identifier
+    if ((lastTopChar === '{' || lastTopChar === ',')
+        && /[A-Za-z_]/.test(c)) {
+      // Read the identifier
+      let j = i;
+      while (j < literal.length && /[A-Za-z0-9_]/.test(literal[j])) j++;
+      // Skip whitespace, expect `:`
+      let k = j;
+      while (k < literal.length && /\s/.test(literal[k])) k++;
+      if (literal[k] === ':') {
+        out += '"' + literal.slice(i, j) + '"' + literal.slice(j, k + 1);
+        i = k + 1;
+        lastTopChar = ':';
+        continue;
+      }
+      // Identifier without trailing `:` → not a key (probably a literal
+      // value like `null`, `true`, `false`, or unquoted JS that JSON.parse
+      // will reject downstream). Pass through as-is.
+      out += literal.slice(i, j);
+      i = j;
+      lastTopChar = literal[j - 1];
+      continue;
+    }
+
+    // ---- Default pass-through ----
+    out += c;
+    if (!/\s/.test(c)) lastTopChar = c;
+    i++;
   }
   return out;
 }
@@ -273,18 +327,15 @@ function* iteratePlainJSArrays(bundle) {
     const arrayClose = findArrayCloseInPlainJS(bundle, arrayOpen);
     if (arrayClose === -1) continue;
     const literal = bundle.slice(arrayOpen, arrayClose + 1);
-    // Pass 1: normalize JS string quoting → JSON string quoting. Bundle uses
-    // `'...'` for any value containing literal `"` (e.g. summary fields with
-    // embedded quoted phrases) — JSON only allows `"..."`, so we walk strings
-    // character-by-character and re-emit with JSON-compatible escaping.
-    const stringNormalized = normalizeJSStringQuotesToJSON(literal);
-    // Pass 2: quote unquoted keys. `{Foo_Bar:` or `,Foo_Bar:` → `{"Foo_Bar":` /
-    // `,"Foo_Bar":`. The `{|,` boundary excludes mid-value false positives —
-    // any `:` inside a string literal is now safely inside double quotes from
-    // pass 1 and the boundary won't fire there.
-    const quoted = stringNormalized.replace(/([{,])\s*([A-Za-z_][A-Za-z0-9_]*)\s*:/g, '$1"$2":');
+    // Single-pass walker: converts JS string quoting → JSON string quoting
+    // AND quotes unquoted keys after `{` or `,`. The walker tracks string
+    // state, so the key-quoting step cannot misfire on a `,<ident>:` that
+    // happens to live inside a string value (e.g. summary fields like
+    // "Cases linked, date: 2026-05-01"). Pre-fix this was two passes and
+    // codex round 4 P2 flagged the string-corruption hazard.
+    const jsonForm = jsLiteralToJSON(literal);
     try {
-      const array = JSON.parse(quoted);
+      const array = JSON.parse(jsonForm);
       if (Array.isArray(array)) yield { array };
     } catch {
       // Bundle drift (e.g. an unquoted JS value like `undefined`/`NaN` or a
@@ -338,7 +389,7 @@ export function parseRealtimeAlerts(bundle) {
   // records) is fine; only a real schema change (renamed field) breaks us.
   const rows = findArrayBySchema(bundle, ['Alert_ID', 'lat', 'lng', 'diseases']);
   if (!rows) {
-    throw new Error('[VPD] no eval block matches realtime schema (Alert_ID, lat, lng, diseases) — upstream format drift?');
+    throw new Error('[VPD] no matching array block for realtime schema (Alert_ID, lat, lng, diseases) — tried both eval-wrapped + plain-JS formats; upstream format drift?');
   }
   return rows
     .filter((r) => r.lat && r.lng)
@@ -362,7 +413,7 @@ export function parseHistoricalData(bundle) {
   // schema fingerprint — the iso/disease/year combo is unique to historical.
   const rows = findArrayBySchema(bundle, ['country', 'iso', 'disease', 'year', 'cases']);
   if (!rows) {
-    throw new Error('[VPD] no eval block matches historical schema (country, iso, disease, year, cases) — upstream format drift?');
+    throw new Error('[VPD] no matching array block for historical schema (country, iso, disease, year, cases) — tried both eval-wrapped + plain-JS formats; upstream format drift?');
   }
   return rows.map((r) => ({
     country: r.country,
