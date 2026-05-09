@@ -351,6 +351,10 @@ export async function withRetry(fn, maxRetries = 3, delayMs = 1000) {
       return await fn();
     } catch (err) {
       lastErr = err;
+      // Permanent failures (4xx auth/permission, missing config) burn the
+      // bundle timeoutMs if retried. Callers tag with `nonRetryable: true`
+      // so the loop fails in ~10ms instead of waiting through every backoff.
+      if (err?.nonRetryable) throw err;
       if (attempt < maxRetries) {
         const wait = delayMs * 2 ** attempt;
         const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
@@ -576,9 +580,31 @@ export async function imfFetchJson(url, proxyAuth) {
 }
 
 // ---------------------------------------------------------------------------
-// IMF SDMX 3.0 API (api.imf.org) — replaces blocked DataMapper API
+// IMF SDMX 3.0 API (api.imf.org) — replaces blocked DataMapper API.
+//
+// Auth status (2026-05): currently allows unauthenticated requests, but the
+// gateway has been observed flipping to hard 401 enforcement intermittently
+// (one ~hours-long window on 2026-05-09 SIGTERM'd seed-bundle-market-backup
+// in production). Set IMF_API_KEY to send `Ocp-Apim-Subscription-Key` for
+// forward-compatibility — get a key at https://portal.api.imf.org/ (Sign in
+// → Products → IMF Data SDMX API → Subscribe → Profile → Subscriptions →
+// Primary key). One subscription unlocks both SDMX 2.1 and 3.0. The gateway
+// returns a misleading `WWW-Authenticate: Bearer` 401; the actual scheme is
+// APIM subscription key, NOT Bearer.
 // ---------------------------------------------------------------------------
 const IMF_SDMX_BASE = 'https://api.imf.org/external/sdmx/3.0';
+
+// Build auth headers for api.imf.org. Returns {} when IMF_API_KEY is unset —
+// IMF currently allows unauthenticated requests through, but flipped to hard
+// 401 enforcement for ~hours on 2026-05-09 (captured in seed-bundle-market-
+// backup logs). Sending the key when we have it is forward-compatible with
+// permanent enforcement; the omit-on-empty path preserves today's working
+// state. The `nonRetryable` 4xx guard in the fetcher (paired with this
+// helper) prevents a 180s SIGTERM the next time enforcement lands.
+export function imfAuthHeaders() {
+  const key = process.env.IMF_API_KEY;
+  return key ? { 'Ocp-Apim-Subscription-Key': key } : {};
+}
 
 /**
  * Normalize an SDMX 3.0 monthly period from `YYYY-MMM` (the on-the-wire
@@ -626,10 +652,14 @@ export async function imfSdmxFetchIndicator(indicator, { database = 'WEO', years
 
   const json = await withRetry(async () => {
     const r = await fetch(url, {
-      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
+      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json', ...imfAuthHeaders() },
       signal: AbortSignal.timeout(60_000),
     });
-    if (!r.ok) throw new Error(`IMF SDMX ${indicator}: HTTP ${r.status}`);
+    if (!r.ok) {
+      const err = new Error(`IMF SDMX ${indicator}: HTTP ${r.status}`);
+      if (r.status >= 400 && r.status < 500) err.nonRetryable = true;
+      throw err;
+    }
     return r.json();
   }, 2, 2000);
 
