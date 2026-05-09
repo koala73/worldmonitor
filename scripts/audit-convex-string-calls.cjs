@@ -58,14 +58,28 @@ function* walkTs(dir) {
 
 /**
  * Find every `export const <name> = (query|mutation|action|httpAction|internal*)({`
- * in a Convex source file. Tolerates type annotations:
+ * in a Convex source file. Tolerates type annotations including generic
+ * defaults that contain `=` (e.g. `Foo<T = unknown>`):
  *   export const foo = mutation({...
  *   export const foo: MutationDefinition<...> = mutation({...
+ *   export const foo: SomeType<T = unknown> = query({...
+ *
+ * Strategy: anchor on the right-hand side `= factoryName(` and walk
+ * backwards from there to grab the export name. This sidesteps the
+ * naive `[^=]+` annotation matcher's failure on generic defaults
+ * (greptile P2 review on PR #3634).
  */
 function listExports(filePath) {
   const src = fs.readFileSync(filePath, 'utf8');
   const exports = new Map();
-  const re = /export\s+const\s+(\w+)(?:\s*:\s*[^=]+)?\s*=\s*(\w+)\s*\(/g;
+  // Lazy match between `export const NAME` and the factory call site.
+  // Regex engines backtrack until `\s*\(` succeeds, so an inner `=`
+  // inside a generic default (e.g. `Foo<T = unknown>`) is naturally
+  // skipped because `unknown` isn't followed by `(` — the engine then
+  // tries the NEXT `=` until it finds one followed by `factoryName(`.
+  // Works without an explicit factory allowlist; the type-filter below
+  // does that job.
+  const re = /export\s+const\s+(\w+)\b[\s\S]*?=\s*(\w+)\s*\(/g;
   let m;
   while ((m = re.exec(src)) !== null) {
     const [, name, factory] = m;
@@ -159,20 +173,38 @@ function scanFile(filePath) {
 
   // (b) Pattern: (api as any).<segment>(.<segment>)+
   // The LAST segment is the function name; preceding segments form the module path.
-  const reAsAny = /\(\s*api\s+as\s+any\s*\)((?:\.\w+)+)/g;
-  while ((m = reAsAny.exec(src)) !== null) {
-    const lineIdx = src.slice(0, m.index).split('\n').length;
-    const segments = m[1].split('.').filter(Boolean);
-    if (segments.length < 2) continue; // need at least module.fn
-    const fnName = segments.pop();
-    const moduleRef = segments.join('/');
-    auditReference({
-      moduleRef,
-      fnName,
-      sourceFile: rel,
-      sourceLine: lineIdx,
-      callShape: lines[lineIdx - 1].trim(),
-    });
+  //
+  // Scoped to files that consume the Convex `api` binding. Otherwise any
+  // unrelated `api` object (REST clients, OpenAPI clients, Tauri IPC
+  // `window.api`) cast through `any` would produce a spurious
+  // "Module not found" violation against convex/. Greptile P2 review on
+  // PR #3634. Signals (any one is sufficient):
+  //   - direct generated-api import (`_generated/api`)
+  //   - convex-client helper import (`getConvexApi` / `getConvexClient` /
+  //     `convex-client` path)
+  //   - the file already uses string-form Convex client calls
+  //     (`client.query(` / `client.mutation(` / `client.action(`)
+  const importsConvexApi =
+    /_generated\/api\b/.test(src)
+    || /\b(getConvexApi|getConvexClient)\b/.test(src)
+    || /\bconvex-client\b/.test(src)
+    || /\bclient\.(?:query|mutation|action)\s*\(/.test(src);
+  if (importsConvexApi) {
+    const reAsAny = /\(\s*api\s+as\s+any\s*\)((?:\.\w+)+)/g;
+    while ((m = reAsAny.exec(src)) !== null) {
+      const lineIdx = src.slice(0, m.index).split('\n').length;
+      const segments = m[1].split('.').filter(Boolean);
+      if (segments.length < 2) continue; // need at least module.fn
+      const fnName = segments.pop();
+      const moduleRef = segments.join('/');
+      auditReference({
+        moduleRef,
+        fnName,
+        sourceFile: rel,
+        sourceLine: lineIdx,
+        callShape: lines[lineIdx - 1].trim(),
+      });
+    }
   }
 }
 
