@@ -28,6 +28,21 @@ const DIGEST_CRON_ENABLED = import.meta.env.VITE_DIGEST_CRON_ENABLED !== '0';
 
 export interface NotificationsSettingsHost {
   isSignedIn?: boolean;
+  /**
+   * Optional ISO-3166 alpha-2 country code to pre-fill into the alert-rule
+   * country picker on first render of the create form. Used by the deep-dive
+   * "Notify me about this country" sub-action (PR B U8 R9): the user clicks
+   * the link on the Iran deep-dive → notifications settings opens with 'IR'
+   * pre-checked.
+   *
+   * Only applies on NEW-rule create. Existing rules respect their stored
+   * countries[] regardless of this parameter.
+   *
+   * Validation: must match /^[A-Z]{2}$/ after trim+uppercase; otherwise
+   * silently dropped (defensive — the dispatcher should already normalize,
+   * but this is a public entry point so we don't trust the input).
+   */
+  preselectCountry?: string;
 }
 
 export interface NotificationsSettingsResult {
@@ -35,8 +50,16 @@ export interface NotificationsSettingsResult {
   attach: (container: HTMLElement) => () => void;
 }
 
+function normalizePreselectCountry(input: string | undefined): string | null {
+  if (typeof input !== 'string') return null;
+  const trimmed = input.trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(trimmed)) return null;
+  return trimmed;
+}
+
 export function renderNotificationsSettings(host: NotificationsSettingsHost): NotificationsSettingsResult {
   const isPro = !!host.isSignedIn && hasTier(1);
+  const preselectCountry = normalizePreselectCountry(host.preselectCountry);
 
   let html = '';
   if (isPro) {
@@ -429,8 +452,20 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
 
           let initial = existingCountries;
           if (isNewRule) {
-            const followed = await loadFollowedCountriesSafe();
-            if (followed.length > 0) initial = followed;
+            // Three-way precedence on NEW rules:
+            //   (1) preselectCountry from caller (deep-dive "Notify me about
+            //       this country" sub-action — PR B U8 R9 pre-fill).
+            //   (2) followed-countries from PR A's primitive (smart default).
+            //   (3) [] fallback (all countries; current behavior).
+            // (1) wins when present; the user explicitly clicked into this
+            // form FROM a country deep-dive, so that country should be
+            // pre-checked even if it's not in their watchlist.
+            if (preselectCountry) {
+              initial = [preselectCountry];
+            } else {
+              const followed = await loadFollowedCountriesSafe();
+              if (followed.length > 0) initial = followed;
+            }
           }
 
           countryPicker = mountCountryChipPicker(pickerRoot, {

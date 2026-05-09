@@ -97,6 +97,55 @@ describe('notifications-settings.ts — country picker integration', () => {
       'must include the "leave empty" hint',
     );
   });
+
+  it('preselectCountry parameter is declared on the host interface (PR B U8 R9 receiver)', () => {
+    assert.match(
+      settingsSrc,
+      /preselectCountry\?:\s*string/,
+      'NotificationsSettingsHost must expose preselectCountry?: string',
+    );
+  });
+
+  it('preselectCountry is normalized via /^[A-Z]{2}$/ regex (defensive validation at the entry point)', () => {
+    assert.match(
+      settingsSrc,
+      /normalizePreselectCountry/,
+      'must define a normalizePreselectCountry helper',
+    );
+    assert.match(
+      settingsSrc,
+      /\/\^\[A-Z\]\{2\}\$\//,
+      'normalizer must validate against /^[A-Z]{2}$/',
+    );
+  });
+
+  it('preselectCountry takes precedence over loadFollowedCountriesSafe on NEW rules (R9 pre-fill wins over watchlist smart-default)', () => {
+    // Verify the if-branch that prioritizes preselectCountry exists inside
+    // the NEW-rule branch.
+    assert.match(
+      settingsSrc,
+      /if\s*\(\s*isNewRule\s*\)\s*{[\s\S]*?if\s*\(\s*preselectCountry\s*\)\s*{[\s\S]*?initial\s*=\s*\[\s*preselectCountry\s*\][\s\S]*?else[\s\S]*?loadFollowedCountriesSafe/,
+      'NEW-rule branch must check preselectCountry before falling back to loadFollowedCountriesSafe',
+    );
+  });
+
+  it('preselectCountry does NOT override existing rule countries (edit-existing respects stored value)', () => {
+    // The preselect-precedence check is gated by `if (isNewRule)`, so
+    // existing-rule path must NOT reference preselectCountry.
+    // Source-grep: between the `existingRule !== null` branch start and the
+    // isNewRule check, no preselectCountry mentions should exist.
+    const existingRulePathMatch = settingsSrc.match(
+      /existingCountries[\s\S]*?const\s+isNewRule\s*=\s*existingRule\s*===\s*null/,
+    );
+    assert.ok(existingRulePathMatch, 'existingCountries → isNewRule region must exist');
+    // Just verify the existing-rule path doesn't snake `preselectCountry` into
+    // its initial assignment — the precedence is one-way (NEW rule only).
+    const existingRuleSlice = existingRulePathMatch[0];
+    assert.ok(
+      !/preselectCountry/.test(existingRuleSlice),
+      'existing-rule path must not reference preselectCountry — preselect ONLY applies on NEW rules',
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------
