@@ -118,3 +118,164 @@ describe('withRetry', () => {
     assert.ok(elapsed < 1000, `expected <1000ms (cap respected), got ${elapsed}ms`);
   });
 });
+
+// ── atomicPublish: transient-failure retry contract (WM 2026-05-10) ────────
+//
+// Pre-fix: a single Upstash REST timeout on the canonical SET would crash
+// the entire seeder run. Railway just waited an hour for the next cron
+// tick. Fix: wrap the publish body in withRetry so transient timeouts /
+// 5xx / undici network errors retry with exponential backoff. Permanent
+// 4xx (auth, payload-too-large) get tagged nonRetryable in redisCommand
+// and abort immediately.
+//
+// We mock globalThis.fetch + Upstash creds to drive the retry path
+// without hitting a real Redis. atomicPublish's three calls (staging
+// SET, canonical SET, staging DEL) all go through the same fetch.
+
+import { atomicPublish } from '../scripts/_seed-utils.mjs';
+
+function mockFetch(responses) {
+  let i = 0;
+  return async (_url, _init) => {
+    const r = responses[Math.min(i, responses.length - 1)];
+    i += 1;
+    if (typeof r === 'function') return r(_url, _init);
+    if (r instanceof Error) throw r;
+    return new Response(JSON.stringify(r.body ?? { result: 'OK' }), {
+      status: r.status ?? 200,
+      headers: r.headers ?? {},
+    });
+  };
+}
+
+describe('atomicPublish retry-on-transient (WM 2026-05-10 incident fix)', () => {
+  const ORIG_FETCH = globalThis.fetch;
+  const ORIG_URL = process.env.UPSTASH_REDIS_REST_URL;
+  const ORIG_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+
+  function setup(fetchImpl) {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://test.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+    globalThis.fetch = fetchImpl;
+  }
+  function teardown() {
+    globalThis.fetch = ORIG_FETCH;
+    if (ORIG_URL == null) delete process.env.UPSTASH_REDIS_REST_URL;
+    else process.env.UPSTASH_REDIS_REST_URL = ORIG_URL;
+    if (ORIG_TOKEN == null) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    else process.env.UPSTASH_REDIS_REST_TOKEN = ORIG_TOKEN;
+  }
+
+  it('succeeds without retry when all calls return 200 (happy path unchanged)', async () => {
+    let calls = 0;
+    setup(mockFetch([
+      // Each call returns 200 OK; atomicPublish makes 3 calls (staging SET,
+      // canonical SET, staging DEL). With 3 successes in a row, no retry fires.
+      () => { calls += 1; return new Response(JSON.stringify({ result: 'OK' }), { status: 200 }); },
+    ]));
+    try {
+      const result = await atomicPublish('test:key:v1', { hello: 'world' }, null, 60);
+      assert.equal(result.payloadBytes > 0, true);
+      assert.equal(calls, 3, 'staging-SET + canonical-SET + staging-DEL');
+    } finally {
+      teardown();
+    }
+  });
+
+  it('retries on transient 503 then succeeds on 2nd attempt', async () => {
+    // First attempt: staging SET returns 503 → atomicPublish body throws,
+    // withRetry sleeps 1s, re-runs the whole body. Second attempt: all OK.
+    // Total fetch calls = 1 (failed) + 3 (success) = 4.
+    let calls = 0;
+    let firstAttemptFailed = false;
+    setup(async (_url, _init) => {
+      calls += 1;
+      if (!firstAttemptFailed) {
+        firstAttemptFailed = true;
+        return new Response('upstream temporarily unavailable', { status: 503 });
+      }
+      return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
+    });
+    try {
+      const t0 = Date.now();
+      const result = await atomicPublish('test:key:v1', { hello: 'world' }, null, 60);
+      const elapsed = Date.now() - t0;
+      assert.equal(result.payloadBytes > 0, true);
+      assert.equal(calls, 4, '1 failed staging-SET + 3 successful calls on retry');
+      assert.ok(elapsed >= 900, `expected ≥1s backoff, got ${elapsed}ms`);
+    } finally {
+      teardown();
+    }
+  });
+
+  it('aborts immediately on permanent 4xx (no useless backoff)', async () => {
+    // 401 Unauthorized would never recover on retry. redisCommand tags it
+    // nonRetryable, withRetry skips backoff and exits the loop ~10ms.
+    let calls = 0;
+    setup(async (_url, _init) => {
+      calls += 1;
+      return new Response('bad token', { status: 401 });
+    });
+    try {
+      const t0 = Date.now();
+      await assert.rejects(
+        atomicPublish('test:key:v1', { hello: 'world' }, null, 60),
+        /HTTP 401/,
+      );
+      const elapsed = Date.now() - t0;
+      assert.equal(calls, 1, 'no retries on permanent 401');
+      assert.ok(elapsed < 500, `expected fast-fail, got ${elapsed}ms`);
+    } finally {
+      teardown();
+    }
+  });
+
+  it('exhausts 3 attempts on persistent transient failure (matches withRetry contract)', async () => {
+    // Keep returning 503 forever. withRetry's default for atomicPublish is
+    // 2 retries (3 attempts total). After exhausting, the last error
+    // propagates to the caller — runSeed treats this as a fatal seed
+    // failure (which, post-fix, is what we want: 3 transient failures in
+    // a row IS something the operator should see).
+    let calls = 0;
+    setup(async () => {
+      calls += 1;
+      return new Response('still down', { status: 503 });
+    });
+    try {
+      await assert.rejects(
+        atomicPublish('test:key:v1', { hello: 'world' }, null, 60),
+        /HTTP 503/,
+      );
+      // 3 attempts × 1 fetch each (fail on staging-SET) = 3 calls.
+      assert.equal(calls, 3, '3 attempts before giving up');
+    } finally {
+      teardown();
+    }
+  });
+
+  it('honors Retry-After hint on 429', async () => {
+    // 429 is transient AND carries a hint. redisCommand tags retryAfterMs;
+    // withRetry waits at least that long before the next attempt.
+    let calls = 0;
+    let firstAttemptDone = false;
+    setup(async (_url, _init) => {
+      calls += 1;
+      if (!firstAttemptDone) {
+        firstAttemptDone = true;
+        return new Response('rate limited', {
+          status: 429,
+          headers: { 'retry-after': '2' },  // 2 seconds
+        });
+      }
+      return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
+    });
+    try {
+      const t0 = Date.now();
+      await atomicPublish('test:key:v1', { hello: 'world' }, null, 60);
+      const elapsed = Date.now() - t0;
+      assert.ok(elapsed >= 1900, `expected ≥2s Retry-After honored, got ${elapsed}ms`);
+    } finally {
+      teardown();
+    }
+  });
+});
