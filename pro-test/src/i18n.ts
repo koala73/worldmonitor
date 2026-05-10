@@ -65,15 +65,24 @@ function applyMetaTags(): void {
   set('meta[name="twitter:description"]', ogDesc);
 }
 
+// Marketing site has no language switcher — querystring (`?lang=fr`) is the
+// only manual override. So detection order is querystring → navigator. We
+// intentionally drop the default `localStorage` step + auto-cache: a stale
+// `i18nextLng=en` stamp from any earlier visit would otherwise pin a French
+// browser to English forever and silently bury the localized copy we ship.
 export async function initI18n(): Promise<void> {
   if (i18next.isInitialized) return;
+  // One-time migration: drop the legacy `i18nextLng` auto-cache so users
+  // whose browser is e.g. French but who got pinned to `en` on any past
+  // visit get auto-recovered to navigator-driven detection.
+  try { localStorage.removeItem('i18nextLng'); } catch { /* private mode */ }
   await i18next.use(LanguageDetector).init({
     resources: { en: { translation: en as TranslationDictionary } },
     supportedLngs: [...SUPPORTED_LANGUAGES],
     nonExplicitSupportedLngs: true,
     fallbackLng: 'en',
     interpolation: { escapeValue: false },
-    detection: { order: ['querystring', 'localStorage', 'navigator'], lookupQuerystring: 'lang', caches: ['localStorage'] },
+    detection: { order: ['querystring', 'navigator'], lookupQuerystring: 'lang', caches: [] },
   });
   const detected = await ensureLoaded(i18next.language || 'en');
   if (detected !== 'en') await i18next.changeLanguage(detected);
