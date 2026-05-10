@@ -208,7 +208,12 @@ describe('resilience cache-key health-registry sync (T1.9)', () => {
     //   20160 (14d, 168× cadence) — silent during real outage.
     //   1080  (18h, 3× cadence)   — over-permissive, would mask 12h outage.
     //   360   (1×,  1× cadence)   — false-positive on routine jitter.
-    //   720   (12h, 2× cadence)   — current; matches resilienceRanking.
+    //   720   (12h, 2× cadence)   — exact floor; flipped on every
+    //                               Railway-deploy-preempted tick
+    //                               (2026-05-10: seedAgeMin=722 vs 720).
+    //   840   (14h, 2.33× cadence) — current; tolerates 1 missed tick +
+    //                               ~2h jitter for in-flight deploys;
+    //                               alerts at 2 missed ticks (18h gap).
     const healthSrc = readFileSync(join(repoRoot, 'api/health.js'), 'utf-8');
     const bundleSrc = readFileSync(join(repoRoot, 'scripts/seed-bundle-resilience.mjs'), 'utf-8');
 
@@ -241,17 +246,25 @@ describe('resilience cache-key health-registry sync (T1.9)', () => {
       assert.equal(extractSectionGateHours('Resilience-Scores'), 2);
     });
 
-    it('resilienceIntervals.maxStaleMin is 720min (2 missed cron ticks at real 6h cadence; matches resilienceRanking)', () => {
+    it('resilienceIntervals.maxStaleMin is 840min (1 missed tick + jitter at real 6h cadence; matches resilienceRanking)', () => {
       // Real Railway cron is `0 */6 * * *` (every 6h on the hour, UTC),
       // verified 2026-04-28 via Railway logs (6h2min between two clean
       // bundle runs, no skips/errors). Both resilienceIntervals AND
       // resilienceRanking are written by the SAME Resilience-Scores
-      // section, so they share the same maxStaleMin pattern: 720min =
-      // 12h staleness = 2 missed cron ticks. Prior 360 (1× cadence)
-      // false-positive'd on routine jitter (2026-04-28 incident:
-      // seedAgeMin=367 vs maxStale=360); see api/health.js:381 comment
-      // for the prior-values trail.
-      assert.equal(extractMaxStaleMin('resilienceIntervals'), 720);
+      // section, so they share the same maxStaleMin pattern: 840min =
+      // 14h staleness ≈ 2.33× cadence — tolerates 1 missed tick (12h
+      // gap) + ~2h jitter for in-flight deploys that preempt a
+      // scheduled cron tick; alerts at 2 missed ticks (18h gap).
+      //
+      // Prior 720 (12h = 2× cadence) was the exact floor with zero
+      // jitter tolerance. The 2026-05-10 incident at 18:02 UTC
+      // (seedAgeMin=722 vs maxStale=720) showed every Railway-deploy-
+      // preempted tick flipped UptimeRobot WARNING for ~1min until the
+      // next scheduled run caught up. Bumping to 840 keeps the
+      // 2-missed-tick alert intact while absorbing the deploy-window
+      // false-positives. See api/health.js:381 comment for full
+      // prior-values trail.
+      assert.equal(extractMaxStaleMin('resilienceIntervals'), 840);
     });
 
     it('resilienceIntervals.maxStaleMin >= 540 (no false-STALE on routine jitter at 6h cadence)', () => {
