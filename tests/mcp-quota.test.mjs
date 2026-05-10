@@ -159,4 +159,54 @@ describe('mcp-quota handler', () => {
     assert.equal(resp.status, 200);
     assert.equal(observedKey, 'mcp:pro-usage:user_clerk_xyz:2026-05-10');
   });
+
+  it('F9: env-prefixed key shape — preview deploys do not collide with production counters', async () => {
+    // Drive the helper through a preview-deploy env. The reader (this
+    // handler) and the writer (api/mcp.ts) both call dailyCounterKey
+    // from the same module — so the prefixed key must be byte-identical
+    // across both. Round-trip: import the helper, derive a key, then
+    // confirm the handler reads the same key shape.
+    const savedEnv = process.env.VERCEL_ENV;
+    const savedSha = process.env.VERCEL_GIT_COMMIT_SHA;
+    process.env.VERCEL_ENV = 'preview';
+    process.env.VERCEL_GIT_COMMIT_SHA = 'deadbeef1234567890';
+    try {
+      const { dailyCounterKey } = await import(`../server/_shared/pro-mcp-token.ts?t=${Date.now()}`);
+      const expected = dailyCounterKey('user_pro_xyz', new Date(Date.UTC(2026, 4, 10, 12, 0, 0)));
+      assert.equal(
+        expected,
+        'preview:deadbeef:mcp:pro-usage:user_pro_xyz:2026-05-10',
+        'F9: preview env must prefix the key',
+      );
+
+      // Reader produces the SAME prefixed key.
+      let observedKey = '';
+      const deps = makeDeps({
+        resolveUserId: async () => 'user_pro_xyz',
+        now: () => new Date(Date.UTC(2026, 4, 10, 12, 0, 0)),
+        redisGet: async (k) => { observedKey = k; return '7'; },
+      });
+      const resp = await quotaHandler(makeReq(), deps);
+      assert.equal(resp.status, 200);
+      assert.equal(observedKey, expected, 'F9: reader and dailyCounterKey produce same prefixed key');
+    } finally {
+      if (savedEnv === undefined) delete process.env.VERCEL_ENV;
+      else process.env.VERCEL_ENV = savedEnv;
+      if (savedSha === undefined) delete process.env.VERCEL_GIT_COMMIT_SHA;
+      else process.env.VERCEL_GIT_COMMIT_SHA = savedSha;
+    }
+  });
+
+  it('F9: production env (VERCEL_ENV=production) yields the bare base key (no prefix — historical wire format)', async () => {
+    const savedEnv = process.env.VERCEL_ENV;
+    process.env.VERCEL_ENV = 'production';
+    try {
+      const { dailyCounterKey } = await import(`../server/_shared/pro-mcp-token.ts?t=${Date.now()}`);
+      const k = dailyCounterKey('user_x', new Date(Date.UTC(2026, 4, 10, 12, 0, 0)));
+      assert.equal(k, 'mcp:pro-usage:user_x:2026-05-10', 'production env keeps bare base key');
+    } finally {
+      if (savedEnv === undefined) delete process.env.VERCEL_ENV;
+      else process.env.VERCEL_ENV = savedEnv;
+    }
+  });
 });

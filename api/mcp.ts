@@ -17,7 +17,7 @@ import COUNTRY_BBOXES from '../shared/country-bboxes.js';
 import MINING_SITES_RAW from '../shared/mining-sites.js';
 import { getEntitlements } from '../server/_shared/entitlement-check';
 import {
-  validateProMcpToken,
+  validateProMcpTokenOrNull,
   dailyCounterKey,
   secondsUntilUtcMidnight,
   PRO_DAILY_QUOTA_LIMIT,
@@ -900,6 +900,21 @@ async function executeTool(tool: CacheToolDef): Promise<{ cached_at: string | nu
   const [results, metas] = await Promise.all([Promise.all(reads), Promise.all(metaReads)]);
   const { cached_at, stale } = evaluateFreshness(freshnessChecks, metas);
 
+  // F6: if every cache key returned null/undefined AND the tool actually
+  // had keys configured, this is a degenerate-empty result (Redis transient
+  // / stampede). Throw so dispatchToolsCall's catch fires the DECR rollback
+  // — without this, the user's quota burns silently on a useless response.
+  //
+  // Cache-tools always have at least one key (validated in the registry
+  // type). The all-null case is structurally distinguishable from "the
+  // upstream returned an empty list" (which is a JSON value, not null).
+  if (
+    tool._cacheKeys.length > 0 &&
+    results.every((v: unknown) => v === null || v === undefined)
+  ) {
+    throw new Error('cache_all_null');
+  }
+
   const data: Record<string, unknown> = {};
   // Walk backward through ':'-delimited segments, skipping non-informative suffixes
   // (version tags, bare numbers, internal format names) to produce a readable label.
@@ -986,6 +1001,52 @@ async function reserveQuota(
     // Reject and roll back immediately so the floor stays at the limit
     // (or wherever concurrent rollbacks land it).
     await rollback();
+
+    // Counter-clamp (F4): if multiple DECR rollbacks have failed during
+    // a Redis hiccup, the counter can overshoot indefinitely (e.g. land
+    // at 100 instead of 50). Without clamping, every subsequent INCR for
+    // the rest of the UTC day yields >50 → the user is locked out until
+    // the 48h key TTL expires.
+    //
+    // After the rollback, peek at the post-DECR count via a single
+    // best-effort INCR-then-DECR pair — if it's STILL above the limit,
+    // we know the rollback didn't land. Force a defensive
+    // `SET key <limit> KEEPTTL` so the next legitimate INCR (next UTC
+    // day OR next request after the hiccup) starts at limit+1 → 429,
+    // not limit+N → 429-forever.
+    //
+    // Why use INCR-then-DECR instead of GET? Keeps the helper to the
+    // same pipeline contract (the tests' makePipelineMock supports
+    // INCR/DECR/EXPIRE only) and avoids adding a new verb. The probe
+    // costs one round-trip but only on the rejection path.
+    if (newCount > PRO_DAILY_QUOTA_LIMIT + 1) {
+      try {
+        const probe = await pipeline([['INCR', key], ['DECR', key]]);
+        const probeIncrRaw = probe?.[0]?.result;
+        const postRollbackCount = typeof probeIncrRaw === 'number' ? probeIncrRaw - 1 : Number.NaN;
+        if (Number.isFinite(postRollbackCount) && postRollbackCount > PRO_DAILY_QUOTA_LIMIT) {
+          // Rollback chain has overshot — force the counter back to the
+          // limit via SET KEEPTTL. This is fail-soft: a concurrent INCR
+          // immediately after this SET will land at limit+1 and 429
+          // normally, which is the desired behavior.
+          //
+          // Use DECR repeatedly as the pipeline-supported clamp (avoids
+          // adding a new verb to test mocks). DECR N times where N is
+          // the overshoot delta. Cap at 100 DECRs to bound the worst-
+          // case round-trip cost.
+          const overshoot = postRollbackCount - PRO_DAILY_QUOTA_LIMIT;
+          const decrs = Math.min(overshoot, 100);
+          const clamp = Array.from({ length: decrs }, () => ['DECR', key] as Array<string | number>);
+          // Best-effort: failure here is the cost-protection-correct
+          // direction (counter stays high → users 429, no DoS exposure).
+          await pipeline(clamp).catch(() => {});
+        }
+      } catch {
+        // Probe failed — leave counter as-is. Worst case the user 429s
+        // until UTC midnight; never under-cap, never DoS exposure.
+      }
+    }
+
     return { ok: false, reason: 'cap-exceeded', floor: PRO_DAILY_QUOTA_LIMIT };
   }
 
@@ -1006,7 +1067,12 @@ export interface McpHandlerDeps {
 
 const PRODUCTION_DEPS: McpHandlerDeps = {
   resolveBearerToContext,
-  validateProMcpToken,
+  // Per-request validate path uses the legacy `userId | null` wrapper —
+  // transient Convex blips fail-closed (401 prompts the client to retry
+  // via OAuth, which is the correct safety direction here). The refresh-
+  // grant path in api/oauth/token.ts uses the discriminated-union form
+  // to distinguish revoked from transient (F3 of the U7+U8 review pass).
+  validateProMcpToken: validateProMcpTokenOrNull,
   getEntitlements,
   redisPipeline: rawRedisPipeline,
 };
@@ -1091,6 +1157,22 @@ async function runProPreChecks(
   corsHeaders: Record<string, string>,
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
 ): Promise<Response | null> {
+  // F12: Pro path is unusable without MCP_INTERNAL_HMAC_SECRET — every
+  // tool fetch will throw inside buildAuthHeaders. Surface the misconfig
+  // at auth-resolution time so operators see a single clear 503 rather
+  // than a confusing mid-tool-fetch -32603. Belt-and-suspenders with the
+  // U10 deploy gate; matches the runtime check in `buildAuthHeaders`.
+  if (!process.env.MCP_INTERNAL_HMAC_SECRET) {
+    captureSilentError(new Error('MCP_INTERNAL_HMAC_SECRET unset'), {
+      tags: { route: 'api/mcp', step: 'pro-secret-preflight' },
+      ctx,
+    });
+    return new Response(
+      JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32603, message: 'Service temporarily unavailable, retry in a moment.' } }),
+      { status: 503, headers: { 'Content-Type': 'application/json', 'Retry-After': '5', ...corsHeaders } },
+    );
+  }
+
   const validation = await deps.validateProMcpToken(context.mcpTokenId);
   if (!validation || validation.userId !== context.userId) {
     return new Response(

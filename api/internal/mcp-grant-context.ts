@@ -13,13 +13,17 @@
  * keeps the SPA's error handling on a single canonical contract.
  *
  * Errors:
- *   - UNAUTHENTICATED       401  no/invalid Clerk JWT
- *   - INVALID_REQUEST       400  missing nonce
- *   - INVALID_NONCE         400  Redis nonce miss / expired
- *   - UNKNOWN_CLIENT        400  Redis client miss
- *   - INSUFFICIENT_TIER     403  user tier < 1 or expired (do NOT leak
- *                                client_name to non-Pro callers)
- *   - SERVICE_UNAVAILABLE   503  Redis transport failure
+ *   - UNAUTHENTICATED              401  no/invalid Clerk JWT
+ *   - INVALID_REQUEST              400  missing nonce
+ *   - INVALID_NONCE                400  Redis nonce miss / expired
+ *   - UNKNOWN_CLIENT               400  Redis client miss
+ *   - INSUFFICIENT_TIER            403  user tier < 1 or expired (do NOT
+ *                                       leak client_name to non-Pro callers)
+ *   - NONCE_CLAIMED_BY_OTHER_USER  403  the nonce has been claimed by a
+ *                                       different Clerk userId (F2 — the
+ *                                       apex page must NOT render context
+ *                                       for a hijacked nonce).
+ *   - SERVICE_UNAVAILABLE          503  Redis transport failure
  *
  * Cache-Control: no-store on every path.
  */
@@ -91,6 +95,30 @@ export async function grantContextHandler(req: Request, deps: ContextDeps): Prom
   const ent = await deps.getEntitlements(userId);
   if (!ent || ent.features.tier < 1 || ent.validUntil < deps.now()) {
     return jsonError('INSUFFICIENT_TIER', 'A WorldMonitor Pro subscription is required.', 403);
+  }
+
+  // F2 (U7+U8 review pass): if `mcp-grant:<n>` exists with a userId that
+  // doesn't match the Clerk session's userId, the nonce has been claimed
+  // by another user. The apex SPA MUST refuse to render context for a
+  // hijacked nonce — otherwise the SPA would happily display the
+  // attacker-mintable client_name and let the victim "Approve". We
+  // surface 403 NONCE_CLAIMED_BY_OTHER_USER so the SPA can show a clear
+  // anti-hijack message rather than the normal consent UI. Absence of
+  // the record (no claim yet) is acceptable — the victim's page renders
+  // the consent UI normally and the FIRST mint (theirs) will claim the
+  // nonce.
+  let claim: { userId?: unknown } | null;
+  try {
+    claim = (await deps.redisGet(`mcp-grant:${nonce}`)) as { userId?: unknown } | null;
+  } catch {
+    return jsonError('SERVICE_UNAVAILABLE', 'Authorization storage is temporarily unavailable.', 503);
+  }
+  if (claim && typeof claim.userId === 'string' && claim.userId !== userId) {
+    return jsonError(
+      'NONCE_CLAIMED_BY_OTHER_USER',
+      'This authorization request has already been claimed by another account.',
+      403,
+    );
   }
 
   let nonceData: NonceData | null;

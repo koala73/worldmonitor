@@ -20,6 +20,7 @@ import { checkEntitlement, getRequiredTier, getEntitlements } from './_shared/en
 import { resolveClerkSession } from './_shared/auth-session';
 import {
   INTERNAL_MCP_SIG_HEADER,
+  INTERNAL_MCP_USER_ID_HEADER,
   INTERNAL_MCP_VERIFIED_HEADER,
   TRUSTED_USER_ID_HEADER,
   getInternalMcpVerifiedNonce,
@@ -44,6 +45,22 @@ import {
 import type { ServerOptions } from '../src/generated/server/worldmonitor/seismology/v1/service_server';
 
 export const serverOptions: ServerOptions = { onError: mapErrorToResponse };
+
+/**
+ * Internal-MCP request body size cap (256 KB). Internal-MCP fetches
+ * carry small JSON-RPC params; this ceiling prevents the gateway from
+ * buffering arbitrarily large bodies on the strip / HMAC-verify paths.
+ *
+ * Applied at:
+ *   - The trust-marker strip block (any Pro-marked inbound request)
+ *   - The HMAC-verify block (signed internal-MCP requests)
+ *
+ * Both Content-Length AND post-buffer byte count are checked because
+ * Content-Length can be absent / wrong for chunked or streamed bodies.
+ *
+ * F8 (U7+U8 review pass).
+ */
+const MAX_INTERNAL_MCP_BODY = 256 * 1024;
 
 // --- Edge cache tier definitions ---
 // NOTE: This map is shared across all domain bundles (~3KB). Kept centralised for
@@ -435,15 +452,44 @@ export function createDomainGateway(
         // (a ReadableStream) requires `duplex: 'half'` in Node's undici
         // Request constructor, and the cleaner cross-runtime approach is
         // to forward bytes. Internal-MCP payloads are small JSON RPC params.
+        //
+        // F8: cap the buffered body at MAX_INTERNAL_MCP_BODY (256 KB).
+        // Internal-MCP and gateway-bypass-strip paths only carry small
+        // JSON-RPC params; 256 KB is a safe ceiling that prevents an
+        // attacker from forcing the gateway to allocate megabytes of
+        // memory just by setting Content-Length on a forged request.
         const reInit: RequestInit = { method: request.method, headers: stripped };
         if (request.method !== 'GET' && request.method !== 'HEAD') {
+          const contentLen = parseInt(request.headers.get('Content-Length') ?? '0', 10);
+          if (Number.isFinite(contentLen) && contentLen > MAX_INTERNAL_MCP_BODY) {
+            // F14: distinct reason label for body-size rejections so
+            // telemetry separates this class from auth-401s.
+            emitRequest(413, 'malformed_request', null);
+            return new Response(JSON.stringify({ error: 'payload_too_large' }), {
+              status: 413,
+              headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            });
+          }
           try {
             const bytes = await request.clone().arrayBuffer();
+            // Defense-in-depth: also reject if the actual buffered byte
+            // count exceeds the cap (Content-Length can be absent or
+            // wrong on chunked / streamed bodies).
+            if (bytes.byteLength > MAX_INTERNAL_MCP_BODY) {
+              emitRequest(413, 'malformed_request', null);
+              return new Response(JSON.stringify({ error: 'payload_too_large' }), {
+                status: 413,
+                headers: { 'Content-Type': 'application/json', ...corsHeaders },
+              });
+            }
             reInit.body = bytes;
           } catch {
             // If we can't buffer the body, we can't safely forward the
             // request without trust-markers stripped. 400 the caller.
-            emitRequest(400, 'auth_401', null);
+            // F14: use a distinct telemetry reason — "auth_401" was
+            // misleading (this is a body-buffer failure, not an auth
+            // outcome).
+            emitRequest(400, 'malformed_request', null);
             return new Response(JSON.stringify({ error: 'malformed_request' }), {
               status: 400,
               headers: { 'Content-Type': 'application/json', ...corsHeaders },
@@ -498,6 +544,16 @@ export function createDomainGateway(
       // uploads, which this path doesn't carry.
       let bodyBytes: ArrayBuffer | null = null;
       if (request.method !== 'GET' && request.method !== 'HEAD') {
+        // F8: cap inbound body BEFORE buffering. Internal-MCP signed
+        // requests carry small JSON-RPC params; 256 KB is a safe ceiling.
+        const contentLen = parseInt(request.headers.get('Content-Length') ?? '0', 10);
+        if (Number.isFinite(contentLen) && contentLen > MAX_INTERNAL_MCP_BODY) {
+          emitRequest(413, 'malformed_request', null);
+          return new Response(JSON.stringify({ error: 'payload_too_large' }), {
+            status: 413,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+          });
+        }
         try {
           bodyBytes = await request.clone().arrayBuffer();
         } catch {
@@ -506,6 +562,13 @@ export function createDomainGateway(
             JSON.stringify({ error: 'invalid_internal_mcp_signature' }),
             { status: 401, headers: { 'Content-Type': 'application/json', ...corsHeaders } },
           );
+        }
+        if (bodyBytes.byteLength > MAX_INTERNAL_MCP_BODY) {
+          emitRequest(413, 'malformed_request', null);
+          return new Response(JSON.stringify({ error: 'payload_too_large' }), {
+            status: 413,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders },
+          });
         }
         // Reconstruct request from buffered bytes so verify can clone freely
         // and the downstream handler can read the body normally.
@@ -534,6 +597,14 @@ export function createDomainGateway(
       // edge being bypassed (e.g. captured signature + leaked secret), (b)
       // mid-request entitlement lapse, (c) future regressions where a
       // non-edge caller signs requests.
+      //
+      // F1 (U7+U8 review pass): include `validUntil < Date.now()` in the
+      // rejection condition. The cache-hot path in `entitlement-check.ts`
+      // self-validates `validUntil >= Date.now()` at line 134, but the
+      // Convex fallback at lines 154-156 does not — without this check
+      // an entitlement row with stale `validUntil` would pass the gateway
+      // re-check via the fallback path. Mirror the per-handler runProPreChecks
+      // and authorize-pro entitlement guards.
       const ent = await getEntitlements(verified.userId);
       if (
         !ent ||
@@ -541,7 +612,8 @@ export function createDomainGateway(
         // mcpAccess flag lands in U10 — undefined means "field not present
         // on this entitlement row", which we treat as false. This keeps
         // pre-U10 entitlement rows from accidentally granting MCP access.
-        (ent.features as { mcpAccess?: boolean }).mcpAccess !== true
+        (ent.features as { mcpAccess?: boolean }).mcpAccess !== true ||
+        ent.validUntil < Date.now()
       ) {
         emitRequest(401, 'auth_401', null);
         return new Response(
@@ -560,7 +632,16 @@ export function createDomainGateway(
       // call `isCallerPremium` but don't route through this gateway —
       // an attacker can't guess the nonce, so spoofing the marker on
       // those endpoints fails closed.
+      //
+      // F7 (U7+U8 review pass): strip the inbound HMAC headers BEFORE
+      // setting the trusted markers. The gateway has consumed them via
+      // verifyInternalMcpRequest; downstream handlers should only see
+      // the trusted-marker pair, not the raw signature/userId headers.
+      // Defense-in-depth — handlers shouldn't have any reason to read
+      // the inbound HMAC.
       const trusted = new Headers(request.headers);
+      trusted.delete(INTERNAL_MCP_SIG_HEADER);
+      trusted.delete(INTERNAL_MCP_USER_ID_HEADER);
       trusted.set(INTERNAL_MCP_VERIFIED_HEADER, getInternalMcpVerifiedNonce());
       trusted.set(TRUSTED_USER_ID_HEADER, verified.userId);
       const rebuildInit: RequestInit = { method: request.method, headers: trusted };

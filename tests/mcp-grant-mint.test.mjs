@@ -60,6 +60,7 @@ function makeMintDeps(overrides = {}) {
   redis.set(`oauth:nonce:nonce_xyz`, BASE_NONCE_DATA);
   redis.set(`oauth:client:client_abc`, BASE_CLIENT_DATA);
   const setExCalls = [];
+  const setNxExCalls = [];
 
   const deps = {
     resolveUserId: async () => 'user_pro_123',
@@ -69,13 +70,21 @@ function makeMintDeps(overrides = {}) {
       redis.set(key, value);
       return true;
     },
+    // F2: SET NX semantics — succeeds only if the key does not exist.
+    // The default impl tracks calls and writes idempotently when missing.
+    redisSetNxEx: async (key, value, ttl) => {
+      setNxExCalls.push({ key, value, ttl });
+      if (redis.has(key)) return false;
+      redis.set(key, value);
+      return true;
+    },
     getEntitlements: async () => PRO_ENT,
     isAllowedRedirectUri: () => true,
     signGrant: ({ userId, nonce, exp }) => signGrant({ userId, nonce, exp }, 'test-secret-32bytes-1234567890ab'),
     now: () => FIXED_NOW,
   };
 
-  return { deps: { ...deps, ...overrides }, redis, setExCalls };
+  return { deps: { ...deps, ...overrides }, redis, setExCalls, setNxExCalls };
 }
 
 function makeContextDeps(overrides = {}) {
@@ -201,7 +210,9 @@ describe('mintGrantHandler', () => {
   });
 
   it('happy path: returns redirect to https://api.worldmonitor.app/oauth/authorize-pro with valid grant', async () => {
-    const { deps, setExCalls } = makeMintDeps();
+    // F2: grant write now goes through SET NX. Assert on setNxExCalls
+    // instead of setExCalls.
+    const { deps, setNxExCalls } = makeMintDeps();
     const res = await mintGrantHandler(makePostReq({ nonce: 'nonce_xyz' }), deps);
     assert.equal(res.status, 200);
     assert.equal(res.headers.get('Cache-Control'), 'no-store');
@@ -223,11 +234,11 @@ describe('mintGrantHandler', () => {
     assert.equal(ver.payload.nonce, 'nonce_xyz');
     assert.equal(ver.payload.exp, FIXED_NOW + 5 * 60 * 1000);
 
-    // Redis one-shot stored with 5-min TTL and the same {userId, exp}.
-    assert.equal(setExCalls.length, 1);
-    assert.equal(setExCalls[0].key, 'mcp-grant:nonce_xyz');
-    assert.equal(setExCalls[0].ttl, 300);
-    assert.deepEqual(setExCalls[0].value, { userId: 'user_pro_123', exp: FIXED_NOW + 5 * 60 * 1000 });
+    // Redis NX claim with 5-min TTL and the same {userId, exp}.
+    assert.equal(setNxExCalls.length, 1);
+    assert.equal(setNxExCalls[0].key, 'mcp-grant:nonce_xyz');
+    assert.equal(setNxExCalls[0].ttl, 300);
+    assert.deepEqual(setNxExCalls[0].value, { userId: 'user_pro_123', exp: FIXED_NOW + 5 * 60 * 1000 });
   });
 
   it('returns 401 UNAUTHENTICATED when Clerk session resolves null', async () => {
@@ -333,8 +344,18 @@ describe('mintGrantHandler', () => {
     assert.equal(json.error, 'INSUFFICIENT_TIER');
   });
 
-  it('returns 503 when Redis SETEX of mcp-grant:<n> fails', async () => {
-    const { deps } = makeMintDeps({ redisSetEx: async () => false });
+  it('returns 503 when Redis SET NX of mcp-grant:<n> fails AND no prior record exists (transport failure)', async () => {
+    // F2: SET NX failed AND GET returns null → genuine transport failure → 503.
+    const { deps } = makeMintDeps({
+      redisSetNxEx: async () => false,
+      redisGet: async (key) => {
+        // Return the oauth:nonce/oauth:client fixtures normally; null for the grant key
+        // (no prior claim → genuine transport failure path).
+        if (key === 'oauth:nonce:nonce_xyz') return BASE_NONCE_DATA;
+        if (key === 'oauth:client:client_abc') return BASE_CLIENT_DATA;
+        return null;
+      },
+    });
     const res = await mintGrantHandler(makePostReq({ nonce: 'nonce_xyz' }), deps);
     assert.equal(res.status, 503);
     const json = await res.json();
@@ -366,7 +387,14 @@ describe('mintGrantHandler', () => {
       makeMintDeps({ resolveUserId: async () => null }),
       makeMintDeps({ redisGet: async () => null }),
       makeMintDeps({ getEntitlements: async () => FREE_ENT }),
-      makeMintDeps({ redisSetEx: async () => false }),
+      makeMintDeps({
+        redisSetNxEx: async () => false,
+        redisGet: async (key) => {
+          if (key === 'oauth:nonce:nonce_xyz') return BASE_NONCE_DATA;
+          if (key === 'oauth:client:client_abc') return BASE_CLIENT_DATA;
+          return null;
+        },
+      }),
     ];
     for (const { deps } of cases) {
       const res = await mintGrantHandler(makePostReq({ nonce: 'nonce_xyz' }), deps);
@@ -374,7 +402,9 @@ describe('mintGrantHandler', () => {
     }
   });
 
-  it('concurrent mints for the same nonce both succeed (second overwrites — anti-replay handled by Redis one-shot at U5)', async () => {
+  it('F2: concurrent mints from SAME userId for the same nonce both succeed (idempotent multi-tab)', async () => {
+    // SET NX semantics: first mint claims; second sees existing record
+    // with matching userId → idempotently re-issues the redirect.
     const { deps } = makeMintDeps();
     const [a, b] = await Promise.all([
       mintGrantHandler(makePostReq({ nonce: 'nonce_xyz' }), deps),
@@ -382,6 +412,36 @@ describe('mintGrantHandler', () => {
     ]);
     assert.equal(a.status, 200);
     assert.equal(b.status, 200);
+  });
+
+  it('F2: mint from a DIFFERENT userId after a prior claim → 403 NONCE_CLAIMED_BY_OTHER_USER', async () => {
+    // Pre-claim the grant key as user A.
+    const { deps: depsA } = makeMintDeps();
+    const a = await mintGrantHandler(makePostReq({ nonce: 'nonce_xyz' }), depsA);
+    assert.equal(a.status, 200);
+
+    // Now make a fresh deps where the SAME redis store is reused (the
+    // claim persists), and resolveUserId returns a DIFFERENT user. The
+    // SET NX collision + GET-and-compare must produce 403.
+    const sharedRedis = depsA.redisGetSharedStore?.();
+    // Build a deps that points at the same store via depsA's redis impl.
+    const { deps: depsB } = makeMintDeps({
+      resolveUserId: async () => 'user_attacker_999',
+      // Reuse depsA's underlying store by going through its redisGet which
+      // already reads from the closure'd Map.
+      redisGet: depsA.redisGet,
+      redisSetNxEx: depsA.redisSetNxEx,
+      redisSetEx: depsA.redisSetEx,
+    });
+
+    const b = await mintGrantHandler(makePostReq({ nonce: 'nonce_xyz' }), depsB);
+    assert.equal(b.status, 403);
+    const body = await b.json();
+    assert.equal(body.error, 'NONCE_CLAIMED_BY_OTHER_USER');
+    // anti-information-leak: response sets no-store
+    assert.equal(b.headers.get('Cache-Control'), 'no-store');
+    // Sanity-check we didn't leak `sharedRedis` reference path.
+    assert.equal(sharedRedis, undefined, 'helper did not need a back door');
   });
 });
 
@@ -484,5 +544,54 @@ describe('grantContextHandler', () => {
     const ctxBody = await ctxRes.json();
     assert.equal(ctxBody.client_name, BASE_CLIENT_DATA.client_name);
     assert.equal(ctxBody.redirect_host, new URL(BASE_NONCE_DATA.redirect_uri).hostname);
+  });
+
+  it('F2: when mcp-grant:<n> is claimed by a DIFFERENT userId, context returns 403 NONCE_CLAIMED_BY_OTHER_USER', async () => {
+    // The apex SPA must NOT render consent context for a hijacked nonce.
+    const redis = new Map();
+    redis.set('oauth:nonce:nonce_xyz', BASE_NONCE_DATA);
+    redis.set('oauth:client:client_abc', BASE_CLIENT_DATA);
+    // Pre-existing claim by another user (attacker minted first).
+    redis.set('mcp-grant:nonce_xyz', { userId: 'user_attacker_999', exp: FIXED_NOW + 60_000 });
+
+    const { deps } = makeContextDeps({
+      // resolveUserId returns the VICTIM's userId (the one apex page is currently signed in as).
+      resolveUserId: async () => 'user_pro_123',
+      redisGet: async (key) => redis.get(key) ?? null,
+    });
+
+    const res = await grantContextHandler(makeGetReq('nonce_xyz'), deps);
+    assert.equal(res.status, 403);
+    const body = await res.json();
+    assert.equal(body.error, 'NONCE_CLAIMED_BY_OTHER_USER');
+    assert.equal(body.client_name, undefined, 'must NOT leak client_name on a hijacked nonce');
+    assert.equal(body.redirect_host, undefined);
+    assert.equal(res.headers.get('Cache-Control'), 'no-store');
+  });
+
+  it('F2: context still works when there is NO prior claim (first-mint case — render normally)', async () => {
+    // Absence of mcp-grant:<n> is the normal pre-mint state: render
+    // consent UI for the legitimate user; the FIRST mint from this
+    // session will claim the nonce.
+    const { deps } = makeContextDeps();
+    // No mcp-grant:<n> in the redis map by default.
+    const res = await grantContextHandler(makeGetReq('nonce_xyz'), deps);
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.client_name, BASE_CLIENT_DATA.client_name);
+  });
+
+  it('F2: context still works when mcp-grant:<n> is claimed by the SAME userId (multi-tab)', async () => {
+    const redis = new Map();
+    redis.set('oauth:nonce:nonce_xyz', BASE_NONCE_DATA);
+    redis.set('oauth:client:client_abc', BASE_CLIENT_DATA);
+    redis.set('mcp-grant:nonce_xyz', { userId: 'user_pro_123', exp: FIXED_NOW + 60_000 });
+    const { deps } = makeContextDeps({
+      redisGet: async (key) => redis.get(key) ?? null,
+    });
+    const res = await grantContextHandler(makeGetReq('nonce_xyz'), deps);
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.client_name, BASE_CLIENT_DATA.client_name);
   });
 });

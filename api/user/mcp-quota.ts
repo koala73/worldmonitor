@@ -30,6 +30,8 @@ export const config = { runtime: 'edge' };
 
 // @ts-expect-error — JS module, no declaration file
 import { getCorsHeaders } from '../_cors.js';
+// @ts-expect-error — JS module, no declaration file
+import { captureSilentError } from '../_sentry-edge.js';
 import { resolveClerkSession } from '../../server/_shared/auth-session';
 import {
   dailyCounterKey,
@@ -105,6 +107,9 @@ export async function quotaHandler(req: Request, deps: QuotaDeps): Promise<Respo
       '[mcp-quota] Redis read failed:',
       err instanceof Error ? err.message : String(err),
     );
+    captureSilentError(err, {
+      tags: { route: 'api/user/mcp-quota', step: 'redis-get' },
+    });
   }
 
   let used = 0;

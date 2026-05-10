@@ -26,14 +26,29 @@
  *
  * All responses set Cache-Control: no-store. Errors return structured
  * JSON `{error, error_description}` with stable error codes:
- *   - UNAUTHENTICATED       401  no/invalid Clerk JWT
- *   - INVALID_REQUEST       400  malformed body / missing nonce
- *   - INVALID_NONCE         400  Redis nonce miss / expired
- *   - UNKNOWN_CLIENT        400  Redis client miss
- *   - INVALID_REDIRECT_URI  400  client redirect_uri no longer allowlisted
- *   - INSUFFICIENT_TIER     403  user tier < 1 or expired
- *   - SERVICE_UNAVAILABLE   503  Redis SETEX failure
- *   - CONFIGURATION_ERROR   500  MCP_PRO_GRANT_HMAC_SECRET unset
+ *   - UNAUTHENTICATED              401  no/invalid Clerk JWT
+ *   - INVALID_REQUEST              400  malformed body / missing nonce
+ *   - INVALID_NONCE                400  Redis nonce miss / expired
+ *   - UNKNOWN_CLIENT               400  Redis client miss
+ *   - INVALID_REDIRECT_URI         400  client redirect_uri no longer allowlisted
+ *   - INSUFFICIENT_TIER            403  user tier < 1 or expired
+ *   - NONCE_CLAIMED_BY_OTHER_USER  403  nonce already claimed by a different
+ *                                       Clerk userId (anti-hijack — see F2)
+ *   - SERVICE_UNAVAILABLE          503  Redis SETEX failure
+ *   - CONFIGURATION_ERROR          500  MCP_PRO_GRANT_HMAC_SECRET unset
+ *
+ * F2 (U7+U8 review pass) — anti-hijack semantics:
+ *   `oauth:nonce:<n>` carries no Clerk userId binding. Without F2, any
+ *   Pro user could mint a grant for any nonce, then deliver the redirect
+ *   URL to a victim, who would exchange it for a bearer bound to the
+ *   ATTACKER's userId. F2 introduces a SET-NX-style claim on
+ *   `mcp-grant:<n>` itself: the FIRST mint atomically claims the nonce
+ *   and writes the userId into the record; subsequent mints from a
+ *   DIFFERENT userId are refused with NONCE_CLAIMED_BY_OTHER_USER. Mints
+ *   from the SAME userId (multi-tab) succeed idempotently. The
+ *   companion check at `/api/internal/mcp-grant-context` returns the
+ *   same 403 so the apex page also refuses to render context for a
+ *   hijacked nonce.
  */
 
 export const config = { runtime: 'edge' };
@@ -110,6 +125,34 @@ async function rawRedisSetEx(key: string, value: unknown, ttlSeconds: number): P
   } catch { return false; }
 }
 
+/**
+ * Atomic SET with NX (only set if key does not exist) + EX TTL.
+ *
+ * F2 (U7+U8 review pass): used to claim `mcp-grant:<n>` for a userId.
+ * Returns `true` if the key was claimed (SET NX returned OK), `false` if
+ * the key already existed (SET NX returned nil) OR on any transport
+ * failure. Caller then GETs the existing record to compare userIds.
+ *
+ * Upstash REST returns `{result: "OK"}` on success and `{result: null}`
+ * on NX-collision. We check string equality on the result.
+ */
+async function rawRedisSetNxEx(key: string, value: unknown, ttlSeconds: number): Promise<boolean> {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return false;
+  try {
+    const resp = await fetch(`${url}/pipeline`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify([['SET', key, JSON.stringify(value), 'EX', ttlSeconds, 'NX']]),
+      signal: AbortSignal.timeout(3_000),
+    });
+    if (!resp.ok) return false;
+    const results = await resp.json().catch(() => null);
+    return Array.isArray(results) && results[0]?.result === 'OK';
+  } catch { return false; }
+}
+
 // ---------------------------------------------------------------------------
 // Inner handler — exported for unit tests with injected deps.
 // ---------------------------------------------------------------------------
@@ -117,10 +160,16 @@ async function rawRedisSetEx(key: string, value: unknown, ttlSeconds: number): P
 export interface MintDeps {
   /** Resolves the Clerk userId from the request's Bearer header. Null = unauth. */
   resolveUserId: (req: Request) => Promise<string | null>;
-  /** Reads a raw `oauth:*` key from Redis. Throws on transport failure. */
+  /** Reads a raw `oauth:*` or `mcp-grant:*` key from Redis. Throws on transport failure. */
   redisGet: (key: string) => Promise<unknown | null>;
   /** Writes a raw `mcp-grant:*` key with TTL. Returns false on failure. */
   redisSetEx: (key: string, value: unknown, ttlSeconds: number) => Promise<boolean>;
+  /**
+   * F2: atomic SET NX EX of `mcp-grant:<n>`. Returns true if the key was
+   * claimed (no prior record), false if a prior record exists OR on
+   * transport failure. Caller decides whether to GET-and-compare or 503.
+   */
+  redisSetNxEx: (key: string, value: unknown, ttlSeconds: number) => Promise<boolean>;
   /** Returns Pro entitlement info or null. */
   getEntitlements: (userId: string) => Promise<{ features: { tier: number }; validUntil: number } | null>;
   /** Same allowlist DCR uses. */
@@ -203,10 +252,65 @@ export async function mintGrantHandler(req: Request, deps: MintDeps): Promise<Re
     throw err;
   }
 
-  // Store the matching one-shot — U5 GETDEL's it before issuing the OAuth code.
-  const stored = await deps.redisSetEx(`mcp-grant:${nonce}`, { userId, exp }, GRANT_TTL_SECONDS);
-  if (!stored) {
-    return jsonError('SERVICE_UNAVAILABLE', 'Could not persist the authorization grant.', 503);
+  // F2: claim the nonce atomically via SET NX. The FIRST mint that
+  // reaches Redis writes `{userId, exp}` and wins. Subsequent mints
+  // either:
+  //   - same userId (multi-tab / retry on the same Clerk session) →
+  //     idempotently re-issue the redirect with a fresh grant token
+  //     pointing at the existing claim. The old grant exp is preserved
+  //     so the existing record stays valid; we re-sign with a NEW exp
+  //     (also +5min from now) — but the redis record already holds the
+  //     claim's exp, so `/oauth/authorize-pro` strictly compares them
+  //     (line 293) and would 401 a "different exp" mint. To keep the
+  //     idempotent path working, we re-sign with the EXISTING claim's
+  //     exp from Redis, not a fresh one.
+  //   - different userId (attacker tries to mint for victim's nonce) →
+  //     403 NONCE_CLAIMED_BY_OTHER_USER.
+  //
+  // The SET NX path makes this race-safe: two concurrent mints from
+  // different users for the same nonce can't both win. The loser's GET
+  // sees the winner's record and either succeeds (same userId) or 403s.
+  const grantKey = `mcp-grant:${nonce}`;
+  const claim = { userId, exp };
+  const claimed = await deps.redisSetNxEx(grantKey, claim, GRANT_TTL_SECONDS);
+  if (!claimed) {
+    // Either NX collision or transport failure. Disambiguate via GET.
+    let existing: { userId?: unknown; exp?: unknown } | null;
+    try {
+      existing = (await deps.redisGet(grantKey)) as { userId?: unknown; exp?: unknown } | null;
+    } catch {
+      return jsonError('SERVICE_UNAVAILABLE', 'Could not persist the authorization grant.', 503);
+    }
+    if (!existing || typeof existing.userId !== 'string' || typeof existing.exp !== 'number') {
+      // No prior record + SET NX failed → genuine transport failure.
+      return jsonError('SERVICE_UNAVAILABLE', 'Could not persist the authorization grant.', 503);
+    }
+    if (existing.userId !== userId) {
+      // F2 anti-hijack: the nonce has been claimed by a DIFFERENT Clerk
+      // user. Refuse — the legitimate user must start a fresh OAuth
+      // flow (which mints a fresh oauth:nonce + mcp-grant pair).
+      return jsonError(
+        'NONCE_CLAIMED_BY_OTHER_USER',
+        'This authorization request has already been claimed by another account.',
+        403,
+      );
+    }
+    // Same userId — idempotent multi-tab retry. Re-sign the grant with
+    // the EXISTING claim's exp so `/oauth/authorize-pro`'s strict tuple
+    // equality on (userId, exp) succeeds against the Redis record.
+    try {
+      grantToken = await deps.signGrant({
+        userId,
+        nonce,
+        exp: existing.exp as number,
+      });
+    } catch (err) {
+      if (err instanceof GrantConfigError) {
+        console.warn('[mcp-grant-mint] missing MCP_PRO_GRANT_HMAC_SECRET on idempotent re-sign');
+        return jsonError('CONFIGURATION_ERROR', 'Pro MCP authorization is misconfigured.', 500);
+      }
+      throw err;
+    }
   }
 
   const redirect = `${AUTHORIZE_PRO_URL}?nonce=${encodeURIComponent(nonce)}&grant=${encodeURIComponent(grantToken)}`;
@@ -222,6 +326,7 @@ export default async function handler(req: Request): Promise<Response> {
     resolveUserId: async (r) => (await resolveClerkSession(r))?.userId ?? null,
     redisGet: rawRedisGet,
     redisSetEx: rawRedisSetEx,
+    redisSetNxEx: rawRedisSetNxEx,
     getEntitlements: (userId) => getEntitlements(userId),
     isAllowedRedirectUri,
     signGrant: (payload) => signGrant(payload),

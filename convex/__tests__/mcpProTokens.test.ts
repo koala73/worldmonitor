@@ -107,6 +107,39 @@ describe("issueProMcpToken", () => {
     ).rejects.toThrow(/PRO_REQUIRED/);
   });
 
+  test("F5 convergence: 6 actives (race-leftover) → next issue trims to MAX", async () => {
+    // Models the post-race state the F5 fix converges from: a brief
+    // racing window left 6 active rows; the next issue call must trim
+    // back to MAX (5) — that's the "eventually 5" guarantee.
+    const t = convexTest(schema, modules);
+    await seedProEntitlement(t, "user-pro");
+
+    // Manually seed 6 active rows (simulates the race outcome).
+    await t.run(async (ctx) => {
+      const now = Date.now();
+      for (let i = 0; i < 6; i++) {
+        await ctx.db.insert("mcpProTokens", {
+          userId: "user-pro",
+          createdAt: now - (6 - i) * 1000, // oldest first
+          name: `racing-slot-${i + 1}`,
+        });
+      }
+    });
+
+    // Next issue must converge: revoke 2 oldest, insert 1 new → 5 active.
+    const seventh = await t.mutation(internal.mcpProTokens.issueProMcpToken, {
+      userId: "user-pro",
+      name: "post-race",
+    });
+    expect(seventh.tokenId).toBeTruthy();
+
+    const rows = await t
+      .withIdentity(PRO_USER)
+      .query(api.mcpProTokens.listProMcpTokens, {});
+    const active = rows.filter((r: any) => !r.revokedAt);
+    expect(active).toHaveLength(5);
+  });
+
   test("6th issue rotates oldest — caps active rows at 5", async () => {
     const t = convexTest(schema, modules);
     await seedProEntitlement(t, "user-pro");

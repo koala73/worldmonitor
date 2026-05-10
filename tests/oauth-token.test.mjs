@@ -122,7 +122,11 @@ function makeDeps(overrides = {}) {
       redisGetDel: redis.redisGetDel,
       redisGet: redis.redisGet,
       redisPipeline: redis.redisPipeline,
-      validateProMcpToken: overrides.validateProMcpToken ?? (async () => ({ userId: USER_ID })),
+      // F3 (U7+U8 review pass): validateProMcpToken now returns the
+      // ProMcpValidateUnion. Tests passing `null` are normalised here to
+      // `{ok:'revoked'}` so the existing assertions remain meaningful;
+      // tests passing the new shape pass through unchanged.
+      validateProMcpToken: overrides.validateProMcpToken ?? (async () => ({ ok: 'valid', userId: USER_ID })),
       randomUuid: overrides.randomUuid ?? deterministicUuid,
     },
   };
@@ -375,9 +379,9 @@ describe('U6 tokenHandler — refresh_token (Pro)', () => {
     assert.equal(redis.store.has('oauth:refresh:rt-1'), false);
   });
 
-  it('Pro refresh fails invalid_grant when validateProMcpToken returns null (revoked)', async () => {
+  it('Pro refresh fails invalid_grant when validateProMcpToken returns revoked', async () => {
     await ensureFixtures();
-    const { redis, deps } = makeDeps({ validateProMcpToken: async () => null });
+    const { redis, deps } = makeDeps({ validateProMcpToken: async () => ({ ok: 'revoked' }) });
     redis.store.set('oauth:refresh:rt-1', {
       kind: 'pro',
       client_id: CLIENT_ID,
@@ -400,10 +404,9 @@ describe('U6 tokenHandler — refresh_token (Pro)', () => {
     assert.match(body.error_description, /invalid, expired, or already used/);
   });
 
-  it('Pro refresh fails invalid_grant when validateProMcpToken throws/returns transient null (fail-soft)', async () => {
+  it('F3: Pro refresh on Convex transient → 503 + Retry-After + refresh token preserved', async () => {
     await ensureFixtures();
-    // Per U2 contract: network errors collapse to null. Same outcome.
-    const { redis, deps } = makeDeps({ validateProMcpToken: async () => null });
+    const { redis, deps } = makeDeps({ validateProMcpToken: async () => ({ ok: 'transient' }) });
     redis.store.set('oauth:refresh:rt-1', {
       kind: 'pro',
       client_id: CLIENT_ID,
@@ -418,8 +421,18 @@ describe('U6 tokenHandler — refresh_token (Pro)', () => {
       makeReq('refresh_token', { refresh_token: 'rt-1', client_id: CLIENT_ID }),
       deps,
     );
-    assert.equal(resp.status, 400);
-    assert.equal((await resp.json()).error, 'invalid_grant');
+    assert.equal(resp.status, 503, 'transient Convex failure → 503');
+    const body = await resp.json();
+    assert.equal(body.error, 'server_error');
+    // F3: refresh token must be restored to Redis with the original payload.
+    const restored = redis.store.get('oauth:refresh:rt-1');
+    assert.ok(restored, 'refresh token MUST be restored on transient failure');
+    // The restored value is a JSON string written via SET; parse before comparing.
+    const restoredObj = typeof restored === 'string' ? JSON.parse(restored) : restored;
+    assert.equal(restoredObj.kind, 'pro');
+    assert.equal(restoredObj.userId, USER_ID);
+    assert.equal(restoredObj.mcpTokenId, MCP_TOKEN_ID);
+    assert.equal(restoredObj.family_id, 'fam');
   });
 
   it('Pro refresh rejects when client_id does not match', async () => {
@@ -446,7 +459,7 @@ describe('U6 tokenHandler — refresh_token (Pro)', () => {
   it('Pro refresh rejects when validate returns a different userId (defensive cross-user guard)', async () => {
     await ensureFixtures();
     const { redis, deps } = makeDeps({
-      validateProMcpToken: async () => ({ userId: 'somebody_else' }),
+      validateProMcpToken: async () => ({ ok: 'valid', userId: 'somebody_else' }),
     });
     redis.store.set('oauth:refresh:rt-1', {
       kind: 'pro',
@@ -474,7 +487,7 @@ describe('U6 tokenHandler — refresh_token (legacy)', () => {
     const { redis, deps } = makeDeps({
       validateProMcpToken: async () => {
         validateCalls += 1;
-        return null;
+        return { ok: 'revoked' };
       },
     });
     const FAMILY = 'fam_legacy_aaa';

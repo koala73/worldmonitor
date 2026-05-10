@@ -47,6 +47,24 @@ export interface ProMcpValidateResult {
   userId: string;
 }
 
+/**
+ * Discriminated union returned by `validateProMcpToken`. Distinguishes:
+ *   - `valid`: Convex returned an active row → `{userId}` resolved.
+ *   - `revoked`: Convex authoritatively returned null (row missing or revoked).
+ *               Negative-cache sentinel is written; safe to fail-closed.
+ *   - `transient`: Convex 5xx, network error, timeout, or malformed JSON.
+ *                 No neg-cache write — a blip should not mark a legitimate
+ *                 token as bad for 60s.
+ *
+ * Refresh-grant callers (api/oauth/token.ts) need this distinction so a
+ * transient Convex blip does NOT consume the user's refresh token. See
+ * F3 in the U7+U8 review pass.
+ */
+export type ProMcpValidateUnion =
+  | { ok: 'valid'; userId: string }
+  | { ok: 'revoked' }
+  | { ok: 'transient' };
+
 export interface ProMcpIssueResult {
   tokenId: string;
 }
@@ -119,10 +137,8 @@ async function readNegCache(tokenId: string): Promise<boolean> {
     const data = (await resp.json()) as { result?: string | null };
     return typeof data.result === 'string' && data.result.length > 0;
   } catch (err) {
-    // Fail-open on Redis errors: a Redis blip should not cause every Pro
-    // request to bypass the negative-cache short-circuit AND succeed —
-    // returning false here just means we round-trip Convex this once,
-    // which is the safe direction.
+    // Fail-open on Redis errors: round-trip Convex this once; the worst
+    // case is one extra Convex call, which is the safe direction.
     console.warn('[pro-mcp-token] readNegCache failed:', err instanceof Error ? err.message : String(err));
     return false;
   }
@@ -216,33 +232,41 @@ export async function issueProMcpTokenForUser(
 }
 
 /**
- * Validate a Pro MCP token by tokenId.
+ * Validate a Pro MCP token by tokenId — discriminated-union variant.
  *
- * Returns `{userId}` if the row exists and is not revoked. Returns null
- * otherwise (revoked, never-existed, malformed, or transient Convex
- * failure — all collapse to "unauthenticated" at the caller).
+ * Returns `{ok:'valid', userId}` if the row exists and is not revoked.
+ * Returns `{ok:'revoked'}` if Convex authoritatively returned null
+ * (row missing, revoked, or malformed-id). Returns `{ok:'transient'}` on
+ * Convex 5xx / network error / timeout / non-JSON — caller can decide
+ * whether to fail-closed (per-request validate) or preserve the refresh
+ * token (refresh-grant path) instead of consuming it.
  *
  * Caching policy (load-bearing — see plan U2):
  *   1. Read `pro-mcp-token-neg:<tokenId>`. If sentinel is present, return
- *      null IMMEDIATELY without hitting Convex.
+ *      `{ok:'revoked'}` IMMEDIATELY without hitting Convex.
  *   2. Otherwise round-trip Convex `/api/internal-validate-pro-mcp-token`.
- *   3. If Convex returns `{userId}`: return it. Do NOT cache positively
- *      (revoke must be authoritative on the next request).
- *   4. If Convex returns null: write the negative-cache sentinel (60s TTL)
- *      and return null.
- *   5. If Convex 5xx / network / timeout / non-JSON: log + return null.
- *      (Fail-soft. Do NOT write the sentinel — a blip should not mark a
- *      legitimate token as bad for 60s.)
+ *   3. If Convex returns `{userId}`: return `{ok:'valid', userId}`. Do NOT
+ *      cache positively (revoke must be authoritative on the next request).
+ *   4. If Convex returns null / missing-userId: write the negative-cache
+ *      sentinel (60s TTL) and return `{ok:'revoked'}`.
+ *   5. If Convex 5xx / network / timeout / non-JSON: log + return
+ *      `{ok:'transient'}`. (Fail-soft. Do NOT write the sentinel — a blip
+ *      should not mark a legitimate token as bad for 60s.)
+ *
+ * Most callers want the simpler `userId | null` shape (per-request
+ * validate, fail-closed on transient is correct because a 401 will retry
+ * via the OAuth flow anyway). Use {@link validateProMcpTokenOrNull} for
+ * that — it wraps this and maps `revoked|transient → null`.
  */
-export async function validateProMcpToken(tokenId: string): Promise<ProMcpValidateResult | null> {
-  if (!tokenId) return null;
+export async function validateProMcpToken(tokenId: string): Promise<ProMcpValidateUnion> {
+  if (!tokenId) return { ok: 'revoked' };
 
   // Step 1: negative-cache short-circuit.
-  if (await readNegCache(tokenId)) return null;
+  if (await readNegCache(tokenId)) return { ok: 'revoked' };
 
   // Step 2: Convex round-trip.
   const env = getConvexEnv();
-  if (!env) return null;
+  if (!env) return { ok: 'transient' };
 
   let resp: Response;
   try {
@@ -253,18 +277,18 @@ export async function validateProMcpToken(tokenId: string): Promise<ProMcpValida
       signal: AbortSignal.timeout(CONVEX_TIMEOUT_MS),
     });
   } catch (err) {
-    // Fail-soft: timeout / network error → null, no neg-cache write.
+    // Fail-soft: timeout / network error → transient, no neg-cache write.
     console.warn(
       '[pro-mcp-token] validateProMcpToken Convex fetch failed:',
       err instanceof Error ? err.message : String(err),
     );
-    return null;
+    return { ok: 'transient' };
   }
 
   if (!resp.ok) {
     // 5xx / 401 / unexpected: fail-soft, no neg-cache write.
     console.warn(`[pro-mcp-token] validateProMcpToken Convex HTTP ${resp.status}`);
-    return null;
+    return { ok: 'transient' };
   }
 
   let body: unknown;
@@ -275,7 +299,9 @@ export async function validateProMcpToken(tokenId: string): Promise<ProMcpValida
       '[pro-mcp-token] validateProMcpToken Convex JSON parse failed:',
       err instanceof Error ? err.message : String(err),
     );
-    return null;
+    // Malformed body — treat as transient (NOT revoked). Don't poison the
+    // cache for what is structurally a server-side glitch.
+    return { ok: 'transient' };
   }
 
   // Convex returns `null` for revoked / not-found / malformed-id; otherwise
@@ -288,11 +314,27 @@ export async function validateProMcpToken(tokenId: string): Promise<ProMcpValida
     (body as { userId: string }).userId.length > 0
   ) {
     // Step 3: positive — return WITHOUT caching.
-    return { userId: (body as { userId: string }).userId };
+    return { ok: 'valid', userId: (body as { userId: string }).userId };
   }
 
-  // Step 4: negative — write sentinel and return null.
+  // Step 4: negative — write sentinel and return revoked.
   await writeNegCache(tokenId);
+  return { ok: 'revoked' };
+}
+
+/**
+ * Backward-compatible wrapper that maps the discriminated union to the
+ * legacy `{userId} | null` shape. Use this for per-request validate paths
+ * where transient and revoked both fail-closed (the caller returns 401 and
+ * the client retries via OAuth — no information loss).
+ *
+ * The refresh-grant path in `api/oauth/token.ts` MUST call
+ * `validateProMcpToken` directly to distinguish transient from revoked,
+ * otherwise a Convex blip silently consumes the refresh token.
+ */
+export async function validateProMcpTokenOrNull(tokenId: string): Promise<ProMcpValidateResult | null> {
+  const r = await validateProMcpToken(tokenId);
+  if (r.ok === 'valid') return { userId: r.userId };
   return null;
 }
 
@@ -388,6 +430,18 @@ export async function clearProMcpTokenNegCache(tokenId: string): Promise<void> {
  * the plan ("Daily window — sliding or fixed? R: Fixed UTC midnight via
  * single Redis INCR counter for predictable reset and clean UI copy.").
  *
+ * Env-prefixed: when running on a Vercel preview deploy
+ * (VERCEL_ENV=preview, with VERCEL_GIT_COMMIT_SHA), the key is prefixed
+ * `<env>:<sha8>:<base>` so preview traffic does NOT collide with
+ * production counters in the shared Upstash instance. Production
+ * (VERCEL_ENV unset or 'production') uses the bare base key — preserves
+ * the historical wire format.
+ *
+ * Mirrors `server/_shared/redis.ts`'s `prefixKey` convention; replicated
+ * here (not imported) because this helper is read by both the API edge
+ * runtime and the gateway, and direct Upstash REST callers in this module
+ * cannot consume the JSON-helper-specific paths in `redis.ts`.
+ *
  * @param userId Clerk userId. Empty / falsy → returns "" (caller should
  *               never reach the INCR path with no userId, but the empty-
  *               key fail-soft mirrors the rest of this module).
@@ -399,7 +453,20 @@ export function dailyCounterKey(userId: string, date?: Date): string {
   const yyyy = d.getUTCFullYear();
   const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
   const dd = String(d.getUTCDate()).padStart(2, '0');
-  return `mcp:pro-usage:${userId}:${yyyy}-${mm}-${dd}`;
+  const base = `mcp:pro-usage:${userId}:${yyyy}-${mm}-${dd}`;
+  return `${envPrefix()}${base}`;
+}
+
+/**
+ * Compute the env-prefix at call time (NOT memoized — tests may mutate
+ * VERCEL_ENV between calls; the cost is one trivial string read).
+ * Production / unset → empty string. Mirrors `redis.ts::getKeyPrefix`.
+ */
+function envPrefix(): string {
+  const env = process.env.VERCEL_ENV;
+  if (!env || env === 'production') return '';
+  const sha = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 8) || 'dev';
+  return `${env}:${sha}:`;
 }
 
 /**

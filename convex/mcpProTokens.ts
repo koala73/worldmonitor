@@ -63,19 +63,31 @@ export const issueProMcpToken = internalMutation({
     // Enforce per-user cap with silent oldest rotation. Match the pattern
     // used by createApiKey at convex/apiKeys.ts:62 — count only non-revoked
     // rows, but unlike apiKeys we silently rotate instead of throwing.
+    //
+    // F5 (U7+U8 review pass): "exactly oldest" rotation has a race —
+    // two concurrent issue calls can both observe `active.length === 4`,
+    // both insert, and produce 6 active rows. Convex doesn't serialise
+    // mutations across the entire table; per-userId concurrency is real.
+    // To converge back to the cap even after a brief race window, revoke
+    // ALL rows beyond `MAX_TOKENS_PER_USER - 1` (sorted by createdAt).
+    // This makes the cap "eventually MAX" rather than "atomically MAX":
+    // the next issue call's check trims any temporary overshoot.
     const existing = await ctx.db
       .query("mcpProTokens")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
       .collect();
     const active = existing.filter((r) => !r.revokedAt);
     if (active.length >= MAX_TOKENS_PER_USER) {
-      // Sort ascending by createdAt — oldest first — and revoke the oldest.
-      // Setting revokedAt rather than deleting preserves the audit trail
-      // (matches apiKeys.revokeApiKey behaviour).
+      // Sort ascending by createdAt — oldest first.
       active.sort((a, b) => a.createdAt - b.createdAt);
-      const oldest = active[0];
-      if (oldest) {
-        await ctx.db.patch(oldest._id, { revokedAt: Date.now() });
+      // Revoke all rows beyond `MAX - 1` so the table converges to MAX
+      // active rows after the upcoming insert. In the no-race case this
+      // is exactly one row (matching the prior behaviour); in a race
+      // where 6 actives slipped through, it's two rows.
+      const toRevoke = active.slice(0, active.length - (MAX_TOKENS_PER_USER - 1));
+      const now = Date.now();
+      for (const row of toRevoke) {
+        await ctx.db.patch(row._id, { revokedAt: now });
       }
     }
 

@@ -261,19 +261,30 @@ async function coerceBodyToString(body: BodyInit | null | undefined): Promise<st
   if (typeof body === 'string') return body;
   if (body instanceof Uint8Array) return new TextDecoder().decode(body);
   if (body instanceof ArrayBuffer) return new TextDecoder().decode(new Uint8Array(body));
-  // Blob / FormData / URLSearchParams / ReadableStream — punt: the caller
-  // should pre-serialize. We don't currently have any internal-MCP fetch
-  // path that uses those shapes.
   if (body instanceof URLSearchParams) return body.toString();
-  // Catch-all: assume the caller's `fetch` will JSON-stringify a plain
-  // object the same way we do. Browsers / Node WILL do this, but the
-  // pretty-print / key-order assumptions can drift — caller-side stringify
-  // is preferred.
-  try {
-    return JSON.stringify(body);
-  } catch {
-    return '';
+  // F10 (U7+U8 review pass): Blob / FormData / ReadableStream — refuse
+  // explicitly. The previous JSON.stringify catch-all silently produced
+  // wrong hashes (e.g. `JSON.stringify(formData) === '{}'`) that would
+  // 401 at the verifier with no obvious signal at the signer. Caller
+  // must pre-stringify these shapes.
+  //
+  // We use `globalThis.<X>` lookups because edge runtimes don't always
+  // expose the constructor on the global scope at module-eval time;
+  // optional chaining keeps this safe in Node test environments too.
+  const G = globalThis as { Blob?: { new (): unknown }; FormData?: { new (): unknown }; ReadableStream?: { new (): unknown } };
+  if (G.Blob && body instanceof G.Blob) {
+    throw new Error('signInternalMcpRequest: unsupported body shape (Blob); pre-stringify before signing');
   }
+  if (G.FormData && body instanceof G.FormData) {
+    throw new Error('signInternalMcpRequest: unsupported body shape (FormData); pre-stringify before signing');
+  }
+  if (G.ReadableStream && body instanceof G.ReadableStream) {
+    throw new Error('signInternalMcpRequest: unsupported body shape (ReadableStream); pre-stringify before signing');
+  }
+  // Final catch-all for plain objects passed by mistake — same loud failure.
+  // The bad-old behavior was `JSON.stringify` here; that produced silent
+  // sign/wire drift if the caller's `fetch` serialised differently.
+  throw new Error('signInternalMcpRequest: unsupported body shape; pre-stringify before signing');
 }
 
 /**
@@ -327,7 +338,12 @@ function parseSignatureHeader(value: string | null): { ts: number; sigB64u: stri
   if (value.indexOf('.', dotIdx + 1) !== -1) return null;
   const tsStr = value.slice(0, dotIdx);
   const sigB64u = value.slice(dotIdx + 1);
-  if (!/^[0-9]+$/.test(tsStr)) return null;
+  // F11 (U7+U8 review pass): bound the numeric width. `^[0-9]+$` would
+  // accept arbitrarily long inputs; future ms-precision timestamps could
+  // silently truncate through `Number()` to lose precision. 1-15 digits
+  // covers Unix seconds (10 digits today) and ms epoch (13 digits) with
+  // margin for the year-9999 boundary; rejects pathological lengths.
+  if (!/^[0-9]{1,15}$/.test(tsStr)) return null;
   // base64url charset only — `+` `/` `=` not allowed.
   if (!/^[A-Za-z0-9_-]+$/.test(sigB64u)) return null;
   const ts = Number(tsStr);

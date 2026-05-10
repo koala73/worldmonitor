@@ -123,7 +123,7 @@ describe('pro-mcp-token', () => {
   // -----------------------------------------------------------------------
 
   describe('validateProMcpToken', () => {
-    it('hits Convex on every call when the token is valid (NO positive cache)', async () => {
+    it('hits Convex on every call when the token is valid (NO positive cache) — returns ok:valid', async () => {
       const redis = makeRedisStub();
       const convex = (url) => {
         if (url.endsWith('/api/internal-validate-pro-mcp-token')) {
@@ -139,15 +139,15 @@ describe('pro-mcp-token', () => {
       const r2 = await mod.validateProMcpToken('tok_abc');
       const r3 = await mod.validateProMcpToken('tok_abc');
 
-      assert.deepEqual(r1, { userId: 'user_123' });
-      assert.deepEqual(r2, { userId: 'user_123' });
-      assert.deepEqual(r3, { userId: 'user_123' });
+      assert.deepEqual(r1, { ok: 'valid', userId: 'user_123' });
+      assert.deepEqual(r2, { ok: 'valid', userId: 'user_123' });
+      assert.deepEqual(r3, { ok: 'valid', userId: 'user_123' });
       assert.equal(stub.counts.validate, 3, 'every validate must hit Convex — no positive cache');
       // No neg-cache sentinel for a successful validate.
       assert.equal(redis.store.size, 0, 'positive validate must NOT write neg-cache');
     });
 
-    it('writes the negative-cache sentinel on null result and short-circuits subsequent calls', async () => {
+    it('returns ok:revoked + writes neg-cache sentinel on null result; short-circuits subsequent calls', async () => {
       const redis = makeRedisStub();
       let convexHits = 0;
       const convex = () => {
@@ -159,7 +159,7 @@ describe('pro-mcp-token', () => {
 
       // First call hits Convex, gets null, writes neg-cache sentinel.
       const r1 = await mod.validateProMcpToken('tok_revoked');
-      assert.equal(r1, null);
+      assert.deepEqual(r1, { ok: 'revoked' });
       assert.equal(convexHits, 1, 'first validate hits Convex');
       const sentinel = redis.store.get('pro-mcp-token-neg:tok_revoked');
       assert.ok(sentinel, 'neg-cache sentinel must be written');
@@ -169,8 +169,8 @@ describe('pro-mcp-token', () => {
       // Subsequent calls within the cache window short-circuit — Convex hit count stays at 1.
       const r2 = await mod.validateProMcpToken('tok_revoked');
       const r3 = await mod.validateProMcpToken('tok_revoked');
-      assert.equal(r2, null);
-      assert.equal(r3, null);
+      assert.deepEqual(r2, { ok: 'revoked' });
+      assert.deepEqual(r3, { ok: 'revoked' });
       assert.equal(convexHits, 1, 'subsequent validates with neg-cache present must NOT hit Convex');
     });
 
@@ -181,26 +181,26 @@ describe('pro-mcp-token', () => {
       globalThis.fetch = stub;
 
       const r = await mod.validateProMcpToken('tok_never_existed');
-      assert.equal(r, null);
+      assert.deepEqual(r, { ok: 'revoked' });
       assert.ok(redis.store.has('pro-mcp-token-neg:tok_never_existed'));
       assert.equal(stub.counts.validate, 1);
     });
 
-    it('returns null on Convex 5xx WITHOUT writing neg-cache (fail-soft, no false-poisoning)', async () => {
+    it('returns ok:transient on Convex 5xx WITHOUT writing neg-cache (fail-soft, no false-poisoning)', async () => {
       const redis = makeRedisStub();
       const convex = () => new Response('upstream blip', { status: 503 });
       const stub = makeFetchStub(redis, convex);
       globalThis.fetch = stub;
 
       const r = await mod.validateProMcpToken('tok_legit');
-      assert.equal(r, null, 'transient Convex failure → null (caller resolves to 401)');
+      assert.deepEqual(r, { ok: 'transient' }, 'transient Convex failure → ok:transient (caller decides)');
       assert.equal(
         redis.store.size, 0,
         'a transient blip must NOT write the neg-cache sentinel — that would mark a legitimate token bad for 60s',
       );
     });
 
-    it('returns null on fetch network error (e.g. timeout) and does NOT poison the neg-cache', async () => {
+    it('returns ok:transient on fetch network error (e.g. timeout) and does NOT poison the neg-cache', async () => {
       const redis = makeRedisStub();
       // Override the entire fetch — Convex calls reject; Redis stays in-memory.
       let validateAttempted = false;
@@ -215,46 +215,76 @@ describe('pro-mcp-token', () => {
       };
 
       const r = await mod.validateProMcpToken('tok_legit2');
-      assert.equal(r, null);
+      assert.deepEqual(r, { ok: 'transient' });
       assert.ok(validateAttempted, 'Convex round-trip was attempted');
       assert.equal(redis.store.size, 0, 'timeout must NOT write neg-cache');
     });
 
-    it('returns null on malformed Convex response (defensive shape check)', async () => {
+    it('returns ok:transient on malformed Convex response (defensive shape check; no neg-cache poison)', async () => {
       const redis = makeRedisStub();
       const convex = () => new Response('not json{}{', { status: 200 });
       const stub = makeFetchStub(redis, convex);
       globalThis.fetch = stub;
 
       const r = await mod.validateProMcpToken('tok_x');
-      assert.equal(r, null);
+      assert.deepEqual(r, { ok: 'transient' });
       // Malformed body is treated as a transient/unexpected failure → no
       // neg-cache write (would falsely poison a legitimate token).
       assert.equal(redis.store.size, 0);
     });
 
-    it('returns null on Convex response missing userId field', async () => {
+    it('returns ok:revoked on Convex response missing userId field (structurally not-found)', async () => {
       const redis = makeRedisStub();
       const convex = () => new Response(JSON.stringify({ unrelated: 'payload' }), { status: 200 });
       const stub = makeFetchStub(redis, convex);
       globalThis.fetch = stub;
 
       const r = await mod.validateProMcpToken('tok_y');
-      assert.equal(r, null);
+      assert.deepEqual(r, { ok: 'revoked' });
       // Missing userId is structurally equivalent to "not found" — write
       // the sentinel just like a null body.
       assert.ok(redis.store.has('pro-mcp-token-neg:tok_y'));
     });
 
-    it('returns null for empty tokenId without any fetch', async () => {
+    it('returns ok:revoked for empty tokenId without any fetch', async () => {
       let fetched = false;
       globalThis.fetch = async () => {
         fetched = true;
         throw new Error('should not fetch');
       };
       const r = await mod.validateProMcpToken('');
-      assert.equal(r, null);
+      assert.deepEqual(r, { ok: 'revoked' });
       assert.equal(fetched, false);
+    });
+  });
+
+  // -----------------------------------------------------------------------
+  // validateProMcpTokenOrNull — backward-compat wrapper (F3)
+  // -----------------------------------------------------------------------
+
+  describe('validateProMcpTokenOrNull (legacy null-shape wrapper)', () => {
+    it('maps ok:valid → {userId}', async () => {
+      const redis = makeRedisStub();
+      const convex = () => new Response(JSON.stringify({ userId: 'user_123' }), { status: 200 });
+      globalThis.fetch = makeFetchStub(redis, convex);
+      const r = await mod.validateProMcpTokenOrNull('tok_abc');
+      assert.deepEqual(r, { userId: 'user_123' });
+    });
+
+    it('maps ok:revoked → null', async () => {
+      const redis = makeRedisStub();
+      const convex = () => new Response('null', { status: 200 });
+      globalThis.fetch = makeFetchStub(redis, convex);
+      const r = await mod.validateProMcpTokenOrNull('tok_revoked');
+      assert.equal(r, null);
+    });
+
+    it('maps ok:transient → null (caller fail-closes)', async () => {
+      const redis = makeRedisStub();
+      const convex = () => new Response('blip', { status: 503 });
+      globalThis.fetch = makeFetchStub(redis, convex);
+      const r = await mod.validateProMcpTokenOrNull('tok_legit');
+      assert.equal(r, null);
     });
   });
 
@@ -480,7 +510,7 @@ describe('pro-mcp-token', () => {
 
       // Next validate must short-circuit on the sentinel.
       const r = await mod.validateProMcpToken('tok_revoke_then_validate');
-      assert.equal(r, null, 'revoked token must not validate');
+      assert.deepEqual(r, { ok: 'revoked' }, 'revoked token must not validate');
       assert.equal(validateHits, 0, 'sentinel must short-circuit Convex round-trip');
     });
 
@@ -498,13 +528,13 @@ describe('pro-mcp-token', () => {
 
       // Pre-populate the sentinel as if the token had been revoked recently.
       await mod.invalidateProMcpTokenCache('tok_zz');
-      assert.equal((await mod.validateProMcpToken('tok_zz')), null);
+      assert.deepEqual((await mod.validateProMcpToken('tok_zz')), { ok: 'revoked' });
       assert.equal(validateHits, 0, 'sentinel short-circuited');
 
       // Clear the sentinel and verify the next validate hits Convex.
       await mod.clearProMcpTokenNegCache('tok_zz');
       const r = await mod.validateProMcpToken('tok_zz');
-      assert.deepEqual(r, { userId: 'user_123' });
+      assert.deepEqual(r, { ok: 'valid', userId: 'user_123' });
       assert.equal(validateHits, 1, 'after clear, validate must round-trip Convex');
     });
   });

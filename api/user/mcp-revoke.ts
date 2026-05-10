@@ -42,6 +42,8 @@ export const config = { runtime: 'edge' };
 
 // @ts-expect-error — JS module, no declaration file
 import { getCorsHeaders } from '../_cors.js';
+// @ts-expect-error — JS module, no declaration file
+import { captureSilentError } from '../_sentry-edge.js';
 import { resolveClerkSession } from '../../server/_shared/auth-session';
 import { invalidateProMcpTokenCache } from '../../server/_shared/pro-mcp-token';
 
@@ -103,6 +105,9 @@ async function callConvexRevoke(
       '[mcp-revoke] Convex fetch failed:',
       err instanceof Error ? err.message : String(err),
     );
+    captureSilentError(err, {
+      tags: { route: 'api/user/mcp-revoke', step: 'convex-fetch' },
+    });
     return { ok: false, reason: 'network' };
   }
 
@@ -175,6 +180,9 @@ export async function revokeHandler(req: Request, deps: RevokeDeps): Promise<Res
         '[mcp-revoke] invalidateCache failed (revoke still succeeded):',
         err instanceof Error ? err.message : String(err),
       );
+      captureSilentError(err, {
+        tags: { route: 'api/user/mcp-revoke', step: 'invalidate-cache' },
+      });
     }
     return new Response(JSON.stringify({ ok: true }), { status: 200, headers: jsonHeaders });
   }

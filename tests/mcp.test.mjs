@@ -144,21 +144,19 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(body.error?.code, -32602);
   });
 
-  it('tools/call with known tool returns content block with stale:true when cache empty', async () => {
-    // No UPSTASH env → readJsonFromUpstash returns null → stale: true
+  it('tools/call with known tool returns -32603 when EVERY cache read is null (F6: cache_all_null)', async () => {
+    // F6 review pass: degenerate-empty result (Redis transient/stampede)
+    // burns Pro quota silently if not surfaced. The env_key path doesn't
+    // have a quota counter, but the throw is uniform so dispatchToolsCall's
+    // catch can fire its DECR rollback when applicable. For env_key callers
+    // this surfaces as the same -32603 as any other tool-execution failure.
     const res = await handler(makeReq('POST', {
       jsonrpc: '2.0', id: 4, method: 'tools/call',
       params: { name: 'get_market_data', arguments: {} },
     }));
     assert.equal(res.status, 200);
     const body = await res.json();
-    assert.ok(body.result?.content, 'result.content must be present');
-    assert.equal(body.result.content[0]?.type, 'text');
-    const data = JSON.parse(body.result.content[0].text);
-    assert.equal(typeof data.stale, 'boolean', 'stale field must be boolean');
-    assert.equal(data.stale, true, 'stale must be true when cache is empty');
-    assert.equal(data.cached_at, null, 'cached_at must be null when no seed-meta');
-    assert.ok('data' in data, 'data field must be present');
+    assert.equal(body.error?.code, -32603, 'all-null cache reads must surface as -32603');
   });
 
   it('evaluateFreshness marks bundled data stale when any required source meta is missing', () => {
@@ -547,6 +545,14 @@ describe('api/mcp.ts — U7 Pro-path', () => {
 
   it('happy: Pro bearer, 0 calls today, tools/call cache tool → counter at 1', async () => {
     const { deps, pipe } = makeProDeps();
+    // Stub Upstash GET responses so cache reads return non-null data —
+    // F6 review pass throws cache_all_null when every read is null, which
+    // the env-disabled stub-by-default would trigger. Provide a single
+    // non-null response so this happy-path test exercises the success
+    // branch (counter increments and stays incremented).
+    process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'stub';
+    globalThis.fetch = async () => new Response(JSON.stringify({ result: JSON.stringify({ ok: 1 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
     assert.equal(res.status, 200);
     const body = await res.json();
@@ -556,6 +562,9 @@ describe('api/mcp.ts — U7 Pro-path', () => {
 
   it('happy: Pro bearer, 49 calls today → 50th tools/call counter at 50', async () => {
     const { deps, pipe } = makeProDeps({ pipelineOpts: { initialCount: 49 } });
+    process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'stub';
+    globalThis.fetch = async () => new Response(JSON.stringify({ result: JSON.stringify({ ok: 1 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
     assert.equal(res.status, 200);
     const body = await res.json();
@@ -595,6 +604,9 @@ describe('api/mcp.ts — U7 Pro-path', () => {
 
   it('edge: 100 concurrent tools/call from Pro user at count=49 → exactly 1 succeeds, 99 reject, final counter 50', async () => {
     const { deps, pipe } = makeProDeps({ pipelineOpts: { initialCount: 49 } });
+    process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'stub';
+    globalThis.fetch = async () => new Response(JSON.stringify({ result: JSON.stringify({ ok: 1 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     const reqs = Array.from({ length: 100 }, () => mcpHandler(proReq('POST', callBody('get_market_data')), deps));
     const results = await Promise.all(reqs);
     const ok = results.filter((r) => r.status === 200).length;
@@ -675,8 +687,55 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     assert.equal(pipe.count, 0, 'no successful INCR happened');
   });
 
+  it('F12: MCP_INTERNAL_HMAC_SECRET unset on Pro path → 503 Retry-After preflight', async () => {
+    delete process.env.MCP_INTERNAL_HMAC_SECRET;
+    const { deps, pipe } = makeProDeps();
+    const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
+    assert.equal(res.status, 503, 'preflight must surface as 503');
+    assert.equal(res.headers.get('Retry-After'), '5');
+    const body = await res.json();
+    assert.equal(body.error?.code, -32603);
+    assert.equal(pipe.count, 0, 'no INCR on preflight rejection');
+  });
+
+  it('F4: post-DECR-failure overshoot → next request clamps counter back via DECR sweep', async () => {
+    // Models the failure mode: counter is pinned at 100 (50 + 50 leaked
+    // overshoot from prior DECR failures). Without F4 the user 429s for
+    // the rest of the UTC day. With F4 the next rejection-path probe
+    // sees newCount > limit + 1 and DECR-sweeps the overshoot.
+    const { deps, pipe } = makeProDeps({ pipelineOpts: { initialCount: 100 } });
+    process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'stub';
+    globalThis.fetch = async () => new Response(JSON.stringify({ result: JSON.stringify({ ok: 1 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
+    assert.equal(res.status, 429, 'over-cap request 429s as expected');
+    // The clamp logic INCRs+DECRs to probe, then DECR-sweeps. The exact
+    // resulting count depends on the probe path; the contract is "post-
+    // call counter must not exceed limit + a small probe slack".
+    assert.ok(pipe.count <= 51, `F4: counter must clamp back near limit; got ${pipe.count}`);
+  });
+
+  it('F6: cache-only tool with all-null reads → DECR rollback fires', async () => {
+    // Pro path: starting at 5, every cache read returns null → executeTool
+    // throws cache_all_null → DECR rollback runs → counter returns to 5.
+    const { deps, pipe } = makeProDeps({ pipelineOpts: { initialCount: 5 } });
+    // Stub Upstash with a result of null (genuine miss).
+    process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'stub';
+    globalThis.fetch = async () => new Response(JSON.stringify({ result: null }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
+    assert.equal(res.status, 200, 'JSON-RPC error returns HTTP 200');
+    const body = await res.json();
+    assert.equal(body.error?.code, -32603, 'cache_all_null surfaces as -32603');
+    assert.equal(pipe.count, 5, 'F6: DECR rollback ran, counter back at 5');
+  });
+
   it('happy: Starter+ env_key bearer → unaffected by daily INCR path; only 60/min sliding limit applies', async () => {
     const { deps, pipe } = makeProDeps();
+    // F6: stub cache reads so executeTool doesn't throw cache_all_null.
+    process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'stub';
+    globalThis.fetch = async () => new Response(JSON.stringify({ result: JSON.stringify({ ok: 1 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     const req = makeReq('POST', callBody('get_market_data'));
     const res = await mcpHandler(req, deps);
     assert.equal(res.status, 200);
@@ -704,6 +763,9 @@ describe('api/mcp.ts — U7 Pro-path', () => {
 
   it('edge: cache-only tool for Pro user goes through INCR/DECR path (counts toward 50/day)', async () => {
     const { deps, pipe } = makeProDeps();
+    process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'stub';
+    globalThis.fetch = async () => new Response(JSON.stringify({ result: JSON.stringify({ ok: 1 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     // get_market_data is a cache-only tool (no _execute, just executeTool)
     const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
     assert.equal(res.status, 200);
@@ -763,5 +825,54 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     const noon = new Date(Date.UTC(2026, 4, 10, 12, 0, 0));
     const s = secondsUntilUtcMidnight(noon);
     assert.equal(s, 12 * 3600);
+  });
+
+  it('F10: signInternalMcpRequest with FormData body throws (no silent JSON.stringify catch-all)', async () => {
+    const { signInternalMcpRequest } = await import(`../server/_shared/mcp-internal-hmac.ts?t=${Date.now()}`);
+    const fd = new FormData();
+    fd.append('x', '1');
+    await assert.rejects(
+      () => signInternalMcpRequest({
+        method: 'POST',
+        url: 'https://example.com/x',
+        body: fd,
+        userId: 'u',
+        secret: 'k',
+      }),
+      (err) => err instanceof Error && /unsupported body shape/i.test(err.message),
+    );
+  });
+
+  it('F10: signInternalMcpRequest with Blob body throws', async () => {
+    const { signInternalMcpRequest } = await import(`../server/_shared/mcp-internal-hmac.ts?t=${Date.now()}`);
+    const b = new Blob(['hello'], { type: 'application/octet-stream' });
+    await assert.rejects(
+      () => signInternalMcpRequest({
+        method: 'POST',
+        url: 'https://example.com/x',
+        body: b,
+        userId: 'u',
+        secret: 'k',
+      }),
+      (err) => err instanceof Error && /unsupported body shape/i.test(err.message),
+    );
+  });
+
+  it('F11: parseSignatureHeader rejects ts strings longer than 15 digits', async () => {
+    // Indirect probe via verifyInternalMcpRequest: a 16-digit ts must
+    // fail the regex and yield 401.
+    const { verifyInternalMcpRequest } = await import(`../server/_shared/mcp-internal-hmac.ts?t=${Date.now()}`);
+    const tsTooLong = '1'.repeat(16); // 16 digits — pathological
+    const req = new Request('https://example.com/x', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-WM-MCP-Internal': `${tsTooLong}.AAAA`,
+        'X-WM-MCP-User-Id': 'u',
+      },
+      body: '{}',
+    });
+    const r = await verifyInternalMcpRequest(req, 'k');
+    assert.equal(r, null, 'F11: 16-digit ts must reject');
   });
 });

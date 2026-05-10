@@ -71,6 +71,8 @@ import {
   revokeProMcpToken,
   ProMcpIssueFailed,
 } from '../../server/_shared/pro-mcp-token';
+// @ts-expect-error — JS module, no declaration file
+import { captureSilentError } from '../_sentry-edge.js';
 
 /** OAuth authorization-code TTL — matches `api/oauth/authorize.js:10`. */
 const CODE_TTL_SECONDS = 600;
@@ -439,6 +441,9 @@ export async function authorizeProHandler(req: Request, deps: AuthorizeProDeps):
         `[authorize-pro] revoke rollback unexpectedly threw for token ${issueResult.tokenId}:`,
         err instanceof Error ? err.message : String(err),
       );
+      captureSilentError(err, {
+        tags: { route: 'api/oauth/authorize-pro', step: 'rollback-revoke' },
+      });
     }
     return htmlError(
       'Server Error',

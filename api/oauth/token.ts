@@ -41,6 +41,7 @@ import { jsonResponse } from '../_json-response.js';
 // @ts-expect-error — JS module, no declaration file
 import { keyFingerprint, sha256Hex, timingSafeIncludes, verifyPkceS256 } from '../_crypto.js';
 import { validateProMcpToken } from '../../server/_shared/pro-mcp-token';
+import type { ProMcpValidateUnion } from '../../server/_shared/pro-mcp-token';
 
 export const config = { runtime: 'edge' };
 
@@ -248,7 +249,13 @@ export interface TokenHandlerDeps {
   redisGet: (key: string) => Promise<unknown | null>;
   /** Pipeline writer used by the three storeXxx writers + the sliding TTL EXPIRE. */
   redisPipeline: (commands: PipelineCommand[]) => Promise<PipelineResult[] | null>;
-  /** Convex round-trip; null = revoked / not-found / transient → caller maps to invalid_grant. */
+  /**
+   * Convex round-trip — discriminated union. Refresh-grant branches on the
+   * `ok` discriminator: `valid` rotates, `revoked` returns invalid_grant
+   * (consumes the token), `transient` restores the token to Redis and
+   * returns 503 + Retry-After (so a Convex blip doesn't force re-auth).
+   * F3 of the U7+U8 review pass.
+   */
   validateProMcpToken: typeof validateProMcpToken;
   /** Random UUID — injectable so tests can assert specific ids in the response payload. */
   randomUuid: () => string;
@@ -468,16 +475,47 @@ async function handleRefreshToken(
   const newRefreshUuid = deps.randomUuid();
 
   if (refreshData.kind === 'pro') {
-    // Re-validate the Convex `mcpProTokens` row — null = revoked / not-found
-    // / transient (per U2's fail-soft contract). All cases collapse to
-    // `invalid_grant`; we deliberately do NOT distinguish so a revoke
-    // doesn't leak vs. a transient Convex blip.
+    // F3 (U7+U8 review pass): branch on the discriminated-union result so
+    // a transient Convex blip does NOT consume the refresh token. The
+    // GETDEL above already removed the token from Redis; on `transient`
+    // we best-effort write it BACK with the original TTL and return 503,
+    // letting the client retry once Convex recovers.
     //
-    // userId-mismatch defensive check: if Convex ever returns a different
-    // user for this tokenId (impossible under U1's schema, but cheap),
-    // refuse rather than silently rotate to the wrong identity.
-    const validation = await deps.validateProMcpToken(refreshData.mcpTokenId);
-    if (!validation || validation.userId !== refreshData.userId) {
+    // userId-mismatch defensive check on the `valid` branch: if Convex
+    // ever returns a different user for this tokenId (impossible under
+    // U1's schema, but cheap), refuse rather than silently rotate to the
+    // wrong identity.
+    const validation: ProMcpValidateUnion = await deps.validateProMcpToken(refreshData.mcpTokenId);
+
+    if (validation.ok === 'transient') {
+      // Best-effort restore: the user's refresh token was just consumed
+      // by GETDEL but Convex hasn't ruled it revoked. Put it back so the
+      // next attempt can succeed once the blip clears. Failure here is
+      // accepted (the user re-authorizes; not catastrophic, just
+      // operationally noisy).
+      try {
+        await deps.redisPipeline([[
+          'SET',
+          `oauth:refresh:${refreshToken}`,
+          JSON.stringify(refreshData),
+          'EX',
+          REFRESH_TTL_SECONDS,
+        ]]);
+      } catch {
+        // Best-effort. If restore fails the user re-authorizes — same
+        // outcome as before this fix; we've not made anything worse.
+      }
+      return jsonResp(
+        { error: 'server_error', error_description: 'Auth service temporarily unavailable. Please retry.' },
+        503,
+      );
+    }
+
+    if (validation.ok === 'revoked' || validation.userId !== refreshData.userId) {
+      // Authoritatively revoked OR cross-user binding violation. The
+      // refresh token is genuinely consumed (GETDEL); collapse to
+      // `invalid_grant` so the client re-authorizes. Same opaque error
+      // copy in both cases — don't leak revoked vs. cross-user.
       return jsonResp(
         { error: 'invalid_grant', error_description: 'Refresh token is invalid, expired, or already used' },
         400,

@@ -620,3 +620,115 @@ describe('gateway internal-MCP — legacy unaffected', () => {
     }
   });
 });
+
+// ===========================================================================
+// F1, F7, F8 — review-pass fixes for the gateway internal-MCP path
+// ===========================================================================
+describe('gateway internal-MCP — F1: validUntil re-check', () => {
+  it('F1: tier-1 mcpAccess user with validUntil < now → 401 insufficient_entitlement', async () => {
+    // Override the entitlement stub to return a row with lapsed validUntil.
+    // The gateway's Convex-fallback re-check must reject — without F1 the
+    // request would propagate as authorized.
+    installFetchStub({
+      entitlement: () => ({
+        planKey: 'pro',
+        features: {
+          tier: 1, apiAccess: false, apiRateLimit: 60, maxDashboards: 10,
+          prioritySupport: false, exportFormats: [], mcpAccess: true,
+        },
+        validUntil: Date.now() - 1000, // expired 1s ago
+      }),
+    });
+    const handler = makeGateway();
+    const req = await buildSignedRequest();
+    const res = await handler(req);
+    assert.equal(res.status, 401, 'lapsed entitlement must 401 even with verified HMAC');
+    const j = await res.json();
+    assert.equal(j.error, 'insufficient_entitlement');
+    assert.equal(lastHandlerRequest, null, 'handler must NOT run when entitlement is stale');
+  });
+});
+
+describe('gateway internal-MCP — F7: HMAC headers stripped before handler sees request', () => {
+  it('handler receives no X-WM-MCP-Internal or X-WM-MCP-User-Id; only the trusted-marker pair', async () => {
+    const handler = makeGateway();
+    const req = await buildSignedRequest();
+    const res = await handler(req);
+    assert.equal(res.status, 200);
+    assert.ok(lastHandlerRequest, 'handler ran');
+    assert.equal(
+      lastHandlerRequest.headers.get(INTERNAL_MCP_SIG_HEADER),
+      null,
+      'F7: inbound HMAC sig header MUST be stripped before handler',
+    );
+    assert.equal(
+      lastHandlerRequest.headers.get(INTERNAL_MCP_USER_ID_HEADER),
+      null,
+      'F7: inbound HMAC userId header MUST be stripped before handler',
+    );
+    // Trusted markers MUST still be present — those are the gateway's
+    // outbound contract for downstream isCallerPremium checks.
+    assert.equal(
+      lastHandlerRequest.headers.get(INTERNAL_MCP_VERIFIED_HEADER),
+      VERIFIED_NONCE,
+      'F7: trusted verified marker MUST still be present',
+    );
+    assert.equal(
+      lastHandlerRequest.headers.get(TRUSTED_USER_ID_HEADER),
+      PRO_USER_ID,
+      'F7: trusted userId MUST still be present',
+    );
+  });
+});
+
+describe('gateway internal-MCP — F8: body size cap', () => {
+  it('Content-Length > 256 KB → 413 payload_too_large (HMAC-verify path)', async () => {
+    const handler = makeGateway();
+    const url = 'https://api.worldmonitor.app/api/news/v1/summarize-article';
+    // Sign a small body so the signature is shaped correctly; the gate
+    // should fire on Content-Length BEFORE verify even runs.
+    const body = JSON.stringify({ x: 1 });
+    const signed = await signInternalMcpRequest({
+      method: 'POST',
+      url,
+      body,
+      userId: PRO_USER_ID,
+      secret: HMAC_SECRET,
+    });
+    const req = new Request(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': String(4 * 1024 * 1024), // 4MB — well over the cap
+        [INTERNAL_MCP_SIG_HEADER]: signed.signature,
+        [INTERNAL_MCP_USER_ID_HEADER]: signed.userId,
+      },
+      body,
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 413, 'oversized Content-Length MUST 413');
+    const j = await res.json();
+    assert.equal(j.error, 'payload_too_large');
+    assert.equal(lastHandlerRequest, null, 'handler must NOT run on oversized body');
+  });
+
+  it('strip-only path (no HMAC) ALSO enforces the 256 KB cap', async () => {
+    const handler = makeGateway();
+    // No HMAC sig — but trust markers present trigger the strip-then-construct
+    // block, which also has the body-size guard.
+    const url = 'https://api.worldmonitor.app/api/news/v1/summarize-article';
+    const req = new Request(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Content-Length': String(4 * 1024 * 1024),
+        [INTERNAL_MCP_VERIFIED_HEADER]: '1', // attacker-injected marker → triggers strip
+      },
+      body: JSON.stringify({ x: 1 }),
+    });
+    const res = await handler(req);
+    assert.equal(res.status, 413);
+    const j = await res.json();
+    assert.equal(j.error, 'payload_too_large');
+  });
+});
