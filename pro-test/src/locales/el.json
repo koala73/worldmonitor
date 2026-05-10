@@ -52,7 +52,8 @@
     "entF9": "Εφαρμογή Android TV για τοίχους SOC και trading floors",
     "entF10": "Deployment cloud, on-premises ή air-gapped",
     "entF11": "Αφοσιωμένο onboarding και υποστήριξη",
-    "entCta": "Μιλήστε με πωλήσεις"
+    "entCta": "Μιλήστε με πωλήσεις",
+    "freeF2": "500+ ροές, 65+ πηγές, 50+ στρώματα χάρτη"
   },
   "whyUpgrade": {
     "title": "Γιατί να αναβαθμίσετε",
@@ -85,7 +86,7 @@
     "openFullScreen": "Άνοιγμα σε πλήρη οθόνη",
     "tryLiveDashboard": "Δοκιμάστε τον ζωντανό πίνακα",
     "iframeTitle": "World Monitor — Ζωντανός πίνακας intelligence",
-    "description": "3D WebGL υδρόγειος · 45+ διαδραστικά επίπεδα χάρτη · Δεδομένα αγορών, macro, γεωπολιτικής, ενέργειας και υποδομών σε πραγματικό χρόνο"
+    "description": "Σφαίρα 3D WebGL · 50+ διαδραστικά στρώματα χάρτη · Δεδομένα αγοράς, μακροοικονομικά, γεωπολιτικά, ενεργειακά και υποδομής σε πραγματικό χρόνο"
   },
   "socialProof": {
     "uniqueVisitors": "Μοναδικοί επισκέπτες",
@@ -283,7 +284,6 @@
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + webhook",
     "fMcpBulk": "+ MCP + μαζικά",
-    "f45": "45",
     "fTensOfThousands": "+ δεκάδες χιλιάδες",
     "fLiveTracking": "Ζωντανή παρακολούθηση",
     "fPassAlerts": "Ειδοποιήσεις διέλευσης + ανάλυση",
@@ -294,7 +294,8 @@
     "fStandard": "Standard",
     "fKeyAuth": "Auth με κλειδί",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
-    "noteBelow": "Η βασική πλατφόρμα παραμένει δωρεάν. Τα επί πληρωμή πλάνα ξεκλειδώνουν equity research, macro αναλυτική, AI briefings και οργανωτική χρήση."
+    "noteBelow": "Η βασική πλατφόρμα παραμένει δωρεάν. Τα επί πληρωμή πλάνα ξεκλειδώνουν equity research, macro αναλυτική, AI briefings και οργανωτική χρήση.",
+    "f50plus": "50+"
   },
   "faq": {
     "title": "Συχνές ερωτήσεις",

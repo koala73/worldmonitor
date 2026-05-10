@@ -52,7 +52,8 @@
     "entF9": "Android TV aplikace pro SOC stěny a trading floory",
     "entF10": "Cloud, on-premises nebo air-gapped nasazení",
     "entF11": "Dedikovaný onboarding a podpora",
-    "entCta": "Kontaktujte prodej"
+    "entCta": "Kontaktujte prodej",
+    "freeF2": "500+ kanálů, 65+ zdrojů, 50+ mapových vrstev"
   },
   "whyUpgrade": {
     "title": "Proč upgradovat",
@@ -85,7 +86,7 @@
     "openFullScreen": "Otevřít na celé obrazovce",
     "tryLiveDashboard": "Vyzkoušejte živý dashboard",
     "iframeTitle": "World Monitor — Živý zpravodajský dashboard",
-    "description": "3D WebGL zeměkoule · 45+ interaktivních vrstev mapy · Data trhů, makro, geopolitiky, energie a infrastruktury v reálném čase"
+    "description": "3D WebGL glóbus · 50+ interaktivních mapových vrstev · Data v reálném čase o trzích, makroekonomii, geopolitice, energetice a infrastruktuře"
   },
   "socialProof": {
     "uniqueVisitors": "Unikátní návštěvníci",
@@ -283,7 +284,6 @@
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + webhook",
     "fMcpBulk": "+ MCP + hromadné",
-    "f45": "45",
     "fTensOfThousands": "+ desítky tisíc",
     "fLiveTracking": "Živé sledování",
     "fPassAlerts": "Alerty přeletu + analýza",
@@ -294,7 +294,8 @@
     "fStandard": "Standard",
     "fKeyAuth": "Auth klíčem",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
-    "noteBelow": "Jádro platformy zůstává zdarma. Placené plány odemykají equity research, makro analytiku, AI briefingy a organizační použití."
+    "noteBelow": "Jádro platformy zůstává zdarma. Placené plány odemykají equity research, makro analytiku, AI briefingy a organizační použití.",
+    "f50plus": "50+"
   },
   "faq": {
     "title": "Často kladené otázky",

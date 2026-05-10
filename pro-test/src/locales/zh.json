@@ -52,7 +52,8 @@
     "entF9": "用于 SOC 墙和交易大厅的 Android TV 应用",
     "entF10": "云、本地或气隙部署",
     "entF11": "专属上手与支持",
-    "entCta": "联系销售"
+    "entCta": "联系销售",
+    "freeF2": "500+ 个源、65+ 个来源、50+ 个地图图层"
   },
   "whyUpgrade": {
     "title": "为什么升级",
@@ -85,7 +86,7 @@
     "openFullScreen": "全屏打开",
     "tryLiveDashboard": "试用实时仪表板",
     "iframeTitle": "World Monitor — 实时情报仪表板",
-    "description": "3D WebGL 地球 · 45+ 交互式地图图层 · 实时的市场、宏观、地缘政治、能源与基础设施数据"
+    "description": "3D WebGL 地球仪 · 50+ 个交互式地图图层 · 实时市场、宏观、地缘政治、能源和基础设施数据"
   },
   "socialProof": {
     "uniqueVisitors": "独立访客",
@@ -283,7 +284,6 @@
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + webhook",
     "fMcpBulk": "+ MCP + 批量",
-    "f45": "45",
     "fTensOfThousands": "+ 数万",
     "fLiveTracking": "实时追踪",
     "fPassAlerts": "过顶告警 + 分析",
@@ -294,7 +294,8 @@
     "fStandard": "标准",
     "fKeyAuth": "密钥鉴权",
     "fSsoMfa": "SSO/MFA/RBAC/审计",
-    "noteBelow": "核心平台保持免费。付费方案解锁股票研究、宏观分析、AI 简报与组织级使用。"
+    "noteBelow": "核心平台保持免费。付费方案解锁股票研究、宏观分析、AI 简报与组织级使用。",
+    "f50plus": "50+"
   },
   "faq": {
     "title": "常见问题",

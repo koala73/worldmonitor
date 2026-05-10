@@ -52,7 +52,8 @@
     "entF9": "SOC 벽과 트레이딩 플로어용 Android TV 앱",
     "entF10": "클라우드, 온프레미스 또는 에어갭 배포",
     "entF11": "전담 온보딩과 지원",
-    "entCta": "영업 문의"
+    "entCta": "영업 문의",
+    "freeF2": "500+ 피드, 65+ 소스, 50+ 지도 레이어"
   },
   "whyUpgrade": {
     "title": "왜 업그레이드해야 할까",
@@ -85,7 +86,7 @@
     "openFullScreen": "전체 화면으로 열기",
     "tryLiveDashboard": "라이브 대시보드 체험",
     "iframeTitle": "World Monitor — 라이브 인텔리전스 대시보드",
-    "description": "3D WebGL 지구본 · 45+ 인터랙티브 지도 레이어 · 실시간 시장, 매크로, 지정학, 에너지, 인프라 데이터"
+    "description": "3D WebGL 글로브 · 50+ 인터랙티브 지도 레이어 · 실시간 시장, 거시경제, 지정학, 에너지, 인프라 데이터"
   },
   "socialProof": {
     "uniqueVisitors": "순 방문자",
@@ -283,7 +284,6 @@
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + 웹훅",
     "fMcpBulk": "+ MCP + 벌크",
-    "f45": "45",
     "fTensOfThousands": "+ 수만 개",
     "fLiveTracking": "라이브 트래킹",
     "fPassAlerts": "통과 알림 + 분석",
@@ -294,7 +294,8 @@
     "fStandard": "표준",
     "fKeyAuth": "키 인증",
     "fSsoMfa": "SSO/MFA/RBAC/감사",
-    "noteBelow": "핵심 플랫폼은 무료로 유지. 유료 플랜은 Equity research, 매크로 분석, AI 브리핑, 조직 사용을 잠금 해제합니다."
+    "noteBelow": "핵심 플랫폼은 무료로 유지. 유료 플랜은 Equity research, 매크로 분석, AI 브리핑, 조직 사용을 잠금 해제합니다.",
+    "f50plus": "50+"
   },
   "faq": {
     "title": "자주 묻는 질문",

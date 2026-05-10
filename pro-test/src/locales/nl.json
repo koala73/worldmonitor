@@ -52,7 +52,8 @@
     "entF9": "Android TV-app voor SOC-muren en trading floors",
     "entF10": "Cloud, on-premises of air-gapped deployment",
     "entF11": "Dedicated onboarding en support",
-    "entCta": "Praat met sales"
+    "entCta": "Praat met sales",
+    "freeF2": "500+ feeds, 65+ bronnen, 50+ kaartlagen"
   },
   "whyUpgrade": {
     "title": "Waarom upgraden",
@@ -85,7 +86,7 @@
     "openFullScreen": "Open volledig scherm",
     "tryLiveDashboard": "Probeer het live dashboard",
     "iframeTitle": "World Monitor — Live Intelligence Dashboard",
-    "description": "3D WebGL-globe · 45+ interactieve kaartlagen · Realtime markt-, macro-, geopolitieke, energie- en infrastructuurdata"
+    "description": "3D WebGL-globe · 50+ interactieve kaartlagen · Real-time markt-, macro-, geopolitieke, energie- en infrastructuurgegevens"
   },
   "socialProof": {
     "uniqueVisitors": "Unieke bezoekers",
@@ -283,7 +284,6 @@
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + webhook",
     "fMcpBulk": "+ MCP + bulk",
-    "f45": "45",
     "fTensOfThousands": "+ tienduizenden",
     "fLiveTracking": "Live tracking",
     "fPassAlerts": "Passage-alerts + analyse",
@@ -294,7 +294,8 @@
     "fStandard": "Standaard",
     "fKeyAuth": "Sleutel-auth",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
-    "noteBelow": "Het kernplatform blijft gratis. Betaalde plannen ontgrendelen equity research, macro-analytics, AI-briefings en organisatiegebruik."
+    "noteBelow": "Het kernplatform blijft gratis. Betaalde plannen ontgrendelen equity research, macro-analytics, AI-briefings en organisatiegebruik.",
+    "f50plus": "50+"
   },
   "faq": {
     "title": "Veelgestelde vragen",

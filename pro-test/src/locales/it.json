@@ -52,7 +52,8 @@
     "entF9": "App Android TV per sale SOC e trading floor",
     "entF10": "Deployment cloud, on-premises o air-gapped",
     "entF11": "Onboarding e supporto dedicati",
-    "entCta": "Parla con le vendite"
+    "entCta": "Parla con le vendite",
+    "freeF2": "500+ feed, 65+ fonti, 50+ livelli mappa"
   },
   "whyUpgrade": {
     "title": "Perché fare l'upgrade",
@@ -85,7 +86,7 @@
     "openFullScreen": "Apri a schermo intero",
     "tryLiveDashboard": "Prova la dashboard live",
     "iframeTitle": "World Monitor — Dashboard di intelligence live",
-    "description": "Globo WebGL 3D · 45+ livelli di mappa interattivi · Dati real-time su mercato, macro, geopolitica, energia e infrastrutture"
+    "description": "Globo 3D WebGL · 50+ livelli mappa interattivi · Dati in tempo reale su mercati, macro, geopolitica, energia e infrastrutture"
   },
   "socialProof": {
     "uniqueVisitors": "Visitatori unici",
@@ -283,7 +284,6 @@
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + webhook",
     "fMcpBulk": "+ MCP + massivo",
-    "f45": "45",
     "fTensOfThousands": "+ decine di migliaia",
     "fLiveTracking": "Tracciamento live",
     "fPassAlerts": "Alert di passaggio + analisi",
@@ -294,7 +294,8 @@
     "fStandard": "Standard",
     "fKeyAuth": "Auth per chiave",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
-    "noteBelow": "La piattaforma di base resta gratuita. I piani a pagamento sbloccano equity research, analitica macro, briefing IA e uso organizzativo."
+    "noteBelow": "La piattaforma di base resta gratuita. I piani a pagamento sbloccano equity research, analitica macro, briefing IA e uso organizzativo.",
+    "f50plus": "50+"
   },
   "faq": {
     "title": "Domande frequenti",

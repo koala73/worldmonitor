@@ -52,7 +52,8 @@
     "entF9": "Aplikacja Android TV do ścian SOC i trading floorów",
     "entF10": "Wdrożenie w chmurze, on-premises lub air-gapped",
     "entF11": "Dedykowane wdrożenie i wsparcie",
-    "entCta": "Porozmawiaj ze sprzedażą"
+    "entCta": "Porozmawiaj ze sprzedażą",
+    "freeF2": "500+ kanałów, 65+ źródeł, 50+ warstw mapy"
   },
   "whyUpgrade": {
     "title": "Dlaczego upgrade",
@@ -85,7 +86,7 @@
     "openFullScreen": "Otwórz na pełnym ekranie",
     "tryLiveDashboard": "Wypróbuj panel na żywo",
     "iframeTitle": "World Monitor — Panel wywiadowczy na żywo",
-    "description": "Globus 3D WebGL · 45+ interaktywnych warstw mapy · Dane rynkowe, makro, geopolityczne, energetyczne i infrastrukturalne w czasie rzeczywistym"
+    "description": "3D globus WebGL · 50+ interaktywnych warstw mapy · Dane rynkowe, makroekonomiczne, geopolityczne, energetyczne i infrastrukturalne w czasie rzeczywistym"
   },
   "socialProof": {
     "uniqueVisitors": "Unikalni odwiedzający",
@@ -283,7 +284,6 @@
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + webhook",
     "fMcpBulk": "+ MCP + masowe",
-    "f45": "45",
     "fTensOfThousands": "+ dziesiątki tysięcy",
     "fLiveTracking": "Śledzenie na żywo",
     "fPassAlerts": "Alerty przelotu + analiza",
@@ -294,7 +294,8 @@
     "fStandard": "Standard",
     "fKeyAuth": "Uwierzytelnianie kluczem",
     "fSsoMfa": "SSO/MFA/RBAC/audyt",
-    "noteBelow": "Rdzeń platformy pozostaje bezpłatny. Plany płatne odblokowują equity research, analizę makro, briefy AI i użycie organizacyjne."
+    "noteBelow": "Rdzeń platformy pozostaje bezpłatny. Plany płatne odblokowują equity research, analizę makro, briefy AI i użycie organizacyjne.",
+    "f50plus": "50+"
   },
   "faq": {
     "title": "Najczęściej zadawane pytania",

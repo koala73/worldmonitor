@@ -52,7 +52,8 @@
     "entF9": "SOC duvarları ve trading floor'lar için Android TV uygulaması",
     "entF10": "Bulut, on-premises veya air-gapped deployment",
     "entF11": "Adanmış onboarding ve destek",
-    "entCta": "Satışla konuşun"
+    "entCta": "Satışla konuşun",
+    "freeF2": "500+ beslenme kaynağı, 65+ kaynak, 50+ harita katmanı"
   },
   "whyUpgrade": {
     "title": "Neden yükseltmeli",
@@ -85,7 +86,7 @@
     "openFullScreen": "Tam ekran aç",
     "tryLiveDashboard": "Canlı kontrol panelini deneyin",
     "iframeTitle": "World Monitor — Canlı istihbarat kontrol paneli",
-    "description": "3D WebGL küre · 45+ etkileşimli harita katmanı · Gerçek zamanlı piyasa, makro, jeopolitik, enerji ve altyapı verileri"
+    "description": "3D WebGL küre · 50+ etkileşimli harita katmanı · Gerçek zamanlı pazar, makro, jeopolitik, enerji ve altyapı verileri"
   },
   "socialProof": {
     "uniqueVisitors": "Benzersiz ziyaretçiler",
@@ -283,7 +284,6 @@
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + webhook",
     "fMcpBulk": "+ MCP + toplu",
-    "f45": "45",
     "fTensOfThousands": "+ on binlerce",
     "fLiveTracking": "Canlı takip",
     "fPassAlerts": "Geçiş uyarıları + analiz",
@@ -294,7 +294,8 @@
     "fStandard": "Standart",
     "fKeyAuth": "Anahtar kimlik doğrulama",
     "fSsoMfa": "SSO/MFA/RBAC/denetim",
-    "noteBelow": "Temel platform ücretsiz kalır. Ücretli planlar equity research, makro analitik, AI briflerini ve kurumsal kullanımı açar."
+    "noteBelow": "Temel platform ücretsiz kalır. Ücretli planlar equity research, makro analitik, AI briflerini ve kurumsal kullanımı açar.",
+    "f50plus": "50+"
   },
   "faq": {
     "title": "Sık sorulan sorular",

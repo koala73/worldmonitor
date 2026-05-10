@@ -52,7 +52,8 @@
     "entF9": "App para Android TV para salas SOC y salas de trading",
     "entF10": "Despliegue en la nube, on-premises o air-gapped",
     "entF11": "Onboarding y soporte dedicados",
-    "entCta": "Habla con ventas"
+    "entCta": "Habla con ventas",
+    "freeF2": "500+ feeds, 65+ fuentes, 50+ capas de mapa"
   },
   "whyUpgrade": {
     "title": "Por qué mejorar",
@@ -85,7 +86,7 @@
     "openFullScreen": "Abrir pantalla completa",
     "tryLiveDashboard": "Prueba el panel en vivo",
     "iframeTitle": "World Monitor — Panel de inteligencia en vivo",
-    "description": "Globo WebGL 3D · 45+ capas de mapa interactivas · Datos de mercados, macro, geopolítica, energía e infraestructura en tiempo real"
+    "description": "Globo 3D WebGL · 50+ capas de mapa interactivas · Datos en tiempo real de mercado, macro, geopolíticos, energéticos e infraestructura"
   },
   "socialProof": {
     "uniqueVisitors": "Visitantes únicos",
@@ -283,7 +284,6 @@
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + webhook",
     "fMcpBulk": "+ MCP + masivo",
-    "f45": "45",
     "fTensOfThousands": "+ decenas de miles",
     "fLiveTracking": "Seguimiento en vivo",
     "fPassAlerts": "Alertas de paso + análisis",
@@ -294,7 +294,8 @@
     "fStandard": "Estándar",
     "fKeyAuth": "Autenticación por clave",
     "fSsoMfa": "SSO/MFA/RBAC/auditoría",
-    "noteBelow": "La plataforma principal sigue siendo gratuita. Los planes de pago desbloquean investigación bursátil, analítica macro, resúmenes IA y uso organizacional."
+    "noteBelow": "La plataforma principal sigue siendo gratuita. Los planes de pago desbloquean investigación bursátil, analítica macro, resúmenes IA y uso organizacional.",
+    "f50plus": "50+"
   },
   "faq": {
     "title": "Preguntas frecuentes",

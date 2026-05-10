@@ -52,7 +52,8 @@
     "entF9": "SOC ウォールとトレーディングフロア向け Android TV アプリ",
     "entF10": "クラウド、オンプレミス、エアギャップ配備",
     "entF11": "専任のオンボーディングとサポート",
-    "entCta": "営業に相談する"
+    "entCta": "営業に相談する",
+    "freeF2": "500+ フィード、65+ ソース、50+ マップレイヤー"
   },
   "whyUpgrade": {
     "title": "アップグレードする理由",
@@ -85,7 +86,7 @@
     "openFullScreen": "全画面で開く",
     "tryLiveDashboard": "ライブダッシュボードを試す",
     "iframeTitle": "World Monitor — ライブ・インテリジェンス・ダッシュボード",
-    "description": "3D WebGL 地球儀 · 45 以上のインタラクティブな地図レイヤー · 市場、マクロ、地政学、エネルギー、インフラのリアルタイムデータ"
+    "description": "3D WebGL グローブ · 50+ インタラクティブマップレイヤー · リアルタイム市場、マクロ、地政学、エネルギー、インフラデータ"
   },
   "socialProof": {
     "uniqueVisitors": "ユニーク訪問者",
@@ -283,7 +284,6 @@
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + webhook",
     "fMcpBulk": "+ MCP + 一括",
-    "f45": "45",
     "fTensOfThousands": "+ 数万",
     "fLiveTracking": "ライブトラッキング",
     "fPassAlerts": "通過アラート + 分析",
@@ -294,7 +294,8 @@
     "fStandard": "標準",
     "fKeyAuth": "キー認証",
     "fSsoMfa": "SSO/MFA/RBAC/監査",
-    "noteBelow": "コアプラットフォームは無料のまま。有料プランはエクイティリサーチ、マクロアナリティクス、AI ブリーフ、組織利用をアンロック。"
+    "noteBelow": "コアプラットフォームは無料のまま。有料プランはエクイティリサーチ、マクロアナリティクス、AI ブリーフ、組織利用をアンロック。",
+    "f50plus": "50+"
   },
   "faq": {
     "title": "よくある質問",

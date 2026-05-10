@@ -123,7 +123,8 @@
     "entF9": "Android TV app for SOC walls & trading floors",
     "entF10": "Cloud, on-prem, or air-gapped deployment",
     "entF11": "Dedicated onboarding & support",
-    "entCta": "Talk to Sales"
+    "entCta": "Talk to Sales",
+    "freeF2": "500+ feeds, 65+ sources, 50+ map layers"
   },
   "whyUpgrade": {
     "title": "Why upgrade",
@@ -156,7 +157,7 @@
     "openFullScreen": "Open full screen",
     "tryLiveDashboard": "Try the Live Dashboard",
     "iframeTitle": "World Monitor — Live Intelligence Dashboard",
-    "description": "3D WebGL globe · 45+ interactive map layers · Real-time market, macro, geopolitical, energy, and infrastructure data"
+    "description": "3D WebGL globe · 50+ interactive map layers · Real-time market, macro, geopolitical, energy, and infrastructure data"
   },
   "socialProof": {
     "uniqueVisitors": "Unique visitors",
@@ -354,7 +355,6 @@
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + webhook",
     "fMcpBulk": "+ MCP + bulk",
-    "f45": "45",
     "fTensOfThousands": "+ tens of thousands",
     "fLiveTracking": "Live tracking",
     "fPassAlerts": "Pass alerts + analysis",
@@ -365,7 +365,8 @@
     "fStandard": "Standard",
     "fKeyAuth": "Key auth",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
-    "noteBelow": "The core platform remains free. Paid plans unlock equity research, macro analytics, AI briefings, and organizational use."
+    "noteBelow": "The core platform remains free. Paid plans unlock equity research, macro analytics, AI briefings, and organizational use.",
+    "f50plus": "50+"
   },
   "faq": {
     "title": "Frequently Asked Questions",

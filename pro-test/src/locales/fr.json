@@ -52,7 +52,8 @@
     "entF9": "App Android TV pour salles SOC et salles de marché",
     "entF10": "Déploiement cloud, on-premises ou air-gapped",
     "entF11": "Onboarding et support dédiés",
-    "entCta": "Contacter les ventes"
+    "entCta": "Contacter les ventes",
+    "freeF2": "500+ flux, 65+ sources, 50+ couches cartographiques"
   },
   "whyUpgrade": {
     "title": "Pourquoi passer Pro",
@@ -85,7 +86,7 @@
     "openFullScreen": "Ouvrir en plein écran",
     "tryLiveDashboard": "Essayez le tableau de bord en direct",
     "iframeTitle": "World Monitor — Tableau de bord de renseignement en direct",
-    "description": "Globe WebGL 3D · 45+ couches de carte interactives · Données marchés, macro, géopolitiques, énergie et infrastructures en temps réel"
+    "description": "Globe WebGL 3D · 50+ couches cartographiques interactives · Données de marché, macroéconomiques, géopolitiques, énergétiques et infrastructurelles en temps réel"
   },
   "socialProof": {
     "uniqueVisitors": "Visiteurs uniques",
@@ -283,7 +284,6 @@
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + webhook",
     "fMcpBulk": "+ MCP + en masse",
-    "f45": "45",
     "fTensOfThousands": "+ des dizaines de milliers",
     "fLiveTracking": "Suivi en direct",
     "fPassAlerts": "Alertes de passage + analyse",
@@ -294,7 +294,8 @@
     "fStandard": "Standard",
     "fKeyAuth": "Auth par clé",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
-    "noteBelow": "La plateforme de base reste gratuite. Les offres payantes débloquent recherche actions, analytique macro, briefings IA et usage organisationnel."
+    "noteBelow": "La plateforme de base reste gratuite. Les offres payantes débloquent recherche actions, analytique macro, briefings IA et usage organisationnel.",
+    "f50plus": "50+"
   },
   "faq": {
     "title": "Questions fréquentes",

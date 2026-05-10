@@ -52,7 +52,8 @@
     "entF9": "แอป Android TV สำหรับผนัง SOC และ trading floor",
     "entF10": "การติดตั้งคลาวด์ on-premises หรือ air-gapped",
     "entF11": "Onboarding และซัพพอร์ตโดยเฉพาะ",
-    "entCta": "คุยกับฝ่ายขาย"
+    "entCta": "คุยกับฝ่ายขาย",
+    "freeF2": "500+ feeds, 65+ sources, 50+ map layers"
   },
   "whyUpgrade": {
     "title": "ทำไมต้องอัปเกรด",
@@ -85,7 +86,7 @@
     "openFullScreen": "เปิดเต็มหน้าจอ",
     "tryLiveDashboard": "ทดลองแดชบอร์ดสด",
     "iframeTitle": "World Monitor — แดชบอร์ดข่าวกรองสด",
-    "description": "ลูกโลก 3D WebGL · ชั้นแผนที่อินเทอร์แอคทีฟ 45+ · ข้อมูลเรียลไทม์ของตลาด มหภาค ภูมิรัฐศาสตร์ พลังงาน และโครงสร้างพื้นฐาน"
+    "description": "3D WebGL globe · 50+ interactive map layers · Real-time market, macro, geopolitical, energy, and infrastructure data"
   },
   "socialProof": {
     "uniqueVisitors": "ผู้เข้าชมไม่ซ้ำ",
@@ -283,7 +284,6 @@
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + webhook",
     "fMcpBulk": "+ MCP + จำนวนมาก",
-    "f45": "45",
     "fTensOfThousands": "+ หลายหมื่น",
     "fLiveTracking": "การติดตามสด",
     "fPassAlerts": "แจ้งเตือนการผ่าน + การวิเคราะห์",
@@ -294,7 +294,8 @@
     "fStandard": "มาตรฐาน",
     "fKeyAuth": "การรับรองด้วยคีย์",
     "fSsoMfa": "SSO/MFA/RBAC/ตรวจสอบ",
-    "noteBelow": "แพลตฟอร์มหลักยังคงฟรี แผนแบบชำระเงินปลดล็อก Equity research, การวิเคราะห์มหภาค, บรีฟ AI และการใช้งานระดับองค์กร"
+    "noteBelow": "แพลตฟอร์มหลักยังคงฟรี แผนแบบชำระเงินปลดล็อก Equity research, การวิเคราะห์มหภาค, บรีฟ AI และการใช้งานระดับองค์กร",
+    "f50plus": "50+"
   },
   "faq": {
     "title": "คำถามที่พบบ่อย",

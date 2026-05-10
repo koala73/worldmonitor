@@ -52,7 +52,8 @@
     "entF9": "Android-TV-App für SOC-Wände und Trading Floors",
     "entF10": "Cloud-, On-Premises- oder Air-Gapped-Deployment",
     "entF11": "Dediziertes Onboarding und Support",
-    "entCta": "Vertrieb kontaktieren"
+    "entCta": "Vertrieb kontaktieren",
+    "freeF2": "500+ Feeds, 65+ Quellen, 50+ Kartenebenen"
   },
   "whyUpgrade": {
     "title": "Warum upgraden",
@@ -85,7 +86,7 @@
     "openFullScreen": "Vollbild öffnen",
     "tryLiveDashboard": "Live-Dashboard testen",
     "iframeTitle": "World Monitor — Live Intelligence Dashboard",
-    "description": "3D-WebGL-Globus · 45+ interaktive Kartenebenen · Echtzeit-Markt-, Makro-, Geopolitik-, Energie- und Infrastrukturdaten"
+    "description": "3D WebGL-Globe · 50+ interaktive Kartenebenen · Echtzeitdaten zu Märkten, Makroökonomie, Geopolitik, Energie und Infrastruktur"
   },
   "socialProof": {
     "uniqueVisitors": "Einzelne Besucher",
@@ -283,7 +284,6 @@
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + Webhook",
     "fMcpBulk": "+ MCP + Bulk",
-    "f45": "45",
     "fTensOfThousands": "+ zehntausende",
     "fLiveTracking": "Live-Tracking",
     "fPassAlerts": "Überflug-Alerts + Analyse",
@@ -294,7 +294,8 @@
     "fStandard": "Standard",
     "fKeyAuth": "Schlüssel-Auth",
     "fSsoMfa": "SSO/MFA/RBAC/Audit",
-    "noteBelow": "Die Kernplattform bleibt kostenlos. Bezahlpläne schalten Equity Research, Makroanalytik, KI-Briefings und organisatorische Nutzung frei."
+    "noteBelow": "Die Kernplattform bleibt kostenlos. Bezahlpläne schalten Equity Research, Makroanalytik, KI-Briefings und organisatorische Nutzung frei.",
+    "f50plus": "50+"
   },
   "faq": {
     "title": "Häufig gestellte Fragen",

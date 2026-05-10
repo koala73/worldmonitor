@@ -52,7 +52,8 @@
     "entF9": "Android TV-app för SOC-väggar och trading floors",
     "entF10": "Moln, on-premises eller air-gapped deployment",
     "entF11": "Dedikerad onboarding och support",
-    "entCta": "Prata med sälj"
+    "entCta": "Prata med sälj",
+    "freeF2": "500+ flöden, 65+ källor, 50+ kartlager"
   },
   "whyUpgrade": {
     "title": "Varför uppgradera",
@@ -85,7 +86,7 @@
     "openFullScreen": "Öppna helskärm",
     "tryLiveDashboard": "Prova live-dashboarden",
     "iframeTitle": "World Monitor — Live Intelligence Dashboard",
-    "description": "3D WebGL-jordglob · 45+ interaktiva kartlager · Realtidsdata för marknader, makro, geopolitik, energi och infrastruktur"
+    "description": "3D WebGL-glob · 50+ interaktiva kartlager · Realtidsdata för marknader, makroekonomi, geopolitik, energi och infrastruktur"
   },
   "socialProof": {
     "uniqueVisitors": "Unika besökare",
@@ -283,7 +284,6 @@
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + webhook",
     "fMcpBulk": "+ MCP + bulk",
-    "f45": "45",
     "fTensOfThousands": "+ tiotusentals",
     "fLiveTracking": "Live-spårning",
     "fPassAlerts": "Passagelarm + analys",
@@ -294,7 +294,8 @@
     "fStandard": "Standard",
     "fKeyAuth": "Nyckel-auth",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
-    "noteBelow": "Kärnplattformen förblir gratis. Betalplaner låser upp equity research, makroanalys, AI-briefingar och organisatorisk användning."
+    "noteBelow": "Kärnplattformen förblir gratis. Betalplaner låser upp equity research, makroanalys, AI-briefingar och organisatorisk användning.",
+    "f50plus": "50+"
   },
   "faq": {
     "title": "Vanliga frågor",

@@ -52,7 +52,8 @@
     "entF9": "Aplicație Android TV pentru pereți SOC și trading floor-uri",
     "entF10": "Deployment cloud, on-premises sau air-gapped",
     "entF11": "Onboarding și suport dedicate",
-    "entCta": "Vorbește cu vânzările"
+    "entCta": "Vorbește cu vânzările",
+    "freeF2": "500+ feeds, 65+ surse, 50+ straturi de hartă"
   },
   "whyUpgrade": {
     "title": "De ce să faci upgrade",
@@ -85,7 +86,7 @@
     "openFullScreen": "Deschide pe ecran complet",
     "tryLiveDashboard": "Încearcă panoul live",
     "iframeTitle": "World Monitor — Panou live de intelligence",
-    "description": "Glob WebGL 3D · 45+ straturi de hartă interactive · Date piețe, macro, geopolitice, energie și infrastructură în timp real"
+    "description": "Glob WebGL 3D · 50+ straturi de hartă interactive · Date în timp real despre piață, macroeconomie, geopolitică, energie și infrastructură"
   },
   "socialProof": {
     "uniqueVisitors": "Vizitatori unici",
@@ -283,7 +284,6 @@
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + webhook",
     "fMcpBulk": "+ MCP + în masă",
-    "f45": "45",
     "fTensOfThousands": "+ zeci de mii",
     "fLiveTracking": "Urmărire live",
     "fPassAlerts": "Alerte trecere + analiză",
@@ -294,7 +294,8 @@
     "fStandard": "Standard",
     "fKeyAuth": "Auth cu cheie",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
-    "noteBelow": "Platforma de bază rămâne gratuită. Planurile plătite deblochează equity research, analitică macro, briefinguri IA și utilizare organizațională."
+    "noteBelow": "Platforma de bază rămâne gratuită. Planurile plătite deblochează equity research, analitică macro, briefinguri IA și utilizare organizațională.",
+    "f50plus": "50+"
   },
   "faq": {
     "title": "Întrebări frecvente",
