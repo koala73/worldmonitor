@@ -6,7 +6,8 @@
     "enterprise": "Enterprise",
     "reserveAccess": "얼리 액세스 예약",
     "signIn": "로그인",
-    "upgradeToPro": "Pro로 업그레이드"
+    "upgradeToPro": "Pro로 업그레이드",
+    "goToDashboard": "대시보드로 이동"
   },
   "hero": {
     "noiseWord": "노이즈",
@@ -18,7 +19,8 @@
     "emailPlaceholder": "이메일 입력",
     "emailAriaLabel": "대기자 명단용 이메일 주소",
     "choosePlan": "플랜 선택",
-    "signIn": "로그인"
+    "signIn": "로그인",
+    "goToDashboard": "대시보드로 이동"
   },
   "wired": {
     "asFeaturedIn": "소개된 매체"
@@ -354,5 +356,11 @@
     "youreIn": "참여 완료!",
     "invitedBanner": "초대되었습니다 — 대기자 명단에 참여"
   },
-  "soonBadge": "출시 예정"
+  "soonBadge": "출시 예정",
+  "meta": {
+    "title": "World Monitor Pro — AI 분석가, 개인 인텔리전스 데스크, Claude & GPT용 MCP",
+    "description": "지정학적 AI 레이어. 질문하고, 구독하고, 구축하세요. WM Analyst 채팅(30개 이상의 라이브 서비스), 일일/주 2회/주간 AI 다이제스트(Slack, Discord, Telegram, Email, webhook 배송), 커스텀 위젯 빌더(HTML/CSS/JS + AI), Claude/GPT/커스텀 LLM용 MCP 커넥터.",
+    "ogTitle": "World Monitor Pro — 지정학적 AI 레이어",
+    "ogDescription": "질문하고, 구독하고, 구축하세요. WM Analyst 채팅, 맞춤형 AI 다이제스트(일일/주 2회/주간), 커스텀 위젯 빌더, Claude/GPT용 MCP — 하나의 키로 30개 이상의 라이브 서비스 통합."
+  }
 }

@@ -6,7 +6,8 @@
     "enterprise": "Enterprise",
     "reserveAccess": "早期アクセスを予約",
     "signIn": "サインイン",
-    "upgradeToPro": "Pro にアップグレード"
+    "upgradeToPro": "Pro にアップグレード",
+    "goToDashboard": "ダッシュボードに移動"
   },
   "hero": {
     "noiseWord": "ノイズ",
@@ -18,7 +19,8 @@
     "emailPlaceholder": "メールアドレスを入力",
     "emailAriaLabel": "ウェイトリスト用メールアドレス",
     "choosePlan": "プランを選ぶ",
-    "signIn": "サインイン"
+    "signIn": "サインイン",
+    "goToDashboard": "ダッシュボードに移動"
   },
   "wired": {
     "asFeaturedIn": "掲載媒体"
@@ -354,5 +356,11 @@
     "youreIn": "参加完了!",
     "invitedBanner": "招待されました — ウェイトリストに参加"
   },
-  "soonBadge": "近日公開"
+  "soonBadge": "近日公開",
+  "meta": {
+    "title": "World Monitor Pro — AI Analyst、パーソナルインテリジェンスデスク、Claude & GPT用MCP",
+    "description": "地政学的AIレイヤー。質問して、購読して、構築して。WM Analyst チャット（30以上のライブサービス対応）、AI ダイジェスト（毎日、1日2回、または週1回の配信）を Slack、Discord、Telegram、Email、またはウェブフックで受信、カスタムウィジェットビルダー（HTML/CSS/JS + AI）、および Claude、GPT、カスタム LLM 用の MCP コネクタ。",
+    "ogTitle": "World Monitor Pro — 地政学的AIレイヤー",
+    "ogDescription": "質問して、購読して、構築して。WM Analyst チャット、AI ダイジェスト（毎日、1日2回、または週1回のスケジュール配信）、カスタムウィジェットビルダー、および Claude/GPT 用 MCP — 1つのキーで30以上のライブサービスに対応。"
+  }
 }

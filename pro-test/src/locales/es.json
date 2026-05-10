@@ -6,7 +6,8 @@
     "enterprise": "Enterprise",
     "reserveAccess": "Reserva tu acceso anticipado",
     "signIn": "Iniciar sesión",
-    "upgradeToPro": "Mejorar a Pro"
+    "upgradeToPro": "Mejorar a Pro",
+    "goToDashboard": "Ir al Panel"
   },
   "hero": {
     "noiseWord": "Ruido",
@@ -18,7 +19,8 @@
     "emailPlaceholder": "Introduce tu correo",
     "emailAriaLabel": "Correo electrónico para la lista de espera",
     "choosePlan": "Elige tu plan",
-    "signIn": "Iniciar sesión"
+    "signIn": "Iniciar sesión",
+    "goToDashboard": "Ir al Panel"
   },
   "wired": {
     "asFeaturedIn": "Destacado en"
@@ -354,5 +356,11 @@
     "youreIn": "¡Estás dentro!",
     "invitedBanner": "Te han invitado — únete a la lista de espera"
   },
-  "soonBadge": "Próximamente"
+  "soonBadge": "Próximamente",
+  "meta": {
+    "title": "World Monitor Pro — Analista de IA, Centro de Inteligencia Personal, MCP para Claude y GPT",
+    "description": "La capa de IA geopolítica. Pregúntale, suscríbete, construye sobre ella. Chat WM Analyst en 30+ servicios en directo, un resumen de IA entregado diariamente, dos veces al día o semanalmente en Slack, Discord, Telegram, correo electrónico o webhook, un constructor de widgets personalizado (HTML/CSS/JS + IA) y conectores MCP para Claude, GPT y LLMs personalizados.",
+    "ogTitle": "World Monitor Pro — La Capa de IA Geopolítica",
+    "ogDescription": "Pregúntale, suscríbete, construye sobre ella. Chat WM Analyst, un resumen de IA según tu horario (diario, dos veces al día o semanal), constructor de widgets personalizado y MCP para Claude/GPT — en 30+ servicios en directo bajo una única clave."
+  }
 }

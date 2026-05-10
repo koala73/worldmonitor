@@ -6,7 +6,8 @@
     "enterprise": "Enterprise",
     "reserveAccess": "Sichern Sie Ihren Early Access",
     "signIn": "Anmelden",
-    "upgradeToPro": "Upgrade auf Pro"
+    "upgradeToPro": "Upgrade auf Pro",
+    "goToDashboard": "Zum Dashboard"
   },
   "hero": {
     "noiseWord": "Rauschen",
@@ -18,7 +19,8 @@
     "emailPlaceholder": "E-Mail eingeben",
     "emailAriaLabel": "E-Mail-Adresse für die Warteliste",
     "choosePlan": "Tarif wählen",
-    "signIn": "Anmelden"
+    "signIn": "Anmelden",
+    "goToDashboard": "Zum Dashboard"
   },
   "wired": {
     "asFeaturedIn": "Berichtet in"
@@ -354,5 +356,11 @@
     "youreIn": "Sie sind dabei!",
     "invitedBanner": "Sie wurden eingeladen — treten Sie der Warteliste bei"
   },
-  "soonBadge": "Bald"
+  "soonBadge": "Bald",
+  "meta": {
+    "title": "World Monitor Pro — AI-Analyst, Personal Intelligence Desk, MCP für Claude & GPT",
+    "description": "Die geopolitische AI-Schicht. Frag sie ab, abonniere sie, baue darauf auf. WM Analyst Chat über 30+ Live-Services, ein täglich, zweimal täglich oder wöchentlich an Slack, Discord, Telegram, E-Mail oder Webhook gelieferter AI-Digest, ein Custom-Widget-Builder (HTML/CSS/JS + AI) und MCP-Konnektoren für Claude, GPT und Custom-LLMs.",
+    "ogTitle": "World Monitor Pro — Die geopolitische AI-Schicht",
+    "ogDescription": "Frag sie ab, abonniere sie, baue darauf auf. WM Analyst Chat, ein AI-Digest nach deinem Zeitplan (täglich, zweimal täglich oder wöchentlich), Custom-Widget-Builder und MCP für Claude/GPT — über 30+ Live-Services unter einem Key."
+  }
 }

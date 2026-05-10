@@ -6,7 +6,8 @@
     "enterprise": "Enterprise",
     "reserveAccess": "Réservez votre accès anticipé",
     "signIn": "Se connecter",
-    "upgradeToPro": "Passer à Pro"
+    "upgradeToPro": "Passer à Pro",
+    "goToDashboard": "Aller au Tableau de Bord"
   },
   "hero": {
     "noiseWord": "Bruit",
@@ -18,7 +19,8 @@
     "emailPlaceholder": "Entrez votre e-mail",
     "emailAriaLabel": "Adresse e-mail pour la liste d'attente",
     "choosePlan": "Choisissez votre offre",
-    "signIn": "Se connecter"
+    "signIn": "Se connecter",
+    "goToDashboard": "Aller au Tableau de Bord"
   },
   "wired": {
     "asFeaturedIn": "Mis en avant dans"
@@ -354,5 +356,11 @@
     "youreIn": "Vous êtes dedans !",
     "invitedBanner": "Vous avez été invité — rejoignez la liste d'attente"
   },
-  "soonBadge": "Bientôt"
+  "soonBadge": "Bientôt",
+  "meta": {
+    "title": "World Monitor Pro — Analyste IA, Bureau d'Intelligence Personnelle, MCP pour Claude & GPT",
+    "description": "La couche IA géopolitique. Posez-lui des questions, abonnez-vous, construisez dessus. Discussion WM Analyst à travers 30+ services en direct, un digest IA livré quotidiennement, deux fois par jour ou hebdomadairement à Slack, Discord, Telegram, Email ou webhook, un générateur de widget personnalisé (HTML/CSS/JS + IA), et connecteurs MCP pour Claude, GPT et LLMs personnalisés.",
+    "ogTitle": "World Monitor Pro — La Couche IA Géopolitique",
+    "ogDescription": "Posez des questions, abonnez-vous, construisez dessus. Discussion WM Analyst, un digest IA selon votre horaire (quotidien, deux fois par jour ou hebdomadaire), générateur de widget personnalisé, et MCP pour Claude/GPT — à travers 30+ services en direct sous une seule clé."
+  }
 }

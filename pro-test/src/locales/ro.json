@@ -6,7 +6,8 @@
     "enterprise": "Enterprise",
     "reserveAccess": "Rezervă-ți accesul anticipat",
     "signIn": "Autentificare",
-    "upgradeToPro": "Upgrade la Pro"
+    "upgradeToPro": "Upgrade la Pro",
+    "goToDashboard": "Accesați tabloul de bord"
   },
   "hero": {
     "noiseWord": "Zgomot",
@@ -18,7 +19,8 @@
     "emailPlaceholder": "Introdu e-mailul",
     "emailAriaLabel": "Adresă de e-mail pentru lista de așteptare",
     "choosePlan": "Alege planul",
-    "signIn": "Autentificare"
+    "signIn": "Autentificare",
+    "goToDashboard": "Accesați tabloul de bord"
   },
   "wired": {
     "asFeaturedIn": "Apărut în"
@@ -354,5 +356,11 @@
     "youreIn": "Ești înăuntru!",
     "invitedBanner": "Ai fost invitat — alătură-te listei de așteptare"
   },
-  "soonBadge": "În curând"
+  "soonBadge": "În curând",
+  "meta": {
+    "title": "World Monitor Pro — AI Analyst, Personal Intelligence Desk, MCP pentru Claude & GPT",
+    "description": "Stratul geopolitic AI. Întrebați-l, abonați-vă la el, construiți pe el. WM Analyst chat în 30+ servicii live, un rezumat AI livrat zilnic, de două ori pe zi sau săptămânal către Slack, Discord, Telegram, Email sau webhook, un constructor de widget-uri personalizat (HTML/CSS/JS + AI) și conectori MCP pentru Claude, GPT și LLM-uri personalizate.",
+    "ogTitle": "World Monitor Pro — Stratul Geopolitic AI",
+    "ogDescription": "Întrebați-l, abonați-vă la el, construiți pe el. WM Analyst chat, un rezumat AI după programul dvs. (zilnic, de două ori pe zi sau săptămânal), constructor de widget-uri personalizat și MCP pentru Claude/GPT — în 30+ servicii live sub o singură cheie."
+  }
 }

@@ -6,7 +6,8 @@
     "enterprise": "Enterprise",
     "reserveAccess": "Rezervujte si raný přístup",
     "signIn": "Přihlásit se",
-    "upgradeToPro": "Upgrade na Pro"
+    "upgradeToPro": "Upgrade na Pro",
+    "goToDashboard": "Přejít na Ovládací panel"
   },
   "hero": {
     "noiseWord": "Šum",
@@ -18,7 +19,8 @@
     "emailPlaceholder": "Zadejte e-mail",
     "emailAriaLabel": "E-mailová adresa pro čekací listinu",
     "choosePlan": "Vyberte plán",
-    "signIn": "Přihlásit se"
+    "signIn": "Přihlásit se",
+    "goToDashboard": "Přejít na Ovládací panel"
   },
   "wired": {
     "asFeaturedIn": "Zmíněno v"
@@ -354,5 +356,11 @@
     "youreIn": "Jste uvnitř!",
     "invitedBanner": "Byli jste pozváni — připojte se k čekací listině"
   },
-  "soonBadge": "Brzy"
+  "soonBadge": "Brzy",
+  "meta": {
+    "title": "World Monitor Pro — AI analytik, osobní inteligentní plocha, MCP pro Claude a GPT",
+    "description": "Geopolitická vrstva AI. Ptejte se na ni, přihlaste se k ní, vytvářejte na ní. Chat WM Analyst přes 30+ živých služeb, denní, dvakrát denní nebo týdenní AI přehled doručovaný do Slack, Discord, Telegram, Email nebo webhooku, vlastní tvůrce widgetů (HTML/CSS/JS + AI) a MCP konektory pro Claude, GPT a vlastní LLM.",
+    "ogTitle": "World Monitor Pro — Geopolitická vrstva AI",
+    "ogDescription": "Ptejte se na ni, přihlaste se k ní, vytvářejte na ní. Chat WM Analyst, AI přehled podle vašeho harmonogramu (denně, dvakrát denně nebo týdně), vlastní tvůrce widgetů a MCP pro Claude/GPT — přes 30+ živých služeb pod jedním klíčem."
+  }
 }

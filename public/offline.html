@@ -18,9 +18,28 @@
 </head>
 <body>
   <div class="c">
-    <h1>You're Offline</h1>
-    <p>World Monitor requires an internet connection for real-time intelligence data.</p>
-    <button onclick="location.reload()">Retry</button>
+    <h1 id="t-title">You're Offline</h1>
+    <p id="t-msg">World Monitor requires an internet connection for real-time intelligence data.</p>
+    <button id="t-retry" onclick="location.reload()">Retry</button>
   </div>
+  <script>
+    // Self-contained translations — the SW serves this page with no JS bundle,
+    // so we can't reuse i18next. Locale picked from i18next-browser-languagedetector's
+    // localStorage cache (same key the main app writes).
+    (function(){
+      var T = {
+        en: { title: "You're Offline", msg: "World Monitor requires an internet connection for real-time intelligence data.", retry: "Retry" }
+      };
+      try {
+        var l = (localStorage.getItem('i18nextLng') || navigator.language || 'en').split('-')[0].toLowerCase();
+        var d = T[l] || T.en;
+        document.documentElement.lang = l;
+        document.title = 'World Monitor — ' + d.title;
+        document.getElementById('t-title').textContent = d.title;
+        document.getElementById('t-msg').textContent = d.msg;
+        document.getElementById('t-retry').textContent = d.retry;
+      } catch (e) { /* keep English defaults */ }
+    })();
+  </script>
 </body>
 </html>

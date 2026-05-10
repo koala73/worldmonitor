@@ -1,4 +1,10 @@
 {
+  "meta": {
+    "title": "World Monitor Pro — AI Analyst, Personal Intelligence Desk, MCP for Claude & GPT",
+    "description": "The geopolitical AI layer. Ask it, subscribe to it, build on it. WM Analyst chat across 30+ live services, an AI digest delivered daily, twice-daily, or weekly to Slack, Discord, Telegram, Email, or webhook, a custom widget builder (HTML/CSS/JS + AI), and MCP connectors for Claude, GPT, and custom LLMs.",
+    "ogTitle": "World Monitor Pro — The Geopolitical AI Layer",
+    "ogDescription": "Ask it, subscribe to it, build on it. WM Analyst chat, an AI digest on your schedule (daily, twice-daily, or weekly), custom widget builder, and MCP for Claude/GPT — across 30+ live services under one key."
+  },
   "nav": {
     "free": "Free",
     "pro": "Pro",

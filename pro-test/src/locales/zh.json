@@ -6,7 +6,8 @@
     "enterprise": "Enterprise",
     "reserveAccess": "预订早鸟访问",
     "signIn": "登录",
-    "upgradeToPro": "升级到 Pro"
+    "upgradeToPro": "升级到 Pro",
+    "goToDashboard": "转到仪表板"
   },
   "hero": {
     "noiseWord": "噪音",
@@ -18,7 +19,8 @@
     "emailPlaceholder": "输入您的邮箱",
     "emailAriaLabel": "等候名单邮箱地址",
     "choosePlan": "选择方案",
-    "signIn": "登录"
+    "signIn": "登录",
+    "goToDashboard": "转到仪表板"
   },
   "wired": {
     "asFeaturedIn": "被报道于"
@@ -354,5 +356,11 @@
     "youreIn": "您已入列!",
     "invitedBanner": "您已被邀请 — 加入等候名单"
   },
-  "soonBadge": "即将推出"
+  "soonBadge": "即将推出",
+  "meta": {
+    "title": "World Monitor Pro — AI 分析师、个人智能助手、Claude & GPT 的 MCP",
+    "description": "地缘政治 AI 层。提问、订阅、构建。WM Analyst 聊天支持 30+ 个实时服务，AI 摘要按日、两次日或周频率投送至 Slack、Discord、Telegram、Email 或 webhook，自定义小部件构建器（HTML/CSS/JS + AI），以及 Claude、GPT 和自定义 LLM 的 MCP 连接器。",
+    "ogTitle": "World Monitor Pro — 地缘政治 AI 层",
+    "ogDescription": "提问、订阅、构建。WM Analyst 聊天、按您的时间表（日、两次日或周）投送的 AI 摘要、自定义小部件构建器，以及 Claude/GPT 的 MCP — 跨 30+ 个实时服务，一个密钥管理。"
+  }
 }
