@@ -332,7 +332,7 @@ import { createCircuitBreaker } from '@/utils';
 
 export type { WeatherStation };
 
-const client = new WeatherServiceClient('', { fetch: fetch.bind(globalThis) });
+const client = new WeatherServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
 const breaker = createCircuitBreaker<ListWeatherStationsResponse>({ name: 'Weather' });
 
 const emptyFallback: ListWeatherStationsResponse = { stations: [] };
@@ -440,13 +440,13 @@ This ensures the compiler catches any mismatch between your implementation and t
 
 ### Client construction
 
-Always pass `{ fetch: fetch.bind(globalThis) }` when creating clients:
+Always pass `{ fetch: (...args) => globalThis.fetch(...args) }` when creating clients:
 
 ```typescript
-const client = new WeatherServiceClient('', { fetch: fetch.bind(globalThis) });
+const client = new WeatherServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
 ```
 
-The empty string base URL works because both Vite dev server and Vercel serve the API on the same origin. The `fetch.bind(globalThis)` is required for Tauri compatibility.
+The empty string base URL works because both Vite dev server and Vercel serve the API on the same origin. The arrow-function wrapper around `globalThis.fetch` is required for Tauri compatibility AND for the runtime fetch interceptor — `fetch.bind(globalThis)` is **banned** because it freezes a reference to the global `fetch` at module-init time, which bypasses any later interceptor (auth headers, request logging, retry shims) installed on `globalThis.fetch`. The arrow-function wrapper resolves `globalThis.fetch` on every call.
 
 ## Generated documentation
 
