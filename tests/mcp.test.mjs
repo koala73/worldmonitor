@@ -440,3 +440,328 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.deepEqual(data.disruptions, []);
   });
 });
+
+// ===========================================================================
+// U7 — Pro-path: McpAuthContext, INCR-first daily quota, internal-HMAC tool fetches
+// ===========================================================================
+
+const PRO_USER_ID = 'user_pro_xyz';
+const PRO_TOKEN_ID = 'k57mcptokenid';
+const PRO_BEARER = 'pro-bearer-uuid';
+const HMAC_SECRET = 'test-secret-mcp-internal-32-bytes-1234';
+
+/** Create a mock pipeline impl over an in-memory map for the daily counter. */
+function makePipelineMock({ initialCount = 0, throwOnIncr = false, decrFails = false } = {}) {
+  const store = new Map();
+  // Pre-seed via INCR-equivalent so newCount math lines up.
+  if (initialCount > 0) store.set('seed', initialCount);
+  let counter = initialCount;
+  const ops = [];
+  const pipeline = async (commands) => {
+    ops.push(commands);
+    if (throwOnIncr && commands.some((c) => c[0] === 'INCR')) {
+      throw new Error('redis pipeline failed');
+    }
+    if (decrFails && commands.some((c) => c[0] === 'DECR')) {
+      throw new Error('redis decr failed');
+    }
+    const out = [];
+    for (const cmd of commands) {
+      if (cmd[0] === 'INCR') {
+        counter += 1;
+        out.push({ result: counter });
+      } else if (cmd[0] === 'DECR') {
+        counter = Math.max(0, counter - 1);
+        out.push({ result: counter });
+      } else if (cmd[0] === 'EXPIRE') {
+        out.push({ result: 1 });
+      } else {
+        out.push({ result: null });
+      }
+    }
+    return out;
+  };
+  return {
+    pipeline,
+    ops,
+    get count() { return counter; },
+  };
+}
+
+function makeProDeps(overrides = {}) {
+  const pipe = makePipelineMock(overrides.pipelineOpts ?? {});
+  return {
+    deps: {
+      resolveBearerToContext: overrides.resolveBearerToContext ?? (async (token) => {
+        if (token === PRO_BEARER) return { kind: 'pro', userId: PRO_USER_ID, mcpTokenId: PRO_TOKEN_ID };
+        return null;
+      }),
+      validateProMcpToken: overrides.validateProMcpToken ?? (async (id) => {
+        if (id === PRO_TOKEN_ID) return { userId: PRO_USER_ID };
+        return null;
+      }),
+      getEntitlements: overrides.getEntitlements ?? (async () => ({
+        planKey: 'pro',
+        features: { tier: 1, mcpAccess: true },
+        validUntil: Date.now() + 86_400_000,
+      })),
+      redisPipeline: pipe.pipeline,
+    },
+    pipe,
+  };
+}
+
+function proReq(method = 'POST', body = null, headers = {}) {
+  return new Request(BASE_URL, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${PRO_BEARER}`,
+      ...headers,
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+}
+
+function callBody(toolName, args = {}, id = 100) {
+  return { jsonrpc: '2.0', id, method: 'tools/call', params: { name: toolName, arguments: args } };
+}
+
+describe('api/mcp.ts — U7 Pro-path', () => {
+  let mcpHandler;
+  beforeEach(async () => {
+    process.env.WORLDMONITOR_VALID_KEYS = VALID_KEY;
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    process.env.MCP_INTERNAL_HMAC_SECRET = HMAC_SECRET;
+    const mod = await import(`../api/mcp.ts?t=${Date.now()}`);
+    mcpHandler = mod.mcpHandler;
+  });
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    Object.keys(process.env).forEach((k) => {
+      if (!(k in originalEnv)) delete process.env[k];
+    });
+    Object.assign(process.env, originalEnv);
+  });
+
+  it('happy: Pro bearer, 0 calls today, tools/call cache tool → counter at 1', async () => {
+    const { deps, pipe } = makeProDeps();
+    const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.ok(body.result?.content, 'must return tool result');
+    assert.equal(pipe.count, 1, 'counter at 1 after first call');
+  });
+
+  it('happy: Pro bearer, 49 calls today → 50th tools/call counter at 50', async () => {
+    const { deps, pipe } = makeProDeps({ pipelineOpts: { initialCount: 49 } });
+    const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.ok(body.result?.content, '50th call must succeed');
+    assert.equal(pipe.count, 50);
+  });
+
+  it('happy: Pro bearer, 50 calls today → 51st tools/call rejected with -32029 + 429 + Retry-After, counter back at 50', async () => {
+    const { deps, pipe } = makeProDeps({ pipelineOpts: { initialCount: 50 } });
+    const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
+    assert.equal(res.status, 429);
+    assert.ok(res.headers.get('Retry-After'), 'Retry-After header required');
+    const body = await res.json();
+    assert.equal(body.error?.code, -32029);
+    assert.equal(pipe.count, 50, 'DECR rolled back to 50');
+  });
+
+  it('edge: initialize and tools/list for Pro user with counter at 50 → no INCR/DECR runs', async () => {
+    const { deps, pipe } = makeProDeps({ pipelineOpts: { initialCount: 50 } });
+    const r1 = await mcpHandler(proReq('POST', initBody(1)), deps);
+    assert.equal(r1.status, 200);
+    const r2 = await mcpHandler(proReq('POST', { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }), deps);
+    assert.equal(r2.status, 200);
+    assert.equal(pipe.count, 50, 'counter unchanged for non-tools/call methods');
+    assert.equal(pipe.ops.length, 0, 'no pipeline ops for initialize/tools/list');
+  });
+
+  it('edge: tools/call that throws (upstream non-2xx) for Pro at count=10 → counter back at 10', async () => {
+    const { deps, pipe } = makeProDeps({ pipelineOpts: { initialCount: 10 } });
+    globalThis.fetch = async () => new Response('Service Unavailable', { status: 503 });
+    const res = await mcpHandler(proReq('POST', callBody('get_country_risk', { country_code: 'US' })), deps);
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.error?.code, -32603);
+    assert.equal(pipe.count, 10, 'DECR rolled back to 10');
+  });
+
+  it('edge: 100 concurrent tools/call from Pro user at count=49 → exactly 1 succeeds, 99 reject, final counter 50', async () => {
+    const { deps, pipe } = makeProDeps({ pipelineOpts: { initialCount: 49 } });
+    const reqs = Array.from({ length: 100 }, () => mcpHandler(proReq('POST', callBody('get_market_data')), deps));
+    const results = await Promise.all(reqs);
+    const ok = results.filter((r) => r.status === 200).length;
+    const rejected = results.filter((r) => r.status === 429).length;
+    assert.equal(ok, 1, 'exactly 1 must succeed');
+    assert.equal(rejected, 99, 'exactly 99 must hit -32029');
+    assert.ok(pipe.count <= 50, `counter must be <= 50, got ${pipe.count}`);
+  });
+
+  it('edge: best-effort DECR fails on cap-exceeded → counter overshoots, never undershoots', async () => {
+    const { deps, pipe } = makeProDeps({ pipelineOpts: { initialCount: 50, decrFails: true } });
+    const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
+    assert.equal(res.status, 429);
+    assert.ok(pipe.count >= 50, 'counter must not undershoot the floor');
+  });
+
+  it('error: Pro bearer with revoked mcpProTokens row → -32001 + 401, no INCR runs', async () => {
+    const { deps, pipe } = makeProDeps({ validateProMcpToken: async () => null });
+    const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
+    assert.equal(res.status, 401);
+    const body = await res.json();
+    assert.equal(body.error?.code, -32001);
+    assert.match(body.error.message, /revoked/i);
+    assert.equal(pipe.count, 0);
+    assert.equal(pipe.ops.length, 0);
+  });
+
+  it('error: cross-user binding violation (validate userId !== bearer userId) → 401', async () => {
+    const { deps } = makeProDeps({ validateProMcpToken: async () => ({ userId: 'user_someone_else' }) });
+    const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
+    assert.equal(res.status, 401);
+    const body = await res.json();
+    assert.equal(body.error?.code, -32001);
+  });
+
+  it('error: getEntitlements null → -32001 + 401', async () => {
+    const { deps, pipe } = makeProDeps({ getEntitlements: async () => null });
+    const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
+    assert.equal(res.status, 401);
+    const body = await res.json();
+    assert.equal(body.error?.code, -32001);
+    assert.equal(pipe.count, 0);
+  });
+
+  it('error: getEntitlements throws → -32001 + 401 (fail-closed)', async () => {
+    const { deps } = makeProDeps({ getEntitlements: async () => { throw new Error('convex down'); } });
+    const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
+    assert.equal(res.status, 401);
+    const body = await res.json();
+    assert.equal(body.error?.code, -32001);
+  });
+
+  it('error: tier 0 → -32001 + 401', async () => {
+    const { deps } = makeProDeps({
+      getEntitlements: async () => ({ planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: Date.now() + 86_400_000 }),
+    });
+    const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
+    assert.equal(res.status, 401);
+    const body = await res.json();
+    assert.equal(body.error?.code, -32001);
+  });
+
+  it('error: tier 1 but mcpAccess false → -32001 + 401', async () => {
+    const { deps } = makeProDeps({
+      getEntitlements: async () => ({ planKey: 'pro', features: { tier: 1, mcpAccess: false }, validUntil: Date.now() + 86_400_000 }),
+    });
+    const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
+    assert.equal(res.status, 401);
+  });
+
+  it('error: Redis pipeline throws on INCR → -32603 + 503 + Retry-After', async () => {
+    const { deps, pipe } = makeProDeps({ pipelineOpts: { throwOnIncr: true } });
+    const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
+    assert.equal(res.status, 503);
+    assert.equal(res.headers.get('Retry-After'), '5');
+    const body = await res.json();
+    assert.equal(body.error?.code, -32603);
+    assert.equal(pipe.count, 0, 'no successful INCR happened');
+  });
+
+  it('happy: Starter+ env_key bearer → unaffected by daily INCR path; only 60/min sliding limit applies', async () => {
+    const { deps, pipe } = makeProDeps();
+    const req = makeReq('POST', callBody('get_market_data'));
+    const res = await mcpHandler(req, deps);
+    assert.equal(res.status, 200);
+    assert.equal(pipe.count, 0, 'env_key path must NOT touch daily counter');
+    assert.equal(pipe.ops.length, 0);
+  });
+
+  it('edge: Pro tool _execute fetch sends X-WM-MCP-Internal + X-WM-MCP-User-Id, no X-WorldMonitor-Key', async () => {
+    const { deps } = makeProDeps();
+    let captured = null;
+    globalThis.fetch = async (url, init) => {
+      captured = { url: String(url), headers: new Headers(init?.headers) };
+      return new Response(JSON.stringify({ ok: true, country_code: 'US' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    };
+    const res = await mcpHandler(proReq('POST', callBody('get_country_risk', { country_code: 'US' })), deps);
+    assert.equal(res.status, 200);
+    assert.ok(captured, 'fetch was called');
+    assert.ok(captured.headers.get('x-wm-mcp-internal'), 'X-WM-MCP-Internal must be set');
+    assert.equal(captured.headers.get('x-wm-mcp-user-id'), PRO_USER_ID);
+    assert.equal(captured.headers.get('x-worldmonitor-key'), null, 'X-WorldMonitor-Key must NOT be set for Pro');
+    // Signature shape: <ts>.<base64url>
+    const sig = captured.headers.get('x-wm-mcp-internal');
+    assert.match(sig, /^\d{10}\.[A-Za-z0-9_-]+$/, 'signature must be <ts>.<base64url-sig>');
+  });
+
+  it('edge: cache-only tool for Pro user goes through INCR/DECR path (counts toward 50/day)', async () => {
+    const { deps, pipe } = makeProDeps();
+    // get_market_data is a cache-only tool (no _execute, just executeTool)
+    const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
+    assert.equal(res.status, 200);
+    assert.equal(pipe.count, 1, 'cache-only tool incremented quota');
+  });
+
+  it('integration: signed header for /api/news/v1/list-feed-digest cannot be replayed against /api/intelligence/v1/deduct-situation', async () => {
+    const { signInternalMcpRequest, hmacSha256Base64Url, canonicalQueryString, sha256Hex, buildHmacPayload } = await import(`../server/_shared/mcp-internal-hmac.ts?t=${Date.now()}`);
+    // Sign for digest endpoint.
+    const signed = await signInternalMcpRequest({
+      method: 'GET',
+      url: 'https://worldmonitor.app/api/news/v1/list-feed-digest?lang=en&variant=geo',
+      body: null,
+      userId: PRO_USER_ID,
+      secret: HMAC_SECRET,
+    });
+    // Re-construct the payload that would be expected for the SAME ts on a different path.
+    const replayUrl = new URL('https://worldmonitor.app/api/intelligence/v1/deduct-situation');
+    const replayPayload = buildHmacPayload({
+      ts: signed.ts,
+      method: 'POST',
+      pathname: replayUrl.pathname,
+      queryHash: await sha256Hex(canonicalQueryString(replayUrl)),
+      bodyHash: await sha256Hex(JSON.stringify({ query: 'attacker' })),
+      userId: PRO_USER_ID,
+    });
+    const replayExpected = await hmacSha256Base64Url(HMAC_SECRET, replayPayload);
+    const replayActual = signed.signature.split('.')[1];
+    assert.notEqual(replayActual, replayExpected, 'captured signature must NOT verify for the replay target — payload binds method+pathname+body');
+  });
+
+  it('canonicalQueryString sorts keys lexicographically — ?a=1&b=2 and ?b=2&a=1 produce identical canonical form', async () => {
+    const { canonicalQueryString } = await import(`../server/_shared/mcp-internal-hmac.ts?t=${Date.now()}`);
+    const a = canonicalQueryString('?a=1&b=2');
+    const b = canonicalQueryString('?b=2&a=1');
+    assert.equal(a, b, 'reordered query → identical canonical form');
+    assert.equal(a, 'a=1&b=2');
+  });
+
+  it('canonicalQueryString URL-encodes values', async () => {
+    const { canonicalQueryString } = await import(`../server/_shared/mcp-internal-hmac.ts?t=${Date.now()}`);
+    const c = canonicalQueryString('?q=hello world&special=a%2Fb');
+    // Spaces become %20, existing %2F is decoded then re-encoded the same.
+    assert.match(c, /q=hello%20world/);
+    assert.match(c, /special=a%2Fb/);
+  });
+
+  it('dailyCounterKey is UTC-stable across timezones', async () => {
+    const { dailyCounterKey } = await import(`../server/_shared/pro-mcp-token.ts?t=${Date.now()}`);
+    const utc = new Date(Date.UTC(2026, 4, 10, 12, 0, 0));
+    const k = dailyCounterKey('user_x', utc);
+    assert.equal(k, 'mcp:pro-usage:user_x:2026-05-10');
+  });
+
+  it('secondsUntilUtcMidnight returns a positive Δ to next 00:00Z', async () => {
+    const { secondsUntilUtcMidnight } = await import(`../server/_shared/pro-mcp-token.ts?t=${Date.now()}`);
+    const noon = new Date(Date.UTC(2026, 4, 10, 12, 0, 0));
+    const s = secondsUntilUtcMidnight(noon);
+    assert.equal(s, 12 * 3600);
+  });
+});

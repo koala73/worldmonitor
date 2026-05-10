@@ -370,3 +370,52 @@ export async function clearProMcpTokenNegCache(tokenId: string): Promise<void> {
   if (!tokenId) return;
   await deleteRedisKey(negCacheKey(tokenId), /* raw */ true);
 }
+
+// ---------------------------------------------------------------------------
+// Daily quota counter — single-source-of-truth key shape
+// ---------------------------------------------------------------------------
+
+/**
+ * Redis key shape for the Pro daily-quota INCR/DECR counter.
+ *
+ * U7 (api/mcp.ts) writes via INCR-first reservation on every `tools/call`.
+ * U9 (api/user/mcp-quota.ts) reads the same key for the settings UI.
+ * BOTH MUST CALL THIS HELPER — drift between writer and reader produces
+ * silent UI-vs-enforcement disagreement (the failure mode this helper exists
+ * to prevent).
+ *
+ * Date is UTC YYYY-MM-DD. The fixed UTC midnight rollover is documented in
+ * the plan ("Daily window — sliding or fixed? R: Fixed UTC midnight via
+ * single Redis INCR counter for predictable reset and clean UI copy.").
+ *
+ * @param userId Clerk userId. Empty / falsy → returns "" (caller should
+ *               never reach the INCR path with no userId, but the empty-
+ *               key fail-soft mirrors the rest of this module).
+ * @param date   Optional Date for test injection; defaults to `new Date()`.
+ */
+export function dailyCounterKey(userId: string, date?: Date): string {
+  if (!userId) return '';
+  const d = date ?? new Date();
+  const yyyy = d.getUTCFullYear();
+  const mm = String(d.getUTCMonth() + 1).padStart(2, '0');
+  const dd = String(d.getUTCDate()).padStart(2, '0');
+  return `mcp:pro-usage:${userId}:${yyyy}-${mm}-${dd}`;
+}
+
+/**
+ * Seconds remaining until the next UTC midnight — used for the
+ * `Retry-After` header on -32029 quota-exceeded responses.
+ */
+export function secondsUntilUtcMidnight(now?: Date): number {
+  const d = now ?? new Date();
+  const next = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1, 0, 0, 0, 0));
+  return Math.max(1, Math.ceil((next.getTime() - d.getTime()) / 1000));
+}
+
+/** Hard cap per UTC day for Pro MCP `tools/call`s. Plan default. */
+export const PRO_DAILY_QUOTA_LIMIT = 50;
+
+/** TTL on the daily counter Redis key. 48h covers UTC-midnight rollover plus
+ *  inspection window (operators can poke at yesterday's value through ~midday
+ *  the next UTC day before the EXPIRE evicts it). */
+export const PRO_DAILY_QUOTA_TTL_SECONDS = 172_800;
