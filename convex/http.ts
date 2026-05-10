@@ -52,6 +52,37 @@ async function timingSafeEqualStrings(a: string, b: string): Promise<boolean> {
   return diff === 0;
 }
 
+/**
+ * Extract a stable error `code` from a thrown ConvexError.
+ *
+ * Convex's runtime serializes `error.data` to a JSON string before re-throwing
+ * across the function boundary (see registration_impl::serializeConvexErrorData),
+ * so by the time an http action's catch block sees the error, `err.data` is a
+ * JSON-encoded string. Both shapes are handled:
+ *   - `throw new ConvexError("PRO_REQUIRED")`  → data = '"PRO_REQUIRED"' → "PRO_REQUIRED"
+ *   - `throw new ConvexError({code: "X", ...})` → data = '{"code":"X",…}'  → "X"
+ */
+function extractConvexErrorCode(err: unknown): string | null {
+  const raw = (err as { data?: unknown } | undefined)?.data;
+  if (typeof raw !== "string") {
+    if (raw && typeof raw === "object" && "code" in (raw as Record<string, unknown>)) {
+      return String((raw as Record<string, unknown>).code);
+    }
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (typeof parsed === "string") return parsed;
+    if (parsed && typeof parsed === "object" && "code" in parsed) {
+      return String((parsed as Record<string, unknown>).code);
+    }
+    return null;
+  } catch {
+    // Not JSON — treat the raw string as the code itself.
+    return raw;
+  }
+}
+
 const http = httpRouter();
 
 http.route({
@@ -892,6 +923,223 @@ http.route({
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
+  }),
+});
+
+// ---------------------------------------------------------------------------
+// Pro MCP token routes (service-to-service, x-convex-shared-secret auth).
+// Called by the Vercel edge (api/oauth/authorize-pro, api/mcp.ts, settings).
+// See plan U1 / docs/plans/2026-05-10-001-feat-pro-mcp-clerk-auth-quota-plan.md
+// ---------------------------------------------------------------------------
+
+http.route({
+  path: "/api/internal-issue-pro-mcp-token",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const providedSecret = request.headers.get("x-convex-shared-secret") ?? "";
+    const expectedSecret = process.env.CONVEX_SERVER_SHARED_SECRET ?? "";
+    if (!expectedSecret || !(await timingSafeEqualStrings(providedSecret, expectedSecret))) {
+      return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    let body: { userId?: unknown; clientId?: unknown; name?: unknown };
+    try {
+      body = await request.json() as typeof body;
+    } catch {
+      return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    if (typeof body.userId !== "string" || body.userId.length === 0) {
+      return new Response(JSON.stringify({ error: "MISSING_USER_ID" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    try {
+      const result = await ctx.runMutation(
+        (internal as any).mcpProTokens.issueProMcpToken,
+        {
+          userId: body.userId,
+          clientId: typeof body.clientId === "string" ? body.clientId : undefined,
+          name: typeof body.name === "string" ? body.name : undefined,
+        },
+      );
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch (err: unknown) {
+      const code = extractConvexErrorCode(err);
+      if (code === "PRO_REQUIRED") {
+        return new Response(JSON.stringify({ error: "PRO_REQUIRED" }), {
+          status: 403,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (code === "INVALID_USER_ID") {
+        return new Response(JSON.stringify({ error: "INVALID_USER_ID" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      throw err;
+    }
+  }),
+});
+
+http.route({
+  path: "/api/internal-validate-pro-mcp-token",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const providedSecret = request.headers.get("x-convex-shared-secret") ?? "";
+    const expectedSecret = process.env.CONVEX_SERVER_SHARED_SECRET ?? "";
+    if (!expectedSecret || !(await timingSafeEqualStrings(providedSecret, expectedSecret))) {
+      return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    let body: { tokenId?: unknown };
+    try {
+      body = await request.json() as typeof body;
+    } catch {
+      return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    if (typeof body.tokenId !== "string" || body.tokenId.length === 0) {
+      return new Response(JSON.stringify({ error: "MISSING_TOKEN_ID" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    try {
+      const result = await ctx.runQuery(
+        (internal as any).mcpProTokens.validateProMcpToken,
+        { tokenId: body.tokenId },
+      );
+
+      if (result) {
+        try {
+          await ctx.scheduler.runAfter(
+            0,
+            (internal as any).mcpProTokens.touchProMcpTokenLastUsed,
+            { tokenId: body.tokenId },
+          );
+        } catch (err) {
+          // sentry-coverage-ok: best-effort lastUsedAt bump; mirrors the
+          // touchKeyLastUsed pattern in /api/internal-validate-api-key.
+          console.warn(
+            "[validate-pro-mcp-token] touch schedule failed:",
+            err instanceof Error ? err.message : String(err),
+          );
+        }
+      }
+
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch (err: unknown) {
+      // Convex `v.id("mcpProTokens")` validator rejects malformed ids with
+      // a runtime error — surface as null (caller treats as "no such token")
+      // instead of 500-ing the gateway.
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("ArgumentValidationError") || msg.includes("not a valid id")) {
+        return new Response(JSON.stringify(null), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      throw err;
+    }
+  }),
+});
+
+http.route({
+  path: "/api/internal-revoke-pro-mcp-token",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const providedSecret = request.headers.get("x-convex-shared-secret") ?? "";
+    const expectedSecret = process.env.CONVEX_SERVER_SHARED_SECRET ?? "";
+    if (!expectedSecret || !(await timingSafeEqualStrings(providedSecret, expectedSecret))) {
+      return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    let body: { userId?: unknown; tokenId?: unknown };
+    try {
+      body = await request.json() as typeof body;
+    } catch {
+      return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    if (typeof body.userId !== "string" || body.userId.length === 0) {
+      return new Response(JSON.stringify({ error: "MISSING_USER_ID" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (typeof body.tokenId !== "string" || body.tokenId.length === 0) {
+      return new Response(JSON.stringify({ error: "MISSING_TOKEN_ID" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // Service-to-service revoke. The shared secret + supplied userId is the
+    // tenancy gate (the user-facing /api/v1/mcp-pro-tokens revoke endpoint
+    // re-validates ownership through requireUserId in the public mutation).
+    // This route bypasses requireUserId because the edge caller is trusted
+    // (e.g. authorize-pro rolling back an aborted issue).
+    try {
+      const result = await ctx.runMutation(
+        (internal as any).mcpProTokens.internalRevokeProMcpToken,
+        { userId: body.userId, tokenId: body.tokenId },
+      );
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch (err: unknown) {
+      const code = extractConvexErrorCode(err);
+      if (code === "NOT_FOUND") {
+        return new Response(JSON.stringify({ error: "NOT_FOUND" }), {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (code === "ALREADY_REVOKED") {
+        return new Response(JSON.stringify({ error: "ALREADY_REVOKED" }), {
+          status: 409,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("ArgumentValidationError") || msg.includes("not a valid id")) {
+        return new Response(JSON.stringify({ error: "NOT_FOUND" }), {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      throw err;
+    }
   }),
 });
 
