@@ -23066,6 +23066,191 @@ body.map-width-resizing {
   margin-bottom: 6px;
 }
 
+/* ---- Connected MCP clients (Pro tier) ---- */
+
+.mcp-clients-section {
+  padding: 16px 0;
+}
+
+.mcp-clients-desc {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin: 0 0 16px;
+  line-height: 1.5;
+}
+
+.mcp-clients-header {
+  margin-bottom: 12px;
+}
+
+.mcp-clients-quota {
+  font-size: 12px;
+  color: var(--text);
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mcp-clients-quota-label {
+  font-weight: 600;
+}
+
+.mcp-clients-quota-reset {
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.mcp-clients-quota-loading {
+  font-size: 12px;
+  color: var(--text-dim);
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  text-align: center;
+}
+
+.mcp-clients-error {
+  font-size: 12px;
+  color: var(--semantic-critical);
+  margin-bottom: 8px;
+}
+
+.mcp-clients-loading {
+  font-size: 12px;
+  color: var(--text-dim);
+  padding: 16px 0;
+  text-align: center;
+}
+
+.mcp-clients-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mcp-clients-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.mcp-clients-item.revoked {
+  opacity: 0.5;
+}
+
+.mcp-clients-item-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mcp-clients-item-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mcp-clients-item-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--text-dim);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.mcp-clients-item-revoked-badge {
+  color: var(--semantic-critical);
+  font-weight: 600;
+}
+
+.mcp-clients-revoke-btn {
+  font-size: 12px;
+  padding: 4px 10px;
+  color: var(--semantic-critical);
+  flex-shrink: 0;
+}
+
+.mcp-clients-revoke-btn:hover {
+  background: color-mix(in srgb, var(--semantic-critical) 10%, transparent);
+}
+
+.mcp-clients-revoked-section {
+  margin-top: 16px;
+}
+
+.mcp-clients-revoked-label {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 6px;
+}
+
+.mcp-clients-empty {
+  padding: 16px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mcp-clients-empty-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.mcp-clients-empty-desc {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
+.mcp-clients-empty-url {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-content: center;
+  margin-top: 4px;
+  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', monospace;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--surface);
+  padding: 6px 10px;
+  border-radius: 4px;
+  user-select: all;
+  word-break: break-all;
+}
+
+.mcp-clients-copy-url-btn {
+  font-size: 11px;
+  padding: 4px 10px;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.mcp-clients-copy-url-btn:hover {
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
 /* ---- Energy Crisis Panel ---- */
 
 .ecp-container {
