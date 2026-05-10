@@ -748,11 +748,11 @@ export default async function handler(req, ctx) {
       const lastFailureRaw = results?.[0]?.result;
       const failureLogRaw = results?.[1]?.result;
       const body = {
-        lastFailure: typeof lastFailureRaw === 'string' ? parseJson(lastFailureRaw) : null,
+        lastFailure: parseJson(lastFailureRaw),
         failureLog: Array.isArray(failureLogRaw)
           ? failureLogRaw.map(parseJson).filter((e) => e !== null)
           : [],
-        checkedAt: new Date(Date.now()).toISOString(),
+        checkedAt: new Date().toISOString(),
       };
       return new Response(JSON.stringify(body, null, 2), { status: 200, headers });
     }
