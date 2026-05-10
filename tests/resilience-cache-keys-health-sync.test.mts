@@ -200,9 +200,10 @@ describe('resilience cache-key health-registry sync (T1.9)', () => {
     // scripts/seed-bundle-resilience.mjs is what the section's
     // skip-gate uses, but the OUTER Railway cron schedule
     // (`0 */6 * * *`) determines how often the bundle fires at all.
-    // Real cadence = 6h. 720 = 12h staleness = 2 missed cron ticks
-    // (project convention: 2× cadence; matches resilienceRanking
-    // immediately above, written by the SAME cron section).
+    // Real cadence = 6h. 840 ≈ 14h staleness ≈ 2.33× cadence:
+    // tolerates 1 missed tick (12h gap) + ~2h deploy-window jitter;
+    // alerts at 2 missed ticks (18h gap). Matches resilienceRanking
+    // immediately above (written by the SAME Resilience-Scores section).
     //
     // Prior values (audit trail):
     //   20160 (14d, 168× cadence) — silent during real outage.
@@ -283,8 +284,28 @@ describe('resilience cache-key health-registry sync (T1.9)', () => {
         maxStale <= 1080,
         `resilienceIntervals.maxStaleMin (${maxStale}) must be <= 1080 (3× the real 6h cadence); ` +
         `looser values mask real upstream outages from the alerting threshold — ` +
-        `the 2026-04-27 incident's 14d (20160) setting hid an 11h outage. The standard ` +
-        `project convention is 2× cadence (720 here, matching resilienceRanking).`,
+        `the 2026-04-27 incident's 14d (20160) setting hid an 11h outage. The current ` +
+        `project value is 840 (≈2.33× cadence, matches resilienceRanking).`,
+      );
+    });
+
+    // Greptile PR #3652 review P2 — value-pin parity for resilienceRanking.
+    // api/health.js:380-381 explicitly notes both keys must stay in sync
+    // ("written by the SAME Resilience-Scores section"). Without this
+    // assertion, a future one-off edit to resilienceRanking would silently
+    // diverge from resilienceIntervals and bypass the test contract.
+    it('resilienceRanking.maxStaleMin matches resilienceIntervals (same Resilience-Scores cron writes both)', () => {
+      const intervalsBudget = extractMaxStaleMin('resilienceIntervals');
+      const rankingBudget = extractMaxStaleMin('resilienceRanking');
+      assert.equal(
+        rankingBudget,
+        intervalsBudget,
+        `resilienceRanking.maxStaleMin (${rankingBudget}) MUST equal ` +
+        `resilienceIntervals.maxStaleMin (${intervalsBudget}). Both keys are ` +
+        `written by the SAME seed-resilience-scores cron section ` +
+        `(refreshRankingAggregate runs alongside the interval write), so a ` +
+        `divergence would mean one alerts while the other stays green on ` +
+        `the same underlying signal — see api/health.js:380 comment.`,
       );
     });
   });
