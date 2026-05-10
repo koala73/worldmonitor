@@ -238,6 +238,13 @@ export default defineSchema({
     pendingExportAt: v.optional(v.number()),
     pendingBroadcastId: v.optional(v.string()),
     pendingBroadcastAt: v.optional(v.number()),
+    // Locale filter switch — when true, pickWaveAction excludes
+    // contacts whose `users.localePrimary` (or email-TLD heuristic
+    // fallback) is non-English. Optional + missing-reads-as-false on
+    // the config — existing ramp rows that pre-date this feature
+    // continue with byte-identical behavior. Operator opts in via
+    // `initRamp({excludeNonEnglish: true})`.
+    excludeNonEnglish: v.optional(v.boolean()),
   }).index("by_key", ["key"]),
 
   // ────────────────────────────────────────────────────────────────────────
@@ -309,6 +316,15 @@ export default defineSchema({
     //   'persist-failed'               → mid-loop _persistPickedBatch failed → operator inspects + discards
     failureSubstatus: v.optional(v.string()),
     error: v.optional(v.string()),
+    // Pool-filter audit fields (added 2026-05-10 alongside `users` table +
+    // `excludeNonEnglish` flag). Populated by pickWaveAction's pool selection
+    // step so any past wave's filter behavior is auditable from the
+    // `waveRuns` row alone — no log archaeology required. Optional so
+    // pre-existing rows pass schema validation.
+    excludeNonEnglish: v.optional(v.boolean()),
+    eligiblePoolCount: v.optional(v.number()),
+    excludedCount: v.optional(v.number()),
+    excludedLocaleCounts: v.optional(v.record(v.string(), v.number())),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -434,6 +450,35 @@ export default defineSchema({
     .index("by_userId", ["userId"])
     .index("by_dodoCustomerId", ["dodoCustomerId"])
     .index("by_normalized_email", ["normalizedEmail"]),
+
+  // Canonical per-Clerk-user record. Populated on first authenticated session
+  // by client → `users:ensureRecord` (see convex/users.ts). Distinct from
+  // `customers` (which is paid-only, populated by Dodo subscription webhook):
+  // `users` covers EVERY Clerk-authenticated user, free or paid. Holds
+  // operational properties used for product personalization and broadcast
+  // audience filtering — locale, timezone, country, first/last seen.
+  //
+  // ⚠️ Authority of `country`: client-reported (derived from a `cf-ipcountry`
+  // cookie or similar). NOT authoritative. Do NOT use for compliance, geo-
+  // gating, or anything where a malicious client could spoof a different
+  // country to gain or evade something. Server-side derivation (Vercel edge
+  // wrapper reading `cf-ipcountry` from the actual request headers) is a
+  // future v2 concern; v1 just stores what the client passes for analytics
+  // use only.
+  users: defineTable({
+    userId: v.string(), // Clerk userId; primary identifier
+    email: v.optional(v.string()), // Server-derived from ctx.auth.getUserIdentity()
+    normalizedEmail: v.optional(v.string()), // Lowercased mirror of email; joined against registrations
+    localeTag: v.optional(v.string()), // Full BCP 47 tag (e.g. "zh-CN", "en-US"); kept for future analytics
+    localePrimary: v.optional(v.string()), // Lowercased primary subtag (e.g. "zh", "en"); broadcast filter target
+    timezone: v.optional(v.string()), // IANA zone (e.g. "Asia/Shanghai")
+    country: v.optional(v.string()), // ISO 3166-1 alpha-2; CLIENT-REPORTED — see warning above
+    firstSeenAt: v.number(),
+    lastSeenAt: v.number(),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_normalizedEmail", ["normalizedEmail"])
+    .index("by_localePrimary", ["localePrimary"]),
 
   webhookEvents: defineTable({
     webhookId: v.string(),

@@ -891,3 +891,81 @@ describe("runDailyRamp — pendingRunId guard (PR2 review-fix 7)", () => {
     await t.finishInProgressScheduledFunctions().catch(() => {});
   });
 });
+
+// ----------------------------------------------------------------------------
+// excludeNonEnglish — opt-in locale filter wiring
+// ----------------------------------------------------------------------------
+
+describe("excludeNonEnglish — initRamp opt-in storage + getRampStatus exposure", () => {
+  test("initRamp({excludeNonEnglish: true}) stores true; getRampStatus reflects it", async () => {
+    const t = convexTest(schema, modules);
+    await t.mutation(internal.broadcast.rampRunner.initRamp, {
+      rampCurve: [1000],
+      waveLabelPrefix: "test-wave",
+      excludeNonEnglish: true,
+    });
+    const status = await t.query(
+      internal.broadcast.rampRunner.getRampStatus,
+      {},
+    );
+    expect(status.configured).toBe(true);
+    expect(status.excludeNonEnglish).toBe(true);
+  });
+
+  test("initRamp({excludeNonEnglish: false}) stores false; round-trips", async () => {
+    const t = convexTest(schema, modules);
+    await t.mutation(internal.broadcast.rampRunner.initRamp, {
+      rampCurve: [1000],
+      waveLabelPrefix: "test-wave",
+      excludeNonEnglish: false,
+    });
+    const status = await t.query(
+      internal.broadcast.rampRunner.getRampStatus,
+      {},
+    );
+    expect(status.excludeNonEnglish).toBe(false);
+  });
+
+  test("initRamp without excludeNonEnglish arg → defaults to false (NEVER silently true)", async () => {
+    const t = convexTest(schema, modules);
+    await t.mutation(internal.broadcast.rampRunner.initRamp, {
+      rampCurve: [1000],
+      waveLabelPrefix: "test-wave",
+      // no excludeNonEnglish
+    });
+    const status = await t.query(
+      internal.broadcast.rampRunner.getRampStatus,
+      {},
+    );
+    expect(status.excludeNonEnglish).toBe(false);
+  });
+
+  test("backwards compat — pre-existing config row missing field reads as false", async () => {
+    const t = convexTest(schema, modules);
+    // seedRampConfig doesn't pass excludeNonEnglish — simulates a row
+    // written before this feature shipped.
+    await seedRampConfig(t);
+    const status = await t.query(
+      internal.broadcast.rampRunner.getRampStatus,
+      {},
+    );
+    expect(status.excludeNonEnglish).toBe(false);
+  });
+
+  test("abortRamp + initRamp({excludeNonEnglish: true}) cycle works", async () => {
+    const t = convexTest(schema, modules);
+    await seedRampConfig(t);
+    await t.mutation(internal.broadcast.rampRunner.abortRamp, {});
+    await t.mutation(internal.broadcast.rampRunner.initRamp, {
+      rampCurve: [1000],
+      waveLabelPrefix: "test-wave",
+      excludeNonEnglish: true,
+    });
+    const status = await t.query(
+      internal.broadcast.rampRunner.getRampStatus,
+      {},
+    );
+    expect(status.configured).toBe(true);
+    expect(status.excludeNonEnglish).toBe(true);
+  });
+});

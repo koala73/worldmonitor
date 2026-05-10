@@ -10,6 +10,8 @@
 
 import type * as alertRules from "../alertRules.js";
 import type * as apiKeys from "../apiKeys.js";
+import type * as broadcast__localeHeuristic from "../broadcast/_localeHeuristic.js";
+import type * as broadcast__poolSelection from "../broadcast/_poolSelection.js";
 import type * as broadcast__resendContacts from "../broadcast/_resendContacts.js";
 import type * as broadcast_audienceExport from "../broadcast/audienceExport.js";
 import type * as broadcast_audienceWaveExport from "../broadcast/audienceWaveExport.js";
@@ -45,6 +47,7 @@ import type * as registerInterest from "../registerInterest.js";
 import type * as resendWebhookHandler from "../resendWebhookHandler.js";
 import type * as telegramPairingTokens from "../telegramPairingTokens.js";
 import type * as userPreferences from "../userPreferences.js";
+import type * as users from "../users.js";
 
 import type {
   ApiFromModules,
@@ -55,6 +58,8 @@ import type {
 declare const fullApi: ApiFromModules<{
   alertRules: typeof alertRules;
   apiKeys: typeof apiKeys;
+  "broadcast/_localeHeuristic": typeof broadcast__localeHeuristic;
+  "broadcast/_poolSelection": typeof broadcast__poolSelection;
   "broadcast/_resendContacts": typeof broadcast__resendContacts;
   "broadcast/audienceExport": typeof broadcast_audienceExport;
   "broadcast/audienceWaveExport": typeof broadcast_audienceWaveExport;
@@ -90,6 +95,7 @@ declare const fullApi: ApiFromModules<{
   resendWebhookHandler: typeof resendWebhookHandler;
   telegramPairingTokens: typeof telegramPairingTokens;
   userPreferences: typeof userPreferences;
+  users: typeof users;
 }>;
 
 /**
