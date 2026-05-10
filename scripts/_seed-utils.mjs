@@ -293,7 +293,9 @@ export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds, 
       return { payloadBytes, recordCount: Array.isArray(data) ? data.length : null };
     },
     2,    // 2 retries (3 attempts total) — sufficient for transient blips
-    1000, // 1s base delay; exponential → 1s, 2s, 4s = ~7s worst case before re-attempt
+    1000, // 1s base delay; exponential backoff → 1s + 2s = ~3s worst-case
+          // cumulative wait between attempts. Plus per-attempt fetch time
+          // (15s timeout each) means total worst-case before propagating ≈ 48s.
   );
 }
 
