@@ -64,7 +64,9 @@ export type RequestReason =
   | 'preflight'
   | 'auth_401'
   | 'auth_403'
-  | 'tier_403';
+  | 'tier_403'
+  | 'unknown_route'
+  | 'method_not_allowed';
 
 export interface RequestEvent {
   _time: string;

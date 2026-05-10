@@ -622,13 +622,13 @@ export function createDomainGateway(
     if (!matchedHandler) {
       const allowed = router.allowedMethods(new URL(request.url).pathname);
       if (allowed.length > 0) {
-        emitRequest(405, 'ok', null);
+        emitRequest(405, 'method_not_allowed', null);
         return new Response(JSON.stringify({ error: 'Method not allowed' }), {
           status: 405,
           headers: { 'Content-Type': 'application/json', Allow: allowed.join(', '), ...corsHeaders },
         });
       }
-      emitRequest(404, 'ok', null);
+      emitRequest(404, 'unknown_route', null);
       return new Response(JSON.stringify({ error: 'Not found' }), {
         status: 404,
         headers: { 'Content-Type': 'application/json', ...corsHeaders },
