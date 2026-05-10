@@ -31,7 +31,11 @@
       .spinner{display:inline-block;width:.8em;height:.8em;border:2px solid #2a2a2a;border-top-color:#2d8a6e;border-radius:50%;animation:spin .9s linear infinite;vertical-align:-.05em;margin-right:.5em}
       @keyframes spin{to{transform:rotate(360deg)}}
     </style>
-    <script>(function(){try{var t=localStorage.getItem('worldmonitor-theme');if(t==='light')document.documentElement.dataset.theme='light';}catch(e){}})()</script>
+    <!-- No inline scripts — global CSP at vercel.json:92 is hash-based and we
+         don't allowlist this page's hashes individually. The bundled module
+         at src/mcp-grant-main.ts handles theme application on DOMContentLoaded;
+         a brief default-theme flash on light-preference users is acceptable
+         for a transient consent UI (reviewer round-2 P3). -->
   </head>
   <body>
     <a href="https://www.worldmonitor.app" class="wm-logo" target="_blank" rel="noopener">

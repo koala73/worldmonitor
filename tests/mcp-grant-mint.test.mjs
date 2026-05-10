@@ -37,17 +37,22 @@ const BASE_CLIENT_DATA = {
 };
 
 const PRO_ENT = {
-  features: { tier: 1 },
+  features: { tier: 1, mcpAccess: true },
+  validUntil: FIXED_NOW + 86_400_000,
+};
+
+const PRO_ENT_NO_MCP_ACCESS = {
+  features: { tier: 1, mcpAccess: false },
   validUntil: FIXED_NOW + 86_400_000,
 };
 
 const FREE_ENT = {
-  features: { tier: 0 },
+  features: { tier: 0, mcpAccess: false },
   validUntil: FIXED_NOW + 86_400_000,
 };
 
 const EXPIRED_PRO_ENT = {
-  features: { tier: 1 },
+  features: { tier: 1, mcpAccess: true },
   validUntil: FIXED_NOW - 1000,
 };
 
@@ -344,6 +349,27 @@ describe('mintGrantHandler', () => {
     assert.equal(json.error, 'INSUFFICIENT_TIER');
   });
 
+  it('reviewer round-2 P2: returns 403 INSUFFICIENT_TIER for tier-1 user with mcpAccess: false', async () => {
+    const { deps } = makeMintDeps({ getEntitlements: async () => PRO_ENT_NO_MCP_ACCESS });
+    const res = await mintGrantHandler(makePostReq({ nonce: 'nonce_xyz' }), deps);
+    assert.equal(res.status, 403);
+    const json = await res.json();
+    assert.equal(json.error, 'INSUFFICIENT_TIER');
+  });
+
+  it('reviewer round-2 P2: returns 403 INSUFFICIENT_TIER for tier-1 user with undefined mcpAccess (legacy entitlement row)', async () => {
+    const { deps } = makeMintDeps({
+      getEntitlements: async () => ({
+        features: { tier: 1 }, // no mcpAccess field — pre-U10 row
+        validUntil: FIXED_NOW + 86_400_000,
+      }),
+    });
+    const res = await mintGrantHandler(makePostReq({ nonce: 'nonce_xyz' }), deps);
+    assert.equal(res.status, 403);
+    const json = await res.json();
+    assert.equal(json.error, 'INSUFFICIENT_TIER');
+  });
+
   it('returns 503 when Redis SET NX of mcp-grant:<n> fails AND no prior record exists (transport failure)', async () => {
     // F2: SET NX failed AND GET returns null → genuine transport failure → 503.
     const { deps } = makeMintDeps({
@@ -484,6 +510,29 @@ describe('grantContextHandler', () => {
     // Negative assertion: response body MUST not contain client_name or redirect_host.
     assert.equal(json.client_name, undefined);
     assert.equal(json.redirect_host, undefined);
+  });
+
+  it('reviewer round-2 P2: returns 403 for tier-1 user with mcpAccess: false (and no client_name leak)', async () => {
+    const { deps } = makeContextDeps({ getEntitlements: async () => PRO_ENT_NO_MCP_ACCESS });
+    const res = await grantContextHandler(makeGetReq('nonce_xyz'), deps);
+    assert.equal(res.status, 403);
+    const json = await res.json();
+    assert.equal(json.error, 'INSUFFICIENT_TIER');
+    assert.equal(json.client_name, undefined);
+    assert.equal(json.redirect_host, undefined);
+  });
+
+  it('reviewer round-2 P2: returns 403 for tier-1 user with undefined mcpAccess (legacy entitlement row)', async () => {
+    const { deps } = makeContextDeps({
+      getEntitlements: async () => ({
+        features: { tier: 1 }, // no mcpAccess field
+        validUntil: FIXED_NOW + 86_400_000,
+      }),
+    });
+    const res = await grantContextHandler(makeGetReq('nonce_xyz'), deps);
+    assert.equal(res.status, 403);
+    const json = await res.json();
+    assert.equal(json.error, 'INSUFFICIENT_TIER');
   });
 
   it('returns 400 INVALID_NONCE when nonce row is missing', async () => {

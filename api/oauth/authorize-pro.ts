@@ -207,7 +207,7 @@ export interface AuthorizeProDeps {
   /** Verifies the wire-format HMAC grant. */
   verifyGrant: typeof verifyGrant;
   /** Returns Pro entitlement info or null. */
-  getEntitlements: (userId: string) => Promise<{ features: { tier: number }; validUntil: number } | null>;
+  getEntitlements: (userId: string) => Promise<{ features: { tier: number; mcpAccess?: boolean }; validUntil: number } | null>;
   /** Issues the Convex mcpProTokens row. Throws ProMcpIssueFailed on failure. */
   issueProMcpTokenForUser: typeof issueProMcpTokenForUser;
   /** Best-effort revoke for the rollback path. Must NOT throw (matches U2 contract). */
@@ -353,9 +353,18 @@ export async function authorizeProHandler(req: Request, deps: AuthorizeProDeps):
   }
 
   // ----- 7. Re-fetch entitlement (grant could be up to 5min old; tier may have lapsed) -----
+  // Mirror downstream MCP-edge gate: both tier ≥ 1 AND mcpAccess === true
+  // are required. Reviewer round-2 P2 — without the mcpAccess check here,
+  // a tier-1 user lacking mcpAccess could complete OAuth + get a token
+  // row, then have every tools/call fail at the gateway.
   const ent = await deps.getEntitlements(userId);
   const now = deps.now();
-  if (!ent || ent.features.tier < 1 || ent.validUntil < now) {
+  if (
+    !ent ||
+    ent.features.tier < 1 ||
+    ent.features.mcpAccess !== true ||
+    ent.validUntil < now
+  ) {
     return htmlError(
       'Pro Subscription Required',
       'A WorldMonitor Pro subscription is required for this connection. Please subscribe and try again.',

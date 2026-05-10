@@ -171,7 +171,7 @@ export interface MintDeps {
    */
   redisSetNxEx: (key: string, value: unknown, ttlSeconds: number) => Promise<boolean>;
   /** Returns Pro entitlement info or null. */
-  getEntitlements: (userId: string) => Promise<{ features: { tier: number }; validUntil: number } | null>;
+  getEntitlements: (userId: string) => Promise<{ features: { tier: number; mcpAccess?: boolean }; validUntil: number } | null>;
   /** Same allowlist DCR uses. */
   isAllowedRedirectUri: (uri: string) => boolean;
   /** Signs the wire-format grant token. Throws GrantConfigError if env unset. */
@@ -235,7 +235,15 @@ export async function mintGrantHandler(req: Request, deps: MintDeps): Promise<Re
 
   const ent = await deps.getEntitlements(userId);
   const now = deps.now();
-  if (!ent || ent.features.tier < 1 || ent.validUntil < now) {
+  // Mirror downstream MCP-edge gate: both tier ≥ 1 AND mcpAccess === true
+  // are required. Reviewer round-2 P2 — gating on tier alone here lets a
+  // tier-1 user without mcpAccess get a token row, then 401 every call.
+  if (
+    !ent ||
+    ent.features.tier < 1 ||
+    ent.features.mcpAccess !== true ||
+    ent.validUntil < now
+  ) {
     return jsonError('INSUFFICIENT_TIER', 'A WorldMonitor Pro subscription is required.', 403);
   }
 

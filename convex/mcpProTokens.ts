@@ -1,6 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
 import { requireUserId } from "./lib/auth";
+import { getFeaturesForPlan } from "./lib/entitlements";
 
 /**
  * Pro MCP token (non-key) identity rows.
@@ -48,14 +49,29 @@ export const issueProMcpToken = internalMutation({
     // Entitlement gate: Pro is the minimum (tier ≥ 1). API_STARTER+ (tier 2+)
     // also passes, since Pro is the floor — the plan explicitly notes
     // "Pro is the minimum, not exclusive."
+    //
+    // Mirror downstream MCP-edge gate: BOTH tier ≥ 1 AND mcpAccess === true
+    // are required. Reviewer round-2 P2 — gating on tier alone allowed a
+    // tier-1 user without mcpAccess to mint a token that would then fail
+    // every tools/call at the gateway. PRE-FIELD legacy entitlement rows
+    // are handled by the read-time merge in convex/entitlements.ts; this
+    // direct ctx.db read of the row uses the catalog default explicitly.
     const entitlement = await ctx.db
       .query("entitlements")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
       .first();
+    const catalogDefaults = entitlement
+      ? getFeaturesForPlan(entitlement.planKey)
+      : null;
+    const mergedFeatures = entitlement && catalogDefaults
+      ? { ...catalogDefaults, ...entitlement.features }
+      : null;
     if (
       !entitlement ||
+      !mergedFeatures ||
       entitlement.validUntil < Date.now() ||
-      entitlement.features.tier < 1
+      mergedFeatures.tier < 1 ||
+      mergedFeatures.mcpAccess !== true
     ) {
       throw new ConvexError("PRO_REQUIRED");
     }

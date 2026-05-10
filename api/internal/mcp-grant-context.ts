@@ -68,7 +68,7 @@ async function rawRedisGet(key: string): Promise<unknown | null> {
 export interface ContextDeps {
   resolveUserId: (req: Request) => Promise<string | null>;
   redisGet: (key: string) => Promise<unknown | null>;
-  getEntitlements: (userId: string) => Promise<{ features: { tier: number }; validUntil: number } | null>;
+  getEntitlements: (userId: string) => Promise<{ features: { tier: number; mcpAccess?: boolean }; validUntil: number } | null>;
   now: () => number;
 }
 
@@ -92,8 +92,19 @@ export async function grantContextHandler(req: Request, deps: ContextDeps): Prom
 
   // Pro gate BEFORE leaking any client_name — a tier-0 caller probing the
   // endpoint must not see whether a given nonce/client exists.
+  //
+  // Mirror the downstream MCP-edge gate (api/mcp.ts runProPreChecks): both
+  // tier ≥ 1 AND mcpAccess === true are required. Reviewer round-2 finding
+  // P2 — gating on tier alone here lets a tier-1 user without mcpAccess
+  // complete OAuth, get a tokenId, then have every tools/call fail at the
+  // gateway. The two gates must agree.
   const ent = await deps.getEntitlements(userId);
-  if (!ent || ent.features.tier < 1 || ent.validUntil < deps.now()) {
+  if (
+    !ent ||
+    ent.features.tier < 1 ||
+    ent.features.mcpAccess !== true ||
+    ent.validUntil < deps.now()
+  ) {
     return jsonError('INSUFFICIENT_TIER', 'A WorldMonitor Pro subscription is required.', 403);
   }
 

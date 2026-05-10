@@ -50,9 +50,10 @@ const BASE_CLIENT_REDIS = {
   last_used: FIXED_NOW - 5000,
 };
 
-const PRO_ENT = { features: { tier: 1 }, validUntil: FIXED_NOW + 86_400_000 };
-const FREE_ENT = { features: { tier: 0 }, validUntil: FIXED_NOW + 86_400_000 };
-const EXPIRED_PRO_ENT = { features: { tier: 1 }, validUntil: FIXED_NOW - 1000 };
+const PRO_ENT = { features: { tier: 1, mcpAccess: true }, validUntil: FIXED_NOW + 86_400_000 };
+const PRO_ENT_NO_MCP_ACCESS = { features: { tier: 1, mcpAccess: false }, validUntil: FIXED_NOW + 86_400_000 };
+const FREE_ENT = { features: { tier: 0, mcpAccess: false }, validUntil: FIXED_NOW + 86_400_000 };
+const EXPIRED_PRO_ENT = { features: { tier: 1, mcpAccess: true }, validUntil: FIXED_NOW - 1000 };
 
 async function makeGrantToken(overrides = {}) {
   const payload = { userId: USER_ID, nonce: NONCE, exp: FIXED_NOW + 60_000, ...overrides };
@@ -377,6 +378,29 @@ describe('authorizeProHandler — entitlement re-check', () => {
     const res = await authorizeProHandler(makeReq({ nonce: NONCE, grant }), deps);
     assert.equal(res.status, 403);
     assert.equal(issueCalls.length, 0);
+  });
+
+  it('reviewer round-2 P2: tier-1 with mcpAccess: false → HTML error; row NOT issued', async () => {
+    const grant = await makeGrantToken();
+    const { deps, issueCalls } = await makeDeps({
+      getEntitlements: async () => PRO_ENT_NO_MCP_ACCESS,
+    });
+    const res = await authorizeProHandler(makeReq({ nonce: NONCE, grant }), deps);
+    assert.equal(res.status, 403);
+    assert.equal(issueCalls.length, 0, 'gate must mirror MCP-edge mcpAccess check');
+  });
+
+  it('reviewer round-2 P2: tier-1 with mcpAccess: undefined (legacy row) → HTML error', async () => {
+    const grant = await makeGrantToken();
+    const { deps, issueCalls } = await makeDeps({
+      getEntitlements: async () => ({
+        features: { tier: 1 }, // no mcpAccess at all (pre-U10 stored row)
+        validUntil: FIXED_NOW + 86_400_000,
+      }),
+    });
+    const res = await authorizeProHandler(makeReq({ nonce: NONCE, grant }), deps);
+    assert.equal(res.status, 403);
+    assert.equal(issueCalls.length, 0, 'undefined mcpAccess fails closed');
   });
 });
 

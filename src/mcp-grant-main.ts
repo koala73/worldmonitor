@@ -20,6 +20,17 @@
 
 import { initClerk, getClerkToken, getCurrentClerkUser, openSignIn, subscribeClerk } from '@/services/clerk';
 
+// Apply user's saved theme preference. Inlined here (not the index.html head)
+// because the page's global CSP is hash-allowlisted and adding per-page
+// inline-script hashes is brittle. A brief default-theme flash on light-
+// preference users is acceptable for this transient consent UI.
+try {
+  const savedTheme = localStorage.getItem('worldmonitor-theme');
+  if (savedTheme === 'light') document.documentElement.dataset.theme = 'light';
+} catch {
+  // localStorage may be unavailable in privacy modes — proceed with default.
+}
+
 const API_BASE = ''; // same-origin (apex)
 
 interface ContextResponse {

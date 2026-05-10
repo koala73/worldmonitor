@@ -31,9 +31,9 @@
       "removal_issue": null
     },
     {
-      "path": "api/oauth/token.js",
+      "path": "api/oauth/token.ts",
       "category": "external-protocol",
-      "reason": "OAuth 2.0 token endpoint (RFC 6749). application/x-www-form-urlencoded request body; shape fixed by the spec.",
+      "reason": "OAuth 2.0 token endpoint (RFC 6749). application/x-www-form-urlencoded request body; shape fixed by the spec. TypeScript port (plan 2026-05-10-001 U6) added the McpAuthContext discriminated union for Pro vs env-key bearers; legacy bare-string token shape preserved verbatim.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
