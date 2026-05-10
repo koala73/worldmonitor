@@ -225,4 +225,41 @@ describe("_getUsersByEmailPage — Convex wire shape", () => {
     );
     expect(result).toEqual([]);
   });
+
+  test("1000-email page — parallel lookup contract holds (perf-shape regression)", async () => {
+    // Locks in the bulk-page behavior expected from the Promise.all-based
+    // implementation. Pre-fix: 1000 sequential awaits (~1s+ on prod
+    // network); post-fix: parallel batch (~100ms typical). The test
+    // doesn't assert wall-clock but DOES assert correctness over a
+    // page-sized input where the implementation matters.
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+    await t.run(async (ctx) => {
+      // Seed users for half of the emails (so we exercise both hit + miss paths)
+      for (let i = 0; i < 500; i++) {
+        await ctx.db.insert("users", {
+          userId: `u-${i}`,
+          normalizedEmail: `bulk-${i}@gmail.com`,
+          localeTag: i % 3 === 0 ? "zh-CN" : "en-US",
+          localePrimary: i % 3 === 0 ? "zh" : "en",
+          firstSeenAt: now,
+          lastSeenAt: now,
+        });
+      }
+    });
+    const inputEmails: string[] = [];
+    for (let i = 0; i < 1000; i++) inputEmails.push(`bulk-${i}@gmail.com`);
+
+    const result = await t.query(
+      internal.broadcast.waveRuns._getUsersByEmailPage,
+      { emails: inputEmails },
+    );
+
+    // Only the seeded half match.
+    expect(result.length).toBe(500);
+    const map = new Map(result.map((r) => [r.normalizedEmail, r.localePrimary]));
+    expect(map.get("bulk-0@gmail.com")).toBe("zh");
+    expect(map.get("bulk-1@gmail.com")).toBe("en");
+    expect(map.has("bulk-501@gmail.com")).toBe(false); // unseeded
+  });
 });

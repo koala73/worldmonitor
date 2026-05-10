@@ -261,21 +261,45 @@ export const _getRegistrationsPage = internalQuery({
  * serializable across the action↔query boundary).
  *
  * Caller (pickWaveAction / _dryRunNonEnglishExclusion) is expected to
- * dedupe inputs before calling. Read complexity is bounded by input size,
- * not by the table size — uses `by_normalizedEmail` index.
+ * dedupe inputs before calling.
+ *
+ * Performance: parallelizes index lookups via `Promise.all` inside the
+ * query handler. Convex query handlers can issue concurrent
+ * `ctx.db.query(...).first()` reads against an index — they run within
+ * the same transaction (read isolation) but don't serialize round-trips.
+ * For a 1000-email input, this turns ~1000 sequential awaits (~1s+) into
+ * one parallel batch (~100ms typical).
+ *
+ * Future scaling consideration: at >10k authenticated users in
+ * production, consider materializing `localePrimary` on
+ * `registrations.localePrimary` directly via `users:ensureRecord`'s
+ * second write. That eliminates this cross-table lookup entirely from
+ * the broadcast hot path, at the cost of one extra patch per ensureRecord
+ * call. Bulk-loading all users via `.collect()` is NOT a safe interim
+ * step — Convex's per-query transaction limit (~8MB / ~16k rows) caps
+ * this. For wave-8 today (~hundreds of authenticated users), the
+ * Promise.all batched approach is sufficient and forward-compatible
+ * with either follow-up architecture.
  */
 export const _getUsersByEmailPage = internalQuery({
   args: {
     emails: v.array(v.string()),
   },
   handler: async (ctx, { emails }) => {
+    const validEmails = emails.filter((e) => e && e.length > 0);
+    if (validEmails.length === 0) return [];
+    const rows = await Promise.all(
+      validEmails.map((email) =>
+        ctx.db
+          .query("users")
+          .withIndex("by_normalizedEmail", (q) =>
+            q.eq("normalizedEmail", email),
+          )
+          .first(),
+      ),
+    );
     const out: Array<{ normalizedEmail: string; localePrimary?: string }> = [];
-    for (const email of emails) {
-      if (!email || email.length === 0) continue;
-      const row = await ctx.db
-        .query("users")
-        .withIndex("by_normalizedEmail", (q) => q.eq("normalizedEmail", email))
-        .first();
+    for (const row of rows) {
       if (row && row.normalizedEmail) {
         out.push({
           normalizedEmail: row.normalizedEmail,
