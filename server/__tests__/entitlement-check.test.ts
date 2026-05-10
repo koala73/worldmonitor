@@ -51,6 +51,11 @@ function makeEntitlements(tier: number, planKey = "free") {
       maxDashboards: tier >= 1 ? 10 : 3,
       prioritySupport: tier >= 2,
       exportFormats: tier >= 2 ? ["csv", "pdf", "json"] : ["csv"],
+      // Plan 2026-05-10-001 U10 added mcpAccess to the feature set. Cache
+      // entries lacking this field are now treated as stale by
+      // _getEntitlementsImpl (round-2 P2-cache fix), so test fixtures
+      // must include it to be considered fresh.
+      mcpAccess: tier >= 1,
     },
     validUntil: FUTURE,
   };
@@ -135,6 +140,74 @@ describe("gateway entitlement check", () => {
     const req = makeRequest("/api/market/v1/analyze-stock", { "x-user-id": "test-user" });
     const result = await checkEntitlement(req, "/api/market/v1/analyze-stock", {});
     expect(result).toBeNull();
+  });
+
+  test("reviewer round-2 P2-cache: legacy cache entry without mcpAccess is treated as stale and falls through to Convex", async () => {
+    // Seed Redis with a pre-U10 cached entitlement: tier-1 Pro, but the
+    // stored features object is the OLD shape WITHOUT mcpAccess. The cache
+    // predicate must detect this and fall through to Convex (which does
+    // the read-time catalog merge), rather than returning a row that
+    // would block the user at the grant/MCP gates with mcpAccess !== true.
+    const legacyCache = {
+      planKey: "pro_monthly",
+      features: {
+        tier: 1,
+        apiAccess: false,
+        apiRateLimit: 0,
+        maxDashboards: 10,
+        prioritySupport: false,
+        exportFormats: ["csv"],
+        // NO mcpAccess field — pre-U10 cache entry
+      },
+      validUntil: FUTURE,
+    };
+    vi.mocked(getCachedJson).mockResolvedValueOnce(legacyCache);
+
+    // Mock Convex fallback to return the post-U10 merged shape.
+    const originalSiteUrl = process.env.CONVEX_SITE_URL;
+    const originalSecret = process.env.CONVEX_SERVER_SHARED_SECRET;
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify(makeEntitlements(1, "pro_monthly")), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    process.env.CONVEX_SITE_URL = "https://example-deployment.convex.site";
+    process.env.CONVEX_SERVER_SHARED_SECRET = "test-secret";
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const req = makeRequest("/api/market/v1/analyze-stock", { "x-user-id": "test-user" });
+      const result = await checkEntitlement(req, "/api/market/v1/analyze-stock", {});
+
+      // Expect: cache rejected as stale → Convex round-trip → tier-1 row
+      // with mcpAccess: true → checkEntitlement passes (returns null).
+      expect(result).toBeNull();
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    } finally {
+      process.env.CONVEX_SITE_URL = originalSiteUrl;
+      process.env.CONVEX_SERVER_SHARED_SECRET = originalSecret;
+      vi.unstubAllGlobals();
+    }
+  });
+
+  test("reviewer round-2 P2-cache: cache entry WITH mcpAccess is honored without Convex round-trip", async () => {
+    // Sanity check the inverse: a post-U10 cache entry should be returned
+    // directly without falling through to Convex.
+    vi.mocked(getCachedJson).mockResolvedValueOnce(makeEntitlements(1, "pro_monthly"));
+
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const req = makeRequest("/api/market/v1/analyze-stock", { "x-user-id": "test-user" });
+      const result = await checkEntitlement(req, "/api/market/v1/analyze-stock", {});
+
+      expect(result).toBeNull();
+      expect(fetchMock).toHaveBeenCalledTimes(0); // cache hit, no Convex call
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   test("getEntitlements uses CONVEX_SITE_URL for HTTP fallback", async () => {
