@@ -2870,7 +2870,10 @@
   },
   "shell": {
     "documentTitle": "World Monitor — Tablica bieżącej analizy globalnej",
-    "metaDescription": "Platforma analizy globalnej w czasie rzeczywistym. Opisana w WIRED. Używana przez 2M+ użytkowników w 190 krajach. Konflikty, rynki, wojskowość, OSINT w jednym widoku."
+    "metaDescription": "Platforma analizy globalnej w czasie rzeczywistym. Opisana w WIRED. Używana przez 2M+ użytkowników w 190 krajach. Konflikty, rynki, wojskowość, OSINT w jednym widoku.",
+    "offlineTitle": "Jesteś offline",
+    "offlineMessage": "World Monitor wymaga połączenia internetowego do otrzymywania danych wywiadowczych w czasie rzeczywistym.",
+    "offlineRetry": "Ponów próbę"
   },
   "widgets": {
     "createWithAi": "Utwórz za pomocą AI",

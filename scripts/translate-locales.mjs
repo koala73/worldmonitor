@@ -101,6 +101,16 @@ function validateTranslation(en, translated) {
   const enTokens = (en.match(/\{\{[^}]+\}\}/g) || []).sort();
   const tTokens = (translated.match(/\{\{[^}]+\}\}/g) || []).sort();
   if (enTokens.join('|') !== tTokens.join('|')) return false;
+
+  // Reject if HTML tags were dropped, renamed, or added. Compare the sorted
+  // multiset (not the order) so paraphrased sentences with the same tag set
+  // pass — but a stripped <strong> or invented <i> fails.
+  const tagPattern = /<\/?[a-zA-Z][a-zA-Z0-9]*(?:\s[^>]*)?>/g;
+  const norm = s => s.toLowerCase().replace(/\s+/g, ' ').trim();
+  const enTags = (en.match(tagPattern) || []).map(norm).sort();
+  const tTags = (translated.match(tagPattern) || []).map(norm).sort();
+  if (enTags.join('|') !== tTags.join('|')) return false;
+
   return true;
 }
 
@@ -158,7 +168,26 @@ async function main() {
     console.log(`[${loc}] ✓ added ${added} translations`);
   }
 
-  console.log(`\n[done] missing ${totalMissing}, translated ${totalTranslated}, rejected ${totalRejected}`);
+  // Re-scan post-write to confirm full coverage. A partial run (rejections,
+  // batch failures, model omissions) must surface as a non-zero exit so CI
+  // and operators don't trust a half-finished locale set.
+  let stillMissing = 0;
+  if (!dryRun) {
+    for (const loc of targets) {
+      const flat = flatten(JSON.parse(readFileSync(path.join(ROOT, `${loc}.json`), 'utf8')));
+      const left = Object.keys(enFlat).filter(k => !(k in flat));
+      if (left.length > 0) {
+        console.error(`[${loc}] ✗ still missing ${left.length} keys after run (e.g. ${left.slice(0, 3).join(', ')})`);
+        stillMissing += left.length;
+      }
+    }
+  }
+
+  console.log(`\n[done] missing ${totalMissing}, translated ${totalTranslated}, rejected ${totalRejected}, still-missing-after-run ${stillMissing}`);
+  if (totalRejected > 0 || stillMissing > 0) {
+    console.error('\n[FAIL] Partial backfill — re-run translate-locales.mjs to fill remaining keys.');
+    process.exit(1);
+  }
 }
 
 main().catch(err => {

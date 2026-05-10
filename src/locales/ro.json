@@ -2870,7 +2870,10 @@
   },
   "shell": {
     "documentTitle": "World Monitor — Tabloul de Bord al Inteligenței Globale în Timp Real",
-    "metaDescription": "Platformă de inteligență globală în timp real. Prezentată în WIRED. Utilizată de 2M+ persoane din 190 de țări. Conflicte, piețe, militare, OSINT într-o singură vizualizare."
+    "metaDescription": "Platformă de inteligență globală în timp real. Prezentată în WIRED. Utilizată de 2M+ persoane din 190 de țări. Conflicte, piețe, militare, OSINT într-o singură vizualizare.",
+    "offlineTitle": "Sunteți Offline",
+    "offlineMessage": "World Monitor necesită o conexiune la internet pentru date de informații în timp real.",
+    "offlineRetry": "Încercați din nou"
   },
   "widgets": {
     "createWithAi": "Creează cu AI",

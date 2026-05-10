@@ -2870,7 +2870,10 @@
   },
   "shell": {
     "documentTitle": "World Monitor — Bảng điều khiển tình báo toàn cầu theo thời gian thực",
-    "metaDescription": "Nền tảng tình báo toàn cầu theo thời gian thực. Được giới thiệu trên WIRED. Sử dụng bởi 2M+ người dùng trên 190 quốc gia. Xung đột, thị trường, quân sự, OSINT trong một giao diện."
+    "metaDescription": "Nền tảng tình báo toàn cầu theo thời gian thực. Được giới thiệu trên WIRED. Sử dụng bởi 2M+ người dùng trên 190 quốc gia. Xung đột, thị trường, quân sự, OSINT trong một giao diện.",
+    "offlineTitle": "Bạn Đang Ngoài Kết Nối",
+    "offlineMessage": "World Monitor cần kết nối internet để cập nhật dữ liệu tình báo real-time.",
+    "offlineRetry": "Thử Lại"
   },
   "widgets": {
     "createWithAi": "Tạo bằng AI",

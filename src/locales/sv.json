@@ -2875,7 +2875,10 @@
   },
   "shell": {
     "documentTitle": "World Monitor — Realtidsinstrumentpanel för global underrättelse",
-    "metaDescription": "Realtidsplattform för global underrättelse. Presenterad i WIRED. Används av 2M+ personer i 190 länder. Konflikter, marknader, militär, OSINT i en vy."
+    "metaDescription": "Realtidsplattform för global underrättelse. Presenterad i WIRED. Används av 2M+ personer i 190 länder. Konflikter, marknader, militär, OSINT i en vy.",
+    "offlineTitle": "Du är offline",
+    "offlineMessage": "World Monitor kräver en internetanslutning för realtidsunderrättelsedata.",
+    "offlineRetry": "Försök igen"
   },
   "widgets": {
     "createWithAi": "Skapa med AI",

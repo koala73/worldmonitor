@@ -2870,7 +2870,10 @@
   },
   "shell": {
     "documentTitle": "World Monitor — Dashboard di intelligence globale in tempo reale",
-    "metaDescription": "Piattaforma di intelligence globale in tempo reale. In primo piano su WIRED. Utilizzata da 2M+ persone in 190 paesi. Conflitti, mercati, militari, OSINT in un'unica vista."
+    "metaDescription": "Piattaforma di intelligence globale in tempo reale. In primo piano su WIRED. Utilizzata da 2M+ persone in 190 paesi. Conflitti, mercati, militari, OSINT in un'unica vista.",
+    "offlineTitle": "Sei Offline",
+    "offlineMessage": "World Monitor richiede una connessione Internet per i dati di intelligence in tempo reale.",
+    "offlineRetry": "Riprova"
   },
   "widgets": {
     "createWithAi": "Crea con AI",

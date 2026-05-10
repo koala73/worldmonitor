@@ -2875,7 +2875,10 @@
   },
   "shell": {
     "documentTitle": "World Monitor — Real-Time Global Intelligence Dashboard",
-    "metaDescription": "Real-time global intelligence platform. Featured in WIRED. Used by 2M+ people across 190 countries. Conflicts, markets, military, OSINT in one view."
+    "metaDescription": "Real-time global intelligence platform. Featured in WIRED. Used by 2M+ people across 190 countries. Conflicts, markets, military, OSINT in one view.",
+    "offlineTitle": "Je bent offline",
+    "offlineMessage": "World Monitor heeft een internetverbinding nodig voor real-time inlichtingengegevens.",
+    "offlineRetry": "Opnieuw proberen"
   },
   "widgets": {
     "createWithAi": "Maken met AI",

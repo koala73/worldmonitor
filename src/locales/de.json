@@ -2870,7 +2870,10 @@
   },
   "shell": {
     "documentTitle": "World Monitor — Dashboard für globale Echtzeitinformationen",
-    "metaDescription": "Echtzeit-Plattform für globale Informationen. In WIRED vorgestellt. Von über 2 Millionen Menschen in 190 Ländern genutzt. Konflikte, Märkte, Militär, OSINT in einer Ansicht."
+    "metaDescription": "Echtzeit-Plattform für globale Informationen. In WIRED vorgestellt. Von über 2 Millionen Menschen in 190 Ländern genutzt. Konflikte, Märkte, Militär, OSINT in einer Ansicht.",
+    "offlineTitle": "Sie sind offline",
+    "offlineMessage": "World Monitor benötigt eine Internetverbindung für Echtzeit-Nachrichtendaten.",
+    "offlineRetry": "Erneut versuchen"
   },
   "widgets": {
     "createWithAi": "Mit KI erstellen",

@@ -2870,7 +2870,10 @@
   },
   "shell": {
     "documentTitle": "World Monitor — Gerçek Zamanlı Küresel İstihbarat Paneli",
-    "metaDescription": "Gerçek zamanlı küresel istihbarat platformu. WIRED'de yer aldı. 190 ülkede 2M+ kişi tarafından kullanılıyor. Çatışmalar, piyasalar, askeri, OSINT tek görünümde."
+    "metaDescription": "Gerçek zamanlı küresel istihbarat platformu. WIRED'de yer aldı. 190 ülkede 2M+ kişi tarafından kullanılıyor. Çatışmalar, piyasalar, askeri, OSINT tek görünümde.",
+    "offlineTitle": "Çevrimdışısınız",
+    "offlineMessage": "World Monitor, gerçek zamanlı istihbarat verileri için internet bağlantısı gerektirir.",
+    "offlineRetry": "Yeniden Dene"
   },
   "widgets": {
     "createWithAi": "AI ile Oluştur",

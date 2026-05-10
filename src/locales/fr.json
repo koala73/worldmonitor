@@ -2870,7 +2870,10 @@
   },
   "shell": {
     "documentTitle": "World Monitor — Tableau de Bord de Renseignement Mondial en Temps Réel",
-    "metaDescription": "Plateforme de renseignement mondial en temps réel. Présenté dans WIRED. Utilisé par plus de 2 millions de personnes dans 190 pays. Conflits, marchés, militaire, OSINT en une seule vue."
+    "metaDescription": "Plateforme de renseignement mondial en temps réel. Présenté dans WIRED. Utilisé par plus de 2 millions de personnes dans 190 pays. Conflits, marchés, militaire, OSINT en une seule vue.",
+    "offlineTitle": "Vous êtes hors ligne",
+    "offlineMessage": "World Monitor nécessite une connexion Internet pour les données de renseignement en temps réel.",
+    "offlineRetry": "Réessayer"
   },
   "widgets": {
     "createWithAi": "Créer avec l'IA",
