@@ -112,8 +112,26 @@ async function callEnsureRecord(c: ConvexClient): Promise<void> {
 
   ensureRecordInFlight = true;
   try {
-    const localeTag = navigator.language ?? 'en';
-    const localePrimary = (localeTag.split('-')[0] ?? 'en').toLowerCase();
+    // Use `||` (not `??`) — empty string `''` from privacy browsers
+    // (Tor, hardened Firefox) or Linux contexts with `LC_ALL=C` is not
+    // nullish but IS unusable. `??` only triggers on null/undefined; `||`
+    // also triggers on empty string. Without this, the client sends
+    // `localePrimary: ''` to the server, which rejects with invalid-input
+    // and never sets `lastEnsuredUserId` — retries forever on every page
+    // load.
+    let localeTag = navigator.language || 'en';
+    let localePrimary = (localeTag.split('-')[0] || 'en').toLowerCase();
+    // Defensive: client-side validation matching the server's regex.
+    // Falls back to 'en' on non-standard input ('C', 'POSIX', extension
+    // tags) so the server never rejects what we send and we never enter
+    // an eternal-retry loop. Rejected by the server is observable in
+    // logs; rejected by the client falls back gracefully.
+    if (!/^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$/.test(localeTag) || localeTag.length > 64) {
+      localeTag = 'en';
+    }
+    if (!/^[a-z]{2,3}$/.test(localePrimary)) {
+      localePrimary = 'en';
+    }
 
     let timezone: string | undefined;
     try {
@@ -152,6 +170,17 @@ async function callEnsureRecord(c: ConvexClient): Promise<void> {
     // Do NOT set lastEnsuredUserId; auth path continues unaffected.
   } finally {
     ensureRecordInFlight = false;
+    // Race recovery: if the current Clerk user changed during the await
+    // (sign-out + different sign-in within the mutation's latency window),
+    // setAuth's `isAuthenticated=true` callback for the new user will have
+    // fired AND been blocked by `ensureRecordInFlight`. Re-fire here so the
+    // new user's record gets created. Bounded recursion: the next call's
+    // top-of-function `userId === lastEnsuredUserId` guard short-circuits
+    // if they didn't actually change.
+    const currentUser = getCurrentClerkUser();
+    if (currentUser && currentUser.id !== userId) {
+      void callEnsureRecord(c);
+    }
   }
 }
 
