@@ -254,7 +254,7 @@ fn save_vault(cache: &HashMap<String, String>, app_data_dir: &Path) -> Result<()
         .map_err(|e| format!("Keyring init failed: {e}"))?;
     match entry.set_password(&json) {
         Ok(()) => Ok(()),
-        Err(keyring_err) => {
+        Err(_keyring_err) => {
             // Linux/DBus fallback: write vault to app data dir as plaintext JSON file
             let vault_path = app_data_dir.join("secrets-vault.json");
             std::fs::write(&vault_path, &json)
