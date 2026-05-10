@@ -40,9 +40,37 @@ export const INTERNAL_MCP_SIG_HEADER = 'X-WM-MCP-Internal';
 export const INTERNAL_MCP_USER_ID_HEADER = 'X-WM-MCP-User-Id';
 
 /** Trusted markers set by the gateway AFTER successful verify. Downstream
- *  handlers (`isCallerPremium`) read these — never the inbound headers. */
+ *  handlers (`isCallerPremium`) read these — never the inbound headers.
+ *
+ *  The verified-marker value is a per-process-startup random nonce
+ *  (`getInternalMcpVerifiedNonce()`), NOT the constant `'1'`. This is
+ *  defense-in-depth against the case where the trusted markers leak past
+ *  a non-gateway entry point (e.g. a direct edge function `api/foo.ts`
+ *  that doesn't route through `createDomainGateway` and therefore doesn't
+ *  run the strip step). An attacker who sends a guessable marker value
+ *  from outside cannot satisfy `isCallerPremium`'s check because they do
+ *  not know the per-process nonce. The gateway's strip step still runs
+ *  for gateway-routed traffic so even the nonce never round-trips. */
 export const INTERNAL_MCP_VERIFIED_HEADER = 'x-wm-mcp-internal-verified';
 export const TRUSTED_USER_ID_HEADER = 'x-user-id';
+
+let _verifiedNonce: string | null = null;
+/**
+ * Returns a stable per-process-startup nonce used as the value of
+ * `x-wm-mcp-internal-verified` on requests rebuilt by the gateway after
+ * HMAC verification. `isCallerPremium` compares with timing-safe equality.
+ *
+ * Generated lazily on first call (cheap; one 16-byte WebCrypto draw),
+ * cached for the lifetime of the edge function instance. Not exported
+ * outside server/_shared — outside callers should treat it as opaque. */
+export function getInternalMcpVerifiedNonce(): string {
+  if (_verifiedNonce !== null) return _verifiedNonce;
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  // Hex encode — short enough for an HTTP header, no base64 padding to deal with.
+  _verifiedNonce = Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+  return _verifiedNonce;
+}
 
 /** Timestamp window (seconds) for replay defense. Default per plan: 30s.
  *  Loosen via env if production observes clock skew. */
@@ -257,4 +285,132 @@ export function buildInternalMcpHeaders(signed: SignedInternalMcpHeaders): Recor
     [INTERNAL_MCP_SIG_HEADER]: signed.signature,
     [INTERNAL_MCP_USER_ID_HEADER]: signed.userId,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Verify side (U8) — gateway pre-check for inbound internal-MCP requests.
+//
+// Mirrors the sign side byte-for-byte. ANY drift (canonicalisation, body
+// coercion, payload shape, ts encoding) produces silent 401s for legitimate
+// Pro tool fetches. The U7 sign helpers and the U8 verify helper MUST share
+// this module — do NOT re-implement.
+// ---------------------------------------------------------------------------
+
+export interface VerifiedInternalMcpRequest {
+  /** UserId carried by the verified `X-WM-MCP-User-Id` header. */
+  userId: string;
+}
+
+/**
+ * Constant-time equal-length string comparison. Both inputs are first hashed
+ * to fixed-size SHA-256 digests so unequal lengths cannot leak via early-exit
+ * timing. Mirrors `api/_crypto.js::timingSafeIncludes` for a single candidate.
+ */
+async function timingSafeStringEqual(a: string, b: string): Promise<boolean> {
+  const enc = new TextEncoder();
+  const aHash = new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(a)));
+  const bHash = new Uint8Array(await crypto.subtle.digest('SHA-256', enc.encode(b)));
+  let diff = 0;
+  for (let i = 0; i < aHash.length; i++) diff |= aHash[i]! ^ bHash[i]!;
+  return diff === 0;
+}
+
+/**
+ * Parse the `X-WM-MCP-Internal` header value into `{ts, sigB64u}`.
+ * Returns null on any structural malformation. Single dot only — `<ts>.<sig>`.
+ */
+function parseSignatureHeader(value: string | null): { ts: number; sigB64u: string } | null {
+  if (!value) return null;
+  const dotIdx = value.indexOf('.');
+  // Reject missing dot, leading dot, trailing dot, multiple dots.
+  if (dotIdx <= 0 || dotIdx === value.length - 1) return null;
+  if (value.indexOf('.', dotIdx + 1) !== -1) return null;
+  const tsStr = value.slice(0, dotIdx);
+  const sigB64u = value.slice(dotIdx + 1);
+  if (!/^[0-9]+$/.test(tsStr)) return null;
+  // base64url charset only — `+` `/` `=` not allowed.
+  if (!/^[A-Za-z0-9_-]+$/.test(sigB64u)) return null;
+  const ts = Number(tsStr);
+  if (!Number.isFinite(ts) || ts < 0) return null;
+  return { ts, sigB64u };
+}
+
+/**
+ * Verify an inbound internal-MCP request signed by U7's sign helpers.
+ *
+ * Reads `X-WM-MCP-Internal` (`<ts>.<base64url-sig>`) and `X-WM-MCP-User-Id`
+ * from the request. Re-canonicalises the inbound request the SAME way the
+ * signer did — exporting/importing canonicalQueryString, sha256Hex,
+ * buildHmacPayload from this module is the single-source-of-truth invariant.
+ *
+ * Body handling: `req.clone().bytes()` reads the body as raw bytes; cloning
+ * preserves the original body for the downstream handler. Body-less requests
+ * (GET) hash to SHA-256("") consistently between sign and verify.
+ *
+ * Returns `{userId}` on success, `null` on ANY verification failure
+ * (missing headers, malformed signature, timestamp out of window, signature
+ * mismatch). The gateway treats null as 401 `invalid_internal_mcp_signature`
+ * and MUST NOT fall through to other auth paths.
+ *
+ * @param req     The inbound `Request` (edge runtime).
+ * @param secret  `MCP_INTERNAL_HMAC_SECRET`. Caller provides explicitly so
+ *                tests can inject without env mutation.
+ * @param now     Override Unix-seconds (test injection); defaults to
+ *                `Math.floor(Date.now()/1000)`.
+ */
+export async function verifyInternalMcpRequest(
+  req: Request,
+  secret: string,
+  now?: number,
+): Promise<VerifiedInternalMcpRequest | null> {
+  if (!secret) return null;
+
+  const sigHeader = req.headers.get(INTERNAL_MCP_SIG_HEADER);
+  const userId = req.headers.get(INTERNAL_MCP_USER_ID_HEADER);
+  if (!sigHeader || !userId) return null;
+
+  const parsed = parseSignatureHeader(sigHeader);
+  if (!parsed) return null;
+  const { ts, sigB64u } = parsed;
+
+  const nowSec = Math.floor(now ?? Date.now() / 1000);
+  if (Math.abs(nowSec - ts) > INTERNAL_MCP_TIMESTAMP_WINDOW_SECONDS) return null;
+
+  let url: URL;
+  try {
+    url = new URL(req.url);
+  } catch {
+    return null;
+  }
+
+  // Body must be cloned BEFORE reading so the downstream handler can still
+  // read it — Web Fetch API contract: a body can only be consumed once on
+  // any given Request/Response.
+  let bodyBytes: Uint8Array;
+  try {
+    const buf = await req.clone().arrayBuffer();
+    bodyBytes = new Uint8Array(buf);
+  } catch {
+    return null;
+  }
+  // sha256Hex takes a string; coerce raw bytes via TextDecoder. Empty body →
+  // empty string → SHA-256(""), matching the signer's `coerceBodyToString`.
+  const bodyAsString = bodyBytes.length === 0 ? '' : new TextDecoder().decode(bodyBytes);
+
+  const queryHash = await sha256Hex(canonicalQueryString(url));
+  const bodyHash = await sha256Hex(bodyAsString);
+
+  const expectedPayload = buildHmacPayload({
+    ts,
+    method: req.method,
+    pathname: url.pathname,
+    queryHash,
+    bodyHash,
+    userId,
+  });
+  const expectedSig = await hmacSha256Base64Url(secret, expectedPayload);
+
+  const ok = await timingSafeStringEqual(expectedSig, sigB64u);
+  if (!ok) return null;
+  return { userId };
 }
