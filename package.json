@@ -40,6 +40,7 @@
     "typecheck:api": "tsc --noEmit -p tsconfig.api.json && node scripts/audit-convex-string-calls.cjs",
     "typecheck:all": "tsc --noEmit && tsc --noEmit -p tsconfig.api.json && node scripts/audit-convex-string-calls.cjs",
     "audit:convex-string-calls": "node scripts/audit-convex-string-calls.cjs",
+    "audit:dodo-catalog": "node scripts/audit-dodo-catalog.cjs",
     "tauri": "tauri",
     "preview": "vite preview",
     "test:e2e:full": "cross-env VITE_VARIANT=full playwright test",

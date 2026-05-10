@@ -233,6 +233,12 @@ export const LEGACY_PRODUCT_ALIASES: Record<string, string> = {
   "pdt_0NaysZwxCyk9Satf1jbqU": "api_starter",
   "pdt_0NaysdZLwkMAPEVJQja5G": "api_business",
   "pdt_0NaysgHSQTTqGjJdLtuWP": "enterprise",
+  // "API Starter for Education" — created via Dodo dashboard 2026-05-09 with
+  // education-discount pricing ($69/mo × 10yr term). Same feature set as
+  // api_starter; only the price/term differ. Customer was stuck in webhook
+  // 500-retry loop until this mapping was added (sub_0NeQV8vJI0fEwUEDjp3cA).
+  // See scripts/audit-dodo-catalog.cjs to detect this class of drift early.
+  "pdt_0NeRCJCIwZrExuE1kifHp": "api_starter",
 };
 
 // ---------------------------------------------------------------------------
