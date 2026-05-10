@@ -413,15 +413,21 @@ export const _dryRunNonEnglishExclusion = internalAction({
       }
 
       // Collect a small sample of excluded emails for operator inspection.
-      // Sampled in encounter order (good enough; not statistical).
+      // Sampled in encounter order (good enough; not statistical). Build a
+      // Set from `result.eligible` once per page so the membership check is
+      // O(1) instead of O(eligible.length) per row — without this, the
+      // worst-case sample-collection cost is O(page_size × eligible_size)
+      // ≈ O(1000²) per page on a fully-eligible page (per greptile P2,
+      // PR #3643).
       if (sampleExcludedEmails.length < sampleSize) {
+        const eligibleSet = new Set(result.eligible);
         for (const row of page.page) {
           if (sampleExcludedEmails.length >= sampleSize) break;
           const e = row.normalizedEmail;
           if (!e) continue;
           if (suppressedSet.has(e) || paidSet.has(e) || row.proLaunchWave) continue;
           // If this email made it into result.eligible, it's NOT excluded.
-          if (!result.eligible.includes(e)) {
+          if (!eligibleSet.has(e)) {
             sampleExcludedEmails.push(e);
           }
         }
