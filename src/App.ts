@@ -906,6 +906,9 @@ export class App {
     setMeta('meta[property="og:description"]', t('shell.metaDescription'));
     setMeta('meta[name="twitter:title"]', t('shell.documentTitle'));
     setMeta('meta[name="twitter:description"]', t('shell.metaDescription'));
+    // Mirror of OG_LOCALE in pro-test/src/i18n.ts. The two packages have
+    // separate Vite roots and bundlers and can't share an import — keep the
+    // tables aligned by hand when adding a locale here OR there.
     const ogLocaleMap: Record<string, string> = {
       en: 'en_US', ar: 'ar_SA', bg: 'bg_BG', cs: 'cs_CZ', de: 'de_DE', el: 'el_GR',
       es: 'es_ES', fr: 'fr_FR', it: 'it_IT', ja: 'ja_JP', ko: 'ko_KR', nl: 'nl_NL',

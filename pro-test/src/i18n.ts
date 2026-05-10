@@ -34,6 +34,10 @@ async function ensureLoaded(lng: string): Promise<SupportedLanguage> {
 // IETF BCP 47 region codes for og:locale (so social-card renderers pick the
 // right preview language). Falls back to ${lang}_${LANG.toUpperCase()} for
 // anything not in this map.
+//
+// Mirror of ogLocaleMap in src/App.ts. The two packages have separate Vite
+// roots and bundlers and can't share an import — keep the tables aligned by
+// hand when adding a locale here OR there.
 const OG_LOCALE: Record<string, string> = {
   en: 'en_US', ar: 'ar_SA', bg: 'bg_BG', cs: 'cs_CZ', de: 'de_DE', el: 'el_GR',
   es: 'es_ES', fr: 'fr_FR', it: 'it_IT', ja: 'ja_JP', ko: 'ko_KR', nl: 'nl_NL',
