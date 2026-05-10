@@ -60,6 +60,42 @@ function fail(msg, code = 1) {
 // ---------------------------------------------------------------------------
 // Local catalog: extract every known dodoProductId from productCatalog.ts.
 // ---------------------------------------------------------------------------
+
+/**
+ * Walk a TypeScript object literal at the given start offset and extract
+ * each direct-child `{ ... }` entry block as a substring. Tracks brace
+ * depth char-by-char so an entry that contains a nested object literal
+ * (e.g., a metadata blob) is captured intact.
+ *
+ * Order-independent: each returned block is the full text of one catalog
+ * entry. Caller can run independent per-block regexes for the two fields,
+ * which means `dodoProductId` and `planKey` can appear in either order
+ * without affecting the audit (P1 review on PR #3642).
+ */
+function extractEntryBlocks(src, recordStart) {
+  // Find the `{` that opens the Record<...> object literal.
+  const openIdx = src.indexOf('{', recordStart);
+  if (openIdx === -1) return [];
+  const blocks = [];
+  let depth = 1; // one '{' already consumed
+  let entryStart = -1;
+  for (let i = openIdx + 1; i < src.length; i++) {
+    const c = src[i];
+    if (c === '{') {
+      if (depth === 1) entryStart = i;
+      depth++;
+    } else if (c === '}') {
+      depth--;
+      if (depth === 0) break; // exited the Record itself
+      if (depth === 1 && entryStart !== -1) {
+        blocks.push(src.slice(entryStart, i + 1));
+        entryStart = -1;
+      }
+    }
+  }
+  return blocks;
+}
+
 function loadCatalogProductIds() {
   if (!fs.existsSync(CATALOG_PATH)) {
     fail(`[audit-dodo-catalog] Catalog file not found: ${CATALOG_PATH}`);
@@ -69,12 +105,21 @@ function loadCatalogProductIds() {
   /** dodoProductId → planKey, with origin (catalog vs legacy_alias) for the report. */
   const byId = new Map();
 
-  // PRODUCT_CATALOG entries: `dodoProductId: "pdt_..."` followed somewhere by `planKey: "..."`
-  // Each catalog entry is delimited by `},` so we walk entry-by-entry.
-  const catalogEntryRe = /\{[^{}]*?dodoProductId\s*:\s*["']([^"']+)["'][\s\S]*?planKey\s*:\s*["']([^"']+)["'][\s\S]*?\}/g;
-  let m;
-  while ((m = catalogEntryRe.exec(src)) !== null) {
-    byId.set(m[1], { planKey: m[2], origin: 'PRODUCT_CATALOG' });
+  // PRODUCT_CATALOG: walk the Record literal, extract each entry block,
+  // then independently grep for `dodoProductId` and `planKey` inside it.
+  // The two-pass approach is order-independent — TypeScript object literals
+  // don't constrain key order, so an operator adding `planKey` before
+  // `dodoProductId` in a new entry would have silently been missed by the
+  // previous one-pass regex.
+  const catalogStart = src.search(/PRODUCT_CATALOG\b[^=]*=\s*\{/);
+  if (catalogStart !== -1) {
+    for (const block of extractEntryBlocks(src, catalogStart)) {
+      const idMatch = block.match(/\bdodoProductId\s*:\s*["']([^"']+)["']/);
+      const keyMatch = block.match(/\bplanKey\s*:\s*["']([^"']+)["']/);
+      if (idMatch && keyMatch) {
+        byId.set(idMatch[1], { planKey: keyMatch[1], origin: 'PRODUCT_CATALOG' });
+      }
+    }
   }
 
   // LEGACY_PRODUCT_ALIASES entries: `"pdt_...": "planKey"`
@@ -84,6 +129,7 @@ function loadCatalogProductIds() {
   if (aliasesBlockMatch) {
     const aliasesBlock = aliasesBlockMatch[1];
     const aliasRe = /["']([^"']+)["']\s*:\s*["']([^"']+)["']/g;
+    let m;
     while ((m = aliasRe.exec(aliasesBlock)) !== null) {
       // Only treat as a Dodo product ID if it looks like one (`pdt_` prefix).
       if (m[1].startsWith('pdt_') && !byId.has(m[1])) {
@@ -102,13 +148,19 @@ function loadCatalogProductIds() {
 function suggestPlanKey(dodoProduct, catalogIds) {
   const name = (dodoProduct.name || '').toLowerCase();
   // Keep these in lockstep with PRODUCT_CATALOG planKeys in productCatalog.ts.
+  // Order matters — first-match-wins. List most-specific multi-token
+  // entries before less-specific ones. (P2 review on PR #3642: "Pro
+  // Monthly Annual" would match `['pro', 'annual']` before
+  // `['pro', 'monthly']` if the latter weren't listed first. Theoretical
+  // — Dodo wouldn't actually name a product like that — but the ordering
+  // should still reflect longest-specific-match semantics.)
   const tokens = [
     { keys: ['enterprise'], planKey: 'enterprise' },
     { keys: ['api', 'business'], planKey: 'api_business' },
     { keys: ['api', 'starter', 'annual'], planKey: 'api_starter_annual' },
     { keys: ['api', 'starter'], planKey: 'api_starter' },
+    { keys: ['pro', 'monthly'], planKey: 'pro_monthly' }, // ← before 'pro+annual' (P2 fix)
     { keys: ['pro', 'annual'], planKey: 'pro_annual' },
-    { keys: ['pro', 'monthly'], planKey: 'pro_monthly' },
     { keys: ['pro'], planKey: 'pro_monthly' },
   ];
   for (const t of tokens) {
@@ -120,6 +172,9 @@ function suggestPlanKey(dodoProduct, catalogIds) {
 // ---------------------------------------------------------------------------
 // Dodo API call.
 // ---------------------------------------------------------------------------
+
+const DODO_API_TIMEOUT_MS = 30_000;
+
 async function listDodoProducts(apiKey) {
   // Lazy require — keeps the script importable from contexts that don't
   // have @dodopayments installed (e.g. minimal CI containers running other
@@ -132,12 +187,30 @@ async function listDodoProducts(apiKey) {
   }
   const client = new DodoPayments({ bearerToken: apiKey });
 
-  // PagePromise iterates implicitly via its async iterator.
-  const products = [];
-  for await (const product of client.products.list()) {
-    products.push(product);
-  }
-  return products;
+  // 30s wall-clock cap on the entire enumeration. The SDK's `for await`
+  // iterator paginates internally — without a timeout, a network partition
+  // / slow-loris proxy / Dodo API outage would hang the script forever
+  // (P2 review on PR #3642). Race against a timer; on timeout, throw with
+  // a clear message so the operator knows it wasn't a parser issue.
+  const enumerate = async () => {
+    const products = [];
+    for await (const product of client.products.list()) {
+      products.push(product);
+    }
+    return products;
+  };
+  return Promise.race([
+    enumerate(),
+    new Promise((_, reject) =>
+      setTimeout(
+        () => reject(new Error(
+          `Dodo API enumeration exceeded ${DODO_API_TIMEOUT_MS}ms — ` +
+          `check Dodo status (status.dodopayments.com) or network connectivity.`,
+        )),
+        DODO_API_TIMEOUT_MS,
+      ),
+    ),
+  ]);
 }
 
 // ---------------------------------------------------------------------------
