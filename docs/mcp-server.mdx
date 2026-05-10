@@ -9,6 +9,8 @@ WorldMonitor exposes its intelligence stack as a [Model Context Protocol](https:
 The MCP server is gated behind **PRO**. Free-tier users see a 401 at the OAuth step.
 </Info>
 
+Pro subscribers can connect Claude Desktop / Cursor / claude.ai without ever pasting an API key — see [Pro sign-in flow](#pro-sign-in-flow) below. API Starter+ holders may continue to paste a `wm_…` key on the consent page (the original flow).
+
 ## Endpoints
 
 | Endpoint | Purpose |
@@ -50,9 +52,46 @@ Other clients must proxy via one of these redirects or run locally.
 | Refresh token | 7 days |
 | Registered client record | 90 days (sliding) |
 
+## Pro sign-in flow
+
+Pro subscribers (and API Starter+ users who'd rather not paste a key) can authorize MCP clients via their existing WorldMonitor account — no API key needed.
+
+1. **Add the server URL** in your MCP client. The canonical entrypoint is:
+
+   ```
+   https://api.worldmonitor.app/mcp
+   ```
+
+   (`https://worldmonitor.app/mcp` works too — it proxies the same handler.)
+
+2. **Click "Sign in with WorldMonitor Pro"** on the consent page. This is the default CTA. You'll bounce through `worldmonitor.app/mcp-grant` (Clerk-protected — sign in if needed), then back to `api.worldmonitor.app/oauth/authorize-pro`, then to your client's redirect.
+
+3. **Done.** No `wm_…` key is created or stored on your machine. The client receives a standard OAuth 2.1 access token (1 h TTL, 7 d refresh).
+
+If you'd rather paste an API key (Starter+ / scripted clients), expand "Use API key instead" on the consent page and submit a `wm_live_…` key — that path is unchanged.
+
+### Daily limit (Pro tier)
+
+- **50 tool calls per UTC day**, reset at 00:00 UTC.
+- `tools/list` and `initialize` do **not** count against the cap.
+- Hitting the cap returns JSON-RPC error `-32029` plus HTTP `429` with a `Retry-After` header pointing at the next UTC midnight.
+- The cap is hard: concurrent `tools/call`s near the boundary use an atomic Redis reservation, so exactly the call that crosses 50 rejects.
+
+API Starter+ users on key-based auth retain the original 60 calls / minute / key sliding window (no daily cap).
+
+### Connected MCP clients
+
+Each authorization mints a separate row, so revoking Claude Desktop does not affect Cursor.
+
+- Manage connected clients in **[Settings → Connected MCP clients](https://worldmonitor.app/settings)**.
+- See the live `clientName` (e.g. "Claude", "Cursor"), `lastUsedAt`, and `createdAt` per token.
+- A revoke takes effect on the next MCP request (no positive cache).
+- Up to **5 active tokens per user**. The 6th authorization silently revokes the least-recently-used existing one.
+
 ## Rate limits
 
-- **MCP calls**: 60 requests / minute / API key (sliding window)
+- **MCP calls (API key auth)**: 60 requests / minute / API key (sliding window)
+- **MCP calls (Pro tier)**: 50 tool calls / UTC day / user (`tools/list` and `initialize` excluded)
 - **OAuth authorize**: 10 requests / minute / IP
 - **OAuth token**: 10 requests / minute / IP
 - **Dynamic registration**: 5 registrations / minute / IP

@@ -408,6 +408,11 @@ export default defineSchema({
       apiRateLimit: v.number(),
       prioritySupport: v.boolean(),
       exportFormats: v.array(v.string()),
+      // Optional for backward-compat with existing rows written before
+      // plan 2026-05-10-001 (Pro MCP). Dodo webhooks repopulate this on
+      // the next subscription event; legacy rows return undefined and
+      // every consumer treats undefined as "no MCP access" (fail-closed).
+      mcpAccess: v.optional(v.boolean()),
     }),
     validUntil: v.number(),
     // Optional complimentary-entitlement floor. When set and in the future,

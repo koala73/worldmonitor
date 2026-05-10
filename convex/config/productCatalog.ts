@@ -21,6 +21,19 @@ export type PlanFeatures = {
   apiRateLimit: number;
   prioritySupport: boolean;
   exportFormats: string[];
+  /**
+   * Pro MCP access — bearer-token MCP authorization via Clerk + per-user 50/day
+   * quota. See plan 2026-05-10-001. Distinct from `apiAccess` (which gates
+   * manual `wm_…` API key issuance for REST callers). All paid tiers grant
+   * `mcpAccess: true`; free is `false`.
+   *
+   * Optional in the type because legacy entitlement rows written before this
+   * field was added do not carry it. The Dodo webhook repopulates the field
+   * on the next subscription event, and every consumer (`hasFeature`,
+   * `isCallerPremium`, the MCP edge handler) treats `undefined` as `false`
+   * (fail-closed). Catalog entries below ALWAYS set the field explicitly.
+   */
+  mcpAccess?: boolean;
 };
 
 export interface CatalogEntry {
@@ -49,6 +62,7 @@ const FREE_FEATURES: PlanFeatures = {
   apiRateLimit: 0,
   prioritySupport: false,
   exportFormats: ["csv"],
+  mcpAccess: false,
 };
 
 const PRO_FEATURES: PlanFeatures = {
@@ -58,6 +72,7 @@ const PRO_FEATURES: PlanFeatures = {
   apiRateLimit: 0,
   prioritySupport: false,
   exportFormats: ["csv", "pdf"],
+  mcpAccess: true,
 };
 
 const API_STARTER_FEATURES: PlanFeatures = {
@@ -67,6 +82,7 @@ const API_STARTER_FEATURES: PlanFeatures = {
   apiRateLimit: 60,
   prioritySupport: false,
   exportFormats: ["csv", "pdf", "json"],
+  mcpAccess: true,
 };
 
 const API_BUSINESS_FEATURES: PlanFeatures = {
@@ -76,6 +92,7 @@ const API_BUSINESS_FEATURES: PlanFeatures = {
   apiRateLimit: 300,
   prioritySupport: true,
   exportFormats: ["csv", "pdf", "json", "xlsx"],
+  mcpAccess: true,
 };
 
 const ENTERPRISE_FEATURES: PlanFeatures = {
@@ -85,6 +102,7 @@ const ENTERPRISE_FEATURES: PlanFeatures = {
   apiRateLimit: 1000,
   prioritySupport: true,
   exportFormats: ["csv", "pdf", "json", "xlsx", "api-stream"],
+  mcpAccess: true,
 };
 
 // ---------------------------------------------------------------------------
@@ -125,7 +143,7 @@ export const PRODUCT_CATALOG: Record<string, CatalogEntry> = {
       "Daily market briefs",
       "Military & geopolitical tracking",
       "Custom widget builder",
-      "MCP data connectors",
+      "MCP access for Claude Desktop & other AI clients (50 calls/day)",
       "Priority data refresh",
     ],
     selfServe: true,

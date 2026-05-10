@@ -20,7 +20,6 @@ import { checkEntitlement, getRequiredTier, getEntitlements } from './_shared/en
 import { resolveClerkSession } from './_shared/auth-session';
 import {
   INTERNAL_MCP_SIG_HEADER,
-  INTERNAL_MCP_USER_ID_HEADER,
   INTERNAL_MCP_VERIFIED_HEADER,
   TRUSTED_USER_ID_HEADER,
   getInternalMcpVerifiedNonce,

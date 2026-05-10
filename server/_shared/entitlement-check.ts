@@ -26,6 +26,14 @@ interface CachedEntitlements {
     maxDashboards: number;
     prioritySupport: boolean;
     exportFormats: string[];
+    /**
+     * Pro MCP access (plan 2026-05-10-001). Undefined on legacy entitlement
+     * rows written before the catalog field landed; every consumer
+     * (gateway HMAC verifier, isCallerPremium, MCP edge handler) treats
+     * undefined as `false` — fail-closed. The Dodo webhook repopulates
+     * this on the next subscription event.
+     */
+    mcpAccess?: boolean;
   };
   validUntil: number;
 }

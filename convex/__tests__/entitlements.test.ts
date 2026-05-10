@@ -142,6 +142,19 @@ describe("entitlement query", () => {
     );
   });
 
+  test("mcpAccess: free is false, paid tiers are true (plan 2026-05-10-001)", () => {
+    // Free tier — must NOT grant Pro MCP access.
+    expect(getFeaturesForPlan("free").mcpAccess).toBe(false);
+
+    // All paid tiers grant MCP access.
+    expect(getFeaturesForPlan("pro_monthly").mcpAccess).toBe(true);
+    expect(getFeaturesForPlan("pro_annual").mcpAccess).toBe(true);
+    expect(getFeaturesForPlan("api_starter").mcpAccess).toBe(true);
+    expect(getFeaturesForPlan("api_starter_annual").mcpAccess).toBe(true);
+    expect(getFeaturesForPlan("api_business").mcpAccess).toBe(true);
+    expect(getFeaturesForPlan("enterprise").mcpAccess).toBe(true);
+  });
+
   test("does not throw when duplicate entitlement rows exist for same userId", async () => {
     const t = convexTest(schema, modules);
 

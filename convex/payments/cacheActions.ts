@@ -46,6 +46,9 @@ export const syncEntitlementCache = internalAction({
       apiRateLimit: v.number(),
       prioritySupport: v.boolean(),
       exportFormats: v.array(v.string()),
+      // Optional — legacy entitlement rows pre-dating plan 2026-05-10-001
+      // do not carry mcpAccess. Schema validator must accept their reads.
+      mcpAccess: v.optional(v.boolean()),
     }),
     validUntil: v.number(),
   },
