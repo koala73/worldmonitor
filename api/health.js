@@ -722,6 +722,42 @@ export default async function handler(req, ctx) {
     return new Response(null, { status: 204, headers });
   }
 
+  // ?history=1 — fast read of the failure-log persisted by previous /api/health
+  // probes. Skips the full freshness check (which is expensive — fetches every
+  // bootstrap key) and returns only the last-failure snapshot + the deduped
+  // incident log. Use to answer "what's been flipping?" without needing
+  // Upstash creds. The classifier writes these keys on every non-OK probe:
+  //   health:last-failure   — single most recent unhealthy snapshot (24h TTL)
+  //   health:failure-log    — last 50 deduped incidents (7-day TTL)
+  // See WM 2026-05-10 — added after a night of UptimeRobot flips that needed
+  // direct Upstash inspection to diagnose.
+  {
+    const earlyUrl = new URL(req.url);
+    if (earlyUrl.searchParams.get('history') === '1') {
+      const results = await redisPipeline(
+        [
+          ['GET', 'health:last-failure'],
+          ['LRANGE', 'health:failure-log', '0', '-1'],
+        ],
+        4_000,
+      );
+      const parseJson = (raw) => {
+        if (typeof raw !== 'string') return null;
+        try { return JSON.parse(raw); } catch { return null; }
+      };
+      const lastFailureRaw = results?.[0]?.result;
+      const failureLogRaw = results?.[1]?.result;
+      const body = {
+        lastFailure: typeof lastFailureRaw === 'string' ? parseJson(lastFailureRaw) : null,
+        failureLog: Array.isArray(failureLogRaw)
+          ? failureLogRaw.map(parseJson).filter((e) => e !== null)
+          : [],
+        checkedAt: new Date(Date.now()).toISOString(),
+      };
+      return new Response(JSON.stringify(body, null, 2), { status: 200, headers });
+    }
+  }
+
   const now = Date.now();
 
   const allDataKeys = [
