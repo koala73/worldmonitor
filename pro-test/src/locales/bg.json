@@ -6,7 +6,8 @@
     "enterprise": "Enterprise",
     "reserveAccess": "Резервирайте ранния си достъп",
     "signIn": "Вход",
-    "upgradeToPro": "Надграждане до Pro"
+    "upgradeToPro": "Надграждане до Pro",
+    "goToDashboard": "Отидете на контролния панел"
   },
   "hero": {
     "noiseWord": "Шум",
@@ -18,7 +19,8 @@
     "emailPlaceholder": "Въведете имейл",
     "emailAriaLabel": "Имейл адрес за списъка на чакащите",
     "choosePlan": "Изберете план",
-    "signIn": "Вход"
+    "signIn": "Вход",
+    "goToDashboard": "Отидете на контролния панел"
   },
   "wired": {
     "asFeaturedIn": "Представено в"
@@ -354,5 +356,11 @@
     "youreIn": "Вие сте вътре!",
     "invitedBanner": "Вие сте поканени — присъединете се към списъка на чакащите"
   },
-  "soonBadge": "Скоро"
+  "soonBadge": "Скоро",
+  "meta": {
+    "title": "World Monitor Pro — AI анализатор, персонален интелигентен работен плот, MCP за Claude & GPT",
+    "description": "Геополитичният AI слой. Попитайте го, абонирайте се на него, строете върху него. WM Analyst чат в 30+ живи услуги, AI дайджест доставен дневно, два пъти дневно или седмично до Slack, Discord, Telegram, Email или webhook, персонализиран конструктор на джаджи (HTML/CSS/JS + AI) и MCP конектори за Claude, GPT и персонализирани LLM.",
+    "ogTitle": "World Monitor Pro — Геополитичният AI слой",
+    "ogDescription": "Попитайте го, абонирайте се на него, строете върху него. WM Analyst чат, AI дайджест по ваше разписание (дневно, два пъти дневно или седмично), персонализиран конструктор на джаджи и MCP за Claude/GPT — в 30+ живи услуги под един ключ."
+  }
 }

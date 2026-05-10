@@ -204,7 +204,18 @@
     "panelCatCentralBanks": "央行与经济",
     "panelCatDeals": "交易与机构",
     "panelCatGulfMena": "海湾与中东",
-    "panelCatTradePolicy": "贸易政策"
+    "panelCatTradePolicy": "贸易政策",
+    "cached": "已缓存",
+    "unavailable": "不可用",
+    "commodity": "商品",
+    "energy": "能源",
+    "tabNotifications": "通知",
+    "panelCatCorrelation": "相关性",
+    "panelCatCommodityPrices": "价格与市场",
+    "panelCatMining": "采矿与供应链",
+    "panelCatCommodityEcon": "经济与贸易",
+    "panelCatHappyNews": "好消息",
+    "panelCatHappyPlanet": "地球与慈善"
   },
   "panels": {
     "liveNews": "实时新闻",
@@ -283,7 +294,38 @@
     "gulfCurrencies": "海湾货币",
     "gulfOil": "海湾石油",
     "bigmac": "Real Big Mac Index",
-    "fearGreed": "Fear & Greed"
+    "fearGreed": "Fear & Greed",
+    "marketImplications": "AI 市场影响",
+    "energyComplex": "能源综合体",
+    "oilInventories": "石油库存",
+    "energyCrisis": "能源危机追踪器",
+    "goldIntelligence": "黄金情报",
+    "wsbTickerScanner": "WSB 股票扫描器",
+    "internetDisruptions": "互联网中断",
+    "internetDisruptionsTabs": {
+      "outages": "中断",
+      "ddos": "DDoS 攻击",
+      "anomalies": "异常"
+    },
+    "liveWebcams": "实时网络摄像头",
+    "windyWebcams": "Windy 实时网络摄像头",
+    "groceryBasket": "食品杂货指数",
+    "groceryItem": "商品",
+    "bigmacDesc": "中东国家的巨无霸汉堡价格（巨无霸指数）",
+    "bigmacWow": "WoW",
+    "bigmacCountry": "国家",
+    "faoFoodPriceIndex": "粮农组织食品价格指数",
+    "fuelPrices": "燃料价格",
+    "fuelPricesDesc": "全球 30 多个国家的零售汽油和柴油价格",
+    "fuelPricesCountry": "国家",
+    "fuelPricesGasoline": "汽油",
+    "fuelPricesDiesel": "柴油",
+    "fuelPricesSource": "来源",
+    "groceryBasketDesc": "全球 24 个国家的食品杂货篮子价格对比",
+    "airlineIntel": "✈️ 航空公司情报",
+    "consumerPrices": "消费者价格",
+    "marketBreadth": "市场广度",
+    "climateNews": "气候新闻"
   },
   "commands": {
     "prefixes": {
@@ -321,7 +363,9 @@
       "briefExample": "brief china",
       "layersExample": "military layers",
       "timeExample": "24h",
-      "settingsExample": "dark mode"
+      "settingsExample": "dark mode",
+      "flight": "按呼号搜索实时航班 (PRO)",
+      "flightExample": "UAE528"
     },
     "keywords": {
       "military": "军事",
@@ -417,8 +461,15 @@
         "startup": "创业公司",
         "techevent": "科技活动",
         "techhq": "科技总部",
-        "accelerator": "加速器"
-      }
+        "accelerator": "加速器",
+        "flight": "航班"
+      },
+      "flightOnGround": "地面停靠",
+      "flightAirborne": "FL{{fl}} · {{kts}} 节",
+      "flightMilitary": "军用 · {{type}} · FL{{fl}}",
+      "flightMilitaryOnGround": "军用 · {{type}} · 地面停靠",
+      "flightSearchHint": "按 Enter 或点击查看实时位置",
+      "flightNotFound": "未找到 {{callsign}} 的实时位置"
     },
     "signal": {
       "title": "情报发现",
@@ -526,7 +577,8 @@
         "NASA_FIRMS_API_KEY": "消防信息资源管理系统。",
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
-      }
+      },
+      "reserveEarlyAccess": "预留早期访问权限"
     },
     "settingsWindow": {
       "validating": "正在验证API密钥...",
@@ -574,7 +626,13 @@
         "path": "路径",
         "status": "状态",
         "duration": "耗时"
-      }
+      },
+      "shellTitle": "World Monitor 设置",
+      "shellSearchPlaceholder": "搜索设置...",
+      "shellCancel": "取消",
+      "shellSaveClose": "保存并关闭",
+      "freePanelLimit": "免费计划：最多 {{max}} 个面板。升级至 PRO 获得无限面板。",
+      "freeSourceLimit": "免费计划：最多 {{max}} 个信息源。升级至 PRO 获得无限信息源。"
     },
     "countryIntel": {
       "identifying": "正在识别国家...",
@@ -763,7 +821,17 @@
       "change": "Change",
       "cut": "cut",
       "hike": "hike",
-      "hold": "hold"
+      "hold": "hold",
+      "pressure": {
+        "label": "宏观压力",
+        "stress": "压力",
+        "watch": "关注",
+        "steady": "稳定",
+        "stressDetail": "波动性和曲线压力升高。",
+        "watchDetail": "跨市场情况需要密切监控。",
+        "steadyDetail": "宏观情况暂时稳定。"
+      },
+      "infoTooltip": "<strong>宏观压力</strong> 宏观指标、政府支出和央行数据：<ul><li><strong>指标</strong>：VIX、利率、收益率曲线、劳动力、通胀</li><li><strong>政府</strong>：最近美国政府合同奖励</li><li><strong>央行</strong>：BIS 政策利率和汇率数据</li></ul>"
     },
     "supplyChain": {
       "chokepoints": "咽喉要道",
@@ -787,7 +855,21 @@
       "mineral": "矿产",
       "topProducers": "主要生产国",
       "risk": "风险",
-      "sources": "FRED / NGA / USGS"
+      "sources": "FRED / NGA / USGS",
+      "transit24h": "24小时",
+      "tankers": "油轮",
+      "cargo": "货物",
+      "wowChange": "周涨跌",
+      "vesselTransits": "船舶过境（180天）",
+      "riskLevel": "风险等级",
+      "flowUnavailable": "流量数据不可用",
+      "containerRates": "集装箱运费",
+      "bulkShipping": "散货运输",
+      "economicIndicators": "经济指标",
+      "loadingHistory": "正在加载过境历史…",
+      "historyUnavailable": "过境历史不可用",
+      "transitDataUnavailable": "过境数据不可用（上游数据不完整）",
+      "infoTooltip": "<strong>供应链监控</strong> 全球物流与资源追踪：<ul><li><strong>战略要道</strong>：海上过境状态、中断评分和船舶数量</li><li><strong>航运</strong>：波罗的海干散货指数和运费趋势</li><li><strong>矿物</strong>：关键矿物浓度风险(HHI)和主要生产国</li></ul>点击要道卡片可展开过境历史图表。"
     },
     "tradePolicy": {
       "restrictions": "限制措施",
@@ -807,7 +889,39 @@
       "yoyChange": "同比变化",
       "highTariff": "高",
       "moderateTariff": "中等",
-      "lowTariff": "低"
+      "lowTariff": "低",
+      "overview": "概览",
+      "noOverviewData": "无关税概览数据",
+      "mfnAppliedRate": "最惠国税率",
+      "baselineMfnTariff": "最惠国基准关税",
+      "effectiveTariffRateLabel": "有效税率",
+      "gapLabel": "差值",
+      "gapVsMfnLabel": "与最惠国税率的差值",
+      "noEffectiveCoverageForCountry": "该国无有效税率数据",
+      "effectiveMinusBaseline": "有效税率减去世贸组织最惠国基准",
+      "wtoBaselineMeta": "世贸组织最惠国税率 | {{year}}",
+      "overviewNoteNoEffective": "这些数据是世贸组织最惠国基准税率，不是当前单边关税行为的税收负担。",
+      "usBaselineLabel": "美国世贸组织最惠国基准",
+      "overviewNoteTail": "这些卡片显示世贸组织基准承诺，不是当前实际有效关税负担。",
+      "revenue": "美国收入",
+      "noRevenueData": "无关税收入数据",
+      "treasuryUnavailable": "财政部数据暂时不可用",
+      "fytdLabel": "财政年度{{year}}至今",
+      "vsPriorFy": "对比财政年度{{year}}",
+      "sourceWto": "世贸组织",
+      "sourceTreasury": "美国财政部",
+      "colDate": "日期",
+      "colMonthly": "月度",
+      "colFytd": "财政年度至今",
+      "strategicFlows": "战略流动",
+      "noComtradeData": "无战略流动数据",
+      "comtradeUnavailable": "联合国贸易数据库数据暂时不可用",
+      "sourceComtrade": "联合国贸易数据库",
+      "anomalyBadge": "异常",
+      "colReporter": "国家",
+      "colCommodity": "商品",
+      "colTradeValue": "贸易额",
+      "infoTooltip": "<strong>贸易政策</strong> 世贸组织基准和关税影响监控：<ul><li><strong>概览</strong>：世贸组织最惠国基准税率及可用时的美国有效税率</li><li><strong>关税</strong>：世贸组织最惠国关税趋势对比美国有效关税估计</li><li><strong>贸易流动</strong>：出口/进口量及年同比变化</li><li><strong>贸易壁垒</strong>：贸易技术壁垒(TBT/SPS)通知</li><li><strong>收入</strong>：月度美国关税收入(美国财政部MTS数据)</li></ul>"
     },
     "gdelt": {
       "empty": "该主题暂无近期文章"
@@ -948,7 +1062,10 @@
         "east-med-theater": "东地中海",
         "israel-gaza-theater": "以色列/加沙",
         "yemen-redsea-theater": "也门/红海"
-      }
+      },
+      "emojiKeyLabel": "表情符号图例",
+      "emojiKeyAir": "空中资产",
+      "emojiKeyNaval": "海军资产"
     },
     "countryBrief": {
       "shareLink": "分享链接",
@@ -1003,7 +1120,15 @@
         "ciiNormal": "正常 (31–50)",
         "ciiElevated": "偏高 (51–65)",
         "ciiHigh": "高 (66–80)",
-        "ciiCritical": "危急 (81–100)"
+        "ciiCritical": "危急 (81–100)",
+        "miningSite": "采矿场",
+        "commodityPort": "商品港口",
+        "pipeline": "管道",
+        "processingPlant": "加工厂",
+        "conflict": "冲突区域",
+        "diseaseAlert": "疾病警报",
+        "diseaseWarning": "疾病预警",
+        "diseaseWatch": "疾病监测"
       },
       "layerGuide": "图层指南",
       "layerWarningTitle": "性能提示",
@@ -1068,7 +1193,9 @@
         "kindness": "善举",
         "happiness": "世界幸福度",
         "speciesRecovery": "物种恢复",
-        "renewableInstallations": "清洁能源"
+        "renewableInstallations": "清洁能源",
+        "radiationSpike": "辐射峰值",
+        "radiationElevated": "辐射升高"
       },
       "tooltip": {
         "earthquake": "地震",
@@ -1233,7 +1360,42 @@
       "headlineMemoryLabel": "标题记忆",
       "headlineMemoryDesc": "记住已阅标题以突出显示新内容",
       "streamAlwaysOnLabel": "保持实时流持续播放",
-      "streamAlwaysOnDesc": "防止 Live Cams 和 Live News 在你空闲时自动暂停。建议用于副屏 / 墙面看板场景。关闭（Eco）可节省 CPU/带宽。"
+      "streamAlwaysOnDesc": "防止 Live Cams 和 Live News 在你空闲时自动暂停。建议用于副屏 / 墙面看板场景。关闭（Eco）可节省 CPU/带宽。",
+      "analysisFrameworksLabel": "分析框架",
+      "analysisFrameworksActivePerPanel": "每个面板激活",
+      "analysisFrameworksSkillLibrary": "技能库",
+      "analysisFrameworksImportBtn": "导入框架",
+      "analysisFrameworksDefaultNeutral": "默认（中立）",
+      "analysisFrameworksImportTitle": "导入框架",
+      "analysisFrameworksFromAgentskills": "来自 agentskills.io",
+      "analysisFrameworksPasteJson": "粘贴 JSON",
+      "analysisFrameworksSaveToLibrary": "保存至库",
+      "frameworkNote": "仅适用于客户端生成的分析",
+      "loadingServerInsights": "加载服务器洞察中...",
+      "usingCachedBrief": "使用缓存摘要...",
+      "multiPerspectiveAnalysis": "多角度分析...",
+      "generatingBriefSub": "生成摘要：{{msg}}",
+      "breakingConfirmed": "突发& 已证实",
+      "multiSource": "多源",
+      "fastMoving": "快速变化",
+      "clusters": "聚类",
+      "alertsLabel": "警报",
+      "alert": "警报",
+      "sources_one": "{{count}} 个来源",
+      "sources_other": "{{count}} 个来源",
+      "briefTech": "技术简报",
+      "briefCommodity": "商品简报",
+      "briefEnergy": "能源简报",
+      "briefWorld": "世界简报",
+      "mlDetected": "ML 检测",
+      "geographicConvergence": "地理汇聚",
+      "focalPoints": "焦点",
+      "toneMixed": "混合",
+      "toneNegative": "负面",
+      "tonePositive": "正面",
+      "overall": "整体：{{tone}}",
+      "signalTypesEvents": "{{types}} 种信号类型 • {{events}} 个事件",
+      "newsSignals": "{{news}} 条新闻 • {{signals}} 个信号"
     },
     "settings": {
       "dataManagementLabel": "数据管理",
@@ -1344,7 +1506,8 @@
       "analyzingCountries": "Analyzing 200+ countries...",
       "source": "Source: World Bank",
       "updated": "Updated: {{date}}",
-      "infoTooltip": "<strong>全球科技就绪度</strong><br>基于世界银行数据的综合评分（0-100）：<br><br><strong>显示指标：</strong><br>🌐 互联网用户（占人口百分比）<br>📱 移动订阅（每100人）<br>🔬 研发支出（占GDP百分比）<br><br><strong>权重：</strong>研发（35%）、互联网（30%）、宽带（20%）、移动（15%）<br><br><em>— = 无近期可用数据</em><br><em>来源：世界银行开放数据（2019-2024）</em>"
+      "infoTooltip": "<strong>全球科技就绪度</strong><br>基于世界银行数据的综合评分（0-100）：<br><br><strong>显示指标：</strong><br>🌐 互联网用户（占人口百分比）<br>📱 移动订阅（每100人）<br>🔬 研发支出（占GDP百分比）<br><br><strong>权重：</strong>研发（35%）、互联网（30%）、宽带（20%）、移动（15%）<br><br><em>— = 无近期可用数据</em><br><em>来源：世界银行开放数据（2019-2024）</em>",
+      "dataPreparing": "刷新技术就绪数据中——即将显示。"
     },
     "populationExposure": {
       "noData": "无可用暴露数据",
@@ -1400,7 +1563,9 @@
         "minutesAgo": "{{count}}分钟前",
         "hoursAgo": "{{count}}小时前"
       },
-      "infoTooltip": "NASA FIRMS VIIRS卫星在监控冲突区域的热异常探测。高强度 = 亮度温度>360K且置信度>80%。"
+      "infoTooltip": "NASA FIRMS VIIRS卫星在监控冲突区域的热异常探测。高强度 = 亮度温度>360K且置信度>80%。",
+      "possibleExplosions": "检测到 {{count}} 起可能爆炸",
+      "explosionTooltip": "热特征与爆炸一致（FRP >80 MW，亮度 >380 K）"
     },
     "ucdpEvents": {
       "stateBased": "国家冲突",
@@ -1481,7 +1646,10 @@
       "summaryError": "无法生成摘要",
       "summaryFailed": "摘要失败",
       "sources": "{{count}}个来源",
-      "relatedAssetsNear": "{{location}}附近的相关资产"
+      "relatedAssetsNear": "{{location}}附近的相关资产",
+      "sortBy": "排序方式",
+      "sortNewest": "最新",
+      "sortRelevance": "相关性"
     },
     "export": {
       "exportData": "导出数据"
@@ -1611,7 +1779,8 @@
         "estFlow": "预估流量",
         "volume": "成交量",
         "change": "涨跌幅"
-      }
+      },
+      "infoTooltip": "<strong>BTC ETF 追踪</strong> 追踪美国现货比特币 ETF 的每日预估资金流向：<ul><li>流入/流出方向和规模</li><li>每只基金的成交量和价格变化</li><li>所有追踪 ETF 的净聚合流向</li></ul>"
     },
     "macroSignals": {
       "overall": "综合",
@@ -1628,12 +1797,17 @@
         "hashRate": "Hash Rate",
         "momentum": "Momentum",
         "fearGreed": "恐惧 &amp; 贪婪"
-      }
+      },
+      "infoTooltip": "<strong>BTC 制度</strong> 比特币头寸和风险偏好的复合信号仪表板：<ul><li><strong>流动性</strong>：美联储净流动性代理</li><li><strong>流向</strong>：BTC vs QQQ 5 日回报率</li><li><strong>制度</strong>：QQQ vs XLP 轮换（风险开启/关闭）</li><li><strong>BTC 趋势</strong>：价格 vs SMA50/200、Mayer 倍数</li><li><strong>哈希率</strong>：30 日网络哈希变化</li><li><strong>恐惧与贪婪</strong>：市场情绪指数</li></ul>此面板用于制度和头寸定位，不涉及广泛的宏观数据。"
     },
     "panel": {
       "showMethodologyInfo": "Show methodology info",
       "dragToResize": "Drag to resize (double-click to reset)",
-      "openSettings": "Open Settings"
+      "openSettings": "Open Settings",
+      "closePanel": "关闭面板",
+      "collapsePanel": "折叠面板",
+      "expandPanel": "展开面板",
+      "addPanel": "添加面板"
     },
     "languageSelector": {
       "selectLanguage": "Select Language",
@@ -1723,10 +1897,17 @@
     },
     "map": {
       "showMap": "显示地图",
-      "hideMap": "隐藏地图"
+      "hideMap": "隐藏地图",
+      "clearTrails": "清除轨迹"
     },
     "internetDisruptions": {
-      "infoTooltip": "<strong>Internet Disruptions</strong> Real-time internet outages, DDoS attacks, and traffic anomalies from global network monitoring:<ul><li><strong>Outages</strong>: BGP-detected connectivity failures by country</li><li><strong>DDoS</strong>: Volumetric attack reports by protocol and vector</li><li><strong>Anomalies</strong>: Unusual traffic patterns from Cloudflare Radar</li></ul>"
+      "infoTooltip": "<strong>Internet Disruptions</strong> Real-time internet outages, DDoS attacks, and traffic anomalies from global network monitoring:<ul><li><strong>Outages</strong>: BGP-detected connectivity failures by country</li><li><strong>DDoS</strong>: Volumetric attack reports by protocol and vector</li><li><strong>Anomalies</strong>: Unusual traffic patterns from Cloudflare Radar</li></ul>",
+      "noOutages": "未检测到活跃中断",
+      "noDdos": "无DDoS数据可用",
+      "noAnomalies": "未检测到流量异常",
+      "byProtocol": "攻击协议",
+      "byVector": "攻击向量",
+      "topTargets": "主要目标国家"
     },
     "commodities": {
       "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress."
@@ -1765,7 +1946,26 @@
       "infoTooltip": "<strong>Central Bank Watch</strong> Latest statements, rate decisions, and communications from the Federal Reserve, ECB, Bank of England, and other major central banks worldwide."
     },
     "airlineIntel": {
-      "infoTooltip": "<strong>航空情报</strong> 实时航空公司运营数据：航线暂停、空域关闭、承运商公告和紧急改航。来源：航空当局NOTAM和承运商通报。"
+      "infoTooltip": "<strong>航空情报</strong> 实时航空公司运营数据：航线暂停、空域关闭、承运商公告和紧急改航。来源：航空当局NOTAM和承运商通报。",
+      "noOpsData": "无运营数据 — 加载中…",
+      "noFlights": "无航班 — 在设置中选择机场。",
+      "noCarrierData": "暂无运营商数据。",
+      "noTrackingData": "无飞机追踪数据。",
+      "noNews": "无航空新闻。",
+      "enterRoute": "输入路线并搜索价格。",
+      "cachedInsight": "缓存洞察",
+      "demoMode": "演示模式",
+      "pricesIndicative": "所有价格仅供参考",
+      "searchFlights": "搜索航班",
+      "bestDates": "最佳日期",
+      "cabinClass": "舱位",
+      "enterRouteAndDate": "输入路线和日期搜索",
+      "enterDateRange": "输入路线和日期范围",
+      "degradedResults": "部分结果可能不完整",
+      "nonstop": "直飞",
+      "roundTrip": "往返",
+      "tripDays": "行程天数",
+      "cheapest": "最便宜"
     },
     "chatAnalyst": {
       "infoTooltip": "<strong>WM 分析师</strong> 具有地缘政治、市场、军事和经济领域实时上下文的AI分析师。由Claude驱动，注入WorldMonitor活跃数据源的实时数据。"
@@ -1814,6 +2014,154 @@
     },
     "yieldCurve": {
       "infoTooltip": "<strong>收益率曲线 &amp; 利率</strong> 美国国债收益率曲线（2Y、5Y、10Y、30Y）和关键利率利差，包括10Y-2Y倒挂指标。还显示欧元区利率（EURIBOR、ESTR）。倒挂曲线在历史上通常先于经济衰退出现。来源：FRED。"
+    },
+    "pinnedWebcams": {
+      "pinFromMap": "从地图固定网络摄像头"
+    },
+    "breakthroughsTicker": {
+      "noData": "暂无科学突破"
+    },
+    "oilInventories": {
+      "infoTooltip": "<strong>石油库存</strong> 美国原油和战略石油储备库存（EIA 周报）、天然气储存、欧盟天然气充气率（GIE AGSI+）以及 OECD 石油库存覆盖天数（IEA 月报）。"
+    },
+    "energyComplex": {
+      "noData": "能源数据暂时不可用 - 将重试",
+      "liveTape": "实时行情",
+      "liveTapeSource": "市场报价",
+      "infoTooltip": "<strong>能源综合体</strong> 一处查看物理和可交易能源信号：<ul><li><strong>EIA 指标</strong>：WTI、布伦特、美国产量和库存</li><li><strong>实时行情</strong>：可交易能源价格，如原油和天然气</li><li><strong>目的</strong>：将物理能源压力与更广泛的宏观和商品面板分开</li></ul>"
+    },
+    "consumerPrices": {
+      "title": "消费者价格",
+      "subtitle": "关键市场的篮子价格追踪",
+      "tabs": {
+        "overview": "概览",
+        "categories": "分类",
+        "movers": "涨跌",
+        "spread": "零售商价差",
+        "health": "数据健康度"
+      },
+      "essentialsIndex": "生活必需品指数",
+      "valueBasketIndex": "价值篮子",
+      "wowChange": "周环比",
+      "momChange": "月环比",
+      "retailerSpread": "零售商价差",
+      "coveragePct": "覆盖率",
+      "freshnessLag": "数据新鲜度滞后",
+      "noCategories": "暂无品类数据",
+      "noMovers": "暂无价格变动数据",
+      "noSpread": "暂无零售商价差数据",
+      "noHealth": "暂无数据健康度信息",
+      "upstreamUnavailable": "消费者价格数据暂时不可用",
+      "allCategories": "所有品类",
+      "risers": "上升",
+      "fallers": "下降",
+      "unitPrice": "单价",
+      "freshLabel": "最新",
+      "staleLabel": "陈旧",
+      "laggingLabel": "滞后",
+      "stalledLabel": "停滞",
+      "retailer": "零售商",
+      "lastUpdated": "最后更新",
+      "retailers": "零售商",
+      "items": "商品",
+      "infoTooltip": "<strong>消费者价格</strong> 实时购物篮价格跟踪：<ul><li><strong>概览</strong>：生活必需品指数、价值篮子及周环比变化</li><li><strong>品类</strong>：各品类价格趋势及30天价格区间</li><li><strong>变动</strong>：本周价格涨跌最快的商品</li><li><strong>价差</strong>：同一购物篮在不同零售商之间的价格差异</li></ul>数据来自实时零售商价格爬取。"
+    },
+    "marketImplications": {
+      "infoTooltip": "<strong>AI市场影响分析</strong> LLM生成的交易信号，基于每个预测周期后的实时地缘政治、商品和宏观状态。<ul><li><strong>方向</strong>：看多/看空/对冲，附带信心评分</li><li><strong>时间框架</strong>：1周、2周、1月或3月</li><li><strong>驱动因素</strong>：信号背后的关键催化剂</li><li><strong>风险</strong>：预警或失效条件</li></ul><em>仅供参考，不构成投资建议。</em>"
+    },
+    "forecast": {
+      "infoTooltip": "<strong>AI 预测</strong> AI 生成的地缘政治和经济事件概率估计：<ul><li>跨域覆盖：冲突、市场、供应链、网络安全、政治</li><li>每个预测显示估计概率、置信度和时间范围</li><li>根据预测市场基线进行校准（如可用）</li></ul>预测在新情报信号到达时更新。使用上方标签按域筛选。"
+    },
+    "escalationCorrelation": {
+      "infoTooltip": "<strong>升级监测</strong> 检测汇聚的地缘政治信号：<ul><li>关联军事行动、冲突事件和新闻激增</li><li>按严重程度（关键/高/中/低）评分汇聚区域</li><li>追踪一段时间内的升级或降级趋势</li></ul>点击卡片可在地图上放大到该区域。"
+    },
+    "economicCorrelation": {
+      "infoTooltip": "<strong>经济战争</strong> 检测汇聚的经济压力信号：<ul><li>制裁、贸易限制和货币行动</li><li>与地缘政治行为体相关的商品中断</li><li>经济和安全事件之间的跨域关联</li></ul>点击卡片可在地图上放大到受影响区域。"
+    },
+    "militaryCorrelation": {
+      "infoTooltip": "<strong>兵力态势</strong> 关联军事活动与地缘政治背景：<ul><li>按地区统计军用飞机和海军舰艇集中度</li><li>交叉参考活跃冲突区域和新闻激增</li><li>突出异常兵力集结或重新部署</li></ul>点击卡片可在地图上放大到该区域。"
+    },
+    "disasterCorrelation": {
+      "infoTooltip": "<strong>灾难级联</strong> 检测汇聚的自然灾害和基础设施信号：<ul><li>关联地震、野火、洪灾和极端天气</li><li>追踪对基础设施和供应链的级联影响</li><li>突出具有复合灾难风险的地区</li></ul>点击卡片可在地图上放大到受影响区域。"
+    },
+    "markets": {
+      "infoTooltip": "<strong>市场</strong> 实时股票指数、股票和加密货币价格。使用\"观察列表\"按钮自定义您的观察列表。火花线显示最近价格趋势。"
+    },
+    "heatmap": {
+      "infoTooltip": "<strong>板块热力图</strong> S&P 500 板块表现一览。颜色强度反映每日变化幅度。绿色 = 涨幅，红色 = 跌幅。"
+    },
+    "fuelPrices": {
+      "infoTooltip": "<strong>燃料价格</strong> 30+ 个国家的汽油和柴油零售泵价格，以 USD/升 标准化进行比较。价格来自官方政府开放数据计划，每周更新。最便宜和最昂贵的国家会被突出显示。当前周数据可用时显示 WoW 变化。",
+      "countries": "个国家"
+    },
+    "faoFoodPriceIndex": {
+      "infoTooltip": "<strong>粮农组织食品价格指数</strong> 联合国粮食及农业组织的粮价指数 (FFPI) 追踪食品商品篮（谷物、乳制品、肉类、油类、糖）的国际出口价格，以 2014-2016=100 为基准。每月第一个星期五更新。",
+      "indexLabel": "粮价指数（2014-16=100）",
+      "mom": "环比",
+      "yoy": "同比",
+      "asOf": "截至",
+      "baseNote": "基准：2014-2016 = 100 | 数据来源：联合国粮农组织",
+      "ffpi": "食品",
+      "cereals": "谷物",
+      "meat": "肉类",
+      "dairy": "乳制品",
+      "oils": "油脂",
+      "sugar": "糖"
+    },
+    "climateNews": {
+      "infoTooltip": "<strong>气候新闻</strong>来自Carbon Brief、UNEP、NASA、The Guardian等权威来源的最新环境和气候资讯。每30分钟更新一次。",
+      "loadError": "气候新闻暂时无法获取"
+    },
+    "liquidityShifts": {
+      "title": "流动性变化",
+      "infoTooltip": "<strong>流动性变化</strong>石油、黄金、白银、股指期货和美国顶级股票的高流动性头寸和日度变化监测。资产管理人COT净头寸和杠杆基金净头寸与日价格变化对比。",
+      "cotSection": "石油/黄金/白银 + 指数头寸(COT)",
+      "stocksSection": "美国顶级股票：日度变化",
+      "longShort": "多头 {{long}} / 空头 {{short}}",
+      "lev": "杠杆",
+      "noCot": "无可用COT数据。",
+      "noStocks": "无可用顶级股票报价。",
+      "reportDate": "COT报告日期：{{date}}",
+      "unavailable": "流动性数据无法获取",
+      "failed": "加载失败"
+    },
+    "positioning247": {
+      "title": "24/7头寸",
+      "infoTooltip": "<strong>24/7头寸</strong>来自Hyperliquid的永续合约头寸压力。全天交易，展示传统市场关闭时建仓的情况。综合得分(0-100)来自资金费率、交易量、未平仓合约和现货永续基差。绿色 = 多头拥挤(看涨倾向)，红色 = 空头拥挤(看跌倾向)。",
+      "commodities": "商品",
+      "crypto": "加密货币",
+      "fx": "外汇",
+      "warmup": "正在构建基准数据。交易量和未平仓合约历史将在下一小时内填充。",
+      "unavailable": "头寸数据无法获取",
+      "footer": "5分钟 · Hyperliquid永续合约 · 24/7"
+    },
+    "goldIntelligence": {
+      "infoTooltip": "<strong>黄金情报</strong>黄金现货价格、金银比、黄金vs铂金溢价、交叉货币XAU价格(欧元、英镑、日元、人民币、印度卢比、瑞郎)和CFTC管理资金头寸。来源：Yahoo Finance、CFTC COT。"
+    },
+    "energyCrisis": {
+      "infoTooltip": "<strong>能源危机追踪器</strong>IEA 2026能源危机政策应对追踪器。追踪政府为应对中东冲突和霍尔木兹海峡供应中断而采取的节能和消费者支持措施。涵盖60多个国家的近200项政策措施。"
+    },
+    "wsbTickerScanner": {
+      "infoTooltip": "<strong>WSB股票代码扫描器</strong>来自r/wallstreetbets、r/stocks和r/investing的实时股票代码提及。按提及频率和参与度排名。速度指标衡量股票代码在帖子中获得动量的速度。"
+    },
+    "proBanner": {
+      "badge": "PRO",
+      "headline": "Pro已上线",
+      "tagline": "更多信号，更少噪音。更多AI简报。专属于您的地缘政治和股票研究员。",
+      "cta": "升级到Pro →",
+      "dismiss": "关闭"
+    },
+    "checkoutFailureBanner": {
+      "message": "支付无法完成。未进行任何扣款。",
+      "retry": "重试",
+      "retrying": "重试中…",
+      "dismiss": "关闭"
+    },
+    "frameworkSelector": {
+      "label": "分析框架",
+      "defaultNeutral": "默认（中立）",
+      "titlePrefix": "框架：{{name}}",
+      "titleNone": "分析框架"
     }
   },
   "popups": {
@@ -1897,7 +2245,9 @@
         "apac": "亚太地区",
         "mena": "中东",
         "africa": "非洲"
-      }
+      },
+      "scheduled": "计划",
+      "estimated": "预计"
     },
     "aircraft": {
       "altitude": "高度",
@@ -2193,7 +2543,9 @@
       "lastReport": "LATEST",
       "nearChokepoint": "NEAR CHOKEPOINT",
       "nearBase": "NEAR BASE",
-      "lastSeen": "LAST SEEN"
+      "lastSeen": "LAST SEEN",
+      "estPosition": "预计位置",
+      "aisLive": "AIS 实时"
     },
     "militaryCluster": {
       "flightActivity": {
@@ -2225,7 +2577,13 @@
       "active": "活跃",
       "reported": "已报告",
       "viewOnSource": "在{{source}}上查看",
-      "attribution": "数据：NASA EONET"
+      "attribution": "数据：NASA EONET",
+      "storm": "风暴",
+      "classification": "分类",
+      "maxWind": "最大风速",
+      "pressure": "气压",
+      "movement": "移动",
+      "tropicalSystem": "热带系统"
     },
     "port": {
       "types": {
@@ -2480,7 +2838,9 @@
     "currentVariant": "(当前)",
     "retry": "Retry",
     "refresh": "Refresh",
-    "all": "全部"
+    "all": "全部",
+    "dataTemporarilyUnavailable": "数据暂时不可用",
+    "cancel": "取消"
   },
   "preferences": {
     "display": "显示",
@@ -2498,10 +2858,141 @@
     "mapTheme": "地图主题",
     "mapThemeDesc": "地图图块的视觉风格。",
     "globePreset": "视觉预设",
-    "globePresetDesc": "在经典和增强的地球视觉之间切换。"
+    "globePresetDesc": "在经典和增强的地球视觉之间切换。",
+    "fontFamily": "字体",
+    "fontFamilyDesc": "等宽字体用于技术外观，系统默认字体便于阅读。",
+    "fontMono": "等宽字体",
+    "fontSystem": "系统默认"
   },
   "contextMenu": {
     "openCountryBrief": "打开国家简报",
     "copyCoordinates": "复制坐标"
+  },
+  "shell": {
+    "documentTitle": "World Monitor — 实时全球情报仪表板",
+    "metaDescription": "实时全球情报平台。刊登于 WIRED。全球 190 个国家 200 万+ 用户使用。冲突、市场、军事、OSINT 信息一览无遗。",
+    "offlineTitle": "您已离线",
+    "offlineMessage": "World Monitor 需要互联网连接来获取实时情报数据。",
+    "offlineRetry": "重试"
+  },
+  "widgets": {
+    "createWithAi": "使用 AI 创建",
+    "confirmDelete": "永久删除此小组件?",
+    "chatTitle": "小组件生成器",
+    "modifyTitle": "编辑小组件",
+    "inputPlaceholder": "描述您的小组件...",
+    "addToDashboard": "添加到仪表板",
+    "applyChanges": "应用更改",
+    "send": "发送",
+    "changeAccent": "更改强调色",
+    "modifyWithAi": "使用 AI 编辑小组件",
+    "ready": "小组件已就绪: {{title}}",
+    "fetching": "正在获取 {{target}}...",
+    "requestTimedOut": "请求超时。请重试。",
+    "serverError": "服务器错误: {{status}}",
+    "unknownError": "未知错误",
+    "generatedWidget": "生成的小组件: {{title}}",
+    "checkingConnection": "检查小组件访问权限中…",
+    "preflightConnected": "已连接到小组件代理",
+    "preflightInvalidKey": "小组件密钥被拒绝。请更新 wm-widget-key 并重新加载。",
+    "preflightUnavailable": "小组件代理暂时不可用。",
+    "preflightAiUnavailable": "AI 后端不可用。请稍后重试。",
+    "readyToGenerate": "已就绪。选择示例或描述您的小组件。",
+    "readyToApply": "{{title}} 的预览已就绪。请审阅后添加到仪表板。",
+    "modifyHint": "预览当前小组件。提交更改请求以修改它。",
+    "generating": "生成中…",
+    "examplesTitle": "提示示例",
+    "previewTitle": "实时预览",
+    "phaseChecking": "检查中",
+    "phaseReadyToPrompt": "就绪",
+    "phaseFetching": "获取中",
+    "phaseComposing": "构建中",
+    "phaseComplete": "就绪",
+    "phaseError": "错误",
+    "previewCheckingHeading": "连接小组件生成器中",
+    "previewReadyHeading": "描述您想要的小组件",
+    "previewFetchingHeading": "正在获取实时 WorldMonitor 数据",
+    "previewComposingHeading": "正在构建小组件布局",
+    "previewErrorHeading": "预览需要处理",
+    "previewCheckingCopy": "我们正在验证您的小组件密钥和后端可用性，然后启用生成。",
+    "previewReadyCopy": "使用提示示例或描述您想要的精确实时视图。预览将在此处更新，然后您可以保存。",
+    "previewFetchingCopy": "代理正在调用已批准的 WorldMonitor 端点并为小组件塑形数据集。",
+    "previewComposingCopy": "预览正在使用最新的实时数据和仪表板样式进行呈现。",
+    "previewErrorCopy": "修复问题后重试。您现有的小组件不受影响。",
+    "createInteractive": "创建交互式小组件",
+    "proBadge": "PRO",
+    "preflightProUnavailable": "PRO 小组件代理不可用。请检查服务器上的 PRO_WIDGET_KEY。",
+    "preflightInvalidProKey": "PRO 密钥被拒绝。请更新 wm-pro-key 并重新加载。",
+    "preflightProSubscriptionRequired": "需要 Pro 订阅。如果您刚升级，请刷新页面；否则请联系支持。",
+    "preflightProRequired": "需要 Pro 订阅才能使用小部件生成器。升级以解锁。",
+    "examples": {
+      "oilGold": "显示今天的原油价格与黄金价格对比",
+      "cryptoMovers": "为过去 24 小时内涨跌幅最大的加密货币创建小部件",
+      "flightDelays": "总结目前国际航班延误最严重的情况",
+      "conflictHotspots": "标记最新 UCDP 冲突热点及简短标签"
+    },
+    "proExamples": {
+      "interactiveChart": "交互式 Chart.js 图表，对比石油和黄金价格",
+      "sortableTable": "具有搜索筛选功能的可排序加密货币价格表",
+      "animatedCounters": "主要经济指标的动画计数器",
+      "tabbedComparison": "按地区分类的冲突事件选项卡式对比"
+    }
+  },
+  "connectivity": {
+    "offlineCached": "离线——显示来自 {{freshness}} 的缓存数据。",
+    "offlineUnavailable": "离线——实时数据目前不可用。",
+    "cachedFallback": "实时数据不可用——显示来自 {{freshness}} 的缓存数据。"
+  },
+  "premium": {
+    "pro": "PRO",
+    "lockedDesc": "需要 World Monitor 许可证密钥",
+    "joinWaitlist": "加入等待列表",
+    "signInToUnlock": "登录以解锁高级功能",
+    "signIn": "登录以解锁",
+    "verifyEmailToUnlock": "验证您的邮箱以访问高级功能",
+    "resendVerification": "重新发送验证",
+    "upgradeDesc": "升级到 Pro 以获得完整的高级分析访问权限",
+    "upgradeToPro": "升级到 Pro",
+    "features": {
+      "orefSirens1": "实时以色列导弹和火箭警报",
+      "orefSirens2": "警报区域地图及威胁分类",
+      "telegramIntel1": "精选 Telegram 开源情报频道",
+      "telegramIntel2": "近实时冲突与地缘政治更新"
+    }
+  },
+  "auth": {
+    "signIn": "登录",
+    "createAccount": "创建账户",
+    "settings": "设置"
+  },
+  "mcp": {
+    "connectPanel": "连接 MCP",
+    "modalTitle": "连接 MCP 服务器",
+    "serverUrl": "服务器 URL",
+    "authHeader": "授权标头",
+    "optional": "可选",
+    "apiKey": "API 密钥",
+    "apiKeyPlaceholder": "粘贴您的 API 密钥",
+    "useCustomHeaders": "高级：使用自定义标头 ↓",
+    "useApiKey": "← 使用 API 密钥",
+    "connectBtn": "连接并列出工具",
+    "connecting": "连接中...",
+    "foundTools": "找到 {{count}} 个工具",
+    "connectFailed": "连接失败",
+    "selectTool": "选择工具",
+    "toolArgs": "参数 (JSON)",
+    "panelTitle": "面板标题",
+    "panelTitlePlaceholder": "我的 MCP 面板",
+    "refreshEvery": "刷新间隔",
+    "seconds": "秒",
+    "addPanel": "添加面板",
+    "configure": "配置 MCP",
+    "refreshNow": "立即刷新",
+    "invalidJson": "无效的 JSON",
+    "confirmDelete": "移除此 MCP 面板？",
+    "quickConnect": "快速连接",
+    "or": "或输入自定义服务器",
+    "generatingVisualization": "正在生成可视化...",
+    "visualizationFailed": "可视化失败"
   }
 }

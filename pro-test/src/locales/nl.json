@@ -6,7 +6,8 @@
     "enterprise": "Enterprise",
     "reserveAccess": "Reserveer je vroege toegang",
     "signIn": "Inloggen",
-    "upgradeToPro": "Upgrade naar Pro"
+    "upgradeToPro": "Upgrade naar Pro",
+    "goToDashboard": "Naar Dashboard"
   },
   "hero": {
     "noiseWord": "Ruis",
@@ -18,7 +19,8 @@
     "emailPlaceholder": "Voer je e-mail in",
     "emailAriaLabel": "E-mailadres voor de wachtlijst",
     "choosePlan": "Kies je plan",
-    "signIn": "Inloggen"
+    "signIn": "Inloggen",
+    "goToDashboard": "Naar Dashboard"
   },
   "wired": {
     "asFeaturedIn": "Te zien in"
@@ -354,5 +356,11 @@
     "youreIn": "Je bent erbij!",
     "invitedBanner": "Je bent uitgenodigd — sluit je aan bij de wachtlijst"
   },
-  "soonBadge": "Binnenkort"
+  "soonBadge": "Binnenkort",
+  "meta": {
+    "title": "World Monitor Pro — AI Analyst, Personal Intelligence Desk, MCP voor Claude & GPT",
+    "description": "De geopolitieke AI-laag. Stel er vragen aan, abonneer je erop, bouw erop voort. WM Analyst chat over 30+ live services, een AI-digest dagelijks, twee keer per dag of wekelijks naar Slack, Discord, Telegram, Email of webhook, een custom widget builder (HTML/CSS/JS + AI), en MCP connectors voor Claude, GPT en aangepaste LLM's.",
+    "ogTitle": "World Monitor Pro — The Geopolitical AI Layer",
+    "ogDescription": "Stel er vragen aan, abonneer je erop, bouw erop voort. WM Analyst chat, een AI-digest volgens je schema (dagelijks, twee keer per dag of wekelijks), custom widget builder en MCP voor Claude/GPT — over 30+ live services onder één sleutel."
+  }
 }

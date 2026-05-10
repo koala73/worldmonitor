@@ -6,7 +6,8 @@
     "enterprise": "Enterprise",
     "reserveAccess": "Reservera din tidiga åtkomst",
     "signIn": "Logga in",
-    "upgradeToPro": "Uppgradera till Pro"
+    "upgradeToPro": "Uppgradera till Pro",
+    "goToDashboard": "Gå till instrumentpanel"
   },
   "hero": {
     "noiseWord": "Brus",
@@ -18,7 +19,8 @@
     "emailPlaceholder": "Ange din e-post",
     "emailAriaLabel": "E-postadress för väntelistan",
     "choosePlan": "Välj din plan",
-    "signIn": "Logga in"
+    "signIn": "Logga in",
+    "goToDashboard": "Gå till instrumentpanel"
   },
   "wired": {
     "asFeaturedIn": "Omskrivna i"
@@ -354,5 +356,11 @@
     "youreIn": "Du är med!",
     "invitedBanner": "Du har bjudits in — gå med i väntelistan"
   },
-  "soonBadge": "Snart"
+  "soonBadge": "Snart",
+  "meta": {
+    "title": "World Monitor Pro — AI-analytiker, personaliserat informationscenter, MCP för Claude & GPT",
+    "description": "Geopolitikens AI-skikt. Fråga den, prenumerera på den, bygga på den. WM Analyst-chatt över 30+ live-tjänster, en AI-sammanfattning levererad dagligen, två gånger dagligen eller veckovis till Slack, Discord, Telegram, E-post eller webhook, en anpassad widgetbyggare (HTML/CSS/JS + AI) och MCP-kopplingar för Claude, GPT och anpassade LLM:er.",
+    "ogTitle": "World Monitor Pro — Geopolitikens AI-skikt",
+    "ogDescription": "Fråga den, prenumerera på den, bygga på den. WM Analyst-chatt, en AI-sammanfattning enligt ditt schema (dagligen, två gånger dagligen eller veckovis), anpassad widgetbyggare och MCP för Claude/GPT — över 30+ live-tjänster under en nyckel."
+  }
 }

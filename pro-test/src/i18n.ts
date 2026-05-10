@@ -31,6 +31,40 @@ async function ensureLoaded(lng: string): Promise<SupportedLanguage> {
   return n;
 }
 
+// IETF BCP 47 region codes for og:locale (so social-card renderers pick the
+// right preview language). Falls back to ${lang}_${LANG.toUpperCase()} for
+// anything not in this map.
+//
+// Mirror of ogLocaleMap in src/App.ts. The two packages have separate Vite
+// roots and bundlers and can't share an import — keep the tables aligned by
+// hand when adding a locale here OR there.
+const OG_LOCALE: Record<string, string> = {
+  en: 'en_US', ar: 'ar_SA', bg: 'bg_BG', cs: 'cs_CZ', de: 'de_DE', el: 'el_GR',
+  es: 'es_ES', fr: 'fr_FR', it: 'it_IT', ja: 'ja_JP', ko: 'ko_KR', nl: 'nl_NL',
+  pl: 'pl_PL', pt: 'pt_BR', ro: 'ro_RO', ru: 'ru_RU', sv: 'sv_SE', th: 'th_TH',
+  tr: 'tr_TR', vi: 'vi_VN', zh: 'zh_CN',
+};
+
+function applyMetaTags(): void {
+  const title = i18next.t('meta.title');
+  const desc = i18next.t('meta.description');
+  const ogTitle = i18next.t('meta.ogTitle');
+  const ogDesc = i18next.t('meta.ogDescription');
+  const base = (i18next.language || 'en').split('-')[0] || 'en';
+
+  document.title = title;
+  const set = (sel: string, val: string) => {
+    const el = document.querySelector(sel);
+    if (el) el.setAttribute('content', val);
+  };
+  set('meta[name="description"]', desc);
+  set('meta[property="og:title"]', ogTitle);
+  set('meta[property="og:description"]', ogDesc);
+  set('meta[property="og:locale"]', OG_LOCALE[base] || `${base}_${base.toUpperCase()}`);
+  set('meta[name="twitter:title"]', ogTitle);
+  set('meta[name="twitter:description"]', ogDesc);
+}
+
 export async function initI18n(): Promise<void> {
   if (i18next.isInitialized) return;
   await i18next.use(LanguageDetector).init({
@@ -46,6 +80,7 @@ export async function initI18n(): Promise<void> {
   const base = (i18next.language || detected).split('-')[0] || 'en';
   document.documentElement.setAttribute('lang', base === 'zh' ? 'zh-CN' : base);
   if (RTL_LANGUAGES.has(base)) document.documentElement.setAttribute('dir', 'rtl');
+  applyMetaTags();
 }
 
 export function t(key: string, options?: Record<string, unknown>): string {

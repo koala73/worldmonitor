@@ -204,7 +204,18 @@
     "panelCatCentralBanks": "Merkez Bankaları & Ekonomi",
     "panelCatDeals": "Anlaşmalar & Kurumsal",
     "panelCatGulfMena": "Körfez & MENA",
-    "panelCatTradePolicy": "Ticaret Politikası"
+    "panelCatTradePolicy": "Ticaret Politikası",
+    "cached": "ÖNBELLEĞE ALINDI",
+    "unavailable": "KULLANILABILIR DEĞİL",
+    "commodity": "EMTIA",
+    "energy": "ENERJİ",
+    "tabNotifications": "Bildirimler",
+    "panelCatCorrelation": "Korelasyon",
+    "panelCatCommodityPrices": "Fiyatlar & Piyasalar",
+    "panelCatMining": "Madencilik & Tedarik Zinciri",
+    "panelCatCommodityEcon": "Ekonomi & Ticaret",
+    "panelCatHappyNews": "İyi Haberler",
+    "panelCatHappyPlanet": "Gezegen & Hayırseverlik"
   },
   "panels": {
     "liveNews": "Canli Haberler",
@@ -282,7 +293,39 @@
     "gulfIndices": "Körfez Endeksleri",
     "gulfCurrencies": "Körfez Para Birimleri",
     "gulfOil": "Körfez Petrolü",
-    "bigmac": "Real Big Mac Index"
+    "bigmac": "Real Big Mac Index",
+    "marketImplications": "YZ Pazar Etkileri",
+    "energyComplex": "Enerji Kompleksi",
+    "oilInventories": "Petrol Envanterleri",
+    "energyCrisis": "Enerji Krizi İzleyicisi",
+    "goldIntelligence": "Altın İstihbaratı",
+    "wsbTickerScanner": "WSB Ticker Tarayıcısı",
+    "internetDisruptions": "İnternet Kesintileri",
+    "internetDisruptionsTabs": {
+      "outages": "Kesintiler",
+      "ddos": "DDoS",
+      "anomalies": "Anomaliler"
+    },
+    "liveWebcams": "Canlı Web Kameralar",
+    "windyWebcams": "Windy Canlı Web Kamera",
+    "groceryBasket": "Bakkal Endeksi",
+    "groceryItem": "Ürün",
+    "bigmacDesc": "Orta Doğu ülkelerinde Big Mac fiyatları (Big Mac Endeksi)",
+    "bigmacWow": "WoW",
+    "bigmacCountry": "Ülke",
+    "faoFoodPriceIndex": "FAO Gıda Fiyat Endeksi",
+    "fuelPrices": "Yakıt Fiyatları",
+    "fuelPricesDesc": "Dünya çapında 30+ ülkede perakende benzin ve dizel fiyatları",
+    "fuelPricesCountry": "Ülke",
+    "fuelPricesGasoline": "Benzin",
+    "fuelPricesDiesel": "Dizel",
+    "fuelPricesSource": "Kaynak",
+    "groceryBasketDesc": "Dünya çapında 24 ülkede bakkal sepeti fiyat karşılaştırması",
+    "airlineIntel": "✈️ Havayolu İstihbaratı",
+    "consumerPrices": "Tüketici Fiyatları",
+    "fearGreed": "Korku & Açgözlülük",
+    "marketBreadth": "Pazar Genişliği",
+    "climateNews": "İklim Haberleri"
   },
   "commands": {
     "prefixes": {
@@ -320,7 +363,9 @@
       "briefExample": "brief china",
       "layersExample": "military layers",
       "timeExample": "24h",
-      "settingsExample": "dark mode"
+      "settingsExample": "dark mode",
+      "flight": "Uçuş çağrı işareti ile canlı uçuşları arayın (PRO)",
+      "flightExample": "UAE528"
     },
     "keywords": {
       "military": "askeri",
@@ -416,8 +461,15 @@
         "startup": "Girisim",
         "techevent": "Teknoloji Etkinligi",
         "techhq": "Teknoloji Merkezi",
-        "accelerator": "Hizlandirici"
-      }
+        "accelerator": "Hizlandirici",
+        "flight": "Uçuş"
+      },
+      "flightOnGround": "Yerdeki",
+      "flightAirborne": "FL{{fl}} · {{kts}} kts",
+      "flightMilitary": "Askeri · {{type}} · FL{{fl}}",
+      "flightMilitaryOnGround": "Askeri · {{type}} · yerdeki",
+      "flightSearchHint": "Canlı konumu sorgulamak için Enter tuşuna basın veya tıklayın",
+      "flightNotFound": "{{callsign}} için canlı konum bulunamadı"
     },
     "signal": {
       "title": "ISTIHBARAT BULGULARI",
@@ -525,7 +577,8 @@
         "NASA_FIRMS_API_KEY": "Kaynak Yonetimi icin Yangin Bilgi Sistemi.",
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
-      }
+      },
+      "reserveEarlyAccess": "Erken Erişimi Rezerve Edin"
     },
     "settingsWindow": {
       "validating": "API anahtarlari dogrulaniyor...",
@@ -573,7 +626,13 @@
         "path": "Yol",
         "status": "Durum",
         "duration": "Sure"
-      }
+      },
+      "shellTitle": "World Monitor Ayarları",
+      "shellSearchPlaceholder": "Ayarları ara...",
+      "shellCancel": "İptal",
+      "shellSaveClose": "Kaydet ve Kapat",
+      "freePanelLimit": "Ücretsiz plan: en fazla {{max}} panel. Sınırsız kullanım için PRO'ya yükseltin.",
+      "freeSourceLimit": "Ücretsiz plan: en fazla {{max}} kaynak. Sınırsız kullanım için PRO'ya yükseltin."
     },
     "countryIntel": {
       "identifying": "Ulke belirleniyor...",
@@ -762,7 +821,17 @@
       "change": "Change",
       "cut": "cut",
       "hike": "hike",
-      "hold": "hold"
+      "hold": "hold",
+      "pressure": {
+        "label": "Makro baskısı",
+        "stress": "Stres",
+        "watch": "İzle",
+        "steady": "Sabit",
+        "stressDetail": "Volatilite ve eğri baskısı yüksek.",
+        "watchDetail": "Pazar arası koşullar yakından izlenmelidir.",
+        "steadyDetail": "Makro koşullar şimdilik istikrarlı."
+      },
+      "infoTooltip": "<strong>Makro Stres</strong> Makro göstergeler, hükümet harcamaları ve merkez bankası verileri:<ul><li><strong>Göstergeler</strong>: VIX, oranlar, getiri eğrisi, işgücü, enflasyon</li><li><strong>Hükümet</strong>: Son ABD hükümet sözleşme ödülleri</li><li><strong>Merkez Bankaları</strong>: BIS politika oranları ve döviz kuru verileri</li></ul>"
     },
     "supplyChain": {
       "chokepoints": "Darboğazlar",
@@ -786,7 +855,21 @@
       "mineral": "Mineral",
       "topProducers": "En Büyük Üreticiler",
       "risk": "Risk",
-      "sources": "FRED / NGA / USGS"
+      "sources": "FRED / NGA / USGS",
+      "transit24h": "24s",
+      "tankers": "tankerler",
+      "cargo": "kargo",
+      "wowChange": "Haftalık değişim",
+      "vesselTransits": "Gemi Geçişleri (180g)",
+      "riskLevel": "Risk seviyesi",
+      "flowUnavailable": "Akış verileri kullanılamıyor",
+      "containerRates": "Konteyner Tarifeleri",
+      "bulkShipping": "Dökme Nakliye",
+      "economicIndicators": "Ekonomik Göstergeler",
+      "loadingHistory": "Geçiş geçmişi yükleniyor…",
+      "historyUnavailable": "Geçiş geçmişi kullanılamıyor",
+      "transitDataUnavailable": "Geçiş verileri kullanılamıyor (upstream kısmi)",
+      "infoTooltip": "<strong>Tedarik Zinciri İzleyicisi</strong> Küresel lojistik ve kaynak izleme:<ul><li><strong>Darboğazlar</strong>: Deniz geçişi durumu, kesinti puanları ve gemi sayıları</li><li><strong>Nakliye</strong>: Baltic Kuru İndeksi ve nakliye tarifeleri eğilimleri</li><li><strong>Mineraller</strong>: Kritik maden yoğunlaşma riski (HHI) ve en büyük üreticiler</li></ul>Geçiş geçmişi grafiğini genişletmek için bir darboğaz kartına tıklayın."
     },
     "tradePolicy": {
       "restrictions": "Kısıtlamalar",
@@ -806,7 +889,39 @@
       "yoyChange": "Yıllık Değişim",
       "highTariff": "Yüksek",
       "moderateTariff": "Orta",
-      "lowTariff": "Düşük"
+      "lowTariff": "Düşük",
+      "overview": "Genel Bakış",
+      "noOverviewData": "Gümrük tarifesi genel bakış verisi yok",
+      "mfnAppliedRate": "MFN Uygulanmış Oran",
+      "baselineMfnTariff": "Temel MFN gümrük tarifeleri",
+      "effectiveTariffRateLabel": "Etkin gümrük tarifeleri oranı",
+      "gapLabel": "Fark",
+      "gapVsMfnLabel": "MFN'ye karşı fark",
+      "noEffectiveCoverageForCountry": "Bu ülke için etkin oran kapsamı yok",
+      "effectiveMinusBaseline": "Etkin oran eksi WTO MFN temel değeri",
+      "wtoBaselineMeta": "WTO MFN uygulanmış oran | {{year}}",
+      "overviewNoteNoEffective": "Bu rakamlar WTO MFN temel oranlarıdır, tek taraflı gümrük tarifeleri eylemlerinden kaynaklanan mevcut vergi yükü değildir.",
+      "usBaselineLabel": "US WTO MFN temel değeri",
+      "overviewNoteTail": "Bu kartlar WTO temel taahhütlerini gösterir, canlı etkin vergi yükünü değil.",
+      "revenue": "ABD Geliri",
+      "noRevenueData": "Gümrük geliri verisi yok",
+      "treasuryUnavailable": "Hazine verileri geçici olarak kullanılamıyor",
+      "fytdLabel": "Mali yıl {{year}} YTD",
+      "vsPriorFy": "Mali yıl {{year}}'ye karşı",
+      "sourceWto": "WTO",
+      "sourceTreasury": "ABD Hazinesi",
+      "colDate": "Tarih",
+      "colMonthly": "Aylık",
+      "colFytd": "Mali Yıl YTD",
+      "strategicFlows": "Stratejik Akışlar",
+      "noComtradeData": "Stratejik akış verisi yok",
+      "comtradeUnavailable": "BM Comtrade verileri geçici olarak kullanılamıyor",
+      "sourceComtrade": "BM Comtrade",
+      "anomalyBadge": "Anomali",
+      "colReporter": "Ülke",
+      "colCommodity": "Mal",
+      "colTradeValue": "Ticaret Değeri",
+      "infoTooltip": "<strong>Ticaret Politikası</strong> WTO temel ve gümrük tarifesi etkisi izleme:<ul><li><strong>Genel Bakış</strong>: Mevcut olduğunda ABD etkin oran bağlamı ile WTO MFN temel oranları</li><li><strong>Gümrük Tarifeleri</strong>: WTO MFN gümrük tarifeleri eğilimleri vs ABD etkin gümrük tarifeleri tahmini</li><li><strong>Ticaret Akışları</strong>: İhracat/ithalatların yıldan yıla değişim ile birimleri</li><li><strong>Engeller</strong>: Ticarete teknik engeller (TBT/SPS bildirimleri)</li><li><strong>Gelir</strong>: Aylık ABD gümrük vergileri geliri (ABD Hazinesi MTS verileri)</li></ul>"
     },
     "gdelt": {
       "empty": "Bu konu icin son makale yok"
@@ -947,7 +1062,10 @@
         "east-med-theater": "Doğu Akdeniz",
         "israel-gaza-theater": "İsrail/Gazze",
         "yemen-redsea-theater": "Yemen/Kızıldeniz"
-      }
+      },
+      "emojiKeyLabel": "Emoji Anahtarı",
+      "emojiKeyAir": "Hava Varlıkları",
+      "emojiKeyNaval": "Deniz Varlıkları"
     },
     "countryBrief": {
       "shareLink": "Bağlantıyı paylaş",
@@ -1002,7 +1120,15 @@
         "ciiNormal": "Normal (31–50)",
         "ciiElevated": "Yükselen (51–65)",
         "ciiHigh": "Yüksek (66–80)",
-        "ciiCritical": "Kritik (81–100)"
+        "ciiCritical": "Kritik (81–100)",
+        "miningSite": "Madencilik Sahası",
+        "commodityPort": "Emtia Limanı",
+        "pipeline": "Boru Hattı",
+        "processingPlant": "İşleme Tesisi",
+        "conflict": "Çatışma Bölgesi",
+        "diseaseAlert": "Hastalık Uyarısı",
+        "diseaseWarning": "Hastalık İkazı",
+        "diseaseWatch": "Hastalık Izleme"
       },
       "layerGuide": "Katman Rehberi",
       "layerWarningTitle": "Performans bildirimi",
@@ -1067,7 +1193,9 @@
         "kindness": "İyilik Eylemleri",
         "happiness": "Dünya Mutluluğu",
         "speciesRecovery": "Tür Kurtarma",
-        "renewableInstallations": "Temiz Enerji"
+        "renewableInstallations": "Temiz Enerji",
+        "radiationSpike": "Radyasyon artışı",
+        "radiationElevated": "Yükseltilmiş radyasyon"
       },
       "tooltip": {
         "earthquake": "Deprem",
@@ -1232,7 +1360,42 @@
       "headlineMemoryLabel": "Başlık hafızası",
       "headlineMemoryDesc": "Yenileri vurgulamak için görülen başlıkları hatırla",
       "streamAlwaysOnLabel": "Canlı yayınları çalışır tut",
-      "streamAlwaysOnDesc": "Boştayken Live Cams ve Live News akışlarının otomatik duraklatılmasını engeller. İkinci monitör / wallboard kullanımı için önerilir. CPU/bant genişliği tasarrufu için (Eco) modunu kapatın."
+      "streamAlwaysOnDesc": "Boştayken Live Cams ve Live News akışlarının otomatik duraklatılmasını engeller. İkinci monitör / wallboard kullanımı için önerilir. CPU/bant genişliği tasarrufu için (Eco) modunu kapatın.",
+      "analysisFrameworksLabel": "Analiz Çerçeveleri",
+      "analysisFrameworksActivePerPanel": "Panel başına etkin",
+      "analysisFrameworksSkillLibrary": "Beceri kütüphanesi",
+      "analysisFrameworksImportBtn": "Çerçeve içe aktar",
+      "analysisFrameworksDefaultNeutral": "Varsayılan (Tarafsız)",
+      "analysisFrameworksImportTitle": "Çerçeve İçe Aktar",
+      "analysisFrameworksFromAgentskills": "agentskills.io'dan",
+      "analysisFrameworksPasteJson": "JSON yapıştır",
+      "analysisFrameworksSaveToLibrary": "Kütüphaneye Kaydet",
+      "frameworkNote": "Yalnızca istemci tarafından oluşturulan analiz için geçerlidir",
+      "loadingServerInsights": "Sunucu içgörüleri yükleniyor...",
+      "usingCachedBrief": "Önbelleğe alınmış özet kullanılıyor...",
+      "multiPerspectiveAnalysis": "Çok perspektifli analiz...",
+      "generatingBriefSub": "Özet oluşturuluyor: {{msg}}",
+      "breakingConfirmed": "SON DAKİKA & DOĞRULANDI",
+      "multiSource": "Çok kaynaktan",
+      "fastMoving": "Hızlı gelişen",
+      "clusters": "Kümeleme",
+      "alertsLabel": "Uyarılar",
+      "alert": "UYARI",
+      "sources_one": "{{count}} kaynak",
+      "sources_other": "{{count}} kaynak",
+      "briefTech": "TEKNOLOJİ ÖZETİ",
+      "briefCommodity": "EMTIA ÖZETİ",
+      "briefEnergy": "ENERJİ ÖZETİ",
+      "briefWorld": "DÜNYA ÖZETİ",
+      "mlDetected": "ML TESPİT EDİLDİ",
+      "geographicConvergence": "COĞRAFİ YAKINSAKlık",
+      "focalPoints": "ODAK NOKTALAR",
+      "toneMixed": "Karışık",
+      "toneNegative": "Negatif",
+      "tonePositive": "Pozitif",
+      "overall": "Genel: {{tone}}",
+      "signalTypesEvents": "{{types}} sinyal türü • {{events}} olay",
+      "newsSignals": "{{news}} haber • {{signals}} sinyal"
     },
     "settings": {
       "dataManagementLabel": "Veri Yönetimi",
@@ -1343,7 +1506,8 @@
       "analyzingCountries": "Analyzing 200+ countries...",
       "source": "Source: World Bank",
       "updated": "Updated: {{date}}",
-      "infoTooltip": "<strong>Kuresel Teknoloji Hazirligi</strong><br>Dunya Bankasi verilerine dayali bilesik puan (0-100):<br><br><strong>Gosterilen metrikler:</strong><br>🌐 Internet Kullanicilari (nufusun %'si)<br>📱 Mobil Abonelikler (100 kisi basina)<br>🔬 Ar-Ge Harcamasi (GSYiH'nin %'si)<br><br><strong>Agirliklar:</strong> Ar-Ge (%35), Internet (%30), Genis Bant (%20), Mobil (%15)<br><br><em>— = Son veri mevcut degil</em><br><em>Kaynak: Dunya Bankasi Acik Veri (2019-2024)</em>"
+      "infoTooltip": "<strong>Kuresel Teknoloji Hazirligi</strong><br>Dunya Bankasi verilerine dayali bilesik puan (0-100):<br><br><strong>Gosterilen metrikler:</strong><br>🌐 Internet Kullanicilari (nufusun %'si)<br>📱 Mobil Abonelikler (100 kisi basina)<br>🔬 Ar-Ge Harcamasi (GSYiH'nin %'si)<br><br><strong>Agirliklar:</strong> Ar-Ge (%35), Internet (%30), Genis Bant (%20), Mobil (%15)<br><br><em>— = Son veri mevcut degil</em><br><em>Kaynak: Dunya Bankasi Acik Veri (2019-2024)</em>",
+      "dataPreparing": "Teknoloji hazırlık verileri yenileniyor — kısa süre içinde görüntülenecek."
     },
     "populationExposure": {
       "noData": "Maruziyet verisi mevcut degil",
@@ -1399,7 +1563,9 @@
         "minutesAgo": "{{count}}dk once",
         "hoursAgo": "{{count}}sa once"
       },
-      "infoTooltip": "NASA FIRMS VIIRS uydu termal tespit verileri - izlenen catisma bolgeleri. Yuksek yogunluk = parlaklik >360K ve guvenilirlik >%80."
+      "infoTooltip": "NASA FIRMS VIIRS uydu termal tespit verileri - izlenen catisma bolgeleri. Yuksek yogunluk = parlaklik >360K ve guvenilirlik >%80.",
+      "possibleExplosions": "{{count}} olası patlama tespit edildi",
+      "explosionTooltip": "Termal imza patlamaya uygun (FRP >80 MW, parlaklık >380 K)"
     },
     "ucdpEvents": {
       "stateBased": "Devlet Tabanli",
@@ -1480,7 +1646,10 @@
       "summaryError": "Özet oluşturulamadı",
       "summaryFailed": "Özet başarısız",
       "sources": "{{count}} kaynak",
-      "relatedAssetsNear": "{{location}} yakinindaki ilgili varliklar"
+      "relatedAssetsNear": "{{location}} yakinindaki ilgili varliklar",
+      "sortBy": "Sırala",
+      "sortNewest": "En Yeni",
+      "sortRelevance": "İlgili"
     },
     "export": {
       "exportData": "Verileri Disari Aktar"
@@ -1610,7 +1779,8 @@
         "estFlow": "Tahmini Akis",
         "volume": "Hacim",
         "change": "Degisim"
-      }
+      },
+      "infoTooltip": "<strong>BTC ETF İzleyici</strong> ABD spot Bitcoin ETF'leri için günlük tahmini fon akışlarını izler:<ul><li>Akış yönü ve büyüklüğü</li><li>Fon başına hacim ve fiyat değişimi</li><li>İzlenen tüm ETF'lerde net toplam akış</li></ul>"
     },
     "macroSignals": {
       "overall": "Genel",
@@ -1627,12 +1797,17 @@
         "hashRate": "Hash Rate",
         "momentum": "Momentum",
         "fearGreed": "Korku &amp; Acgozluluk"
-      }
+      },
+      "infoTooltip": "<strong>BTC Rejimi</strong> Bitcoin pozisyonlandırması ve risk iştahı için bileşik sinyal kontrol paneli:<ul><li><strong>Likidite</strong>: Net Fed likidite proxy'si</li><li><strong>Akış</strong>: BTC vs QQQ 5 günlük getiri</li><li><strong>Rejim</strong>: QQQ vs XLP rotasyonu (risk-on/off)</li><li><strong>BTC Trendi</strong>: Fiyat vs SMA50/200, Mayer Katı</li><li><strong>Hash Oranı</strong>: 30 günlük ağ hash değişimi</li><li><strong>Korku & Açgözlülük</strong>: Pazar duyarlılığı endeksi</li></ul>Bu panel rejim ve pozisyonlandırma içindir, geniş makro veri değildir."
     },
     "panel": {
       "showMethodologyInfo": "Show methodology info",
       "dragToResize": "Drag to resize (double-click to reset)",
-      "openSettings": "Open Settings"
+      "openSettings": "Open Settings",
+      "closePanel": "Paneli Kapat",
+      "collapsePanel": "Paneli Daralt",
+      "expandPanel": "Paneli Genişlet",
+      "addPanel": "Panel Ekle"
     },
     "languageSelector": {
       "selectLanguage": "Select Language",
@@ -1722,10 +1897,17 @@
     },
     "map": {
       "showMap": "Haritayı Göster",
-      "hideMap": "Haritayı Gizle"
+      "hideMap": "Haritayı Gizle",
+      "clearTrails": "İzleri Temizle"
     },
     "internetDisruptions": {
-      "infoTooltip": "<strong>Internet Disruptions</strong> Real-time internet outages, DDoS attacks, and traffic anomalies from global network monitoring:<ul><li><strong>Outages</strong>: BGP-detected connectivity failures by country</li><li><strong>DDoS</strong>: Volumetric attack reports by protocol and vector</li><li><strong>Anomalies</strong>: Unusual traffic patterns from Cloudflare Radar</li></ul>"
+      "infoTooltip": "<strong>Internet Disruptions</strong> Real-time internet outages, DDoS attacks, and traffic anomalies from global network monitoring:<ul><li><strong>Outages</strong>: BGP-detected connectivity failures by country</li><li><strong>DDoS</strong>: Volumetric attack reports by protocol and vector</li><li><strong>Anomalies</strong>: Unusual traffic patterns from Cloudflare Radar</li></ul>",
+      "noOutages": "Aktif kesinti tespit edilmedi",
+      "noDdos": "DDoS verisi mevcut değil",
+      "noAnomalies": "Trafik anomalisi tespit edilmedi",
+      "byProtocol": "Saldırı Protokolü",
+      "byVector": "Saldırı Vektörü",
+      "topTargets": "En Çok Hedeflenen Ülkeler"
     },
     "commodities": {
       "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress."
@@ -1764,7 +1946,26 @@
       "infoTooltip": "<strong>Central Bank Watch</strong> Latest statements, rate decisions, and communications from the Federal Reserve, ECB, Bank of England, and other major central banks worldwide."
     },
     "airlineIntel": {
-      "infoTooltip": "<strong>Havacılık İstihbaratı</strong> Gerçek zamanlı havayolu operasyonel verileri: hat askıya almaları, hava sahası kapatmaları, taşıyıcı uyarıları ve acil yönlendirmeler. Kaynak: havacılık otoritesi NOTAM'ları ve taşıyıcı bültenleri."
+      "infoTooltip": "<strong>Havacılık İstihbaratı</strong> Gerçek zamanlı havayolu operasyonel verileri: hat askıya almaları, hava sahası kapatmaları, taşıyıcı uyarıları ve acil yönlendirmeler. Kaynak: havacılık otoritesi NOTAM'ları ve taşıyıcı bültenleri.",
+      "noOpsData": "Operasyon verisi yok — yükleniyor…",
+      "noFlights": "Uçuş yok — ayarlarda havaalanı seçin.",
+      "noCarrierData": "Taşıyıcı verisi henüz yok.",
+      "noTrackingData": "Uçak takip verisi yok.",
+      "noNews": "Havacılık haberi yok.",
+      "enterRoute": "Rota girin ve fiyatları arayın.",
+      "cachedInsight": "Önbelleğe alınan içgörü",
+      "demoMode": "DEMO MODU",
+      "pricesIndicative": "Tüm fiyatlar göstergelendirici nitelikte",
+      "searchFlights": "Uçuşları Ara",
+      "bestDates": "En İyi Tarihler",
+      "cabinClass": "Kabin",
+      "enterRouteAndDate": "Arama yapmak için rota ve tarih girin",
+      "enterDateRange": "Arama yapmak için rota ve tarih aralığı girin",
+      "degradedResults": "Bazı sonuçlar eksik olabilir",
+      "nonstop": "direkt",
+      "roundTrip": "Gidiş-dönüş",
+      "tripDays": "Gezi günleri",
+      "cheapest": "En Ucuz"
     },
     "chatAnalyst": {
       "infoTooltip": "<strong>WM Analist</strong> Jeopolitik, piyasa, askeri ve ekonomik alanlarda canlı bağlama sahip AI analisti. Aktif WorldMonitor beslemelerinden gerçek zamanlı veri enjekte edilen Claude tarafından desteklenmektedir."
@@ -1813,6 +2014,154 @@
     },
     "yieldCurve": {
       "infoTooltip": "<strong>Getiri Eğrisi &amp; Faizler</strong> US Treasury getiri eğrisi (2Y, 5Y, 10Y, 30Y) ve 10Y-2Y tersine dönme göstergesi dahil temel faiz farkları. Ayrıca Euro Bölgesi faizlerini gösterir (EURIBOR, ESTR). Ters çevrilmiş eğri tarihsel olarak durgunlukları önceler. Kaynak: FRED."
+    },
+    "pinnedWebcams": {
+      "pinFromMap": "Haritadan bir webcam sabitle"
+    },
+    "breakthroughsTicker": {
+      "noData": "Henüz bilim atılımı yok"
+    },
+    "oilInventories": {
+      "infoTooltip": "<strong>Petrol Envanteri</strong> ABD ham petrolü ve SPR stokları (EIA haftalık), doğal gaz depolaması, AB gaz dolum yüzdesi (GIE AGSI+) ve OECD petrol stokları kapsam günleri (IEA aylık)."
+    },
+    "energyComplex": {
+      "noData": "Enerji verileri geçici olarak kullanılamıyor - yeniden denecek",
+      "liveTape": "Canlı Bant",
+      "liveTapeSource": "Pazar teklifleri",
+      "infoTooltip": "<strong>Enerji Kompleksi</strong> Fiziksel ve ticarete açık enerji sinyalleri tek yerde:<ul><li><strong>EIA metrikleri</strong>: WTI, Brent, ABD üretimi ve envanteri</li><li><strong>Canlı bant</strong>: Ham petrol ve doğal gaz gibi ticarete açık enerji fiyatları</li><li><strong>Amaç</strong>: Fiziksel enerji stresini daha geniş makro ve emtia panellerinden ayır</li></ul>"
+    },
+    "consumerPrices": {
+      "title": "Tüketici Fiyatları",
+      "subtitle": "Ana pazarlar arasında sepet fiyat izleme",
+      "tabs": {
+        "overview": "Genel Bakış",
+        "categories": "Kategoriler",
+        "movers": "Hareket Edenler",
+        "spread": "Perakendeci Farkı",
+        "health": "Veri Sağlığı"
+      },
+      "essentialsIndex": "Temel İhtiyaçlar Endeksi",
+      "valueBasketIndex": "Değer Sepeti",
+      "wowChange": "Haftalık",
+      "momChange": "Aylık",
+      "retailerSpread": "Perakendeci Farkı",
+      "coveragePct": "Kapsam",
+      "freshnessLag": "Güncellik Gecikmesi",
+      "noCategories": "Kategori verisi mevcut değil",
+      "noMovers": "Fiyat hareketi verisi mevcut değil",
+      "noSpread": "Perakendeci farkı verisi mevcut değil",
+      "noHealth": "Veri sağlığı bilgisi mevcut değil",
+      "upstreamUnavailable": "Tüketici fiyat verisi geçici olarak kullanılamıyor",
+      "allCategories": "Tüm Kategoriler",
+      "risers": "Yükselenler",
+      "fallers": "Düşenler",
+      "unitPrice": "Birim fiyatı",
+      "freshLabel": "Güncel",
+      "staleLabel": "Eski",
+      "laggingLabel": "Geç Kalan",
+      "stalledLabel": "Durmuş",
+      "retailer": "Perakendeci",
+      "lastUpdated": "Son güncelleme",
+      "retailers": "perakendeci",
+      "items": "ürün",
+      "infoTooltip": "<strong>Tüketici Fiyatları</strong> Gerçek zamanlı sepet fiyat takibi:<ul><li><strong>Genel Bakış</strong>: Temel ihtiyaçlar endeksi, değer sepeti ve haftalık değişim</li><li><strong>Kategoriler</strong>: Kategori bazında fiyat eğilimleri ve 30 günlük aralık</li><li><strong>Hareket Edenler</strong>: Bu hafta en çok yükselen ve düşen ürünler</li><li><strong>Fark</strong>: Aynı sepet için perakendeciler arasındaki fiyat farkı</li></ul>Veriler canlı perakendeci fiyat kazıma kaynağından gelir."
+    },
+    "marketImplications": {
+      "infoTooltip": "<strong>AI Pazar Etkileri</strong> Her tahmin döngüsünün ardından canlı jeopolitik, emtia ve makro durumundan türetilen LLM tarafından oluşturulan ticaret sinyalleri.<ul><li><strong>Yön</strong>: LONG / SHORT / KORUMA güven derecesiyle</li><li><strong>Zaman Ufku</strong>: 1H, 2H, 1A veya 3A süresi</li><li><strong>Tetikleyici</strong>: Sinyalin arkasındaki ana katalizör</li><li><strong>Risk</strong>: Uyarı veya geçersizleştirme koşulu</li></ul><em>Yalnızca bilgilendirme amaçlıdır. Yatırım tavsiyesi değildir.</em>"
+    },
+    "forecast": {
+      "infoTooltip": "<strong>AI Tahminleri</strong> Jeopolitik ve ekonomik olaylar için AI tarafından oluşturulan olasılık tahminleri:<ul><li>Çapraz alan kapsamı: çatışma, piyasalar, tedarik zinciri, siber, siyasi</li><li>Her tahmin tahmini olasılık, güven düzeyi ve zaman ufkunu gösterir</li><li>Mevcut olduğunda tahmin piyasası taban çizgilerine karşı kalibre edilmiştir</li></ul>Yeni istihbarat sinyalleri geldiğinde tahminler güncellenir. Yukarıdaki sekmeler kullanarak alana göre filtreleyin."
+    },
+    "escalationCorrelation": {
+      "infoTooltip": "<strong>Tırmanma İzleyicisi</strong> Yakınlaşan jeopolitik sinyalleri tespit eder:<ul><li>Askeri hareketleri, çatışma olaylarını ve haber artışlarını ilişkilendirir</li><li>Yakınlaşma bölgelerini önem derecesine (kritik/yüksek/orta/düşük) göre puanlar</li><li>Zaman içinde tırmanma veya gerginlik düşüşü eğilimlerini izler</li></ul>Bölgeyi haritada yakınlaştırmak için bir kartı tıklayın."
+    },
+    "economicCorrelation": {
+      "infoTooltip": "<strong>Ekonomik Savaş</strong> Yakınlaşan ekonomik baskı sinyallerini tespit eder:<ul><li>Yaptırımlar, ticaret kısıtlamaları ve para hareketleri</li><li>Jeopolitik aktörlerle bağlantılı emtia kesintileri</li><li>Ekonomik ve güvenlik olayları arasında çapraz alan korelasyonu</li></ul>Etkilenen bölgeyi haritada yakınlaştırmak için bir kartı tıklayın."
+    },
+    "militaryCorrelation": {
+      "infoTooltip": "<strong>Kuvvet Duruşu</strong> Askeri aktiviteyi jeopolitik bağlamla ilişkilendirir:<ul><li>Bölgeye göre askeri uçak ve deniz gemisi yoğunlukları</li><li>Aktif çatışma bölgeleri ve haber artışlarıyla çapraz referanslar</li><li>Olağandışı kuvvet birikmeleri veya yeniden konumlandırmayı vurgular</li></ul>Bölgeyi haritada yakınlaştırmak için bir kartı tıklayın."
+    },
+    "disasterCorrelation": {
+      "infoTooltip": "<strong>Felaket Kaskadı</strong> Yakınlaşan doğal afet ve altyapı sinyallerini tespit eder:<ul><li>Depremleri, orman yangınlarını, seller ve hava aşırılıklarını ilişkilendirir</li><li>Altyapı ve tedarik zincirlerine ilişkin basamaklı etkileri izler</li><li>Bileşik afet riski olan bölgeleri vurgular</li></ul>Etkilenen bölgeyi haritada yakınlaştırmak için bir kartı tıklayın."
+    },
+    "markets": {
+      "infoTooltip": "<strong>Piyasalar</strong> Gerçek zamanlı borsa endeksleri, hisse senetleri ve kripto fiyatları. Watchlist düğmesi ile izleme listenizi özelleştirin. Sparkline'lar son fiyat eğilimini gösterir."
+    },
+    "heatmap": {
+      "infoTooltip": "<strong>Sektör Isı Haritası</strong> S&P 500 sektör performansını bir bakışta görün. Renk yoğunluğu günlük değişimin büyüklüğünü yansıtır. Yeşil = kazançlar, Kırmızı = kayıplar."
+    },
+    "fuelPrices": {
+      "infoTooltip": "<strong>Yakıt Fiyatları</strong> 30+ ülkede benzin ve dizel perakende pompa fiyatları, karşılaştırma için USD/litre cinsinden normalleştirilmiştir. Fiyatlar resmi hükümet açık veri programlarından alınır ve haftalık güncellenir. En ucuz ve en pahalı ülkeler vurgulanır. Önceki hafta verisi mevcutsa Hafta-Hafta değişim gösterilir.",
+      "countries": "ülke"
+    },
+    "faoFoodPriceIndex": {
+      "infoTooltip": "<strong>FAO Gıda Fiyat Endeksi</strong> Birleşmiş Milletler Gıda ve Tarım Örgütü'nün FFPI, gıda emtiaları (Tahıllar, Süt Ürünleri, Et, Yağlar, Şeker) sepeti için uluslararası ihracat fiyatlarını izler, taban 2014-2016=100. Her ayın ilk Cuma günü aylık olarak güncellenir.",
+      "indexLabel": "FFPI (2014-16=100)",
+      "mom": "Ay-Ay",
+      "yoy": "Yıl-Yıl",
+      "asOf": "Hesaplama tarihi",
+      "baseNote": "Taban: 2014-2016 = 100 | Kaynak: Birleşmiş Milletler FAO",
+      "ffpi": "Gıda",
+      "cereals": "Tahıllar",
+      "meat": "Et",
+      "dairy": "Süt Ürünleri",
+      "oils": "Yağlar",
+      "sugar": "Şeker"
+    },
+    "climateNews": {
+      "infoTooltip": "<strong>İklim Haberleri</strong> Carbon Brief, UNEP, NASA, The Guardian ve diğer güvenilir kaynaklardan en son çevre ve iklim istihbaratı. Her 30 dakikada güncellenir.",
+      "loadError": "İklim haberleri geçici olarak kullanılamıyor"
+    },
+    "liquidityShifts": {
+      "title": "Likidite Kaymalar",
+      "infoTooltip": "<strong>Likidite Kaymalar</strong> Petrol, altın, gümüş, hisse senedi endeks vadeli işlemleri ve en iyi ABD hisse senetleri için yüksek likidite konumlandırması ve günlük kaydırma monitörü. COT varlık yöneticisi net ve kaldıraçlı fonlar net ve günlük fiyat değişimi karşılaştırması.",
+      "cotSection": "Petrol / Altın / Gümüş + Endeks Konumlandırması (COT)",
+      "stocksSection": "En İyi ABD Hisse Senetleri: Günlük Değişim",
+      "longShort": "Long {{long}} / Short {{short}}",
+      "lev": "Lev",
+      "noCot": "Kullanılabilir COT satırı yok.",
+      "noStocks": "Kullanılabilir en iyi hisse senedi fiyatı yok.",
+      "reportDate": "COT rapor tarihi: {{date}}",
+      "unavailable": "Likidite verisi kullanılamıyor",
+      "failed": "Yükleme başarısız"
+    },
+    "positioning247": {
+      "title": "24/7 Konumlandırma",
+      "infoTooltip": "<strong>24/7 Konumlandırma</strong> Hyperliquid'den Perpetual kontrat konumlandırması stresi. Saatler boyunca işlem yaparak, geleneksel piyasalar kapalı olduğunda neler oluştuğunu gösterir. Finansman oranı, hacim, açık faiz ve spot-perp spread'inden oluşan bileşik skor (0-100). Yeşil = longlar kalabalık (boğa eğilimi), kırmızı = shortlar kalabalık (ayı eğilimi).",
+      "commodities": "EMTIA",
+      "crypto": "KRİPTO",
+      "fx": "DÖVİZ",
+      "warmup": "Taban seviyeleri oluşturuluyor. Hacim ve AÇF geçmişi bir sonraki saat içinde doldurulacak.",
+      "unavailable": "Konumlandırma verisi kullanılamıyor",
+      "footer": "5dk · Hyperliquid perps · 24/7"
+    },
+    "goldIntelligence": {
+      "infoTooltip": "<strong>Altın İstihbaratı</strong> Altın spot fiyatı, altın/gümüş oranı, altına karşı platinum primi, çapraz kur XAU fiyatları (EUR, GBP, JPY, CNY, INR, CHF) ve CFTC yönetilen para konumlandırması. Kaynaklar: Yahoo Finance, CFTC COT."
+    },
+    "energyCrisis": {
+      "infoTooltip": "<strong>Enerji Krizi Takipçisi</strong> IEA 2026 Enerji Krizi Politika Tepkisi Takipçisi. Orta Doğu çatışması ve Hormutz Boğazı tedarik kesintilerine karşı hükumet tedbirlerini ve tüketici desteğini takip eder. 60'tan fazla ülkeyi ve neredeyse 200 politika önlemini kapsar."
+    },
+    "wsbTickerScanner": {
+      "infoTooltip": "<strong>WSB Ticker Tarayıcı</strong> r/wallstreetbets, r/stocks ve r/investing'den gerçek zamanlı ticker bahsetmeleri. Bahsetme sıklığı ve katılım oranına göre sıralanmıştır. Hız, bir ticker'ın paylaşımlar arasında ne kadar hızlı momentum kazandığını ölçer."
+    },
+    "proBanner": {
+      "badge": "PRO",
+      "headline": "Pro yayında",
+      "tagline": "Daha Fazla İşaret, Daha Az Gürültü. Daha Fazla AI Özeti. Sadece Sizin için Jeopolitik & Sermaye Piyasası Araştırmacısı.",
+      "cta": "Pro'ya Yükselt →",
+      "dismiss": "Kapat"
+    },
+    "checkoutFailureBanner": {
+      "message": "Ödeme tamamlanamadı. Herhangi bir ücret alınmadı.",
+      "retry": "Tekrar Dene",
+      "retrying": "Tekrar Deneniyor…",
+      "dismiss": "Kapat"
+    },
+    "frameworkSelector": {
+      "label": "Analiz Çerçevesi",
+      "defaultNeutral": "Varsayılan (Tarafsız)",
+      "titlePrefix": "Çerçeve: {{name}}",
+      "titleNone": "Analiz çerçevesi"
     }
   },
   "popups": {
@@ -1896,7 +2245,9 @@
         "apac": "Asya-Pasifik",
         "mena": "Orta Dogu",
         "africa": "Afrika"
-      }
+      },
+      "scheduled": "Planl.",
+      "estimated": "Tah."
     },
     "aircraft": {
       "altitude": "Irtifa",
@@ -2192,7 +2543,9 @@
       "lastReport": "LATEST",
       "nearChokepoint": "NEAR CHOKEPOINT",
       "nearBase": "NEAR BASE",
-      "lastSeen": "LAST SEEN"
+      "lastSeen": "LAST SEEN",
+      "estPosition": "TAH. KONUM",
+      "aisLive": "AIS CANLI"
     },
     "militaryCluster": {
       "flightActivity": {
@@ -2224,7 +2577,13 @@
       "active": "AKTIF",
       "reported": "BILDIRILEN",
       "viewOnSource": "{{source}} uzerinde goruntule",
-      "attribution": "Veri: NASA EONET"
+      "attribution": "Veri: NASA EONET",
+      "storm": "Fırtına",
+      "classification": "Sınıflandırma",
+      "maxWind": "Maksimum Rüzgar",
+      "pressure": "Basınç",
+      "movement": "Hareket",
+      "tropicalSystem": "Tropik Sistem"
     },
     "port": {
       "types": {
@@ -2479,7 +2838,9 @@
     "currentVariant": "(mevcut)",
     "retry": "Retry",
     "refresh": "Refresh",
-    "all": "Tümü"
+    "all": "Tümü",
+    "dataTemporarilyUnavailable": "Veriler geçici olarak kullanılamıyor",
+    "cancel": "İptal"
   },
   "preferences": {
     "display": "Görünüm",
@@ -2497,10 +2858,141 @@
     "mapTheme": "Harita teması",
     "mapThemeDesc": "Harita döşemelerinin görsel stili.",
     "globePreset": "Görsel ön ayar",
-    "globePresetDesc": "Klasik ve geliştirilmiş küre görselleri arasında geçiş yapın."
+    "globePresetDesc": "Klasik ve geliştirilmiş küre görselleri arasında geçiş yapın.",
+    "fontFamily": "Yazı Tipi Ailesi",
+    "fontFamilyDesc": "Teknik görünüş için Monospace, daha kolay okuma için sistem varsayılanı.",
+    "fontMono": "Monospace",
+    "fontSystem": "Sistem Varsayılanı"
   },
   "contextMenu": {
     "openCountryBrief": "Ülke özetini aç",
     "copyCoordinates": "Koordinatları kopyala"
+  },
+  "shell": {
+    "documentTitle": "World Monitor — Gerçek Zamanlı Küresel İstihbarat Paneli",
+    "metaDescription": "Gerçek zamanlı küresel istihbarat platformu. WIRED'de yer aldı. 190 ülkede 2M+ kişi tarafından kullanılıyor. Çatışmalar, piyasalar, askeri, OSINT tek görünümde.",
+    "offlineTitle": "Çevrimdışısınız",
+    "offlineMessage": "World Monitor, gerçek zamanlı istihbarat verileri için internet bağlantısı gerektirir.",
+    "offlineRetry": "Yeniden Dene"
+  },
+  "widgets": {
+    "createWithAi": "AI ile Oluştur",
+    "confirmDelete": "Bu widget'ı kalıcı olarak kaldır?",
+    "chatTitle": "Widget Oluşturucu",
+    "modifyTitle": "Widget'ı Düzenle",
+    "inputPlaceholder": "Widget'ınızı açıklayın...",
+    "addToDashboard": "Panoya Ekle",
+    "applyChanges": "Değişiklikleri Uygula",
+    "send": "Gönder",
+    "changeAccent": "Vurgu rengini değiştir",
+    "modifyWithAi": "Widget'ı AI ile değiştir",
+    "ready": "Widget hazır: {{title}}",
+    "fetching": "{{target}} getiriliyor...",
+    "requestTimedOut": "İstek zaman aşımına uğradı. Lütfen tekrar deneyin.",
+    "serverError": "Sunucu hatası: {{status}}",
+    "unknownError": "Bilinmeyen hata",
+    "generatedWidget": "Oluşturulan widget: {{title}}",
+    "checkingConnection": "Widget erişimi kontrol ediliyor…",
+    "preflightConnected": "Widget ajanına bağlandı",
+    "preflightInvalidKey": "Widget anahtarı reddedildi. wm-widget-key'i güncelleyin ve yeniden yükleyin.",
+    "preflightUnavailable": "Widget ajanı geçici olarak kullanılamıyor.",
+    "preflightAiUnavailable": "AI arka ucu kullanılamıyor. Daha sonra tekrar deneyin.",
+    "readyToGenerate": "Oluşturmaya hazır. Bir örnek seçin veya widget'ınızı açıklayın.",
+    "readyToApply": "{{title}} için önizleme hazır. İnceleyin, ardından panoya ekleyin.",
+    "modifyHint": "Geçerli widget önizlemesi. Değişiklik talebinde bulunarak revize edin.",
+    "generating": "Oluşturuluyor…",
+    "examplesTitle": "İstem fikirleri",
+    "previewTitle": "Canlı Önizleme",
+    "phaseChecking": "Kontrol ediliyor",
+    "phaseReadyToPrompt": "Hazır",
+    "phaseFetching": "Getiriliyor",
+    "phaseComposing": "Oluşturuluyor",
+    "phaseComplete": "Hazır",
+    "phaseError": "Hata",
+    "previewCheckingHeading": "Widget oluşturucu bağlanıyor",
+    "previewReadyHeading": "İstediğiniz widget'ı açıklayın",
+    "previewFetchingHeading": "Canlı WorldMonitor verileri getiriliyor",
+    "previewComposingHeading": "Widget düzeni oluşturuluyor",
+    "previewErrorHeading": "Önizleme dikkat gerektiriyor",
+    "previewCheckingCopy": "Oluşturmayı etkinleştirmeden önce widget anahtarınızı ve arka uç kullanılabilirliğini doğruluyoruz.",
+    "previewReadyCopy": "Bir istem örneği kullanın veya istediğiniz tam canlı görünümü açıklayın. Önizleme, kaydetmeden önce burada güncellenecektir.",
+    "previewFetchingCopy": "Ajan onaylı WorldMonitor uç noktalarını çağırıyor ve veri setini widget için şekillendiriyor.",
+    "previewComposingCopy": "Önizleme, en son canlı veriler ve pano stillemesiyle işleniyor.",
+    "previewErrorCopy": "Sorunu düzeltin, ardından yeniden deneyin. Mevcut widget'larınız etkilenmez.",
+    "createInteractive": "Etkileşimli Widget Oluştur",
+    "proBadge": "PRO",
+    "preflightProUnavailable": "PRO widget ajanı kullanılamıyor. Sunucudaki PRO_WIDGET_KEY kontrol edin.",
+    "preflightInvalidProKey": "PRO anahtarı reddedildi. wm-pro-key'i güncelleyin ve yeniden yükleyin.",
+    "preflightProSubscriptionRequired": "Pro aboneliği gerekli. Az önce yükseltildiyse sayfayı yenileyin; aksi takdirde desteğe başvurun.",
+    "preflightProRequired": "Pro aboneliği Widget Builder'ı kullanmak için gereklidir. Kilidini açmak için yükselt.",
+    "examples": {
+      "oilGold": "Bugünün ham petrol fiyatını altınla karşılaştır",
+      "cryptoMovers": "Son 24 saatte en çok hareket eden kripto varlıklar için widget oluştur",
+      "flightDelays": "Şu anda en kötü uluslararası uçuş gecikmelerini özetle",
+      "conflictHotspots": "En son UCDP çatışma bölgelerini kısa etiketlerle haritala"
+    },
+    "proExamples": {
+      "interactiveChart": "Petrol ve altın fiyatlarını karşılaştıran etkileşimli Chart.js grafiği",
+      "sortableTable": "Arama filtresine sahip sıralanabilir kripto fiyat tablosu",
+      "animatedCounters": "Kilit ekonomik göstergeler için animasyonlu sayaçlar",
+      "tabbedComparison": "Çatışma olaylarının bölgeye göre sekmeli karşılaştırması"
+    }
+  },
+  "connectivity": {
+    "offlineCached": "Çevrimdışı — {{freshness}} tarihli önbelleğe alınan veriler gösteriliyor.",
+    "offlineUnavailable": "Çevrimdışı — canlı veriler şu anda kullanılamıyor.",
+    "cachedFallback": "Canlı veriler kullanılamıyor — {{freshness}} tarihli önbelleğe alınan veriler gösteriliyor."
+  },
+  "premium": {
+    "pro": "PRO",
+    "lockedDesc": "World Monitor lisans anahtarı gereklidir",
+    "joinWaitlist": "Bekleme Listesine Katıl",
+    "signInToUnlock": "Premium özelliklerin kilidini açmak için oturum açın",
+    "signIn": "Kilidini Açmak İçin Oturum Aç",
+    "verifyEmailToUnlock": "Premium özelliklere erişmek için e-postanızı doğrulayın",
+    "resendVerification": "Doğrulamayı Yeniden Gönder",
+    "upgradeDesc": "Premium analitiğe tam erişim için Pro'ya yükseltin",
+    "upgradeToPro": "Pro'ya Yüksel",
+    "features": {
+      "orefSirens1": "Gerçek zamanlı İsrail füze ve roket uyarıları",
+      "orefSirens2": "Tehdit sınıflandırması ile siren bölgesi haritalaması",
+      "telegramIntel1": "Küratörlü Telegram OSINT kanalları",
+      "telegramIntel2": "Neredeyse gerçek zamanlı çatışma ve jeopolitik güncellemeleri"
+    }
+  },
+  "auth": {
+    "signIn": "Oturum Aç",
+    "createAccount": "Hesap oluştur",
+    "settings": "Ayarlar"
+  },
+  "mcp": {
+    "connectPanel": "MCP'yi Bağla",
+    "modalTitle": "MCP Sunucusunu Bağla",
+    "serverUrl": "Sunucu URL'si",
+    "authHeader": "Kimlik Doğrulama Başlığı",
+    "optional": "isteğe bağlı",
+    "apiKey": "API Anahtarı",
+    "apiKeyPlaceholder": "API anahtarınızı yapıştırın",
+    "useCustomHeaders": "Gelişmiş: özel başlıkları kullan ↓",
+    "useApiKey": "← API anahtarını kullan",
+    "connectBtn": "Bağlan ve Araçları Listele",
+    "connecting": "Bağlanıyor...",
+    "foundTools": "{{count}} araç bulundu",
+    "connectFailed": "Bağlantı başarısız",
+    "selectTool": "Araç seçin",
+    "toolArgs": "Argümanlar (JSON)",
+    "panelTitle": "Panel Başlığı",
+    "panelTitlePlaceholder": "Benim MCP Panelim",
+    "refreshEvery": "Yenile",
+    "seconds": "saniye",
+    "addPanel": "Panel Ekle",
+    "configure": "MCP'yi Yapılandır",
+    "refreshNow": "Şimdi yenile",
+    "invalidJson": "Geçersiz JSON",
+    "confirmDelete": "Bu MCP panelini kaldır?",
+    "quickConnect": "Hızlı Bağlan",
+    "or": "ya da özel bir sunucu girin",
+    "generatingVisualization": "Görselleştirme oluşturuluyor...",
+    "visualizationFailed": "Görselleştirme başarısız"
   }
 }

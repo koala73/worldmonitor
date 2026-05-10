@@ -33,10 +33,17 @@ import {
   deriveRequestId,
   deriveExecutionRegion,
   deriveCountry,
+  deriveIpCity,
+  deriveIpRegion,
   deriveReqBytes,
   deriveSentryTraceId,
   deriveOriginKind,
   deriveUaHash,
+  deriveIp,
+  deriveUserAgent,
+  deriveReferer,
+  deriveAcceptLanguage,
+  deriveHost,
   maybeAttachDevHealthHeader,
   runWithUsageScope,
   type CacheTier as UsageCacheTier,
@@ -388,11 +395,18 @@ export function createDomainGateway(
             authKind: identity.auth_kind,
             tier: identity.tier,
             country: deriveCountry(originalRequest),
+            ipCity: deriveIpCity(originalRequest),
+            ipRegion: deriveIpRegion(originalRequest),
             executionRegion: deriveExecutionRegion(originalRequest),
             executionPlane: 'vercel-edge',
             originKind: deriveOriginKind(originalRequest),
             cacheTier,
+            ip: deriveIp(originalRequest),
+            userAgent: deriveUserAgent(originalRequest),
             uaHash,
+            referer: deriveReferer(originalRequest),
+            acceptLanguage: deriveAcceptLanguage(originalRequest),
+            host: deriveHost(originalRequest),
             sentryTraceId: deriveSentryTraceId(originalRequest),
             reason,
           }),
@@ -907,13 +921,13 @@ export function createDomainGateway(
     if (!matchedHandler) {
       const allowed = router.allowedMethods(new URL(request.url).pathname);
       if (allowed.length > 0) {
-        emitRequest(405, 'ok', null);
+        emitRequest(405, 'method_not_allowed', null);
         return new Response(JSON.stringify({ error: 'Method not allowed' }), {
           status: 405,
           headers: { 'Content-Type': 'application/json', Allow: allowed.join(', '), ...corsHeaders },
         });
       }
-      emitRequest(404, 'ok', null);
+      emitRequest(404, 'unknown_route', null);
       return new Response(JSON.stringify({ error: 'Not found' }), {
         status: 404,
         headers: { 'Content-Type': 'application/json', ...corsHeaders },

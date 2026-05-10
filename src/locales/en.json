@@ -3,6 +3,13 @@
     "title": "World Monitor",
     "description": "Global Situation with AI Insights"
   },
+  "shell": {
+    "documentTitle": "World Monitor — Real-Time Global Intelligence Dashboard",
+    "metaDescription": "Real-time global intelligence platform. Featured in WIRED. Used by 2M+ people across 190 countries. Conflicts, markets, military, OSINT in one view.",
+    "offlineTitle": "You're Offline",
+    "offlineMessage": "World Monitor requires an internet connection for real-time intelligence data.",
+    "offlineRetry": "Retry"
+  },
   "widgets": {
     "createWithAi": "Create with AI",
     "confirmDelete": "Remove this widget permanently?",
@@ -642,6 +649,10 @@
       }
     },
     "settingsWindow": {
+      "shellTitle": "World Monitor Settings",
+      "shellSearchPlaceholder": "Search settings...",
+      "shellCancel": "Cancel",
+      "shellSaveClose": "Save & Close",
       "freePanelLimit": "Free plan: max {{max}} panels. Upgrade to PRO for unlimited.",
       "freeSourceLimit": "Free plan: max {{max}} sources. Upgrade to PRO for unlimited.",
       "validating": "Validating API keys...",
@@ -1496,7 +1507,33 @@
       "analysisFrameworksPasteJson": "Paste JSON",
       "analysisFrameworksSaveToLibrary": "Save to Library",
       "streamAlwaysOnLabel": "Keep live streams running",
-      "streamAlwaysOnDesc": "Prevents Live Cams and Live News from auto-pausing when you are idle. Recommended for second-monitor / wallboard usage. Disable (Eco) to save CPU/bandwidth."
+      "streamAlwaysOnDesc": "Prevents Live Cams and Live News from auto-pausing when you are idle. Recommended for second-monitor / wallboard usage. Disable (Eco) to save CPU/bandwidth.",
+      "frameworkNote": "Applies to client-generated analysis only",
+      "loadingServerInsights": "Loading server insights...",
+      "usingCachedBrief": "Using cached brief...",
+      "multiPerspectiveAnalysis": "Multi-perspective analysis...",
+      "generatingBriefSub": "Generating brief: {{msg}}",
+      "breakingConfirmed": "BREAKING & CONFIRMED",
+      "multiSource": "Multi-source",
+      "fastMoving": "Fast-moving",
+      "clusters": "Clusters",
+      "alertsLabel": "Alerts",
+      "alert": "ALERT",
+      "sources_one": "{{count}} source",
+      "sources_other": "{{count}} sources",
+      "briefTech": "TECH BRIEF",
+      "briefCommodity": "COMMODITY BRIEF",
+      "briefEnergy": "ENERGY BRIEF",
+      "briefWorld": "WORLD BRIEF",
+      "mlDetected": "ML DETECTED",
+      "geographicConvergence": "GEOGRAPHIC CONVERGENCE",
+      "focalPoints": "FOCAL POINTS",
+      "toneMixed": "Mixed",
+      "toneNegative": "Negative",
+      "tonePositive": "Positive",
+      "overall": "Overall: {{tone}}",
+      "signalTypesEvents": "{{types}} signal types • {{events}} events",
+      "newsSignals": "{{news}} news • {{signals}} signals"
     },
     "settings": {
       "dataManagementLabel": "Data Management",
@@ -2168,6 +2205,25 @@
     },
     "yieldCurve": {
       "infoTooltip": "<strong>Yield Curve &amp; Rates</strong> US Treasury yield curve (2Y, 5Y, 10Y, 30Y) and key rate spreads including the 10Y-2Y inversion indicator. Also shows Euro area rates (EURIBOR, ESTR). An inverted curve historically precedes recessions. Source: FRED."
+    },
+    "proBanner": {
+      "badge": "PRO",
+      "headline": "Pro is launched",
+      "tagline": "More Signal, Less Noise. More AI Briefings. A Geopolitical & Equity Researcher just for you.",
+      "cta": "Upgrade to Pro →",
+      "dismiss": "Dismiss"
+    },
+    "checkoutFailureBanner": {
+      "message": "Payment couldn't be completed. No charge was made.",
+      "retry": "Try again",
+      "retrying": "Retrying…",
+      "dismiss": "Dismiss"
+    },
+    "frameworkSelector": {
+      "label": "Analysis Framework",
+      "defaultNeutral": "Default (Neutral)",
+      "titlePrefix": "Framework: {{name}}",
+      "titleNone": "Analysis framework"
     }
   },
   "popups": {

@@ -204,7 +204,18 @@
     "panelCatCentralBanks": "中央銀行・経済",
     "panelCatDeals": "ディール・機関投資",
     "panelCatGulfMena": "湾岸・中東",
-    "panelCatTradePolicy": "通商政策"
+    "panelCatTradePolicy": "通商政策",
+    "cached": "キャッシュ済み",
+    "unavailable": "利用不可",
+    "commodity": "コモディティ",
+    "energy": "エネルギー",
+    "tabNotifications": "通知",
+    "panelCatCorrelation": "相関関係",
+    "panelCatCommodityPrices": "価格・市場",
+    "panelCatMining": "採掘・サプライチェーン",
+    "panelCatCommodityEcon": "経済・貿易",
+    "panelCatHappyNews": "ニュース",
+    "panelCatHappyPlanet": "地球・社会貢献"
   },
   "panels": {
     "liveNews": "ライブニュース",
@@ -282,7 +293,39 @@
     "gulfIndices": "湾岸指数",
     "gulfCurrencies": "湾岸通貨",
     "gulfOil": "湾岸石油",
-    "bigmac": "Real Big Mac Index"
+    "bigmac": "Real Big Mac Index",
+    "marketImplications": "AI 市場への影響",
+    "energyComplex": "エネルギー複合体",
+    "oilInventories": "石油在庫",
+    "energyCrisis": "エネルギー危機トラッカー",
+    "goldIntelligence": "ゴールド インテリジェンス",
+    "wsbTickerScanner": "WSB ティッカー スキャナー",
+    "internetDisruptions": "インターネット 障害",
+    "internetDisruptionsTabs": {
+      "outages": "障害",
+      "ddos": "DDoS",
+      "anomalies": "異常"
+    },
+    "liveWebcams": "ライブ ウェブカメラ",
+    "windyWebcams": "Windy ライブ ウェブカメラ",
+    "groceryBasket": "食料品指数",
+    "groceryItem": "商品",
+    "bigmacDesc": "中東各国のビッグマック価格(ビッグマック指数)",
+    "bigmacWow": "WoW",
+    "bigmacCountry": "国",
+    "faoFoodPriceIndex": "FAO 食料価格指数",
+    "fuelPrices": "燃料価格",
+    "fuelPricesDesc": "世界 30 か国以上の小売ガソリンおよびディーゼル価格",
+    "fuelPricesCountry": "国",
+    "fuelPricesGasoline": "ガソリン",
+    "fuelPricesDiesel": "ディーゼル",
+    "fuelPricesSource": "ソース",
+    "groceryBasketDesc": "世界 24 か国の食料品バスケット価格比較",
+    "airlineIntel": "✈️ エアライン インテリジェンス",
+    "consumerPrices": "消費者物価",
+    "fearGreed": "恐怖と貪欲",
+    "marketBreadth": "市場の広がり",
+    "climateNews": "気候ニュース"
   },
   "commands": {
     "prefixes": {
@@ -320,7 +363,9 @@
       "briefExample": "brief china",
       "layersExample": "military layers",
       "timeExample": "24h",
-      "settingsExample": "dark mode"
+      "settingsExample": "dark mode",
+      "flight": "コールサインでライブフライトを検索 (PRO)",
+      "flightExample": "UAE528"
     },
     "keywords": {
       "military": "軍事",
@@ -416,8 +461,15 @@
         "startup": "スタートアップ",
         "techevent": "テックイベント",
         "techhq": "テック本社",
-        "accelerator": "アクセラレーター"
-      }
+        "accelerator": "アクセラレーター",
+        "flight": "フライト"
+      },
+      "flightOnGround": "地上",
+      "flightAirborne": "FL{{fl}} · {{kts}} kts",
+      "flightMilitary": "軍用機 · {{type}} · FL{{fl}}",
+      "flightMilitaryOnGround": "軍用機 · {{type}} · 地上",
+      "flightSearchHint": "Enterキーを押すか、クリックしてライブ位置を検索",
+      "flightNotFound": "{{callsign}} のライブ位置が見つかりません"
     },
     "signal": {
       "title": "インテリジェンス所見",
@@ -525,7 +577,8 @@
         "NASA_FIRMS_API_KEY": "Fire Information for Resource Management System。",
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
-      }
+      },
+      "reserveEarlyAccess": "アーリーアクセスを予約"
     },
     "settingsWindow": {
       "validating": "APIキーを検証中...",
@@ -573,7 +626,13 @@
         "path": "パス",
         "status": "ステータス",
         "duration": "所要時間"
-      }
+      },
+      "shellTitle": "ワールドモニター設定",
+      "shellSearchPlaceholder": "設定を検索...",
+      "shellCancel": "キャンセル",
+      "shellSaveClose": "保存して閉じる",
+      "freePanelLimit": "無料プラン: 最大 {{max}} パネル。PRO にアップグレードして無制限にしましょう。",
+      "freeSourceLimit": "無料プラン: 最大 {{max}} ソース。PRO にアップグレードして無制限にしましょう。"
     },
     "countryIntel": {
       "identifying": "国を特定中...",
@@ -762,7 +821,17 @@
       "change": "Change",
       "cut": "cut",
       "hike": "hike",
-      "hold": "hold"
+      "hold": "hold",
+      "pressure": {
+        "label": "マクロプレッシャー",
+        "stress": "ストレス",
+        "watch": "注視",
+        "steady": "安定",
+        "stressDetail": "ボラティリティとカーブプレッシャーが上昇しています。",
+        "watchDetail": "市場間の状況をより注視する必要があります。",
+        "steadyDetail": "マクロ環境は現在のところ安定しています。"
+      },
+      "infoTooltip": "<strong>マクロストレス</strong> マクロ指標、政府支出、中央銀行データ:<ul><li><strong>指標</strong>: VIX、金利、イールドカーブ、労働、インフレ</li><li><strong>政府</strong>: 最近の米国政府契約授与</li><li><strong>中央銀行</strong>: BIS政策金利と為替レートデータ</li></ul>"
     },
     "supplyChain": {
       "chokepoints": "チョークポイント",
@@ -786,7 +855,21 @@
       "mineral": "鉱物",
       "topProducers": "主要生産国",
       "risk": "リスク",
-      "sources": "FRED / NGA / USGS"
+      "sources": "FRED / NGA / USGS",
+      "transit24h": "24時間",
+      "tankers": "タンカー",
+      "cargo": "貨物",
+      "wowChange": "週間変動",
+      "vesselTransits": "船舶通過数（180日）",
+      "riskLevel": "リスクレベル",
+      "flowUnavailable": "フロー数据が利用できません",
+      "containerRates": "コンテナ運賃",
+      "bulkShipping": "バルク海運",
+      "economicIndicators": "経済指標",
+      "loadingHistory": "通過履歴を読み込み中…",
+      "historyUnavailable": "通過履歴が利用できません",
+      "transitDataUnavailable": "通過データが利用できません（上流データが部分的）",
+      "infoTooltip": "<strong>サプライチェーン監視</strong> グローバルロジスティクスとリソース追跡:<ul><li><strong>チョークポイント</strong>: 海上輸送ステータス、支障スコア、船舶数</li><li><strong>海運</strong>: バルティック海運指数と運賃トレンド</li><li><strong>鉱物</strong>: 重要鉱物集中リスク（HHI）と主要生産国</li></ul>チョークポイントカードをクリックして通過履歴チャートを展開します。"
     },
     "tradePolicy": {
       "restrictions": "規制",
@@ -806,7 +889,39 @@
       "yoyChange": "前年比",
       "highTariff": "高い",
       "moderateTariff": "中程度",
-      "lowTariff": "低い"
+      "lowTariff": "低い",
+      "overview": "概要",
+      "noOverviewData": "関税概要データが利用できません",
+      "mfnAppliedRate": "MFN適用税率",
+      "baselineMfnTariff": "基準MFN関税",
+      "effectiveTariffRateLabel": "有効関税率",
+      "gapLabel": "格差",
+      "gapVsMfnLabel": "MFN比較の格差",
+      "noEffectiveCoverageForCountry": "この国の有効税率データが利用できません",
+      "effectiveMinusBaseline": "有効税率からWTO MFN基準を差し引いたもの",
+      "wtoBaselineMeta": "WTO MFN適用税率 | {{year}}",
+      "overviewNoteNoEffective": "これらの数値はWTO MFN基準税率であり、一方的な関税措置による現在の関税負担ではありません。",
+      "usBaselineLabel": "US WTO MFN基準",
+      "overviewNoteTail": "これらのカードはWTO基準コミットメントを示しており、実際の有効関税負担ではありません。",
+      "revenue": "US 収入",
+      "noRevenueData": "税関収入データが利用できません",
+      "treasuryUnavailable": "財務省データは一時的に利用できません",
+      "fytdLabel": "FY{{year}} YTD",
+      "vsPriorFy": "vs FY{{year}}",
+      "sourceWto": "WTO",
+      "sourceTreasury": "US財務省",
+      "colDate": "日付",
+      "colMonthly": "月間",
+      "colFytd": "FY YTD",
+      "strategicFlows": "戦略的フロー",
+      "noComtradeData": "戦略的フロー数据が利用できません",
+      "comtradeUnavailable": "UN Comtradeデータは一時的に利用できません",
+      "sourceComtrade": "UN Comtrade",
+      "anomalyBadge": "異常",
+      "colReporter": "国",
+      "colCommodity": "商品",
+      "colTradeValue": "貿易額",
+      "infoTooltip": "<strong>通商政策</strong> WTO基準と関税影響監視:<ul><li><strong>概要</strong>: WTO MFN基準税率（利用可能な場合はUS有効税率コンテキスト付き）</li><li><strong>関税</strong>: WTO MFN関税トレンド対 US有効関税推定値</li><li><strong>貿易フロー</strong>: 輸出入量と前年比変動</li><li><strong>障壁</strong>: 貿易技術障壁（TBT/SPS通知）</li><li><strong>収入</strong>: 月間米国税関関税収入（US財務省MTSデータ）</li></ul>"
     },
     "gdelt": {
       "empty": "このトピックの最新記事なし"
@@ -947,7 +1062,10 @@
         "east-med-theater": "東地中海",
         "israel-gaza-theater": "イスラエル/ガザ",
         "yemen-redsea-theater": "イエメン/紅海"
-      }
+      },
+      "emojiKeyLabel": "絵文字キー",
+      "emojiKeyAir": "空中資産",
+      "emojiKeyNaval": "海上資産"
     },
     "countryBrief": {
       "shareLink": "リンクを共有",
@@ -1002,7 +1120,15 @@
         "ciiNormal": "通常 (31–50)",
         "ciiElevated": "やや高 (51–65)",
         "ciiHigh": "高 (66–80)",
-        "ciiCritical": "危機的 (81–100)"
+        "ciiCritical": "危機的 (81–100)",
+        "miningSite": "採鉱地",
+        "commodityPort": "商品港",
+        "pipeline": "パイプライン",
+        "processingPlant": "処理工場",
+        "conflict": "紛争地帯",
+        "diseaseAlert": "疾病警報",
+        "diseaseWarning": "疾病警告",
+        "diseaseWatch": "疾病監視"
       },
       "layerGuide": "レイヤーガイド",
       "layerWarningTitle": "パフォーマンスに関するお知らせ",
@@ -1067,7 +1193,9 @@
         "kindness": "善意の行動",
         "happiness": "世界幸福度",
         "speciesRecovery": "種の回復",
-        "renewableInstallations": "クリーンエネルギー"
+        "renewableInstallations": "クリーンエネルギー",
+        "radiationSpike": "放射線スパイク",
+        "radiationElevated": "放射線上昇"
       },
       "tooltip": {
         "earthquake": "地震",
@@ -1232,7 +1360,42 @@
       "headlineMemoryLabel": "ヘッドラインメモリ",
       "headlineMemoryDesc": "閲覧済みの見出しを記憶して新着を強調",
       "streamAlwaysOnLabel": "ライブ配信を常に実行",
-      "streamAlwaysOnDesc": "アイドル時に Live Cams と Live News が自動一時停止されるのを防ぎます。セカンドモニター / 壁面ダッシュボード用途に推奨。CPU/帯域を節約するには（Eco）を無効にしてください。"
+      "streamAlwaysOnDesc": "アイドル時に Live Cams と Live News が自動一時停止されるのを防ぎます。セカンドモニター / 壁面ダッシュボード用途に推奨。CPU/帯域を節約するには（Eco）を無効にしてください。",
+      "analysisFrameworksLabel": "分析フレームワーク",
+      "analysisFrameworksActivePerPanel": "パネルごとのアクティブ",
+      "analysisFrameworksSkillLibrary": "スキルライブラリ",
+      "analysisFrameworksImportBtn": "フレームワークをインポート",
+      "analysisFrameworksDefaultNeutral": "デフォルト(ニュートラル)",
+      "analysisFrameworksImportTitle": "フレームワークをインポート",
+      "analysisFrameworksFromAgentskills": "agentskills.ioから",
+      "analysisFrameworksPasteJson": "JSONを貼り付け",
+      "analysisFrameworksSaveToLibrary": "ライブラリに保存",
+      "frameworkNote": "クライアント生成の分析にのみ適用",
+      "loadingServerInsights": "サーバーインサイトを読み込み中...",
+      "usingCachedBrief": "キャッシュされたブリーフを使用中...",
+      "multiPerspectiveAnalysis": "多角的分析...",
+      "generatingBriefSub": "ブリーフを生成中: {{msg}}",
+      "breakingConfirmed": "速報・確認済み",
+      "multiSource": "マルチソース",
+      "fastMoving": "速報性の高い",
+      "clusters": "クラスター",
+      "alertsLabel": "アラート",
+      "alert": "アラート",
+      "sources_one": "{{count}} ソース",
+      "sources_other": "{{count}} ソース",
+      "briefTech": "テック速報",
+      "briefCommodity": "商品速報",
+      "briefEnergy": "エネルギー速報",
+      "briefWorld": "ワールド速報",
+      "mlDetected": "ML検出",
+      "geographicConvergence": "地理的収束",
+      "focalPoints": "焦点",
+      "toneMixed": "混合",
+      "toneNegative": "ネガティブ",
+      "tonePositive": "ポジティブ",
+      "overall": "全体: {{tone}}",
+      "signalTypesEvents": "{{types}} シグナルタイプ • {{events}} イベント",
+      "newsSignals": "{{news}} ニュース • {{signals}} シグナル"
     },
     "settings": {
       "dataManagementLabel": "データ管理",
@@ -1343,7 +1506,8 @@
       "analyzingCountries": "Analyzing 200+ countries...",
       "source": "Source: World Bank",
       "updated": "Updated: {{date}}",
-      "infoTooltip": "<strong>グローバルテック準備度</strong><br>世界銀行データに基づく複合スコア（0-100）:<br><br><strong>表示指標:</strong><br>🌐 インターネットユーザー（人口比%）<br>📱 モバイル契約数（100人あたり）<br>🔬 研究開発費（GDP比%）<br><br><strong>重み付け:</strong> 研究開発（35%）、インターネット（30%）、ブロードバンド（20%）、モバイル（15%）<br><br><em>— = 最新データなし</em><br><em>出典: 世界銀行オープンデータ（2019-2024）</em>"
+      "infoTooltip": "<strong>グローバルテック準備度</strong><br>世界銀行データに基づく複合スコア（0-100）:<br><br><strong>表示指標:</strong><br>🌐 インターネットユーザー（人口比%）<br>📱 モバイル契約数（100人あたり）<br>🔬 研究開発費（GDP比%）<br><br><strong>重み付け:</strong> 研究開発（35%）、インターネット（30%）、ブロードバンド（20%）、モバイル（15%）<br><br><em>— = 最新データなし</em><br><em>出典: 世界銀行オープンデータ（2019-2024）</em>",
+      "dataPreparing": "技術準備状況データを更新中 — すぐに表示されます。"
     },
     "populationExposure": {
       "noData": "露出データなし",
@@ -1399,7 +1563,9 @@
         "minutesAgo": "{{count}}分前",
         "hoursAgo": "{{count}}時間前"
       },
-      "infoTooltip": "NASA FIRMS VIIRS衛星による監視対象紛争地域の熱検知。高強度 = 輝度>360K & 信頼度>80%。"
+      "infoTooltip": "NASA FIRMS VIIRS衛星による監視対象紛争地域の熱検知。高強度 = 輝度>360K & 信頼度>80%。",
+      "possibleExplosions": "{{count}} 件の爆発の可能性を検出",
+      "explosionTooltip": "爆発と一致する熱シグネチャ (FRP >80 MW、輝度 >380 K)"
     },
     "ucdpEvents": {
       "stateBased": "国家間",
@@ -1480,7 +1646,10 @@
       "summaryError": "要約を生成できませんでした",
       "summaryFailed": "要約に失敗しました",
       "sources": "{{count}}件のソース",
-      "relatedAssetsNear": "{{location}}付近の関連アセット"
+      "relatedAssetsNear": "{{location}}付近の関連アセット",
+      "sortBy": "並び替え",
+      "sortNewest": "最新",
+      "sortRelevance": "関連性"
     },
     "export": {
       "exportData": "データをエクスポート"
@@ -1610,7 +1779,8 @@
         "estFlow": "推定フロー",
         "volume": "出来高",
         "change": "変動率"
-      }
+      },
+      "infoTooltip": "<strong>BTC ETF トラッカー</strong> 米国現物ビットコイン ETF の日次推定ファンドフロー追跡:<ul><li>フロー/アウトフローの方向と規模</li><li>ファンドごとのボリュームと価格変動</li><li>全追跡 ETF の純集計フロー</li></ul>"
     },
     "macroSignals": {
       "overall": "総合",
@@ -1627,12 +1797,17 @@
         "hashRate": "Hash Rate",
         "momentum": "Momentum",
         "fearGreed": "恐怖 &amp; 貪欲"
-      }
+      },
+      "infoTooltip": "<strong>BTC レジーム</strong> ビットコインのポジショニングとリスク選好度の複合シグナルダッシュボード:<ul><li><strong>流動性</strong>: FRB流動性プロキシ</li><li><strong>フロー</strong>: BTC vs QQQ 5日間リターン</li><li><strong>レジーム</strong>: QQQ vs XLP ローテーション (リスクオン/オフ)</li><li><strong>BTC トレンド</strong>: 価格 vs SMA50/200、マイヤーマルチプル</li><li><strong>ハッシュレート</strong>: 30日間ネットワークハッシュ変化</li><li><strong>恐怖と欲望</strong>: 市場心理指数</li></ul>このパネルはレジームとポジショニング用であり、幅広いマクロデータではありません。"
     },
     "panel": {
       "showMethodologyInfo": "Show methodology info",
       "dragToResize": "Drag to resize (double-click to reset)",
-      "openSettings": "Open Settings"
+      "openSettings": "Open Settings",
+      "closePanel": "パネルを閉じる",
+      "collapsePanel": "パネルを折りたたむ",
+      "expandPanel": "パネルを展開する",
+      "addPanel": "パネルを追加"
     },
     "languageSelector": {
       "selectLanguage": "Select Language",
@@ -1722,10 +1897,17 @@
     },
     "map": {
       "showMap": "地図を表示",
-      "hideMap": "地図を非表示"
+      "hideMap": "地図を非表示",
+      "clearTrails": "トレイルをクリア"
     },
     "internetDisruptions": {
-      "infoTooltip": "<strong>Internet Disruptions</strong> Real-time internet outages, DDoS attacks, and traffic anomalies from global network monitoring:<ul><li><strong>Outages</strong>: BGP-detected connectivity failures by country</li><li><strong>DDoS</strong>: Volumetric attack reports by protocol and vector</li><li><strong>Anomalies</strong>: Unusual traffic patterns from Cloudflare Radar</li></ul>"
+      "infoTooltip": "<strong>Internet Disruptions</strong> Real-time internet outages, DDoS attacks, and traffic anomalies from global network monitoring:<ul><li><strong>Outages</strong>: BGP-detected connectivity failures by country</li><li><strong>DDoS</strong>: Volumetric attack reports by protocol and vector</li><li><strong>Anomalies</strong>: Unusual traffic patterns from Cloudflare Radar</li></ul>",
+      "noOutages": "アクティブな障害は検出されていません",
+      "noDdos": "DDoSデータは利用不可",
+      "noAnomalies": "トラフィック異常は検出されていません",
+      "byProtocol": "攻撃プロトコル",
+      "byVector": "攻撃ベクトル",
+      "topTargets": "トップターゲット国"
     },
     "commodities": {
       "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress."
@@ -1764,7 +1946,26 @@
       "infoTooltip": "<strong>Central Bank Watch</strong> Latest statements, rate decisions, and communications from the Federal Reserve, ECB, Bank of England, and other major central banks worldwide."
     },
     "airlineIntel": {
-      "infoTooltip": "<strong>航空インテリジェンス</strong> リアルタイムの航空会社運航データ：路線停止、空域閉鎖、運航会社の勧告、緊急迂回。航空当局のNOTAMおよび運航会社の速報がソース。"
+      "infoTooltip": "<strong>航空インテリジェンス</strong> リアルタイムの航空会社運航データ：路線停止、空域閉鎖、運航会社の勧告、緊急迂回。航空当局のNOTAMおよび運航会社の速報がソース。",
+      "noOpsData": "オペレーションデータなし — 読み込み中…",
+      "noFlights": "フライトなし — 設定で空港を選択してください。",
+      "noCarrierData": "キャリアデータはまだありません。",
+      "noTrackingData": "航空機追跡データがありません。",
+      "noNews": "航空ニュースはありません。",
+      "enterRoute": "ルートを入力して料金を検索します。",
+      "cachedInsight": "キャッシュされたインサイト",
+      "demoMode": "デモモード",
+      "pricesIndicative": "すべての料金は参考値です",
+      "searchFlights": "フライト検索",
+      "bestDates": "最安日",
+      "cabinClass": "キャビン",
+      "enterRouteAndDate": "ルートと日付を入力して検索",
+      "enterDateRange": "ルートと日付範囲を入力",
+      "degradedResults": "一部の結果が不完全な場合があります",
+      "nonstop": "直行便",
+      "roundTrip": "往復",
+      "tripDays": "移動日数",
+      "cheapest": "最安値"
     },
     "chatAnalyst": {
       "infoTooltip": "<strong>WM アナリスト</strong> 地政学、市場、軍事、経済分野のライブコンテキストを持つAIアナリスト。WorldMonitorのアクティブフィードからリアルタイムデータを注入したClaudeで稼働。"
@@ -1813,6 +2014,154 @@
     },
     "yieldCurve": {
       "infoTooltip": "<strong>イールドカーブ &amp; 金利</strong> 米国債イールドカーブ（2Y、5Y、10Y、30Y）と10Y-2Y逆転指標を含む主要金利スプレッド。ユーロ圏金利（EURIBOR、ESTR）も表示。逆転したカーブは歴史的に景気後退に先行。ソース：FRED。"
+    },
+    "pinnedWebcams": {
+      "pinFromMap": "地図からウェブカメラをピン留め"
+    },
+    "breakthroughsTicker": {
+      "noData": "科学的ブレークスルーはまだありません"
+    },
+    "oilInventories": {
+      "infoTooltip": "<strong>石油在庫</strong> 米国原油と戦略備蓄 (EIA週次)、天然ガス貯蔵、EUガス充填率 (GIE AGSI+)、OECD石油在庫カバー日数 (IEA月次)。"
+    },
+    "energyComplex": {
+      "noData": "エネルギーデータは一時的に利用できません - 再試行します",
+      "liveTape": "ライブテープ",
+      "liveTapeSource": "市場相場",
+      "infoTooltip": "<strong>エネルギー複合</strong> 物理的でトレード可能なエネルギーシグナルをワンプレイスで:<ul><li><strong>EIA指標</strong>: WTI、ブレント、米国生産、在庫</li><li><strong>ライブテープ</strong>: 原油や天然ガスなどのトレード可能なエネルギー価格</li><li><strong>目的</strong>: 物理的エネルギーストレスをより広いマクロとコモディティパネルから分離</li></ul>"
+    },
+    "consumerPrices": {
+      "title": "消費者物価",
+      "subtitle": "主要市場のバスケット価格追跡",
+      "tabs": {
+        "overview": "概要",
+        "categories": "カテゴリ",
+        "movers": "値動き",
+        "spread": "小売業者のスプレッド",
+        "health": "データヘルス"
+      },
+      "essentialsIndex": "エッセンシャルズインデックス",
+      "valueBasketIndex": "バリューバスケット",
+      "wowChange": "前週比",
+      "momChange": "前月比",
+      "retailerSpread": "小売業者のスプレッド",
+      "coveragePct": "カバレッジ",
+      "freshnessLag": "新鮮度ラグ",
+      "noCategories": "カテゴリデータがありません",
+      "noMovers": "価格変動データがありません",
+      "noSpread": "小売業者スプレッドデータがありません",
+      "noHealth": "データヘルス情報がありません",
+      "upstreamUnavailable": "消費者価格データは一時的に利用できません",
+      "allCategories": "すべてのカテゴリ",
+      "risers": "上昇中",
+      "fallers": "下降中",
+      "unitPrice": "単価",
+      "freshLabel": "新鮮",
+      "staleLabel": "古い",
+      "laggingLabel": "遅延中",
+      "stalledLabel": "停滞",
+      "retailer": "小売業者",
+      "lastUpdated": "最終更新",
+      "retailers": "小売業者",
+      "items": "商品",
+      "infoTooltip": "<strong>消費者価格</strong> リアルタイムバスケット価格追跡:<ul><li><strong>概要</strong>: エッセンシャルズインデックス、バリューバスケット、前週比の変化</li><li><strong>カテゴリ</strong>: カテゴリ別価格トレンド(30日間レンジ付き)</li><li><strong>値動き</strong>: 今週の最大上昇・下降商品</li><li><strong>スプレッド</strong>: 同じバスケットにおける小売業者間の価格差</li></ul>データはライブ小売価格スクレイピングから取得しています。"
+    },
+    "marketImplications": {
+      "infoTooltip": "<strong>AI市場インプリケーション</strong> 各フォアキャストサイクル後のライブ地政学、商品、マクロ状態から導出されるLLM生成トレードシグナル。<ul><li><strong>方向性</strong>: LONG / SHORT / HEDGE(信頼度レーティング付き)</li><li><strong>時間軸</strong>: 1W、2W、1M、または3M</li><li><strong>ドライバー</strong>: シグナルの主要な触媒</li><li><strong>リスク</strong>: 注意事項または無効化条件</li></ul><em>情報提供のみを目的としています。投資アドバイスではありません。</em>"
+    },
+    "forecast": {
+      "infoTooltip": "<strong>AI 予測</strong> 地政学的および経済的イベントの AI 生成確率推定:<ul><li>クロスドメインカバレッジ: 紛争、市場、サプライチェーン、サイバー、政治</li><li>各予測は推定確率、信頼度、時間軸を表示</li><li>利用可能な場合は予測市場ベースラインに対して調整済み</li></ul>新しいインテリジェンスシグナルが到着すると予測が更新されます。上記のタブでドメイン別にフィルタリングしてください。"
+    },
+    "escalationCorrelation": {
+      "infoTooltip": "<strong>エスカレーション監視</strong> 地政学的シグナルの収束を検出:<ul><li>軍事的動き、紛争イベント、ニュース急増を相関させる</li><li>収束ゾーンを重大度 (危機的/高/中/低) でスコアリング</li><li>時間経過に伴うエスカレーションまたはデエスカレーションの傾向を追跡</li></ul>カードをクリックしてマップ上の領域にズームします。"
+    },
+    "economicCorrelation": {
+      "infoTooltip": "<strong>経済戦争</strong> 経済的圧力シグナルの収束を検出:<ul><li>制裁、貿易制限、通貨変動</li><li>地政学的アクターに関連する商品供給の中断</li><li>経済と安全保障イベント間のクロスドメイン相関</li></ul>カードをクリックして影響を受けた領域にズームします。"
+    },
+    "militaryCorrelation": {
+      "infoTooltip": "<strong>戦力態勢</strong> 軍事活動と地政学的背景の相関:<ul><li>地域別の軍用機と海軍艦船の集中</li><li>活動中の紛争ゾーンとニュース急増との相互参照</li><li>異常な戦力増強または再配置をハイライト</li></ul>カードをクリックしてマップ上の領域にズームします。"
+    },
+    "disasterCorrelation": {
+      "infoTooltip": "<strong>災害カスケード</strong> 自然災害とインフラシグナルの収束を検出:<ul><li>地震、山火事、洪水、極端な天候を相関させる</li><li>インフラとサプライチェーンへの波及効果を追跡</li><li>複合災害リスクを抱える地域をハイライト</li></ul>カードをクリックして影響を受けた領域にズームします。"
+    },
+    "markets": {
+      "infoTooltip": "<strong>マーケット</strong> リアルタイムの株価指数、株式、暗号資産価格。ウォッチリストボタンでウォッチリストをカスタマイズしてください。スパークラインは最近の価格トレンドを表示します。"
+    },
+    "heatmap": {
+      "infoTooltip": "<strong>セクターヒートマップ</strong> S&P 500 セクターのパフォーマンスが一目でわかります。色の濃淡は日次変動の大きさを反映しています。緑 = 上昇、赤 = 下落。"
+    },
+    "fuelPrices": {
+      "infoTooltip": "<strong>燃料価格</strong> 30 か国以上のガソリンとディーゼルの小売店頭価格を、比較のため USD/リットルに正規化。価格は公式政府オープンデータプログラムから取得され、週ごとに更新されます。最も安い国と最も高い国がハイライトされています。先週のデータが利用可能な場合、WoW 変化が表示されます。",
+      "countries": "か国"
+    },
+    "faoFoodPriceIndex": {
+      "infoTooltip": "<strong>FAO 食料価格指数</strong> 国連食糧農業機関の FFPI は、食料商品 (穀物、乳製品、肉、油、砂糖) のバスケットの国際輸出価格を追跡し、ベース 2014-2016=100。毎月の最初の金曜日に更新されます。",
+      "indexLabel": "FFPI (2014-16=100)",
+      "mom": "前月比",
+      "yoy": "前年比",
+      "asOf": "基準日",
+      "baseNote": "ベース: 2014-2016 = 100 | 出典: 国連 FAO",
+      "ffpi": "食料",
+      "cereals": "穀物",
+      "meat": "肉類",
+      "dairy": "乳製品",
+      "oils": "油脂",
+      "sugar": "砂糖"
+    },
+    "climateNews": {
+      "infoTooltip": "<strong>気候ニュース</strong>Carbon Brief、UNEP、NASA、The Guardian等の信頼できるソースから最新の環境・気候インテリジェンスを配信。30分ごとに更新。",
+      "loadError": "気候ニュースは一時的に利用不可"
+    },
+    "liquidityShifts": {
+      "title": "流動性シフト",
+      "infoTooltip": "<strong>流動性シフト</strong>石油、金、銀、株価指数先物、米国トップ株の高流動性ポジショニングと日次シフト監視。COT資産運用会社ネットとレバレッジファンドネット対日次価格変化。",
+      "cotSection": "石油 / 金 / 銀 + インデックスポジショニング (COT)",
+      "stocksSection": "米国トップ株: 日次シフト",
+      "longShort": "ロング {{long}} / ショート {{short}}",
+      "lev": "Lev",
+      "noCot": "COT行は利用できません。",
+      "noStocks": "トップ株相場は利用できません。",
+      "reportDate": "COTレポート日: {{date}}",
+      "unavailable": "流動性データは利用不可",
+      "failed": "読み込みに失敗しました"
+    },
+    "positioning247": {
+      "title": "24/7 ポジショニング",
+      "infoTooltip": "<strong>24/7 ポジショニング</strong>Hyperliquidからの無期限契約ポジショニングストレス。24時間取引され、従来型市場がクローズしているときに何が構築されているかを示します。ファンディングレート、出来高、建玉、現物-永久先物ベーシスから算出した複合スコア (0-100)。緑 = ロング集中 (強気傾向)、赤 = ショート集中 (弱気傾向)。",
+      "commodities": "商品",
+      "crypto": "暗号資産",
+      "fx": "外国為替",
+      "warmup": "ベースラインを構築中。ボリュームとOI履歴は今後1時間で表示されます。",
+      "unavailable": "ポジショニングデータは利用不可",
+      "footer": "5分 · Hyperliquid永久先物 · 24/7"
+    },
+    "goldIntelligence": {
+      "infoTooltip": "<strong>ゴールドインテリジェンス</strong>金現物価格、金/銀比率、金対プラチナプレミアム、クロスカレンシーXAU価格 (EUR、GBP、JPY、CNY、INR、CHF)、およびCFTC運用資金ポジショニング。出所: Yahoo Finance、CFTC COT。"
+    },
+    "energyCrisis": {
+      "infoTooltip": "<strong>エネルギー危機トラッカー</strong>IEA 2026エネルギー危機政策対応トラッカー。中東紛争とホルムズ海峡供給混乱への対応として、エネルギー節約と消費者支援のための政府措置を追跡。60カ国以上、約200の政策措置をカバー。"
+    },
+    "wsbTickerScanner": {
+      "infoTooltip": "<strong>WSBティッカースキャナー</strong>r/wallstreetbets、r/stocks、r/investingからのリアルタイムティッカーメンション。メンション頻度とエンゲージメント順でランク付け。速度は、複数の投稿全体でティッカーがどれだけ急速に勢いを獲得しているかを示します。"
+    },
+    "proBanner": {
+      "badge": "PRO",
+      "headline": "Proがローンチしました",
+      "tagline": "より多くのシグナル、ノイズ削減。AI ブリーフィングの強化。あなたのための地政学&エクイティリサーチャー。",
+      "cta": "Pro にアップグレード →",
+      "dismiss": "閉じる"
+    },
+    "checkoutFailureBanner": {
+      "message": "お支払いが完了できませんでした。請求はされていません。",
+      "retry": "もう一度試す",
+      "retrying": "再試行中…",
+      "dismiss": "閉じる"
+    },
+    "frameworkSelector": {
+      "label": "分析フレームワーク",
+      "defaultNeutral": "デフォルト (ニュートラル)",
+      "titlePrefix": "フレームワーク: {{name}}",
+      "titleNone": "分析フレームワーク"
     }
   },
   "popups": {
@@ -1896,7 +2245,9 @@
         "apac": "アジア太平洋",
         "mena": "中東",
         "africa": "アフリカ"
-      }
+      },
+      "scheduled": "予定",
+      "estimated": "推定"
     },
     "aircraft": {
       "altitude": "高度",
@@ -2192,7 +2543,9 @@
       "lastReport": "LATEST",
       "nearChokepoint": "NEAR CHOKEPOINT",
       "nearBase": "NEAR BASE",
-      "lastSeen": "LAST SEEN"
+      "lastSeen": "LAST SEEN",
+      "estPosition": "推定位置",
+      "aisLive": "AIS LIVE"
     },
     "militaryCluster": {
       "flightActivity": {
@@ -2224,7 +2577,13 @@
       "active": "ACTIVE",
       "reported": "報告済",
       "viewOnSource": "{{source}}で表示",
-      "attribution": "データ: NASA EONET"
+      "attribution": "データ: NASA EONET",
+      "storm": "嵐",
+      "classification": "分類",
+      "maxWind": "最大風速",
+      "pressure": "気圧",
+      "movement": "移動",
+      "tropicalSystem": "熱帯低気圧"
     },
     "port": {
       "types": {
@@ -2479,7 +2838,9 @@
     "currentVariant": "（現在）",
     "retry": "Retry",
     "refresh": "Refresh",
-    "all": "すべて"
+    "all": "すべて",
+    "dataTemporarilyUnavailable": "データは一時的に利用できません",
+    "cancel": "キャンセル"
   },
   "preferences": {
     "display": "ディスプレイ",
@@ -2497,10 +2858,141 @@
     "mapTheme": "マップテーマ",
     "mapThemeDesc": "マップタイルのビジュアルスタイル。",
     "globePreset": "ビジュアルプリセット",
-    "globePresetDesc": "クラシックと拡張地球表示を切り替えます。"
+    "globePresetDesc": "クラシックと拡張地球表示を切り替えます。",
+    "fontFamily": "フォントファミリー",
+    "fontFamilyDesc": "テクニカルな見た目にはモノスペース、より読みやすくするにはシステムデフォルトを選択できます。",
+    "fontMono": "モノスペース",
+    "fontSystem": "システムデフォルト"
   },
   "contextMenu": {
     "openCountryBrief": "国の概要を開く",
     "copyCoordinates": "座標をコピー"
+  },
+  "shell": {
+    "documentTitle": "ワールドモニター — リアルタイム グローバルインテリジェンスダッシュボード",
+    "metaDescription": "リアルタイムグローバルインテリジェンスプラットフォーム。WIREDで紹介。190カ国2M+ユーザーが利用。紛争、市場、軍事、OSINTを一画面で。",
+    "offlineTitle": "オフラインです",
+    "offlineMessage": "World Monitorはリアルタイムインテリジェンスデータのためにインターネット接続が必要です。",
+    "offlineRetry": "再試行"
+  },
+  "widgets": {
+    "createWithAi": "AIで作成",
+    "confirmDelete": "このウィジェットを完全に削除しますか?",
+    "chatTitle": "ウィジェットビルダー",
+    "modifyTitle": "ウィジェットを編集",
+    "inputPlaceholder": "ウィジェットを説明してください...",
+    "addToDashboard": "ダッシュボードに追加",
+    "applyChanges": "変更を適用",
+    "send": "送信",
+    "changeAccent": "アクセントカラーを変更",
+    "modifyWithAi": "AIでウィジェットを編集",
+    "ready": "ウィジェット準備完了: {{title}}",
+    "fetching": "{{target}}を取得中...",
+    "requestTimedOut": "リクエストがタイムアウトしました。もう一度お試しください。",
+    "serverError": "サーバーエラー: {{status}}",
+    "unknownError": "不明なエラー",
+    "generatedWidget": "生成されたウィジェット: {{title}}",
+    "checkingConnection": "ウィジェットアクセスを確認中…",
+    "preflightConnected": "ウィジェットエージェントに接続しました",
+    "preflightInvalidKey": "ウィジェットキーが拒否されました。wm-widget-keyを更新して再読み込みしてください。",
+    "preflightUnavailable": "ウィジェットエージェントは一時的に利用できません。",
+    "preflightAiUnavailable": "AIバックエンドが利用できません。後でもう一度お試しください。",
+    "readyToGenerate": "生成準備完了。例を選択するか、ウィジェットを説明してください。",
+    "readyToApply": "{{title}}のプレビュー準備完了。確認後、ダッシュボードに追加してください。",
+    "modifyHint": "現在のウィジェットをプレビュー中。変更リクエストを送信して編集してください。",
+    "generating": "生成中…",
+    "examplesTitle": "プロンプト例",
+    "previewTitle": "ライブプレビュー",
+    "phaseChecking": "確認中",
+    "phaseReadyToPrompt": "準備完了",
+    "phaseFetching": "取得中",
+    "phaseComposing": "構成中",
+    "phaseComplete": "準備完了",
+    "phaseError": "エラー",
+    "previewCheckingHeading": "ウィジェットビルダーを接続中",
+    "previewReadyHeading": "作成したいウィジェットを説明してください",
+    "previewFetchingHeading": "ライブWorldMonitorデータを取得中",
+    "previewComposingHeading": "ウィジェットレイアウトを構成中",
+    "previewErrorHeading": "プレビューに注意が必要です",
+    "previewCheckingCopy": "生成を有効にする前に、ウィジェットキーとバックエンド可用性を検証しています。",
+    "previewReadyCopy": "プロンプト例を使用するか、希望するライブビューを正確に説明してください。プレビューは保存前にここで更新されます。",
+    "previewFetchingCopy": "エージェントが承認されたWorldMonitorエンドポイントを呼び出し、ウィジェット用にデータセットを整形しています。",
+    "previewComposingCopy": "プレビューが最新のライブデータとダッシュボードスタイルでレンダリングされています。",
+    "previewErrorCopy": "問題を修正して再試行してください。既存のウィジェットは影響を受けません。",
+    "createInteractive": "インタラクティブウィジェットを作成",
+    "proBadge": "PRO",
+    "preflightProUnavailable": "PROウィジェットエージェントが利用できません。サーバーのPRO_WIDGET_KEYを確認してください。",
+    "preflightInvalidProKey": "PROキーが拒否されました。wm-pro-keyを更新して再読み込みしてください。",
+    "preflightProSubscriptionRequired": "Proサブスクリプションが必要です。アップグレード直後の場合はページを更新してください。それ以外の場合はサポートに連絡してください。",
+    "preflightProRequired": "Pro サブスクリプションが必要です。Widget Builder を使用するにはアップグレードしてください。",
+    "examples": {
+      "oilGold": "今日の原油価格と金の比較を表示",
+      "cryptoMovers": "過去 24 時間のトップ暗号資産変動ウィジェットを作成",
+      "flightDelays": "現在の最悪の国際線遅延をまとめる",
+      "conflictHotspots": "最新の UCDP 紛争ホットスポットを短いラベル付きでマップ表示"
+    },
+    "proExamples": {
+      "interactiveChart": "原油と金の価格を比較するインタラクティブ Chart.js チャート",
+      "sortableTable": "検索フィルター付きの並び替え可能な暗号資産価格テーブル",
+      "animatedCounters": "主要経済指標のアニメーション カウンター",
+      "tabbedComparison": "地域別紛争イベントのタブ付き比較"
+    }
+  },
+  "connectivity": {
+    "offlineCached": "オフライン — {{freshness}}からのキャッシュデータを表示しています。",
+    "offlineUnavailable": "オフライン — ライブデータは現在利用できません。",
+    "cachedFallback": "ライブデータが利用できません — {{freshness}}からのキャッシュデータを表示しています。"
+  },
+  "premium": {
+    "pro": "PRO",
+    "lockedDesc": "World Monitor ライセンスキーが必要です",
+    "joinWaitlist": "ウェイトリストに参加",
+    "signInToUnlock": "サインインしてプレミアム機能を利用",
+    "signIn": "サインインして利用",
+    "verifyEmailToUnlock": "メールを認証してプレミアム機能にアクセス",
+    "resendVerification": "認証メールを再送信",
+    "upgradeDesc": "Proにアップグレードしてプレミアム分析に完全アクセス",
+    "upgradeToPro": "Proにアップグレード",
+    "features": {
+      "orefSirens1": "イスラエルのミサイル・ロケット警報をリアルタイム配信",
+      "orefSirens2": "サイレンゾーンマッピングと脅威分類",
+      "telegramIntel1": "厳選されたTelegram OSINT チャネル",
+      "telegramIntel2": "ほぼリアルタイムの紛争・地政学的最新情報"
+    }
+  },
+  "auth": {
+    "signIn": "サインイン",
+    "createAccount": "アカウントを作成",
+    "settings": "設定"
+  },
+  "mcp": {
+    "connectPanel": "MCPを接続",
+    "modalTitle": "MCPサーバーを接続",
+    "serverUrl": "サーバーURL",
+    "authHeader": "認証ヘッダー",
+    "optional": "オプション",
+    "apiKey": "APIキー",
+    "apiKeyPlaceholder": "APIキーを貼り付け",
+    "useCustomHeaders": "詳細設定: カスタムヘッダーを使用 ↓",
+    "useApiKey": "← APIキーを使用",
+    "connectBtn": "接続してツール一覧を表示",
+    "connecting": "接続中...",
+    "foundTools": "{{count}}個のツールが見つかりました",
+    "connectFailed": "接続に失敗しました",
+    "selectTool": "ツールを選択",
+    "toolArgs": "引数 (JSON)",
+    "panelTitle": "パネルタイトル",
+    "panelTitlePlaceholder": "My MCP Panel",
+    "refreshEvery": "更新間隔",
+    "seconds": "秒",
+    "addPanel": "パネルを追加",
+    "configure": "MCPを設定",
+    "refreshNow": "今すぐ更新",
+    "invalidJson": "無効なJSON",
+    "confirmDelete": "このMCPパネルを削除しますか?",
+    "quickConnect": "クイック接続",
+    "or": "またはカスタムサーバーを入力",
+    "generatingVisualization": "ビジュアライゼーションを生成中...",
+    "visualizationFailed": "ビジュアライゼーションに失敗しました"
   }
 }

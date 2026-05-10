@@ -23,13 +23,21 @@
  *     "seedLastWaveSentAt": <wave-2 sentAt epoch ms>,
  *     "seedLastWaveLabel": "wave-2",
  *     "seedLastWaveSegmentId": "<wave-2 segmentId>",
- *     "seedLastWaveAssigned": 500
+ *     "seedLastWaveAssigned": 500,
+ *     "excludeNonEnglish": true   // optional; default false
  *   }'
  *   # tier 0 -> "wave-3", tier 1 -> "wave-4", etc. The offset lets
  *   # the auto-ramp pick up after manually-sent canary-250 + wave-2.
  *   # Seed args are REQUIRED when waveLabelOffset > 0 — without them
  *   # the first cron tick has no prior broadcastId to read stats from
  *   # and would silently skip the kill-gate.
+ *   #
+ *   # `excludeNonEnglish: true` filters non-English contacts in
+ *   # pickWaveAction (canonical: users.localePrimary; fallback: email-TLD
+ *   # heuristic). Always run the dry-run report first to inspect impact:
+ *   #   npx convex run broadcast/waveRuns:_dryRunNonEnglishExclusion '{}'
+ *   # If excludedTotal/eligibleTotal > 10%, the heuristic is over-aggressive;
+ *   # do NOT enable for that wave.
  *
  *   npx convex run broadcast/rampRunner:pauseRamp '{}'
  *   npx convex run broadcast/rampRunner:resumeRamp '{}'
@@ -145,6 +153,13 @@ export const initRamp = internalMutation({
     seedLastWaveLabel: v.optional(v.string()),
     seedLastWaveSegmentId: v.optional(v.string()),
     seedLastWaveAssigned: v.optional(v.number()),
+    // Locale filter — when true, pickWaveAction excludes contacts with
+    // non-English locale (canonical via `users.localePrimary`, fallback
+    // via email-TLD heuristic for legacy waitlist registrants without a
+    // users row). Default false to preserve byte-identical behavior for
+    // existing ramps. Operators opt in for wave-8+ deliberately. Run
+    // `_dryRunNonEnglishExclusion` first to inspect impact before flipping.
+    excludeNonEnglish: v.optional(v.boolean()),
   },
   handler: async (ctx, args) => {
     if (args.rampCurve.length === 0) {
@@ -192,6 +207,10 @@ export const initRamp = internalMutation({
       lastWaveLabel: args.seedLastWaveLabel,
       lastWaveSegmentId: args.seedLastWaveSegmentId,
       lastWaveAssigned: args.seedLastWaveAssigned,
+      // Default-FALSE on insert when arg omitted. Per the design doc:
+      // explicit, never silently true — existing-ramp byte-identical
+      // behavior is the default; operators opt in for wave-8+.
+      excludeNonEnglish: args.excludeNonEnglish ?? false,
     });
     return { ok: true };
   },
@@ -505,6 +524,11 @@ export const getRampStatus = internalQuery({
       pendingExportAt: row.pendingExportAt,
       pendingBroadcastId: row.pendingBroadcastId,
       pendingBroadcastAt: row.pendingBroadcastAt,
+      // Locale filter (default false on missing — preserves existing-ramp
+      // byte-identical behavior). Operator opts in for wave-8+ via
+      // initRamp({excludeNonEnglish: true}) after running
+      // _dryRunNonEnglishExclusion to inspect impact.
+      excludeNonEnglish: row.excludeNonEnglish ?? false,
       // PR 2 (post-launch-stabilization): in-flight wave-loading state
       // machine surface. Empty array when no run is active.
       activeWaveRuns: await (async () => {
@@ -1083,13 +1107,16 @@ export const runDailyRamp = internalAction({
       typeof crypto !== "undefined" && crypto.randomUUID
         ? crypto.randomUUID()
         : `run-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    // Default-false on missing config field — preserves existing-ramp
+    // behavior. Operator opts in via initRamp({excludeNonEnglish: true}).
+    const excludeNonEnglish = row.excludeNonEnglish ?? false;
     await ctx.scheduler.runAfter(
       0,
       internal.broadcast.waveRuns.pickWaveAction,
-      { waveLabel, runId, requestedCount: count },
+      { waveLabel, runId, requestedCount: count, excludeNonEnglish },
     );
     console.log(
-      `[runDailyRamp] scheduled pickWaveAction runId=${runId} waveLabel=${waveLabel} requestedCount=${count}`,
+      `[runDailyRamp] scheduled pickWaveAction runId=${runId} waveLabel=${waveLabel} requestedCount=${count} excludeNonEnglish=${excludeNonEnglish}`,
     );
     return { status: "wave-scheduled", detail: runId };
   },

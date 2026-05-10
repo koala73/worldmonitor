@@ -6,7 +6,8 @@
     "enterprise": "Enterprise",
     "reserveAccess": "Đặt trước quyền truy cập sớm",
     "signIn": "Đăng nhập",
-    "upgradeToPro": "Nâng cấp lên Pro"
+    "upgradeToPro": "Nâng cấp lên Pro",
+    "goToDashboard": "Đi tới Bảng điều khiển"
   },
   "hero": {
     "noiseWord": "Nhiễu",
@@ -18,7 +19,8 @@
     "emailPlaceholder": "Nhập email của bạn",
     "emailAriaLabel": "Địa chỉ email cho danh sách chờ",
     "choosePlan": "Chọn gói",
-    "signIn": "Đăng nhập"
+    "signIn": "Đăng nhập",
+    "goToDashboard": "Đi tới Bảng điều khiển"
   },
   "wired": {
     "asFeaturedIn": "Được giới thiệu trên"
@@ -354,5 +356,11 @@
     "youreIn": "Bạn đã tham gia!",
     "invitedBanner": "Bạn đã được mời — hãy tham gia danh sách chờ"
   },
-  "soonBadge": "Sắp ra mắt"
+  "soonBadge": "Sắp ra mắt",
+  "meta": {
+    "title": "World Monitor Pro — Nhà phân tích AI, Bàn làm việc Trí tuệ Cá nhân, MCP cho Claude & GPT",
+    "description": "Lớp AI địa chính trị. Hỏi nó, đăng ký nó, xây dựng trên nó. Chat WM Analyst trên 30+ dịch vụ trực tiếp, bản tóm tắt AI gửi hàng ngày, hai lần mỗi ngày hoặc hàng tuần đến Slack, Discord, Telegram, Email hoặc webhook, trình xây dựng widget tùy chỉnh (HTML/CSS/JS + AI), và trình kết nối MCP cho Claude, GPT và LLM tùy chỉnh.",
+    "ogTitle": "World Monitor Pro — Lớp AI Địa chính trị",
+    "ogDescription": "Hỏi nó, đăng ký nó, xây dựng trên nó. Chat WM Analyst, bản tóm tắt AI theo lịch của bạn (hàng ngày, hai lần mỗi ngày hoặc hàng tuần), trình xây dựng widget tùy chỉnh, và MCP cho Claude/GPT — trên 30+ dịch vụ trực tiếp dưới một khóa."
+  }
 }
