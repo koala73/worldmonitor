@@ -38,6 +38,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/oauth/authorize-pro.ts",
+      "category": "external-protocol",
+      "reason": "OAuth 2.0 bounce-back from the apex /mcp-grant Clerk-protected consent flow (plan 2026-05-10-001 U5). GET-only edge handler that HMAC-verifies the signed grant, atomically consumes both `mcp-grant:<n>` and `oauth:nonce:<n>` Redis one-shots, issues a Convex `mcpProTokens` row, writes `oauth:code:<code>` with `{kind:'pro', userId, mcpTokenId, ...}`, and 302s to the registered redirect_uri. Response shape (HTML error pages + 302 redirect) is dictated by RFC 6749 — same external-protocol constraint as api/oauth/authorize.js.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/oauth-protected-resource.ts",
       "category": "external-protocol",
       "reason": "RFC 9728 OAuth Protected Resource metadata. Dynamic per-host to satisfy scanner origin-match rules — shape dictated by RFC 9728.",
