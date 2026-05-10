@@ -6,10 +6,12 @@ description: "Connect Claude, Cursor, and other MCP-compatible clients to WorldM
 WorldMonitor exposes its intelligence stack as a [Model Context Protocol](https://modelcontextprotocol.io) server so any MCP-compatible client (Claude Desktop, Claude web, Cursor, MCP Inspector, custom agents) can pull live conflict, market, aviation, maritime, economic, and forecasting data directly into a model's context.
 
 <Info>
-The MCP server is gated behind **PRO**. Free-tier users see a 401 at the OAuth step.
+**Pro and API tiers can both connect via OAuth — no API key required.** Pro subscribers click _"Sign in with WorldMonitor Pro"_ on the consent page; API Starter / Business / Enterprise users may sign in the same way OR paste a `wm_…` key. Free-tier users see a 401 at the OAuth step.
 </Info>
 
-Pro subscribers can connect Claude Desktop / Cursor / claude.ai without ever pasting an API key — see [Pro sign-in flow](#pro-sign-in-flow) below. API Starter+ holders may continue to paste a `wm_…` key on the consent page (the original flow).
+The two tiers share the same MCP server, the same 36+ tools, and the same OAuth flow — they differ only in **rate limits**. Pro is capped at **50 tool calls per UTC day**; API Starter / Business / Enterprise have **no daily cap** (just per-minute throttling). See the [Plans & limits](#plans--limits) table below.
+
+Pro subscribers can connect Claude Desktop / Cursor / claude.ai without ever pasting an API key — see [Pro sign-in flow](#pro-sign-in-flow) below. API Starter+ holders may continue to paste a `wm_…` key on the consent page (the original flow), or use the same OAuth path as Pro.
 
 ## Endpoints
 
@@ -88,15 +90,27 @@ Each authorization mints a separate row, so revoking Claude Desktop does not aff
 - A revoke takes effect on the next MCP request (no positive cache).
 - Up to **5 active tokens per user**. The 6th authorization silently revokes the least-recently-used existing one.
 
-## Rate limits
+## Plans & limits
 
-- **MCP calls (API key auth)**: 60 requests / minute / API key (sliding window)
-- **MCP calls (Pro tier)**: 50 tool calls / UTC day / user (`tools/list` and `initialize` excluded)
+| Plan | MCP access | Auth modes | Daily cap | Per-minute | Notes |
+|------|------------|------------|-----------|------------|-------|
+| **Free** | ❌ No | — | — | — | OAuth flow returns 401 `INSUFFICIENT_TIER`. Upgrade at [worldmonitor.app/pro](https://www.worldmonitor.app/pro). |
+| **Pro** | ✅ Yes | OAuth only | **50 tool calls / UTC day** | 60 / min / user | Bounce-via-apex Clerk sign-in. No `wm_…` key needed or stored. |
+| **API Starter** | ✅ Yes | OAuth **or** `wm_…` key | none | 60 / min / key | Standard developer-tier API access. |
+| **API Business** | ✅ Yes | OAuth **or** `wm_…` key | none | 60 / min / key | Higher per-key throughput on request. |
+| **Enterprise** | ✅ Yes | OAuth **or** `wm_…` key | none | 60 / min / key (negotiable) | Custom limits + SLA available. |
+
+Pro's 50/day cap is the only hard daily quota. The 60/min limit applies uniformly across all paid tiers but is keyed differently: per-user for Pro, per-key for API tiers (so a Pro user with 3 Claude installations shares one 60/min pool, while an API user with 3 keys gets 3× the throughput).
+
+`tools/list` and `initialize` are **never** counted against either limit — only `tools/call` reservations consume quota.
+
+### Other rate limits
+
 - **OAuth authorize**: 10 requests / minute / IP
 - **OAuth token**: 10 requests / minute / IP
 - **Dynamic registration**: 5 registrations / minute / IP
 
-Exceeding returns `429` with a `Retry-After` header.
+Exceeding any limit returns HTTP `429` with a `Retry-After` header. The Pro daily cap returns JSON-RPC error `-32029` plus `Retry-After: <seconds-to-utc-midnight>`.
 
 ## Client setup
 
