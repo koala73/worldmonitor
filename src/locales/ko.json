@@ -1977,19 +1977,114 @@
       "infoTooltip": "<strong>실시간 카운터</strong> 글로벌 지표의 실시간 추정 카운터: 군사비, 자연재해, 질병 부담 등. 수치는 연간 데이터 비율에 기반한 통계적 추정치."
     },
     "diseaseOutbreaks": {
-      "infoTooltip": "<strong>질병 발생</strong> WHO, ProMED 및 보건부의 활성 발생 경보. 확인된 발생, 영향 지역, 사례 수, 위협 수준을 추적. 새 보고서 발표 시 업데이트."
+      "infoTooltip": "<strong>질병 발생</strong> WHO, ProMED 및 보건부의 활성 발생 경보. 확인된 발생, 영향 지역, 사례 수, 위협 수준을 추적. 새 보고서 발표 시 업데이트.",
+      "title": "질병 발생",
+      "empty": "필터와 일치하는 발생 없음",
+      "sourceFallback": "출처",
+      "attribution": "WHO · ProMED · HealthMap",
+      "levels": {
+        "alert": "경보",
+        "warning": "경고",
+        "watch": "감시"
+      },
+      "time": {
+        "justNow": "방금",
+        "hoursAgo_one": "{{count}}시간 전",
+        "hoursAgo_other": "{{count}}시간 전",
+        "daysAgo_one": "{{count}}일 전",
+        "daysAgo_other": "{{count}}일 전"
+      },
+      "filters": {
+        "alert_one": "{{count}} 알림",
+        "alert_other": "{{count}} 알림",
+        "warning_one": "{{count}} 경고",
+        "warning_other": "{{count}} 경고",
+        "watch_one": "{{count}} 감시",
+        "watch_other": "{{count}} 감시"
+      },
+      "errors": {
+        "noData": "발생 데이터 없음",
+        "failedToLoad": "로드 실패"
+      }
     },
     "earningsCalendar": {
-      "infoTooltip": "<strong>실적 캘린더</strong> 주요 상장 기업의 예정 및 최근 실적 발표. EPS 추정치 대 실적, 매출, 상회/하회 분류를 표시. 출처: 금융 데이터 제공업체."
+      "infoTooltip": "<strong>실적 캘린더</strong> 주요 상장 기업의 예정 및 최근 실적 발표. EPS 추정치 대 실적, 매출, 상회/하회 분류를 표시. 출처: 금융 데이터 제공업체.",
+      "title": "어닝 캘린더",
+      "today": "오늘 · {{date}}",
+      "tomorrow": "내일 · {{date}}",
+      "epsActual": "EPS {{value}}",
+      "epsEstimate": "EPS 예상 {{value}}",
+      "revenueActual": "{{value}} 매출",
+      "revenueEstimate": "{{value}} 예상",
+      "surprise": {
+        "beat": "상회",
+        "miss": "하회",
+        "inLine": "부합"
+      },
+      "errors": {
+        "noData": "어닝 데이터 없음",
+        "failedToLoad": "로드 실패"
+      }
     },
     "economicCalendar": {
       "infoTooltip": "<strong>경제 캘린더</strong> 예정된 거시경제 발표: CPI, NFP, GDP, PMI 및 중앙은행 결정. 전망 대 실제 대 이전을 표시. 고영향 이벤트 강조 표시. 출처: 경제 데이터 제공업체."
     },
     "fsi": {
-      "infoTooltip": "<strong>금융 스트레스 지표</strong> 캔자스시티 연준 금융 스트레스 지수(KCFSI): 수익률 스프레드, 변동성, 교차 상관관계를 포함한 11개 지표를 사용하여 미국 금융 시장의 스트레스를 측정. 양수 값은 평균 이상의 스트레스를 나타냄. 출처: 캔자스시티 연방준비은행."
+      "infoTooltip": "<strong>금융 스트레스 지표</strong> 캔자스시티 연준 금융 스트레스 지수(KCFSI): 수익률 스프레드, 변동성, 교차 상관관계를 포함한 11개 지표를 사용하여 미국 금융 시장의 스트레스를 측정. 양수 값은 평균 이상의 스트레스를 나타냄. 출처: 캔자스시티 연방준비은행.",
+      "title": "금융 스트레스 지표",
+      "usFsiValue": "미국 FSI 값",
+      "cissTitle": "EU CISS (유로존 시스템 스트레스)",
+      "notAvailable": "해당 없음",
+      "interpretation": {
+        "low": "신용 시장이 정상 작동, 주식/채권 비율 양호.",
+        "moderate": "신용 조건이 다소 악화, 면밀한 감시 필요.",
+        "elevated": "신용 시장 스트레스 심각, 방어적 포지셔닝 권장.",
+        "severe": "심각한 금융 스트레스, 시스템 리스크 상승."
+      },
+      "labels": {
+        "lowStress": "낮은 스트레스",
+        "moderateStress": "중간 스트레스",
+        "elevatedStress": "상승된 스트레스",
+        "severeStress": "심각한 스트레스"
+      },
+      "cissLabels": {
+        "low": "낮음",
+        "moderate": "중간",
+        "elevated": "상승",
+        "high": "높음"
+      },
+      "scale": {
+        "noStress": "0 — 스트레스 없음",
+        "extremeStress": "1 — 극심한 스트레스",
+        "highStress": "높은 스트레스",
+        "lowStress": "낮은 스트레스"
+      },
+      "metrics": {
+        "vix": "VIX",
+        "hySpread": "HY Spread",
+        "hygPrice": "HYG Price",
+        "tltPrice": "TLT Price"
+      },
+      "errors": {
+        "unavailable": "FSI 데이터를 사용할 수 없음",
+        "failedToLoad": "로드 실패"
+      }
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>호르무즈 무역 추적기</strong> 세계에서 가장 중요한 석유 병목지점인 호르무즈 해협을 통과하는 AIS 선박 실시간 추적. 유조선 수, 중단 이벤트, 주간 흐름 변화를 모니터링. 전 세계 석유 공급의 약 20%가 매일 이곳을 통과."
+      "infoTooltip": "<strong>호르무즈 무역 추적기</strong> 세계에서 가장 중요한 석유 병목지점인 호르무즈 해협을 통과하는 AIS 선박 실시간 추적. 유조선 수, 중단 이벤트, 주간 흐름 변화를 모니터링. 전 세계 석유 공급의 약 20%가 매일 이곳을 통과.",
+      "title": "호르무즈 무역 추적기",
+      "noData": "데이터 없음",
+      "notAvailable": "해당 없음",
+      "chartUnavailable": "차트 데이터를 사용할 수 없음",
+      "sourcePrefix": "출처:",
+      "units": {
+        "ktPerDay": "kt/일",
+        "generic": "단위"
+      },
+      "errors": {
+        "unavailable": "호르무즈 데이터를 사용할 수 없음",
+        "failedToLoad": "로드 실패"
+      }
     },
     "liveWebcams": {
       "infoTooltip": "<strong>실시간 웹캠</strong> 전 세계 지정학적으로 중요한 장소의 실시간 피드: 분쟁 지역, 수도, 국경 검문소, 전략적 병목지점. YouTube 및 공개 네트워크의 스트림."
@@ -2067,7 +2162,20 @@
       "infoTooltip": "<strong>소비자 가격</strong> 실시간 바구니 가격 추적:<ul><li><strong>개요</strong>: 필수품 지수, 가치 바구니 및 주간 변동</li><li><strong>카테고리</strong>: 카테고리별 가격 추세 및 30일 범위</li><li><strong>변동 상품</strong>: 이번 주 가장 큰 상승 및 하락 상품</li><li><strong>편차</strong>: 동일 바구니에 대한 소매점 간 가격 변동</li></ul>라이브 소매점 가격 스크래핑에서 소싱된 데이터."
     },
     "marketImplications": {
-      "infoTooltip": "<strong>AI 시장 영향</strong> 각 예측 사이클 후 라이브 지정학, 상품 및 거시 상태에서 파생된 LLM 생성 거래 신호.<ul><li><strong>방향</strong>: LONG / SHORT / HEDGE (신뢰도 등급 포함)</li><li><strong>기간</strong>: 1W, 2W, 1M 또는 3M 시간대</li><li><strong>동인</strong>: 신호 뒤의 핵심 촉발 요인</li><li><strong>위험</strong>: 주의 또는 무효화 조건</li></ul><em>정보 제공 목적으로만 제공됩니다. 투자 조언이 아닙니다.</em>"
+      "infoTooltip": "<strong>AI 시장 영향</strong> 각 예측 사이클 후 라이브 지정학, 상품 및 거시 상태에서 파생된 LLM 생성 거래 신호.<ul><li><strong>방향</strong>: LONG / SHORT / HEDGE (신뢰도 등급 포함)</li><li><strong>기간</strong>: 1W, 2W, 1M 또는 3M 시간대</li><li><strong>동인</strong>: 신호 뒤의 핵심 촉발 요인</li><li><strong>위험</strong>: 주의 또는 무효화 조건</li></ul><em>정보 제공 목적으로만 제공됩니다. 투자 조언이 아닙니다.</em>",
+      "title": "AI 시장 영향",
+      "directions": {
+        "long": "롱",
+        "short": "숏",
+        "hedge": "헤지"
+      },
+      "rationale": "근거:",
+      "driver": "동인:",
+      "appliesToNext": "다음 AI 재생성에 적용",
+      "signals_one": "{{count}}개 신호",
+      "signals_other": "{{count}}개 신호",
+      "disclaimer": "AI 생성 거래 신호는 정보 제공 목적입니다. 투자 조언이 아닙니다. 항상 자신의 조사를 수행하세요.",
+      "unavailable": "AI 시장 영향은 각 예측 실행 후 생성됩니다. 잠시 후 다시 확인하세요."
     },
     "forecast": {
       "infoTooltip": "<strong>AI 예측</strong> 지정학적 및 경제 이벤트에 대한 AI 생성 확률 추정:<ul><li>교차 도메인 범위: 분쟁, 시장, 공급망, 사이버, 정치</li><li>각 예측은 예상 확률, 신뢰도 및 시간 범위를 표시</li><li>사용 가능한 경우 예측 시장 기준선을 기준으로 보정됨</li></ul>새로운 인텔리전스 신호가 들어올 때 예측이 업데이트됩니다. 위의 탭을 사용하여 도메인별로 필터링합니다."
@@ -2162,6 +2270,172 @@
       "defaultNeutral": "기본값 (중립)",
       "titlePrefix": "프레임워크: {{name}}",
       "titleNone": "분석 프레임워크"
+    },
+    "sanctionsPressure": {
+      "title": "제재 및 지정",
+      "infoTooltip": "SDN 및 통합 목록의 OFAC 제재 지정. 어느 국가가 가장 높은 지정 압력을 받고 있는지, 어떤 프로그램이 이를 주도하고 있는지, 마지막 업데이트 이후 새로 추가된 것이 무엇인지를 보여줍니다.",
+      "loading": "제재 데이터 로드 중...",
+      "unavailable": "제재 데이터를 사용할 수 없습니다.",
+      "summary": {
+        "new": "신규",
+        "vessels": "선박",
+        "aircraft": "항공기"
+      },
+      "sections": {
+        "countries": "제재 대상국",
+        "entries": "최근 지정",
+        "programs": "프로그램"
+      },
+      "empty": {
+        "countries": "국가 귀속 정보가 없습니다.",
+        "entries": "최근 지정이 없습니다.",
+        "programs": "프로그램 분석이 없습니다."
+      },
+      "footer": {
+        "updated": "{{time}}에 업데이트됨",
+        "dataset": "데이터셋 {{date}}",
+        "source": "출처: OFAC"
+      },
+      "pills": {
+        "newCount": "+{{count}} 신규",
+        "new": "신규"
+      },
+      "designations_one": "{{count}}개 지정",
+      "designations_other": "{{count}}개 지정",
+      "fallbacks": {
+        "unattributed": "미귀속",
+        "program": "프로그램",
+        "undated": "날짜 미지정"
+      }
+    },
+    "radiationWatch": {
+      "title": "방사선 감시",
+      "infoTooltip": "EPA RadNet 및 Safecast 측정값에 이상 감지 및 출처 신뢰도 종합을 적용. 이 패널은 정상값, 상승된 값, 확인된 이상 현상과 예정된 이상 현상을 구분합니다.",
+      "loading": "방사선 데이터를 로드 중입니다...",
+      "empty": "사용 가능한 방사선 관측이 없습니다.",
+      "baseline": "{{value}} 기준선",
+      "flags": {
+        "confirmed": "확인됨",
+        "conflict": "충돌",
+        "cpmDerived": "CPM 파생"
+      },
+      "headers": {
+        "station": "관측소",
+        "reading": "수치",
+        "delta": "차이",
+        "status": "상태",
+        "observed": "관측"
+      },
+      "summary": {
+        "anomalies": "이상 현상",
+        "elevated": "상승",
+        "confirmed": "확인됨",
+        "lowConfidence": "신뢰도 낮음",
+        "conflicts": "충돌",
+        "spikes": "급증"
+      },
+      "footer": {
+        "updated": "{{time}}에 업데이트됨"
+      },
+      "observed": {
+        "hoursAgo_one": "{{count}}시간 전",
+        "hoursAgo_other": "{{count}}시간 전",
+        "daysAgo_one": "{{count}}일 전",
+        "daysAgo_other": "{{count}}일 전"
+      },
+      "confidence": {
+        "high": "높은 신뢰도",
+        "medium": "중간 신뢰도",
+        "low": "낮은 신뢰도"
+      }
+    },
+    "defensePatents": {
+      "title": "R&D 신호",
+      "infoTooltip": "Raytheon, Lockheed, Huawei, DARPA 및 기타 전략 기관의 주간 방위 및 이중용도 특허 출원. 카테고리: H04B (통신), H01L (반도체), F42B (탄약), G06N (AI), C12N (생명공학). 출처: USPTO PatentsView.",
+      "loading": "R&D 출원을 로드 중입니다…",
+      "error": "특허 데이터를 로드할 수 없습니다.",
+      "empty": "이 카테고리에는 출원이 없습니다.",
+      "viewOnUspto": "USPTO에서 보기",
+      "tabs": {
+        "all": "모두"
+      },
+      "cpcLabels": {
+        "H04B": "통신",
+        "H01L": "반도체",
+        "F42B": "탄약",
+        "G06N": "AI",
+        "C12N": "생명공학"
+      }
+    },
+    "correlation": {
+      "loading": "데이터를 기다리는 중입니다...",
+      "empty": "검출된 활성 수렴이 없습니다.",
+      "signals_one": "{{count}}개 신호",
+      "signals_other": "{{count}}개 신호",
+      "analyzing": "분석 중입니다...",
+      "viewOnMap": "지도에서 보기"
+    },
+    "thermalEscalation": {
+      "title": "열 급증",
+      "infoTooltip": "기준선 비교, 지속성 추적, 전략적 맥락이 포함된 FIRMS/VIIRS 열 이상 클러스터. 이 패널은 열 활동이 비정상인 위치와 어떤 클러스터가 분쟁, 산업 중단 또는 급증을 신호할 수 있는지를 답합니다.",
+      "loading": "열 데이터를 로드 중입니다...",
+      "empty": "검출된 열 급증 클러스터가 없습니다.",
+      "footer": {
+        "updated": "{{time}}에 업데이트됨"
+      },
+      "summary": {
+        "total": "합계",
+        "elevated": "상승",
+        "spikes": "급증",
+        "persist": "지속",
+        "conflict": "분쟁",
+        "strategic": "전략"
+      },
+      "badges": {
+        "conflictAdjacent": "conflict-adj",
+        "energyAdjacent": "energy-adj",
+        "industrial": "industrial",
+        "strategic": "strategic"
+      },
+      "observations_one": "{{count}} obs",
+      "observations_other": "{{count}} obs",
+      "sources_one": "{{count}} src",
+      "sources_other": "{{count}} src",
+      "age": {
+        "minutesAgo_one": "{{count}}분 전",
+        "minutesAgo_other": "{{count}}분 전",
+        "hoursAgo_one": "{{count}}시간 전",
+        "hoursAgo_other": "{{count}}시간 전",
+        "daysAgo_one": "{{count}}일 전",
+        "daysAgo_other": "{{count}}일 전"
+      }
+    },
+    "chokepointStrip": {
+      "title": "초크포인트 상태",
+      "infoTooltip": "전 세계 7개 석유·가스 해운 초크포인트의 실시간 상태입니다. 유량 추정값은 Portwatch DWT + AIS 관측값으로 보정되었습니다. /docs/methodology/chokepoints에서 방법론을 확인하세요.",
+      "unknown": "알 수 없음",
+      "shortName": {
+        "hormuzStrait": "호르무즈",
+        "malaccaStrait": "말라카",
+        "suez": "수에즈",
+        "babElMandeb": "바브엘만데브",
+        "bosphorus": "터키 해협",
+        "panama": "파나마",
+        "danishStraits": "덴마크 해협"
+      },
+      "flow": {
+        "mbd": "{{value}} mb/d",
+        "pctOfBaseline": "{{pct}}% of baseline"
+      },
+      "errors": {
+        "unavailable": "초크포인트 상태를 사용할 수 없습니다",
+        "noData": "초크포인트 데이터가 아직 없습니다"
+      },
+      "attribution": {
+        "method": "Portwatch DWT + AIS 보정",
+        "sampleLabel": "AIS 중단 신호",
+        "creditName": "EIA World Oil Transit Chokepoints"
+      }
     }
   },
   "popups": {

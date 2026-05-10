@@ -1,4 +1,69 @@
 {
+  "pricing": {
+    "suffixForever": "forever",
+    "suffixTailored": "tailored to you",
+    "suffixPerMonth": "/mo",
+    "suffixPerYear": "/yr",
+    "amountCustom": "Custom",
+    "opening": "Opening…",
+    "headerTitle": "Choose Your Plan",
+    "headerSubtitle": "From real-time monitoring to full intelligence infrastructure. Pick the tier that fits your mission.",
+    "billingMonthly": "Monthly",
+    "billingAnnual": "Annual",
+    "saveAnnual": "Save 17%",
+    "mostPopular": "Most Popular",
+    "promoCodeNote": "Have a promo code? Enter it during checkout.",
+    "cta": {
+      "checkoutDefault": "Get Started",
+      "learnMore": "Learn More"
+    },
+    "tiers": {
+      "free": {
+        "description": "Get started with the essentials",
+        "features": [
+          "Core dashboard panels",
+          "Global news feed",
+          "Earthquake & weather alerts",
+          "Basic map view"
+        ],
+        "cta": "Get Started"
+      },
+      "pro": {
+        "description": "Full intelligence dashboard",
+        "features": [
+          "Everything in Free",
+          "AI stock analysis & backtesting",
+          "Daily market briefs",
+          "Military & geopolitical tracking",
+          "Custom widget builder",
+          "MCP data connectors",
+          "Priority data refresh"
+        ]
+      },
+      "api": {
+        "description": "Programmatic access to intelligence data",
+        "features": [
+          "REST API access",
+          "Real-time data streams",
+          "1,000 requests/day",
+          "Webhook notifications",
+          "Custom data exports"
+        ]
+      },
+      "enterprise": {
+        "description": "Custom solutions for organizations",
+        "features": [
+          "Everything in Pro + API",
+          "Unlimited API requests",
+          "Dedicated support",
+          "Custom integrations",
+          "SLA guarantee",
+          "On-premise option"
+        ],
+        "cta": "Contact Sales"
+      }
+    }
+  },
   "meta": {
     "title": "World Monitor Pro — AI Analyst, Personal Intelligence Desk, MCP for Claude & GPT",
     "description": "The geopolitical AI layer. Ask it, subscribe to it, build on it. WM Analyst chat across 30+ live services, an AI digest delivered daily, twice-daily, or weekly to Slack, Discord, Telegram, Email, or webhook, a custom widget builder (HTML/CSS/JS + AI), and MCP connectors for Claude, GPT, and custom LLMs.",

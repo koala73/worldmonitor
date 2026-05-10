@@ -1977,19 +1977,114 @@
       "infoTooltip": "<strong>Živé počítadla</strong> Extrapolovaná počítadla v reálném čase pro globální metriky: vojenské výdaje, přírodní katastrofy, zátěž nemocemi a další. Čísla jsou statistické odhady založené na ročních datových sazbách."
     },
     "diseaseOutbreaks": {
-      "infoTooltip": "<strong>Epidemická ohniska</strong> Aktivní upozornění na ohniska od WHO, ProMED a ministerstev zdravotnictví. Sleduje potvrzená ohniska, zasažené regiony, počty případů a úrovně hrozby. Aktualizováno při publikaci nových zpráv."
+      "infoTooltip": "<strong>Epidemická ohniska</strong> Aktivní upozornění na ohniska od WHO, ProMED a ministerstev zdravotnictví. Sleduje potvrzená ohniska, zasažené regiony, počty případů a úrovně hrozby. Aktualizováno při publikaci nových zpráv.",
+      "title": "Epidemie nemocí",
+      "empty": "Žádné epidemie neodpovídají filtru",
+      "sourceFallback": "Zdroj",
+      "attribution": "WHO · ProMED · HealthMap",
+      "levels": {
+        "alert": "UPOZORNĚNÍ",
+        "warning": "VAROVÁNÍ",
+        "watch": "SLEDOVAT"
+      },
+      "time": {
+        "justNow": "právě teď",
+        "hoursAgo_one": "{{count}}h zpět",
+        "hoursAgo_other": "{{count}}h zpět",
+        "daysAgo_one": "{{count}}d zpět",
+        "daysAgo_other": "{{count}}d zpět"
+      },
+      "filters": {
+        "alert_one": "{{count}} Výstraha",
+        "alert_other": "{{count}} Výstrahy",
+        "warning_one": "{{count}} Upozornění",
+        "warning_other": "{{count}} Upozornění",
+        "watch_one": "{{count}} Sledování",
+        "watch_other": "{{count}} Sledování"
+      },
+      "errors": {
+        "noData": "Nejsou k dispozici údaje o epidemiích",
+        "failedToLoad": "Selhalo načítání"
+      }
     },
     "earningsCalendar": {
-      "infoTooltip": "<strong>Kalendář výsledků</strong> Nadcházející a nedávné výsledkové zprávy velkých veřejných společností. Zobrazuje odhady EPS vs. skutečnost, tržby a klasifikaci překonání/nesplnění. Zdroj: poskytovatelé finančních dat."
+      "infoTooltip": "<strong>Kalendář výsledků</strong> Nadcházející a nedávné výsledkové zprávy velkých veřejných společností. Zobrazuje odhady EPS vs. skutečnost, tržby a klasifikaci překonání/nesplnění. Zdroj: poskytovatelé finančních dat.",
+      "title": "Kalendář výsledků",
+      "today": "DNES · {{date}}",
+      "tomorrow": "ZÍTRA · {{date}}",
+      "epsActual": "EPS {{value}}",
+      "epsEstimate": "EPS odhad {{value}}",
+      "revenueActual": "{{value}} tržby",
+      "revenueEstimate": "{{value}} odhad",
+      "surprise": {
+        "beat": "PŘEKONÁNO",
+        "miss": "NESPLNENO",
+        "inLine": "V SOULADU"
+      },
+      "errors": {
+        "noData": "Nejsou k dispozici údaje o výsledcích",
+        "failedToLoad": "Selhalo načítání"
+      }
     },
     "economicCalendar": {
       "infoTooltip": "<strong>Ekonomický kalendář</strong> Plánované makroekonomické publikace: CPI, NFP, GDP, PMI a rozhodnutí centrálních bank. Zobrazuje prognózu vs. skutečnost vs. předchozí. Události s vysokým dopadem jsou zvýrazněny. Zdroj: poskytovatelé ekonomických dat."
     },
     "fsi": {
-      "infoTooltip": "<strong>Ukazatel finančního stresu</strong> Index finančního stresu Federální rezervní banky Kansas City (KCFSI): měří stres na finančních trzích USA pomocí 11 ukazatelů včetně výnosových spreadů, volatility a křížových korelací. Kladné hodnoty indikují nadprůměrný stres. Zdroj: Federální rezervní banka Kansas City."
+      "infoTooltip": "<strong>Ukazatel finančního stresu</strong> Index finančního stresu Federální rezervní banky Kansas City (KCFSI): měří stres na finančních trzích USA pomocí 11 ukazatelů včetně výnosových spreadů, volatility a křížových korelací. Kladné hodnoty indikují nadprůměrný stres. Zdroj: Federální rezervní banka Kansas City.",
+      "title": "Indikátor finanční stability",
+      "usFsiValue": "HODNOTA US FSI",
+      "cissTitle": "EU CISS (Systemické napětí eurozóny)",
+      "notAvailable": "N/A",
+      "interpretation": {
+        "low": "Úvěrové trhy fungují normálně, poměr akcií a dluhopisů je zdravý.",
+        "moderate": "Určité zhoršení úvěrových podmínek, sledujte pozorně.",
+        "elevated": "Výrazné napětí na úvěrovém trhu, doporučuje se defenzivní pozicování.",
+        "severe": "Závažné finanční napětí, systemické riziko se zvýšilo."
+      },
+      "labels": {
+        "lowStress": "Nízké napětí",
+        "moderateStress": "Střední napětí",
+        "elevatedStress": "Zvýšený stres",
+        "severeStress": "Závažný stres"
+      },
+      "cissLabels": {
+        "low": "Nízký",
+        "moderate": "Střední",
+        "elevated": "Zvýšený",
+        "high": "Vysoký"
+      },
+      "scale": {
+        "noStress": "0 — Bez stresu",
+        "extremeStress": "1 — Extrémní stres",
+        "highStress": "Vysoký stres",
+        "lowStress": "Nízký stres"
+      },
+      "metrics": {
+        "vix": "VIX",
+        "hySpread": "HY Spread",
+        "hygPrice": "HYG Price",
+        "tltPrice": "TLT Price"
+      },
+      "errors": {
+        "unavailable": "Data FSI není dostupná",
+        "failedToLoad": "Načtení se nezdařilo"
+      }
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Sledování obchodu v Hormuzu</strong> Sledování AIS plavidel v reálném čase přes Hormuzský průliv, nejkritičtější ropný úzký profil na světě. Monitoruje počty tankerů, narušení a týdenní změny toků. Přibližně 20 % světových dodávek ropy tudy denně prochází."
+      "infoTooltip": "<strong>Sledování obchodu v Hormuzu</strong> Sledování AIS plavidel v reálném čase přes Hormuzský průliv, nejkritičtější ropný úzký profil na světě. Monitoruje počty tankerů, narušení a týdenní změny toků. Přibližně 20 % světových dodávek ropy tudy denně prochází.",
+      "title": "Hormuz Trade Tracker",
+      "noData": "Žádná data",
+      "notAvailable": "N/A",
+      "chartUnavailable": "Data grafu není dostupné",
+      "sourcePrefix": "Zdroj:",
+      "units": {
+        "ktPerDay": "kt/den",
+        "generic": "jednotek"
+      },
+      "errors": {
+        "unavailable": "Data Hormuz není dostupná",
+        "failedToLoad": "Načtení se nezdařilo"
+      }
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Živé kamery</strong> Živé přenosy z geopoliticky významných míst po celém světě: konfliktní zóny, hlavní města, hraniční přechody a strategické úzké profily. Streamy z YouTube a veřejných sítí."
@@ -2067,7 +2162,20 @@
       "infoTooltip": "<strong>Ceny pro spotřebitele</strong> Sledování cen košu v reálném čase:<ul><li><strong>Přehled</strong>: Index základních potřeb, koš hodnoty a změna v průběhu týdne</li><li><strong>Kategorie</strong>: Trendy cen podle kategorie s 30denním rozsahem</li><li><strong>Pohyby</strong>: Největší rostoucí a klesající položky v tomto týdnu</li><li><strong>Rozdíl</strong>: Variance cen mezi prodejci pro stejný koš</li></ul>Data pocházejí z live scrapingu cen prodejců."
     },
     "marketImplications": {
-      "infoTooltip": "<strong>AI tržní důsledky</strong> Obchodní signály generované LLM odvozené z live geopolitických, komoditních a makroekonomických stavů po každém cyklu prognózy.<ul><li><strong>Směr</strong>: LONG / SHORT / HEDGE s hodnocením důvěry</li><li><strong>Časový horizont</strong>: 1W, 2W, 1M nebo 3M horizont</li><li><strong>Katalyzátor</strong>: Klíčový katalyzátor signálu</li><li><strong>Riziko</strong>: Výhrada nebo podmínka zneplatnění</li></ul><em>Pouze pro informační účely. Není investičním poradenstvím.</em>"
+      "infoTooltip": "<strong>AI tržní důsledky</strong> Obchodní signály generované LLM odvozené z live geopolitických, komoditních a makroekonomických stavů po každém cyklu prognózy.<ul><li><strong>Směr</strong>: LONG / SHORT / HEDGE s hodnocením důvěry</li><li><strong>Časový horizont</strong>: 1W, 2W, 1M nebo 3M horizont</li><li><strong>Katalyzátor</strong>: Klíčový katalyzátor signálu</li><li><strong>Riziko</strong>: Výhrada nebo podmínka zneplatnění</li></ul><em>Pouze pro informační účely. Není investičním poradenstvím.</em>",
+      "title": "Implikace AI na trh",
+      "directions": {
+        "long": "LONG",
+        "short": "SHORT",
+        "hedge": "HEDGE"
+      },
+      "rationale": "Zdůvodnění:",
+      "driver": "Ovlivňující faktor:",
+      "appliesToNext": "Platí pro další regeneraci AI",
+      "signals_one": "{{count}} signál",
+      "signals_other": "{{count}} signály",
+      "disclaimer": "Obchodní signály generované AI pouze pro informační účely. Není to investiční porada. Vždy si proveďte vlastní průzkum.",
+      "unavailable": "Implikace AI na trh se generují po každém spuštění prognózy. Zkuste to za chvíli."
     },
     "forecast": {
       "infoTooltip": "<strong>AI Prognózy</strong> AI-generované odhady pravděpodobnosti pro geopolitické a ekonomické události:<ul><li>Pokrytí více domén: konflikty, trhy, dodavatelský řetězec, kyber, politika</li><li>Každá prognóza zobrazuje odhadovanou pravděpodobnost, úroveň důvěry a časový horizont</li><li>Kalibrováno proti baseline predikčních trhů, je-li k dispozici</li></ul>Prognózy se aktualizují, když přicházejí nové zpravodajské signály. Filtrujte podle domény pomocí záložek výše."
@@ -2162,6 +2270,172 @@
       "defaultNeutral": "Výchozí (neutrální)",
       "titlePrefix": "Rámec: {{name}}",
       "titleNone": "Analytický rámec"
+    },
+    "sanctionsPressure": {
+      "title": "Sankce a designace",
+      "infoTooltip": "OFAC sankce designace ze seznamů SDN a Consolidated Lists. Ukazuje, které země čelí největšímu tlaku na desig­nace, jaké programy to řídí a co bylo nově přidáno od poslední aktualizace.",
+      "loading": "Načítání dat sankcí...",
+      "unavailable": "Data sankcí není dostupná.",
+      "summary": {
+        "new": "Nový",
+        "vessels": "Plavidla",
+        "aircraft": "Letadla"
+      },
+      "sections": {
+        "countries": "Země s sankcemi",
+        "entries": "Nedávné designace",
+        "programs": "Programy"
+      },
+      "empty": {
+        "countries": "Žádná přiřazení zemí není dostupná.",
+        "entries": "Žádné nedávné designace.",
+        "programs": "Žádné rozpis programů."
+      },
+      "footer": {
+        "updated": "Aktualizováno {{time}}",
+        "dataset": "dataset {{date}}",
+        "source": "Zdroj: OFAC"
+      },
+      "pills": {
+        "newCount": "+{{count}} nových",
+        "new": "nový"
+      },
+      "designations_one": "{{count}} designace",
+      "designations_other": "{{count}} designací",
+      "fallbacks": {
+        "unattributed": "Nepřiřazeno",
+        "program": "Program",
+        "undated": "bez data"
+      }
+    },
+    "radiationWatch": {
+      "title": "Radiation Watch",
+      "infoTooltip": "Seeded EPA RadNet a Safecast čtení s anomálií scoring a source-confidence synthesis. Tento panel odpovídá na otázku, co je normální, co je zvýšené a které anomálie jsou potvrzeny versus předběžné.",
+      "loading": "Načítání dat radiace...",
+      "empty": "Žádná pozorování radiace nejsou dostupná.",
+      "baseline": "{{value}} podle základní hodnoty",
+      "flags": {
+        "confirmed": "potvrzeno",
+        "conflict": "konflikt",
+        "cpmDerived": "odvozeno z CPM"
+      },
+      "headers": {
+        "station": "Stanice",
+        "reading": "Měření",
+        "delta": "Rozdíl",
+        "status": "Stav",
+        "observed": "Pozorováno"
+      },
+      "summary": {
+        "anomalies": "Anomálie",
+        "elevated": "Zvýšeno",
+        "confirmed": "Potvrzeno",
+        "lowConfidence": "Nízká spolehlivost",
+        "conflicts": "Konflikty",
+        "spikes": "Skokové nárůsty"
+      },
+      "footer": {
+        "updated": "Aktualizováno {{time}}"
+      },
+      "observed": {
+        "hoursAgo_one": "{{count}}h zpět",
+        "hoursAgo_other": "{{count}}h zpět",
+        "daysAgo_one": "{{count}}d zpět",
+        "daysAgo_other": "{{count}}d zpět"
+      },
+      "confidence": {
+        "high": "vysoká spolehlivost",
+        "medium": "střední spolehlivost",
+        "low": "nízká spolehlivost"
+      }
+    },
+    "defensePatents": {
+      "title": "Signál výzkumu a vývoje",
+      "infoTooltip": "Týdenní podání obranných a duálně použitelných patentů od společností Raytheon, Lockheed, Huawei, DARPA a dalších strategických organizací. Kategorie: H04B (komunikace), H01L (polovodiče), F42B (munice), G06N (AI), C12N (biotechnologie). Zdroj: USPTO PatentsView.",
+      "loading": "Načítání podání výzkumu a vývoje…",
+      "error": "Nepodařilo se načíst data patentů.",
+      "empty": "V této kategorii nejsou žádná podání.",
+      "viewOnUspto": "Zobrazit na USPTO",
+      "tabs": {
+        "all": "Vše"
+      },
+      "cpcLabels": {
+        "H04B": "Komunikace",
+        "H01L": "Polovodiče",
+        "F42B": "Munice",
+        "G06N": "AI",
+        "C12N": "Biotechnologie"
+      }
+    },
+    "correlation": {
+      "loading": "Čekání na data...",
+      "empty": "Nebyla detekována žádná aktivní konvergence",
+      "signals_one": "{{count}} signál",
+      "signals_other": "{{count}} signálů",
+      "analyzing": "Analyzování...",
+      "viewOnMap": "Zobrazit na mapě"
+    },
+    "thermalEscalation": {
+      "title": "Teplotní eskalace",
+      "infoTooltip": "Klastrované tepelné anomálie FIRMS/VIIRS se srovnáním základní hodnoty, sledováním perzistence a strategickým kontextem. Tento panel odpovídá na to, kde je tepelná aktivita abnormální a které klastry mohou signalizovat konflikt, průmyslové narušení nebo eskalaci.",
+      "loading": "Načítání tepelných dat...",
+      "empty": "Nebyly detekovány žádné klastry teplotní eskalace.",
+      "footer": {
+        "updated": "Aktualizováno {{time}}"
+      },
+      "summary": {
+        "total": "Celkem",
+        "elevated": "Zvýšeno",
+        "spikes": "Špičky",
+        "persist": "Přetrvávající",
+        "conflict": "Konflikt",
+        "strategic": "Strategické"
+      },
+      "badges": {
+        "conflictAdjacent": "konflikt-sousední",
+        "energyAdjacent": "energie-sousední",
+        "industrial": "průmyslový",
+        "strategic": "strategický"
+      },
+      "observations_one": "{{count}} pozor.",
+      "observations_other": "{{count}} pozor.",
+      "sources_one": "{{count}} zdroj",
+      "sources_other": "{{count}} zdrojů",
+      "age": {
+        "minutesAgo_one": "před {{count}}m",
+        "minutesAgo_other": "před {{count}}m",
+        "hoursAgo_one": "před {{count}}h",
+        "hoursAgo_other": "před {{count}}h",
+        "daysAgo_one": "před {{count}}d",
+        "daysAgo_other": "před {{count}}d"
+      }
+    },
+    "chokepointStrip": {
+      "title": "Stav průlivů",
+      "infoTooltip": "Živý stav sedmi globálních průlivů pro přepravu ropy a plynu. Odhady toků kalibrované z Portwatch DWT + AIS pozorování. Metodologie viz /docs/methodology/chokepoints.",
+      "unknown": "neznámo",
+      "shortName": {
+        "hormuzStrait": "Hormuz",
+        "malaccaStrait": "Malacca",
+        "suez": "Suez",
+        "babElMandeb": "Bab el-Mandeb",
+        "bosphorus": "Turecké průlivy",
+        "panama": "Panama",
+        "danishStraits": "Dánské průlivy"
+      },
+      "flow": {
+        "mbd": "{{value}} mb/d",
+        "pctOfBaseline": "{{pct}}% základní hodnoty"
+      },
+      "errors": {
+        "unavailable": "Stav průlivů není dostupný",
+        "noData": "Zatím žádná data o průlivech"
+      },
+      "attribution": {
+        "method": "Kalibrování Portwatch DWT + AIS",
+        "sampleLabel": "Signály narušení AIS",
+        "creditName": "EIA World Oil Transit Chokepoints"
+      }
     }
   },
   "popups": {

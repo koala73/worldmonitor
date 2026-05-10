@@ -362,5 +362,70 @@
     "description": "Geopolitická vrstva AI. Ptejte se na ni, přihlaste se k ní, vytvářejte na ní. Chat WM Analyst přes 30+ živých služeb, denní, dvakrát denní nebo týdenní AI přehled doručovaný do Slack, Discord, Telegram, Email nebo webhooku, vlastní tvůrce widgetů (HTML/CSS/JS + AI) a MCP konektory pro Claude, GPT a vlastní LLM.",
     "ogTitle": "World Monitor Pro — Geopolitická vrstva AI",
     "ogDescription": "Ptejte se na ni, přihlaste se k ní, vytvářejte na ní. Chat WM Analyst, AI přehled podle vašeho harmonogramu (denně, dvakrát denně nebo týdně), vlastní tvůrce widgetů a MCP pro Claude/GPT — přes 30+ živých služeb pod jedním klíčem."
+  },
+  "pricing": {
+    "suffixForever": "navždy",
+    "suffixTailored": "přizpůsobeno vám",
+    "suffixPerMonth": "/měs",
+    "suffixPerYear": "/rok",
+    "amountCustom": "Vlastní",
+    "opening": "Otevírání…",
+    "headerTitle": "Vyberte si svůj plán",
+    "headerSubtitle": "Od monitorování v reálném čase až po kompletní infrastrukturu pro zpravodajství. Zvolte úroveň, která vyhovuje vaší misi.",
+    "billingMonthly": "Měsíčně",
+    "billingAnnual": "Ročně",
+    "saveAnnual": "Ušetřete 17 %",
+    "mostPopular": "Nejpopulárnější",
+    "promoCodeNote": "Máte propagační kód? Zadejte jej během platby.",
+    "tiers": {
+      "free": {
+        "description": "Začněte se základními funkcemi",
+        "features": [
+          "Základní panely dashboardu",
+          "Globální zdroj zpráv",
+          "Výstrahy zemětřesení a počasí",
+          "Základní zobrazení mapy"
+        ],
+        "cta": "Začít"
+      },
+      "pro": {
+        "description": "Kompletní dashboard pro zpravodajství",
+        "features": [
+          "Vše ze zdarma verze",
+          "AI analýza akcií a backtesting",
+          "Denní tržní přehledy",
+          "Sledování vojenských a geopolitických situací",
+          "Tvůrce vlastních widgetů",
+          "MCP konektory dat",
+          "Prioritní obnovení dat"
+        ]
+      },
+      "api": {
+        "description": "Programmatický přístup k datům zpravodajství",
+        "features": [
+          "Přístup k REST API",
+          "Datové toky v reálném čase",
+          "1 000 požadavků denně",
+          "Webhook oznámení",
+          "Vlastní export dat"
+        ]
+      },
+      "enterprise": {
+        "description": "Vlastní řešení pro organizace",
+        "features": [
+          "Vše z Pro + API",
+          "Neomezené API požadavky",
+          "Vyhrazená podpora",
+          "Vlastní integrace",
+          "Záruka SLA",
+          "Možnost on-premise"
+        ],
+        "cta": "Kontaktujte prodej"
+      }
+    },
+    "cta": {
+      "checkoutDefault": "Začít",
+      "learnMore": "Další informace"
+    }
   }
 }

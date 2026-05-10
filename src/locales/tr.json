@@ -1977,19 +1977,114 @@
       "infoTooltip": "<strong>Canlı Sayaçlar</strong> Küresel metrikler için gerçek zamanlı ekstrapolasyon sayaçları: askeri harcamalar, doğal afetler, hastalık yükü ve daha fazlası. Rakamlar yıllık veri oranlarına dayalı istatistiksel tahminlerdir."
     },
     "diseaseOutbreaks": {
-      "infoTooltip": "<strong>Hastalık Salgınları</strong> WHO, ProMED ve sağlık bakanlıklarından aktif salgın uyarıları. Doğrulanmış salgınları, etkilenen bölgeleri, vaka sayılarını ve tehdit seviyelerini izler. Yeni raporlar yayımlandığında güncellenir."
+      "infoTooltip": "<strong>Hastalık Salgınları</strong> WHO, ProMED ve sağlık bakanlıklarından aktif salgın uyarıları. Doğrulanmış salgınları, etkilenen bölgeleri, vaka sayılarını ve tehdit seviyelerini izler. Yeni raporlar yayımlandığında güncellenir.",
+      "title": "Hastalık Salgınları",
+      "empty": "Filtreyle eşleşen salgın yok",
+      "sourceFallback": "Kaynak",
+      "attribution": "WHO · ProMED · HealthMap",
+      "levels": {
+        "alert": "UYARI",
+        "warning": "UYARI",
+        "watch": "İZLEME"
+      },
+      "time": {
+        "justNow": "az önce",
+        "hoursAgo_one": "{{count}}s önce",
+        "hoursAgo_other": "{{count}}s önce",
+        "daysAgo_one": "{{count}}g önce",
+        "daysAgo_other": "{{count}}g önce"
+      },
+      "filters": {
+        "alert_one": "{{count}} Uyarı",
+        "alert_other": "{{count}} Uyarı",
+        "warning_one": "{{count}} Uyarı Mesajı",
+        "warning_other": "{{count}} Uyarı Mesajı",
+        "watch_one": "{{count}} İzleme",
+        "watch_other": "{{count}} İzleme"
+      },
+      "errors": {
+        "noData": "Salgın verisi kullanılamıyor",
+        "failedToLoad": "Yüklenemedi"
+      }
     },
     "earningsCalendar": {
-      "infoTooltip": "<strong>Kazanç Takvimi</strong> Büyük halka açık şirketlerin yaklaşan ve son kazanç açıklamaları. EPS tahminlerini gerçekle karşılaştırır, gelir ve beklenti aşma/kaçırma sınıflandırması gösterir. Kaynak: finansal veri sağlayıcıları."
+      "infoTooltip": "<strong>Kazanç Takvimi</strong> Büyük halka açık şirketlerin yaklaşan ve son kazanç açıklamaları. EPS tahminlerini gerçekle karşılaştırır, gelir ve beklenti aşma/kaçırma sınıflandırması gösterir. Kaynak: finansal veri sağlayıcıları.",
+      "title": "Kazanç Takvimi",
+      "today": "BUGÜN · {{date}}",
+      "tomorrow": "YARIN · {{date}}",
+      "epsActual": "EPS {{value}}",
+      "epsEstimate": "EPS tahmini {{value}}",
+      "revenueActual": "{{value}} gelir",
+      "revenueEstimate": "{{value}} tahmini",
+      "surprise": {
+        "beat": "AŞTI",
+        "miss": "KAÇIRDI",
+        "inLine": "UYUMLU"
+      },
+      "errors": {
+        "noData": "Kazanç verisi yok",
+        "failedToLoad": "Yüklenemedi"
+      }
     },
     "economicCalendar": {
       "infoTooltip": "<strong>Ekonomik Takvim</strong> Planlanmış makroekonomik yayınlar: CPI, NFP, GDP, PMI ve merkez bankası kararları. Tahmin, gerçek ve önceki değeri gösterir. Yüksek etkili olaylar vurgulanır. Kaynak: ekonomik veri sağlayıcıları."
     },
     "fsi": {
-      "infoTooltip": "<strong>Finansal Stres Göstergesi</strong> Kansas City Fed Finansal Stres Endeksi (KCFSI): getiri farkları, oynaklık ve çapraz korelasyonlar dahil 11 gösterge kullanarak ABD finans piyasalarındaki stresi ölçer. Pozitif değerler ortalamanın üzerinde stresi gösterir. Kaynak: Federal Reserve Bank of Kansas City."
+      "infoTooltip": "<strong>Finansal Stres Göstergesi</strong> Kansas City Fed Finansal Stres Endeksi (KCFSI): getiri farkları, oynaklık ve çapraz korelasyonlar dahil 11 gösterge kullanarak ABD finans piyasalarındaki stresi ölçer. Pozitif değerler ortalamanın üzerinde stresi gösterir. Kaynak: Federal Reserve Bank of Kansas City.",
+      "title": "Finansal Stres Göstergesi",
+      "usFsiValue": "ABD FSI DEĞERİ",
+      "cissTitle": "EU CISS (Euro Bölgesi Sistematik Stres)",
+      "notAvailable": "Kullanılabilir Değil",
+      "interpretation": {
+        "low": "Kredi piyasaları normal şekilde işliyor, hisse senedi/tahvil oranı sağlıklı.",
+        "moderate": "Kredi koşullarında bazı kötüleşmeler, yakından izleyin.",
+        "elevated": "Önemli kredi piyasası stresi, savunmacı pozisyonlandırma tavsiye edilir.",
+        "severe": "Ciddi finansal stres, sistematik risk yükseltildi."
+      },
+      "labels": {
+        "lowStress": "Düşük Stres",
+        "moderateStress": "Orta Stres",
+        "elevatedStress": "Yükseltilmiş Stres",
+        "severeStress": "Şiddetli Stres"
+      },
+      "cissLabels": {
+        "low": "Düşük",
+        "moderate": "Orta",
+        "elevated": "Yükseltilmiş",
+        "high": "Yüksek"
+      },
+      "scale": {
+        "noStress": "0 — Stres yok",
+        "extremeStress": "1 — Aşırı stres",
+        "highStress": "Yüksek Stres",
+        "lowStress": "Düşük Stres"
+      },
+      "metrics": {
+        "vix": "VIX",
+        "hySpread": "HY Spread",
+        "hygPrice": "HYG Price",
+        "tltPrice": "TLT Price"
+      },
+      "errors": {
+        "unavailable": "FSI verileri kullanılamıyor",
+        "failedToLoad": "Yükleme başarısız"
+      }
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hürmüz Ticaret Takipçisi</strong> Dünyanın en kritik petrol darboğazı olan Hürmüz Boğazı'ndan geçen AIS gemi takibi. Tanker sayılarını, aksama olaylarını ve haftalık akış değişikliklerini izler. Küresel petrol arzının yaklaşık %20'si buradan günlük geçmektedir."
+      "infoTooltip": "<strong>Hürmüz Ticaret Takipçisi</strong> Dünyanın en kritik petrol darboğazı olan Hürmüz Boğazı'ndan geçen AIS gemi takibi. Tanker sayılarını, aksama olaylarını ve haftalık akış değişikliklerini izler. Küresel petrol arzının yaklaşık %20'si buradan günlük geçmektedir.",
+      "title": "Hormuz Ticaret İzleyicisi",
+      "noData": "Veri yok",
+      "notAvailable": "Kullanılamıyor",
+      "chartUnavailable": "Grafik verileri kullanılamıyor",
+      "sourcePrefix": "Kaynak:",
+      "units": {
+        "ktPerDay": "kt/gün",
+        "generic": "birim"
+      },
+      "errors": {
+        "unavailable": "Hormuz verileri kullanılamıyor",
+        "failedToLoad": "Yükleme başarısız"
+      }
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Canlı Web Kameraları</strong> Dünya genelinde jeopolitik açıdan önemli konumlardan canlı yayınlar: çatışma bölgeleri, başkentler, sınır geçişleri ve stratejik darboğazlar. YouTube ve kamusal ağlardan akışlar."
@@ -2067,7 +2162,20 @@
       "infoTooltip": "<strong>Tüketici Fiyatları</strong> Gerçek zamanlı sepet fiyat takibi:<ul><li><strong>Genel Bakış</strong>: Temel ihtiyaçlar endeksi, değer sepeti ve haftalık değişim</li><li><strong>Kategoriler</strong>: Kategori bazında fiyat eğilimleri ve 30 günlük aralık</li><li><strong>Hareket Edenler</strong>: Bu hafta en çok yükselen ve düşen ürünler</li><li><strong>Fark</strong>: Aynı sepet için perakendeciler arasındaki fiyat farkı</li></ul>Veriler canlı perakendeci fiyat kazıma kaynağından gelir."
     },
     "marketImplications": {
-      "infoTooltip": "<strong>AI Pazar Etkileri</strong> Her tahmin döngüsünün ardından canlı jeopolitik, emtia ve makro durumundan türetilen LLM tarafından oluşturulan ticaret sinyalleri.<ul><li><strong>Yön</strong>: LONG / SHORT / KORUMA güven derecesiyle</li><li><strong>Zaman Ufku</strong>: 1H, 2H, 1A veya 3A süresi</li><li><strong>Tetikleyici</strong>: Sinyalin arkasındaki ana katalizör</li><li><strong>Risk</strong>: Uyarı veya geçersizleştirme koşulu</li></ul><em>Yalnızca bilgilendirme amaçlıdır. Yatırım tavsiyesi değildir.</em>"
+      "infoTooltip": "<strong>AI Pazar Etkileri</strong> Her tahmin döngüsünün ardından canlı jeopolitik, emtia ve makro durumundan türetilen LLM tarafından oluşturulan ticaret sinyalleri.<ul><li><strong>Yön</strong>: LONG / SHORT / KORUMA güven derecesiyle</li><li><strong>Zaman Ufku</strong>: 1H, 2H, 1A veya 3A süresi</li><li><strong>Tetikleyici</strong>: Sinyalin arkasındaki ana katalizör</li><li><strong>Risk</strong>: Uyarı veya geçersizleştirme koşulu</li></ul><em>Yalnızca bilgilendirme amaçlıdır. Yatırım tavsiyesi değildir.</em>",
+      "title": "AI Pazar Çıkarımları",
+      "directions": {
+        "long": "UZUN",
+        "short": "KISA",
+        "hedge": "KORUMA"
+      },
+      "rationale": "Gerekçe:",
+      "driver": "Etken:",
+      "appliesToNext": "Sonraki AI yenilenmesine uygulanır",
+      "signals_one": "{{count}} sinyal",
+      "signals_other": "{{count}} sinyal",
+      "disclaimer": "AI tarafından oluşturulan işlem sinyalleri yalnızca bilgi amaçlıdır. Yatırım tavsiyesi değildir. Her zaman kendi araştırmanızı yapın.",
+      "unavailable": "AI pazar çıkarımları her tahmin çalıştırmasından sonra oluşturulur. Kısa süre içinde tekrar kontrol edin."
     },
     "forecast": {
       "infoTooltip": "<strong>AI Tahminleri</strong> Jeopolitik ve ekonomik olaylar için AI tarafından oluşturulan olasılık tahminleri:<ul><li>Çapraz alan kapsamı: çatışma, piyasalar, tedarik zinciri, siber, siyasi</li><li>Her tahmin tahmini olasılık, güven düzeyi ve zaman ufkunu gösterir</li><li>Mevcut olduğunda tahmin piyasası taban çizgilerine karşı kalibre edilmiştir</li></ul>Yeni istihbarat sinyalleri geldiğinde tahminler güncellenir. Yukarıdaki sekmeler kullanarak alana göre filtreleyin."
@@ -2162,6 +2270,172 @@
       "defaultNeutral": "Varsayılan (Tarafsız)",
       "titlePrefix": "Çerçeve: {{name}}",
       "titleNone": "Analiz çerçevesi"
+    },
+    "sanctionsPressure": {
+      "title": "Yaptırımlar ve Tanımlamalar",
+      "infoTooltip": "SDN ve Birleşik Listelerden OFAC yaptırım tanımlamaları. Hangi ülkelerin en yüksek tanımlama baskısı altında olduğunu, hangi programların bunu yönlendirdiğini ve son güncellemeden bu yana neler yeni eklendiğini gösterir.",
+      "loading": "Yaptırım verileri yükleniyor...",
+      "unavailable": "Yaptırım verileri kullanılamıyor.",
+      "summary": {
+        "new": "Yeni",
+        "vessels": "Gemiler",
+        "aircraft": "Uçaklar"
+      },
+      "sections": {
+        "countries": "Yaptırım altındaki ülkeler",
+        "entries": "Son tanımlamalar",
+        "programs": "Programlar"
+      },
+      "empty": {
+        "countries": "Ülke atılması mevcut değildir.",
+        "entries": "Son tanımlama yok.",
+        "programs": "Program dökümü yok."
+      },
+      "footer": {
+        "updated": "Güncelleme: {{time}}",
+        "dataset": "veri seti {{date}}",
+        "source": "Kaynak: OFAC"
+      },
+      "pills": {
+        "newCount": "+{{count}} yeni",
+        "new": "yeni"
+      },
+      "designations_one": "{{count}} tanımlama",
+      "designations_other": "{{count}} tanımlama",
+      "fallbacks": {
+        "unattributed": "Atlanmamış",
+        "program": "Program",
+        "undated": "tarihsiz"
+      }
+    },
+    "radiationWatch": {
+      "title": "Radyasyon İzlemesi",
+      "infoTooltip": "EPA RadNet ve Safecast ölçümleri anormallik puanlaması ve kaynak güvenirliği sentezi ile desteklenmiştir. Bu panel neyin normal, neyin yükseltilmiş olduğunu ve hangi anormalliklerin onaylanmış versus belirsiz olduğunu gösterir.",
+      "loading": "Radyasyon verileri yükleniyor...",
+      "empty": "Radyasyon gözlemleri mevcut değil.",
+      "baseline": "{{value}} temel değer",
+      "flags": {
+        "confirmed": "onaylandı",
+        "conflict": "çatışma",
+        "cpmDerived": "CPM-türetilmiş"
+      },
+      "headers": {
+        "station": "İstasyon",
+        "reading": "Ölçüm",
+        "delta": "Delta",
+        "status": "Durum",
+        "observed": "Gözlemlenen"
+      },
+      "summary": {
+        "anomalies": "Anomaliler",
+        "elevated": "Yükseltilmiş",
+        "confirmed": "Onaylandı",
+        "lowConfidence": "Düşük Güven",
+        "conflicts": "Çatışmalar",
+        "spikes": "Yükseliş"
+      },
+      "footer": {
+        "updated": "Güncelleme {{time}}"
+      },
+      "observed": {
+        "hoursAgo_one": "{{count}}s önce",
+        "hoursAgo_other": "{{count}}s önce",
+        "daysAgo_one": "{{count}}g önce",
+        "daysAgo_other": "{{count}}g önce"
+      },
+      "confidence": {
+        "high": "yüksek güven",
+        "medium": "orta güven",
+        "low": "düşük güven"
+      }
+    },
+    "defensePatents": {
+      "title": "Ar-Ge Sinyali",
+      "infoTooltip": "Raytheon, Lockheed, Huawei, DARPA ve diğer stratejik kuruluşların haftalık savunma ve çift kullanımlı patent başvuruları. Kategoriler: H04B (haberleşme), H01L (yarıiletkenler), F42B (mühimmat), G06N (AI), C12N (biyoteknoloji). Kaynak: USPTO PatentsView.",
+      "loading": "Ar-Ge başvuruları yükleniyor…",
+      "error": "Patent verisi yüklenemedi.",
+      "empty": "Bu kategoride başvuru yok.",
+      "viewOnUspto": "USPTO'da görüntüle",
+      "tabs": {
+        "all": "Tümü"
+      },
+      "cpcLabels": {
+        "H04B": "Haberleşme",
+        "H01L": "Yarıiletkenler",
+        "F42B": "Mühimmat",
+        "G06N": "AI",
+        "C12N": "Biyoteknoloji"
+      }
+    },
+    "correlation": {
+      "loading": "Veri bekleniyor...",
+      "empty": "Etkin yakınsama algılanmadı",
+      "signals_one": "{{count}} sinyal",
+      "signals_other": "{{count}} sinyal",
+      "analyzing": "Analiz ediliyor...",
+      "viewOnMap": "Haritada görüntüle"
+    },
+    "thermalEscalation": {
+      "title": "Termal Yükseltme",
+      "infoTooltip": "Temel değer karşılaştırması, kalıcılık izlemesi ve stratejik bağlam içeren FIRMS/VIIRS termal anomali kümeleri. Bu panel termal aktivitenin nerede anormal olduğunu ve hangi kümelerin çatışma, endüstriyel kesinti veya yükseltmeyi işaret edebileceğini gösterir.",
+      "loading": "Termal veriler yükleniyor...",
+      "empty": "Termal yükseltme kümesi algılanmadı.",
+      "footer": {
+        "updated": "Güncelleme {{time}}"
+      },
+      "summary": {
+        "total": "Toplam",
+        "elevated": "Yükseltilmiş",
+        "spikes": "Ani Artışlar",
+        "persist": "Devam Eden",
+        "conflict": "Çatışma",
+        "strategic": "Stratejik"
+      },
+      "badges": {
+        "conflictAdjacent": "çatışma-adj",
+        "energyAdjacent": "enerji-adj",
+        "industrial": "endüstriyel",
+        "strategic": "stratejik"
+      },
+      "observations_one": "{{count}} gözlem",
+      "observations_other": "{{count}} gözlem",
+      "sources_one": "{{count}} kaynak",
+      "sources_other": "{{count}} kaynak",
+      "age": {
+        "minutesAgo_one": "{{count}}d önce",
+        "minutesAgo_other": "{{count}}d önce",
+        "hoursAgo_one": "{{count}}s önce",
+        "hoursAgo_other": "{{count}}s önce",
+        "daysAgo_one": "{{count}}g önce",
+        "daysAgo_other": "{{count}}g önce"
+      }
+    },
+    "chokepointStrip": {
+      "title": "Dar Boğaz Durumu",
+      "infoTooltip": "Yedi küresel petrol ve gaz sevkiyat dar boğazının canlı durumu. Akış tahminleri Portwatch DWT + AIS gözlemlerinden kalibre edilmiştir. Metodoloji için /docs/methodology/chokepoints adresine bakınız.",
+      "unknown": "bilinmiyor",
+      "shortName": {
+        "hormuzStrait": "Hormuç",
+        "malaccaStrait": "Malakka",
+        "suez": "Süveyş",
+        "babElMandeb": "Bab el-Mandeb",
+        "bosphorus": "Türk Boğazları",
+        "panama": "Panama",
+        "danishStraits": "Dans Boğazları"
+      },
+      "flow": {
+        "mbd": "{{value}} bin b/g",
+        "pctOfBaseline": "baseline'ın %{{pct}}'i"
+      },
+      "errors": {
+        "unavailable": "Dar boğaz durumu kullanılamıyor",
+        "noData": "Henüz dar boğaz verisi yok"
+      },
+      "attribution": {
+        "method": "Portwatch DWT + AIS kalibrasyonu",
+        "sampleLabel": "AIS kesinti sinyalleri",
+        "creditName": "EIA Dünya Petrol Transit Dar Boğazları"
+      }
     }
   },
   "popups": {

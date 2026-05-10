@@ -1977,19 +1977,114 @@
       "infoTooltip": "<strong>实时计数器</strong> 全球指标的实时推算计数器：军费开支、自然灾害、疾病负担等。数字为基于年度数据率的统计估算值。"
     },
     "diseaseOutbreaks": {
-      "infoTooltip": "<strong>疾病暴发</strong> 来自WHO、ProMED和卫生部门的活跃暴发警报。追踪已确认的暴发、受影响地区、病例数和威胁级别。新报告发布时更新。"
+      "infoTooltip": "<strong>疾病暴发</strong> 来自WHO、ProMED和卫生部门的活跃暴发警报。追踪已确认的暴发、受影响地区、病例数和威胁级别。新报告发布时更新。",
+      "title": "疾病爆发",
+      "empty": "没有匹配筛选条件的爆发",
+      "sourceFallback": "来源",
+      "attribution": "WHO · ProMED · HealthMap",
+      "levels": {
+        "alert": "警报",
+        "warning": "警告",
+        "watch": "监测"
+      },
+      "time": {
+        "justNow": "刚才",
+        "hoursAgo_one": "{{count}}小时前",
+        "hoursAgo_other": "{{count}}小时前",
+        "daysAgo_one": "{{count}}天前",
+        "daysAgo_other": "{{count}}天前"
+      },
+      "filters": {
+        "alert_one": "{{count}} 条警报",
+        "alert_other": "{{count}} 条警报",
+        "warning_one": "{{count}} 条警告",
+        "warning_other": "{{count}} 条警告",
+        "watch_one": "{{count}} 条监测",
+        "watch_other": "{{count}} 条监测"
+      },
+      "errors": {
+        "noData": "无可用的爆发数据",
+        "failedToLoad": "加载失败"
+      }
     },
     "earningsCalendar": {
-      "infoTooltip": "<strong>财报日历</strong> 大型上市公司即将和近期的财报发布。显示EPS预期与实际对比、营收及超预期/不及预期分类。来源：金融数据提供商。"
+      "infoTooltip": "<strong>财报日历</strong> 大型上市公司即将和近期的财报发布。显示EPS预期与实际对比、营收及超预期/不及预期分类。来源：金融数据提供商。",
+      "title": "财报日历",
+      "today": "今日 · {{date}}",
+      "tomorrow": "明日 · {{date}}",
+      "epsActual": "每股收益 {{value}}",
+      "epsEstimate": "每股收益预期 {{value}}",
+      "revenueActual": "{{value}} 收入",
+      "revenueEstimate": "{{value}} 预期",
+      "surprise": {
+        "beat": "超预期",
+        "miss": "未达预期",
+        "inLine": "符合预期"
+      },
+      "errors": {
+        "noData": "无财报数据",
+        "failedToLoad": "加载失败"
+      }
     },
     "economicCalendar": {
       "infoTooltip": "<strong>经济日历</strong> 预定的宏观经济数据发布：CPI、NFP、GDP、PMI和央行决议。显示预测值、实际值和前值。高影响事件突出显示。来源：经济数据提供商。"
     },
     "fsi": {
-      "infoTooltip": "<strong>金融压力指标</strong> 堪萨斯城联储金融压力指数（KCFSI）：使用11个指标衡量美国金融市场压力，包括收益率利差、波动率和交叉相关性。正值表示高于平均水平的压力。来源：堪萨斯城联邦储备银行。"
+      "infoTooltip": "<strong>金融压力指标</strong> 堪萨斯城联储金融压力指数（KCFSI）：使用11个指标衡量美国金融市场压力，包括收益率利差、波动率和交叉相关性。正值表示高于平均水平的压力。来源：堪萨斯城联邦储备银行。",
+      "title": "金融压力指标",
+      "usFsiValue": "美国FSI值",
+      "cissTitle": "欧盟CISS（欧元区系统性压力）",
+      "notAvailable": "N/A",
+      "interpretation": {
+        "low": "信贷市场正常运作，股债比率健康。",
+        "moderate": "信贷条件有所恶化，需密切关注。",
+        "elevated": "信贷市场压力明显，需采取防守策略。",
+        "severe": "金融压力严重，系统性风险上升。"
+      },
+      "labels": {
+        "lowStress": "低压力",
+        "moderateStress": "中等压力",
+        "elevatedStress": "压力升高",
+        "severeStress": "严重压力"
+      },
+      "cissLabels": {
+        "low": "低",
+        "moderate": "中等",
+        "elevated": "升高",
+        "high": "高"
+      },
+      "scale": {
+        "noStress": "0 — 无压力",
+        "extremeStress": "1 — 极度压力",
+        "highStress": "高压力",
+        "lowStress": "低压力"
+      },
+      "metrics": {
+        "vix": "VIX",
+        "hySpread": "HY 利差",
+        "hygPrice": "HYG 价格",
+        "tltPrice": "TLT 价格"
+      },
+      "errors": {
+        "unavailable": "FSI 数据不可用",
+        "failedToLoad": "加载失败"
+      }
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>霍尔木兹贸易追踪器</strong> 通过全球最关键的石油咽喉要道霍尔木兹海峡的AIS船舶实时追踪。监控油轮数量、中断事件和每周流量变化。全球约20%的石油供应每天经此通过。"
+      "infoTooltip": "<strong>霍尔木兹贸易追踪器</strong> 通过全球最关键的石油咽喉要道霍尔木兹海峡的AIS船舶实时追踪。监控油轮数量、中断事件和每周流量变化。全球约20%的石油供应每天经此通过。",
+      "title": "霍尔木兹贸易追踪",
+      "noData": "无数据",
+      "notAvailable": "N/A",
+      "chartUnavailable": "图表数据不可用",
+      "sourcePrefix": "来源：",
+      "units": {
+        "ktPerDay": "千吨/天",
+        "generic": "单位"
+      },
+      "errors": {
+        "unavailable": "霍尔木兹数据不可用",
+        "failedToLoad": "加载失败"
+      }
     },
     "liveWebcams": {
       "infoTooltip": "<strong>实时摄像头</strong> 来自全球地缘政治重要地点的直播：冲突区、首都、边境口岸和战略咽喉要道。流媒体来自YouTube和公共网络。"
@@ -2067,7 +2162,20 @@
       "infoTooltip": "<strong>消费者价格</strong> 实时购物篮价格跟踪：<ul><li><strong>概览</strong>：生活必需品指数、价值篮子及周环比变化</li><li><strong>品类</strong>：各品类价格趋势及30天价格区间</li><li><strong>变动</strong>：本周价格涨跌最快的商品</li><li><strong>价差</strong>：同一购物篮在不同零售商之间的价格差异</li></ul>数据来自实时零售商价格爬取。"
     },
     "marketImplications": {
-      "infoTooltip": "<strong>AI市场影响分析</strong> LLM生成的交易信号，基于每个预测周期后的实时地缘政治、商品和宏观状态。<ul><li><strong>方向</strong>：看多/看空/对冲，附带信心评分</li><li><strong>时间框架</strong>：1周、2周、1月或3月</li><li><strong>驱动因素</strong>：信号背后的关键催化剂</li><li><strong>风险</strong>：预警或失效条件</li></ul><em>仅供参考，不构成投资建议。</em>"
+      "infoTooltip": "<strong>AI市场影响分析</strong> LLM生成的交易信号，基于每个预测周期后的实时地缘政治、商品和宏观状态。<ul><li><strong>方向</strong>：看多/看空/对冲，附带信心评分</li><li><strong>时间框架</strong>：1周、2周、1月或3月</li><li><strong>驱动因素</strong>：信号背后的关键催化剂</li><li><strong>风险</strong>：预警或失效条件</li></ul><em>仅供参考，不构成投资建议。</em>",
+      "title": "AI市场影响",
+      "directions": {
+        "long": "看多",
+        "short": "看空",
+        "hedge": "对冲"
+      },
+      "rationale": "理由：",
+      "driver": "驱动因素：",
+      "appliesToNext": "适用于下一次AI重新生成",
+      "signals_one": "{{count}}个信号",
+      "signals_other": "{{count}}个信号",
+      "disclaimer": "AI生成的交易信号仅供参考。非投资建议。请自行研究。",
+      "unavailable": "AI市场影响在每次预测运行后生成。请稍后查看。"
     },
     "forecast": {
       "infoTooltip": "<strong>AI 预测</strong> AI 生成的地缘政治和经济事件概率估计：<ul><li>跨域覆盖：冲突、市场、供应链、网络安全、政治</li><li>每个预测显示估计概率、置信度和时间范围</li><li>根据预测市场基线进行校准（如可用）</li></ul>预测在新情报信号到达时更新。使用上方标签按域筛选。"
@@ -2162,6 +2270,172 @@
       "defaultNeutral": "默认（中立）",
       "titlePrefix": "框架：{{name}}",
       "titleNone": "分析框架"
+    },
+    "sanctionsPressure": {
+      "title": "制裁与指定",
+      "infoTooltip": "来自 SDN 和综合名单的 OFAC 制裁指定。显示哪些国家面临最高指定压力、驱动因素以及自上次更新以来新增的内容。",
+      "loading": "正在加载制裁数据...",
+      "unavailable": "制裁数据不可用。",
+      "summary": {
+        "new": "新增",
+        "vessels": "船舶",
+        "aircraft": "飞机"
+      },
+      "sections": {
+        "countries": "受制裁国家",
+        "entries": "最近指定",
+        "programs": "计划"
+      },
+      "empty": {
+        "countries": "无国家归属信息。",
+        "entries": "无最近指定。",
+        "programs": "无计划详情。"
+      },
+      "footer": {
+        "updated": "更新于 {{time}}",
+        "dataset": "数据集 {{date}}",
+        "source": "来源：OFAC"
+      },
+      "pills": {
+        "newCount": "+{{count}} 新增",
+        "new": "新增"
+      },
+      "designations_one": "{{count}} 项指定",
+      "designations_other": "{{count}} 项指定",
+      "fallbacks": {
+        "unattributed": "未归属",
+        "program": "计划",
+        "undated": "无日期"
+      }
+    },
+    "radiationWatch": {
+      "title": "辐射监测",
+      "infoTooltip": "EPA RadNet 和 Safecast 读数，包含异常评分和来源可信度综合。此面板显示什么是正常、什么是升高以及哪些异常已确认或暂定。",
+      "loading": "正在加载辐射数据...",
+      "empty": "没有可用的辐射观测数据。",
+      "baseline": "{{value}} 基线",
+      "flags": {
+        "confirmed": "已确认",
+        "conflict": "冲突",
+        "cpmDerived": "CPM 衍生"
+      },
+      "headers": {
+        "station": "站点",
+        "reading": "读数",
+        "delta": "差值",
+        "status": "状态",
+        "observed": "观测时间"
+      },
+      "summary": {
+        "anomalies": "异常",
+        "elevated": "升高",
+        "confirmed": "已确认",
+        "lowConfidence": "低可信度",
+        "conflicts": "冲突",
+        "spikes": "尖峰"
+      },
+      "footer": {
+        "updated": "更新于 {{time}}"
+      },
+      "observed": {
+        "hoursAgo_one": "{{count}}h 前",
+        "hoursAgo_other": "{{count}}h 前",
+        "daysAgo_one": "{{count}}d 前",
+        "daysAgo_other": "{{count}}d 前"
+      },
+      "confidence": {
+        "high": "高可信度",
+        "medium": "中等可信度",
+        "low": "低可信度"
+      }
+    },
+    "defensePatents": {
+      "title": "研发信号",
+      "infoTooltip": "雷神、洛克希德、华为、DARPA 及其他战略组织的周度国防和双用途专利申请。分类：H04B（通信）、H01L（半导体）、F42B（弹药）、G06N（AI）、C12N（生物技术）。数据来源：美国专利商标局 PatentsView。",
+      "loading": "正在加载研发申请…",
+      "error": "加载专利数据失败。",
+      "empty": "该分类中无申请。",
+      "viewOnUspto": "在美国专利商标局查看",
+      "tabs": {
+        "all": "全部"
+      },
+      "cpcLabels": {
+        "H04B": "通信",
+        "H01L": "半导体",
+        "F42B": "弹药",
+        "G06N": "AI",
+        "C12N": "生物技术"
+      }
+    },
+    "correlation": {
+      "loading": "等待数据...",
+      "empty": "未检测到活跃收敛",
+      "signals_one": "{{count}} 个信号",
+      "signals_other": "{{count}} 个信号",
+      "analyzing": "分析中...",
+      "viewOnMap": "在地图上查看"
+    },
+    "thermalEscalation": {
+      "title": "热异常升级",
+      "infoTooltip": "具有基线比较、持久性跟踪和战略背景的 FIRMS/VIIRS 热异常集群。该面板显示热活动在何处异常，以及哪些集群可能预示冲突、工业中断或升级。",
+      "loading": "正在加载热数据...",
+      "empty": "未检测到热异常升级集群。",
+      "footer": {
+        "updated": "更新于 {{time}}"
+      },
+      "summary": {
+        "total": "总计",
+        "elevated": "升高",
+        "spikes": "尖峰",
+        "persist": "持续",
+        "conflict": "冲突",
+        "strategic": "战略性"
+      },
+      "badges": {
+        "conflictAdjacent": "冲突邻近",
+        "energyAdjacent": "能源邻近",
+        "industrial": "工业",
+        "strategic": "战略性"
+      },
+      "observations_one": "{{count}} 次观测",
+      "observations_other": "{{count}} 次观测",
+      "sources_one": "{{count}} 个来源",
+      "sources_other": "{{count}} 个来源",
+      "age": {
+        "minutesAgo_one": "{{count}} 分钟前",
+        "minutesAgo_other": "{{count}} 分钟前",
+        "hoursAgo_one": "{{count}} 小时前",
+        "hoursAgo_other": "{{count}} 小时前",
+        "daysAgo_one": "{{count}} 天前",
+        "daysAgo_other": "{{count}} 天前"
+      }
+    },
+    "chokepointStrip": {
+      "title": "瓶颈地点状态",
+      "infoTooltip": "全球七大油气运输瓶颈地点的实时状态。流量估算基于 Portwatch DWT + AIS 观测数据校准。详见 /docs/methodology/chokepoints 了解方法论。",
+      "unknown": "未知",
+      "shortName": {
+        "hormuzStrait": "霍尔木兹",
+        "malaccaStrait": "马六甲",
+        "suez": "苏伊士",
+        "babElMandeb": "曼德海峡",
+        "bosphorus": "土耳其海峡",
+        "panama": "巴拿马",
+        "danishStraits": "丹麦海峡"
+      },
+      "flow": {
+        "mbd": "{{value}} 万桶/天",
+        "pctOfBaseline": "基线的 {{pct}}%"
+      },
+      "errors": {
+        "unavailable": "瓶颈地点状态不可用",
+        "noData": "暂无瓶颈地点数据"
+      },
+      "attribution": {
+        "method": "Portwatch DWT + AIS 校准",
+        "sampleLabel": "AIS 中断信号",
+        "creditName": "EIA 世界石油运输瓶颈"
+      }
     }
   },
   "popups": {

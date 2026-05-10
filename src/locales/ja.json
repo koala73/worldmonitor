@@ -1977,19 +1977,114 @@
       "infoTooltip": "<strong>ライブカウンター</strong> グローバル指標のリアルタイム推定カウンター：軍事費、自然災害、疾病負担など。数値は年間データレートに基づく統計的推定値。"
     },
     "diseaseOutbreaks": {
-      "infoTooltip": "<strong>感染症アウトブレイク</strong> WHO、ProMED、各国保健省からのアクティブな発生警報。確認済みの発生、影響地域、症例数、脅威レベルを追跡。新しい報告の発表時に更新。"
+      "infoTooltip": "<strong>感染症アウトブレイク</strong> WHO、ProMED、各国保健省からのアクティブな発生警報。確認済みの発生、影響地域、症例数、脅威レベルを追跡。新しい報告の発表時に更新。",
+      "title": "感染症の発生",
+      "empty": "フィルターに一致する発生はありません",
+      "sourceFallback": "ソース",
+      "attribution": "WHO · ProMED · HealthMap",
+      "levels": {
+        "alert": "アラート",
+        "warning": "警告",
+        "watch": "監視"
+      },
+      "time": {
+        "justNow": "たった今",
+        "hoursAgo_one": "{{count}}時間前",
+        "hoursAgo_other": "{{count}}時間前",
+        "daysAgo_one": "{{count}}日前",
+        "daysAgo_other": "{{count}}日前"
+      },
+      "filters": {
+        "alert_one": "{{count}} アラート",
+        "alert_other": "{{count}} アラート",
+        "warning_one": "{{count}} 警告",
+        "warning_other": "{{count}} 警告",
+        "watch_one": "{{count}} 監視",
+        "watch_other": "{{count}} 監視"
+      },
+      "errors": {
+        "noData": "感染症データはありません",
+        "failedToLoad": "読み込みに失敗しました"
+      }
     },
     "earningsCalendar": {
-      "infoTooltip": "<strong>決算カレンダー</strong> 主要上場企業の今後および最近の決算発表。EPS予想 vs 実績、収益、予想超過/未達の分類を表示。ソース：金融データプロバイダー。"
+      "infoTooltip": "<strong>決算カレンダー</strong> 主要上場企業の今後および最近の決算発表。EPS予想 vs 実績、収益、予想超過/未達の分類を表示。ソース：金融データプロバイダー。",
+      "title": "決算カレンダー",
+      "today": "今日 · {{date}}",
+      "tomorrow": "明日 · {{date}}",
+      "epsActual": "EPS {{value}}",
+      "epsEstimate": "EPS予想 {{value}}",
+      "revenueActual": "{{value}} 売上",
+      "revenueEstimate": "{{value}} 予想",
+      "surprise": {
+        "beat": "超過",
+        "miss": "未達",
+        "inLine": "予想通り"
+      },
+      "errors": {
+        "noData": "決算データはありません",
+        "failedToLoad": "読み込みに失敗しました"
+      }
     },
     "economicCalendar": {
       "infoTooltip": "<strong>経済カレンダー</strong> 予定されたマクロ経済発表：CPI、NFP、GDP、PMIおよび中央銀行の決定。予想 vs 実績 vs 前回を表示。高インパクトイベントはハイライト表示。ソース：経済データプロバイダー。"
     },
     "fsi": {
-      "infoTooltip": "<strong>金融ストレス指標</strong> カンザスシティ連銀金融ストレス指数（KCFSI）：利回りスプレッド、ボラティリティ、クロス相関を含む11の指標を用いて米国金融市場のストレスを測定。正の値は平均以上のストレスを示す。ソース：カンザスシティ連邦準備銀行。"
+      "infoTooltip": "<strong>金融ストレス指標</strong> カンザスシティ連銀金融ストレス指数（KCFSI）：利回りスプレッド、ボラティリティ、クロス相関を含む11の指標を用いて米国金融市場のストレスを測定。正の値は平均以上のストレスを示す。ソース：カンザスシティ連邦準備銀行。",
+      "title": "金融ストレス指数",
+      "usFsiValue": "米国FSI値",
+      "cissTitle": "EU CISS(ユーロ圏システミックストレス)",
+      "notAvailable": "N/A",
+      "interpretation": {
+        "low": "信用市場が正常に機能し、株式/債券比率が健全です。",
+        "moderate": "信用状況に一部悪化がみられます。注視が必要です。",
+        "elevated": "信用市場に大きなストレスがあり、防御的なポジショニングが推奨されます。",
+        "severe": "深刻な金融ストレスがあり、システミックリスクが高まっています。"
+      },
+      "labels": {
+        "lowStress": "低ストレス",
+        "moderateStress": "中程度ストレス",
+        "elevatedStress": "ストレス上昇",
+        "severeStress": "深刻なストレス"
+      },
+      "cissLabels": {
+        "low": "低",
+        "moderate": "中程度",
+        "elevated": "上昇",
+        "high": "高"
+      },
+      "scale": {
+        "noStress": "0 — ストレスなし",
+        "extremeStress": "1 — 極度のストレス",
+        "highStress": "高ストレス",
+        "lowStress": "低ストレス"
+      },
+      "metrics": {
+        "vix": "VIX",
+        "hySpread": "HYスプレッド",
+        "hygPrice": "HYG価格",
+        "tltPrice": "TLT価格"
+      },
+      "errors": {
+        "unavailable": "FSIデータは利用できません",
+        "failedToLoad": "読み込みに失敗しました"
+      }
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>ホルムズ海峡貿易トラッカー</strong> 世界最重要の石油チョークポイントであるホルムズ海峡を通過するAIS船舶のライブ追跡。タンカー数、混乱イベント、週次フロー変化を監視。世界の石油供給量の約20%が毎日ここを通過。"
+      "infoTooltip": "<strong>ホルムズ海峡貿易トラッカー</strong> 世界最重要の石油チョークポイントであるホルムズ海峡を通過するAIS船舶のライブ追跡。タンカー数、混乱イベント、週次フロー変化を監視。世界の石油供給量の約20%が毎日ここを通過。",
+      "title": "ホルムズ海峡貿易トラッカー",
+      "noData": "データなし",
+      "notAvailable": "利用不可",
+      "chartUnavailable": "チャートデータは利用できません",
+      "sourcePrefix": "出典:",
+      "units": {
+        "ktPerDay": "kt/日",
+        "generic": "単位"
+      },
+      "errors": {
+        "unavailable": "ホルムズデータは利用できません",
+        "failedToLoad": "読み込みに失敗しました"
+      }
     },
     "liveWebcams": {
       "infoTooltip": "<strong>ライブウェブカメラ</strong> 世界中の地政学的に重要な場所からのライブ映像：紛争地域、首都、国境検問所、戦略的チョークポイント。YouTubeおよび公共ネットワークからのストリーム。"
@@ -2067,7 +2162,20 @@
       "infoTooltip": "<strong>消費者価格</strong> リアルタイムバスケット価格追跡:<ul><li><strong>概要</strong>: エッセンシャルズインデックス、バリューバスケット、前週比の変化</li><li><strong>カテゴリ</strong>: カテゴリ別価格トレンド(30日間レンジ付き)</li><li><strong>値動き</strong>: 今週の最大上昇・下降商品</li><li><strong>スプレッド</strong>: 同じバスケットにおける小売業者間の価格差</li></ul>データはライブ小売価格スクレイピングから取得しています。"
     },
     "marketImplications": {
-      "infoTooltip": "<strong>AI市場インプリケーション</strong> 各フォアキャストサイクル後のライブ地政学、商品、マクロ状態から導出されるLLM生成トレードシグナル。<ul><li><strong>方向性</strong>: LONG / SHORT / HEDGE(信頼度レーティング付き)</li><li><strong>時間軸</strong>: 1W、2W、1M、または3M</li><li><strong>ドライバー</strong>: シグナルの主要な触媒</li><li><strong>リスク</strong>: 注意事項または無効化条件</li></ul><em>情報提供のみを目的としています。投資アドバイスではありません。</em>"
+      "infoTooltip": "<strong>AI市場インプリケーション</strong> 各フォアキャストサイクル後のライブ地政学、商品、マクロ状態から導出されるLLM生成トレードシグナル。<ul><li><strong>方向性</strong>: LONG / SHORT / HEDGE(信頼度レーティング付き)</li><li><strong>時間軸</strong>: 1W、2W、1M、または3M</li><li><strong>ドライバー</strong>: シグナルの主要な触媒</li><li><strong>リスク</strong>: 注意事項または無効化条件</li></ul><em>情報提供のみを目的としています。投資アドバイスではありません。</em>",
+      "title": "AI市場への影響",
+      "directions": {
+        "long": "ロング",
+        "short": "ショート",
+        "hedge": "ヘッジ"
+      },
+      "rationale": "根拠:",
+      "driver": "ドライバー:",
+      "appliesToNext": "次のAI再生成に適用",
+      "signals_one": "{{count}}シグナル",
+      "signals_other": "{{count}}シグナル",
+      "disclaimer": "AI生成トレードシグナルは情報提供のみを目的としています。投資助言ではありません。常に独自の調査を行ってください。",
+      "unavailable": "AI市場への影響は各予測実行後に生成されます。しばらくしてからご確認ください。"
     },
     "forecast": {
       "infoTooltip": "<strong>AI 予測</strong> 地政学的および経済的イベントの AI 生成確率推定:<ul><li>クロスドメインカバレッジ: 紛争、市場、サプライチェーン、サイバー、政治</li><li>各予測は推定確率、信頼度、時間軸を表示</li><li>利用可能な場合は予測市場ベースラインに対して調整済み</li></ul>新しいインテリジェンスシグナルが到着すると予測が更新されます。上記のタブでドメイン別にフィルタリングしてください。"
@@ -2162,6 +2270,172 @@
       "defaultNeutral": "デフォルト (ニュートラル)",
       "titlePrefix": "フレームワーク: {{name}}",
       "titleNone": "分析フレームワーク"
+    },
+    "sanctionsPressure": {
+      "title": "制裁・指定",
+      "infoTooltip": "OFAC制裁指定（SDNおよび統合リスト）。最も高い指定圧力に直面している国、それを推進しているプログラム、前回の更新以降に新たに追加されたものを表示します。",
+      "loading": "制裁データを読み込み中...",
+      "unavailable": "制裁データは利用できません。",
+      "summary": {
+        "new": "新規",
+        "vessels": "船舶",
+        "aircraft": "航空機"
+      },
+      "sections": {
+        "countries": "制裁国",
+        "entries": "最近の指定",
+        "programs": "プログラム"
+      },
+      "empty": {
+        "countries": "国の帰属情報がありません。",
+        "entries": "最近の指定がありません。",
+        "programs": "プログラム分析がありません。"
+      },
+      "footer": {
+        "updated": "{{time}}に更新",
+        "dataset": "データセット{{date}}",
+        "source": "出典: OFAC"
+      },
+      "pills": {
+        "newCount": "+{{count}}件新規",
+        "new": "新規"
+      },
+      "designations_one": "{{count}}件の指定",
+      "designations_other": "{{count}}件の指定",
+      "fallbacks": {
+        "unattributed": "未帰属",
+        "program": "プログラム",
+        "undated": "日付なし"
+      }
+    },
+    "radiationWatch": {
+      "title": "放射能監視",
+      "infoTooltip": "EPA RadNetおよびSafecast測定値に異常スコアリングと信頼度統合を適用。このパネルは何が正常か、何が上昇しているか、どの異常が確認済みか仮説的かを表示します。",
+      "loading": "放射線データを読み込み中...",
+      "empty": "利用可能な放射線観測がありません。",
+      "baseline": "{{value}} ベースライン",
+      "flags": {
+        "confirmed": "確認済み",
+        "conflict": "競合",
+        "cpmDerived": "CPM導出"
+      },
+      "headers": {
+        "station": "ステーション",
+        "reading": "測定値",
+        "delta": "デルタ",
+        "status": "ステータス",
+        "observed": "観測日時"
+      },
+      "summary": {
+        "anomalies": "異常",
+        "elevated": "上昇",
+        "confirmed": "確認済み",
+        "lowConfidence": "低信頼度",
+        "conflicts": "競合",
+        "spikes": "スパイク"
+      },
+      "footer": {
+        "updated": "更新 {{time}}"
+      },
+      "observed": {
+        "hoursAgo_one": "{{count}}時間前",
+        "hoursAgo_other": "{{count}}時間前",
+        "daysAgo_one": "{{count}}日前",
+        "daysAgo_other": "{{count}}日前"
+      },
+      "confidence": {
+        "high": "高信頼度",
+        "medium": "中信頼度",
+        "low": "低信頼度"
+      }
+    },
+    "defensePatents": {
+      "title": "R&D シグナル",
+      "infoTooltip": "レイセオン、ロッキード、ファーウェイ、DARPA およびその他の戦略的組織による週単位の防衛・デュアルユース特許出願。カテゴリ: H04B (通信)、H01L (半導体)、F42B (弾薬)、G06N (AI)、C12N (バイオテク)。出典: USPTO PatentsView。",
+      "loading": "R&D 出願を読み込み中…",
+      "error": "特許データの読み込みに失敗しました。",
+      "empty": "このカテゴリに出願はありません。",
+      "viewOnUspto": "USPTO で表示",
+      "tabs": {
+        "all": "すべて"
+      },
+      "cpcLabels": {
+        "H04B": "通信",
+        "H01L": "半導体",
+        "F42B": "弾薬",
+        "G06N": "AI",
+        "C12N": "バイオテク"
+      }
+    },
+    "correlation": {
+      "loading": "データを待機中...",
+      "empty": "アクティブな収束は検出されていません",
+      "signals_one": "{{count}} シグナル",
+      "signals_other": "{{count}} シグナル",
+      "analyzing": "分析中...",
+      "viewOnMap": "地図で表示"
+    },
+    "thermalEscalation": {
+      "title": "熱的エスカレーション",
+      "infoTooltip": "FIRMS/VIIRS 熱異常クラスタのベースライン比較、永続性追跡、戦略的文脈。このパネルは熱活動が異常な箇所と紛争、産業混乱、またはエスカレーションを示唆するクラスタを特定します。",
+      "loading": "熱データを読み込み中...",
+      "empty": "熱的エスカレーション クラスタは検出されていません。",
+      "footer": {
+        "updated": "更新 {{time}}"
+      },
+      "summary": {
+        "total": "合計",
+        "elevated": "上昇",
+        "spikes": "スパイク",
+        "persist": "継続",
+        "conflict": "紛争",
+        "strategic": "戦略的"
+      },
+      "badges": {
+        "conflictAdjacent": "紛争隣接",
+        "energyAdjacent": "エネルギー隣接",
+        "industrial": "産業",
+        "strategic": "戦略的"
+      },
+      "observations_one": "{{count}} obs",
+      "observations_other": "{{count}} obs",
+      "sources_one": "{{count}} src",
+      "sources_other": "{{count}} src",
+      "age": {
+        "minutesAgo_one": "{{count}}m前",
+        "minutesAgo_other": "{{count}}m前",
+        "hoursAgo_one": "{{count}}h前",
+        "hoursAgo_other": "{{count}}h前",
+        "daysAgo_one": "{{count}}d前",
+        "daysAgo_other": "{{count}}d前"
+      }
+    },
+    "chokepointStrip": {
+      "title": "チョークポイント状態",
+      "infoTooltip": "世界7つの主要石油・ガス海上輸送チョークポイントのライブ状態。Portwatch DWT + AIS観測から較正された流量推定。方法論については /docs/methodology/chokepoints を参照。",
+      "unknown": "不明",
+      "shortName": {
+        "hormuzStrait": "ホルムズ",
+        "malaccaStrait": "マラッカ",
+        "suez": "スエズ",
+        "babElMandeb": "バベルマンデブ",
+        "bosphorus": "トルコ海峡",
+        "panama": "パナマ",
+        "danishStraits": "デンマーク海峡"
+      },
+      "flow": {
+        "mbd": "{{value}} mb/d",
+        "pctOfBaseline": "ベースライン比 {{pct}}%"
+      },
+      "errors": {
+        "unavailable": "チョークポイント状態が利用できません",
+        "noData": "チョークポイントデータがまだありません"
+      },
+      "attribution": {
+        "method": "Portwatch DWT + AIS較正",
+        "sampleLabel": "AIS遮断信号",
+        "creditName": "EIA World Oil Transit Chokepoints"
+      }
     }
   },
   "popups": {

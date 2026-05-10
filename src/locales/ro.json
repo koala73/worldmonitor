@@ -1977,19 +1977,114 @@
       "infoTooltip": "<strong>Contoare în direct</strong> Contoare extrapolate în timp real pentru indicatori globali: cheltuieli militare, dezastre naturale, povara bolilor și altele. Cifrele sunt estimări statistice bazate pe ratele anuale ale datelor."
     },
     "diseaseOutbreaks": {
-      "infoTooltip": "<strong>Focare de boli</strong> Alerte active de focare de la WHO, ProMED și ministere ale sănătății. Urmărește focare confirmate, regiuni afectate, număr de cazuri și niveluri de amenințare. Actualizat la publicarea rapoartelor noi."
+      "infoTooltip": "<strong>Focare de boli</strong> Alerte active de focare de la WHO, ProMED și ministere ale sănătății. Urmărește focare confirmate, regiuni afectate, număr de cazuri și niveluri de amenințare. Actualizat la publicarea rapoartelor noi.",
+      "title": "Focare de Boli",
+      "empty": "Niciun focar nu corespunde filtrului",
+      "sourceFallback": "Sursă",
+      "attribution": "OMS · ProMED · HealthMap",
+      "levels": {
+        "alert": "ALERTĂ",
+        "warning": "AVERTISMENT",
+        "watch": "MONITORIZARE"
+      },
+      "time": {
+        "justNow": "acum",
+        "hoursAgo_one": "acum {{count}}h",
+        "hoursAgo_other": "acum {{count}}h",
+        "daysAgo_one": "acum {{count}}z",
+        "daysAgo_other": "acum {{count}}z"
+      },
+      "filters": {
+        "alert_one": "{{count}} Alertă",
+        "alert_other": "{{count}} Alerte",
+        "warning_one": "{{count}} Avertisment",
+        "warning_other": "{{count}} Avertismente",
+        "watch_one": "{{count}} Monitorizare",
+        "watch_other": "{{count}} Monitorizări"
+      },
+      "errors": {
+        "noData": "Niciun dat disponibil despre focare",
+        "failedToLoad": "Încărcare eșuată"
+      }
     },
     "earningsCalendar": {
-      "infoTooltip": "<strong>Calendar de rezultate</strong> Publicări viitoare și recente ale rezultatelor companiilor mari listate. Afișează estimările EPS vs. reale, venituri și clasificare depășire/ratare. Sursă: furnizori de date financiare."
+      "infoTooltip": "<strong>Calendar de rezultate</strong> Publicări viitoare și recente ale rezultatelor companiilor mari listate. Afișează estimările EPS vs. reale, venituri și clasificare depășire/ratare. Sursă: furnizori de date financiare.",
+      "title": "Calendar de Câștiguri",
+      "today": "ASTAZI · {{date}}",
+      "tomorrow": "MÂINE · {{date}}",
+      "epsActual": "EPS {{value}}",
+      "epsEstimate": "EPS est {{value}}",
+      "revenueActual": "{{value}} venit",
+      "revenueEstimate": "{{value}} est",
+      "surprise": {
+        "beat": "DEPĂȘIT",
+        "miss": "RATAT",
+        "inLine": "CONFORM"
+      },
+      "errors": {
+        "noData": "Niciun dat despre câștiguri",
+        "failedToLoad": "Încărcare eșuată"
+      }
     },
     "economicCalendar": {
       "infoTooltip": "<strong>Calendar economic</strong> Publicări macroeconomice programate: CPI, NFP, GDP, PMI și decizii ale băncilor centrale. Afișează prognoză vs. real vs. anterior. Evenimentele cu impact ridicat sunt evidențiate. Sursă: furnizori de date economice."
     },
     "fsi": {
-      "infoTooltip": "<strong>Indicator de stres financiar</strong> Indicele de stres financiar al Fed Kansas City (KCFSI): măsoară stresul pe piețele financiare din SUA folosind 11 indicatori, inclusiv spread-uri de randament, volatilitate și corelații încrucișate. Valorile pozitive indică stres peste medie. Sursă: Federal Reserve Bank of Kansas City."
+      "infoTooltip": "<strong>Indicator de stres financiar</strong> Indicele de stres financiar al Fed Kansas City (KCFSI): măsoară stresul pe piețele financiare din SUA folosind 11 indicatori, inclusiv spread-uri de randament, volatilitate și corelații încrucișate. Valorile pozitive indică stres peste medie. Sursă: Federal Reserve Bank of Kansas City.",
+      "title": "Indicatorul de Stres Financiar",
+      "usFsiValue": "VALOARE FSI SUA",
+      "cissTitle": "EU CISS (Stres Sistemic Zona Euro)",
+      "notAvailable": "N/A",
+      "interpretation": {
+        "low": "Piețele de credit funcționează normal, raportul acțiuni/obligațiuni sănătos.",
+        "moderate": "Oarecare deteriorare a condițiilor de credit, monitorizare atentă necesară.",
+        "elevated": "Stres semnificativ pe piețele de credit, poziționare defensivă recomandată.",
+        "severe": "Stres financiar sever, riscul sistemic crescut."
+      },
+      "labels": {
+        "lowStress": "Stres Scăzut",
+        "moderateStress": "Stres Moderat",
+        "elevatedStress": "Stres Ridicat",
+        "severeStress": "Stres Sever"
+      },
+      "cissLabels": {
+        "low": "Scăzut",
+        "moderate": "Moderat",
+        "elevated": "Ridicat",
+        "high": "Înalt"
+      },
+      "scale": {
+        "noStress": "0 — Fără stres",
+        "extremeStress": "1 — Stres extrem",
+        "highStress": "Stres Înalt",
+        "lowStress": "Stres Scăzut"
+      },
+      "metrics": {
+        "vix": "VIX",
+        "hySpread": "HY Spread",
+        "hygPrice": "HYG Price",
+        "tltPrice": "TLT Price"
+      },
+      "errors": {
+        "unavailable": "Datele FSI nu sunt disponibile",
+        "failedToLoad": "Încărcarea a eșuat"
+      }
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Tracker comercial Hormuz</strong> Urmărire AIS a navelor în timp real prin Strâmtoarea Hormuz, cel mai critic punct de blocaj petrolier din lume. Monitorizează numărul de tancuri petroliere, evenimente de perturbare și schimbări săptămânale ale fluxurilor. Aproximativ 20% din aprovizionarea globală cu petrol tranzitează zilnic aici."
+      "infoTooltip": "<strong>Tracker comercial Hormuz</strong> Urmărire AIS a navelor în timp real prin Strâmtoarea Hormuz, cel mai critic punct de blocaj petrolier din lume. Monitorizează numărul de tancuri petroliere, evenimente de perturbare și schimbări săptămânale ale fluxurilor. Aproximativ 20% din aprovizionarea globală cu petrol tranzitează zilnic aici.",
+      "title": "Urmăritor Comerț Hormuz",
+      "noData": "Nicio dată",
+      "notAvailable": "N/A",
+      "chartUnavailable": "Datele graficului nu sunt disponibile",
+      "sourcePrefix": "Sursă:",
+      "units": {
+        "ktPerDay": "kt/zi",
+        "generic": "unități"
+      },
+      "errors": {
+        "unavailable": "Datele Hormuz nu sunt disponibile",
+        "failedToLoad": "Încărcarea a eșuat"
+      }
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Camere web în direct</strong> Fluxuri în direct din locații semnificative geopolitic din întreaga lume: zone de conflict, capitale, puncte de trecere a frontierei și puncte strategice de blocaj. Fluxuri de la YouTube și rețele publice."
@@ -2067,7 +2162,20 @@
       "infoTooltip": "<strong>Prețuri pentru Consumatori</strong> Urmărire în timp real a prețurilor coșului:<ul><li><strong>Prezentare generală</strong>: Index produse esențiale, coș valoare și modificare săptămână la săptămână</li><li><strong>Categorii</strong>: Tendințe de preț per categorie cu interval de 30 de zile</li><li><strong>Modificări</strong>: Cele mai mari articole în creștere și scădere acestă săptămână</li><li><strong>Diferență</strong>: Variație de preț între retaileri pentru același coș</li></ul>Date provenind din extragerea directă a prețurilor de la retaileri."
     },
     "marketImplications": {
-      "infoTooltip": "<strong>Implicații AI pe Piață</strong> Semnale de tranzacționare generate de LLM derivate din starea geopoiitică, a mărfurilor și macro în timp real după fiecare ciclu de prognoză.<ul><li><strong>Direcție</strong>: LONG / SHORT / HEDGE cu rating de încredere</li><li><strong>Interval de timp</strong>: orizont de 1S, 2S, 1L sau 3L</li><li><strong>Catalizator</strong>: Catalizatorul cheie din spatele semnalului</li><li><strong>Risc</strong>: Avertisment sau condiție de invalidare</li></ul><em>Doar în scopuri informative. Nu constituie sfat de investiții.</em>"
+      "infoTooltip": "<strong>Implicații AI pe Piață</strong> Semnale de tranzacționare generate de LLM derivate din starea geopoiitică, a mărfurilor și macro în timp real după fiecare ciclu de prognoză.<ul><li><strong>Direcție</strong>: LONG / SHORT / HEDGE cu rating de încredere</li><li><strong>Interval de timp</strong>: orizont de 1S, 2S, 1L sau 3L</li><li><strong>Catalizator</strong>: Catalizatorul cheie din spatele semnalului</li><li><strong>Risc</strong>: Avertisment sau condiție de invalidare</li></ul><em>Doar în scopuri informative. Nu constituie sfat de investiții.</em>",
+      "title": "Implicații AI pe Piață",
+      "directions": {
+        "long": "LONG",
+        "short": "SHORT",
+        "hedge": "HEDGE"
+      },
+      "rationale": "Rațiune:",
+      "driver": "Factor:",
+      "appliesToNext": "Se aplică la următoarea regenerare AI",
+      "signals_one": "{{count}} semnal",
+      "signals_other": "{{count}} semnale",
+      "disclaimer": "Semnale de tranzacționare generate de AI doar în scop informativ. Nu constituie sfat de investiții. Faceți întotdeauna propriile cercetări.",
+      "unavailable": "Implicațiile AI pe piață sunt generate după fiecare rulare de prognoză. Reveniți în curând."
     },
     "forecast": {
       "infoTooltip": "<strong>AI Forecasts</strong> Estimări de probabilitate generate de AI pentru evenimente geopolitice și economice:<ul><li>Acoperire cross-domeniu: conflict, piețe, lanț de aprovizionare, cyber, politică</li><li>Fiecare prognoză arată probabilitatea estimată, nivelul de încredere și orizontul de timp</li><li>Calibrate în raport cu bazele pieței de predicție unde sunt disponibile</li></ul>Prognozele se actualizează pe măsură ce sosesc noi semnale de informații. Filtrați după domeniu folosind filele de mai sus."
@@ -2162,6 +2270,172 @@
       "defaultNeutral": "Implicit (Neutru)",
       "titlePrefix": "Cadru: {{name}}",
       "titleNone": "Cadru de analiză"
+    },
+    "sanctionsPressure": {
+      "title": "Sancțiuni și Desemnări",
+      "infoTooltip": "Desemnări sancțiuni OFAC din listele SDN și Consolidated. Arată ce țări se confruntă cu cea mai mare presiune de desemnare, ce programe o determină și ce a fost adăugat recent de la ultima actualizare.",
+      "loading": "Se încarcă datele sancțiunilor...",
+      "unavailable": "Datele sancțiunilor nu sunt disponibile.",
+      "summary": {
+        "new": "Nou",
+        "vessels": "Nave",
+        "aircraft": "Aeronave"
+      },
+      "sections": {
+        "countries": "Țări sancționate",
+        "entries": "Desemnări recente",
+        "programs": "Programe"
+      },
+      "empty": {
+        "countries": "Nicio atribuire de țară disponibilă.",
+        "entries": "Nicio desemnare recentă.",
+        "programs": "Nicio detaliere a programelor."
+      },
+      "footer": {
+        "updated": "Actualizat {{time}}",
+        "dataset": "set de date {{date}}",
+        "source": "Sursă: OFAC"
+      },
+      "pills": {
+        "newCount": "+{{count}} nou",
+        "new": "nou"
+      },
+      "designations_one": "{{count}} desemnare",
+      "designations_other": "{{count}} desemnări",
+      "fallbacks": {
+        "unattributed": "Neatribuit",
+        "program": "Program",
+        "undated": "fără dată"
+      }
+    },
+    "radiationWatch": {
+      "title": "Monitorizare Radiații",
+      "infoTooltip": "Citiri EPA RadNet și Safecast integrate cu scor de anomalii și sinteză de încredere în sursă. Acest panou răspunde la ce este normal, ce este ridicat și care anomalii sunt confirmate versus preliminare.",
+      "loading": "Se încarcă datele de radiație...",
+      "empty": "Nu sunt disponibile observații de radiație.",
+      "baseline": "{{value}} linie de bază",
+      "flags": {
+        "confirmed": "confirmat",
+        "conflict": "conflict",
+        "cpmDerived": "derivat din CPM"
+      },
+      "headers": {
+        "station": "Stație",
+        "reading": "Citire",
+        "delta": "Delta",
+        "status": "Stare",
+        "observed": "Observat"
+      },
+      "summary": {
+        "anomalies": "Anomalii",
+        "elevated": "Crescut",
+        "confirmed": "Confirmat",
+        "lowConfidence": "Încredere scăzută",
+        "conflicts": "Conflicte",
+        "spikes": "Creste"
+      },
+      "footer": {
+        "updated": "Actualizat {{time}}"
+      },
+      "observed": {
+        "hoursAgo_one": "{{count}}h în urmă",
+        "hoursAgo_other": "{{count}}h în urmă",
+        "daysAgo_one": "{{count}}z în urmă",
+        "daysAgo_other": "{{count}}z în urmă"
+      },
+      "confidence": {
+        "high": "încredere ridicată",
+        "medium": "încredere medie",
+        "low": "încredere scăzută"
+      }
+    },
+    "defensePatents": {
+      "title": "Semnal R&D",
+      "infoTooltip": "Depuneri săptămânale de brevete în apărare și uz dual de la Raytheon, Lockheed, Huawei, DARPA și alte organizații strategice. Categorii: H04B (comunicații), H01L (semiconductori), F42B (muniție), G06N (AI), C12N (biotehnologie). Sursă: USPTO PatentsView.",
+      "loading": "Se încarcă depunerile R&D…",
+      "error": "Nu s-au putut încărca datele brevetelor.",
+      "empty": "Nicio depunere în această categorie.",
+      "viewOnUspto": "Vizualizare pe USPTO",
+      "tabs": {
+        "all": "Toate"
+      },
+      "cpcLabels": {
+        "H04B": "Comunicații",
+        "H01L": "Semiconductori",
+        "F42B": "Muniție",
+        "G06N": "AI",
+        "C12N": "Biotehnologie"
+      }
+    },
+    "correlation": {
+      "loading": "Se așteaptă datele...",
+      "empty": "Nu s-a detectat nicio convergență activă",
+      "signals_one": "{{count}} semnal",
+      "signals_other": "{{count}} semnale",
+      "analyzing": "Se analizează...",
+      "viewOnMap": "Vizualizare pe hartă"
+    },
+    "thermalEscalation": {
+      "title": "Escaladare termică",
+      "infoTooltip": "Clustere de anomalii termice FIRMS/VIIRS cu comparație de referință, urmărire persistenței și context strategic. Acest panou răspunde unde activitatea termică este anormală și care clustere pot semnala conflict, perturbări industriale sau escaladare.",
+      "loading": "Se încarcă datele termice...",
+      "empty": "Nu au fost detectate clustere de escaladare termică.",
+      "footer": {
+        "updated": "Actualizat {{time}}"
+      },
+      "summary": {
+        "total": "Total",
+        "elevated": "Crescut",
+        "spikes": "Salturi",
+        "persist": "Persistent",
+        "conflict": "Conflict",
+        "strategic": "Strategic"
+      },
+      "badges": {
+        "conflictAdjacent": "conflict-adj",
+        "energyAdjacent": "energy-adj",
+        "industrial": "industrial",
+        "strategic": "strategic"
+      },
+      "observations_one": "{{count}} obs",
+      "observations_other": "{{count}} obs",
+      "sources_one": "{{count}} src",
+      "sources_other": "{{count}} src",
+      "age": {
+        "minutesAgo_one": "{{count}}m în urmă",
+        "minutesAgo_other": "{{count}}m în urmă",
+        "hoursAgo_one": "{{count}}h în urmă",
+        "hoursAgo_other": "{{count}}h în urmă",
+        "daysAgo_one": "{{count}}z în urmă",
+        "daysAgo_other": "{{count}}z în urmă"
+      }
+    },
+    "chokepointStrip": {
+      "title": "Status Punct Strâmt",
+      "infoTooltip": "Status în timp real pentru cele șapte puncte strâmte globale de transport petrol și gaze. Estimări de flux calibrate din observații Portwatch DWT + AIS. Consultați /docs/methodology/chokepoints pentru metodologie.",
+      "unknown": "necunoscut",
+      "shortName": {
+        "hormuzStrait": "Hormuz",
+        "malaccaStrait": "Malacca",
+        "suez": "Suez",
+        "babElMandeb": "Bab el-Mandeb",
+        "bosphorus": "Strâmtorii Turcești",
+        "panama": "Panama",
+        "danishStraits": "Strâmtorii Daneze"
+      },
+      "flow": {
+        "mbd": "{{value}} mb/z",
+        "pctOfBaseline": "{{pct}}% din linia de bază"
+      },
+      "errors": {
+        "unavailable": "Status punct strâmt indisponibil",
+        "noData": "Încă nu există date despre punctul strâmt"
+      },
+      "attribution": {
+        "method": "Calibrare Portwatch DWT + AIS",
+        "sampleLabel": "Semnale de întrerupere AIS",
+        "creditName": "Puncte strâmte de tranzit petrolier mondial EIA"
+      }
     }
   },
   "popups": {

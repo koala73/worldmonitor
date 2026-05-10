@@ -362,5 +362,70 @@
     "description": "La capa de IA geopolítica. Pregúntale, suscríbete, construye sobre ella. Chat WM Analyst en 30+ servicios en directo, un resumen de IA entregado diariamente, dos veces al día o semanalmente en Slack, Discord, Telegram, correo electrónico o webhook, un constructor de widgets personalizado (HTML/CSS/JS + IA) y conectores MCP para Claude, GPT y LLMs personalizados.",
     "ogTitle": "World Monitor Pro — La Capa de IA Geopolítica",
     "ogDescription": "Pregúntale, suscríbete, construye sobre ella. Chat WM Analyst, un resumen de IA según tu horario (diario, dos veces al día o semanal), constructor de widgets personalizado y MCP para Claude/GPT — en 30+ servicios en directo bajo una única clave."
+  },
+  "pricing": {
+    "suffixForever": "por siempre",
+    "suffixTailored": "personalizado para ti",
+    "suffixPerMonth": "/mes",
+    "suffixPerYear": "/año",
+    "amountCustom": "Personalizado",
+    "opening": "Abriendo…",
+    "headerTitle": "Elige Tu Plan",
+    "headerSubtitle": "Desde monitoreo en tiempo real hasta infraestructura de inteligencia completa. Selecciona el nivel que se ajuste a tu misión.",
+    "billingMonthly": "Mensual",
+    "billingAnnual": "Anual",
+    "saveAnnual": "Ahorra 17%",
+    "mostPopular": "Más Popular",
+    "promoCodeNote": "¿Tienes un código promocional? Introdúcelo durante el pago.",
+    "tiers": {
+      "free": {
+        "description": "Comienza con lo esencial",
+        "features": [
+          "Paneles del panel de control principal",
+          "Feed de noticias global",
+          "Alertas de terremotos y clima",
+          "Vista de mapa básica"
+        ],
+        "cta": "Comenzar"
+      },
+      "pro": {
+        "description": "Panel de inteligencia completo",
+        "features": [
+          "Todo en Free",
+          "Análisis de acciones e histórico con IA",
+          "Resúmenes diarios del mercado",
+          "Seguimiento militar y geopolítico",
+          "Constructor de widgets personalizado",
+          "Conectores de datos MCP",
+          "Actualización de datos prioritaria"
+        ]
+      },
+      "api": {
+        "description": "Acceso programático a datos de inteligencia",
+        "features": [
+          "Acceso a API REST",
+          "Flujos de datos en tiempo real",
+          "1.000 solicitudes/día",
+          "Notificaciones por webhook",
+          "Exportaciones de datos personalizadas"
+        ]
+      },
+      "enterprise": {
+        "description": "Soluciones personalizadas para organizaciones",
+        "features": [
+          "Todo en Pro + API",
+          "Solicitudes de API ilimitadas",
+          "Soporte dedicado",
+          "Integraciones personalizadas",
+          "Garantía SLA",
+          "Opción local"
+        ],
+        "cta": "Contactar Ventas"
+      }
+    },
+    "cta": {
+      "checkoutDefault": "Comenzar",
+      "learnMore": "Más Información"
+    }
   }
 }

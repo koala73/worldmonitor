@@ -362,5 +362,70 @@
     "description": "Geopolityczna warstwa AI. Zadaj pytanie, subskrybuj, rozwijaj. Chat WM Analyst w ponad 30 usługach na żywo, codzienny, dwukrotnie dziennie lub tygodniowy digest AI dostarczany do Slack, Discord, Telegram, Email lub webhook, konstruktor niestandardowych widżetów (HTML/CSS/JS + AI) i łączniki MCP dla Claude, GPT i niestandardowych LLM.",
     "ogTitle": "World Monitor Pro — Geopolityczna warstwa AI",
     "ogDescription": "Zadaj pytanie, subskrybuj, rozwijaj. Chat WM Analyst, digest AI według Twojego harmonogramu (codziennie, dwukrotnie dziennie lub tygodniowo), konstruktor niestandardowych widżetów i MCP dla Claude/GPT — w ponad 30 usługach na żywo pod jednym kluczem."
+  },
+  "pricing": {
+    "suffixForever": "na zawsze",
+    "suffixTailored": "dostosowany do Ciebie",
+    "suffixPerMonth": "/mies.",
+    "suffixPerYear": "/rok",
+    "amountCustom": "Niestandardowe",
+    "opening": "Otwieranie…",
+    "headerTitle": "Wybierz swój plan",
+    "headerSubtitle": "Od monitorowania w czasie rzeczywistym do pełnej infrastruktury analitycznej. Wybierz poziom pasujący do Twojej misji.",
+    "billingMonthly": "Miesięcznie",
+    "billingAnnual": "Rocznie",
+    "saveAnnual": "Oszczędź 17%",
+    "mostPopular": "Najpopularniejszy",
+    "promoCodeNote": "Masz kod promocyjny? Wpisz go podczas finalizowania zamówienia.",
+    "tiers": {
+      "free": {
+        "description": "Zacznij z niezbędnymi funkcjami",
+        "features": [
+          "Panele pulpitu głównego",
+          "Globalna tablica wiadomości",
+          "Alerty trzęsień ziemi i pogodowe",
+          "Widok mapy podstawowej"
+        ],
+        "cta": "Zacznij"
+      },
+      "pro": {
+        "description": "Pełny pulpit analityczny",
+        "features": [
+          "Wszystko z planu Free",
+          "Analiza akcji i backtesting AI",
+          "Codzienne briefingi rynkowe",
+          "Śledzenie geopolityczne i wojskowe",
+          "Konstruktor widżetów niestandardowych",
+          "Konektory danych MCP",
+          "Priorytetowe odświeżanie danych"
+        ]
+      },
+      "api": {
+        "description": "Programowy dostęp do danych analitycznych",
+        "features": [
+          "Dostęp do REST API",
+          "Strumienie danych w czasie rzeczywistym",
+          "1000 żądań/dzień",
+          "Powiadomienia webhook",
+          "Niestandardowe eksporty danych"
+        ]
+      },
+      "enterprise": {
+        "description": "Rozwiązania dostosowane dla organizacji",
+        "features": [
+          "Wszystko z planu Pro + API",
+          "Nieograniczone żądania API",
+          "Wsparcie dedykowane",
+          "Niestandardowe integracje",
+          "Gwarancja SLA",
+          "Opcja on-premise"
+        ],
+        "cta": "Skontaktuj się z działem sprzedaży"
+      }
+    },
+    "cta": {
+      "checkoutDefault": "Rozpocznij",
+      "learnMore": "Dowiedz się więcej"
+    }
   }
 }

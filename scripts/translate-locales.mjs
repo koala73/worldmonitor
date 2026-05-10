@@ -41,23 +41,59 @@ const BATCH_SIZE = 50;
 const MODEL = 'claude-haiku-4-5-20251001';
 
 function flatten(obj, prefix = '', out = {}) {
+  if (Array.isArray(obj)) {
+    // Array elements get encoded with a `[N]` suffix so setNested can rebuild
+    // the array shape on the receiving end. Required for things like pricing
+    // tier `features` lists that i18next consumes via `returnObjects: true`.
+    obj.forEach((item, i) => {
+      const key = `${prefix}[${i}]`;
+      if (typeof item === 'string') out[key] = item;
+      else if (item && typeof item === 'object') flatten(item, key, out);
+    });
+    return out;
+  }
   for (const [k, v] of Object.entries(obj)) {
     const key = prefix ? `${prefix}.${k}` : k;
-    if (v && typeof v === 'object' && !Array.isArray(v)) flatten(v, key, out);
+    if (Array.isArray(v)) flatten(v, key, out);
+    else if (v && typeof v === 'object') flatten(v, key, out);
     else if (typeof v === 'string') out[key] = v;
   }
   return out;
 }
 
 function setNested(obj, dotted, value) {
-  const parts = dotted.split('.');
-  let cur = obj;
-  for (let i = 0; i < parts.length - 1; i++) {
-    const p = parts[i];
-    if (!(p in cur) || typeof cur[p] !== 'object' || cur[p] === null || Array.isArray(cur[p])) cur[p] = {};
-    cur = cur[p];
+  // Path tokens are either object keys (split on `.`) or array indices
+  // (`name[3]`). Split into a flat token list with explicit string/number
+  // typing so we can materialise arrays vs objects on demand.
+  const tokens = [];
+  for (const part of dotted.split('.')) {
+    const m = part.match(/^([^\[]*)((?:\[\d+\])+)?$/);
+    if (m && m[1]) tokens.push({ type: 'key', value: m[1] });
+    if (m && m[2]) {
+      for (const idx of m[2].matchAll(/\[(\d+)\]/g)) {
+        tokens.push({ type: 'index', value: Number(idx[1]) });
+      }
+    }
   }
-  cur[parts[parts.length - 1]] = value;
+  let cur = obj;
+  for (let i = 0; i < tokens.length - 1; i++) {
+    const tok = tokens[i];
+    const next = tokens[i + 1];
+    const wantArray = next.type === 'index';
+    if (tok.type === 'key') {
+      if (!(tok.value in cur) || cur[tok.value] === null || (wantArray !== Array.isArray(cur[tok.value]))) {
+        cur[tok.value] = wantArray ? [] : {};
+      }
+      cur = cur[tok.value];
+    } else {
+      if (cur[tok.value] === undefined || cur[tok.value] === null || (wantArray !== Array.isArray(cur[tok.value]))) {
+        cur[tok.value] = wantArray ? [] : {};
+      }
+      cur = cur[tok.value];
+    }
+  }
+  const last = tokens[tokens.length - 1];
+  cur[last.value] = value;
 }
 
 async function translateBatch(client, langName, batch) {

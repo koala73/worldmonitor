@@ -1977,19 +1977,114 @@
       "infoTooltip": "<strong>Compteurs en direct</strong> Compteurs extrapolés en temps réel pour des métriques mondiales : dépenses militaires, catastrophes naturelles, charge de morbidité et plus. Les chiffres sont des estimations statistiques basées sur les taux de données annuels."
     },
     "diseaseOutbreaks": {
-      "infoTooltip": "<strong>Épidémies</strong> Alertes d'épidémies actives de l'OMS, ProMED et ministères de la santé. Suit les épidémies confirmées, régions touchées, nombre de cas et niveaux de menace. Mis à jour lors de la publication de nouveaux rapports."
+      "infoTooltip": "<strong>Épidémies</strong> Alertes d'épidémies actives de l'OMS, ProMED et ministères de la santé. Suit les épidémies confirmées, régions touchées, nombre de cas et niveaux de menace. Mis à jour lors de la publication de nouveaux rapports.",
+      "title": "Épidémies de maladies",
+      "empty": "Aucune épidémie ne correspond au filtre",
+      "sourceFallback": "Source",
+      "attribution": "OMS · ProMED · HealthMap",
+      "levels": {
+        "alert": "ALERTE",
+        "warning": "AVERTISSEMENT",
+        "watch": "SURVEILLANCE"
+      },
+      "time": {
+        "justNow": "à l'instant",
+        "hoursAgo_one": "il y a {{count}}h",
+        "hoursAgo_other": "il y a {{count}}h",
+        "daysAgo_one": "il y a {{count}}j",
+        "daysAgo_other": "il y a {{count}}j"
+      },
+      "filters": {
+        "alert_one": "{{count}} Alerte",
+        "alert_other": "{{count}} Alertes",
+        "warning_one": "{{count}} Avertissement",
+        "warning_other": "{{count}} Avertissements",
+        "watch_one": "{{count}} Surveillance",
+        "watch_other": "{{count}} Surveillances"
+      },
+      "errors": {
+        "noData": "Aucune donnée d'épidémie disponible",
+        "failedToLoad": "Impossible de charger"
+      }
     },
     "earningsCalendar": {
-      "infoTooltip": "<strong>Calendrier des résultats</strong> Publications de résultats à venir et récentes des grandes entreprises cotées. Affiche les estimations de BPA vs réalisé, revenus et classification dépassement/manqué. Source : fournisseurs de données financières."
+      "infoTooltip": "<strong>Calendrier des résultats</strong> Publications de résultats à venir et récentes des grandes entreprises cotées. Affiche les estimations de BPA vs réalisé, revenus et classification dépassement/manqué. Source : fournisseurs de données financières.",
+      "title": "Calendrier des résultats",
+      "today": "AUJOURD'HUI · {{date}}",
+      "tomorrow": "DEMAIN · {{date}}",
+      "epsActual": "EPS {{value}}",
+      "epsEstimate": "EPS est {{value}}",
+      "revenueActual": "{{value}} rev",
+      "revenueEstimate": "{{value}} est",
+      "surprise": {
+        "beat": "DÉPASSEMENT",
+        "miss": "MANQUEMENT",
+        "inLine": "CONFORME"
+      },
+      "errors": {
+        "noData": "Aucune donnée de résultats",
+        "failedToLoad": "Impossible de charger"
+      }
     },
     "economicCalendar": {
       "infoTooltip": "<strong>Calendrier économique</strong> Publications macroéconomiques programmées : CPI, NFP, GDP, PMI et décisions des banques centrales. Affiche prévision vs réalisé vs précédent. Événements à fort impact mis en évidence. Source : fournisseurs de données économiques."
     },
     "fsi": {
-      "infoTooltip": "<strong>Indicateur de stress financier</strong> Indice de stress financier de la Fed de Kansas City (KCFSI) : mesure le stress sur les marchés financiers américains à l'aide de 11 indicateurs incluant les écarts de rendement, la volatilité et les corrélations croisées. Les valeurs positives indiquent un stress supérieur à la moyenne. Source : Federal Reserve Bank of Kansas City."
+      "infoTooltip": "<strong>Indicateur de stress financier</strong> Indice de stress financier de la Fed de Kansas City (KCFSI) : mesure le stress sur les marchés financiers américains à l'aide de 11 indicateurs incluant les écarts de rendement, la volatilité et les corrélations croisées. Les valeurs positives indiquent un stress supérieur à la moyenne. Source : Federal Reserve Bank of Kansas City.",
+      "title": "Indicateur de stress financier",
+      "usFsiValue": "VALEUR FSI US",
+      "cissTitle": "CISS UE (Stress systémique de la zone euro)",
+      "notAvailable": "S.O.",
+      "interpretation": {
+        "low": "Marchés du crédit fonctionnant normalement, ratio actions/obligations sain.",
+        "moderate": "Certaines dégradations des conditions de crédit, surveillance étroite recommandée.",
+        "elevated": "Stress significatif du marché du crédit, positionnement défensif justifié.",
+        "severe": "Stress financier grave, risque systémique élevé."
+      },
+      "labels": {
+        "lowStress": "Stress faible",
+        "moderateStress": "Stress modéré",
+        "elevatedStress": "Stress élevé",
+        "severeStress": "Stress grave"
+      },
+      "cissLabels": {
+        "low": "Faible",
+        "moderate": "Modéré",
+        "elevated": "Élevé",
+        "high": "Élevé"
+      },
+      "scale": {
+        "noStress": "0 — Aucun stress",
+        "extremeStress": "1 — Stress extrême",
+        "highStress": "Stress élevé",
+        "lowStress": "Stress faible"
+      },
+      "metrics": {
+        "vix": "VIX",
+        "hySpread": "HY Spread",
+        "hygPrice": "HYG Price",
+        "tltPrice": "TLT Price"
+      },
+      "errors": {
+        "unavailable": "Données FSI indisponibles",
+        "failedToLoad": "Échec du chargement"
+      }
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Suivi commercial d'Ormuz</strong> Suivi AIS des navires en temps réel à travers le détroit d'Ormuz, le goulet d'étranglement pétrolier le plus critique au monde. Surveille le nombre de pétroliers, les événements de perturbation et les variations hebdomadaires des flux. Environ 20 % de l'approvisionnement mondial en pétrole y transite quotidiennement."
+      "infoTooltip": "<strong>Suivi commercial d'Ormuz</strong> Suivi AIS des navires en temps réel à travers le détroit d'Ormuz, le goulet d'étranglement pétrolier le plus critique au monde. Surveille le nombre de pétroliers, les événements de perturbation et les variations hebdomadaires des flux. Environ 20 % de l'approvisionnement mondial en pétrole y transite quotidiennement.",
+      "title": "Suivi du commerce du Détroit d'Ormuz",
+      "noData": "Aucune donnée",
+      "notAvailable": "N/D",
+      "chartUnavailable": "Données de graphique indisponibles",
+      "sourcePrefix": "Source :",
+      "units": {
+        "ktPerDay": "kt/jour",
+        "generic": "unités"
+      },
+      "errors": {
+        "unavailable": "Données d'Ormuz indisponibles",
+        "failedToLoad": "Échec du chargement"
+      }
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Webcams en direct</strong> Flux en direct depuis des lieux géopolitiquement significatifs dans le monde : zones de conflit, capitales, postes frontières et points de passage stratégiques. Flux provenant de YouTube et réseaux publics."
@@ -2067,7 +2162,20 @@
       "infoTooltip": "<strong>Prix à la consommation</strong> Suivi en temps réel des prix du panier :<ul><li><strong>Aperçu</strong> : Indice des produits essentiels, panier valeur et variation semaine sur semaine</li><li><strong>Catégories</strong> : Tendances de prix par catégorie avec plage de 30 jours</li><li><strong>Mouvements</strong> : Plus grands articles à la hausse et à la baisse cette semaine</li><li><strong>Écart</strong> : Variance des prix entre détaillants pour le même panier</li></ul>Données provenant du scraping en direct des prix des détaillants."
     },
     "marketImplications": {
-      "infoTooltip": "<strong>Implications du marché IA</strong> Signaux commerciaux générés par LLM découlant de l'état géopolitique, des matières premières et des données macro en direct après chaque cycle de prévision.<ul><li><strong>Direction</strong> : LONG / SHORT / HEDGE avec notation de confiance</li><li><strong>Horizon temporel</strong> : 1S, 2S, 1M ou 3M</li><li><strong>Moteur</strong> : Catalyseur clé derrière le signal</li><li><strong>Risque</strong> : Réserve ou condition d'invalidation</li></ul><em>À titre informatif uniquement. Ne constitue pas un conseil en investissement.</em>"
+      "infoTooltip": "<strong>Implications du marché IA</strong> Signaux commerciaux générés par LLM découlant de l'état géopolitique, des matières premières et des données macro en direct après chaque cycle de prévision.<ul><li><strong>Direction</strong> : LONG / SHORT / HEDGE avec notation de confiance</li><li><strong>Horizon temporel</strong> : 1S, 2S, 1M ou 3M</li><li><strong>Moteur</strong> : Catalyseur clé derrière le signal</li><li><strong>Risque</strong> : Réserve ou condition d'invalidation</li></ul><em>À titre informatif uniquement. Ne constitue pas un conseil en investissement.</em>",
+      "title": "Implications du marché IA",
+      "directions": {
+        "long": "LONG",
+        "short": "SHORT",
+        "hedge": "COUVERTURE"
+      },
+      "rationale": "Justification :",
+      "driver": "Moteur :",
+      "appliesToNext": "S'applique à la prochaine régénération IA",
+      "signals_one": "{{count}} signal",
+      "signals_other": "{{count}} signaux",
+      "disclaimer": "Signaux de trading générés par l'IA à titre informatif uniquement. Ne constitue pas un conseil en investissement. Effectuez toujours vos propres recherches.",
+      "unavailable": "Les implications du marché IA sont générées après chaque exécution de prévision. Veuillez revenir bientôt."
     },
     "forecast": {
       "infoTooltip": "<strong>Prévisions IA</strong> Estimations de probabilité générées par IA pour les événements géopolitiques et économiques :<ul><li>Couverture multi-domaines : conflits, marchés, chaîne d'approvisionnement, cyber, politique</li><li>Chaque prévision affiche la probabilité estimée, le niveau de confiance et l'horizon temporel</li><li>Étalonnée par rapport aux bases de référence des marchés prédictifs le cas échéant</li></ul>Les prévisions se mettent à jour à l'arrivée de nouveaux signaux d'intelligence. Filtrez par domaine à l'aide des onglets ci-dessus."
@@ -2162,6 +2270,172 @@
       "defaultNeutral": "Par défaut (Neutre)",
       "titlePrefix": "Cadre : {{name}}",
       "titleNone": "Cadre d'analyse"
+    },
+    "sanctionsPressure": {
+      "title": "Sanctions et désignations",
+      "infoTooltip": "Désignations des sanctions OFAC provenant des listes SDN et consolidées. Affiche quels pays font face à la plus forte pression de désignation, quels programmes la pilotent et ce qui a été récemment ajouté depuis la dernière mise à jour.",
+      "loading": "Chargement des données de sanctions...",
+      "unavailable": "Données de sanctions indisponibles.",
+      "summary": {
+        "new": "Nouveau",
+        "vessels": "Navires",
+        "aircraft": "Aéronefs"
+      },
+      "sections": {
+        "countries": "Pays sanctionnés",
+        "entries": "Désignations récentes",
+        "programs": "Programmes"
+      },
+      "empty": {
+        "countries": "Aucune attribution de pays disponible.",
+        "entries": "Aucune désignation récente.",
+        "programs": "Aucune répartition de programme."
+      },
+      "footer": {
+        "updated": "Mise à jour {{time}}",
+        "dataset": "ensemble de données {{date}}",
+        "source": "Source : OFAC"
+      },
+      "pills": {
+        "newCount": "+{{count}} nouveau(x)",
+        "new": "nouveau"
+      },
+      "designations_one": "{{count}} désignation",
+      "designations_other": "{{count}} désignations",
+      "fallbacks": {
+        "unattributed": "Non attribué",
+        "program": "Programme",
+        "undated": "sans date"
+      }
+    },
+    "radiationWatch": {
+      "title": "Surveillance des radiations",
+      "infoTooltip": "Données EPA RadNet et Safecast enrichies avec notation des anomalies et synthèse de la confiance des sources. Ce panneau indique ce qui est normal, ce qui est élevé et quelles anomalies sont confirmées par rapport aux provisoires.",
+      "loading": "Chargement des données de radiation…",
+      "empty": "Aucune observation de radiation disponible.",
+      "baseline": "{{value}} de référence",
+      "flags": {
+        "confirmed": "confirmé",
+        "conflict": "conflit",
+        "cpmDerived": "CPM-dérivé"
+      },
+      "headers": {
+        "station": "Station",
+        "reading": "Mesure",
+        "delta": "Delta",
+        "status": "Statut",
+        "observed": "Observé"
+      },
+      "summary": {
+        "anomalies": "Anomalies",
+        "elevated": "Élevé",
+        "confirmed": "Confirmé",
+        "lowConfidence": "Faible confiance",
+        "conflicts": "Conflits",
+        "spikes": "Pics"
+      },
+      "footer": {
+        "updated": "Mis à jour {{time}}"
+      },
+      "observed": {
+        "hoursAgo_one": "{{count}}h ago",
+        "hoursAgo_other": "{{count}}h ago",
+        "daysAgo_one": "{{count}}j ago",
+        "daysAgo_other": "{{count}}j ago"
+      },
+      "confidence": {
+        "high": "confiance élevée",
+        "medium": "confiance moyenne",
+        "low": "confiance faible"
+      }
+    },
+    "defensePatents": {
+      "title": "Signaux R&D",
+      "infoTooltip": "Dépôts hebdomadaires de brevets de défense et à double usage par Raytheon, Lockheed, Huawei, DARPA et autres organisations stratégiques. Catégories : H04B (communications), H01L (semi-conducteurs), F42B (munitions), G06N (IA), C12N (biotechnologie). Source : USPTO PatentsView.",
+      "loading": "Chargement des dépôts R&D…",
+      "error": "Impossible de charger les données de brevets.",
+      "empty": "Aucun dépôt dans cette catégorie.",
+      "viewOnUspto": "Voir sur USPTO",
+      "tabs": {
+        "all": "Tous"
+      },
+      "cpcLabels": {
+        "H04B": "Communications",
+        "H01L": "Semi-conducteurs",
+        "F42B": "Munitions",
+        "G06N": "IA",
+        "C12N": "Biotechnologie"
+      }
+    },
+    "correlation": {
+      "loading": "En attente de données…",
+      "empty": "Aucune convergence active détectée",
+      "signals_one": "{{count}} signal",
+      "signals_other": "{{count}} signaux",
+      "analyzing": "Analyse en cours…",
+      "viewOnMap": "Voir sur la carte"
+    },
+    "thermalEscalation": {
+      "title": "Escalade thermique",
+      "infoTooltip": "Clusters d'anomalies thermiques FIRMS/VIIRS avec comparaison de référence, suivi de persistance et contexte stratégique. Ce panneau indique où l'activité thermique est anormale et quels clusters peuvent signaler un conflit, une perturbation industrielle ou une escalade.",
+      "loading": "Chargement des données thermiques…",
+      "empty": "Aucun cluster d'escalade thermique détecté.",
+      "footer": {
+        "updated": "Mis à jour {{time}}"
+      },
+      "summary": {
+        "total": "Total",
+        "elevated": "Élevé",
+        "spikes": "Pics",
+        "persist": "Persistant",
+        "conflict": "Conflit",
+        "strategic": "Stratégique"
+      },
+      "badges": {
+        "conflictAdjacent": "conflit-adj",
+        "energyAdjacent": "énergie-adj",
+        "industrial": "industriel",
+        "strategic": "stratégique"
+      },
+      "observations_one": "{{count}} obs",
+      "observations_other": "{{count}} obs",
+      "sources_one": "{{count}} src",
+      "sources_other": "{{count}} src",
+      "age": {
+        "minutesAgo_one": "{{count}}m ago",
+        "minutesAgo_other": "{{count}}m ago",
+        "hoursAgo_one": "{{count}}h ago",
+        "hoursAgo_other": "{{count}}h ago",
+        "daysAgo_one": "{{count}}j ago",
+        "daysAgo_other": "{{count}}j ago"
+      }
+    },
+    "chokepointStrip": {
+      "title": "Statut des points de contrôle",
+      "infoTooltip": "Statut en direct pour les sept points de contrôle mondiaux du transport de pétrole et gaz. Estimations de débit calibrées à partir de Portwatch DWT + observations AIS. Consulter /docs/methodology/chokepoints pour la méthodologie.",
+      "unknown": "inconnu",
+      "shortName": {
+        "hormuzStrait": "Ormuz",
+        "malaccaStrait": "Malacca",
+        "suez": "Suez",
+        "babElMandeb": "Bab el-Mandeb",
+        "bosphorus": "Détroits turcs",
+        "panama": "Panama",
+        "danishStraits": "Détroits danois"
+      },
+      "flow": {
+        "mbd": "{{value}} mb/j",
+        "pctOfBaseline": "{{pct}}% de la référence"
+      },
+      "errors": {
+        "unavailable": "Statut des points de contrôle indisponible",
+        "noData": "Pas encore de données sur les points de contrôle"
+      },
+      "attribution": {
+        "method": "Étalonnage Portwatch DWT + AIS",
+        "sampleLabel": "Signaux de perturbation AIS",
+        "creditName": "Points de contrôle du transit pétrolier mondial de l'EIA"
+      }
     }
   },
   "popups": {

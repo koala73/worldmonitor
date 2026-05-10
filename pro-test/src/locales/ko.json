@@ -362,5 +362,70 @@
     "description": "지정학적 AI 레이어. 질문하고, 구독하고, 구축하세요. WM Analyst 채팅(30개 이상의 라이브 서비스), 일일/주 2회/주간 AI 다이제스트(Slack, Discord, Telegram, Email, webhook 배송), 커스텀 위젯 빌더(HTML/CSS/JS + AI), Claude/GPT/커스텀 LLM용 MCP 커넥터.",
     "ogTitle": "World Monitor Pro — 지정학적 AI 레이어",
     "ogDescription": "질문하고, 구독하고, 구축하세요. WM Analyst 채팅, 맞춤형 AI 다이제스트(일일/주 2회/주간), 커스텀 위젯 빌더, Claude/GPT용 MCP — 하나의 키로 30개 이상의 라이브 서비스 통합."
+  },
+  "pricing": {
+    "suffixForever": "영구적으로",
+    "suffixTailored": "당신을 위해 맞춤화됨",
+    "suffixPerMonth": "/월",
+    "suffixPerYear": "/년",
+    "amountCustom": "맞춤형",
+    "opening": "열 중…",
+    "headerTitle": "요금제 선택",
+    "headerSubtitle": "실시간 모니터링부터 완벽한 인텔리전스 인프라까지. 당신의 미션에 맞는 요금제를 선택하세요.",
+    "billingMonthly": "월간",
+    "billingAnnual": "연간",
+    "saveAnnual": "17% 절약",
+    "mostPopular": "가장 인기있음",
+    "promoCodeNote": "프로모 코드가 있으신가요? 결제 시 입력하세요.",
+    "tiers": {
+      "free": {
+        "description": "필수 기능으로 시작하세요",
+        "features": [
+          "핵심 대시보드 패널",
+          "글로벌 뉴스 피드",
+          "지진 및 날씨 알림",
+          "기본 지도 보기"
+        ],
+        "cta": "시작하기"
+      },
+      "pro": {
+        "description": "완벽한 인텔리전스 대시보드",
+        "features": [
+          "Free의 모든 기능",
+          "AI 주식 분석 및 백테스팅",
+          "일일 시장 브리프",
+          "군사 및 지정학적 추적",
+          "커스텀 위젯 빌더",
+          "MCP 데이터 커넥터",
+          "우선 데이터 새로고침"
+        ]
+      },
+      "api": {
+        "description": "인텔리전스 데이터에 대한 프로그래매틱 접근",
+        "features": [
+          "REST API 접근",
+          "실시간 데이터 스트림",
+          "일일 1,000개 요청",
+          "웹훅 알림",
+          "커스텀 데이터 내보내기"
+        ]
+      },
+      "enterprise": {
+        "description": "조직을 위한 커스텀 솔루션",
+        "features": [
+          "Pro + API의 모든 기능",
+          "무제한 API 요청",
+          "전담 지원",
+          "커스텀 통합",
+          "SLA 보증",
+          "온프레미스 옵션"
+        ],
+        "cta": "영업팀에 문의"
+      }
+    },
+    "cta": {
+      "checkoutDefault": "시작하기",
+      "learnMore": "자세히 알아보기"
+    }
   }
 }

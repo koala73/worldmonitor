@@ -362,5 +362,70 @@
     "description": "De geopolitieke AI-laag. Stel er vragen aan, abonneer je erop, bouw erop voort. WM Analyst chat over 30+ live services, een AI-digest dagelijks, twee keer per dag of wekelijks naar Slack, Discord, Telegram, Email of webhook, een custom widget builder (HTML/CSS/JS + AI), en MCP connectors voor Claude, GPT en aangepaste LLM's.",
     "ogTitle": "World Monitor Pro — The Geopolitical AI Layer",
     "ogDescription": "Stel er vragen aan, abonneer je erop, bouw erop voort. WM Analyst chat, een AI-digest volgens je schema (dagelijks, twee keer per dag of wekelijks), custom widget builder en MCP voor Claude/GPT — over 30+ live services onder één sleutel."
+  },
+  "pricing": {
+    "suffixForever": "altijd",
+    "suffixTailored": "op maat voor jou",
+    "suffixPerMonth": "/mnd",
+    "suffixPerYear": "/jr",
+    "amountCustom": "Aangepast",
+    "opening": "Openen…",
+    "headerTitle": "Kies Uw Plan",
+    "headerSubtitle": "Van real-time monitoring tot volledige intelligence-infrastructuur. Kies de laag die bij uw missie past.",
+    "billingMonthly": "Maandelijks",
+    "billingAnnual": "Jaarlijks",
+    "saveAnnual": "Bespaar 17%",
+    "mostPopular": "Meest Populair",
+    "promoCodeNote": "Hebt u een promotiecode? Voer deze in bij het afrekenen.",
+    "tiers": {
+      "free": {
+        "description": "Aan de slag met de essentiële functies",
+        "features": [
+          "Centrale dashboardpanelen",
+          "Wereldwijd nieuwsfeed",
+          "Aardbevings- en weerswaarschuwingen",
+          "Basiskaartweergave"
+        ],
+        "cta": "Aan de slag"
+      },
+      "pro": {
+        "description": "Volledig intelligence-dashboard",
+        "features": [
+          "Alles in Gratis",
+          "AI-aandelen analyse & backtesting",
+          "Dagelijkse marktbriefings",
+          "Militair- en geopolitieke tracking",
+          "Aangepaste widget builder",
+          "MCP-gegevensconnectoren",
+          "Prioriteit gegevensvernieuwing"
+        ]
+      },
+      "api": {
+        "description": "Programmatische toegang tot intelligence-gegevens",
+        "features": [
+          "REST API-toegang",
+          "Real-time gegevensstromen",
+          "1.000 aanvragen/dag",
+          "Webhook-meldingen",
+          "Aangepaste gegevensexports"
+        ]
+      },
+      "enterprise": {
+        "description": "Aangepaste oplossingen voor organisaties",
+        "features": [
+          "Alles in Pro + API",
+          "Onbeperkte API-aanvragen",
+          "Speciale ondersteuning",
+          "Aangepaste integraties",
+          "SLA-garantie",
+          "On-premise optie"
+        ],
+        "cta": "Contact Verkoop"
+      }
+    },
+    "cta": {
+      "checkoutDefault": "Aan de slag",
+      "learnMore": "Meer informatie"
+    }
   }
 }

@@ -362,5 +362,70 @@
     "description": "A camada de IA geopolítica. Pergunte, assine e construa sobre ela. Chat WM Analyst em 30+ serviços ao vivo, um resumo de IA entregue diariamente, duas vezes ao dia ou semanalmente no Slack, Discord, Telegram, Email ou webhook, um construtor de widget personalizado (HTML/CSS/JS + IA) e conectores MCP para Claude, GPT e LLMs customizados.",
     "ogTitle": "World Monitor Pro — A Camada de IA Geopolítica",
     "ogDescription": "Pergunte, assine e construa sobre ela. Chat WM Analyst, um resumo de IA conforme sua agenda (diariamente, duas vezes ao dia ou semanalmente), construtor de widget personalizado e MCP para Claude/GPT — em 30+ serviços ao vivo sob uma única chave."
+  },
+  "pricing": {
+    "suffixForever": "para sempre",
+    "suffixTailored": "personalizado para você",
+    "suffixPerMonth": "/mês",
+    "suffixPerYear": "/ano",
+    "amountCustom": "Personalizado",
+    "opening": "Abrindo…",
+    "headerTitle": "Escolha Seu Plano",
+    "headerSubtitle": "Do monitoramento em tempo real à infraestrutura de inteligência completa. Escolha o nível que se adequa à sua missão.",
+    "billingMonthly": "Mensal",
+    "billingAnnual": "Anual",
+    "saveAnnual": "Economize 17%",
+    "mostPopular": "Mais Popular",
+    "promoCodeNote": "Tem um código promocional? Digite-o durante o checkout.",
+    "tiers": {
+      "free": {
+        "description": "Comece com o essencial",
+        "features": [
+          "Painéis de dashboard principal",
+          "Feed de notícias global",
+          "Alertas de terremotos e clima",
+          "Visualização básica de mapa"
+        ],
+        "cta": "Começar"
+      },
+      "pro": {
+        "description": "Dashboard de inteligência completo",
+        "features": [
+          "Tudo no Plano Gratuito",
+          "Análise e backtesting de ações com IA",
+          "Resumos diários do mercado",
+          "Rastreamento militar e geopolítico",
+          "Construtor de widgets personalizado",
+          "Conectores de dados MCP",
+          "Atualização de dados prioritária"
+        ]
+      },
+      "api": {
+        "description": "Acesso programático a dados de inteligência",
+        "features": [
+          "Acesso à API REST",
+          "Fluxos de dados em tempo real",
+          "1.000 requisições/dia",
+          "Notificações por webhook",
+          "Exportações de dados personalizadas"
+        ]
+      },
+      "enterprise": {
+        "description": "Soluções personalizadas para organizações",
+        "features": [
+          "Tudo no Pro + API",
+          "Requisições ilimitadas na API",
+          "Suporte dedicado",
+          "Integrações personalizadas",
+          "Garantia de SLA",
+          "Opção on-premise"
+        ],
+        "cta": "Contate Vendas"
+      }
+    },
+    "cta": {
+      "checkoutDefault": "Começar",
+      "learnMore": "Saiba Mais"
+    }
   }
 }

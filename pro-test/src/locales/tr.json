@@ -362,5 +362,70 @@
     "description": "Jeopolitik AI katmanı. Sor, abone ol, geliştir. WM Analyst sohbeti 30+ canlı hizmet arasında, günlük, haftada iki kez veya haftalık olarak Slack, Discord, Telegram, E-posta veya webhook'a teslim edilen AI özeti, özel widget oluşturucu (HTML/CSS/JS + AI) ve Claude, GPT ve özel LLM'ler için MCP bağlantıları.",
     "ogTitle": "World Monitor Pro — Jeopolitik AI Katmanı",
     "ogDescription": "Sor, abone ol, geliştir. WM Analyst sohbeti, planlandığı şekilde AI özeti (günlük, haftada iki kez veya haftalık), özel widget oluşturucu ve Claude/GPT için MCP — 30+ canlı hizmet arasında tek bir anahtar altında."
+  },
+  "pricing": {
+    "suffixForever": "sonsuza dek",
+    "suffixTailored": "sizin için özelleştirilmiş",
+    "suffixPerMonth": "/ay",
+    "suffixPerYear": "/yıl",
+    "amountCustom": "Özel",
+    "opening": "Açılıyor…",
+    "headerTitle": "Planınızı Seçin",
+    "headerSubtitle": "Gerçek zamanlı izlemeden tam istihbarat altyapısına kadar. Görevinize uygun katmanı seçin.",
+    "billingMonthly": "Aylık",
+    "billingAnnual": "Yıllık",
+    "saveAnnual": "%17 Tasarruf Edin",
+    "mostPopular": "En Popüler",
+    "promoCodeNote": "Promosyon kodunuz var mı? Ödeme sırasında girin.",
+    "tiers": {
+      "free": {
+        "description": "Temel özelliklerle başlayın",
+        "features": [
+          "Temel gösterge paneli",
+          "Küresel haber akışı",
+          "Deprem ve hava durumu uyarıları",
+          "Basit harita görünümü"
+        ],
+        "cta": "Başlayın"
+      },
+      "pro": {
+        "description": "Tam istihbarat gösterge paneli",
+        "features": [
+          "Ücretsizde her şey",
+          "AI hisse senedi analizi ve geri test",
+          "Günlük pazar özeti",
+          "Askeri ve jeopolitik izleme",
+          "Özel widget oluşturucu",
+          "MCP veri bağlayıcıları",
+          "Öncelikli veri yenileme"
+        ]
+      },
+      "api": {
+        "description": "İstihbarat verilerine programlı erişim",
+        "features": [
+          "REST API erişimi",
+          "Gerçek zamanlı veri akışları",
+          "Günde 1.000 istek",
+          "Webhook bildirimleri",
+          "Özel veri dışa aktarımı"
+        ]
+      },
+      "enterprise": {
+        "description": "Kuruluşlar için özel çözümler",
+        "features": [
+          "Pro + API'de her şey",
+          "Sınırsız API istekleri",
+          "Özel destek",
+          "Özel entegrasyonlar",
+          "SLA garantisi",
+          "Şirket içi seçenek"
+        ],
+        "cta": "Satışla İletişime Geçin"
+      }
+    },
+    "cta": {
+      "checkoutDefault": "Başlayın",
+      "learnMore": "Daha Fazla Bilgi"
+    }
   }
 }

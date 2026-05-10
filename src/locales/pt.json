@@ -1764,19 +1764,114 @@
       "infoTooltip": "<strong>Contadores em direto</strong> Contadores extrapolados em tempo real para métricas globais: despesas militares, desastres naturais, carga de doenças e mais. Os números são estimativas estatísticas baseadas em taxas de dados anuais."
     },
     "diseaseOutbreaks": {
-      "infoTooltip": "<strong>Surtos de doenças</strong> Alertas ativos de surtos da WHO, ProMED e ministérios da saúde. Rastreia surtos confirmados, regiões afetadas, contagens de casos e níveis de ameaça. Atualizado quando novos relatórios são publicados."
+      "infoTooltip": "<strong>Surtos de doenças</strong> Alertas ativos de surtos da WHO, ProMED e ministérios da saúde. Rastreia surtos confirmados, regiões afetadas, contagens de casos e níveis de ameaça. Atualizado quando novos relatórios são publicados.",
+      "title": "Surtos de Doenças",
+      "empty": "Nenhum surto corresponde ao filtro",
+      "sourceFallback": "Fonte",
+      "attribution": "OMS · ProMED · HealthMap",
+      "levels": {
+        "alert": "ALERTA",
+        "warning": "AVISO",
+        "watch": "MONITORAR"
+      },
+      "time": {
+        "justNow": "agora mesmo",
+        "hoursAgo_one": "{{count}}h atrás",
+        "hoursAgo_other": "{{count}}h atrás",
+        "daysAgo_one": "{{count}}d atrás",
+        "daysAgo_other": "{{count}}d atrás"
+      },
+      "filters": {
+        "alert_one": "{{count}} Alerta",
+        "alert_other": "{{count}} Alertas",
+        "warning_one": "{{count}} Aviso",
+        "warning_other": "{{count}} Avisos",
+        "watch_one": "{{count}} Monitoramento",
+        "watch_other": "{{count}} Monitoramentos"
+      },
+      "errors": {
+        "noData": "Nenhum dado de surto disponível",
+        "failedToLoad": "Falha ao carregar"
+      }
     },
     "earningsCalendar": {
-      "infoTooltip": "<strong>Calendário de resultados</strong> Publicações de resultados próximas e recentes de grandes empresas cotadas. Mostra estimativas de EPS vs. reais, receitas e classificação de superação/falha. Fonte: provedores de dados financeiros."
+      "infoTooltip": "<strong>Calendário de resultados</strong> Publicações de resultados próximas e recentes de grandes empresas cotadas. Mostra estimativas de EPS vs. reais, receitas e classificação de superação/falha. Fonte: provedores de dados financeiros.",
+      "title": "Calendário de Resultados",
+      "today": "HOJE · {{date}}",
+      "tomorrow": "AMANHÃ · {{date}}",
+      "epsActual": "LPA {{value}}",
+      "epsEstimate": "LPA est {{value}}",
+      "revenueActual": "{{value}} rec",
+      "revenueEstimate": "{{value}} est",
+      "surprise": {
+        "beat": "SUPEROU",
+        "miss": "FICOU AQUÉM",
+        "inLine": "CONFORME ESPERADO"
+      },
+      "errors": {
+        "noData": "Nenhum dado de resultados",
+        "failedToLoad": "Falha ao carregar"
+      }
     },
     "economicCalendar": {
       "infoTooltip": "<strong>Calendário económico</strong> Publicações macroeconómicas programadas: CPI, NFP, GDP, PMI e decisões de bancos centrais. Mostra previsão vs. real vs. anterior. Eventos de alto impacto destacados. Fonte: provedores de dados económicos."
     },
     "fsi": {
-      "infoTooltip": "<strong>Indicador de stress financeiro</strong> Índice de Stress Financeiro do Fed de Kansas City (KCFSI): mede o stress nos mercados financeiros dos EUA usando 11 indicadores incluindo spreads de rendimento, volatilidade e correlações cruzadas. Valores positivos indicam stress acima da média. Fonte: Federal Reserve Bank of Kansas City."
+      "infoTooltip": "<strong>Indicador de stress financeiro</strong> Índice de Stress Financeiro do Fed de Kansas City (KCFSI): mede o stress nos mercados financeiros dos EUA usando 11 indicadores incluindo spreads de rendimento, volatilidade e correlações cruzadas. Valores positivos indicam stress acima da média. Fonte: Federal Reserve Bank of Kansas City.",
+      "title": "Indicador de Estresse Financeiro",
+      "usFsiValue": "VALOR FSI EUA",
+      "cissTitle": "EU CISS (Estresse Sistêmico da Zona do Euro)",
+      "notAvailable": "N/A",
+      "interpretation": {
+        "low": "Mercados de crédito funcionando normalmente, razão ações/títulos saudável.",
+        "moderate": "Alguma deterioração nas condições de crédito, monitore de perto.",
+        "elevated": "Estresse significativo no mercado de crédito, posicionamento defensivo recomendado.",
+        "severe": "Estresse financeiro severo, risco sistêmico elevado."
+      },
+      "labels": {
+        "lowStress": "Baixo Estresse",
+        "moderateStress": "Estresse Moderado",
+        "elevatedStress": "Estresse Elevado",
+        "severeStress": "Estresse Severo"
+      },
+      "cissLabels": {
+        "low": "Baixo",
+        "moderate": "Moderado",
+        "elevated": "Elevado",
+        "high": "Alto"
+      },
+      "scale": {
+        "noStress": "0 — Sem estresse",
+        "extremeStress": "1 — Estresse extremo",
+        "highStress": "Estresse Alto",
+        "lowStress": "Estresse Baixo"
+      },
+      "metrics": {
+        "vix": "VIX",
+        "hySpread": "HY Spread",
+        "hygPrice": "HYG Price",
+        "tltPrice": "TLT Price"
+      },
+      "errors": {
+        "unavailable": "Dados FSI indisponíveis",
+        "failedToLoad": "Falha ao carregar"
+      }
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Rastreador comercial de Ormuz</strong> Rastreamento AIS de navios em tempo real através do Estreito de Ormuz, o ponto de estrangulamento petrolífero mais crítico do mundo. Monitoriza contagens de petroleiros, eventos de perturbação e alterações semanais de fluxo. Aproximadamente 20% do fornecimento global de petróleo transita aqui diariamente."
+      "infoTooltip": "<strong>Rastreador comercial de Ormuz</strong> Rastreamento AIS de navios em tempo real através do Estreito de Ormuz, o ponto de estrangulamento petrolífero mais crítico do mundo. Monitoriza contagens de petroleiros, eventos de perturbação e alterações semanais de fluxo. Aproximadamente 20% do fornecimento global de petróleo transita aqui diariamente.",
+      "title": "Rastreador de Comércio do Hormuz",
+      "noData": "Sem dados",
+      "notAvailable": "N/D",
+      "chartUnavailable": "Dados do gráfico indisponíveis",
+      "sourcePrefix": "Fonte:",
+      "units": {
+        "ktPerDay": "kt/dia",
+        "generic": "unidades"
+      },
+      "errors": {
+        "unavailable": "Dados do Hormuz indisponíveis",
+        "failedToLoad": "Falha ao carregar"
+      }
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Webcams em direto</strong> Feeds em direto de locais geopoliticamente significativos em todo o mundo: zonas de conflito, capitais, postos fronteiriços e pontos de estrangulamento estratégicos. Streams do YouTube e redes públicas."
@@ -1854,7 +1949,20 @@
       "infoTooltip": "<strong>Preços ao Consumidor</strong> Rastreamento em tempo real de preços de cesta:<ul><li><strong>Visão Geral</strong>: Índice de essenciais, cesta de valor e mudança semana a semana</li><li><strong>Categorias</strong>: Tendências de preço por categoria com intervalo de 30 dias</li><li><strong>Variações</strong>: Maiores itens em alta e queda esta semana</li><li><strong>Margem</strong>: Variância de preço entre varejistas para a mesma cesta</li></ul>Dados obtidos de raspagem de preço de varejista em tempo real."
     },
     "marketImplications": {
-      "infoTooltip": "<strong>Implicações de Mercado de IA</strong> Sinais de comércio gerados por LLM derivados do estado geopolítico, commodities e macro em tempo real após cada ciclo de previsão.<ul><li><strong>Direção</strong>: COMPRA / VENDA / PROTEÇÃO com classificação de confiança</li><li><strong>Prazo</strong>: Horizonte de 1S, 2S, 1M ou 3M</li><li><strong>Catalisador</strong>: Principal catalisador por trás do sinal</li><li><strong>Risco</strong>: Ressalva ou condição de invalidação</li></ul><em>Apenas para fins informativos. Não é aconselhamento de investimento.</em>"
+      "infoTooltip": "<strong>Implicações de Mercado de IA</strong> Sinais de comércio gerados por LLM derivados do estado geopolítico, commodities e macro em tempo real após cada ciclo de previsão.<ul><li><strong>Direção</strong>: COMPRA / VENDA / PROTEÇÃO com classificação de confiança</li><li><strong>Prazo</strong>: Horizonte de 1S, 2S, 1M ou 3M</li><li><strong>Catalisador</strong>: Principal catalisador por trás do sinal</li><li><strong>Risco</strong>: Ressalva ou condição de invalidação</li></ul><em>Apenas para fins informativos. Não é aconselhamento de investimento.</em>",
+      "title": "Implicações de Mercado da IA",
+      "directions": {
+        "long": "COMPRADO",
+        "short": "VENDIDO",
+        "hedge": "PROTEÇÃO"
+      },
+      "rationale": "Fundamentação:",
+      "driver": "Fator:",
+      "appliesToNext": "Aplica-se à próxima regeneração da IA",
+      "signals_one": "{{count}} sinal",
+      "signals_other": "{{count}} sinais",
+      "disclaimer": "Sinais de negociação gerados por IA apenas para fins informativos. Não é orientação de investimento. Sempre faça sua própria pesquisa.",
+      "unavailable": "As implicações de mercado da IA são geradas após cada execução de previsão. Volte em breve."
     },
     "forecast": {
       "infoTooltip": "<strong>Previsões de IA</strong> Estimativas de probabilidade geradas por IA para eventos geopolíticos e econômicos:<ul><li>Cobertura entre domínios: conflito, mercados, cadeia de suprimentos, segurança cibernética, política</li><li>Cada previsão mostra probabilidade estimada, nível de confiança e horizonte de tempo</li><li>Calibrada em relação aos baselines dos mercados de previsão quando disponível</li></ul>As previsões são atualizadas conforme novos sinais de inteligência chegam. Filtre por domínio usando as abas acima."
@@ -1949,6 +2057,172 @@
       "defaultNeutral": "Padrão (Neutro)",
       "titlePrefix": "Framework: {{name}}",
       "titleNone": "Framework de análise"
+    },
+    "sanctionsPressure": {
+      "title": "Sanções e Designações",
+      "infoTooltip": "Designações de sanções OFAC das listas SDN e Consolidated. Mostra quais países enfrentam a maior pressão de designação, quais programas a estão impulsionando e o que foi adicionado recentemente desde a última atualização.",
+      "loading": "Carregando dados de sanções...",
+      "unavailable": "Dados de sanções indisponíveis.",
+      "summary": {
+        "new": "Novo",
+        "vessels": "Navios",
+        "aircraft": "Aeronaves"
+      },
+      "sections": {
+        "countries": "Países sancionados",
+        "entries": "Designações recentes",
+        "programs": "Programas"
+      },
+      "empty": {
+        "countries": "Nenhuma atribuição de país disponível.",
+        "entries": "Nenhuma designação recente.",
+        "programs": "Nenhuma divisão de programa."
+      },
+      "footer": {
+        "updated": "Atualizado {{time}}",
+        "dataset": "dataset {{date}}",
+        "source": "Fonte: OFAC"
+      },
+      "pills": {
+        "newCount": "+{{count}} novo(s)",
+        "new": "novo"
+      },
+      "designations_one": "{{count}} designação",
+      "designations_other": "{{count}} designações",
+      "fallbacks": {
+        "unattributed": "Não atribuído",
+        "program": "Programa",
+        "undated": "sem data"
+      }
+    },
+    "radiationWatch": {
+      "title": "Monitoramento de Radiação",
+      "infoTooltip": "Leituras de RadNet da EPA e Safecast enriquecidas com pontuação de anomalias e síntese de confiança de fonte. Este painel responde o que é normal, o que está elevado e quais anomalias são confirmadas versus provisórias.",
+      "loading": "Carregando dados de radiação...",
+      "empty": "Nenhuma observação de radiação disponível.",
+      "baseline": "{{value}} linha de base",
+      "flags": {
+        "confirmed": "confirmado",
+        "conflict": "conflito",
+        "cpmDerived": "derivado de CPM"
+      },
+      "headers": {
+        "station": "Estação",
+        "reading": "Leitura",
+        "delta": "Delta",
+        "status": "Status",
+        "observed": "Observado"
+      },
+      "summary": {
+        "anomalies": "Anomalias",
+        "elevated": "Elevado",
+        "confirmed": "Confirmado",
+        "lowConfidence": "Baixa confiança",
+        "conflicts": "Conflitos",
+        "spikes": "Picos"
+      },
+      "footer": {
+        "updated": "Atualizado {{time}}"
+      },
+      "observed": {
+        "hoursAgo_one": "{{count}}h atrás",
+        "hoursAgo_other": "{{count}}h atrás",
+        "daysAgo_one": "{{count}}d atrás",
+        "daysAgo_other": "{{count}}d atrás"
+      },
+      "confidence": {
+        "high": "alta confiança",
+        "medium": "média confiança",
+        "low": "baixa confiança"
+      }
+    },
+    "defensePatents": {
+      "title": "Sinal de P&D",
+      "infoTooltip": "Depósitos de patentes de defesa e uso duplo semanais por Raytheon, Lockheed, Huawei, DARPA e outras organizações estratégicas. Categorias: H04B (comms), H01L (semicondutores), F42B (munição), G06N (IA), C12N (biotecnologia). Fonte: USPTO PatentsView.",
+      "loading": "Carregando depósitos de P&D…",
+      "error": "Falha ao carregar dados de patentes.",
+      "empty": "Nenhum depósito nesta categoria.",
+      "viewOnUspto": "Visualizar no USPTO",
+      "tabs": {
+        "all": "Todos"
+      },
+      "cpcLabels": {
+        "H04B": "Comms",
+        "H01L": "Semicondutores",
+        "F42B": "Munição",
+        "G06N": "IA",
+        "C12N": "Biotecnologia"
+      }
+    },
+    "correlation": {
+      "loading": "Aguardando dados...",
+      "empty": "Nenhuma convergência ativa detectada",
+      "signals_one": "{{count}} sinal",
+      "signals_other": "{{count}} sinais",
+      "analyzing": "Analisando...",
+      "viewOnMap": "Visualizar no mapa"
+    },
+    "thermalEscalation": {
+      "title": "Escalação Térmica",
+      "infoTooltip": "Clusters de anomalias térmicas FIRMS/VIIRS com comparação de linha de base, rastreamento de persistência e contexto estratégico. Este painel responde onde a atividade térmica é anormal e quais clusters podem sinalizar conflito, disrupção industrial ou escalação.",
+      "loading": "Carregando dados térmicos...",
+      "empty": "Nenhum cluster de escalação térmica detectado.",
+      "footer": {
+        "updated": "Atualizado {{time}}"
+      },
+      "summary": {
+        "total": "Total",
+        "elevated": "Elevado",
+        "spikes": "Picos",
+        "persist": "Persistente",
+        "conflict": "Conflito",
+        "strategic": "Estratégico"
+      },
+      "badges": {
+        "conflictAdjacent": "conflito-adj",
+        "energyAdjacent": "energia-adj",
+        "industrial": "industrial",
+        "strategic": "estratégico"
+      },
+      "observations_one": "{{count}} obs",
+      "observations_other": "{{count}} obs",
+      "sources_one": "{{count}} src",
+      "sources_other": "{{count}} src",
+      "age": {
+        "minutesAgo_one": "{{count}}m atrás",
+        "minutesAgo_other": "{{count}}m atrás",
+        "hoursAgo_one": "{{count}}h atrás",
+        "hoursAgo_other": "{{count}}h atrás",
+        "daysAgo_one": "{{count}}d atrás",
+        "daysAgo_other": "{{count}}d atrás"
+      }
+    },
+    "chokepointStrip": {
+      "title": "Status do Estreito",
+      "infoTooltip": "Status em tempo real dos sete principais estreitos globais de transporte de petróleo e gás. Estimativas de fluxo calibradas com dados Portwatch DWT + observações AIS. Veja /docs/methodology/chokepoints para metodologia.",
+      "unknown": "desconhecido",
+      "shortName": {
+        "hormuzStrait": "Hormuz",
+        "malaccaStrait": "Malaca",
+        "suez": "Suez",
+        "babElMandeb": "Bab el-Mandeb",
+        "bosphorus": "Estreitos Turcos",
+        "panama": "Panamá",
+        "danishStraits": "Estreitos Dinamarqueses"
+      },
+      "flow": {
+        "mbd": "{{value}} mb/d",
+        "pctOfBaseline": "{{pct}}% da linha de base"
+      },
+      "errors": {
+        "unavailable": "Status do estreito indisponível",
+        "noData": "Nenhum dado de estreito ainda"
+      },
+      "attribution": {
+        "method": "Calibração Portwatch DWT + AIS",
+        "sampleLabel": "Sinais de perturbação AIS",
+        "creditName": "Pontos de Trânsito de Petróleo Mundial da EIA"
+      }
     }
   },
   "popups": {

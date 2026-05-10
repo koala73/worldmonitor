@@ -1977,19 +1977,114 @@
       "infoTooltip": "<strong>Bộ đếm trực tiếp</strong> Bộ đếm ngoại suy thời gian thực cho các chỉ số toàn cầu: chi tiêu quân sự, thiên tai, gánh nặng bệnh tật và nhiều hơn nữa. Các con số là ước tính thống kê dựa trên tỷ lệ dữ liệu hàng năm."
     },
     "diseaseOutbreaks": {
-      "infoTooltip": "<strong>Dịch bệnh bùng phát</strong> Cảnh báo dịch bệnh đang hoạt động từ WHO, ProMED và các bộ y tế. Theo dõi các đợt bùng phát đã xác nhận, vùng bị ảnh hưởng, số ca và mức độ đe dọa. Cập nhật khi có báo cáo mới."
+      "infoTooltip": "<strong>Dịch bệnh bùng phát</strong> Cảnh báo dịch bệnh đang hoạt động từ WHO, ProMED và các bộ y tế. Theo dõi các đợt bùng phát đã xác nhận, vùng bị ảnh hưởng, số ca và mức độ đe dọa. Cập nhật khi có báo cáo mới.",
+      "title": "Bùng Phát Dịch Bệnh",
+      "empty": "Không có bùng phát nào phù hợp với bộ lọc",
+      "sourceFallback": "Nguồn",
+      "attribution": "WHO · ProMED · HealthMap",
+      "levels": {
+        "alert": "ALERT",
+        "warning": "WARNING",
+        "watch": "WATCH"
+      },
+      "time": {
+        "justNow": "vừa xong",
+        "hoursAgo_one": "{{count}}h trước",
+        "hoursAgo_other": "{{count}}h trước",
+        "daysAgo_one": "{{count}}d trước",
+        "daysAgo_other": "{{count}}d trước"
+      },
+      "filters": {
+        "alert_one": "{{count}} Cảnh báo",
+        "alert_other": "{{count}} Cảnh báo",
+        "warning_one": "{{count}} Cảnh cáo",
+        "warning_other": "{{count}} Cảnh cáo",
+        "watch_one": "{{count}} Theo dõi",
+        "watch_other": "{{count}} Theo dõi"
+      },
+      "errors": {
+        "noData": "Không có dữ liệu bùng phát",
+        "failedToLoad": "Không tải được"
+      }
     },
     "earningsCalendar": {
-      "infoTooltip": "<strong>Lịch thu nhập</strong> Các công bố thu nhập sắp tới và gần đây của các công ty đại chúng lớn. Hiển thị ước tính EPS so với thực tế, doanh thu và phân loại vượt/thiếu kỳ vọng. Nguồn: nhà cung cấp dữ liệu tài chính."
+      "infoTooltip": "<strong>Lịch thu nhập</strong> Các công bố thu nhập sắp tới và gần đây của các công ty đại chúng lớn. Hiển thị ước tính EPS so với thực tế, doanh thu và phân loại vượt/thiếu kỳ vọng. Nguồn: nhà cung cấp dữ liệu tài chính.",
+      "title": "Lịch Công Bố Thu Nhập",
+      "today": "HÔM NAY · {{date}}",
+      "tomorrow": "NGÀY MAI · {{date}}",
+      "epsActual": "EPS {{value}}",
+      "epsEstimate": "EPS dự kiến {{value}}",
+      "revenueActual": "{{value}} doanh thu",
+      "revenueEstimate": "{{value}} dự kiến",
+      "surprise": {
+        "beat": "BEAT",
+        "miss": "MISS",
+        "inLine": "IN LINE"
+      },
+      "errors": {
+        "noData": "Không có dữ liệu thu nhập",
+        "failedToLoad": "Không tải được"
+      }
     },
     "economicCalendar": {
       "infoTooltip": "<strong>Lịch kinh tế</strong> Các công bố kinh tế vĩ mô theo lịch: CPI, NFP, GDP, PMI và quyết định ngân hàng trung ương. Hiển thị dự báo so với thực tế so với trước đó. Sự kiện tác động cao được đánh dấu. Nguồn: nhà cung cấp dữ liệu kinh tế."
     },
     "fsi": {
-      "infoTooltip": "<strong>Chỉ báo căng thẳng tài chính</strong> Chỉ số căng thẳng tài chính của Fed Kansas City (KCFSI): đo lường căng thẳng trên thị trường tài chính Hoa Kỳ bằng 11 chỉ báo bao gồm chênh lệch lợi suất, biến động và tương quan chéo. Giá trị dương cho thấy căng thẳng trên mức trung bình. Nguồn: Federal Reserve Bank of Kansas City."
+      "infoTooltip": "<strong>Chỉ báo căng thẳng tài chính</strong> Chỉ số căng thẳng tài chính của Fed Kansas City (KCFSI): đo lường căng thẳng trên thị trường tài chính Hoa Kỳ bằng 11 chỉ báo bao gồm chênh lệch lợi suất, biến động và tương quan chéo. Giá trị dương cho thấy căng thẳng trên mức trung bình. Nguồn: Federal Reserve Bank of Kansas City.",
+      "title": "Chỉ Số Áp Lực Tài Chính",
+      "usFsiValue": "GIÁ TRỊ FSI CỦA MỸ",
+      "cissTitle": "EU CISS (Áp Lực Hệ Thống Vùng Euro)",
+      "notAvailable": "Không có sẵn",
+      "interpretation": {
+        "low": "Thị trường tín dụng hoạt động bình thường, tỷ lệ cổ phiếu/trái phiếu lành mạnh.",
+        "moderate": "Một số xấu đi về điều kiện tín dụng, theo dõi chặt chẽ.",
+        "elevated": "Áp lực thị trường tín dụng đáng kể, cần định vị phòng thủ.",
+        "severe": "Áp lực tài chính nghiêm trọng, rủi ro hệ thống tăng cao."
+      },
+      "labels": {
+        "lowStress": "Áp Lực Thấp",
+        "moderateStress": "Áp Lực Vừa Phải",
+        "elevatedStress": "Căng thẳng Cao",
+        "severeStress": "Căng thẳng Nghiêm trọng"
+      },
+      "cissLabels": {
+        "low": "Thấp",
+        "moderate": "Vừa phải",
+        "elevated": "Cao",
+        "high": "Rất cao"
+      },
+      "scale": {
+        "noStress": "0 — Không có căng thẳng",
+        "extremeStress": "1 — Căng thẳng cực độ",
+        "highStress": "Căng thẳng Cao",
+        "lowStress": "Căng thẳng Thấp"
+      },
+      "metrics": {
+        "vix": "VIX",
+        "hySpread": "HY Spread",
+        "hygPrice": "HYG Price",
+        "tltPrice": "TLT Price"
+      },
+      "errors": {
+        "unavailable": "Dữ liệu FSI không khả dụng",
+        "failedToLoad": "Không tải được"
+      }
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Bộ theo dõi thương mại Hormuz</strong> Theo dõi tàu AIS trực tiếp qua eo biển Hormuz, điểm nghẽn dầu quan trọng nhất thế giới. Giám sát số lượng tàu chở dầu, sự kiện gián đoạn và thay đổi dòng chảy hàng tuần. Khoảng 20% nguồn cung dầu toàn cầu đi qua đây hàng ngày."
+      "infoTooltip": "<strong>Bộ theo dõi thương mại Hormuz</strong> Theo dõi tàu AIS trực tiếp qua eo biển Hormuz, điểm nghẽn dầu quan trọng nhất thế giới. Giám sát số lượng tàu chở dầu, sự kiện gián đoạn và thay đổi dòng chảy hàng tuần. Khoảng 20% nguồn cung dầu toàn cầu đi qua đây hàng ngày.",
+      "title": "Theo dõi Thương mại Hormuz",
+      "noData": "Không có dữ liệu",
+      "notAvailable": "N/A",
+      "chartUnavailable": "Dữ liệu biểu đồ không khả dụng",
+      "sourcePrefix": "Nguồn:",
+      "units": {
+        "ktPerDay": "kt/ngày",
+        "generic": "đơn vị"
+      },
+      "errors": {
+        "unavailable": "Dữ liệu Hormuz không khả dụng",
+        "failedToLoad": "Không tải được"
+      }
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Webcam trực tiếp</strong> Luồng phát trực tiếp từ các địa điểm có ý nghĩa địa chính trị trên toàn thế giới: vùng xung đột, thủ đô, cửa khẩu biên giới và các điểm nghẽn chiến lược. Luồng từ YouTube và mạng công cộng."
@@ -2067,7 +2162,20 @@
       "infoTooltip": "<strong>Giá tiêu dùng</strong> Theo dõi giỏ hàng theo thời gian thực:<ul><li><strong>Tổng quan</strong>: Chỉ số hàng thiết yếu, giỏ hàng giá trị và thay đổi tuần trên tuần</li><li><strong>Danh mục</strong>: Xu hướng giá theo từng danh mục với phạm vi 30 ngày</li><li><strong>Những mặt hàng thay đổi giá</strong>: Mặt hàng tăng và giảm giá lớn nhất tuần này</li><li><strong>Chênh lệch</strong>: Sự chênh lệch giá giữa các nhà bán lẻ cho cùng một giỏ hàng</li></ul>Dữ liệu từ việc quét giá nhà bán lẻ trực tiếp."
     },
     "marketImplications": {
-      "infoTooltip": "<strong>Hàm ý thị trường AI</strong> Tín hiệu giao dịch được tạo bởi LLM từ tình trạng địa chính trị, hàng hóa và vĩ mô trực tiếp sau mỗi chu kỳ dự báo.<ul><li><strong>Hướng</strong>: LONG / SHORT / HEDGE với mức độ tin tưởng</li><li><strong>Khung thời gian</strong>: Horizon 1W, 2W, 1M, hoặc 3M</li><li><strong>Yếu tố thúc đẩy</strong>: Xúc tác chính đằng sau tín hiệu</li><li><strong>Rủi ro</strong>: Cảnh báo hoặc điều kiện làm mất hiệu lực</li></ul><em>Chỉ cho mục đích thông tin. Không phải lời khuyên đầu tư.</em>"
+      "infoTooltip": "<strong>Hàm ý thị trường AI</strong> Tín hiệu giao dịch được tạo bởi LLM từ tình trạng địa chính trị, hàng hóa và vĩ mô trực tiếp sau mỗi chu kỳ dự báo.<ul><li><strong>Hướng</strong>: LONG / SHORT / HEDGE với mức độ tin tưởng</li><li><strong>Khung thời gian</strong>: Horizon 1W, 2W, 1M, hoặc 3M</li><li><strong>Yếu tố thúc đẩy</strong>: Xúc tác chính đằng sau tín hiệu</li><li><strong>Rủi ro</strong>: Cảnh báo hoặc điều kiện làm mất hiệu lực</li></ul><em>Chỉ cho mục đích thông tin. Không phải lời khuyên đầu tư.</em>",
+      "title": "Ý Nghĩa Thị Trường AI",
+      "directions": {
+        "long": "LONG",
+        "short": "SHORT",
+        "hedge": "HEDGE"
+      },
+      "rationale": "Lý do:",
+      "driver": "Động lực:",
+      "appliesToNext": "Áp dụng cho lần tạo lại AI tiếp theo",
+      "signals_one": "{{count}} tín hiệu",
+      "signals_other": "{{count}} tín hiệu",
+      "disclaimer": "Tín hiệu giao dịch do AI tạo ra cho mục đích thông tin. Không phải lời khuyên đầu tư. Luôn tự nghiên cứu của riêng bạn.",
+      "unavailable": "Ý nghĩa thị trường AI được tạo sau mỗi lần chạy dự báo. Vui lòng kiểm tra lại sớm."
     },
     "forecast": {
       "infoTooltip": "<strong>Dự báo AI</strong> Ước tính xác suất do AI tạo ra cho các sự kiện địa chính trị và kinh tế:<ul><li>Phạm vi đa lĩnh vực: xung đột, thị trường, chuỗi cung ứng, an ninh mạng, chính trị</li><li>Mỗi dự báo hiển thị xác suất ước tính, mức độ tin cậy và thời gian chờ</li><li>Hiệu chỉnh theo so sánh đường cơ sở của thị trường dự đoán nếu có</li></ul>Dự báo cập nhật khi có tín hiệu thông tin mới. Lọc theo lĩnh vực bằng các tab ở trên."
@@ -2162,6 +2270,172 @@
       "defaultNeutral": "Mặc định (Trung lập)",
       "titlePrefix": "Khung: {{name}}",
       "titleNone": "Khung phân tích"
+    },
+    "sanctionsPressure": {
+      "title": "Trừng phạt & Chỉ định",
+      "infoTooltip": "Các chỉ định trừng phạt OFAC từ Danh sách SDN và Danh sách Hợp nhất. Hiển thị các quốc gia nào đối mặt với áp lực chỉ định cao nhất, chương trình nào đang thúc đẩy và những gì được thêm mới kể từ lần cập nhật cuối cùng.",
+      "loading": "Đang tải dữ liệu trừng phạt...",
+      "unavailable": "Dữ liệu trừng phạt không khả dụng.",
+      "summary": {
+        "new": "Mới",
+        "vessels": "Tàu",
+        "aircraft": "Tàu bay"
+      },
+      "sections": {
+        "countries": "Quốc gia bị trừng phạt",
+        "entries": "Chỉ định gần đây",
+        "programs": "Chương trình"
+      },
+      "empty": {
+        "countries": "Không có quy trách nhiệm quốc gia nào.",
+        "entries": "Không có chỉ định gần đây.",
+        "programs": "Không có chi tiết chương trình."
+      },
+      "footer": {
+        "updated": "Cập nhật {{time}}",
+        "dataset": "tập dữ liệu {{date}}",
+        "source": "Nguồn: OFAC"
+      },
+      "pills": {
+        "newCount": "+{{count}} mới",
+        "new": "mới"
+      },
+      "designations_one": "{{count}} chỉ định",
+      "designations_other": "{{count}} chỉ định",
+      "fallbacks": {
+        "unattributed": "Không xác định",
+        "program": "Chương trình",
+        "undated": "không có ngày tháng"
+      }
+    },
+    "radiationWatch": {
+      "title": "Theo dõi Bức xạ",
+      "infoTooltip": "Dữ liệu EPA RadNet và Safecast có kèm theo điểm bất thường và tổng hợp độ tin cậy của nguồn. Bảng điều khiển này trả lời câu hỏi: cái gì là bình thường, cái gì được nâng cao, và những bất thường nào được xác nhận so với tạm thời.",
+      "loading": "Đang tải dữ liệu bức xạ...",
+      "empty": "Không có quan sát bức xạ nào.",
+      "baseline": "{{value}} đường cơ sở",
+      "flags": {
+        "confirmed": "đã xác nhận",
+        "conflict": "xung đột",
+        "cpmDerived": "Dẫn xuất từ CPM"
+      },
+      "headers": {
+        "station": "Trạm",
+        "reading": "Chỉ số",
+        "delta": "Delta",
+        "status": "Trạng thái",
+        "observed": "Quan sát"
+      },
+      "summary": {
+        "anomalies": "Bất thường",
+        "elevated": "Cao hơn",
+        "confirmed": "Đã xác nhận",
+        "lowConfidence": "Độ tin cậy thấp",
+        "conflicts": "Xung đột",
+        "spikes": "Tăng đột ngột"
+      },
+      "footer": {
+        "updated": "Cập nhật {{time}}"
+      },
+      "observed": {
+        "hoursAgo_one": "{{count}}h trước",
+        "hoursAgo_other": "{{count}}h trước",
+        "daysAgo_one": "{{count}}d trước",
+        "daysAgo_other": "{{count}}d trước"
+      },
+      "confidence": {
+        "high": "độ tin cậy cao",
+        "medium": "độ tin cậy trung bình",
+        "low": "độ tin cậy thấp"
+      }
+    },
+    "defensePatents": {
+      "title": "Tín hiệu R&D",
+      "infoTooltip": "Đơn đăng ký sáng chế quốc phòng và hai chiều hàng tuần từ Raytheon, Lockheed, Huawei, DARPA và các tổ chức chiến lược khác. Danh mục: H04B (thông tin liên lạc), H01L (bán dẫn), F42B (đạn dược), G06N (AI), C12N (công nghệ sinh học). Nguồn: USPTO PatentsView.",
+      "loading": "Đang tải đơn đăng ký R&D…",
+      "error": "Không thể tải dữ liệu sáng chế.",
+      "empty": "Không có đơn đăng ký trong danh mục này.",
+      "viewOnUspto": "Xem trên USPTO",
+      "tabs": {
+        "all": "Tất cả"
+      },
+      "cpcLabels": {
+        "H04B": "Thông tin liên lạc",
+        "H01L": "Bán dẫn",
+        "F42B": "Đạn dược",
+        "G06N": "AI",
+        "C12N": "Công nghệ sinh học"
+      }
+    },
+    "correlation": {
+      "loading": "Đang chờ dữ liệu...",
+      "empty": "Không phát hiện sự hội tụ hoạt động",
+      "signals_one": "{{count}} tín hiệu",
+      "signals_other": "{{count}} tín hiệu",
+      "analyzing": "Đang phân tích...",
+      "viewOnMap": "Xem trên bản đồ"
+    },
+    "thermalEscalation": {
+      "title": "Tăng cường nhiệt độ",
+      "infoTooltip": "Cụm bất thường nhiệt FIRMS/VIIRS được tính toán trước với so sánh đường cơ sở, theo dõi tính bền vững và bối cảnh chiến lược. Bảng điều khiển này trả lời vị trí hoạt động nhiệt bất thường và cụm nào có thể báo hiệu xung đột, gián đoạn công nghiệp hoặc tăng cường.",
+      "loading": "Đang tải dữ liệu nhiệt...",
+      "empty": "Không phát hiện cụm tăng cường nhiệt độ.",
+      "footer": {
+        "updated": "Cập nhật {{time}}"
+      },
+      "summary": {
+        "total": "Tổng cộng",
+        "elevated": "Cao hơn",
+        "spikes": "Tăng đột ngột",
+        "persist": "Kéo dài",
+        "conflict": "Xung đột",
+        "strategic": "Chiến lược"
+      },
+      "badges": {
+        "conflictAdjacent": "xung đột liền kề",
+        "energyAdjacent": "năng lượng liền kề",
+        "industrial": "công nghiệp",
+        "strategic": "chiến lược"
+      },
+      "observations_one": "{{count}} obs",
+      "observations_other": "{{count}} obs",
+      "sources_one": "{{count}} src",
+      "sources_other": "{{count}} src",
+      "age": {
+        "minutesAgo_one": "{{count}}m trước",
+        "minutesAgo_other": "{{count}}m trước",
+        "hoursAgo_one": "{{count}}h trước",
+        "hoursAgo_other": "{{count}}h trước",
+        "daysAgo_one": "{{count}}d trước",
+        "daysAgo_other": "{{count}}d trước"
+      }
+    },
+    "chokepointStrip": {
+      "title": "Tình trạng điểm tắc nghẽn",
+      "infoTooltip": "Tình trạng trực tiếp cho bảy điểm tắc nghẽn vận chuyển dầu & khí đốt toàn cầu. Ước tính lưu lượng được hiệu chỉnh từ Portwatch DWT + quan sát AIS. Xem /docs/methodology/chokepoints để biết phương pháp.",
+      "unknown": "không xác định",
+      "shortName": {
+        "hormuzStrait": "Hormuz",
+        "malaccaStrait": "Malacca",
+        "suez": "Suez",
+        "babElMandeb": "Bab el-Mandeb",
+        "bosphorus": "Eo biển Thổ Nhĩ Kỳ",
+        "panama": "Panama",
+        "danishStraits": "Eo biển Đan Mạch"
+      },
+      "flow": {
+        "mbd": "{{value}} mb/d",
+        "pctOfBaseline": "{{pct}}% so với mức cơ sở"
+      },
+      "errors": {
+        "unavailable": "Không có tình trạng điểm tắc nghẽn",
+        "noData": "Chưa có dữ liệu điểm tắc nghẽn"
+      },
+      "attribution": {
+        "method": "Hiệu chỉnh Portwatch DWT + AIS",
+        "sampleLabel": "Tín hiệu gián đoạn AIS",
+        "creditName": "Các điểm tắc nghẽn vận chuyển dầu toàn cầu của EIA"
+      }
     }
   },
   "popups": {

@@ -362,5 +362,70 @@
     "description": "Die geopolitische AI-Schicht. Frag sie ab, abonniere sie, baue darauf auf. WM Analyst Chat über 30+ Live-Services, ein täglich, zweimal täglich oder wöchentlich an Slack, Discord, Telegram, E-Mail oder Webhook gelieferter AI-Digest, ein Custom-Widget-Builder (HTML/CSS/JS + AI) und MCP-Konnektoren für Claude, GPT und Custom-LLMs.",
     "ogTitle": "World Monitor Pro — Die geopolitische AI-Schicht",
     "ogDescription": "Frag sie ab, abonniere sie, baue darauf auf. WM Analyst Chat, ein AI-Digest nach deinem Zeitplan (täglich, zweimal täglich oder wöchentlich), Custom-Widget-Builder und MCP für Claude/GPT — über 30+ Live-Services unter einem Key."
+  },
+  "pricing": {
+    "suffixForever": "für immer",
+    "suffixTailored": "auf Sie zugeschnitten",
+    "suffixPerMonth": "/Monat",
+    "suffixPerYear": "/Jahr",
+    "amountCustom": "Benutzerdefiniert",
+    "opening": "Wird geöffnet…",
+    "headerTitle": "Wählen Sie Ihren Plan",
+    "headerSubtitle": "Von Echtzeit-Überwachung bis zur vollständigen Intelligence-Infrastruktur. Wählen Sie die Stufe, die zu Ihrer Mission passt.",
+    "billingMonthly": "Monatlich",
+    "billingAnnual": "Jährlich",
+    "saveAnnual": "Sparen Sie 17%",
+    "mostPopular": "Am beliebtesten",
+    "promoCodeNote": "Haben Sie einen Promo-Code? Geben Sie ihn beim Checkout ein.",
+    "tiers": {
+      "free": {
+        "description": "Beginnen Sie mit den Grundlagen",
+        "features": [
+          "Core-Dashboard-Panels",
+          "Globaler News-Feed",
+          "Erdbeben- & Wetteralertz",
+          "Basis-Kartenansicht"
+        ],
+        "cta": "Loslegen"
+      },
+      "pro": {
+        "description": "Vollständiges Intelligence-Dashboard",
+        "features": [
+          "Alles aus Free",
+          "KI-Aktienanalyse & Backtesting",
+          "Tägliche Marktübersichten",
+          "Militär- & geopolitische Verfolgung",
+          "Custom-Widget-Builder",
+          "MCP-Datenconnectors",
+          "Priorisierte Datenaktualisierung"
+        ]
+      },
+      "api": {
+        "description": "Programmgesteuerte Zugang zu Intelligence-Daten",
+        "features": [
+          "REST-API-Zugriff",
+          "Echtzeit-Datenströme",
+          "1.000 Anfragen/Tag",
+          "Webhook-Benachrichtigungen",
+          "Custom-Datenexporte"
+        ]
+      },
+      "enterprise": {
+        "description": "Maßgeschneiderte Lösungen für Organisationen",
+        "features": [
+          "Alles aus Pro + API",
+          "Unbegrenzte API-Anfragen",
+          "Dedizierter Support",
+          "Custom-Integrationen",
+          "SLA-Garantie",
+          "On-Premise-Option"
+        ],
+        "cta": "Kontakt zum Vertrieb"
+      }
+    },
+    "cta": {
+      "checkoutDefault": "Jetzt starten",
+      "learnMore": "Mehr erfahren"
+    }
   }
 }

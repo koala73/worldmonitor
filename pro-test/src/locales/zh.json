@@ -362,5 +362,70 @@
     "description": "地缘政治 AI 层。提问、订阅、构建。WM Analyst 聊天支持 30+ 个实时服务，AI 摘要按日、两次日或周频率投送至 Slack、Discord、Telegram、Email 或 webhook，自定义小部件构建器（HTML/CSS/JS + AI），以及 Claude、GPT 和自定义 LLM 的 MCP 连接器。",
     "ogTitle": "World Monitor Pro — 地缘政治 AI 层",
     "ogDescription": "提问、订阅、构建。WM Analyst 聊天、按您的时间表（日、两次日或周）投送的 AI 摘要、自定义小部件构建器，以及 Claude/GPT 的 MCP — 跨 30+ 个实时服务，一个密钥管理。"
+  },
+  "pricing": {
+    "suffixForever": "永久",
+    "suffixTailored": "为您量身定制",
+    "suffixPerMonth": "/月",
+    "suffixPerYear": "/年",
+    "amountCustom": "自定义",
+    "opening": "打开中…",
+    "headerTitle": "选择您的计划",
+    "headerSubtitle": "从实时监控到完整的情报基础设施。选择适合您任务的层级。",
+    "billingMonthly": "月度",
+    "billingAnnual": "年度",
+    "saveAnnual": "节省 17%",
+    "mostPopular": "最受欢迎",
+    "promoCodeNote": "有促销代码？在结账时输入。",
+    "tiers": {
+      "free": {
+        "description": "从基础功能开始",
+        "features": [
+          "核心仪表板面板",
+          "全球新闻源",
+          "地震和天气警报",
+          "基础地图视图"
+        ],
+        "cta": "开始使用"
+      },
+      "pro": {
+        "description": "完整的情报仪表板",
+        "features": [
+          "免费版的所有功能",
+          "AI 股票分析和回测",
+          "每日市场简报",
+          "军事和地缘政治追踪",
+          "自定义小部件构建器",
+          "MCP 数据连接器",
+          "优先级数据刷新"
+        ]
+      },
+      "api": {
+        "description": "对情报数据的程序化访问",
+        "features": [
+          "REST API 访问",
+          "实时数据流",
+          "每天 1,000 个请求",
+          "Webhook 通知",
+          "自定义数据导出"
+        ]
+      },
+      "enterprise": {
+        "description": "为组织提供的自定义解决方案",
+        "features": [
+          "Pro + API 的所有功能",
+          "无限 API 请求",
+          "专属支持",
+          "自定义集成",
+          "SLA 保证",
+          "本地部署选项"
+        ],
+        "cta": "联系销售"
+      }
+    },
+    "cta": {
+      "checkoutDefault": "开始使用",
+      "learnMore": "了解更多"
+    }
   }
 }

@@ -1095,7 +1095,20 @@
       "infoTooltip": "<strong>Stablecoins</strong> Peg health, market cap, and 24h volume for major USD-pegged tokens (USDT, USDC, DAI, BUSD). A broken peg signals systemic risk."
     },
     "marketImplications": {
-      "infoTooltip": "<strong>AI Market Implications</strong> LLM-generated trade signals derived from live geopolitical, commodity, and macro state after each forecast cycle.<ul><li><strong>Direction</strong>: LONG / SHORT / HEDGE with confidence rating</li><li><strong>Timeframe</strong>: 1W, 2W, 1M, or 3M horizon</li><li><strong>Driver</strong>: Key catalyst behind the signal</li><li><strong>Risk</strong>: Caveat or invalidation condition</li></ul><em>For informational purposes only. Not investment advice.</em>"
+      "infoTooltip": "<strong>AI Market Implications</strong> LLM-generated trade signals derived from live geopolitical, commodity, and macro state after each forecast cycle.<ul><li><strong>Direction</strong>: LONG / SHORT / HEDGE with confidence rating</li><li><strong>Timeframe</strong>: 1W, 2W, 1M, or 3M horizon</li><li><strong>Driver</strong>: Key catalyst behind the signal</li><li><strong>Risk</strong>: Caveat or invalidation condition</li></ul><em>For informational purposes only. Not investment advice.</em>",
+      "title": "AI Market Implications",
+      "directions": {
+        "long": "LONG",
+        "short": "SHORT",
+        "hedge": "HEDGE"
+      },
+      "rationale": "Rationale:",
+      "driver": "Driver:",
+      "appliesToNext": "Applies to next AI regeneration",
+      "signals_one": "{{count}} signal",
+      "signals_other": "{{count}} signals",
+      "disclaimer": "AI-generated trade signals for informational purposes only. Not investment advice. Always do your own research.",
+      "unavailable": "AI market implications are generated after each forecast run. Check back shortly."
     },
     "status": {
       "dataFeeds": "Data Feeds",
@@ -2153,7 +2166,7 @@
       "fx": "FX",
       "warmup": "Building baselines. Volume and OI history populates over the next hour.",
       "unavailable": "Positioning data unavailable",
-      "footer": "5min \u00b7 Hyperliquid perps \u00b7 24/7"
+      "footer": "5min · Hyperliquid perps · 24/7"
     },
     "goldIntelligence": {
       "infoTooltip": "<strong>Gold Intelligence</strong> Gold spot price, gold/silver ratio, gold vs platinum premium, cross-currency XAU prices (EUR, GBP, JPY, CNY, INR, CHF), and CFTC managed money positioning. Sources: Yahoo Finance, CFTC COT."
@@ -2162,22 +2175,117 @@
       "infoTooltip": "<strong>Live Counters</strong> Real-time extrapolated counters for global metrics: military spending, natural disasters, disease burden, and more. Figures are statistical estimates based on annual data rates."
     },
     "diseaseOutbreaks": {
-      "infoTooltip": "<strong>Disease Outbreaks</strong> Active outbreak alerts from WHO, ProMED, and health ministries. Tracks confirmed outbreaks, affected regions, case counts, and threat levels. Updated as new reports are published."
+      "infoTooltip": "<strong>Disease Outbreaks</strong> Active outbreak alerts from WHO, ProMED, and health ministries. Tracks confirmed outbreaks, affected regions, case counts, and threat levels. Updated as new reports are published.",
+      "title": "Disease Outbreaks",
+      "empty": "No outbreaks match filter",
+      "sourceFallback": "Source",
+      "attribution": "WHO · ProMED · HealthMap",
+      "levels": {
+        "alert": "ALERT",
+        "warning": "WARNING",
+        "watch": "WATCH"
+      },
+      "time": {
+        "justNow": "just now",
+        "hoursAgo_one": "{{count}}h ago",
+        "hoursAgo_other": "{{count}}h ago",
+        "daysAgo_one": "{{count}}d ago",
+        "daysAgo_other": "{{count}}d ago"
+      },
+      "filters": {
+        "alert_one": "{{count}} Alert",
+        "alert_other": "{{count}} Alerts",
+        "warning_one": "{{count}} Warning",
+        "warning_other": "{{count}} Warnings",
+        "watch_one": "{{count}} Watch",
+        "watch_other": "{{count}} Watches"
+      },
+      "errors": {
+        "noData": "No outbreak data available",
+        "failedToLoad": "Failed to load"
+      }
     },
     "earningsCalendar": {
-      "infoTooltip": "<strong>Earnings Calendar</strong> Upcoming and recent earnings releases for major public companies. Shows EPS estimates vs actuals, revenue, and beat/miss classification. Source: financial data providers."
+      "infoTooltip": "<strong>Earnings Calendar</strong> Upcoming and recent earnings releases for major public companies. Shows EPS estimates vs actuals, revenue, and beat/miss classification. Source: financial data providers.",
+      "title": "Earnings Calendar",
+      "today": "TODAY · {{date}}",
+      "tomorrow": "TOMORROW · {{date}}",
+      "epsActual": "EPS {{value}}",
+      "epsEstimate": "EPS est {{value}}",
+      "revenueActual": "{{value}} rev",
+      "revenueEstimate": "{{value}} est",
+      "surprise": {
+        "beat": "BEAT",
+        "miss": "MISS",
+        "inLine": "IN LINE"
+      },
+      "errors": {
+        "noData": "No earnings data",
+        "failedToLoad": "Failed to load"
+      }
     },
     "economicCalendar": {
       "infoTooltip": "<strong>Economic Calendar</strong> Scheduled macroeconomic releases: CPI, NFP, GDP, PMI, and central bank decisions. Shows forecast vs actual vs prior. High-impact events highlighted. Source: economic data providers."
     },
     "fsi": {
-      "infoTooltip": "<strong>Financial Stress Indicator</strong> Kansas City Fed Financial Stress Index (KCFSI): measures stress in US financial markets using 11 indicators including yield spreads, volatility, and cross-correlations. Positive values indicate above-average stress. Source: Federal Reserve Bank of Kansas City."
+      "infoTooltip": "<strong>Financial Stress Indicator</strong> Kansas City Fed Financial Stress Index (KCFSI): measures stress in US financial markets using 11 indicators including yield spreads, volatility, and cross-correlations. Positive values indicate above-average stress. Source: Federal Reserve Bank of Kansas City.",
+      "title": "Financial Stress Indicator",
+      "usFsiValue": "US FSI VALUE",
+      "cissTitle": "EU CISS (Euro Area Systemic Stress)",
+      "notAvailable": "N/A",
+      "interpretation": {
+        "low": "Credit markets functioning normally, equity/bond ratio healthy.",
+        "moderate": "Some deterioration in credit conditions, monitor closely.",
+        "elevated": "Significant credit market stress, defensive positioning warranted.",
+        "severe": "Severe financial stress, systemic risk elevated."
+      },
+      "labels": {
+        "lowStress": "Low Stress",
+        "moderateStress": "Moderate Stress",
+        "elevatedStress": "Elevated Stress",
+        "severeStress": "Severe Stress"
+      },
+      "cissLabels": {
+        "low": "Low",
+        "moderate": "Moderate",
+        "elevated": "Elevated",
+        "high": "High"
+      },
+      "scale": {
+        "noStress": "0 — No stress",
+        "extremeStress": "1 — Extreme stress",
+        "highStress": "High Stress",
+        "lowStress": "Low Stress"
+      },
+      "metrics": {
+        "vix": "VIX",
+        "hySpread": "HY Spread",
+        "hygPrice": "HYG Price",
+        "tltPrice": "TLT Price"
+      },
+      "errors": {
+        "unavailable": "FSI data unavailable",
+        "failedToLoad": "Failed to load"
+      }
     },
     "energyCrisis": {
       "infoTooltip": "<strong>Energy Crisis Tracker</strong> IEA 2026 Energy Crisis Policy Response Tracker. Tracks government measures to conserve energy and support consumers in response to the Middle East conflict and Strait of Hormuz supply disruptions. Covers 60+ countries with nearly 200 policy measures."
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Live AIS vessel tracking through the Strait of Hormuz, the world's most critical oil chokepoint. Monitors tanker counts, disruption events, and weekly flow changes. Approximately 20% of global oil supply transits here daily."
+      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Live AIS vessel tracking through the Strait of Hormuz, the world's most critical oil chokepoint. Monitors tanker counts, disruption events, and weekly flow changes. Approximately 20% of global oil supply transits here daily.",
+      "title": "Hormuz Trade Tracker",
+      "noData": "No data",
+      "notAvailable": "N/A",
+      "chartUnavailable": "Chart data unavailable",
+      "sourcePrefix": "Source:",
+      "units": {
+        "ktPerDay": "kt/day",
+        "generic": "units"
+      },
+      "errors": {
+        "unavailable": "Hormuz data unavailable",
+        "failedToLoad": "Failed to load"
+      }
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Live Webcams</strong> Live feeds from geopolitically significant locations worldwide: conflict zones, capital cities, border crossings, and strategic chokepoints. Streams sourced from YouTube and public networks."
@@ -2224,6 +2332,172 @@
       "defaultNeutral": "Default (Neutral)",
       "titlePrefix": "Framework: {{name}}",
       "titleNone": "Analysis framework"
+    },
+    "sanctionsPressure": {
+      "title": "Sanctions & Designations",
+      "infoTooltip": "OFAC sanctions designations from the SDN and Consolidated Lists. Shows which countries face the highest designation pressure, what programs are driving it, and what has been newly added since the last update.",
+      "loading": "Loading sanctions data...",
+      "unavailable": "Sanctions data unavailable.",
+      "summary": {
+        "new": "New",
+        "vessels": "Vessels",
+        "aircraft": "Aircraft"
+      },
+      "sections": {
+        "countries": "Sanctioned countries",
+        "entries": "Recent designations",
+        "programs": "Programs"
+      },
+      "empty": {
+        "countries": "No country attribution available.",
+        "entries": "No recent designations.",
+        "programs": "No program breakdown."
+      },
+      "footer": {
+        "updated": "Updated {{time}}",
+        "dataset": "dataset {{date}}",
+        "source": "Source: OFAC"
+      },
+      "pills": {
+        "newCount": "+{{count}} new",
+        "new": "new"
+      },
+      "designations_one": "{{count}} designation",
+      "designations_other": "{{count}} designations",
+      "fallbacks": {
+        "unattributed": "Unattributed",
+        "program": "Program",
+        "undated": "undated"
+      }
+    },
+    "radiationWatch": {
+      "title": "Radiation Watch",
+      "infoTooltip": "Seeded EPA RadNet and Safecast readings with anomaly scoring and source-confidence synthesis. This panel answers what is normal, what is elevated, and which anomalies are confirmed versus tentative.",
+      "loading": "Loading radiation data...",
+      "empty": "No radiation observations available.",
+      "baseline": "{{value}} baseline",
+      "flags": {
+        "confirmed": "confirmed",
+        "conflict": "conflict",
+        "cpmDerived": "CPM-derived"
+      },
+      "headers": {
+        "station": "Station",
+        "reading": "Reading",
+        "delta": "Delta",
+        "status": "Status",
+        "observed": "Observed"
+      },
+      "summary": {
+        "anomalies": "Anomalies",
+        "elevated": "Elevated",
+        "confirmed": "Confirmed",
+        "lowConfidence": "Low Confidence",
+        "conflicts": "Conflicts",
+        "spikes": "Spikes"
+      },
+      "footer": {
+        "updated": "Updated {{time}}"
+      },
+      "observed": {
+        "hoursAgo_one": "{{count}}h ago",
+        "hoursAgo_other": "{{count}}h ago",
+        "daysAgo_one": "{{count}}d ago",
+        "daysAgo_other": "{{count}}d ago"
+      },
+      "confidence": {
+        "high": "high confidence",
+        "medium": "medium confidence",
+        "low": "low confidence"
+      }
+    },
+    "defensePatents": {
+      "title": "R&D Signal",
+      "infoTooltip": "Weekly defense and dual-use patent filings by Raytheon, Lockheed, Huawei, DARPA, and other strategic organizations. Categories: H04B (comms), H01L (semiconductors), F42B (ammunition), G06N (AI), C12N (biotech). Source: USPTO PatentsView.",
+      "loading": "Loading R&D filings…",
+      "error": "Failed to load patent data.",
+      "empty": "No filings in this category.",
+      "viewOnUspto": "View on USPTO",
+      "tabs": {
+        "all": "All"
+      },
+      "cpcLabels": {
+        "H04B": "Comms",
+        "H01L": "Semiconductors",
+        "F42B": "Ammunition",
+        "G06N": "AI",
+        "C12N": "Biotech"
+      }
+    },
+    "correlation": {
+      "loading": "Waiting for data...",
+      "empty": "No active convergence detected",
+      "signals_one": "{{count}} signal",
+      "signals_other": "{{count}} signals",
+      "analyzing": "Analyzing...",
+      "viewOnMap": "View on map"
+    },
+    "thermalEscalation": {
+      "title": "Thermal Escalation",
+      "infoTooltip": "Seeded FIRMS/VIIRS thermal anomaly clusters with baseline comparison, persistence tracking, and strategic context. This panel answers where thermal activity is abnormal and which clusters may signal conflict, industrial disruption, or escalation.",
+      "loading": "Loading thermal data...",
+      "empty": "No thermal escalation clusters detected.",
+      "footer": {
+        "updated": "Updated {{time}}"
+      },
+      "summary": {
+        "total": "Total",
+        "elevated": "Elevated",
+        "spikes": "Spikes",
+        "persist": "Persist",
+        "conflict": "Conflict",
+        "strategic": "Strategic"
+      },
+      "badges": {
+        "conflictAdjacent": "conflict-adj",
+        "energyAdjacent": "energy-adj",
+        "industrial": "industrial",
+        "strategic": "strategic"
+      },
+      "observations_one": "{{count}} obs",
+      "observations_other": "{{count}} obs",
+      "sources_one": "{{count}} src",
+      "sources_other": "{{count}} src",
+      "age": {
+        "minutesAgo_one": "{{count}}m ago",
+        "minutesAgo_other": "{{count}}m ago",
+        "hoursAgo_one": "{{count}}h ago",
+        "hoursAgo_other": "{{count}}h ago",
+        "daysAgo_one": "{{count}}d ago",
+        "daysAgo_other": "{{count}}d ago"
+      }
+    },
+    "chokepointStrip": {
+      "title": "Chokepoint Status",
+      "infoTooltip": "Live status for the seven global oil & gas shipping chokepoints. Flow estimates calibrated from Portwatch DWT + AIS observations. See /docs/methodology/chokepoints for methodology.",
+      "unknown": "unknown",
+      "shortName": {
+        "hormuzStrait": "Hormuz",
+        "malaccaStrait": "Malacca",
+        "suez": "Suez",
+        "babElMandeb": "Bab el-Mandeb",
+        "bosphorus": "Turkish Straits",
+        "panama": "Panama",
+        "danishStraits": "Danish Straits"
+      },
+      "flow": {
+        "mbd": "{{value}} mb/d",
+        "pctOfBaseline": "{{pct}}% of baseline"
+      },
+      "errors": {
+        "unavailable": "Chokepoint status unavailable",
+        "noData": "No chokepoint data yet"
+      },
+      "attribution": {
+        "method": "Portwatch DWT + AIS calibration",
+        "sampleLabel": "AIS disruption signals",
+        "creditName": "EIA World Oil Transit Chokepoints"
+      }
     }
   },
   "popups": {

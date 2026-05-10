@@ -86,3 +86,15 @@ export async function initI18n(): Promise<void> {
 export function t(key: string, options?: Record<string, unknown>): string {
   return i18next.t(key, options);
 }
+
+/**
+ * Look up a translation that's expected to be an array (e.g. localized
+ * pricing tier feature lists). Returns null when the key resolves to a
+ * non-array (typical when the locale hasn't translated this entry yet) so
+ * callers can fall back to their English source-of-truth without leaking
+ * the raw key as a string.
+ */
+export function tArray(key: string): string[] | null {
+  const value = i18next.t(key, { returnObjects: true, defaultValue: null });
+  return Array.isArray(value) && value.every(v => typeof v === 'string') ? value : null;
+}

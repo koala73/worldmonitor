@@ -1977,19 +1977,114 @@
       "infoTooltip": "<strong>Liczniki na żywo</strong> Ekstrapolowane liczniki w czasie rzeczywistym dla globalnych wskaźników: wydatki wojskowe, klęski żywiołowe, obciążenie chorobami i więcej. Liczby to statystyczne szacunki oparte na rocznych stawkach danych."
     },
     "diseaseOutbreaks": {
-      "infoTooltip": "<strong>Ogniska chorób</strong> Aktywne alerty o ogniskach od WHO, ProMED i ministerstw zdrowia. Śledzi potwierdzone ogniska, dotknięte regiony, liczbę przypadków i poziomy zagrożenia. Aktualizowane przy publikacji nowych raportów."
+      "infoTooltip": "<strong>Ogniska chorób</strong> Aktywne alerty o ogniskach od WHO, ProMED i ministerstw zdrowia. Śledzi potwierdzone ogniska, dotknięte regiony, liczbę przypadków i poziomy zagrożenia. Aktualizowane przy publikacji nowych raportów.",
+      "title": "Ogniska Chorób",
+      "empty": "Brak ognisk pasujących do filtru",
+      "sourceFallback": "Źródło",
+      "attribution": "WHO · ProMED · HealthMap",
+      "levels": {
+        "alert": "ALERT",
+        "warning": "OSTRZEŻENIE",
+        "watch": "OBSERWACJA"
+      },
+      "time": {
+        "justNow": "przed chwilą",
+        "hoursAgo_one": "{{count}}h temu",
+        "hoursAgo_other": "{{count}}h temu",
+        "daysAgo_one": "{{count}}d temu",
+        "daysAgo_other": "{{count}}d temu"
+      },
+      "filters": {
+        "alert_one": "{{count}} Alert",
+        "alert_other": "{{count}} Alertów",
+        "warning_one": "{{count}} Ostrzeżenie",
+        "warning_other": "{{count}} Ostrzeżeń",
+        "watch_one": "{{count}} Obserwacja",
+        "watch_other": "{{count}} Obserwacji"
+      },
+      "errors": {
+        "noData": "Brak dostępnych danych o ogniskach",
+        "failedToLoad": "Nie udało się załadować"
+      }
     },
     "earningsCalendar": {
-      "infoTooltip": "<strong>Kalendarz wyników</strong> Nadchodzące i ostatnie publikacje wyników dużych spółek giełdowych. Pokazuje szacunki EPS vs. rzeczywiste, przychody i klasyfikację przekroczenia/niedotrzymania. Źródło: dostawcy danych finansowych."
+      "infoTooltip": "<strong>Kalendarz wyników</strong> Nadchodzące i ostatnie publikacje wyników dużych spółek giełdowych. Pokazuje szacunki EPS vs. rzeczywiste, przychody i klasyfikację przekroczenia/niedotrzymania. Źródło: dostawcy danych finansowych.",
+      "title": "Kalendarz Wyników",
+      "today": "DZIŚ · {{date}}",
+      "tomorrow": "JUTRO · {{date}}",
+      "epsActual": "EPS {{value}}",
+      "epsEstimate": "EPS prognoza {{value}}",
+      "revenueActual": "{{value}} przychód",
+      "revenueEstimate": "{{value}} prognoza",
+      "surprise": {
+        "beat": "BEAT",
+        "miss": "MISS",
+        "inLine": "W LINII"
+      },
+      "errors": {
+        "noData": "Brak danych o wynikach",
+        "failedToLoad": "Nie udało się załadować"
+      }
     },
     "economicCalendar": {
       "infoTooltip": "<strong>Kalendarz ekonomiczny</strong> Zaplanowane publikacje makroekonomiczne: CPI, NFP, GDP, PMI i decyzje banków centralnych. Pokazuje prognozę vs. rzeczywistość vs. poprzedni. Wydarzenia o wysokim wpływie wyróżnione. Źródło: dostawcy danych ekonomicznych."
     },
     "fsi": {
-      "infoTooltip": "<strong>Wskaźnik stresu finansowego</strong> Indeks stresu finansowego Fed z Kansas City (KCFSI): mierzy stres na rynkach finansowych USA przy użyciu 11 wskaźników, w tym spreadów rentowności, zmienności i korelacji krzyżowych. Wartości dodatnie wskazują na stres powyżej średniej. Źródło: Federal Reserve Bank of Kansas City."
+      "infoTooltip": "<strong>Wskaźnik stresu finansowego</strong> Indeks stresu finansowego Fed z Kansas City (KCFSI): mierzy stres na rynkach finansowych USA przy użyciu 11 wskaźników, w tym spreadów rentowności, zmienności i korelacji krzyżowych. Wartości dodatnie wskazują na stres powyżej średniej. Źródło: Federal Reserve Bank of Kansas City.",
+      "title": "Wskaźnik Stresu Finansowego",
+      "usFsiValue": "WARTOŚĆ US FSI",
+      "cissTitle": "EU CISS (Systemowy Stres w Strefie Euro)",
+      "notAvailable": "N/D",
+      "interpretation": {
+        "low": "Rynki kredytowe funkcjonują normalnie, stosunek akcji/obligacji zdrowy.",
+        "moderate": "Pewne pogorszenie warunków kredytowych, wymagane ścisłe monitorowanie.",
+        "elevated": "Znaczący stres na rynkach kredytowych, zalecane pozycjonowanie defensywne.",
+        "severe": "Poważny stres finansowy, ryzyko systemowe wzrosło."
+      },
+      "labels": {
+        "lowStress": "Niski Stres",
+        "moderateStress": "Umiarkowany Stres",
+        "elevatedStress": "Podwyższony stres",
+        "severeStress": "Poważny stres"
+      },
+      "cissLabels": {
+        "low": "Niski",
+        "moderate": "Umiarkowany",
+        "elevated": "Podwyższony",
+        "high": "Wysoki"
+      },
+      "scale": {
+        "noStress": "0 — Brak stresu",
+        "extremeStress": "1 — Ekstremalne stres",
+        "highStress": "Wysoki stres",
+        "lowStress": "Niski stres"
+      },
+      "metrics": {
+        "vix": "VIX",
+        "hySpread": "HY Spread",
+        "hygPrice": "HYG Price",
+        "tltPrice": "TLT Price"
+      },
+      "errors": {
+        "unavailable": "Dane FSI niedostępne",
+        "failedToLoad": "Nie udało się załadować"
+      }
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Tracker handlu w Hormuzie</strong> Śledzenie statków AIS w czasie rzeczywistym przez Cieśninę Ormuz, najważniejszy punkt zagrożenia naftowego na świecie. Monitoruje liczbę tankowców, zdarzenia zakłóceń i tygodniowe zmiany przepływów. Około 20% światowych dostaw ropy przechodzi tędy codziennie."
+      "infoTooltip": "<strong>Tracker handlu w Hormuzie</strong> Śledzenie statków AIS w czasie rzeczywistym przez Cieśninę Ormuz, najważniejszy punkt zagrożenia naftowego na świecie. Monitoruje liczbę tankowców, zdarzenia zakłóceń i tygodniowe zmiany przepływów. Około 20% światowych dostaw ropy przechodzi tędy codziennie.",
+      "title": "Tracker Handlu przez Hormuz",
+      "noData": "Brak danych",
+      "notAvailable": "Niedostępne",
+      "chartUnavailable": "Dane wykresu niedostępne",
+      "sourcePrefix": "Źródło:",
+      "units": {
+        "ktPerDay": "kt/dzień",
+        "generic": "jednostek"
+      },
+      "errors": {
+        "unavailable": "Dane Hormuz niedostępne",
+        "failedToLoad": "Nie udało się załadować"
+      }
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Kamery na żywo</strong> Transmisje na żywo z geopolitycznie istotnych miejsc na całym świecie: strefy konfliktu, stolice, przejścia graniczne i strategiczne wąskie gardła. Transmisje z YouTube i sieci publicznych."
@@ -2067,7 +2162,20 @@
       "infoTooltip": "<strong>Ceny konsumenckie</strong> Śledzenie cen koszyka w czasie rzeczywistym:<ul><li><strong>Przegląd</strong>: Indeks artykułów podstawowych, koszyk wartościowy i zmiana tygodniowa</li><li><strong>Kategorie</strong>: Trendy cen dla każdej kategorii z zakresem 30-dniowym</li><li><strong>Zmiany</strong>: Największe wzrosty i spadki cen w tym tygodniu</li><li><strong>Rozpiętość</strong>: Wariancja cen między sprzedawcami dla tego samego koszyka</li></ul>Dane pochodzą ze scrapingu cen sprzedawców w czasie rzeczywistym."
     },
     "marketImplications": {
-      "infoTooltip": "<strong>Implikacje rynkowe AI</strong> Sygnały handlowe generowane przez LLM pochodzące ze stanu geopolitycznego, towarowego i makroekonomicznego w czasie rzeczywistym po każdym cyklu prognozy.<ul><li><strong>Kierunek</strong>: LONG / SHORT / HEDGE z oceną pewności</li><li><strong>Horyzont czasowy</strong>: 1W, 2W, 1M lub 3M</li><li><strong>Katalizator</strong>: Kluczowy czynnik napędzający sygnał</li><li><strong>Ryzyko</strong>: Zastrzeżenie lub warunek unieważnienia</li></ul><em>Wyłącznie do celów informacyjnych. Nie stanowi porady inwestycyjnej.</em>"
+      "infoTooltip": "<strong>Implikacje rynkowe AI</strong> Sygnały handlowe generowane przez LLM pochodzące ze stanu geopolitycznego, towarowego i makroekonomicznego w czasie rzeczywistym po każdym cyklu prognozy.<ul><li><strong>Kierunek</strong>: LONG / SHORT / HEDGE z oceną pewności</li><li><strong>Horyzont czasowy</strong>: 1W, 2W, 1M lub 3M</li><li><strong>Katalizator</strong>: Kluczowy czynnik napędzający sygnał</li><li><strong>Ryzyko</strong>: Zastrzeżenie lub warunek unieważnienia</li></ul><em>Wyłącznie do celów informacyjnych. Nie stanowi porady inwestycyjnej.</em>",
+      "title": "Implikacje dla Rynku AI",
+      "directions": {
+        "long": "LONG",
+        "short": "SHORT",
+        "hedge": "HEDGE"
+      },
+      "rationale": "Uzasadnienie:",
+      "driver": "Czynnik:",
+      "appliesToNext": "Dotyczy następnej regeneracji AI",
+      "signals_one": "{{count}} sygnał",
+      "signals_other": "{{count}} sygnały",
+      "disclaimer": "Sygnały handlowe generowane przez AI wyłącznie do celów informacyjnych. Nie stanowią porady inwestycyjnej. Zawsze przeprowadź własne badania.",
+      "unavailable": "Implikacje rynkowe AI są generowane po każdym uruchomieniu prognozy. Wróć za chwilę."
     },
     "forecast": {
       "infoTooltip": "<strong>AI Forecasts</strong> Szacunki prawdopodobieństwa generowane przez AI dla zdarzeń geopolitycznych i gospodarczych:<ul><li>Pokrycie międzydomenowe: konflikty, rynki, łańcuchy dostaw, cyberbezpieczeństwo, polityka</li><li>Każda prognoza pokazuje szacunkowe prawdopodobieństwo, poziom pewności i horyzont czasowy</li><li>Skalibrowana względem bazel rynków predykcyjnych tam, gdzie są dostępne</li></ul>Prognozy aktualizują się w miarę napływu nowych sygnałów wywiadowczych. Filtruj wg domeny za pomocą zakładek powyżej."
@@ -2162,6 +2270,172 @@
       "defaultNeutral": "Domyślny (Neutralny)",
       "titlePrefix": "Framework: {{name}}",
       "titleNone": "Framework analizy"
+    },
+    "sanctionsPressure": {
+      "title": "Sankcje i desygnacje",
+      "infoTooltip": "Desygnacje sankcji OFAC z list SDN i konsolidowanej. Pokazuje, które kraje napotykają największą presję desygnacji, jakie programy ją napędzają i co zostało niedawno dodane od ostatniej aktualizacji.",
+      "loading": "Ładowanie danych sankcji...",
+      "unavailable": "Dane sankcji niedostępne.",
+      "summary": {
+        "new": "Nowe",
+        "vessels": "Statki",
+        "aircraft": "Statki powietrzne"
+      },
+      "sections": {
+        "countries": "Kraje objęte sankcjami",
+        "entries": "Niedawne desygnacje",
+        "programs": "Programy"
+      },
+      "empty": {
+        "countries": "Brak przypisania kraju.",
+        "entries": "Brak niedawnych desygnacji.",
+        "programs": "Brak podziału programów."
+      },
+      "footer": {
+        "updated": "Zaktualizowane {{time}}",
+        "dataset": "zestaw danych {{date}}",
+        "source": "Źródło: OFAC"
+      },
+      "pills": {
+        "newCount": "+{{count}} nowych",
+        "new": "nowe"
+      },
+      "designations_one": "{{count}} desygnacja",
+      "designations_other": "{{count}} desygnacji",
+      "fallbacks": {
+        "unattributed": "Nieprzypisane",
+        "program": "Program",
+        "undated": "bez daty"
+      }
+    },
+    "radiationWatch": {
+      "title": "Radiation Watch",
+      "infoTooltip": "Odczyty EPA RadNet i Safecast wzbogacone o scoring anomalii i syntezę wiarygodności źródła. Panel pokazuje, co jest normalne, co jest podwyższone i które anomalie są potwierdzone w stosunku do orientacyjnych.",
+      "loading": "Ładowanie danych promieniowania...",
+      "empty": "Brak dostępnych obserwacji promieniowania.",
+      "baseline": "{{value}} baseline",
+      "flags": {
+        "confirmed": "potwierdzone",
+        "conflict": "konflikt",
+        "cpmDerived": "CPM-derived"
+      },
+      "headers": {
+        "station": "Stacja",
+        "reading": "Pomiar",
+        "delta": "Delta",
+        "status": "Status",
+        "observed": "Zaobserwowano"
+      },
+      "summary": {
+        "anomalies": "Anomalie",
+        "elevated": "Podwyższone",
+        "confirmed": "Potwierdzone",
+        "lowConfidence": "Niska pewność",
+        "conflicts": "Konflikty",
+        "spikes": "Skoki"
+      },
+      "footer": {
+        "updated": "Zaktualizowano {{time}}"
+      },
+      "observed": {
+        "hoursAgo_one": "{{count}}h temu",
+        "hoursAgo_other": "{{count}}h temu",
+        "daysAgo_one": "{{count}}d temu",
+        "daysAgo_other": "{{count}}d temu"
+      },
+      "confidence": {
+        "high": "wysoka pewność",
+        "medium": "średnia pewność",
+        "low": "niska pewność"
+      }
+    },
+    "defensePatents": {
+      "title": "Sygnał B+R",
+      "infoTooltip": "Tygodniowe zgłoszenia patentów obronnych i dual-use przez Raytheon, Lockheed, Huawei, DARPA i inne organizacje strategiczne. Kategorie: H04B (komunikacja), H01L (półprzewodniki), F42B (amunicja), G06N (AI), C12N (biotechnologia). Źródło: USPTO PatentsView.",
+      "loading": "Ładowanie zgłoszeń B+R…",
+      "error": "Nie udało się załadować danych patentowych.",
+      "empty": "Brak zgłoszeń w tej kategorii.",
+      "viewOnUspto": "Wyświetl na USPTO",
+      "tabs": {
+        "all": "Wszystkie"
+      },
+      "cpcLabels": {
+        "H04B": "Komunikacja",
+        "H01L": "Półprzewodniki",
+        "F42B": "Amunicja",
+        "G06N": "AI",
+        "C12N": "Biotechnologia"
+      }
+    },
+    "correlation": {
+      "loading": "Oczekiwanie na dane...",
+      "empty": "Brak wykrytej zbieżności",
+      "signals_one": "{{count}} sygnał",
+      "signals_other": "{{count}} sygnały",
+      "analyzing": "Analiza...",
+      "viewOnMap": "Wyświetl na mapie"
+    },
+    "thermalEscalation": {
+      "title": "Eskalacja termiczna",
+      "infoTooltip": "Skupiska anomalii termicznych FIRMS/VIIRS z porównaniem baseline'u, śledzeniem trwałości i kontekstem strategicznym. Ten panel pokazuje, gdzie aktywność termiczna jest anormalna i które skupiska mogą sygnalizować konflikt, zakłócenia przemysłowe lub eskalację.",
+      "loading": "Ładowanie danych termicznych...",
+      "empty": "Brak wykrytych skupisk eskalacji termicznej.",
+      "footer": {
+        "updated": "Zaktualizowano {{time}}"
+      },
+      "summary": {
+        "total": "Razem",
+        "elevated": "Podwyższone",
+        "spikes": "Piki",
+        "persist": "Utrzymanie",
+        "conflict": "Konflikt",
+        "strategic": "Strategiczny"
+      },
+      "badges": {
+        "conflictAdjacent": "konflikt-sąsiedni",
+        "energyAdjacent": "energia-sąsiednia",
+        "industrial": "przemysłowy",
+        "strategic": "strategiczny"
+      },
+      "observations_one": "{{count}} obs",
+      "observations_other": "{{count}} obs",
+      "sources_one": "{{count}} źr",
+      "sources_other": "{{count}} źr",
+      "age": {
+        "minutesAgo_one": "{{count}}m temu",
+        "minutesAgo_other": "{{count}}m temu",
+        "hoursAgo_one": "{{count}}h temu",
+        "hoursAgo_other": "{{count}}h temu",
+        "daysAgo_one": "{{count}}d temu",
+        "daysAgo_other": "{{count}}d temu"
+      }
+    },
+    "chokepointStrip": {
+      "title": "Status Punktów Krytycznych",
+      "infoTooltip": "Aktualny status siedmiu światowych punktów krytycznych transportu ropy naftowej i gazu. Oszacowania przepływu skalibrowane na podstawie obserwacji Portwatch DWT + AIS. Zobacz /docs/methodology/chokepoints aby poznać metodologię.",
+      "unknown": "nieznany",
+      "shortName": {
+        "hormuzStrait": "Hormuz",
+        "malaccaStrait": "Malakka",
+        "suez": "Sueż",
+        "babElMandeb": "Bab el-Mandeb",
+        "bosphorus": "Cieśniny Tureckie",
+        "panama": "Panama",
+        "danishStraits": "Cieśniny Duńskie"
+      },
+      "flow": {
+        "mbd": "{{value}} tys. barylek/d",
+        "pctOfBaseline": "{{pct}}% wartości bazowej"
+      },
+      "errors": {
+        "unavailable": "Status punktu krytycznego niedostępny",
+        "noData": "Brak danych punktu krytycznego"
+      },
+      "attribution": {
+        "method": "Kalibracja Portwatch DWT + AIS",
+        "sampleLabel": "Sygnały zakłóceń AIS",
+        "creditName": "EIA Światowe Punkty Krytyczne Transportu Ropy Naftowej"
+      }
     }
   },
   "popups": {

@@ -362,5 +362,70 @@
     "description": "Lớp AI địa chính trị. Hỏi nó, đăng ký nó, xây dựng trên nó. Chat WM Analyst trên 30+ dịch vụ trực tiếp, bản tóm tắt AI gửi hàng ngày, hai lần mỗi ngày hoặc hàng tuần đến Slack, Discord, Telegram, Email hoặc webhook, trình xây dựng widget tùy chỉnh (HTML/CSS/JS + AI), và trình kết nối MCP cho Claude, GPT và LLM tùy chỉnh.",
     "ogTitle": "World Monitor Pro — Lớp AI Địa chính trị",
     "ogDescription": "Hỏi nó, đăng ký nó, xây dựng trên nó. Chat WM Analyst, bản tóm tắt AI theo lịch của bạn (hàng ngày, hai lần mỗi ngày hoặc hàng tuần), trình xây dựng widget tùy chỉnh, và MCP cho Claude/GPT — trên 30+ dịch vụ trực tiếp dưới một khóa."
+  },
+  "pricing": {
+    "suffixForever": "mãi mãi",
+    "suffixTailored": "được tùy chỉnh cho bạn",
+    "suffixPerMonth": "/tháng",
+    "suffixPerYear": "/năm",
+    "amountCustom": "Tùy chỉnh",
+    "opening": "Đang mở…",
+    "headerTitle": "Chọn Gói Của Bạn",
+    "headerSubtitle": "Từ giám sát thời gian thực đến cơ sở hạ tầng trí tuệ toàn diện. Chọn mức giá phù hợp với nhiệm vụ của bạn.",
+    "billingMonthly": "Hàng tháng",
+    "billingAnnual": "Hàng năm",
+    "saveAnnual": "Tiết kiệm 17%",
+    "mostPopular": "Phổ biến nhất",
+    "promoCodeNote": "Có mã khuyến mãi? Nhập nó khi thanh toán.",
+    "tiers": {
+      "free": {
+        "description": "Bắt đầu với các tính năng cơ bản",
+        "features": [
+          "Bảng điều khiển cốt lõi",
+          "Nguồn cấp tin tức toàn cầu",
+          "Cảnh báo động đất & thời tiết",
+          "Chế độ xem bản đồ cơ bản"
+        ],
+        "cta": "Bắt đầu"
+      },
+      "pro": {
+        "description": "Bảng điều khiển trí tuệ đầy đủ",
+        "features": [
+          "Tất cả trong Miễn phí",
+          "Phân tích cổ phiếu AI & backtesting",
+          "Tóm tắt thị trường hàng ngày",
+          "Theo dõi quân sự & địa chính trị",
+          "Trình tạo widget tùy chỉnh",
+          "Trình kết nối dữ liệu MCP",
+          "Làm mới dữ liệu ưu tiên"
+        ]
+      },
+      "api": {
+        "description": "Truy cập theo chương trình vào dữ liệu trí tuệ",
+        "features": [
+          "Truy cập REST API",
+          "Luồng dữ liệu thời gian thực",
+          "1.000 yêu cầu/ngày",
+          "Thông báo Webhook",
+          "Xuất dữ liệu tùy chỉnh"
+        ]
+      },
+      "enterprise": {
+        "description": "Giải pháp tùy chỉnh cho các tổ chức",
+        "features": [
+          "Tất cả trong Pro + API",
+          "Yêu cầu API không giới hạn",
+          "Hỗ trợ chuyên dụng",
+          "Tích hợp tùy chỉnh",
+          "Bảo đảm SLA",
+          "Tuỳ chọn tại chỗ"
+        ],
+        "cta": "Liên hệ Phòng bán hàng"
+      }
+    },
+    "cta": {
+      "checkoutDefault": "Bắt Đầu",
+      "learnMore": "Tìm Hiểu Thêm"
+    }
   }
 }

@@ -1764,19 +1764,114 @@
       "infoTooltip": "<strong>Live tellers</strong> Geëxtrapoleerde realtimetellers voor mondiale statistieken: militaire uitgaven, natuurrampen, ziektelast en meer. Cijfers zijn statistische schattingen op basis van jaarlijkse datacijfers."
     },
     "diseaseOutbreaks": {
-      "infoTooltip": "<strong>Ziekte-uitbraken</strong> Actieve uitbraakwaarschuwingen van WHO, ProMED en ministeries van gezondheid. Volgt bevestigde uitbraken, getroffen regio's, aantallen gevallen en dreigingsniveaus. Wordt bijgewerkt bij publicatie van nieuwe rapporten."
+      "infoTooltip": "<strong>Ziekte-uitbraken</strong> Actieve uitbraakwaarschuwingen van WHO, ProMED en ministeries van gezondheid. Volgt bevestigde uitbraken, getroffen regio's, aantallen gevallen en dreigingsniveaus. Wordt bijgewerkt bij publicatie van nieuwe rapporten.",
+      "title": "Ziekteuitbraken",
+      "empty": "Geen uitbraken komen overeen met filter",
+      "sourceFallback": "Bron",
+      "attribution": "WHO · ProMED · HealthMap",
+      "levels": {
+        "alert": "ALERT",
+        "warning": "WAARSCHUWING",
+        "watch": "TOEZICHT"
+      },
+      "time": {
+        "justNow": "zojuist",
+        "hoursAgo_one": "{{count}}u geleden",
+        "hoursAgo_other": "{{count}}u geleden",
+        "daysAgo_one": "{{count}}d geleden",
+        "daysAgo_other": "{{count}}d geleden"
+      },
+      "filters": {
+        "alert_one": "{{count}} Waarschuwing",
+        "alert_other": "{{count}} Waarschuwingen",
+        "warning_one": "{{count}} Advies",
+        "warning_other": "{{count}} Adviezen",
+        "watch_one": "{{count}} Controle",
+        "watch_other": "{{count}} Controles"
+      },
+      "errors": {
+        "noData": "Geen uitbraakgegevens beschikbaar",
+        "failedToLoad": "Laden mislukt"
+      }
     },
     "earningsCalendar": {
-      "infoTooltip": "<strong>Winstkalender</strong> Aankomende en recente winstpublicaties van grote beursgenoteerde bedrijven. Toont EPS-schattingen vs. werkelijk, omzet en classificatie overtreffing/mislukking. Bron: financiële dataproviders."
+      "infoTooltip": "<strong>Winstkalender</strong> Aankomende en recente winstpublicaties van grote beursgenoteerde bedrijven. Toont EPS-schattingen vs. werkelijk, omzet en classificatie overtreffing/mislukking. Bron: financiële dataproviders.",
+      "title": "Winstverwachtingskalender",
+      "today": "VANDAAG · {{date}}",
+      "tomorrow": "MORGEN · {{date}}",
+      "epsActual": "EPS {{value}}",
+      "epsEstimate": "EPS schatting {{value}}",
+      "revenueActual": "{{value}} omzet",
+      "revenueEstimate": "{{value}} schatting",
+      "surprise": {
+        "beat": "BETER DAN VERWACHT",
+        "miss": "SLECHTER DAN VERWACHT",
+        "inLine": "IN LIJN"
+      },
+      "errors": {
+        "noData": "Geen winstverwachtingsgegevens",
+        "failedToLoad": "Laden mislukt"
+      }
     },
     "economicCalendar": {
       "infoTooltip": "<strong>Economische kalender</strong> Geplande macro-economische publicaties: CPI, NFP, GDP, PMI en centrale bankbesluiten. Toont prognose vs. werkelijk vs. vorig. Gebeurtenissen met hoge impact zijn gemarkeerd. Bron: economische dataproviders."
     },
     "fsi": {
-      "infoTooltip": "<strong>Financiële stress-indicator</strong> Kansas City Fed Financial Stress Index (KCFSI): meet stress op Amerikaanse financiële markten aan de hand van 11 indicatoren waaronder rentespreads, volatiliteit en kruiscorrelaties. Positieve waarden duiden op bovengemiddelde stress. Bron: Federal Reserve Bank of Kansas City."
+      "infoTooltip": "<strong>Financiële stress-indicator</strong> Kansas City Fed Financial Stress Index (KCFSI): meet stress op Amerikaanse financiële markten aan de hand van 11 indicatoren waaronder rentespreads, volatiliteit en kruiscorrelaties. Positieve waarden duiden op bovengemiddelde stress. Bron: Federal Reserve Bank of Kansas City.",
+      "title": "Financiële stressindicator",
+      "usFsiValue": "US FSI-WAARDE",
+      "cissTitle": "EU CISS (systeemstress eurozone)",
+      "notAvailable": "N.v.t.",
+      "interpretation": {
+        "low": "Kredietmarkten functioneren normaal, aandelen-/obligatieratio gezond.",
+        "moderate": "Enige verslechtering van kredietcondities, monitoren vereist.",
+        "elevated": "Aanzienlijke kredietmarktspanning, defensief positioneren aanbevolen.",
+        "severe": "Ernstige financiële stress, systeemrisico verhoogd."
+      },
+      "labels": {
+        "lowStress": "Lage spanning",
+        "moderateStress": "Matige spanning",
+        "elevatedStress": "Verhoogde stress",
+        "severeStress": "Ernstige stress"
+      },
+      "cissLabels": {
+        "low": "Laag",
+        "moderate": "Gemiddeld",
+        "elevated": "Verhoogd",
+        "high": "Hoog"
+      },
+      "scale": {
+        "noStress": "0 — Geen stress",
+        "extremeStress": "1 — Extreme stress",
+        "highStress": "Hoge stress",
+        "lowStress": "Lage stress"
+      },
+      "metrics": {
+        "vix": "VIX",
+        "hySpread": "HY Spread",
+        "hygPrice": "HYG-prijs",
+        "tltPrice": "TLT-prijs"
+      },
+      "errors": {
+        "unavailable": "FSI-gegevens niet beschikbaar",
+        "failedToLoad": "Laden mislukt"
+      }
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Hormuz-handelstracker</strong> Live AIS-scheepvaarttracking door de Straat van Hormuz, het meest kritieke olieknelpunt ter wereld. Monitort tankeraantallen, verstoringsevenementen en wekelijkse stroomwijzigingen. Ongeveer 20% van de wereldwijde olietoevoer passeert hier dagelijks."
+      "infoTooltip": "<strong>Hormuz-handelstracker</strong> Live AIS-scheepvaarttracking door de Straat van Hormuz, het meest kritieke olieknelpunt ter wereld. Monitort tankeraantallen, verstoringsevenementen en wekelijkse stroomwijzigingen. Ongeveer 20% van de wereldwijde olietoevoer passeert hier dagelijks.",
+      "title": "Hormuz-handelstracker",
+      "noData": "Geen gegevens",
+      "notAvailable": "N/A",
+      "chartUnavailable": "Grafiekgegevens niet beschikbaar",
+      "sourcePrefix": "Bron:",
+      "units": {
+        "ktPerDay": "kt/dag",
+        "generic": "eenheden"
+      },
+      "errors": {
+        "unavailable": "Hormuz-gegevens niet beschikbaar",
+        "failedToLoad": "Laden mislukt"
+      }
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Live webcams</strong> Livestreams van geopolitiek significante locaties wereldwijd: conflictzones, hoofdsteden, grensovergangen en strategische knelpunten. Streams van YouTube en openbare netwerken."
@@ -1854,7 +1949,20 @@
       "infoTooltip": "<strong>Consumentenprijzen</strong> Realtime-prijsvolging van manden:<ul><li><strong>Overzicht</strong>: Essentiëlenindex, waardenmand en week-op-week-wijziging</li><li><strong>Categorieën</strong>: Prijsontwikkelingen per categorie met 30-dagenbereik</li><li><strong>Bewegingen</strong>: Grootste stijgende en dalende items deze week</li><li><strong>Spread</strong>: Prijsverschillen tussen retailers voor dezelfde mand</li></ul>Gegevens afkomstig van live retailerprijsscraping."
     },
     "marketImplications": {
-      "infoTooltip": "<strong>AI-marktimplicaties</strong> Door LLM gegenereerde handelssignalen afgeleid van live geopolitieke, grondstof- en macrothema's na elke voorspellingscyclus.<ul><li><strong>Richting</strong>: LONG / SHORT / HEDGE met betrouwbaarheidsrating</li><li><strong>Periode</strong>: 1W, 2W, 1M of 3M horizon</li><li><strong>Driver</strong>: Belangrijkste katalysator achter het signaal</li><li><strong>Risico</strong>: Voorbehoud of ongeldigheidsvoorwaarde</li></ul><em>Uitsluitend voor informatiedoeleinden. Geen beleggingsadvies.</em>"
+      "infoTooltip": "<strong>AI-marktimplicaties</strong> Door LLM gegenereerde handelssignalen afgeleid van live geopolitieke, grondstof- en macrothema's na elke voorspellingscyclus.<ul><li><strong>Richting</strong>: LONG / SHORT / HEDGE met betrouwbaarheidsrating</li><li><strong>Periode</strong>: 1W, 2W, 1M of 3M horizon</li><li><strong>Driver</strong>: Belangrijkste katalysator achter het signaal</li><li><strong>Risico</strong>: Voorbehoud of ongeldigheidsvoorwaarde</li></ul><em>Uitsluitend voor informatiedoeleinden. Geen beleggingsadvies.</em>",
+      "title": "AI-marktimplicaties",
+      "directions": {
+        "long": "LONG",
+        "short": "SHORT",
+        "hedge": "HEDGE"
+      },
+      "rationale": "Rationale:",
+      "driver": "Driver:",
+      "appliesToNext": "Van toepassing op volgende AI-regeneratie",
+      "signals_one": "{{count}} signaal",
+      "signals_other": "{{count}} signalen",
+      "disclaimer": "Door AI gegenereerde handelssignalen alleen voor informatiedoeleinden. Geen beleggingsadvies. Voer altijd uw eigen onderzoek uit.",
+      "unavailable": "AI-marktimplicaties worden na elke forecastrun gegenereerd. Kom binnenkort terug."
     },
     "forecast": {
       "infoTooltip": "<strong>AI-prognoses</strong> Door AI gegenereerde waarschijnlijkheidsschattingen voor geopolitieke en economische gebeurtenissen:<ul><li>Cross-domain dekking: conflict, markten, toeleveringsketen, cyber, politiek</li><li>Elke prognose toont geschatte waarschijnlijkheid, betrouwbaarheidsniveau en tijdshorizon</li><li>Gekalibreerd tegen voorspellingsmarkt basislijnen waar beschikbaar</li></ul>Prognoses worden bijgewerkt wanneer nieuwe inlichtingssignalen binnenkomen. Filter op domein met behulp van de tabbladen hierboven."
@@ -1949,6 +2057,172 @@
       "defaultNeutral": "Standaard (Neutraal)",
       "titlePrefix": "Framework: {{name}}",
       "titleNone": "Analyseframework"
+    },
+    "sanctionsPressure": {
+      "title": "Sancties & Aanwijzingen",
+      "infoTooltip": "OFAC-sanctiesaanwijzingen uit de SDN- en Geconsolideerde Lijsten. Toont welke landen het meeste druk van aanwijzingen ervaren, welke programma's dit veroorzaken, en wat sinds de laatste update is toegevoegd.",
+      "loading": "Sanctiegegevens laden...",
+      "unavailable": "Sanctiegegevens niet beschikbaar.",
+      "summary": {
+        "new": "Nieuw",
+        "vessels": "Schepen",
+        "aircraft": "Luchtvaartuigen"
+      },
+      "sections": {
+        "countries": "Gesanctioneerde landen",
+        "entries": "Recente aanwijzingen",
+        "programs": "Programma's"
+      },
+      "empty": {
+        "countries": "Geen landenattributie beschikbaar.",
+        "entries": "Geen recente aanwijzingen.",
+        "programs": "Geen programmaoverzicht."
+      },
+      "footer": {
+        "updated": "Bijgewerkt {{time}}",
+        "dataset": "dataset {{date}}",
+        "source": "Bron: OFAC"
+      },
+      "pills": {
+        "newCount": "+{{count}} nieuw",
+        "new": "nieuw"
+      },
+      "designations_one": "{{count}} aanwijzing",
+      "designations_other": "{{count}} aanwijzingen",
+      "fallbacks": {
+        "unattributed": "Niet toegewezen",
+        "program": "Programma",
+        "undated": "zonder datum"
+      }
+    },
+    "radiationWatch": {
+      "title": "Stralingsbewaking",
+      "infoTooltip": "EPA RadNet en Safecast-metingen met anomaliescoring en bron-betrouwbaarheidssynthese. Dit paneel geeft antwoord op wat normaal is, wat verhoogd is, en welke afwijkingen bevestigd versus voorlopig zijn.",
+      "loading": "Stralingsgegeven laden...",
+      "empty": "Geen stralingsmetingen beschikbaar.",
+      "baseline": "{{value}} basislijn",
+      "flags": {
+        "confirmed": "bevestigd",
+        "conflict": "conflict",
+        "cpmDerived": "CPM-afgeleid"
+      },
+      "headers": {
+        "station": "Station",
+        "reading": "Meting",
+        "delta": "Delta",
+        "status": "Status",
+        "observed": "Waargenomen"
+      },
+      "summary": {
+        "anomalies": "Afwijkingen",
+        "elevated": "Verhoogd",
+        "confirmed": "Bevestigd",
+        "lowConfidence": "Lage betrouwbaarheid",
+        "conflicts": "Conflicten",
+        "spikes": "Pieken"
+      },
+      "footer": {
+        "updated": "Bijgewerkt {{time}}"
+      },
+      "observed": {
+        "hoursAgo_one": "{{count}}u geleden",
+        "hoursAgo_other": "{{count}}u geleden",
+        "daysAgo_one": "{{count}}d geleden",
+        "daysAgo_other": "{{count}}d geleden"
+      },
+      "confidence": {
+        "high": "hoge betrouwbaarheid",
+        "medium": "middelmatige betrouwbaarheid",
+        "low": "lage betrouwbaarheid"
+      }
+    },
+    "defensePatents": {
+      "title": "O&O-signaal",
+      "infoTooltip": "Wekelijkse verdedigings- en dual-use patentaanvragen van Raytheon, Lockheed, Huawei, DARPA en andere strategische organisaties. Categorieën: H04B (comms), H01L (halfgeleiders), F42B (munitie), G06N (AI), C12N (biotech). Bron: USPTO PatentsView.",
+      "loading": "O&O-inzendingen laden…",
+      "error": "Patentgegevens kunnen niet worden geladen.",
+      "empty": "Geen inzendingen in deze categorie.",
+      "viewOnUspto": "Bekijken op USPTO",
+      "tabs": {
+        "all": "Alle"
+      },
+      "cpcLabels": {
+        "H04B": "Comms",
+        "H01L": "Halfgeleiders",
+        "F42B": "Munitie",
+        "G06N": "AI",
+        "C12N": "Biotech"
+      }
+    },
+    "correlation": {
+      "loading": "Wachten op gegevens...",
+      "empty": "Geen actieve convergentie gedetecteerd",
+      "signals_one": "{{count}} signaal",
+      "signals_other": "{{count}} signalen",
+      "analyzing": "Analyseren...",
+      "viewOnMap": "Bekijken op kaart"
+    },
+    "thermalEscalation": {
+      "title": "Thermische escalatie",
+      "infoTooltip": "FIRMS/VIIRS thermische anomaliecluster met basislijvergelijking, persistentietracking en strategische context. Dit paneel toont waar thermische activiteit abnormaal is en welke clusters mogelijk conflict, industriële verstoring of escalatie kunnen aangeven.",
+      "loading": "Thermische gegevens laden...",
+      "empty": "Geen thermische escalatieclusters gedetecteerd.",
+      "footer": {
+        "updated": "Bijgewerkt {{time}}"
+      },
+      "summary": {
+        "total": "Totaal",
+        "elevated": "Verhoogd",
+        "spikes": "Pieken",
+        "persist": "Aanhoudend",
+        "conflict": "Conflict",
+        "strategic": "Strategisch"
+      },
+      "badges": {
+        "conflictAdjacent": "conflict-adj",
+        "energyAdjacent": "energy-adj",
+        "industrial": "industrial",
+        "strategic": "strategic"
+      },
+      "observations_one": "{{count}} obs",
+      "observations_other": "{{count}} obs",
+      "sources_one": "{{count}} src",
+      "sources_other": "{{count}} src",
+      "age": {
+        "minutesAgo_one": "{{count}}m geleden",
+        "minutesAgo_other": "{{count}}m geleden",
+        "hoursAgo_one": "{{count}}u geleden",
+        "hoursAgo_other": "{{count}}u geleden",
+        "daysAgo_one": "{{count}}d geleden",
+        "daysAgo_other": "{{count}}d geleden"
+      }
+    },
+    "chokepointStrip": {
+      "title": "Status Chokepunten",
+      "infoTooltip": "Live status voor de zeven wereldwijde oli- en gastransport-chokepunten. Stroomramingen gekalibreerd via Portwatch DWT + AIS-waarnemingen. Zie /docs/methodology/chokepoints voor methodologie.",
+      "unknown": "onbekend",
+      "shortName": {
+        "hormuzStrait": "Hormuz",
+        "malaccaStrait": "Malakka",
+        "suez": "Suez",
+        "babElMandeb": "Bab el-Mandeb",
+        "bosphorus": "Turkse Straten",
+        "panama": "Panama",
+        "danishStraits": "Deense Straten"
+      },
+      "flow": {
+        "mbd": "{{value}} mb/d",
+        "pctOfBaseline": "{{pct}}% van baseline"
+      },
+      "errors": {
+        "unavailable": "Chokepunt-status niet beschikbaar",
+        "noData": "Nog geen chokepunt-gegevens"
+      },
+      "attribution": {
+        "method": "Portwatch DWT + AIS-kalibratie",
+        "sampleLabel": "AIS-verstoringssignalen",
+        "creditName": "EIA World Oil Transit Chokepoints"
+      }
     }
   },
   "popups": {

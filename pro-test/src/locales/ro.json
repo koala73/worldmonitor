@@ -362,5 +362,70 @@
     "description": "Stratul geopolitic AI. Întrebați-l, abonați-vă la el, construiți pe el. WM Analyst chat în 30+ servicii live, un rezumat AI livrat zilnic, de două ori pe zi sau săptămânal către Slack, Discord, Telegram, Email sau webhook, un constructor de widget-uri personalizat (HTML/CSS/JS + AI) și conectori MCP pentru Claude, GPT și LLM-uri personalizate.",
     "ogTitle": "World Monitor Pro — Stratul Geopolitic AI",
     "ogDescription": "Întrebați-l, abonați-vă la el, construiți pe el. WM Analyst chat, un rezumat AI după programul dvs. (zilnic, de două ori pe zi sau săptămânal), constructor de widget-uri personalizat și MCP pentru Claude/GPT — în 30+ servicii live sub o singură cheie."
+  },
+  "pricing": {
+    "suffixForever": "pentru totdeauna",
+    "suffixTailored": "adaptat pentru tine",
+    "suffixPerMonth": "/lună",
+    "suffixPerYear": "/an",
+    "amountCustom": "Personalizat",
+    "opening": "Se deschide…",
+    "headerTitle": "Alegeți Planul Dumneavoastră",
+    "headerSubtitle": "De la monitorizarea în timp real la infrastructura completă de intelligence. Alegeți nivelul potrivit pentru misiunea dumneavoastră.",
+    "billingMonthly": "Lunar",
+    "billingAnnual": "Anual",
+    "saveAnnual": "Economisiți 17%",
+    "mostPopular": "Cel Mai Popular",
+    "promoCodeNote": "Aveți un cod promo? Introduceți-l la finalizarea comenzii.",
+    "tiers": {
+      "free": {
+        "description": "Începeți cu elementele esențiale",
+        "features": [
+          "Panouri de bază ale tabloului de bord",
+          "Flux de știri global",
+          "Alerte pentru cutremure și vreme",
+          "Vizualizare hartă de bază"
+        ],
+        "cta": "Începeți"
+      },
+      "pro": {
+        "description": "Tablou de bord complet de intelligence",
+        "features": [
+          "Totul din Gratuit",
+          "Analiza și backtesting pentru acțiuni cu AI",
+          "Rezumate zilnice de piață",
+          "Urmărirea militară și geopolitică",
+          "Constructor de widget-uri personalizate",
+          "Conectoare de date MCP",
+          "Reîmprospătare prioritară a datelor"
+        ]
+      },
+      "api": {
+        "description": "Acces programatic la date de intelligence",
+        "features": [
+          "Acces REST API",
+          "Fluxuri de date în timp real",
+          "1.000 de cereri/zi",
+          "Notificări webhook",
+          "Exporturi de date personalizate"
+        ]
+      },
+      "enterprise": {
+        "description": "Soluții personalizate pentru organizații",
+        "features": [
+          "Totul din Pro + API",
+          "Cereri API nelimitate",
+          "Suport dedicat",
+          "Integrări personalizate",
+          "Garanție SLA",
+          "Opțiune on-premise"
+        ],
+        "cta": "Contactați Vânzări"
+      }
+    },
+    "cta": {
+      "checkoutDefault": "Să încep",
+      "learnMore": "Aflați mai multe"
+    }
   }
 }
