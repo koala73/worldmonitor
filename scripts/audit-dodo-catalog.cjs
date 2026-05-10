@@ -144,8 +144,12 @@ function loadCatalogProductIds() {
 // ---------------------------------------------------------------------------
 // Heuristic: given a Dodo product (name + price + interval), suggest the
 // closest planKey in our catalog by display-name fuzzy match.
+//
+// The hardcoded `tokens` list mirrors the planKey set in
+// convex/config/productCatalog.ts. If new planKeys are added, extend this
+// list to keep the suggestion accurate.
 // ---------------------------------------------------------------------------
-function suggestPlanKey(dodoProduct, catalogIds) {
+function suggestPlanKey(dodoProduct) {
   const name = (dodoProduct.name || '').toLowerCase();
   // Keep these in lockstep with PRODUCT_CATALOG planKeys in productCatalog.ts.
   // Order matters — first-match-wins. List most-specific multi-token

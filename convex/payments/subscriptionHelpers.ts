@@ -261,15 +261,28 @@ export async function recomputeEntitlementFromAllSubs(
 /**
  * Fallback plan key when a webhook references a Dodo product ID we don't
  * recognize (operator edited a product in the Dodo dashboard, didn't update
- * our catalog). Picked to be the cheapest entitlement that still grants
- * paid features — better to over-grant than under-grant a paying customer
- * who is already on the hook for the subscription on Dodo's side.
+ * our catalog).
+ *
+ * Picked as the HIGHEST-tier paid plan to maximise over-grant. Rationale:
+ * we don't know what the customer paid for, but they ARE paying (the
+ * webhook is from Dodo for an active subscription). The downside of
+ * over-grant — a Pro customer briefly gets Enterprise features until
+ * ops fixes the catalog — is bounded and cheap. The downside of under-
+ * grant — an Enterprise customer silently loses apiAccess + priority
+ * support mid-billing-cycle because we mapped them to pro_monthly
+ * (tier 1, apiAccess: false) — is a real-money regression on the exact
+ * customers this fallback is supposed to protect.
  *
  * The "fail open" branch in `resolvePlanKey` ALSO fires a loud
  * console.error which Convex auto-Sentry forwards, so ops gets paged
- * before the customer notices their entitlement is wrong.
+ * before the customer notices their entitlement is wrong. Combined with
+ * scripts/audit-dodo-catalog.cjs running on a schedule, the fallback
+ * window is short — usually hours, not days.
+ *
+ * Greptile P1 review on PR #3642 caught the original `pro_monthly`
+ * choice silently revoking API access from `api_*` / `enterprise` customers.
  */
-const FALLBACK_PLAN_KEY = "pro_monthly";
+const FALLBACK_PLAN_KEY = "enterprise";
 
 /**
  * Resolves a Dodo product ID to a plan key via the productPlans table.
@@ -313,12 +326,15 @@ async function resolvePlanKey(
   // sentry-coverage-ok: structured console.error is forwarded by Convex
   // auto-Sentry so on-call sees the unmapped product immediately. We do
   // NOT throw — that would 500 the webhook and trigger Dodo's retry storm,
-  // which leaves the customer's entitlement wedged.
+  // which leaves the customer's entitlement wedged. The over-grant
+  // fallback (FALLBACK_PLAN_KEY = enterprise) is intentional — see the
+  // const's JSDoc for the rationale.
   console.error(
     `[subscriptionHelpers] Unknown Dodo product ID "${dodoProductId}" — ` +
       `not in productPlans table and not in LEGACY_PRODUCT_ALIASES. ` +
-      `Falling back to "${FALLBACK_PLAN_KEY}" so the customer keeps a paid ` +
-      `entitlement. ACTION REQUIRED: add this product to ` +
+      `Falling back to "${FALLBACK_PLAN_KEY}" (over-grant) so the customer ` +
+      `keeps full paid entitlement until catalog is fixed. ` +
+      `ACTION REQUIRED: add this product to ` +
       `convex/config/productCatalog.ts (LEGACY_PRODUCT_ALIASES or PRODUCT_CATALOG) ` +
       `and re-run seedProductPlans. See scripts/audit-dodo-catalog.cjs.`,
   );
