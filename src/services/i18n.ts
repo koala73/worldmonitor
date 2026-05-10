@@ -137,6 +137,12 @@ export function t(key: string, options?: Record<string, unknown>): string {
 
 // Helper to change language. Persists to the explicit-choice key so the
 // detector picks it up on next load instead of falling through to navigator.
+//
+// To revert to navigator-based auto-detection later (e.g. a future
+// "Use browser language" option in Settings → Language), call
+// `localStorage.removeItem(EXPLICIT_LOCALE_KEY)` and reload — the next
+// initI18n() will fall through `wmExplicit` and detect from navigator.
+// We deliberately don't ship that helper now since no UI consumes it.
 export async function changeLanguage(lng: string): Promise<void> {
   const normalized = await ensureLanguageLoaded(lng);
   try { localStorage.setItem(EXPLICIT_LOCALE_KEY, normalized); } catch { /* private mode */ }
