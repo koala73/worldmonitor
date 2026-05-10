@@ -16,8 +16,18 @@ const getCacheHeaderValue = (sourcePath) => {
 
 describe('deploy/cache configuration guardrails', () => {
   it('disables caching for HTML entry routes on Vercel', () => {
-    const spaNoCache = getCacheHeaderValue('/((?!api|mcp|oauth|assets|blog|docs|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|\\.well-known|wm-widget-sandbox\\.html).*)');
+    // /mcp-grant added to the negative-lookahead by plan 2026-05-10-001 U3 — apex
+    // Pro-MCP consent page must opt out of the SPA catch-all rewrite (it is its
+    // own HTML entry registered in vite.config.ts rollupOptions.input).
+    const spaNoCache = getCacheHeaderValue('/((?!api|mcp|oauth|assets|blog|docs|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|\\.well-known|wm-widget-sandbox\\.html|mcp-grant(?:\\.html)?).*)');
     assert.equal(spaNoCache, 'no-cache, no-store, must-revalidate');
+  });
+
+  it('disables caching for the apex /mcp-grant Pro-MCP consent page', () => {
+    // This is its own HTML entry (not the SPA catch-all). Sensitive auth UI
+    // must never be cached at the edge.
+    const value = getCacheHeaderValue('/mcp-grant(?:\\.html)?');
+    assert.equal(value, 'no-cache, no-store, must-revalidate');
   });
 
   it('keeps immutable caching for hashed static assets', () => {

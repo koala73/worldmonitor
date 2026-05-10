@@ -259,6 +259,20 @@
       "removal_issue": null
     },
     {
+      "path": "api/internal/mcp-grant-mint.ts",
+      "category": "internal-helper",
+      "reason": "Apex-domain bridge endpoint for the cross-subdomain Pro MCP authorization flow (plan 2026-05-10-001 U3). POST {nonce} from the Clerk-protected /mcp-grant SPA on worldmonitor.app; returns a fixed-host redirect URL with a HMAC-signed grant token to api.worldmonitor.app/oauth/authorize-pro. Shape is an implementation detail of the bounce-via-apex consent flow — exposing it as a versioned product API would publish internal OAuth plumbing.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/internal/mcp-grant-context.ts",
+      "category": "internal-helper",
+      "reason": "Read-only companion to api/internal/mcp-grant-mint.ts (plan 2026-05-10-001 U3). Returns the registered OAuth client_name + redirect host so the apex /mcp-grant SPA can show real client metadata (anti-phishing). Pro-gated; identical validation paths as the mint endpoint.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/data/city-coords.ts",
       "category": "internal-helper",
       "reason": "Static city-coordinates payload served from the deploy artifact. Returns a fixed reference table, not a queryable service.",
