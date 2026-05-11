@@ -19,6 +19,33 @@ import { readdirSync, readFileSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
+import { __testing__ as mcpTesting } from '../api/mcp.ts';
+
+const { TOOL_REGISTRY } = mcpTesting;
+
+// Valid category prefixes — every EXCLUDED_FROM_MCP_PARITY reason must start
+// with one of these followed by a colon. Enforced by findEmptyOrUnprefixedReasons.
+const VALID_PREFIXES = [
+  'mutating',
+  'llm-passthrough',
+  'fetch-on-miss',
+  'admin',
+  'manual-mapping',
+  'deferred-to-future-tool',
+];
+
+// Closed allowlist of valid secondary signals for `fetch-on-miss:` reasons.
+// `already-covered-by-rpc-tool` is structurally FORBIDDEN — covered ops belong
+// in a tool's _apiPaths, not in this exclusion map (Codex round 2).
+const VALID_FETCH_ON_MISS_SECONDARIES = [
+  'high-cardinality-input',
+  'paid-upstream',
+  'llm-cost',
+];
+const FORBIDDEN_FETCH_ON_MISS_SECONDARIES = [
+  'already-covered-by-rpc-tool',
+];
+
 // -----------------------------------------------------------------------------
 // HTTP-method allowlist — used by the OpenAPI walker to skip path-level siblings
 // (`parameters`, `summary`, `description`, etc.) that share the methods object.
@@ -358,53 +385,172 @@ function collectApiOperations(specsDir) {
   return ops;
 }
 
+/** Aggregate every tool's `_apiPaths` into one Set<string>. */
+function collectDeclaredApiPaths(toolRegistry) {
+  const declared = new Set();
+  for (const tool of toolRegistry) {
+    if (Array.isArray(tool._apiPaths)) {
+      for (const p of tool._apiPaths) declared.add(p);
+    }
+  }
+  return declared;
+}
+
+/** API ops that are neither covered by a tool nor in the exclusion map. */
+function findUncoveredApiOps({ apiOps, declaredPaths, excludedMap }) {
+  const uncovered = [];
+  for (const op of apiOps) {
+    if (declaredPaths.has(op)) continue;
+    if (excludedMap.has(op)) continue;
+    uncovered.push(op);
+  }
+  return uncovered;
+}
+
+/** Excluded entries whose reason is empty/whitespace OR doesn't start with one of validPrefixes. */
+function findEmptyOrUnprefixedReasons(excludedMap, validPrefixes) {
+  const offenders = [];
+  for (const [op, reason] of excludedMap) {
+    if (typeof reason !== 'string' || reason.trim().length === 0) {
+      offenders.push(op);
+      continue;
+    }
+    const hasValid = validPrefixes.some((p) => reason.startsWith(`${p}:`));
+    if (!hasValid) offenders.push(op);
+  }
+  return offenders;
+}
+
+/** Excluded ops not present in the live OpenAPI inventory (stale exclusions). */
+function findDeadExclusions({ excludedMap, apiOps }) {
+  const dead = [];
+  for (const op of excludedMap.keys()) {
+    if (!apiOps.has(op)) dead.push(op);
+  }
+  return dead;
+}
+
+/** Declared `_apiPaths` entries not present in the live OpenAPI inventory (stale tool metadata). */
+function findDeadApiPaths({ declaredPaths, apiOps }) {
+  const dead = [];
+  for (const p of declaredPaths) {
+    if (!apiOps.has(p)) dead.push(p);
+  }
+  return dead;
+}
+
+/** `fetch-on-miss:` entries without a valid secondary signal (bare or unknown secondary). */
+function findBareFetchOnMissReasons(excludedMap) {
+  const offenders = [];
+  for (const [op, reason] of excludedMap) {
+    if (!reason.startsWith('fetch-on-miss:')) continue;
+    const secondary = reason.slice('fetch-on-miss:'.length).trim();
+    if (secondary.length === 0) { offenders.push(op); continue; }
+    const hasValid = VALID_FETCH_ON_MISS_SECONDARIES.some(
+      (sig) => secondary === sig || secondary.startsWith(`${sig} `) || secondary.startsWith(`${sig}—`),
+    );
+    if (!hasValid) offenders.push(op);
+  }
+  return offenders;
+}
+
+/** `fetch-on-miss:` entries naming a FORBIDDEN secondary (the loophole-blocker). */
+function findForbiddenFetchOnMissSecondaries(excludedMap) {
+  const offenders = [];
+  for (const [op, reason] of excludedMap) {
+    if (!reason.startsWith('fetch-on-miss:')) continue;
+    for (const forbidden of FORBIDDEN_FETCH_ON_MISS_SECONDARIES) {
+      if (reason.includes(forbidden)) { offenders.push(op); break; }
+    }
+  }
+  return offenders;
+}
+
 // -----------------------------------------------------------------------------
-// Live structural assertions
+// Live structural assertions — run against the real OpenAPI + TOOL_REGISTRY
 // -----------------------------------------------------------------------------
 
-describe('Tier-4 — OpenAPI inventory walker', () => {
-  it('collectApiOperations returns a non-empty Set from real docs/api/', () => {
-    const ops = collectApiOperations(join(import.meta.dirname, '..', 'docs', 'api'));
-    assert.ok(ops.size >= 130, `expected ≥130 ops, got ${ops.size}`);
-  });
+describe('Tier-4 — MCP↔API parity assertions', () => {
+  const apiOps = collectApiOperations(join(import.meta.dirname, '..', 'docs', 'api'));
+  const declaredPaths = collectDeclaredApiPaths(TOOL_REGISTRY);
 
-  it('every collected entry is a canonical "METHOD path" string', () => {
-    const ops = collectApiOperations(join(import.meta.dirname, '..', 'docs', 'api'));
-    const canonical = /^(GET|POST|PUT|PATCH|DELETE|OPTIONS|HEAD|TRACE) \//;
-    for (const op of ops) {
-      assert.match(op, canonical, `non-canonical entry: ${JSON.stringify(op)}`);
+  it('every OpenAPI operation is covered by a tool _apiPaths OR explicitly excluded', () => {
+    const uncovered = findUncoveredApiOps({ apiOps, declaredPaths, excludedMap: EXCLUDED_FROM_MCP_PARITY });
+    if (uncovered.length > 0) {
+      const list = uncovered.slice(0, 10).map((op) => `  - ${op}`).join('\n');
+      const more = uncovered.length > 10 ? `\n  ... and ${uncovered.length - 10} more` : '';
+      throw new Error(
+        `${uncovered.length} OpenAPI operation(s) are not covered by any MCP tool and not in EXCLUDED_FROM_MCP_PARITY:\n` +
+        `${list}${more}\n\n` +
+        `Two fix paths:\n` +
+        `  (a) Add to a tool's _apiPaths (e.g., 'GET /api/economic/v1/get-bls-series' to get_economic_data._apiPaths)\n` +
+        `  (b) Add to EXCLUDED_FROM_MCP_PARITY with a categorized reason (e.g., 'deferred-to-future-tool: future expanded_economic_data — BLS labor series')`
+      );
     }
   });
 
-  it('inventory includes known anchor operations across heaviest services', () => {
-    const ops = collectApiOperations(join(import.meta.dirname, '..', 'docs', 'api'));
-    // Spot-check anchors from the 5 heaviest specs (Economic, Intelligence,
-    // Market, SupplyChain, Infrastructure) — any of these going missing
-    // signals walker-shape drift before the parity assertion would catch it.
-    assert.ok(ops.has('GET /api/economic/v1/get-bis-credit'), 'economic anchor missing');
-    assert.ok(ops.has('GET /api/intelligence/v1/get-country-risk'), 'intelligence anchor missing');
-    assert.ok(ops.has('GET /api/market/v1/list-defi-tokens'), 'market anchor missing');
+  it('every EXCLUDED_FROM_MCP_PARITY entry has a non-empty reason with a valid category prefix', () => {
+    const offenders = findEmptyOrUnprefixedReasons(EXCLUDED_FROM_MCP_PARITY, VALID_PREFIXES);
+    assert.deepEqual(offenders, [], `Entries with empty/unprefixed reasons: ${offenders.slice(0, 5).join(', ')}${offenders.length > 5 ? ` (+${offenders.length - 5} more)` : ''}`);
+  });
+
+  it('every EXCLUDED_FROM_MCP_PARITY op exists in the live OpenAPI inventory (no dead exclusions)', () => {
+    const dead = findDeadExclusions({ excludedMap: EXCLUDED_FROM_MCP_PARITY, apiOps });
+    assert.deepEqual(dead, [], `Dead exclusions: ${dead.slice(0, 5).join(', ')}${dead.length > 5 ? ` (+${dead.length - 5} more)` : ''}`);
+  });
+
+  it('every tool _apiPaths entry exists in the live OpenAPI inventory (no dead _apiPaths)', () => {
+    const dead = findDeadApiPaths({ declaredPaths, apiOps });
+    assert.deepEqual(dead, [], `Dead _apiPaths (tool metadata names ops not in any OpenAPI spec): ${dead.slice(0, 5).join(', ')}${dead.length > 5 ? ` (+${dead.length - 5} more)` : ''}`);
+  });
+
+  it('no fetch-on-miss: reason is bare — every entry requires a valid secondary signal', () => {
+    const offenders = findBareFetchOnMissReasons(EXCLUDED_FROM_MCP_PARITY);
+    assert.deepEqual(offenders, [], `Bare/unknown fetch-on-miss secondaries (must use ${VALID_FETCH_ON_MISS_SECONDARIES.join(' | ')}): ${offenders.slice(0, 5).join(', ')}`);
+  });
+
+  it('no fetch-on-miss: reason uses the FORBIDDEN already-covered-by-rpc-tool secondary', () => {
+    const offenders = findForbiddenFetchOnMissSecondaries(EXCLUDED_FROM_MCP_PARITY);
+    assert.deepEqual(offenders, [], `Forbidden fetch-on-miss secondary (move to tool's _apiPaths instead): ${offenders.join(', ')}`);
+  });
+
+  it('emits a categorized count report for downstream coverage planning', () => {
+    const declared = collectDeclaredApiPaths(TOOL_REGISTRY);
+    const counts = new Map();
+    for (const prefix of VALID_PREFIXES) counts.set(prefix, 0);
+    for (const reason of EXCLUDED_FROM_MCP_PARITY.values()) {
+      for (const prefix of VALID_PREFIXES) {
+        if (reason.startsWith(`${prefix}:`)) { counts.set(prefix, counts.get(prefix) + 1); break; }
+      }
+    }
+    const breakdown = VALID_PREFIXES.map((p) => `${p}:${counts.get(p)}`).join(' ');
+    // Side-effect-only: emit summary so CI logs surface the actionable inventory.
+    console.log(`[mcp-api-parity] ${declared.size} covered / ${EXCLUDED_FROM_MCP_PARITY.size} excluded (${breakdown}) / ${apiOps.size} total ops`);
+    assert.equal(declared.size + EXCLUDED_FROM_MCP_PARITY.size, apiOps.size, 'covered + excluded must equal total ops');
   });
 });
 
 // -----------------------------------------------------------------------------
-// Meta-tests — verify the predicate helpers fire on synthetic invalid fixtures
+// Meta-tests — verify the predicate helpers fire on synthetic invalid fixtures.
+// Without these, a regression that makes a predicate a no-op (early return,
+// off-by-one filter, predicate inversion) would ship undetected because the
+// live assertions above only fail when real codebase state is broken.
 // -----------------------------------------------------------------------------
 
-describe('Tier-4 meta-tests — walker fires on synthetic invalid inputs', () => {
-  it('collectApiOperations returns empty Set for a non-existent directory', () => {
+describe('Tier-4 meta-tests — predicates fire on synthetic invalid inputs', () => {
+  // --- collectApiOperations ---
+  it('collectApiOperations: empty Set for a non-existent directory', () => {
     const ops = collectApiOperations('/tmp/definitely-not-a-real-dir-mcp-parity');
     assert.equal(ops.size, 0);
   });
 
-  it('collectApiOperations filters non-HTTP-method path siblings (parameters, summary, description)', () => {
-    // Use a tmp fixture file to exercise the filter without polluting docs/api/
+  it('collectApiOperations: filters non-HTTP-method path siblings (parameters, summary, description)', () => {
     const tmpDir = mkSpecFixture({
       paths: {
         '/api/fixture/v1/get-foo': {
           get: { operationId: 'getFoo' },
-          parameters: [{ name: 'q', in: 'query' }],  // must be filtered
-          summary: 'Fixture path-level summary',     // must be filtered
+          parameters: [{ name: 'q', in: 'query' }],
+          summary: 'Fixture path-level summary',
         },
         '/api/fixture/v1/multi': {
           get: { operationId: 'getMulti' },
@@ -420,10 +566,88 @@ describe('Tier-4 meta-tests — walker fires on synthetic invalid inputs', () =>
     ]);
   });
 
-  it('collectApiOperations skips malformed specs without throwing', () => {
+  it('collectApiOperations: skips malformed specs without throwing', () => {
     const tmpDir = mkSpecFixture('not-valid-json{{{');
     const ops = collectApiOperations(tmpDir);
     assert.equal(ops.size, 0);
+  });
+
+  // --- collectDeclaredApiPaths ---
+  it('collectDeclaredApiPaths: aggregates _apiPaths across cache-tool + RPC-tool registry entries', () => {
+    const fakeRegistry = [
+      { name: 'cache_tool', _cacheKeys: ['a:v1'], _apiPaths: ['GET /api/a/v1/x', 'GET /api/a/v1/y'] },
+      { name: 'rpc_tool', _execute: () => {}, _apiPaths: ['POST /api/b/v1/z'] },
+      { name: 'no_paths', _cacheKeys: ['c:v1'], _apiPaths: [] },
+    ];
+    const declared = collectDeclaredApiPaths(fakeRegistry);
+    assert.deepEqual([...declared].sort(), ['GET /api/a/v1/x', 'GET /api/a/v1/y', 'POST /api/b/v1/z']);
+  });
+
+  // --- findUncoveredApiOps ---
+  it('findUncoveredApiOps: returns the synthetic uncovered op', () => {
+    const apiOps = new Set(['GET /covered', 'GET /excluded', 'GET /ghost']);
+    const declaredPaths = new Set(['GET /covered']);
+    const excludedMap = new Map([['GET /excluded', 'mutating: state write']]);
+    const result = findUncoveredApiOps({ apiOps, declaredPaths, excludedMap });
+    assert.deepEqual(result, ['GET /ghost']);
+  });
+
+  it('findUncoveredApiOps: returns empty when every op is covered or excluded', () => {
+    const apiOps = new Set(['GET /covered', 'GET /excluded']);
+    const declaredPaths = new Set(['GET /covered']);
+    const excludedMap = new Map([['GET /excluded', 'mutating: state write']]);
+    assert.deepEqual(findUncoveredApiOps({ apiOps, declaredPaths, excludedMap }), []);
+  });
+
+  // --- findEmptyOrUnprefixedReasons ---
+  it('findEmptyOrUnprefixedReasons: catches empty, whitespace, and unprefixed reasons', () => {
+    const excludedMap = new Map([
+      ['GET /valid', 'mutating: writes state'],
+      ['GET /empty', ''],
+      ['GET /whitespace', '   '],
+      ['GET /unprefixed', 'some bare reason without prefix'],
+    ]);
+    const offenders = findEmptyOrUnprefixedReasons(excludedMap, VALID_PREFIXES);
+    assert.deepEqual(offenders.sort(), ['GET /empty', 'GET /unprefixed', 'GET /whitespace']);
+  });
+
+  // --- findDeadExclusions ---
+  it('findDeadExclusions: catches excluded ops absent from the OpenAPI inventory', () => {
+    const apiOps = new Set(['GET /live']);
+    const excludedMap = new Map([
+      ['GET /live', 'mutating: write'],
+      ['GET /ghost', 'mutating: write'],
+    ]);
+    assert.deepEqual(findDeadExclusions({ excludedMap, apiOps }), ['GET /ghost']);
+  });
+
+  // --- findDeadApiPaths ---
+  it('findDeadApiPaths: catches declared _apiPaths entries pointing at non-existent OpenAPI ops', () => {
+    const apiOps = new Set(['GET /live']);
+    const declaredPaths = new Set(['GET /live', 'GET /vanished']);
+    assert.deepEqual(findDeadApiPaths({ declaredPaths, apiOps }), ['GET /vanished']);
+  });
+
+  // --- findBareFetchOnMissReasons ---
+  it('findBareFetchOnMissReasons: catches bare AND unknown-secondary entries, accepts valid ones', () => {
+    const excludedMap = new Map([
+      ['GET /good',     'fetch-on-miss: paid-upstream — external feed'],
+      ['GET /good2',    'fetch-on-miss: high-cardinality-input — arbitrary query param'],
+      ['GET /bare',     'fetch-on-miss:'],
+      ['GET /unknown',  'fetch-on-miss: invented-secondary — not in allowlist'],
+      ['GET /other',    'mutating: write'], // not fetch-on-miss, should not be flagged
+    ]);
+    const offenders = findBareFetchOnMissReasons(excludedMap);
+    assert.deepEqual(offenders.sort(), ['GET /bare', 'GET /unknown']);
+  });
+
+  // --- findForbiddenFetchOnMissSecondaries ---
+  it('findForbiddenFetchOnMissSecondaries: catches the already-covered-by-rpc-tool loophole', () => {
+    const excludedMap = new Map([
+      ['GET /loophole', 'fetch-on-miss: already-covered-by-rpc-tool — by get_country_risk'],
+      ['GET /ok',       'fetch-on-miss: paid-upstream'],
+    ]);
+    assert.deepEqual(findForbiddenFetchOnMissSecondaries(excludedMap), ['GET /loophole']);
   });
 });
 
