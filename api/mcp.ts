@@ -32,7 +32,13 @@ export const config = { runtime: 'edge' };
 
 const MCP_PROTOCOL_VERSION = '2025-03-26';
 const SERVER_NAME = 'worldmonitor';
-const SERVER_VERSION = '1.0';
+// Bumped 1.0 → 1.1.0 (2026-05-11) reflecting:
+//   - PR #3658 Tier-1+2 expansion (6 new tools added: displacement, health,
+//     energy, consumer-prices, tariffs, chokepoint)
+//   - PR #3662 Tier-4 parity (_apiPaths metadata + CI-enforced parity test)
+// Keep aligned with public/.well-known/mcp/server-card.json::serverInfo.version
+// — discovery scanners cross-check both values.
+const SERVER_VERSION = '1.1.0';
 
 // Country-code whitelist for get_consumer_prices. The consumer-prices seeder
 // currently only produces data for AE (UAE); future markets will be added

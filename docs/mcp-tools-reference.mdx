@@ -216,7 +216,7 @@ curl -s https://worldmonitor.app/mcp \
   -d '{
     "jsonrpc":"2.0","id":1,
     "method":"tools/call",
-    "params":{"name":"get_consumer_prices","arguments":{"country_code":"US"}}
+    "params":{"name":"get_consumer_prices","arguments":{"country_code":"AE"}}
   }'
 ```
 
@@ -370,7 +370,7 @@ AI-generated per-country intelligence brief. Produces an LLM-analyzed geopolitic
 | `framework` | string | no | Optional analytical framework instructions to shape the analysis lens (e.g. Ray Dalio debt cycle, PMESII-PT) |
 
 - **API endpoints:** `GET /api/intelligence/v1/get-country-intel-brief`
-- **Kind:** live RPC — proxies a fetch to the WorldMonitor API on each call. Edge-runtime timeout: **2.0s**.
+- **Kind:** live RPC — proxies a fetch to the WorldMonitor API on each call. Worst-case total budget **~24s** (2s context-digest fetch + 22s brief generation, sequential).
 
 <CodeGroup>
 
@@ -936,7 +936,7 @@ AI-generated world intelligence brief. Fetches the latest geopolitical headlines
 | `geo_context` | string | no | Optional focus context (e.g. "Middle East tensions", "US-China trade war") |
 
 - **API endpoints:** `GET /api/news/v1/list-feed-digest`, `POST /api/news/v1/summarize-article`
-- **Kind:** live RPC — proxies a fetch to the WorldMonitor API on each call. Edge-runtime timeout: **6.0s**.
+- **Kind:** live RPC — proxies a fetch to the WorldMonitor API on each call. Worst-case total budget **~24s** (6s digest fetch + 18s LLM summarization, sequential).
 
 <CodeGroup>
 

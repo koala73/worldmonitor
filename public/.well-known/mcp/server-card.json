@@ -56,7 +56,7 @@
       "apiBusiness": 10000,
       "enterprise": null
     },
-    "notes": "tools/list and initialize are NEVER counted against per-day quota — only tools/call. Per-minute is per-user (Pro) or per-key (API tiers)."
+    "notes": "Per-day quota (dailyByPlan) counts only tools/call — initialize, tools/list, ping, and notifications/initialized are exempt. Per-minute (60/min, per-user on Pro, per-key on API tiers) counts ALL methods, so a tight discovery probe loop on tools/list will still trip the throttle."
   },
   "tags": [
     "geopolitical-intelligence",
