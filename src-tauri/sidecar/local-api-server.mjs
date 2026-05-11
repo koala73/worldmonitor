@@ -136,7 +136,7 @@ globalThis.fetch = async function ipv4Fetch(input, init) {
 };
 
 const ALLOWED_ENV_KEYS = new Set([
-  'GROQ_API_KEY', 'OPENROUTER_API_KEY', 'EXA_API_KEYS', 'BRAVE_API_KEYS', 'SERPAPI_API_KEYS', 'FRED_API_KEY', 'EIA_API_KEY',
+  'GROQ_API_KEY', 'OPENROUTER_API_KEY', 'NOVITA_API_KEY', 'EXA_API_KEYS', 'BRAVE_API_KEYS', 'SERPAPI_API_KEYS', 'FRED_API_KEY', 'EIA_API_KEY',
   'CLOUDFLARE_API_TOKEN', 'ACLED_ACCESS_TOKEN', 'URLHAUS_AUTH_KEY',
   'OTX_API_KEY', 'ABUSEIPDB_API_KEY', 'WINGBITS_API_KEY', 'WS_RELAY_URL',
   'VITE_OPENSKY_RELAY_URL', 'OPENSKY_CLIENT_ID', 'OPENSKY_CLIENT_SECRET',
@@ -1162,6 +1162,7 @@ async function dispatch(requestUrl, req, routes, context) {
     const ollamaUrl = process.env.OLLAMA_API_URL || process.env.LLM_API_URL;
     const groqKey = process.env.GROQ_API_KEY;
     const openrouterKey = process.env.OPENROUTER_API_KEY;
+    const novitaKey = process.env.NOVITA_API_KEY;
 
     if (ollamaUrl) {
       try {
@@ -1179,6 +1180,11 @@ async function dispatch(requestUrl, req, routes, context) {
     if (openrouterKey) {
       providerChecks.push(
         probeOrigin('https://openrouter.ai').then((available) => ({ name: 'openrouter', url: 'https://openrouter.ai', available })),
+      );
+    }
+    if (novitaKey) {
+      providerChecks.push(
+        probeOrigin('https://api.novita.ai').then((available) => ({ name: 'novita', url: 'https://api.novita.ai', available })),
       );
     }
     if (providerChecks.length > 0) {
