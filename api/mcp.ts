@@ -173,9 +173,23 @@ interface RpcToolDef extends BaseToolDef {
   _execute: (params: Record<string, unknown>, base: string, context: McpAuthContext) => Promise<unknown>;
   _coverageKeys?: string[];
   // U3 (Tier-4 parity): REQUIRED. Every OpenAPI operation this `_execute`
-  // body proxies via fetch (extracted from `${base}/api/...` callsites).
-  // Empty `[]` is valid for tools that don't hit any HTTP endpoint
-  // (e.g. AI tools reading a static JSON registry).
+  // body proxies via fetch (extracted from `${base}/api/...` callsites),
+  // using the OPENAPI-declared method (not the runtime fetch method) so the
+  // parity test's source-of-truth is the public spec.
+  //
+  // Empty `[]` is valid ONLY when:
+  //   (a) The tool hits no HTTP endpoint at all (e.g. AI tools reading a
+  //       static JSON registry — see get_commodity_geo), OR
+  //   (b) The tool's _execute fetches an endpoint whose runtime method
+  //       drifts from the OpenAPI spec AND no covering op exists in the
+  //       spec (e.g. generate_forecasts POSTs /api/forecast/v1/get-forecasts
+  //       but the spec declares only GET — that GET is owned by
+  //       get_forecast_predictions). Document the drift inline; an EXCLUDED
+  //       entry is the wrong fix (the op IS covered, just via a sibling
+  //       tool with matching method).
+  //
+  // A new tool whose POST endpoint IS in the spec MUST list it here —
+  // don't default to `[]` when the spec actually exposes the path.
   _apiPaths: string[];
 }
 

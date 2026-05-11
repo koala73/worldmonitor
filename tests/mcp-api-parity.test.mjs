@@ -81,7 +81,7 @@ const HTTP_METHODS = new Set([
 
 const EXCLUDED_FROM_MCP_PARITY = new Map([
 
-  // === mutating (11) ===
+  // === mutating (13) ===
   ["GET /api/aviation/v1/list-airport-delays",
     "mutating: writes state via setCachedJson / runRedisPipeline / persistent DB"],
   ["GET /api/infrastructure/v1/list-temporal-anomalies",
@@ -102,6 +102,10 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "mutating: writes state via setCachedJson / runRedisPipeline / persistent DB"],
   ["POST /api/scenario/v1/run-scenario",
     "mutating: writes state via setCachedJson / runRedisPipeline / persistent DB"],
+  ["POST /api/leads/v1/register-interest",
+    "mutating: writes to Convex (not server/_shared/redis) — lead registration write"],
+  ["POST /api/leads/v1/submit-contact",
+    "mutating: writes to Convex (not server/_shared/redis) — contact form write"],
   ["POST /api/v2/shipping/webhooks",
     "mutating: webhook/registration write — POSTs persistent record"],
 
@@ -175,7 +179,7 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   ["POST /api/military/v1/get-aircraft-details-batch",
     "fetch-on-miss: high-cardinality-input — arbitrary query/symbol/identifier params, not enumerable"],
 
-  // === manual-mapping (29) ===
+  // === manual-mapping (27) ===
   ["GET /api/aviation/v1/search-flight-prices",
     "manual-mapping: handler uses inline Redis or Convex (not server/_shared/redis) — manual triage"],
   ["GET /api/displacement/v1/get-population-exposure",
@@ -230,10 +234,6 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "manual-mapping: parameterized cache key not statically resolvable — equivalent data covered by sibling cache tool at the prefix level"],
   ["POST /api/economic/v1/get-fred-series-batch",
     "manual-mapping: parameterized cache key not statically resolvable — equivalent data covered by sibling cache tool at the prefix level"],
-  ["POST /api/leads/v1/register-interest",
-    "manual-mapping: handler uses inline Redis or Convex (not server/_shared/redis) — manual triage"],
-  ["POST /api/leads/v1/submit-contact",
-    "manual-mapping: handler uses inline Redis or Convex (not server/_shared/redis) — manual triage"],
 
   // === deferred-to-future-tool (51) ===
   ["GET /api/consumer-prices/v1/get-consumer-price-basket-series",
@@ -545,8 +545,18 @@ describe('Tier-4 — MCP↔API parity assertions', () => {
       `Coverage is exclusive — remove the exclusion entry for any op that's now covered by a tool.`);
   });
 
+  it('covered + excluded ops must equal total OpenAPI op count (no gaps, no double-counts)', () => {
+    // Hard structural invariant — separate from the reporting test below so a
+    // future failure isn't misread as "CI logging format problem." Fires on:
+    //   - double-coverage (op in both _apiPaths and exclusion map) → LHS overshoots
+    //   - silent drop (op missing from both)                       → LHS undershoots
+    // The findUncoveredApiOps + findDoubleCoveredOps assertions above pinpoint
+    // the offending op when this fires.
+    assert.equal(declaredPaths.size + EXCLUDED_FROM_MCP_PARITY.size, apiOps.size,
+      `Coverage math broken: declared=${declaredPaths.size} + excluded=${EXCLUDED_FROM_MCP_PARITY.size} ≠ total=${apiOps.size}`);
+  });
+
   it('emits a categorized count report for downstream coverage planning', () => {
-    const declared = collectDeclaredApiPaths(TOOL_REGISTRY);
     const counts = new Map();
     for (const prefix of VALID_PREFIXES) counts.set(prefix, 0);
     for (const reason of EXCLUDED_FROM_MCP_PARITY.values()) {
@@ -556,8 +566,7 @@ describe('Tier-4 — MCP↔API parity assertions', () => {
     }
     const breakdown = VALID_PREFIXES.map((p) => `${p}:${counts.get(p)}`).join(' ');
     // Side-effect-only: emit summary so CI logs surface the actionable inventory.
-    console.log(`[mcp-api-parity] ${declared.size} covered / ${EXCLUDED_FROM_MCP_PARITY.size} excluded (${breakdown}) / ${apiOps.size} total ops`);
-    assert.equal(declared.size + EXCLUDED_FROM_MCP_PARITY.size, apiOps.size, 'covered + excluded must equal total ops');
+    console.log(`[mcp-api-parity] ${declaredPaths.size} covered / ${EXCLUDED_FROM_MCP_PARITY.size} excluded (${breakdown}) / ${apiOps.size} total ops`);
   });
 });
 
