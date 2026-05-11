@@ -9,7 +9,11 @@
 import { test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { checkSeedMetaFreshness } from '../scripts/seed-comtrade-bilateral-hs4.mjs';
+import {
+  checkSeedMetaFreshness,
+  FRESHNESS_GATE_MS,
+  SEED_META_TTL_SECONDS,
+} from '../scripts/seed-comtrade-bilateral-hs4.mjs';
 
 const ORIGINAL_FETCH = globalThis.fetch;
 const ORIGINAL_REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
@@ -98,4 +102,35 @@ test('checkSeedMetaFreshness: fetchedAt:0 (legacy bad write) treated as no-fetch
   const result = await checkSeedMetaFreshness(Date.now());
   assert.equal(result.fresh, false);
   assert.equal(result.reason, 'no-fetchedAt');
+});
+
+test('invariant: SEED_META_TTL_SECONDS strictly outlives FRESHNESS_GATE_MS', () => {
+  // Greptile review on PR #3661 caught the original: meta TTL was 9d while
+  // gate was 24d, leaving a 15-day fail-open window between Redis eviction
+  // and gate expiry. This invariant prevents the bug from regressing.
+  const gateSeconds = FRESHNESS_GATE_MS / 1000;
+  assert.ok(
+    SEED_META_TTL_SECONDS > gateSeconds,
+    `SEED_META_TTL_SECONDS (${SEED_META_TTL_SECONDS}s) must be > FRESHNESS_GATE_MS in seconds (${gateSeconds}s)`,
+  );
+  // Pin the buffer too — without it the relationship is brittle to clock skew.
+  const bufferSeconds = SEED_META_TTL_SECONDS - gateSeconds;
+  assert.ok(
+    bufferSeconds >= 86_400,
+    `seed-meta TTL must outlive the gate by ≥1 day for clock-skew + missed-tick slack (got ${bufferSeconds}s)`,
+  );
+});
+
+test('invariant: seed-meta TTL chosen by writeMeta covers the full gate window (no fail-open hole)', () => {
+  // Property statement: at any t ∈ [0, FRESHNESS_GATE_MS), if a successful run
+  // wrote seed-meta at t=0, the meta key must still exist in Redis. Without
+  // this property, the gate goes from "skip if fresh" to "fail-open and burn
+  // the upstream quota" between TTL-eviction and gate-elapsed.
+  for (const tMs of [0, FRESHNESS_GATE_MS / 4, FRESHNESS_GATE_MS / 2, FRESHNESS_GATE_MS - 1]) {
+    const tSeconds = tMs / 1000;
+    assert.ok(
+      tSeconds < SEED_META_TTL_SECONDS,
+      `at t=${tSeconds}s after write, meta TTL (${SEED_META_TTL_SECONDS}s) must still cover us`,
+    );
+  }
 });

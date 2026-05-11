@@ -29,8 +29,19 @@ const LOCK_TTL_MS = 30 * 60 * 1000; // 30 min
 // new monthly Railway cron with one tick of slack against missed runs.
 // Belt-and-suspenders against the UN Comtrade Free APIs 500 calls/month
 // quota (~396 calls per run with a single COMTRADE_API_KEYS entry).
-// Override for force-resed scenarios: FORCE_RESEED=true bypasses the gate.
-const FRESHNESS_GATE_MS = 24 * 24 * 60 * 60 * 1000;
+// Override for force-reseed scenarios: FORCE_RESEED=true bypasses the gate.
+export const FRESHNESS_GATE_MS = 24 * 24 * 60 * 60 * 1000;
+
+// seed-meta TTL must outlive the freshness gate by at least one cron tick
+// of slack. Otherwise Redis evicts the key between SEED_META_TTL_SECONDS
+// and FRESHNESS_GATE_MS / 1000, opening a fail-open window where the gate
+// silently lets every cron tick through. Pre-fix (Greptile review on
+// PR #3661): meta TTL was TTL_SECONDS * 3 = 9d while gate = 24d, leaving
+// days 9-24 unprotected — if the cron ever flipped back to daily, those
+// 15 days would burn ~6,000 calls against the 500/mo quota.
+//
+// Formula: gate + 1 day buffer (absorbs clock skew + one missed tick).
+export const SEED_META_TTL_SECONDS = Math.ceil(FRESHNESS_GATE_MS / 1000) + 86_400;
 
 const COMTRADE_KEYS = (process.env.COMTRADE_API_KEYS || '').split(',').map(k => k.trim()).filter(Boolean);
 let keyIndex = 0;
@@ -323,7 +334,9 @@ export async function main() {
 
   const writeMeta = async (count, status = 'ok') => {
     const meta = JSON.stringify({ fetchedAt: Date.now(), recordCount: count, status });
-    await redisPipeline([['SET', META_KEY, meta, 'EX', String(TTL_SECONDS * 3)]])
+    // TTL ≥ FRESHNESS_GATE_MS so the gate's "fresh" answer cannot be silently
+    // invalidated by Redis eviction. See the SEED_META_TTL_SECONDS comment.
+    await redisPipeline([['SET', META_KEY, meta, 'EX', String(SEED_META_TTL_SECONDS)]])
       .catch(e => console.warn('[bilateral-hs4] Failed to write seed-meta:', e.message));
   };
 
