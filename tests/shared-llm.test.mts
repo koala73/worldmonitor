@@ -7,6 +7,7 @@ const originalFetch = globalThis.fetch;
 const originalGroqApiKey = process.env.GROQ_API_KEY;
 const originalOpenRouterApiKey = process.env.OPENROUTER_API_KEY;
 const originalOllamaApiUrl = process.env.OLLAMA_API_URL;
+const originalMiniMaxApiKey = process.env.MINIMAX_API_KEY;
 const originalLlmApiUrl = process.env.LLM_API_URL;
 const originalLlmApiKey = process.env.LLM_API_KEY;
 
@@ -21,6 +22,10 @@ afterEach(() => {
 
   if (originalOllamaApiUrl === undefined) delete process.env.OLLAMA_API_URL;
   else process.env.OLLAMA_API_URL = originalOllamaApiUrl;
+
+  if (originalMiniMaxApiKey === undefined) delete process.env.MINIMAX_API_KEY;
+  else process.env.MINIMAX_API_KEY = originalMiniMaxApiKey;
+  delete process.env.MINIMAX_MODEL;
 
   if (originalLlmApiUrl === undefined) delete process.env.LLM_API_URL;
   else process.env.LLM_API_URL = originalLlmApiUrl;
@@ -70,6 +75,85 @@ describe('callLlm', () => {
     assert.deepEqual(postUrls.filter(url => url.includes('/chat/completions')), [
       'https://api.groq.com/openai/v1/chat/completions',
     ]);
+  });
+
+  it('uses MiniMax-M2.7 as default when MINIMAX_API_KEY is set', async () => {
+    process.env.MINIMAX_API_KEY = 'mm-test-key';
+    delete process.env.GROQ_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
+    delete process.env.OLLAMA_API_URL;
+    delete process.env.LLM_API_URL;
+    delete process.env.LLM_API_KEY;
+
+    const postBodies: Array<{ url: string; body: Record<string, unknown> }> = [];
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+
+      if ((init?.method || 'GET') === 'GET') {
+        return new Response('', { status: 200 });
+      }
+
+      const body = JSON.parse(String(init?.body || '{}')) as Record<string, unknown>;
+      postBodies.push({ url, body });
+
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: 'minimax response' } }],
+        usage: { total_tokens: 55 },
+      }), { status: 200 });
+    }) as typeof fetch;
+
+    const result = await callLlm({
+      messages: [{ role: 'user', content: 'Test MiniMax.' }],
+      provider: 'minimax',
+    });
+
+    assert.ok(result);
+    assert.equal(result.provider, 'minimax');
+    assert.equal(result.model, 'MiniMax-M2.7');
+    assert.equal(postBodies.length, 1);
+    assert.equal(postBodies[0]?.url, 'https://api.minimax.io/v1/chat/completions');
+    assert.equal(postBodies[0]?.body.model, 'MiniMax-M2.7');
+  });
+
+  it('supports MiniMax model override via MINIMAX_MODEL env var', async () => {
+    process.env.MINIMAX_API_KEY = 'mm-test-key';
+    process.env.MINIMAX_MODEL = 'MiniMax-M2.7-highspeed';
+    delete process.env.GROQ_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
+    delete process.env.OLLAMA_API_URL;
+    delete process.env.LLM_API_URL;
+    delete process.env.LLM_API_KEY;
+
+    const postBodies: Array<{ url: string; body: Record<string, unknown> }> = [];
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+
+      if ((init?.method || 'GET') === 'GET') {
+        return new Response('', { status: 200 });
+      }
+
+      const body = JSON.parse(String(init?.body || '{}')) as Record<string, unknown>;
+      postBodies.push({ url, body });
+
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: 'minimax highspeed response' } }],
+        usage: { total_tokens: 30 },
+      }), { status: 200 });
+    }) as typeof fetch;
+
+    const result = await callLlm({
+      messages: [{ role: 'user', content: 'Test MiniMax highspeed.' }],
+      provider: 'minimax',
+    });
+
+    assert.ok(result);
+    assert.equal(result.provider, 'minimax');
+    assert.equal(result.model, 'MiniMax-M2.7-highspeed');
+    assert.equal(postBodies[0]?.body.model, 'MiniMax-M2.7-highspeed');
+
+    delete process.env.MINIMAX_MODEL;
   });
 
   it('supports explicitly bypassing groq with a stronger model override', async () => {
