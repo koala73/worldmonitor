@@ -241,6 +241,15 @@ The server exposes 38 tools. Most are cache-reads over pre-seeded Redis keys (su
 | `generate_forecasts` | Fresh probability estimates (bypasses cache). | LLM |
 | `get_forecast_predictions` | Pre-computed cached forecasts. Fast. | Cache |
 
+## Coverage invariants
+
+WorldMonitor's MCP server is held to two CI-enforced coverage invariants so the tool list stays aligned with the rest of the platform:
+
+- **Cache-key parity** (`tests/mcp-bootstrap-parity.test.mjs`) — every seeded cache key in `api/health.js::BOOTSTRAP_KEYS` ∪ `STANDALONE_KEYS` is either covered by some tool's `_cacheKeys`/`_coverageKeys` or listed in `EXCLUDED_FROM_MCP` with a documented reason. A new seed shipping a cache key without MCP exposure fails CI.
+- **API parity** (`tests/mcp-api-parity.test.mjs`) — every public OpenAPI operation in `docs/api/*.openapi.json` is either declared in some tool's `_apiPaths` array or listed in `EXCLUDED_FROM_MCP_PARITY` with a category-prefixed reason. A new API endpoint without MCP coverage AND without a documented exclusion fails CI.
+
+When adding a new MCP tool, the `_apiPaths: string[]` field is **required** on every `TOOL_REGISTRY` entry (TypeScript-enforced) and declares the canonical `"METHOD path"` strings the tool covers — e.g., `['GET /api/economic/v1/get-bis-credit', 'GET /api/market/v1/list-defi-tokens']`. When adding a new OpenAPI operation that isn't meant to be MCP-callable (mutating, LLM passthrough, admin-only, etc.), add an entry to `EXCLUDED_FROM_MCP_PARITY` with one of six category prefixes: `mutating:`, `llm-passthrough:`, `fetch-on-miss:` (with a closed-allowlist secondary signal), `admin:`, `manual-mapping:`, or `deferred-to-future-tool:`.
+
 ## JSON-RPC example
 
 Server-side with a direct API key — send it as `X-WorldMonitor-Key`, **not** as a bearer token.
