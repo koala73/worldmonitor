@@ -299,14 +299,14 @@ const EXCLUDED_FROM_MCP = new Map([
 // and list these keys".
 // -----------------------------------------------------------------------------
 
-export function collectSeededKeys(bootstrapKeys, standaloneKeys) {
+function collectSeededKeys(bootstrapKeys, standaloneKeys) {
   return new Set([
     ...Object.values(bootstrapKeys),
     ...Object.values(standaloneKeys),
   ]);
 }
 
-export function collectCoveredKeys(toolRegistry) {
+function collectCoveredKeys(toolRegistry) {
   const covered = new Set();
   for (const tool of toolRegistry) {
     if (Array.isArray(tool._cacheKeys)) {
@@ -320,7 +320,7 @@ export function collectCoveredKeys(toolRegistry) {
 }
 
 /** Seeded keys that are neither covered nor excluded. */
-export function findUncoveredKeys({ seededKeys, coveredKeys, excludedMap }) {
+function findUncoveredKeys({ seededKeys, coveredKeys, excludedMap }) {
   const uncovered = [];
   for (const key of seededKeys) {
     if (coveredKeys.has(key)) continue;
@@ -331,7 +331,7 @@ export function findUncoveredKeys({ seededKeys, coveredKeys, excludedMap }) {
 }
 
 /** Excluded entries whose reason is missing / empty / non-string. */
-export function findEmptyReasonExclusions(excludedMap) {
+function findEmptyReasonExclusions(excludedMap) {
   const offenders = [];
   for (const [key, reason] of excludedMap) {
     if (typeof reason !== 'string' || reason.trim().length === 0) offenders.push(key);
@@ -340,7 +340,7 @@ export function findEmptyReasonExclusions(excludedMap) {
 }
 
 /** Excluded keys that are not actually in the seeded-key inventory. */
-export function findDeadExclusions({ excludedMap, seededKeys }) {
+function findDeadExclusions({ excludedMap, seededKeys }) {
   const dead = [];
   for (const key of excludedMap.keys()) {
     if (!seededKeys.has(key)) dead.push(key);
@@ -349,7 +349,7 @@ export function findDeadExclusions({ excludedMap, seededKeys }) {
 }
 
 /** Excluded keys that ARE covered by a tool (mutually-exclusive contract). */
-export function findRedundantExclusions({ excludedMap, coveredKeys }) {
+function findRedundantExclusions({ excludedMap, coveredKeys }) {
   const redundant = [];
   for (const key of excludedMap.keys()) {
     if (coveredKeys.has(key)) redundant.push(key);

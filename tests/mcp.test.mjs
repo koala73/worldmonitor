@@ -1093,28 +1093,36 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     const renewableFetchedAt     = Date.now() - 6 * 24 * 60 * 60_000;
 
     const JSON_HDR = { 'Content-Type': 'application/json' };
+    const meta = (fetchedAt) => ({ fetchedAt, recordCount: 1 });
+    // Single Map of cache-key → payload covers both data + seed-meta lookups.
+    // Replaces an 18-branch if-chain that biome flagged as too complex.
+    const FIXTURES = new Map([
+      ['energy:eia-petroleum:v1', eiaPayload],
+      ['energy:electricity:v1:index', electricityPayload],
+      ['energy:ember:v1:_all', emberPayload],
+      ['energy:gas-storage:v1:_countries', gasStoragePayload],
+      ['energy:fuel-shortages:v1', fuelShortagesPayload],
+      ['energy:disruptions:v1', disruptionsPayload],
+      ['energy:crisis-policies:v1', crisisPolicyPayload],
+      ['resilience:fossil-electricity-share:v1', fossilSharePayload],
+      ['economic:worldbank-renewable:v1', renewablePayload],
+      ['seed-meta:energy:eia-petroleum', meta(eiaFetchedAt)],
+      ['seed-meta:energy:electricity-prices', meta(electricityFetchedAt)],
+      ['seed-meta:energy:ember', meta(emberFetchedAt)],
+      ['seed-meta:energy:gas-storage-countries', meta(gasStorageFetchedAt)],
+      ['seed-meta:energy:fuel-shortages', meta(fuelShortagesFetchedAt)],
+      ['seed-meta:energy:disruptions', meta(disruptionsFetchedAt)],
+      ['seed-meta:energy:crisis-policies', meta(crisisPolicyFetchedAt)],
+      ['seed-meta:resilience:fossil-electricity-share', meta(fossilShareFetchedAt)],
+      ['seed-meta:economic:worldbank-renewable:v1', meta(renewableFetchedAt)],
+    ]);
     globalThis.fetch = async (url) => {
       const u = url.toString();
-      // Data keys
-      if (u.includes(`/get/${encodeURIComponent('energy:eia-petroleum:v1')}`)) return new Response(JSON.stringify({ result: JSON.stringify(eiaPayload) }), { status: 200, headers: JSON_HDR });
-      if (u.includes(`/get/${encodeURIComponent('energy:electricity:v1:index')}`)) return new Response(JSON.stringify({ result: JSON.stringify(electricityPayload) }), { status: 200, headers: JSON_HDR });
-      if (u.includes(`/get/${encodeURIComponent('energy:ember:v1:_all')}`)) return new Response(JSON.stringify({ result: JSON.stringify(emberPayload) }), { status: 200, headers: JSON_HDR });
-      if (u.includes(`/get/${encodeURIComponent('energy:gas-storage:v1:_countries')}`)) return new Response(JSON.stringify({ result: JSON.stringify(gasStoragePayload) }), { status: 200, headers: JSON_HDR });
-      if (u.includes(`/get/${encodeURIComponent('energy:fuel-shortages:v1')}`)) return new Response(JSON.stringify({ result: JSON.stringify(fuelShortagesPayload) }), { status: 200, headers: JSON_HDR });
-      if (u.includes(`/get/${encodeURIComponent('energy:disruptions:v1')}`)) return new Response(JSON.stringify({ result: JSON.stringify(disruptionsPayload) }), { status: 200, headers: JSON_HDR });
-      if (u.includes(`/get/${encodeURIComponent('energy:crisis-policies:v1')}`)) return new Response(JSON.stringify({ result: JSON.stringify(crisisPolicyPayload) }), { status: 200, headers: JSON_HDR });
-      if (u.includes(`/get/${encodeURIComponent('resilience:fossil-electricity-share:v1')}`)) return new Response(JSON.stringify({ result: JSON.stringify(fossilSharePayload) }), { status: 200, headers: JSON_HDR });
-      if (u.includes(`/get/${encodeURIComponent('economic:worldbank-renewable:v1')}`)) return new Response(JSON.stringify({ result: JSON.stringify(renewablePayload) }), { status: 200, headers: JSON_HDR });
-      // Meta keys (note: shape differs from cache-key shape — match seed-meta keys per producer)
-      if (u.includes(`/get/${encodeURIComponent('seed-meta:energy:eia-petroleum')}`)) return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: eiaFetchedAt, recordCount: 1 }) }), { status: 200, headers: JSON_HDR });
-      if (u.includes(`/get/${encodeURIComponent('seed-meta:energy:electricity-prices')}`)) return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: electricityFetchedAt, recordCount: 1 }) }), { status: 200, headers: JSON_HDR });
-      if (u.includes(`/get/${encodeURIComponent('seed-meta:energy:ember')}`)) return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: emberFetchedAt, recordCount: 1 }) }), { status: 200, headers: JSON_HDR });
-      if (u.includes(`/get/${encodeURIComponent('seed-meta:energy:gas-storage-countries')}`)) return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: gasStorageFetchedAt, recordCount: 1 }) }), { status: 200, headers: JSON_HDR });
-      if (u.includes(`/get/${encodeURIComponent('seed-meta:energy:fuel-shortages')}`)) return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: fuelShortagesFetchedAt, recordCount: 1 }) }), { status: 200, headers: JSON_HDR });
-      if (u.includes(`/get/${encodeURIComponent('seed-meta:energy:disruptions')}`)) return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: disruptionsFetchedAt, recordCount: 1 }) }), { status: 200, headers: JSON_HDR });
-      if (u.includes(`/get/${encodeURIComponent('seed-meta:energy:crisis-policies')}`)) return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: crisisPolicyFetchedAt, recordCount: 1 }) }), { status: 200, headers: JSON_HDR });
-      if (u.includes(`/get/${encodeURIComponent('seed-meta:resilience:fossil-electricity-share')}`)) return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: fossilShareFetchedAt, recordCount: 1 }) }), { status: 200, headers: JSON_HDR });
-      if (u.includes(`/get/${encodeURIComponent('seed-meta:economic:worldbank-renewable:v1')}`)) return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: renewableFetchedAt, recordCount: 1 }) }), { status: 200, headers: JSON_HDR });
+      for (const [key, payload] of FIXTURES) {
+        if (u.includes(`/get/${encodeURIComponent(key)}`)) {
+          return new Response(JSON.stringify({ result: JSON.stringify(payload) }), { status: 200, headers: JSON_HDR });
+        }
+      }
       return new Response(JSON.stringify({}), { status: 200, headers: JSON_HDR });
     };
 
