@@ -341,6 +341,23 @@ const TOOL_REGISTRY: ToolDef[] = [
     _maxStaleMin: 3600,
   },
   {
+    name: 'get_health_signals',
+    description: 'Active disease outbreaks (WHO/ECDC etc.) and global air-quality station readings (OpenAQ/WAQI PM2.5). For health-risk screening.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+    // Uses the health-domain canonical key health:air-quality:v1 (NOT the
+    // climate-domain mirror climate:air-quality:v1, which stays exclusively
+    // in get_climate_data). Both are written by the same seeder
+    // (scripts/seed-health-air-quality.mjs exports HEALTH_AIR_QUALITY_KEY +
+    // CLIMATE_AIR_QUALITY_KEY) so no duplicate seed work.
+    _cacheKeys: ['health:disease-outbreaks:v1', 'health:air-quality:v1'],
+    _seedMetaKey: 'seed-meta:health:disease-outbreaks',
+    _maxStaleMin: 2880,
+    _freshnessChecks: [
+      { key: 'seed-meta:health:disease-outbreaks', maxStaleMin: 2880 }, // daily cron; 48h budget
+      { key: 'seed-meta:health:air-quality', maxStaleMin: 180 },        // hourly cron; 3h budget
+    ],
+  },
+  {
     name: 'get_climate_data',
     description: 'Climate intelligence: temperature/precipitation anomalies (vs 30-year WMO normals), climate-relevant disaster alerts (ReliefWeb/GDACS/FIRMS), atmospheric CO2 trend (NOAA Mauna Loa), air quality (OpenAQ/WAQI PM2.5 stations), Arctic sea ice extent and ocean heat indicators (NSIDC/NOAA), weather alerts, and climate news.',
     inputSchema: { type: 'object', properties: {}, required: [] },

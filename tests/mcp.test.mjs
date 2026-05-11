@@ -118,12 +118,12 @@ describe('api/mcp.ts — PRO MCP Server', () => {
 
   // --- tools/list ---
 
-  it('tools/list returns 33 tools with name, description, inputSchema', async () => {
+  it('tools/list returns 34 tools with name, description, inputSchema', async () => {
     const res = await handler(makeReq('POST', { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }));
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.ok(Array.isArray(body.result?.tools), 'result.tools must be an array');
-    assert.equal(body.result.tools.length, 33, `Expected 33 tools, got ${body.result.tools.length}`);
+    assert.equal(body.result.tools.length, 34, `Expected 34 tools, got ${body.result.tools.length}`);
     for (const tool of body.result.tools) {
       assert.ok(tool.name, 'tool.name must be present');
       assert.ok(tool.description, 'tool.description must be present');
@@ -133,6 +133,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     }
     const toolNames = body.result.tools.map((t) => t.name);
     assert.ok(toolNames.includes('get_displacement_data'), 'get_displacement_data must be registered (U1 Tier 1 regression)');
+    assert.ok(toolNames.includes('get_health_signals'), 'get_health_signals must be registered (U2)');
   });
 
   // --- tools/call ---
@@ -323,6 +324,202 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.equal(body.error?.code, -32603, 'empty cache must surface as -32603 (cache_all_null)');
+  });
+
+  // --- get_health_signals (U2) ---
+
+  it('get_health_signals returns both disease-outbreaks and air-quality slices on cache hit', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+
+    const outbreaksPayload = { outbreaks: [{ id: 'who-1', disease: 'Marburg', country: 'TZA' }] };
+    const airQualityPayload = { stations: [{ id: 'aqi-1', city: 'Delhi', pm25: 187 }] };
+    const outbreaksFetchedAt = Date.now() - 60 * 60_000;   // 1h old; within 2880-min budget
+    const airQualityFetchedAt = Date.now() - 30 * 60_000;  // 30m old; within 180-min budget
+
+    globalThis.fetch = async (url) => {
+      const u = url.toString();
+      if (u.includes(`/get/${encodeURIComponent('health:disease-outbreaks:v1')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify(outbreaksPayload) }), {
+          status: 200, headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (u.includes(`/get/${encodeURIComponent('health:air-quality:v1')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify(airQualityPayload) }), {
+          status: 200, headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:health:disease-outbreaks')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: outbreaksFetchedAt, recordCount: 1 }) }), {
+          status: 200, headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:health:air-quality')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: airQualityFetchedAt, recordCount: 1 }) }), {
+          status: 200, headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return originalFetch(url);
+    };
+
+    const freshMod = await import(`../api/mcp.ts?t=${Date.now()}`);
+    const freshHandler = freshMod.default;
+
+    const res = await freshHandler(makeReq('POST', {
+      jsonrpc: '2.0', id: 200, method: 'tools/call',
+      params: { name: 'get_health_signals', arguments: {} },
+    }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.ok(body.result?.content, 'result.content must be present');
+    const payload = JSON.parse(body.result.content[0].text);
+    assert.equal(payload.stale, false, 'both metas within their per-key budgets must yield stale=false');
+    assert.equal(payload.cached_at, new Date(outbreaksFetchedAt).toISOString(), 'cached_at reflects oldest valid fetchedAt across freshness checks');
+    assert.deepEqual(payload.data['disease-outbreaks'], outbreaksPayload, 'disease-outbreaks slice labelled from cache-key suffix');
+    assert.deepEqual(payload.data['air-quality'], airQualityPayload, 'air-quality slice labelled from cache-key suffix');
+  });
+
+  it('get_health_signals marks aggregate stale when disease-outbreaks meta is past budget but air-quality is fresh', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+
+    const outbreaksPayload = { outbreaks: [{ id: 'who-1' }] };
+    const airQualityPayload = { stations: [{ id: 'aqi-1' }] };
+    // disease-outbreaks budget is 2880 min — put it at 4000 min old (clearly stale)
+    const outbreaksFetchedAt = Date.now() - 4000 * 60_000;
+    // air-quality budget is 180 min — put it at 30 min old (fresh)
+    const airQualityFetchedAt = Date.now() - 30 * 60_000;
+
+    globalThis.fetch = async (url) => {
+      const u = url.toString();
+      if (u.includes(`/get/${encodeURIComponent('health:disease-outbreaks:v1')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify(outbreaksPayload) }), {
+          status: 200, headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (u.includes(`/get/${encodeURIComponent('health:air-quality:v1')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify(airQualityPayload) }), {
+          status: 200, headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:health:disease-outbreaks')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: outbreaksFetchedAt, recordCount: 1 }) }), {
+          status: 200, headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:health:air-quality')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: airQualityFetchedAt, recordCount: 1 }) }), {
+          status: 200, headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return originalFetch(url);
+    };
+
+    const freshMod = await import(`../api/mcp.ts?t=${Date.now()}`);
+    const freshHandler = freshMod.default;
+
+    const res = await freshHandler(makeReq('POST', {
+      jsonrpc: '2.0', id: 201, method: 'tools/call',
+      params: { name: 'get_health_signals', arguments: {} },
+    }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    const payload = JSON.parse(body.result.content[0].text);
+    assert.equal(payload.stale, true, 'one over-budget key flips aggregate stale=true');
+    assert.equal(payload.cached_at, new Date(outbreaksFetchedAt).toISOString(), 'cached_at is the oldest valid fetchedAt (disease-outbreaks)');
+  });
+
+  it('get_health_signals returns mixed shape (one slice null) without throwing when only one key is populated', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+
+    const airQualityPayload = { stations: [{ id: 'aqi-1' }] };
+    const airQualityFetchedAt = Date.now() - 30 * 60_000;
+
+    globalThis.fetch = async (url) => {
+      const u = url.toString();
+      if (u.includes(`/get/${encodeURIComponent('health:disease-outbreaks:v1')}`)) {
+        // Upstash returns {} (no `result`) when the key is absent — readJsonFromUpstash → null
+        return new Response(JSON.stringify({}), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes(`/get/${encodeURIComponent('health:air-quality:v1')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify(airQualityPayload) }), {
+          status: 200, headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:health:disease-outbreaks')}`)) {
+        return new Response(JSON.stringify({}), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:health:air-quality')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: airQualityFetchedAt, recordCount: 1 }) }), {
+          status: 200, headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return originalFetch(url);
+    };
+
+    const freshMod = await import(`../api/mcp.ts?t=${Date.now()}`);
+    const freshHandler = freshMod.default;
+
+    const res = await freshHandler(makeReq('POST', {
+      jsonrpc: '2.0', id: 202, method: 'tools/call',
+      params: { name: 'get_health_signals', arguments: {} },
+    }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    // Must NOT throw: at least one cache slot is populated, so cache_all_null guard does not fire.
+    assert.ok(body.result?.content, 'partial-population must return a result, not -32603');
+    const payload = JSON.parse(body.result.content[0].text);
+    assert.equal(payload.data['disease-outbreaks'], null, 'missing slice surfaces as null');
+    assert.deepEqual(payload.data['air-quality'], airQualityPayload, 'populated slice still present');
+    assert.equal(payload.stale, true, 'missing meta forces stale=true (hasAllValidMeta=false in evaluateFreshness)');
+    assert.equal(payload.cached_at, null, 'mixed-validity meta yields cached_at=null per evaluateFreshness contract');
+  });
+
+  it('get_climate_data still includes air-quality slice (regression — U2 must not touch get_climate_data._cacheKeys)', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+
+    const climateAirQualityPayload = { stations: [{ id: 'climate-aqi-1', city: 'Lagos', pm25: 92 }] };
+    const climateFetchedAt = Date.now() - 30 * 60_000;
+
+    globalThis.fetch = async (url) => {
+      const u = url.toString();
+      // Return populated climate:air-quality blob; everything else null (cache_all_null
+      // guard does NOT trip because at least one key is populated).
+      if (u.includes(`/get/${encodeURIComponent('climate:air-quality:v1')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify(climateAirQualityPayload) }), {
+          status: 200, headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      // Health-domain key MUST NOT be queried by get_climate_data — if it is, the
+      // climate tool was modified, which violates U2's CRITICAL constraint.
+      if (u.includes(`/get/${encodeURIComponent('health:disease-outbreaks:v1')}`)) {
+        throw new Error('get_climate_data must not read health-domain keys (U2 regression)');
+      }
+      // Provide a fresh climate:air-quality meta so the freshness check has at
+      // least one valid fetchedAt to anchor cached_at off (rest stale → aggregate stale=true).
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:health:air-quality')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: climateFetchedAt, recordCount: 1 }) }), {
+          status: 200, headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify({}), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    };
+
+    const freshMod = await import(`../api/mcp.ts?t=${Date.now()}`);
+    const freshHandler = freshMod.default;
+
+    const res = await freshHandler(makeReq('POST', {
+      jsonrpc: '2.0', id: 203, method: 'tools/call',
+      params: { name: 'get_climate_data', arguments: {} },
+    }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.ok(body.result?.content, 'get_climate_data must still return a result');
+    const payload = JSON.parse(body.result.content[0].text);
+    // climate:air-quality:v1 → label-walk strips :v1, exposes under data['air-quality']
+    assert.deepEqual(payload.data['air-quality'], climateAirQualityPayload, 'get_climate_data._cacheKeys must still include climate:air-quality:v1');
   });
 
   // --- get_airspace ---
