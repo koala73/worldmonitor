@@ -10,7 +10,7 @@
 import { US_NEWS_SOURCES, ITEMS_PER_FEED, MAX_ITEMS, MAX_AGE_MS, type NewsSource } from './_sources';
 import { detectBreaking } from './_breaking';
 import { CHROME_UA } from '../../_shared/constants';
-import { cachedFetchJson } from '../../_shared/redis';
+import { cachedFetchJson, getCachedJson } from '../../_shared/redis';
 import { sha256Hex } from '../../_shared/hash';
 
 const FEED_TIMEOUT_MS = 8_000;
@@ -305,6 +305,75 @@ export async function titleHash(title: string): Promise<string> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Brief top-stories injection
+// ─────────────────────────────────────────────────────────────────────────────
+
+/** Shape of one story in `news:insights:v1` written by `seed-insights.mjs`. */
+interface BriefTopStory {
+  primaryTitle?: string;
+  primarySource?: string;
+  primaryLink?: string;
+  pubDate?: number;
+  isAlert?: boolean;
+}
+
+interface BriefInsights {
+  topStories?: BriefTopStory[];
+}
+
+/**
+ * Read the AI World Brief's top stories from Redis and convert them into
+ * `RawItem`s so they flow through the same dedup + enrichment pipeline as
+ * RSS-sourced items. Solves iOS's "top story has no AI summary" problem:
+ * the brief picks 8 daily headlines, some of which come from outlets that
+ * aren't in our RSS list (so the summary cache never hit before).
+ *
+ * Priority 2 puts them in the "top broadcaster" tier — they win dedup
+ * against analysis outlets (tier 3-4) but lose to wire services (tier 1)
+ * for the same story, which is the right behavior. We never want to
+ * displace Reuters/AP with whatever outlet the brief clustering picked.
+ *
+ * Soft-failing on every error path. If insights are missing, malformed,
+ * or Redis is unreachable, this returns [] and the digest builds exactly
+ * as before. The injection is strictly additive — no existing live-news
+ * functionality depends on it.
+ */
+async function readBriefTopStoriesAsRawItems(): Promise<RawItem[]> {
+  try {
+    const insights = (await getCachedJson('news:insights:v1', true)) as BriefInsights | null;
+    if (!insights?.topStories?.length) return [];
+
+    const now = Date.now();
+    const items: RawItem[] = [];
+    for (const s of insights.topStories) {
+      const title = (s.primaryTitle ?? '').trim();
+      const link = (s.primaryLink ?? '').trim();
+      // Reject anything missing the essentials — title + URL are required
+      // for downstream dedup (titleHash) and the iOS detail view.
+      if (!title || !link) continue;
+
+      items.push({
+        source: s.primarySource ?? 'World Brief',
+        sourcePriority: 2,
+        title,
+        link,
+        publishedAt: s.pubDate ?? now,
+        // No RSS excerpt available for brief stories. The enrichment LLM
+        // will summarize from the title alone — thinner than RSS-based
+        // summaries but still useful. Body fetching can be layered in
+        // later if quality proves insufficient.
+        rawDescription: '',
+      });
+    }
+    return items;
+  } catch (err) {
+    console.warn('[live-news] brief-top-stories injection failed (soft-fail):',
+      err instanceof Error ? err.message : err);
+    return [];
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Public: build the digest (without LLM enrichment — that runs separately)
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -336,6 +405,16 @@ export async function buildBaseDigest(signal: AbortSignal): Promise<{
     feedStatuses[src.name] = arr.length > 0 ? 'ok' : 'empty';
     allRaw.push(...arr);
   });
+
+  // Inject AI World Brief top stories into the same pool. They flow
+  // through dedup + enrichment exactly like RSS items — no parallel code
+  // path. Soft-fails to [] on any error, so a broken brief cron can't
+  // break live-news.
+  const briefItems = await readBriefTopStoriesAsRawItems();
+  if (briefItems.length > 0) {
+    console.log(`[live-news] Injected ${briefItems.length} brief top-story items into the digest pool`);
+    allRaw.push(...briefItems);
+  }
 
   // Dedup by 80-char title fingerprint, picking the most authoritative
   // copy of each story. Tie-break order:
