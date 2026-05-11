@@ -784,6 +784,11 @@ const TOOL_REGISTRY: ToolDef[] = [
       if (!res.ok) throw new Error(`get-country-intel-brief HTTP ${res.status}`);
       return res.json();
     },
+    // METHOD DRIFT: _execute POSTs above but OpenAPI declares only GET on this
+    // path (verified against docs/api/IntelligenceService.openapi.json). The
+    // gateway routes by path, not method, so POST works at runtime. We declare
+    // GET here because OpenAPI is the parity test's source-of-truth — fixing
+    // the spec to add POST (or migrating the handler to GET) is out of scope.
     _apiPaths: [
       "GET /api/intelligence/v1/get-country-intel-brief",
     ],

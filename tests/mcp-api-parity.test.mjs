@@ -15,7 +15,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { readdirSync, readFileSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 
@@ -454,6 +454,16 @@ function findBareFetchOnMissReasons(excludedMap) {
   return offenders;
 }
 
+/** Ops declared in some tool's `_apiPaths` AND listed in the exclusion map (forbidden double-coverage).
+ *  An op should be EITHER covered (in _apiPaths) OR excluded (in the map), never both. */
+function findDoubleCoveredOps({ declaredPaths, excludedMap }) {
+  const doubles = [];
+  for (const op of declaredPaths) {
+    if (excludedMap.has(op)) doubles.push(op);
+  }
+  return doubles;
+}
+
 /** `fetch-on-miss:` entries naming a FORBIDDEN secondary (the loophole-blocker). */
 function findForbiddenFetchOnMissSecondaries(excludedMap) {
   const offenders = [];
@@ -514,6 +524,13 @@ describe('Tier-4 — MCP↔API parity assertions', () => {
     assert.deepEqual(offenders, [], `Forbidden fetch-on-miss secondary (move to tool's _apiPaths instead): ${offenders.join(', ')}`);
   });
 
+  it('no op is double-covered (declared in _apiPaths AND listed in EXCLUDED_FROM_MCP_PARITY)', () => {
+    const doubles = findDoubleCoveredOps({ declaredPaths, excludedMap: EXCLUDED_FROM_MCP_PARITY });
+    assert.deepEqual(doubles, [],
+      `Op(s) declared in some tool's _apiPaths AND listed in EXCLUDED_FROM_MCP_PARITY (pick one): ${doubles.join(', ')}. ` +
+      `Coverage is exclusive — remove the exclusion entry for any op that's now covered by a tool.`);
+  });
+
   it('emits a categorized count report for downstream coverage planning', () => {
     const declared = collectDeclaredApiPaths(TOOL_REGISTRY);
     const counts = new Map();
@@ -544,7 +561,7 @@ describe('Tier-4 meta-tests — predicates fire on synthetic invalid inputs', ()
     assert.equal(ops.size, 0);
   });
 
-  it('collectApiOperations: filters non-HTTP-method path siblings (parameters, summary, description)', () => {
+  it('collectApiOperations: filters non-HTTP-method path siblings (parameters, summary, description)', (t) => {
     const tmpDir = mkSpecFixture({
       paths: {
         '/api/fixture/v1/get-foo': {
@@ -557,7 +574,7 @@ describe('Tier-4 meta-tests — predicates fire on synthetic invalid inputs', ()
           post: { operationId: 'postMulti' },
         },
       },
-    });
+    }, t);
     const ops = collectApiOperations(tmpDir);
     assert.deepEqual([...ops].sort(), [
       'GET /api/fixture/v1/get-foo',
@@ -566,10 +583,25 @@ describe('Tier-4 meta-tests — predicates fire on synthetic invalid inputs', ()
     ]);
   });
 
-  it('collectApiOperations: skips malformed specs without throwing', () => {
-    const tmpDir = mkSpecFixture('not-valid-json{{{');
+  it('collectApiOperations: skips malformed specs without throwing', (t) => {
+    const tmpDir = mkSpecFixture('not-valid-json{{{', t);
     const ops = collectApiOperations(tmpDir);
     assert.equal(ops.size, 0);
+  });
+
+  it('collectApiOperations: skips specs with missing/null/non-object paths', (t) => {
+    // Three malformed shapes that all hit the line ~70 guard. Each fixture
+    // is a separate spec file so we exercise all three branches in one run.
+    const cases = [
+      { openapi: '3.1.0' },              // missing paths entirely
+      { openapi: '3.1.0', paths: null }, // paths: null
+      { openapi: '3.1.0', paths: 'oh no' }, // paths: primitive
+    ];
+    for (const spec of cases) {
+      const tmpDir = mkSpecFixture(spec, t);
+      assert.equal(collectApiOperations(tmpDir).size, 0,
+        `expected empty Set for malformed paths shape ${JSON.stringify(spec.paths)}`);
+    }
   });
 
   // --- collectDeclaredApiPaths ---
@@ -649,15 +681,29 @@ describe('Tier-4 meta-tests — predicates fire on synthetic invalid inputs', ()
     ]);
     assert.deepEqual(findForbiddenFetchOnMissSecondaries(excludedMap), ['GET /loophole']);
   });
+
+  it('findDoubleCoveredOps: catches ops in both _apiPaths and the exclusion map', () => {
+    const declaredPaths = new Set(['GET /covered', 'GET /double']);
+    const excludedMap = new Map([
+      ['GET /excluded-only', 'mutating: writes state'],
+      ['GET /double', 'mutating: should not coexist with _apiPaths'],
+    ]);
+    assert.deepEqual(findDoubleCoveredOps({ declaredPaths, excludedMap }), ['GET /double']);
+  });
 });
 
 // -----------------------------------------------------------------------------
 // Fixture helpers (test-local; do not export)
 // -----------------------------------------------------------------------------
 
-function mkSpecFixture(content) {
+function mkSpecFixture(content, t) {
   const dir = mkdtempSync(join(tmpdir(), 'mcp-parity-fixture-'));
   const body = typeof content === 'string' ? content : JSON.stringify(content);
   writeFileSync(join(dir, 'Fixture.openapi.json'), body);
+  // Best-effort cleanup. node:test's TestContext.after fires post-test;
+  // failure is non-fatal (CI runners typically clean /tmp anyway).
+  if (t && typeof t.after === 'function') {
+    t.after(() => { try { rmSync(dir, { recursive: true, force: true }); } catch { /* ignore */ } });
+  }
   return dir;
 }
