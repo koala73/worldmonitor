@@ -720,7 +720,13 @@ const TOOL_REGISTRY: ToolDef[] = [
       if (!params.country_code || typeof params.country_code !== 'string') {
         return { error: 'country_code is required' };
       }
-      const code = params.country_code.toLowerCase().slice(0, 2);
+      const code = params.country_code.toLowerCase();
+      // Strict ISO 3166-1 alpha-2 shape: exactly two lowercase letters.
+      // Without this, .slice(0,2) would silently truncate inputs like
+      // "aexxx" or "AE-DXB" to "ae" and serve AE data — masking client bugs.
+      if (!/^[a-z]{2}$/.test(code)) {
+        return { error: 'country_code must be a two-letter ISO code (e.g. "ae")' };
+      }
       if (!SUPPORTED_CONSUMER_PRICES_COUNTRIES.has(code)) {
         return { error: 'Country not yet supported. Available: ae' };
       }
@@ -752,6 +758,16 @@ const TOOL_REGISTRY: ToolDef[] = [
         Promise.all(dataKeys.map((k) => readJsonFromUpstash(k))),
         Promise.all(freshnessChecks.map((c) => readJsonFromUpstash(c.key))),
       ]);
+
+      // F6 contract parity with the cache-tool path (executeTool, ~line 1139):
+      // if every data read is null/undefined, this is a degenerate-empty
+      // response (Redis transient / stampede / pre-seed). Throw so
+      // dispatchToolsCall's catch fires proRollback — without this, the Pro
+      // user's daily MCP counter increments by 1 for a useless result while
+      // every other cache-tool refunds via the same code path.
+      if (dataResults.every((v: unknown) => v === null || v === undefined)) {
+        throw new Error('cache_all_null');
+      }
 
       const { cached_at, stale } = evaluateFreshness(freshnessChecks, metaResults);
 

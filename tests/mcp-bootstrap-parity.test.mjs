@@ -289,20 +289,26 @@ const EXCLUDED_FROM_MCP = new Map([
     'operational: relay loop heartbeat — covered by /api/health, not a user-facing data slice for MCP.'],
 ]);
 
-// Resolve dynamic STANDALONE_KEYS entries (displacement embeds UTC year).
-function getSeededKeys() {
+// -----------------------------------------------------------------------------
+// Pure predicate helpers (no module-state coupling) — used by both the
+// live-state assertions below and the meta-tests at the bottom of the file
+// that verify these predicates actually fire on synthetic invalid inputs.
+//
+// Each helper takes inputs explicitly and returns the array of offending keys.
+// An empty array means "nothing wrong"; a non-empty array means "fail the test
+// and list these keys".
+// -----------------------------------------------------------------------------
+
+export function collectSeededKeys(bootstrapKeys, standaloneKeys) {
   return new Set([
-    ...Object.values(BOOTSTRAP_KEYS),
-    ...Object.values(STANDALONE_KEYS),
+    ...Object.values(bootstrapKeys),
+    ...Object.values(standaloneKeys),
   ]);
 }
 
-// Flatten all covered keys across the TOOL_REGISTRY:
-//   - CacheToolDef → entry._cacheKeys
-//   - RpcToolDef hybrid → entry._coverageKeys (optional)
-function getCoveredKeys() {
+export function collectCoveredKeys(toolRegistry) {
   const covered = new Set();
-  for (const tool of TOOL_REGISTRY) {
+  for (const tool of toolRegistry) {
     if (Array.isArray(tool._cacheKeys)) {
       for (const k of tool._cacheKeys) covered.add(k);
     }
@@ -313,17 +319,49 @@ function getCoveredKeys() {
   return covered;
 }
 
+/** Seeded keys that are neither covered nor excluded. */
+export function findUncoveredKeys({ seededKeys, coveredKeys, excludedMap }) {
+  const uncovered = [];
+  for (const key of seededKeys) {
+    if (coveredKeys.has(key)) continue;
+    if (excludedMap.has(key)) continue;
+    uncovered.push(key);
+  }
+  return uncovered;
+}
+
+/** Excluded entries whose reason is missing / empty / non-string. */
+export function findEmptyReasonExclusions(excludedMap) {
+  const offenders = [];
+  for (const [key, reason] of excludedMap) {
+    if (typeof reason !== 'string' || reason.trim().length === 0) offenders.push(key);
+  }
+  return offenders;
+}
+
+/** Excluded keys that are not actually in the seeded-key inventory. */
+export function findDeadExclusions({ excludedMap, seededKeys }) {
+  const dead = [];
+  for (const key of excludedMap.keys()) {
+    if (!seededKeys.has(key)) dead.push(key);
+  }
+  return dead;
+}
+
+/** Excluded keys that ARE covered by a tool (mutually-exclusive contract). */
+export function findRedundantExclusions({ excludedMap, coveredKeys }) {
+  const redundant = [];
+  for (const key of excludedMap.keys()) {
+    if (coveredKeys.has(key)) redundant.push(key);
+  }
+  return redundant;
+}
+
 describe('U7 — TOOL_REGISTRY ↔ BOOTSTRAP_KEYS+STANDALONE_KEYS parity', () => {
   it('every seeded cache key is covered by a tool or explicitly excluded', () => {
-    const seededKeys = getSeededKeys();
-    const coveredKeys = getCoveredKeys();
-
-    const uncovered = [];
-    for (const key of seededKeys) {
-      if (coveredKeys.has(key)) continue;
-      if (EXCLUDED_FROM_MCP.has(key)) continue;
-      uncovered.push(key);
-    }
+    const seededKeys = collectSeededKeys(BOOTSTRAP_KEYS, STANDALONE_KEYS);
+    const coveredKeys = collectCoveredKeys(TOOL_REGISTRY);
+    const uncovered = findUncoveredKeys({ seededKeys, coveredKeys, excludedMap: EXCLUDED_FROM_MCP });
 
     if (uncovered.length > 0) {
       const list = uncovered.map((k) => `  - ${k}`).join('\n');
@@ -338,31 +376,91 @@ describe('U7 — TOOL_REGISTRY ↔ BOOTSTRAP_KEYS+STANDALONE_KEYS parity', () =>
   });
 
   it('every EXCLUDED_FROM_MCP entry has a non-empty reason', () => {
-    for (const [key, reason] of EXCLUDED_FROM_MCP) {
-      assert.ok(
-        typeof reason === 'string' && reason.trim().length > 0,
-        `EXCLUDED_FROM_MCP entry "${key}" has an empty or non-string reason — every exclusion must be documented.`,
-      );
-    }
+    const offenders = findEmptyReasonExclusions(EXCLUDED_FROM_MCP);
+    assert.deepEqual(offenders, [], `EXCLUDED_FROM_MCP entries with empty/missing reason: ${offenders.join(', ')}`);
   });
 
   it('every EXCLUDED_FROM_MCP entry is present in BOOTSTRAP_KEYS or STANDALONE_KEYS (no dead exclusions)', () => {
-    const seededKeys = getSeededKeys();
-    for (const key of EXCLUDED_FROM_MCP.keys()) {
-      assert.ok(
-        seededKeys.has(key),
-        `EXCLUDED_FROM_MCP entry "${key}" is not in BOOTSTRAP_KEYS or STANDALONE_KEYS — dead exclusion, remove it.`,
-      );
-    }
+    const seededKeys = collectSeededKeys(BOOTSTRAP_KEYS, STANDALONE_KEYS);
+    const dead = findDeadExclusions({ excludedMap: EXCLUDED_FROM_MCP, seededKeys });
+    assert.deepEqual(dead, [], `Dead EXCLUDED_FROM_MCP entries (not in BOOTSTRAP_KEYS/STANDALONE_KEYS): ${dead.join(', ')}`);
   });
 
   it('EXCLUDED_FROM_MCP keys are not also covered by a tool (no redundant exclusions)', () => {
-    const coveredKeys = getCoveredKeys();
-    for (const key of EXCLUDED_FROM_MCP.keys()) {
-      assert.ok(
-        !coveredKeys.has(key),
-        `EXCLUDED_FROM_MCP entry "${key}" is also covered by a tool — exclusion is redundant, remove it from EXCLUDED_FROM_MCP.`,
-      );
-    }
+    const coveredKeys = collectCoveredKeys(TOOL_REGISTRY);
+    const redundant = findRedundantExclusions({ excludedMap: EXCLUDED_FROM_MCP, coveredKeys });
+    assert.deepEqual(redundant, [], `Redundant EXCLUDED_FROM_MCP entries (also covered by a tool): ${redundant.join(', ')}`);
+  });
+});
+
+// -----------------------------------------------------------------------------
+// Meta-tests — verify the predicate helpers above actually fire on synthetic
+// invalid fixtures. Without these, a regression that makes a predicate a no-op
+// (e.g. early return, predicate inversion, off-by-one filter) would ship
+// undetected because the live-state assertions only fail when the real
+// codebase is broken.
+// -----------------------------------------------------------------------------
+
+describe('U7 meta-tests — parity predicates fire on synthetic invalid inputs', () => {
+  it('findUncoveredKeys returns the synthetic seeded key that is neither covered nor excluded', () => {
+    const seededKeys = new Set(['ghost:key:v1', 'covered:key:v1', 'excluded:key:v1']);
+    const coveredKeys = new Set(['covered:key:v1']);
+    const excludedMap = new Map([['excluded:key:v1', 'documented reason']]);
+    const uncovered = findUncoveredKeys({ seededKeys, coveredKeys, excludedMap });
+    assert.deepEqual(uncovered, ['ghost:key:v1'], 'ghost:key:v1 must surface as uncovered');
+  });
+
+  it('findUncoveredKeys returns empty when every seeded key is covered or excluded', () => {
+    const seededKeys = new Set(['a:v1', 'b:v1']);
+    const coveredKeys = new Set(['a:v1']);
+    const excludedMap = new Map([['b:v1', 'because']]);
+    assert.deepEqual(findUncoveredKeys({ seededKeys, coveredKeys, excludedMap }), []);
+  });
+
+  it('findEmptyReasonExclusions catches empty-string and whitespace-only reasons', () => {
+    const excludedMap = new Map([
+      ['good:v1', 'documented reason'],
+      ['empty:v1', ''],
+      ['whitespace:v1', '   '],
+      ['nullish:v1', null],
+    ]);
+    const offenders = findEmptyReasonExclusions(excludedMap);
+    assert.deepEqual(offenders.sort(), ['empty:v1', 'nullish:v1', 'whitespace:v1']);
+  });
+
+  it('findDeadExclusions catches excluded keys absent from the seeded-key set', () => {
+    const excludedMap = new Map([
+      ['live:v1', 'reason'],
+      ['ghost:v1', 'reason'],
+    ]);
+    const seededKeys = new Set(['live:v1']);
+    assert.deepEqual(findDeadExclusions({ excludedMap, seededKeys }), ['ghost:v1']);
+  });
+
+  it('findRedundantExclusions catches keys that are both excluded AND covered by a tool', () => {
+    const excludedMap = new Map([
+      ['both:v1', 'reason'],
+      ['only-excluded:v1', 'reason'],
+    ]);
+    const coveredKeys = new Set(['both:v1']);
+    assert.deepEqual(findRedundantExclusions({ excludedMap, coveredKeys }), ['both:v1']);
+  });
+
+  it('collectCoveredKeys aggregates _cacheKeys + _coverageKeys across the registry', () => {
+    const registry = [
+      { name: 'cache_tool_a', _cacheKeys: ['a:v1', 'b:v1'] },
+      { name: 'cache_tool_b', _cacheKeys: ['c:v1'] },
+      { name: 'hybrid_tool', _coverageKeys: ['d:v1'], _execute: () => {} },
+      { name: 'rpc_tool_no_cache', _execute: () => {} }, // no _cacheKeys, no _coverageKeys
+    ];
+    const covered = collectCoveredKeys(registry);
+    assert.deepEqual([...covered].sort(), ['a:v1', 'b:v1', 'c:v1', 'd:v1']);
+  });
+
+  it('collectSeededKeys merges BOOTSTRAP and STANDALONE without duplicates', () => {
+    const bootstrap = { alpha: 'a:v1', beta: 'b:v1' };
+    const standalone = { gamma: 'c:v1', alphaAgain: 'a:v1' };
+    const seeded = collectSeededKeys(bootstrap, standalone);
+    assert.deepEqual([...seeded].sort(), ['a:v1', 'b:v1', 'c:v1']);
   });
 });

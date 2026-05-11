@@ -135,6 +135,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     const toolNames = body.result.tools.map((t) => t.name);
     assert.ok(toolNames.includes('get_displacement_data'), 'get_displacement_data must be registered (U1 Tier 1 regression)');
     assert.ok(toolNames.includes('get_health_signals'), 'get_health_signals must be registered (U2)');
+    assert.ok(toolNames.includes('get_energy_intelligence'), 'get_energy_intelligence must be registered (U3)');
     assert.ok(toolNames.includes('get_consumer_prices'), 'get_consumer_prices must be registered (U4)');
     assert.ok(toolNames.includes('get_tariff_trends'), 'get_tariff_trends must be registered (U5)');
     assert.ok(toolNames.includes('get_chokepoint_status'), 'get_chokepoint_status must be registered (U6)');
@@ -614,14 +615,15 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(payload.error, 'country_code is required');
   });
 
-  it('get_consumer_prices: 5 null keys yields stale=true + cached_at=null (does NOT throw)', async () => {
+  it('get_consumer_prices throws cache_all_null (→ -32603) when every 5 cache reads return null', async () => {
     process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
 
-    // Every GET returns {} (no `result`) — readJsonFromUpstash → null for both
-    // data keys and seed-meta keys. The hybrid _execute does NOT run the
-    // cache_all_null guard (that's a CacheToolDef-only path inside executeTool),
-    // so the response surfaces 5 nulls with stale=true and cached_at=null.
+    // F6 contract parity with the cache-tool path: hybrid _execute mirrors the
+    // executeTool cache_all_null guard so the Pro quota counter is rolled back
+    // on degenerate-empty responses (Redis transient / pre-seed). Without this
+    // guard, every other cache-tool throws on all-null while this one would
+    // return success and silently burn a quota tick.
     globalThis.fetch = async () => new Response(JSON.stringify({}), { status: 200, headers: { 'Content-Type': 'application/json' } });
 
     const freshMod = await import(`../api/mcp.ts?t=${Date.now()}`);
@@ -633,15 +635,28 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     }));
     assert.equal(res.status, 200);
     const body = await res.json();
-    assert.ok(body.result?.content, 'empty cache must surface a result (not -32603) for hybrid _execute');
-    const payload = JSON.parse(body.result.content[0].text);
-    assert.equal(payload.stale, true, 'no valid meta → stale=true');
-    assert.equal(payload.cached_at, null, 'no valid meta → cached_at=null');
-    assert.equal(payload.data.overview, null);
-    assert.equal(payload.data.categories, null);
-    assert.equal(payload.data.movers, null);
-    assert.equal(payload.data.retailerSpread, null);
-    assert.equal(payload.data.freshness, null);
+    assert.equal(body.error?.code, -32603, 'all-5-null reads must surface as -32603 cache_all_null');
+  });
+
+  it('get_consumer_prices rejects oversized/non-alpha country_code (e.g. "aexxx", "AE-DXB") with result-level error', async () => {
+    // Without strict /^[a-z]{2}$/ validation, `.slice(0,2)` would silently
+    // truncate "aexxx" → "ae" and serve AE data — masking client-side bugs.
+    for (const bad of ['aexxx', 'AE-DXB', 'a', 'A1', '1AE', 'ae-']) {
+      const res = await handler(makeReq('POST', {
+        jsonrpc: '2.0', id: 305, method: 'tools/call',
+        params: { name: 'get_consumer_prices', arguments: { country_code: bad } },
+      }));
+      assert.equal(res.status, 200);
+      const body = await res.json();
+      assert.ok(body.result?.content, `bad country_code ${JSON.stringify(bad)} must return a result, not -32603`);
+      assert.equal(body.error, undefined);
+      const payload = JSON.parse(body.result.content[0].text);
+      assert.equal(
+        payload.error,
+        'country_code must be a two-letter ISO code (e.g. "ae")',
+        `${JSON.stringify(bad)} must be rejected by the strict-shape guard`,
+      );
+    }
   });
 
   // --- get_tariff_trends (U5: trade + economic indicator bundle) ---
@@ -1045,6 +1060,142 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(payload.data['chokepoint-flows'], null, 'missing chokepoint-flows slice surfaces as null');
     assert.equal(payload.stale, true, 'missing meta forces stale=true (hasAllValidMeta=false)');
     assert.equal(payload.cached_at, null, 'mixed-validity meta yields cached_at=null per evaluateFreshness contract');
+  });
+
+  // --- get_energy_intelligence (U3: 9-key energy bundle) ---
+
+  it('get_energy_intelligence returns 9-slice data on cache hit when every per-key meta is within budget', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+
+    const eiaPayload = { weeklySeries: [{ week: '2026-W18', stocks: 832.1 }] };
+    const electricityPayload = { countries: [{ iso: 'DE', priceEurMwh: 88 }] };
+    const emberPayload = { regions: [{ id: 'EU', cleanShare: 0.62 }] };
+    const gasStoragePayload = { countries: [{ iso: 'DE', fillPct: 71 }] };
+    const fuelShortagesPayload = { countries: [{ iso: 'CU', severity: 'high' }] };
+    const disruptionsPayload = { events: [{ id: 'pipe-2026-04-21', region: 'Levant' }] };
+    const crisisPolicyPayload = { policies: [{ country: 'DE', kind: 'price-cap' }] };
+    const fossilSharePayload = { countries: [{ iso: 'PL', fossilSharePct: 73 }] };
+    const renewablePayload = { countries: [{ iso: 'IS', renewablePct: 84 }] };
+
+    // Budgets: eiaPetroleum=4320min, electricity-prices=2880, ember=2880, gas-storage=2880,
+    // fuel-shortages=2880, disruptions=20160, crisis-policies=~400d, fossil-share=11520, renewable=10080.
+    // All fetchedAts within their per-key budgets; oldest = crisisPolicy (30d old, within 400d budget)
+    // anchors cached_at — exercises the wide budget-asymmetry property.
+    const eiaFetchedAt           = Date.now() - 60 * 60_000;
+    const electricityFetchedAt   = Date.now() - 30 * 60_000;
+    const emberFetchedAt         = Date.now() - 24 * 60 * 60_000;
+    const gasStorageFetchedAt    = Date.now() - 12 * 60 * 60_000;
+    const fuelShortagesFetchedAt = Date.now() - 12 * 60 * 60_000;
+    const disruptionsFetchedAt   = Date.now() - 5 * 24 * 60 * 60_000;
+    const crisisPolicyFetchedAt  = Date.now() - 30 * 24 * 60 * 60_000;  // OLDEST valid → anchors cached_at (within ~400d budget)
+    const fossilShareFetchedAt   = Date.now() - 7 * 24 * 60 * 60_000;
+    const renewableFetchedAt     = Date.now() - 6 * 24 * 60 * 60_000;
+
+    const JSON_HDR = { 'Content-Type': 'application/json' };
+    globalThis.fetch = async (url) => {
+      const u = url.toString();
+      // Data keys
+      if (u.includes(`/get/${encodeURIComponent('energy:eia-petroleum:v1')}`)) return new Response(JSON.stringify({ result: JSON.stringify(eiaPayload) }), { status: 200, headers: JSON_HDR });
+      if (u.includes(`/get/${encodeURIComponent('energy:electricity:v1:index')}`)) return new Response(JSON.stringify({ result: JSON.stringify(electricityPayload) }), { status: 200, headers: JSON_HDR });
+      if (u.includes(`/get/${encodeURIComponent('energy:ember:v1:_all')}`)) return new Response(JSON.stringify({ result: JSON.stringify(emberPayload) }), { status: 200, headers: JSON_HDR });
+      if (u.includes(`/get/${encodeURIComponent('energy:gas-storage:v1:_countries')}`)) return new Response(JSON.stringify({ result: JSON.stringify(gasStoragePayload) }), { status: 200, headers: JSON_HDR });
+      if (u.includes(`/get/${encodeURIComponent('energy:fuel-shortages:v1')}`)) return new Response(JSON.stringify({ result: JSON.stringify(fuelShortagesPayload) }), { status: 200, headers: JSON_HDR });
+      if (u.includes(`/get/${encodeURIComponent('energy:disruptions:v1')}`)) return new Response(JSON.stringify({ result: JSON.stringify(disruptionsPayload) }), { status: 200, headers: JSON_HDR });
+      if (u.includes(`/get/${encodeURIComponent('energy:crisis-policies:v1')}`)) return new Response(JSON.stringify({ result: JSON.stringify(crisisPolicyPayload) }), { status: 200, headers: JSON_HDR });
+      if (u.includes(`/get/${encodeURIComponent('resilience:fossil-electricity-share:v1')}`)) return new Response(JSON.stringify({ result: JSON.stringify(fossilSharePayload) }), { status: 200, headers: JSON_HDR });
+      if (u.includes(`/get/${encodeURIComponent('economic:worldbank-renewable:v1')}`)) return new Response(JSON.stringify({ result: JSON.stringify(renewablePayload) }), { status: 200, headers: JSON_HDR });
+      // Meta keys (note: shape differs from cache-key shape — match seed-meta keys per producer)
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:energy:eia-petroleum')}`)) return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: eiaFetchedAt, recordCount: 1 }) }), { status: 200, headers: JSON_HDR });
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:energy:electricity-prices')}`)) return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: electricityFetchedAt, recordCount: 1 }) }), { status: 200, headers: JSON_HDR });
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:energy:ember')}`)) return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: emberFetchedAt, recordCount: 1 }) }), { status: 200, headers: JSON_HDR });
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:energy:gas-storage-countries')}`)) return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: gasStorageFetchedAt, recordCount: 1 }) }), { status: 200, headers: JSON_HDR });
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:energy:fuel-shortages')}`)) return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: fuelShortagesFetchedAt, recordCount: 1 }) }), { status: 200, headers: JSON_HDR });
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:energy:disruptions')}`)) return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: disruptionsFetchedAt, recordCount: 1 }) }), { status: 200, headers: JSON_HDR });
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:energy:crisis-policies')}`)) return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: crisisPolicyFetchedAt, recordCount: 1 }) }), { status: 200, headers: JSON_HDR });
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:resilience:fossil-electricity-share')}`)) return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: fossilShareFetchedAt, recordCount: 1 }) }), { status: 200, headers: JSON_HDR });
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:economic:worldbank-renewable:v1')}`)) return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: renewableFetchedAt, recordCount: 1 }) }), { status: 200, headers: JSON_HDR });
+      return new Response(JSON.stringify({}), { status: 200, headers: JSON_HDR });
+    };
+
+    const freshMod = await import(`../api/mcp.ts?t=${Date.now()}`);
+    const freshHandler = freshMod.default;
+
+    const res = await freshHandler(makeReq('POST', {
+      jsonrpc: '2.0', id: 300, method: 'tools/call',
+      params: { name: 'get_energy_intelligence', arguments: {} },
+    }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.ok(body.result?.content, 'result.content must be present');
+    const payload = JSON.parse(body.result.content[0].text);
+    assert.equal(payload.stale, false, 'all 9 metas within their per-key budgets must yield stale=false');
+    assert.equal(payload.cached_at, new Date(crisisPolicyFetchedAt).toISOString(), 'cached_at reflects oldest valid fetchedAt (crisis-policies, 30d old, within ~400d budget)');
+    // Label-walk slice names per NON_LABEL=/^(v\d+|\d+|stale|sebuf)$/:
+    assert.deepEqual(payload.data['eia-petroleum'], eiaPayload);
+    assert.deepEqual(payload.data['index'], electricityPayload, 'energy:electricity:v1:index → "index"');
+    assert.deepEqual(payload.data['_all'], emberPayload, 'energy:ember:v1:_all → "_all"');
+    assert.deepEqual(payload.data['_countries'], gasStoragePayload, 'energy:gas-storage:v1:_countries → "_countries"');
+    assert.deepEqual(payload.data['fuel-shortages'], fuelShortagesPayload);
+    assert.deepEqual(payload.data['disruptions'], disruptionsPayload);
+    assert.deepEqual(payload.data['crisis-policies'], crisisPolicyPayload);
+    assert.deepEqual(payload.data['fossil-electricity-share'], fossilSharePayload);
+    assert.deepEqual(payload.data['worldbank-renewable'], renewablePayload);
+  });
+
+  it('get_energy_intelligence marks aggregate stale when one slow-cadence key is past budget while fast keys are fresh', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+
+    // Per-key budget asymmetry exercise: electricity has 48h budget (fast cron),
+    // disruptions has 14d budget (weekly cron × 2). Set disruptions=15d old → past
+    // its own budget, but electricity stays fresh. Aggregate stale must flip true.
+    const electricityFetchedAt = Date.now() - 30 * 60_000;
+    const disruptionsFetchedAt = Date.now() - 15 * 24 * 60 * 60_000; // past 14d budget
+
+    globalThis.fetch = async (url) => {
+      const u = url.toString();
+      // Provide only electricity + disruptions data; rest absent (null).
+      if (u.includes(`/get/${encodeURIComponent('energy:electricity:v1:index')}`)) return new Response(JSON.stringify({ result: JSON.stringify({ countries: [{ iso: 'DE' }] }) }), { status: 200 });
+      if (u.includes(`/get/${encodeURIComponent('energy:disruptions:v1')}`)) return new Response(JSON.stringify({ result: JSON.stringify({ events: [{ id: 'old-event' }] }) }), { status: 200 });
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:energy:electricity-prices')}`)) return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: electricityFetchedAt, recordCount: 1 }) }), { status: 200 });
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:energy:disruptions')}`)) return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: disruptionsFetchedAt, recordCount: 1 }) }), { status: 200 });
+      return new Response(JSON.stringify({}), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    };
+
+    const freshMod = await import(`../api/mcp.ts?t=${Date.now()}`);
+    const freshHandler = freshMod.default;
+
+    const res = await freshHandler(makeReq('POST', {
+      jsonrpc: '2.0', id: 301, method: 'tools/call',
+      params: { name: 'get_energy_intelligence', arguments: {} },
+    }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.ok(body.result?.content, 'result.content must be present (cache_all_null guard does NOT fire: 2 keys populated)');
+    const payload = JSON.parse(body.result.content[0].text);
+    assert.equal(payload.stale, true, 'one over-budget key (disruptions @ 15d > 14d budget) flips aggregate stale=true');
+    assert.equal(payload.cached_at, null, 'mixed-validity meta yields cached_at=null per evaluateFreshness contract');
+  });
+
+  it('get_energy_intelligence throws cache_all_null (→ -32603) when every 9 cache reads return null', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+
+    // F6 contract: degenerate-empty result must surface as -32603 so
+    // dispatchToolsCall's catch fires the proRollback DECR (Pro path).
+    globalThis.fetch = async () => new Response(JSON.stringify({}), { status: 200, headers: { 'Content-Type': 'application/json' } });
+
+    const freshMod = await import(`../api/mcp.ts?t=${Date.now()}`);
+    const freshHandler = freshMod.default;
+
+    const res = await freshHandler(makeReq('POST', {
+      jsonrpc: '2.0', id: 302, method: 'tools/call',
+      params: { name: 'get_energy_intelligence', arguments: {} },
+    }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.error?.code, -32603, 'all-9-null reads must surface as -32603 cache_all_null');
   });
 
   it('get_supply_chain_data still returns its 3 slices unchanged (regression — U6 must not touch get_supply_chain_data._cacheKeys)', async () => {
