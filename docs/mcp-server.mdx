@@ -9,7 +9,7 @@ WorldMonitor exposes its intelligence stack as a [Model Context Protocol](https:
 **Pro and API tiers can both connect via OAuth — no API key required.** Pro subscribers click _"Sign in with WorldMonitor Pro"_ on the consent page; API Starter / Business / Enterprise users may sign in the same way OR paste a `wm_…` key. Free-tier users see a 401 at the OAuth step.
 </Info>
 
-All paid tiers share the same MCP server, the same 32 tools, and the same OAuth flow — they differ only in **daily quotas**. Pro starts at **50 tool calls/day**; API Starter and API Business have generous daily allowances; Enterprise is uncapped. See the [Plans & limits](#plans--limits) table below.
+All paid tiers share the same MCP server, the same 38 tools, and the same OAuth flow — they differ only in **daily quotas**. Pro starts at **50 tool calls/day**; API Starter and API Business have generous daily allowances; Enterprise is uncapped. See the [Plans & limits](#plans--limits) table below.
 
 Pro subscribers can connect Claude Desktop / Cursor / claude.ai without ever pasting an API key — see [Pro sign-in flow](#pro-sign-in-flow) below. API Starter+ holders may continue to paste a `wm_…` key on the consent page (the original flow), or use the same OAuth path as Pro.
 
@@ -161,7 +161,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 
 ## Tool catalog
 
-The server exposes 32 tools. Most are cache-reads over pre-seeded Redis keys (sub-second). Six (`get_world_brief`, `get_country_brief`, `analyze_situation`, `generate_forecasts`, `search_flights`, `search_flight_prices_by_date`) call live LLMs or external APIs and are slower.
+The server exposes 38 tools. Most are cache-reads over pre-seeded Redis keys (sub-second). Six (`get_world_brief`, `get_country_brief`, `analyze_situation`, `generate_forecasts`, `search_flights`, `search_flight_prices_by_date`) call live LLMs or external APIs and are slower.
 
 ### Markets & economy
 
@@ -175,7 +175,16 @@ The server exposes 32 tools. Most are cache-reads over pre-seeded Redis keys (su
 | `get_eu_industrial_production` | Eurostat monthly industrial production index, 12-month sparkline. |
 | `get_prediction_markets` | Active Polymarket event contracts with live probabilities. |
 | `get_supply_chain_data` | Dry bulk shipping stress index, customs flows, COMTRADE bilateral trade. |
+| `get_tariff_trends` | Global trade and pricing indicators: US tariff trends (HTS-coded), BigMac index, FAO Food Price Index, and per-country national debt levels. |
+| `get_chokepoint_status` | Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min cadence), rolling transit summaries, per-port activity, plus static reference data and flow aggregates. Covers Suez, Hormuz, Malacca, Bab-el-Mandeb, Panama, etc. |
+| `get_consumer_prices` | Per-country consumer-prices intelligence: 30-day overview, category-level inflation, retailer spread (essentials basket), top movers, and source freshness. Requires `country_code` (currently only `ae` is seeded). |
 | `get_commodity_geo` | 71 major mining sites worldwide (gold, silver, copper, lithium, uranium, coal). |
+
+### Energy
+
+| Tool | Description |
+|------|-------------|
+| `get_energy_intelligence` | Energy supply, prices, storage, disruptions, and policy: EIA petroleum stocks, electricity prices (Ember), gas storage (GIE), fuel shortages, fossil & renewable shares, active energy disruptions, government crisis policies. |
 
 ### Geopolitical & security
 
@@ -209,6 +218,18 @@ The server exposes 32 tools. Most are cache-reads over pre-seeded Redis keys (su
 | `get_climate_data` | Temp/precip anomalies vs WMO normals, GDACS/FIRMS alerts, Mauna Loa CO2, OpenAQ PM2.5, sea ice, ocean heat. |
 | `get_radiation_data` | Global radiation monitoring station readings + anomaly flags. |
 | `get_research_signals` | Emerging technology events from curated research feeds. |
+
+### Health
+
+| Tool | Description |
+|------|-------------|
+| `get_health_signals` | Active disease outbreaks (WHO/ECDC etc.) and global air-quality station readings (OpenAQ/WAQI PM2.5). For health-risk screening. |
+
+### Humanitarian & displacement
+
+| Tool | Description |
+|------|-------------|
+| `get_displacement_data` | Refugee and IDP counts by country (UNHCR annual data). |
 
 ### AI intelligence (live LLM)
 
