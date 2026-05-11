@@ -241,14 +241,48 @@ The server exposes 38 tools. Most are cache-reads over pre-seeded Redis keys (su
 | `generate_forecasts` | Fresh probability estimates (bypasses cache). | LLM |
 | `get_forecast_predictions` | Pre-computed cached forecasts. Fast. | Cache |
 
-## Coverage invariants
+## API coverage
 
-WorldMonitor's MCP server is held to two CI-enforced coverage invariants so the tool list stays aligned with the rest of the platform:
+Every MCP tool wraps one or more REST/RPC endpoints from the [API Reference](/api-reference). The table below maps each tool to the API paths it serves — useful when you know the API endpoint you want and need to find the corresponding MCP tool, or vice versa.
 
-- **Cache-key parity** (`tests/mcp-bootstrap-parity.test.mjs`) — every seeded cache key in `api/health.js::BOOTSTRAP_KEYS` ∪ `STANDALONE_KEYS` is either covered by some tool's `_cacheKeys`/`_coverageKeys` or listed in `EXCLUDED_FROM_MCP` with a documented reason. A new seed shipping a cache key without MCP exposure fails CI.
-- **API parity** (`tests/mcp-api-parity.test.mjs`) — every public OpenAPI operation in `docs/api/*.openapi.json` is either declared in some tool's `_apiPaths` array or listed in `EXCLUDED_FROM_MCP_PARITY` with a category-prefixed reason. A new API endpoint without MCP coverage AND without a documented exclusion fails CI.
+| MCP tool | API endpoints served |
+|----------|---------------------|
+| `get_market_data` | `GET /api/market/v1/get-fear-greed-index`<br/>`GET /api/market/v1/get-sector-summary`<br/>`GET /api/market/v1/list-commodity-quotes`<br/>`GET /api/market/v1/list-crypto-quotes`<br/>`GET /api/market/v1/list-etf-flows`<br/>`GET /api/market/v1/list-gulf-quotes`<br/>`GET /api/market/v1/list-market-quotes` |
+| `get_economic_data` | `GET /api/economic/v1/get-ecb-fx-rates`<br/>`GET /api/economic/v1/get-economic-calendar`<br/>`GET /api/economic/v1/get-eu-yield-curve`<br/>`GET /api/economic/v1/list-fuel-prices`<br/>`GET /api/market/v1/get-cot-positioning`<br/>`GET /api/market/v1/list-earnings-calendar` |
+| `get_tariff_trends` | `GET /api/economic/v1/get-fao-food-price-index`<br/>`GET /api/economic/v1/get-national-debt`<br/>`GET /api/economic/v1/list-bigmac-prices` |
+| `get_energy_intelligence` | `GET /api/economic/v1/get-energy-crisis-policies`<br/>`GET /api/supply-chain/v1/get-fuel-shortage-detail`<br/>`GET /api/supply-chain/v1/list-energy-disruptions`<br/>`GET /api/supply-chain/v1/list-fuel-shortages` |
+| `get_consumer_prices` | `GET /api/consumer-prices/v1/get-consumer-price-freshness`<br/>`GET /api/consumer-prices/v1/get-consumer-price-overview`<br/>`GET /api/consumer-prices/v1/list-consumer-price-categories`<br/>`GET /api/consumer-prices/v1/list-consumer-price-movers`<br/>`GET /api/consumer-prices/v1/list-retailer-price-spreads` |
+| `get_supply_chain_data` | `GET /api/supply-chain/v1/get-shipping-stress`<br/>`GET /api/trade/v1/get-customs-revenue` |
+| `get_chokepoint_status` | `GET /api/intelligence/v1/get-country-port-activity`<br/>`GET /api/supply-chain/v1/get-chokepoint-status` |
+| `get_climate_data` | `GET /api/climate/v1/get-co2-monitoring`<br/>`GET /api/climate/v1/get-ocean-ice-data`<br/>`GET /api/climate/v1/list-air-quality-data`<br/>`GET /api/climate/v1/list-climate-anomalies`<br/>`GET /api/climate/v1/list-climate-disasters`<br/>`GET /api/climate/v1/list-climate-news` |
+| `get_health_signals` | `GET /api/health/v1/list-air-quality-alerts`<br/>`GET /api/health/v1/list-disease-outbreaks` |
+| `get_conflict_events` | `GET /api/conflict/v1/list-iran-events`<br/>`GET /api/conflict/v1/list-ucdp-events`<br/>`GET /api/unrest/v1/list-unrest-events` |
+| `get_news_intelligence` | `GET /api/intelligence/v1/list-cross-source-signals`<br/>`GET /api/intelligence/v1/search-gdelt-documents` |
+| `get_country_risk` | `GET /api/intelligence/v1/get-country-risk` |
+| `get_country_brief` | `GET /api/intelligence/v1/get-country-intel-brief` |
+| `get_social_velocity` | `GET /api/intelligence/v1/get-social-velocity` |
+| `get_natural_disasters` | `GET /api/natural/v1/list-natural-events`<br/>`GET /api/seismology/v1/list-earthquakes`<br/>`GET /api/wildfire/v1/list-fire-detections` |
+| `get_radiation_data` | `GET /api/radiation/v1/list-radiation-observations` |
+| `get_infrastructure_status` | `GET /api/infrastructure/v1/list-internet-outages` |
+| `get_airspace` | `GET /api/aviation/v1/track-aircraft`<br/>`GET /api/military/v1/list-military-flights` |
+| `get_maritime_activity` | `GET /api/maritime/v1/get-vessel-snapshot` |
+| `get_military_posture` | `GET /api/military/v1/get-theater-posture` |
+| `get_displacement_data` | `GET /api/displacement/v1/get-displacement-summary` |
+| `get_positive_events` | `GET /api/positive-events/v1/list-positive-geo-events` |
+| `get_sanctions_data` | `GET /api/sanctions/v1/list-sanctions-pressure`<br/>`GET /api/sanctions/v1/lookup-sanction-entity` |
+| `get_research_signals` | `GET /api/research/v1/list-tech-events` |
+| `get_prediction_markets` | `GET /api/prediction/v1/list-prediction-markets` |
+| `get_forecast_predictions` | `GET /api/forecast/v1/get-forecasts` |
+| `get_world_brief` | `GET /api/news/v1/list-feed-digest`<br/>`POST /api/news/v1/summarize-article` |
+| `analyze_situation` | `POST /api/intelligence/v1/deduct-situation` |
+| `search_flights` | `GET /api/aviation/v1/search-google-flights` |
+| `search_flight_prices_by_date` | `GET /api/aviation/v1/search-google-dates` |
 
-When adding a new MCP tool, the `_apiPaths: string[]` field is **required** on every `TOOL_REGISTRY` entry (TypeScript-enforced) and declares the canonical `"METHOD path"` strings the tool covers — e.g., `['GET /api/economic/v1/get-bis-credit', 'GET /api/market/v1/list-defi-tokens']`. When adding a new OpenAPI operation that isn't meant to be MCP-callable (mutating, LLM passthrough, admin-only, etc.), add an entry to `EXCLUDED_FROM_MCP_PARITY` with one of six category prefixes: `mutating:`, `llm-passthrough:`, `fetch-on-miss:` (with a closed-allowlist secondary signal), `admin:`, `manual-mapping:`, or `deferred-to-future-tool:`.
+A handful of cache-backed tools wrap data that's seeded directly into Redis without a 1:1 API endpoint — these tools have no entry above but still return live data via `tools/call`. See the [Tool catalog](#tool-catalog) above for the complete list of 38 tools.
+
+<Tip>
+**Reverse lookup** — if you know the API path you want, search this table with Cmd/Ctrl+F. The same data is also queryable via the running server's `tools/list` response, where each tool description names its domain.
+</Tip>
 
 ## JSON-RPC example
 
