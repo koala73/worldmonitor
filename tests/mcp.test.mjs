@@ -118,12 +118,12 @@ describe('api/mcp.ts — PRO MCP Server', () => {
 
   // --- tools/list ---
 
-  it('tools/list returns 37 tools with name, description, inputSchema', async () => {
+  it('tools/list returns 38 tools with name, description, inputSchema', async () => {
     const res = await handler(makeReq('POST', { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }));
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.ok(Array.isArray(body.result?.tools), 'result.tools must be an array');
-    assert.equal(body.result.tools.length, 37, `Expected 37 tools, got ${body.result.tools.length}`);
+    assert.equal(body.result.tools.length, 38, `Expected 38 tools, got ${body.result.tools.length}`);
     for (const tool of body.result.tools) {
       assert.ok(tool.name, 'tool.name must be present');
       assert.ok(tool.description, 'tool.description must be present');
@@ -137,6 +137,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.ok(toolNames.includes('get_health_signals'), 'get_health_signals must be registered (U2)');
     assert.ok(toolNames.includes('get_consumer_prices'), 'get_consumer_prices must be registered (U4)');
     assert.ok(toolNames.includes('get_tariff_trends'), 'get_tariff_trends must be registered (U5)');
+    assert.ok(toolNames.includes('get_chokepoint_status'), 'get_chokepoint_status must be registered (U6)');
   });
 
   // --- tools/call ---
@@ -860,6 +861,249 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     const payload = JSON.parse(body.result.content[0].text);
     // climate:air-quality:v1 → label-walk strips :v1, exposes under data['air-quality']
     assert.deepEqual(payload.data['air-quality'], climateAirQualityPayload, 'get_climate_data._cacheKeys must still include climate:air-quality:v1');
+  });
+
+  // --- get_chokepoint_status (U6: maritime chokepoint bundle, payload-verified) ---
+
+  it('get_chokepoint_status returns 6-slice data on cache hit when every per-key meta is within budget', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+
+    const transitSummariesPayload = { chokepoints: { suez: { vesselsPast24h: 87 } } };
+    const chokepointTransitsPayload = { transits: [{ chokepoint: 'hormuz', count: 142 }] };
+    const portwatchPortsPayload = { countries: { US: { ports: 23 } } };
+    const chokepointBaselinesPayload = { suez: { lat: 30.0, lon: 32.5 } };
+    const portwatchChokepointsRefPayload = { count: 13, ids: ['suez', 'hormuz', 'malacca'] };
+    const chokepointFlowsPayload = { suez: { dailyBarrels: 9_200_000 } };
+
+    // transit-summaries budget=30min → 5min old (fresh)
+    const transitSummariesFetchedAt = Date.now() - 5 * 60_000;
+    // chokepoint_transits budget=30min → 8min old (fresh)
+    const chokepointTransitsFetchedAt = Date.now() - 8 * 60_000;
+    // portwatch-ports budget=2160min (36h) → 12h old (fresh)
+    const portwatchPortsFetchedAt = Date.now() - 12 * 60 * 60_000;
+    // chokepoint-baselines budget=576000min (400d) → 60d old (fresh; SECOND-OLDEST)
+    const chokepointBaselinesFetchedAt = Date.now() - 60 * 24 * 60 * 60_000;
+    // portwatch:chokepoints-ref budget=20160min (14d) → 7d old (fresh)
+    const portwatchChokepointsRefFetchedAt = Date.now() - 7 * 24 * 60 * 60_000;
+    // chokepoint-flows budget=720min (12h) → 5h old (fresh)
+    const chokepointFlowsFetchedAt = Date.now() - 5 * 60 * 60_000;
+
+    globalThis.fetch = async (url) => {
+      const u = url.toString();
+      if (u.includes(`/get/${encodeURIComponent('supply_chain:transit-summaries:v1')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify(transitSummariesPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes(`/get/${encodeURIComponent('supply_chain:chokepoint_transits:v1')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify(chokepointTransitsPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes(`/get/${encodeURIComponent('supply_chain:portwatch-ports:v1:_countries')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify(portwatchPortsPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes(`/get/${encodeURIComponent('energy:chokepoint-baselines:v1')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify(chokepointBaselinesPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes(`/get/${encodeURIComponent('portwatch:chokepoints:ref:v1')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify(portwatchChokepointsRefPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes(`/get/${encodeURIComponent('energy:chokepoint-flows:v1')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify(chokepointFlowsPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:supply_chain:transit-summaries')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: transitSummariesFetchedAt, recordCount: 13 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:supply_chain:chokepoint_transits')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: chokepointTransitsFetchedAt, recordCount: 13 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:supply_chain:portwatch-ports')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: portwatchPortsFetchedAt, recordCount: 200 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:energy:chokepoint-baselines')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: chokepointBaselinesFetchedAt, recordCount: 13 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:portwatch:chokepoints-ref')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: portwatchChokepointsRefFetchedAt, recordCount: 13 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:energy:chokepoint-flows')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: chokepointFlowsFetchedAt, recordCount: 13 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return originalFetch(url);
+    };
+
+    const freshMod = await import(`../api/mcp.ts?t=${Date.now()}`);
+    const freshHandler = freshMod.default;
+
+    const res = await freshHandler(makeReq('POST', {
+      jsonrpc: '2.0', id: 500, method: 'tools/call',
+      params: { name: 'get_chokepoint_status', arguments: {} },
+    }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.ok(body.result?.content, 'result.content must be present');
+    const payload = JSON.parse(body.result.content[0].text);
+    assert.equal(payload.stale, false, 'all 6 metas within their per-key budgets must yield stale=false');
+    // chokepoint-baselines is the oldest valid fetchedAt (60d) → anchors cached_at
+    assert.equal(payload.cached_at, new Date(chokepointBaselinesFetchedAt).toISOString(), 'cached_at reflects oldest valid fetchedAt (chokepoint-baselines)');
+    // Label-walk: trailing non-(v\d+|\d+|stale|sebuf) segment.
+    // supply_chain:transit-summaries:v1 → "transit-summaries"
+    // supply_chain:chokepoint_transits:v1 → "chokepoint_transits"
+    // supply_chain:portwatch-ports:v1:_countries → "_countries" (NOT in NON_LABEL list)
+    // energy:chokepoint-baselines:v1 → "chokepoint-baselines"
+    // portwatch:chokepoints:ref:v1 → "ref"
+    // energy:chokepoint-flows:v1 → "chokepoint-flows"
+    assert.deepEqual(payload.data['transit-summaries'], transitSummariesPayload, 'transit-summaries slice labelled from cache-key suffix');
+    assert.deepEqual(payload.data['chokepoint_transits'], chokepointTransitsPayload, 'chokepoint_transits slice labelled from cache-key suffix');
+    assert.deepEqual(payload.data['_countries'], portwatchPortsPayload, 'portwatch-ports slice labelled from trailing _countries segment');
+    assert.deepEqual(payload.data['chokepoint-baselines'], chokepointBaselinesPayload, 'chokepoint-baselines slice labelled from cache-key suffix');
+    assert.deepEqual(payload.data['ref'], portwatchChokepointsRefPayload, 'portwatch:chokepoints:ref slice labelled from trailing ref segment');
+    assert.deepEqual(payload.data['chokepoint-flows'], chokepointFlowsPayload, 'chokepoint-flows slice labelled from cache-key suffix');
+  });
+
+  it('get_chokepoint_status: fast transit-summaries fresh but slow portwatch-ports past budget flips aggregate stale', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+
+    const transitSummariesPayload = { chokepoints: { suez: { vesselsPast24h: 87 } } };
+    const portwatchPortsPayload = { countries: {} };
+
+    // transit-summaries budget=30min → 5min old (fresh)
+    const transitSummariesFetchedAt = Date.now() - 5 * 60_000;
+    // portwatch-ports budget=2160min (36h) → 100h old (clearly STALE)
+    const portwatchPortsFetchedAt = Date.now() - 100 * 60 * 60_000;
+
+    globalThis.fetch = async (url) => {
+      const u = url.toString();
+      if (u.includes(`/get/${encodeURIComponent('supply_chain:transit-summaries:v1')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify(transitSummariesPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes(`/get/${encodeURIComponent('supply_chain:portwatch-ports:v1:_countries')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify(portwatchPortsPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:supply_chain:transit-summaries')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: transitSummariesFetchedAt, recordCount: 13 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:supply_chain:portwatch-ports')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: portwatchPortsFetchedAt, recordCount: 200 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      // Everything else absent → mixed shape; at least 2 keys populated so cache_all_null doesn't trip.
+      return new Response(JSON.stringify({}), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    };
+
+    const freshMod = await import(`../api/mcp.ts?t=${Date.now()}`);
+    const freshHandler = freshMod.default;
+
+    const res = await freshHandler(makeReq('POST', {
+      jsonrpc: '2.0', id: 501, method: 'tools/call',
+      params: { name: 'get_chokepoint_status', arguments: {} },
+    }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    const payload = JSON.parse(body.result.content[0].text);
+    // One over-budget key (portwatch-ports 100h vs 36h budget) flips aggregate stale=true
+    // even though transit-summaries is fresh.
+    assert.equal(payload.stale, true, 'one over-budget key (portwatch-ports) flips aggregate stale=true');
+    assert.deepEqual(payload.data['transit-summaries'], transitSummariesPayload, 'fresh transit-summaries slice still surfaces');
+    assert.deepEqual(payload.data['_countries'], portwatchPortsPayload, 'stale portwatch-ports payload still returned alongside stale=true');
+  });
+
+  it('get_chokepoint_status returns mixed shape without throwing when only one key is populated', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+
+    const transitSummariesPayload = { chokepoints: { suez: { vesselsPast24h: 87 } } };
+    const transitSummariesFetchedAt = Date.now() - 5 * 60_000;
+
+    globalThis.fetch = async (url) => {
+      const u = url.toString();
+      if (u.includes(`/get/${encodeURIComponent('supply_chain:transit-summaries:v1')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify(transitSummariesPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:supply_chain:transit-summaries')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: transitSummariesFetchedAt, recordCount: 13 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      // Every other key absent → readJsonFromUpstash → null
+      return new Response(JSON.stringify({}), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    };
+
+    const freshMod = await import(`../api/mcp.ts?t=${Date.now()}`);
+    const freshHandler = freshMod.default;
+
+    const res = await freshHandler(makeReq('POST', {
+      jsonrpc: '2.0', id: 502, method: 'tools/call',
+      params: { name: 'get_chokepoint_status', arguments: {} },
+    }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    // Must NOT throw -32603: at least one cache slot is populated → cache_all_null guard doesn't fire.
+    assert.ok(body.result?.content, 'partial-population must return a result, not -32603');
+    const payload = JSON.parse(body.result.content[0].text);
+    assert.deepEqual(payload.data['transit-summaries'], transitSummariesPayload, 'populated transit-summaries slice still present');
+    assert.equal(payload.data['chokepoint_transits'], null, 'missing chokepoint_transits slice surfaces as null');
+    assert.equal(payload.data['_countries'], null, 'missing portwatch-ports slice surfaces as null');
+    assert.equal(payload.data['chokepoint-baselines'], null, 'missing chokepoint-baselines slice surfaces as null');
+    assert.equal(payload.data['ref'], null, 'missing portwatch chokepoints-ref slice surfaces as null');
+    assert.equal(payload.data['chokepoint-flows'], null, 'missing chokepoint-flows slice surfaces as null');
+    assert.equal(payload.stale, true, 'missing meta forces stale=true (hasAllValidMeta=false)');
+    assert.equal(payload.cached_at, null, 'mixed-validity meta yields cached_at=null per evaluateFreshness contract');
+  });
+
+  it('get_supply_chain_data still returns its 3 slices unchanged (regression — U6 must not touch get_supply_chain_data._cacheKeys)', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+
+    const shippingStressPayload = { index: 1.42 };
+    const customsRevenuePayload = { receipts: [{ country: 'US', revenue: 1.2e9 }] };
+    const comtradeFlowsPayload = { pairs: [{ a: 'US', b: 'CN', total: 9.1e11 }] };
+    const customsFetchedAt = Date.now() - 6 * 60 * 60_000;
+
+    globalThis.fetch = async (url) => {
+      const u = url.toString();
+      // U6 chokepoint keys MUST NOT be queried by get_supply_chain_data — if they are,
+      // the supply-chain tool was modified, violating the CRITICAL constraint.
+      if (
+        u.includes(`/get/${encodeURIComponent('supply_chain:transit-summaries:v1')}`) ||
+        u.includes(`/get/${encodeURIComponent('supply_chain:chokepoint_transits:v1')}`) ||
+        u.includes(`/get/${encodeURIComponent('supply_chain:portwatch-ports:v1:_countries')}`) ||
+        u.includes(`/get/${encodeURIComponent('energy:chokepoint-baselines:v1')}`) ||
+        u.includes(`/get/${encodeURIComponent('portwatch:chokepoints:ref:v1')}`) ||
+        u.includes(`/get/${encodeURIComponent('energy:chokepoint-flows:v1')}`)
+      ) {
+        throw new Error('get_supply_chain_data must not read chokepoint-bundle keys (U6 regression)');
+      }
+      if (u.includes(`/get/${encodeURIComponent('supply_chain:shipping_stress:v1')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify(shippingStressPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes(`/get/${encodeURIComponent('trade:customs-revenue:v1')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify(customsRevenuePayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes(`/get/${encodeURIComponent('comtrade:flows:v1')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify(comtradeFlowsPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:trade:customs-revenue')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: customsFetchedAt, recordCount: 1 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return new Response(JSON.stringify({}), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    };
+
+    const freshMod = await import(`../api/mcp.ts?t=${Date.now()}`);
+    const freshHandler = freshMod.default;
+
+    const res = await freshHandler(makeReq('POST', {
+      jsonrpc: '2.0', id: 503, method: 'tools/call',
+      params: { name: 'get_supply_chain_data', arguments: {} },
+    }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.ok(body.result?.content, 'get_supply_chain_data must still return a result');
+    const payload = JSON.parse(body.result.content[0].text);
+    // Label-walk: supply_chain:shipping_stress:v1 → "shipping_stress",
+    //             trade:customs-revenue:v1       → "customs-revenue",
+    //             comtrade:flows:v1              → "flows"
+    assert.deepEqual(payload.data['shipping_stress'], shippingStressPayload, 'get_supply_chain_data._cacheKeys must still include supply_chain:shipping_stress:v1');
+    assert.deepEqual(payload.data['customs-revenue'], customsRevenuePayload, 'get_supply_chain_data._cacheKeys must still include trade:customs-revenue:v1');
+    assert.deepEqual(payload.data['flows'], comtradeFlowsPayload, 'get_supply_chain_data._cacheKeys must still include comtrade:flows:v1');
+    // Exactly 3 slices — no chokepoint keys leaked in.
+    assert.equal(Object.keys(payload.data).length, 3, 'get_supply_chain_data must return exactly 3 slices (U6 must not add to it)');
   });
 
   // --- get_airspace ---

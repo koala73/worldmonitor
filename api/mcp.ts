@@ -465,6 +465,52 @@ const TOOL_REGISTRY: ToolDef[] = [
     ],
   },
   {
+    name: 'get_chokepoint_status',
+    description: 'Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min cadence), rolling transit summaries, per-port activity, plus static reference data (chokepoint geometry, canonical 13-chokepoint registry) and flow aggregates. Covers Suez, Hormuz, Malacca, Bab-el-Mandeb, Panama, etc.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+    // Maritime chokepoint bundle distinct from get_supply_chain_data (which keeps
+    // shipping-stress + customs + comtrade). Cadences span 10-minute relay
+    // (transit-summaries, chokepoint_transits) to ~400-day static registries
+    // (chokepoint-baselines), so per-key _freshnessChecks pulled from
+    // api/health.js::SEED_META — a fast transit outage isn't masked by the
+    // slow chokepoint-baselines budget, and the long-cadence portwatch keys
+    // don't drag aggregate stale flagging.
+    //
+    // Payload measurement (PR pre-merge, fun-toad-55127.upstash.io 2026-05-11):
+    //   transit-summaries:v1                        — 6.8 KB
+    //   chokepoint_transits:v1                      — 1.1 KB
+    //   portwatch-ports:v1:_countries               — 0.9 KB
+    //   energy:chokepoint-baselines:v1              — 0.6 KB
+    //   portwatch:chokepoints:ref:v1                — 7.9 KB
+    //   energy:chokepoint-flows:v1                  — 1.2 KB
+    //   ────────────────────────────────────────────────────
+    //   Total: 18.5 KB (well under the 200KB/single-key and 500KB/aggregate
+    //   thresholds that historically tripped handler timeouts —
+    //   see tests/transit-summaries.test.mjs:539-545).
+    //
+    // EXCLUDED on purpose: supply_chain:corridorrisk:v1 is an intermediate
+    // key whose data flows through supply_chain:transit-summaries:v1
+    // (api/health.js:461). U7 will add corridorrisk to EXCLUDED_FROM_MCP.
+    _cacheKeys: [
+      'supply_chain:transit-summaries:v1',          // STANDALONE_KEYS::transitSummaries
+      'supply_chain:chokepoint_transits:v1',        // STANDALONE_KEYS::chokepointTransits
+      'supply_chain:portwatch-ports:v1:_countries', // STANDALONE_KEYS::portwatchPortActivity
+      'energy:chokepoint-baselines:v1',             // STANDALONE_KEYS::chokepointBaselines
+      'portwatch:chokepoints:ref:v1',               // STANDALONE_KEYS::portwatchChokepointsRef
+      'energy:chokepoint-flows:v1',                 // STANDALONE_KEYS::chokepointFlows
+    ],
+    _seedMetaKey: 'seed-meta:supply_chain:transit-summaries',
+    _maxStaleMin: 30, // transit-summaries 10-min relay baseline; per-key budgets via _freshnessChecks below
+    _freshnessChecks: [
+      { key: 'seed-meta:supply_chain:transit-summaries',   maxStaleMin: 30 },             // 10-min relay; 30min = 3× interval
+      { key: 'seed-meta:supply_chain:chokepoint_transits', maxStaleMin: 30 },             // 10-min relay; 30min = 3× interval
+      { key: 'seed-meta:supply_chain:portwatch-ports',     maxStaleMin: 2160 },           // 12h cron; 36h = 3× interval
+      { key: 'seed-meta:energy:chokepoint-baselines',      maxStaleMin: 60 * 24 * 400 },  // ~400d static registry
+      { key: 'seed-meta:portwatch:chokepoints-ref',        maxStaleMin: 60 * 24 * 14 },   // weekly cron; 14d = 2× interval
+      { key: 'seed-meta:energy:chokepoint-flows',          maxStaleMin: 720 },            // 6h cron; 12h = 2× interval
+    ],
+  },
+  {
     name: 'get_positive_events',
     description: 'Positive geopolitical events: diplomatic agreements, humanitarian aid, development milestones, and peace initiatives worldwide.',
     inputSchema: { type: 'object', properties: {}, required: [] },
