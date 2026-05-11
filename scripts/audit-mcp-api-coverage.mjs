@@ -601,6 +601,19 @@ function buildAuditRows() {
 //   unknown                   (no helper imports OR handler resolution failed)
 // -----------------------------------------------------------------------------
 
+// CASCADE_MIRROR_EXEMPT — METHOD-path entries where partial-cache-key-overlap
+// is the intentional steady-state, not a coverage gap. The API handler reads
+// multiple cascade-mirror variants (live + stale + backup) of the same canonical
+// payload; the MCP tool reads ONE variant (typically stale). PR #3658's U7
+// EXCLUDED_FROM_MCP documents the live + backup keys as cascade-mirror siblings,
+// so the data IS structurally served — just at slightly different freshness.
+// Without this exemption the audit would keep flagging known-equivalent
+// coverage as partial-overlap each time someone re-runs it as `_apiPaths` seed
+// input.
+const CASCADE_MIRROR_EXEMPT = new Set([
+  'GET /api/military/v1/get-theater-posture',
+]);
+
 function categorize(row) {
   if (row.handlerError && row.classification === 'unknown'
       && row.coveredByPassthrough.length === 0
@@ -610,6 +623,15 @@ function categorize(row) {
   }
   if (row.coveredByPassthrough.length > 0) return 'covered-via-_execute';
   if (row.fullyCoveredByCacheKey.length > 0) return 'covered-via-cache-key';
+  // Cascade-mirror exemption: re-route to `covered-via-cache-key` so future
+  // implementers don't keep manually triaging these as partial-overlap.
+  // The CASCADE_MIRROR_EXEMPT set is the audit-author's contract that the
+  // tool's stale-variant read is structurally equivalent to the API's
+  // live+stale+backup cascade fallback. Documented inline at the tool's
+  // _apiPaths declaration in api/mcp.ts.
+  if (row.partiallyCoveredByCacheKey.length > 0 && CASCADE_MIRROR_EXEMPT.has(row.methodPath)) {
+    return 'covered-via-cache-key';
+  }
   // Partial overlap: at least one shared key but the handler ALSO reads keys
   // not in any candidate tool. Surface as a distinct category so the
   // implementer treats it as "decide" not "covered". Takes precedence over

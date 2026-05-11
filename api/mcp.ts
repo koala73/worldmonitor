@@ -289,6 +289,16 @@ const TOOL_REGISTRY: ToolDef[] = [
     _cacheKeys: ['theater_posture:sebuf:stale:v1'],
     _seedMetaKey: 'seed-meta:intelligence:risk-scores',
     _maxStaleMin: 120,
+    // CASCADE-MIRROR EQUIVALENCE: the API handler at
+    // server/worldmonitor/military/v1/get-theater-posture.ts:23 reads 3 cascade
+    // variants (live + stale + backup) and returns the freshest available.
+    // This MCP tool reads only the stale variant; PR #3658's U7 already
+    // documents `theater-posture:sebuf:v1` and `theater-posture:sebuf:backup:v1`
+    // as `cascade-mirror: covered by get_military_posture` exclusions in the
+    // bootstrap-parity test — they share the same payload shape, only freshness
+    // differs. Coverage is intentional. The audit script's partial-overlap
+    // warning for this op is suppressed via CASCADE_MIRROR_EXEMPT in
+    // scripts/audit-mcp-api-coverage.mjs.
     _apiPaths: [
       "GET /api/military/v1/get-theater-posture",
     ],

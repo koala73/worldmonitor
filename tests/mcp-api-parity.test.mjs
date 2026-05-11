@@ -111,7 +111,9 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   ["GET /api/market/v1/analyze-stock",
     "llm-passthrough: invokes callLlm — per-call LLM cost prohibits open MCP exposure"],
 
-  // === fetch-on-miss (30) ===
+  // === fetch-on-miss (31) ===
+  ["GET /api/intelligence/v1/get-risk-scores",
+    "fetch-on-miss: paid-upstream — cachedFetchJsonWithMeta + ACLED API on cache miss. Cross-domain composite (12 keys: conflict + infra + climate + cyber + wildfires + GPS-jam + OREF + advisories + displacement + news) intended for a future expanded_risk_scores composite tool; current shape doesn't fit any single existing tool."],
   ["GET /api/aviation/v1/get-carrier-ops",
     "fetch-on-miss: paid-upstream — external upstream fetch per cache miss"],
   ["GET /api/aviation/v1/get-flight-status",
@@ -233,11 +235,17 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   ["POST /api/leads/v1/submit-contact",
     "manual-mapping: handler uses inline Redis or Convex (not server/_shared/redis) — manual triage"],
 
-  // === deferred-to-future-tool (52) ===
+  // === deferred-to-future-tool (51) ===
   ["GET /api/consumer-prices/v1/get-consumer-price-basket-series",
     "deferred-to-future-tool: handler reads parameterized consumer-prices:basket-series:<market>:<basket>:<range> key NOT in get_consumer_prices._coverageKeys — bundle into a future expanded_consumer_prices tool that exposes the basket-series time series"],
-  ["GET /api/intelligence/v1/get-risk-scores",
-    "deferred-to-future-tool: cross-domain composite — handler reads 12 keys (conflict + infra + climate + cyber + wildfires + GPS-jam + OREF + advisories + displacement + news) only 3 of which overlap get_conflict_events._cacheKeys — bundle into a future expanded_risk_scores composite tool"],
+  // NOTE: risk-scores was previously mis-classified as deferred-to-future-tool.
+  // The handler uses cachedFetchJsonWithMeta (server/.../get-risk-scores.ts:600)
+  // with ACLED + auxiliary cross-domain fetches on cache miss — that's the
+  // fetch-on-miss shape, NOT pure-read. Recategorized to fetch-on-miss with
+  // paid-upstream secondary (ACLED is rate-limited external API). The cross-
+  // domain composite shape (12 keys aggregated) is the implementer-hint for
+  // a future expanded_risk_scores composite tool, but the structural
+  // category is fetch-on-miss.
   ["GET /api/market/v1/get-gold-intelligence",
     "deferred-to-future-tool: handler reads 5 keys (commodities-bootstrap + COT + gold-extended + gold-ETF-flows + gold-CB-reserves); only commodities-bootstrap overlaps with get_market_data._cacheKeys — bundle into a future expanded_commodities tool that exposes COT, gold-extended, ETF flows, and CB reserves"],
   ["GET /api/aviation/v1/get-airport-ops-summary",
