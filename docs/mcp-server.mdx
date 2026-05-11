@@ -163,6 +163,10 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 
 The server exposes 38 tools. Most are cache-reads over pre-seeded Redis keys (sub-second). Six (`get_world_brief`, `get_country_brief`, `analyze_situation`, `generate_forecasts`, `search_flights`, `search_flight_prices_by_date`) call live LLMs or external APIs and are slower.
 
+<Tip>
+For per-tool parameters, freshness budgets, timeouts, and concrete `curl` examples, see the [MCP Tools Reference](/mcp-tools-reference).
+</Tip>
+
 ### Markets & economy
 
 | Tool | Description |

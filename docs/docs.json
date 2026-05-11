@@ -181,6 +181,7 @@
             "pages": [
               "agent-discovery",
               "mcp-server",
+              "mcp-tools-reference",
               "api-oauth",
               "api-notifications"
             ]
