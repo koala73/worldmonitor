@@ -1600,3 +1600,15 @@ export default async function handler(
 ): Promise<Response> {
   return mcpHandler(req, PRODUCTION_DEPS, ctx);
 }
+
+// ---------------------------------------------------------------------------
+// Test-only escape hatch. Exposes the TOOL_REGISTRY for the U7 Tier 3 parity
+// test (tests/mcp-bootstrap-parity.test.mjs), which asserts that every
+// canonical seeded cache key from api/health.js (BOOTSTRAP_KEYS ∪
+// STANDALONE_KEYS) is either covered by some tool's `_cacheKeys` (cache-tool)
+// or `_coverageKeys` (RpcToolDef hybrid), or explicitly excluded via the
+// test's EXCLUDED_FROM_MCP map with a documented reason.
+// ---------------------------------------------------------------------------
+export const __testing__ = {
+  TOOL_REGISTRY,
+};

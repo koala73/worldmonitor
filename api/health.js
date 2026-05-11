@@ -930,4 +930,9 @@ export const __testing__ = {
   readSeedMeta,
   classifyKey,
   STATUS_COUNTS,
+  // U7 (Tier 3 parity test): exposed for tests/mcp-bootstrap-parity.test.mjs
+  // to walk the canonical seeded-data inventory. Both consts are unexported
+  // at module scope by design — this is the test-only escape hatch.
+  BOOTSTRAP_KEYS,
+  STANDALONE_KEYS,
 };
