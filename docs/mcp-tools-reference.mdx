@@ -13,6 +13,14 @@ Every tool returns the standard MCP content-block format:
 
 Cache-backed tools (the majority) include `cached_at` (ISO timestamp) and `stale: boolean` in their JSON payload so you can reason about freshness.
 
+The `curl` examples below all assume you've exported your API key:
+
+```bash
+export WM_KEY="wm_live_..."  # or use the OAuth bearer token instead — see /mcp-server#authentication
+```
+
+If you've completed the OAuth flow instead, replace `-H "X-WorldMonitor-Key: $WM_KEY"` with `-H "Authorization: Bearer $TOKEN"` in each example.
+
 <Tip>
 **Recently added** (May 2026): `get_displacement_data`, `get_health_signals`, `get_energy_intelligence`, `get_consumer_prices`, `get_tariff_trends`, `get_chokepoint_status` — six new bundled tools that exposed previously-cached domains via MCP.
 </Tip>
@@ -206,6 +214,7 @@ Per-country consumer-prices intelligence: 30-day overview, category-level inflat
 
 - **API endpoints:** `GET /api/consumer-prices/v1/get-consumer-price-freshness`, `GET /api/consumer-prices/v1/get-consumer-price-overview`, `GET /api/consumer-prices/v1/list-consumer-price-categories`, `GET /api/consumer-prices/v1/list-consumer-price-movers`, `GET /api/consumer-prices/v1/list-retailer-price-spreads`
 - **Kind:** hybrid — reads cache keys directly (sub-second) but requires an input parameter to select the slice.
+- **Freshness budget:** up to **25 h** per slice (24 h cron + 1 h grace) before `stale: true` is flagged.
 
 <CodeGroup>
 
@@ -520,7 +529,7 @@ Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min ca
 
 - **API endpoints:** `GET /api/intelligence/v1/get-country-port-activity`, `GET /api/supply-chain/v1/get-chokepoint-status`
 - **Kind:** cache read — sub-second response from Redis bootstrap cache.
-- **Freshness budget:** up to **30 min** before `stale: true` is flagged (set by the seeder cron's expected interval).
+- **Freshness budget (per slice):** `stale: true` flags when ANY contributing slice exceeds its individual budget — **30 min** for live transit summaries (relay), **36 h** for PortWatch port activity, **14 d** for chokepoint flows, and up to **~400 d** for the static chokepoint registry / geographic baselines. The bundle's `cached_at` reflects the oldest contributing seed; `stale: true` doesn't mean ALL the data is old.
 
 <CodeGroup>
 
@@ -532,6 +541,31 @@ curl -s https://worldmonitor.app/mcp \
     "jsonrpc":"2.0","id":1,
     "method":"tools/call",
     "params":{"name":"get_chokepoint_status","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_positive_events`
+
+Positive geopolitical events: diplomatic agreements, humanitarian aid, development milestones, and peace initiatives worldwide.
+
+**Parameters:** none
+
+- **API endpoints:** `GET /api/positive-events/v1/list-positive-geo-events`
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** up to **1 h** before `stale: true` is flagged (set by the seeder cron's expected interval).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_positive_events","arguments":{}}
   }'
 ```
 
@@ -893,31 +927,6 @@ curl -s https://worldmonitor.app/mcp \
     "jsonrpc":"2.0","id":1,
     "method":"tools/call",
     "params":{"name":"get_displacement_data","arguments":{}}
-  }'
-```
-
-</CodeGroup>
-
-### `get_positive_events`
-
-Positive geopolitical events: diplomatic agreements, humanitarian aid, development milestones, and peace initiatives worldwide.
-
-**Parameters:** none
-
-- **API endpoints:** `GET /api/positive-events/v1/list-positive-geo-events`
-- **Kind:** cache read — sub-second response from Redis bootstrap cache.
-- **Freshness budget:** up to **1 h** before `stale: true` is flagged (set by the seeder cron's expected interval).
-
-<CodeGroup>
-
-```bash curl
-curl -s https://worldmonitor.app/mcp \
-  -H "X-WorldMonitor-Key: $WM_KEY" \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "jsonrpc":"2.0","id":1,
-    "method":"tools/call",
-    "params":{"name":"get_positive_events","arguments":{}}
   }'
 ```
 

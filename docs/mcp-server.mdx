@@ -207,8 +207,8 @@ For per-tool parameters, freshness budgets, timeouts, and concrete `curl` exampl
 
 | Tool | Description |
 |------|-------------|
-| `get_airspace` | Live ADS-B over a country. Params: `iso2` (2-letter code), `filter` (`all`/`civilian`/`military`). |
-| `get_maritime_activity` | AIS density zones, dark-ship events, chokepoint congestion per country. Params: `iso2`. |
+| `get_airspace` | Live ADS-B over a country. Params: `country_code` (2-letter code), `type` (`all`/`civilian`/`military`). |
+| `get_maritime_activity` | AIS density zones, dark-ship events, chokepoint congestion per country. Params: `country_code`. |
 | `get_aviation_status` | FAA airport delays, NOTAM closures, tracked military aircraft. |
 | `get_infrastructure_status` | Cloudflare Radar outages, major cloud/internet service status. |
 | `search_flights` | Google Flights real-time search between IATA airport codes on a specific date. |
@@ -308,7 +308,7 @@ curl -s https://worldmonitor.app/mcp \
   -d '{
     "jsonrpc":"2.0","id":2,
     "method":"tools/call",
-    "params":{"name":"get_country_risk","arguments":{"iso2":"IR"}}
+    "params":{"name":"get_country_risk","arguments":{"country_code":"IR"}}
   }'
 ```
 
@@ -331,7 +331,7 @@ Tool responses use the standard MCP content block format:
 }
 ```
 
-For cache tools, the JSON payload includes `_meta` with `fetchedAt` and `staleness` so the model can reason about freshness.
+For cache tools, the JSON payload includes `cached_at` (ISO timestamp of the oldest contributing data point) and `stale` (boolean — `true` when any contributing seed exceeded its per-key freshness budget) so the model can reason about freshness.
 
 ## Data freshness
 
