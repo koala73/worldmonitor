@@ -441,6 +441,30 @@ const TOOL_REGISTRY: ToolDef[] = [
     _maxStaleMin: 2880,
   },
   {
+    name: 'get_tariff_trends',
+    description: 'Global trade and pricing indicators: US tariff trends (HTS-coded), BigMac index, FAO Food Price Index, and per-country national debt levels.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+    // 4-key bundle spanning trade + economic domains. Cadences span hourly-ish
+    // (tariffs co-pinned to 8h TARIFF_TTL) to monthly (FAO / national debt).
+    // Per-key _freshnessChecks pulled from api/health.js::SEED_META so a slow
+    // monthly key doesn't drag the aggregate stale flag and a fast tariff
+    // outage isn't masked by a long FAO budget.
+    _cacheKeys: [
+      'trade:tariffs:v1:840:all:10',   // STANDALONE_KEYS::tariffTrendsUs
+      'economic:bigmac:v1',            // BOOTSTRAP_KEYS::bigmac
+      'economic:fao-ffpi:v1',          // BOOTSTRAP_KEYS::faoFoodPriceIndex
+      'economic:national-debt:v1',     // BOOTSTRAP_KEYS::nationalDebt
+    ],
+    _seedMetaKey: 'seed-meta:trade:tariffs:v1:840:all:10',
+    _maxStaleMin: 540, // tariff cron baseline; per-key budgets via _freshnessChecks below
+    _freshnessChecks: [
+      { key: 'seed-meta:trade:tariffs:v1:840:all:10', maxStaleMin: 540 },   // TARIFF_TTL 8h + 60min grace
+      { key: 'seed-meta:economic:bigmac',             maxStaleMin: 10080 }, // weekly seed; 7d
+      { key: 'seed-meta:economic:fao-ffpi',           maxStaleMin: 86400 }, // monthly seed; 60d (2× interval)
+      { key: 'seed-meta:economic:national-debt',      maxStaleMin: 86400 }, // monthly seed; 60d (2× interval)
+    ],
+  },
+  {
     name: 'get_positive_events',
     description: 'Positive geopolitical events: diplomatic agreements, humanitarian aid, development milestones, and peace initiatives worldwide.',
     inputSchema: { type: 'object', properties: {}, required: [] },

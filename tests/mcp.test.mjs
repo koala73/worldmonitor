@@ -118,12 +118,12 @@ describe('api/mcp.ts — PRO MCP Server', () => {
 
   // --- tools/list ---
 
-  it('tools/list returns 36 tools with name, description, inputSchema', async () => {
+  it('tools/list returns 37 tools with name, description, inputSchema', async () => {
     const res = await handler(makeReq('POST', { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }));
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.ok(Array.isArray(body.result?.tools), 'result.tools must be an array');
-    assert.equal(body.result.tools.length, 36, `Expected 36 tools, got ${body.result.tools.length}`);
+    assert.equal(body.result.tools.length, 37, `Expected 37 tools, got ${body.result.tools.length}`);
     for (const tool of body.result.tools) {
       assert.ok(tool.name, 'tool.name must be present');
       assert.ok(tool.description, 'tool.description must be present');
@@ -136,6 +136,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.ok(toolNames.includes('get_displacement_data'), 'get_displacement_data must be registered (U1 Tier 1 regression)');
     assert.ok(toolNames.includes('get_health_signals'), 'get_health_signals must be registered (U2)');
     assert.ok(toolNames.includes('get_consumer_prices'), 'get_consumer_prices must be registered (U4)');
+    assert.ok(toolNames.includes('get_tariff_trends'), 'get_tariff_trends must be registered (U5)');
   });
 
   // --- tools/call ---
@@ -640,6 +641,179 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(payload.data.movers, null);
     assert.equal(payload.data.retailerSpread, null);
     assert.equal(payload.data.freshness, null);
+  });
+
+  // --- get_tariff_trends (U5: trade + economic indicator bundle) ---
+
+  it('get_tariff_trends returns 4-slice data on cache hit when every per-key meta is within budget', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+
+    const tariffsPayload = { items: [{ hts: '8501.10.40', ratePct: 25 }] };
+    const bigmacPayload = { countries: [{ iso: 'CHE', priceUsd: 7.04 }] };
+    const faoPayload = { months: [{ month: '2026-04', index: 119.2 }] };
+    const debtPayload = { countries: [{ iso: 'JPN', debtPctGdp: 263.1 }] };
+
+    // tariffs budget=540min — set 60min old (fresh)
+    const tariffsFetchedAt = Date.now() - 60 * 60_000;
+    // bigmac budget=10080min — set 12h old (fresh)
+    const bigmacFetchedAt = Date.now() - 12 * 60 * 60_000;
+    // fao budget=86400min — set 7d old (fresh)
+    const faoFetchedAt = Date.now() - 7 * 24 * 60 * 60_000;
+    // national-debt budget=86400min — set 10d old (fresh; OLDEST → anchors cached_at)
+    const debtFetchedAt = Date.now() - 10 * 24 * 60 * 60_000;
+
+    globalThis.fetch = async (url) => {
+      const u = url.toString();
+      if (u.includes(`/get/${encodeURIComponent('trade:tariffs:v1:840:all:10')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify(tariffsPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes(`/get/${encodeURIComponent('economic:bigmac:v1')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify(bigmacPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes(`/get/${encodeURIComponent('economic:fao-ffpi:v1')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify(faoPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes(`/get/${encodeURIComponent('economic:national-debt:v1')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify(debtPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:trade:tariffs:v1:840:all:10')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: tariffsFetchedAt, recordCount: 1 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:economic:bigmac')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: bigmacFetchedAt, recordCount: 1 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:economic:fao-ffpi')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: faoFetchedAt, recordCount: 1 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:economic:national-debt')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: debtFetchedAt, recordCount: 1 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return originalFetch(url);
+    };
+
+    const freshMod = await import(`../api/mcp.ts?t=${Date.now()}`);
+    const freshHandler = freshMod.default;
+
+    const res = await freshHandler(makeReq('POST', {
+      jsonrpc: '2.0', id: 400, method: 'tools/call',
+      params: { name: 'get_tariff_trends', arguments: {} },
+    }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.ok(body.result?.content, 'result.content must be present');
+    const payload = JSON.parse(body.result.content[0].text);
+    assert.equal(payload.stale, false, 'all 4 metas within their per-key budgets must yield stale=false');
+    assert.equal(payload.cached_at, new Date(debtFetchedAt).toISOString(), 'cached_at reflects oldest valid fetchedAt (national-debt)');
+    // Label-walk derives slice names from the trailing non-(v\d+|\d+) segment.
+    // trade:tariffs:v1:840:all:10 → trailing "10" + "all" are skipped/kept;
+    // "10" is bare-numeric → skipped, "all" stays → label="all".
+    assert.deepEqual(payload.data['all'], tariffsPayload, 'tariffs slice labelled "all" from cache-key label-walk');
+    assert.deepEqual(payload.data['bigmac'], bigmacPayload, 'bigmac slice labelled from cache-key suffix');
+    assert.deepEqual(payload.data['fao-ffpi'], faoPayload, 'fao-ffpi slice labelled from cache-key suffix');
+    assert.deepEqual(payload.data['national-debt'], debtPayload, 'national-debt slice labelled from cache-key suffix');
+  });
+
+  it('get_tariff_trends marks aggregate stale when FAO meta is past its monthly budget while tariffs are fresh', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+
+    const tariffsPayload = { items: [{ hts: '8501.10.40' }] };
+    const bigmacPayload = { countries: [{ iso: 'CHE' }] };
+    const faoPayload = { months: [{ month: '2025-12' }] };
+    const debtPayload = { countries: [{ iso: 'JPN' }] };
+
+    // tariffs budget=540min → 60min old (fresh)
+    const tariffsFetchedAt = Date.now() - 60 * 60_000;
+    // bigmac budget=10080min → 12h old (fresh)
+    const bigmacFetchedAt = Date.now() - 12 * 60 * 60_000;
+    // FAO budget=86400min (60d) → put 100d old (clearly stale)
+    const faoFetchedAt = Date.now() - 100 * 24 * 60 * 60_000;
+    // national-debt budget=86400min → 5d old (fresh)
+    const debtFetchedAt = Date.now() - 5 * 24 * 60 * 60_000;
+
+    globalThis.fetch = async (url) => {
+      const u = url.toString();
+      if (u.includes(`/get/${encodeURIComponent('trade:tariffs:v1:840:all:10')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify(tariffsPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes(`/get/${encodeURIComponent('economic:bigmac:v1')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify(bigmacPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes(`/get/${encodeURIComponent('economic:fao-ffpi:v1')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify(faoPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes(`/get/${encodeURIComponent('economic:national-debt:v1')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify(debtPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:trade:tariffs:v1:840:all:10')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: tariffsFetchedAt, recordCount: 1 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:economic:bigmac')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: bigmacFetchedAt, recordCount: 1 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:economic:fao-ffpi')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: faoFetchedAt, recordCount: 1 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:economic:national-debt')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: debtFetchedAt, recordCount: 1 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return originalFetch(url);
+    };
+
+    const freshMod = await import(`../api/mcp.ts?t=${Date.now()}`);
+    const freshHandler = freshMod.default;
+
+    const res = await freshHandler(makeReq('POST', {
+      jsonrpc: '2.0', id: 401, method: 'tools/call',
+      params: { name: 'get_tariff_trends', arguments: {} },
+    }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    const payload = JSON.parse(body.result.content[0].text);
+    assert.equal(payload.stale, true, 'one over-budget key (FAO) flips aggregate stale=true');
+    assert.equal(payload.cached_at, new Date(faoFetchedAt).toISOString(), 'cached_at is the oldest valid fetchedAt across all 4 metas (FAO)');
+    assert.deepEqual(payload.data['all'], tariffsPayload, 'fresh tariffs slice still surfaces');
+    assert.deepEqual(payload.data['fao-ffpi'], faoPayload, 'stale FAO payload still returned alongside stale=true');
+  });
+
+  it('get_tariff_trends returns mixed shape (3 slices null, 1 populated) without throwing when only one key is populated', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+
+    const tariffsPayload = { items: [{ hts: '8501.10.40' }] };
+    const tariffsFetchedAt = Date.now() - 60 * 60_000;
+
+    globalThis.fetch = async (url) => {
+      const u = url.toString();
+      if (u.includes(`/get/${encodeURIComponent('trade:tariffs:v1:840:all:10')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify(tariffsPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:trade:tariffs:v1:840:all:10')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: tariffsFetchedAt, recordCount: 1 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      // Everything else absent → readJsonFromUpstash → null
+      return new Response(JSON.stringify({}), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    };
+
+    const freshMod = await import(`../api/mcp.ts?t=${Date.now()}`);
+    const freshHandler = freshMod.default;
+
+    const res = await freshHandler(makeReq('POST', {
+      jsonrpc: '2.0', id: 402, method: 'tools/call',
+      params: { name: 'get_tariff_trends', arguments: {} },
+    }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    // Must NOT throw -32603: at least one cache slot is populated → cache_all_null guard doesn't fire.
+    assert.ok(body.result?.content, 'partial-population must return a result, not -32603');
+    const payload = JSON.parse(body.result.content[0].text);
+    assert.deepEqual(payload.data['all'], tariffsPayload, 'populated tariffs slice still present');
+    assert.equal(payload.data['bigmac'], null, 'missing bigmac slice surfaces as null');
+    assert.equal(payload.data['fao-ffpi'], null, 'missing fao-ffpi slice surfaces as null');
+    assert.equal(payload.data['national-debt'], null, 'missing national-debt slice surfaces as null');
+    assert.equal(payload.stale, true, 'missing meta forces stale=true (hasAllValidMeta=false)');
+    assert.equal(payload.cached_at, null, 'mixed-validity meta yields cached_at=null per evaluateFreshness contract');
   });
 
   it('get_climate_data still includes air-quality slice (regression — U2 must not touch get_climate_data._cacheKeys)', async () => {
