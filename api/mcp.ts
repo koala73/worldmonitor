@@ -1521,14 +1521,18 @@ async function dispatchToolsCall(
     return rpcOk(id, { content: [{ type: 'text', text: JSON.stringify(result) }] }, corsHeaders);
   } catch (err: unknown) {
     if (proRollback) await proRollback();
-    console.error('[mcp] tool execution error:', err);
     // HTTP 4xx from an internal sibling fetch (e.g. `feed-digest HTTP 401`)
     // is expected-but-trackable: transient HMAC/auth/quota drift, replay-window
     // skew, or a single user's expired context. Report at `warning` so single
     // occurrences don't drown real 5xx bugs in alerts; the pattern still
     // surfaces if it recurs. Non-HTTP errors and 5xx stay at default `error`.
+    // Log-drain consumers (Vercel, Datadog) read console severity, so route
+    // the `console.*` call to match the Sentry level — otherwise log alerts
+    // fire on 4xx while Sentry does not, defeating the downgrade.
     const message = err instanceof Error ? err.message : String(err);
     const isClient4xx = /HTTP 4\d\d\b/.test(message);
+    const log = isClient4xx ? console.warn : console.error;
+    log('[mcp] tool execution error:', err);
     captureSilentError(err, {
       tags: { route: 'api/mcp', step: 'tool-execution', tool: tool.name },
       ctx,
