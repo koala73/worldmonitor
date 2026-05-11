@@ -327,6 +327,20 @@ const TOOL_REGISTRY: ToolDef[] = [
     _maxStaleMin: 1440,
   },
   {
+    name: 'get_displacement_data',
+    description: 'Refugee and IDP counts by country (UNHCR annual data).',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+    // Dynamic-year key resolved once at module evaluation — mirrors the
+    // STANDALONE_KEYS pattern in api/health.js:147. The UNHCR seeder publishes
+    // a single current-year key; the prior year exists at the same prefix but
+    // is intentionally excluded — the executeTool label-walk would strip the
+    // year segment from both keys and collide on the same `summary` label,
+    // causing the second result to overwrite the first.
+    _cacheKeys: [`displacement:summary:v1:${new Date().getUTCFullYear()}`],
+    _seedMetaKey: 'seed-meta:displacement:summary',
+    _maxStaleMin: 3600,
+  },
+  {
     name: 'get_climate_data',
     description: 'Climate intelligence: temperature/precipitation anomalies (vs 30-year WMO normals), climate-relevant disaster alerts (ReliefWeb/GDACS/FIRMS), atmospheric CO2 trend (NOAA Mauna Loa), air quality (OpenAQ/WAQI PM2.5 stations), Arctic sea ice extent and ocean heat indicators (NSIDC/NOAA), weather alerts, and climate news.',
     inputSchema: { type: 'object', properties: {}, required: [] },

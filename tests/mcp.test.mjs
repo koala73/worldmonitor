@@ -118,12 +118,12 @@ describe('api/mcp.ts — PRO MCP Server', () => {
 
   // --- tools/list ---
 
-  it('tools/list returns 32 tools with name, description, inputSchema', async () => {
+  it('tools/list returns 33 tools with name, description, inputSchema', async () => {
     const res = await handler(makeReq('POST', { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }));
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.ok(Array.isArray(body.result?.tools), 'result.tools must be an array');
-    assert.equal(body.result.tools.length, 32, `Expected 32 tools, got ${body.result.tools.length}`);
+    assert.equal(body.result.tools.length, 33, `Expected 33 tools, got ${body.result.tools.length}`);
     for (const tool of body.result.tools) {
       assert.ok(tool.name, 'tool.name must be present');
       assert.ok(tool.description, 'tool.description must be present');
@@ -131,6 +131,8 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       assert.ok(!('_cacheKeys' in tool), 'Internal _cacheKeys must not be exposed in tools/list');
       assert.ok(!('_execute' in tool), 'Internal _execute must not be exposed in tools/list');
     }
+    const toolNames = body.result.tools.map((t) => t.name);
+    assert.ok(toolNames.includes('get_displacement_data'), 'get_displacement_data must be registered (U1 Tier 1 regression)');
   });
 
   // --- tools/call ---
@@ -251,6 +253,76 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(res.status, 200, 'Must return HTTP 200, not 500');
     const body = await res.json();
     assert.equal(body.error?.code, -32603, 'Must return JSON-RPC -32603, not throw');
+  });
+
+  // --- get_displacement_data (U1: Tier 1 regression) ---
+
+  it('get_displacement_data returns {cached_at, stale, data.summary} on cache hit', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+
+    const currentYear = new Date().getUTCFullYear();
+    const expectedDataKey = `displacement:summary:v1:${currentYear}`;
+    const summaryPayload = {
+      year: currentYear,
+      countries: [
+        { iso3: 'SYR', refugees: 6_700_000, idps: 6_900_000 },
+        { iso3: 'UKR', refugees: 5_900_000, idps: 3_700_000 },
+      ],
+    };
+    const seedFetchedAt = Date.now() - 60 * 60_000; // 1h old — well inside 3600 min budget
+
+    globalThis.fetch = async (url) => {
+      const u = url.toString();
+      if (u.includes(`/get/${encodeURIComponent(expectedDataKey)}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify(summaryPayload) }), {
+          status: 200, headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (u.includes('/get/seed-meta%3Adisplacement%3Asummary')) {
+        return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt: seedFetchedAt, recordCount: 2 }) }), {
+          status: 200, headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return originalFetch(url);
+    };
+
+    const freshMod = await import(`../api/mcp.ts?t=${Date.now()}`);
+    const freshHandler = freshMod.default;
+
+    const res = await freshHandler(makeReq('POST', {
+      jsonrpc: '2.0', id: 100, method: 'tools/call',
+      params: { name: 'get_displacement_data', arguments: {} },
+    }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.ok(body.result?.content, 'result.content must be present');
+    const payload = JSON.parse(body.result.content[0].text);
+    assert.equal(payload.stale, false, 'fresh meta within budget must yield stale=false');
+    assert.equal(payload.cached_at, new Date(seedFetchedAt).toISOString(), 'cached_at must reflect seed-meta fetchedAt');
+    assert.deepEqual(payload.data.summary, summaryPayload, 'label-walk strips year+v1, exposes payload under data.summary');
+  });
+
+  it('get_displacement_data returns -32603 when cache is empty (cache_all_null)', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+
+    // Upstash returns {} (no result) for every GET — simulates fresh deploy
+    // or evicted cache. executeTool's cache_all_null guard must throw → -32603.
+    globalThis.fetch = async () => new Response(JSON.stringify({}), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    });
+
+    const freshMod = await import(`../api/mcp.ts?t=${Date.now()}`);
+    const freshHandler = freshMod.default;
+
+    const res = await freshHandler(makeReq('POST', {
+      jsonrpc: '2.0', id: 101, method: 'tools/call',
+      params: { name: 'get_displacement_data', arguments: {} },
+    }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.error?.code, -32603, 'empty cache must surface as -32603 (cache_all_null)');
   });
 
   // --- get_airspace ---
