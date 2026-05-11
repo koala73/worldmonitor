@@ -406,8 +406,8 @@ const RSS_PROXY_ALLOWED_DOMAINS = new Set([
   'www.federalreserve.gov', 'www.sec.gov', 'www.whitehouse.gov', 'www.state.gov',
   'www.defense.gov', 'home.treasury.gov', 'www.justice.gov', 'tools.cdc.gov',
   'www.fema.gov', 'www.dhs.gov', 'www.thedrive.com', 'krebsonsecurity.com',
-  'finance.yahoo.com', 'thediplomat.com', 'venturebeat.com', 'foreignpolicy.com',
-  'www.ft.com', 'openai.com', 'www.reutersagency.com', 'feeds.reuters.com',
+  'finance.yahoo.com', 'thediplomat.com', 'venturebeat.com',
+  'www.ft.com', 'openai.com',
   'asia.nikkei.com', 'www.cfr.org', 'www.csis.org', 'www.politico.com',
   'www.brookings.edu', 'layoffs.fyi', 'www.defensenews.com', 'www.militarytimes.com',
   'taskandpurpose.com', 'news.usni.org', 'www.oryxspioenkop.com', 'www.gov.uk',
@@ -1117,23 +1117,11 @@ export default defineConfig({
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/rss\/venturebeat/, ''),
       },
-      // Foreign Policy
-      '/rss/foreignpolicy': {
-        target: 'https://foreignpolicy.com',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/rss\/foreignpolicy/, ''),
-      },
       // Financial Times
       '/rss/ft': {
         target: 'https://www.ft.com',
         changeOrigin: true,
         rewrite: (path) => path.replace(/^\/rss\/ft/, ''),
-      },
-      // Reuters
-      '/rss/reuters': {
-        target: 'https://www.reutersagency.com',
-        changeOrigin: true,
-        rewrite: (path) => path.replace(/^\/rss\/reuters/, ''),
       },
       // Cloudflare Radar - Internet outages
       '/api/cloudflare-radar': {

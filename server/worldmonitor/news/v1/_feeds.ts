@@ -109,7 +109,6 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Nuclear Energy', url: gn('("nuclear energy" OR "nuclear power" OR "nuclear reactor") when:3d') },
     ],
     thinktanks: [
-      { name: 'Foreign Policy', url: 'https://foreignpolicy.com/feed/' },
       { name: 'Atlantic Council', url: 'https://www.atlanticcouncil.org/feed/' },
       { name: 'Foreign Affairs', url: 'https://www.foreignaffairs.com/rss.xml' },
       { name: 'War on the Rocks', url: 'https://warontherocks.com/feed/' },
@@ -428,7 +427,6 @@ export const INTEL_SOURCES: ServerFeed[] = [
   { name: 'USNI News', url: 'https://news.usni.org/feed' },
   { name: 'gCaptain', url: 'https://gcaptain.com/feed/' },
   { name: 'Oryx OSINT', url: 'https://www.oryxspioenkop.com/feeds/posts/default?alt=rss' },
-  { name: 'Foreign Policy', url: 'https://foreignpolicy.com/feed/' },
   { name: 'Foreign Affairs', url: 'https://www.foreignaffairs.com/rss.xml' },
   { name: 'Atlantic Council', url: 'https://www.atlanticcouncil.org/feed/' },
   { name: 'Bellingcat', url: 'https://www.bellingcat.com/feed/' },

@@ -42,13 +42,8 @@ export interface NewsSource {
 }
 
 export const US_NEWS_SOURCES: readonly NewsSource[] = [
-  // ── Tier 1 — Authoritative wires ─────────────────────────────────────
-  { name: 'AP Top News',          url: 'https://feeds.apnews.com/rss/apf-topnews',                  priority: 1 },
-  { name: 'AP World',             url: 'https://feeds.apnews.com/rss/apf-intlnews',                 priority: 1 },
-  { name: 'Reuters World',        url: 'https://feeds.reuters.com/reuters/worldNews',               priority: 1 },
-  { name: 'Reuters Top News',     url: 'https://feeds.reuters.com/reuters/topNews',                 priority: 1 },
-
   // ── Tier 2 — Top international broadcasters ──────────────────────────
+  // (Tier 1 wires — AP, Reuters — removed for commercial-usage permissions.)
   { name: 'BBC News World',       url: 'https://feeds.bbci.co.uk/news/world/rss.xml',               priority: 2 },
   { name: 'Al Jazeera English',   url: 'https://www.aljazeera.com/xml/rss/all.xml',                 priority: 2 },
   { name: 'Deutsche Welle',       url: 'https://rss.dw.com/rdf/rss-en-all',                         priority: 2 },
@@ -58,8 +53,8 @@ export const US_NEWS_SOURCES: readonly NewsSource[] = [
   { name: 'NPR News',             url: 'https://feeds.npr.org/1001/rss.xml',                        priority: 2 },
 
   // ── Tier 3 — Major papers (international sections) ───────────────────
+  // (NYT World removed for commercial-usage permissions.)
   { name: 'The Guardian World',   url: 'https://www.theguardian.com/world/rss',                     priority: 3 },
-  { name: 'NYT World',            url: 'https://rss.nytimes.com/services/xml/rss/nyt/World.xml',    priority: 3 },
 
   // ── Tier 3 — Balanced US perspective (left + right) ──────────────────
   // Two outlets with overtly different editorial leans, kept at the same
@@ -68,7 +63,7 @@ export const US_NEWS_SOURCES: readonly NewsSource[] = [
   { name: 'Fox News',             url: 'https://moxie.foxnews.com/google-publisher/latest.xml',     priority: 3 },
 
   // ── Tier 4 — Analysis / regional specialists ─────────────────────────
-  { name: 'Foreign Policy',       url: 'https://foreignpolicy.com/feed/',                           priority: 4 },
+  // (Foreign Policy removed for commercial-usage permissions.)
   { name: 'The Diplomat',         url: 'https://thediplomat.com/feed/',                             priority: 4 },
 
   // ── Regional newsdesks (Tier-A conflict-signal lift) ─────────────────
