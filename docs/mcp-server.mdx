@@ -247,7 +247,7 @@ For per-tool parameters, freshness budgets, timeouts, and concrete `curl` exampl
 
 ## API coverage
 
-Most MCP tools wrap one or more REST/RPC endpoints from the [API Reference](/api-reference). The table below maps each covered tool to the API paths it serves — useful when you know the API endpoint you want and need to find the corresponding MCP tool, or vice versa. A handful of tools read bootstrap-aggregate caches without a 1:1 API endpoint and don't appear in this table; see the [MCP Tools Reference](/mcp-tools-reference) for the complete 38-tool set.
+Most MCP tools wrap one or more REST/RPC endpoints from the [API Reference](/api-reference). The table below maps each covered tool to the API paths it serves — useful when you know the API endpoint you want and need to find the corresponding MCP tool, or vice versa. A handful of tools don't appear in this table because they don't expose a 1:1 public OpenAPI operation — see the trailing note below the table for the categories, and the [MCP Tools Reference](/mcp-tools-reference) for the complete 38-tool set.
 
 | MCP tool | API endpoints served |
 |----------|---------------------|
@@ -282,7 +282,13 @@ Most MCP tools wrap one or more REST/RPC endpoints from the [API Reference](/api
 | `search_flights` | `GET /api/aviation/v1/search-google-flights` |
 | `search_flight_prices_by_date` | `GET /api/aviation/v1/search-google-dates` |
 
-A handful of cache-backed tools wrap data that's seeded directly into Redis without a 1:1 API endpoint — these tools have no entry above but still return live data via `tools/call`. See the [Tool catalog](#tool-catalog) above for the complete list of 38 tools.
+A handful of tools have no entry above because they don't map 1:1 to a public OpenAPI operation. They still return live data via `tools/call`; they fall into three categories:
+
+- **Cache-backed bootstrap aggregates** — read Redis keys seeded directly by Railway crons (e.g. `get_aviation_status`, `get_cyber_threats`, `get_country_macro`, the three EU Eurostat tools).
+- **Static in-memory registries** — filter a constant bundled with the MCP server's edge binary, no upstream call at all (e.g. `get_commodity_geo`).
+- **Live tools without a public OpenAPI row** — runtime proxies an HTTP call whose method drifts from the public spec, where a sibling tool already covers the spec-declared method (e.g. `generate_forecasts` POSTs `/api/forecast/v1/get-forecasts` while `get_forecast_predictions` owns the GET).
+
+See the [Tool catalog](#tool-catalog) above for the complete list of 38 tools, or the [MCP Tools Reference](/mcp-tools-reference) for per-tool details.
 
 <Tip>
 **Reverse lookup** — if you know the API path you want, search this table with Cmd/Ctrl+F. The same data is also queryable via the running server's `tools/list` response, where each tool description names its domain.
