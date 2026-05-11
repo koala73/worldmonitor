@@ -22,6 +22,16 @@ const TTL_SECONDS = 259200; // 72h
 const LOCK_DOMAIN = 'comtrade:bilateral-hs4';
 const LOCK_TTL_MS = 30 * 60 * 1000; // 30 min
 
+// Freshness gate: skip the run if seed-meta says we re-seeded recently.
+// Mirrors _bundle-runner.mjs:240's `elapsed < intervalMs * 0.8` pattern so
+// the gate lives in code regardless of the Railway cron cadence or any
+// future Watch-Paths filter changes. Set to 24d (0.8 × 30d) to match the
+// new monthly Railway cron with one tick of slack against missed runs.
+// Belt-and-suspenders against the UN Comtrade Free APIs 500 calls/month
+// quota (~396 calls per run with a single COMTRADE_API_KEYS entry).
+// Override for force-resed scenarios: FORCE_RESEED=true bypasses the gate.
+const FRESHNESS_GATE_MS = 24 * 24 * 60 * 60 * 1000;
+
 const COMTRADE_KEYS = (process.env.COMTRADE_API_KEYS || '').split(',').map(k => k.trim()).filter(Boolean);
 let keyIndex = 0;
 function getNextKey() {
@@ -105,6 +115,32 @@ async function redisPipeline(commands) {
     throw new Error(`Redis pipeline failed: HTTP ${resp.status} — ${text.slice(0, 200)}`);
   }
   return resp.json();
+}
+
+/**
+ * Returns { fresh, ageMs, reason } for the existing seed-meta record.
+ * Fail-open: any read error or parse error reports fresh=false so the
+ * caller can fall through to the regular fetch path. The cron schedule
+ * (monthly) is the primary quota guard; this gate is the secondary one.
+ */
+export async function checkSeedMetaFreshness(now = Date.now()) {
+  try {
+    const result = await redisPipeline([['GET', META_KEY]]);
+    const raw = Array.isArray(result) ? result[0]?.result : null;
+    if (!raw || typeof raw !== 'string') return { fresh: false, ageMs: null, reason: 'no-meta' };
+    const parsed = JSON.parse(raw);
+    const fetchedAt = Number(parsed?.fetchedAt);
+    if (!Number.isFinite(fetchedAt) || fetchedAt <= 0) {
+      return { fresh: false, ageMs: null, reason: 'no-fetchedAt' };
+    }
+    const ageMs = now - fetchedAt;
+    if (ageMs < FRESHNESS_GATE_MS) return { fresh: true, ageMs, reason: 'within-gate' };
+    return { fresh: false, ageMs, reason: 'stale' };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(`[bilateral-hs4] seed-meta freshness check failed (fail-open): ${message}`);
+    return { fresh: false, ageMs: null, reason: 'read-error' };
+  }
 }
 
 /**
@@ -253,6 +289,22 @@ function groupByProduct(records) {
 export async function main() {
   const startedAt = Date.now();
   const runId = `${LOCK_DOMAIN}:${startedAt}`;
+
+  // Freshness gate: skip if seed-meta says we re-seeded < 24d ago.
+  // One run = ~396 authenticated UN Comtrade calls; their Free APIs tier is
+  // 500/month, so a stuck-on cron schedule used to put us 24× over quota
+  // before this gate landed. FORCE_RESEED=true bypasses (used by ad-hoc
+  // refresh scripts like post-pr*-force-refresh.mjs).
+  if (!process.env.FORCE_RESEED) {
+    const freshness = await checkSeedMetaFreshness();
+    if (freshness.fresh) {
+      const ageDays = freshness.ageMs != null ? (freshness.ageMs / 86_400_000).toFixed(1) : '?';
+      const gateDays = (FRESHNESS_GATE_MS / 86_400_000).toFixed(0);
+      console.log(`[bilateral-hs4] seed-meta is ${ageDays}d old (gate=${gateDays}d) — skipping (set FORCE_RESEED=true to override)`);
+      return;
+    }
+  }
+
   const lock = await acquireLockSafely(LOCK_DOMAIN, runId, LOCK_TTL_MS, { label: LOCK_DOMAIN });
 
   const countries = Object.entries(COUNTRY_PORT_CLUSTERS)
