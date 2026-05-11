@@ -1,8 +1,12 @@
 {
   "serverInfo": {
     "name": "worldmonitor",
-    "version": "1.0"
+    "version": "1.1.0",
+    "description": "WorldMonitor's live global-intelligence stack as an MCP server: real-time markets, conflict events, aviation, maritime, energy, climate, health, displacement, supply chain, and AI-generated regional briefs.",
+    "vendor": "WorldMonitor",
+    "homepage": "https://www.worldmonitor.app"
   },
+  "protocolVersion": "2025-03-26",
   "transport": {
     "type": "streamableHttp",
     "endpoint": "https://worldmonitor.app/mcp"
@@ -12,10 +16,63 @@
     "resources": false,
     "prompts": false
   },
+  "tools": {
+    "count": 38,
+    "categories": [
+      "markets-economy",
+      "energy",
+      "geopolitical-security",
+      "movement-infrastructure",
+      "environment-science",
+      "health",
+      "humanitarian-displacement",
+      "ai-intelligence"
+    ]
+  },
   "authentication": {
     "type": "oauth2",
     "authorization_servers": ["https://api.worldmonitor.app"],
     "resource": "https://worldmonitor.app",
-    "scopes": ["mcp"]
+    "scopes": ["mcp"],
+    "alternative_methods": [
+      {
+        "type": "api_key",
+        "header": "X-WorldMonitor-Key",
+        "description": "API-tier subscribers may pass a wm_live_... key directly instead of completing the OAuth flow."
+      }
+    ]
+  },
+  "documentation": {
+    "overview": "https://www.worldmonitor.app/docs/mcp-server",
+    "toolReference": "https://www.worldmonitor.app/docs/mcp-tools-reference",
+    "apiReference": "https://www.worldmonitor.app/docs/api-reference",
+    "support": "https://www.worldmonitor.app/docs/getting-started"
+  },
+  "rateLimits": {
+    "perMinute": 60,
+    "dailyByPlan": {
+      "pro": 50,
+      "apiStarter": 1000,
+      "apiBusiness": 10000,
+      "enterprise": null
+    },
+    "notes": "tools/list and initialize are NEVER counted against per-day quota — only tools/call. Per-minute is per-user (Pro) or per-key (API tiers)."
+  },
+  "tags": [
+    "geopolitical-intelligence",
+    "live-data",
+    "global",
+    "macroeconomic",
+    "real-time",
+    "markets",
+    "conflict",
+    "energy",
+    "climate",
+    "supply-chain"
+  ],
+  "metadata": {
+    "supportsToolAnnotations": true,
+    "supportsStreamingResponses": false,
+    "toolListNote": "Issue a `tools/list` JSON-RPC call against the transport endpoint for the current authoritative tool inventory with input schemas and descriptions."
   }
 }
