@@ -242,8 +242,8 @@ Global mining sites with coordinates, operator, mineral type, and production sta
 | `mineral` | string | no | Filter by mineral type (e.g. "Gold", "Copper", "Lithium") |
 | `country` | string | no | Filter by country name (e.g. "Australia", "Chile") |
 
-- **API endpoints:** none directly — reads from a bootstrap-aggregate cache key (no 1:1 REST endpoint).
-- **Kind:** live RPC — proxies a fetch to the WorldMonitor API on each call.
+- **API endpoints:** none — this tool reads no cache and makes no HTTP fetch.
+- **Kind:** static registry — filters the bundled `MINING_SITES_RAW` constant (in-memory, ships with the MCP server's edge bundle). Sub-millisecond, no upstream call. The dataset updates only when the MCP server is redeployed with a refreshed registry.
 
 <CodeGroup>
 
@@ -1003,7 +1003,7 @@ Generate live AI geopolitical and economic forecasts. Unlike get_forecast_predic
 | `domain` | string | no | Forecast domain: "geopolitical", "economic", "military", "climate", or empty for all domains |
 | `region` | string | no | Geographic region filter, e.g. "Middle East", "Europe", "Asia Pacific", or empty for global |
 
-- **API endpoints:** none directly — reads from a bootstrap-aggregate cache key (no 1:1 REST endpoint).
+- **API endpoints:** no public OpenAPI row; runtime proxies `POST /api/forecast/v1/get-forecasts` (the OpenAPI spec only declares `GET` on that path, which is covered by `get_forecast_predictions` — this tool's POST variant runs a fresh forecast).
 - **Kind:** live RPC — proxies a fetch to the WorldMonitor API on each call. Edge-runtime timeout: **25.0s**.
 
 <CodeGroup>
