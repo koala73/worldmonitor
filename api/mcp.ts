@@ -225,10 +225,17 @@ const TOOL_REGISTRY: ToolDef[] = [
     ],
     _seedMetaKey: 'seed-meta:conflict:ucdp-events',
     _maxStaleMin: 30,
+    // NOTE: `GET /api/intelligence/v1/get-risk-scores` is NOT covered here.
+    // The audit-time hint matched on 3 keys (conflict:ucdp-events:v1,
+    // conflict:iran-events:v1, risk:scores:sebuf:stale:v1) but the handler at
+    // server/worldmonitor/intelligence/v1/get-risk-scores.ts:242-256 reads 12
+    // cross-domain keys (infra outages, climate anomalies, cyber threats,
+    // wildfires, GPS jamming, OREF history, security advisories, displacement,
+    // news insights, news threats). Excluded as `deferred-to-future-tool` —
+    // belongs in a future expanded_risk_scores composite tool, not here.
     _apiPaths: [
       "GET /api/conflict/v1/list-iran-events",
       "GET /api/conflict/v1/list-ucdp-events",
-      "GET /api/intelligence/v1/get-risk-scores",
       "GET /api/unrest/v1/list-unrest-events",
     ],
   },

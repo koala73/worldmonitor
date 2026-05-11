@@ -487,7 +487,8 @@ function buildAuditRows() {
    *   classification: string,
    *   annotations: string[],
    *   cacheKeys: string[],
-   *   coveredByCacheKey: string[],
+   *   fullyCoveredByCacheKey: string[],
+   *   partiallyCoveredByCacheKey: Array<{tool:string, covered:string[], missing:string[]}>,
    *   coveredByPassthrough: string[],
    *   importedHelpers: string[],
    * }>}
@@ -522,12 +523,38 @@ function buildAuditRows() {
       }
     }
     // Cross-reference: which TOOL_REGISTRY tools (if any) cover this op?
-    const coveredByCacheKey = [];
-    for (const k of cacheKeys) {
-      const tools = cacheKeyToTools[k];
-      if (tools) {
+    // Distinguish FULL coverage (every handler key is in the tool's _cacheKeys)
+    // from PARTIAL overlap (some keys shared, some uncovered). Partial-only
+    // overlap is the false-positive trap that originally classified
+    // get-gold-intelligence (5 keys, 1 shared with get_market_data) and
+    // get-consumer-price-basket-series (parameterized key not in
+    // get_consumer_prices) as `covered-via-cache-key`. Surface partial overlap
+    // explicitly so the implementer manually decides "extend the tool" vs
+    // "exclude as deferred-to-future-tool". See line ~574 categorize() below.
+    const fullyCoveredByCacheKey = [];
+    /** @type {Array<{tool:string, covered:string[], missing:string[]}>} */
+    const partiallyCoveredByCacheKey = [];
+    if (cacheKeys.length > 0) {
+      // Build per-tool candidate set: any tool whose keys overlap by ≥1 key.
+      /** @type {Map<string, string[]>} */
+      const candidateTools = new Map();
+      for (const k of cacheKeys) {
+        const tools = cacheKeyToTools[k];
+        if (!tools) continue;
         for (const t of tools) {
-          if (!coveredByCacheKey.includes(t)) coveredByCacheKey.push(t);
+          if (!candidateTools.has(t)) candidateTools.set(t, []);
+        }
+      }
+      // For each candidate tool, partition the handler's cache keys into
+      // (covered, missing) sets and classify the relationship.
+      for (const tool of candidateTools.keys()) {
+        const toolKeys = new Set(toolCacheKeys[tool] ?? []);
+        const covered = cacheKeys.filter((k) => toolKeys.has(k));
+        const missing = cacheKeys.filter((k) => !toolKeys.has(k));
+        if (missing.length === 0 && covered.length > 0) {
+          fullyCoveredByCacheKey.push(tool);
+        } else if (covered.length > 0) {
+          partiallyCoveredByCacheKey.push({ tool, covered, missing });
         }
       }
     }
@@ -544,7 +571,8 @@ function buildAuditRows() {
       classification,
       annotations,
       cacheKeys,
-      coveredByCacheKey,
+      fullyCoveredByCacheKey,
+      partiallyCoveredByCacheKey,
       coveredByPassthrough,
       importedHelpers,
     });
@@ -560,6 +588,13 @@ function buildAuditRows() {
 //   llm-passthrough           (classification != mutating AND callLlm import)
 //   mutating                  (writes redis/state)
 //   fetch-on-miss             (cachedFetchJson*, not LLM, not covered)
+//   partial-cache-key-overlap (handler reads >=1 key in some tool AND >=1 key
+//                              NOT in that tool — implementer MUST decide:
+//                              extend the tool's _cacheKeys vs exclude as
+//                              deferred-to-future-tool. NEVER auto-claim
+//                              coverage here — that's the false-positive trap
+//                              that originally mis-classified gold-intelligence
+//                              and consumer-price-basket-series.)
 //   manual-mapping            (pure-read with computed key but no tool match)
 //   deferred-to-future-tool   (pure-read, key not in any tool's _cacheKeys)
 //   admin                     (placeholder bucket — current audit emits zero)
@@ -567,11 +602,20 @@ function buildAuditRows() {
 // -----------------------------------------------------------------------------
 
 function categorize(row) {
-  if (row.handlerError && row.classification === 'unknown' && row.coveredByPassthrough.length === 0 && row.coveredByCacheKey.length === 0) {
+  if (row.handlerError && row.classification === 'unknown'
+      && row.coveredByPassthrough.length === 0
+      && row.fullyCoveredByCacheKey.length === 0
+      && row.partiallyCoveredByCacheKey.length === 0) {
     return 'unknown';
   }
   if (row.coveredByPassthrough.length > 0) return 'covered-via-_execute';
-  if (row.coveredByCacheKey.length > 0) return 'covered-via-cache-key';
+  if (row.fullyCoveredByCacheKey.length > 0) return 'covered-via-cache-key';
+  // Partial overlap: at least one shared key but the handler ALSO reads keys
+  // not in any candidate tool. Surface as a distinct category so the
+  // implementer treats it as "decide" not "covered". Takes precedence over
+  // pure-read deferred-to-future-tool because the partial-overlap detail is
+  // the higher-signal hint for the implementer.
+  if (row.partiallyCoveredByCacheKey.length > 0) return 'partial-cache-key-overlap';
   if (row.annotations.includes('llm-passthrough') && row.classification !== 'mutating') {
     return 'llm-passthrough';
   }
@@ -595,6 +639,7 @@ function categorize(row) {
 const CATEGORY_ORDER = [
   'covered-via-cache-key',
   'covered-via-_execute',
+  'partial-cache-key-overlap',
   'fetch-on-miss',
   'mutating',
   'llm-passthrough',
@@ -605,21 +650,25 @@ const CATEGORY_ORDER = [
 ];
 
 const CATEGORY_BLURB = {
-  'covered-via-cache-key':   'mapped to existing tools via _cacheKeys',
-  'covered-via-_execute':    'existing _execute tools via passthrough fetch',
-  'fetch-on-miss':           'cachedFetchJson handlers — candidates for fetch-on-miss exclusion',
-  'mutating':                'write/delete handlers',
-  'llm-passthrough':         'handlers importing callLlm — exclude from MCP',
-  'admin':                   'admin/internal-only endpoints (none expected in current OpenAPI surface)',
-  'manual-mapping':          'pure-read with computed/parameterized key — implementer triages',
-  'deferred-to-future-tool': 'pure-read, key not in any tool\'s _cacheKeys yet',
-  'unknown':                 'no redis helper imports found — manual triage required',
+  'covered-via-cache-key':    'fully mapped: every handler cache key is in some tool\'s _cacheKeys',
+  'covered-via-_execute':     'existing _execute tools via passthrough fetch',
+  'partial-cache-key-overlap':'handler shares ≥1 key with some tool BUT also reads uncovered keys — implementer decides extend vs defer',
+  'fetch-on-miss':            'cachedFetchJson handlers — candidates for fetch-on-miss exclusion',
+  'mutating':                 'write/delete handlers',
+  'llm-passthrough':          'handlers importing callLlm — exclude from MCP',
+  'admin':                    'admin/internal-only endpoints (none expected in current OpenAPI surface)',
+  'manual-mapping':           'pure-read with computed/parameterized key — implementer triages',
+  'deferred-to-future-tool':  'pure-read, key not in any tool\'s _cacheKeys yet',
+  'unknown':                  'no redis helper imports found — manual triage required',
 };
 
 function fmtHint(row) {
   const hints = [];
   for (const t of row.coveredByPassthrough) hints.push(`covered by ${t} via _execute passthrough`);
-  for (const t of row.coveredByCacheKey) hints.push(`covered by ${t}`);
+  for (const t of row.fullyCoveredByCacheKey) hints.push(`fully covered by ${t}`);
+  for (const p of row.partiallyCoveredByCacheKey) {
+    hints.push(`partial overlap with ${p.tool}: covered=[${p.covered.join(',')}] missing=[${p.missing.join(',')}]`);
+  }
   if (row.annotations.length > 0) hints.push(`annot:${row.annotations.join(',')}`);
   if (row.handlerError) hints.push(`ERR:${row.handlerError}`);
   return hints.join(' | ');
