@@ -427,7 +427,7 @@ Sentry.init({
     // Suppress errors originating from UV proxy (Ultraviolet service worker)
     if (frames.some(f => /\/uv\/service\//.test(f.filename ?? '') || /uv\.handler/.test(f.filename ?? ''))) return null;
     // Suppress Greasemonkey/Tampermonkey userscript errors (x-plugin-script, stay-userscript.html)
-    if (frames.length > 0 && frames.every(f => !f.filename || /\/x-plugin-script\/|stay-userscript\.html$/.test(f.filename))) return null;
+    if (frames.length > 0 && frames.every(f => !f.filename || /\/x-plugin-script\/|\/stay-userscript\.html$/.test(f.filename))) return null;
     // Suppress YouTube IFrame widget API internal errors
     if (frames.some(f => /www-widgetapi\.js/.test(f.filename ?? ''))) return null;
     // Suppress Sentry beacon XHR transport errors (readyState on aborted XHR — not our code)
