@@ -632,17 +632,24 @@ function categorize(row) {
   if (row.partiallyCoveredByCacheKey.length > 0 && CASCADE_MIRROR_EXEMPT.has(row.methodPath)) {
     return 'covered-via-cache-key';
   }
-  // Partial overlap: at least one shared key but the handler ALSO reads keys
-  // not in any candidate tool. Surface as a distinct category so the
-  // implementer treats it as "decide" not "covered". Takes precedence over
-  // pure-read deferred-to-future-tool because the partial-overlap detail is
-  // the higher-signal hint for the implementer.
-  if (row.partiallyCoveredByCacheKey.length > 0) return 'partial-cache-key-overlap';
+  // Structural-classification categories run BEFORE the pure-read partial-
+  // overlap check. A fetch-on-miss / mutating / llm-passthrough handler that
+  // happens to share a cache key with some tool is NOT a coverage gap — the
+  // handler's structural shape is the dominant signal. Routing those into
+  // partial-cache-key-overlap would disagree with the parity test, which
+  // correctly bucketizes them as fetch-on-miss / mutating / llm-passthrough.
   if (row.annotations.includes('llm-passthrough') && row.classification !== 'mutating') {
     return 'llm-passthrough';
   }
   if (row.classification === 'mutating') return 'mutating';
   if (row.classification === 'fetch-on-miss') return 'fetch-on-miss';
+  // Partial overlap (pure-read only): at least one shared key but the handler
+  // ALSO reads keys not in any candidate tool. Surface as a distinct category
+  // so the implementer treats it as "decide" not "covered". The per-tool
+  // hint output lists exactly which keys are covered vs missing.
+  if (row.partiallyCoveredByCacheKey.length > 0 && row.classification === 'pure-read') {
+    return 'partial-cache-key-overlap';
+  }
   if (row.classification === 'pure-read') {
     // pure-read but no cache-key match. Distinguish:
     //   - "manual-mapping" if it has a computed/unresolved key (parameterised)
