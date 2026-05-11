@@ -358,6 +358,40 @@ const TOOL_REGISTRY: ToolDef[] = [
     ],
   },
   {
+    name: 'get_energy_intelligence',
+    description: 'Energy supply, prices, storage, disruptions, and policy: EIA petroleum stocks, electricity prices (Ember), gas storage (GIE), fuel shortages, fossil & renewable shares, active energy disruptions, government crisis policies.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+    // Broad 9-key energy bundle mirroring get_economic_data. Cadences span
+    // hourly (electricity prices) to annual (World Bank renewable share); use
+    // _freshnessChecks with per-key maxStaleMin pulled from
+    // api/health.js::SEED_META so a slow-cadence key doesn't drag the
+    // aggregate stale flag unnecessarily.
+    _cacheKeys: [
+      'energy:eia-petroleum:v1',                  // STANDALONE_KEYS::eiaPetroleum
+      'energy:electricity:v1:index',              // BOOTSTRAP_KEYS::electricityPrices
+      'energy:ember:v1:_all',                     // STANDALONE_KEYS::emberElectricity
+      'energy:gas-storage:v1:_countries',         // BOOTSTRAP_KEYS::gasStorageCountries
+      'energy:fuel-shortages:v1',                 // STANDALONE_KEYS::fuelShortages
+      'energy:disruptions:v1',                    // STANDALONE_KEYS::energyDisruptions
+      'energy:crisis-policies:v1',                // STANDALONE_KEYS::energyCrisisPolicies
+      'resilience:fossil-electricity-share:v1',   // STANDALONE_KEYS::fossilElectricityShare
+      'economic:worldbank-renewable:v1',          // BOOTSTRAP_KEYS::renewableEnergy
+    ],
+    _seedMetaKey: 'seed-meta:energy:eia-petroleum',
+    _maxStaleMin: 4320, // EIA petroleum daily-bundle baseline; per-key budgets via _freshnessChecks below
+    _freshnessChecks: [
+      { key: 'seed-meta:energy:eia-petroleum',                  maxStaleMin: 4320 },   // daily bundle; 72h = 3× interval
+      { key: 'seed-meta:energy:electricity-prices',             maxStaleMin: 2880 },   // daily cron (14:00 UTC); 48h = 2× interval
+      { key: 'seed-meta:energy:ember',                          maxStaleMin: 2880 },   // daily cron (08:00 UTC); 48h = 2× interval
+      { key: 'seed-meta:energy:gas-storage-countries',          maxStaleMin: 2880 },   // daily cron at 10:30 UTC; 48h = 2× interval
+      { key: 'seed-meta:energy:fuel-shortages',                 maxStaleMin: 2880 },   // 2d — daily cron × 2 headroom
+      { key: 'seed-meta:energy:disruptions',                    maxStaleMin: 20160 },  // 14d — weekly cron × 2 headroom
+      { key: 'seed-meta:energy:crisis-policies',                maxStaleMin: 60 * 24 * 400 }, // ~400d static registry
+      { key: 'seed-meta:resilience:fossil-electricity-share',   maxStaleMin: 11520 },  // ~8d (annual WB-style cadence)
+      { key: 'seed-meta:economic:worldbank-renewable:v1',       maxStaleMin: 10080 },  // 7d WB weekly-cron annual data
+    ],
+  },
+  {
     name: 'get_climate_data',
     description: 'Climate intelligence: temperature/precipitation anomalies (vs 30-year WMO normals), climate-relevant disaster alerts (ReliefWeb/GDACS/FIRMS), atmospheric CO2 trend (NOAA Mauna Loa), air quality (OpenAQ/WAQI PM2.5 stations), Arctic sea ice extent and ocean heat indicators (NSIDC/NOAA), weather alerts, and climate news.',
     inputSchema: { type: 'object', properties: {}, required: [] },
