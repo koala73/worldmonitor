@@ -34,6 +34,12 @@ const MCP_PROTOCOL_VERSION = '2025-03-26';
 const SERVER_NAME = 'worldmonitor';
 const SERVER_VERSION = '1.0';
 
+// Country-code whitelist for get_consumer_prices. The consumer-prices seeder
+// currently only produces data for AE (UAE); future markets will be added
+// here as they're seeded. Kept near COUNTRY_BBOXES (the other ISO-3166 alpha-2
+// lookup table used by tools) so adding a market is a single-file change.
+const SUPPORTED_CONSUMER_PRICES_COUNTRIES = new Set(['ae']);
+
 // ---------------------------------------------------------------------------
 // Rate limiters
 // ---------------------------------------------------------------------------
@@ -148,12 +154,18 @@ interface CacheToolDef extends BaseToolDef {
 }
 
 // AI inference tool: calls an internal RPC endpoint and returns the raw response.
+// Hybrid variant: when an _execute tool also reads cache keys directly
+// (e.g. parameterised by country_code), it MAY declare `_coverageKeys` so the
+// U7 Tier 3 parity test can verify that every BOOTSTRAP_KEYS/STANDALONE_KEYS
+// entry it owns is covered by some tool — cache-tool's `_cacheKeys` and
+// hybrid _execute's `_coverageKeys` are equivalent for that audit.
 interface RpcToolDef extends BaseToolDef {
   _cacheKeys?: never;
   _seedMetaKey?: never;
   _maxStaleMin?: never;
   _freshnessChecks?: never;
   _execute: (params: Record<string, unknown>, base: string, context: McpAuthContext) => Promise<unknown>;
+  _coverageKeys?: string[];
 }
 
 type ToolDef = CacheToolDef | RpcToolDef;
@@ -604,6 +616,87 @@ const TOOL_REGISTRY: ToolDef[] = [
       });
       if (!res.ok) throw new Error(`get-country-risk HTTP ${res.status}`);
       return res.json();
+    },
+  },
+  {
+    name: 'get_consumer_prices',
+    description: "Per-country consumer-prices intelligence: 30-day overview, category-level inflation, retailer spread (essentials basket), top movers, and source freshness. Requires country_code (currently only 'ae' is seeded).",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        country_code: {
+          type: 'string',
+          description: 'ISO 3166-1 alpha-2 country code. Currently supported: AE (case-insensitive).',
+        },
+      },
+      required: ['country_code'],
+    },
+    // Hybrid _execute (not a pure cache tool) because the cache keys are
+    // parameterised by country. Mirrors api/health.js::BOOTSTRAP_KEYS:55-59
+    // exactly so the U7 Tier-3 parity test treats every key as covered.
+    _coverageKeys: [
+      'consumer-prices:overview:ae',
+      'consumer-prices:categories:ae:30d',
+      'consumer-prices:movers:ae:30d',
+      'consumer-prices:retailer-spread:ae:essentials-ae',
+      'consumer-prices:freshness:ae',
+    ],
+    _execute: async (params) => {
+      // Result-level errors (NOT throws) for user-input issues — the dispatcher
+      // maps thrown errors to JSON-RPC -32603 "Internal error", which is
+      // misleading for a clearly-user-side fault like a missing/unknown
+      // country_code. Returning {error: ...} surfaces a usable message via
+      // the normal tools/call result envelope.
+      if (!params.country_code || typeof params.country_code !== 'string') {
+        return { error: 'country_code is required' };
+      }
+      const code = params.country_code.toLowerCase().slice(0, 2);
+      if (!SUPPORTED_CONSUMER_PRICES_COUNTRIES.has(code)) {
+        return { error: 'Country not yet supported. Available: ae' };
+      }
+
+      const dataKeys = [
+        `consumer-prices:overview:${code}`,
+        `consumer-prices:categories:${code}:30d`,
+        `consumer-prices:movers:${code}:30d`,
+        `consumer-prices:retailer-spread:${code}:essentials-${code}`,
+        `consumer-prices:freshness:${code}`,
+      ];
+
+      // Freshness checks use the producer's actual meta keys. Note the spread
+      // entry: scripts/seed-consumer-prices.mjs:151 writes
+      // `seed-meta:consumer-prices:spread:<code>` (NO `retailer-` prefix,
+      // NO `:essentials-<code>` suffix). api/health.js:337 has the documented
+      // drift bug (expects `retailer-spread:<code>:essentials-<code>` which
+      // never exists) and so would always report stale; we deliberately
+      // diverge from health.js here to match the actual producer.
+      const freshnessChecks: FreshnessCheck[] = [
+        { key: `seed-meta:consumer-prices:overview:${code}`,      maxStaleMin: 1500 }, // 25h = 24h cron + 1h grace
+        { key: `seed-meta:consumer-prices:categories:${code}:30d`, maxStaleMin: 1500 },
+        { key: `seed-meta:consumer-prices:movers:${code}:30d`,     maxStaleMin: 1500 },
+        { key: `seed-meta:consumer-prices:spread:${code}`,         maxStaleMin: 1500 }, // producer's actual key shape
+        { key: `seed-meta:consumer-prices:freshness:${code}`,      maxStaleMin: 1500 },
+      ];
+
+      const [dataResults, metaResults] = await Promise.all([
+        Promise.all(dataKeys.map((k) => readJsonFromUpstash(k))),
+        Promise.all(freshnessChecks.map((c) => readJsonFromUpstash(c.key))),
+      ]);
+
+      const { cached_at, stale } = evaluateFreshness(freshnessChecks, metaResults);
+
+      return {
+        cached_at,
+        stale,
+        country_code: code,
+        data: {
+          overview: dataResults[0],
+          categories: dataResults[1],
+          movers: dataResults[2],
+          retailerSpread: dataResults[3],
+          freshness: dataResults[4],
+        },
+      };
     },
   },
   {

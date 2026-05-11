@@ -118,22 +118,24 @@ describe('api/mcp.ts — PRO MCP Server', () => {
 
   // --- tools/list ---
 
-  it('tools/list returns 35 tools with name, description, inputSchema', async () => {
+  it('tools/list returns 36 tools with name, description, inputSchema', async () => {
     const res = await handler(makeReq('POST', { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }));
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.ok(Array.isArray(body.result?.tools), 'result.tools must be an array');
-    assert.equal(body.result.tools.length, 35, `Expected 35 tools, got ${body.result.tools.length}`);
+    assert.equal(body.result.tools.length, 36, `Expected 36 tools, got ${body.result.tools.length}`);
     for (const tool of body.result.tools) {
       assert.ok(tool.name, 'tool.name must be present');
       assert.ok(tool.description, 'tool.description must be present');
       assert.ok(tool.inputSchema, 'tool.inputSchema must be present');
       assert.ok(!('_cacheKeys' in tool), 'Internal _cacheKeys must not be exposed in tools/list');
       assert.ok(!('_execute' in tool), 'Internal _execute must not be exposed in tools/list');
+      assert.ok(!('_coverageKeys' in tool), 'Internal _coverageKeys must not be exposed in tools/list');
     }
     const toolNames = body.result.tools.map((t) => t.name);
     assert.ok(toolNames.includes('get_displacement_data'), 'get_displacement_data must be registered (U1 Tier 1 regression)');
     assert.ok(toolNames.includes('get_health_signals'), 'get_health_signals must be registered (U2)');
+    assert.ok(toolNames.includes('get_consumer_prices'), 'get_consumer_prices must be registered (U4)');
   });
 
   // --- tools/call ---
@@ -474,6 +476,170 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.deepEqual(payload.data['air-quality'], airQualityPayload, 'populated slice still present');
     assert.equal(payload.stale, true, 'missing meta forces stale=true (hasAllValidMeta=false in evaluateFreshness)');
     assert.equal(payload.cached_at, null, 'mixed-validity meta yields cached_at=null per evaluateFreshness contract');
+  });
+
+  // --- get_consumer_prices (U4: hybrid _execute, country_code-parameterised) ---
+
+  it('get_consumer_prices returns 5-slice data on cache hit for country_code: "ae"', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+
+    const overviewPayload   = { headlineCpiPct: 3.1, asOf: '2026-05-01' };
+    const categoriesPayload = { categories: [{ name: 'Groceries', changePct: 2.4 }] };
+    const moversPayload     = { items: [{ sku: 'milk-1L', changePct: 8.2 }] };
+    const spreadPayload     = { retailers: [{ slug: 'carrefour_ae', basketUsd: 38.9 }, { slug: 'lulu_ae', basketUsd: 41.2 }] };
+    const freshnessPayload  = { retailers: [{ slug: 'carrefour_ae', minsSinceScan: 18 }] };
+    // All within the shared 1500-min budget — use 60min old.
+    const fetchedAt = Date.now() - 60 * 60_000;
+
+    globalThis.fetch = async (url) => {
+      const u = url.toString();
+      // Data keys
+      if (u.includes(`/get/${encodeURIComponent('consumer-prices:overview:ae')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify(overviewPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes(`/get/${encodeURIComponent('consumer-prices:categories:ae:30d')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify(categoriesPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes(`/get/${encodeURIComponent('consumer-prices:movers:ae:30d')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify(moversPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes(`/get/${encodeURIComponent('consumer-prices:retailer-spread:ae:essentials-ae')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify(spreadPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes(`/get/${encodeURIComponent('consumer-prices:freshness:ae')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify(freshnessPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      // Freshness/seed-meta keys — note `spread:ae` (NOT `retailer-spread:ae:essentials-ae`)
+      // matches the producer's actual key shape (see scripts/seed-consumer-prices.mjs:151).
+      if (u.includes(`/get/${encodeURIComponent('seed-meta:consumer-prices:overview:ae')}`)
+        || u.includes(`/get/${encodeURIComponent('seed-meta:consumer-prices:categories:ae:30d')}`)
+        || u.includes(`/get/${encodeURIComponent('seed-meta:consumer-prices:movers:ae:30d')}`)
+        || u.includes(`/get/${encodeURIComponent('seed-meta:consumer-prices:spread:ae')}`)
+        || u.includes(`/get/${encodeURIComponent('seed-meta:consumer-prices:freshness:ae')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt, recordCount: 1 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return originalFetch(url);
+    };
+
+    const freshMod = await import(`../api/mcp.ts?t=${Date.now()}`);
+    const freshHandler = freshMod.default;
+
+    const res = await freshHandler(makeReq('POST', {
+      jsonrpc: '2.0', id: 300, method: 'tools/call',
+      params: { name: 'get_consumer_prices', arguments: { country_code: 'ae' } },
+    }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.ok(body.result?.content, 'result.content must be present');
+    const payload = JSON.parse(body.result.content[0].text);
+    assert.equal(payload.country_code, 'ae', 'echoes normalised country_code');
+    assert.equal(payload.stale, false, 'all 5 freshness checks within 1500-min budget → stale=false');
+    assert.equal(payload.cached_at, new Date(fetchedAt).toISOString(), 'cached_at is the oldest valid fetchedAt');
+    assert.deepEqual(payload.data.overview, overviewPayload);
+    assert.deepEqual(payload.data.categories, categoriesPayload);
+    assert.deepEqual(payload.data.movers, moversPayload);
+    assert.deepEqual(payload.data.retailerSpread, spreadPayload);
+    assert.deepEqual(payload.data.freshness, freshnessPayload);
+  });
+
+  it('get_consumer_prices normalises uppercase "AE" to lowercase and succeeds', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+
+    const overviewPayload = { headlineCpiPct: 3.1 };
+    const fetchedAt = Date.now() - 60 * 60_000;
+
+    globalThis.fetch = async (url) => {
+      const u = url.toString();
+      if (u.includes(`/get/${encodeURIComponent('consumer-prices:overview:ae')}`)) {
+        return new Response(JSON.stringify({ result: JSON.stringify(overviewPayload) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (u.includes('/get/consumer-prices') || u.includes('/get/seed-meta%3Aconsumer-prices')) {
+        // Default: return populated meta so freshness evaluation is clean
+        if (u.includes('seed-meta')) {
+          return new Response(JSON.stringify({ result: JSON.stringify({ fetchedAt, recordCount: 1 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        return new Response(JSON.stringify({ result: JSON.stringify({}) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return originalFetch(url);
+    };
+
+    const freshMod = await import(`../api/mcp.ts?t=${Date.now()}`);
+    const freshHandler = freshMod.default;
+
+    const res = await freshHandler(makeReq('POST', {
+      jsonrpc: '2.0', id: 301, method: 'tools/call',
+      params: { name: 'get_consumer_prices', arguments: { country_code: 'AE' } },
+    }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.ok(body.result?.content, 'result.content must be present');
+    const payload = JSON.parse(body.result.content[0].text);
+    assert.equal(payload.country_code, 'ae', 'uppercase AE is lowercased before whitelist check + key build');
+    assert.deepEqual(payload.data.overview, overviewPayload);
+    // No `error` field — request succeeded
+    assert.ok(!('error' in payload), 'success path must not surface an error field');
+  });
+
+  it('get_consumer_prices returns result-level error (NOT -32603) for unsupported country_code: "us"', async () => {
+    // No fetch mock needed — the whitelist guard rejects before any Redis read.
+    const res = await handler(makeReq('POST', {
+      jsonrpc: '2.0', id: 302, method: 'tools/call',
+      params: { name: 'get_consumer_prices', arguments: { country_code: 'us' } },
+    }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    // Critical: NOT a JSON-RPC error envelope (-32603). The user-input fault
+    // surfaces inside result.content as `{error: "..."}` so callers see a
+    // usable message instead of "Internal error: data fetch failed".
+    assert.ok(body.result?.content, 'unsupported country must return a result, not -32603');
+    assert.equal(body.error, undefined, 'result-level error must not set the JSON-RPC error envelope');
+    const payload = JSON.parse(body.result.content[0].text);
+    assert.equal(payload.error, 'Country not yet supported. Available: ae');
+  });
+
+  it('get_consumer_prices returns result-level error when country_code is missing', async () => {
+    const res = await handler(makeReq('POST', {
+      jsonrpc: '2.0', id: 303, method: 'tools/call',
+      params: { name: 'get_consumer_prices', arguments: {} },
+    }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.ok(body.result?.content, 'missing country_code must return a result, not -32603');
+    assert.equal(body.error, undefined);
+    const payload = JSON.parse(body.result.content[0].text);
+    assert.equal(payload.error, 'country_code is required');
+  });
+
+  it('get_consumer_prices: 5 null keys yields stale=true + cached_at=null (does NOT throw)', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+
+    // Every GET returns {} (no `result`) — readJsonFromUpstash → null for both
+    // data keys and seed-meta keys. The hybrid _execute does NOT run the
+    // cache_all_null guard (that's a CacheToolDef-only path inside executeTool),
+    // so the response surfaces 5 nulls with stale=true and cached_at=null.
+    globalThis.fetch = async () => new Response(JSON.stringify({}), { status: 200, headers: { 'Content-Type': 'application/json' } });
+
+    const freshMod = await import(`../api/mcp.ts?t=${Date.now()}`);
+    const freshHandler = freshMod.default;
+
+    const res = await freshHandler(makeReq('POST', {
+      jsonrpc: '2.0', id: 304, method: 'tools/call',
+      params: { name: 'get_consumer_prices', arguments: { country_code: 'ae' } },
+    }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.ok(body.result?.content, 'empty cache must surface a result (not -32603) for hybrid _execute');
+    const payload = JSON.parse(body.result.content[0].text);
+    assert.equal(payload.stale, true, 'no valid meta → stale=true');
+    assert.equal(payload.cached_at, null, 'no valid meta → cached_at=null');
+    assert.equal(payload.data.overview, null);
+    assert.equal(payload.data.categories, null);
+    assert.equal(payload.data.movers, null);
+    assert.equal(payload.data.retailerSpread, null);
+    assert.equal(payload.data.freshness, null);
   });
 
   it('get_climate_data still includes air-quality slice (regression — U2 must not touch get_climate_data._cacheKeys)', async () => {
