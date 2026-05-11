@@ -151,6 +151,12 @@ interface CacheToolDef extends BaseToolDef {
   _maxStaleMin: number;
   _freshnessChecks?: FreshnessCheck[];
   _execute?: never;
+  // U3 (Tier-4 parity): REQUIRED. Every OpenAPI operation served by this
+  // tool's cache keys ("METHOD path") so the U5 MCP↔API parity test can
+  // verify every op in docs/api/*.openapi.json is covered by some tool's
+  // `_apiPaths` or explicitly excluded. Empty `[]` is valid for tools
+  // whose cache keys aren't served by any OpenAPI op (bootstrap aggregates).
+  _apiPaths: string[];
 }
 
 // AI inference tool: calls an internal RPC endpoint and returns the raw response.
@@ -166,6 +172,11 @@ interface RpcToolDef extends BaseToolDef {
   _freshnessChecks?: never;
   _execute: (params: Record<string, unknown>, base: string, context: McpAuthContext) => Promise<unknown>;
   _coverageKeys?: string[];
+  // U3 (Tier-4 parity): REQUIRED. Every OpenAPI operation this `_execute`
+  // body proxies via fetch (extracted from `${base}/api/...` callsites).
+  // Empty `[]` is valid for tools that don't hit any HTTP endpoint
+  // (e.g. AI tools reading a static JSON registry).
+  _apiPaths: string[];
 }
 
 type ToolDef = CacheToolDef | RpcToolDef;
@@ -186,6 +197,16 @@ const TOOL_REGISTRY: ToolDef[] = [
     ],
     _seedMetaKey: 'seed-meta:market:stocks',
     _maxStaleMin: 30,
+    _apiPaths: [
+      "GET /api/market/v1/get-fear-greed-index",
+      "GET /api/market/v1/get-gold-intelligence",
+      "GET /api/market/v1/get-sector-summary",
+      "GET /api/market/v1/list-commodity-quotes",
+      "GET /api/market/v1/list-crypto-quotes",
+      "GET /api/market/v1/list-etf-flows",
+      "GET /api/market/v1/list-gulf-quotes",
+      "GET /api/market/v1/list-market-quotes",
+    ],
   },
   {
     name: 'get_conflict_events',
@@ -199,6 +220,12 @@ const TOOL_REGISTRY: ToolDef[] = [
     ],
     _seedMetaKey: 'seed-meta:conflict:ucdp-events',
     _maxStaleMin: 30,
+    _apiPaths: [
+      "GET /api/conflict/v1/list-iran-events",
+      "GET /api/conflict/v1/list-ucdp-events",
+      "GET /api/intelligence/v1/get-risk-scores",
+      "GET /api/unrest/v1/list-unrest-events",
+    ],
   },
   {
     name: 'get_aviation_status',
@@ -207,6 +234,7 @@ const TOOL_REGISTRY: ToolDef[] = [
     _cacheKeys: ['aviation:delays-bootstrap:v1'],
     _seedMetaKey: 'seed-meta:aviation:faa',
     _maxStaleMin: 90,
+    _apiPaths: [],
   },
   {
     name: 'get_news_intelligence',
@@ -220,6 +248,10 @@ const TOOL_REGISTRY: ToolDef[] = [
     ],
     _seedMetaKey: 'seed-meta:news:insights',
     _maxStaleMin: 30,
+    _apiPaths: [
+      "GET /api/intelligence/v1/list-cross-source-signals",
+      "GET /api/intelligence/v1/search-gdelt-documents",
+    ],
   },
   {
     name: 'get_natural_disasters',
@@ -232,6 +264,11 @@ const TOOL_REGISTRY: ToolDef[] = [
     ],
     _seedMetaKey: 'seed-meta:seismology:earthquakes',
     _maxStaleMin: 30,
+    _apiPaths: [
+      "GET /api/natural/v1/list-natural-events",
+      "GET /api/seismology/v1/list-earthquakes",
+      "GET /api/wildfire/v1/list-fire-detections",
+    ],
   },
   {
     name: 'get_military_posture',
@@ -240,6 +277,9 @@ const TOOL_REGISTRY: ToolDef[] = [
     _cacheKeys: ['theater_posture:sebuf:stale:v1'],
     _seedMetaKey: 'seed-meta:intelligence:risk-scores',
     _maxStaleMin: 120,
+    _apiPaths: [
+      "GET /api/military/v1/get-theater-posture",
+    ],
   },
   {
     name: 'get_cyber_threats',
@@ -248,6 +288,7 @@ const TOOL_REGISTRY: ToolDef[] = [
     _cacheKeys: ['cyber:threats-bootstrap:v2'],
     _seedMetaKey: 'seed-meta:cyber:threats',
     _maxStaleMin: 240,
+    _apiPaths: [],
   },
   {
     name: 'get_economic_data',
@@ -278,6 +319,14 @@ const TOOL_REGISTRY: ToolDef[] = [
       { key: 'seed-meta:economic:bis-property-residential', maxStaleMin: 1440 },
       { key: 'seed-meta:economic:bis-property-commercial', maxStaleMin: 1440 },
     ],
+    _apiPaths: [
+      "GET /api/economic/v1/get-ecb-fx-rates",
+      "GET /api/economic/v1/get-economic-calendar",
+      "GET /api/economic/v1/get-eu-yield-curve",
+      "GET /api/economic/v1/list-fuel-prices",
+      "GET /api/market/v1/get-cot-positioning",
+      "GET /api/market/v1/list-earnings-calendar",
+    ],
   },
   {
     name: 'get_country_macro',
@@ -297,6 +346,7 @@ const TOOL_REGISTRY: ToolDef[] = [
       { key: 'seed-meta:economic:imf-labor', maxStaleMin: 100800 },
       { key: 'seed-meta:economic:imf-external', maxStaleMin: 100800 },
     ],
+    _apiPaths: [],
   },
   {
     name: 'get_eu_housing_cycle',
@@ -305,6 +355,7 @@ const TOOL_REGISTRY: ToolDef[] = [
     _cacheKeys: ['economic:eurostat:house-prices:v1'],
     _seedMetaKey: 'seed-meta:economic:eurostat-house-prices',
     _maxStaleMin: 60 * 24 * 50, // weekly cron, annual data
+    _apiPaths: [],
   },
   {
     name: 'get_eu_quarterly_gov_debt',
@@ -313,6 +364,7 @@ const TOOL_REGISTRY: ToolDef[] = [
     _cacheKeys: ['economic:eurostat:gov-debt-q:v1'],
     _seedMetaKey: 'seed-meta:economic:eurostat-gov-debt-q',
     _maxStaleMin: 60 * 24 * 14, // quarterly data, 2-day cron
+    _apiPaths: [],
   },
   {
     name: 'get_eu_industrial_production',
@@ -321,6 +373,7 @@ const TOOL_REGISTRY: ToolDef[] = [
     _cacheKeys: ['economic:eurostat:industrial-production:v1'],
     _seedMetaKey: 'seed-meta:economic:eurostat-industrial-production',
     _maxStaleMin: 60 * 24 * 5, // monthly data, daily cron
+    _apiPaths: [],
   },
   {
     name: 'get_prediction_markets',
@@ -329,6 +382,9 @@ const TOOL_REGISTRY: ToolDef[] = [
     _cacheKeys: ['prediction:markets-bootstrap:v1'],
     _seedMetaKey: 'seed-meta:prediction:markets',
     _maxStaleMin: 90,
+    _apiPaths: [
+      "GET /api/prediction/v1/list-prediction-markets",
+    ],
   },
   {
     name: 'get_sanctions_data',
@@ -337,6 +393,10 @@ const TOOL_REGISTRY: ToolDef[] = [
     _cacheKeys: ['sanctions:entities:v1', 'sanctions:pressure:v1'],
     _seedMetaKey: 'seed-meta:sanctions:entities',
     _maxStaleMin: 1440,
+    _apiPaths: [
+      "GET /api/sanctions/v1/list-sanctions-pressure",
+      "GET /api/sanctions/v1/lookup-sanction-entity",
+    ],
   },
   {
     name: 'get_displacement_data',
@@ -351,6 +411,12 @@ const TOOL_REGISTRY: ToolDef[] = [
     _cacheKeys: [`displacement:summary:v1:${new Date().getUTCFullYear()}`],
     _seedMetaKey: 'seed-meta:displacement:summary',
     _maxStaleMin: 3600,
+    // Audit miss: handler uses cachedFetchJson with a year-suffixed key the
+    // audit's regex couldn't statically resolve. The op IS covered by this
+    // tool — same underlying displacement:summary:v1:<year> cache.
+    _apiPaths: [
+      'GET /api/displacement/v1/get-displacement-summary',
+    ],
   },
   {
     name: 'get_health_signals',
@@ -367,6 +433,10 @@ const TOOL_REGISTRY: ToolDef[] = [
     _freshnessChecks: [
       { key: 'seed-meta:health:disease-outbreaks', maxStaleMin: 2880 }, // daily cron; 48h budget
       { key: 'seed-meta:health:air-quality', maxStaleMin: 180 },        // hourly cron; 3h budget
+    ],
+    _apiPaths: [
+      "GET /api/health/v1/list-air-quality-alerts",
+      "GET /api/health/v1/list-disease-outbreaks",
     ],
   },
   {
@@ -402,6 +472,12 @@ const TOOL_REGISTRY: ToolDef[] = [
       { key: 'seed-meta:resilience:fossil-electricity-share',   maxStaleMin: 11520 },  // ~8d (annual WB-style cadence)
       { key: 'seed-meta:economic:worldbank-renewable:v1',       maxStaleMin: 10080 },  // 7d WB weekly-cron annual data
     ],
+    _apiPaths: [
+      "GET /api/economic/v1/get-energy-crisis-policies",
+      "GET /api/supply-chain/v1/get-fuel-shortage-detail",
+      "GET /api/supply-chain/v1/list-energy-disruptions",
+      "GET /api/supply-chain/v1/list-fuel-shortages",
+    ],
   },
   {
     name: 'get_climate_data',
@@ -419,6 +495,14 @@ const TOOL_REGISTRY: ToolDef[] = [
       { key: 'seed-meta:climate:news-intelligence', maxStaleMin: 90 },
       { key: 'seed-meta:weather:alerts', maxStaleMin: 45 },
     ],
+    _apiPaths: [
+      "GET /api/climate/v1/get-co2-monitoring",
+      "GET /api/climate/v1/get-ocean-ice-data",
+      "GET /api/climate/v1/list-air-quality-data",
+      "GET /api/climate/v1/list-climate-anomalies",
+      "GET /api/climate/v1/list-climate-disasters",
+      "GET /api/climate/v1/list-climate-news",
+    ],
   },
   {
     name: 'get_infrastructure_status',
@@ -427,6 +511,9 @@ const TOOL_REGISTRY: ToolDef[] = [
     _cacheKeys: ['infra:outages:v1'],
     _seedMetaKey: 'seed-meta:infra:outages',
     _maxStaleMin: 30,
+    _apiPaths: [
+      "GET /api/infrastructure/v1/list-internet-outages",
+    ],
   },
   {
     name: 'get_supply_chain_data',
@@ -439,6 +526,10 @@ const TOOL_REGISTRY: ToolDef[] = [
     ],
     _seedMetaKey: 'seed-meta:trade:customs-revenue',
     _maxStaleMin: 2880,
+    _apiPaths: [
+      "GET /api/supply-chain/v1/get-shipping-stress",
+      "GET /api/trade/v1/get-customs-revenue",
+    ],
   },
   {
     name: 'get_tariff_trends',
@@ -462,6 +553,11 @@ const TOOL_REGISTRY: ToolDef[] = [
       { key: 'seed-meta:economic:bigmac',             maxStaleMin: 10080 }, // weekly seed; 7d
       { key: 'seed-meta:economic:fao-ffpi',           maxStaleMin: 86400 }, // monthly seed; 60d (2× interval)
       { key: 'seed-meta:economic:national-debt',      maxStaleMin: 86400 }, // monthly seed; 60d (2× interval)
+    ],
+    _apiPaths: [
+      "GET /api/economic/v1/get-fao-food-price-index",
+      "GET /api/economic/v1/get-national-debt",
+      "GET /api/economic/v1/list-bigmac-prices",
     ],
   },
   {
@@ -509,6 +605,10 @@ const TOOL_REGISTRY: ToolDef[] = [
       { key: 'seed-meta:portwatch:chokepoints-ref',        maxStaleMin: 60 * 24 * 14 },   // weekly cron; 14d = 2× interval
       { key: 'seed-meta:energy:chokepoint-flows',          maxStaleMin: 720 },            // 6h cron; 12h = 2× interval
     ],
+    _apiPaths: [
+      "GET /api/intelligence/v1/get-country-port-activity",
+      "GET /api/supply-chain/v1/get-chokepoint-status",
+    ],
   },
   {
     name: 'get_positive_events',
@@ -517,6 +617,9 @@ const TOOL_REGISTRY: ToolDef[] = [
     _cacheKeys: ['positive_events:geo-bootstrap:v1'],
     _seedMetaKey: 'seed-meta:positive-events:geo',
     _maxStaleMin: 60,
+    _apiPaths: [
+      'GET /api/positive-events/v1/list-positive-geo-events',
+    ],
   },
   {
     name: 'get_radiation_data',
@@ -525,6 +628,9 @@ const TOOL_REGISTRY: ToolDef[] = [
     _cacheKeys: ['radiation:observations:v1'],
     _seedMetaKey: 'seed-meta:radiation:observations',
     _maxStaleMin: 30,
+    _apiPaths: [
+      "GET /api/radiation/v1/list-radiation-observations",
+    ],
   },
   {
     name: 'get_research_signals',
@@ -533,6 +639,9 @@ const TOOL_REGISTRY: ToolDef[] = [
     _cacheKeys: ['research:tech-events-bootstrap:v1'],
     _seedMetaKey: 'seed-meta:research:tech-events',
     _maxStaleMin: 480,
+    _apiPaths: [
+      'GET /api/research/v1/list-tech-events',
+    ],
   },
   {
     name: 'get_forecast_predictions',
@@ -541,6 +650,9 @@ const TOOL_REGISTRY: ToolDef[] = [
     _cacheKeys: ['forecast:predictions:v2'],
     _seedMetaKey: 'seed-meta:forecast:predictions',
     _maxStaleMin: 90,
+    _apiPaths: [
+      "GET /api/forecast/v1/get-forecasts",
+    ],
   },
 
   // -------------------------------------------------------------------------
@@ -553,6 +665,9 @@ const TOOL_REGISTRY: ToolDef[] = [
     _cacheKeys: ['intelligence:social:reddit:v1'],
     _seedMetaKey: 'seed-meta:intelligence:social-reddit',
     _maxStaleMin: 30,
+    _apiPaths: [
+      "GET /api/intelligence/v1/get-social-velocity",
+    ],
   },
 
   // -------------------------------------------------------------------------
@@ -610,6 +725,10 @@ const TOOL_REGISTRY: ToolDef[] = [
       if (!briefRes.ok) throw new Error(`summarize-article HTTP ${briefRes.status}`);
       return briefRes.json();
     },
+    _apiPaths: [
+      "GET /api/news/v1/list-feed-digest",
+      "POST /api/news/v1/summarize-article",
+    ],
   },
   {
     name: 'get_country_brief',
@@ -665,6 +784,9 @@ const TOOL_REGISTRY: ToolDef[] = [
       if (!res.ok) throw new Error(`get-country-intel-brief HTTP ${res.status}`);
       return res.json();
     },
+    _apiPaths: [
+      "GET /api/intelligence/v1/get-country-intel-brief",
+    ],
   },
   {
     name: 'get_country_risk',
@@ -687,6 +809,9 @@ const TOOL_REGISTRY: ToolDef[] = [
       if (!res.ok) throw new Error(`get-country-risk HTTP ${res.status}`);
       return res.json();
     },
+    _apiPaths: [
+      "GET /api/intelligence/v1/get-country-risk",
+    ],
   },
   {
     name: 'get_consumer_prices',
@@ -784,6 +909,18 @@ const TOOL_REGISTRY: ToolDef[] = [
         },
       };
     },
+    // Hybrid tool covers the consumer-prices domain via direct Redis reads
+    // of the same keys the per-method handlers expose via the API. The
+    // OpenAPI ops listed here read parameterized keys (the audit's
+    // manual-mapping case); this MCP tool wraps the 'ae'-instance equivalent.
+    _apiPaths: [
+      'GET /api/consumer-prices/v1/get-consumer-price-basket-series',
+      'GET /api/consumer-prices/v1/get-consumer-price-freshness',
+      'GET /api/consumer-prices/v1/get-consumer-price-overview',
+      'GET /api/consumer-prices/v1/list-consumer-price-categories',
+      'GET /api/consumer-prices/v1/list-consumer-price-movers',
+      'GET /api/consumer-prices/v1/list-retailer-price-spreads',
+    ],
   },
   {
     name: 'get_airspace',
@@ -876,6 +1013,10 @@ const TOOL_REGISTRY: ToolDef[] = [
         updated_at: civ?.updated_at ? new Date(civ.updated_at).toISOString() : new Date().toISOString(),
       };
     },
+    _apiPaths: [
+      "GET /api/aviation/v1/track-aircraft",
+      "GET /api/military/v1/list-military-flights",
+    ],
   },
   {
     name: 'get_maritime_activity',
@@ -932,6 +1073,9 @@ const TOOL_REGISTRY: ToolDef[] = [
         })),
       };
     },
+    _apiPaths: [
+      "GET /api/maritime/v1/get-vessel-snapshot",
+    ],
   },
   {
     name: 'analyze_situation',
@@ -958,6 +1102,9 @@ const TOOL_REGISTRY: ToolDef[] = [
       if (!res.ok) throw new Error(`deduct-situation HTTP ${res.status}`);
       return res.json();
     },
+    _apiPaths: [
+      "POST /api/intelligence/v1/deduct-situation",
+    ],
   },
   {
     name: 'generate_forecasts',
@@ -984,6 +1131,7 @@ const TOOL_REGISTRY: ToolDef[] = [
       if (!res.ok) throw new Error(`get-forecasts HTTP ${res.status}`);
       return res.json();
     },
+    _apiPaths: [],
   },
   {
     name: 'search_flights',
@@ -1022,6 +1170,9 @@ const TOOL_REGISTRY: ToolDef[] = [
       if (!res.ok) throw new Error(`search-google-flights HTTP ${res.status}`);
       return res.json();
     },
+    _apiPaths: [
+      "GET /api/aviation/v1/search-google-flights",
+    ],
   },
   {
     name: 'search_flight_prices_by_date',
@@ -1062,6 +1213,9 @@ const TOOL_REGISTRY: ToolDef[] = [
       if (!res.ok) throw new Error(`search-google-dates HTTP ${res.status}`);
       return res.json();
     },
+    _apiPaths: [
+      "GET /api/aviation/v1/search-google-dates",
+    ],
   },
   {
     name: 'get_commodity_geo',
@@ -1081,6 +1235,7 @@ const TOOL_REGISTRY: ToolDef[] = [
       if (params.country) sites = sites.filter((s) => s.country.toLowerCase().includes(String(params.country).toLowerCase()));
       return { sites, total: sites.length };
     },
+    _apiPaths: [],
   },
 ];
 
