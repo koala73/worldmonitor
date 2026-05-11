@@ -214,7 +214,10 @@
   "tiers": {
     "free": "Free",
     "pro": "Pro",
-    "enterprise": "Enterprise"
+    "enterprise": "Enterprise",
+    "priceMonthly": "$39.99 / month",
+    "priceAnnual": "$399.99 / year",
+    "annualSavingsNote": "2 months free"
   },
   "proShowcase": {
     "proTier": "PRO TIER",
