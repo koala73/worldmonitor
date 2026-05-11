@@ -6,8 +6,6 @@ import type { MarketImplicationCard, MarketImplicationsData, TransmissionNode } 
 import { FrameworkSelector } from './FrameworkSelector';
 import { hasPremiumAccess } from '@/services/panel-gating';
 
-const DISCLAIMER = 'AI-generated trade signals for informational purposes only. Not investment advice. Always do your own research.';
-
 function directionClass(dir: string): string {
   const d = dir.toUpperCase();
   if (d === 'LONG') return 'badge-bullish';
@@ -24,9 +22,9 @@ function confidenceClass(conf: string): string {
 
 function directionLabel(dir: string): string {
   const d = dir.toUpperCase();
-  if (d === 'LONG') return 'LONG';
-  if (d === 'SHORT') return 'SHORT';
-  return 'HEDGE';
+  if (d === 'LONG') return t('components.marketImplications.directions.long');
+  if (d === 'SHORT') return t('components.marketImplications.directions.short');
+  return t('components.marketImplications.directions.hedge');
 }
 
 function renderChain(chain: TransmissionNode[] | undefined): string {
@@ -41,7 +39,7 @@ function renderChain(chain: TransmissionNode[] | undefined): string {
   }).join('');
   return `
     <div style="font-size:10px;color:var(--text-dim);margin-top:6px;line-height:1.8">
-      <span style="text-transform:uppercase;letter-spacing:0.06em;opacity:0.6">Rationale:</span> ${nodes}
+      <span style="text-transform:uppercase;letter-spacing:0.06em;opacity:0.6">${escapeHtml(t('components.marketImplications.rationale'))}</span> ${nodes}
     </div>
     <div id="chain-logic-${id}" style="display:none;font-size:10px;color:var(--text-dim);font-style:italic;margin-top:2px;padding-left:4px"></div>
   `;
@@ -60,7 +58,7 @@ function renderCard(card: MarketImplicationCard): string {
       <div style="font-size:13px;font-weight:600;line-height:1.4;margin-bottom:6px">${escapeHtml(card.title)}</div>
       <div style="font-size:12px;line-height:1.55;color:var(--text-dim)">${escapeHtml(card.narrative)}</div>
       ${renderChain(card.transmissionChain)}
-      ${card.driver ? `<div style="font-size:11px;color:var(--text-dim);margin-top:6px"><span style="text-transform:uppercase;letter-spacing:0.06em">Driver:</span> ${escapeHtml(card.driver)}</div>` : ''}
+      ${card.driver ? `<div style="font-size:11px;color:var(--text-dim);margin-top:6px"><span style="text-transform:uppercase;letter-spacing:0.06em">${escapeHtml(t('components.marketImplications.driver'))}</span> ${escapeHtml(card.driver)}</div>` : ''}
       ${card.riskCaveat ? `<div style="font-size:11px;color:var(--yellow);padding:6px 8px;border:1px solid color-mix(in srgb,var(--yellow) 30%,transparent);background:color-mix(in srgb,var(--yellow) 8%,transparent);margin-top:6px">${escapeHtml(card.riskCaveat)}</div>` : ''}
     </div>
   `;
@@ -72,11 +70,11 @@ export class MarketImplicationsPanel extends Panel {
   constructor() {
     super({
       id: 'market-implications',
-      title: 'AI Market Implications',
+      title: t('components.marketImplications.title'),
       infoTooltip: t('components.marketImplications.infoTooltip'),
       premium: 'locked',
     });
-    this.fwSelector = new FrameworkSelector({ panelId: 'market-implications', isPremium: hasPremiumAccess(), panel: this, note: 'Applies to next AI regeneration' });
+    this.fwSelector = new FrameworkSelector({ panelId: 'market-implications', isPremium: hasPremiumAccess(), panel: this, note: t('components.marketImplications.appliesToNext') });
     this.header.appendChild(this.fwSelector.el);
 
     this.content.addEventListener('click', (e) => {
@@ -111,20 +109,20 @@ export class MarketImplicationsPanel extends Panel {
     }
 
     const freshness = data.generatedAt ? describeFreshness(new Date(data.generatedAt).getTime()) : '';
-    this.setDataBadge(source, freshness || `${data.cards.length} signals`);
+    this.setDataBadge(source, freshness || t('components.marketImplications.signals', { count: data.cards.length }));
     this.resetRetryBackoff();
 
     const html = `
       <div style="display:flex;flex-direction:column;gap:10px">
         ${data.cards.map(renderCard).join('')}
-        <div style="font-size:10px;color:var(--text-dim);padding:8px;border-top:1px solid var(--border);line-height:1.5;text-align:center">${escapeHtml(DISCLAIMER)}</div>
+        <div style="font-size:10px;color:var(--text-dim);padding:8px;border-top:1px solid var(--border);line-height:1.5;text-align:center">${escapeHtml(t('components.marketImplications.disclaimer'))}</div>
       </div>
     `;
 
     this.setContent(html);
   }
 
-  public showUnavailable(message = 'AI market implications are generated after each forecast run. Check back shortly.'): void {
+  public showUnavailable(message = t('components.marketImplications.unavailable')): void {
     this.setDataBadge('unavailable');
     const html = `
       <div style="font-size:12px;color:var(--text-dim);line-height:1.5;padding:16px 0;text-align:center">${escapeHtml(message)}</div>

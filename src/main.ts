@@ -301,7 +301,7 @@ Sentry.init({
     const hasFirstParty = nonInfraFrames.some(f => firstPartyFile(f.filename ?? ''));
     const hasAnyStack = nonInfraFrames.length > 0;
     // Suppress maplibre internal null-access crashes (light, placement) only when stack is in map chunk
-    if (/this\.style\._layers|reading '_layers'|this\.(light|sky) is null|can't access property "(id|type|setFilter)"[,] ?\w+ is (null|undefined)|can't access property "(id|type)" of null|Cannot read properties of null \(reading '(id|type|setFilter|_layers)'\)|null is not an object \(evaluating '\w{1,3}\.(id|style)|^\w{1,2} is null$/.test(msg)) {
+    if (/this\.style\._layers|reading '_layers'|this\.(light|sky) is null|can't access property "(id|type|setFilter|bind)"[,] ?[\w.]+ is (null|undefined)|can't access property "(id|type)" of null|Cannot read properties of null \(reading '(id|type|setFilter|_layers)'\)|null is not an object \(evaluating '\w{1,3}\.(id|style)|^\w{1,2} is null$/.test(msg)) {
       if (frames.some(f => /\/(map|maplibre|deck-stack)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
     }
     // Suppress any TypeError / RangeError that happens entirely within maplibre or deck.gl internals.
@@ -426,8 +426,8 @@ Sentry.init({
     if (excType === 'SyntaxError' && /is not valid JSON/.test(msg) && !hasFirstParty && frames.some(f => /onmessage/.test(f.function ?? ''))) return null;
     // Suppress errors originating from UV proxy (Ultraviolet service worker)
     if (frames.some(f => /\/uv\/service\//.test(f.filename ?? '') || /uv\.handler/.test(f.filename ?? ''))) return null;
-    // Suppress Greasemonkey/Tampermonkey userscript errors (x-plugin-script)
-    if (frames.length > 0 && frames.every(f => !f.filename || /\/x-plugin-script\//.test(f.filename))) return null;
+    // Suppress Greasemonkey/Tampermonkey userscript errors (x-plugin-script, stay-userscript.html)
+    if (frames.length > 0 && frames.every(f => !f.filename || /\/x-plugin-script\/|\/stay-userscript\.html$/.test(f.filename))) return null;
     // Suppress YouTube IFrame widget API internal errors
     if (frames.some(f => /www-widgetapi\.js/.test(f.filename ?? ''))) return null;
     // Suppress Sentry beacon XHR transport errors (readyState on aborted XHR — not our code)

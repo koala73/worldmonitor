@@ -16,8 +16,31 @@ const getCacheHeaderValue = (sourcePath) => {
 
 describe('deploy/cache configuration guardrails', () => {
   it('disables caching for HTML entry routes on Vercel', () => {
-    const spaNoCache = getCacheHeaderValue('/((?!api|mcp|oauth|assets|blog|docs|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|\\.well-known|wm-widget-sandbox\\.html).*)');
+    // /mcp-grant added to the negative-lookahead by plan 2026-05-10-001 U3 — apex
+    // Pro-MCP consent page must opt out of the SPA catch-all rewrite (it is its
+    // own HTML entry registered in vite.config.ts rollupOptions.input).
+    //
+    // The exclusion uses literal alternation (`mcp-grant\\.html|mcp-grant`)
+    // rather than a non-capturing group with `?` quantifier — Vercel's
+    // path-to-regexp source-pattern parser rejects `(?:...)` in `source` fields
+    // (deploy-fail PR #3646 round-2 review).
+    const spaNoCache = getCacheHeaderValue('/((?!api|mcp|oauth|assets|blog|docs|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)');
     assert.equal(spaNoCache, 'no-cache, no-store, must-revalidate');
+  });
+
+  it('disables caching for the apex /mcp-grant Pro-MCP consent page (both URL forms)', () => {
+    // The Pro-MCP consent page is its own HTML entry. Both /mcp-grant (the
+    // pretty URL, rewritten to /mcp-grant.html by vercel.json:12) and
+    // /mcp-grant.html (the bundle path) must carry no-store. Vercel needs
+    // explicit per-source rules — `(?:\\.html)?` quantifiers aren't supported.
+    assert.equal(
+      getCacheHeaderValue('/mcp-grant'),
+      'no-cache, no-store, must-revalidate'
+    );
+    assert.equal(
+      getCacheHeaderValue('/mcp-grant.html'),
+      'no-cache, no-store, must-revalidate'
+    );
   });
 
   it('keeps immutable caching for hashed static assets', () => {

@@ -6,7 +6,8 @@
     "enterprise": "Enterprise",
     "reserveAccess": "จองสิทธิ์เข้าถึงล่วงหน้า",
     "signIn": "เข้าสู่ระบบ",
-    "upgradeToPro": "อัปเกรดเป็น Pro"
+    "upgradeToPro": "อัปเกรดเป็น Pro",
+    "goToDashboard": "ไปที่แดชบอร์ด"
   },
   "hero": {
     "noiseWord": "เสียงรบกวน",
@@ -18,7 +19,8 @@
     "emailPlaceholder": "ใส่อีเมลของคุณ",
     "emailAriaLabel": "อีเมลสำหรับรายชื่อรอ",
     "choosePlan": "เลือกแผน",
-    "signIn": "เข้าสู่ระบบ"
+    "signIn": "เข้าสู่ระบบ",
+    "goToDashboard": "ไปที่แดชบอร์ด"
   },
   "wired": {
     "asFeaturedIn": "ถูกนำเสนอใน"
@@ -50,7 +52,8 @@
     "entF9": "แอป Android TV สำหรับผนัง SOC และ trading floor",
     "entF10": "การติดตั้งคลาวด์ on-premises หรือ air-gapped",
     "entF11": "Onboarding และซัพพอร์ตโดยเฉพาะ",
-    "entCta": "คุยกับฝ่ายขาย"
+    "entCta": "คุยกับฝ่ายขาย",
+    "freeF2": "500+ feeds, 65+ sources, 50+ map layers"
   },
   "whyUpgrade": {
     "title": "ทำไมต้องอัปเกรด",
@@ -83,7 +86,7 @@
     "openFullScreen": "เปิดเต็มหน้าจอ",
     "tryLiveDashboard": "ทดลองแดชบอร์ดสด",
     "iframeTitle": "World Monitor — แดชบอร์ดข่าวกรองสด",
-    "description": "ลูกโลก 3D WebGL · ชั้นแผนที่อินเทอร์แอคทีฟ 45+ · ข้อมูลเรียลไทม์ของตลาด มหภาค ภูมิรัฐศาสตร์ พลังงาน และโครงสร้างพื้นฐาน"
+    "description": "3D WebGL globe · 50+ interactive map layers · Real-time market, macro, geopolitical, energy, and infrastructure data"
   },
   "socialProof": {
     "uniqueVisitors": "ผู้เข้าชมไม่ซ้ำ",
@@ -139,31 +142,8 @@
   },
   "tiers": {
     "free": "ฟรี",
-    "freeTagline": "ดูทุกอย่าง",
-    "freeDesc": "แดชบอร์ดโอเพ่นซอร์ส",
-    "freeF1": "รีเฟรช 5-15 นาที",
-    "freeF2": "500+ ฟีด, 45 ชั้นแผนที่",
-    "freeF3": "BYOK สำหรับ AI",
-    "freeF4": "ฟรีตลอดไป",
-    "openDashboard": "เปิดแดชบอร์ด",
     "pro": "Pro",
-    "proTagline": "ตลาด มหภาค และภูมิรัฐศาสตร์",
-    "proDesc": "นักวิเคราะห์ AI ของคุณ",
-    "proF1": "Equity research และวิเคราะห์หุ้น",
-    "proF2": "+ digest รายวัน การวิเคราะห์เศรษฐกิจ",
-    "proF3": "รวม AI, 1 คีย์",
-    "proF4": "รีเฟรชข้อมูลตามลำดับความสำคัญ (เร็วๆ นี้)",
-    "priceMonthly": "$39.99 / เดือน",
-    "priceAnnual": "$399.99 / ปี",
-    "annualSavingsNote": "ฟรี 2 เดือน",
-    "enterprise": "Enterprise",
-    "enterpriseTagline": "ดำเนินการก่อนใคร",
-    "enterpriseDesc": "แพลตฟอร์มข่าวกรอง",
-    "entF1": "ภาพถ่ายดาวเทียมสด",
-    "entF2": "+ AI agents, 50K+ โครงสร้างพื้นฐาน, SAR",
-    "entF3": "AI ปรับแต่ง บุคลิกนักลงทุน",
-    "entF4": "ติดต่อเรา",
-    "contactSales": "ติดต่อฝ่ายขาย"
+    "enterprise": "Enterprise"
   },
   "proShowcase": {
     "proTier": "ระดับ PRO",
@@ -281,7 +261,6 @@
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + webhook",
     "fMcpBulk": "+ MCP + จำนวนมาก",
-    "f45": "45",
     "fTensOfThousands": "+ หลายหมื่น",
     "fLiveTracking": "การติดตามสด",
     "fPassAlerts": "แจ้งเตือนการผ่าน + การวิเคราะห์",
@@ -292,7 +271,8 @@
     "fStandard": "มาตรฐาน",
     "fKeyAuth": "การรับรองด้วยคีย์",
     "fSsoMfa": "SSO/MFA/RBAC/ตรวจสอบ",
-    "noteBelow": "แพลตฟอร์มหลักยังคงฟรี แผนแบบชำระเงินปลดล็อก Equity research, การวิเคราะห์มหภาค, บรีฟ AI และการใช้งานระดับองค์กร"
+    "noteBelow": "แพลตฟอร์มหลักยังคงฟรี แผนแบบชำระเงินปลดล็อก Equity research, การวิเคราะห์มหภาค, บรีฟ AI และการใช้งานระดับองค์กร",
+    "f50plus": "50+"
   },
   "faq": {
     "title": "คำถามที่พบบ่อย",
@@ -354,5 +334,76 @@
     "youreIn": "คุณเข้าร่วมแล้ว!",
     "invitedBanner": "คุณได้รับเชิญ — เข้าร่วมรายชื่อรอ"
   },
-  "soonBadge": "เร็วๆ นี้"
+  "soonBadge": "เร็วๆ นี้",
+  "meta": {
+    "title": "World Monitor Pro — AI Analyst ผู้วิเคราะห์ด้วย AI บัญชีข้อมูลข่าวสารส่วนตัว MCP สำหรับ Claude และ GPT",
+    "description": "ชั้นเรขาภูมิศาสตร์การเมืองด้วย AI ถามได้ สมัครสมาชิกได้ สร้างสรรค์ได้ WM Analyst แชทข้อมูลจากกว่า 30+ บริการสดใจ สรุปข้อมูลข่าวสารด้วย AI ส่งให้ทุกวัน สองครั้งต่อวัน หรือรายสัปดาห์ไปยัง Slack Discord Telegram อีเมล หรือ webhook เครื่องมือสร้างวิดเจ็ตแบบกำหนดเอง (HTML/CSS/JS + AI) และตัวเชื่อมต่อ MCP สำหรับ Claude GPT และ LLM ที่กำหนดเองได้",
+    "ogTitle": "World Monitor Pro — ชั้นเรขาภูมิศาสตร์การเมืองด้วย AI",
+    "ogDescription": "ถามได้ สมัครสมาชิกได้ สร้างสรรค์ได้ WM Analyst แชท สรุปข้อมูลข่าวสารด้วย AI ตามตารางเวลาของคุณ (ทุกวัน สองครั้งต่อวัน หรือรายสัปดาห์) เครื่องมือสร้างวิดเจ็ตแบบกำหนดเอง และ MCP สำหรับ Claude/GPT — ข้อมูลจากกว่า 30+ บริการสดใจภายใต้กุญแจเดียว"
+  },
+  "pricing": {
+    "suffixForever": "ตลอดไป",
+    "suffixTailored": "ปรับแต่งตามคุณ",
+    "suffixPerMonth": "/เดือน",
+    "suffixPerYear": "/ปี",
+    "amountCustom": "กำหนดเอง",
+    "opening": "กำลังเปิด…",
+    "headerTitle": "เลือกแผนของคุณ",
+    "headerSubtitle": "จากการติดตามแบบเรียลไทม์ไปจนถึงโครงสร้างพื้นฐานของข่าวกรรมการที่สมบูรณ์ เลือกระดับที่เหมาะกับภารกิจของคุณ",
+    "billingMonthly": "รายเดือน",
+    "billingAnnual": "รายปี",
+    "saveAnnual": "ประหยัด 17%",
+    "mostPopular": "ยอดนิยมมากที่สุด",
+    "promoCodeNote": "มีรหัสโปรโมชั่นหรือไม่ ใส่รหัสระหว่างการชำระเงิน",
+    "tiers": {
+      "free": {
+        "description": "เริ่มต้นด้วยพื้นฐานที่จำเป็น",
+        "features": [
+          "แผงควบคุมหลัก",
+          "ฟีดข่าวโลก",
+          "การแจ้งเตือนแผ่นดินไหวและสภาพอากาศ",
+          "มุมมองแผนที่พื้นฐาน"
+        ],
+        "cta": "เริ่มต้นใช้งาน"
+      },
+      "pro": {
+        "description": "แดชบอร์ดข่าวกรรมการแบบเต็ม",
+        "features": [
+          "ทุกอย่างใน Free",
+          "การวิเคราะห์หุ้น AI และการทดสอบย้อนหลัง",
+          "บทสรุปตลาดรายวัน",
+          "การติดตามทางทหาร และภูมิรัฐศาสตร์",
+          "ตัวสร้าง widget ที่กำหนดเอง",
+          "ตัวเชื่อมต่อข้อมูล MCP",
+          "การรีเฟรชข้อมูลที่ได้รับความสำคัญ"
+        ]
+      },
+      "api": {
+        "description": "การเข้าถึงข้อมูลข่าวกรรมการแบบโปรแกรม",
+        "features": [
+          "การเข้าถึง REST API",
+          "สตรีมข้อมูลแบบเรียลไทม์",
+          "คำขอ 1,000 รายการต่อวัน",
+          "การแจ้งเตือน Webhook",
+          "การส่งออกข้อมูลที่กำหนดเอง"
+        ]
+      },
+      "enterprise": {
+        "description": "โซลูชันที่กำหนดเองสำหรับองค์กร",
+        "features": [
+          "ทุกอย่างใน Pro + API",
+          "คำขอ API ไม่จำกัด",
+          "การสนับสนุนแบบเฉพาะเจาะจง",
+          "การรวมที่กำหนดเอง",
+          "การรับประกัน SLA",
+          "ตัวเลือกในสถานที่"
+        ],
+        "cta": "ติดต่อทีมขาย"
+      }
+    },
+    "cta": {
+      "checkoutDefault": "เริ่มต้นใช้งาน",
+      "learnMore": "เรียนรู้เพิ่มเติม"
+    }
+  }
 }

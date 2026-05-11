@@ -36,6 +36,7 @@ interface CapturedEvent {
   customer_id: string | null;
   auth_kind: string;
   tier: number;
+  reason: string;
 }
 
 function makeRecordingCtx(): { ctx: GatewayCtx; settled: Promise<void> } {
@@ -408,5 +409,96 @@ describe('gateway telemetry payload — ctx-optional safety', () => {
     // No ctx → emit short-circuits → no events delivered. The point is that
     // the handler does not throw "Cannot read properties of undefined".
     assert.equal(spy.events.length, 0);
+  });
+});
+
+describe('gateway telemetry payload — unmatched route reason labels', () => {
+  // Phantom-route operability: a route like /api/trade/v1/list-tariffs that
+  // doesn't exist must emit reason='unknown_route' so an Axiom filter
+  // (where reason == 'unknown_route') instantly separates scraper / stale-
+  // client noise from real handler errors. Same idea for 405s — a known path
+  // hit with the wrong method must emit reason='method_not_allowed' so it
+  // doesn't get conflated with auth_401 or rate_limit_429.
+  //
+  // Without these assertions, regressing both back to reason='ok' is a
+  // silent telemetry-only change that CI would not catch.
+
+  it("unknown path → status=404 + reason='unknown_route'", async () => {
+    process.env.USAGE_TELEMETRY = '1';
+    process.env.AXIOM_API_TOKEN = 'test-token';
+    const spy = installAxiomFetchSpy(ORIGINAL_FETCH);
+
+    // Domain gateway is mounted with at least one route so the router has
+    // a valid table — the request below targets a path that isn't in it.
+    const handler = createDomainGateway([
+      {
+        method: 'GET',
+        path: '/api/trade/v1/get-tariff-trends',
+        handler: async () => new Response('{"ok":true}', { status: 200 }),
+      },
+    ]);
+
+    const recorder = makeRecordingCtx();
+    const res = await handler(
+      new Request('https://worldmonitor.app/api/trade/v1/list-tariffs', {
+        headers: { Origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': SESSION_TOKEN },
+      }),
+      recorder.ctx,
+    );
+    assert.equal(res.status, 404);
+
+    await recorder.settled;
+    spy.restore();
+
+    assert.equal(spy.events.length, 1, 'expected exactly one telemetry event');
+    const ev = spy.events[0]!;
+    assert.equal(ev.status, 404);
+    assert.equal(
+      ev.reason,
+      'unknown_route',
+      `404 emit must label reason='unknown_route' (got '${ev.reason}'); regression to 'ok' would re-conflate phantom-route noise with handled traffic`,
+    );
+    assert.equal(ev.route, '/api/trade/v1/list-tariffs');
+    assert.equal(ev.domain, 'trade');
+  });
+
+  it("known path with wrong method → status=405 + reason='method_not_allowed'", async () => {
+    process.env.USAGE_TELEMETRY = '1';
+    process.env.AXIOM_API_TOKEN = 'test-token';
+    const spy = installAxiomFetchSpy(ORIGINAL_FETCH);
+
+    // Register a GET-only route, then DELETE it: router responds 405 with
+    // Allow: GET. POST→GET fallback only kicks in for POST, so DELETE is
+    // the cleanest way to force the 405 branch.
+    const handler = createDomainGateway([
+      {
+        method: 'GET',
+        path: '/api/market/v1/list-market-quotes',
+        handler: async () => new Response('{"ok":true}', { status: 200 }),
+      },
+    ]);
+
+    const recorder = makeRecordingCtx();
+    const res = await handler(
+      new Request('https://worldmonitor.app/api/market/v1/list-market-quotes', {
+        method: 'DELETE',
+        headers: { Origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': SESSION_TOKEN },
+      }),
+      recorder.ctx,
+    );
+    assert.equal(res.status, 405);
+    assert.match(res.headers.get('Allow') ?? '', /GET/);
+
+    await recorder.settled;
+    spy.restore();
+
+    assert.equal(spy.events.length, 1, 'expected exactly one telemetry event');
+    const ev = spy.events[0]!;
+    assert.equal(ev.status, 405);
+    assert.equal(
+      ev.reason,
+      'method_not_allowed',
+      `405 emit must label reason='method_not_allowed' (got '${ev.reason}'); regression to 'ok' would hide method-mismatch traffic in healthy-emit counts`,
+    );
   });
 });

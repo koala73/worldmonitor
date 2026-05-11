@@ -145,7 +145,22 @@ async function redisCommand(url, token, command) {
   });
   if (!resp.ok) {
     const text = await resp.text().catch(() => '');
-    throw new Error(`Redis command failed: HTTP ${resp.status} — ${text.slice(0, 200)}`);
+    const err = new Error(`Redis command failed: HTTP ${resp.status} — ${text.slice(0, 200)}`);
+    // Tag errors so callers wrapping in withRetry know whether to back off.
+    // Permanent 4xx (auth, payload-too-large, etc.) won't recover on retry —
+    // mark non-retryable so withRetry exits the loop in ~10ms instead of
+    // wasting backoff on a guaranteed-fail. Only 429 (rate-limited) should
+    // keep retrying among the 4xx set, with the upstream Retry-After hint
+    // honoured. Transient 5xx and timeouts fall through with no flag —
+    // withRetry's default backoff applies.
+    if (PERMANENT_4XX_STATUSES.has(resp.status)) {
+      err.nonRetryable = true;
+    } else if (resp.status === 429) {
+      const retryAfterMs = parseRetryAfterMs(resp.headers.get('retry-after'));
+      if (retryAfterMs != null) err.retryAfterMs = retryAfterMs;
+    }
+    err.httpStatus = resp.status;
+    throw err;
   }
   return resp.json();
 }
@@ -222,8 +237,6 @@ export async function releaseLock(domain, runId) {
 
 export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds, options = {}) {
   const { url, token } = getRedisCredentials();
-  const runId = String(Date.now());
-  const stagingKey = `${canonicalKey}:staging:${runId}`;
 
   if (validateFn) {
     const valid = validateFn(data);
@@ -246,20 +259,44 @@ export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds, 
     throw new Error(`Payload too large: ${(payloadBytes / 1024 / 1024).toFixed(1)}MB > 5MB limit`);
   }
 
-  // Write to staging key
-  await redisSet(url, token, stagingKey, payloadValue, 300); // 5 min staging TTL
+  // Retry the entire 3-call publish unit on transient Upstash failures.
+  // Pre-fix: a single timeout on the canonical SET would crash the whole
+  // seeder run and Railway just waited for the next cron tick (1h for
+  // seed-forecasts). On 2026-05-10 this exact failure mode produced a
+  // ~3h gap on forecasts + marketImplications. Wrapping the body means
+  // a transient 5xx/timeout retries automatically with exponential
+  // backoff. Permanent 4xx (auth, payload-too-large) get the
+  // `nonRetryable: true` flag from redisCommand and abort immediately.
+  //
+  // Each attempt re-stages with a fresh runId so a previous attempt's
+  // staging key (if it landed server-side but the response was lost)
+  // doesn't shadow the retry. The 5-min staging TTL cleans up any
+  // orphaned stagings naturally.
+  return await withRetry(
+    async () => {
+      const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const stagingKey = `${canonicalKey}:staging:${runId}`;
 
-  // Overwrite canonical key
-  if (ttlSeconds) {
-    await redisCommand(url, token, ['SET', canonicalKey, payload, 'EX', ttlSeconds]);
-  } else {
-    await redisCommand(url, token, ['SET', canonicalKey, payload]);
-  }
+      // Write to staging key
+      await redisSet(url, token, stagingKey, payloadValue, 300); // 5 min staging TTL
 
-  // Cleanup staging
-  await redisDel(url, token, stagingKey).catch(() => {});
+      // Overwrite canonical key
+      if (ttlSeconds) {
+        await redisCommand(url, token, ['SET', canonicalKey, payload, 'EX', ttlSeconds]);
+      } else {
+        await redisCommand(url, token, ['SET', canonicalKey, payload]);
+      }
 
-  return { payloadBytes, recordCount: Array.isArray(data) ? data.length : null };
+      // Cleanup staging
+      await redisDel(url, token, stagingKey).catch(() => {});
+
+      return { payloadBytes, recordCount: Array.isArray(data) ? data.length : null };
+    },
+    2,    // 2 retries (3 attempts total) — sufficient for transient blips
+    1000, // 1s base delay; exponential backoff → 1s + 2s = ~3s worst-case
+          // cumulative wait between attempts. Plus per-attempt fetch time
+          // (15s timeout each) means total worst-case before propagating ≈ 48s.
+  );
 }
 
 export async function writeFreshnessMetadata(domain, resource, count, source, ttlSeconds, fetchedAtOverride, contentAge) {

@@ -46,6 +46,9 @@ export const syncEntitlementCache = internalAction({
       apiRateLimit: v.number(),
       prioritySupport: v.boolean(),
       exportFormats: v.array(v.string()),
+      // Optional — legacy entitlement rows pre-dating plan 2026-05-10-001
+      // do not carry mcpAccess. Schema validator must accept their reads.
+      mcpAccess: v.optional(v.boolean()),
     }),
     validUntil: v.number(),
   },
@@ -108,7 +111,11 @@ export const syncEntitlementCache = internalAction({
  * Deletes a user's entitlement cache entry from Redis.
  *
  * Used by claimSubscription to clear the stale anonymous ID cache entry
- * after reassigning records to the real authenticated user.
+ * after reassigning records to the real authenticated user. The deleted
+ * key is unreachable post-claim (read path uses the real userId) and
+ * self-expires at ENTITLEMENT_CACHE_TTL_SECONDS, so a failed DEL has no
+ * user impact — warn and swallow rather than surfacing transient
+ * Upstash latency blips to Convex auto-Sentry.
  */
 export const deleteEntitlementCache = internalAction({
   args: { userId: v.string() },
@@ -133,18 +140,19 @@ export const deleteEntitlementCache = internalAction({
       );
 
       if (!resp.ok) {
-        // Same rationale as the SET path — surface persistent failures
-        // via Convex auto-Sentry. DEL is idempotent so retry is safe.
-        throw new Error(
+        console.warn(
           `[cacheActions] Redis DEL failed: HTTP ${resp.status} for key ${key}`,
         );
       }
     } catch (err) {
+      // sentry-coverage-ok — DEL failure has no user impact (key is
+      // unreachable post-claim, self-expires at 15-min TTL); a 5s
+      // AbortError from a transient Upstash latency blip should not
+      // page via Convex auto-Sentry.
       console.warn(
         "[cacheActions] Redis cache delete failed:",
         err instanceof Error ? err.message : String(err),
       );
-      throw err;
     } finally {
       clearTimeout(timeout);
     }

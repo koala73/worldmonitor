@@ -891,3 +891,8 @@ describe("runDailyRamp — pendingRunId guard (PR2 review-fix 7)", () => {
     await t.finishInProgressScheduledFunctions().catch(() => {});
   });
 });
+
+// `excludeNonEnglish` opt-in tests live in
+// `convex/__tests__/rampRunner-excludeNonEnglish.test.ts` to isolate from
+// this file's scheduler tests, which leak `_scheduled_functions` patches
+// across the test boundary once the file accumulates enough tests.

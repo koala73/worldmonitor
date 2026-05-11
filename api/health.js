@@ -306,7 +306,7 @@ const SEED_META = {
   intlDelays:       { key: 'seed-meta:aviation:intl',           maxStaleMin: 90 },
   // faaDelays shares seed-meta key with flightDelays — no duplicate entry needed here
   theaterPosture:   { key: 'seed-meta:theater-posture',         maxStaleMin: 60 },
-  correlationCards: { key: 'seed-meta:correlation:cards',       maxStaleMin: 15 },
+  correlationCards: { key: 'seed-meta:correlation:cards',       maxStaleMin: 30 }, // 5min cron (seed-bundle-derived-signals); 30min = 6× interval. Was 15 (3× = gold-standard floor) — overnight UptimeRobot flips when bundle jitter spaced two consecutive runs ~9-10min apart, producing 15-19min gaps that tripped STALE_SEED briefly. See WM 2026-05-10 health:failure-log.
   portwatch:           { key: 'seed-meta:supply_chain:portwatch',            maxStaleMin: 720 },
   portwatchPortActivity: { key: 'seed-meta:supply_chain:portwatch-ports',   maxStaleMin: 2160 }, // 12h cron; 2160min = 36h = 3x interval
   corridorrisk:        { key: 'seed-meta:supply_chain:corridorrisk',         maxStaleMin: 120 },
@@ -352,7 +352,7 @@ const SEED_META = {
   earningsCalendar:  { key: 'seed-meta:market:earnings-calendar',     maxStaleMin: 1440 }, // 12h cron; 1440min = 24h = 2x interval
   econCalendar:      { key: 'seed-meta:economic:econ-calendar',       maxStaleMin: 1440 }, // 12h cron; 1440min = 24h = 2x interval
   cotPositioning:    { key: 'seed-meta:market:cot',                   maxStaleMin: 14400 }, // weekly CFTC release; 14400min = 10d = 1.4x interval (weekend + delay buffer)
-  hyperliquidFlow:   { key: 'seed-meta:market:hyperliquid-flow',      maxStaleMin: 15 }, // Railway cron 5min; 15min = 3x interval
+  hyperliquidFlow:   { key: 'seed-meta:market:hyperliquid-flow',      maxStaleMin: 30 }, // 5min cron (bundled in seed-bundle-market-backup); 30min = 6× interval. Was 15 (3× = gold-standard floor with zero safety margin) — same exposure as correlationCards. Pre-fix comment said "Railway cron" but it's bundle-driven, so subject to the 80% skip-gate that produced 9-19min jitter under load.
   crudeInventories:  { key: 'seed-meta:economic:crude-inventories',   maxStaleMin: 20160 }, // weekly EIA data; 20160min = 14 days = 2x weekly cadence
   natGasStorage:     { key: 'seed-meta:economic:nat-gas-storage',     maxStaleMin: 20160 }, // weekly EIA data; 20160min = 14 days = 2x weekly cadence
   spr:               { key: 'seed-meta:economic:spr',                 maxStaleMin: 20160 }, // weekly EIA data; 20160min = 14 days = 2x weekly cadence
@@ -377,8 +377,8 @@ const SEED_META = {
   vpdTrackerHistorical: { key: 'seed-meta:health:vpd-tracker',         maxStaleMin: 2880 }, // shares seed-meta key with vpdTrackerRealtime (same run)
   resilienceStaticIndex: { key: 'seed-meta:resilience:static',         maxStaleMin: 576000 }, // annual October snapshot; 400d threshold matches TTL and preserves prior-year data on source outages
   resilienceStaticFao:   { key: 'seed-meta:resilience:static',         maxStaleMin: 576000 }, // same seeder + same heartbeat as resilienceStaticIndex; required so EMPTY_DATA_OK + missing data degrades to STALE_SEED instead of silent OK
-  resilienceRanking:   { key: 'seed-meta:resilience:ranking',          maxStaleMin: 720 }, // RPC cache (12h TTL, refreshed every 6h by seed-resilience-scores cron via refreshRankingAggregate); 12h staleness threshold = 2 missed cron ticks
-  resilienceIntervals: { key: 'seed-meta:resilience:intervals',        maxStaleMin: 720 }, // bundled into seed-bundle-resilience, written by the Resilience-Scores section. Real Railway cron is `0 */6 * * *` (every 6h on the hour, UTC) — empirically verified 2026-04-28 via Railway logs showing 6h gaps between successful runs (the prior `intervalMs=2h with hourly fires` claim did not match what's deployed; either the bundle interval gate or the Railway service schedule makes the effective cadence 6h). 720 = 12h staleness = 2 missed cron ticks. Matches resilienceRanking above, written by the SAME cron (refreshRankingAggregate runs in the same Resilience-Scores section). Prior values: 20160 (14d, 168× — silent), 1080 (18h, 3× — over-permissive), 360 (1× — false-positive STALE_SEED on routine cron jitter, 2026-04-28 incident: seedAgeMin=367 vs maxStale=360). Re-tighten ONLY if/when the actual Railway cron schedule is verified sub-6h.
+  resilienceRanking:   { key: 'seed-meta:resilience:ranking',          maxStaleMin: 840 }, // RPC cache (12h TTL, refreshed every 6h by seed-resilience-scores cron); 14h budget tolerates 1 missed tick (12h gap) + ~2h jitter for in-flight deploys that preempt a scheduled tick; alerts at 2 missed ticks (18h gap). Bumped from 720 — see comment below.
+  resilienceIntervals: { key: 'seed-meta:resilience:intervals',        maxStaleMin: 840 }, // bundled into seed-bundle-resilience, written by the Resilience-Scores section. Real Railway cron is `0 */6 * * *` (every 6h on the hour, UTC) — empirically verified 2026-04-28 via Railway logs showing 6h gaps between successful runs (the prior `intervalMs=2h with hourly fires` claim did not match what's deployed; either the bundle interval gate or the Railway service schedule makes the effective cadence 6h). 840 = 14h staleness ≈ 2.33× cadence: tolerates 1 missed tick (12h gap) + ~2h jitter for in-flight deploys; alerts at 2 missed ticks (18h gap). Matches resilienceRanking above (same Resilience-Scores section writes both). Prior values: 20160 (14d, 168× — silent on real outage), 1080 (18h, 3× — over-permissive: masks a 12h outage), 720 (12h, 2× — exact floor; flipped UptimeRobot WARNING for ~1min on every Railway-deploy-preempted tick: 2026-05-10 incident at 18:02 UTC, seedAgeMin=722 vs maxStale=720 after the 12:00 UTC tick was skipped during an in-flight deploy), 360 (1× — false-positive on routine jitter, 2026-04-28: seedAgeMin=367 vs maxStale=360). Re-tighten ONLY if/when the actual Railway cron schedule is verified sub-6h.
   energyExposure:       { key: 'seed-meta:economic:owid-energy-mix',   maxStaleMin: 50400 }, // monthly cron on 1st; 50400min = 35d = TTL matches cron cadence + 5d buffer
   energyMixAll:         { key: 'seed-meta:economic:owid-energy-mix',   maxStaleMin: 50400 }, // same seed run as energyExposure; shares seed-meta key
   regulatoryActions:    { key: 'seed-meta:regulatory:actions',          maxStaleMin: 360 }, // 2h cron; 360min = 3x interval
@@ -722,6 +722,42 @@ export default async function handler(req, ctx) {
     return new Response(null, { status: 204, headers });
   }
 
+  // ?history=1 — fast read of the failure-log persisted by previous /api/health
+  // probes. Skips the full freshness check (which is expensive — fetches every
+  // bootstrap key) and returns only the last-failure snapshot + the deduped
+  // incident log. Use to answer "what's been flipping?" without needing
+  // Upstash creds. The classifier writes these keys on every non-OK probe:
+  //   health:last-failure   — single most recent unhealthy snapshot (24h TTL)
+  //   health:failure-log    — last 50 deduped incidents (7-day TTL)
+  // See WM 2026-05-10 — added after a night of UptimeRobot flips that needed
+  // direct Upstash inspection to diagnose.
+  {
+    const earlyUrl = new URL(req.url);
+    if (earlyUrl.searchParams.get('history') === '1') {
+      const results = await redisPipeline(
+        [
+          ['GET', 'health:last-failure'],
+          ['LRANGE', 'health:failure-log', '0', '-1'],
+        ],
+        4_000,
+      );
+      const parseJson = (raw) => {
+        if (typeof raw !== 'string') return null;
+        try { return JSON.parse(raw); } catch { return null; }
+      };
+      const lastFailureRaw = results?.[0]?.result;
+      const failureLogRaw = results?.[1]?.result;
+      const body = {
+        lastFailure: parseJson(lastFailureRaw),
+        failureLog: Array.isArray(failureLogRaw)
+          ? failureLogRaw.map(parseJson).filter((e) => e !== null)
+          : [],
+        checkedAt: new Date().toISOString(),
+      };
+      return new Response(JSON.stringify(body, null, 2), { status: 200, headers });
+    }
+  }
+
   const now = Date.now();
 
   const allDataKeys = [
@@ -894,4 +930,9 @@ export const __testing__ = {
   readSeedMeta,
   classifyKey,
   STATUS_COUNTS,
+  // U7 (Tier 3 parity test): exposed for tests/mcp-bootstrap-parity.test.mjs
+  // to walk the canonical seeded-data inventory. Both consts are unexported
+  // at module scope by design — this is the test-only escape hatch.
+  BOOTSTRAP_KEYS,
+  STANDALONE_KEYS,
 };

@@ -17,7 +17,11 @@ const ALLOWED_REDIRECT_PREFIXES = [
   'https://claude.com/api/mcp/auth_callback',
 ];
 
-function isAllowedRedirectUri(uri) {
+// Exported so `api/internal/mcp-grant-mint.ts` (U3) can re-validate the
+// registered client's redirect URIs as a defense-in-depth check before
+// minting a Pro-MCP grant. Re-uses the SAME allowlist that DCR enforces
+// at registration time — no parallel implementation drift.
+export function isAllowedRedirectUri(uri) {
   if (ALLOWED_REDIRECT_PREFIXES.includes(uri)) return true;
   // localhost / 127.0.0.1 any port (Claude Code, MCP inspector)
   try {

@@ -6,7 +6,8 @@
     "enterprise": "Enterprise",
     "reserveAccess": "Sichern Sie Ihren Early Access",
     "signIn": "Anmelden",
-    "upgradeToPro": "Upgrade auf Pro"
+    "upgradeToPro": "Upgrade auf Pro",
+    "goToDashboard": "Zum Dashboard"
   },
   "hero": {
     "noiseWord": "Rauschen",
@@ -18,7 +19,8 @@
     "emailPlaceholder": "E-Mail eingeben",
     "emailAriaLabel": "E-Mail-Adresse für die Warteliste",
     "choosePlan": "Tarif wählen",
-    "signIn": "Anmelden"
+    "signIn": "Anmelden",
+    "goToDashboard": "Zum Dashboard"
   },
   "wired": {
     "asFeaturedIn": "Berichtet in"
@@ -50,7 +52,8 @@
     "entF9": "Android-TV-App für SOC-Wände und Trading Floors",
     "entF10": "Cloud-, On-Premises- oder Air-Gapped-Deployment",
     "entF11": "Dediziertes Onboarding und Support",
-    "entCta": "Vertrieb kontaktieren"
+    "entCta": "Vertrieb kontaktieren",
+    "freeF2": "500+ Feeds, 65+ Quellen, 50+ Kartenebenen"
   },
   "whyUpgrade": {
     "title": "Warum upgraden",
@@ -83,7 +86,7 @@
     "openFullScreen": "Vollbild öffnen",
     "tryLiveDashboard": "Live-Dashboard testen",
     "iframeTitle": "World Monitor — Live Intelligence Dashboard",
-    "description": "3D-WebGL-Globus · 45+ interaktive Kartenebenen · Echtzeit-Markt-, Makro-, Geopolitik-, Energie- und Infrastrukturdaten"
+    "description": "3D WebGL-Globe · 50+ interaktive Kartenebenen · Echtzeitdaten zu Märkten, Makroökonomie, Geopolitik, Energie und Infrastruktur"
   },
   "socialProof": {
     "uniqueVisitors": "Einzelne Besucher",
@@ -139,31 +142,8 @@
   },
   "tiers": {
     "free": "Kostenlos",
-    "freeTagline": "Alles sehen",
-    "freeDesc": "Das Open-Source-Dashboard",
-    "freeF1": "5-15 Min Refresh",
-    "freeF2": "500+ Feeds, 45 Kartenebenen",
-    "freeF3": "BYOK für KI",
-    "freeF4": "Für immer kostenlos",
-    "openDashboard": "Dashboard öffnen",
     "pro": "Pro",
-    "proTagline": "Märkte, Makro & Geopolitik",
-    "proDesc": "Ihr KI-Analyst",
-    "proF1": "Equity Research & Aktienanalyse",
-    "proF2": "+ tägliche Briefs, Wirtschaftsanalytik",
-    "proF3": "KI inklusive, 1 Schlüssel",
-    "proF4": "Priorisierter Daten-Refresh (Bald)",
-    "priceMonthly": "$39,99 / Monat",
-    "priceAnnual": "$399,99 / Jahr",
-    "annualSavingsNote": "2 Monate gratis",
-    "enterprise": "Enterprise",
-    "enterpriseTagline": "Handeln Sie vor allen anderen",
-    "enterpriseDesc": "Die Intelligence-Plattform",
-    "entF1": "Live-Edge Satellitenbilder",
-    "entF2": "+ KI-Agenten, 50K+ Infra, SAR",
-    "entF3": "Eigene KI, Investor-Personas",
-    "entF4": "Kontaktieren Sie uns",
-    "contactSales": "Vertrieb kontaktieren"
+    "enterprise": "Enterprise"
   },
   "proShowcase": {
     "proTier": "PRO-STUFE",
@@ -281,7 +261,6 @@
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + Webhook",
     "fMcpBulk": "+ MCP + Bulk",
-    "f45": "45",
     "fTensOfThousands": "+ zehntausende",
     "fLiveTracking": "Live-Tracking",
     "fPassAlerts": "Überflug-Alerts + Analyse",
@@ -292,7 +271,8 @@
     "fStandard": "Standard",
     "fKeyAuth": "Schlüssel-Auth",
     "fSsoMfa": "SSO/MFA/RBAC/Audit",
-    "noteBelow": "Die Kernplattform bleibt kostenlos. Bezahlpläne schalten Equity Research, Makroanalytik, KI-Briefings und organisatorische Nutzung frei."
+    "noteBelow": "Die Kernplattform bleibt kostenlos. Bezahlpläne schalten Equity Research, Makroanalytik, KI-Briefings und organisatorische Nutzung frei.",
+    "f50plus": "50+"
   },
   "faq": {
     "title": "Häufig gestellte Fragen",
@@ -354,5 +334,76 @@
     "youreIn": "Sie sind dabei!",
     "invitedBanner": "Sie wurden eingeladen — treten Sie der Warteliste bei"
   },
-  "soonBadge": "Bald"
+  "soonBadge": "Bald",
+  "meta": {
+    "title": "World Monitor Pro — AI-Analyst, Personal Intelligence Desk, MCP für Claude & GPT",
+    "description": "Die geopolitische AI-Schicht. Frag sie ab, abonniere sie, baue darauf auf. WM Analyst Chat über 30+ Live-Services, ein täglich, zweimal täglich oder wöchentlich an Slack, Discord, Telegram, E-Mail oder Webhook gelieferter AI-Digest, ein Custom-Widget-Builder (HTML/CSS/JS + AI) und MCP-Konnektoren für Claude, GPT und Custom-LLMs.",
+    "ogTitle": "World Monitor Pro — Die geopolitische AI-Schicht",
+    "ogDescription": "Frag sie ab, abonniere sie, baue darauf auf. WM Analyst Chat, ein AI-Digest nach deinem Zeitplan (täglich, zweimal täglich oder wöchentlich), Custom-Widget-Builder und MCP für Claude/GPT — über 30+ Live-Services unter einem Key."
+  },
+  "pricing": {
+    "suffixForever": "für immer",
+    "suffixTailored": "auf Sie zugeschnitten",
+    "suffixPerMonth": "/Monat",
+    "suffixPerYear": "/Jahr",
+    "amountCustom": "Benutzerdefiniert",
+    "opening": "Wird geöffnet…",
+    "headerTitle": "Wählen Sie Ihren Plan",
+    "headerSubtitle": "Von Echtzeit-Überwachung bis zur vollständigen Intelligence-Infrastruktur. Wählen Sie die Stufe, die zu Ihrer Mission passt.",
+    "billingMonthly": "Monatlich",
+    "billingAnnual": "Jährlich",
+    "saveAnnual": "Sparen Sie 17%",
+    "mostPopular": "Am beliebtesten",
+    "promoCodeNote": "Haben Sie einen Promo-Code? Geben Sie ihn beim Checkout ein.",
+    "tiers": {
+      "free": {
+        "description": "Beginnen Sie mit den Grundlagen",
+        "features": [
+          "Core-Dashboard-Panels",
+          "Globaler News-Feed",
+          "Erdbeben- & Wetteralertz",
+          "Basis-Kartenansicht"
+        ],
+        "cta": "Loslegen"
+      },
+      "pro": {
+        "description": "Vollständiges Intelligence-Dashboard",
+        "features": [
+          "Alles aus Free",
+          "KI-Aktienanalyse & Backtesting",
+          "Tägliche Marktübersichten",
+          "Militär- & geopolitische Verfolgung",
+          "Custom-Widget-Builder",
+          "MCP-Datenconnectors",
+          "Priorisierte Datenaktualisierung"
+        ]
+      },
+      "api": {
+        "description": "Programmgesteuerte Zugang zu Intelligence-Daten",
+        "features": [
+          "REST-API-Zugriff",
+          "Echtzeit-Datenströme",
+          "1.000 Anfragen/Tag",
+          "Webhook-Benachrichtigungen",
+          "Custom-Datenexporte"
+        ]
+      },
+      "enterprise": {
+        "description": "Maßgeschneiderte Lösungen für Organisationen",
+        "features": [
+          "Alles aus Pro + API",
+          "Unbegrenzte API-Anfragen",
+          "Dedizierter Support",
+          "Custom-Integrationen",
+          "SLA-Garantie",
+          "On-Premise-Option"
+        ],
+        "cta": "Kontakt zum Vertrieb"
+      }
+    },
+    "cta": {
+      "checkoutDefault": "Jetzt starten",
+      "learnMore": "Mehr erfahren"
+    }
+  }
 }

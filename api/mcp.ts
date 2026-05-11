@@ -5,9 +5,9 @@ import { getPublicCorsHeaders } from './_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { jsonResponse } from './_json-response.js';
 // @ts-expect-error — JS module, no declaration file
-import { readJsonFromUpstash } from './_upstash-json.js';
+import { readJsonFromUpstash, redisPipeline as rawRedisPipeline, getRedisCredentials } from './_upstash-json.js';
 // @ts-expect-error — JS module, no declaration file
-import { resolveApiKeyFromBearer } from './_oauth-token.js';
+import { resolveBearerToContext } from './_oauth-token.js';
 // @ts-expect-error — JS module, no declaration file
 import { timingSafeIncludes } from './_crypto.js';
 // @ts-expect-error — JS module, no declaration file
@@ -15,6 +15,18 @@ import { captureSilentError } from './_sentry-edge.js';
 import COUNTRY_BBOXES from '../shared/country-bboxes.js';
 // @ts-expect-error — generated JS module, no declaration file
 import MINING_SITES_RAW from '../shared/mining-sites.js';
+import { getEntitlements } from '../server/_shared/entitlement-check';
+import {
+  validateProMcpTokenOrNull,
+  dailyCounterKey,
+  secondsUntilUtcMidnight,
+  PRO_DAILY_QUOTA_LIMIT,
+  PRO_DAILY_QUOTA_TTL_SECONDS,
+} from '../server/_shared/pro-mcp-token';
+import {
+  signInternalMcpRequest,
+  buildInternalMcpHeaders,
+} from '../server/_shared/mcp-internal-hmac';
 
 export const config = { runtime: 'edge' };
 
@@ -22,10 +34,24 @@ const MCP_PROTOCOL_VERSION = '2025-03-26';
 const SERVER_NAME = 'worldmonitor';
 const SERVER_VERSION = '1.0';
 
+// Country-code whitelist for get_consumer_prices. The consumer-prices seeder
+// currently only produces data for AE (UAE); future markets will be added
+// here as they're seeded. Kept near COUNTRY_BBOXES (the other ISO-3166 alpha-2
+// lookup table used by tools) so adding a market is a single-file change.
+const SUPPORTED_CONSUMER_PRICES_COUNTRIES = new Set(['ae']);
+
 // ---------------------------------------------------------------------------
-// Per-key rate limiter (60 calls/min per PRO API key)
+// Rate limiters
 // ---------------------------------------------------------------------------
+//   - Legacy per-key 60/min (Starter+ env-key bearers): prefix `rl:mcp`,
+//     keyed `key:<apiKey>`. Unchanged from pre-U7.
+//   - Pro per-user 60/min: prefix `rl:mcp:pro-min`, keyed `pro-user:<userId>`.
+//     Independent limiter so a Pro user with two Claude installations sees
+//     combined 60/min across both bearers (same userId).
+// ---------------------------------------------------------------------------
+
 let mcpRatelimit: Ratelimit | null = null;
+let mcpProMinRatelimit: Ratelimit | null = null;
 
 function getMcpRatelimit(): Ratelimit | null {
   if (mcpRatelimit) return mcpRatelimit;
@@ -39,6 +65,69 @@ function getMcpRatelimit(): Ratelimit | null {
     analytics: false,
   });
   return mcpRatelimit;
+}
+
+function getMcpProMinRatelimit(): Ratelimit | null {
+  if (mcpProMinRatelimit) return mcpProMinRatelimit;
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+  mcpProMinRatelimit = new Ratelimit({
+    redis: new Redis({ url, token }),
+    limiter: Ratelimit.slidingWindow(60, '60 s'),
+    prefix: 'rl:mcp:pro-min',
+    analytics: false,
+  });
+  return mcpProMinRatelimit;
+}
+
+// ---------------------------------------------------------------------------
+// Auth-context shape passed into tool _execute. U7 widened the previous
+// `apiKey: string` to a discriminated union so per-tool fetches can branch
+// header construction (`X-WorldMonitor-Key` for env_key, internal-HMAC for
+// Pro) from a single point.
+// ---------------------------------------------------------------------------
+
+export type McpAuthContext =
+  | { kind: 'env_key'; apiKey: string }
+  | { kind: 'pro'; userId: string; mcpTokenId: string };
+
+/**
+ * Build the Authorization header set for a downstream `_execute` fetch.
+ *
+ *   - env_key → `X-WorldMonitor-Key: <apiKey>` (existing, unchanged).
+ *   - pro     → `X-WM-MCP-Internal: <ts>.<sig>` + `X-WM-MCP-User-Id: <userId>`.
+ *               Signature binds method+pathname+queryHash+bodyHash+userId.
+ *
+ * `body` MUST be the EXACT bytes the caller passes to `fetch()` so the
+ * signed payload matches the wire bytes. For JSON, pre-stringify on the
+ * caller side and pass the same string here.
+ */
+async function buildAuthHeaders(
+  context: McpAuthContext,
+  method: string,
+  url: string,
+  body: BodyInit | null | undefined,
+): Promise<Record<string, string>> {
+  if (context.kind === 'env_key') {
+    return { 'X-WorldMonitor-Key': context.apiKey };
+  }
+  // context.kind === 'pro'
+  const secret = process.env.MCP_INTERNAL_HMAC_SECRET ?? '';
+  if (!secret) {
+    // Should never happen in production (deploy gate at U10) — surface as
+    // an error so the tool fetch fails fast rather than silently 401-ing
+    // at the gateway with a confusing "invalid_internal_mcp_signature".
+    throw new Error('MCP_INTERNAL_HMAC_SECRET not configured');
+  }
+  const signed = await signInternalMcpRequest({
+    method,
+    url,
+    body,
+    userId: context.userId,
+    secret,
+  });
+  return buildInternalMcpHeaders(signed);
 }
 
 // ---------------------------------------------------------------------------
@@ -65,12 +154,18 @@ interface CacheToolDef extends BaseToolDef {
 }
 
 // AI inference tool: calls an internal RPC endpoint and returns the raw response.
+// Hybrid variant: when an _execute tool also reads cache keys directly
+// (e.g. parameterised by country_code), it MAY declare `_coverageKeys` so the
+// U7 Tier 3 parity test can verify that every BOOTSTRAP_KEYS/STANDALONE_KEYS
+// entry it owns is covered by some tool — cache-tool's `_cacheKeys` and
+// hybrid _execute's `_coverageKeys` are equivalent for that audit.
 interface RpcToolDef extends BaseToolDef {
   _cacheKeys?: never;
   _seedMetaKey?: never;
   _maxStaleMin?: never;
   _freshnessChecks?: never;
-  _execute: (params: Record<string, unknown>, base: string, apiKey: string) => Promise<unknown>;
+  _execute: (params: Record<string, unknown>, base: string, context: McpAuthContext) => Promise<unknown>;
+  _coverageKeys?: string[];
 }
 
 type ToolDef = CacheToolDef | RpcToolDef;
@@ -244,6 +339,71 @@ const TOOL_REGISTRY: ToolDef[] = [
     _maxStaleMin: 1440,
   },
   {
+    name: 'get_displacement_data',
+    description: 'Refugee and IDP counts by country (UNHCR annual data).',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+    // Dynamic-year key resolved once at module evaluation — mirrors the
+    // STANDALONE_KEYS pattern in api/health.js:147. The UNHCR seeder publishes
+    // a single current-year key; the prior year exists at the same prefix but
+    // is intentionally excluded — the executeTool label-walk would strip the
+    // year segment from both keys and collide on the same `summary` label,
+    // causing the second result to overwrite the first.
+    _cacheKeys: [`displacement:summary:v1:${new Date().getUTCFullYear()}`],
+    _seedMetaKey: 'seed-meta:displacement:summary',
+    _maxStaleMin: 3600,
+  },
+  {
+    name: 'get_health_signals',
+    description: 'Active disease outbreaks (WHO/ECDC etc.) and global air-quality station readings (OpenAQ/WAQI PM2.5). For health-risk screening.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+    // Uses the health-domain canonical key health:air-quality:v1 (NOT the
+    // climate-domain mirror climate:air-quality:v1, which stays exclusively
+    // in get_climate_data). Both are written by the same seeder
+    // (scripts/seed-health-air-quality.mjs exports HEALTH_AIR_QUALITY_KEY +
+    // CLIMATE_AIR_QUALITY_KEY) so no duplicate seed work.
+    _cacheKeys: ['health:disease-outbreaks:v1', 'health:air-quality:v1'],
+    _seedMetaKey: 'seed-meta:health:disease-outbreaks',
+    _maxStaleMin: 2880,
+    _freshnessChecks: [
+      { key: 'seed-meta:health:disease-outbreaks', maxStaleMin: 2880 }, // daily cron; 48h budget
+      { key: 'seed-meta:health:air-quality', maxStaleMin: 180 },        // hourly cron; 3h budget
+    ],
+  },
+  {
+    name: 'get_energy_intelligence',
+    description: 'Energy supply, prices, storage, disruptions, and policy: EIA petroleum stocks, electricity prices (Ember), gas storage (GIE), fuel shortages, fossil & renewable shares, active energy disruptions, government crisis policies.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+    // Broad 9-key energy bundle mirroring get_economic_data. Cadences span
+    // hourly (electricity prices) to annual (World Bank renewable share); use
+    // _freshnessChecks with per-key maxStaleMin pulled from
+    // api/health.js::SEED_META so a slow-cadence key doesn't drag the
+    // aggregate stale flag unnecessarily.
+    _cacheKeys: [
+      'energy:eia-petroleum:v1',                  // STANDALONE_KEYS::eiaPetroleum
+      'energy:electricity:v1:index',              // BOOTSTRAP_KEYS::electricityPrices
+      'energy:ember:v1:_all',                     // STANDALONE_KEYS::emberElectricity
+      'energy:gas-storage:v1:_countries',         // BOOTSTRAP_KEYS::gasStorageCountries
+      'energy:fuel-shortages:v1',                 // STANDALONE_KEYS::fuelShortages
+      'energy:disruptions:v1',                    // STANDALONE_KEYS::energyDisruptions
+      'energy:crisis-policies:v1',                // STANDALONE_KEYS::energyCrisisPolicies
+      'resilience:fossil-electricity-share:v1',   // STANDALONE_KEYS::fossilElectricityShare
+      'economic:worldbank-renewable:v1',          // BOOTSTRAP_KEYS::renewableEnergy
+    ],
+    _seedMetaKey: 'seed-meta:energy:eia-petroleum',
+    _maxStaleMin: 4320, // EIA petroleum daily-bundle baseline; per-key budgets via _freshnessChecks below
+    _freshnessChecks: [
+      { key: 'seed-meta:energy:eia-petroleum',                  maxStaleMin: 4320 },   // daily bundle; 72h = 3× interval
+      { key: 'seed-meta:energy:electricity-prices',             maxStaleMin: 2880 },   // daily cron (14:00 UTC); 48h = 2× interval
+      { key: 'seed-meta:energy:ember',                          maxStaleMin: 2880 },   // daily cron (08:00 UTC); 48h = 2× interval
+      { key: 'seed-meta:energy:gas-storage-countries',          maxStaleMin: 2880 },   // daily cron at 10:30 UTC; 48h = 2× interval
+      { key: 'seed-meta:energy:fuel-shortages',                 maxStaleMin: 2880 },   // 2d — daily cron × 2 headroom
+      { key: 'seed-meta:energy:disruptions',                    maxStaleMin: 20160 },  // 14d — weekly cron × 2 headroom
+      { key: 'seed-meta:energy:crisis-policies',                maxStaleMin: 60 * 24 * 400 }, // ~400d static registry
+      { key: 'seed-meta:resilience:fossil-electricity-share',   maxStaleMin: 11520 },  // ~8d (annual WB-style cadence)
+      { key: 'seed-meta:economic:worldbank-renewable:v1',       maxStaleMin: 10080 },  // 7d WB weekly-cron annual data
+    ],
+  },
+  {
     name: 'get_climate_data',
     description: 'Climate intelligence: temperature/precipitation anomalies (vs 30-year WMO normals), climate-relevant disaster alerts (ReliefWeb/GDACS/FIRMS), atmospheric CO2 trend (NOAA Mauna Loa), air quality (OpenAQ/WAQI PM2.5 stations), Arctic sea ice extent and ocean heat indicators (NSIDC/NOAA), weather alerts, and climate news.',
     inputSchema: { type: 'object', properties: {}, required: [] },
@@ -279,6 +439,76 @@ const TOOL_REGISTRY: ToolDef[] = [
     ],
     _seedMetaKey: 'seed-meta:trade:customs-revenue',
     _maxStaleMin: 2880,
+  },
+  {
+    name: 'get_tariff_trends',
+    description: 'Global trade and pricing indicators: US tariff trends (HTS-coded), BigMac index, FAO Food Price Index, and per-country national debt levels.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+    // 4-key bundle spanning trade + economic domains. Cadences span hourly-ish
+    // (tariffs co-pinned to 8h TARIFF_TTL) to monthly (FAO / national debt).
+    // Per-key _freshnessChecks pulled from api/health.js::SEED_META so a slow
+    // monthly key doesn't drag the aggregate stale flag and a fast tariff
+    // outage isn't masked by a long FAO budget.
+    _cacheKeys: [
+      'trade:tariffs:v1:840:all:10',   // STANDALONE_KEYS::tariffTrendsUs
+      'economic:bigmac:v1',            // BOOTSTRAP_KEYS::bigmac
+      'economic:fao-ffpi:v1',          // BOOTSTRAP_KEYS::faoFoodPriceIndex
+      'economic:national-debt:v1',     // BOOTSTRAP_KEYS::nationalDebt
+    ],
+    _seedMetaKey: 'seed-meta:trade:tariffs:v1:840:all:10',
+    _maxStaleMin: 540, // tariff cron baseline; per-key budgets via _freshnessChecks below
+    _freshnessChecks: [
+      { key: 'seed-meta:trade:tariffs:v1:840:all:10', maxStaleMin: 540 },   // TARIFF_TTL 8h + 60min grace
+      { key: 'seed-meta:economic:bigmac',             maxStaleMin: 10080 }, // weekly seed; 7d
+      { key: 'seed-meta:economic:fao-ffpi',           maxStaleMin: 86400 }, // monthly seed; 60d (2× interval)
+      { key: 'seed-meta:economic:national-debt',      maxStaleMin: 86400 }, // monthly seed; 60d (2× interval)
+    ],
+  },
+  {
+    name: 'get_chokepoint_status',
+    description: 'Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min cadence), rolling transit summaries, per-port activity, plus static reference data (chokepoint geometry, canonical 13-chokepoint registry) and flow aggregates. Covers Suez, Hormuz, Malacca, Bab-el-Mandeb, Panama, etc.',
+    inputSchema: { type: 'object', properties: {}, required: [] },
+    // Maritime chokepoint bundle distinct from get_supply_chain_data (which keeps
+    // shipping-stress + customs + comtrade). Cadences span 10-minute relay
+    // (transit-summaries, chokepoint_transits) to ~400-day static registries
+    // (chokepoint-baselines), so per-key _freshnessChecks pulled from
+    // api/health.js::SEED_META — a fast transit outage isn't masked by the
+    // slow chokepoint-baselines budget, and the long-cadence portwatch keys
+    // don't drag aggregate stale flagging.
+    //
+    // Payload measurement (PR pre-merge, fun-toad-55127.upstash.io 2026-05-11):
+    //   transit-summaries:v1                        — 6.8 KB
+    //   chokepoint_transits:v1                      — 1.1 KB
+    //   portwatch-ports:v1:_countries               — 0.9 KB
+    //   energy:chokepoint-baselines:v1              — 0.6 KB
+    //   portwatch:chokepoints:ref:v1                — 7.9 KB
+    //   energy:chokepoint-flows:v1                  — 1.2 KB
+    //   ────────────────────────────────────────────────────
+    //   Total: 18.5 KB (well under the 200KB/single-key and 500KB/aggregate
+    //   thresholds that historically tripped handler timeouts —
+    //   see tests/transit-summaries.test.mjs:539-545).
+    //
+    // EXCLUDED on purpose: supply_chain:corridorrisk:v1 is an intermediate
+    // key whose data flows through supply_chain:transit-summaries:v1
+    // (api/health.js:461). U7 will add corridorrisk to EXCLUDED_FROM_MCP.
+    _cacheKeys: [
+      'supply_chain:transit-summaries:v1',          // STANDALONE_KEYS::transitSummaries
+      'supply_chain:chokepoint_transits:v1',        // STANDALONE_KEYS::chokepointTransits
+      'supply_chain:portwatch-ports:v1:_countries', // STANDALONE_KEYS::portwatchPortActivity
+      'energy:chokepoint-baselines:v1',             // STANDALONE_KEYS::chokepointBaselines
+      'portwatch:chokepoints:ref:v1',               // STANDALONE_KEYS::portwatchChokepointsRef
+      'energy:chokepoint-flows:v1',                 // STANDALONE_KEYS::chokepointFlows
+    ],
+    _seedMetaKey: 'seed-meta:supply_chain:transit-summaries',
+    _maxStaleMin: 30, // transit-summaries 10-min relay baseline; per-key budgets via _freshnessChecks below
+    _freshnessChecks: [
+      { key: 'seed-meta:supply_chain:transit-summaries',   maxStaleMin: 30 },             // 10-min relay; 30min = 3× interval
+      { key: 'seed-meta:supply_chain:chokepoint_transits', maxStaleMin: 30 },             // 10-min relay; 30min = 3× interval
+      { key: 'seed-meta:supply_chain:portwatch-ports',     maxStaleMin: 2160 },           // 12h cron; 36h = 3× interval
+      { key: 'seed-meta:energy:chokepoint-baselines',      maxStaleMin: 60 * 24 * 400 },  // ~400d static registry
+      { key: 'seed-meta:portwatch:chokepoints-ref',        maxStaleMin: 60 * 24 * 14 },   // weekly cron; 14d = 2× interval
+      { key: 'seed-meta:energy:chokepoint-flows',          maxStaleMin: 720 },            // 6h cron; 12h = 2× interval
+    ],
   },
   {
     name: 'get_positive_events',
@@ -338,11 +568,13 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: [],
     },
-    _execute: async (params, base, apiKey) => {
+    _execute: async (params, base, context) => {
       const UA = 'worldmonitor-mcp-edge/1.0';
       // Step 1: fetch current geopolitical headlines (budget: 6 s, leaves ~24 s for LLM)
-      const digestRes = await fetch(`${base}/api/news/v1/list-feed-digest?variant=geo&lang=en`, {
-        headers: { 'X-WorldMonitor-Key': apiKey, 'User-Agent': UA },
+      const digestUrl = `${base}/api/news/v1/list-feed-digest?variant=geo&lang=en`;
+      const digestAuth = await buildAuthHeaders(context, 'GET', digestUrl, null);
+      const digestRes = await fetch(digestUrl, {
+        headers: { ...digestAuth, 'User-Agent': UA },
         signal: AbortSignal.timeout(6_000),
       });
       if (!digestRes.ok) throw new Error(`feed-digest HTTP ${digestRes.status}`);
@@ -358,18 +590,21 @@ const TOOL_REGISTRY: ToolDef[] = [
       const headlines = pairs.map(p => p.title);
       const bodies = pairs.map(p => p.snippet);
       // Step 2: summarize with LLM (budget: 18 s — combined 24 s, well under 30 s edge ceiling)
-      const briefRes = await fetch(`${base}/api/news/v1/summarize-article`, {
+      const briefUrl = `${base}/api/news/v1/summarize-article`;
+      const briefBody = JSON.stringify({
+        provider: 'openrouter',
+        headlines,
+        bodies,
+        mode: 'brief',
+        geoContext: String(params.geo_context ?? ''),
+        variant: 'geo',
+        lang: 'en',
+      });
+      const briefAuth = await buildAuthHeaders(context, 'POST', briefUrl, briefBody);
+      const briefRes = await fetch(briefUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': apiKey, 'User-Agent': UA },
-        body: JSON.stringify({
-          provider: 'openrouter',
-          headlines,
-          bodies,
-          mode: 'brief',
-          geoContext: String(params.geo_context ?? ''),
-          variant: 'geo',
-          lang: 'en',
-        }),
+        headers: { 'Content-Type': 'application/json', ...briefAuth, 'User-Agent': UA },
+        body: briefBody,
         signal: AbortSignal.timeout(18_000),
       });
       if (!briefRes.ok) throw new Error(`summarize-article HTTP ${briefRes.status}`);
@@ -387,7 +622,7 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: ['country_code'],
     },
-    _execute: async (params, base, apiKey) => {
+    _execute: async (params, base, context) => {
       const UA = 'worldmonitor-mcp-edge/1.0';
       const countryCode = String(params.country_code ?? '').toUpperCase().slice(0, 2);
 
@@ -396,8 +631,10 @@ const TOOL_REGISTRY: ToolDef[] = [
       // 2 s + 22 s brief = 24 s worst-case; 6 s margin before the 30 s Edge kill.
       let contextParam = '';
       try {
-        const digestRes = await fetch(`${base}/api/news/v1/list-feed-digest?variant=geo&lang=en`, {
-          headers: { 'X-WorldMonitor-Key': apiKey, 'User-Agent': UA },
+        const digestUrl = `${base}/api/news/v1/list-feed-digest?variant=geo&lang=en`;
+        const digestAuth = await buildAuthHeaders(context, 'GET', digestUrl, null);
+        const digestRes = await fetch(digestUrl, {
+          headers: { ...digestAuth, 'User-Agent': UA },
           signal: AbortSignal.timeout(2_000),
         });
         if (digestRes.ok) {
@@ -417,10 +654,12 @@ const TOOL_REGISTRY: ToolDef[] = [
         ? `${base}/api/intelligence/v1/get-country-intel-brief?context=${contextParam}`
         : `${base}/api/intelligence/v1/get-country-intel-brief`;
 
+      const briefBody = JSON.stringify({ country_code: countryCode, framework: String(params.framework ?? '') });
+      const briefAuth = await buildAuthHeaders(context, 'POST', briefUrl, briefBody);
       const res = await fetch(briefUrl, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': apiKey, 'User-Agent': UA },
-        body: JSON.stringify({ country_code: countryCode, framework: String(params.framework ?? '') }),
+        headers: { 'Content-Type': 'application/json', ...briefAuth, 'User-Agent': UA },
+        body: briefBody,
         signal: AbortSignal.timeout(22_000),
       });
       if (!res.ok) throw new Error(`get-country-intel-brief HTTP ${res.status}`);
@@ -437,17 +676,113 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: ['country_code'],
     },
-    _execute: async (params, base, apiKey) => {
+    _execute: async (params, base, context) => {
       const code = String(params.country_code ?? '').toUpperCase().slice(0, 2);
-      const res = await fetch(
-        `${base}/api/intelligence/v1/get-country-risk?country_code=${encodeURIComponent(code)}`,
-        {
-          headers: { 'X-WorldMonitor-Key': apiKey, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
-          signal: AbortSignal.timeout(8_000),
-        },
-      );
+      const url = `${base}/api/intelligence/v1/get-country-risk?country_code=${encodeURIComponent(code)}`;
+      const auth = await buildAuthHeaders(context, 'GET', url, null);
+      const res = await fetch(url, {
+        headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
+        signal: AbortSignal.timeout(8_000),
+      });
       if (!res.ok) throw new Error(`get-country-risk HTTP ${res.status}`);
       return res.json();
+    },
+  },
+  {
+    name: 'get_consumer_prices',
+    description: "Per-country consumer-prices intelligence: 30-day overview, category-level inflation, retailer spread (essentials basket), top movers, and source freshness. Requires country_code (currently only 'ae' is seeded).",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        country_code: {
+          type: 'string',
+          description: 'ISO 3166-1 alpha-2 country code. Currently supported: AE (case-insensitive).',
+        },
+      },
+      required: ['country_code'],
+    },
+    // Hybrid _execute (not a pure cache tool) because the cache keys are
+    // parameterised by country. Mirrors api/health.js::BOOTSTRAP_KEYS:55-59
+    // exactly so the U7 Tier-3 parity test treats every key as covered.
+    _coverageKeys: [
+      'consumer-prices:overview:ae',
+      'consumer-prices:categories:ae:30d',
+      'consumer-prices:movers:ae:30d',
+      'consumer-prices:retailer-spread:ae:essentials-ae',
+      'consumer-prices:freshness:ae',
+    ],
+    _execute: async (params) => {
+      // Result-level errors (NOT throws) for user-input issues — the dispatcher
+      // maps thrown errors to JSON-RPC -32603 "Internal error", which is
+      // misleading for a clearly-user-side fault like a missing/unknown
+      // country_code. Returning {error: ...} surfaces a usable message via
+      // the normal tools/call result envelope.
+      if (!params.country_code || typeof params.country_code !== 'string') {
+        return { error: 'country_code is required' };
+      }
+      const code = params.country_code.toLowerCase();
+      // Strict ISO 3166-1 alpha-2 shape: exactly two lowercase letters.
+      // Without this, .slice(0,2) would silently truncate inputs like
+      // "aexxx" or "AE-DXB" to "ae" and serve AE data — masking client bugs.
+      if (!/^[a-z]{2}$/.test(code)) {
+        return { error: 'country_code must be a two-letter ISO code (e.g. "ae")' };
+      }
+      if (!SUPPORTED_CONSUMER_PRICES_COUNTRIES.has(code)) {
+        return { error: 'Country not yet supported. Available: ae' };
+      }
+
+      const dataKeys = [
+        `consumer-prices:overview:${code}`,
+        `consumer-prices:categories:${code}:30d`,
+        `consumer-prices:movers:${code}:30d`,
+        `consumer-prices:retailer-spread:${code}:essentials-${code}`,
+        `consumer-prices:freshness:${code}`,
+      ];
+
+      // Freshness checks use the producer's actual meta keys. Note the spread
+      // entry: scripts/seed-consumer-prices.mjs:151 writes
+      // `seed-meta:consumer-prices:spread:<code>` (NO `retailer-` prefix,
+      // NO `:essentials-<code>` suffix). api/health.js:337 has the documented
+      // drift bug (expects `retailer-spread:<code>:essentials-<code>` which
+      // never exists) and so would always report stale; we deliberately
+      // diverge from health.js here to match the actual producer.
+      const freshnessChecks: FreshnessCheck[] = [
+        { key: `seed-meta:consumer-prices:overview:${code}`,      maxStaleMin: 1500 }, // 25h = 24h cron + 1h grace
+        { key: `seed-meta:consumer-prices:categories:${code}:30d`, maxStaleMin: 1500 },
+        { key: `seed-meta:consumer-prices:movers:${code}:30d`,     maxStaleMin: 1500 },
+        { key: `seed-meta:consumer-prices:spread:${code}`,         maxStaleMin: 1500 }, // producer's actual key shape
+        { key: `seed-meta:consumer-prices:freshness:${code}`,      maxStaleMin: 1500 },
+      ];
+
+      const [dataResults, metaResults] = await Promise.all([
+        Promise.all(dataKeys.map((k) => readJsonFromUpstash(k))),
+        Promise.all(freshnessChecks.map((c) => readJsonFromUpstash(c.key))),
+      ]);
+
+      // F6 contract parity with the cache-tool path (executeTool, ~line 1139):
+      // if every data read is null/undefined, this is a degenerate-empty
+      // response (Redis transient / stampede / pre-seed). Throw so
+      // dispatchToolsCall's catch fires proRollback — without this, the Pro
+      // user's daily MCP counter increments by 1 for a useless result while
+      // every other cache-tool refunds via the same code path.
+      if (dataResults.every((v: unknown) => v === null || v === undefined)) {
+        throw new Error('cache_all_null');
+      }
+
+      const { cached_at, stale } = evaluateFreshness(freshnessChecks, metaResults);
+
+      return {
+        cached_at,
+        stale,
+        country_code: code,
+        data: {
+          overview: dataResults[0],
+          categories: dataResults[1],
+          movers: dataResults[2],
+          retailerSpread: dataResults[3],
+          freshness: dataResults[4],
+        },
+      };
     },
   },
   {
@@ -468,14 +803,13 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: ['country_code'],
     },
-    _execute: async (params, base, apiKey) => {
+    _execute: async (params, base, context) => {
       const code = String(params.country_code ?? '').toUpperCase().slice(0, 2);
       const bbox = COUNTRY_BBOXES[code];
       if (!bbox) return { error: `Unknown country code: ${code}. Use ISO 3166-1 alpha-2 (e.g. "AE", "US", "GB").` };
       const [sw_lat, sw_lon, ne_lat, ne_lon] = bbox;
       const type = String(params.type ?? 'all');
       const UA = 'worldmonitor-mcp-edge/1.0';
-      const headers = { 'X-WorldMonitor-Key': apiKey, 'User-Agent': UA };
       const bboxQ = `sw_lat=${sw_lat}&sw_lon=${sw_lon}&ne_lat=${ne_lat}&ne_lon=${ne_lon}`;
 
       type CivilianResp = {
@@ -487,14 +821,19 @@ const TOOL_REGISTRY: ToolDef[] = [
         flights?: { callsign: string; hex_code: string; aircraft_type: string; aircraft_model: string; operator: string; operator_country: string; location?: { latitude: number; longitude: number }; altitude: number; heading: number; speed: number; is_interesting: boolean; note: string }[];
       };
 
+      const civUrl = `${base}/api/aviation/v1/track-aircraft?${bboxQ}`;
+      const milUrl = `${base}/api/military/v1/list-military-flights?${bboxQ}&page_size=100`;
+      const civAuth = type === 'military' ? null : await buildAuthHeaders(context, 'GET', civUrl, null);
+      const milAuth = type === 'civilian' ? null : await buildAuthHeaders(context, 'GET', milUrl, null);
+
       const [civResult, milResult] = await Promise.allSettled([
-        type === 'military'
+        type === 'military' || !civAuth
           ? Promise.resolve(null)
-          : fetch(`${base}/api/aviation/v1/track-aircraft?${bboxQ}`, { headers, signal: AbortSignal.timeout(8_000) })
+          : fetch(civUrl, { headers: { ...civAuth, 'User-Agent': UA }, signal: AbortSignal.timeout(8_000) })
               .then(r => r.ok ? r.json() as Promise<CivilianResp> : Promise.reject(new Error(`HTTP ${r.status}`))),
-        type === 'civilian'
+        type === 'civilian' || !milAuth
           ? Promise.resolve(null)
-          : fetch(`${base}/api/military/v1/list-military-flights?${bboxQ}&page_size=100`, { headers, signal: AbortSignal.timeout(8_000) })
+          : fetch(milUrl, { headers: { ...milAuth, 'User-Agent': UA }, signal: AbortSignal.timeout(8_000) })
               .then(r => r.ok ? r.json() as Promise<MilResp> : Promise.reject(new Error(`HTTP ${r.status}`))),
       ]);
 
@@ -551,13 +890,14 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: ['country_code'],
     },
-    _execute: async (params, base, apiKey) => {
+    _execute: async (params, base, context) => {
       const code = String(params.country_code ?? '').toUpperCase().slice(0, 2);
       const bbox = COUNTRY_BBOXES[code];
       if (!bbox) return { error: `Unknown country code: ${code}. Use ISO 3166-1 alpha-2 (e.g. "AE", "SA", "JP").` };
       const [sw_lat, sw_lon, ne_lat, ne_lon] = bbox;
       const bboxQ = `sw_lat=${sw_lat}&sw_lon=${sw_lon}&ne_lat=${ne_lat}&ne_lon=${ne_lon}`;
-      const headers = { 'X-WorldMonitor-Key': apiKey, 'User-Agent': 'worldmonitor-mcp-edge/1.0' };
+      const url = `${base}/api/maritime/v1/get-vessel-snapshot?${bboxQ}`;
+      const auth = await buildAuthHeaders(context, 'GET', url, null);
 
       type VesselResp = {
         snapshot?: {
@@ -567,8 +907,9 @@ const TOOL_REGISTRY: ToolDef[] = [
         };
       };
 
-      const res = await fetch(`${base}/api/maritime/v1/get-vessel-snapshot?${bboxQ}`, {
-        headers, signal: AbortSignal.timeout(8_000),
+      const res = await fetch(url, {
+        headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
+        signal: AbortSignal.timeout(8_000),
       });
       if (!res.ok) throw new Error(`get-vessel-snapshot HTTP ${res.status}`);
       const data = await res.json() as VesselResp;
@@ -604,11 +945,14 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: ['query'],
     },
-    _execute: async (params, base, apiKey) => {
-      const res = await fetch(`${base}/api/intelligence/v1/deduct-situation`, {
+    _execute: async (params, base, context) => {
+      const url = `${base}/api/intelligence/v1/deduct-situation`;
+      const body = JSON.stringify({ query: String(params.query ?? ''), geoContext: String(params.context ?? ''), framework: String(params.framework ?? '') });
+      const auth = await buildAuthHeaders(context, 'POST', url, body);
+      const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': apiKey, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
-        body: JSON.stringify({ query: String(params.query ?? ''), geoContext: String(params.context ?? ''), framework: String(params.framework ?? '') }),
+        headers: { 'Content-Type': 'application/json', ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
+        body,
         signal: AbortSignal.timeout(25_000),
       });
       if (!res.ok) throw new Error(`deduct-situation HTTP ${res.status}`);
@@ -626,12 +970,15 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: [],
     },
-    _execute: async (params, base, apiKey) => {
+    _execute: async (params, base, context) => {
       // 25 s — stays within Vercel Edge's ~30 s hard ceiling (was 60 s, which exceeded the limit)
-      const res = await fetch(`${base}/api/forecast/v1/get-forecasts`, {
+      const url = `${base}/api/forecast/v1/get-forecasts`;
+      const body = JSON.stringify({ domain: String(params.domain ?? ''), region: String(params.region ?? '') });
+      const auth = await buildAuthHeaders(context, 'POST', url, body);
+      const res = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': apiKey, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
-        body: JSON.stringify({ domain: String(params.domain ?? ''), region: String(params.region ?? '') }),
+        headers: { 'Content-Type': 'application/json', ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
+        body,
         signal: AbortSignal.timeout(25_000),
       });
       if (!res.ok) throw new Error(`get-forecasts HTTP ${res.status}`);
@@ -655,7 +1002,7 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: ['origin', 'destination', 'departure_date'],
     },
-    _execute: async (params, base, apiKey) => {
+    _execute: async (params, base, context) => {
       const qs = new URLSearchParams({
         origin: String(params.origin ?? ''),
         destination: String(params.destination ?? ''),
@@ -666,8 +1013,10 @@ const TOOL_REGISTRY: ToolDef[] = [
         ...(params.sort_by ? { sort_by: String(params.sort_by) } : {}),
         passengers: String(Math.max(1, Math.min(Number(params.passengers ?? 1), 9))),
       });
-      const res = await fetch(`${base}/api/aviation/v1/search-google-flights?${qs}`, {
-        headers: { 'X-WorldMonitor-Key': apiKey, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
+      const url = `${base}/api/aviation/v1/search-google-flights?${qs}`;
+      const auth = await buildAuthHeaders(context, 'GET', url, null);
+      const res = await fetch(url, {
+        headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(25_000),
       });
       if (!res.ok) throw new Error(`search-google-flights HTTP ${res.status}`);
@@ -692,7 +1041,7 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: ['origin', 'destination', 'start_date', 'end_date'],
     },
-    _execute: async (params, base, apiKey) => {
+    _execute: async (params, base, context) => {
       const qs = new URLSearchParams({
         origin: String(params.origin ?? ''),
         destination: String(params.destination ?? ''),
@@ -704,8 +1053,10 @@ const TOOL_REGISTRY: ToolDef[] = [
         sort_by_price: String(params.sort_by_price ?? false),
         passengers: String(Math.max(1, Math.min(Number(params.passengers ?? 1), 9))),
       });
-      const res = await fetch(`${base}/api/aviation/v1/search-google-dates?${qs}`, {
-        headers: { 'X-WorldMonitor-Key': apiKey, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
+      const url = `${base}/api/aviation/v1/search-google-dates?${qs}`;
+      const auth = await buildAuthHeaders(context, 'GET', url, null);
+      const res = await fetch(url, {
+        headers: { ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
         signal: AbortSignal.timeout(25_000),
       });
       if (!res.ok) throw new Error(`search-google-dates HTTP ${res.status}`);
@@ -782,7 +1133,7 @@ export function evaluateFreshness(checks: FreshnessCheck[], metas: unknown[], no
 }
 
 // ---------------------------------------------------------------------------
-// Tool execution
+// Tool execution (cache tools — no _execute)
 // ---------------------------------------------------------------------------
 async function executeTool(tool: CacheToolDef): Promise<{ cached_at: string | null; stale: boolean; data: Record<string, unknown> }> {
   const reads = tool._cacheKeys.map(k => readJsonFromUpstash(k));
@@ -792,6 +1143,21 @@ async function executeTool(tool: CacheToolDef): Promise<{ cached_at: string | nu
   const metaReads = freshnessChecks.map((check) => readJsonFromUpstash(check.key));
   const [results, metas] = await Promise.all([Promise.all(reads), Promise.all(metaReads)]);
   const { cached_at, stale } = evaluateFreshness(freshnessChecks, metas);
+
+  // F6: if every cache key returned null/undefined AND the tool actually
+  // had keys configured, this is a degenerate-empty result (Redis transient
+  // / stampede). Throw so dispatchToolsCall's catch fires the DECR rollback
+  // — without this, the user's quota burns silently on a useless response.
+  //
+  // Cache-tools always have at least one key (validated in the registry
+  // type). The all-null case is structurally distinguishable from "the
+  // upstream returned an empty list" (which is a JSON value, not null).
+  if (
+    tool._cacheKeys.length > 0 &&
+    results.every((v: unknown) => v === null || v === undefined)
+  ) {
+    throw new Error('cache_all_null');
+  }
 
   const data: Record<string, unknown> = {};
   // Walk backward through ':'-delimited segments, skipping non-informative suffixes
@@ -811,10 +1177,362 @@ async function executeTool(tool: CacheToolDef): Promise<{ cached_at: string | nu
 }
 
 // ---------------------------------------------------------------------------
+// Daily quota helpers (Pro-only). INCR-first reservation runs synchronously
+// on the critical path BEFORE tool dispatch — never inside `waitUntil`.
+// On any post-INCR rejection (cap exceeded OR tool dispatch failure) we
+// best-effort DECR. A failed DECR overshoots the counter by 1, but never
+// undershoots — cost-protection > user-fairness.
+// ---------------------------------------------------------------------------
+
+type PipelineFn = (commands: Array<Array<string | number>>, timeoutMs?: number) => Promise<Array<{ result: unknown }> | null>;
+
+interface QuotaReserved {
+  ok: true;
+  newCount: number;
+  /** Roll back the INCR (best-effort). Idempotent — safe to call multiple times. */
+  rollback: () => Promise<void>;
+}
+interface QuotaRejected {
+  ok: false;
+  reason: 'cap-exceeded' | 'redis-unavailable';
+  /** When cap-exceeded: count after the rejected reservation was rolled back (i.e. the floor). */
+  floor?: number;
+}
+
+async function reserveQuota(
+  userId: string,
+  pipeline: PipelineFn,
+): Promise<QuotaReserved | QuotaRejected> {
+  const key = dailyCounterKey(userId);
+  if (!key) return { ok: false, reason: 'redis-unavailable' };
+
+  let pipeResult: Array<{ result: unknown }> | null;
+  try {
+    pipeResult = await pipeline([
+      ['INCR', key],
+      ['EXPIRE', key, PRO_DAILY_QUOTA_TTL_SECONDS],
+    ]);
+  } catch {
+    pipeResult = null;
+  }
+
+  if (!pipeResult || !Array.isArray(pipeResult) || pipeResult.length === 0) {
+    // Hard cap correctness: NEVER dispatch on reservation failure.
+    return { ok: false, reason: 'redis-unavailable' };
+  }
+
+  const incrRaw = pipeResult[0]?.result;
+  const newCount = typeof incrRaw === 'number' ? incrRaw : Number(incrRaw);
+  if (!Number.isFinite(newCount) || newCount < 1) {
+    return { ok: false, reason: 'redis-unavailable' };
+  }
+
+  // Build idempotent rollback. `await rollback()` runs DECR once; subsequent
+  // calls are no-ops.
+  let rolledBack = false;
+  const rollback = async (): Promise<void> => {
+    if (rolledBack) return;
+    rolledBack = true;
+    try {
+      await pipeline([['DECR', key]]);
+    } catch {
+      // Best-effort: a transient Redis failure means the counter overshoots
+      // by 1, which is the cost-protection-correct direction.
+    }
+  };
+
+  if (newCount > PRO_DAILY_QUOTA_LIMIT) {
+    // Reject and roll back immediately so the floor stays at the limit
+    // (or wherever concurrent rollbacks land it).
+    await rollback();
+
+    // Counter-clamp (F4): if multiple DECR rollbacks have failed during
+    // a Redis hiccup, the counter can overshoot indefinitely (e.g. land
+    // at 100 instead of 50). Without clamping, every subsequent INCR for
+    // the rest of the UTC day yields >50 → the user is locked out until
+    // the 48h key TTL expires.
+    //
+    // After the rollback, peek at the post-DECR count via a single
+    // best-effort INCR-then-DECR pair — if it's STILL above the limit,
+    // we know the rollback didn't land. Force a defensive
+    // `SET key <limit> KEEPTTL` so the next legitimate INCR (next UTC
+    // day OR next request after the hiccup) starts at limit+1 → 429,
+    // not limit+N → 429-forever.
+    //
+    // Why use INCR-then-DECR instead of GET? Keeps the helper to the
+    // same pipeline contract (the tests' makePipelineMock supports
+    // INCR/DECR/EXPIRE only) and avoids adding a new verb. The probe
+    // costs one round-trip but only on the rejection path.
+    if (newCount > PRO_DAILY_QUOTA_LIMIT + 1) {
+      try {
+        const probe = await pipeline([['INCR', key], ['DECR', key]]);
+        const probeIncrRaw = probe?.[0]?.result;
+        const postRollbackCount = typeof probeIncrRaw === 'number' ? probeIncrRaw - 1 : Number.NaN;
+        if (Number.isFinite(postRollbackCount) && postRollbackCount > PRO_DAILY_QUOTA_LIMIT) {
+          // Rollback chain has overshot — force the counter back to the
+          // limit via SET KEEPTTL. This is fail-soft: a concurrent INCR
+          // immediately after this SET will land at limit+1 and 429
+          // normally, which is the desired behavior.
+          //
+          // Use DECR repeatedly as the pipeline-supported clamp (avoids
+          // adding a new verb to test mocks). DECR N times where N is
+          // the overshoot delta. Cap at 100 DECRs to bound the worst-
+          // case round-trip cost.
+          const overshoot = postRollbackCount - PRO_DAILY_QUOTA_LIMIT;
+          const decrs = Math.min(overshoot, 100);
+          const clamp = Array.from({ length: decrs }, () => ['DECR', key] as Array<string | number>);
+          // Best-effort: failure here is the cost-protection-correct
+          // direction (counter stays high → users 429, no DoS exposure).
+          await pipeline(clamp).catch(() => {});
+        }
+      } catch {
+        // Probe failed — leave counter as-is. Worst case the user 429s
+        // until UTC midnight; never under-cap, never DoS exposure.
+      }
+    }
+
+    return { ok: false, reason: 'cap-exceeded', floor: PRO_DAILY_QUOTA_LIMIT };
+  }
+
+  return { ok: true, newCount, rollback };
+}
+
+// ---------------------------------------------------------------------------
+// Auth resolution — exported types so deps-injecting callers (tests) can
+// supply alternates without re-deriving the shape.
+// ---------------------------------------------------------------------------
+
+export interface McpHandlerDeps {
+  resolveBearerToContext: (token: string) => Promise<McpAuthContext | null>;
+  validateProMcpToken: (tokenId: string) => Promise<{ userId: string } | null>;
+  getEntitlements: (userId: string) => Promise<{ planKey?: string; features: { tier: number; mcpAccess?: boolean }; validUntil: number } | null>;
+  redisPipeline: PipelineFn;
+}
+
+const PRODUCTION_DEPS: McpHandlerDeps = {
+  resolveBearerToContext,
+  // Per-request validate path uses the legacy `userId | null` wrapper —
+  // transient Convex blips fail-closed (401 prompts the client to retry
+  // via OAuth, which is the correct safety direction here). The refresh-
+  // grant path in api/oauth/token.ts uses the discriminated-union form
+  // to distinguish revoked from transient (F3 of the U7+U8 review pass).
+  validateProMcpToken: validateProMcpTokenOrNull,
+  getEntitlements,
+  redisPipeline: rawRedisPipeline,
+};
+
+// ---------------------------------------------------------------------------
+// Auth + Pro-pre-check helpers (extracted from mcpHandler so the top-level
+// handler stays under the cognitive-complexity threshold).
+// ---------------------------------------------------------------------------
+
+function wwwAuthHeader(resourceMetadataUrl: string, errorParam = ''): string {
+  const errSegment = errorParam ? `, error="${errorParam}"` : '';
+  return `Bearer realm="worldmonitor"${errSegment}, resource_metadata="${resourceMetadataUrl}"`;
+}
+
+interface AuthResolution {
+  ok: true;
+  context: McpAuthContext;
+}
+interface AuthResolutionRejected {
+  ok: false;
+  response: Response;
+}
+
+async function resolveAuthContext(
+  req: Request,
+  deps: McpHandlerDeps,
+  resourceMetadataUrl: string,
+  corsHeaders: Record<string, string>,
+): Promise<AuthResolution | AuthResolutionRejected> {
+  const authHeader = req.headers.get('Authorization') ?? '';
+  if (authHeader.startsWith('Bearer ')) {
+    const token = authHeader.slice(7).trim();
+    let context: McpAuthContext | null;
+    try {
+      context = await deps.resolveBearerToContext(token);
+    } catch {
+      return {
+        ok: false,
+        response: new Response(
+          JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32603, message: 'Auth service temporarily unavailable. Try again.' } }),
+          { status: 503, headers: { 'Content-Type': 'application/json', 'Retry-After': '5', ...corsHeaders } },
+        ),
+      };
+    }
+    if (!context) {
+      return {
+        ok: false,
+        response: new Response(
+          JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Invalid or expired OAuth token. Re-authenticate via /oauth/token.' } }),
+          { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl, 'invalid_token'), ...corsHeaders } },
+        ),
+      };
+    }
+    return { ok: true, context };
+  }
+
+  const candidateKey = req.headers.get('X-WorldMonitor-Key') ?? '';
+  if (!candidateKey) {
+    return {
+      ok: false,
+      response: new Response(
+        JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Authentication required. Use OAuth (/oauth/token) or pass your API key via X-WorldMonitor-Key header.' } }),
+        { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl), ...corsHeaders } },
+      ),
+    };
+  }
+  const validKeys = (process.env.WORLDMONITOR_VALID_KEYS || '').split(',').filter(Boolean);
+  if (!await timingSafeIncludes(candidateKey, validKeys)) {
+    return { ok: false, response: rpcError(null, -32001, 'Invalid API key') };
+  }
+  return { ok: true, context: { kind: 'env_key', apiKey: candidateKey } };
+}
+
+/**
+ * Pro-only pre-checks: validate Convex row + cross-user-binding + entitlement
+ * re-check. Returns null on success; a 401 Response on any check failure.
+ */
+async function runProPreChecks(
+  context: Extract<McpAuthContext, { kind: 'pro' }>,
+  deps: McpHandlerDeps,
+  resourceMetadataUrl: string,
+  corsHeaders: Record<string, string>,
+  ctx?: { waitUntil: (p: Promise<unknown>) => void },
+): Promise<Response | null> {
+  // F12: Pro path is unusable without MCP_INTERNAL_HMAC_SECRET — every
+  // tool fetch will throw inside buildAuthHeaders. Surface the misconfig
+  // at auth-resolution time so operators see a single clear 503 rather
+  // than a confusing mid-tool-fetch -32603. Belt-and-suspenders with the
+  // U10 deploy gate; matches the runtime check in `buildAuthHeaders`.
+  if (!process.env.MCP_INTERNAL_HMAC_SECRET) {
+    captureSilentError(new Error('MCP_INTERNAL_HMAC_SECRET unset'), {
+      tags: { route: 'api/mcp', step: 'pro-secret-preflight' },
+      ctx,
+    });
+    return new Response(
+      JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32603, message: 'Service temporarily unavailable, retry in a moment.' } }),
+      { status: 503, headers: { 'Content-Type': 'application/json', 'Retry-After': '5', ...corsHeaders } },
+    );
+  }
+
+  const validation = await deps.validateProMcpToken(context.mcpTokenId);
+  if (!validation || validation.userId !== context.userId) {
+    return new Response(
+      JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'MCP authorization revoked. Re-authorize at https://worldmonitor.app/mcp-grant.' } }),
+      { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl, 'invalid_token'), ...corsHeaders } },
+    );
+  }
+
+  let ent: Awaited<ReturnType<typeof deps.getEntitlements>> = null;
+  try {
+    ent = await deps.getEntitlements(context.userId);
+  } catch (err) {
+    // Fail-closed per memory `entitlement-signal-server-outlier-sweep`.
+    captureSilentError(err, { tags: { route: 'api/mcp', step: 'pro-entitlement-recheck' }, ctx });
+    return new Response(
+      JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Subscription not active.' } }),
+      { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl, 'invalid_token'), ...corsHeaders } },
+    );
+  }
+  const tier = ent?.features?.tier ?? 0;
+  const mcpAccess = ent?.features?.mcpAccess === true;
+  const validUntil = ent?.validUntil ?? 0;
+  if (!ent || tier < 1 || !mcpAccess || validUntil < Date.now()) {
+    return new Response(
+      JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Subscription not active.' } }),
+      { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl, 'invalid_token'), ...corsHeaders } },
+    );
+  }
+  return null;
+}
+
+/** Per-minute rate limit. Both paths fail-OPEN on Upstash error (graceful);
+ *  the daily quota is the hard-cap fail-CLOSED gate. Returns null on success
+ *  or pass-through, a Response on a real 60/min limit hit. */
+async function applyPerMinuteLimit(context: McpAuthContext): Promise<Response | null> {
+  if (context.kind === 'env_key') {
+    const rl = getMcpRatelimit();
+    if (!rl) return null;
+    try {
+      const { success } = await rl.limit(`key:${context.apiKey}`);
+      if (!success) return rpcError(null, -32029, 'Rate limit exceeded. Max 60 requests per minute per API key.');
+    } catch { /* graceful degradation */ }
+    return null;
+  }
+  const rl = getMcpProMinRatelimit();
+  if (!rl) return null;
+  try {
+    const { success } = await rl.limit(`pro-user:${context.userId}`);
+    if (!success) return rpcError(null, -32029, 'Rate limit exceeded. Max 60 requests per minute per Pro user.');
+  } catch { /* graceful degradation */ }
+  return null;
+}
+
+async function dispatchToolsCall(
+  req: Request,
+  context: McpAuthContext,
+  deps: McpHandlerDeps,
+  body: { id?: unknown; params?: unknown },
+  corsHeaders: Record<string, string>,
+  ctx?: { waitUntil: (p: Promise<unknown>) => void },
+): Promise<Response> {
+  const id = body.id ?? null;
+  const p = body.params as { name?: string; arguments?: Record<string, unknown> } | null;
+  if (!p || typeof p.name !== 'string') {
+    return rpcError(id, -32602, 'Invalid params: missing tool name');
+  }
+  const tool = TOOL_REGISTRY.find((t) => t.name === p.name);
+  if (!tool) {
+    return rpcError(id, -32602, `Unknown tool: ${p.name}`);
+  }
+
+  // Pro-only INCR-first reservation. Both cache-only AND RPC tools count.
+  let proRollback: (() => Promise<void>) | null = null;
+  if (context.kind === 'pro') {
+    const reservation = await reserveQuota(context.userId, deps.redisPipeline);
+    if (!reservation.ok) {
+      if (reservation.reason === 'cap-exceeded') {
+        return new Response(
+          JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32029, message: `Daily MCP quota exceeded (${PRO_DAILY_QUOTA_LIMIT}/day). Resets at next UTC midnight.` } }),
+          { status: 429, headers: { 'Content-Type': 'application/json', 'Retry-After': String(secondsUntilUtcMidnight()), ...corsHeaders } },
+        );
+      }
+      // Hard-cap correctness: NEVER dispatch on reservation failure.
+      return new Response(
+        JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32603, message: 'Service temporarily unavailable, retry in a moment.' } }),
+        { status: 503, headers: { 'Content-Type': 'application/json', 'Retry-After': '5', ...corsHeaders } },
+      );
+    }
+    proRollback = reservation.rollback;
+  }
+
+  try {
+    let result: unknown;
+    if (tool._execute) {
+      const baseUrl = new URL(req.url).origin;
+      result = await tool._execute(p.arguments ?? {}, baseUrl, context);
+    } else {
+      result = await executeTool(tool);
+    }
+    // Convex `internal-validate-pro-mcp-token` schedules touchProMcpTokenLastUsed
+    // itself (convex/http.ts:1035-1040), so no waitUntil needed here.
+    return rpcOk(id, { content: [{ type: 'text', text: JSON.stringify(result) }] }, corsHeaders);
+  } catch (err: unknown) {
+    if (proRollback) await proRollback();
+    console.error('[mcp] tool execution error:', err);
+    captureSilentError(err, { tags: { route: 'api/mcp', step: 'tool-execution', tool: tool.name }, ctx });
+    return rpcError(id, -32603, 'Internal error: data fetch failed');
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Main handler
 // ---------------------------------------------------------------------------
-export default async function handler(
+export async function mcpHandler(
   req: Request,
+  deps: McpHandlerDeps,
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
 ): Promise<Response> {
   // MCP is a public API endpoint secured by API key — allow all origins (claude.ai, Claude Desktop, custom agents)
@@ -823,14 +1541,9 @@ export default async function handler(
   if (req.method === 'OPTIONS') {
     return new Response(null, { status: 204, headers: corsHeaders });
   }
-
-  // HEAD probe — return 200 with no body (Anthropic submission guide compatibility)
   if (req.method === 'HEAD') {
     return new Response(null, { status: 200, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
   }
-
-  // MCP Streamable HTTP transport (2025-03-26) uses POST only.
-  // Return 405 for GET/other so clients don't mistake JSON error for a valid SSE stream.
   if (req.method !== 'POST') {
     return new Response(null, { status: 405, headers: { Allow: 'POST, HEAD, OPTIONS', ...corsHeaders } });
   }
@@ -840,67 +1553,21 @@ export default async function handler(
   if (origin && origin !== 'https://claude.ai' && origin !== 'https://claude.com') {
     return new Response('Forbidden', { status: 403, headers: corsHeaders });
   }
-  // Host-derived resource_metadata pointer: a client probing api.worldmonitor.app/mcp
-  // must see a pointer at its own origin, not the apex — otherwise the 401's
-  // WWW-Authenticate points at apex metadata whose `resource` field is apex too,
-  // and same-origin scanners (isitagentready.com, Cloudflare mcp.cloudflare.com)
-  // flag the mismatch. Matches the host-extraction in api/oauth-protected-resource.ts.
+  // Host-derived resource_metadata pointer matches api/oauth-protected-resource.ts.
   const requestHost = req.headers.get('host') ?? new URL(req.url).host;
   const resourceMetadataUrl = `https://${requestHost}/.well-known/oauth-protected-resource`;
-  // Auth chain (in priority order):
-  //   1. Authorization: Bearer <oauth_token> — issued by /oauth/token (spec-compliant OAuth 2.0)
-  //   2. X-WorldMonitor-Key header — direct API key (curl, custom integrations)
-  let apiKey = '';
-  const authHeader = req.headers.get('Authorization') ?? '';
-  if (authHeader.startsWith('Bearer ')) {
-    const token = authHeader.slice(7).trim();
-    let bearerApiKey: string | null;
-    try {
-      bearerApiKey = await resolveApiKeyFromBearer(token);
-    } catch {
-      // Redis/network error — return 503 so clients know to retry, not re-authenticate
-      return new Response(
-        JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32603, message: 'Auth service temporarily unavailable. Try again.' } }),
-        { status: 503, headers: { 'Content-Type': 'application/json', 'Retry-After': '5', ...corsHeaders } }
-      );
-    }
-    if (bearerApiKey) {
-      apiKey = bearerApiKey;
-    } else {
-      // Bearer token present but unresolvable — expired or invalid UUID
-      return new Response(
-        JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Invalid or expired OAuth token. Re-authenticate via /oauth/token.' } }),
-        { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': `Bearer realm="worldmonitor", error="invalid_token", resource_metadata="${resourceMetadataUrl}"`, ...corsHeaders } }
-      );
-    }
-  } else {
-    const candidateKey = req.headers.get('X-WorldMonitor-Key') ?? '';
-    if (!candidateKey) {
-      return new Response(
-        JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Authentication required. Use OAuth (/oauth/token) or pass your API key via X-WorldMonitor-Key header.' } }),
-        { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': `Bearer realm="worldmonitor", resource_metadata="${resourceMetadataUrl}"`, ...corsHeaders } }
-      );
-    }
-    const validKeys = (process.env.WORLDMONITOR_VALID_KEYS || '').split(',').filter(Boolean);
-    if (!await timingSafeIncludes(candidateKey, validKeys)) {
-      return rpcError(null, -32001, 'Invalid API key');
-    }
-    apiKey = candidateKey;
+
+  const auth = await resolveAuthContext(req, deps, resourceMetadataUrl, corsHeaders);
+  if (!auth.ok) return auth.response;
+  const context = auth.context;
+
+  if (context.kind === 'pro') {
+    const proCheck = await runProPreChecks(context, deps, resourceMetadataUrl, corsHeaders, ctx);
+    if (proCheck) return proCheck;
   }
 
-
-  // Per-key rate limit
-  const rl = getMcpRatelimit();
-  if (rl) {
-    try {
-      const { success } = await rl.limit(`key:${apiKey}`);
-      if (!success) {
-        return rpcError(null, -32029, 'Rate limit exceeded. Max 60 requests per minute per API key.');
-      }
-    } catch {
-      // Upstash unavailable — allow through (graceful degradation)
-    }
-  }
+  const limited = await applyPerMinuteLimit(context);
+  if (limited) return limited;
 
   // Parse body
   let body: { jsonrpc?: string; id?: unknown; method?: string; params?: unknown };
@@ -914,7 +1581,7 @@ export default async function handler(
     return rpcError(body?.id ?? null, -32600, 'Invalid request: missing method');
   }
 
-  const { id, method, params } = body;
+  const { id, method } = body;
 
   // Dispatch
   switch (method) {
@@ -926,47 +1593,38 @@ export default async function handler(
         serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
       }, { 'Mcp-Session-Id': sessionId, ...corsHeaders });
     }
-
     case 'notifications/initialized':
       return new Response(null, { status: 202, headers: corsHeaders });
-
     case 'ping':
       return rpcOk(id, {}, corsHeaders);
-
     case 'tools/list':
       return rpcOk(id, { tools: TOOL_LIST_RESPONSE }, corsHeaders);
-
-    case 'tools/call': {
-      const p = params as { name?: string; arguments?: Record<string, unknown> } | null;
-      if (!p || typeof p.name !== 'string') {
-        return rpcError(id, -32602, 'Invalid params: missing tool name');
-      }
-      const tool = TOOL_REGISTRY.find(t => t.name === p.name);
-      if (!tool) {
-        return rpcError(id, -32602, `Unknown tool: ${p.name}`);
-      }
-      try {
-        let result: unknown;
-        if (tool._execute) {
-          const origin = new URL(req.url).origin;
-          result = await tool._execute(p.arguments ?? {}, origin, apiKey);
-        } else {
-          result = await executeTool(tool);
-        }
-        return rpcOk(id, {
-          content: [{ type: 'text', text: JSON.stringify(result) }],
-        }, corsHeaders);
-      } catch (err: unknown) {
-        console.error('[mcp] tool execution error:', err);
-        captureSilentError(err, {
-          tags: { route: 'api/mcp', step: 'tool-execution', tool: tool.name },
-          ctx,
-        });
-        return rpcError(id, -32603, 'Internal error: data fetch failed');
-      }
-    }
-
+    case 'tools/call':
+      return dispatchToolsCall(req, context, deps, body, corsHeaders, ctx);
     default:
       return rpcError(id, -32601, `Method not found: ${method}`);
   }
 }
+
+// ---------------------------------------------------------------------------
+// Default Vercel-edge entry — wires production deps. Tests call mcpHandler
+// directly with mock deps.
+// ---------------------------------------------------------------------------
+export default async function handler(
+  req: Request,
+  ctx?: { waitUntil: (p: Promise<unknown>) => void },
+): Promise<Response> {
+  return mcpHandler(req, PRODUCTION_DEPS, ctx);
+}
+
+// ---------------------------------------------------------------------------
+// Test-only escape hatch. Exposes the TOOL_REGISTRY for the U7 Tier 3 parity
+// test (tests/mcp-bootstrap-parity.test.mjs), which asserts that every
+// canonical seeded cache key from api/health.js (BOOTSTRAP_KEYS ∪
+// STANDALONE_KEYS) is either covered by some tool's `_cacheKeys` (cache-tool)
+// or `_coverageKeys` (RpcToolDef hybrid), or explicitly excluded via the
+// test's EXCLUDED_FROM_MCP map with a documented reason.
+// ---------------------------------------------------------------------------
+export const __testing__ = {
+  TOOL_REGISTRY,
+};

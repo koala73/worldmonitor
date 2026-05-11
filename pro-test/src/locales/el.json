@@ -6,7 +6,8 @@
     "enterprise": "Enterprise",
     "reserveAccess": "Κρατήστε την πρώιμη πρόσβασή σας",
     "signIn": "Σύνδεση",
-    "upgradeToPro": "Αναβάθμιση σε Pro"
+    "upgradeToPro": "Αναβάθμιση σε Pro",
+    "goToDashboard": "Μεταβείτε στο Dashboard"
   },
   "hero": {
     "noiseWord": "Θόρυβος",
@@ -18,7 +19,8 @@
     "emailPlaceholder": "Εισάγετε το email σας",
     "emailAriaLabel": "Διεύθυνση email για τη λίστα αναμονής",
     "choosePlan": "Επιλέξτε πλάνο",
-    "signIn": "Σύνδεση"
+    "signIn": "Σύνδεση",
+    "goToDashboard": "Μεταβείτε στο Dashboard"
   },
   "wired": {
     "asFeaturedIn": "Εμφανίστηκε στο"
@@ -50,7 +52,8 @@
     "entF9": "Εφαρμογή Android TV για τοίχους SOC και trading floors",
     "entF10": "Deployment cloud, on-premises ή air-gapped",
     "entF11": "Αφοσιωμένο onboarding και υποστήριξη",
-    "entCta": "Μιλήστε με πωλήσεις"
+    "entCta": "Μιλήστε με πωλήσεις",
+    "freeF2": "500+ ροές, 65+ πηγές, 50+ στρώματα χάρτη"
   },
   "whyUpgrade": {
     "title": "Γιατί να αναβαθμίσετε",
@@ -83,7 +86,7 @@
     "openFullScreen": "Άνοιγμα σε πλήρη οθόνη",
     "tryLiveDashboard": "Δοκιμάστε τον ζωντανό πίνακα",
     "iframeTitle": "World Monitor — Ζωντανός πίνακας intelligence",
-    "description": "3D WebGL υδρόγειος · 45+ διαδραστικά επίπεδα χάρτη · Δεδομένα αγορών, macro, γεωπολιτικής, ενέργειας και υποδομών σε πραγματικό χρόνο"
+    "description": "Σφαίρα 3D WebGL · 50+ διαδραστικά στρώματα χάρτη · Δεδομένα αγοράς, μακροοικονομικά, γεωπολιτικά, ενεργειακά και υποδομής σε πραγματικό χρόνο"
   },
   "socialProof": {
     "uniqueVisitors": "Μοναδικοί επισκέπτες",
@@ -139,31 +142,8 @@
   },
   "tiers": {
     "free": "Δωρεάν",
-    "freeTagline": "Δείτε τα πάντα",
-    "freeDesc": "Ο open-source πίνακας",
-    "freeF1": "Ανανέωση 5-15 λεπτά",
-    "freeF2": "500+ feeds, 45 επίπεδα χάρτη",
-    "freeF3": "BYOK για AI",
-    "freeF4": "Δωρεάν για πάντα",
-    "openDashboard": "Άνοιγμα πίνακα",
     "pro": "Pro",
-    "proTagline": "Αγορές, macro και γεωπολιτική",
-    "proDesc": "Ο αναλυτής AI σας",
-    "proF1": "Equity research και ανάλυση μετοχών",
-    "proF2": "+ καθημερινά digests, οικονομική αναλυτική",
-    "proF3": "AI συμπεριλαμβάνεται, 1 κλειδί",
-    "proF4": "Προτεραιότητα στην ανανέωση δεδομένων (Σύντομα)",
-    "priceMonthly": "$39,99 / μήνα",
-    "priceAnnual": "$399,99 / έτος",
-    "annualSavingsNote": "2 μήνες δωρεάν",
-    "enterprise": "Enterprise",
-    "enterpriseTagline": "Ενεργήστε πριν από οποιονδήποτε",
-    "enterpriseDesc": "Η πλατφόρμα intelligence",
-    "entF1": "Δορυφορικές εικόνες live",
-    "entF2": "+ AI agents, 50K+ infra, SAR",
-    "entF3": "Προσαρμοσμένο AI, personas επενδυτή",
-    "entF4": "Επικοινωνήστε μαζί μας",
-    "contactSales": "Επικοινωνία πωλήσεων"
+    "enterprise": "Enterprise"
   },
   "proShowcase": {
     "proTier": "ΕΠΙΠΕΔΟ PRO",
@@ -281,7 +261,6 @@
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + webhook",
     "fMcpBulk": "+ MCP + μαζικά",
-    "f45": "45",
     "fTensOfThousands": "+ δεκάδες χιλιάδες",
     "fLiveTracking": "Ζωντανή παρακολούθηση",
     "fPassAlerts": "Ειδοποιήσεις διέλευσης + ανάλυση",
@@ -292,7 +271,8 @@
     "fStandard": "Standard",
     "fKeyAuth": "Auth με κλειδί",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
-    "noteBelow": "Η βασική πλατφόρμα παραμένει δωρεάν. Τα επί πληρωμή πλάνα ξεκλειδώνουν equity research, macro αναλυτική, AI briefings και οργανωτική χρήση."
+    "noteBelow": "Η βασική πλατφόρμα παραμένει δωρεάν. Τα επί πληρωμή πλάνα ξεκλειδώνουν equity research, macro αναλυτική, AI briefings και οργανωτική χρήση.",
+    "f50plus": "50+"
   },
   "faq": {
     "title": "Συχνές ερωτήσεις",
@@ -354,5 +334,76 @@
     "youreIn": "Είστε μέσα!",
     "invitedBanner": "Προσκληθήκατε — εγγραφείτε στη λίστα αναμονής"
   },
-  "soonBadge": "Σύντομα"
+  "soonBadge": "Σύντομα",
+  "meta": {
+    "title": "World Monitor Pro — AI Analyst, Personal Intelligence Desk, MCP για Claude & GPT",
+    "description": "Το γεωπολιτικό στρώμα AI. Ρωτήστε το, εγγραφείτε σε αυτό, δημιουργήστε πάνω του. WM Analyst chat σε 30+ live services, ένα AI digest που παραδίδεται καθημερινά, δύο φορές την ημέρα ή εβδομαδιαία σε Slack, Discord, Telegram, Email ή webhook, ένα custom widget builder (HTML/CSS/JS + AI), και MCP connectors για Claude, GPT και custom LLMs.",
+    "ogTitle": "World Monitor Pro — Το Γεωπολιτικό Στρώμα AI",
+    "ogDescription": "Ρωτήστε το, εγγραφείτε σε αυτό, δημιουργήστε πάνω του. WM Analyst chat, ένα AI digest σύμφωνα με το πρόγραμμά σας (καθημερινά, δύο φορές την ημέρα ή εβδομαδιαία), custom widget builder και MCP για Claude/GPT — σε 30+ live services με ένα κλειδί."
+  },
+  "pricing": {
+    "suffixForever": "για πάντα",
+    "suffixTailored": "προσαρμοσμένη για εσάς",
+    "suffixPerMonth": "/μήνα",
+    "suffixPerYear": "/έτος",
+    "amountCustom": "Προσαρμοσμένη",
+    "opening": "Άνοιγμα…",
+    "headerTitle": "Επιλέξτε το Σχέδιό σας",
+    "headerSubtitle": "Από την παρακολούθηση σε πραγματικό χρόνο έως την πλήρη υποδομή πληροφοριών. Επιλέξτε το επίπεδο που ταιριάζει στην αποστολή σας.",
+    "billingMonthly": "Μηνιαία",
+    "billingAnnual": "Ετήσια",
+    "saveAnnual": "Εξοικονόμηση 17%",
+    "mostPopular": "Πιο Δημοφιλές",
+    "promoCodeNote": "Έχετε κωδικό προσφοράς; Εισάγετέ τον κατά την ολοκλήρωση της αγοράς.",
+    "tiers": {
+      "free": {
+        "description": "Ξεκινήστε με τα απαραίτητα",
+        "features": [
+          "Πίνακες ελέγχου inti",
+          "Ταινία ειδήσεων σε όλο τον κόσμο",
+          "Ειδοποιήσεις σεισμών και καιρού",
+          "Βασική προβολή χάρτη"
+        ],
+        "cta": "Ξεκινήστε"
+      },
+      "pro": {
+        "description": "Πλήρης πίνακας ελέγχου πληροφοριών",
+        "features": [
+          "Όλα από το Free",
+          "Ανάλυση μετοχών και δοκιμές AI",
+          "Ημερήσιες περιλήψεις αγοράς",
+          "Παρακολούθηση στρατιωτικών και γεωπολιτικών ζητημάτων",
+          "Κατασκευαστής προσαρμοσμένου widget",
+          "Σύνδεσμοι δεδομένων MCP",
+          "Προτεραιότητα ανανέωσης δεδομένων"
+        ]
+      },
+      "api": {
+        "description": "Προγραμματική πρόσβαση σε δεδομένα πληροφοριών",
+        "features": [
+          "Πρόσβαση REST API",
+          "Ροές δεδομένων σε πραγματικό χρόνο",
+          "1.000 αιτήματα/ημέρα",
+          "Ειδοποιήσεις Webhook",
+          "Προσαρμοσμένες εξαγωγές δεδομένων"
+        ]
+      },
+      "enterprise": {
+        "description": "Προσαρμοσμένες λύσεις για οργανισμούς",
+        "features": [
+          "Όλα από Pro + API",
+          "Απεριόριστα αιτήματα API",
+          "Αποκλειστική υποστήριξη",
+          "Προσαρμοσμένες ολοκληρώσεις",
+          "Εγγύηση SLA",
+          "Επιλογή on-premise"
+        ],
+        "cta": "Επικοινωνήστε με το τμήμα Πωλήσεων"
+      }
+    },
+    "cta": {
+      "checkoutDefault": "Ξεκινήστε",
+      "learnMore": "Μάθετε περισσότερα"
+    }
+  }
 }

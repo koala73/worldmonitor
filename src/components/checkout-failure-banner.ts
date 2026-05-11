@@ -15,6 +15,7 @@ import {
   loadCheckoutAttempt,
   startCheckout,
 } from '@/services/checkout';
+import { t } from '@/services/i18n';
 
 const BANNER_ID = 'checkout-failure-banner';
 
@@ -60,7 +61,7 @@ export function showCheckoutFailureBanner(rawStatus: string): void {
   // attempt cleared, private-browsing storage, cross-device flow).
   // User can still dismiss and use the /pro pricing page normally.
   const retryButton = hasRetryTarget
-    ? `<button id="cf-retry-btn" style="background:#fff;color:#dc2626;border:none;border-radius:4px;padding:4px 12px;font-weight:600;font-size:12px;cursor:pointer;white-space:nowrap;">Try again</button>`
+    ? `<button id="cf-retry-btn" style="background:#fff;color:#dc2626;border:none;border-radius:4px;padding:4px 12px;font-weight:600;font-size:12px;cursor:pointer;white-space:nowrap;">${t('components.checkoutFailureBanner.retry')}</button>`
     : '';
 
   banner.innerHTML = `
@@ -69,9 +70,9 @@ export function showCheckoutFailureBanner(rawStatus: string): void {
       <line x1="12" y1="8" x2="12" y2="12"/>
       <line x1="12" y1="16" x2="12.01" y2="16"/>
     </svg>
-    <span>Payment couldn't be completed. No charge was made.</span>
+    <span>${t('components.checkoutFailureBanner.message')}</span>
     ${retryButton}
-    <button id="cf-dismiss-btn" aria-label="Dismiss" style="background:transparent;color:#fff;border:none;cursor:pointer;font-size:18px;padding:0 4px;line-height:1;">&times;</button>
+    <button id="cf-dismiss-btn" aria-label="${t('components.checkoutFailureBanner.dismiss')}" style="background:transparent;color:#fff;border:none;cursor:pointer;font-size:18px;padding:0 4px;line-height:1;">&times;</button>
   `;
 
   document.body.appendChild(banner);
@@ -87,7 +88,7 @@ export function showCheckoutFailureBanner(rawStatus: string): void {
       if (retryBtn) {
         retryBtn.disabled = true;
         retryBtn.setAttribute('aria-busy', 'true');
-        retryBtn.textContent = 'Retrying…';
+        retryBtn.textContent = t('components.checkoutFailureBanner.retrying');
       }
       let succeeded = false;
       try {
@@ -107,7 +108,7 @@ export function showCheckoutFailureBanner(rawStatus: string): void {
       } else if (retryBtn) {
         retryBtn.disabled = false;
         retryBtn.removeAttribute('aria-busy');
-        retryBtn.textContent = 'Retry';
+        retryBtn.textContent = t('components.checkoutFailureBanner.retry');
       }
     });
   }

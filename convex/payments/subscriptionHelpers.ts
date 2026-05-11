@@ -259,10 +259,45 @@ export async function recomputeEntitlementFromAllSubs(
 // ---------------------------------------------------------------------------
 
 /**
+ * Fallback plan key when a webhook references a Dodo product ID we don't
+ * recognize (operator edited a product in the Dodo dashboard, didn't update
+ * our catalog).
+ *
+ * Picked as the HIGHEST-tier paid plan to maximise over-grant. Rationale:
+ * we don't know what the customer paid for, but they ARE paying (the
+ * webhook is from Dodo for an active subscription). The downside of
+ * over-grant — a Pro customer briefly gets Enterprise features until
+ * ops fixes the catalog — is bounded and cheap. The downside of under-
+ * grant — an Enterprise customer silently loses apiAccess + priority
+ * support mid-billing-cycle because we mapped them to pro_monthly
+ * (tier 1, apiAccess: false) — is a real-money regression on the exact
+ * customers this fallback is supposed to protect.
+ *
+ * The "fail open" branch in `resolvePlanKey` ALSO fires a loud
+ * console.error which Convex auto-Sentry forwards, so ops gets paged
+ * before the customer notices their entitlement is wrong. Combined with
+ * scripts/audit-dodo-catalog.cjs running on a schedule, the fallback
+ * window is short — usually hours, not days.
+ *
+ * Greptile P1 review on PR #3642 caught the original `pro_monthly`
+ * choice silently revoking API access from `api_*` / `enterprise` customers.
+ */
+const FALLBACK_PLAN_KEY = "enterprise";
+
+/**
  * Resolves a Dodo product ID to a plan key via the productPlans table.
- * Falls back to LEGACY_PRODUCT_ALIASES for old test-mode product IDs
- * that may still appear on existing subscriber webhooks.
- * Throws if the product ID is not mapped anywhere.
+ * Falls back to LEGACY_PRODUCT_ALIASES for old test-mode product IDs.
+ *
+ * Fail-open behaviour (added 2026-05-10 after sub_0NeQV8vJI0fEwUEDjp3cA
+ * incident): if the product ID is unknown to BOTH the table AND the
+ * legacy aliases, log a structured error and return FALLBACK_PLAN_KEY
+ * instead of throwing. The previous behaviour (throw → webhook 500 →
+ * Dodo retries forever) blocked entitlement updates for any customer
+ * whose subscription was migrated to a new Dodo product ID.
+ *
+ * The fallback is paired with `scripts/audit-dodo-catalog.cjs` which
+ * runs on a schedule and detects "Dodo has products our catalog doesn't"
+ * BEFORE a webhook arrives, so most cases are caught proactively.
  */
 async function resolvePlanKey(
   ctx: MutationCtx,
@@ -288,10 +323,22 @@ async function resolvePlanKey(
     return aliasedPlan;
   }
 
-  throw new Error(
-    `[subscriptionHelpers] No productPlans mapping for dodoProductId="${dodoProductId}". ` +
-      `Add this product to the catalog and run seedProductPlans.`,
+  // sentry-coverage-ok: structured console.error is forwarded by Convex
+  // auto-Sentry so on-call sees the unmapped product immediately. We do
+  // NOT throw — that would 500 the webhook and trigger Dodo's retry storm,
+  // which leaves the customer's entitlement wedged. The over-grant
+  // fallback (FALLBACK_PLAN_KEY = enterprise) is intentional — see the
+  // const's JSDoc for the rationale.
+  console.error(
+    `[subscriptionHelpers] Unknown Dodo product ID "${dodoProductId}" — ` +
+      `not in productPlans table and not in LEGACY_PRODUCT_ALIASES. ` +
+      `Falling back to "${FALLBACK_PLAN_KEY}" (over-grant) so the customer ` +
+      `keeps full paid entitlement until catalog is fixed. ` +
+      `ACTION REQUIRED: add this product to ` +
+      `convex/config/productCatalog.ts (LEGACY_PRODUCT_ALIASES or PRODUCT_CATALOG) ` +
+      `and re-run seedProductPlans. See scripts/audit-dodo-catalog.cjs.`,
   );
+  return FALLBACK_PLAN_KEY;
 }
 
 /**

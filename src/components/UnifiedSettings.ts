@@ -15,6 +15,7 @@ import { isEntitled, hasFeature, onEntitlementChange, getEntitlementState } from
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { getSubscription, openBillingPortal, prereserveBillingPortalTab } from '@/services/billing';
 import { createApiKey, listApiKeys, revokeApiKey, type ApiKeyInfo } from '@/services/api-keys';
+import { listMcpClients, revokeMcpClient, fetchMcpQuota, type McpClientInfo, type McpQuota } from '@/services/mcp-clients';
 
 function showToast(msg: string): void {
   document.querySelector('.toast-notification')?.remove();
@@ -41,7 +42,7 @@ export interface UnifiedSettingsConfig {
   onMapProviderChange?: (provider: MapProvider) => void;
 }
 
-type TabId = 'settings' | 'panels' | 'sources' | 'notifications' | 'api-keys';
+type TabId = 'settings' | 'panels' | 'sources' | 'notifications' | 'api-keys' | 'mcp-clients';
 
 export class UnifiedSettings {
   private overlay: HTMLElement;
@@ -62,6 +63,13 @@ export class UnifiedSettings {
   private apiKeysLoading = false;
   private apiKeysError = '';
   private newlyCreatedKey: string | null = null;
+  // ---- Connected MCP clients tab (plan 2026-05-10-001 U9) ----
+  private mcpClients: McpClientInfo[] = [];
+  private mcpClientsLoading = false;
+  private mcpClientsError = '';
+  private mcpQuota: McpQuota | null = null;
+  /** setInterval handle for quota auto-refresh; cleared on close()/destroy()/tab-switch. */
+  private mcpQuotaTimer: ReturnType<typeof setInterval> | null = null;
   private unsubscribeEntitlement: (() => void) | null = null;
   // Bounded "entitlement snapshot might still arrive" window. Starts false
   // on open() when currentState is null, flips true on first snapshot OR
@@ -209,6 +217,33 @@ export class UnifiedSettings {
         }
         return;
       }
+
+      const mcpRevokeBtn = target.closest<HTMLElement>('.mcp-clients-revoke-btn');
+      if (mcpRevokeBtn?.dataset.tokenId) {
+        void this.handleRevokeMcpClient(mcpRevokeBtn.dataset.tokenId);
+        return;
+      }
+
+      const mcpCopyUrlBtn = target.closest<HTMLElement>('.mcp-clients-copy-url-btn');
+      if (mcpCopyUrlBtn?.dataset.copyValue) {
+        const value = mcpCopyUrlBtn.dataset.copyValue;
+        // navigator.clipboard is async + can reject (insecure context, perms);
+        // fall back gracefully so the button never silently no-ops.
+        const showCopied = () => {
+          mcpCopyUrlBtn.textContent = 'Copied!';
+          setTimeout(() => { mcpCopyUrlBtn.textContent = 'Copy URL'; }, 1500);
+        };
+        if (navigator.clipboard?.writeText) {
+          void navigator.clipboard.writeText(value).then(showCopied).catch(() => {
+            mcpCopyUrlBtn.textContent = 'Copy failed';
+            setTimeout(() => { mcpCopyUrlBtn.textContent = 'Copy URL'; }, 1500);
+          });
+        } else {
+          mcpCopyUrlBtn.textContent = 'Copy unavailable';
+          setTimeout(() => { mcpCopyUrlBtn.textContent = 'Copy URL'; }, 1500);
+        }
+        return;
+      }
     });
 
     this.overlay.addEventListener('input', (e) => {
@@ -303,6 +338,7 @@ export class UnifiedSettings {
       clearTimeout(this.entitlementReadyTimer);
       this.entitlementReadyTimer = null;
     }
+    this.stopMcpQuotaPolling();
     this.resetPanelDraft();
     localStorage.removeItem('wm-settings-open');
     document.removeEventListener('keydown', this.escapeHandler);
@@ -341,6 +377,7 @@ export class UnifiedSettings {
       clearTimeout(this.entitlementReadyTimer);
       this.entitlementReadyTimer = null;
     }
+    this.stopMcpQuotaPolling();
     document.removeEventListener('keydown', this.escapeHandler);
     this.overlay.remove();
   }
@@ -376,6 +413,7 @@ export class UnifiedSettings {
           <button class="${tabClass('sources')}" data-tab="sources" role="tab" aria-selected="${this.activeTab === 'sources'}" id="us-tab-sources" aria-controls="us-tab-panel-sources">${t('header.tabSources')}</button>
           ${showNotificationsTab ? `<button class="${tabClass('notifications')}" data-tab="notifications" role="tab" aria-selected="${this.activeTab === 'notifications'}" id="us-tab-notifications" aria-controls="us-tab-panel-notifications">${t('header.tabNotifications')}</button>` : ''}
           <button class="${tabClass('api-keys')}" data-tab="api-keys" role="tab" aria-selected="${this.activeTab === 'api-keys'}" id="us-tab-api-keys" aria-controls="us-tab-panel-api-keys">API Keys <span class="panel-pro-badge">PRO</span></button>
+          ${hasFeature('mcpAccess') ? `<button class="${tabClass('mcp-clients')}" data-tab="mcp-clients" role="tab" aria-selected="${this.activeTab === 'mcp-clients'}" id="us-tab-mcp-clients" aria-controls="us-tab-panel-mcp-clients">MCP Clients <span class="panel-pro-badge">PRO</span></button>` : ''}
         </div>
         <div class="unified-settings-tab-panel${this.activeTab === 'settings' ? ' active' : ''}" data-panel-id="settings" id="us-tab-panel-settings" role="tabpanel" aria-labelledby="us-tab-settings">
           ${prefs.html}
@@ -417,6 +455,11 @@ export class UnifiedSettings {
         <div class="unified-settings-tab-panel${this.activeTab === 'api-keys' ? ' active' : ''}" data-panel-id="api-keys" id="us-tab-panel-api-keys" role="tabpanel" aria-labelledby="us-tab-api-keys">
           ${this.renderApiKeysContent()}
         </div>
+        ${hasFeature('mcpAccess') ? `
+        <div class="unified-settings-tab-panel${this.activeTab === 'mcp-clients' ? ' active' : ''}" data-panel-id="mcp-clients" id="us-tab-panel-mcp-clients" role="tabpanel" aria-labelledby="us-tab-mcp-clients">
+          ${this.renderMcpClientsContent()}
+        </div>
+        ` : ''}
       </div>
     `;
 
@@ -449,6 +492,10 @@ export class UnifiedSettings {
     if (this.activeTab === 'api-keys' && getAuthState().user && hasFeature('apiAccess')) {
       void this.loadApiKeys();
     }
+    if (this.activeTab === 'mcp-clients' && getAuthState().user && hasFeature('mcpAccess')) {
+      void this.loadMcpClients();
+      this.startMcpQuotaPolling();
+    }
   }
 
   private switchTab(tab: TabId): void {
@@ -466,6 +513,15 @@ export class UnifiedSettings {
 
     if (tab === 'api-keys' && getAuthState().user && hasFeature('apiAccess')) {
       void this.loadApiKeys();
+    }
+
+    if (tab === 'mcp-clients' && getAuthState().user && hasFeature('mcpAccess')) {
+      void this.loadMcpClients();
+      this.startMcpQuotaPolling();
+    } else {
+      // Stop polling when switching away — no need to keep the timer running
+      // for a hidden tab.
+      this.stopMcpQuotaPolling();
     }
 
     if (tab === 'notifications') {
@@ -1058,5 +1114,223 @@ export class UnifiedSettings {
 
     container.innerHTML = active.map(renderKey).join('')
       + (revoked.length > 0 ? `<div class="api-keys-revoked-section"><div class="api-keys-revoked-label">Revoked</div>${revoked.map(renderKey).join('')}</div>` : '');
+  }
+
+  // ---------------------------------------------------------------------------
+  // Connected MCP clients tab (plan 2026-05-10-001 U9)
+  //
+  // Distinct from the API Keys tab above (gated on `apiAccess`). This tab is
+  // gated on `mcpAccess` so Pro users (where `apiAccess === false`) see ONLY
+  // this tab. API Starter+ users (`apiAccess && mcpAccess`) see BOTH tabs;
+  // they manage independent surfaces (manual API keys vs auto-issued OAuth
+  // tokens for Claude Desktop / Cursor / etc).
+  // ---------------------------------------------------------------------------
+
+  private renderMcpClientsContent(): string {
+    const authState = getAuthState();
+
+    if (!authState.user) {
+      const lockIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>`;
+      return `
+        <div class="panel-locked-state">
+          <div class="panel-locked-icon">${lockIcon}</div>
+          <div class="panel-locked-desc">Sign in to manage connected MCP clients</div>
+        </div>`;
+    }
+
+    if (!hasFeature('mcpAccess')) {
+      // Defensive — if the user lost mcpAccess (subscription lapsed) but the
+      // tab was still rendered, show an upgrade CTA. Normal flow hides the
+      // tab entirely.
+      const upgradeIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="16 12 12 8 8 12"/><line x1="12" y1="16" x2="12" y2="8"/></svg>`;
+      return `
+        <div class="panel-locked-state">
+          <div class="panel-locked-icon">${upgradeIcon}</div>
+          <div class="panel-locked-desc">Connect Claude Desktop and other AI clients to your WorldMonitor account.</div>
+        </div>`;
+    }
+
+    return `
+      <div class="mcp-clients-section">
+        <div class="mcp-clients-header">
+          <p class="mcp-clients-desc">Connect Claude Desktop, Cursor, and other AI clients to your WorldMonitor account. Each client gets its own credential — revoke any time.</p>
+        </div>
+        <div class="mcp-clients-quota" id="usMcpQuota" aria-live="polite">${this.renderMcpQuotaText()}</div>
+        <div class="mcp-clients-error" id="usMcpClientsError" style="display:none;"></div>
+        <div class="mcp-clients-list" id="usMcpClientsList">
+          <div class="mcp-clients-loading">Loading...</div>
+        </div>
+      </div>`;
+  }
+
+  private renderMcpQuotaText(): string {
+    const q = this.mcpQuota;
+    if (!q) {
+      return `<span class="mcp-clients-quota-loading">Loading quota...</span>`;
+    }
+    const reset = this.formatQuotaReset(q.resetsAt);
+    return `<span class="mcp-clients-quota-label">MCP daily quota:</span>
+      <strong>${q.used} / ${q.limit}</strong>
+      <span class="mcp-clients-quota-reset">used today, resets ${escapeHtml(reset)}</span>`;
+  }
+
+  private formatQuotaReset(iso: string): string {
+    const ts = Date.parse(iso);
+    if (!Number.isFinite(ts)) return 'at next UTC midnight';
+    const ms = ts - Date.now();
+    if (ms <= 0) return 'momentarily';
+    const totalSec = Math.floor(ms / 1000);
+    const hrs = Math.floor(totalSec / 3600);
+    const mins = Math.floor((totalSec % 3600) / 60);
+    if (hrs > 0) return `in ${hrs}h ${mins}m`;
+    if (mins > 0) return `in ${mins}m`;
+    return 'in under a minute';
+  }
+
+  private async loadMcpClients(): Promise<void> {
+    this.mcpClientsLoading = true;
+    this.mcpClientsError = '';
+    this.renderMcpClientsList();
+
+    try {
+      this.mcpClients = await listMcpClients();
+    } catch (err) {
+      this.mcpClientsError = err instanceof Error ? err.message : 'Failed to load MCP clients';
+    } finally {
+      this.mcpClientsLoading = false;
+      this.renderMcpClientsList();
+    }
+
+    // Kick a fresh quota fetch alongside the list so the user sees current
+    // numbers immediately on tab open (the polling timer takes 30s otherwise).
+    void this.refreshMcpQuota();
+  }
+
+  private async refreshMcpQuota(): Promise<void> {
+    try {
+      this.mcpQuota = await fetchMcpQuota();
+    } catch {
+      // fetchMcpQuota already returns sane fallbacks, but defensive catch.
+      this.mcpQuota = null;
+    }
+    this.renderMcpQuotaInPlace();
+  }
+
+  private renderMcpQuotaInPlace(): void {
+    const el = this.overlay.querySelector<HTMLElement>('#usMcpQuota');
+    if (el) el.innerHTML = this.renderMcpQuotaText();
+  }
+
+  /**
+   * Auto-refresh the quota counter every 30s while the tab is visible.
+   * Cleared on tab-switch, close(), and destroy() — see stopMcpQuotaPolling.
+   */
+  private startMcpQuotaPolling(): void {
+    if (this.mcpQuotaTimer) return; // idempotent
+    this.mcpQuotaTimer = setInterval(() => {
+      // Skip silently if the tab is no longer visible — can happen if the
+      // overlay was hidden via display:none rather than full destroy().
+      if (this.activeTab !== 'mcp-clients') return;
+      void this.refreshMcpQuota();
+    }, 30_000);
+  }
+
+  private stopMcpQuotaPolling(): void {
+    if (this.mcpQuotaTimer) {
+      clearInterval(this.mcpQuotaTimer);
+      this.mcpQuotaTimer = null;
+    }
+  }
+
+  private async handleRevokeMcpClient(tokenId: string): Promise<void> {
+    const client = this.mcpClients.find(c => c.id === tokenId);
+    const label = client?.name?.trim() ? `"${client.name}"` : 'this client';
+    if (!confirm(`Revoke ${label}? The connected AI client will need to re-authorize before its next request.`)) return;
+
+    try {
+      await revokeMcpClient(tokenId);
+      // Refresh both list (Convex query result cached locally) and quota
+      // (revoke does not change the daily counter, but the user might have
+      // crossed the boundary while the modal was open).
+      await this.loadMcpClients();
+    } catch (err) {
+      this.mcpClientsError = err instanceof Error ? err.message : 'Failed to revoke MCP client';
+      this.renderMcpClientsError();
+    }
+  }
+
+  private renderMcpClientsError(): void {
+    const el = this.overlay.querySelector<HTMLElement>('#usMcpClientsError');
+    if (!el) return;
+    if (this.mcpClientsError) {
+      el.style.display = 'block';
+      el.textContent = this.mcpClientsError;
+    } else {
+      el.style.display = 'none';
+      el.textContent = '';
+    }
+  }
+
+  private renderMcpClientsList(): void {
+    const container = this.overlay.querySelector('#usMcpClientsList');
+    if (!container) return;
+
+    if (this.mcpClientsLoading && this.mcpClients.length === 0) {
+      container.innerHTML = '<div class="mcp-clients-loading">Loading...</div>';
+      return;
+    }
+
+    this.renderMcpClientsError();
+
+    const active = this.mcpClients.filter(c => !c.revokedAt);
+    const revoked = this.mcpClients.filter(c => c.revokedAt);
+
+    if (active.length === 0 && revoked.length === 0) {
+      const mcpUrl = 'https://api.worldmonitor.app/mcp';
+      container.innerHTML = `
+        <div class="mcp-clients-empty">
+          <div class="mcp-clients-empty-title">No connected MCP clients yet</div>
+          <div class="mcp-clients-empty-desc">To connect Claude Desktop or another AI client, paste this URL into the client's MCP server settings and sign in with your WorldMonitor Pro account:</div>
+          <div class="mcp-clients-empty-url">
+            <code>${escapeHtml(mcpUrl)}</code>
+            <button class="btn btn-secondary mcp-clients-copy-url-btn" data-copy-value="${escapeHtml(mcpUrl)}">Copy URL</button>
+          </div>
+        </div>`;
+      return;
+    }
+
+    const formatDate = (ts: number) => new Date(ts).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
+    const formatRelative = (ts: number): string => {
+      const ms = Date.now() - ts;
+      const sec = Math.floor(ms / 1000);
+      if (sec < 60) return 'just now';
+      const min = Math.floor(sec / 60);
+      if (min < 60) return `${min}m ago`;
+      const hrs = Math.floor(min / 60);
+      if (hrs < 24) return `${hrs}h ago`;
+      return formatDate(ts);
+    };
+
+    const renderClient = (c: McpClientInfo) => {
+      const isRevoked = !!c.revokedAt;
+      const name = c.name?.trim() || 'Connected MCP client';
+      const lastUsed = c.lastUsedAt ? formatRelative(c.lastUsedAt) : 'never';
+      return `
+        <div class="mcp-clients-item${isRevoked ? ' revoked' : ''}">
+          <div class="mcp-clients-item-main">
+            <span class="mcp-clients-item-name">${escapeHtml(name)}</span>
+          </div>
+          <div class="mcp-clients-item-meta">
+            <span>Connected ${formatDate(c.createdAt)}</span>
+            <span>Last used ${escapeHtml(lastUsed)}</span>
+            ${isRevoked ? `<span class="mcp-clients-item-revoked-badge">Revoked ${formatDate(c.revokedAt!)}</span>` : ''}
+          </div>
+          ${!isRevoked ? `<button class="btn btn-ghost mcp-clients-revoke-btn" data-token-id="${escapeHtml(c.id)}">Revoke</button>` : ''}
+        </div>
+      `;
+    };
+
+    container.innerHTML = active.map(renderClient).join('')
+      + (revoked.length > 0 ? `<div class="mcp-clients-revoked-section"><div class="mcp-clients-revoked-label">Revoked</div>${revoked.map(renderClient).join('')}</div>` : '');
   }
 }

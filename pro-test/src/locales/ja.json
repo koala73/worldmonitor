@@ -6,7 +6,8 @@
     "enterprise": "Enterprise",
     "reserveAccess": "早期アクセスを予約",
     "signIn": "サインイン",
-    "upgradeToPro": "Pro にアップグレード"
+    "upgradeToPro": "Pro にアップグレード",
+    "goToDashboard": "ダッシュボードに移動"
   },
   "hero": {
     "noiseWord": "ノイズ",
@@ -18,7 +19,8 @@
     "emailPlaceholder": "メールアドレスを入力",
     "emailAriaLabel": "ウェイトリスト用メールアドレス",
     "choosePlan": "プランを選ぶ",
-    "signIn": "サインイン"
+    "signIn": "サインイン",
+    "goToDashboard": "ダッシュボードに移動"
   },
   "wired": {
     "asFeaturedIn": "掲載媒体"
@@ -50,7 +52,8 @@
     "entF9": "SOC ウォールとトレーディングフロア向け Android TV アプリ",
     "entF10": "クラウド、オンプレミス、エアギャップ配備",
     "entF11": "専任のオンボーディングとサポート",
-    "entCta": "営業に相談する"
+    "entCta": "営業に相談する",
+    "freeF2": "500+ フィード、65+ ソース、50+ マップレイヤー"
   },
   "whyUpgrade": {
     "title": "アップグレードする理由",
@@ -83,7 +86,7 @@
     "openFullScreen": "全画面で開く",
     "tryLiveDashboard": "ライブダッシュボードを試す",
     "iframeTitle": "World Monitor — ライブ・インテリジェンス・ダッシュボード",
-    "description": "3D WebGL 地球儀 · 45 以上のインタラクティブな地図レイヤー · 市場、マクロ、地政学、エネルギー、インフラのリアルタイムデータ"
+    "description": "3D WebGL グローブ · 50+ インタラクティブマップレイヤー · リアルタイム市場、マクロ、地政学、エネルギー、インフラデータ"
   },
   "socialProof": {
     "uniqueVisitors": "ユニーク訪問者",
@@ -139,31 +142,8 @@
   },
   "tiers": {
     "free": "無料",
-    "freeTagline": "すべてを見る",
-    "freeDesc": "オープンソースのダッシュボード",
-    "freeF1": "更新 5-15 分",
-    "freeF2": "500 以上のフィード、45 の地図レイヤー",
-    "freeF3": "AI は BYOK",
-    "freeF4": "永久無料",
-    "openDashboard": "ダッシュボードを開く",
     "pro": "Pro",
-    "proTagline": "市場、マクロ、地政学",
-    "proDesc": "あなたの AI アナリスト",
-    "proF1": "エクイティリサーチと株式分析",
-    "proF2": "+ デイリーダイジェスト、経済アナリティクス",
-    "proF3": "AI 込み、1 本の鍵",
-    "proF4": "優先データ更新(近日公開)",
-    "priceMonthly": "$39.99 / 月",
-    "priceAnnual": "$399.99 / 年",
-    "annualSavingsNote": "2 か月無料",
-    "enterprise": "Enterprise",
-    "enterpriseTagline": "誰よりも先に動く",
-    "enterpriseDesc": "インテリジェンスプラットフォーム",
-    "entF1": "ライブエッジの衛星画像",
-    "entF2": "+ AI エージェント、50K+ インフラ、SAR",
-    "entF3": "カスタム AI、投資家ペルソナ",
-    "entF4": "お問い合わせ",
-    "contactSales": "営業へ連絡"
+    "enterprise": "Enterprise"
   },
   "proShowcase": {
     "proTier": "PRO ティア",
@@ -281,7 +261,6 @@
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + webhook",
     "fMcpBulk": "+ MCP + 一括",
-    "f45": "45",
     "fTensOfThousands": "+ 数万",
     "fLiveTracking": "ライブトラッキング",
     "fPassAlerts": "通過アラート + 分析",
@@ -292,7 +271,8 @@
     "fStandard": "標準",
     "fKeyAuth": "キー認証",
     "fSsoMfa": "SSO/MFA/RBAC/監査",
-    "noteBelow": "コアプラットフォームは無料のまま。有料プランはエクイティリサーチ、マクロアナリティクス、AI ブリーフ、組織利用をアンロック。"
+    "noteBelow": "コアプラットフォームは無料のまま。有料プランはエクイティリサーチ、マクロアナリティクス、AI ブリーフ、組織利用をアンロック。",
+    "f50plus": "50+"
   },
   "faq": {
     "title": "よくある質問",
@@ -354,5 +334,76 @@
     "youreIn": "参加完了!",
     "invitedBanner": "招待されました — ウェイトリストに参加"
   },
-  "soonBadge": "近日公開"
+  "soonBadge": "近日公開",
+  "meta": {
+    "title": "World Monitor Pro — AI Analyst、パーソナルインテリジェンスデスク、Claude & GPT用MCP",
+    "description": "地政学的AIレイヤー。質問して、購読して、構築して。WM Analyst チャット（30以上のライブサービス対応）、AI ダイジェスト（毎日、1日2回、または週1回の配信）を Slack、Discord、Telegram、Email、またはウェブフックで受信、カスタムウィジェットビルダー（HTML/CSS/JS + AI）、および Claude、GPT、カスタム LLM 用の MCP コネクタ。",
+    "ogTitle": "World Monitor Pro — 地政学的AIレイヤー",
+    "ogDescription": "質問して、購読して、構築して。WM Analyst チャット、AI ダイジェスト（毎日、1日2回、または週1回のスケジュール配信）、カスタムウィジェットビルダー、および Claude/GPT 用 MCP — 1つのキーで30以上のライブサービスに対応。"
+  },
+  "pricing": {
+    "suffixForever": "永続",
+    "suffixTailored": "あなたに合わせてカスタマイズ",
+    "suffixPerMonth": "/月",
+    "suffixPerYear": "/年",
+    "amountCustom": "カスタム",
+    "opening": "開いています…",
+    "headerTitle": "プランを選択",
+    "headerSubtitle": "リアルタイム監視から完全なインテリジェンスインフラストラクチャまで。あなたのミッションに合ったティアを選びましょう。",
+    "billingMonthly": "月額",
+    "billingAnnual": "年額",
+    "saveAnnual": "17%節約",
+    "mostPopular": "最も人気",
+    "promoCodeNote": "プロモコードをお持ちですか？チェックアウト時に入力してください。",
+    "tiers": {
+      "free": {
+        "description": "基本機能で始めましょう",
+        "features": [
+          "コアダッシュボードパネル",
+          "グローバルニュースフィード",
+          "地震・天気アラート",
+          "基本マップビュー"
+        ],
+        "cta": "始める"
+      },
+      "pro": {
+        "description": "フルインテリジェンスダッシュボード",
+        "features": [
+          "Free内のすべて",
+          "AI株式分析&バックテスト",
+          "日次マーケットブリーフ",
+          "軍事・地政学追跡",
+          "カスタムウィジェットビルダー",
+          "MCPデータコネクタ",
+          "優先データ更新"
+        ]
+      },
+      "api": {
+        "description": "インテリジェンスデータへのプログラマティックアクセス",
+        "features": [
+          "REST API アクセス",
+          "リアルタイムデータストリーム",
+          "1日1,000リクエスト",
+          "Webhookノーティフィケーション",
+          "カスタムデータエクスポート"
+        ]
+      },
+      "enterprise": {
+        "description": "組織向けカスタムソリューション",
+        "features": [
+          "Pro + API内のすべて",
+          "無制限APIリクエスト",
+          "専任サポート",
+          "カスタムインテグレーション",
+          "SLA保証",
+          "オンプレミスオプション"
+        ],
+        "cta": "営業に連絡"
+      }
+    },
+    "cta": {
+      "checkoutDefault": "スタートする",
+      "learnMore": "詳しく知る"
+    }
+  }
 }

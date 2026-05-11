@@ -204,7 +204,18 @@
     "panelCatCentralBanks": "Bănci Centrale și Eco",
     "panelCatDeals": "Oferte și instituțional",
     "panelCatGulfMena": "Golf și MENA",
-    "panelCatTradePolicy": "Politica comercială"
+    "panelCatTradePolicy": "Politica comercială",
+    "cached": "CACHE",
+    "unavailable": "INDISPONIBIL",
+    "commodity": "MATERIE PRIMĂ",
+    "energy": "ENERGIE",
+    "tabNotifications": "Notificări",
+    "panelCatCorrelation": "Corelație",
+    "panelCatCommodityPrices": "Prețuri și piețe",
+    "panelCatMining": "Minerit și lanț de aprovizionare",
+    "panelCatCommodityEcon": "Economie și comerț",
+    "panelCatHappyNews": "Știri bune",
+    "panelCatHappyPlanet": "Planetă și donații"
   },
   "panels": {
     "liveNews": "Știri Live",
@@ -282,7 +293,39 @@
     "gulfIndices": "Indicii Golfului",
     "gulfCurrencies": "Monede din Golf",
     "gulfOil": "Petrolul din Golf",
-    "bigmac": "Real Big Mac Index"
+    "bigmac": "Real Big Mac Index",
+    "marketImplications": "Implicații pe piață AI",
+    "energyComplex": "Complex energetic",
+    "oilInventories": "Stocuri de petrol",
+    "energyCrisis": "Tracker criză energetică",
+    "goldIntelligence": "Informații despre aur",
+    "wsbTickerScanner": "Scanner ticker WSB",
+    "internetDisruptions": "Întreruperi de internet",
+    "internetDisruptionsTabs": {
+      "outages": "Pene",
+      "ddos": "DDoS",
+      "anomalies": "Anomalii"
+    },
+    "liveWebcams": "Camere web live",
+    "windyWebcams": "Cameră web live Windy",
+    "groceryBasket": "Index cărucior",
+    "groceryItem": "Produs",
+    "bigmacDesc": "Prețurile Big Mac în țările din Orientul Mijlociu (Big Mac Index)",
+    "bigmacWow": "WoW",
+    "bigmacCountry": "Țară",
+    "faoFoodPriceIndex": "Indice FAO al prețurilor alimentelor",
+    "fuelPrices": "Prețuri combustibil",
+    "fuelPricesDesc": "Prețuri cu amănuntul pentru benzină și motorină în peste 30 de țări din întreaga lume",
+    "fuelPricesCountry": "Țară",
+    "fuelPricesGasoline": "Benzină",
+    "fuelPricesDiesel": "Motorină",
+    "fuelPricesSource": "Sursă",
+    "groceryBasketDesc": "Comparație de prețuri cărucior în 24 de țări din întreaga lume",
+    "airlineIntel": "✈️ Informații privind liniile aeriene",
+    "consumerPrices": "Prețuri pentru consumatori",
+    "fearGreed": "Frică și lacómie",
+    "marketBreadth": "Amploarea pieței",
+    "climateNews": "Știri despre climă"
   },
   "commands": {
     "prefixes": {
@@ -320,7 +363,9 @@
       "briefExample": "rezumat China",
       "layersExample": "straturi militare",
       "timeExample": "24 ore",
-      "settingsExample": "mod întunecat"
+      "settingsExample": "mod întunecat",
+      "flight": "Căutați zboruri live după indicativ (PRO)",
+      "flightExample": "UAE528"
     },
     "keywords": {
       "military": "militar",
@@ -416,8 +461,15 @@
         "startup": "Startup",
         "techevent": "Eveniment tehnic",
         "techhq": "Sediu central tech",
-        "accelerator": "Accelerator"
-      }
+        "accelerator": "Accelerator",
+        "flight": "Zbor"
+      },
+      "flightOnGround": "Pe sol",
+      "flightAirborne": "FL{{fl}} · {{kts}} kts",
+      "flightMilitary": "Militar · {{type}} · FL{{fl}}",
+      "flightMilitaryOnGround": "Militar · {{type}} · pe sol",
+      "flightSearchHint": "Apăsați Enter sau faceți clic pentru a căuta poziția live",
+      "flightNotFound": "Nu s-a găsit poziție live pentru {{callsign}}"
     },
     "signal": {
       "title": "DESCOPERIRE INFORMAȚII",
@@ -525,7 +577,8 @@
         "NASA_FIRMS_API_KEY": "Informații de incendiu pentru sistemul de management al resurselor.",
         "OLLAMA_API_URL": "de ex. http://127.0.0.1:11434 (Ollama) sau http://127.0.0.1:1234/v1 (LM Studio) — punct final compatibil cu OpenAI.",
         "OLLAMA_MODEL": "de ex. llama3.1:8b — etichetă model de utilizat pentru rezumat."
-      }
+      },
+      "reserveEarlyAccess": "Rezervați Accesul Timpuriu"
     },
     "settingsWindow": {
       "validating": "Se validează cheile API...",
@@ -573,7 +626,13 @@
         "path": "Calea",
         "status": "Stare",
         "duration": "Durata"
-      }
+      },
+      "shellTitle": "Setări World Monitor",
+      "shellSearchPlaceholder": "Căutați setări...",
+      "shellCancel": "Anulare",
+      "shellSaveClose": "Salvare & Închidere",
+      "freePanelLimit": "Plan gratuit: max {{max}} panouri. Upgrade la PRO pentru nelimitat.",
+      "freeSourceLimit": "Plan gratuit: max {{max}} surse. Upgrade la PRO pentru nelimitat."
     },
     "countryIntel": {
       "identifying": "Se identifică țara...",
@@ -762,7 +821,17 @@
       "change": "Variație",
       "cut": "reducere",
       "hike": "majorare",
-      "hold": "menținere"
+      "hold": "menținere",
+      "pressure": {
+        "label": "Presiune macro",
+        "stress": "Stres",
+        "watch": "Monitorizare",
+        "steady": "Stabil",
+        "stressDetail": "Volatilitatea și presiunea curbei sunt ridicate.",
+        "watchDetail": "Condițiile pe piață necesită monitorizare mai atentă.",
+        "steadyDetail": "Condițiile macro sunt stabile pentru acum."
+      },
+      "infoTooltip": "<strong>Stres Macro</strong> Indicatori macro, cheltuieli guvernamentale și date ale băncilor centrale:<ul><li><strong>Indicatori</strong>: VIX, rate, curba randamentelor, piață muncii, inflație</li><li><strong>Gov</strong>: Contracte guvernamentale US recente</li><li><strong>Bănci Centrale</strong>: Date despre ratele politicii BIS și rata de schimb</li></ul>"
     },
     "supplyChain": {
       "chokepoints": "Puncte de strangulare",
@@ -786,7 +855,21 @@
       "mineral": "Mineral",
       "topProducers": "Producători de top",
       "risk": "Risc",
-      "sources": "FRED / NGA / USGS"
+      "sources": "FRED / NGA / USGS",
+      "transit24h": "24h",
+      "tankers": "tancuri",
+      "cargo": "încărcătură",
+      "wowChange": "schimbare săpt./săpt.",
+      "vesselTransits": "Tranzite nave (180z)",
+      "riskLevel": "Nivel de risc",
+      "flowUnavailable": "Date de flux indisponibile",
+      "containerRates": "Rate containere",
+      "bulkShipping": "Transport în vrac",
+      "economicIndicators": "Indicatori economici",
+      "loadingHistory": "Se încarcă istoricul tranzitului…",
+      "historyUnavailable": "Istoricul tranzitului indisponibil",
+      "transitDataUnavailable": "Date tranzit indisponibile (parțial din amonte)",
+      "infoTooltip": "<strong>Supply Chain Monitor</strong> Urmărirea logistică și a resurselor globale:<ul><li><strong>Puncte critice</strong>: Starea tranzitului maritim, scoruri de perturbație și numărătoare nave</li><li><strong>Transport maritim</strong>: Baltic Dry Index și tendințe rate fret</li><li><strong>Minerale</strong>: Risc concentrare minerale critice (HHI) și producători principali</li></ul>Faceți clic pe o carte cu punct critic pentru a extinde graficul istoricului tranzitului."
     },
     "tradePolicy": {
       "restrictions": "Restricții",
@@ -806,7 +889,39 @@
       "yoyChange": "Variație anuală",
       "highTariff": "Mare",
       "moderateTariff": "Moderat",
-      "lowTariff": "Scăzut"
+      "lowTariff": "Scăzut",
+      "overview": "Prezentare generală",
+      "noOverviewData": "Nu sunt disponibile date privind tarifele generale",
+      "mfnAppliedRate": "Tarif aplicat NMF",
+      "baselineMfnTariff": "Tarif de bază NMF",
+      "effectiveTariffRateLabel": "Tarif efectiv",
+      "gapLabel": "Diferență",
+      "gapVsMfnLabel": "Diferență vs NMF",
+      "noEffectiveCoverageForCountry": "Nicio acoperire cu tarif efectiv pentru această țară",
+      "effectiveMinusBaseline": "Tarif efectiv minus linie de bază OMC NMF",
+      "wtoBaselineMeta": "Tarif aplicat OMC NMF | {{year}}",
+      "overviewNoteNoEffective": "Aceste cifre sunt rate de bază OMC NMF, nu povara tariferă actuală din măsuri tarifare unilaterale.",
+      "usBaselineLabel": "Linie de bază OMC NMF SUA",
+      "overviewNoteTail": "Aceste cărți arată angajamente de bază OMC, nu povara tariferă efectivă în direct.",
+      "revenue": "Venituri SUA",
+      "noRevenueData": "Nu sunt disponibile date privind veniturile din dări vamale",
+      "treasuryUnavailable": "Datele Trezoreriei sunt temporar indisponibile",
+      "fytdLabel": "AN FISCAL{{year}} YTD",
+      "vsPriorFy": "vs AN FISCAL{{year}}",
+      "sourceWto": "OMC",
+      "sourceTreasury": "Trezoreria SUA",
+      "colDate": "Dată",
+      "colMonthly": "Lunar",
+      "colFytd": "AN FISCAL YTD",
+      "strategicFlows": "Fluxuri strategice",
+      "noComtradeData": "Nu sunt disponibile date privind fluxurile strategice",
+      "comtradeUnavailable": "Datele ONU Comtrade sunt temporar indisponibile",
+      "sourceComtrade": "ONU Comtrade",
+      "anomalyBadge": "Anomalie",
+      "colReporter": "Țară",
+      "colCommodity": "Materie primă",
+      "colTradeValue": "Valoare comercială",
+      "infoTooltip": "<strong>Trade Policy</strong> Monitorizarea liniei de bază OMC și a impactului tarifelor:<ul><li><strong>Prezentare generală</strong>: Rate de bază OMC NMF cu context tarif efectiv SUA când disponibil</li><li><strong>Tarife</strong>: Tendințe tarife OMC NMF versus estimare tarif efectiv SUA</li><li><strong>Fluxuri comerciale</strong>: Volume export/import cu schimbări an peste an</li><li><strong>Bariere</strong>: Bariere tehniceîn comerț (notificări TBT/SPS)</li><li><strong>Venituri</strong>: Venituri lunare din dările vamale SUA (date MTS Trezorerie SUA)</li></ul>"
     },
     "gdelt": {
       "empty": "Nu există articole recente pentru acest subiect"
@@ -947,7 +1062,10 @@
         "east-med-theater": "Mediterana de Est",
         "israel-gaza-theater": "Israel/Gaza",
         "yemen-redsea-theater": "Yemen/Marea Roșie"
-      }
+      },
+      "emojiKeyLabel": "Cheia Emoji",
+      "emojiKeyAir": "Active Aeriene",
+      "emojiKeyNaval": "Active Navale"
     },
     "countryBrief": {
       "shareLink": "Distribuie linkul",
@@ -1002,7 +1120,15 @@
         "ciiNormal": "Normal (31–50)",
         "ciiElevated": "Ridicat (51–65)",
         "ciiHigh": "Înalt (66–80)",
-        "ciiCritical": "Critic (81–100)"
+        "ciiCritical": "Critic (81–100)",
+        "miningSite": "Sit de Extracție",
+        "commodityPort": "Port de Mărfuri",
+        "pipeline": "Conductă",
+        "processingPlant": "Fabrică de Prelucrare",
+        "conflict": "Zonă de Conflict",
+        "diseaseAlert": "Alertă Boală",
+        "diseaseWarning": "Avertisment Boală",
+        "diseaseWatch": "Supraveghere Boală"
       },
       "layerGuide": "Ghid de straturi",
       "layerWarningTitle": "Notificare de performanță",
@@ -1067,7 +1193,9 @@
         "kindness": "Acte de bunătate",
         "happiness": "Fericirea mondială",
         "speciesRecovery": "Recuperarea speciilor",
-        "renewableInstallations": "Energie curată"
+        "renewableInstallations": "Energie curată",
+        "radiationSpike": "Vârf de radiații",
+        "radiationElevated": "Radiații ridicate"
       },
       "tooltip": {
         "earthquake": "Cutremur",
@@ -1232,7 +1360,42 @@
       "headlineMemoryLabel": "Memorie titlu",
       "headlineMemoryDesc": "Amintiți-vă titlurile văzute pentru a evidenția povești noi",
       "streamAlwaysOnLabel": "Menține fluxurile live active",
-      "streamAlwaysOnDesc": "Împiedică oprirea automată a camerelor și știrilor live când nu interacționați. Recomandat pentru monitorizare continuă. Dezactivați (Eco) pentru a economisi CPU/lățime de bandă."
+      "streamAlwaysOnDesc": "Împiedică oprirea automată a camerelor și știrilor live când nu interacționați. Recomandat pentru monitorizare continuă. Dezactivați (Eco) pentru a economisi CPU/lățime de bandă.",
+      "analysisFrameworksLabel": "Cadre de Analiză",
+      "analysisFrameworksActivePerPanel": "Activ per panou",
+      "analysisFrameworksSkillLibrary": "Bibliotecă de Abilități",
+      "analysisFrameworksImportBtn": "Importă cadru",
+      "analysisFrameworksDefaultNeutral": "Implicit (Neutru)",
+      "analysisFrameworksImportTitle": "Importă Cadru",
+      "analysisFrameworksFromAgentskills": "De la agentskills.io",
+      "analysisFrameworksPasteJson": "Lipește JSON",
+      "analysisFrameworksSaveToLibrary": "Salvează în Bibliotecă",
+      "frameworkNote": "Se aplică doar la analizele generate de client",
+      "loadingServerInsights": "Se încarcă informații server...",
+      "usingCachedBrief": "Se folosește rezumatul din cache...",
+      "multiPerspectiveAnalysis": "Analiză din mai multe perspective...",
+      "generatingBriefSub": "Se generează rezumatul: {{msg}}",
+      "breakingConfirmed": "BREAKING & CONFIRMED",
+      "multiSource": "Multi-sursă",
+      "fastMoving": "Rapid în evoluție",
+      "clusters": "Clustere",
+      "alertsLabel": "Alertări",
+      "alert": "ALERT",
+      "sources_one": "{{count}} sursă",
+      "sources_other": "{{count}} surse",
+      "briefTech": "TECH BRIEF",
+      "briefCommodity": "COMMODITY BRIEF",
+      "briefEnergy": "ENERGY BRIEF",
+      "briefWorld": "WORLD BRIEF",
+      "mlDetected": "ML DETECTED",
+      "geographicConvergence": "GEOGRAPHIC CONVERGENCE",
+      "focalPoints": "FOCAL POINTS",
+      "toneMixed": "Mixt",
+      "toneNegative": "Negativ",
+      "tonePositive": "Pozitiv",
+      "overall": "Overall: {{tone}}",
+      "signalTypesEvents": "{{types}} tipuri de semnale • {{events}} evenimente",
+      "newsSignals": "{{news}} știri • {{signals}} semnale"
     },
     "settings": {
       "dataManagementLabel": "Gestionarea datelor",
@@ -1343,7 +1506,8 @@
       "analyzingCountries": "Se analizează peste 200 de țări...",
       "source": "Sursa: Banca Mondială",
       "updated": "Actualizat: {{date}}",
-      "infoTooltip": "<strong>Global Tech Readiness</strong><br>Scor compozit (0-100) pe baza datelor Băncii Mondiale:<br><br><strong>Valori afișate:</strong><br>🌐 Utilizatori de internet (% din populație)<br>📱 Abonamente mobile (la 100 de persoane)<br>🔬 Cheltuieli de cercetare-dezvoltare (% din C&D)<br>D:</strong> (35%), Internet (30%), bandă largă (20%), mobil (15%)<br><br><em>— = Nu există date recente disponibile</em><br><em>Sursa: Date deschise ale Băncii Mondiale (2019-2024)</em>"
+      "infoTooltip": "<strong>Global Tech Readiness</strong><br>Scor compozit (0-100) pe baza datelor Băncii Mondiale:<br><br><strong>Valori afișate:</strong><br>🌐 Utilizatori de internet (% din populație)<br>📱 Abonamente mobile (la 100 de persoane)<br>🔬 Cheltuieli de cercetare-dezvoltare (% din C&D)<br>D:</strong> (35%), Internet (30%), bandă largă (20%), mobil (15%)<br><br><em>— = Nu există date recente disponibile</em><br><em>Sursa: Date deschise ale Băncii Mondiale (2019-2024)</em>",
+      "dataPreparing": "Se reîmprospătează datele de tech readiness — vor apărea în scurt timp."
     },
     "populationExposure": {
       "noData": "Nu sunt disponibile date despre expunere",
@@ -1399,7 +1563,9 @@
         "minutesAgo": "acum {{count}}m",
         "hoursAgo": "{{count}}h în urmă"
       },
-      "infoTooltip": "NASA FIRMS VIIRS detectii termice prin satelit în regiunile de conflict monitorizate. Intensitate mare = luminozitate >360K și încredere >80%."
+      "infoTooltip": "NASA FIRMS VIIRS detectii termice prin satelit în regiunile de conflict monitorizate. Intensitate mare = luminozitate >360K și încredere >80%.",
+      "possibleExplosions": "{{count}} posibilă(e) explozie(explozie)",
+      "explosionTooltip": "Semnătură termică corespunzătoare unei explozii (FRP >80 MW, luminozitate >380 K)"
     },
     "ucdpEvents": {
       "stateBased": "Bazat pe stat",
@@ -1480,7 +1646,10 @@
       "summaryError": "Nu s-a putut genera rezumatul",
       "summaryFailed": "Rezumatul a eșuat",
       "sources": "surse {{count}}",
-      "relatedAssetsNear": "Materiale similare lângă {{location}}"
+      "relatedAssetsNear": "Materiale similare lângă {{location}}",
+      "sortBy": "Sortează după",
+      "sortNewest": "Cel mai recent",
+      "sortRelevance": "Relevanță"
     },
     "export": {
       "exportData": "Exportați date"
@@ -1610,7 +1779,8 @@
         "estFlow": "EST. Flux",
         "volume": "Volumul",
         "change": "Schimbați"
-      }
+      },
+      "infoTooltip": "<strong>BTC ETF Tracker</strong> Urmărește fluxurile de fonduri estimate zilnic pentru ETF-urile spot Bitcoin din SUA:<ul><li>Direcția și magnitudinea intrării/ieșirii</li><li>Volum și variație de preț per fond</li><li>Flux net agregat pe toate ETF-urile urmărite</li></ul>"
     },
     "macroSignals": {
       "overall": "În general",
@@ -1627,12 +1797,17 @@
         "hashRate": "Rata de hash",
         "momentum": "Momentum",
         "fearGreed": "Frica și Lăcomia"
-      }
+      },
+      "infoTooltip": "<strong>BTC Regime</strong> Tablou de bord cu semnal compozit pentru poziționarea Bitcoin și apetitul de risc:<ul><li><strong>Lichiditate</strong>: Proxy de lichiditate neta a Fed</li><li><strong>Flux</strong>: Randamente BTC vs QQQ pe 5 zile</li><li><strong>Regim</strong>: Rotație QQQ vs XLP (risk-on/off)</li><li><strong>Trend BTC</strong>: Preț vs SMA50/200, Mayer Multiple</li><li><strong>Hash Rate</strong>: Variație hash rețea pe 30 de zile</li><li><strong>Fear & Greed</strong>: Index de sentiment de piață</li></ul>Acest panou este pentru regim și poziționare, nu pentru date macro largi."
     },
     "panel": {
       "showMethodologyInfo": "Afișați informații despre metodologie",
       "dragToResize": "Trageți pentru a redimensiona (faceți dublu clic pentru a reseta)",
-      "openSettings": "Deschide Setări"
+      "openSettings": "Deschide Setări",
+      "closePanel": "Închide panou",
+      "collapsePanel": "Restrânge panou",
+      "expandPanel": "Extinide panou",
+      "addPanel": "Adaugă panou"
     },
     "languageSelector": {
       "selectLanguage": "Selectați Limba",
@@ -1722,10 +1897,17 @@
     },
     "map": {
       "showMap": "Arată harta",
-      "hideMap": "Ascunde harta"
+      "hideMap": "Ascunde harta",
+      "clearTrails": "Șterge urmele"
     },
     "internetDisruptions": {
-      "infoTooltip": "<strong>Internet Disruptions</strong> Real-time internet outages, DDoS attacks, and traffic anomalies from global network monitoring:<ul><li><strong>Outages</strong>: BGP-detected connectivity failures by country</li><li><strong>DDoS</strong>: Volumetric attack reports by protocol and vector</li><li><strong>Anomalies</strong>: Unusual traffic patterns from Cloudflare Radar</li></ul>"
+      "infoTooltip": "<strong>Internet Disruptions</strong> Real-time internet outages, DDoS attacks, and traffic anomalies from global network monitoring:<ul><li><strong>Outages</strong>: BGP-detected connectivity failures by country</li><li><strong>DDoS</strong>: Volumetric attack reports by protocol and vector</li><li><strong>Anomalies</strong>: Unusual traffic patterns from Cloudflare Radar</li></ul>",
+      "noOutages": "Nu sunt întreruperi active detectate",
+      "noDdos": "Nu sunt disponibile date DDoS",
+      "noAnomalies": "Nu sunt detectate anomalii de trafic",
+      "byProtocol": "Protocol de atac",
+      "byVector": "Vector de atac",
+      "topTargets": "Țări țintă principale"
     },
     "commodities": {
       "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress."
@@ -1764,7 +1946,26 @@
       "infoTooltip": "<strong>Central Bank Watch</strong> Latest statements, rate decisions, and communications from the Federal Reserve, ECB, Bank of England, and other major central banks worldwide."
     },
     "airlineIntel": {
-      "infoTooltip": "<strong>Informații aeronautice</strong> Date operaționale ale companiilor aeriene în timp real: suspendări de rute, închideri ale spațiului aerian, avize ale transportatorilor și devieri de urgență. Sursă: NOTAM ale autorităților aeronautice și buletine ale transportatorilor."
+      "infoTooltip": "<strong>Informații aeronautice</strong> Date operaționale ale companiilor aeriene în timp real: suspendări de rute, închideri ale spațiului aerian, avize ale transportatorilor și devieri de urgență. Sursă: NOTAM ale autorităților aeronautice și buletine ale transportatorilor.",
+      "noOpsData": "Niciun date operaționale — se încarcă…",
+      "noFlights": "Niciun zbor — selectați aeroport în setări.",
+      "noCarrierData": "Niciun date despre companii încă.",
+      "noTrackingData": "Niciun date de urmărire a aeronavelor.",
+      "noNews": "Niciun știri de aviație.",
+      "enterRoute": "Introduceți ruta și căutați prețuri.",
+      "cachedInsight": "Insight din cache",
+      "demoMode": "MOD DEMO",
+      "pricesIndicative": "Toate prețurile sunt indicative",
+      "searchFlights": "Căutați Zboruri",
+      "bestDates": "Cele Mai Bune Date",
+      "cabinClass": "Clasă Cabină",
+      "enterRouteAndDate": "Introduceți o rută și o dată pentru a căuta",
+      "enterDateRange": "Introduceți o rută și interval de date",
+      "degradedResults": "Unele rezultate pot fi incomplete",
+      "nonstop": "direct",
+      "roundTrip": "Dus-întors",
+      "tripDays": "Zile de călătorie",
+      "cheapest": "Cel mai ieftin"
     },
     "chatAnalyst": {
       "infoTooltip": "<strong>Analist WM</strong> Analist AI cu context în timp real în domeniile geopolitic, piețe, militar și economic. Alimentat de Claude cu date în timp real injectate din fluxurile active WorldMonitor."
@@ -1776,19 +1977,114 @@
       "infoTooltip": "<strong>Contoare în direct</strong> Contoare extrapolate în timp real pentru indicatori globali: cheltuieli militare, dezastre naturale, povara bolilor și altele. Cifrele sunt estimări statistice bazate pe ratele anuale ale datelor."
     },
     "diseaseOutbreaks": {
-      "infoTooltip": "<strong>Focare de boli</strong> Alerte active de focare de la WHO, ProMED și ministere ale sănătății. Urmărește focare confirmate, regiuni afectate, număr de cazuri și niveluri de amenințare. Actualizat la publicarea rapoartelor noi."
+      "infoTooltip": "<strong>Focare de boli</strong> Alerte active de focare de la WHO, ProMED și ministere ale sănătății. Urmărește focare confirmate, regiuni afectate, număr de cazuri și niveluri de amenințare. Actualizat la publicarea rapoartelor noi.",
+      "title": "Focare de Boli",
+      "empty": "Niciun focar nu corespunde filtrului",
+      "sourceFallback": "Sursă",
+      "attribution": "OMS · ProMED · HealthMap",
+      "levels": {
+        "alert": "ALERTĂ",
+        "warning": "AVERTISMENT",
+        "watch": "MONITORIZARE"
+      },
+      "time": {
+        "justNow": "acum",
+        "hoursAgo_one": "acum {{count}}h",
+        "hoursAgo_other": "acum {{count}}h",
+        "daysAgo_one": "acum {{count}}z",
+        "daysAgo_other": "acum {{count}}z"
+      },
+      "filters": {
+        "alert_one": "{{count}} Alertă",
+        "alert_other": "{{count}} Alerte",
+        "warning_one": "{{count}} Avertisment",
+        "warning_other": "{{count}} Avertismente",
+        "watch_one": "{{count}} Monitorizare",
+        "watch_other": "{{count}} Monitorizări"
+      },
+      "errors": {
+        "noData": "Niciun dat disponibil despre focare",
+        "failedToLoad": "Încărcare eșuată"
+      }
     },
     "earningsCalendar": {
-      "infoTooltip": "<strong>Calendar de rezultate</strong> Publicări viitoare și recente ale rezultatelor companiilor mari listate. Afișează estimările EPS vs. reale, venituri și clasificare depășire/ratare. Sursă: furnizori de date financiare."
+      "infoTooltip": "<strong>Calendar de rezultate</strong> Publicări viitoare și recente ale rezultatelor companiilor mari listate. Afișează estimările EPS vs. reale, venituri și clasificare depășire/ratare. Sursă: furnizori de date financiare.",
+      "title": "Calendar de Câștiguri",
+      "today": "ASTAZI · {{date}}",
+      "tomorrow": "MÂINE · {{date}}",
+      "epsActual": "EPS {{value}}",
+      "epsEstimate": "EPS est {{value}}",
+      "revenueActual": "{{value}} venit",
+      "revenueEstimate": "{{value}} est",
+      "surprise": {
+        "beat": "DEPĂȘIT",
+        "miss": "RATAT",
+        "inLine": "CONFORM"
+      },
+      "errors": {
+        "noData": "Niciun dat despre câștiguri",
+        "failedToLoad": "Încărcare eșuată"
+      }
     },
     "economicCalendar": {
       "infoTooltip": "<strong>Calendar economic</strong> Publicări macroeconomice programate: CPI, NFP, GDP, PMI și decizii ale băncilor centrale. Afișează prognoză vs. real vs. anterior. Evenimentele cu impact ridicat sunt evidențiate. Sursă: furnizori de date economice."
     },
     "fsi": {
-      "infoTooltip": "<strong>Indicator de stres financiar</strong> Indicele de stres financiar al Fed Kansas City (KCFSI): măsoară stresul pe piețele financiare din SUA folosind 11 indicatori, inclusiv spread-uri de randament, volatilitate și corelații încrucișate. Valorile pozitive indică stres peste medie. Sursă: Federal Reserve Bank of Kansas City."
+      "infoTooltip": "<strong>Indicator de stres financiar</strong> Indicele de stres financiar al Fed Kansas City (KCFSI): măsoară stresul pe piețele financiare din SUA folosind 11 indicatori, inclusiv spread-uri de randament, volatilitate și corelații încrucișate. Valorile pozitive indică stres peste medie. Sursă: Federal Reserve Bank of Kansas City.",
+      "title": "Indicatorul de Stres Financiar",
+      "usFsiValue": "VALOARE FSI SUA",
+      "cissTitle": "EU CISS (Stres Sistemic Zona Euro)",
+      "notAvailable": "N/A",
+      "interpretation": {
+        "low": "Piețele de credit funcționează normal, raportul acțiuni/obligațiuni sănătos.",
+        "moderate": "Oarecare deteriorare a condițiilor de credit, monitorizare atentă necesară.",
+        "elevated": "Stres semnificativ pe piețele de credit, poziționare defensivă recomandată.",
+        "severe": "Stres financiar sever, riscul sistemic crescut."
+      },
+      "labels": {
+        "lowStress": "Stres Scăzut",
+        "moderateStress": "Stres Moderat",
+        "elevatedStress": "Stres Ridicat",
+        "severeStress": "Stres Sever"
+      },
+      "cissLabels": {
+        "low": "Scăzut",
+        "moderate": "Moderat",
+        "elevated": "Ridicat",
+        "high": "Înalt"
+      },
+      "scale": {
+        "noStress": "0 — Fără stres",
+        "extremeStress": "1 — Stres extrem",
+        "highStress": "Stres Înalt",
+        "lowStress": "Stres Scăzut"
+      },
+      "metrics": {
+        "vix": "VIX",
+        "hySpread": "HY Spread",
+        "hygPrice": "HYG Price",
+        "tltPrice": "TLT Price"
+      },
+      "errors": {
+        "unavailable": "Datele FSI nu sunt disponibile",
+        "failedToLoad": "Încărcarea a eșuat"
+      }
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>Tracker comercial Hormuz</strong> Urmărire AIS a navelor în timp real prin Strâmtoarea Hormuz, cel mai critic punct de blocaj petrolier din lume. Monitorizează numărul de tancuri petroliere, evenimente de perturbare și schimbări săptămânale ale fluxurilor. Aproximativ 20% din aprovizionarea globală cu petrol tranzitează zilnic aici."
+      "infoTooltip": "<strong>Tracker comercial Hormuz</strong> Urmărire AIS a navelor în timp real prin Strâmtoarea Hormuz, cel mai critic punct de blocaj petrolier din lume. Monitorizează numărul de tancuri petroliere, evenimente de perturbare și schimbări săptămânale ale fluxurilor. Aproximativ 20% din aprovizionarea globală cu petrol tranzitează zilnic aici.",
+      "title": "Urmăritor Comerț Hormuz",
+      "noData": "Nicio dată",
+      "notAvailable": "N/A",
+      "chartUnavailable": "Datele graficului nu sunt disponibile",
+      "sourcePrefix": "Sursă:",
+      "units": {
+        "ktPerDay": "kt/zi",
+        "generic": "unități"
+      },
+      "errors": {
+        "unavailable": "Datele Hormuz nu sunt disponibile",
+        "failedToLoad": "Încărcarea a eșuat"
+      }
     },
     "liveWebcams": {
       "infoTooltip": "<strong>Camere web în direct</strong> Fluxuri în direct din locații semnificative geopolitic din întreaga lume: zone de conflict, capitale, puncte de trecere a frontierei și puncte strategice de blocaj. Fluxuri de la YouTube și rețele publice."
@@ -1813,6 +2109,333 @@
     },
     "yieldCurve": {
       "infoTooltip": "<strong>Curba randamentelor &amp; Rate</strong> Curba randamentelor US Treasury (2Y, 5Y, 10Y, 30Y) și spread-uri cheie ale ratelor, inclusiv indicatorul de inversiune 10Y-2Y. Afișează și ratele zonei euro (EURIBOR, ESTR). O curbă inversată precede istoric recesiunile. Sursă: FRED."
+    },
+    "pinnedWebcams": {
+      "pinFromMap": "Fixați o cameră web de pe hartă"
+    },
+    "breakthroughsTicker": {
+      "noData": "Nicio descoperire științifică încă"
+    },
+    "oilInventories": {
+      "infoTooltip": "<strong>Inventare de Petrol</strong> Stocuri de petrol brut și SPR din SUA (EIA săptămânal), stocare gaze naturale, procent de umplere gaze UE (GIE AGSI+), și zile de acoperire stocuri OECD (IEA lunar)."
+    },
+    "energyComplex": {
+      "noData": "Datele energetice temporar indisponibile - va reîncerca",
+      "liveTape": "Bandă Live",
+      "liveTapeSource": "Cote de piață",
+      "infoTooltip": "<strong>Complex Energetic</strong> Semnale energetice fizice și tranzacționabile într-un singur loc:<ul><li><strong>Metrici EIA</strong>: WTI, Brent, producție SUA și inventare</li><li><strong>Bandă live</strong>: Prețuri energetice tranzacționabile ca petrolul și gazele naturale</li><li><strong>Scop</strong>: Separarea stresului energetic fizic de panouri macro și materii prime mai largi</li></ul>"
+    },
+    "consumerPrices": {
+      "title": "Prețuri consumator",
+      "subtitle": "Urmărire preț coș pe piețele cheie",
+      "tabs": {
+        "overview": "Prezentare generală",
+        "categories": "Categorii",
+        "movers": "Modificări",
+        "spread": "Diferență Retail",
+        "health": "Starea Datelor"
+      },
+      "essentialsIndex": "Index Produse Esențiale",
+      "valueBasketIndex": "Coș Valoare",
+      "wowChange": "Săptămână la Săptămână",
+      "momChange": "Lună la Lună",
+      "retailerSpread": "Diferență Retail",
+      "coveragePct": "Acoperire",
+      "freshnessLag": "Întârziere Actualizare",
+      "noCategories": "Niciun date de categorie disponibile",
+      "noMovers": "Nu sunt disponibile modificări de preț",
+      "noSpread": "Nu sunt disponibile date despre diferența retail",
+      "noHealth": "Nicio informație despre starea datelor",
+      "upstreamUnavailable": "Datele de prețuri pentru consumatori sunt temporar indisponibile",
+      "allCategories": "Toate Categoriile",
+      "risers": "În Creștere",
+      "fallers": "În Scădere",
+      "unitPrice": "Preț unitar",
+      "freshLabel": "Proaspăt",
+      "staleLabel": "Expirat",
+      "laggingLabel": "Cu Întârziere",
+      "stalledLabel": "Blocat",
+      "retailer": "Retailer",
+      "lastUpdated": "Ultima actualizare",
+      "retailers": "retaileri",
+      "items": "articole",
+      "infoTooltip": "<strong>Prețuri pentru Consumatori</strong> Urmărire în timp real a prețurilor coșului:<ul><li><strong>Prezentare generală</strong>: Index produse esențiale, coș valoare și modificare săptămână la săptămână</li><li><strong>Categorii</strong>: Tendințe de preț per categorie cu interval de 30 de zile</li><li><strong>Modificări</strong>: Cele mai mari articole în creștere și scădere acestă săptămână</li><li><strong>Diferență</strong>: Variație de preț între retaileri pentru același coș</li></ul>Date provenind din extragerea directă a prețurilor de la retaileri."
+    },
+    "marketImplications": {
+      "infoTooltip": "<strong>Implicații AI pe Piață</strong> Semnale de tranzacționare generate de LLM derivate din starea geopoiitică, a mărfurilor și macro în timp real după fiecare ciclu de prognoză.<ul><li><strong>Direcție</strong>: LONG / SHORT / HEDGE cu rating de încredere</li><li><strong>Interval de timp</strong>: orizont de 1S, 2S, 1L sau 3L</li><li><strong>Catalizator</strong>: Catalizatorul cheie din spatele semnalului</li><li><strong>Risc</strong>: Avertisment sau condiție de invalidare</li></ul><em>Doar în scopuri informative. Nu constituie sfat de investiții.</em>",
+      "title": "Implicații AI pe Piață",
+      "directions": {
+        "long": "LONG",
+        "short": "SHORT",
+        "hedge": "HEDGE"
+      },
+      "rationale": "Rațiune:",
+      "driver": "Factor:",
+      "appliesToNext": "Se aplică la următoarea regenerare AI",
+      "signals_one": "{{count}} semnal",
+      "signals_other": "{{count}} semnale",
+      "disclaimer": "Semnale de tranzacționare generate de AI doar în scop informativ. Nu constituie sfat de investiții. Faceți întotdeauna propriile cercetări.",
+      "unavailable": "Implicațiile AI pe piață sunt generate după fiecare rulare de prognoză. Reveniți în curând."
+    },
+    "forecast": {
+      "infoTooltip": "<strong>AI Forecasts</strong> Estimări de probabilitate generate de AI pentru evenimente geopolitice și economice:<ul><li>Acoperire cross-domeniu: conflict, piețe, lanț de aprovizionare, cyber, politică</li><li>Fiecare prognoză arată probabilitatea estimată, nivelul de încredere și orizontul de timp</li><li>Calibrate în raport cu bazele pieței de predicție unde sunt disponibile</li></ul>Prognozele se actualizează pe măsură ce sosesc noi semnale de informații. Filtrați după domeniu folosind filele de mai sus."
+    },
+    "escalationCorrelation": {
+      "infoTooltip": "<strong>Escalation Monitor</strong> Detectează semnale geopolitice convergente:<ul><li>Corelează mișcări militare, evenimente de conflict și creșteri de știri</li><li>Evaluează zone de convergență după severitate (critic/înalt/mediu/scăzut)</li><li>Urmărește tendințele de escaladare sau de-escaladare în timp</li></ul>Faceți clic pe o carte pentru a mări regiunea pe hartă."
+    },
+    "economicCorrelation": {
+      "infoTooltip": "<strong>Economic Warfare</strong> Detectează semnale convergente de presiune economică:<ul><li>Sancțiuni, restricții comerciale și mișcări valutare</li><li>Perturbări de mărfuri legate de actorii geopolitici</li><li>Corelație cross-domeniu între evenimente economice și de securitate</li></ul>Faceți clic pe o carte pentru a mări regiunea afectată."
+    },
+    "militaryCorrelation": {
+      "infoTooltip": "<strong>Force Posture</strong> Corelează activitatea militară cu contextul geopolitic:<ul><li>Concentrații de aeronave militare și nave marinare după regiune</li><li>Referință încrucișată cu zone de conflict active și creșteri de știri</li><li>Evidențiază acumulări de forțe neobișnuite sau repoziționări</li></ul>Faceți clic pe o carte pentru a mări regiunea pe hartă."
+    },
+    "disasterCorrelation": {
+      "infoTooltip": "<strong>Disaster Cascade</strong> Detectează semnale convergente de dezastre naturale și infrastructură:<ul><li>Corelează cutremure, incendii de vegetație, inundații și extremuri meteo</li><li>Urmărește efectele în cascadă asupra infrastructurii și lanțurilor de aprovizionare</li><li>Evidențiază regiuni cu risc de dezastru compus</li></ul>Faceți clic pe o carte pentru a mări regiunea afectată."
+    },
+    "markets": {
+      "infoTooltip": "<strong>Markets</strong> Indici bursieri în timp real, acțiuni și prețuri crypto. Personalizați lista de urmărire cu butonul Watchlist. Sparkline-urile arată tendința recentă de preț."
+    },
+    "heatmap": {
+      "infoTooltip": "<strong>Sector Heatmap</strong> Performanța sectorului S&P 500 în colțul ochiului. Intensitatea culorii reflectă magnitudinea schimbării zilnice. Verde = câștiguri, Roșu = pierderi."
+    },
+    "fuelPrices": {
+      "infoTooltip": "<strong>Fuel Prices</strong> Prețuri de pomă cu benzină și motorină în 30+ țări, normalize la USD/litru pentru comparație. Prețurile provin din programe open-data oficiale ale guvernului și sunt actualizate săptămânal. Țările cu cel mai ieftin și cel mai scump sunt evidențiate. Schimbarea WoW este afișată când datele din săptămâna anterioară sunt disponibile.",
+      "countries": "țări"
+    },
+    "faoFoodPriceIndex": {
+      "infoTooltip": "<strong>FAO Food Price Index</strong> Indicele FFPI al Organizației ONU pentru Alimentație și Agricultură urmărește prețurile de export internațional pentru un coș de mărfuri alimentare (Cereale, Lactate, Carne, Uleiuri, Zahăr), bază 2014-2016=100. Actualizat lunar în prima vineri a fiecărei luni.",
+      "indexLabel": "FFPI (2014-16=100)",
+      "mom": "MoM",
+      "yoy": "YoY",
+      "asOf": "La data de",
+      "baseNote": "Bază: 2014-2016 = 100 | Sursă: UN FAO",
+      "ffpi": "Alimente",
+      "cereals": "Cereale",
+      "meat": "Carne",
+      "dairy": "Lactate",
+      "oils": "Uleiuri",
+      "sugar": "Zahăr"
+    },
+    "climateNews": {
+      "infoTooltip": "<strong>Climate News</strong> Cele mai recente informații despre mediu și climat de la Carbon Brief, UNEP, NASA, The Guardian și alte surse de autoritate. Actualizat la fiecare 30 de minute.",
+      "loadError": "Știrile climatice sunt temporar indisponibile"
+    },
+    "liquidityShifts": {
+      "title": "Schimbări de lichiditate",
+      "infoTooltip": "<strong>Liquidity Shifts</strong> Monitor de poziționare cu lichiditate ridicată și schimbări zilnice pentru contracte futures cu petrol, aur, argint, indici de capitaluri proprii și acțiuni principale din SUA. Net pentru asset-manageri COT și net pentru fonduri cu efect de levier față de schimbarea zilnică a prețului.",
+      "cotSection": "Petrol / Aur / Argint + Poziționare index (COT)",
+      "stocksSection": "Acțiuni principale din SUA: Schimbare zilnică",
+      "longShort": "Lung {{long}} / Scurt {{short}}",
+      "lev": "Lev",
+      "noCot": "Nu sunt disponibile rânduri COT.",
+      "noStocks": "Nu sunt disponibile cotații pentru acțiuni principale.",
+      "reportDate": "Data raportului COT: {{date}}",
+      "unavailable": "Date de lichiditate indisponibile",
+      "failed": "Eroare la încărcare"
+    },
+    "positioning247": {
+      "title": "Poziționare 24/7",
+      "infoTooltip": "<strong>24/7 Positioning</strong> Stres de poziționare a contractelor perpetue de la Hyperliquid. Tranzacții non-stop, arătând ce se construiește atunci când piețele tradiționale sunt închise. Scor compozit (0-100) din rata de finanțare, volum, interes deschis și bază spot-perp. Verde = longs aglomerate (tendință alcista), roșu = shorts aglomerate (tendință bearish).",
+      "commodities": "MATERII PRIME",
+      "crypto": "CRIPTO",
+      "fx": "FX",
+      "warmup": "Se construiesc liniile de bază. Istoricul volumului și OI se completează în următoarea oră.",
+      "unavailable": "Date de poziționare indisponibile",
+      "footer": "5min · Hyperliquid perps · 24/7"
+    },
+    "goldIntelligence": {
+      "infoTooltip": "<strong>Gold Intelligence</strong> Preț spot aur, raport aur/argint, premium aur vs platină, prețuri XAU pe diverse valute (EUR, GBP, JPY, CNY, INR, CHF) și poziționare bani gestionați CFTC. Surse: Yahoo Finance, CFTC COT."
+    },
+    "energyCrisis": {
+      "infoTooltip": "<strong>Energy Crisis Tracker</strong> IEA 2026 Energy Crisis Policy Response Tracker. Urmărește măsurile guvernamentale pentru conservarea energiei și sprijin pentru consumatori în răspuns la conflictul din Orientul Mijlociu și perturbări de aprovizionare în Strâmtoarea Hormuz. Acoperă 60+ țări cu aproape 200 de măsuri politice."
+    },
+    "wsbTickerScanner": {
+      "infoTooltip": "<strong>WSB Ticker Scanner</strong> Mențiuni de tickere în timp real de pe r/wallstreetbets, r/stocks și r/investing. Clasate după frecvența de mențiuni și angajament. Viteza măsoară cât de rapid câștigă impuls un ticker în toate postările."
+    },
+    "proBanner": {
+      "badge": "PRO",
+      "headline": "Pro este lansat",
+      "tagline": "Mai mult semnal, mai puțin zgomot. Mai multe rapoarte AI. Un cercetător geopolitic și de capitaluri proprii special pentru tine.",
+      "cta": "Upgrade la Pro →",
+      "dismiss": "Închide"
+    },
+    "checkoutFailureBanner": {
+      "message": "Plata nu a putut fi finalizată. Nu a fost făcută nicio încărcare.",
+      "retry": "Încearcă din nou",
+      "retrying": "Se încearcă din nou…",
+      "dismiss": "Închide"
+    },
+    "frameworkSelector": {
+      "label": "Cadru de analiză",
+      "defaultNeutral": "Implicit (Neutru)",
+      "titlePrefix": "Cadru: {{name}}",
+      "titleNone": "Cadru de analiză"
+    },
+    "sanctionsPressure": {
+      "title": "Sancțiuni și Desemnări",
+      "infoTooltip": "Desemnări sancțiuni OFAC din listele SDN și Consolidated. Arată ce țări se confruntă cu cea mai mare presiune de desemnare, ce programe o determină și ce a fost adăugat recent de la ultima actualizare.",
+      "loading": "Se încarcă datele sancțiunilor...",
+      "unavailable": "Datele sancțiunilor nu sunt disponibile.",
+      "summary": {
+        "new": "Nou",
+        "vessels": "Nave",
+        "aircraft": "Aeronave"
+      },
+      "sections": {
+        "countries": "Țări sancționate",
+        "entries": "Desemnări recente",
+        "programs": "Programe"
+      },
+      "empty": {
+        "countries": "Nicio atribuire de țară disponibilă.",
+        "entries": "Nicio desemnare recentă.",
+        "programs": "Nicio detaliere a programelor."
+      },
+      "footer": {
+        "updated": "Actualizat {{time}}",
+        "dataset": "set de date {{date}}",
+        "source": "Sursă: OFAC"
+      },
+      "pills": {
+        "newCount": "+{{count}} nou",
+        "new": "nou"
+      },
+      "designations_one": "{{count}} desemnare",
+      "designations_other": "{{count}} desemnări",
+      "fallbacks": {
+        "unattributed": "Neatribuit",
+        "program": "Program",
+        "undated": "fără dată"
+      }
+    },
+    "radiationWatch": {
+      "title": "Monitorizare Radiații",
+      "infoTooltip": "Citiri EPA RadNet și Safecast integrate cu scor de anomalii și sinteză de încredere în sursă. Acest panou răspunde la ce este normal, ce este ridicat și care anomalii sunt confirmate versus preliminare.",
+      "loading": "Se încarcă datele de radiație...",
+      "empty": "Nu sunt disponibile observații de radiație.",
+      "baseline": "{{value}} linie de bază",
+      "flags": {
+        "confirmed": "confirmat",
+        "conflict": "conflict",
+        "cpmDerived": "derivat din CPM"
+      },
+      "headers": {
+        "station": "Stație",
+        "reading": "Citire",
+        "delta": "Delta",
+        "status": "Stare",
+        "observed": "Observat"
+      },
+      "summary": {
+        "anomalies": "Anomalii",
+        "elevated": "Crescut",
+        "confirmed": "Confirmat",
+        "lowConfidence": "Încredere scăzută",
+        "conflicts": "Conflicte",
+        "spikes": "Creste"
+      },
+      "footer": {
+        "updated": "Actualizat {{time}}"
+      },
+      "observed": {
+        "hoursAgo_one": "{{count}}h în urmă",
+        "hoursAgo_other": "{{count}}h în urmă",
+        "daysAgo_one": "{{count}}z în urmă",
+        "daysAgo_other": "{{count}}z în urmă"
+      },
+      "confidence": {
+        "high": "încredere ridicată",
+        "medium": "încredere medie",
+        "low": "încredere scăzută"
+      }
+    },
+    "defensePatents": {
+      "title": "Semnal R&D",
+      "infoTooltip": "Depuneri săptămânale de brevete în apărare și uz dual de la Raytheon, Lockheed, Huawei, DARPA și alte organizații strategice. Categorii: H04B (comunicații), H01L (semiconductori), F42B (muniție), G06N (AI), C12N (biotehnologie). Sursă: USPTO PatentsView.",
+      "loading": "Se încarcă depunerile R&D…",
+      "error": "Nu s-au putut încărca datele brevetelor.",
+      "empty": "Nicio depunere în această categorie.",
+      "viewOnUspto": "Vizualizare pe USPTO",
+      "tabs": {
+        "all": "Toate"
+      },
+      "cpcLabels": {
+        "H04B": "Comunicații",
+        "H01L": "Semiconductori",
+        "F42B": "Muniție",
+        "G06N": "AI",
+        "C12N": "Biotehnologie"
+      }
+    },
+    "correlation": {
+      "loading": "Se așteaptă datele...",
+      "empty": "Nu s-a detectat nicio convergență activă",
+      "signals_one": "{{count}} semnal",
+      "signals_other": "{{count}} semnale",
+      "analyzing": "Se analizează...",
+      "viewOnMap": "Vizualizare pe hartă"
+    },
+    "thermalEscalation": {
+      "title": "Escaladare termică",
+      "infoTooltip": "Clustere de anomalii termice FIRMS/VIIRS cu comparație de referință, urmărire persistenței și context strategic. Acest panou răspunde unde activitatea termică este anormală și care clustere pot semnala conflict, perturbări industriale sau escaladare.",
+      "loading": "Se încarcă datele termice...",
+      "empty": "Nu au fost detectate clustere de escaladare termică.",
+      "footer": {
+        "updated": "Actualizat {{time}}"
+      },
+      "summary": {
+        "total": "Total",
+        "elevated": "Crescut",
+        "spikes": "Salturi",
+        "persist": "Persistent",
+        "conflict": "Conflict",
+        "strategic": "Strategic"
+      },
+      "badges": {
+        "conflictAdjacent": "conflict-adj",
+        "energyAdjacent": "energy-adj",
+        "industrial": "industrial",
+        "strategic": "strategic"
+      },
+      "observations_one": "{{count}} obs",
+      "observations_other": "{{count}} obs",
+      "sources_one": "{{count}} src",
+      "sources_other": "{{count}} src",
+      "age": {
+        "minutesAgo_one": "{{count}}m în urmă",
+        "minutesAgo_other": "{{count}}m în urmă",
+        "hoursAgo_one": "{{count}}h în urmă",
+        "hoursAgo_other": "{{count}}h în urmă",
+        "daysAgo_one": "{{count}}z în urmă",
+        "daysAgo_other": "{{count}}z în urmă"
+      }
+    },
+    "chokepointStrip": {
+      "title": "Status Punct Strâmt",
+      "infoTooltip": "Status în timp real pentru cele șapte puncte strâmte globale de transport petrol și gaze. Estimări de flux calibrate din observații Portwatch DWT + AIS. Consultați /docs/methodology/chokepoints pentru metodologie.",
+      "unknown": "necunoscut",
+      "shortName": {
+        "hormuzStrait": "Hormuz",
+        "malaccaStrait": "Malacca",
+        "suez": "Suez",
+        "babElMandeb": "Bab el-Mandeb",
+        "bosphorus": "Strâmtorii Turcești",
+        "panama": "Panama",
+        "danishStraits": "Strâmtorii Daneze"
+      },
+      "flow": {
+        "mbd": "{{value}} mb/z",
+        "pctOfBaseline": "{{pct}}% din linia de bază"
+      },
+      "errors": {
+        "unavailable": "Status punct strâmt indisponibil",
+        "noData": "Încă nu există date despre punctul strâmt"
+      },
+      "attribution": {
+        "method": "Calibrare Portwatch DWT + AIS",
+        "sampleLabel": "Semnale de întrerupere AIS",
+        "creditName": "Puncte strâmte de tranzit petrolier mondial EIA"
+      }
     }
   },
   "popups": {
@@ -1896,7 +2519,9 @@
         "apac": "Asia-Pacific",
         "mena": "Orientul Mijlociu",
         "africa": "Africa"
-      }
+      },
+      "scheduled": "Programat",
+      "estimated": "Est"
     },
     "aircraft": {
       "altitude": "Altitudine",
@@ -2192,7 +2817,9 @@
       "lastReport": "LATEST",
       "nearChokepoint": "NEAR CHOKEPOINT",
       "nearBase": "NEAR BASE",
-      "lastSeen": "LAST SEEN"
+      "lastSeen": "LAST SEEN",
+      "estPosition": "POZ. ESTIMATĂ",
+      "aisLive": "AIS LIVE"
     },
     "militaryCluster": {
       "flightActivity": {
@@ -2224,7 +2851,13 @@
       "active": "ACTIV",
       "reported": "RAPORTAT",
       "viewOnSource": "Vizualizați pe {{source}}",
-      "attribution": "Date: NASA EONET"
+      "attribution": "Date: NASA EONET",
+      "storm": "Furtună",
+      "classification": "Clasificare",
+      "maxWind": "Vânt maxim",
+      "pressure": "Presiune",
+      "movement": "Mișcare",
+      "tropicalSystem": "Sistem tropical"
     },
     "port": {
       "types": {
@@ -2479,7 +3112,9 @@
     "currentVariant": "(actual)",
     "retry": "Reîncercați",
     "refresh": "Actualizează",
-    "all": "Toate"
+    "all": "Toate",
+    "dataTemporarilyUnavailable": "Datele sunt temporar indisponibile",
+    "cancel": "Anulare"
   },
   "preferences": {
     "display": "Afișare",
@@ -2497,10 +3132,141 @@
     "mapTheme": "Tema hărții",
     "mapThemeDesc": "Stilul vizual al dalelor hărții.",
     "globePreset": "Presetare vizuală",
-    "globePresetDesc": "Comută între vizualizări clasice și îmbunătățite ale globului."
+    "globePresetDesc": "Comută între vizualizări clasice și îmbunătățite ale globului.",
+    "fontFamily": "Familie de fonturi",
+    "fontFamilyDesc": "Monospace pentru aspect tehnic, font implicit pentru citire mai ușoară.",
+    "fontMono": "Monospace",
+    "fontSystem": "Font implicit"
   },
   "contextMenu": {
     "openCountryBrief": "Deschide prezentarea țării",
     "copyCoordinates": "Copiază coordonatele"
+  },
+  "shell": {
+    "documentTitle": "World Monitor — Tabloul de Bord al Inteligenței Globale în Timp Real",
+    "metaDescription": "Platformă de inteligență globală în timp real. Prezentată în WIRED. Utilizată de 2M+ persoane din 190 de țări. Conflicte, piețe, militare, OSINT într-o singură vizualizare.",
+    "offlineTitle": "Sunteți Offline",
+    "offlineMessage": "World Monitor necesită o conexiune la internet pentru date de informații în timp real.",
+    "offlineRetry": "Încercați din nou"
+  },
+  "widgets": {
+    "createWithAi": "Creează cu AI",
+    "confirmDelete": "Elimini permanent acest widget?",
+    "chatTitle": "Constructor de Widget",
+    "modifyTitle": "Modifică Widget",
+    "inputPlaceholder": "Descrie widgetul tău...",
+    "addToDashboard": "Adaugă la Tabloul de Bord",
+    "applyChanges": "Aplică Modificări",
+    "send": "Trimite",
+    "changeAccent": "Schimbă culoarea accentului",
+    "modifyWithAi": "Modifică widgetul cu AI",
+    "ready": "Widget gata: {{title}}",
+    "fetching": "Se preia {{target}}...",
+    "requestTimedOut": "Cererea a expirat. Te rog încearcă din nou.",
+    "serverError": "Eroare server: {{status}}",
+    "unknownError": "Eroare necunoscută",
+    "generatedWidget": "Widget generat: {{title}}",
+    "checkingConnection": "Se verifică accesul la widget...",
+    "preflightConnected": "Conectat la agentul widget",
+    "preflightInvalidKey": "Cheia widget respingă. Actualizează wm-widget-key și reîncarcă.",
+    "preflightUnavailable": "Agentul widget este temporar indisponibil.",
+    "preflightAiUnavailable": "Backend-ul AI este indisponibil. Încearcă din nou mai târziu.",
+    "readyToGenerate": "Gata de generat. Alege un exemplu sau descrie widgetul tău.",
+    "readyToApply": "Previzualizare gata pentru {{title}}. Revizuiește-o, apoi adaug-o la tabloul de bord.",
+    "modifyHint": "Se previzualizează widgetul curent. Trimite o cerere de modificare pentru a-l reviza.",
+    "generating": "Se generează...",
+    "examplesTitle": "Idei de prompt",
+    "previewTitle": "Previzualizare Live",
+    "phaseChecking": "Se verifică",
+    "phaseReadyToPrompt": "Gata",
+    "phaseFetching": "Se preiau datele",
+    "phaseComposing": "Se compune",
+    "phaseComplete": "Gata",
+    "phaseError": "Eroare",
+    "previewCheckingHeading": "Se conectează constructorul de widget",
+    "previewReadyHeading": "Descrie widgetul pe care îl dorești",
+    "previewFetchingHeading": "Se preiau datele live WorldMonitor",
+    "previewComposingHeading": "Se compune aspectul widgetului",
+    "previewErrorHeading": "Previzualizarea necesită atenție",
+    "previewCheckingCopy": "Validăm cheia widgetului și disponibilitatea backend-ului înainte de a activa generarea.",
+    "previewReadyCopy": "Folosește un exemplu de prompt sau descrie exact vizualizarea live pe care o dorești. Previzualizarea se va actualiza aici înainte să o salvezi.",
+    "previewFetchingCopy": "Agentul apelează punctele finale WorldMonitor aprobate și modelează setul de date pentru widget.",
+    "previewComposingCopy": "Previzualizarea se redă cu cele mai recente date live și stilul tabloului de bord.",
+    "previewErrorCopy": "Remediază problema, apoi reîncearcă. Widgeturile existente nu sunt afectate.",
+    "createInteractive": "Creează Widget Interactiv",
+    "proBadge": "PRO",
+    "preflightProUnavailable": "Agentul widget PRO este indisponibil. Verifică PRO_WIDGET_KEY pe server.",
+    "preflightInvalidProKey": "Cheia PRO respingă. Actualizează wm-pro-key și reîncarcă.",
+    "preflightProSubscriptionRequired": "Abonament Pro necesar. Dacă tocmai ai upgrade-uit, reîmprospătează pagina; altfel contactează suportul.",
+    "preflightProRequired": "Abonamentul Pro este necesar pentru a utiliza Widget Builder. Faceți upgrade pentru a debloca.",
+    "examples": {
+      "oilGold": "Arătați-mi prețul atual al petrolului brut în comparație cu aurul",
+      "cryptoMovers": "Creați un widget pentru cei mai mari mișcători de criptomonede în ultimele 24 de ore",
+      "flightDelays": "Rezumați cele mai grave întârzieri de zboruri internaționale chiar acum",
+      "conflictHotspots": "Mapați cele mai recente puncte fierbinți de conflict UCDP cu etichete scurte"
+    },
+    "proExamples": {
+      "interactiveChart": "Grafic interactiv Chart.js comparând prețurile petrolului și aurului",
+      "sortableTable": "Tabel de prețuri criptomonede sortabil cu filtru de căutare",
+      "animatedCounters": "Contor animat pentru indicatorii economici cheie",
+      "tabbedComparison": "Comparație cu file a evenimentelor de conflict după regiune"
+    }
+  },
+  "connectivity": {
+    "offlineCached": "Offline — afișare date cache din {{freshness}}.",
+    "offlineUnavailable": "Offline — datele live sunt indisponibile în acest moment.",
+    "cachedFallback": "Datele live indisponibile — afișare date cache din {{freshness}}."
+  },
+  "premium": {
+    "pro": "PRO",
+    "lockedDesc": "Necesită o cheie de licență World Monitor",
+    "joinWaitlist": "Adăugare în lista de așteptare",
+    "signInToUnlock": "Conectați-vă pentru a debloca funcțiile premium",
+    "signIn": "Conectați-vă pentru a debloca",
+    "verifyEmailToUnlock": "Verificați-vă emailul pentru a accesa funcțiile premium",
+    "resendVerification": "Retrimitere verificare",
+    "upgradeDesc": "Upgrade la Pro pentru acces deplin la analitica premium",
+    "upgradeToPro": "Upgrade la Pro",
+    "features": {
+      "orefSirens1": "Alerte în timp real pentru rachete și rachete Israel",
+      "orefSirens2": "Hartă zonelor de sirenă cu clasificare amenințărilor",
+      "telegramIntel1": "Canale Telegram OSINT curate",
+      "telegramIntel2": "Actualizări conflicte și geopolitice aproape în timp real"
+    }
+  },
+  "auth": {
+    "signIn": "Conectare",
+    "createAccount": "Creare cont",
+    "settings": "Setări"
+  },
+  "mcp": {
+    "connectPanel": "Conectare MCP",
+    "modalTitle": "Conectare server MCP",
+    "serverUrl": "URL server",
+    "authHeader": "Antet autentificare",
+    "optional": "opțional",
+    "apiKey": "Cheie API",
+    "apiKeyPlaceholder": "Lipire cheie API",
+    "useCustomHeaders": "Avansat: folosire antete personalizate ↓",
+    "useApiKey": "← Folosire cheie API",
+    "connectBtn": "Conectare și listare instrumente",
+    "connecting": "Se conectează...",
+    "foundTools": "Am găsit {{count}} instrument(e)",
+    "connectFailed": "Conexiunea a eșuat",
+    "selectTool": "Selectați un instrument",
+    "toolArgs": "Argumente (JSON)",
+    "panelTitle": "Titlu panou",
+    "panelTitlePlaceholder": "Panoul meu MCP",
+    "refreshEvery": "Reîmprospătați la fiecare",
+    "seconds": "secunde",
+    "addPanel": "Adăugați panou",
+    "configure": "Configurați MCP",
+    "refreshNow": "Reîmprospătați acum",
+    "invalidJson": "JSON nevalid",
+    "confirmDelete": "Eliminați acest panou MCP?",
+    "quickConnect": "Conexiune rapidă",
+    "or": "sau introduceți un server personalizat",
+    "generatingVisualization": "Se construiește vizualizarea...",
+    "visualizationFailed": "Vizualizarea a eșuat"
   }
 }

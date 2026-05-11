@@ -6,7 +6,8 @@
     "enterprise": "Enterprise",
     "reserveAccess": "Erken erişim için yer ayırtın",
     "signIn": "Giriş yap",
-    "upgradeToPro": "Pro'ya yükselt"
+    "upgradeToPro": "Pro'ya yükselt",
+    "goToDashboard": "Panoya Git"
   },
   "hero": {
     "noiseWord": "Gürültü",
@@ -18,7 +19,8 @@
     "emailPlaceholder": "E-postanızı girin",
     "emailAriaLabel": "Bekleme listesi için e-posta",
     "choosePlan": "Planınızı seçin",
-    "signIn": "Giriş yap"
+    "signIn": "Giriş yap",
+    "goToDashboard": "Panoya Git"
   },
   "wired": {
     "asFeaturedIn": "Yer aldığı yerler"
@@ -50,7 +52,8 @@
     "entF9": "SOC duvarları ve trading floor'lar için Android TV uygulaması",
     "entF10": "Bulut, on-premises veya air-gapped deployment",
     "entF11": "Adanmış onboarding ve destek",
-    "entCta": "Satışla konuşun"
+    "entCta": "Satışla konuşun",
+    "freeF2": "500+ beslenme kaynağı, 65+ kaynak, 50+ harita katmanı"
   },
   "whyUpgrade": {
     "title": "Neden yükseltmeli",
@@ -83,7 +86,7 @@
     "openFullScreen": "Tam ekran aç",
     "tryLiveDashboard": "Canlı kontrol panelini deneyin",
     "iframeTitle": "World Monitor — Canlı istihbarat kontrol paneli",
-    "description": "3D WebGL küre · 45+ etkileşimli harita katmanı · Gerçek zamanlı piyasa, makro, jeopolitik, enerji ve altyapı verileri"
+    "description": "3D WebGL küre · 50+ etkileşimli harita katmanı · Gerçek zamanlı pazar, makro, jeopolitik, enerji ve altyapı verileri"
   },
   "socialProof": {
     "uniqueVisitors": "Benzersiz ziyaretçiler",
@@ -139,31 +142,8 @@
   },
   "tiers": {
     "free": "Ücretsiz",
-    "freeTagline": "Her şeyi gör",
-    "freeDesc": "Açık kaynak kontrol paneli",
-    "freeF1": "Yenileme 5-15 dk",
-    "freeF2": "500+ besleme, 45 harita katmanı",
-    "freeF3": "AI için BYOK",
-    "freeF4": "Sonsuza dek ücretsiz",
-    "openDashboard": "Kontrol panelini aç",
     "pro": "Pro",
-    "proTagline": "Piyasalar, makro ve jeopolitik",
-    "proDesc": "AI analistiniz",
-    "proF1": "Equity research ve hisse analizi",
-    "proF2": "+ günlük özetler, ekonomik analitik",
-    "proF3": "AI dahil, 1 anahtar",
-    "proF4": "Öncelikli veri yenileme (Yakında)",
-    "priceMonthly": "$39,99 / ay",
-    "priceAnnual": "$399,99 / yıl",
-    "annualSavingsNote": "2 ay ücretsiz",
-    "enterprise": "Enterprise",
-    "enterpriseTagline": "Herkesten önce harekete geçin",
-    "enterpriseDesc": "İstihbarat platformu",
-    "entF1": "Canlı uydu görüntüleri",
-    "entF2": "+ AI ajanları, 50K+ altyapı, SAR",
-    "entF3": "Özel AI, yatırımcı persona'ları",
-    "entF4": "Bize ulaşın",
-    "contactSales": "Satışla iletişim"
+    "enterprise": "Enterprise"
   },
   "proShowcase": {
     "proTier": "PRO SEVİYESİ",
@@ -281,7 +261,6 @@
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + webhook",
     "fMcpBulk": "+ MCP + toplu",
-    "f45": "45",
     "fTensOfThousands": "+ on binlerce",
     "fLiveTracking": "Canlı takip",
     "fPassAlerts": "Geçiş uyarıları + analiz",
@@ -292,7 +271,8 @@
     "fStandard": "Standart",
     "fKeyAuth": "Anahtar kimlik doğrulama",
     "fSsoMfa": "SSO/MFA/RBAC/denetim",
-    "noteBelow": "Temel platform ücretsiz kalır. Ücretli planlar equity research, makro analitik, AI briflerini ve kurumsal kullanımı açar."
+    "noteBelow": "Temel platform ücretsiz kalır. Ücretli planlar equity research, makro analitik, AI briflerini ve kurumsal kullanımı açar.",
+    "f50plus": "50+"
   },
   "faq": {
     "title": "Sık sorulan sorular",
@@ -354,5 +334,76 @@
     "youreIn": "Katıldınız!",
     "invitedBanner": "Davet edildiniz — bekleme listesine katılın"
   },
-  "soonBadge": "Yakında"
+  "soonBadge": "Yakında",
+  "meta": {
+    "title": "World Monitor Pro — AI Analisti, Kişisel İstihbarat Masası, Claude & GPT için MCP",
+    "description": "Jeopolitik AI katmanı. Sor, abone ol, geliştir. WM Analyst sohbeti 30+ canlı hizmet arasında, günlük, haftada iki kez veya haftalık olarak Slack, Discord, Telegram, E-posta veya webhook'a teslim edilen AI özeti, özel widget oluşturucu (HTML/CSS/JS + AI) ve Claude, GPT ve özel LLM'ler için MCP bağlantıları.",
+    "ogTitle": "World Monitor Pro — Jeopolitik AI Katmanı",
+    "ogDescription": "Sor, abone ol, geliştir. WM Analyst sohbeti, planlandığı şekilde AI özeti (günlük, haftada iki kez veya haftalık), özel widget oluşturucu ve Claude/GPT için MCP — 30+ canlı hizmet arasında tek bir anahtar altında."
+  },
+  "pricing": {
+    "suffixForever": "sonsuza dek",
+    "suffixTailored": "sizin için özelleştirilmiş",
+    "suffixPerMonth": "/ay",
+    "suffixPerYear": "/yıl",
+    "amountCustom": "Özel",
+    "opening": "Açılıyor…",
+    "headerTitle": "Planınızı Seçin",
+    "headerSubtitle": "Gerçek zamanlı izlemeden tam istihbarat altyapısına kadar. Görevinize uygun katmanı seçin.",
+    "billingMonthly": "Aylık",
+    "billingAnnual": "Yıllık",
+    "saveAnnual": "%17 Tasarruf Edin",
+    "mostPopular": "En Popüler",
+    "promoCodeNote": "Promosyon kodunuz var mı? Ödeme sırasında girin.",
+    "tiers": {
+      "free": {
+        "description": "Temel özelliklerle başlayın",
+        "features": [
+          "Temel gösterge paneli",
+          "Küresel haber akışı",
+          "Deprem ve hava durumu uyarıları",
+          "Basit harita görünümü"
+        ],
+        "cta": "Başlayın"
+      },
+      "pro": {
+        "description": "Tam istihbarat gösterge paneli",
+        "features": [
+          "Ücretsizde her şey",
+          "AI hisse senedi analizi ve geri test",
+          "Günlük pazar özeti",
+          "Askeri ve jeopolitik izleme",
+          "Özel widget oluşturucu",
+          "MCP veri bağlayıcıları",
+          "Öncelikli veri yenileme"
+        ]
+      },
+      "api": {
+        "description": "İstihbarat verilerine programlı erişim",
+        "features": [
+          "REST API erişimi",
+          "Gerçek zamanlı veri akışları",
+          "Günde 1.000 istek",
+          "Webhook bildirimleri",
+          "Özel veri dışa aktarımı"
+        ]
+      },
+      "enterprise": {
+        "description": "Kuruluşlar için özel çözümler",
+        "features": [
+          "Pro + API'de her şey",
+          "Sınırsız API istekleri",
+          "Özel destek",
+          "Özel entegrasyonlar",
+          "SLA garantisi",
+          "Şirket içi seçenek"
+        ],
+        "cta": "Satışla İletişime Geçin"
+      }
+    },
+    "cta": {
+      "checkoutDefault": "Başlayın",
+      "learnMore": "Daha Fazla Bilgi"
+    }
+  }
 }

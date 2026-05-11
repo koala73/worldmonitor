@@ -1,4 +1,5 @@
 import { Panel } from './Panel';
+import { t } from '@/services/i18n';
 import type { RadiationObservation, RadiationWatchResult } from '@/services/radiation';
 import { escapeHtml } from '@/utils/sanitize';
 
@@ -19,12 +20,12 @@ export class RadiationWatchPanel extends Panel {
   constructor() {
     super({
       id: 'radiation-watch',
-      title: 'Radiation Watch',
+      title: t('components.radiationWatch.title'),
       showCount: true,
       trackActivity: true,
-      infoTooltip: 'Seeded EPA RadNet and Safecast readings with anomaly scoring and source-confidence synthesis. This panel answers what is normal, what is elevated, and which anomalies are confirmed versus tentative.',
+      infoTooltip: t('components.radiationWatch.infoTooltip'),
     });
-    this.showLoading('Loading radiation data...');
+    this.showLoading(t('components.radiationWatch.loading'));
 
     this.content.addEventListener('click', (e) => {
       const row = (e.target as HTMLElement).closest<HTMLElement>('.radiation-row');
@@ -49,7 +50,7 @@ export class RadiationWatchPanel extends Panel {
 
   private render(): void {
     if (this.observations.length === 0) {
-      this.setContent('<div class="panel-empty">No radiation observations available.</div>');
+      this.setContent(`<div class="panel-empty">${escapeHtml(t('components.radiationWatch.empty'))}</div>`);
       return;
     }
 
@@ -62,16 +63,16 @@ export class RadiationWatchPanel extends Panel {
       const confidence = formatConfidence(obs.confidence);
       const flags = [
         `<span class="radiation-badge radiation-confidence radiation-confidence-${obs.confidence}">${escapeHtml(confidence)}</span>`,
-        obs.corroborated ? '<span class="radiation-badge radiation-flag-confirmed">confirmed</span>' : '',
-        obs.conflictingSources ? '<span class="radiation-badge radiation-flag-conflict">conflict</span>' : '',
-        obs.convertedFromCpm ? '<span class="radiation-badge radiation-flag-converted">CPM-derived</span>' : '',
+        obs.corroborated ? `<span class="radiation-badge radiation-flag-confirmed">${escapeHtml(t('components.radiationWatch.flags.confirmed'))}</span>` : '',
+        obs.conflictingSources ? `<span class="radiation-badge radiation-flag-conflict">${escapeHtml(t('components.radiationWatch.flags.conflict'))}</span>` : '',
+        obs.convertedFromCpm ? `<span class="radiation-badge radiation-flag-converted">${escapeHtml(t('components.radiationWatch.flags.cpmDerived'))}</span>` : '',
         `<span class="radiation-badge radiation-freshness radiation-freshness-${obs.freshness}">${escapeHtml(obs.freshness)}</span>`,
       ].filter(Boolean).join('');
       return `
         <tr class="radiation-row" data-lat="${obs.lat}" data-lon="${obs.lon}">
           <td class="radiation-location">
             <div class="radiation-location-name">${escapeHtml(obs.location)}</div>
-            <div class="radiation-location-meta">${escapeHtml(sourceLine)} · ${escapeHtml(baseline)} baseline</div>
+            <div class="radiation-location-meta">${escapeHtml(sourceLine)} · ${escapeHtml(t('components.radiationWatch.baseline', { value: baseline }))}</div>
             <div class="radiation-location-flags">${flags}</div>
           </td>
           <td class="radiation-reading">${escapeHtml(reading)}</td>
@@ -85,34 +86,34 @@ export class RadiationWatchPanel extends Panel {
     const summary = `
       <div class="radiation-summary">
         <div class="radiation-summary-card">
-          <span class="radiation-summary-label">Anomalies</span>
+          <span class="radiation-summary-label">${escapeHtml(t('components.radiationWatch.summary.anomalies'))}</span>
           <span class="radiation-summary-value">${this.summary.anomalyCount}</span>
         </div>
         <div class="radiation-summary-card">
-          <span class="radiation-summary-label">Elevated</span>
+          <span class="radiation-summary-label">${escapeHtml(t('components.radiationWatch.summary.elevated'))}</span>
           <span class="radiation-summary-value">${this.summary.elevatedCount}</span>
         </div>
         <div class="radiation-summary-card radiation-summary-card-confirmed">
-          <span class="radiation-summary-label">Confirmed</span>
+          <span class="radiation-summary-label">${escapeHtml(t('components.radiationWatch.summary.confirmed'))}</span>
           <span class="radiation-summary-value">${this.summary.corroboratedCount}</span>
         </div>
         <div class="radiation-summary-card radiation-summary-card-low-confidence">
-          <span class="radiation-summary-label">Low Confidence</span>
+          <span class="radiation-summary-label">${escapeHtml(t('components.radiationWatch.summary.lowConfidence'))}</span>
           <span class="radiation-summary-value">${this.summary.lowConfidenceCount}</span>
         </div>
         <div class="radiation-summary-card radiation-summary-card-conflict">
-          <span class="radiation-summary-label">Conflicts</span>
+          <span class="radiation-summary-label">${escapeHtml(t('components.radiationWatch.summary.conflicts'))}</span>
           <span class="radiation-summary-value">${this.summary.conflictingCount}</span>
         </div>
         <div class="radiation-summary-card radiation-summary-card-spike">
-          <span class="radiation-summary-label">Spikes</span>
+          <span class="radiation-summary-label">${escapeHtml(t('components.radiationWatch.summary.spikes'))}</span>
           <span class="radiation-summary-value">${this.summary.spikeCount}</span>
         </div>
       </div>
     `;
 
     const footer = this.fetchedAt
-      ? `Updated ${this.fetchedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`
+      ? t('components.radiationWatch.footer.updated', { time: this.fetchedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })
       : '';
 
     this.setContent(`
@@ -121,11 +122,11 @@ export class RadiationWatchPanel extends Panel {
         <table class="radiation-table">
           <thead>
             <tr>
-              <th>Station</th>
-              <th>Reading</th>
-              <th>Delta</th>
-              <th>Status</th>
-              <th>Observed</th>
+              <th>${escapeHtml(t('components.radiationWatch.headers.station'))}</th>
+              <th>${escapeHtml(t('components.radiationWatch.headers.reading'))}</th>
+              <th>${escapeHtml(t('components.radiationWatch.headers.delta'))}</th>
+              <th>${escapeHtml(t('components.radiationWatch.headers.status'))}</th>
+              <th>${escapeHtml(t('components.radiationWatch.headers.observed'))}</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
@@ -151,10 +152,10 @@ function formatObservedAt(date: Date): string {
   const ageMs = Date.now() - date.getTime();
   if (ageMs < 24 * 60 * 60 * 1000) {
     const hours = Math.max(1, Math.floor(ageMs / (60 * 60 * 1000)));
-    return `${hours}h ago`;
+    return t('components.radiationWatch.observed.hoursAgo', { count: hours });
   }
   const days = Math.floor(ageMs / (24 * 60 * 60 * 1000));
-  if (days < 30) return `${days}d ago`;
+  if (days < 30) return t('components.radiationWatch.observed.daysAgo', { count: days });
   return date.toISOString().slice(0, 10);
 }
 
@@ -167,10 +168,10 @@ function formatSourceLine(observation: RadiationObservation): string {
 function formatConfidence(value: RadiationObservation['confidence']): string {
   switch (value) {
     case 'high':
-      return 'high confidence';
+      return t('components.radiationWatch.confidence.high');
     case 'medium':
-      return 'medium confidence';
+      return t('components.radiationWatch.confidence.medium');
     default:
-      return 'low confidence';
+      return t('components.radiationWatch.confidence.low');
   }
 }

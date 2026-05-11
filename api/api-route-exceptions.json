@@ -31,9 +31,16 @@
       "removal_issue": null
     },
     {
-      "path": "api/oauth/token.js",
+      "path": "api/oauth/token.ts",
       "category": "external-protocol",
-      "reason": "OAuth 2.0 token endpoint (RFC 6749). application/x-www-form-urlencoded request body; shape fixed by the spec.",
+      "reason": "OAuth 2.0 token endpoint (RFC 6749). application/x-www-form-urlencoded request body; shape fixed by the spec. TypeScript port (plan 2026-05-10-001 U6) added the McpAuthContext discriminated union for Pro vs env-key bearers; legacy bare-string token shape preserved verbatim.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/oauth/authorize-pro.ts",
+      "category": "external-protocol",
+      "reason": "OAuth 2.0 bounce-back from the apex /mcp-grant Clerk-protected consent flow (plan 2026-05-10-001 U5). GET-only edge handler that HMAC-verifies the signed grant, atomically consumes both `mcp-grant:<n>` and `oauth:nonce:<n>` Redis one-shots, issues a Convex `mcpProTokens` row, writes `oauth:code:<code>` with `{kind:'pro', userId, mcpTokenId, ...}`, and 302s to the registered redirect_uri. Response shape (HTML error pages + 302 redirect) is dictated by RFC 6749 — same external-protocol constraint as api/oauth/authorize.js.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
@@ -259,6 +266,20 @@
       "removal_issue": null
     },
     {
+      "path": "api/internal/mcp-grant-mint.ts",
+      "category": "internal-helper",
+      "reason": "Apex-domain bridge endpoint for the cross-subdomain Pro MCP authorization flow (plan 2026-05-10-001 U3). POST {nonce} from the Clerk-protected /mcp-grant SPA on worldmonitor.app; returns a fixed-host redirect URL with a HMAC-signed grant token to api.worldmonitor.app/oauth/authorize-pro. Shape is an implementation detail of the bounce-via-apex consent flow — exposing it as a versioned product API would publish internal OAuth plumbing.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/internal/mcp-grant-context.ts",
+      "category": "internal-helper",
+      "reason": "Read-only companion to api/internal/mcp-grant-mint.ts (plan 2026-05-10-001 U3). Returns the registered OAuth client_name + redirect host so the apex /mcp-grant SPA can show real client metadata (anti-phishing). Pro-gated; identical validation paths as the mint endpoint.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/data/city-coords.ts",
       "category": "internal-helper",
       "reason": "Static city-coordinates payload served from the deploy artifact. Returns a fixed reference table, not a queryable service.",
@@ -269,6 +290,20 @@
       "path": "api/me/entitlement.ts",
       "category": "internal-helper",
       "reason": "Thin wrapper over the canonical server/_shared/premium-check.ts isCallerPremium helper — returns { isPro: boolean } for the /pro marketing bundle so it can swap upgrade CTAs for a dashboard link when the visitor is already a paying Pro user. Not a product data API: the authoritative gates live in panel-gating.ts (frontend), isCallerPremium (per-handler), and gateway.ts PREMIUM_RPC_PATHS (Bearer gate). This endpoint exists purely to let the separate pro-test bundle (no Convex client, no gateway client) ask the same question without reimplementing the two-signal check. Shape is unversioned by design — flip a boolean and ship.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/user/mcp-quota.ts",
+      "category": "internal-helper",
+      "reason": "Settings-UI-only read of the caller's Pro MCP daily-quota counter (plan 2026-05-10-001 U9). Clerk-authenticated; reads the SAME `mcp:pro-usage:<userId>:<YYYY-MM-DD>` Redis key that api/mcp.ts U7 writes via INCR-first reservation. Returns `{used, limit:50, resetsAt}` — informational, not authoritative; the hard cap is enforced server-side at INCR time. Shape exists purely so the Connected MCP clients tab can show `X / 50 used today, resets in <countdown>` without exposing the underlying Redis schema. Modeling as a sebuf RPC would publish a per-user counter implementation detail as user-facing API surface for a single-feature display widget.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/user/mcp-revoke.ts",
+      "category": "internal-helper",
+      "reason": "Settings-UI revoke action for Pro MCP tokens (plan 2026-05-10-001 U9). Clerk-authenticated; forwards the verified-from-JWT userId to Convex /api/internal-revoke-pro-mcp-token (in-mutation tenancy gate validates `row.userId === userId`), then writes the `pro-mcp-token-neg:<tokenId>` sentinel so any in-flight bearer is invalidated within the 60s neg-cache window. Calls the internal HTTP route rather than the public mutation to (a) avoid ConvexHttpClient's no-default-timeout foot-gun (memory `convex-httpclient-no-default-timeout-bypasses-typed-503`) and (b) atomically pair with the cache-invalidation step. Plain `{tokenId}` request / `{ok:true}` response — modeling as a sebuf RPC would over-engineer a single-button settings action.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },

@@ -2730,7 +2730,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const shell = this.el('div', 'country-deep-dive-shell');
     const close = this.el('button', 'panel-close', '×') as HTMLButtonElement;
     close.id = 'deep-dive-close';
-    close.setAttribute('aria-label', 'Close');
+    close.setAttribute('aria-label', t('common.close'));
 
     const content = this.el('div', 'panel-content');
     content.id = 'deep-dive-content';
