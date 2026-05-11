@@ -197,9 +197,14 @@ const TOOL_REGISTRY: ToolDef[] = [
     ],
     _seedMetaKey: 'seed-meta:market:stocks',
     _maxStaleMin: 30,
+    // NOTE: `GET /api/market/v1/get-gold-intelligence` is NOT covered here.
+    // The audit-time cross-reference matched on the single `market:commodities-bootstrap:v1`
+    // key shared between this tool and the gold-intel handler, but the handler also reads 4
+    // gold-specific keys (COT, gold-extended, gold-ETF-flows, gold-CB-reserves) that this
+    // tool's `_cacheKeys` does NOT expose. Excluded as `deferred-to-future-tool` in
+    // tests/mcp-api-parity.test.mjs until a future commodities-expansion tool bundles those.
     _apiPaths: [
       "GET /api/market/v1/get-fear-greed-index",
-      "GET /api/market/v1/get-gold-intelligence",
       "GET /api/market/v1/get-sector-summary",
       "GET /api/market/v1/list-commodity-quotes",
       "GET /api/market/v1/list-crypto-quotes",
@@ -918,8 +923,14 @@ const TOOL_REGISTRY: ToolDef[] = [
     // of the same keys the per-method handlers expose via the API. The
     // OpenAPI ops listed here read parameterized keys (the audit's
     // manual-mapping case); this MCP tool wraps the 'ae'-instance equivalent.
+    //
+    // NOTE: `get-consumer-price-basket-series` is NOT covered here — that
+    // handler reads `consumer-prices:basket-series:${market}:${basket}:${range}`
+    // which is a separate parameterized time-series key, NOT in this tool's
+    // `_coverageKeys`. Excluded as `deferred-to-future-tool` in
+    // tests/mcp-api-parity.test.mjs until a future expanded_consumer_prices
+    // tool exposes the basket-series time series.
     _apiPaths: [
-      'GET /api/consumer-prices/v1/get-consumer-price-basket-series',
       'GET /api/consumer-prices/v1/get-consumer-price-freshness',
       'GET /api/consumer-prices/v1/get-consumer-price-overview',
       'GET /api/consumer-prices/v1/list-consumer-price-categories',

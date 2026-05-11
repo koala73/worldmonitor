@@ -233,7 +233,11 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
   ["POST /api/leads/v1/submit-contact",
     "manual-mapping: handler uses inline Redis or Convex (not server/_shared/redis) — manual triage"],
 
-  // === deferred-to-future-tool (49) ===
+  // === deferred-to-future-tool (51) ===
+  ["GET /api/consumer-prices/v1/get-consumer-price-basket-series",
+    "deferred-to-future-tool: handler reads parameterized consumer-prices:basket-series:<market>:<basket>:<range> key NOT in get_consumer_prices._coverageKeys — bundle into a future expanded_consumer_prices tool that exposes the basket-series time series"],
+  ["GET /api/market/v1/get-gold-intelligence",
+    "deferred-to-future-tool: handler reads 5 keys (commodities-bootstrap + COT + gold-extended + gold-ETF-flows + gold-CB-reserves); only commodities-bootstrap overlaps with get_market_data._cacheKeys — bundle into a future expanded_commodities tool that exposes COT, gold-extended, ETF flows, and CB reserves"],
   ["GET /api/aviation/v1/get-airport-ops-summary",
     "deferred-to-future-tool: pure-read but no MCP tool exposes aviation:delays:intl:v3 yet — bundle into a future expanded-domain tool"],
   ["GET /api/cyber/v1/list-cyber-threats",
