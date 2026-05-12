@@ -353,7 +353,7 @@ describe('runSynthesisWithFallback — three-level chain', () => {
     const trace = [];
     const result = await runSynthesisWithFallback(
       'u1',
-      [{ hash: 'h1', headline: 'Story 1', threatLevel: 'critical' }],
+      [{ hash: 'h1', headline: 'Hormuz blockade threatens Gaza shipping', threatLevel: 'critical' }],
       'all',
       { profile: 'Watching: oil', greeting: 'Good morning' },
       deps,
@@ -379,7 +379,7 @@ describe('runSynthesisWithFallback — three-level chain', () => {
     const trace = [];
     const result = await runSynthesisWithFallback(
       'u1',
-      [{ hash: 'h1', headline: 'Story 1', threatLevel: 'critical' }],
+      [{ hash: 'h1', headline: 'Hormuz blockade threatens Gaza shipping', threatLevel: 'critical' }],
       'all',
       { profile: 'Watching: oil', greeting: 'Good morning' },
       deps,
@@ -399,7 +399,7 @@ describe('runSynthesisWithFallback — three-level chain', () => {
     const trace = [];
     const result = await runSynthesisWithFallback(
       'u1',
-      [{ hash: 'h1', headline: 'Story 1', threatLevel: 'critical' }],
+      [{ hash: 'h1', headline: 'Hormuz blockade threatens Gaza shipping', threatLevel: 'critical' }],
       'all',
       { profile: null, greeting: null },
       deps,
@@ -429,7 +429,7 @@ describe('runSynthesisWithFallback — three-level chain', () => {
     };
     const result = await runSynthesisWithFallback(
       'u1',
-      [{ hash: 'h1', headline: 'Story 1', threatLevel: 'critical' }],
+      [{ hash: 'h1', headline: 'Hormuz blockade threatens Gaza shipping', threatLevel: 'critical' }],
       'all',
       { profile: null, greeting: null },
       deps,
@@ -442,7 +442,7 @@ describe('runSynthesisWithFallback — three-level chain', () => {
     const deps = makeDeps(async () => { throw new Error('LLM totally down'); });
     const result = await runSynthesisWithFallback(
       'u1',
-      [{ hash: 'h1', headline: 'Story 1', threatLevel: 'critical' }],
+      [{ hash: 'h1', headline: 'Hormuz blockade threatens Gaza shipping', threatLevel: 'critical' }],
       'all',
       { profile: null, greeting: null },
       deps,
@@ -458,7 +458,7 @@ describe('runSynthesisWithFallback — three-level chain', () => {
     // No trace argument
     const result = await runSynthesisWithFallback(
       'u1',
-      [{ hash: 'h1', headline: 'Story 1', threatLevel: 'critical' }],
+      [{ hash: 'h1', headline: 'Hormuz blockade threatens Gaza shipping', threatLevel: 'critical' }],
       'all',
       { profile: null, greeting: null },
       deps,
