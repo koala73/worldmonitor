@@ -18,6 +18,7 @@
  */
 
 import { cachedFetchJson } from '../../_shared/redis';
+import { isBlockedSource } from '../../_shared/blocked-news-sources';
 import { keepAlive } from '../../_shared/keep-alive';
 import { buildBaseDigest, type LiveNewsItem } from './_normalize';
 // Combined enrichment replaces the old `_enrich.ts` (location-only) +
@@ -134,8 +135,15 @@ export async function listUsHeadlines(): Promise<ListUsHeadlinesResponse> {
     );
 
     if (result) {
-      lastGoodResponse = result;
-      return result;
+      // Defensive: strip any items whose source has been removed from the
+      // config for commercial-usage reasons. Catches stale items still
+      // sitting in the digest cache from before the source was dropped.
+      const filtered: ListUsHeadlinesResponse = {
+        ...result,
+        items: result.items.filter((it) => !isBlockedSource(it.source)),
+      };
+      lastGoodResponse = filtered;
+      return filtered;
     }
   } catch (err) {
     console.warn('[live-news] listUsHeadlines failed:', err instanceof Error ? err.message : err);

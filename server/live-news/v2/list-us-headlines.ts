@@ -16,6 +16,7 @@
  */
 
 import { cachedFetchJson } from '../../_shared/redis';
+import { isBlockedSource } from '../../_shared/blocked-news-sources';
 import { keepAlive } from '../../_shared/keep-alive';
 import { buildBaseDigest } from '../v1/_normalize';
 import { attachCachedEnrichment, enrichMissingAsync } from '../v1/_enrich-combined';
@@ -146,8 +147,38 @@ export async function listUsHeadlinesV2(): Promise<ListUsHeadlinesV2Response> {
     );
 
     if (result) {
-      lastGoodResponse = result;
-      return result;
+      // Defensive: strip blocked sources from the response. v2 carries a
+      // `sources[]` array per item — filter that first; if any allowed
+      // outlets remain we keep the story and promote the first allowed
+      // entry to the top-level fields (`source`, `title`, `link`,
+      // `publishedAt`). If every outlet on the story is blocked, drop
+      // the entire item.
+      const filtered: ListUsHeadlinesV2Response = {
+        ...result,
+        items: result.items
+          .map((item) => {
+            const allowedSources = item.sources.filter((s) => !isBlockedSource(s.source));
+            if (allowedSources.length === 0) return null;
+            const lead = allowedSources[0]!;
+            // If the existing representative was blocked, promote the
+            // first allowed alternate to the top level so the wire shape
+            // stays consistent (top-level fields always mirror sources[0]).
+            if (isBlockedSource(item.source)) {
+              return {
+                ...item,
+                source: lead.source,
+                title: lead.title,
+                link: lead.link,
+                publishedAt: lead.publishedAt,
+                sources: allowedSources,
+              };
+            }
+            return { ...item, sources: allowedSources };
+          })
+          .filter((item): item is NonNullable<typeof item> => item !== null),
+      };
+      lastGoodResponse = filtered;
+      return filtered;
     }
   } catch (err) {
     console.warn('[live-news:v2] listUsHeadlinesV2 failed:', err instanceof Error ? err.message : err);

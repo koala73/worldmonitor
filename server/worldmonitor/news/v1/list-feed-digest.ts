@@ -7,6 +7,7 @@ import type {
   ThreatLevel as ProtoThreatLevel,
 } from '../../../../src/generated/server/worldmonitor/news/v1/service_server';
 import { cachedFetchJson, getCachedJsonBatch } from '../../../_shared/redis';
+import { isBlockedSource } from '../../../_shared/blocked-news-sources';
 import { fetchUpstream } from '../../../_shared/upstream';
 import { sha256Hex } from '../../../_shared/hash';
 import { CHROME_UA } from '../../../_shared/constants';
@@ -287,10 +288,32 @@ export async function listFeedDigest(
       if (fallbackDigestCache.size > 50) fallbackDigestCache.clear();
       fallbackDigestCache.set(fallbackKey, { data: cached, ts: Date.now() });
     }
-    return cached ?? fallbackDigestCache.get(fallbackKey)?.data ?? { categories: {}, feedStatuses: {}, generatedAt: new Date().toISOString() };
+    const resolved = cached
+      ?? fallbackDigestCache.get(fallbackKey)?.data
+      ?? { categories: {}, feedStatuses: {}, generatedAt: new Date().toISOString() };
+    return stripBlockedSources(resolved);
   } catch {
-    return fallbackDigestCache.get(fallbackKey)?.data ?? { categories: {}, feedStatuses: {}, generatedAt: new Date().toISOString() };
+    const resolved = fallbackDigestCache.get(fallbackKey)?.data
+      ?? { categories: {}, feedStatuses: {}, generatedAt: new Date().toISOString() };
+    return stripBlockedSources(resolved);
   }
+}
+
+/**
+ * Defensive filter applied to every response. Removes items whose source
+ * has been dropped from the feed config for commercial-usage reasons —
+ * catches stale items still sitting in the digest cache from before the
+ * source was removed.
+ */
+function stripBlockedSources(resp: ListFeedDigestResponse): ListFeedDigestResponse {
+  const filteredCategories: Record<string, CategoryBucket> = {};
+  for (const [category, bucket] of Object.entries(resp.categories ?? {})) {
+    filteredCategories[category] = {
+      ...bucket,
+      items: (bucket.items ?? []).filter((it) => !isBlockedSource(it.source)),
+    };
+  }
+  return { ...resp, categories: filteredCategories };
 }
 
 async function buildDigest(variant: string, lang: string): Promise<ListFeedDigestResponse> {
