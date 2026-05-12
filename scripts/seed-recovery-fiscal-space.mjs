@@ -146,14 +146,23 @@ export function buildFiscalSpaceCountries(perIndicator) {
     // data are not emitted, regardless of whether growth/inflation exist.
     if (!rev && !bal && !debt) continue;
 
+    // Capture per-iso3 byYear dicts once — used for year alignment plus
+    // the actual value reads. Saves repeated iso3 hash lookups (PR #3669
+    // review nit; negligible at N=190 but the cleanup is honest).
+    const debtByYear   = debtData[iso3];
+    const balByYear    = balanceData[iso3];
+    const pbByYear     = primaryBalanceData[iso3];
+    const growthByYear = growthData[iso3];
+    const inflByYear   = inflationData[iso3];
+
     // Year-aligned gap inputs. Only the 5 formula inputs are in the
     // alignment set — revenue is NOT in the formula and is omitted here.
     const commonYear = latestCommonYear([
-      debtData[iso3],
-      balanceData[iso3],
-      primaryBalanceData[iso3],
-      growthData[iso3],
-      inflationData[iso3],
+      debtByYear,
+      balByYear,
+      pbByYear,
+      growthByYear,
+      inflByYear,
     ]);
 
     let pb = null;
@@ -163,11 +172,11 @@ export function buildFiscalSpaceCountries(perIndicator) {
     let gapYear = null;
     if (commonYear != null) {
       const yearKey = String(commonYear);
-      const debtCommon = Number(debtData[iso3]?.[yearKey]);
-      const fbCommon   = Number(balanceData[iso3]?.[yearKey]);
-      pb   = Number(primaryBalanceData[iso3]?.[yearKey]);
-      real = Number(growthData[iso3]?.[yearKey]);
-      infl = Number(inflationData[iso3]?.[yearKey]);
+      const debtCommon = Number(debtByYear?.[yearKey]);
+      const fbCommon   = Number(balByYear?.[yearKey]);
+      pb   = Number(pbByYear?.[yearKey]);
+      real = Number(growthByYear?.[yearKey]);
+      infl = Number(inflByYear?.[yearKey]);
       gap = computeDebtSustainabilityGap({
         debt: debtCommon,
         pb,
@@ -258,7 +267,11 @@ if (process.argv[1]?.endsWith('seed-recovery-fiscal-space.mjs')) {
 
     declareRecords,
     schemaVersion: 2,
-    maxStaleMin: 86400,
+    // 90d = 3× the 30-day cron interval per the health-maxstalemin-write-cadence
+    // skill (rule: maxStaleMin = write_interval × 2-3). Bumped from 86400 (2×, at
+    // project floor) to give extra margin against month-2 cron hiccups. Must also
+    // be mirrored in api/health.js for the alarm threshold to track.
+    maxStaleMin: 129600,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);
