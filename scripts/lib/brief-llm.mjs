@@ -848,11 +848,40 @@ export async function generateDigestProse(userId, stories, sensitivity, deps, ct
       timeoutMs: 15_000,
       skipProviders: BRIEF_LLM_SKIP_PROVIDERS,
     });
-  } catch {
+  } catch (err) {
+    // LLM-side failure (timeout, provider down, network). Distinct
+    // from "LLM responded but output was malformed/ungrounded" —
+    // see below.
+    console.warn(
+      `[brief-llm] digest synthesis: LLM call threw user=${userId} sensitivity=${sensitivity} pool=${stories?.length ?? 0}: ${err?.message ?? 'unknown'}`,
+    );
     return null;
   }
   const parsed = parseDigestProse(text, stories);
-  if (!parsed) return null;
+  if (!parsed) {
+    // LLM returned text but parseDigestProse rejected it. Three sub-
+    // failures land here, distinguishable on log search:
+    //   - text === null/undefined: provider returned no content
+    //   - text non-empty but not valid JSON / shape-invalid: model
+    //     drift (stripped JSON braces, exceeded length caps)
+    //   - shape valid but grounding failed: hallucination rejected
+    // On-call triage runs `grep "[brief-llm] digest synthesis"` and
+    // distinguishes "LLM threw" (above) vs "ungrounded/malformed
+    // output" (here). PR #3667 review round 4 #3 — without this log,
+    // a sustained model regression is invisible against an infra
+    // blip baseline. Cost note: we deliberately do NOT cache the
+    // failure (no sentinel write under the v5 key). At temperature
+    // 0.4 the next tick may roll a grounded output for the same
+    // prompt; caching the failure would block legitimate retries.
+    // Cron-level fallback (L1→L2→L3 in runSynthesisWithFallback)
+    // handles the user-visible degradation; this log handles ops
+    // visibility.
+    const textLen = typeof text === 'string' ? text.length : 0;
+    console.warn(
+      `[brief-llm] digest synthesis: ungrounded or malformed output user=${userId} sensitivity=${sensitivity} pool=${stories?.length ?? 0} text_len=${textLen}`,
+    );
+    return null;
+  }
   try {
     await deps.cacheSet(key, parsed, DIGEST_PROSE_TTL_SEC);
   } catch { /* ignore */ }
