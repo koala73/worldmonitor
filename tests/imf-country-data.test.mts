@@ -19,7 +19,7 @@ describe('buildImfEconomicIndicators (panel rendering)', () => {
     assert.deepEqual(buildImfEconomicIndicators(bundle()), []);
   });
 
-  it('renders real GDP growth + inflation + unemployment + GDP/capita rows', () => {
+  it('renders real GDP growth + inflation + unemployment + GDP/capita + revenue rows', () => {
     const rows = buildImfEconomicIndicators(bundle({
       macro: {
         inflationPct: 3.4, currentAccountPct: -2.1, govRevenuePct: 30,
@@ -36,7 +36,7 @@ describe('buildImfEconomicIndicators (panel rendering)', () => {
       },
     }));
     assert.deepEqual(rows.map(r => r.label), [
-      'Real GDP Growth', 'CPI Inflation', 'Unemployment', 'GDP / Capita',
+      'Real GDP Growth', 'CPI Inflation', 'Unemployment', 'GDP / Capita', 'Gov Revenue',
     ]);
     assert.equal(rows[0].value, '+2.7%');
     assert.equal(rows[0].trend, 'up');
@@ -88,6 +88,87 @@ describe('buildImfEconomicIndicators (panel rendering)', () => {
     }));
     const gdp = rows.find(r => r.label === 'GDP / Capita')!;
     assert.equal(gdp.value, '$850');
+  });
+
+  it('renders public spending %GDP with a flat trend (level is descriptive, not directional)', () => {
+    const rows = buildImfEconomicIndicators(bundle({
+      macro: {
+        inflationPct: null, currentAccountPct: null, govRevenuePct: null,
+        cpiIndex: null, cpiEopPct: null, govExpenditurePct: 57.2, primaryBalancePct: null,
+        year: 2024,
+      },
+    }));
+    const spend = rows.find(r => r.label === 'Public Spending')!;
+    assert.equal(spend.value, '57.2% GDP');
+    assert.equal(spend.trend, 'flat');
+    assert.equal(spend.source, 'IMF WEO');
+  });
+
+  it('renders gov revenue %GDP with a flat trend', () => {
+    const rows = buildImfEconomicIndicators(bundle({
+      macro: {
+        inflationPct: null, currentAccountPct: null, govRevenuePct: 32.5,
+        cpiIndex: null, cpiEopPct: null, govExpenditurePct: null, primaryBalancePct: null,
+        year: 2024,
+      },
+    }));
+    const rev = rows.find(r => r.label === 'Gov Revenue')!;
+    assert.equal(rev.value, '32.5% GDP');
+    assert.equal(rev.trend, 'flat');
+    assert.equal(rev.source, 'IMF WEO');
+  });
+
+  it('marks meaningful primary surplus (>+1) with an upward trend and signed value', () => {
+    const rows = buildImfEconomicIndicators(bundle({
+      macro: {
+        inflationPct: null, currentAccountPct: null, govRevenuePct: null,
+        cpiIndex: null, cpiEopPct: null, govExpenditurePct: null, primaryBalancePct: 2.1,
+        year: 2024,
+      },
+    }));
+    const pb = rows.find(r => r.label === 'Primary Balance')!;
+    assert.equal(pb.value, '+2.1% GDP');
+    assert.equal(pb.trend, 'up');
+    assert.equal(pb.source, 'IMF WEO');
+  });
+
+  it('keeps primary balance flat for small surplus (between 0 and +1)', () => {
+    const rows = buildImfEconomicIndicators(bundle({
+      macro: {
+        inflationPct: null, currentAccountPct: null, govRevenuePct: null,
+        cpiIndex: null, cpiEopPct: null, govExpenditurePct: null, primaryBalancePct: 0.5,
+        year: 2024,
+      },
+    }));
+    const pb = rows.find(r => r.label === 'Primary Balance')!;
+    assert.equal(pb.value, '+0.5% GDP');
+    assert.equal(pb.trend, 'flat');
+  });
+
+  it('keeps primary balance flat for mild deficit (between -3 and 0)', () => {
+    const rows = buildImfEconomicIndicators(bundle({
+      macro: {
+        inflationPct: null, currentAccountPct: null, govRevenuePct: null,
+        cpiIndex: null, cpiEopPct: null, govExpenditurePct: null, primaryBalancePct: -1.0,
+        year: 2024,
+      },
+    }));
+    const pb = rows.find(r => r.label === 'Primary Balance')!;
+    assert.equal(pb.value, '-1.0% GDP');
+    assert.equal(pb.trend, 'flat');
+  });
+
+  it('marks severe primary deficit (<-3) with a downward trend', () => {
+    const rows = buildImfEconomicIndicators(bundle({
+      macro: {
+        inflationPct: null, currentAccountPct: null, govRevenuePct: null,
+        cpiIndex: null, cpiEopPct: null, govExpenditurePct: null, primaryBalancePct: -4.0,
+        year: 2024,
+      },
+    }));
+    const pb = rows.find(r => r.label === 'Primary Balance')!;
+    assert.equal(pb.value, '-4.0% GDP');
+    assert.equal(pb.trend, 'down');
   });
 
   it('skips rows whose values are null or non-finite', () => {

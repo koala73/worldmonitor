@@ -169,5 +169,43 @@ export function buildImfEconomicIndicators(bundle: ImfCountryBundle): {
     });
   }
 
+  // Public spending as % of GDP (IMF GGX_NGDP). Level is descriptive context,
+  // not directional — Nordics sit at 50%+ with strong stability scores while
+  // some low-spending states are fragile. Trend stays flat to avoid baking
+  // a "high = bad" signal into the indicator card.
+  const govExp = bundle.macro?.govExpenditurePct;
+  if (govExp != null && Number.isFinite(govExp)) {
+    out.push({
+      label: 'Public Spending',
+      value: `${govExp.toFixed(1)}% GDP`,
+      trend: 'flat',
+      source: 'IMF WEO',
+    });
+  }
+
+  const govRev = bundle.macro?.govRevenuePct;
+  if (govRev != null && Number.isFinite(govRev)) {
+    out.push({
+      label: 'Gov Revenue',
+      value: `${govRev.toFixed(1)}% GDP`,
+      trend: 'flat',
+      source: 'IMF WEO',
+    });
+  }
+
+  // Primary balance %GDP (IMF GGXONLB_NGDP). Directional: a surplus is
+  // unambiguously good, sustained deficit drains fiscal space. Thresholds
+  // tuned around the IMF DSA noise floor — anything within ±1pp of zero is
+  // structural noise; meaningful signal is >+1 surplus or <-3 deficit.
+  const primaryBalance = bundle.macro?.primaryBalancePct;
+  if (primaryBalance != null && Number.isFinite(primaryBalance)) {
+    out.push({
+      label: 'Primary Balance',
+      value: `${primaryBalance >= 0 ? '+' : ''}${primaryBalance.toFixed(1)}% GDP`,
+      trend: primaryBalance > 1 ? 'up' : primaryBalance < -3 ? 'down' : 'flat',
+      source: 'IMF WEO',
+    });
+  }
+
   return out;
 }
