@@ -687,6 +687,63 @@ describe('checkLeadGrounding', () => {
       'sparse corpus + lead with no anchor overlap → reject');
   });
 
+  it('REGRESSION (PR #3667 review #1): rejects when the LEAD is hallucinated even if THREADS are grounded', () => {
+    // Pre-fix the validator combined lead + threads into a single
+    // haystack and counted hits across the whole. A hallucinated
+    // lead could ride on top of grounded teasers — the visible
+    // headline of the email stayed fabricated even though the
+    // combined check passed. Post-fix the lead must independently
+    // hit ≥1 anchor.
+    const hallucinatedLeadGroundedThreads = {
+      lead: 'President Biden announced a new executive order targeting cryptocurrency mixers and privacy coins, citing national security concerns.',
+      threads: [
+        { tag: 'Diplomacy', teaser: "Trump rejected Tehran's response to the ceasefire proposal." },
+        { tag: 'Conflict', teaser: 'Sudan civilian deaths from drone strikes continue rising.' },
+      ],
+    };
+    assert.equal(checkLeadGrounding(hallucinatedLeadGroundedThreads, may12Stories), false,
+      'lead with zero anchor overlap must reject regardless of how many anchors the teasers carry');
+
+    // Counter-control: same threads, lead now grounds independently.
+    const groundedLeadGroundedThreads = {
+      ...hallucinatedLeadGroundedThreads,
+      lead: 'Trump declared the Iran ceasefire on life support after rejecting Tehran\'s response, hardening the standoff.',
+    };
+    assert.equal(checkLeadGrounding(groundedLeadGroundedThreads, may12Stories), true);
+  });
+
+  it('REGRESSION (PR #3667 review #2): word-boundary matching — does NOT accept "iran" inside "tirana" or "oman" inside "romania"', () => {
+    // Pre-fix the validator used haystack.includes(tok) which is a
+    // substring match. So a corpus anchor of "iran" would hit on
+    // "tirana", "oman" on "romania", "india" on "indiana". Post-fix
+    // both sides are tokenised on the same delimiter set into a Set
+    // and matched by membership, killing this class of false
+    // positive.
+    const corpus = [
+      { headline: 'Iran responds to US sanctions on oil exports' },
+      { headline: 'Oman mediates regional ceasefire talks' },
+      { headline: 'India launches new satellite from Sriharikota' },
+    ];
+    // Synthesis prose with all the substring traps and zero actual
+    // anchor mentions. Pre-fix this would pass: "tirana" contains
+    // "iran", "romania" contains "oman", "indiana" contains "india".
+    const substringTrap = {
+      lead: 'Officials met in Tirana, Albania today to discuss Romania-Serbia trade routes alongside the new Indiana semiconductor fab.',
+      threads: [
+        { tag: 'Trade', teaser: 'European corridors via Tirana and Romania see renewed Indiana-bound activity.' },
+      ],
+    };
+    assert.equal(checkLeadGrounding(substringTrap, corpus), false,
+      'substring matches inside unrelated city/country names must not count as anchor hits');
+
+    // Counter-control: real word-boundary matches still pass.
+    const realMatch = {
+      lead: 'Iran and Oman pursued back-channel talks after India announced new export controls.',
+      threads: [{ tag: 'Diplomacy', teaser: 'Tehran-Muscat coordination accelerated.' }],
+    };
+    assert.equal(checkLeadGrounding(realMatch, corpus), true);
+  });
+
   it('filters short-form acronyms (US, EU, UN, RSF) from anchor extraction — they are too generic to discriminate', () => {
     // The 4-char length cap deliberately drops 2- and 3-letter
     // acronyms. Otherwise a lead saying "US officials" against any

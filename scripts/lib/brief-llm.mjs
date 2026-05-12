@@ -441,20 +441,40 @@ export function buildDigestPrompt(stories, sensitivity, ctx = {}) {
 // Back-compat alias for tests that import the old constant name.
 export const DIGEST_PROSE_SYSTEM = DIGEST_PROSE_SYSTEM_BASE;
 
+// Shared delimiter regex for tokenising both story headlines (anchor
+// extraction) and synthesis prose (haystack lookup). Same delimiter
+// set on both sides keeps the matching contract symmetric.
+const GROUNDING_TOKEN_DELIMS = /[\s,.!?;:()'"\\/—–\-[\]{}]+/;
+
 /**
- * Cheap content-grounding check: the canonical lead+threads MUST
- * reference proper-noun tokens that actually appear in the input
- * story headlines. Without this, the LLM is free to confabulate
- * even with shape-valid output — e.g. the 2026-05-12 incident
- * where a Trump-era geopolitics pool (Iran/Israel/Sudan/Cuba/
- * Ukraine) shipped a "President Biden announced a crypto executive
- * order" lead. Shape was valid; content was a complete fabrication
- * the model produced from training-data priors instead of grounding.
+ * Cheap content-grounding check: the canonical lead MUST reference
+ * proper-noun tokens that actually appear in the input story
+ * headlines. Without this, the LLM is free to confabulate even with
+ * shape-valid output — e.g. the 2026-05-12 incident where a Trump-
+ * era geopolitics pool (Iran/Israel/Sudan/Cuba/Ukraine) shipped a
+ * "President Biden announced a crypto executive order" lead. Shape
+ * was valid; content was a complete fabrication the model produced
+ * from training-data priors instead of grounding.
  *
- * Strategy: extract significant tokens (capitalised, length ≥4)
- * from story headlines; require ≥2 distinct hits in the lead +
- * thread teasers (relaxed to 1 when the corpus itself has <4 such
- * tokens, so single-named-actor briefs aren't false-positives).
+ * Two independent grounding requirements (BOTH must pass):
+ *
+ *   1. **Lead anchor**: the lead alone must hit ≥1 anchor token.
+ *      Without this, a hallucinated lead can sneak through when the
+ *      threads happen to mention real entities — the visible lead
+ *      stays fabricated even though the combined check passes.
+ *      (Code-review finding on PR #3667 #1.)
+ *   2. **Combined coverage**: the lead + thread teasers together
+ *      must hit ≥2 anchors (relaxed to 1 when the corpus itself has
+ *      <4 anchor tokens, so single-named-actor briefs aren't
+ *      false-positives).
+ *
+ * Matching is **token-set membership** — both sides are split on
+ * the same delimiter regex and lowercased into Sets. Substring
+ * matching (the v1 implementation) was rejected on PR #3667 review:
+ * it accepts unrelated entities like `iran` inside `tirana`,
+ * `oman` inside `romania`, `india` inside `indiana`. Token-set
+ * matching avoids that class of false positive cleanly.
+ * (Code-review finding on PR #3667 #2.)
  *
  * Length cap of 4 deliberately filters out 2-letter ISO country
  * codes (`IR`, `PS`, `US`) and short-form orgs (`UN`, `EU`, `RSF`)
@@ -472,16 +492,22 @@ export const DIGEST_PROSE_SYSTEM = DIGEST_PROSE_SYSTEM_BASE;
 export function checkLeadGrounding(synthesis, stories) {
   if (!Array.isArray(stories) || stories.length === 0) return true;
 
-  const tokenize = (s) => {
+  // Anchor extraction from headlines: capitalised, length ≥4. The
+  // capitalisation filter is what makes this a "proper noun"
+  // heuristic — common-word capitalisation at sentence start gets a
+  // free pass into the anchor set, but those rarely false-positive
+  // because the haystack-side check requires the same token to
+  // appear as a discrete word.
+  const extractAnchors = (s) => {
     if (typeof s !== 'string' || s.length === 0) return [];
     return s
-      .split(/[\s,.!?;:()'"\\/—–\-[\]{}]+/)
+      .split(GROUNDING_TOKEN_DELIMS)
       .filter((w) => w.length >= 4 && /^[A-Z]/.test(w));
   };
 
   const storyTokens = new Set();
   for (const s of stories.slice(0, MAX_STORIES_PER_USER)) {
-    for (const tok of tokenize(s?.headline ?? '')) {
+    for (const tok of extractAnchors(s?.headline ?? '')) {
       storyTokens.add(tok.toLowerCase());
     }
   }
@@ -490,18 +516,45 @@ export function checkLeadGrounding(synthesis, stories) {
   // the empty branch is for synthetic / single-headline tests.
   if (storyTokens.size === 0) return true;
 
-  const haystack = [
-    typeof synthesis?.lead === 'string' ? synthesis.lead : '',
-    ...((Array.isArray(synthesis?.threads) ? synthesis.threads : [])
-      .map((t) => (typeof t?.teaser === 'string' ? t.teaser : ''))),
-  ].join(' ').toLowerCase();
+  // Tokenise the synthesis prose into a Set of lowercased words for
+  // membership lookup. NO capitalisation filter on this side: the
+  // synthesis can mention the entity in any case (sentence-medial,
+  // possessive form, etc.) and we still want it to count.
+  const tokensetOf = (text) => {
+    const set = new Set();
+    if (typeof text !== 'string' || text.length === 0) return set;
+    for (const w of text.toLowerCase().split(GROUNDING_TOKEN_DELIMS)) {
+      if (w.length >= 4) set.add(w);
+    }
+    return set;
+  };
 
+  const leadTokens = tokensetOf(typeof synthesis?.lead === 'string' ? synthesis.lead : '');
+
+  // Requirement 1: the lead alone must hit ≥1 anchor. A hallucinated
+  // lead with grounded teasers would otherwise pass — the user still
+  // sees the fabricated text at the top of the email.
+  let leadHasAnchor = false;
+  for (const tok of leadTokens) {
+    if (storyTokens.has(tok)) { leadHasAnchor = true; break; }
+  }
+  if (!leadHasAnchor) return false;
+
+  // Requirement 2: combined lead + teasers hit ≥threshold anchors.
+  // Threshold relaxes to 1 when the corpus is sparse so single-
+  // story briefs don't false-positive.
+  const combinedTokens = new Set(leadTokens);
+  for (const t of (Array.isArray(synthesis?.threads) ? synthesis.threads : [])) {
+    for (const w of tokensetOf(typeof t?.teaser === 'string' ? t.teaser : '')) {
+      combinedTokens.add(w);
+    }
+  }
   const threshold = storyTokens.size >= 4 ? 2 : 1;
-  let hits = 0;
+  let combinedHits = 0;
   for (const tok of storyTokens) {
-    if (haystack.includes(tok)) {
-      hits++;
-      if (hits >= threshold) return true;
+    if (combinedTokens.has(tok)) {
+      combinedHits++;
+      if (combinedHits >= threshold) return true;
     }
   }
   return false;
