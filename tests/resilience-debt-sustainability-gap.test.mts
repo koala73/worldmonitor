@@ -50,8 +50,11 @@ describe('computeDebtSustainabilityGap (formula correctness)', () => {
       debt: 137, pb: 1.0, fb: -3.5, realG: 0.5, infl: 2.0,
     });
     assert.ok(gap !== null, 'gap should be defined for Italy inputs');
-    // Plan example: gap ≈ -0.04 (right at the stabilizing point)
-    assert.ok(Math.abs(gap!) < 0.5, `expected gap near 0 for stabilizing Italy, got ${gap}`);
+    // Plan example: gap ≈ -0.04 (right at the stabilizing point). Tolerance
+    // tightened from 0.5 to 0.01 to match the other worked examples — the
+    // wider tolerance would have masked formula regressions in (-0.5, +0.5)
+    // (greptile P2: PR #3669).
+    assert.ok(Math.abs(gap! - -0.04) < 0.01, `expected ≈ -0.04 for stabilizing Italy, got ${gap}`);
   });
 
   it('returns null for degenerate denominator (debt = 0)', () => {

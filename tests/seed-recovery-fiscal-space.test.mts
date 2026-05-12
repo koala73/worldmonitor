@@ -17,14 +17,20 @@ function byYear(...entries: Array<[string, number]>): Record<string, number> {
 
 describe('latestCommonYear', () => {
   it('returns the most recent year present in every map', () => {
+    // Derive years dynamically — weoYears() is a rolling window of
+    // [current, -1, -2], so hardcoded 2024/2023 would fall out of scope
+    // and break this test in 2027 (greptile P2: PR #3669).
+    const currentYear = new Date().getFullYear();
+    const Y  = String(currentYear);
+    const Y1 = String(currentYear - 1);
     const y = latestCommonYear([
-      byYear(['2024', 110], ['2023', 105]),
-      byYear(['2024', -2.5], ['2023', -2.0]),
-      byYear(['2024', -4.5]),
-      byYear(['2024', 0.7]),
-      byYear(['2024', 2.1]),
+      byYear([Y, 110], [Y1, 105]),
+      byYear([Y, -2.5], [Y1, -2.0]),
+      byYear([Y, -4.5]),
+      byYear([Y, 0.7]),
+      byYear([Y, 2.1]),
     ]);
-    assert.equal(y, 2024);
+    assert.equal(y, currentYear);
   });
 
   it('falls back to an older year if not every map has the most recent', () => {
@@ -42,18 +48,23 @@ describe('latestCommonYear', () => {
   });
 
   it('returns null when no common year exists in the scan window', () => {
-    // Two maps share no year inside the weoYears window (current, -1, -2).
+    // Two maps in scope but no shared year — derive years dynamically so
+    // the test exercises the "no overlap" branch in every future year.
+    const currentYear = new Date().getFullYear();
+    const Y  = String(currentYear);
+    const Y1 = String(currentYear - 1);
     const y = latestCommonYear([
-      byYear(['2024', 110]),
-      byYear(['2023', -2.5]),
+      byYear([Y, 110]),
+      byYear([Y1, -2.5]),
     ]);
-    // 2024 not in second map; 2023 not in first; common = null
+    // currentYear not in second map; currentYear-1 not in first; common = null
     assert.equal(y, null);
   });
 
   it('returns null on empty or malformed input', () => {
+    const Y = String(new Date().getFullYear());
     assert.equal(latestCommonYear([]), null);
-    assert.equal(latestCommonYear([byYear(['2024', NaN])]), null);
+    assert.equal(latestCommonYear([byYear([Y, NaN])]), null);
   });
 
   it('treats non-finite values as missing (so latestCommonYear skips NaN years)', () => {
