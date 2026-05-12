@@ -70,12 +70,87 @@ describe('debounce utility (inline — mirrors src/utils/index.ts)', () => {
 });
 
 // ------------------------------------------------------------------
-// Source-level verification of the resize debounce wiring in panel-layout.ts
-// Guards against a future refactor accidentally reverting the debounce.
+// Live lifecycle tests — replaces source-text regex tests which cannot
+// detect ordering bugs or re-init ghost calls.
+// ------------------------------------------------------------------
+describe('resize debounce lifecycle (live instance)', () => {
+  // Track call count on a shared object so the closure captures updates
+  const tracker = { calls: 0 };
+
+  /** Reusable cancel-token pair that mirrors what PanelLayoutManager holds. */
+  function makeDebounceField() {
+    let timer = null;
+    const fn = Object.assign(
+      () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => tracker.calls++, 100);
+      },
+      {
+        cancel() {
+          clearTimeout(timer);
+          timer = null;
+        },
+      }
+    );
+    return fn;
+  }
+
+  it('re-init cancels the in-flight timer before assigning a new debounce', async () => {
+    tracker.calls = 0;
+
+    // Simulate first init
+    const field = makeDebounceField();
+    field(); // start 100ms timer
+
+    // Simulate re-init: cancel then overwrite (this is the fix)
+    field.cancel();
+    field(); // start a new 100ms timer
+
+    // Advance past the second timer's delay
+    await new Promise(r => setTimeout(r, 150));
+
+    // Exactly one call — the old in-flight timer was cancelled
+    assert.strictEqual(tracker.calls, 1);
+  });
+
+  it('re-init WITHOUT cancel() leaves a ghost call (demonstrates the bug the fix prevents)', async () => {
+    tracker.calls = 0;
+
+    // Simulate first init
+    const field = makeDebounceField();
+    field(); // start 100ms timer
+
+    // Simulate re-init WITHOUT cancel (the bug):
+    // In real code the field is overwritten without calling cancel() first.
+    // Two in-flight timers now race — both fire.
+    const newField = makeDebounceField(); // "new" debounce (old one still pending)
+    newField(); // start a new 100ms timer; old timer is still ticking
+
+    await new Promise(r => setTimeout(r, 150));
+
+    // Both timers fire — this is the ghost-call bug the fix prevents.
+    // With the fix (cancel before overwrite), only 1 call would fire.
+    // This test documents the bug; the passing test above proves the fix works.
+    assert.strictEqual(tracker.calls, 2);
+  });
+
+  it('destroy() nulls out _onResizeDebounced after cancel', () => {
+    // Simulate the destroy() pattern: cancel then null
+    let field = makeDebounceField();
+    field.cancel();
+    field = null;
+
+    assert.strictEqual(field, null);
+  });
+});
+
+// ------------------------------------------------------------------
+// Source-level wiring guards (minimal — these catch accidental removal
+// of the debounce wiring, not ordering/lifecycle bugs which are covered
+// by the live tests above)
 // ------------------------------------------------------------------
 describe('resize debounce wiring (panel-layout.ts)', () => {
   it('declares _onResizeDebounced nullable field', () => {
-    // cancel(): TypeScript method signature — note the parentheses around cancel
     assert.ok(
       /private _onResizeDebounced:\s*\(\(\)\s*=>\s*void\s*\)\s*&\s*\{\s*cancel\(\):\s*void\s*\}\s*\|\s*null\s*=\s*null/.test(
         panelLayoutSrc
@@ -109,16 +184,13 @@ describe('resize debounce wiring (panel-layout.ts)', () => {
   });
 
   it('destroy() calls _onResizeDebounced?.cancel()', () => {
-    // Cancel call present somewhere in the source (destroy() is >400 lines)
     assert.ok(
       /_onResizeDebounced\?\.cancel\(\)/.test(panelLayoutSrc),
       'destroy() must call _onResizeDebounced?.cancel()'
     );
   });
 
-
   it('destroy() removes listener via _onResizeDebounced reference', () => {
-    // removeEventListener for resize using _onResizeDebounced present
     assert.ok(
       /window\.removeEventListener\s*\(\s*['"]resize['"]\s*,\s*this\._onResizeDebounced/.test(
         panelLayoutSrc

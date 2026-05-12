@@ -397,6 +397,7 @@ export class PanelLayoutManager implements AppModule {
 
     window.removeEventListener('resize', this._onResizeDebounced ?? this.ensureCorrectZones);
     this._onResizeDebounced?.cancel();
+    this._onResizeDebounced = null;
   }
 
   /** Reactively update premium panel gating based on auth state. */
@@ -1612,6 +1613,7 @@ export class PanelLayoutManager implements AppModule {
     }
 
     window.removeEventListener('resize', this._onResizeDebounced ?? this.ensureCorrectZones);
+    this._onResizeDebounced?.cancel();
     this._onResizeDebounced = debounce(() => this.ensureCorrectZones(), 100);
     window.addEventListener('resize', this._onResizeDebounced);
 
