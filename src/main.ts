@@ -202,6 +202,7 @@ Sentry.init({
     /^NetworkError: Load failed$/,
     /^A network error occurred\.?$/,
     /nmhCrx is not defined/,
+    /\bcrusoe is not defined\b/, // WORLDMONITOR-R3 — injected userscript reference, anonymous-frames-only stack
     /navigationPerformanceLoggerJavascriptInterface/,
     /jQuery is not defined/,
     /illegal UTF-16 sequence/,
