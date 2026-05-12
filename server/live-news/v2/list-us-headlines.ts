@@ -181,7 +181,8 @@ export async function listUsHeadlinesV2(): Promise<ListUsHeadlinesV2Response> {
           .map((item) => ({
             ...item,
             source: '',
-            sources: item.sources.map((s) => ({ ...s, source: '' })),
+            link: '',
+            sources: item.sources.map((s) => ({ ...s, source: '', link: '' })),
           })),
       };
       lastGoodResponse = filtered;

@@ -89,7 +89,8 @@ export async function listConflictArchive(): Promise<ListConflictArchiveResponse
     items: cached.items.map((item) => ({
       ...item,
       source: '',
-      sources: item.sources ? item.sources.map((s) => ({ ...s, source: '' })) : item.sources,
+      link: '',
+      sources: item.sources ? item.sources.map((s) => ({ ...s, source: '', link: '' })) : item.sources,
     })),
   };
 }
