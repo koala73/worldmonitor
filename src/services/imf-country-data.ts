@@ -161,10 +161,12 @@ export function buildImfEconomicIndicators(bundle: ImfCountryBundle): {
   // tuned around the IMF DSA noise floor — anything within ±1pp of zero is
   // structural noise; meaningful signal is >+1 surplus or <-3 deficit.
   // Ordered with the other directional macro rows (growth / inflation /
-  // unemployment) so it survives the caller's 6-row slice (country-intel.ts)
-  // even when stock + score + macro rows compete for surface area. The flat
-  // context rows below are emitted last because losing them is the right
-  // tradeoff when the card is full.
+  // unemployment) so it survives the caller's 6-row slice. Two slice sites
+  // gate visibility — keep both in mind when changing row count or order:
+  //   - src/app/country-intel.ts:1288 (combined producer → consumer cap)
+  //   - src/components/CountryDeepDivePanel.ts:2240 (post-stock-prepend cap)
+  // The flat context rows below are emitted last because losing them is the
+  // right tradeoff when the card is full.
   const primaryBalance = bundle.macro?.primaryBalancePct;
   if (primaryBalance != null && Number.isFinite(primaryBalance)) {
     out.push({
