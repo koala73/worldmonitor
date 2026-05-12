@@ -778,6 +778,56 @@ describe('checkLeadGrounding', () => {
     assert.equal(checkLeadGrounding(realGround, corpusWithTitledHeadlines), true);
   });
 
+  it('REGRESSION (PR #3667 review round 3): bigram-leading titles (Prime Minister, Chief Justice, Cardinal Smith) — first word is also stopwordded', () => {
+    // Round 2 added "President" to the stopword set, but other
+    // common bigram titles slipped through. "Prime Minister
+    // Netanyahu says Iran..." adds "prime" to anchors, then a
+    // hallucinated "Prime Minister Trudeau announced cryptocurrency
+    // restrictions..." passes the lead-anchor check via "prime",
+    // and a teaser mentioning Iran satisfies the combined threshold.
+    // Same shape works for Chief Justice / Cardinal X / Chancellor X
+    // / Speaker X / Ambassador X / etc.
+    const corpus = [
+      { headline: 'Prime Minister Netanyahu says Iran threats continue' },
+      { headline: 'Chief Justice rules on Sudan war crimes case' },
+      { headline: 'Cardinal Pell addresses Vatican synod' },
+    ];
+
+    const primeRideAlong = {
+      lead: 'Prime Minister Trudeau announced new cryptocurrency mixer restrictions across Canadian financial institutions.',
+      threads: [
+        { tag: 'Diplomacy', teaser: 'Iran responded to the regulatory crackdown with sanctions criticism.' },
+      ],
+    };
+    assert.equal(checkLeadGrounding(primeRideAlong, corpus), false,
+      '"prime" must NOT count as an anchor — it is a bigram-title prefix that lets unrelated PMs share a token with real ones');
+
+    const chiefRideAlong = {
+      lead: 'Chief Justice Roberts issued an opinion on US executive privilege today.',
+      threads: [{ tag: 'Conflict', teaser: 'Sudan war crimes trial advances.' }],
+    };
+    assert.equal(checkLeadGrounding(chiefRideAlong, corpus), false,
+      '"chief" alone must not anchor — only the discriminating name (Roberts vs the corpus name) should');
+
+    const cardinalRideAlong = {
+      lead: 'Cardinal Smith led a service in Boston yesterday alongside local clergy.',
+      threads: [{ tag: 'Domestic', teaser: 'Vatican plans new synod for autumn.' }],
+    };
+    // 'cardinal' filtered, 'smith' is not in corpus, 'boston' is not.
+    // Teaser has 'vatican' which IS in corpus → combined hits = 1.
+    // Lead-only hits = 0 → REJECT.
+    assert.equal(checkLeadGrounding(cardinalRideAlong, corpus), false,
+      '"cardinal" alone must not anchor; lead must name the actual entity from the corpus');
+
+    // Counter-control: a real grounded lead naming an actual corpus
+    // anchor (Netanyahu / Iran / Pell / Vatican) still passes.
+    const realGround = {
+      lead: 'Netanyahu addressed Iran threats during a security cabinet briefing today.',
+      threads: [{ tag: 'Diplomacy', teaser: 'Vatican synod parallel session continues.' }],
+    };
+    assert.equal(checkLeadGrounding(realGround, corpus), true);
+  });
+
   it('REGRESSION (PR #3667 review round 2 #2): Unicode apostrophes (U+2019) in headlines do not strand grounded leads', () => {
     // Pre-fix the delimiter regex only included ASCII apostrophe.
     // Reuters/AP/Guardian headlines use U+2019 ("China’s", "Iran’s",

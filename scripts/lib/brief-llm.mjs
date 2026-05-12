@@ -480,6 +480,18 @@ const GROUNDING_ANCHOR_STOPWORDS = new Set([
   'mayor', 'governor', 'judge', 'justice', 'doctor',
   'professor', 'pope', 'rabbi', 'imam', 'sheikh', 'sultan',
   'emir', 'king', 'queen', 'prince', 'princess',
+  // Round-3 review additions: bigram-leading titles ("Prime
+  // Minister", "Chief Justice", "Cardinal Smith") whose first
+  // word alone passes the cap+length filter and would otherwise
+  // let a hallucinated "Prime Minister Trudeau announced..." lead
+  // ride on a "Prime Minister Netanyahu says..." headline via the
+  // shared "prime" token. PR #3667 review round 3.
+  'prime', 'chief', 'premier', 'chancellor', 'speaker',
+  'ambassador', 'envoy', 'commissioner', 'attorney',
+  'cardinal', 'archbishop', 'monsignor', 'reverend',
+  'pastor', 'bishop', 'lord', 'lady', 'dame',
+  'congressman', 'congresswoman', 'congressperson',
+  'representative', 'delegate', 'baron', 'baroness',
   // Generic role plurals / institutional collectives
   'officials', 'officers', 'leaders', 'members', 'people',
   'forces', 'police', 'troops', 'agents', 'authorities',
