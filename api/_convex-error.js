@@ -52,6 +52,15 @@ export function extractConvexErrorKind(err, msg) {
   // pattern (`transport_timeout` vs `convex_service_unavailable`).
   const errName = /** @type {{ name?: string } | null | undefined} */ (err)?.name;
   if (errName === 'TimeoutError' || errName === 'AbortError') return 'SERVICE_UNAVAILABLE';
+  // Vercel edge runtime transient: the upstream connection dropped mid-flight
+  // (Cloudflare Workers / Vercel edge surface `TypeError: Network connection
+  // lost.` from the inner `fetch` when the socket is reset during an in-flight
+  // request). Same recovery profile as the platform 503 — transient, retry
+  // with back-off. WORLDMONITOR-QE: was previously falling through to the
+  // 'unknown' error_shape bucket at error level instead of 503 + Retry-After.
+  // Sentry's classifier tags these as `transport_network` so they're queryable
+  // separately from genuine Convex 503s.
+  if (/Network connection lost/i.test(msg)) return 'SERVICE_UNAVAILABLE';
   // Convex platform-level 401: when Clerk's OIDC token fails Convex's own
   // verification (token expired between our edge's `validateBearerToken`
   // and Convex's check, or Clerk JWKS rotated), the SDK surfaces a JSON

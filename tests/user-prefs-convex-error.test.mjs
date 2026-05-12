@@ -131,6 +131,37 @@ describe('extractConvexErrorKind — Convex client error → kind', () => {
     });
   });
 
+  describe('Vercel edge transient — "Network connection lost." (WORLDMONITOR-QE)', () => {
+    it('detects SERVICE_UNAVAILABLE from the exact "Network connection lost." shape', () => {
+      // Vercel/Cloudflare edge runtime surface this when the upstream socket
+      // is reset mid-request from inside `ConvexHttpClient`'s inner fetch.
+      // Same retry-with-backoff remediation as ServiceUnavailable — without
+      // this match, the catch falls to the 'unknown' bucket at error level
+      // instead of 503 + Retry-After (WORLDMONITOR-QE: 2 events / 2 users).
+      const err = new Error('Network connection lost.');
+      assert.equal(extractConvexErrorKind(err, err.message), 'SERVICE_UNAVAILABLE');
+    });
+
+    it('is case-insensitive (matches mid-message variants)', () => {
+      const err = new Error('TypeError: network connection LOST during fetch');
+      assert.equal(extractConvexErrorKind(err, err.message), 'SERVICE_UNAVAILABLE');
+    });
+
+    it('does NOT match unrelated "network" mentions', () => {
+      // Defensive: detector keys off the exact phrase, not loose "network"
+      // mentions, so generic transport prose isn't incorrectly bucketed.
+      const err = new Error('Network error: connection refused');
+      assert.equal(extractConvexErrorKind(err, err.message), null);
+    });
+
+    it('structured-data path still wins over "Network connection lost" substring (forward-compat)', () => {
+      const err = Object.assign(new Error('Network connection lost.'), {
+        data: { kind: 'CONFLICT', actualSyncVersion: 7 },
+      });
+      assert.equal(extractConvexErrorKind(err, err.message), 'CONFLICT');
+    });
+  });
+
   describe('legacy substring-match fallback (string-data ConvexError that arrived without errorData)', () => {
     it('matches CONFLICT in the message', () => {
       const err = new Error('CONFLICT');
