@@ -744,6 +744,60 @@ describe('checkLeadGrounding', () => {
     assert.equal(checkLeadGrounding(realMatch, corpus), true);
   });
 
+  it('REGRESSION (PR #3667 review round 2 #1): generic capitalised words like "President", "Senior", "Officials" are NOT counted as anchors', () => {
+    // Pre-fix the anchor extractor accepted any capitalised word
+    // ≥4 chars. So a headline like "President Trump signed Iran
+    // sanctions" added "president" to the anchor set, and a
+    // hallucinated lead "President Biden announced..." passed the
+    // lead-anchor check via the shared "president" token. Combined
+    // with a teaser mentioning Iran, the whole synthesis would
+    // accept — exactly the failure mode this PR is trying to block.
+    // Post-fix the stopword list strips title/role/filler words
+    // before they enter storyTokens.
+    const corpusWithTitledHeadlines = [
+      { headline: 'President Trump signed new Iran sanctions executive order' },
+      { headline: 'Senior Officials confirm coup attempt failed' },
+      { headline: 'Federal court rejects challenge to ruling' },
+    ];
+
+    // Hallucinated lead riding on shared "president" + teaser ground.
+    const presidentRideAlong = {
+      lead: 'President Biden announced a new executive order targeting cryptocurrency mixers and privacy coins.',
+      threads: [
+        { tag: 'Diplomacy', teaser: "Iran responded sharply to the new sanctions." },
+      ],
+    };
+    assert.equal(checkLeadGrounding(presidentRideAlong, corpusWithTitledHeadlines), false,
+      '"president" must NOT count as an anchor — it is a generic title that any hallucination can ride on');
+
+    // Counter-control: same corpus, real grounded lead.
+    const realGround = {
+      lead: 'Trump signed a new Iran sanctions order targeting oil exports.',
+      threads: [{ tag: 'Diplomacy', teaser: 'Iran condemned the move.' }],
+    };
+    assert.equal(checkLeadGrounding(realGround, corpusWithTitledHeadlines), true);
+  });
+
+  it('REGRESSION (PR #3667 review round 2 #2): Unicode apostrophes (U+2019) in headlines do not strand grounded leads', () => {
+    // Pre-fix the delimiter regex only included ASCII apostrophe.
+    // Reuters/AP/Guardian headlines use U+2019 ("China’s", "Iran’s",
+    // "DPRK’s") which the regex didn't split. So "China’s" became
+    // a single token "china’s" and a lead saying "China" was a
+    // false negative — rejected despite genuinely grounding.
+    const corpusUnicodeApostrophes = [
+      { headline: 'China’s economy grew despite US tariffs' },
+      { headline: 'Iran’s foreign minister rejected the proposal' },
+      { headline: 'DPRK’s missile test draws sanctions response' },
+    ];
+
+    const groundedLeadAsciiQuotes = {
+      lead: 'China responded to US tariffs while Iran condemned diplomatic isolation efforts and DPRK staged another missile test.',
+      threads: [{ tag: 'Energy', teaser: 'China imports continue rising.' }],
+    };
+    assert.equal(checkLeadGrounding(groundedLeadAsciiQuotes, corpusUnicodeApostrophes), true,
+      'Unicode apostrophes must split — "China’s" and "China" should both tokenise to "china"');
+  });
+
   it('filters short-form acronyms (US, EU, UN, RSF) from anchor extraction — they are too generic to discriminate', () => {
     // The 4-char length cap deliberately drops 2- and 3-letter
     // acronyms. Otherwise a lead saying "US officials" against any

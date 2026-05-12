@@ -444,7 +444,65 @@ export const DIGEST_PROSE_SYSTEM = DIGEST_PROSE_SYSTEM_BASE;
 // Shared delimiter regex for tokenising both story headlines (anchor
 // extraction) and synthesis prose (haystack lookup). Same delimiter
 // set on both sides keeps the matching contract symmetric.
-const GROUNDING_TOKEN_DELIMS = /[\s,.!?;:()'"\\/—–\-[\]{}]+/;
+//
+// Unicode quotes (U+2018, U+2019, U+201C, U+201D, U+00B4) are
+// included alongside their ASCII counterparts. News headlines from
+// Reuters/AP/Guardian use U+2019 for possessives ("China's",
+// "Iran's", "DPRK's") and U+201C/U+201D for quoted phrases. Without
+// splitting on them, "China's" becomes one token "china’s" that
+// a lead saying "China" can never match — a false negative that
+// would reject genuinely grounded leads. (PR #3667 review round 2
+// finding #2.)
+const GROUNDING_TOKEN_DELIMS = /[\s,.!?;:()'"‘’“”´\\/—–\-[\]{}]+/;
+
+// Anchor-side stopword list. Story headlines often capitalise
+// titles ("President Trump"), generic actors ("Officials confirmed"),
+// quasi-adjectives ("Senior commander", "Federal court"), and
+// sentence-start filler ("Following the announcement"). Without
+// filtering, these enter storyTokens and a hallucinated lead like
+// "President Biden announced..." passes the lead-anchor check via
+// the shared word "President", then a teaser mentioning a real
+// anchor satisfies the combined threshold — the visible top-of-
+// email lead stays fabricated. (PR #3667 review round 2 finding #1.)
+//
+// Scope rule: only words that are commonly capitalised but do NOT
+// discriminate a story. Specific entity names (people, places,
+// orgs, brands) are NEVER on this list, even when common — "Iran",
+// "Trump", "Israel", "EU", "UN" all stay in. "May" is also
+// deliberately omitted (Theresa May, May Day, May = month all
+// collide on it; safer to keep "may" matchable than to filter it
+// and lose a real anchor).
+const GROUNDING_ANCHOR_STOPWORDS = new Set([
+  // Honorifics / titles
+  'president', 'vice', 'senator', 'minister', 'secretary',
+  'chairman', 'chairwoman', 'spokesman', 'spokeswoman',
+  'director', 'general', 'admiral', 'colonel', 'captain',
+  'mayor', 'governor', 'judge', 'justice', 'doctor',
+  'professor', 'pope', 'rabbi', 'imam', 'sheikh', 'sultan',
+  'emir', 'king', 'queen', 'prince', 'princess',
+  // Generic role plurals / institutional collectives
+  'officials', 'officers', 'leaders', 'members', 'people',
+  'forces', 'police', 'troops', 'agents', 'authorities',
+  'sources', 'rebels', 'militants', 'protesters', 'civilians',
+  'residents', 'citizens', 'workers', 'voters',
+  // Headline qualifiers / quasi-adjectives
+  'senior', 'junior', 'former', 'acting', 'deputy', 'assistant',
+  'federal', 'national', 'international', 'global', 'regional',
+  'central', 'local', 'foreign', 'domestic', 'civil', 'public',
+  'private', 'special', 'major', 'armed',
+  // Sentence-start / common filler
+  'after', 'before', 'during', 'while', 'despite', 'following',
+  'amid', 'today', 'yesterday', 'tomorrow', 'this', 'these',
+  'those', 'when', 'where', 'what', 'which', 'breaking',
+  // News-headline glue
+  'says', 'said', 'told', 'reports', 'analysis', 'opinion',
+  'editorial', 'update', 'updates',
+  // Calendar (May omitted — see scope rule above)
+  'monday', 'tuesday', 'wednesday', 'thursday', 'friday',
+  'saturday', 'sunday', 'january', 'february', 'march', 'april',
+  'june', 'july', 'august', 'september', 'october', 'november',
+  'december',
+]);
 
 /**
  * Cheap content-grounding check: the canonical lead MUST reference
@@ -492,17 +550,18 @@ const GROUNDING_TOKEN_DELIMS = /[\s,.!?;:()'"\\/—–\-[\]{}]+/;
 export function checkLeadGrounding(synthesis, stories) {
   if (!Array.isArray(stories) || stories.length === 0) return true;
 
-  // Anchor extraction from headlines: capitalised, length ≥4. The
-  // capitalisation filter is what makes this a "proper noun"
-  // heuristic — common-word capitalisation at sentence start gets a
-  // free pass into the anchor set, but those rarely false-positive
-  // because the haystack-side check requires the same token to
-  // appear as a discrete word.
+  // Anchor extraction from headlines: capitalised + length ≥4 +
+  // NOT in GROUNDING_ANCHOR_STOPWORDS. The capitalisation filter
+  // makes this a "proper noun" heuristic; the stopword filter
+  // strips honorifics, role labels, and sentence-start filler that
+  // would otherwise be common shared anchors between any "President
+  // X..." headline and any "President Y..." hallucinated lead.
   const extractAnchors = (s) => {
     if (typeof s !== 'string' || s.length === 0) return [];
     return s
       .split(GROUNDING_TOKEN_DELIMS)
-      .filter((w) => w.length >= 4 && /^[A-Z]/.test(w));
+      .filter((w) => w.length >= 4 && /^[A-Z]/.test(w))
+      .filter((w) => !GROUNDING_ANCHOR_STOPWORDS.has(w.toLowerCase()));
   };
 
   const storyTokens = new Set();
