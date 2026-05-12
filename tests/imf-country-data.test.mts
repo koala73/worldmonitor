@@ -158,6 +158,40 @@ describe('buildImfEconomicIndicators (panel rendering)', () => {
     assert.equal(pb.trend, 'flat');
   });
 
+  it('orders directional rows before flat context rows so Primary Balance survives the caller\'s 6-row slice', () => {
+    // When all 7 IMF rows fire, the consumer (CountryDeepDivePanel via
+    // country-intel.ts:1288) caps the indicators array at 6. If Primary
+    // Balance — the most informative directional fiscal signal — were
+    // emitted last, it would be the first row sliced off. Order asserts
+    // the priority: directional macro rows first (growth / inflation /
+    // unemployment / primary balance), then flat context rows
+    // (gdp-per-capita / public spending / gov revenue).
+    const rows = buildImfEconomicIndicators(bundle({
+      macro: {
+        inflationPct: 3.4, currentAccountPct: -2.1, govRevenuePct: 30,
+        cpiIndex: null, cpiEopPct: null, govExpenditurePct: 57.2, primaryBalancePct: -2.5,
+        year: 2024,
+      },
+      growth: {
+        realGdpGrowthPct: 0.7, gdpPerCapitaUsd: 47800, realGdp: null,
+        gdpPerCapitaPpp: null, gdpPpp: null, investmentPct: null, savingsPct: null,
+        savingsInvestmentGap: null, year: 2024,
+      },
+      labor: {
+        unemploymentPct: 7.4, populationMillions: 65.5, year: 2024,
+      },
+    }));
+    assert.deepEqual(rows.map(r => r.label), [
+      'Real GDP Growth',
+      'CPI Inflation',
+      'Unemployment',
+      'Primary Balance',
+      'GDP / Capita',
+      'Public Spending',
+      'Gov Revenue',
+    ]);
+  });
+
   it('marks severe primary deficit (<-3) with a downward trend', () => {
     const rows = buildImfEconomicIndicators(bundle({
       macro: {

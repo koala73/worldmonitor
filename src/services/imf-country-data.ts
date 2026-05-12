@@ -156,6 +156,25 @@ export function buildImfEconomicIndicators(bundle: ImfCountryBundle): {
     });
   }
 
+  // Primary balance %GDP (IMF GGXONLB_NGDP). Directional: a surplus is
+  // unambiguously good, sustained deficit drains fiscal space. Thresholds
+  // tuned around the IMF DSA noise floor — anything within ±1pp of zero is
+  // structural noise; meaningful signal is >+1 surplus or <-3 deficit.
+  // Ordered with the other directional macro rows (growth / inflation /
+  // unemployment) so it survives the caller's 6-row slice (country-intel.ts)
+  // even when stock + score + macro rows compete for surface area. The flat
+  // context rows below are emitted last because losing them is the right
+  // tradeoff when the card is full.
+  const primaryBalance = bundle.macro?.primaryBalancePct;
+  if (primaryBalance != null && Number.isFinite(primaryBalance)) {
+    out.push({
+      label: 'Primary Balance',
+      value: `${primaryBalance >= 0 ? '+' : ''}${primaryBalance.toFixed(1)}% GDP`,
+      trend: primaryBalance > 1 ? 'up' : primaryBalance < -3 ? 'down' : 'flat',
+      source: 'IMF WEO',
+    });
+  }
+
   const gdpPc = bundle.growth?.gdpPerCapitaUsd;
   if (gdpPc != null && Number.isFinite(gdpPc)) {
     const formatted = gdpPc >= 1000
@@ -189,20 +208,6 @@ export function buildImfEconomicIndicators(bundle: ImfCountryBundle): {
       label: 'Gov Revenue',
       value: `${govRev.toFixed(1)}% GDP`,
       trend: 'flat',
-      source: 'IMF WEO',
-    });
-  }
-
-  // Primary balance %GDP (IMF GGXONLB_NGDP). Directional: a surplus is
-  // unambiguously good, sustained deficit drains fiscal space. Thresholds
-  // tuned around the IMF DSA noise floor — anything within ±1pp of zero is
-  // structural noise; meaningful signal is >+1 surplus or <-3 deficit.
-  const primaryBalance = bundle.macro?.primaryBalancePct;
-  if (primaryBalance != null && Number.isFinite(primaryBalance)) {
-    out.push({
-      label: 'Primary Balance',
-      value: `${primaryBalance >= 0 ? '+' : ''}${primaryBalance.toFixed(1)}% GDP`,
-      trend: primaryBalance > 1 ? 'up' : primaryBalance < -3 ? 'down' : 'flat',
       source: 'IMF WEO',
     });
   }
