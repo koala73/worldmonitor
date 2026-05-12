@@ -10,20 +10,19 @@ const gn = (q: string) =>
 export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
   full: {
     politics: [
-      { name: 'BBC World', url: 'https://feeds.bbci.co.uk/news/world/rss.xml' },
+      // Removed for commercial-usage permissions: BBC World (BBC RSS ToS),
+      // AP News, Reuters World, CNN World (Google News site: scrapers of
+      // aggressive publishers).
       { name: 'Guardian World', url: 'https://www.theguardian.com/world/rss' },
-      { name: 'AP News', url: gn('site:apnews.com') },
-      { name: 'Reuters World', url: gn('site:reuters.com world') },
-      { name: 'CNN World', url: gn('site:cnn.com world news when:1d') },
     ],
     us: [
-      { name: 'Reuters US', url: gn('site:reuters.com US') },
+      // Removed for commercial-usage permissions: Reuters US (gn site:),
+      // Wall Street Journal (Dow Jones).
       { name: 'NPR News', url: 'https://feeds.npr.org/1001/rss.xml' },
       { name: 'PBS NewsHour', url: 'https://www.pbs.org/newshour/feeds/rss/headlines' },
       { name: 'ABC News', url: 'https://feeds.abcnews.com/abcnews/topstories' },
       { name: 'CBS News', url: 'https://www.cbsnews.com/latest/rss/main' },
       { name: 'NBC News', url: 'https://feeds.nbcnews.com/nbcnews/public/news' },
-      { name: 'Wall Street Journal', url: 'https://feeds.content.dowjones.io/public/rss/RSSUSnews' },
       { name: 'Politico', url: 'https://rss.politico.com/politics-news.xml' },
       { name: 'The Hill', url: 'https://thehill.com/news/feed' },
       { name: 'Axios', url: 'https://api.axios.com/feed/' },
@@ -39,11 +38,10 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'SVT Nyheter', url: 'https://www.svt.se/nyheter/rss.xml', lang: 'sv' },
     ],
     middleeast: [
-      { name: 'BBC Middle East', url: 'https://feeds.bbci.co.uk/news/world/middle_east/rss.xml' },
+      // Removed for commercial-usage permissions: BBC Middle East, BBC Persian.
       { name: 'Al Jazeera', url: 'https://www.aljazeera.com/xml/rss/all.xml' },
       { name: 'Guardian ME', url: 'https://www.theguardian.com/world/middleeast/rss' },
       { name: 'Oman Observer', url: 'https://www.omanobserver.om/rssFeed/1' },
-      { name: 'BBC Persian', url: 'https://feeds.bbci.co.uk/persian/rss.xml', lang: 'fa' },
       { name: 'The National', url: 'https://www.thenationalnews.com/arc/outboundfeeds/rss/?outputType=xml' },
     ],
     tech: [
@@ -60,11 +58,10 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'ArXiv AI', url: 'https://export.arxiv.org/rss/cs.AI' },
     ],
     finance: [
+      // Removed for commercial-usage permissions: MarketWatch & Reuters
+      // Business (gn site: scrapers), Financial Times (direct RSS).
       { name: 'CNBC', url: 'https://www.cnbc.com/id/100003114/device/rss/rss.html' },
-      { name: 'MarketWatch', url: gn('site:marketwatch.com markets when:1d') },
       { name: 'Yahoo Finance', url: 'https://finance.yahoo.com/news/rssindex' },
-      { name: 'Financial Times', url: 'https://www.ft.com/rss/home' },
-      { name: 'Reuters Business', url: gn('site:reuters.com business markets') },
     ],
     gov: [
       { name: 'White House', url: gn('site:whitehouse.gov') },
@@ -78,14 +75,14 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'DOJ', url: gn('site:justice.gov') },
     ],
     africa: [
-      { name: 'BBC Africa', url: 'https://feeds.bbci.co.uk/news/world/africa/rss.xml' },
+      // (BBC Africa removed for commercial-usage permissions.)
       { name: 'News24', url: 'https://feeds.news24.com/articles/news24/TopStories/rss' },
       { name: 'Africanews', url: 'https://www.africanews.com/feed/' },
       { name: 'Jeune Afrique', url: 'https://www.jeuneafrique.com/feed/', lang: 'fr' },
       { name: 'Premium Times', url: 'https://www.premiumtimesng.com/feed' },
     ],
     latam: [
-      { name: 'BBC Latin America', url: 'https://feeds.bbci.co.uk/news/world/latin_america/rss.xml' },
+      // (BBC Latin America removed for commercial-usage permissions.)
       { name: 'Guardian Americas', url: 'https://www.theguardian.com/world/americas/rss' },
       { name: 'Primicias', url: 'https://www.primicias.ec/feed/', lang: 'es' },
       { name: 'Infobae Americas', url: 'https://www.infobae.com/feeds/rss/', lang: 'es' },
@@ -94,18 +91,16 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'InSight Crime', url: 'https://insightcrime.org/feed/' },
     ],
     asia: [
-      { name: 'BBC Asia', url: 'https://feeds.bbci.co.uk/news/world/asia/rss.xml' },
+      // Removed for commercial-usage permissions: BBC Asia, Nikkei Asia
+      // (gn site:), South China Morning Post (gn site:), Asia News (gn site:).
       { name: 'The Diplomat', url: 'https://thediplomat.com/feed/' },
-      { name: 'Nikkei Asia', url: gn('site:asia.nikkei.com when:3d') },
       { name: 'CNA', url: 'https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml' },
       { name: 'NDTV', url: 'https://feeds.feedburner.com/ndtvnews-top-stories' },
-      { name: 'South China Morning Post', url: gn('site:scmp.com when:2d') },
       { name: 'The Hindu', url: 'https://www.thehindu.com/feeder/default.rss' },
-      { name: 'Asia News', url: gn('site:asianews.it when:3d') },
     ],
     energy: [
+      // (Reuters Energy gn site: scraper removed for commercial-usage permissions.)
       { name: 'Oil & Gas', url: gn('(oil price OR OPEC OR "natural gas" OR pipeline OR LNG) when:2d') },
-      { name: 'Reuters Energy', url: gn('site:reuters.com energy when:2d') },
       { name: 'Nuclear Energy', url: gn('("nuclear energy" OR "nuclear power" OR "nuclear reactor") when:3d') },
     ],
     thinktanks: [
@@ -244,9 +239,9 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
 
   finance: {
     markets: [
+      // (Seeking Alpha direct RSS removed for commercial-usage permissions.)
       { name: 'CNBC', url: 'https://www.cnbc.com/id/100003114/device/rss/rss.html' },
       { name: 'Yahoo Finance', url: 'https://finance.yahoo.com/rss/topstories' },
-      { name: 'Seeking Alpha', url: 'https://seekingalpha.com/market_currents.xml' },
     ],
     forex: [
       { name: 'Forex News', url: gn('(forex OR currency OR "exchange rate" OR FX OR "US dollar") when:2d') },
@@ -297,9 +292,8 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Bank Research', url: gn('("Goldman Sachs" OR JPMorgan OR "Morgan Stanley") forecast OR outlook when:3d') },
     ],
     gccNews: [
-      { name: 'Arabian Business', url: gn('site:arabianbusiness.com (Saudi Arabia OR UAE OR GCC) when:7d') },
-      { name: 'The National', url: gn('site:thenationalnews.com (Abu Dhabi OR UAE OR Saudi) when:7d') },
-      { name: 'Arab News', url: gn('site:arabnews.com (Saudi Arabia OR investment OR infrastructure) when:7d') },
+      // Removed for commercial-usage permissions: Arabian Business, The
+      // National, Arab News (gn site: scrapers).
       { name: 'Gulf FDI', url: gn('(PIF OR "DP World" OR Mubadala OR ADNOC OR Masdar OR "ACWA Power") infrastructure when:7d') },
       { name: 'Gulf Investments', url: gn('("Saudi Arabia" OR UAE OR "Abu Dhabi") investment infrastructure when:7d') },
       { name: 'Vision 2030', url: gn('"Vision 2030" (project OR investment OR announced) when:14d') },
@@ -309,34 +303,31 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
   // ── Commodity variant (Mining, Metals, Energy) ─────────────────────────────
   commodity: {
     'commodity-news': [
-      { name: 'Kitco News', url: gn('site:kitco.com gold OR silver OR commodity OR metals when:1d') },
+      // Removed for commercial-usage permissions: Kitco News, Bloomberg
+      // Commodities, Reuters Commodities, S&P Global Commodity, CNBC
+      // Commodities (all gn site: scrapers of aggressive publishers).
       { name: 'Mining.com', url: 'https://www.mining.com/feed/' },
-      { name: 'Bloomberg Commodities', url: gn('site:bloomberg.com commodities OR metals OR mining when:1d') },
-      { name: 'Reuters Commodities', url: gn('site:reuters.com commodities OR metals OR mining when:1d') },
-      { name: 'S&P Global Commodity', url: gn('site:spglobal.com commodities metals when:3d') },
       { name: 'Commodity Trade Mantra', url: gn('commodities trading metals energy gold silver when:1d') },
-      { name: 'CNBC Commodities', url: gn('site:cnbc.com (commodities OR metals OR gold OR copper) when:1d') },
     ],
     'gold-silver': [
-      { name: 'Kitco Gold', url: gn('site:kitco.com gold price OR "gold market" OR "silver price" when:2d') },
+      // (Kitco Gold gn site: scraper removed for commercial-usage permissions.)
       { name: 'Gold Price News', url: gn('(gold price OR "gold market" OR bullion OR LBMA) when:1d') },
       { name: 'Silver Price News', url: gn('(silver price OR "silver market" OR "silver futures") when:2d') },
       { name: 'Precious Metals', url: gn('("precious metals" OR platinum OR palladium OR "gold ETF" OR GLD OR SLV) when:2d') },
       { name: 'World Gold Council', url: gn('"World Gold Council" OR "central bank gold" OR "gold reserves" when:7d') },
     ],
     energy: [
+      // (Reuters Energy gn site: scraper removed for commercial-usage permissions.)
       { name: 'OilPrice.com', url: 'https://oilprice.com/rss/main' },
       { name: 'Rigzone', url: 'https://www.rigzone.com/news/rss/rigzone_latest.aspx' },
       { name: 'EIA Reports', url: gn('site:eia.gov energy oil gas when:14d') },
       { name: 'OPEC News', url: gn('(OPEC OR "oil price" OR "crude oil" OR WTI OR Brent OR "oil production") when:1d') },
       { name: 'Natural Gas News', url: gn('("natural gas" OR LNG OR "gas price" OR "Henry Hub") when:1d') },
       { name: 'Energy Intel', url: gn('(energy commodities OR "energy market" OR "energy prices") when:2d') },
-      { name: 'Reuters Energy', url: gn('site:reuters.com (oil OR gas OR energy) when:1d') },
     ],
     'mining-news': [
-      { name: 'Mining Journal', url: gn('site:mining-journal.com when:7d') },
-      { name: 'Northern Miner', url: gn('site:northernminer.com when:7d') },
-      { name: 'Mining Weekly', url: gn('site:miningweekly.com when:7d') },
+      // Removed for commercial-usage permissions: Mining Journal, Northern
+      // Miner, Mining Weekly (gn site: scrapers).
       { name: 'Mining Technology', url: 'https://www.mining-technology.com/feed/' },
       { name: 'Australian Mining', url: 'https://www.australianmining.com.au/feed/' },
       { name: 'Mine Web (SNL)', url: gn('("mining company" OR "mine production" OR "mining operations") when:2d') },
@@ -381,9 +372,9 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'China Mineral Policy', url: gn('China "rare earth" OR "mineral export" OR "critical mineral" policy OR restriction when:7d') },
     ],
     markets: [
+      // (Seeking Alpha Metals gn site: scraper removed for commercial-usage permissions.)
       { name: 'Yahoo Finance Commodities', url: 'https://finance.yahoo.com/rss/topstories' },
       { name: 'CNBC Markets', url: 'https://www.cnbc.com/id/100003114/device/rss/rss.html' },
-      { name: 'Seeking Alpha Metals', url: gn('site:seekingalpha.com (gold OR silver OR copper OR mining) when:2d') },
       { name: 'Commodity Futures', url: gn('(COMEX OR NYMEX OR "commodity futures" OR CME commodities) when:2d') },
     ],
   },
@@ -418,10 +409,10 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
 };
 
 export const INTEL_SOURCES: ServerFeed[] = [
+  // (Defense News removed for commercial-usage permissions — Sightline Media restrictive ToS.)
   { name: 'Defense One', url: 'https://www.defenseone.com/rss/all/' },
   { name: 'Breaking Defense', url: 'https://breakingdefense.com/feed/' },
   { name: 'The War Zone', url: 'https://www.twz.com/feed' },
-  { name: 'Defense News', url: 'https://www.defensenews.com/arc/outboundfeeds/rss/?outputType=xml' },
   { name: 'Military Times', url: 'https://www.militarytimes.com/arc/outboundfeeds/rss/?outputType=xml' },
   { name: 'Task & Purpose', url: 'https://taskandpurpose.com/feed/' },
   { name: 'USNI News', url: 'https://news.usni.org/feed' },

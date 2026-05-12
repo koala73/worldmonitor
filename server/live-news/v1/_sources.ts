@@ -43,8 +43,10 @@ export interface NewsSource {
 
 export const US_NEWS_SOURCES: readonly NewsSource[] = [
   // ── Tier 2 — Top international broadcasters ──────────────────────────
-  // (Tier 1 wires — AP, Reuters — removed for commercial-usage permissions.)
-  { name: 'BBC News World',       url: 'https://feeds.bbci.co.uk/news/world/rss.xml',               priority: 2 },
+  // Removed for commercial-usage permissions: AP, Reuters (wires); BBC
+  // (World, ME, Africa, Europe — BBC RSS ToS forbids commercial use);
+  // CNN, Fox News, NYPost, Times of Israel, Defense News — all carry
+  // explicit non-commercial RSS terms or aggressive enforcement history.
   { name: 'Al Jazeera English',   url: 'https://www.aljazeera.com/xml/rss/all.xml',                 priority: 2 },
   { name: 'Deutsche Welle',       url: 'https://rss.dw.com/rdf/rss-en-all',                         priority: 2 },
   { name: 'France 24',            url: 'https://www.france24.com/en/rss',                           priority: 2 },
@@ -56,12 +58,6 @@ export const US_NEWS_SOURCES: readonly NewsSource[] = [
   // (NYT World removed for commercial-usage permissions.)
   { name: 'The Guardian World',   url: 'https://www.theguardian.com/world/rss',                     priority: 3 },
 
-  // ── Tier 3 — Balanced US perspective (left + right) ──────────────────
-  // Two outlets with overtly different editorial leans, kept at the same
-  // priority. We're aiming for a viewpoint balance, not source weighting.
-  { name: 'CNN Top',              url: 'https://rss.cnn.com/rss/cnn_topstories.rss',                priority: 3, relayOnly: true },
-  { name: 'Fox News',             url: 'https://moxie.foxnews.com/google-publisher/latest.xml',     priority: 3 },
-
   // ── Tier 4 — Analysis / regional specialists ─────────────────────────
   // (Foreign Policy removed for commercial-usage permissions.)
   { name: 'The Diplomat',         url: 'https://thediplomat.com/feed/',                             priority: 4 },
@@ -70,22 +66,17 @@ export const US_NEWS_SOURCES: readonly NewsSource[] = [
   // Smoke-tested 2026-05-05: returns valid RSS, ~20–40 items each. These
   // give us the granular conflict reporting that the world-feed tier
   // doesn't carry — Gaza shellings, Ukraine front-line moves, Sahel ops.
-  { name: 'BBC Middle East',      url: 'https://feeds.bbci.co.uk/news/world/middle_east/rss.xml',   priority: 2 },
   { name: 'Guardian Middle East', url: 'https://www.theguardian.com/world/middleeast/rss',           priority: 3 },
-  { name: 'BBC Africa',           url: 'https://feeds.bbci.co.uk/news/world/africa/rss.xml',         priority: 2 },
-  { name: 'BBC Europe',           url: 'https://feeds.bbci.co.uk/news/world/europe/rss.xml',         priority: 2 },
   { name: 'France 24 ME',         url: 'https://www.france24.com/en/middle-east/rss',                priority: 2 },
 
   // ── Regional newsdesks via relay (egress-blocked from Vercel IPs) ────
-  // Both return 403 to direct fetches from cloud IPs. Routed through
-  // the existing WS_RELAY_URL proxy. If the relay isn't configured for
-  // your environment these silently no-op — no error, just an empty feed.
-  { name: 'Times of Israel',      url: 'https://www.timesofisrael.com/feed/',                        priority: 3, relayOnly: true },
+  // Returns 403 to direct fetches from cloud IPs. Routed through the
+  // existing WS_RELAY_URL proxy. If the relay isn't configured for your
+  // environment these silently no-op — no error, just an empty feed.
   { name: 'Al Arabiya English',   url: 'https://english.alarabiya.net/.mrss/en.xml',                 priority: 3, relayOnly: true },
 
   // ── Defense / militant-ops specialty (Tier-B) ────────────────────────
   // High signal-to-noise on conflict and military operations.
-  { name: 'Defense News',         url: 'https://www.defensenews.com/arc/outboundfeeds/rss/?outputType=xml', priority: 4 },
   { name: 'Long War Journal',     url: 'https://www.longwarjournal.org/feed',                        priority: 4 },
   { name: 'SOFREP',               url: 'https://sofrep.com/feed/',                                   priority: 4 },
   // SOFX is a Substack-style newsletter; standard `/feed` endpoint exposes
@@ -94,11 +85,7 @@ export const US_NEWS_SOURCES: readonly NewsSource[] = [
   // important" so soft-fail is fine.
   { name: 'SOFX Newsletter',      url: 'https://newsletter.sofx.com/feed',                           priority: 4 },
 
-  // ── US national / tabloid (high-volume, mixed signal) ────────────────
-  // Note: NYPost runs heavy on celebrity / lifestyle stories alongside
-  // hard news. The dedup pipeline + region tagging keep it manageable in
-  // the feed; if it pollutes the feed in practice we can priority-demote.
-  { name: 'NYPost',               url: 'https://nypost.com/feed/',                                   priority: 3 },
+  // (NYPost removed for commercial-usage permissions — News Corp aggressive.)
 
   // ── Aggregator backstop (catches breaking before direct feeds update) ─
   { name: 'Google News (World)',  url: 'https://news.google.com/rss/headlines/section/topic/WORLD?hl=en-US&gl=US&ceid=US:en', priority: 4 },
