@@ -472,6 +472,18 @@ const GROUNDING_TOKEN_DELIMS = /[\s,.!?;:()'"‘’“”´\\/—–\-[\]{}]+/;
 // deliberately omitted (Theresa May, May Day, May = month all
 // collide on it; safer to keep "may" matchable than to filter it
 // and lose a real anchor).
+//
+// Maintenance heuristic (PR #3667 review round 5 #3): a capitalised
+// token of length ≥4 belongs in this set if it appears in >~10% of
+// real headlines without discriminating between stories. The cheap
+// audit is: dump a week of headlines, tokenise with this same
+// extractAnchorTokens function (with stopwords disabled), count
+// frequencies, and inspect any token in >50 of ~500 headlines that
+// isn't already a known proper noun. The "Prime"/"Chief"/"Cardinal"
+// gaps caught on review rounds 2-3 would each have surfaced from
+// such a frequency audit. Don't try to enumerate exhaustively up
+// front; let production usage drive additions and capture each new
+// ride-along bug class as a regression test.
 const GROUNDING_ANCHOR_STOPWORDS = new Set([
   // Honorifics / titles
   'president', 'vice', 'senator', 'minister', 'secretary',
@@ -517,49 +529,6 @@ const GROUNDING_ANCHOR_STOPWORDS = new Set([
 ]);
 
 /**
- * Cheap content-grounding check: the canonical lead MUST reference
- * proper-noun tokens that actually appear in the input story
- * headlines. Without this, the LLM is free to confabulate even with
- * shape-valid output — e.g. the 2026-05-12 incident where a Trump-
- * era geopolitics pool (Iran/Israel/Sudan/Cuba/Ukraine) shipped a
- * "President Biden announced a crypto executive order" lead. Shape
- * was valid; content was a complete fabrication the model produced
- * from training-data priors instead of grounding.
- *
- * Two independent grounding requirements (BOTH must pass):
- *
- *   1. **Lead anchor**: the lead alone must hit ≥1 anchor token.
- *      Without this, a hallucinated lead can sneak through when the
- *      threads happen to mention real entities — the visible lead
- *      stays fabricated even though the combined check passes.
- *      (Code-review finding on PR #3667 #1.)
- *   2. **Combined coverage**: the lead + thread teasers together
- *      must hit ≥2 anchors (relaxed to 1 when the corpus itself has
- *      <4 anchor tokens, so single-named-actor briefs aren't
- *      false-positives).
- *
- * Matching is **token-set membership** — both sides are split on
- * the same delimiter regex and lowercased into Sets. Substring
- * matching (the v1 implementation) was rejected on PR #3667 review:
- * it accepts unrelated entities like `iran` inside `tirana`,
- * `oman` inside `romania`, `india` inside `indiana`. Token-set
- * matching avoids that class of false positive cleanly.
- * (Code-review finding on PR #3667 #2.)
- *
- * Length cap of 4 deliberately filters out 2-letter ISO country
- * codes (`IR`, `PS`, `US`) and short-form orgs (`UN`, `EU`, `RSF`)
- * which are too generic to be discriminating anchors. The check is
- * about whether the lead names a SPECIFIC entity — not whether it
- * uses any capitalised token at all.
- *
- * Returns true (grounded, or check-skipped because corpus lacks
- * signal / no stories supplied) → accept. Returns false → reject.
- *
- * @param {{ lead?: string; threads?: Array<{tag?:string;teaser?:string}> }} synthesis
- * @param {Array<{ headline?: string }>} stories
- * @returns {boolean}
- */
-/**
  * Anchor extraction from a story headline: capitalised + length ≥4 +
  * NOT in GROUNDING_ANCHOR_STOPWORDS. The capitalisation filter makes
  * this a "proper noun" heuristic; the stopword filter strips
@@ -602,6 +571,49 @@ function groundingTokenSet(text) {
   return set;
 }
 
+/**
+ * Cheap content-grounding check: the canonical lead MUST reference
+ * proper-noun tokens that actually appear in the input story
+ * headlines. Without this, the LLM is free to confabulate even with
+ * shape-valid output — e.g. the 2026-05-12 incident where a Trump-
+ * era geopolitics pool (Iran/Israel/Sudan/Cuba/Ukraine) shipped a
+ * "President Biden announced a crypto executive order" lead. Shape
+ * was valid; content was a complete fabrication the model produced
+ * from training-data priors instead of grounding.
+ *
+ * Two independent grounding requirements (BOTH must pass):
+ *
+ *   1. **Lead anchor**: the lead alone must hit ≥1 anchor token.
+ *      Without this, a hallucinated lead can sneak through when the
+ *      threads happen to mention real entities — the visible lead
+ *      stays fabricated even though the combined check passes.
+ *      (Code-review finding on PR #3667 #1.)
+ *   2. **Combined coverage**: the lead + thread teasers together
+ *      must hit ≥2 anchors (relaxed to 1 when the corpus itself has
+ *      <4 anchor tokens, so single-named-actor briefs aren't
+ *      false-positives).
+ *
+ * Matching is **token-set membership** — both sides are split on
+ * the same delimiter regex and lowercased into Sets. Substring
+ * matching (the v1 implementation) was rejected on PR #3667 review:
+ * it accepts unrelated entities like `iran` inside `tirana`,
+ * `oman` inside `romania`, `india` inside `indiana`. Token-set
+ * matching avoids that class of false positive cleanly.
+ * (Code-review finding on PR #3667 #2.)
+ *
+ * Length cap of 4 deliberately filters out 2-letter ISO country
+ * codes (`IR`, `PS`, `US`) and short-form orgs (`UN`, `EU`, `RSF`)
+ * which are too generic to be discriminating anchors. The check is
+ * about whether the lead names a SPECIFIC entity — not whether it
+ * uses any capitalised token at all.
+ *
+ * Returns true (grounded, or check-skipped because corpus lacks
+ * signal / no stories supplied) → accept. Returns false → reject.
+ *
+ * @param {{ lead?: string; threads?: Array<{tag?:string;teaser?:string}> }} synthesis
+ * @param {Array<{ headline?: string }>} stories
+ * @returns {boolean}
+ */
 export function checkLeadGrounding(synthesis, stories) {
   if (!Array.isArray(stories) || stories.length === 0) return true;
 
@@ -614,7 +626,21 @@ export function checkLeadGrounding(synthesis, stories) {
   // Corpus has no proper-noun anchors — can't validate, skip.
   // Genuine input (2026-era stories) reliably has >0 such tokens;
   // the empty branch is for synthetic / single-headline tests.
-  if (storyTokens.size === 0) return true;
+  //
+  // Lowercase-headline blind spot (PR #3667 review round 5 #2):
+  // if a feed ever produces all-lowercase or all-≤3-char headlines,
+  // every story contributes zero anchors and the gate silently
+  // skips. Emit a warn so ops can detect the regression — but only
+  // when stories.length is meaningful (≥3) so the synthetic
+  // single-headline test corpora don't spam logs.
+  if (storyTokens.size === 0) {
+    if (stories.length >= 3) {
+      console.warn(
+        `[brief-llm] grounding gate skipped: storyTokens empty for stories.length=${stories.length} — likely all-lowercase or <4-char headlines from a feed regression`,
+      );
+    }
+    return true;
+  }
 
   const leadTokens = groundingTokenSet(typeof synthesis?.lead === 'string' ? synthesis.lead : '');
 
