@@ -205,11 +205,65 @@ describe('buildImfEconomicIndicators (panel rendering)', () => {
     assert.equal(pb.trend, 'down');
   });
 
-  it('skips rows whose values are null or non-finite', () => {
+  it('keeps primary balance flat at the exact upper boundary (+1.0)', () => {
+    // Pins the inclusivity of `> 1` so a future refactor to `>= 1`
+    // would be caught (greptile P2: PR #3668).
     const rows = buildImfEconomicIndicators(bundle({
       macro: {
-        inflationPct: NaN, currentAccountPct: null, govRevenuePct: null,
-        cpiIndex: null, cpiEopPct: null, govExpenditurePct: null, primaryBalancePct: null,
+        inflationPct: null, currentAccountPct: null, govRevenuePct: null,
+        cpiIndex: null, cpiEopPct: null, govExpenditurePct: null, primaryBalancePct: 1.0,
+        year: 2024,
+      },
+    }));
+    const pb = rows.find(r => r.label === 'Primary Balance')!;
+    assert.equal(pb.value, '+1.0% GDP');
+    assert.equal(pb.trend, 'flat');
+  });
+
+  it('keeps primary balance flat at the exact lower boundary (-3.0)', () => {
+    // Pins the inclusivity of `< -3` so a future refactor to `<= -3`
+    // would be caught (greptile P2: PR #3668).
+    const rows = buildImfEconomicIndicators(bundle({
+      macro: {
+        inflationPct: null, currentAccountPct: null, govRevenuePct: null,
+        cpiIndex: null, cpiEopPct: null, govExpenditurePct: null, primaryBalancePct: -3.0,
+        year: 2024,
+      },
+    }));
+    const pb = rows.find(r => r.label === 'Primary Balance')!;
+    assert.equal(pb.value, '-3.0% GDP');
+    assert.equal(pb.trend, 'flat');
+  });
+
+  it('skips rows whose values are null or non-finite (covers all 7 IMF fields)', () => {
+    // Covers Number.isFinite guards across every IMF field — not just
+    // inflation. Catches a future regression where the guard is dropped
+    // on one of the new fiscal fields (greptile P2: PR #3668).
+    const rows = buildImfEconomicIndicators(bundle({
+      macro: {
+        inflationPct: NaN,
+        currentAccountPct: null,
+        govRevenuePct: Infinity,
+        cpiIndex: null,
+        cpiEopPct: null,
+        govExpenditurePct: NaN,
+        primaryBalancePct: -Infinity,
+        year: 2025,
+      },
+      growth: {
+        realGdpGrowthPct: NaN,
+        gdpPerCapitaUsd: Infinity,
+        realGdp: null,
+        gdpPerCapitaPpp: null,
+        gdpPpp: null,
+        investmentPct: null,
+        savingsPct: null,
+        savingsInvestmentGap: null,
+        year: 2025,
+      },
+      labor: {
+        unemploymentPct: NaN,
+        populationMillions: null,
         year: 2025,
       },
     }));
