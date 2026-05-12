@@ -33,6 +33,18 @@ import { composeBriefFromDigestStories } from '../scripts/lib/brief-compose.mjs'
 
 // ── Fixtures ───────────────────────────────────────────────────────────────
 
+// IMPORTANT: the default `headline` here is load-bearing for many
+// downstream tests in this file. Specifically, every `generateDigestProse`
+// and `generateDigestProsePublic` test feeds `validJson` (a fixture lead
+// that names "Iran" and "Strait of Hormuz") against a stories array
+// derived from `story()`. The v5 grounding gate (PR #3667) requires the
+// lead to share ≥1 anchor token with at least one story headline. If
+// you change the default headline so it no longer mentions "Iran" or
+// "Hormuz", `validJson` becomes ungrounded, every cache-shape test in
+// the `generateDigestProse` describe block silently rejects, and you
+// see cascading "expected truthy, got null" assertions whose root cause
+// is invisible. Either keep "Iran" + "Hormuz" in this default OR pass
+// an `overrides.headline` AND update the relevant `validJson` lead.
 function story(overrides = {}) {
   return {
     category: 'Diplomacy',

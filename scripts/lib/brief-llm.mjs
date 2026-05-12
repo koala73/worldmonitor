@@ -559,27 +559,56 @@ const GROUNDING_ANCHOR_STOPWORDS = new Set([
  * @param {Array<{ headline?: string }>} stories
  * @returns {boolean}
  */
+/**
+ * Anchor extraction from a story headline: capitalised + length ≥4 +
+ * NOT in GROUNDING_ANCHOR_STOPWORDS. The capitalisation filter makes
+ * this a "proper noun" heuristic; the stopword filter strips
+ * honorifics, role labels, bigram-leading titles, and sentence-start
+ * filler that would otherwise be shared anchors between any
+ * "President X..." headline and any "President Y..." hallucinated
+ * lead. File-level so the closure isn't re-instantiated per
+ * checkLeadGrounding call (PR #3667 review round 4 P2).
+ *
+ * @param {string} s
+ * @returns {string[]} lowercased anchor tokens
+ */
+function extractAnchorTokens(s) {
+  if (typeof s !== 'string' || s.length === 0) return [];
+  const out = [];
+  for (const w of s.split(GROUNDING_TOKEN_DELIMS)) {
+    if (w.length < 4 || !/^[A-Z]/.test(w)) continue;
+    const lower = w.toLowerCase();
+    if (!GROUNDING_ANCHOR_STOPWORDS.has(lower)) out.push(lower);
+  }
+  return out;
+}
+
+/**
+ * Tokenise synthesis prose into a Set of lowercased words for
+ * membership lookup. NO capitalisation filter — the synthesis can
+ * mention the entity in any case (sentence-medial, possessive form,
+ * etc.) and we still want it to count. File-level for the same
+ * reason as extractAnchorTokens (PR #3667 review round 4 P2).
+ *
+ * @param {string} text
+ * @returns {Set<string>}
+ */
+function groundingTokenSet(text) {
+  const set = new Set();
+  if (typeof text !== 'string' || text.length === 0) return set;
+  for (const w of text.toLowerCase().split(GROUNDING_TOKEN_DELIMS)) {
+    if (w.length >= 4) set.add(w);
+  }
+  return set;
+}
+
 export function checkLeadGrounding(synthesis, stories) {
   if (!Array.isArray(stories) || stories.length === 0) return true;
 
-  // Anchor extraction from headlines: capitalised + length ≥4 +
-  // NOT in GROUNDING_ANCHOR_STOPWORDS. The capitalisation filter
-  // makes this a "proper noun" heuristic; the stopword filter
-  // strips honorifics, role labels, and sentence-start filler that
-  // would otherwise be common shared anchors between any "President
-  // X..." headline and any "President Y..." hallucinated lead.
-  const extractAnchors = (s) => {
-    if (typeof s !== 'string' || s.length === 0) return [];
-    return s
-      .split(GROUNDING_TOKEN_DELIMS)
-      .filter((w) => w.length >= 4 && /^[A-Z]/.test(w))
-      .filter((w) => !GROUNDING_ANCHOR_STOPWORDS.has(w.toLowerCase()));
-  };
-
   const storyTokens = new Set();
   for (const s of stories.slice(0, MAX_STORIES_PER_USER)) {
-    for (const tok of extractAnchors(s?.headline ?? '')) {
-      storyTokens.add(tok.toLowerCase());
+    for (const tok of extractAnchorTokens(s?.headline ?? '')) {
+      storyTokens.add(tok);
     }
   }
   // Corpus has no proper-noun anchors — can't validate, skip.
@@ -587,20 +616,7 @@ export function checkLeadGrounding(synthesis, stories) {
   // the empty branch is for synthetic / single-headline tests.
   if (storyTokens.size === 0) return true;
 
-  // Tokenise the synthesis prose into a Set of lowercased words for
-  // membership lookup. NO capitalisation filter on this side: the
-  // synthesis can mention the entity in any case (sentence-medial,
-  // possessive form, etc.) and we still want it to count.
-  const tokensetOf = (text) => {
-    const set = new Set();
-    if (typeof text !== 'string' || text.length === 0) return set;
-    for (const w of text.toLowerCase().split(GROUNDING_TOKEN_DELIMS)) {
-      if (w.length >= 4) set.add(w);
-    }
-    return set;
-  };
-
-  const leadTokens = tokensetOf(typeof synthesis?.lead === 'string' ? synthesis.lead : '');
+  const leadTokens = groundingTokenSet(typeof synthesis?.lead === 'string' ? synthesis.lead : '');
 
   // Requirement 1: the lead alone must hit ≥1 anchor. A hallucinated
   // lead with grounded teasers would otherwise pass — the user still
@@ -616,7 +632,7 @@ export function checkLeadGrounding(synthesis, stories) {
   // story briefs don't false-positive.
   const combinedTokens = new Set(leadTokens);
   for (const t of (Array.isArray(synthesis?.threads) ? synthesis.threads : [])) {
-    for (const w of tokensetOf(typeof t?.teaser === 'string' ? t.teaser : '')) {
+    for (const w of groundingTokenSet(typeof t?.teaser === 'string' ? t.teaser : '')) {
       combinedTokens.add(w);
     }
   }
