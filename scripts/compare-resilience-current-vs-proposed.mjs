@@ -366,6 +366,7 @@ const EXTRACTION_RULES = {
   recoveryGovRevenue: { type: 'recovery-country-field', key: 'resilience:recovery:fiscal-space:v1', field: 'govRevenuePct' },
   recoveryFiscalBalance: { type: 'recovery-country-field', key: 'resilience:recovery:fiscal-space:v1', field: 'fiscalBalancePct' },
   recoveryDebtToGdp: { type: 'recovery-country-field', key: 'resilience:recovery:fiscal-space:v1', field: 'debtToGdpPct' },
+  debtSustainabilityGap: { type: 'recovery-country-field', key: 'resilience:recovery:fiscal-space:v1', field: 'debtSustainabilityGapPct' },
   recoveryReserveMonths: { type: 'recovery-country-field', key: 'resilience:recovery:reserve-adequacy:v1', field: 'reserveMonths' },
   // PR 2 §3.4: replacement for recoveryReserveMonths at the tighter 1..12
   // anchor. Same seed key + field; the harness extracts the same value

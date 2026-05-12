@@ -1011,14 +1011,18 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     comprehensive: true,
   },
 
-  // ── fiscalSpace (3 sub-metrics) ──────────────────────────────────────────
+  // ── fiscalSpace (4 sub-metrics) ──────────────────────────────────────────
+  // Weights rebalanced from 0.4/0.3/0.3 → 0.25/0.20/0.20/0.35 to make room
+  // for debtSustainabilityGap as the largest single slice (it's the most
+  // informative single signal — integrates pb, r, g, d, and their
+  // interaction). Sum invariant: 0.25 + 0.20 + 0.20 + 0.35 = 1.0.
   {
     id: 'recoveryGovRevenue',
     dimension: 'fiscalSpace',
     description: 'Government revenue as % of GDP (IMF GGR_G01_GDP_PT); fiscal mobilization capacity for recovery',
     direction: 'higherBetter',
     goalposts: { worst: 5, best: 45 },
-    weight: 0.4,
+    weight: 0.25,
     sourceKey: 'resilience:recovery:fiscal-space:v1',
     scope: 'global',
     cadence: 'annual',
@@ -1033,7 +1037,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     description: 'General government net lending/borrowing as % of GDP (IMF GGXCNL_G01_GDP_PT); deficit signals reduced recovery firepower',
     direction: 'higherBetter',
     goalposts: { worst: -15, best: 5 },
-    weight: 0.3,
+    weight: 0.20,
     sourceKey: 'resilience:recovery:fiscal-space:v1',
     scope: 'global',
     cadence: 'annual',
@@ -1048,12 +1052,32 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     description: 'General government gross debt as % of GDP (IMF GGXWDG_NGDP_PT); high debt limits recovery borrowing capacity',
     direction: 'lowerBetter',
     goalposts: { worst: 150, best: 0 },
-    weight: 0.3,
+    weight: 0.20,
     sourceKey: 'resilience:recovery:fiscal-space:v1',
     scope: 'global',
     cadence: 'annual',
     tier: 'core',
     coverage: 190,
+    license: 'open-data',
+    comprehensive: true,
+  },
+  {
+    id: 'debtSustainabilityGap',
+    dimension: 'fiscalSpace',
+    description: 'Primary-balance gap to debt-stabilizing level: gap = pb − ((r−g)/(1+g))·d (IMF DSA construct). Positive = debt path declining, negative = rising. r derived from interest expense / debt (overall balance minus primary balance); g from compounded real growth × (1+CPI). Hyperinflation cap at 25% drops gap to null for Argentina/Lebanon/Venezuela; fiscal-3 still scores them.',
+    direction: 'higherBetter',
+    goalposts: { worst: -5, best: 3 },
+    weight: 0.35,
+    sourceKey: 'resilience:recovery:fiscal-space:v1',
+    scope: 'global',
+    cadence: 'annual',
+    // Tier: 'enrichment' — the indicator excludes hyperinflation countries
+    // by design (CPI > 25% → gap=null), so it structurally cannot meet the
+    // Core-tier ≥180 countries coverage invariant. Scorer doesn't filter by
+    // tier; this is a quality classification. The 3 sibling fiscalSpace
+    // indicators (revenue/balance/debt) remain Core at coverage 190.
+    tier: 'enrichment',
+    coverage: 150,
     license: 'open-data',
     comprehensive: true,
   },

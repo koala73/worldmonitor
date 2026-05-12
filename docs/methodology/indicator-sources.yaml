@@ -521,7 +521,7 @@
 - indicator: recoveryGovRevenue
   dimension: fiscalSpace
   domain: recovery
-  weight: 0.40
+  weight: 0.25
   direction: higher-better
   source: IMF
   seriesId: GGR_G01_GDP_PT
@@ -531,12 +531,12 @@
   license: Proprietary-with-fair-use
   mechanismTestRationale: Government revenue % GDP for recovery scenarios — policy-response fiscal headroom.
   constructStatus: observed-mechanism
-  reviewNotes: Duplicate with macroFiscal.govRevenuePct. PR 4 may de-duplicate.
+  reviewNotes: Weight reduced 0.40 → 0.25 to make room for debtSustainabilityGap (the more informative single signal). Duplicate with macroFiscal.govRevenuePct. PR 4 may de-duplicate.
 
 - indicator: recoveryFiscalBalance
   dimension: fiscalSpace
   domain: recovery
-  weight: 0.30
+  weight: 0.20
   direction: higher-better
   source: IMF
   seriesId: GGXCNL_G01_GDP_PT
@@ -546,11 +546,12 @@
   license: Proprietary-with-fair-use
   mechanismTestRationale: General government net lending/borrowing as % of GDP — direct fiscal-response-capacity signal.
   constructStatus: observed-mechanism
+  reviewNotes: Weight reduced 0.30 → 0.20 with the addition of debtSustainabilityGap, which integrates fiscal balance into its r-g computation.
 
 - indicator: recoveryDebtToGdp
   dimension: fiscalSpace
   domain: recovery
-  weight: 0.30
+  weight: 0.20
   direction: lower-better
   source: IMF
   seriesId: GGXWDG_NGDP_PT
@@ -560,7 +561,34 @@
   license: Proprietary-with-fair-use
   mechanismTestRationale: General government gross debt to GDP — fiscal-stress cushion.
   constructStatus: observed-mechanism
-  reviewNotes: Goalpost 0-150 is too linear; Japan at 260% (mostly domestic, yen-denominated) scores 0 despite weak real fiscal-stress risk. PR 4 §4.4 adds holder-composition modifier.
+  reviewNotes: Weight reduced 0.30 → 0.20 alongside the addition of debtSustainabilityGap. Goalpost 0-150 is too linear; Japan at 260% (mostly domestic, yen-denominated) scores 0 despite weak real fiscal-stress risk. The gap indicator partially compensates by honoring the g≈r regime. PR 4 §4.4 adds holder-composition modifier.
+
+- indicator: debtSustainabilityGap
+  dimension: fiscalSpace
+  domain: recovery
+  weight: 0.35
+  direction: higher-better
+  source: IMF (5 series composite — see formula in country-resilience-index.mdx §Fiscal Space)
+  seriesId: GGXONLB_NGDP × GGXCNL_NGDP × GGXWDG_NGDP × NGDP_RPCH × PCPIPCH
+  seriesUrl: https://www.imf.org/external/datamapper/datasets/WEO
+  coveragePct: 0.79  # ~150 of 190 countries — realistic joint coverage after year-alignment + hyperinflation cap
+  lastObservedYear: 2024
+  license: Proprietary-with-fair-use
+  mechanismTestRationale: |
+    Primary-balance gap to debt-stabilizing level — the standard IMF DSA construct used by Article IV
+    missions, ECB MIP scoreboard, and S&P sovereign methodology. Captures debt trajectory (sustainability)
+    rather than debt level. Computed at seed time: gap = pb − ((r−g)/(1+g))·d where r is derived from
+    the algebraic identity (overall_balance = primary_balance − interest_expense), g is compounded
+    nominal growth (1+real)·(1+inflation)−1. Inputs year-aligned via latestCommonYear across the 5
+    formula series; year-mismatched countries drop to null and the scorer's weightedBlend redistributes
+    weight across the remaining 3 fiscal-space indicators.
+  constructStatus: observed-mechanism
+  reviewNotes: |
+    Hyperinflation cap (CPI > 25%) drops gap to null for Argentina / Lebanon / Venezuela — the inflation-tax
+    term in the formula would otherwise produce misleadingly positive gaps that mask real fiscal pathology.
+    Fiscal-3 still scores these countries. Goalposts -5/+3 chosen from IMF DSA distress conventions; gap≈0
+    is debt-stabilizing (normalized score ≈ 62), gap≥+3 saturates (debt declining), gap≤-5 floors (severe
+    distress).
 
 - indicator: recoveryReserveMonths
   dimension: reserveAdequacy

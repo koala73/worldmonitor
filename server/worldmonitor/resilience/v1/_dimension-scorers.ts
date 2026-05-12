@@ -1981,6 +1981,14 @@ interface RecoveryFiscalSpaceCountry {
   fiscalBalancePct?: number | null;
   debtToGdpPct?: number | null;
   year?: number | null;
+  // Gap-indicator fields (schemaVersion 2). Only populated when all 5
+  // formula inputs share a common WEO year per latestCommonYear() in the
+  // seeder. Otherwise null; the scorer's weightedBlend redistributes.
+  primaryBalancePct?: number | null;
+  realGdpGrowthPct?: number | null;
+  inflationPct?: number | null;
+  debtSustainabilityGapPct?: number | null;
+  gapYear?: number | null;
 }
 
 interface RecoveryReserveAdequacyCountry {
@@ -2027,10 +2035,17 @@ export async function scoreFiscalSpace(
     };
   }
 
+  // Weight rebalance + new indicator (debtSustainabilityGap) per
+  // plans/add-debt-sustainability-gap-indicator.md. The gap (pb − pb*)
+  // is the most informative single fiscal signal — it integrates pb, r,
+  // g, and d with their interaction term — and earns the largest slice.
+  // The other three are co-signals confirming the direction.
+  //   sum = 0.25 + 0.20 + 0.20 + 0.35 = 1.0
   return weightedBlend([
-    { score: entry.govRevenuePct == null ? null : normalizeHigherBetter(entry.govRevenuePct, 5, 45), weight: 0.4 },
-    { score: entry.fiscalBalancePct == null ? null : normalizeHigherBetter(entry.fiscalBalancePct, -15, 5), weight: 0.3 },
-    { score: entry.debtToGdpPct == null ? null : normalizeLowerBetter(entry.debtToGdpPct, 0, 150), weight: 0.3 },
+    { score: entry.govRevenuePct == null ? null : normalizeHigherBetter(entry.govRevenuePct, 5, 45), weight: 0.25 },
+    { score: entry.fiscalBalancePct == null ? null : normalizeHigherBetter(entry.fiscalBalancePct, -15, 5), weight: 0.20 },
+    { score: entry.debtToGdpPct == null ? null : normalizeLowerBetter(entry.debtToGdpPct, 0, 150), weight: 0.20 },
+    { score: entry.debtSustainabilityGapPct == null ? null : normalizeHigherBetter(entry.debtSustainabilityGapPct, -5, 3), weight: 0.35 },
   ]);
 }
 
