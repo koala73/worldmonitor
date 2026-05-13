@@ -119,7 +119,17 @@ export class UnifiedSettings {
         // window.open inside openBillingPortal (which runs after an
         // await of the Convex action).
         const reservedWin = prereserveBillingPortalTab();
-        void openBillingPortal(reservedWin);
+        void openBillingPortal(reservedWin).then((result) => {
+          // NO_CUSTOMER: user is entitled but has no Dodo customer row
+          // (comp grant, restore race, or post-purge cancellation). Send
+          // them somewhere actionable instead of leaving them in a
+          // generic Dodo portal that won't recognise them.
+          if (result.outcome === 'no-customer') {
+            showToast(
+              'Subscription is managed outside Dodo. Email support@worldmonitor.app for help.',
+            );
+          }
+        });
         return;
       }
 
@@ -641,7 +651,13 @@ export class UnifiedSettings {
     if (isEntitled()) {
       this.close();
       const reservedWin = prereserveBillingPortalTab();
-      void openBillingPortal(reservedWin);
+      void openBillingPortal(reservedWin).then((result) => {
+        if (result.outcome === 'no-customer') {
+          showToast(
+            'Subscription is managed outside Dodo. Email support@worldmonitor.app for help.',
+          );
+        }
+      });
       return;
     }
     this.close();

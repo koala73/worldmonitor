@@ -9,7 +9,7 @@
  * - claimSubscription: mutation to migrate entitlements from anon ID to authed user
  */
 
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { action, mutation, query, internalAction, internalMutation, internalQuery, type ActionCtx } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { DodoPayments } from "dodopayments";
@@ -39,7 +39,11 @@ const ANON_ID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[
 function getDodoClient(): DodoPayments {
   const apiKey = process.env.DODO_API_KEY;
   if (!apiKey) {
-    throw new Error("[billing] DODO_API_KEY not set — cannot call Dodo API");
+    // Structured throw (object-typed `data`) so the client receives
+    // `err.data.kind` instead of an opaque `[Request ID: X] Server Error`
+    // (Convex's HTTP runtime drops `errorData` for string-data throws).
+    // Surfaces a config drift bug at error level so on-call sees the real cause.
+    throw new ConvexError({ kind: "DODO_API_KEY_MISSING" });
   }
   const isLive = process.env.DODO_PAYMENTS_ENVIRONMENT === "live_mode";
   return new DodoPayments({
@@ -49,16 +53,37 @@ function getDodoClient(): DodoPayments {
 }
 
 async function createCustomerPortalUrlForUser(
-  ctx: Pick<ActionCtx, "runQuery">,
+  ctx: Pick<ActionCtx, "runQuery" | "runMutation">,
   userId: string,
 ): Promise<{ portal_url: string }> {
-  const customer = await ctx.runQuery(
+  let customer = await ctx.runQuery(
     internal.payments.billing.getCustomerByUserId,
     { userId },
   );
 
   if (!customer || !customer.dodoCustomerId) {
-    throw new Error("No Dodo customer found for this user");
+    // Self-heal a known webhook gap: `subscription.active` writes the
+    // `subscriptions` row unconditionally but only writes `customers` when
+    // `data.customer?.customer_id` is present in the payload
+    // (`subscriptionHelpers.ts:525`). Users whose webhook delivery
+    // lacked the customer field end up entitled (active sub) but with no
+    // customers row — clicking "Manage Billing" throws NO_CUSTOMER. The
+    // subscription's `rawPayload` carries the same customer info though,
+    // so try to recover from there before giving up. WORLDMONITOR-R5
+    // (user_3DcpiviTIweanCi9BtF5PRpqwv6 — active Pro Annual, no customers row).
+    customer = await ctx.runMutation(
+      internal.payments.billing.repairCustomerFromSubscriptionPayload,
+      { userId },
+    );
+  }
+
+  if (!customer || !customer.dodoCustomerId) {
+    // Genuine no-customer state — recovery from subscription payload
+    // didn't yield a dodoCustomerId either. Throw structured so the
+    // client can surface a useful "contact support" toast (object-typed
+    // `data` so `err.data.kind` survives the wire — see
+    // `api/_convex-error.js` for the broader pattern).
+    throw new ConvexError({ kind: "NO_CUSTOMER" });
   }
 
   const client = getDodoClient();
@@ -152,9 +177,232 @@ export const getCustomerByUserId = internalQuery({
 });
 
 /**
+ * Last-resort repair when an entitled user has no `customers` row.
+ *
+ * The Dodo `subscription.active` handler writes the `subscriptions` row
+ * unconditionally but only writes `customers` when `data.customer?.customer_id`
+ * is present in the webhook payload (`subscriptionHelpers.ts:525`). Webhook
+ * deliveries that omitted the customer field leave the user entitled but with
+ * no portal-resolvable record — clicking "Manage Billing" then throws
+ * `NO_CUSTOMER`.
+ *
+ * The subscription row carries the full webhook payload in `rawPayload`, so
+ * the dodoCustomerId is recoverable from there. Walk the user's
+ * subscriptions newest-first (preferring `active`, then `on_hold` or
+ * `cancelled`), find the first one whose `rawPayload.customer.customer_id`
+ * is a string, and upsert a customers row from it. Logs at warning level so
+ * a sustained repair rate is queryable in Convex logs — that's the signal
+ * to harden the webhook handler.
+ *
+ * Returns the resulting `customers` document, or null if no payload yielded
+ * a usable dodoCustomerId (or the dodoCustomerId already maps to a
+ * different userId, which is a distinct cross-user integrity issue we
+ * deliberately don't auto-overwrite).
+ */
+export const repairCustomerFromSubscriptionPayload = internalMutation({
+  args: { userId: v.string() },
+  handler: async (ctx, args) => {
+    const subs = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .take(50);
+
+    // Prefer active → on_hold → cancelled, then newest updatedAt within tier.
+    const priority = (status: string): number =>
+      status === "active" ? 0 :
+      status === "on_hold" ? 1 :
+      status === "cancelled" ? 2 :
+      3;
+    subs.sort((a, b) => {
+      const pa = priority(a.status);
+      const pb = priority(b.status);
+      if (pa !== pb) return pa - pb;
+      return b.updatedAt - a.updatedAt;
+    });
+
+    for (const sub of subs) {
+      const payload = sub.rawPayload as
+        | { customer?: { customer_id?: unknown; email?: unknown } }
+        | null
+        | undefined;
+      const rawId = payload?.customer?.customer_id;
+      const dodoCustomerId = typeof rawId === "string" && rawId.length > 0 ? rawId : null;
+      if (!dodoCustomerId) continue;
+
+      const rawEmail = payload?.customer?.email;
+      const email = typeof rawEmail === "string" ? rawEmail : "";
+      const normalizedEmail = email.trim().toLowerCase();
+      const now = Date.now();
+
+      // If a customers row with this dodoCustomerId already exists for a
+      // DIFFERENT userId, don't auto-overwrite — that's a cross-user
+      // integrity issue (one Dodo customer mapped to two Clerk users)
+      // that deserves manual triage, not silent repair.
+      const existing = await ctx.db
+        .query("customers")
+        .withIndex("by_dodoCustomerId", (q) => q.eq("dodoCustomerId", dodoCustomerId))
+        .first();
+      if (existing) {
+        if (existing.userId !== args.userId) {
+          console.warn(
+            `[billing/repair] customers.dodoCustomerId=${dodoCustomerId} already mapped to userId=${existing.userId}; refusing to remap to userId=${args.userId}.`,
+          );
+          return null;
+        }
+        return existing;
+      }
+
+      console.warn(
+        `[billing/repair] Repairing missing customers row for userId=${args.userId} from subscription rawPayload (dodoSubscriptionId=${sub.dodoSubscriptionId}). Webhook gap — investigate subscriptionHelpers.ts:520-549.`,
+      );
+      const insertedId = await ctx.db.insert("customers", {
+        userId: args.userId,
+        dodoCustomerId,
+        email,
+        normalizedEmail,
+        createdAt: now,
+        updatedAt: now,
+      });
+      return await ctx.db.get(insertedId);
+    }
+
+    // No subscription payload carried a usable customer_id. Caller throws
+    // NO_CUSTOMER and the client shows a "contact support" toast.
+    return null;
+  },
+});
+
+/**
  * Internal query to retrieve the active subscription for a user.
  * Returns null if no subscription or if the subscription is cancelled/expired.
  */
+/**
+ * Operator-run backfill: proactively heal users affected by the
+ * `subscription.active → customers` webhook gap before they hit
+ * "Manage Billing" themselves.
+ *
+ * Walks every subscription, groups by `userId`, and for each user with at
+ * least one subscription but no `customers` row, invokes
+ * `repairCustomerFromSubscriptionPayload`. Returns a structured summary so
+ * the operator can verify how many users were repaired vs. how many
+ * couldn't be (e.g. rawPayload also lacked `customer_id`, which means
+ * support needs to manually re-link the user via Dodo's dashboard).
+ *
+ * Run:
+ *   npx convex run payments/billing:backfillMissingCustomers
+ *
+ * Idempotent — re-running after a successful pass is a no-op because every
+ * affected user now has a customers row.
+ *
+ * WORLDMONITOR-R5 surfaced this gap for one user; the backfill is the
+ * "find everyone else" sweep.
+ */
+export const backfillMissingCustomers = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    // Walk all subscriptions, dedupe to one userId per pass. .collect() is
+    // bounded by Convex's per-mutation read limit (~16k rows) which is
+    // fine for the current subscription volume; if this ever overflows
+    // we'd switch to paginate() — left as a follow-up because today's
+    // user base is well under the limit.
+    const allSubs = await ctx.db.query("subscriptions").collect();
+    const userIds = new Set<string>();
+    for (const sub of allSubs) userIds.add(sub.userId);
+
+    const summary = {
+      usersInspected: userIds.size,
+      alreadyHadCustomer: 0,
+      repaired: 0,
+      couldNotRepair: 0,
+      // userIds that need manual support touch — rawPayload didn't carry
+      // a usable customer_id and we refuse to silently fabricate one.
+      unresolved: [] as string[],
+    };
+
+    for (const userId of userIds) {
+      const existing = await ctx.db
+        .query("customers")
+        .withIndex("by_userId", (q) => q.eq("userId", userId))
+        .first();
+      if (existing?.dodoCustomerId) {
+        summary.alreadyHadCustomer++;
+        continue;
+      }
+      // Inline the repair logic rather than calling
+      // `repairCustomerFromSubscriptionPayload` so we stay inside a single
+      // mutation transaction (Convex doesn't allow mutations to invoke
+      // other mutations via runMutation — that's an action-only API).
+      const subs = await ctx.db
+        .query("subscriptions")
+        .withIndex("by_userId", (q) => q.eq("userId", userId))
+        .take(50);
+      const priority = (status: string): number =>
+        status === "active" ? 0 :
+        status === "on_hold" ? 1 :
+        status === "cancelled" ? 2 :
+        3;
+      subs.sort((a, b) => {
+        const pa = priority(a.status);
+        const pb = priority(b.status);
+        if (pa !== pb) return pa - pb;
+        return b.updatedAt - a.updatedAt;
+      });
+
+      let repairedThisUser = false;
+      for (const sub of subs) {
+        const payload = sub.rawPayload as
+          | { customer?: { customer_id?: unknown; email?: unknown } }
+          | null
+          | undefined;
+        const rawId = payload?.customer?.customer_id;
+        const dodoCustomerId = typeof rawId === "string" && rawId.length > 0 ? rawId : null;
+        if (!dodoCustomerId) continue;
+        const rawEmail = payload?.customer?.email;
+        const email = typeof rawEmail === "string" ? rawEmail : "";
+        const normalizedEmail = email.trim().toLowerCase();
+        const now = Date.now();
+        const collision = await ctx.db
+          .query("customers")
+          .withIndex("by_dodoCustomerId", (q) => q.eq("dodoCustomerId", dodoCustomerId))
+          .first();
+        if (collision) {
+          if (collision.userId !== userId) {
+            // Cross-user collision — refuse to remap. Logged for triage.
+            console.warn(
+              `[billing/backfill] cross-user collision: dodoCustomerId=${dodoCustomerId} already maps to userId=${collision.userId}; skipping userId=${userId}.`,
+            );
+            break;
+          }
+          repairedThisUser = true;
+          break;
+        }
+        await ctx.db.insert("customers", {
+          userId,
+          dodoCustomerId,
+          email,
+          normalizedEmail,
+          createdAt: now,
+          updatedAt: now,
+        });
+        console.warn(
+          `[billing/backfill] Inserted customers row for userId=${userId} from subscription dodoSubscriptionId=${sub.dodoSubscriptionId}.`,
+        );
+        repairedThisUser = true;
+        break;
+      }
+
+      if (repairedThisUser) {
+        summary.repaired++;
+      } else {
+        summary.couldNotRepair++;
+        summary.unresolved.push(userId);
+      }
+    }
+
+    return summary;
+  },
+});
+
 export const getActiveSubscription = internalQuery({
   args: { userId: v.string() },
   handler: async (ctx, args) => {
@@ -251,7 +499,7 @@ export const internalGetCustomerPortalUrl = internalAction({
   args: { userId: v.string() },
   handler: async (ctx, args) => {
     if (!args.userId) {
-      throw new Error("userId is required");
+      throw new ConvexError({ kind: "USER_ID_REQUIRED" });
     }
     return createCustomerPortalUrlForUser(ctx, args.userId);
   },
