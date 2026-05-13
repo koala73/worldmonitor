@@ -28,9 +28,11 @@ export type AlertSensitivity = 'all' | 'high' | 'critical';
  * failed the sensitivity gate, or when a later gate (headline/url)
  * dropped a story that had already passed the severity check.
  *
- * `cap` fires once per story skipped after `maxStories` has been
- * reached — neither severity nor field metadata is included since
- * the loop short-circuits without parsing the remaining stories.
+ * `cap` fires once per otherwise-renderable story skipped after
+ * `maxStories` has been reached. Invalid/excluded tail items keep
+ * their root-cause reason (`severity`, `headline`, `url`, etc.) so
+ * operator telemetry reconciles without hiding data-quality failures
+ * behind truncation.
  *
  * `source_topic_cap` (U5) fires when a story is dropped because the
  * `(source, category)` pair already has `maxPerSourceTopic` survivors
@@ -68,11 +70,13 @@ export type DropMetricsFn = (event: {
  *
  * Stories are re-ordered BEFORE the cap using deterministic editorial
  * signals first: topic block's highest eligible severity, count at that
- * severity, eligible block size, and score. `rankedStoryHashes` remains
- * a tie-breaker inside similarly severe/sized blocks, matched by
- * short-hash prefix (≥4 chars). This keeps critical topic clusters
- * contiguous instead of letting model ranking pull unrelated singletons
- * above them.
+ * severity, eligible block size, and score. This intentionally favors
+ * concentrated top severity before breadth: a block with two critical
+ * stories sorts ahead of a block with one critical plus many high
+ * stories. `rankedStoryHashes` remains a tie-breaker inside similarly
+ * severe/sized blocks, matched by short-hash prefix (≥4 chars). This
+ * keeps critical topic clusters contiguous instead of letting model
+ * ranking pull unrelated singletons above them.
  *
  * `maxPerSourceTopic` (U5, default 2) caps how many stories sharing
  * the same `(source, category)` pair can survive into a single brief.
@@ -141,7 +145,15 @@ export interface UpstreamTopStory {
   threatLevel?: unknown;
   category?: unknown;
   countryCode?: unknown;
+  /**
+   * Canonical score used by final topic-block ordering. Digest-backed
+   * compose paths write this from story:track:v1.currentScore.
+   */
   importanceScore?: unknown;
+  /**
+   * Legacy upstream score alias retained for callers that still feed
+   * raw news:insights:v1 rows directly into filterTopStories.
+   */
   currentScore?: unknown;
   /**
    * Stable digest-story hash carried through from the cron's pool
@@ -154,7 +166,8 @@ export interface UpstreamTopStory {
   /**
    * Canonical dedup cluster rep hash, when available. Used as a
    * fallback transient grouping key before envelope assembly; not
-   * written to BriefStory.
+   * written to BriefStory. Rows without briefTopicId or clusterRepHash
+   * degrade to per-row singleton blocks rather than risk false grouping.
    */
   clusterRepHash?: unknown;
   /**
@@ -165,6 +178,4 @@ export interface UpstreamTopStory {
   briefTopicId?: unknown;
   briefTopicSize?: unknown;
   briefTopicMaxScore?: unknown;
-  topicGroupId?: unknown;
-  topicId?: unknown;
 }

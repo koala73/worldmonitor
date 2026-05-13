@@ -370,9 +370,9 @@ function digestStoryToUpstreamTopStory(s) {
     // Stable digest story hash. Carried through so:
     //   (a) the canonical synthesis prompt can emit `rankedStoryHashes`
     //       referencing each story by hash (not position, not title),
-    //   (b) `filterTopStories` can re-order the pool by ranking BEFORE
-    //       applying the MAX_STORIES_PER_USER cap, so the model's
-    //       editorial judgment of importance survives the cap.
+    //   (b) `filterTopStories` can use the model's order as the final
+    //       tie-breaker after deterministic severity/topic-block mass
+    //       and score, before applying the MAX_STORIES_PER_USER cap.
     // Falls back to titleHash when the digest path didn't materialise
     // a primary `hash` (rare; shape varies across producer versions).
     hash: typeof s?.hash === 'string' && s.hash.length > 0

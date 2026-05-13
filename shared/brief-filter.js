@@ -155,15 +155,15 @@ function rankForStory(story, rankedStoryHashes) {
  * @returns {string}
  */
 function topicKeyForStory(story, originalIndex) {
-  const explicit =
-    nonEmptyString(story?.briefTopicId) ??
-    nonEmptyString(story?.topicGroupId) ??
-    nonEmptyString(story?.topicId);
+  const explicit = nonEmptyString(story?.briefTopicId);
   if (explicit) return `topic:${explicit}`;
-  const numericTopic = story?.briefTopicId ?? story?.topicGroupId ?? story?.topicId;
+  const numericTopic = story?.briefTopicId;
   if (typeof numericTopic === 'number' && Number.isFinite(numericTopic)) return `topic:${numericTopic}`;
   const repHash = nonEmptyString(story?.clusterRepHash);
   if (repHash) return `cluster:${repHash}`;
+  // Legacy/raw rows without topic or cluster metadata deliberately
+  // atomise into singleton blocks. That loses adjacency, but avoids
+  // false-grouping unrelated stories under a guessed key.
   return `story:${originalIndex}`;
 }
 
@@ -182,6 +182,11 @@ function topicKeyForStory(story, originalIndex) {
  *
  * This keeps critical clusters together while still letting the model
  * choose between similarly severe/sized candidates.
+ *
+ * Editorial trade-off: concentrated top severity beats broad nearby
+ * context. A block with two critical stories sorts ahead of a block
+ * with one critical plus many high stories; once that count ties,
+ * broader eligible block size decides the next tie.
  *
  * @param {Array<Record<string, unknown>>} stories
  * @param {Set<BriefThreatLevel>} allowed
@@ -216,8 +221,12 @@ function orderBriefCandidates(stories, allowed, rankedStoryHashes) {
         bestSeverityRank: Infinity,
         bestSeverityCount: 0,
         eligibleCount: 0,
+        // Sentinel for all-ineligible blocks. The comparator's !==
+        // guard prevents `-Infinity - -Infinity` from producing NaN.
         maxScore: -Infinity,
-        bestRank: Infinity,
+        // Best (lowest) LLM rank seen across any eligible member in
+        // this block, not the rank of the highest-scoring member.
+        bestLlmRank: Infinity,
       };
       blocks.set(item.topicKey, block);
     }
@@ -226,7 +235,7 @@ function orderBriefCandidates(stories, allowed, rankedStoryHashes) {
     if (item.eligible) {
       block.eligibleCount += 1;
       block.maxScore = Math.max(block.maxScore, item.score);
-      block.bestRank = Math.min(block.bestRank, item.rank);
+      block.bestLlmRank = Math.min(block.bestLlmRank, item.rank);
       if (item.severityRank < block.bestSeverityRank) {
         block.bestSeverityRank = item.severityRank;
         block.bestSeverityCount = 1;
@@ -241,7 +250,7 @@ function orderBriefCandidates(stories, allowed, rankedStoryHashes) {
     if (a.bestSeverityCount !== b.bestSeverityCount) return b.bestSeverityCount - a.bestSeverityCount;
     if (a.eligibleCount !== b.eligibleCount) return b.eligibleCount - a.eligibleCount;
     if (a.maxScore !== b.maxScore) return b.maxScore - a.maxScore;
-    if (a.bestRank !== b.bestRank) return a.bestRank - b.bestRank;
+    if (a.bestLlmRank !== b.bestLlmRank) return a.bestLlmRank - b.bestLlmRank;
     return a.firstIndex - b.firstIndex;
   });
 

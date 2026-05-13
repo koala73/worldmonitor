@@ -197,7 +197,7 @@ describe('filterTopStories', () => {
     assert.equal(out[1].headline, 'High story ranked by the model');
   });
 
-  it('keeps heavier critical topic blocks contiguous ahead of ranked singletons', () => {
+  it('keeps larger critical-anchored topic blocks contiguous ahead of ranked singletons', () => {
     const out = filterTopStories({
       stories: [
         upstreamStory({
@@ -239,6 +239,144 @@ describe('filterTopStories', () => {
         'Cluster critical anchor',
         'Cluster related high follow-up',
         'Ranked singleton critical',
+      ],
+    );
+  });
+
+  it('orders concentrated top-severity blocks before broader lower-tier context', () => {
+    const out = filterTopStories({
+      stories: [
+        upstreamStory({
+          primaryTitle: 'Broad block critical anchor',
+          threatLevel: 'critical',
+          hash: 'broad1111111111',
+          briefTopicId: 'broad',
+          importanceScore: 900,
+          primarySource: 'Wire A',
+          category: 'Security',
+        }),
+        upstreamStory({
+          primaryTitle: 'Broad block high context one',
+          threatLevel: 'high',
+          hash: 'broad2222222222',
+          briefTopicId: 'broad',
+          importanceScore: 800,
+          primarySource: 'Wire B',
+          category: 'Diplomacy',
+        }),
+        upstreamStory({
+          primaryTitle: 'Broad block high context two',
+          threatLevel: 'high',
+          hash: 'broad3333333333',
+          briefTopicId: 'broad',
+          importanceScore: 700,
+          primarySource: 'Wire C',
+          category: 'Economy',
+        }),
+        upstreamStory({
+          primaryTitle: 'Dense block critical one',
+          threatLevel: 'critical',
+          hash: 'dense4444444444',
+          briefTopicId: 'dense',
+          importanceScore: 100,
+          primarySource: 'Wire D',
+          category: 'Military',
+        }),
+        upstreamStory({
+          primaryTitle: 'Dense block critical two',
+          threatLevel: 'critical',
+          hash: 'dense5555555555',
+          briefTopicId: 'dense',
+          importanceScore: 90,
+          primarySource: 'Wire E',
+          category: 'Military',
+        }),
+      ],
+      sensitivity: 'all',
+      rankedStoryHashes: ['broad111'],
+      maxPerSourceTopic: Infinity,
+    });
+
+    assert.deepEqual(
+      out.map((story) => story.headline),
+      [
+        'Dense block critical one',
+        'Dense block critical two',
+        'Broad block critical anchor',
+        'Broad block high context one',
+        'Broad block high context two',
+      ],
+    );
+  });
+
+  it('uses max score before LLM rank when severity mass is tied', () => {
+    const out = filterTopStories({
+      stories: [
+        upstreamStory({
+          primaryTitle: 'Ranked lower-score critical',
+          threatLevel: 'critical',
+          hash: 'rank11111111111',
+          briefTopicId: 'ranked',
+          importanceScore: 100,
+          primarySource: 'Wire A',
+          category: 'Security',
+        }),
+        upstreamStory({
+          primaryTitle: 'Unranked higher-score critical',
+          threatLevel: 'critical',
+          hash: 'score2222222222',
+          briefTopicId: 'scored',
+          importanceScore: 200,
+          primarySource: 'Wire B',
+          category: 'Diplomacy',
+        }),
+      ],
+      sensitivity: 'all',
+      rankedStoryHashes: ['rank111'],
+      maxPerSourceTopic: Infinity,
+    });
+
+    assert.deepEqual(
+      out.map((story) => story.headline),
+      [
+        'Unranked higher-score critical',
+        'Ranked lower-score critical',
+      ],
+    );
+  });
+
+  it('uses best LLM rank only after severity mass and score tie', () => {
+    const out = filterTopStories({
+      stories: [
+        upstreamStory({
+          primaryTitle: 'Unranked equal-score critical',
+          threatLevel: 'critical',
+          hash: 'tie111111111111',
+          briefTopicId: 'tie-a',
+          importanceScore: 100,
+          primarySource: 'Wire A',
+          category: 'Security',
+        }),
+        upstreamStory({
+          primaryTitle: 'Ranked equal-score critical',
+          threatLevel: 'critical',
+          hash: 'tie222222222222',
+          briefTopicId: 'tie-b',
+          importanceScore: 100,
+          primarySource: 'Wire B',
+          category: 'Diplomacy',
+        }),
+      ],
+      sensitivity: 'all',
+      rankedStoryHashes: ['tie222'],
+      maxPerSourceTopic: Infinity,
+    });
+
+    assert.deepEqual(
+      out.map((story) => story.headline),
+      [
+        'Ranked equal-score critical',
+        'Unranked equal-score critical',
       ],
     );
   });
