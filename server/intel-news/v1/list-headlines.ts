@@ -28,6 +28,18 @@ const ACCUMULATOR_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const ACCUMULATOR_KEY_SUFFIX = ':accumulator';
 const TOP_LEVEL_TTL_S = 30; // 30 s — same urgency tier as live-news
 
+/**
+ * Build a Google search URL from the article title. Used to replace the
+ * real outlet link in wire responses — iOS uses `link` to identify and
+ * open items, so we hand back a tappable, per-item-unique URL rather
+ * than an empty string. The accumulator cache keeps the real link.
+ */
+function googleSearchUrl(title: string): string {
+  return title
+    ? `https://www.google.com/search?q=${encodeURIComponent(title)}`
+    : 'https://www.google.com';
+}
+
 /** One outlet's coverage of the same syndicated story. */
 export interface IntelNewsAlternateSource {
   source: string;
@@ -186,7 +198,16 @@ export async function listIntelNews(): Promise<ListIntelNewsResponse> {
       items: bucket.items.map((item) => ({
         ...item,
         source: '',
-        ...(item.sources ? { sources: item.sources.map((s) => ({ ...s, source: '' })) } : {}),
+        link: googleSearchUrl(item.title),
+        ...(item.sources
+          ? {
+              sources: item.sources.map((s) => ({
+                ...s,
+                source: '',
+                link: googleSearchUrl(s.title),
+              })),
+            }
+          : {}),
       })),
     })),
   };

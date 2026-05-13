@@ -32,6 +32,18 @@ const TOP_LEVEL_TTL_S = 30;
 const NEGATIVE_TTL_S = 30;
 const FAN_OUT_DEADLINE_MS = 20_000;
 
+/**
+ * Build a Google search URL from the article title. Used to replace the
+ * real outlet link in wire responses — iOS uses `link` to identify and
+ * open items, so we hand back a tappable, per-item-unique URL rather
+ * than an empty string. The underlying caches keep the real link.
+ */
+function googleSearchUrl(title: string): string {
+  return title
+    ? `https://www.google.com/search?q=${encodeURIComponent(title)}`
+    : 'https://www.google.com';
+}
+
 export interface ListUsHeadlinesV2Response {
   items: LiveNewsItemWithSources[];
   feedStatuses: Record<string, 'ok' | 'empty' | 'timeout'>;
@@ -178,10 +190,17 @@ export async function listUsHeadlinesV2(): Promise<ListUsHeadlinesV2Response> {
           .filter((item): item is NonNullable<typeof item> => item !== null)
           // Scrub outlet identity from the wire response while leaving the
           // cached digest and underlying enrichment caches untouched.
+          // `link` is replaced with a Google search URL of the title so iOS
+          // still has a tappable, per-item-unique URL.
           .map((item) => ({
             ...item,
             source: '',
-            sources: item.sources.map((s) => ({ ...s, source: '' })),
+            link: googleSearchUrl(item.title),
+            sources: item.sources.map((s) => ({
+              ...s,
+              source: '',
+              link: googleSearchUrl(s.title),
+            })),
           })),
       };
       lastGoodResponse = filtered;

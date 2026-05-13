@@ -19,6 +19,18 @@ import { cachedFetchJson } from '../../_shared/redis';
 
 const TOP_LEVEL_TTL_S = 30; // 30 s — same urgency tier as live-news / intel-news
 
+/**
+ * Build a Google search URL from the article title. Used to replace the
+ * real outlet link in wire responses — iOS uses `link` to identify and
+ * open items, so we hand back a tappable, per-item-unique URL rather
+ * than an empty string. The archive store keeps the real link.
+ */
+function googleSearchUrl(title: string): string {
+  return title
+    ? `https://www.google.com/search?q=${encodeURIComponent(title)}`
+    : 'https://www.google.com';
+}
+
 export interface ListConflictArchiveResponse {
   items: Array<{
     source: string;
@@ -89,7 +101,14 @@ export async function listConflictArchive(): Promise<ListConflictArchiveResponse
     items: cached.items.map((item) => ({
       ...item,
       source: '',
-      sources: item.sources ? item.sources.map((s) => ({ ...s, source: '' })) : item.sources,
+      link: googleSearchUrl(item.title),
+      sources: item.sources
+        ? item.sources.map((s) => ({
+            ...s,
+            source: '',
+            link: googleSearchUrl(s.title),
+          }))
+        : item.sources,
     })),
   };
 }
