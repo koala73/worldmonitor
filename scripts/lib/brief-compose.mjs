@@ -362,6 +362,7 @@ function digestStoryToUpstreamTopStory(s) {
     primarySource,
     primaryLink: typeof s?.link === 'string' ? s.link : undefined,
     threatLevel: s?.severity,
+    importanceScore: Number.isFinite(Number(s?.currentScore)) ? Number(s.currentScore) : undefined,
     // story:track:v1 carries neither field, so the brief falls back
     // to 'General' / 'Global' via filterTopStories defaults.
     category: typeof s?.category === 'string' ? s.category : undefined,
@@ -391,6 +392,14 @@ function digestStoryToUpstreamTopStory(s) {
       && typeof s.mergedHashes[0] === 'string' && s.mergedHashes[0].length > 0
       ? s.mergedHashes[0]
       : (typeof s?.hash === 'string' && s.hash.length > 0 ? s.hash : undefined),
+    // Transient topic-ordering metadata from groupTopicsPostDedup.
+    // filterTopStories consumes these before writing BriefStory; they
+    // are not part of the persisted envelope schema.
+    briefTopicId: typeof s?.briefTopicId === 'string' && s.briefTopicId.length > 0
+      ? s.briefTopicId
+      : undefined,
+    briefTopicSize: Number.isFinite(Number(s?.briefTopicSize)) ? Number(s.briefTopicSize) : undefined,
+    briefTopicMaxScore: Number.isFinite(Number(s?.briefTopicMaxScore)) ? Number(s.briefTopicMaxScore) : undefined,
   };
 }
 
@@ -429,8 +438,9 @@ function digestStoryToUpstreamTopStory(s) {
  *   how they are reported.
  *   `synthesis` (when provided) substitutes envelope.digest.lead /
  *   threads / signals / publicLead with the canonical synthesis from
- *   the orchestration layer, and re-orders the candidate pool by
- *   `synthesis.rankedStoryHashes` before applying the cap.
+ *   the orchestration layer. `synthesis.rankedStoryHashes` is passed to
+ *   the filter as a tie-breaker after severity/topic-cluster ordering,
+ *   before applying the cap.
  */
 export function composeBriefFromDigestStories(rule, digestStories, insightsNumbers, { nowMs = Date.now(), onDrop, synthesis } = {}) {
   if (!Array.isArray(digestStories) || digestStories.length === 0) return null;

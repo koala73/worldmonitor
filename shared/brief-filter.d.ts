@@ -66,18 +66,20 @@ export type DropMetricsFn = (event: {
  * can use it to aggregate per-user drop counters without altering
  * filter behaviour.
  *
- * When `rankedStoryHashes` is provided, stories are re-ordered BEFORE
- * the cap is applied: stories whose `hash` matches a ranking entry
- * (by short-hash prefix, ≥4 chars) come first in ranking order;
- * stories not in the ranking come after in their original relative
- * order. Lets the canonical synthesis brain's editorial judgment of
- * importance survive the `maxStories` cut.
+ * Stories are re-ordered BEFORE the cap using deterministic editorial
+ * signals first: topic block's highest eligible severity, count at that
+ * severity, eligible block size, and score. `rankedStoryHashes` remains
+ * a tie-breaker inside similarly severe/sized blocks, matched by
+ * short-hash prefix (≥4 chars). This keeps critical topic clusters
+ * contiguous instead of letting model ranking pull unrelated singletons
+ * above them.
  *
  * `maxPerSourceTopic` (U5, default 2) caps how many stories sharing
  * the same `(source, category)` pair can survive into a single brief.
- * Pass `Infinity` to disable. The cap runs AFTER `applyRankedOrder`
- * so the highest-ranked sibling of any pair survives. Stories beyond
- * the cap are dropped with `onDrop({ reason: 'source_topic_cap' })`.
+ * Pass `Infinity` to disable. The cap runs AFTER deterministic
+ * severity/topic ordering so the strongest sibling of any pair
+ * survives. Stories beyond the cap are dropped with
+ * `onDrop({ reason: 'source_topic_cap' })`.
  */
 export function filterTopStories(input: {
   stories: UpstreamTopStory[];
@@ -140,6 +142,7 @@ export interface UpstreamTopStory {
   category?: unknown;
   countryCode?: unknown;
   importanceScore?: unknown;
+  currentScore?: unknown;
   /**
    * Stable digest-story hash carried through from the cron's pool
    * (digestStoryToUpstreamTopStory at scripts/lib/brief-compose.mjs).
@@ -148,4 +151,20 @@ export interface UpstreamTopStory {
    * the upstream digest path didn't materialise a primary `hash`.
    */
   hash?: unknown;
+  /**
+   * Canonical dedup cluster rep hash, when available. Used as a
+   * fallback transient grouping key before envelope assembly; not
+   * written to BriefStory.
+   */
+  clusterRepHash?: unknown;
+  /**
+   * Transient topic metadata from groupTopicsPostDedup. Used only for
+   * final ordering before the maxStories cap; these fields are stripped
+   * before BriefStory is written into the envelope.
+   */
+  briefTopicId?: unknown;
+  briefTopicSize?: unknown;
+  briefTopicMaxScore?: unknown;
+  topicGroupId?: unknown;
+  topicId?: unknown;
 }

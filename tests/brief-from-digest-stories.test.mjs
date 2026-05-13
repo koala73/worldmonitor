@@ -646,6 +646,56 @@ describe('composeBriefFromDigestStories — synthesis splice', () => {
     assert.equal(env.data.stories[1].headline, 'Unranked A');
     assert.equal(env.data.stories[2].headline, 'Unranked C');
   });
+
+  it('severity/topic-cluster order beats rankedStoryHashes for critical clusters', () => {
+    const stories = [
+      digestStory({
+        hash: 'solo111111111111',
+        title: 'Ranked singleton critical',
+        severity: 'critical',
+        currentScore: 999,
+        sources: ['SrcA'],
+        briefTopicId: 'singleton',
+      }),
+      digestStory({
+        hash: 'cluster222222222',
+        title: 'Cluster critical anchor',
+        severity: 'critical',
+        currentScore: 120,
+        sources: ['SrcB'],
+        briefTopicId: 'critical-cluster',
+      }),
+      digestStory({
+        hash: 'cluster333333333',
+        title: 'Cluster related high follow-up',
+        severity: 'high',
+        currentScore: 100,
+        sources: ['SrcC'],
+        briefTopicId: 'critical-cluster',
+      }),
+    ];
+    const env = composeBriefFromDigestStories(
+      rule(),
+      stories,
+      { clusters: 0, multiSource: 0 },
+      {
+        nowMs: NOW,
+        synthesis: {
+          lead: 'Editorial lead at least forty characters long for validator pass-through.',
+          rankedStoryHashes: ['solo1111'],
+        },
+      },
+    );
+    assert.ok(env);
+    assert.deepEqual(
+      env.data.stories.map((story) => story.headline),
+      [
+        'Cluster critical anchor',
+        'Cluster related high follow-up',
+        'Ranked singleton critical',
+      ],
+    );
+  });
 });
 
 // ── Sprint 1 / U3 — stable clusterId wiring (canonical cluster-rep hash) ──
