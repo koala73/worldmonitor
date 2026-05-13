@@ -61,6 +61,20 @@ const BATCH_LOG_EVERY = 5;
 // from today's last30/prev30 cutoffs) and serves as a belt-and-braces refresh
 // if the maxDate check ever silently short-circuits.
 const MAX_CACHE_AGE_MS = 7 * 86_400_000;
+// Cap how many countries can be cold-fetched in a single run. When upstream
+// advances its data (asof mismatch on a sync'd cache), all 174 countries
+// become "cache miss" at once. Cold-fetching 174 against ArcGIS exceeds the
+// 570s bundle budget (observed 2026-05-13: preflight alone took 360s, batch 1
+// of 15 hit 12 errors in 45s before container died at the budget cap).
+//
+// With this cap, a "everything stale" run refreshes a random subset and
+// serves the remainder from prior cache (marked staleAsof=true so downstream
+// can see they're a window behind). A full rotation completes in ~6 runs
+// = ~3 days at the 12h cron cadence, well within the 7-day MAX_CACHE_AGE_MS.
+//
+// 30 is sized so the cold-fetch path (30 × ~3-5s/country with concurrency
+// 12 ≈ 12-15s) easily fits the 570s budget even when ArcGIS is slow.
+const MAX_COLD_FETCH_PER_RUN = 30;
 // Concurrency for the cheap per-country maxDate preflight. These are tiny
 // outStatistics queries (returns 1 row), so we can push harder than the
 // expensive fetch concurrency without tripping ArcGIS 429s in practice.
@@ -562,8 +576,11 @@ export async function fetchAll(progress, { signal } = {}) {
   console.log(`  [port-activity] Preflight maxDate for ${eligibleIso3.length} countries (${((Date.now() - preflightT0) / 1000).toFixed(1)}s)`);
 
   // Partition: cache hits (reusable) vs misses (need expensive fetch).
+  // For misses, capture `prevPayload` (may be null) so that if we end up
+  // deferring this country to a later run we can still serve its previous
+  // (slightly-stale) data — better than dropping it entirely.
   const countryData = new Map();
-  const needsFetch = [];
+  let needsFetch = [];
   let cacheHits = 0;
   const now = Date.now();
   for (let i = 0; i < eligibleIso3.length; i++) {
@@ -580,10 +597,47 @@ export async function fetchAll(progress, { signal } = {}) {
       countryData.set(iso2, prev);
       cacheHits++;
     } else {
-      needsFetch.push({ iso3, iso2, upstreamMaxDate });
+      needsFetch.push({ iso3, iso2, upstreamMaxDate, prevPayload: prev });
     }
   }
   console.log(`  [port-activity] Cache: ${cacheHits} hits, ${needsFetch.length} misses`);
+
+  // Cold-fetch cap (WM 2026-05-13 incident): when needsFetch exceeds the
+  // per-run cap, refresh a random subset and serve the rest from prior
+  // cache marked staleAsof=true. Prevents the catastrophic "everything
+  // stale → 174 cold-fetches → bundle SIGTERM" failure mode that produced
+  // 37h of stale data after a single upstream-advance event. A full
+  // rotation completes in ~ceil(174/30) = 6 runs ≈ 3 days at 12h cadence.
+  if (needsFetch.length > MAX_COLD_FETCH_PER_RUN) {
+    // Deterministic-ish shuffle: Fisher-Yates with Math.random — fine here
+    // because we just need "different subset each run", not crypto strength.
+    const shuffled = [...needsFetch];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    const deferred = shuffled.slice(MAX_COLD_FETCH_PER_RUN);
+    let servedStale = 0;
+    let droppedNoCache = 0;
+    for (const item of deferred) {
+      if (item.prevPayload && typeof item.prevPayload === 'object') {
+        // Mark as stale-asof so downstream consumers know this country is one
+        // window behind. The canonical payload structure is unchanged.
+        countryData.set(item.iso2, { ...item.prevPayload, staleAsof: true });
+        servedStale++;
+      } else {
+        // No prior payload (new country, first-ever miss). Drop — same as
+        // pre-fix behavior for hard misses.
+        droppedNoCache++;
+      }
+    }
+    needsFetch = shuffled.slice(0, MAX_COLD_FETCH_PER_RUN);
+    console.warn(
+      `  [port-activity] Cold-fetch capped at ${MAX_COLD_FETCH_PER_RUN}/run — ` +
+      `refreshing ${needsFetch.length} now, serving ${servedStale} on stale cache (asof behind), ` +
+      `${droppedNoCache} dropped (no prior payload). Rotation: ~${Math.ceil((needsFetch.length + servedStale + droppedNoCache) / MAX_COLD_FETCH_PER_RUN)} runs to fully refresh.`,
+    );
+  }
 
   // ─────────────────────────────────────────────────────────────────────────
   // Expensive path: paginated fetch for cache misses only.

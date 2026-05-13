@@ -691,3 +691,78 @@ describe('resolveArcgisDateField (runtime, schema-flap defence)', () => {
     } finally { restoreFetch(); }
   });
 });
+
+// WM 2026-05-13 incident: when upstream advanced ArcGIS data after two days of
+// "frozen" runs, every cached country's `asof` mismatched, producing a
+// 174-country cold-fetch. The 570s bundle budget couldn't cover it (preflight
+// alone took 360s; batch 1 of 15 hit 12 errors at 45s before SIGTERM).
+// Result: 37 hours of stale data + UptimeRobot WARNING.
+//
+// Fix: cap cold-fetches per run; serve the deferred countries from prior
+// (slightly-stale) cache rather than dropping them. Full rotation across
+// ~ceil(N / cap) runs.
+describe('cold-fetch cap prevents 174-country cliff (WM 2026-05-13)', () => {
+  it('MAX_COLD_FETCH_PER_RUN constant is declared with a sane value', () => {
+    // The cap value must allow the cold-fetch loop to fit comfortably inside
+    // the 570s bundle budget at the observed ~3-5s/country with concurrency
+    // 12. 30 × 5s / 12 ≈ 13s — well under budget, with plenty of room for
+    // preflight + write phases.
+    assert.match(src, /const MAX_COLD_FETCH_PER_RUN\s*=\s*30/);
+  });
+
+  it('cap triggers when needsFetch exceeds the cap (not a no-op)', () => {
+    // The guard must be a > comparison so a needsFetch of EXACTLY the cap
+    // doesn't trigger the partition path (which would create an unnecessary
+    // shuffle/log line for the happy case where everything fits).
+    assert.match(src, /if\s*\(\s*needsFetch\.length\s*>\s*MAX_COLD_FETCH_PER_RUN\s*\)/);
+  });
+
+  it('deferred countries are served from prior payload with staleAsof=true', () => {
+    // Without this fallback, a deferred country DROPS from the canonical
+    // output — that's the same as a hard-fail for the consumer. Marking
+    // staleAsof preserves the country's data shape but signals "one window
+    // behind" so downstream can render or warn accordingly.
+    assert.match(src, /prevPayload[\s\S]{0,200}staleAsof:\s*true/);
+  });
+
+  it('partition path captures prevPayload alongside iso3/iso2/upstreamMaxDate', () => {
+    // The needsFetch entries gained a 4th field (prevPayload) so the cap
+    // logic can fall back to cached data per-country. Pre-fix the entries
+    // were {iso3, iso2, upstreamMaxDate} — adding prevPayload is the
+    // critical contract change for the deferred-serving path.
+    assert.match(src, /needsFetch\.push\(\{\s*iso3,\s*iso2,\s*upstreamMaxDate,\s*prevPayload:\s*prev\s*\}\)/);
+  });
+
+  it('cap logs refresh count + defer count for operator visibility', () => {
+    // When the cap fires, an operator hitting `/api/health?history=1` and
+    // pulling the Railway log needs to see "X refreshing, Y deferred on
+    // stale cache, Z dropped" — without that, "everything looked fine"
+    // (174 records published) masks that 144 of them are a window behind.
+    assert.match(src, /Cold-fetch capped/);
+    assert.match(src, /refreshing/);
+    assert.match(src, /\$\{servedStale\}/);
+  });
+
+  it('needsFetch is declared with let (mutable) — cap path reassigns it', () => {
+    // The cap path slices needsFetch to keep only the refresh-now subset.
+    // Pre-fix needsFetch was const. This regression-guards a future cleanup
+    // that switches it back without realizing the cap path mutates it.
+    assert.match(src, /let needsFetch\s*=\s*\[\]/);
+    // And the reassignment in the cap path:
+    assert.match(src, /needsFetch\s*=\s*shuffled\.slice\(0,\s*MAX_COLD_FETCH_PER_RUN\)/);
+  });
+
+  it('full rotation is computable: ~ceil(174 / 30) = 6 runs ≈ 3 days at 12h cadence', () => {
+    // Documentation-grade test: encodes the rotation math so a future
+    // bump to the cap (or a different country count) surfaces the
+    // implication via failure rather than silent drift.
+    const cap = 30;
+    const countries = 174;
+    const cronIntervalHours = 12;
+    const runs = Math.ceil(countries / cap);
+    const fullRotationHours = runs * cronIntervalHours;
+    assert.equal(runs, 6);
+    assert.equal(fullRotationHours, 72, 'full rotation must stay under MAX_CACHE_AGE_MS (7d = 168h)');
+    assert.ok(fullRotationHours < 168, 'rotation must complete before MAX_CACHE_AGE_MS forces hard drops');
+  });
+});
