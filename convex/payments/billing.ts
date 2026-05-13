@@ -177,6 +177,93 @@ export const getCustomerByUserId = internalQuery({
 });
 
 /**
+ * Read-only diagnostic: dump the customers row + every subscription's
+ * stored payload data for a list of userIds.
+ *
+ * Used to triage the cross-user collision class surfaced by
+ * `backfillMissingCustomers` — where one Dodo `customer_id` is claimed
+ * by one Clerk userId in the `customers` table but appears in another
+ * userId's subscription `rawPayload`. Most likely cause: Dodo dedupes
+ * customer records by email, so the same email used under two Clerk
+ * accounts yields the same `cus_xxx`.
+ *
+ * Run:
+ *   npx convex run --prod payments/billing:inspectCustomerOwnership \
+ *     '{"userIds":["user_3Cbg...","user_3Cbi...",...]}'
+ *
+ * Per-row output includes:
+ *   - `customer.email` (canonical email from the customers row)
+ *   - `customer.dodoCustomerId`
+ *   - `subscriptions[].rawPayloadEmail` (email Dodo sent at webhook time)
+ *   - `subscriptions[].rawPayloadCustomerId`
+ *
+ * If two userIds share the same `customer.email` (or the same
+ * `rawPayloadEmail` across their subscriptions), that's the smoking
+ * gun for "Dodo dedupes by email + same human made two Clerk
+ * accounts". Resolve by emailing the human, asking which account to
+ * keep, and merging via `claimSubscription` or a manual patch.
+ *
+ * Bounded to 50 userIds per call (each performs 2 indexed reads — the
+ * Convex query budget is 1s wall-clock + 16k document reads per
+ * transaction; 50×2=100 reads is well under both). Greptile P2 review:
+ * `v.array` has no built-in maxLength option, so the bound is enforced
+ * at the top of the handler with an explicit ConvexError.
+ */
+export const inspectCustomerOwnership = internalQuery({
+  args: { userIds: v.array(v.string()) },
+  handler: async (ctx, args) => {
+    if (args.userIds.length > 50) {
+      throw new ConvexError({
+        kind: "TOO_MANY_USERIDS",
+        max: 50,
+        provided: args.userIds.length,
+      });
+    }
+    const rows = [];
+    for (const userId of args.userIds) {
+      const customer = await ctx.db
+        .query("customers")
+        .withIndex("by_userId", (q) => q.eq("userId", userId))
+        .first();
+      const subs = await ctx.db
+        .query("subscriptions")
+        .withIndex("by_userId", (q) => q.eq("userId", userId))
+        .collect();
+      rows.push({
+        userId,
+        customer: customer
+          ? {
+              dodoCustomerId: customer.dodoCustomerId ?? null,
+              email: customer.email,
+              normalizedEmail: customer.normalizedEmail ?? null,
+              createdAt: new Date(customer.createdAt).toISOString(),
+            }
+          : null,
+        subscriptions: subs.map((s) => {
+          const p = s.rawPayload as
+            | { customer?: { customer_id?: unknown; email?: unknown } }
+            | null
+            | undefined;
+          return {
+            dodoSubscriptionId: s.dodoSubscriptionId,
+            planKey: s.planKey,
+            status: s.status,
+            currentPeriodEnd: new Date(s.currentPeriodEnd).toISOString(),
+            rawPayloadCustomerId:
+              typeof p?.customer?.customer_id === "string"
+                ? p.customer.customer_id
+                : null,
+            rawPayloadEmail:
+              typeof p?.customer?.email === "string" ? p.customer.email : null,
+          };
+        }),
+      });
+    }
+    return rows;
+  },
+});
+
+/**
  * Last-resort repair when an entitled user has no `customers` row.
  *
  * The Dodo `subscription.active` handler writes the `subscriptions` row
@@ -294,10 +381,6 @@ export const repairCustomerFromSubscriptionPayload = internalMutation({
 });
 
 /**
- * Internal query to retrieve the active subscription for a user.
- * Returns null if no subscription or if the subscription is cancelled/expired.
- */
-/**
  * Operator-run backfill: proactively heal users affected by the
  * `subscription.active → customers` webhook gap before they hit
  * "Manage Billing" themselves.
@@ -318,80 +401,6 @@ export const repairCustomerFromSubscriptionPayload = internalMutation({
  * WORLDMONITOR-R5 surfaced this gap for one user; the backfill is the
  * "find everyone else" sweep.
  */
-/**
- * Read-only diagnostic: dump the customers row + every subscription's
- * stored payload data for a list of userIds.
- *
- * Used to triage the cross-user collision class surfaced by
- * `backfillMissingCustomers` — where one Dodo `customer_id` is claimed
- * by one Clerk userId in the `customers` table but appears in another
- * userId's subscription `rawPayload`. Most likely cause: Dodo dedupes
- * customer records by email, so the same email used under two Clerk
- * accounts yields the same `cus_xxx`.
- *
- * Run:
- *   npx convex run --prod payments/billing:inspectCustomerOwnership \
- *     '{"userIds":["user_3Cbg...","user_3Cbi...",...]}'
- *
- * Per-row output includes:
- *   - `customer.email` (canonical email from the customers row)
- *   - `customer.dodoCustomerId`
- *   - `subscriptions[].rawPayloadEmail` (email Dodo sent at webhook time)
- *   - `subscriptions[].rawPayloadCustomerId`
- *
- * If two userIds share the same `customer.email` (or the same
- * `rawPayloadEmail` across their subscriptions), that's the smoking
- * gun for "Dodo dedupes by email + same human made two Clerk
- * accounts". Resolve by emailing the human, asking which account to
- * keep, and merging via `claimSubscription` or a manual patch.
- */
-export const inspectCustomerOwnership = internalQuery({
-  args: { userIds: v.array(v.string()) },
-  handler: async (ctx, args) => {
-    const rows = [];
-    for (const userId of args.userIds) {
-      const customer = await ctx.db
-        .query("customers")
-        .withIndex("by_userId", (q) => q.eq("userId", userId))
-        .first();
-      const subs = await ctx.db
-        .query("subscriptions")
-        .withIndex("by_userId", (q) => q.eq("userId", userId))
-        .collect();
-      rows.push({
-        userId,
-        customer: customer
-          ? {
-              dodoCustomerId: customer.dodoCustomerId ?? null,
-              email: customer.email,
-              normalizedEmail: customer.normalizedEmail ?? null,
-              createdAt: new Date(customer.createdAt).toISOString(),
-            }
-          : null,
-        subscriptions: subs.map((s) => {
-          const p = s.rawPayload as
-            | { customer?: { customer_id?: unknown; email?: unknown } }
-            | null
-            | undefined;
-          return {
-            dodoSubscriptionId: s.dodoSubscriptionId,
-            planKey: s.planKey,
-            status: s.status,
-            currentPeriodEnd: new Date(s.currentPeriodEnd).toISOString(),
-            rawPayloadCustomerId:
-              typeof p?.customer?.customer_id === "string"
-                ? p.customer.customer_id
-                : null,
-            rawPayloadEmail:
-              typeof p?.customer?.email === "string" ? p.customer.email : null,
-          };
-        }),
-      });
-    }
-    return rows;
-  },
-});
-
 export const backfillMissingCustomers = internalMutation({
   args: {},
   handler: async (ctx) => {
@@ -516,6 +525,10 @@ export const backfillMissingCustomers = internalMutation({
   },
 });
 
+/**
+ * Internal query to retrieve the active subscription for a user.
+ * Returns null if no subscription or if the subscription is cancelled/expired.
+ */
 export const getActiveSubscription = internalQuery({
   args: { userId: v.string() },
   handler: async (ctx, args) => {
