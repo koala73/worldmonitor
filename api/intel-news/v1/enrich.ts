@@ -220,16 +220,28 @@ async function redisGet<T>(key: string): Promise<T | null> {
     }
 
     // Gzip envelope — written when WM_REDIS_COMPRESSION=1 and payload > 1 KB.
-    // The shared reader at server/_shared/redis.ts decompresses inline; this
-    // inlined cron handler can't (no gunzip util here), so we surface a
-    // diagnostic and skip the value. If you ever see this log, either turn
-    // compression off for these keys or extend this helper.
+    // Same logic as server/_shared/redis.ts's decodeFromStorage. We inline
+    // it here because this cron is self-contained (Node runtime, no relative
+    // imports). DecompressionStream is a Web Streams API available in
+    // Node 18+ / Vercel Node runtime.
     if (
       typeof parsed === 'object' && parsed !== null
       && '__wmgz' in parsed
+      && typeof (parsed as { d?: unknown }).d === 'string'
     ) {
-      console.warn(`[intel-news:enrich] "${key}" is gzip-encoded — enrich cannot decode (compression envelope unsupported here)`);
-      return null;
+      try {
+        const b64 = (parsed as unknown as { d: string }).d;
+        const binary = atob(b64);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        const stream = new Response(new Blob([bytes as BlobPart]))
+          .body!.pipeThrough(new DecompressionStream('gzip'));
+        const inner = await new Response(stream).text();
+        return JSON.parse(inner) as T;
+      } catch (err) {
+        console.warn(`[intel-news:enrich] gzip decode failed for "${key}":`, err instanceof Error ? err.message : err);
+        return null;
+      }
     }
 
     return parsed as T;
