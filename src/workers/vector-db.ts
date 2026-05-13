@@ -32,6 +32,19 @@ function enqueue<T>(fn: () => Promise<T>): Promise<T> {
   return task;
 }
 
+// Named error so callers can `instanceof`-check unavailability vs other
+// IndexedDB failures (quota, schema). Worker bundle can't safely import from
+// `../services/storage.ts` (main-thread bundle context), so the class is
+// defined locally — identity-equal to `storage.ts`'s class only by name, not
+// by reference. Both versions extend the same `Error` subclass shape so
+// in-bundle callers get consistent typed handling.
+export class IndexedDBUnavailableError extends Error {
+  constructor() {
+    super('IndexedDB is not available in this environment');
+    this.name = 'IndexedDBUnavailableError';
+  }
+}
+
 function openDB(): Promise<IDBDatabase> {
   if (db) return Promise.resolve(db);
   // Worker environments without IndexedDB (rare but possible — e.g., some
@@ -39,7 +52,7 @@ function openDB(): Promise<IDBDatabase> {
   // ReferenceError on `indexedDB.open(...)` (mirrors the guard in
   // src/services/storage.ts).
   if (typeof indexedDB === 'undefined') {
-    return Promise.reject(new Error('IndexedDB unavailable in this worker context'));
+    return Promise.reject(new IndexedDBUnavailableError());
   }
 
   return new Promise((resolve, reject) => {
