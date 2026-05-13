@@ -284,11 +284,15 @@ export function stripHeadlineSuffix(title, publisher) {
   const m = trimmed.match(HEADLINE_SUFFIX_RE_PART);
   if (!m) return trimmed;
   const tail = m[1].trim();
-  // Case-insensitive equality OR word-boundary prefix in either
-  // direction. The prefix relaxation handles wire-name vs feed-name
-  // mismatch (Reuters / Reuters World, AP / AP News). A tail that
-  // merely CONTAINS the publisher (e.g. "- AP News analysis") still
-  // stays — that's editorial content, not a wire suffix.
+  // Case-insensitive equality OR ASYMMETRIC word-boundary prefix: tail
+  // must be a SHORTER prefix of publisher (Reuters → Reuters World),
+  // never the reverse. The asymmetry is intentional and load-bearing —
+  // it blocks editorial suffixes like "AP News analysis" (tail) from
+  // stripping when publisher is "AP News" (Greptile PR #3673 review).
+  // A tail that merely CONTAINS the publisher (e.g. "- AP News
+  // analysis") still stays — that's editorial content, not a wire
+  // suffix. Full asymmetry rationale documented on
+  // `isPublisherWordPrefix` itself.
   if (!isPublisherWordPrefix(tail.toLowerCase(), publisher.toLowerCase())) return trimmed;
   return trimmed.slice(0, m.index).trimEnd();
 }
