@@ -186,8 +186,7 @@ export async function listIntelNews(): Promise<ListIntelNewsResponse> {
       items: bucket.items.map((item) => ({
         ...item,
         source: '',
-        link: '',
-        ...(item.sources ? { sources: item.sources.map((s) => ({ ...s, source: '', link: '' })) } : {}),
+        ...(item.sources ? { sources: item.sources.map((s) => ({ ...s, source: '' })) } : {}),
       })),
     })),
   };
