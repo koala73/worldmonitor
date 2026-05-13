@@ -15,6 +15,7 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'AP News', url: gn('site:apnews.com when:1d') },
       { name: 'Reuters World', url: gn('site:reuters.com world when:1d') },
       { name: 'CNN World', url: gn('site:cnn.com world news when:1d') },
+      { name: 'Trump - Truth Social', url: 'https://trumpstruth.org/feed' },
     ],
     us: [
       { name: 'Reuters US', url: gn('site:reuters.com US when:1d') },
