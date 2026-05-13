@@ -183,6 +183,23 @@ function getRedisCreds(): { url: string; token: string } | null {
   return { url, token };
 }
 
+/**
+ * Read a JSON value from Upstash, handling both representations the REST
+ * API may return: a string (which needs `JSON.parse`) or an already-parsed
+ * object/array (when Upstash inferred the body's `application/json` type
+ * at write time). We previously assumed the string form unconditionally,
+ * which silently returned `null` for any key whose write happened to
+ * round-trip as an object — that's why the new live-news + conflict-wn
+ * buckets read as empty even though the keys had data.
+ *
+ * Also recognises the gzip envelope (`{ __wmgz: 1, d: <base64> }`) emitted
+ * by `setCachedJson` when `WM_REDIS_COMPRESSION=1` is set. We don't have
+ * gunzip wired up in this Node cron (matches the rest of the inlined
+ * pattern), so we just bail out gracefully if we see one — the next
+ * enrich tick re-reads after refresh has overwritten with a smaller
+ * (uncompressed) payload, or the user disables compression for this key
+ * family.
+ */
 async function redisGet<T>(key: string): Promise<T | null> {
   const creds = getRedisCreds();
   if (!creds) return null;
@@ -191,9 +208,31 @@ async function redisGet<T>(key: string): Promise<T | null> {
       headers: { Authorization: `Bearer ${creds.token}` },
     });
     if (!resp.ok) return null;
-    const data = (await resp.json()) as { result: string | null };
-    if (!data.result) return null;
-    try { return JSON.parse(data.result) as T; } catch { return null; }
+    const data = (await resp.json()) as { result: unknown };
+    const raw = data.result;
+    if (raw === undefined || raw === null) return null;
+
+    let parsed: unknown;
+    if (typeof raw === 'string') {
+      try { parsed = JSON.parse(raw); } catch { return null; }
+    } else {
+      parsed = raw;
+    }
+
+    // Gzip envelope — written when WM_REDIS_COMPRESSION=1 and payload > 1 KB.
+    // The shared reader at server/_shared/redis.ts decompresses inline; this
+    // inlined cron handler can't (no gunzip util here), so we surface a
+    // diagnostic and skip the value. If you ever see this log, either turn
+    // compression off for these keys or extend this helper.
+    if (
+      typeof parsed === 'object' && parsed !== null
+      && '__wmgz' in parsed
+    ) {
+      console.warn(`[intel-news:enrich] "${key}" is gzip-encoded — enrich cannot decode (compression envelope unsupported here)`);
+      return null;
+    }
+
+    return parsed as T;
   } catch {
     return null;
   }
