@@ -358,6 +358,13 @@ Sentry.init({
     // stack is non-empty. Bound var length to 1–2 to avoid masking a real "foo is not defined"
     // that happens to hit the unhandledrejection path (WORLDMONITOR-NQ).
     if (!hasFirstParty && frames.length === 0 && /^Can't find variable: \w{1,2}$/.test(msg)) return null;
+    // Suppress `undefined is not a constructor (evaluating 'new <1-2 char>')`
+    // when NO first-party frame is in the stack — this is userscript/extension
+    // injection invoking a constructor that got stripped from our minified
+    // bundle's variable name. Bounded to 1-2 chars to avoid masking a real
+    // `new SomeBigClassName` call that our own code makes
+    // (WORLDMONITOR-7477976823).
+    if (!hasFirstParty && /^undefined is not a constructor \(evaluating 'new \w{1,2}'\)$/.test(msg)) return null;
     // Suppress minified Three.js/globe.gl crashes (e.g. "l is undefined" in raycast, "b is undefined" in update/initGlobe)
     if (/^\w{1,2} is (?:undefined|not an object)$/.test(msg) && frames.length > 0) {
       if (frames.some(f => /\/(main|index)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? '') && /(raycast|update|initGlobe|traverse|render)/.test(f.function ?? ''))) return null;

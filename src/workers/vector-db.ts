@@ -34,6 +34,13 @@ function enqueue<T>(fn: () => Promise<T>): Promise<T> {
 
 function openDB(): Promise<IDBDatabase> {
   if (db) return Promise.resolve(db);
+  // Worker environments without IndexedDB (rare but possible — e.g., some
+  // restricted webview workers). Reject early instead of throwing
+  // ReferenceError on `indexedDB.open(...)` (mirrors the guard in
+  // src/services/storage.ts).
+  if (typeof indexedDB === 'undefined') {
+    return Promise.reject(new Error('IndexedDB unavailable in this worker context'));
+  }
 
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
