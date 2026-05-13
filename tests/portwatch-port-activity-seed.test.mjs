@@ -356,6 +356,47 @@ describe('ArcGIS 429 proxy fallback', () => {
     assert.match(src, /direct \$\{errName \|\| 'timeout'\}/);
     assert.match(src, /'HTTP 429 rate-limited'/);
   });
+
+  // Greptile PR #3681 review round 2 P2: combined direct + proxy budget must
+  // stay under PER_COUNTRY_TIMEOUT_MS with slack for proxy setup overhead.
+  it('proxy timeout is tighter than direct timeout to leave PER_COUNTRY budget slack', () => {
+    // FETCH_TIMEOUT (45s) + PROXY_FETCH_TIMEOUT (35s) = 80s, under
+    // PER_COUNTRY_TIMEOUT_MS (90s) with 10s slack for Decodo TCP handshake
+    // + CONNECT setup. Pre-fix used FETCH_TIMEOUT on both sides (90s exact,
+    // racey with the per-country signal abort).
+    assert.match(src, /const PROXY_FETCH_TIMEOUT\s*=\s*35_000/);
+    // The proxy retry MUST pass PROXY_FETCH_TIMEOUT, not FETCH_TIMEOUT:
+    assert.match(src, /timeoutMs:\s*PROXY_FETCH_TIMEOUT/);
+    // And the budget invariant: direct + proxy < per-country.
+    const fetchTimeout = src.match(/const FETCH_TIMEOUT\s*=\s*(\d+_?\d*)/)?.[1];
+    const proxyTimeout = src.match(/const PROXY_FETCH_TIMEOUT\s*=\s*(\d+_?\d*)/)?.[1];
+    const perCountry = src.match(/const PER_COUNTRY_TIMEOUT_MS\s*=\s*(\d+_?\d*)/)?.[1];
+    const parseMs = (s) => parseInt((s ?? '0').replace(/_/g, ''), 10);
+    const total = parseMs(fetchTimeout) + parseMs(proxyTimeout);
+    const perCountryMs = parseMs(perCountry);
+    assert.ok(
+      total < perCountryMs,
+      `direct(${fetchTimeout}) + proxy(${proxyTimeout}) = ${total}ms must be < PER_COUNTRY_TIMEOUT_MS(${perCountryMs}); ` +
+      `pre-fix 45+45=90 exactly equalled per-country, no slack for proxy setup.`,
+    );
+    // Specifically require ≥5s slack for the TCP handshake and CONNECT setup
+    // to Decodo, which can run ~3-5s on cold connections.
+    assert.ok(
+      perCountryMs - total >= 5000,
+      `proxy setup needs ≥5s slack; got ${perCountryMs - total}ms`,
+    );
+  });
+
+  // Greptile PR #3681 review round 2 P2: ArcGIS can return error objects
+  // without a `message` field (observed `{"error":{"code":400}}`). The thrown
+  // message must stay informative on unexpected shapes.
+  it('proxy error message falls back through message → code → JSON.stringify', () => {
+    assert.match(
+      src,
+      /proxied\.error\.message\s*\?\?\s*proxied\.error\.code\s*\?\?\s*JSON\.stringify\(proxied\.error\)/,
+      'proxy error path must fall back through message → code → JSON.stringify so `undefined` never reaches the thrown message',
+    );
+  });
 });
 
 // ── standalone bundle + Dockerfile assertions ────────────────────────────────

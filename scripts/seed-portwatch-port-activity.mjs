@@ -41,6 +41,12 @@ const EP4_BASE =
 
 const PAGE_SIZE = 2000;
 const FETCH_TIMEOUT = 45_000;
+// Tighter timeout for the proxy-retry leg. Direct + proxy must total under
+// PER_COUNTRY_TIMEOUT_MS (90s) with slack for Decodo's TCP handshake +
+// CONNECT setup (~3-5s). 45s direct + 35s proxy = 80s, leaving ~10s for
+// setup overhead and the surrounding pagination accounting. Greptile PR
+// #3681 review P2 flagged the prior 45+45=90s arrangement as racey.
+const PROXY_FETCH_TIMEOUT = 35_000;
 // Two aggregation windows, hardcoded in fetchCountryAccum:
 //   last30 = days  0-30 → tankerCalls30d, avg30d, import/export sums
 //   prev30 = days 30-60 → trendDelta baseline
@@ -90,13 +96,24 @@ function epochToTimestamp(epochMs) {
 // path when the direct request returns 429 OR silently times out — both
 // are signals that ArcGIS is rate-limiting our seed-server IP. Returns the
 // parsed JSON body or throws.
+//
+// Uses PROXY_FETCH_TIMEOUT (35s, shorter than the 45s direct FETCH_TIMEOUT)
+// so the combined direct + proxy budget stays under PER_COUNTRY_TIMEOUT_MS
+// (90s) with slack for Decodo's TCP handshake and CONNECT setup. Greptile
+// PR #3681 review P2.
 async function arcgisProxyRetry(url, reason, { signal } = {}) {
   const proxyAuth = resolveProxyForConnect();
   if (!proxyAuth) throw new Error(`ArcGIS direct ${reason} + no proxy configured for ${url.slice(0, 80)}`);
   console.warn(`  [portwatch] ${reason} — retrying via proxy: ${url.slice(0, 80)}`);
-  const { buffer } = await httpsProxyFetchRaw(url, proxyAuth, { accept: 'application/json', timeoutMs: FETCH_TIMEOUT, signal });
+  const { buffer } = await httpsProxyFetchRaw(url, proxyAuth, { accept: 'application/json', timeoutMs: PROXY_FETCH_TIMEOUT, signal });
   const proxied = JSON.parse(buffer.toString('utf8'));
-  if (proxied.error) throw new Error(`ArcGIS error (via proxy after ${reason}): ${proxied.error.message}`);
+  if (proxied.error) {
+    // Greptile PR #3681 review P2: ArcGIS can return `{"error":{"code":400}}`
+    // with no message field. Fall back to code, then JSON.stringify so the
+    // thrown error message stays informative on unexpected error shapes.
+    const errInfo = proxied.error.message ?? proxied.error.code ?? JSON.stringify(proxied.error);
+    throw new Error(`ArcGIS error (via proxy after ${reason}): ${errInfo}`);
+  }
   return proxied;
 }
 
