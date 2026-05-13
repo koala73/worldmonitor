@@ -44,13 +44,14 @@ const ROLLING_WINDOW_MS = 24 * 60 * 60 * 1000;
 const MAX_ITEMS = 500;
 
 /**
- * How far back the broad search-news pull reaches. Each call returns the
- * newest 100 articles in this window, so we pick a window big enough that
- * a 5-min cron tick comfortably overlaps the previous one (no gaps), but
- * small enough that we don't waste a fetch on stories we've already
- * accumulated.
+ * How far back the broad search-news pull reaches. The cron fires every
+ * 5 min, so a 45-min window gives us a 9× overlap — enough slack to
+ * cover Vercel cron drift (~30 s typical, up to several min worst case),
+ * worldnewsapi's indexing lag (~5–10 min between publish and searchable),
+ * and the occasional skipped tick — without re-fetching three hours of
+ * already-accumulated articles on every call.
  */
-const BROAD_SEARCH_WINDOW_HOURS = 3;
+const BROAD_SEARCH_WINDOW_HOURS = 0.75;
 const BROAD_SEARCH_NUMBER = 100;            // max page size — 100 × 0.01 = 1 pt over the base
 /** Anglophone source-countries — same audience scope as legacy v2's US RSS feeds,
  *  widened slightly so iOS users see Reuters UK + Guardian AU coverage too. */
