@@ -305,6 +305,57 @@ describe('ArcGIS 429 proxy fallback', () => {
   it('429 proxy fallback threads caller signal', () => {
     assert.match(src, /httpsProxyFetchRaw\(url,\s*proxyAuth,\s*\{[^}]*signal\s*\}/s);
   });
+
+  // WM 2026-05-13 incident: ArcGIS silently stalled instead of returning
+  // 429, so all 30 cold-fetches timed out at 45s without ever entering
+  // the 429 retry branch. Fix: also fall through to proxy on timeout /
+  // transient network errors.
+  it('proxy fallback also fires on timeout (not just HTTP 429)', () => {
+    // The fetchWithTimeout body must wrap `await fetch(...)` in try/catch
+    // so a thrown AbortError (timeout) can be inspected and re-dispatched
+    // to the proxy path. Pre-fix the fetch was bare-awaited, so any
+    // throw exited the function before the 429 branch.
+    assert.match(src, /try\s*\{[\s\S]*?resp\s*=\s*await fetch\(url/);
+    // The catch block must detect timeout-class errors before deciding to
+    // re-throw vs retry-via-proxy.
+    assert.match(src, /errName\s*===\s*'TimeoutError'/);
+    assert.match(src, /isTimeoutLike/);
+  });
+
+  it('proxy retry helper is shared between 429 and timeout paths', () => {
+    // Centralized in arcgisProxyRetry so both branches behave identically
+    // (same Decodo creds resolution, same proxy-side timeout budget, same
+    // error message format). Pre-fix the 429 branch had inline proxy
+    // logic; the timeout path would have duplicated it. Refactored to
+    // share the helper.
+    assert.match(src, /async function arcgisProxyRetry/);
+    // Both branches must dispatch through the helper:
+    const callSites = src.match(/arcgisProxyRetry\(url,/g) ?? [];
+    assert.ok(
+      callSites.length >= 2,
+      `arcgisProxyRetry must be called from both 429 and timeout paths, found ${callSites.length}`,
+    );
+  });
+
+  it('caller signal-abort propagates without proxy retry (real cancellation)', () => {
+    // If the OUTER signal aborts (SIGTERM, per-country 90s timeout), we
+    // must NOT silently retry via proxy — the caller is asking us to
+    // stop. The check is `if (signal?.aborted) throw err`. Without this,
+    // a SIGTERM-triggered abort would still fire a proxy attempt and
+    // potentially miss the shutdown window.
+    assert.match(src, /if\s*\(\s*signal\?\.aborted\s*\)\s*throw err/);
+  });
+
+  it('proxy fallback distinguishes timeout error sources for operator visibility', () => {
+    // Pre-fix the 429 warn log said only "429 rate-limited — retrying via
+    // proxy". Post-fix the same helper is reused with a reason string,
+    // so operator logs distinguish "HTTP 429 rate-limited" from "direct
+    // TimeoutError" from "direct AbortError". Critical for diagnosing
+    // whether ArcGIS is explicitly rate-limiting (429) or silently
+    // stalling (timeout) — different mitigation paths.
+    assert.match(src, /direct \$\{errName \|\| 'timeout'\}/);
+    assert.match(src, /'HTTP 429 rate-limited'/);
+  });
 });
 
 // ── standalone bundle + Dockerfile assertions ────────────────────────────────
