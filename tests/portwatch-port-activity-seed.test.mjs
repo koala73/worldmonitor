@@ -722,7 +722,31 @@ describe('cold-fetch cap prevents 174-country cliff (WM 2026-05-13)', () => {
     // output — that's the same as a hard-fail for the consumer. Marking
     // staleAsof preserves the country's data shape but signals "one window
     // behind" so downstream can render or warn accordingly.
-    assert.match(src, /prevPayload[\s\S]{0,200}staleAsof:\s*true/);
+    assert.match(src, /\.\.\.prev,\s*staleAsof:\s*true/);
+  });
+
+  it('deferred-stale path respects MAX_CACHE_AGE_MS hard-drop (Greptile P1)', () => {
+    // The cacheFresh check enforces a 7-day age gate via `(now - cacheWrittenAt)
+    // < MAX_CACHE_AGE_MS`. The deferred-stale fallback MUST enforce the same
+    // gate, otherwise a country repeatedly deferred across enough runs while
+    // upstream was frozen >4 days could publish data older than the intended
+    // hard-drop threshold (window-drift). Greptile review P1 on PR #3676.
+    //
+    // Assert the age comparison appears inside the cap block (between the
+    // shuffle and the needsFetch reassignment) — using a multi-line regex
+    // that requires shuffle → cacheWrittenAt → MAX_CACHE_AGE_MS in order.
+    const capBlock = src.match(
+      /needsFetch\.length\s*>\s*MAX_COLD_FETCH_PER_RUN[\s\S]+?needsFetch\s*=\s*shuffled\.slice/,
+    );
+    assert.ok(capBlock, 'cap block found');
+    assert.match(
+      capBlock[0],
+      /cacheWrittenAt[\s\S]{0,200}MAX_CACHE_AGE_MS/,
+      'deferred-stale path must compare prev.cacheWrittenAt against MAX_CACHE_AGE_MS',
+    );
+    // And the failure-bucket counter exists so operators can see how many
+    // countries dropped via the age gate (vs no-cache).
+    assert.match(src, /droppedTooOld/);
   });
 
   it('partition path captures prevPayload alongside iso3/iso2/upstreamMaxDate', () => {
@@ -736,11 +760,36 @@ describe('cold-fetch cap prevents 174-country cliff (WM 2026-05-13)', () => {
   it('cap logs refresh count + defer count for operator visibility', () => {
     // When the cap fires, an operator hitting `/api/health?history=1` and
     // pulling the Railway log needs to see "X refreshing, Y deferred on
-    // stale cache, Z dropped" — without that, "everything looked fine"
-    // (174 records published) masks that 144 of them are a window behind.
+    // stale cache, Z dropped (cache too old), W dropped (no prior payload)"
+    // — without per-bucket counts, "everything looked fine" (174 records
+    // published) would mask that some are a window behind and some are
+    // beyond the hard-drop threshold.
     assert.match(src, /Cold-fetch capped/);
     assert.match(src, /refreshing/);
     assert.match(src, /\$\{servedStale\}/);
+    assert.match(src, /\$\{droppedTooOld\}/);
+    assert.match(src, /\$\{droppedNoCache\}/);
+  });
+
+  it('rotation arithmetic uses MAX_COLD_FETCH_PER_RUN directly, not needsFetch.length (Greptile P2)', () => {
+    // After `needsFetch = shuffled.slice(0, MAX_COLD_FETCH_PER_RUN)`,
+    // `needsFetch.length` numerically equals MAX_COLD_FETCH_PER_RUN — so the
+    // pre-fix arithmetic was coincidentally correct. But if the log block
+    // is ever reordered above the reassignment (or the cap value changes
+    // dynamically), `needsFetch.length` would silently break. Using the
+    // constant directly makes the intent unambiguous. Greptile review P2
+    // on PR #3676.
+    const capBlock = src.match(
+      /needsFetch\.length\s*>\s*MAX_COLD_FETCH_PER_RUN[\s\S]+?Rotation:/,
+    );
+    assert.ok(capBlock, 'cap block found');
+    // The rotation expression must reference MAX_COLD_FETCH_PER_RUN, not
+    // needsFetch.length, in its numerator/denominator.
+    assert.match(
+      capBlock[0],
+      /originalMisses\s*=\s*MAX_COLD_FETCH_PER_RUN/,
+      'rotation total must be expressed as cap + stale + dropped, using the constant',
+    );
   });
 
   it('needsFetch is declared with let (mutable) — cap path reassigns it', () => {

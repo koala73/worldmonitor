@@ -618,24 +618,44 @@ export async function fetchAll(progress, { signal } = {}) {
     }
     const deferred = shuffled.slice(MAX_COLD_FETCH_PER_RUN);
     let servedStale = 0;
+    let droppedTooOld = 0;
     let droppedNoCache = 0;
     for (const item of deferred) {
-      if (item.prevPayload && typeof item.prevPayload === 'object') {
-        // Mark as stale-asof so downstream consumers know this country is one
-        // window behind. The canonical payload structure is unchanged.
-        countryData.set(item.iso2, { ...item.prevPayload, staleAsof: true });
-        servedStale++;
-      } else {
+      const prev = item.prevPayload;
+      if (!prev || typeof prev !== 'object') {
         // No prior payload (new country, first-ever miss). Drop — same as
         // pre-fix behavior for hard misses.
         droppedNoCache++;
+        continue;
       }
+      // MAX_CACHE_AGE_MS hard-drop boundary (Greptile PR #3676 review P1):
+      // the deferred-stale path MUST respect the same age gate the
+      // cacheFresh check enforces, otherwise a country deferred across
+      // enough runs while upstream was frozen ≥4 days could publish data
+      // older than the intended 7d hard-drop threshold. Without this,
+      // window-drift accumulates past MAX_CACHE_AGE_MS and the PR's claim
+      // that hard-drop behavior is unchanged would be false.
+      const cacheWrittenAt = prev.cacheWrittenAt;
+      if (typeof cacheWrittenAt !== 'number' || (now - cacheWrittenAt) >= MAX_CACHE_AGE_MS) {
+        droppedTooOld++;
+        continue;
+      }
+      // Mark as stale-asof so downstream consumers know this country is one
+      // window behind. The canonical payload structure is unchanged.
+      countryData.set(item.iso2, { ...prev, staleAsof: true });
+      servedStale++;
     }
     needsFetch = shuffled.slice(0, MAX_COLD_FETCH_PER_RUN);
+    // Rotation arithmetic uses MAX_COLD_FETCH_PER_RUN directly rather than
+    // needsFetch.length — needsFetch was just reassigned to the cap-sized
+    // slice, so the two are numerically equal here, but using the constant
+    // keeps the intent unambiguous if this log block is ever reordered.
+    const originalMisses = MAX_COLD_FETCH_PER_RUN + servedStale + droppedTooOld + droppedNoCache;
     console.warn(
       `  [port-activity] Cold-fetch capped at ${MAX_COLD_FETCH_PER_RUN}/run — ` +
-      `refreshing ${needsFetch.length} now, serving ${servedStale} on stale cache (asof behind), ` +
-      `${droppedNoCache} dropped (no prior payload). Rotation: ~${Math.ceil((needsFetch.length + servedStale + droppedNoCache) / MAX_COLD_FETCH_PER_RUN)} runs to fully refresh.`,
+      `refreshing ${MAX_COLD_FETCH_PER_RUN} now, serving ${servedStale} on stale cache (asof behind), ` +
+      `${droppedTooOld} dropped (cache > ${MAX_CACHE_AGE_MS / 86_400_000}d old), ${droppedNoCache} dropped (no prior payload). ` +
+      `Rotation: ~${Math.ceil(originalMisses / MAX_COLD_FETCH_PER_RUN)} runs to fully refresh.`,
     );
   }
 
