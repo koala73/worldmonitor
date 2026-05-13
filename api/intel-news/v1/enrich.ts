@@ -57,6 +57,12 @@ const ACCUMULATOR_TTL_S = 7 * 24 * 60 * 60;
 // `server/conflict-archive/v1/_store.ts`. iOS reads this archive's
 // merged contents for the CONFLICT chip + map pins.
 const CONFLICT_ARCHIVE_GDELT_KEY = 'conflict:archive:v1:gdelt';
+// Conflict-archive (World News bucket) — populated by the v2 refresh
+// cron at `/api/conflict-archive/v2/refresh-worldnews`. Same item
+// shape as the GDELT bucket plus `origin: 'worldnews'`. Enrichment
+// fills summary/region/country/locationName/lat/lng so iOS can pin
+// these on the map alongside the GDELT-sourced conflict items.
+const CONFLICT_ARCHIVE_WN_KEY = 'conflict:archive:wn:v1';
 const CONFLICT_ARCHIVE_TTL_S = 30 * 24 * 60 * 60;
 
 // Shared enrichment cache — keyed by sha256(link). Both pipelines read /
@@ -141,7 +147,7 @@ interface ConflictArchiveItem {
   country: string | null;
   region?: string | null;
   sources: Array<{ source: string; title: string; link: string; publishedAt: number }> | null;
-  origin: 'live-news' | 'gdelt';
+  origin: 'live-news' | 'gdelt' | 'worldnews';
 }
 
 // LLM-returned structured payload. Stored verbatim in the shared
@@ -533,6 +539,20 @@ async function runEnrichment(): Promise<EnrichResult> {
         id: CONFLICT_BUCKET_ID,
         items: Array.isArray(items) ? items : [],
         writebackKey: CONFLICT_ARCHIVE_GDELT_KEY,
+        ttl: CONFLICT_ARCHIVE_TTL_S,
+        isConflict: true,
+      };
+    })(),
+    (async (): Promise<Bucket> => {
+      // World News conflict archive (v2) — populated by the new 5-min
+      // refresh cron. Same enrichment treatment as the GDELT bucket;
+      // a separate bucket keeps round-robin scheduling fair across
+      // pipelines (a flood from one source can't starve the other).
+      const items = await redisGet<ConflictArchiveItem[]>(CONFLICT_ARCHIVE_WN_KEY);
+      return {
+        id: `${CONFLICT_BUCKET_ID}-wn`,
+        items: Array.isArray(items) ? items : [],
+        writebackKey: CONFLICT_ARCHIVE_WN_KEY,
         ttl: CONFLICT_ARCHIVE_TTL_S,
         isConflict: true,
       };
