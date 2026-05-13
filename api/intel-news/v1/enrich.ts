@@ -702,6 +702,14 @@ async function runEnrichment(): Promise<EnrichResult> {
             if (payload.lat != null && payload.lng != null) {
               ci.location = { latitude: payload.lat, longitude: payload.lng };
             }
+            // Live-news items also carry an `isConflict` flag (iOS reads
+            // it for the CONFLICT chip). The LLM's prompt only emits
+            // `country` for kinetic/armed-conflict stories, so its
+            // presence is the implicit signal — saves a separate prompt
+            // field and re-enriching the cache.
+            if (bucket.kind === 'live-news') {
+              (item as { isConflict?: boolean | null }).isConflict = !!payload.country;
+            }
           }
           succeeded++;
           const stats = perTopic[bucket.id];
@@ -721,6 +729,69 @@ async function runEnrichment(): Promise<EnrichResult> {
   }
 
   await Promise.all(Array.from({ length: CONCURRENCY }, () => runner()));
+
+  // Derive conflict items from the live-news bucket and merge them into
+  // the World News conflict archive. This is how the conflict archive
+  // grows organically — no dedicated conflict-search cron needed, the
+  // LLM's per-item classification (presence of `country`) is the signal.
+  // Read-modify-write the archive once at the end of the run rather
+  // than per-item to keep Redis ops down.
+  const liveNewsBucket = buckets.find((b) => b.kind === 'live-news');
+  if (liveNewsBucket) {
+    const conflictItems: ConflictArchiveItem[] = [];
+    for (const raw of liveNewsBucket.items) {
+      const it = raw as Partial<ConflictArchiveItem> & {
+        id?: number; isConflict?: boolean | null; sources?: unknown;
+      };
+      if (!it.isConflict) continue;
+      // Promote into the ConflictArchiveItem shape. The live-news `id`
+      // is a number (worldnewsapi article id) — the archive expects
+      // string ids, so we prefix to keep it distinct from existing
+      // titleHash/link-hash ids in the same store.
+      conflictItems.push({
+        id: typeof it.id === 'number' ? `wn-${it.id}` : String(it.id),
+        source: it.source ?? '',
+        title: it.title ?? '',
+        link: it.link ?? '',
+        publishedAt: typeof it.publishedAt === 'number' ? it.publishedAt : Date.now(),
+        isAlert: it.isAlert ?? false,
+        summary: it.summary ?? null,
+        location: it.location ?? null,
+        locationName: it.locationName ?? null,
+        country: it.country ?? null,
+        region: it.region ?? null,
+        // Re-cast sources — same shape on both interfaces.
+        sources: Array.isArray(it.sources)
+          ? (it.sources as ConflictArchiveItem['sources'])
+          : null,
+        origin: 'worldnews',
+      });
+    }
+
+    if (conflictItems.length > 0) {
+      const existing = (await redisGet<ConflictArchiveItem[]>(CONFLICT_ARCHIVE_WN_KEY)) ?? [];
+      const byId = new Map<string, ConflictArchiveItem>();
+      // Existing first, then new — new entries with fresher enrichment
+      // overwrite the cached row.
+      for (const e of existing) {
+        if (e?.id) byId.set(e.id, e);
+      }
+      for (const c of conflictItems) {
+        byId.set(c.id, c);
+      }
+      // 30-day retention window + 1000-item cap mirror v1/_store.ts.
+      const cutoff = Date.now() - CONFLICT_ARCHIVE_TTL_S * 1000;
+      const merged = Array.from(byId.values())
+        .filter((c) => typeof c.publishedAt === 'number' && c.publishedAt >= cutoff)
+        .sort((a, b) => b.publishedAt - a.publishedAt)
+        .slice(0, 1000);
+      await redisSet(CONFLICT_ARCHIVE_WN_KEY, merged, CONFLICT_ARCHIVE_TTL_S);
+      console.log(
+        `[intel-news:enrich] conflict-archive:wn merged ${conflictItems.length} ` +
+        `(existed=${existing.length} after=${merged.length})`,
+      );
+    }
+  }
 
   // Write back buckets that gained any progress.
   await Promise.all(buckets.map(async (bucket) => {
