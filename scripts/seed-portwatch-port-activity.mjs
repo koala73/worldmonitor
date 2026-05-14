@@ -23,7 +23,16 @@ const LOCK_DOMAIN = 'supply_chain:portwatch-ports';
 // 60 min — covers the widest realistic run of this standalone service.
 const LOCK_TTL_MS = 60 * 60 * 1000;
 const TTL = 259_200; // 3 days — 6× the 12h cron interval
-const MIN_VALID_COUNTRIES = 50;
+// Coverage gate. TEMPORARILY lowered from 50 → 25 on 2026-05-14 to let
+// seed-meta refresh while ArcGIS is in a degraded rate-limit state.
+// Background: post-#3681 the proxy retry IS firing, but both direct AND
+// proxy paths are throttled — successful per-country fetches dropped from
+// 24 → 5 between successive runs as Decodo hit its own rate-limit. With
+// gate=50 the seed-meta stayed frozen at 2026-05-12 00:03 UTC for 60+ hours.
+// Lowering to 25 lets a partial-success run advance the meta and clears
+// the operator-facing WARNING while ArcGIS recovers. Revert to 50 once
+// successive runs reliably exceed 50 again (target: 2026-05-20 review).
+const MIN_VALID_COUNTRIES = 25;
 
 const EP3_BASE =
   'https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/Daily_Ports_Data/FeatureServer/0/query';
@@ -59,7 +68,19 @@ const MAX_PORTS_PER_COUNTRY = 50;
 // similar) can push 60-90s when the server is under load. Promise.allSettled would
 // otherwise wait for the slowest, stalling the whole batch.
 const PER_COUNTRY_TIMEOUT_MS = 90_000;
-const CONCURRENCY = 12;
+// Concurrency for the per-country activity fetch. Halved from 12 → 6 on
+// 2026-05-14 to ease pressure on both ArcGIS direct AND Decodo proxy paths,
+// which were each hitting their own rate-limits in the post-3676/3681 runs
+// (24/30 successes on run #1, 5/30 on run #2 as Decodo throttled us).
+// Math at concurrency 6 + cold-fetch cap 30:
+//   5 batches × ~60s realistic (90s worst-case per country) + 4×5s backoff
+//   ≈ 320s realistic, 470s worst case — fits the 570s bundle budget.
+const CONCURRENCY = 6;
+// Cooldown between activity-fetch batches. Spaces out per-batch bursts so
+// neither ArcGIS-direct nor Decodo-proxy hits its rate-limit window from
+// our run alone. 5s × 4 inter-batch gaps = 20s total added to a 30-country
+// run — negligible against the 570s bundle budget.
+const BATCH_BACKOFF_MS = 5_000;
 const BATCH_LOG_EVERY = 5;
 // Cache hygiene: force a full refetch if the cached payload is older than 7 days
 // even when upstream maxDate is unchanged. Protects against window-shift drift
@@ -785,6 +806,17 @@ export async function fetchAll(progress, { signal } = {}) {
         );
         break;
       }
+    }
+
+    // Inter-batch backoff. Spaces out per-batch bursts so neither
+    // ArcGIS-direct nor Decodo-proxy hits its rate-limit window from our
+    // run alone (post-#3681 run #2 showed Decodo throttling us after run
+    // #1 hammered it back-to-back: 24/30 → 5/30 success rate degradation).
+    // Skip on the final batch — no point waiting before exiting the loop.
+    // Also short-circuit if the caller signal has aborted so SIGTERM
+    // doesn't pay an extra 5s before propagating.
+    if (batchIdx < batches && !signal?.aborted) {
+      await new Promise((r) => setTimeout(r, BATCH_BACKOFF_MS));
     }
   }
 
