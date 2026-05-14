@@ -60,6 +60,7 @@ export {
 // These are large data files that should be tree-shaken in tech builds
 export {
   FEEDS,
+  CANONICAL_FEEDS,
   INTEL_SOURCES,
 } from './feeds';
 

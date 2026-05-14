@@ -6,6 +6,7 @@ import type { MarketData } from '@/types';
 import type { TimeRange } from '@/components';
 import {
   FEEDS,
+  CANONICAL_FEEDS,
   INTEL_SOURCES,
   SECTORS,
   COMMODITIES,
@@ -13,6 +14,7 @@ import {
   SITE_VARIANT,
   LAYER_TO_SOURCE,
 } from '@/config';
+import { resolveNewsCategories } from '@/config/feed-resolution';
 import { INTEL_HOTSPOTS, CONFLICT_ZONES } from '@/config/geo';
 import { tokenizeForMatch, matchKeyword } from '@/utils/keyword-match';
 import {
@@ -884,7 +886,11 @@ export class DataLoaderManager implements AppModule {
     this.applyTimeRangeFilterToNewsPanelsDebounced();
   }
 
-  private async loadNewsCategory(category: string, feeds: typeof FEEDS.politics, digest?: ListFeedDigestResponse | null): Promise<NewsItem[]> {
+  // `isCustom` marks a category from a user-added panel that isn't in the
+  // active variant's preset. The per-variant server digest never carries it,
+  // so it skips the digest-availability gate and fetches its full feed set
+  // directly client-side (the cost is borne only by users who customize).
+  private async loadNewsCategory(category: string, feeds: typeof FEEDS.politics, digest?: ListFeedDigestResponse | null, isCustom = false): Promise<NewsItem[]> {
     try {
       const panel = this.ctx.newsPanels[category];
 
@@ -978,7 +984,11 @@ export class DataLoaderManager implements AppModule {
         return staleItems;
       }
 
-      if (!this.isPerFeedFallbackEnabled()) {
+      // The per-feed-fallback flag throttles the digest-down thundering herd
+      // (every preset category fetching at once). It does NOT apply to custom
+      // categories: those are NEVER in the digest by design — direct fetch is
+      // their only path, and there are only a handful of them per user.
+      if (!isCustom && !this.isPerFeedFallbackEnabled()) {
         console.warn(`[News] Digest missing for "${category}", limited per-feed fallback disabled`);
         this.renderNewsForCategory(category, []);
         this.ctx.statusPanel?.updateFeed(category.charAt(0).toUpperCase() + category.slice(1), {
@@ -988,8 +998,14 @@ export class DataLoaderManager implements AppModule {
         return [];
       }
 
-      const fallbackFeeds = this.selectLimitedFeeds(enabledFeeds, this.perFeedFallbackCategoryFeedLimit);
-      if (fallbackFeeds.length < enabledFeeds.length) {
+      // Custom categories fetch their full feed set (no thundering-herd risk);
+      // preset categories stay capped by perFeedFallbackCategoryFeedLimit.
+      const fallbackFeeds = isCustom
+        ? enabledFeeds
+        : this.selectLimitedFeeds(enabledFeeds, this.perFeedFallbackCategoryFeedLimit);
+      if (isCustom) {
+        console.warn(`[News] Custom category "${category}" (not in variant preset), fetching ${fallbackFeeds.length} feeds directly`);
+      } else if (fallbackFeeds.length < enabledFeeds.length) {
         console.warn(`[News] Digest missing for "${category}", using limited per-feed fallback (${fallbackFeeds.length}/${enabledFeeds.length} feeds)`);
       } else {
         console.warn(`[News] Digest missing for "${category}", using per-feed fallback (${fallbackFeeds.length} feeds)`);
@@ -1055,9 +1071,16 @@ export class DataLoaderManager implements AppModule {
     // Fire digest fetch early (non-blocking) — await before category loop
     const digestPromise = this.tryFetchDigest();
 
-    const categories = Object.entries(FEEDS)
-      .filter((entry): entry is [string, typeof FEEDS[keyof typeof FEEDS]] => Array.isArray(entry[1]) && entry[1].length > 0)
-      .map(([key, feeds]) => ({ key, feeds }));
+    // Panel-driven, not variant-driven: load the active variant's preset
+    // categories PLUS any extra categories required by enabled news panels the
+    // user added beyond the preset (e.g. Tech panels customized into `full`).
+    // Custom categories aren't in the per-variant server digest, so they're
+    // flagged `isCustom` and fetched directly client-side in loadNewsCategory().
+    const categories = resolveNewsCategories(
+      FEEDS,
+      CANONICAL_FEEDS,
+      Object.keys(this.ctx.newsPanels),
+    );
 
     const digest = await digestPromise;
 
@@ -1067,7 +1090,7 @@ export class DataLoaderManager implements AppModule {
     for (let i = 0; i < categories.length; i += categoryConcurrency) {
       const chunk = categories.slice(i, i + categoryConcurrency);
       const chunkResults = await Promise.allSettled(
-        chunk.map(({ key, feeds }) => this.loadNewsCategory(key, feeds, digest))
+        chunk.map(({ key, feeds, isCustom }) => this.loadNewsCategory(key, feeds, digest, isCustom))
       );
       categoryResults.push(...chunkResults);
     }
