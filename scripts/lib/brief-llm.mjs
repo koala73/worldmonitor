@@ -15,12 +15,12 @@
 //     through to the original stub — the brief must always ship.
 //
 // Cache semantics:
-//   - brief:llm:whymatters:v3:{storyHash}:{leadHash} — 24h, shared
-//     across users for the same (story, lead) pair. v3 includes
-//     SHA-256 of the resolved digest lead so per-story rationales
-//     re-generate when the lead changes (rationales must align with
-//     the headline frame). v2 rows were lead-blind and could drift.
-//   - brief:llm:digest:v5:{userId|public}:{sensitivity}:{poolHash}
+//   - brief:llm:whymatters:v4:{storyHash} — 24h, shared across users
+//     for the same story. v4 bumped from v3 alongside the F6
+//     date-grounding line: every v3 row was produced from a prompt
+//     with no notion of "today" and may state a fabricated year, so
+//     v3 rows must not survive the deploy. v2 rows were lead-blind.
+//   - brief:llm:digest:v6:{userId|public}:{sensitivity}:{poolHash}
 //     — 4h. The canonical synthesis is now ALWAYS produced through
 //     this path (formerly split with `generateAISummary` in the
 //     digest cron). Material includes profile-SHA, greeting bucket,
@@ -29,10 +29,10 @@
 //     When isPublic=true, the userId slot in the key is the literal
 //     string 'public' so all public-share readers of the same
 //     (date, sensitivity, story-pool) hit the same row — no PII in
-//     the public cache key. v4 rows ignored on rollout (eviction
-//     paid once after the v5 grounding-validator landed in response
-//     to the May 12 hallucination incident — see generateDigestProse
-//     header comment).
+//     the public cache key. v6 bumped from v5 for the F6
+//     date-grounding line (same reason as whymatters v4); v5 landed
+//     the grounding validator after the May 12 hallucination — see
+//     generateDigestProse header comment.
 
 import { createHash } from 'node:crypto';
 
@@ -108,8 +108,8 @@ const BRIEF_LLM_SKIP_PROVIDERS = ['ollama', 'groq'];
  *
  * Three-layer graceful degradation:
  *   1. `deps.callAnalystWhyMatters(story)` — the analyst-context edge
- *      endpoint (brief:llm:whymatters:v3 cache lives there). Preferred.
- *   2. Legacy direct-Gemini chain: cacheGet (v2) → callLLM → cacheSet.
+ *      endpoint (brief:llm:whymatters:v8 cache lives there). Preferred.
+ *   2. Legacy direct-Gemini chain: cacheGet (v4) → callLLM → cacheSet.
  *      Runs whenever the analyst call is missing, returns null, or throws.
  *   3. Caller (enrichBriefEnvelopeWithLLM) uses the baseline stub if
  *      this function returns null.
@@ -153,13 +153,16 @@ export async function generateWhyMatters(story, deps) {
     }
   }
 
-  // Fallback path: legacy direct-Gemini chain with the v3 cache.
-  // Bumped v2→v3 on 2026-04-24 alongside the RSS-description fix: rows
-  // keyed on the prior v2 prefix were produced from headline-only prompts
-  // and may reference hallucinated named actors. The prefix bump forces
-  // a clean cold-start on first tick after deploy; entries expire in
-  // ≤24h so the prior prefix ages out naturally without a DEL sweep.
-  const key = `brief:llm:whymatters:v3:${await hashBriefStory(story)}`;
+  // Fallback path: legacy direct-Gemini chain with the v4 cache.
+  // Bumped v3→v4 on 2026-05-14 alongside the F6 date-grounding line:
+  // every v3 row was produced from a buildWhyMattersPrompt prompt with
+  // no notion of "today", so a v3 row may state a fabricated year
+  // (the bug F6 fixes). Serving v3 on a cache hit would keep shipping
+  // that fabrication for the 24h TTL — the prefix bump forces a clean
+  // cold-start through the date-grounded prompt on first tick after
+  // deploy. (v2→v3 was the 2026-04-24 RSS-description fix.) Entries
+  // expire in ≤24h so the prior prefix ages out without a DEL sweep.
+  const key = `brief:llm:whymatters:v4:${await hashBriefStory(story)}`;
   try {
     const hit = await deps.cacheGet(key);
     if (typeof hit === 'string' && hit.length > 0) return hit;
@@ -860,12 +863,22 @@ function hashDigestInput(userId, stories, sensitivity, ctx = {}) {
  * @param {DigestPromptCtx} [ctx]
  */
 export async function generateDigestProse(userId, stories, sensitivity, deps, ctx = {}) {
-  // v5 key (2026-05-12): bumped from v4 alongside the grounding
-  // gate in validateDigestProseShape. v4 rows may have been written
-  // for shape-valid but content-fabricated leads (May 12 incident:
-  // a Trump-era geopolitics pool shipped a "President Biden crypto
+  // v6 key (2026-05-14): bumped from v5 alongside the F6 date-grounding
+  // line appended to DIGEST_PROSE_SYSTEM_BASE by buildDigestPrompt.
+  // Every v5 row was produced from a prompt with no notion of "today"
+  // and may state a fabricated year in the lead/threads/signals — the
+  // exact bug F6 fixes. validateDigestProseShape revalidates cache
+  // hits, but its grounding gate is proper-noun based and does NOT
+  // catch date/numeric fabrication, so a v5 row would re-pass and
+  // ship for the 4h TTL. Evicting v5 forces regeneration through the
+  // date-grounded prompt.
+  //
+  // v5 (2026-05-12): bumped from v4 alongside the grounding gate in
+  // validateDigestProseShape. v4 rows may have been written for
+  // shape-valid but content-fabricated leads (May 12 incident: a
+  // Trump-era geopolitics pool shipped a "President Biden crypto
   // executive order" fabricated lead that passed the shape-only
-  // validator). Evicting v4 forces regeneration through the new
+  // validator). Evicting v4 forced regeneration through the new
   // grounded gate; ungrounded re-rolls fall through to L2/L3.
   //
   // v4 (2026-04-25 evening): bumped from v3 when the prompt gained
@@ -874,7 +887,7 @@ export async function generateDigestProse(userId, stories, sensitivity, deps, ct
   // shipped vapid editorial filler ("the global stage is buzzing",
   // "navigating the evolving landscape"). v3 cache rows still in
   // TTL would otherwise serve stale vapid leads for 4h post-deploy.
-  const key = `brief:llm:digest:v5:${hashDigestInput(userId, stories, sensitivity, ctx)}`;
+  const key = `brief:llm:digest:v6:${hashDigestInput(userId, stories, sensitivity, ctx)}`;
   try {
     const hit = await deps.cacheGet(key);
     // CRITICAL: re-run the shape+grounding validator on cache hits.

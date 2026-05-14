@@ -376,22 +376,27 @@ export default async function handler(req: Request, ctx?: EdgeContext): Promise<
 
   // Cache identity.
   const hash = await hashBriefStory(story);
-  // v7: RSS-description grounding (2026-04-24). story:track:v1 now carries
+  // v8 (2026-05-14): bumped from v7 alongside the F6 date-grounding
+  // line appended to both whyMatters system prompts (analyst v2 and
+  // the gemini fallback). Every v7 row was produced from a prompt
+  // with no notion of "today" and may state a fabricated year — the
+  // exact bug F6 fixes. Serving v7 on a cache hit would keep shipping
+  // that fabrication for the 6h TTL, so v7 must not survive the
+  // deploy.
+  //
+  // v7: RSS-description grounding (2026-04-24). story:track:v1 carries
   // a cleaned RSS description that rides through buildWhyMattersUserPrompt
   // as the `description` field. Every v6 row was produced either without a
   // description or with the cleaned-headline placeholder; with real article
   // bodies arriving, the editorial voice and named-actor accuracy shift
-  // enough that v6 prose must be invalidated. hashBriefStory includes
-  // description in its hash material so identity naturally drifts too —
-  // this prefix bump is belt-and-braces for a clean cold-start on first
-  // tick after deploy.
+  // enough that v6 prose had to be invalidated.
   //
   // v6 history (kept for reference): category-gated context + prompt-level
-  // RELEVANCE RULE (2026-04-22) — those changes remain in v7.
-  const cacheKey = `brief:llm:whymatters:v7:${hash}`;
-  // Shadow v4→v5 for the same reason — a mid-rollout shadow record
-  // comparing v6 pre-grounding vs gemini is not useful once v7 is live.
-  const shadowKey = `brief:llm:whymatters:shadow:v5:${hash}`;
+  // RELEVANCE RULE (2026-04-22) — those changes remain in v8.
+  const cacheKey = `brief:llm:whymatters:v8:${hash}`;
+  // Shadow v5→v6 for the same reason — a mid-rollout shadow record
+  // comparing v7 pre-date-grounding vs gemini is not useful once v8 is live.
+  const shadowKey = `brief:llm:whymatters:shadow:v6:${hash}`;
 
   // Cache read. Any infrastructure failure → treat as miss (logged).
   let cached: WhyMattersEnvelope | null = null;

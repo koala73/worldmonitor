@@ -176,8 +176,8 @@ describe('generateWhyMatters', () => {
     const real = makeLLM('Closure would freeze a fifth of seaborne crude within days.');
     const first = await generateWhyMatters(story(), { ...cache, callLLM: real.callLLM });
     assert.ok(first);
-    const cachedKey = [...cache.store.keys()].find((k) => k.startsWith('brief:llm:whymatters:v3:'));
-    assert.ok(cachedKey, 'expected a whymatters cache entry under the v3 key (bumped 2026-04-24 for RSS-description grounding)');
+    const cachedKey = [...cache.store.keys()].find((k) => k.startsWith('brief:llm:whymatters:v4:'));
+    assert.ok(cachedKey, 'expected a whymatters cache entry under the v4 key (bumped 2026-05-14 for the F6 date-grounding line)');
 
     // Second call: responder throws — cache must prevent the call
     llm.calls.length = 0;
@@ -503,7 +503,7 @@ describe('generateDigestProse', () => {
     const llm1 = makeLLM(validJson);
     await generateDigestProse('user_a', stories, 'all', { ...cache, callLLM: llm1.callLLM });
 
-    const badKey = [...cache.store.keys()].find((k) => k.startsWith('brief:llm:digest:v5:'));
+    const badKey = [...cache.store.keys()].find((k) => k.startsWith('brief:llm:digest:v6:'));
     assert.ok(badKey, 'expected a digest prose cache entry');
     // Overwrite with a payload whose content has zero proper-noun
     // overlap with `stories` (Iran Hormuz / Gaza). Shape is impeccable.
@@ -529,11 +529,11 @@ describe('generateDigestProse', () => {
     // `threads`, which the renderer's assertBriefEnvelope requires.
     const llm1 = makeLLM(validJson);
     await generateDigestProse('user_a', stories, 'all', { ...cache, callLLM: llm1.callLLM });
-    // Corrupt the stored row in place. Cache key prefix bumped to v5
-    // (2026-05-12) when validateDigestProseShape gained the
-    // grounding gate. v3 rows ignored at v4 rollout; v4 rows ignored
-    // at v5 rollout — see generateDigestProse header comment.
-    const badKey = [...cache.store.keys()].find((k) => k.startsWith('brief:llm:digest:v5:'));
+    // Corrupt the stored row in place. Cache key prefix bumped to v6
+    // (2026-05-14) when buildDigestPrompt gained the F6 date-grounding
+    // line. v4 rows ignored at v5 rollout; v5 rows ignored at v6
+    // rollout — see generateDigestProse header comment.
+    const badKey = [...cache.store.keys()].find((k) => k.startsWith('brief:llm:digest:v6:'));
     assert.ok(badKey, 'expected a digest prose cache entry');
     cache.store.set(badKey, { lead: 'short', /* missing threads + signals */ });
     const llm2 = makeLLM(validJson);
@@ -1105,12 +1105,13 @@ describe('generateDigestProsePublic — public cache shared across users', () =>
     assert.equal(llm2.calls.length, 1, 'profile change re-keys the cache');
   });
 
-  it('writes to cache under brief:llm:digest:v5 prefix (v4/v3/v2 evicted)', async () => {
+  it('writes to cache under brief:llm:digest:v6 prefix (v5/v4/v3/v2 evicted)', async () => {
     const cache = makeCache();
     const llm = makeLLM(validJson);
     await generateDigestProse('user_a', stories, 'all', { ...cache, callLLM: llm.callLLM });
     const keys = [...cache.store.keys()];
-    assert.ok(keys.some((k) => k.startsWith('brief:llm:digest:v5:')), 'v5 prefix used');
+    assert.ok(keys.some((k) => k.startsWith('brief:llm:digest:v6:')), 'v6 prefix used');
+    assert.ok(!keys.some((k) => k.startsWith('brief:llm:digest:v5:')), 'no v5 writes');
     assert.ok(!keys.some((k) => k.startsWith('brief:llm:digest:v4:')), 'no v4 writes');
     assert.ok(!keys.some((k) => k.startsWith('brief:llm:digest:v3:')), 'no v3 writes');
     assert.ok(!keys.some((k) => k.startsWith('brief:llm:digest:v2:')), 'no v2 writes');
