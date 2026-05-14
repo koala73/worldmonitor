@@ -813,9 +813,14 @@ export async function fetchAll(progress, { signal } = {}) {
     // run alone (post-#3681 run #2 showed Decodo throttling us after run
     // #1 hammered it back-to-back: 24/30 → 5/30 success rate degradation).
     // Skip on the final batch — no point waiting before exiting the loop.
-    // Also short-circuit if the caller signal has aborted so SIGTERM
-    // doesn't pay an extra 5s before propagating.
-    if (batchIdx < batches && !signal?.aborted) {
+    //
+    // On caller-signal abort: skip the sleep AND break the loop.
+    // Greptile PR #3694 P2: pre-fix this was "skip the sleep only" which
+    // still started the next batch's 6 concurrent fetches before the
+    // onSigterm → process.exit(1) backstop fired. Now the loop exits
+    // immediately so SIGTERM doesn't start additional in-flight work.
+    if (signal?.aborted) break;
+    if (batchIdx < batches) {
       await new Promise((r) => setTimeout(r, BATCH_BACKOFF_MS));
     }
   }

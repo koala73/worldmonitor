@@ -129,7 +129,7 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
   });
 
   it('CONCURRENCY is 6 and PER_COUNTRY_TIMEOUT_MS is 90s', () => {
-    // Halved from 12 → 6 on 2026-05-14 (PR #3683) to ease pressure on both
+    // Halved from 12 → 6 on 2026-05-14 (PR #3694) to ease pressure on both
     // ArcGIS-direct AND Decodo-proxy rate-limits during the ongoing
     // ArcGIS degradation. Math at concurrency 6 + cold-fetch cap 30:
     //   5 batches × ~60s realistic (90s worst case) + 4×5s backoff
@@ -139,15 +139,18 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     assert.match(src, /PER_COUNTRY_TIMEOUT_MS\s*=\s*90_000/);
   });
 
-  it('BATCH_BACKOFF_MS spaces out per-batch bursts (rate-limit gentleness)', () => {
+  it('BATCH_BACKOFF_MS spaces out per-batch bursts + signal-aborts break the loop', () => {
     // Inter-batch sleep prevents back-to-back rate-limit hits on Decodo +
     // ArcGIS. Post-#3681 run #2 showed Decodo throttling us after run #1
     // hammered it (24/30 → 5/30 success degradation). 5s × 4 = 20s total
     // added; negligible against the 570s bundle budget.
     assert.match(src, /const BATCH_BACKOFF_MS\s*=\s*5_000/);
-    // The sleep must be in the batch loop, gated on not-last-batch +
-    // not-aborted (so SIGTERM doesn't pay an extra 5s).
-    assert.match(src, /batchIdx\s*<\s*batches\s*&&\s*!signal\?\.aborted/);
+    // The sleep itself is gated on not-last-batch. Pre-Greptile P2 it was
+    // also gated on !signal.aborted but the loop kept iterating after the
+    // skipped sleep — defeating the SIGTERM-responsiveness intent. Now an
+    // aborted signal `break`s the loop entirely (Greptile PR #3694 P2).
+    assert.match(src, /if\s*\(\s*signal\?\.aborted\s*\)\s*break/);
+    assert.match(src, /if\s*\(\s*batchIdx\s*<\s*batches\s*\)/);
     assert.match(src, /setTimeout\(r,\s*BATCH_BACKOFF_MS\)/);
   });
 
