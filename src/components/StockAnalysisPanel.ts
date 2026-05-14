@@ -1,11 +1,14 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import type { StockAnalysisResult } from '@/services/stock-analysis';
+import { isAnalyzableSymbol } from '@/services/stock-analysis';
+import { getMarketWatchlistEntries } from '@/services/market-watchlist';
 import type { AnalystConsensus, PriceTarget, UpgradeDowngrade } from '@/generated/client/worldmonitor/market/v1/service_client';
 import type { InsiderTransactionsResult } from '@/services/insider-transactions';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import type { StockAnalysisHistory } from '@/services/stock-analysis-history';
 import { sparkline } from '@/utils/sparkline';
+import { createWatchlistButton } from './watchlist-modal';
 
 function formatChange(change: number): string {
   const rounded = Number.isFinite(change) ? change.toFixed(2) : '0.00';
@@ -52,6 +55,7 @@ export class StockAnalysisPanel extends Panel {
 
   constructor() {
     super({ id: 'stock-analysis', title: 'Premium Stock Analysis', infoTooltip: t('components.stockAnalysis.infoTooltip'), premium: 'locked' });
+    this.header.appendChild(createWatchlistButton('Edit Watchlist'));
   }
 
   public setInsiderData(symbol: string, data: InsiderTransactionsResult): void {
@@ -67,10 +71,17 @@ export class StockAnalysisPanel extends Panel {
 
     this.setDataBadge(source, `${items.length} symbols`);
 
+    const skippedCount = getMarketWatchlistEntries()
+      .filter((entry) => !isAnalyzableSymbol(entry.symbol)).length;
+    const tickerWord = items.length === 1 ? 'ticker' : 'tickers';
+    const skippedNote = skippedCount > 0
+      ? ` <span style="color:var(--text-dim)">${skippedCount} watchlist ${skippedCount === 1 ? 'symbol is an index/FX rate' : 'symbols are indices/FX rates'} and don't get an equity report.</span>`
+      : '';
+
     const html = `
       <div style="display:flex;flex-direction:column;gap:12px">
         <div style="font-size:12px;color:var(--text-dim);line-height:1.5">
-          Analyst-grade equity reports powered by the shared market watchlist. The panel tracks the first ${items.length} eligible tickers.
+          Analyst-grade equity reports for the ${items.length} ${tickerWord} in your watchlist — your picks lead, popular names fill the rest. Use <strong>Edit Watchlist</strong> to add your own.${skippedNote}
         </div>
         ${items.map((item) => this.renderCard(item, historyBySymbol[item.symbol] || [])).join('')}
       </div>

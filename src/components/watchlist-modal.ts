@@ -1,0 +1,109 @@
+/**
+ * Shared market-watchlist editor modal.
+ *
+ * The watchlist drives the Markets panel (additive to the defaults) and the
+ * PRO panels — Premium Stock Analysis, Backtesting, and the Daily Market Brief
+ * — so the editor is reachable from every panel that consumes it rather than
+ * living only on the Markets header.
+ */
+
+import {
+  getMarketWatchlistEntries,
+  parseMarketWatchlistInput,
+  resetMarketWatchlist,
+  setMarketWatchlistEntries,
+} from '@/services/market-watchlist';
+
+let activeOverlay: HTMLElement | null = null;
+
+export function openWatchlistModal(): void {
+  if (activeOverlay) return;
+
+  const current = getMarketWatchlistEntries();
+  const currentText = current.length
+    ? current.map((e) => (e.name ? `${e.symbol}|${e.name}` : e.symbol)).join('\n')
+    : '';
+
+  const overlay = document.createElement('div');
+  overlay.className = 'modal-overlay active';
+  overlay.id = 'marketWatchlistModal';
+
+  const close = () => {
+    overlay.remove();
+    if (activeOverlay === overlay) activeOverlay = null;
+  };
+
+  overlay.addEventListener('click', (e) => {
+    if (e.target === overlay) close();
+  });
+
+  const modal = document.createElement('div');
+  modal.className = 'modal unified-settings-modal';
+  modal.style.maxWidth = '680px';
+
+  modal.innerHTML = `
+    <div class="modal-header">
+      <span class="modal-title">Market watchlist</span>
+      <button class="modal-close" aria-label="Close">×</button>
+    </div>
+    <div style="padding:14px 16px 16px 16px">
+      <div style="color:var(--text-dim);font-size:12px;line-height:1.5;margin-bottom:10px">
+        Add tickers (comma or newline separated). Friendly labels supported: SYMBOL|Label.
+        Example: TSLA|Tesla, AAPL|Apple, ^GSPC|S&amp;P 500
+        <br/>
+        Your picks are <strong>added</strong> to the Markets panel and lead the
+        Premium Stock Analysis, Backtesting and Daily Market Brief panels.
+        PRO members get every analysable ticker in the list reported (up to 50);
+        indices and FX (^GSPC, EURUSD=X) still appear in Markets but get no equity report.
+      </div>
+      <textarea id="wmMarketWatchlistInput"
+        style="width:100%;min-height:120px;resize:vertical;background:rgba(255,255,255,0.04);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:10px;font-family:inherit;font-size:12px;outline:none"
+        spellcheck="false"></textarea>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+        <button type="button" class="panels-reset-layout" id="wmMarketResetBtn">Reset</button>
+        <button type="button" class="panels-reset-layout" id="wmMarketCancelBtn">Cancel</button>
+        <button type="button" class="panels-reset-layout" id="wmMarketSaveBtn" style="border-color:var(--text-dim);color:var(--text)">Save</button>
+      </div>
+    </div>
+  `;
+
+  modal.querySelector('.modal-close')?.addEventListener('click', close);
+
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+  activeOverlay = overlay;
+
+  const input = modal.querySelector<HTMLTextAreaElement>('#wmMarketWatchlistInput');
+  if (input) input.value = currentText;
+
+  modal.querySelector<HTMLButtonElement>('#wmMarketCancelBtn')?.addEventListener('click', close);
+  modal.querySelector<HTMLButtonElement>('#wmMarketResetBtn')?.addEventListener('click', () => {
+    resetMarketWatchlist();
+    if (input) input.value = ''; // defaults are always included automatically
+    close();
+  });
+  modal.querySelector<HTMLButtonElement>('#wmMarketSaveBtn')?.addEventListener('click', () => {
+    const raw = input?.value || '';
+    const parsed = parseMarketWatchlistInput(raw);
+    if (parsed.length === 0) resetMarketWatchlist();
+    else setMarketWatchlistEntries(parsed);
+    close();
+  });
+}
+
+/**
+ * Build a header button wired to {@link openWatchlistModal}. Reuses the
+ * existing `live-news-settings-btn` styling so it matches the other panel
+ * header affordances.
+ */
+export function createWatchlistButton(label = 'Watchlist'): HTMLButtonElement {
+  const btn = document.createElement('button');
+  btn.className = 'live-news-settings-btn';
+  btn.title = 'Customize market watchlist';
+  btn.textContent = label;
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openWatchlistModal();
+  });
+  return btn;
+}

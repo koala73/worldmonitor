@@ -2,6 +2,7 @@ import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import type { StockBacktestResult } from '@/services/stock-backtest';
 import { escapeHtml } from '@/utils/sanitize';
+import { createWatchlistButton } from './watchlist-modal';
 
 function tone(value: number): string {
   if (value > 0) return '#8df0b2';
@@ -17,6 +18,7 @@ function fmtPct(value: number): string {
 export class StockBacktestPanel extends Panel {
   constructor() {
     super({ id: 'stock-backtest', title: 'Premium Backtesting', infoTooltip: t('components.stockBacktest.infoTooltip'), premium: 'locked' });
+    this.header.appendChild(createWatchlistButton('Edit Watchlist'));
   }
 
   public renderBacktests(items: StockBacktestResult[], source: 'live' | 'cached' = 'live'): void {
