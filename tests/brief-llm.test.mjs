@@ -20,6 +20,7 @@ import {
   parseDigestProse,
   validateDigestProseShape,
   checkLeadGrounding,
+  leadGroundsAgainstStory,
   generateDigestProse,
   generateDigestProsePublic,
   enrichBriefEnvelopeWithLLM,
@@ -893,6 +894,66 @@ describe('checkLeadGrounding', () => {
     assert.ok(parseDigestProse(json), 'no stories → shape only');
     assert.equal(parseDigestProse(json, may12Stories), null,
       'stories supplied → grounding gate trips on hallucinated lead');
+  });
+
+  // ── Lead ↔ final-card-#1 coherence: leadGroundsAgainstStory (F4) ───
+  //
+  // The orchestration layer (composeAndStoreBriefForUser) runs
+  // `leadGroundsAgainstStory(synthesis.lead, data.stories[0].headline)`
+  // — true iff the lead shares ≥1 proper-noun anchor with the rendered
+  // first card's headline (fixed threshold of 1; checkLeadGrounding is
+  // the wrong fit because one headline can carry ≥4 anchors → its
+  // size-based threshold trips to 2).
+
+  it('leadGroundsAgainstStory: lead that references card-#1 → coherent (true)', () => {
+    assert.equal(
+      leadGroundsAgainstStory(
+        'Ukraine struck Russian energy infrastructure after the ceasefire collapsed.',
+        'Ukraine hits Russian energy targets after US-brokered ceasefire ends',
+      ),
+      true,
+    );
+    // Single shared anchor is enough — coherence asks "same story?",
+    // not "how grounded?". Card #1 here has ≥4 anchors; the lead names
+    // only one (Putin) and that is still coherent.
+    assert.equal(
+      leadGroundsAgainstStory(
+        'Putin escalated the standoff with a new weapons announcement.',
+        'Putin tests nuclear-capable Sarmat missile from Plesetsk Cosmodrome',
+      ),
+      true,
+    );
+  });
+
+  it('REGRESSION (May 14 F4): lead about a different story than card-#1 → incoherent (false)', () => {
+    // The verbatim May 14 envelope: digest.lead was about the
+    // Ukraine-energy story; data.stories[0] was the Le Monde opinion
+    // column. A lead about an unrelated story shares no anchor with
+    // card #1's headline → flagged incoherent.
+    const card1Headline = "'Russia's invasion of Ukraine could have warned Trump from the pitfalls he now faces in Iran'";
+    assert.equal(
+      leadGroundsAgainstStory(
+        'Netanyahu made a secret visit to the UAE during the US-Israel war.',
+        card1Headline,
+      ),
+      false,
+      'a lead about Netanyahu/UAE shares no anchor with the Le Monde card-#1 headline',
+    );
+    // A lead that genuinely matches card #1 is still coherent.
+    assert.equal(
+      leadGroundsAgainstStory(
+        'Russia and Ukraine remain locked in the conflict that Trump now echoes over Iran.',
+        card1Headline,
+      ),
+      true,
+    );
+  });
+
+  it('leadGroundsAgainstStory: headline with no proper-noun anchors → skipped (true)', () => {
+    // Degenerate corpus — same "cannot judge → accept" stance as
+    // checkLeadGrounding's empty-storyTokens branch.
+    assert.equal(leadGroundsAgainstStory('Anything at all here.', 'the market dipped today'), true);
+    assert.equal(leadGroundsAgainstStory('', ''), true);
   });
 });
 

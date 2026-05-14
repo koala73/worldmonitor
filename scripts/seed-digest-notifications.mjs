@@ -30,6 +30,7 @@ const { fetchUserPreferences, extractUserContext, formatUserProfile } = require(
 const { Resend } = require('resend');
 const { normalizeResendSender } = require('./lib/resend-from.cjs');
 import { readRawJsonFromUpstash, redisPipeline } from '../api/_upstash-json.js';
+import { classifyOpinion } from '../server/_shared/opinion-classifier.js';
 import {
   composeBriefFromDigestStories,
   compareRules,
@@ -55,6 +56,7 @@ import {
   generateDigestProse,
   generateDigestProsePublic,
   greetingBucket,
+  leadGroundsAgainstStory,
 } from './lib/brief-llm.mjs';
 import { parseDigestOnlyUser } from './lib/digest-only-user.mjs';
 import { assertBriefEnvelope } from '../server/_shared/brief-render.js';
@@ -482,6 +484,7 @@ async function buildDigest(rule, windowStartMs) {
 
   const stories = [];
   let droppedStaleAtRead = 0;
+  let droppedOpinion = 0;
   for (let i = 0; i < hashes.length; i++) {
     const raw = trackResults[i]?.result;
     if (!Array.isArray(raw) || raw.length === 0) continue;
@@ -490,6 +493,28 @@ async function buildDigest(rule, windowStartMs) {
 
     if (shouldDropTrackByAge(track, ageCutoffMs)) {
       droppedStaleAtRead++;
+      continue;
+    }
+
+    // Opinion / analysis exclusion (F3). The brief is event-driven
+    // intelligence — an op-ed column is not an event. Ingest stamps
+    // `isOpinion` on the story:track:v1 row; trust that stamp when
+    // present ('1' | '0'). Pre-stamp residue rows (ingested before the
+    // ingest-side stamp shipped) have NO `isOpinion` field at all — for
+    // those, re-classify from the persisted title/link/description so
+    // residue is still excluded for the row's TTL window. See
+    // docs/plans/2026-05-14-001-…-plan.md (F3, Phase 3).
+    const stampedOpinion = track.isOpinion === '1';
+    const stampMissing = typeof track.isOpinion !== 'string' || track.isOpinion.length === 0;
+    if (
+      stampedOpinion ||
+      (stampMissing && classifyOpinion({
+        title: track.title,
+        link: track.link ?? '',
+        description: typeof track.description === 'string' ? track.description : '',
+      }))
+    ) {
+      droppedOpinion++;
       continue;
     }
 
@@ -518,6 +543,14 @@ async function buildDigest(rule, windowStartMs) {
     console.warn(
       `[digest] buildDigest read-time freshness floor dropped ${droppedStaleAtRead} ` +
         `stale items (window cutoff: ${cutoffH}h ago) — likely pre-deploy residue`,
+    );
+  }
+
+  if (droppedOpinion > 0) {
+    console.log(
+      `[digest] buildDigest opinion filter dropped ${droppedOpinion} ` +
+        `op-ed/analysis item(s) from the pool (variant=${rule.variant ?? 'full'} ` +
+        `lang=${rule.lang ?? 'en'} sensitivity=${rule.sensitivity ?? 'high'})`,
     );
   }
 
@@ -1634,6 +1667,49 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
   );
 
   if (!envelope) return null;
+
+  // ── Lead ↔ final-card-#1 coherence (F4) ─────────────────────────────
+  //
+  // The synthesis emits `lead` and `rankedStoryHashes` as independent
+  // fields with no constraint that the lead is ABOUT the story that
+  // renders first. And `rankedStoryHashes[0]` is NOT
+  // `data.stories[0]` — `orderBriefCandidates` re-sorts by severity /
+  // topic-block / score with the LLM rank only as a tie-breaker. So
+  // the coherence check must run AFTER `filterTopStories` has produced
+  // the final order, against `envelope.data.stories[0]` — never
+  // `rankedStoryHashes[0]`. It runs here in the orchestration layer
+  // (not inside the pure `composeBriefFromDigestStories`) so the
+  // composer stays I/O-free; `data.stories` is identical before and
+  // after `enrichBriefEnvelopeWithLLM` (skipDigestProse → per-story
+  // only), so checking now is equivalent to checking post-enrich.
+  //
+  // Measure-first (plan F4, option b): emit a telemetry line every
+  // brief and a warn on mismatch — ship the brief as-is. Once the
+  // mismatch RATE is known in production, decide between regenerating
+  // the lead bound to stories[0] or having the LLM emit a separate
+  // leadStoryHash. See docs/plans/2026-05-14-001-…-plan.md (F4).
+  if (synthesis?.lead && Array.isArray(envelope?.data?.stories) && envelope.data.stories.length > 0) {
+    const card1 = envelope.data.stories[0];
+    const card1Headline = typeof card1?.headline === 'string' ? card1.headline : '';
+    // leadGroundsAgainstStory: true iff the lead shares ≥1 proper-noun
+    // anchor with card #1's headline (fixed threshold of 1 — coherence
+    // asks "same story?", not "how grounded?"). checkLeadGrounding is
+    // the wrong fit here: a single headline can carry ≥4 anchors,
+    // tripping its size-based threshold up to 2.
+    const coherent = leadGroundsAgainstStory(synthesis.lead, card1Headline);
+    console.log(
+      `[digest] lead card1 coherence user=${userId} ` +
+        `coherent=${coherent} synthesis_level=${synthesisLevel} ` +
+        `card1_clusterId=${card1?.clusterId ?? '?'}`,
+    );
+    if (!coherent) {
+      console.warn(
+        `[digest] LEAD/CARD-#1 INCOHERENCE user=${userId} — digest.lead does not ` +
+          `reference the rendered first story. ` +
+          `lead="${synthesis.lead.slice(0, 90)}" card1="${card1Headline.slice(0, 90)}"`,
+      );
+    }
+  }
 
   // Per-story whyMatters enrichment. The canonical synthesis is
   // already spliced into the envelope above; `skipDigestProse: true`

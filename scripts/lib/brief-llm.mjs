@@ -674,6 +674,41 @@ export function checkLeadGrounding(synthesis, stories) {
 }
 
 /**
+ * Lead ↔ single-story coherence check (F4). Returns true iff `lead`
+ * shares ≥1 proper-noun anchor with `headline`. Reuses the same
+ * anchor machinery as `checkLeadGrounding` (capitalised, length ≥4,
+ * stopword-filtered headline anchors; token-set membership against
+ * the lead) but with a FIXED threshold of 1 — coherence asks only
+ * "is the lead about the same story?", not "how well-grounded is it?".
+ *
+ * `checkLeadGrounding` itself is the wrong fit here: scoped to one
+ * story, a single headline can carry ≥4 anchor tokens, which trips
+ * its `size >= 4 ? 2 : 1` threshold up to 2 — too strict for
+ * coherence, where a lead legitimately about card #1 may name only
+ * one of its entities.
+ *
+ * Used by the cron's lead/card-#1 coherence telemetry
+ * (`composeAndStoreBriefForUser`) — see plan
+ * docs/plans/2026-05-14-001-…-plan.md (F4, Phase 4).
+ *
+ * @param {string} lead — the canonical synthesis lead
+ * @param {string} headline — the rendered first card's headline
+ * @returns {boolean} true = coherent (or check-skipped); false = the
+ *   lead names none of the headline's proper-noun anchors
+ */
+export function leadGroundsAgainstStory(lead, headline) {
+  const anchors = new Set(extractAnchorTokens(typeof headline === 'string' ? headline : ''));
+  // No proper-noun anchors in the headline → cannot judge coherence,
+  // skip (same "degenerate corpus → accept" stance as checkLeadGrounding).
+  if (anchors.size === 0) return true;
+  const leadTokens = groundingTokenSet(typeof lead === 'string' ? lead : '');
+  for (const tok of anchors) {
+    if (leadTokens.has(tok)) return true;
+  }
+  return false;
+}
+
+/**
  * Strict shape check for a parsed digest-prose object. Used by BOTH
  * parseDigestProse (fresh LLM output) AND generateDigestProse's
  * cache-hit path, so a bad row written under an older/buggy version
