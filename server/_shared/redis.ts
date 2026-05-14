@@ -281,11 +281,12 @@ export async function cachedFetchJson<T extends object>(
   // this, a misbehaving fetcher poisons the key for the isolate's full
   // lifetime — every concurrent and subsequent caller for this key gets the
   // same unresolved promise and never gets a response.
+  let timeoutHandle: ReturnType<typeof setTimeout>;
   const promise = Promise.race([
     fetcher(),
-    new Promise<null>((_, reject) =>
-      setTimeout(() => reject(new Error(`cachedFetchJson timeout for key=${key}`)), FETCHER_TIMEOUT_MS),
-    ),
+    new Promise<null>((_, reject) => {
+      timeoutHandle = setTimeout(() => reject(new Error(`cachedFetchJson timeout for key=${key}`)), FETCHER_TIMEOUT_MS);
+    }),
   ])
     .then(async (result) => {
       if (result != null) {
@@ -300,6 +301,7 @@ export async function cachedFetchJson<T extends object>(
       throw err;
     })
     .finally(() => {
+      clearTimeout(timeoutHandle);
       inflight.delete(key);
     });
 
@@ -372,11 +374,12 @@ export async function cachedFetchJsonWithMeta<T extends object>(
   // this, a misbehaving fetcher poisons the key for the isolate's full
   // lifetime — every concurrent and subsequent caller for this key gets the
   // same unresolved promise and never gets a response.
+  let timeoutHandle: ReturnType<typeof setTimeout>;
   const promise = Promise.race([
     fetcher(),
-    new Promise<null>((_, reject) =>
-      setTimeout(() => reject(new Error(`cachedFetchJsonWithMeta timeout for key=${key}`)), FETCHER_TIMEOUT_MS),
-    ),
+    new Promise<null>((_, reject) => {
+      timeoutHandle = setTimeout(() => reject(new Error(`cachedFetchJsonWithMeta timeout for key=${key}`)), FETCHER_TIMEOUT_MS);
+    }),
   ])
     .then(async (result) => {
       // Only count an upstream call as a 200 when it actually returned data.
@@ -401,6 +404,7 @@ export async function cachedFetchJsonWithMeta<T extends object>(
       throw err;
     })
     .finally(() => {
+      clearTimeout(timeoutHandle);
       inflight.delete(key);
     });
 
