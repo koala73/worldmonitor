@@ -121,6 +121,30 @@ describe('classifyOpinion — does NOT false-positive on hard news', () => {
     );
   });
 
+  it('REGRESSION (PR #3690 review): a hard-news slug containing "opinion-" is NOT a strong URL match', () => {
+    // STRONG_URL_SEGMENTS entries are slash-delimited path segments,
+    // not substrings. `/world/opinion-polls-tighten-election` is a
+    // hard-news ARTICLE SLUG that merely starts with "opinion-" — it
+    // must NOT classify as opinion. An unbounded `/opinion-` prefix
+    // was removed from STRONG_URL_SEGMENTS for exactly this.
+    assert.equal(
+      classifyOpinion({
+        title: 'Opinion polls tighten ahead of the election',
+        link: 'https://example.com/world/opinion-polls-tighten-election',
+        description: 'A new survey shows the race narrowing in three swing states.',
+      }),
+      false,
+    );
+    // A genuine /opinion/ SECTION (slash-delimited) is still caught.
+    assert.equal(
+      classifyOpinion({
+        title: 'The election is closer than it looks',
+        link: 'https://example.com/opinion/election-closer-than-it-looks',
+      }),
+      true,
+    );
+  });
+
   it('a plain hard-news event → NOT opinion', () => {
     assert.equal(
       classifyOpinion({

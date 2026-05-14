@@ -25,13 +25,16 @@
 
 // ── STRONG: URL path / feed-section segments ─────────────────────────
 // A dedicated opinion/commentary section in the URL is an unambiguous
-// publisher signal. `/analysis/` is deliberately NOT here — many
+// publisher signal. Every entry is SLASH-DELIMITED on both sides — a
+// real path segment, not a substring. An unbounded `/opinion-` prefix
+// was rejected on review: it false-positives on hard-news article
+// slugs like `/world/opinion-polls-tighten-election` (PR #3690
+// review). `/analysis/` is deliberately NOT here either — many
 // outlets file hard-news explainers under /analysis/ (it is a
 // CORROBORATING signal below).
 const STRONG_URL_SEGMENTS = [
   '/opinion/',
   '/opinions/',
-  '/opinion-',
   '/views/',
   '/commentary/',
   '/editorial/',
