@@ -81,6 +81,13 @@ const LIVE_NEWS_TTL_S = 7 * 24 * 60 * 60;
 const LIVE_NEWS_WEBZ_KEY = 'live-news:webz:v1:digest';
 const CONFLICT_ARCHIVE_WEBZ_KEY = 'conflict:archive:webz:v1';
 
+// Live-news v5 + conflict-archive v4 (Newscatcher buckets). Same shape
+// as webz/worldnews; ids are Newscatcher cluster_ids. Newscatcher ships
+// `nlp.summary` as part of its licensed payload — we keep that, the
+// enrich cron only fills region/country/locationName/lat/lng.
+const LIVE_NEWS_NC_KEY = 'live-news:nc:v1:digest';
+const CONFLICT_ARCHIVE_NC_KEY = 'conflict:archive:nc:v1';
+
 // Shared enrichment cache — keyed by sha256(link). Both pipelines read /
 // write it, so a URL enriched once in either pipeline is reused by the
 // other instead of re-paying the LLM call.
@@ -163,7 +170,7 @@ interface ConflictArchiveItem {
   country: string | null;
   region?: string | null;
   sources: Array<{ source: string; title: string; link: string; publishedAt: number }> | null;
-  origin: 'live-news' | 'gdelt' | 'worldnews' | 'webz';
+  origin: 'live-news' | 'gdelt' | 'worldnews' | 'webz' | 'newscatcher';
 }
 
 // LLM-returned structured payload. Stored verbatim in the shared
@@ -799,6 +806,33 @@ async function runEnrichment(): Promise<EnrichResult> {
         skipSummary: true,
       };
     })(),
+    (async (): Promise<Bucket> => {
+      // Live-news v5 (Newscatcher). Newscatcher's `nlp.summary` is part
+      // of its licensed payload, so we keep it as-is (skipSummary=true).
+      // Enrichment fills region / country / locationName / location.
+      const items = await redisGet<ConflictArchiveItem[]>(LIVE_NEWS_NC_KEY);
+      return {
+        id: 'live-news-nc',
+        items: Array.isArray(items) ? items : [],
+        writebackKey: LIVE_NEWS_NC_KEY,
+        ttl: LIVE_NEWS_TTL_S,
+        kind: 'live-news',
+        skipSummary: true,
+      };
+    })(),
+    (async (): Promise<Bucket> => {
+      // Conflict-archive v4 (Newscatcher) — populated by manual seed
+      // + organic growth from the live-news-nc bucket.
+      const items = await redisGet<ConflictArchiveItem[]>(CONFLICT_ARCHIVE_NC_KEY);
+      return {
+        id: `${CONFLICT_BUCKET_ID}-nc`,
+        items: Array.isArray(items) ? items : [],
+        writebackKey: CONFLICT_ARCHIVE_NC_KEY,
+        ttl: CONFLICT_ARCHIVE_TTL_S,
+        kind: 'conflict',
+        skipSummary: true,
+      };
+    })(),
   ]);
 
   // Build round-robin queue — one item per bucket per cursor tick. Items
@@ -978,8 +1012,9 @@ async function runEnrichment(): Promise<EnrichResult> {
   // key so the two upstream sources (worldnews / webz) stay isolated.
   // Read-modify-write each target once at the end of the run.
   const LIVE_NEWS_TO_ARCHIVE: Record<string, { key: string; origin: ConflictArchiveItem['origin']; idPrefix: string }> = {
-    'live-news-wn':   { key: CONFLICT_ARCHIVE_WN_KEY,   origin: 'worldnews', idPrefix: 'wn-'   },
-    'live-news-webz': { key: CONFLICT_ARCHIVE_WEBZ_KEY, origin: 'webz',      idPrefix: 'webz-' },
+    'live-news-wn':   { key: CONFLICT_ARCHIVE_WN_KEY,   origin: 'worldnews',   idPrefix: 'wn-'   },
+    'live-news-webz': { key: CONFLICT_ARCHIVE_WEBZ_KEY, origin: 'webz',        idPrefix: 'webz-' },
+    'live-news-nc':   { key: CONFLICT_ARCHIVE_NC_KEY,   origin: 'newscatcher', idPrefix: 'nc-'   },
   };
 
   for (const bucket of buckets.filter((b) => b.kind === 'live-news')) {
