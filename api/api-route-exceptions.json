@@ -259,6 +259,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/symbol-search.ts",
+      "category": "internal-helper",
+      "reason": "Stock-symbol typeahead used only by the watchlist editor — thin wrapper over Finnhub's /api/v1/search. Light filter (equity-type instruments) + field rename (symbol/description/displaySymbol -> symbol/name/display); shape tracks Finnhub, not a versioned product contract. Same constraint as api/reverse-geocode.js (UI-only helper wrapping an upstream provider). Could fold into MarketService as a SearchSymbol RPC — flagged for reviewer; kept as a helper so the watchlist-editor PR stays self-contained rather than coupling it to a proto regen.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/internal/brief-why-matters.ts",
       "category": "internal-helper",
       "reason": "LLM-enrichment helper for the brief pipeline. Cron-triggered from Railway under RELAY_SHARED_SECRET bearer auth — never reached by dashboards, desktop, or partners. Request/response shape is an implementation detail of the brief renderer; modeling it as a generated service would publish internal cron plumbing as user-facing API surface. Same shape constraint as api/notify.ts (also cron-only).",
