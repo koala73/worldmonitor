@@ -26,6 +26,36 @@ export const WHY_MATTERS_SYSTEM =
   'no quotes. One sentence only.';
 
 /**
+ * Date-grounding line appended to every brief LLM system prompt.
+ *
+ * The brief's source stories are dated, but the system prompts are
+ * static — without an explicit "today" the model fills date/year
+ * gaps from its training-data priors. A May 2026 brief shipped a
+ * whyMatters claiming a deploy "in 2024" (plan F6). The proper-noun
+ * grounding gate does not catch numeric/date fabrication, so one
+ * line stating the current date and forbidding contradictory years
+ * is the cheap structural guard.
+ *
+ * `todayIso` is injectable so prompt-builder tests stay deterministic;
+ * production call sites pass nothing and get the current UTC date.
+ * A malformed override falls back to today rather than interpolating
+ * garbage into the prompt.
+ *
+ * @param {string} [todayIso] ISO date `YYYY-MM-DD`. Defaults to today (UTC).
+ * @returns {string}
+ */
+export function briefDateLine(todayIso) {
+  const iso = typeof todayIso === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(todayIso)
+    ? todayIso
+    : new Date().toISOString().slice(0, 10);
+  return (
+    `Today is ${iso}. Do not state any year or date that contradicts ` +
+    'the dates in the stories below; when a date is not given, omit it ' +
+    'rather than guess.'
+  );
+}
+
+/**
  * @param {{
  *   headline: string;
  *   source: string;
@@ -33,9 +63,10 @@ export const WHY_MATTERS_SYSTEM =
  *   category: string;
  *   country: string;
  * }} story
+ * @param {string} [todayIso] ISO date for the date-grounding line; defaults to today.
  * @returns {{ system: string; user: string }}
  */
-export function buildWhyMattersUserPrompt(story) {
+export function buildWhyMattersUserPrompt(story, todayIso) {
   const user = [
     `Headline: ${story.headline}`,
     `Source: ${story.source}`,
@@ -45,7 +76,7 @@ export function buildWhyMattersUserPrompt(story) {
     '',
     'One editorial sentence on why this matters:',
   ].join('\n');
-  return { system: WHY_MATTERS_SYSTEM, user };
+  return { system: `${WHY_MATTERS_SYSTEM}\n${briefDateLine(todayIso)}`, user };
 }
 
 /**

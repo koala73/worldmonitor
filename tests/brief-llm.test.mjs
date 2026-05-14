@@ -313,6 +313,24 @@ describe('buildDigestPrompt', () => {
     const { system } = buildDigestPrompt([story()], 'critical');
     assert.match(system, /rankedStoryHashes/);
   });
+
+  it('appends the date-grounding line to the system prompt (F6)', async () => {
+    const { briefDateLine } = await import('../shared/brief-llm-core.js');
+    // Injected todayIso → deterministic assertion.
+    const injected = buildDigestPrompt([story()], 'critical', { todayIso: '2026-05-14' });
+    assert.ok(
+      injected.system.endsWith(`\n${briefDateLine('2026-05-14')}`),
+      'system prompt must end with the injected date-grounding line',
+    );
+    assert.match(injected.system, /Today is 2026-05-14\. Do not state any year or date that contradicts/);
+    // The base editorial contract is still intact ahead of the date line.
+    assert.match(injected.system, /chief editor of WorldMonitor Brief/);
+
+    // No ctx.todayIso → falls back to the current UTC date, never absent.
+    const fallback = buildDigestPrompt([story()], 'critical');
+    const today = new Date().toISOString().slice(0, 10);
+    assert.match(fallback.system, new RegExp(`\\nToday is ${today}\\.`));
+  });
 });
 
 // ── parseDigestProse ───────────────────────────────────────────────────────

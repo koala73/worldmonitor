@@ -38,6 +38,7 @@ import { createHash } from 'node:crypto';
 
 import {
   WHY_MATTERS_SYSTEM,
+  briefDateLine,
   buildWhyMattersUserPrompt,
   hashBriefStory,
   parseWhyMatters,
@@ -387,6 +388,7 @@ export function greetingBucket(greeting) {
  * @property {string|null} [profile]   formatted user profile lines, or null for non-personalised
  * @property {string|null} [greeting]  e.g. "Good morning", or null for non-personalised
  * @property {boolean}     [isPublic]  true = strip personalisation, build a generic lead
+ * @property {string}      [todayIso]  ISO date for the date-grounding line; defaults to today (UTC)
  */
 
 /**
@@ -435,7 +437,13 @@ export function buildDigestPrompt(stories, sensitivity, ctx = {}) {
   }
   userParts.push('', "Today's surfaced stories (ranked):", ...lines);
 
-  return { system: DIGEST_PROSE_SYSTEM_BASE, user: userParts.join('\n') };
+  // F6: the static system prompt has no notion of "now" — without an
+  // explicit date the model fabricates years (a May 2026 brief shipped
+  // a "deploy ... in 2024" line). briefDateLine pins the current date.
+  return {
+    system: `${DIGEST_PROSE_SYSTEM_BASE}\n${briefDateLine(ctx?.todayIso)}`,
+    user: userParts.join('\n'),
+  };
 }
 
 // Back-compat alias for tests that import the old constant name.

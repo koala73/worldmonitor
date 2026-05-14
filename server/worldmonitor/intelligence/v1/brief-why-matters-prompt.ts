@@ -12,7 +12,7 @@
  * LLM latency predictable.
  */
 
-import { WHY_MATTERS_ANALYST_SYSTEM_V2 } from '../../../../shared/brief-llm-core.js';
+import { WHY_MATTERS_ANALYST_SYSTEM_V2, briefDateLine } from '../../../../shared/brief-llm-core.js';
 import { sanitizeForPrompt } from '../../../_shared/llm-sanitize.js';
 import type { BriefStoryContext } from './brief-story-context';
 
@@ -221,6 +221,7 @@ export function buildContextBlock(
 export function buildAnalystWhyMattersPrompt(
   story: StoryForPrompt,
   context: BriefStoryContext,
+  todayIso?: string,
 ): { system: string; user: string; policyLabel: string } {
   const safe = sanitizeStoryFields(story);
   const { sections: allowedSections, policyLabel } = sectionsForCategory(safe.category);
@@ -266,8 +267,12 @@ export function buildAnalystWhyMattersPrompt(
       "into a story where it does not belong. Plain prose, no section labels in the output:",
   );
 
+  // F6: append the current date so the analyst does not fabricate
+  // years from training-data priors (a May 2026 brief shipped a
+  // "deploy ... in 2024" whyMatters). `todayIso` is injectable for
+  // deterministic tests; production callers pass nothing.
   return {
-    system: WHY_MATTERS_ANALYST_SYSTEM_V2,
+    system: `${WHY_MATTERS_ANALYST_SYSTEM_V2}\n${briefDateLine(todayIso)}`,
     user: parts.join('\n\n'),
     policyLabel,
   };

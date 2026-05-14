@@ -18,6 +18,7 @@ import { createHash } from 'node:crypto';
 
 import {
   WHY_MATTERS_SYSTEM,
+  briefDateLine,
   buildWhyMattersUserPrompt,
   hashBriefStory,
   parseWhyMatters,
@@ -117,10 +118,31 @@ describe('WHY_MATTERS_SYSTEM — pinned editorial voice', () => {
   });
 });
 
+describe('briefDateLine — date-grounding instruction (plan F6)', () => {
+  it('uses the injected ISO date verbatim', () => {
+    const line = briefDateLine('2026-05-14');
+    assert.match(line, /^Today is 2026-05-14\./);
+    assert.match(line, /Do not state any year or date that contradicts/);
+  });
+
+  it('falls back to the current UTC date for missing / malformed input', () => {
+    const today = new Date().toISOString().slice(0, 10);
+    for (const bad of [undefined, null, '', 'not-a-date', '2026/05/14', 14]) {
+      assert.match(
+        briefDateLine(bad),
+        new RegExp(`^Today is ${today}\\.`),
+        `malformed input ${JSON.stringify(bad)} must fall back to today`,
+      );
+    }
+  });
+});
+
 describe('buildWhyMattersUserPrompt — shape', () => {
   it('emits the exact 5-line format pinned by the cache-identity contract', () => {
-    const { system, user } = buildWhyMattersUserPrompt(FIXTURE);
-    assert.equal(system, WHY_MATTERS_SYSTEM);
+    // todayIso is injected so the system-prompt assertion is deterministic;
+    // the USER prompt (the cache-identity contract) is unchanged by F6.
+    const { system, user } = buildWhyMattersUserPrompt(FIXTURE, '2026-05-14');
+    assert.equal(system, `${WHY_MATTERS_SYSTEM}\n${briefDateLine('2026-05-14')}`);
     assert.equal(
       user,
       [
