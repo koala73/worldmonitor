@@ -1,0 +1,476 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex,nofollow" />
+<title>News Provider Comparison</title>
+<style>
+  :root {
+    --bg: #0a0e14;
+    --surface: #131923;
+    --surface-2: #1c2532;
+    --border: #2a3441;
+    --text: #e6edf3;
+    --text-2: #8b98a8;
+    --text-3: #5d6b7d;
+    --cyan: #4dd0e1;
+    --amber: #ffb74d;
+    --green: #a5d6a7;
+    --red: #ef9a9a;
+    --purple: #ce93d8;
+    --string: #c5e1a5;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 13px;
+    line-height: 1.5;
+  }
+  header {
+    position: sticky; top: 0; z-index: 10;
+    display: flex; align-items: center; gap: 16px;
+    padding: 12px 20px;
+    background: rgba(10, 14, 20, 0.92);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--border);
+  }
+  h1 {
+    margin: 0;
+    font-size: 14px; font-weight: 700;
+    letter-spacing: 1px; text-transform: uppercase;
+    color: var(--cyan);
+  }
+  .controls { display: flex; align-items: center; gap: 12px; margin-left: auto; }
+  .tab-group { display: inline-flex; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 2px; }
+  .tab {
+    background: transparent; border: 0;
+    color: var(--text-2);
+    padding: 6px 14px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;
+    cursor: pointer; border-radius: 4px;
+    font-family: inherit;
+  }
+  .tab.active { background: var(--cyan); color: #001019; }
+  input.key-input {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 10px;
+    font-size: 11px;
+    border-radius: 6px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    width: 240px;
+  }
+  button.refresh {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 14px;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase;
+    cursor: pointer;
+    border-radius: 6px;
+    font-family: inherit;
+  }
+  button.refresh:hover { background: var(--surface-2); }
+
+  main {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    padding: 16px 20px;
+  }
+  @media (max-width: 1100px) { main { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 640px)  { main { grid-template-columns: 1fr; } }
+
+  .col {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    overflow: hidden;
+  }
+  .col-head {
+    padding: 12px 14px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface-2);
+  }
+  .col-title {
+    font-size: 12px; font-weight: 700;
+    letter-spacing: 1px; text-transform: uppercase;
+    color: var(--amber);
+  }
+  .col-endpoint {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 10px;
+    color: var(--text-3);
+    margin-top: 4px;
+    word-break: break-all;
+  }
+  .col-stats {
+    display: flex; gap: 10px; flex-wrap: wrap;
+    margin-top: 8px;
+    font-family: ui-monospace, monospace;
+    font-size: 10px;
+  }
+  .stat { color: var(--text-2); }
+  .stat strong { color: var(--text); font-weight: 600; }
+  .stat.ok    strong { color: var(--green); }
+  .stat.error strong { color: var(--red); }
+
+  .items { padding: 6px; }
+  details.item {
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    margin-bottom: 6px;
+    overflow: hidden;
+  }
+  details.item[open] { border-color: var(--cyan); }
+  details.item summary {
+    cursor: pointer;
+    padding: 8px 10px;
+    list-style: none;
+    user-select: none;
+  }
+  details.item summary::-webkit-details-marker { display: none; }
+  .item-title {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text);
+    line-height: 1.4;
+  }
+  .item-meta {
+    margin-top: 4px;
+    font-family: ui-monospace, monospace;
+    font-size: 9px;
+    color: var(--text-3);
+    display: flex; gap: 8px; flex-wrap: wrap;
+  }
+  .item-meta .country {
+    background: var(--bg);
+    padding: 1px 6px;
+    border-radius: 3px;
+    color: var(--amber);
+    text-transform: uppercase;
+  }
+  .item-body {
+    padding: 0 10px 10px;
+    border-top: 1px solid var(--border);
+  }
+  pre.json {
+    margin: 8px 0 0;
+    padding: 10px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 10.5px;
+    line-height: 1.55;
+    overflow-x: auto;
+    white-space: pre;
+    color: var(--text);
+  }
+  .json-key    { color: var(--cyan); }
+  .json-string { color: var(--string); }
+  .json-number { color: var(--amber); }
+  .json-bool   { color: var(--purple); }
+  .json-null   { color: var(--text-3); }
+
+  .empty {
+    padding: 24px 14px;
+    text-align: center;
+    color: var(--text-3);
+    font-size: 12px;
+  }
+  .error-row {
+    padding: 12px 14px;
+    color: var(--red);
+    font-size: 11px;
+    font-family: ui-monospace, monospace;
+    line-height: 1.5;
+  }
+  .loading {
+    padding: 24px 14px;
+    text-align: center;
+    color: var(--text-2);
+    font-size: 11px;
+    font-family: ui-monospace, monospace;
+    letter-spacing: 0.5px;
+  }
+  .loading::after {
+    content: ""; display: inline-block;
+    width: 1ch;
+    animation: dots 1.2s steps(4) infinite;
+  }
+  @keyframes dots {
+    0%,25%   { content: " ."; }
+    50%      { content: " .."; }
+    75%,100% { content: " ..."; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>News Provider Comparison</h1>
+  <div class="controls">
+    <div class="tab-group" id="tabs">
+      <button class="tab active" data-feed="live">Live News</button>
+      <button class="tab" data-feed="conflict">Conflict Archive</button>
+    </div>
+    <input
+      type="password"
+      class="key-input"
+      placeholder="X-WorldMonitor-Key (optional)"
+      id="apiKeyInput"
+      autocomplete="off" />
+    <button class="refresh" id="refreshBtn">Refresh ↻</button>
+  </div>
+</header>
+
+<main id="grid"></main>
+
+<script>
+'use strict';
+
+/**
+ * Provider table — single source of truth for the dashboard.
+ * `feeds.live` and `feeds.conflict` are the relative endpoint paths
+ * for each provider's two iOS-facing list endpoints.
+ */
+const PROVIDERS = [
+  {
+    id: 'legacy',
+    label: 'Legacy (RSS + GDELT)',
+    feeds: {
+      live:     '/api/live-news/v2/list-us-headlines',
+      conflict: '/api/conflict-archive/v1/list',
+    },
+  },
+  {
+    id: 'worldnews',
+    label: 'World News API',
+    feeds: {
+      live:     '/api/live-news/v3/list-us-headlines',
+      conflict: '/api/conflict-archive/v2/list',
+    },
+  },
+  {
+    id: 'webz',
+    label: 'Webz.io',
+    feeds: {
+      live:     '/api/live-news/v4/list-us-headlines',
+      conflict: '/api/conflict-archive/v3/list',
+    },
+  },
+  {
+    id: 'newscatcher',
+    label: 'Newscatcher',
+    feeds: {
+      live:     '/api/live-news/v5/list-us-headlines',
+      conflict: '/api/conflict-archive/v4/list',
+    },
+  },
+];
+
+const ITEMS_PER_PROVIDER = 5;
+const KEY_STORAGE = 'wm.dashboard.apiKey';
+
+const grid       = document.getElementById('grid');
+const tabs       = document.getElementById('tabs');
+const refreshBtn = document.getElementById('refreshBtn');
+const keyInput   = document.getElementById('apiKeyInput');
+
+let currentFeed = 'live';
+
+// Restore saved API key (if any) — handy across reloads.
+keyInput.value = localStorage.getItem(KEY_STORAGE) || '';
+keyInput.addEventListener('change', () => {
+  const v = keyInput.value.trim();
+  if (v) localStorage.setItem(KEY_STORAGE, v);
+  else localStorage.removeItem(KEY_STORAGE);
+});
+
+tabs.addEventListener('click', (e) => {
+  const t = e.target.closest('.tab');
+  if (!t) return;
+  document.querySelectorAll('.tab').forEach((b) => b.classList.toggle('active', b === t));
+  currentFeed = t.dataset.feed;
+  loadAll();
+});
+
+refreshBtn.addEventListener('click', loadAll);
+
+/** Lightweight syntax highlighter for the JSON blocks. */
+function highlightJSON(value) {
+  const json = JSON.stringify(value, null, 2)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+  return json.replace(
+    /("(?:\\u[a-fA-F0-9]{4}|\\[^u]|[^\\"])*"(\s*:)?|\b(true|false|null)\b|-?\d+(?:\.\d*)?(?:[eE][+-]?\d+)?)/g,
+    (match) => {
+      let cls = 'json-number';
+      if (/^"/.test(match)) cls = /:$/.test(match) ? 'json-key' : 'json-string';
+      else if (/true|false/.test(match)) cls = 'json-bool';
+      else if (/null/.test(match)) cls = 'json-null';
+      return `<span class="${cls}">${match}</span>`;
+    },
+  );
+}
+
+/** Pull a sensible "items" array out of any of the four provider response shapes. */
+function pickItems(body) {
+  if (Array.isArray(body)) return body;
+  if (body && Array.isArray(body.items)) return body.items;
+  if (body && Array.isArray(body.posts)) return body.posts;
+  return [];
+}
+
+/** Best-effort identifier of which country an item is from (varies by provider). */
+function pickCountry(item) {
+  return (
+    item.country ||
+    item.source_country ||
+    (item.thread && item.thread.country) ||
+    ''
+  ).toString().toLowerCase();
+}
+
+/** Best-effort title fallback chain. */
+function pickTitle(item) {
+  return item.title || (item.thread && item.thread.title) || '(no title)';
+}
+
+/** Best-effort source/outlet name fallback. */
+function pickSource(item) {
+  return (
+    item.source ||
+    item.name_source ||
+    item.domain_url ||
+    (item.thread && (item.thread.site || item.thread.site_full)) ||
+    ''
+  );
+}
+
+/** Best-effort publish-time fallback. */
+function pickPublishedAt(item) {
+  if (typeof item.publishedAt === 'number') {
+    // ms or seconds — auto-detect
+    const ms = item.publishedAt > 10_000_000_000 ? item.publishedAt : item.publishedAt * 1000;
+    return new Date(ms).toISOString().slice(0, 19).replace('T', ' ');
+  }
+  return item.published_date || item.published || '';
+}
+
+/** Build the static skeleton — column per provider, will be filled by fetchAndRender(). */
+function renderSkeleton() {
+  grid.innerHTML = PROVIDERS.map((p) => `
+    <section class="col" data-provider="${p.id}">
+      <div class="col-head">
+        <div class="col-title">${p.label}</div>
+        <div class="col-endpoint">${p.feeds[currentFeed]}</div>
+        <div class="col-stats" data-stats>
+          <span class="stat"><strong>—</strong> ms</span>
+          <span class="stat"><strong>—</strong> items</span>
+        </div>
+      </div>
+      <div class="items" data-items>
+        <div class="loading">Loading</div>
+      </div>
+    </section>
+  `).join('');
+}
+
+function renderColumn(provider, payload) {
+  const col = grid.querySelector(`[data-provider="${provider.id}"]`);
+  if (!col) return;
+  const stats = col.querySelector('[data-stats]');
+  const body  = col.querySelector('[data-items]');
+
+  if (payload.error) {
+    stats.innerHTML = `<span class="stat error"><strong>FAIL</strong></span><span class="stat"><strong>${payload.elapsedMs}</strong> ms</span>`;
+    body.innerHTML = `<div class="error-row">${payload.error}</div>`;
+    return;
+  }
+
+  const items = pickItems(payload.body).slice(0, ITEMS_PER_PROVIDER);
+  stats.innerHTML = `
+    <span class="stat ok"><strong>${payload.status}</strong></span>
+    <span class="stat"><strong>${payload.elapsedMs}</strong> ms</span>
+    <span class="stat"><strong>${pickItems(payload.body).length}</strong> items total</span>
+  `;
+
+  if (items.length === 0) {
+    body.innerHTML = '<div class="empty">No items.</div>';
+    return;
+  }
+
+  body.innerHTML = items.map((item, idx) => {
+    const title = pickTitle(item);
+    const country = pickCountry(item);
+    const src = pickSource(item);
+    const when = pickPublishedAt(item);
+    return `
+      <details class="item">
+        <summary>
+          <div class="item-title">${escapeHtml(title)}</div>
+          <div class="item-meta">
+            <span>#${idx + 1}</span>
+            ${country ? `<span class="country">${escapeHtml(country)}</span>` : ''}
+            ${src ? `<span>${escapeHtml(src)}</span>` : ''}
+            ${when ? `<span>${escapeHtml(when)}</span>` : ''}
+          </div>
+        </summary>
+        <div class="item-body">
+          <pre class="json">${highlightJSON(item)}</pre>
+        </div>
+      </details>
+    `;
+  }).join('');
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"]/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]
+  ));
+}
+
+/** One fetch per provider; returns the timing/status/body for renderColumn. */
+async function fetchProvider(provider) {
+  const url = provider.feeds[currentFeed];
+  const t0 = performance.now();
+  try {
+    const headers = { 'Accept': 'application/json' };
+    const key = keyInput.value.trim();
+    if (key) headers['X-WorldMonitor-Key'] = key;
+    const resp = await fetch(url, { headers, cache: 'no-store' });
+    const elapsedMs = Math.round(performance.now() - t0);
+    let body = null;
+    try { body = await resp.json(); } catch { body = null; }
+    if (!resp.ok) {
+      return { error: `HTTP ${resp.status} ${resp.statusText} — ${JSON.stringify(body || {})}`, elapsedMs };
+    }
+    return { status: resp.status, body, elapsedMs };
+  } catch (err) {
+    const elapsedMs = Math.round(performance.now() - t0);
+    return { error: String(err && err.message || err), elapsedMs };
+  }
+}
+
+async function loadAll() {
+  renderSkeleton();
+  // Fire all four in parallel; render each as it lands.
+  await Promise.all(PROVIDERS.map(async (p) => {
+    const payload = await fetchProvider(p);
+    renderColumn(p, payload);
+  }));
+}
+
+loadAll();
+</script>
+</body>
+</html>

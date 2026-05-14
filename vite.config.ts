@@ -770,6 +770,7 @@ export default defineConfig({
         app: resolve(__dirname, 'app.html'),
         settings: resolve(__dirname, 'settings.html'),
         liveChannels: resolve(__dirname, 'live-channels.html'),
+        dashboardNews: resolve(__dirname, 'dashboard-news.html'),
       },
       output: {
         manualChunks(id) {
