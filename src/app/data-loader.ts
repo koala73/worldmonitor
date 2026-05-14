@@ -14,7 +14,7 @@ import {
   SITE_VARIANT,
   LAYER_TO_SOURCE,
 } from '@/config';
-import { resolveNewsCategories } from '@/config/feed-resolution';
+import { resolveNewsCategories, enabledNewsCategoryKeys } from '@/config/feed-resolution';
 import { INTEL_HOTSPOTS, CONFLICT_ZONES } from '@/config/geo';
 import { tokenizeForMatch, matchKeyword } from '@/utils/keyword-match';
 import {
@@ -1086,7 +1086,7 @@ export class DataLoaderManager implements AppModule {
     const categories = resolveNewsCategories(
       FEEDS,
       CANONICAL_FEEDS,
-      Object.keys(this.ctx.newsPanels),
+      enabledNewsCategoryKeys(this.ctx.newsPanels, this.ctx.panels, this.ctx.panelSettings),
     );
 
     const digest = await digestPromise;

@@ -97,3 +97,35 @@ export function resolveNewsCategories(
 
   return resolved;
 }
+
+/**
+ * The feed-category keys whose news panel the user actually has ENABLED.
+ *
+ * `ctx.newsPanels` holds an instantiated panel for EVERY news category, not
+ * just enabled ones: App.ts seeds `panelSettings` with every `ALL_PANELS` key
+ * (cross-variant ones `enabled: false`) and panel creation keys on presence,
+ * not `.enabled`. Passing the raw `Object.keys(ctx.newsPanels)` to
+ * `resolveNewsCategories` would treat every disabled cross-variant panel as a
+ * custom category and fan out RSS fetches for every user — exactly the
+ * blast-radius this design is meant to avoid.
+ *
+ * A news panel registers under `key`, or under the remapped `${key}-news`
+ * when `key` collided with a non-news data panel already occupying
+ * `ctx.panels[key]` (e.g. `markets`/`crypto`/`economic` in the full variant).
+ * We detect the collision by reference identity — `ctx.panels[key]` is a
+ * *different* object than the news panel — rather than by re-deriving naming
+ * conventions, so this stays correct regardless of which keys exist.
+ */
+export function enabledNewsCategoryKeys(
+  newsPanels: Record<string, unknown>,
+  panels: Record<string, unknown>,
+  panelSettings: Record<string, { enabled?: boolean } | undefined>,
+): string[] {
+  const result: string[] = [];
+  for (const [key, newsPanel] of Object.entries(newsPanels)) {
+    const collided = panels[key] !== undefined && panels[key] !== newsPanel;
+    const panelKey = collided ? `${key}-news` : key;
+    if (panelSettings[panelKey]?.enabled === true) result.push(key);
+  }
+  return result;
+}

@@ -20,6 +20,7 @@ import assert from 'node:assert/strict';
 import {
   mergeCanonicalFeeds,
   resolveNewsCategories,
+  enabledNewsCategoryKeys,
 } from '../src/config/feed-resolution.ts';
 import type { Feed } from '../src/types/index.ts';
 
@@ -129,5 +130,61 @@ describe('resolveNewsCategories', () => {
   test('duplicate enabled panel keys do not produce duplicate custom entries', () => {
     const resolved = resolveNewsCategories(FULL_PRESET, CANONICAL, ['startups', 'startups']);
     assert.strictEqual(resolved.filter(c => c.key === 'startups').length, 1);
+  });
+});
+
+describe('enabledNewsCategoryKeys', () => {
+  // App.ts seeds panelSettings with EVERY ALL_PANELS key (cross-variant ones
+  // enabled:false) and panel creation keys on presence — so ctx.newsPanels
+  // holds disabled panels too. Only enabled ones may become custom categories.
+  test('includes enabled panels, excludes disabled ones', () => {
+    const politics = {};
+    const startups = {};
+    const newsPanels = { politics, startups };
+    const panels = { politics, startups };
+    const panelSettings = {
+      politics: { enabled: true },
+      startups: { enabled: false }, // cross-variant panel, disabled in this variant
+    };
+    assert.deepStrictEqual(
+      enabledNewsCategoryKeys(newsPanels, panels, panelSettings),
+      ['politics'],
+    );
+  });
+
+  test('excludes a panel with no settings entry', () => {
+    const orphan = {};
+    assert.deepStrictEqual(
+      enabledNewsCategoryKeys({ orphan }, { orphan }, {}),
+      [],
+    );
+  });
+
+  // Collision case: `markets` key is occupied by a non-news DATA panel, so the
+  // news panel registered under `markets-news`. Enablement must be read from
+  // panelSettings['markets-news'] — NOT panelSettings['markets'] (the data panel).
+  test('collision: reads the remapped ${key}-news settings entry, not the data panel', () => {
+    const marketsNews = {};
+    const marketsData = {};
+    const newsPanels = { markets: marketsNews };
+    const panels = { markets: marketsData, 'markets-news': marketsNews };
+
+    // data panel enabled, news panel enabled → included
+    assert.deepStrictEqual(
+      enabledNewsCategoryKeys(newsPanels, panels, {
+        markets: { enabled: true },
+        'markets-news': { enabled: true },
+      }),
+      ['markets'],
+    );
+
+    // data panel enabled, news panel DISABLED → excluded (data state must not leak)
+    assert.deepStrictEqual(
+      enabledNewsCategoryKeys(newsPanels, panels, {
+        markets: { enabled: true },
+        'markets-news': { enabled: false },
+      }),
+      [],
+    );
   });
 });
