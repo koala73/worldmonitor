@@ -1,5 +1,5 @@
 import '@/styles/settings-window.css';
-import { FEEDS, INTEL_SOURCES, SOURCE_REGION_MAP } from '@/config/feeds';
+import { CANONICAL_FEEDS, INTEL_SOURCES, SOURCE_REGION_MAP } from '@/config/feeds';
 import { PANEL_CATEGORY_MAP, ALL_PANELS, VARIANT_DEFAULTS, getEffectivePanelConfig, isPanelEntitled, FREE_MAX_PANELS } from '@/config/panels';
 import { isProUser } from '@/services/widget-store';
 import { SITE_VARIANT } from '@/config/variant';
@@ -119,7 +119,17 @@ export class UnifiedSettings {
         // window.open inside openBillingPortal (which runs after an
         // await of the Convex action).
         const reservedWin = prereserveBillingPortalTab();
-        void openBillingPortal(reservedWin);
+        void openBillingPortal(reservedWin).then((result) => {
+          // NO_CUSTOMER: user is entitled but has no Dodo customer row
+          // (comp grant, restore race, or post-purge cancellation). Send
+          // them somewhere actionable instead of leaving them in a
+          // generic Dodo portal that won't recognise them.
+          if (result.outcome === 'no-customer') {
+            showToast(
+              'Subscription is managed outside Dodo. Email support@worldmonitor.app for help.',
+            );
+          }
+        });
         return;
       }
 
@@ -641,7 +651,13 @@ export class UnifiedSettings {
     if (isEntitled()) {
       this.close();
       const reservedWin = prereserveBillingPortalTab();
-      void openBillingPortal(reservedWin);
+      void openBillingPortal(reservedWin).then((result) => {
+        if (result.outcome === 'no-customer') {
+          showToast(
+            'Subscription is managed outside Dodo. Email support@worldmonitor.app for help.',
+          );
+        }
+      });
       return;
     }
     this.close();
@@ -807,7 +823,10 @@ export class UnifiedSettings {
   }
 
   private getAvailableRegions(): Array<{ key: string; label: string }> {
-    const feedKeys = new Set(Object.keys(FEEDS));
+    // A region pill shows when at least one of its sources is actually being
+    // loaded — getAllSourceNames() covers the active preset PLUS any cross-
+    // variant panels the user enabled, so customized-in regions appear too.
+    const allowed = new Set(this.config.getAllSourceNames());
     const regions: Array<{ key: string; label: string }> = [
       { key: 'all', label: t('header.sourceRegionAll') }
     ];
@@ -819,7 +838,8 @@ export class UnifiedSettings {
         }
         continue;
       }
-      const hasFeeds = regionDef.feedKeys.some(fk => feedKeys.has(fk));
+      const hasFeeds = regionDef.feedKeys.some(fk =>
+        (CANONICAL_FEEDS[fk] ?? []).some(f => allowed.has(f.name)));
       if (hasFeeds) {
         regions.push({ key: regionKey, label: t(regionDef.labelKey) });
       }
@@ -830,7 +850,12 @@ export class UnifiedSettings {
 
   private getSourcesByRegion(): Map<string, string[]> {
     const map = new Map<string, string[]>();
-    const feedKeys = new Set(Object.keys(FEEDS));
+    // Resolve region membership from CANONICAL_FEEDS (the all-variant union),
+    // then intersect with the sources actually loaded — getAllSourceNames()
+    // already covers the active preset + any custom panels the user enabled —
+    // so a customized-in panel's sources show under their proper region pill,
+    // not just the 'all' view.
+    const allowed = new Set(this.config.getAllSourceNames());
 
     for (const [regionKey, regionDef] of Object.entries(SOURCE_REGION_MAP)) {
       const sources: string[] = [];
@@ -838,8 +863,8 @@ export class UnifiedSettings {
         INTEL_SOURCES.forEach(f => sources.push(f.name));
       } else {
         for (const fk of regionDef.feedKeys) {
-          if (feedKeys.has(fk)) {
-            FEEDS[fk]!.forEach(f => sources.push(f.name));
+          for (const f of CANONICAL_FEEDS[fk] ?? []) {
+            if (allowed.has(f.name)) sources.push(f.name);
           }
         }
       }

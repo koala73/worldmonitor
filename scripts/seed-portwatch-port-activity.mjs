@@ -41,6 +41,12 @@ const EP4_BASE =
 
 const PAGE_SIZE = 2000;
 const FETCH_TIMEOUT = 45_000;
+// Tighter timeout for the proxy-retry leg. Direct + proxy must total under
+// PER_COUNTRY_TIMEOUT_MS (90s) with slack for Decodo's TCP handshake +
+// CONNECT setup (~3-5s). 45s direct + 35s proxy = 80s, leaving ~10s for
+// setup overhead and the surrounding pagination accounting. Greptile PR
+// #3681 review P2 flagged the prior 45+45=90s arrangement as racey.
+const PROXY_FETCH_TIMEOUT = 35_000;
 // Two aggregation windows, hardcoded in fetchCountryAccum:
 //   last30 = days  0-30 → tankerCalls30d, avg30d, import/export sums
 //   prev30 = days 30-60 → trendDelta baseline
@@ -61,6 +67,20 @@ const BATCH_LOG_EVERY = 5;
 // from today's last30/prev30 cutoffs) and serves as a belt-and-braces refresh
 // if the maxDate check ever silently short-circuits.
 const MAX_CACHE_AGE_MS = 7 * 86_400_000;
+// Cap how many countries can be cold-fetched in a single run. When upstream
+// advances its data (asof mismatch on a sync'd cache), all 174 countries
+// become "cache miss" at once. Cold-fetching 174 against ArcGIS exceeds the
+// 570s bundle budget (observed 2026-05-13: preflight alone took 360s, batch 1
+// of 15 hit 12 errors in 45s before container died at the budget cap).
+//
+// With this cap, a "everything stale" run refreshes a random subset and
+// serves the remainder from prior cache (marked staleAsof=true so downstream
+// can see they're a window behind). A full rotation completes in ~6 runs
+// = ~3 days at the 12h cron cadence, well within the 7-day MAX_CACHE_AGE_MS.
+//
+// 30 is sized so the cold-fetch path (30 × ~3-5s/country with concurrency
+// 12 ≈ 12-15s) easily fits the 570s budget even when ArcGIS is slow.
+const MAX_COLD_FETCH_PER_RUN = 30;
 // Concurrency for the cheap per-country maxDate preflight. These are tiny
 // outStatistics queries (returns 1 row), so we can push harder than the
 // expensive fetch concurrency without tripping ArcGIS 429s in practice.
@@ -72,24 +92,68 @@ function epochToTimestamp(epochMs) {
   return `timestamp '${d.getUTCFullYear()}-${p(d.getUTCMonth() + 1)}-${p(d.getUTCDate())} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())}'`;
 }
 
+// Retry an ArcGIS request through the Decodo proxy. Used as the fallback
+// path when the direct request returns 429 OR silently times out — both
+// are signals that ArcGIS is rate-limiting our seed-server IP. Returns the
+// parsed JSON body or throws.
+//
+// Uses PROXY_FETCH_TIMEOUT (35s, shorter than the 45s direct FETCH_TIMEOUT)
+// so the combined direct + proxy budget stays under PER_COUNTRY_TIMEOUT_MS
+// (90s) with slack for Decodo's TCP handshake and CONNECT setup. Greptile
+// PR #3681 review P2.
+async function arcgisProxyRetry(url, reason, { signal } = {}) {
+  const proxyAuth = resolveProxyForConnect();
+  if (!proxyAuth) throw new Error(`ArcGIS direct ${reason} + no proxy configured for ${url.slice(0, 80)}`);
+  console.warn(`  [portwatch] ${reason} — retrying via proxy: ${url.slice(0, 80)}`);
+  const { buffer } = await httpsProxyFetchRaw(url, proxyAuth, { accept: 'application/json', timeoutMs: PROXY_FETCH_TIMEOUT, signal });
+  const proxied = JSON.parse(buffer.toString('utf8'));
+  if (proxied.error) {
+    // Greptile PR #3681 review P2: ArcGIS can return `{"error":{"code":400}}`
+    // with no message field. Fall back to code, then JSON.stringify so the
+    // thrown error message stays informative on unexpected error shapes.
+    const errInfo = proxied.error.message ?? proxied.error.code ?? JSON.stringify(proxied.error);
+    throw new Error(`ArcGIS error (via proxy after ${reason}): ${errInfo}`);
+  }
+  return proxied;
+}
+
 async function fetchWithTimeout(url, { signal } = {}) {
   // Combine the per-call FETCH_TIMEOUT with the upstream caller signal so an
   // abort propagates into the in-flight fetch AND future pagination iterations.
   const combined = signal
     ? AbortSignal.any([signal, AbortSignal.timeout(FETCH_TIMEOUT)])
     : AbortSignal.timeout(FETCH_TIMEOUT);
-  const resp = await fetch(url, {
-    headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
-    signal: combined,
-  });
+  let resp;
+  try {
+    resp = await fetch(url, {
+      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
+      signal: combined,
+    });
+  } catch (err) {
+    // If the CALLER signal aborted (real cancellation request from SIGTERM
+    // / per-country timeout), propagate as-is. Only the internal 45s
+    // FETCH_TIMEOUT or transient network errors fall through to the proxy
+    // retry below.
+    if (signal?.aborted) throw err;
+    // WM 2026-05-13 incident: ArcGIS rate-limited our seed-server by
+    // silently stalling responses instead of returning HTTP 429. Every
+    // direct per-country fetch hit the 45s FETCH_TIMEOUT, none reached
+    // the existing 429 retry branch. Result: 30/30 timeouts on the
+    // cold-fetch path, coverage gate failed at 27/50.
+    //
+    // Detect timeout / transient network errors and fall through to the
+    // same proxy retry that 429 uses. The proxy path has its own
+    // FETCH_TIMEOUT so one stalled call can't accumulate indefinitely.
+    const errName = err?.name || '';
+    const errMsg = err?.message || '';
+    const isTimeoutLike = errName === 'TimeoutError'
+      || errName === 'AbortError'
+      || /timeout|aborted|fetch failed|ECONNRESET|UND_ERR_/i.test(errMsg);
+    if (!isTimeoutLike) throw err;
+    return await arcgisProxyRetry(url, `direct ${errName || 'timeout'}`, { signal });
+  }
   if (resp.status === 429) {
-    const proxyAuth = resolveProxyForConnect();
-    if (!proxyAuth) throw new Error(`ArcGIS HTTP 429 (rate limited) for ${url.slice(0, 80)}`);
-    console.warn(`  [portwatch] 429 rate-limited — retrying via proxy: ${url.slice(0, 80)}`);
-    const { buffer } = await httpsProxyFetchRaw(url, proxyAuth, { accept: 'application/json', timeoutMs: FETCH_TIMEOUT, signal });
-    const proxied = JSON.parse(buffer.toString('utf8'));
-    if (proxied.error) throw new Error(`ArcGIS error (via proxy): ${proxied.error.message}`);
-    return proxied;
+    return await arcgisProxyRetry(url, 'HTTP 429 rate-limited', { signal });
   }
   if (!resp.ok) throw new Error(`ArcGIS HTTP ${resp.status} for ${url.slice(0, 80)}`);
   const body = await resp.json();
@@ -562,8 +626,11 @@ export async function fetchAll(progress, { signal } = {}) {
   console.log(`  [port-activity] Preflight maxDate for ${eligibleIso3.length} countries (${((Date.now() - preflightT0) / 1000).toFixed(1)}s)`);
 
   // Partition: cache hits (reusable) vs misses (need expensive fetch).
+  // For misses, capture `prevPayload` (may be null) so that if we end up
+  // deferring this country to a later run we can still serve its previous
+  // (slightly-stale) data — better than dropping it entirely.
   const countryData = new Map();
-  const needsFetch = [];
+  let needsFetch = [];
   let cacheHits = 0;
   const now = Date.now();
   for (let i = 0; i < eligibleIso3.length; i++) {
@@ -580,10 +647,67 @@ export async function fetchAll(progress, { signal } = {}) {
       countryData.set(iso2, prev);
       cacheHits++;
     } else {
-      needsFetch.push({ iso3, iso2, upstreamMaxDate });
+      needsFetch.push({ iso3, iso2, upstreamMaxDate, prevPayload: prev });
     }
   }
   console.log(`  [port-activity] Cache: ${cacheHits} hits, ${needsFetch.length} misses`);
+
+  // Cold-fetch cap (WM 2026-05-13 incident): when needsFetch exceeds the
+  // per-run cap, refresh a random subset and serve the rest from prior
+  // cache marked staleAsof=true. Prevents the catastrophic "everything
+  // stale → 174 cold-fetches → bundle SIGTERM" failure mode that produced
+  // 37h of stale data after a single upstream-advance event. A full
+  // rotation completes in ~ceil(174/30) = 6 runs ≈ 3 days at 12h cadence.
+  if (needsFetch.length > MAX_COLD_FETCH_PER_RUN) {
+    // Deterministic-ish shuffle: Fisher-Yates with Math.random — fine here
+    // because we just need "different subset each run", not crypto strength.
+    const shuffled = [...needsFetch];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    const deferred = shuffled.slice(MAX_COLD_FETCH_PER_RUN);
+    let servedStale = 0;
+    let droppedTooOld = 0;
+    let droppedNoCache = 0;
+    for (const item of deferred) {
+      const prev = item.prevPayload;
+      if (!prev || typeof prev !== 'object') {
+        // No prior payload (new country, first-ever miss). Drop — same as
+        // pre-fix behavior for hard misses.
+        droppedNoCache++;
+        continue;
+      }
+      // MAX_CACHE_AGE_MS hard-drop boundary (Greptile PR #3676 review P1):
+      // the deferred-stale path MUST respect the same age gate the
+      // cacheFresh check enforces, otherwise a country deferred across
+      // enough runs while upstream was frozen ≥4 days could publish data
+      // older than the intended 7d hard-drop threshold. Without this,
+      // window-drift accumulates past MAX_CACHE_AGE_MS and the PR's claim
+      // that hard-drop behavior is unchanged would be false.
+      const cacheWrittenAt = prev.cacheWrittenAt;
+      if (typeof cacheWrittenAt !== 'number' || (now - cacheWrittenAt) >= MAX_CACHE_AGE_MS) {
+        droppedTooOld++;
+        continue;
+      }
+      // Mark as stale-asof so downstream consumers know this country is one
+      // window behind. The canonical payload structure is unchanged.
+      countryData.set(item.iso2, { ...prev, staleAsof: true });
+      servedStale++;
+    }
+    needsFetch = shuffled.slice(0, MAX_COLD_FETCH_PER_RUN);
+    // Rotation arithmetic uses MAX_COLD_FETCH_PER_RUN directly rather than
+    // needsFetch.length — needsFetch was just reassigned to the cap-sized
+    // slice, so the two are numerically equal here, but using the constant
+    // keeps the intent unambiguous if this log block is ever reordered.
+    const originalMisses = MAX_COLD_FETCH_PER_RUN + servedStale + droppedTooOld + droppedNoCache;
+    console.warn(
+      `  [port-activity] Cold-fetch capped at ${MAX_COLD_FETCH_PER_RUN}/run — ` +
+      `refreshing ${MAX_COLD_FETCH_PER_RUN} now, serving ${servedStale} on stale cache (asof behind), ` +
+      `${droppedTooOld} dropped (cache > ${MAX_CACHE_AGE_MS / 86_400_000}d old), ${droppedNoCache} dropped (no prior payload). ` +
+      `Rotation: ~${Math.ceil(originalMisses / MAX_COLD_FETCH_PER_RUN)} runs to fully refresh.`,
+    );
+  }
 
   // ─────────────────────────────────────────────────────────────────────────
   // Expensive path: paginated fetch for cache misses only.

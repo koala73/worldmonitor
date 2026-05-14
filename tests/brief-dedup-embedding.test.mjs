@@ -820,6 +820,8 @@ describe('groupTopicsPostDedup — size-first total ordering', () => {
       ordered.slice(0, 4).map((r) => r.hash),
       ['a0', 'a1', 'a2', 'a3'],
     );
+    assert.equal(new Set(ordered.slice(0, 4).map((r) => r.briefTopicId)).size, 1);
+    assert.deepEqual(ordered.slice(0, 4).map((r) => r.briefTopicSize), [4, 4, 4, 4]);
     // Topic B next; members in score DESC: 91, 90, 85
     assert.deepEqual(
       ordered.slice(4, 7).map((r) => r.hash),

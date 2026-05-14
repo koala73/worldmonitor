@@ -168,6 +168,218 @@ describe('filterTopStories', () => {
     assert.equal(out.length, 1);
     assert.equal(out[0].sourceUrl, 'https://example.com/keep');
   });
+
+  it('orders critical stories ahead of lower-severity LLM-ranked stories', () => {
+    const out = filterTopStories({
+      stories: [
+        upstreamStory({
+          primaryTitle: 'High story ranked by the model',
+          threatLevel: 'high',
+          hash: 'high111111111111',
+          primarySource: 'Wire A',
+          category: 'Diplomacy',
+        }),
+        upstreamStory({
+          primaryTitle: 'Critical story not ranked by the model',
+          threatLevel: 'critical',
+          hash: 'crit222222222222',
+          primarySource: 'Wire B',
+          category: 'Security',
+        }),
+      ],
+      sensitivity: 'all',
+      rankedStoryHashes: ['high1111'],
+      maxPerSourceTopic: Infinity,
+    });
+
+    assert.equal(out.length, 2);
+    assert.equal(out[0].headline, 'Critical story not ranked by the model');
+    assert.equal(out[1].headline, 'High story ranked by the model');
+  });
+
+  it('keeps larger critical-anchored topic blocks contiguous ahead of ranked singletons', () => {
+    const out = filterTopStories({
+      stories: [
+        upstreamStory({
+          primaryTitle: 'Ranked singleton critical',
+          threatLevel: 'critical',
+          hash: 'solo111111111111',
+          briefTopicId: 'singleton',
+          importanceScore: 999,
+          primarySource: 'Wire A',
+          category: 'Security',
+        }),
+        upstreamStory({
+          primaryTitle: 'Cluster critical anchor',
+          threatLevel: 'critical',
+          hash: 'clust22222222222',
+          briefTopicId: 'critical-cluster',
+          importanceScore: 120,
+          primarySource: 'Wire B',
+          category: 'Security',
+        }),
+        upstreamStory({
+          primaryTitle: 'Cluster related high follow-up',
+          threatLevel: 'high',
+          hash: 'clust33333333333',
+          briefTopicId: 'critical-cluster',
+          importanceScore: 100,
+          primarySource: 'Wire C',
+          category: 'Diplomacy',
+        }),
+      ],
+      sensitivity: 'all',
+      rankedStoryHashes: ['solo1111'],
+      maxPerSourceTopic: Infinity,
+    });
+
+    assert.deepEqual(
+      out.map((story) => story.headline),
+      [
+        'Cluster critical anchor',
+        'Cluster related high follow-up',
+        'Ranked singleton critical',
+      ],
+    );
+  });
+
+  it('orders concentrated top-severity blocks before broader lower-tier context', () => {
+    const out = filterTopStories({
+      stories: [
+        upstreamStory({
+          primaryTitle: 'Broad block critical anchor',
+          threatLevel: 'critical',
+          hash: 'broad1111111111',
+          briefTopicId: 'broad',
+          importanceScore: 900,
+          primarySource: 'Wire A',
+          category: 'Security',
+        }),
+        upstreamStory({
+          primaryTitle: 'Broad block high context one',
+          threatLevel: 'high',
+          hash: 'broad2222222222',
+          briefTopicId: 'broad',
+          importanceScore: 800,
+          primarySource: 'Wire B',
+          category: 'Diplomacy',
+        }),
+        upstreamStory({
+          primaryTitle: 'Broad block high context two',
+          threatLevel: 'high',
+          hash: 'broad3333333333',
+          briefTopicId: 'broad',
+          importanceScore: 700,
+          primarySource: 'Wire C',
+          category: 'Economy',
+        }),
+        upstreamStory({
+          primaryTitle: 'Dense block critical one',
+          threatLevel: 'critical',
+          hash: 'dense4444444444',
+          briefTopicId: 'dense',
+          importanceScore: 100,
+          primarySource: 'Wire D',
+          category: 'Military',
+        }),
+        upstreamStory({
+          primaryTitle: 'Dense block critical two',
+          threatLevel: 'critical',
+          hash: 'dense5555555555',
+          briefTopicId: 'dense',
+          importanceScore: 90,
+          primarySource: 'Wire E',
+          category: 'Military',
+        }),
+      ],
+      sensitivity: 'all',
+      rankedStoryHashes: ['broad111'],
+      maxPerSourceTopic: Infinity,
+    });
+
+    assert.deepEqual(
+      out.map((story) => story.headline),
+      [
+        'Dense block critical one',
+        'Dense block critical two',
+        'Broad block critical anchor',
+        'Broad block high context one',
+        'Broad block high context two',
+      ],
+    );
+  });
+
+  it('uses max score before LLM rank when severity mass is tied', () => {
+    const out = filterTopStories({
+      stories: [
+        upstreamStory({
+          primaryTitle: 'Ranked lower-score critical',
+          threatLevel: 'critical',
+          hash: 'rank11111111111',
+          briefTopicId: 'ranked',
+          importanceScore: 100,
+          primarySource: 'Wire A',
+          category: 'Security',
+        }),
+        upstreamStory({
+          primaryTitle: 'Unranked higher-score critical',
+          threatLevel: 'critical',
+          hash: 'score2222222222',
+          briefTopicId: 'scored',
+          importanceScore: 200,
+          primarySource: 'Wire B',
+          category: 'Diplomacy',
+        }),
+      ],
+      sensitivity: 'all',
+      rankedStoryHashes: ['rank111'],
+      maxPerSourceTopic: Infinity,
+    });
+
+    assert.deepEqual(
+      out.map((story) => story.headline),
+      [
+        'Unranked higher-score critical',
+        'Ranked lower-score critical',
+      ],
+    );
+  });
+
+  it('uses best LLM rank only after severity mass and score tie', () => {
+    const out = filterTopStories({
+      stories: [
+        upstreamStory({
+          primaryTitle: 'Unranked equal-score critical',
+          threatLevel: 'critical',
+          hash: 'tie111111111111',
+          briefTopicId: 'tie-a',
+          importanceScore: 100,
+          primarySource: 'Wire A',
+          category: 'Security',
+        }),
+        upstreamStory({
+          primaryTitle: 'Ranked equal-score critical',
+          threatLevel: 'critical',
+          hash: 'tie222222222222',
+          briefTopicId: 'tie-b',
+          importanceScore: 100,
+          primarySource: 'Wire B',
+          category: 'Diplomacy',
+        }),
+      ],
+      sensitivity: 'all',
+      rankedStoryHashes: ['tie222'],
+      maxPerSourceTopic: Infinity,
+    });
+
+    assert.deepEqual(
+      out.map((story) => story.headline),
+      [
+        'Ranked equal-score critical',
+        'Unranked equal-score critical',
+      ],
+    );
+  });
 });
 
 describe('assembleStubbedBriefEnvelope', () => {
@@ -355,10 +567,10 @@ describe('filterTopStories — onDrop metrics', () => {
     for (const ev of calls) assert.equal(ev.reason, 'cap');
   });
 
-  it('cap events do NOT count earlier severity/headline/url drops twice', () => {
-    // The cap-emit loop runs from the break point onward — earlier
-    // valid stories that pushed `out` to maxStories are not re-emitted,
-    // and earlier-dropped stories are accounted under their own reason.
+  it('cap events count only otherwise-renderable stories after maxStories', () => {
+    // After deterministic re-ordering, excluded stories may move after
+    // the cap point. They should keep their root-cause reason instead
+    // of being counted as cap-truncated valid cards.
     const tally = { severity: 0, headline: 0, url: 0, shape: 0, cap: 0 };
     filterTopStories({
       stories: [
@@ -366,15 +578,15 @@ describe('filterTopStories — onDrop metrics', () => {
         upstreamStory({ threatLevel: 'low' }),        // severity (not cap)
         upstreamStory({ primaryTitle: 'B' }),         // kept (out reaches 2)
         upstreamStory({ primaryTitle: 'C' }),         // cap
-        upstreamStory({ primaryLink: 'ftp://bad' }),  // cap (loop short-circuits past url check)
+        upstreamStory({ primaryLink: 'ftp://bad' }),  // url (not cap)
       ],
       sensitivity,
       maxStories: 2,
       onDrop: (ev) => { tally[ev.reason]++; },
     });
     assert.equal(tally.severity, 1);
-    assert.equal(tally.cap, 2);
-    assert.equal(tally.url, 0, 'url drop should NOT fire after cap break');
+    assert.equal(tally.cap, 1);
+    assert.equal(tally.url, 1, 'url drop should keep its root-cause reason after cap is full');
   });
 
   it('reconciliation invariant: in === out + sum(dropped_*) across all reasons', () => {

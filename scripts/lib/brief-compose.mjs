@@ -242,6 +242,37 @@ export function composeBriefForRule(rule, insights, { nowMs = Date.now() } = {})
 const HEADLINE_SUFFIX_RE_PART = /\s+[-\u2013\u2014|]\s+([^\s].*)$/;
 
 /**
+ * Wire-name vs feed-name match. Returns true when `tail` is a shorter
+ * (or equal) word-boundary prefix of `publisher` — i.e. when the
+ * headline ended with the wire-service short name (e.g. "Reuters")
+ * but the configured publisher is the longer feed-name expansion
+ * (e.g. "Reuters World" / "Reuters Politics"). Strict equality
+ * (the v1 implementation) missed this case — observed live on the
+ * May 13 brief: "Putin says Russia will deploy new Sarmat nuclear
+ * missile this year - Reuters" had publisher "Reuters World" and the
+ * strict-equality check passed the suffix to the magazine.
+ *
+ * The direction is asymmetric ON PURPOSE: we never accept the inverse
+ * (publisher word-prefix of tail), because that case admits editorial
+ * suffixes like "Story - AP News analysis" — the tail "AP News
+ * analysis" extends the publisher "AP News" with an editorial word,
+ * not a desk-name suffix, and stripping it would lose real content.
+ *
+ * Word-boundary requirement (trailing space) prevents "iran" matching
+ * "iranian" — only space-delimited extensions ("Reuters" / "Reuters
+ * World") succeed.
+ *
+ * @param {string} tail — already lowercased, trimmed
+ * @param {string} publisher — already lowercased, trimmed
+ * @returns {boolean}
+ */
+function isPublisherWordPrefix(tail, publisher) {
+  if (tail === publisher) return true;
+  if (tail.length >= publisher.length) return false;
+  return publisher.startsWith(tail + ' ');
+}
+
+/**
  * @param {string} title
  * @param {string} publisher
  * @returns {string}
@@ -253,11 +284,39 @@ export function stripHeadlineSuffix(title, publisher) {
   const m = trimmed.match(HEADLINE_SUFFIX_RE_PART);
   if (!m) return trimmed;
   const tail = m[1].trim();
-  // Case-insensitive full-string match. We're conservative: only strip
-  // when the tail EQUALS the publisher — a tail that merely contains
-  // it (e.g. "- AP News analysis") is editorial content and stays.
-  if (tail.toLowerCase() !== publisher.toLowerCase()) return trimmed;
+  // Case-insensitive equality OR ASYMMETRIC word-boundary prefix: tail
+  // must be a SHORTER prefix of publisher (Reuters → Reuters World),
+  // never the reverse. The asymmetry is intentional and load-bearing —
+  // it blocks editorial suffixes like "AP News analysis" (tail) from
+  // stripping when publisher is "AP News" (Greptile PR #3673 review).
+  // A tail that merely CONTAINS the publisher (e.g. "- AP News
+  // analysis") still stays — that's editorial content, not a wire
+  // suffix. Full asymmetry rationale documented on
+  // `isPublisherWordPrefix` itself.
+  if (!isPublisherWordPrefix(tail.toLowerCase(), publisher.toLowerCase())) return trimmed;
   return trimmed.slice(0, m.index).trimEnd();
+}
+
+// Editorial-format prefixes some feeds prepend to headlines. They tell
+// the user nothing the magazine card doesn't already convey (every
+// card has its own source line and body block), so they just dilute
+// the headline. Conservative list — only patterns observed in
+// production briefs (May 12 magazine page 16/18: "Video: Philippine
+// senator flees ICC arrest..."). The trailing colon is REQUIRED so a
+// real headline starting with the bare word "Video game regulator
+// fines..." stays intact.
+const HEADLINE_PREFIX_RE = /^(?:video|watch|live|photos?|gallery|listen|podcast|breaking|exclusive|opinion|analysis|update)\s*:\s*/i;
+
+/**
+ * Strip editorial-format prefixes like "Video: ", "Watch: ", "Live: ",
+ * "Photos: ", "Breaking: " from the start of a headline.
+ *
+ * @param {string} title
+ * @returns {string}
+ */
+export function stripHeadlinePrefix(title) {
+  if (typeof title !== 'string' || title.length === 0) return '';
+  return title.trim().replace(HEADLINE_PREFIX_RE, '').trimStart();
 }
 
 /**
@@ -286,7 +345,12 @@ function digestStoryToUpstreamTopStory(s) {
   const sources = Array.isArray(s?.sources) ? s.sources : [];
   const primarySource = sources.length > 0 ? sources[0] : 'Multiple wires';
   const rawTitle = typeof s?.title === 'string' ? s.title : '';
-  const cleanTitle = stripHeadlineSuffix(rawTitle, primarySource);
+  // Two-stage cleanup: strip editorial-format prefix first ("Video:",
+  // "Watch:", "Breaking:") then publisher suffix (" - Reuters",
+  // "| AP News"). Order matters because some headlines have both:
+  // "Video: Philippine senator flees ICC arrest - Al Jazeera" should
+  // become "Philippine senator flees ICC arrest".
+  const cleanTitle = stripHeadlineSuffix(stripHeadlinePrefix(rawTitle), primarySource);
   const rawDescription = typeof s?.description === 'string' ? s.description.trim() : '';
   return {
     primaryTitle: cleanTitle,
@@ -298,6 +362,7 @@ function digestStoryToUpstreamTopStory(s) {
     primarySource,
     primaryLink: typeof s?.link === 'string' ? s.link : undefined,
     threatLevel: s?.severity,
+    importanceScore: Number.isFinite(Number(s?.currentScore)) ? Number(s.currentScore) : undefined,
     // story:track:v1 carries neither field, so the brief falls back
     // to 'General' / 'Global' via filterTopStories defaults.
     category: typeof s?.category === 'string' ? s.category : undefined,
@@ -305,9 +370,9 @@ function digestStoryToUpstreamTopStory(s) {
     // Stable digest story hash. Carried through so:
     //   (a) the canonical synthesis prompt can emit `rankedStoryHashes`
     //       referencing each story by hash (not position, not title),
-    //   (b) `filterTopStories` can re-order the pool by ranking BEFORE
-    //       applying the MAX_STORIES_PER_USER cap, so the model's
-    //       editorial judgment of importance survives the cap.
+    //   (b) `filterTopStories` can use the model's order as the final
+    //       tie-breaker after deterministic severity/topic-block mass
+    //       and score, before applying the MAX_STORIES_PER_USER cap.
     // Falls back to titleHash when the digest path didn't materialise
     // a primary `hash` (rare; shape varies across producer versions).
     hash: typeof s?.hash === 'string' && s.hash.length > 0
@@ -327,6 +392,14 @@ function digestStoryToUpstreamTopStory(s) {
       && typeof s.mergedHashes[0] === 'string' && s.mergedHashes[0].length > 0
       ? s.mergedHashes[0]
       : (typeof s?.hash === 'string' && s.hash.length > 0 ? s.hash : undefined),
+    // Transient topic-ordering metadata from groupTopicsPostDedup.
+    // filterTopStories consumes these before writing BriefStory; they
+    // are not part of the persisted envelope schema.
+    briefTopicId: typeof s?.briefTopicId === 'string' && s.briefTopicId.length > 0
+      ? s.briefTopicId
+      : undefined,
+    briefTopicSize: Number.isFinite(Number(s?.briefTopicSize)) ? Number(s.briefTopicSize) : undefined,
+    briefTopicMaxScore: Number.isFinite(Number(s?.briefTopicMaxScore)) ? Number(s.briefTopicMaxScore) : undefined,
   };
 }
 
@@ -365,8 +438,9 @@ function digestStoryToUpstreamTopStory(s) {
  *   how they are reported.
  *   `synthesis` (when provided) substitutes envelope.digest.lead /
  *   threads / signals / publicLead with the canonical synthesis from
- *   the orchestration layer, and re-orders the candidate pool by
- *   `synthesis.rankedStoryHashes` before applying the cap.
+ *   the orchestration layer. `synthesis.rankedStoryHashes` is passed to
+ *   the filter as a tie-breaker after severity/topic-cluster ordering,
+ *   before applying the cap.
  */
 export function composeBriefFromDigestStories(rule, digestStories, insightsNumbers, { nowMs = Date.now(), onDrop, synthesis } = {}) {
   if (!Array.isArray(digestStories) || digestStories.length === 0) return null;

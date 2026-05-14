@@ -14,7 +14,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { composeBriefFromDigestStories, stripHeadlineSuffix } from '../scripts/lib/brief-compose.mjs';
+import { composeBriefFromDigestStories, stripHeadlineSuffix, stripHeadlinePrefix } from '../scripts/lib/brief-compose.mjs';
 import { materializeCluster } from '../scripts/lib/brief-dedup-jaccard.mjs';
 
 const NOW = 1_745_000_000_000; // 2026-04-18 ish, deterministic
@@ -135,11 +135,133 @@ describe('stripHeadlineSuffix', () => {
     const title = 'Headline with no suffix';
     assert.equal(stripHeadlineSuffix(title, 'AP News'), title);
   });
+  it('REGRESSION (May 13 brief): strips wire-name suffix when feed-name is the longer form', () => {
+    // Live incident: headline ended " - Reuters" but the story's
+    // primarySource was "Reuters World" (the feed name). The strict-
+    // equality check ('reuters' !== 'reuters world') let the suffix
+    // ship to the magazine. Asymmetric word-boundary prefix-match
+    // (tail SHORTER than publisher only) catches it.
+    assert.equal(
+      stripHeadlineSuffix('Putin says Russia will deploy new Sarmat nuclear missile this year - Reuters', 'Reuters World'),
+      'Putin says Russia will deploy new Sarmat nuclear missile this year',
+    );
+    // AP (tail) shorter than AP News (publisher) → strips.
+    assert.equal(stripHeadlineSuffix('Headline - AP', 'AP News'), 'Headline');
+  });
+
+  it('REJECTS the inverse direction (publisher prefix of tail) — preserves editorial suffixes', () => {
+    // "Story - AP News analysis" with publisher "AP News" must NOT
+    // strip — "analysis" is editorial content that extends the
+    // publisher name, not a desk-name suffix. Asymmetric direction
+    // catches the legitimate Reuters/Reuters World case while
+    // preserving editorial extensions like this one.
+    assert.equal(
+      stripHeadlineSuffix('Story - AP News analysis', 'AP News'),
+      'Story - AP News analysis',
+    );
+    // Same shape with tail "Reuters World" / publisher "Reuters":
+    // tail is LONGER, so we conservatively don't strip. We can't
+    // distinguish "Reuters World" (a desk) from "Reuters World scoop"
+    // (editorial) without a desk-name allowlist, so err on the side
+    // of preserving content.
+    assert.equal(
+      stripHeadlineSuffix('Story body - Reuters World', 'Reuters'),
+      'Story body - Reuters World',
+    );
+  });
+
+  it('does NOT word-boundary-match unrelated names that share a stem', () => {
+    // "reuter" (length 6) is NOT a word-prefix of "Reuters" because
+    // the space delimiter is absent ("Reuters" has no space after
+    // "reuter"). Should not strip.
+    assert.equal(
+      stripHeadlineSuffix('Story body - reuter', 'Reuters'),
+      'Story body - reuter',
+    );
+    // "iran" is a prefix of "iranian" without a space, so a tail of
+    // "iran" must NOT match a publisher "iranian press".
+    assert.equal(
+      stripHeadlineSuffix('Story body - iran', 'iranian press'),
+      'Story body - iran',
+    );
+  });
+
   it('handles missing / empty inputs without throwing', () => {
     assert.equal(stripHeadlineSuffix('', 'AP News'), '');
     assert.equal(stripHeadlineSuffix('Headline', ''), 'Headline');
     // @ts-expect-error testing unexpected input
     assert.equal(stripHeadlineSuffix(undefined, 'AP News'), '');
+  });
+});
+
+describe('stripHeadlinePrefix', () => {
+  it('REGRESSION (May 12 brief): strips "Video: " prefix from RSS headlines', () => {
+    // Live incident: magazine page 16/18 shipped "Video: Philippine
+    // senator flees ICC arrest over role in drug war". The prefix
+    // tells the user nothing the magazine card body doesn't already
+    // convey — every card has its own source line.
+    assert.equal(
+      stripHeadlinePrefix('Video: Philippine senator flees ICC arrest over role in drug war'),
+      'Philippine senator flees ICC arrest over role in drug war',
+    );
+  });
+
+  it('strips Watch / Live / Photos / Photo / Gallery / Listen / Podcast / Breaking / Exclusive / Opinion / Analysis / Update prefixes', () => {
+    assert.equal(stripHeadlinePrefix('Watch: Press conference live'), 'Press conference live');
+    assert.equal(stripHeadlinePrefix('LIVE: Senate hearing'), 'Senate hearing');
+    assert.equal(stripHeadlinePrefix('Photos: Damage from the airstrike'), 'Damage from the airstrike');
+    assert.equal(stripHeadlinePrefix('Photo: Wildfire aftermath'), 'Wildfire aftermath');
+    assert.equal(stripHeadlinePrefix('Gallery: Election day around the world'), 'Election day around the world');
+    assert.equal(stripHeadlinePrefix('Listen: Interview with the foreign minister'), 'Interview with the foreign minister');
+    assert.equal(stripHeadlinePrefix('Podcast: Today in the Middle East'), 'Today in the Middle East');
+    assert.equal(stripHeadlinePrefix('Breaking: Cabinet resignation announced'), 'Cabinet resignation announced');
+    assert.equal(stripHeadlinePrefix('Exclusive: Internal memo reveals plan'), 'Internal memo reveals plan');
+    assert.equal(stripHeadlinePrefix('Opinion: The case for sanctions'), 'The case for sanctions');
+    assert.equal(stripHeadlinePrefix('Analysis: What the deal means'), 'What the deal means');
+    assert.equal(stripHeadlinePrefix('Update: Death toll rises'), 'Death toll rises');
+  });
+
+  it('is case-insensitive on the prefix word', () => {
+    assert.equal(stripHeadlinePrefix('VIDEO: Story'), 'Story');
+    assert.equal(stripHeadlinePrefix('video: Story'), 'Story');
+    assert.equal(stripHeadlinePrefix('Video: Story'), 'Story');
+  });
+
+  it('REQUIRES the trailing colon — bare "Video game regulator..." is preserved', () => {
+    // The colon constraint is what prevents stripping legitimate
+    // headlines that happen to start with one of the prefix words
+    // used as a noun ("Video game...", "Watch list...", "Live broadcast...").
+    assert.equal(
+      stripHeadlinePrefix('Video game regulator fines top studio'),
+      'Video game regulator fines top studio',
+    );
+    assert.equal(
+      stripHeadlinePrefix('Watch list updated by sanctions office'),
+      'Watch list updated by sanctions office',
+    );
+    assert.equal(
+      stripHeadlinePrefix('Live broadcasts paused during emergency'),
+      'Live broadcasts paused during emergency',
+    );
+  });
+
+  it('handles whitespace variants around the colon', () => {
+    assert.equal(stripHeadlinePrefix('Video : Story'), 'Story');
+    assert.equal(stripHeadlinePrefix('Video:Story'), 'Story');
+    assert.equal(stripHeadlinePrefix('Video:    Story'), 'Story');
+  });
+
+  it('handles missing / empty inputs without throwing', () => {
+    assert.equal(stripHeadlinePrefix(''), '');
+    // @ts-expect-error testing unexpected input
+    assert.equal(stripHeadlinePrefix(undefined), '');
+    // @ts-expect-error testing unexpected input
+    assert.equal(stripHeadlinePrefix(null), '');
+  });
+
+  it('leaves headlines without a known prefix alone', () => {
+    const title = 'Russia and Ukraine trade blame for continued fighting';
+    assert.equal(stripHeadlinePrefix(title), title);
   });
 });
 
@@ -523,6 +645,56 @@ describe('composeBriefFromDigestStories — synthesis splice', () => {
     // A and C keep their original relative order (A then C).
     assert.equal(env.data.stories[1].headline, 'Unranked A');
     assert.equal(env.data.stories[2].headline, 'Unranked C');
+  });
+
+  it('severity/topic-cluster order beats rankedStoryHashes for critical clusters', () => {
+    const stories = [
+      digestStory({
+        hash: 'solo111111111111',
+        title: 'Ranked singleton critical',
+        severity: 'critical',
+        currentScore: 999,
+        sources: ['SrcA'],
+        briefTopicId: 'singleton',
+      }),
+      digestStory({
+        hash: 'cluster222222222',
+        title: 'Cluster critical anchor',
+        severity: 'critical',
+        currentScore: 120,
+        sources: ['SrcB'],
+        briefTopicId: 'critical-cluster',
+      }),
+      digestStory({
+        hash: 'cluster333333333',
+        title: 'Cluster related high follow-up',
+        severity: 'high',
+        currentScore: 100,
+        sources: ['SrcC'],
+        briefTopicId: 'critical-cluster',
+      }),
+    ];
+    const env = composeBriefFromDigestStories(
+      rule(),
+      stories,
+      { clusters: 0, multiSource: 0 },
+      {
+        nowMs: NOW,
+        synthesis: {
+          lead: 'Editorial lead at least forty characters long for validator pass-through.',
+          rankedStoryHashes: ['solo1111'],
+        },
+      },
+    );
+    assert.ok(env);
+    assert.deepEqual(
+      env.data.stories.map((story) => story.headline),
+      [
+        'Cluster critical anchor',
+        'Cluster related high follow-up',
+        'Ranked singleton critical',
+      ],
+    );
   });
 });
 

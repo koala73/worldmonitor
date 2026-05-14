@@ -1566,8 +1566,9 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
   }
 
   // Compose envelope with synthesis pre-baked. The composer applies
-  // rankedStoryHashes-aware ordering BEFORE the cap, so the model's
-  // editorial judgment of importance survives MAX_STORIES_PER_USER.
+  // severity/topic-cluster ordering BEFORE the cap, with
+  // rankedStoryHashes only as a tie-breaker inside similarly severe
+  // blocks, so critical clusters survive MAX_STORIES_PER_USER.
   const dropStats = {
     severity: 0,
     headline: 0,

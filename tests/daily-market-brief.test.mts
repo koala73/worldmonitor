@@ -23,6 +23,12 @@ const markets: MarketData[] = [
   { symbol: 'NVDA', name: 'NVIDIA', display: 'NVDA', price: 913.77, change: 0.42 },
 ];
 
+const widerMarkets: MarketData[] = [
+  ...markets,
+  { symbol: 'GOOGL', name: 'Alphabet', display: 'GOOGL', price: 178.3, change: 0.91 },
+  { symbol: 'AMZN', name: 'Amazon', display: 'AMZN', price: 201.6, change: -0.55 },
+];
+
 describe('daily market brief schedule logic', () => {
   it('does not refresh before the local schedule if a prior brief exists', () => {
     const shouldRefresh = shouldRefreshDailyBrief({
@@ -93,7 +99,10 @@ describe('buildDailyMarketBrief', () => {
     });
 
     assert.equal(brief.available, true);
-    assert.equal(brief.items.length, 2);
+    // Targets are additive: the 2 explicit picks lead, then the brief tops up
+    // from `markets` (NVDA) toward DEFAULT_TARGET_COUNT.
+    assert.equal(brief.items.length, 3);
+    assert.deepEqual(brief.items.map((i) => i.display), ['AAPL', 'MSFT', 'NVDA']);
     assert.equal(brief.provider, 'openrouter');
     assert.equal(brief.fallback, false);
     assert.match(brief.title, /Daily Market Brief/);
@@ -119,5 +128,24 @@ describe('buildDailyMarketBrief', () => {
     assert.equal(brief.provider, 'rules');
     assert.equal(brief.fallback, true);
     assert.match(brief.summary, /watchlist|breadth|headline flow/i);
+  });
+
+  it('REGRESSION: a single watchlist target never collapses the brief to one item', async () => {
+    // Mirrors the additive watchlist fix — one pick must lead, then the brief
+    // tops up from the wider market list toward DEFAULT_TARGET_COUNT (4).
+    const brief = await buildDailyMarketBrief({
+      markets: widerMarkets,
+      newsByCategory: {
+        markets: [makeNewsItem('NVIDIA holds gains as chip demand remains firm')],
+      },
+      timezone: 'UTC',
+      now: new Date('2026-03-08T10:30:00.000Z'),
+      targets: [{ symbol: 'NVDA', name: 'NVIDIA', display: 'NVDA' }],
+      summarize: async () => null,
+    });
+
+    assert.equal(brief.available, true);
+    assert.equal(brief.items.length, 4, 'should top up to DEFAULT_TARGET_COUNT, not collapse to 1');
+    assert.equal(brief.items[0]?.display, 'NVDA', 'the user pick leads');
   });
 });

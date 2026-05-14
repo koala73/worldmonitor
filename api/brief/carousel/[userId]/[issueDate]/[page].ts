@@ -142,13 +142,25 @@ export default async function handler(
     }
     return response;
   } catch (err) {
-    console.error(
+    // AbortSignal.timeout / AbortController.abort firing somewhere inside
+    // `renderCarouselImageResponse` (remote image fetch, font load, OG
+    // generation) surfaces as `DOMException` / `TimeoutError` / `AbortError`.
+    // The handler already returns 503 to the client; downgrade the Sentry
+    // capture to `warning` so single transient timeouts don't drown real
+    // render-pipeline regressions (font missing, image source broken, layout
+    // bug). Non-timeout errors stay at default `error` level. Pattern mirrors
+    // PR #3660's MCP dispatcher gate. WORLDMONITOR-QJ.
+    const errName = err instanceof Error ? err.name : '';
+    const isTransientTimeout = errName === 'AbortError' || errName === 'TimeoutError';
+    const log = isTransientTimeout ? console.warn : console.error;
+    log(
       `[api/brief/carousel] render failed for ${userId}/${issueDate}/${page}:`,
       (err as Error).message,
     );
     captureSilentError(err, {
       tags: { route: 'api/brief/carousel', step: 'render', page: String(page) },
       ctx,
+      ...(isTransientTimeout ? { level: 'warning' as const } : {}),
     });
     return jsonError('render_failed', 503, cors, { noStore: true });
   }

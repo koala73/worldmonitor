@@ -57,6 +57,24 @@ const MAX_DESCRIPTION_LEN = 400;
 const MAX_SOURCE_LEN = 120;
 const MAX_SOURCE_URL_LEN = 2000;
 
+const SEVERITY_RANK = {
+  critical: 0,
+  high: 1,
+  medium: 2,
+  low: 3,
+};
+
+/** @param {unknown} v */
+function finiteNumberOrZero(v) {
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** @param {unknown} v */
+function nonEmptyString(v) {
+  return typeof v === 'string' && v.trim().length > 0 ? v.trim() : null;
+}
+
 /**
  * Validate + normalise the upstream story link into an outgoing
  * https/http URL. Returns the normalised URL on success, null when the
@@ -99,53 +117,155 @@ function clip(v, cap) {
  */
 
 /**
- * Re-order `stories` so entries whose `hash` matches an entry in
- * `rankedStoryHashes` come first, in ranking order. Entries not in
- * the ranking keep their original relative order and come after.
- * Match is by short-hash prefix: a ranking entry of "abc12345"
- * matches a story whose `hash` starts with "abc12345" (≥4 chars).
- * The canonical synthesis prompt emits 8-char prefixes; stories
- * carry the full hash. Defensive check: when ranking is missing /
- * empty / not an array, returns the original array unchanged.
+ * Return the LLM rank slot for a story, or Infinity when unranked.
+ * Match is by short-hash prefix: a ranking entry of "abc12345" matches
+ * a story whose `hash` starts with "abc12345" (≥4 chars). The canonical
+ * synthesis prompt emits 8-char prefixes; stories carry the full hash.
  *
- * Pure helper — does not mutate the input. Stable for stories that
- * share rank slots (preserves original order within a slot).
- *
- * @param {Array<{ hash?: unknown }>} stories
+ * @param {{ hash?: unknown }} story
  * @param {unknown} rankedStoryHashes
- * @returns {Array<{ hash?: unknown }>}
+ * @returns {number}
  */
-function applyRankedOrder(stories, rankedStoryHashes) {
+function rankForStory(story, rankedStoryHashes) {
   if (!Array.isArray(rankedStoryHashes) || rankedStoryHashes.length === 0) {
-    return stories;
+    return Infinity;
   }
   const ranking = rankedStoryHashes
     .filter((x) => typeof x === 'string' && x.length >= 4)
     .map((x) => x);
-  if (ranking.length === 0) return stories;
+  if (ranking.length === 0) return Infinity;
 
-  // For each story, compute its rank index — the smallest index of a
-  // ranking entry that is a PREFIX of the story's hash. Stories with
-  // no match get Infinity so they sort last while preserving their
-  // original order via the secondary index.
+  const storyHash = typeof story?.hash === 'string' ? story.hash : '';
+  if (storyHash.length === 0) return Infinity;
+  for (let i = 0; i < ranking.length; i++) {
+    if (storyHash.startsWith(ranking[i])) {
+      return i;
+    }
+  }
+  return Infinity;
+}
+
+/**
+ * Topic identity is transient composer metadata. It is deliberately
+ * NOT written into BriefStory because the envelope contract stays
+ * story-focused; ordering is the only consumer.
+ *
+ * @param {Record<string, unknown>} story
+ * @param {number} originalIndex
+ * @returns {string}
+ */
+function topicKeyForStory(story, originalIndex) {
+  const explicit = nonEmptyString(story?.briefTopicId);
+  if (explicit) return `topic:${explicit}`;
+  const numericTopic = story?.briefTopicId;
+  if (typeof numericTopic === 'number' && Number.isFinite(numericTopic)) return `topic:${numericTopic}`;
+  const repHash = nonEmptyString(story?.clusterRepHash);
+  if (repHash) return `cluster:${repHash}`;
+  // Legacy/raw rows without topic or cluster metadata deliberately
+  // atomise into singleton blocks. That loses adjacency, but avoids
+  // false-grouping unrelated stories under a guessed key.
+  return `story:${originalIndex}`;
+}
+
+/**
+ * Final editorial ordering for the rendered brief.
+ *
+ * The build stage already tries to create topic-contiguous blocks, but
+ * the LLM ranking used to run as a dominant global sort and could pull a
+ * lower-severity singleton above a heavier critical cluster. Here the
+ * deterministic signals lead:
+ *   1. topic block's highest eligible severity;
+ *   2. count of stories at that highest severity;
+ *   3. eligible block size;
+ *   4. max score in the block;
+ *   5. LLM rank as a tie-breaker only.
+ *
+ * This keeps critical clusters together while still letting the model
+ * choose between similarly severe/sized candidates.
+ *
+ * Editorial trade-off: concentrated top severity beats broad nearby
+ * context. A block with two critical stories sorts ahead of a block
+ * with one critical plus many high stories; once that count ties,
+ * broader eligible block size decides the next tie.
+ *
+ * @param {Array<Record<string, unknown>>} stories
+ * @param {Set<BriefThreatLevel>} allowed
+ * @param {unknown} rankedStoryHashes
+ * @returns {Array<Record<string, unknown>>}
+ */
+function orderBriefCandidates(stories, allowed, rankedStoryHashes) {
   const annotated = stories.map((story, originalIndex) => {
-    const storyHash = typeof story?.hash === 'string' ? story.hash : '';
-    let rank = Infinity;
-    if (storyHash.length > 0) {
-      for (let i = 0; i < ranking.length; i++) {
-        if (storyHash.startsWith(ranking[i])) {
-          rank = i;
-          break;
-        }
+    const threatLevel = normaliseThreatLevel(story?.threatLevel);
+    const severityRank = threatLevel ? (SEVERITY_RANK[threatLevel] ?? Infinity) : Infinity;
+    return {
+      story,
+      originalIndex,
+      topicKey: topicKeyForStory(story, originalIndex),
+      threatLevel,
+      severityRank,
+      eligible: Boolean(threatLevel && allowed.has(threatLevel)),
+      rank: rankForStory(story, rankedStoryHashes),
+      score: finiteNumberOrZero(story?.importanceScore ?? story?.currentScore),
+    };
+  });
+
+  /** @type {Map<string, any>} */
+  const blocks = new Map();
+  for (const item of annotated) {
+    let block = blocks.get(item.topicKey);
+    if (!block) {
+      block = {
+        key: item.topicKey,
+        items: [],
+        firstIndex: item.originalIndex,
+        bestSeverityRank: Infinity,
+        bestSeverityCount: 0,
+        eligibleCount: 0,
+        // Sentinel for all-ineligible blocks. The comparator's !==
+        // guard prevents `-Infinity - -Infinity` from producing NaN.
+        maxScore: -Infinity,
+        // Best (lowest) LLM rank seen across any eligible member in
+        // this block, not the rank of the highest-scoring member.
+        bestLlmRank: Infinity,
+      };
+      blocks.set(item.topicKey, block);
+    }
+    block.items.push(item);
+    block.firstIndex = Math.min(block.firstIndex, item.originalIndex);
+    if (item.eligible) {
+      block.eligibleCount += 1;
+      block.maxScore = Math.max(block.maxScore, item.score);
+      block.bestLlmRank = Math.min(block.bestLlmRank, item.rank);
+      if (item.severityRank < block.bestSeverityRank) {
+        block.bestSeverityRank = item.severityRank;
+        block.bestSeverityCount = 1;
+      } else if (item.severityRank === block.bestSeverityRank) {
+        block.bestSeverityCount += 1;
       }
     }
-    return { story, originalIndex, rank };
+  }
+
+  const orderedBlocks = [...blocks.values()].sort((a, b) => {
+    if (a.bestSeverityRank !== b.bestSeverityRank) return a.bestSeverityRank - b.bestSeverityRank;
+    if (a.bestSeverityCount !== b.bestSeverityCount) return b.bestSeverityCount - a.bestSeverityCount;
+    if (a.eligibleCount !== b.eligibleCount) return b.eligibleCount - a.eligibleCount;
+    if (a.maxScore !== b.maxScore) return b.maxScore - a.maxScore;
+    if (a.bestLlmRank !== b.bestLlmRank) return a.bestLlmRank - b.bestLlmRank;
+    return a.firstIndex - b.firstIndex;
   });
-  annotated.sort((a, b) => {
-    if (a.rank !== b.rank) return a.rank - b.rank;
-    return a.originalIndex - b.originalIndex;
-  });
-  return annotated.map((a) => a.story);
+
+  const ordered = [];
+  for (const block of orderedBlocks) {
+    block.items.sort((a, b) => {
+      if (a.eligible !== b.eligible) return a.eligible ? -1 : 1;
+      if (a.severityRank !== b.severityRank) return a.severityRank - b.severityRank;
+      if (a.rank !== b.rank) return a.rank - b.rank;
+      if (a.score !== b.score) return b.score - a.score;
+      return a.originalIndex - b.originalIndex;
+    });
+    for (const item of block.items) ordered.push(item.story);
+  }
+  return ordered;
 }
 
 /**
@@ -163,15 +283,11 @@ export function filterTopStories({ stories, sensitivity, maxStories = 12, maxPer
   // and synchronous — any throw is the caller's problem (tested above).
   const emit = typeof onDrop === 'function' ? onDrop : null;
 
-  // Optional editorial ranking — when supplied, stories are sorted by
-  // the position of `story.hash` in `rankedStoryHashes` BEFORE the
-  // cap is applied, so the canonical synthesis brain's judgment of
-  // editorial importance survives the MAX_STORIES_PER_USER cut.
-  // Stories not in the ranking go after, in their original order.
-  // Match is by short-hash prefix (≥4 chars) to tolerate the
-  // ranker's emit format (the prompt uses 8-char prefixes; the
-  // story carries the full hash). Empty/missing array = no-op.
-  const orderedStories = applyRankedOrder(stories, rankedStoryHashes);
+  // Final editorial ordering happens BEFORE the cap. Severity and
+  // topic-block mass dominate so a critical cluster stays contiguous
+  // and reaches the rendered brief ahead of lower-severity singletons;
+  // rankedStoryHashes remains a tie-breaker inside that frame.
+  const orderedStories = orderBriefCandidates(stories, allowed, rankedStoryHashes);
 
   /** @type {BriefStory[]} */
   const out = [];
@@ -189,19 +305,6 @@ export function filterTopStories({ stories, sensitivity, maxStories = 12, maxPer
   const pairCounts = new Map();
   for (let i = 0; i < orderedStories.length; i++) {
     const raw = orderedStories[i];
-    if (out.length >= maxStories) {
-      // Cap-truncation: remaining stories are not evaluated. Emit one
-      // event per skipped story so operators can reconcile in vs out
-      // counts (`in - out - sum(dropped_severity|headline|url|shape)
-      // == dropped_cap`). Without this, cap-truncated stories are
-      // invisible to Sol-0 telemetry and Sol-3's gating signal is
-      // undercounted by up to (DIGEST_MAX_ITEMS - MAX_STORIES_PER_USER)
-      // per user per tick.
-      if (emit) {
-        for (let j = i; j < orderedStories.length; j++) emit({ reason: 'cap' });
-      }
-      break;
-    }
     if (!raw || typeof raw !== 'object') {
       if (emit) emit({ reason: 'shape' });
       continue;
@@ -238,6 +341,16 @@ export function filterTopStories({ stories, sensitivity, maxStories = 12, maxPer
     // ensures the brief surface stays clean even then. R7.
     if (isInstitutionalStaticPage(sourceUrl)) {
       if (emit) emit({ reason: 'institutional_static_page', severity: threatLevel, sourceUrl });
+      continue;
+    }
+
+    if (out.length >= maxStories) {
+      // Cap-truncation after eligibility checks: a story is counted as
+      // `cap` only if it otherwise would have been eligible to render.
+      // Invalid/low-severity tail items keep their root-cause reason,
+      // which keeps operator reconciliation useful after deterministic
+      // severity/topic ordering moves excluded stories later.
+      if (emit) emit({ reason: 'cap' });
       continue;
     }
 

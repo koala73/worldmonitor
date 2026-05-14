@@ -305,6 +305,98 @@ describe('ArcGIS 429 proxy fallback', () => {
   it('429 proxy fallback threads caller signal', () => {
     assert.match(src, /httpsProxyFetchRaw\(url,\s*proxyAuth,\s*\{[^}]*signal\s*\}/s);
   });
+
+  // WM 2026-05-13 incident: ArcGIS silently stalled instead of returning
+  // 429, so all 30 cold-fetches timed out at 45s without ever entering
+  // the 429 retry branch. Fix: also fall through to proxy on timeout /
+  // transient network errors.
+  it('proxy fallback also fires on timeout (not just HTTP 429)', () => {
+    // The fetchWithTimeout body must wrap `await fetch(...)` in try/catch
+    // so a thrown AbortError (timeout) can be inspected and re-dispatched
+    // to the proxy path. Pre-fix the fetch was bare-awaited, so any
+    // throw exited the function before the 429 branch.
+    assert.match(src, /try\s*\{[\s\S]*?resp\s*=\s*await fetch\(url/);
+    // The catch block must detect timeout-class errors before deciding to
+    // re-throw vs retry-via-proxy.
+    assert.match(src, /errName\s*===\s*'TimeoutError'/);
+    assert.match(src, /isTimeoutLike/);
+  });
+
+  it('proxy retry helper is shared between 429 and timeout paths', () => {
+    // Centralized in arcgisProxyRetry so both branches behave identically
+    // (same Decodo creds resolution, same proxy-side timeout budget, same
+    // error message format). Pre-fix the 429 branch had inline proxy
+    // logic; the timeout path would have duplicated it. Refactored to
+    // share the helper.
+    assert.match(src, /async function arcgisProxyRetry/);
+    // Both branches must dispatch through the helper:
+    const callSites = src.match(/arcgisProxyRetry\(url,/g) ?? [];
+    assert.ok(
+      callSites.length >= 2,
+      `arcgisProxyRetry must be called from both 429 and timeout paths, found ${callSites.length}`,
+    );
+  });
+
+  it('caller signal-abort propagates without proxy retry (real cancellation)', () => {
+    // If the OUTER signal aborts (SIGTERM, per-country 90s timeout), we
+    // must NOT silently retry via proxy — the caller is asking us to
+    // stop. The check is `if (signal?.aborted) throw err`. Without this,
+    // a SIGTERM-triggered abort would still fire a proxy attempt and
+    // potentially miss the shutdown window.
+    assert.match(src, /if\s*\(\s*signal\?\.aborted\s*\)\s*throw err/);
+  });
+
+  it('proxy fallback distinguishes timeout error sources for operator visibility', () => {
+    // Pre-fix the 429 warn log said only "429 rate-limited — retrying via
+    // proxy". Post-fix the same helper is reused with a reason string,
+    // so operator logs distinguish "HTTP 429 rate-limited" from "direct
+    // TimeoutError" from "direct AbortError". Critical for diagnosing
+    // whether ArcGIS is explicitly rate-limiting (429) or silently
+    // stalling (timeout) — different mitigation paths.
+    assert.match(src, /direct \$\{errName \|\| 'timeout'\}/);
+    assert.match(src, /'HTTP 429 rate-limited'/);
+  });
+
+  // Greptile PR #3681 review round 2 P2: combined direct + proxy budget must
+  // stay under PER_COUNTRY_TIMEOUT_MS with slack for proxy setup overhead.
+  it('proxy timeout is tighter than direct timeout to leave PER_COUNTRY budget slack', () => {
+    // FETCH_TIMEOUT (45s) + PROXY_FETCH_TIMEOUT (35s) = 80s, under
+    // PER_COUNTRY_TIMEOUT_MS (90s) with 10s slack for Decodo TCP handshake
+    // + CONNECT setup. Pre-fix used FETCH_TIMEOUT on both sides (90s exact,
+    // racey with the per-country signal abort).
+    assert.match(src, /const PROXY_FETCH_TIMEOUT\s*=\s*35_000/);
+    // The proxy retry MUST pass PROXY_FETCH_TIMEOUT, not FETCH_TIMEOUT:
+    assert.match(src, /timeoutMs:\s*PROXY_FETCH_TIMEOUT/);
+    // And the budget invariant: direct + proxy < per-country.
+    const fetchTimeout = src.match(/const FETCH_TIMEOUT\s*=\s*(\d+_?\d*)/)?.[1];
+    const proxyTimeout = src.match(/const PROXY_FETCH_TIMEOUT\s*=\s*(\d+_?\d*)/)?.[1];
+    const perCountry = src.match(/const PER_COUNTRY_TIMEOUT_MS\s*=\s*(\d+_?\d*)/)?.[1];
+    const parseMs = (s) => parseInt((s ?? '0').replace(/_/g, ''), 10);
+    const total = parseMs(fetchTimeout) + parseMs(proxyTimeout);
+    const perCountryMs = parseMs(perCountry);
+    assert.ok(
+      total < perCountryMs,
+      `direct(${fetchTimeout}) + proxy(${proxyTimeout}) = ${total}ms must be < PER_COUNTRY_TIMEOUT_MS(${perCountryMs}); ` +
+      `pre-fix 45+45=90 exactly equalled per-country, no slack for proxy setup.`,
+    );
+    // Specifically require ≥5s slack for the TCP handshake and CONNECT setup
+    // to Decodo, which can run ~3-5s on cold connections.
+    assert.ok(
+      perCountryMs - total >= 5000,
+      `proxy setup needs ≥5s slack; got ${perCountryMs - total}ms`,
+    );
+  });
+
+  // Greptile PR #3681 review round 2 P2: ArcGIS can return error objects
+  // without a `message` field (observed `{"error":{"code":400}}`). The thrown
+  // message must stay informative on unexpected shapes.
+  it('proxy error message falls back through message → code → JSON.stringify', () => {
+    assert.match(
+      src,
+      /proxied\.error\.message\s*\?\?\s*proxied\.error\.code\s*\?\?\s*JSON\.stringify\(proxied\.error\)/,
+      'proxy error path must fall back through message → code → JSON.stringify so `undefined` never reaches the thrown message',
+    );
+  });
 });
 
 // ── standalone bundle + Dockerfile assertions ────────────────────────────────
@@ -689,5 +781,129 @@ describe('resolveArcgisDateField (runtime, schema-flap defence)', () => {
       assert.equal(c, 'date');
       assert.equal(calls, 1, 'three concurrent first-callers must share ONE schema fetch');
     } finally { restoreFetch(); }
+  });
+});
+
+// WM 2026-05-13 incident: when upstream advanced ArcGIS data after two days of
+// "frozen" runs, every cached country's `asof` mismatched, producing a
+// 174-country cold-fetch. The 570s bundle budget couldn't cover it (preflight
+// alone took 360s; batch 1 of 15 hit 12 errors at 45s before SIGTERM).
+// Result: 37 hours of stale data + UptimeRobot WARNING.
+//
+// Fix: cap cold-fetches per run; serve the deferred countries from prior
+// (slightly-stale) cache rather than dropping them. Full rotation across
+// ~ceil(N / cap) runs.
+describe('cold-fetch cap prevents 174-country cliff (WM 2026-05-13)', () => {
+  it('MAX_COLD_FETCH_PER_RUN constant is declared with a sane value', () => {
+    // The cap value must allow the cold-fetch loop to fit comfortably inside
+    // the 570s bundle budget at the observed ~3-5s/country with concurrency
+    // 12. 30 × 5s / 12 ≈ 13s — well under budget, with plenty of room for
+    // preflight + write phases.
+    assert.match(src, /const MAX_COLD_FETCH_PER_RUN\s*=\s*30/);
+  });
+
+  it('cap triggers when needsFetch exceeds the cap (not a no-op)', () => {
+    // The guard must be a > comparison so a needsFetch of EXACTLY the cap
+    // doesn't trigger the partition path (which would create an unnecessary
+    // shuffle/log line for the happy case where everything fits).
+    assert.match(src, /if\s*\(\s*needsFetch\.length\s*>\s*MAX_COLD_FETCH_PER_RUN\s*\)/);
+  });
+
+  it('deferred countries are served from prior payload with staleAsof=true', () => {
+    // Without this fallback, a deferred country DROPS from the canonical
+    // output — that's the same as a hard-fail for the consumer. Marking
+    // staleAsof preserves the country's data shape but signals "one window
+    // behind" so downstream can render or warn accordingly.
+    assert.match(src, /\.\.\.prev,\s*staleAsof:\s*true/);
+  });
+
+  it('deferred-stale path respects MAX_CACHE_AGE_MS hard-drop (Greptile P1)', () => {
+    // The cacheFresh check enforces a 7-day age gate via `(now - cacheWrittenAt)
+    // < MAX_CACHE_AGE_MS`. The deferred-stale fallback MUST enforce the same
+    // gate, otherwise a country repeatedly deferred across enough runs while
+    // upstream was frozen >4 days could publish data older than the intended
+    // hard-drop threshold (window-drift). Greptile review P1 on PR #3676.
+    //
+    // Assert the age comparison appears inside the cap block (between the
+    // shuffle and the needsFetch reassignment) — using a multi-line regex
+    // that requires shuffle → cacheWrittenAt → MAX_CACHE_AGE_MS in order.
+    const capBlock = src.match(
+      /needsFetch\.length\s*>\s*MAX_COLD_FETCH_PER_RUN[\s\S]+?needsFetch\s*=\s*shuffled\.slice/,
+    );
+    assert.ok(capBlock, 'cap block found');
+    assert.match(
+      capBlock[0],
+      /cacheWrittenAt[\s\S]{0,200}MAX_CACHE_AGE_MS/,
+      'deferred-stale path must compare prev.cacheWrittenAt against MAX_CACHE_AGE_MS',
+    );
+    // And the failure-bucket counter exists so operators can see how many
+    // countries dropped via the age gate (vs no-cache).
+    assert.match(src, /droppedTooOld/);
+  });
+
+  it('partition path captures prevPayload alongside iso3/iso2/upstreamMaxDate', () => {
+    // The needsFetch entries gained a 4th field (prevPayload) so the cap
+    // logic can fall back to cached data per-country. Pre-fix the entries
+    // were {iso3, iso2, upstreamMaxDate} — adding prevPayload is the
+    // critical contract change for the deferred-serving path.
+    assert.match(src, /needsFetch\.push\(\{\s*iso3,\s*iso2,\s*upstreamMaxDate,\s*prevPayload:\s*prev\s*\}\)/);
+  });
+
+  it('cap logs refresh count + defer count for operator visibility', () => {
+    // When the cap fires, an operator hitting `/api/health?history=1` and
+    // pulling the Railway log needs to see "X refreshing, Y deferred on
+    // stale cache, Z dropped (cache too old), W dropped (no prior payload)"
+    // — without per-bucket counts, "everything looked fine" (174 records
+    // published) would mask that some are a window behind and some are
+    // beyond the hard-drop threshold.
+    assert.match(src, /Cold-fetch capped/);
+    assert.match(src, /refreshing/);
+    assert.match(src, /\$\{servedStale\}/);
+    assert.match(src, /\$\{droppedTooOld\}/);
+    assert.match(src, /\$\{droppedNoCache\}/);
+  });
+
+  it('rotation arithmetic uses MAX_COLD_FETCH_PER_RUN directly, not needsFetch.length (Greptile P2)', () => {
+    // After `needsFetch = shuffled.slice(0, MAX_COLD_FETCH_PER_RUN)`,
+    // `needsFetch.length` numerically equals MAX_COLD_FETCH_PER_RUN — so the
+    // pre-fix arithmetic was coincidentally correct. But if the log block
+    // is ever reordered above the reassignment (or the cap value changes
+    // dynamically), `needsFetch.length` would silently break. Using the
+    // constant directly makes the intent unambiguous. Greptile review P2
+    // on PR #3676.
+    const capBlock = src.match(
+      /needsFetch\.length\s*>\s*MAX_COLD_FETCH_PER_RUN[\s\S]+?Rotation:/,
+    );
+    assert.ok(capBlock, 'cap block found');
+    // The rotation expression must reference MAX_COLD_FETCH_PER_RUN, not
+    // needsFetch.length, in its numerator/denominator.
+    assert.match(
+      capBlock[0],
+      /originalMisses\s*=\s*MAX_COLD_FETCH_PER_RUN/,
+      'rotation total must be expressed as cap + stale + dropped, using the constant',
+    );
+  });
+
+  it('needsFetch is declared with let (mutable) — cap path reassigns it', () => {
+    // The cap path slices needsFetch to keep only the refresh-now subset.
+    // Pre-fix needsFetch was const. This regression-guards a future cleanup
+    // that switches it back without realizing the cap path mutates it.
+    assert.match(src, /let needsFetch\s*=\s*\[\]/);
+    // And the reassignment in the cap path:
+    assert.match(src, /needsFetch\s*=\s*shuffled\.slice\(0,\s*MAX_COLD_FETCH_PER_RUN\)/);
+  });
+
+  it('full rotation is computable: ~ceil(174 / 30) = 6 runs ≈ 3 days at 12h cadence', () => {
+    // Documentation-grade test: encodes the rotation math so a future
+    // bump to the cap (or a different country count) surfaces the
+    // implication via failure rather than silent drift.
+    const cap = 30;
+    const countries = 174;
+    const cronIntervalHours = 12;
+    const runs = Math.ceil(countries / cap);
+    const fullRotationHours = runs * cronIntervalHours;
+    assert.equal(runs, 6);
+    assert.equal(fullRotationHours, 72, 'full rotation must stay under MAX_CACHE_AGE_MS (7d = 168h)');
+    assert.ok(fullRotationHours < 168, 'rotation must complete before MAX_CACHE_AGE_MS forces hard drops');
   });
 });
