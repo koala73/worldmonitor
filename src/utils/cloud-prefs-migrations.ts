@@ -70,6 +70,39 @@ export function mergeCloudWithLocalDirty(
 }
 
 /**
+ * After a successful upload, decide which dirty keys are now durably synced
+ * and can be cleared — NOT the whole set.
+ *
+ * A user can mutate another pref *while the POST is in flight*: the setItem
+ * patch marks it dirty, but it was never in `postedBlob`. Blanket-clearing
+ * the dirty set would drop that tracking, so a subsequent 409 would see an
+ * empty dirty set and mergeCloudWithLocalDirty would let the cloud blob
+ * clobber the just-made edit — reintroducing the exact data-loss bug the
+ * dirty set exists to prevent.
+ *
+ * A key is "settled" iff the value the server accepted (`postedBlob`) still
+ * equals the current local value (`localBlob`). Absence counts as null on
+ * both sides, so a synced *removal* settles too. A key changed mid-flight,
+ * or dirtied mid-flight and absent from `postedBlob`, fails the equality
+ * check and is NOT returned — it stays dirty for the next upload.
+ *
+ * Pure function — no I/O. Returns the subset of `dirtyKeys` safe to clear.
+ */
+export function settledDirtyKeys(
+  postedBlob: Record<string, string>,
+  localBlob: Record<string, string>,
+  dirtyKeys: Iterable<string>,
+): string[] {
+  const settled: string[] = [];
+  for (const key of dirtyKeys) {
+    const posted = Object.prototype.hasOwnProperty.call(postedBlob, key) ? postedBlob[key]! : null;
+    const local = Object.prototype.hasOwnProperty.call(localBlob, key) ? localBlob[key]! : null;
+    if (posted === local) settled.push(key);
+  }
+  return settled;
+}
+
+/**
  * Schema-2 migrations map. Used both inline by cloud-prefs-sync.ts (against
  * the variant-aware FEEDS) and by tests (against fixture FEEDS).
  */

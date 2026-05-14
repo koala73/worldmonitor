@@ -16,7 +16,12 @@ import { CLOUD_SYNC_KEYS, type CloudSyncKey } from './sync-keys';
 import { isDesktopRuntime } from '@/services/runtime';
 import { getClerkToken } from '@/services/clerk';
 import { FEEDS } from '@/config/feeds';
-import { applyMigrationChain, buildMigrations, mergeCloudWithLocalDirty } from './cloud-prefs-migrations';
+import {
+  applyMigrationChain,
+  buildMigrations,
+  mergeCloudWithLocalDirty,
+  settledDirtyKeys,
+} from './cloud-prefs-migrations';
 
 const ENABLED = import.meta.env.VITE_CLOUD_PREFS_ENABLED === 'true';
 
@@ -70,8 +75,27 @@ let _cachedToken: string | null = null; // synchronous token cache for flush()
 // 409 CONFLICT we must NOT overwrite these with the cloud blob — they are
 // the edits the user just made (e.g. a watchlist typed seconds ago). The
 // install() setItem/removeItem patch records them; a clean upload clears the
-// set. See resolveConflictWithMerge + mergeCloudWithLocalDirty.
+// SETTLED ones. See resolveConflictWithMerge + mergeCloudWithLocalDirty.
 const _dirtyKeys = new Set<CloudSyncKey>();
+
+/**
+ * Clear dirty keys that a just-succeeded upload actually durably synced —
+ * NOT the whole set. A user can mutate another pref *while postCloudPrefs is
+ * in flight*: the setItem patch marks it dirty, but it was never in the
+ * posted blob. Blanket-clearing would drop that tracking, so a subsequent
+ * 409 would see an empty dirty set and mergeCloudWithLocalDirty would let
+ * applyCloudBlob clobber the just-made edit — the very bug this set exists
+ * to prevent.
+ *
+ * The "settled" decision is the pure `settledDirtyKeys` (testable without
+ * the sync runtime): a key is settled iff the posted value still equals the
+ * current local value.
+ */
+function clearSettledDirtyKeys(postedBlob: Record<string, string>): void {
+  for (const key of settledDirtyKeys(postedBlob, buildCloudBlob(), _dirtyKeys)) {
+    _dirtyKeys.delete(key as CloudSyncKey);
+  }
+}
 
 // ── 503 retry tracking ───────────────────────────────────────────────────────
 //
@@ -356,7 +380,7 @@ async function resolveConflictWithMerge(token: string, variant: string): Promise
     return false;
   }
   setSyncVersion(retry.syncVersion);
-  _dirtyKeys.clear();
+  clearSettledDirtyKeys(merged);
   Storage.prototype.setItem.call(localStorage, KEY_LAST_SYNC_AT, String(Date.now()));
   setState('synced');
   return true;
@@ -430,7 +454,7 @@ export async function onSignIn(userId: string, variant: string): Promise<void> {
         await resolveConflictWithMerge(token, variant);
       } else {
         setSyncVersion(result.syncVersion);
-        _dirtyKeys.clear();
+        clearSettledDirtyKeys(blob);
         Storage.prototype.setItem.call(localStorage, KEY_LAST_SYNC_AT, String(Date.now()));
         setState('synced');
       }
@@ -519,7 +543,8 @@ async function uploadNow(variant: string): Promise<void> {
   setState('syncing');
 
   try {
-    const result = await postCloudPrefs(token, variant, migrateLocalBlobIfNeeded(), getSyncVersion());
+    const postedBlob = migrateLocalBlobIfNeeded();
+    const result = await postCloudPrefs(token, variant, postedBlob, getSyncVersion());
 
     if ('conflict' in result) {
       setState('conflict');
@@ -530,7 +555,7 @@ async function uploadNow(variant: string): Promise<void> {
       await resolveConflictWithMerge(token, variant);
     } else {
       setSyncVersion(result.syncVersion);
-      _dirtyKeys.clear();
+      clearSettledDirtyKeys(postedBlob);
       Storage.prototype.setItem.call(localStorage, KEY_LAST_SYNC_AT, String(Date.now()));
       setState('synced');
     }

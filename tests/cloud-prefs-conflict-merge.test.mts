@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { mergeCloudWithLocalDirty } from '../src/utils/cloud-prefs-migrations.ts';
+import { mergeCloudWithLocalDirty, settledDirtyKeys } from '../src/utils/cloud-prefs-migrations.ts';
 
 describe('mergeCloudWithLocalDirty', () => {
   it('with no dirty keys, returns the cloud blob verbatim (string values only)', () => {
@@ -73,5 +73,50 @@ describe('mergeCloudWithLocalDirty', () => {
     mergeCloudWithLocalDirty(cloud, local, ['worldmonitor-theme']);
     assert.deepEqual(cloud, cloudCopy);
     assert.deepEqual(local, localCopy);
+  });
+});
+
+describe('settledDirtyKeys', () => {
+  it('a dirty key whose posted value still matches local is settled', () => {
+    const posted = { 'wm-market-watchlist-v1': '["GLW"]' };
+    const local = { 'wm-market-watchlist-v1': '["GLW"]' };
+    assert.deepEqual(settledDirtyKeys(posted, local, ['wm-market-watchlist-v1']), ['wm-market-watchlist-v1']);
+  });
+
+  it('a dirty key changed mid-flight (posted != current local) stays dirty', () => {
+    const posted = { 'wm-market-watchlist-v1': '["GLW"]' };
+    const local = { 'wm-market-watchlist-v1': '["GLW","LLY"]' }; // user typed more during the POST
+    assert.deepEqual(settledDirtyKeys(posted, local, ['wm-market-watchlist-v1']), []);
+  });
+
+  it('REGRESSION: a key dirtied mid-flight and absent from the posted blob stays dirty', () => {
+    // The race the reviewer flagged: postCloudPrefs({watchlist}) is in flight,
+    // the user changes the theme. A blanket _dirtyKeys.clear() would drop
+    // 'worldmonitor-theme' even though it was never posted — then a later 409
+    // would clobber it. settledDirtyKeys must keep it.
+    const posted = { 'wm-market-watchlist-v1': '["GLW","LLY","ENTG"]' };
+    const local = { 'wm-market-watchlist-v1': '["GLW","LLY","ENTG"]', 'worldmonitor-theme': 'light' };
+    const settled = settledDirtyKeys(posted, local, ['wm-market-watchlist-v1', 'worldmonitor-theme']);
+    assert.deepEqual(settled, ['wm-market-watchlist-v1']); // theme NOT settled
+  });
+
+  it('a synced removal settles (posted absent + local absent)', () => {
+    const posted = { 'worldmonitor-theme': 'dark' }; // watchlist removed → not in posted blob
+    const local = { 'worldmonitor-theme': 'dark' };  // still absent locally
+    assert.deepEqual(settledDirtyKeys(posted, local, ['wm-market-watchlist-v1']), ['wm-market-watchlist-v1']);
+  });
+
+  it('a key removed-then-re-added mid-flight stays dirty', () => {
+    const posted = { 'worldmonitor-theme': 'dark' }; // posted as removed
+    const local = { 'worldmonitor-theme': 'dark', 'wm-market-watchlist-v1': '["TSLA"]' }; // re-added during POST
+    assert.deepEqual(settledDirtyKeys(posted, local, ['wm-market-watchlist-v1']), []);
+  });
+
+  it('only considers keys in the dirty set', () => {
+    // A non-dirty key that happens to differ between posted and local must
+    // never be returned — we only ever clear keys we were tracking.
+    const posted = { 'worldmonitor-theme': 'dark' };
+    const local = { 'worldmonitor-theme': 'light' };
+    assert.deepEqual(settledDirtyKeys(posted, local, []), []);
   });
 });
