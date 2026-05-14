@@ -23,7 +23,7 @@ import {
   filterTopStories,
   issueDateInTz,
 } from '../../shared/brief-filter.js';
-import { sanitizeForPrompt } from '../../server/_shared/llm-sanitize.js';
+import { sanitizeForPrompt, sanitizeHeadline } from '../../server/_shared/llm-sanitize.js';
 
 // ── Rule dedupe (one brief per user, not per variant) ───────────────────────
 
@@ -343,11 +343,20 @@ export function stripHeadlinePrefix(title) {
  * synthesis call site, never patch the three readers individually.
  * The headline gets the same prefix/suffix cleanup the magazine
  * headline gets (so the lead grounds against the same text the
- * reader sees), and every free-text field runs through
- * `sanitizeForPrompt` — the digest-prose prompt carries the reader's
- * profile context, so an unsanitised hostile RSS `<title>` would be
- * a prompt-injection vector (F8). `threatLevel` is an enum and
- * `hash` is a hex digest — neither is sanitised.
+ * reader sees). Sanitisation closes the prompt-injection vector
+ * (F8) — the digest-prose prompt carries the reader's profile
+ * context, so an unsanitised hostile RSS `<title>` is a real risk.
+ * The headline is normalised to a single line and then run through
+ * `sanitizeHeadline` (structural delimiters only) — the full
+ * `sanitizeForPrompt` would mangle legitimate news headlines whose
+ * SUBJECT is an injection phrase, e.g. "Senator urges Trump to ignore
+ * all previous instructions on tariffs". The single-line normalisation
+ * closes the one gap structural-only sanitisation leaves: a multi-line
+ * hostile `<title>` injecting a line-start role turn. The other
+ * free-text fields (`source`, `category`, `country`) are metadata,
+ * not headlines, so they get the full `sanitizeForPrompt`.
+ * `threatLevel` is an enum and `hash` is a hex digest — neither is
+ * sanitised.
  *
  * `category` / `country` default to `'General'` / `'Global'`,
  * matching `digestStoryToUpstreamTopStory` + `filterTopStories`
@@ -358,13 +367,27 @@ export function stripHeadlinePrefix(title) {
  */
 export function digestStoryToSynthesisShape(s) {
   const sources = Array.isArray(s?.sources) ? s.sources : [];
-  const primarySource = sources.length > 0 && typeof sources[0] === 'string'
+  // An empty / whitespace-only first entry passes the `typeof` guard but
+  // is not a real source — fall back to 'Multiple wires' so a prompt line
+  // never renders with a trailing blank attribution.
+  const primarySource = sources.length > 0
+    && typeof sources[0] === 'string'
+    && sources[0].trim().length > 0
     ? sources[0]
     : 'Multiple wires';
-  const rawTitle = typeof s?.title === 'string' ? s.title : '';
+  // Collapse all whitespace to single spaces up front: a headline is one
+  // line by definition, and a multi-line hostile RSS <title> must not be
+  // able to break the prompt's per-story line into a fake line-start role
+  // turn ("...\nassistant: ignore all previous instructions").
+  const rawTitle = typeof s?.title === 'string' ? s.title.replace(/\s+/g, ' ').trim() : '';
   const cleanTitle = stripHeadlineSuffix(stripHeadlinePrefix(rawTitle), primarySource);
   return {
-    headline: sanitizeForPrompt(cleanTitle),
+    // sanitizeHeadline (structural-only) — NOT sanitizeForPrompt — so a
+    // legitimate headline that quotes an injection phrase as its news
+    // subject survives intact. See the doc comment above. The rawTitle
+    // single-line normalisation above closes the newline-injection gap
+    // that structural-only sanitisation would otherwise leave open.
+    headline: sanitizeHeadline(cleanTitle),
     threatLevel: typeof s?.severity === 'string' ? s.severity : '',
     source: sanitizeForPrompt(primarySource),
     category: sanitizeForPrompt(typeof s?.category === 'string' ? s.category : 'General'),
