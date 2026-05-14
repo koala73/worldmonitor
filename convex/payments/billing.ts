@@ -55,32 +55,39 @@ function getDodoClient(): DodoPayments {
 /**
  * Resolve the Dodo Customer Portal URL for a Clerk-authenticated user.
  *
- * Bypasses the `customers` table entirely and reads the Dodo customer_id
- * straight off the user's preferred subscription's `rawPayload`.
+ * Delegates the Dodo customer_id lookup to
+ * `getDodoCustomerIdForUserPortal`, which is a 3-tier resolver biased
+ * toward per-Clerk-userId evidence:
  *
- * Why: the `customers` table is a derived/cached lookup that races under
- * concurrent webhooks. `subscriptionHelpers.ts:533-539` patches the row's
- * `userId` whenever a `subscription.active` event arrives with a
- * matching dodoCustomerId — which means the same Dodo customer (one per
- * email, since Dodo dedupes customers by email) ends up bouncing
- * between Clerk userIds whenever the same human checks out under
- * different Clerk accounts.
+ *   1. `subscriptions.dodoCustomerId` — the stable top-level column,
+ *      preserved across lifecycle webhook patches by
+ *      `mergeDodoCustomerId` in `subscriptionHelpers.ts`. Per-Clerk-
+ *      userId by construction (sub rows are keyed by the HMAC-signed
+ *      Clerk userId at checkout) and never patched away.
+ *   2. `subscriptions.rawPayload.customer.customer_id` — fallback for
+ *      rows that pre-date the column (deploy / backfill window).
+ *   3. `customers.dodoCustomerId` for the SAME userId — last-resort
+ *      rescue for pre-PR rows whose rawPayload was wiped by a
+ *      lifecycle event before this PR shipped (matches by userId, so
+ *      no silent cross-user re-attribution).
  *
- * The `subscriptions` table doesn't have that problem: each sub row is
- * keyed by the Clerk userId that was HMAC-signed at checkout time, and
- * its `rawPayload.customer.customer_id` is the Dodo customer that user
- * paid as — written server-side from immutable webhook data, never
- * patched away.
+ * Why not "customers row by userId" as the primary source: that table
+ * races under concurrent webhooks. `subscriptionHelpers.ts:533-539`
+ * patches the row's `userId` whenever a `subscription.active` event
+ * arrives with a matching dodoCustomerId — same Dodo customer (one per
+ * email, Dodo dedupes by email) bouncing between Clerk userIds when
+ * one human checks out under multiple Clerk accounts. Tier 1+2 use
+ * the per-Clerk-userId subscription rows precisely to avoid that
+ * race. Tier 3 only kicks in when both sub-side tiers miss AND the
+ * customers row's `userId` happens to match the requester.
  *
- * Result: every Clerk account that has a valid subscription gets its
- * own portal session for the Dodo customer it actually paid as,
- * regardless of how many other Clerk accounts share the same Dodo
- * customer. No customers-table dependency, no Clerk lookup, no
- * cross-account verification needed.
+ * Result: every Clerk account with a valid subscription opens the
+ * right portal regardless of how many other Clerk accounts share the
+ * same Dodo customer. No Clerk REST lookup needed.
  *
  * WORLDMONITOR-R5: the original opaque `[Request ID: X] Server Error`
- * came from this path throwing on a missing customers row even though
- * the subscription's rawPayload held the answer.
+ * came from this path throwing on a missing customers row when both
+ * the rawPayload and a same-user customers row still held the answer.
  */
 async function createCustomerPortalUrlForUser(
   ctx: Pick<ActionCtx, "runQuery">,

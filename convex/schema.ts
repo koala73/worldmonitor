@@ -415,10 +415,15 @@ export default defineSchema({
     // `.plan_changed`, `.expired`) sometimes arrive without it — a
     // blind `rawPayload: data` patch would otherwise wipe the value.
     // Webhook handlers write this field with `data.customer?.customer_id
-    // ?? existing.dodoCustomerId` so it survives lifecycle patches.
-    // Manage Billing reads this column (not rawPayload) to find the
-    // correct portal customer per Clerk userId — see
-    // `payments/billing:getDodoCustomerIdForUserPortal`.
+    // ?? existing.dodoCustomerId` (see `mergeDodoCustomerId` in
+    // `subscriptionHelpers.ts`) so it survives lifecycle patches.
+    //
+    // Manage Billing prefers this column when populated — see
+    // `payments/billing:getDodoCustomerIdForUserPortal`, which is a
+    // 3-tier resolver (this column → `rawPayload.customer.customer_id`
+    // → `customers.dodoCustomerId` for the same userId). Pre-PR rows
+    // may still rely on tiers 2-3 until
+    // `backfillSubscriptionDodoCustomerId` lands their values here.
     dodoCustomerId: v.optional(v.string()),
     rawPayload: v.any(),
     updatedAt: v.number(),
