@@ -23,6 +23,7 @@ import {
   filterTopStories,
   issueDateInTz,
 } from '../../shared/brief-filter.js';
+import { sanitizeForPrompt } from '../../server/_shared/llm-sanitize.js';
 
 // ── Rule dedupe (one brief per user, not per variant) ───────────────────────
 
@@ -317,6 +318,59 @@ const HEADLINE_PREFIX_RE = /^(?:video|watch|live|photos?|gallery|listen|podcast|
 export function stripHeadlinePrefix(title) {
   if (typeof title !== 'string' || title.length === 0) return '';
   return title.trim().replace(HEADLINE_PREFIX_RE, '').trimStart();
+}
+
+/**
+ * Adapter for the SYNTHESIS boundary — distinct from
+ * `digestStoryToUpstreamTopStory` (the compose-envelope boundary).
+ *
+ * The canonical synthesis (`generateDigestProse` via
+ * `runSynthesisWithFallback` / `generateDigestProsePublic`) is handed
+ * the raw `buildDigest` pool, whose stories carry
+ * `{ title, severity, sources }`. But `buildDigestPrompt`,
+ * `checkLeadGrounding`, and `hashDigestInput` all read
+ * `{ headline, threatLevel, source, category, country }`. The
+ * field-name mismatch meant every synthesis prompt rendered every
+ * story line as `[h:hash] [] undefined — undefined · undefined ·
+ * undefined` — the model got NO story content and confabulated the
+ * lead/threads/signals wholesale (the May 12 / May 14 hallucinations),
+ * and `checkLeadGrounding` saw empty headlines so the grounding gate
+ * skipped every time. See plan
+ * docs/plans/2026-05-14-001-fix-brief-pipeline-parity-grounding-opinion-plan.md
+ * (F2, Phase 2).
+ *
+ * This is the SINGLE normalisation point — apply it once at each
+ * synthesis call site, never patch the three readers individually.
+ * The headline gets the same prefix/suffix cleanup the magazine
+ * headline gets (so the lead grounds against the same text the
+ * reader sees), and every free-text field runs through
+ * `sanitizeForPrompt` — the digest-prose prompt carries the reader's
+ * profile context, so an unsanitised hostile RSS `<title>` would be
+ * a prompt-injection vector (F8). `threatLevel` is an enum and
+ * `hash` is a hex digest — neither is sanitised.
+ *
+ * `category` / `country` default to `'General'` / `'Global'`,
+ * matching `digestStoryToUpstreamTopStory` + `filterTopStories`
+ * defaults, because `story:track:v1` carries neither field.
+ *
+ * @param {object} s — digest-shaped story from buildDigest()
+ * @returns {{ headline: string; threatLevel: string; source: string; category: string; country: string; hash: string }}
+ */
+export function digestStoryToSynthesisShape(s) {
+  const sources = Array.isArray(s?.sources) ? s.sources : [];
+  const primarySource = sources.length > 0 && typeof sources[0] === 'string'
+    ? sources[0]
+    : 'Multiple wires';
+  const rawTitle = typeof s?.title === 'string' ? s.title : '';
+  const cleanTitle = stripHeadlineSuffix(stripHeadlinePrefix(rawTitle), primarySource);
+  return {
+    headline: sanitizeForPrompt(cleanTitle),
+    threatLevel: typeof s?.severity === 'string' ? s.severity : '',
+    source: sanitizeForPrompt(primarySource),
+    category: sanitizeForPrompt(typeof s?.category === 'string' ? s.category : 'General'),
+    country: sanitizeForPrompt(typeof s?.countryCode === 'string' ? s.countryCode : 'Global'),
+    hash: typeof s?.hash === 'string' ? s.hash : '',
+  };
 }
 
 /**

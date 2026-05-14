@@ -33,6 +33,7 @@ import { readRawJsonFromUpstash, redisPipeline } from '../api/_upstash-json.js';
 import {
   composeBriefFromDigestStories,
   compareRules,
+  digestStoryToSynthesisShape,
   extractInsights,
   groupEligibleRulesByUser,
   MAX_STORIES_PER_USER,
@@ -1527,9 +1528,21 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
   let synthesisLevel = 3;  // pessimistic default; bumped on success
   if (BRIEF_LLM_ENABLED) {
     const ctx = await buildSynthesisCtx(winner.rule, nowMs);
+    // Synthesis-boundary adapter. `winnerStories` is the raw
+    // buildDigest pool ({ title, severity, sources }); the synthesis
+    // path (buildDigestPrompt / checkLeadGrounding / hashDigestInput)
+    // reads { headline, threatLevel, source, category, country }.
+    // Without this mapping every prompt story line rendered as
+    // "[h:hash] [] undefined — …" and the model confabulated the
+    // whole brief. Adapt ONCE here — runSynthesisWithFallback's L2
+    // slice and generateDigestProsePublic both inherit the adapted
+    // shape. composeBriefFromDigestStories below KEEPS the raw
+    // `winnerStories` (digestStoryToUpstreamTopStory expects the raw
+    // shape). See plan 2026-05-14-001 F2 / Phase 2.
+    const synthesisStories = winnerStories.map(digestStoryToSynthesisShape);
     const result = await runSynthesisWithFallback(
       userId,
-      winnerStories,
+      synthesisStories,
       sensitivity,
       ctx,
       briefLlmDeps,
@@ -1556,9 +1569,10 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
     // safe-versions of all three. Failure is non-fatal — the
     // renderer's public-mode fail-safes (omit pull-quote / omit
     // signals page / category-derived threads stub) handle absence
-    // rather than leaking the personalised version.
+    // rather than leaking the personalised version. Same adapted
+    // pool as the personalised synthesis.
     try {
-      const pub = await generateDigestProsePublic(winnerStories, sensitivity, briefLlmDeps);
+      const pub = await generateDigestProsePublic(synthesisStories, sensitivity, briefLlmDeps);
       if (pub) publicLead = pub;  // { lead, threads, signals, rankedStoryHashes }
     } catch (err) {
       console.warn(`[digest] brief: publicLead generation failed for ${userId}:`, err?.message);
