@@ -1203,6 +1203,54 @@ describe('enrichBriefEnvelopeWithLLM', () => {
     assert.equal(out.data.stories.length, env.data.stories.length);
   });
 
+  it('skipDigestProse: true — does NOT call generateDigestProse, leaves digest untouched, still enriches whyMatters', async () => {
+    // PR-A / plan 2026-05-14-001 F1, "call site 2": the compose path
+    // already produced the canonical synthesis and spliced it into
+    // the envelope. With skipDigestProse:true this pass must do ONLY
+    // per-story enrichment — re-synthesising here would overwrite the
+    // compose-pass synthesis with a ctx-free re-roll and break parity.
+    const cache = makeCache();
+    const llm = makeLLM((_sys, user) => {
+      if (user.includes('Reader sensitivity level')) return goodProse;
+      return goodWhy;
+    });
+    const env = envelope();
+    const out = await enrichBriefEnvelopeWithLLM(
+      env,
+      { userId: 'user_a', sensitivity: 'all' },
+      { ...cache, callLLM: llm.callLLM },
+      { skipDigestProse: true },
+    );
+    // No digest-prose LLM call was made (the digest-prose prompt is
+    // the only one carrying the "Reader sensitivity level" marker).
+    const proseCalls = llm.calls.filter((c) => c.user.includes('Reader sensitivity level'));
+    assert.equal(proseCalls.length, 0, 'skipDigestProse must suppress the generateDigestProse call');
+    // digest is the input envelope's digest, untouched (same reference)
+    assert.equal(out.data.digest, env.data.digest, 'digest passed through by reference — not rebuilt');
+    assert.equal(out.data.digest.lead, env.data.digest.lead);
+    assert.deepEqual(out.data.digest.threads, env.data.digest.threads);
+    assert.deepEqual(out.data.digest.signals, env.data.digest.signals);
+    // per-story whyMatters STILL enriched
+    for (const s of out.data.stories) {
+      assert.equal(s.whyMatters, goodWhy, 'per-story enrichment still runs under skipDigestProse');
+    }
+  });
+
+  it('skipDigestProse omitted (default) — still runs generateDigestProse (back-compat)', async () => {
+    const cache = makeCache();
+    const llm = makeLLM((_sys, user) => {
+      if (user.includes('Reader sensitivity level')) return goodProse;
+      return goodWhy;
+    });
+    const env = envelope();
+    const out = await enrichBriefEnvelopeWithLLM(env, { userId: 'user_a', sensitivity: 'all' }, {
+      ...cache, callLLM: llm.callLLM,
+    });
+    const proseCalls = llm.calls.filter((c) => c.user.includes('Reader sensitivity level'));
+    assert.equal(proseCalls.length, 1, 'default (no opts) behaviour: digest prose is still synthesised');
+    assert.match(out.data.digest.lead, /Strait of Hormuz/);
+  });
+
   it('LLM down everywhere: envelope returns unchanged stubs', async () => {
     const cache = makeCache();
     const llm = makeLLM(() => { throw new Error('provider down'); });

@@ -991,11 +991,24 @@ async function mapLimit(items, limit, fn) {
  * BriefEnvelope (structure unchanged; only string/array field
  * contents are substituted).
  *
+ * `opts.skipDigestProse` — when true, the per-user digest-prose call
+ * is SKIPPED entirely and `envelope.data.digest` is passed through
+ * untouched; only per-story `whyMatters` / `description` are
+ * enriched. The compose path passes this because it has ALREADY
+ * produced the canonical synthesis (via `runSynthesisWithFallback`)
+ * and spliced it into the envelope. Without the skip, this function
+ * re-synthesises here — a SECOND, ctx-free `generateDigestProse`
+ * call that overwrites the compose-pass synthesis and breaks the
+ * compose↔send parity contract. See plan
+ * docs/plans/2026-05-14-001-fix-brief-pipeline-parity-grounding-opinion-plan.md
+ * (F1, "call site 2") + Codex review R2.
+ *
  * @param {object} envelope
  * @param {{ userId: string; sensitivity?: string }} rule
  * @param {{ callLLM: Function; cacheGet: Function; cacheSet: Function }} deps
+ * @param {{ skipDigestProse?: boolean }} [opts]
  */
-export async function enrichBriefEnvelopeWithLLM(envelope, rule, deps) {
+export async function enrichBriefEnvelopeWithLLM(envelope, rule, deps, opts = {}) {
   if (!envelope?.data || !Array.isArray(envelope.data.stories)) return envelope;
   const stories = envelope.data.stories;
   // Default to 'high' (NOT 'all') so the digest prompt and cache key
@@ -1023,16 +1036,22 @@ export async function enrichBriefEnvelopeWithLLM(envelope, rule, deps) {
     };
   });
 
-  // Per-user digest prose — one call.
-  const prose = await generateDigestProse(rule.userId, stories, sensitivity, deps);
-  const digest = prose
-    ? {
+  // Per-user digest prose — one call, UNLESS the caller already
+  // supplied the canonical synthesis (skipDigestProse). See the
+  // function-header note: re-synthesising here is the "call site 2"
+  // parity regression.
+  let digest = envelope.data.digest;
+  if (opts?.skipDigestProse !== true) {
+    const prose = await generateDigestProse(rule.userId, stories, sensitivity, deps);
+    if (prose) {
+      digest = {
         ...envelope.data.digest,
         lead: prose.lead,
         threads: prose.threads,
         signals: prose.signals,
-      }
-    : envelope.data.digest;
+      };
+    }
+  }
 
   return {
     ...envelope,
