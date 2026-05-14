@@ -221,10 +221,13 @@ export const getCustomerByUserId = internalQuery({
  * checking out with the same email (Dodo dedupes customers by email)
  * make that row's `userId` race under concurrency — a Clerk user who
  * paid for a sub may not "own" the customers row at the moment they
- * click Manage Billing, even though their subscription rawPayload
- * still proves they paid. The subscription is per-Clerk-user (keyed by
- * HMAC-signed userId at checkout) and its rawPayload is immutable; it
- * is the truth.
+ * click Manage Billing.
+ *
+ * Reads the stable top-level `subscriptions.dodoCustomerId` column
+ * (preserved across lifecycle patches by `mergeDodoCustomerId` in
+ * `subscriptionHelpers.ts`). Falls back to `rawPayload.customer.customer_id`
+ * for any row written before the schema change — covers the deploy /
+ * backfill window where some subs still lack the top-level field.
  */
 export const getDodoCustomerIdForUserPortal = internalQuery({
   args: { userId: v.string() },
@@ -235,19 +238,19 @@ export const getDodoCustomerIdForUserPortal = internalQuery({
       .take(50);
     if (subs.length === 0) return null;
 
-    const priority = (status: string): number =>
-      status === "active" ? 0 :
-      status === "on_hold" ? 1 :
-      status === "cancelled" ? 2 :
-      3;
     const sorted = [...subs].sort((a, b) => {
-      const pa = priority(a.status);
-      const pb = priority(b.status);
+      const pa = getSubscriptionStatusPriority(a.status);
+      const pb = getSubscriptionStatusPriority(b.status);
       if (pa !== pb) return pa - pb;
       return b.updatedAt - a.updatedAt;
     });
 
     for (const sub of sorted) {
+      // Prefer the stable column written by the webhook handler;
+      // fall back to rawPayload for rows that pre-date the schema change.
+      if (typeof sub.dodoCustomerId === "string" && sub.dodoCustomerId.length > 0) {
+        return sub.dodoCustomerId;
+      }
       const payload = sub.rawPayload as
         | { customer?: { customer_id?: unknown } }
         | null
@@ -256,6 +259,49 @@ export const getDodoCustomerIdForUserPortal = internalQuery({
       if (typeof id === "string" && id.length > 0) return id;
     }
     return null;
+  },
+});
+
+/**
+ * One-shot backfill: populate the new `subscriptions.dodoCustomerId`
+ * column from existing rows' `rawPayload.customer.customer_id`. Run
+ * once after the schema change ships; idempotent (re-running is a
+ * no-op because populated rows are skipped).
+ *
+ * Run:
+ *   npx convex run payments/billing:backfillSubscriptionDodoCustomerId
+ *
+ * Returns `{ inspected, populated, alreadyPopulated, missingPayload }`
+ * so the operator can verify the post-backfill state.
+ */
+export const backfillSubscriptionDodoCustomerId = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const all = await ctx.db.query("subscriptions").collect();
+    const summary = {
+      inspected: all.length,
+      populated: 0,
+      alreadyPopulated: 0,
+      missingPayload: 0,
+    };
+    for (const sub of all) {
+      if (typeof sub.dodoCustomerId === "string" && sub.dodoCustomerId.length > 0) {
+        summary.alreadyPopulated++;
+        continue;
+      }
+      const payload = sub.rawPayload as
+        | { customer?: { customer_id?: unknown } }
+        | null
+        | undefined;
+      const id = payload?.customer?.customer_id;
+      if (typeof id !== "string" || id.length === 0) {
+        summary.missingPayload++;
+        continue;
+      }
+      await ctx.db.patch(sub._id, { dodoCustomerId: id });
+      summary.populated++;
+    }
+    return summary;
   },
 });
 

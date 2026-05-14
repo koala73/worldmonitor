@@ -408,11 +408,24 @@ export default defineSchema({
     currentPeriodStart: v.number(),
     currentPeriodEnd: v.number(),
     cancelledAt: v.optional(v.number()),
+    // Stable first-class projection of `rawPayload.customer.customer_id`
+    // (the Dodo customer this sub was paid as). Optional because
+    // `DodoSubscriptionData.customer` is itself optional and lifecycle
+    // event payloads (`subscription.renewed`, `.on_hold`, `.cancelled`,
+    // `.plan_changed`, `.expired`) sometimes arrive without it — a
+    // blind `rawPayload: data` patch would otherwise wipe the value.
+    // Webhook handlers write this field with `data.customer?.customer_id
+    // ?? existing.dodoCustomerId` so it survives lifecycle patches.
+    // Manage Billing reads this column (not rawPayload) to find the
+    // correct portal customer per Clerk userId — see
+    // `payments/billing:getDodoCustomerIdForUserPortal`.
+    dodoCustomerId: v.optional(v.string()),
     rawPayload: v.any(),
     updatedAt: v.number(),
   })
     .index("by_userId", ["userId"])
-    .index("by_dodoSubscriptionId", ["dodoSubscriptionId"]),
+    .index("by_dodoSubscriptionId", ["dodoSubscriptionId"])
+    .index("by_dodoCustomerId", ["dodoCustomerId"]),
 
   entitlements: defineTable({
     userId: v.string(),

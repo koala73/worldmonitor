@@ -794,4 +794,155 @@ describe("payments billing getDodoCustomerIdForUserPortal", () => {
     expect(resultA).toBe("cus_shared");
     expect(resultB).toBe("cus_shared");
   });
+
+  test("resolves via the stable dodoCustomerId column even when a later lifecycle payload wiped the rawPayload customer field (P1 regression)", async () => {
+    // Reviewer P1 scenario: `subscription.active` payload included
+    // `customer.customer_id`, but a later lifecycle event
+    // (`subscription.renewed` / `.on_hold` / `.cancelled` / `.plan_changed`
+    // / `.expired`) overwrote `rawPayload` with a payload that lacks the
+    // `customer` field. The stable top-level `dodoCustomerId` column
+    // written by the webhook handler (via `mergeDodoCustomerId`)
+    // preserves the value across these patches, so portal lookup
+    // still succeeds.
+    const t = convexTest(schema, modules);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("subscriptions", {
+        userId: TEST_USER_ID,
+        dodoSubscriptionId: "sub_lifecycle_wiped",
+        dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+        planKey: "pro_monthly",
+        status: "active",
+        currentPeriodStart: NOW - DAY_MS,
+        currentPeriodEnd: NOW + 30 * DAY_MS,
+        // Stable column has the correct value, written on subscription.active.
+        dodoCustomerId: "cus_preserved_across_lifecycle",
+        // rawPayload was overwritten by a later lifecycle event without customer.
+        rawPayload: {
+          subscription_id: "sub_lifecycle_wiped",
+          product_id: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+          // intentionally no `customer` field
+        },
+        updatedAt: NOW,
+      });
+    });
+
+    const result = await t.query(
+      internal.payments.billing.getDodoCustomerIdForUserPortal,
+      { userId: TEST_USER_ID },
+    );
+    expect(result).toBe("cus_preserved_across_lifecycle");
+  });
+
+  test("falls back to rawPayload.customer.customer_id when the stable column is absent (pre-schema-change rows)", async () => {
+    // Backfill safety net: rows that pre-date the schema change have no
+    // top-level `dodoCustomerId`. The query falls back to the rawPayload
+    // value so they keep working until the backfill mutation catches up.
+    const t = convexTest(schema, modules);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("subscriptions", {
+        userId: TEST_USER_ID,
+        dodoSubscriptionId: "sub_pre_schema",
+        dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+        planKey: "pro_monthly",
+        status: "active",
+        currentPeriodStart: NOW - DAY_MS,
+        currentPeriodEnd: NOW + 30 * DAY_MS,
+        // dodoCustomerId intentionally omitted (pre-schema-change state)
+        rawPayload: {
+          customer: { customer_id: "cus_from_legacy_payload" },
+        },
+        updatedAt: NOW,
+      });
+    });
+
+    const result = await t.query(
+      internal.payments.billing.getDodoCustomerIdForUserPortal,
+      { userId: TEST_USER_ID },
+    );
+    expect(result).toBe("cus_from_legacy_payload");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// backfillSubscriptionDodoCustomerId — one-shot populate the new column
+// from rawPayload for rows that pre-date the schema change.
+// ---------------------------------------------------------------------------
+
+describe("payments billing backfillSubscriptionDodoCustomerId", () => {
+  test("populates dodoCustomerId from rawPayload, skips already-populated rows, reports missing-payload count", async () => {
+    const t = convexTest(schema, modules);
+
+    // Row A — needs backfill (no column, has rawPayload customer_id)
+    await t.run(async (ctx) => {
+      await ctx.db.insert("subscriptions", {
+        userId: "user_backfill_A",
+        dodoSubscriptionId: "sub_backfill_A",
+        dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+        planKey: "pro_monthly",
+        status: "active",
+        currentPeriodStart: NOW - DAY_MS,
+        currentPeriodEnd: NOW + 30 * DAY_MS,
+        rawPayload: { customer: { customer_id: "cus_A" } },
+        updatedAt: NOW,
+      });
+    });
+
+    // Row B — already populated, must be skipped
+    await t.run(async (ctx) => {
+      await ctx.db.insert("subscriptions", {
+        userId: "user_backfill_B",
+        dodoSubscriptionId: "sub_backfill_B",
+        dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+        planKey: "pro_monthly",
+        status: "active",
+        currentPeriodStart: NOW - DAY_MS,
+        currentPeriodEnd: NOW + 30 * DAY_MS,
+        dodoCustomerId: "cus_B_already",
+        rawPayload: { customer: { customer_id: "cus_B_already" } },
+        updatedAt: NOW,
+      });
+    });
+
+    // Row C — neither column nor rawPayload customer_id available
+    await t.run(async (ctx) => {
+      await ctx.db.insert("subscriptions", {
+        userId: "user_backfill_C",
+        dodoSubscriptionId: "sub_backfill_C",
+        dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+        planKey: "pro_monthly",
+        status: "active",
+        currentPeriodStart: NOW - DAY_MS,
+        currentPeriodEnd: NOW + 30 * DAY_MS,
+        rawPayload: {},
+        updatedAt: NOW,
+      });
+    });
+
+    const summary = await t.mutation(
+      internal.payments.billing.backfillSubscriptionDodoCustomerId,
+      {},
+    );
+    expect(summary).toMatchObject({
+      inspected: 3,
+      populated: 1,
+      alreadyPopulated: 1,
+      missingPayload: 1,
+    });
+
+    // A now has the column populated.
+    const aRow = await t.run(async (ctx) =>
+      ctx.db
+        .query("subscriptions")
+        .withIndex("by_userId", (q) => q.eq("userId", "user_backfill_A"))
+        .first(),
+    );
+    expect(aRow?.dodoCustomerId).toBe("cus_A");
+
+    // Re-running is a no-op (idempotent).
+    const second = await t.mutation(
+      internal.payments.billing.backfillSubscriptionDodoCustomerId,
+      {},
+    );
+    expect(second).toMatchObject({ populated: 0, alreadyPopulated: 2, missingPayload: 1 });
+  });
 });
