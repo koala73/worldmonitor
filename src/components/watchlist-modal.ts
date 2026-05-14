@@ -9,26 +9,24 @@
 
 import {
   getMarketWatchlistEntries,
-  parseMarketWatchlistInput,
   resetMarketWatchlist,
   setMarketWatchlistEntries,
 } from '@/services/market-watchlist';
+import { WatchlistEditor } from './WatchlistEditor';
 
 let activeOverlay: HTMLElement | null = null;
 
 export function openWatchlistModal(): void {
   if (activeOverlay) return;
 
-  const current = getMarketWatchlistEntries();
-  const currentText = current.length
-    ? current.map((e) => (e.name ? `${e.symbol}|${e.name}` : e.symbol)).join('\n')
-    : '';
-
   const overlay = document.createElement('div');
   overlay.className = 'modal-overlay active';
   overlay.id = 'marketWatchlistModal';
 
+  const editor = new WatchlistEditor({ initial: getMarketWatchlistEntries() });
+
   const close = () => {
+    editor.destroy();
     overlay.remove();
     if (activeOverlay === overlay) activeOverlay = null;
   };
@@ -47,19 +45,14 @@ export function openWatchlistModal(): void {
       <button class="modal-close" aria-label="Close">×</button>
     </div>
     <div style="padding:14px 16px 16px 16px">
-      <div style="color:var(--text-dim);font-size:12px;line-height:1.5;margin-bottom:10px">
-        Add tickers (comma or newline separated). Friendly labels supported: SYMBOL|Label.
-        Example: TSLA|Tesla, AAPL|Apple, ^GSPC|S&amp;P 500
-        <br/>
-        Your picks are <strong>added</strong> to the Markets panel and lead the
-        Premium Stock Analysis, Backtesting and Daily Market Brief panels.
-        PRO members get every analysable ticker in the list reported (up to 50);
-        indices and FX (^GSPC, EURUSD=X) still appear in Markets but get no equity report.
+      <div style="color:var(--text-dim);font-size:12px;line-height:1.5;margin-bottom:12px">
+        Search a ticker or company name and pick from the list — every entry is a
+        real, tracked symbol. Your picks are <strong>added</strong> to the Markets
+        panel and lead the Premium Stock Analysis, Backtesting and Daily Market
+        Brief panels. PRO members get every ticker in the list reported (up to 50).
       </div>
-      <textarea id="wmMarketWatchlistInput"
-        style="width:100%;min-height:120px;resize:vertical;background:rgba(255,255,255,0.04);border:1px solid var(--border);color:var(--text);border-radius:10px;padding:10px;font-family:inherit;font-size:12px;outline:none"
-        spellcheck="false"></textarea>
-      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+      <div id="wmWatchlistEditorMount"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
         <button type="button" class="panels-reset-layout" id="wmMarketResetBtn">Reset</button>
         <button type="button" class="panels-reset-layout" id="wmMarketCancelBtn">Cancel</button>
         <button type="button" class="panels-reset-layout" id="wmMarketSaveBtn" style="border-color:var(--text-dim);color:var(--text)">Save</button>
@@ -68,25 +61,24 @@ export function openWatchlistModal(): void {
   `;
 
   modal.querySelector('.modal-close')?.addEventListener('click', close);
+  modal.querySelector<HTMLDivElement>('#wmWatchlistEditorMount')?.append(editor.element);
 
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
   activeOverlay = overlay;
-
-  const input = modal.querySelector<HTMLTextAreaElement>('#wmMarketWatchlistInput');
-  if (input) input.value = currentText;
+  editor.focus();
 
   modal.querySelector<HTMLButtonElement>('#wmMarketCancelBtn')?.addEventListener('click', close);
   modal.querySelector<HTMLButtonElement>('#wmMarketResetBtn')?.addEventListener('click', () => {
-    resetMarketWatchlist();
-    if (input) input.value = ''; // defaults are always included automatically
-    close();
+    // Clear in place — the user still confirms with Save (or backs out with
+    // Cancel). The old modal reset-and-closed in one click, which committed
+    // a destructive change with no confirmation step.
+    editor.clear();
   });
   modal.querySelector<HTMLButtonElement>('#wmMarketSaveBtn')?.addEventListener('click', () => {
-    const raw = input?.value || '';
-    const parsed = parseMarketWatchlistInput(raw);
-    if (parsed.length === 0) resetMarketWatchlist();
-    else setMarketWatchlistEntries(parsed);
+    const entries = editor.getEntries();
+    if (entries.length === 0) resetMarketWatchlist();
+    else setMarketWatchlistEntries(entries);
     close();
   });
 }
