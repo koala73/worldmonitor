@@ -126,12 +126,18 @@ describe('briefDateLine — date-grounding instruction (plan F6)', () => {
   });
 
   it('falls back to the current UTC date for missing / malformed input', () => {
-    const today = new Date().toISOString().slice(0, 10);
     for (const bad of [undefined, null, '', 'not-a-date', '2026/05/14', 14]) {
-      assert.match(
-        briefDateLine(bad),
-        new RegExp(`^Today is ${today}\\.`),
-        `malformed input ${JSON.stringify(bad)} must fall back to today`,
+      // `before`/`after` bracket each call so a UTC-midnight rollover
+      // mid-test still matches one of the two valid dates — the date is
+      // read inside briefDateLine, not captured once up front.
+      const before = new Date().toISOString().slice(0, 10);
+      const line = briefDateLine(bad);
+      const after = new Date().toISOString().slice(0, 10);
+      const m = line.match(/^Today is (\d{4}-\d{2}-\d{2})\./);
+      assert.ok(m, `malformed input ${JSON.stringify(bad)} must still produce a dated line`);
+      assert.ok(
+        m[1] === before || m[1] === after,
+        `malformed input ${JSON.stringify(bad)} must fall back to the current UTC date (got ${m[1]}, expected ${before} or ${after})`,
       );
     }
   });

@@ -30,6 +30,7 @@ import {
 } from '../scripts/lib/brief-llm.mjs';
 import { assertBriefEnvelope } from '../server/_shared/brief-render.js';
 import { composeBriefFromDigestStories, digestStoryToSynthesisShape } from '../scripts/lib/brief-compose.mjs';
+import { briefDateLine } from '../shared/brief-llm-core.js';
 
 // ── Fixtures ───────────────────────────────────────────────────────────────
 
@@ -314,8 +315,7 @@ describe('buildDigestPrompt', () => {
     assert.match(system, /rankedStoryHashes/);
   });
 
-  it('appends the date-grounding line to the system prompt (F6)', async () => {
-    const { briefDateLine } = await import('../shared/brief-llm-core.js');
+  it('appends the date-grounding line to the system prompt (F6)', () => {
     // Injected todayIso → deterministic assertion.
     const injected = buildDigestPrompt([story()], 'critical', { todayIso: '2026-05-14' });
     assert.ok(
@@ -327,9 +327,17 @@ describe('buildDigestPrompt', () => {
     assert.match(injected.system, /chief editor of WorldMonitor Brief/);
 
     // No ctx.todayIso → falls back to the current UTC date, never absent.
+    // `before`/`after` bracket the call so a UTC-midnight rollover
+    // mid-test still matches one of the two valid dates.
+    const before = new Date().toISOString().slice(0, 10);
     const fallback = buildDigestPrompt([story()], 'critical');
-    const today = new Date().toISOString().slice(0, 10);
-    assert.match(fallback.system, new RegExp(`\\nToday is ${today}\\.`));
+    const after = new Date().toISOString().slice(0, 10);
+    const m = fallback.system.match(/\nToday is (\d{4}-\d{2}-\d{2})\./);
+    assert.ok(m, 'fallback system prompt must carry a dated grounding line');
+    assert.ok(
+      m[1] === before || m[1] === after,
+      `fallback date must be the current UTC date (got ${m[1]}, expected ${before} or ${after})`,
+    );
   });
 });
 
