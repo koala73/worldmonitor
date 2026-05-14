@@ -52,43 +52,58 @@ function getDodoClient(): DodoPayments {
   });
 }
 
+/**
+ * Resolve the Dodo Customer Portal URL for a Clerk-authenticated user.
+ *
+ * Bypasses the `customers` table entirely and reads the Dodo customer_id
+ * straight off the user's preferred subscription's `rawPayload`.
+ *
+ * Why: the `customers` table is a derived/cached lookup that races under
+ * concurrent webhooks. `subscriptionHelpers.ts:533-539` patches the row's
+ * `userId` whenever a `subscription.active` event arrives with a
+ * matching dodoCustomerId — which means the same Dodo customer (one per
+ * email, since Dodo dedupes customers by email) ends up bouncing
+ * between Clerk userIds whenever the same human checks out under
+ * different Clerk accounts.
+ *
+ * The `subscriptions` table doesn't have that problem: each sub row is
+ * keyed by the Clerk userId that was HMAC-signed at checkout time, and
+ * its `rawPayload.customer.customer_id` is the Dodo customer that user
+ * paid as — written server-side from immutable webhook data, never
+ * patched away.
+ *
+ * Result: every Clerk account that has a valid subscription gets its
+ * own portal session for the Dodo customer it actually paid as,
+ * regardless of how many other Clerk accounts share the same Dodo
+ * customer. No customers-table dependency, no Clerk lookup, no
+ * cross-account verification needed.
+ *
+ * WORLDMONITOR-R5: the original opaque `[Request ID: X] Server Error`
+ * came from this path throwing on a missing customers row even though
+ * the subscription's rawPayload held the answer.
+ */
 async function createCustomerPortalUrlForUser(
-  ctx: Pick<ActionCtx, "runQuery" | "runMutation">,
+  ctx: Pick<ActionCtx, "runQuery">,
   userId: string,
 ): Promise<{ portal_url: string }> {
-  let customer = await ctx.runQuery(
-    internal.payments.billing.getCustomerByUserId,
+  const dodoCustomerId = await ctx.runQuery(
+    internal.payments.billing.getDodoCustomerIdForUserPortal,
     { userId },
   );
 
-  if (!customer || !customer.dodoCustomerId) {
-    // Self-heal a known webhook gap: `subscription.active` writes the
-    // `subscriptions` row unconditionally but only writes `customers` when
-    // `data.customer?.customer_id` is present in the payload
-    // (`subscriptionHelpers.ts:525`). Users whose webhook delivery
-    // lacked the customer field end up entitled (active sub) but with no
-    // customers row — clicking "Manage Billing" throws NO_CUSTOMER. The
-    // subscription's `rawPayload` carries the same customer info though,
-    // so try to recover from there before giving up. WORLDMONITOR-R5
-    // (user_3DcpiviTIweanCi9BtF5PRpqwv6 — active Pro Annual, no customers row).
-    customer = await ctx.runMutation(
-      internal.payments.billing.repairCustomerFromSubscriptionPayload,
-      { userId },
-    );
-  }
-
-  if (!customer || !customer.dodoCustomerId) {
-    // Genuine no-customer state — recovery from subscription payload
-    // didn't yield a dodoCustomerId either. Throw structured so the
-    // client can surface a useful "contact support" toast (object-typed
-    // `data` so `err.data.kind` survives the wire — see
-    // `api/_convex-error.js` for the broader pattern).
+  if (!dodoCustomerId) {
+    // User has no subscription at all, or every sub's rawPayload lacks a
+    // usable customer_id (very rare — would mean every webhook delivery
+    // for this user dropped the customer field). Throw structured so
+    // the client surfaces the existing "contact support" toast
+    // (object-typed `data` so `err.data.kind` survives the wire — see
+    // `api/_convex-error.js`).
     throw new ConvexError({ kind: "NO_CUSTOMER" });
   }
 
   const client = getDodoClient();
   const session = await client.customers.customerPortal.create(
-    customer.dodoCustomerId,
+    dodoCustomerId,
     { send_email: false },
   );
 
@@ -163,7 +178,15 @@ export const getSubscriptionForUser = query({
 
 /**
  * Internal query to retrieve a customer record by userId.
- * Used by getCustomerPortalUrl to find the dodoCustomerId.
+ *
+ * NOTE: As of WORLDMONITOR-R5 follow-up, this is no longer used by the
+ * Manage Billing flow — see `getDodoCustomerIdForUserPortal` below for
+ * the rationale. Still consumed by callers that legitimately want the
+ * customers row (broadcast paid-set membership, comp-grant lookups,
+ * etc.); those tolerate the latest-writer-wins quirk on shared-email
+ * Dodo customers because they only need "is this user a paid customer
+ * at all", not "which Dodo customer should the portal session open
+ * for this specific Clerk userId".
  */
 export const getCustomerByUserId = internalQuery({
   args: { userId: v.string() },
@@ -173,6 +196,66 @@ export const getCustomerByUserId = internalQuery({
       .query("customers")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
       .first();
+  },
+});
+
+/**
+ * Resolve the Dodo customer_id this user's "Manage Billing" click
+ * should open a portal session for — reading straight off the user's
+ * preferred subscription's rawPayload, bypassing the `customers` table.
+ *
+ * Preference order (one row per Clerk userId is the invariant): active
+ * → on_hold → cancelled → other; tie-break by newest `updatedAt`.
+ *
+ * Returns null when:
+ *   - User has no subscriptions at all (Free user — UI gates this out,
+ *     but the query is defensive)
+ *   - Every subscription's rawPayload lacks a string customer_id (rare;
+ *     would mean every webhook delivery for this user dropped the
+ *     customer field — caller throws NO_CUSTOMER → "contact support"
+ *     toast).
+ *
+ * Why bypass the customers table: `subscriptionHelpers.ts:533-539`
+ * patches the customers row's `userId` whenever a `subscription.active`
+ * event for a matching dodoCustomerId arrives. Multiple Clerk accounts
+ * checking out with the same email (Dodo dedupes customers by email)
+ * make that row's `userId` race under concurrency — a Clerk user who
+ * paid for a sub may not "own" the customers row at the moment they
+ * click Manage Billing, even though their subscription rawPayload
+ * still proves they paid. The subscription is per-Clerk-user (keyed by
+ * HMAC-signed userId at checkout) and its rawPayload is immutable; it
+ * is the truth.
+ */
+export const getDodoCustomerIdForUserPortal = internalQuery({
+  args: { userId: v.string() },
+  handler: async (ctx, args) => {
+    const subs = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .take(50);
+    if (subs.length === 0) return null;
+
+    const priority = (status: string): number =>
+      status === "active" ? 0 :
+      status === "on_hold" ? 1 :
+      status === "cancelled" ? 2 :
+      3;
+    const sorted = [...subs].sort((a, b) => {
+      const pa = priority(a.status);
+      const pb = priority(b.status);
+      if (pa !== pb) return pa - pb;
+      return b.updatedAt - a.updatedAt;
+    });
+
+    for (const sub of sorted) {
+      const payload = sub.rawPayload as
+        | { customer?: { customer_id?: unknown } }
+        | null
+        | undefined;
+      const id = payload?.customer?.customer_id;
+      if (typeof id === "string" && id.length > 0) return id;
+    }
+    return null;
   },
 });
 

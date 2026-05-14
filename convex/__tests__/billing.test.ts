@@ -584,3 +584,214 @@ describe("payments billing backfillMissingCustomers", () => {
     expect(second).toMatchObject({ repaired: 0, alreadyHadCustomer: 1 });
   });
 });
+
+// ---------------------------------------------------------------------------
+// getDodoCustomerIdForUserPortal — read straight from the user's preferred
+// subscription's rawPayload, bypass the customers table.
+//
+// The customers table races under concurrent `subscription.active`
+// webhooks (latest-writer-wins patch in subscriptionHelpers.ts:533),
+// so it's an unreliable anchor for "which Dodo customer should this
+// Clerk userId's Manage Billing click open." The subscription's
+// rawPayload is per-Clerk-userId and immutable — that's the truth.
+// ---------------------------------------------------------------------------
+
+describe("payments billing getDodoCustomerIdForUserPortal", () => {
+  test("returns null when the user has no subscriptions at all", async () => {
+    const t = convexTest(schema, modules);
+    const result = await t.query(
+      internal.payments.billing.getDodoCustomerIdForUserPortal,
+      { userId: TEST_USER_ID },
+    );
+    expect(result).toBeNull();
+  });
+
+  test("returns the dodoCustomerId from the active subscription's rawPayload", async () => {
+    const t = convexTest(schema, modules);
+    await seedSubscription(t, {
+      planKey: "pro_annual",
+      dodoProductId: PRODUCT_CATALOG.pro_annual.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "portal_active",
+      rawPayload: {
+        customer: { customer_id: "cus_active_winner", email: "a@example.com" },
+      },
+    });
+    const result = await t.query(
+      internal.payments.billing.getDodoCustomerIdForUserPortal,
+      { userId: TEST_USER_ID },
+    );
+    expect(result).toBe("cus_active_winner");
+  });
+
+  test("prefers active over on_hold over cancelled, ignoring the customers table entirely", async () => {
+    const t = convexTest(schema, modules);
+
+    // A customers row exists for this user but with a STALE/WRONG dodoCustomerId
+    // — this lookup must ignore it and read from the active subscription.
+    await t.run(async (ctx) => {
+      await ctx.db.insert("customers", {
+        userId: TEST_USER_ID,
+        dodoCustomerId: "cus_stale_from_customers_table",
+        email: "stale@example.com",
+        normalizedEmail: "stale@example.com",
+        createdAt: NOW - 10 * DAY_MS,
+        updatedAt: NOW - 10 * DAY_MS,
+      });
+    });
+
+    await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "cancelled",
+      currentPeriodEnd: NOW - 5 * DAY_MS,
+      suffix: "portal_cancelled_old",
+      rawPayload: { customer: { customer_id: "cus_cancelled_loser" } },
+    });
+    await seedSubscription(t, {
+      planKey: "pro_annual",
+      dodoProductId: PRODUCT_CATALOG.pro_annual.dodoProductId!,
+      status: "on_hold",
+      currentPeriodEnd: NOW + 5 * DAY_MS,
+      suffix: "portal_onhold_middle",
+      rawPayload: { customer: { customer_id: "cus_onhold_middle" } },
+    });
+    await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "portal_active_winner",
+      rawPayload: { customer: { customer_id: "cus_active_winner" } },
+    });
+
+    const result = await t.query(
+      internal.payments.billing.getDodoCustomerIdForUserPortal,
+      { userId: TEST_USER_ID },
+    );
+    expect(result).toBe("cus_active_winner");
+  });
+
+  test("falls back to on_hold when no active sub exists", async () => {
+    const t = convexTest(schema, modules);
+    await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "on_hold",
+      currentPeriodEnd: NOW + 5 * DAY_MS,
+      suffix: "portal_only_onhold",
+      rawPayload: { customer: { customer_id: "cus_onhold_only" } },
+    });
+    const result = await t.query(
+      internal.payments.billing.getDodoCustomerIdForUserPortal,
+      { userId: TEST_USER_ID },
+    );
+    expect(result).toBe("cus_onhold_only");
+  });
+
+  test("falls back to cancelled when only cancelled subs exist (within or past grace)", async () => {
+    const t = convexTest(schema, modules);
+    await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "cancelled",
+      currentPeriodEnd: NOW - 10 * DAY_MS,
+      suffix: "portal_only_cancelled",
+      rawPayload: { customer: { customer_id: "cus_cancelled_only" } },
+    });
+    const result = await t.query(
+      internal.payments.billing.getDodoCustomerIdForUserPortal,
+      { userId: TEST_USER_ID },
+    );
+    expect(result).toBe("cus_cancelled_only");
+  });
+
+  test("returns null when every subscription's rawPayload lacks a customer_id", async () => {
+    const t = convexTest(schema, modules);
+    await seedSubscription(t, {
+      planKey: "pro_annual",
+      dodoProductId: PRODUCT_CATALOG.pro_annual.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "portal_empty_payload",
+      rawPayload: {},
+    });
+    const result = await t.query(
+      internal.payments.billing.getDodoCustomerIdForUserPortal,
+      { userId: TEST_USER_ID },
+    );
+    expect(result).toBeNull();
+  });
+
+  test("ignores non-string customer_id values (defensive)", async () => {
+    const t = convexTest(schema, modules);
+    await seedSubscription(t, {
+      planKey: "pro_annual",
+      dodoProductId: PRODUCT_CATALOG.pro_annual.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "portal_bad_shape",
+      rawPayload: { customer: { customer_id: 42 } },
+    });
+    const result = await t.query(
+      internal.payments.billing.getDodoCustomerIdForUserPortal,
+      { userId: TEST_USER_ID },
+    );
+    expect(result).toBeNull();
+  });
+
+  test("returns the right dodoCustomerId for each Clerk user when SAME Dodo customer is shared across multiple Clerk accounts (the WORLDMONITOR-R5 scenario)", async () => {
+    // user_A and user_B both checked out with the same email; Dodo deduped
+    // to one customer (cus_shared). Each has their OWN subscription row,
+    // and the customers table's userId field may point at either one due
+    // to webhook race. This query must work for BOTH users regardless of
+    // who currently owns the customers row.
+    const t = convexTest(schema, modules);
+
+    // customers row currently owned by user_A (could just as easily be user_B).
+    await t.run(async (ctx) => {
+      await ctx.db.insert("customers", {
+        userId: "user_A",
+        dodoCustomerId: "cus_shared",
+        email: "shared@example.com",
+        normalizedEmail: "shared@example.com",
+        createdAt: NOW - DAY_MS,
+        updatedAt: NOW - DAY_MS,
+      });
+    });
+
+    await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "portal_userA",
+      userId: "user_A",
+      rawPayload: { customer: { customer_id: "cus_shared", email: "shared@example.com" } },
+    });
+    await seedSubscription(t, {
+      planKey: "pro_monthly",
+      dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+      status: "active",
+      currentPeriodEnd: NOW + 30 * DAY_MS,
+      suffix: "portal_userB",
+      userId: "user_B",
+      rawPayload: { customer: { customer_id: "cus_shared", email: "shared@example.com" } },
+    });
+
+    const resultA = await t.query(
+      internal.payments.billing.getDodoCustomerIdForUserPortal,
+      { userId: "user_A" },
+    );
+    const resultB = await t.query(
+      internal.payments.billing.getDodoCustomerIdForUserPortal,
+      { userId: "user_B" },
+    );
+    // Both Clerk accounts resolve to the SAME shared Dodo customer,
+    // without needing to consult the customers table. Each Clerk
+    // account's "Manage Billing" click opens the right portal.
+    expect(resultA).toBe("cus_shared");
+    expect(resultB).toBe("cus_shared");
+  });
+});
