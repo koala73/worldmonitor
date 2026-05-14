@@ -355,6 +355,15 @@ function mapNested(
 // Return a copy of an id-keyed object map keeping only entries whose VALUE
 // satisfies `pred` (for payloads keyed by an opaque id — fuel-shortages
 // keyed by shortage id, disruptions keyed by event id). Non-object → unchanged.
+//
+// No-match → `{}` is intentional and correct: this is a VALUE PREDICATE, the
+// object-map analogue of `narrowArray` / `narrowNested` — "country=DE has no
+// fuel shortages" is a legitimate empty result, exactly like a country filter
+// emptying an events array. It deliberately does NOT use the
+// `Object.keys(out).length ? out : obj` fall-back that `pickMapKeys` has:
+// `pickMapKeys` is a KEY SELECTOR where a no-match means "you named keys that
+// don't exist" (a likely typo, so don't nuke the map), whereas a value
+// predicate matching nothing is a real answer, not a malformed request.
 function filterMapValues(
   obj: unknown,
   pred: (value: Record<string, unknown>) => boolean,
@@ -2221,7 +2230,11 @@ export function evaluateFreshness(checks: FreshnessCheck[], metas: unknown[], no
 // ---------------------------------------------------------------------------
 // Tool execution (cache tools — no _execute)
 // ---------------------------------------------------------------------------
-async function executeTool(
+// Exported as a test seam (like `evaluateFreshness`) so the `_postFilter`
+// throw/fall-back path can be exercised directly — it can't be triggered
+// through the public handler because every registry `_postFilter` is
+// defensively written and won't throw on JSON-RPC input.
+export async function executeTool(
   tool: CacheToolDef,
   params: Record<string, unknown> = {},
 ): Promise<{ cached_at: string | null; stale: boolean; data: Record<string, unknown> }> {
@@ -2266,9 +2279,17 @@ async function executeTool(
   // inputSchema.properties). A filter bug must NEVER break the tool — on throw
   // we fall back to the unfiltered data and report to Sentry, because a
   // narrowing filter failing open is strictly safer than a -32603 to the user.
+  //
+  // The filter is handed a `structuredClone` of `data`, NOT `data` itself: the
+  // helpers (narrowNested, capArrays, mapNested, ...) narrow in place, so a
+  // mid-filter throw would otherwise leave `data` partially mutated and the
+  // catch below would "fall back" to a half-narrowed object. Cloning keeps the
+  // original pristine so the fall-through return is genuinely the full payload.
+  // Redis output is JSON-safe and the data map is small (tens of KB), so the
+  // clone is cheap.
   if (tool._postFilter) {
     try {
-      return { cached_at, stale, data: tool._postFilter(data, params) };
+      return { cached_at, stale, data: tool._postFilter(structuredClone(data), params) };
     } catch (err) {
       captureSilentError(err, { tags: { route: 'api/mcp', step: 'post-filter', tool: tool.name } });
     }

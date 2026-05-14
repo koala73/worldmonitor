@@ -401,6 +401,35 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(out.data['national-debt'].entries[0].iso3, 'USA');
   });
 
+  it('executeTool: a throwing _postFilter falls back to the PRISTINE unfiltered data', async () => {
+    // P1 (Greptile): the helpers narrow `data` in place. executeTool hands the
+    // filter a structuredClone, so a mid-filter throw — even one that has
+    // already mutated its argument — must leave the returned payload complete.
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+    mockCacheKeys(
+      { 'fake:key:v1': { value: 1 } },
+      { 'seed-meta:fake': { fetchedAt: Date.now() - 60_000, recordCount: 1 } },
+    );
+    const freshMod = await import(`../api/mcp.ts?t=${Date.now()}`);
+    const throwingTool = {
+      name: 'fake_throwing_tool',
+      description: 'test seam',
+      inputSchema: { type: 'object', properties: {}, required: [] },
+      _cacheKeys: ['fake:key:v1'],
+      _seedMetaKey: 'seed-meta:fake',
+      _maxStaleMin: 60,
+      _apiPaths: [],
+      _postFilter: (data) => {
+        data.mutated = true; // mutate the clone, then blow up mid-filter
+        throw new Error('boom');
+      },
+    };
+    const result = await freshMod.executeTool(throwingTool, { anything: true });
+    assert.deepEqual(result.data, { key: { value: 1 } }, 'throw → full unfiltered payload, no partial narrowing leaked');
+    assert.ok(!('mutated' in result.data), '_postFilter mutation must not leak through the structuredClone boundary');
+  });
+
   // --- get_displacement_data (U1: Tier 1 regression) ---
 
   it('get_displacement_data returns {cached_at, stale, data.summary} on cache hit', async () => {
