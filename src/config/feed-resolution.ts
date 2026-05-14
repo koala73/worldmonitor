@@ -67,8 +67,11 @@ export interface ResolvedCategory {
  *
  * @param presetFeeds      the active variant's `FEEDS` map
  * @param canonicalFeeds   merged map covering every category across all variants
- * @param enabledPanelKeys keys of the news panels the user actually has enabled
- *                         (i.e. `Object.keys(ctx.newsPanels)`)
+ * @param enabledPanelKeys feed-category keys of the news panels the user has
+ *                         ENABLED. Pass `enabledNewsCategoryKeys(...)` — NOT
+ *                         `Object.keys(ctx.newsPanels)`, which includes disabled
+ *                         cross-variant panels and would fan out RSS fetches
+ *                         for every user.
  */
 export function resolveNewsCategories(
   presetFeeds: Record<string, Feed[]>,

@@ -1024,9 +1024,9 @@ export class PanelLayoutManager implements AppModule {
       // in the full variant), that data panel's own settings entry must NOT
       // spawn a phantom news panel: the remapped key has to be explicitly
       // enabled. When there's no collision, panelKey === key so this is unchanged.
-      if (!this.ctx.panelSettings[panelKey]) continue;
-      const panelConfig = this.ctx.panelSettings[panelKey] ?? ALL_PANELS[panelKey] ?? ALL_PANELS[key];
-      const label = panelConfig?.name ?? key.charAt(0).toUpperCase() + key.slice(1);
+      const panelConfig = this.ctx.panelSettings[panelKey];
+      if (!panelConfig) continue;
+      const label = panelConfig.name ?? key.charAt(0).toUpperCase() + key.slice(1);
       const tooltip = PanelLayoutManager.NEWS_PANEL_TOOLTIPS[panelKey] ?? PanelLayoutManager.NEWS_PANEL_TOOLTIPS[key];
       const panel = new NewsPanel(panelKey, label, tooltip);
       this.attachRelatedAssetHandlers(panel);
