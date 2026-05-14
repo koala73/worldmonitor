@@ -1,7 +1,7 @@
 {
   "serverInfo": {
     "name": "worldmonitor",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "description": "WorldMonitor's live global-intelligence stack as an MCP server: real-time markets, conflict events, aviation, maritime, energy, climate, health, displacement, supply chain, and AI-generated regional briefs.",
     "vendor": "WorldMonitor",
     "homepage": "https://www.worldmonitor.app"
