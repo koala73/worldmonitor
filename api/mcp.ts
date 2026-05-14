@@ -15,7 +15,11 @@ import { captureSilentError } from './_sentry-edge.js';
 import COUNTRY_BBOXES from '../shared/country-bboxes.js';
 // @ts-expect-error — generated JS module, no declaration file
 import MINING_SITES_RAW from '../shared/mining-sites.js';
-import iso2ToIso3Raw from '../shared/iso2-to-iso3.json';
+// Generated .js mirror (+ .d.ts) of shared/iso2-to-iso3.json — a bare `.json`
+// import would throw ERR_IMPORT_ATTRIBUTE_MISSING under `node --test` and the
+// `with { type: 'json' }` form trips the Vercel edge bundler. See
+// scripts/generate-iso3-maps.cjs.
+import ISO2_TO_ISO3 from '../shared/iso2-to-iso3.js';
 import { getEntitlements } from '../server/_shared/entitlement-check';
 import {
   validateProMcpTokenOrNull,
@@ -216,10 +220,10 @@ interface RpcToolDef extends BaseToolDef {
 
 type ToolDef = CacheToolDef | RpcToolDef;
 
-// ISO 3166-1 alpha-2 → alpha-3 lookup (uppercase keys). Lets the `country`
-// filter stay uniformly alpha-2 across every tool even though a few cached
-// payloads (e.g. economic:national-debt:v1 `entries[].iso3`) are keyed alpha-3.
-const ISO2_TO_ISO3: Record<string, string> = iso2ToIso3Raw;
+// `ISO2_TO_ISO3` (imported above) — ISO 3166-1 alpha-2 → alpha-3, uppercase
+// keys. Lets the `country` filter stay uniformly alpha-2 across every tool even
+// though a few cached payloads (e.g. economic:national-debt:v1 `entries[].iso3`)
+// are keyed alpha-3.
 
 // ---------------------------------------------------------------------------
 // Cache-tool filter helpers
