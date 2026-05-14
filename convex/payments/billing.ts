@@ -201,33 +201,34 @@ export const getCustomerByUserId = internalQuery({
 
 /**
  * Resolve the Dodo customer_id this user's "Manage Billing" click
- * should open a portal session for — reading straight off the user's
- * preferred subscription's rawPayload, bypassing the `customers` table.
+ * should open a portal session for.
  *
- * Preference order (one row per Clerk userId is the invariant): active
- * → on_hold → cancelled → other; tie-break by newest `updatedAt`.
+ * Three-tier resolution, preferring per-Clerk-user evidence:
+ *   1. `subscriptions.dodoCustomerId` — the stable top-level column
+ *      written by the webhook handler and preserved across lifecycle
+ *      patches via `mergeDodoCustomerId` in `subscriptionHelpers.ts`.
+ *      Per-Clerk-userId by construction (subscription rows are keyed
+ *      by the HMAC-signed userId at checkout).
+ *   2. `subscriptions.rawPayload.customer.customer_id` — fallback for
+ *      rows that pre-date the schema change AND whose rawPayload still
+ *      carries the customer field (covers the deploy / backfill window).
+ *   3. `customers.dodoCustomerId` for the SAME userId — last-resort
+ *      fallback for the pre-PR pathological case: a row whose
+ *      rawPayload was wiped by a lifecycle event BEFORE the schema
+ *      change, leaving neither tier 1 nor tier 2 with data. The
+ *      customers row may have been re-attributed under webhook race
+ *      (latest-writer-wins on `subscriptionHelpers.ts:533-539`), but
+ *      when it DOES match the requesting userId, it's the best
+ *      remaining signal — better than NO_CUSTOMER for a paying user.
  *
- * Returns null when:
- *   - User has no subscriptions at all (Free user — UI gates this out,
- *     but the query is defensive)
- *   - Every subscription's rawPayload lacks a string customer_id (rare;
- *     would mean every webhook delivery for this user dropped the
- *     customer field — caller throws NO_CUSTOMER → "contact support"
- *     toast).
+ * Subscription preference (within tier 1+2): active → on_hold →
+ * cancelled → other; tie-break by newest `updatedAt`. A given userId
+ * may have multiple subscription rows over time (cancelled + new), so
+ * sorting is required — there's no per-userId uniqueness invariant.
  *
- * Why bypass the customers table: `subscriptionHelpers.ts:533-539`
- * patches the customers row's `userId` whenever a `subscription.active`
- * event for a matching dodoCustomerId arrives. Multiple Clerk accounts
- * checking out with the same email (Dodo dedupes customers by email)
- * make that row's `userId` race under concurrency — a Clerk user who
- * paid for a sub may not "own" the customers row at the moment they
- * click Manage Billing.
- *
- * Reads the stable top-level `subscriptions.dodoCustomerId` column
- * (preserved across lifecycle patches by `mergeDodoCustomerId` in
- * `subscriptionHelpers.ts`). Falls back to `rawPayload.customer.customer_id`
- * for any row written before the schema change — covers the deploy /
- * backfill window where some subs still lack the top-level field.
+ * Returns null only when all three tiers fail (no subs at all OR no
+ * customer_id anywhere across subs/customers). Caller throws
+ * NO_CUSTOMER → client surfaces the "contact support" toast.
  */
 export const getDodoCustomerIdForUserPortal = internalQuery({
   args: { userId: v.string() },
@@ -236,43 +237,79 @@ export const getDodoCustomerIdForUserPortal = internalQuery({
       .query("subscriptions")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
       .take(50);
-    if (subs.length === 0) return null;
 
-    const sorted = [...subs].sort((a, b) => {
-      const pa = getSubscriptionStatusPriority(a.status);
-      const pb = getSubscriptionStatusPriority(b.status);
-      if (pa !== pb) return pa - pb;
-      return b.updatedAt - a.updatedAt;
-    });
+    if (subs.length > 0) {
+      const sorted = [...subs].sort((a, b) => {
+        const pa = getSubscriptionStatusPriority(a.status);
+        const pb = getSubscriptionStatusPriority(b.status);
+        if (pa !== pb) return pa - pb;
+        return b.updatedAt - a.updatedAt;
+      });
 
-    for (const sub of sorted) {
-      // Prefer the stable column written by the webhook handler;
-      // fall back to rawPayload for rows that pre-date the schema change.
-      if (typeof sub.dodoCustomerId === "string" && sub.dodoCustomerId.length > 0) {
-        return sub.dodoCustomerId;
+      for (const sub of sorted) {
+        // Tier 1: stable column populated by the webhook handler.
+        if (typeof sub.dodoCustomerId === "string" && sub.dodoCustomerId.length > 0) {
+          return sub.dodoCustomerId;
+        }
+        // Tier 2: rawPayload fallback for pre-schema-change rows whose
+        // rawPayload still carries the customer field.
+        const payload = sub.rawPayload as
+          | { customer?: { customer_id?: unknown } }
+          | null
+          | undefined;
+        const id = payload?.customer?.customer_id;
+        if (typeof id === "string" && id.length > 0) return id;
       }
-      const payload = sub.rawPayload as
-        | { customer?: { customer_id?: unknown } }
-        | null
-        | undefined;
-      const id = payload?.customer?.customer_id;
-      if (typeof id === "string" && id.length > 0) return id;
     }
+
+    // Tier 3: same-user customers row fallback. Covers pre-PR rows that
+    // had their rawPayload wiped by a lifecycle event before the
+    // schema change shipped — neither sub-side tier has data, but the
+    // customers row may still hold a usable `dodoCustomerId` for this
+    // exact userId. Skipped if a different Clerk user currently owns
+    // the row (cross-user race) — that's a refusal-to-impersonate, not
+    // a fallback we should bridge silently.
+    const customer = await ctx.db
+      .query("customers")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .first();
+    if (
+      customer &&
+      typeof customer.dodoCustomerId === "string" &&
+      customer.dodoCustomerId.length > 0
+    ) {
+      return customer.dodoCustomerId;
+    }
+
     return null;
   },
 });
 
 /**
  * One-shot backfill: populate the new `subscriptions.dodoCustomerId`
- * column from existing rows' `rawPayload.customer.customer_id`. Run
- * once after the schema change ships; idempotent (re-running is a
- * no-op because populated rows are skipped).
+ * column for existing rows. Run once after the schema change ships;
+ * idempotent (already-populated rows skipped on re-run).
+ *
+ * Two recovery sources, tried in order:
+ *   1. `rawPayload.customer.customer_id` from the subscription row
+ *      itself — covers most pre-PR rows (the customer field was on
+ *      the original `subscription.active` payload).
+ *   2. `customers.dodoCustomerId` matched by the sub's `userId` —
+ *      recovers the pathological case where a pre-PR lifecycle event
+ *      wiped `rawPayload.customer` before this PR shipped, but the
+ *      customers row still has a usable mapping for the same userId.
+ *      Refuses cross-user collision (matches by userId only) — this
+ *      is a backfill, not a re-attribution.
  *
  * Run:
  *   npx convex run payments/billing:backfillSubscriptionDodoCustomerId
  *
- * Returns `{ inspected, populated, alreadyPopulated, missingPayload }`
- * so the operator can verify the post-backfill state.
+ * Returns
+ *   `{ inspected, populatedFromPayload, populatedFromCustomers,
+ *      alreadyPopulated, unrecoverable }`
+ * so the operator can see which recovery source covered each sub and
+ * which rows still need manual triage (unrecoverable = neither source
+ * had data).
  */
 export const backfillSubscriptionDodoCustomerId = internalMutation({
   args: {},
@@ -280,26 +317,40 @@ export const backfillSubscriptionDodoCustomerId = internalMutation({
     const all = await ctx.db.query("subscriptions").collect();
     const summary = {
       inspected: all.length,
-      populated: 0,
+      populatedFromPayload: 0,
+      populatedFromCustomers: 0,
       alreadyPopulated: 0,
-      missingPayload: 0,
+      unrecoverable: 0,
     };
     for (const sub of all) {
       if (typeof sub.dodoCustomerId === "string" && sub.dodoCustomerId.length > 0) {
         summary.alreadyPopulated++;
         continue;
       }
+      // Source 1: rawPayload.
       const payload = sub.rawPayload as
         | { customer?: { customer_id?: unknown } }
         | null
         | undefined;
-      const id = payload?.customer?.customer_id;
-      if (typeof id !== "string" || id.length === 0) {
-        summary.missingPayload++;
+      const fromPayload = payload?.customer?.customer_id;
+      if (typeof fromPayload === "string" && fromPayload.length > 0) {
+        await ctx.db.patch(sub._id, { dodoCustomerId: fromPayload });
+        summary.populatedFromPayload++;
         continue;
       }
-      await ctx.db.patch(sub._id, { dodoCustomerId: id });
-      summary.populated++;
+      // Source 2: same-userId customers row (P1 reviewer's
+      // "pre-schema row had its rawPayload wiped before the PR" case).
+      const customer = await ctx.db
+        .query("customers")
+        .withIndex("by_userId", (q) => q.eq("userId", sub.userId))
+        .first();
+      const fromCustomer = customer?.dodoCustomerId;
+      if (typeof fromCustomer === "string" && fromCustomer.length > 0) {
+        await ctx.db.patch(sub._id, { dodoCustomerId: fromCustomer });
+        summary.populatedFromCustomers++;
+        continue;
+      }
+      summary.unrecoverable++;
     }
     return summary;
   },

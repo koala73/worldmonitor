@@ -833,6 +833,82 @@ describe("payments billing getDodoCustomerIdForUserPortal", () => {
     expect(result).toBe("cus_preserved_across_lifecycle");
   });
 
+  test("falls back to the same-user customers row when neither stable column nor rawPayload has the customer_id (P1 reviewer regression)", async () => {
+    // Reviewer P1 scenario: a sub row pre-dates this PR AND its
+    // rawPayload was already wiped by a lifecycle event before the
+    // schema change shipped. Tier 1 misses (no column), tier 2 misses
+    // (no rawPayload.customer), but the customers row for the same
+    // userId still has a usable dodoCustomerId — that's the right
+    // answer, better than NO_CUSTOMER for a paying user.
+    const t = convexTest(schema, modules);
+    await t.run(async (ctx) => {
+      await ctx.db.insert("customers", {
+        userId: TEST_USER_ID,
+        dodoCustomerId: "cus_from_customers_tier3",
+        email: "rescued@example.com",
+        normalizedEmail: "rescued@example.com",
+        createdAt: NOW - 10 * DAY_MS,
+        updatedAt: NOW - 10 * DAY_MS,
+      });
+      await ctx.db.insert("subscriptions", {
+        userId: TEST_USER_ID,
+        dodoSubscriptionId: "sub_tier3_rescue",
+        dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+        planKey: "pro_monthly",
+        status: "active",
+        currentPeriodStart: NOW - DAY_MS,
+        currentPeriodEnd: NOW + 30 * DAY_MS,
+        // dodoCustomerId column intentionally absent
+        rawPayload: {}, // wiped
+        updatedAt: NOW,
+      });
+    });
+
+    const result = await t.query(
+      internal.payments.billing.getDodoCustomerIdForUserPortal,
+      { userId: TEST_USER_ID },
+    );
+    expect(result).toBe("cus_from_customers_tier3");
+  });
+
+  test("does NOT use the customers row when it belongs to a different userId (no silent re-attribution)", async () => {
+    // Defensive: the customers row is matched by `by_userId` index, so
+    // a cross-user race that pointed cus_X at user_B does NOT leak
+    // through tier 3 when user_A clicks Manage Billing.
+    const t = convexTest(schema, modules);
+    await t.run(async (ctx) => {
+      // Customer row owned by SOMEONE ELSE
+      await ctx.db.insert("customers", {
+        userId: "user_someone_else",
+        dodoCustomerId: "cus_belongs_to_someone_else",
+        email: "other@example.com",
+        normalizedEmail: "other@example.com",
+        createdAt: NOW - 10 * DAY_MS,
+        updatedAt: NOW - 10 * DAY_MS,
+      });
+      // The user clicking Manage Billing has a sub but no customers row
+      // and no rawPayload customer.
+      await ctx.db.insert("subscriptions", {
+        userId: TEST_USER_ID,
+        dodoSubscriptionId: "sub_tier3_no_match",
+        dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+        planKey: "pro_monthly",
+        status: "active",
+        currentPeriodStart: NOW - DAY_MS,
+        currentPeriodEnd: NOW + 30 * DAY_MS,
+        rawPayload: {},
+        updatedAt: NOW,
+      });
+    });
+
+    const result = await t.query(
+      internal.payments.billing.getDodoCustomerIdForUserPortal,
+      { userId: TEST_USER_ID },
+    );
+    // null — no silent cross-user fallback.
+    expect(result).toBeNull();
+  });
+
   test("falls back to rawPayload.customer.customer_id when the stable column is absent (pre-schema-change rows)", async () => {
     // Backfill safety net: rows that pre-date the schema change have no
     // top-level `dodoCustomerId`. The query falls back to the rawPayload
@@ -869,10 +945,10 @@ describe("payments billing getDodoCustomerIdForUserPortal", () => {
 // ---------------------------------------------------------------------------
 
 describe("payments billing backfillSubscriptionDodoCustomerId", () => {
-  test("populates dodoCustomerId from rawPayload, skips already-populated rows, reports missing-payload count", async () => {
+  test("populates from rawPayload, falls back to customers row, skips already-populated, reports unrecoverable count", async () => {
     const t = convexTest(schema, modules);
 
-    // Row A — needs backfill (no column, has rawPayload customer_id)
+    // Row A — needs backfill from rawPayload (Source 1)
     await t.run(async (ctx) => {
       await ctx.db.insert("subscriptions", {
         userId: "user_backfill_A",
@@ -903,11 +979,37 @@ describe("payments billing backfillSubscriptionDodoCustomerId", () => {
       });
     });
 
-    // Row C — neither column nor rawPayload customer_id available
+    // Row C — rawPayload was wiped pre-PR, but same-user customers row
+    // still has dodoCustomerId (P1 reviewer's scenario). Recoverable
+    // via Source 2.
     await t.run(async (ctx) => {
+      await ctx.db.insert("customers", {
+        userId: "user_backfill_C",
+        dodoCustomerId: "cus_C_from_customers",
+        email: "c@example.com",
+        normalizedEmail: "c@example.com",
+        createdAt: NOW - 10 * DAY_MS,
+        updatedAt: NOW - 10 * DAY_MS,
+      });
       await ctx.db.insert("subscriptions", {
         userId: "user_backfill_C",
         dodoSubscriptionId: "sub_backfill_C",
+        dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
+        planKey: "pro_monthly",
+        status: "active",
+        currentPeriodStart: NOW - DAY_MS,
+        currentPeriodEnd: NOW + 30 * DAY_MS,
+        rawPayload: {}, // wiped
+        updatedAt: NOW,
+      });
+    });
+
+    // Row D — neither column nor rawPayload nor customers row.
+    // Genuinely unrecoverable (needs manual triage).
+    await t.run(async (ctx) => {
+      await ctx.db.insert("subscriptions", {
+        userId: "user_backfill_D",
+        dodoSubscriptionId: "sub_backfill_D",
         dodoProductId: PRODUCT_CATALOG.pro_monthly.dodoProductId!,
         planKey: "pro_monthly",
         status: "active",
@@ -923,13 +1025,14 @@ describe("payments billing backfillSubscriptionDodoCustomerId", () => {
       {},
     );
     expect(summary).toMatchObject({
-      inspected: 3,
-      populated: 1,
+      inspected: 4,
+      populatedFromPayload: 1,
+      populatedFromCustomers: 1,
       alreadyPopulated: 1,
-      missingPayload: 1,
+      unrecoverable: 1,
     });
 
-    // A now has the column populated.
+    // A populated via rawPayload.
     const aRow = await t.run(async (ctx) =>
       ctx.db
         .query("subscriptions")
@@ -938,11 +1041,34 @@ describe("payments billing backfillSubscriptionDodoCustomerId", () => {
     );
     expect(aRow?.dodoCustomerId).toBe("cus_A");
 
+    // C populated via customers row fallback.
+    const cRow = await t.run(async (ctx) =>
+      ctx.db
+        .query("subscriptions")
+        .withIndex("by_userId", (q) => q.eq("userId", "user_backfill_C"))
+        .first(),
+    );
+    expect(cRow?.dodoCustomerId).toBe("cus_C_from_customers");
+
+    // D stays empty (unrecoverable).
+    const dRow = await t.run(async (ctx) =>
+      ctx.db
+        .query("subscriptions")
+        .withIndex("by_userId", (q) => q.eq("userId", "user_backfill_D"))
+        .first(),
+    );
+    expect(dRow?.dodoCustomerId).toBeUndefined();
+
     // Re-running is a no-op (idempotent).
     const second = await t.mutation(
       internal.payments.billing.backfillSubscriptionDodoCustomerId,
       {},
     );
-    expect(second).toMatchObject({ populated: 0, alreadyPopulated: 2, missingPayload: 1 });
+    expect(second).toMatchObject({
+      populatedFromPayload: 0,
+      populatedFromCustomers: 0,
+      alreadyPopulated: 3,
+      unrecoverable: 1,
+    });
   });
 });
