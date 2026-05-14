@@ -2447,7 +2447,30 @@ async function main() {
       // Both alarms warn on the same console.warn channel so Sentry's
       // console-breadcrumb hook surfaces them without explicit
       // captureMessage calls.
-      if (AI_DIGEST_ENABLED && rule.aiDigestEnabled !== false) {
+      if (AI_DIGEST_ENABLED && rule.aiDigestEnabled !== false && !brief) {
+        // Compose-miss path: `briefByUser` had no entry for this user,
+        // so the canonical-rule filter was skipped and this rule fell
+        // through to the legacy per-rule send (see the compose-miss
+        // branch above). There is NO canonical envelope to compare
+        // against — `brief` is undefined — so winner_match and
+        // channels_equal are both n/a. winnerVariant would be '' here,
+        // which would make winner_match=false and trip a FALSE
+        // PARITY REGRESSION every compose-miss tick. The compose-miss
+        // itself is already logged separately (`[digest] compose-miss
+        // user=…`), so emit an informational parity line and skip both
+        // alarms. Plan 2026-05-14-001 F1, Phase 1 step 5.
+        console.log(
+          `[digest] brief lead parity user=${rule.userId} ` +
+            `rule=${rule.variant ?? 'full'}:${rule.sensitivity ?? 'high'}:${rule.lang ?? 'en'} ` +
+            `winner_match=n/a ` +
+            `synthesis_level=${synthesisLevel} ` +
+            `exec_len=${(briefLead ?? '').length} ` +
+            `brief_lead_len=0 ` +
+            `channels_equal=n/a ` +
+            `public_lead_len=0 ` +
+            `reason=compose-miss`,
+        );
+      } else if (AI_DIGEST_ENABLED && rule.aiDigestEnabled !== false) {
         const envLead = brief?.envelope?.data?.digest?.lead ?? '';
         const winnerVariant = brief?.chosenVariant ?? '';
         const winnerMatch = winnerVariant === (rule.variant ?? 'full');
@@ -2475,12 +2498,15 @@ async function main() {
             `public_lead_len=${publicLead.length}`,
         );
         if (!winnerMatch) {
-          // Under option (a) this is unreachable in practice — the
-          // canonical-rule filter at the top of the loop drops every
-          // non-winner rule before this point. If we ever see it in
-          // production, the canonical-rule filter has been bypassed
-          // OR briefByUser/chosenVariant drifted between compose and
-          // send. Hard alarm.
+          // This branch is reached ONLY when `brief` exists (the
+          // compose-miss case is handled in the `!brief` branch
+          // above with winner_match=n/a). Under option (a) it is
+          // unreachable in practice — the canonical-rule filter at
+          // the top of the loop drops every non-winner rule before
+          // this point. If we ever see it in production with a
+          // present `brief`, the canonical-rule filter has been
+          // bypassed OR briefByUser/chosenVariant drifted between
+          // compose and send. Hard alarm.
           console.warn(
             `[digest] PARITY REGRESSION user=${rule.userId} — winner_match=false under option (a). ` +
               `Expected: winner_variant=${winnerVariant || '<missing>'} === rule_variant=${rule.variant ?? 'full'}. ` +
