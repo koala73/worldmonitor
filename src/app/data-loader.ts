@@ -6,6 +6,7 @@ import type { MarketData } from '@/types';
 import type { TimeRange } from '@/components';
 import {
   FEEDS,
+  CANONICAL_FEEDS,
   INTEL_SOURCES,
   SECTORS,
   COMMODITIES,
@@ -13,6 +14,7 @@ import {
   SITE_VARIANT,
   LAYER_TO_SOURCE,
 } from '@/config';
+import { resolveNewsCategories, enabledNewsCategoryKeys } from '@/config/feed-resolution';
 import { INTEL_HOTSPOTS, CONFLICT_ZONES } from '@/config/geo';
 import { tokenizeForMatch, matchKeyword } from '@/utils/keyword-match';
 import {
@@ -88,6 +90,7 @@ import {
   fetchStoredStockBacktests,
   getMissingOrStaleStoredStockBacktests,
   hasFreshStoredStockBacktests,
+  type StockBacktestResult,
 } from '@/services/stock-backtest';
 import {
   fetchStockAnalysisHistory,
@@ -884,7 +887,11 @@ export class DataLoaderManager implements AppModule {
     this.applyTimeRangeFilterToNewsPanelsDebounced();
   }
 
-  private async loadNewsCategory(category: string, feeds: typeof FEEDS.politics, digest?: ListFeedDigestResponse | null): Promise<NewsItem[]> {
+  // `isCustom` marks a category from a user-added panel that isn't in the
+  // active variant's preset. The per-variant server digest never carries it,
+  // so it skips the digest-availability gate and fetches its full feed set
+  // directly client-side (the cost is borne only by users who customize).
+  private async loadNewsCategory(category: string, feeds: typeof FEEDS.politics, digest?: ListFeedDigestResponse | null, isCustom = false): Promise<NewsItem[]> {
     try {
       const panel = this.ctx.newsPanels[category];
 
@@ -967,8 +974,15 @@ export class DataLoaderManager implements AppModule {
         }
       };
 
+      // Preset categories: serve last-known-good while the digest is briefly
+      // unavailable. Custom categories are NEVER in the digest, so this branch
+      // would fire on every refresh after the first load — getStaleNewsItems
+      // reads ctx.newsByCategory, which the prior cycle's direct fetch already
+      // populated — and freeze the panel on stale headlines. Skip it for them
+      // and fall through to the direct fetch; the panel keeps showing its
+      // current batch until fresh data lands (no blank flash).
       const staleItems = this.getStaleNewsItems(category).filter(i => enabledNames.has(i.source));
-      if (staleItems.length > 0) {
+      if (!isCustom && staleItems.length > 0) {
         console.warn(`[News] Digest missing for "${category}", serving stale headlines (${staleItems.length})`);
         this.renderNewsForCategory(category, staleItems);
         this.ctx.statusPanel?.updateFeed(category.charAt(0).toUpperCase() + category.slice(1), {
@@ -978,7 +992,11 @@ export class DataLoaderManager implements AppModule {
         return staleItems;
       }
 
-      if (!this.isPerFeedFallbackEnabled()) {
+      // The per-feed-fallback flag throttles the digest-down thundering herd
+      // (every preset category fetching at once). It does NOT apply to custom
+      // categories: those are NEVER in the digest by design — direct fetch is
+      // their only path, and there are only a handful of them per user.
+      if (!isCustom && !this.isPerFeedFallbackEnabled()) {
         console.warn(`[News] Digest missing for "${category}", limited per-feed fallback disabled`);
         this.renderNewsForCategory(category, []);
         this.ctx.statusPanel?.updateFeed(category.charAt(0).toUpperCase() + category.slice(1), {
@@ -988,8 +1006,14 @@ export class DataLoaderManager implements AppModule {
         return [];
       }
 
-      const fallbackFeeds = this.selectLimitedFeeds(enabledFeeds, this.perFeedFallbackCategoryFeedLimit);
-      if (fallbackFeeds.length < enabledFeeds.length) {
+      // Custom categories fetch their full feed set (no thundering-herd risk);
+      // preset categories stay capped by perFeedFallbackCategoryFeedLimit.
+      const fallbackFeeds = isCustom
+        ? enabledFeeds
+        : this.selectLimitedFeeds(enabledFeeds, this.perFeedFallbackCategoryFeedLimit);
+      if (isCustom) {
+        console.warn(`[News] Custom category "${category}" (not in variant preset), fetching ${fallbackFeeds.length} feeds directly`);
+      } else if (fallbackFeeds.length < enabledFeeds.length) {
         console.warn(`[News] Digest missing for "${category}", using limited per-feed fallback (${fallbackFeeds.length}/${enabledFeeds.length} feeds)`);
       } else {
         console.warn(`[News] Digest missing for "${category}", using per-feed fallback (${fallbackFeeds.length} feeds)`);
@@ -1055,9 +1079,16 @@ export class DataLoaderManager implements AppModule {
     // Fire digest fetch early (non-blocking) — await before category loop
     const digestPromise = this.tryFetchDigest();
 
-    const categories = Object.entries(FEEDS)
-      .filter((entry): entry is [string, typeof FEEDS[keyof typeof FEEDS]] => Array.isArray(entry[1]) && entry[1].length > 0)
-      .map(([key, feeds]) => ({ key, feeds }));
+    // Panel-driven, not variant-driven: load the active variant's preset
+    // categories PLUS any extra categories required by enabled news panels the
+    // user added beyond the preset (e.g. Tech panels customized into `full`).
+    // Custom categories aren't in the per-variant server digest, so they're
+    // flagged `isCustom` and fetched directly client-side in loadNewsCategory().
+    const categories = resolveNewsCategories(
+      FEEDS,
+      CANONICAL_FEEDS,
+      enabledNewsCategoryKeys(this.ctx.newsPanels, this.ctx.panels, this.ctx.panelSettings),
+    );
 
     const digest = await digestPromise;
 
@@ -1067,7 +1098,7 @@ export class DataLoaderManager implements AppModule {
     for (let i = 0; i < categories.length; i += categoryConcurrency) {
       const chunk = categories.slice(i, i + categoryConcurrency);
       const chunkResults = await Promise.allSettled(
-        chunk.map(({ key, feeds }) => this.loadNewsCategory(key, feeds, digest))
+        chunk.map(({ key, feeds, isCustom }) => this.loadNewsCategory(key, feeds, digest, isCustom))
       );
       categoryResults.push(...chunkResults);
     }
@@ -1344,7 +1375,22 @@ export class DataLoaderManager implements AppModule {
         }
         return;
       }
-      panel.renderBacktests(results);
+      // Build a combined view so a partial refetch does not shrink the panel:
+      // keep still-fresh cached backtests for symbols we did NOT refetch, swap
+      // in live results for the ones we did. Watchlist order is preserved.
+      const resultBySymbol = new Map(results.map((r) => [r.symbol, r]));
+      const storedBySymbol = new Map(stored.map((s) => [s.symbol, s]));
+      const combined: StockBacktestResult[] = [];
+      for (const target of targets) {
+        const live = resultBySymbol.get(target.symbol);
+        if (live) {
+          combined.push(live);
+          continue;
+        }
+        const cached = storedBySymbol.get(target.symbol);
+        if (cached) combined.push(cached);
+      }
+      panel.renderBacktests(combined.length > 0 ? combined : results);
     } catch (error) {
       console.error('[StockBacktest] failed:', error);
       const stored = await fetchStoredStockBacktests().catch(() => []);

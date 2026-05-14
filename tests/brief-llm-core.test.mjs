@@ -18,6 +18,7 @@ import { createHash } from 'node:crypto';
 
 import {
   WHY_MATTERS_SYSTEM,
+  briefDateLine,
   buildWhyMattersUserPrompt,
   hashBriefStory,
   parseWhyMatters,
@@ -117,10 +118,37 @@ describe('WHY_MATTERS_SYSTEM — pinned editorial voice', () => {
   });
 });
 
+describe('briefDateLine — date-grounding instruction (plan F6)', () => {
+  it('uses the injected ISO date verbatim', () => {
+    const line = briefDateLine('2026-05-14');
+    assert.match(line, /^Today is 2026-05-14\./);
+    assert.match(line, /Do not state any year or date that contradicts/);
+  });
+
+  it('falls back to the current UTC date for missing / malformed input', () => {
+    for (const bad of [undefined, null, '', 'not-a-date', '2026/05/14', 14]) {
+      // `before`/`after` bracket each call so a UTC-midnight rollover
+      // mid-test still matches one of the two valid dates — the date is
+      // read inside briefDateLine, not captured once up front.
+      const before = new Date().toISOString().slice(0, 10);
+      const line = briefDateLine(bad);
+      const after = new Date().toISOString().slice(0, 10);
+      const m = line.match(/^Today is (\d{4}-\d{2}-\d{2})\./);
+      assert.ok(m, `malformed input ${JSON.stringify(bad)} must still produce a dated line`);
+      assert.ok(
+        m[1] === before || m[1] === after,
+        `malformed input ${JSON.stringify(bad)} must fall back to the current UTC date (got ${m[1]}, expected ${before} or ${after})`,
+      );
+    }
+  });
+});
+
 describe('buildWhyMattersUserPrompt — shape', () => {
   it('emits the exact 5-line format pinned by the cache-identity contract', () => {
-    const { system, user } = buildWhyMattersUserPrompt(FIXTURE);
-    assert.equal(system, WHY_MATTERS_SYSTEM);
+    // todayIso is injected so the system-prompt assertion is deterministic;
+    // the USER prompt (the cache-identity contract) is unchanged by F6.
+    const { system, user } = buildWhyMattersUserPrompt(FIXTURE, '2026-05-14');
+    assert.equal(system, `${WHY_MATTERS_SYSTEM}\n${briefDateLine('2026-05-14')}`);
     assert.equal(
       user,
       [

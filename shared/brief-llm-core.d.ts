@@ -19,7 +19,12 @@ export interface BriefStoryPromptInput {
 
 export const WHY_MATTERS_SYSTEM: string;
 
-export function buildWhyMattersUserPrompt(story: BriefStoryPromptInput): {
+export function briefDateLine(todayIso?: string): string;
+
+export function buildWhyMattersUserPrompt(
+  story: BriefStoryPromptInput,
+  todayIso?: string,
+): {
   system: string;
   user: string;
 };

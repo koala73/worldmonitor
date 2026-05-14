@@ -195,6 +195,29 @@ describe('parseRssXml — integration with description', () => {
     assert.strictEqual(items[1]!.description, '', 'second item falls back to empty string');
   });
 
+  it('every ParsedItem carries an isOpinion flag — hard news false, op-ed true (F3)', () => {
+    const xml = wrapRss(`
+      <item>
+        <title>Putin tests nuclear-capable Sarmat missile</title>
+        <link>https://news.example.com/world/sarmat-test</link>
+        <pubDate>Thu, 24 Apr 2026 08:01:00 GMT</pubDate>
+        <description><![CDATA[<p>Russia test-fired the intercontinental ballistic missile from Plesetsk on Thursday morning.</p>]]></description>
+      </item>
+      <item>
+        <title>Opinion: The west has misjudged this moment</title>
+        <link>https://news.example.com/opinion/west-misjudged</link>
+        <pubDate>Thu, 24 Apr 2026 08:02:00 GMT</pubDate>
+        <description><![CDATA[<p>Our columnist argues that the strategic picture has shifted decisively.</p>]]></description>
+      </item>
+    `);
+    const result = parseRssXml(xml, FEED, 'full');
+    assert.ok(result);
+    const items = result!.items;
+    assert.strictEqual(items.length, 2);
+    assert.strictEqual(items[0]!.isOpinion, false, 'hard-news item is not opinion');
+    assert.strictEqual(items[1]!.isOpinion, true, 'Opinion:-prefixed item under /opinion/ is opinion');
+  });
+
   it('Atom feed ParsedItems carry a description field from <summary>/<content>', () => {
     const xml = wrapAtom(`
       <entry>

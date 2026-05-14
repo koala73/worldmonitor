@@ -132,6 +132,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       assert.ok(!('_execute' in tool), 'Internal _execute must not be exposed in tools/list');
       assert.ok(!('_coverageKeys' in tool), 'Internal _coverageKeys must not be exposed in tools/list');
       assert.ok(!('_apiPaths' in tool), 'Internal _apiPaths must not be exposed in tools/list (Tier-4 parity)');
+      assert.ok(!('_postFilter' in tool), 'Internal _postFilter must not be exposed in tools/list (issue #3677)');
     }
     const toolNames = body.result.tools.map((t) => t.name);
     assert.ok(toolNames.includes('get_displacement_data'), 'get_displacement_data must be registered (U1 Tier 1 regression)');
@@ -260,6 +261,173 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(res.status, 200, 'Must return HTTP 200, not 500');
     const body = await res.json();
     assert.equal(body.error?.code, -32603, 'Must return JSON-RPC -32603, not throw');
+  });
+
+  // --- inputSchema completion + cache-tool _postFilter narrowing (issue #3677) ---
+
+  it('tools/list: cache tools advertise filter properties (issue #3677 — no more empty {})', async () => {
+    const res = await handler(makeReq('POST', { jsonrpc: '2.0', id: 700, method: 'tools/list', params: {} }));
+    const body = await res.json();
+    const byName = Object.fromEntries(body.result.tools.map((t) => [t.name, t]));
+    // Representative cache tools across every shape (array payload, object-keyed
+    // map, multi-key bundle) must now declare ≥1 filter property.
+    for (const name of [
+      'get_market_data', 'get_country_macro', 'get_conflict_events',
+      'get_economic_data', 'get_chokepoint_status', 'get_eu_housing_cycle',
+      'get_sanctions_data', 'get_forecast_predictions',
+    ]) {
+      const props = byName[name]?.inputSchema?.properties ?? {};
+      assert.ok(Object.keys(props).length > 0, `${name} must declare at least one filter property`);
+    }
+    // The exact params from the issue #3677 worked example.
+    assert.ok(byName.get_market_data.inputSchema.properties.symbols, 'get_market_data must declare symbols');
+    assert.ok(byName.get_market_data.inputSchema.properties.asset_class, 'get_market_data must declare asset_class');
+  });
+
+  // Mock Upstash REST: data keys + seed-meta keys resolve from the supplied
+  // maps. Any OTHER single-key GET resolves as "key absent" ({} → null) so the
+  // unmocked keys of a multi-key bundle tool don't hit the network. Non-GET
+  // traffic (the rate-limiter EVALSHA) falls through and throws —
+  // applyPerMinuteLimit swallows that (graceful degradation).
+  function mockCacheKeys(keyMap, metaKeys = {}) {
+    const all = { ...keyMap, ...metaKeys };
+    globalThis.fetch = async (url) => {
+      const u = url.toString();
+      for (const [k, v] of Object.entries(all)) {
+        if (u.includes(`/get/${encodeURIComponent(k)}`)) {
+          return new Response(JSON.stringify({ result: JSON.stringify(v) }), {
+            status: 200, headers: { 'Content-Type': 'application/json' },
+          });
+        }
+      }
+      if (u.includes('/get/')) {
+        return new Response(JSON.stringify({}), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return originalFetch(url);
+    };
+  }
+
+  async function callTool(name, args) {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+    const freshMod = await import(`../api/mcp.ts?t=${Date.now()}`);
+    const res = await freshMod.default(makeReq('POST', {
+      jsonrpc: '2.0', id: 701, method: 'tools/call', params: { name, arguments: args },
+    }));
+    const body = await res.json();
+    assert.ok(body.result?.content, `${name} must return result.content (got ${JSON.stringify(body.error)})`);
+    return JSON.parse(body.result.content[0].text);
+  }
+
+  it('get_market_data: omitting args returns the full payload (additive guarantee)', async () => {
+    const stocks = { quotes: [{ symbol: 'AAPL', price: 100 }, { symbol: 'MSFT', price: 200 }] };
+    const crypto = { quotes: [{ symbol: 'BTC', price: 50000 }] };
+    mockCacheKeys(
+      { 'market:stocks-bootstrap:v1': stocks, 'market:crypto:v1': crypto },
+      { 'seed-meta:market:stocks': { fetchedAt: Date.now() - 60_000, recordCount: 3 } },
+    );
+    const out = await callTool('get_market_data', {});
+    assert.equal(out.data['stocks-bootstrap'].quotes.length, 2, 'no args → all stock quotes');
+    assert.ok(out.data.crypto, 'no args → crypto slice present');
+  });
+
+  it('get_market_data: symbols filter narrows quote arrays across asset slices', async () => {
+    const stocks = { quotes: [{ symbol: 'AAPL', price: 100 }, { symbol: 'MSFT', price: 200 }] };
+    const crypto = { quotes: [{ symbol: 'BTC', price: 50000 }] };
+    mockCacheKeys(
+      { 'market:stocks-bootstrap:v1': stocks, 'market:crypto:v1': crypto },
+      { 'seed-meta:market:stocks': { fetchedAt: Date.now() - 60_000, recordCount: 3 } },
+    );
+    const out = await callTool('get_market_data', { symbols: ['AAPL'] });
+    assert.equal(out.data['stocks-bootstrap'].quotes.length, 1, 'symbols filter drops MSFT');
+    assert.equal(out.data['stocks-bootstrap'].quotes[0].symbol, 'AAPL');
+    assert.equal(out.data.crypto.quotes.length, 0, 'BTC absent from symbols → crypto quotes emptied');
+  });
+
+  it('get_market_data: asset_class selects only the requested dataset slices', async () => {
+    const stocks = { quotes: [{ symbol: 'AAPL' }] };
+    const crypto = { quotes: [{ symbol: 'BTC' }] };
+    mockCacheKeys(
+      { 'market:stocks-bootstrap:v1': stocks, 'market:crypto:v1': crypto },
+      { 'seed-meta:market:stocks': { fetchedAt: Date.now() - 60_000, recordCount: 2 } },
+    );
+    const out = await callTool('get_market_data', { asset_class: ['crypto'] });
+    assert.ok(out.data.crypto, 'asset_class crypto → crypto slice kept');
+    assert.ok(!('stocks-bootstrap' in out.data), 'asset_class crypto → stocks slice dropped');
+  });
+
+  it('get_country_macro: countries filter narrows the ISO2-keyed maps', async () => {
+    const macro = { countries: { US: { inflationPct: 3 }, DE: { inflationPct: 2 }, CN: { inflationPct: 1 } }, seededAt: 1 };
+    const meta = {
+      'seed-meta:economic:imf-macro': { fetchedAt: Date.now() - 60_000, recordCount: 3 },
+      'seed-meta:economic:imf-growth': { fetchedAt: Date.now() - 60_000, recordCount: 0 },
+      'seed-meta:economic:imf-labor': { fetchedAt: Date.now() - 60_000, recordCount: 0 },
+      'seed-meta:economic:imf-external': { fetchedAt: Date.now() - 60_000, recordCount: 0 },
+    };
+    mockCacheKeys({ 'economic:imf:macro:v2': macro }, meta);
+    const filtered = await callTool('get_country_macro', { countries: ['US', 'DE'] });
+    assert.deepEqual(
+      Object.keys(filtered.data.macro.countries).sort(),
+      ['DE', 'US'],
+      'only the requested ISO2 keys are kept (case-insensitive)',
+    );
+
+    mockCacheKeys({ 'economic:imf:macro:v2': macro }, meta);
+    const full = await callTool('get_country_macro', {});
+    assert.equal(Object.keys(full.data.macro.countries).length, 3, 'no args → all countries retained');
+  });
+
+  it('get_energy_intelligence: country filter matches the gas-storage string[] payload', async () => {
+    // Regression: energy:gas-storage:v1:_countries is a string[] of ISO2 codes,
+    // NOT an array of {iso2} objects. A filter that reads c.iso2 drops everything.
+    mockCacheKeys(
+      { 'energy:gas-storage:v1:_countries': ['DE', 'FR', 'NL'] },
+      { 'seed-meta:energy:gas-storage-countries': { fetchedAt: Date.now() - 60_000, recordCount: 3 } },
+    );
+    const out = await callTool('get_energy_intelligence', { dataset: ['gas-storage'], country: 'DE' });
+    assert.deepEqual(out.data._countries, ['DE'], 'gas-storage _countries is a string[] — filter must match the string itself');
+  });
+
+  it('get_tariff_trends: alpha-2 country filter resolves to alpha-3 national-debt entries', async () => {
+    // Regression: national-debt entries are keyed by ISO alpha-3 (iso3:"USA").
+    // The country param is alpha-2 (consistent with the rest of the tool), so
+    // country:"US" must still match iso3:"USA".
+    mockCacheKeys(
+      { 'economic:national-debt:v1': { entries: [{ iso3: 'USA', debtUsd: 2 }, { iso3: 'DEU', debtUsd: 1 }], seededAt: 1 } },
+      { 'seed-meta:economic:national-debt': { fetchedAt: Date.now() - 60_000, recordCount: 2 } },
+    );
+    const out = await callTool('get_tariff_trends', { dataset: ['national-debt'], country: 'US' });
+    assert.equal(out.data['national-debt'].entries.length, 1, 'alpha-2 "US" must match iso3 "USA"');
+    assert.equal(out.data['national-debt'].entries[0].iso3, 'USA');
+  });
+
+  it('executeTool: a throwing _postFilter falls back to the PRISTINE unfiltered data', async () => {
+    // P1 (Greptile): the helpers narrow `data` in place. executeTool hands the
+    // filter a structuredClone, so a mid-filter throw — even one that has
+    // already mutated its argument — must leave the returned payload complete.
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+    mockCacheKeys(
+      { 'fake:key:v1': { value: 1 } },
+      { 'seed-meta:fake': { fetchedAt: Date.now() - 60_000, recordCount: 1 } },
+    );
+    const freshMod = await import(`../api/mcp.ts?t=${Date.now()}`);
+    const throwingTool = {
+      name: 'fake_throwing_tool',
+      description: 'test seam',
+      inputSchema: { type: 'object', properties: {}, required: [] },
+      _cacheKeys: ['fake:key:v1'],
+      _seedMetaKey: 'seed-meta:fake',
+      _maxStaleMin: 60,
+      _apiPaths: [],
+      _postFilter: (data) => {
+        data.mutated = true; // mutate the clone, then blow up mid-filter
+        throw new Error('boom');
+      },
+    };
+    const result = await freshMod.executeTool(throwingTool, { anything: true });
+    assert.deepEqual(result.data, { key: { value: 1 } }, 'throw → full unfiltered payload, no partial narrowing leaked');
+    assert.ok(!('mutated' in result.data), '_postFilter mutation must not leak through the structuredClone boundary');
   });
 
   // --- get_displacement_data (U1: Tier 1 regression) ---

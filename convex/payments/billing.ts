@@ -52,43 +52,65 @@ function getDodoClient(): DodoPayments {
   });
 }
 
+/**
+ * Resolve the Dodo Customer Portal URL for a Clerk-authenticated user.
+ *
+ * Delegates the Dodo customer_id lookup to
+ * `getDodoCustomerIdForUserPortal`, which is a 3-tier resolver biased
+ * toward per-Clerk-userId evidence:
+ *
+ *   1. `subscriptions.dodoCustomerId` — the stable top-level column,
+ *      preserved across lifecycle webhook patches by
+ *      `mergeDodoCustomerId` in `subscriptionHelpers.ts`. Per-Clerk-
+ *      userId by construction (sub rows are keyed by the HMAC-signed
+ *      Clerk userId at checkout) and never patched away.
+ *   2. `subscriptions.rawPayload.customer.customer_id` — fallback for
+ *      rows that pre-date the column (deploy / backfill window).
+ *   3. `customers.dodoCustomerId` for the SAME userId — last-resort
+ *      rescue for pre-PR rows whose rawPayload was wiped by a
+ *      lifecycle event before this PR shipped (matches by userId, so
+ *      no silent cross-user re-attribution).
+ *
+ * Why not "customers row by userId" as the primary source: that table
+ * races under concurrent webhooks. `subscriptionHelpers.ts:533-539`
+ * patches the row's `userId` whenever a `subscription.active` event
+ * arrives with a matching dodoCustomerId — same Dodo customer (one per
+ * email, Dodo dedupes by email) bouncing between Clerk userIds when
+ * one human checks out under multiple Clerk accounts. Tier 1+2 use
+ * the per-Clerk-userId subscription rows precisely to avoid that
+ * race. Tier 3 only kicks in when both sub-side tiers miss AND the
+ * customers row's `userId` happens to match the requester.
+ *
+ * Result: every Clerk account with a valid subscription opens the
+ * right portal regardless of how many other Clerk accounts share the
+ * same Dodo customer. No Clerk REST lookup needed.
+ *
+ * WORLDMONITOR-R5: the original opaque `[Request ID: X] Server Error`
+ * came from this path throwing on a missing customers row when both
+ * the rawPayload and a same-user customers row still held the answer.
+ */
 async function createCustomerPortalUrlForUser(
-  ctx: Pick<ActionCtx, "runQuery" | "runMutation">,
+  ctx: Pick<ActionCtx, "runQuery">,
   userId: string,
 ): Promise<{ portal_url: string }> {
-  let customer = await ctx.runQuery(
-    internal.payments.billing.getCustomerByUserId,
+  const dodoCustomerId = await ctx.runQuery(
+    internal.payments.billing.getDodoCustomerIdForUserPortal,
     { userId },
   );
 
-  if (!customer || !customer.dodoCustomerId) {
-    // Self-heal a known webhook gap: `subscription.active` writes the
-    // `subscriptions` row unconditionally but only writes `customers` when
-    // `data.customer?.customer_id` is present in the payload
-    // (`subscriptionHelpers.ts:525`). Users whose webhook delivery
-    // lacked the customer field end up entitled (active sub) but with no
-    // customers row — clicking "Manage Billing" throws NO_CUSTOMER. The
-    // subscription's `rawPayload` carries the same customer info though,
-    // so try to recover from there before giving up. WORLDMONITOR-R5
-    // (user_3DcpiviTIweanCi9BtF5PRpqwv6 — active Pro Annual, no customers row).
-    customer = await ctx.runMutation(
-      internal.payments.billing.repairCustomerFromSubscriptionPayload,
-      { userId },
-    );
-  }
-
-  if (!customer || !customer.dodoCustomerId) {
-    // Genuine no-customer state — recovery from subscription payload
-    // didn't yield a dodoCustomerId either. Throw structured so the
-    // client can surface a useful "contact support" toast (object-typed
-    // `data` so `err.data.kind` survives the wire — see
-    // `api/_convex-error.js` for the broader pattern).
+  if (!dodoCustomerId) {
+    // User has no subscription at all, or every sub's rawPayload lacks a
+    // usable customer_id (very rare — would mean every webhook delivery
+    // for this user dropped the customer field). Throw structured so
+    // the client surfaces the existing "contact support" toast
+    // (object-typed `data` so `err.data.kind` survives the wire — see
+    // `api/_convex-error.js`).
     throw new ConvexError({ kind: "NO_CUSTOMER" });
   }
 
   const client = getDodoClient();
   const session = await client.customers.customerPortal.create(
-    customer.dodoCustomerId,
+    dodoCustomerId,
     { send_email: false },
   );
 
@@ -163,7 +185,15 @@ export const getSubscriptionForUser = query({
 
 /**
  * Internal query to retrieve a customer record by userId.
- * Used by getCustomerPortalUrl to find the dodoCustomerId.
+ *
+ * NOTE: As of WORLDMONITOR-R5 follow-up, this is no longer used by the
+ * Manage Billing flow — see `getDodoCustomerIdForUserPortal` below for
+ * the rationale. Still consumed by callers that legitimately want the
+ * customers row (broadcast paid-set membership, comp-grant lookups,
+ * etc.); those tolerate the latest-writer-wins quirk on shared-email
+ * Dodo customers because they only need "is this user a paid customer
+ * at all", not "which Dodo customer should the portal session open
+ * for this specific Clerk userId".
  */
 export const getCustomerByUserId = internalQuery({
   args: { userId: v.string() },
@@ -173,6 +203,250 @@ export const getCustomerByUserId = internalQuery({
       .query("customers")
       .withIndex("by_userId", (q) => q.eq("userId", args.userId))
       .first();
+  },
+});
+
+/**
+ * Resolve the Dodo customer_id this user's "Manage Billing" click
+ * should open a portal session for.
+ *
+ * Three-tier resolution, preferring per-Clerk-user evidence:
+ *   1. `subscriptions.dodoCustomerId` — the stable top-level column
+ *      written by the webhook handler and preserved across lifecycle
+ *      patches via `mergeDodoCustomerId` in `subscriptionHelpers.ts`.
+ *      Per-Clerk-userId by construction (subscription rows are keyed
+ *      by the HMAC-signed userId at checkout).
+ *   2. `subscriptions.rawPayload.customer.customer_id` — fallback for
+ *      rows that pre-date the schema change AND whose rawPayload still
+ *      carries the customer field (covers the deploy / backfill window).
+ *   3. `customers.dodoCustomerId` for the SAME userId — last-resort
+ *      fallback for the pre-PR pathological case: a row whose
+ *      rawPayload was wiped by a lifecycle event BEFORE the schema
+ *      change, leaving neither tier 1 nor tier 2 with data. The
+ *      customers row may have been re-attributed under webhook race
+ *      (latest-writer-wins on `subscriptionHelpers.ts:533-539`), but
+ *      when it DOES match the requesting userId, it's the best
+ *      remaining signal — better than NO_CUSTOMER for a paying user.
+ *
+ * Subscription preference (within tier 1+2): active → on_hold →
+ * cancelled → other; tie-break by newest `updatedAt`. A given userId
+ * may have multiple subscription rows over time (cancelled + new), so
+ * sorting is required — there's no per-userId uniqueness invariant.
+ *
+ * Returns null only when all three tiers fail (no subs at all OR no
+ * customer_id anywhere across subs/customers). Caller throws
+ * NO_CUSTOMER → client surfaces the "contact support" toast.
+ */
+export const getDodoCustomerIdForUserPortal = internalQuery({
+  args: { userId: v.string() },
+  handler: async (ctx, args) => {
+    const subs = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .take(50);
+
+    if (subs.length > 0) {
+      const sorted = [...subs].sort((a, b) => {
+        const pa = getSubscriptionStatusPriority(a.status);
+        const pb = getSubscriptionStatusPriority(b.status);
+        if (pa !== pb) return pa - pb;
+        return b.updatedAt - a.updatedAt;
+      });
+
+      for (const sub of sorted) {
+        // Tier 1: stable column populated by the webhook handler.
+        if (typeof sub.dodoCustomerId === "string" && sub.dodoCustomerId.length > 0) {
+          return sub.dodoCustomerId;
+        }
+        // Tier 2: rawPayload fallback for pre-schema-change rows whose
+        // rawPayload still carries the customer field.
+        const payload = sub.rawPayload as
+          | { customer?: { customer_id?: unknown } }
+          | null
+          | undefined;
+        const id = payload?.customer?.customer_id;
+        if (typeof id === "string" && id.length > 0) return id;
+      }
+    }
+
+    // Tier 3: same-user customers row fallback. Covers pre-PR rows that
+    // had their rawPayload wiped by a lifecycle event before the
+    // schema change shipped — neither sub-side tier has data, but the
+    // customers row may still hold a usable `dodoCustomerId` for this
+    // exact userId. Skipped if a different Clerk user currently owns
+    // the row (cross-user race) — that's a refusal-to-impersonate, not
+    // a fallback we should bridge silently.
+    const customer = await ctx.db
+      .query("customers")
+      .withIndex("by_userId", (q) => q.eq("userId", args.userId))
+      .first();
+    if (
+      customer &&
+      typeof customer.dodoCustomerId === "string" &&
+      customer.dodoCustomerId.length > 0
+    ) {
+      return customer.dodoCustomerId;
+    }
+
+    return null;
+  },
+});
+
+/**
+ * One-shot backfill: populate the new `subscriptions.dodoCustomerId`
+ * column for existing rows. Run once after the schema change ships;
+ * idempotent (already-populated rows skipped on re-run).
+ *
+ * Two recovery sources, tried in order:
+ *   1. `rawPayload.customer.customer_id` from the subscription row
+ *      itself — covers most pre-PR rows (the customer field was on
+ *      the original `subscription.active` payload).
+ *   2. `customers.dodoCustomerId` matched by the sub's `userId` —
+ *      recovers the pathological case where a pre-PR lifecycle event
+ *      wiped `rawPayload.customer` before this PR shipped, but the
+ *      customers row still has a usable mapping for the same userId.
+ *      Refuses cross-user collision (matches by userId only) — this
+ *      is a backfill, not a re-attribution.
+ *
+ * Run:
+ *   npx convex run payments/billing:backfillSubscriptionDodoCustomerId
+ *
+ * Returns
+ *   `{ inspected, populatedFromPayload, populatedFromCustomers,
+ *      alreadyPopulated, unrecoverable }`
+ * so the operator can see which recovery source covered each sub and
+ * which rows still need manual triage (unrecoverable = neither source
+ * had data).
+ */
+export const backfillSubscriptionDodoCustomerId = internalMutation({
+  args: {},
+  handler: async (ctx) => {
+    const all = await ctx.db.query("subscriptions").collect();
+    const summary = {
+      inspected: all.length,
+      populatedFromPayload: 0,
+      populatedFromCustomers: 0,
+      alreadyPopulated: 0,
+      unrecoverable: 0,
+    };
+    for (const sub of all) {
+      if (typeof sub.dodoCustomerId === "string" && sub.dodoCustomerId.length > 0) {
+        summary.alreadyPopulated++;
+        continue;
+      }
+      // Source 1: rawPayload.
+      const payload = sub.rawPayload as
+        | { customer?: { customer_id?: unknown } }
+        | null
+        | undefined;
+      const fromPayload = payload?.customer?.customer_id;
+      if (typeof fromPayload === "string" && fromPayload.length > 0) {
+        await ctx.db.patch(sub._id, { dodoCustomerId: fromPayload });
+        summary.populatedFromPayload++;
+        continue;
+      }
+      // Source 2: same-userId customers row (P1 reviewer's
+      // "pre-schema row had its rawPayload wiped before the PR" case).
+      const customer = await ctx.db
+        .query("customers")
+        .withIndex("by_userId", (q) => q.eq("userId", sub.userId))
+        .first();
+      const fromCustomer = customer?.dodoCustomerId;
+      if (typeof fromCustomer === "string" && fromCustomer.length > 0) {
+        await ctx.db.patch(sub._id, { dodoCustomerId: fromCustomer });
+        summary.populatedFromCustomers++;
+        continue;
+      }
+      summary.unrecoverable++;
+    }
+    return summary;
+  },
+});
+
+/**
+ * Read-only diagnostic: dump the customers row + every subscription's
+ * stored payload data for a list of userIds.
+ *
+ * Used to triage the cross-user collision class surfaced by
+ * `backfillMissingCustomers` — where one Dodo `customer_id` is claimed
+ * by one Clerk userId in the `customers` table but appears in another
+ * userId's subscription `rawPayload`. Most likely cause: Dodo dedupes
+ * customer records by email, so the same email used under two Clerk
+ * accounts yields the same `cus_xxx`.
+ *
+ * Run:
+ *   npx convex run --prod payments/billing:inspectCustomerOwnership \
+ *     '{"userIds":["user_3Cbg...","user_3Cbi...",...]}'
+ *
+ * Per-row output includes:
+ *   - `customer.email` (canonical email from the customers row)
+ *   - `customer.dodoCustomerId`
+ *   - `subscriptions[].rawPayloadEmail` (email Dodo sent at webhook time)
+ *   - `subscriptions[].rawPayloadCustomerId`
+ *
+ * If two userIds share the same `customer.email` (or the same
+ * `rawPayloadEmail` across their subscriptions), that's the smoking
+ * gun for "Dodo dedupes by email + same human made two Clerk
+ * accounts". Resolve by emailing the human, asking which account to
+ * keep, and merging via `claimSubscription` or a manual patch.
+ *
+ * Bounded to 50 userIds per call (each performs 2 indexed reads — the
+ * Convex query budget is 1s wall-clock + 16k document reads per
+ * transaction; 50×2=100 reads is well under both). Greptile P2 review:
+ * `v.array` has no built-in maxLength option, so the bound is enforced
+ * at the top of the handler with an explicit ConvexError.
+ */
+export const inspectCustomerOwnership = internalQuery({
+  args: { userIds: v.array(v.string()) },
+  handler: async (ctx, args) => {
+    if (args.userIds.length > 50) {
+      throw new ConvexError({
+        kind: "TOO_MANY_USERIDS",
+        max: 50,
+        provided: args.userIds.length,
+      });
+    }
+    const rows = [];
+    for (const userId of args.userIds) {
+      const customer = await ctx.db
+        .query("customers")
+        .withIndex("by_userId", (q) => q.eq("userId", userId))
+        .first();
+      const subs = await ctx.db
+        .query("subscriptions")
+        .withIndex("by_userId", (q) => q.eq("userId", userId))
+        .collect();
+      rows.push({
+        userId,
+        customer: customer
+          ? {
+              dodoCustomerId: customer.dodoCustomerId ?? null,
+              email: customer.email,
+              normalizedEmail: customer.normalizedEmail ?? null,
+              createdAt: new Date(customer.createdAt).toISOString(),
+            }
+          : null,
+        subscriptions: subs.map((s) => {
+          const p = s.rawPayload as
+            | { customer?: { customer_id?: unknown; email?: unknown } }
+            | null
+            | undefined;
+          return {
+            dodoSubscriptionId: s.dodoSubscriptionId,
+            planKey: s.planKey,
+            status: s.status,
+            currentPeriodEnd: new Date(s.currentPeriodEnd).toISOString(),
+            rawPayloadCustomerId:
+              typeof p?.customer?.customer_id === "string"
+                ? p.customer.customer_id
+                : null,
+            rawPayloadEmail:
+              typeof p?.customer?.email === "string" ? p.customer.email : null,
+          };
+        }),
+      });
+    }
+    return rows;
   },
 });
 
@@ -293,10 +567,6 @@ export const repairCustomerFromSubscriptionPayload = internalMutation({
   },
 });
 
-/**
- * Internal query to retrieve the active subscription for a user.
- * Returns null if no subscription or if the subscription is cancelled/expired.
- */
 /**
  * Operator-run backfill: proactively heal users affected by the
  * `subscription.active → customers` webhook gap before they hit
@@ -442,6 +712,10 @@ export const backfillMissingCustomers = internalMutation({
   },
 });
 
+/**
+ * Internal query to retrieve the active subscription for a user.
+ * Returns null if no subscription or if the subscription is cancelled/expired.
+ */
 export const getActiveSubscription = internalQuery({
   args: { userId: v.string() },
   handler: async (ctx, args) => {

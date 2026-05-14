@@ -82,6 +82,11 @@ COPY server/_shared/brief-render.js server/_shared/brief-render.d.ts ./server/_s
 # the cherry-pick pattern keeps biting when new cross-dir imports land.
 COPY server/_shared/llm-sanitize.js server/_shared/llm-sanitize.d.ts ./server/_shared/
 
+# opinion-classifier is imported directly by scripts/seed-digest-notifications.mjs
+# (buildDigest's read-time opinion filter — F3). Without this COPY the cron
+# crashes at import with ERR_MODULE_NOT_FOUND on startup.
+COPY server/_shared/opinion-classifier.js server/_shared/opinion-classifier.d.ts ./server/_shared/
+
 # Upstash REST helper (brief compose uses redisPipeline + readRawJson).
 COPY api/_upstash-json.js ./api/
 COPY api/_seed-envelope.js ./api/

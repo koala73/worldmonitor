@@ -63,6 +63,12 @@ export {
   INTEL_SOURCES,
 } from './feeds';
 
+// CANONICAL_FEEDS is the union of every variant's feed map — by design it
+// references all *_FEEDS consts, so unlike FEEDS it is NOT tree-shaken per
+// variant (~10KB gz). Required so a panel customized in from another variant
+// can resolve its feeds. See src/config/feed-resolution.ts.
+export { CANONICAL_FEEDS } from './feeds';
+
 export {
   INTEL_HOTSPOTS,
   CONFLICT_ZONES,

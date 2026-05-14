@@ -30,6 +30,7 @@ function baseItem(overrides: Record<string, unknown> = {}) {
     corroborationCount: 1,
     lang: 'en',
     description: '',
+    isOpinion: false,
     ...overrides,
   };
 }
@@ -54,6 +55,25 @@ describe('buildStoryTrackHsetFields — story:track:v1 HSET contract', () => {
     assert.ok(m.has('link'));
     assert.ok(m.has('severity'));
     assert.ok(m.has('lang'));
+  });
+
+  it('writes isOpinion as "1" / "0" — stamps the opinion verdict on the row (F3)', () => {
+    // The brief's read path (buildDigest) excludes isOpinion="1" rows.
+    // Written unconditionally for the same shared-row reason as
+    // `description`: a stale "1" from an earlier mention must be
+    // overwritten by the current mention's verdict.
+    const opinionItem = baseItem({ isOpinion: true });
+    assert.strictEqual(fieldsToMap(buildStoryTrackHsetFields(opinionItem, '1745000000000', 42)).get('isOpinion'), '1');
+    const newsItem = baseItem({ isOpinion: false });
+    assert.strictEqual(fieldsToMap(buildStoryTrackHsetFields(newsItem, '1745000000000', 42)).get('isOpinion'), '0');
+    // Missing field (old cached ParsedItem rows pre-dating the parser
+    // change) → falsy → "0", never the literal "undefined".
+    const legacyItem = baseItem();
+    delete (legacyItem as Record<string, unknown>).isOpinion;
+    assert.strictEqual(
+      fieldsToMap(buildStoryTrackHsetFields(legacyItem as Parameters<typeof buildStoryTrackHsetFields>[0], '1745000000000', 42)).get('isOpinion'),
+      '0',
+    );
   });
 
   it('writes an empty-string description when the current mention has no body — overwrites any prior mention body', () => {

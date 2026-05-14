@@ -15,6 +15,11 @@ import { captureSilentError } from './_sentry-edge.js';
 import COUNTRY_BBOXES from '../shared/country-bboxes.js';
 // @ts-expect-error — generated JS module, no declaration file
 import MINING_SITES_RAW from '../shared/mining-sites.js';
+// Generated .js mirror (+ .d.ts) of shared/iso2-to-iso3.json — a bare `.json`
+// import would throw ERR_IMPORT_ATTRIBUTE_MISSING under `node --test` and the
+// `with { type: 'json' }` form trips the Vercel edge bundler. See
+// scripts/generate-iso3-maps.cjs.
+import ISO2_TO_ISO3 from '../shared/iso2-to-iso3.js';
 import { getEntitlements } from '../server/_shared/entitlement-check';
 import {
   validateProMcpTokenOrNull,
@@ -36,9 +41,14 @@ const SERVER_NAME = 'worldmonitor';
 //   - PR #3658 Tier-1+2 expansion (6 new tools added: displacement, health,
 //     energy, consumer-prices, tariffs, chokepoint)
 //   - PR #3662 Tier-4 parity (_apiPaths metadata + CI-enforced parity test)
+// Bumped 1.1.0 → 1.2.0 (2026-05-14, issue #3677) reflecting:
+//   - inputSchema completion: all 27 cache tools now declare filter
+//     properties (country/dataset/limit/...) backed by per-tool `_postFilter`
+//     in-memory narrowing. Purely additive — omitting all arguments returns
+//     the pre-1.2.0 payload byte-for-byte.
 // Keep aligned with public/.well-known/mcp/server-card.json::serverInfo.version
 // — discovery scanners cross-check both values.
-const SERVER_VERSION = '1.1.0';
+const SERVER_VERSION = '1.2.0';
 
 // Country-code whitelist for get_consumer_prices. The consumer-prices seeder
 // currently only produces data for AE (UAE); future markets will be added
@@ -157,6 +167,15 @@ interface CacheToolDef extends BaseToolDef {
   _maxStaleMin: number;
   _freshnessChecks?: FreshnessCheck[];
   _execute?: never;
+  // Optional in-memory post-filter applied to the label-walked `data` map
+  // AFTER the Redis reads + freshness + cache_all_null guard. Pure narrowing:
+  // receives the assembled data object plus the tools/call `arguments`, returns
+  // a (possibly) narrowed data object. MUST be additive — when no recognised
+  // argument is passed it returns `data` unchanged, and unknown/invalid values
+  // are no-ops, never errors. Every property a `_postFilter` reads MUST be
+  // declared in the same tool's `inputSchema.properties` (schema and behaviour
+  // co-located so the advertised contract can never drift from what runs).
+  _postFilter?: (data: Record<string, unknown>, params: Record<string, unknown>) => Record<string, unknown>;
   // U3 (Tier-4 parity): REQUIRED. Every OpenAPI operation served by this
   // tool's cache keys ("METHOD path") so the U5 MCP↔API parity test can
   // verify every op in docs/api/*.openapi.json is covered by some tool's
@@ -201,11 +220,244 @@ interface RpcToolDef extends BaseToolDef {
 
 type ToolDef = CacheToolDef | RpcToolDef;
 
+// `ISO2_TO_ISO3` (imported above) — ISO 3166-1 alpha-2 → alpha-3, uppercase
+// keys. Lets the `country` filter stay uniformly alpha-2 across every tool even
+// though a few cached payloads (e.g. economic:national-debt:v1 `entries[].iso3`)
+// are keyed alpha-3.
+
+// ---------------------------------------------------------------------------
+// Cache-tool filter helpers
+//
+// Shared by the `_postFilter` bodies in the registry below. Every helper is
+// defensive: a missing/wrong-typed argument or an unexpected payload shape
+// degrades to a no-op, so a `tools/call` carrying junk arguments still returns
+// the full payload instead of erroring. This is what keeps the filter contract
+// strictly ADDITIVE — omit all arguments and the response is byte-identical to
+// the pre-filter behaviour.
+// ---------------------------------------------------------------------------
+
+// Coerce an argument to a lowercase, trimmed string list. Accepts a single
+// string or an array; anything else → []. For multi-value filters (symbols,
+// countries, dataset, ...).
+function argStrList(v: unknown): string[] {
+  const raw = Array.isArray(v) ? v : v == null || v === '' ? [] : [v];
+  return raw.map((x) => String(x).toLowerCase().trim()).filter(Boolean);
+}
+
+// Coerce an argument to a finite number, or null when absent/unparseable.
+function argNum(v: unknown): number | null {
+  if (v == null || v === '') return null;
+  const n = typeof v === 'number' ? v : Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+// Coerce an argument to a single lowercase, trimmed string ('' when absent).
+function argStr(v: unknown): string {
+  return typeof v === 'string' ? v.toLowerCase().trim() : '';
+}
+
+// Coerce an argument to a boolean (accepts true / "true" / 1 / "1").
+function argBool(v: unknown): boolean {
+  return v === true || v === 'true' || v === 1 || v === '1';
+}
+
+// Drop undefined/empty entries from a string list — used after mapping a
+// friendly `dataset` enum value through a per-tool alias table (a typo'd enum
+// value maps to undefined and is silently dropped).
+function compact(arr: (string | undefined)[]): string[] {
+  return arr.filter((v): v is string => typeof v === 'string' && v.length > 0);
+}
+
+// Case-insensitive substring test, tolerant of non-string haystacks. For
+// free-text fields (country names, titles, place strings).
+function ciIncludes(hay: unknown, needle: string): boolean {
+  return typeof hay === 'string' && hay.toLowerCase().includes(needle);
+}
+
+// True when `value` — a scalar code or an array of codes — matches any entry
+// in `codes` (case-insensitive exact). Empty `codes` → true (no filter active).
+// Handles both scalar ISO fields (item.countryCode) and array ISO fields
+// (item.cc, item.countryCodes, event.countries).
+function matchesCode(value: unknown, codes: string[]): boolean {
+  if (codes.length === 0) return true;
+  const pool = Array.isArray(value) ? value : [value];
+  return pool.some((v) => typeof v === 'string' && codes.includes(v.toLowerCase()));
+}
+
+// In-place: replace the array at data[label] with its filtered subset.
+// No-op when data[label] is not an array (e.g. a flat-array payload like
+// sanctions:entities whose label-walked value IS the array).
+function narrowArray(
+  data: Record<string, unknown>,
+  label: string,
+  pred: (item: Record<string, unknown>) => boolean,
+): void {
+  const arr = data[label];
+  if (Array.isArray(arr)) data[label] = (arr as Record<string, unknown>[]).filter(pred);
+}
+
+// In-place: replace the array at data[label][child] with its filtered subset.
+// Handles the dominant cache shape — a payload object wrapping one array
+// (e.g. data['ucdp-events'].events, data['stocks-bootstrap'].quotes).
+function narrowNested(
+  data: Record<string, unknown>,
+  label: string,
+  child: string,
+  pred: (item: Record<string, unknown>) => boolean,
+): void {
+  const parent = data[label];
+  if (parent && typeof parent === 'object' && !Array.isArray(parent)) {
+    const arr = (parent as Record<string, unknown>)[child];
+    if (Array.isArray(arr)) {
+      (parent as Record<string, unknown>)[child] = (arr as Record<string, unknown>[]).filter(pred);
+    }
+  }
+}
+
+// Return a copy of an entity-keyed object map keeping only keys in `codes`
+// (case-insensitive). Empty `codes` or a non-object → returned unchanged. A
+// request that matches NOTHING also returns the original — additive: a typo'd
+// country code must not collapse the payload to empty.
+function pickMapKeys(obj: unknown, codes: string[]): unknown {
+  if (codes.length === 0 || !obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
+  const out: Record<string, unknown> = {};
+  for (const [k, val] of Object.entries(obj as Record<string, unknown>)) {
+    if (codes.includes(k.toLowerCase())) out[k] = val;
+  }
+  return Object.keys(out).length > 0 ? out : obj;
+}
+
+// In-place: narrow an entity-keyed map nested at data[label][child] (e.g. the
+// IMF `data.macro.countries` / Eurostat `data['house-prices'].countries` maps).
+function pickNestedMap(data: Record<string, unknown>, label: string, child: string, codes: string[]): void {
+  const node = data[label];
+  if (node && typeof node === 'object' && !Array.isArray(node)) {
+    (node as Record<string, unknown>)[child] = pickMapKeys((node as Record<string, unknown>)[child], codes);
+  }
+}
+
+// In-place: replace data[label][child] with fn(data[label][child]). The generic
+// "reach one level into a payload object and transform a value" helper, used
+// for keyed-object payloads whose narrowing doesn't fit pickNestedMap.
+function mapNested(
+  data: Record<string, unknown>,
+  label: string,
+  child: string,
+  fn: (value: unknown) => unknown,
+): void {
+  const node = data[label];
+  if (node && typeof node === 'object' && !Array.isArray(node)) {
+    const n = node as Record<string, unknown>;
+    n[child] = fn(n[child]);
+  }
+}
+
+// Return a copy of an id-keyed object map keeping only entries whose VALUE
+// satisfies `pred` (for payloads keyed by an opaque id — fuel-shortages
+// keyed by shortage id, disruptions keyed by event id). Non-object → unchanged.
+//
+// No-match → `{}` is intentional and correct: this is a VALUE PREDICATE, the
+// object-map analogue of `narrowArray` / `narrowNested` — "country=DE has no
+// fuel shortages" is a legitimate empty result, exactly like a country filter
+// emptying an events array. It deliberately does NOT use the
+// `Object.keys(out).length ? out : obj` fall-back that `pickMapKeys` has:
+// `pickMapKeys` is a KEY SELECTOR where a no-match means "you named keys that
+// don't exist" (a likely typo, so don't nuke the map), whereas a value
+// predicate matching nothing is a real answer, not a malformed request.
+function filterMapValues(
+  obj: unknown,
+  pred: (value: Record<string, unknown>) => boolean,
+): unknown {
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+    if (v && typeof v === 'object' && pred(v as Record<string, unknown>)) out[k] = v;
+  }
+  return out;
+}
+
+// Like pickMapKeys but matches keys by case-insensitive SUBSTRING — for the
+// chokepoint keyed-object payloads whose ids vary in shape across keys
+// (`hormuz_strait` vs `Strait of Hormuz`). Empty needle / no match → unchanged.
+function pickMapKeysLike(obj: unknown, needle: string): unknown {
+  if (!needle || !obj || typeof obj !== 'object' || Array.isArray(obj)) return obj;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+    if (k.toLowerCase().includes(needle)) out[k] = v;
+  }
+  return Object.keys(out).length > 0 ? out : obj;
+}
+
+// Return a copy of the `data` map keeping only the requested labels — the
+// `dataset` selector shared by the multi-key bundle tools. Unknown labels are
+// ignored; an empty request or one matching nothing → `data` unchanged.
+function selectDatasets(data: Record<string, unknown>, labels: string[]): Record<string, unknown> {
+  if (labels.length === 0) return data;
+  const out: Record<string, unknown> = {};
+  for (const k of Object.keys(data)) {
+    if (labels.includes(k.toLowerCase())) out[k] = data[k];
+  }
+  return Object.keys(out).length > 0 ? out : data;
+}
+
+// In-place: cap every top-level array in `data` to `n` items. `n` ≤ 0 or null → no-op.
+function capArrays(data: Record<string, unknown>, n: number | null): void {
+  if (n == null || n <= 0) return;
+  for (const k of Object.keys(data)) {
+    const v = data[k];
+    if (Array.isArray(v)) data[k] = v.slice(0, n);
+  }
+}
+
+// In-place: cap the nested array at data[label][child] to `n` items.
+function capNested(data: Record<string, unknown>, label: string, child: string, n: number | null): void {
+  if (n == null || n <= 0) return;
+  const parent = data[label];
+  if (parent && typeof parent === 'object' && !Array.isArray(parent)) {
+    const arr = (parent as Record<string, unknown>)[child];
+    if (Array.isArray(arr)) (parent as Record<string, unknown>)[child] = arr.slice(0, n);
+  }
+}
+
 const TOOL_REGISTRY: ToolDef[] = [
   {
     name: 'get_market_data',
     description: 'Real-time equity quotes, commodity prices (including gold futures GC=F), crypto prices, forex FX rates (USD/EUR, USD/JPY etc.), sector performance, ETF flows, and Gulf market quotes from WorldMonitor\'s curated bootstrap cache.',
-    inputSchema: { type: 'object', properties: {}, required: [] },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        symbols: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Tickers to keep, e.g. ["AAPL","GC=F","BTC"]. Case-insensitive; matches equity/commodity/crypto/gulf quotes, sector ETFs, and ETF-flow tickers. Omit for the full snapshot.',
+        },
+        asset_class: {
+          type: 'array',
+          items: { type: 'string', enum: ['equity', 'commodity', 'crypto', 'sectors', 'etf', 'gulf', 'sentiment'] },
+          description: 'Restrict the response to one or more asset classes. Omit for all.',
+        },
+      },
+      required: [],
+    },
+    _postFilter: (data, params) => {
+      const symbols = argStrList(params.symbols);
+      if (symbols.length > 0) {
+        for (const label of ['stocks-bootstrap', 'commodities-bootstrap', 'crypto', 'gulf-quotes']) {
+          narrowNested(data, label, 'quotes', (q) => matchesCode(q.symbol, symbols));
+        }
+        narrowNested(data, 'sectors', 'sectors', (s) => matchesCode(s.symbol, symbols));
+        narrowNested(data, 'etf-flows', 'etfs', (e) => matchesCode(e.ticker, symbols));
+      }
+      const cls = argStrList(params.asset_class);
+      if (cls.length > 0) {
+        const map: Record<string, string> = {
+          equity: 'stocks-bootstrap', commodity: 'commodities-bootstrap', crypto: 'crypto',
+          sectors: 'sectors', etf: 'etf-flows', gulf: 'gulf-quotes', sentiment: 'fear-greed',
+        };
+        return selectDatasets(data, compact(cls.map((c) => map[c])));
+      }
+      return data;
+    },
     _cacheKeys: [
       'market:stocks-bootstrap:v1',
       'market:commodities-bootstrap:v1',
@@ -236,7 +488,37 @@ const TOOL_REGISTRY: ToolDef[] = [
   {
     name: 'get_conflict_events',
     description: 'Active armed conflict events (UCDP, Iran), unrest events with geo-coordinates, and country risk scores. Covers ongoing conflicts, protests, and instability indices worldwide.',
-    inputSchema: { type: 'object', properties: {}, required: [] },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        country: {
+          type: 'string',
+          description: 'Filter to one country — matches the country name on conflict/unrest events and the ISO 3166-1 alpha-2 region code on risk scores (case-insensitive).',
+        },
+        min_fatalities: {
+          type: 'number',
+          description: 'Drop events below this fatality count (UCDP deathsBest / unrest fatalities).',
+        },
+        limit: { type: 'number', description: 'Cap each event list to at most this many items.' },
+      },
+      required: [],
+    },
+    _postFilter: (data, params) => {
+      const country = argStr(params.country);
+      const minFatal = argNum(params.min_fatalities);
+      const limit = argNum(params.limit);
+      if (country) {
+        narrowNested(data, 'ucdp-events', 'events', (e) => ciIncludes(e.country, country));
+        narrowNested(data, 'events', 'events', (e) => ciIncludes(e.country, country));
+        narrowNested(data, 'scores', 'ciiScores', (s) => matchesCode(s.region, [country]));
+      }
+      if (minFatal != null) {
+        narrowNested(data, 'ucdp-events', 'events', (e) => (argNum(e.deathsBest) ?? 0) >= minFatal);
+        narrowNested(data, 'events', 'events', (e) => (argNum(e.fatalities) ?? 0) >= minFatal);
+      }
+      for (const label of ['ucdp-events', 'iran-events', 'events']) capNested(data, label, 'events', limit);
+      return data;
+    },
     _cacheKeys: [
       'conflict:ucdp-events:v1',
       'conflict:iran-events:v1',
@@ -262,7 +544,30 @@ const TOOL_REGISTRY: ToolDef[] = [
   {
     name: 'get_aviation_status',
     description: 'Airport delays, NOTAM airspace closures, and tracked military aircraft. Covers FAA delay data and active airspace restrictions.',
-    inputSchema: { type: 'object', properties: {}, required: [] },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        disrupted_only: {
+          type: 'boolean',
+          description: 'Drop airports with severity "normal" — keep only airports actually experiencing delays/closures. The bootstrap lists every monitored airport, so most rows are non-events without this.',
+        },
+        country: { type: 'string', description: 'Filter to one country by name (case-insensitive substring, e.g. "united states").' },
+        iata: { type: 'string', description: 'Filter to a single airport by IATA code (e.g. "JFK").' },
+        limit: { type: 'number', description: 'Cap the alert list to at most this many items.' },
+      },
+      required: [],
+    },
+    _postFilter: (data, params) => {
+      const country = argStr(params.country);
+      const iata = argStr(params.iata);
+      if (argBool(params.disrupted_only)) {
+        narrowNested(data, 'delays-bootstrap', 'alerts', (a) => argStr(a.severity) !== 'normal');
+      }
+      if (country) narrowNested(data, 'delays-bootstrap', 'alerts', (a) => ciIncludes(a.country, country));
+      if (iata) narrowNested(data, 'delays-bootstrap', 'alerts', (a) => argStr(a.iata) === iata);
+      capNested(data, 'delays-bootstrap', 'alerts', argNum(params.limit));
+      return data;
+    },
     _cacheKeys: ['aviation:delays-bootstrap:v1'],
     _seedMetaKey: 'seed-meta:aviation:faa',
     _maxStaleMin: 90,
@@ -271,7 +576,38 @@ const TOOL_REGISTRY: ToolDef[] = [
   {
     name: 'get_news_intelligence',
     description: 'AI-classified geopolitical threat news summaries, GDELT intelligence signals, cross-source signals, and security advisories from WorldMonitor\'s intelligence layer.',
-    inputSchema: { type: 'object', properties: {}, required: [] },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        topic: {
+          type: 'string',
+          enum: ['conflict', 'economy', 'cyber', 'nuclear', 'intelligence', 'maritime'],
+          description: 'Filter GDELT intelligence to a single topic.',
+        },
+        category: { type: 'string', description: 'Filter top news stories to one category (e.g. "conflict", "economy"; fallback is "general").' },
+        country: { type: 'string', description: 'Filter top stories and travel advisories to one ISO 3166-1 alpha-2 country code (case-insensitive).' },
+        alerts_only: { type: 'boolean', description: 'Keep only top stories flagged as alerts.' },
+        limit: { type: 'number', description: 'Cap each list (top stories, signals, advisories) to at most this many items.' },
+      },
+      required: [],
+    },
+    _postFilter: (data, params) => {
+      const topic = argStr(params.topic);
+      const category = argStr(params.category);
+      const countries = argStrList(params.country);
+      const limit = argNum(params.limit);
+      if (topic) narrowNested(data, 'gdelt-intel', 'topics', (t) => argStr(t.id) === topic);
+      if (category) narrowNested(data, 'insights', 'topStories', (s) => argStr(s.category) === category);
+      if (countries.length > 0) {
+        narrowNested(data, 'insights', 'topStories', (s) => matchesCode(s.countryCode, countries));
+        narrowNested(data, 'advisories-bootstrap', 'advisories', (a) => matchesCode(a.country, countries));
+      }
+      if (argBool(params.alerts_only)) narrowNested(data, 'insights', 'topStories', (s) => s.isAlert === true);
+      capNested(data, 'insights', 'topStories', limit);
+      capNested(data, 'cross-source-signals', 'signals', limit);
+      capNested(data, 'advisories-bootstrap', 'advisories', limit);
+      return data;
+    },
     _cacheKeys: [
       'news:insights:v1',
       'intelligence:gdelt-intel:v1',
@@ -288,7 +624,38 @@ const TOOL_REGISTRY: ToolDef[] = [
   {
     name: 'get_natural_disasters',
     description: 'Recent earthquakes (USGS), active wildfires (NASA FIRMS), and natural hazard events. Includes magnitude, location, and threat severity.',
-    inputSchema: { type: 'object', properties: {}, required: [] },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        dataset: {
+          type: 'array',
+          items: { type: 'string', enum: ['earthquakes', 'wildfires', 'other'] },
+          description: 'Restrict to one or more hazard datasets (earthquakes / wildfires / other natural events). Omit for all.',
+        },
+        min_magnitude: { type: 'number', description: 'Drop earthquakes and natural events below this magnitude.' },
+        active_only: { type: 'boolean', description: 'Keep only natural events that are still active (not closed).' },
+        limit: { type: 'number', description: 'Cap each hazard list to at most this many items.' },
+      },
+      required: [],
+    },
+    _postFilter: (data, params) => {
+      const minMag = argNum(params.min_magnitude);
+      const limit = argNum(params.limit);
+      if (minMag != null) {
+        narrowNested(data, 'earthquakes', 'earthquakes', (q) => (argNum(q.magnitude) ?? 0) >= minMag);
+        narrowNested(data, 'events', 'events', (e) => (argNum(e.magnitude) ?? 0) >= minMag);
+      }
+      if (argBool(params.active_only)) narrowNested(data, 'events', 'events', (e) => e.closed === false);
+      capNested(data, 'earthquakes', 'earthquakes', limit);
+      capNested(data, 'fires', 'fireDetections', limit);
+      capNested(data, 'events', 'events', limit);
+      const ds = argStrList(params.dataset);
+      if (ds.length > 0) {
+        const map: Record<string, string> = { earthquakes: 'earthquakes', wildfires: 'fires', other: 'events' };
+        return selectDatasets(data, compact(ds.map((d) => map[d])));
+      }
+      return data;
+    },
     _cacheKeys: [
       'seismology:earthquakes:v1',
       'wildfire:fires:v1',
@@ -305,7 +672,21 @@ const TOOL_REGISTRY: ToolDef[] = [
   {
     name: 'get_military_posture',
     description: 'Theater posture assessment and military risk scores. Reflects aggregated military positioning and escalation signals across global theaters.',
-    inputSchema: { type: 'object', properties: {}, required: [] },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        theater: { type: 'string', description: 'Filter to one theater by id (case-insensitive substring, e.g. "iran", "taiwan", "baltic", "korea").' },
+        posture_level: { type: 'string', description: 'Filter to a single posture level.' },
+      },
+      required: [],
+    },
+    _postFilter: (data, params) => {
+      const theater = argStr(params.theater);
+      const level = argStr(params.posture_level);
+      if (theater) narrowNested(data, 'theater_posture', 'theaters', (t) => ciIncludes(t.theater, theater));
+      if (level) narrowNested(data, 'theater_posture', 'theaters', (t) => argStr(t.postureLevel) === level);
+      return data;
+    },
     _cacheKeys: ['theater_posture:sebuf:stale:v1'],
     _seedMetaKey: 'seed-meta:intelligence:risk-scores',
     _maxStaleMin: 120,
@@ -326,7 +707,40 @@ const TOOL_REGISTRY: ToolDef[] = [
   {
     name: 'get_cyber_threats',
     description: 'Active cyber threat intelligence: malware IOCs (URLhaus, Feodotracker), CISA known exploited vulnerabilities, and active command-and-control infrastructure.',
-    inputSchema: { type: 'object', properties: {}, required: [] },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        threat_type: { type: 'string', description: 'Filter to one threat type (case-insensitive substring, e.g. "malware", "vulnerability", "c2").' },
+        min_severity: {
+          type: 'string',
+          enum: ['low', 'medium', 'high', 'critical'],
+          description: 'Drop threats below this severity level.',
+        },
+        country: { type: 'string', description: 'Filter to one ISO 3166-1 alpha-2 country code (many threats have no country and are dropped by this filter).' },
+        limit: { type: 'number', description: 'Cap the threat list to at most this many items.' },
+      },
+      required: [],
+    },
+    _postFilter: (data, params) => {
+      const type = argStr(params.threat_type);
+      const countries = argStrList(params.country);
+      const minSev = argStr(params.min_severity).replace('criticality_level_', '');
+      const ranks: Record<string, number> = { low: 1, medium: 2, high: 3, critical: 4 };
+      const minRank = ranks[minSev];
+      if (type) narrowNested(data, 'threats-bootstrap', 'threats', (t) => ciIncludes(t.type, type));
+      if (countries.length > 0) {
+        narrowNested(data, 'threats-bootstrap', 'threats', (t) => matchesCode(t.country, countries));
+      }
+      if (minRank != null) {
+        narrowNested(data, 'threats-bootstrap', 'threats', (t) => {
+          const tok = argStr(t.severity).replace('criticality_level_', '');
+          const r = ranks[tok];
+          return r == null || r >= minRank;
+        });
+      }
+      capNested(data, 'threats-bootstrap', 'threats', argNum(params.limit));
+      return data;
+    },
     _cacheKeys: ['cyber:threats-bootstrap:v2'],
     _seedMetaKey: 'seed-meta:cyber:threats',
     _maxStaleMin: 240,
@@ -335,7 +749,40 @@ const TOOL_REGISTRY: ToolDef[] = [
   {
     name: 'get_economic_data',
     description: 'Macro economic indicators: Fed Funds rate (FRED), economic calendar events, fuel prices, ECB FX rates, EU yield curve, earnings calendar, COT positioning, energy storage data, BIS household debt service ratio (DSR, quarterly, leading indicator of household financial stress across ~40 advanced economies), and BIS residential + commercial property price indices (real, quarterly).',
-    inputSchema: { type: 'object', properties: {}, required: [] },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        dataset: {
+          type: 'array',
+          items: {
+            type: 'string',
+            enum: ['fedfunds', 'econ-calendar', 'fuel-prices', 'ecb-fx-rates', 'yield-curve-eu', 'spending', 'earnings-calendar', 'cot', 'dsr', 'property-residential', 'property-commercial'],
+          },
+          description: 'Restrict the response to one or more sub-datasets. Omit for the full economic bundle.',
+        },
+        country: {
+          type: 'string',
+          description: 'Filter the country-keyed datasets (fuel-prices, BIS DSR/property, economic calendar) to one ISO 3166-1 alpha-2 code.',
+        },
+        limit: { type: 'number', description: 'Cap each list dataset (calendar, spending, earnings) to at most this many items.' },
+      },
+      required: [],
+    },
+    _postFilter: (data, params) => {
+      const countries = argStrList(params.country);
+      const limit = argNum(params.limit);
+      if (countries.length > 0) {
+        narrowNested(data, 'fuel-prices', 'countries', (c) => matchesCode(c.code, countries));
+        narrowNested(data, 'econ-calendar', 'events', (e) => matchesCode(e.country, countries));
+        for (const label of ['dsr', 'property-residential', 'property-commercial']) {
+          narrowNested(data, label, 'entries', (e) => matchesCode(e.countryCode, countries));
+        }
+      }
+      capNested(data, 'econ-calendar', 'events', limit);
+      capNested(data, 'spending', 'awards', limit);
+      capNested(data, 'earnings-calendar', 'earnings', limit);
+      return selectDatasets(data, argStrList(params.dataset));
+    },
     _cacheKeys: [
       'economic:fred:v1:FEDFUNDS:0',
       'economic:econ-calendar:v1',
@@ -373,7 +820,24 @@ const TOOL_REGISTRY: ToolDef[] = [
   {
     name: 'get_country_macro',
     description: 'Per-country macroeconomic indicators from IMF WEO (~210 countries, monthly cadence). Bundles fiscal/external balance (inflation, current account, gov revenue/expenditure/primary balance, CPI), growth & per-capita (real GDP growth, GDP/capita USD & PPP, savings & investment rates, savings-investment gap), labor & demographics (unemployment, population), and external trade (current account USD, import/export volume % changes). Latest available year per series. Use for country-level economic screening, peer benchmarking, and stagflation/imbalance flags. NOTE: export/import LEVELS in USD (exportsUsd, importsUsd, tradeBalanceUsd) are returned as null — WEO retracted broad coverage for BX/BM indicators in 2026-04; use currentAccountUsd or volume changes (import/exportVolumePctChg) instead.',
-    inputSchema: { type: 'object', properties: {}, required: [] },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        countries: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'ISO 3166-1 alpha-2 country codes to keep across all four IMF datasets (e.g. ["US","DE","CN"]). Omit for all ~210 countries.',
+        },
+      },
+      required: [],
+    },
+    _postFilter: (data, params) => {
+      const codes = argStrList(params.countries);
+      if (codes.length > 0) {
+        for (const label of ['macro', 'growth', 'labor', 'external']) pickNestedMap(data, label, 'countries', codes);
+      }
+      return data;
+    },
     _cacheKeys: [
       'economic:imf:macro:v2',
       'economic:imf:growth:v1',
@@ -393,7 +857,21 @@ const TOOL_REGISTRY: ToolDef[] = [
   {
     name: 'get_eu_housing_cycle',
     description: 'Eurostat annual house price index (prc_hpi_a, base 2015=100) for all 27 EU members plus EA20 and EU27_2020 aggregates. Each country entry includes the latest value, prior value, date, unit, and a 10-year sparkline series. Complements BIS WS_SPP with broader EU coverage for the Housing cycle tile.',
-    inputSchema: { type: 'object', properties: {}, required: [] },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        countries: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Eurostat geo codes to keep — ISO 3166-1 alpha-2, but "EL" for Greece, plus aggregates "EA20" and "EU27_2020". Omit for all.',
+        },
+      },
+      required: [],
+    },
+    _postFilter: (data, params) => {
+      pickNestedMap(data, 'house-prices', 'countries', argStrList(params.countries));
+      return data;
+    },
     _cacheKeys: ['economic:eurostat:house-prices:v1'],
     _seedMetaKey: 'seed-meta:economic:eurostat-house-prices',
     _maxStaleMin: 60 * 24 * 50, // weekly cron, annual data
@@ -402,7 +880,21 @@ const TOOL_REGISTRY: ToolDef[] = [
   {
     name: 'get_eu_quarterly_gov_debt',
     description: 'Eurostat quarterly general government gross debt (gov_10q_ggdebt, %GDP) for all 27 EU members plus EA20 and EU27_2020 aggregates. Each country entry includes latest value, prior value, quarter label, and an 8-quarter sparkline series. Provides fresher debt-trajectory signal than annual IMF GGXWDG_NGDP for EU panels.',
-    inputSchema: { type: 'object', properties: {}, required: [] },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        countries: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Eurostat geo codes to keep — ISO 3166-1 alpha-2, but "EL" for Greece, plus aggregates "EA20" and "EU27_2020". Omit for all.',
+        },
+      },
+      required: [],
+    },
+    _postFilter: (data, params) => {
+      pickNestedMap(data, 'gov-debt-q', 'countries', argStrList(params.countries));
+      return data;
+    },
     _cacheKeys: ['economic:eurostat:gov-debt-q:v1'],
     _seedMetaKey: 'seed-meta:economic:eurostat-gov-debt-q',
     _maxStaleMin: 60 * 24 * 14, // quarterly data, 2-day cron
@@ -411,7 +903,21 @@ const TOOL_REGISTRY: ToolDef[] = [
   {
     name: 'get_eu_industrial_production',
     description: 'Eurostat monthly industrial production index (sts_inpr_m, NACE B-D industry excl. construction, SCA, base 2021=100) for all 27 EU members plus EA20 and EU27_2020 aggregates. Each country entry includes latest value, prior value, month label, and a 12-month sparkline series. Leading indicator of real-economy activity used by the "Real economy pulse" sparkline.',
-    inputSchema: { type: 'object', properties: {}, required: [] },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        countries: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Eurostat geo codes to keep — ISO 3166-1 alpha-2, but "EL" for Greece, plus aggregates "EA20" and "EU27_2020". Omit for all.',
+        },
+      },
+      required: [],
+    },
+    _postFilter: (data, params) => {
+      pickNestedMap(data, 'industrial-production', 'countries', argStrList(params.countries));
+      return data;
+    },
     _cacheKeys: ['economic:eurostat:industrial-production:v1'],
     _seedMetaKey: 'seed-meta:economic:eurostat-industrial-production',
     _maxStaleMin: 60 * 24 * 5, // monthly data, daily cron
@@ -420,7 +926,40 @@ const TOOL_REGISTRY: ToolDef[] = [
   {
     name: 'get_prediction_markets',
     description: 'Active Polymarket event contracts with current probabilities. Covers geopolitical, economic, and election prediction markets.',
-    inputSchema: { type: 'object', properties: {}, required: [] },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        category: {
+          type: 'string',
+          enum: ['geopolitical', 'tech', 'finance'],
+          description: 'Restrict to one market category bucket. Omit for all three.',
+        },
+        query: { type: 'string', description: 'Keep only markets whose title contains this text (case-insensitive).' },
+        source: { type: 'string', enum: ['kalshi', 'polymarket'], description: 'Filter to one prediction-market source.' },
+        limit: { type: 'number', description: 'Cap each category bucket to at most this many markets.' },
+      },
+      required: [],
+    },
+    _postFilter: (data, params) => {
+      const category = argStr(params.category);
+      const query = argStr(params.query);
+      const source = argStr(params.source);
+      const limit = argNum(params.limit);
+      const buckets = ['geopolitical', 'tech', 'finance'];
+      for (const b of buckets) {
+        if (query) narrowNested(data, 'markets-bootstrap', b, (m) => ciIncludes(m.title, query));
+        if (source) narrowNested(data, 'markets-bootstrap', b, (m) => argStr(m.source) === source);
+        capNested(data, 'markets-bootstrap', b, limit);
+      }
+      if (category && buckets.includes(category)) {
+        const node = data['markets-bootstrap'];
+        if (node && typeof node === 'object' && !Array.isArray(node)) {
+          const n = node as Record<string, unknown>;
+          for (const b of buckets) if (b !== category) n[b] = [];
+        }
+      }
+      return data;
+    },
     _cacheKeys: ['prediction:markets-bootstrap:v1'],
     _seedMetaKey: 'seed-meta:prediction:markets',
     _maxStaleMin: 90,
@@ -431,7 +970,35 @@ const TOOL_REGISTRY: ToolDef[] = [
   {
     name: 'get_sanctions_data',
     description: 'OFAC SDN sanctioned entities list and sanctions pressure scores by country. Useful for compliance screening and geopolitical pressure analysis.',
-    inputSchema: { type: 'object', properties: {}, required: [] },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        country: { type: 'string', description: 'Filter sanctioned entities and pressure scores to one ISO 3166-1 alpha-2 country code.' },
+        entity_type: { type: 'string', description: 'Filter to one entity type (case-insensitive substring, e.g. "vessel", "aircraft", "person", "entity").' },
+        query: { type: 'string', description: 'Keep only sanctioned entities whose name contains this text (case-insensitive).' },
+        limit: { type: 'number', description: 'Cap the entity list and recent pressure entries to at most this many items.' },
+      },
+      required: [],
+    },
+    _postFilter: (data, params) => {
+      const countries = argStrList(params.country);
+      const etype = argStr(params.entity_type);
+      const query = argStr(params.query);
+      const limit = argNum(params.limit);
+      if (countries.length > 0) {
+        narrowArray(data, 'entities', (e) => matchesCode(e.cc, countries));
+        narrowNested(data, 'pressure', 'entries', (e) => matchesCode(e.countryCodes, countries));
+        narrowNested(data, 'pressure', 'countries', (c) => matchesCode(c.countryCode, countries));
+      }
+      if (etype) {
+        narrowArray(data, 'entities', (e) => ciIncludes(e.et, etype));
+        narrowNested(data, 'pressure', 'entries', (e) => ciIncludes(e.entityType, etype));
+      }
+      if (query) narrowArray(data, 'entities', (e) => ciIncludes(e.name, query));
+      capArrays(data, limit);
+      capNested(data, 'pressure', 'entries', limit);
+      return data;
+    },
     _cacheKeys: ['sanctions:entities:v1', 'sanctions:pressure:v1'],
     _seedMetaKey: 'seed-meta:sanctions:entities',
     _maxStaleMin: 1440,
@@ -443,7 +1010,29 @@ const TOOL_REGISTRY: ToolDef[] = [
   {
     name: 'get_displacement_data',
     description: 'Refugee and IDP counts by country (UNHCR annual data).',
-    inputSchema: { type: 'object', properties: {}, required: [] },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        countries: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'ISO 3166-1 alpha-3 country codes to keep (e.g. ["SYR","UKR","AFG"]). Matches both per-country totals and origin/asylum flows. Omit for all.',
+        },
+        limit: { type: 'number', description: 'Cap the per-country and top-flow lists to at most this many items.' },
+      },
+      required: [],
+    },
+    _postFilter: (data, params) => {
+      const codes = argStrList(params.countries);
+      const limit = argNum(params.limit);
+      if (codes.length > 0) {
+        narrowNested(data, 'summary', 'countries', (c) => matchesCode(c.code, codes));
+        narrowNested(data, 'summary', 'topFlows', (f) => matchesCode(f.originCode, codes) || matchesCode(f.asylumCode, codes));
+      }
+      capNested(data, 'summary', 'countries', limit);
+      capNested(data, 'summary', 'topFlows', limit);
+      return data;
+    },
     // Dynamic-year key resolved once at module evaluation — mirrors the
     // STANDALONE_KEYS pattern in api/health.js:147. The UNHCR seeder publishes
     // a single current-year key; the prior year exists at the same prefix but
@@ -463,7 +1052,41 @@ const TOOL_REGISTRY: ToolDef[] = [
   {
     name: 'get_health_signals',
     description: 'Active disease outbreaks (WHO/ECDC etc.) and global air-quality station readings (OpenAQ/WAQI PM2.5). For health-risk screening.',
-    inputSchema: { type: 'object', properties: {}, required: [] },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        signal_type: {
+          type: 'array',
+          items: { type: 'string', enum: ['outbreaks', 'air-quality'] },
+          description: 'Restrict to disease outbreaks, air-quality stations, or both. Omit for both.',
+        },
+        country: { type: 'string', description: 'Filter outbreaks and air-quality stations to one ISO 3166-1 alpha-2 country code.' },
+        disease: { type: 'string', description: 'Keep only outbreaks whose disease name contains this text (case-insensitive).' },
+        min_aqi: { type: 'number', description: 'Drop air-quality stations below this AQI value.' },
+        limit: { type: 'number', description: 'Cap the outbreak and station lists to at most this many items.' },
+      },
+      required: [],
+    },
+    _postFilter: (data, params) => {
+      const countries = argStrList(params.country);
+      const disease = argStr(params.disease);
+      const minAqi = argNum(params.min_aqi);
+      const limit = argNum(params.limit);
+      if (countries.length > 0) {
+        narrowNested(data, 'disease-outbreaks', 'outbreaks', (o) => matchesCode(o.countryCode, countries));
+        narrowNested(data, 'air-quality', 'stations', (s) => matchesCode(s.country_code, countries));
+      }
+      if (disease) narrowNested(data, 'disease-outbreaks', 'outbreaks', (o) => ciIncludes(o.disease, disease));
+      if (minAqi != null) narrowNested(data, 'air-quality', 'stations', (s) => (argNum(s.aqi) ?? 0) >= minAqi);
+      capNested(data, 'disease-outbreaks', 'outbreaks', limit);
+      capNested(data, 'air-quality', 'stations', limit);
+      const st = argStrList(params.signal_type);
+      if (st.length > 0) {
+        const map: Record<string, string> = { outbreaks: 'disease-outbreaks', 'air-quality': 'air-quality' };
+        return selectDatasets(data, compact(st.map((s) => map[s])));
+      }
+      return data;
+    },
     // Uses the health-domain canonical key health:air-quality:v1 (NOT the
     // climate-domain mirror climate:air-quality:v1, which stays exclusively
     // in get_climate_data). Both are written by the same seeder
@@ -484,7 +1107,46 @@ const TOOL_REGISTRY: ToolDef[] = [
   {
     name: 'get_energy_intelligence',
     description: 'Energy supply, prices, storage, disruptions, and policy: EIA petroleum stocks, electricity prices (Ember), gas storage (GIE), fuel shortages, fossil & renewable shares, active energy disruptions, government crisis policies.',
-    inputSchema: { type: 'object', properties: {}, required: [] },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        dataset: {
+          type: 'array',
+          items: {
+            type: 'string',
+            enum: ['eia-petroleum', 'electricity', 'ember', 'gas-storage', 'fuel-shortages', 'disruptions', 'crisis-policies', 'fossil-share', 'renewable'],
+          },
+          description: 'Restrict the response to one or more energy sub-datasets. Omit for the full bundle.',
+        },
+        country: {
+          type: 'string',
+          description: 'Filter the country-keyed datasets (Ember electricity mix, gas storage, fuel shortages, energy disruptions, fossil-share) to one ISO 3166-1 alpha-2 code.',
+        },
+      },
+      required: [],
+    },
+    _postFilter: (data, params) => {
+      const countries = argStrList(params.country);
+      if (countries.length > 0) {
+        data._all = pickMapKeys(data._all, countries);
+        pickNestedMap(data, 'fossil-electricity-share', 'countries', countries);
+        // energy:gas-storage:v1:_countries is a string[] of ISO2 codes — match
+        // the entry directly; the `?.iso2` fallback tolerates an object shape.
+        narrowArray(data, '_countries', (c) => matchesCode(c, countries) || matchesCode(c?.iso2, countries));
+        mapNested(data, 'fuel-shortages', 'shortages', (m) => filterMapValues(m, (s) => matchesCode(s.country, countries)));
+        mapNested(data, 'disruptions', 'events', (m) => filterMapValues(m, (e) => matchesCode(e.countries, countries)));
+      }
+      const ds = argStrList(params.dataset);
+      if (ds.length > 0) {
+        const map: Record<string, string> = {
+          'eia-petroleum': 'eia-petroleum', electricity: 'index', ember: '_all', 'gas-storage': '_countries',
+          'fuel-shortages': 'fuel-shortages', disruptions: 'disruptions', 'crisis-policies': 'crisis-policies',
+          'fossil-share': 'fossil-electricity-share', renewable: 'worldbank-renewable',
+        };
+        return selectDatasets(data, compact(ds.map((d) => map[d])));
+      }
+      return data;
+    },
     // Broad 9-key energy bundle mirroring get_economic_data. Cadences span
     // hourly (electricity prices) to annual (World Bank renewable share); use
     // _freshnessChecks with per-key maxStaleMin pulled from
@@ -524,7 +1186,39 @@ const TOOL_REGISTRY: ToolDef[] = [
   {
     name: 'get_climate_data',
     description: 'Climate intelligence: temperature/precipitation anomalies (vs 30-year WMO normals), climate-relevant disaster alerts (ReliefWeb/GDACS/FIRMS), atmospheric CO2 trend (NOAA Mauna Loa), air quality (OpenAQ/WAQI PM2.5 stations), Arctic sea ice extent and ocean heat indicators (NSIDC/NOAA), weather alerts, and climate news.',
-    inputSchema: { type: 'object', properties: {}, required: [] },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        dataset: {
+          type: 'array',
+          items: {
+            type: 'string',
+            enum: ['anomalies', 'disasters', 'co2-monitoring', 'air-quality', 'ocean-ice', 'news-intelligence', 'alerts'],
+          },
+          description: 'Restrict the response to one or more climate sub-datasets. Omit for the full bundle.',
+        },
+        country: {
+          type: 'string',
+          description: 'Filter the country-tagged datasets (climate disasters, air-quality stations) to one ISO 3166-1 alpha-2 code.',
+        },
+        limit: { type: 'number', description: 'Cap each list dataset (anomalies, disasters, stations, news, alerts) to at most this many items.' },
+      },
+      required: [],
+    },
+    _postFilter: (data, params) => {
+      const countries = argStrList(params.country);
+      const limit = argNum(params.limit);
+      if (countries.length > 0) {
+        narrowNested(data, 'disasters', 'disasters', (d) => matchesCode(d.countryCode, countries));
+        narrowNested(data, 'air-quality', 'stations', (s) => matchesCode(s.country_code, countries));
+      }
+      capNested(data, 'anomalies', 'anomalies', limit);
+      capNested(data, 'disasters', 'disasters', limit);
+      capNested(data, 'air-quality', 'stations', limit);
+      capNested(data, 'news-intelligence', 'items', limit);
+      capNested(data, 'alerts', 'alerts', limit);
+      return selectDatasets(data, argStrList(params.dataset));
+    },
     _cacheKeys: ['climate:anomalies:v2', 'climate:disasters:v1', 'climate:co2-monitoring:v1', 'climate:air-quality:v1', 'climate:ocean-ice:v1', 'climate:news-intelligence:v1', 'weather:alerts:v1'],
     _seedMetaKey: 'seed-meta:climate:co2-monitoring',
     _maxStaleMin: 2880,
@@ -549,7 +1243,23 @@ const TOOL_REGISTRY: ToolDef[] = [
   {
     name: 'get_infrastructure_status',
     description: 'Internet infrastructure health: Cloudflare Radar outages and service status for major cloud providers and internet services.',
-    inputSchema: { type: 'object', properties: {}, required: [] },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        country: { type: 'string', description: 'Filter to one country by name (case-insensitive substring).' },
+        severity: { type: 'string', description: 'Filter to one outage severity (case-insensitive substring).' },
+        limit: { type: 'number', description: 'Cap the outage list to at most this many items.' },
+      },
+      required: [],
+    },
+    _postFilter: (data, params) => {
+      const country = argStr(params.country);
+      const severity = argStr(params.severity);
+      if (country) narrowNested(data, 'outages', 'outages', (o) => ciIncludes(o.country, country));
+      if (severity) narrowNested(data, 'outages', 'outages', (o) => ciIncludes(o.severity, severity));
+      capNested(data, 'outages', 'outages', argNum(params.limit));
+      return data;
+    },
     _cacheKeys: ['infra:outages:v1'],
     _seedMetaKey: 'seed-meta:infra:outages',
     _maxStaleMin: 30,
@@ -560,7 +1270,33 @@ const TOOL_REGISTRY: ToolDef[] = [
   {
     name: 'get_supply_chain_data',
     description: 'Dry bulk shipping stress index, customs revenue flows, and COMTRADE bilateral trade data. Tracks global supply chain pressure and trade disruptions.',
-    inputSchema: { type: 'object', properties: {}, required: [] },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        dataset: {
+          type: 'array',
+          items: { type: 'string', enum: ['shipping_stress', 'customs-revenue', 'flows'] },
+          description: 'Restrict the response to one or more sub-datasets (dry-bulk shipping stress / customs revenue / COMTRADE flows). Omit for all.',
+        },
+        commodity: {
+          type: 'string',
+          description: 'Filter COMTRADE flows to one commodity — matches the HS code exactly or the commodity description by substring (e.g. "2709" or "crude").',
+        },
+        limit: { type: 'number', description: 'Cap each list dataset (carriers, months, flows) to at most this many items.' },
+      },
+      required: [],
+    },
+    _postFilter: (data, params) => {
+      const commodity = argStr(params.commodity);
+      const limit = argNum(params.limit);
+      if (commodity) {
+        narrowNested(data, 'flows', 'flows', (f) => argStr(f.cmdCode) === commodity || ciIncludes(f.cmdDesc, commodity));
+      }
+      capNested(data, 'shipping_stress', 'carriers', limit);
+      capNested(data, 'customs-revenue', 'months', limit);
+      capNested(data, 'flows', 'flows', limit);
+      return selectDatasets(data, argStrList(params.dataset));
+    },
     _cacheKeys: [
       'supply_chain:shipping_stress:v1',
       'trade:customs-revenue:v1',
@@ -576,7 +1312,45 @@ const TOOL_REGISTRY: ToolDef[] = [
   {
     name: 'get_tariff_trends',
     description: 'Global trade and pricing indicators: US tariff trends (HTS-coded), BigMac index, FAO Food Price Index, and per-country national debt levels.',
-    inputSchema: { type: 'object', properties: {}, required: [] },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        dataset: {
+          type: 'array',
+          items: { type: 'string', enum: ['tariffs', 'bigmac', 'fao-ffpi', 'national-debt'] },
+          description: 'Restrict the response to one or more sub-datasets. Omit for the full bundle.',
+        },
+        country: {
+          type: 'string',
+          description: 'Filter the per-country datasets to one ISO 3166-1 alpha-2 country code (e.g. "US"). It is translated to alpha-3 internally for the national-debt dataset; passing an alpha-3 code directly also works.',
+        },
+        limit: { type: 'number', description: 'Cap each list dataset (tariff datapoints, BigMac countries, debt entries) to at most this many items.' },
+      },
+      required: [],
+    },
+    _postFilter: (data, params) => {
+      const countries = argStrList(params.country);
+      const limit = argNum(params.limit);
+      if (countries.length > 0) {
+        narrowNested(data, 'bigmac', 'countries', (c) => matchesCode(c.code, countries));
+        // national-debt entries are keyed by ISO alpha-3 (iso3:"USA"); the
+        // country param is alpha-2 like the rest of the tool, so expand it.
+        const debtCodes = [
+          ...countries,
+          ...compact(countries.map((c) => ISO2_TO_ISO3[c.toUpperCase()]?.toLowerCase())),
+        ];
+        narrowNested(data, 'national-debt', 'entries', (e) => matchesCode(e.iso3, debtCodes));
+      }
+      capNested(data, 'all', 'datapoints', limit);
+      capNested(data, 'bigmac', 'countries', limit);
+      capNested(data, 'national-debt', 'entries', limit);
+      const ds = argStrList(params.dataset);
+      if (ds.length > 0) {
+        const map: Record<string, string> = { tariffs: 'all', bigmac: 'bigmac', 'fao-ffpi': 'fao-ffpi', 'national-debt': 'national-debt' };
+        return selectDatasets(data, compact(ds.map((d) => map[d])));
+      }
+      return data;
+    },
     // 4-key bundle spanning trade + economic domains. Cadences span hourly-ish
     // (tariffs co-pinned to 8h TARIFF_TTL) to monthly (FAO / national debt).
     // Per-key _freshnessChecks pulled from api/health.js::SEED_META so a slow
@@ -605,7 +1379,34 @@ const TOOL_REGISTRY: ToolDef[] = [
   {
     name: 'get_chokepoint_status',
     description: 'Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min cadence), rolling transit summaries, per-port activity, plus static reference data (chokepoint geometry, canonical 13-chokepoint registry) and flow aggregates. Covers Suez, Hormuz, Malacca, Bab-el-Mandeb, Panama, etc.',
-    inputSchema: { type: 'object', properties: {}, required: [] },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        chokepoint: {
+          type: 'string',
+          description: 'Filter to one chokepoint — matches by case-insensitive substring across the differing identifiers used by each dataset (e.g. "hormuz" matches "hormuz_strait", "Strait of Hormuz").',
+        },
+        dataset: {
+          type: 'array',
+          items: {
+            type: 'string',
+            enum: ['transit-summaries', 'chokepoint_transits', '_countries', 'chokepoint-baselines', 'ref', 'chokepoint-flows'],
+          },
+          description: 'Restrict the response to one or more sub-datasets. Omit for the full bundle.',
+        },
+      },
+      required: [],
+    },
+    _postFilter: (data, params) => {
+      const cp = argStr(params.chokepoint);
+      if (cp) {
+        mapNested(data, 'transit-summaries', 'summaries', (m) => pickMapKeysLike(m, cp));
+        mapNested(data, 'chokepoint_transits', 'transits', (m) => pickMapKeysLike(m, cp));
+        data['chokepoint-flows'] = pickMapKeysLike(data['chokepoint-flows'], cp);
+        narrowNested(data, 'chokepoint-baselines', 'chokepoints', (c) => ciIncludes(c.id, cp) || ciIncludes(c.relayId, cp) || ciIncludes(c.name, cp));
+      }
+      return selectDatasets(data, argStrList(params.dataset));
+    },
     // Maritime chokepoint bundle distinct from get_supply_chain_data (which keeps
     // shipping-stress + customs + comtrade). Cadences span 10-minute relay
     // (transit-summaries, chokepoint_transits) to ~400-day static registries
@@ -655,7 +1456,24 @@ const TOOL_REGISTRY: ToolDef[] = [
   {
     name: 'get_positive_events',
     description: 'Positive geopolitical events: diplomatic agreements, humanitarian aid, development milestones, and peace initiatives worldwide.',
-    inputSchema: { type: 'object', properties: {}, required: [] },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        category: {
+          type: 'string',
+          enum: ['science-health', 'nature-wildlife', 'climate-wins', 'innovation-tech', 'humanity-kindness', 'culture-community'],
+          description: 'Filter to one positive-event category.',
+        },
+        limit: { type: 'number', description: 'Cap the event list to at most this many items.' },
+      },
+      required: [],
+    },
+    _postFilter: (data, params) => {
+      const category = argStr(params.category);
+      if (category) narrowNested(data, 'geo-bootstrap', 'events', (e) => argStr(e.category) === category);
+      capNested(data, 'geo-bootstrap', 'events', argNum(params.limit));
+      return data;
+    },
     _cacheKeys: ['positive_events:geo-bootstrap:v1'],
     _seedMetaKey: 'seed-meta:positive-events:geo',
     _maxStaleMin: 60,
@@ -666,7 +1484,27 @@ const TOOL_REGISTRY: ToolDef[] = [
   {
     name: 'get_radiation_data',
     description: 'Radiation observation levels from global monitoring stations. Flags anomalous readings that may indicate nuclear incidents.',
-    inputSchema: { type: 'object', properties: {}, required: [] },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        country: { type: 'string', description: 'Filter to one country by name (case-insensitive substring).' },
+        anomalous_only: {
+          type: 'boolean',
+          description: 'Drop observations with severity "normal" — keep only elevated/spike readings.',
+        },
+        limit: { type: 'number', description: 'Cap the observation list to at most this many items.' },
+      },
+      required: [],
+    },
+    _postFilter: (data, params) => {
+      const country = argStr(params.country);
+      if (country) narrowNested(data, 'observations', 'observations', (o) => ciIncludes(o.country, country));
+      if (argBool(params.anomalous_only)) {
+        narrowNested(data, 'observations', 'observations', (o) => !argStr(o.severity).endsWith('normal'));
+      }
+      capNested(data, 'observations', 'observations', argNum(params.limit));
+      return data;
+    },
     _cacheKeys: ['radiation:observations:v1'],
     _seedMetaKey: 'seed-meta:radiation:observations',
     _maxStaleMin: 30,
@@ -677,7 +1515,27 @@ const TOOL_REGISTRY: ToolDef[] = [
   {
     name: 'get_research_signals',
     description: 'Tech and research event signals: emerging technology events bootstrap data from curated research feeds.',
-    inputSchema: { type: 'object', properties: {}, required: [] },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        type: {
+          type: 'string',
+          enum: ['conference', 'earnings', 'ipo', 'other'],
+          description: 'Filter to one tech-event type.',
+        },
+        source: { type: 'string', description: 'Filter to one source feed (e.g. "techmeme", "dev.events", "curated").' },
+        limit: { type: 'number', description: 'Cap the event list to at most this many items.' },
+      },
+      required: [],
+    },
+    _postFilter: (data, params) => {
+      const type = argStr(params.type);
+      const source = argStr(params.source);
+      if (type) narrowNested(data, 'tech-events-bootstrap', 'events', (e) => argStr(e.type) === type);
+      if (source) narrowNested(data, 'tech-events-bootstrap', 'events', (e) => argStr(e.source) === source);
+      capNested(data, 'tech-events-bootstrap', 'events', argNum(params.limit));
+      return data;
+    },
     _cacheKeys: ['research:tech-events-bootstrap:v1'],
     _seedMetaKey: 'seed-meta:research:tech-events',
     _maxStaleMin: 480,
@@ -688,7 +1546,23 @@ const TOOL_REGISTRY: ToolDef[] = [
   {
     name: 'get_forecast_predictions',
     description: 'AI-generated geopolitical and economic forecasts from WorldMonitor\'s predictive models. Covers upcoming risk events and probability assessments.',
-    inputSchema: { type: 'object', properties: {}, required: [] },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        domain: { type: 'string', description: 'Filter to one forecast domain (exact, case-insensitive — e.g. "shipping", "energy", "macro").' },
+        region: { type: 'string', description: 'Filter to one region/theater (case-insensitive substring).' },
+        limit: { type: 'number', description: 'Cap the forecast list to at most this many items.' },
+      },
+      required: [],
+    },
+    _postFilter: (data, params) => {
+      const domain = argStr(params.domain);
+      const region = argStr(params.region);
+      if (domain) narrowNested(data, 'predictions', 'predictions', (p) => argStr(p.domain) === domain);
+      if (region) narrowNested(data, 'predictions', 'predictions', (p) => ciIncludes(p.region, region));
+      capNested(data, 'predictions', 'predictions', argNum(params.limit));
+      return data;
+    },
     _cacheKeys: ['forecast:predictions:v2'],
     _seedMetaKey: 'seed-meta:forecast:predictions',
     _maxStaleMin: 90,
@@ -703,7 +1577,20 @@ const TOOL_REGISTRY: ToolDef[] = [
   {
     name: 'get_social_velocity',
     description: 'Reddit geopolitical social velocity: top posts from worldnews, geopolitics, and related subreddits with engagement scores and trend signals.',
-    inputSchema: { type: 'object', properties: {}, required: [] },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        subreddit: { type: 'string', description: 'Filter to one subreddit (e.g. "worldnews", "geopolitics").' },
+        limit: { type: 'number', description: 'Cap the post list to at most this many items.' },
+      },
+      required: [],
+    },
+    _postFilter: (data, params) => {
+      const sub = argStr(params.subreddit);
+      if (sub) narrowNested(data, 'reddit', 'posts', (p) => argStr(p.subreddit) === sub);
+      capNested(data, 'reddit', 'posts', argNum(params.limit));
+      return data;
+    },
     _cacheKeys: ['intelligence:social:reddit:v1'],
     _seedMetaKey: 'seed-meta:intelligence:social-reddit',
     _maxStaleMin: 30,
@@ -1343,7 +2230,14 @@ export function evaluateFreshness(checks: FreshnessCheck[], metas: unknown[], no
 // ---------------------------------------------------------------------------
 // Tool execution (cache tools — no _execute)
 // ---------------------------------------------------------------------------
-async function executeTool(tool: CacheToolDef): Promise<{ cached_at: string | null; stale: boolean; data: Record<string, unknown> }> {
+// Exported as a test seam (like `evaluateFreshness`) so the `_postFilter`
+// throw/fall-back path can be exercised directly — it can't be triggered
+// through the public handler because every registry `_postFilter` is
+// defensively written and won't throw on JSON-RPC input.
+export async function executeTool(
+  tool: CacheToolDef,
+  params: Record<string, unknown> = {},
+): Promise<{ cached_at: string | null; stale: boolean; data: Record<string, unknown> }> {
   const reads = tool._cacheKeys.map(k => readJsonFromUpstash(k));
   const freshnessChecks = tool._freshnessChecks?.length
     ? tool._freshnessChecks
@@ -1380,6 +2274,26 @@ async function executeTool(tool: CacheToolDef): Promise<{ cached_at: string | nu
     }
     data[label || (parts[0] ?? key)] = results[i];
   });
+
+  // Optional in-memory post-filter (declared per-tool, mirrors that tool's
+  // inputSchema.properties). A filter bug must NEVER break the tool — on throw
+  // we fall back to the unfiltered data and report to Sentry, because a
+  // narrowing filter failing open is strictly safer than a -32603 to the user.
+  //
+  // The filter is handed a `structuredClone` of `data`, NOT `data` itself: the
+  // helpers (narrowNested, capArrays, mapNested, ...) narrow in place, so a
+  // mid-filter throw would otherwise leave `data` partially mutated and the
+  // catch below would "fall back" to a half-narrowed object. Cloning keeps the
+  // original pristine so the fall-through return is genuinely the full payload.
+  // Redis output is JSON-safe and the data map is small (tens of KB), so the
+  // clone is cheap.
+  if (tool._postFilter) {
+    try {
+      return { cached_at, stale, data: tool._postFilter(structuredClone(data), params) };
+    } catch (err) {
+      captureSilentError(err, { tags: { route: 'api/mcp', step: 'post-filter', tool: tool.name } });
+    }
+  }
 
   return { cached_at, stale, data };
 }
@@ -1722,7 +2636,7 @@ async function dispatchToolsCall(
       const baseUrl = new URL(req.url).origin;
       result = await tool._execute(p.arguments ?? {}, baseUrl, context);
     } else {
-      result = await executeTool(tool);
+      result = await executeTool(tool, p.arguments ?? {});
     }
     // Convex `internal-validate-pro-mcp-token` schedules touchProMcpTokenLastUsed
     // itself (convex/http.ts:1035-1040), so no waitUntil needed here.

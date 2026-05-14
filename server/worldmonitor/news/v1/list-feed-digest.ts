@@ -14,6 +14,7 @@ import { sha256Hex } from '../../../_shared/hash';
 import { CHROME_UA } from '../../../_shared/constants';
 import { VARIANT_FEEDS, INTEL_SOURCES, type ServerFeed } from './_feeds';
 import { classifyByKeyword, hasHistoricalMarker, type ThreatLevel } from './_classifier';
+import { classifyOpinion } from '../../../_shared/opinion-classifier.js';
 import { buildClassifyCacheKey } from '../../intelligence/v1/_shared';
 import { getSourceTier } from '../../../_shared/source-tiers';
 import {
@@ -152,6 +153,14 @@ interface ParsedItem {
   // absent, too short, or indistinguishable from the headline. Grounding input
   // for brief / whyMatters / SummarizeArticle LLMs.
   description: string;
+  // Opinion / analysis classification (classifyOpinion over title + link +
+  // description). Persisted on the story:track:v1 row as `isOpinion` so the
+  // brief's read path (buildDigest) can exclude op-ed/column content — the
+  // brief is event-driven intelligence, a column is not an event. See
+  // docs/plans/2026-05-14-001-…-plan.md (F3). story:track rows feed more
+  // than the brief, so this STAMPS rather than drops — only buildDigest
+  // filters on it.
+  isOpinion: boolean;
 }
 
 const MAX_DESCRIPTION_LEN = 400;
@@ -466,6 +475,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
       corroborationCount: 1,
       lang: feed.lang ?? 'en',
       description,
+      isOpinion: classifyOpinion({ title, link, description }),
     });
   }
 
@@ -890,6 +900,15 @@ function buildStoryTrackHsetFields(
     // (treats as legacy row) instead of being mis-classified as a stale
     // row with a bogus timestamp.
     'publishedAt', Number.isFinite(item.publishedAt) ? String(item.publishedAt) : '',
+    // Opinion/analysis flag (classifyOpinion). '1' = op-ed/column,
+    // '0' = hard news. buildDigest's read-path filter excludes '1' rows
+    // from the brief pool. Written unconditionally for the same
+    // shared-row reason as `description` above: story:track rows are
+    // collapsed by normalised-title hash, so a stale '1' from an earlier
+    // mention must be overwritten by the current mention's verdict.
+    // Pre-stamp rows (ingested before this shipped) have no field at
+    // all; buildDigest re-classifies those from title/link/description.
+    'isOpinion', item.isOpinion ? '1' : '0',
   ];
 }
 
