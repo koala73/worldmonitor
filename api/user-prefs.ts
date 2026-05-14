@@ -88,11 +88,20 @@ export default async function handler(
       // caught earlier (the `validateBearerToken` 401 above) and never reach
       // this catch. Capture before returning 401 so the drift surfaces under
       // a stable Sentry bucket instead of silently 401'ing every request.
+      //
+      // `level: 'warning'` because the observed pattern is one transient
+      // event per user (5ev/5u over a week — WORLDMONITOR-QK), which a
+      // client retry recovers cleanly. Keeping the capture at error
+      // drowned real bugs in the dashboard while delivering no operational
+      // signal beyond "drift happened" (already evident from the warning
+      // bucket). A genuine systemic drift incident would still surface
+      // because volume would escalate and reopen the archived issue.
       if (kind === 'UNAUTHENTICATED') {
-        console.error('[user-prefs] GET convex auth drift:', err);
+        console.warn('[user-prefs] GET convex auth drift:', err);
         captureSilentError(err, buildSentryContext(err, msg, {
           method: 'GET', convexFn: 'userPreferences:getPreferences',
           userId: session.userId, variant, ctx,
+          level: 'warning',
         }));
         return jsonResponse({ error: 'UNAUTHENTICATED' }, 401, cors);
       }
@@ -190,14 +199,17 @@ export default async function handler(
     if (kind === 'UNAUTHENTICATED') {
       // See GET branch above — UNAUTHENTICATED here means Clerk-vs-Convex
       // auth drift (token already passed validateBearerToken). Capture
-      // before returning 401 so the drift is visible.
-      console.error('[user-prefs] POST convex auth drift:', err);
+      // at `warning` for visibility without paging — the observed pattern
+      // is transient single-event-per-user that recovers on client retry
+      // (WORLDMONITOR-QK).
+      console.warn('[user-prefs] POST convex auth drift:', err);
       captureSilentError(err, buildSentryContext(err, msg, {
         method: 'POST', convexFn: 'userPreferences:setPreferences',
         userId: session.userId, variant: body.variant, ctx,
         schemaVersion: typeof body.schemaVersion === 'number' ? body.schemaVersion : null,
         expectedSyncVersion: body.expectedSyncVersion,
         blobSize: body.data !== undefined ? JSON.stringify(body.data).length : 0,
+        level: 'warning',
       }));
       return jsonResponse({ error: 'UNAUTHENTICATED' }, 401, cors);
     }
