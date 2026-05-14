@@ -584,3 +584,60 @@ export function composeBriefFromDigestStories(rule, digestStories, insightsNumbe
   }
   return envelope;
 }
+
+/**
+ * Derive the rendered `digest.threads` from the FINAL ordered story
+ * walk (plan F7 / Phase 6).
+ *
+ * The LLM still emits `synthesis.threads` — that stays the haystack
+ * `checkLeadGrounding` inspects — but the rendered "On The Desk"
+ * threads page is no longer an independent editorial judgment that can
+ * disagree with the story walk. On 2026-05-13 the threads page listed
+ * topics in an order the story walk did not follow, and a story
+ * (hantavirus) was covered by no thread at all. Here threads are one
+ * per topic-cluster, in the EXACT order the stories render.
+ *
+ * `orderBriefCandidates` (shared/brief-filter.js) emits same-cluster
+ * stories contiguously, so a consecutive-run group on `clusterId`
+ * reproduces the walk's block order without needing the transient
+ * topic key (which is deliberately not written onto BriefStory).
+ *
+ * `tag` is the cluster's category; `teaser` is the cluster's lead
+ * (first, highest-ranked) story's `description`. Call this AFTER
+ * `enrichBriefEnvelopeWithLLM` so the teaser is the LLM editorial
+ * sentence; the filter-stage `description = rawDescription || headline`
+ * fallback guarantees a non-empty string either way.
+ *
+ * @param {Array<{ clusterId?: string; category?: string; headline?: string; description?: string }>} stories
+ *   the FINAL ordered `envelope.data.stories[]`
+ * @returns {Array<{ tag: string; teaser: string }>}
+ */
+export function deriveThreadsFromOrderedStories(stories) {
+  if (!Array.isArray(stories)) return [];
+  /** @type {Array<{ tag: string; teaser: string }>} */
+  const threads = [];
+  let lastClusterId;
+  let started = false;
+  for (const s of stories) {
+    const clusterId = typeof s?.clusterId === 'string' && s.clusterId.length > 0
+      ? s.clusterId
+      : null;
+    // New cluster boundary → this story leads a new thread. A null
+    // clusterId (defensive — the filter guarantees a non-empty one)
+    // never coalesces: each such story becomes its own thread.
+    const isBoundary = !started || clusterId === null || clusterId !== lastClusterId;
+    if (!isBoundary) continue;
+    const tag = typeof s?.category === 'string' && s.category.trim().length > 0
+      ? s.category.trim()
+      : 'General';
+    const description = typeof s?.description === 'string' ? s.description.trim() : '';
+    const headline = typeof s?.headline === 'string' ? s.headline.trim() : '';
+    const teaser = description.length > 0 ? description : headline;
+    // Skip a cluster lead with no usable text rather than emit an
+    // invalid `{tag, teaser:''}` the renderer's assert would reject.
+    if (teaser.length > 0) threads.push({ tag, teaser });
+    lastClusterId = clusterId;
+    started = true;
+  }
+  return threads;
+}

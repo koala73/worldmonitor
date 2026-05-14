@@ -14,7 +14,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { composeBriefFromDigestStories, stripHeadlineSuffix, stripHeadlinePrefix, digestStoryToSynthesisShape } from '../scripts/lib/brief-compose.mjs';
+import { composeBriefFromDigestStories, stripHeadlineSuffix, stripHeadlinePrefix, digestStoryToSynthesisShape, deriveThreadsFromOrderedStories } from '../scripts/lib/brief-compose.mjs';
 import { materializeCluster } from '../scripts/lib/brief-dedup-jaccard.mjs';
 
 const NOW = 1_745_000_000_000; // 2026-04-18 ish, deterministic
@@ -1644,5 +1644,149 @@ describe('Sprint 1 U7 production-gap source-text guard — formatter call site',
       `expected ≥2 sourceCountByClusterId.get(clusterId) reads (U4 writer + U5 evaluator); ` +
       `found ${getMatches.length}. If you removed one of them, the cooldown evolution bypass will break silently.`,
     );
+  });
+});
+
+// ── deriveThreadsFromOrderedStories (F7 / Phase 6) ──────────────────────────
+//
+// The rendered "On The Desk" threads page is derived from the FINAL
+// ordered story walk — one thread per topic-cluster, in walk order —
+// so it can never disagree with the story walk (the 2026-05-13 bug:
+// threads listed in one order, stories walked in another, a story
+// covered by no thread).
+
+describe('deriveThreadsFromOrderedStories', () => {
+  // Mirrors the FINAL ordered envelope.data.stories[] shape: each story
+  // carries clusterId / category / headline / description.
+  function story(overrides = {}) {
+    return {
+      clusterId: 'c-default',
+      category: 'Geopolitics',
+      headline: 'A default headline',
+      description: 'A default editorial sentence about the development.',
+      ...overrides,
+    };
+  }
+
+  it('emits one thread per cluster, in story-walk order, tag = category, teaser = description', () => {
+    const stories = [
+      story({ clusterId: 'c1', category: 'Energy', description: 'Oil futures spiked after the strait closure threat.' }),
+      story({ clusterId: 'c2', category: 'Diplomacy', description: 'A secret summit reshaped the regional alignment.' }),
+      story({ clusterId: 'c3', category: 'Climate', description: 'Record heat forced grid curtailment across three states.' }),
+    ];
+    const threads = deriveThreadsFromOrderedStories(stories);
+    assert.deepEqual(threads, [
+      { tag: 'Energy', teaser: 'Oil futures spiked after the strait closure threat.' },
+      { tag: 'Diplomacy', teaser: 'A secret summit reshaped the regional alignment.' },
+      { tag: 'Climate', teaser: 'Record heat forced grid curtailment across three states.' },
+    ]);
+  });
+
+  it('collapses a contiguous multi-story cluster into ONE thread led by the first (highest-ranked) member', () => {
+    const stories = [
+      story({ clusterId: 'big', category: 'Conflict', headline: 'Lead story', description: 'The lead members editorial sentence.' }),
+      story({ clusterId: 'big', category: 'Conflict', headline: 'Second member', description: 'A follow-on member that must NOT spawn its own thread.' }),
+      story({ clusterId: 'big', category: 'Conflict', headline: 'Third member', description: 'Another follow-on member.' }),
+      story({ clusterId: 'solo', category: 'Markets', description: 'A singleton cluster after the big block.' }),
+    ];
+    const threads = deriveThreadsFromOrderedStories(stories);
+    assert.equal(threads.length, 2, 'three-member cluster → one thread; singleton → one thread');
+    assert.deepEqual(threads[0], { tag: 'Conflict', teaser: 'The lead members editorial sentence.' });
+    assert.deepEqual(threads[1], { tag: 'Markets', teaser: 'A singleton cluster after the big block.' });
+  });
+
+  it('covers EVERY cluster — no orphan story (the May 13 hantavirus bug)', () => {
+    // A 12-story walk: a couple of 2-story clusters, the rest singletons,
+    // including a low-walk-position singleton that pre-F7 no thread covered.
+    const stories = [
+      story({ clusterId: 'A', category: 'Conflict' }),
+      story({ clusterId: 'A', category: 'Conflict' }),
+      story({ clusterId: 'B', category: 'Diplomacy' }),
+      story({ clusterId: 'C', category: 'Energy' }),
+      story({ clusterId: 'D', category: 'Cyber' }),
+      story({ clusterId: 'E', category: 'Markets' }),
+      story({ clusterId: 'F', category: 'Climate' }),
+      story({ clusterId: 'G', category: 'Aviation' }),
+      story({ clusterId: 'H', category: 'Humanitarian' }),
+      story({ clusterId: 'I', category: 'Technology' }),
+      story({ clusterId: 'J', category: 'Trade' }),
+      story({
+        clusterId: 'hantavirus',
+        category: 'Health',
+        headline: 'Hantavirus cluster confirmed in the southwest',
+        description: 'A Hantavirus outbreak was confirmed across three southwestern counties.',
+      }),
+    ];
+    const threads = deriveThreadsFromOrderedStories(stories);
+    // 12 stories, one 2-story cluster (A) → 11 distinct clusters → 11 threads.
+    assert.equal(threads.length, 11);
+    // The previously-orphaned low-walk-position story now has its own thread.
+    assert.ok(
+      threads.some((t) => t.tag === 'Health' && /Hantavirus/.test(t.teaser)),
+      'the low-walk-position singleton is covered by a thread — no orphan',
+    );
+    // Thread order tracks the walk: first cluster encountered is first thread.
+    assert.equal(threads[0].tag, 'Conflict');
+    assert.equal(threads[threads.length - 1].tag, 'Health');
+  });
+
+  it('teaser falls back to the headline when the story has no usable description', () => {
+    for (const desc of [undefined, '', '   ']) {
+      const threads = deriveThreadsFromOrderedStories([
+        story({ clusterId: 'c1', headline: 'A hard-news headline that stands in for the teaser', description: desc }),
+      ]);
+      assert.deepEqual(threads, [{ tag: 'Geopolitics', teaser: 'A hard-news headline that stands in for the teaser' }]);
+    }
+  });
+
+  it('tag falls back to "General" when category is empty / missing', () => {
+    for (const cat of [undefined, '', '   ']) {
+      const threads = deriveThreadsFromOrderedStories([story({ clusterId: 'c1', category: cat })]);
+      assert.equal(threads[0].tag, 'General');
+    }
+  });
+
+  it('a story with neither description nor headline is skipped (never emits an invalid empty teaser)', () => {
+    const threads = deriveThreadsFromOrderedStories([
+      story({ clusterId: 'c1', headline: '', description: '' }),
+      story({ clusterId: 'c2', headline: 'A valid one', description: '' }),
+    ]);
+    assert.deepEqual(threads, [{ tag: 'Geopolitics', teaser: 'A valid one' }]);
+  });
+
+  it('a missing / empty clusterId never coalesces — each such story is its own thread (defensive)', () => {
+    const threads = deriveThreadsFromOrderedStories([
+      story({ clusterId: undefined, category: 'X', description: 'first' }),
+      story({ clusterId: '', category: 'Y', description: 'second' }),
+    ]);
+    assert.equal(threads.length, 2, 'two null/empty-clusterId stories must not merge into one thread');
+  });
+
+  it('returns [] for empty / non-array input', () => {
+    assert.deepEqual(deriveThreadsFromOrderedStories([]), []);
+    assert.deepEqual(deriveThreadsFromOrderedStories(null), []);
+    assert.deepEqual(deriveThreadsFromOrderedStories(undefined), []);
+  });
+
+  it('integration: derived threads pass the renderer envelope contract', async () => {
+    const { assertBriefEnvelope } = await import('../server/_shared/brief-render.js');
+    const envelope = composeBriefFromDigestStories(
+      rule(),
+      [
+        digestStory({ hash: 'h1', title: 'Iran threatens to close Strait of Hormuz', sources: ['Reuters'] }),
+        digestStory({ hash: 'h2', title: 'Putin tests a nuclear-capable missile', sources: ['CNN'] }),
+      ],
+      { clusters: 2, multiSource: 1 },
+      { nowMs: NOW },
+    );
+    assert.ok(envelope, 'envelope composed');
+    const derivedThreads = deriveThreadsFromOrderedStories(envelope.data.stories);
+    assert.ok(derivedThreads.length >= 1, 'at least one derived thread');
+    const withThreads = {
+      ...envelope,
+      data: { ...envelope.data, digest: { ...envelope.data.digest, threads: derivedThreads } },
+    };
+    assert.doesNotThrow(() => assertBriefEnvelope(withThreads),
+      'an envelope whose threads were swapped for derived ones still validates');
   });
 });
