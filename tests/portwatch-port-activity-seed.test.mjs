@@ -166,6 +166,59 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     assert.match(src, /Revert to 50/);
   });
 
+  // Greptile PR #3694 round 3 P1: with the temp gate lowered to 25 but the
+  // 80% degradation guard unchanged, a cap-mode partial-success run that
+  // CLEARS the coverage gate (countryData.size ≥ 25) would STILL fail the
+  // degradation guard (countryData.size < prevCount × 0.8 ≈ 139). The fix
+  // is to bypass the degradation guard when capTriggered.
+  it('degradation guard is bypassed when capTriggered (cap-mode partial publish)', () => {
+    // fetchAll must surface capTriggered + counter fields to main()
+    assert.match(src, /capTriggered,\s*\n\s*servedStaleCount,/);
+    assert.match(src, /droppedTooOldCount,/);
+    assert.match(src, /droppedNoCacheCount,/);
+    // main() must read those fields off the fetchAll result
+    assert.match(src, /capTriggered,\s*\n\s*servedStaleCount,\s*\n\s*droppedTooOldCount,\s*\n\s*droppedNoCacheCount,\s*\n\s*\}\s*=\s*await fetchAll/);
+    // The guard branch must be wrapped in `if (capTriggered) {} else if (...)`
+    // so cap-mode runs SKIP the guard entirely (not just log a warning and
+    // then still fall through to the guard).
+    assert.match(src, /if\s*\(\s*capTriggered\s*\)\s*\{[\s\S]+?PARTIAL PUBLISH \(cap-mode\)[\s\S]+?\}\s*else if\s*\(\s*prevCount\s*>\s*0\s*&&\s*countryData\.size\s*<\s*prevCount\s*\*\s*0\.8\s*\)/);
+  });
+
+  it('cap-mode partial publish logs operator-visible bucket counts', () => {
+    // Without this log, operators see seed-meta advance but have no signal
+    // that the publish was partial. The log must include servedStale,
+    // droppedTooOld, droppedNoCache counts so /api/health WARNING ↔ HEALTHY
+    // transitions are explainable from the seed log alone.
+    assert.match(src, /PARTIAL PUBLISH \(cap-mode\)/);
+    assert.match(src, /\$\{servedStaleCount\}\s*stale-served/);
+    assert.match(src, /\$\{droppedTooOldCount\}\s*dropped/);
+    assert.match(src, /\$\{droppedNoCacheCount\}\s*dropped/);
+    assert.match(src, /Degradation guard bypassed/);
+  });
+
+  it('non-cap-mode runs still enforce the 80% degradation guard (silent-loss protection)', () => {
+    // The bypass MUST only fire when capTriggered. A run where
+    // needsFetch.length ≤ MAX_COLD_FETCH_PER_RUN (normal happy path) must
+    // still apply the 80% guard so an ArcGIS schema regression that
+    // silently drops 100 → 50 countries can't sneak through as a publish.
+    //
+    // Assert by structure: the else-if branch contains the prevCount × 0.8
+    // comparison and a DEGRADATION GUARD error+return, AND the comparison
+    // is INSIDE the else-if condition (not in a separate unconditional
+    // check before it that would bypass the else-if scoping).
+    assert.match(src, /else if\s*\([\s\S]{0,200}prevCount\s*\*\s*0\.8[\s\S]{0,200}\)\s*\{[\s\S]{0,400}DEGRADATION GUARD/);
+    // Ensure the 0.8 threshold appears exactly twice (once in the
+    // condition, once in the error message's `Math.ceil(prevCount * 0.8)`
+    // suggestion) — both inside the else-if scope. A third occurrence
+    // would suggest a duplicated check leaked outside the bypass.
+    const matches = src.match(/prevCount\s*\*\s*0\.8/g) ?? [];
+    assert.equal(
+      matches.length,
+      2,
+      `expected exactly 2 prevCount × 0.8 references (condition + error-msg suggestion), found ${matches.length}`,
+    );
+  });
+
   it('batch loop wires eager .catch for mid-batch SIGTERM diagnostics', () => {
     assert.match(src, /p\.catch\(err\s*=>\s*errors\.push/);
   });

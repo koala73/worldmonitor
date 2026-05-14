@@ -679,7 +679,19 @@ export async function fetchAll(progress, { signal } = {}) {
   // stale → 174 cold-fetches → bundle SIGTERM" failure mode that produced
   // 37h of stale data after a single upstream-advance event. A full
   // rotation completes in ~ceil(174/30) = 6 runs ≈ 3 days at 12h cadence.
+  // Cap-mode signaling. Surfaces to the caller so main() can bypass the 80%
+  // degradation guard for an intentionally-partial publish. Greptile PR #3694
+  // round 3 P1: pre-fix, cap-mode + temp-gate=25 would clear the coverage gate
+  // (countryData.size ≥ 25) but still fail the degradation guard
+  // (countryData.size < prevCount × 0.8 ≈ 139), so seed-meta would not advance
+  // and the WARNING would persist — defeating the PR's main recovery claim.
+  let capTriggered = false;
+  let servedStaleCount = 0;
+  let droppedTooOldCount = 0;
+  let droppedNoCacheCount = 0;
+
   if (needsFetch.length > MAX_COLD_FETCH_PER_RUN) {
+    capTriggered = true;
     // Deterministic-ish shuffle: Fisher-Yates with Math.random — fine here
     // because we just need "different subset each run", not crypto strength.
     const shuffled = [...needsFetch];
@@ -722,6 +734,11 @@ export async function fetchAll(progress, { signal } = {}) {
     // slice, so the two are numerically equal here, but using the constant
     // keeps the intent unambiguous if this log block is ever reordered.
     const originalMisses = MAX_COLD_FETCH_PER_RUN + servedStale + droppedTooOld + droppedNoCache;
+    // Surface the bucket counts to the outer-scope fields so main()'s
+    // degradation-guard bypass can include them in the partial-publish log.
+    servedStaleCount = servedStale;
+    droppedTooOldCount = droppedTooOld;
+    droppedNoCacheCount = droppedNoCache;
     console.warn(
       `  [port-activity] Cold-fetch capped at ${MAX_COLD_FETCH_PER_RUN}/run — ` +
       `refreshing ${MAX_COLD_FETCH_PER_RUN} now, serving ${servedStale} on stale cache (asof behind), ` +
@@ -830,7 +847,18 @@ export async function fetchAll(progress, { signal } = {}) {
   }
 
   if (countryData.size === 0) throw new Error('No country port data returned from ArcGIS');
-  return { countries: [...countryData.keys()], countryData, fetchedAt: new Date().toISOString() };
+  return {
+    countries: [...countryData.keys()],
+    countryData,
+    fetchedAt: new Date().toISOString(),
+    // Cap-mode signaling — see capTriggered declaration. main() reads these
+    // to bypass the 80% degradation guard for an intentionally-partial
+    // publish AND to emit a "PARTIAL PUBLISH" log noting the fresh/stale split.
+    capTriggered,
+    servedStaleCount,
+    droppedTooOldCount,
+    droppedNoCacheCount,
+  };
 }
 
 export function validateFn(data) {
@@ -892,7 +920,14 @@ async function main() {
     prevCount = Array.isArray(prevIso2List) ? prevIso2List.length : 0;
 
     console.log(`  Fetching port activity data (60d: last30 + prev30 windows)...`);
-    const { countries, countryData } = await fetchAll(progress, { signal: shutdownController.signal });
+    const {
+      countries,
+      countryData,
+      capTriggered,
+      servedStaleCount,
+      droppedTooOldCount,
+      droppedNoCacheCount,
+    } = await fetchAll(progress, { signal: shutdownController.signal });
 
     console.log(`  Fetched ${countryData.size} countries`);
 
@@ -902,7 +937,27 @@ async function main() {
       return;
     }
 
-    if (prevCount > 0 && countryData.size < prevCount * 0.8) {
+    // Degradation guard — bypass when capTriggered (Greptile PR #3694 round 3 P1).
+    //
+    // The 80%-of-prev guard exists to catch SILENT data loss: an ArcGIS
+    // regression that drops 100 → 50 countries with no other signal. In
+    // cap-mode the partial coverage is LOUD, INTENTIONAL, and ROTATIONAL
+    // (refresh 30 per run, serve rest from cache up to 7d age) — the
+    // coverage gate (countryData.size ≥ MIN_VALID_COUNTRIES) is the right
+    // floor here, not the 80%-of-prev comparison.
+    //
+    // Without this bypass, the cap-mode path would always trip the guard
+    // (cap=30 + ~24 stale-served = ~54 << 0.8 × 174 = 139), seed-meta
+    // would never advance, and the operator-facing WARNING would persist
+    // — defeating the entire recovery design from #3676 onwards.
+    if (capTriggered) {
+      console.warn(
+        `  PARTIAL PUBLISH (cap-mode): ${countryData.size}/${prevCount} countries — ` +
+        `${servedStaleCount} stale-served, ${droppedTooOldCount} dropped (cache > 7d), ` +
+        `${droppedNoCacheCount} dropped (no prior payload). ` +
+        `Degradation guard bypassed; seed-meta will advance.`,
+      );
+    } else if (prevCount > 0 && countryData.size < prevCount * 0.8) {
       console.error(`  DEGRADATION GUARD: ${countryData.size} countries vs ${prevCount} previous — refusing to overwrite (need ≥${Math.ceil(prevCount * 0.8)})`);
       await extendExistingTtl([CANONICAL_KEY, META_KEY, ...prevCountryKeys], TTL).catch(() => {});
       return;
