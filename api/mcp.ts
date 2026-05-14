@@ -15,6 +15,7 @@ import { captureSilentError } from './_sentry-edge.js';
 import COUNTRY_BBOXES from '../shared/country-bboxes.js';
 // @ts-expect-error — generated JS module, no declaration file
 import MINING_SITES_RAW from '../shared/mining-sites.js';
+import iso2ToIso3Raw from '../shared/iso2-to-iso3.json';
 import { getEntitlements } from '../server/_shared/entitlement-check';
 import {
   validateProMcpTokenOrNull,
@@ -214,6 +215,11 @@ interface RpcToolDef extends BaseToolDef {
 }
 
 type ToolDef = CacheToolDef | RpcToolDef;
+
+// ISO 3166-1 alpha-2 → alpha-3 lookup (uppercase keys). Lets the `country`
+// filter stay uniformly alpha-2 across every tool even though a few cached
+// payloads (e.g. economic:national-debt:v1 `entries[].iso3`) are keyed alpha-3.
+const ISO2_TO_ISO3: Record<string, string> = iso2ToIso3Raw;
 
 // ---------------------------------------------------------------------------
 // Cache-tool filter helpers
@@ -1111,7 +1117,9 @@ const TOOL_REGISTRY: ToolDef[] = [
       if (countries.length > 0) {
         data._all = pickMapKeys(data._all, countries);
         pickNestedMap(data, 'fossil-electricity-share', 'countries', countries);
-        narrowArray(data, '_countries', (c) => matchesCode(c.iso2, countries));
+        // energy:gas-storage:v1:_countries is a string[] of ISO2 codes — match
+        // the entry directly; the `?.iso2` fallback tolerates an object shape.
+        narrowArray(data, '_countries', (c) => matchesCode(c, countries) || matchesCode(c?.iso2, countries));
         mapNested(data, 'fuel-shortages', 'shortages', (m) => filterMapValues(m, (s) => matchesCode(s.country, countries)));
         mapNested(data, 'disruptions', 'events', (m) => filterMapValues(m, (e) => matchesCode(e.countries, countries)));
       }
@@ -1301,7 +1309,7 @@ const TOOL_REGISTRY: ToolDef[] = [
         },
         country: {
           type: 'string',
-          description: 'Filter the per-country datasets to one code — ISO 3166-1 alpha-2 for the BigMac index, alpha-3 for national debt (either is accepted).',
+          description: 'Filter the per-country datasets to one ISO 3166-1 alpha-2 country code (e.g. "US"). It is translated to alpha-3 internally for the national-debt dataset; passing an alpha-3 code directly also works.',
         },
         limit: { type: 'number', description: 'Cap each list dataset (tariff datapoints, BigMac countries, debt entries) to at most this many items.' },
       },
@@ -1312,7 +1320,13 @@ const TOOL_REGISTRY: ToolDef[] = [
       const limit = argNum(params.limit);
       if (countries.length > 0) {
         narrowNested(data, 'bigmac', 'countries', (c) => matchesCode(c.code, countries));
-        narrowNested(data, 'national-debt', 'entries', (e) => matchesCode(e.iso3, countries));
+        // national-debt entries are keyed by ISO alpha-3 (iso3:"USA"); the
+        // country param is alpha-2 like the rest of the tool, so expand it.
+        const debtCodes = [
+          ...countries,
+          ...compact(countries.map((c) => ISO2_TO_ISO3[c.toUpperCase()]?.toLowerCase())),
+        ];
+        narrowNested(data, 'national-debt', 'entries', (e) => matchesCode(e.iso3, debtCodes));
       }
       capNested(data, 'all', 'datapoints', limit);
       capNested(data, 'bigmac', 'countries', limit);

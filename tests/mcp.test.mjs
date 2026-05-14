@@ -377,6 +377,30 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(Object.keys(full.data.macro.countries).length, 3, 'no args → all countries retained');
   });
 
+  it('get_energy_intelligence: country filter matches the gas-storage string[] payload', async () => {
+    // Regression: energy:gas-storage:v1:_countries is a string[] of ISO2 codes,
+    // NOT an array of {iso2} objects. A filter that reads c.iso2 drops everything.
+    mockCacheKeys(
+      { 'energy:gas-storage:v1:_countries': ['DE', 'FR', 'NL'] },
+      { 'seed-meta:energy:gas-storage-countries': { fetchedAt: Date.now() - 60_000, recordCount: 3 } },
+    );
+    const out = await callTool('get_energy_intelligence', { dataset: ['gas-storage'], country: 'DE' });
+    assert.deepEqual(out.data._countries, ['DE'], 'gas-storage _countries is a string[] — filter must match the string itself');
+  });
+
+  it('get_tariff_trends: alpha-2 country filter resolves to alpha-3 national-debt entries', async () => {
+    // Regression: national-debt entries are keyed by ISO alpha-3 (iso3:"USA").
+    // The country param is alpha-2 (consistent with the rest of the tool), so
+    // country:"US" must still match iso3:"USA".
+    mockCacheKeys(
+      { 'economic:national-debt:v1': { entries: [{ iso3: 'USA', debtUsd: 2 }, { iso3: 'DEU', debtUsd: 1 }], seededAt: 1 } },
+      { 'seed-meta:economic:national-debt': { fetchedAt: Date.now() - 60_000, recordCount: 2 } },
+    );
+    const out = await callTool('get_tariff_trends', { dataset: ['national-debt'], country: 'US' });
+    assert.equal(out.data['national-debt'].entries.length, 1, 'alpha-2 "US" must match iso3 "USA"');
+    assert.equal(out.data['national-debt'].entries[0].iso3, 'USA');
+  });
+
   // --- get_displacement_data (U1: Tier 1 regression) ---
 
   it('get_displacement_data returns {cached_at, stale, data.summary} on cache hit', async () => {
