@@ -88,6 +88,7 @@ import {
   fetchStoredStockBacktests,
   getMissingOrStaleStoredStockBacktests,
   hasFreshStoredStockBacktests,
+  type StockBacktestResult,
 } from '@/services/stock-backtest';
 import {
   fetchStockAnalysisHistory,
@@ -1344,7 +1345,22 @@ export class DataLoaderManager implements AppModule {
         }
         return;
       }
-      panel.renderBacktests(results);
+      // Build a combined view so a partial refetch does not shrink the panel:
+      // keep still-fresh cached backtests for symbols we did NOT refetch, swap
+      // in live results for the ones we did. Watchlist order is preserved.
+      const resultBySymbol = new Map(results.map((r) => [r.symbol, r]));
+      const storedBySymbol = new Map(stored.map((s) => [s.symbol, s]));
+      const combined: StockBacktestResult[] = [];
+      for (const target of targets) {
+        const live = resultBySymbol.get(target.symbol);
+        if (live) {
+          combined.push(live);
+          continue;
+        }
+        const cached = storedBySymbol.get(target.symbol);
+        if (cached) combined.push(cached);
+      }
+      panel.renderBacktests(combined.length > 0 ? combined : results);
     } catch (error) {
       console.error('[StockBacktest] failed:', error);
       const stored = await fetchStoredStockBacktests().catch(() => []);

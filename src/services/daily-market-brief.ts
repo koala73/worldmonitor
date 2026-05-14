@@ -200,6 +200,7 @@ function resolveTargets(markets: MarketData[], explicitTargets?: MarketWatchlist
   const resolved: MarketData[] = [];
   const seen = new Set<string>();
 
+  // User/explicit picks lead — they care about those most.
   for (const entry of targetEntries) {
     const match = bySymbol.get(entry.symbol);
     if (!match || seen.has(match.symbol)) continue;
@@ -208,13 +209,15 @@ function resolveTargets(markets: MarketData[], explicitTargets?: MarketWatchlist
     if (resolved.length >= DEFAULT_TARGET_COUNT) return resolved;
   }
 
-  if (!explicitEntries && !(watchlistEntries && watchlistEntries.length > 0)) {
-    for (const market of markets) {
-      if (seen.has(market.symbol)) continue;
-      seen.add(market.symbol);
-      resolved.push(market);
-      if (resolved.length >= DEFAULT_TARGET_COUNT) break;
-    }
+  // ...then top up with default markets. The watchlist is additive: a
+  // one-entry watchlist must still produce a full brief, not collapse to a
+  // single item (matches the additive behaviour of the Markets panel and
+  // getStockAnalysisTargets).
+  for (const market of markets) {
+    if (seen.has(market.symbol)) continue;
+    seen.add(market.symbol);
+    resolved.push(market);
+    if (resolved.length >= DEFAULT_TARGET_COUNT) break;
   }
 
   return resolved;
