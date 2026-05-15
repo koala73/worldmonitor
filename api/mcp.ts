@@ -750,6 +750,7 @@ const TOOL_REGISTRY: ToolDef[] = [
       properties: {
         theater: { type: 'string', description: 'Filter to one theater by id (case-insensitive substring, e.g. "iran", "taiwan", "baltic", "korea").' },
         posture_level: { type: 'string', description: 'Filter to a single posture level.' },
+        limit: { type: 'number', description: 'Cap the theaters list to at most this many items (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
@@ -758,6 +759,7 @@ const TOOL_REGISTRY: ToolDef[] = [
       const level = argStr(params.posture_level);
       if (theater) narrowNested(data, 'theater_posture', 'theaters', (t) => ciIncludes(t.theater, theater));
       if (level) narrowNested(data, 'theater_posture', 'theaters', (t) => argStr(t.postureLevel) === level);
+      capNested(data, 'theater_posture', 'theaters', argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
       return data;
     },
     _cacheKeys: ['theater_posture:sebuf:stale:v1'],
@@ -1195,6 +1197,7 @@ const TOOL_REGISTRY: ToolDef[] = [
           type: 'string',
           description: 'Filter the country-keyed datasets (Ember electricity mix, gas storage, fuel shortages, energy disruptions, fossil-share) to one ISO 3166-1 alpha-2 code.',
         },
+        limit: { type: 'number', description: 'Cap each list-bearing energy slice (crisis-policies, electricity regions, gas-storage countries, World Bank renewable history/regions) to at most this many items (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
@@ -1209,6 +1212,14 @@ const TOOL_REGISTRY: ToolDef[] = [
         mapNested(data, 'fuel-shortages', 'shortages', (m) => filterMapValues(m, (s) => matchesCode(s.country, countries)));
         mapNested(data, 'disruptions', 'events', (m) => filterMapValues(m, (e) => matchesCode(e.countries, countries)));
       }
+      const limit = argNum(params.limit) ?? DEFAULT_LIST_LIMIT;
+      capNested(data, 'crisis-policies', 'policies', limit);
+      capNested(data, 'index', 'regions', limit);
+      capNested(data, 'worldbank-renewable', 'historicalData', limit);
+      capNested(data, 'worldbank-renewable', 'regions', limit);
+      // _countries is a top-level string[] — capArrays handles top-level arrays;
+      // in the energy bundle it's the only such array, so no collateral damage.
+      capArrays(data, limit);
       const ds = argStrList(params.dataset);
       if (ds.length > 0) {
         const map: Record<string, string> = {
@@ -1467,6 +1478,7 @@ const TOOL_REGISTRY: ToolDef[] = [
           },
           description: 'Restrict the response to one or more sub-datasets. Omit for the full bundle.',
         },
+        limit: { type: 'number', description: 'Cap the chokepoint-baselines list and the _countries ISO2 index to at most this many items (default 30, pass 0 for no cap). Keyed-object maps (transit-summaries, chokepoint_transits, ref, chokepoint-flows) are intentionally not capped — use the `chokepoint` filter instead.' },
       },
       required: [],
     },
@@ -1478,6 +1490,10 @@ const TOOL_REGISTRY: ToolDef[] = [
         data['chokepoint-flows'] = pickMapKeysLike(data['chokepoint-flows'], cp);
         narrowNested(data, 'chokepoint-baselines', 'chokepoints', (c) => ciIncludes(c.id, cp) || ciIncludes(c.relayId, cp) || ciIncludes(c.name, cp));
       }
+      const limit = argNum(params.limit) ?? DEFAULT_LIST_LIMIT;
+      capNested(data, 'chokepoint-baselines', 'chokepoints', limit);
+      // _countries is the only top-level array in this bundle (string[] of ISO2 codes).
+      capArrays(data, limit);
       return selectDatasets(data, argStrList(params.dataset));
     },
     // Maritime chokepoint bundle distinct from get_supply_chain_data (which keeps

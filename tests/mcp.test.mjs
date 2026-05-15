@@ -476,6 +476,44 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(full.data['stocks-bootstrap'].quotes.length, 50, 'limit: 0 must opt out to the full quote list');
   });
 
+  it('default cap: get_energy_intelligence caps crisis-policies + other list slices', async () => {
+    // Regression: dataset:['crisis-policies'] with 50 policies must come back as 30.
+    const policies = { policies: Array.from({ length: 50 }, (_, i) => ({ id: i, country: 'X' })) };
+    mockCacheKeys(
+      { 'energy:crisis-policies:v1': policies },
+      { 'seed-meta:energy:crisis-policies': { fetchedAt: Date.now() - 60_000, recordCount: 50 } },
+    );
+    const out = await callTool('get_energy_intelligence', { dataset: ['crisis-policies'] });
+    assert.equal(out.data['crisis-policies'].policies.length, 30, 'no-args call must apply the default cap of 30');
+
+    mockCacheKeys(
+      { 'energy:crisis-policies:v1': policies },
+      { 'seed-meta:energy:crisis-policies': { fetchedAt: Date.now() - 60_000, recordCount: 50 } },
+    );
+    const full = await callTool('get_energy_intelligence', { dataset: ['crisis-policies'], limit: 0 });
+    assert.equal(full.data['crisis-policies'].policies.length, 50, 'limit: 0 must opt out');
+  });
+
+  it('default cap: get_military_posture caps the theaters array', async () => {
+    const theater_posture = { theaters: Array.from({ length: 40 }, (_, i) => ({ theater: `t${i}`, postureLevel: 'normal' })) };
+    mockCacheKeys(
+      { 'theater_posture:sebuf:stale:v1': theater_posture },
+      { 'seed-meta:intelligence:risk-scores': { fetchedAt: Date.now() - 60_000, recordCount: 40 } },
+    );
+    const out = await callTool('get_military_posture', {});
+    assert.equal(out.data.theater_posture.theaters.length, 30, 'no-args must cap theaters to 30');
+  });
+
+  it('default cap: get_chokepoint_status caps the chokepoints array', async () => {
+    const baselines = { source: 'x', referenceYear: 2023, updatedAt: '', chokepoints: Array.from({ length: 40 }, (_, i) => ({ id: `c${i}`, relayId: `c${i}_strait`, name: `Chokepoint ${i}` })) };
+    mockCacheKeys(
+      { 'energy:chokepoint-baselines:v1': baselines },
+      { 'seed-meta:energy:chokepoint-baselines': { fetchedAt: Date.now() - 60_000, recordCount: 40 } },
+    );
+    const out = await callTool('get_chokepoint_status', { dataset: ['chokepoint-baselines'] });
+    assert.equal(out.data['chokepoint-baselines'].chokepoints.length, 30, 'no-args must cap chokepoints to 30');
+  });
+
   it('default cap: limit: 0 opts out and returns the full list', async () => {
     const ucdp = { events: Array.from({ length: 50 }, (_, i) => ({ id: i, country: 'X', deathsBest: 1 })) };
     mockCacheKeys(
