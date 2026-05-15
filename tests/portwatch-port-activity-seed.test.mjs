@@ -136,22 +136,39 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     assert.match(src, /const captured = await _captureErrorBodyAfterTimeout\(url, signal\)/);
     // If the captured body has an ArcGIS error, surface its message so
     // fetchWithRetryOnInvalidParams's pattern matcher can fire.
-    assert.match(src, /if\s*\(captured\?\.error\)\s*{\s*throw new Error\(`ArcGIS error:/);
+    assert.match(src, /if\s*\(captured\?\.error\)\s*{[\s\S]{0,160}throw new Error\(`ArcGIS error:/);
   });
 
-  it('body capture is gated to once-per-run (proxy budget protection)', () => {
-    // Greptile PR #3681 P2 flagged tight direct+proxy budget under
-    // PER_COUNTRY_TIMEOUT_MS=90s. If every timing-out country paid the
-    // +20s capture cost, the 35s proxy budget would get crowded out.
-    // Gate the capture to fire ONCE per process — we only need the body
-    // shape once for diagnostics + to trip the threshold counter.
-    assert.match(src, /let _bodyCapturedOnceThisRun\s*=\s*false/);
-    // Set BEFORE the await so concurrent timing-out fetches don't all
-    // race past the guard (JS is single-threaded between awaits, but
-    // multiple in-flight fetches can each enter the catch).
-    assert.match(src, /if\s*\(!_bodyCapturedOnceThisRun\)\s*{\s*_bodyCapturedOnceThisRun\s*=\s*true/);
+  it('body capture is bounded by success + attempt caps (PR #3701 P2 round 2)', () => {
+    // Greptile PR #3681 P2 flagged tight direct+proxy budget; PR #3701 P2
+    // round 2 flagged that a failed first capture (the capture also timing
+    // out at +20s during consistent degradation) locked out every future
+    // attempt — diagnostic value lost. Fix: gate on SUCCESS count, bound
+    // ATTEMPTS so we keep trying but don't pay 30×20s in a fully-degraded
+    // run.
+    assert.match(src, /MAX_BODY_CAPTURE_SUCCESSES\s*=\s*1/);
+    assert.match(src, /MAX_BODY_CAPTURE_ATTEMPTS\s*=\s*3/);
+    assert.match(src, /let _bodyCaptureSuccessCount\s*=\s*0/);
+    assert.match(src, /let _bodyCaptureAttemptCount\s*=\s*0/);
+    // Gate uses both counters — successes < cap AND attempts < cap.
+    assert.match(src, /_bodyCaptureSuccessCount\s*<\s*MAX_BODY_CAPTURE_SUCCESSES[\s\S]{0,80}_bodyCaptureAttemptCount\s*<\s*MAX_BODY_CAPTURE_ATTEMPTS/);
+    // Attempt counter increments at the start, success counter only when
+    // we get a body (error or normal). null captures consume an attempt
+    // but not a success, so the next timing-out country can retry.
+    assert.match(src, /_bodyCaptureAttemptCount\s*\+=\s*1/);
+    assert.match(src, /_bodyCaptureSuccessCount\s*\+=\s*1/);
     // Test-only reset helper.
     assert.match(src, /export function _resetBodyCapturedFlag/);
+  });
+
+  it('proxy-confirmed Invalid query parameters short-circuits the retry (PR #3701 P2 round 2)', () => {
+    // arcgisProxyRetry wraps proxy errors with `(via proxy after ${reason})`.
+    // If we hit fetchWithRetryOnInvalidParams with that message, the proxy
+    // has already confirmed the upstream error — retrying would round-trip
+    // direct → proxy → same error, burning budget. Counter still increments
+    // (proxy-confirmed errors are valid degradation signals for the
+    // threshold) but the retry is skipped.
+    assert.match(src, /_invalidParamsErrorCount\s*\+=\s*1;\s*\n[\s\S]{0,800}if\s*\(\/via proxy after\/i\.test\(msg\)\)\s*throw err/);
   });
 
   it('cap-mode bypass requires fresh upstream contact (PR #3701 review P1)', () => {

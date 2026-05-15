@@ -220,20 +220,32 @@ async function fetchWithTimeout(url, { signal } = {}) {
     // surface its message so the circuit-breaker can fire on the
     // upstream-degradation signal.
     //
-    // Gated: fires ONCE per process. We only need the body shape once
-    // for diagnostics + to flip the circuit-breaker into bail-mode via
-    // INVALID_PARAMS_RETRY_THRESHOLD. Subsequent timeouts go straight
-    // to proxy retry so the 35s proxy budget stays intact and we don't
-    // re-create the budget-tight 45+20+35>90 scenario Greptile P2'd on
-    // PR #3681. Net cost: +20s once per run. Best-effort: any failure
-    // here just falls through to proxy retry as before.
-    if (!_bodyCapturedOnceThisRun) {
-      _bodyCapturedOnceThisRun = true;
+    // Gated: fires until we get a SUCCESSFUL capture or hit the attempt
+    // cap. We only need the body shape ONCE for diagnostics + to flip
+    // the circuit-breaker into bail-mode via INVALID_PARAMS_RETRY_THRESHOLD,
+    // so MAX_BODY_CAPTURE_SUCCESSES=1 — first body wins. But because the
+    // capture itself can ALSO time out during consistent degradation (the
+    // +20s budget isn't long enough when ArcGIS is uniformly slow per
+    // PR #3701 Greptile P2), we bound attempts at MAX_BODY_CAPTURE_ATTEMPTS
+    // (3) to keep retrying when initial captures fail. The 35s proxy budget
+    // and 45+20+35>90 scenario stay protected because per-country wrap
+    // caps the whole thing at 90s. Net cost: ≤3 × 20s wall-clock per run.
+    // Best-effort: any failure falls through to proxy retry as before.
+    if (_bodyCaptureSuccessCount < MAX_BODY_CAPTURE_SUCCESSES
+        && _bodyCaptureAttemptCount < MAX_BODY_CAPTURE_ATTEMPTS) {
+      _bodyCaptureAttemptCount += 1;
       const captured = await _captureErrorBodyAfterTimeout(url, signal);
       if (captured?.error) {
+        _bodyCaptureSuccessCount += 1;
         throw new Error(`ArcGIS error: ${captured.error.message ?? captured.error.code ?? JSON.stringify(captured.error)}`);
       }
-      if (captured?.body) return captured.body;
+      if (captured?.body) {
+        _bodyCaptureSuccessCount += 1;
+        return captured.body;
+      }
+      // captured=null: capture also timed out / errored. Don't count as
+      // success — fall through to proxy retry, leaving attempts budget
+      // for the next timing-out country in case that one settles faster.
     }
     return await arcgisProxyRetry(url, `direct ${errName || 'timeout'}`, { signal });
   }
@@ -246,16 +258,28 @@ async function fetchWithTimeout(url, { signal } = {}) {
   return body;
 }
 
-// Module-local: tracks whether the diagnostic body-capture path has
-// fired this run. Gated to once-per-process so subsequent timeouts go
-// straight to proxy retry without paying the extra capture budget.
-// See _captureErrorBodyAfterTimeout call site in fetchWithTimeout.
-let _bodyCapturedOnceThisRun = false;
+// Module-local: tracks SUCCESSFUL diagnostic body-captures this run.
+// Greptile PR #3701 P2: pre-fix the gate fired on first ATTEMPT, so a
+// failed first capture (capture also timing out at +20s during
+// consistent degradation) locked out every subsequent attempt — the
+// diagnostic value could be lost for an entire run. New behavior: gate
+// on successful captures, bound total ATTEMPTS to
+// MAX_BODY_CAPTURE_ATTEMPTS so we don't pay the +20s on every timing-out
+// country in a fully-degraded run.
+let _bodyCaptureSuccessCount = 0;
+let _bodyCaptureAttemptCount = 0;
+const MAX_BODY_CAPTURE_SUCCESSES = 1;
+// Cap on attempts in case captures keep failing (also-timing-out at +20s).
+// 3 attempts × 20s ÷ concurrency 6 ≈ 10s of extra wall-clock across the
+// run, bounded. Beyond that, the cost-benefit tips and subsequent
+// timeouts go straight to proxy.
+const MAX_BODY_CAPTURE_ATTEMPTS = 3;
 
-// Test-only helper: resets the once-per-run guard so unit tests can
+// Test-only helper: resets the capture counters so unit tests can
 // re-exercise the capture path with different mocked responses.
 export function _resetBodyCapturedFlag() {
-  _bodyCapturedOnceThisRun = false;
+  _bodyCaptureSuccessCount = 0;
+  _bodyCaptureAttemptCount = 0;
 }
 
 // Best-effort body capture when the initial fetch times out at
@@ -319,6 +343,15 @@ async function fetchWithRetryOnInvalidParams(url, { signal } = {}) {
     const msg = err?.message || '';
     if (!/Invalid query parameters/i.test(msg)) throw err;
     _invalidParamsErrorCount += 1;
+    // Greptile PR #3701 P2: if the error came BACK from the proxy
+    // (arcgisProxyRetry wraps with "via proxy after ${reason}"), the
+    // proxy has already confirmed the upstream error — retrying would
+    // just round-trip direct timeout → proxy → same error, burning the
+    // per-country budget for nothing. The proxy response is the
+    // definitive upstream signal here. We still increment the counter
+    // (proxy-confirmed errors are valid degradation signals for the
+    // threshold) but skip the retry.
+    if (/via proxy after/i.test(msg)) throw err;
     if (_invalidParamsErrorCount > INVALID_PARAMS_RETRY_THRESHOLD) {
       // Degradation signal — caller sees a clear "no retry, run will be
       // partial" message instead of doubling time-on-task for nothing.
