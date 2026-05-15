@@ -27,6 +27,24 @@ const PER_FEED_NEG_TTL_S = 2 * 60;
  * Raw item we extract from a feed. Same shape used through clustering;
  * the orchestrator may add enrichment-derived fields later when it
  * writes to the digest.
+ *
+ * # Why `description` and `body` are split
+ *
+ * Many RSS feeds emit BOTH:
+ *   • `<description>` — a short publisher-written lede (100-400 chars),
+ *     intended to be the headline summary readers see in a reader app.
+ *   • `<content:encoded>` — the full article body (5-40+ KB), which is
+ *     effectively the article-behind-the-link.
+ *
+ * The user-facing summary we ship on the wire should come from the brief
+ * `description` field — that's what the publisher intended as a summary.
+ * Showing the full article body would be functionally the same as
+ * scraping the article URL: "from within the links", not "from the
+ * articles in the RSS feed".
+ *
+ * For clustering input, we want the richer text — more semantic signal
+ * for the embedder. So we keep both around. The cache cost is bounded
+ * by capping body length on read (`MAX_BODY_LEN`).
  */
 export interface RawRssItem {
   source: string;          // outlet name (e.g. "Al Jazeera")
@@ -35,10 +53,17 @@ export interface RawRssItem {
   title: string;
   link: string;
   publishedAt: number;     // ms epoch
-  /** Raw RSS description, HTML stripped + collapsed. Used by clustering
-   *  (input to embedder) and as the wire `summary` field after clustering
-   *  picks the longest one across cluster members. */
+  /** Brief publisher-supplied lede — pulled from `<description>` (RSS)
+   *  or `<summary>` (Atom) ONLY. Never the full article body. This is
+   *  what surfaces as the wire `summary` on the v6 digest. May be empty
+   *  for feeds that don't emit a brief field. */
   description: string;
+  /** Richer text used as clustering input — `<content:encoded>` or
+   *  `<content>` if the feed supplies them, otherwise the brief
+   *  description. Capped at MAX_BODY_LEN to keep cache sane; the
+   *  embedder only sees the first 300 chars anyway. Never appears on
+   *  the user-facing wire. */
+  body: string;
   /** First image URL found anywhere in the item's RSS body
    *  (media:thumbnail / media:content / enclosure / <img src=...>). */
   imageUrl: string | null;
@@ -46,6 +71,11 @@ export interface RawRssItem {
    *  embedding/dedup decisions can be reused across pipelines. */
   titleHash: string;
 }
+
+/** Cap on the cached `body` field. The embedder only ingests the first
+ *  300 chars in inputTextFor, so 800 gives us headroom for any future
+ *  use (e.g. first-paragraph fallback) without bloating per-feed cache. */
+const MAX_BODY_LEN = 800;
 
 export interface NormalizeResult {
   items: RawRssItem[];
@@ -141,15 +171,25 @@ async function parseFeed(xml: string, src: NewsSource): Promise<RawRssItem[]> {
     }
     if (!link) continue;
 
-    // Prefer content:encoded > description > summary > content
-    const descRaw =
-      extractTag(item, 'content:encoded') ||
+    // Split extraction:
+    //   • description = brief publisher lede (<description> / Atom <summary>)
+    //   • body = richer text used for clustering (<content:encoded> /
+    //     <content>), falls back to the brief when no rich field exists
+    // The wire summary is built from `description` only — never from
+    // `body` — so we don't serve article-behind-the-link content to
+    // users. Both come from the RSS feed; only their role differs.
+    const briefRaw =
       extractTag(item, 'description') ||
-      extractTag(item, 'summary') ||
+      extractTag(item, 'summary');
+    const richRaw =
+      extractTag(item, 'content:encoded') ||
       extractTag(item, 'content');
-    const description = stripHtml(descRaw);
+    const description = stripHtml(briefRaw);
+    const body = (stripHtml(richRaw) || description).slice(0, MAX_BODY_LEN);
 
-    const imageUrl = extractImage(item, descRaw);
+    // For image extraction we want the richer source — content:encoded
+    // tends to contain <img> tags inline; description often doesn't.
+    const imageUrl = extractImage(item, richRaw || briefRaw);
 
     const pubStr =
       extractTag(item, 'pubDate') ||
@@ -169,6 +209,7 @@ async function parseFeed(xml: string, src: NewsSource): Promise<RawRssItem[]> {
       link,
       publishedAt,
       description,
+      body,
       imageUrl,
       titleHash,
     });

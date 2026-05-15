@@ -209,10 +209,18 @@ export interface ClusteredItem {
   isConflict: boolean | null;
 }
 
+/**
+ * Build the text the embedder ingests. Uses `item.body` (the richer
+ * cluster-input field — content:encoded if available, falling back to
+ * the brief description) so cluster quality benefits from the fuller
+ * semantic signal. The user-facing `summary` does NOT come from this
+ * path — see `pickSummary` for that. Capped at 300 chars; longer text
+ * doesn't materially improve same-event discrimination at our threshold.
+ */
 function inputTextFor(item: RawRssItem): string {
   const title = item.title.trim();
-  const desc = (item.description || '').trim().slice(0, 300);
-  const combined = desc ? `${title} — ${desc}` : title;
+  const text = (item.body || item.description || '').trim().slice(0, 300);
+  const combined = text ? `${title} — ${text}` : title;
   return combined.slice(0, MAX_INPUT_LEN);
 }
 
