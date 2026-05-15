@@ -122,6 +122,53 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     assert.match(src, /if\s*\(!\/Invalid query parameters\/i\.test\(msg\)\)\s*throw\s+err/);
   });
 
+  it('captures the ArcGIS error body after FETCH_TIMEOUT via diagnostic re-fetch (WM 2026-05-15)', () => {
+    // ArcGIS Daily_Ports_Data, during degradation episodes, returns
+    // HTTP 200 with a 400 error body after 30-56s. The 45s FETCH_TIMEOUT
+    // misses it; the upstream circuit-breaker on /Invalid query parameters/i
+    // never fires. Diagnostic re-fetch with +20s budget surfaces the body so
+    // the circuit-breaker can act on the upstream-degraded signal instead
+    // of treating every degraded country as a generic timeout.
+    assert.match(src, /ERROR_BODY_CAPTURE_EXTRA_MS\s*=\s*20_000/);
+    assert.match(src, /async function _captureErrorBodyAfterTimeout/);
+    // fetchWithTimeout calls it on the timeout-like-error path, before
+    // routing to proxy.
+    assert.match(src, /const captured = await _captureErrorBodyAfterTimeout\(url, signal\)/);
+    // If the captured body has an ArcGIS error, surface its message so
+    // fetchWithRetryOnInvalidParams's pattern matcher can fire.
+    assert.match(src, /if\s*\(captured\?\.error\)\s*{\s*throw new Error\(`ArcGIS error:/);
+  });
+
+  it('body capture is gated to once-per-run (proxy budget protection)', () => {
+    // Greptile PR #3681 P2 flagged tight direct+proxy budget under
+    // PER_COUNTRY_TIMEOUT_MS=90s. If every timing-out country paid the
+    // +20s capture cost, the 35s proxy budget would get crowded out.
+    // Gate the capture to fire ONCE per process — we only need the body
+    // shape once for diagnostics + to trip the threshold counter.
+    assert.match(src, /let _bodyCapturedOnceThisRun\s*=\s*false/);
+    // Set BEFORE the await so concurrent timing-out fetches don't all
+    // race past the guard (JS is single-threaded between awaits, but
+    // multiple in-flight fetches can each enter the catch).
+    assert.match(src, /if\s*\(!_bodyCapturedOnceThisRun\)\s*{\s*_bodyCapturedOnceThisRun\s*=\s*true/);
+    // Test-only reset helper.
+    assert.match(src, /export function _resetBodyCapturedFlag/);
+  });
+
+  it('bail-don\'t-retry on >5 Invalid query parameters errors per run (degradation signal)', () => {
+    // WM 2026-05-15 degradation: 30 cold fetches all hit the same 400,
+    // retry burned ~22 minutes of container budget for zero recoveries.
+    // Threshold preserves the legit transient-flake retry while protecting
+    // budget during global degradation.
+    assert.match(src, /INVALID_PARAMS_RETRY_THRESHOLD\s*=\s*5/);
+    assert.match(src, /let _invalidParamsErrorCount\s*=\s*0/);
+    // Counter increments + threshold check + bail-don't-retry path:
+    assert.match(src, /_invalidParamsErrorCount\s*\+=\s*1/);
+    assert.match(src, /if\s*\(_invalidParamsErrorCount\s*>\s*INVALID_PARAMS_RETRY_THRESHOLD\)/);
+    assert.match(src, /ArcGIS degraded — \${_invalidParamsErrorCount} 'Invalid query parameters'/);
+    // Test-only reset helper for re-exercising the threshold in unit tests.
+    assert.match(src, /export function _resetInvalidParamsErrorCount/);
+  });
+
   it('both EP3 + EP4 paginators route through fetchWithRetryOnInvalidParams', () => {
     const matches = src.match(/fetchWithRetryOnInvalidParams\(/g) ?? [];
     // Called in: fetchAllPortRefs (EP4), fetchCountryAccum (EP3). 2+ usages.

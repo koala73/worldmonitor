@@ -56,6 +56,31 @@ const FETCH_TIMEOUT = 45_000;
 // setup overhead and the surrounding pagination accounting. Greptile PR
 // #3681 review P2 flagged the prior 45+45=90s arrangement as racey.
 const PROXY_FETCH_TIMEOUT = 35_000;
+// Diagnostic re-fetch budget for capturing the actual error body when the
+// initial direct fetch times out at FETCH_TIMEOUT. WM 2026-05-15
+// investigation found ArcGIS Daily_Ports_Data, during degradation
+// episodes, returns HTTP 200 with a 400 error body
+// (`{"error":{"code":400,"message":"Cannot perform query. Invalid query
+// parameters."}}`) after 30-56s of server processing. Our 45s
+// FETCH_TIMEOUT fires first; the caller sees AbortError; the existing
+// circuit-breaker that looks for `/Invalid query parameters/i` never
+// fires because the message is never read. This extra 20s window lets
+// the body land (most degraded responses settle in <60s total) before
+// falling through to the proxy retry. Hard-capped — withPerCountryTimeout
+// still bounds the overall per-country budget at 90s, and the diagnostic
+// re-fetch only fires on internal-FETCH_TIMEOUT, not caller-signal
+// aborts.
+const ERROR_BODY_CAPTURE_EXTRA_MS = 20_000;
+// After this many "Invalid query parameters" errors in a single process,
+// stop retrying on them — that's a degradation signal, not a transient
+// flake. The historical comment on fetchWithRetryOnInvalidParams notes
+// "a single retry with a short back-off clears it in practice", which
+// was true for the 2026-04-20 BRA/IDN/NGA transient. NOT true during the
+// 2026-05-15 degradation episode where every cold-fetch hit the same
+// 400 and the retry burned another full FETCH_TIMEOUT for nothing
+// (30 cold × 2 attempts × 45s = blown 540s container budget). Counter
+// is module-local and resets at process start (next cron tick).
+const INVALID_PARAMS_RETRY_THRESHOLD = 5;
 // Two aggregation windows, hardcoded in fetchCountryAccum:
 //   last30 = days  0-30 → tankerCalls30d, avg30d, import/export sums
 //   prev30 = days 30-60 → trendDelta baseline
@@ -171,6 +196,31 @@ async function fetchWithTimeout(url, { signal } = {}) {
       || errName === 'AbortError'
       || /timeout|aborted|fetch failed|ECONNRESET|UND_ERR_/i.test(errMsg);
     if (!isTimeoutLike) throw err;
+    // WM 2026-05-15: before routing to proxy, make ONE diagnostic
+    // re-fetch with an extra ERROR_BODY_CAPTURE_EXTRA_MS budget to
+    // capture the actual response body. ArcGIS Daily_Ports_Data in
+    // degradation mode returns HTTP 200 with a 400 error body after
+    // 30-56s; the existing 45s FETCH_TIMEOUT misses it, so the upstream
+    // circuit-breaker (fetchWithRetryOnInvalidParams) never sees the
+    // real message. If THIS re-fetch lands a body with `body.error`,
+    // surface its message so the circuit-breaker can fire on the
+    // upstream-degradation signal.
+    //
+    // Gated: fires ONCE per process. We only need the body shape once
+    // for diagnostics + to flip the circuit-breaker into bail-mode via
+    // INVALID_PARAMS_RETRY_THRESHOLD. Subsequent timeouts go straight
+    // to proxy retry so the 35s proxy budget stays intact and we don't
+    // re-create the budget-tight 45+20+35>90 scenario Greptile P2'd on
+    // PR #3681. Net cost: +20s once per run. Best-effort: any failure
+    // here just falls through to proxy retry as before.
+    if (!_bodyCapturedOnceThisRun) {
+      _bodyCapturedOnceThisRun = true;
+      const captured = await _captureErrorBodyAfterTimeout(url, signal);
+      if (captured?.error) {
+        throw new Error(`ArcGIS error: ${captured.error.message ?? captured.error.code ?? JSON.stringify(captured.error)}`);
+      }
+      if (captured?.body) return captured.body;
+    }
     return await arcgisProxyRetry(url, `direct ${errName || 'timeout'}`, { signal });
   }
   if (resp.status === 429) {
@@ -182,32 +232,95 @@ async function fetchWithTimeout(url, { signal } = {}) {
   return body;
 }
 
+// Module-local: tracks whether the diagnostic body-capture path has
+// fired this run. Gated to once-per-process so subsequent timeouts go
+// straight to proxy retry without paying the extra capture budget.
+// See _captureErrorBodyAfterTimeout call site in fetchWithTimeout.
+let _bodyCapturedOnceThisRun = false;
+
+// Test-only helper: resets the once-per-run guard so unit tests can
+// re-exercise the capture path with different mocked responses.
+export function _resetBodyCapturedFlag() {
+  _bodyCapturedOnceThisRun = false;
+}
+
+// Best-effort body capture when the initial fetch times out at
+// FETCH_TIMEOUT. Used to surface the actual ArcGIS error body during
+// degradation episodes (see ERROR_BODY_CAPTURE_EXTRA_MS comment).
+// Returns `{error}` if the response body contains an ArcGIS error,
+// `{body}` if it contains a normal response, or null if the re-fetch
+// itself failed (caller falls through to proxy retry as before).
+async function _captureErrorBodyAfterTimeout(url, signal) {
+  if (signal?.aborted) return null;
+  const captureSignal = signal
+    ? AbortSignal.any([signal, AbortSignal.timeout(ERROR_BODY_CAPTURE_EXTRA_MS)])
+    : AbortSignal.timeout(ERROR_BODY_CAPTURE_EXTRA_MS);
+  try {
+    const resp = await fetch(url, {
+      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
+      signal: captureSignal,
+    });
+    if (!resp.ok) return null;
+    const body = await resp.json();
+    if (body?.error) {
+      console.warn(`  [port-activity] degraded ArcGIS response captured: ${JSON.stringify(body.error).slice(0, 160)} (${url.slice(0, 80)})`);
+      return { error: body.error };
+    }
+    return { body };
+  } catch {
+    return null;
+  }
+}
+
 // ArcGIS's Daily_Ports_Data FeatureServer intermittently returns "Cannot
 // perform query. Invalid query parameters." for otherwise-valid queries —
 // observed in prod 2026-04-20 for BRA/IDN/NGA on per-country WHERE, and
 // also for the global WHERE after the PR #3225 rollout. A single retry with
-// a short back-off clears it in practice. No retry loop — one attempt
-// bounded. Does not retry any other error class.
+// a short back-off clears it in practice for transient single-call flakes,
+// but NOT during upstream degradation episodes where every call returns
+// the same 400 (WM 2026-05-15: ArcGIS Daily_Ports_Data flapped, 30 cold
+// fetches all hit the 400, retry burned ~22 minutes of container budget
+// for zero recoveries).
+//
+// Strategy: keep the one-shot retry for transient flakes, but cap total
+// retries-on-this-error per process at INVALID_PARAMS_RETRY_THRESHOLD.
+// Beyond that, bail-don't-retry — caller treats the country as failed
+// for this run, and cap-mode + stale-serve + multi-tick rotation cover
+// the gap until upstream recovers.
 //
 // IMPORTANT: a 100%-batch-rejected version of this error is NOT a flake —
 // it's an upstream schema-rename or policy change. The 2026-04-29 IMF
 // reserved-keyword sweep flapped `date` → `date_` → `date` within ~9h,
 // which would silently break any seeder using a hardcoded literal twice
 // in the same incident. resolveArcgisDateField introspects the schema at
-// run start to survive the flap; the circuit-breaker below still covers
-// other global-regression classes (renamed table, removed field, policy
-// change) so we don't burn 30s of doomed work per cron tick.
+// run start to survive the flap; the threshold below catches other
+// global-regression classes (renamed table, removed field, policy
+// change, server-side degradation) so we don't burn the container
+// budget on doomed retries.
+let _invalidParamsErrorCount = 0;
 async function fetchWithRetryOnInvalidParams(url, { signal } = {}) {
   try {
     return await fetchWithTimeout(url, { signal });
   } catch (err) {
     const msg = err?.message || '';
     if (!/Invalid query parameters/i.test(msg)) throw err;
+    _invalidParamsErrorCount += 1;
+    if (_invalidParamsErrorCount > INVALID_PARAMS_RETRY_THRESHOLD) {
+      // Degradation signal — caller sees a clear "no retry, run will be
+      // partial" message instead of doubling time-on-task for nothing.
+      throw new Error(`ArcGIS degraded — ${_invalidParamsErrorCount} 'Invalid query parameters' errors in this run, no retry (threshold ${INVALID_PARAMS_RETRY_THRESHOLD})`);
+    }
     await new Promise((r) => setTimeout(r, 500));
     if (signal?.aborted) throw signal.reason ?? err;
-    console.warn(`  [port-activity] retrying after "${msg}": ${url.slice(0, 80)}`);
+    console.warn(`  [port-activity] retrying after "${msg}" (${_invalidParamsErrorCount}/${INVALID_PARAMS_RETRY_THRESHOLD}): ${url.slice(0, 80)}`);
     return await fetchWithTimeout(url, { signal });
   }
+}
+
+// Test-only helper: clears the module-level counter so unit tests can
+// re-exercise the threshold path with different inputs.
+export function _resetInvalidParamsErrorCount() {
+  _invalidParamsErrorCount = 0;
 }
 
 // Fetch ALL ports globally in one paginated pass, grouped by ISO3.
