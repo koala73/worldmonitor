@@ -49,13 +49,26 @@ const EP4_BASE =
   'https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/PortWatch_ports_database/FeatureServer/0/query';
 
 const PAGE_SIZE = 2000;
-const FETCH_TIMEOUT = 45_000;
-// Tighter timeout for the proxy-retry leg. Direct + proxy must total under
-// PER_COUNTRY_TIMEOUT_MS (90s) with slack for Decodo's TCP handshake +
-// CONNECT setup (~3-5s). 45s direct + 35s proxy = 80s, leaving ~10s for
-// setup overhead and the surrounding pagination accounting. Greptile PR
-// #3681 review P2 flagged the prior 45+45=90s arrangement as racey.
-const PROXY_FETCH_TIMEOUT = 35_000;
+// WM 2026-05-15 incident probe (direct laptop, direct laptop-via-Decodo, and
+// Railway logs): ArcGIS Daily_Ports_Data currently responds in 51-56s for
+// most queries when accessed through Decodo's gate.decodo.com pool. Direct
+// access from Railway container IPs is fully throttled (never returns within
+// 60s). Pre-fix budgets (45s direct + 35s proxy) couldn't catch either the
+// direct response (Railway throttled) or the proxy response (under-budgeted
+// for 51-56s class), so every cold fetch hit "proxy fetch timeout".
+//
+// Rebalanced: fail direct fast (Railway-direct doesn't work anyway), give the
+// proxy leg enough budget to actually capture the 51-56s ArcGIS responses
+// that Decodo IS successfully tunneling. Total: 15 + 70 = 85s, fits the 90s
+// per-country wrap with 5s slack.
+const FETCH_TIMEOUT = 15_000;
+// Proxy leg gets the bulk of the per-country budget. 70s comfortably catches
+// ArcGIS's 51-56s response class observed today. Even when the body is a
+// 400 "Invalid query parameters" (PR #3701 degradation pattern), it arrives
+// within this window — which means fetchWithRetryOnInvalidParams's
+// circuit-breaker actually fires now, surfacing the real upstream signal
+// instead of silent timeouts.
+const PROXY_FETCH_TIMEOUT = 70_000;
 // Diagnostic re-fetch budget for capturing the actual error body when the
 // initial direct fetch times out at FETCH_TIMEOUT. WM 2026-05-15
 // investigation found ArcGIS Daily_Ports_Data, during degradation
@@ -277,17 +290,21 @@ async function fetchWithTimeout(url, { signal } = {}) {
 let _bodyCaptureSuccessCount = 0;
 let _bodyCaptureAttemptCount = 0;
 const MAX_BODY_CAPTURE_SUCCESSES = 1;
-// Cap on attempts in case captures keep failing. With
-// ERROR_BODY_CAPTURE_EXTRA_MS bumped to 40s (PR #3701 P2 round 3), 2
-// attempts already total 80s of capture wall-clock per timing-out country
-// (direct 45s + capture 40s = 85s, fits the 90s wrap once). A SECOND
-// attempt for the same country would always be aborted by the wrap. So
-// cap at 1 per-country attempt — but track ATTEMPTS across the run so
-// the first ~3 timing-out countries each get a try, after which we go
-// straight to proxy (the diagnostic value is captured by then). Bounded
-// total: 3 × 40s ≈ 120s WALL-CLOCK across concurrent batches of 6 ≈ 20s
-// extra wall-clock per run, well under the 540s container budget.
-const MAX_BODY_CAPTURE_ATTEMPTS = 3;
+// Currently DISABLED (set to 0). PR #3701 added the capture path to
+// surface ArcGIS's slow 400 body when the direct fetch timed out before
+// the body could land. Today's rebalanced budgets (FETCH_TIMEOUT=15s,
+// PROXY_FETCH_TIMEOUT=70s) make the capture path redundant: the proxy
+// retry now has enough budget (70s) to catch ArcGIS's 51-56s response
+// directly, and arcgisProxyRetry already throws the parsed
+// `body.error.message` as an `ArcGIS error (via proxy after ...)` Error.
+// fetchWithRetryOnInvalidParams's regex matches that, so the threshold
+// circuit-breaker (PR #3701) fires on proxy-returned errors without
+// needing a separate diagnostic capture re-fetch. Setting attempts=0
+// keeps the code path intact (and the once-per-run gate code) for any
+// future scenario where direct-fetch DOES land close to a body (e.g. a
+// non-Railway egress where direct works), but skips the 40s overhead
+// during the current Railway-throttled-direct + proxy-works mode.
+const MAX_BODY_CAPTURE_ATTEMPTS = 0;
 
 // Test-only helper: resets the capture counters so unit tests can
 // re-exercise the capture path with different mocked responses.

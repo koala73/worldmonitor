@@ -139,22 +139,21 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     assert.match(src, /if\s*\(captured\?\.error\)\s*{[\s\S]{0,160}throw new Error\(`ArcGIS error:/);
   });
 
-  it('body capture is bounded by success + attempt caps (PR #3701 P2 round 2)', () => {
-    // Greptile PR #3681 P2 flagged tight direct+proxy budget; PR #3701 P2
-    // round 2 flagged that a failed first capture (the capture also timing
-    // out at +20s during consistent degradation) locked out every future
-    // attempt — diagnostic value lost. Fix: gate on SUCCESS count, bound
-    // ATTEMPTS so we keep trying but don't pay 30×20s in a fully-degraded
-    // run.
+  it('body capture path is gated by success + attempt caps and currently disabled', () => {
+    // WM 2026-05-15 rebalance: proxy retry now has enough budget (70s) to
+    // catch ArcGIS's 51-56s response directly, and arcgisProxyRetry already
+    // throws the parsed `body.error.message` as an Error that
+    // fetchWithRetryOnInvalidParams's regex matches. The diagnostic capture
+    // path is redundant in this mode, so attempts are set to 0 (path code
+    // intact for future scenarios where direct-fetch DOES land close to a
+    // body, e.g. non-Railway egress).
     assert.match(src, /MAX_BODY_CAPTURE_SUCCESSES\s*=\s*1/);
-    assert.match(src, /MAX_BODY_CAPTURE_ATTEMPTS\s*=\s*3/);
+    assert.match(src, /MAX_BODY_CAPTURE_ATTEMPTS\s*=\s*0/);
     assert.match(src, /let _bodyCaptureSuccessCount\s*=\s*0/);
     assert.match(src, /let _bodyCaptureAttemptCount\s*=\s*0/);
-    // Gate uses both counters — successes < cap AND attempts < cap.
+    // Gate code still wires both counters — preserves the once-per-run
+    // semantics if the constant is ever re-enabled.
     assert.match(src, /_bodyCaptureSuccessCount\s*<\s*MAX_BODY_CAPTURE_SUCCESSES[\s\S]{0,80}_bodyCaptureAttemptCount\s*<\s*MAX_BODY_CAPTURE_ATTEMPTS/);
-    // Attempt counter increments at the start, success counter only when
-    // we get a body (error or normal). null captures consume an attempt
-    // but not a success, so the next timing-out country can retry.
     assert.match(src, /_bodyCaptureAttemptCount\s*\+=\s*1/);
     assert.match(src, /_bodyCaptureSuccessCount\s*\+=\s*1/);
     // Test-only reset helper.
@@ -570,12 +569,16 @@ describe('ArcGIS 429 proxy fallback', () => {
 
   // Greptile PR #3681 review round 2 P2: combined direct + proxy budget must
   // stay under PER_COUNTRY_TIMEOUT_MS with slack for proxy setup overhead.
-  it('proxy timeout is tighter than direct timeout to leave PER_COUNTRY budget slack', () => {
-    // FETCH_TIMEOUT (45s) + PROXY_FETCH_TIMEOUT (35s) = 80s, under
-    // PER_COUNTRY_TIMEOUT_MS (90s) with 10s slack for Decodo TCP handshake
-    // + CONNECT setup. Pre-fix used FETCH_TIMEOUT on both sides (90s exact,
-    // racey with the per-country signal abort).
-    assert.match(src, /const PROXY_FETCH_TIMEOUT\s*=\s*35_000/);
+  it('proxy gets the bulk of the per-country budget (Railway-direct is throttled)', () => {
+    // WM 2026-05-15 rebalance: direct fetch from Railway IPs is 100%
+    // throttled by ArcGIS (never returns within 60s observed). Proxy via
+    // Decodo gate.decodo.com IS reaching ArcGIS, returning the 51-56s slow
+    // 400 body that PR #3701 was designed to capture. Pre-fix budgets
+    // (45 + 35) couldn't catch either response. Rebalanced to 15s direct
+    // (fail fast — direct is useless from Railway) + 70s proxy (catches
+    // the slow body). Total 85s within 90s PER_COUNTRY_TIMEOUT_MS.
+    assert.match(src, /const FETCH_TIMEOUT\s*=\s*15_000/);
+    assert.match(src, /const PROXY_FETCH_TIMEOUT\s*=\s*70_000/);
     // The proxy retry MUST pass PROXY_FETCH_TIMEOUT, not FETCH_TIMEOUT:
     assert.match(src, /timeoutMs:\s*PROXY_FETCH_TIMEOUT/);
     // And the budget invariant: direct + proxy < per-country.
