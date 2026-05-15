@@ -196,3 +196,28 @@ Runs automatically before `git push`:
 - [Health endpoints](docs/health-endpoints.mdx)
 - [Adding endpoints guide](docs/adding-endpoints.mdx)
 - [API reference (OpenAPI)](docs/api/)
+
+## Agent skills
+
+Per-repo configuration for Matt Pocock's engineering skills (`/to-issues`,
+`/to-prd`, `/triage`, `/diagnose`, `/tdd`, `/improve-codebase-architecture`,
+`/zoom-out`).
+
+### Issue tracker
+
+GitHub issues at `koala73/worldmonitor`, accessed via the `gh` CLI.
+See [`docs/agents/issue-tracker.md`](docs/agents/issue-tracker.md).
+
+### Triage labels
+
+Five canonical roles using Matt's defaults: `needs-triage`, `needs-info`,
+`ready-for-agent`, `ready-for-human`, `wontfix`. `wontfix` already exists on
+the repo; the other four get created on first `/triage` run.
+See [`docs/agents/triage-labels.md`](docs/agents/triage-labels.md).
+
+### Domain docs
+
+Single-context — one `CONTEXT.md` + `docs/adr/` at the repo root. Both
+currently absent; skills proceed silently and `/grill-with-docs` creates
+them lazily as terms/decisions get resolved.
+See [`docs/agents/domain.md`](docs/agents/domain.md).
