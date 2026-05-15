@@ -1067,10 +1067,17 @@ async function runEnrichment(): Promise<EnrichResult> {
             // conflict + live-news writeback shape.
             const ci = item as ConflictArchiveItem;
             ci.region = payload.region;
-            if (payload.country) ci.country = payload.country;
-            if (payload.locationName) ci.locationName = payload.locationName;
-            if (payload.lat != null && payload.lng != null) {
-              ci.location = { latitude: payload.lat, longitude: payload.lng };
+            // Location: keep what's already set. v6 RSS-embedding clusters
+            // with a GDELT member arrive with GKG-parsed coordinates +
+            // place name already populated — those are real gazetteer
+            // values and beat an LLM coordinate estimate. Only LLM-geocode
+            // when no location exists yet (clusters with no GDELT member).
+            if (!ci.location) {
+              if (payload.country) ci.country = payload.country;
+              if (payload.locationName) ci.locationName = payload.locationName;
+              if (payload.lat != null && payload.lng != null) {
+                ci.location = { latitude: payload.lat, longitude: payload.lng };
+              }
             }
             // Title-only summary: only writes when this bucket's
             // generateTitleSummary flag is set (and the API didn't

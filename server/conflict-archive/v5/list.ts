@@ -2,20 +2,17 @@
  * `GET /api/conflict-archive/v5/list` — handler core for the
  * RSS-embedding conflict feed.
  *
- * Reads from TWO sources and merges them:
+ * Reads `conflict:archive:rse:v1` — conflict clusters from the v6
+ * RSS-embedding pipeline (the enrich cron copies isConflict clusters
+ * here). GDELT corroboration is already baked INTO these clusters'
+ * `sources[]` — GDELT is a clustering signal now, not a standalone
+ * archive, so we no longer merge `conflict:archive:v1:gdelt` (that key
+ * still exists for the legacy v1-v4 conflict readers).
  *
- *   1. `conflict:archive:rse:v1` — items the v6 live-news pipeline
- *      flagged isConflict (RSS-clustered, no LLM summary; the
- *      `summary` field is the longest plaintext RSS description).
- *
- *   2. `conflict:archive:v1:gdelt` — legacy GDELT-fed conflict items,
- *      kept as-is per product spec. These DO carry LLM-generated
- *      summaries — they're already in the archive from prior runs
- *      and we don't strip them.
- *
- * iOS receives a single deduplicated array (by article link) sorted
- * newest-first. Both sources expose lat/lng so all items can pin on
- * the map.
+ * Visibility gate: a cluster is shown only when it has ≥ `WM_V6_MIN_SOURCES`
+ * distinct **RSS** publishers. GDELT sources never count toward the
+ * gate — same rule as the live-news feed. Conflict events therefore
+ * never surface on GDELT corroboration alone.
  */
 
 import { cachedFetchJson, getCachedJson } from '../../_shared/redis';
@@ -25,7 +22,24 @@ const DIGEST_KEY = 'conflict-archive:v5:digest';
 const TOP_LEVEL_TTL_S = 30;
 
 const RSE_KEY = 'conflict:archive:rse:v1';
-const GDELT_KEY = 'conflict:archive:v1:gdelt';
+
+/** Minimum distinct RSS publishers for a conflict cluster to be shown.
+ *  Mirrors the live-news gate; override via `WM_V6_MIN_SOURCES`. */
+const DEFAULT_MIN_SOURCES = 3;
+function minSources(): number {
+  const raw = process.env.WM_V6_MIN_SOURCES;
+  if (!raw) return DEFAULT_MIN_SOURCES;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= 1 ? Math.floor(n) : DEFAULT_MIN_SOURCES;
+}
+
+/** Distinct RSS publishers in a cluster's sources[]. A source counts as
+ *  RSS unless explicitly tagged `origin: 'gdelt'` — so legacy items
+ *  (sources without an `origin` field) are treated as RSS, which is
+ *  correct since they predate the GDELT corroboration layer. */
+function rssSourceCount(item: ConflictArchiveItem): number {
+  return (item.sources ?? []).filter((s) => s.origin !== 'gdelt').length;
+}
 
 export interface ListConflictArchiveV5Response {
   items: Array<{
@@ -57,25 +71,20 @@ export async function listConflictArchiveV5(): Promise<ListConflictArchiveV5Resp
     DIGEST_KEY,
     TOP_LEVEL_TTL_S,
     async () => {
-      const [rse, gdelt] = await Promise.all([
-        getCachedJson(RSE_KEY) as Promise<ConflictArchiveItem[] | null>,
-        getCachedJson(GDELT_KEY) as Promise<ConflictArchiveItem[] | null>,
-      ]);
+      const rse = (await getCachedJson(RSE_KEY)) as ConflictArchiveItem[] | null;
 
       const merged = new Map<string, ConflictArchiveItem>();
-
-      // Insert GDELT first; RSE entries overwrite on link collision so
-      // the RSS-clustered version (which has richer sources[]) wins.
-      // Dedup key is the article link — the most stable identifier
-      // across pipelines.
-      const upsert = (it: ConflictArchiveItem) => {
-        if (!it?.link) return;
+      // Dedup by article link — the stable cross-refresh identifier.
+      for (const it of rse ?? []) {
+        if (!it?.link) continue;
         merged.set(it.link, it);
-      };
-      for (const it of gdelt ?? []) upsert(it);
-      for (const it of rse ?? []) upsert(it);
+      }
 
+      // Visibility gate: ≥ minSources distinct RSS publishers. GDELT
+      // corroboration in sources[] never counts toward this.
+      const min = minSources();
       const items = Array.from(merged.values())
+        .filter((it) => min <= 1 || rssSourceCount(it) >= min)
         .sort((a, b) => b.publishedAt - a.publishedAt)
         .map((it) => ({
           source: it.source,
@@ -97,8 +106,8 @@ export async function listConflictArchiveV5(): Promise<ListConflictArchiveV5Resp
         }));
 
       console.log(
-        `[conflict-archive:v5] merged rse=${rse?.length ?? 0} gdelt=${gdelt?.length ?? 0} ` +
-        `→ ${items.length} unique items`,
+        `[conflict-archive:v5] rse=${rse?.length ?? 0} → ${items.length} ` +
+        `visible (min-rss-sources=${min})`,
       );
 
       return { items, generatedAt: new Date().toISOString() };

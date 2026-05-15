@@ -16,10 +16,71 @@
  */
 
 import { getCachedJson, setCachedJson } from '../../_shared/redis';
-import { fetchAllFeeds } from './_normalize';
+import { fetchAllFeeds, titleHashFor, type RawRssItem } from './_normalize';
 import { clusterRssItems, type ClusteredItem } from './_cluster';
 
 export const DIGEST_KEY = 'live-news:v6:digest';
+
+// ── GDELT conflict candidates ──────────────────────────────────────────
+//
+// The intel-news GDELT cron writes theme-flagged conflict candidates to
+// this key (see api/intel-news/v1/refresh.ts). We pull them into the
+// SAME clustering pass as the RSS items so a GDELT story can attach to
+// a trusted RSS cluster as corroboration. GDELT items never become a
+// cluster's canonical, never contribute displayed content, and are
+// gated out of any cluster that lacks ≥3 RSS publishers (read side).
+const GDELT_CANDIDATES_KEY = 'gdelt:conflict-candidates:v1';
+
+/** Fixed high sourcePriority for GDELT items so they sort last anywhere
+ *  priority matters. `pickCanonical` excludes them outright regardless. */
+const GDELT_SOURCE_PRIORITY = 99;
+
+/** Shape of entries in `gdelt:conflict-candidates:v1` — must match the
+ *  `GdeltConflictCandidate` written by api/intel-news/v1/refresh.ts. */
+interface GdeltConflictCandidate {
+  title: string;
+  link: string;
+  source: string;
+  publishedAt: number;
+  location: { lat: number; lng: number; country: string | null; locationName: string | null } | null;
+  sources: Array<{ source: string; title: string; link: string; publishedAt: number }>;
+}
+
+/**
+ * Load GDELT conflict candidates and convert them to `RawRssItem`s
+ * tagged `origin: 'gdelt'` so they flow through the same clusterer.
+ * titleHash is recomputed here with v6's own normalizer (don't trust
+ * the cron's) so it lines up with RSS items.
+ */
+async function loadGdeltCandidates(): Promise<RawRssItem[]> {
+  const raw = (await getCachedJson(GDELT_CANDIDATES_KEY)) as GdeltConflictCandidate[] | null;
+  if (!Array.isArray(raw) || raw.length === 0) return [];
+  const valid = raw.filter((c) => c && c.title && c.link);
+  const hashes = await Promise.all(valid.map((c) => titleHashFor(c.title)));
+  return valid.map((c, i) => ({
+    source: c.source || 'GDELT',
+    sourceUrl: '',
+    sourcePriority: GDELT_SOURCE_PRIORITY,
+    title: c.title,
+    link: c.link,
+    publishedAt: typeof c.publishedAt === 'number' ? c.publishedAt : Date.now(),
+    description: '',
+    body: '',
+    imageUrl: null,
+    titleHash: hashes[i]!,
+    origin: 'gdelt' as const,
+    gdeltLocation: c.location
+      ? {
+          latitude: c.location.lat,
+          longitude: c.location.lng,
+          country: c.location.country,
+          locationName: c.location.locationName,
+        }
+      : null,
+    gdeltSources: Array.isArray(c.sources) ? c.sources : [],
+  }));
+}
+
 const DIGEST_TTL_S = 3 * 24 * 60 * 60; // 3-day project max
 const ROLLING_WINDOW_MS = 24 * 60 * 60 * 1000;
 const MAX_ITEMS = 500;
@@ -118,14 +179,25 @@ export async function refreshLiveNewsV6(): Promise<RefreshResult> {
     };
   }
 
+  // ── Phase 1b: GDELT conflict candidates ──────────────────────────────
+  const gdeltItems = await loadGdeltCandidates();
+  console.log(`[live-news:v6:refresh] phase=gdelt loaded=${gdeltItems.length} candidates`);
+
   // ── Phase 2: Embed + cluster ─────────────────────────────────────────
+  // RSS + GDELT items go through ONE clustering pass. GDELT items attach
+  // to RSS clusters as corroboration; GDELT-only clusters are dropped
+  // inside clusterRssItems (no trusted anchor).
   const clusterStart = Date.now();
-  const clustered = await clusterRssItems(normalized.items);
+  const clustered = await clusterRssItems([...normalized.items, ...gdeltItems]);
   const clusterMs = Date.now() - clusterStart;
   const multiSource = clustered.filter((c) => c.sources.length > 1).length;
+  const gdeltBacked = clustered.filter(
+    (c) => c.sources.some((s) => s.origin === 'gdelt'),
+  ).length;
   console.log(
     `[live-news:v6:refresh] phase=cluster elapsed=${clusterMs}ms ` +
-    `clusters=${clustered.length} multi_source=${multiSource}`,
+    `clusters=${clustered.length} multi_source=${multiSource} ` +
+    `gdelt_corroborated=${gdeltBacked}`,
   );
 
   // ── Phase 3: Merge + Redis write ─────────────────────────────────────

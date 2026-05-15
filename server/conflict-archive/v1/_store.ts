@@ -74,12 +74,16 @@ export interface ConflictArchiveItem {
    *  decode as undefined. iOS falls back to country-code mapping in that
    *  case. */
   region?: string | null;
-  /** Other outlets covering the same story (canonical at index 0). */
+  /** Other outlets covering the same story (canonical at index 0).
+   *  `origin` is present on items sourced from the v6 RSS-embedding
+   *  pipeline ('rss' = trusted feed, 'gdelt' = corroboration); absent
+   *  on legacy items, which predate the field. */
   sources: Array<{
     source: string;
     title: string;
     link: string;
     publishedAt: number;
+    origin?: 'rss' | 'gdelt';
   }> | null;
   /** Pipeline that originated this item. Useful for client-side
    *  diagnostics; iOS can colour pins differently if it cares. */

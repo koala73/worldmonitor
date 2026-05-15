@@ -13,7 +13,7 @@
 
 import { embedBatch, cosineSim, float32ToBase64, base64ToFloat32 } from '../../_shared/embeddings';
 import { getCachedJsonBatch, runRedisPipeline } from '../../_shared/redis';
-import type { RawRssItem } from './_normalize';
+import type { RawRssItem, GdeltItemLocation } from './_normalize';
 import { fetchArticleBodyBatch } from './_article-fetcher';
 
 /**
@@ -180,11 +180,75 @@ function stripTracking(url: string): string {
   }
 }
 
+/** Host aliases for cross-origin source dedup — same publisher, different
+ *  domains. An RSS item and a GDELT item can be the literal same article
+ *  served from sibling hosts (BBC's `.co.uk` vs `.com`). */
+const HOST_ALIASES: Record<string, string> = {
+  'bbc.co.uk': 'bbc.com',
+  'news.bbc.co.uk': 'bbc.com',
+  'edition.cnn.com': 'cnn.com',
+};
+
+/**
+ * Normalize a URL to a stable identity key for cross-origin dedup.
+ * Strips tracking params, lowercases host, drops `www.`, folds known
+ * host aliases, strips `/amp` suffixes and trailing slashes. Two URLs
+ * pointing at the same article collapse to the same key.
+ */
+function normalizeUrlForDedup(url: string): string {
+  try {
+    const u = new URL(stripTracking(url));
+    let host = u.hostname.toLowerCase().replace(/^www\./, '');
+    host = HOST_ALIASES[host] ?? host;
+    const path = u.pathname.toLowerCase().replace(/\/amp\/?$/, '').replace(/\/+$/, '');
+    return `${host}${path}`;
+  } catch {
+    return url.toLowerCase();
+  }
+}
+
+/**
+ * Extract the meaningful words from an article URL path — the slug.
+ * GDELT clustering items have no description/body, so the slug is the
+ * only signal beyond the headline. Drops the domain, splits path
+ * segments on `-`/`_`, and discards pure-numeric and hash-like ID
+ * tokens (`c62e0p7rd2ro`).
+ *   bbc.com/news/articles/russia-strike-kyiv-c62e0p7 → "russia strike kyiv"
+ */
+function urlSlug(url: string): string {
+  try {
+    const path = new URL(url).pathname;
+    return path
+      .split('/')
+      .filter(Boolean)
+      .flatMap((seg) => seg.split(/[-_]/))
+      .filter((w) => {
+        if (w.length < 3) return false;
+        if (/^\d+$/.test(w)) return false;            // pure number
+        if (/\d/.test(w) && w.length >= 6) return false; // hash-like ID
+        return /[a-z]/i.test(w);
+      })
+      .join(' ')
+      .slice(0, 200);
+  } catch {
+    return '';
+  }
+}
+
+/** Max GDELT sources displayed per cluster, below the RSS sources.
+ *  A big story can be syndicated to 50+ GDELT outlets; we keep the
+ *  freshest 15 so the wire payload stays bounded. */
+const GDELT_SOURCES_DISPLAY_CAP = 15;
+
 export interface ClusterSource {
   source: string;
   title: string;
   link: string;
   publishedAt: number;
+  /** 'rss' = trusted RSS feed (counts toward the min-sources gate,
+   *  sorts above GDELT). 'gdelt' = GDELT corroboration (never counts
+   *  toward the gate, always listed below RSS). */
+  origin: 'rss' | 'gdelt';
 }
 
 /**
@@ -252,6 +316,19 @@ export interface ClusteredItem {
  */
 function inputTextFor(item: RawRssItem, articleBody?: string): string {
   const title = item.title.trim();
+
+  if (item.origin === 'gdelt') {
+    // GDELT items carry no description or body — never article-fetched.
+    // The URL slug is the only extra signal. title×2 keeps the headline
+    // weighting consistent with how RSS items are built, so a GDELT
+    // headline and an RSS headline for the same event embed close.
+    const slug = urlSlug(item.link);
+    const parts: string[] = [];
+    if (title) parts.push(title, title);
+    if (slug) parts.push(slug);
+    return parts.join('. ').slice(0, MAX_INPUT_LEN);
+  }
+
   const desc = (item.description || '').trim().slice(0, PER_DESC_SLICE);
 
   // Skip body when it duplicates content we already have. `_normalize.ts`
@@ -270,16 +347,48 @@ function inputTextFor(item: RawRssItem, articleBody?: string): string {
 
 /**
  * Pick the cluster's canonical from its members. Rule:
- *   1. Lowest sourcePriority wins (1 = wires, beats 4 = analysis).
- *   2. Among same-priority, newest publishedAt wins.
- * Mirrors v1's representative-selection so feed continuity is preserved
- * when iOS switches between picker options.
+ *   1. GDELT items are excluded — the cluster headline / link / source /
+ *      image must come from a trusted RSS outlet, never GDELT.
+ *   2. Lowest sourcePriority wins (1 = wires, beats 4 = analysis).
+ *   3. Among same-priority, newest publishedAt wins.
+ *
+ * Only ever called on clusters with ≥1 RSS member (GDELT-only clusters
+ * are skipped before this point), so the RSS filter is always non-empty.
  */
 function pickCanonical(members: RawRssItem[]): RawRssItem {
-  return [...members].sort((a, b) => {
+  const rss = members.filter((m) => m.origin === 'rss');
+  const pool = rss.length > 0 ? rss : members;
+  return [...pool].sort((a, b) => {
     if (a.sourcePriority !== b.sourcePriority) return a.sourcePriority - b.sourcePriority;
     return b.publishedAt - a.publishedAt;
   })[0]!;
+}
+
+/**
+ * Pick the cluster's incident location from its GDELT members' GKG-parsed
+ * coordinates. Returns the **mode** — the lat/lng (rounded to ~1 km) that
+ * the most GDELT members agree on. GKG lists every place an article
+ * mentions; the mode across members converges on the actual incident
+ * location rather than a tangentially-named city.
+ *
+ * Returns null when the cluster has no GDELT member with a location —
+ * the enrich cron then LLM-geocodes from the RSS members instead.
+ */
+function pickGdeltLocation(members: RawRssItem[]): GdeltItemLocation | null {
+  const counts = new Map<string, { loc: GdeltItemLocation; n: number }>();
+  for (const m of members) {
+    if (m.origin !== 'gdelt' || !m.gdeltLocation) continue;
+    const loc = m.gdeltLocation;
+    const key = `${loc.latitude.toFixed(2)},${loc.longitude.toFixed(2)}`;
+    const e = counts.get(key);
+    if (e) e.n++;
+    else counts.set(key, { loc, n: 1 });
+  }
+  let best: { loc: GdeltItemLocation; n: number } | null = null;
+  for (const e of counts.values()) {
+    if (!best || e.n > best.n) best = e;
+  }
+  return best?.loc ?? null;
 }
 
 /**
@@ -354,8 +463,11 @@ export async function clusterRssItems(items: RawRssItem[]): Promise<ClusteredIte
     // article bodies). Strictly clustering-only — the fetched text
     // never reaches the wire (see `pickSummary`). Embedding cache hits
     // are excluded above so we don't re-fetch articles whose embedding
-    // we already have.
-    const articleBodies = await fetchArticleBodyBatch(toEmbed);
+    // we already have. GDELT items are never fetched — they cluster on
+    // headline + URL slug only.
+    const articleBodies = await fetchArticleBodyBatch(
+      toEmbed.filter((it) => it.origin === 'rss'),
+    );
 
     const fresh = await embedBatch(
       toEmbed.map((it) => inputTextFor(it, articleBodies.get(it.link))),
@@ -440,41 +552,74 @@ export async function clusterRssItems(items: RawRssItem[]): Promise<ClusteredIte
   const alertMin = alertMinSources();
   const clustered: ClusteredItem[] = [];
   for (const [canonicalHash, memberList] of members) {
-    const canonical = pickCanonical(memberList);
-    const summary = pickSummary(memberList, canonical);
-    const firstImg = pickFirstImage(memberList, canonical);
+    const rssMembers = memberList.filter((m) => m.origin === 'rss');
+    // GDELT-only clusters have no trusted anchor and can never reach the
+    // RSS-source gate — drop them so they don't consume digest slots.
+    if (rssMembers.length === 0) continue;
 
-    // sources[]: canonical first, then alternates by publishedAt DESC.
-    // Deduped by publisher root — multi-feed outlets (BBC/Sky/NYT/etc.)
-    // collapse to one entry, with the freshest article URL/title for
-    // that publisher kept.
-    const ordered = [canonical, ...memberList
+    const canonical = pickCanonical(memberList);
+    // Summary + image come strictly from RSS members — never GDELT.
+    const summary = pickSummary(rssMembers, canonical);
+    const firstImg = pickFirstImage(rssMembers, canonical);
+
+    // ── RSS sources: publisher-deduped, canonical's publisher first ──
+    // Multi-feed outlets (BBC/Sky/NYT) collapse to one entry.
+    const orderedRss = [canonical, ...rssMembers
       .filter((m) => m.link !== canonical.link)
       .sort((a, b) => b.publishedAt - a.publishedAt)];
 
     const byPublisher = new Map<string, ClusterSource>();
-    for (const m of ordered) {
+    for (const m of orderedRss) {
       const publisher = publisherOf(m.source);
       const existing = byPublisher.get(publisher);
-      // Canonical is processed first; only replace if a later item has
-      // a NEWER publishedAt for the same publisher (rare follow-up).
       if (!existing || m.publishedAt > existing.publishedAt) {
         byPublisher.set(publisher, {
           source: publisher,
           title: m.title,
           link: stripTracking(m.link),
           publishedAt: m.publishedAt,
+          origin: 'rss',
         });
       }
     }
-    // Re-order: canonical's publisher first, rest by publishedAt DESC.
     const canonicalPublisher = publisherOf(canonical.source);
     const canonicalSource = byPublisher.get(canonicalPublisher)!;
     byPublisher.delete(canonicalPublisher);
-    const sources: ClusterSource[] = [
+    const rssSources: ClusterSource[] = [
       canonicalSource,
       ...[...byPublisher.values()].sort((a, b) => b.publishedAt - a.publishedAt),
     ];
+
+    // ── GDELT sources: flatten every GDELT member's gdeltSources, dedup
+    //    by normalized URL against the RSS sources (RSS wins — the
+    //    BBC-overlap fix) and against each other, cap at the display
+    //    limit, list below the RSS sources. ──
+    const rssUrlKeys = new Set(rssSources.map((s) => normalizeUrlForDedup(s.link)));
+    const gdeltByUrl = new Map<string, ClusterSource>();
+    for (const m of memberList) {
+      if (m.origin !== 'gdelt' || !m.gdeltSources) continue;
+      for (const g of m.gdeltSources) {
+        const key = normalizeUrlForDedup(g.link);
+        if (rssUrlKeys.has(key) || gdeltByUrl.has(key)) continue;
+        gdeltByUrl.set(key, {
+          source: g.source,
+          title: g.title,
+          link: stripTracking(g.link),
+          publishedAt: g.publishedAt,
+          origin: 'gdelt',
+        });
+      }
+    }
+    const gdeltSources = [...gdeltByUrl.values()]
+      .sort((a, b) => b.publishedAt - a.publishedAt)
+      .slice(0, GDELT_SOURCES_DISPLAY_CAP);
+
+    const sources: ClusterSource[] = [...rssSources, ...gdeltSources];
+
+    // Location: prefer GDELT's GKG-parsed coordinates (mode across GDELT
+    // members). When the cluster has no GDELT member this stays null and
+    // the enrich cron LLM-geocodes from the RSS members instead.
+    const gdeltLoc = pickGdeltLocation(memberList);
 
     clustered.push({
       id: canonicalHash,
@@ -485,11 +630,15 @@ export async function clusterRssItems(items: RawRssItem[]): Promise<ClusteredIte
       summary,
       imageUrl: firstImg,
       sources,
-      isAlert: sources.length >= alertMin,
+      // Alert fires on trusted-RSS publisher count only — GDELT
+      // corroboration never inflates breaking-news status.
+      isAlert: rssSources.length >= alertMin,
       titleHash: canonical.titleHash,
-      location: null,
-      locationName: null,
-      country: null,
+      location: gdeltLoc
+        ? { latitude: gdeltLoc.latitude, longitude: gdeltLoc.longitude }
+        : null,
+      locationName: gdeltLoc?.locationName ?? null,
+      country: gdeltLoc?.country ?? null,
       isConflict: null,
     });
   }

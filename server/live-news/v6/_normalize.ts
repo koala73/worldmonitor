@@ -46,6 +46,24 @@ const PER_FEED_NEG_TTL_S = 2 * 60;
  * for the embedder. So we keep both around. The cache cost is bounded
  * by capping body length on read (`MAX_BODY_LEN`).
  */
+/** A single outlet's coverage of a GDELT conflict candidate. Structurally
+ *  identical to `_cluster.ts`'s `ClusterSource` — defined here to avoid a
+ *  circular import. */
+export interface GdeltSourceEntry {
+  source: string;
+  title: string;
+  link: string;
+  publishedAt: number;
+}
+
+/** GKG-derived incident location carried by a GDELT clustering item. */
+export interface GdeltItemLocation {
+  latitude: number;
+  longitude: number;
+  country: string | null;
+  locationName: string | null;
+}
+
 export interface RawRssItem {
   source: string;          // outlet name (e.g. "Al Jazeera")
   sourceUrl: string;       // feed url
@@ -70,6 +88,20 @@ export interface RawRssItem {
   /** SHA-256 of normalized title — kept compatible with v1 caches so
    *  embedding/dedup decisions can be reused across pipelines. */
   titleHash: string;
+  /**
+   * Which pipeline this item came from.
+   *   'rss'   — a parsed RSS feed item (the default; has content).
+   *   'gdelt' — a GDELT conflict candidate used purely as clustering
+   *             corroboration. Never canonical, never displayed as
+   *             content, never article-fetched, never sent to an LLM.
+   */
+  origin: 'rss' | 'gdelt';
+  /** GDELT-only: GKG-parsed incident location. The cluster adopts this
+   *  (mode across GDELT members) when no RSS-derived location exists. */
+  gdeltLocation?: GdeltItemLocation | null;
+  /** GDELT-only: every outlet that ran this story, per GKG. These are
+   *  appended below the RSS sources in the cluster's `sources[]`. */
+  gdeltSources?: GdeltSourceEntry[];
 }
 
 /** Cap on the cached `body` field. The embedder only ingests the first
@@ -86,6 +118,17 @@ export interface NormalizeResult {
 
 function normalizeTitle(title: string): string {
   return title.toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 200);
+}
+
+/**
+ * Compute the v6 title hash — sha256 of the normalized title. Exported
+ * so other pipelines (e.g. GDELT conflict candidates) can hash titles
+ * with the EXACT same function, keeping the embedding cache and
+ * cross-origin dedup consistent. A GDELT item and an RSS item for the
+ * same headline must produce the same titleHash.
+ */
+export async function titleHashFor(title: string): Promise<string> {
+  return sha256Hex(normalizeTitle(title));
 }
 
 /**
@@ -239,6 +282,7 @@ async function parseFeed(xml: string, src: NewsSource): Promise<RawRssItem[]> {
       body,
       imageUrl,
       titleHash,
+      origin: 'rss',
     });
     count++;
   }

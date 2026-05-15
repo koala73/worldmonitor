@@ -129,6 +129,16 @@ function extractParagraphs(html: string): string {
 // ── Article body extraction ───────────────────────────────────────
 
 /**
+ * Window of HTML to consider once we've located the article body's
+ * opening tag for the itemprop / class-token tiers. Lazy `</tag>` matching
+ * is unsafe here because nested `<div>`s would close the regex against an
+ * inner closing tag rather than the wrapper's. Slicing a fixed window
+ * after the opening tag and feeding it to `extractParagraphs` is more
+ * robust and bounded.
+ */
+const BODY_WINDOW_BYTES = 50_000;
+
+/**
  * Try increasingly fuzzy strategies to find the article body in an
  * arbitrary news HTML page. Returns null if nothing yields ≥
  * MIN_BODY_LEN chars of plausible body text.
@@ -140,8 +150,15 @@ function extractParagraphs(html: string): string {
  *      the body in this. Works for ~70% of feeds we touch.
  *   3. <main> tag <p> content — fallback when site uses <main> but
  *      not <article>.
- *   4. og:description meta tag — only ~200 chars max but it's always
- *      present, last-resort floor.
+ *   4. [itemprop="articleBody"] element — Schema.org microdata.
+ *      Covers RTÉ, PBS reliably; can land on a description div on a
+ *      few sites (Hindu) so the MIN_BODY_LEN gate is essential.
+ *   5. Class-token match on <div> — catches React/Next.js publishers
+ *      that close <main> before the body and emit the article into a
+ *      named div: News24 (`article__body`), Anadolu (`prose`),
+ *      RNZ (`article__body`), Hindu (`articlebodycontent`), plus a
+ *      WordPress safety net (`entry-content`).
+ *   6. og:description meta tag — ~200 char floor; always present.
  */
 function extractArticleBody(html: string): string | null {
   // 1. JSON-LD articleBody (Schema.org)
@@ -181,7 +198,34 @@ function extractArticleBody(html: string): string | null {
     if (text.length >= MIN_BODY_LEN) return text.slice(0, MAX_BODY_LEN);
   }
 
-  // 4. og:description meta tag — small but reliable
+  // 4. [itemprop="articleBody"] — Schema.org microdata marker.
+  //    Element type varies (div/section/article) so we match any tag.
+  //    50KB window after the opening tag is safer than chasing the
+  //    closing tag through nested divs.
+  const itemPropRe = /<\w+\b[^>]+itemprop=["']articleBody["'][^>]*>/i;
+  const itemPropMatch = html.match(itemPropRe);
+  if (itemPropMatch && itemPropMatch.index !== undefined) {
+    const start = itemPropMatch.index + itemPropMatch[0].length;
+    const window = html.slice(start, start + BODY_WINDOW_BYTES);
+    const text = extractParagraphs(window);
+    if (text.length >= MIN_BODY_LEN) return text.slice(0, MAX_BODY_LEN);
+  }
+
+  // 5. Class-token match on <div>. Whitelisted classes cover the
+  //    publishers whose React/CMS templates close <main> before the
+  //    body. `\b` word-boundary keeps us from matching e.g.
+  //    `.article-body-related` when we want `.article-body`.
+  const classRe =
+    /<div\b[^>]+class=["'][^"']*\b(?:article__body|articlebodycontent|entry-content|article-body|story-body|prose)\b[^"']*["'][^>]*>/i;
+  const classMatch = html.match(classRe);
+  if (classMatch && classMatch.index !== undefined) {
+    const start = classMatch.index + classMatch[0].length;
+    const window = html.slice(start, start + BODY_WINDOW_BYTES);
+    const text = extractParagraphs(window);
+    if (text.length >= MIN_BODY_LEN) return text.slice(0, MAX_BODY_LEN);
+  }
+
+  // 6. og:description meta tag — small but reliable last resort.
   const og = html.match(/<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']{50,})["']/i);
   if (og) return decodeEntities(og[1]!).slice(0, MAX_BODY_LEN);
 

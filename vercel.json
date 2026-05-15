@@ -2,11 +2,11 @@
   "ignoreCommand": "bash scripts/vercel-ignore.sh",
   "crons": [
     { "path": "/api/intel-news/v1/refresh", "schedule": "*/15 * * * *" },
-    { "path": "/api/intel-news/v1/enrich",  "schedule": "5-59/15 * * * *" },
+    { "path": "/api/live-news/v6/refresh-rss-embed",    "schedule": "3-59/15 * * * *" },
+    { "path": "/api/intel-news/v1/enrich",  "schedule": "9-59/15 * * * *" },
     { "path": "/api/live-news/v3/refresh-worldnews",    "schedule": "*/5 * * * *" },
     { "path": "/api/live-news/v4/refresh-webz",         "schedule": "0 * * * *" },
-    { "path": "/api/live-news/v5/refresh-newscatcher",  "schedule": "30 * * * *" },
-    { "path": "/api/live-news/v6/refresh-rss-embed",    "schedule": "*/15 * * * *" }
+    { "path": "/api/live-news/v5/refresh-newscatcher",  "schedule": "30 * * * *" }
   ],
   "rewrites": [
     { "source": "/pro", "destination": "/pro/index.html" },
