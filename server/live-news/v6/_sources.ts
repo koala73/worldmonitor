@@ -43,7 +43,7 @@
  *
  * # 2026-05-15 cleanup
  *
- * Dropped 28 feeds after a description-quality + reachability audit
+ * Dropped 40 feeds after a description-quality + reachability audit
  * + Vercel egress observation:
  *   - Non-XML / Cloudflare HTML interstitials: USA Today (×3), Halifax
  *     Chronicle Herald
@@ -57,6 +57,9 @@
  *   - TITLE-ONLY (paywalled, empty descriptions): Globe and Mail
  *     World, The Economist
  *   - Montreal Gazette /feed/ — GlobeNewswire PR firehose, not editorial
+ *   - Hang-on-Vercel-egress (always abort at 30s budget cap):
+ *     Washington Post (×4), CBC (×7). Bring back via the Railway
+ *     relay if v6's _normalize.ts gets relayOnly support.
  */
 
 export interface NewsSource {
@@ -113,7 +116,6 @@ export const V6_NEWS_SOURCES: readonly NewsSource[] = [
   { name: 'Euronews',               url: 'https://www.euronews.com/rss?level=theme&name=news',                priority: 2 },
   { name: 'Sky News World',         url: 'https://feeds.skynews.com/feeds/rss/world.xml',                     priority: 2 },
   { name: 'ABC News International', url: 'https://abcnews.go.com/abcnews/internationalheadlines',             priority: 2 },
-  { name: 'CBC World',              url: 'https://rss.cbc.ca/lineup/world.xml',                               priority: 2 },
 
   { name: 'The Guardian World',     url: 'https://www.theguardian.com/world/rss',                             priority: 3 },
   { name: 'The Guardian International', url: 'https://www.theguardian.com/international/rss',                 priority: 3 },
@@ -184,13 +186,12 @@ export const V6_NEWS_SOURCES: readonly NewsSource[] = [
 
   // ────────────────────────────────────────────────────────────────────
   // Canada
+  //
+  // CBC dropped 2026-05-15 — Vercel egress consistently times out on
+  // every CBC sub-feed (TLS or origin-side bot detection). Routing
+  // through the Railway relay would bring them back but the v6
+  // normalizer doesn't honor relayOnly yet.
   // ────────────────────────────────────────────────────────────────────
-  { name: 'CBC Top Stories',        url: 'https://www.cbc.ca/cmlink/rss-topstories',                          priority: 2 },
-  { name: 'CBC Canada',             url: 'https://rss.cbc.ca/lineup/canada.xml',                              priority: 2 },
-  { name: 'CBC Politics',           url: 'https://rss.cbc.ca/lineup/politics.xml',                            priority: 2 },
-  { name: 'CBC Business',           url: 'https://rss.cbc.ca/lineup/business.xml',                            priority: 2 },
-  { name: 'CBC Health',             url: 'https://rss.cbc.ca/lineup/health.xml',                              priority: 2 },
-  { name: 'CBC Tech & Science',     url: 'https://rss.cbc.ca/lineup/technology.xml',                          priority: 2 },
 
   { name: 'Global News',            url: 'https://globalnews.ca/feed/',                                       priority: 3 },
   { name: 'Global News World',      url: 'https://globalnews.ca/world/feed/',                                 priority: 3 },
@@ -237,10 +238,10 @@ export const V6_NEWS_SOURCES: readonly NewsSource[] = [
   { name: 'NYT Science',            url: 'https://rss.nytimes.com/services/xml/rss/nyt/Science.xml',          priority: 5 },
   { name: 'NYT Health',             url: 'https://rss.nytimes.com/services/xml/rss/nyt/Health.xml',           priority: 5 },
 
-  { name: 'Washington Post National', url: 'https://feeds.washingtonpost.com/rss/national',                   priority: 5 },
-  { name: 'Washington Post World',  url: 'http://feeds.washingtonpost.com/rss/world',                         priority: 5 },
-  { name: 'Washington Post Politics', url: 'https://feeds.washingtonpost.com/rss/politics',                   priority: 5 },
-  { name: 'Washington Post Business', url: 'https://feeds.washingtonpost.com/rss/business',                   priority: 5 },
+  // Washington Post dropped 2026-05-15 — every WaPo sub-feed hangs on
+  // Vercel egress until the 30s budget cap aborts the request.
+  // Cloudflare bot-detection variant served to cloud IPs. The Mac
+  // audit returned them fine; only Vercel sees the block.
 
   { name: 'WSJ World',              url: 'https://feeds.a.dj.com/rss/RSSWorldNews.xml',                       priority: 5 },
   { name: 'WSJ US Business',        url: 'https://feeds.a.dj.com/rss/WSJcomUSBusiness.xml',                   priority: 5 },

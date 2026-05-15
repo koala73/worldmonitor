@@ -15,8 +15,29 @@ import { embedBatch, cosineSim, float32ToBase64, base64ToFloat32 } from '../../_
 import { getCachedJsonBatch, runRedisPipeline } from '../../_shared/redis';
 import type { RawRssItem } from './_normalize';
 
-const THRESHOLD = 0.7;
-const EMBED_CACHE_PREFIX = 'live-news:v6:embed:';
+/**
+ * Default cosine threshold for two items to be considered the same
+ * story. Override at runtime via `WM_V6_CLUSTER_THRESHOLD` (e.g. set
+ * to `0.85` for tighter clusters or `0.78` for looser).
+ *
+ * Why 0.82: with `gemini-embedding-001` + `SEMANTIC_SIMILARITY` task
+ * type at 768 dims, same-event news pairs typically cosine ~0.85-0.95,
+ * tangentially-related ~0.65-0.80, unrelated ~0.50-0.70. 0.82 lands
+ * just above the noise floor. The old 0.7 default was set for the
+ * older `CLUSTERING` task type, which over-merged.
+ */
+const DEFAULT_THRESHOLD = 0.82;
+function clusterThreshold(): number {
+  const raw = process.env.WM_V6_CLUSTER_THRESHOLD;
+  if (!raw) return DEFAULT_THRESHOLD;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 && n < 1 ? n : DEFAULT_THRESHOLD;
+}
+
+/** Cache prefix is bumped to `v2` when we switched task type from
+ *  CLUSTERING to SEMANTIC_SIMILARITY — old cached vectors live in a
+ *  different embedding space and would corrupt clusters if mixed. */
+const EMBED_CACHE_PREFIX = 'live-news:v6:embed:v2:';
 const EMBED_TTL_S = 24 * 60 * 60;
 const MAX_INPUT_LEN = 400;
 
@@ -123,6 +144,10 @@ function pickFirstImage(members: RawRssItem[], canonical: RawRssItem): string | 
 export async function clusterRssItems(items: RawRssItem[]): Promise<ClusteredItem[]> {
   if (items.length === 0) return [];
 
+  const threshold = clusterThreshold();
+  const thresholdSource = process.env.WM_V6_CLUSTER_THRESHOLD ? 'env' : 'default';
+  console.log(`[live-news:v6:cluster] threshold=${threshold} (${thresholdSource}) items=${items.length}`);
+
   // ── 1. Load cached embeddings ──
   const cacheKeys = items.map((it) => `${EMBED_CACHE_PREFIX}${it.titleHash}`);
   const cached = await getCachedJsonBatch(cacheKeys);
@@ -170,10 +195,14 @@ export async function clusterRssItems(items: RawRssItem[]): Promise<ClusteredIte
   // tracks every item that landed in each cluster.
   const clusterOf = new Map<string, string>();       // item.titleHash → canonical hash
   const members = new Map<string, RawRssItem[]>();   // canonical → members
-  // For comparison we keep one representative embedding per cluster
-  // (the first-seen item's vector). This bounds the cosine loop to
-  // O(items × clusters), which is well under 1ms for our scale.
-  const repEmbedByCanonical = new Map<string, Float32Array>();
+  // For comparison we store the running SUM of member embeddings per
+  // cluster, not the first-seen item's vector. Cosine is scale-invariant
+  // (cos(a, k·c) = cos(a, c)) so the sum compares the same as the
+  // centroid without paying for a divide each membership add. As more
+  // items join, the cluster vector drifts toward what those members
+  // share — preventing a marginal early member from pulling in
+  // tangentially-related items via cluster drift.
+  const sumEmbedByCanonical = new Map<string, Float32Array>();
 
   // Process oldest-first so older stories accrete younger reports.
   const sorted = [...items].sort((a, b) => a.publishedAt - b.publishedAt);
@@ -189,22 +218,26 @@ export async function clusterRssItems(items: RawRssItem[]): Promise<ClusteredIte
 
     let bestSim = -1;
     let bestCanonical: string | null = null;
-    for (const [canonical, repEmbed] of repEmbedByCanonical) {
-      const s = cosineSim(e, repEmbed);
+    for (const [canonical, sumEmbed] of sumEmbedByCanonical) {
+      const s = cosineSim(e, sumEmbed);
       if (s > bestSim) {
         bestSim = s;
         bestCanonical = canonical;
       }
     }
 
-    if (bestSim >= THRESHOLD && bestCanonical) {
+    if (bestSim >= threshold && bestCanonical) {
       clusterOf.set(it.titleHash, bestCanonical);
       members.get(bestCanonical)!.push(it);
+      // Fold this item into the running cluster sum.
+      const sum = sumEmbedByCanonical.get(bestCanonical)!;
+      for (let k = 0; k < sum.length; k++) sum[k] = sum[k]! + e[k]!;
     } else {
-      // New cluster — this item is the representative.
+      // New cluster — start the running sum with a copy of e (don't
+      // mutate the cached embedding shared with embedByHash).
       clusterOf.set(it.titleHash, it.titleHash);
       members.set(it.titleHash, [it]);
-      repEmbedByCanonical.set(it.titleHash, e);
+      sumEmbedByCanonical.set(it.titleHash, new Float32Array(e));
     }
   }
 

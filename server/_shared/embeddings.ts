@@ -56,10 +56,21 @@ const TIMEOUT_MS = 15_000;
  */
 const EMBED_CONCURRENCY = 4;
 
-/** Task-type hint to the model — `CLUSTERING` optimises for finding
- *  near-duplicate stories grouped by semantic meaning, which is exactly
- *  what we're doing here. */
-const TASK_TYPE = 'CLUSTERING';
+/** Task-type hint to the model.
+ *
+ * `SEMANTIC_SIMILARITY` is tuned for pair-discrimination ("are these
+ * two articles about the same event?") which is the exact decision
+ * our greedy clustering loop makes at every threshold compare.
+ *
+ * Previously this was `CLUSTERING` — Google's coarse K-means-style
+ * grouping mode that maps "all sports articles together" or "all
+ * politics together". That over-grouped at our 0.7 threshold:
+ * ~2000 items collapsed into ~40 mega-clusters. SEMANTIC_SIMILARITY
+ * embeddings give a wider similarity distribution on news items, so
+ * unrelated stories sit lower in the cosine range and same-event
+ * clusters separate cleanly above ~0.8.
+ */
+const TASK_TYPE = 'SEMANTIC_SIMILARITY';
 
 function getApiKey(): string | null {
   const k = process.env.GEMINI_API_KEY;

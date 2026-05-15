@@ -205,7 +205,12 @@ async function fetchFeedWithCache(src: NewsSource, signal: AbortSignal): Promise
       return [];
     }
     const items = await parseFeed(xml, src);
-    await setCachedJson(cacheKey, items, PER_FEED_TTL_S);
+    // 0-item parses get the short negative TTL so an empty result
+    // (publisher emptied the channel, Vercel egress served a sparse
+    // response, etc.) retries within 2 min instead of locking the
+    // feed out for the full 10 min positive cache window.
+    const ttl = items.length > 0 ? PER_FEED_TTL_S : PER_FEED_NEG_TTL_S;
+    await setCachedJson(cacheKey, items, ttl);
     return items;
   } catch (err) {
     console.warn(`[live-news:v6:fetch] ${src.name} threw:`, err instanceof Error ? err.message : err);
