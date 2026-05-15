@@ -154,6 +154,40 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     assert.match(src, /export function _resetBodyCapturedFlag/);
   });
 
+  it('cap-mode bypass requires fresh upstream contact (PR #3701 review P1)', () => {
+    // Pre-fix the cap-mode bypass was unconditional: any countryData.size
+    // ≥ MIN_VALID_COUNTRIES + capTriggered = bypass, even if ALL entries
+    // were stale-served prior-run data. That meant an "ArcGIS completely
+    // down" run with freshFetched=0 + cacheHits=0 + servedStale=27 could
+    // shrink the canonical list from ~174 → 27 stale-only entries and
+    // advance seed-meta as healthy — hiding the outage from operators.
+    // Fix: gate bypass on freshFetched + cacheHits ≥ floor.
+    assert.match(src, /MIN_FRESH_FETCH_FOR_CAP_BYPASS\s*=\s*5/);
+    // Counter is tracked in fetchAll's fetched-fresh path:
+    assert.match(src, /let freshFetchedCount\s*=\s*0/);
+    assert.match(src, /freshFetchedCount\+\+/);
+    // Counts are surfaced out of fetchAll:
+    assert.match(src, /freshFetchedCount,[\s\n]+cacheHitCount: cacheHits/);
+    // main() gates the bypass on the combined fresh upstream contact:
+    assert.match(src, /const upstreamContactCount = freshFetchedCount \+ cacheHitCount/);
+    assert.match(src, /const capBypassEarned = capTriggered && upstreamContactCount >= MIN_FRESH_FETCH_FOR_CAP_BYPASS/);
+    // When cap-mode is triggered but bypass NOT earned, refuse to publish
+    // a stale-only set and fall through to the 80% guard (which will fire
+    // and extendExistingTtl).
+    assert.match(src, /CAP-MODE BYPASS REFUSED/);
+  });
+
+  it('inter-batch sleep is abort-aware (PR #3701 review P2)', () => {
+    // Pre-fix the 5s batch backoff used plain `setTimeout` that ignored
+    // the caller signal mid-sleep, so a SIGTERM during the 5s wait still
+    // forced the full 5s before observing the abort. Fix: race the
+    // setTimeout against signal's abort event so the loop exits
+    // immediately on a real cancellation.
+    assert.match(src, /const timer = setTimeout\(resolve, BATCH_BACKOFF_MS\)/);
+    assert.match(src, /signal\.addEventListener\('abort', onAbort/);
+    assert.match(src, /clearTimeout\(timer\)/);
+  });
+
   it('bail-don\'t-retry on >5 Invalid query parameters errors per run (degradation signal)', () => {
     // WM 2026-05-15 degradation: 30 cold fetches all hit the same 400,
     // retry burned ~22 minutes of container budget for zero recoveries.
@@ -198,7 +232,10 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     // aborted signal `break`s the loop entirely (Greptile PR #3694 P2).
     assert.match(src, /if\s*\(\s*signal\?\.aborted\s*\)\s*break/);
     assert.match(src, /if\s*\(\s*batchIdx\s*<\s*batches\s*\)/);
-    assert.match(src, /setTimeout\(r,\s*BATCH_BACKOFF_MS\)/);
+    // PR #3701 review P2: the sleep itself races against signal.aborted
+    // so a mid-sleep SIGTERM exits the wait immediately instead of
+    // forcing the full BATCH_BACKOFF_MS.
+    assert.match(src, /setTimeout\(resolve,\s*BATCH_BACKOFF_MS\)/);
   });
 
   it('MIN_VALID_COUNTRIES is temporarily lowered to 25 (ArcGIS degraded)', () => {
@@ -223,12 +260,13 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     assert.match(src, /capTriggered,\s*\n\s*servedStaleCount,/);
     assert.match(src, /droppedTooOldCount,/);
     assert.match(src, /droppedNoCacheCount,/);
-    // main() must read those fields off the fetchAll result
-    assert.match(src, /capTriggered,\s*\n\s*servedStaleCount,\s*\n\s*droppedTooOldCount,\s*\n\s*droppedNoCacheCount,\s*\n\s*\}\s*=\s*await fetchAll/);
-    // The guard branch must be wrapped in `if (capTriggered) {} else if (...)`
-    // so cap-mode runs SKIP the guard entirely (not just log a warning and
-    // then still fall through to the guard).
-    assert.match(src, /if\s*\(\s*capTriggered\s*\)\s*\{[\s\S]+?PARTIAL PUBLISH \(cap-mode\)[\s\S]+?\}\s*else if\s*\(\s*prevCount\s*>\s*0\s*&&\s*countryData\.size\s*<\s*prevCount\s*\*\s*0\.8\s*\)/);
+    // main() must read those fields off the fetchAll result (plus the
+    // PR #3701 review P1 additions: freshFetchedCount + cacheHitCount).
+    assert.match(src, /capTriggered,\s*\n\s*servedStaleCount,\s*\n\s*droppedTooOldCount,\s*\n\s*droppedNoCacheCount,\s*\n\s*freshFetchedCount,\s*\n\s*cacheHitCount,\s*\n\s*\}\s*=\s*await fetchAll/);
+    // The earned-bypass branch (PR #3701 review P1) must lead to the
+    // PARTIAL PUBLISH log; falling through to the 80%-degradation-guard
+    // branch is the silent-loss protection.
+    assert.match(src, /if\s*\(\s*capBypassEarned\s*\)\s*\{[\s\S]+?PARTIAL PUBLISH \(cap-mode\)/);
   });
 
   it('cap-mode partial publish logs operator-visible bucket counts', () => {
@@ -244,25 +282,27 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
   });
 
   it('non-cap-mode runs still enforce the 80% degradation guard (silent-loss protection)', () => {
-    // The bypass MUST only fire when capTriggered. A run where
+    // The bypass MUST only fire when capTriggered AND the cap-mode bypass
+    // has been earned (sufficient fresh upstream contact). A run where
     // needsFetch.length ≤ MAX_COLD_FETCH_PER_RUN (normal happy path) must
     // still apply the 80% guard so an ArcGIS schema regression that
     // silently drops 100 → 50 countries can't sneak through as a publish.
     //
-    // Assert by structure: the else-if branch contains the prevCount × 0.8
-    // comparison and a DEGRADATION GUARD error+return, AND the comparison
-    // is INSIDE the else-if condition (not in a separate unconditional
-    // check before it that would bypass the else-if scoping).
-    assert.match(src, /else if\s*\([\s\S]{0,200}prevCount\s*\*\s*0\.8[\s\S]{0,200}\)\s*\{[\s\S]{0,400}DEGRADATION GUARD/);
-    // Ensure the 0.8 threshold appears exactly twice (once in the
-    // condition, once in the error message's `Math.ceil(prevCount * 0.8)`
-    // suggestion) — both inside the else-if scope. A third occurrence
-    // would suggest a duplicated check leaked outside the bypass.
+    // Assert by structure: a DEGRADATION GUARD error+return follows the
+    // prevCount × 0.8 comparison.
+    assert.match(src, /prevCount\s*\*\s*0\.8[\s\S]{0,400}DEGRADATION GUARD/);
+    // PR #3701 review P1 introduces a SECOND 80%-guard branch inside the
+    // `capTriggered && !capBypassEarned` block (cap-mode without enough
+    // fresh upstream contact also falls back to the 80% guard). So the
+    // threshold now appears in two condition + two Math.ceil sites = 4.
+    // More than 4 would imply a duplicated check leaked outside the
+    // guard scoping.
     const matches = src.match(/prevCount\s*\*\s*0\.8/g) ?? [];
     assert.equal(
       matches.length,
-      2,
-      `expected exactly 2 prevCount × 0.8 references (condition + error-msg suggestion), found ${matches.length}`,
+      4,
+      `expected exactly 4 prevCount × 0.8 references (2 conditions + 2 Math.ceil error-msg suggestions, ` +
+      `one set per guard branch — cap-mode-without-bypass-earned + non-cap-mode), found ${matches.length}`,
     );
   });
 

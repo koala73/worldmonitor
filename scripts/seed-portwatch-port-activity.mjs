@@ -81,6 +81,20 @@ const ERROR_BODY_CAPTURE_EXTRA_MS = 20_000;
 // (30 cold × 2 attempts × 45s = blown 540s container budget). Counter
 // is module-local and resets at process start (next cron tick).
 const INVALID_PARAMS_RETRY_THRESHOLD = 5;
+// Minimum FRESH upstream successes (cache-fresh OR fetched-fresh) required
+// for cap-mode to bypass the 80% degradation guard. Pre-fix the bypass was
+// unconditional, which meant a run with `servedStale=27, freshSuccess=0,
+// dropped=117` could pass `countryData.size >= MIN_VALID_COUNTRIES` (all
+// stale-served entries) AND bypass the degradation guard (capTriggered),
+// shrinking the canonical list from ~174 → 27 stale-only entries and
+// advancing seed-meta — hiding the upstream outage.
+//
+// Floor at 5 fresh successes: meaningful upstream contact this run.
+// Below that, cap-mode is NOT a rotational steady-state — it's an
+// ArcGIS-completely-down scenario, and the 80% guard should fire (which
+// extendExistingTtl-only on prior payloads, preserves canonical list,
+// keeps WARNING visible to the operator).
+const MIN_FRESH_FETCH_FOR_CAP_BYPASS = 5;
 // Two aggregation windows, hardcoded in fetchCountryAccum:
 //   last30 = days  0-30 → tankerCalls30d, avg30d, import/export sums
 //   prev30 = days 30-60 → trendDelta baseline
@@ -802,6 +816,12 @@ export async function fetchAll(progress, { signal } = {}) {
   let servedStaleCount = 0;
   let droppedTooOldCount = 0;
   let droppedNoCacheCount = 0;
+  // Counts fresh upstream successes this run (fetched-fresh path, line ~904).
+  // cacheHits is counted separately and also contributes to "fresh upstream
+  // contact" — both are aggregated into the cap-mode bypass gate in main().
+  // Servet-stale entries do NOT count: they're prior-run data being held
+  // over, no upstream contact this run.
+  let freshFetchedCount = 0;
 
   if (needsFetch.length > MAX_COLD_FETCH_PER_RUN) {
     capTriggered = true;
@@ -911,6 +931,7 @@ export async function fetchAll(progress, { signal } = {}) {
         asof: upstreamMaxDate,
         cacheWrittenAt: Date.now(),
       });
+      freshFetchedCount++;
     }
 
     if (progress) progress.seeded = countryData.size;
@@ -951,7 +972,22 @@ export async function fetchAll(progress, { signal } = {}) {
     // immediately so SIGTERM doesn't start additional in-flight work.
     if (signal?.aborted) break;
     if (batchIdx < batches) {
-      await new Promise((r) => setTimeout(r, BATCH_BACKOFF_MS));
+      // Abort-aware sleep: previously a plain setTimeout(BATCH_BACKOFF_MS)
+      // that ignored the caller signal mid-sleep, so a SIGTERM during the
+      // 5s backoff still made the loop wait the full 5s before observing
+      // the abort. Race the sleep against signal.aborted so the loop exits
+      // immediately on a real cancellation (which then surfaces via the
+      // signal?.aborted check at the top of the next iteration).
+      await new Promise((resolve) => {
+        const timer = setTimeout(resolve, BATCH_BACKOFF_MS);
+        if (!signal) return;
+        const onAbort = () => {
+          clearTimeout(timer);
+          signal.removeEventListener('abort', onAbort);
+          resolve();
+        };
+        signal.addEventListener('abort', onAbort, { once: true });
+      });
     }
   }
 
@@ -971,6 +1007,14 @@ export async function fetchAll(progress, { signal } = {}) {
     servedStaleCount,
     droppedTooOldCount,
     droppedNoCacheCount,
+    // Fresh upstream contact this run. Surfaced so main() can gate the
+    // cap-mode bypass on a minimum-fresh-success floor — see
+    // MIN_FRESH_FETCH_FOR_CAP_BYPASS. Without this, a run with all-stale
+    // served entries (freshFetched=0, cacheHits=0, servedStale≥25) could
+    // bypass the degradation guard and publish a shrunken canonical list
+    // as healthy, hiding the upstream outage.
+    freshFetchedCount,
+    cacheHitCount: cacheHits,
   };
 }
 
@@ -1040,6 +1084,8 @@ async function main() {
       servedStaleCount,
       droppedTooOldCount,
       droppedNoCacheCount,
+      freshFetchedCount,
+      cacheHitCount,
     } = await fetchAll(progress, { signal: shutdownController.signal });
 
     console.log(`  Fetched ${countryData.size} countries`);
@@ -1063,13 +1109,41 @@ async function main() {
     // (cap=30 + ~24 stale-served = ~54 << 0.8 × 174 = 139), seed-meta
     // would never advance, and the operator-facing WARNING would persist
     // — defeating the entire recovery design from #3676 onwards.
-    if (capTriggered) {
+    //
+    // PR #3701 review P1: the bypass MUST also require fresh upstream
+    // contact this run (freshFetchedCount + cacheHitCount). Pre-fix, a
+    // worst-case "ArcGIS completely down" run with freshSuccess=0,
+    // cacheHits=0, servedStale=27 would pass the lowered coverage gate
+    // (countryData.size=27 ≥ 25) and bypass the degradation guard, shrinking
+    // the canonical list from ~174 → 27 stale-only entries and advancing
+    // seed-meta as healthy — hiding the upstream outage. With this gate,
+    // such a run falls through to the 80% guard (which fires and
+    // extendExistingTtl-only), preserving the canonical list and the
+    // operator-facing WARNING.
+    const upstreamContactCount = freshFetchedCount + cacheHitCount;
+    const capBypassEarned = capTriggered && upstreamContactCount >= MIN_FRESH_FETCH_FOR_CAP_BYPASS;
+    if (capBypassEarned) {
       console.warn(
         `  PARTIAL PUBLISH (cap-mode): ${countryData.size}/${prevCount} countries — ` +
-        `${servedStaleCount} stale-served, ${droppedTooOldCount} dropped (cache > 7d), ` +
-        `${droppedNoCacheCount} dropped (no prior payload). ` +
-        `Degradation guard bypassed; seed-meta will advance.`,
+        `${freshFetchedCount} fresh-fetched, ${cacheHitCount} cache-fresh, ${servedStaleCount} stale-served, ` +
+        `${droppedTooOldCount} dropped (cache > 7d), ${droppedNoCacheCount} dropped (no prior payload). ` +
+        `Degradation guard bypassed (≥${MIN_FRESH_FETCH_FOR_CAP_BYPASS} fresh upstream contacts); seed-meta will advance.`,
       );
+    } else if (capTriggered) {
+      // Cap-mode WITHOUT enough fresh upstream contact — fall through to the
+      // 80% guard. If we got here, freshFetched + cacheHits < threshold,
+      // which means this is an upstream-degraded run, not a rotational one.
+      // Log explicitly so the operator sees why the bypass didn't fire.
+      console.error(
+        `  CAP-MODE BYPASS REFUSED: only ${upstreamContactCount} fresh upstream contacts ` +
+        `(${freshFetchedCount} fetched + ${cacheHitCount} cache-fresh, threshold ${MIN_FRESH_FETCH_FOR_CAP_BYPASS}). ` +
+        `Stale-only published would hide the upstream outage. Falling through to 80% degradation guard.`,
+      );
+      if (prevCount > 0 && countryData.size < prevCount * 0.8) {
+        console.error(`  DEGRADATION GUARD: ${countryData.size} countries vs ${prevCount} previous — refusing to overwrite (need ≥${Math.ceil(prevCount * 0.8)})`);
+        await extendExistingTtl([CANONICAL_KEY, META_KEY, ...prevCountryKeys], TTL).catch(() => {});
+        return;
+      }
     } else if (prevCount > 0 && countryData.size < prevCount * 0.8) {
       console.error(`  DEGRADATION GUARD: ${countryData.size} countries vs ${prevCount} previous — refusing to overwrite (need ≥${Math.ceil(prevCount * 0.8)})`);
       await extendExistingTtl([CANONICAL_KEY, META_KEY, ...prevCountryKeys], TTL).catch(() => {});
