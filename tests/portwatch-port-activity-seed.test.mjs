@@ -129,7 +129,7 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     // never fires. Diagnostic re-fetch with +20s budget surfaces the body so
     // the circuit-breaker can act on the upstream-degraded signal instead
     // of treating every degraded country as a generic timeout.
-    assert.match(src, /ERROR_BODY_CAPTURE_EXTRA_MS\s*=\s*20_000/);
+    assert.match(src, /ERROR_BODY_CAPTURE_EXTRA_MS\s*=\s*40_000/);
     assert.match(src, /async function _captureErrorBodyAfterTimeout/);
     // fetchWithTimeout calls it on the timeout-like-error path, before
     // routing to proxy.
@@ -168,7 +168,28 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     // direct → proxy → same error, burning budget. Counter still increments
     // (proxy-confirmed errors are valid degradation signals for the
     // threshold) but the retry is skipped.
-    assert.match(src, /_invalidParamsErrorCount\s*\+=\s*1;\s*\n[\s\S]{0,800}if\s*\(\/via proxy after\/i\.test\(msg\)\)\s*throw err/);
+    assert.match(src, /_invalidParamsErrorCount\s*\+=\s*1;[\s\S]{0,2400}if\s*\(\/via proxy after\/i\.test\(msg\)\)\s*throw err/);
+  });
+
+  it('threshold check fires BEFORE proxy-confirmed short-circuit (PR #3701 P1 round 3)', () => {
+    // Pre-fix the proxy-confirmed short-circuit ran first, so during an
+    // incident where every error arrives via proxy (likely — that's the
+    // fallback path), the counter incremented forever but the
+    // "ArcGIS degraded — N errors" message was unreachable.
+    // Right order: increment counter → check threshold (emit degraded
+    // message if exceeded) → only then short-circuit on proxy-confirmed
+    // errors below the threshold.
+    //
+    // Assert by source order: the threshold throw must appear BEFORE the
+    // `via proxy after` short-circuit in fetchWithRetryOnInvalidParams.
+    const thresholdIdx = src.search(/_invalidParamsErrorCount\s*>\s*INVALID_PARAMS_RETRY_THRESHOLD/);
+    const proxyShortCircuitIdx = src.search(/if\s*\(\/via proxy after\/i\.test\(msg\)\)\s*throw err/);
+    assert.ok(thresholdIdx > 0, 'threshold check not found in source');
+    assert.ok(proxyShortCircuitIdx > 0, 'proxy short-circuit not found in source');
+    assert.ok(
+      thresholdIdx < proxyShortCircuitIdx,
+      `threshold check (${thresholdIdx}) must appear before proxy short-circuit (${proxyShortCircuitIdx}) so proxy-confirmed errors still trip the degraded message after N occurrences`,
+    );
   });
 
   it('cap-mode bypass requires fresh upstream contact (PR #3701 review P1)', () => {

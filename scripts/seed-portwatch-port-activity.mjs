@@ -64,13 +64,21 @@ const PROXY_FETCH_TIMEOUT = 35_000;
 // parameters."}}`) after 30-56s of server processing. Our 45s
 // FETCH_TIMEOUT fires first; the caller sees AbortError; the existing
 // circuit-breaker that looks for `/Invalid query parameters/i` never
-// fires because the message is never read. This extra 20s window lets
-// the body land (most degraded responses settle in <60s total) before
-// falling through to the proxy retry. Hard-capped — withPerCountryTimeout
-// still bounds the overall per-country budget at 90s, and the diagnostic
-// re-fetch only fires on internal-FETCH_TIMEOUT, not caller-signal
-// aborts.
-const ERROR_BODY_CAPTURE_EXTRA_MS = 20_000;
+// fires because the message is never read.
+//
+// PR #3701 P2 round 3: bumped 20s → 40s because the observed degraded
+// response class is 30-56s from request start, and each capture is a
+// FRESH request (the original was already aborted). A 20s budget rarely
+// caught the body. 40s catches most. The per-country wrap
+// (PER_COUNTRY_TIMEOUT_MS=90s) naturally caps this: direct (45s timeout)
+// + capture (40s budget) = 85s, leaving 5s before the wrap fires. Proxy
+// retry effectively dies for timing-out countries in this mode — accepted
+// tradeoff because the proxy itself is degraded during this incident
+// (Decodo throttled per PR #3694 history), so it wasn't helping anyway.
+// Hard-capped — withPerCountryTimeout still bounds the overall per-country
+// budget at 90s, and the diagnostic re-fetch only fires on
+// internal-FETCH_TIMEOUT, not caller-signal aborts.
+const ERROR_BODY_CAPTURE_EXTRA_MS = 40_000;
 // After this many "Invalid query parameters" errors in a single process,
 // stop retrying on them — that's a degradation signal, not a transient
 // flake. The historical comment on fetchWithRetryOnInvalidParams notes
@@ -269,10 +277,16 @@ async function fetchWithTimeout(url, { signal } = {}) {
 let _bodyCaptureSuccessCount = 0;
 let _bodyCaptureAttemptCount = 0;
 const MAX_BODY_CAPTURE_SUCCESSES = 1;
-// Cap on attempts in case captures keep failing (also-timing-out at +20s).
-// 3 attempts × 20s ÷ concurrency 6 ≈ 10s of extra wall-clock across the
-// run, bounded. Beyond that, the cost-benefit tips and subsequent
-// timeouts go straight to proxy.
+// Cap on attempts in case captures keep failing. With
+// ERROR_BODY_CAPTURE_EXTRA_MS bumped to 40s (PR #3701 P2 round 3), 2
+// attempts already total 80s of capture wall-clock per timing-out country
+// (direct 45s + capture 40s = 85s, fits the 90s wrap once). A SECOND
+// attempt for the same country would always be aborted by the wrap. So
+// cap at 1 per-country attempt — but track ATTEMPTS across the run so
+// the first ~3 timing-out countries each get a try, after which we go
+// straight to proxy (the diagnostic value is captured by then). Bounded
+// total: 3 × 40s ≈ 120s WALL-CLOCK across concurrent batches of 6 ≈ 20s
+// extra wall-clock per run, well under the 540s container budget.
 const MAX_BODY_CAPTURE_ATTEMPTS = 3;
 
 // Test-only helper: resets the capture counters so unit tests can
@@ -343,20 +357,27 @@ async function fetchWithRetryOnInvalidParams(url, { signal } = {}) {
     const msg = err?.message || '';
     if (!/Invalid query parameters/i.test(msg)) throw err;
     _invalidParamsErrorCount += 1;
-    // Greptile PR #3701 P2: if the error came BACK from the proxy
-    // (arcgisProxyRetry wraps with "via proxy after ${reason}"), the
-    // proxy has already confirmed the upstream error — retrying would
-    // just round-trip direct timeout → proxy → same error, burning the
-    // per-country budget for nothing. The proxy response is the
-    // definitive upstream signal here. We still increment the counter
-    // (proxy-confirmed errors are valid degradation signals for the
-    // threshold) but skip the retry.
-    if (/via proxy after/i.test(msg)) throw err;
+    // PR #3701 P1 round 3: threshold check MUST come before the
+    // proxy-confirmed short-circuit. Pre-fix the short-circuit ran first,
+    // so a degraded incident where every error arrives via proxy would
+    // never surface the clean "ArcGIS degraded — N errors" message — the
+    // counter incremented forever but the threshold path was unreachable.
+    // Right order: count → threshold (emits the degraded message) → proxy
+    // short-circuit (skip retry only when below threshold).
     if (_invalidParamsErrorCount > INVALID_PARAMS_RETRY_THRESHOLD) {
       // Degradation signal — caller sees a clear "no retry, run will be
       // partial" message instead of doubling time-on-task for nothing.
       throw new Error(`ArcGIS degraded — ${_invalidParamsErrorCount} 'Invalid query parameters' errors in this run, no retry (threshold ${INVALID_PARAMS_RETRY_THRESHOLD})`);
     }
+    // Greptile PR #3701 P2: if the error came BACK from the proxy
+    // (arcgisProxyRetry wraps with "via proxy after ${reason}"), the
+    // proxy has already confirmed the upstream error — retrying would
+    // just round-trip direct timeout → proxy → same error, burning the
+    // per-country budget for nothing. The proxy response is the
+    // definitive upstream signal here. Counter increment + threshold
+    // check above still apply, so proxy-confirmed errors DO contribute
+    // to the degraded-run message.
+    if (/via proxy after/i.test(msg)) throw err;
     await new Promise((r) => setTimeout(r, 500));
     if (signal?.aborted) throw signal.reason ?? err;
     console.warn(`  [port-activity] retrying after "${msg}" (${_invalidParamsErrorCount}/${INVALID_PARAMS_RETRY_THRESHOLD}): ${url.slice(0, 80)}`);
