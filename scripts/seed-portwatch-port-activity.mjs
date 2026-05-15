@@ -235,22 +235,25 @@ async function fetchWithTimeout(url, { signal } = {}) {
     // re-fetch with an extra ERROR_BODY_CAPTURE_EXTRA_MS budget to
     // capture the actual response body. ArcGIS Daily_Ports_Data in
     // degradation mode returns HTTP 200 with a 400 error body after
-    // 30-56s; the existing 45s FETCH_TIMEOUT misses it, so the upstream
-    // circuit-breaker (fetchWithRetryOnInvalidParams) never sees the
+    // 30-56s; in the original (FETCH_TIMEOUT=45s) configuration the
+    // direct timeout fired before the body landed, so the upstream
+    // circuit-breaker (fetchWithRetryOnInvalidParams) never saw the
     // real message. If THIS re-fetch lands a body with `body.error`,
     // surface its message so the circuit-breaker can fire on the
     // upstream-degradation signal.
     //
-    // Gated: fires until we get a SUCCESSFUL capture or hit the attempt
-    // cap. We only need the body shape ONCE for diagnostics + to flip
-    // the circuit-breaker into bail-mode via INVALID_PARAMS_RETRY_THRESHOLD,
-    // so MAX_BODY_CAPTURE_SUCCESSES=1 — first body wins. But because the
-    // capture itself can ALSO time out during consistent degradation (the
-    // +20s budget isn't long enough when ArcGIS is uniformly slow per
-    // PR #3701 Greptile P2), we bound attempts at MAX_BODY_CAPTURE_ATTEMPTS
-    // (3) to keep retrying when initial captures fail. The 35s proxy budget
-    // and 45+20+35>90 scenario stay protected because per-country wrap
-    // caps the whole thing at 90s. Net cost: ≤3 × 20s wall-clock per run.
+    // Currently DISABLED via MAX_BODY_CAPTURE_ATTEMPTS=0 — see the
+    // constant comment for rationale. Today's budgets (FETCH_TIMEOUT=15s,
+    // PROXY_FETCH_TIMEOUT=70s) make this path redundant: the proxy leg
+    // has enough budget to receive ArcGIS's 51-56s slow response
+    // directly, including the 400 error body, which arcgisProxyRetry
+    // throws as a message that fetchWithRetryOnInvalidParams matches.
+    // The gate code stays in place (and the once-per-run semantics) so
+    // bumping the attempt cap re-enables the path for any future
+    // scenario where direct-fetch lands close enough to a body to be
+    // worth capturing (non-Railway egress, etc.). Net cost when enabled:
+    // ≤MAX_BODY_CAPTURE_ATTEMPTS × ERROR_BODY_CAPTURE_EXTRA_MS wall-clock
+    // per run, naturally bounded by withPerCountryTimeout's 90s wrap.
     // Best-effort: any failure falls through to proxy retry as before.
     if (_bodyCaptureSuccessCount < MAX_BODY_CAPTURE_SUCCESSES
         && _bodyCaptureAttemptCount < MAX_BODY_CAPTURE_ATTEMPTS) {
