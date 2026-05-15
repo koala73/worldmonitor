@@ -88,6 +88,17 @@ function normalizeTitle(title: string): string {
   return title.toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 200);
 }
 
+/**
+ * Decode XML/HTML entities. The named-entity coverage matters for the
+ * embedder: leaving `&ndash;` / `&mdash;` / `&rsquo;` as literal text
+ * makes the same headline embed differently when one outlet uses
+ * `&#8211;` (numeric) and another uses `&ndash;` (named), perturbing
+ * cosine similarity unnecessarily.
+ *
+ * Order matters: named non-amp entities first, then `&amp;`, then
+ * numeric. Putting `&amp;` before named entities would corrupt nested
+ * cases like `&amp;ndash;` (which should stay as literal "&ndash;").
+ */
 function decodeXmlEntities(s: string): string {
   return s
     .replace(/&lt;/g, '<')
@@ -95,6 +106,22 @@ function decodeXmlEntities(s: string): string {
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
     .replace(/&apos;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    // Typography — common in news headlines
+    .replace(/&ndash;/g, '–')   // –
+    .replace(/&mdash;/g, '—')   // —
+    .replace(/&hellip;/g, '…')  // …
+    .replace(/&lsquo;/g, '‘')   // '
+    .replace(/&rsquo;/g, '’')   // '
+    .replace(/&ldquo;/g, '“')   // "
+    .replace(/&rdquo;/g, '”')   // "
+    .replace(/&laquo;/g, '«')   // «
+    .replace(/&raquo;/g, '»')   // »
+    .replace(/&bull;/g, '•')    // •
+    .replace(/&middot;/g, '·')  // ·
+    .replace(/&copy;/g, '©')    // ©
+    .replace(/&reg;/g, '®')     // ®
+    .replace(/&trade;/g, '™')   // ™
     .replace(/&amp;/g, '&')
     .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n, 10)))
     .replace(/&#x([0-9a-fA-F]+);/g, (_, n) => String.fromCharCode(parseInt(n, 16)));

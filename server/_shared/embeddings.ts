@@ -145,7 +145,9 @@ export async function embedBatch(texts: string[]): Promise<(Float32Array | null)
       for (let i = 0; i < job.slice.length; i++) {
         const values = embeds[i]?.values;
         if (Array.isArray(values) && values.length === EMBED_DIM) {
-          out[job.start + i] = new Float32Array(values);
+          const v = new Float32Array(values);
+          l2Normalize(v);
+          out[job.start + i] = v;
           okThisBatch++;
         }
       }
@@ -177,6 +179,35 @@ export async function embedBatch(texts: string[]): Promise<(Float32Array | null)
   console.log(`[embeddings] done ${ok} embedded / ${failed} failed / ${totalBatches} batches in ${totalMs}ms`);
 
   return out;
+}
+
+/**
+ * In-place L2-normalize a Float32Array (each vector becomes unit-length).
+ *
+ * # Why this matters
+ *
+ * `gemini-embedding-001` returns approximately unit-norm vectors at its
+ * native 3072 dims, but when we ask for `outputDimensionality: 768` the
+ * Matryoshka truncation drops magnitude — per-vector norms vary.
+ * Google's docs explicitly say to re-normalize after truncating.
+ *
+ * Cosine similarity is scale-invariant pairwise, so a casual reader
+ * might think this doesn't matter. It DOES matter for our centroid-
+ * based clustering: each cluster's running-sum centroid weights each
+ * member by its norm. A member whose truncation happened to have larger
+ * residual magnitude pulls the centroid disproportionately. Normalizing
+ * each vector to unit length makes per-member weighting uniform.
+ */
+export function l2Normalize(v: Float32Array): void {
+  let normSq = 0;
+  for (let i = 0; i < v.length; i++) {
+    const x = v[i]!;
+    normSq += x * x;
+  }
+  const norm = Math.sqrt(normSq);
+  if (norm > 0 && Math.abs(norm - 1) > 1e-4) {
+    for (let i = 0; i < v.length; i++) v[i] = v[i]! / norm;
+  }
 }
 
 /**
@@ -231,7 +262,13 @@ export function base64ToFloat32(b64: string): Float32Array | null {
     // but we make a fresh buffer to keep the typed-array semantics clean.
     const aligned = new ArrayBuffer(bytes.length);
     new Uint8Array(aligned).set(bytes);
-    return new Float32Array(aligned);
+    const arr = new Float32Array(aligned);
+    // Normalize on read so old cached embeddings (cached before we
+    // started normalizing at API-call time) align with fresh ones.
+    // l2Normalize early-returns when the norm is already ~1, so this
+    // is essentially free for already-normalized vectors.
+    l2Normalize(arr);
+    return arr;
   } catch {
     return null;
   }

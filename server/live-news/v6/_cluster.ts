@@ -40,7 +40,20 @@ function clusterThreshold(): number {
  *  different embedding space and would corrupt clusters if mixed. */
 const EMBED_CACHE_PREFIX = 'live-news:v6:embed:v2:';
 const EMBED_TTL_S = 24 * 60 * 60;
-const MAX_INPUT_LEN = 400;
+/**
+ * Total budget for the text fed to the embedder. Sized to fit:
+ *   • Title repeated twice         ~120-240 chars
+ *   • Description repeated twice   ~100-400 chars (200 each, capped)
+ *   • Article body                 ~100-200 chars (truncated to fit)
+ *
+ * The embedder accepts up to 2048 tokens (~8000 chars) so we're well
+ * within the model limit. Bigger inputs don't materially improve
+ * same-event discrimination at our threshold; this is the sweet spot
+ * for headline-heavy news clustering.
+ */
+const MAX_INPUT_LEN = 800;
+const PER_DESC_SLICE = 200;
+const PER_BODY_SLICE = 200;
 
 /**
  * Per-pipeline SET cap. With ~2000 fresh embeddings per refresh, firing
@@ -211,25 +224,48 @@ export interface ClusteredItem {
 }
 
 /**
- * Build the text the embedder ingests. Priority:
+ * Build the text the embedder ingests.
  *
- *   1. `articleBody` — the publisher's actual article HTML, fetched
- *      by `_article-fetcher.ts` for items being freshly embedded.
- *      Equalises signal across feeds with brief vs full RSS payloads.
- *   2. `item.body` — RSS `<content:encoded>` or `<content>` when the
- *      feed shipped it (fallback when article fetch was skipped /
- *      failed / over budget).
- *   3. `item.description` — the RSS brief. Last resort.
+ * # Layout
  *
- * The user-facing `summary` does NOT come from this path — see
- * `pickSummary` for that. Capped at 300 chars; longer text doesn't
- * materially improve same-event discrimination at our threshold.
+ *   "<title>. <title>. <description>. <description>. <body>"
+ *
+ * Title and description are repeated because both are short and carry
+ * disproportionate event-identity signal. With a 60-120 char title and
+ * a 100-300 char description, single inclusion would let the body
+ * (up to 200 chars) numerically dominate the embedder's view of the
+ * item even though headline+lede are what define same-event identity
+ * in news. Repetition biases the model toward those signals.
+ *
+ * # Body sourcing
+ *
+ *   1. `articleBody` — fetched from the publisher's article URL by
+ *      `_article-fetcher.ts` for fresh embeds. Equalises signal across
+ *      feeds with brief vs full RSS payloads.
+ *   2. `item.body` — RSS `<content:encoded>` / `<content>` if shipped.
+ *   3. nothing — title + description alone if both above are empty
+ *      (or are identical to the description, in which case repeating
+ *      would just inflate the duplicate).
+ *
+ * The user-facing wire `summary` does NOT come from this path — see
+ * `pickSummary` for that. The fetched article body never reaches iOS.
  */
 function inputTextFor(item: RawRssItem, articleBody?: string): string {
   const title = item.title.trim();
-  const text = (articleBody || item.body || item.description || '').trim().slice(0, 300);
-  const combined = text ? `${title} — ${text}` : title;
-  return combined.slice(0, MAX_INPUT_LEN);
+  const desc = (item.description || '').trim().slice(0, PER_DESC_SLICE);
+
+  // Skip body when it duplicates content we already have. `_normalize.ts`
+  // falls back `body → description` when no rich tag exists, so body
+  // can equal description on minimal feeds.
+  const rawBody = (articleBody || item.body || '').trim();
+  const bodyIsDuplicate = rawBody === desc || rawBody === title || rawBody === '';
+  const body = bodyIsDuplicate ? '' : rawBody.slice(0, PER_BODY_SLICE);
+
+  const parts: string[] = [];
+  if (title) parts.push(title, title);
+  if (desc) parts.push(desc, desc);
+  if (body) parts.push(body);
+  return parts.join('. ').slice(0, MAX_INPUT_LEN);
 }
 
 /**
