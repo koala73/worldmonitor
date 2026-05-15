@@ -202,7 +202,11 @@ export const V6_NEWS_SOURCES: readonly NewsSource[] = [
   { name: 'Ottawa Citizen',         url: 'https://ottawacitizen.com/feed/',                                   priority: 4 },
   { name: 'Vancouver Sun',          url: 'https://vancouversun.com/feed/',                                    priority: 4 },
   { name: 'The Province',           url: 'https://theprovince.com/feed/',                                     priority: 4 },
-  { name: 'Montreal Gazette',       url: 'https://montrealgazette.com/feed/',                                 priority: 4 },
+  // Montreal Gazette /feed/ is a GlobeNewswire press-release firehose
+  // (corporate earnings, product announcements) — NOT editorial news.
+  // None of their alternative URLs (/news/feed/, /local-news/feed/,
+  // /category/news/feed/, /montreal/feed/) return items. Dropped.
+  // { name: 'Montreal Gazette',       url: 'https://montrealgazette.com/feed/',                                 priority: 4 },
   { name: 'Calgary Herald',         url: 'https://calgaryherald.com/feed/',                                   priority: 4 },
   { name: 'Edmonton Journal',       url: 'https://edmontonjournal.com/feed/',                                 priority: 4 },
   { name: 'Winnipeg Free Press',    url: 'https://www.winnipegfreepress.com/rss/',                            priority: 4 },
