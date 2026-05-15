@@ -69,6 +69,24 @@ const FETCH_TIMEOUT = 15_000;
 // circuit-breaker actually fires now, surfacing the real upstream signal
 // instead of silent timeouts.
 const PROXY_FETCH_TIMEOUT = 70_000;
+// Preflight-specific direct timeout. The fetchMaxDate preflight runs once
+// per eligible country (174 today) at PREFLIGHT_CONCURRENCY=24 BEFORE the
+// cold-fetch cap partitions countries into refresh-now vs serve-stale, so
+// without a tighter budget the preflight phase alone could blow the 570s
+// container budget under ArcGIS degradation:
+//   ceil(174/24)=8 waves × (FETCH_TIMEOUT 15s + PROXY_FETCH_TIMEOUT 70s)
+//   = 680s worst case — over the 570s bundle budget BEFORE useful work.
+// Empirically TODAY preflight outStatistics queries return in <1s even
+// from Railway IPs (small response, different upstream behavior than the
+// paginated data queries), so this protection is preventative not curative.
+// Greptile PR #3711 P1: protects against the day ArcGIS starts throttling
+// outStatistics queries too.
+//
+// Companion lever: fetchMaxDate skips the proxy fallback entirely so a
+// timing-out preflight is a CHEAP fail (~5s) that falls through to the
+// expensive per-country activity path, where the full direct+proxy budget
+// is available. Preflight is best-effort (cache invalidation only).
+const PREFLIGHT_FETCH_TIMEOUT = 5_000;
 // Diagnostic re-fetch budget for capturing the actual error body when the
 // initial direct fetch times out at FETCH_TIMEOUT. WM 2026-05-15
 // investigation found ArcGIS Daily_Ports_Data, during degradation
@@ -178,10 +196,12 @@ function epochToTimestamp(epochMs) {
 // are signals that ArcGIS is rate-limiting our seed-server IP. Returns the
 // parsed JSON body or throws.
 //
-// Uses PROXY_FETCH_TIMEOUT (35s, shorter than the 45s direct FETCH_TIMEOUT)
-// so the combined direct + proxy budget stays under PER_COUNTRY_TIMEOUT_MS
-// (90s) with slack for Decodo's TCP handshake and CONNECT setup. Greptile
-// PR #3681 review P2.
+// Uses PROXY_FETCH_TIMEOUT (70s, gives the bulk of PER_COUNTRY_TIMEOUT_MS to
+// the proxy leg). Direct FETCH_TIMEOUT (15s) + PROXY_FETCH_TIMEOUT (70s) =
+// 85s, fits the 90s per-country wrap with 5s slack for Decodo's TCP
+// handshake and CONNECT setup. See PR #3711 incident notes for the
+// rebalance — Railway-direct is currently fully throttled by ArcGIS, so
+// "fail fast direct, give proxy the budget" is the right shape.
 async function arcgisProxyRetry(url, reason, { signal } = {}) {
   const proxyAuth = resolveProxyForConnect();
   if (!proxyAuth) throw new Error(`ArcGIS direct ${reason} + no proxy configured for ${url.slice(0, 80)}`);
@@ -198,12 +218,20 @@ async function arcgisProxyRetry(url, reason, { signal } = {}) {
   return proxied;
 }
 
-async function fetchWithTimeout(url, { signal } = {}) {
-  // Combine the per-call FETCH_TIMEOUT with the upstream caller signal so an
+async function fetchWithTimeout(url, { signal, timeoutMs = FETCH_TIMEOUT, noProxyFallback = false } = {}) {
+  // Combine the per-call timeoutMs with the upstream caller signal so an
   // abort propagates into the in-flight fetch AND future pagination iterations.
+  //
+  // Options:
+  //   timeoutMs        — defaults to FETCH_TIMEOUT (15s). Caller can override
+  //                       for tighter/looser budgets (preflight uses 5s).
+  //   noProxyFallback  — if true, timeout/429 throws instead of routing to
+  //                       arcgisProxyRetry. Used by preflight so a degraded
+  //                       upstream can't burn the container budget on
+  //                       best-effort cache-invalidation probes (PR #3711 P1).
   const combined = signal
-    ? AbortSignal.any([signal, AbortSignal.timeout(FETCH_TIMEOUT)])
-    : AbortSignal.timeout(FETCH_TIMEOUT);
+    ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
+    : AbortSignal.timeout(timeoutMs);
   let resp;
   try {
     resp = await fetch(url, {
@@ -212,7 +240,7 @@ async function fetchWithTimeout(url, { signal } = {}) {
     });
   } catch (err) {
     // If the CALLER signal aborted (real cancellation request from SIGTERM
-    // / per-country timeout), propagate as-is. Only the internal 45s
+    // / per-country timeout), propagate as-is. Only the internal
     // FETCH_TIMEOUT or transient network errors fall through to the proxy
     // retry below.
     if (signal?.aborted) throw err;
@@ -231,6 +259,14 @@ async function fetchWithTimeout(url, { signal } = {}) {
       || errName === 'AbortError'
       || /timeout|aborted|fetch failed|ECONNRESET|UND_ERR_/i.test(errMsg);
     if (!isTimeoutLike) throw err;
+    // Greptile PR #3711 P1: best-effort callers (e.g. preflight maxDate)
+    // opt out of proxy fallback so a degraded upstream can't burn the
+    // container budget on probes that are tolerant of failure. Preflight
+    // failures fall through to the expensive per-country path which has
+    // its own direct+proxy budget. With PREFLIGHT_FETCH_TIMEOUT=5s and
+    // ~8 preflight waves at concurrency 24, this caps the preflight
+    // phase at ~40s wall-clock even when every probe fails.
+    if (noProxyFallback) throw err;
     // WM 2026-05-15: before routing to proxy, make ONE diagnostic
     // re-fetch with an extra ERROR_BODY_CAPTURE_EXTRA_MS budget to
     // capture the actual response body. ArcGIS Daily_Ports_Data in
@@ -274,6 +310,9 @@ async function fetchWithTimeout(url, { signal } = {}) {
     return await arcgisProxyRetry(url, `direct ${errName || 'timeout'}`, { signal });
   }
   if (resp.status === 429) {
+    // Preflight (noProxyFallback) treats 429 as a soft failure: throw and
+    // let the caller fall through to the expensive per-country path.
+    if (noProxyFallback) throw new Error(`ArcGIS HTTP 429 (preflight, no proxy fallback)`);
     return await arcgisProxyRetry(url, 'HTTP 429 rate-limited', { signal });
   }
   if (!resp.ok) throw new Error(`ArcGIS HTTP ${resp.status} for ${url.slice(0, 80)}`);
@@ -670,7 +709,18 @@ async function fetchMaxDate(iso3, { signal, dateField } = {}) {
     f: 'json',
   });
   try {
-    const body = await fetchWithRetryOnInvalidParams(`${EP3_BASE}?${params}`, { signal });
+    // Preflight uses a tight direct timeout and SKIPS proxy fallback so the
+    // 174-country preflight phase can't blow the 570s container budget
+    // under ArcGIS degradation (Greptile PR #3711 P1). Failures fall
+    // through to the expensive per-country activity path which has the
+    // full direct+proxy budget. Also skips fetchWithRetryOnInvalidParams's
+    // 500ms backoff retry — preflight is best-effort cache invalidation,
+    // a retry just doubles wall-clock without changing the outcome.
+    const body = await fetchWithTimeout(`${EP3_BASE}?${params}`, {
+      signal,
+      timeoutMs: PREFLIGHT_FETCH_TIMEOUT,
+      noProxyFallback: true,
+    });
     const attrs = body.features?.[0]?.attributes;
     if (!attrs) return null;
     const raw = attrs.max_date;

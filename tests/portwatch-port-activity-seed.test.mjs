@@ -102,8 +102,11 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     assert.ok(matches.length >= 2, `expected returnGeometry:'false' in both paginators, found ${matches.length}`);
   });
 
-  it('fetchWithTimeout combines caller signal with FETCH_TIMEOUT via AbortSignal.any', () => {
-    assert.match(src, /AbortSignal\.any\(\[signal,\s*AbortSignal\.timeout\(FETCH_TIMEOUT\)\]\)/);
+  it('fetchWithTimeout combines caller signal with the per-call timeoutMs via AbortSignal.any', () => {
+    // PR #3711 P1: timeoutMs is now a parameterized option (defaults to
+    // FETCH_TIMEOUT) so preflight can override with PREFLIGHT_FETCH_TIMEOUT.
+    // The AbortSignal.any composition is unchanged.
+    assert.match(src, /AbortSignal\.any\(\[signal,\s*AbortSignal\.timeout\(timeoutMs\)\]\)/);
   });
 
   it('paginators check signal.aborted between pages', () => {
@@ -569,6 +572,47 @@ describe('ArcGIS 429 proxy fallback', () => {
 
   // Greptile PR #3681 review round 2 P2: combined direct + proxy budget must
   // stay under PER_COUNTRY_TIMEOUT_MS with slack for proxy setup overhead.
+  it('preflight uses a tight budget + skips proxy fallback (PR #3711 P1)', () => {
+    // Greptile PR #3711 P1: preflight runs fetchMaxDate for all 174
+    // eligible countries at PREFLIGHT_CONCURRENCY=24 BEFORE the cold-fetch
+    // cap. Without a tighter budget the preflight phase alone could blow
+    // the 570s container budget under ArcGIS degradation:
+    //   ceil(174/24)=8 waves × (15s direct + 70s proxy) = 680s worst case.
+    // Fix: tight direct timeout (5s) + skip proxy fallback so preflight
+    // fails fast and falls through to the expensive per-country path,
+    // where the full budget is available.
+    assert.match(src, /const PREFLIGHT_FETCH_TIMEOUT\s*=\s*5_000/);
+    // fetchWithTimeout accepts options for timeoutMs + noProxyFallback
+    assert.match(src, /async function fetchWithTimeout\(url,\s*{\s*signal,\s*timeoutMs\s*=\s*FETCH_TIMEOUT,\s*noProxyFallback\s*=\s*false\s*}\s*=\s*{}\s*\)/);
+    // Internal timeout uses the override
+    assert.match(src, /AbortSignal\.timeout\(timeoutMs\)/);
+    // noProxyFallback skips arcgisProxyRetry on timeout-like errors
+    assert.match(src, /if\s*\(noProxyFallback\)\s*throw err/);
+    // noProxyFallback also skips proxy on 429
+    assert.match(src, /if\s*\(noProxyFallback\)\s*throw new Error\(`ArcGIS HTTP 429 \(preflight/);
+    // fetchMaxDate uses both options + bypasses fetchWithRetryOnInvalidParams
+    assert.match(src, /timeoutMs:\s*PREFLIGHT_FETCH_TIMEOUT,\s*\n\s*noProxyFallback:\s*true/);
+  });
+
+  it('preflight worst-case wall-clock stays well under container budget', () => {
+    // Documentation-grade test: encodes the budget math so a future tweak
+    // (bumping PREFLIGHT_FETCH_TIMEOUT or PREFLIGHT_CONCURRENCY) surfaces
+    // the implication via failure rather than silent drift.
+    const preflightTimeout = src.match(/const PREFLIGHT_FETCH_TIMEOUT\s*=\s*(\d+_?\d*)/)?.[1];
+    const preflightConcurrency = src.match(/const PREFLIGHT_CONCURRENCY\s*=\s*(\d+)/)?.[1];
+    const parseMs = (s) => parseInt((s ?? '0').replace(/_/g, ''), 10);
+    const timeoutMs = parseMs(preflightTimeout);
+    const concurrency = parseInt(preflightConcurrency, 10);
+    const countries = 174;
+    const waves = Math.ceil(countries / concurrency);
+    const worstCaseMs = waves * timeoutMs;
+    const containerBudgetMs = 540_000;
+    assert.ok(
+      worstCaseMs < containerBudgetMs / 4,
+      `preflight worst-case (${waves} waves × ${timeoutMs}ms = ${worstCaseMs}ms) must stay well under container budget (${containerBudgetMs}ms / 4 = ${containerBudgetMs / 4}ms); leaves >75% for activity phase`,
+    );
+  });
+
   it('proxy gets the bulk of the per-country budget (Railway-direct is throttled)', () => {
     // WM 2026-05-15 rebalance: direct fetch from Railway IPs is 100%
     // throttled by ArcGIS (never returns within 60s observed). Proxy via
