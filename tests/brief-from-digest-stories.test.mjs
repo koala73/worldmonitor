@@ -14,7 +14,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
-import { composeBriefFromDigestStories, stripHeadlineSuffix, stripHeadlinePrefix, digestStoryToSynthesisShape } from '../scripts/lib/brief-compose.mjs';
+import { composeBriefFromDigestStories, stripHeadlineSuffix, stripHeadlinePrefix, digestStoryToSynthesisShape, deriveThreadsFromOrderedStories } from '../scripts/lib/brief-compose.mjs';
 import { materializeCluster } from '../scripts/lib/brief-dedup-jaccard.mjs';
 
 const NOW = 1_745_000_000_000; // 2026-04-18 ish, deterministic
@@ -191,6 +191,253 @@ describe('stripHeadlineSuffix', () => {
     assert.equal(stripHeadlineSuffix('Headline', ''), 'Headline');
     // @ts-expect-error testing unexpected input
     assert.equal(stripHeadlineSuffix(undefined, 'AP News'), '');
+  });
+});
+
+// ── stripHeadlineSuffix — Layer 2 publisher-naming variants ─────────────
+//
+// Closes three structural classes of variant between the headline-suffix's
+// publisher form and the configured `source` field, all observed live on
+// the May 15 brief: article insertion (Bulletin), trailing wire-suffix
+// word (BBC News vs BBC), abbreviation ↔ long-form (Department of
+// Justice vs DOJ). Layer 1's strict word-prefix test is preserved as the
+// load-bearing PR #3673 protection.
+//
+// See docs/plans/2026-05-15-001-fix-headline-suffix-strip-publisher-
+// naming-variants-plan.md for the full design rationale.
+
+describe('stripHeadlineSuffix — Layer 2 publisher-naming variants (plan 2026-05-15-001)', () => {
+  // ── Path 2a: source-aware fuzzy match (article + trailing wire-suffix + domain paren) ──
+
+  it('S1: strips on article insertion ("Bulletin of the Atomic Scientists" vs "Bulletin of Atomic Scientists")', () => {
+    assert.equal(
+      stripHeadlineSuffix(
+        "'Earth in flames,' Brian Toon and Alan Robock on whether humans will die from an asteroid or nuclear war first - Bulletin of the Atomic Scientists",
+        'Bulletin of Atomic Scientists',
+      ),
+      "'Earth in flames,' Brian Toon and Alan Robock on whether humans will die from an asteroid or nuclear war first",
+    );
+  });
+
+  it('S3: strips on trailing wire-suffix word ("BBC News" vs "BBC")', () => {
+    assert.equal(stripHeadlineSuffix('Body - BBC News', 'BBC'), 'Body');
+  });
+
+  it('S5: strips iteratively on multiple trailing wire-suffix words ("BBC News Online" vs "BBC")', () => {
+    assert.equal(stripHeadlineSuffix('Body - BBC News Online', 'BBC'), 'Body');
+  });
+
+  it('S6: strips when wire-suffix word is trailing AND publisher is the longer form ("Daily Mail Online" vs "Daily Mail")', () => {
+    // Verifies `daily` in LEADING position is preserved through normalisation
+    // while `online` in trailing position is stripped.
+    assert.equal(
+      stripHeadlineSuffix('Body - Daily Mail Online', 'Daily Mail'),
+      'Body',
+    );
+  });
+
+  // ── Critical regression: wire-suffix words in NON-trailing positions MUST NOT be stripped ──
+
+  it('S8: does NOT strip when leading wire-suffix word is part of the publisher name ("News Corp Latest" vs "News Corp")', () => {
+    // Trailing strip drops nothing (`latest` is not in suffix set).
+    // Tail `news corp latest` ≠ publisher prefix `news corp` (longer).
+    // Verifies `news` in LEADING position is preserved, NOT stripped.
+    assert.equal(
+      stripHeadlineSuffix('Body - News Corp Latest', 'News Corp'),
+      'Body - News Corp Latest',
+    );
+  });
+
+  it('S9: does NOT strip "Press TV International" vs "Press TV" — verifies leading "press" preserved', () => {
+    assert.equal(
+      stripHeadlineSuffix('Body - Press TV International', 'Press TV'),
+      'Body - Press TV International',
+    );
+  });
+
+  it('S10: strips "The Press Democrat" via Layer 1 equality — verifies article stripped + middle "press" preserved', () => {
+    assert.equal(
+      stripHeadlineSuffix('Body - The Press Democrat', 'The Press Democrat'),
+      'Body',
+    );
+  });
+
+  // ── Domain paren ──
+
+  it('S11: strips on trailing domain paren ("Reuters World (.com)" vs "Reuters World")', () => {
+    assert.equal(
+      stripHeadlineSuffix('Body - Reuters World (.com)', 'Reuters World'),
+      'Body',
+    );
+  });
+
+  // ── Path 2b: acronym-shape-gated initials equivalence ──
+
+  it('S12: strips DOJ case via initials ("Department of Justice (.gov)" vs "DOJ")', () => {
+    // Clean fixture with NO stray `|` (which would be matched by
+    // HEADLINE_SUFFIX_RE_PART as a separator). The leading
+    // "Office of Public Affairs |" boilerplate seen on real DOJ
+    // headlines is a SEPARATE prefix-pipe problem deferred from this PR.
+    assert.equal(
+      stripHeadlineSuffix(
+        'Georgian National Sentenced to 15 Years - Department of Justice (.gov)',
+        'DOJ',
+      ),
+      'Georgian National Sentenced to 15 Years',
+    );
+  });
+
+  it('S13: strips NPR case ("National Public Radio" vs "NPR") — wire-suffix word "radio" preserved by tailForInitials', () => {
+    assert.equal(
+      stripHeadlineSuffix('Body - National Public Radio', 'NPR'),
+      'Body',
+    );
+  });
+
+  it('S14: REGRESSION (Codex Round 2 P1) — strips AP case ("Associated Press" vs "AP") with `Press` preserved by tailForInitials', () => {
+    // The fix Codex Round 2 P1 caught: reusing normalizePublisher for
+    // initials would strip `press` (it's in WIRE_SUFFIX_TOKENS), leaving
+    // `associated` → initials `a`, missing the `P`. tailForInitials
+    // preserves wire-suffix words so initials yield `ap` correctly.
+    assert.equal(stripHeadlineSuffix('Body - Associated Press', 'AP'), 'Body');
+  });
+
+  it('S15: strips BBC long form ("British Broadcasting Corporation" vs "BBC")', () => {
+    assert.equal(
+      stripHeadlineSuffix('Body - British Broadcasting Corporation', 'BBC'),
+      'Body',
+    );
+  });
+
+  // ── Critical regression: lowercase editorial text MUST NOT trigger initials path ──
+
+  it('S16: does NOT strip lowercase editorial tail ("trump says that" vs "TST") — Title-Case gate rejects', () => {
+    assert.equal(
+      stripHeadlineSuffix('Body - trump says that', 'TST'),
+      'Body - trump says that',
+    );
+  });
+
+  it('S17: documented edge — strips Title-Case 3-word tail whose initials match a configured 3-char acronym ("Top Sales Today" vs "TST")', () => {
+    // Documented residual false-positive surface: a 3-Title-Case-word tail
+    // whose initials happen to equal a configured uppercase short source
+    // DOES strip. The all-uppercase configured source is itself a high-
+    // confidence "this is an acronym" signal. Accept and revisit if
+    // production telemetry surfaces a recurrence.
+    assert.equal(stripHeadlineSuffix('Body - Top Sales Today', 'TST'), 'Body');
+  });
+
+  // ── Initials cap ──
+
+  it('S18: strips when initials length ≤5 ("International Atomic Energy Agency" vs "IAEA")', () => {
+    assert.equal(
+      stripHeadlineSuffix(
+        'Body - International Atomic Energy Agency',
+        'IAEA',
+      ),
+      'Body',
+    );
+  });
+
+  it('S19: does NOT strip when source exceeds 5-char acronym cap', () => {
+    // Original publisher "IAEABF" has 6 chars → fails /^[A-Z]{1,5}$/ →
+    // initials path doesn't trigger. Path 2a also rejects (tail much
+    // longer than publisher).
+    assert.equal(
+      stripHeadlineSuffix(
+        'Body - International Atomic Energy Agency Body Format',
+        'IAEABF',
+      ),
+      'Body - International Atomic Energy Agency Body Format',
+    );
+  });
+
+  // ── Critical regression: ordinary Title-Case publishers MUST NOT trigger initials path ──
+
+  it('S18b: does NOT strip "This Is My Editorial" against Title-Case publisher "Time" (initials would match but acronym gate rejects)', () => {
+    // Without the all-uppercase /^[A-Z]{1,5}$/ gate on the original
+    // publisher, initials would compute `time` and the tail would be
+    // wrongly stripped. The gate is what locks the protection.
+    assert.equal(
+      stripHeadlineSuffix('Body - This Is My Editorial', 'Time'),
+      'Body - This Is My Editorial',
+    );
+  });
+
+  it('S18c: does NOT strip "Vivid Industry Cooperative Effort" vs "Vice"', () => {
+    assert.equal(
+      stripHeadlineSuffix('Body - Vivid Industry Cooperative Effort', 'Vice'),
+      'Body - Vivid Industry Cooperative Effort',
+    );
+  });
+
+  it('S18d: does NOT strip "Western Industrial Reporting Editor Desk" vs "Wired"', () => {
+    assert.equal(
+      stripHeadlineSuffix(
+        'Body - Western Industrial Reporting Editor Desk',
+        'Wired',
+      ),
+      'Body - Western Industrial Reporting Editor Desk',
+    );
+  });
+
+  it('S20: lowercase configured source ("doj") does NOT trigger initials path — must be authored ALL-CAPS to opt in', () => {
+    // The acronym gate is on the ORIGINAL publisher field (PUBLISHER_ACRONYM_RE).
+    // Lowercase `doj` does not match /^[A-Z]{1,5}$/ → initials path doesn't fire.
+    // Layer 1's case-insensitive prefix test still applies, but `doj` ≠
+    // `Department of Justice` so no equality strip either.
+    assert.equal(
+      stripHeadlineSuffix('Body - Department of Justice', 'doj'),
+      'Body - Department of Justice',
+    );
+  });
+
+  // ── Load-bearing PR #3673 asymmetric protection (R5) at ALL Layer 2 paths ──
+
+  it('S21: REGRESSION (PR #3673) — does NOT strip "AP News analysis" vs "AP News" at any layer', () => {
+    // Layer 1: tail (16 chars) >= publisher (7 chars) → asymmetric prefix rejects.
+    // Path 2a: normalised tail = "ap news analysis" (last token `analysis` not
+    //   in WIRE_SUFFIX_TOKENS so trailing strip is a no-op). isPublisherWordPrefix
+    //   ("ap news analysis", "ap") (normPub = "ap" after stripping trailing "news"
+    //   from "AP News") — tail much longer → reject.
+    // Path 2b: original publisher "AP News" contains a space and lowercase
+    //   chars → does NOT match /^[A-Z]{1,5}$/ → initials path doesn't trigger.
+    // This is the load-bearing test for the entire Layer 2 design.
+    assert.equal(
+      stripHeadlineSuffix('Body - AP News analysis', 'AP News'),
+      'Body - AP News analysis',
+    );
+  });
+
+  // ── Edges ──
+
+  it('S23: empty publisher does NOT trigger any Layer 2 path', () => {
+    // Layer 1 early-returns on empty publisher (returns trimmed title).
+    // Layer 2 normalised prefix needs both non-empty; initials path
+    // needs the empty string to match /^[A-Z]{1,5}$/ which it does not.
+    assert.equal(stripHeadlineSuffix('Body - Anything', ''), 'Body - Anything');
+  });
+
+  it('S26: strips "Al Jazeera English" vs "AJE" — three Title-Case tokens, initials match', () => {
+    // Path 2b: PUBLISHER_ACRONYM_RE("AJE") ✓. looksLikePublisherShape
+    // (3 Title-Case tokens) ✓. tailForInitials → "al jazeera english".
+    // initialsOf → "aje". Match.
+    assert.equal(
+      stripHeadlineSuffix('Body - Al Jazeera English', 'AJE'),
+      'Body',
+    );
+  });
+
+  it('S26b: documents hyphenated-compound behaviour — "Al-Jazeera English" vs "AE" strips (single token from hyphen, NOT split)', () => {
+    // The hyphenated compound `Al-Jazeera` counts as a SINGLE token
+    // (TITLE_CASE_TOKEN_RE accepts hyphens within the token), so its
+    // initial is just `a`. Combined with `English` → initials `ae`,
+    // matching source `AE`. If a future case requires splitting on
+    // hyphens, tailForInitials can be extended; deferred until needed.
+    assert.equal(
+      stripHeadlineSuffix('Body - Al-Jazeera English', 'AE'),
+      'Body',
+    );
   });
 });
 
@@ -1644,5 +1891,149 @@ describe('Sprint 1 U7 production-gap source-text guard — formatter call site',
       `expected ≥2 sourceCountByClusterId.get(clusterId) reads (U4 writer + U5 evaluator); ` +
       `found ${getMatches.length}. If you removed one of them, the cooldown evolution bypass will break silently.`,
     );
+  });
+});
+
+// ── deriveThreadsFromOrderedStories (F7 / Phase 6) ──────────────────────────
+//
+// The rendered "On The Desk" threads page is derived from the FINAL
+// ordered story walk — one thread per topic-cluster, in walk order —
+// so it can never disagree with the story walk (the 2026-05-13 bug:
+// threads listed in one order, stories walked in another, a story
+// covered by no thread).
+
+describe('deriveThreadsFromOrderedStories', () => {
+  // Mirrors the FINAL ordered envelope.data.stories[] shape: each story
+  // carries clusterId / category / headline / description.
+  function story(overrides = {}) {
+    return {
+      clusterId: 'c-default',
+      category: 'Geopolitics',
+      headline: 'A default headline',
+      description: 'A default editorial sentence about the development.',
+      ...overrides,
+    };
+  }
+
+  it('emits one thread per cluster, in story-walk order, tag = category, teaser = description', () => {
+    const stories = [
+      story({ clusterId: 'c1', category: 'Energy', description: 'Oil futures spiked after the strait closure threat.' }),
+      story({ clusterId: 'c2', category: 'Diplomacy', description: 'A secret summit reshaped the regional alignment.' }),
+      story({ clusterId: 'c3', category: 'Climate', description: 'Record heat forced grid curtailment across three states.' }),
+    ];
+    const threads = deriveThreadsFromOrderedStories(stories);
+    assert.deepEqual(threads, [
+      { tag: 'Energy', teaser: 'Oil futures spiked after the strait closure threat.' },
+      { tag: 'Diplomacy', teaser: 'A secret summit reshaped the regional alignment.' },
+      { tag: 'Climate', teaser: 'Record heat forced grid curtailment across three states.' },
+    ]);
+  });
+
+  it('collapses a contiguous multi-story cluster into ONE thread led by the first (highest-ranked) member', () => {
+    const stories = [
+      story({ clusterId: 'big', category: 'Conflict', headline: 'Lead story', description: 'The lead members editorial sentence.' }),
+      story({ clusterId: 'big', category: 'Conflict', headline: 'Second member', description: 'A follow-on member that must NOT spawn its own thread.' }),
+      story({ clusterId: 'big', category: 'Conflict', headline: 'Third member', description: 'Another follow-on member.' }),
+      story({ clusterId: 'solo', category: 'Markets', description: 'A singleton cluster after the big block.' }),
+    ];
+    const threads = deriveThreadsFromOrderedStories(stories);
+    assert.equal(threads.length, 2, 'three-member cluster → one thread; singleton → one thread');
+    assert.deepEqual(threads[0], { tag: 'Conflict', teaser: 'The lead members editorial sentence.' });
+    assert.deepEqual(threads[1], { tag: 'Markets', teaser: 'A singleton cluster after the big block.' });
+  });
+
+  it('covers EVERY cluster — no orphan story (the May 13 hantavirus bug)', () => {
+    // A 12-story walk: a couple of 2-story clusters, the rest singletons,
+    // including a low-walk-position singleton that pre-F7 no thread covered.
+    const stories = [
+      story({ clusterId: 'A', category: 'Conflict' }),
+      story({ clusterId: 'A', category: 'Conflict' }),
+      story({ clusterId: 'B', category: 'Diplomacy' }),
+      story({ clusterId: 'C', category: 'Energy' }),
+      story({ clusterId: 'D', category: 'Cyber' }),
+      story({ clusterId: 'E', category: 'Markets' }),
+      story({ clusterId: 'F', category: 'Climate' }),
+      story({ clusterId: 'G', category: 'Aviation' }),
+      story({ clusterId: 'H', category: 'Humanitarian' }),
+      story({ clusterId: 'I', category: 'Technology' }),
+      story({ clusterId: 'J', category: 'Trade' }),
+      story({
+        clusterId: 'hantavirus',
+        category: 'Health',
+        headline: 'Hantavirus cluster confirmed in the southwest',
+        description: 'A Hantavirus outbreak was confirmed across three southwestern counties.',
+      }),
+    ];
+    const threads = deriveThreadsFromOrderedStories(stories);
+    // 12 stories, one 2-story cluster (A) → 11 distinct clusters → 11 threads.
+    assert.equal(threads.length, 11);
+    // The previously-orphaned low-walk-position story now has its own thread.
+    assert.ok(
+      threads.some((t) => t.tag === 'Health' && /Hantavirus/.test(t.teaser)),
+      'the low-walk-position singleton is covered by a thread — no orphan',
+    );
+    // Thread order tracks the walk: first cluster encountered is first thread.
+    assert.equal(threads[0].tag, 'Conflict');
+    assert.equal(threads[threads.length - 1].tag, 'Health');
+  });
+
+  it('teaser falls back to the headline when the story has no usable description', () => {
+    for (const desc of [undefined, '', '   ']) {
+      const threads = deriveThreadsFromOrderedStories([
+        story({ clusterId: 'c1', headline: 'A hard-news headline that stands in for the teaser', description: desc }),
+      ]);
+      assert.deepEqual(threads, [{ tag: 'Geopolitics', teaser: 'A hard-news headline that stands in for the teaser' }]);
+    }
+  });
+
+  it('tag falls back to "General" when category is empty / missing', () => {
+    for (const cat of [undefined, '', '   ']) {
+      const threads = deriveThreadsFromOrderedStories([story({ clusterId: 'c1', category: cat })]);
+      assert.equal(threads[0].tag, 'General');
+    }
+  });
+
+  it('a story with neither description nor headline is skipped (never emits an invalid empty teaser)', () => {
+    const threads = deriveThreadsFromOrderedStories([
+      story({ clusterId: 'c1', headline: '', description: '' }),
+      story({ clusterId: 'c2', headline: 'A valid one', description: '' }),
+    ]);
+    assert.deepEqual(threads, [{ tag: 'Geopolitics', teaser: 'A valid one' }]);
+  });
+
+  it('a missing / empty clusterId never coalesces — each such story is its own thread (defensive)', () => {
+    const threads = deriveThreadsFromOrderedStories([
+      story({ clusterId: undefined, category: 'X', description: 'first' }),
+      story({ clusterId: '', category: 'Y', description: 'second' }),
+    ]);
+    assert.equal(threads.length, 2, 'two null/empty-clusterId stories must not merge into one thread');
+  });
+
+  it('returns [] for empty / non-array input', () => {
+    assert.deepEqual(deriveThreadsFromOrderedStories([]), []);
+    assert.deepEqual(deriveThreadsFromOrderedStories(null), []);
+    assert.deepEqual(deriveThreadsFromOrderedStories(undefined), []);
+  });
+
+  it('integration: derived threads pass the renderer envelope contract', async () => {
+    const { assertBriefEnvelope } = await import('../server/_shared/brief-render.js');
+    const envelope = composeBriefFromDigestStories(
+      rule(),
+      [
+        digestStory({ hash: 'h1', title: 'Iran threatens to close Strait of Hormuz', sources: ['Reuters'] }),
+        digestStory({ hash: 'h2', title: 'Putin tests a nuclear-capable missile', sources: ['CNN'] }),
+      ],
+      { clusters: 2, multiSource: 1 },
+      { nowMs: NOW },
+    );
+    assert.ok(envelope, 'envelope composed');
+    const derivedThreads = deriveThreadsFromOrderedStories(envelope.data.stories);
+    assert.ok(derivedThreads.length >= 1, 'at least one derived thread');
+    const withThreads = {
+      ...envelope,
+      data: { ...envelope.data, digest: { ...envelope.data.digest, threads: derivedThreads } },
+    };
+    assert.doesNotThrow(() => assertBriefEnvelope(withThreads),
+      'an envelope whose threads were swapped for derived ones still validates');
   });
 });

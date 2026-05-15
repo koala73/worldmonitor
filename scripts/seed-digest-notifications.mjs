@@ -34,6 +34,7 @@ import { classifyOpinion } from '../server/_shared/opinion-classifier.js';
 import {
   composeBriefFromDigestStories,
   compareRules,
+  deriveThreadsFromOrderedStories,
   digestStoryToSynthesisShape,
   extractInsights,
   groupEligibleRulesByUser,
@@ -1741,6 +1742,50 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
       }
     } catch (err) {
       console.warn(`[digest] brief: per-story enrichment threw for ${userId} — shipping unenriched envelope:`, err?.message);
+    }
+  }
+
+  // ── Threads ↔ story-walk consistency (F7 / Phase 6) ─────────────────
+  //
+  // Re-derive the rendered "On The Desk" threads from the FINAL ordered
+  // story walk — one thread per topic-cluster, in walk order — instead
+  // of the LLM's independent `synthesis.threads` judgment that the
+  // composer spliced in. This closes the 2026-05-13 bug where the
+  // threads page listed topics in an order the story walk did not
+  // follow and a story (hantavirus) was covered by no thread. The LLM
+  // still emits `synthesis.threads` (it stays the checkLeadGrounding
+  // haystack) — only the RENDERED threads change. Runs here, after
+  // `enrichBriefEnvelopeWithLLM`, so each teaser is the LLM per-story
+  // description; re-asserts before shipping and falls back to the
+  // prior (synthesis/stub) threads if the derived shape somehow fails.
+  if (Array.isArray(finalEnvelope?.data?.stories) && finalEnvelope?.data?.digest) {
+    const derivedThreads = deriveThreadsFromOrderedStories(finalEnvelope.data.stories);
+    if (derivedThreads.length > 0) {
+      const withThreads = {
+        ...finalEnvelope,
+        data: {
+          ...finalEnvelope.data,
+          digest: {
+            ...finalEnvelope.data.digest,
+            threads: derivedThreads,
+            // Derived threads carry no personalised content (category +
+            // per-story description), so the share-URL surface renders
+            // the same set — keep publicThreads in sync when present.
+            ...(finalEnvelope.data.digest.publicThreads !== undefined
+              ? { publicThreads: derivedThreads }
+              : {}),
+          },
+        },
+      };
+      try {
+        assertBriefEnvelope(withThreads);
+        finalEnvelope = withThreads;
+      } catch (threadErr) {
+        console.warn(
+          `[digest] brief: derived-threads envelope failed assertion for ${userId} — keeping prior threads:`,
+          threadErr?.message,
+        );
+      }
     }
   }
 

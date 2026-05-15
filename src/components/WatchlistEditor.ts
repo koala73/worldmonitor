@@ -108,9 +108,15 @@ export class WatchlistEditor {
 
   /** Reset to an empty watchlist (the modal's Reset button). */
   public clear(): void {
+    // Invalidate any in-flight search before wiping state — otherwise a
+    // debounce timer that has already fired (but whose searchSymbols
+    // response is still pending) can repopulate the dropdown after clear.
+    // Bumping searchSeq makes the runSearch completion path drop the result.
+    this.cancelPendingSearch();
     this.entries = [];
     this.input.value = '';
     this.results = [];
+    this.highlight = -1;
     this.hideDropdown();
     this.renderChips();
   }
@@ -120,8 +126,18 @@ export class WatchlistEditor {
   }
 
   public destroy(): void {
+    this.cancelPendingSearch();
+  }
+
+  /** Cancels both the debounced timer AND any in-flight runSearch via the
+   * sequence guard, then clears the loading flag. Used by clear() and
+   * destroy() so a search that was kicked off seconds before reset/teardown
+   * cannot render results into a stale editor. */
+  private cancelPendingSearch(): void {
     if (this.debounceTimer) clearTimeout(this.debounceTimer);
     this.debounceTimer = null;
+    this.searchSeq++;
+    this.loading = false;
   }
 
   // ── search ──────────────────────────────────────────────────────────────
