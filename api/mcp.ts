@@ -502,6 +502,7 @@ const TOOL_REGISTRY: ToolDef[] = [
           items: { type: 'string', enum: ['equity', 'commodity', 'crypto', 'sectors', 'etf', 'gulf', 'sentiment'] },
           description: 'Restrict the response to one or more asset classes. Omit for all.',
         },
+        limit: { type: 'number', description: 'Cap each per-class quote list (stocks/commodities/crypto/gulf/sectors/ETF flows) to at most this many items (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
@@ -514,6 +515,12 @@ const TOOL_REGISTRY: ToolDef[] = [
         narrowNested(data, 'sectors', 'sectors', (s) => matchesCode(s.symbol, symbols));
         narrowNested(data, 'etf-flows', 'etfs', (e) => matchesCode(e.ticker, symbols));
       }
+      const limit = argNum(params.limit) ?? DEFAULT_LIST_LIMIT;
+      for (const label of ['stocks-bootstrap', 'commodities-bootstrap', 'crypto', 'gulf-quotes']) {
+        capNested(data, label, 'quotes', limit);
+      }
+      capNested(data, 'sectors', 'sectors', limit);
+      capNested(data, 'etf-flows', 'etfs', limit);
       const cls = argStrList(params.asset_class);
       if (cls.length > 0) {
         const map: Record<string, string> = {

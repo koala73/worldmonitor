@@ -456,6 +456,26 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(out.data['ucdp-events'].events[0].id, 0, 'cap takes the natural array order (newest-first per seeder)');
   });
 
+  it('default cap: get_market_data caps quote arrays at DEFAULT_LIST_LIMIT (issue #3678 example)', async () => {
+    // Regression: the issue specifically named get_market_data as a large unfiltered
+    // response. The tool must cap each per-class array (stocks/commodities/crypto/
+    // sectors/etf-flows/gulf) like every other list-bearing cache tool.
+    const stocks = { quotes: Array.from({ length: 50 }, (_, i) => ({ symbol: `T${i}`, price: i })) };
+    mockCacheKeys(
+      { 'market:stocks-bootstrap:v1': stocks },
+      { 'seed-meta:market:stocks': { fetchedAt: Date.now() - 60_000, recordCount: 50 } },
+    );
+    const out = await callTool('get_market_data', {});
+    assert.equal(out.data['stocks-bootstrap'].quotes.length, 30, 'no-args call must apply the default cap of 30');
+
+    mockCacheKeys(
+      { 'market:stocks-bootstrap:v1': stocks },
+      { 'seed-meta:market:stocks': { fetchedAt: Date.now() - 60_000, recordCount: 50 } },
+    );
+    const full = await callTool('get_market_data', { limit: 0 });
+    assert.equal(full.data['stocks-bootstrap'].quotes.length, 50, 'limit: 0 must opt out to the full quote list');
+  });
+
   it('default cap: limit: 0 opts out and returns the full list', async () => {
     const ucdp = { events: Array.from({ length: 50 }, (_, i) => ({ id: i, country: 'X', deathsBest: 1 })) };
     mockCacheKeys(
