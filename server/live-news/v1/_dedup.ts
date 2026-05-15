@@ -49,9 +49,32 @@
 import { callGemini } from '../../_shared/llm';
 import { getCachedJsonBatch, setCachedJson } from '../../_shared/redis';
 import type { LiveNewsItem } from './_normalize';
+import { classifyUnknownsViaEmbedAsync } from './_dedup-embed';
 
 const CACHE_PREFIX = 'live-news:dedup:v1:';
-const DEDUP_TTL_S = 30 * 24 * 60 * 60; // 30 days
+const DEDUP_TTL_S = 3 * 24 * 60 * 60; // 3 days — matches the project-wide max-retention rule
+
+/**
+ * Selects which clustering algorithm fills the dedup cache:
+ *
+ *   • `'embed'` — Gemini text-embedding-004 + cosine clustering.
+ *                 Free-tier covered, sub-second, deterministic.
+ *                 Default in production.
+ *   • `'llm'`   — original Gemini Flash JSON classifier.
+ *                 Slower, costs tokens, but country-scoped semantic
+ *                 reasoning is sometimes sharper on edge cases.
+ *                 Kept as a rollback path; set WM_DEDUP_MODE=llm to
+ *                 force.
+ *
+ * Both paths write to the same Redis key (`live-news:dedup:v1:{hash}`),
+ * so switching modes doesn't invalidate previously cached decisions —
+ * each entry remains valid until the 30-day TTL expires regardless of
+ * which path wrote it.
+ */
+type DedupMode = 'embed' | 'llm';
+function getDedupMode(): DedupMode {
+  return process.env.WM_DEDUP_MODE === 'llm' ? 'llm' : 'embed';
+}
 
 /**
  * Short TTL for the auto-cached "ineligible — pass as unique" decisions
@@ -356,6 +379,17 @@ export async function classifyUnknownsAsync(
   allItems: LiveNewsItem[],
   knownMap: Map<string, string>,
 ): Promise<void> {
+  // Dispatch to the embedding-based clusterer unless the rollback flag
+  // is set. Both paths satisfy the same contract: mutate `knownMap` in
+  // place, persist decisions to the dedup cache, never throw.
+  if (getDedupMode() === 'embed') {
+    return classifyUnknownsViaEmbedAsync(allItems, knownMap);
+  }
+
+  // ── Legacy LLM path ──────────────────────────────────────────────
+  //
+  // Kept verbatim from the original implementation so flipping
+  // WM_DEDUP_MODE=llm produces identical behavior to before.
   // Items missing summary or country can't be deduped — there's nothing
   // to compare against. They'd otherwise sit in "unknown" limbo forever:
   // every cycle they'd show up in the unknownDedup count, the dedup

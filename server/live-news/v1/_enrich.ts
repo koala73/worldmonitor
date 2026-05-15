@@ -23,8 +23,8 @@ import { callGemini } from '../../_shared/llm';
 import { getCachedJsonBatch, setCachedJson } from '../../_shared/redis';
 import type { LiveNewsItem } from './_normalize';
 
-/** Persistent cache TTL for enriched locations — effectively forever. */
-const LOCATION_TTL_S = 30 * 24 * 60 * 60; // 30 days
+/** Enriched-location cache TTL — capped at the project-wide 3-day max. */
+const LOCATION_TTL_S = 3 * 24 * 60 * 60;
 /** How many items to send to the LLM in one call. */
 const ENRICH_BATCH_SIZE = 20;
 /** Hard cap so a giant fan-out doesn't burn through tokens. */

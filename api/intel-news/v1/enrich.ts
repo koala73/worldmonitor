@@ -51,7 +51,7 @@ const TOPIC_IDS = [
 
 const accumulatorKey = (id: string): string => `intel-news:topic:v6:${id}:accumulator`;
 
-const ACCUMULATOR_TTL_S = 7 * 24 * 60 * 60;
+const ACCUMULATOR_TTL_S = 3 * 24 * 60 * 60; // 3-day project max
 
 // Conflict-archive (GDELT bucket) — must match the keys in
 // `server/conflict-archive/v1/_store.ts`. iOS reads this archive's
@@ -63,7 +63,7 @@ const CONFLICT_ARCHIVE_GDELT_KEY = 'conflict:archive:v1:gdelt';
 // fills summary/region/country/locationName/lat/lng so iOS can pin
 // these on the map alongside the GDELT-sourced conflict items.
 const CONFLICT_ARCHIVE_WN_KEY = 'conflict:archive:wn:v1';
-const CONFLICT_ARCHIVE_TTL_S = 30 * 24 * 60 * 60;
+const CONFLICT_ARCHIVE_TTL_S = 3 * 24 * 60 * 60; // 3-day project max
 
 // Live-news v3 (World News bucket) — populated by the search-news cron
 // at `/api/live-news/v3/refresh-worldnews`. Enrichment fills
@@ -71,7 +71,7 @@ const CONFLICT_ARCHIVE_TTL_S = 30 * 24 * 60 * 60;
 // article happens to be locatable). The shape matches ConflictArchiveItem
 // for writeback purposes — `location` is `{latitude, longitude} | null`.
 const LIVE_NEWS_WN_KEY = 'live-news:wn:v1:digest';
-const LIVE_NEWS_TTL_S = 7 * 24 * 60 * 60;
+const LIVE_NEWS_TTL_S = 3 * 24 * 60 * 60; // 3-day project max
 
 // Live-news v4 + conflict-archive v3 (Webz.io buckets) — same writeback
 // shape as the worldnews buckets above, but their items carry string
@@ -80,6 +80,16 @@ const LIVE_NEWS_TTL_S = 7 * 24 * 60 * 60;
 // summary for the API's own.
 const LIVE_NEWS_WEBZ_KEY = 'live-news:webz:v1:digest';
 const CONFLICT_ARCHIVE_WEBZ_KEY = 'conflict:archive:webz:v1';
+
+// Live-news v6 (RSS + Gemini embeddings — self-hosted clustering).
+// Wire `summary` is the longest plaintext RSS description across
+// cluster members, set at refresh time. We never substitute an LLM
+// summary on top of that — skipSummary=true, identical contract
+// to the licensed-feed buckets above. The location-only LLM pass
+// still runs to fill region / country / locationName / lat / lng /
+// isConflict for the map + CONFLICT chip.
+const LIVE_NEWS_RSE_KEY = 'live-news:v6:digest';
+const CONFLICT_ARCHIVE_RSE_KEY = 'conflict:archive:rse:v1';
 
 // Live-news v5 + conflict-archive v4 (Newscatcher buckets). Same shape
 // as webz/worldnews; ids are Newscatcher cluster_ids. Newscatcher ships
@@ -97,7 +107,7 @@ const CONFLICT_ARCHIVE_NC_KEY = 'conflict:archive:nc:v1';
 // total LLM cost ~$0.30 one-time as ~2800 existing items refresh.
 const ENRICHMENT_CACHE_KEY = (link: string): string =>
   `enrichment-cache:v2:${createHash('sha256').update(link).digest('hex')}`;
-const ENRICHMENT_CACHE_TTL_S = 30 * 24 * 60 * 60;
+const ENRICHMENT_CACHE_TTL_S = 3 * 24 * 60 * 60; // 3-day project max
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Tunables
@@ -170,7 +180,7 @@ interface ConflictArchiveItem {
   country: string | null;
   region?: string | null;
   sources: Array<{ source: string; title: string; link: string; publishedAt: number }> | null;
-  origin: 'live-news' | 'gdelt' | 'worldnews' | 'webz' | 'newscatcher';
+  origin: 'live-news' | 'gdelt' | 'worldnews' | 'webz' | 'newscatcher' | 'rse';
 }
 
 // LLM-returned structured payload. Stored verbatim in the shared
@@ -576,7 +586,7 @@ interface LocationOnlyPayload {
 
 const LOCATION_ONLY_CACHE_KEY = (link: string): string =>
   `enrichment-loc:v1:${createHash('sha256').update(link).digest('hex')}`;
-const LOCATION_ONLY_CACHE_TTL_S = 30 * 24 * 60 * 60;
+const LOCATION_ONLY_CACHE_TTL_S = 3 * 24 * 60 * 60; // 3-day project max
 
 const LOCATION_ONLY_SYSTEM_PROMPT = `You classify a news article. Return ONE JSON object with these fields:
 
@@ -679,7 +689,7 @@ interface TitleSummaryPayload {
 
 const TITLE_SUMMARY_CACHE_KEY = (link: string): string =>
   `enrichment-title-summary:v1:${createHash('sha256').update(link).digest('hex')}`;
-const TITLE_SUMMARY_CACHE_TTL_S = 30 * 24 * 60 * 60;
+const TITLE_SUMMARY_CACHE_TTL_S = 3 * 24 * 60 * 60; // 3-day project max
 
 const TITLE_SUMMARY_MIN_LEN = 40;
 const TITLE_SUMMARY_MAX_LEN = 500;
@@ -915,6 +925,22 @@ async function runEnrichment(): Promise<EnrichResult> {
         generateTitleSummary: false,
       };
     })(),
+    (async (): Promise<Bucket> => {
+      // Live-news v6 (RSS + Gemini embeddings). Wire `summary` is
+      // outlet-supplied content (longest RSS description from the
+      // cluster), already set at refresh time. LLM only fills
+      // location-related fields + isConflict for the map.
+      const items = await redisGet<ConflictArchiveItem[]>(LIVE_NEWS_RSE_KEY);
+      return {
+        id: 'live-news-rse',
+        items: Array.isArray(items) ? items : [],
+        writebackKey: LIVE_NEWS_RSE_KEY,
+        ttl: LIVE_NEWS_TTL_S,
+        kind: 'live-news',
+        skipSummary: true,
+        generateTitleSummary: false,
+      };
+    })(),
   ]);
 
   // Build round-robin queue — one item per bucket per cursor tick. Items
@@ -1122,6 +1148,7 @@ async function runEnrichment(): Promise<EnrichResult> {
     'live-news-wn':   { key: CONFLICT_ARCHIVE_WN_KEY,   origin: 'worldnews',   idPrefix: 'wn-'   },
     'live-news-webz': { key: CONFLICT_ARCHIVE_WEBZ_KEY, origin: 'webz',        idPrefix: 'webz-' },
     'live-news-nc':   { key: CONFLICT_ARCHIVE_NC_KEY,   origin: 'newscatcher', idPrefix: 'nc-'   },
+    'live-news-rse':  { key: CONFLICT_ARCHIVE_RSE_KEY,  origin: 'rse',         idPrefix: 'rse-'  },
   };
 
   for (const bucket of buckets.filter((b) => b.kind === 'live-news')) {
@@ -1132,16 +1159,17 @@ async function runEnrichment(): Promise<EnrichResult> {
     for (const raw of bucket.items) {
       const it = raw as Partial<ConflictArchiveItem> & {
         id?: number | string; isConflict?: boolean | null; sources?: unknown;
+        imageUrl?: string | null;
       };
       if (!it.isConflict) continue;
-      // Live-news ids may be numbers (worldnews) or strings (webz uuids).
-      // We prefix per source so ids stay distinct across pipelines that
-      // ever shared a Redis key (defensive, even though wn/webz live in
-      // separate archives today).
+      // Live-news ids may be numbers (worldnews) or strings (webz uuids /
+      // rse titleHashes). We prefix per source so ids stay distinct across
+      // pipelines that ever shared a Redis key (defensive, even though
+      // each pipeline lives in its own archive today).
       const idStr = typeof it.id === 'number' || typeof it.id === 'string'
         ? `${target.idPrefix}${it.id}`
         : `${target.idPrefix}unknown-${Date.now()}`;
-      conflictItems.push({
+      const archiveItem = {
         id: idStr,
         source: it.source ?? '',
         title: it.title ?? '',
@@ -1157,7 +1185,15 @@ async function runEnrichment(): Promise<EnrichResult> {
           ? (it.sources as ConflictArchiveItem['sources'])
           : null,
         origin: target.origin,
-      });
+      } as ConflictArchiveItem;
+      // RSE-origin items carry an RSS-supplied imageUrl that's not part
+      // of the legacy ConflictArchiveItem shape. Attach it without
+      // widening the type — the v5 conflict-archive read endpoint
+      // surfaces it back to iOS.
+      if (it.imageUrl) {
+        (archiveItem as ConflictArchiveItem & { imageUrl?: string | null }).imageUrl = it.imageUrl;
+      }
+      conflictItems.push(archiveItem);
     }
 
     if (conflictItems.length === 0) continue;

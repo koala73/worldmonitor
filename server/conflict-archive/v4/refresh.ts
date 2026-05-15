@@ -33,7 +33,7 @@ import type { ConflictArchiveItem } from '../v1/_store';
 /** Single Redis key — v4 archive in its own namespace. */
 export const ARCHIVE_NC_KEY = 'conflict:archive:nc:v1';
 
-const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+const RETENTION_MS = 3 * 24 * 60 * 60 * 1000; // 3-day project max
 const RETENTION_S = Math.floor(RETENTION_MS / 1000);
 const MAX_ITEMS = 2000;
 

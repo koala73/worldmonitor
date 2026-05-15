@@ -33,7 +33,7 @@ import { getCachedJsonBatch, setCachedJson } from '../../_shared/redis';
 import type { IntelNewsItem } from './list-headlines';
 
 const CACHE_PREFIX = 'intel-news:enrich-conflict:v1:';
-const ENRICHMENT_TTL_S = 30 * 24 * 60 * 60;       // 30 days
+const ENRICHMENT_TTL_S = 3 * 24 * 60 * 60;        // 3 days — project-wide max
 const UNENRICHABLE_MARKER = '__WM_INTEL_CONFLICT_UNENRICHABLE__';
 const MAX_BATCH_SIZE = 10;
 

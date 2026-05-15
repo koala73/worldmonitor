@@ -43,9 +43,10 @@
 
 import { getCachedJson, setCachedJson } from '../../_shared/redis';
 
-/** Retention window — 30 days. Long enough to feel "recent" for conflict
- *  reporting; short enough to keep payload manageable. */
-const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+/** Retention window — 3 days. Project-wide cap on stored data
+ *  applies uniformly across all archives. Map pins age out at this
+ *  same horizon. */
+const RETENTION_MS = 3 * 24 * 60 * 60 * 1000;
 const RETENTION_S = Math.floor(RETENTION_MS / 1000);
 
 /** Cap items per source key — runaway protection. Conflict-flagged item

@@ -24,7 +24,7 @@ import { INTEL_TOPICS } from './_topics';
 // writes happen in the cron job at api/intel-news/v1/refresh.ts. This
 // file just reads what cron has populated.
 
-const ACCUMULATOR_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+const ACCUMULATOR_RETENTION_MS = 3 * 24 * 60 * 60 * 1000; // 3-day project max
 const ACCUMULATOR_KEY_SUFFIX = ':accumulator';
 const TOP_LEVEL_TTL_S = 30; // 30 s — same urgency tier as live-news
 

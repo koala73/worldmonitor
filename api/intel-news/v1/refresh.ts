@@ -201,8 +201,8 @@ const GKG_FETCH_TIMEOUT_MS = 30_000;
 // bumping this would silently cap backfill runs.
 const BUDGET_MS = 290_000;
 
-const ACCUMULATOR_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
-const ACCUMULATOR_TTL_S = 7 * 24 * 60 * 60;
+const ACCUMULATOR_RETENTION_MS = 3 * 24 * 60 * 60 * 1000; // 3-day project max
+const ACCUMULATOR_TTL_S = 3 * 24 * 60 * 60;               // 3-day project max
 const ACCUMULATOR_MAX_ITEMS = 500;
 
 // GKG 2.1 column indices (per GDELT codebook). Only the ones we use:
@@ -285,7 +285,7 @@ async function redisSet(key: string, value: unknown, ttlSeconds: number): Promis
 // ─────────────────────────────────────────────────────────────────────────────
 
 const CONFLICT_ARCHIVE_GDELT_KEY = 'conflict:archive:v1:gdelt';
-const CONFLICT_ARCHIVE_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+const CONFLICT_ARCHIVE_RETENTION_MS = 3 * 24 * 60 * 60 * 1000; // 3-day project max
 const CONFLICT_ARCHIVE_TTL_S = Math.floor(CONFLICT_ARCHIVE_RETENTION_MS / 1000);
 const CONFLICT_ARCHIVE_MAX_ITEMS = 1_000;
 

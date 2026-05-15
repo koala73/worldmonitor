@@ -35,7 +35,7 @@ import type { LiveNewsItem } from './_normalize';
 // `region` field is similarly additive: old entries decode it as `null`
 // and we re-derive from country when populating.
 const CACHE_PREFIX = 'live-news:enrichment:v1:';
-const ENRICHMENT_TTL_S = 30 * 24 * 60 * 60; // 30 days
+const ENRICHMENT_TTL_S = 3 * 24 * 60 * 60; // 3 days — project-wide max retention
 const ENRICH_BATCH_SIZE = 8;
 const MAX_ENRICH_PER_REQUEST = 40;
 
@@ -69,7 +69,7 @@ async function sharedCacheKey(link: string): Promise<string> {
   return `enrichment-cache:v2:${await sha256Hex(link)}`;
 }
 
-const SHARED_CACHE_TTL_S = 30 * 24 * 60 * 60;
+const SHARED_CACHE_TTL_S = 3 * 24 * 60 * 60; // 3-day project max
 
 /** Shape of values stored in the shared cross-pipeline cache. Same as the
  *  intel-news EnrichmentPayload — both pipelines must read/write this

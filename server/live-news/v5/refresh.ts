@@ -45,7 +45,7 @@ import { getCachedJson, setCachedJson } from '../../_shared/redis';
 import { sha256Hex } from '../../_shared/hash';
 
 const DIGEST_KEY = 'live-news:nc:v1:digest';
-const DIGEST_TTL_S = 7 * 24 * 60 * 60;
+const DIGEST_TTL_S = 3 * 24 * 60 * 60; // 3-day project max
 const ROLLING_WINDOW_MS = 24 * 60 * 60 * 1000;
 const MAX_ITEMS = 500;
 

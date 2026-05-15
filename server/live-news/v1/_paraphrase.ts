@@ -23,7 +23,7 @@ import { callGemini } from '../../_shared/llm';
 import { getCachedJsonBatch, setCachedJson } from '../../_shared/redis';
 import type { LiveNewsItem } from './_normalize';
 
-const SUMMARY_TTL_S = 30 * 24 * 60 * 60; // 30 days
+const SUMMARY_TTL_S = 3 * 24 * 60 * 60; // 3 days — project-wide max retention
 const PARAPHRASE_BATCH_SIZE = 8;          // smaller than location — bigger inputs per item
 const MAX_PARAPHRASE_PER_REQUEST = 40;
 // v4 — bumped when we tightened the prompt from "100–180 word paragraph"

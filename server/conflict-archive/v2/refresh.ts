@@ -34,7 +34,7 @@ import type { ConflictArchiveItem } from '../v1/_store';
 /** Single key — the v2 store lives outside the v1 prefix on purpose. */
 export const ARCHIVE_WN_KEY = 'conflict:archive:wn:v1';
 
-const RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+const RETENTION_MS = 3 * 24 * 60 * 60 * 1000; // 3-day project max
 const RETENTION_S = Math.floor(RETENTION_MS / 1000);
 const MAX_ITEMS = 2000;
 const QUERY_NUMBER = 100;         // 1 + 100 × 0.01 = 2.0 pts per call (max page size)
