@@ -273,6 +273,162 @@ function isPublisherWordPrefix(tail, publisher) {
   return publisher.startsWith(tail + ' ');
 }
 
+// ── Layer 2 helpers (publisher-naming variants) ───────────────────────────
+//
+// Layer 1's strict word-prefix test misses three structural classes of
+// variant between the headline-suffix's publisher form and the configured
+// `source` field. All three observed live on the May 15 brief:
+//   1. Article insertion — tail "Bulletin of the Atomic Scientists"
+//      vs source "Bulletin of Atomic Scientists" (the/no-the).
+//   2. Trailing wire-suffix word — tail "BBC News" vs source "BBC".
+//   3. Abbreviation ↔ long-form — tail "Department of Justice (.gov)"
+//      vs source "DOJ".
+//
+// Layer 2 adds two source-aware paths after Layer 1:
+//   Path 2a — `normalizePublisher` on both sides + the same asymmetric
+//             prefix test (handles classes 1, 2, 3).
+//   Path 2b — acronym-shape-gated initials equivalence using a separate
+//             `tailForInitials` (handles class 3 when source is an
+//             explicit ALL-CAPS acronym like DOJ/NPR/AP/BBC).
+//
+// No source-blind layer. Considered and rejected on Codex review —
+// integrity risk (feed-controlled text could force user-visible
+// truncation). See docs/plans/2026-05-15-001-fix-headline-suffix-strip-
+// publisher-naming-variants-plan.md for the full rationale.
+
+const ARTICLE_TOKENS = new Set(['the', 'a']);
+
+// Wire-suffix tokens stripped ONLY from the trailing position of a
+// normalised publisher. Iteratively from the end, never from leading
+// or middle positions — stripping globally would corrupt names like
+// "Daily Mail", "News Corp", "Press TV", "The Press Democrat".
+const WIRE_SUFFIX_TOKENS = new Set([
+  'news', 'online', 'press', 'wire', 'daily', 'weekly',
+]);
+
+// Connector words allowed inside a publisher-shape tail. Lowercase
+// exact match (case-insensitive on the lowercased token).
+const PUBLISHER_CONNECTOR_TOKENS = new Set([
+  'of', 'the', 'and', 'du', 'de', 'le', 'la', 'el', 'al', 'in', 'for',
+]);
+
+// Title-Case token: starts with an uppercase letter, then word chars or
+// apostrophe/hyphen. Accepts "BBC", "O'Reilly", "Al-Jazeera", "News".
+const TITLE_CASE_TOKEN_RE = /^[A-Z][\w'-]*$/;
+// Trailing domain paren: " (.gov)", " (.org)", " (.com)", " (.io)" etc.
+const DOMAIN_PAREN_TRAILING_RE = /\s*\(\.\w{2,4}\)\s*$/;
+// Explicit acronym shape on the ORIGINAL configured publisher field —
+// 1-5 all-uppercase letters, no spaces. Matching on the unaltered
+// field is what prevents Title-Case 4-char names like "Time"/"Wired"
+// from accidentally activating the initials path.
+const PUBLISHER_ACRONYM_RE = /^[A-Z]{1,5}$/;
+
+/**
+ * Normalise a publisher-name string for the asymmetric prefix test in
+ * Path 2a. Lowercases, strips trailing domain paren, removes article
+ * words from any position, removes wire-suffix words ONLY from the
+ * trailing position iteratively, then strips non-alphanumerics per
+ * token.
+ *
+ * Trailing-only suffix-strip is load-bearing: stripping `news` / `press`
+ * / `daily` from leading or middle positions would corrupt names like
+ * "Daily Mail", "News Corp", "Press TV", "The Press Democrat".
+ *
+ * Used ONLY in Path 2a. Path 2b's initials test uses tailForInitials()
+ * which preserves wire-suffix words — the `Press` in "Associated Press"
+ * must survive to count toward the AP initials.
+ *
+ * @param {unknown} s
+ * @returns {string}
+ */
+function normalizePublisher(s) {
+  if (typeof s !== 'string') return '';
+  const trimmed = s.trim().toLowerCase();
+  if (trimmed.length === 0) return '';
+  const stripped = trimmed.replace(DOMAIN_PAREN_TRAILING_RE, '');
+  let tokens = stripped
+    .split(/\s+/)
+    .filter((t) => t.length > 0 && !ARTICLE_TOKENS.has(t));
+  while (tokens.length > 0 && WIRE_SUFFIX_TOKENS.has(tokens[tokens.length - 1])) {
+    tokens.pop();
+  }
+  tokens = tokens
+    .map((t) => t.replace(/[^a-z0-9]/g, ''))
+    .filter((t) => t.length > 0);
+  return tokens.join(' ');
+}
+
+/**
+ * Tail normalisation for the initials path (Path 2b). Same as
+ * normalizePublisher MINUS the wire-suffix strip — distinct because
+ * "Associated Press" must keep `press` so initialsOf yields `ap`, not
+ * just `a`. Reusing normalizePublisher here would corrupt the
+ * Associated Press → AP / National Public Radio → NPR cases.
+ *
+ * @param {unknown} s
+ * @returns {string}
+ */
+function tailForInitials(s) {
+  if (typeof s !== 'string') return '';
+  const trimmed = s.trim().toLowerCase();
+  if (trimmed.length === 0) return '';
+  const stripped = trimmed.replace(DOMAIN_PAREN_TRAILING_RE, '');
+  const tokens = stripped
+    .split(/\s+/)
+    .filter((t) => t.length > 0 && !ARTICLE_TOKENS.has(t))
+    .map((t) => t.replace(/[^a-z0-9]/g, ''))
+    .filter((t) => t.length > 0);
+  return tokens.join(' ');
+}
+
+/**
+ * First letter of each whitespace-separated token, joined and
+ * lowercased, alpha only. Returns '' for empty or all-non-alpha input.
+ *
+ * @param {string} s
+ * @returns {string}
+ */
+function initialsOf(s) {
+  if (typeof s !== 'string' || s.length === 0) return '';
+  return s
+    .split(/\s+/)
+    .map((t) => (t.length > 0 ? t[0] : ''))
+    .filter((c) => /^[a-z]$/i.test(c))
+    .join('')
+    .toLowerCase();
+}
+
+/**
+ * "Looks like a publisher attribution" shape check on the original tail
+ * (post domain-paren strip, pre other normalisation). Every token must
+ * be either Title-Case (matches TITLE_CASE_TOKEN_RE) OR a permitted
+ * lowercase connector. Token cap of 8 keeps the function focused on
+ * filtering editorial fragments, not enforcing publisher length.
+ *
+ * Used in Path 2b as the second of two gates on the initials path; the
+ * first gate is the all-uppercase acronym check on the original
+ * publisher field. Together they block both editorial-text false
+ * positives (lowercase tokens fail this gate) and ordinary-Title-Case-
+ * publisher false positives (`Time`/`Wired` configured as source fail
+ * the acronym gate).
+ *
+ * @param {unknown} s
+ * @returns {boolean}
+ */
+function looksLikePublisherShape(s) {
+  if (typeof s !== 'string') return false;
+  const stripped = s.trim().replace(DOMAIN_PAREN_TRAILING_RE, '');
+  if (stripped.length === 0) return false;
+  const tokens = stripped.split(/\s+/);
+  if (tokens.length === 0 || tokens.length > 8) return false;
+  for (const tok of tokens) {
+    if (TITLE_CASE_TOKEN_RE.test(tok)) continue;
+    if (PUBLISHER_CONNECTOR_TOKENS.has(tok.toLowerCase())) continue;
+    return false;
+  }
+  return true;
+}
+
 /**
  * @param {string} title
  * @param {string} publisher
@@ -285,17 +441,43 @@ export function stripHeadlineSuffix(title, publisher) {
   const m = trimmed.match(HEADLINE_SUFFIX_RE_PART);
   if (!m) return trimmed;
   const tail = m[1].trim();
-  // Case-insensitive equality OR ASYMMETRIC word-boundary prefix: tail
-  // must be a SHORTER prefix of publisher (Reuters → Reuters World),
-  // never the reverse. The asymmetry is intentional and load-bearing —
-  // it blocks editorial suffixes like "AP News analysis" (tail) from
-  // stripping when publisher is "AP News" (Greptile PR #3673 review).
-  // A tail that merely CONTAINS the publisher (e.g. "- AP News
-  // analysis") still stays — that's editorial content, not a wire
-  // suffix. Full asymmetry rationale documented on
-  // `isPublisherWordPrefix` itself.
-  if (!isPublisherWordPrefix(tail.toLowerCase(), publisher.toLowerCase())) return trimmed;
-  return trimmed.slice(0, m.index).trimEnd();
+  const stripped = trimmed.slice(0, m.index).trimEnd();
+  // Layer 1: existing strict asymmetric word-prefix test (load-bearing
+  // PR #3673 protection — tail must be a SHORTER prefix of publisher).
+  // Stripping "AP News analysis" against "AP News" is REJECTED here,
+  // and Layer 2 below preserves the same asymmetry.
+  if (isPublisherWordPrefix(tail.toLowerCase(), publisher.toLowerCase())) {
+    return stripped;
+  }
+  // Layer 2 — Path 2a: source-aware fuzzy match via normalised
+  // asymmetric prefix. normalizePublisher strips articles globally and
+  // wire-suffix words trailing-only, so "Bulletin of the Atomic
+  // Scientists" matches "Bulletin of Atomic Scientists" and "BBC News"
+  // matches "BBC" — without mangling "Daily Mail" or "News Corp".
+  const normTail = normalizePublisher(tail);
+  const normPub = normalizePublisher(publisher);
+  if (
+    normTail.length > 0
+    && normPub.length > 0
+    && isPublisherWordPrefix(normTail, normPub)
+  ) {
+    return stripped;
+  }
+  // Layer 2 — Path 2b: acronym-shape-gated initials equivalence. The
+  // ORIGINAL publisher must match /^[A-Z]{1,5}$/ (DOJ, NPR, AP, BBC),
+  // gated on the unaltered field as authored — Title-Case names like
+  // "Time"/"Wired" do not opt in. The tail must also be Title-Case-or-
+  // connector shaped, blocking lowercase editorial text. Initials use
+  // tailForInitials (NOT normalizePublisher) so wire-suffix words like
+  // `Press` in "Associated Press" survive to count toward `ap`.
+  if (
+    PUBLISHER_ACRONYM_RE.test(publisher)
+    && looksLikePublisherShape(tail)
+    && initialsOf(tailForInitials(tail)) === publisher.toLowerCase()
+  ) {
+    return stripped;
+  }
+  return trimmed;
 }
 
 // Editorial-format prefixes some feeds prepend to headlines. They tell
