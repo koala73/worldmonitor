@@ -43,6 +43,19 @@ const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${EMBE
 const MAX_BATCH = 100;
 const TIMEOUT_MS = 15_000;
 
+/**
+ * Number of Gemini batches in flight at once. Sequential batching of
+ * 20+ batches × ~10-15s each blew past the 300s Vercel function ceiling
+ * on cold starts. With concurrency=4, ~22 batches finish in ~6 rounds
+ * × 12s = ~70s — comfortably within budget.
+ *
+ * If we ever see HTTP 429 on this path the value's too high — drop to
+ * 2 or 1 and the worst case is back to sequential behaviour. The
+ * Gemini paid tier supports >10 RPS so the practical ceiling is much
+ * higher; 4 is the conservative starting point.
+ */
+const EMBED_CONCURRENCY = 4;
+
 /** Task-type hint to the model — `CLUSTERING` optimises for finding
  *  near-duplicate stories grouped by semantic meaning, which is exactly
  *  what we're doing here. */
@@ -73,12 +86,26 @@ export async function embedBatch(texts: string[]): Promise<(Float32Array | null)
   const apiKey = getApiKey();
   if (!apiKey) return out;
 
-  for (let start = 0; start < texts.length; start += MAX_BATCH) {
-    const slice = texts.slice(start, start + MAX_BATCH);
+  // Build the list of batches up-front so we can run them with a fixed
+  // concurrency pool rather than sequentially.
+  interface BatchJob { idx: number; start: number; slice: string[] }
+  const jobs: BatchJob[] = [];
+  for (let start = 0, idx = 0; start < texts.length; start += MAX_BATCH, idx++) {
+    jobs.push({ idx, start, slice: texts.slice(start, start + MAX_BATCH) });
+  }
+  const totalBatches = jobs.length;
+  const wallStart = Date.now();
+  console.log(`[embeddings] starting ${texts.length} items across ${totalBatches} batches (concurrency=${EMBED_CONCURRENCY})`);
+
+  let ok = 0;
+  let failed = 0;
+
+  async function runOne(job: BatchJob): Promise<void> {
+    const batchStart = Date.now();
     const body = {
-      requests: slice.map((text) => ({
+      requests: job.slice.map((text) => ({
         model: `models/${EMBED_MODEL}`,
-        content: { parts: [{ text: text.slice(0, 8000) }] }, // hard cap on input length
+        content: { parts: [{ text: text.slice(0, 8000) }] },
         taskType: TASK_TYPE,
         // Truncate via Matryoshka representation to match our existing
         // 768-dim storage. Without this the model returns 3072 and our
@@ -94,24 +121,49 @@ export async function embedBatch(texts: string[]): Promise<(Float32Array | null)
         body: JSON.stringify(body),
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
+      const elapsed = Date.now() - batchStart;
       if (!resp.ok) {
         const t = await resp.text().catch(() => '');
-        console.warn(`[embeddings] HTTP ${resp.status} on batch of ${slice.length}: ${t.slice(0, 200)}`);
-        continue;
+        console.warn(`[embeddings] batch ${job.idx + 1}/${totalBatches} HTTP ${resp.status} (${elapsed}ms) — ${t.slice(0, 160)}`);
+        failed++;
+        return;
       }
       const data = (await resp.json()) as { embeddings?: Array<{ values?: number[] }> };
       const embeds = data.embeddings ?? [];
-      for (let i = 0; i < slice.length; i++) {
+      let okThisBatch = 0;
+      for (let i = 0; i < job.slice.length; i++) {
         const values = embeds[i]?.values;
         if (Array.isArray(values) && values.length === EMBED_DIM) {
-          out[start + i] = new Float32Array(values);
+          out[job.start + i] = new Float32Array(values);
+          okThisBatch++;
         }
       }
+      ok += okThisBatch;
+      console.log(`[embeddings] batch ${job.idx + 1}/${totalBatches} ok ${okThisBatch}/${job.slice.length} in ${elapsed}ms`);
     } catch (err) {
-      console.warn('[embeddings] batch threw:', err instanceof Error ? err.message : err);
-      // leave slice as null — caller falls back to title-fingerprint dedup
+      const elapsed = Date.now() - batchStart;
+      console.warn(`[embeddings] batch ${job.idx + 1}/${totalBatches} threw (${elapsed}ms):`, err instanceof Error ? err.message : err);
+      failed++;
     }
   }
+
+  // Fixed-size worker pool. We pop jobs off a shared cursor so faster
+  // workers can pick up additional batches while slower ones are still
+  // mid-request. Cleaner than `Promise.all` over a chunked array
+  // because the slowest chunk doesn't gate the next chunk's start.
+  let cursor = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(EMBED_CONCURRENCY, totalBatches) }, async () => {
+      while (true) {
+        const i = cursor++;
+        if (i >= jobs.length) return;
+        await runOne(jobs[i]!);
+      }
+    }),
+  );
+
+  const totalMs = Date.now() - wallStart;
+  console.log(`[embeddings] done ${ok} embedded / ${failed} failed / ${totalBatches} batches in ${totalMs}ms`);
 
   return out;
 }

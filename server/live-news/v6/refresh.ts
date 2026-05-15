@@ -84,6 +84,8 @@ function mergeItems(existing: ClusteredItem[], fresh: ClusteredItem[]): Clustere
 export async function refreshLiveNewsV6(): Promise<RefreshResult> {
   const startedAt = Date.now();
 
+  // ── Phase 1: RSS fan-out ─────────────────────────────────────────────
+  const fetchStart = Date.now();
   const deadline = new AbortController();
   const timer = setTimeout(() => deadline.abort(), FETCH_DEADLINE_MS);
 
@@ -93,9 +95,19 @@ export async function refreshLiveNewsV6(): Promise<RefreshResult> {
   } finally {
     clearTimeout(timer);
   }
+  const fetchMs = Date.now() - fetchStart;
+  const okFeeds = Object.values(normalized.feedStatuses).filter((s) => s === 'ok').length;
+  const emptyFeeds = Object.values(normalized.feedStatuses).filter((s) => s === 'empty').length;
+  const timedOutFeeds = Object.values(normalized.feedStatuses).filter((s) => s === 'timeout').length;
+  console.log(
+    `[live-news:v6:refresh] phase=fetch elapsed=${fetchMs}ms ` +
+    `feeds_total=${Object.keys(normalized.feedStatuses).length} ` +
+    `ok=${okFeeds} empty=${emptyFeeds} timeout=${timedOutFeeds} ` +
+    `items=${normalized.items.length}`,
+  );
 
   if (normalized.items.length === 0) {
-    console.warn('[live-news:v6:refresh] no items returned from any feed');
+    console.warn('[live-news:v6:refresh] no items returned from any feed — abort');
     return {
       status: 'skipped',
       feeds: normalized.feedStatuses,
@@ -106,19 +118,32 @@ export async function refreshLiveNewsV6(): Promise<RefreshResult> {
     };
   }
 
+  // ── Phase 2: Embed + cluster ─────────────────────────────────────────
+  const clusterStart = Date.now();
   const clustered = await clusterRssItems(normalized.items);
+  const clusterMs = Date.now() - clusterStart;
+  const multiSource = clustered.filter((c) => c.sources.length > 1).length;
+  console.log(
+    `[live-news:v6:refresh] phase=cluster elapsed=${clusterMs}ms ` +
+    `clusters=${clustered.length} multi_source=${multiSource}`,
+  );
 
+  // ── Phase 3: Merge + Redis write ─────────────────────────────────────
+  const writeStart = Date.now();
   const existing = ((await getCachedJson(DIGEST_KEY)) as ClusteredItem[] | null) ?? [];
   const merged = mergeItems(existing, clustered);
   await setCachedJson(DIGEST_KEY, merged, DIGEST_TTL_S);
+  const writeMs = Date.now() - writeStart;
+  console.log(
+    `[live-news:v6:refresh] phase=write elapsed=${writeMs}ms ` +
+    `existed=${existing.length} after=${merged.length}`,
+  );
 
   const elapsedMs = Date.now() - startedAt;
-  const multiSource = clustered.filter((c) => c.sources.length > 1).length;
   console.log(
-    `[live-news:v6:refresh] feeds=${Object.keys(normalized.feedStatuses).length} ` +
-    `raw=${normalized.items.length} clusters=${clustered.length} ` +
-    `multi-source=${multiSource} existed=${existing.length} after=${merged.length} ` +
-    `in ${elapsedMs}ms`,
+    `[live-news:v6:refresh] DONE total=${elapsedMs}ms ` +
+    `(fetch=${fetchMs} cluster=${clusterMs} write=${writeMs}) ` +
+    `multi_source=${multiSource}/${clustered.length}`,
   );
 
   return {
