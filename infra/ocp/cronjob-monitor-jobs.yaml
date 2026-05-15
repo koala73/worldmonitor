@@ -1,0 +1,144 @@
+---
+# Pre-requisites for this CronJob to actually inspect failed Jobs:
+#
+#   apiVersion: v1
+#   kind: ServiceAccount
+#   metadata:
+#     name: hlidskjalf-monitor-sa
+#     namespace: hlidskjalf-monitor
+#   ---
+#   apiVersion: rbac.authorization.k8s.io/v1
+#   kind: Role
+#   metadata:
+#     name: hlidskjalf-job-reader
+#     namespace: hlidskjalf-monitor
+#   rules:
+#     - apiGroups: ["batch"]
+#       resources: ["jobs", "cronjobs"]
+#       verbs: ["get", "list"]
+#   ---
+#   apiVersion: rbac.authorization.k8s.io/v1
+#   kind: RoleBinding
+#   metadata:
+#     name: hlidskjalf-monitor-sa-job-reader
+#     namespace: hlidskjalf-monitor
+#   subjects:
+#     - kind: ServiceAccount
+#       name: hlidskjalf-monitor-sa
+#       namespace: hlidskjalf-monitor
+#   roleRef:
+#     kind: Role
+#     name: hlidskjalf-job-reader
+#     apiGroup: rbac.authorization.k8s.io
+#
+# Without that RBAC, the failed-Job listing call returns 403 and the CronJob
+# silently exits 0 (no alert). The Ansible deploy playbook should ensure the
+# ServiceAccount + Role + RoleBinding exist before this CronJob is applied.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: monitor-failed-jobs
+  namespace: hlidskjalf-monitor
+spec:
+  schedule: "*/15 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 120
+      template:
+        spec:
+          restartPolicy: Never
+          serviceAccountName: hlidskjalf-monitor-sa
+          containers:
+            - name: monitor
+              image: image-registry.openshift-image-registry.svc:5000/hlidskjalf-monitor/hlidskjalf-mon:latest
+              command:
+                - node
+                - -e
+                - |
+                  const fs = require('fs');
+                  const https = require('https');
+                  const webhook = process.env.SLACK_ALERTS_WEBHOOK;
+                  if (!webhook) { console.warn('no SLACK_ALERTS_WEBHOOK; exit'); process.exit(0); }
+
+                  const ns = 'hlidskjalf-monitor';
+                  const apiHost = process.env.KUBERNETES_SERVICE_HOST;
+                  const apiPort = process.env.KUBERNETES_SERVICE_PORT || '443';
+                  const token = fs.readFileSync('/var/run/secrets/kubernetes.io/serviceaccount/token', 'utf8');
+                  const ca = fs.readFileSync('/var/run/secrets/kubernetes.io/serviceaccount/ca.crt');
+
+                  const lookbackMs = 15 * 60 * 1000;
+                  const sinceTs = Date.now() - lookbackMs;
+
+                  const opts = {
+                    host: apiHost,
+                    port: apiPort,
+                    path: `/apis/batch/v1/namespaces/${ns}/jobs?limit=500`,
+                    method: 'GET',
+                    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json' },
+                    ca,
+                  };
+
+                  const post = (text, blocks) => new Promise((resolve) => {
+                    const body = JSON.stringify(blocks ? { text, blocks } : { text });
+                    const u = new URL(webhook);
+                    const req = https.request({
+                      host: u.host, path: u.pathname + u.search, method: 'POST',
+                      headers: { 'Content-Type': 'application/json', 'Content-Length': body.length },
+                    }, (res) => { res.resume(); res.on('end', resolve); });
+                    req.on('error', resolve); req.write(body); req.end();
+                  });
+
+                  const req = https.request(opts, (res) => {
+                    let buf = '';
+                    res.setEncoding('utf8');
+                    res.on('data', (c) => buf += c);
+                    res.on('end', async () => {
+                      if (res.statusCode >= 400) {
+                        await post(`:warning: hlidskjalf job-monitor: OCP API ${res.statusCode}: ${buf.slice(0, 300)}`);
+                        return process.exit(0);
+                      }
+                      let data;
+                      try { data = JSON.parse(buf); } catch {
+                        await post(':warning: hlidskjalf job-monitor: failed to parse OCP API response');
+                        return process.exit(0);
+                      }
+                      const failed = (data.items || []).filter((j) => {
+                        const conds = j.status && j.status.conditions || [];
+                        const failedCond = conds.find((cn) => cn.type === 'Failed' && cn.status === 'True');
+                        if (!failedCond) return false;
+                        const t = Date.parse(failedCond.lastTransitionTime || j.status.completionTime || j.metadata.creationTimestamp);
+                        return t >= sinceTs;
+                      });
+                      if (failed.length === 0) { console.log('no failed jobs in window; exit'); return process.exit(0); }
+                      const lines = failed.slice(0, 20).map((j) => {
+                        const owner = (j.metadata.ownerReferences || [{}])[0].name || j.metadata.name;
+                        const reason = ((j.status.conditions || []).find((c) => c.type === 'Failed') || {}).reason || 'Failed';
+                        return `• \`${owner}\` — ${reason} (job ${j.metadata.name})`;
+                      });
+                      const blocks = [
+                        { type: 'header', text: { type: 'plain_text', text: `:rotating_light: ${failed.length} failed Job(s) in ${ns}` } },
+                        { type: 'section', text: { type: 'mrkdwn', text: lines.join('\n') } },
+                        { type: 'context', elements: [{ type: 'mrkdwn', text: `window: last 15m · checked at ${new Date().toISOString()}` }] },
+                      ];
+                      await post(`[hlidskjalf] ${failed.length} failed Job(s) in last 15m`, blocks);
+                      process.exit(0);
+                    });
+                  });
+                  req.on('error', async (err) => {
+                    await post(`:warning: hlidskjalf job-monitor request error: ${err.message}`);
+                    process.exit(0);
+                  });
+                  req.end();
+              envFrom:
+                - secretRef:
+                    name: hlidskjalf-secrets
+              resources:
+                requests:
+                  memory: 64Mi
+                  cpu: 25m
+                limits:
+                  memory: 128Mi
+                  cpu: 100m

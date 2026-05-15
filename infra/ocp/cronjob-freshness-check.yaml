@@ -1,0 +1,33 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: freshness-check
+  namespace: hlidskjalf-monitor
+spec:
+  schedule: "*/15 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 120
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: freshness
+              image: image-registry.openshift-image-registry.svc:5000/hlidskjalf-monitor/hlidskjalf-mon:latest
+              command: ["node", "scripts/check-freshness.mjs"]
+              env:
+                - name: REDIS_URL
+                  value: redis://redis-svc.hlidskjalf-monitor.svc:6379
+              envFrom:
+                - secretRef:
+                    name: hlidskjalf-secrets
+              resources:
+                requests:
+                  memory: 64Mi
+                  cpu: 25m
+                limits:
+                  memory: 128Mi
+                  cpu: 100m

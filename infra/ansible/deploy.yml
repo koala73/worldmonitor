@@ -1,0 +1,15 @@
+---
+# Thin wrapper that imports the canonical hlidskjalf-monitor deployment playbook
+# from the greysson-agents IaC repo.
+#
+# Canonical path:
+#   /Volumes/owc-express/repos/GreyssonEnterprises/greysson-agents/playbooks/deploy-hlidskjalf-monitor.yml
+#
+# Usage from this repo:
+#   ansible-playbook infra/ansible/deploy.yml \
+#     -e @../../greysson-agents/playbooks/vars/hlidskjalf-secrets.yml --ask-vault-pass
+#
+# See infra/ansible/README.md for full deployment workflow.
+
+- name: Import canonical hlidskjalf-monitor deploy playbook
+  import_playbook: "../../../greysson-agents/playbooks/deploy-hlidskjalf-monitor.yml"

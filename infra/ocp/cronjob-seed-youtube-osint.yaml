@@ -1,0 +1,51 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: seed-youtube-osint
+  namespace: hlidskjalf-monitor
+spec:
+  schedule: "*/20 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 300
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: seed
+              image: image-registry.openshift-image-registry.svc:5000/hlidskjalf-monitor/hlidskjalf-mon:latest
+              command: ["node", "scripts/seed-youtube-osint.mjs"]
+              env:
+                - name: REDIS_URL
+                  value: redis://redis-svc.hlidskjalf-monitor.svc:6379
+                - name: YOUTUBE_CONFIG_PATH
+                  value: /app/config/youtube-osint.json
+                - name: YOUTUBE_REGISTRY_PATH
+                  value: /app/data/youtube-patterns.json
+              envFrom:
+                - secretRef:
+                    name: hlidskjalf-secrets
+              volumeMounts:
+                - name: youtube-config
+                  mountPath: /app/config
+                  readOnly: true
+                - name: youtube-data
+                  mountPath: /app/data
+              resources:
+                requests:
+                  memory: 256Mi
+                  cpu: 100m
+                limits:
+                  memory: 512Mi
+                  cpu: 500m
+          volumes:
+            - name: youtube-config
+              configMap:
+                name: youtube-osint-config
+                optional: true
+            - name: youtube-data
+              persistentVolumeClaim:
+                claimName: youtube-osint-data

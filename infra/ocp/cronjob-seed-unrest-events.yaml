@@ -1,0 +1,34 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: seed-unrest-events
+  namespace: hlidskjalf-monitor
+spec:
+  suspend: true  # disabled pending FINNHUB_API_KEY / ACLED_API_KEY (added 2026-05-14)
+  schedule: "*/15 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 1
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 300
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: seed
+              image: image-registry.openshift-image-registry.svc:5000/hlidskjalf-monitor/hlidskjalf-mon:latest
+              command: ["node", "scripts/seed-unrest-events.mjs"]
+              env:
+                - name: REDIS_URL
+                  value: redis://redis-svc.hlidskjalf-monitor.svc:6379
+              envFrom:
+                - secretRef:
+                    name: hlidskjalf-secrets
+              resources:
+                requests:
+                  memory: 128Mi
+                  cpu: 50m
+                limits:
+                  memory: 256Mi
+                  cpu: 200m

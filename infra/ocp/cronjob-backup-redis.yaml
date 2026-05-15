@@ -1,0 +1,55 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: backup-redis
+  namespace: hlidskjalf-monitor
+spec:
+  schedule: "0 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      activeDeadlineSeconds: 600
+      template:
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: backup
+              image: registry.redhat.io/rhel9/redis-7:latest
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+                  echo "[backup] Starting Redis RDB backup at $TIMESTAMP"
+                  redis-cli -h redis-svc.hlidskjalf-monitor.svc -p 6379 BGSAVE
+                  sleep 5
+                  redis-cli -h redis-svc.hlidskjalf-monitor.svc -p 6379 LASTSAVE
+                  cp /var/lib/redis/data/dump.rdb /backup/redis-${TIMESTAMP}.rdb 2>/dev/null || echo "[backup] RDB copy skipped (no dump.rdb mount)"
+                  cp -r /app/data /backup/config-data-${TIMESTAMP} 2>/dev/null || echo "[backup] config-data copy skipped"
+                  echo "[backup] Done"
+              env:
+                - name: REDIS_URL
+                  value: redis://redis-svc.hlidskjalf-monitor.svc:6379
+              volumeMounts:
+                - name: backup-storage
+                  mountPath: /backup
+                - name: config-data
+                  mountPath: /app/data
+                  readOnly: true
+              resources:
+                requests:
+                  memory: 64Mi
+                  cpu: 50m
+                limits:
+                  memory: 128Mi
+                  cpu: 100m
+          volumes:
+            - name: backup-storage
+              persistentVolumeClaim:
+                claimName: config-data
+            - name: config-data
+              persistentVolumeClaim:
+                claimName: config-data

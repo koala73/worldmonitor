@@ -1,0 +1,59 @@
+# =============================================================================
+# Hlidskjalf Monitor — Bun Server Image
+# =============================================================================
+# Multi-stage build for OCP deployment (non-root, UID 1001)
+
+# ── Stage 1: Builder ─────────────────────────────────────────────────────────
+FROM docker.io/oven/bun:1-alpine AS build
+
+WORKDIR /app
+
+COPY package.json bun.lock* ./
+# --ignore-scripts: postinstall calls `cd blog-site && npm ci`, but blog-site/
+# isn't present yet at this stage (it's the marketing site, copied later in
+# COPY . .). The marketing build isn't needed for the OCP runtime image,
+# so skipping postinstall here keeps the layer clean.
+RUN bun install --frozen-lockfile --ignore-scripts
+
+COPY . .
+# Build the frontend bundle only. The full `npm run build` script invokes
+# `npm run build:blog && tsc && vite build`, but:
+#   * build:blog `cd`s into blog-site/ — marketing site not needed for OCP runtime
+#   * the server runs via `bun run server/server.ts` (JIT TS), so we don't need tsc
+# Vite produces the dashboard's dist/ which the server serves as static files.
+RUN bunx vite build
+
+# ── Stage 2: Runtime ─────────────────────────────────────────────────────────
+FROM docker.io/oven/bun:1-alpine
+
+WORKDIR /app
+
+# CLI tools for YouTube OSINT pipeline
+RUN apk add --no-cache python3 py3-pip curl && \
+    pip3 install --break-system-packages yt-dlp && \
+    rm -rf /root/.cache/pip
+
+COPY --from=build /app/dist ./dist
+COPY --from=build /app/scripts ./scripts
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/package.json ./
+COPY --from=build /app/server ./server
+COPY --from=build /app/shared ./shared
+COPY --from=build /app/data ./data
+
+# Config and data dirs (overridden by OCP volume mounts)
+RUN mkdir -p /app/config /app/data && \
+    chown -R 1001:1001 /app
+
+ENV PORT=3000
+ENV REDIS_URL=redis://localhost:6379
+ENV NODE_ENV=production
+
+EXPOSE 3000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+  CMD curl -f http://localhost:3000/healthz || exit 1
+
+USER 1001
+
+ENTRYPOINT ["bun", "run", "server/server.ts"]

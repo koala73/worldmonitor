@@ -1,24 +1,28 @@
-import { Ratelimit } from '@upstash/ratelimit';
-import { Redis } from '@upstash/redis';
+/**
+ * Rate limiting via ioredis with a sliding window algorithm.
+ * Replaces the prior Upstash ratelimit + Upstash Redis stack with direct ioredis calls.
+ * Fail-open on Redis errors. Public API preserved so callers in
+ * api/wm-session.js, api/_relay.js, api/rss-proxy.js don't change.
+ */
+
+import Redis from 'ioredis';
 import { jsonResponse } from './_json-response.js';
 
-let ratelimit = null;
+const WINDOW_MS = 60_000;
+const LIMIT = 600;
 
-function getRatelimit() {
-  if (ratelimit) return ratelimit;
-
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return null;
-
-  ratelimit = new Ratelimit({
-    redis: new Redis({ url, token }),
-    limiter: Ratelimit.slidingWindow(600, '60 s'),
-    prefix: 'rl',
-    analytics: false,
+let redis = null;
+function getRedis() {
+  if (redis) return redis;
+  redis = new Redis(process.env.REDIS_URL ?? 'redis://localhost:6379', {
+    lazyConnect: true,
+    enableOfflineQueue: false,
+    maxRetriesPerRequest: 1,
   });
-
-  return ratelimit;
+  redis.on('error', (err) => {
+    console.warn('[api/_rate-limit] Redis error:', err.message);
+  });
+  return redis;
 }
 
 export function getClientIp(request) {
@@ -34,23 +38,31 @@ export function getClientIp(request) {
 }
 
 export async function checkRateLimit(request, corsHeaders) {
-  const rl = getRatelimit();
-  if (!rl) return null;
-
   const ip = getClientIp(request);
+  const key = `rl:${ip}`;
+  const now = Date.now();
+  const windowStart = now - WINDOW_MS;
   try {
-    const { success, limit, reset } = await rl.limit(ip);
-
-    if (!success) {
+    const r = getRedis();
+    const member = `${now}-${Math.random().toString(36).slice(2, 10)}`;
+    const pipeline = r.pipeline();
+    pipeline.zremrangebyscore(key, 0, windowStart);
+    pipeline.zadd(key, now, member);
+    pipeline.zcard(key);
+    pipeline.pexpire(key, WINDOW_MS);
+    const results = await pipeline.exec();
+    if (!results) return null;
+    const count = Number(results[2]?.[1] ?? 0);
+    if (count > LIMIT) {
+      const reset = now + WINDOW_MS;
       return jsonResponse({ error: 'Too many requests' }, 429, {
-        'X-RateLimit-Limit': String(limit),
+        'X-RateLimit-Limit': String(LIMIT),
         'X-RateLimit-Remaining': '0',
         'X-RateLimit-Reset': String(reset),
-        'Retry-After': String(Math.ceil((reset - Date.now()) / 1000)),
+        'Retry-After': String(Math.ceil(WINDOW_MS / 1000)),
         ...corsHeaders,
       });
     }
-
     return null;
   } catch {
     return null;

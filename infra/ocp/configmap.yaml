@@ -1,0 +1,17 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hlidskjalf-config
+  namespace: hlidskjalf-monitor
+data:
+  config.json: |
+    {
+      "variant": "full",
+      "notifications": {
+        "slack": { "enabled": true }
+      }
+    }
+  circle0.json: |
+    {
+      "protectedAreas": []
+    }

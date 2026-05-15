@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hlidskjalf-server
+  namespace: hlidskjalf-monitor
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: hlidskjalf-server
+  template:
+    metadata:
+      labels:
+        app: hlidskjalf-server
+    spec:
+      containers:
+        - name: bun-server
+          image: image-registry.openshift-image-registry.svc:5000/hlidskjalf-monitor/hlidskjalf-mon:latest
+          ports:
+            - containerPort: 3000
+          env:
+            - name: REDIS_URL
+              value: redis://redis-svc:6379
+            - name: NODE_ENV
+              value: production
+            - name: PORT
+              value: "3000"
+          envFrom:
+            - secretRef:
+                name: hlidskjalf-secrets
+          volumeMounts:
+            - name: config
+              mountPath: /app/config
+              readOnly: true
+            - name: config-data
+              mountPath: /app/data
+          livenessProbe:
+            tcpSocket:
+              port: 3000
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            tcpSocket:
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          resources:
+            requests:
+              memory: 256Mi
+              cpu: 100m
+            limits:
+              memory: 512Mi
+              cpu: 500m
+      volumes:
+        - name: config
+          configMap:
+            name: hlidskjalf-config
+        - name: config-data
+          persistentVolumeClaim:
+            claimName: config-data

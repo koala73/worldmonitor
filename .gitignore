@@ -83,3 +83,6 @@ tmp/
 docs/plans/
 docs/brainstorms/
 playground-pricing.html
+
+# Agent team scratch (intelligence/backend/etc audit reports)
+agent-responses/
