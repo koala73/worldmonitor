@@ -1,12 +1,15 @@
 const TURNSTILE_VERIFY_URL = 'https://challenges.cloudflare.com/turnstile/v0/siteverify';
 
 export function getClientIp(request: Request): string {
-  return (
-    request.headers.get('x-real-ip') ||
-    request.headers.get('cf-connecting-ip') ||
-    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-    'unknown'
-  );
+  // cf-connecting-ip is the trusted client IP set by Cloudflare; x-real-ip
+  // is the CF edge IP (shared across users) — kept as a secondary because
+  // some non-CF deploys set it directly. x-forwarded-for is client-settable
+  // and MUST NOT be used as a rate-limit / abuse-defence identifier (#3531).
+  // Trim each value so a whitespace-only header doesn't short-circuit past
+  // the next fallback. Mirrors getClientIp in server/_shared/rate-limit.ts.
+  const cf = (request.headers.get('cf-connecting-ip') ?? '').trim();
+  const xr = (request.headers.get('x-real-ip') ?? '').trim();
+  return cf || xr || 'unknown';
 }
 
 export type TurnstileMissingSecretPolicy = 'allow' | 'allow-in-development' | 'deny';

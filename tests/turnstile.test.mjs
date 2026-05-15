@@ -19,7 +19,7 @@ test.afterEach(() => {
   restoreEnv();
 });
 
-test('getClientIp prefers x-real-ip, then cf-connecting-ip, then x-forwarded-for', () => {
+test('getClientIp prefers cf-connecting-ip, then x-real-ip', () => {
   const request = new Request('https://worldmonitor.app/api/test', {
     headers: {
       'x-forwarded-for': '198.51.100.8, 203.0.113.10',
@@ -28,7 +28,29 @@ test('getClientIp prefers x-real-ip, then cf-connecting-ip, then x-forwarded-for
     },
   });
 
+  assert.equal(getClientIp(request), '203.0.113.7');
+});
+
+test('getClientIp falls back to x-real-ip when cf-connecting-ip is absent', () => {
+  const request = new Request('https://worldmonitor.app/api/test', {
+    headers: {
+      'x-forwarded-for': '198.51.100.8',
+      'x-real-ip': '192.0.2.5',
+    },
+  });
+
   assert.equal(getClientIp(request), '192.0.2.5');
+});
+
+test('getClientIp ignores spoofable x-forwarded-for and returns unknown sentinel (#3531)', () => {
+  // Direct request bypassing Cloudflare: only x-forwarded-for present.
+  // Must NOT be honoured — caller-supplied identity would let an attacker
+  // rotate buckets and beat the per-IP rate-limit window.
+  const request = new Request('https://worldmonitor.app/api/test', {
+    headers: { 'x-forwarded-for': '198.51.100.8, 203.0.113.10' },
+  });
+
+  assert.equal(getClientIp(request), 'unknown');
 });
 
 test('verifyTurnstile allows missing secret when policy is allow', async () => {
