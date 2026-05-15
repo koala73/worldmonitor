@@ -14,6 +14,7 @@
 import { embedBatch, cosineSim, float32ToBase64, base64ToFloat32 } from '../../_shared/embeddings';
 import { getCachedJsonBatch, runRedisPipeline } from '../../_shared/redis';
 import type { RawRssItem } from './_normalize';
+import { fetchArticleBodyBatch } from './_article-fetcher';
 
 /**
  * Default cosine threshold for two items to be considered the same
@@ -210,16 +211,23 @@ export interface ClusteredItem {
 }
 
 /**
- * Build the text the embedder ingests. Uses `item.body` (the richer
- * cluster-input field — content:encoded if available, falling back to
- * the brief description) so cluster quality benefits from the fuller
- * semantic signal. The user-facing `summary` does NOT come from this
- * path — see `pickSummary` for that. Capped at 300 chars; longer text
- * doesn't materially improve same-event discrimination at our threshold.
+ * Build the text the embedder ingests. Priority:
+ *
+ *   1. `articleBody` — the publisher's actual article HTML, fetched
+ *      by `_article-fetcher.ts` for items being freshly embedded.
+ *      Equalises signal across feeds with brief vs full RSS payloads.
+ *   2. `item.body` — RSS `<content:encoded>` or `<content>` when the
+ *      feed shipped it (fallback when article fetch was skipped /
+ *      failed / over budget).
+ *   3. `item.description` — the RSS brief. Last resort.
+ *
+ * The user-facing `summary` does NOT come from this path — see
+ * `pickSummary` for that. Capped at 300 chars; longer text doesn't
+ * materially improve same-event discrimination at our threshold.
  */
-function inputTextFor(item: RawRssItem): string {
+function inputTextFor(item: RawRssItem, articleBody?: string): string {
   const title = item.title.trim();
-  const text = (item.body || item.description || '').trim().slice(0, 300);
+  const text = (articleBody || item.body || item.description || '').trim().slice(0, 300);
   const combined = text ? `${title} — ${text}` : title;
   return combined.slice(0, MAX_INPUT_LEN);
 }
@@ -304,7 +312,18 @@ export async function clusterRssItems(items: RawRssItem[]): Promise<ClusteredIte
   // ── 2. Embed misses ──
   const toEmbed = items.filter((it) => !embedByHash.has(it.titleHash));
   if (toEmbed.length > 0) {
-    const fresh = await embedBatch(toEmbed.map(inputTextFor));
+    // Fetch the publisher's article HTML for the items we're about to
+    // embed. Equalises cluster input across feeds with vastly different
+    // RSS verbosity (BBC's 100-char ledes vs Intercept's 40 KB full
+    // article bodies). Strictly clustering-only — the fetched text
+    // never reaches the wire (see `pickSummary`). Embedding cache hits
+    // are excluded above so we don't re-fetch articles whose embedding
+    // we already have.
+    const articleBodies = await fetchArticleBodyBatch(toEmbed);
+
+    const fresh = await embedBatch(
+      toEmbed.map((it) => inputTextFor(it, articleBodies.get(it.link))),
+    );
     // Build pipelined SETs. Skip compression for embeddings —
     // base64-encoded Float32 is near-random data, gzip just adds overhead.
     // Values go straight as `JSON.stringify(base64)` so the GET path
