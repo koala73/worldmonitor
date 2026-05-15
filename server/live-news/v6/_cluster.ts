@@ -12,13 +12,22 @@
  */
 
 import { embedBatch, cosineSim, float32ToBase64, base64ToFloat32 } from '../../_shared/embeddings';
-import { getCachedJsonBatch, setCachedJson } from '../../_shared/redis';
+import { getCachedJsonBatch, runRedisPipeline } from '../../_shared/redis';
 import type { RawRssItem } from './_normalize';
 
 const THRESHOLD = 0.7;
 const EMBED_CACHE_PREFIX = 'live-news:v6:embed:';
 const EMBED_TTL_S = 24 * 60 * 60;
 const MAX_INPUT_LEN = 400;
+
+/**
+ * Per-pipeline SET cap. With ~2000 fresh embeddings per refresh, firing
+ * one HTTP POST per item saturated Upstash REST and surfaced as a
+ * cascade of `[redis] setCachedJson failed: internal error` lines.
+ * Batching SETs through `/pipeline` collapses ~2000 calls into ~20 and
+ * keeps each request body under a few hundred KB.
+ */
+const EMBED_PIPELINE_CHUNK = 100;
 
 export interface ClusterSource {
   source: string;
@@ -131,21 +140,29 @@ export async function clusterRssItems(items: RawRssItem[]): Promise<ClusteredIte
   const toEmbed = items.filter((it) => !embedByHash.has(it.titleHash));
   if (toEmbed.length > 0) {
     const fresh = await embedBatch(toEmbed.map(inputTextFor));
-    const writes: Promise<unknown>[] = [];
+    // Build pipelined SETs. Skip compression for embeddings —
+    // base64-encoded Float32 is near-random data, gzip just adds overhead.
+    // Values go straight as `JSON.stringify(base64)` so the GET path
+    // (decodeFromStorage → JSON.parse) round-trips unchanged.
+    const commands: Array<Array<string | number>> = [];
     for (let i = 0; i < toEmbed.length; i++) {
       const v = fresh[i];
       if (!v) continue;
       embedByHash.set(toEmbed[i]!.titleHash, v);
-      writes.push(
-        setCachedJson(
-          `${EMBED_CACHE_PREFIX}${toEmbed[i]!.titleHash}`,
-          float32ToBase64(v),
-          EMBED_TTL_S,
-        ),
-      );
+      commands.push([
+        'SET',
+        `${EMBED_CACHE_PREFIX}${toEmbed[i]!.titleHash}`,
+        JSON.stringify(float32ToBase64(v)),
+        'EX',
+        EMBED_TTL_S,
+      ]);
+    }
+    const batches: Promise<unknown>[] = [];
+    for (let i = 0; i < commands.length; i += EMBED_PIPELINE_CHUNK) {
+      batches.push(runRedisPipeline(commands.slice(i, i + EMBED_PIPELINE_CHUNK)));
     }
     // Fire-and-forget — cache miss next run is a sub-cent re-embed.
-    Promise.allSettled(writes).then(() => undefined);
+    Promise.allSettled(batches).then(() => undefined);
   }
 
   // ── 3. Online greedy clustering ──

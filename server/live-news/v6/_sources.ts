@@ -40,6 +40,23 @@
  *   - Atom vs RSS 2.0 — handled by the regex parser (both flows).
  *   - 5–10 % of feeds may 403/404 at any moment; per-feed try/catch
  *     means one broken feed doesn't sink the refresh.
+ *
+ * # 2026-05-15 cleanup
+ *
+ * Dropped 28 feeds after a description-quality + reachability audit
+ * + Vercel egress observation:
+ *   - Non-XML / Cloudflare HTML interstitials: USA Today (×3), Halifax
+ *     Chronicle Herald
+ *   - HTTP-403 to cloud egress: Maclean's, Politico (×3), Telegraph
+ *     World, The Tyee, Toronto Star, Axios
+ *   - HTTP-404 (URLs gone): CTV (×5), Global News Business, ABC News
+ *     (AU) World, NYT National, ITV News, NZ Herald, Washington Post
+ *     Tech, Newsweek
+ *   - JUNK content for clustering: Google News (multi-outlet concat),
+ *     The Telegraph (/rss.xml — title==description repeat)
+ *   - TITLE-ONLY (paywalled, empty descriptions): Globe and Mail
+ *     World, The Economist
+ *   - Montreal Gazette /feed/ — GlobeNewswire PR firehose, not editorial
  */
 
 export interface NewsSource {
@@ -67,8 +84,8 @@ export const ITEMS_PER_FEED = 25;
 export const MAX_AGE_MS = 3 * 24 * 60 * 60 * 1000;
 
 /**
- * The full v6 corpus. ~130 feeds across world/US/UK/Canada/AU-NZ-IE
- * plus paywalled premium tier. See header comment for inclusion rules.
+ * The v6 corpus. ~130 feeds across world/US/UK/Canada/AU-NZ-IE plus
+ * paywalled premium tier. See header comment for inclusion rules.
  */
 export const V6_NEWS_SOURCES: readonly NewsSource[] = [
   // ────────────────────────────────────────────────────────────────────
@@ -101,7 +118,6 @@ export const V6_NEWS_SOURCES: readonly NewsSource[] = [
   { name: 'The Guardian World',     url: 'https://www.theguardian.com/world/rss',                             priority: 3 },
   { name: 'The Guardian International', url: 'https://www.theguardian.com/international/rss',                 priority: 3 },
   { name: 'The Diplomat',           url: 'https://thediplomat.com/feed/',                                     priority: 4 },
-  { name: 'Google News (World)',    url: 'https://news.google.com/rss?hl=en-US&gl=US&ceid=US:en',             priority: 4 },
 
   // ────────────────────────────────────────────────────────────────────
   // United States — network broadcasters + national digital
@@ -118,23 +134,15 @@ export const V6_NEWS_SOURCES: readonly NewsSource[] = [
   { name: 'PBS NewsHour',           url: 'https://www.pbs.org/newshour/feeds/rss/headlines',                  priority: 2 },
   { name: 'PBS Politics',           url: 'https://www.pbs.org/newshour/feeds/rss/politics',                   priority: 2 },
 
-  { name: 'USA Today',              url: 'https://rssfeeds.usatoday.com/usatoday-newstopstories',             priority: 3 },
-  { name: 'USA Today News',         url: 'https://rssfeeds.usatoday.com/UsatodaycomNation-TopStories',        priority: 3 },
-  { name: 'USA Today World',        url: 'https://rssfeeds.usatoday.com/UsatodaycomWorld-TopStories',         priority: 3 },
   { name: 'LA Times Local',         url: 'https://www.latimes.com/local/rss2.0.xml',                          priority: 3 },
   { name: 'LA Times World',         url: 'https://www.latimes.com/world/rss2.0.xml',                          priority: 3 },
   { name: 'NY Post',                url: 'https://nypost.com/feed/',                                          priority: 3 },
   { name: 'HuffPost US',            url: 'https://chaski.huffpost.com/us/auto/vertical/us-news',              priority: 4 },
   { name: 'HuffPost World',         url: 'https://chaski.huffpost.com/us/auto/vertical/world-news',           priority: 4 },
   { name: 'The Hill',               url: 'https://thehill.com/homenews/feed/',                                priority: 4 },
-  { name: 'Politico Picks',         url: 'https://www.politico.com/rss/politicopicks.xml',                    priority: 4 },
-  { name: 'Politico Politics',      url: 'https://www.politico.com/rss/politics08.xml',                       priority: 4 },
-  { name: 'Politico Congress',      url: 'https://www.politico.com/rss/congress.xml',                         priority: 4 },
-  { name: 'Axios',                  url: 'https://api.axios.com/feed/',                                       priority: 4 },
   { name: 'Vox World Politics',     url: 'https://www.vox.com/rss/world-politics/index.xml',                  priority: 4 },
   { name: 'Slate News & Politics',  url: 'https://slate.com/feeds/news-and-politics.rss',                     priority: 4 },
   { name: 'Time',                   url: 'https://feeds.feedburner.com/time/topstories',                      priority: 3 },
-  { name: 'Newsweek',               url: 'https://www.newsweek.com/rss',                                      priority: 3 },
   { name: 'The Daily Beast',        url: 'https://feeds.feedburner.com/thedailybeast/articles',               priority: 4 },
   { name: 'ProPublica',             url: 'https://www.propublica.org/feeds/propublica/main',                  priority: 4 },
   { name: 'The Intercept',          url: 'https://theintercept.com/feed/?lang=en',                            priority: 4 },
@@ -169,7 +177,6 @@ export const V6_NEWS_SOURCES: readonly NewsSource[] = [
   { name: 'Daily Mirror News',      url: 'https://www.mirror.co.uk/news/?service=rss',                        priority: 4 },
   { name: 'Daily Mirror World',     url: 'https://www.mirror.co.uk/news/world-news/?service=rss',             priority: 4 },
   { name: 'Evening Standard',       url: 'https://www.standard.co.uk/news/rss',                               priority: 4 },
-  { name: 'ITV News',               url: 'https://www.itv.com/news/index.rss',                                priority: 3 },
   { name: 'Channel 4 News',         url: 'https://www.channel4.com/news/feed',                                priority: 3 },
   { name: 'Metro UK',               url: 'https://metro.co.uk/feed/',                                         priority: 4 },
   { name: 'The Sun',                url: 'https://www.thesun.co.uk/feed/',                                    priority: 4 },
@@ -185,49 +192,33 @@ export const V6_NEWS_SOURCES: readonly NewsSource[] = [
   { name: 'CBC Health',             url: 'https://rss.cbc.ca/lineup/health.xml',                              priority: 2 },
   { name: 'CBC Tech & Science',     url: 'https://rss.cbc.ca/lineup/technology.xml',                          priority: 2 },
 
-  { name: 'CTV News',               url: 'https://www.ctvnews.ca/rss/ctvnews-ca-top-stories-public-rss-1.822009',           priority: 3 },
-  { name: 'CTV World',              url: 'https://www.ctvnews.ca/rss/world/ctvnews-ca-world-public-rss-1.822284',           priority: 3 },
-  { name: 'CTV Politics',           url: 'https://www.ctvnews.ca/rss/politics/ctvnews-ca-politics-public-rss-1.822302',     priority: 3 },
-  { name: 'CTV Canada',             url: 'https://www.ctvnews.ca/rss/canada/ctvnews-ca-canada-public-rss-1.822284',         priority: 3 },
-  { name: 'CTV Business',           url: 'https://www.ctvnews.ca/rss/business/ctvnews-ca-business-public-rss-1.822302',     priority: 3 },
-
   { name: 'Global News',            url: 'https://globalnews.ca/feed/',                                       priority: 3 },
   { name: 'Global News World',      url: 'https://globalnews.ca/world/feed/',                                 priority: 3 },
   { name: 'Global News Canada',     url: 'https://globalnews.ca/canada/feed/',                                priority: 3 },
   { name: 'Global News Politics',   url: 'https://globalnews.ca/politics/feed/',                              priority: 3 },
-  { name: 'Global News Business',   url: 'https://globalnews.ca/business/feed/',                              priority: 3 },
 
   { name: 'National Post',          url: 'https://nationalpost.com/feed/',                                    priority: 3 },
   { name: 'Toronto Sun News',       url: 'https://torontosun.com/category/news/feed',                         priority: 4 },
   { name: 'Ottawa Citizen',         url: 'https://ottawacitizen.com/feed/',                                   priority: 4 },
   { name: 'Vancouver Sun',          url: 'https://vancouversun.com/feed/',                                    priority: 4 },
   { name: 'The Province',           url: 'https://theprovince.com/feed/',                                     priority: 4 },
-  // Montreal Gazette /feed/ is a GlobeNewswire press-release firehose
-  // (corporate earnings, product announcements) — NOT editorial news.
-  // None of their alternative URLs (/news/feed/, /local-news/feed/,
-  // /category/news/feed/, /montreal/feed/) return items. Dropped.
-  // { name: 'Montreal Gazette',       url: 'https://montrealgazette.com/feed/',                                 priority: 4 },
   { name: 'Calgary Herald',         url: 'https://calgaryherald.com/feed/',                                   priority: 4 },
   { name: 'Edmonton Journal',       url: 'https://edmontonjournal.com/feed/',                                 priority: 4 },
   { name: 'Winnipeg Free Press',    url: 'https://www.winnipegfreepress.com/rss/',                            priority: 4 },
-  { name: 'Halifax Chronicle Herald', url: 'https://www.thechronicleherald.ca/rss/',                          priority: 4 },
   { name: 'Times Colonist',         url: 'https://www.timescolonist.com/rss',                                 priority: 4 },
   { name: 'National Observer',      url: 'https://www.nationalobserver.com/front/rss',                        priority: 4 },
-  { name: 'The Tyee',               url: 'https://thetyee.ca/rss2.xml',                                       priority: 4 },
 
   // ────────────────────────────────────────────────────────────────────
   // Australia / NZ / Ireland — non-Anglo angles for true "world" coverage
   // ────────────────────────────────────────────────────────────────────
   { name: 'ABC News (AU)',          url: 'https://www.abc.net.au/news/feed/45910/rss.xml',                    priority: 2 },
   { name: 'ABC News (AU) Just In',  url: 'https://www.abc.net.au/news/feed/51120/rss.xml',                    priority: 2 },
-  { name: 'ABC News (AU) World',    url: 'https://www.abc.net.au/news/feed/52278/rss.xml',                    priority: 2 },
   { name: 'Sydney Morning Herald',  url: 'https://www.smh.com.au/rss/feed.xml',                               priority: 3 },
   { name: 'The Age',                url: 'https://www.theage.com.au/rss/feed.xml',                            priority: 3 },
   { name: 'The Guardian Australia', url: 'https://www.theguardian.com/au/rss',                                priority: 3 },
   { name: 'News.com.au',            url: 'https://www.news.com.au/content-feeds/latest-news-world/',          priority: 4 },
   { name: 'Stuff NZ',               url: 'https://www.stuff.co.nz/rss',                                       priority: 3 },
   { name: 'RNZ',                    url: 'https://www.rnz.co.nz/rss/news.xml',                                priority: 3 },
-  { name: 'NZ Herald',              url: 'https://www.nzherald.co.nz/arc/outboundfeeds/rss/curated/?outputType=xml', priority: 3 },
   { name: 'RTÉ News',               url: 'https://www.rte.ie/news/rss/news-headlines.xml',                    priority: 3 },
   { name: 'The Journal (IE)',       url: 'https://www.thejournal.ie/feed/',                                   priority: 4 },
 
@@ -239,7 +230,6 @@ export const V6_NEWS_SOURCES: readonly NewsSource[] = [
   // ────────────────────────────────────────────────────────────────────
   { name: 'NYT Homepage',           url: 'https://rss.nytimes.com/services/xml/rss/nyt/HomePage.xml',         priority: 5 },
   { name: 'NYT US',                 url: 'https://rss.nytimes.com/services/xml/rss/nyt/US.xml',               priority: 5 },
-  { name: 'NYT National',           url: 'https://rss.nytimes.com/services/xml/rss/nyt/National.xml',         priority: 5 },
   { name: 'NYT World',              url: 'https://rss.nytimes.com/services/xml/rss/nyt/World.xml',            priority: 5 },
   { name: 'NYT Politics',           url: 'https://rss.nytimes.com/services/xml/rss/nyt/Politics.xml',         priority: 5 },
   { name: 'NYT Business',           url: 'https://rss.nytimes.com/services/xml/rss/nyt/Business.xml',         priority: 5 },
@@ -251,7 +241,6 @@ export const V6_NEWS_SOURCES: readonly NewsSource[] = [
   { name: 'Washington Post World',  url: 'http://feeds.washingtonpost.com/rss/world',                         priority: 5 },
   { name: 'Washington Post Politics', url: 'https://feeds.washingtonpost.com/rss/politics',                   priority: 5 },
   { name: 'Washington Post Business', url: 'https://feeds.washingtonpost.com/rss/business',                   priority: 5 },
-  { name: 'Washington Post Tech',   url: 'https://feeds.washingtonpost.com/rss/technology',                   priority: 5 },
 
   { name: 'WSJ World',              url: 'https://feeds.a.dj.com/rss/RSSWorldNews.xml',                       priority: 5 },
   { name: 'WSJ US Business',        url: 'https://feeds.a.dj.com/rss/WSJcomUSBusiness.xml',                   priority: 5 },
@@ -265,13 +254,7 @@ export const V6_NEWS_SOURCES: readonly NewsSource[] = [
 
   { name: 'Financial Times',        url: 'https://www.ft.com/rss/home',                                       priority: 5 },
   { name: 'FT World',               url: 'https://www.ft.com/world?format=rss',                               priority: 5 },
-  { name: 'The Telegraph',          url: 'https://www.telegraph.co.uk/rss.xml',                               priority: 5 },
   { name: 'The Telegraph News',     url: 'https://www.telegraph.co.uk/news/rss.xml',                          priority: 5 },
-  { name: 'The Telegraph World',    url: 'https://www.telegraph.co.uk/world-news/rss.xml',                    priority: 5 },
-  { name: 'The Economist',          url: 'https://www.economist.com/the-world-this-week/rss.xml',             priority: 5 },
 
-  { name: 'Toronto Star',           url: 'https://www.thestar.com/content/thestar/feed.RSSManagerServlet.articles.topstories.rss', priority: 5 },
   { name: 'Financial Post',         url: 'https://financialpost.com/feed',                                    priority: 5 },
-  { name: "Maclean's",              url: 'https://macleans.ca/feed/',                                         priority: 5 },
-  { name: 'Globe and Mail World',   url: 'https://www.theglobeandmail.com/arc/outboundfeeds/rss/category/world/?outputType=xml', priority: 5 },
 ];
