@@ -696,7 +696,12 @@ const FINANCE_FEEDS: Record<string, Feed[]> = {
     { name: 'Crypto News', url: rss('https://news.google.com/rss/search?q=(bitcoin+OR+ethereum+OR+crypto+OR+"digital+assets")+when:1d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'DeFi News', url: rss('https://news.google.com/rss/search?q=(DeFi+OR+"decentralized+finance"+OR+DEX+OR+"yield+farming")+when:3d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Decrypt', url: rss('https://decrypt.co/feed') },
-    { name: 'Blockworks', url: rss('https://blockworks.co/feed') },
+    // Blockworks /feed returns 200 to direct curl but Cloudflare blocks both
+    // Vercel edge AND Railway egress (PR #3712 tried RELAY_ONLY_DOMAINS first;
+    // proxy still 403'd because Railway ASN is also blocked). Fall back to
+    // site-scoped Google News, matching the Kitco/Mining Weekly/FX Empire
+    // pattern from the same PR.
+    { name: 'Blockworks', url: rss('https://news.google.com/rss/search?q=site:blockworks.co+(crypto+OR+DeFi+OR+bitcoin+OR+stablecoin)+when:1d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'The Defiant', url: rss('https://thedefiant.io/feed') },
     { name: 'Bitcoin Magazine', url: rss('https://bitcoinmagazine.com/feed') },
     { name: 'DL News', url: rss('https://news.google.com/rss/search?q=site:dlnews.com+when:3d&hl=en-US&gl=US&ceid=US:en') },
@@ -816,7 +821,9 @@ const COMMODITY_FEEDS: Record<string, Feed[]> = {
     { name: 'Bloomberg Commodities', url: rss('https://news.google.com/rss/search?q=site:bloomberg.com+commodities+OR+metals+OR+mining+when:1d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Reuters Commodities', url: rss('https://news.google.com/rss/search?q=site:reuters.com+commodities+OR+metals+OR+mining+when:1d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'S&P Global Commodity', url: rss('https://news.google.com/rss/search?q=site:spglobal.com+commodities+metals+when:3d&hl=en-US&gl=US&ceid=US:en') },
-    { name: 'Commodity Trade Mantra', url: rss('https://www.commoditytrademantra.com/feed/') },
+    // commoditytrademantra.com 403s direct curl wholesale (not Vercel-specific) —
+    // same automated-traffic block as Mining Weekly. Google News fallback.
+    { name: 'Commodity Trade Mantra', url: rss('https://news.google.com/rss/search?q=site:commoditytrademantra.com+when:2d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'CNBC Commodities', url: rss('https://news.google.com/rss/search?q=site:cnbc.com+(commodities+OR+metals+OR+gold+OR+copper)+when:1d&hl=en-US&gl=US&ceid=US:en') },
   ],
   'gold-silver': [
@@ -848,7 +855,10 @@ const COMMODITY_FEEDS: Record<string, Feed[]> = {
     { name: 'Reuters Energy', url: rss('https://news.google.com/rss/search?q=site:reuters.com+(oil+OR+gas+OR+energy)+when:1d&hl=en-US&gl=US&ceid=US:en') },
   ],
   'mining-news': [
-    { name: 'Mining Journal', url: rss('https://www.mining-journal.com/feed/') },
+    // mining-journal.com migrated to Kreatio CMS; /feed/ now returns
+    // text/html (the homepage SPA), not RSS — produces "Parse error for
+    // Mining Journal" in the client. Google News fallback.
+    { name: 'Mining Journal', url: rss('https://news.google.com/rss/search?q=site:mining-journal.com+when:2d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Northern Miner', url: rss('https://www.northernminer.com/feed/') },
     // www.miningweekly.com domain-wide 403s every IP-based fetch (homepage
     // included), not just Vercel edge — Railway relay likely wouldn't help.

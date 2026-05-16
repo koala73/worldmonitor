@@ -29,9 +29,6 @@ const RELAY_ONLY_DOMAINS = new Set([
   'feeds.capi24.com',
   'islandtimes.org',
   'www.atlanticcouncil.org',
-  // blockworks.co/feed returns 200 to direct curl but 403 to Vercel edge IPs
-  // (Cloudflare bot challenge). Railway egress has different ASN; relay works.
-  'blockworks.co',
 ]);
 
 const DIRECT_FETCH_HEADERS = Object.freeze({
