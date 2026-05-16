@@ -54,6 +54,13 @@ Sentry.init({
     /Unable to load image/,
     /Non-Error promise rejection captured with value:/,
     /Connection to Indexed Database server lost/,
+    // Library-thrown (Convex client / Clerk persistent cache) when the user's
+    // browser has IndexedDB disabled (Safari Private Browsing, hardened
+    // Firefox, some WebView contexts). Our code only initializes the
+    // library; the throw is environmental and unavoidable from our side.
+    // Same disposition as the existing "Connection to Indexed Database
+    // server lost" entry above. WORLDMONITOR-RC.
+    /^IndexedDBUnavailableError|IndexedDB is not available in this environment/,
     /webkit\.messageHandlers/,
     /(?:unsafe-eval.*Content Security Policy|Content Security Policy.*unsafe-eval)/,
     /Fullscreen request denied/,
@@ -203,6 +210,7 @@ Sentry.init({
     /^A network error occurred\.?$/,
     /nmhCrx is not defined/,
     /\bcrusoe is not defined\b/, // WORLDMONITOR-R3 — injected userscript reference, anonymous-frames-only stack
+    /\bvc_request_action is not defined\b/, // WORLDMONITOR-RB — Samsung Internet / Tizen smart-view-cast global injection
     /navigationPerformanceLoggerJavascriptInterface/,
     /jQuery is not defined/,
     /illegal UTF-16 sequence/,
