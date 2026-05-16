@@ -6,7 +6,7 @@ import { Panel } from './Panel';
  */
 export class CoherenceDashboardPanel extends Panel {
   constructor() {
-    super('CoherenceDashboard', 'Collective Coherence Monitor');
+    super({ id: 'CoherenceDashboard', title: 'Collective Coherence Monitor' });
   }
 
   public render(): string {
