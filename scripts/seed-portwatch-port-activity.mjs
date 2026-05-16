@@ -23,16 +23,24 @@ const LOCK_DOMAIN = 'supply_chain:portwatch-ports';
 // 60 min — covers the widest realistic run of this standalone service.
 const LOCK_TTL_MS = 60 * 60 * 1000;
 const TTL = 259_200; // 3 days — 6× the 12h cron interval
-// Coverage gate. TEMPORARILY lowered from 50 → 25 on 2026-05-14 to let
-// seed-meta refresh while ArcGIS is in a degraded rate-limit state.
-// Background: post-#3681 the proxy retry IS firing, but both direct AND
-// proxy paths are throttled — successful per-country fetches dropped from
-// 24 → 5 between successive runs as Decodo hit its own rate-limit. With
-// gate=50 the seed-meta stayed frozen at 2026-05-12 00:03 UTC for 60+ hours.
-// Lowering to 25 lets a partial-success run advance the meta and clears
-// the operator-facing WARNING while ArcGIS recovers. Revert to 50 once
-// successive runs reliably exceed 50 again (target: 2026-05-20 review).
-const MIN_VALID_COUNTRIES = 25;
+// Coverage gate. TEMPORARILY lowered to 20 on 2026-05-16 (was 50 → 25 on
+// 2026-05-14) to let cap-mode recovery runs actually publish.
+//
+// Background: PR #3711's budget rebalance (15s direct + 70s proxy) now
+// produces consistent partial-success runs in the ~22/30 success range
+// per cold-fetch batch. With gate=25, a 22-success run still fails the
+// COVERAGE GATE and extendExistingTtl-only — meaning the run's 22 fresh
+// successes are NOT written to Redis, so the cap-mode rotation never
+// accumulates (each run restarts from 0 cache-fresh). Lowering to 20
+// lets a 22-success run actually persist, so subsequent runs benefit
+// from the cache-fresh fast path and accumulate toward full coverage
+// across ~8 runs (~4 days at 12h cadence).
+//
+// Revert path: bump to 30 when single-run success rate reliably exceeds
+// 90% (≥27/30 cold-fetched), and back to 50 once upstream is stable
+// enough that we'd see consistent ≥45-country runs (no cap-mode kicking
+// in). Target review: 2026-05-22.
+const MIN_VALID_COUNTRIES = 20;
 
 const EP3_BASE =
   'https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/Daily_Ports_Data/FeatureServer/0/query';

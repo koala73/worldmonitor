@@ -278,16 +278,18 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     assert.match(src, /setTimeout\(resolve,\s*BATCH_BACKOFF_MS\)/);
   });
 
-  it('MIN_VALID_COUNTRIES is temporarily lowered to 25 (ArcGIS degraded)', () => {
-    // Pre-2026-05-14 value: 50. Lowered to 25 to let seed-meta refresh
-    // during the ArcGIS rate-limit degradation. The comment must call
-    // out the temporary nature + review date so this doesn't get
-    // forgotten as the new permanent floor.
-    assert.match(src, /const MIN_VALID_COUNTRIES\s*=\s*25/);
+  it('MIN_VALID_COUNTRIES is temporarily lowered to 20 (ArcGIS degraded)', () => {
+    // 2026-05-16: lowered 25 → 20 because post-#3711 budget-rebalance
+    // runs are landing ~22/30 successes — with gate=25 the 22-success
+    // runs would fail validation and extendExistingTtl-only, so the
+    // cache-fresh rotation could never accumulate. Pre-2026-05-14
+    // value: 50. The comment must call out the temporary nature +
+    // review date so this doesn't get forgotten as the new permanent floor.
+    assert.match(src, /const MIN_VALID_COUNTRIES\s*=\s*20/);
     // Require the comment to flag temporariness (so a future reviewer
     // doesn't normalise the lower value silently).
-    assert.match(src, /TEMPORARILY lowered from 50/);
-    assert.match(src, /Revert to 50/);
+    assert.match(src, /TEMPORARILY lowered/);
+    assert.match(src, /Revert path/);
   });
 
   // Greptile PR #3694 round 3 P1: with the temp gate lowered to 25 but the
