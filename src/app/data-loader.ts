@@ -1712,7 +1712,18 @@ export class DataLoaderManager implements AppModule {
     } catch (error) {
       console.warn('[DailyBrief] Failed to build daily market brief:', error);
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-      const cached = await getCachedDailyMarketBrief(timezone).catch(() => null);
+      // Same 3s cap as the upfront cache read above — covers the
+      // "build hung AND IndexedDB also degraded" double-failure mode
+      // (Greptile #3718 P2): without this guard the recovery path can
+      // itself hang, leaving the panel stuck on whatever the previous
+      // state was. .catch(() => null) absorbs both the TimeoutError and
+      // any persistent-cache read failure into the same null-result
+      // branch that the existing showError fallback already handles.
+      const cached = await withTimeout(
+        getCachedDailyMarketBrief(timezone),
+        3_000,
+        'daily-brief-cache-read-recovery',
+      ).catch(() => null);
       if (cached?.available) {
         this.callPanel('daily-market-brief', 'renderBrief', cached, 'cached');
         return;

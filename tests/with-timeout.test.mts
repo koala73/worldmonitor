@@ -76,4 +76,25 @@ describe('withTimeout', () => {
       TimeoutError,
     );
   });
+
+  it('does not invoke onTimeout when the source rejects before the budget', async () => {
+    // Coverage gap surfaced by Greptile on PR #3718: a source that rejects
+    // FAST should NOT trigger the onTimeout side-effect (the previous
+    // "does not invoke onTimeout when the source resolves first" test only
+    // covered the resolve path). Without the .finally(clearTimeout) the
+    // timer would fire after Promise.race already settled with the
+    // rejection — and onTimeout would run AFTER the rejection had already
+    // propagated to the caller. That's the worst kind of side-effect:
+    // visible to telemetry, but the caller already moved on.
+    let calls = 0;
+    const fastRejection = Promise.reject(new Error('immediate'));
+    await assert.rejects(
+      () => withTimeout(fastRejection, 50, 'reject-first', () => { calls++; }),
+      (err) => (err as Error).message === 'immediate',
+    );
+    // Wait past the budget to prove the timer was cleared (callback would
+    // have fired by now if clearTimeout hadn't run).
+    await new Promise((res) => setTimeout(res, 80));
+    assert.equal(calls, 0);
+  });
 });
