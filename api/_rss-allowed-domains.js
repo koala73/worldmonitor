@@ -294,6 +294,8 @@ export default [
   "www.australianmining.com.au",
   "news.goldseek.com",
   "news.silverseek.com",
+  "www.goldseek.com",
+  "www.silverseek.com",
   "decrypt.co",
   "blockworks.co",
   "thedefiant.io",
