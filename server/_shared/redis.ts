@@ -160,7 +160,18 @@ async function decodeFromStorage(raw: string | object): Promise<unknown | null> 
   return parsed;
 }
 
-export async function getCachedJson(key: string, raw = false): Promise<unknown | null> {
+/**
+ * @param timeoutMs  Abort budget for the GET. Defaults to the
+ *   user-facing `REDIS_OP_TIMEOUT_MS` (1.5 s). Cron callers reading
+ *   large values (e.g. the v6 digest, a multi-MB compressed blob)
+ *   should pass a higher value — there's no user waiting, and a timed-
+ *   out digest read forces a destructive rebuild-from-scratch.
+ */
+export async function getCachedJson(
+  key: string,
+  raw = false,
+  timeoutMs: number = REDIS_OP_TIMEOUT_MS,
+): Promise<unknown | null> {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
@@ -168,7 +179,7 @@ export async function getCachedJson(key: string, raw = false): Promise<unknown |
     const finalKey = raw ? key : prefixKey(key);
     const resp = await fetch(`${url}/get/${encodeURIComponent(finalKey)}`, {
       headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(REDIS_OP_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (!resp.ok) {
       const body = await resp.text().catch(() => '');

@@ -35,10 +35,14 @@ function clusterThreshold(): number {
   return Number.isFinite(n) && n > 0 && n < 1 ? n : DEFAULT_THRESHOLD;
 }
 
-/** Cache prefix is bumped to `v2` when we switched task type from
- *  CLUSTERING to SEMANTIC_SIMILARITY — old cached vectors live in a
- *  different embedding space and would corrupt clusters if mixed. */
-const EMBED_CACHE_PREFIX = 'live-news:v6:embed:v2:';
+/** Cache prefix — bump whenever the embedder INPUT or model changes, so
+ *  vectors built under different regimes never get compared:
+ *    v2 — switched task type CLUSTERING → SEMANTIC_SIMILARITY
+ *    v3 — embed input changed to title×2 + description×2 + body, and
+ *         RSS items now embed fetched article-body text. A v2-cached
+ *         vector (old `title — text` input) sits ~0.85 cosine from its
+ *         v3 equivalent — enough to split a cluster at threshold 0.87. */
+const EMBED_CACHE_PREFIX = 'live-news:v6:embed:v3:';
 const EMBED_TTL_S = 24 * 60 * 60;
 /**
  * Total budget for the text fed to the embedder. Sized to fit:

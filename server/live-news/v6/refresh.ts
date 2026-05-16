@@ -201,8 +201,12 @@ export async function refreshLiveNewsV6(): Promise<RefreshResult> {
   );
 
   // ── Phase 3: Merge + Redis write ─────────────────────────────────────
+  // 5 s read timeout (vs the 1.5 s user-facing default): the digest is a
+  // multi-MB compressed blob and a timed-out read here is destructive —
+  // it forces a rebuild-from-scratch that drops accumulated enrichment.
+  // This is a cron, so a slightly longer wait costs nothing.
   const writeStart = Date.now();
-  const existing = ((await getCachedJson(DIGEST_KEY)) as ClusteredItem[] | null) ?? [];
+  const existing = ((await getCachedJson(DIGEST_KEY, false, 5_000)) as ClusteredItem[] | null) ?? [];
   const merged = mergeItems(existing, clustered);
   await setCachedJson(DIGEST_KEY, merged, DIGEST_TTL_S);
   const writeMs = Date.now() - writeStart;
