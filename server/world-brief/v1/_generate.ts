@@ -36,9 +36,18 @@ const MIN_RSS_SOURCES = Number(process.env.WM_V6_MIN_SOURCES) || 3;
 const TOP_N = 8;
 const MAX_MEMBER_HEADLINES = 10;
 const MAX_TEXT_LEN = 600;
+/** Cap on the per-cluster "all sources" list surfaced to the reader. */
+const MAX_SOURCE_REFS = 30;
 
 export type BriefThreatLevel = 'CRITICAL' | 'HIGH' | 'ELEVATED' | 'MODERATE';
 const THREAT_ORDER: BriefThreatLevel[] = ['MODERATE', 'ELEVATED', 'HIGH', 'CRITICAL'];
+
+/** A single outlet covering a cluster — surfaced as a tappable resource
+ *  in the detail view's "all sources" list. */
+export interface WorldBriefSourceRef {
+  name: string;
+  url: string;
+}
 
 export interface WorldBriefCluster {
   /** v6 cluster id (canonical titleHash) — lets iOS deep-link to the feed. */
@@ -54,6 +63,9 @@ export interface WorldBriefCluster {
   threatLevel: BriefThreatLevel;
   /** Ranking metric: total sources for conflict, RSS publishers for live-news. */
   sourceCount: number;
+  /** Every outlet covering this story — RSS first, deduped by URL, capped.
+   *  Surfaced as the tappable "all sources" list in the detail view. */
+  sources: WorldBriefSourceRef[];
   link: string;
   imageUrl: string | null;
   locationName: string | null;
@@ -89,6 +101,47 @@ function rssSourceCount(c: ClusteredItem): number {
   return c.sources.filter((s) => s.origin === 'rss').length;
 }
 
+/** Light URL normalisation for exact-duplicate detection — drops the
+ *  fragment and trailing slashes and lowercases. */
+function normalizeUrl(url: string): string {
+  return url.trim().toLowerCase().replace(/#.*$/, '').replace(/\/+$/, '');
+}
+
+/** Normalised set of every source URL in a cluster. */
+function clusterUrlSet(c: ClusteredItem): Set<string> {
+  const set = new Set<string>();
+  for (const src of c.sources) {
+    if (src && typeof src.link === 'string' && src.link) set.add(normalizeUrl(src.link));
+  }
+  return set;
+}
+
+/** Two clusters cover the same event when they share more than one exact
+ *  source URL — a guard for when the embedder fails to merge a story. */
+function sharesDuplicateSources(a: Set<string>, b: Set<string>): boolean {
+  const [small, large] = a.size <= b.size ? [a, b] : [b, a];
+  let common = 0;
+  for (const url of small) {
+    if (large.has(url) && ++common > 1) return true;
+  }
+  return false;
+}
+
+/** Build the capped, URL-deduped "all sources" list for a cluster. */
+function buildSourceRefs(c: ClusteredItem): WorldBriefSourceRef[] {
+  const seen = new Set<string>();
+  const refs: WorldBriefSourceRef[] = [];
+  for (const src of c.sources) {
+    if (!src || typeof src.link !== 'string' || !src.link) continue;
+    const key = normalizeUrl(src.link);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    refs.push({ name: (src.source || '').trim() || 'Source', url: src.link });
+    if (refs.length >= MAX_SOURCE_REFS) break;
+  }
+  return refs;
+}
+
 /**
  * Pick the top-N most-referenced clusters for a section.
  *
@@ -96,23 +149,39 @@ function rssSourceCount(c: ClusteredItem): number {
  *   live-news  — all clusters, scored by distinct RSS-publisher count.
  *
  * Both modes require ≥ MIN_RSS_SOURCES distinct RSS publishers (the display
- * gate); GDELT corroboration never satisfies the gate.
+ * gate); GDELT corroboration never satisfies the gate. Ranked clusters are
+ * then greedily de-duplicated: a candidate sharing more than one exact
+ * source URL with an already-picked cluster is the same event (the embedder
+ * failed to merge it) and is skipped.
  */
 function pickClusters(clusters: ClusteredItem[], mode: BriefMode): PickedCluster[] {
-  return clusters
+  const ranked = clusters
     .filter((c) => c && Array.isArray(c.sources) && rssSourceCount(c) >= MIN_RSS_SOURCES)
     .filter((c) => (mode === 'conflict' ? c.isConflict === true : true))
     .map((c) => ({
       cluster: c,
       score: mode === 'conflict' ? c.sources.length : rssSourceCount(c),
-      rssHeadlines: c.sources
+      urls: clusterUrlSet(c),
+    }))
+    .sort((a, b) => b.score - a.score || b.cluster.publishedAt - a.cluster.publishedAt);
+
+  const picked: PickedCluster[] = [];
+  const pickedUrlSets: Set<string>[] = [];
+  for (const r of ranked) {
+    if (pickedUrlSets.some((set) => sharesDuplicateSources(r.urls, set))) continue;
+    picked.push({
+      cluster: r.cluster,
+      score: r.score,
+      rssHeadlines: r.cluster.sources
         .filter((s) => s.origin === 'rss')
         .slice(0, MAX_MEMBER_HEADLINES)
         .map((s) => s.title)
         .filter((t): t is string => typeof t === 'string' && t.trim().length > 0),
-    }))
-    .sort((a, b) => b.score - a.score || b.cluster.publishedAt - a.cluster.publishedAt)
-    .slice(0, TOP_N);
+    });
+    pickedUrlSets.push(r.urls);
+    if (picked.length >= TOP_N) break;
+  }
+  return picked;
 }
 
 // ── LLM prompt ───────────────────────────────────────────────────────────────
@@ -137,7 +206,7 @@ For each story produce:
 - "threatLevel": one of "CRITICAL", "HIGH", "ELEVATED", "MODERATE" — how severe or escalatory the event is${mode === 'conflict' ? '' : ' (for non-conflict news, judge overall global significance instead)'}.
 
 Also produce:
-- "overview": 1-2 sentences synthesizing the most important developments across all stories.
+- "overview": a SHORT global summary — 2 to 4 sentences, no more. Cover only the handful of developments of genuine worldwide significance; do NOT try to touch every story. Skip routine or minor items entirely.
 - "overallThreatLevel": one of "CRITICAL", "HIGH", "ELEVATED", "MODERATE" — the highest level the overall situation warrants.
 
 Respond with ONLY a JSON object of exactly this shape:
@@ -279,6 +348,7 @@ async function buildSection(
       tags: sanitizeTags(story?.tags),
       threatLevel: normalizeThreat(story?.threatLevel),
       sourceCount: p.score,
+      sources: buildSourceRefs(p.cluster),
       link: p.cluster.link,
       imageUrl: p.cluster.imageUrl ?? null,
       locationName: p.cluster.locationName ?? null,
