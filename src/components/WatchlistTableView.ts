@@ -118,10 +118,18 @@ export class WatchlistTableView<T> {
       : list.map((item) => this.renderRow(item)).join('');
     const headers = this.config.columns.map((col) => {
       const sortKey = col.sortable ? (col.sortOptionKey || col.key) : '';
-      const sortable = sortKey ? `data-sortkey="${escapeHtml(sortKey)}" class="watchlist-th-sortable"` : '';
-      const alignClass = col.align === 'right' ? ' watchlist-th-right' : '';
+      // Build a SINGLE class string — pre-fix this code emitted two
+      // `class` attributes (one for sortable, one for right-align) when
+      // a column was both, and browsers silently drop the second one,
+      // breaking click-to-sort on every right-aligned numeric column.
+      // Greptile PR #3719 P2.
+      const classes: string[] = [];
+      if (sortKey) classes.push('watchlist-th-sortable');
+      if (col.align === 'right') classes.push('watchlist-th-right');
+      const classAttr = classes.length ? ` class="${classes.join(' ')}"` : '';
+      const sortAttr = sortKey ? ` data-sortkey="${escapeHtml(sortKey)}"` : '';
       const activeSortIndicator = sortKey && sortKey === this.state.sort ? ' ↓' : '';
-      return `<th${alignClass ? ` class="${alignClass.trim()}"` : ''} ${sortable}>${escapeHtml(col.label)}${activeSortIndicator}</th>`;
+      return `<th${classAttr}${sortAttr}>${escapeHtml(col.label)}${activeSortIndicator}</th>`;
     }).join('');
     return `
       <div class="watchlist-table-view">
