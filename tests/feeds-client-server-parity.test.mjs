@@ -35,26 +35,50 @@ const SERVER_PATH = resolve(ROOT, 'server/worldmonitor/news/v1/_feeds.ts');
 
 /**
  * Extract feed name + a routing hint from a source file.
- * Matches `{ name: '<n>', ... url: <expr> }` entries. The `<expr>` can be
- * either a URL literal (`'https://news.google.com/...'`) or a helper call
- * (`gn('site:foo.com when:1d')` / `rss('https://...')`).
+ *
+ * Handles both shapes:
+ *
+ *     // inline
+ *     { name: 'X', url: rss('https://...') },
+ *     { name: 'Y', url: gn('site:y.com when:1d') },
+ *
+ *     // multiline with locale-keyed URL object (locale variants all use
+ *     // direct rss/gn helpers, never mixed)
+ *     {
+ *       name: 'Z',
+ *       url: {
+ *         en: rss('...'),
+ *         fr: rss('...'),
+ *       },
+ *     }
+ *
+ * The earlier single-line-only regex missed ~46 multiline entries on the
+ * client side, which caused the orphan check below to falsely flag entries
+ * that ARE on both sides (France 24, EuroNews, etc.) as server-only.
  *
  * Returns a Map<name, { isGoogleNews: boolean, snippet: string }>.
- * `snippet` is the matched URL expression for error messages.
  */
 function extractFeedRouting(filePath) {
   const src = readFileSync(filePath, 'utf-8');
-  // Match `name: '<name>'` then up to a single-line entry's URL expression.
-  const ENTRY_RE = /\bname:\s*['"]([^'"]+)['"][^\n]*?\burl:\s*([^,}\n][^,}\n]*[^,}\n\s])/g;
   const out = new Map();
+  const NAME_RE = /\bname:\s*['"]([^'"]+)['"]/g;
   let m;
-  while ((m = ENTRY_RE.exec(src)) !== null) {
-    const [, name, urlExpr] = m;
+  while ((m = NAME_RE.exec(src)) !== null) {
+    const [, name] = m;
+    // Scan forward from this `name:` to find the matching `url:` — within
+    // the next ~600 chars (enough to span a multiline locale-object url
+    // without crossing into the sibling entry's name).
+    const window = src.slice(m.index, m.index + 600);
+    const urlMatch = window.match(/\burl:\s*([\s\S]*?)(?:,\s*$|}\s*[,\]])/m);
+    if (!urlMatch) continue;
+    const urlExpr = urlMatch[1];
     const isGN =
       /news\.google\.com\/rss\/search/i.test(urlExpr) || /\bgn\s*\(/.test(urlExpr);
-    // Don't let later duplicates clobber earlier ones — names can repeat
-    // across categories (localized variants etc.); first-seen wins.
-    if (!out.has(name)) out.set(name, { isGoogleNews: isGN, snippet: urlExpr.trim() });
+    // First-seen wins — names can repeat across categories (localized
+    // variants etc.); the first definition is the canonical routing.
+    if (!out.has(name)) {
+      out.set(name, { isGoogleNews: isGN, snippet: urlExpr.trim().slice(0, 120) });
+    }
   }
   return out;
 }
@@ -86,6 +110,13 @@ describe('feed parity: client vs server (PR #3715 follow-up)', () => {
     'SemiAnalysis',
     'EIA Reports',
     'Northern Miner',
+    // Mixed-locale routing: client uses direct rss() for en+de and a Google
+    // News query for es; server uses pure direct for en. The classifier
+    // treats any-locale-is-GoogleNews as Google News, so it flags this as a
+    // drift even though both sides do agree on en. Worth reconciling
+    // (probably: server should fall back to gn() for the same es query) but
+    // out of scope for the #3717 review fix.
+    'DW News',
   ]);
 
   it('every NEW shared feed name uses consistent routing (grandfathered drift snapshot)', () => {
@@ -134,5 +165,67 @@ describe('feed parity: client vs server (PR #3715 follow-up)', () => {
         `${label} (${path}) still references the dead blockworks.co/feed URL`,
       );
     }
+  });
+
+  // Server-only feeds get aggregated, ranked, and TRUNCATED to
+  // MAX_ITEMS_PER_CATEGORY in list-feed-digest.ts:1076-1082, THEN the client
+  // filters by `enabledNames` from src/config/feeds.ts (data-loader.ts:908-914).
+  // If the server emits a feed whose name has no client-side counterpart, the
+  // server fetches it for nothing AND its items crowd out visible items in the
+  // same category, shrinking the visible result set. Exactly the
+  // Commodity-Trade-Mantra failure mode the #3717 reviewer caught.
+  //
+  // Five existing server-only entries are grandfathered (KNOWN_SERVER_ONLY).
+  // Each is its own per-feed judgment — they may be intentional enrichment
+  // that's never user-visible, or they may be the same crowd-out bug latent
+  // since before this test landed. They should be reviewed one-by-one (either
+  // restore the client-side name OR drop the server entry); the set should
+  // SHRINK over time, not grow.
+  const KNOWN_SERVER_ONLY = new Set([
+    'Trump - Truth Social',
+    'White House Actions',
+    'First Round Review',
+    'YC News',
+    'YC Blog',
+  ]);
+
+  it('no NEW server-only feed entries (crowd-out risk via MAX_ITEMS_PER_CATEGORY)', () => {
+    const newOrphans = [];
+    const resolvedKnown = [];
+    for (const name of server.keys()) {
+      if (client.has(name)) {
+        if (KNOWN_SERVER_ONLY.has(name)) resolvedKnown.push(name);
+        continue;
+      }
+      if (KNOWN_SERVER_ONLY.has(name)) continue;
+      newOrphans.push(name);
+    }
+    assert.equal(
+      newOrphans.length,
+      0,
+      'NEW server-only feed entries detected. The server will fetch these, ' +
+        'rank them into MAX_ITEMS_PER_CATEGORY, then the client filter will ' +
+        'drop them — silently shrinking the visible result set. Either add a ' +
+        'matching entry with the same name to src/config/feeds.ts, or remove ' +
+        'the server entry:\n' +
+        newOrphans.map(n => `  - "${n}"`).join('\n'),
+    );
+    assert.equal(
+      resolvedKnown.length,
+      0,
+      `Server-only entries in KNOWN_SERVER_ONLY are now mirrored on the client — remove from the set: ${resolvedKnown.join(', ')}`,
+    );
+  });
+
+  it('REGRESSION (#3717): Commodity Trade Mantra is not on the server side', () => {
+    // The #3717 reviewer caught this: I removed CTM from the client in #3715
+    // but left it on the server, so the server fetched it, counted it toward
+    // MAX_ITEMS_PER_CATEGORY, then the client filter dropped it — invisible
+    // crowd-out. Lock it in.
+    const src = readFileSync(SERVER_PATH, 'utf-8');
+    assert.ok(
+      !/name:\s*['"]Commodity Trade Mantra['"]/.test(src),
+      `${SERVER_PATH} still has a 'Commodity Trade Mantra' entry — it has no client counterpart so its items get truncated-then-dropped`,
+    );
   });
 });
