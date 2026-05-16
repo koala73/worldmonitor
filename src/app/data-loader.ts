@@ -17,6 +17,7 @@ import {
 import { resolveNewsCategories, enabledNewsCategoryKeys } from '@/config/feed-resolution';
 import { INTEL_HOTSPOTS, CONFLICT_ZONES } from '@/config/geo';
 import { tokenizeForMatch, matchKeyword } from '@/utils/keyword-match';
+import { withTimeout } from '@/utils/with-timeout';
 import {
   fetchCategoryFeeds,
   getFeedFailures,
@@ -1641,7 +1642,14 @@ export class DataLoaderManager implements AppModule {
     this.ctx.inFlight.add('dailyMarketBrief');
     try {
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-      const cached = await getCachedDailyMarketBrief(timezone);
+      // Bound the IndexedDB cache read so a hung persistent-cache layer
+      // can't keep the panel on its default Loading state forever — fall
+      // through to "build from scratch" instead.
+      const cached = await withTimeout(
+        getCachedDailyMarketBrief(timezone),
+        3_000,
+        'daily-brief-cache-read',
+      ).catch(() => null);
 
       if (cached?.available) {
         this.callPanel('daily-market-brief', 'renderBrief', cached, 'cached');
@@ -1655,29 +1663,51 @@ export class DataLoaderManager implements AppModule {
         this.callPanel('daily-market-brief', 'showLoading', 'Building daily market brief...');
       }
 
+      // Each context collector calls a generated RPC client without its
+      // own timeout (`getFearGreedIndex`, `getFredSeriesBatch`); the
+      // `try { ... } catch` inside each collector only handles rejections
+      // — a hung RPC sits forever and `Promise.allSettled` waits with it.
+      // That's the same hang-class this PR was opened to fix; an earlier
+      // commit missed these three call sites because they were two layers
+      // up from the `summaryProvider` await I was hunting. 8s per
+      // collector is generous for an RPC and leaves >36s of the outer
+      // 60s budget for the actual LLM call.
+      // `_collectSectorContext` is sync (reads only hydrated data) so it
+      // needs no wrapping; allSettled accepts non-promises directly.
       const [r0, r1, r2] = await Promise.allSettled([
-        this._collectRegimeContext(),
-        this._collectYieldCurveContext(),
+        withTimeout(this._collectRegimeContext(), 8_000, 'daily-brief-regime-context'),
+        withTimeout(this._collectYieldCurveContext(), 8_000, 'daily-brief-yield-context'),
         this._collectSectorContext(),
       ]);
       const regimeContext = r0.status === 'fulfilled' ? r0.value : undefined;
       const yieldCurveContext = r1.status === 'fulfilled' ? r1.value : undefined;
       const sectorContext = r2.status === 'fulfilled' ? r2.value : undefined;
 
-      const brief = await buildDailyMarketBrief({
-        markets: this.ctx.latestMarkets,
-        newsByCategory: this.ctx.newsByCategory,
-        timezone,
-        regimeContext,
-        yieldCurveContext,
-        sectorContext,
-        frameworkAppend: getActiveFrameworkForPanel('daily-market-brief')?.systemPromptAppend,
-        newsCategories: SITE_VARIANT === 'commodity'
-          ? ['commodity-news', 'gold-silver', 'mining-news', 'energy', 'critical-minerals']
-          : SITE_VARIANT === 'energy'
-            ? ['live-news', 'energy', 'supply-chain']
-            : undefined,
-      });
+      // Wall-clock budget on the whole build. The inner summarizer has its
+      // own 45s cap (SUMMARIZER_TIMEOUT_MS in daily-market-brief.ts) and
+      // falls back to rules-based output, so this outer 60s budget only
+      // fires if the rules-based path itself hangs (shouldn't, but defensive
+      // — covers e.g. a getDefaultSummarizer() dynamic-import that never
+      // resolves). On timeout the existing catch below serves the cached
+      // version or shows an error, never letting the panel stay stuck.
+      const brief = await withTimeout(
+        buildDailyMarketBrief({
+          markets: this.ctx.latestMarkets,
+          newsByCategory: this.ctx.newsByCategory,
+          timezone,
+          regimeContext,
+          yieldCurveContext,
+          sectorContext,
+          frameworkAppend: getActiveFrameworkForPanel('daily-market-brief')?.systemPromptAppend,
+          newsCategories: SITE_VARIANT === 'commodity'
+            ? ['commodity-news', 'gold-silver', 'mining-news', 'energy', 'critical-minerals']
+            : SITE_VARIANT === 'energy'
+              ? ['live-news', 'energy', 'supply-chain']
+              : undefined,
+        }),
+        60_000,
+        'daily-brief-total-build',
+      );
 
       if (this.dailyBriefGeneration !== gen) return;
 
@@ -1688,12 +1718,37 @@ export class DataLoaderManager implements AppModule {
         return;
       }
 
-      await cacheDailyMarketBrief(brief);
+      // Render first, persist after. The previous order `await
+      // cacheDailyMarketBrief(brief); render(brief)` meant a hung
+      // IndexedDB / Tauri-Store write blocked the panel from ever
+      // displaying the finished brief — the build budget proved nothing
+      // by itself. Now: user sees the brief immediately; the cache write
+      // runs fire-and-forget with its own 5s budget so a hung backend
+      // becomes "no warmup for tomorrow's load" instead of "panel stuck
+      // on Building forever."
       this.callPanel('daily-market-brief', 'renderBrief', brief, 'live');
+      void withTimeout(
+        cacheDailyMarketBrief(brief),
+        5_000,
+        'daily-brief-cache-write',
+      ).catch((err) => {
+        console.warn('[DailyBrief] cache write failed or timed out:', (err as Error).message);
+      });
     } catch (error) {
       console.warn('[DailyBrief] Failed to build daily market brief:', error);
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-      const cached = await getCachedDailyMarketBrief(timezone).catch(() => null);
+      // Same 3s cap as the upfront cache read above — covers the
+      // "build hung AND IndexedDB also degraded" double-failure mode
+      // (Greptile #3718 P2): without this guard the recovery path can
+      // itself hang, leaving the panel stuck on whatever the previous
+      // state was. .catch(() => null) absorbs both the TimeoutError and
+      // any persistent-cache read failure into the same null-result
+      // branch that the existing showError fallback already handles.
+      const cached = await withTimeout(
+        getCachedDailyMarketBrief(timezone),
+        3_000,
+        'daily-brief-cache-read-recovery',
+      ).catch(() => null);
       if (cached?.available) {
         this.callPanel('daily-market-brief', 'renderBrief', cached, 'cached');
         return;

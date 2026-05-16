@@ -46,15 +46,29 @@ const SERVER_NAME = 'worldmonitor';
 //     properties (country/dataset/limit/...) backed by per-tool `_postFilter`
 //     in-memory narrowing. Purely additive — omitting all arguments returns
 //     the pre-1.2.0 payload byte-for-byte.
+// Bumped 1.2.0 → 1.3.0 (2026-05-15, issue #3678) reflecting:
+//   - Default `limit` cap of DEFAULT_LIST_LIMIT (30) applied by every cache
+//     tool when the call omits `limit`. Pass `limit: 0` for the full payload.
+//     This IS a contract change — a no-args call now returns ≤30 items per
+//     list — issued as a minor bump.
+//   - Universal `summary: true` flag advertised on every cache tool: collapses
+//     each array/large-map to counts + 3-item samples, composable with filters.
 // Keep aligned with public/.well-known/mcp/server-card.json::serverInfo.version
 // — discovery scanners cross-check both values.
-const SERVER_VERSION = '1.2.0';
+const SERVER_VERSION = '1.3.0';
 
 // Country-code whitelist for get_consumer_prices. The consumer-prices seeder
 // currently only produces data for AE (UAE); future markets will be added
 // here as they're seeded. Kept near COUNTRY_BBOXES (the other ISO-3166 alpha-2
 // lookup table used by tools) so adding a market is a single-file change.
 const SUPPORTED_CONSUMER_PRICES_COUNTRIES = new Set(['ae']);
+
+// Default cap applied by every cache tool's `_postFilter` when the call omits
+// `limit` — issue #3678 ("MCP tool responses are very large"). Reasonable
+// per-list cap that keeps a typical multi-key bundle response under ~5–10 KB.
+// Clients that want the full payload pass `limit: 0`; the cap helpers treat
+// `n <= 0` as a no-op, so `0` is the explicit opt-out sentinel.
+const DEFAULT_LIST_LIMIT = 30;
 
 // ---------------------------------------------------------------------------
 // Rate limiters
@@ -419,6 +433,58 @@ function capNested(data: Record<string, unknown>, label: string, child: string, 
   }
 }
 
+// Summary mode (issue #3678) — collapse every array and every large entity-keyed
+// object inside `data` to a count + small sample, leaving scalars and small typed
+// payload objects intact. Applied AFTER `_postFilter` so it composes with the
+// per-tool filters: `country: "DE", summary: true` returns counts + samples for
+// DE specifically. Single-level summarisation is intentional — enough to convey
+// shape/size, cheap to compute, predictable output.
+const SUMMARY_SAMPLE_SIZE = 3;
+const SUMMARY_MAP_THRESHOLD = 5; // an inner object with >5 keys is treated as an entity map
+
+function summarizeMap(obj: Record<string, unknown>): { count: number; sample_keys: string[] } {
+  const keys = Object.keys(obj);
+  return { count: keys.length, sample_keys: keys.slice(0, SUMMARY_SAMPLE_SIZE) };
+}
+
+function summarizeField(v: unknown): unknown {
+  if (Array.isArray(v)) return { count: v.length, sample: v.slice(0, SUMMARY_SAMPLE_SIZE) };
+  if (v && typeof v === 'object') {
+    const inner = Object.keys(v as Record<string, unknown>);
+    if (inner.length > SUMMARY_MAP_THRESHOLD) return summarizeMap(v as Record<string, unknown>);
+  }
+  return v;
+}
+
+function summarizeData(data: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [label, payload] of Object.entries(data)) {
+    if (Array.isArray(payload)) {
+      out[label] = { count: payload.length, sample: payload.slice(0, SUMMARY_SAMPLE_SIZE) };
+    } else if (payload && typeof payload === 'object') {
+      const keys = Object.keys(payload as Record<string, unknown>);
+      const allObjValues = keys.length > 0 && keys.every((k) => {
+        const v = (payload as Record<string, unknown>)[k];
+        return v != null && typeof v === 'object';
+      });
+      if (keys.length > SUMMARY_MAP_THRESHOLD && allObjValues) {
+        // Entity-keyed map at the top level (e.g. data._all = { US: {...}, ... }).
+        out[label] = summarizeMap(payload as Record<string, unknown>);
+      } else {
+        // Typed payload object — recurse one level into its fields.
+        const recursed: Record<string, unknown> = {};
+        for (const [k, v] of Object.entries(payload as Record<string, unknown>)) {
+          recursed[k] = summarizeField(v);
+        }
+        out[label] = recursed;
+      }
+    } else {
+      out[label] = payload;
+    }
+  }
+  return out;
+}
+
 const TOOL_REGISTRY: ToolDef[] = [
   {
     name: 'get_market_data',
@@ -436,6 +502,7 @@ const TOOL_REGISTRY: ToolDef[] = [
           items: { type: 'string', enum: ['equity', 'commodity', 'crypto', 'sectors', 'etf', 'gulf', 'sentiment'] },
           description: 'Restrict the response to one or more asset classes. Omit for all.',
         },
+        limit: { type: 'number', description: 'Cap each per-class quote list (stocks/commodities/crypto/gulf/sectors/ETF flows) to at most this many items (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
@@ -448,6 +515,12 @@ const TOOL_REGISTRY: ToolDef[] = [
         narrowNested(data, 'sectors', 'sectors', (s) => matchesCode(s.symbol, symbols));
         narrowNested(data, 'etf-flows', 'etfs', (e) => matchesCode(e.ticker, symbols));
       }
+      const limit = argNum(params.limit) ?? DEFAULT_LIST_LIMIT;
+      for (const label of ['stocks-bootstrap', 'commodities-bootstrap', 'crypto', 'gulf-quotes']) {
+        capNested(data, label, 'quotes', limit);
+      }
+      capNested(data, 'sectors', 'sectors', limit);
+      capNested(data, 'etf-flows', 'etfs', limit);
       const cls = argStrList(params.asset_class);
       if (cls.length > 0) {
         const map: Record<string, string> = {
@@ -499,14 +572,14 @@ const TOOL_REGISTRY: ToolDef[] = [
           type: 'number',
           description: 'Drop events below this fatality count (UCDP deathsBest / unrest fatalities).',
         },
-        limit: { type: 'number', description: 'Cap each event list to at most this many items.' },
+        limit: { type: 'number', description: 'Cap each event list to at most this many items (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
     _postFilter: (data, params) => {
       const country = argStr(params.country);
       const minFatal = argNum(params.min_fatalities);
-      const limit = argNum(params.limit);
+      const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
       if (country) {
         narrowNested(data, 'ucdp-events', 'events', (e) => ciIncludes(e.country, country));
         narrowNested(data, 'events', 'events', (e) => ciIncludes(e.country, country));
@@ -553,7 +626,7 @@ const TOOL_REGISTRY: ToolDef[] = [
         },
         country: { type: 'string', description: 'Filter to one country by name (case-insensitive substring, e.g. "united states").' },
         iata: { type: 'string', description: 'Filter to a single airport by IATA code (e.g. "JFK").' },
-        limit: { type: 'number', description: 'Cap the alert list to at most this many items.' },
+        limit: { type: 'number', description: 'Cap the alert list to at most this many items (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
@@ -565,7 +638,7 @@ const TOOL_REGISTRY: ToolDef[] = [
       }
       if (country) narrowNested(data, 'delays-bootstrap', 'alerts', (a) => ciIncludes(a.country, country));
       if (iata) narrowNested(data, 'delays-bootstrap', 'alerts', (a) => argStr(a.iata) === iata);
-      capNested(data, 'delays-bootstrap', 'alerts', argNum(params.limit));
+      capNested(data, 'delays-bootstrap', 'alerts', (argNum(params.limit) ?? DEFAULT_LIST_LIMIT));
       return data;
     },
     _cacheKeys: ['aviation:delays-bootstrap:v1'],
@@ -587,7 +660,7 @@ const TOOL_REGISTRY: ToolDef[] = [
         category: { type: 'string', description: 'Filter top news stories to one category (e.g. "conflict", "economy"; fallback is "general").' },
         country: { type: 'string', description: 'Filter top stories and travel advisories to one ISO 3166-1 alpha-2 country code (case-insensitive).' },
         alerts_only: { type: 'boolean', description: 'Keep only top stories flagged as alerts.' },
-        limit: { type: 'number', description: 'Cap each list (top stories, signals, advisories) to at most this many items.' },
+        limit: { type: 'number', description: 'Cap each list (top stories, signals, advisories) to at most this many items (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
@@ -595,7 +668,7 @@ const TOOL_REGISTRY: ToolDef[] = [
       const topic = argStr(params.topic);
       const category = argStr(params.category);
       const countries = argStrList(params.country);
-      const limit = argNum(params.limit);
+      const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
       if (topic) narrowNested(data, 'gdelt-intel', 'topics', (t) => argStr(t.id) === topic);
       if (category) narrowNested(data, 'insights', 'topStories', (s) => argStr(s.category) === category);
       if (countries.length > 0) {
@@ -634,13 +707,13 @@ const TOOL_REGISTRY: ToolDef[] = [
         },
         min_magnitude: { type: 'number', description: 'Drop earthquakes and natural events below this magnitude.' },
         active_only: { type: 'boolean', description: 'Keep only natural events that are still active (not closed).' },
-        limit: { type: 'number', description: 'Cap each hazard list to at most this many items.' },
+        limit: { type: 'number', description: 'Cap each hazard list to at most this many items (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
     _postFilter: (data, params) => {
       const minMag = argNum(params.min_magnitude);
-      const limit = argNum(params.limit);
+      const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
       if (minMag != null) {
         narrowNested(data, 'earthquakes', 'earthquakes', (q) => (argNum(q.magnitude) ?? 0) >= minMag);
         narrowNested(data, 'events', 'events', (e) => (argNum(e.magnitude) ?? 0) >= minMag);
@@ -677,6 +750,7 @@ const TOOL_REGISTRY: ToolDef[] = [
       properties: {
         theater: { type: 'string', description: 'Filter to one theater by id (case-insensitive substring, e.g. "iran", "taiwan", "baltic", "korea").' },
         posture_level: { type: 'string', description: 'Filter to a single posture level.' },
+        limit: { type: 'number', description: 'Cap the theaters list to at most this many items (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
@@ -685,6 +759,7 @@ const TOOL_REGISTRY: ToolDef[] = [
       const level = argStr(params.posture_level);
       if (theater) narrowNested(data, 'theater_posture', 'theaters', (t) => ciIncludes(t.theater, theater));
       if (level) narrowNested(data, 'theater_posture', 'theaters', (t) => argStr(t.postureLevel) === level);
+      capNested(data, 'theater_posture', 'theaters', argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
       return data;
     },
     _cacheKeys: ['theater_posture:sebuf:stale:v1'],
@@ -717,7 +792,7 @@ const TOOL_REGISTRY: ToolDef[] = [
           description: 'Drop threats below this severity level.',
         },
         country: { type: 'string', description: 'Filter to one ISO 3166-1 alpha-2 country code (many threats have no country and are dropped by this filter).' },
-        limit: { type: 'number', description: 'Cap the threat list to at most this many items.' },
+        limit: { type: 'number', description: 'Cap the threat list to at most this many items (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
@@ -738,7 +813,7 @@ const TOOL_REGISTRY: ToolDef[] = [
           return r == null || r >= minRank;
         });
       }
-      capNested(data, 'threats-bootstrap', 'threats', argNum(params.limit));
+      capNested(data, 'threats-bootstrap', 'threats', (argNum(params.limit) ?? DEFAULT_LIST_LIMIT));
       return data;
     },
     _cacheKeys: ['cyber:threats-bootstrap:v2'],
@@ -764,13 +839,13 @@ const TOOL_REGISTRY: ToolDef[] = [
           type: 'string',
           description: 'Filter the country-keyed datasets (fuel-prices, BIS DSR/property, economic calendar) to one ISO 3166-1 alpha-2 code.',
         },
-        limit: { type: 'number', description: 'Cap each list dataset (calendar, spending, earnings) to at most this many items.' },
+        limit: { type: 'number', description: 'Cap each list dataset (calendar, spending, earnings) to at most this many items (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
     _postFilter: (data, params) => {
       const countries = argStrList(params.country);
-      const limit = argNum(params.limit);
+      const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
       if (countries.length > 0) {
         narrowNested(data, 'fuel-prices', 'countries', (c) => matchesCode(c.code, countries));
         narrowNested(data, 'econ-calendar', 'events', (e) => matchesCode(e.country, countries));
@@ -936,7 +1011,7 @@ const TOOL_REGISTRY: ToolDef[] = [
         },
         query: { type: 'string', description: 'Keep only markets whose title contains this text (case-insensitive).' },
         source: { type: 'string', enum: ['kalshi', 'polymarket'], description: 'Filter to one prediction-market source.' },
-        limit: { type: 'number', description: 'Cap each category bucket to at most this many markets.' },
+        limit: { type: 'number', description: 'Cap each category bucket to at most this many markets (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
@@ -944,7 +1019,7 @@ const TOOL_REGISTRY: ToolDef[] = [
       const category = argStr(params.category);
       const query = argStr(params.query);
       const source = argStr(params.source);
-      const limit = argNum(params.limit);
+      const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
       const buckets = ['geopolitical', 'tech', 'finance'];
       for (const b of buckets) {
         if (query) narrowNested(data, 'markets-bootstrap', b, (m) => ciIncludes(m.title, query));
@@ -976,7 +1051,7 @@ const TOOL_REGISTRY: ToolDef[] = [
         country: { type: 'string', description: 'Filter sanctioned entities and pressure scores to one ISO 3166-1 alpha-2 country code.' },
         entity_type: { type: 'string', description: 'Filter to one entity type (case-insensitive substring, e.g. "vessel", "aircraft", "person", "entity").' },
         query: { type: 'string', description: 'Keep only sanctioned entities whose name contains this text (case-insensitive).' },
-        limit: { type: 'number', description: 'Cap the entity list and recent pressure entries to at most this many items.' },
+        limit: { type: 'number', description: 'Cap the entity list and recent pressure entries to at most this many items (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
@@ -984,7 +1059,7 @@ const TOOL_REGISTRY: ToolDef[] = [
       const countries = argStrList(params.country);
       const etype = argStr(params.entity_type);
       const query = argStr(params.query);
-      const limit = argNum(params.limit);
+      const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
       if (countries.length > 0) {
         narrowArray(data, 'entities', (e) => matchesCode(e.cc, countries));
         narrowNested(data, 'pressure', 'entries', (e) => matchesCode(e.countryCodes, countries));
@@ -1018,13 +1093,13 @@ const TOOL_REGISTRY: ToolDef[] = [
           items: { type: 'string' },
           description: 'ISO 3166-1 alpha-3 country codes to keep (e.g. ["SYR","UKR","AFG"]). Matches both per-country totals and origin/asylum flows. Omit for all.',
         },
-        limit: { type: 'number', description: 'Cap the per-country and top-flow lists to at most this many items.' },
+        limit: { type: 'number', description: 'Cap the per-country and top-flow lists to at most this many items (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
     _postFilter: (data, params) => {
       const codes = argStrList(params.countries);
-      const limit = argNum(params.limit);
+      const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
       if (codes.length > 0) {
         narrowNested(data, 'summary', 'countries', (c) => matchesCode(c.code, codes));
         narrowNested(data, 'summary', 'topFlows', (f) => matchesCode(f.originCode, codes) || matchesCode(f.asylumCode, codes));
@@ -1063,7 +1138,7 @@ const TOOL_REGISTRY: ToolDef[] = [
         country: { type: 'string', description: 'Filter outbreaks and air-quality stations to one ISO 3166-1 alpha-2 country code.' },
         disease: { type: 'string', description: 'Keep only outbreaks whose disease name contains this text (case-insensitive).' },
         min_aqi: { type: 'number', description: 'Drop air-quality stations below this AQI value.' },
-        limit: { type: 'number', description: 'Cap the outbreak and station lists to at most this many items.' },
+        limit: { type: 'number', description: 'Cap the outbreak and station lists to at most this many items (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
@@ -1071,7 +1146,7 @@ const TOOL_REGISTRY: ToolDef[] = [
       const countries = argStrList(params.country);
       const disease = argStr(params.disease);
       const minAqi = argNum(params.min_aqi);
-      const limit = argNum(params.limit);
+      const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
       if (countries.length > 0) {
         narrowNested(data, 'disease-outbreaks', 'outbreaks', (o) => matchesCode(o.countryCode, countries));
         narrowNested(data, 'air-quality', 'stations', (s) => matchesCode(s.country_code, countries));
@@ -1122,6 +1197,7 @@ const TOOL_REGISTRY: ToolDef[] = [
           type: 'string',
           description: 'Filter the country-keyed datasets (Ember electricity mix, gas storage, fuel shortages, energy disruptions, fossil-share) to one ISO 3166-1 alpha-2 code.',
         },
+        limit: { type: 'number', description: 'Cap each list-bearing energy slice (crisis-policies, electricity regions, gas-storage countries, World Bank renewable history/regions) to at most this many items (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
@@ -1136,6 +1212,14 @@ const TOOL_REGISTRY: ToolDef[] = [
         mapNested(data, 'fuel-shortages', 'shortages', (m) => filterMapValues(m, (s) => matchesCode(s.country, countries)));
         mapNested(data, 'disruptions', 'events', (m) => filterMapValues(m, (e) => matchesCode(e.countries, countries)));
       }
+      const limit = argNum(params.limit) ?? DEFAULT_LIST_LIMIT;
+      capNested(data, 'crisis-policies', 'policies', limit);
+      capNested(data, 'index', 'regions', limit);
+      capNested(data, 'worldbank-renewable', 'historicalData', limit);
+      capNested(data, 'worldbank-renewable', 'regions', limit);
+      // _countries is a top-level string[] — capArrays handles top-level arrays;
+      // in the energy bundle it's the only such array, so no collateral damage.
+      capArrays(data, limit);
       const ds = argStrList(params.dataset);
       if (ds.length > 0) {
         const map: Record<string, string> = {
@@ -1201,13 +1285,13 @@ const TOOL_REGISTRY: ToolDef[] = [
           type: 'string',
           description: 'Filter the country-tagged datasets (climate disasters, air-quality stations) to one ISO 3166-1 alpha-2 code.',
         },
-        limit: { type: 'number', description: 'Cap each list dataset (anomalies, disasters, stations, news, alerts) to at most this many items.' },
+        limit: { type: 'number', description: 'Cap each list dataset (anomalies, disasters, stations, news, alerts) to at most this many items (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
     _postFilter: (data, params) => {
       const countries = argStrList(params.country);
-      const limit = argNum(params.limit);
+      const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
       if (countries.length > 0) {
         narrowNested(data, 'disasters', 'disasters', (d) => matchesCode(d.countryCode, countries));
         narrowNested(data, 'air-quality', 'stations', (s) => matchesCode(s.country_code, countries));
@@ -1248,7 +1332,7 @@ const TOOL_REGISTRY: ToolDef[] = [
       properties: {
         country: { type: 'string', description: 'Filter to one country by name (case-insensitive substring).' },
         severity: { type: 'string', description: 'Filter to one outage severity (case-insensitive substring).' },
-        limit: { type: 'number', description: 'Cap the outage list to at most this many items.' },
+        limit: { type: 'number', description: 'Cap the outage list to at most this many items (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
@@ -1257,7 +1341,7 @@ const TOOL_REGISTRY: ToolDef[] = [
       const severity = argStr(params.severity);
       if (country) narrowNested(data, 'outages', 'outages', (o) => ciIncludes(o.country, country));
       if (severity) narrowNested(data, 'outages', 'outages', (o) => ciIncludes(o.severity, severity));
-      capNested(data, 'outages', 'outages', argNum(params.limit));
+      capNested(data, 'outages', 'outages', (argNum(params.limit) ?? DEFAULT_LIST_LIMIT));
       return data;
     },
     _cacheKeys: ['infra:outages:v1'],
@@ -1282,13 +1366,13 @@ const TOOL_REGISTRY: ToolDef[] = [
           type: 'string',
           description: 'Filter COMTRADE flows to one commodity — matches the HS code exactly or the commodity description by substring (e.g. "2709" or "crude").',
         },
-        limit: { type: 'number', description: 'Cap each list dataset (carriers, months, flows) to at most this many items.' },
+        limit: { type: 'number', description: 'Cap each list dataset (carriers, months, flows) to at most this many items (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
     _postFilter: (data, params) => {
       const commodity = argStr(params.commodity);
-      const limit = argNum(params.limit);
+      const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
       if (commodity) {
         narrowNested(data, 'flows', 'flows', (f) => argStr(f.cmdCode) === commodity || ciIncludes(f.cmdDesc, commodity));
       }
@@ -1324,13 +1408,13 @@ const TOOL_REGISTRY: ToolDef[] = [
           type: 'string',
           description: 'Filter the per-country datasets to one ISO 3166-1 alpha-2 country code (e.g. "US"). It is translated to alpha-3 internally for the national-debt dataset; passing an alpha-3 code directly also works.',
         },
-        limit: { type: 'number', description: 'Cap each list dataset (tariff datapoints, BigMac countries, debt entries) to at most this many items.' },
+        limit: { type: 'number', description: 'Cap each list dataset (tariff datapoints, BigMac countries, debt entries) to at most this many items (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
     _postFilter: (data, params) => {
       const countries = argStrList(params.country);
-      const limit = argNum(params.limit);
+      const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
       if (countries.length > 0) {
         narrowNested(data, 'bigmac', 'countries', (c) => matchesCode(c.code, countries));
         // national-debt entries are keyed by ISO alpha-3 (iso3:"USA"); the
@@ -1394,6 +1478,7 @@ const TOOL_REGISTRY: ToolDef[] = [
           },
           description: 'Restrict the response to one or more sub-datasets. Omit for the full bundle.',
         },
+        limit: { type: 'number', description: 'Cap the chokepoint-baselines list and the _countries ISO2 index to at most this many items (default 30, pass 0 for no cap). Keyed-object maps (transit-summaries, chokepoint_transits, ref, chokepoint-flows) are intentionally not capped — use the `chokepoint` filter instead.' },
       },
       required: [],
     },
@@ -1405,6 +1490,10 @@ const TOOL_REGISTRY: ToolDef[] = [
         data['chokepoint-flows'] = pickMapKeysLike(data['chokepoint-flows'], cp);
         narrowNested(data, 'chokepoint-baselines', 'chokepoints', (c) => ciIncludes(c.id, cp) || ciIncludes(c.relayId, cp) || ciIncludes(c.name, cp));
       }
+      const limit = argNum(params.limit) ?? DEFAULT_LIST_LIMIT;
+      capNested(data, 'chokepoint-baselines', 'chokepoints', limit);
+      // _countries is the only top-level array in this bundle (string[] of ISO2 codes).
+      capArrays(data, limit);
       return selectDatasets(data, argStrList(params.dataset));
     },
     // Maritime chokepoint bundle distinct from get_supply_chain_data (which keeps
@@ -1464,14 +1553,14 @@ const TOOL_REGISTRY: ToolDef[] = [
           enum: ['science-health', 'nature-wildlife', 'climate-wins', 'innovation-tech', 'humanity-kindness', 'culture-community'],
           description: 'Filter to one positive-event category.',
         },
-        limit: { type: 'number', description: 'Cap the event list to at most this many items.' },
+        limit: { type: 'number', description: 'Cap the event list to at most this many items (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
     _postFilter: (data, params) => {
       const category = argStr(params.category);
       if (category) narrowNested(data, 'geo-bootstrap', 'events', (e) => argStr(e.category) === category);
-      capNested(data, 'geo-bootstrap', 'events', argNum(params.limit));
+      capNested(data, 'geo-bootstrap', 'events', (argNum(params.limit) ?? DEFAULT_LIST_LIMIT));
       return data;
     },
     _cacheKeys: ['positive_events:geo-bootstrap:v1'],
@@ -1492,7 +1581,7 @@ const TOOL_REGISTRY: ToolDef[] = [
           type: 'boolean',
           description: 'Drop observations with severity "normal" — keep only elevated/spike readings.',
         },
-        limit: { type: 'number', description: 'Cap the observation list to at most this many items.' },
+        limit: { type: 'number', description: 'Cap the observation list to at most this many items (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
@@ -1502,7 +1591,7 @@ const TOOL_REGISTRY: ToolDef[] = [
       if (argBool(params.anomalous_only)) {
         narrowNested(data, 'observations', 'observations', (o) => !argStr(o.severity).endsWith('normal'));
       }
-      capNested(data, 'observations', 'observations', argNum(params.limit));
+      capNested(data, 'observations', 'observations', (argNum(params.limit) ?? DEFAULT_LIST_LIMIT));
       return data;
     },
     _cacheKeys: ['radiation:observations:v1'],
@@ -1524,7 +1613,7 @@ const TOOL_REGISTRY: ToolDef[] = [
           description: 'Filter to one tech-event type.',
         },
         source: { type: 'string', description: 'Filter to one source feed (e.g. "techmeme", "dev.events", "curated").' },
-        limit: { type: 'number', description: 'Cap the event list to at most this many items.' },
+        limit: { type: 'number', description: 'Cap the event list to at most this many items (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
@@ -1533,7 +1622,7 @@ const TOOL_REGISTRY: ToolDef[] = [
       const source = argStr(params.source);
       if (type) narrowNested(data, 'tech-events-bootstrap', 'events', (e) => argStr(e.type) === type);
       if (source) narrowNested(data, 'tech-events-bootstrap', 'events', (e) => argStr(e.source) === source);
-      capNested(data, 'tech-events-bootstrap', 'events', argNum(params.limit));
+      capNested(data, 'tech-events-bootstrap', 'events', (argNum(params.limit) ?? DEFAULT_LIST_LIMIT));
       return data;
     },
     _cacheKeys: ['research:tech-events-bootstrap:v1'],
@@ -1551,7 +1640,7 @@ const TOOL_REGISTRY: ToolDef[] = [
       properties: {
         domain: { type: 'string', description: 'Filter to one forecast domain (exact, case-insensitive — e.g. "shipping", "energy", "macro").' },
         region: { type: 'string', description: 'Filter to one region/theater (case-insensitive substring).' },
-        limit: { type: 'number', description: 'Cap the forecast list to at most this many items.' },
+        limit: { type: 'number', description: 'Cap the forecast list to at most this many items (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
@@ -1560,7 +1649,7 @@ const TOOL_REGISTRY: ToolDef[] = [
       const region = argStr(params.region);
       if (domain) narrowNested(data, 'predictions', 'predictions', (p) => argStr(p.domain) === domain);
       if (region) narrowNested(data, 'predictions', 'predictions', (p) => ciIncludes(p.region, region));
-      capNested(data, 'predictions', 'predictions', argNum(params.limit));
+      capNested(data, 'predictions', 'predictions', (argNum(params.limit) ?? DEFAULT_LIST_LIMIT));
       return data;
     },
     _cacheKeys: ['forecast:predictions:v2'],
@@ -1581,14 +1670,14 @@ const TOOL_REGISTRY: ToolDef[] = [
       type: 'object',
       properties: {
         subreddit: { type: 'string', description: 'Filter to one subreddit (e.g. "worldnews", "geopolitics").' },
-        limit: { type: 'number', description: 'Cap the post list to at most this many items.' },
+        limit: { type: 'number', description: 'Cap the post list to at most this many items (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
     _postFilter: (data, params) => {
       const sub = argStr(params.subreddit);
       if (sub) narrowNested(data, 'reddit', 'posts', (p) => argStr(p.subreddit) === sub);
-      capNested(data, 'reddit', 'posts', argNum(params.limit));
+      capNested(data, 'reddit', 'posts', (argNum(params.limit) ?? DEFAULT_LIST_LIMIT));
       return data;
     },
     _cacheKeys: ['intelligence:social:reddit:v1'],
@@ -2179,13 +2268,30 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
 ];
 
-// Public shape for tools/list (strip internal _-prefixed fields, add MCP annotations)
-const TOOL_LIST_RESPONSE = TOOL_REGISTRY.map(({ name, description, inputSchema }) => ({
-  name,
-  description,
-  inputSchema,
-  annotations: { readOnlyHint: true, openWorldHint: true },
-}));
+// Public shape for tools/list — strips internal _-prefixed fields, adds MCP
+// annotations, and injects the universal `summary` flag (issue #3678) into
+// every cache tool's advertised schema. Cache tools are uniformly summarisable;
+// RPC/_execute tools have bespoke response shapes and aren't covered.
+const SUMMARY_SCHEMA = {
+  type: 'boolean',
+  description: 'Return counts + 3-item samples instead of full lists. Useful when you only need shape/size or want to budget context before drilling in.',
+} as const;
+
+const TOOL_LIST_RESPONSE = TOOL_REGISTRY.map((tool) => {
+  const isCacheTool = tool._execute === undefined;
+  const inputSchema = isCacheTool
+    ? {
+        ...tool.inputSchema,
+        properties: { ...tool.inputSchema.properties, summary: SUMMARY_SCHEMA },
+      }
+    : tool.inputSchema;
+  return {
+    name: tool.name,
+    description: tool.description,
+    inputSchema,
+    annotations: { readOnlyHint: true, openWorldHint: true },
+  };
+});
 
 // ---------------------------------------------------------------------------
 // JSON-RPC helpers
@@ -2284,18 +2390,26 @@ export async function executeTool(
   // helpers (narrowNested, capArrays, mapNested, ...) narrow in place, so a
   // mid-filter throw would otherwise leave `data` partially mutated and the
   // catch below would "fall back" to a half-narrowed object. Cloning keeps the
-  // original pristine so the fall-through return is genuinely the full payload.
+  // original pristine so the fall-through is genuinely the full payload.
   // Redis output is JSON-safe and the data map is small (tens of KB), so the
   // clone is cheap.
+  let result: Record<string, unknown> = data;
   if (tool._postFilter) {
     try {
-      return { cached_at, stale, data: tool._postFilter(structuredClone(data), params) };
+      result = tool._postFilter(structuredClone(data), params);
     } catch (err) {
       captureSilentError(err, { tags: { route: 'api/mcp', step: 'post-filter', tool: tool.name } });
+      result = data;
     }
   }
 
-  return { cached_at, stale, data };
+  // Summary mode (issue #3678) — collapse to counts + samples. Applied AFTER
+  // the filter so it composes (`country: "DE", summary: true` → counts/samples
+  // for DE). Independent of filter success: a thrown filter still pristine-
+  // summarises.
+  if (argBool(params.summary)) result = summarizeData(result);
+
+  return { cached_at, stale, data: result };
 }
 
 // ---------------------------------------------------------------------------

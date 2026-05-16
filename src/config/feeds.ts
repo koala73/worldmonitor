@@ -696,7 +696,13 @@ const FINANCE_FEEDS: Record<string, Feed[]> = {
     { name: 'Crypto News', url: rss('https://news.google.com/rss/search?q=(bitcoin+OR+ethereum+OR+crypto+OR+"digital+assets")+when:1d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'DeFi News', url: rss('https://news.google.com/rss/search?q=(DeFi+OR+"decentralized+finance"+OR+DEX+OR+"yield+farming")+when:3d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Decrypt', url: rss('https://decrypt.co/feed') },
-    { name: 'Blockworks', url: rss('https://blockworks.co/feed') },
+    // Blockworks REMOVED (PR #3715 review): blockworks.co/feed is
+    // Cloudflare-blocked from both Vercel edge AND Railway egress, AND Google
+    // News returns 0 items for site:blockworks.co at every probed time window
+    // (publisher likely blocks Googlebot on the same wholesale tier — so the
+    // Google News fallback we tried first is a silent placeholder). The Block
+    // (above) covers the same institutional-crypto territory; no coverage
+    // lost. Also removed from the server feeds (_feeds.ts) for parity.
     { name: 'The Defiant', url: rss('https://thedefiant.io/feed') },
     { name: 'Bitcoin Magazine', url: rss('https://bitcoinmagazine.com/feed') },
     { name: 'DL News', url: rss('https://news.google.com/rss/search?q=site:dlnews.com+when:3d&hl=en-US&gl=US&ceid=US:en') },
@@ -807,24 +813,41 @@ const HAPPY_FEEDS: Record<string, Feed[]> = {
 // Commodity variant feeds (from commodity.ts)
 const COMMODITY_FEEDS: Record<string, Feed[]> = {
   'commodity-news': [
-    { name: 'Kitco News', url: rss('https://www.kitco.com/rss/KitcoNews.xml') },
+    // Kitco shut down their public RSS feeds in 2025 (every /rss/*, /news/feed,
+    // /news/category/*/feed path now returns an HTML SPA page, not XML). Fall
+    // back to Google News scoped to site:kitco.com, matching the pattern used
+    // by TASS / Kyiv Independent / Telegraaf elsewhere in this file.
+    { name: 'Kitco News', url: rss('https://news.google.com/rss/search?q=site:kitco.com+(gold+OR+silver+OR+metals)+when:1d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Mining.com', url: rss('https://www.mining.com/feed/') },
     { name: 'Bloomberg Commodities', url: rss('https://news.google.com/rss/search?q=site:bloomberg.com+commodities+OR+metals+OR+mining+when:1d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Reuters Commodities', url: rss('https://news.google.com/rss/search?q=site:reuters.com+commodities+OR+metals+OR+mining+when:1d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'S&P Global Commodity', url: rss('https://news.google.com/rss/search?q=site:spglobal.com+commodities+metals+when:3d&hl=en-US&gl=US&ceid=US:en') },
-    { name: 'Commodity Trade Mantra', url: rss('https://www.commoditytrademantra.com/feed/') },
+    // Commodity Trade Mantra REMOVED (PR #3715 review):
+    // commoditytrademantra.com wholesale-403s any direct fetch AND Google News
+    // returns 0 items for site:commoditytrademantra.com at every probed time
+    // window (publisher effectively not indexed by Google News). commodity-news
+    // still has Mining.com / Bloomberg / Reuters / S&P Global / CNBC —
+    // coverage isn't lost.
     { name: 'CNBC Commodities', url: rss('https://news.google.com/rss/search?q=site:cnbc.com+(commodities+OR+metals+OR+gold+OR+copper)+when:1d&hl=en-US&gl=US&ceid=US:en') },
   ],
   'gold-silver': [
-    { name: 'Kitco Gold', url: rss('https://www.kitco.com/rss/KitcoGold.xml') },
+    // Kitco RSS shutdown (see Kitco News comment in commodity-news above).
+    // Gold-scoped Google News query targeting site:kitco.com.
+    { name: 'Kitco Gold', url: rss('https://news.google.com/rss/search?q=site:kitco.com+gold+when:1d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Gold Price News', url: rss('https://news.google.com/rss/search?q=(gold+price+OR+"gold+market"+OR+bullion+OR+LBMA)+when:1d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Silver Price News', url: rss('https://news.google.com/rss/search?q=(silver+price+OR+"silver+market"+OR+"silver+futures")+when:2d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Precious Metals', url: rss('https://news.google.com/rss/search?q=("precious+metals"+OR+platinum+OR+palladium+OR+"gold+ETF"+OR+GLD+OR+SLV)+when:2d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'World Gold Council', url: rss('https://news.google.com/rss/search?q="World+Gold+Council"+OR+"central+bank+gold"+OR+"gold+reserves"+when:7d&hl=en-US&gl=US&ceid=US:en') },
-    { name: 'GoldSeek', url: rss('https://news.goldseek.com/GoldSeek/rss.xml') },
-    { name: 'SilverSeek', url: rss('https://news.silverseek.com/SilverSeek/rss.xml') },
+    // GoldSeek + SilverSeek moved their feeds from the `news.*` subdomain to
+    // the apex domain (the old subdomain returns 404; the apex /rss.xml on
+    // both returns application/rss+xml).
+    { name: 'GoldSeek', url: rss('https://www.goldseek.com/rss.xml') },
+    { name: 'SilverSeek', url: rss('https://www.silverseek.com/rss.xml') },
     { name: 'Gold Silver Worlds', url: rss('https://goldsilverworlds.com/feed/') },
-    { name: 'FX Empire Gold', url: rss('https://www.fxempire.com/api/v1/en/markets/commodity/Gold/news/feed') },
+    // The /api/v1/.../feed endpoint FX Empire used to expose was deprecated;
+    // their generic /feed now returns text/html, not RSS. Google News scoped
+    // to site:fxempire.com for gold articles.
+    { name: 'FX Empire Gold', url: rss('https://news.google.com/rss/search?q=site:fxempire.com+gold+when:1d&hl=en-US&gl=US&ceid=US:en') },
   ],
   energy: [
     { name: 'OilPrice.com', url: rss('https://oilprice.com/rss/main') },
@@ -836,9 +859,16 @@ const COMMODITY_FEEDS: Record<string, Feed[]> = {
     { name: 'Reuters Energy', url: rss('https://news.google.com/rss/search?q=site:reuters.com+(oil+OR+gas+OR+energy)+when:1d&hl=en-US&gl=US&ceid=US:en') },
   ],
   'mining-news': [
-    { name: 'Mining Journal', url: rss('https://www.mining-journal.com/feed/') },
+    // mining-journal.com migrated to Kreatio CMS; /feed/ now returns
+    // text/html (the homepage SPA), not RSS — produces "Parse error for
+    // Mining Journal" in the client. Google News fallback.
+    { name: 'Mining Journal', url: rss('https://news.google.com/rss/search?q=site:mining-journal.com+when:2d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Northern Miner', url: rss('https://www.northernminer.com/feed/') },
-    { name: 'Mining Weekly', url: rss('https://www.miningweekly.com/rss/') },
+    // www.miningweekly.com domain-wide 403s every IP-based fetch (homepage
+    // included), not just Vercel edge — Railway relay likely wouldn't help.
+    // Google News scoped to site:miningweekly.com is the reliable path and
+    // matches the pattern used for other wholesale-blocked publishers.
+    { name: 'Mining Weekly', url: rss('https://news.google.com/rss/search?q=site:miningweekly.com+when:2d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Mining Technology', url: rss('https://www.mining-technology.com/feed/') },
     { name: 'Australian Mining', url: rss('https://www.australianmining.com.au/feed/') },
     { name: 'Mine Web (SNL)', url: rss('https://news.google.com/rss/search?q=("mining+company"+OR+"mine+production"+OR+"mining+operations")+when:2d&hl=en-US&gl=US&ceid=US:en') },

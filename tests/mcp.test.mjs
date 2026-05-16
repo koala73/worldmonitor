@@ -430,6 +430,138 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.ok(!('mutated' in result.data), '_postFilter mutation must not leak through the structuredClone boundary');
   });
 
+  // --- default-cap + summary mode (issue #3678) ---
+
+  it('tools/list: cache tools advertise the universal `summary` flag (issue #3678)', async () => {
+    const res = await handler(makeReq('POST', { jsonrpc: '2.0', id: 800, method: 'tools/list', params: {} }));
+    const body = await res.json();
+    const byName = Object.fromEntries(body.result.tools.map((t) => [t.name, t]));
+    for (const name of ['get_market_data', 'get_conflict_events', 'get_country_macro', 'get_chokepoint_status']) {
+      assert.ok(byName[name].inputSchema.properties.summary, `${name} must advertise summary`);
+      assert.equal(byName[name].inputSchema.properties.summary.type, 'boolean');
+    }
+    // RPC tools have bespoke shapes — should NOT carry the generic summary flag.
+    assert.ok(!byName.get_world_brief.inputSchema.properties.summary, 'RPC tools should not carry the cache-tool summary flag');
+  });
+
+  it('default cap: omitting limit caps each list to DEFAULT_LIST_LIMIT (=30)', async () => {
+    // Build a 50-event conflict payload; default cap is 30.
+    const ucdp = { events: Array.from({ length: 50 }, (_, i) => ({ id: i, country: 'X', deathsBest: 1 })) };
+    mockCacheKeys(
+      { 'conflict:ucdp-events:v1': ucdp },
+      { 'seed-meta:conflict:ucdp-events': { fetchedAt: Date.now() - 60_000, recordCount: 50 } },
+    );
+    const out = await callTool('get_conflict_events', {});
+    assert.equal(out.data['ucdp-events'].events.length, 30, 'omitting limit must apply the default cap of 30');
+    assert.equal(out.data['ucdp-events'].events[0].id, 0, 'cap takes the natural array order (newest-first per seeder)');
+  });
+
+  it('default cap: get_market_data caps quote arrays at DEFAULT_LIST_LIMIT (issue #3678 example)', async () => {
+    // Regression: the issue specifically named get_market_data as a large unfiltered
+    // response. The tool must cap each per-class array (stocks/commodities/crypto/
+    // sectors/etf-flows/gulf) like every other list-bearing cache tool.
+    const stocks = { quotes: Array.from({ length: 50 }, (_, i) => ({ symbol: `T${i}`, price: i })) };
+    mockCacheKeys(
+      { 'market:stocks-bootstrap:v1': stocks },
+      { 'seed-meta:market:stocks': { fetchedAt: Date.now() - 60_000, recordCount: 50 } },
+    );
+    const out = await callTool('get_market_data', {});
+    assert.equal(out.data['stocks-bootstrap'].quotes.length, 30, 'no-args call must apply the default cap of 30');
+
+    mockCacheKeys(
+      { 'market:stocks-bootstrap:v1': stocks },
+      { 'seed-meta:market:stocks': { fetchedAt: Date.now() - 60_000, recordCount: 50 } },
+    );
+    const full = await callTool('get_market_data', { limit: 0 });
+    assert.equal(full.data['stocks-bootstrap'].quotes.length, 50, 'limit: 0 must opt out to the full quote list');
+  });
+
+  it('default cap: get_energy_intelligence caps crisis-policies + other list slices', async () => {
+    // Regression: dataset:['crisis-policies'] with 50 policies must come back as 30.
+    const policies = { policies: Array.from({ length: 50 }, (_, i) => ({ id: i, country: 'X' })) };
+    mockCacheKeys(
+      { 'energy:crisis-policies:v1': policies },
+      { 'seed-meta:energy:crisis-policies': { fetchedAt: Date.now() - 60_000, recordCount: 50 } },
+    );
+    const out = await callTool('get_energy_intelligence', { dataset: ['crisis-policies'] });
+    assert.equal(out.data['crisis-policies'].policies.length, 30, 'no-args call must apply the default cap of 30');
+
+    mockCacheKeys(
+      { 'energy:crisis-policies:v1': policies },
+      { 'seed-meta:energy:crisis-policies': { fetchedAt: Date.now() - 60_000, recordCount: 50 } },
+    );
+    const full = await callTool('get_energy_intelligence', { dataset: ['crisis-policies'], limit: 0 });
+    assert.equal(full.data['crisis-policies'].policies.length, 50, 'limit: 0 must opt out');
+  });
+
+  it('default cap: get_military_posture caps the theaters array', async () => {
+    const theater_posture = { theaters: Array.from({ length: 40 }, (_, i) => ({ theater: `t${i}`, postureLevel: 'normal' })) };
+    mockCacheKeys(
+      { 'theater_posture:sebuf:stale:v1': theater_posture },
+      { 'seed-meta:intelligence:risk-scores': { fetchedAt: Date.now() - 60_000, recordCount: 40 } },
+    );
+    const out = await callTool('get_military_posture', {});
+    assert.equal(out.data.theater_posture.theaters.length, 30, 'no-args must cap theaters to 30');
+  });
+
+  it('default cap: get_chokepoint_status caps the chokepoints array', async () => {
+    const baselines = { source: 'x', referenceYear: 2023, updatedAt: '', chokepoints: Array.from({ length: 40 }, (_, i) => ({ id: `c${i}`, relayId: `c${i}_strait`, name: `Chokepoint ${i}` })) };
+    mockCacheKeys(
+      { 'energy:chokepoint-baselines:v1': baselines },
+      { 'seed-meta:energy:chokepoint-baselines': { fetchedAt: Date.now() - 60_000, recordCount: 40 } },
+    );
+    const out = await callTool('get_chokepoint_status', { dataset: ['chokepoint-baselines'] });
+    assert.equal(out.data['chokepoint-baselines'].chokepoints.length, 30, 'no-args must cap chokepoints to 30');
+  });
+
+  it('default cap: limit: 0 opts out and returns the full list', async () => {
+    const ucdp = { events: Array.from({ length: 50 }, (_, i) => ({ id: i, country: 'X', deathsBest: 1 })) };
+    mockCacheKeys(
+      { 'conflict:ucdp-events:v1': ucdp },
+      { 'seed-meta:conflict:ucdp-events': { fetchedAt: Date.now() - 60_000, recordCount: 50 } },
+    );
+    const out = await callTool('get_conflict_events', { limit: 0 });
+    assert.equal(out.data['ucdp-events'].events.length, 50, 'limit: 0 must opt out of the default cap and return the full list');
+  });
+
+  it('summary mode: collapses arrays to {count, sample} and large entity maps to {count, sample_keys}', async () => {
+    // Mix: an array payload + a 10-country IMF map (well above SUMMARY_MAP_THRESHOLD=5).
+    const macro = {
+      countries: Object.fromEntries(Array.from({ length: 10 }, (_, i) => [`C${i}`, { inflationPct: i }])),
+      seededAt: 12345,
+    };
+    mockCacheKeys(
+      { 'economic:imf:macro:v2': macro },
+      {
+        'seed-meta:economic:imf-macro': { fetchedAt: Date.now() - 60_000, recordCount: 10 },
+        'seed-meta:economic:imf-growth': { fetchedAt: Date.now() - 60_000, recordCount: 0 },
+        'seed-meta:economic:imf-labor': { fetchedAt: Date.now() - 60_000, recordCount: 0 },
+        'seed-meta:economic:imf-external': { fetchedAt: Date.now() - 60_000, recordCount: 0 },
+      },
+    );
+    const out = await callTool('get_country_macro', { summary: true });
+    // data.macro is a typed payload {countries, seededAt}. Its `countries` map has 10 keys → summarized.
+    assert.equal(out.data.macro.countries.count, 10, 'large entity map → count');
+    assert.equal(out.data.macro.countries.sample_keys.length, 3, 'sample_keys capped at 3');
+    assert.equal(out.data.macro.seededAt, 12345, 'scalar fields pass through summarisation');
+  });
+
+  it('summary mode: composes with filters — counts reflect post-filter result', async () => {
+    const ucdp = {
+      events: [
+        ...Array.from({ length: 10 }, (_, i) => ({ id: i, country: 'Syria', deathsBest: 5 })),
+        ...Array.from({ length: 5 }, (_, i) => ({ id: 100 + i, country: 'Iran', deathsBest: 3 })),
+      ],
+    };
+    mockCacheKeys(
+      { 'conflict:ucdp-events:v1': ucdp },
+      { 'seed-meta:conflict:ucdp-events': { fetchedAt: Date.now() - 60_000, recordCount: 15 } },
+    );
+    const out = await callTool('get_conflict_events', { country: 'syria', summary: true, limit: 0 });
+    assert.equal(out.data['ucdp-events'].events.count, 10, 'summary count reflects the country filter (only Syria events)');
+    assert.equal(out.data['ucdp-events'].events.sample.length, 3, 'summary sample capped at 3');
+  });
+
   // --- get_displacement_data (U1: Tier 1 regression) ---
 
   it('get_displacement_data returns {cached_at, stale, data.summary} on cache hit', async () => {

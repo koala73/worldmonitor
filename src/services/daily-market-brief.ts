@@ -2,6 +2,18 @@ import type { MarketData, NewsItem } from '@/types';
 import type { MarketWatchlistEntry } from './market-watchlist';
 import { getMarketWatchlistEntries } from './market-watchlist';
 import type { SummarizationResult } from './summarization';
+import { withTimeout } from '@/utils/with-timeout';
+
+/**
+ * Upper bound on the LLM summarization step. The full chain
+ * (newsClient.summarizeArticle → Vercel function → OpenRouter/Groq) has
+ * no per-call timeout of its own; without this cap a hung upstream
+ * leaves the panel stuck on "Building daily market brief..." and the
+ * try/catch below is useless against a pending-forever promise. On
+ * timeout we fall through to the rules-based summary (already
+ * pre-computed by `buildRuleSummary` at the top of this branch).
+ */
+const SUMMARIZER_TIMEOUT_MS = 45_000;
 
 export interface DailyMarketBriefItem {
   symbol: string;
@@ -71,6 +83,11 @@ export interface BuildDailyMarketBriefOptions {
   sectorContext?: SectorBriefContext;
   frameworkAppend?: string;
   newsCategories?: string[];
+  /** Override the per-call summarizer budget. Defaults to
+   *  `SUMMARIZER_TIMEOUT_MS` (45s). Tests pass a small value to assert the
+   *  rules-based fallback fires when the LLM hangs without having to wait
+   *  the full prod budget. */
+  summarizerTimeoutMs?: number;
   summarize?: (
     headlines: string[],
     onProgress?: undefined,
@@ -429,11 +446,10 @@ export async function buildDailyMarketBrief(options: BuildDailyMarketBriefOption
   if (summaryHeadlines.length >= 1) {
     try {
       const summaryProvider = options.summarize || await getDefaultSummarizer();
-      const generated = await summaryProvider(
-        summaryHeadlines,
-        undefined,
-        extendedContext,
-        'en',
+      const generated = await withTimeout(
+        summaryProvider(summaryHeadlines, undefined, extendedContext, 'en'),
+        options.summarizerTimeoutMs ?? SUMMARIZER_TIMEOUT_MS,
+        'daily-brief-summary',
       );
       if (generated?.summary) {
         summary = generated.summary.trim();

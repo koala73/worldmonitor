@@ -148,4 +148,39 @@ describe('buildDailyMarketBrief', () => {
     assert.equal(brief.items.length, 4, 'should top up to DEFAULT_TARGET_COUNT, not collapse to 1');
     assert.equal(brief.items[0]?.display, 'NVDA', 'the user pick leads');
   });
+
+  it('REGRESSION: a hanging summarizer must not stall the brief — falls back to rules within the timeout', async () => {
+    // Repro the actual prod symptom: the LLM provider call (newsClient
+    // .summarizeArticle → Vercel function → OpenRouter/Groq) hangs without
+    // ever rejecting, and the panel sits on "Building daily market brief..."
+    // forever because the try/catch around summarizeProvider only handles
+    // rejections — not pending-forever promises. The fix (PR
+    // fix/daily-market-brief-timeouts) wraps the summarizer call in
+    // withTimeout; on timeout the catch fires and falls back to the
+    // pre-computed rules-based summary. Use a tight summarizerTimeoutMs so
+    // the test runs in ~30ms instead of waiting the prod 45s budget.
+    const start = Date.now();
+    const brief = await buildDailyMarketBrief({
+      markets,
+      newsByCategory: {
+        markets: [makeNewsItem('NVIDIA holds gains as chip demand remains firm')],
+      },
+      timezone: 'UTC',
+      now: new Date('2026-03-08T10:30:00.000Z'),
+      targets: [{ symbol: 'NVDA', name: 'NVIDIA', display: 'NVDA' }],
+      // Pending-forever — what a hung LLM upstream looks like from the
+      // client side.
+      summarize: () => new Promise(() => {}),
+      summarizerTimeoutMs: 30,
+    });
+    const elapsed = Date.now() - start;
+
+    assert.equal(brief.available, true, 'must return a usable brief, not throw or hang');
+    assert.equal(brief.provider, 'rules', 'must mark the fallback provider so UI can show it');
+    assert.equal(brief.fallback, true);
+    assert.match(brief.summary, /watchlist|breadth|headline flow/i);
+    // Budget is 30ms; tolerate generous CI variance but assert we didn't
+    // wait the prod 45s (proving the timeout actually fired).
+    assert.ok(elapsed < 5_000, `elapsed ${elapsed}ms — withTimeout did not fire`);
+  });
 });
