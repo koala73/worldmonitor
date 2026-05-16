@@ -88,27 +88,29 @@ const PROXY_FETCH_TIMEOUT = 70_000;
 // is available. Preflight is best-effort (cache invalidation only).
 const PREFLIGHT_FETCH_TIMEOUT = 5_000;
 // Diagnostic re-fetch budget for capturing the actual error body when the
-// initial direct fetch times out at FETCH_TIMEOUT. WM 2026-05-15
-// investigation found ArcGIS Daily_Ports_Data, during degradation
-// episodes, returns HTTP 200 with a 400 error body
-// (`{"error":{"code":400,"message":"Cannot perform query. Invalid query
-// parameters."}}`) after 30-56s of server processing. Our 45s
-// FETCH_TIMEOUT fires first; the caller sees AbortError; the existing
-// circuit-breaker that looks for `/Invalid query parameters/i` never
-// fires because the message is never read.
+// initial direct fetch times out at FETCH_TIMEOUT. The original incident
+// (WM 2026-05-15) found ArcGIS Daily_Ports_Data returning HTTP 200 with a
+// 400 error body (`{"error":{"code":400,"message":"Cannot perform query.
+// Invalid query parameters."}}`) after 30-56s of server processing. In
+// that mode, a direct FETCH_TIMEOUT that fires before the body lands
+// causes the upstream circuit-breaker (which matches
+// `/Invalid query parameters/i` on the error message) to never see the
+// real message — it sees a generic AbortError instead.
 //
-// PR #3701 P2 round 3: bumped 20s → 40s because the observed degraded
-// response class is 30-56s from request start, and each capture is a
-// FRESH request (the original was already aborted). A 20s budget rarely
-// caught the body. 40s catches most. The per-country wrap
-// (PER_COUNTRY_TIMEOUT_MS=90s) naturally caps this: direct (45s timeout)
-// + capture (40s budget) = 85s, leaving 5s before the wrap fires. Proxy
-// retry effectively dies for timing-out countries in this mode — accepted
-// tradeoff because the proxy itself is degraded during this incident
-// (Decodo throttled per PR #3694 history), so it wasn't helping anyway.
-// Hard-capped — withPerCountryTimeout still bounds the overall per-country
-// budget at 90s, and the diagnostic re-fetch only fires on
-// internal-FETCH_TIMEOUT, not caller-signal aborts.
+// 40s was sized for the original FETCH_TIMEOUT=45s split: direct (45s
+// timeout) + capture (40s budget) = 85s, fits the 90s per-country wrap
+// with 5s slack.
+//
+// Currently the WHOLE capture path is DISABLED via
+// MAX_BODY_CAPTURE_ATTEMPTS=0 (see that constant for rationale). The
+// rebalanced budgets (FETCH_TIMEOUT=15s direct + PROXY_FETCH_TIMEOUT=70s
+// proxy) let the proxy leg receive the 51-56s body directly, and
+// arcgisProxyRetry throws an "ArcGIS error (via proxy after ...)"
+// message that the circuit-breaker matches — so the capture re-fetch is
+// no longer load-bearing. This constant stays at 40s for the day the
+// attempt cap is bumped back > 0 (e.g. non-Railway egress where direct
+// works), with the proviso that any caller re-enabling capture should
+// re-derive the budget against the FETCH_TIMEOUT in effect at that time.
 const ERROR_BODY_CAPTURE_EXTRA_MS = 40_000;
 // After this many "Invalid query parameters" errors in a single process,
 // stop retrying on them — that's a degradation signal, not a transient
