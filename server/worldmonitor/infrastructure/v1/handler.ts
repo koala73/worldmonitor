@@ -1,27 +1,17 @@
-import type { InfrastructureServiceHandler } from '../../../../src/generated/server/worldmonitor/infrastructure/v1/service_server';
+import { RngService } from '../../../generated/server/worldmonitor/infrastructure/v1/service';
+import { RngDataPoint } from '../../../generated/server/worldmonitor/infrastructure/v1/service';
 
-import { getCableHealth } from './get-cable-health';
-import { listInternetDdosAttacks } from './list-ddos-attacks';
-import { listInternetOutages } from './list-internet-outages';
-import { listInternetTrafficAnomalies } from './list-traffic-anomalies';
-import { listServiceStatuses } from './list-service-statuses';
-import { getTemporalBaseline } from './get-temporal-baseline';
-import { recordBaselineSnapshot } from './record-baseline-snapshot';
-import { listTemporalAnomalies } from './list-temporal-anomalies';
-import { getIpGeo } from './get-ip-geo';
-import { reverseGeocode } from './reverse-geocode';
-import { getBootstrapData } from './get-bootstrap-data';
+export class RngHandler implements RngService {
+  async SubmitRngData(req: { points: RngDataPoint[] }): Promise<{ success: boolean }> {
+    if (!req.points || req.points.length === 0) {
+      return { success: false };
+    }
 
-export const infrastructureHandler: InfrastructureServiceHandler = {
-  getCableHealth,
-  listInternetDdosAttacks,
-  listInternetOutages,
-  listInternetTrafficAnomalies,
-  listServiceStatuses,
-  getTemporalBaseline,
-  recordBaselineSnapshot,
-  listTemporalAnomalies,
-  getIpGeo,
-  reverseGeocode,
-  getBootstrapData,
-};
+    // Log for research analysis
+    console.log(`[RNG-Ingest] Received ${req.points.length} points from ${req.points[0].node_id}`);
+    
+    // In a real implementation, we would write these to a time-series DB (e.g., Upstash Redis)
+    // for subsequent anomaly detection and Maharishi-effect correlation analysis.
+    return { success: true };
+  }
+}
