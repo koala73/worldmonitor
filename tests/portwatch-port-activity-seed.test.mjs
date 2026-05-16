@@ -290,6 +290,11 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     // doesn't normalise the lower value silently).
     assert.match(src, /TEMPORARILY lowered/);
     assert.match(src, /Revert path/);
+    // Greptile PR #3714 P2: keep an anchor to the original permanent
+    // baseline (50) in the comment so the temporary nature has a concrete
+    // reference point — otherwise a vague "TEMPORARILY lowered for now"
+    // edit could silently pass CI and lose the canary property.
+    assert.match(src, /was 50/);
   });
 
   // Greptile PR #3694 round 3 P1: with the temp gate lowered to 25 but the
