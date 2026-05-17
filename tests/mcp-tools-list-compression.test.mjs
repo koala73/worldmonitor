@@ -383,6 +383,28 @@ describe('api/mcp.ts — tools/list description compression (v1.5.0)', () => {
         'v1.4.0 feature flag must still be present');
     });
 
+    // ============================================================
+    // U5: Reduction-target regression guard (R1: ≥8%)
+    // ============================================================
+    it('R1: tools/list compression reduces total envelope by ≥8% UTF-8 bytes vs v1.4.0 baseline', async () => {
+      const tools = await getToolsList();
+      // v1.4.0 baseline: same tools EXCEPT describe_tool (v1.5.0 addition),
+      // with full uncompressed descriptions. Use describe_tool to recover
+      // full text for each tool — same self-contained measurement strategy
+      // the U5 script uses.
+      const v14 = [];
+      for (const t of tools) {
+        if (t.name === 'describe_tool') continue;
+        const full = await callDescribeTool(t.name);
+        v14.push(full);
+      }
+      const v14Bytes = mod.utf8ByteLength(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { tools: v14 } }));
+      const v15Bytes = mod.utf8ByteLength(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { tools } }));
+      const reductionPct = ((v14Bytes - v15Bytes) / v14Bytes) * 100;
+      assert.ok(reductionPct >= 8,
+        `reduction ${reductionPct.toFixed(2)}% below R1 target (≥8%). v1.4.0=${v14Bytes}B v1.5.0=${v15Bytes}B`);
+    });
+
     it('round-trip: every tool returned by describe_tool has no _-prefixed key (R9)', async () => {
       const tools = await getToolsList();
       function scanForUnderscoreKey(value, pathStack) {
