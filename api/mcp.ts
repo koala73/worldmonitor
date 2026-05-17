@@ -1,5 +1,6 @@
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
+import jmespath from 'jmespath';
 // @ts-expect-error — JS module, no declaration file
 import { getPublicCorsHeaders } from './_cors.js';
 // @ts-expect-error — JS module, no declaration file
@@ -69,6 +70,21 @@ const SUPPORTED_CONSUMER_PRICES_COUNTRIES = new Set(['ae']);
 // Clients that want the full payload pass `limit: 0`; the cap helpers treat
 // `n <= 0` as a no-op, so `0` is the explicit opt-out sentinel.
 const DEFAULT_LIST_LIMIT = 30;
+
+// Universal JMESPath projection (v1.4.0) — applied at the dispatch boundary
+// AFTER `_postFilter` and `summary`, before serialization. Two gates protect
+// the edge function: an input gate against pathological-parse expressions and
+// an output gate against multiselect-hash / multiselect-list duplication
+// blow-ups. Both gates fail soft via `_jmespath_error` envelopes — the tool
+// call still succeeds, the JSON-RPC layer still returns 200, and the agent's
+// next retry can self-correct using the `original_keys` echo.
+//
+// Caps are intentionally generous: typical real expressions are ~50–200
+// bytes, observed unprojected cache payloads ~5–10 KB (max ~80 KB).
+// Exported so tests can assert on them.
+export const JMESPATH_MAX_EXPR_BYTES = 1024;
+export const JMESPATH_MAX_OUTPUT_BYTES = 256 * 1024;
+export type JmespathFailKind = 'expression_too_long' | 'projection_too_large' | 'invalid_expression';
 
 // ---------------------------------------------------------------------------
 // Rate limiters
@@ -273,6 +289,103 @@ function argStr(v: unknown): string {
 // Coerce an argument to a boolean (accepts true / "true" / 1 / "1").
 function argBool(v: unknown): boolean {
   return v === true || v === 'true' || v === 1 || v === '1';
+}
+
+// ---------------------------------------------------------------------------
+// JMESPath projection helpers (v1.4.0)
+//
+// `applyJmespath` is invoked at the dispatch boundary AFTER `_postFilter`
+// and `summary` (both inside `executeTool`). Single insertion point in
+// `dispatchToolsCall` covers both cache and RPC tools uniformly.
+//
+// The helper returns the wire-ready JSON string in `text` so dispatch can
+// write it straight into `content[0].text` without re-serializing. Two
+// gates protect the edge function — both fail soft, never throw.
+// ---------------------------------------------------------------------------
+
+// Edge-safe UTF-8 byte counter. Uses `TextEncoder` (Web Platform, available
+// unconditionally on Vercel edge) rather than `text.length` (UTF-16 code
+// units — undercounts emoji / CJK / accented content) or `Buffer.byteLength`
+// (Node intrinsic — not reliably shimmed in every edge runtime).
+//
+// Used by BOTH JMESPath gates AND `scripts/measure-jmespath-savings.mjs`
+// so the runtime contract and the reported PR numbers operate on the same
+// byte definition. Exported for the measurement script.
+export function utf8ByteLength(s: string): number {
+  return new TextEncoder().encode(s).length;
+}
+
+// Defensive snapshot of the top-level keys / shape of an unprojected value.
+// Echoed inside every `_jmespath_error` envelope so the LLM can self-correct
+// on its next `tools/call` without refetching the (already-paid-for) payload.
+// Bounded at 50 keys to defend against pathological objects.
+function jmespathOriginalKeys(v: unknown): string[] {
+  if (Array.isArray(v)) return [`<array length=${v.length}>`];
+  if (v !== null && typeof v === 'object') {
+    const keys = Object.keys(v as object);
+    if (keys.length <= 50) return keys;
+    return [...keys.slice(0, 50), `...<${keys.length - 50} more>`];
+  }
+  return [`<${typeof v}>`];
+}
+
+// Result envelope. `text` is always the wire-ready JSON the dispatcher will
+// emit in `content[0].text`. `failed` is set only on a soft-failure path,
+// and its value is the same enum string used as the `_jmespath_error`
+// envelope prefix (no drift).
+export interface ApplyJmespathResult {
+  text: string;
+  failed?: JmespathFailKind;
+}
+
+// Apply a JMESPath expression to a value. Always returns `{ text }`. Pure;
+// never throws. Identity path (no `exprArg`, empty string, non-string) skips
+// projection entirely and returns `JSON.stringify(value)`. See module-doc
+// for the two-gate contract.
+export function applyJmespath(value: unknown, exprArg: unknown): ApplyJmespathResult {
+  if (typeof exprArg !== 'string' || exprArg.length === 0) {
+    return { text: JSON.stringify(value) };
+  }
+
+  // Input gate — reject before parser.
+  const exprBytes = utf8ByteLength(exprArg);
+  if (exprBytes > JMESPATH_MAX_EXPR_BYTES) {
+    const envelope = {
+      _jmespath_error: `expression_too_long: ${exprBytes} > ${JMESPATH_MAX_EXPR_BYTES}`,
+      original_keys: jmespathOriginalKeys(value),
+    };
+    return { text: JSON.stringify(envelope), failed: 'expression_too_long' };
+  }
+
+  let projected: unknown;
+  try {
+    projected = jmespath.search(value, exprArg);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const envelope = {
+      _jmespath_error: `invalid_expression: ${message}`,
+      original_keys: jmespathOriginalKeys(value),
+    };
+    return { text: JSON.stringify(envelope), failed: 'invalid_expression' };
+  }
+
+  const text = JSON.stringify(projected);
+  // `JSON.stringify(undefined)` returns the string "undefined" in legacy
+  // contexts but actually returns `undefined` in JS — guard so the wire
+  // payload is always a valid JSON document.
+  const safeText = text === undefined ? 'null' : text;
+
+  // Output gate — reject after stringify (single serialization).
+  const outputBytes = utf8ByteLength(safeText);
+  if (outputBytes > JMESPATH_MAX_OUTPUT_BYTES) {
+    const envelope = {
+      _jmespath_error: `projection_too_large: ${outputBytes} > ${JMESPATH_MAX_OUTPUT_BYTES}`,
+      original_keys: jmespathOriginalKeys(value),
+    };
+    return { text: JSON.stringify(envelope), failed: 'projection_too_large' };
+  }
+
+  return { text: safeText };
 }
 
 // Drop undefined/empty entries from a string list — used after mapping a
@@ -2275,6 +2388,16 @@ const TOOL_REGISTRY: ToolDef[] = [
 const SUMMARY_SCHEMA = {
   type: 'boolean',
   description: 'Return counts + 3-item samples instead of full lists. Useful when you only need shape/size or want to budget context before drilling in.',
+} as const;
+
+// Universal JMESPath projection (v1.4.0) — advertised on every tool (cache
+// AND RPC). Description is intentionally terse (~110 bytes) to avoid ×38
+// bloat across `tools/list`; the grammar URL + worked examples + limits +
+// quota note live in `initialize.result.instructions` (one ~600B emit per
+// session, amortised across N tool calls).
+export const JMESPATH_SCHEMA = {
+  type: 'string',
+  description: 'Optional JMESPath projection applied to the response. See initialize.instructions for grammar and examples.',
 } as const;
 
 const TOOL_LIST_RESPONSE = TOOL_REGISTRY.map((tool) => {
