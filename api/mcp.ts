@@ -54,9 +54,59 @@ const SERVER_NAME = 'worldmonitor';
 //     list — issued as a minor bump.
 //   - Universal `summary: true` flag advertised on every cache tool: collapses
 //     each array/large-map to counts + 3-item samples, composable with filters.
+// Bumped 1.3.0 → 1.4.0 (2026-05-17) reflecting:
+//   - Universal `jmespath` string parameter advertised on every tool (cache
+//     AND RPC) — server-side projection of the response BEFORE serialization.
+//     Composition order: `_postFilter → summary → jmespath`. Soft-fails via
+//     `{_jmespath_error, original_keys}` envelopes inside the normal result.
+//   - Input gate `JMESPATH_MAX_EXPR_BYTES` (1024) + output gate
+//     `JMESPATH_MAX_OUTPUT_BYTES` (256 KB) protect against pathological
+//     expressions and multiselect-hash duplication blow-ups. Both gates
+//     count UTF-8 bytes via `TextEncoder`, not UTF-16 code units.
+//   - `initialize.result.instructions` field carries the grammar URL, three
+//     worked examples, the byte caps, and the bad-expression quota note —
+//     ~600 bytes emitted once per session vs ×38 schema-bloat across tools.
+//   - Purely additive — omitting `jmespath` returns the v1.3.0 payload
+//     byte-for-byte. Bundle delta +57.8 KB raw / +9.4 KB gzipped.
 // Keep aligned with public/.well-known/mcp/server-card.json::serverInfo.version
 // — discovery scanners cross-check both values.
-const SERVER_VERSION = '1.3.0';
+const SERVER_VERSION = '1.4.0';
+
+// Universal JMESPath projection caps (v1.4.0) — applied at the dispatch
+// boundary AFTER `_postFilter` and `summary`, before serialization. Two
+// gates protect the edge function: an input gate against pathological-parse
+// expressions and an output gate against multiselect-hash / multiselect-
+// list duplication blow-ups. Both gates fail soft via `_jmespath_error`
+// envelopes — the tool call still succeeds, the JSON-RPC layer still
+// returns 200, and the agent's next retry can self-correct using the
+// `original_keys` echo.
+//
+// Caps are intentionally generous: typical real expressions are ~50–200
+// bytes, observed unprojected cache payloads ~5–10 KB (max ~80 KB).
+// Defined here (rather than near the `applyJmespath` helper) so the
+// `SERVER_INSTRUCTIONS` template below can quote them. Exported so tests
+// can assert on them.
+export const JMESPATH_MAX_EXPR_BYTES = 1024;
+export const JMESPATH_MAX_OUTPUT_BYTES = 256 * 1024;
+export type JmespathFailKind = 'expression_too_long' | 'projection_too_large' | 'invalid_expression';
+
+// Session-level discovery instructions. Per MCP 2025-03-26 lifecycle spec,
+// servers MAY return an `instructions` string in the `initialize` result;
+// clients SHOULD surface this to the model. We carry the JMESPath grammar
+// + worked examples here (rather than duplicating ~500 bytes into every
+// tool's description) so per-tool advertisements stay terse and the LLM
+// gets the full contract once per session.
+const SERVER_INSTRUCTIONS = [
+  'Every tool accepts an optional `jmespath` string argument. The server applies the expression server-side AFTER any per-tool filter/summary args, projecting the response before serialization. This is the single most effective way to reduce response tokens — typical 80-95% reduction when you only need a subset of fields.',
+  '',
+  'Grammar: https://jmespath.org/specification.html',
+  'Examples:',
+  '  data.markets.stocks[*].{s:symbol,p:price}',
+  '  data.events[?fatalities > `10`].country',
+  '  data.advisories[?level==\'warning\'][].title',
+  '',
+  `Limits: expression ≤ ${JMESPATH_MAX_EXPR_BYTES} bytes; projected payload ≤ ${JMESPATH_MAX_OUTPUT_BYTES} bytes. Failures return {_jmespath_error, original_keys} inside the normal result envelope. Bad expressions DO consume one daily quota unit on retry — original_keys is echoed so you can self-correct in one extra call.`,
+].join('\n');
 
 // Country-code whitelist for get_consumer_prices. The consumer-prices seeder
 // currently only produces data for AE (UAE); future markets will be added
@@ -71,20 +121,6 @@ const SUPPORTED_CONSUMER_PRICES_COUNTRIES = new Set(['ae']);
 // `n <= 0` as a no-op, so `0` is the explicit opt-out sentinel.
 const DEFAULT_LIST_LIMIT = 30;
 
-// Universal JMESPath projection (v1.4.0) — applied at the dispatch boundary
-// AFTER `_postFilter` and `summary`, before serialization. Two gates protect
-// the edge function: an input gate against pathological-parse expressions and
-// an output gate against multiselect-hash / multiselect-list duplication
-// blow-ups. Both gates fail soft via `_jmespath_error` envelopes — the tool
-// call still succeeds, the JSON-RPC layer still returns 200, and the agent's
-// next retry can self-correct using the `original_keys` echo.
-//
-// Caps are intentionally generous: typical real expressions are ~50–200
-// bytes, observed unprojected cache payloads ~5–10 KB (max ~80 KB).
-// Exported so tests can assert on them.
-export const JMESPATH_MAX_EXPR_BYTES = 1024;
-export const JMESPATH_MAX_OUTPUT_BYTES = 256 * 1024;
-export type JmespathFailKind = 'expression_too_long' | 'projection_too_large' | 'invalid_expression';
 
 // ---------------------------------------------------------------------------
 // Rate limiters
@@ -2987,6 +3023,7 @@ export async function mcpHandler(
         protocolVersion: MCP_PROTOCOL_VERSION,
         capabilities: { tools: {} },
         serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
+        instructions: SERVER_INSTRUCTIONS,
       }, { 'Mcp-Session-Id': sessionId, ...corsHeaders });
     }
     case 'notifications/initialized':
