@@ -2518,20 +2518,72 @@ for (const tool of TOOL_REGISTRY) {
   }
 }
 
-const TOOL_LIST_RESPONSE = TOOL_REGISTRY.map((tool) => {
+// Shared public-shape builder (v1.5.0). SINGLE source of truth for what
+// `tools/list` and `describe_tool` emit. Both surfaces go through this
+// helper so they can never drift.
+//
+// Always recursively deep-clones property schemas AND the injected
+// SUMMARY_SCHEMA / JMESPATH_SCHEMA consts via `structuredClone`. Without
+// this, mutating any returned property (including nested `enum` / `items.enum`
+// arrays, e.g. `get_market_data.asset_classes.items.enum`) would corrupt
+// the registry or the module-level schema consts. Codex Round 2 explicitly
+// flagged shallow `{ ...prop }` as insufficient for these shapes.
+//
+// `_*`-prefixed internal fields (_apiPaths, _cacheKeys, _seedMetaKey,
+// _maxStaleMin, _freshnessChecks, _coverageKeys, _postFilter, _execute)
+// are NEVER enumerated — the function only constructs a fresh object with
+// the public-shape fields (name, description, inputSchema, annotations).
+//
+// `opts.compressDescriptions` — when true (the tools/list call path),
+// the tool's top-level `description` is run through compressDescription.
+// When false (the describe_tool call path), full text is preserved.
+export interface PublicToolShape {
+  name: string;
+  description: string;
+  inputSchema: { type: string; properties: Record<string, unknown>; required: string[] };
+  annotations: { readOnlyHint: boolean; openWorldHint: boolean };
+}
+
+export function buildPublicTool(
+  tool: ToolDef,
+  opts: { compressDescriptions: boolean },
+): PublicToolShape {
   const isCacheTool = tool._execute === undefined;
-  // `summary` is cache-only (RPC responses are bespoke and don't summarize
-  // uniformly). `jmespath` is universal (projection is shape-agnostic).
-  const properties = isCacheTool
-    ? { ...tool.inputSchema.properties, summary: SUMMARY_SCHEMA, jmespath: JMESPATH_SCHEMA }
-    : { ...tool.inputSchema.properties, jmespath: JMESPATH_SCHEMA };
+
+  // Recursively clone each property schema. Handles direct `enum: [...]`
+  // arrays (e.g. api/mcp.ts:810) and nested `items.enum: [...]` arrays
+  // (e.g. api/mcp.ts:655) — both present in TOOL_REGISTRY. `structuredClone`
+  // is a Web Platform global on Vercel edge + Node 18+ (no polyfill needed).
+  const clonedProperties: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(tool.inputSchema.properties)) {
+    clonedProperties[key] = structuredClone(value);
+  }
+
+  // Inject the universal schemas as CLONES, not bare references, so that
+  // mutating `result.inputSchema.properties.jmespath.description` doesn't
+  // corrupt the module-level JMESPATH_SCHEMA const.
+  if (isCacheTool) {
+    clonedProperties.summary = structuredClone(SUMMARY_SCHEMA);
+  }
+  clonedProperties.jmespath = structuredClone(JMESPATH_SCHEMA);
+
+  const description = opts.compressDescriptions
+    ? compressDescription(tool.description, TOOL_DESCRIPTION_MAX_BYTES)
+    : tool.description;
+
   return {
     name: tool.name,
-    description: tool.description,
-    inputSchema: { ...tool.inputSchema, properties },
+    description,
+    inputSchema: {
+      type: tool.inputSchema.type,
+      properties: clonedProperties,
+      required: [...tool.inputSchema.required],
+    },
     annotations: { readOnlyHint: true, openWorldHint: true },
   };
-});
+}
+
+const TOOL_LIST_RESPONSE = TOOL_REGISTRY.map((tool) => buildPublicTool(tool, { compressDescriptions: true }));
 
 // ---------------------------------------------------------------------------
 // JSON-RPC helpers

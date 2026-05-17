@@ -110,4 +110,149 @@ describe('api/mcp.ts — tools/list description compression (v1.5.0)', () => {
       }
     });
   });
+
+  // ============================================================
+  // U2: buildPublicTool shared helper — clone, inject, strip
+  // ============================================================
+  describe('buildPublicTool helper', () => {
+    // Pick a cache tool (has _execute===undefined) and an RPC tool from
+    // the registry. Use module-side TOOL_REGISTRY via the helper's
+    // outputs since we don't export TOOL_REGISTRY directly.
+    async function getRegistry() {
+      // Reach into the module's tools/list response to find tool shapes,
+      // then call buildPublicTool against the public surface via a fresh
+      // import + direct tool lookup.
+      // Easier: use the existing tools/list call to learn the names, then
+      // export TOOL_REGISTRY-like access by calling buildPublicTool indirectly.
+      // We need TOOL_REGISTRY here for tests; export it temporarily via
+      // module internals.
+      const res = await mod.default(new Request('https://worldmonitor.app/mcp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': VALID_KEY },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+      }));
+      const body = await res.json();
+      return body.result.tools;
+    }
+
+    it('compressDescriptions=true returns { name, description, inputSchema, annotations } with no other top-level keys', async () => {
+      const tools = await getRegistry();
+      const t = tools.find(t => t.name === 'get_market_data');
+      assert.ok(t, 'get_market_data must be registered');
+      assert.deepEqual(Object.keys(t).sort(), ['annotations', 'description', 'inputSchema', 'name']);
+    });
+
+    it('every cache-tool result has inputSchema.properties.summary STRUCTURALLY equal to SUMMARY_SCHEMA (deepEqual not ===)', async () => {
+      // We need an internal handle on SUMMARY_SCHEMA / JMESPATH_SCHEMA to
+      // assert structural equality.
+      const SUMMARY_SCHEMA = { type: 'boolean', description: 'Return counts + 3-item samples instead of full lists. Useful when you only need shape/size or want to budget context before drilling in.' };
+      const tools = await getRegistry();
+      const cacheTool = tools.find(t => t.name === 'get_market_data');
+      assert.ok(cacheTool.inputSchema.properties.summary);
+      assert.deepEqual(cacheTool.inputSchema.properties.summary, SUMMARY_SCHEMA);
+    });
+
+    it('every tool has inputSchema.properties.jmespath STRUCTURALLY equal to JMESPATH_SCHEMA (deepEqual not ===)', async () => {
+      const JMESPATH_SCHEMA = { type: 'string', description: 'Optional JMESPath projection applied to the response. See initialize.instructions for grammar and examples.' };
+      const tools = await getRegistry();
+      for (const t of tools) {
+        assert.ok(t.inputSchema?.properties?.jmespath, `tool "${t.name}" missing jmespath schema`);
+        assert.deepEqual(t.inputSchema.properties.jmespath, JMESPATH_SCHEMA, `tool "${t.name}" jmespath shape differs`);
+      }
+    });
+
+    it('RPC tool result does NOT have summary in properties', async () => {
+      const tools = await getRegistry();
+      // search_flights is RPC (_execute) — no summary
+      const rpc = tools.find(t => t.name === 'search_flights');
+      assert.ok(rpc);
+      assert.ok(!('summary' in (rpc.inputSchema?.properties ?? {})),
+        'search_flights (RPC) MUST NOT have summary in its properties');
+    });
+
+    it('R5: mutating result.inputSchema.properties.asset_class.items.enum does NOT mutate registry', async () => {
+      // get_market_data.asset_class has items.enum (api/mcp.ts:655).
+      const tools1 = await getRegistry();
+      const a1 = tools1.find(t => t.name === 'get_market_data');
+      assert.ok(Array.isArray(a1.inputSchema.properties.asset_class?.items?.enum),
+        'asset_class.items.enum must exist for this test');
+      const before = [...a1.inputSchema.properties.asset_class.items.enum];
+      // Mutate the returned schema
+      a1.inputSchema.properties.asset_class.items.enum.push('hacked');
+      // Fetch again — should be untouched
+      const tools2 = await getRegistry();
+      const a2 = tools2.find(t => t.name === 'get_market_data');
+      assert.deepEqual(a2.inputSchema.properties.asset_class.items.enum, before,
+        'nested items.enum was mutated through shared reference');
+    });
+
+    it('R5: mutating result.inputSchema.properties.<x>.enum does NOT mutate registry (direct-enum case)', async () => {
+      // get_news_intelligence.topic has direct enum (api/mcp.ts:810).
+      const tools1 = await getRegistry();
+      const a1 = tools1.find(t => t.name === 'get_news_intelligence');
+      assert.ok(Array.isArray(a1.inputSchema.properties.topic?.enum),
+        'topic.enum must exist for this test');
+      const before = [...a1.inputSchema.properties.topic.enum];
+      a1.inputSchema.properties.topic.enum.length = 0; // mutate to empty
+      const tools2 = await getRegistry();
+      const a2 = tools2.find(t => t.name === 'get_news_intelligence');
+      assert.deepEqual(a2.inputSchema.properties.topic.enum, before,
+        'direct enum array was mutated through shared reference');
+    });
+
+    it('R5: mutating result.inputSchema.properties.jmespath.description does NOT mutate JMESPATH_SCHEMA', async () => {
+      const tools1 = await getRegistry();
+      const a1 = tools1.find(t => t.name === 'get_market_data');
+      a1.inputSchema.properties.jmespath.description = 'EVIL';
+      const tools2 = await getRegistry();
+      const a2 = tools2.find(t => t.name === 'get_market_data');
+      assert.notEqual(a2.inputSchema.properties.jmespath.description, 'EVIL',
+        'JMESPATH_SCHEMA was mutated through shared reference — buildPublicTool must clone it');
+      assert.ok(a2.inputSchema.properties.jmespath.description.includes('JMESPath'),
+        `expected the original JMESPATH_SCHEMA description, got "${a2.inputSchema.properties.jmespath.description}"`);
+    });
+
+    it('R5: mutating result.inputSchema.properties.summary.description does NOT mutate SUMMARY_SCHEMA', async () => {
+      const tools1 = await getRegistry();
+      const a1 = tools1.find(t => t.name === 'get_market_data');
+      a1.inputSchema.properties.summary.description = 'EVIL';
+      const tools2 = await getRegistry();
+      const a2 = tools2.find(t => t.name === 'get_market_data');
+      assert.notEqual(a2.inputSchema.properties.summary.description, 'EVIL',
+        'SUMMARY_SCHEMA was mutated through shared reference');
+      assert.ok(a2.inputSchema.properties.summary.description.includes('counts'),
+        `expected the original SUMMARY_SCHEMA description, got "${a2.inputSchema.properties.summary.description}"`);
+    });
+
+    it('two calls produce structurally-equal but reference-distinct property objects', async () => {
+      const tools1 = await getRegistry();
+      const tools2 = await getRegistry();
+      const a1 = tools1.find(t => t.name === 'get_market_data');
+      const a2 = tools2.find(t => t.name === 'get_market_data');
+      assert.deepEqual(a1.inputSchema.properties, a2.inputSchema.properties);
+      assert.notEqual(a1.inputSchema.properties, a2.inputSchema.properties,
+        'expected reference-distinct properties objects between calls');
+      assert.notEqual(a1.inputSchema.properties.jmespath, a2.inputSchema.properties.jmespath,
+        'expected reference-distinct jmespath property objects between calls');
+    });
+
+    it('R9: no key starting with _ appears anywhere in any returned tool object (recursive scan)', async () => {
+      const tools = await getRegistry();
+      function scanForUnderscoreKey(value, pathStack) {
+        if (Array.isArray(value)) {
+          for (let i = 0; i < value.length; i++) scanForUnderscoreKey(value[i], [...pathStack, `[${i}]`]);
+        } else if (value && typeof value === 'object') {
+          for (const k of Object.keys(value)) {
+            if (k.startsWith('_')) {
+              throw new Error(`Internal field leak: tools/list contains key "${k}" at path ${pathStack.join('.')}`);
+            }
+            scanForUnderscoreKey(value[k], [...pathStack, k]);
+          }
+        }
+      }
+      for (const t of tools) {
+        scanForUnderscoreKey(t, [`tools[${t.name}]`]);
+      }
+    });
+  });
 });
