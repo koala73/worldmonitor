@@ -1,7 +1,16 @@
 # JMESPath measurement fixtures
 
+> **⚠️ THESE FIXTURES ARE CURRENTLY SYNTHETIC STUBS.** Each file contains a
+> top-level `_SYNTHETIC_` marker explaining its purpose. They match the
+> real `executeTool` envelope shape and the real cache-key label layout,
+> so the measurement pipeline is fully exercised — but the absolute byte
+> counts **under-represent** what real prod responses will show
+> (synthetic fat ≈ 2.8 KB; real fat ≈ 5-10 KB). Replace with real
+> captures before merging (procedure below). Once captured, drop the
+> `_SYNTHETIC_` field from each file.
+
 These three captured tool responses feed `scripts/measure-jmespath-savings.mjs`
-(the U6 reproducible token-savings A/B). They are real responses from the
+(the U6 reproducible token-savings A/B). They should be real responses from the
 production MCP endpoint, captured ONCE and committed verbatim so the script
 is fully deterministic — re-running on the committed fixtures produces
 byte-identical numbers.

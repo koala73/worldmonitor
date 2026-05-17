@@ -1,0 +1,20 @@
+{
+  "_SYNTHETIC_": "Hand-written stub matching get_chokepoint_status executeTool envelope shape. Replace with a real prod capture before merge — `node scripts/capture-mcp-fixture.mjs --tool get_chokepoint_status --name thin-get-chokepoint-status`. Real payload references 6 cache keys; synthetic numbers under-represent both size and projection delta but the SHAPE of the projection win is preserved.",
+  "cached_at": "2026-05-17T12:00:00.000Z",
+  "stale": false,
+  "data": {
+    "transit-summaries": {
+      "chokepoints": [
+        { "name": "Suez Canal", "status": "operational", "transitsLast7d": 312, "transitsLast30d": 1345, "baselineDeviationPct": -8.4 },
+        { "name": "Panama Canal", "status": "constrained", "transitsLast7d": 188, "transitsLast30d": 820, "baselineDeviationPct": -22.1 },
+        { "name": "Strait of Hormuz", "status": "operational", "transitsLast7d": 425, "transitsLast30d": 1810, "baselineDeviationPct": 2.3 },
+        { "name": "Bab el-Mandeb", "status": "elevated", "transitsLast7d": 145, "transitsLast30d": 620, "baselineDeviationPct": -41.7 }
+      ]
+    },
+    "chokepoint_transits": null,
+    "portwatch-ports": null,
+    "chokepoint-baselines": null,
+    "ref": null,
+    "chokepoint-flows": null
+  }
+}

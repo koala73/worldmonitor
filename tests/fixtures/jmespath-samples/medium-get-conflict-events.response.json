@@ -1,0 +1,28 @@
+{
+  "_SYNTHETIC_": "Hand-written stub matching get_conflict_events executeTool envelope shape. Replace with a real prod capture before merge — `node scripts/capture-mcp-fixture.mjs --tool get_conflict_events --name medium-get-conflict-events`. Real payload is richer (default limit=30 events per list); synthetic numbers under-represent both size and projection delta.",
+  "cached_at": "2026-05-17T12:00:00.000Z",
+  "stale": false,
+  "data": {
+    "ucdp-events": {
+      "events": [
+        { "id": "ucdp-2026-001", "country": "Ukraine", "countryCode": "ua", "date": "2026-05-15", "fatalities": 42, "title": "Artillery exchange near Avdiivka", "actor1": "Ukrainian Armed Forces", "actor2": "Russian Armed Forces", "latitude": 48.13, "longitude": 37.74, "source": "UCDP" },
+        { "id": "ucdp-2026-002", "country": "Sudan", "countryCode": "sd", "date": "2026-05-14", "fatalities": 28, "title": "Clashes in Khartoum suburbs", "actor1": "SAF", "actor2": "RSF", "latitude": 15.50, "longitude": 32.56, "source": "UCDP" },
+        { "id": "ucdp-2026-003", "country": "Myanmar", "countryCode": "mm", "date": "2026-05-13", "fatalities": 18, "title": "Junta airstrike on KIA position", "actor1": "Tatmadaw", "actor2": "Kachin Independence Army", "latitude": 25.38, "longitude": 97.39, "source": "UCDP" },
+        { "id": "ucdp-2026-004", "country": "Somalia", "countryCode": "so", "date": "2026-05-12", "fatalities": 15, "title": "Al-Shabaab attack on military base", "actor1": "Somalia Government", "actor2": "Al-Shabaab", "latitude": 2.04, "longitude": 45.34, "source": "UCDP" },
+        { "id": "ucdp-2026-005", "country": "Yemen", "countryCode": "ye", "date": "2026-05-11", "fatalities": 12, "title": "Houthi missile strike", "actor1": "Houthi", "actor2": "Yemeni Government", "latitude": 15.55, "longitude": 48.51, "source": "UCDP" }
+      ]
+    },
+    "iran-events": {
+      "events": [
+        { "id": "iran-2026-001", "country": "Iran", "countryCode": "ir", "date": "2026-05-15", "fatalities": 0, "title": "IRGC drill in Hormuz Strait", "latitude": 27.0, "longitude": 56.5, "source": "iran-monitoring" },
+        { "id": "iran-2026-002", "country": "Iran", "countryCode": "ir", "date": "2026-05-13", "fatalities": 3, "title": "Border clash with Kurdish militants", "latitude": 35.5, "longitude": 45.7, "source": "iran-monitoring" }
+      ]
+    },
+    "events": [
+      { "id": "unrest-2026-001", "country": "France", "countryCode": "fr", "date": "2026-05-15", "fatalities": 0, "title": "Mass protests against pension reform", "latitude": 48.86, "longitude": 2.35, "category": "protest", "source": "ACLED" },
+      { "id": "unrest-2026-002", "country": "Argentina", "countryCode": "ar", "date": "2026-05-14", "fatalities": 0, "title": "Buenos Aires general strike", "latitude": -34.60, "longitude": -58.38, "category": "strike", "source": "ACLED" },
+      { "id": "unrest-2026-003", "country": "Kenya", "countryCode": "ke", "date": "2026-05-13", "fatalities": 2, "title": "Anti-tax protests in Nairobi", "latitude": -1.28, "longitude": 36.82, "category": "protest", "source": "ACLED" }
+    ],
+    "scores": null
+  }
+}

@@ -1,0 +1,38 @@
+{
+  "_SYNTHETIC_": "This is a hand-written stub matching the real get_market_data executeTool envelope shape. Replace with a real prod capture before merge — `node scripts/capture-mcp-fixture.mjs --tool get_market_data --name fat-get-market-data` with a working WM_MCP_BEARER. Real payload is ~5-10 KB and richer; synthetic numbers from this fixture underrepresent both the absolute size and the projection delta.",
+  "cached_at": "2026-05-17T12:00:00.000Z",
+  "stale": false,
+  "data": {
+    "stocks-bootstrap": {
+      "quotes": [
+        { "symbol": "AAPL", "price": 187.42, "change": 1.23, "changePercent": 0.66, "volume": 45321900, "marketCap": 2904500000000, "high": 188.05, "low": 186.10, "open": 186.50, "previousClose": 186.19, "currency": "USD" },
+        { "symbol": "MSFT", "price": 421.18, "change": -0.45, "changePercent": -0.11, "volume": 18900400, "marketCap": 3131200000000, "high": 422.50, "low": 420.10, "open": 421.50, "previousClose": 421.63, "currency": "USD" },
+        { "symbol": "GOOGL", "price": 142.65, "change": 0.88, "changePercent": 0.62, "volume": 27445100, "marketCap": 1780400000000, "high": 143.20, "low": 141.85, "open": 142.10, "previousClose": 141.77, "currency": "USD" },
+        { "symbol": "AMZN", "price": 178.92, "change": 2.05, "changePercent": 1.16, "volume": 38222700, "marketCap": 1862500000000, "high": 179.55, "low": 177.10, "open": 177.40, "previousClose": 176.87, "currency": "USD" },
+        { "symbol": "NVDA", "price": 902.50, "change": 12.40, "changePercent": 1.39, "volume": 41500300, "marketCap": 2220100000000, "high": 905.10, "low": 895.20, "open": 896.00, "previousClose": 890.10, "currency": "USD" },
+        { "symbol": "META", "price": 481.20, "change": -1.10, "changePercent": -0.23, "volume": 14100500, "marketCap": 1223900000000, "high": 483.05, "low": 480.10, "open": 482.20, "previousClose": 482.30, "currency": "USD" },
+        { "symbol": "TSLA", "price": 178.30, "change": -3.45, "changePercent": -1.90, "volume": 92400200, "marketCap": 568400000000, "high": 182.10, "low": 177.50, "open": 181.60, "previousClose": 181.75, "currency": "USD" },
+        { "symbol": "SPY", "price": 524.10, "change": 0.42, "changePercent": 0.08, "volume": 55200900, "marketCap": null, "high": 524.60, "low": 522.80, "open": 523.40, "previousClose": 523.68, "currency": "USD" }
+      ]
+    },
+    "commodities-bootstrap": {
+      "quotes": [
+        { "symbol": "GC=F", "price": 2355.20, "change": 8.50, "changePercent": 0.36, "name": "Gold Futures" },
+        { "symbol": "CL=F", "price": 78.45, "change": -0.62, "changePercent": -0.78, "name": "Crude Oil Futures" },
+        { "symbol": "SI=F", "price": 28.10, "change": 0.15, "changePercent": 0.54, "name": "Silver Futures" },
+        { "symbol": "HG=F", "price": 4.55, "change": 0.02, "changePercent": 0.44, "name": "Copper Futures" }
+      ]
+    },
+    "crypto": {
+      "quotes": [
+        { "symbol": "BTC", "price": 67420.55, "change24h": 1240.30, "changePercent24h": 1.87, "volume24h": 28500000000, "marketCap": 1330000000000 },
+        { "symbol": "ETH", "price": 3485.10, "change24h": 42.15, "changePercent24h": 1.22, "volume24h": 14200000000, "marketCap": 419000000000 },
+        { "symbol": "SOL", "price": 158.40, "change24h": -2.30, "changePercent24h": -1.43, "volume24h": 2900000000, "marketCap": 73400000000 }
+      ]
+    },
+    "sectors": null,
+    "etf-flows": null,
+    "gulf-quotes": null,
+    "fear-greed": null
+  }
+}

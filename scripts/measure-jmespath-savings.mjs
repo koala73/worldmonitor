@@ -33,24 +33,30 @@ const FIXTURES_DIR = resolve(ROOT, 'tests/fixtures/jmespath-samples');
 
 // Three deterministic agent-style projections, one per fixture size class.
 // Keep these stable across runs so reported numbers are reproducible.
+// Cache keys are labelled by their last meaningful segment after stripping
+// version tags (NON_LABEL = /^(v\d+|\d+|stale|sebuf)$/), so:
+//   `market:stocks-bootstrap:v1` -> `data["stocks-bootstrap"]`
+//   `conflict:ucdp-events:v1`    -> `data["ucdp-events"]`
+//   `supply_chain:transit-summaries:v1` -> `data["transit-summaries"]`
+// Hyphenated keys MUST be quoted in JMESPath (`data."stocks-bootstrap"`).
 const CASES = [
   {
     name: 'fat',
     tool: 'get_market_data',
     fixture: 'fat-get-market-data.response.json',
-    expr: 'data.{stocks: stocks[*].{s:symbol,p:price}, commodities: commodities[*].{s:symbol,p:price}, crypto: crypto[*].{s:symbol,p:price}}',
+    expr: '{stocks: data."stocks-bootstrap".quotes[*].{s:symbol,p:price}, commodities: data."commodities-bootstrap".quotes[*].{s:symbol,p:price}, crypto: data.crypto.quotes[*].{s:symbol,p:price}}',
   },
   {
     name: 'medium',
     tool: 'get_conflict_events',
     fixture: 'medium-get-conflict-events.response.json',
-    expr: 'data.{events: events[*].{c:country,k:fatalities,t:title}, unrest: events[*].{c:country,t:title}}',
+    expr: '{ucdp: data."ucdp-events".events[*].{c:country,k:fatalities,t:title}, iran: data."iran-events".events[*].{c:country,k:fatalities,t:title}, unrest: data.events[*].{c:country,t:title}}',
   },
   {
     name: 'thin',
     tool: 'get_chokepoint_status',
     fixture: 'thin-get-chokepoint-status.response.json',
-    expr: 'data.{chokepoints: chokepoints[*].{n:name,s:status}}',
+    expr: 'data."transit-summaries".chokepoints[*].{n:name,s:status}',
   },
 ];
 
