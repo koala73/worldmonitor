@@ -43,7 +43,7 @@ jobs:
       - run: npm run test:data
       - name: Edge function bundle check
         run: |
-          find api/ -name "*.js" -not -name "_*" | while read f; do
+          find api/ \( -name "*.js" -o -name "*.ts" \) -not -name "_*" -not -name "*.test.*" | while read f; do
             npx esbuild "$f" --bundle --format=esm --platform=browser --outfile=/dev/null || {
               echo "ERROR: esbuild failed to bundle $f"
               exit 1
