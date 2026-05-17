@@ -830,3 +830,130 @@ describe('filterTopStories — source-topic cap (U5/R6)', () => {
     assert.equal(drops.filter((d) => d.reason === 'source_topic_cap').length, 1);
   });
 });
+
+describe('filterTopStories — U3: word-wise titleCase on emitted category (envelope-build normalization)', () => {
+  let _linkCounter = 0;
+  function makeStoryWithCategory(category) {
+    _linkCounter += 1;
+    return upstreamStory({ category, primaryLink: `https://example.com/x-${_linkCounter}` });
+  }
+
+  it('T9: lowercase EventCategory `conflict` → emitted envelope category `Conflict`', () => {
+    const out = filterTopStories({ stories: [makeStoryWithCategory('conflict')], sensitivity: 'all' });
+    assert.equal(out.length, 1);
+    assert.equal(out[0].category, 'Conflict');
+  });
+
+  it('T10: parameterized — all canonical EventCategory enum values title-case correctly', () => {
+    const cases = [
+      ['health', 'Health'],
+      ['diplomatic', 'Diplomatic'],
+      ['tech', 'Tech'],
+      ['environmental', 'Environmental'],
+      ['terrorism', 'Terrorism'],
+      ['protest', 'Protest'],
+      ['disaster', 'Disaster'],
+      ['economic', 'Economic'],
+      ['cyber', 'Cyber'],
+      ['military', 'Military'],
+      ['crime', 'Crime'],
+      ['infrastructure', 'Infrastructure'],
+      ['general', 'General'],
+    ];
+    for (const [input, expected] of cases) {
+      const out = filterTopStories({ stories: [makeStoryWithCategory(input)], sensitivity: 'all' });
+      assert.equal(out.length, 1, `input "${input}" should survive the filter`);
+      assert.equal(out[0].category, expected, `category "${input}" should normalize to "${expected}"`);
+    }
+  });
+
+  it('T10b: multi-word category `world politics` → `World Politics` (composeBriefForRule protection)', () => {
+    // filterTopStories is shared with composeBriefForRule callers that
+    // pass multi-word legacy categories like 'world politics'. A
+    // first-letter-only helper would corrupt these to 'World politics'.
+    // Word-wise titleCase preserves both words capitalized.
+    const out = filterTopStories({ stories: [makeStoryWithCategory('world politics')], sensitivity: 'all' });
+    assert.equal(out.length, 1);
+    assert.equal(out[0].category, 'World Politics');
+  });
+
+  it('T11: critical-regression — cap-key stays on canonical raw value (proven via mixed-case differential)', () => {
+    // The cap is case-sensitive on the raw `category` value (existing
+    // behavior, intentionally unchanged by U3). Mixed-case fixtures
+    // expose whether the cap-key was inadvertently moved to the
+    // Title-Cased display value:
+    //   - Cap on RAW: 'conflict' and 'Conflict' produce DIFFERENT keys
+    //     → both stories survive (cap doesn't fire) → out.length === 2
+    //   - Cap on DISPLAY: both titleCase to 'Conflict' → SAME key
+    //     → cap fires at 1 → out.length === 1
+    // If a future refactor accidentally moves titleCase upstream of
+    // pairKey, this test fails (length 1 instead of 2). T11b is the
+    // structural backstop via source-textual assertion.
+    //
+    // Both stories display as 'Conflict' regardless: titleCase fires
+    // on the lowercase one ('conflict' → 'Conflict') and is idempotent
+    // on the already-Capitalized one ('Conflict' → 'Conflict').
+    const out = filterTopStories({
+      stories: [
+        upstreamStory({
+          primaryTitle: 'Story A',
+          primaryLink: 'https://example.com/cap-a',
+          primarySource: 'Reuters',
+          category: 'conflict',
+          importanceScore: 500,
+        }),
+        upstreamStory({
+          primaryTitle: 'Story B',
+          primaryLink: 'https://example.com/cap-b',
+          primarySource: 'Reuters',
+          category: 'Conflict',
+          importanceScore: 400,
+        }),
+      ],
+      sensitivity: 'all',
+      maxPerSourceTopic: 1,
+    });
+    assert.equal(out.length, 2, 'cap-key on raw value: lowercase and Capitalized produce different keys → both survive');
+    assert.equal(out[0].category, 'Conflict', 'both display values are Title-Cased (lowercase via titleCase, Capitalized idempotent)');
+    assert.equal(out[1].category, 'Conflict');
+  });
+
+  it('T12: fallback idempotency — missing category hits filterTopStories `|| \'General\'` default and titleCase leaves it as `General`', () => {
+    const out = filterTopStories({ stories: [upstreamStory({ category: undefined, primaryLink: 'https://example.com/t12' })], sensitivity: 'all' });
+    assert.equal(out.length, 1);
+    assert.equal(out[0].category, 'General');
+  });
+
+  it('T13: defensive — empty / non-string category falls through to `General` without throw', () => {
+    const empty = filterTopStories({ stories: [upstreamStory({ category: '', primaryLink: 'https://example.com/t13-empty' })], sensitivity: 'all' });
+    assert.equal(empty.length, 1);
+    assert.equal(empty[0].category, 'General');
+
+    const nonStr = filterTopStories({ stories: [upstreamStory({ category: 42, primaryLink: 'https://example.com/t13-nonstr' })], sensitivity: 'all' });
+    assert.equal(nonStr.length, 1);
+    assert.equal(nonStr[0].category, 'General');
+  });
+});
+
+describe('filterTopStories — U3 T11b: source-textual cap-key ordering invariant', () => {
+  it('pairKey is computed BEFORE titleCase(category) call in out.push (locks structural ordering)', async () => {
+    // Belt-and-suspenders: lock the structural ordering in source so a
+    // future refactor cannot silently move titleCase upstream of pairKey
+    // and break the cap grouping.
+    const { readFileSync } = await import('node:fs');
+    const { resolve, dirname } = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    const src = readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), '..', 'shared', 'brief-filter.js'),
+      'utf-8',
+    );
+    const pairKeyIdx = src.indexOf('const pairKey = source + KEY_DELIM + category');
+    assert.ok(pairKeyIdx !== -1, 'pairKey computation site must exist');
+    const titleCaseCallIdx = src.indexOf('titleCase(category)');
+    assert.ok(titleCaseCallIdx !== -1, 'titleCase(category) call must exist at the out.push site');
+    assert.ok(
+      pairKeyIdx < titleCaseCallIdx,
+      'pairKey must be computed BEFORE titleCase(category) — otherwise the cap groups on display value, not raw',
+    );
+  });
+});
