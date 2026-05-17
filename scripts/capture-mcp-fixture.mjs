@@ -94,5 +94,8 @@ try {
 mkdirSync(FIXTURES_DIR, { recursive: true });
 const target = resolve(FIXTURES_DIR, `${name}.response.json`);
 writeFileSync(target, JSON.stringify(envelope, null, 2) + '\n');
-const bytes = JSON.stringify(envelope).length;
-process.stdout.write(`wrote ${target} (${bytes} bytes of compact JSON)\n`);
+// Report UTF-8 byte count — matches the runtime gate's contract
+// (api/mcp.ts:utf8ByteLength) so the number a captured fixture reports
+// here is comparable to what the projection cap measures.
+const bytes = new TextEncoder().encode(JSON.stringify(envelope)).length;
+process.stdout.write(`wrote ${target} (${bytes} UTF-8 bytes of compact JSON)\n`);

@@ -379,7 +379,12 @@ export interface ApplyJmespathResult {
 // for the two-gate contract.
 export function applyJmespath(value: unknown, exprArg: unknown): ApplyJmespathResult {
   if (typeof exprArg !== 'string' || exprArg.length === 0) {
-    return { text: JSON.stringify(value) };
+    // `JSON.stringify(undefined)` returns the literal value `undefined`
+    // (not a string), which would propagate up to `rpcOk(...content[0].text)`
+    // and serialize the field away — clients would see a missing `text`
+    // field. Same guard as the projection path: stringify-then-coerce-to-'null'.
+    const text = JSON.stringify(value);
+    return { text: text === undefined ? 'null' : text };
   }
 
   // Input gate — reject before parser.

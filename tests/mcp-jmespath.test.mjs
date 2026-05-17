@@ -82,6 +82,15 @@ describe('api/mcp.ts — JMESPath projection (v1.4.0)', () => {
       assert.equal(r.text, JSON.stringify(v));
     });
 
+    it('identity: undefined value with absent expr returns "null" string, not undefined', () => {
+      // Guard against JSON.stringify(undefined) === undefined (not the
+      // string "null"), which would propagate up to content[0].text and
+      // serialize the field away. Same shape as the projection path.
+      const r = mod.applyJmespath(undefined, undefined);
+      assert.equal(r.text, 'null', `expected literal string "null", got ${JSON.stringify(r.text)}`);
+      assert.equal(r.failed, undefined);
+    });
+
     it('happy: simple key path', () => {
       const r = mod.applyJmespath({ a: { b: [1, 2, 3] } }, 'a.b[1]');
       assert.equal(r.text, '2');
@@ -156,31 +165,28 @@ describe('api/mcp.ts — JMESPath projection (v1.4.0)', () => {
       assert.ok(mod.utf8ByteLength(r.text) < 8 * 1024, `envelope size ${r.text.length} should be << 256 KB`);
     });
 
-    it('output gate UTF-8: 4-byte chars push utf8 over cap even when .length is under', () => {
-      // Build a string whose .length is well below 256 KB code-units but
-      // whose utf8 byte count exceeds it (each "🌍" is 1 UTF-16 surrogate
-      // pair = 2 .length units but 4 UTF-8 bytes).
-      // To trigger projection_too_large via UTF-8 byte accounting, the
-      // projected JSON's utf8 length must cross the cap. Build an array
-      // of strings of 4-byte chars whose JSON encoding crosses 256 KB.
-      // Each "🌍" in JSON is "🌍" (12 ASCII bytes) when stringify
-      // escapes it — defeats the test. Use raw emoji in the *value* count:
-      // JSON.stringify keeps emoji as their UTF-8 representation (NOT
-      // escaped) because they're valid UTF-8 outside the escape required
-      // set. Verify both branches: UTF-16 length << 256K, UTF-8 > 256K.
-      const chunk = '🌍'.repeat(40_000); // 40_000 * 4 = 160_000 UTF-8 bytes, .length = 80_000
-      const v = { a: chunk, b: chunk };  // doubled → ~320 KB UTF-8 in JSON form
+    it('output gate UTF-8: 4-byte chars push utf8 over cap even when JS string .length is under', () => {
+      // Build a payload whose JS-string .length is well below 256 KB but whose
+      // UTF-8 byte length exceeds the cap. Each "🌍" is 2 UTF-16 code units
+      // (.length=2) but 4 UTF-8 bytes. JSON.stringify keeps emoji as raw
+      // UTF-8 (NOT \u escape sequences), so the projected text's byte length
+      // is dominated by the emoji content.
+      const chunk = '🌍'.repeat(40_000);            // .length = 80_000, utf8 = 160_000
+      const v = { a: chunk, b: chunk };             // doubled → ~320 KB UTF-8 in JSON form
+      // Sanity-check the test premise BEFORE invoking the helper. If these
+      // fail, the test fixture itself is wrong, not the helper.
+      const naiveStringified = JSON.stringify(v);
+      assert.ok(naiveStringified.length < mod.JMESPATH_MAX_OUTPUT_BYTES,
+        `premise: JS-string .length (${naiveStringified.length}) must be < cap (${mod.JMESPATH_MAX_OUTPUT_BYTES})`);
+      assert.ok(mod.utf8ByteLength(naiveStringified) > mod.JMESPATH_MAX_OUTPUT_BYTES,
+        `premise: UTF-8 byte length (${mod.utf8ByteLength(naiveStringified)}) must be > cap (${mod.JMESPATH_MAX_OUTPUT_BYTES})`);
+      // The real assertion: the helper MUST reject. If the gate ever silently
+      // fell back to .length, this fails.
       const r = mod.applyJmespath(v, '@');
-      const projectedText = r.failed === undefined ? r.text : null;
-      if (projectedText === null) {
-        // Already rejected — meets the contract. Confirm reason.
-        assert.equal(r.failed, 'projection_too_large');
-      } else {
-        // Should have been rejected but wasn't — sanity-check why.
-        const utf8 = mod.utf8ByteLength(projectedText);
-        assert.ok(utf8 > mod.JMESPATH_MAX_OUTPUT_BYTES,
-          `expected projection_too_large but got pass: utf8=${utf8} cap=${mod.JMESPATH_MAX_OUTPUT_BYTES} len16=${projectedText.length}`);
-      }
+      assert.equal(r.failed, 'projection_too_large',
+        `expected projection_too_large but got ${r.failed ?? '<no failure>'}`);
+      assert.ok(mod.utf8ByteLength(r.text) < 8 * 1024,
+        `error envelope must be SMALL, got ${r.text.length} chars`);
     });
 
     it('enum consistency: failed field matches the leading token of _jmespath_error for each kind', () => {
@@ -368,6 +374,18 @@ describe('api/mcp.ts — JMESPath projection (v1.4.0)', () => {
         }
         if (u.includes('/get/')) {
           return new Response(JSON.stringify({ result: null }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        }
+        // Setting UPSTASH_REDIS_REST_URL above enables the @upstash/ratelimit
+        // sliding-window limiter, which makes EVALSHA / pipeline calls to
+        // the same host. Without this catch-all, those fall through to
+        // `originalFetch('https://fake.upstash.io/...')` and burn ~5-30s of
+        // DNS-fail timeout per dispatch test. Return a benign rate-limit
+        // shape that the Upstash REST client interprets as "limiter
+        // unavailable" → graceful degradation, no rate-limit applied.
+        if (u.startsWith('https://fake.upstash.io')) {
+          return new Response(JSON.stringify({ result: null }), {
+            status: 200, headers: { 'Content-Type': 'application/json' },
+          });
         }
         return originalFetch(url);
       };
