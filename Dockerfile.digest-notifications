@@ -87,6 +87,11 @@ COPY server/_shared/llm-sanitize.js server/_shared/llm-sanitize.d.ts ./server/_s
 # crashes at import with ERR_MODULE_NOT_FOUND on startup.
 COPY server/_shared/opinion-classifier.js server/_shared/opinion-classifier.d.ts ./server/_shared/
 
+# feelgood-classifier is imported directly by scripts/seed-digest-notifications.mjs
+# (buildDigest's read-time feel-good filter — sibling to the opinion filter). Same
+# ERR_MODULE_NOT_FOUND failure mode if omitted.
+COPY server/_shared/feelgood-classifier.js server/_shared/feelgood-classifier.d.ts ./server/_shared/
+
 # Upstash REST helper (brief compose uses redisPipeline + readRawJson).
 COPY api/_upstash-json.js ./api/
 COPY api/_seed-envelope.js ./api/
