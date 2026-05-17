@@ -1,23 +1,40 @@
 import { strict as assert } from 'node:assert';
-import { describe, it, beforeEach, afterEach } from 'node:test';
+import { describe, it, beforeEach, afterEach, before } from 'node:test';
+
+// validateApiKey (added to handler for issue #3723) requires a valid
+// X-WorldMonitor-Key. Mint a real wms_ session token for the positive-path
+// tests; explicit "no key" / "no origin" tests live in their own block.
+process.env.WM_SESSION_SECRET ||= 'test-secret-must-be-at-least-32-chars-long-xxx';
+const { issueSessionToken } = await import('../api/_session.js');
+let SESSION_TOKEN;
+before(async () => {
+  SESSION_TOKEN = (await issueSessionToken()).token;
+});
 
 const originalFetch = globalThis.fetch;
 
-function makeGetRequest(params = {}, origin = 'https://worldmonitor.app') {
+function buildHeaders(origin, { authed = true, extra = {} } = {}) {
+  const h = { ...extra };
+  if (origin !== null) h.origin = origin;
+  if (authed) h['X-WorldMonitor-Key'] = SESSION_TOKEN;
+  return h;
+}
+
+function makeGetRequest(params = {}, origin = 'https://worldmonitor.app', opts = {}) {
   const url = new URL('https://worldmonitor.app/api/mcp-proxy');
   for (const [k, v] of Object.entries(params)) {
     if (v !== undefined) url.searchParams.set(k, typeof v === 'string' ? v : JSON.stringify(v));
   }
   return new Request(url.toString(), {
     method: 'GET',
-    headers: { origin },
+    headers: buildHeaders(origin, opts),
   });
 }
 
-function makePostRequest(body = {}, origin = 'https://worldmonitor.app') {
+function makePostRequest(body = {}, origin = 'https://worldmonitor.app', opts = {}) {
   return new Request('https://worldmonitor.app/api/mcp-proxy', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', origin },
+    headers: buildHeaders(origin, { ...opts, extra: { 'Content-Type': 'application/json', ...(opts.extra || {}) } }),
     body: JSON.stringify(body),
   });
 }
@@ -67,6 +84,35 @@ describe('api/mcp-proxy', () => {
     globalThis.fetch = originalFetch;
   });
 
+  // ── Auth gate (issue #3723) ───────────────────────────────────────────────
+
+  describe('Auth gate', () => {
+    it('returns 401 when no X-WorldMonitor-Key is provided', async () => {
+      const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }, 'https://worldmonitor.app', { authed: false }));
+      assert.equal(res.status, 401);
+    });
+
+    it('returns 401 for curl-style request (no Origin, no key) — the #3723 bypass', async () => {
+      // isDisallowedOrigin returns false on null Origin (correct for legit
+      // server-to-server callers on other endpoints). The auth check is what
+      // closes the bypass here.
+      const url = new URL('https://worldmonitor.app/api/mcp-proxy');
+      url.searchParams.set('serverUrl', 'https://mcp.example.com/mcp');
+      const res = await handler(new Request(url.toString(), { method: 'GET' }));
+      assert.equal(res.status, 401);
+    });
+
+    it('returns 401 for POST without key', async () => {
+      const res = await handler(makePostRequest({ serverUrl: 'https://mcp.example.com/mcp', toolName: 'search' }, 'https://worldmonitor.app', { authed: false }));
+      assert.equal(res.status, 401);
+    });
+
+    it('still returns 204 for OPTIONS preflight without key (preflights must not require auth)', async () => {
+      const res = await handler(makeOptionsRequest());
+      assert.equal(res.status, 204);
+    });
+  });
+
   // ── CORS / method guards ──────────────────────────────────────────────────
 
   describe('CORS and method handling', () => {
@@ -83,7 +129,7 @@ describe('api/mcp-proxy', () => {
     it('returns 405 for DELETE', async () => {
       const res = await handler(new Request('https://worldmonitor.app/api/mcp-proxy', {
         method: 'DELETE',
-        headers: { origin: 'https://worldmonitor.app' },
+        headers: { origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': SESSION_TOKEN },
       }));
       assert.equal(res.status, 405);
     });
@@ -91,7 +137,7 @@ describe('api/mcp-proxy', () => {
     it('returns 405 for PUT', async () => {
       const res = await handler(new Request('https://worldmonitor.app/api/mcp-proxy', {
         method: 'PUT',
-        headers: { origin: 'https://worldmonitor.app' },
+        headers: { origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': SESSION_TOKEN },
         body: '{}',
       }));
       assert.equal(res.status, 405);
@@ -203,7 +249,7 @@ describe('api/mcp-proxy', () => {
       const url = new URL('https://worldmonitor.app/api/mcp-proxy');
       url.searchParams.set('serverUrl', 'https://mcp.example.com/mcp');
       url.searchParams.set('headers', 'not json');
-      const req = new Request(url.toString(), { method: 'GET', headers: { origin: 'https://worldmonitor.app' } });
+      const req = new Request(url.toString(), { method: 'GET', headers: { origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': SESSION_TOKEN } });
       const res = await handler(req);
       assert.equal(res.status, 200);
     });

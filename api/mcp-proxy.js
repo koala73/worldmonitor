@@ -1,3 +1,4 @@
+import { validateApiKey } from './_api-key.js';
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
 
@@ -333,6 +334,18 @@ export default async function handler(req) {
   const cors = getCorsHeaders(req, 'GET, POST, OPTIONS');
   if (req.method === 'OPTIONS')
     return new Response(null, { status: 204, headers: cors });
+
+  // Auth gate (issue #3723). Without this, any caller can use the proxy to:
+  //   (a) relay arbitrary customHeaders (Authorization, API keys) to any public
+  //       MCP server under WorldMonitor's outbound IP;
+  //   (b) consume our outbound-IP reputation / quota.
+  // Note: isDisallowedOrigin() returns false on null Origin (correct for
+  // server-to-server callers on other endpoints), so the origin check alone
+  // does not stop curl. validateApiKey requires a wms_ session token, a wm_
+  // user API key, or an enterprise key.
+  const apiKeyResult = await validateApiKey(req);
+  if (apiKeyResult.required && !apiKeyResult.valid)
+    return jsonResponse({ error: apiKeyResult.error }, 401, cors);
 
   try {
     if (req.method === 'GET') {

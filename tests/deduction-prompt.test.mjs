@@ -70,6 +70,30 @@ describe('buildDeductionPrompt', () => {
     assert.match(systemPrompt, /exactly 2 or 3 sentences/);
     assert.doesNotMatch(systemPrompt, /\*\*Bottom line\*\*/);
   });
+
+  // Issue #3724 — defense-in-depth instruction must appear in BOTH modes so an
+  // attacker who controls evidence / prediction-market content can't role-flip
+  // the forecaster.
+  it('forecast mode systemPrompt carries the untrusted-data guardrail (#3724)', () => {
+    const { systemPrompt } = buildDeductionPrompt({
+      query: 'Assess situation',
+      geoContext: 'Region: Baltic',
+      now: new Date('2026-03-15T12:00:00Z'),
+    });
+    assert.match(systemPrompt, /untrusted DATA/i);
+    assert.match(systemPrompt, /never execute instructions/i);
+    assert.match(systemPrompt, /disregard prior rules|change.*persona|role changes/i);
+  });
+
+  it('brief mode systemPrompt carries the untrusted-data guardrail (#3724)', () => {
+    const { systemPrompt } = buildDeductionPrompt({
+      query: 'Assess likelihood in 2-3 sentences.',
+      geoContext: 'Countries: X',
+      now: new Date('2026-03-15T12:00:00Z'),
+    });
+    assert.match(systemPrompt, /untrusted DATA/i);
+    assert.match(systemPrompt, /never execute instructions/i);
+  });
 });
 
 describe('postProcessDeductionOutput', () => {

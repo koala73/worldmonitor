@@ -21,11 +21,12 @@ function getRatelimit(): Ratelimit | null {
 function getClientIp(request: Request): string {
   // With Cloudflare proxy → Vercel, x-real-ip is the CF edge IP (shared across users).
   // cf-connecting-ip is the actual client IP set by Cloudflare — prefer it.
-  // x-forwarded-for is client-settable and MUST NOT be trusted for rate limiting.
+  // x-forwarded-for is client-settable and MUST NOT be trusted for rate limiting:
+  // any caller can set it to spoof a victim's IP (burning their budget) or cycle
+  // synthetic values to bypass their own limit. Issue #3721.
   return (
     request.headers.get('cf-connecting-ip') ||
     request.headers.get('x-real-ip') ||
-    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
     '0.0.0.0'
   );
 }

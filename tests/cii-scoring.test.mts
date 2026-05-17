@@ -202,22 +202,25 @@ describe('CII scoring', () => {
       `RU with threat summary (${withThreat.combinedScore}) should exceed baseline (${withoutThreat.combinedScore})`);
   });
 
-  it('newsTopStories newsActivity capped at 20', () => {
+  // Cap raised 20 → 100 per issue #3739 — the 20 cap silently limited
+  // information's max contribution to 5/25 points despite the equal 0.25 weight.
+  it('newsTopStories newsActivity scales above 20 with heavy input and is capped at 100', () => {
     const aux = emptyAux();
     aux.newsTopStories = Array.from({ length: 20 }, () => ({
       countryCode: 'SY', threatLevel: 'critical', primaryTitle: 'Syria conflict escalates',
     }));
     const scores = computeCIIScores([], aux);
     const sy = scoreFor(scores, 'SY')!;
-    assert.ok(sy.components!.newsActivity <= 20, `newsActivity ${sy.components!.newsActivity} should be capped at 20`);
+    assert.ok(sy.components!.newsActivity > 20, `newsActivity ${sy.components!.newsActivity} should exceed 20 (cap raised to 100 per #3739)`);
+    assert.ok(sy.components!.newsActivity <= 100, `newsActivity ${sy.components!.newsActivity} should be capped at 100`);
   });
 
-  it('threatSummaryByCountry newsActivity capped at 20', () => {
+  it('threatSummaryByCountry newsActivity is capped at 100 (per-source threatSummaryScore still inner-capped at 20)', () => {
     const aux = emptyAux();
     aux.threatSummaryByCountry = { SY: { critical: 100, high: 100, medium: 100, low: 100, info: 100 } };
     const scores = computeCIIScores([], aux);
     const sy = scoreFor(scores, 'SY')!;
-    assert.ok(sy.components!.newsActivity <= 20, `newsActivity ${sy.components!.newsActivity} should be capped at 20`);
+    assert.ok(sy.components!.newsActivity <= 100, `newsActivity ${sy.components!.newsActivity} should be capped at 100`);
   });
 
   it('newsTopStories moderate threat contributes (not silently dropped)', () => {

@@ -493,7 +493,11 @@ export function computeCIIScores(
     const gpsJammingScore = Math.min(35, d.gpsHighCount * 5 + d.gpsMediumCount * 2);
     const security = Math.min(100, Math.round(gpsJammingScore));
 
-    const information = Math.min(20, d.newsScore + d.threatSummaryScore);
+    // information cap raised 20 → 100 to match unrest/conflict/security ranges.
+    // Previous cap silently limited information's max contribution to 5 points
+    // (20 × 0.25) vs 25 for any other component despite the equal 0.25 weight.
+    // Issue #3739.
+    const information = Math.min(100, d.newsScore + d.threatSummaryScore);
 
     const eventScore = unrest * 0.25 + conflict * 0.30 + security * 0.20 + information * 0.25;
 
