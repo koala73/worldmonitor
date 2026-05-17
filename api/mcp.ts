@@ -2890,7 +2890,16 @@ async function dispatchToolsCall(
     }
     // Convex `internal-validate-pro-mcp-token` schedules touchProMcpTokenLastUsed
     // itself (convex/http.ts:1035-1040), so no waitUntil needed here.
-    return rpcOk(id, { content: [{ type: 'text', text: JSON.stringify(result) }] }, corsHeaders);
+    //
+    // Universal JMESPath projection (v1.4.0). `applyJmespath` never throws
+    // — soft-failure modes return a `_jmespath_error` envelope as `text`
+    // inside the normal response. So this stays INSIDE the try/catch but
+    // does NOT participate in the quota DECR path: a bad expression is a
+    // *user* error after a successful tool dispatch, not a system error.
+    // Genuine tool-execution throws (e.g. `cache_all_null`) still hit the
+    // catch below and rollback. Single JSON.stringify per request.
+    const { text } = applyJmespath(result, p.arguments?.jmespath);
+    return rpcOk(id, { content: [{ type: 'text', text }] }, corsHeaders);
   } catch (err: unknown) {
     if (proRollback) await proRollback();
     // HTTP 4xx from an internal sibling fetch (e.g. `feed-digest HTTP 401`)
