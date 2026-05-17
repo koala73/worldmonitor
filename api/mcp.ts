@@ -2370,7 +2370,7 @@ const TOOL_REGISTRY: ToolDef[] = [
         end_date: { type: 'string', description: 'End of the date range in YYYY-MM-DD format' },
         is_round_trip: { type: 'boolean', description: 'Whether to search round-trip prices (default false). Requires trip_duration when true.' },
         trip_duration: { type: 'number', description: 'Trip duration in days — required when is_round_trip is true (e.g. 7 for a one-week trip)' },
-        cabin_class: { type: 'string', description: 'Cabin class: "economy", "premium_economy", "business", or "first" (optional)' },
+        cabin_class: { type: 'string', description: 'Cabin class: "economy", "premium_economy", "business", or "first" (optional, default economy)' },
         passengers: { type: 'number', description: 'Number of passengers (1-9, default 1)' },
         sort_by_price: { type: 'boolean', description: 'Sort results by price ascending (default false, sorts by date)' },
       },
