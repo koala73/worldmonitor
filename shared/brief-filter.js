@@ -392,7 +392,18 @@ export function filterTopStories({ stories, sensitivity, maxStories = 12, maxPer
     // — distinct stories the dedup correctly kept separate, but redundant
     // for a 12-story brief. Ranked-order rule above ensures the
     // highest-importance member of each pair survives.
-    const pairKey = source + KEY_DELIM + category;
+    // Normalize cap-key case so pre-PR residue rows share a bucket with
+    // fresh post-PR rows from the same source. Residue rows resolve via
+    // the `|| 'General'` fallback above (capital G), while fresh post-PR
+    // rows carry the canonical lowercase EventCategory enum value
+    // (lowercase 'general'). Without .toLowerCase(), the two produce
+    // distinct cap buckets ('Reuters\x1fGeneral' vs 'Reuters\x1fgeneral'),
+    // bypassing the cap for the residue subset — exactly the editorial-
+    // clutter failure PR #3697 was created to prevent. Window of risk is
+    // the 7d STORY_TTL during the category-persistence rollout. The
+    // titleCase normalization at out.push below stays unchanged; only
+    // the cap-key is case-folded. Found by adversarial review of PR #3751.
+    const pairKey = source + KEY_DELIM + category.toLowerCase();
     if ((pairCounts.get(pairKey) ?? 0) >= maxPerSourceTopic) {
       if (emit) emit({ reason: 'source_topic_cap', severity: threatLevel, sourceUrl });
       continue;

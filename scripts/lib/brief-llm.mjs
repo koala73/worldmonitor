@@ -15,12 +15,12 @@
 //     through to the original stub — the brief must always ship.
 //
 // Cache semantics:
-//   - brief:llm:whymatters:v4:{storyHash} — 24h, shared across users
+//   - brief:llm:whymatters:v5:{storyHash} — 24h, shared across users
 //     for the same story. v4 bumped from v3 alongside the F6
 //     date-grounding line: every v3 row was produced from a prompt
 //     with no notion of "today" and may state a fabricated year, so
 //     v3 rows must not survive the deploy. v2 rows were lead-blind.
-//   - brief:llm:digest:v6:{userId|public}:{sensitivity}:{poolHash}
+//   - brief:llm:digest:v7:{userId|public}:{sensitivity}:{poolHash}
 //     — 4h. The canonical synthesis is now ALWAYS produced through
 //     this path (formerly split with `generateAISummary` in the
 //     digest cron). Material includes profile-SHA, greeting bucket,
@@ -162,7 +162,13 @@ export async function generateWhyMatters(story, deps) {
   // cold-start through the date-grounded prompt on first tick after
   // deploy. (v2→v3 was the 2026-04-24 RSS-description fix.) Entries
   // expire in ≤24h so the prior prefix ages out without a DEL sweep.
-  const key = `brief:llm:whymatters:v4:${await hashBriefStory(story)}`;
+  //
+  // v4→v5: 2026-05-17 PR #3751. `hashBriefStory` folds `story.category`
+  // into the key; pre-PR every story carried 'General' (no category was
+  // persisted on story:track:v1), post-PR carries the per-story
+  // Title-Cased EventCategory value. Every v4 cache row is now stale.
+  // Bump invalidates them cleanly.
+  const key = `brief:llm:whymatters:v5:${await hashBriefStory(story)}`;
   try {
     const hit = await deps.cacheGet(key);
     if (typeof hit === 'string' && hit.length > 0) return hit;
@@ -275,14 +281,19 @@ export function parseStoryDescription(text, headline) {
  */
 export async function generateStoryDescription(story, deps) {
   // Shares hashBriefStory() with whyMatters — the key prefix
-  // (`brief:llm:description:v2:`) is what separates the two cache
+  // (`brief:llm:description:v3:`) is what separates the two cache
   // namespaces; the material is the six fields including description.
   // Bumped v1→v2 on 2026-04-24 alongside the RSS-description fix so
   // cached pre-grounding output (hallucinated named actors from
   // headline-only prompts) is evicted. hashBriefStory itself includes
   // description in the hash material, so content drift invalidates
   // naturally too — the prefix bump is belt-and-braces.
-  const key = `brief:llm:description:v2:${await hashBriefStory(story)}`;
+  //
+  // v2→v3: 2026-05-17 PR #3751. `hashBriefStory` folds `story.category`
+  // into the hash material — same story-shape change as whymatters
+  // v4→v5. Pre-PR every category was 'General'; post-PR carries the
+  // per-story Title-Cased EventCategory. Bump invalidates v2 entries.
+  const key = `brief:llm:description:v3:${await hashBriefStory(story)}`;
   try {
     const hit = await deps.cacheGet(key);
     if (typeof hit === 'string') {
@@ -922,7 +933,17 @@ export async function generateDigestProse(userId, stories, sensitivity, deps, ct
   // shipped vapid editorial filler ("the global stage is buzzing",
   // "navigating the evolving landscape"). v3 cache rows still in
   // TTL would otherwise serve stale vapid leads for 4h post-deploy.
-  const key = `brief:llm:digest:v6:${hashDigestInput(userId, stories, sensitivity, ctx)}`;
+  //
+  // v7 (2026-05-17): bumped from v6 alongside PR #3751's category
+  // persistence. `hashDigestInput` folds `s.category` into the hash
+  // material; pre-PR every story carried 'General' (no category was
+  // persisted on story:track:v1), post-PR carries the per-story
+  // Title-Cased EventCategory value. v6 cache rows would otherwise
+  // serve digest prose generated against the pre-PR all-General pool
+  // for the full 4h TTL. Sibling bumps applied to whymatters (v4→v5)
+  // and description (v2→v3) — all three caches depend on the same
+  // story.category field via hashBriefStory / hashDigestInput.
+  const key = `brief:llm:digest:v7:${hashDigestInput(userId, stories, sensitivity, ctx)}`;
   try {
     const hit = await deps.cacheGet(key);
     // CRITICAL: re-run the shape+grounding validator on cache hits.

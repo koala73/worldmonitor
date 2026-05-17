@@ -701,6 +701,23 @@ describe('composeBriefFromDigestStories — continued', () => {
     assert.equal(s.country, 'Global');
   });
 
+  it('e2e: lowercase EventCategory `conflict` on digest story → Title-Cased `Conflict` on envelope (PR #3751)', () => {
+    // End-to-end coverage spanning track.category (post-buildDigest) →
+    // filterTopStories' word-wise titleCase at the envelope-build site →
+    // env.data.stories[i].category. Previously the proof was a 3-step
+    // inferential chain (U1 lowercase write → U2 source-textual wiring
+    // in buildDigest stories.push → U3 titleCase at out.push); this test
+    // collapses it into a single behavioral assertion that locks the
+    // contract a future refactor would have to honor.
+    const env = composeBriefFromDigestStories(
+      rule(),
+      [digestStory({ category: 'conflict' })],
+      { clusters: 0, multiSource: 0 },
+      { nowMs: NOW },
+    );
+    assert.equal(env.data.stories[0].category, 'Conflict');
+  });
+
   it('passes insightsNumbers through to the stats page', () => {
     const env = composeBriefFromDigestStories(
       rule(),

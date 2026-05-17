@@ -877,22 +877,22 @@ describe('filterTopStories — U3: word-wise titleCase on emitted category (enve
     assert.equal(out[0].category, 'World Politics');
   });
 
-  it('T11: critical-regression — cap-key stays on canonical raw value (proven via mixed-case differential)', () => {
-    // The cap is case-sensitive on the raw `category` value (existing
-    // behavior, intentionally unchanged by U3). Mixed-case fixtures
-    // expose whether the cap-key was inadvertently moved to the
-    // Title-Cased display value:
-    //   - Cap on RAW: 'conflict' and 'Conflict' produce DIFFERENT keys
-    //     → both stories survive (cap doesn't fire) → out.length === 2
-    //   - Cap on DISPLAY: both titleCase to 'Conflict' → SAME key
-    //     → cap fires at 1 → out.length === 1
-    // If a future refactor accidentally moves titleCase upstream of
-    // pairKey, this test fails (length 1 instead of 2). T11b is the
-    // structural backstop via source-textual assertion.
-    //
-    // Both stories display as 'Conflict' regardless: titleCase fires
-    // on the lowercase one ('conflict' → 'Conflict') and is idempotent
-    // on the already-Capitalized one ('Conflict' → 'Conflict').
+  it('T11: critical-regression — cap-key is case-folded so residue and fresh rows share a bucket', () => {
+    // The cap-key uses `category.toLowerCase()` (added by adversarial
+    // review of PR #3751). Mixed-case fixtures from the same source
+    // collapse into ONE cap bucket because:
+    //   - Pre-PR residue: `asTrimmedString(undefined) || 'General'` →
+    //     'General' (capital G from the fallback).
+    //   - Fresh post-PR: canonical lowercase EventCategory enum value
+    //     like 'general' / 'conflict'.
+    //   - Without case-folding, these produce distinct cap keys
+    //     ('Reuters\x1fGeneral' vs 'Reuters\x1fgeneral') and the cap
+    //     would silently bypass the residue subset for up to 7d of
+    //     STORY_TTL — exactly the editorial-clutter failure PR #3697
+    //     was created to prevent.
+    // T11b (source-textual) locks the structural ordering: pairKey is
+    // computed before titleCase fires at out.push. The two together
+    // prove cap-on-raw (not cap-on-display) AND case-folded.
     const out = filterTopStories({
       stories: [
         upstreamStory({
@@ -913,9 +913,45 @@ describe('filterTopStories — U3: word-wise titleCase on emitted category (enve
       sensitivity: 'all',
       maxPerSourceTopic: 1,
     });
-    assert.equal(out.length, 2, 'cap-key on raw value: lowercase and Capitalized produce different keys → both survive');
-    assert.equal(out[0].category, 'Conflict', 'both display values are Title-Cased (lowercase via titleCase, Capitalized idempotent)');
-    assert.equal(out[1].category, 'Conflict');
+    assert.equal(out.length, 1, 'case-folded cap-key: lowercase and Capitalized share a bucket → cap fires at 1');
+    assert.equal(out[0].category, 'Conflict', 'survivor displays as Title-Cased Conflict');
+  });
+
+  it('T11c: critical-regression — pre-PR residue and fresh general rows share a cap bucket (case-folding fix)', () => {
+    // The adversarial-review-driven failure scenario: pre-PR residue
+    // rows have `track.category === undefined`, which buildDigest passes
+    // as empty string, which `asTrimmedString(...) || 'General'` resolves
+    // to 'General' (capital). Fresh post-PR rows from
+    // `classifyByKeyword` produce 'general' (lowercase, no-match
+    // fallback). Both from the same source must collapse into one cap
+    // bucket — otherwise the cap is silently bypassed for the residue
+    // subset during the up-to-7d STORY_TTL rollout window.
+    const out = filterTopStories({
+      stories: [
+        upstreamStory({
+          primaryTitle: 'Residue story (pre-PR)',
+          primaryLink: 'https://example.com/cap-residue',
+          primarySource: 'Reuters',
+          // Simulates a pre-PR row where category was never persisted —
+          // upstream `raw.category` is missing so `asTrimmedString` returns
+          // '' and `|| 'General'` fires.
+          category: undefined,
+          importanceScore: 500,
+        }),
+        upstreamStory({
+          primaryTitle: 'Fresh story (post-PR)',
+          primaryLink: 'https://example.com/cap-fresh',
+          primarySource: 'Reuters',
+          // classifyByKeyword's no-match fallback emits lowercase 'general'.
+          category: 'general',
+          importanceScore: 400,
+        }),
+      ],
+      sensitivity: 'all',
+      maxPerSourceTopic: 1,
+    });
+    assert.equal(out.length, 1, 'residue General + fresh general must share cap bucket via .toLowerCase()');
+    assert.equal(out[0].category, 'General', 'survivor displays as General (the residue winner, with idempotent titleCase)');
   });
 
   it('T12: fallback idempotency — missing category hits filterTopStories `|| \'General\'` default and titleCase leaves it as `General`', () => {

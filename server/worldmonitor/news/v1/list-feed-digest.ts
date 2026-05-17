@@ -934,7 +934,7 @@ function buildStoryTrackHsetFields(
     // threads card + magazine story-page + public-thread fallback
     // can display a meaningful per-story tag instead of defaulting
     // to 'General' for every story. Defensive empty-string write on
-    // missing/non-string: shared/brief-filter.js:365's
+    // missing/non-string: shared/brief-filter.js:384's
     // `asTrimmedString(raw.category) || 'General'` fallback converts
     // empty back to 'General' for graceful degradation. See plan
     // docs/plans/2026-05-17-002-fix-persist-story-track-category-plan.md.
