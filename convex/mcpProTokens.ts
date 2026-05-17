@@ -1,6 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import { internalMutation, internalQuery, mutation, query } from "./_generated/server";
-import { requireUserId } from "./lib/auth";
+import { requireUserId, resolveUserId } from "./lib/auth";
 import { getFeaturesForPlan } from "./lib/entitlements";
 
 /**
@@ -186,11 +186,25 @@ export const touchProMcpTokenLastUsed = internalMutation({
  *
  * Returns ALL rows — including revoked — for transparency. The settings UI
  * surfaces revoked rows greyed-out so the user has a record of past grants.
+ *
+ * Uses `resolveUserId` (not `requireUserId`) and returns an empty array
+ * when unauthenticated, because this is a REACTIVE query: the client
+ * WebSocket subscription fires it on every state change including the
+ * brief unauth windows during sign-out, initial page load before Clerk
+ * resolves, and token-rotation races. Throwing `AUTH_REQUIRED` from a
+ * reactive query path causes Convex's server-side Sentry integration
+ * to page on those transient races (WORLDMONITOR-RD, sibling of N3),
+ * even though the `requireUserId` ConvexError throw was explicitly
+ * designed not to. Returning `[]` is observationally identical to
+ * "user has no tokens yet" — the only legitimate caller is the
+ * settings UI, which already gates this query behind a signed-in
+ * shell.
  */
 export const listProMcpTokens = query({
   args: {},
   handler: async (ctx) => {
-    const userId = await requireUserId(ctx);
+    const userId = await resolveUserId(ctx);
+    if (!userId) return [];
     const rows = await ctx.db
       .query("mcpProTokens")
       .withIndex("by_userId", (q) => q.eq("userId", userId))
