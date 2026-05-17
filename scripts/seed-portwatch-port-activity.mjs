@@ -23,27 +23,43 @@ const LOCK_DOMAIN = 'supply_chain:portwatch-ports';
 // 60 min — covers the widest realistic run of this standalone service.
 const LOCK_TTL_MS = 60 * 60 * 1000;
 const TTL = 259_200; // 3 days — 6× the 12h cron interval
-// Coverage gate. TEMPORARILY lowered to 5 on 2026-05-18 (was 50 → 25 →
-// 20 across 2026-05-14/16) because the actual success rate per cold-fetch
-// batch dropped to 6-10/30 (~20-33%) — ArcGIS degradation worsened
-// instead of recovering after PR #3711's budget rebalance. At gate=20,
-// runs producing 6-10 fresh successes ALL failed validation and
-// extendExistingTtl-only fired — meaning the fresh successes were never
-// written to Redis, the cache stayed at "0 hits / 174 misses" every
-// run, and the cap-mode rotation never accumulated (each run restarted
-// from 0 cache-fresh and re-attempted the whole population).
+// Coverage gate for per-country WRITES. Lowered to 5 on 2026-05-18 (was
+// 50 → 25 → 20) so partial-success runs (6-10/30) can persist their fresh
+// per-country payloads to Redis. Below this floor, NOTHING is written.
 //
-// Floor at 5 to match MIN_FRESH_FETCH_FOR_CAP_BYPASS (the load-bearing
-// silent-loss safety): cap-mode bypass still requires 5 fresh upstream
-// contacts, so a zero-fresh "everything-stale" run still trips the 80%
-// degradation guard. Lowering this validateFn gate doesn't widen the
-// silent-loss surface — it just lets partial successes persist so the
-// cache-fresh rotation can finally start accumulating.
+// PAIRED with MIN_CANONICAL_PUBLISH below: this gate lets per-country
+// writes through (so the cache-fresh rotation accumulates), but a
+// SEPARATE higher threshold gates the CANONICAL list + seed-meta advance.
+// This decoupling addresses Greptile PR #3760 P1: lowering this gate
+// alone would have let a 5-country run REPLACE the 174-country canonical
+// snapshot, exposing consumers to a 3% coverage canonical published as
+// fresh. Now the canonical stays at the prior version until coverage
+// genuinely recovers (see MIN_CANONICAL_PUBLISH).
 //
-// Revert path: bump to 20 when single-run success rate consistently
-// exceeds ~70% (≥21/30), then 30 / 50 as upstream stabilises further.
-// Target review: 2026-05-25.
+// Floor at 5 matches MIN_FRESH_FETCH_FOR_CAP_BYPASS (the silent-loss
+// safety): cap-mode bypass still requires 5 fresh upstream contacts,
+// so zero-fresh "everything-stale" runs still trip the 80% guard.
+//
+// Revert path: bump to 20 when success rate consistently exceeds ~70%,
+// then 30 / 50 as upstream stabilises. Target review: 2026-05-25.
 const MIN_VALID_COUNTRIES = 5;
+// Minimum total countryData.size required to ADVANCE the canonical list
+// + seed-meta (the operator-facing healthy signal). Below this, the
+// per-country fresh writes still go through (cache rotation accumulates),
+// but CANONICAL_KEY + META_KEY are extendExistingTtl-only — keeping the
+// prior 174-country list and the prior fetchedAt visible to consumers,
+// and keeping the operator-facing WARNING visible.
+//
+// Greptile PR #3760 P1: addresses the failure mode where a 5-country
+// fresh-fetched run with no usable stale-served cache could pass
+// validateFn, earn the cap-mode bypass, advance seed-meta with a
+// 5-entry canonical list (3% coverage published as "healthy"). With
+// this gate, the canonical only advances when coverage is meaningful.
+//
+// 50 chosen as a hold-over target — matches the historical pre-incident
+// gate. Bump to 100 / 174 as cache-rotation accumulates and the
+// expected steady-state coverage grows.
+const MIN_CANONICAL_PUBLISH = 50;
 
 const EP3_BASE =
   'https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/Daily_Ports_Data/FeatureServer/0/query';
@@ -442,18 +458,18 @@ async function fetchWithRetryOnInvalidParams(url, { signal } = {}) {
       // partial" message instead of doubling time-on-task for nothing.
       throw new Error(`ArcGIS degraded — ${_invalidParamsErrorCount} 'Invalid query parameters' errors in this run, no retry (threshold ${INVALID_PARAMS_RETRY_THRESHOLD})`);
     }
-    // WM 2026-05-18 — REMOVED the proxy short-circuit added by PR #3701
-    // P2. That short-circuit (`if (/via proxy after/) throw err`)
-    // assumed proxy responses were authoritative — if a proxy returned
-    // "Invalid query parameters" once, retrying via proxy was assumed
-    // wasteful. Live laptop probe disproved this: same proxy query
-    // succeeds on attempt 1, fails on attempt 2 with proxy CONNECT 522,
-    // succeeds on attempt 3 (non-deterministic upstream / Decodo gate).
-    // Today's logs show ~6 countries per run failing with "Invalid
-    // query parameters via proxy" where the same query succeeds when
-    // I probe immediately after — those would have recovered with a
-    // proxy retry. INVALID_PARAMS_RETRY_THRESHOLD=5 still caps the
-    // total budget impact during full-upstream-degradation episodes.
+    // Greptile PR #3760 round 2 P2: removed-then-restored proxy short-circuit.
+    // The 2026-05-18 removal was based on a laptop probe showing proxy
+    // retries DO recover from non-deterministic upstream errors. But that
+    // probe ran standalone — inside the seeder's 90s per-country wrap,
+    // by the time we hit this catch we've already used direct(30s) +
+    // proxy(50s) = ~80s. The 500ms backoff + another direct+proxy
+    // (max 80s) won't fit — wrap aborts the retry after ~10s remaining.
+    // Reverted: keep the short-circuit so proxy-returned semantic 400
+    // bodies don't burn the leftover 10s on a retry that mostly gets
+    // cancelled. The counter still ticks (and trips the threshold for
+    // global bail), so degradation visibility isn't lost.
+    if (/via proxy after/i.test(msg)) throw err;
     await new Promise((r) => setTimeout(r, 500));
     if (signal?.aborted) throw signal.reason ?? err;
     console.warn(`  [port-activity] retrying after "${msg}" (${_invalidParamsErrorCount}/${INVALID_PARAMS_RETRY_THRESHOLD}): ${url.slice(0, 80)}`);
@@ -1291,14 +1307,34 @@ async function main() {
       return;
     }
 
+    // PR #3760 round 2 P1: split per-country writes from canonical/meta
+    // advance. Per-country writes always go through (cache-fresh rotation
+    // accumulates), but CANONICAL + META only advance when total coverage
+    // crosses MIN_CANONICAL_PUBLISH — protects consumers from seeing a
+    // 5-country canonical published as "healthy" during recovery.
+    const canonicalAdvances = countryData.size >= MIN_CANONICAL_PUBLISH;
     const metaPayload = { fetchedAt: Date.now(), recordCount: countryData.size };
 
     const commands = [];
     for (const [iso2, payload] of countryData) {
       commands.push(['SET', `${KEY_PREFIX}${iso2}`, JSON.stringify(payload), 'EX', TTL]);
     }
-    commands.push(['SET', CANONICAL_KEY, JSON.stringify(countries), 'EX', TTL]);
-    commands.push(['SET', META_KEY, JSON.stringify(metaPayload), 'EX', TTL]);
+    if (canonicalAdvances) {
+      commands.push(['SET', CANONICAL_KEY, JSON.stringify(countries), 'EX', TTL]);
+      commands.push(['SET', META_KEY, JSON.stringify(metaPayload), 'EX', TTL]);
+    } else {
+      // Per-country fresh data persists, but canonical list + seed-meta
+      // stay at the prior version. extendExistingTtl preserves the
+      // operator-facing WARNING — consumers reading CANONICAL see the
+      // prior 174-country list with their existing data (mostly stale
+      // for not-yet-rotated entries, fresh for the ones we just wrote).
+      await extendExistingTtl([CANONICAL_KEY, META_KEY], TTL).catch(() => {});
+      console.warn(
+        `  PARTIAL PERSIST: ${countryData.size}/${MIN_CANONICAL_PUBLISH} below canonical-publish floor — ` +
+        `${countryData.size} per-country payload(s) written (cache rotation accumulates), ` +
+        `canonical + seed-meta preserved at prior version (operator WARNING remains visible).`,
+      );
+    }
 
     const results = await redisPipeline(commands);
     const failures = results.filter(r => r?.error || r?.result === 'ERR');

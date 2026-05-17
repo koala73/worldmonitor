@@ -163,28 +163,36 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     assert.match(src, /export function _resetBodyCapturedFlag/);
   });
 
-  it('proxy-confirmed Invalid query parameters now RETRY via proxy (WM 2026-05-18 reversal)', () => {
-    // PR #3701 P2 added a short-circuit that re-threw proxy-confirmed
-    // "Invalid query parameters" errors without retrying, assuming
-    // proxy responses were authoritative. WM 2026-05-18 live laptop
-    // probe disproved that assumption: same proxy query succeeds on
-    // attempts 1 and 3, fails on attempt 2 — the upstream / Decodo gate
-    // is non-deterministic, so a retry often recovers the country.
-    //
-    // The proxy short-circuit MUST NOT be present in
-    // fetchWithRetryOnInvalidParams — the only short-circuit there is
-    // the global INVALID_PARAMS_RETRY_THRESHOLD bail-out.
-    const proxyShortCircuit = src.match(/if\s*\(\/via proxy after\/i\.test\(msg\)\)\s*throw err/);
-    assert.equal(
-      proxyShortCircuit,
-      null,
-      'the `via proxy after` short-circuit was removed on 2026-05-18 — proxy retries DO recover non-deterministic upstream failures',
-    );
-    // Threshold counter is still present + still increments + still
-    // emits the degraded-run message at the cap.
+  it('proxy-confirmed Invalid query parameters short-circuits the retry (Greptile PR #3760 P2)', () => {
+    // The short-circuit was briefly removed on 2026-05-18 based on a
+    // standalone laptop probe showing proxy retries DO recover. But
+    // inside the seeder's 90s per-country wrap, by the time we hit
+    // this catch we've already used direct(30s) + proxy(50s) ≈ 80s.
+    // A retry's 500ms backoff + new direct+proxy can't fit in the
+    // ~10s remaining before the wrap aborts. Restored: keep the
+    // short-circuit so proxy-returned 400 bodies don't burn the
+    // remaining budget on a retry that mostly gets cancelled.
+    // INVALID_PARAMS_RETRY_THRESHOLD still ticks for global visibility.
+    assert.match(src, /if\s*\(\/via proxy after\/i\.test\(msg\)\)\s*throw err/);
+    // Threshold counter is present + increments + emits degraded message.
     assert.match(src, /_invalidParamsErrorCount\s*\+=\s*1/);
     assert.match(src, /_invalidParamsErrorCount\s*>\s*INVALID_PARAMS_RETRY_THRESHOLD/);
     assert.match(src, /ArcGIS degraded — \$\{_invalidParamsErrorCount\}/);
+  });
+
+  it('canonical/seed-meta advance only when coverage >= MIN_CANONICAL_PUBLISH (Greptile PR #3760 P1)', () => {
+    // Gate=5 lets per-country writes through (cache rotation accumulates)
+    // but CANONICAL_KEY + META_KEY require a higher coverage floor before
+    // they advance — protects consumers from a 5-country canonical
+    // published as "healthy" during a recovery from full outage.
+    assert.match(src, /const MIN_CANONICAL_PUBLISH\s*=\s*50/);
+    // The gate is evaluated and used to conditionally write canonical/meta:
+    assert.match(src, /const canonicalAdvances = countryData\.size\s*>=\s*MIN_CANONICAL_PUBLISH/);
+    assert.match(src, /if\s*\(canonicalAdvances\)\s*\{[\s\S]{0,300}SET',\s*CANONICAL_KEY/);
+    // Below the floor, extendExistingTtl preserves canonical + meta and
+    // a PARTIAL PERSIST log line surfaces what happened to operators.
+    assert.match(src, /extendExistingTtl\(\[CANONICAL_KEY,\s*META_KEY\],\s*TTL\)/);
+    assert.match(src, /PARTIAL PERSIST/);
   });
 
   it('cap-mode bypass requires fresh upstream contact (PR #3701 review P1)', () => {
@@ -280,16 +288,17 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     // matches MIN_FRESH_FETCH_FOR_CAP_BYPASS (silent-loss safety still
     // intact). Pre-2026-05-14 value: 50.
     assert.match(src, /const MIN_VALID_COUNTRIES\s*=\s*5/);
-    // Require the comment to flag temporariness (so a future reviewer
-    // doesn't normalise the lower value silently).
-    assert.match(src, /TEMPORARILY lowered/);
+    // Canary: require an anchor to the original permanent baseline (50)
+    // and a Revert path so the temporary nature has a concrete reference
+    // point. A vague "lowered for now" edit would lose the canary.
     assert.match(src, /Revert path/);
-    // Greptile PR #3714 P2: keep an anchor to the original permanent
-    // baseline (50) in the comment so the temporary nature has a
-    // concrete reference point — otherwise a vague "TEMPORARILY
-    // lowered for now" edit could silently pass CI and lose the
-    // canary property.
-    assert.match(src, /was 50/);
+    // Allow a newline between "was" and "50" since the comment may wrap.
+    assert.match(src, /was[\s\/\n]+50/);
+    // Greptile PR #3760 P1: gate=5 alone would have let a 5-country run
+    // replace the 174-country canonical snapshot. The comment must call
+    // out the paired MIN_CANONICAL_PUBLISH gate so a future reviewer
+    // understands why the validateFn floor was safely lowered.
+    assert.match(src, /MIN_CANONICAL_PUBLISH/);
   });
 
   // Greptile PR #3694 round 3 P1: with the temp gate lowered to 25 but the
