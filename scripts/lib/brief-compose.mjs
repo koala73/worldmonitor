@@ -546,9 +546,23 @@ export function stripHeadlinePrefix(title) {
  * buildStoryTrackHsetFields, defensive empty-string on missing), passed
  * through buildDigest's stories.push, and reaches this function as the
  * canonical lowercase EventCategory enum value (`'conflict'`, `'health'`,
- * `'diplomatic'`, …). Pre-stamp residue rows where category is absent
- * gracefully degrade to `'General'` via filterTopStories' `|| 'General'`
- * fallback elsewhere.
+ * `'diplomatic'`, …).
+ *
+ * Two fallback layers for pre-stamp residue rows where category is
+ * absent — note that THIS function does NOT go through filterTopStories,
+ * so its local guard is load-bearing, not redundant:
+ *   1. **Local guard at the `category:` field write below**
+ *      (`typeof s?.category === 'string' ? s.category : 'General'`).
+ *      Fires for the synthesis-prompt path — the LLM prompt always
+ *      receives a non-empty string even when the upstream `s` has no
+ *      category field (rare in steady state; possible during the
+ *      48h-accumulator post-deploy residue window per PR #3751).
+ *   2. **filterTopStories' `asTrimmedString(raw.category) || 'General'`
+ *      at `shared/brief-filter.js:384`.** Fires for the envelope/display
+ *      path, which is a separate consumer that reads from the same
+ *      upstream story shape but takes a different code route.
+ * Removing either guard leaves the corresponding path exposed to
+ * residue rows on deploy.
  *
  * Intentional case divergence between synthesis and display paths
  * (issue #3752):
