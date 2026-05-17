@@ -2400,18 +2400,31 @@ export const JMESPATH_SCHEMA = {
   description: 'Optional JMESPath projection applied to the response. See initialize.instructions for grammar and examples.',
 } as const;
 
+// Collision guard — fail fast at module load if a future PR hand-declares
+// `jmespath` (or `summary` on a cache tool) on a tool's inputSchema. The
+// universal injection below would silently overwrite the hand-declared
+// version; failing loud forces the author to resolve the duplication.
+for (const tool of TOOL_REGISTRY) {
+  const props = tool.inputSchema.properties;
+  if (props && 'jmespath' in props) {
+    throw new Error(`api/mcp.ts: tool "${tool.name}" declares its own 'jmespath' property — collides with universal JMESPATH_SCHEMA injection. Remove the per-tool declaration.`);
+  }
+  if (tool._execute === undefined && props && 'summary' in props) {
+    throw new Error(`api/mcp.ts: cache tool "${tool.name}" declares its own 'summary' property — collides with universal SUMMARY_SCHEMA injection. Remove the per-tool declaration.`);
+  }
+}
+
 const TOOL_LIST_RESPONSE = TOOL_REGISTRY.map((tool) => {
   const isCacheTool = tool._execute === undefined;
-  const inputSchema = isCacheTool
-    ? {
-        ...tool.inputSchema,
-        properties: { ...tool.inputSchema.properties, summary: SUMMARY_SCHEMA },
-      }
-    : tool.inputSchema;
+  // `summary` is cache-only (RPC responses are bespoke and don't summarize
+  // uniformly). `jmespath` is universal (projection is shape-agnostic).
+  const properties = isCacheTool
+    ? { ...tool.inputSchema.properties, summary: SUMMARY_SCHEMA, jmespath: JMESPATH_SCHEMA }
+    : { ...tool.inputSchema.properties, jmespath: JMESPATH_SCHEMA };
   return {
     name: tool.name,
     description: tool.description,
-    inputSchema,
+    inputSchema: { ...tool.inputSchema, properties },
     annotations: { readOnlyHint: true, openWorldHint: true },
   };
 });
