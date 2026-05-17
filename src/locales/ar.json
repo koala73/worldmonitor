@@ -732,7 +732,6 @@
   "components": {
     "webcams": {
       "regions": {
-        "iran": "IRAN ATTACKS",
         "all": "الكل",
         "mideast": "الشرق الأوسط",
         "europe": "أوروبا",
