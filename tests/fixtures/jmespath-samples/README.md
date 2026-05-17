@@ -51,6 +51,7 @@ Override `WM_MCP_ENDPOINT` for staging.
 ## Refresh policy
 
 Recapture when:
+
 - A tool's payload schema changes (new fields, renamed fields)
 - A cache key is added or removed from one of the three tools
 - The default `limit` or `summary` semantics change in a way that
