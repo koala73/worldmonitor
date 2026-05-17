@@ -121,7 +121,6 @@ const SUPPORTED_CONSUMER_PRICES_COUNTRIES = new Set(['ae']);
 // `n <= 0` as a no-op, so `0` is the explicit opt-out sentinel.
 const DEFAULT_LIST_LIMIT = 30;
 
-
 // ---------------------------------------------------------------------------
 // Rate limiters
 // ---------------------------------------------------------------------------
