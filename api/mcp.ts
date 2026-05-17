@@ -2333,7 +2333,14 @@ const TOOL_REGISTRY: ToolDef[] = [
         destination: String(params.destination ?? ''),
         departure_date: String(params.departure_date ?? ''),
         ...(params.return_date ? { return_date: String(params.return_date) } : {}),
-        ...(params.cabin_class ? { cabin_class: String(params.cabin_class) } : {}),
+        // Default to economy when the LLM omits cabin_class. The relay /
+        // upstream SerpAPI returns ZERO flights for some popular routes
+        // (e.g. JFK→LHR) when cabin_class is unset, even though the tool
+        // description advertises "default economy". Diagnosis: live probe
+        // showed empty `flights` with no error AND no degraded flag; adding
+        // `cabin_class=economy` to the same call returned 10+ real flights.
+        // This restores the advertised contract.
+        cabin_class: String(params.cabin_class ?? 'economy'),
         ...(params.max_stops ? { max_stops: String(params.max_stops) } : {}),
         ...(params.sort_by ? { sort_by: String(params.sort_by) } : {}),
         passengers: String(Math.max(1, Math.min(Number(params.passengers ?? 1), 9))),
@@ -2377,7 +2384,9 @@ const TOOL_REGISTRY: ToolDef[] = [
         end_date: String(params.end_date ?? ''),
         is_round_trip: String(params.is_round_trip ?? false),
         ...(params.trip_duration ? { trip_duration: String(params.trip_duration) } : {}),
-        ...(params.cabin_class ? { cabin_class: String(params.cabin_class) } : {}),
+        // Mirror search_flights: default to economy when omitted. Same
+        // upstream-empty-on-missing-cabin-class issue.
+        cabin_class: String(params.cabin_class ?? 'economy'),
         sort_by_price: String(params.sort_by_price ?? false),
         passengers: String(Math.max(1, Math.min(Number(params.passengers ?? 1), 9))),
       });
