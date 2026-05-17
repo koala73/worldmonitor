@@ -544,10 +544,29 @@ export function stripHeadlinePrefix(title) {
  * field; `digestStoryToUpstreamTopStory` + `filterTopStories` defaults
  * fill it). `category` IS carried on story:track:v1 (persisted by
  * buildStoryTrackHsetFields, defensive empty-string on missing), passed
- * through buildDigest's stories.push, and word-wise Title-Cased once in
- * shared/brief-filter.js at envelope build. On pre-PR residue rows
- * where category is absent, filterTopStories' `|| 'General'` fallback
- * fires and the value reaches here as 'General'.
+ * through buildDigest's stories.push, and reaches this function as the
+ * canonical lowercase EventCategory enum value (`'conflict'`, `'health'`,
+ * `'diplomatic'`, …). Pre-stamp residue rows where category is absent
+ * gracefully degrade to `'General'` via filterTopStories' `|| 'General'`
+ * fallback elsewhere.
+ *
+ * Intentional case divergence between synthesis and display paths
+ * (issue #3752):
+ *   - **This function** feeds the LLM synthesis prompt
+ *     (`buildDigestPrompt` in scripts/lib/brief-llm.mjs). The prompt
+ *     uses the canonical lowercase enum value as a semantic anchor for
+ *     LLM pattern-matching — the model's training distribution sees
+ *     category labels as bare nouns more often than Title-Cased
+ *     headings, so feeding `'conflict'` is the cleaner signal than
+ *     feeding `'Conflict'`.
+ *   - **The envelope/display path** goes through filterTopStories'
+ *     `out.push` (`shared/brief-filter.js`) where `titleCase` runs
+ *     once to produce `'Conflict'` for the threads card,
+ *     magazine story-page, and public-thread fallback stub. Display
+ *     surfaces want human readability.
+ * Both paths read from the same upstream `s.category` (lowercase); the
+ * divergence is downstream and load-bearing for each consumer's needs.
+ * If you change one site, audit the other.
  *
  * @param {object} s — digest-shaped story from buildDigest()
  * @returns {{ headline: string; threatLevel: string; source: string; category: string; country: string; hash: string }}
@@ -577,6 +596,10 @@ export function digestStoryToSynthesisShape(s) {
     headline: sanitizeHeadline(cleanTitle),
     threatLevel: typeof s?.severity === 'string' ? s.severity : '',
     source: sanitizeForPrompt(primarySource),
+    // `s.category` is the canonical lowercase EventCategory enum value
+    // here (synthesis-prompt path uses lowercase as semantic anchor;
+    // display path Title-Cases at the envelope-build site). See the
+    // function doc above for the case-divergence rationale (#3752).
     category: sanitizeForPrompt(typeof s?.category === 'string' ? s.category : 'General'),
     country: sanitizeForPrompt(typeof s?.countryCode === 'string' ? s.countryCode : 'Global'),
     hash: typeof s?.hash === 'string' ? s.hash : '',

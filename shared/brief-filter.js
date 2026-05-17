@@ -451,8 +451,19 @@ export function filterTopStories({ stories, sensitivity, maxStories = 12, maxPer
     // site so all downstream consumers (threads card, magazine
     // story-page, public-thread fallback) see the same normalized
     // form. The cap-key above (`pairKey`) intentionally keeps the
-    // canonical raw `category` value so per-(source, category) capping
-    // groups correctly regardless of input case.
+    // canonical raw `category` value (case-folded via .toLowerCase())
+    // so per-(source, category) capping groups correctly regardless of
+    // input case.
+    //
+    // Intentional case divergence vs synthesis path (issue #3752):
+    // `digestStoryToSynthesisShape` in scripts/lib/brief-compose.mjs
+    // feeds the LLM synthesis prompt with the canonical lowercase enum
+    // value (`'conflict'`, `'health'`, …) — bare-noun form is the
+    // cleaner semantic anchor for LLM pattern-matching. The display
+    // path here Title-Cases for human readability. Both paths read
+    // from the same upstream `s.category`; the divergence is downstream
+    // and load-bearing for each consumer's needs. If you change the
+    // case behavior at one site, audit the other.
     const displayCategory = titleCase(category);
     out.push({
       category: displayCategory,
