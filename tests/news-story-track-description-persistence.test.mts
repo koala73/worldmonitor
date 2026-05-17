@@ -26,7 +26,7 @@ function baseItem(overrides: Record<string, unknown> = {}) {
     publishedAt: 1_745_000_000_000,
     isAlert: false,
     level: 'medium' as const,
-    category: 'world',
+    category: 'general',
     confidence: 0.9,
     classSource: 'keyword' as const,
     importanceScore: 42,
@@ -107,6 +107,39 @@ describe('buildStoryTrackHsetFields — story:track:v1 HSET contract', () => {
       fieldsToMap(buildStoryTrackHsetFields(legacyItem as Parameters<typeof buildStoryTrackHsetFields>[0], '1745000000000', 42)).get('isFeelGood'),
       '0',
     );
+  });
+
+  it('T1: writes category as the canonical EventCategory string (Veterans threads-card fix)', () => {
+    // PR #3697 exposed that buildStoryTrackHsetFields did not persist
+    // `category`, so the brief composer always saw the 'General' default
+    // for every story. This test locks the persistence going forward:
+    // category is written as the canonical lowercase EventCategory value
+    // (display capitalization happens once in shared/brief-filter.js at
+    // envelope build, not here). See plan
+    // docs/plans/2026-05-17-002-fix-persist-story-track-category-plan.md.
+    const conflictItem = baseItem({ category: 'conflict' });
+    assert.strictEqual(fieldsToMap(buildStoryTrackHsetFields(conflictItem, '1745000000000', 42)).get('category'), 'conflict');
+    const healthItem = baseItem({ category: 'health' });
+    assert.strictEqual(fieldsToMap(buildStoryTrackHsetFields(healthItem, '1745000000000', 42)).get('category'), 'health');
+    const techItem = baseItem({ category: 'tech' });
+    assert.strictEqual(fieldsToMap(buildStoryTrackHsetFields(techItem, '1745000000000', 42)).get('category'), 'tech');
+  });
+
+  it('T2-T4: defensive write — missing / non-string upstream category becomes empty string, never literal "undefined"', () => {
+    // The fallback chain is: missing here → '' on Redis →
+    // shared/brief-filter.js:365's `asTrimmedString(raw.category) || 'General'`
+    // converts back to 'General' for graceful degradation. The
+    // critical contract is that NO literal 'undefined' or '42' string
+    // ever reaches Redis from a malformed upstream value.
+    //
+    // T2: baseItem default fixture ('general') round-trips unchanged.
+    assert.strictEqual(fieldsToMap(buildStoryTrackHsetFields(baseItem(), '1745000000000', 42)).get('category'), 'general');
+    // T3: explicit `undefined` override → defensive empty string.
+    const undefItem = baseItem({ category: undefined });
+    assert.strictEqual(fieldsToMap(buildStoryTrackHsetFields(undefItem as Parameters<typeof buildStoryTrackHsetFields>[0], '1745000000000', 42)).get('category'), '');
+    // T4: non-string upstream value → defensive empty string (no '42').
+    const nonStringItem = baseItem({ category: 42 });
+    assert.strictEqual(fieldsToMap(buildStoryTrackHsetFields(nonStringItem as Parameters<typeof buildStoryTrackHsetFields>[0], '1745000000000', 42)).get('category'), '');
   });
 
   it('writes an empty-string description when the current mention has no body — overwrites any prior mention body', () => {

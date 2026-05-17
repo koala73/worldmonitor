@@ -1,5 +1,6 @@
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
+import jmespath from 'jmespath';
 // @ts-expect-error — JS module, no declaration file
 import { getPublicCorsHeaders } from './_cors.js';
 // @ts-expect-error — JS module, no declaration file
@@ -53,9 +54,59 @@ const SERVER_NAME = 'worldmonitor';
 //     list — issued as a minor bump.
 //   - Universal `summary: true` flag advertised on every cache tool: collapses
 //     each array/large-map to counts + 3-item samples, composable with filters.
+// Bumped 1.3.0 → 1.4.0 (2026-05-17) reflecting:
+//   - Universal `jmespath` string parameter advertised on every tool (cache
+//     AND RPC) — server-side projection of the response BEFORE serialization.
+//     Composition order: `_postFilter → summary → jmespath`. Soft-fails via
+//     `{_jmespath_error, original_keys}` envelopes inside the normal result.
+//   - Input gate `JMESPATH_MAX_EXPR_BYTES` (1024) + output gate
+//     `JMESPATH_MAX_OUTPUT_BYTES` (256 KB) protect against pathological
+//     expressions and multiselect-hash duplication blow-ups. Both gates
+//     count UTF-8 bytes via `TextEncoder`, not UTF-16 code units.
+//   - `initialize.result.instructions` field carries the grammar URL, three
+//     worked examples, the byte caps, and the bad-expression quota note —
+//     ~600 bytes emitted once per session vs ×38 schema-bloat across tools.
+//   - Purely additive — omitting `jmespath` returns the v1.3.0 payload
+//     byte-for-byte. Bundle delta +57.8 KB raw / +9.4 KB gzipped.
 // Keep aligned with public/.well-known/mcp/server-card.json::serverInfo.version
 // — discovery scanners cross-check both values.
-const SERVER_VERSION = '1.3.0';
+const SERVER_VERSION = '1.4.0';
+
+// Universal JMESPath projection caps (v1.4.0) — applied at the dispatch
+// boundary AFTER `_postFilter` and `summary`, before serialization. Two
+// gates protect the edge function: an input gate against pathological-parse
+// expressions and an output gate against multiselect-hash / multiselect-
+// list duplication blow-ups. Both gates fail soft via `_jmespath_error`
+// envelopes — the tool call still succeeds, the JSON-RPC layer still
+// returns 200, and the agent's next retry can self-correct using the
+// `original_keys` echo.
+//
+// Caps are intentionally generous: typical real expressions are ~50–200
+// bytes, observed unprojected cache payloads ~5–10 KB (max ~80 KB).
+// Defined here (rather than near the `applyJmespath` helper) so the
+// `SERVER_INSTRUCTIONS` template below can quote them. Exported so tests
+// can assert on them.
+export const JMESPATH_MAX_EXPR_BYTES = 1024;
+export const JMESPATH_MAX_OUTPUT_BYTES = 256 * 1024;
+export type JmespathFailKind = 'expression_too_long' | 'projection_too_large' | 'invalid_expression';
+
+// Session-level discovery instructions. Per MCP 2025-03-26 lifecycle spec,
+// servers MAY return an `instructions` string in the `initialize` result;
+// clients SHOULD surface this to the model. We carry the JMESPath grammar
+// + worked examples here (rather than duplicating ~500 bytes into every
+// tool's description) so per-tool advertisements stay terse and the LLM
+// gets the full contract once per session.
+const SERVER_INSTRUCTIONS = [
+  'Every tool accepts an optional `jmespath` string argument. The server applies the expression server-side AFTER any per-tool filter/summary args, projecting the response before serialization. This is the single most effective way to reduce response tokens — typical 80-95% reduction when you only need a subset of fields.',
+  '',
+  'Grammar: https://jmespath.org/specification.html',
+  'Examples:',
+  '  data.markets.stocks[*].{s:symbol,p:price}',
+  '  data.events[?fatalities > `10`].country',
+  '  data.advisories[?level==\'warning\'][].title',
+  '',
+  `Limits: expression ≤ ${JMESPATH_MAX_EXPR_BYTES} bytes; projected payload ≤ ${JMESPATH_MAX_OUTPUT_BYTES} bytes. Failures return {_jmespath_error, original_keys} inside the normal result envelope. Bad expressions DO consume one daily quota unit on retry — original_keys is echoed so you can self-correct in one extra call.`,
+].join('\n');
 
 // Country-code whitelist for get_consumer_prices. The consumer-prices seeder
 // currently only produces data for AE (UAE); future markets will be added
@@ -273,6 +324,108 @@ function argStr(v: unknown): string {
 // Coerce an argument to a boolean (accepts true / "true" / 1 / "1").
 function argBool(v: unknown): boolean {
   return v === true || v === 'true' || v === 1 || v === '1';
+}
+
+// ---------------------------------------------------------------------------
+// JMESPath projection helpers (v1.4.0)
+//
+// `applyJmespath` is invoked at the dispatch boundary AFTER `_postFilter`
+// and `summary` (both inside `executeTool`). Single insertion point in
+// `dispatchToolsCall` covers both cache and RPC tools uniformly.
+//
+// The helper returns the wire-ready JSON string in `text` so dispatch can
+// write it straight into `content[0].text` without re-serializing. Two
+// gates protect the edge function — both fail soft, never throw.
+// ---------------------------------------------------------------------------
+
+// Edge-safe UTF-8 byte counter. Uses `TextEncoder` (Web Platform, available
+// unconditionally on Vercel edge) rather than `text.length` (UTF-16 code
+// units — undercounts emoji / CJK / accented content) or `Buffer.byteLength`
+// (Node intrinsic — not reliably shimmed in every edge runtime).
+//
+// Used by BOTH JMESPath gates AND `scripts/measure-jmespath-savings.mjs`
+// so the runtime contract and the reported PR numbers operate on the same
+// byte definition. Exported for the measurement script.
+export function utf8ByteLength(s: string): number {
+  return new TextEncoder().encode(s).length;
+}
+
+// Defensive snapshot of the top-level keys / shape of an unprojected value.
+// Echoed inside every `_jmespath_error` envelope so the LLM can self-correct
+// on its next `tools/call` without refetching the (already-paid-for) payload.
+// Bounded at 50 keys to defend against pathological objects.
+function jmespathOriginalKeys(v: unknown): string[] {
+  if (Array.isArray(v)) return [`<array length=${v.length}>`];
+  if (v !== null && typeof v === 'object') {
+    const keys = Object.keys(v as object);
+    if (keys.length <= 50) return keys;
+    return [...keys.slice(0, 50), `...<${keys.length - 50} more>`];
+  }
+  return [`<${typeof v}>`];
+}
+
+// Result envelope. `text` is always the wire-ready JSON the dispatcher will
+// emit in `content[0].text`. `failed` is set only on a soft-failure path,
+// and its value is the same enum string used as the `_jmespath_error`
+// envelope prefix (no drift).
+export interface ApplyJmespathResult {
+  text: string;
+  failed?: JmespathFailKind;
+}
+
+// Apply a JMESPath expression to a value. Always returns `{ text }`. Pure;
+// never throws. Identity path (no `exprArg`, empty string, non-string) skips
+// projection entirely and returns `JSON.stringify(value)`. See module-doc
+// for the two-gate contract.
+export function applyJmespath(value: unknown, exprArg: unknown): ApplyJmespathResult {
+  if (typeof exprArg !== 'string' || exprArg.length === 0) {
+    // `JSON.stringify(undefined)` returns the literal value `undefined`
+    // (not a string), which would propagate up to `rpcOk(...content[0].text)`
+    // and serialize the field away — clients would see a missing `text`
+    // field. Same guard as the projection path: stringify-then-coerce-to-'null'.
+    const text = JSON.stringify(value);
+    return { text: text === undefined ? 'null' : text };
+  }
+
+  // Input gate — reject before parser.
+  const exprBytes = utf8ByteLength(exprArg);
+  if (exprBytes > JMESPATH_MAX_EXPR_BYTES) {
+    const envelope = {
+      _jmespath_error: `expression_too_long: ${exprBytes} > ${JMESPATH_MAX_EXPR_BYTES}`,
+      original_keys: jmespathOriginalKeys(value),
+    };
+    return { text: JSON.stringify(envelope), failed: 'expression_too_long' };
+  }
+
+  let projected: unknown;
+  try {
+    projected = jmespath.search(value, exprArg);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    const envelope = {
+      _jmespath_error: `invalid_expression: ${message}`,
+      original_keys: jmespathOriginalKeys(value),
+    };
+    return { text: JSON.stringify(envelope), failed: 'invalid_expression' };
+  }
+
+  const text = JSON.stringify(projected);
+  // `JSON.stringify(undefined)` returns the string "undefined" in legacy
+  // contexts but actually returns `undefined` in JS — guard so the wire
+  // payload is always a valid JSON document.
+  const safeText = text === undefined ? 'null' : text;
+
+  // Output gate — reject after stringify (single serialization).
+  const outputBytes = utf8ByteLength(safeText);
+  if (outputBytes > JMESPATH_MAX_OUTPUT_BYTES) {
+    const envelope = {
+      _jmespath_error: `projection_too_large: ${outputBytes} > ${JMESPATH_MAX_OUTPUT_BYTES}`,
+      original_keys: jmespathOriginalKeys(value),
+    };
+    return { text: JSON.stringify(envelope), failed: 'projection_too_large' };
+  }
+
+  return { text: safeText };
 }
 
 // Drop undefined/empty entries from a string list — used after mapping a
@@ -2185,7 +2338,14 @@ const TOOL_REGISTRY: ToolDef[] = [
         destination: String(params.destination ?? ''),
         departure_date: String(params.departure_date ?? ''),
         ...(params.return_date ? { return_date: String(params.return_date) } : {}),
-        ...(params.cabin_class ? { cabin_class: String(params.cabin_class) } : {}),
+        // Default to economy when the LLM omits cabin_class. The relay /
+        // upstream SerpAPI returns ZERO flights for some popular routes
+        // (e.g. JFK→LHR) when cabin_class is unset, even though the tool
+        // description advertises "default economy". Diagnosis: live probe
+        // showed empty `flights` with no error AND no degraded flag; adding
+        // `cabin_class=economy` to the same call returned 10+ real flights.
+        // This restores the advertised contract.
+        cabin_class: String(params.cabin_class ?? 'economy'),
         ...(params.max_stops ? { max_stops: String(params.max_stops) } : {}),
         ...(params.sort_by ? { sort_by: String(params.sort_by) } : {}),
         passengers: String(Math.max(1, Math.min(Number(params.passengers ?? 1), 9))),
@@ -2215,7 +2375,7 @@ const TOOL_REGISTRY: ToolDef[] = [
         end_date: { type: 'string', description: 'End of the date range in YYYY-MM-DD format' },
         is_round_trip: { type: 'boolean', description: 'Whether to search round-trip prices (default false). Requires trip_duration when true.' },
         trip_duration: { type: 'number', description: 'Trip duration in days — required when is_round_trip is true (e.g. 7 for a one-week trip)' },
-        cabin_class: { type: 'string', description: 'Cabin class: "economy", "premium_economy", "business", or "first" (optional)' },
+        cabin_class: { type: 'string', description: 'Cabin class: "economy", "premium_economy", "business", or "first" (optional, default economy)' },
         passengers: { type: 'number', description: 'Number of passengers (1-9, default 1)' },
         sort_by_price: { type: 'boolean', description: 'Sort results by price ascending (default false, sorts by date)' },
       },
@@ -2229,7 +2389,9 @@ const TOOL_REGISTRY: ToolDef[] = [
         end_date: String(params.end_date ?? ''),
         is_round_trip: String(params.is_round_trip ?? false),
         ...(params.trip_duration ? { trip_duration: String(params.trip_duration) } : {}),
-        ...(params.cabin_class ? { cabin_class: String(params.cabin_class) } : {}),
+        // Mirror search_flights: default to economy when omitted. Same
+        // upstream-empty-on-missing-cabin-class issue.
+        cabin_class: String(params.cabin_class ?? 'economy'),
         sort_by_price: String(params.sort_by_price ?? false),
         passengers: String(Math.max(1, Math.min(Number(params.passengers ?? 1), 9))),
       });
@@ -2277,18 +2439,41 @@ const SUMMARY_SCHEMA = {
   description: 'Return counts + 3-item samples instead of full lists. Useful when you only need shape/size or want to budget context before drilling in.',
 } as const;
 
+// Universal JMESPath projection (v1.4.0) — advertised on every tool (cache
+// AND RPC). Description is intentionally terse (~110 bytes) to avoid ×38
+// bloat across `tools/list`; the grammar URL + worked examples + limits +
+// quota note live in `initialize.result.instructions` (one ~600B emit per
+// session, amortised across N tool calls).
+export const JMESPATH_SCHEMA = {
+  type: 'string',
+  description: 'Optional JMESPath projection applied to the response. See initialize.instructions for grammar and examples.',
+} as const;
+
+// Collision guard — fail fast at module load if a future PR hand-declares
+// `jmespath` (or `summary` on a cache tool) on a tool's inputSchema. The
+// universal injection below would silently overwrite the hand-declared
+// version; failing loud forces the author to resolve the duplication.
+for (const tool of TOOL_REGISTRY) {
+  const props = tool.inputSchema.properties;
+  if (props && 'jmespath' in props) {
+    throw new Error(`api/mcp.ts: tool "${tool.name}" declares its own 'jmespath' property — collides with universal JMESPATH_SCHEMA injection. Remove the per-tool declaration.`);
+  }
+  if (tool._execute === undefined && props && 'summary' in props) {
+    throw new Error(`api/mcp.ts: cache tool "${tool.name}" declares its own 'summary' property — collides with universal SUMMARY_SCHEMA injection. Remove the per-tool declaration.`);
+  }
+}
+
 const TOOL_LIST_RESPONSE = TOOL_REGISTRY.map((tool) => {
   const isCacheTool = tool._execute === undefined;
-  const inputSchema = isCacheTool
-    ? {
-        ...tool.inputSchema,
-        properties: { ...tool.inputSchema.properties, summary: SUMMARY_SCHEMA },
-      }
-    : tool.inputSchema;
+  // `summary` is cache-only (RPC responses are bespoke and don't summarize
+  // uniformly). `jmespath` is universal (projection is shape-agnostic).
+  const properties = isCacheTool
+    ? { ...tool.inputSchema.properties, summary: SUMMARY_SCHEMA, jmespath: JMESPATH_SCHEMA }
+    : { ...tool.inputSchema.properties, jmespath: JMESPATH_SCHEMA };
   return {
     name: tool.name,
     description: tool.description,
-    inputSchema,
+    inputSchema: { ...tool.inputSchema, properties },
     annotations: { readOnlyHint: true, openWorldHint: true },
   };
 });
@@ -2754,7 +2939,16 @@ async function dispatchToolsCall(
     }
     // Convex `internal-validate-pro-mcp-token` schedules touchProMcpTokenLastUsed
     // itself (convex/http.ts:1035-1040), so no waitUntil needed here.
-    return rpcOk(id, { content: [{ type: 'text', text: JSON.stringify(result) }] }, corsHeaders);
+    //
+    // Universal JMESPath projection (v1.4.0). `applyJmespath` never throws
+    // — soft-failure modes return a `_jmespath_error` envelope as `text`
+    // inside the normal response. So this stays INSIDE the try/catch but
+    // does NOT participate in the quota DECR path: a bad expression is a
+    // *user* error after a successful tool dispatch, not a system error.
+    // Genuine tool-execution throws (e.g. `cache_all_null`) still hit the
+    // catch below and rollback. Single JSON.stringify per request.
+    const { text } = applyJmespath(result, p.arguments?.jmespath);
+    return rpcOk(id, { content: [{ type: 'text', text }] }, corsHeaders);
   } catch (err: unknown) {
     if (proRollback) await proRollback();
     // HTTP 4xx from an internal sibling fetch (e.g. `feed-digest HTTP 401`)
@@ -2842,6 +3036,7 @@ export async function mcpHandler(
         protocolVersion: MCP_PROTOCOL_VERSION,
         capabilities: { tools: {} },
         serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
+        instructions: SERVER_INSTRUCTIONS,
       }, { 'Mcp-Session-Id': sessionId, ...corsHeaders });
     }
     case 'notifications/initialized':

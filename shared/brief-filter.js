@@ -113,6 +113,31 @@ function clip(v, cap) {
 }
 
 /**
+ * Word-wise title-case for display values. Capitalizes the first letter
+ * of every word, leaves already-uppercase letters alone. Handles the
+ * full canonical EventCategory enum (single-word: `'conflict' \u2192 'Conflict'`)
+ * AND space-bearing legacy categories that other `filterTopStories`
+ * callers pass through (e.g. `composeBriefForRule` with `'world politics'
+ * \u2192 'World Politics'`). First-letter-only would corrupt the multi-word
+ * case (`'world politics' \u2192 'World politics'`).
+ *
+ * Defense-in-depth: non-string and empty-string inputs are returned
+ * unchanged (preserving the input type). At the only current call site
+ * (`out.push` below), `category` has already been resolved to a
+ * non-empty string via the `asTrimmedString(raw.category) || 'General'`
+ * line above, so the type-preserving branch is never reached in
+ * practice \u2014 it exists so a future caller passing `null`/`undefined`
+ * doesn't throw.
+ *
+ * @param {unknown} v
+ * @returns {string | unknown} Title-Cased string when input is non-empty string; input unchanged otherwise.
+ */
+function titleCase(v) {
+  if (typeof v !== 'string' || v.length === 0) return v;
+  return v.replace(/\b[a-z]/g, (c) => c.toUpperCase());
+}
+
+/**
  * @typedef {(event: { reason: 'severity'|'headline'|'url'|'shape'|'cap'|'source_topic_cap'|'institutional_static_page', severity?: string, sourceUrl?: string }) => void} DropMetricsFn
  */
 
@@ -373,7 +398,18 @@ export function filterTopStories({ stories, sensitivity, maxStories = 12, maxPer
     // — distinct stories the dedup correctly kept separate, but redundant
     // for a 12-story brief. Ranked-order rule above ensures the
     // highest-importance member of each pair survives.
-    const pairKey = source + KEY_DELIM + category;
+    // Normalize cap-key case so pre-PR residue rows share a bucket with
+    // fresh post-PR rows from the same source. Residue rows resolve via
+    // the `|| 'General'` fallback above (capital G), while fresh post-PR
+    // rows carry the canonical lowercase EventCategory enum value
+    // (lowercase 'general'). Without .toLowerCase(), the two produce
+    // distinct cap buckets ('Reuters\x1fGeneral' vs 'Reuters\x1fgeneral'),
+    // bypassing the cap for the residue subset — exactly the editorial-
+    // clutter failure PR #3697 was created to prevent. Window of risk is
+    // the 7d STORY_TTL during the category-persistence rollout. The
+    // titleCase normalization at out.push below stays unchanged; only
+    // the cap-key is case-folded. Found by adversarial review of PR #3751.
+    const pairKey = source + KEY_DELIM + category.toLowerCase();
     if ((pairCounts.get(pairKey) ?? 0) >= maxPerSourceTopic) {
       if (emit) emit({ reason: 'source_topic_cap', severity: threatLevel, sourceUrl });
       continue;
@@ -411,8 +447,15 @@ export function filterTopStories({ stories, sensitivity, maxStories = 12, maxPer
     const repHash = typeof raw.clusterRepHash === 'string' && raw.clusterRepHash.length > 0 ? raw.clusterRepHash : null;
     const upstreamHash = typeof raw.hash === 'string' && raw.hash.length > 0 ? raw.hash : null;
     const clusterId = repHash ?? upstreamHash ?? `url:${sourceUrl}`;
+    // Display value: word-wise Title-Case once at the envelope-build
+    // site so all downstream consumers (threads card, magazine
+    // story-page, public-thread fallback) see the same normalized
+    // form. The cap-key above (`pairKey`) intentionally keeps the
+    // canonical raw `category` value so per-(source, category) capping
+    // groups correctly regardless of input case.
+    const displayCategory = titleCase(category);
     out.push({
-      category,
+      category: displayCategory,
       country,
       threatLevel,
       headline,
