@@ -56,7 +56,11 @@ const CASES = [
     name: 'thin',
     tool: 'get_chokepoint_status',
     fixture: 'thin-get-chokepoint-status.response.json',
-    expr: 'data."transit-summaries".chokepoints[*].{n:name,s:status}',
+    // Real shape is `summaries: { suez: {...}, hormuz_strait: {...} }` — a
+    // map of chokepoint-id → status object — NOT a flat array. JMESPath
+    // `values(@)` flattens the map values; `keys(@)` would give the
+    // chokepoint IDs. Project to {id, risk, disruption} tuples.
+    expr: '{chokepoints: keys(data."transit-summaries".summaries), risk: values(data."transit-summaries".summaries)[*].riskLevel, disruption: values(data."transit-summaries".summaries)[*].disruptionPct}',
   },
 ];
 
