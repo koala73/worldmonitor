@@ -31,6 +31,7 @@ const { Resend } = require('resend');
 const { normalizeResendSender } = require('./lib/resend-from.cjs');
 import { readRawJsonFromUpstash, redisPipeline } from '../api/_upstash-json.js';
 import { classifyOpinion } from '../server/_shared/opinion-classifier.js';
+import { classifyFeelGood } from '../server/_shared/feelgood-classifier.js';
 import {
   composeBriefFromDigestStories,
   compareRules,
@@ -486,6 +487,7 @@ async function buildDigest(rule, windowStartMs) {
   const stories = [];
   let droppedStaleAtRead = 0;
   let droppedOpinion = 0;
+  let droppedFeelGood = 0;
   for (let i = 0; i < hashes.length; i++) {
     const raw = trackResults[i]?.result;
     if (!Array.isArray(raw) || raw.length === 0) continue;
@@ -516,6 +518,35 @@ async function buildDigest(rule, windowStartMs) {
       }))
     ) {
       droppedOpinion++;
+      continue;
+    }
+
+    // Feel-good / lifestyle exclusion (sibling to the opinion filter
+    // above). Same plumbing: trust the ingest stamp when present;
+    // re-classify pre-stamp residue rows from persisted title/link/
+    // description. The brief is event-driven; a vintage-warplane
+    // veterans' reunion in a 9,800-person town is not an event. See
+    // docs/plans/2026-05-17-001-fix-feelgood-lifestyle-filter-plan.md.
+    //
+    // M6 / adv-005 — opinion+feel-good counter asymmetry: a row matched
+    // by BOTH classifiers (columnist-nostalgia essay; op-ed-with-tribute
+    // framing) increments only droppedOpinion above — the opinion
+    // `continue` already fired. droppedFeelGood is therefore "rows the
+    // feel-good filter dropped *after* opinion passed on them in this
+    // run," not "all feel-good content seen." Applies to stamped,
+    // residue-classified, and mixed paths equally. See Operational
+    // Notes in the plan for the operator-facing version.
+    const stampedFeelGood = track.isFeelGood === '1';
+    const feelGoodStampMissing = typeof track.isFeelGood !== 'string' || track.isFeelGood.length === 0;
+    if (
+      stampedFeelGood ||
+      (feelGoodStampMissing && classifyFeelGood({
+        title: track.title,
+        link: track.link ?? '',
+        description: typeof track.description === 'string' ? track.description : '',
+      }))
+    ) {
+      droppedFeelGood++;
       continue;
     }
 
@@ -551,6 +582,14 @@ async function buildDigest(rule, windowStartMs) {
     console.log(
       `[digest] buildDigest opinion filter dropped ${droppedOpinion} ` +
         `op-ed/analysis item(s) from the pool (variant=${rule.variant ?? 'full'} ` +
+        `lang=${rule.lang ?? 'en'} sensitivity=${rule.sensitivity ?? 'high'})`,
+    );
+  }
+
+  if (droppedFeelGood > 0) {
+    console.log(
+      `[digest] buildDigest feel-good filter dropped ${droppedFeelGood} ` +
+        `feel-good/lifestyle item(s) from the pool (variant=${rule.variant ?? 'full'} ` +
         `lang=${rule.lang ?? 'en'} sensitivity=${rule.sensitivity ?? 'high'})`,
     );
   }
