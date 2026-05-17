@@ -1548,9 +1548,12 @@ export class DeckGLMap {
 
     // Pipelines layer — Redis-backed evidence registry (seed-pipelines-{gas,oil}.mjs),
     // colored by derived publicBadge. Available on every variant that toggles
-    // `pipelines: true`. The legacy static `PIPELINES` fallback was retired in
-    // the gap #3B rollout (plan §R/#3 decision B); createPipelinesLayer is kept
-    // in this file as a dead-code reference until the next cleanup pass.
+    // `pipelines: true`. createEnergyPipelinesLayer falls back to the legacy
+    // static `PIPELINES` layer (createPipelinesLayer below) when the bootstrap
+    // hasn't hydrated yet, so the static layer is a real fallback — not dead
+    // code despite an earlier comment claiming it was retired in the gap #3B
+    // rollout. Removing createPipelinesLayer would leave the map blank on
+    // cold loads / variant switches before the first hydrate.
     if (mapLayers.pipelines) {
       layers.push(this.createEnergyPipelinesLayer());
     } else {
