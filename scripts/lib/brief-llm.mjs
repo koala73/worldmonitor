@@ -20,7 +20,7 @@
 //     date-grounding line: every v3 row was produced from a prompt
 //     with no notion of "today" and may state a fabricated year, so
 //     v3 rows must not survive the deploy. v2 rows were lead-blind.
-//   - brief:llm:digest:v7:{userId|public}:{sensitivity}:{poolHash}
+//   - brief:llm:digest:v8:{userId|public}:{sensitivity}:{poolHash}
 //     — 4h. The canonical synthesis is now ALWAYS produced through
 //     this path (formerly split with `generateAISummary` in the
 //     digest cron). Material includes profile-SHA, greeting bucket,
@@ -344,8 +344,16 @@ const DIGEST_PROSE_SYSTEM_BASE =
   "impactful development by its specific actor and event (e.g. \"Pentagon " +
   "chief Hegseth declared the US blockade on Iran is going global\"), NOT " +
   'an editorial framing about "geopolitical tensions" or "shifting ' +
-  'landscapes". Subsequent sentences may give brief context. Reference at ' +
-  'most 1–2 threads. No vapid hedging.>",\n' +
+  'landscapes". Subsequent sentences may give brief context about THE SAME ' +
+  'story (causes, stakes, prior developments). Reference a SECOND story ONLY ' +
+  'when there is a substantive link to the primary one (shared actor, causal ' +
+  'connection, direct policy consequence, same geographic theatre). NEVER ' +
+  'staple unrelated stories together using weak temporal connectives like ' +
+  '"This comes as", "Meanwhile", "At the same time", "In other news", or ' +
+  '"Elsewhere" — those produce editorially incoherent leads that mention two ' +
+  'unrelated events in one sentence without explaining why they belong ' +
+  'together. If two top stories are unrelated, just lead with the most ' +
+  'impactful one and let the threads list cover the rest. No vapid hedging.>",\n' +
   '  "threads": [\n' +
   '    { "tag": "<one-word editorial category e.g. Energy, Diplomacy, Climate>", ' +
   '"teaser": "<one sentence naming a SPECIFIC event or actor — e.g. ' +
@@ -363,6 +371,14 @@ const DIGEST_PROSE_SYSTEM_BASE =
   '"buzzing with developments", "intricate shifts", "evolving landscape", ' +
   '"navigating", "discerning reader", "continues to simmer", "shape the ' +
   'coming months", "strategic importance".\n' +
+  'BANNED stitching phrases (do NOT use any of these to staple two stories ' +
+  'together in the lead — they signal unrelated content awkwardly joined): ' +
+  '"this comes as", "this declaration comes as", "this announcement comes as", ' +
+  '"meanwhile", "at the same time", "in other news", "elsewhere", "across the ' +
+  'world", "on another front", "in a separate development". If two stories ' +
+  'are not substantively linked (no shared actor, no causal connection, no ' +
+  'direct policy consequence, no same geographic theatre), do NOT stitch them ' +
+  'into one sentence — lead with the more impactful one alone.\n' +
   'Threads: 3–6 items reflecting actual clusters in the stories. ' +
   'Signals: 2–4 items, forward-looking. ' +
   'rankedStoryHashes: at least the top 3 stories by editorial importance, ' +
@@ -943,7 +959,18 @@ export async function generateDigestProse(userId, stories, sensitivity, deps, ct
   // for the full 4h TTL. Sibling bumps applied to whymatters (v4→v5)
   // and description (v2→v3) — all three caches depend on the same
   // story.category field via hashBriefStory / hashDigestInput.
-  const key = `brief:llm:digest:v7:${hashDigestInput(userId, stories, sensitivity, ctx)}`;
+  //
+  // v8 (2026-05-18): bumped from v7 when DIGEST_PROSE_SYSTEM_BASE gained
+  // anti-stitching instructions (May 17 brief shipped a lead that stapled
+  // Ebola + Israel-Lebanon with "This declaration comes as…" — two
+  // unrelated top stories awkwardly joined). The prompt now explicitly
+  // forbids weak temporal connectives ("This comes as", "Meanwhile",
+  // "At the same time", "In other news", "Elsewhere", "Across the world",
+  // "On another front", "In a separate development") and instructs the
+  // model to lead with ONE primary story when two top stories aren't
+  // substantively linked. v7 cache rows would otherwise serve stitched
+  // leads for the full 4h TTL. Prompt content change → cache invalidation.
+  const key = `brief:llm:digest:v8:${hashDigestInput(userId, stories, sensitivity, ctx)}`;
   try {
     const hit = await deps.cacheGet(key);
     // CRITICAL: re-run the shape+grounding validator on cache hits.
