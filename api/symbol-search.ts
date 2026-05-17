@@ -147,6 +147,19 @@ export default async function handler(
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
     if (!resp.ok) {
+      // 422 from Finnhub = malformed query string (special characters,
+      // junk symbols, scanner probes). This is USER-INPUT noise, not
+      // upstream failure — return 400 to the client and SKIP the Sentry
+      // capture entirely. Capturing 422 was paging at warning level
+      // (WORLDMONITOR-RE) on real users typing things like "$" or "< "
+      // in the symbol search box, which we can't act on. A spike in
+      // 422s would suggest tightening our client-side input validation,
+      // but the signal for that lives better in front-end analytics
+      // than Sentry.
+      if (resp.status === 422) {
+        console.warn(`[symbol-search] Finnhub 422 (bad query) for q="${q}"`);
+        return jsonResponse({ error: 'BAD_QUERY' }, 400, cors);
+      }
       // 429 from Finnhub = quota exhausted; surface as 503 so the client
       // backs off rather than treating it as a permanent failure.
       const status = resp.status === 429 ? 503 : 502;
