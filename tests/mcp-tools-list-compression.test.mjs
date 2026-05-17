@@ -255,4 +255,118 @@ describe('api/mcp.ts — tools/list description compression (v1.5.0)', () => {
       }
     });
   });
+
+  // ============================================================
+  // U3: TOOL_LIST_RESPONSE compression + describe_tool RPC
+  // ============================================================
+  describe('tools/list compression + describe_tool RPC', () => {
+    async function getToolsList() {
+      const res = await mod.default(new Request('https://worldmonitor.app/mcp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': VALID_KEY },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list' }),
+      }));
+      const body = await res.json();
+      return body.result.tools;
+    }
+
+    async function callDescribeTool(tool_name) {
+      const res = await mod.default(new Request('https://worldmonitor.app/mcp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': VALID_KEY },
+        body: JSON.stringify({
+          jsonrpc: '2.0', id: 1, method: 'tools/call',
+          params: { name: 'describe_tool', arguments: tool_name === undefined ? {} : { tool_name } },
+        }),
+      }));
+      const body = await res.json();
+      assert.equal(res.status, 200);
+      assert.equal(body.error, undefined, `describe_tool returned JSON-RPC error: ${JSON.stringify(body.error)}`);
+      return JSON.parse(body.result.content[0].text);
+    }
+
+    it('tools/list contains 39 tools (38 + describe_tool)', async () => {
+      const tools = await getToolsList();
+      assert.equal(tools.length, 39);
+    });
+
+    it('describe_tool itself appears in tools/list', async () => {
+      const tools = await getToolsList();
+      assert.ok(tools.find(t => t.name === 'describe_tool'),
+        'describe_tool must be discoverable via tools/list');
+    });
+
+    it('every tool in tools/list has compressed description ≤ TOOL_DESCRIPTION_MAX_BYTES utf8 bytes', async () => {
+      const tools = await getToolsList();
+      for (const t of tools) {
+        assert.ok(mod.utf8ByteLength(t.description) <= mod.TOOL_DESCRIPTION_MAX_BYTES,
+          `tool "${t.name}" description is ${mod.utf8ByteLength(t.description)} bytes (cap ${mod.TOOL_DESCRIPTION_MAX_BYTES})`);
+      }
+    });
+
+    it('describe_tool({tool_name: "get_market_data"}) returns the FULL uncompressed description', async () => {
+      const tools = await getToolsList();
+      const compressed = tools.find(t => t.name === 'get_market_data');
+      const full = await callDescribeTool('get_market_data');
+      assert.ok(mod.utf8ByteLength(full.description) > mod.utf8ByteLength(compressed.description),
+        `describe_tool should return longer description than tools/list (full=${mod.utf8ByteLength(full.description)}, compressed=${mod.utf8ByteLength(compressed.description)})`);
+      // Full text should NOT have been truncated by compression — verify
+      // the v1.4.0 description is longer than the cap so this test is meaningful.
+      assert.ok(mod.utf8ByteLength(full.description) > mod.TOOL_DESCRIPTION_MAX_BYTES,
+        'test premise: full get_market_data description should exceed the cap');
+    });
+
+    it('describe_tool result has the SAME shape as a tools/list entry (name + description + inputSchema + annotations)', async () => {
+      const tools = await getToolsList();
+      const fromList = tools.find(t => t.name === 'get_market_data');
+      const fromDescribe = await callDescribeTool('get_market_data');
+      assert.deepEqual(Object.keys(fromList).sort(), Object.keys(fromDescribe).sort());
+    });
+
+    it('describe_tool result has inputSchema.properties.jmespath structurally equal to JMESPATH_SCHEMA (R7)', async () => {
+      const JMESPATH_SCHEMA = { type: 'string', description: 'Optional JMESPath projection applied to the response. See initialize.instructions for grammar and examples.' };
+      const full = await callDescribeTool('get_market_data');
+      assert.deepEqual(full.inputSchema.properties.jmespath, JMESPATH_SCHEMA);
+    });
+
+    it('describe_tool({tool_name: "nonexistent"}) returns {error: "unknown_tool", available: [...]} (soft error, HTTP 200, NOT a JSON-RPC error)', async () => {
+      const env = await callDescribeTool('nonexistent_tool');
+      assert.equal(env.error, 'unknown_tool');
+      assert.equal(env.requested, 'nonexistent_tool');
+      assert.ok(Array.isArray(env.available));
+      assert.equal(env.available.length, 39, 'available should list all 39 tools');
+      // Sorted alphabetically
+      const sorted = [...env.available].sort();
+      assert.deepEqual(env.available, sorted);
+      assert.ok(env.available.includes('describe_tool'));
+    });
+
+    it('describe_tool({}) returns {error: "missing_tool_name"}', async () => {
+      const env = await callDescribeTool(undefined);
+      assert.equal(env.error, 'missing_tool_name');
+    });
+
+    it('round-trip: every tool returned by describe_tool has no _-prefixed key (R9)', async () => {
+      const tools = await getToolsList();
+      function scanForUnderscoreKey(value, pathStack) {
+        if (Array.isArray(value)) {
+          for (let i = 0; i < value.length; i++) scanForUnderscoreKey(value[i], [...pathStack, `[${i}]`]);
+        } else if (value && typeof value === 'object') {
+          for (const k of Object.keys(value)) {
+            if (k.startsWith('_')) {
+              throw new Error(`describe_tool leaked internal key "${k}" at ${pathStack.join('.')}`);
+            }
+            scanForUnderscoreKey(value[k], [...pathStack, k]);
+          }
+        }
+      }
+      // Spot-check 3 cache tools + 3 RPC tools + describe_tool itself
+      const sample = ['get_market_data', 'get_conflict_events', 'get_chokepoint_status', 'search_flights', 'analyze_situation', 'get_commodity_geo', 'describe_tool'];
+      for (const name of sample) {
+        if (!tools.find(t => t.name === name)) continue;
+        const full = await callDescribeTool(name);
+        scanForUnderscoreKey(full, [`describe_tool(${name})`]);
+      }
+    });
+  });
 });

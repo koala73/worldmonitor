@@ -2483,6 +2483,40 @@ const TOOL_REGISTRY: ToolDef[] = [
     },
     _apiPaths: [],
   },
+  {
+    // describe_tool (v1.5.0) — on-demand escape hatch for the full
+    // uncompressed tool definition. tools/list (default) emits each tool's
+    // description compressed to ≤TOOL_DESCRIPTION_MAX_BYTES (first sentence
+    // or byte-truncated); the LLM calls describe_tool with a tool_name to
+    // get the full v1.4.0-shape tool object — same public shape, just with
+    // long-form text in `description`. Uses the SAME buildPublicTool helper
+    // as tools/list so the two surfaces can never drift.
+    name: 'describe_tool',
+    description: 'Return the full uncompressed definition of one tool by name. Use when the compressed tools/list entry is ambiguous about behaviour or argument semantics.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tool_name: { type: 'string', description: 'Exact tool name from tools/list.' },
+      },
+      required: ['tool_name'],
+    },
+    _execute: async (params: Record<string, unknown>) => {
+      const name = params.tool_name;
+      if (typeof name !== 'string' || name.length === 0) {
+        return { error: 'missing_tool_name', hint: 'Pass tool_name as a non-empty string matching a tool from tools/list.' };
+      }
+      const tool = TOOL_REGISTRY.find((t) => t.name === name);
+      if (!tool) {
+        return {
+          error: 'unknown_tool',
+          requested: name,
+          available: TOOL_REGISTRY.map((t) => t.name).sort(),
+        };
+      }
+      return buildPublicTool(tool, { compressDescriptions: false });
+    },
+    _apiPaths: [],
+  },
 ];
 
 // Public shape for tools/list — strips internal _-prefixed fields, adds MCP
