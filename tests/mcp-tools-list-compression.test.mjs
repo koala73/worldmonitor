@@ -1,5 +1,6 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
+import { readFileSync } from 'node:fs';
 
 const originalEnv = { ...process.env };
 
@@ -344,6 +345,42 @@ describe('api/mcp.ts — tools/list description compression (v1.5.0)', () => {
     it('describe_tool({}) returns {error: "missing_tool_name"}', async () => {
       const env = await callDescribeTool(undefined);
       assert.equal(env.error, 'missing_tool_name');
+    });
+
+    // ============================================================
+    // U4: Version bump + SERVER_INSTRUCTIONS + server-card sync
+    // ============================================================
+    it('serverInfo.version === "1.5.0"', async () => {
+      const res = await mod.default(new Request('https://worldmonitor.app/mcp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': VALID_KEY },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 't', version: '1' } } }),
+      }));
+      const body = await res.json();
+      assert.equal(body.result?.serverInfo?.version, '1.5.0');
+    });
+
+    it('initialize.result.instructions mentions describe_tool AND the TOOL_DESCRIPTION_MAX_BYTES cap value', async () => {
+      const res = await mod.default(new Request('https://worldmonitor.app/mcp', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': VALID_KEY },
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 't', version: '1' } } }),
+      }));
+      const body = await res.json();
+      const inst = body.result.instructions;
+      assert.ok(typeof inst === 'string' && inst.length > 0);
+      assert.ok(/describe_tool/i.test(inst), 'instructions should mention describe_tool');
+      assert.ok(inst.includes(String(mod.TOOL_DESCRIPTION_MAX_BYTES)),
+        'instructions should mention the TOOL_DESCRIPTION_MAX_BYTES cap');
+    });
+
+    it('server-card.json version matches SERVER_VERSION (1.5.0) AND tools.count matches (39)', () => {
+      const card = JSON.parse(readFileSync(new URL('../public/.well-known/mcp/server-card.json', import.meta.url), 'utf8'));
+      assert.equal(card.serverInfo.version, '1.5.0');
+      assert.equal(card.tools.count, 39);
+      assert.equal(card.features?.toolDescriptionCompression, true);
+      assert.equal(card.features?.responseProjection, 'jmespath',
+        'v1.4.0 feature flag must still be present');
     });
 
     it('round-trip: every tool returned by describe_tool has no _-prefixed key (R9)', async () => {

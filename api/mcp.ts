@@ -68,9 +68,24 @@ const SERVER_NAME = 'worldmonitor';
 //     ~600 bytes emitted once per session vs ×38 schema-bloat across tools.
 //   - Purely additive — omitting `jmespath` returns the v1.3.0 payload
 //     byte-for-byte. Bundle delta +57.8 KB raw / +9.4 KB gzipped.
+// Bumped 1.4.0 → 1.5.0 (2026-05-18) reflecting:
+//   - tools/list TOOL descriptions are now compressed to ≤120 UTF-8 bytes
+//     (first sentence or byte-truncate). Reduces per-session input-token
+//     cost on session-init. Property descriptions intentionally NOT
+//     compressed in v1 (audit found 53% encode contract details).
+//   - New `describe_tool({tool_name})` RPC returns the full uncompressed
+//     definition on demand. Same public shape as a tools/list entry.
+//   - Both surfaces flow through a single `buildPublicTool` helper —
+//     can never drift. Property schemas + injected SUMMARY_SCHEMA/
+//     JMESPATH_SCHEMA are `structuredClone`'d before injection so the
+//     module-level consts can't be mutated through returned objects.
+//   - Tool count bumped 38 → 39 (describe_tool added).
+//   - Purely additive — omitting all v1.5.0 args returns a compressed
+//     description in tools/list (observable shape change); describe_tool
+//     recovers full text.
 // Keep aligned with public/.well-known/mcp/server-card.json::serverInfo.version
 // — discovery scanners cross-check both values.
-const SERVER_VERSION = '1.4.0';
+const SERVER_VERSION = '1.5.0';
 
 // Universal JMESPath projection caps (v1.4.0) — applied at the dispatch
 // boundary AFTER `_postFilter` and `summary`, before serialization. Two
@@ -90,6 +105,12 @@ export const JMESPATH_MAX_EXPR_BYTES = 1024;
 export const JMESPATH_MAX_OUTPUT_BYTES = 256 * 1024;
 export type JmespathFailKind = 'expression_too_long' | 'projection_too_large' | 'invalid_expression';
 
+// tools/list tool-description compression cap (v1.5.0). Defined here
+// rather than near `compressDescription` so SERVER_INSTRUCTIONS can
+// quote it without a temporal-dead-zone error. The compressDescription
+// helper definition lives later, with the rest of the helpers.
+export const TOOL_DESCRIPTION_MAX_BYTES = 120;
+
 // Session-level discovery instructions. Per MCP 2025-03-26 lifecycle spec,
 // servers MAY return an `instructions` string in the `initialize` result;
 // clients SHOULD surface this to the model. We carry the JMESPath grammar
@@ -106,6 +127,8 @@ const SERVER_INSTRUCTIONS = [
   '  data.advisories[?level==\'warning\'][].title',
   '',
   `Limits: expression ≤ ${JMESPATH_MAX_EXPR_BYTES} bytes; projected payload ≤ ${JMESPATH_MAX_OUTPUT_BYTES} bytes. Failures return {_jmespath_error, original_keys} inside the normal result envelope. Bad expressions DO consume one daily quota unit on retry — original_keys is echoed so you can self-correct in one extra call.`,
+  '',
+  `tools/list returns COMPRESSED tool descriptions (first sentence, ≤${TOOL_DESCRIPTION_MAX_BYTES}B per tool). Call describe_tool({tool_name}) to get the full uncompressed definition for any tool you're considering — especially useful when the compressed entry is ambiguous about behaviour or argument semantics. describe_tool({tool_name: 'nonexistent'}) returns {error: 'unknown_tool', available: [...]} so you can self-correct.`,
 ].join('\n');
 
 // Country-code whitelist for get_consumer_prices. The consumer-prices seeder
@@ -369,7 +392,9 @@ export function utf8ByteLength(s: string): number {
 // (added in U2) so there's a single source of truth for the public shape.
 // ---------------------------------------------------------------------------
 
-export const TOOL_DESCRIPTION_MAX_BYTES = 120;
+// TOOL_DESCRIPTION_MAX_BYTES is declared above with the version-bump caps
+// block so SERVER_INSTRUCTIONS can quote it without a TDZ. Referenced here
+// by compressDescription's default call sites.
 
 // Compress a description string to at most `maxBytes` UTF-8 bytes.
 // - If the text already fits, returns it unchanged (identity).
