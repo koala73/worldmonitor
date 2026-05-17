@@ -540,9 +540,14 @@ export function stripHeadlinePrefix(title) {
  * `threatLevel` is an enum and `hash` is a hex digest — neither is
  * sanitised.
  *
- * `category` / `country` default to `'General'` / `'Global'`,
- * matching `digestStoryToUpstreamTopStory` + `filterTopStories`
- * defaults, because `story:track:v1` carries neither field.
+ * `country` defaults to `'Global'` (story:track:v1 carries no country
+ * field; `digestStoryToUpstreamTopStory` + `filterTopStories` defaults
+ * fill it). `category` IS carried on story:track:v1 (persisted by
+ * buildStoryTrackHsetFields, defensive empty-string on missing), passed
+ * through buildDigest's stories.push, and word-wise Title-Cased once in
+ * shared/brief-filter.js at envelope build. On pre-PR residue rows
+ * where category is absent, filterTopStories' `|| 'General'` fallback
+ * fires and the value reaches here as 'General'.
  *
  * @param {object} s — digest-shaped story from buildDigest()
  * @returns {{ headline: string; threatLevel: string; source: string; category: string; country: string; hash: string }}
@@ -581,9 +586,12 @@ export function digestStoryToSynthesisShape(s) {
 /**
  * Adapter: the digest accumulator hydrates stories from
  * story:track:v1:{hash} (title / link / severity / lang / score /
- * mentionCount / description?) + story:sources:v1:{hash} SMEMBERS. It
- * does NOT carry a category or country-code — those fields are optional
- * in the upstream brief-filter shape and default cleanly.
+ * mentionCount / description? / isOpinion / isFeelGood / category) +
+ * story:sources:v1:{hash} SMEMBERS. story:track:v1 does NOT carry a
+ * country-code — that field is optional in the upstream brief-filter
+ * shape and defaults to 'Global' cleanly. `category` IS carried (as of
+ * the U1 persistence fix); pre-stamp residue rows without the field
+ * gracefully degrade to 'General' via filterTopStories' fallback.
  *
  * Since envelope v2, the story's `link` field is carried through as
  * `primaryLink` so filterTopStories can emit a BriefStory.sourceUrl.
@@ -622,8 +630,11 @@ function digestStoryToUpstreamTopStory(s) {
     primaryLink: typeof s?.link === 'string' ? s.link : undefined,
     threatLevel: s?.severity,
     importanceScore: Number.isFinite(Number(s?.currentScore)) ? Number(s.currentScore) : undefined,
-    // story:track:v1 carries neither field, so the brief falls back
-    // to 'General' / 'Global' via filterTopStories defaults.
+    // `category` IS carried on story:track:v1 (persisted by
+    // buildStoryTrackHsetFields, passed through buildDigest's stories.push).
+    // Pre-stamp residue rows missing the field fall back to 'General' via
+    // filterTopStories' `|| 'General'` default. `countryCode` is NOT
+    // carried; falls back to 'Global' the same way.
     category: typeof s?.category === 'string' ? s.category : undefined,
     countryCode: typeof s?.countryCode === 'string' ? s.countryCode : undefined,
     // Stable digest story hash. Carried through so:

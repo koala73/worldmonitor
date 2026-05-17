@@ -567,6 +567,14 @@ async function buildDigest(rule, windowStartMs) {
       // on old story:track rows (pre-fix, 48h bleed) and feeds without a
       // description. Downstream adapter falls back to the cleaned headline.
       description: typeof track.description === 'string' ? track.description : '',
+      // EventCategory persisted by parseRssXml + buildStoryTrackHsetFields
+      // (`isFeelGood` PR added the field; the category sibling closes the
+      // 8/8 'General' threads-card gap PR #3697 exposed). Defensive empty
+      // string on missing/non-string: shared/brief-filter.js's
+      // `asTrimmedString(raw.category) || 'General'` fallback covers
+      // pre-stamp residue rows. Display-side word-wise titleCase happens
+      // once at the envelope-build site in shared/brief-filter.js.
+      category: typeof track.category === 'string' ? track.category : '',
     });
   }
 
