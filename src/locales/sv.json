@@ -1882,7 +1882,7 @@
       "infoTooltip": "<strong>Nyckelordsmonitorer</strong> Lägg till valfri term för att spåra omnämnanden i nyheter i realtid från alla WorldMonitor-källor. Resultaten uppdateras i realtid allt eftersom matchande artiklar importeras."
     },
     "renewable": {
-      "infoTooltip": "<strong>Förnybar energi</strong> Global pipeline för förnybar energiprojekt: sol-, vind-, vatten- och lagringskapacitetstillägg. Spårar annonserade, under uppförande och idrifttagna projekt per region och tekniktyp."
+      "infoTooltip": "<strong>Förnybar energi</strong> Andel förnybar el i elproduktionen per region och år, plus installerad effekt för sol, vind och kol (MW). Källor: Världsbanken (EG.ELC.RNEW.ZS) och EIA."
     },
     "socialVelocity": {
       "infoTooltip": "<strong>Social hastighet</strong> Trendande ämnen och viralt innehåll med geopolitisk betydelse. Mäter hastigheten i sociala medier: hur snabbt en story sprids i förhållande till baslinjen. Hjälper till att lyfta fram framväxande narrativ innan de når etablerade medier."

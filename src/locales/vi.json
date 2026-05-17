@@ -2095,7 +2095,7 @@
       "infoTooltip": "<strong>Giám sát từ khóa</strong> Thêm bất kỳ thuật ngữ nào để theo dõi đề cập tin tức thời gian thực từ tất cả nguồn WorldMonitor. Kết quả cập nhật theo thời gian thực khi các bài viết phù hợp được thu thập."
     },
     "renewable": {
-      "infoTooltip": "<strong>Năng lượng tái tạo</strong> Đường ống dự án năng lượng tái tạo toàn cầu: bổ sung công suất điện mặt trời, gió, thủy điện và lưu trữ. Theo dõi các dự án đã công bố, đang xây dựng và đã vận hành theo vùng và loại công nghệ."
+      "infoTooltip": "<strong>Năng lượng tái tạo</strong> Tỷ trọng năng lượng tái tạo trong sản xuất điện theo vùng và năm, cùng công suất lắp đặt cho điện mặt trời, điện gió và than (MW). Nguồn: Ngân hàng Thế giới (EG.ELC.RNEW.ZS) và EIA."
     },
     "socialVelocity": {
       "infoTooltip": "<strong>Tốc độ xã hội</strong> Chủ đề xu hướng và nội dung lan truyền có ý nghĩa địa chính trị. Đo tốc độ mạng xã hội: một câu chuyện lan truyền nhanh đến mức nào so với đường cơ sở. Giúp phát hiện các tường thuật mới nổi trước khi chúng đến truyền thông chính thống."

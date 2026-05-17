@@ -2095,7 +2095,7 @@
       "infoTooltip": "<strong>Monitory klíčových slov</strong> Přidejte libovolný výraz pro sledování zmínek ve zprávách v reálném čase ze všech zdrojů WorldMonitor. Výsledky se aktualizují při příjmu odpovídajících článků."
     },
     "renewable": {
-      "infoTooltip": "<strong>Obnovitelná energie</strong> Globální zásobník projektů obnovitelné energie: solární, větrná, vodní a přírůstky úložné kapacity. Sleduje oznámené, ve výstavbě a uvedené do provozu projekty podle regionu a typu technologie."
+      "infoTooltip": "<strong>Obnovitelná energie</strong> Podíl obnovitelných zdrojů na výrobě elektřiny podle regionu a roku a instalovaný výkon pro solární, větrnou a uhelnou energii (MW). Zdroje: Světová banka (EG.ELC.RNEW.ZS) a EIA."
     },
     "socialVelocity": {
       "infoTooltip": "<strong>Sociální rychlost</strong> Trendy a virální obsah s geopolitickým významem. Měří rychlost na sociálních médiích: jak rychle se příběh šíří vůči základní linii. Pomáhá odhalit vznikající narativy dříve, než se dostanou do mainstreamových médií."
