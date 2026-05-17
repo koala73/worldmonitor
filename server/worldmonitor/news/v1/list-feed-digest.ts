@@ -15,6 +15,7 @@ import { CHROME_UA } from '../../../_shared/constants';
 import { VARIANT_FEEDS, INTEL_SOURCES, type ServerFeed } from './_feeds';
 import { classifyByKeyword, hasHistoricalMarker, type ThreatLevel } from './_classifier';
 import { classifyOpinion } from '../../../_shared/opinion-classifier.js';
+import { classifyFeelGood } from '../../../_shared/feelgood-classifier.js';
 import { buildClassifyCacheKey } from '../../intelligence/v1/_shared';
 import { getSourceTier } from '../../../_shared/source-tiers';
 import {
@@ -161,6 +162,13 @@ interface ParsedItem {
   // than the brief, so this STAMPS rather than drops — only buildDigest
   // filters on it.
   isOpinion: boolean;
+  // Feel-good / lifestyle classification (classifyFeelGood over title +
+  // link + description). Sibling stamp to isOpinion — same persistence,
+  // same buildDigest read-path filter. The brief is event-driven; a
+  // vintage-warplane veterans' reunion in a 9,800-person town is not an
+  // event. See docs/plans/2026-05-17-001-fix-feelgood-lifestyle-filter-plan.md
+  // (Veterans-warplanes anchor case, May 17 0802 brief).
+  isFeelGood: boolean;
 }
 
 const MAX_DESCRIPTION_LEN = 400;
@@ -476,6 +484,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
       lang: feed.lang ?? 'en',
       description,
       isOpinion: classifyOpinion({ title, link, description }),
+      isFeelGood: classifyFeelGood({ title, link, description }),
     });
   }
 
@@ -909,6 +918,11 @@ function buildStoryTrackHsetFields(
     // Pre-stamp rows (ingested before this shipped) have no field at
     // all; buildDigest re-classifies those from title/link/description.
     'isOpinion', item.isOpinion ? '1' : '0',
+    // Feel-good / lifestyle flag (classifyFeelGood). Sibling to
+    // isOpinion — same write semantics, same buildDigest read-path
+    // exclusion. Pre-stamp rows are re-classified by buildDigest from
+    // title/link/description (residue catch).
+    'isFeelGood', item.isFeelGood ? '1' : '0',
   ];
 }
 

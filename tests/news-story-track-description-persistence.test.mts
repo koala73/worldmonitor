@@ -31,6 +31,7 @@ function baseItem(overrides: Record<string, unknown> = {}) {
     lang: 'en',
     description: '',
     isOpinion: false,
+    isFeelGood: false,
     ...overrides,
   };
 }
@@ -72,6 +73,23 @@ describe('buildStoryTrackHsetFields — story:track:v1 HSET contract', () => {
     delete (legacyItem as Record<string, unknown>).isOpinion;
     assert.strictEqual(
       fieldsToMap(buildStoryTrackHsetFields(legacyItem as Parameters<typeof buildStoryTrackHsetFields>[0], '1745000000000', 42)).get('isOpinion'),
+      '0',
+    );
+  });
+
+  it('writes isFeelGood as "1" / "0" — stamps the feel-good verdict on the row (Veterans-warplanes anchor)', () => {
+    // Sibling to isOpinion stamp. buildDigest excludes isFeelGood="1"
+    // rows. Same shared-row semantics: stale "1" from an earlier
+    // mention must be overwritten by the current mention's verdict.
+    const feelGoodItem = baseItem({ isFeelGood: true });
+    assert.strictEqual(fieldsToMap(buildStoryTrackHsetFields(feelGoodItem, '1745000000000', 42)).get('isFeelGood'), '1');
+    const newsItem = baseItem({ isFeelGood: false });
+    assert.strictEqual(fieldsToMap(buildStoryTrackHsetFields(newsItem, '1745000000000', 42)).get('isFeelGood'), '0');
+    // Missing field (pre-stamp residue rows) → falsy → "0".
+    const legacyItem = baseItem();
+    delete (legacyItem as Record<string, unknown>).isFeelGood;
+    assert.strictEqual(
+      fieldsToMap(buildStoryTrackHsetFields(legacyItem as Parameters<typeof buildStoryTrackHsetFields>[0], '1745000000000', 42)).get('isFeelGood'),
       '0',
     );
   });
