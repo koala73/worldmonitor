@@ -119,12 +119,18 @@ function clip(v, cap) {
  * AND space-bearing legacy categories that other `filterTopStories`
  * callers pass through (e.g. `composeBriefForRule` with `'world politics'
  * \u2192 'World Politics'`). First-letter-only would corrupt the multi-word
- * case (`'world politics' \u2192 'World politics'`). Empty / non-string
- * inputs are returned unchanged so the existing `|| 'General'` fallback
- * stays intact.
+ * case (`'world politics' \u2192 'World politics'`).
  *
- * @param {string} v
- * @returns {string}
+ * Defense-in-depth: non-string and empty-string inputs are returned
+ * unchanged (preserving the input type). At the only current call site
+ * (`out.push` below), `category` has already been resolved to a
+ * non-empty string via the `asTrimmedString(raw.category) || 'General'`
+ * line above, so the type-preserving branch is never reached in
+ * practice \u2014 it exists so a future caller passing `null`/`undefined`
+ * doesn't throw.
+ *
+ * @param {unknown} v
+ * @returns {string | unknown} Title-Cased string when input is non-empty string; input unchanged otherwise.
  */
 function titleCase(v) {
   if (typeof v !== 'string' || v.length === 0) return v;

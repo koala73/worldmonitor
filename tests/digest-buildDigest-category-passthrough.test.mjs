@@ -50,18 +50,43 @@ describe('U2: buildDigest carries track.category through to the envelope', () =>
 
   it('T7: the passthrough is in stories.push, not in the isOpinion/isFeelGood filter blocks', () => {
     // Find the stories.push site. The category passthrough must appear
-    // inside the object literal (between `stories.push({` and the
-    // matching `});`).
+    // by scanning forward from `stories.push({` and matching braces at
+    // the same depth to find the literal's closing `});`. Earlier this
+    // test used `indexOf('});')` which would silently truncate the
+    // search slice if a future change introduced a nested object literal
+    // ending in `});` inside stories.push (e.g. a `.map()` callback) —
+    // Greptile P2 review of PR #3751. Brace-depth tracking is robust to
+    // that without locking the test to the current flat-literal shape.
     const storiesPushIdx = buildDigestBody.indexOf('stories.push({');
     assert.ok(storiesPushIdx !== -1, 'stories.push site must exist in buildDigest');
-    // Find the matching `});` — pragmatic: search forward for the next
-    // `});` (the object literal here is shallow, no nested object).
-    const closeIdx = buildDigestBody.indexOf('});', storiesPushIdx);
-    assert.ok(closeIdx !== -1, 'stories.push must have a closing `});`');
+    let depth = 1; // we start AFTER the opening `{` of `stories.push({`
+    let closeIdx = -1;
+    const scanStart = storiesPushIdx + 'stories.push({'.length;
+    for (let i = scanStart; i < buildDigestBody.length; i += 1) {
+      const ch = buildDigestBody[i];
+      if (ch === '{') depth += 1;
+      else if (ch === '}') {
+        depth -= 1;
+        if (depth === 0) {
+          // Expect the matching `}` to be followed by `);` (the
+          // function-call close). Confirm before recording the slice end.
+          if (buildDigestBody.slice(i, i + 3) === '});') {
+            closeIdx = i + 3;
+          }
+          break;
+        }
+      }
+    }
+    assert.ok(closeIdx !== -1, 'stories.push must have a matched `});` at the same brace depth');
     const pushBlock = buildDigestBody.slice(storiesPushIdx, closeIdx);
-    assert.ok(
-      pushBlock.includes('category: typeof track.category'),
-      'category passthrough must live inside the stories.push object literal',
+
+    // Full-pattern assertion (not just substring containment): lock the
+    // exact defensive-typeof shape so a coercion or different defensive
+    // pattern would fail this test rather than passing on partial match.
+    assert.match(
+      pushBlock,
+      /category:\s*typeof\s+track\.category\s*===\s*'string'\s*\?\s*track\.category\s*:\s*''/,
+      'category passthrough must live inside the stories.push object literal with the exact defensive-typeof shape',
     );
 
     // Negative-space: the opinion / feel-good filter blocks `continue`
