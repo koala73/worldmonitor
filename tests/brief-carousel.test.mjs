@@ -231,15 +231,22 @@ async function assertRendersPng(page) {
 }
 
 describe('renderCarouselImageResponse', () => {
-  it('renders the cover page to a valid PNG', async () => {
+  // PNG cold-render (font + resvg-wasm init) measures ~10s on a warm
+  // machine under no load and longer under concurrent test load. The
+  // node:test default per-test timeout (5s in tsx --test) false-fails
+  // these in the pre-push full-suite sweep while they pass in isolation.
+  // 30s gives comfortable headroom without masking real regressions.
+  const PNG_RENDER_TIMEOUT = 30_000;
+
+  it('renders the cover page to a valid PNG', { timeout: PNG_RENDER_TIMEOUT }, async () => {
     await assertRendersPng('cover');
   });
 
-  it('renders the threads page to a valid PNG', async () => {
+  it('renders the threads page to a valid PNG', { timeout: PNG_RENDER_TIMEOUT }, async () => {
     await assertRendersPng('threads');
   });
 
-  it('renders the story page to a valid PNG', async () => {
+  it('renders the story page to a valid PNG', { timeout: PNG_RENDER_TIMEOUT }, async () => {
     await assertRendersPng('story');
   });
 
