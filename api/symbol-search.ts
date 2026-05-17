@@ -158,6 +158,17 @@ export default async function handler(
       // than Sentry.
       if (resp.status === 422) {
         console.warn(`[symbol-search] Finnhub 422 (bad query) for q="${q}"`);
+        // Cache as empty results so repeated identical bad queries (e.g.
+        // `$`, scanner probes) don't each reach Finnhub and drain the
+        // shared 60/min quota. Same protection the success-path empty-
+        // result cache provides for typos (top-level file comment).
+        // Subsequent identical requests short-circuit at the cache-read
+        // above and return 200 + `{ results: [] }` — semantically
+        // equivalent to "no matches for that query" for the user, but
+        // quota-cheap for us. Greptile P2 on PR #3745.
+        const writePromise = setCachedData(cacheKey, { results: [] }, CACHE_TTL_SECONDS).catch(() => false);
+        if (ctx) ctx.waitUntil(writePromise);
+        else void writePromise;
         return jsonResponse({ error: 'BAD_QUERY' }, 400, cors);
       }
       // 429 from Finnhub = quota exhausted; surface as 503 so the client
