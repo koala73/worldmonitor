@@ -218,6 +218,29 @@ describe('parseRssXml — integration with description', () => {
     assert.strictEqual(items[1]!.isOpinion, true, 'Opinion:-prefixed item under /opinion/ is opinion');
   });
 
+  it('every ParsedItem carries an isFeelGood flag — hard news false, feel-good true (Veterans-warplanes anchor)', () => {
+    const xml = wrapRss(`
+      <item>
+        <title>Putin tests nuclear-capable Sarmat missile</title>
+        <link>https://news.example.com/world/sarmat-test</link>
+        <pubDate>Thu, 24 Apr 2026 08:01:00 GMT</pubDate>
+        <description><![CDATA[<p>Russia test-fired the intercontinental ballistic missile from Plesetsk on Thursday morning.</p>]]></description>
+      </item>
+      <item>
+        <title>Veterans reunite with their vintage war planes</title>
+        <link>https://news.example.com/features/veterans-vintage-warplanes</link>
+        <pubDate>Sat, 17 May 2026 08:02:00 GMT</pubDate>
+        <description><![CDATA[<p>In Peru, Illinois, military veterans recently reunited with the vintage warplanes they once piloted, evoking powerful memories and connections.</p>]]></description>
+      </item>
+    `);
+    const result = parseRssXml(xml, FEED, 'full');
+    assert.ok(result);
+    const items = result!.items;
+    assert.strictEqual(items.length, 2);
+    assert.strictEqual(items[0]!.isFeelGood, false, 'hard-news Sarmat item is not feel-good');
+    assert.strictEqual(items[1]!.isFeelGood, true, 'Veterans-warplanes item is feel-good (STRONG /features/ URL)');
+  });
+
   it('Atom feed ParsedItems carry a description field from <summary>/<content>', () => {
     const xml = wrapAtom(`
       <entry>

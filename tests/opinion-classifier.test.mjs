@@ -157,6 +157,82 @@ describe('classifyOpinion — does NOT false-positive on hard news', () => {
   });
 });
 
+describe('classifyOpinion — URL match uses parsed pathname, not raw .includes() (backport from PR #3748 / adv-002)', () => {
+  // Pre-backport: lowerLink.includes('/opinion/') returned true for any
+  // URL whose query string OR fragment contained "/opinion/" — including
+  // legitimate aggregator tracking params like ?utm_campaign=/opinion/promo.
+  // The same bug existed in feelgood-classifier.js until PR #3748 closed
+  // it; this PR brings the opinion-classifier to parity by parsing the
+  // URL and matching against pathname.toLowerCase() inside a try/catch.
+  it('tracking param containing /opinion/ does NOT trigger STRONG', () => {
+    assert.equal(
+      classifyOpinion({
+        title: 'Hard news headline',
+        link: 'https://example.com/world/news?utm_campaign=/opinion/promo',
+      }),
+      false,
+    );
+  });
+
+  it('URL fragment containing /commentary/ does NOT trigger STRONG', () => {
+    assert.equal(
+      classifyOpinion({
+        title: 'Hard news headline',
+        link: 'https://example.com/world/news#/commentary/footer',
+      }),
+      false,
+    );
+  });
+
+  it('tracking param containing /analysis/ does NOT trigger CORROBORATING', () => {
+    // Single CORROBORATING signal would not classify on its own, but
+    // combined with a quoted-statement headline (which is the legit
+    // hard-news case the previous code FP'd on), the .includes() bug
+    // would have pushed total to 2. Verify the pathname parse prevents this.
+    assert.equal(
+      classifyOpinion({
+        title: "'We will respond decisively'",
+        link: 'https://example.com/world/iran-statement?utm_campaign=/analysis/section',
+        description: 'The foreign ministry issued a statement.',
+      }),
+      false,
+    );
+  });
+
+  it('malformed URL handled defensively (no throw)', () => {
+    assert.doesNotThrow(() =>
+      classifyOpinion({ title: 'Hard news', link: 'not a valid URL' }),
+    );
+    assert.equal(
+      classifyOpinion({ title: 'Hard news', link: 'not a valid URL' }),
+      false,
+    );
+  });
+
+  it('REGRESSION: a genuine /opinion/ pathname still classifies (the fix does not over-correct)', () => {
+    assert.equal(
+      classifyOpinion({
+        title: 'The election is closer than it looks',
+        link: 'https://example.com/opinion/election-closer-than-it-looks?utm_source=newsletter',
+      }),
+      true,
+    );
+  });
+
+  it('REGRESSION: a genuine /analysis/ pathname still contributes CORROBORATING', () => {
+    // Two corroborating: quote-wrapped headline + /analysis/ pathname
+    // (with a tracking param to verify the pathname parse strips the query).
+    assert.equal(
+      classifyOpinion({
+        title: "'The west has misjudged this moment'",
+        link: 'https://example.com/analysis/2026/foo?ref=twitter',
+        description: 'A straightforward report with no framing words.',
+      }),
+      true,
+    );
+  });
+});
+
 describe('classifyOpinion — input safety', () => {
   it('handles missing / non-string fields without throwing', () => {
     assert.equal(classifyOpinion({}), false);

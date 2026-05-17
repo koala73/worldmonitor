@@ -326,6 +326,27 @@ describe("listProMcpTokens", () => {
     const rows = await t.withIdentity(OTHER_USER).query(api.mcpProTokens.listProMcpTokens, {});
     expect(rows).toEqual([]);
   });
+
+  test("returns empty array when called without auth identity (does not throw AUTH_REQUIRED)", async () => {
+    // WORLDMONITOR-RD regression: this query is reactive (subscribed by
+    // the settings UI), so it fires during transient unauth windows —
+    // sign-out, initial page load before Clerk resolves, token-rotation
+    // races. Throwing AUTH_REQUIRED from those races was paging via
+    // Convex's server-side Sentry integration despite the
+    // requireUserId() comment explicitly aiming to suppress N3-class
+    // noise. Returning [] is observationally identical to "no tokens
+    // yet" and removes the throw entirely.
+    const t = convexTest(schema, modules);
+
+    // Seed a token under a real user so we can prove the no-auth caller
+    // gets empty (not the other user's row, not a throw).
+    await seedProEntitlement(t, "user-pro");
+    await t.mutation(internal.mcpProTokens.issueProMcpToken, { userId: "user-pro" });
+
+    // No .withIdentity(...) — simulates the unauth race.
+    const rows = await t.query(api.mcpProTokens.listProMcpTokens, {});
+    expect(rows).toEqual([]);
+  });
 });
 
 // ---------------------------------------------------------------------------

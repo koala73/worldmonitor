@@ -9,6 +9,7 @@ import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import type { StockAnalysisHistory } from '@/services/stock-analysis-history';
 import { sparkline } from '@/utils/sparkline';
 import { createWatchlistButton } from './watchlist-modal';
+import { WatchlistTableView } from './WatchlistTableView';
 
 function formatChange(change: number): string {
   const rounded = Number.isFinite(change) ? change.toFixed(2) : '0.00';
@@ -52,6 +53,14 @@ function txCodeLabel(code: string): string {
 
 export class StockAnalysisPanel extends Panel {
   private insiderBySymbol: Record<string, InsiderTransactionsResult> = {};
+  // Lazily initialised. WatchlistTableView holds the sort/filter/search
+  // state across data refreshes within the session — without it, every
+  // refresh resets the user's chosen sort or filter pill.
+  private tableView?: WatchlistTableView<StockAnalysisResult>;
+  // Cached so re-renders triggered by user interaction (filter/sort
+  // change) can rebuild HTML without a fresh fetch.
+  private lastItems: StockAnalysisResult[] = [];
+  private lastHistory: StockAnalysisHistory = {};
 
   constructor() {
     super({ id: 'stock-analysis', title: 'Premium Stock Analysis', infoTooltip: t('components.stockAnalysis.infoTooltip'), premium: 'locked' });
@@ -71,23 +80,82 @@ export class StockAnalysisPanel extends Panel {
 
     this.setDataBadge(source, `${items.length} symbols`);
 
+    this.lastItems = items;
+    this.lastHistory = historyBySymbol;
+
+    if (!this.tableView) {
+      this.tableView = new WatchlistTableView<StockAnalysisResult>({
+        intro: this.buildIntro(items.length),
+        columns: [
+          {
+            key: 'symbol', label: 'Symbol', sortable: true, sortOptionKey: 'symbol-asc',
+            cell: (i) => `<strong>${escapeHtml(i.display || i.symbol)}</strong>`,
+          },
+          {
+            key: 'price', label: 'Price', align: 'right',
+            cell: (i) => escapeHtml(formatPrice(i.currentPrice, i.currency)),
+          },
+          {
+            key: 'signal', label: 'Signal',
+            cell: (i) => `<span class="signal-badge ${stockSignalClass(i.signal)}">${escapeHtml(i.signal)}</span>`,
+          },
+          {
+            key: 'score', label: 'Score', align: 'right', sortable: true, sortOptionKey: 'score-desc',
+            cell: (i) => escapeHtml(String(i.signalScore)),
+          },
+          {
+            key: 'change', label: '1d %', align: 'right', sortable: true, sortOptionKey: 'change-desc',
+            cell: (i) => `<span style="color:${i.changePercent >= 0 ? 'var(--semantic-normal)' : 'var(--semantic-critical)'}">${escapeHtml(formatChange(i.changePercent))}</span>`,
+          },
+        ],
+        filters: [
+          { key: 'all', label: 'All', match: () => true },
+          { key: 'strong-buy', label: 'Strong Buy', match: (i) => i.signal.toLowerCase().includes('strong buy') },
+          { key: 'buy', label: 'Buy+', match: (i) => i.signal.toLowerCase().includes('buy') },
+          { key: 'hold', label: 'Hold', match: (i) => i.signal.toLowerCase().includes('hold') || i.signal.toLowerCase().includes('watch') },
+          { key: 'sell', label: 'Sell', match: (i) => i.signal.toLowerCase().includes('sell') },
+        ],
+        sortOptions: [
+          { key: 'score-desc', label: 'Score ↓', cmp: (a, b) => b.signalScore - a.signalScore },
+          { key: 'change-desc', label: '1d % ↓', cmp: (a, b) => b.changePercent - a.changePercent },
+          { key: 'symbol-asc', label: 'Symbol A-Z', cmp: (a, b) => (a.display || a.symbol).localeCompare(b.display || b.symbol) },
+        ],
+        defaultSort: 'score-desc',
+        defaultFilter: 'all',
+        getKey: (i) => i.symbol,
+        getSearchText: (i) => `${i.symbol} ${i.display || ''} ${i.name || ''}`,
+        renderDetail: (i) => this.renderCard(i, this.lastHistory[i.symbol] || []),
+        searchPlaceholder: 'Search ticker or name...',
+      });
+    } else {
+      // Refresh closures that capture the latest data each render —
+      // history and intro both depend on current items.
+      this.tableView.updateRenderDetail((i) => this.renderCard(i, this.lastHistory[i.symbol] || []));
+    }
+
+    this.tableView.setItems(items);
+    this.rerender();
+  }
+
+  // Mounts the table view's HTML and (re)binds its event handlers so
+  // sort/filter/search/expand survive across refreshes.
+  private rerender(): void {
+    if (!this.tableView) return;
+    // Keep the intro in sync with current item count + skipped-symbol
+    // note even as the table view persists across refreshes.
+    this.tableView.updateIntro(this.buildIntro(this.lastItems.length));
+    this.setContent(this.tableView.render());
+    this.tableView.bind(this.content, () => this.rerender());
+  }
+
+  private buildIntro(itemCount: number): string {
     const skippedCount = getMarketWatchlistEntries()
       .filter((entry) => !isAnalyzableSymbol(entry.symbol)).length;
-    const tickerWord = items.length === 1 ? 'ticker' : 'tickers';
+    const tickerWord = itemCount === 1 ? 'ticker' : 'tickers';
     const skippedNote = skippedCount > 0
       ? ` <span style="color:var(--text-dim)">${skippedCount} watchlist ${skippedCount === 1 ? 'symbol is an index/FX rate' : 'symbols are indices/FX rates'} and don't get an equity report.</span>`
       : '';
-
-    const html = `
-      <div style="display:flex;flex-direction:column;gap:12px">
-        <div style="font-size:12px;color:var(--text-dim);line-height:1.5">
-          Analyst-grade equity reports for the ${items.length} ${tickerWord} in your watchlist — your picks lead, popular names fill the rest. Use <strong>Edit Watchlist</strong> to add your own.${skippedNote}
-        </div>
-        ${items.map((item) => this.renderCard(item, historyBySymbol[item.symbol] || [])).join('')}
-      </div>
-    `;
-
-    this.setContent(html);
+    return `Analyst-grade equity reports for the ${itemCount} ${tickerWord} in your watchlist — your picks lead, popular names fill the rest. Use <strong>Edit Watchlist</strong> to add your own.${skippedNote}`;
   }
 
   private formatDividendRate(rate: number, currency: string): string {

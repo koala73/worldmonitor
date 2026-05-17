@@ -78,6 +78,24 @@ function isWholeHeadlineQuoted(title) {
 }
 
 /**
+ * Parse the URL pathname defensively. Malformed URL → empty string
+ * (skip URL signal entirely; do not throw). Closes the tracking-param
+ * injection vector — aggregator tracking params (?utm=/opinion/promo)
+ * and URL fragments (#/opinion/footer) live OUTSIDE the pathname and
+ * must not trigger STRONG (or CORROBORATING) via raw-string includes()
+ * matching on the full link. Backport of the same helper added in
+ * feelgood-classifier.js (PR #3748 / adv-002).
+ */
+function safePathname(link) {
+  if (typeof link !== 'string' || link.length === 0) return '';
+  try {
+    return new URL(link).pathname.toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+/**
  * Classify a story as opinion/analysis vs hard news.
  *
  * @param {{ title?: unknown; link?: unknown; description?: unknown }} story
@@ -88,9 +106,14 @@ export function classifyOpinion(story) {
   const link = typeof story?.link === 'string' ? story.link : '';
   const description = typeof story?.description === 'string' ? story.description : '';
 
-  // STRONG #1 — URL section. Lowercased; matches a path segment.
-  const lowerLink = link.toLowerCase();
-  if (STRONG_URL_SEGMENTS.some((seg) => lowerLink.includes(seg))) return true;
+  // Parse pathname once; reused by STRONG #1 and CORROBORATING URL check.
+  const pathname = safePathname(link);
+
+  // STRONG #1 — URL section. Matches a path segment on the parsed
+  // pathname (NOT raw link), so tracking params / fragments can't
+  // spoof a section match. Every STRONG_URL_SEGMENTS entry is
+  // slash-delimited on both sides.
+  if (pathname && STRONG_URL_SEGMENTS.some((seg) => pathname.includes(seg))) return true;
 
   // STRONG #2 — explicit headline prefix.
   if (STRONG_HEADLINE_PREFIX_RE.test(title.trim())) return true;
@@ -99,8 +122,9 @@ export function classifyOpinion(story) {
   let corroborating = 0;
   if (isWholeHeadlineQuoted(title)) corroborating += 1;
   if (CORROBORATING_DESCRIPTION_RE.test(description)) corroborating += 1;
-  // `/analysis/` in the URL is corroborating, not strong.
-  if (lowerLink.includes('/analysis/') || lowerLink.includes('/analyses/')) corroborating += 1;
+  // `/analysis/` in the URL is corroborating, not strong. Parsed
+  // pathname only (same injection-vector reasoning as STRONG #1).
+  if (pathname && (pathname.includes('/analysis/') || pathname.includes('/analyses/'))) corroborating += 1;
 
   return corroborating >= 2;
 }
