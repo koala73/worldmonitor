@@ -23,24 +23,27 @@ const LOCK_DOMAIN = 'supply_chain:portwatch-ports';
 // 60 min — covers the widest realistic run of this standalone service.
 const LOCK_TTL_MS = 60 * 60 * 1000;
 const TTL = 259_200; // 3 days — 6× the 12h cron interval
-// Coverage gate. TEMPORARILY lowered to 20 on 2026-05-16 (was 50 → 25 on
-// 2026-05-14) to let cap-mode recovery runs actually publish.
+// Coverage gate. TEMPORARILY lowered to 5 on 2026-05-18 (was 50 → 25 →
+// 20 across 2026-05-14/16) because the actual success rate per cold-fetch
+// batch dropped to 6-10/30 (~20-33%) — ArcGIS degradation worsened
+// instead of recovering after PR #3711's budget rebalance. At gate=20,
+// runs producing 6-10 fresh successes ALL failed validation and
+// extendExistingTtl-only fired — meaning the fresh successes were never
+// written to Redis, the cache stayed at "0 hits / 174 misses" every
+// run, and the cap-mode rotation never accumulated (each run restarted
+// from 0 cache-fresh and re-attempted the whole population).
 //
-// Background: PR #3711's budget rebalance (15s direct + 70s proxy) now
-// produces consistent partial-success runs in the ~22/30 success range
-// per cold-fetch batch. With gate=25, a 22-success run still fails the
-// COVERAGE GATE and extendExistingTtl-only — meaning the run's 22 fresh
-// successes are NOT written to Redis, so the cap-mode rotation never
-// accumulates (each run restarts from 0 cache-fresh). Lowering to 20
-// lets a 22-success run actually persist, so subsequent runs benefit
-// from the cache-fresh fast path and accumulate toward full coverage
-// across ~8 runs (~4 days at 12h cadence).
+// Floor at 5 to match MIN_FRESH_FETCH_FOR_CAP_BYPASS (the load-bearing
+// silent-loss safety): cap-mode bypass still requires 5 fresh upstream
+// contacts, so a zero-fresh "everything-stale" run still trips the 80%
+// degradation guard. Lowering this validateFn gate doesn't widen the
+// silent-loss surface — it just lets partial successes persist so the
+// cache-fresh rotation can finally start accumulating.
 //
-// Revert path: bump to 30 when single-run success rate reliably exceeds
-// 90% (≥27/30 cold-fetched), and back to 50 once upstream is stable
-// enough that we'd see consistent ≥45-country runs (no cap-mode kicking
-// in). Target review: 2026-05-22.
-const MIN_VALID_COUNTRIES = 20;
+// Revert path: bump to 20 when single-run success rate consistently
+// exceeds ~70% (≥21/30), then 30 / 50 as upstream stabilises further.
+// Target review: 2026-05-25.
+const MIN_VALID_COUNTRIES = 5;
 
 const EP3_BASE =
   'https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/Daily_Ports_Data/FeatureServer/0/query';
@@ -57,33 +60,36 @@ const EP4_BASE =
   'https://services9.arcgis.com/weJ1QsnbMYJlCHdG/arcgis/rest/services/PortWatch_ports_database/FeatureServer/0/query';
 
 const PAGE_SIZE = 2000;
-// WM 2026-05-15 incident probe (direct laptop, direct laptop-via-Decodo, and
-// Railway logs): ArcGIS Daily_Ports_Data currently responds in 51-56s for
-// most queries when accessed through Decodo's gate.decodo.com pool. Direct
-// access from Railway container IPs is fully throttled (never returns within
-// 60s). Pre-fix budgets (45s direct + 35s proxy) couldn't catch either the
-// direct response (Railway throttled) or the proxy response (under-budgeted
-// for 51-56s class), so every cold fetch hit "proxy fetch timeout".
+// WM 2026-05-18 re-measurement: live response-time probe from a residential
+// laptop on today's failing-country set (SLB, CMR, BHS, KWT, PAK, VIR, SEN,
+// PRT, CHN, JPN, USA, POL) shows ArcGIS responds in 1.8-28.4s direct, with
+// 6 of 12 countries between 16-29s — exceeding the PR #3711 FETCH_TIMEOUT=15s
+// that was sized for "Railway-direct never returns". Upstream behavior has
+// shifted from "fully blocked" to "slow but reachable", so the 15s budget
+// now kills ~50% of recoverable direct fetches, forcing them through the
+// degraded proxy where many fail with Decodo CONNECT 522s.
 //
-// Rebalanced: fail direct fast (Railway-direct doesn't work anyway), give the
-// proxy leg enough budget to actually capture the 51-56s ArcGIS responses
-// that Decodo IS successfully tunneling. Total: 15 + 70 = 85s, fits the 90s
-// per-country wrap with 5s slack.
-const FETCH_TIMEOUT = 15_000;
-// Proxy leg gets the bulk of the per-country budget. 70s comfortably catches
-// ArcGIS's 51-56s response class observed today. Even when the body is a
-// 400 "Invalid query parameters" (PR #3701 degradation pattern), it arrives
-// within this window — which means fetchWithRetryOnInvalidParams's
-// circuit-breaker actually fires now, surfacing the real upstream signal
-// instead of silent timeouts.
-const PROXY_FETCH_TIMEOUT = 70_000;
+// Bumped to 30s: covers ~95% of the observed residential response range
+// (only PRT at 28.4s is close to the edge). Paired with PROXY_FETCH_TIMEOUT
+// dropping 70→50s so the per-country budget (direct + proxy) stays under
+// the 90s wrap with 10s slack: 30 + 50 = 80s ≤ 90s ✓.
+const FETCH_TIMEOUT = 30_000;
+// Proxy leg now gets 50s. Earlier PR #3711 sized this at 70s when direct
+// was assumed dead and the proxy was the ONLY path that could return —
+// today's probe through Decodo's gate pool typically returns in 7-13s for
+// success and 30-50s for "Invalid query parameters" error bodies. 50s
+// covers the success class comfortably and most of the error-body class.
+// Per-country budget: FETCH_TIMEOUT (30s) + PROXY_FETCH_TIMEOUT (50s) =
+// 80s within the 90s wrap, leaves 10s slack for Decodo TCP/CONNECT setup.
+const PROXY_FETCH_TIMEOUT = 50_000;
 // Preflight-specific direct timeout. The fetchMaxDate preflight runs once
 // per eligible country (174 today) at PREFLIGHT_CONCURRENCY=24 BEFORE the
 // cold-fetch cap partitions countries into refresh-now vs serve-stale, so
 // without a tighter budget the preflight phase alone could blow the 570s
 // container budget under ArcGIS degradation:
-//   ceil(174/24)=8 waves × (FETCH_TIMEOUT 15s + PROXY_FETCH_TIMEOUT 70s)
-//   = 680s worst case — over the 570s bundle budget BEFORE useful work.
+//   ceil(174/24)=8 waves × (FETCH_TIMEOUT + PROXY_FETCH_TIMEOUT)
+//   At current 30+50=80s split, that'd be 640s — over the 570s bundle
+//   budget BEFORE any useful work. At pre-#3711 45+35=80s same result.
 // Empirically TODAY preflight outStatistics queries return in <1s even
 // from Railway IPs (small response, different upstream behavior than the
 // paginated data queries), so this protection is preventative not curative.
@@ -111,11 +117,10 @@ const PREFLIGHT_FETCH_TIMEOUT = 5_000;
 //
 // Currently the WHOLE capture path is DISABLED via
 // MAX_BODY_CAPTURE_ATTEMPTS=0 (see that constant for rationale). The
-// rebalanced budgets (FETCH_TIMEOUT=15s direct + PROXY_FETCH_TIMEOUT=70s
-// proxy) let the proxy leg receive the 51-56s body directly, and
-// arcgisProxyRetry throws an "ArcGIS error (via proxy after ...)"
-// message that the circuit-breaker matches — so the capture re-fetch is
-// no longer load-bearing. This constant stays at 40s for the day the
+// post-#3711 budgets (today 30s direct + 50s proxy, was 15+70) let the
+// proxy leg receive the body directly, and arcgisProxyRetry throws an
+// "ArcGIS error (via proxy after ...)" message that the circuit-breaker
+// matches — so the capture re-fetch is no longer load-bearing. This constant stays at 40s for the day the
 // attempt cap is bumped back > 0 (e.g. non-Railway egress where direct
 // works), with the proviso that any caller re-enabling capture should
 // re-derive the budget against the FETCH_TIMEOUT in effect at that time.
@@ -206,12 +211,11 @@ function epochToTimestamp(epochMs) {
 // are signals that ArcGIS is rate-limiting our seed-server IP. Returns the
 // parsed JSON body or throws.
 //
-// Uses PROXY_FETCH_TIMEOUT (70s, gives the bulk of PER_COUNTRY_TIMEOUT_MS to
-// the proxy leg). Direct FETCH_TIMEOUT (15s) + PROXY_FETCH_TIMEOUT (70s) =
-// 85s, fits the 90s per-country wrap with 5s slack for Decodo's TCP
-// handshake and CONNECT setup. See PR #3711 incident notes for the
-// rebalance — Railway-direct is currently fully throttled by ArcGIS, so
-// "fail fast direct, give proxy the budget" is the right shape.
+// Uses PROXY_FETCH_TIMEOUT. Direct FETCH_TIMEOUT + PROXY_FETCH_TIMEOUT
+// must total under PER_COUNTRY_TIMEOUT_MS with slack for Decodo's TCP
+// handshake / CONNECT setup. Today: 30+50=80s under the 90s wrap with
+// 10s slack (see those constants for the per-tweak rationale + the
+// dated re-measurements that justified each shift).
 async function arcgisProxyRetry(url, reason, { signal } = {}) {
   const proxyAuth = resolveProxyForConnect();
   if (!proxyAuth) throw new Error(`ArcGIS direct ${reason} + no proxy configured for ${url.slice(0, 80)}`);
@@ -233,7 +237,7 @@ async function fetchWithTimeout(url, { signal, timeoutMs = FETCH_TIMEOUT, noProx
   // abort propagates into the in-flight fetch AND future pagination iterations.
   //
   // Options:
-  //   timeoutMs        — defaults to FETCH_TIMEOUT (15s). Caller can override
+  //   timeoutMs        — defaults to FETCH_TIMEOUT. Caller can override
   //                       for tighter/looser budgets (preflight uses 5s).
   //   noProxyFallback  — if true, timeout/429 throws instead of routing to
   //                       arcgisProxyRetry. Used by preflight so a degraded
@@ -438,15 +442,18 @@ async function fetchWithRetryOnInvalidParams(url, { signal } = {}) {
       // partial" message instead of doubling time-on-task for nothing.
       throw new Error(`ArcGIS degraded — ${_invalidParamsErrorCount} 'Invalid query parameters' errors in this run, no retry (threshold ${INVALID_PARAMS_RETRY_THRESHOLD})`);
     }
-    // Greptile PR #3701 P2: if the error came BACK from the proxy
-    // (arcgisProxyRetry wraps with "via proxy after ${reason}"), the
-    // proxy has already confirmed the upstream error — retrying would
-    // just round-trip direct timeout → proxy → same error, burning the
-    // per-country budget for nothing. The proxy response is the
-    // definitive upstream signal here. Counter increment + threshold
-    // check above still apply, so proxy-confirmed errors DO contribute
-    // to the degraded-run message.
-    if (/via proxy after/i.test(msg)) throw err;
+    // WM 2026-05-18 — REMOVED the proxy short-circuit added by PR #3701
+    // P2. That short-circuit (`if (/via proxy after/) throw err`)
+    // assumed proxy responses were authoritative — if a proxy returned
+    // "Invalid query parameters" once, retrying via proxy was assumed
+    // wasteful. Live laptop probe disproved this: same proxy query
+    // succeeds on attempt 1, fails on attempt 2 with proxy CONNECT 522,
+    // succeeds on attempt 3 (non-deterministic upstream / Decodo gate).
+    // Today's logs show ~6 countries per run failing with "Invalid
+    // query parameters via proxy" where the same query succeeds when
+    // I probe immediately after — those would have recovered with a
+    // proxy retry. INVALID_PARAMS_RETRY_THRESHOLD=5 still caps the
+    // total budget impact during full-upstream-degradation episodes.
     await new Promise((r) => setTimeout(r, 500));
     if (signal?.aborted) throw signal.reason ?? err;
     console.warn(`  [port-activity] retrying after "${msg}" (${_invalidParamsErrorCount}/${INVALID_PARAMS_RETRY_THRESHOLD}): ${url.slice(0, 80)}`);

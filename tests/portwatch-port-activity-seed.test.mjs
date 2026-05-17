@@ -163,35 +163,28 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     assert.match(src, /export function _resetBodyCapturedFlag/);
   });
 
-  it('proxy-confirmed Invalid query parameters short-circuits the retry (PR #3701 P2 round 2)', () => {
-    // arcgisProxyRetry wraps proxy errors with `(via proxy after ${reason})`.
-    // If we hit fetchWithRetryOnInvalidParams with that message, the proxy
-    // has already confirmed the upstream error — retrying would round-trip
-    // direct → proxy → same error, burning budget. Counter still increments
-    // (proxy-confirmed errors are valid degradation signals for the
-    // threshold) but the retry is skipped.
-    assert.match(src, /_invalidParamsErrorCount\s*\+=\s*1;[\s\S]{0,2400}if\s*\(\/via proxy after\/i\.test\(msg\)\)\s*throw err/);
-  });
-
-  it('threshold check fires BEFORE proxy-confirmed short-circuit (PR #3701 P1 round 3)', () => {
-    // Pre-fix the proxy-confirmed short-circuit ran first, so during an
-    // incident where every error arrives via proxy (likely — that's the
-    // fallback path), the counter incremented forever but the
-    // "ArcGIS degraded — N errors" message was unreachable.
-    // Right order: increment counter → check threshold (emit degraded
-    // message if exceeded) → only then short-circuit on proxy-confirmed
-    // errors below the threshold.
+  it('proxy-confirmed Invalid query parameters now RETRY via proxy (WM 2026-05-18 reversal)', () => {
+    // PR #3701 P2 added a short-circuit that re-threw proxy-confirmed
+    // "Invalid query parameters" errors without retrying, assuming
+    // proxy responses were authoritative. WM 2026-05-18 live laptop
+    // probe disproved that assumption: same proxy query succeeds on
+    // attempts 1 and 3, fails on attempt 2 — the upstream / Decodo gate
+    // is non-deterministic, so a retry often recovers the country.
     //
-    // Assert by source order: the threshold throw must appear BEFORE the
-    // `via proxy after` short-circuit in fetchWithRetryOnInvalidParams.
-    const thresholdIdx = src.search(/_invalidParamsErrorCount\s*>\s*INVALID_PARAMS_RETRY_THRESHOLD/);
-    const proxyShortCircuitIdx = src.search(/if\s*\(\/via proxy after\/i\.test\(msg\)\)\s*throw err/);
-    assert.ok(thresholdIdx > 0, 'threshold check not found in source');
-    assert.ok(proxyShortCircuitIdx > 0, 'proxy short-circuit not found in source');
-    assert.ok(
-      thresholdIdx < proxyShortCircuitIdx,
-      `threshold check (${thresholdIdx}) must appear before proxy short-circuit (${proxyShortCircuitIdx}) so proxy-confirmed errors still trip the degraded message after N occurrences`,
+    // The proxy short-circuit MUST NOT be present in
+    // fetchWithRetryOnInvalidParams — the only short-circuit there is
+    // the global INVALID_PARAMS_RETRY_THRESHOLD bail-out.
+    const proxyShortCircuit = src.match(/if\s*\(\/via proxy after\/i\.test\(msg\)\)\s*throw err/);
+    assert.equal(
+      proxyShortCircuit,
+      null,
+      'the `via proxy after` short-circuit was removed on 2026-05-18 — proxy retries DO recover non-deterministic upstream failures',
     );
+    // Threshold counter is still present + still increments + still
+    // emits the degraded-run message at the cap.
+    assert.match(src, /_invalidParamsErrorCount\s*\+=\s*1/);
+    assert.match(src, /_invalidParamsErrorCount\s*>\s*INVALID_PARAMS_RETRY_THRESHOLD/);
+    assert.match(src, /ArcGIS degraded — \$\{_invalidParamsErrorCount\}/);
   });
 
   it('cap-mode bypass requires fresh upstream contact (PR #3701 review P1)', () => {
@@ -278,22 +271,24 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     assert.match(src, /setTimeout\(resolve,\s*BATCH_BACKOFF_MS\)/);
   });
 
-  it('MIN_VALID_COUNTRIES is temporarily lowered to 20 (ArcGIS degraded)', () => {
-    // 2026-05-16: lowered 25 → 20 because post-#3711 budget-rebalance
-    // runs are landing ~22/30 successes — with gate=25 the 22-success
-    // runs would fail validation and extendExistingTtl-only, so the
-    // cache-fresh rotation could never accumulate. Pre-2026-05-14
-    // value: 50. The comment must call out the temporary nature +
-    // review date so this doesn't get forgotten as the new permanent floor.
-    assert.match(src, /const MIN_VALID_COUNTRIES\s*=\s*20/);
+  it('MIN_VALID_COUNTRIES is temporarily lowered to 5 (ArcGIS degraded further)', () => {
+    // 2026-05-18: lowered 20 → 5 because actual success rate dropped to
+    // 6-10/30 per cold-fetch batch — well below the gate=20 set on
+    // 2026-05-16. Every run was failing validation and
+    // extendExistingTtl-only, so fresh successes were never written to
+    // Redis and the cap-mode rotation never accumulated. Floor at 5
+    // matches MIN_FRESH_FETCH_FOR_CAP_BYPASS (silent-loss safety still
+    // intact). Pre-2026-05-14 value: 50.
+    assert.match(src, /const MIN_VALID_COUNTRIES\s*=\s*5/);
     // Require the comment to flag temporariness (so a future reviewer
     // doesn't normalise the lower value silently).
     assert.match(src, /TEMPORARILY lowered/);
     assert.match(src, /Revert path/);
     // Greptile PR #3714 P2: keep an anchor to the original permanent
-    // baseline (50) in the comment so the temporary nature has a concrete
-    // reference point — otherwise a vague "TEMPORARILY lowered for now"
-    // edit could silently pass CI and lose the canary property.
+    // baseline (50) in the comment so the temporary nature has a
+    // concrete reference point — otherwise a vague "TEMPORARILY
+    // lowered for now" edit could silently pass CI and lose the
+    // canary property.
     assert.match(src, /was 50/);
   });
 
@@ -584,7 +579,9 @@ describe('ArcGIS 429 proxy fallback', () => {
     // eligible countries at PREFLIGHT_CONCURRENCY=24 BEFORE the cold-fetch
     // cap. Without a tighter budget the preflight phase alone could blow
     // the 570s container budget under ArcGIS degradation:
-    //   ceil(174/24)=8 waves × (15s direct + 70s proxy) = 680s worst case.
+    //   ceil(174/24)=8 waves × (FETCH_TIMEOUT + PROXY_FETCH_TIMEOUT)
+    //   exceeds the 570s bundle budget BEFORE any useful work
+    //   (e.g. 30+50=80s × 8 = 640s today; was 15+70=85s × 8 = 680s).
     // Fix: tight direct timeout (5s) + skip proxy fallback so preflight
     // fails fast and falls through to the expensive per-country path,
     // where the full budget is available.
@@ -620,16 +617,15 @@ describe('ArcGIS 429 proxy fallback', () => {
     );
   });
 
-  it('proxy gets the bulk of the per-country budget (Railway-direct is throttled)', () => {
-    // WM 2026-05-15 rebalance: direct fetch from Railway IPs is 100%
-    // throttled by ArcGIS (never returns within 60s observed). Proxy via
-    // Decodo gate.decodo.com IS reaching ArcGIS, returning the 51-56s slow
-    // 400 body that PR #3701 was designed to capture. Pre-fix budgets
-    // (45 + 35) couldn't catch either response. Rebalanced to 15s direct
-    // (fail fast — direct is useless from Railway) + 70s proxy (catches
-    // the slow body). Total 85s within 90s PER_COUNTRY_TIMEOUT_MS.
-    assert.match(src, /const FETCH_TIMEOUT\s*=\s*15_000/);
-    assert.match(src, /const PROXY_FETCH_TIMEOUT\s*=\s*70_000/);
+  it('direct + proxy budget split (WM 2026-05-18 re-measurement)', () => {
+    // WM 2026-05-18: residential laptop probe of today's failing-country
+    // set showed direct response times of 1.8-28.4s, with 6/12 over the
+    // PR #3711 FETCH_TIMEOUT=15s budget. Upstream shifted from "fully
+    // blocked" to "slow but reachable", so the 15s was killing ~50% of
+    // recoverable direct fetches. Rebalanced to 30s direct + 50s proxy.
+    // Total 80s within the 90s PER_COUNTRY_TIMEOUT_MS wrap.
+    assert.match(src, /const FETCH_TIMEOUT\s*=\s*30_000/);
+    assert.match(src, /const PROXY_FETCH_TIMEOUT\s*=\s*50_000/);
     // The proxy retry MUST pass PROXY_FETCH_TIMEOUT, not FETCH_TIMEOUT:
     assert.match(src, /timeoutMs:\s*PROXY_FETCH_TIMEOUT/);
     // And the budget invariant: direct + proxy < per-country.
