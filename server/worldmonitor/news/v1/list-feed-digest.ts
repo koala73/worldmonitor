@@ -299,17 +299,23 @@ async function fetchAndParseRss(
   variant: string,
   signal: AbortSignal,
 ): Promise<ParseResult> {
-  // v3 cache shape: identical struct to v2 but a new prefix invalidates
-  // every pre-fix entry on deploy. Pre-fix v2 entries could be poisoned
-  // (non-RSS body cached at the long TTL via the old cachedFetchJson path
-  // — the bug this PR fixes). Their unprefixed v2 keys remain in Redis
-  // until they TTL-expire naturally over the next hour; v3 reads/writes
-  // ignore them. Without this prefix bump we'd need a runtime guard to
-  // distinguish "recently confirmed empty (honor short TTL)" from
-  // "old poisoned long-TTL entry" — and that runtime guard regressed
-  // throttling because every parsedTotal=0 read fell through to a live
-  // upstream fetch (PR #3556 review P1: short TTL never throttled).
-  const cacheKey = `rss:feed:v3:${variant}:${feed.url}`;
+  // v4 cache shape: identical struct to v3 but a new prefix invalidates
+  // every pre-fix entry on deploy. v3 entries cached pre-PR contain
+  // ParsedItems without the new isFeelGood field. If a cache hit
+  // returned one of those, buildStoryTrackHsetFields would write
+  // `'isFeelGood', undefined ? '1' : '0'` → '0' onto the story:track:v1
+  // row, and buildDigest's `stampMissing = typeof !== 'string' || length === 0`
+  // check would treat '0' as a genuine "not feel-good" verdict and
+  // skip the residue catch. Feel-good content could then silently slip
+  // through during the 1h healthy-cache rollout window. Bumping the
+  // prefix forces cold parseRssXml runs that stamp isFeelGood correctly.
+  //
+  // (Same class of cache-prefix bump as v2→v3, which this codebase
+  // already established as the correct cutover pattern for parsed-cache
+  // shape changes. The same bug exists latently in PR #3690's isOpinion
+  // path; a separate backport bumps the prefix once rather than for
+  // every sibling classifier — out of scope for this PR.)
+  const cacheKey = `rss:feed:v4:${variant}:${feed.url}`;
 
   try {
     // Read cache unconditionally — the v3 prefix guarantees pre-fix
