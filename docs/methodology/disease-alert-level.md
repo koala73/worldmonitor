@@ -51,9 +51,12 @@ as a "what to look at next" surface rather than a risk score.
 
 ## Change protocol
 
-If the keyword sets in `ALERT_KEYWORDS` or `WARNING_KEYWORDS` change:
+If the keyword sets in `DISEASE_ALERT_KEYWORDS` or `DISEASE_WARNING_KEYWORDS`
+change:
 
-1. Bump `ALERT_LEVEL_METHODOLOGY_VERSION` in the same file.
+1. Bump `ALERT_LEVEL_METHODOLOGY_VERSION` in the same file. The seeder
+   stamps this onto the published payload as `alertLevelMethodologyVersion`,
+   so a bump observably propagates to clients and the canonical key.
 2. Update the table above to match.
 3. Add a regression test in `tests/disease-outbreaks-seed.test.mjs` covering
    the new keyword behavior + at least one expected non-match (substring
@@ -63,7 +66,7 @@ If the keyword sets in `ALERT_KEYWORDS` or `WARNING_KEYWORDS` change:
 
 ## See also
 
-- Source: `scripts/_disease-outbreaks-helpers.mjs:65-92`
+- Source: `scripts/_disease-outbreaks-helpers.mjs` → `detectAlertLevel`
 - Consumer: `src/components/DiseaseOutbreaksPanel.ts`
 - Tests: `tests/disease-outbreaks-seed.test.mjs`
 - Tracking: [#3791](https://github.com/koala73/worldmonitor/issues/3791)

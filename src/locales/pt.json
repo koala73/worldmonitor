@@ -1765,7 +1765,6 @@
     },
     "diseaseOutbreaks": {
       "infoTooltip": "<strong>Surtos de doenças</strong> Alertas ativos de surtos da WHO, ProMED e ministérios da saúde. Rastreia surtos confirmados, regiões afetadas, contagens de casos e níveis de ameaça. Atualizado quando novos relatórios são publicados.",
-      "methodologyNote": "Alert / Warning / Watch levels come from an editorial keyword classifier — see /docs/methodology/disease-alert-level for the keyword table and limitations.",
       "title": "Surtos de Doenças",
       "empty": "Nenhum surto corresponde ao filtro",
       "sourceFallback": "Fonte",

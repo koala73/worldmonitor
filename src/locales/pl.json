@@ -1978,7 +1978,6 @@
     },
     "diseaseOutbreaks": {
       "infoTooltip": "<strong>Ogniska chorób</strong> Aktywne alerty o ogniskach od WHO, ProMED i ministerstw zdrowia. Śledzi potwierdzone ogniska, dotknięte regiony, liczbę przypadków i poziomy zagrożenia. Aktualizowane przy publikacji nowych raportów.",
-      "methodologyNote": "Alert / Warning / Watch levels come from an editorial keyword classifier — see /docs/methodology/disease-alert-level for the keyword table and limitations.",
       "title": "Ogniska Chorób",
       "empty": "Brak ognisk pasujących do filtru",
       "sourceFallback": "Źródło",

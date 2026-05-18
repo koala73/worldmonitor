@@ -71,17 +71,24 @@ export function extractLocationFromTitle(title) {
 // Word boundaries are mandatory: prior substring matching let "epidemic" fire
 // inside "antiepidemic" and "spread" fire inside "widespread vaccination",
 // silently over-promoting items to a higher alert level.
-export const ALERT_KEYWORDS = Object.freeze(['outbreak', 'emergency', 'epidemic', 'pandemic']);
-export const WARNING_KEYWORDS = Object.freeze(['warning', 'spread', 'cases increasing']);
+//
+// Prefixed `DISEASE_` to avoid collision with the unrelated geopolitical
+// `ALERT_KEYWORDS` export in src/config/feeds.ts (war/invasion/nuclear).
+/** Callers MUST use the exported `DISEASE_ALERT_RE` regex, not substring matching (#3791). */
+export const DISEASE_ALERT_KEYWORDS = Object.freeze(['outbreak', 'emergency', 'epidemic', 'pandemic']);
+/** Callers MUST use the exported `DISEASE_WARNING_RE` regex, not substring matching (#3791). */
+export const DISEASE_WARNING_KEYWORDS = Object.freeze(['warning', 'spread', 'cases increasing']);
 export const ALERT_LEVEL_METHODOLOGY_VERSION = 'v1';
 
-const ALERT_RE = new RegExp(`\\b(?:${ALERT_KEYWORDS.join('|')})\\b`, 'i');
-const WARNING_RE = new RegExp(`\\b(?:${WARNING_KEYWORDS.join('|')})\\b`, 'i');
+// Precompiled regexes exposed so external callers don't reach for
+// `text.includes(kw)` and silently re-introduce the substring bug.
+export const DISEASE_ALERT_RE = new RegExp(`\\b(?:${DISEASE_ALERT_KEYWORDS.join('|')})\\b`, 'i');
+export const DISEASE_WARNING_RE = new RegExp(`\\b(?:${DISEASE_WARNING_KEYWORDS.join('|')})\\b`, 'i');
 
 export function detectAlertLevel(title, desc) {
   const text = `${title ?? ''} ${desc ?? ''}`;
-  if (ALERT_RE.test(text)) return 'alert';
-  if (WARNING_RE.test(text)) return 'warning';
+  if (DISEASE_ALERT_RE.test(text)) return 'alert';
+  if (DISEASE_WARNING_RE.test(text)) return 'warning';
   return 'watch';
 }
 

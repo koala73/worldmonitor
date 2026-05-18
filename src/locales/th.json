@@ -1978,7 +1978,6 @@
     },
     "diseaseOutbreaks": {
       "infoTooltip": "<strong>การระบาดของโรค</strong> การแจ้งเตือนการระบาดจาก WHO, ProMED และกระทรวงสาธารณสุข ติดตามการระบาดที่ยืนยัน พื้นที่ที่ได้รับผลกระทบ จำนวนผู้ป่วย และระดับภัยคุกคาม อัปเดตเมื่อมีรายงานใหม่",
-      "methodologyNote": "Alert / Warning / Watch levels come from an editorial keyword classifier — see /docs/methodology/disease-alert-level for the keyword table and limitations.",
       "title": "การระบาดของโรค",
       "empty": "ไม่มีการระบาดที่ตรงกับตัวกรอง",
       "sourceFallback": "แหล่งที่มา",

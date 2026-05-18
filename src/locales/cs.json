@@ -1978,7 +1978,6 @@
     },
     "diseaseOutbreaks": {
       "infoTooltip": "<strong>Epidemická ohniska</strong> Aktivní upozornění na ohniska od WHO, ProMED a ministerstev zdravotnictví. Sleduje potvrzená ohniska, zasažené regiony, počty případů a úrovně hrozby. Aktualizováno při publikaci nových zpráv.",
-      "methodologyNote": "Alert / Warning / Watch levels come from an editorial keyword classifier — see /docs/methodology/disease-alert-level for the keyword table and limitations.",
       "title": "Epidemie nemocí",
       "empty": "Žádné epidemie neodpovídají filtru",
       "sourceFallback": "Zdroj",

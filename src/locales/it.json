@@ -1978,7 +1978,6 @@
     },
     "diseaseOutbreaks": {
       "infoTooltip": "<strong>Focolai di malattie</strong> Avvisi attivi di focolai da WHO, ProMED e ministeri della salute. Traccia focolai confermati, regioni colpite, conteggi dei casi e livelli di minaccia. Aggiornato alla pubblicazione di nuovi rapporti.",
-      "methodologyNote": "Alert / Warning / Watch levels come from an editorial keyword classifier — see /docs/methodology/disease-alert-level for the keyword table and limitations.",
       "title": "Focolai di Malattie",
       "empty": "Nessun focolaio corrisponde al filtro",
       "sourceFallback": "Fonte",

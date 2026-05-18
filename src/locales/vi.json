@@ -1978,7 +1978,6 @@
     },
     "diseaseOutbreaks": {
       "infoTooltip": "<strong>Dịch bệnh bùng phát</strong> Cảnh báo dịch bệnh đang hoạt động từ WHO, ProMED và các bộ y tế. Theo dõi các đợt bùng phát đã xác nhận, vùng bị ảnh hưởng, số ca và mức độ đe dọa. Cập nhật khi có báo cáo mới.",
-      "methodologyNote": "Alert / Warning / Watch levels come from an editorial keyword classifier — see /docs/methodology/disease-alert-level for the keyword table and limitations.",
       "title": "Bùng Phát Dịch Bệnh",
       "empty": "Không có bùng phát nào phù hợp với bộ lọc",
       "sourceFallback": "Nguồn",

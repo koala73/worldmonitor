@@ -1978,7 +1978,6 @@
     },
     "diseaseOutbreaks": {
       "infoTooltip": "<strong>Brotes de enfermedades</strong> Alertas activas de brotes de WHO, ProMED y ministerios de salud. Rastrea brotes confirmados, regiones afectadas, recuentos de casos y niveles de amenaza. Se actualiza al publicarse nuevos informes.",
-      "methodologyNote": "Alert / Warning / Watch levels come from an editorial keyword classifier — see /docs/methodology/disease-alert-level for the keyword table and limitations.",
       "title": "Brotes de Enfermedades",
       "empty": "Ningún brote coincide con el filtro",
       "sourceFallback": "Fuente",

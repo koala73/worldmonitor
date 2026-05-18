@@ -1978,7 +1978,6 @@
     },
     "diseaseOutbreaks": {
       "infoTooltip": "<strong>Hastalık Salgınları</strong> WHO, ProMED ve sağlık bakanlıklarından aktif salgın uyarıları. Doğrulanmış salgınları, etkilenen bölgeleri, vaka sayılarını ve tehdit seviyelerini izler. Yeni raporlar yayımlandığında güncellenir.",
-      "methodologyNote": "Alert / Warning / Watch levels come from an editorial keyword classifier — see /docs/methodology/disease-alert-level for the keyword table and limitations.",
       "title": "Hastalık Salgınları",
       "empty": "Filtreyle eşleşen salgın yok",
       "sourceFallback": "Kaynak",

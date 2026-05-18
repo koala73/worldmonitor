@@ -27,8 +27,10 @@ import {
   diseasePublishTransform,
   DISEASE_MAX_CONTENT_AGE_MIN,
   detectAlertLevel,
-  ALERT_KEYWORDS,
-  WARNING_KEYWORDS,
+  DISEASE_ALERT_KEYWORDS,
+  DISEASE_WARNING_KEYWORDS,
+  DISEASE_ALERT_RE,
+  DISEASE_WARNING_RE,
   ALERT_LEVEL_METHODOLOGY_VERSION,
 } from '../scripts/_disease-outbreaks-helpers.mjs';
 
@@ -255,7 +257,7 @@ test('pilot threshold: 5-day-old items are within 9-day budget (no false positiv
 // ── detectAlertLevel — keyword classifier (#3791) ─────────────────────────
 
 test('detectAlertLevel: alert keywords as whole words map to alert', () => {
-  for (const kw of ALERT_KEYWORDS) {
+  for (const kw of DISEASE_ALERT_KEYWORDS) {
     assert.equal(
       detectAlertLevel(`Cholera ${kw} confirmed in country X`, ''),
       'alert',
@@ -265,7 +267,7 @@ test('detectAlertLevel: alert keywords as whole words map to alert', () => {
 });
 
 test('detectAlertLevel: warning keywords as whole words map to warning', () => {
-  for (const kw of WARNING_KEYWORDS) {
+  for (const kw of DISEASE_WARNING_KEYWORDS) {
     assert.equal(
       detectAlertLevel(`Health ministry issues ${kw} after lab results`, ''),
       'warning',
@@ -313,12 +315,42 @@ test('detectAlertLevel: alert wins over warning when both keyword classes match'
   );
 });
 
-test('ALERT_KEYWORDS and WARNING_KEYWORDS are frozen (#3791 change protocol)', () => {
-  assert.ok(Object.isFrozen(ALERT_KEYWORDS), 'ALERT_KEYWORDS must be frozen to prevent runtime mutation');
-  assert.ok(Object.isFrozen(WARNING_KEYWORDS), 'WARNING_KEYWORDS must be frozen to prevent runtime mutation');
+test('DISEASE_ALERT_KEYWORDS and DISEASE_WARNING_KEYWORDS are frozen (#3791 change protocol)', () => {
+  assert.ok(Object.isFrozen(DISEASE_ALERT_KEYWORDS), 'DISEASE_ALERT_KEYWORDS must be frozen to prevent runtime mutation');
+  assert.ok(Object.isFrozen(DISEASE_WARNING_KEYWORDS), 'DISEASE_WARNING_KEYWORDS must be frozen to prevent runtime mutation');
 });
 
 test('ALERT_LEVEL_METHODOLOGY_VERSION is a non-empty version string', () => {
   assert.equal(typeof ALERT_LEVEL_METHODOLOGY_VERSION, 'string');
   assert.match(ALERT_LEVEL_METHODOLOGY_VERSION, /^v\d+/);
+});
+
+test('DISEASE_ALERT_RE and DISEASE_WARNING_RE are anchored on word boundaries (substring-bug guard)', () => {
+  // Exported regexes give callers the right primitive directly — using them
+  // instead of `text.includes(kw)` is the only safe way to check membership.
+  assert.ok(DISEASE_ALERT_RE.test('Cholera outbreak confirmed'));
+  assert.ok(!DISEASE_ALERT_RE.test('New antiepidemic vaccination drive'));
+  assert.ok(DISEASE_WARNING_RE.test('Cases increasing in north'));
+  assert.ok(!DISEASE_WARNING_RE.test('Widespread vaccination program'));
+});
+
+test('seed payload carries alertLevelMethodologyVersion post-publishTransform (version-field consumer)', () => {
+  // Mirrors the shape produced by fetchDiseaseOutbreaks in
+  // scripts/seed-disease-outbreaks.mjs. Asserts the version field survives
+  // publishTransform so bumping ALERT_LEVEL_METHODOLOGY_VERSION observably
+  // changes the wire payload (the methodology doc's change protocol step 1
+  // now has a real consumer).
+  const raw = {
+    outbreaks: [
+      { id: 'a', publishedAt: 1, _publishedAtIsSynthetic: false, _originalPublishedMs: 1 },
+    ],
+    fetchedAt: 1700000000000,
+    alertLevelMethodologyVersion: ALERT_LEVEL_METHODOLOGY_VERSION,
+  };
+  const published = diseasePublishTransform(raw);
+  assert.equal(
+    published.alertLevelMethodologyVersion,
+    ALERT_LEVEL_METHODOLOGY_VERSION,
+    'wire payload must surface the methodology version so bumps propagate to clients',
+  );
 });

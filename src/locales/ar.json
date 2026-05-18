@@ -1978,7 +1978,6 @@
     },
     "diseaseOutbreaks": {
       "infoTooltip": "<strong>تفشي الأمراض</strong> تنبيهات التفشي النشطة من WHO وProMED ووزارات الصحة. تتبع حالات التفشي المؤكدة والمناطق المتأثرة وأعداد الحالات ومستويات التهديد. تُحدث عند نشر تقارير جديدة.",
-      "methodologyNote": "Alert / Warning / Watch levels come from an editorial keyword classifier — see /docs/methodology/disease-alert-level for the keyword table and limitations.",
       "title": "تفشي الأمراض",
       "empty": "لا يوجد تفش يطابق المرشح",
       "sourceFallback": "المصدر",
