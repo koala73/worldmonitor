@@ -78,7 +78,16 @@ const MEMORY_CLEANUP_THRESHOLD_GB = (() => {
 })();
 const RELAY_SHARED_SECRET = process.env.RELAY_SHARED_SECRET || '';
 const RELAY_AUTH_HEADER = (process.env.RELAY_AUTH_HEADER || 'x-relay-key').toLowerCase();
-const ALLOW_UNAUTHENTICATED_RELAY = process.env.ALLOW_UNAUTHENTICATED_RELAY === 'true';
+// Auth bypass: new canonical name + legacy alias. The new name's verbose
+// wording is intentional — it should be hard to set in production by accident.
+// The legacy `ALLOW_UNAUTHENTICATED_RELAY` is still accepted but emits a
+// deprecation warning so existing self-hosted operators are not broken.
+const _AUTH_BYPASS_NEW = process.env.I_UNDERSTAND_THIS_DISABLES_AUTH === 'true';
+const _AUTH_BYPASS_OLD = process.env.ALLOW_UNAUTHENTICATED_RELAY === 'true';
+const ALLOW_UNAUTHENTICATED_RELAY = _AUTH_BYPASS_NEW || _AUTH_BYPASS_OLD;
+if (_AUTH_BYPASS_OLD && !_AUTH_BYPASS_NEW) {
+  console.warn('[DEPRECATED] ALLOW_UNAUTHENTICATED_RELAY=true is deprecated. Use I_UNDERSTAND_THIS_DISABLES_AUTH=true instead.');
+}
 const IS_PRODUCTION_RELAY = process.env.NODE_ENV === 'production'
   || !!process.env.RAILWAY_ENVIRONMENT
   || !!process.env.RAILWAY_PROJECT_ID
@@ -146,11 +155,30 @@ const OREF_LOCAL_FILE = (() => {
 const RELAY_OREF_RATE_LIMIT_MAX = Number.isFinite(Number(process.env.RELAY_OREF_RATE_LIMIT_MAX))
   ? Number(process.env.RELAY_OREF_RATE_LIMIT_MAX) : 600;
 
-if (IS_PRODUCTION_RELAY && !RELAY_SHARED_SECRET && !ALLOW_UNAUTHENTICATED_RELAY) {
-  console.error('[Relay] Error: RELAY_SHARED_SECRET is required in production');
-  console.error('[Relay] Set RELAY_SHARED_SECRET on Railway and Vercel to secure relay endpoints');
-  console.error('[Relay] To bypass temporarily (not recommended), set ALLOW_UNAUTHENTICATED_RELAY=true');
+// Fail-closed: refuse to boot without a shared secret. This applies in ALL
+// environments (production, dev, self-hosted Docker, etc.) so a self-hosted
+// `docker compose up -d` against the published image cannot accidentally
+// expose every route. Operators who genuinely need an unauthenticated relay
+// must opt in explicitly with the loud `I_UNDERSTAND_THIS_DISABLES_AUTH=true`.
+// (#3801 — closes the IS_PRODUCTION_RELAY-only gate that left self-hosted
+// deployments wide open.)
+if (!RELAY_SHARED_SECRET && !ALLOW_UNAUTHENTICATED_RELAY) {
+  console.error('[Relay] FATAL: RELAY_SHARED_SECRET is not set.');
+  console.error('[Relay] Generate a strong random secret and set it on every host running the relay:');
+  console.error('[Relay]   RELAY_SHARED_SECRET="$(openssl rand -hex 32)"');
+  console.error('[Relay] To explicitly opt out (DEV ONLY — leaves all routes publicly accessible):');
+  console.error('[Relay]   I_UNDERSTAND_THIS_DISABLES_AUTH=true   (formerly ALLOW_UNAUTHENTICATED_RELAY=true)');
   process.exit(1);
+}
+
+// Loud recurring SECURITY warning when auth is effectively disabled. Operators
+// who opt out with the bypass var get a bright reminder both at boot and every
+// 5 minutes in long-running logs so the no-auth state stays visible.
+if (!RELAY_SHARED_SECRET || ALLOW_UNAUTHENTICATED_RELAY) {
+  console.warn('[SECURITY] relay is running WITHOUT auth (RELAY_SHARED_SECRET unset or I_UNDERSTAND_THIS_DISABLES_AUTH=true). All non-public routes are reachable by anyone who can hit this port.');
+  setInterval(() => {
+    console.warn('[SECURITY] relay STILL running without auth — set RELAY_SHARED_SECRET to lock down non-public routes.');
+  }, 5 * 60 * 1000).unref();
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -6287,7 +6315,14 @@ function getRelaySecretFromRequest(req) {
 }
 
 function isAuthorizedRequest(req) {
-  if (!RELAY_SHARED_SECRET) return true;
+  if (!RELAY_SHARED_SECRET) {
+    // Defensive: the startup guard rejects an empty secret unless the
+    // operator explicitly opted out via I_UNDERSTAND_THIS_DISABLES_AUTH
+    // (or the deprecated ALLOW_UNAUTHENTICATED_RELAY). In that bypass case
+    // every request is allowed; otherwise this branch is unreachable. Keeping
+    // the explicit check makes this function safe to call in isolation.
+    return ALLOW_UNAUTHENTICATED_RELAY;
+  }
   const provided = getRelaySecretFromRequest(req);
   if (!provided) return false;
   return safeTokenEquals(provided, RELAY_SHARED_SECRET);
@@ -9086,6 +9121,10 @@ const server = http.createServer(async (req, res) => {
         polymarketInflight: polymarketInflight.size,
       },
       auth: {
+        // `enabled` is the canonical operator-visible field: true only when a
+        // shared secret is configured AND the bypass is NOT engaged. Use this
+        // to detect a no-auth deployment from monitoring without scraping logs.
+        enabled: !!RELAY_SHARED_SECRET && !ALLOW_UNAUTHENTICATED_RELAY,
         sharedSecretEnabled: !!RELAY_SHARED_SECRET,
         authHeader: RELAY_AUTH_HEADER,
         allowVercelPreviewOrigins: ALLOW_VERCEL_PREVIEW_ORIGINS,
