@@ -1219,9 +1219,22 @@ async function orefPersistHistory() {
     // Companion seed-meta:* write — the OREF payload only carries `persistedAt`
     // (an ISO string not in extractTimestamp's recognised set), so without this
     // key the regional-snapshot freshness classifier would flag the input as
-    // STALE on every run (#3781). Mirrors the pattern used by transit-summaries
-    // (line ~7364) and is tracked by api/health.js for staleness alerts.
-    await upstashSet('seed-meta:relay:oref:history', { fetchedAt: Date.now(), recordCount: waves.length }, 604800);
+    // STALE on every run (#3781). Tracked by api/health.js for staleness alerts.
+    //
+    // Gate on `ok`: if the envelope write failed (Upstash 5xx / network blip),
+    // a successful meta write alone would tell the freshness classifier the
+    // input is FRESH for data that does not actually exist in Redis. The 7d
+    // meta TTL is deliberately wider than the 15min maxAgeMin so a brief
+    // seed gap keeps the meta around for diagnostics; freshness still flips
+    // STALE off the now-vs-fetchedAt delta.
+    //
+    // NOTE (#3781 review): the transit-summaries write at line ~7370 still
+    // does its meta write unconditionally and has the same failure mode.
+    // That is a pre-existing bug intentionally left out of scope here; it
+    // should be fixed in a follow-up PR.
+    if (ok) {
+      await upstashSet('seed-meta:relay:oref:history', { fetchedAt: Date.now(), recordCount: waves.length }, 604800);
+    }
     orefSaveLocalHistory();
   } finally {
     orefState._persistInFlight = false;

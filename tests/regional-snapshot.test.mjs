@@ -586,18 +586,51 @@ describe('snapshot meta', () => {
     );
   });
 
-  it('valid_until is capped at now + 6h even when inputs have long TTLs (#3728)', () => {
-    // energy:mix:v1:_all has maxAgeMin=50400 (35d). A fresh fetch today
-    // would otherwise advertise validity weeks out — clamp to the 6h cron.
-    const allKeys = {};
-    for (const s of FRESHNESS_REGISTRY) allKeys[s.key] = { fetchedAt: Date.now() };
+  it('valid_until = min(input TTLs) when all inputs are fresh — tightest input wins (#3728)', () => {
+    // With every registry key fresh, the tightest maxAgeMin sets the bound.
+    // Today that is relay:oref:history:v1 at 15min, so the cap (6h) is NOT
+    // the binding constraint — this asserts the "min wins" rule. The cap
+    // case is exercised separately below.
     const now = Date.now();
+    const allKeys = {};
+    for (const s of FRESHNESS_REGISTRY) allKeys[s.key] = { fetchedAt: now };
     const { pre } = buildPreMeta(allKeys, '1.0.0', '1.0.0');
     const cap = now + 6 * 60 * 60 * 1000;
-    // valid_until should be near the cap (the tightest input is 15min,
-    // relay:oref:history:v1 — that's actually what wins here, not the cap).
-    // The cap behavior is exercised below in the "all long-TTL" case.
-    assert.ok(pre.valid_until <= cap + 1000, 'valid_until must not exceed now + 6h cap');
+    const tightestMin = Math.min(...FRESHNESS_REGISTRY.map((s) => s.maxAgeMin));
+    const expectedFromTightest = now + tightestMin * 60_000;
+    // 1s tolerance: buildPreMeta snapshots its own Date.now() internally.
+    assert.ok(
+      Math.abs(pre.valid_until - expectedFromTightest) < 1000,
+      `valid_until should be ~now + tightest TTL (${tightestMin}min); got drift ${pre.valid_until - expectedFromTightest}ms`,
+    );
+    assert.ok(pre.valid_until < cap, 'tightest input must beat the 6h cap when it is < 6h');
+  });
+
+  it('valid_until is capped at now + 6h when ALL fresh inputs have TTL > 6h (#3728)', () => {
+    // Restrict the sources map to only registry entries with maxAgeMin > 6h
+    // so the cap is the binding constraint, not any individual input TTL.
+    // (Tightest such entry today: intelligence:gpsjam:v2 at 240min = 4h, so
+    // we use a >360min threshold to actually exercise the cap.)
+    const SIX_HOURS_MIN = 6 * 60;
+    const now = Date.now();
+    const longTtlSources = {};
+    for (const s of FRESHNESS_REGISTRY) {
+      if (s.maxAgeMin > SIX_HOURS_MIN) longTtlSources[s.key] = { fetchedAt: now };
+    }
+    assert.ok(
+      Object.keys(longTtlSources).length > 0,
+      'registry must contain at least one entry with maxAgeMin > 6h for this test to be meaningful',
+    );
+    const { pre, classification } = buildPreMeta(longTtlSources, '1.0.0', '1.0.0');
+    // Sanity: every included key should be fresh (so the cap, not a stale
+    // fallback, is what's binding valid_until).
+    assert.equal(classification.fresh.length, Object.keys(longTtlSources).length);
+    const cap = now + 6 * 60 * 60 * 1000;
+    // 1s tolerance for tick drift between this Date.now() and buildPreMeta's.
+    assert.ok(
+      Math.abs(pre.valid_until - cap) < 1000,
+      `valid_until should clamp to now + 6h (${cap}) when all inputs out-TTL the cap; got ${pre.valid_until} (drift ${pre.valid_until - cap}ms)`,
+    );
   });
 
   it('valid_until collapses to now when all inputs are stale or missing (#3728)', () => {
@@ -632,23 +665,36 @@ describe('snapshot meta', () => {
   // deploy under #3728's stricter logic. Each is now wired to an existing
   // seed-meta:* companion key so the classifier can prove freshness
   // without the data payload needing a top-level timestamp.
-  it('buildPreMeta resolves freshness via metaKey when payload has no timestamp (#3781)', () => {
-    // risk:scores:sebuf:stale:v1 used to ship without a metaKey; the
-    // payload it serves does not carry fetchedAt/seededAt/etc, so under the
-    // post-#3728 classifier it would land in stale_inputs[] on every run.
-    // With metaKey wired, the seed-meta:* fetchedAt is the freshness proof.
-    const now = Date.now();
-    const sources = { 'risk:scores:sebuf:stale:v1': { ciiScores: [] } };
-    const metaSources = {
-      'seed-meta:intelligence:risk-scores': { fetchedAt: now - 5 * 60_000 },
-    };
-    const { pre, classification } = buildPreMeta(sources, '1.0.0', '1.0.0', metaSources);
-    assert.ok(
-      classification.fresh.includes('risk:scores:sebuf:stale:v1'),
-      'metaKey fetchedAt should classify the undated payload as fresh',
-    );
-    assert.ok(!pre.stale_inputs.includes('risk:scores:sebuf:stale:v1'));
-  });
+  //
+  // Parameterized across all 5 wired keys: any one of them losing its
+  // metaKey hint (or the companion key going missing) would re-introduce
+  // the on-deploy STALE noise this PR removes.
+  for (const [inputKey, metaKey] of [
+    ['risk:scores:sebuf:stale:v1',          'seed-meta:intelligence:risk-scores'],
+    ['intelligence:cross-source-signals:v1', 'seed-meta:intelligence:cross-source-signals'],
+    ['energy:mix:v1:_all',                   'seed-meta:economic:owid-energy-mix'],
+    ['supply_chain:transit-summaries:v1',    'seed-meta:supply_chain:transit-summaries'],
+    ['relay:oref:history:v1',                'seed-meta:relay:oref:history'],
+  ]) {
+    it(`buildPreMeta resolves freshness via metaKey when payload has no timestamp — ${inputKey} (#3781)`, () => {
+      // Each of these keys serves a payload without a top-level timestamp
+      // field. Under the post-#3728 classifier they would land in
+      // stale_inputs[] on every run. With metaKey wired, the seed-meta:*
+      // fetchedAt is the freshness proof.
+      const now = Date.now();
+      const sources = { [inputKey]: { /* deliberately undated */ } };
+      const metaSources = { [metaKey]: { fetchedAt: now - 5 * 60_000 } };
+      const { pre, classification } = buildPreMeta(sources, '1.0.0', '1.0.0', metaSources);
+      assert.ok(
+        classification.fresh.includes(inputKey),
+        `${inputKey}: metaKey fetchedAt should classify the undated payload as fresh`,
+      );
+      assert.ok(
+        !pre.stale_inputs.includes(inputKey),
+        `${inputKey}: must not appear in stale_inputs when metaKey is fresh`,
+      );
+    });
+  }
 
   it('5 #3781 upstream feeds declare metaKey to avoid on-deploy STALE noise', () => {
     // Pre-empt: each of these keys serves a payload without a top-level

@@ -39,6 +39,11 @@ const MAX_VALID_UNTIL_MS = 6 * 60 * 60 * 1000;
  * }}
  */
 export function buildPreMeta(sources, scoringVersion, geographyVersion, metaSources = {}) {
+  // Snapshot a single `now` so the confidence math, valid_until lower bound,
+  // and 6h cap all reference the same tick. Without this, deriveValidUntil's
+  // internal Date.now() could drift past buildPreMeta's reference and force
+  // tests to use timing tolerances to assert exact values.
+  const now = Date.now();
   const classification = classifyInputs(sources, metaSources);
   const totalInputs = classification.fresh.length + classification.stale.length + classification.missing.length;
   const cCompleteness = totalInputs > 0
@@ -58,7 +63,7 @@ export function buildPreMeta(sources, scoringVersion, geographyVersion, metaSour
       snapshot_confidence,
       missing_inputs: classification.missing,
       stale_inputs: classification.stale,
-      valid_until: deriveValidUntil(classification.fresh, sources, metaSources),
+      valid_until: deriveValidUntil(classification.fresh, sources, metaSources, now),
       trigger_reason: 'scheduled_6h',
     },
     classification,
@@ -79,13 +84,17 @@ export function buildPreMeta(sources, scoringVersion, geographyVersion, metaSour
  * When no inputs are fresh (all stale or missing), valid_until collapses to
  * now so consumers know the snapshot is immediately invalid.
  *
+ * `now` is passed in from buildPreMeta so the two-step (classify → derive)
+ * computation references the same tick. Without this, tests would need
+ * timing tolerance to assert exact valid_until values.
+ *
  * @param {string[]} freshKeys
  * @param {Record<string, any>} sources
  * @param {Record<string, any>} metaSources
+ * @param {number} now
  * @returns {number}
  */
-function deriveValidUntil(freshKeys, sources, metaSources) {
-  const now = Date.now();
+function deriveValidUntil(freshKeys, sources, metaSources, now) {
   if (freshKeys.length === 0) return now;
 
   const freshSet = new Set(freshKeys);
