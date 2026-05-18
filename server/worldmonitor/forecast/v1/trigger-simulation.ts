@@ -13,7 +13,11 @@ import {
   getSimulationOutcomeLatest,
   getSimulationPackagePointer,
 } from '../../../_shared/simulation-queue';
-import { MAX_QUEUE_DEPTH } from '../../../_shared/_simulation-queue-constants.mjs';
+// Shim lives in scripts/ (not server/_shared/) so the Railway workers can
+// resolve it under their nixpacks root_dir=scripts packaging. See
+// scripts/_simulation-queue-constants.mjs header. esbuild inlines it here
+// at Vercel build time.
+import { MAX_QUEUE_DEPTH } from '../../../../scripts/_simulation-queue-constants.mjs';
 
 /**
  * POST /api/forecast/v1/trigger-simulation

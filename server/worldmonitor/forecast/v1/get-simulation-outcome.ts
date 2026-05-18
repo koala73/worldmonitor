@@ -10,10 +10,15 @@ import { markNoCacheResponse } from '../../../_shared/response-headers';
 // SIMULATION_OUTCOME_LATEST_KEY from cache-keys would create a second
 // definition that could silently drift on a schema-version bump.
 // (Greptile P2 review on PR #3811.)
+//
+// Shim lives in scripts/ (not server/_shared/) so the Railway workers can
+// resolve it under their nixpacks root_dir=scripts packaging. See
+// scripts/_simulation-queue-constants.mjs header. esbuild inlines it here
+// at Vercel build time.
 import {
   SIMULATION_OUTCOME_LATEST_KEY,
   SIMULATION_OUTCOME_BY_RUN_KEY_PREFIX,
-} from '../../../_shared/_simulation-queue-constants.mjs';
+} from '../../../../scripts/_simulation-queue-constants.mjs';
 import { listProcessingRunIds } from '../../../_shared/simulation-queue';
 
 type OutcomePointer = { runId: string; outcomeKey: string; schemaVersion: string; theaterCount: number; generatedAt: number; uiTheaters?: unknown[] };

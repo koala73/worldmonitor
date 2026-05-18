@@ -11,10 +11,17 @@ import { resolveR2StorageConfig, putR2JsonObject, getR2JsonObject } from './_r2-
 import { extractFirstJsonObject, extractFirstJsonArray, cleanJsonText } from './_llm-json.mjs';
 import { loadTickerSet } from './_ticker-validation.mjs';
 import { computeEmaWindows, computeRisk24h } from './_ema-threat-engine.mjs';
-// Queue / outcome / runId constants moved to the shared shim so the
+// Queue / outcome / runId constants live in the shared shim so the
 // HTTP-trigger handler (server/_shared/simulation-queue.ts) and this
 // seeder agree on the Redis schema. See #3734 + docs/plans/2026-05-18-
 // 003-feat-simulation-trigger-and-runid-filter-plan.md D4.
+//
+// IMPORT PATH NOTE: the shim lives in scripts/ — NOT server/_shared/ —
+// because the Railway services that run this seeder (seed-forecasts,
+// simulation-worker, deep-forecast-worker) use nixpacks with
+// root_dir=scripts and only package scripts/ contents into /app/.
+// Any `../server/_shared/...` import escapes /app/ at runtime and
+// crashes with ERR_MODULE_NOT_FOUND. See #3811 incident logs.
 import {
   SIMULATION_TASK_KEY_PREFIX,
   SIMULATION_TASK_QUEUE_KEY,
@@ -25,7 +32,7 @@ import {
   SIMULATION_PACKAGE_LATEST_KEY,
   VALID_RUN_ID_RE,
   pkgFingerprint,
-} from '../server/_shared/_simulation-queue-constants.mjs';
+} from './_simulation-queue-constants.mjs';
 
 const _isDirectRun = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/'));
 if (_isDirectRun) loadEnvFile(import.meta.url);

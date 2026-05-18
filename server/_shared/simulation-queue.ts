@@ -5,6 +5,11 @@
 // guaranteed to agree on the Redis schema. See #3734 +
 // docs/plans/2026-05-18-003-feat-simulation-trigger-and-runid-filter-plan.md
 // D3, D4, D5, D7.
+//
+// IMPORT PATH NOTE: the shim lives in scripts/ — see the header of
+// scripts/_simulation-queue-constants.mjs for the Railway packaging reason.
+// esbuild bundles the shim's contents inline at Vercel build time, so the
+// cross-directory import is fine on the server side.
 
 import { runRedisPipeline } from './redis';
 import {
@@ -15,7 +20,7 @@ import {
   SIMULATION_PACKAGE_LATEST_KEY,
   VALID_RUN_ID_RE,
   pkgFingerprint,
-} from './_simulation-queue-constants.mjs';
+} from '../../scripts/_simulation-queue-constants.mjs';
 
 const TASK_QUEUE_TTL_SECONDS = 60 * 24 * 60 * 60; // mirrors TRACE_REDIS_TTL_SECONDS in the seeder
 const REDIS_READ_TIMEOUT_MS = 5_000;
