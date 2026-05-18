@@ -740,7 +740,9 @@ const GEORGIA_COUNTRY_MARKERS = [
 type DisambiguationPredicate = (paddedInput: string) => boolean;
 
 const DISAMBIGUATION_RULES = new Map<string, DisambiguationPredicate>([
-  ['niger', (s) => !s.includes(' nigeria ')],
+  ['niger', (s) => hasBareToken(s, 'niger', {
+    notFollowedBy: ['river', 'delta', 'state', 'basin'],
+  })],
   ['sudan', (s) => hasBareToken(s, 'sudan', { notPrecededBy: ['south'] })],
   ['samoa', (s) => hasBareToken(s, 'samoa', { notPrecededBy: ['american'] })],
   ['guinea', (s) => hasBareToken(s, 'guinea', {
@@ -749,6 +751,7 @@ const DISAMBIGUATION_RULES = new Map<string, DisambiguationPredicate>([
   })],
   ['congo', (s) => hasBareToken(s, 'congo', {
     notPrecededBy: ['dr', 'drc', 'democratic', 'kinshasa'],
+    notFollowedBy: ['kinshasa', 'dem'],
   })],
   ['georgia', (s) => GEORGIA_COUNTRY_MARKERS.some((m) => s.includes(` ${m} `))],
 ]);

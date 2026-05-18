@@ -18,8 +18,17 @@ describe('matchesCountryText — disambiguated bare aliases (#3744)', () => {
     it('does not match a Nigeria mention', () => {
       assert.equal(matchesCountryText('Nigeria swears in new president', 'NE'), false);
     });
-    it('does not match when both appear in a Nigeria-context title', () => {
-      assert.equal(matchesCountryText('Nigeria considers Niger sanctions', 'NE'), false);
+    it('still matches Niger when Nigeria is also mentioned separately', () => {
+      assert.equal(matchesCountryText('Nigeria considers Niger sanctions', 'NE'), true);
+    });
+    it('does not match Niger River geographic mention', () => {
+      assert.equal(matchesCountryText('Niger River floods displace thousands in Benin', 'NE'), false);
+    });
+    it('does not match Niger Delta geographic mention', () => {
+      assert.equal(matchesCountryText('Niger Delta militants attack pipeline', 'NE'), false);
+    });
+    it('does not match Niger State (Nigerian sub-national)', () => {
+      assert.equal(matchesCountryText('Niger State governor announces budget', 'NE'), false);
     });
   });
 
@@ -98,6 +107,12 @@ describe('matchesCountryText — disambiguated bare aliases (#3744)', () => {
     });
     it('CG does not match a Kinshasa-context Congo mention', () => {
       assert.equal(matchesCountryText('Kinshasa Congo curfew lifted', 'CG'), false);
+    });
+    it('CG does not match the "Congo Kinshasa" DRC alias', () => {
+      assert.equal(matchesCountryText('Congo Kinshasa cease-fire collapses', 'CG'), false);
+    });
+    it('CG does not match the "Congo Dem Rep" DRC alias', () => {
+      assert.equal(matchesCountryText('Congo Dem Rep election results', 'CG'), false);
     });
     it('CD still matches via dr congo alias', () => {
       assert.equal(matchesCountryText('DR Congo cease-fire collapses', 'CD'), true);
