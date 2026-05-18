@@ -225,16 +225,24 @@ async function executeIntent(intent: Intent): Promise<CommandResult> {
         // "Indicative prices" footnote.
         const { quotes, isDemoMode, degraded, error } = await fetchFlightPrices({ origin: intent.origin, destination: intent.destination, departureDate: date });
         const gflLink = sanitizeUrl(`https://www.google.com/travel/flights/search?q=Flights+from+${encodeURIComponent(intent.origin)}+to+${encodeURIComponent(intent.destination)}+on+${encodeURIComponent(date)}`);
+        const gflFallbackLink = `<a href="${gflLink}" target="_blank" rel="noopener" style="color:var(--accent,#60a5fa)">Search Google Flights instead →</a>`;
         if (!quotes.length) {
-            let msg = 'No prices found.';
-            if (degraded) {
-                if (error === 'missing_credentials') {
-                    msg = `Live flight pricing requires TRAVELPAYOUTS_API_TOKEN. <a href="${gflLink}" target="_blank" rel="noopener" style="color:var(--accent,#60a5fa)">Search Google Flights instead →</a>`;
-                } else if (error === 'upstream_error') {
-                    msg = `Flight pricing provider temporarily unavailable. <a href="${gflLink}" target="_blank" rel="noopener" style="color:var(--accent,#60a5fa)">Search Google Flights instead →</a>`;
-                } else if (error === 'no_results') {
-                    msg = `No live prices found for ${escapeHtml(intent.origin)} → ${escapeHtml(intent.destination)}.`;
-                }
+            // Per the server contract, empty quotes ⇒ degraded:true. Future
+            // server-side `error` values get a generic-but-honest message
+            // via the trailing `else if (degraded)` branch, not the
+            // misleading silent "No prices found." default the previous
+            // draft used.
+            let msg: string;
+            if (error === 'missing_credentials') {
+                msg = `Live flight pricing requires TRAVELPAYOUTS_API_TOKEN. ${gflFallbackLink}`;
+            } else if (error === 'upstream_error') {
+                msg = `Flight pricing provider temporarily unavailable. ${gflFallbackLink}`;
+            } else if (error === 'no_results') {
+                msg = `No live prices found for ${escapeHtml(intent.origin)} → ${escapeHtml(intent.destination)}.`;
+            } else if (degraded) {
+                msg = `Flight pricing unavailable (${escapeHtml(error || 'unknown')}). ${gflFallbackLink}`;
+            } else {
+                msg = `No prices found for ${escapeHtml(intent.origin)} → ${escapeHtml(intent.destination)}.`;
             }
             return { html: `<div class="cmd-empty">${msg}</div>` };
         }

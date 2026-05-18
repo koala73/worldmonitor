@@ -415,7 +415,13 @@ export async function fetchFlightPrices(opts: { origin: string; destination: str
       error: resp.error,
       provider: resp.provider,
     };
-  }, fallback, { cacheKey });
+    // shouldCache prevents the 10-min IndexedDB cache from pinning a
+    // degraded/empty response after the server-side cause has been fixed
+    // (e.g. operator restores TRAVELPAYOUTS_API_TOKEN after an outage).
+    // The breaker also evicts existing cached entries that fail this
+    // predicate on the next call. See review feedback on PR #3795 and
+    // skill:redis-cache-staleness-gotchas/reference/circuit-breaker-persist-cache-eviction.
+  }, fallback, { cacheKey, shouldCache: (r) => r.quotes.length > 0 && !r.degraded });
 }
 
 export async function fetchAviationNews(entities: string[], windowHours = 24, maxItems = 20): Promise<AviationNewsItem[]> {

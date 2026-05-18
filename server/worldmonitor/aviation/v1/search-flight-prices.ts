@@ -6,6 +6,9 @@ import type {
 import { generateDemoPrices } from './_providers/demo_prices';
 import { searchPricesTravelpayouts } from './_providers/travelpayouts_data';
 
+type DegradedError = 'missing_credentials' | 'upstream_error' | 'no_results';
+type DegradedProvider = 'none' | 'travelpayouts_data';
+
 /**
  * Returns a fail-closed empty response with a `degraded: true` discriminator
  * so the UI can render a meaningful per-state message. Mirrors the shape
@@ -13,8 +16,8 @@ import { searchPricesTravelpayouts } from './_providers/travelpayouts_data';
  */
 function emptyDegraded(
     now: number,
-    error: 'missing_credentials' | 'upstream_error' | 'no_results',
-    provider: string,
+    error: DegradedError,
+    provider: DegradedProvider,
 ): SearchFlightPricesResponse {
     return {
         quotes: [],
@@ -76,6 +79,11 @@ export async function searchFlightPrices(
             // `upstream_error` value is reserved for synchronous handler
             // failures (validation crashes, schema mismatches) that bubble
             // up out of searchPricesTravelpayouts itself.
+            // TODO(#3756 follow-up): teach travelpayouts_data.ts to
+            // distinguish fetch-error vs empty-result and surface that
+            // through a TravelpayoutsResult.upstreamFailed flag, then the
+            // handler can return `upstream_error` for real network/HTTP
+            // failures instead of collapsing them into `no_results`.
             if (demoOptIn) {
                 const quotes = generateDemoPrices(origin, destination, depDate, adults, cabin, nonstopOnly, maxResults, currency);
                 return {
