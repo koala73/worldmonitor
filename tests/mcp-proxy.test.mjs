@@ -82,7 +82,9 @@ let handler;
 
 describe('api/mcp-proxy', () => {
   beforeEach(async () => {
-    const mod = await import(`../api/mcp-proxy.js?t=${Date.now()}`);
+    // mcp-proxy migrated .js → .ts in PR #3768 to unlock the
+    // isCallerPremium import from server/. Test must follow the rename.
+    const mod = await import(`../api/mcp-proxy.ts?t=${Date.now()}`);
     handler = mod.default;
   });
 
@@ -122,7 +124,12 @@ describe('api/mcp-proxy', () => {
     // via POST /api/wm-session. Without forceKey:true, they would pass the
     // auth gate — turning the gate into a two-step bypass (mint + call).
     // PR #3768 review finding; closes the residual #3723 surface.
-    it('rejects a wms_ session token even though it is technically valid (forceKey:true gate)', async () => {
+    // wms_ session tokens are anonymous and freely mintable via
+    // /api/wm-session. The auth gate must reject them — otherwise the
+    // bypass is "mint, then proxy". isCallerPremium does this by
+    // requiring keyCheck.required === true (wms_ short-circuits at
+    // required:false). PR #3768 review regression.
+    it('rejects a wms_ session token even though it is technically valid', async () => {
       const url = new URL('https://worldmonitor.app/api/mcp-proxy');
       url.searchParams.set('serverUrl', 'https://mcp.example.com/mcp');
       const req = new Request(url.toString(), {
@@ -130,18 +137,17 @@ describe('api/mcp-proxy', () => {
         headers: { origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': SESSION_TOKEN },
       });
       const res = await handler(req);
-      assert.equal(res.status, 401, 'wms_ session token must NOT unlock /api/mcp-proxy — Pro/enterprise auth only');
+      assert.equal(res.status, 401, 'wms_ session token must NOT unlock /api/mcp-proxy');
       const body = await res.json();
       assert.match(body.error, /Pro authentication required/i);
     });
 
-    // wm_ user keys are NOT accepted on this endpoint at the moment — the
-    // gateway-side Convex validation lives in TS in server/ and can't be
-    // safely imported from a JS Edge function without breaking module
-    // resolution under plain `node --test` (and violating the API-layer
-    // isolation rule). When this changes, flip this test to expect 200
-    // with a mock validateUserApiKey.
-    it('rejects wm_ user keys (intentional — see handler comment for re-add path)', async () => {
+    // wm_ user keys: isCallerPremium calls validateUserApiKey which hits
+    // Convex. With CONVEX_SITE_URL unset in test env, it returns null →
+    // 401. This proves the wm_ branch fails closed when the validator
+    // can't run — and that the path is exercised (no MODULE_NOT_FOUND
+    // like the previous .js → .ts dynamic-import attempt).
+    it('rejects wm_ user keys when Convex validation cannot run / returns null', async () => {
       const url = new URL('https://worldmonitor.app/api/mcp-proxy');
       url.searchParams.set('serverUrl', 'https://mcp.example.com/mcp');
       const req = new Request(url.toString(), {
@@ -153,14 +159,18 @@ describe('api/mcp-proxy', () => {
     });
 
     it('accepts a valid enterprise key', async () => {
-      // Smoke test — proves positive-path auth works after the forceKey
-      // switch. Other tests under "GET /api/mcp-proxy (list tools)" /
-      // "POST /api/mcp-proxy (call tool)" already use ENTERPRISE_KEY via
-      // the helper; this is the explicit "key works" assertion.
+      // Positive-path smoke. Other tests under "GET /api/mcp-proxy
+      // (list tools)" / "POST /api/mcp-proxy (call tool)" already use
+      // ENTERPRISE_KEY via the helper; this is the explicit assertion.
       globalThis.fetch = makeMcpFetch({ tools: [] });
       const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
       assert.equal(res.status, 200);
     });
+
+    // Bearer-JWT acceptance is the OTHER positive path (normal web Pro
+    // users). End-to-end coverage would need a stubbed Clerk
+    // validateBearerToken — out of scope for this unit test. The Bearer
+    // path is exercised in tests/chat-analyst.test.mts / production E2E.
   });
 
   // ── CORS / method guards ──────────────────────────────────────────────────

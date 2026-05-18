@@ -33,4 +33,9 @@ export const PREMIUM_RPC_PATHS = new Set<string>([
   '/api/scenario/v1/get-scenario-status',
   '/api/v2/shipping/route-intelligence',
   '/api/v2/shipping/webhooks',
+  // /api/mcp-proxy: Pro-gated outbound MCP proxy (PR #3768, issue #3723).
+  // Path-gated here so premiumFetch attaches the Clerk Bearer for normal
+  // web Pro users; the server gate in api/mcp-proxy.ts uses isCallerPremium
+  // which validates enterprise key, wm_ user key, or Bearer JWT.
+  '/api/mcp-proxy',
 ]);

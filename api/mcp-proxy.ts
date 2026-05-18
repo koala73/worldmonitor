@@ -1,6 +1,10 @@
-import { validateApiKey } from './_api-key.js';
+// @ts-nocheck — Migrated from .js to .ts only to unlock the
+// `isCallerPremium` import from server/ (PR #3768 review). Body remains
+// JS-shaped; not annotating types in this commit. Future PR can add
+// types incrementally; behaviour is unchanged.
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
+import { isCallerPremium } from '../server/_shared/premium-check';
 
 export const config = { runtime: 'edge' };
 
@@ -335,28 +339,31 @@ export default async function handler(req) {
   if (req.method === 'OPTIONS')
     return new Response(null, { status: 204, headers: cors });
 
-  // Auth gate (issue #3723). Without this, any caller can use the proxy to:
-  //   (a) relay arbitrary customHeaders (Authorization, API keys) to any public
-  //       MCP server under WorldMonitor's outbound IP;
-  //   (b) consume our outbound-IP reputation / quota.
+  // Auth gate (issue #3723). The proxy can relay arbitrary customHeaders
+  // (Authorization, API keys) to any public MCP server under WorldMonitor's
+  // outbound IP, and consume our outbound-IP reputation / quota — so the
+  // gate must accept ONLY paying / authorised callers.
   //
-  // forceKey:true is REQUIRED here. Without it, validateApiKey accepts
-  // wms_ session tokens, which are anonymous and freely mintable by any
-  // caller via POST /api/wm-session. That turns the auth gate into a
-  // two-step bypass: mint wms_, then call /api/mcp-proxy. forceKey:true
-  // rejects wms_ and accepts only enterprise keys (WORLDMONITOR_VALID_KEYS).
+  // Pre-this-PR the endpoint was open. The first cut accepted wms_
+  // anonymous session tokens which are freely mintable via /api/wm-session
+  // → two-step bypass. The second cut went enterprise-key-only via
+  // validateApiKey forceKey:true, which broke the Pro "Connect MCP" UI
+  // for normal web Pro users (no enterprise key path).
   //
-  // Note: isDisallowedOrigin() returns false on null Origin (correct for
-  // legit server-to-server callers on other endpoints), so the origin
-  // check alone does not stop curl. wm_ user keys are intentionally NOT
-  // accepted here yet — the gateway-side Convex validation path lives in
-  // server/gateway.ts and importing it from this Edge JS function violates
-  // the API-layer isolation (the path is extensionless TS and breaks under
-  // plain `node --test`). Future PR can introduce a JS-safe re-export when
-  // wm_ user keys need MCP-proxy access.
-  const apiKeyResult = await validateApiKey(req, { forceKey: true });
-  if (apiKeyResult.required && !apiKeyResult.valid)
-    return jsonResponse({ error: apiKeyResult.error }, 401, cors);
+  // isCallerPremium is the project's canonical premium-caller check. It
+  // accepts: enterprise key (WORLDMONITOR_VALID_KEYS), wm_ user API key
+  // (Convex-validated + entitlement check), and Clerk Pro Bearer JWT
+  // (role==='pro' or entitlement tier>=1). It rejects wms_ session tokens
+  // by requiring keyCheck.required === true (wms_ short-circuits at
+  // required:false). isDisallowedOrigin already blocked cross-origin
+  // browser callers; this closes the curl + wms_ farm paths too.
+  //
+  // Pair: src/components/McpConnectModal.ts + McpDataPanel.ts must use
+  // premiumFetch (not plain fetch) so the renderer attaches the Bearer
+  // for Pro users; /api/mcp-proxy is now in PREMIUM_RPC_PATHS for that
+  // path-gated injection.
+  if (!(await isCallerPremium(req)))
+    return jsonResponse({ error: 'Pro authentication required' }, 401, cors);
 
   try {
     if (req.method === 'GET') {
