@@ -722,16 +722,72 @@ function matchesCountryIdentifier(value: unknown, countryCode: string): boolean 
   return getCountryAliases(countryCode).has(normalized);
 }
 
-const AMBIGUOUS_ALIASES = new Set([
-  'guinea', 'congo', 'niger', 'samoa', 'sudan', 'korea', 'virgin', 'georgia', 'dominica',
+// Per-alias disambiguation. The previous AMBIGUOUS_ALIASES blocklist
+// silently zeroed Reddit velocity for any country whose only alias was
+// ambiguous (Niger, Georgia, Guinea, Samoa, Sudan, Dominica — see #3744).
+// Replaced with predicates that accept the match only when surrounding
+// context rules out the colliding token. Aliases not listed here are
+// matched unconditionally.
+//
+// Markers preferred over name forms because COUNTRY_NAME_ALIASES is built
+// from shared/country-names.json and may not contain every directional
+// variant.
+const GEORGIA_COUNTRY_MARKERS = [
+  'tbilisi', 'georgian', 'abkhazia', 'ossetia', 'caucasus',
+  'saakashvili', 'ivanishvili', 'batumi', 'kutaisi',
+];
+
+type DisambiguationPredicate = (paddedInput: string) => boolean;
+
+const DISAMBIGUATION_RULES = new Map<string, DisambiguationPredicate>([
+  ['niger', (s) => !s.includes(' nigeria ')],
+  ['sudan', (s) => hasBareToken(s, 'sudan', { notPrecededBy: ['south'] })],
+  ['samoa', (s) => hasBareToken(s, 'samoa', { notPrecededBy: ['american'] })],
+  ['guinea', (s) => hasBareToken(s, 'guinea', {
+    notPrecededBy: ['equatorial', 'new'],
+    notFollowedBy: ['bissau'],
+  })],
+  ['congo', (s) => hasBareToken(s, 'congo', {
+    notPrecededBy: ['dr', 'drc', 'democratic', 'kinshasa'],
+  })],
+  ['georgia', (s) => GEORGIA_COUNTRY_MARKERS.some((m) => s.includes(` ${m} `))],
 ]);
 
-function matchesCountryText(value: unknown, countryCode: string): boolean {
+function hasBareToken(
+  paddedInput: string,
+  token: string,
+  opts: { notPrecededBy?: string[]; notFollowedBy?: string[] },
+): boolean {
+  const target = ` ${token} `;
+  let idx = paddedInput.indexOf(target);
+  while (idx !== -1) {
+    let ok = true;
+    if (opts.notPrecededBy) {
+      const beforeStart = paddedInput.lastIndexOf(' ', idx - 1);
+      const beforeWord = paddedInput.slice(beforeStart + 1, idx);
+      if (opts.notPrecededBy.includes(beforeWord)) ok = false;
+    }
+    if (ok && opts.notFollowedBy) {
+      const afterStart = idx + target.length - 1;
+      const afterEnd = paddedInput.indexOf(' ', afterStart + 1);
+      const afterWord = paddedInput.slice(afterStart + 1, afterEnd === -1 ? paddedInput.length : afterEnd);
+      if (opts.notFollowedBy.includes(afterWord)) ok = false;
+    }
+    if (ok) return true;
+    idx = paddedInput.indexOf(target, idx + 1);
+  }
+  return false;
+}
+
+export function matchesCountryText(value: unknown, countryCode: string): boolean {
   const normalized = normalizeCountryToken(value);
   if (!normalized) return false;
+  const padded = ` ${normalized} `;
   for (const alias of COUNTRY_NAME_ALIASES.get(countryCode.toUpperCase()) ?? []) {
-    if (AMBIGUOUS_ALIASES.has(alias)) continue;
-    if (` ${normalized} `.includes(` ${alias} `)) return true;
+    if (!padded.includes(` ${alias} `)) continue;
+    const rule = DISAMBIGUATION_RULES.get(alias);
+    if (rule && !rule(padded)) continue;
+    return true;
   }
   return false;
 }
