@@ -201,8 +201,24 @@ describe('fetchFlightPrices — service-layer circuit-breaker fallback (#3795)',
     );
     assert.match(
       source,
-      /breakerPrices\.execute\([\s\S]{0,1500}?shouldCache:\s*\(r\)\s*=>\s*r\.quotes\.length\s*>\s*0\s*&&\s*!r\.degraded/,
+      /breakerPrices\.execute\([\s\S]{0,2000}?shouldCache:\s*\(r\)\s*=>\s*r\.quotes\.length\s*>\s*0\s*&&\s*!r\.degraded/,
       'fetchFlightPrices must pass shouldCache:(r)=>r.quotes.length>0 && !r.degraded to avoid pinning degraded responses in the persistent cache (#3795 P1)',
+    );
+  });
+
+  it('breakerPrices.execute opts into evictOnRefreshFailure so degraded states surface (#3795 review-2)', async () => {
+    const { readFile } = await import('node:fs/promises');
+    const source = await readFile(
+      new URL('../src/services/aviation/index.ts', import.meta.url),
+      'utf8',
+    );
+    // Without this option, SWR would preserve previously-good quotes
+    // forever even after the server starts returning degraded — the
+    // exact stale-display bug the reviewer caught on the first review pass.
+    assert.match(
+      source,
+      /breakerPrices\.execute\([\s\S]{0,2000}?evictOnRefreshFailure:\s*true/,
+      'fetchFlightPrices must opt into evictOnRefreshFailure:true so SWR refresh that fails shouldCache evicts the stale entry instead of pinning it (#3795 review-2 P1)',
     );
   });
 });

@@ -418,10 +418,19 @@ export async function fetchFlightPrices(opts: { origin: string; destination: str
     // shouldCache prevents the 10-min IndexedDB cache from pinning a
     // degraded/empty response after the server-side cause has been fixed
     // (e.g. operator restores TRAVELPAYOUTS_API_TOKEN after an outage).
-    // The breaker also evicts existing cached entries that fail this
-    // predicate on the next call. See review feedback on PR #3795 and
-    // skill:redis-cache-staleness-gotchas/reference/circuit-breaker-persist-cache-eviction.
-  }, fallback, { cacheKey, shouldCache: (r) => r.quotes.length > 0 && !r.degraded });
+    // evictOnRefreshFailure additionally evicts the stale entry on the
+    // SWR refresh path, so a user who previously cached real quotes
+    // stops seeing them once the upstream starts returning degraded.
+    // Without it, SWR would pin the stale entry indefinitely. Flight
+    // pricing is time-sensitive and the degraded state IS the important
+    // signal; market quotes (and other surfaces that benefit from
+    // resilience-across-blips) leave this opt-in default false.
+    // (#3795 review + review-2 P1.)
+  }, fallback, {
+    cacheKey,
+    shouldCache: (r) => r.quotes.length > 0 && !r.degraded,
+    evictOnRefreshFailure: true,
+  });
 }
 
 export async function fetchAviationNews(entities: string[], windowHours = 24, maxItems = 20): Promise<AviationNewsItem[]> {
