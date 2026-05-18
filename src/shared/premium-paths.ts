@@ -38,4 +38,12 @@ export const PREMIUM_RPC_PATHS = new Set<string>([
   // web Pro users; the server gate in api/mcp-proxy.ts uses isCallerPremium
   // which validates enterprise key, wm_ user key, or Bearer JWT.
   '/api/mcp-proxy',
+  // /api/chat-analyst: Pro-gated streaming SSE endpoint for WM Analyst panel.
+  // ChatAnalystPanel.send() calls premiumFetch('/api/chat-analyst', ...) and
+  // the server uses isCallerPremium; without this entry premiumFetch never
+  // attaches the Clerk Bearer for browser Pro users → every send returned
+  // 403 "Pro subscription required" despite a valid subscription. Symptom
+  // stayed hidden until PR #3797 fixed the unlock-wipe so users could
+  // actually type and click Send.
+  '/api/chat-analyst',
 ]);
