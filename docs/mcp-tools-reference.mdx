@@ -1045,3 +1045,39 @@ curl -s https://worldmonitor.app/mcp \
 ```
 
 </CodeGroup>
+
+## Meta
+
+### `describe_tool`
+
+Returns the full uncompressed definition of any other tool by name. Use when the compressed `tools/list` entry is ambiguous about behaviour or argument semantics — since v1.5.0, `tools/list` returns each tool's `description` truncated to the first sentence (≤120 UTF-8 bytes); `describe_tool` returns the full long-form text plus the same `inputSchema` (every property's full description).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `tool_name` | string | **yes** | Exact tool name from `tools/list` (e.g. `"get_market_data"`). |
+
+**Response shape:** identical to a single `tools/list` entry — `{ name, description, inputSchema, annotations }` — with the full uncompressed `description` and the same `inputSchema.properties` (including injected `summary` for cache tools and `jmespath` for every tool).
+
+**Soft errors** (HTTP 200, returned inside the normal `content[0].text` envelope — NOT JSON-RPC errors):
+
+- `{ "error": "missing_tool_name", "hint": "Pass tool_name as a non-empty string matching a tool from tools/list." }` — `tool_name` was omitted, empty, or non-string.
+- `{ "error": "unknown_tool", "requested": "<the bad name>", "available": [...sorted list of all 39 tool names...] }` — `tool_name` didn't match any registered tool. The `available` array lets the LLM self-correct in one extra call.
+
+- **API endpoints:** none — server-local lookup, no upstream call.
+- **Kind:** metadata lookup — sub-millisecond, no Redis, no LLM.
+- **Quota:** **EXEMPT** from the Pro daily quota (50/day). Per-minute rate limit (60/min) still applies.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"describe_tool","arguments":{"tool_name":"get_market_data"}}
+  }'
+```
+
+</CodeGroup>
