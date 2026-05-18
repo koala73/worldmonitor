@@ -6,6 +6,8 @@ export interface ListPositiveGeoEventsRequest {
 
 export interface ListPositiveGeoEventsResponse {
   events: PositiveGeoEvent[];
+  fetchedAt: number;
+  stale: boolean;
 }
 
 export interface PositiveGeoEvent {
