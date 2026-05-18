@@ -1765,6 +1765,7 @@
     },
     "diseaseOutbreaks": {
       "infoTooltip": "<strong>Ziekte-uitbraken</strong> Actieve uitbraakwaarschuwingen van WHO, ProMED en ministeries van gezondheid. Volgt bevestigde uitbraken, getroffen regio's, aantallen gevallen en dreigingsniveaus. Wordt bijgewerkt bij publicatie van nieuwe rapporten.",
+      "methodologyNote": "Alert / Warning / Watch levels come from an editorial keyword classifier — see /docs/methodology/disease-alert-level for the keyword table and limitations.",
       "title": "Ziekteuitbraken",
       "empty": "Geen uitbraken komen overeen met filter",
       "sourceFallback": "Bron",

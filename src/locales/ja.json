@@ -1978,6 +1978,7 @@
     },
     "diseaseOutbreaks": {
       "infoTooltip": "<strong>感染症アウトブレイク</strong> WHO、ProMED、各国保健省からのアクティブな発生警報。確認済みの発生、影響地域、症例数、脅威レベルを追跡。新しい報告の発表時に更新。",
+      "methodologyNote": "Alert / Warning / Watch levels come from an editorial keyword classifier — see /docs/methodology/disease-alert-level for the keyword table and limitations.",
       "title": "感染症の発生",
       "empty": "フィルターに一致する発生はありません",
       "sourceFallback": "ソース",

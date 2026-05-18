@@ -1978,6 +1978,7 @@
     },
     "diseaseOutbreaks": {
       "infoTooltip": "<strong>Вспышки заболеваний</strong> Активные оповещения о вспышках от ВОЗ, ProMED и министерств здравоохранения. Отслеживает подтверждённые вспышки, затронутые регионы, количество случаев и уровни угрозы. Обновляется при публикации новых отчётов.",
+      "methodologyNote": "Alert / Warning / Watch levels come from an editorial keyword classifier — see /docs/methodology/disease-alert-level for the keyword table and limitations.",
       "title": "Вспышки болезней",
       "empty": "Нет вспышек, соответствующих фильтру",
       "sourceFallback": "Источник",

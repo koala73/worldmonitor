@@ -1978,6 +1978,7 @@
     },
     "diseaseOutbreaks": {
       "infoTooltip": "<strong>Επιδημικές Εξάρσεις</strong> Ενεργές ειδοποιήσεις εξάρσεων από WHO, ProMED και υπουργεία υγείας. Παρακολουθεί επιβεβαιωμένες εξάρσεις, πληγείσες περιοχές, αριθμούς κρουσμάτων και επίπεδα απειλής. Ενημερώνεται κατά τη δημοσίευση νέων αναφορών.",
+      "methodologyNote": "Alert / Warning / Watch levels come from an editorial keyword classifier — see /docs/methodology/disease-alert-level for the keyword table and limitations.",
       "title": "Ξεσπάσματα Νοσημάτων",
       "empty": "Δεν υπάρχουν ξεσπάσματα που ταιριάζουν με το φίλτρο",
       "sourceFallback": "Πηγή",

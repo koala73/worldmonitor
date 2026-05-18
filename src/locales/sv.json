@@ -1765,6 +1765,7 @@
     },
     "diseaseOutbreaks": {
       "infoTooltip": "<strong>Sjukdomsutbrott</strong> Aktiva utbrottsvarningar från WHO, ProMED och hälsoministerier. Spårar bekräftade utbrott, drabbade regioner, fallantal och hotnivåer. Uppdateras vid publicering av nya rapporter.",
+      "methodologyNote": "Alert / Warning / Watch levels come from an editorial keyword classifier — see /docs/methodology/disease-alert-level for the keyword table and limitations.",
       "title": "Sjukdomsutbrott",
       "empty": "Inga utbrott matchar filtret",
       "sourceFallback": "Källa",

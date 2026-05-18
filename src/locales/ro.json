@@ -1978,6 +1978,7 @@
     },
     "diseaseOutbreaks": {
       "infoTooltip": "<strong>Focare de boli</strong> Alerte active de focare de la WHO, ProMED și ministere ale sănătății. Urmărește focare confirmate, regiuni afectate, număr de cazuri și niveluri de amenințare. Actualizat la publicarea rapoartelor noi.",
+      "methodologyNote": "Alert / Warning / Watch levels come from an editorial keyword classifier — see /docs/methodology/disease-alert-level for the keyword table and limitations.",
       "title": "Focare de Boli",
       "empty": "Niciun focar nu corespunde filtrului",
       "sourceFallback": "Sursă",

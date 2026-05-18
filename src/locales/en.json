@@ -2179,6 +2179,7 @@
     },
     "diseaseOutbreaks": {
       "infoTooltip": "<strong>Disease Outbreaks</strong> Active outbreak alerts from WHO, ProMED, and health ministries. Tracks confirmed outbreaks, affected regions, case counts, and threat levels. Updated as new reports are published.",
+      "methodologyNote": "Alert / Warning / Watch levels come from an editorial keyword classifier — see /docs/methodology/disease-alert-level for the keyword table and limitations.",
       "title": "Disease Outbreaks",
       "empty": "No outbreaks match filter",
       "sourceFallback": "Source",

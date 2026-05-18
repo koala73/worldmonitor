@@ -1978,6 +1978,7 @@
     },
     "diseaseOutbreaks": {
       "infoTooltip": "<strong>질병 발생</strong> WHO, ProMED 및 보건부의 활성 발생 경보. 확인된 발생, 영향 지역, 사례 수, 위협 수준을 추적. 새 보고서 발표 시 업데이트.",
+      "methodologyNote": "Alert / Warning / Watch levels come from an editorial keyword classifier — see /docs/methodology/disease-alert-level for the keyword table and limitations.",
       "title": "질병 발생",
       "empty": "필터와 일치하는 발생 없음",
       "sourceFallback": "출처",

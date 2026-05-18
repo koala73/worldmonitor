@@ -1978,6 +1978,7 @@
     },
     "diseaseOutbreaks": {
       "infoTooltip": "<strong>Épidémies</strong> Alertes d'épidémies actives de l'OMS, ProMED et ministères de la santé. Suit les épidémies confirmées, régions touchées, nombre de cas et niveaux de menace. Mis à jour lors de la publication de nouveaux rapports.",
+      "methodologyNote": "Alert / Warning / Watch levels come from an editorial keyword classifier — see /docs/methodology/disease-alert-level for the keyword table and limitations.",
       "title": "Épidémies de maladies",
       "empty": "Aucune épidémie ne correspond au filtre",
       "sourceFallback": "Source",

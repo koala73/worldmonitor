@@ -1978,6 +1978,7 @@
     },
     "diseaseOutbreaks": {
       "infoTooltip": "<strong>Епидемични огнища</strong> Активни предупреждения за огнища от WHO, ProMED и здравни министерства. Проследява потвърдени огнища, засегнати региони, брой случаи и нива на заплаха. Актуализира се при публикуване на нови доклади.",
+      "methodologyNote": "Alert / Warning / Watch levels come from an editorial keyword classifier — see /docs/methodology/disease-alert-level for the keyword table and limitations.",
       "title": "Избухване на болести",
       "empty": "Няма избухвания, които да съответстват на филтъра",
       "sourceFallback": "Източник",

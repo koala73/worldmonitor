@@ -26,6 +26,10 @@ import {
   diseaseContentMeta,
   diseasePublishTransform,
   DISEASE_MAX_CONTENT_AGE_MIN,
+  detectAlertLevel,
+  ALERT_KEYWORDS,
+  WARNING_KEYWORDS,
+  ALERT_LEVEL_METHODOLOGY_VERSION,
 } from '../scripts/_disease-outbreaks-helpers.mjs';
 
 // ── Pre-publish (in-memory) layer ────────────────────────────────────────
@@ -246,4 +250,75 @@ test('pilot threshold: 5-day-old items are within 9-day budget (no false positiv
   const cm = diseaseContentMeta(data, FIXED_NOW);
   const ageMin = (FIXED_NOW - cm.newestItemAt) / 60000;
   assert.ok(ageMin < DISEASE_MAX_CONTENT_AGE_MIN, '5d < 9d — STALE_CONTENT does NOT fire on normal upstream rhythm');
+});
+
+// ── detectAlertLevel — keyword classifier (#3791) ─────────────────────────
+
+test('detectAlertLevel: alert keywords as whole words map to alert', () => {
+  for (const kw of ALERT_KEYWORDS) {
+    assert.equal(
+      detectAlertLevel(`Cholera ${kw} confirmed in country X`, ''),
+      'alert',
+      `keyword "${kw}" should trigger alert`,
+    );
+  }
+});
+
+test('detectAlertLevel: warning keywords as whole words map to warning', () => {
+  for (const kw of WARNING_KEYWORDS) {
+    assert.equal(
+      detectAlertLevel(`Health ministry issues ${kw} after lab results`, ''),
+      'warning',
+      `keyword "${kw}" should trigger warning`,
+    );
+  }
+});
+
+test('detectAlertLevel: substring of an alert keyword does NOT promote (#3791 regression)', () => {
+  // Prior substring matching let "epidemic" fire inside "antiepidemic" and
+  // "outbreak" fire inside "outbreaking" (non-word). Word boundaries fix this.
+  assert.equal(
+    detectAlertLevel('New antiepidemic vaccination drive launched', ''),
+    'watch',
+    '"antiepidemic" must not match the bare "epidemic" keyword',
+  );
+  assert.equal(
+    detectAlertLevel('Widespread vaccination program effective', ''),
+    'watch',
+    '"widespread" must not match the bare "spread" keyword',
+  );
+});
+
+test('detectAlertLevel: case-insensitive matching', () => {
+  assert.equal(detectAlertLevel('EBOLA OUTBREAK confirmed', ''), 'alert');
+  assert.equal(detectAlertLevel('Cases Increasing in north', ''), 'warning');
+});
+
+test('detectAlertLevel: matches against title + desc concatenated', () => {
+  assert.equal(detectAlertLevel('Cholera update', 'WHO declares emergency'), 'alert');
+  assert.equal(detectAlertLevel('Status report', 'cases increasing across two regions'), 'warning');
+});
+
+test('detectAlertLevel: null/undefined inputs default to watch (no throw)', () => {
+  assert.equal(detectAlertLevel(undefined, undefined), 'watch');
+  assert.equal(detectAlertLevel(null, null), 'watch');
+  assert.equal(detectAlertLevel('', ''), 'watch');
+});
+
+test('detectAlertLevel: alert wins over warning when both keyword classes match', () => {
+  assert.equal(
+    detectAlertLevel('Spread of outbreak confirmed', ''),
+    'alert',
+    'both "spread" (warning) and "outbreak" (alert) present — alert wins',
+  );
+});
+
+test('ALERT_KEYWORDS and WARNING_KEYWORDS are frozen (#3791 change protocol)', () => {
+  assert.ok(Object.isFrozen(ALERT_KEYWORDS), 'ALERT_KEYWORDS must be frozen to prevent runtime mutation');
+  assert.ok(Object.isFrozen(WARNING_KEYWORDS), 'WARNING_KEYWORDS must be frozen to prevent runtime mutation');
+});
+
+test('ALERT_LEVEL_METHODOLOGY_VERSION is a non-empty version string', () => {
+  assert.equal(typeof ALERT_LEVEL_METHODOLOGY_VERSION, 'string');
+  assert.match(ALERT_LEVEL_METHODOLOGY_VERSION, /^v\d+/);
 });

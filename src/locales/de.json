@@ -1978,6 +1978,7 @@
     },
     "diseaseOutbreaks": {
       "infoTooltip": "<strong>Krankheitsausbrüche</strong> Aktive Ausbruchswarnungen von WHO, ProMED und Gesundheitsministerien. Verfolgt bestätigte Ausbrüche, betroffene Regionen, Fallzahlen und Bedrohungsstufen. Aktualisiert bei Veröffentlichung neuer Berichte.",
+      "methodologyNote": "Alert / Warning / Watch levels come from an editorial keyword classifier — see /docs/methodology/disease-alert-level for the keyword table and limitations.",
       "title": "Krankheitsausbrüche",
       "empty": "Keine Ausbrüche entsprechen dem Filter",
       "sourceFallback": "Quelle",

@@ -1978,6 +1978,7 @@
     },
     "diseaseOutbreaks": {
       "infoTooltip": "<strong>疾病暴发</strong> 来自WHO、ProMED和卫生部门的活跃暴发警报。追踪已确认的暴发、受影响地区、病例数和威胁级别。新报告发布时更新。",
+      "methodologyNote": "Alert / Warning / Watch levels come from an editorial keyword classifier — see /docs/methodology/disease-alert-level for the keyword table and limitations.",
       "title": "疾病爆发",
       "empty": "没有匹配筛选条件的爆发",
       "sourceFallback": "来源",
