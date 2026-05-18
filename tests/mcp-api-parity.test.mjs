@@ -102,6 +102,11 @@ const EXCLUDED_FROM_MCP_PARITY = new Map([
     "mutating: writes state via setCachedJson / runRedisPipeline / persistent DB"],
   ["POST /api/scenario/v1/run-scenario",
     "mutating: writes state via setCachedJson / runRedisPipeline / persistent DB"],
+  // #3734 v3 plan D5 + Risks: explicit position is NOT MCP-exposed by default.
+  // C3 wrapper (if ever shipped) requires a separate threat + cost model — MCP
+  // is the highest-blast-radius surface (any Pro Claude Desktop user).
+  ["POST /api/forecast/v1/trigger-simulation",
+    "mutating: writes to forecast simulation queue (PRO-gated, see #3734 + #3809 follow-up)"],
   ["POST /api/leads/v1/register-interest",
     "mutating: writes to Convex (not server/_shared/redis) — lead registration write"],
   ["POST /api/leads/v1/submit-contact",
