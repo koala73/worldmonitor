@@ -108,10 +108,12 @@ describe('premium-paths guard — every premium-gated direct-edge endpoint is co
     gated.push({ route, file });
   }
 
-  assert.ok(
-    gated.length > 0,
-    'Scan found zero premium-gated direct-edge endpoints — regex or walk likely broken',
-  );
+  it('scan finds at least one premium-gated endpoint — sanity check for regex/walk', () => {
+    assert.ok(
+      gated.length > 0,
+      'Scan found zero premium-gated direct-edge endpoints — regex or walk likely broken',
+    );
+  });
 
   for (const { route, file } of gated) {
     const fileRel = relative(repoRoot, file);
