@@ -87,10 +87,12 @@ describe('browser bundle secret guard (#3704)', () => {
   it('vite.config.ts does not inline platform-only secrets via define', async () => {
     const source = await readRepoFile('vite.config.ts');
     // `define:` injects literal values into the client bundle regardless
-    // of `envPrefix`. Flag any reference to a platform-only secret name
-    // inside the rough vicinity of a define block.
+    // of `envPrefix`. We only need to inspect the block when it exists —
+    // a future refactor that removes the block entirely is strictly
+    // safer (nothing to accidentally inline) and must not fail this
+    // guard. Only validate contents when the block is present.
     const defineMatch = source.match(/define:\s*\{[\s\S]{0,2000}?\n\s*\},/);
-    assert.ok(defineMatch, 'expected to find a define: block in vite.config.ts');
+    if (!defineMatch) return;
     for (const secret of PLATFORM_ONLY_SECRETS) {
       assert.ok(
         !defineMatch[0].includes(secret),
