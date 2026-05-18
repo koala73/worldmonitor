@@ -78,7 +78,7 @@ function getScoreLevel(score: number): 'low' | 'normal' | 'elevated' | 'high' | 
   return 'low';
 }
 
-function toCachedCII(proto: CiiScore): CachedCIIScore {
+export function toCachedCII(proto: CiiScore): CachedCIIScore {
   return {
     code: proto.region,
     name: TIER1_NAMES[proto.region] || proto.region,
@@ -92,18 +92,24 @@ function toCachedCII(proto: CiiScore): CachedCIIScore {
       security: proto.components?.militaryActivity ?? 0,
       information: proto.components?.newsActivity ?? 0,
     },
-    lastUpdated: proto.computedAt ? new Date(proto.computedAt).toISOString() : new Date().toISOString(),
+    lastUpdated: proto.computedAt > 0 ? new Date(proto.computedAt).toISOString() : null,
   };
 }
 
-function toCachedStrategicRisk(risks: StrategicRisk[], ciiScores: CiiScore[]): CachedStrategicRisk {
+export function toCachedStrategicRisk(risks: StrategicRisk[], ciiScores: CiiScore[]): CachedStrategicRisk {
   const global = risks[0];
   const ciiMap = new Map(ciiScores.map((s) => [s.region, s]));
+  // Prefer strategic risk's own computedAt; fall back to max CII computedAt; null if entirely absent
+  const upstreamComputedAt = global?.computedAt && global.computedAt > 0
+    ? global.computedAt
+    : (ciiScores.length > 0
+        ? Math.max(...ciiScores.map((s) => s.computedAt).filter((t) => t > 0))
+        : 0);
   return {
     score: global?.score ?? 0,
     level: SEVERITY_REVERSE[global?.level ?? ''] || 'low',
     trend: TREND_REVERSE[global?.trend ?? ''] || 'stable',
-    lastUpdated: new Date().toISOString(),
+    lastUpdated: upstreamComputedAt > 0 ? new Date(upstreamComputedAt).toISOString() : null,
     contributors: (global?.factors ?? []).map((code) => {
       const cii = ciiMap.get(code);
       return {
@@ -117,11 +123,16 @@ function toCachedStrategicRisk(risks: StrategicRisk[], ciiScores: CiiScore[]): C
 }
 
 export function toRiskScores(resp: GetRiskScoresResponse): CachedRiskScores {
+  // Preserve upstream freshness: aggregate computedAt = max CII computedAt (oldest source)
+  const allComputedAt = resp.ciiScores.map((s) => s.computedAt).filter((t) => t > 0);
+  const aggregateComputedAt = allComputedAt.length > 0
+    ? new Date(Math.max(...allComputedAt)).toISOString()
+    : null;
   return {
     cii: resp.ciiScores.map(toCachedCII),
     strategicRisk: toCachedStrategicRisk(resp.strategicRisks, resp.ciiScores),
     protestCount: 0,
-    computedAt: new Date().toISOString(),
+    computedAt: aggregateComputedAt,
     cached: true,
   };
 }
@@ -187,9 +198,9 @@ if (stored && stored.cii.length > 0) {
 function emptyFallback(): CachedRiskScores {
   return {
     cii: [],
-    strategicRisk: { score: 0, level: 'low', trend: 'stable', lastUpdated: new Date().toISOString(), contributors: [] },
+    strategicRisk: { score: 0, level: 'low', trend: 'stable', lastUpdated: null, contributors: [] },
     protestCount: 0,
-    computedAt: new Date().toISOString(),
+    computedAt: null,
     cached: true,
   };
 }
