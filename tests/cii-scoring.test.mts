@@ -305,7 +305,7 @@ describe('CII scoring', () => {
   it('every score carries an eventMultiplier > 0 matching a known editorial value', () => {
     const scores = computeCIIScores([], emptyAux());
     // Server tables intentionally drift from CURATED_COUNTRIES for some
-    // countries (documented in docs/methodology/cii-risk-scores.md). The
+    // countries (documented in docs/methodology/cii-risk-scores.mdx). The
     // server value is authoritative on the wire — assert presence + finite
     // > 0 rather than equality with the frontend table.
     for (const s of scores) {
@@ -326,7 +326,7 @@ describe('CII scoring', () => {
 
   it('representative countries: server staticBaseline matches CURATED_COUNTRIES (no-drift codes)', () => {
     // Spot-check countries that we expect to NOT have drifted (per
-    // docs/methodology/cii-risk-scores.md drift table). If these ever drift
+    // docs/methodology/cii-risk-scores.mdx drift table). If these ever drift
     // the methodology doc must be updated too — flagged here so the test
     // fails loudly rather than silently.
     const noDriftCodes = ['US', 'RU', 'CN', 'UA', 'IR', 'IL', 'DE', 'GB'];
@@ -388,12 +388,12 @@ describe('CII scoring', () => {
     }
     // STRATEGIC_RISK_SCALE_FACTOR sanity (used in the doc).
     assert.equal(STRATEGIC_RISK_SCALE_FACTOR, 0.7,
-      `STRATEGIC_RISK_SCALE_FACTOR is documented as 0.7 — bump CII_FORMULA_VERSION and update docs/methodology/cii-risk-scores.md if changing.`);
+      `STRATEGIC_RISK_SCALE_FACTOR is documented as 0.7 — bump CII_FORMULA_VERSION and update docs/methodology/cii-risk-scores.mdx if changing.`);
   });
 
   // ===== Methodology doc drift guard (issue #3725) =====
 
-  it('docs/methodology/cii-risk-scores.md lists every CURATED_COUNTRIES code', () => {
+  it('docs/methodology/cii-risk-scores.mdx lists every CURATED_COUNTRIES code', () => {
     const docPath = resolve(
       fileURLToPath(new URL('.', import.meta.url)),
       '..',
@@ -408,7 +408,7 @@ describe('CII scoring', () => {
       if (!new RegExp(`\\|\\s${code}\\s\\|`).test(doc)) missing.push(code);
     }
     assert.equal(missing.length, 0,
-      `docs/methodology/cii-risk-scores.md is missing rows for: ${missing.join(', ')}. Update the methodology doc and bump CII_FORMULA_VERSION.`);
+      `docs/methodology/cii-risk-scores.mdx is missing rows for: ${missing.join(', ')}. Update the methodology doc and bump CII_FORMULA_VERSION.`);
   });
 
   it('methodology doc baseline/multiplier columns match BASELINE_RISK and EVENT_MULTIPLIER exactly (numeric drift guard)', () => {
@@ -464,7 +464,7 @@ describe('CII scoring', () => {
       }
     }
     assert.equal(drifts.length, 0,
-      `methodology doc drift:\n  ${drifts.join('\n  ')}\nBump CII_FORMULA_VERSION and reconcile docs/methodology/cii-risk-scores.md with server BASELINE_RISK / EVENT_MULTIPLIER.`);
+      `methodology doc drift:\n  ${drifts.join('\n  ')}\nBump CII_FORMULA_VERSION and reconcile docs/methodology/cii-risk-scores.mdx with server BASELINE_RISK / EVENT_MULTIPLIER.`);
   });
 
   it('every TIER1_COUNTRIES code is listed in the methodology doc (server tables stay in sync)', () => {
@@ -481,7 +481,7 @@ describe('CII scoring', () => {
       if (!new RegExp(`\\|\\s${code}\\s\\|`).test(doc)) missing.push(code);
     }
     assert.equal(missing.length, 0,
-      `docs/methodology/cii-risk-scores.md is missing rows for TIER1 codes: ${missing.join(', ')}.`);
+      `docs/methodology/cii-risk-scores.mdx is missing rows for TIER1 codes: ${missing.join(', ')}.`);
   });
 
   it('methodology doc references the current CII_FORMULA_VERSION', () => {

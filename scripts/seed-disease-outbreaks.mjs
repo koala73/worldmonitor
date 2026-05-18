@@ -200,7 +200,7 @@ async function fetchDiseaseOutbreaks() {
 
   // Stamp the editorial-classifier version onto the wire payload so the field
   // bumps observably when ALERT_LEVEL_METHODOLOGY_VERSION moves per the change
-  // protocol in docs/methodology/disease-alert-level.md. Without this, the
+  // protocol in docs/methodology/disease-alert-level.mdx. Without this, the
   // constant exists but nothing consumes it — bumping it has no observable
   // effect on clients or the canonical key.
   return {

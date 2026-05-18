@@ -11813,7 +11813,7 @@ components:
                          promotion rules) used to label each item's alert_level. Bumping this
                          signals to downstream clients that the labelling rules changed so cached
                          comparisons across versions are no longer apples-to-apples. See
-                         docs/methodology/disease-alert-level.md for the change protocol.
+                         docs/methodology/disease-alert-level.mdx for the change protocol.
         worldmonitor_health_v1_DiseaseOutbreakItem:
             type: object
             properties:
@@ -12552,7 +12552,7 @@ components:
                     description: |-
                         Methodology version string for this score (e.g. "v1").
                          Bumped whenever the editorial weights in CII_FORMULA_VERSION change so
-                         API clients can detect score drift. See docs/methodology/cii-risk-scores.md.
+                         API clients can detect score drift. See docs/methodology/cii-risk-scores.mdx.
                 eventMultiplier:
                     type: number
                     maximum: 10
@@ -12561,7 +12561,7 @@ components:
                     description: |-
                         Editorial per-country event multiplier applied to live signals before
                          they roll into the composite score. Published for transparency — issue
-                         #3725. See docs/methodology/cii-risk-scores.md.
+                         #3725. See docs/methodology/cii-risk-scores.mdx.
 
                          Bounds: [0, 10]. The editorial de-facto maximum across the published
                          table is ~3.0 (KP). The upper bound of 10 gives ~3.3x headroom for

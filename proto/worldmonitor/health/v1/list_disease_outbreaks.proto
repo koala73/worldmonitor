@@ -41,6 +41,6 @@ message ListDiseaseOutbreaksResponse {
   // promotion rules) used to label each item's alert_level. Bumping this
   // signals to downstream clients that the labelling rules changed so cached
   // comparisons across versions are no longer apples-to-apples. See
-  // docs/methodology/disease-alert-level.md for the change protocol.
+  // docs/methodology/disease-alert-level.mdx for the change protocol.
   string alert_level_methodology_version = 3;
 }

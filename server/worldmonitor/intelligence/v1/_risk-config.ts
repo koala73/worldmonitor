@@ -10,7 +10,7 @@
 //
 // Change protocol:
 //   1. Bump CII_FORMULA_VERSION below.
-//   2. Update docs/methodology/cii-risk-scores.md (the public methodology
+//   2. Update docs/methodology/cii-risk-scores.mdx (the public methodology
 //      note) in the same commit. Tests assert the doc lists every coefficient
 //      and every CURATED_COUNTRIES code.
 //   3. Note the change in CHANGELOG.md under the public-facing section so

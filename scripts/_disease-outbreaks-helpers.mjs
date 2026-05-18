@@ -65,7 +65,7 @@ export function extractLocationFromTitle(title) {
 // Editorial keyword classifier — NOT derived from a published index.
 // Maps disease-outbreak titles/descriptions to a 3-level severity bucket
 // (alert / warning / watch) by matching whole-word keywords. Last reviewed
-// 2026-05-18. See docs/methodology/disease-alert-level.md and #3791 for the
+// 2026-05-18. See docs/methodology/disease-alert-level.mdx and #3791 for the
 // rationale, known limitations, and the change protocol if you adjust these.
 //
 // Word boundaries are mandatory: prior substring matching let "epidemic" fire

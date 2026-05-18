@@ -24,7 +24,7 @@ import {
 // ========================================================================
 // Country risk baselines and multipliers
 // ------------------------------------------------------------------------
-// Editorial values — see docs/methodology/cii-risk-scores.md for the
+// Editorial values — see docs/methodology/cii-risk-scores.mdx for the
 // published table and the rationale. These intentionally MIRROR the
 // per-country fields in src/config/countries.ts CURATED_COUNTRIES, which
 // the frontend uses for client-side scoring. Where the two tables differ,
@@ -34,7 +34,7 @@ import {
 //
 // Change protocol when editing these tables:
 //   1. Bump CII_FORMULA_VERSION in ./_risk-config.ts.
-//   2. Update docs/methodology/cii-risk-scores.md in the SAME commit.
+//   2. Update docs/methodology/cii-risk-scores.mdx in the SAME commit.
 //   3. Mention the change in CHANGELOG.md (public-facing section).
 // ========================================================================
 
@@ -578,7 +578,7 @@ export function computeCIIScores(
       computedAt: Date.now(),
       // Disclosure fields (issue #3725) — make the editorial weights and
       // formula version visible on the wire so API clients can detect drift.
-      // See docs/methodology/cii-risk-scores.md.
+      // See docs/methodology/cii-risk-scores.mdx.
       eventMultiplier: multiplier,
       methodologyVersion: CII_FORMULA_VERSION,
     });
@@ -590,7 +590,7 @@ export function computeCIIScores(
 
 export function computeStrategicRisks(ciiScores: CiiScore[]): StrategicRisk[] {
   // Editorial roll-up: see ./_risk-config.ts and
-  // docs/methodology/cii-risk-scores.md for rationale and band derivation.
+  // docs/methodology/cii-risk-scores.mdx for rationale and band derivation.
   const topN = ciiScores.slice(0, STRATEGIC_RISK_TOP_N);
   const weights = topN.map((_, i) => 1 - i * STRATEGIC_RISK_POSITIONAL_DECAY);
   const totalWeight = weights.reduce((sum, w) => sum + w, 0);
