@@ -1968,14 +1968,28 @@ export async function scoreInformationCognitive(
   const velocity = summarizeSocialVelocity(socialVelocityRaw, countryCode);
   const threatScore = getThreatSummaryScore(threatSummaryRaw, countryCode);
 
+  // Language-coverage adjustment (fixes #3736).
+  //
+  // The previous implementation divided raw velocity + threatScore by
+  // `langFactor` (range 0.2..1.0), which AMPLIFIED signal for countries with
+  // sparse English-language news coverage by up to 5x. Effect: a small uptick
+  // in coverage-poor countries scored worse than a substantial signal in
+  // coverage-rich ones — exactly the inverse of what the data justifies.
+  //
+  // Correct framing: sparse English coverage means LOW CONFIDENCE in the
+  // observable velocity/threat sub-signals, not a higher inferred underlying
+  // signal. Apply `langFactor` to the WEIGHT of those sub-indicators, not to
+  // the signal value itself. Raw signals flow through unchanged; coverage-poor
+  // countries lean more heavily on the static RSF press-freedom indicator
+  // (which IS coverage-independent and the most reliable annual signal). The
+  // overall dimension `coverage` field also drops for sparse-coverage countries,
+  // surfacing the lower confidence to downstream consumers.
   const langFactor = getLanguageCoverageFactor(countryCode);
-  const adjustedVelocity = velocity > 0 ? Math.min(velocity / Math.max(langFactor, 0.1), 1000) : 0;
-  const adjustedThreat = threatScore != null ? Math.min(threatScore / Math.max(langFactor, 0.1), 100) : null;
 
   return weightedBlend([
     { score: rsfScore == null ? null : normalizeLowerBetter(rsfScore, 0, 100), weight: 0.55 },
-    { score: adjustedVelocity > 0 ? normalizeLowerBetter(Math.log10(adjustedVelocity + 1), 0, 3) : null, weight: 0.15 },
-    { score: adjustedThreat == null ? null : normalizeLowerBetter(adjustedThreat, 0, 20), weight: 0.3 },
+    { score: velocity > 0 ? normalizeLowerBetter(Math.log10(velocity + 1), 0, 3) : null, weight: 0.15 * langFactor },
+    { score: threatScore == null ? null : normalizeLowerBetter(threatScore, 0, 20), weight: 0.30 * langFactor },
   ]);
 }
 

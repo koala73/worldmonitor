@@ -847,10 +847,11 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
   },
 
   // ── informationCognitive (3 sub-metrics) ──────────────────────────────────
-  // Promoted back to Core in T2.9 after language / source-density
-  // normalization landed (getLanguageCoverageFactor in _language-coverage.ts).
-  // Social velocity and news threat scores are now adjusted by the
-  // English-language coverage factor before normalization.
+  // The velocity + news-threat sub-indicators are weight-attenuated by
+  // `getLanguageCoverageFactor` (_language-coverage.ts) so that countries with
+  // sparse English-language news coverage lean more heavily on the static RSF
+  // press-freedom indicator (which is coverage-independent). See #3736 for the
+  // earlier divide-amplification bug this replaced.
   {
     id: 'rsfPressFreedom',
     dimension: 'informationCognitive',
@@ -869,7 +870,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
   {
     id: 'socialVelocity',
     dimension: 'informationCognitive',
-    description: 'Reddit social velocity score (log10(velocity+1)); language-normalized viral narrative stress',
+    description: 'Reddit social velocity score (log10(velocity+1)); sub-indicator weight scales with English-language coverage',
     direction: 'lowerBetter',
     goalposts: { worst: 3, best: 0 },
     weight: 0.15,
@@ -884,7 +885,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
   {
     id: 'newsThreatScore',
     dimension: 'informationCognitive',
-    description: 'AI news threat summary (critical=4x, high=2x, medium=1x, low=0.5x); language-normalized',
+    description: 'AI news threat summary (critical=4x, high=2x, medium=1x, low=0.5x); sub-indicator weight scales with English-language coverage',
     direction: 'lowerBetter',
     goalposts: { worst: 20, best: 0 },
     weight: 0.3,

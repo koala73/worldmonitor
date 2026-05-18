@@ -493,6 +493,39 @@ describe('resilience dimension scorers', () => {
     assert.ok(score.score === 20, `RSF only (no threat, no velocity), got ${score.score}`);
   });
 
+  // Regression for #3736 — the old implementation divided raw velocity/threat
+  // by `langFactor`, amplifying signal for minimal-coverage countries by up to
+  // 5x. The fix attenuates the sub-indicator WEIGHTS by langFactor instead;
+  // raw signal values flow through unchanged. Identical signal payloads must
+  // therefore NOT produce a worse score for a minimal-coverage country.
+  it('scoreInformationCognitive: identical signals do not amplify a minimal-coverage country (#3736)', async () => {
+    // Same RSF + same observable threat signal wired for both US (primary,
+    // langFactor=1.0) and BF (unlisted -> minimal, langFactor=0.2).
+    // `byCountry` is keyed on the actual ISO2 each scorer queries with.
+    const makeReader = (iso: string) => async (key: string): Promise<unknown | null> => {
+      if (key === `resilience:static:${iso}`) return { rsf: { score: 60, rank: 50, year: 2025 } };
+      if (key === 'intelligence:social:reddit:v1') return { posts: [] };
+      if (key === 'news:threat:summary:v1') return {
+        byCountry: { [iso]: { critical: 4, high: 6, medium: 8, low: 4 } },
+        generatedAt: '2026-04-06T00:00:00.000Z',
+      };
+      return null;
+    };
+
+    const primary = await scoreInformationCognitive('US', makeReader('US'));
+    const minimal = await scoreInformationCognitive('BF', makeReader('BF'));
+
+    // The old divide-amplification bug would have driven minimal STRICTLY
+    // WORSE than primary on identical inputs (the same threat score scaled
+    // up 5x for BF). The weight-attenuation fix means minimal can only equal
+    // or score better here, because its threat sub-indicator contributes
+    // less weight and the (identical) RSF score dominates more.
+    assert.ok(
+      minimal.score >= primary.score,
+      `minimal-coverage country must not score worse than primary on identical signals (regression #3736): primary=${primary.score}, minimal=${minimal.score}`,
+    );
+  });
+
   it('scoreBorderSecurity: zero UCDP events still scores (UCDP is global registry)', async () => {
     const reader = async (key: string): Promise<unknown | null> => {
       if (key === 'conflict:ucdp-events:v1') return { events: [] };
