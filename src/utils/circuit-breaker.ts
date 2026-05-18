@@ -378,6 +378,18 @@ export class CircuitBreaker<T> {
           this.markSuccess(now);
           if (shouldCache(result)) {
             this.writeCacheEntry(result, cacheKey, now);
+          } else {
+            // The refresh returned a result that fails shouldCache (e.g. a
+            // degraded/empty response after the upstream broke). EVICT the
+            // existing stale entry so the NEXT call sees no cache, falls
+            // through to the live path, and surfaces the degraded shape to
+            // the user. Without eviction, SWR keeps serving the stale
+            // entry indefinitely because (a) shouldCache passes on read
+            // for the previously-good entry, and (b) every refresh sees
+            // the same condition and silently skips writing again.
+            // (#3795 review-2 P1.)
+            this.evictCacheKey(cacheKey);
+            if (this.persistEnabled) this.deletePersistentCache(cacheKey);
           }
         }).catch(e => {
           console.warn(`[${this.name}] Background refresh failed:`, e);

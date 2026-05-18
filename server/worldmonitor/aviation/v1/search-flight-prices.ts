@@ -72,18 +72,14 @@ export async function searchFlightPrices(
                     error: '',
                 };
             }
-            // Provider call succeeded but had no quotes for this route.
-            // Note: with the current Travelpayouts provider, fetch errors
-            // are caught internally and surfaced as empty data — so this
-            // path also covers upstream failures. The proto's
-            // `upstream_error` value is reserved for synchronous handler
-            // failures (validation crashes, schema mismatches) that bubble
-            // up out of searchPricesTravelpayouts itself.
-            // TODO(#3756 follow-up): teach travelpayouts_data.ts to
-            // distinguish fetch-error vs empty-result and surface that
-            // through a TravelpayoutsResult.upstreamFailed flag, then the
-            // handler can return `upstream_error` for real network/HTTP
-            // failures instead of collapsing them into `no_results`.
+            // Empty quotes: distinguish "upstream HTTP/network error"
+            // (provider sets upstreamFailed=true; cached as NEG_SENTINEL
+            // for 2 min) from "upstream returned a successful empty
+            // payload" (genuine no-results for this route). Without this
+            // distinction a transient outage would get reported as
+            // no_results for the provider's full 1-2h cache TTL. See
+            // #3795 review-2 P2.
+            const error: 'upstream_error' | 'no_results' = result.upstreamFailed ? 'upstream_error' : 'no_results';
             if (demoOptIn) {
                 const quotes = generateDemoPrices(origin, destination, depDate, adults, cabin, nonstopOnly, maxResults, currency);
                 return {
@@ -93,10 +89,10 @@ export async function searchFlightPrices(
                     updatedAt: now,
                     isIndicative: true,
                     degraded: true,
-                    error: 'no_results',
+                    error,
                 };
             }
-            return emptyDegraded(now, 'no_results', 'travelpayouts_data');
+            return emptyDegraded(now, error, 'travelpayouts_data');
         } catch (err) {
             console.warn(`[Aviation] Travelpayouts upstream error: ${err instanceof Error ? err.message : err}`);
             if (demoOptIn) {
