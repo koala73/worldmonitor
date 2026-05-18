@@ -9085,6 +9085,29 @@ const server = http.createServer(async (req, res) => {
 
   if (pathname === '/health' || pathname === '/') {
     const mem = process.memoryUsage();
+    // ⚠ SECURITY — read before adding fields to this response.
+    //
+    // /health is in `isPublicRoute` (no auth check). Fields here are
+    // returned to ANY caller — uptime monitors, attackers probing the
+    // relay, anyone with the URL. Two field categories were intentionally
+    // REMOVED from this response per issue #3802:
+    //
+    //   • `auth: {...}` — `auth.sharedSecretEnabled` was a direct signal
+    //     that the relay was deployed without a configured secret, letting
+    //     an attacker know that follow-up requests would succeed without
+    //     credentials. `auth.authHeader` is technically already exposed
+    //     via the CORS Allow-Headers preflight, but bundling it on /health
+    //     made the attack scenario one-step instead of two.
+    //   • `rateLimit: {...}` — exact windowMs / defaultMax /
+    //     openskyMax / rssMax let an attacker tune scraping cadence to
+    //     stay just under the throttle thresholds.
+    //
+    // Operators inspect auth/rate-limit state via env vars or the Railway
+    // dashboard — they don't need it on /health. If a future legitimate
+    // operator workflow needs them, add an AUTHENTICATED /health/full
+    // route instead of widening the public response. The
+    // `ais-relay-health-no-secret-recon` test source-greps this block to
+    // ensure neither field reappears here.
     sendCompressed(req, res, 200, { 'Content-Type': 'application/json' }, JSON.stringify({
       status: 'ok',
       clients: clients.size,
@@ -9129,22 +9152,6 @@ const server = http.createServer(async (req, res) => {
         polymarket: polymarketCache.size,
         yahooChart: yahooChartCache.size,
         polymarketInflight: polymarketInflight.size,
-      },
-      auth: {
-        // `enabled` is the canonical operator-visible field: true when a
-        // shared secret is configured (which is what isAuthorizedRequest()
-        // actually enforces, regardless of any bypass flag). Use this to
-        // detect a no-auth deployment from monitoring without scraping logs.
-        enabled: !AUTH_EFFECTIVELY_DISABLED,
-        sharedSecretEnabled: !!RELAY_SHARED_SECRET,
-        authHeader: RELAY_AUTH_HEADER,
-        allowVercelPreviewOrigins: ALLOW_VERCEL_PREVIEW_ORIGINS,
-      },
-      rateLimit: {
-        windowMs: RELAY_RATE_LIMIT_WINDOW_MS,
-        defaultMax: RELAY_RATE_LIMIT_MAX,
-        openskyMax: RELAY_OPENSKY_RATE_LIMIT_MAX,
-        rssMax: RELAY_RSS_RATE_LIMIT_MAX,
       },
     }));
   } else if (pathname === '/metrics') {
