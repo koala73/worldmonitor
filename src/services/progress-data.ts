@@ -191,6 +191,11 @@ export async function fetchProgressData(): Promise<ProgressDataResult> {
   return breaker.execute(
     () => fetchProgressDataFresh(),
     fallbackResult(),
+    // Never persist the static fallback — fetchProgressDataFresh swallows
+    // errors and returns a fallback result, which the breaker would otherwise
+    // cache to IndexedDB for the 1h TTL and keep showing the disclosure
+    // banner long after the network recovers.
+    { shouldCache: (result) => result.source !== 'fallback' },
   );
 }
 

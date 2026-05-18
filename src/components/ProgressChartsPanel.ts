@@ -89,7 +89,7 @@ export class ProgressChartsPanel extends Panel {
       fontSize: '11px',
       color: 'var(--text-dim)',
       background: 'var(--bg-subtle, rgba(255,255,255,0.04))',
-      border: '1px solid var(--border-subtle)',
+      border: '1px solid var(--border-subtle, rgba(255,255,255,0.12))',
       borderRadius: '4px',
     });
     banner.textContent = t('components.progressCharts.fallbackBadge');
