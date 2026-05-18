@@ -478,8 +478,9 @@ function cleanSummaryText(raw: string): string {
  *      headline we actually show (stops e.g. headline "Five Italians die
  *      in cave dive" paired with a follow-up's sole-survivor summary).
  *   3. If every outlet truncated its lede, fall back to the one with the
- *      most content after the trailing marker is stripped — so the user
- *      never sees "…" / "Continue reading".
+ *      most content, strip the "Continue reading" CTA / stray separators,
+ *      and end it with a single ellipsis — an honest "cut off here"
+ *      signal, without the CTA noise.
  */
 function pickSummary(members: RawRssItem[], canonical: RawRssItem): string | null {
   const candidates = members
@@ -505,10 +506,12 @@ function pickSummary(members: RawRssItem[], canonical: RawRssItem): string | nul
     return longestClean.raw;
   }
 
-  // Every outlet's lede was truncated — there's no clean alternative, so
-  // strip the marker off whichever has the most real content.
+  // Every outlet's lede was truncated — there's no clean alternative.
+  // Take whichever has the most content, drop the "Continue reading" CTA
+  // / stray separators, and end it with a single ellipsis: an honest
+  // truncation signal instead of the publisher's CTA noise.
   const best = candidates.reduce((a, b) => (b.cleaned.length > a.cleaned.length ? b : a));
-  return best.cleaned;
+  return `${best.cleaned}…`;
 }
 
 /** First non-null image across the cluster, with its photo credit (if
