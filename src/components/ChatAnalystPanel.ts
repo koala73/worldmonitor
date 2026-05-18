@@ -70,6 +70,7 @@ export class ChatAnalystPanel extends Panel {
   private isStreaming = false;
   private messagesEl!: HTMLElement;
   private inputEl: HTMLTextAreaElement | null = null;
+  private contentDelegationAttached = false;
 
   constructor() {
     super({
@@ -138,6 +139,13 @@ export class ChatAnalystPanel extends Panel {
   }
 
   private attachListeners(): void {
+    // Click + keydown are both delegated on this.content (the persistent
+    // panel content div), so attaching exactly once survives every buildUI()
+    // re-render — including the FREE→PRO unlock rebuild path. Re-attaching
+    // would duplicate handlers and fire send() N times per Enter.
+    if (this.contentDelegationAttached) return;
+    this.contentDelegationAttached = true;
+
     this.content.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
 
@@ -163,14 +171,14 @@ export class ChatAnalystPanel extends Panel {
       }
     });
 
-    if (this.inputEl) {
-      this.inputEl.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-          e.preventDefault();
-          this.sendFromInput();
-        }
-      });
-    }
+    this.content.addEventListener('keydown', (e) => {
+      const target = e.target as HTMLElement | null;
+      if (!target || target !== this.inputEl) return;
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        this.sendFromInput();
+      }
+    });
   }
 
   private setDomain(domain: string): void {
@@ -445,6 +453,20 @@ export class ChatAnalystPanel extends Panel {
     a.download = `wm-analyst-session-${Date.now()}.md`;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  // Panel.unlockPanel() does `replaceChildren(this.content)` (empties it)
+  // when a previously-locked panel transitions to unlocked. The chat surface
+  // (chips, messages, quick actions, input row) lives entirely in buildUI()
+  // and is only constructed once in the ctor — without a rebuild here, the
+  // body would stay empty after the FREE→PRO unlock fired by
+  // panel-layout.ts:updatePanelGating(). Re-detect via querySelector so we
+  // only pay the cost when the wipe actually happened.
+  override unlockPanel(): void {
+    super.unlockPanel();
+    if (!this.content.querySelector('.chat-analyst-wrapper')) {
+      this.buildUI();
+    }
   }
 
   override destroy(): void {

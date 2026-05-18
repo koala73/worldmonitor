@@ -233,19 +233,31 @@ http.route({
   path: "/api/telegram-pair-callback",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    // Always return 200 — non-200 triggers Telegram retry storm
+    // Always return 200 — non-200 triggers Telegram retry storm.
+    // Fail closed: drop the update unless the request carries the secret
+    // header set when we registered the webhook. Returning 200 without
+    // processing keeps Telegram from retrying spoofed requests while still
+    // refusing to run the pairing-token claim path on unauthenticated input.
     const secret = process.env.TELEGRAM_WEBHOOK_SECRET ?? "";
-    const provided =
-      request.headers.get("X-Telegram-Bot-Api-Secret-Token") ?? "";
-
-    // Drop only when a secret header IS provided but doesn't match (spoofing).
-    // If the header is absent, Telegram's secret_token registration may have
-    // silently failed — the pairing token (43-char, single-use, 15-min TTL)
-    // provides sufficient defence against token guessing.
-    if (provided && secret && !(await timingSafeEqualStrings(provided, secret))) {
+    if (!secret) {
+      console.error(
+        "[telegram-webhook] TELEGRAM_WEBHOOK_SECRET not configured — rejecting all requests",
+      );
       return new Response("OK", { status: 200 });
     }
-    if (!provided) console.warn("[telegram-webhook] secret header absent — relying on pairing token auth");
+    const provided =
+      request.headers.get("X-Telegram-Bot-Api-Secret-Token") ?? "";
+    if (!provided) {
+      // Helps ops spot webhook re-registration drift (Telegram dropped the
+      // header) without re-enabling the bypass.
+      console.warn(
+        "[telegram-webhook] secret header absent — rejecting request",
+      );
+      return new Response("OK", { status: 200 });
+    }
+    if (!(await timingSafeEqualStrings(provided, secret))) {
+      return new Response("OK", { status: 200 });
+    }
 
     let update: {
       message?: {

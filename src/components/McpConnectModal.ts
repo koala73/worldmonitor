@@ -3,6 +3,7 @@ import { MCP_PRESETS } from '@/services/mcp-store';
 import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
 import { proxyUrl } from '@/utils/proxy';
+import { premiumFetch } from '@/services/premium-fetch';
 import { track } from '@/services/analytics';
 
 interface McpConnectOptions {
@@ -390,7 +391,11 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
       const headers = getEffectiveHeaders();
       const qs = new URLSearchParams({ serverUrl });
       if (Object.keys(headers).length) qs.set('headers', JSON.stringify(headers));
-      const resp = await fetch(`${proxyUrl('/api/mcp-proxy')}?${qs}`, {
+      // premiumFetch attaches the Clerk Pro Bearer for normal web Pro
+      // users. /api/mcp-proxy is in PREMIUM_RPC_PATHS so the path gate
+      // fires; the server-side isCallerPremium check accepts Bearer,
+      // wm_ user keys, and enterprise keys (PR #3768).
+      const resp = await premiumFetch(`${proxyUrl('/api/mcp-proxy')}?${qs}`, {
         signal: AbortSignal.timeout(20_000),
       });
       const data = await resp.json() as { tools?: McpToolDef[]; error?: string };

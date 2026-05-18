@@ -118,12 +118,12 @@ describe('api/mcp.ts — PRO MCP Server', () => {
 
   // --- tools/list ---
 
-  it('tools/list returns 38 tools with name, description, inputSchema', async () => {
+  it('tools/list returns 39 tools with name, description, inputSchema', async () => {
     const res = await handler(makeReq('POST', { jsonrpc: '2.0', id: 2, method: 'tools/list', params: {} }));
     assert.equal(res.status, 200);
     const body = await res.json();
     assert.ok(Array.isArray(body.result?.tools), 'result.tools must be an array');
-    assert.equal(body.result.tools.length, 38, `Expected 38 tools, got ${body.result.tools.length}`);
+    assert.equal(body.result.tools.length, 39, `Expected 39 tools, got ${body.result.tools.length}`);
     for (const tool of body.result.tools) {
       assert.ok(tool.name, 'tool.name must be present');
       assert.ok(tool.description, 'tool.description must be present');
@@ -141,6 +141,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.ok(toolNames.includes('get_consumer_prices'), 'get_consumer_prices must be registered (U4)');
     assert.ok(toolNames.includes('get_tariff_trends'), 'get_tariff_trends must be registered (U5)');
     assert.ok(toolNames.includes('get_chokepoint_status'), 'get_chokepoint_status must be registered (U6)');
+    assert.ok(toolNames.includes('describe_tool'), 'describe_tool must be registered (v1.5.0 schema compression)');
   });
 
   // --- tools/call ---
@@ -2083,6 +2084,20 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
     assert.equal(res.status, 200);
     assert.equal(pipe.count, 1, 'cache-only tool incremented quota');
+  });
+
+  it('v1.5.0: describe_tool for Pro user is EXEMPT from the INCR/DECR daily-quota path (metadata-only)', async () => {
+    const { deps, pipe } = makeProDeps();
+    process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'stub';
+    globalThis.fetch = async () => new Response(JSON.stringify({ result: JSON.stringify({ ok: 1 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    // describe_tool is the v1.5.0 metadata escape hatch. SERVER_INSTRUCTIONS
+    // actively encourages calling it while choosing tools, so it must NOT
+    // consume daily quota — otherwise a Pro user at the 50/day cap can't
+    // even fetch tool definitions. Rate limit (60/min) still applies.
+    const res = await mcpHandler(proReq('POST', callBody('describe_tool', { tool_name: 'get_market_data' })), deps);
+    assert.equal(res.status, 200);
+    assert.equal(pipe.count, 0, 'describe_tool MUST NOT increment the Pro daily quota');
   });
 
   it('integration: signed header for /api/news/v1/list-feed-digest cannot be replayed against /api/intelligence/v1/deduct-situation', async () => {

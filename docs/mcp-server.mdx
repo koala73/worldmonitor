@@ -9,7 +9,7 @@ WorldMonitor exposes its intelligence stack as a [Model Context Protocol](https:
 **Pro and API tiers can both connect via OAuth — no API key required.** Pro subscribers click _"Sign in with WorldMonitor Pro"_ on the consent page; API Starter / Business / Enterprise users may sign in the same way OR paste a `wm_…` key. Free-tier users see a 401 at the OAuth step.
 </Info>
 
-All paid tiers share the same MCP server, the same 38 tools, and the same OAuth flow — they differ only in **daily quotas**. Pro starts at **50 tool calls/day**; API Starter and API Business have generous daily allowances; Enterprise is uncapped. See the [Plans & limits](#plans--limits) table below.
+All paid tiers share the same MCP server, the same 39 tools, and the same OAuth flow — they differ only in **daily quotas**. Pro starts at **50 tool calls/day**; API Starter and API Business have generous daily allowances; Enterprise is uncapped. See the [Plans & limits](#plans--limits) table below. (`describe_tool`, the v1.5.0 metadata-lookup helper, is exempt from the daily quota.)
 
 Pro subscribers can connect Claude Desktop / Cursor / claude.ai without ever pasting an API key — see [Pro sign-in flow](#pro-sign-in-flow) below. API Starter+ holders may continue to paste a `wm_…` key on the consent page (the original flow), or use the same OAuth path as Pro.
 
@@ -24,7 +24,7 @@ Pro subscribers can connect Claude Desktop / Cursor / claude.ai without ever pas
 | `https://api.worldmonitor.app/.well-known/oauth-authorization-server` | AS metadata (RFC 8414) |
 | `https://worldmonitor.app/.well-known/oauth-protected-resource` | Resource server metadata (RFC 9728) |
 
-Protocol version: `2025-03-26`. Server identifier: `worldmonitor` v1.1.0.
+Protocol version: `2025-03-26`. Server identifier: `worldmonitor` v1.5.0.
 
 ## Authentication
 
@@ -161,7 +161,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 
 ## Tool catalog
 
-The server exposes 38 tools. Most are cache-reads over pre-seeded Redis keys (sub-second). Six (`get_world_brief`, `get_country_brief`, `analyze_situation`, `generate_forecasts`, `search_flights`, `search_flight_prices_by_date`) call live LLMs or external APIs and are slower.
+The server exposes 39 tools. Most are cache-reads over pre-seeded Redis keys (sub-second). Six (`get_world_brief`, `get_country_brief`, `analyze_situation`, `generate_forecasts`, `search_flights`, `search_flight_prices_by_date`) call live LLMs or external APIs and are slower. One (`describe_tool`, added v1.5.0) returns the full uncompressed definition of any other tool — useful when the compressed `tools/list` description is ambiguous; exempt from the Pro daily quota.
 
 <Tip>
 For per-tool parameters, freshness budgets, timeouts, and concrete `curl` examples, see the [MCP Tools Reference](/mcp-tools-reference).
@@ -288,7 +288,7 @@ A handful of tools have no entry above because they don't map 1:1 to a public Op
 - **Static in-memory registries** — filter a constant bundled with the MCP server's edge binary, no upstream call at all (e.g. `get_commodity_geo`).
 - **Live tools without a public OpenAPI row** — runtime proxies an HTTP call whose method drifts from the public spec, where a sibling tool already covers the spec-declared method (e.g. `generate_forecasts` POSTs `/api/forecast/v1/get-forecasts` while `get_forecast_predictions` owns the GET).
 
-See the [Tool catalog](#tool-catalog) above for the complete list of 38 tools, or the [MCP Tools Reference](/mcp-tools-reference) for per-tool details.
+See the [Tool catalog](#tool-catalog) above for the complete list of 39 tools, or the [MCP Tools Reference](/mcp-tools-reference) for per-tool details.
 
 <Tip>
 **Reverse lookup** — if you know the API path you want, search this table with Cmd/Ctrl+F. The same data is also queryable via the running server's `tools/list` response, where each tool description names its domain.

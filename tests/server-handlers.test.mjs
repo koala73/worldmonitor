@@ -305,8 +305,10 @@ describe('getSimulationOutcome handler', () => {
   it('populates note when runId supplied but does not match pointer runId', () => {
     assert.match(src, /req\.runId.*pointer\.runId/,
       'Should compare req.runId with pointer.runId for note');
-    assert.match(src, /runId filter not yet active/,
-      'Note text should explain the Phase 3 deferral');
+    // #3734 U6: filter is now actually active. Note text was rewritten to
+    // distinguish "expired beyond 24h retention" from the tombstone path.
+    assert.match(src, /may have expired beyond 24h retention/,
+      'Note text should explain the 24h retention boundary (#3734 U6)');
   });
 
   it('returns redis_unavailable error string on Redis failure', () => {

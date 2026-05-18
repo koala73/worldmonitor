@@ -809,7 +809,11 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     comprehensive: false,
   },
 
-  // ── borderSecurity (2 sub-metrics) ────────────────────────────────────────
+  // ── borderSecurity / "Conflict & Displacement" (2 sub-metrics) ───────────
+  // #3737 — internal id stays `borderSecurity` for proto / cache stability,
+  // but the dimension measures armed-conflict event intensity + refugee
+  // displacement, not border-control infrastructure. User-facing label is
+  // "Conflict" (widget) / "Conflict & Displacement" (methodology doc).
   {
     id: 'ucdpConflict',
     dimension: 'borderSecurity',
@@ -847,10 +851,11 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
   },
 
   // ── informationCognitive (3 sub-metrics) ──────────────────────────────────
-  // Promoted back to Core in T2.9 after language / source-density
-  // normalization landed (getLanguageCoverageFactor in _language-coverage.ts).
-  // Social velocity and news threat scores are now adjusted by the
-  // English-language coverage factor before normalization.
+  // The velocity + news-threat sub-indicators are weight-attenuated by
+  // `getLanguageCoverageFactor` (_language-coverage.ts) so that countries with
+  // sparse English-language news coverage lean more heavily on the static RSF
+  // press-freedom indicator (which is coverage-independent). See #3736 for the
+  // earlier divide-amplification bug this replaced.
   {
     id: 'rsfPressFreedom',
     dimension: 'informationCognitive',
@@ -869,7 +874,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
   {
     id: 'socialVelocity',
     dimension: 'informationCognitive',
-    description: 'Reddit social velocity score (log10(velocity+1)); language-normalized viral narrative stress',
+    description: 'Reddit social velocity score (log10(velocity+1)); sub-indicator weight scales with English-language coverage',
     direction: 'lowerBetter',
     goalposts: { worst: 3, best: 0 },
     weight: 0.15,
@@ -884,7 +889,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
   {
     id: 'newsThreatScore',
     dimension: 'informationCognitive',
-    description: 'AI news threat summary (critical=4x, high=2x, medium=1x, low=0.5x); language-normalized',
+    description: 'AI news threat summary (critical=4x, high=2x, medium=1x, low=0.5x); sub-indicator weight scales with English-language coverage',
     direction: 'lowerBetter',
     goalposts: { worst: 20, best: 0 },
     weight: 0.3,
@@ -1269,7 +1274,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
   {
     id: 'recoveryFuelStockDays',
     dimension: 'fuelStockDays',
-    description: 'RETIRED in PR 3. Legacy days-of-fuel-stock-cover (IEA Oil Stocks / EIA Weekly Petroleum Status). Does not contribute to the score — scoreFuelStockDays returns coverage=0 + imputationClass=null, and the dimension is excluded from confidence/coverage averages via the RESILIENCE_RETIRED_DIMENSIONS registry. Kept in the registry as tier=experimental for structural continuity; a globally-comparable recovery-fuel concept could replace this in a future PR.',
+    description: 'RETIRED in PR 3. Legacy days-of-fuel-stock-cover (IEA Oil Stocks / EIA Weekly Petroleum Status). Does not contribute to the score — scoreFuelStockDays returns coverage=0 + imputationClass=null, and the dimension is excluded from confidence/coverage averages via the RESILIENCE_RETIRED_DIMENSIONS registry. Kept in the registry as tier=experimental for structural continuity; a globally-comparable recovery-fuel concept could replace this in a future PR. NOTE: the seed-recovery-fuel-stocks Railway slot continues to populate `sourceKey` weekly even though scoreFuelStockDays does not read it — the data is preserved so a replacement dimension has historical timeseries to draw on. The matching /api/health probe was removed in PR #3764 because reporting STATUS:OK on data nothing reads was actively misleading.',
     direction: 'higherBetter',
     goalposts: { worst: 0, best: 120 },
     weight: 1.0,

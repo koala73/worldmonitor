@@ -1,8 +1,56 @@
+# Contributor Trust — labels fresh-contributor PRs with a `trust:<verdict>`
+# label sourced from an external scoring service (api.brin.sh).
+#
+# ⚠ SECURITY NOTES — read before editing this workflow ⚠
+#
+# 1. `pull_request_target` is the trigger because we need write access to
+#    add labels on PRs from forks. This is the GitHub-recommended pattern
+#    for "comment/label fork PRs without running their code."
+#    See: https://securitylab.github.com/research/github-actions-preventing-pwn-requests/
+#
+#    DO NOT add `actions/checkout` to this workflow with the PR's head ref
+#    (e.g. `ref: ${{ github.event.pull_request.head.sha }}`). That would
+#    run unreviewed fork code with this workflow's elevated permissions
+#    and access to the GITHUB_TOKEN — a textbook GitHub Actions "pwn
+#    requests" CVE pattern. If you need to inspect PR code, do it in a
+#    separate `pull_request`-triggered workflow that runs with read-only
+#    permissions.
+#
+# 2. The job has `pull-requests: write`, granted at the job level.
+#    Workflow-level permissions default-deny so any future *job*
+#    inherits no privileges by default. GitHub Actions does NOT
+#    support step-level `permissions:` blocks — `permissions:` is
+#    only valid at workflow or job scope. If you need to add a step
+#    that requires different permissions, put it in a NEW JOB with
+#    its own `permissions:` block. Do NOT widen this job's grant.
+#
+# 3. External dependency: `api.brin.sh/contributor/<github-username>`.
+#    No SLA, no response signature, no fallback service. The workflow's
+#    declared fallback policy is: if the call fails, times out, returns
+#    malformed JSON, or returns an unrecognised verdict, the verdict is
+#    `unavailable` and NO label is applied (the second job's `if:` only
+#    matches the four allowlisted verdicts). This is safe because the
+#    label is purely informational — no downstream workflow gates on it
+#    (verified 2026-05-18: `grep -rn "trust:" .github/` returns only
+#    this file). If you wire any merge/auth/permission decision to a
+#    `trust:*` label, this dependency becomes load-bearing and the
+#    threat model must be re-reviewed (see #3813 review notes).
+#
+# 4. AUTHOR is interpolated into the URL path. GitHub usernames are
+#    constrained to `[A-Za-z0-9-]` so URL injection is structurally
+#    impossible; the curl call uses `-sf` and a 10s timeout to fail
+#    closed on any HTTP error.
+
 name: Contributor Trust
 
 on:
   pull_request_target:
     types: [opened, reopened]
+
+# Workflow-level default-deny — every job must explicitly grant any
+# permission it needs. Defense-in-depth against a future job inheriting
+# unintended privileges.
+permissions: {}
 
 jobs:
   check:
@@ -13,6 +61,12 @@ jobs:
       github.event.pull_request.author_association == 'CONTRIBUTOR' ||
       github.event.pull_request.author_association == 'NONE'
     runs-on: ubuntu-latest
+    # Job-level grant applies to every step in this job. The curl step
+    # uses no GITHUB_TOKEN; the label-applying step uses
+    # `pull-requests: write`. GitHub Actions has no step-level
+    # `permissions:` syntax — if a future step needs different
+    # permissions, put it in a NEW JOB with its own `permissions:`
+    # block instead of widening this one. (See workflow-header note 2.)
     permissions:
       pull-requests: write
     steps:

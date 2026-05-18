@@ -92,6 +92,8 @@
               "methodology/storage",
               "methodology/shortages",
               "methodology/disruptions",
+              "methodology/cii-risk-scores",
+              "methodology/disease-alert-level",
               "corrections",
               "geographic-convergence",
               "strategic-risk",

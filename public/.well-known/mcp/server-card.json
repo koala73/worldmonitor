@@ -1,7 +1,7 @@
 {
   "serverInfo": {
     "name": "worldmonitor",
-    "version": "1.4.0",
+    "version": "1.5.0",
     "description": "WorldMonitor's live global-intelligence stack as an MCP server: real-time markets, conflict events, aviation, maritime, energy, climate, health, displacement, supply chain, and AI-generated regional briefs.",
     "vendor": "WorldMonitor",
     "homepage": "https://www.worldmonitor.app"
@@ -17,7 +17,7 @@
     "prompts": false
   },
   "tools": {
-    "count": 38,
+    "count": 39,
     "categories": [
       "markets-economy",
       "energy",
@@ -56,7 +56,7 @@
       "apiBusiness": 10000,
       "enterprise": null
     },
-    "notes": "Per-day quota (dailyByPlan) counts only tools/call — initialize, tools/list, ping, and notifications/initialized are exempt. Per-minute (60/min, per-user on Pro, per-key on API tiers) counts ALL methods, so a tight discovery probe loop on tools/list will still trip the throttle."
+    "notes": "Per-day quota (dailyByPlan) counts only tools/call — initialize, tools/list, ping, and notifications/initialized are exempt. The `describe_tool` tools/call is also exempt (v1.5.0 metadata escape hatch — SERVER_INSTRUCTIONS encourages calling it freely while exploring; otherwise a Pro user at the 50/day cap could not fetch tool definitions). Per-minute (60/min, per-user on Pro, per-key on API tiers) counts ALL methods, so a tight discovery probe loop on tools/list will still trip the throttle."
   },
   "tags": [
     "geopolitical-intelligence",
@@ -76,6 +76,7 @@
     "toolListNote": "Issue a `tools/list` JSON-RPC call against the transport endpoint for the current authoritative tool inventory with input schemas and descriptions."
   },
   "features": {
-    "responseProjection": "jmespath"
+    "responseProjection": "jmespath",
+    "toolDescriptionCompression": true
   }
 }

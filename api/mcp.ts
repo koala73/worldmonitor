@@ -68,9 +68,24 @@ const SERVER_NAME = 'worldmonitor';
 //     ~600 bytes emitted once per session vs ×38 schema-bloat across tools.
 //   - Purely additive — omitting `jmespath` returns the v1.3.0 payload
 //     byte-for-byte. Bundle delta +57.8 KB raw / +9.4 KB gzipped.
+// Bumped 1.4.0 → 1.5.0 (2026-05-18) reflecting:
+//   - tools/list TOOL descriptions are now compressed to ≤120 UTF-8 bytes
+//     (first sentence or byte-truncate). Reduces per-session input-token
+//     cost on session-init. Property descriptions intentionally NOT
+//     compressed in v1 (audit found 53% encode contract details).
+//   - New `describe_tool({tool_name})` RPC returns the full uncompressed
+//     definition on demand. Same public shape as a tools/list entry.
+//   - Both surfaces flow through a single `buildPublicTool` helper —
+//     can never drift. Property schemas + injected SUMMARY_SCHEMA/
+//     JMESPATH_SCHEMA are `structuredClone`'d before injection so the
+//     module-level consts can't be mutated through returned objects.
+//   - Tool count bumped 38 → 39 (describe_tool added).
+//   - Purely additive — omitting all v1.5.0 args returns a compressed
+//     description in tools/list (observable shape change); describe_tool
+//     recovers full text.
 // Keep aligned with public/.well-known/mcp/server-card.json::serverInfo.version
 // — discovery scanners cross-check both values.
-const SERVER_VERSION = '1.4.0';
+const SERVER_VERSION = '1.5.0';
 
 // Universal JMESPath projection caps (v1.4.0) — applied at the dispatch
 // boundary AFTER `_postFilter` and `summary`, before serialization. Two
@@ -90,6 +105,12 @@ export const JMESPATH_MAX_EXPR_BYTES = 1024;
 export const JMESPATH_MAX_OUTPUT_BYTES = 256 * 1024;
 export type JmespathFailKind = 'expression_too_long' | 'projection_too_large' | 'invalid_expression';
 
+// tools/list tool-description compression cap (v1.5.0). Defined here
+// rather than near `compressDescription` so SERVER_INSTRUCTIONS can
+// quote it without a temporal-dead-zone error. The compressDescription
+// helper definition lives later, with the rest of the helpers.
+export const TOOL_DESCRIPTION_MAX_BYTES = 120;
+
 // Session-level discovery instructions. Per MCP 2025-03-26 lifecycle spec,
 // servers MAY return an `instructions` string in the `initialize` result;
 // clients SHOULD surface this to the model. We carry the JMESPath grammar
@@ -106,6 +127,8 @@ const SERVER_INSTRUCTIONS = [
   '  data.advisories[?level==\'warning\'][].title',
   '',
   `Limits: expression ≤ ${JMESPATH_MAX_EXPR_BYTES} bytes; projected payload ≤ ${JMESPATH_MAX_OUTPUT_BYTES} bytes. Failures return {_jmespath_error, original_keys} inside the normal result envelope. Bad expressions DO consume one daily quota unit on retry — original_keys is echoed so you can self-correct in one extra call.`,
+  '',
+  `tools/list returns COMPRESSED tool descriptions (first sentence, ≤${TOOL_DESCRIPTION_MAX_BYTES}B per tool). Call describe_tool({tool_name}) to get the full uncompressed definition for any tool you're considering — especially useful when the compressed entry is ambiguous about behaviour or argument semantics. describe_tool is metadata-only and is EXEMPT from the Pro daily quota (still counts toward the 60/min rate limit), so use it freely while exploring. describe_tool({tool_name: 'nonexistent'}) returns {error: 'unknown_tool', available: [...]} so you can self-correct.`,
 ].join('\n');
 
 // Country-code whitelist for get_consumer_prices. The consumer-prices seeder
@@ -348,6 +371,63 @@ function argBool(v: unknown): boolean {
 // byte definition. Exported for the measurement script.
 export function utf8ByteLength(s: string): number {
   return new TextEncoder().encode(s).length;
+}
+
+// ---------------------------------------------------------------------------
+// tools/list description compression (v1.5.0)
+//
+// `tools/list` is the largest fixed per-session input-token cost. v1.4.0's
+// catalog is ~41.8 KB UTF-8; ~8 KB of that is tool-level `description`
+// prose. The first sentence of a tool description carries nearly all the
+// selection signal — the long tail is rarely load-bearing. Compress the
+// top-level `description` to first-sentence-or-cap; route LLMs that want
+// full text to the new `describe_tool` RPC (added in U3 below).
+//
+// PROPERTY descriptions are NOT compressed in v1 — audit found 53% of
+// them encode contract details (defaults, optional flags, "currently
+// supported" lists, examples) where naive compression would regress
+// correctness. Deferred to a future PR with a per-property hand-audit.
+//
+// Both compress + describe_tool surfaces go through `buildPublicTool`
+// (added in U2) so there's a single source of truth for the public shape.
+// ---------------------------------------------------------------------------
+
+// TOOL_DESCRIPTION_MAX_BYTES is declared above with the version-bump caps
+// block so SERVER_INSTRUCTIONS can quote it without a TDZ. Referenced here
+// by compressDescription's default call sites.
+
+// Compress a description string to at most `maxBytes` UTF-8 bytes.
+// - If the text already fits, returns it unchanged (identity).
+// - Otherwise, extracts the first sentence (terminated by `. ! ?` followed
+//   by whitespace or end-of-string) and truncates to the byte cap.
+// - If no sentence boundary exists, falls back to plain byte truncation.
+// - Never cuts inside a UTF-8 codepoint (uses TextEncoder bytewise walk).
+//
+// Pure, no I/O. Pure function; idempotent.
+export function compressDescription(text: string, maxBytes: number): string {
+  if (typeof text !== 'string' || text.length === 0) return text;
+  if (utf8ByteLength(text) <= maxBytes) return text;
+  // First-sentence extraction. The /(?:\s|$)/ tail prevents `e.g.` / `i.e.`
+  // mis-splits when the abbreviation is mid-sentence (followed by ` ` not
+  // `<EOL>`), though it does still split on a leading `e.g. ...` — that
+  // edge case is documented in U1 test scenarios. Tool descriptions in
+  // TOOL_REGISTRY don't start with abbreviations, audited at write-time.
+  const sentenceMatch = text.match(/^[\s\S]+?[.!?](?:\s|$)/);
+  const candidate = sentenceMatch ? sentenceMatch[0].trim() : text;
+  if (utf8ByteLength(candidate) <= maxBytes) return candidate;
+  // Byte-truncate without splitting a codepoint mid-cut. TextEncoder
+  // produces one byte per UTF-8 byte; walk codepoints forward and stop
+  // when adding the next would exceed maxBytes.
+  const encoder = new TextEncoder();
+  let out = '';
+  let used = 0;
+  for (const ch of candidate) {
+    const chBytes = encoder.encode(ch).length;
+    if (used + chBytes > maxBytes) break;
+    out += ch;
+    used += chBytes;
+  }
+  return out;
 }
 
 // Defensive snapshot of the top-level keys / shape of an unprojected value.
@@ -749,13 +829,13 @@ const TOOL_REGISTRY: ToolDef[] = [
       'conflict:ucdp-events:v1',
       'conflict:iran-events:v1',
       'unrest:events:v1',
-      'risk:scores:sebuf:stale:v1',
+      'risk:scores:sebuf:stale:v2',
     ],
     _seedMetaKey: 'seed-meta:conflict:ucdp-events',
     _maxStaleMin: 30,
     // NOTE: `GET /api/intelligence/v1/get-risk-scores` is NOT covered here.
     // The audit-time hint matched on 3 keys (conflict:ucdp-events:v1,
-    // conflict:iran-events:v1, risk:scores:sebuf:stale:v1) but the handler at
+    // conflict:iran-events:v1, risk:scores:sebuf:stale:v2) but the handler at
     // server/worldmonitor/intelligence/v1/get-risk-scores.ts:242-256 reads 12
     // cross-domain keys (infra outages, climate anomalies, cyber threats,
     // wildfires, GPS jamming, OREF history, security advisories, displacement,
@@ -794,7 +874,7 @@ const TOOL_REGISTRY: ToolDef[] = [
       capNested(data, 'delays-bootstrap', 'alerts', (argNum(params.limit) ?? DEFAULT_LIST_LIMIT));
       return data;
     },
-    _cacheKeys: ['aviation:delays-bootstrap:v1'],
+    _cacheKeys: ['aviation:delays-bootstrap:v2'],
     _seedMetaKey: 'seed-meta:aviation:faa',
     _maxStaleMin: 90,
     _apiPaths: [],
@@ -2428,6 +2508,40 @@ const TOOL_REGISTRY: ToolDef[] = [
     },
     _apiPaths: [],
   },
+  {
+    // describe_tool (v1.5.0) — on-demand escape hatch for the full
+    // uncompressed tool definition. tools/list (default) emits each tool's
+    // description compressed to ≤TOOL_DESCRIPTION_MAX_BYTES (first sentence
+    // or byte-truncated); the LLM calls describe_tool with a tool_name to
+    // get the full v1.4.0-shape tool object — same public shape, just with
+    // long-form text in `description`. Uses the SAME buildPublicTool helper
+    // as tools/list so the two surfaces can never drift.
+    name: 'describe_tool',
+    description: 'Return the full uncompressed definition of one tool by name. Use when the compressed tools/list entry is ambiguous about behaviour or argument semantics.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        tool_name: { type: 'string', description: 'Exact tool name from tools/list.' },
+      },
+      required: ['tool_name'],
+    },
+    _execute: async (params: Record<string, unknown>) => {
+      const name = params.tool_name;
+      if (typeof name !== 'string' || name.length === 0) {
+        return { error: 'missing_tool_name', hint: 'Pass tool_name as a non-empty string matching a tool from tools/list.' };
+      }
+      const tool = TOOL_REGISTRY.find((t) => t.name === name);
+      if (!tool) {
+        return {
+          error: 'unknown_tool',
+          requested: name,
+          available: TOOL_REGISTRY.map((t) => t.name).sort(),
+        };
+      }
+      return buildPublicTool(tool, { compressDescriptions: false });
+    },
+    _apiPaths: [],
+  },
 ];
 
 // Public shape for tools/list — strips internal _-prefixed fields, adds MCP
@@ -2463,20 +2577,72 @@ for (const tool of TOOL_REGISTRY) {
   }
 }
 
-const TOOL_LIST_RESPONSE = TOOL_REGISTRY.map((tool) => {
+// Shared public-shape builder (v1.5.0). SINGLE source of truth for what
+// `tools/list` and `describe_tool` emit. Both surfaces go through this
+// helper so they can never drift.
+//
+// Always recursively deep-clones property schemas AND the injected
+// SUMMARY_SCHEMA / JMESPATH_SCHEMA consts via `structuredClone`. Without
+// this, mutating any returned property (including nested `enum` / `items.enum`
+// arrays, e.g. `get_market_data.asset_classes.items.enum`) would corrupt
+// the registry or the module-level schema consts. Codex Round 2 explicitly
+// flagged shallow `{ ...prop }` as insufficient for these shapes.
+//
+// `_*`-prefixed internal fields (_apiPaths, _cacheKeys, _seedMetaKey,
+// _maxStaleMin, _freshnessChecks, _coverageKeys, _postFilter, _execute)
+// are NEVER enumerated — the function only constructs a fresh object with
+// the public-shape fields (name, description, inputSchema, annotations).
+//
+// `opts.compressDescriptions` — when true (the tools/list call path),
+// the tool's top-level `description` is run through compressDescription.
+// When false (the describe_tool call path), full text is preserved.
+export interface PublicToolShape {
+  name: string;
+  description: string;
+  inputSchema: { type: string; properties: Record<string, unknown>; required: string[] };
+  annotations: { readOnlyHint: boolean; openWorldHint: boolean };
+}
+
+export function buildPublicTool(
+  tool: ToolDef,
+  opts: { compressDescriptions: boolean },
+): PublicToolShape {
   const isCacheTool = tool._execute === undefined;
-  // `summary` is cache-only (RPC responses are bespoke and don't summarize
-  // uniformly). `jmespath` is universal (projection is shape-agnostic).
-  const properties = isCacheTool
-    ? { ...tool.inputSchema.properties, summary: SUMMARY_SCHEMA, jmespath: JMESPATH_SCHEMA }
-    : { ...tool.inputSchema.properties, jmespath: JMESPATH_SCHEMA };
+
+  // Recursively clone each property schema. Handles direct `enum: [...]`
+  // arrays (e.g. api/mcp.ts:810) and nested `items.enum: [...]` arrays
+  // (e.g. api/mcp.ts:655) — both present in TOOL_REGISTRY. `structuredClone`
+  // is a Web Platform global on Vercel edge + Node 18+ (no polyfill needed).
+  const clonedProperties: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(tool.inputSchema.properties)) {
+    clonedProperties[key] = structuredClone(value);
+  }
+
+  // Inject the universal schemas as CLONES, not bare references, so that
+  // mutating `result.inputSchema.properties.jmespath.description` doesn't
+  // corrupt the module-level JMESPATH_SCHEMA const.
+  if (isCacheTool) {
+    clonedProperties.summary = structuredClone(SUMMARY_SCHEMA);
+  }
+  clonedProperties.jmespath = structuredClone(JMESPATH_SCHEMA);
+
+  const description = opts.compressDescriptions
+    ? compressDescription(tool.description, TOOL_DESCRIPTION_MAX_BYTES)
+    : tool.description;
+
   return {
     name: tool.name,
-    description: tool.description,
-    inputSchema: { ...tool.inputSchema, properties },
+    description,
+    inputSchema: {
+      type: tool.inputSchema.type,
+      properties: clonedProperties,
+      required: [...tool.inputSchema.required],
+    },
     annotations: { readOnlyHint: true, openWorldHint: true },
   };
-});
+}
+
+const TOOL_LIST_RESPONSE = TOOL_REGISTRY.map((tool) => buildPublicTool(tool, { compressDescriptions: true }));
 
 // ---------------------------------------------------------------------------
 // JSON-RPC helpers
@@ -2909,9 +3075,17 @@ async function dispatchToolsCall(
     return rpcError(id, -32602, `Unknown tool: ${p.name}`);
   }
 
-  // Pro-only INCR-first reservation. Both cache-only AND RPC tools count.
+  // Pro-only INCR-first reservation. Both cache-only AND RPC tools count
+  // toward the daily 50/day cap — EXCEPT `describe_tool` (v1.5.0), which
+  // is metadata-only and is actively encouraged by SERVER_INSTRUCTIONS
+  // when the compressed tools/list entry is ambiguous. Charging quota for
+  // schema lookups would (a) discourage the LLM from using it, defeating
+  // the v1.5.0 compression's UX hedge, and (b) lock out Pro users at the
+  // 50/day cap from even seeing tool definitions. Exempt by name; rate-
+  // limiter (60/min) still applies as the abuse guard.
+  const isMetadataTool = p.name === 'describe_tool';
   let proRollback: (() => Promise<void>) | null = null;
-  if (context.kind === 'pro') {
+  if (context.kind === 'pro' && !isMetadataTool) {
     const reservation = await reserveQuota(context.userId, deps.redisPipeline);
     if (!reservation.ok) {
       if (reservation.reason === 'cap-exceeded') {

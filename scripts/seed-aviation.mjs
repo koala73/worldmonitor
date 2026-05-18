@@ -52,7 +52,10 @@ const NEWS_KEY         = 'aviation:news::24:v1';
 // list-airport-delays.ts — quiet user windows >30min would let it expire, tripping
 // EMPTY (CRIT) even with healthy upstream feeds. Now produced canonically by this
 // seeder; RPC keeps its write at the same TTL as a courtesy mid-tick refresh.
-const BOOTSTRAP_KEY = 'aviation:delays-bootstrap:v1';
+// #3707: bumped to v2 after the UNKNOWN-row coverage fix so post-deploy clients
+// don't briefly see pre-fix cached payloads that synthesise NORMAL rows for
+// uncovered airports.
+const BOOTSTRAP_KEY = 'aviation:delays-bootstrap:v2';
 
 const INTL_TTL      = 10_800; // 3h — survives ~5 consecutive missed 30min cron ticks
 const FAA_TTL       = 7_200;  // 2h

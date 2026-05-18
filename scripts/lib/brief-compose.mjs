@@ -544,10 +544,43 @@ export function stripHeadlinePrefix(title) {
  * field; `digestStoryToUpstreamTopStory` + `filterTopStories` defaults
  * fill it). `category` IS carried on story:track:v1 (persisted by
  * buildStoryTrackHsetFields, defensive empty-string on missing), passed
- * through buildDigest's stories.push, and word-wise Title-Cased once in
- * shared/brief-filter.js at envelope build. On pre-PR residue rows
- * where category is absent, filterTopStories' `|| 'General'` fallback
- * fires and the value reaches here as 'General'.
+ * through buildDigest's stories.push, and reaches this function as the
+ * canonical lowercase EventCategory enum value (`'conflict'`, `'health'`,
+ * `'diplomatic'`, …).
+ *
+ * Two fallback layers for pre-stamp residue rows where category is
+ * absent — note that THIS function does NOT go through filterTopStories,
+ * so its local guard is load-bearing, not redundant:
+ *   1. **Local guard at the `category:` field write below**
+ *      (`typeof s?.category === 'string' ? s.category : 'General'`).
+ *      Fires for the synthesis-prompt path — the LLM prompt always
+ *      receives a non-empty string even when the upstream `s` has no
+ *      category field (rare in steady state; possible during the
+ *      48h-accumulator post-deploy residue window per PR #3751).
+ *   2. **filterTopStories' `asTrimmedString(raw.category) || 'General'`
+ *      at `shared/brief-filter.js:384`.** Fires for the envelope/display
+ *      path, which is a separate consumer that reads from the same
+ *      upstream story shape but takes a different code route.
+ * Removing either guard leaves the corresponding path exposed to
+ * residue rows on deploy.
+ *
+ * Intentional case divergence between synthesis and display paths
+ * (issue #3752):
+ *   - **This function** feeds the LLM synthesis prompt
+ *     (`buildDigestPrompt` in scripts/lib/brief-llm.mjs). The prompt
+ *     uses the canonical lowercase enum value as a semantic anchor for
+ *     LLM pattern-matching — the model's training distribution sees
+ *     category labels as bare nouns more often than Title-Cased
+ *     headings, so feeding `'conflict'` is the cleaner signal than
+ *     feeding `'Conflict'`.
+ *   - **The envelope/display path** goes through filterTopStories'
+ *     `out.push` (`shared/brief-filter.js`) where `titleCase` runs
+ *     once to produce `'Conflict'` for the threads card,
+ *     magazine story-page, and public-thread fallback stub. Display
+ *     surfaces want human readability.
+ * Both paths read from the same upstream `s.category` (lowercase); the
+ * divergence is downstream and load-bearing for each consumer's needs.
+ * If you change one site, audit the other.
  *
  * @param {object} s — digest-shaped story from buildDigest()
  * @returns {{ headline: string; threatLevel: string; source: string; category: string; country: string; hash: string }}
@@ -577,6 +610,10 @@ export function digestStoryToSynthesisShape(s) {
     headline: sanitizeHeadline(cleanTitle),
     threatLevel: typeof s?.severity === 'string' ? s.severity : '',
     source: sanitizeForPrompt(primarySource),
+    // `s.category` is the canonical lowercase EventCategory enum value
+    // here (synthesis-prompt path uses lowercase as semantic anchor;
+    // display path Title-Cases at the envelope-build site). See the
+    // function doc above for the case-divergence rationale (#3752).
     category: sanitizeForPrompt(typeof s?.category === 'string' ? s.category : 'General'),
     country: sanitizeForPrompt(typeof s?.countryCode === 'string' ? s.countryCode : 'Global'),
     hash: typeof s?.hash === 'string' ? s.hash : '',

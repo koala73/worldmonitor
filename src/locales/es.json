@@ -2095,7 +2095,7 @@
       "infoTooltip": "<strong>Monitores de palabras clave</strong> Añada cualquier término para rastrear menciones en noticias en tiempo real en todas las fuentes de WorldMonitor. Los resultados se actualizan en tiempo real conforme se ingieren artículos coincidentes."
     },
     "renewable": {
-      "infoTooltip": "<strong>Energía renovable</strong> Cartera global de proyectos de energía renovable: adiciones de capacidad solar, eólica, hidráulica y de almacenamiento. Rastrea proyectos anunciados, en construcción y comisionados por región y tipo de tecnología."
+      "infoTooltip": "<strong>Energía renovable</strong> Cuota de las renovables en la generación de electricidad por región y año, más la capacidad instalada en EE. UU. de solar, eólica y carbón (MW). Fuentes: Banco Mundial (EG.ELC.RNEW.ZS) y EIA."
     },
     "socialVelocity": {
       "infoTooltip": "<strong>Velocidad social</strong> Temas en tendencia y contenido viral con significado geopolítico. Mide la velocidad en redes sociales: qué tan rápido se propaga una historia respecto a la línea base. Ayuda a identificar narrativas emergentes antes de que lleguen a los medios convencionales."

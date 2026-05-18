@@ -316,6 +316,66 @@ describe('buildDigestPrompt', () => {
     assert.match(system, /rankedStoryHashes/);
   });
 
+  it('forbids weak stitching connectives in the lead (anti-conflation, v8)', () => {
+    // Regression guard for the May 17 brief that shipped a lead stapling
+    // unrelated Ebola + Israel-Lebanon stories with "This declaration comes
+    // as…". The prompt must explicitly call out the banned phrases AND
+    // instruct the model to lead with one primary story when two top
+    // stories aren't substantively linked.
+    const { system } = buildDigestPrompt([story()], 'critical');
+
+    // 1. The lead instruction must mention the anti-stitching guidance.
+    assert.match(
+      system,
+      /staple unrelated stories together using weak temporal connectives/i,
+      'lead instruction must call out weak temporal stitching',
+    );
+
+    // 2. The dedicated BANNED stitching section must exist. Extract just
+    //    that section so the per-phrase assertions cannot pass on
+    //    duplicate mentions in the lead-field instruction text. The
+    //    section runs from `BANNED stitching phrases` up to the next
+    //    instruction bullet (`Threads:`), matching the prompt layout.
+    const stitchingSectionMatch = system.match(
+      /BANNED stitching phrases[\s\S]*?(?=\nThreads:)/,
+    );
+    assert.ok(
+      stitchingSectionMatch,
+      'banned-stitching section must be present and bounded by the next instruction bullet (Threads:)',
+    );
+    const stitchingSection = stitchingSectionMatch[0].toLowerCase();
+
+    // All 10 banned phrases must appear in the dedicated section, not just
+    // in the lead-field instruction prose. If a phrase is removed from the
+    // banned section (or only ever lived in the lead-instruction list),
+    // the model loses the explicit BANNED signal and this assertion fires.
+    for (const phrase of [
+      'this comes as',
+      'this declaration comes as',
+      'this announcement comes as',
+      'meanwhile',
+      'at the same time',
+      'in other news',
+      'elsewhere',
+      'across the world',
+      'on another front',
+      'in a separate development',
+    ]) {
+      assert.ok(
+        stitchingSection.includes(`"${phrase}"`),
+        `banned-stitching section must list "${phrase}"`,
+      );
+    }
+
+    // 3. The substantive-link allowlist must explain when a second story
+    //    can be referenced, so the model can tell linkage from stitching.
+    assert.match(
+      system,
+      /shared actor|causal connection|same geographic theatre/i,
+      'lead instruction must define what counts as a substantive link',
+    );
+  });
+
   it('appends the date-grounding line to the system prompt (F6)', () => {
     // Injected todayIso → deterministic assertion.
     const injected = buildDigestPrompt([story()], 'critical', { todayIso: '2026-05-14' });
@@ -512,7 +572,7 @@ describe('generateDigestProse', () => {
     const llm1 = makeLLM(validJson);
     await generateDigestProse('user_a', stories, 'all', { ...cache, callLLM: llm1.callLLM });
 
-    const badKey = [...cache.store.keys()].find((k) => k.startsWith('brief:llm:digest:v7:'));
+    const badKey = [...cache.store.keys()].find((k) => k.startsWith('brief:llm:digest:v8:'));
     assert.ok(badKey, 'expected a digest prose cache entry');
     // Overwrite with a payload whose content has zero proper-noun
     // overlap with `stories` (Iran Hormuz / Gaza). Shape is impeccable.
@@ -542,7 +602,7 @@ describe('generateDigestProse', () => {
     // (2026-05-14) when buildDigestPrompt gained the F6 date-grounding
     // line. v4 rows ignored at v5 rollout; v5 rows ignored at v6
     // rollout — see generateDigestProse header comment.
-    const badKey = [...cache.store.keys()].find((k) => k.startsWith('brief:llm:digest:v7:'));
+    const badKey = [...cache.store.keys()].find((k) => k.startsWith('brief:llm:digest:v8:'));
     assert.ok(badKey, 'expected a digest prose cache entry');
     cache.store.set(badKey, { lead: 'short', /* missing threads + signals */ });
     const llm2 = makeLLM(validJson);
@@ -1174,12 +1234,13 @@ describe('generateDigestProsePublic — public cache shared across users', () =>
     assert.equal(llm2.calls.length, 1, 'profile change re-keys the cache');
   });
 
-  it('writes to cache under brief:llm:digest:v7 prefix (v6/v5/v4/v3/v2 evicted)', async () => {
+  it('writes to cache under brief:llm:digest:v8 prefix (v7/v6/v5/v4/v3/v2 evicted)', async () => {
     const cache = makeCache();
     const llm = makeLLM(validJson);
     await generateDigestProse('user_a', stories, 'all', { ...cache, callLLM: llm.callLLM });
     const keys = [...cache.store.keys()];
-    assert.ok(keys.some((k) => k.startsWith('brief:llm:digest:v7:')), 'v7 prefix used');
+    assert.ok(keys.some((k) => k.startsWith('brief:llm:digest:v8:')), 'v8 prefix used');
+    assert.ok(!keys.some((k) => k.startsWith('brief:llm:digest:v7:')), 'no v7 writes (bumped for anti-stitching prompt — May 2026)');
     assert.ok(!keys.some((k) => k.startsWith('brief:llm:digest:v6:')), 'no v6 writes (bumped for category persistence — PR #3751)');
     assert.ok(!keys.some((k) => k.startsWith('brief:llm:digest:v5:')), 'no v5 writes');
     assert.ok(!keys.some((k) => k.startsWith('brief:llm:digest:v4:')), 'no v4 writes');

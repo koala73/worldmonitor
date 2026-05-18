@@ -69,7 +69,7 @@ export const GAS_STORAGE_KEY_PREFIX = 'energy:gas-storage:v1:';
 export const GAS_STORAGE_COUNTRIES_KEY = 'energy:gas-storage:v1:_countries';
 export const ELECTRICITY_KEY_PREFIX = 'energy:electricity:v1:';
 export const ELECTRICITY_INDEX_KEY = 'energy:electricity:v1:index';
-export const ENERGY_INTELLIGENCE_KEY = 'energy:intelligence:v1:feed';
+export const ENERGY_INTELLIGENCE_KEY = 'energy:intelligence:feed:v1';
 export const CHOKEPOINT_FLOWS_KEY = 'energy:chokepoint-flows:v1';
 export const ENERGY_SPINE_KEY_PREFIX = 'energy:spine:v1:';
 export const ENERGY_SPINE_COUNTRIES_KEY = 'energy:spine:v1:_countries';
@@ -173,9 +173,9 @@ export const BOOTSTRAP_CACHE_KEYS: Record<string, string> = {
   renewableEnergy:  'economic:worldbank-renewable:v1',
   positiveGeoEvents: 'positive_events:geo-bootstrap:v1',
   theaterPosture:   'theater_posture:sebuf:stale:v1',
-  riskScores:       'risk:scores:sebuf:stale:v1',
+  riskScores:       'risk:scores:sebuf:stale:v2',
   naturalEvents:    'natural:events:v1',
-  flightDelays:     'aviation:delays-bootstrap:v1',
+  flightDelays:     'aviation:delays-bootstrap:v2',
   insights:         'news:insights:v1',
   predictions:      'prediction:markets-bootstrap:v1',
   cryptoQuotes:     'market:crypto:v1',

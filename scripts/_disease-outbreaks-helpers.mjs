@@ -62,10 +62,33 @@ export function extractLocationFromTitle(title) {
   return '';
 }
 
+// Editorial keyword classifier — NOT derived from a published index.
+// Maps disease-outbreak titles/descriptions to a 3-level severity bucket
+// (alert / warning / watch) by matching whole-word keywords. Last reviewed
+// 2026-05-18. See docs/methodology/disease-alert-level.mdx and #3791 for the
+// rationale, known limitations, and the change protocol if you adjust these.
+//
+// Word boundaries are mandatory: prior substring matching let "epidemic" fire
+// inside "antiepidemic" and "spread" fire inside "widespread vaccination",
+// silently over-promoting items to a higher alert level.
+//
+// Prefixed `DISEASE_` to avoid collision with the unrelated geopolitical
+// `ALERT_KEYWORDS` export in src/config/feeds.ts (war/invasion/nuclear).
+/** Callers MUST use the exported `DISEASE_ALERT_RE` regex, not substring matching (#3791). */
+export const DISEASE_ALERT_KEYWORDS = Object.freeze(['outbreak', 'emergency', 'epidemic', 'pandemic']);
+/** Callers MUST use the exported `DISEASE_WARNING_RE` regex, not substring matching (#3791). */
+export const DISEASE_WARNING_KEYWORDS = Object.freeze(['warning', 'spread', 'cases increasing']);
+export const ALERT_LEVEL_METHODOLOGY_VERSION = 'v1';
+
+// Precompiled regexes exposed so external callers don't reach for
+// `text.includes(kw)` and silently re-introduce the substring bug.
+export const DISEASE_ALERT_RE = new RegExp(`\\b(?:${DISEASE_ALERT_KEYWORDS.join('|')})\\b`, 'i');
+export const DISEASE_WARNING_RE = new RegExp(`\\b(?:${DISEASE_WARNING_KEYWORDS.join('|')})\\b`, 'i');
+
 export function detectAlertLevel(title, desc) {
-  const text = `${title} ${desc}`.toLowerCase();
-  if (text.includes('outbreak') || text.includes('emergency') || text.includes('epidemic') || text.includes('pandemic')) return 'alert';
-  if (text.includes('warning') || text.includes('spread') || text.includes('cases increasing')) return 'warning';
+  const text = `${title ?? ''} ${desc ?? ''}`;
+  if (DISEASE_ALERT_RE.test(text)) return 'alert';
+  if (DISEASE_WARNING_RE.test(text)) return 'warning';
   return 'watch';
 }
 

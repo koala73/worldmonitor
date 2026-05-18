@@ -16,17 +16,31 @@ git clone https://github.com/koala73/worldmonitor.git
 cd worldmonitor
 npm install
 
-# 2. Start the stack
+# 2. Set the REQUIRED secret used to authenticate the AIS relay (see below).
+#    Without this the ais-relay container will exit at startup.
+echo "RELAY_SHARED_SECRET=$(openssl rand -hex 32)" >> .env
+
+# 3. Start the stack
 docker compose up -d        # or: uvx podman-compose up -d
 
-# 3. Seed data into Redis
+# 4. Seed data into Redis
 ./scripts/run-seeders.sh
 
-# 4. Open the dashboard
+# 5. Open the dashboard
 open http://localhost:3000
 ```
 
 The dashboard works out of the box with public data sources (earthquakes, weather, conflicts, etc.). API keys unlock additional data feeds.
+
+## 🔐 Required Environment Variables
+
+These must be set before `docker compose up -d`, or the relay container will exit on boot.
+
+| Variable | Purpose | How to generate |
+| --- | --- | --- |
+| `RELAY_SHARED_SECRET` | Authenticates every non-public request the dashboard makes to the AIS relay. The relay refuses to start without it. | `openssl rand -hex 32` |
+
+> Need to bring the relay up without auth for local debugging? Set `I_UNDERSTAND_THIS_DISABLES_AUTH=true` (the deprecated `ALLOW_UNAUTHENTICATED_RELAY=true` is still accepted). The relay will log a loud `[SECURITY]` warning at boot and every 5 minutes, and every non-public route will be reachable by anyone who can hit the port — **never use this on an internet-reachable host.**
 
 ## 🔑 API Keys
 
@@ -49,7 +63,7 @@ services:
       ACLED_ACCESS_TOKEN: ""      # https://acleddata.com (free for researchers)
 
       # 🛰️ Earth Observation
-      NASA_FIRMS_API_KEY: ""      # https://firms.modaps.eosdis.nasa.gov (free)
+      NASA_FIRMS_API_KEY: ""      # REQUIRED for seed-fire-detections.mjs — https://firms.modaps.eosdis.nasa.gov (free)
 
       # ✈️ Aviation
       AVIATIONSTACK_API: ""       # https://aviationstack.com (free tier)

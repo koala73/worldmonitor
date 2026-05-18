@@ -185,6 +185,12 @@ async function fetchTp<T>(url: string, token: string): Promise<T | null> {
 export interface TravelpayoutsResult {
     quotes: PriceQuote[];
     isDemoMode: false;
+    // True when the underlying HTTP/network call failed (fetchTp returned
+    // null) — distinct from a successful upstream call that returned an
+    // empty `data` array (genuine no-results for this route). The
+    // search-flight-prices handler uses this to surface error:'upstream_error'
+    // vs error:'no_results'. See issue #3756 and the #3795 review-2 follow-up.
+    upstreamFailed: boolean;
 }
 
 export async function searchPricesTravelpayouts(opts: {
@@ -214,6 +220,15 @@ export async function searchPricesTravelpayouts(opts: {
     const isMonthPrecision = /^\d{4}-\d{2}$/.test(departureDate);
 
     let quotes: PriceQuote[] = [];
+    // Track whether the underlying fetchTp call returned null (upstream
+    // HTTP/network failure). Pre-#3795-review-2, the fetcher wrapper did
+    // `.then(d => d ?? [])`, converting null to [], which (a) caused
+    // cachedFetchJson to write the empty array to Redis with the normal
+    // 1-hour TTL instead of the 2-minute NEG_SENTINEL TTL, and (b) hid
+    // the upstream failure from the handler. Now we pass null through
+    // unchanged so cachedFetchJson short-caches the NEG_SENTINEL and we
+    // can distinguish upstream failure from genuine no-results.
+    let upstreamFailed = false;
 
     if (isDayPrecision) {
         // v3: prices_for_dates
@@ -234,10 +249,10 @@ export async function searchPricesTravelpayouts(opts: {
         const cacheKey = `tp:v3:${origin}:${destination}:${departureDate}:${returnDate}:${cabin}:${currency_}:v1`;
         const data = await cachedFetchJson<TpV3Ticket[]>(cacheKey, 3600, () =>
             fetchTp<TpV3Ticket[]>(`${BASE_V3}/prices_for_dates?${params}`, token)
-                .then(d => d ?? [])
         );
 
-        quotes = (data ?? []).slice(0, maxResults).map(t => fromV3(t, origin, destination, currency_, cabin, now));
+        if (data === null) upstreamFailed = true;
+        else quotes = data.slice(0, maxResults).map(t => fromV3(t, origin, destination, currency_, cabin, now));
     } else if (isMonthPrecision) {
         // v2: month-matrix
         const params = new URLSearchParams({
@@ -252,12 +267,14 @@ export async function searchPricesTravelpayouts(opts: {
         const cacheKey = `tp:month:${origin}:${destination}:${departureDate}:${cabin}:${currency_}:v1`;
         const data = await cachedFetchJson<TpMonthMatrixTicket[]>(cacheKey, 7200, () =>
             fetchTp<TpMonthMatrixTicket[]>(`${BASE_V2}/month-matrix?${params}`, token)
-                .then(d => d ?? [])
         );
 
-        let rows = data ?? [];
-        if (nonstopOnly) rows = rows.filter(r => (r.number_of_changes ?? 0) === 0);
-        quotes = rows.slice(0, maxResults).map(t => fromMonthMatrix(t, origin, destination, currency_, now));
+        if (data === null) {
+            upstreamFailed = true;
+        } else {
+            const rows = nonstopOnly ? data.filter(r => (r.number_of_changes ?? 0) === 0) : data;
+            quotes = rows.slice(0, maxResults).map(t => fromMonthMatrix(t, origin, destination, currency_, now));
+        }
     } else {
         // v2: latest
         const params = new URLSearchParams({
@@ -275,12 +292,14 @@ export async function searchPricesTravelpayouts(opts: {
         const cacheKey = `tp:latest:${origin}:${destination}:${cabin}:${currency_}:v1`;
         const data = await cachedFetchJson<TpLatestTicket[]>(cacheKey, 3600, () =>
             fetchTp<TpLatestTicket[]>(`${BASE_V2}/latest?${params}`, token)
-                .then(d => d ?? [])
         );
 
-        let rows = data ?? [];
-        if (nonstopOnly) rows = rows.filter(r => (r.number_of_changes ?? 0) === 0);
-        quotes = rows.slice(0, maxResults).map(t => fromLatest(t, origin, destination, currency_, now));
+        if (data === null) {
+            upstreamFailed = true;
+        } else {
+            const rows = nonstopOnly ? data.filter(r => (r.number_of_changes ?? 0) === 0) : data;
+            quotes = rows.slice(0, maxResults).map(t => fromLatest(t, origin, destination, currency_, now));
+        }
     }
 
     // Save 7-day price snapshot for diff display
@@ -292,7 +311,7 @@ export async function searchPricesTravelpayouts(opts: {
         }));
     } catch { /* non-critical */ }
 
-    return { quotes, isDemoMode: false };
+    return { quotes, isDemoMode: false, upstreamFailed };
 }
 
 function inferMarket(originIata: string): string {

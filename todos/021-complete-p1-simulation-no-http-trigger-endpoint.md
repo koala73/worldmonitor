@@ -1,9 +1,12 @@
 ---
-status: pending
+status: complete
 priority: p1
 issue_id: "021"
 tags: [code-review, agent-native, simulation-runner, api]
 ---
+
+## Work Log
+- 2026-05-18: Implemented in branch `fix/3734-trigger-simulation` per `docs/plans/2026-05-18-003-feat-simulation-trigger-and-runid-filter-plan.md`. POST /api/forecast/v1/trigger-simulation now ships PRO-gated mirroring run-scenario.ts shape; runId server-derived; opaque pkgFingerprint; per-IP rate-limit 10/60s + queue-depth 429. Closes external audit issue #3734 C1+C2 alongside #027 (runId filter now actually active end-to-end).
 
 # No HTTP endpoint to trigger a simulation run — agents cannot initiate simulations
 

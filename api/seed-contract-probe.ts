@@ -26,6 +26,7 @@ import { getCorsHeaders } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
 // @ts-expect-error — JS module, no declaration file
 import { issueSessionToken } from './_session.js';
+import { timingSafeEqual } from '../server/_shared/internal-auth';
 
 type ProbeShape = 'envelope' | 'bare';
 
@@ -219,10 +220,14 @@ export default async function handler(req: Request): Promise<Response> {
 
   // Reuse RELAY_SHARED_SECRET — already provisioned for Vercel↔Railway
   // internal auth, same trust boundary (ops/internal-only callers).
-  const secret = req.headers.get('x-probe-secret');
+  // Constant-time compare via the shared helper avoids the timing oracle
+  // a `!==` comparison would leak (see issue #3803 / PR #3823).
+  const secret = req.headers.get('x-probe-secret') ?? '';
   const expected = process.env.RELAY_SHARED_SECRET;
   if (!expected) return jsonResponse({ error: 'not-configured' }, 503, cors);
-  if (secret !== expected) return jsonResponse({ error: 'unauthorized' }, 401, cors);
+  if (!(await timingSafeEqual(secret, expected))) {
+    return jsonResponse({ error: 'unauthorized' }, 401, cors);
+  }
 
   const [checks, boundary] = await Promise.all([
     Promise.all(DEFAULT_PROBES.map(checkProbe)),

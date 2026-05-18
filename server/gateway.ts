@@ -13,6 +13,8 @@ import { createRouter, type RouteDescriptor } from './router';
 import { getCorsHeaders, isDisallowedOrigin, isAllowedOrigin } from './cors';
 // @ts-expect-error — JS module, no declaration file
 import { validateApiKey } from '../api/_api-key.js';
+// @ts-expect-error — JS module, no declaration file
+import { captureSilentError } from '../api/_sentry-edge.js';
 import { mapErrorToResponse } from './error-mapper';
 import { checkRateLimit, checkEndpointRateLimit, hasEndpointRatePolicy } from './_shared/rate-limit';
 import { drainResponseHeaders } from './_shared/response-headers';
@@ -423,11 +425,33 @@ export function createDomainGateway(
       });
     }
 
+    // Fail closed on CORS-header generation errors. Previous behaviour fell
+    // back to a wildcard ACAO, which converted the allowlist into wildcard
+    // CORS on the error path. Now we omit CORS headers and surface a 500
+    // so the browser blocks any cross-origin read. See issue #3705.
     let corsHeaders: Record<string, string>;
     try {
       corsHeaders = getCorsHeaders(request);
-    } catch {
-      corsHeaders = { 'Access-Control-Allow-Origin': '*' };
+    } catch (err) {
+      // Pass the Sentry delivery promise through ctx.waitUntil so the
+      // Vercel Edge isolate survives long enough to actually flush the
+      // event. (captureSilentError uses keepalive:true as a transport
+      // fallback when ctx is absent, but the explicit waitUntil is the
+      // documented best practice.)
+      const captured = captureSilentError(err, {
+        tags: { route: 'gateway', step: 'cors_headers' },
+      });
+      ctx?.waitUntil(captured);
+      emitRequest(500, 'cors_error', null);
+      return new Response(JSON.stringify({ error: 'Internal server error' }), {
+        status: 500,
+        headers: {
+          'Content-Type': 'application/json',
+          // Prevent CDN/edge from caching the 500 — a transient CORS
+          // failure must not be pinned for downstream callers.
+          'Cache-Control': 'no-store',
+        },
+      });
     }
 
     // OPTIONS preflight

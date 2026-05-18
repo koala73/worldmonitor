@@ -22,7 +22,14 @@
  * saturate).
  */
 
-async function timingSafeEqual(a: string, b: string): Promise<boolean> {
+/**
+ * Constant-time string comparison. Exported so that endpoints
+ * authenticating against secrets passed in a non-`Authorization` header
+ * (e.g. `x-probe-secret`) can reuse the same primitive instead of
+ * falling back to `!==`, which leaks length and per-byte timing.
+ * See issue #3803.
+ */
+export async function timingSafeEqual(a: string, b: string): Promise<boolean> {
   const encoder = new TextEncoder();
   const aBuf = encoder.encode(a);
   const bBuf = encoder.encode(b);

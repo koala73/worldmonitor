@@ -78,11 +78,16 @@ const MEMORY_CLEANUP_THRESHOLD_GB = (() => {
 })();
 const RELAY_SHARED_SECRET = process.env.RELAY_SHARED_SECRET || '';
 const RELAY_AUTH_HEADER = (process.env.RELAY_AUTH_HEADER || 'x-relay-key').toLowerCase();
-const ALLOW_UNAUTHENTICATED_RELAY = process.env.ALLOW_UNAUTHENTICATED_RELAY === 'true';
-const IS_PRODUCTION_RELAY = process.env.NODE_ENV === 'production'
-  || !!process.env.RAILWAY_ENVIRONMENT
-  || !!process.env.RAILWAY_PROJECT_ID
-  || !!process.env.RAILWAY_STATIC_URL;
+// Auth bypass: new canonical name + legacy alias. The new name's verbose
+// wording is intentional — it should be hard to set in production by accident.
+// The legacy `ALLOW_UNAUTHENTICATED_RELAY` is still accepted but emits a
+// deprecation warning so existing self-hosted operators are not broken.
+const _AUTH_BYPASS_NEW = process.env.I_UNDERSTAND_THIS_DISABLES_AUTH === 'true';
+const _AUTH_BYPASS_OLD = process.env.ALLOW_UNAUTHENTICATED_RELAY === 'true';
+const ALLOW_UNAUTHENTICATED_RELAY = _AUTH_BYPASS_NEW || _AUTH_BYPASS_OLD;
+if (_AUTH_BYPASS_OLD && !_AUTH_BYPASS_NEW) {
+  console.warn('[DEPRECATED] ALLOW_UNAUTHENTICATED_RELAY=true is deprecated. Use I_UNDERSTAND_THIS_DISABLES_AUTH=true instead.');
+}
 const RELAY_RATE_LIMIT_WINDOW_MS = Math.max(1000, Number(process.env.RELAY_RATE_LIMIT_WINDOW_MS || 60000));
 const RELAY_RATE_LIMIT_MAX = Number.isFinite(Number(process.env.RELAY_RATE_LIMIT_MAX))
   ? Number(process.env.RELAY_RATE_LIMIT_MAX) : 1200;
@@ -146,11 +151,44 @@ const OREF_LOCAL_FILE = (() => {
 const RELAY_OREF_RATE_LIMIT_MAX = Number.isFinite(Number(process.env.RELAY_OREF_RATE_LIMIT_MAX))
   ? Number(process.env.RELAY_OREF_RATE_LIMIT_MAX) : 600;
 
-if (IS_PRODUCTION_RELAY && !RELAY_SHARED_SECRET && !ALLOW_UNAUTHENTICATED_RELAY) {
-  console.error('[Relay] Error: RELAY_SHARED_SECRET is required in production');
-  console.error('[Relay] Set RELAY_SHARED_SECRET on Railway and Vercel to secure relay endpoints');
-  console.error('[Relay] To bypass temporarily (not recommended), set ALLOW_UNAUTHENTICATED_RELAY=true');
+// Fail-closed: refuse to boot without a shared secret. This applies in ALL
+// environments (production, dev, self-hosted Docker, etc.) so a self-hosted
+// `docker compose up -d` against the published image cannot accidentally
+// expose every route. Operators who genuinely need an unauthenticated relay
+// must opt in explicitly with the loud `I_UNDERSTAND_THIS_DISABLES_AUTH=true`.
+// (#3801 — closes the IS_PRODUCTION_RELAY-only gate that left self-hosted
+// deployments wide open.)
+if (!RELAY_SHARED_SECRET && !ALLOW_UNAUTHENTICATED_RELAY) {
+  console.error('[Relay] FATAL: RELAY_SHARED_SECRET is not set.');
+  console.error('[Relay] Generate a strong random secret and set it on every host running the relay:');
+  console.error('[Relay]   RELAY_SHARED_SECRET="$(openssl rand -hex 32)"');
+  console.error('[Relay] To explicitly opt out (DEV ONLY — leaves all routes publicly accessible):');
+  console.error('[Relay]   I_UNDERSTAND_THIS_DISABLES_AUTH=true   (formerly ALLOW_UNAUTHENTICATED_RELAY=true)');
   process.exit(1);
+}
+
+// Loud recurring SECURITY warning when auth is effectively disabled. Operators
+// who opt out with the bypass var get a bright reminder both at boot and every
+// 5 minutes in long-running logs so the no-auth state stays visible.
+//
+// Auth is effectively disabled ONLY when there's no secret to check. If a
+// secret IS set, isAuthorizedRequest() enforces it regardless of the bypass
+// flag — the bypass branch only runs when the secret is absent — so we must
+// not warn (or report auth.enabled=false on /health) when the secret is set.
+const AUTH_EFFECTIVELY_DISABLED = !RELAY_SHARED_SECRET;
+if (AUTH_EFFECTIVELY_DISABLED) {
+  console.warn('[SECURITY] relay is running WITHOUT auth — RELAY_SHARED_SECRET unset and I_UNDERSTAND_THIS_DISABLES_AUTH=true. All non-public routes are reachable by anyone who can hit this port.');
+  setInterval(() => {
+    console.warn('[SECURITY] relay STILL running without auth — set RELAY_SHARED_SECRET to lock down non-public routes.');
+  }, 5 * 60 * 1000).unref();
+}
+
+// Separately: if the bypass is set redundantly alongside a real secret, the
+// bypass is silently ignored (isAuthorizedRequest enforces the secret). Emit
+// a single INFO line so operators can clean up their env without wondering
+// why their bypass appears to have no effect.
+if (RELAY_SHARED_SECRET && ALLOW_UNAUTHENTICATED_RELAY) {
+  console.info('[Relay] I_UNDERSTAND_THIS_DISABLES_AUTH=true is ignored — RELAY_SHARED_SECRET is configured and takes precedence. Unset the bypass flag to silence this notice.');
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -1215,6 +1253,25 @@ async function orefPersistHistory() {
     const ok = await envelopeWrite(OREF_REDIS_KEY, payload, OREF_PERSIST_TTL_SECONDS, { recordCount: waves.length, sourceVersion: 'oref', zeroOk: true });
     if (ok) {
       orefState._lastPersistedVersion = versionAtStart;
+    }
+    // Companion seed-meta:* write — the OREF payload only carries `persistedAt`
+    // (an ISO string not in extractTimestamp's recognised set), so without this
+    // key the regional-snapshot freshness classifier would flag the input as
+    // STALE on every run (#3781). Tracked by api/health.js for staleness alerts.
+    //
+    // Gate on `ok`: if the envelope write failed (Upstash 5xx / network blip),
+    // a successful meta write alone would tell the freshness classifier the
+    // input is FRESH for data that does not actually exist in Redis. The 7d
+    // meta TTL is deliberately wider than the 15min maxAgeMin so a brief
+    // seed gap keeps the meta around for diagnostics; freshness still flips
+    // STALE off the now-vs-fetchedAt delta.
+    //
+    // NOTE (#3781 review): the transit-summaries write at line ~7370 still
+    // does its meta write unconditionally and has the same failure mode.
+    // That is a pre-existing bug intentionally left out of scope here; it
+    // should be fixed in a follow-up PR.
+    if (ok) {
+      await upstashSet('seed-meta:relay:oref:history', { fetchedAt: Date.now(), recordCount: waves.length }, 604800);
     }
     orefSaveLocalHistory();
   } finally {
@@ -6268,7 +6325,14 @@ function getRelaySecretFromRequest(req) {
 }
 
 function isAuthorizedRequest(req) {
-  if (!RELAY_SHARED_SECRET) return true;
+  if (!RELAY_SHARED_SECRET) {
+    // Defensive: the startup guard rejects an empty secret unless the
+    // operator explicitly opted out via I_UNDERSTAND_THIS_DISABLES_AUTH
+    // (or the deprecated ALLOW_UNAUTHENTICATED_RELAY). In that bypass case
+    // every request is allowed; otherwise this branch is unreachable. Keeping
+    // the explicit check makes this function safe to call in isolation.
+    return ALLOW_UNAUTHENTICATED_RELAY;
+  }
   const provided = getRelaySecretFromRequest(req);
   if (!provided) return false;
   return safeTokenEquals(provided, RELAY_SHARED_SECRET);
@@ -9067,6 +9131,11 @@ const server = http.createServer(async (req, res) => {
         polymarketInflight: polymarketInflight.size,
       },
       auth: {
+        // `enabled` is the canonical operator-visible field: true when a
+        // shared secret is configured (which is what isAuthorizedRequest()
+        // actually enforces, regardless of any bypass flag). Use this to
+        // detect a no-auth deployment from monitoring without scraping logs.
+        enabled: !AUTH_EFFECTIVELY_DISABLED,
         sharedSecretEnabled: !!RELAY_SHARED_SECRET,
         authHeader: RELAY_AUTH_HEADER,
         allowVercelPreviewOrigins: ALLOW_VERCEL_PREVIEW_ORIGINS,
@@ -9995,7 +10064,7 @@ function isWidgetEndpointAllowed(endpoint) {
   if (!endpoint.startsWith('/api/')) return false;
   const blocked = [
     'analyze-stock', 'backtest-stock', 'summarize-article', 'classify-event',
-    'deduce-situation', 'track-aircraft', 'search-flight-prices', 'get-youtube',
+    'deduct-situation', 'track-aircraft', 'search-flight-prices', 'get-youtube',
     'get-vessel-snapshot', 'lookup-sanction', 'get-ip-geo', 'get-simulation',
   ];
   return !blocked.some(b => endpoint.includes(b));

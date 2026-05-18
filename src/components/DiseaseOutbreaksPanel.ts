@@ -31,7 +31,12 @@ export class DiseaseOutbreaksPanel extends Panel {
   private _filter: string = '';
 
   constructor() {
-    super({ id: 'disease-outbreaks', title: t('components.diseaseOutbreaks.title'), showCount: false, infoTooltip: t('components.diseaseOutbreaks.infoTooltip') });
+    super({
+      id: 'disease-outbreaks',
+      title: t('components.diseaseOutbreaks.title'),
+      showCount: false,
+      infoTooltip: `${t('components.diseaseOutbreaks.infoTooltip')}<br><br><em>${t('components.diseaseOutbreaks.methodologyNote')}</em>`,
+    });
     this.content.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-filter]');
       if (btn) {

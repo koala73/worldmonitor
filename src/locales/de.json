@@ -2095,7 +2095,7 @@
       "infoTooltip": "<strong>Stichwort-Monitore</strong> Fügen Sie einen beliebigen Begriff hinzu, um Live-Nachrichtenerwähnungen über alle WorldMonitor-Quellen zu verfolgen. Ergebnisse werden in Echtzeit aktualisiert, wenn passende Artikel aufgenommen werden."
     },
     "renewable": {
-      "infoTooltip": "<strong>Erneuerbare Energie</strong> Globale Pipeline für Erneuerbare-Energien-Projekte: Solar-, Wind-, Wasser- und Speicherkapazitätserweiterungen. Verfolgt angekündigte, im Bau befindliche und in Betrieb genommene Projekte nach Region und Technologietyp."
+      "infoTooltip": "<strong>Erneuerbare Energie</strong> Anteil erneuerbarer Energien an der Stromerzeugung nach Region und Jahr sowie installierte Leistung in den USA für Solar, Wind und Kohle (MW). Quellen: Weltbank (EG.ELC.RNEW.ZS) und EIA."
     },
     "socialVelocity": {
       "infoTooltip": "<strong>Soziale Geschwindigkeit</strong> Trending-Themen und virale Inhalte mit geopolitischer Bedeutung. Misst die Social-Media-Geschwindigkeit: wie schnell sich eine Story relativ zur Baseline verbreitet. Hilft aufkommende Narrative zu erkennen, bevor sie Mainstream-Medien erreichen."

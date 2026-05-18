@@ -2095,7 +2095,7 @@
       "infoTooltip": "<strong>Monitory słów kluczowych</strong> Dodaj dowolny termin, aby śledzić wzmianki w wiadomościach w czasie rzeczywistym ze wszystkich źródeł WorldMonitor. Wyniki aktualizują się w czasie rzeczywistym w miarę pozyskiwania pasujących artykułów."
     },
     "renewable": {
-      "infoTooltip": "<strong>Energia odnawialna</strong> Globalny pipeline projektów energii odnawialnej: dodatki mocy słonecznej, wiatrowej, wodnej i magazynowania. Śledzi ogłoszone, w budowie i uruchomione projekty według regionu i typu technologii."
+      "infoTooltip": "<strong>Energia odnawialna</strong> Udział odnawialnych źródeł w produkcji energii elektrycznej według regionu i roku oraz moc zainstalowana w USA dla energii słonecznej, wiatrowej i węgla (MW). Źródła: Bank Światowy (EG.ELC.RNEW.ZS) i EIA."
     },
     "socialVelocity": {
       "infoTooltip": "<strong>Prędkość społecznościowa</strong> Trendy i wiralowe treści o znaczeniu geopolitycznym. Mierzy prędkość w mediach społecznościowych: jak szybko historia rozprzestrzenia się w stosunku do linii bazowej. Pomaga wychwycić pojawiające się narracje, zanim dotrą do mediów głównego nurtu."

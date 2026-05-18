@@ -43,7 +43,10 @@ const HEADING_TO_DIMENSION: Readonly<Record<string, ResilienceDimensionId>> = {
   'Energy': 'energy',
   'Governance': 'governanceInstitutional',
   'Social Cohesion': 'socialCohesion',
-  'Border Security': 'borderSecurity',
+  // #3737 — methodology doc heading relabeled from 'Border Security' to match
+  // what the scorer actually measures. Internal id `borderSecurity` retained
+  // for proto / cache-key stability.
+  'Conflict & Displacement': 'borderSecurity',
   'Information & Cognitive': 'informationCognitive',
   'Health & Public Service': 'healthPublicService',
   'Food & Water': 'foodWater',

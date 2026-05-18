@@ -8,9 +8,11 @@ const USGS_FEED_URL = 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary
 const CANONICAL_KEY = 'seismology:earthquakes:v1';
 const CACHE_TTL = 21600; // 6h — 6x the 1h cron interval (was 2x = survived only 1 missed run)
 
+// Canonical coordinates: src/config/geo.ts NUCLEAR_FACILITIES (type: 'test-site').
+// Keep in sync — drift here mislabels seismic events near nuclear infrastructure.
 const TEST_SITES = [
   { name: 'Punggye-ri',    lat: 41.28, lon: 129.08 },
-  { name: 'Lop Nur',       lat: 41.39, lon: 89.03  },
+  { name: 'Lop Nur',       lat: 41.75, lon: 88.35  },
   { name: 'Novaya Zemlya', lat: 73.37, lon: 54.78  },
   { name: 'Nevada NTS',    lat: 37.07, lon: -116.05 },
   { name: 'Semipalatinsk', lat: 50.07, lon: 78.43  },
