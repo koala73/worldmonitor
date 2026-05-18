@@ -354,6 +354,31 @@ describe('regression: meme market surfacing', () => {
       'Genuine market should be present');
   });
 
+  // Companion to the filterAndScore drop-through test above. Adversarial review
+  // of #3785 noted that the filterAndScore test passes because the price floor
+  // (yesPrice < 10 strict / < 5 relaxed) catches the LeBron market BEFORE the
+  // meme regex ever runs — so loosening the price floor would silently neuter
+  // the meme-detection guarantee. This isolated test pins the meme detector
+  // itself: at the maximum price where isMemeCandidate's short-circuit still
+  // allows the regex to fire (yesPrice=14, one below the `>= 15` cutoff), the
+  // meme is correctly flagged. If someone moves or removes the short-circuit
+  // or drops the regex patterns, this test fails — independent of the price
+  // floor in shouldInclude.
+  it('isMemeCandidate detects LeBron meme up to its yesPrice<15 short-circuit boundary', () => {
+    assert.ok(
+      isMemeCandidate('Will LeBron James become president?', 14),
+      'meme regex must still fire at yesPrice=14 (one below the >=15 short-circuit)',
+    );
+    // Documented behavior, NOT a bug we are asserting away: at yesPrice >= 15
+    // the meme detector deliberately short-circuits to false (assumption:
+    // genuine market activity will not push an obvious meme above 15%). If
+    // this short-circuit is ever revisited, see #3735 follow-up.
+    assert.ok(
+      !isMemeCandidate('Will LeBron James become president?', 15),
+      'isMemeCandidate intentionally short-circuits at yesPrice >= 15',
+    );
+  });
+
   it('high-volume 99% market excluded by shouldInclude', () => {
     const m = market('Will the sun rise tomorrow?', 99, 10000000);
     assert.ok(!shouldInclude(m), '99% market excluded regardless of volume');
