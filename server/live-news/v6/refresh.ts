@@ -184,6 +184,7 @@ function mergeItems(existing: ClusteredItem[], fresh: ClusteredItem[]): Clustere
       country: prev.country ?? next.country,
       region: prev.region ?? next.region,
       isConflict: prev.isConflict ?? next.isConflict,
+      topics: prev.topics ?? next.topics,
       // Always take fresh summary/imageUrl/sources/isAlert — those
       // track cluster membership which changes as new outlets cover
       // the story.

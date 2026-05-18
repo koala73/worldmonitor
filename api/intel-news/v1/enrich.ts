@@ -578,14 +578,25 @@ interface LocationOnlyPayload {
    *  inferred from "country exists") since this prompt always emits
    *  country when it can geolocate, regardless of conflict status. */
   isConflict: boolean;
+  /** Multi-label intel-topic classification — zero or more of the 9
+   *  non-conflict categories. Drives the v6 GDELT-category feeds
+   *  (cyber / military / …). Empty array when none apply. */
+  topics: string[];
   country?: string;
   locationName?: string;
   lat?: number;
   lng?: number;
 }
 
+/** The 9 non-conflict intel categories the location-only LLM may tag.
+ *  Kept in sync with INTEL_TOPICS (minus `conflict`) in refresh.ts. */
+const VALID_TOPICS = new Set([
+  'cyber', 'military', 'nuclear', 'sanctions', 'intelligence',
+  'maritime', 'business', 'scitech', 'entertainment',
+]);
+
 const LOCATION_ONLY_CACHE_KEY = (link: string): string =>
-  `enrichment-loc:v1:${createHash('sha256').update(link).digest('hex')}`;
+  `enrichment-loc:v2:${createHash('sha256').update(link).digest('hex')}`;
 const LOCATION_ONLY_CACHE_TTL_S = 3 * 24 * 60 * 60; // 3-day project max
 
 const LOCATION_ONLY_SYSTEM_PROMPT = `You classify a news article. Return ONE JSON object with these fields:
@@ -602,6 +613,18 @@ const LOCATION_ONLY_SYSTEM_PROMPT = `You classify a news article. Return ONE JSO
     If genuinely global / unattributable, pick the region of the most prominent named entity. Always set this field.
 
   - isConflict: boolean. True ONLY if the story is about armed conflict, military operations, terrorist attacks, civil unrest, or any kinetic event with a clear geographic incident location. False for everything else (business, sports, politics, entertainment, weather, etc).
+
+  - topics: an ARRAY of zero or more of these exact strings — every category the story is substantively about (a story may fit several, or none):
+      "cyber"         — cyberattacks, data breaches, ransomware, hacking, cyber-espionage
+      "military"      — armed forces, defense, weapons, military operations / exercises / deployments
+      "nuclear"       — nuclear weapons, nuclear energy / power, uranium, IAEA, proliferation
+      "sanctions"     — sanctions, embargoes, tariffs, trade restrictions, export controls
+      "intelligence"  — espionage, spy agencies, surveillance programs, classified leaks, covert operations
+      "maritime"      — naval forces, shipping, ports, piracy, sea lanes, maritime incidents
+      "business"      — companies, markets, earnings, central banks, the economy, trade deals
+      "scitech"       — science, technology, AI, space, health / medical research, innovation
+      "entertainment" — film, TV, music, celebrities, gaming, awards, the sports business
+    Be strict: include a category only when the story is genuinely about it, not when it is merely mentioned in passing. Return [] when none apply.
 
   - country: ISO 3166-1 alpha-2 code of the primary country in the story. ONLY include when isConflict=true. OMIT for non-conflict stories.
 
@@ -625,7 +648,17 @@ function parseLocationOnlyJSON(raw: string | null): LocationOnlyPayload | null {
   if (!VALID_REGIONS.has(region)) return null;
 
   const isConflict = obj.isConflict === true;
-  const result: LocationOnlyPayload = { region, isConflict };
+
+  const topics = Array.isArray(obj.topics)
+    ? [...new Set(
+        (obj.topics as unknown[])
+          .filter((t): t is string => typeof t === 'string')
+          .map((t) => t.trim().toLowerCase())
+          .filter((t) => VALID_TOPICS.has(t)),
+      )]
+    : [];
+
+  const result: LocationOnlyPayload = { region, isConflict, topics };
 
   if (typeof obj.country === 'string') {
     const c = obj.country.trim().toUpperCase();
@@ -994,7 +1027,12 @@ async function runEnrichment(): Promise<EnrichResult> {
       const needsRegion = !region;
       const needsLocationName = conflictMissingLocation;
       const needsFullSummary = !bucket.skipSummary && (!summary || summaryTooShort);
-      const needsEnrichment = needsTitleSummary || needsRegion || needsLocationName || needsFullSummary;
+      // v6 digest clusters also need the multi-label `topics` classification;
+      // re-queue any that predate it (region set, topics absent).
+      const needsTopics = bucket.kind === 'live-news'
+        && !Array.isArray((item as { topics?: unknown }).topics);
+      const needsEnrichment = needsTitleSummary || needsRegion || needsLocationName
+        || needsFullSummary || needsTopics;
 
       if (needsEnrichment) {
         indices.push(i);
@@ -1092,6 +1130,7 @@ async function runEnrichment(): Promise<EnrichResult> {
             // and our copy-to-archive step in the post-runner block.
             if (bucket.kind === 'live-news') {
               (item as { isConflict?: boolean | null }).isConflict = payload.isConflict;
+              (item as { topics?: string[] }).topics = payload.topics;
             }
             succeeded++;
             const stats = perTopic[bucket.id];

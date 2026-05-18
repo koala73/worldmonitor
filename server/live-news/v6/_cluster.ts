@@ -289,13 +289,14 @@ export interface ClusteredItem {
   country: string | null;
   region?: string;
   isConflict: boolean | null;
-  /** Intel-topic ids this cluster qualifies for — the union of every GDELT
-   *  category member's `gdeltCategories`. The cluster is surfaced in
-   *  category X's feed when X is listed here. Empty when the cluster has no
-   *  category-tagged GDELT member. GDELT-only clusters are dropped, so any
-   *  tagged cluster already has ≥1 RSS member — the "≥1 RSS + ≥1 category
-   *  source" gate is satisfied by construction. */
+  /** GDELT-keyword recall hint — the union of every GDELT category member's
+   *  `gdeltCategories`. NOT the feed-membership signal (see `topics`); kept
+   *  as an internal signal and a debugging comparison against the LLM tags. */
   categories: string[];
+  /** Multi-label intel-topic classification set by the enrich LLM — the
+   *  signal that drives the v6 GDELT-category feeds (cyber / military / …).
+   *  Starts undefined; the enrich cron fills it on its next pass. */
+  topics?: string[];
 }
 
 /**

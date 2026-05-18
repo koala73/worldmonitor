@@ -3,11 +3,9 @@
  * feeds (cyber, military, nuclear, sanctions, intelligence, maritime,
  * business, scitech, entertainment).
  *
- * Reads `live-news:v6:digest` and returns the clusters carrying ≥1 category
- * tag. A cluster is tagged with category X when it has ≥1 RSS member + ≥1
- * GDELT member whose headline keyword-matched X (`ClusteredItem.categories`,
- * computed in the v6 clusterer). Optional `?category=X` pre-filters to one
- * category server-side.
+ * Reads `live-news:v6:digest` and returns the clusters the enrich LLM
+ * multi-label-classified into ≥1 category (`ClusteredItem.topics`). Optional
+ * `?category=X` pre-filters to one category server-side.
  *
  * The live-news + conflict feeds keep their own endpoints + the ≥3-RSS
  * gate; this endpoint is purely additive.
@@ -26,7 +24,9 @@ export interface IntelNewsV6Item {
   publishedAt: number;
   summary: string | null;
   imageUrl: string | null;
-  /** Intel-topic ids this cluster qualifies for. */
+  /** Feed membership — multi-label intel-topic tags from the enrich LLM. */
+  topics: string[];
+  /** GDELT-keyword recall hint (not membership) — kept for debugging. */
   categories: string[];
   isAlert: boolean;
   /** GDELT-supplied incident location — kept for a future map layer. */
@@ -53,6 +53,7 @@ function toItem(c: ClusteredItem): IntelNewsV6Item {
     publishedAt: c.publishedAt,
     summary: c.summary,
     imageUrl: c.imageUrl,
+    topics: Array.isArray(c.topics) ? c.topics : [],
     categories: Array.isArray(c.categories) ? c.categories : [],
     isAlert: c.isAlert,
     location: c.location,
@@ -66,7 +67,7 @@ function toItem(c: ClusteredItem): IntelNewsV6Item {
 /**
  * @param category  optional intel-topic id to filter to; null returns
  *                   every category-tagged cluster (each carries its own
- *                   `categories[]` so the client can filter per chip).
+ *                   `topics[]` so the client can filter per chip).
  */
 export async function listIntelNewsV6(category: string | null): Promise<ListIntelNewsV6Response> {
   const digest = (await getCachedJson(DIGEST_KEY, false, 3_000)) as ClusteredItem[] | null;
@@ -76,9 +77,9 @@ export async function listIntelNewsV6(category: string | null): Promise<ListInte
     .filter(
       (c) =>
         c &&
-        Array.isArray(c.categories) &&
-        c.categories.length > 0 &&
-        (!category || c.categories.includes(category)),
+        Array.isArray(c.topics) &&
+        c.topics.length > 0 &&
+        (!category || c.topics.includes(category)),
     )
     .sort((a, b) => b.publishedAt - a.publishedAt)
     .map(toItem);
