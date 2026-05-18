@@ -123,8 +123,10 @@ const EXCLUDED_FROM_MCP = new Map([
     'deferred: recovery pillar stub seeder, not yet deployed (api/health.js:470-471).'],
   ['resilience:recovery:import-hhi:v1',
     'deferred: recovery pillar stub seeder, not yet deployed (api/health.js:470-471).'],
-  ['resilience:recovery:fuel-stocks:v1',
-    'deferred: recovery pillar stub seeder, not yet deployed (api/health.js:470-471).'],
+  // resilience:recovery:fuel-stocks:v1 exclusion removed alongside PR #3764
+  // (api/health.js probe removal). The seeder still runs and writes the key
+  // but scoreFuelStockDays does not read it, so the key is no longer in
+  // STANDALONE_KEYS and an MCP exclusion would be a dead entry.
   ['resilience:recovery:reexport-share:v1',
     'deferred: recovery pillar stub seeder, not yet deployed.'],
   ['resilience:recovery:sovereign-wealth:v1',

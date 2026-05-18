@@ -1269,7 +1269,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
   {
     id: 'recoveryFuelStockDays',
     dimension: 'fuelStockDays',
-    description: 'RETIRED in PR 3. Legacy days-of-fuel-stock-cover (IEA Oil Stocks / EIA Weekly Petroleum Status). Does not contribute to the score — scoreFuelStockDays returns coverage=0 + imputationClass=null, and the dimension is excluded from confidence/coverage averages via the RESILIENCE_RETIRED_DIMENSIONS registry. Kept in the registry as tier=experimental for structural continuity; a globally-comparable recovery-fuel concept could replace this in a future PR.',
+    description: 'RETIRED in PR 3. Legacy days-of-fuel-stock-cover (IEA Oil Stocks / EIA Weekly Petroleum Status). Does not contribute to the score — scoreFuelStockDays returns coverage=0 + imputationClass=null, and the dimension is excluded from confidence/coverage averages via the RESILIENCE_RETIRED_DIMENSIONS registry. Kept in the registry as tier=experimental for structural continuity; a globally-comparable recovery-fuel concept could replace this in a future PR. NOTE: the seed-recovery-fuel-stocks Railway slot continues to populate `sourceKey` weekly even though scoreFuelStockDays does not read it — the data is preserved so a replacement dimension has historical timeseries to draw on. The matching /api/health probe was removed in PR #3764 because reporting STATUS:OK on data nothing reads was actively misleading.',
     direction: 'higherBetter',
     goalposts: { worst: 0, best: 120 },
     weight: 1.0,

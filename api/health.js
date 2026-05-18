@@ -196,7 +196,15 @@ const STANDALONE_KEYS = {
   recoveryReserveAdequacy:  'resilience:recovery:reserve-adequacy:v1',
   recoveryExternalDebt:     'resilience:recovery:external-debt:v1',
   recoveryImportHhi:        'resilience:recovery:import-hhi:v1',
-  recoveryFuelStocks:       'resilience:recovery:fuel-stocks:v1',
+  // recoveryFuelStocks: probe removed. The seeder
+  // (seed-recovery-fuel-stocks.mjs) still runs in seed-bundle-resilience-
+  // recovery so the data is preserved for a future replacement dimension,
+  // but `scoreFuelStockDays` in _dimension-scorers.ts is hard-wired to
+  // return coverage=0/imputationClass=null (retired in PR 3 §3.5) and
+  // never calls getCachedJson on this key. Probing it surfaced a green
+  // STATUS:OK that meant "the cron ran", not "the data is used"; that's
+  // an actively-misleading signal so it's gone. Re-add this slot if and
+  // when a future PR wires scoreFuelStockDays to read real data again.
   recoveryReexportShare:    'resilience:recovery:reexport-share:v1',
   recoverySovereignWealth:  'resilience:recovery:sovereign-wealth:v1',
   // PR 1 v2 energy-construct seeds. STRICT SEED_META (not ON_DEMAND):
@@ -420,7 +428,7 @@ const SEED_META = {
   recoveryReserveAdequacy: { key: 'seed-meta:resilience:recovery:reserve-adequacy', maxStaleMin: 86400 }, // monthly cron; 86400min = 60d = 2x interval
   recoveryExternalDebt:    { key: 'seed-meta:resilience:recovery:external-debt',    maxStaleMin: 86400 }, // monthly cron; 86400min = 60d = 2x interval
   recoveryImportHhi:       { key: 'seed-meta:resilience:recovery:import-hhi',       maxStaleMin: 86400 }, // monthly cron; 86400min = 60d = 2x interval
-  recoveryFuelStocks:      { key: 'seed-meta:resilience:recovery:fuel-stocks',      maxStaleMin: 86400 }, // monthly cron; 86400min = 60d = 2x interval
+  // recoveryFuelStocks: probe removed (PR #3764). See STANDALONE_KEYS comment.
   recoveryReexportShare:   { key: 'seed-meta:resilience:recovery:reexport-share',   maxStaleMin: 86400 }, // monthly cron; 86400min = 60d = 2x interval
   recoverySovereignWealth: { key: 'seed-meta:resilience:recovery:sovereign-wealth', maxStaleMin: 86400 }, // monthly cron; 86400min = 60d = 2x interval
   // PR 1 v2 energy seeds — weekly cron (8d * 1440 = 11520min = 2x interval).
@@ -468,7 +476,7 @@ const ON_DEMAND_KEYS = new Set([
   'newsThreatSummary', // relay classify loop — only written when mergedByCountry has entries; absent on quiet news periods
   'resilienceRanking', // on-demand RPC cache populated after ranking requests; missing before first Pro use is expected
   'recoveryFiscalSpace', 'recoveryReserveAdequacy', 'recoveryExternalDebt',
-  'recoveryImportHhi', 'recoveryFuelStocks', // recovery pillar: stub seeders not yet deployed, keys may be absent
+  'recoveryImportHhi', // recovery pillar: stub seeders not yet deployed, keys may be absent
   // NOTE (2026-04-24, plan 2026-04-24-001): the PR 1 v2 energy seeds
   // (`lowCarbonGeneration`, `fossilElectricityShare`, `powerLosses`)
   // are INTENTIONALLY NOT listed in ON_DEMAND_KEYS. They stay strict
@@ -516,7 +524,7 @@ const EMPTY_DATA_OK_KEYS = new Set([
   'usniFleet', // usniFleetStale covers the fallback; relay outages → WARN not CRIT
   'newsThreatSummary', // only written when classify produces country matches; quiet news periods = 0 countries, no write
   'recoveryFiscalSpace',
-  'recoveryImportHhi', 'recoveryFuelStocks', // recovery pillar seeds: stub seeders write empty payloads until real sources are wired
+  'recoveryImportHhi', // recovery pillar seeds: stub seeders write empty payloads until real sources are wired
   'ddosAttacks', 'trafficAnomalies', // zero events during quiet periods is valid, not critical
   'resilienceStaticFao', // empty aggregate = no IPC Phase 3+ countries this year (possible in theory); the key must exist but count=0 is fine
   'cableHealth', // `cables: {}` = no active subsea cable disruptions per NGA NAVAREA warnings — all cables implicitly healthy. Also covers NGA-upstream-down windows where get-cable-health writes back the fallback response (empty cables); without this, those would alarm EMPTY_DATA.
