@@ -625,7 +625,17 @@ export async function clusterRssItems(items: RawRssItem[]): Promise<ClusteredIte
   // Process oldest-first so older stories accrete younger reports.
   const sorted = [...items].sort((a, b) => a.publishedAt - b.publishedAt);
 
+  // Yield to the event loop every N items. The clustering pass is ~20-25 s
+  // of pure CPU; left uninterrupted it freezes Node solid, which drops the
+  // keep-alive connections to Redis — so the digest read/write that run
+  // immediately after then time out. Sub-second chunks keep those
+  // connections (and the fire-and-forget embed-cache writes) healthy, at
+  // no measurable cost to clustering throughput.
+  let processed = 0;
   for (const it of sorted) {
+    if (++processed % 128 === 0) {
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+    }
     const e = embedByHash.get(it.titleHash);
     if (!e) {
       // Embedding failed — fall back to singleton.
