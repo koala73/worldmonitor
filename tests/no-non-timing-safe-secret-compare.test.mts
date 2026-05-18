@@ -60,15 +60,17 @@ describe('no non-timing-safe secret comparison in api/ (#3803)', () => {
     const violations: string[] = [];
 
     // Match patterns like:
-    //   secret !== expected
-    //   token === process.env.FOO
-    //   sharedSecret !== process.env.RELAY_SHARED_SECRET
-    // The match is local-variable-name → comparison → env-var-ish RHS.
+    //   secret !== expected                          (forward)
+    //   token === process.env.FOO                    (forward)
+    //   process.env.RELAY_SHARED_SECRET === secret   (reverse, yoda-style)
+    //   expectedSecret !== token                     (reverse)
+    // The two arms catch both operand orderings — Greptile review on
+    // PR #3820 caught that a yoda-style or copy-pasted reverse
+    // comparison would silently pass a forward-only guard.
     const varAlternation = SECRET_VARS.join('|');
-    const pattern = new RegExp(
-      `\\b(?:${varAlternation})\\b\\s*(?:!==|===)\\s*(?:process\\.env\\.|expected\\b|EXPECTED\\b)`,
-      'i',
-    );
+    const forward = `\\b(?:${varAlternation})\\b\\s*(?:!==|===)\\s*(?:process\\.env\\.|expected\\b|EXPECTED\\b)`;
+    const reverse = `(?:process\\.env\\.[A-Z_a-z]+|expected\\b|EXPECTED\\b)\\s*(?:!==|===)\\s*\\b(?:${varAlternation})\\b`;
+    const pattern = new RegExp(`(?:${forward}|${reverse})`, 'i');
 
     for (const file of files) {
       const rel = file.slice(file.indexOf('/api/') + 1);
@@ -109,5 +111,41 @@ describe('no non-timing-safe secret comparison in api/ (#3803)', () => {
       /await\s+timingSafeEqual\s*\(\s*secret/,
       'seed-contract-probe.ts must call timingSafeEqual(secret, ...) for the x-probe-secret check',
     );
+  });
+
+  it('meta: the source-grep regex catches both forward and reverse comparison forms (#3820 review)', () => {
+    // Reconstruct the same pattern used by the scan above. Keep this
+    // in sync with the production regex — any change in one needs the
+    // other. Greptile review on PR #3820 added the reverse arm; this
+    // meta-test pins the coverage.
+    const varAlternation = ['secret', 'token', 'bearer', 'sharedSecret', 'apiSecret', 'authSecret'].join('|');
+    const forward = `\\b(?:${varAlternation})\\b\\s*(?:!==|===)\\s*(?:process\\.env\\.|expected\\b|EXPECTED\\b)`;
+    const reverse = `(?:process\\.env\\.[A-Z_a-z]+|expected\\b|EXPECTED\\b)\\s*(?:!==|===)\\s*\\b(?:${varAlternation})\\b`;
+    const pattern = new RegExp(`(?:${forward}|${reverse})`, 'i');
+
+    // Each pair: [input, expected-match]
+    const cases: Array<[string, boolean]> = [
+      // Forward — must match.
+      ['secret !== expected', true],
+      ['token === process.env.FOO', true],
+      ['if (sharedSecret !== process.env.RELAY_SHARED_SECRET) return', true],
+      // Reverse — must match (this is what the Greptile review added).
+      ['process.env.RELAY_SHARED_SECRET === secret', true],
+      ['if (process.env.FOO !== token) return', true],
+      ['EXPECTED === bearer', true],
+      // Innocuous — must NOT match.
+      ['const secret = "abc"', false],
+      ['if (status === 200) return', false],
+      ['userInput !== sanitizedInput', false],
+      ['return process.env.FOO', false],
+    ];
+
+    for (const [input, shouldMatch] of cases) {
+      assert.equal(
+        pattern.test(input),
+        shouldMatch,
+        `pattern.test(${JSON.stringify(input)}) expected ${shouldMatch}`,
+      );
+    }
   });
 });
