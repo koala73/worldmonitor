@@ -16,11 +16,13 @@
 #    separate `pull_request`-triggered workflow that runs with read-only
 #    permissions.
 #
-# 2. The job has `pull-requests: write`, scoped to the label-applying
-#    step only via job-level permissions. Workflow-level permissions
-#    default-deny so any future step inherits no privileges by default.
-#    If you add a step that needs additional permissions, add a
-#    step-level `permissions:` block — don't widen the job default.
+# 2. The job has `pull-requests: write`, granted at the job level.
+#    Workflow-level permissions default-deny so any future *job*
+#    inherits no privileges by default. GitHub Actions does NOT
+#    support step-level `permissions:` blocks — `permissions:` is
+#    only valid at workflow or job scope. If you need to add a step
+#    that requires different permissions, put it in a NEW JOB with
+#    its own `permissions:` block. Do NOT widen this job's grant.
 #
 # 3. External dependency: `api.brin.sh/contributor/<github-username>`.
 #    No SLA, no response signature, no fallback service. The workflow's
@@ -59,10 +61,12 @@ jobs:
       github.event.pull_request.author_association == 'CONTRIBUTOR' ||
       github.event.pull_request.author_association == 'NONE'
     runs-on: ubuntu-latest
-    # Job-level grant. The curl step needs no permissions; the
-    # label-applying step inherits this default. If steps later get more
-    # granular permission needs, use step-level `permissions:` blocks
-    # instead of widening this default.
+    # Job-level grant applies to every step in this job. The curl step
+    # uses no GITHUB_TOKEN; the label-applying step uses
+    # `pull-requests: write`. GitHub Actions has no step-level
+    # `permissions:` syntax — if a future step needs different
+    # permissions, put it in a NEW JOB with its own `permissions:`
+    # block instead of widening this one. (See workflow-header note 2.)
     permissions:
       pull-requests: write
     steps:
