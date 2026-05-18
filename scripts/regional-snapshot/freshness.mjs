@@ -71,10 +71,11 @@ export const ALL_INPUT_KEYS = FRESHNESS_REGISTRY.map((s) => s.key);
  *      a top-level timestamp (FAA alerts, AviationStack, NOTAM, GPS jam).
  *   2. Otherwise, pull a timestamp from the primary payload via
  *      extractTimestamp (fetchedAt, generatedAt, timestamp, updatedAt,
- *      lastUpdate).
- *   3. If neither yields a timestamp, fall back to "fresh" (cannot prove
- *      staleness). This fallback remains so we don't regress existing
- *      keys that have never needed a meta key.
+ *      lastUpdate, seededAt).
+ *   3. If neither yields a timestamp, classify as stale. A present-but-undated
+ *      payload cannot be proven fresh — defaulting to fresh let stalled
+ *      seeders silently inflate snapshot_confidence (#3728). Forcing stale
+ *      pressures upstream to emit a timestamp.
  *
  * @param {Record<string, unknown>} payloads - Map of key -> raw value (or null)
  * @param {Record<string, unknown>} [metaPayloads] - Map of metaKey -> raw value (or null)
@@ -104,8 +105,10 @@ export function classifyInputs(payloads, metaPayloads = {}) {
     if (ts === null) ts = extractTimestamp(payload);
 
     if (ts === null) {
-      // Present but undated — treat as fresh (we cannot prove staleness).
-      fresh.push(spec.key);
+      // Present but undated — classify as stale. We cannot prove freshness,
+      // and the previous "default to fresh" behavior fabricated
+      // snapshot_confidence whenever a seeder stalled with no timestamp.
+      stale.push(spec.key);
       continue;
     }
     const ageMin = (now - ts) / 60_000;
@@ -116,6 +119,29 @@ export function classifyInputs(payloads, metaPayloads = {}) {
     }
   }
   return { fresh, stale, missing };
+}
+
+/**
+ * Resolve the effective timestamp for an input, preferring the metaKey
+ * (when declared) over the payload's own timestamp. Returns null if neither
+ * source carries a parseable timestamp.
+ *
+ * Exported for snapshot-meta.mjs, which needs the per-input timestamp to
+ * derive valid_until from the registry's maxAgeMin.
+ *
+ * @param {SourceFreshnessSpec} spec
+ * @param {unknown} payload
+ * @param {Record<string, unknown>} metaPayloads
+ * @returns {number | null}
+ */
+export function resolveInputTimestamp(spec, payload, metaPayloads) {
+  let ts = null;
+  if (spec.metaKey) {
+    const meta = metaPayloads[spec.metaKey];
+    ts = extractTimestamp(meta);
+  }
+  if (ts === null) ts = extractTimestamp(payload);
+  return ts;
 }
 
 /** Pull a timestamp out of common payload shapes; null if none found. */

@@ -5,9 +5,17 @@
 // Phase 0 builds pre-meta (no narrative, no snapshot_id) and the seed entry
 // fills in the final fields after compute completes.
 
-import { classifyInputs } from './freshness.mjs';
+import { classifyInputs, FRESHNESS_REGISTRY, resolveInputTimestamp } from './freshness.mjs';
 
 export const MODEL_VERSION = '0.1.0';
+
+/**
+ * Hard upper bound for valid_until: snapshots are written on a 6h cron, so
+ * even a fresh input with an effectively-infinite maxAgeMin (e.g.
+ * national-debt at 86400 min) should not advertise the snapshot as valid
+ * past the next scheduled write.
+ */
+const MAX_VALID_UNTIL_MS = 6 * 60 * 60 * 1000;
 
 /**
  * @param {Record<string, any>} sources
@@ -50,11 +58,53 @@ export function buildPreMeta(sources, scoringVersion, geographyVersion, metaSour
       snapshot_confidence,
       missing_inputs: classification.missing,
       stale_inputs: classification.stale,
-      valid_until: Date.now() + 6 * 60 * 60 * 1000, // 6h
+      valid_until: deriveValidUntil(classification.fresh, sources, metaSources),
       trigger_reason: 'scheduled_6h',
     },
     classification,
   };
+}
+
+/**
+ * Derive valid_until from the minimum remaining TTL across fresh inputs.
+ *
+ * For each fresh input, the expiry is `ts + maxAgeMin * 60_000`. The
+ * snapshot itself is only valid until the FIRST fresh input goes stale, so
+ * we take the minimum. The result is then clamped:
+ *   - lower bound: now (never advertise a snapshot as valid in the past)
+ *   - upper bound: now + 6h (snapshots are rewritten on a 6h cron, so
+ *     advertising further would be misleading even for inputs with very
+ *     long maxAgeMin like national-debt at 60d)
+ *
+ * When no inputs are fresh (all stale or missing), valid_until collapses to
+ * now so consumers know the snapshot is immediately invalid.
+ *
+ * @param {string[]} freshKeys
+ * @param {Record<string, any>} sources
+ * @param {Record<string, any>} metaSources
+ * @returns {number}
+ */
+function deriveValidUntil(freshKeys, sources, metaSources) {
+  const now = Date.now();
+  if (freshKeys.length === 0) return now;
+
+  const freshSet = new Set(freshKeys);
+  let earliestExpiry = Number.POSITIVE_INFINITY;
+  for (const spec of FRESHNESS_REGISTRY) {
+    if (!freshSet.has(spec.key)) continue;
+    const ts = resolveInputTimestamp(spec, sources[spec.key], metaSources);
+    // classifyInputs guarantees a parseable timestamp for any key it
+    // returned in `fresh`. If that invariant ever drifts, skip the key
+    // rather than producing NaN/Infinity here.
+    if (ts === null) continue;
+    const expiresAt = ts + spec.maxAgeMin * 60_000;
+    if (expiresAt < earliestExpiry) earliestExpiry = expiresAt;
+  }
+
+  if (!Number.isFinite(earliestExpiry)) return now;
+  if (earliestExpiry < now) return now;
+  const cap = now + MAX_VALID_UNTIL_MS;
+  return earliestExpiry > cap ? cap : earliestExpiry;
 }
 
 /**

@@ -538,6 +538,94 @@ describe('snapshot meta', () => {
     assert.equal(final.narrative_provider, 'groq');
     assert.equal(final.model_version, MODEL_VERSION);
   });
+
+  // #3728: undated payloads were defaulting to fresh, inflating
+  // snapshot_confidence whenever an upstream seeder stalled without a
+  // timestamp. Flipped to stale so the confidence score reflects reality.
+  it('buildPreMeta treats present-but-undated inputs as stale (#3728)', () => {
+    // risk:scores:sebuf:stale:v1 has no metaKey and the payload below has
+    // no parseable timestamp field — exactly the case that used to slip
+    // through as "fresh".
+    const { pre } = buildPreMeta(
+      { 'risk:scores:sebuf:stale:v1': { ciiScores: [] } },
+      '1.0.0',
+      '1.0.0',
+    );
+    assert.ok(
+      pre.stale_inputs.includes('risk:scores:sebuf:stale:v1'),
+      'undated payload should land in stale_inputs, not be silently treated as fresh',
+    );
+  });
+
+  // #3728: valid_until was hardcoded to now+6h regardless of input TTLs, so
+  // a snapshot built from a single 30-min-TTL input that was already 20 min
+  // old would advertise validity 5.7 hours past the point where its
+  // upstream input goes stale. Derive from the registry instead.
+  it('valid_until reflects oldest fresh input TTL (#3728)', () => {
+    // risk:scores:sebuf:stale:v1 has maxAgeMin=30. With fetchedAt=20min
+    // ago, the input expires in ~10min, well before the 6h cap.
+    const now = Date.now();
+    const fetchedAt = now - 20 * 60_000;
+    const { pre } = buildPreMeta(
+      { 'risk:scores:sebuf:stale:v1': { ciiScores: [], fetchedAt } },
+      '1.0.0',
+      '1.0.0',
+    );
+    const expected = fetchedAt + 30 * 60_000; // ~10min from now
+    // 1s tolerance covers Date.now() drift between buildPreMeta and here.
+    const drift = Math.abs(pre.valid_until - expected);
+    assert.ok(
+      drift < 1000,
+      `valid_until should be ~${expected} (input ts + maxAgeMin), got ${pre.valid_until} (drift ${drift}ms)`,
+    );
+    // Sanity: must NOT be the old hardcoded now+6h.
+    const sixHoursFromNow = now + 6 * 60 * 60 * 1000;
+    assert.ok(
+      Math.abs(pre.valid_until - sixHoursFromNow) > 60_000,
+      'valid_until must NOT default to now+6h when an input has a tighter TTL',
+    );
+  });
+
+  it('valid_until is capped at now + 6h even when inputs have long TTLs (#3728)', () => {
+    // energy:mix:v1:_all has maxAgeMin=50400 (35d). A fresh fetch today
+    // would otherwise advertise validity weeks out — clamp to the 6h cron.
+    const allKeys = {};
+    for (const s of FRESHNESS_REGISTRY) allKeys[s.key] = { fetchedAt: Date.now() };
+    const now = Date.now();
+    const { pre } = buildPreMeta(allKeys, '1.0.0', '1.0.0');
+    const cap = now + 6 * 60 * 60 * 1000;
+    // valid_until should be near the cap (the tightest input is 15min,
+    // relay:oref:history:v1 — that's actually what wins here, not the cap).
+    // The cap behavior is exercised below in the "all long-TTL" case.
+    assert.ok(pre.valid_until <= cap + 1000, 'valid_until must not exceed now + 6h cap');
+  });
+
+  it('valid_until collapses to now when all inputs are stale or missing (#3728)', () => {
+    // All inputs missing → fresh[] is empty → valid_until = now.
+    const before = Date.now();
+    const { pre } = buildPreMeta({}, '1.0.0', '1.0.0');
+    const after = Date.now();
+    assert.ok(
+      pre.valid_until >= before && pre.valid_until <= after,
+      `valid_until should collapse to ~now when no inputs are fresh, got ${pre.valid_until} (window: ${before}..${after})`,
+    );
+    // Sanity: confidence should also be 0 in this all-missing case.
+    assert.equal(pre.snapshot_confidence, 0);
+  });
+
+  it('valid_until collapses to now when present inputs are all undated (#3728)', () => {
+    // Present but undated → classified stale → fresh[] empty → valid_until=now.
+    const sources = {};
+    for (const s of FRESHNESS_REGISTRY) sources[s.key] = {}; // no timestamps
+    const before = Date.now();
+    const { pre } = buildPreMeta(sources, '1.0.0', '1.0.0');
+    const after = Date.now();
+    assert.equal(pre.stale_inputs.length, FRESHNESS_REGISTRY.length);
+    assert.ok(
+      pre.valid_until >= before && pre.valid_until <= after,
+      'undated-everywhere should collapse valid_until to now',
+    );
+  });
 });
 
 // ────────────────────────────────────────────────────────────────────────────

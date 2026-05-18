@@ -1,5 +1,5 @@
 ---
-status: pending
+status: complete
 priority: p2
 issue_id: 181
 tags: [code-review, phase-0, regional-intelligence, freshness, confidence]
@@ -44,18 +44,19 @@ Track `undated_inputs / total_inputs` per cron run and surface in health.
 **Risk:** Low
 
 ## Recommended Action
-
+Option 1 — flip the default to stale. Safest choice for a confidence score: a value that cannot be proven fresh should not inflate the confidence number that downstream consumers rely on.
 
 ## Technical Details
-`scripts/regional-snapshot/freshness.mjs:56-59` - current behavior returns fresh on missing timestamp.
+`scripts/regional-snapshot/freshness.mjs:classifyInputs()` — undated branch previously pushed to `fresh[]`, now pushes to `stale[]`. Resolved alongside the sibling defect in `snapshot-meta.mjs` (hardcoded `valid_until = now + 6h` ignored per-input `maxAgeMin`).
 
 ## Acceptance Criteria
-- [ ] Default for present-but-undated inputs is "stale" (not fresh)
-- [ ] OR a warning is logged the first time an undated input is observed
-- [ ] OR a counter tracks the proportion of undated inputs per cron run
+- [x] Default for present-but-undated inputs is "stale" (not fresh)
+- [x] Tests in `tests/regional-snapshot.test.mjs` + `tests/regional-snapshot-mobility.test.mjs` cover the new default
 
 ## Work Log
+- 2026-05-18: Fixed in PR for #3728. Flipped undated default to stale in `classifyInputs`. Pre-existing mobility test that asserted "undated + missing meta → fresh" was updated to assert the new "→ stale" behavior. Added `buildPreMeta treats present-but-undated inputs as stale` test in `tests/regional-snapshot.test.mjs`. Sibling fix (`valid_until` derivation) shipped in the same PR.
 
 ## Resources
-- PR #2940
+- PR #2940 (origin)
 - PR #2942
+- Issue #3728 (resolution)
