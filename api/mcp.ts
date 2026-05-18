@@ -2643,6 +2643,10 @@ export function buildPublicTool(
 }
 
 const TOOL_LIST_RESPONSE = TOOL_REGISTRY.map((tool) => buildPublicTool(tool, { compressDescriptions: true }));
+// Tools-list payload is static at module load — precompute its wire size so
+// the per-session `mcp.tools_list_emitted` telemetry line doesn't re-stringify
+// ~5 KB on every initialize.
+const TOOL_LIST_BYTES = utf8ByteLength(JSON.stringify(TOOL_LIST_RESPONSE));
 
 // ---------------------------------------------------------------------------
 // JSON-RPC helpers
@@ -2653,6 +2657,29 @@ function rpcOk(id: unknown, result: unknown, extraHeaders: Record<string, string
 
 function rpcError(id: unknown, code: number, message: string): Response {
   return jsonResponse({ jsonrpc: '2.0', id: id ?? null, error: { code, message } }, 200);
+}
+
+// ---------------------------------------------------------------------------
+// Telemetry
+// ---------------------------------------------------------------------------
+// One structured single-line JSON log per `tools/call` (tag `mcp.toolcall`)
+// and one per `initialize` (tag `mcp.tools_list_emitted`). Vercel log drain
+// → analytics consumer reads these as production data on payload sizes,
+// JMESPath adoption %, latency P95, and tool usage histogram. Gated behind
+// `MCP_TELEMETRY` so tests that snapshot stdout can suppress noise; default
+// ON in every other environment.
+function telemetryEnabled(): boolean {
+  const v = process.env.MCP_TELEMETRY;
+  return v !== 'false' && v !== '0';
+}
+function emitTelemetry(event: string, payload: Record<string, unknown>): void {
+  if (!telemetryEnabled()) return;
+  try {
+    console.log(JSON.stringify({ tag: event, ts: new Date().toISOString(), ...payload }));
+  } catch {
+    // Never throw out of telemetry — a stringify failure on an
+    // unexpected circular value must not break the request path.
+  }
 }
 
 export function evaluateFreshness(checks: FreshnessCheck[], metas: unknown[], now = Date.now()): { cached_at: string | null; stale: boolean } {
@@ -3103,6 +3130,9 @@ async function dispatchToolsCall(
     proRollback = reservation.rollback;
   }
 
+  const jmespathArg = p.arguments?.jmespath;
+  const jmespathUsed = typeof jmespathArg === 'string' && jmespathArg.length > 0;
+  const tStart = Date.now();
   try {
     let result: unknown;
     if (tool._execute) {
@@ -3120,8 +3150,31 @@ async function dispatchToolsCall(
     // does NOT participate in the quota DECR path: a bad expression is a
     // *user* error after a successful tool dispatch, not a system error.
     // Genuine tool-execution throws (e.g. `cache_all_null`) still hit the
-    // catch below and rollback. Single JSON.stringify per request.
-    const { text } = applyJmespath(result, p.arguments?.jmespath);
+    // catch below and rollback. Single JSON.stringify per request when
+    // telemetry is off; one extra stringify when MCP_TELEMETRY is enabled
+    // so we can report `bytes_pre_jmespath` separately from the projected
+    // size.
+    const { text, failed } = applyJmespath(result, jmespathArg);
+    if (telemetryEnabled()) {
+      const bytesPost = utf8ByteLength(text);
+      let bytesPre: number;
+      if (jmespathUsed) {
+        const preStr = JSON.stringify(result);
+        bytesPre = utf8ByteLength(preStr === undefined ? 'null' : preStr);
+      } else {
+        bytesPre = bytesPost;
+      }
+      emitTelemetry('mcp.toolcall', {
+        tool: tool.name,
+        auth_kind: context.kind,
+        latency_ms: Date.now() - tStart,
+        bytes_pre_jmespath: bytesPre,
+        bytes_post_jmespath: bytesPost,
+        jmespath_used: jmespathUsed,
+        jmespath_failed: failed ?? null,
+        ok: true,
+      });
+    }
     return rpcOk(id, { content: [{ type: 'text', text }] }, corsHeaders);
   } catch (err: unknown) {
     if (proRollback) await proRollback();
@@ -3141,6 +3194,17 @@ async function dispatchToolsCall(
       tags: { route: 'api/mcp', step: 'tool-execution', tool: tool.name },
       ctx,
       ...(isClient4xx ? { level: 'warning' as const } : {}),
+    });
+    emitTelemetry('mcp.toolcall', {
+      tool: tool.name,
+      auth_kind: context.kind,
+      latency_ms: Date.now() - tStart,
+      bytes_pre_jmespath: 0,
+      bytes_post_jmespath: 0,
+      jmespath_used: jmespathUsed,
+      jmespath_failed: null,
+      ok: false,
+      error_kind: isClient4xx ? 'client_4xx' : 'server_error',
     });
     return rpcError(id, -32603, 'Internal error: data fetch failed');
   }
@@ -3206,6 +3270,11 @@ export async function mcpHandler(
   switch (method) {
     case 'initialize': {
       const sessionId = crypto.randomUUID();
+      emitTelemetry('mcp.tools_list_emitted', {
+        bytes: TOOL_LIST_BYTES,
+        tool_count: TOOL_LIST_RESPONSE.length,
+        client_user_agent: req.headers.get('User-Agent') ?? '',
+      });
       return rpcOk(id, {
         protocolVersion: MCP_PROTOCOL_VERSION,
         capabilities: { tools: {} },

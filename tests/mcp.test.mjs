@@ -332,6 +332,59 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.ok(out.data.crypto, 'no args → crypto slice present');
   });
 
+  // --- Telemetry ---
+
+  it('telemetry: successful tools/call emits one mcp.toolcall line with the documented fields', async () => {
+    mockCacheKeys(
+      { 'market:stocks-bootstrap:v1': { quotes: [{ symbol: 'AAPL', price: 100 }] }, 'market:crypto:v1': { quotes: [] } },
+      { 'seed-meta:market:stocks': { fetchedAt: Date.now() - 60_000, recordCount: 1 } },
+    );
+    const captured = [];
+    const origLog = console.log;
+    console.log = (line) => captured.push(line);
+    try {
+      await callTool('get_market_data', {});
+    } finally {
+      console.log = origLog;
+    }
+    const tc = captured
+      .filter((l) => typeof l === 'string')
+      .map((l) => { try { return JSON.parse(l); } catch { return null; } })
+      .filter((j) => j && j.tag === 'mcp.toolcall');
+    assert.equal(tc.length, 1, `expected exactly one mcp.toolcall line, got ${tc.length}`);
+    const ev = tc[0];
+    assert.equal(ev.tool, 'get_market_data');
+    assert.equal(ev.auth_kind, 'env_key');
+    assert.equal(ev.ok, true);
+    assert.equal(ev.jmespath_used, false);
+    assert.equal(ev.jmespath_failed, null);
+    assert.equal(typeof ev.latency_ms, 'number');
+    assert.equal(typeof ev.bytes_pre_jmespath, 'number');
+    assert.equal(typeof ev.bytes_post_jmespath, 'number');
+    assert.ok(ev.bytes_post_jmespath > 0, 'bytes_post_jmespath must be > 0 on a successful response');
+    assert.equal(typeof ev.ts, 'string');
+  });
+
+  it('telemetry: initialize emits mcp.tools_list_emitted with bytes, tool_count, client_user_agent', async () => {
+    const captured = [];
+    const origLog = console.log;
+    console.log = (line) => captured.push(line);
+    try {
+      await handler(makeReq('POST', initBody(42), { 'user-agent': 'wm-test/1.0' }));
+    } finally {
+      console.log = origLog;
+    }
+    const ev = captured
+      .filter((l) => typeof l === 'string')
+      .map((l) => { try { return JSON.parse(l); } catch { return null; } })
+      .filter((j) => j && j.tag === 'mcp.tools_list_emitted');
+    assert.equal(ev.length, 1, `expected exactly one mcp.tools_list_emitted line, got ${ev.length}`);
+    assert.equal(typeof ev[0].bytes, 'number');
+    assert.ok(ev[0].bytes > 0, 'bytes must be > 0');
+    assert.equal(ev[0].tool_count, 39);
+    assert.equal(ev[0].client_user_agent, 'wm-test/1.0');
+  });
+
   it('get_market_data: symbols filter narrows quote arrays across asset slices', async () => {
     const stocks = { quotes: [{ symbol: 'AAPL', price: 100 }, { symbol: 'MSFT', price: 200 }] };
     const crypto = { quotes: [{ symbol: 'BTC', price: 50000 }] };
