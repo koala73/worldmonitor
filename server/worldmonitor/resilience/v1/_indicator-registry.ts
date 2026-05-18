@@ -809,7 +809,11 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     comprehensive: false,
   },
 
-  // ── borderSecurity (2 sub-metrics) ────────────────────────────────────────
+  // ── borderSecurity / "Conflict & Displacement" (2 sub-metrics) ───────────
+  // #3737 — internal id stays `borderSecurity` for proto / cache stability,
+  // but the dimension measures armed-conflict event intensity + refugee
+  // displacement, not border-control infrastructure. User-facing label is
+  // "Conflict" (widget) / "Conflict & Displacement" (methodology doc).
   {
     id: 'ucdpConflict',
     dimension: 'borderSecurity',

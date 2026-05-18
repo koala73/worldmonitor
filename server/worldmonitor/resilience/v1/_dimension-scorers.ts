@@ -1915,6 +1915,20 @@ export async function scoreSocialCohesion(
   return weightedBlend([gpiRow, displacementRow, unrestRow]);
 }
 
+// #3737 — despite the legacy `scoreBorderSecurity` / `borderSecurity` name,
+// this scorer measures UCDP armed-conflict event intensity and UNHCR
+// refugee displacement. It does NOT measure border-control infrastructure,
+// customs throughput, or cross-border-crime enforcement.
+//
+// The user-facing label is "Conflict" / "Conflict & Displacement" in the
+// widget and methodology docs respectively. The internal identifier is
+// retained as `borderSecurity` because the proto enum, Redis cache prefixes,
+// snapshot fixtures, and dozens of downstream tests are keyed on it — a
+// rename would cascade through ~100 files for a string the user never sees.
+//
+// If/when this dimension is replaced with genuine border-control indicators
+// (UNODC cross-border crime, FRONTEX/WCO data, CBP seizure stats), introduce
+// the new dimension under a fresh id and migrate cleanly.
 export async function scoreBorderSecurity(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,

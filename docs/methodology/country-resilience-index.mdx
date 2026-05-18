@@ -60,7 +60,7 @@ The index is organized into 6 domains. Each domain weight reflects its relative 
 | Economic | `economic` | 0.17 | Macro-Fiscal, Currency & External, Trade Policy, Financial System Exposure |
 | Infrastructure | `infrastructure` | 0.15 | Cyber & Digital, Logistics & Supply, Infrastructure |
 | Energy | `energy` | 0.11 | Energy |
-| Social & Governance | `social-governance` | 0.19 | Governance, Social Cohesion, Border Security, Information |
+| Social & Governance | `social-governance` | 0.19 | Governance, Social Cohesion, Conflict & Displacement, Information |
 | Health & Food | `health-food` | 0.13 | Health & Public Service, Food & Water |
 | Recovery | `recovery` | 0.25 | Fiscal Space, Reserve Adequacy, External Debt Coverage, Import Concentration, State Continuity, Fuel Stock Days |
 
@@ -252,7 +252,13 @@ still observed. Seed-outage paths (raw payload absent) continue to
 drop the weight rather than imputing — the outage-vs-absence
 distinction is preserved.
 
-#### Border Security
+#### Conflict & Displacement
+
+This dimension measures **armed-conflict event intensity and refugee
+displacement**. It does **not** measure border-control infrastructure,
+customs throughput, or cross-border-crime enforcement. The internal
+identifier is `borderSecurity` for proto / cache-key stability; the
+relabeling is tracked in #3737.
 
 | Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
 |---|---|---|---|---|---|---|
