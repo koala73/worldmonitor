@@ -430,28 +430,85 @@ function pickGdeltLocation(members: RawRssItem[]): GdeltItemLocation | null {
 }
 
 /**
- * Pick the cluster's wire `summary`. Default: the longest plaintext
- * description across all cluster members.
+ * Trailing truncation markers RSS publishers append to a cut-off lede —
+ * a "Continue reading" CTA, a bare/bracketed ellipsis, or stray
+ * arrow/separator glyphs. Port of the iOS `FeedItem.cleanedSummary`
+ * patterns so the server and client agree on what "truncated" means.
+ */
+const SUMMARY_CTA_PATTERN =
+  /[\s.…»›→▶|–—-]*[[(]?\s*(continue reading|keep reading|read more|read on|read the full (story|article)|read full (story|article)|view (full )?coverage|full story)\s*[\])]?\s*$/i;
+const SUMMARY_TAIL_PATTERNS: RegExp[] = [
+  /\s*[[(]\s*(…|\.{2,})\s*[\])]\s*$/i, // bracketed: [...]  […]
+  /\s*(…|\.{3,})\s*$/i,                // bare ellipsis
+  /[\s»›→▶|–—-]+$/i,                    // leftover separators
+];
+
+/**
+ * Strip trailing truncation markers off a description — port of the iOS
+ * `FeedItem.cleanedSummary`. Only the END of the string is touched; the
+ * 6-pass loop catches stacked markers ("… [Continue reading]"). Returns
+ * the original trimmed text when stripping would empty it.
+ */
+function cleanSummaryText(raw: string): string {
+  let s = raw.trim();
+  for (let i = 0; i < 6; i++) {
+    const before = s;
+    for (const pattern of [SUMMARY_CTA_PATTERN, ...SUMMARY_TAIL_PATTERNS]) {
+      s = s.replace(pattern, '');
+    }
+    s = s.trim();
+    if (s === before) break;
+  }
+  return s.length === 0 ? raw.trim() : s;
+}
+
+/**
+ * Pick the cluster's wire `summary` from its members' RSS descriptions.
  *
- * BUT: if the canonical outlet's own description is at least 80% the
- * length of that maximum, we prefer the canonical's description — its
- * angle is more likely aligned with the canonical's title (the one we
- * actually show as the headline). Stops cases like cluster headline =
- * "Five Italians die during cave dive" while summary describes the
- * sole survivor's angle picked from a tabloid follow-up.
+ * A clustered story carries one description per outlet that covered it,
+ * and many RSS feeds ship a TRUNCATED lede — cut off with "…", "[…]" or
+ * a "Continue reading" CTA. Because the cluster gives us several
+ * descriptions of the SAME story, we just pick a better one:
+ *
+ *   1. Split candidates into "clean" (full lede) and "truncated" (ends
+ *      with a cut-off marker — see `cleanSummaryText`).
+ *   2. Prefer a clean lede; among clean ones the longest wins — BUT if
+ *      the canonical outlet's own clean description is within 80% of
+ *      that length, keep the canonical's: its angle aligns with the
+ *      headline we actually show (stops e.g. headline "Five Italians die
+ *      in cave dive" paired with a follow-up's sole-survivor summary).
+ *   3. If every outlet truncated its lede, fall back to the one with the
+ *      most content after the trailing marker is stripped — so the user
+ *      never sees "…" / "Continue reading".
  */
 function pickSummary(members: RawRssItem[], canonical: RawRssItem): string | null {
-  let longest = '';
-  for (const m of members) {
-    const d = (m.description || '').trim();
-    if (d.length > longest.length) longest = d;
+  const candidates = members
+    .map((m) => (m.description || '').trim())
+    .filter((d) => d.length > 0)
+    .map((raw) => {
+      const cleaned = cleanSummaryText(raw);
+      return { raw, cleaned, isClean: cleaned === raw };
+    });
+  if (candidates.length === 0) return null;
+
+  const clean = candidates.filter((c) => c.isClean);
+  if (clean.length > 0) {
+    const longestClean = clean.reduce((a, b) => (b.raw.length > a.raw.length ? b : a));
+    const canonDesc = (canonical.description || '').trim();
+    if (
+      canonDesc.length > 0 &&
+      cleanSummaryText(canonDesc) === canonDesc &&
+      canonDesc.length >= longestClean.raw.length * 0.8
+    ) {
+      return canonDesc;
+    }
+    return longestClean.raw;
   }
-  if (longest.length === 0) return null;
-  const canonDesc = (canonical.description || '').trim();
-  if (canonDesc.length === 0) return longest;
-  // Within 80% of longest → prefer canonical's for title-summary alignment.
-  if (canonDesc.length >= longest.length * 0.8) return canonDesc;
-  return longest;
+
+  // Every outlet's lede was truncated — there's no clean alternative, so
+  // strip the marker off whichever has the most real content.
+  const best = candidates.reduce((a, b) => (b.cleaned.length > a.cleaned.length ? b : a));
+  return best.cleaned;
 }
 
 /** First non-null image across the cluster, with its photo credit (if
