@@ -18,6 +18,8 @@ export interface CiiScore {
   trend: TrendDirection;
   components?: CiiComponents;
   computedAt: number;
+  methodologyVersion: string;
+  eventMultiplier: number;
 }
 
 export interface CiiComponents {

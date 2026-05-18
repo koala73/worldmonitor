@@ -13,9 +13,29 @@ import { getCachedJson, setCachedJson, cachedFetchJsonWithMeta } from '../../../
 import { CLIMATE_ANOMALIES_KEY } from '../../../_shared/cache-keys';
 import { TIER1_COUNTRIES } from './_shared';
 import { fetchAcledCached } from '../../../_shared/acled';
+import {
+  CII_FORMULA_VERSION,
+  STRATEGIC_RISK_POSITIONAL_DECAY,
+  STRATEGIC_RISK_SCALE_FACTOR,
+  STRATEGIC_RISK_SCALE_FLOOR,
+  STRATEGIC_RISK_TOP_N,
+} from './_risk-config';
 
 // ========================================================================
 // Country risk baselines and multipliers
+// ------------------------------------------------------------------------
+// Editorial values — see docs/methodology/cii-risk-scores.md for the
+// published table and the rationale. These intentionally MIRROR the
+// per-country fields in src/config/countries.ts CURATED_COUNTRIES, which
+// the frontend uses for client-side scoring. Where the two tables differ,
+// the server values below are authoritative for the API response
+// (CiiScore.static_baseline and CiiScore.event_multiplier on the wire).
+// The methodology doc lists current values and flags any drift.
+//
+// Change protocol when editing these tables:
+//   1. Bump CII_FORMULA_VERSION in ./_risk-config.ts.
+//   2. Update docs/methodology/cii-risk-scores.md in the SAME commit.
+//   3. Mention the change in CHANGELOG.md (public-facing section).
 // ========================================================================
 
 const BASELINE_RISK: Record<string, number> = {
@@ -554,6 +574,11 @@ export function computeCIIScores(
         militaryActivity: security,
       },
       computedAt: Date.now(),
+      // Disclosure fields (issue #3725) — make the editorial weights and
+      // formula version visible on the wire so API clients can detect drift.
+      // See docs/methodology/cii-risk-scores.md.
+      eventMultiplier: multiplier,
+      methodologyVersion: CII_FORMULA_VERSION,
     });
   }
 
@@ -561,12 +586,18 @@ export function computeCIIScores(
   return scores;
 }
 
-function computeStrategicRisks(ciiScores: CiiScore[]): StrategicRisk[] {
-  const top5 = ciiScores.slice(0, 5);
-  const weights = top5.map((_, i) => 1 - i * 0.15);
+export function computeStrategicRisks(ciiScores: CiiScore[]): StrategicRisk[] {
+  // Editorial roll-up: see ./_risk-config.ts and
+  // docs/methodology/cii-risk-scores.md for rationale and band derivation.
+  const topN = ciiScores.slice(0, STRATEGIC_RISK_TOP_N);
+  const weights = topN.map((_, i) => 1 - i * STRATEGIC_RISK_POSITIONAL_DECAY);
   const totalWeight = weights.reduce((sum, w) => sum + w, 0);
-  const weightedSum = top5.reduce((sum, s, i) => sum + s.combinedScore * weights[i]!, 0);
-  const overallScore = Math.min(100, Math.round((weightedSum / totalWeight) * 0.7 + 15));
+  const weightedSum = topN.reduce((sum, s, i) => sum + s.combinedScore * weights[i]!, 0);
+  const weightedAvg = totalWeight > 0 ? weightedSum / totalWeight : 0;
+  const overallScore = Math.min(
+    100,
+    Math.round(weightedAvg * STRATEGIC_RISK_SCALE_FACTOR + STRATEGIC_RISK_SCALE_FLOOR),
+  );
 
   return [
     {
@@ -577,7 +608,7 @@ function computeStrategicRisks(ciiScores: CiiScore[]): StrategicRisk[] {
           ? 'SEVERITY_LEVEL_MEDIUM'
           : 'SEVERITY_LEVEL_LOW') as SeverityLevel,
       score: overallScore,
-      factors: top5.map((s) => s.region),
+      factors: topN.map((s) => s.region),
       trend: 'TREND_DIRECTION_STABLE' as TrendDirection,
     },
   ];

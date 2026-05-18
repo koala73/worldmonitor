@@ -1004,6 +1004,20 @@ components:
                     type: integer
                     format: int64
                     description: 'Last computation time, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                methodologyVersion:
+                    type: string
+                    description: |-
+                        Methodology version string for this score (e.g. "v1").
+                         Bumped whenever the editorial weights in CII_FORMULA_VERSION change so
+                         API clients can detect score drift. See docs/methodology/cii-risk-scores.md.
+                eventMultiplier:
+                    type: number
+                    minimum: 0
+                    format: double
+                    description: |-
+                        Editorial per-country event multiplier applied to live signals before
+                         they roll into the composite score. Published for transparency — issue
+                         #3725. See docs/methodology/cii-risk-scores.md.
             description: CiiScore represents a Composite Instability Index score for a region or country.
         CiiComponents:
             type: object
