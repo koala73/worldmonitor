@@ -1,8 +1,18 @@
 import { unwrapEnvelope } from './seed-envelope';
 import { buildUpstreamEvent, getUsageScope, sendToAxiom } from './usage';
 
-const REDIS_OP_TIMEOUT_MS = 1_500;
-const REDIS_PIPELINE_TIMEOUT_MS = 5_000;
+// Default Upstash REST timeouts are tuned for production (Vercel ↔ Upstash
+// same-datacenter latency is sub-50ms, 1.5s leaves >20× headroom). They
+// become a problem only when running scripts that fan out 30+ parallel
+// reads against Upstash REST from a workstation — `getCachedJson` then
+// silently times out and the caller falls through to score=0 / null,
+// which masquerades as missing data. Set REDIS_OP_TIMEOUT_MS=10000 (or
+// REDIS_PIPELINE_TIMEOUT_MS=30000) when running e.g.
+// scripts/compare-resilience-current-vs-proposed.mjs locally so the
+// acceptance-gate output reflects real production behavior, not
+// timeout-induced zeros. Production should keep the defaults.
+const REDIS_OP_TIMEOUT_MS = Number.parseInt(process.env.REDIS_OP_TIMEOUT_MS ?? '', 10) || 1_500;
+const REDIS_PIPELINE_TIMEOUT_MS = Number.parseInt(process.env.REDIS_PIPELINE_TIMEOUT_MS ?? '', 10) || 5_000;
 
 function errMsg(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
