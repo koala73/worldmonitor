@@ -38,7 +38,7 @@ export const FRESHNESS_REGISTRY = [
   { key: 'economic:national-debt:v1',            maxAgeMin: 86400, feedsAxes: ['capital_stress'], metaKey: 'seed-meta:economic:national-debt' }, // monthly seed (30d cron), 60d window absorbs one missed run — mirrors api/health.js nationalDebt. metaKey is the primary freshness source (payload's seededAt is also recognized by extractTimestamp as a fallback).
   { key: 'economic:stress-index:v1',             maxAgeMin: 120,   feedsAxes: ['capital_stress'] },
   { key: 'energy:mix:v1:_all',                   maxAgeMin: 50400, feedsAxes: ['energy_vulnerability'] },
-  { key: 'economic:eu-gas-storage:v1',           maxAgeMin: 2880,  feedsAxes: ['energy_vulnerability'] },
+  { key: 'economic:eu-gas-storage:v1',           maxAgeMin: 2880,  feedsAxes: ['energy_vulnerability'], metaKey: 'seed-meta:economic:eu-gas-storage' }, // runSeed writes seed-meta with numeric fetchedAt; metaKey takes priority over payload fields, defense-in-depth against a future refactor that strips fetchedAt/seededAt from the payload (regression risk that produced #3728).
   { key: 'economic:spr:v1',                      maxAgeMin: 10080, feedsAxes: ['energy_buffer'] },
   // Mobility v1 (Phase 2 PR2) — feed the MobilityState block via mobility.mjs.
   // maxAgeMin matches each seeder's cron interval + safety buffer.
