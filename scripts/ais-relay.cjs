@@ -1216,6 +1216,12 @@ async function orefPersistHistory() {
     if (ok) {
       orefState._lastPersistedVersion = versionAtStart;
     }
+    // Companion seed-meta:* write — the OREF payload only carries `persistedAt`
+    // (an ISO string not in extractTimestamp's recognised set), so without this
+    // key the regional-snapshot freshness classifier would flag the input as
+    // STALE on every run (#3781). Mirrors the pattern used by transit-summaries
+    // (line ~7364) and is tracked by api/health.js for staleness alerts.
+    await upstashSet('seed-meta:relay:oref:history', { fetchedAt: Date.now(), recordCount: waves.length }, 604800);
     orefSaveLocalHistory();
   } finally {
     orefState._persistInFlight = false;

@@ -626,6 +626,53 @@ describe('snapshot meta', () => {
       'undated-everywhere should collapse valid_until to now',
     );
   });
+
+  // #3781 follow-on: 5 upstream feeds whose payloads carry no timestamp
+  // `extractTimestamp` recognises would have flipped to STALE on first
+  // deploy under #3728's stricter logic. Each is now wired to an existing
+  // seed-meta:* companion key so the classifier can prove freshness
+  // without the data payload needing a top-level timestamp.
+  it('buildPreMeta resolves freshness via metaKey when payload has no timestamp (#3781)', () => {
+    // risk:scores:sebuf:stale:v1 used to ship without a metaKey; the
+    // payload it serves does not carry fetchedAt/seededAt/etc, so under the
+    // post-#3728 classifier it would land in stale_inputs[] on every run.
+    // With metaKey wired, the seed-meta:* fetchedAt is the freshness proof.
+    const now = Date.now();
+    const sources = { 'risk:scores:sebuf:stale:v1': { ciiScores: [] } };
+    const metaSources = {
+      'seed-meta:intelligence:risk-scores': { fetchedAt: now - 5 * 60_000 },
+    };
+    const { pre, classification } = buildPreMeta(sources, '1.0.0', '1.0.0', metaSources);
+    assert.ok(
+      classification.fresh.includes('risk:scores:sebuf:stale:v1'),
+      'metaKey fetchedAt should classify the undated payload as fresh',
+    );
+    assert.ok(!pre.stale_inputs.includes('risk:scores:sebuf:stale:v1'));
+  });
+
+  it('5 #3781 upstream feeds declare metaKey to avoid on-deploy STALE noise', () => {
+    // Pre-empt: each of these keys serves a payload without a top-level
+    // timestamp field. Under the post-#3728 classifier they would all be
+    // classified STALE on first deploy unless their freshness registry
+    // entry points at an existing seed-meta:* companion. Lock the wiring
+    // in so a later removal will trip a test, not production.
+    const expected = {
+      'risk:scores:sebuf:stale:v1':          'seed-meta:intelligence:risk-scores',
+      'intelligence:cross-source-signals:v1': 'seed-meta:intelligence:cross-source-signals',
+      'energy:mix:v1:_all':                   'seed-meta:economic:owid-energy-mix',
+      'supply_chain:transit-summaries:v1':    'seed-meta:supply_chain:transit-summaries',
+      'relay:oref:history:v1':                'seed-meta:relay:oref:history',
+    };
+    for (const [key, metaKey] of Object.entries(expected)) {
+      const spec = FRESHNESS_REGISTRY.find((s) => s.key === key);
+      assert.ok(spec, `registry entry missing for ${key}`);
+      assert.equal(
+        spec.metaKey,
+        metaKey,
+        `${key} must declare metaKey=${metaKey} (its payload has no recognised top-level timestamp; removing this would flip it to STALE on every deploy — see PR #3781)`,
+      );
+    }
+  });
 });
 
 // ────────────────────────────────────────────────────────────────────────────
