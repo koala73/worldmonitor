@@ -13,8 +13,10 @@ NOT being fixed.
 ## Displacement field-mapping (scoreSocialCohesion / scoreBorderSecurity / scoreStateContinuity)
 
 **Dimensions.** `socialCohesion` (weight 0.25 of the blend),
-`borderSecurity` (weight 0.35 of the blend), `stateContinuity`
-(weight 0.20 of the blend).
+`borderSecurity` / "Conflict & Displacement" (weight 0.35 of the
+blend; see #3737 — internal id is `borderSecurity` but the dimension
+measures armed conflict + displacement, not border infrastructure),
+`stateContinuity` (weight 0.20 of the blend).
 
 **Source.** UNHCR Population API
 (`https://api.unhcr.org/population/v1/population/`), written via
@@ -72,9 +74,9 @@ effectively dead code.** The scorer reads
 `_dimension-scorers.ts`. Intent (from the surrounding comments):
 
 - Primary (`hostTotal`): how many UNHCR-registered people this
-  country hosts → direct border-security signal.
+  country hosts → host-inflow displacement signal.
 - Fallback (`totalDisplaced`): how many of this country's people
-  are displaced → indirect border-security signal for
+  are displaced → origin-outflow displacement signal for
   origin-dominated countries.
 
 **Discovered during this audit**: the fallback **does not fire in
@@ -100,12 +102,16 @@ dim). The actual signal is never picked up. Turkey-pattern
 
 **Why not fixing this today.** A one-line change (`||` instead of
 `??`, or `hostTotal > 0 ? hostTotal : totalDisplaced`) would
-flip the borderSecurity score for ~6 high-outflow origin
-countries by a material amount — a methodology change, not a
-pure bug-fix. That belongs in a construct-decision PR with a
+flip the dimension score for ~6 high-outflow origin countries
+by a material amount — a methodology change, not a pure
+bug-fix. That belongs in a construct-decision PR with a
 cohort-audit snapshot before/after, not bundled into an audit
-doc PR. Opening a follow-up to decide: should borderSecurity
-reflect origin-outflow pressure, host-inflow pressure, or both?
+doc PR. Opening a follow-up to decide: should the dimension
+reflect origin-outflow displacement, host-inflow displacement,
+or both? (Separately, the dimension was relabeled to
+"Conflict & Displacement" in #3737 because it doesn't measure
+border infrastructure regardless of which displacement source
+fires.)
 
 **Test pin.** `tests/resilience-displacement-field-mapping.test.mts`
 pins the CURRENT behavior (Syria-pattern scores 100 on this
