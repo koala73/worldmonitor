@@ -202,7 +202,7 @@ describe('helpers', () => {
 // ────────────────────────────────────────────────────────────────────────────
 
 const baseSources = () => ({
-  'risk:scores:sebuf:stale:v1': {
+  'risk:scores:sebuf:stale:v2': {
     ciiScores: [
       { region: 'IR', combinedScore: 65, trend: 'TREND_DIRECTION_UP' },
       { region: 'IL', combinedScore: 55, trend: 'TREND_DIRECTION_STABLE' },
@@ -281,7 +281,7 @@ describe('computeBalanceVector', () => {
 
   it('weighted-tail domestic fragility amplifies high-criticality countries', () => {
     const sources = {
-      'risk:scores:sebuf:stale:v1': {
+      'risk:scores:sebuf:stale:v2': {
         ciiScores: [
           // Low CII for low-criticality countries
           { region: 'JO', combinedScore: 10 },
@@ -520,9 +520,9 @@ describe('snapshot meta', () => {
 
   it('buildPreMeta marks stale inputs based on max-age', () => {
     const old = { fetchedAt: Date.now() - 999_999_999 };
-    const sources = { 'risk:scores:sebuf:stale:v1': old };
+    const sources = { 'risk:scores:sebuf:stale:v2': old };
     const { pre } = buildPreMeta(sources, '1.0.0', '1.0.0');
-    assert.ok(pre.stale_inputs.includes('risk:scores:sebuf:stale:v1'));
+    assert.ok(pre.stale_inputs.includes('risk:scores:sebuf:stale:v2'));
   });
 
   it('buildFinalMeta merges pre + finalFields preserving snapshot_id', () => {

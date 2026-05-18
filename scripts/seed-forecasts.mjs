@@ -663,7 +663,7 @@ async function readInputKeys() {
   const { url, token } = getRedisCredentials();
   const fredKeys = FRED_MARKET_SERIES.map((seriesId) => FRED_MARKET_INPUT_KEYS[seriesId]);
   const keys = [
-    'risk:scores:sebuf:stale:v1',
+    'risk:scores:sebuf:stale:v2',
     'temporal:anomalies:v1',
     'theater_posture:sebuf:stale:v1',
     'military:forecast-inputs:stale:v1',
@@ -748,7 +748,7 @@ async function readInputKeys() {
   );
 
   return {
-    ciiScores: parsedByKey['risk:scores:sebuf:stale:v1'],
+    ciiScores: parsedByKey['risk:scores:sebuf:stale:v2'],
     temporalAnomalies: parsedByKey['temporal:anomalies:v1'],
     theaterPosture: parsedByKey['theater_posture:sebuf:stale:v1'],
     militaryForecastInputs: parsedByKey['military:forecast-inputs:stale:v1'],

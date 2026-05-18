@@ -12526,12 +12526,19 @@ components:
                          API clients can detect score drift. See docs/methodology/cii-risk-scores.md.
                 eventMultiplier:
                     type: number
+                    maximum: 10
                     minimum: 0
                     format: double
                     description: |-
                         Editorial per-country event multiplier applied to live signals before
                          they roll into the composite score. Published for transparency — issue
                          #3725. See docs/methodology/cii-risk-scores.md.
+
+                         Bounds: [0, 10]. The editorial de-facto maximum across the published
+                         table is ~3.0 (KP). The upper bound of 10 gives ~3.3x headroom for
+                         future weight changes while still catching obviously-wrong inputs (e.g.
+                         a runaway computation producing 1e6 or NaN-coerced values). Added in
+                         PR #3780 review.
             description: CiiScore represents a Composite Instability Index score for a region or country.
         worldmonitor_intelligence_v1_CiiComponents:
             type: object

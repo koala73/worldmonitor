@@ -13,6 +13,8 @@ import {
   STRATEGIC_RISK_TOP_N,
 } from '../server/worldmonitor/intelligence/v1/_risk-config.ts';
 import {
+  BASELINE_RISK,
+  EVENT_MULTIPLIER,
   computeCIIScores,
   computeStrategicRisks,
 } from '../server/worldmonitor/intelligence/v1/get-risk-scores.ts';
@@ -407,6 +409,62 @@ describe('CII scoring', () => {
     }
     assert.equal(missing.length, 0,
       `docs/methodology/cii-risk-scores.md is missing rows for: ${missing.join(', ')}. Update the methodology doc and bump CII_FORMULA_VERSION.`);
+  });
+
+  it('methodology doc baseline/multiplier columns match BASELINE_RISK and EVENT_MULTIPLIER exactly (numeric drift guard)', () => {
+    // PR #3780 review hardening: the previous regex-existence check only
+    // verified that a row exists for each code. That lets the doc and the
+    // code silently disagree on the numeric values — exactly the kind of
+    // drift this whole methodology disclosure was meant to prevent.
+    //
+    // This stricter test parses each row's numeric columns and asserts they
+    // match BASELINE_RISK[code] and EVENT_MULTIPLIER[code] character-for-
+    // character. Bump CII_FORMULA_VERSION and update the doc together when
+    // either changes.
+    const docPath = resolve(
+      fileURLToPath(new URL('.', import.meta.url)),
+      '..',
+      'docs',
+      'methodology',
+      'cii-risk-scores.md',
+    );
+    const doc = readFileSync(docPath, 'utf8');
+    // Parse the per-country table. Rows look like:
+    //   | AE | United Arab Emirates | 10 | 1.5 | — |
+    // The first non-header table row defines the column count; we tolerate
+    // any number of trailing columns (drift notes etc.) but require at least
+    // 4 columns: code, name, baseline, multiplier.
+    const drifts: string[] = [];
+    for (const code of Object.keys(BASELINE_RISK)) {
+      // Capture the row for this code. Anchor on `| <CODE> |` then non-greedy
+      // up to end-of-line.
+      const rowRe = new RegExp(`^\\|\\s${code}\\s\\|([^\\n]+)$`, 'm');
+      const m = doc.match(rowRe);
+      if (!m) {
+        drifts.push(`${code}: no row in methodology doc`);
+        continue;
+      }
+      // Split the remaining row on `|`, strip whitespace.
+      const cols = m[1]!.split('|').map((c) => c.trim());
+      // cols = [name, baseline, multiplier, driftNote, '']  (5 entries after split)
+      // We need cols[1] and cols[2].
+      if (cols.length < 4) {
+        drifts.push(`${code}: malformed row, expected at least 4 columns, got ${cols.length}`);
+        continue;
+      }
+      const docBaseline = Number(cols[1]);
+      const docMultiplier = Number(cols[2]);
+      const expectedBaseline = BASELINE_RISK[code]!;
+      const expectedMultiplier = EVENT_MULTIPLIER[code]!;
+      if (docBaseline !== expectedBaseline) {
+        drifts.push(`${code}: baseline doc=${cols[1]} code=${expectedBaseline}`);
+      }
+      if (docMultiplier !== expectedMultiplier) {
+        drifts.push(`${code}: multiplier doc=${cols[2]} code=${expectedMultiplier}`);
+      }
+    }
+    assert.equal(drifts.length, 0,
+      `methodology doc drift:\n  ${drifts.join('\n  ')}\nBump CII_FORMULA_VERSION and reconcile docs/methodology/cii-risk-scores.md with server BASELINE_RISK / EVENT_MULTIPLIER.`);
   });
 
   it('every TIER1_COUNTRIES code is listed in the methodology doc (server tables stay in sync)', () => {

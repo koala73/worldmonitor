@@ -74,6 +74,12 @@ frontend uses for client-side CII rendering. Where the two have drifted, the
 server values below are authoritative for the API response (issue #3725
 calls out the drift and is the source of this published note).
 
+**Reconciliation tracked in [#3789](https://github.com/koala73/worldmonitor/issues/3789)** —
+the 7 drift cells called out in the rightmost column below are a deliberate
+known-issue, not an oversight. That issue weighs server-authoritative vs
+frontend-authoritative vs a single-source-of-truth refactor and will land
+the reconciliation in a follow-up PR.
+
 | Code | Country | `baselineRisk` (server) | `eventMultiplier` (server) | Drift vs `CURATED_COUNTRIES` |
 |------|---------|------------------------:|---------------------------:|------------------------------|
 | AE | United Arab Emirates | 10 | 1.5 | — |

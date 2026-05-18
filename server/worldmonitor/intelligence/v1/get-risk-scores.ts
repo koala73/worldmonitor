@@ -38,14 +38,16 @@ import {
 //   3. Mention the change in CHANGELOG.md (public-facing section).
 // ========================================================================
 
-const BASELINE_RISK: Record<string, number> = {
+// Exported so tests can assert the published methodology doc rows match
+// these values exactly (drift guard — PR #3780 review).
+export const BASELINE_RISK: Record<string, number> = {
   US: 5, RU: 35, CN: 25, UA: 50, IR: 40, IL: 45, TW: 30, KP: 45,
   SA: 20, TR: 25, PL: 10, DE: 5, FR: 10, GB: 5, IN: 20, PK: 35,
   SY: 50, YE: 50, MM: 45, VE: 40, CU: 45, MX: 35, BR: 15, AE: 10,
   KR: 15, IQ: 40, AF: 45, LB: 40, EG: 20, JP: 5, QA: 10,
 };
 
-const EVENT_MULTIPLIER: Record<string, number> = {
+export const EVENT_MULTIPLIER: Record<string, number> = {
   US: 0.3, RU: 2.0, CN: 2.5, UA: 0.8, IR: 2.0, IL: 0.7, TW: 1.5, KP: 3.0,
   SA: 2.0, TR: 1.2, PL: 0.8, DE: 0.5, FR: 0.6, GB: 0.5, IN: 0.8, PK: 1.5,
   SY: 0.7, YE: 0.7, MM: 1.8, VE: 1.8, CU: 2.0, MX: 1.0, BR: 0.6, AE: 1.5,
@@ -618,8 +620,17 @@ export function computeStrategicRisks(ciiScores: CiiScore[]): StrategicRisk[] {
 // Cache keys
 // ========================================================================
 
-const RISK_CACHE_KEY = 'risk:scores:sebuf:v1';
-const RISK_STALE_CACHE_KEY = 'risk:scores:sebuf:stale:v1';
+// Bumped v1 → v2 in #3725 (PR #3780 review): the response shape now carries
+// REQUIRED methodologyVersion (string) and eventMultiplier (double) on every
+// CiiScore. Old v1 payloads in Redis violate that shape and would fail proto
+// validation on read. Bump propagated to every reader: get-country-risk.ts,
+// chat-analyst-context.ts, brief-story-context.ts, server/_shared/cache-keys.ts,
+// api/bootstrap.js, api/health.js, api/mcp.ts, api/seed-health.js,
+// scripts/seed-cross-source-signals.mjs, scripts/seed-forecasts.mjs,
+// scripts/regional-snapshot/*. seed-meta key (`seed-meta:risk:scores:sebuf`)
+// is unchanged — that's freshness tracking, not the payload itself.
+const RISK_CACHE_KEY = 'risk:scores:sebuf:v2';
+const RISK_STALE_CACHE_KEY = 'risk:scores:sebuf:stale:v2';
 const RISK_CACHE_TTL = 600;
 const RISK_STALE_TTL = 3600;
 
