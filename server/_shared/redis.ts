@@ -213,10 +213,22 @@ export async function getCachedJson(
   }
 }
 
-export async function setCachedJson(key: string, value: unknown, ttlSeconds: number): Promise<void> {
+/**
+ * @param timeoutMs  Abort budget for the SET. Defaults to
+ *   `REDIS_SET_TIMEOUT_MS` (3 s). Cron callers writing large values
+ *   (e.g. the v6 digest, a multi-MB blob) should pass a higher value.
+ * @returns `true` on a confirmed 2xx write, `false` on any failure
+ *   (timeout / network / non-2xx) — lets callers retry.
+ */
+export async function setCachedJson(
+  key: string,
+  value: unknown,
+  ttlSeconds: number,
+  timeoutMs: number = REDIS_SET_TIMEOUT_MS,
+): Promise<boolean> {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return;
+  if (!url || !token) return false;
 
   // Send the value in the POST body rather than URL-encoded into the path.
   //
@@ -240,14 +252,17 @@ export async function setCachedJson(key: string, value: unknown, ttlSeconds: num
         'Content-Type': 'application/json',
       },
       body,
-      signal: AbortSignal.timeout(REDIS_SET_TIMEOUT_MS),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (!resp.ok) {
       const respBody = await resp.text().catch(() => '');
       console.warn(`[redis] setCachedJson HTTP ${resp.status} for "${finalKey}" (body ~${body.length} chars):`, respBody.slice(0, 200));
+      return false;
     }
+    return true;
   } catch (err) {
     console.warn('[redis] setCachedJson failed:', errMsg(err));
+    return false;
   }
 }
 

@@ -343,11 +343,19 @@ export async function refreshLiveNewsV6(): Promise<RefreshResult> {
     };
   }
   const merged = mergeItems(existing, clustered);
-  await setCachedJson(DIGEST_KEY, merged, DIGEST_TTL_S);
+  // Generous write budget + one retry. The digest is a multi-MB blob and
+  // this write lands right after the CPU-heavy clustering, when the Edge
+  // isolate is sluggish — the 3 s default timed out every run. 20 s is
+  // ample; the retry (after a short recovery beat) covers a transient miss.
+  let writeOk = await setCachedJson(DIGEST_KEY, merged, DIGEST_TTL_S, 20_000);
+  if (!writeOk) {
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    writeOk = await setCachedJson(DIGEST_KEY, merged, DIGEST_TTL_S, 20_000);
+  }
   const writeMs = Date.now() - writeStart;
   console.log(
     `[live-news:v6:refresh] phase=write elapsed=${writeMs}ms ` +
-    `existed=${existing.length} after=${merged.length}`,
+    `existed=${existing.length} after=${merged.length} ok=${writeOk}`,
   );
 
   const elapsedMs = Date.now() - startedAt;

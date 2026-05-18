@@ -36,7 +36,7 @@ export async function recordBaselineSnapshot(
     const keys = batch.map(u => makeBaselineKey(u.type, u.region || 'global', weekday, month));
     const existing = await mgetJson(keys) as (BaselineEntry | null)[];
 
-    const writes: Promise<void>[] = [];
+    const writes: Promise<boolean>[] = [];
 
     for (let i = 0; i < batch.length; i++) {
       const { type, count } = batch[i]!;
