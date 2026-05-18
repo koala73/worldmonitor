@@ -82,14 +82,23 @@ export function buildWorldBrief(data: unknown): string {
   const d = data as Record<string, unknown>;
   const lines: string[] = [];
 
-  const briefText = safeStr(d.brief || d.summary || d.content || d.text);
+  // Production payload (news:insights:v1, see scripts/seed-insights.mjs) uses
+  // `worldBrief` for the LLM-generated paragraph and `topStories[].primaryTitle`
+  // for headlines. Pre-issue-#3724 review this code only read brief/headline,
+  // so production callers silently rendered an empty string. Fallback shapes
+  // (brief/summary/headline/title) retained for test fixtures and future
+  // payload variations. sanitizeForPrompt protects against feed-side prompt
+  // injection — both the brief and the headlines are untrusted upstream text
+  // that flows into the analyst's system prompt.
+  const briefText = sanitizeForPrompt(safeStr(d.worldBrief || d.brief || d.summary || d.content || d.text));
   if (briefText) lines.push(briefText.slice(0, 600));
 
   const stories = Array.isArray(d.topStories) ? d.topStories : Array.isArray(d.stories) ? d.stories : [];
   if (stories.length > 0) {
     lines.push('Top Events:');
     for (const s of stories.slice(0, 12)) {
-      const title = sanitizeForPrompt(safeStr((s as Record<string, unknown>).headline || (s as Record<string, unknown>).title || s));
+      const story = s as Record<string, unknown>;
+      const title = sanitizeForPrompt(safeStr(story.primaryTitle || story.headline || story.title || s));
       if (title) lines.push(`- ${title}`);
     }
   }

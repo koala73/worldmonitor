@@ -414,6 +414,15 @@ async function proxyToCloud(requestUrl, req, remoteBase) {
   // Identify sidecar as trusted origin so the cloud API key validator
   // doesn't reject the request (no origin + no key = 401).
   headers.set('Origin', 'https://worldmonitor.app');
+  // Inject the configured enterprise key for cloud calls that pass through the
+  // sidecar so auth-gated endpoints (e.g. /api/mcp-proxy per PR #3768, issue
+  // #3723) succeed without each renderer call having to attach it. Renderer-
+  // supplied X-WorldMonitor-Key (e.g. a wm_ user key from runtime config) wins
+  // — don't clobber it.
+  if (!headers.has('X-WorldMonitor-Key')) {
+    const wmKey = process.env.WORLDMONITOR_API_KEY;
+    if (wmKey) headers.set('X-WorldMonitor-Key', wmKey);
+  }
   return fetch(target, {
     method: req.method,
     headers,

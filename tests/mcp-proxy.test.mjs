@@ -111,6 +111,26 @@ describe('api/mcp-proxy', () => {
       const res = await handler(makeOptionsRequest());
       assert.equal(res.status, 204);
     });
+
+    // wm_ user-key fallback (PR review finding). validateApiKey returns
+    // {required:true, valid:false} for wm_ keys so the API-gateway can do
+    // Convex-backed validation — but /api/mcp-proxy is a direct Edge
+    // function with no gateway in front, so it must mirror the gateway's
+    // wm_ fallback inline. Without it, every wm_ user API key 401s here
+    // even though the PR description advertised wm_ support.
+    it('rejects a wm_ user key that Convex says is invalid', async () => {
+      // No CONVEX_SITE_URL / CONVEX_SERVER_SHARED_SECRET set in test env →
+      // validateUserApiKey returns null → wm_ key still rejected. Asserts
+      // the wm_ branch fails safely when the validator can't run.
+      const url = new URL('https://worldmonitor.app/api/mcp-proxy');
+      url.searchParams.set('serverUrl', 'https://mcp.example.com/mcp');
+      const req = new Request(url.toString(), {
+        method: 'GET',
+        headers: { origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': 'wm_user_definitely_not_real_abc123' },
+      });
+      const res = await handler(req);
+      assert.equal(res.status, 401);
+    });
   });
 
   // ── CORS / method guards ──────────────────────────────────────────────────

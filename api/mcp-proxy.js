@@ -341,9 +341,20 @@ export default async function handler(req) {
   //   (b) consume our outbound-IP reputation / quota.
   // Note: isDisallowedOrigin() returns false on null Origin (correct for
   // server-to-server callers on other endpoints), so the origin check alone
-  // does not stop curl. validateApiKey requires a wms_ session token, a wm_
-  // user API key, or an enterprise key.
-  const apiKeyResult = await validateApiKey(req);
+  // does not stop curl. validateApiKey accepts wms_ session tokens and the
+  // enterprise key directly; wm_ user keys are punted to validateApiKey's
+  // {required:true, valid:false} branch (so the gateway can do Convex-backed
+  // validation), but this is a direct Edge function — there is no gateway in
+  // front of it, so we mirror the gateway's wm_ fallback inline.
+  let apiKeyResult = await validateApiKey(req);
+  if (apiKeyResult.required && !apiKeyResult.valid) {
+    const wmKey = req.headers.get('X-WorldMonitor-Key') || req.headers.get('X-Api-Key') || '';
+    if (wmKey.startsWith('wm_')) {
+      const { validateUserApiKey } = await import('../server/_shared/user-api-key');
+      const userKeyResult = await validateUserApiKey(wmKey);
+      if (userKeyResult) apiKeyResult = { valid: true, required: true, kind: 'user' };
+    }
+  }
   if (apiKeyResult.required && !apiKeyResult.valid)
     return jsonResponse({ error: apiKeyResult.error }, 401, cors);
 
