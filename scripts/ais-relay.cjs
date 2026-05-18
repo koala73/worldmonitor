@@ -9089,25 +9089,32 @@ const server = http.createServer(async (req, res) => {
     //
     // /health is in `isPublicRoute` (no auth check). Fields here are
     // returned to ANY caller — uptime monitors, attackers probing the
-    // relay, anyone with the URL. Two field categories were intentionally
-    // REMOVED from this response per issue #3802:
+    // relay, anyone with the URL.
     //
-    //   • `auth: {...}` — `auth.sharedSecretEnabled` was a direct signal
-    //     that the relay was deployed without a configured secret, letting
-    //     an attacker know that follow-up requests would succeed without
-    //     credentials. `auth.authHeader` is technically already exposed
-    //     via the CORS Allow-Headers preflight, but bundling it on /health
-    //     made the attack scenario one-step instead of two.
-    //   • `rateLimit: {...}` — exact windowMs / defaultMax /
-    //     openskyMax / rssMax let an attacker tune scraping cadence to
-    //     stay just under the throttle thresholds.
+    // Per issue #3802, two attacker-aiding fields were REMOVED from the
+    // `auth: {...}` block and the entire `rateLimit: {...}` block was
+    // removed:
     //
-    // Operators inspect auth/rate-limit state via env vars or the Railway
-    // dashboard — they don't need it on /health. If a future legitimate
-    // operator workflow needs them, add an AUTHENTICATED /health/full
-    // route instead of widening the public response. The
-    // `ais-relay-health-no-secret-recon` test source-greps this block to
-    // ensure neither field reappears here.
+    //   • `auth.authHeader` — revealed the non-standard header name
+    //     (`x-relay-key`) attackers should target. (Technically also
+    //     exposed via the CORS Allow-Headers preflight, but bundling it
+    //     on /health made the attack one-step instead of two.)
+    //   • `auth.allowVercelPreviewOrigins` — CORS-policy leak.
+    //   • `rateLimit: {...}` — exact windowMs / defaultMax / openskyMax /
+    //     rssMax let an attacker tune scraping cadence to stay just under
+    //     the throttle thresholds.
+    //
+    // The remaining `auth.enabled` + `auth.sharedSecretEnabled` are
+    // PRESERVED intentionally: PR #3812 / #3815 added them as the
+    // operator-visible "is auth configured?" signal that monitoring
+    // tools depend on (tests in tests/relay-auth.test.mjs codify this
+    // contract). Removing them would lie to ops; the trade-off was
+    // explicitly debated and decided in favour of operability.
+    //
+    // If a future operator workflow needs the removed fields, add an
+    // AUTHENTICATED /health/full route instead of widening this public
+    // response. The `ais-relay-health-no-secret-recon` test asserts the
+    // removed fields don't reappear here.
     sendCompressed(req, res, 200, { 'Content-Type': 'application/json' }, JSON.stringify({
       status: 'ok',
       clients: clients.size,
@@ -9152,6 +9159,13 @@ const server = http.createServer(async (req, res) => {
         polymarket: polymarketCache.size,
         yahooChart: yahooChartCache.size,
         polymarketInflight: polymarketInflight.size,
+      },
+      auth: {
+        // Preserved per PR #3812 / #3815 contract — operators monitor
+        // "is auth configured?" via these two fields. authHeader and
+        // allowVercelPreviewOrigins removed per #3802. See note above.
+        enabled: !AUTH_EFFECTIVELY_DISABLED,
+        sharedSecretEnabled: !!RELAY_SHARED_SECRET,
       },
     }));
   } else if (pathname === '/metrics') {
