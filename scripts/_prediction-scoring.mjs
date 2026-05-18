@@ -54,10 +54,19 @@ export function shouldInclude(m, relaxed = false) {
   return true;
 }
 
+// Rank markets by crowd CONVICTION (distance from 50/50), not maximum
+// uncertainty. The analyst LLM should see the markets where collective
+// betting has converged on a directional answer, with volume as a tiebreaker.
+//
+// The previous formula inverted this — it weighted 50/50 markets highest,
+// burying high-signal contested markets (e.g. "Iran strike: 88% YES") below
+// coin-flip ones. See #3735 + #3726. Lopsided markets are not a concern here
+// because shouldInclude() already clips yesPrice to [10, 90] (relaxed [5, 95]),
+// so 99% locks-in never reach the ranker.
 export function scoreMarket(m) {
-  const uncertainty = 1 - (2 * Math.abs(m.yesPrice - 50) / 100);
+  const conviction = (2 * Math.abs(m.yesPrice - 50)) / 100;
   const vol = Math.log10(Math.max(m.volume, 1)) / Math.log10(10_000_000);
-  return (uncertainty * 0.6) + (Math.min(vol, 1) * 0.4);
+  return (conviction * 0.5) + (Math.min(vol, 1) * 0.5);
 }
 
 export function isExpired(endDate) {

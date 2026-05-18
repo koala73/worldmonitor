@@ -184,42 +184,55 @@ describe('shouldInclude', () => {
   });
 });
 
-describe('scoreMarket', () => {
-  it('50% price gets maximum uncertainty (0.6)', () => {
+describe('scoreMarket (conviction-weighted, post-#3735)', () => {
+  it('50% price gets minimum conviction — only volume contributes', () => {
+    // p=50 → conviction=0; score collapses to vol_term * 0.5.
     const score = scoreMarket(market('Test', 50, 1));
-    assert.ok(score >= 0.59, `50% market should have uncertainty ~0.6, got ${score}`);
+    assert.ok(score < 0.1, `coin-flip market at $1 volume should score near 0, got ${score}`);
   });
 
-  it('1% price gets near-zero uncertainty', () => {
-    const lowScore = scoreMarket(market('Test', 1, 10000));
-    const midScore = scoreMarket(market('Test', 50, 10000));
-    assert.ok(midScore > lowScore, `50% score (${midScore}) should beat 1% score (${lowScore})`);
+  it('high-conviction market outranks coin-flip at equal volume (#3735)', () => {
+    // The motivating example from the audit: "Iran strike: 88% YES" should
+    // surface above "Fed rate cut: 51%" when volumes are comparable.
+    const highConviction = scoreMarket(market('Iran military action', 88, 100000));
+    const coinFlip = scoreMarket(market('Fed rate cut', 51, 100000));
+    assert.ok(highConviction > coinFlip,
+      `88%/$100K (${highConviction}) should outrank 51%/$100K (${coinFlip})`);
   });
 
-  it('higher volume increases score', () => {
-    const lowVol = scoreMarket(market('Test', 50, 1000));
-    const highVol = scoreMarket(market('Test', 50, 1000000));
+  it('higher volume increases score at equal conviction', () => {
+    const lowVol = scoreMarket(market('Test', 70, 1000));
+    const highVol = scoreMarket(market('Test', 70, 1000000));
     assert.ok(highVol > lowVol, `$1M vol (${highVol}) should beat $1K vol (${lowVol})`);
   });
 
-  it('uncertainty dominates: 50%/$10K beats 10%/$10M', () => {
-    const uncertain = scoreMarket(market('Test', 50, 10000));
-    const certain = scoreMarket(market('Test', 10, 10000000));
-    assert.ok(uncertain > certain,
-      `50%/$10K (${uncertain}) should beat 10%/$10M (${certain}) — uncertainty weight 60%`);
+  it('within-band conviction beats coin-flip even on lower volume', () => {
+    // The previous formula buried this case (1% < 50% by uncertainty).
+    // After flip: 85% conviction at $10K beats 50% coin-flip at $10M as long
+    // as conviction's contribution exceeds the volume gap.
+    const convicted = scoreMarket(market('Convicted', 85, 100000));
+    const coinFlip = scoreMarket(market('Coin flip', 50, 10000000));
+    assert.ok(convicted > coinFlip,
+      `85%/$100K (${convicted}) should outrank 50%/$10M (${coinFlip}) — conviction signal beats volume`);
   });
 
   it('score bounded between 0 and 1', () => {
-    const s1 = scoreMarket(market('Test', 50, 10000000));
-    const s2 = scoreMarket(market('Test', 1, 1));
+    const s1 = scoreMarket(market('Test', 90, 10000000));
+    const s2 = scoreMarket(market('Test', 50, 1));
     assert.ok(s1 >= 0 && s1 <= 1, `score should be 0-1, got ${s1}`);
     assert.ok(s2 >= 0 && s2 <= 1, `score should be 0-1, got ${s2}`);
   });
 
-  it('symmetric: 40% and 60% get same uncertainty', () => {
+  it('symmetric around 50%: 40% and 60% get the same score', () => {
     const s40 = scoreMarket(market('Test', 40, 10000));
     const s60 = scoreMarket(market('Test', 60, 10000));
     assert.ok(Math.abs(s40 - s60) < 0.001, `40% (${s40}) and 60% (${s60}) should have same score`);
+  });
+
+  it('symmetric around 50%: 20% and 80% get the same score', () => {
+    const s20 = scoreMarket(market('Test', 20, 10000));
+    const s80 = scoreMarket(market('Test', 80, 10000));
+    assert.ok(Math.abs(s20 - s80) < 0.001, `20% (${s20}) and 80% (${s80}) should have same score`);
   });
 });
 
@@ -274,14 +287,17 @@ describe('filterAndScore', () => {
     assert.equal(result[0].title, 'AI regulation');
   });
 
-  it('sorts by composite score (most uncertain first)', () => {
+  it('sorts by composite score (highest conviction first, post-#3735)', () => {
+    // Conviction ordering at equal volume: 85% (Δ35) > 65% (Δ15) > 48% (Δ2)
     const candidates = [
-      market('Market A (certain)', 85, 100000, { endDate: '2099-01-01' }),
-      market('Market B (uncertain)', 48, 100000, { endDate: '2099-01-01' }),
+      market('Market A (high conviction)', 85, 100000, { endDate: '2099-01-01' }),
+      market('Market B (coin flip)', 48, 100000, { endDate: '2099-01-01' }),
       market('Market C (mid)', 65, 100000, { endDate: '2099-01-01' }),
     ];
     const result = filterAndScore(candidates, null);
-    assert.equal(result[0].title, 'Market B (uncertain)');
+    assert.equal(result[0].title, 'Market A (high conviction)');
+    assert.equal(result[1].title, 'Market C (mid)');
+    assert.equal(result[2].title, 'Market B (coin flip)');
   });
 
   it('respects limit parameter', () => {
@@ -325,10 +341,17 @@ describe('regression: meme market surfacing', () => {
     assert.ok(isMemeCandidate(m.title, m.yesPrice), 'should be flagged as meme');
   });
 
-  it('LeBron market scores lower than genuine uncertain market', () => {
-    const meme = scoreMarket(market('Will LeBron James win?', 1, 500000));
-    const real = scoreMarket(market('Will the Fed cut rates?', 48, 50000));
-    assert.ok(real > meme, `Real market (${real}) should score higher than meme (${meme})`);
+  it('LeBron meme market is dropped by filterAndScore, never reaches the analyst', () => {
+    // Direct scoreMarket comparison is meaningless after #3735 — a 1% meme
+    // would score high on conviction. The real guarantee is that shouldInclude
+    // + isMemeCandidate prune it before it ever reaches the ranker.
+    const meme = market('Will LeBron James win?', 1, 500000, { endDate: '2099-01-01' });
+    const real = market('Will the Fed cut rates?', 48, 50000, { endDate: '2099-01-01' });
+    const result = filterAndScore([meme, real], null);
+    assert.ok(!result.some(m => m.title.includes('LeBron')),
+      `LeBron meme must not reach the analyst output: ${result.map(m => m.title).join(', ')}`);
+    assert.ok(result.some(m => m.title.includes('Fed')),
+      'Genuine market should be present');
   });
 
   it('high-volume 99% market excluded by shouldInclude', () => {
