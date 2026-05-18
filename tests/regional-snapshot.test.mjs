@@ -972,3 +972,95 @@ describe('end-to-end pipeline', () => {
     }
   });
 });
+
+// ────────────────────────────────────────────────────────────────────────────
+// Writer-side sanitization (defense-in-depth for stored XSS)
+//
+// Issue #3730: snapshot evidence/driver strings interpolate upstream Redis
+// fields. The renderer escapeHtml-wraps everything, but the writer also
+// strips angle brackets so a hostile upstream payload cannot smuggle markup
+// into the persisted blob. This test pins the writer-side guarantee end-to-
+// end through evidence-collector + balance-vector.
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('writer-side XSS hardening (issue #3730)', () => {
+  const XSS = '<script>alert(1)</script>';
+  const IMG_XSS = '<img src=x onerror=alert(1)>';
+
+  const hostileSources = () => ({
+    'intelligence:cross-source-signals:v1': {
+      signals: [
+        {
+          id: `sig-${XSS}`,
+          type: `type-${XSS}`,
+          summary: `Broad MENA pressure signal ${XSS}`,
+          theater: 'Middle East',
+          severity: 'CRITICAL',
+          severityScore: 90,
+          detectedAt: Date.now(),
+        },
+      ],
+    },
+    'risk:scores:sebuf:stale:v2': {
+      ciiScores: [
+        { region: 'IR', combinedScore: 75, trend: `RISING${IMG_XSS}`, computedAt: Date.now() },
+      ],
+    },
+    'supply_chain:chokepoints:v4': {
+      chokepoints: [
+        { id: 'hormuz', name: `Hormuz ${XSS}`, threatLevel: `high${IMG_XSS}` },
+      ],
+    },
+    'forecast:predictions:v2': {
+      predictions: [
+        {
+          id: `fc-${XSS}`,
+          title: `Forecast ${XSS}`,
+          region: 'Middle East',
+          probability: 0.6,
+          confidence: 0.7,
+          updatedAt: Date.now(),
+        },
+      ],
+    },
+    'economic:macro-signals:v1': { verdict: `CASH${XSS}` },
+    'economic:stress-index:v1': { compositeScore: 80, label: `RISKY${XSS}` },
+  });
+
+  it('evidence summaries never contain angle brackets', () => {
+    const evidence = collectEvidence('mena', hostileSources());
+    assert.ok(evidence.length > 0, 'expected at least one evidence item');
+    for (const item of evidence) {
+      assert.ok(!item.summary.includes('<'), `summary contains "<": ${item.summary}`);
+      assert.ok(!item.summary.includes('>'), `summary contains ">": ${item.summary}`);
+      assert.ok(!item.id.includes('<'), `id contains "<": ${item.id}`);
+      assert.ok(!item.id.includes('>'), `id contains ">": ${item.id}`);
+      assert.ok(!item.theater.includes('<'), `theater contains "<": ${item.theater}`);
+      assert.ok(!item.corridor.includes('<'), `corridor contains "<": ${item.corridor}`);
+    }
+  });
+
+  it('balance driver descriptions never contain angle brackets', () => {
+    const { vector } = computeBalanceVector('mena', hostileSources());
+    const allDrivers = [...vector.pressures, ...vector.buffers];
+    assert.ok(allDrivers.length > 0, 'expected at least one driver');
+    for (const d of allDrivers) {
+      assert.ok(!d.description.includes('<'), `description contains "<": ${d.description}`);
+      assert.ok(!d.description.includes('>'), `description contains ">": ${d.description}`);
+      for (const eid of d.evidence_ids ?? []) {
+        assert.ok(!eid.includes('<'), `evidence_id contains "<": ${eid}`);
+        assert.ok(!eid.includes('>'), `evidence_id contains ">": ${eid}`);
+      }
+    }
+  });
+
+  it('the raw "<script>alert(1)</script>" sequence does not survive end-to-end', () => {
+    const sources = hostileSources();
+    const evidence = collectEvidence('mena', sources);
+    const { vector } = computeBalanceVector('mena', sources);
+    const serialized = JSON.stringify({ evidence, vector });
+    assert.ok(!serialized.includes('<script>'), 'raw <script> tag survived sanitization');
+    assert.ok(!serialized.includes('</script>'), 'raw </script> tag survived sanitization');
+    assert.ok(!serialized.includes('<img'), 'raw <img tag survived sanitization');
+  });
+});
