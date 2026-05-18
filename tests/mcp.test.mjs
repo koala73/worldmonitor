@@ -2086,6 +2086,20 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     assert.equal(pipe.count, 1, 'cache-only tool incremented quota');
   });
 
+  it('v1.5.0: describe_tool for Pro user is EXEMPT from the INCR/DECR daily-quota path (metadata-only)', async () => {
+    const { deps, pipe } = makeProDeps();
+    process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'stub';
+    globalThis.fetch = async () => new Response(JSON.stringify({ result: JSON.stringify({ ok: 1 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    // describe_tool is the v1.5.0 metadata escape hatch. SERVER_INSTRUCTIONS
+    // actively encourages calling it while choosing tools, so it must NOT
+    // consume daily quota — otherwise a Pro user at the 50/day cap can't
+    // even fetch tool definitions. Rate limit (60/min) still applies.
+    const res = await mcpHandler(proReq('POST', callBody('describe_tool', { tool_name: 'get_market_data' })), deps);
+    assert.equal(res.status, 200);
+    assert.equal(pipe.count, 0, 'describe_tool MUST NOT increment the Pro daily quota');
+  });
+
   it('integration: signed header for /api/news/v1/list-feed-digest cannot be replayed against /api/intelligence/v1/deduct-situation', async () => {
     const { signInternalMcpRequest, hmacSha256Base64Url, canonicalQueryString, sha256Hex, buildHmacPayload } = await import(`../server/_shared/mcp-internal-hmac.ts?t=${Date.now()}`);
     // Sign for digest endpoint.

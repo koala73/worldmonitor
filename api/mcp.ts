@@ -128,7 +128,7 @@ const SERVER_INSTRUCTIONS = [
   '',
   `Limits: expression ≤ ${JMESPATH_MAX_EXPR_BYTES} bytes; projected payload ≤ ${JMESPATH_MAX_OUTPUT_BYTES} bytes. Failures return {_jmespath_error, original_keys} inside the normal result envelope. Bad expressions DO consume one daily quota unit on retry — original_keys is echoed so you can self-correct in one extra call.`,
   '',
-  `tools/list returns COMPRESSED tool descriptions (first sentence, ≤${TOOL_DESCRIPTION_MAX_BYTES}B per tool). Call describe_tool({tool_name}) to get the full uncompressed definition for any tool you're considering — especially useful when the compressed entry is ambiguous about behaviour or argument semantics. describe_tool({tool_name: 'nonexistent'}) returns {error: 'unknown_tool', available: [...]} so you can self-correct.`,
+  `tools/list returns COMPRESSED tool descriptions (first sentence, ≤${TOOL_DESCRIPTION_MAX_BYTES}B per tool). Call describe_tool({tool_name}) to get the full uncompressed definition for any tool you're considering — especially useful when the compressed entry is ambiguous about behaviour or argument semantics. describe_tool is metadata-only and is EXEMPT from the Pro daily quota (still counts toward the 60/min rate limit), so use it freely while exploring. describe_tool({tool_name: 'nonexistent'}) returns {error: 'unknown_tool', available: [...]} so you can self-correct.`,
 ].join('\n');
 
 // Country-code whitelist for get_consumer_prices. The consumer-prices seeder
@@ -3075,9 +3075,17 @@ async function dispatchToolsCall(
     return rpcError(id, -32602, `Unknown tool: ${p.name}`);
   }
 
-  // Pro-only INCR-first reservation. Both cache-only AND RPC tools count.
+  // Pro-only INCR-first reservation. Both cache-only AND RPC tools count
+  // toward the daily 50/day cap — EXCEPT `describe_tool` (v1.5.0), which
+  // is metadata-only and is actively encouraged by SERVER_INSTRUCTIONS
+  // when the compressed tools/list entry is ambiguous. Charging quota for
+  // schema lookups would (a) discourage the LLM from using it, defeating
+  // the v1.5.0 compression's UX hedge, and (b) lock out Pro users at the
+  // 50/day cap from even seeing tool definitions. Exempt by name; rate-
+  // limiter (60/min) still applies as the abuse guard.
+  const isMetadataTool = p.name === 'describe_tool';
   let proRollback: (() => Promise<void>) | null = null;
-  if (context.kind === 'pro') {
+  if (context.kind === 'pro' && !isMetadataTool) {
     const reservation = await reserveQuota(context.userId, deps.redisPipeline);
     if (!reservation.ok) {
       if (reservation.reason === 'cap-exceeded') {
