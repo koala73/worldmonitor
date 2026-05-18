@@ -50,6 +50,20 @@ For the full feature list, architecture, data sources, and algorithms, see the *
 
 ---
 
+## Support Status
+
+All site variants and desktop binaries are built from a single codebase and ship from the same release process. The table below clarifies maintenance status so you know which surfaces are safe to depend on.
+
+| Surface | Status | Notes |
+|---------|--------|-------|
+| `worldmonitor.app`, `tech.`, `finance.`, `commodity.`, `happy.` | Stable | Public deployments built from this repo, actively maintained |
+| `energy.worldmonitor.app` | Experimental | Scaffolded but not advertised in the header badges; expect rough edges |
+| Desktop binaries (Windows / macOS Apple Silicon / macOS Intel / Linux AppImage) | Stable | One Tauri binary that switches variants in-app; current CI release targets are `full` and `tech` |
+
+Issues filed against any of the above are triaged from the same backlog — see the [issues board](https://github.com/koala73/worldmonitor/issues) for currently-open work.
+
+---
+
 ## Quick Start
 
 ```bash
