@@ -687,6 +687,7 @@ interface TitleSummaryPayload {
   summary: string;
 }
 
+
 const TITLE_SUMMARY_CACHE_KEY = (link: string): string =>
   `enrichment-title-summary:v1:${createHash('sha256').update(link).digest('hex')}`;
 const TITLE_SUMMARY_CACHE_TTL_S = 3 * 24 * 60 * 60; // 3-day project max
