@@ -11,8 +11,19 @@ import { buildUpstreamEvent, getUsageScope, sendToAxiom } from './usage';
 // scripts/compare-resilience-current-vs-proposed.mjs locally so the
 // acceptance-gate output reflects real production behavior, not
 // timeout-induced zeros. Production should keep the defaults.
-const REDIS_OP_TIMEOUT_MS = Number.parseInt(process.env.REDIS_OP_TIMEOUT_MS ?? '', 10) || 1_500;
-const REDIS_PIPELINE_TIMEOUT_MS = Number.parseInt(process.env.REDIS_PIPELINE_TIMEOUT_MS ?? '', 10) || 5_000;
+//
+// Guard intentionally requires a strictly-positive integer. `|| default`
+// alone would reject 0 (good — AbortSignal.timeout(0) would abort instantly)
+// but pass through NEGATIVE values, which AbortSignal.timeout rejects with
+// a TypeError that escapes unguarded callers (e.g. getRawJson) per the
+// WHATWG spec. So fall back to the default for any non-positive / non-numeric
+// value rather than letting a typo'd env var poison every Redis read.
+export function parseTimeoutEnv(raw: string | undefined, defaultMs: number): number {
+  const parsed = Number.parseInt(raw ?? '', 10);
+  return parsed > 0 ? parsed : defaultMs;
+}
+const REDIS_OP_TIMEOUT_MS = parseTimeoutEnv(process.env.REDIS_OP_TIMEOUT_MS, 1_500);
+const REDIS_PIPELINE_TIMEOUT_MS = parseTimeoutEnv(process.env.REDIS_PIPELINE_TIMEOUT_MS, 5_000);
 
 function errMsg(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
