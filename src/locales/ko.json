@@ -1310,8 +1310,7 @@
     "cii": {
       "shareStory": "기사 공유",
       "noSignals": "불안정 신호 감지되지 않음",
-      "infoTooltip": "<strong>방법론</strong><ul><li><strong>U</strong>nrest: 시민 소요 및 시위</li><li><strong>C</strong>onflict: 무력 분쟁 강도</li><li><strong>S</strong>ecurity: 영토 상공 군용기/함정</li><li><strong>I</strong>nformation: 뉴스 속도 및 핵심 지점 상관관계</li><li>핫스팟 근접 가산점 (전략적 위치)</li></ul><em>U:C:S:I 값은 구성 요소 점수를 표시합니다.</em> 핵심 지점 감지는 뉴스 개체와 지도 신호를 상관 분석하여 정확한 점수를 산출합니다.",
-      "methodologyLink": "Includes per-country baseline + event multiplier — see /docs/methodology/cii-risk-scores for the published table"
+      "infoTooltip": "<strong>방법론</strong><ul><li><strong>U</strong>nrest: 시민 소요 및 시위</li><li><strong>C</strong>onflict: 무력 분쟁 강도</li><li><strong>S</strong>ecurity: 영토 상공 군용기/함정</li><li><strong>I</strong>nformation: 뉴스 속도 및 핵심 지점 상관관계</li><li>핫스팟 근접 가산점 (전략적 위치)</li></ul><em>U:C:S:I 값은 구성 요소 점수를 표시합니다.</em> 핵심 지점 감지는 뉴스 개체와 지도 신호를 상관 분석하여 정확한 점수를 산출합니다."
     },
     "insights": {
       "noStories": "아직 속보 또는 다중 출처 기사 없음",

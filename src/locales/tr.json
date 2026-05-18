@@ -1310,8 +1310,7 @@
     "cii": {
       "shareStory": "Hikayeyi paylas",
       "noSignals": "Istikrarsizlik sinyali tespit edilmedi",
-      "infoTooltip": "<strong>Metodoloji</strong><ul><li><strong>H</strong>uzursuzluk: sivil duzensizlik ve protestolar</li><li><strong>C</strong>atisma: silahli catisma yogunlugu</li><li><strong>G</strong>uvenlik: toprak uzerindeki askeri ucuslar/gemiler</li><li><strong>B</strong>ilgi: haber hizi ve odak noktasi korelasyonu</li><li>Sicak nokta yakinligi artisi (stratejik konumlar)</li></ul><em>H:C:G:B degerleri bilesen puanlarini gosterir.</em> Odak Noktasi Tespiti, dogru puanlama icin haber varliklarini harita sinyalleriyle iliskilendirir.",
-      "methodologyLink": "Includes per-country baseline + event multiplier — see /docs/methodology/cii-risk-scores for the published table"
+      "infoTooltip": "<strong>Metodoloji</strong><ul><li><strong>H</strong>uzursuzluk: sivil duzensizlik ve protestolar</li><li><strong>C</strong>atisma: silahli catisma yogunlugu</li><li><strong>G</strong>uvenlik: toprak uzerindeki askeri ucuslar/gemiler</li><li><strong>B</strong>ilgi: haber hizi ve odak noktasi korelasyonu</li><li>Sicak nokta yakinligi artisi (stratejik konumlar)</li></ul><em>H:C:G:B degerleri bilesen puanlarini gosterir.</em> Odak Noktasi Tespiti, dogru puanlama icin haber varliklarini harita sinyalleriyle iliskilendirir."
     },
     "insights": {
       "noStories": "Henuz son dakika veya coklu kaynak haberi yok",

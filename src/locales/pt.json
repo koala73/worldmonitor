@@ -1160,8 +1160,7 @@
     "cii": {
       "infoTooltip": "<strong>Metodologia</strong><ul><li><strong>U</strong>descanso: desordem civil e protestos</li><li><strong>C</strong>conflito: intensidade do conflito armado</li><li><strong>S</strong>segurança: voos militares/navios sobrevoados território</li><li><strong>I</strong>nformação: velocidade das notícias e correlação do ponto focal</li><li>Aumento de proximidade do ponto de acesso (locais estratégicos)</li></ul><em>U:C:S:I valores mostram pontuações de componentes.</em> A detecção de ponto focal correlaciona entidades de notícias com sinais de mapa para pontuação precisa.",
       "shareStory": "Compartilhar história",
-      "noSignals": "Nenhum sinal de instabilidade detectado",
-      "methodologyLink": "Includes per-country baseline + event multiplier — see /docs/methodology/cii-risk-scores for the published table"
+      "noSignals": "Nenhum sinal de instabilidade detectado"
     },
     "gdeltIntel": {
       "infoTooltip": "<strong>News Intelligence</strong> Monitoramento de notícias globais em tempo real:<ul><li>Categorias de tópicos selecionadas (conflitos, cibernética, etc.)</li><li>Artigos de mais de 100 idiomas traduzidos</li><li>Atualizações a cada 15 minutos</li><li>14-day media tone &amp; volume trend per topic</li></ul>Fonte: Projeto GDELT (gdeltproject.org)"

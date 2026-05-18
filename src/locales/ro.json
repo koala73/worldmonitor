@@ -1310,8 +1310,7 @@
     "cii": {
       "shareStory": "Distribuie povestea",
       "noSignals": "Nu au fost detectate semnale de instabilitate",
-      "infoTooltip": "<strong>Metodologie</strong><ul><li><strong>U</strong>nrest: dezordine civilă și proteste</li><li><strong>C</strong>conflict: intensitatea conflictului armat</li><li><strong>S</strong>siguranță: zboruri/nave militare peste teritoriu</li><li><strong>I</strong>nformație: știri și proximitate punct focal știri și viteză de corelație (locații strategice)</li></ul><em>Valorile U:C:S:I arată scorurile componente.</em> Focal Point Detection corelează entitățile de știri cu semnalele hărții pentru scoruri precise.",
-      "methodologyLink": "Includes per-country baseline + event multiplier — see /docs/methodology/cii-risk-scores for the published table"
+      "infoTooltip": "<strong>Metodologie</strong><ul><li><strong>U</strong>nrest: dezordine civilă și proteste</li><li><strong>C</strong>conflict: intensitatea conflictului armat</li><li><strong>S</strong>siguranță: zboruri/nave militare peste teritoriu</li><li><strong>I</strong>nformație: știri și proximitate punct focal știri și viteză de corelație (locații strategice)</li></ul><em>Valorile U:C:S:I arată scorurile componente.</em> Focal Point Detection corelează entitățile de știri cu semnalele hărții pentru scoruri precise."
     },
     "insights": {
       "noStories": "Încă nu există știri de ultimă oră sau din surse multiple",

@@ -1262,8 +1262,7 @@
     "cii": {
       "shareStory": "مشاركة القصة",
       "noSignals": "لم يتم رصد إشارات عدم استقرار",
-      "infoTooltip": "<strong>المنهجية</strong><ul><li><strong>U</strong> - الاضطرابات: الفوضى المدنية والاحتجاجات</li><li><strong>C</strong> - النزاع: شدة النزاع المسلح</li><li><strong>S</strong> - الأمن: الرحلات/السفن العسكرية فوق الإقليم</li><li><strong>I</strong> - المعلومات: سرعة الأخبار وارتباط النقاط المحورية</li><li>تعزيز قرب البؤر الساخنة (المواقع الاستراتيجية)</li></ul><em>قيم U:C:S:I تُظهر درجات المكونات.</em> كشف النقاط المحورية يربط كيانات الأخبار بإشارات الخريطة للتقييم الدقيق.",
-      "methodologyLink": "Includes per-country baseline + event multiplier — see /docs/methodology/cii-risk-scores for the published table"
+      "infoTooltip": "<strong>المنهجية</strong><ul><li><strong>U</strong> - الاضطرابات: الفوضى المدنية والاحتجاجات</li><li><strong>C</strong> - النزاع: شدة النزاع المسلح</li><li><strong>S</strong> - الأمن: الرحلات/السفن العسكرية فوق الإقليم</li><li><strong>I</strong> - المعلومات: سرعة الأخبار وارتباط النقاط المحورية</li><li>تعزيز قرب البؤر الساخنة (المواقع الاستراتيجية)</li></ul><em>قيم U:C:S:I تُظهر درجات المكونات.</em> كشف النقاط المحورية يربط كيانات الأخبار بإشارات الخريطة للتقييم الدقيق."
     },
     "insights": {
       "noStories": "لا توجد قصص عاجلة أو متعددة المصادر بعد",

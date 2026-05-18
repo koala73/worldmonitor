@@ -1310,8 +1310,7 @@
     "cii": {
       "shareStory": "Дели история",
       "noSignals": "Няма открити сигнали на нестабилност",
-      "infoTooltip": "<strong>Методология</strong><ul><li><strong>U</strong>nrest: граждански безред & протести</li><li><strong>C</strong>onflict: интензивност на въоръжен конфликт</li><li><strong>S</strong>ecurity: военни полети/кораби над територия</li><li><strong>I</strong>nformation: скорост на новини и корелация на фокусни точки</li><li>Близост на гореща точка повишение (стратегически местоположения)</li></ul><em>U:C:S:I стойностите показват компонентни резултати.</em> Откритие на фокусни точки коерелира новинни субекти със сигнали на карта за точно оценяване.",
-      "methodologyLink": "Includes per-country baseline + event multiplier — see /docs/methodology/cii-risk-scores for the published table"
+      "infoTooltip": "<strong>Методология</strong><ul><li><strong>U</strong>nrest: граждански безред & протести</li><li><strong>C</strong>onflict: интензивност на въоръжен конфликт</li><li><strong>S</strong>ecurity: военни полети/кораби над територия</li><li><strong>I</strong>nformation: скорост на новини и корелация на фокусни точки</li><li>Близост на гореща точка повишение (стратегически местоположения)</li></ul><em>U:C:S:I стойностите показват компонентни резултати.</em> Откритие на фокусни точки коерелира новинни субекти със сигнали на карта за точно оценяване."
     },
     "insights": {
       "noStories": "Няма други или многоточни истории все още",
