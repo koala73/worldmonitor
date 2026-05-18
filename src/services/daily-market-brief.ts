@@ -116,9 +116,11 @@ const DEFAULT_TARGET_COUNT = 4;
 // false for every tick after the first build of the day (same `dateKey`),
 // which silently disables the 60-min scheduler in App.ts and leaves the
 // panel showing a 9 AM snapshot of prices+news+regime+yield+sector for the
-// rest of the day. 60 min matches the scheduler interval so each tick that
-// finds a stale-enough brief triggers a rebuild.
-const DEFAULT_MAX_INTRADAY_AGE_MS = 60 * 60 * 1000;
+// rest of the day. Deliberately set 5 min UNDER the 60-min scheduler interval
+// so a slightly-early tick (browser timer jitter, wake-from-throttled-tab)
+// still satisfies `age >= ceiling` and rebuilds — a ceiling equal to the
+// interval rounds the effective cadence up to 2× when the timer drifts early.
+const DEFAULT_MAX_INTRADAY_AGE_MS = 55 * 60 * 1000;
 const BRIEF_NEWS_CATEGORIES = ['markets', 'economic', 'crypto', 'finance'];
 const COMMON_NAME_TOKENS = new Set(['inc', 'corp', 'group', 'holdings', 'company', 'companies', 'class', 'common', 'plc', 'limited', 'ltd', 'adr']);
 
