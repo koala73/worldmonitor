@@ -11,6 +11,7 @@ export type { DeckGLMap } from './DeckGLMap';
 export type { MapContainer, MapView, TimeRange, MapContainerState } from './MapContainer';
 export * from './NewsPanel';
 export * from './MarketPanel';
+export * from './EarningsPanel';
 export * from './StockAnalysisPanel';
 export * from './StockBacktestPanel';
 export * from './PredictionPanel';

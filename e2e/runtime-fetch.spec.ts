@@ -594,6 +594,7 @@ test.describe('desktop runtime routing guardrails', () => {
       }) as typeof window.fetch;
 
       const fakeApp = {
+        loadEarnings: async () => {},
         ctx: {
           latestMarkets: [] as Array<unknown>,
           panels: {

@@ -11,6 +11,7 @@ import {
   StockAnalysisPanel,
   StockBacktestPanel,
   HeatmapPanel,
+  EarningsPanel,
   CommoditiesPanel,
   CryptoPanel,
   CryptoHeatmapPanel,
@@ -1323,6 +1324,8 @@ export class PanelLayoutManager implements AppModule {
     this.createPanel('fsi', () => new FSIPanel());
     this.createPanel('yield-curve', () => new YieldCurvePanel());
     this.createPanel('earnings-calendar', () => new EarningsCalendarPanel());
+    this.createPanel('upcoming-earnings', () => new EarningsPanel('upcoming-earnings', 'panels.upcomingEarnings'));
+    this.createPanel('recent-earnings', () => new EarningsPanel('recent-earnings', 'panels.recentEarnings'));
     this.createPanel('economic-calendar', () => new EconomicCalendarPanel());
     this.createPanel('cot-positioning', () => new CotPositioningPanel());
     this.createPanel('liquidity-shifts', () => new LiquidityShiftsPanel());
