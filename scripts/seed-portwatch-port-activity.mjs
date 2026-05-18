@@ -1328,11 +1328,21 @@ async function main() {
       // operator-facing WARNING — consumers reading CANONICAL see the
       // prior 174-country list with their existing data (mostly stale
       // for not-yet-rotated entries, fresh for the ones we just wrote).
-      await extendExistingTtl([CANONICAL_KEY, META_KEY], TTL).catch(() => {});
+      //
+      // Greptile PR #3760 round 3 P1: prevCountryKeys MUST be extended
+      // here too, mirroring the COVERAGE GATE / DEGRADATION GUARD
+      // failure paths. Without it, untouched countries' per-country
+      // payloads (TTL=3d) can expire during a multi-day partial
+      // recovery while the canonical list still references them —
+      // contradicting the "consumers see the prior 174-country list
+      // with their existing data" claim. The keys we DO write in
+      // `commands` below get their own SET ... EX TTL, so this only
+      // affects the un-refreshed entries from the prior list.
+      await extendExistingTtl([CANONICAL_KEY, META_KEY, ...prevCountryKeys], TTL).catch(() => {});
       console.warn(
         `  PARTIAL PERSIST: ${countryData.size}/${MIN_CANONICAL_PUBLISH} below canonical-publish floor — ` +
         `${countryData.size} per-country payload(s) written (cache rotation accumulates), ` +
-        `canonical + seed-meta preserved at prior version (operator WARNING remains visible).`,
+        `canonical + seed-meta + prior per-country keys preserved (operator WARNING remains visible).`,
       );
     }
 

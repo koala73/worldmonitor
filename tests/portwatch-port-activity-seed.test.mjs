@@ -189,9 +189,13 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     // The gate is evaluated and used to conditionally write canonical/meta:
     assert.match(src, /const canonicalAdvances = countryData\.size\s*>=\s*MIN_CANONICAL_PUBLISH/);
     assert.match(src, /if\s*\(canonicalAdvances\)\s*\{[\s\S]{0,300}SET',\s*CANONICAL_KEY/);
-    // Below the floor, extendExistingTtl preserves canonical + meta and
-    // a PARTIAL PERSIST log line surfaces what happened to operators.
-    assert.match(src, /extendExistingTtl\(\[CANONICAL_KEY,\s*META_KEY\],\s*TTL\)/);
+    // Below the floor, extendExistingTtl preserves canonical + meta +
+    // prior per-country keys, and a PARTIAL PERSIST log line surfaces
+    // what happened to operators. Greptile PR #3760 round 3 P1: WITHOUT
+    // prevCountryKeys in the extend list, untouched countries' payloads
+    // (TTL=3d) can expire during a multi-day partial recovery while the
+    // canonical list still references them.
+    assert.match(src, /extendExistingTtl\(\[CANONICAL_KEY,\s*META_KEY,\s*\.\.\.prevCountryKeys\],\s*TTL\)/);
     assert.match(src, /PARTIAL PERSIST/);
   });
 
