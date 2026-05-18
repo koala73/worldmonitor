@@ -7,8 +7,13 @@ import type {
 import { getRawJson } from '../../../_shared/redis';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
 import { SIMULATION_OUTCOME_LATEST_KEY } from '../../../_shared/cache-keys';
+import {
+  SIMULATION_OUTCOME_BY_RUN_KEY_PREFIX,
+} from '../../../_shared/_simulation-queue-constants.mjs';
+import { listProcessingRunIds } from '../../../_shared/simulation-queue';
 
 type OutcomePointer = { runId: string; outcomeKey: string; schemaVersion: string; theaterCount: number; generatedAt: number; uiTheaters?: unknown[] };
+type TombstonePayload = { runId: string; error: string; tombstoneAt: number };
 
 function isOutcomePointer(v: unknown): v is OutcomePointer {
   if (!v || typeof v !== 'object') return false;
@@ -18,31 +23,104 @@ function isOutcomePointer(v: unknown): v is OutcomePointer {
     && typeof o['generatedAt'] === 'number';
 }
 
+function isTombstone(v: unknown): v is TombstonePayload {
+  if (!v || typeof v !== 'object') return false;
+  const o = v as Record<string, unknown>;
+  return o['error'] === 'by_run_write_failed' && typeof o['runId'] === 'string';
+}
+
 const NOT_FOUND: GetSimulationOutcomeResponse = {
-  found: false, runId: '', outcomeKey: '', schemaVersion: '', theaterCount: 0, generatedAt: 0, note: '', error: '', theaterSummariesJson: '',
+  found: false, runId: '', outcomeKey: '', schemaVersion: '', theaterCount: 0, generatedAt: 0, note: '', error: '', theaterSummariesJson: '', processing: false,
 };
+
+function outcomeToResponse(pointer: OutcomePointer, note: string): GetSimulationOutcomeResponse {
+  const theaterSummariesJson = Array.isArray(pointer.uiTheaters) && pointer.uiTheaters.length > 0
+    ? JSON.stringify(pointer.uiTheaters)
+    : '';
+  return {
+    found: true,
+    runId: pointer.runId,
+    outcomeKey: pointer.outcomeKey,
+    schemaVersion: pointer.schemaVersion,
+    theaterCount: pointer.theaterCount,
+    generatedAt: pointer.generatedAt,
+    note,
+    error: '',
+    theaterSummariesJson,
+    processing: false,
+  };
+}
 
 export const getSimulationOutcome: ForecastServiceHandler['getSimulationOutcome'] = async (
   ctx: ServerContext,
   req: GetSimulationOutcomeRequest,
 ): Promise<GetSimulationOutcomeResponse> => {
+  // Read path when caller supplied a specific runId:
+  //   1. By-run hit (real outcome) → return it.
+  //   2. By-run hit (tombstone payload) → fall through with the tombstone note text.
+  //   3. By-run miss + runId in queue → return processing=true.
+  //   4. By-run miss + runId not queued → fall through to :latest.
+  // See #3734 U6.
+  if (req.runId) {
+    let byRunRaw: unknown = null;
+    try {
+      byRunRaw = await getRawJson(`${SIMULATION_OUTCOME_BY_RUN_KEY_PREFIX}:${req.runId}`);
+    } catch (err) {
+      console.warn(`[getSimulationOutcome] by-run lookup failed for ${req.runId}: ${err instanceof Error ? err.message : String(err)}`);
+      // Fall through to :latest below.
+    }
+    if (isOutcomePointer(byRunRaw)) {
+      return outcomeToResponse(byRunRaw, '');
+    }
+    if (isTombstone(byRunRaw)) {
+      // Tombstone hit → still fall through to :latest but signal the distinction
+      // via a different note text so callers can react (D9).
+      try {
+        const latestRaw = await getRawJson(SIMULATION_OUTCOME_LATEST_KEY);
+        const latest = isOutcomePointer(latestRaw) ? latestRaw : null;
+        if (latest?.outcomeKey) {
+          return outcomeToResponse(
+            latest,
+            'by-run lookup failed (Redis transient); returned latest available outcome instead',
+          );
+        }
+      } catch (err) {
+        console.warn('[getSimulationOutcome] :latest lookup failed after tombstone:', err instanceof Error ? err.message : String(err));
+      }
+      markNoCacheResponse(ctx.request);
+      return { ...NOT_FOUND, error: 'redis_unavailable' };
+    }
+    // By-run miss — probe the queue to distinguish "processing" from "expired".
+    try {
+      const queued = await listProcessingRunIds();
+      if (queued.includes(req.runId)) {
+        return {
+          ...NOT_FOUND,
+          runId: req.runId,
+          processing: true,
+        };
+      }
+    } catch (err) {
+      console.warn('[getSimulationOutcome] queue probe failed:', err instanceof Error ? err.message : String(err));
+      // Fall through.
+    }
+    // No match anywhere — fall through to :latest with the expiry note.
+  }
+
   try {
     const raw = await getRawJson(SIMULATION_OUTCOME_LATEST_KEY);
     const pointer = isOutcomePointer(raw) ? raw : null;
     if (!pointer?.outcomeKey) {
-      markNoCacheResponse(ctx.request); // don't cache not-found — outcome may appear soon after a simulation run
+      markNoCacheResponse(ctx.request);
       return NOT_FOUND;
     }
     const note = req.runId && req.runId !== pointer.runId
-      ? 'runId filter not yet active; returned outcome may differ from requested run'
+      ? 'requested runId not found (may have expired beyond 24h retention); returned latest available outcome instead'
       : '';
-    const theaterSummariesJson = Array.isArray(pointer.uiTheaters) && pointer.uiTheaters.length > 0
-      ? JSON.stringify(pointer.uiTheaters)
-      : '';
-    return { found: true, runId: pointer.runId, outcomeKey: pointer.outcomeKey, schemaVersion: pointer.schemaVersion, theaterCount: pointer.theaterCount, generatedAt: pointer.generatedAt, note, error: '', theaterSummariesJson };
+    return outcomeToResponse(pointer, note);
   } catch (err) {
     console.warn('[getSimulationOutcome] Redis error:', err instanceof Error ? err.message : String(err));
-    markNoCacheResponse(ctx.request); // don't cache error state
+    markNoCacheResponse(ctx.request);
     return { ...NOT_FOUND, error: 'redis_unavailable' };
   }
 };

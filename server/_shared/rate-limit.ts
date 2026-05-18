@@ -97,6 +97,10 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // inline Upstash INCR. Gateway now enforces the same budget with per-IP
   // keying in checkEndpointRateLimit.
   '/api/scenario/v1/run-scenario': { limit: 10, window: '60 s' },
+  // #3734: trigger-simulation PRO endpoint, same shape as run-scenario.
+  // Per-IP keying matches run-scenario's production behavior. Pro-identity
+  // primitive deferred (checkScopedRateLimit available if needed).
+  '/api/forecast/v1/trigger-simulation': { limit: 10, window: '60 s' },
   // Live tanker map (Energy Atlas): one user with 6 chokepoints × 1 call/min
   // = 6 req/min/IP base load. 60/min headroom covers tab refreshes + zoom
   // pans within a single user without flagging legitimate traffic.

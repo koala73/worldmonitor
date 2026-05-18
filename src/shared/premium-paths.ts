@@ -31,6 +31,9 @@ export const PREMIUM_RPC_PATHS = new Set<string>([
   '/api/trade/v1/get-tariff-trends',
   '/api/scenario/v1/run-scenario',
   '/api/scenario/v1/get-scenario-status',
+  // #3734: PRO-gated mutation that enqueues a simulation task. Companion
+  // /get-simulation-outcome remains public (existing convention).
+  '/api/forecast/v1/trigger-simulation',
   '/api/v2/shipping/route-intelligence',
   '/api/v2/shipping/webhooks',
   // /api/mcp-proxy: Pro-gated outbound MCP proxy (PR #3768, issue #3723).
