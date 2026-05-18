@@ -49,7 +49,7 @@ services:
       ACLED_ACCESS_TOKEN: ""      # https://acleddata.com (free for researchers)
 
       # 🛰️ Earth Observation
-      NASA_FIRMS_API_KEY: ""      # https://firms.modaps.eosdis.nasa.gov (free)
+      NASA_FIRMS_API_KEY: ""      # REQUIRED for seed-fire-detections.mjs — https://firms.modaps.eosdis.nasa.gov (free)
 
       # ✈️ Aviation
       AVIATIONSTACK_API: ""       # https://aviationstack.com (free tier)
