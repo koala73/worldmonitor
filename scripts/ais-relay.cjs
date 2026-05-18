@@ -9995,7 +9995,7 @@ function isWidgetEndpointAllowed(endpoint) {
   if (!endpoint.startsWith('/api/')) return false;
   const blocked = [
     'analyze-stock', 'backtest-stock', 'summarize-article', 'classify-event',
-    'deduce-situation', 'track-aircraft', 'search-flight-prices', 'get-youtube',
+    'deduct-situation', 'track-aircraft', 'search-flight-prices', 'get-youtube',
     'get-vessel-snapshot', 'lookup-sanction', 'get-ip-geo', 'get-simulation',
   ];
   return !blocked.some(b => endpoint.includes(b));

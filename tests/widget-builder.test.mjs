@@ -123,6 +123,20 @@ describe('widget-agent relay — security', () => {
     );
   });
 
+  it('SSRF guard — deduct-situation blocklist entry matches the real method name (#3740)', () => {
+    // Regression: blocklist previously had a one-char typo 'deduce-situation' that
+    // never matched the real /api/intelligence/v1/deduct-situation path, leaving an
+    // expensive LLM endpoint freely callable.
+    assert.ok(
+      relay.includes("'deduct-situation'"),
+      "Blocklist must contain 'deduct-situation' (matches /api/intelligence/v1/deduct-situation)",
+    );
+    assert.ok(
+      !relay.includes("'deduce-situation'"),
+      "Blocklist must not contain the typo 'deduce-situation' — it never matches any real URL",
+    );
+  });
+
   it('injection guard — isWidgetInjectionAttempt function is present', () => {
     assert.ok(relay.includes('isWidgetInjectionAttempt'), 'injection guard function must exist');
     assert.ok(relay.includes('ignore') && relay.includes('previous'), 'must detect override patterns');
