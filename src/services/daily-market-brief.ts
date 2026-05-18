@@ -112,6 +112,13 @@ async function getPersistentCacheApi(): Promise<{
 const CACHE_PREFIX = 'premium:daily-market-brief:v1';
 const DEFAULT_SCHEDULE_HOUR = 8;
 const DEFAULT_TARGET_COUNT = 4;
+// Intraday refresh ceiling. Without this, shouldRefreshDailyBrief returns
+// false for every tick after the first build of the day (same `dateKey`),
+// which silently disables the 60-min scheduler in App.ts and leaves the
+// panel showing a 9 AM snapshot of prices+news+regime+yield+sector for the
+// rest of the day. 60 min matches the scheduler interval so each tick that
+// finds a stale-enough brief triggers a rebuild.
+const DEFAULT_MAX_INTRADAY_AGE_MS = 60 * 60 * 1000;
 const BRIEF_NEWS_CATEGORIES = ['markets', 'economic', 'crypto', 'finance'];
 const COMMON_NAME_TOKENS = new Set(['inc', 'corp', 'group', 'holdings', 'company', 'companies', 'class', 'common', 'plc', 'limited', 'ltd', 'adr']);
 
@@ -375,11 +382,20 @@ export function shouldRefreshDailyBrief(
   timezone = 'UTC',
   now = new Date(),
   scheduleHour = DEFAULT_SCHEDULE_HOUR,
+  maxIntradayAgeMs = DEFAULT_MAX_INTRADAY_AGE_MS,
 ): boolean {
   if (!brief?.available) return true;
   const resolvedTimezone = resolveTimeZone(timezone || brief.timezone);
   const dateKey = getDateKey(now, resolvedTimezone);
-  if (brief.dateKey === dateKey) return false;
+  if (brief.dateKey === dateKey) {
+    // Same calendar day: refresh once the cached brief is older than the
+    // intraday ceiling. Without this gate the 60-min scheduler in App.ts is
+    // dead code after the first build of the day — the panel is stuck on
+    // the morning snapshot until tomorrow's schedule hour.
+    const generatedMs = new Date(brief.generatedAt).getTime();
+    if (!Number.isFinite(generatedMs)) return false;
+    return now.getTime() - generatedMs >= maxIntradayAgeMs;
+  }
   return getLocalHour(now, resolvedTimezone) >= scheduleHour;
 }
 

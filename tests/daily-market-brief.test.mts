@@ -69,6 +69,82 @@ describe('daily market brief schedule logic', () => {
 
     assert.equal(shouldRefresh, true);
   });
+
+  it('REGRESSION: refreshes during the same day when the cached brief is older than the intraday ceiling', () => {
+    // Repro the reported "CACHED · 8h ago" symptom: a brief built at 09:20
+    // local stays cached until the next day's schedule hour because the
+    // same-day branch unconditionally returned `false`. With the intraday
+    // ceiling (default 60 min) the 60-min scheduler in App.ts can actually
+    // rebuild — same dateKey, but generatedAt is older than the ceiling.
+    const shouldRefresh = shouldRefreshDailyBrief({
+      available: true,
+      title: 'Brief',
+      dateKey: '2026-03-08',
+      timezone: 'UTC',
+      summary: '',
+      actionPlan: '',
+      riskWatch: '',
+      items: [],
+      provider: 'rules',
+      model: '',
+      fallback: true,
+      generatedAt: '2026-03-08T09:20:00.000Z',
+      headlineCount: 0,
+    }, 'UTC', new Date('2026-03-08T17:00:00.000Z'));
+
+    assert.equal(shouldRefresh, true);
+  });
+
+  it('does NOT refresh during the same day when the cached brief is fresher than the intraday ceiling', () => {
+    // Guard against the opposite over-correction: every scheduler tick must
+    // not trigger an LLM rebuild. 20 minutes after the build should still
+    // serve cached under the default 60-min ceiling.
+    const shouldRefresh = shouldRefreshDailyBrief({
+      available: true,
+      title: 'Brief',
+      dateKey: '2026-03-08',
+      timezone: 'UTC',
+      summary: '',
+      actionPlan: '',
+      riskWatch: '',
+      items: [],
+      provider: 'rules',
+      model: '',
+      fallback: true,
+      generatedAt: '2026-03-08T09:20:00.000Z',
+      headlineCount: 0,
+    }, 'UTC', new Date('2026-03-08T09:40:00.000Z'));
+
+    assert.equal(shouldRefresh, false);
+  });
+
+  it('honours an explicit maxIntradayAgeMs override (cost-tuning hook)', () => {
+    // Callers that want a coarser/finer cadence than the default 60 min
+    // can pass it through. 30-min-old brief with a 2h ceiling → no refresh.
+    const shouldRefresh = shouldRefreshDailyBrief(
+      {
+        available: true,
+        title: 'Brief',
+        dateKey: '2026-03-08',
+        timezone: 'UTC',
+        summary: '',
+        actionPlan: '',
+        riskWatch: '',
+        items: [],
+        provider: 'rules',
+        model: '',
+        fallback: true,
+        generatedAt: '2026-03-08T09:20:00.000Z',
+        headlineCount: 0,
+      },
+      'UTC',
+      new Date('2026-03-08T09:50:00.000Z'),
+      undefined,
+      2 * 60 * 60 * 1000,
+    );
+
+    assert.equal(shouldRefresh, false);
+  });
 });
 
 describe('buildDailyMarketBrief', () => {
