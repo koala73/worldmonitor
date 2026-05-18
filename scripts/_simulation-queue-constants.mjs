@@ -2,10 +2,22 @@
 // simulation pipeline. Single source of truth imported by:
 //   - scripts/seed-forecasts.mjs (the auto-trigger seeder + worker)
 //   - server/_shared/simulation-queue.ts (the HTTP-trigger handler module)
+//   - server/worldmonitor/forecast/v1/{trigger,get}-simulation*.ts (handlers)
 //
-// IMPORTANT: this module is bundled into Vercel Edge functions transitively
-// (via server/_shared/cache-keys.ts → Edge handlers). It MUST use only
-// Web-Platform APIs. `node:crypto` is NOT available in Edge runtime, but
+// IMPORTANT — DO NOT MOVE THIS FILE BACK TO server/_shared/. The Railway
+// services `seed-forecasts`, `simulation-worker`, and `deep-forecast-worker`
+// use the nixpacks build with `root_dir=scripts`, which packages only
+// `scripts/` contents into `/app/` in the container. A relative import that
+// escapes `scripts/` (e.g. `../server/_shared/...`) resolves to
+// `/server/_shared/...` at runtime — a path that does not exist in the
+// container — and crashes every worker on startup with `ERR_MODULE_NOT_FOUND`.
+// See #3811 incident logs / #3818 hotfix and the regression test
+// `tests/scripts-railway-nixpacks-no-escape-import.test.mts` that pins this
+// rule. Vercel-side (TS handlers): esbuild bundles the shim's contents
+// inline at build time, so the cross-directory import path is fine there.
+//
+// Runtime constraint: this module MUST use only Web-Platform APIs.
+// `node:crypto` is NOT available in Vercel Edge runtime, but
 // `globalThis.crypto.subtle` IS — and Node 19+ ships it too, so the seeder
 // works without a polyfill.
 //

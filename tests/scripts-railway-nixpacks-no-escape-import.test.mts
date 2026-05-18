@@ -44,10 +44,6 @@ function isRelative(spec: string): boolean {
   return spec.startsWith('./') || spec.startsWith('../');
 }
 
-function isBareOrNode(spec: string): boolean {
-  return !isRelative(spec) && !spec.startsWith('/');
-}
-
 function collectRelativeImports(filePath: string): string[] {
   const src = readFileSync(filePath, 'utf8');
   const out: string[] = [];
@@ -85,7 +81,6 @@ describe('scripts/ Railway nixpacks packaging — no escape imports', () => {
         }
 
         for (const spec of imports) {
-          if (isBareOrNode(spec)) continue;
           const resolved = resolve(dirname(file), spec);
           if (escapesScriptsDir(resolved)) {
             violations.push({
