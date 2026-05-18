@@ -331,17 +331,38 @@ describe('buildDigestPrompt', () => {
       'lead instruction must call out weak temporal stitching',
     );
 
-    // 2. The dedicated BANNED stitching section must exist and enumerate
-    //    the most common offenders.
-    assert.match(system, /BANNED stitching phrases/, 'banned-stitching section present');
+    // 2. The dedicated BANNED stitching section must exist. Extract just
+    //    that section so the per-phrase assertions cannot pass on
+    //    duplicate mentions in the lead-field instruction text. The
+    //    section runs from `BANNED stitching phrases` up to the next
+    //    instruction bullet (`Threads:`), matching the prompt layout.
+    const stitchingSectionMatch = system.match(
+      /BANNED stitching phrases[\s\S]*?(?=\nThreads:)/,
+    );
+    assert.ok(
+      stitchingSectionMatch,
+      'banned-stitching section must be present and bounded by the next instruction bullet (Threads:)',
+    );
+    const stitchingSection = stitchingSectionMatch[0].toLowerCase();
+
+    // All 10 banned phrases must appear in the dedicated section, not just
+    // in the lead-field instruction prose. If a phrase is removed from the
+    // banned section (or only ever lived in the lead-instruction list),
+    // the model loses the explicit BANNED signal and this assertion fires.
     for (const phrase of [
       'this comes as',
+      'this declaration comes as',
+      'this announcement comes as',
       'meanwhile',
+      'at the same time',
       'in other news',
       'elsewhere',
+      'across the world',
+      'on another front',
+      'in a separate development',
     ]) {
       assert.ok(
-        system.toLowerCase().includes(`"${phrase}"`),
+        stitchingSection.includes(`"${phrase}"`),
         `banned-stitching section must list "${phrase}"`,
       );
     }
