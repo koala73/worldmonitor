@@ -157,7 +157,10 @@ export function toProtoSeverity(s: string): FlightDelaySeverity {
     severe: 'FLIGHT_DELAY_SEVERITY_SEVERE',
     unknown: 'FLIGHT_DELAY_SEVERITY_UNKNOWN',
   };
-  return map[s] || 'FLIGHT_DELAY_SEVERITY_NORMAL';
+  // #3707: default to UNKNOWN (not NORMAL) for unrecognised input — the whole
+  // point of the fix is to refuse to render uncovered/unmappable airports as
+  // healthy.
+  return map[s] || 'FLIGHT_DELAY_SEVERITY_UNKNOWN';
 }
 
 export function toProtoRegion(r: string): AirportRegion {

@@ -120,13 +120,25 @@ async function executeIntent(intent: Intent): Promise<CommandResult> {
     if (intent.type === 'OPS') {
         const summaries = await fetchAirportOpsSummary(intent.airports);
         if (!summaries.length) return { html: '<div class="cmd-empty">No ops data found.</div>' };
-        const rows = summaries.map(s => `
+        const rows = summaries.map(s => {
+            // #3707: 'unknown' = no telemetry. Render desaturated grey + 'NO DATA'
+            // suffix so users don't conflate uncovered airports with healthy ones.
+            const sevColor = s.severity === 'unknown' ? '#7d7d8a'
+                : s.severity === 'normal' ? '#22c55e'
+                : s.severity === 'minor' ? '#f59e0b'
+                : '#ef4444';
+            const sevLabel = s.severity === 'unknown' ? 'NO DATA' : s.severity.toUpperCase();
+            const suffix = s.severity === 'unknown'
+                ? ''
+                : `<span>${s.avgDelayMinutes > 0 ? `+${s.avgDelayMinutes}m delay` : 'Normal ops'}</span>`;
+            return `
       <div class="cmd-row">
         <strong>${escapeHtml(s.iata)}</strong>
-        <span style="color:${s.severity === 'normal' ? '#22c55e' : s.severity === 'minor' ? '#f59e0b' : '#ef4444'}">${s.severity.toUpperCase()}</span>
-        <span>${s.avgDelayMinutes > 0 ? `+${s.avgDelayMinutes}m delay` : 'Normal ops'}</span>
+        <span style="color:${sevColor}">${sevLabel}</span>
+        ${suffix}
         ${s.closureStatus ? '<span style="color:#ef4444">CLOSED</span>' : ''}
-      </div>`).join('');
+      </div>`;
+        }).join('');
         return { html: `<div class="cmd-section"><strong>✈️ Ops Snapshot</strong>${rows}</div>` };
     }
 

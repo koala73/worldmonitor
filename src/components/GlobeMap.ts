@@ -1504,7 +1504,14 @@ export class GlobeMap {
              `<br><span style="opacity:.7;">${esc(d.name)} · ${esc(d.country)}</span>` +
              `<br><span style="opacity:.5;">${esc(d.status)}</span>`;
     } else if (d._kind === 'flightDelay') {
-      const sc = d.severity === 'severe' ? '#ff3030' : d.severity === 'major' ? '#ff6600' : d.severity === 'moderate' ? '#ffaa00' : '#ffee44';
+      // #3707: 'unknown' = no telemetry. Render desaturated grey (mirrors the
+      // marker branch at line 1157) so the tooltip doesn't show yellow for
+      // uncovered airports.
+      const sc = d.severity === 'severe' ? '#ff3030'
+               : d.severity === 'major' ? '#ff6600'
+               : d.severity === 'moderate' ? '#ffaa00'
+               : d.severity === 'unknown' ? '#7d7d8a'
+               : '#ffee44';
       html = `<span style="color:${sc};font-weight:bold;">✈ ${esc(d.iata)} — ${esc(d.severity.toUpperCase())}</span>` +
              `<br><span style="opacity:.7;">${esc(d.name)}, ${esc(d.country)}</span>` +
              `<br><span style="opacity:.7;">${esc(d.delayType.replace(/_/g, ' '))}` +

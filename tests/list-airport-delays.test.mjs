@@ -353,4 +353,20 @@ describe('listAirportDelays handler — coverage gating (#3707)', () => {
     assert.equal(faa.severity, 'FLIGHT_DELAY_SEVERITY_UNKNOWN',
       'malformed FAA payload must not be treated as coverage');
   });
+
+  it('a malformed INTL cache payload (missing alerts array) is treated as a MISS', async () => {
+    // Symmetric guard to the FAA test above: the INTL_CACHE_KEY branch has its
+    // own `Array.isArray(cached.alerts)` gate; this test proves it also rejects
+    // a wrong-shape payload and downgrades intl airports to UNKNOWN instead of
+    // synthesising NORMAL rows. (Review #3784.)
+    cacheStore.set('aviation:delays:faa:v1', { alerts: [] });
+    cacheStore.set('aviation:delays:intl:v3', { notTheRightField: true });
+
+    const resp = await listAirportDelays({}, {});
+    const intl = resp.alerts.find(a => a.iata === INTL_SAMPLE);
+    assert.equal(intl.severity, 'FLIGHT_DELAY_SEVERITY_UNKNOWN',
+      'malformed INTL payload must not be treated as coverage');
+    assert.equal(intl.source, 'FLIGHT_DELAY_SOURCE_UNSPECIFIED',
+      'malformed INTL payload: source must be UNSPECIFIED when uncovered');
+  });
 });

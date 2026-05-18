@@ -60,7 +60,7 @@ const BOOTSTRAP_CACHE_KEYS = {
   theaterPosture: 'theater_posture:sebuf:stale:v1',
   riskScores: 'risk:scores:sebuf:stale:v2',
   naturalEvents: 'natural:events:v1',
-  flightDelays: 'aviation:delays-bootstrap:v1',
+  flightDelays: 'aviation:delays-bootstrap:v2',
   insights: 'news:insights:v1',
   predictions: 'prediction:markets-bootstrap:v1',
   cryptoQuotes:     'market:crypto:v1',

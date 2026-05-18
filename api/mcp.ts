@@ -874,7 +874,7 @@ const TOOL_REGISTRY: ToolDef[] = [
       capNested(data, 'delays-bootstrap', 'alerts', (argNum(params.limit) ?? DEFAULT_LIST_LIMIT));
       return data;
     },
-    _cacheKeys: ['aviation:delays-bootstrap:v1'],
+    _cacheKeys: ['aviation:delays-bootstrap:v2'],
     _seedMetaKey: 'seed-meta:aviation:faa',
     _maxStaleMin: 90,
     _apiPaths: [],

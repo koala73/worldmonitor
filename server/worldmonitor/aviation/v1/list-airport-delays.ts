@@ -68,7 +68,11 @@ export async function listAirportDelays(
     console.warn(`[Aviation] Intl fetch failed: ${err instanceof Error ? err.message : 'unknown'}`);
   }
 
-  // 3. NOTAM alerts — shared loader (seed-first with live fallback)
+  // 3. NOTAM alerts — shared loader (seed-first with live fallback).
+  // loadNotamClosures swallows both the seed-read and live-fetch failures
+  // internally (returns null on error), so no outer try/catch is needed — a
+  // failure degrades cleanly to "no NOTAM merge this tick" rather than
+  // bubbling and tripping every airport to UNKNOWN at the handler boundary.
   const allAlerts = [...faaAlerts, ...intlAlerts];
   const notamResult = await loadNotamClosures();
   if (notamResult) {
@@ -163,7 +167,7 @@ export async function listAirportDelays(
   // doesn't shorten the seeder's expiry and re-create the EMPTY-on-quiet-traffic
   // failure mode that motivated the canonical seeder write.
   try {
-    await setCachedJson('aviation:delays-bootstrap:v1', { alerts: allAlerts }, 7200);
+    await setCachedJson('aviation:delays-bootstrap:v2', { alerts: allAlerts }, 7200);
   } catch { /* non-critical */ }
 
   return { alerts: allAlerts };

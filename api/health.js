@@ -29,7 +29,7 @@ const BOOTSTRAP_KEYS = {
   positiveGeoEvents: 'positive_events:geo-bootstrap:v1',
   riskScores:        'risk:scores:sebuf:stale:v2',
   naturalEvents:     'natural:events:v1',
-  flightDelays:      'aviation:delays-bootstrap:v1',
+  flightDelays:      'aviation:delays-bootstrap:v2',
   newsInsights:      'news:insights:v1',
   predictionMarkets: 'prediction:markets-bootstrap:v1',
   cryptoQuotes:      'market:crypto:v1',
