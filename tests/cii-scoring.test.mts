@@ -399,7 +399,7 @@ describe('CII scoring', () => {
       '..',
       'docs',
       'methodology',
-      'cii-risk-scores.md',
+      'cii-risk-scores.mdx',
     );
     const doc = readFileSync(docPath, 'utf8');
     const missing: string[] = [];
@@ -426,7 +426,7 @@ describe('CII scoring', () => {
       '..',
       'docs',
       'methodology',
-      'cii-risk-scores.md',
+      'cii-risk-scores.mdx',
     );
     const doc = readFileSync(docPath, 'utf8');
     // Parse the per-country table. Rows look like:
@@ -473,7 +473,7 @@ describe('CII scoring', () => {
       '..',
       'docs',
       'methodology',
-      'cii-risk-scores.md',
+      'cii-risk-scores.mdx',
     );
     const doc = readFileSync(docPath, 'utf8');
     const missing: string[] = [];
@@ -490,7 +490,7 @@ describe('CII scoring', () => {
       '..',
       'docs',
       'methodology',
-      'cii-risk-scores.md',
+      'cii-risk-scores.mdx',
     );
     const doc = readFileSync(docPath, 'utf8');
     assert.ok(doc.includes(`**${CII_FORMULA_VERSION}**`) || doc.includes(`'${CII_FORMULA_VERSION}'`) || doc.includes(`"${CII_FORMULA_VERSION}"`),

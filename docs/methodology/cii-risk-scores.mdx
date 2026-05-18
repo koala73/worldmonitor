@@ -1,4 +1,11 @@
-# CII risk scores — methodology
+---
+title: "CII Risk Scoring Methodology"
+description: "Editorial methodology behind the Composite Instability Index (CII) and Strategic Risk roll-up. Documents per-country baselineRisk, eventMultiplier, the four-component score (Unrest, Conflict, Security, Information), strategic-risk band derivation, and the v1 formula version stamped on every CiiScore."
+---
+
+<Warning>
+**Known drift, tracked in [#3789](https://github.com/koala73/worldmonitor/issues/3789).** The server-side `BASELINE_RISK` and `EVENT_MULTIPLIER` tables disagree with the frontend `CURATED_COUNTRIES` table for 7 countries (AF, EG, IQ, JP, KR, LB, QA). The values published below reflect what the server actually applies today; the frontend may display different values for those 7 countries until reconciliation lands. **API consumers should treat the server values as authoritative.**
+</Warning>
 
 Published methodology note for the **Composite Instability Index (CII)** and
 the **Strategic Risk** roll-up surfaced by `GET /api/intelligence/risk-scores`
