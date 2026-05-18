@@ -188,36 +188,6 @@ function stripHtml(s: string): string {
     .trim();
 }
 
-/**
- * RSS `<description>` ledes routinely end with a truncation marker — a
- * bare ellipsis and/or a "Continue reading" call-to-action that links
- * back to the full article. The reader UI already surfaces a "View
- * source" link, so these markers are pure noise (and look broken to the
- * user). Strip any trailing run of them.
- *
- * Only the END of the string is touched — a legitimate mid-sentence "…"
- * is left intact. The peel loop handles stacked markers like
- * "lede text… Continue reading →".
- */
-function stripTrailingTruncation(s: string): string {
-  // Call-to-action phrases publishers append to a cut-off lede. Anchored
-  // to end-of-string, optionally bracketed and trailed by ellipsis/arrows.
-  const ctaRe =
-    /[\s.…»›→▶|–—-]*[\[(]?\s*(?:continue\s+reading|keep\s+reading|read\s+(?:more|on|the\s+(?:full\s+)?(?:story|article)|full\s+(?:story|article))|view\s+(?:full\s+)?coverage|full\s+(?:story|coverage))\s*[\])]?\s*$/iu;
-  let out = s.trim();
-  for (let i = 0; i < 6; i++) {
-    const before = out;
-    out = out
-      .replace(ctaRe, '')
-      .replace(/\s*[\[(]\s*(?:…|\.{2,})\s*[\])]\s*$/u, '') // bracketed: [...]  […]
-      .replace(/\s*(?:…|\.{3,})\s*$/u, '')                // bare ellipsis
-      .replace(/[\s»›→▶|–—-]+$/u, '')                     // leftover separators/arrows
-      .trim();
-    if (out === before) break;
-  }
-  return out;
-}
-
 function extractTag(item: string, tag: string): string {
   const cdataRe = new RegExp(`<${tag}[^>]*>\\s*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>`, 'i');
   const plainRe = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i');
@@ -314,9 +284,13 @@ async function parseFeed(xml: string, src: NewsSource): Promise<RawRssItem[]> {
     const richRaw =
       extractTag(item, 'content:encoded') ||
       extractTag(item, 'content');
-    // Strip the publisher's trailing "…" / "Continue reading" markers so
-    // the wire summary reads as a clean lede, not a cut-off teaser.
-    const description = stripTrailingTruncation(stripHtml(briefRaw));
+    // Keep the publisher's trailing "…" / "Continue reading" markers on
+    // `description` — the cluster summary picker (`pickSummary` in
+    // _cluster.ts) needs them to tell a truncated lede from a full one,
+    // so it can prefer a clean lede from another outlet in the same
+    // cluster. It strips the marker off whatever it finally picks; if
+    // every outlet truncated, it ends the chosen lede with a single "…".
+    const description = stripHtml(briefRaw);
     const body = (stripHtml(richRaw) || description).slice(0, MAX_BODY_LEN);
 
     // For image extraction we want the richer source — content:encoded
