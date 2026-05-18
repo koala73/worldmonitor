@@ -10541,6 +10541,13 @@ a.prediction-link:hover {
   animation: flight-pulse 1s ease-in-out infinite;
 }
 
+/* No-telemetry status (#3707). Render desaturated grey so users don't read
+   the dot as "healthy / green". */
+.flight-delay-marker.unknown {
+  --flight-color: var(--text-muted, #9ca3af);
+  opacity: 0.6;
+}
+
 .flight-delay-icon {
   font-size: 18px;
   filter: drop-shadow(0 0 6px var(--flight-color));
@@ -10594,6 +10601,12 @@ a.prediction-link:hover {
 
 .popup-header.flight.severe {
   --flight-color: var(--semantic-critical);
+}
+
+/* #3707: no telemetry — render the popup header in a neutral grey so users
+   don't read the airport as healthy. */
+.popup-header.flight.unknown {
+  --flight-color: var(--text-muted, #9ca3af);
 }
 
 .popup-location {

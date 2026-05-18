@@ -155,6 +155,7 @@ export function toProtoSeverity(s: string): FlightDelaySeverity {
     moderate: 'FLIGHT_DELAY_SEVERITY_MODERATE',
     major: 'FLIGHT_DELAY_SEVERITY_MAJOR',
     severe: 'FLIGHT_DELAY_SEVERITY_SEVERE',
+    unknown: 'FLIGHT_DELAY_SEVERITY_UNKNOWN',
   };
   return map[s] || 'FLIGHT_DELAY_SEVERITY_NORMAL';
 }
@@ -172,6 +173,7 @@ export function toProtoRegion(r: string): AirportRegion {
 
 export function toProtoSource(s: string): FlightDelaySource {
   const map: Record<string, FlightDelaySource> = {
+    unspecified: 'FLIGHT_DELAY_SOURCE_UNSPECIFIED',
     faa: 'FLIGHT_DELAY_SOURCE_FAA',
     eurocontrol: 'FLIGHT_DELAY_SOURCE_EUROCONTROL',
     computed: 'FLIGHT_DELAY_SOURCE_COMPUTED',

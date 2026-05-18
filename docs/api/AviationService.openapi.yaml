@@ -732,9 +732,10 @@ components:
                         - FLIGHT_DELAY_SEVERITY_MODERATE
                         - FLIGHT_DELAY_SEVERITY_MAJOR
                         - FLIGHT_DELAY_SEVERITY_SEVERE
+                        - FLIGHT_DELAY_SEVERITY_UNKNOWN
                     description: |-
                         FlightDelaySeverity represents the severity of flight delays at an airport.
-                         Maps to TS union: 'normal' | 'minor' | 'moderate' | 'major' | 'severe'.
+                         Maps to TS union: 'normal' | 'minor' | 'moderate' | 'major' | 'severe' | 'unknown'.
             description: ListAirportDelaysRequest specifies filters for retrieving airport delay alerts.
         ListAirportDelaysResponse:
             type: object
@@ -800,9 +801,10 @@ components:
                         - FLIGHT_DELAY_SEVERITY_MODERATE
                         - FLIGHT_DELAY_SEVERITY_MAJOR
                         - FLIGHT_DELAY_SEVERITY_SEVERE
+                        - FLIGHT_DELAY_SEVERITY_UNKNOWN
                     description: |-
                         FlightDelaySeverity represents the severity of flight delays at an airport.
-                         Maps to TS union: 'normal' | 'minor' | 'moderate' | 'major' | 'severe'.
+                         Maps to TS union: 'normal' | 'minor' | 'moderate' | 'major' | 'severe' | 'unknown'.
                 avgDelayMinutes:
                     type: integer
                     format: int32
@@ -940,9 +942,10 @@ components:
                         - FLIGHT_DELAY_SEVERITY_MODERATE
                         - FLIGHT_DELAY_SEVERITY_MAJOR
                         - FLIGHT_DELAY_SEVERITY_SEVERE
+                        - FLIGHT_DELAY_SEVERITY_UNKNOWN
                     description: |-
                         FlightDelaySeverity represents the severity of flight delays at an airport.
-                         Maps to TS union: 'normal' | 'minor' | 'moderate' | 'major' | 'severe'.
+                         Maps to TS union: 'normal' | 'minor' | 'moderate' | 'major' | 'severe' | 'unknown'.
                 topDelayReasons:
                     type: array
                     items:

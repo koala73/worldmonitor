@@ -17,8 +17,8 @@ import { getHydratedData } from '@/services/bootstrap';
 
 // ---- Consumer-friendly display types ----
 
-export type FlightDelaySource = 'faa' | 'eurocontrol' | 'computed' | 'aviationstack' | 'notam';
-export type FlightDelaySeverity = 'normal' | 'minor' | 'moderate' | 'major' | 'severe';
+export type FlightDelaySource = 'faa' | 'eurocontrol' | 'computed' | 'aviationstack' | 'notam' | 'unspecified';
+export type FlightDelaySeverity = 'normal' | 'minor' | 'moderate' | 'major' | 'severe' | 'unknown';
 export type FlightDelayType = 'ground_stop' | 'ground_delay' | 'departure_delay' | 'arrival_delay' | 'general' | 'closure';
 export type AirportRegion = 'americas' | 'europe' | 'apac' | 'mena' | 'africa';
 export type FlightStatus = 'scheduled' | 'boarding' | 'departed' | 'airborne' | 'landed' | 'arrived' | 'cancelled' | 'diverted' | 'unknown';
@@ -182,6 +182,7 @@ const SEVERITY_MAP: Record<string, FlightDelaySeverity> = {
   FLIGHT_DELAY_SEVERITY_MODERATE: 'moderate',
   FLIGHT_DELAY_SEVERITY_MAJOR: 'major',
   FLIGHT_DELAY_SEVERITY_SEVERE: 'severe',
+  FLIGHT_DELAY_SEVERITY_UNKNOWN: 'unknown',
 };
 
 const DELAY_TYPE_MAP: Record<string, FlightDelayType> = {
@@ -202,6 +203,7 @@ const REGION_MAP: Record<string, AirportRegion> = {
 };
 
 const SOURCE_MAP: Record<string, FlightDelaySource> = {
+  FLIGHT_DELAY_SOURCE_UNSPECIFIED: 'unspecified',
   FLIGHT_DELAY_SOURCE_FAA: 'faa',
   FLIGHT_DELAY_SOURCE_EUROCONTROL: 'eurocontrol',
   FLIGHT_DELAY_SOURCE_COMPUTED: 'computed',
