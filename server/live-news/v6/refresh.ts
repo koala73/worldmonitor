@@ -85,6 +85,7 @@ async function loadGdeltCandidates(): Promise<RawRssItem[]> {
     description: '',
     body: '',
     imageUrl: null,
+    imageCredit: null,
     titleHash: hashes[i]!,
     origin: 'gdelt' as const,
     gdeltLocation: c.location
@@ -122,6 +123,7 @@ async function loadCategoryCandidates(): Promise<RawRssItem[]> {
     description: '',
     body: '',
     imageUrl: null,
+    imageCredit: null,
     titleHash: hashes[i]!,
     origin: 'gdelt' as const,
     gdeltCategories: c.categories,

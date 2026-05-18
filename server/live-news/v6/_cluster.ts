@@ -273,6 +273,10 @@ export interface ClusteredItem {
   summary: string | null;
   /** First image URL found across cluster members (RSS-supplied). */
   imageUrl: string | null;
+  /** Photo credit for `imageUrl`, when the feed that supplied the image
+   *  also carried a separate `<media:credit>` / `<media:copyright>`.
+   *  null when the feed gave no distinct image attribution. */
+  imageCredit: string | null;
   /** Every outlet covering this story, canonical first. Deduped by
    *  publisher root (so multi-feed BBC/Sky/NYT show once each). iOS
    *  renders this as the "Also covered by N outlets" affordance. */
@@ -431,14 +435,21 @@ function pickSummary(members: RawRssItem[], canonical: RawRssItem): string | nul
   return longest;
 }
 
-/** First non-null image across the cluster. Members are tried in the
- *  same canonical-first ordering so the canonical's image takes priority. */
-function pickFirstImage(members: RawRssItem[], canonical: RawRssItem): string | null {
-  if (canonical.imageUrl) return canonical.imageUrl;
-  for (const m of members) {
-    if (m.imageUrl) return m.imageUrl;
+/** First non-null image across the cluster, with its photo credit (if
+ *  any) from the SAME member — so the credit always describes the image
+ *  we actually picked. Members are tried in the same canonical-first
+ *  ordering so the canonical's image takes priority. */
+function pickFirstImage(
+  members: RawRssItem[],
+  canonical: RawRssItem,
+): { url: string | null; credit: string | null } {
+  if (canonical.imageUrl) {
+    return { url: canonical.imageUrl, credit: canonical.imageCredit };
   }
-  return null;
+  for (const m of members) {
+    if (m.imageUrl) return { url: m.imageUrl, credit: m.imageCredit };
+  }
+  return { url: null, credit: null };
 }
 
 /**
@@ -657,7 +668,8 @@ export async function clusterRssItems(items: RawRssItem[]): Promise<ClusteredIte
       link: stripTracking(canonical.link),
       publishedAt: canonical.publishedAt,
       summary,
-      imageUrl: firstImg,
+      imageUrl: firstImg.url,
+      imageCredit: firstImg.credit,
       sources,
       // Alert fires on trusted-RSS publisher count only — GDELT
       // corroboration never inflates breaking-news status.

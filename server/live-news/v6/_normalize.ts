@@ -85,6 +85,10 @@ export interface RawRssItem {
   /** First image URL found anywhere in the item's RSS body
    *  (media:thumbnail / media:content / enclosure / <img src=...>). */
   imageUrl: string | null;
+  /** Photo credit that accompanied `imageUrl` in the feed's media block
+   *  — `<media:credit>`, `<media:copyright>`, or a `credit="…"` attribute.
+   *  null when the feed supplied no separate image attribution. */
+  imageCredit: string | null;
   /** SHA-256 of normalized title — kept compatible with v1 caches so
    *  embedding/dedup decisions can be reused across pipelines. */
   titleHash: string;
@@ -184,6 +188,36 @@ function stripHtml(s: string): string {
     .trim();
 }
 
+/**
+ * RSS `<description>` ledes routinely end with a truncation marker — a
+ * bare ellipsis and/or a "Continue reading" call-to-action that links
+ * back to the full article. The reader UI already surfaces a "View
+ * source" link, so these markers are pure noise (and look broken to the
+ * user). Strip any trailing run of them.
+ *
+ * Only the END of the string is touched — a legitimate mid-sentence "…"
+ * is left intact. The peel loop handles stacked markers like
+ * "lede text… Continue reading →".
+ */
+function stripTrailingTruncation(s: string): string {
+  // Call-to-action phrases publishers append to a cut-off lede. Anchored
+  // to end-of-string, optionally bracketed and trailed by ellipsis/arrows.
+  const ctaRe =
+    /[\s.…»›→▶|–—-]*[[(]?\s*(?:continue\s+reading|keep\s+reading|read\s+(?:more|on|the\s+(?:full\s+)?(?:story|article)|full\s+(?:story|article))|view\s+(?:full\s+)?coverage|full\s+(?:story|coverage))\s*[\])]?\s*$/iu;
+  let out = s.trim();
+  for (let i = 0; i < 6; i++) {
+    const before = out;
+    out = out
+      .replace(ctaRe, '')
+      .replace(/\s*[[(]\s*(?:…|\.{2,})\s*[\])]\s*$/u, '') // bracketed: [...]  […]
+      .replace(/\s*(?:…|\.{3,})\s*$/u, '')                // bare ellipsis
+      .replace(/[\s»›→▶|–—-]+$/u, '')                     // leftover separators/arrows
+      .trim();
+    if (out === before) break;
+  }
+  return out;
+}
+
 function extractTag(item: string, tag: string): string {
   const cdataRe = new RegExp(`<${tag}[^>]*>\\s*<!\\[CDATA\\[([\\s\\S]*?)\\]\\]>`, 'i');
   const plainRe = new RegExp(`<${tag}[^>]*>([\\s\\S]*?)<\\/${tag}>`, 'i');
@@ -216,6 +250,27 @@ function extractImage(item: string, descriptionRaw: string): string | null {
   // Inline <img src="..."> in the description body
   const imgInDesc = descriptionRaw.match(/<img[^>]+src=["']([^"']+)["']/i);
   if (imgInDesc && /^https?:\/\//i.test(imgInDesc[1]!)) return imgInDesc[1]!;
+  return null;
+}
+
+/**
+ * Pull a photo credit / copyright line out of an item's media block.
+ * Media RSS feeds (and many WordPress feeds) ship the image's own
+ * attribution separately from the article byline — `<media:credit>`,
+ * `<media:copyright>`, or a `credit="…"` attribute on the media tag.
+ * Returns null when the feed gives no separate image attribution.
+ */
+function extractImageCredit(item: string): string | null {
+  const fromTag = stripHtml(
+    extractTag(item, 'media:credit') || extractTag(item, 'media:copyright'),
+  ).trim();
+  if (fromTag && fromTag.length <= 200) return fromTag;
+
+  const attr = item.match(/<media:(?:content|thumbnail)\b[^>]*\scredit=["']([^"']+)["']/i);
+  if (attr) {
+    const txt = decodeXmlEntities(attr[1]!).trim();
+    if (txt && txt.length <= 200) return txt;
+  }
   return null;
 }
 
@@ -259,12 +314,16 @@ async function parseFeed(xml: string, src: NewsSource): Promise<RawRssItem[]> {
     const richRaw =
       extractTag(item, 'content:encoded') ||
       extractTag(item, 'content');
-    const description = stripHtml(briefRaw);
+    // Strip the publisher's trailing "…" / "Continue reading" markers so
+    // the wire summary reads as a clean lede, not a cut-off teaser.
+    const description = stripTrailingTruncation(stripHtml(briefRaw));
     const body = (stripHtml(richRaw) || description).slice(0, MAX_BODY_LEN);
 
     // For image extraction we want the richer source — content:encoded
     // tends to contain <img> tags inline; description often doesn't.
     const imageUrl = extractImage(item, richRaw || briefRaw);
+    // Only look for a photo credit when we actually have an image.
+    const imageCredit = imageUrl ? extractImageCredit(item) : null;
 
     const pubStr =
       extractTag(item, 'pubDate') ||
@@ -286,6 +345,7 @@ async function parseFeed(xml: string, src: NewsSource): Promise<RawRssItem[]> {
       description,
       body,
       imageUrl,
+      imageCredit,
       titleHash,
       origin: 'rss',
     });
