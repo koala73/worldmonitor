@@ -4,23 +4,30 @@
  * the response shape. Clients could not distinguish fresh from stale
  * data. The fix adds `fetchedAt` + `stale` to ListPositiveGeoEventsResponse.
  *
- * This test covers all three return paths:
+ * Covers all three return paths:
  *   1. Fresh Redis hit       → fetchedAt = source ts, stale = false
- *   2. In-process fallback   → fetchedAt = previous ts, stale = true
+ *   2. In-process fallback   → fetchedAt = previous source ts, stale = true
  *   3. Empty (no source, no fallback) → fetchedAt = 0, stale = false
  *
- * The fallback path is order-dependent because the cache is module-local:
- * we populate it via the fresh path, then make Redis fail for the next call.
+ * Plus a regression test for the review-pass P1 fix: when Redis serves
+ * borderline-aged data (source 20 h old, MAX_SOURCE_AGE_MS = 25 h), a
+ * subsequent Redis failure within the 12 h FALLBACK_WINDOW_MS must
+ * STILL serve the fallback. Previous draft stamped fallback.ts at
+ * source-produced time, which collapsed the availability window to
+ * zero for aged source data.
  */
 
-import { describe, it, before, after } from 'node:test';
+import { describe, it, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
 
 import type {
   ServerContext,
   ListPositiveGeoEventsRequest,
 } from '../src/generated/server/worldmonitor/positive_events/v1/service_server.ts';
-import { listPositiveGeoEvents } from '../server/worldmonitor/positive-events/v1/list-positive-geo-events.ts';
+import {
+  listPositiveGeoEvents,
+  __resetFallbackForTest,
+} from '../server/worldmonitor/positive-events/v1/list-positive-geo-events.ts';
 
 type FetchFn = typeof fetch;
 const originalFetch: FetchFn | undefined = globalThis.fetch;
@@ -43,30 +50,44 @@ const SAMPLE_EVENT = {
   timestamp: 1_700_000_000_000,
 };
 
+function stubRedisJson(payload: object | null): FetchFn {
+  return async () =>
+    new Response(
+      JSON.stringify({
+        result: payload === null ? null : JSON.stringify(payload),
+      }),
+      { status: 200, headers: { 'content-type': 'application/json' } },
+    );
+}
+
+function setRedisEnv() {
+  process.env.UPSTASH_REDIS_REST_URL = 'https://fake-redis.test';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
+}
+
+function unsetRedisEnv() {
+  delete process.env.UPSTASH_REDIS_REST_URL;
+  delete process.env.UPSTASH_REDIS_REST_TOKEN;
+}
+
+after(() => {
+  if (originalFetch) globalThis.fetch = originalFetch;
+  if (originalUrl == null) delete process.env.UPSTASH_REDIS_REST_URL;
+  else process.env.UPSTASH_REDIS_REST_URL = originalUrl;
+  if (originalToken == null) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+  else process.env.UPSTASH_REDIS_REST_TOKEN = originalToken;
+  __resetFallbackForTest();
+});
+
 describe('listPositiveGeoEvents — freshness metadata (#3706)', () => {
-  before(() => {
-    process.env.UPSTASH_REDIS_REST_URL = 'https://fake-redis.test';
-    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
+  beforeEach(() => {
+    __resetFallbackForTest();
+    setRedisEnv();
   });
 
-  after(() => {
-    if (originalFetch) globalThis.fetch = originalFetch;
-    if (originalUrl == null) delete process.env.UPSTASH_REDIS_REST_URL;
-    else process.env.UPSTASH_REDIS_REST_URL = originalUrl;
-    if (originalToken == null) delete process.env.UPSTASH_REDIS_REST_TOKEN;
-    else process.env.UPSTASH_REDIS_REST_TOKEN = originalToken;
-  });
-
-  it('returns fetchedAt + stale=false when Redis returns fresh data (and populates fallback)', async () => {
+  it('fresh Redis hit → fetchedAt = source ts, stale = false', async () => {
     const sourceTs = Date.now() - 10_000; // 10s ago
-    const stub: FetchFn = async () =>
-      new Response(
-        JSON.stringify({
-          result: JSON.stringify({ events: [SAMPLE_EVENT], fetchedAt: sourceTs }),
-        }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
-      );
-    globalThis.fetch = stub;
+    globalThis.fetch = stubRedisJson({ events: [SAMPLE_EVENT], fetchedAt: sourceTs });
 
     const result = await listPositiveGeoEvents(CTX, REQ);
     assert.equal(result.events.length, 1);
@@ -74,43 +95,54 @@ describe('listPositiveGeoEvents — freshness metadata (#3706)', () => {
     assert.equal(result.fetchedAt, sourceTs, 'fetchedAt must reflect source timestamp');
   });
 
-  it('returns fetchedAt + stale=true when serving in-process fallback after Redis failure', async () => {
-    // Module-local `fallback` was populated by the previous test. Now make
-    // Redis return null so the handler falls through to it.
-    const stub: FetchFn = async () =>
-      new Response(JSON.stringify({ result: null }), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      });
-    globalThis.fetch = stub;
+  it('Redis fails after a successful read → in-process fallback served with stale=true, source ts preserved', async () => {
+    const sourceTs = Date.now() - 60_000; // 1 min ago
+    // Prime the fallback with a successful read.
+    globalThis.fetch = stubRedisJson({ events: [SAMPLE_EVENT], fetchedAt: sourceTs });
+    await listPositiveGeoEvents(CTX, REQ);
 
+    // Now Redis returns null — handler must fall through to module cache.
+    globalThis.fetch = stubRedisJson(null);
     const result = await listPositiveGeoEvents(CTX, REQ);
+
     assert.equal(result.events.length, 1, 'should serve previously-cached event');
     assert.equal(result.stale, true, 'in-process fallback must be marked stale');
-    assert.ok(result.fetchedAt > 0, 'fetchedAt must carry the original source timestamp');
+    assert.equal(result.fetchedAt, sourceTs, 'fetchedAt must report ORIGINAL source ts, not local read time');
+  });
+
+  it('no source + no fallback → events=[], fetchedAt=0, stale=false', async () => {
+    // No Redis env, no fallback primed. The handler must report empty truthfully.
+    unsetRedisEnv();
+    const result = await listPositiveGeoEvents(CTX, REQ);
+    assert.deepEqual(result, { events: [], fetchedAt: 0, stale: false });
   });
 });
 
-describe('listPositiveGeoEvents — empty path (#3706)', () => {
-  // Separate suite so the fallback from the previous suite is not in scope.
-  // We never populate it here, so this exercises the bare-empty return.
-  // (Module-state isolation isn't perfect in node:test, but the assertions
-  // below tolerate either freshly-empty or stale-empty — only the empty
-  // case has events.length == 0.)
+describe('listPositiveGeoEvents — borderline-age regression (#3706 review)', () => {
+  beforeEach(() => {
+    __resetFallbackForTest();
+    setRedisEnv();
+  });
 
-  it('returns events=[] + fetchedAt=0 + stale=false when Redis is unreachable and no fallback', async () => {
-    // Force Redis off entirely so getCachedJson short-circuits to null
-    delete process.env.UPSTASH_REDIS_REST_URL;
-    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+  it('serves fallback after Redis blip even when last-good source was 20h old', async () => {
+    // Source was produced 20 h ago. MAX_SOURCE_AGE_MS = 25 h, so it's still
+    // an acceptable fresh read. A previous draft stamped fallback.ts at
+    // source-produced time, which made the 12 h FALLBACK_WINDOW_MS check
+    // (20h < 12h) fail and serve EMPTY on the next Redis blip — eliminating
+    // the availability window entirely for borderline-aged source data.
+    // This test pins the fix: fallback must serve for 12 h after LOCAL read
+    // regardless of source age at read time.
+    const twentyHoursAgo = Date.now() - 20 * 60 * 60 * 1000;
+    globalThis.fetch = stubRedisJson({ events: [SAMPLE_EVENT], fetchedAt: twentyHoursAgo });
+    const first = await listPositiveGeoEvents(CTX, REQ);
+    assert.equal(first.events.length, 1, 'fresh read should accept 20h-old source');
+    assert.equal(first.stale, false);
 
-    const result = await listPositiveGeoEvents(CTX, REQ);
-    if (result.events.length === 0) {
-      assert.equal(result.fetchedAt, 0);
-      assert.equal(result.stale, false);
-    } else {
-      // If module-local fallback from an earlier suite is still around,
-      // we should at least be honest about staleness.
-      assert.equal(result.stale, true);
-    }
+    // Redis now blips.
+    globalThis.fetch = stubRedisJson(null);
+    const second = await listPositiveGeoEvents(CTX, REQ);
+    assert.equal(second.events.length, 1, 'fallback must still serve borderline-aged data');
+    assert.equal(second.stale, true);
+    assert.equal(second.fetchedAt, twentyHoursAgo, 'fetchedAt still reports original source ts');
   });
 });
