@@ -366,11 +366,13 @@ describe('api/mcp.ts — PRO MCP Server', () => {
   });
 
   it('telemetry: initialize emits mcp.tools_list_emitted with bytes, tool_count, client_user_agent', async () => {
+    const mod = await import(`../api/mcp.ts?t=${Date.now()}`);
+    const expectedToolCount = mod.__testing__.TOOL_REGISTRY.length;
     const captured = [];
     const origLog = console.log;
     console.log = (line) => captured.push(line);
     try {
-      await handler(makeReq('POST', initBody(42), { 'user-agent': 'wm-test/1.0' }));
+      await mod.default(makeReq('POST', initBody(42), { 'user-agent': 'wm-test/1.0' }));
     } finally {
       console.log = origLog;
     }
@@ -381,7 +383,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(ev.length, 1, `expected exactly one mcp.tools_list_emitted line, got ${ev.length}`);
     assert.equal(typeof ev[0].bytes, 'number');
     assert.ok(ev[0].bytes > 0, 'bytes must be > 0');
-    assert.equal(ev[0].tool_count, 39);
+    assert.equal(ev[0].tool_count, expectedToolCount, 'tool_count must equal current registry size');
     assert.equal(ev[0].client_user_agent, 'wm-test/1.0');
   });
 

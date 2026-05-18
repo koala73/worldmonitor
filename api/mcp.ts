@@ -3177,6 +3177,12 @@ async function dispatchToolsCall(
     }
     return rpcOk(id, { content: [{ type: 'text', text }] }, corsHeaders);
   } catch (err: unknown) {
+    // Capture tool-execution latency BEFORE the rollback round-trip — the
+    // P95 dashboard reads `latency_ms` as time-in-tool, not time-in-tool-
+    // plus-time-in-Convex-rollback. Rollback can add hundreds of ms on a
+    // slow upstream and would otherwise silently inflate the error-path
+    // percentile.
+    const latencyMs = Date.now() - tStart;
     if (proRollback) await proRollback();
     // HTTP 4xx from an internal sibling fetch (e.g. `feed-digest HTTP 401`)
     // is expected-but-trackable: transient HMAC/auth/quota drift, replay-window
@@ -3198,7 +3204,7 @@ async function dispatchToolsCall(
     emitTelemetry('mcp.toolcall', {
       tool: tool.name,
       auth_kind: context.kind,
-      latency_ms: Date.now() - tStart,
+      latency_ms: latencyMs,
       bytes_pre_jmespath: 0,
       bytes_post_jmespath: 0,
       jmespath_used: jmespathUsed,
