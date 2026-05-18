@@ -88,10 +88,6 @@ const ALLOW_UNAUTHENTICATED_RELAY = _AUTH_BYPASS_NEW || _AUTH_BYPASS_OLD;
 if (_AUTH_BYPASS_OLD && !_AUTH_BYPASS_NEW) {
   console.warn('[DEPRECATED] ALLOW_UNAUTHENTICATED_RELAY=true is deprecated. Use I_UNDERSTAND_THIS_DISABLES_AUTH=true instead.');
 }
-const IS_PRODUCTION_RELAY = process.env.NODE_ENV === 'production'
-  || !!process.env.RAILWAY_ENVIRONMENT
-  || !!process.env.RAILWAY_PROJECT_ID
-  || !!process.env.RAILWAY_STATIC_URL;
 const RELAY_RATE_LIMIT_WINDOW_MS = Math.max(1000, Number(process.env.RELAY_RATE_LIMIT_WINDOW_MS || 60000));
 const RELAY_RATE_LIMIT_MAX = Number.isFinite(Number(process.env.RELAY_RATE_LIMIT_MAX))
   ? Number(process.env.RELAY_RATE_LIMIT_MAX) : 1200;
@@ -174,11 +170,25 @@ if (!RELAY_SHARED_SECRET && !ALLOW_UNAUTHENTICATED_RELAY) {
 // Loud recurring SECURITY warning when auth is effectively disabled. Operators
 // who opt out with the bypass var get a bright reminder both at boot and every
 // 5 minutes in long-running logs so the no-auth state stays visible.
-if (!RELAY_SHARED_SECRET || ALLOW_UNAUTHENTICATED_RELAY) {
-  console.warn('[SECURITY] relay is running WITHOUT auth (RELAY_SHARED_SECRET unset or I_UNDERSTAND_THIS_DISABLES_AUTH=true). All non-public routes are reachable by anyone who can hit this port.');
+//
+// Auth is effectively disabled ONLY when there's no secret to check. If a
+// secret IS set, isAuthorizedRequest() enforces it regardless of the bypass
+// flag — the bypass branch only runs when the secret is absent — so we must
+// not warn (or report auth.enabled=false on /health) when the secret is set.
+const AUTH_EFFECTIVELY_DISABLED = !RELAY_SHARED_SECRET;
+if (AUTH_EFFECTIVELY_DISABLED) {
+  console.warn('[SECURITY] relay is running WITHOUT auth — RELAY_SHARED_SECRET unset and I_UNDERSTAND_THIS_DISABLES_AUTH=true. All non-public routes are reachable by anyone who can hit this port.');
   setInterval(() => {
     console.warn('[SECURITY] relay STILL running without auth — set RELAY_SHARED_SECRET to lock down non-public routes.');
   }, 5 * 60 * 1000).unref();
+}
+
+// Separately: if the bypass is set redundantly alongside a real secret, the
+// bypass is silently ignored (isAuthorizedRequest enforces the secret). Emit
+// a single INFO line so operators can clean up their env without wondering
+// why their bypass appears to have no effect.
+if (RELAY_SHARED_SECRET && ALLOW_UNAUTHENTICATED_RELAY) {
+  console.info('[Relay] I_UNDERSTAND_THIS_DISABLES_AUTH=true is ignored — RELAY_SHARED_SECRET is configured and takes precedence. Unset the bypass flag to silence this notice.');
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -9121,10 +9131,11 @@ const server = http.createServer(async (req, res) => {
         polymarketInflight: polymarketInflight.size,
       },
       auth: {
-        // `enabled` is the canonical operator-visible field: true only when a
-        // shared secret is configured AND the bypass is NOT engaged. Use this
-        // to detect a no-auth deployment from monitoring without scraping logs.
-        enabled: !!RELAY_SHARED_SECRET && !ALLOW_UNAUTHENTICATED_RELAY,
+        // `enabled` is the canonical operator-visible field: true when a
+        // shared secret is configured (which is what isAuthorizedRequest()
+        // actually enforces, regardless of any bypass flag). Use this to
+        // detect a no-auth deployment from monitoring without scraping logs.
+        enabled: !AUTH_EFFECTIVELY_DISABLED,
         sharedSecretEnabled: !!RELAY_SHARED_SECRET,
         authHeader: RELAY_AUTH_HEADER,
         allowVercelPreviewOrigins: ALLOW_VERCEL_PREVIEW_ORIGINS,

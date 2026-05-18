@@ -38,16 +38,41 @@ const RELAY_SCRIPT = path.resolve(__dirname, '..', 'scripts', 'ais-relay.cjs');
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
-function pickFreePort() {
-  return new Promise((resolve, reject) => {
-    const srv = createServer();
-    srv.unref();
-    srv.on('error', reject);
-    srv.listen(0, '127.0.0.1', () => {
-      const { port } = srv.address();
-      srv.close(() => resolve(port));
+// Pick a free port for a subprocess to bind. There's an inherent TOCTOU race
+// between us closing the probe socket and the child re-binding — another
+// process on the box could grab the port in that window and the test would
+// fail with EADDRINUSE. To shrink the window we re-probe the port after
+// closing the first socket; if the probe succeeds, the port was almost
+// certainly still free when the child bound (the race window is tiny). On
+// EADDRINUSE we just try a different OS-assigned port.
+async function pickFreePort(maxAttempts = 8) {
+  let lastErr;
+  for (let i = 0; i < maxAttempts; i++) {
+    const port = await new Promise((resolve, reject) => {
+      const srv = createServer();
+      srv.unref();
+      srv.on('error', reject);
+      srv.listen(0, '127.0.0.1', () => {
+        const { port: p } = srv.address();
+        srv.close(() => resolve(p));
+      });
     });
-  });
+    try {
+      await new Promise((resolve, reject) => {
+        const probe = createServer();
+        probe.unref();
+        probe.once('error', reject);
+        probe.listen(port, '127.0.0.1', () => {
+          probe.close(() => resolve());
+        });
+      });
+      return port;
+    } catch (err) {
+      lastErr = err;
+      // Another process claimed it between our two listens; loop and retry.
+    }
+  }
+  throw new Error(`pickFreePort: exhausted ${maxAttempts} attempts (last error: ${lastErr?.message})`);
 }
 
 function spawnRelay(envOverrides = {}) {
@@ -228,7 +253,13 @@ describe('relay /health exposes auth.enabled (#3812)', () => {
     }
   });
 
-  it('reports auth.enabled=false when secret set AND bypass also set (bypass wins for visibility)', async () => {
+  it('reports auth.enabled=true when secret set AND bypass also set (bypass is ignored)', async () => {
+    // Greptile #3815 round 2: align /health with isAuthorizedRequest() — the
+    // bypass branch only runs when no secret is configured, so a secret +
+    // bypass combo still enforces the secret. Reporting enabled=false here
+    // would lie about the actual enforcement behavior. Operators who want to
+    // detect a misconfigured bypass should look for the [Relay] info line
+    // (covered by the test below).
     const port = await pickFreePort();
     const r = spawnRelay({
       RELAY_SHARED_SECRET: 'good-secret',
@@ -239,9 +270,41 @@ describe('relay /health exposes auth.enabled (#3812)', () => {
       await r.waitForLog('WebSocket relay on port', 15_000);
       const res = await httpGet(port, '/health');
       const body = JSON.parse(res.body);
-      // bypass takes priority — operators need a single field they can monitor
-      // that flips false the moment ANY bypass is in play.
-      assert.equal(body.auth.enabled, false);
+      assert.equal(body.auth.enabled, true, 'auth.enabled mirrors actual isAuthorizedRequest() behavior: secret wins');
+      assert.equal(body.auth.sharedSecretEnabled, true);
+    } finally {
+      await killRelay(r.child);
+    }
+  });
+});
+
+// ─── 4) Bypass + secret combo emits info log and does NOT emit [SECURITY] ───
+
+describe('relay startup info-log when bypass is set alongside secret (#3815)', () => {
+  it('logs the "bypass ignored" info line and does NOT emit [SECURITY] warning', async () => {
+    const port = await pickFreePort();
+    const r = spawnRelay({
+      RELAY_SHARED_SECRET: 'good-secret',
+      I_UNDERSTAND_THIS_DISABLES_AUTH: 'true',
+      PORT: String(port),
+    });
+    try {
+      await r.waitForLog('WebSocket relay on port', 15_000);
+      // Give a microtask tick so the info log is fully flushed alongside the
+      // listen banner. (Both are synchronous on the same boot path so this is
+      // belt-and-suspenders.)
+      await new Promise((r2) => setImmediate(r2));
+      const combined = r.stdout() + r.stderr();
+      assert.match(
+        combined,
+        /I_UNDERSTAND_THIS_DISABLES_AUTH=true is ignored/,
+        'expected info line explaining the bypass is being ignored',
+      );
+      assert.doesNotMatch(
+        r.stderr(),
+        /\[SECURITY\] relay is running WITHOUT auth/,
+        'must NOT emit the SECURITY warning when a real secret is configured',
+      );
     } finally {
       await killRelay(r.child);
     }
