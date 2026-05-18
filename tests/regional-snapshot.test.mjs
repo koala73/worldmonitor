@@ -543,16 +543,16 @@ describe('snapshot meta', () => {
   // snapshot_confidence whenever an upstream seeder stalled without a
   // timestamp. Flipped to stale so the confidence score reflects reality.
   it('buildPreMeta treats present-but-undated inputs as stale (#3728)', () => {
-    // risk:scores:sebuf:stale:v1 has no metaKey and the payload below has
+    // risk:scores:sebuf:stale:v2 has no metaKey and the payload below has
     // no parseable timestamp field — exactly the case that used to slip
     // through as "fresh".
     const { pre } = buildPreMeta(
-      { 'risk:scores:sebuf:stale:v1': { ciiScores: [] } },
+      { 'risk:scores:sebuf:stale:v2': { ciiScores: [] } },
       '1.0.0',
       '1.0.0',
     );
     assert.ok(
-      pre.stale_inputs.includes('risk:scores:sebuf:stale:v1'),
+      pre.stale_inputs.includes('risk:scores:sebuf:stale:v2'),
       'undated payload should land in stale_inputs, not be silently treated as fresh',
     );
   });
@@ -562,12 +562,12 @@ describe('snapshot meta', () => {
   // old would advertise validity 5.7 hours past the point where its
   // upstream input goes stale. Derive from the registry instead.
   it('valid_until reflects oldest fresh input TTL (#3728)', () => {
-    // risk:scores:sebuf:stale:v1 has maxAgeMin=30. With fetchedAt=20min
+    // risk:scores:sebuf:stale:v2 has maxAgeMin=30. With fetchedAt=20min
     // ago, the input expires in ~10min, well before the 6h cap.
     const now = Date.now();
     const fetchedAt = now - 20 * 60_000;
     const { pre } = buildPreMeta(
-      { 'risk:scores:sebuf:stale:v1': { ciiScores: [], fetchedAt } },
+      { 'risk:scores:sebuf:stale:v2': { ciiScores: [], fetchedAt } },
       '1.0.0',
       '1.0.0',
     );
@@ -670,7 +670,7 @@ describe('snapshot meta', () => {
   // metaKey hint (or the companion key going missing) would re-introduce
   // the on-deploy STALE noise this PR removes.
   for (const [inputKey, metaKey] of [
-    ['risk:scores:sebuf:stale:v1',          'seed-meta:intelligence:risk-scores'],
+    ['risk:scores:sebuf:stale:v2',          'seed-meta:intelligence:risk-scores'],
     ['intelligence:cross-source-signals:v1', 'seed-meta:intelligence:cross-source-signals'],
     ['energy:mix:v1:_all',                   'seed-meta:economic:owid-energy-mix'],
     ['supply_chain:transit-summaries:v1',    'seed-meta:supply_chain:transit-summaries'],
@@ -703,7 +703,7 @@ describe('snapshot meta', () => {
     // entry points at an existing seed-meta:* companion. Lock the wiring
     // in so a later removal will trip a test, not production.
     const expected = {
-      'risk:scores:sebuf:stale:v1':          'seed-meta:intelligence:risk-scores',
+      'risk:scores:sebuf:stale:v2':          'seed-meta:intelligence:risk-scores',
       'intelligence:cross-source-signals:v1': 'seed-meta:intelligence:cross-source-signals',
       'energy:mix:v1:_all':                   'seed-meta:economic:owid-energy-mix',
       'supply_chain:transit-summaries:v1':    'seed-meta:supply_chain:transit-summaries',
