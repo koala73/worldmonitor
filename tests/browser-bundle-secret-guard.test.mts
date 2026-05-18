@@ -19,12 +19,13 @@
  *      its `define:` block (which would inline the literal value into
  *      the bundle regardless of `envPrefix`).
  *
- * These tests assert all three invariants so a future contributor who
- * accidentally widens any of them gets a CI failure with a pointer
- * back to issue #3704.
+ * These tests assert all three invariants for every entry in
+ * `PLATFORM_ONLY_SECRETS` so a future contributor who accidentally
+ * widens any of them gets a CI failure with a pointer back to issue
+ * #3704.
  *
- * To add another platform-only secret to the guard, extend
- * `PLATFORM_ONLY_SECRETS` below.
+ * To add another platform-only secret to the guard, extend the
+ * `PLATFORM_ONLY_SECRETS` constant below.
  */
 
 import { describe, it } from 'node:test';
@@ -32,13 +33,28 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 // Server-side secrets that MUST NOT cross into the browser bundle. Each
-// of these grants access to worldmonitor.app infrastructure (enterprise
-// API tier, signing keys, etc.) — distinct from per-user provider
-// credentials (GROQ_API_KEY, OPENROUTER_API_KEY) which users
-// legitimately enter via the desktop settings UI.
+// of these grants access to worldmonitor.app infrastructure. They are
+// distinct from per-user provider credentials (GROQ_API_KEY,
+// OPENROUTER_API_KEY, etc.) which users legitimately enter via the
+// desktop settings UI.
 const PLATFORM_ONLY_SECRETS = [
+  // Enterprise tier key — possession grants enterprise API access (see
+  // api/_api-key.js validation against WORLDMONITOR_VALID_KEYS).
   'WORLDMONITOR_API_KEY',
+  // Allowlist of accepted enterprise keys — leaking it reveals all
+  // accepted keys at once.
+  'WORLDMONITOR_VALID_KEYS',
+  // Signs anonymous browser session tokens (see api/_session.js).
+  // Leakage lets attackers mint valid wms_ tokens.
+  'WM_SESSION_SECRET',
+  // Signs Pro MCP grants (see api/_mcp-grant-hmac.ts). Leakage lets
+  // attackers mint valid Pro MCP grants for arbitrary users.
+  'MCP_PRO_GRANT_HMAC_SECRET',
 ] as const;
+
+// Safe envPrefix entries — anything else exposes unprefixed env vars to
+// the browser bundle. Keep this list narrow.
+const SAFE_ENV_PREFIXES = ['VITE_', 'PUBLIC_'];
 
 async function readRepoFile(relPath: string): Promise<string> {
   return readFile(new URL(`../${relPath}`, import.meta.url), 'utf8');
@@ -50,6 +66,11 @@ describe('browser bundle secret guard (#3704)', () => {
     // `requiredSecrets: [...]` literals are what seedSecretsFromEnvironment iterates.
     // Any platform-only key appearing inside one of those arrays would be
     // attempted at runtime, so flag it.
+    //
+    // The regex assumes requiredSecrets stays a flat string array. If the
+    // shape ever changes (e.g. requiredSecrets: [{ key: 'X', tier: 'A' }]),
+    // the lazy `[^\]]*` will stop at the first inner `]` and miss content.
+    // Update this regex if/when that shape changes.
     const requiredSecretsBlocks = source.match(/requiredSecrets:\s*\[[^\]]*\]/g) ?? [];
     for (const block of requiredSecretsBlocks) {
       for (const secret of PLATFORM_ONLY_SECRETS) {
@@ -82,30 +103,53 @@ describe('browser bundle secret guard (#3704)', () => {
   it('vite.config.ts does not set a custom envPrefix that would expose unprefixed secrets', async () => {
     const source = await readRepoFile('vite.config.ts');
     // Vite's default is `envPrefix: 'VITE_'`. If a future contributor
-    // sets `envPrefix: ''` or includes a non-VITE_ prefix, unprefixed
-    // env vars (including platform secrets) become reachable via
-    // `import.meta.env` in the browser bundle.
-    const envPrefixMatch = source.match(/envPrefix\s*:\s*([^,\n}]+)/);
-    if (envPrefixMatch) {
-      const value = envPrefixMatch[1].trim();
+    // sets `envPrefix: ''`, includes a non-VITE_ prefix in an array form
+    // (`envPrefix: ['VITE_', '']`), or replaces the default with a
+    // narrower string that doesn't include VITE_/PUBLIC_, unprefixed env
+    // vars become reachable via `import.meta.env` in the browser bundle.
+    // Match either a string literal (`envPrefix: 'X'`) or a bracketed
+    // array (`envPrefix: ['A', 'B']`). The 200-char ceiling on array
+    // contents is generous — real values are <50 chars.
+    const envPrefixMatch = source.match(
+      /envPrefix\s*:\s*(\[[^\]]{0,200}\]|'[^']*'|"[^"]*")/,
+    );
+    if (!envPrefixMatch) {
+      // No envPrefix override = Vite default = safe.
+      return;
+    }
+
+    const raw = envPrefixMatch[1].trim();
+    // Parse JS-style string or array literal. We rewrite single quotes
+    // to double quotes so JSON.parse can handle the common case.
+    let value: unknown;
+    try {
+      value = JSON.parse(raw.replace(/'/g, '"'));
+    } catch {
+      assert.fail(
+        `vite.config.ts envPrefix has an unparseable value ${raw}. ` +
+          `Defensive guard for #3704 cannot verify entries.`,
+      );
+    }
+
+    const entries = Array.isArray(value) ? value : [value];
+    for (const entry of entries) {
       assert.ok(
-        value.includes('VITE_') || value.includes('PUBLIC_'),
-        `vite.config.ts sets envPrefix=${value}; this must include the VITE_/PUBLIC_ ` +
-          `convention or unprefixed platform secrets become reachable from the ` +
+        typeof entry === 'string' && SAFE_ENV_PREFIXES.some(safe => entry.startsWith(safe)),
+        `vite.config.ts envPrefix entry ${JSON.stringify(entry)} is not in the safe ` +
+          `prefix allowlist (${SAFE_ENV_PREFIXES.join(', ')}). Empty-string or ` +
+          `non-VITE_/PUBLIC_ entries expose unprefixed platform secrets to the ` +
           `browser bundle. See issue #3704.`,
       );
     }
-    // No envPrefix override = Vite default = safe. No assertion needed.
   });
 
-  it('readEnvSecret returns empty when import.meta.env lacks the platform secret', async () => {
-    // Dynamic import so the module loads in this Node test runner; the
-    // bundler-time `import.meta.env` shape matches what Vite produces.
+  it('runtime-config snapshot does not contain a platform-only secret at module load', async () => {
+    // Dynamic import so the module loads in this Node test runner. The
+    // Vite-injected `import.meta.env` is absent in node:test, so any
+    // platform secret that ends up in the snapshot here is provably
+    // coming from a non-Vite path (e.g. someone hard-coding the value
+    // in seedSecretsFromEnvironment or a default initializer).
     const mod = await import('../src/services/runtime-config.ts');
-    // The module's exported public surface intentionally does not include
-    // readEnvSecret — assert via getRuntimeConfigSnapshot that no
-    // platform-only secret was seeded at module load time (default
-    // import.meta.env contains no platform secrets in node test env).
     const snapshot = mod.getRuntimeConfigSnapshot();
     for (const secret of PLATFORM_ONLY_SECRETS) {
       assert.equal(
