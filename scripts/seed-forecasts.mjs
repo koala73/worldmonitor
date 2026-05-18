@@ -16968,14 +16968,19 @@ async function writeSimulationOutcome(pkg, outcome, { storageConfig } = {}) {
     ]);
   } catch (err) {
     console.warn(`  [Simulation] by-run SET failed for ${runId}: ${err.message}`);
-    // Best-effort tombstone — if Redis is fully down, no recovery is
-    // possible and the read path will see the by-run key absent and fall
-    // back to :latest with the standard "may have expired" note.
+    // Best-effort tombstone with NX — if the primary by-run SET actually
+    // landed server-side but the response timed out network-side, we MUST
+    // NOT overwrite the real outcome with a tombstone. NX makes the
+    // tombstone a "write only if absent" so a successful-but-throwing
+    // primary write is preserved. If Redis is fully down the tombstone
+    // also fails; the read path then sees the by-run key absent and falls
+    // back to :latest with the "may have expired" note (acceptable).
+    // (Greptile P1 review on PR #3811.)
     try {
       await redisCommand(url, token, [
         'SET', byRunKey,
         JSON.stringify({ runId, error: 'by_run_write_failed', tombstoneAt: Date.now() }),
-        'EX', String(SIMULATION_OUTCOME_BY_RUN_TTL_SECONDS),
+        'EX', String(SIMULATION_OUTCOME_BY_RUN_TTL_SECONDS), 'NX',
       ]);
     } catch (_err2) {
       // Both writes failed; user-facing fallback is :latest with no

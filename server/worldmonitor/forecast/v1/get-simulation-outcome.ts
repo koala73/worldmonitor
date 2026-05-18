@@ -6,8 +6,12 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/forecast/v1/service_server';
 import { getRawJson } from '../../../_shared/redis';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
-import { SIMULATION_OUTCOME_LATEST_KEY } from '../../../_shared/cache-keys';
+// Both keys come from the shim — single source of truth. Importing
+// SIMULATION_OUTCOME_LATEST_KEY from cache-keys would create a second
+// definition that could silently drift on a schema-version bump.
+// (Greptile P2 review on PR #3811.)
 import {
+  SIMULATION_OUTCOME_LATEST_KEY,
   SIMULATION_OUTCOME_BY_RUN_KEY_PREFIX,
 } from '../../../_shared/_simulation-queue-constants.mjs';
 import { listProcessingRunIds } from '../../../_shared/simulation-queue';

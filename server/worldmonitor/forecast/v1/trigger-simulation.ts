@@ -47,7 +47,7 @@ import { MAX_QUEUE_DEPTH } from '../../../_shared/_simulation-queue-constants.mj
  */
 export async function triggerSimulation(
   ctx: ServerContext,
-  _req: TriggerSimulationRequest,
+  req: TriggerSimulationRequest,
 ): Promise<TriggerSimulationResponse> {
   // Step 1: Pro gate (defense-in-depth).
   const isPro = await isCallerPremium(ctx.request);
@@ -135,7 +135,10 @@ export async function triggerSimulation(
   const authKind = apiKeyHeader
     ? (apiKeyHeader.startsWith('wm_') ? 'user_api_key' : 'enterprise_api_key')
     : (authHeader ? 'clerk_jwt' : 'unknown');
-  console.log(`[TriggerSimulation] queued runId=${pointer.runId} authKind=${authKind} pkgFingerprint=${pointer.pkgFingerprint}`);
+  // clientVersion echoed per the proto comment promise (Greptile P2 review on PR #3811).
+  // Sanitized to a short slug to keep the log line bounded; never persisted.
+  const clientVersion = String(req.clientVersion ?? '').slice(0, 64).replace(/[^a-zA-Z0-9._/\-]/g, '');
+  console.log(`[TriggerSimulation] queued runId=${pointer.runId} authKind=${authKind} pkgFingerprint=${pointer.pkgFingerprint} clientVersion=${clientVersion}`);
   markNoCacheResponse(ctx.request);
   return {
     queued: true,

@@ -30,8 +30,13 @@ async function redisGetThrowing(key: string): Promise<string | null> {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) throw new Error('Redis credentials not configured');
+  // User-Agent required by AGENTS.md convention on all server-side fetches
+  // (Greptile P2 review on PR #3811).
   const resp = await fetch(`${url}/get/${encodeURIComponent(key)}`, {
-    headers: { Authorization: `Bearer ${token}` },
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'User-Agent': 'worldmonitor-server/1.0 (simulation-queue)',
+    },
     signal: AbortSignal.timeout(REDIS_READ_TIMEOUT_MS),
   });
   if (!resp.ok) throw new Error(`Redis HTTP ${resp.status}`);
