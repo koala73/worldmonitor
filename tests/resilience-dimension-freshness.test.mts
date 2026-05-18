@@ -426,6 +426,17 @@ describe('INDICATOR_REGISTRY seed-meta coverage (T1.5 P1 regression lock)', () =
     // this once the cron has baked in; until then, allowlist it so
     // the registry consistency check passes.
     'seed-meta:resilience:recovery:sovereign-wealth',
+    // PR #3764: scoreFuelStockDays was retired in PR 3 §3.5 (returns
+    // coverage=0 unconditionally; _reader argument unused). The
+    // health probe was removed because reporting STATUS:OK on data
+    // nothing reads was actively misleading. The seeder
+    // (scripts/seed-recovery-fuel-stocks.mjs) still runs on the
+    // seed-bundle-resilience-recovery Railway cron so a future
+    // replacement dimension has historical timeseries, but no
+    // health check tracks the key anymore. Allowlist verified
+    // against scripts/seed-recovery-fuel-stocks.mjs line 8
+    // (CANONICAL_KEY = 'resilience:recovery:fuel-stocks:v1').
+    'seed-meta:resilience:recovery:fuel-stocks',
   ]);
 
   function extractSeedMetaKeys(filePath: string): Set<string> {
