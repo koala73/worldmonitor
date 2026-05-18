@@ -595,8 +595,14 @@ const VALID_TOPICS = new Set([
   'maritime', 'business', 'scitech', 'entertainment',
 ]);
 
+/** Bumped on any change to the location-only prompt. Drives both the
+ *  enrichment cache key (cold cache → forces a re-LLM) and the per-cluster
+ *  `enrichVersion` re-queue gate, so a prompt change re-classifies every
+ *  v6 digest cluster instead of only newly-arriving ones. */
+const LOCATION_PROMPT_VERSION = 3;
+
 const LOCATION_ONLY_CACHE_KEY = (link: string): string =>
-  `enrichment-loc:v2:${createHash('sha256').update(link).digest('hex')}`;
+  `enrichment-loc:v${LOCATION_PROMPT_VERSION}:${createHash('sha256').update(link).digest('hex')}`;
 const LOCATION_ONLY_CACHE_TTL_S = 3 * 24 * 60 * 60; // 3-day project max
 
 const LOCATION_ONLY_SYSTEM_PROMPT = `You classify a news article. Return ONE JSON object with these fields:
@@ -614,17 +620,17 @@ const LOCATION_ONLY_SYSTEM_PROMPT = `You classify a news article. Return ONE JSO
 
   - isConflict: boolean. True ONLY if the story is about armed conflict, military operations, terrorist attacks, civil unrest, or any kinetic event with a clear geographic incident location. False for everything else (business, sports, politics, entertainment, weather, etc).
 
-  - topics: an ARRAY of zero or more of these exact strings — every category the story is substantively about (a story may fit several, or none):
+  - topics: an ARRAY of zero or more of these exact strings — ONLY the categories that are a PRIMARY subject of the story:
       "cyber"         — cyberattacks, data breaches, ransomware, hacking, cyber-espionage
       "military"      — armed forces, defense, weapons, military operations / exercises / deployments
       "nuclear"       — nuclear weapons, nuclear energy / power, uranium, IAEA, proliferation
       "sanctions"     — sanctions, embargoes, tariffs, trade restrictions, export controls
       "intelligence"  — espionage, spy agencies, surveillance programs, classified leaks, covert operations
-      "maritime"      — naval forces, shipping, ports, piracy, sea lanes, maritime incidents
-      "business"      — companies, markets, earnings, central banks, the economy, trade deals
-      "scitech"       — science, technology, AI, space, health / medical research, innovation
+      "maritime"      — central to naval forces, ships, ports, piracy, or a sea incident — NOT just because oil prices or shipping get a mention
+      "business"      — the story's MAIN subject is companies, markets, earnings, IPOs, or central-bank / monetary policy — NOT general politics or diplomacy that merely carries economic implications
+      "scitech"       — science, technology, AI, space, medical research, innovation
       "entertainment" — film, TV, music, celebrities, gaming, awards, the sports business
-    Be strict: include a category only when the story is genuinely about it, not when it is merely mentioned in passing. Return [] when none apply.
+    Tag a category ONLY when it is a primary subject of the story. NEVER tag for background context, a passing mention, or a downstream consequence. Most stories have 0-2 topics; 3 or more should be rare. Return [] when none apply.
 
   - country: ISO 3166-1 alpha-2 code of the primary country in the story. ONLY include when isConflict=true. OMIT for non-conflict stories.
 
@@ -1027,12 +1033,14 @@ async function runEnrichment(): Promise<EnrichResult> {
       const needsRegion = !region;
       const needsLocationName = conflictMissingLocation;
       const needsFullSummary = !bucket.skipSummary && (!summary || summaryTooShort);
-      // v6 digest clusters also need the multi-label `topics` classification;
-      // re-queue any that predate it (region set, topics absent).
-      const needsTopics = bucket.kind === 'live-news'
-        && !Array.isArray((item as { topics?: unknown }).topics);
+      // v6 digest clusters carry a multi-label `topics` classification + an
+      // `enrichVersion` stamp. Re-queue any whose stamp is stale (never
+      // classified, or classified under an older prompt) so a prompt-version
+      // bump re-classifies the whole digest, not just newly-arriving clusters.
+      const needsReEnrich = bucket.kind === 'live-news'
+        && (item as { enrichVersion?: number }).enrichVersion !== LOCATION_PROMPT_VERSION;
       const needsEnrichment = needsTitleSummary || needsRegion || needsLocationName
-        || needsFullSummary || needsTopics;
+        || needsFullSummary || needsReEnrich;
 
       if (needsEnrichment) {
         indices.push(i);
@@ -1131,6 +1139,7 @@ async function runEnrichment(): Promise<EnrichResult> {
             if (bucket.kind === 'live-news') {
               (item as { isConflict?: boolean | null }).isConflict = payload.isConflict;
               (item as { topics?: string[] }).topics = payload.topics;
+              (item as { enrichVersion?: number }).enrichVersion = LOCATION_PROMPT_VERSION;
             }
             succeeded++;
             const stats = perTopic[bucket.id];

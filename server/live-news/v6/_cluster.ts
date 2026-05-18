@@ -297,6 +297,9 @@ export interface ClusteredItem {
    *  signal that drives the v6 GDELT-category feeds (cyber / military / …).
    *  Starts undefined; the enrich cron fills it on its next pass. */
   topics?: string[];
+  /** Prompt version the enrich LLM used for `topics` / `region` — lets a
+   *  prompt-version bump re-classify already-tagged clusters. enrich-set. */
+  enrichVersion?: number;
 }
 
 /**

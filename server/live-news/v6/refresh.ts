@@ -185,6 +185,7 @@ function mergeItems(existing: ClusteredItem[], fresh: ClusteredItem[]): Clustere
       region: prev.region ?? next.region,
       isConflict: prev.isConflict ?? next.isConflict,
       topics: prev.topics ?? next.topics,
+      enrichVersion: prev.enrichVersion ?? next.enrichVersion,
       // Always take fresh summary/imageUrl/sources/isAlert — those
       // track cluster membership which changes as new outlets cover
       // the story.
