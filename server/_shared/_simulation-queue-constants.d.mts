@@ -18,4 +18,4 @@ export const VALID_RUN_ID_RE: RegExp;
 
 export const SIMULATION_TRIGGER_RATE_LIMIT: Readonly<{ limit: number; window: string }>;
 
-export function pkgFingerprint(pkgKey: string | null | undefined): string;
+export function pkgFingerprint(pkgKey: string | null | undefined): Promise<string>;

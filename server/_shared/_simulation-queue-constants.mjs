@@ -3,14 +3,14 @@
 //   - scripts/seed-forecasts.mjs (the auto-trigger seeder + worker)
 //   - server/_shared/simulation-queue.ts (the HTTP-trigger handler module)
 //
-// The shim is .mjs (not .ts) so the Node 22 seeder can import it natively
-// without a tsx loader. The TS module imports via a sibling .d.ts (no
-// `// @ts-expect-error` needed).
+// IMPORTANT: this module is bundled into Vercel Edge functions transitively
+// (via server/_shared/cache-keys.ts → Edge handlers). It MUST use only
+// Web-Platform APIs. `node:crypto` is NOT available in Edge runtime, but
+// `globalThis.crypto.subtle` IS — and Node 19+ ships it too, so the seeder
+// works without a polyfill.
 //
 // See docs/plans/2026-05-18-003-feat-simulation-trigger-and-runid-filter-plan.md
 // D4 for the framing decision and D7 for why pkgFingerprint is opaque.
-
-import { createHash } from 'node:crypto';
 
 export const SIMULATION_TASK_KEY_PREFIX = 'forecast:simulation-task:v1';
 export const SIMULATION_TASK_QUEUE_KEY = 'forecast:simulation-task-queue:v1';
@@ -37,12 +37,23 @@ export const SIMULATION_TRIGGER_RATE_LIMIT = Object.freeze({ limit: 10, window: 
  * detect cron rotation without seeing the raw R2 path (which would leak
  * bucket layout — see #3734 review).
  *
+ * Async by necessity: Web Crypto's `subtle.digest` is the only API
+ * available in BOTH Vercel Edge AND Node 19+, and it is async-only.
+ * Both callers (handler + worker) already run inside async functions.
+ *
  * @param {string} pkgKey - R2 object key like
  *   `seed-data/forecast-traces/2026/05/18/<runId>/simulation-package.json`.
- * @returns {string} 16-char lowercase hex. Empty string when pkgKey is
- *   empty/null (signals "no fingerprint to verify" downstream).
+ * @returns {Promise<string>} 16-char lowercase hex. Empty string when
+ *   pkgKey is empty/null (signals "no fingerprint to verify" downstream).
  */
-export function pkgFingerprint(pkgKey) {
+export async function pkgFingerprint(pkgKey) {
   if (!pkgKey || typeof pkgKey !== 'string') return '';
-  return createHash('sha256').update(pkgKey).digest('hex').slice(0, 16);
+  const data = new TextEncoder().encode(pkgKey);
+  const hashBuffer = await globalThis.crypto.subtle.digest('SHA-256', data);
+  const bytes = new Uint8Array(hashBuffer);
+  let hex = '';
+  for (let i = 0; i < 8; i++) {
+    hex += bytes[i].toString(16).padStart(2, '0');
+  }
+  return hex;
 }

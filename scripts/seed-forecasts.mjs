@@ -17114,7 +17114,7 @@ async function processNextSimulationTask(options = {}) {
       //     `_meta.packageRotated: true` (NOT user-facing per D8); still
       //     proceed with latest package (preserves existing fallback at
       //     line 17073-17075).
-      const currentFingerprint = pkgFingerprint(pkgPointer.pkgKey);
+      const currentFingerprint = await pkgFingerprint(pkgPointer.pkgKey);
       const packageRotated = !!(task.pkgFingerprint && task.pkgFingerprint !== currentFingerprint);
       if (packageRotated) {
         console.warn(`  [Simulation] package_rotated: task=${runId} task.pkgFingerprint=${task.pkgFingerprint} current=${currentFingerprint} — proceeding with current package`);

@@ -139,7 +139,7 @@ export async function getSimulationPackagePointer(): Promise<PackagePointer | nu
   const runId = typeof parsed.runId === 'string' ? parsed.runId : '';
   const pkgKey = typeof parsed.pkgKey === 'string' ? parsed.pkgKey : '';
   if (!runId) return null;
-  return { runId, pkgKey, pkgFingerprint: pkgFingerprint(pkgKey) };
+  return { runId, pkgKey, pkgFingerprint: await pkgFingerprint(pkgKey) };
 }
 
 /**
