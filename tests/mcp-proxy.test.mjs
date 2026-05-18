@@ -31,6 +31,17 @@ function buildHeaders(origin, { authed = true, extra = {} } = {}) {
   return h;
 }
 
+// @upstash/ratelimit caches block decisions locally (Map keyed by identifier)
+// — so once a test rate-limits a given IP, subsequent tests using the same IP
+// stay blocked for the window even if Redis is reachable / mocked differently.
+// Generate a unique caller IP per request so tests are independent. Uses
+// cf-connecting-ip because the proxy's getClientIp prefers that header.
+let __testIpCounter = 0;
+function uniqueCallerIp() {
+  __testIpCounter += 1;
+  return `203.0.113.${__testIpCounter % 250}`;
+}
+
 function makeGetRequest(params = {}, origin = 'https://worldmonitor.app', opts = {}) {
   const url = new URL('https://worldmonitor.app/api/mcp-proxy');
   for (const [k, v] of Object.entries(params)) {
@@ -527,5 +538,223 @@ describe('api/mcp-proxy', () => {
       const data = await res.json();
       assert.equal(data.tools[0].name, 'web_search');
     });
+  });
+
+  // ── Rate limit + audit log (issue #3805) ─────────────────────────────────
+  //
+  // Defense-in-depth additions to the proxy:
+  //   1) Per-IP 30/min cap so even an authenticated Pro key cannot drive
+  //      unbounded outbound traffic from the WM IP.
+  //   2) Structured audit log per call recording who proxied to where and
+  //      which header NAMES (not values) they forwarded — so an
+  //      incident-response can reconstruct activity without leaking the
+  //      Authorization / X-Api-Key secrets the proxy intentionally relays.
+
+  describe('Rate limit (#3805)', () => {
+    let savedRedisUrl;
+    let savedRedisTok;
+
+    beforeEach(() => {
+      savedRedisUrl = process.env.UPSTASH_REDIS_REST_URL;
+      savedRedisTok = process.env.UPSTASH_REDIS_REST_TOKEN;
+    });
+
+    afterEach(() => {
+      if (savedRedisUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
+      else process.env.UPSTASH_REDIS_REST_URL = savedRedisUrl;
+      if (savedRedisTok === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+      else process.env.UPSTASH_REDIS_REST_TOKEN = savedRedisTok;
+    });
+
+    it('returns 429 + JSON-RPC -32029 + Retry-After when rate-limited', async () => {
+      process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+      process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+
+      // Mock Upstash REST — @upstash/ratelimit's sliding-window EVAL
+      // returns `[remainingTokens, effectiveLimit]` per command, wrapped in
+      // an auto-pipelining envelope `[{ result: [...] }]`. We force
+      // remainingTokens=-1 to trigger success=false (→ 429).
+      globalThis.fetch = async (url) => {
+        const u = url.toString();
+        if (u.includes('fake.upstash.io')) {
+          return new Response(
+            JSON.stringify([{ result: [-1, 30] }]),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          );
+        }
+        return new Response('{}', { status: 200 });
+      };
+
+      const ip = uniqueCallerIp();
+      const res = await handler(makeGetRequest(
+        { serverUrl: 'https://mcp.example.com/mcp' },
+        'https://worldmonitor.app',
+        { extra: { 'cf-connecting-ip': ip } },
+      ));
+      assert.equal(res.status, 429, 'must return HTTP 429 on rate-limit hit');
+      assert.ok(res.headers.get('Retry-After'), 'must include Retry-After header');
+      assert.ok(Number(res.headers.get('Retry-After')) >= 1, 'Retry-After must be >= 1s');
+      const body = await res.json();
+      assert.equal(body.error?.code, -32029, 'must return JSON-RPC -32029');
+      assert.match(body.error.message, /rate limit/i);
+    });
+
+    it('rate-limit fail-opens when Upstash is unreachable (graceful degradation)', async () => {
+      process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+      process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+
+      // Simulate Upstash hard-failure: scoped limiter should fail-open and
+      // the request still completes. Mock fetch returns network error for
+      // Upstash but normal MCP responses for the upstream MCP server.
+      globalThis.fetch = async (url, opts) => {
+        const u = url.toString();
+        if (u.includes('fake.upstash.io')) throw new TypeError('fetch failed');
+        return makeMcpFetch({ tools: [] })(url, opts);
+      };
+
+      const ip = uniqueCallerIp();
+      const res = await handler(makeGetRequest(
+        { serverUrl: 'https://mcp.example.com/mcp' },
+        'https://worldmonitor.app',
+        { extra: { 'cf-connecting-ip': ip } },
+      ));
+      assert.equal(res.status, 200, 'rate-limit must fail-open on Redis error');
+    });
+  });
+
+  describe('Audit log (#3805)', () => {
+    let logSpy;
+    const originalLog = console.log;
+
+    beforeEach(() => {
+      logSpy = [];
+      console.log = (...args) => { logSpy.push(args); };
+    });
+
+    afterEach(() => {
+      console.log = originalLog;
+    });
+
+    function findProxyLog() {
+      return logSpy.find((a) => a[0] === '[mcp-proxy]');
+    }
+
+    it('emits a structured audit log line on a successful GET', async () => {
+      globalThis.fetch = makeMcpFetch({ tools: [] });
+      const res = await handler(makeGetRequest(
+        { serverUrl: 'https://mcp.example.com/mcp' },
+        'https://worldmonitor.app',
+        { extra: { 'cf-connecting-ip': uniqueCallerIp() } },
+      ));
+      assert.equal(res.status, 200);
+
+      const log = findProxyLog();
+      assert.ok(log, 'expected an [mcp-proxy] audit log line');
+      const entry = log[1];
+      assert.equal(entry.event, 'mcp_proxy_call');
+      assert.equal(entry.target_host, 'mcp.example.com');
+      assert.equal(entry.target_path, '/mcp');
+      assert.equal(entry.method, 'GET');
+      assert.equal(entry.status, 200);
+      assert.ok(typeof entry.duration_ms === 'number');
+      assert.ok(typeof entry.ts === 'string');
+      assert.ok(Array.isArray(entry.header_names));
+    });
+
+    it('audit log contains header NAMES but never header VALUES (no secret leakage)', async () => {
+      globalThis.fetch = makeMcpFetch({ tools: [] });
+      const res = await handler(makeGetRequest(
+        {
+          serverUrl: 'https://mcp.example.com/mcp',
+          headers: JSON.stringify({ Authorization: 'Bearer super-secret-token-XYZ', 'X-Api-Key': 'k_abc123' }),
+        },
+        'https://worldmonitor.app',
+        { extra: { 'cf-connecting-ip': uniqueCallerIp() } },
+      ));
+      assert.equal(res.status, 200);
+
+      const log = findProxyLog();
+      assert.ok(log, 'expected an [mcp-proxy] audit log line');
+      const entry = log[1];
+      assert.deepEqual(entry.header_names.sort(), ['Authorization', 'X-Api-Key'].sort());
+
+      // CRITICAL: the entire serialized log line must NOT contain the
+      // secret values that the proxy intentionally forwards upstream.
+      const serialized = JSON.stringify(log);
+      assert.ok(!serialized.includes('super-secret-token-XYZ'), 'audit log MUST NOT contain Authorization value');
+      assert.ok(!serialized.includes('k_abc123'), 'audit log MUST NOT contain X-Api-Key value');
+      assert.ok(!serialized.includes('Bearer '), 'audit log MUST NOT contain Bearer prefix from a real header value');
+    });
+
+    it('audit log target_path does NOT include the query string (query may carry tokens)', async () => {
+      globalThis.fetch = makeMcpFetch({ tools: [] });
+      // Some MCP servers accept ?token=... in the URL — make sure that
+      // never lands in the structured log.
+      const res = await handler(makeGetRequest(
+        { serverUrl: 'https://mcp.example.com/mcp?token=querystring-secret-ABCDEF' },
+        'https://worldmonitor.app',
+        { extra: { 'cf-connecting-ip': uniqueCallerIp() } },
+      ));
+      assert.equal(res.status, 200);
+
+      const log = findProxyLog();
+      assert.ok(log);
+      const entry = log[1];
+      assert.equal(entry.target_path, '/mcp', 'target_path must be pathname only');
+      const serialized = JSON.stringify(log);
+      assert.ok(!serialized.includes('querystring-secret-ABCDEF'), 'audit log MUST NOT capture query string secrets');
+    });
+
+    it('emits audit log with status: 429 on a rate-limit block', async () => {
+      const savedRedisUrl = process.env.UPSTASH_REDIS_REST_URL;
+      const savedRedisTok = process.env.UPSTASH_REDIS_REST_TOKEN;
+      process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+      process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+      try {
+        globalThis.fetch = async (url) => {
+          const u = url.toString();
+          if (u.includes('fake.upstash.io')) {
+            return new Response(
+              JSON.stringify([{ result: [-1, 30] }]),
+              { status: 200, headers: { 'Content-Type': 'application/json' } },
+            );
+          }
+          return new Response('{}', { status: 200 });
+        };
+        const res = await handler(makeGetRequest(
+          { serverUrl: 'https://mcp.example.com/mcp' },
+          'https://worldmonitor.app',
+          { extra: { 'cf-connecting-ip': uniqueCallerIp() } },
+        ));
+        assert.equal(res.status, 429);
+        const log = findProxyLog();
+        assert.ok(log, 'must emit audit log on rate-limit block');
+        assert.equal(log[1].status, 429);
+        assert.equal(log[1].event, 'mcp_proxy_call');
+      } finally {
+        if (savedRedisUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
+        else process.env.UPSTASH_REDIS_REST_URL = savedRedisUrl;
+        if (savedRedisTok === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+        else process.env.UPSTASH_REDIS_REST_TOKEN = savedRedisTok;
+      }
+    });
+
+    it('emits audit log on validation failure (status: 400)', async () => {
+      const res = await handler(makeGetRequest(
+        { serverUrl: 'http://localhost/mcp' },
+        'https://worldmonitor.app',
+        { extra: { 'cf-connecting-ip': uniqueCallerIp() } },
+      ));
+      assert.equal(res.status, 400);
+      const log = findProxyLog();
+      assert.ok(log, 'must emit audit log even when SSRF validation rejects the URL');
+      assert.equal(log[1].status, 400);
+    });
+
+    // TODO: rate-limit window-reset behavior is intentionally NOT tested —
+    // it requires either real Redis or fake-time mocking of
+    // @upstash/ratelimit's internal sliding-window math, which isn't worth
+    // the test infrastructure cost. The 60s window is configured via the
+    // RATE_LIMIT_WINDOW constant; the Upstash library handles expiry.
   });
 });
