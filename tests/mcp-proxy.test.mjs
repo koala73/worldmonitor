@@ -1,3 +1,8 @@
+// RUN WITH: `npm run test:data` OR `node --import=tsx --test tests/mcp-proxy.test.mjs`.
+// The handler under test (api/mcp-proxy.ts) imports isCallerPremium from
+// server/_shared/premium-check (extensionless TS). Plain `node --test`
+// cannot resolve that import and will fail with ERR_MODULE_NOT_FOUND —
+// this is expected; use tsx (the project's standard test runner).
 import { strict as assert } from 'node:assert';
 import { describe, it, beforeEach, afterEach, before } from 'node:test';
 
