@@ -1410,10 +1410,15 @@ components:
                         $ref: '#/components/schemas/PriceQuote'
                 provider:
                     type: string
-                    description: Provider name (e.g., "amadeus", "demo").
+                    description: |-
+                        Provider name: "travelpayouts_data", "demo", or "none" when no live
+                         provider is configured.
                 isDemoMode:
                     type: boolean
-                    description: Whether results are from demo/simulated mode.
+                    description: |-
+                        Whether results are from demo/simulated mode. Requires explicit
+                         AVIATION_DEMO_PRICES=1 opt-in on the server. Never true in default
+                         self-host / production runs. See issue #3756.
                 updatedAt:
                     type: integer
                     format: int64
@@ -1421,6 +1426,19 @@ components:
                 isIndicative:
                     type: boolean
                     description: Whether returned prices are indicative (subject to change).
+                degraded:
+                    type: boolean
+                    description: |-
+                        True when the live provider could not satisfy the request — missing
+                         credentials, upstream failure, or zero results. Mirrors the
+                         searchGoogleFlights pattern so clients can render distinct messages
+                         for each error class.
+                error:
+                    type: string
+                    description: |-
+                        Discriminator for the degraded state: "" (ok), "missing_credentials"
+                         (TRAVELPAYOUTS_API_TOKEN unset), "upstream_error" (provider call
+                         threw), "no_results" (provider returned empty for this route).
             description: SearchFlightPricesResponse contains flight price offers.
         PriceQuote:
             type: object

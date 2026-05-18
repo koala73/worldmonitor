@@ -218,6 +218,8 @@ export interface SearchFlightPricesResponse {
   isDemoMode: boolean;
   updatedAt: number;
   isIndicative: boolean;
+  degraded: boolean;
+  error: string;
 }
 
 export interface PriceQuote {

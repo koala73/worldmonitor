@@ -6,6 +6,27 @@ import type {
 import { generateDemoPrices } from './_providers/demo_prices';
 import { searchPricesTravelpayouts } from './_providers/travelpayouts_data';
 
+/**
+ * Returns a fail-closed empty response with a `degraded: true` discriminator
+ * so the UI can render a meaningful per-state message. Mirrors the shape
+ * sibling `searchGoogleFlights` already uses. See issue #3756.
+ */
+function emptyDegraded(
+    now: number,
+    error: 'missing_credentials' | 'upstream_error' | 'no_results',
+    provider: string,
+): SearchFlightPricesResponse {
+    return {
+        quotes: [],
+        provider,
+        isDemoMode: false,
+        updatedAt: now,
+        isIndicative: false,
+        degraded: true,
+        error,
+    };
+}
+
 export async function searchFlightPrices(
     _ctx: ServerContext,
     req: SearchFlightPricesRequest,
@@ -22,6 +43,12 @@ export async function searchFlightPrices(
     const market = (req.market || '').toLowerCase();
 
     const token = process.env.TRAVELPAYOUTS_API_TOKEN ?? '';
+    // Demo mode is OPT-IN. The handler used to fall through to synthetic
+    // quotes for missing-credentials / upstream-error / no-results in any
+    // self-host run, with only a tiny "Indicative prices" UI footnote.
+    // Issue #3756 — demo data now requires an explicit AVIATION_DEMO_PRICES=1
+    // env var so production / self-host setups fail closed by default.
+    const demoOptIn = process.env.AVIATION_DEMO_PRICES === '1';
     const now = Date.now();
 
     if (token) {
@@ -36,23 +63,62 @@ export async function searchFlightPrices(
                     quotes: result.quotes,
                     provider: 'travelpayouts_data',
                     isDemoMode: false,
-                    isIndicative: true,
                     updatedAt: now,
+                    isIndicative: true,
+                    degraded: false,
+                    error: '',
                 };
             }
-            // Fall through to demo if TP returned nothing
+            // Provider call succeeded but had no quotes for this route.
+            // Note: with the current Travelpayouts provider, fetch errors
+            // are caught internally and surfaced as empty data — so this
+            // path also covers upstream failures. The proto's
+            // `upstream_error` value is reserved for synchronous handler
+            // failures (validation crashes, schema mismatches) that bubble
+            // up out of searchPricesTravelpayouts itself.
+            if (demoOptIn) {
+                const quotes = generateDemoPrices(origin, destination, depDate, adults, cabin, nonstopOnly, maxResults, currency);
+                return {
+                    quotes,
+                    provider: 'demo',
+                    isDemoMode: true,
+                    updatedAt: now,
+                    isIndicative: true,
+                    degraded: true,
+                    error: 'no_results',
+                };
+            }
+            return emptyDegraded(now, 'no_results', 'travelpayouts_data');
         } catch (err) {
-            console.warn(`[Aviation] Travelpayouts failed, using demo: ${err instanceof Error ? err.message : err}`);
+            console.warn(`[Aviation] Travelpayouts upstream error: ${err instanceof Error ? err.message : err}`);
+            if (demoOptIn) {
+                const quotes = generateDemoPrices(origin, destination, depDate, adults, cabin, nonstopOnly, maxResults, currency);
+                return {
+                    quotes,
+                    provider: 'demo',
+                    isDemoMode: true,
+                    updatedAt: now,
+                    isIndicative: true,
+                    degraded: true,
+                    error: 'upstream_error',
+                };
+            }
+            return emptyDegraded(now, 'upstream_error', 'travelpayouts_data');
         }
     }
 
-    // Demo fallback
-    const quotes = generateDemoPrices(origin, destination, depDate, adults, cabin, nonstopOnly, maxResults, currency);
-    return {
-        quotes,
-        provider: 'demo',
-        isDemoMode: true,
-        isIndicative: true,
-        updatedAt: now,
-    };
+    // No token configured.
+    if (demoOptIn) {
+        const quotes = generateDemoPrices(origin, destination, depDate, adults, cabin, nonstopOnly, maxResults, currency);
+        return {
+            quotes,
+            provider: 'demo',
+            isDemoMode: true,
+            updatedAt: now,
+            isIndicative: true,
+            degraded: true,
+            error: 'missing_credentials',
+        };
+    }
+    return emptyDegraded(now, 'missing_credentials', 'none');
 }

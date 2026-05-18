@@ -218,20 +218,41 @@ async function executeIntent(intent: Intent): Promise<CommandResult> {
             };
         }
 
-        // Fallback to TravelPayouts / demo
-        const { quotes, isDemoMode } = await fetchFlightPrices({ origin: intent.origin, destination: intent.destination, departureDate: date });
-        if (!quotes.length) return { html: '<div class="cmd-empty">No prices found.</div>' };
+        // Fallback to TravelPayouts. Demo data is gated behind an explicit
+        // server-side AVIATION_DEMO_PRICES=1 (issue #3756) — surface the
+        // distinct degraded states clearly rather than swallowing
+        // missing-credentials / upstream-error / no-results into a single
+        // "Indicative prices" footnote.
+        const { quotes, isDemoMode, degraded, error } = await fetchFlightPrices({ origin: intent.origin, destination: intent.destination, departureDate: date });
+        const gflLink = sanitizeUrl(`https://www.google.com/travel/flights/search?q=Flights+from+${encodeURIComponent(intent.origin)}+to+${encodeURIComponent(intent.destination)}+on+${encodeURIComponent(date)}`);
+        if (!quotes.length) {
+            let msg = 'No prices found.';
+            if (degraded) {
+                if (error === 'missing_credentials') {
+                    msg = `Live flight pricing requires TRAVELPAYOUTS_API_TOKEN. <a href="${gflLink}" target="_blank" rel="noopener" style="color:var(--accent,#60a5fa)">Search Google Flights instead →</a>`;
+                } else if (error === 'upstream_error') {
+                    msg = `Flight pricing provider temporarily unavailable. <a href="${gflLink}" target="_blank" rel="noopener" style="color:var(--accent,#60a5fa)">Search Google Flights instead →</a>`;
+                } else if (error === 'no_results') {
+                    msg = `No live prices found for ${escapeHtml(intent.origin)} → ${escapeHtml(intent.destination)}.`;
+                }
+            }
+            return { html: `<div class="cmd-empty">${msg}</div>` };
+        }
         const rows = [...quotes].sort((a, b) => a.stops !== b.stops ? a.stops - b.stops : a.priceAmount - b.priceAmount).slice(0, 5).map(q => {
             const stopColor = q.stops === 0 ? 'var(--green,#44ff88)' : 'var(--text-dim,#9ca3af)';
             const stopLabel = q.stops === 0 ? 'nonstop' : `${q.stops} stop${q.stops > 1 ? 's' : ''}`;
-            const rowUrl = sanitizeUrl(`https://www.google.com/travel/flights/search?q=Flights+from+${encodeURIComponent(intent.origin)}+to+${encodeURIComponent(intent.destination)}+on+${encodeURIComponent(date)}`);
-            return `<a class="cmd-row" href="${rowUrl}" target="_blank" rel="noopener" style="padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05);text-decoration:none;cursor:pointer;color:var(--text,#e8e8e8)">
+            return `<a class="cmd-row" href="${gflLink}" target="_blank" rel="noopener" style="padding:5px 0;border-bottom:1px solid rgba(255,255,255,.05);text-decoration:none;cursor:pointer;color:var(--text,#e8e8e8)">
           <div style="flex:1">${escapeHtml(q.carrierName || q.carrierIata)}<span style="color:${stopColor};font-size:11px;margin-left:6px">${stopLabel}</span></div>
           <div style="color:var(--green,#44ff88);font-weight:600">$${Math.round(q.priceAmount)}</div>
         </a>`;
         }).join('');
+        // Demo mode is opt-in only. When it fires, show an unmistakable
+        // banner above the result set, not a tiny gray footnote.
+        const demoBanner = isDemoMode
+            ? `<div style="background:rgba(245,158,11,0.15);border:1px solid #f59e0b;color:#f59e0b;padding:6px 10px;border-radius:4px;margin-bottom:6px;font-size:12px;font-weight:600">⚠ DEMO DATA — synthetic distance-based estimates, not live market quotes</div>`
+            : '';
         return {
-            html: `<div class="cmd-section">${header}${rows}${isDemoMode ? '<div style="color:#6b7280;font-size:11px;margin-top:4px">Indicative prices</div>' : ''}</div>`,
+            html: `<div class="cmd-section">${demoBanner}${header}${rows}</div>`,
         };
     }
 

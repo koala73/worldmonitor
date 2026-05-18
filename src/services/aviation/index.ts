@@ -339,7 +339,7 @@ const breakerFlights = createCircuitBreaker<FlightInstance[]>({ name: 'Airport F
 const breakerCarrier = createCircuitBreaker<CarrierOps[]>({ name: 'Carrier Ops', cacheTtlMs: 5 * 60 * 1000, persistCache: false });
 const breakerStatus = createCircuitBreaker<FlightInstance[]>({ name: 'Flight Status', cacheTtlMs: 6 * 60 * 1000, persistCache: false });
 const breakerTrack = createCircuitBreaker<PositionSample[]>({ name: 'Track Aircraft', cacheTtlMs: 15 * 1000, persistCache: false });
-const breakerPrices = createCircuitBreaker<{ quotes: PriceQuote[]; isDemoMode: boolean }>({ name: 'Flight Prices', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
+const breakerPrices = createCircuitBreaker<{ quotes: PriceQuote[]; isDemoMode: boolean; isIndicative: boolean; degraded: boolean; error: string; provider: string }>({ name: 'Flight Prices', cacheTtlMs: 10 * 60 * 1000, persistCache: true });
 const breakerNews = createCircuitBreaker<AviationNewsItem[]>({ name: 'Aviation News', cacheTtlMs: 15 * 60 * 1000, persistCache: true });
 // No client-side cache for Google Flights search (gateway is no-store, prices change rapidly)
 const breakerGoogleFlights = createCircuitBreaker<GoogleFlightsResult>({ name: 'Google Flights', cacheTtlMs: 0, persistCache: false });
@@ -394,10 +394,13 @@ export async function fetchAircraftPositions(opts: { icao24?: string; callsign?:
   }, [], { cacheKey: `${opts.icao24 ?? ''}:${opts.callsign ?? ''}:${opts.swLat ?? 0}:${opts.swLon ?? 0}:${opts.neLat ?? 0}:${opts.neLon ?? 0}` });
 }
 
-export async function fetchFlightPrices(opts: { origin: string; destination: string; departureDate: string; returnDate?: string; adults?: number; cabin?: CabinClass; nonstopOnly?: boolean; maxResults?: number; currency?: string; market?: string }): Promise<{ quotes: PriceQuote[]; isDemoMode: boolean; isIndicative: boolean; provider: string }> {
+export async function fetchFlightPrices(opts: { origin: string; destination: string; departureDate: string; returnDate?: string; adults?: number; cabin?: CabinClass; nonstopOnly?: boolean; maxResults?: number; currency?: string; market?: string }): Promise<{ quotes: PriceQuote[]; isDemoMode: boolean; isIndicative: boolean; provider: string; degraded: boolean; error: string }> {
   const cacheKey = `${opts.origin}:${opts.destination}:${opts.departureDate}:${opts.returnDate ?? ''}:${opts.adults ?? 1}:${opts.cabin ?? 'CABIN_CLASS_ECONOMY'}:${opts.nonstopOnly ?? false}:${opts.maxResults ?? 10}:${opts.currency ?? 'usd'}:${opts.market ?? ''}`;
+  // Fail-closed fallback when the circuit breaker trips: no quotes,
+  // degraded=true, never demo-mode (issue #3756).
+  const fallback = { quotes: [], isDemoMode: false, isIndicative: false, degraded: true, error: 'upstream_error', provider: 'none' };
   return breakerPrices.execute(async () => {
-    const r = await client.searchFlightPrices({
+    const resp = await client.searchFlightPrices({
       origin: opts.origin, destination: opts.destination,
       departureDate: opts.departureDate, returnDate: opts.returnDate ?? '',
       adults: opts.adults ?? 1, cabin: opts.cabin ?? 'CABIN_CLASS_ECONOMY',
@@ -405,12 +408,14 @@ export async function fetchFlightPrices(opts: { origin: string; destination: str
       currency: opts.currency ?? 'usd', market: opts.market ?? '',
     });
     return {
-      quotes: r.quotes.map(toDisplayPriceQuote),
-      isDemoMode: r.isDemoMode,
-      isIndicative: r.isIndicative ?? true,
-      provider: r.provider,
+      quotes: resp.quotes.map(toDisplayPriceQuote),
+      isDemoMode: resp.isDemoMode,
+      isIndicative: resp.isIndicative,
+      degraded: resp.degraded,
+      error: resp.error,
+      provider: resp.provider,
     };
-  }, { quotes: [], isDemoMode: true, isIndicative: true, provider: 'demo' }, { cacheKey });
+  }, fallback, { cacheKey });
 }
 
 export async function fetchAviationNews(entities: string[], windowHours = 24, maxItems = 20): Promise<AviationNewsItem[]> {
