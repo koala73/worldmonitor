@@ -1882,7 +1882,7 @@
       "infoTooltip": "<strong>Monitores de palavras-chave</strong> Adicione qualquer termo para rastrear menções em notícias em tempo real em todas as fontes do WorldMonitor. Os resultados atualizam-se em tempo real à medida que artigos correspondentes são ingeridos."
     },
     "renewable": {
-      "infoTooltip": "<strong>Energia renovável</strong> Participação das renováveis na geração de eletricidade por região e ano, mais capacidade instalada para solar, eólica e carvão (MW). Fontes: Banco Mundial (EG.ELC.RNEW.ZS) e EIA."
+      "infoTooltip": "<strong>Energia renovável</strong> Participação das renováveis na geração de eletricidade por região e ano, mais capacidade instalada nos EUA para solar, eólica e carvão (MW). Fontes: Banco Mundial (EG.ELC.RNEW.ZS) e EIA."
     },
     "socialVelocity": {
       "infoTooltip": "<strong>Velocidade social</strong> Tópicos em tendência e conteúdo viral com significado geopolítico. Mede a velocidade nas redes sociais: quão rapidamente uma história se espalha em relação à linha de base. Ajuda a identificar narrativas emergentes antes de chegarem aos media tradicionais."

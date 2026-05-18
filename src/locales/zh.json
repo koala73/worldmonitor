@@ -2095,7 +2095,7 @@
       "infoTooltip": "<strong>关键词监控</strong> 添加任何词汇，实时追踪WorldMonitor所有来源中的新闻提及。匹配文章被收录时结果实时更新。"
     },
     "renewable": {
-      "infoTooltip": "<strong>可再生能源</strong> 按地区和年份显示可再生能源在发电量中的占比，以及太阳能、风能和煤炭的装机容量（兆瓦）。来源：世界银行（EG.ELC.RNEW.ZS）和 EIA。"
+      "infoTooltip": "<strong>可再生能源</strong> 按地区和年份显示可再生能源在发电量中的占比，以及美国太阳能、风能和煤炭的装机容量（兆瓦）。来源：世界银行（EG.ELC.RNEW.ZS）和 EIA。"
     },
     "socialVelocity": {
       "infoTooltip": "<strong>社交传播速度</strong> 具有地缘政治意义的热门话题和病毒式内容。衡量社交媒体速度：一个故事相对于基线的传播速度。帮助在新兴叙事到达主流媒体之前发现它们。"

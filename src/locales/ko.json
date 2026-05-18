@@ -2095,7 +2095,7 @@
       "infoTooltip": "<strong>키워드 모니터</strong> 모든 WorldMonitor 소스에서 실시간 뉴스 언급을 추적하기 위해 용어를 추가하세요. 일치하는 기사가 수집되면 결과가 실시간으로 업데이트."
     },
     "renewable": {
-      "infoTooltip": "<strong>재생 에너지</strong> 지역과 연도별 전력 생산에서 재생 에너지 비중, 그리고 태양광, 풍력, 석탄의 설비 용량 (MW). 출처: 세계은행 (EG.ELC.RNEW.ZS) 및 EIA."
+      "infoTooltip": "<strong>재생 에너지</strong> 지역과 연도별 전력 생산에서 재생 에너지 비중, 그리고 미국 태양광, 풍력, 석탄의 설비 용량 (MW). 출처: 세계은행 (EG.ELC.RNEW.ZS) 및 EIA."
     },
     "socialVelocity": {
       "infoTooltip": "<strong>소셜 벨로시티</strong> 지정학적 중요성을 가진 트렌딩 토픽과 바이럴 콘텐츠. 소셜 미디어 속도 측정: 기준선 대비 스토리가 얼마나 빠르게 확산되는지. 주류 뉴스에 도달하기 전에 새로운 내러티브를 부각하는 데 도움."

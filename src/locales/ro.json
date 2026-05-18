@@ -2095,7 +2095,7 @@
       "infoTooltip": "<strong>Monitoare de cuvinte cheie</strong> Adăugați orice termen pentru a urmări mențiunile în știri în timp real din toate sursele WorldMonitor. Rezultatele se actualizează în timp real pe măsură ce articolele corespunzătoare sunt ingerate."
     },
     "renewable": {
-      "infoTooltip": "<strong>Energie regenerabilă</strong> Ponderea regenerabilelor în producția de electricitate pe regiune și an, plus capacitatea instalată pentru solar, eolian și cărbune (MW). Surse: Banca Mondială (EG.ELC.RNEW.ZS) și EIA."
+      "infoTooltip": "<strong>Energie regenerabilă</strong> Ponderea regenerabilelor în producția de electricitate pe regiune și an, plus capacitatea instalată în SUA pentru solar, eolian și cărbune (MW). Surse: Banca Mondială (EG.ELC.RNEW.ZS) și EIA."
     },
     "socialVelocity": {
       "infoTooltip": "<strong>Velocitate socială</strong> Subiecte în tendințe și conținut viral cu semnificație geopolitică. Măsoară viteza în social media: cât de rapid se răspândește o știre față de linia de bază. Ajută la identificarea narativelor emergente înainte de a ajunge în mass-media."
