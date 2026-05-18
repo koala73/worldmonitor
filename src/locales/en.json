@@ -847,7 +847,9 @@
       "summarizing": "Summarizing…"
     },
     "progressCharts": {
-      "noData": "No progress data available"
+      "noData": "No progress data available",
+      "fallbackBadge": "Showing static fallback data — live series unavailable",
+      "fallbackTooltip": "The live World Bank seed could not be reached. These charts are rendered from a hardcoded snapshot last verified Feb 2026."
     },
     "monitor": {
       "placeholder": "Keywords (comma separated)",
