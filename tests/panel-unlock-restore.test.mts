@@ -152,6 +152,54 @@ describe('Panel base class — unlockPanel restores pre-lock content', () => {
     );
   });
 
+  it('showGatedCta with an unknown reason is a clean no-op (no half-locked state)', () => {
+    // PR #3814 review (Greptile P2): the early-return for PanelGateReason.NONE
+    // must run BEFORE any side-effect. If snapshotting / _locked / class-add
+    // happened first, the panel would end up visually half-locked (header
+    // siblings hidden, panel-is-locked class set, snapshot populated) with
+    // no CTA rendered, and an unrelated subsequent unlock would unwind into
+    // a confused state.
+    harness.resetConstructorRunCount();
+    const panel = harness.createPanel();
+    const root = panel.getElement();
+    const wrapperBefore = root.querySelector('.minimal-test-wrapper');
+    const inputBefore = root.querySelector('.minimal-test-input');
+
+    // PanelGateReason.NONE — acknowledged impossible path in the
+    // updatePanelGating flow, but the guard must still bail cleanly.
+    panel.showGatedCta('none', () => {});
+
+    assert.equal(
+      root.querySelector('.minimal-test-wrapper'),
+      wrapperBefore,
+      'wrapper untouched on unknown-reason showGatedCta',
+    );
+    assert.equal(
+      root.querySelector('.minimal-test-input'),
+      inputBefore,
+      'input untouched on unknown-reason showGatedCta',
+    );
+    assert.equal(
+      root.querySelector('.panel-locked-state'),
+      null,
+      'no locked CTA rendered on unknown-reason path',
+    );
+    assert.equal(
+      panel.getElement().classList.contains('panel-is-locked'),
+      false,
+      'panel-is-locked class must NOT be applied on the early-return path',
+    );
+
+    // Sanity: a subsequent real unlock should also be a no-op (since the
+    // panel never actually entered the locked state in the first place).
+    panel.unlockPanel();
+    assert.equal(
+      root.querySelector('.minimal-test-input'),
+      inputBefore,
+      'after unlockPanel, input still the same instance — proves no snapshot was taken',
+    );
+  });
+
   it('unlockPanel on a never-locked panel is a no-op (legacy behavior preserved)', () => {
     harness.resetConstructorRunCount();
     const panel = harness.createPanel();
