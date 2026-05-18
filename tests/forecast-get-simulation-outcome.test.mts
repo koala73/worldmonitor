@@ -127,7 +127,7 @@ describe('getSimulationOutcome runId filter (#3734 U6)', () => {
     assert.equal(res.processing, false);
   });
 
-  it('Path 3 — by-run miss + runId in queue returns processing=true', async () => {
+  it('Path 3 — by-run miss + runId in queue returns processing=true (with no-cache marker)', async () => {
     installFetch(
       (_key) => null, // no by-run, no :latest
       (cmd) => {
@@ -135,10 +135,19 @@ describe('getSimulationOutcome runId filter (#3734 U6)', () => {
         return { result: 0 };
       },
     );
-    const res = await getSimulationOutcome(makeCtx(), { runId: VALID_RUN_ID });
+    const ctx = makeCtx();
+    const res = await getSimulationOutcome(ctx, { runId: VALID_RUN_ID });
     assert.equal(res.found, false);
     assert.equal(res.processing, true);
     assert.equal(res.runId, VALID_RUN_ID);
+    // Human review on PR #3811: processing=true is transient — the gateway's
+    // `slow` cache tier (30-min CDN) would serve stale "still processing"
+    // long after the worker completed. The handler MUST mark X-No-Cache on
+    // this branch so polling clients see the outcome land.
+    const { drainResponseHeaders } = await import('../server/_shared/response-headers.ts');
+    const headers = drainResponseHeaders(ctx.request);
+    assert.equal(headers?.['X-No-Cache'], '1',
+      'processing=true response must carry X-No-Cache to opt out of the gateway cache tier');
   });
 
   it('Path 4 — by-run miss + not queued + :latest available falls through with expiry note', async () => {

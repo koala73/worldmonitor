@@ -98,6 +98,12 @@ export const getSimulationOutcome: ForecastServiceHandler['getSimulationOutcome'
     try {
       const queued = await listProcessingRunIds();
       if (queued.includes(req.runId)) {
+        // CRITICAL: mark no-cache. The processing state is transient —
+        // caching it via the gateway's `slow` tier (30-min CDN) would
+        // serve stale "still processing" for up to 30 min after the
+        // worker actually completes. Polling clients would never see
+        // the outcome land. (Human review on PR #3811.)
+        markNoCacheResponse(ctx.request);
         return {
           ...NOT_FOUND,
           runId: req.runId,

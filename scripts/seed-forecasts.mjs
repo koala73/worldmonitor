@@ -17020,8 +17020,33 @@ async function enqueueSimulationTask(runId, pkgFingerprintValue = '') {
     return { queued: false, reason: 'redis_error' };
   }
   if (queued?.result !== 'OK') return { queued: false, reason: 'duplicate' };
-  await redisCommand(url, token, ['ZADD', SIMULATION_TASK_QUEUE_KEY, String(Date.now()), runId]);
-  await redisCommand(url, token, ['EXPIRE', SIMULATION_TASK_QUEUE_KEY, String(TRACE_REDIS_TTL_SECONDS)]);
+  // ZADD is load-bearing — the worker discovers tasks EXCLUSIVELY via ZRANGE
+  // on this set (listQueuedSimulationTasks → processNextSimulationTask). A
+  // task key without a queue member is invisible to the worker until the 4h
+  // task TTL expires. If ZADD fails, roll back the task key + surface
+  // redis_error so the auto-trigger's .catch at line 16096 logs and the
+  // HTTP-trigger handler returns 503 instead of a false success.
+  // (Human review on PR #3811.)
+  let zaddRes;
+  try {
+    zaddRes = await redisCommand(url, token, ['ZADD', SIMULATION_TASK_QUEUE_KEY, String(Date.now()), runId]);
+  } catch (err) {
+    console.warn(`  [Simulation] enqueue ZADD transport error for ${runId}: ${err.message}`);
+    try { await redisCommand(url, token, ['DEL', buildSimulationTaskKey(runId)]); } catch (_) {}
+    return { queued: false, reason: 'redis_error' };
+  }
+  if (typeof zaddRes?.result !== 'number') {
+    console.warn(`  [Simulation] enqueue ZADD returned non-numeric result for ${runId}: ${JSON.stringify(zaddRes)}`);
+    try { await redisCommand(url, token, ['DEL', buildSimulationTaskKey(runId)]); } catch (_) {}
+    return { queued: false, reason: 'redis_error' };
+  }
+  // EXPIRE is a TTL hint only — failure here doesn't lose the task; the queue
+  // member is durable. Log but don't roll back.
+  try {
+    await redisCommand(url, token, ['EXPIRE', SIMULATION_TASK_QUEUE_KEY, String(TRACE_REDIS_TTL_SECONDS)]);
+  } catch (err) {
+    console.warn(`  [Simulation] enqueue EXPIRE transport error for ${runId}: ${err.message}`);
+  }
   return { queued: true, reason: '' };
 }
 

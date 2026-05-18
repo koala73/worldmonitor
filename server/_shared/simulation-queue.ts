@@ -103,16 +103,36 @@ export async function enqueueSimulationTaskForServer(
   if (!setEntry) return { queued: false, reason: 'redis_error' };
   if (setEntry.result !== 'OK') return { queued: false, reason: 'duplicate' };
 
-  // Best-effort ZADD + EXPIRE — if these fail, the task key is already
-  // written and the worker's queue-scan in processNextSimulationTask
-  // will still find it via ZRANGE-then-task-key lookup.
-  await runRedisPipeline(
-    [
-      ['ZADD', SIMULATION_TASK_QUEUE_KEY, String(Date.now()), runId],
-      ['EXPIRE', SIMULATION_TASK_QUEUE_KEY, String(TASK_QUEUE_TTL_SECONDS)],
-    ],
-    true,
-  );
+  // ZADD + EXPIRE on the queue ZSET. The worker discovers tasks
+  // EXCLUSIVELY by ZRANGE on this set (scripts/seed-forecasts.mjs
+  // listQueuedSimulationTasks). If ZADD does not land, the task key
+  // exists but the worker never sees it — silent stuck-invisible until
+  // 4h TTL. Earlier wording called this "best-effort"; it isn't.
+  // ZADD is load-bearing for the task to actually run.
+  // (Human review on PR #3811.)
+  let zaddResults: Array<{ result?: unknown }>;
+  try {
+    zaddResults = await runRedisPipeline(
+      [
+        ['ZADD', SIMULATION_TASK_QUEUE_KEY, String(Date.now()), runId],
+        ['EXPIRE', SIMULATION_TASK_QUEUE_KEY, String(TASK_QUEUE_TTL_SECONDS)],
+      ],
+      true,
+    );
+  } catch (_err) {
+    zaddResults = [];
+  }
+  // runRedisPipeline returns [] on transport failure. ZADD on a new
+  // member returns 1; on update (existing member, new score) returns 0.
+  // Either numeric result means the write landed. Missing entry / wrong
+  // type means it did not.
+  const zaddEntry = zaddResults[0];
+  if (!zaddEntry || typeof zaddEntry.result !== 'number') {
+    // Roll back the task key so a future trigger isn't blocked by the
+    // SET NX and so no stale half-state lingers for the 4h task TTL.
+    await runRedisPipeline([['DEL', taskKey]], true);
+    return { queued: false, reason: 'redis_error' };
+  }
 
   return { queued: true, reason: '' };
 }

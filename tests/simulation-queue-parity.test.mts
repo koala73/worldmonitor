@@ -192,6 +192,45 @@ describe('simulation-queue parity (#3734 U3)', () => {
     assert.deepEqual(tsRes, { queued: false, reason: 'redis_error' });
   });
 
+  it('ZADD failure: both rollback the task key and surface redis_error', async () => {
+    // Regression for human review on PR #3811. The worker discovers tasks
+    // EXCLUSIVELY via ZRANGE on SIMULATION_TASK_QUEUE_KEY. A task key
+    // written without a corresponding queue member is invisible to the
+    // worker until TTL — must NOT report queued:true.
+    //
+    // Simulate SET NX success → ZADD transport failure. Verify the
+    // implementation issues a compensating DEL on the task key AND returns
+    // reason=redis_error.
+    const buildResponder = () => {
+      let phase: 'set' | 'zadd-failed' = 'set';
+      return (cmd: unknown[]): unknown => {
+        if (cmd[0] === 'SET') { phase = 'zadd-failed'; return { result: 'OK' }; }
+        if (cmd[0] === 'ZADD') return { result: null }; // simulate transport-shaped non-numeric
+        if (cmd[0] === 'EXPIRE') return { result: 1 };
+        if (cmd[0] === 'DEL') return { result: 1 };
+        return { result: 0 };
+      };
+    };
+
+    const mjsRecorder: CallRecorder = { calls: [] };
+    installFetch(mjsRecorder, buildResponder());
+    const mjsRes = await enqueueSimulationTaskMjs(VALID_RUN_ID, FINGERPRINT);
+    assert.deepEqual(mjsRes, { queued: false, reason: 'redis_error' },
+      '.mjs must NOT return queued:true when ZADD result is non-numeric');
+    const mjsCmds = mjsRecorder.calls.flatMap((c) => c.body as unknown[][]).map((c) => c[0]);
+    assert.ok(mjsCmds.includes('DEL'),
+      '.mjs must issue compensating DEL on the task key after ZADD failure');
+
+    const tsRecorder: CallRecorder = { calls: [] };
+    installFetch(tsRecorder, buildResponder());
+    const tsRes = await enqueueSimulationTaskForServer(VALID_RUN_ID, FINGERPRINT);
+    assert.deepEqual(tsRes, { queued: false, reason: 'redis_error' },
+      'TS must NOT return queued:true when ZADD result is non-numeric');
+    const tsCmds = tsRecorder.calls.flatMap((c) => c.body as unknown[][]).map((c) => c[0]);
+    assert.ok(tsCmds.includes('DEL'),
+      'TS must issue compensating DEL on the task key after ZADD failure');
+  });
+
   it('backward-compat: .mjs auto-trigger continues to work with no pkgFingerprint arg', async () => {
     // The auto-trigger at seed-forecasts.mjs:16096 calls
     // enqueueSimulationTask(runId) without a fingerprint. Default param
