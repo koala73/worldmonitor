@@ -90,7 +90,7 @@
   "LA": { "nearestRouteIds": ["intra-asia-container"], "coastSide": "landlocked" },
   "MN": { "nearestRouteIds": ["china-us-west"], "coastSide": "landlocked" },
   "NP": { "nearestRouteIds": ["india-se-asia"], "coastSide": "landlocked" },
-  "HK": { "nearestRouteIds": ["china-us-west", "intra-asia-container"], "coastSide": "pacific" },
+  "HK": { "nearestRouteIds": ["china-europe-suez", "asia-europe-cape", "china-us-west", "intra-asia-container"], "coastSide": "pacific" },
   "MO": { "nearestRouteIds": ["china-us-west"], "coastSide": "pacific" },
   "ZW": { "nearestRouteIds": ["brazil-china-bulk", "asia-europe-cape"], "coastSide": "landlocked" },
   "ZM": { "nearestRouteIds": ["brazil-china-bulk"], "coastSide": "landlocked" },

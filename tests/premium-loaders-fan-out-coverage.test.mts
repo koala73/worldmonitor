@@ -29,21 +29,46 @@ const ALLOWLIST: Record<string, string> = {
   // None today. Format: `loaderName: 'why this is intentionally excluded'`.
 };
 
-/** Pull every `this.loadX()` call that sits inside an `if (hasPremiumAccess(...))` block. */
+/** Pull every `this.loadX()` call that sits inside an `if (hasPremiumAccess(...))` gate. */
 function extractGatedLoaders(src: string): Set<string> {
   const loaders = new Set<string>();
-  // Two gate shapes appear in data-loader.ts and both strand the loader on
-  // boot if Pro hasn't hydrated yet:
+  const callRe = /this\.load([A-Z][A-Za-z0-9]+)\(\)/g;
+  const addCallsFromBlock = (block: string): void => {
+    for (const c of block.matchAll(callRe)) loaders.add(`load${c[1]}`);
+  };
+
+  // Three gate shapes appear in data-loader.ts and all three strand the
+  // loader on boot if Pro hasn't hydrated yet:
   //   (a) `if (hasPremiumAccess() && shouldLoad('X')) { tasks.push(...load...()) }`
-  //   (b) `if (hasPremiumAccess()) { await Promise.allSettled([this.load...(), ...]) }`
-  // Match both by lazily consuming up to the next top-level `}` (6-space
-  // indented close) and pulling every `this.loadX()` call within.
-  const re = /if\s*\(\s*hasPremiumAccess\([^)]*\)[^)]*\)\s*\{([\s\S]*?)\n\s{4,6}\}/g;
-  for (const match of src.matchAll(re)) {
-    const block = match[1] ?? '';
-    const callRe = /this\.load([A-Z][A-Za-z0-9]+)\(\)/g;
-    for (const callMatch of block.matchAll(callRe)) {
-      loaders.add(`load${callMatch[1]}`);
+  //   (b) `if (hasPremiumAccess()) { await Promise.allSettled([this.load...()]) }`
+  //   (c) `if (hasPremiumAccess() && shouldLoad('X')) tasks.push(...);`  ← single-line, no braces
+  //
+  // Regex with nested parens (a/c) and balanced braces (a/b) is fragile —
+  // PR #3828 review caught the original regex only matching shape (b)
+  // (the other loaders happened to appear via an init()-handler block that
+  // ALSO matches shape (b), giving false confidence). Walk line-by-line
+  // instead: find every line containing `hasPremiumAccess(`, then collect
+  // calls from that line PLUS the subsequent block (braced or single-line).
+  const lines = src.split('\n');
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]!;
+    if (!/\bhasPremiumAccess\(/.test(line)) continue;
+    if (!/^\s*(?:if|else if)\s*\(/.test(line)) continue;   // only `if` gates, not call sites in other contexts
+
+    addCallsFromBlock(line);   // single-line gates (shape c)
+
+    // If the gate ends with `{`, collect from following lines until matching `}`.
+    if (/\{\s*$/.test(line)) {
+      let depth = 1;
+      for (let j = i + 1; j < lines.length && depth > 0; j++) {
+        const inner = lines[j]!;
+        addCallsFromBlock(inner);
+        for (const ch of inner) {
+          if (ch === '{') depth++;
+          else if (ch === '}') depth--;
+          if (depth === 0) break;
+        }
+      }
     }
   }
   return loaders;
@@ -69,6 +94,33 @@ function extractFanOutLoaders(src: string): Set<string> {
 describe('firePremiumLoaders fan-out coverage', () => {
   const gatedLoaders = extractGatedLoaders(DATA_LOADER_TS);
   const fanOutLoaders = extractFanOutLoaders(APP_TS);
+
+  it('PR #3828 review fix: extracts loaders from single-line gates (no braces)', () => {
+    // Synthetic fixture covering all three shapes the production regex must
+    // handle. If a future "simplification" of the regex drops shape (c) again,
+    // this test fails immediately with a clear message instead of giving a
+    // false-positive pass on the production source.
+    const fixture = `
+    // (a) braced + viewport gate
+    if (hasPremiumAccess() && shouldLoad('a-panel')) {
+      tasks.push({ name: 'a', task: runGuarded('a', () => this.loadAaa()) });
+    }
+    // (b) braced + premium-only
+    if (hasPremiumAccess()) {
+      await Promise.allSettled([
+        this.loadBbb(),
+        this.loadCcc(),
+      ]);
+    }
+    // (c) single-line, NO braces — the shape #3828 review caught me missing
+    if (hasPremiumAccess() && shouldLoad('d-panel')) tasks.push({ name: 'd', task: runGuarded('d', () => this.loadDdd()) });
+    `;
+    const extracted = extractGatedLoaders(fixture);
+    assert.ok(extracted.has('loadAaa'), 'missed shape (a) braced + viewport gate');
+    assert.ok(extracted.has('loadBbb'), 'missed shape (b) braced + premium-only [first call]');
+    assert.ok(extracted.has('loadCcc'), 'missed shape (b) braced + premium-only [second call]');
+    assert.ok(extracted.has('loadDdd'), 'missed shape (c) single-line gate — fan-out coverage would have a blind spot');
+  });
 
   it('extracts at least one PRO-gated loader from data-loader.ts (sanity)', () => {
     // If this fails, the regex stopped matching — likely because data-loader.ts

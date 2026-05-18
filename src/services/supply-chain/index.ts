@@ -31,19 +31,6 @@ import {
 import { createCircuitBreaker } from '@/utils';
 import { getHydratedData } from '@/services/bootstrap';
 import { hasPremiumAccess } from '@/services/panel-gating';
-import { getAuthState } from '@/services/auth-state';
-
-// All PRO gates in this file use `hasPremiumAccess(getAuthState())` rather than
-// the bare `hasPremiumAccess()` to close a Clerk/Convex hydration race: bare
-// reads only the cached `isProUser()` (Convex tier), while the auth-aware
-// variant also accepts `authState.user.role === 'pro'` (Clerk). Without the
-// auth-aware variant, a Pro user mid-hydration sees the empty sentinels these
-// fetchers return — most user-visible as Route Explorer rendering "No modeled
-// lane for this pair" (the `noModeledLane: true` sentinel collides with the
-// genuine dataset-missing case, so users can't tell the difference).
-function gatedPremium(): boolean {
-  return hasPremiumAccess(getAuthState());
-}
 
 export type {
   GetShippingRatesResponse,
@@ -182,7 +169,7 @@ export async function fetchCountryChokepointIndex(
   // PREMIUM_RPC_PATHS, so an anonymous client gets a deterministic 401
   // and the catch returns this same emptyChokepointIndex anyway — minus
   // the console-noise on every country-brief open. Mirrors PR #3584.
-  if (!gatedPremium()) return { ...emptyChokepointIndex, iso2, hs2 };
+  if (!hasPremiumAccess()) return { ...emptyChokepointIndex, iso2, hs2 };
   try {
     return await client.getCountryChokepointIndex({ iso2, hs2 });
   } catch {
@@ -253,7 +240,7 @@ export async function fetchBypassOptions(
 ): Promise<GetBypassOptionsResponse> {
   const empty: GetBypassOptionsResponse = { chokepointId, cargoType, closurePct, options: [], primaryChokepointWarRiskTier: 'WAR_RISK_TIER_UNSPECIFIED', fetchedAt: '' };
   // Pro-gated path — see fetchCountryChokepointIndex.
-  if (!gatedPremium()) return empty;
+  if (!hasPremiumAccess()) return empty;
   try {
     return await client.getBypassOptions({ chokepointId, cargoType, closurePct });
   } catch {
@@ -273,7 +260,7 @@ export async function fetchCountryCostShock(
     hasEnergyModel: false, unavailableReason: '', fetchedAt: '',
   };
   // Pro-gated path — see fetchCountryChokepointIndex.
-  if (!gatedPremium()) return empty;
+  if (!hasPremiumAccess()) return empty;
   try {
     return await client.getCountryCostShock({ iso2, chokepointId, hs2 });
   } catch {
@@ -293,7 +280,7 @@ export async function fetchSectorDependency(
   hs2 = '27',
 ): Promise<GetSectorDependencyResponse> {
   // Pro-gated path — see fetchCountryChokepointIndex.
-  if (!gatedPremium()) return { ...emptySectorDependency, iso2, hs2 };
+  if (!hasPremiumAccess()) return { ...emptySectorDependency, iso2, hs2 };
   try {
     return await client.getSectorDependency({ iso2, hs2 });
   } catch {
@@ -324,7 +311,7 @@ export async function fetchRouteExplorerLane(
   args: FetchRouteExplorerLaneArgs,
 ): Promise<GetRouteExplorerLaneResponse> {
   // Pro-gated path — see fetchCountryChokepointIndex.
-  if (!gatedPremium()) return { ...emptyRouteExplorerLane, ...args };
+  if (!hasPremiumAccess()) return { ...emptyRouteExplorerLane, ...args };
   try {
     return await client.getRouteExplorerLane(args);
   } catch {
@@ -354,7 +341,7 @@ export async function fetchRouteImpact(
   args: FetchRouteImpactArgs,
 ): Promise<GetRouteImpactResponse> {
   // Pro-gated path — see fetchCountryChokepointIndex.
-  if (!gatedPremium()) return { ...emptyRouteImpact };
+  if (!hasPremiumAccess()) return { ...emptyRouteImpact };
   try {
     return await client.getRouteImpact(args);
   } catch {
@@ -366,7 +353,7 @@ const emptyProducts: GetCountryProductsResponse = { iso2: '', products: [], fetc
 
 export async function fetchCountryProducts(iso2: string): Promise<GetCountryProductsResponse> {
   // Pro-gated path — see fetchCountryChokepointIndex.
-  if (!gatedPremium()) return { ...emptyProducts, iso2 };
+  if (!hasPremiumAccess()) return { ...emptyProducts, iso2 };
   try {
     return await client.getCountryProducts({ iso2 });
   } catch {
@@ -398,7 +385,7 @@ export async function fetchMultiSectorCostShock(
   // Pro-gated path — see fetchCountryChokepointIndex. Existing call sites
   // already guard with hasPremiumAccess(); the service-layer check here
   // is defense-in-depth to keep parity with sibling fetchers.
-  if (!gatedPremium()) return { ...emptyMultiSectorShock, iso2, chokepointId, closureDays };
+  if (!hasPremiumAccess()) return { ...emptyMultiSectorShock, iso2, chokepointId, closureDays };
   try {
     return await client.getMultiSectorCostShock(
       { iso2, chokepointId, closureDays },
