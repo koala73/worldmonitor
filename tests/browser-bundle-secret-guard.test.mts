@@ -145,22 +145,23 @@ describe('browser bundle secret guard (#3704)', () => {
     }
   });
 
-  it('runtime-config snapshot does not contain a platform-only secret at module load', async () => {
-    // Dynamic import so the module loads in this Node test runner. The
-    // Vite-injected `import.meta.env` is absent in node:test, so any
-    // platform secret that ends up in the snapshot here is provably
-    // coming from a non-Vite path (e.g. someone hard-coding the value
-    // in seedSecretsFromEnvironment or a default initializer).
-    const mod = await import('../src/services/runtime-config.ts');
-    const snapshot = mod.getRuntimeConfigSnapshot();
-    for (const secret of PLATFORM_ONLY_SECRETS) {
-      assert.equal(
-        (snapshot.secrets as Record<string, unknown>)[secret],
-        undefined,
-        `${secret} was seeded into runtimeConfig.secrets at module load time. ` +
-          `Platform secrets must never appear in the browser runtime snapshot. ` +
-          `See issue #3704.`,
-      );
-    }
-  });
+  // ─────────────────────────────────────────────────────────────────
+  // NOTE: a prior draft of this file included a 4th test that imported
+  // `runtime-config.ts` and asserted `getRuntimeConfigSnapshot().secrets`
+  // contained no platform-only secret at module load. Greptile flagged
+  // it (PR #3786 review) as vacuous: in node:test, `import.meta.env` is
+  // undefined, so `readEnvSecret()` returns `''` for every key
+  // regardless of what's in `process.env` or what's listed in
+  // `requiredSecrets`. The snapshot is always empty and the assertion
+  // always passes — even if `WORLDMONITOR_API_KEY` were added to a
+  // `requiredSecrets` array (the exact regression test #1 above catches).
+  //
+  // The HONEST runtime check is a bundle-content grep after `npm run build`:
+  //
+  //   npm run build
+  //   grep -r "WORLDMONITOR_API_KEY" dist/  # must return zero hits
+  //
+  // That's done at deploy time, not unit-test time. Tests #1–#3 above
+  // are the load-bearing CI guards.
+  // ─────────────────────────────────────────────────────────────────
 });

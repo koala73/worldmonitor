@@ -69,6 +69,109 @@ describe('daily market brief schedule logic', () => {
 
     assert.equal(shouldRefresh, true);
   });
+
+  it('REGRESSION: refreshes during the same day when the cached brief is older than the intraday ceiling', () => {
+    // Repro the reported "CACHED · 8h ago" symptom: a brief built at 09:20
+    // local stays cached until the next day's schedule hour because the
+    // same-day branch unconditionally returned `false`. With the intraday
+    // ceiling in place the 60-min scheduler in App.ts can actually rebuild
+    // — same dateKey, but generatedAt is older than the ceiling.
+    const shouldRefresh = shouldRefreshDailyBrief({
+      available: true,
+      title: 'Brief',
+      dateKey: '2026-03-08',
+      timezone: 'UTC',
+      summary: '',
+      actionPlan: '',
+      riskWatch: '',
+      items: [],
+      provider: 'rules',
+      model: '',
+      fallback: true,
+      generatedAt: '2026-03-08T09:20:00.000Z',
+      headlineCount: 0,
+    }, 'UTC', new Date('2026-03-08T17:00:00.000Z'));
+
+    assert.equal(shouldRefresh, true);
+  });
+
+  it('does NOT refresh during the same day when the cached brief is fresher than the intraday ceiling', () => {
+    // Guard against the opposite over-correction: every scheduler tick must
+    // not trigger an LLM rebuild. 20 minutes after the build should still
+    // serve cached under the default 55-min ceiling.
+    const shouldRefresh = shouldRefreshDailyBrief({
+      available: true,
+      title: 'Brief',
+      dateKey: '2026-03-08',
+      timezone: 'UTC',
+      summary: '',
+      actionPlan: '',
+      riskWatch: '',
+      items: [],
+      provider: 'rules',
+      model: '',
+      fallback: true,
+      generatedAt: '2026-03-08T09:20:00.000Z',
+      headlineCount: 0,
+    }, 'UTC', new Date('2026-03-08T09:40:00.000Z'));
+
+    assert.equal(shouldRefresh, false);
+  });
+
+  it('REGRESSION: default ceiling is below the scheduler interval so an early tick still rebuilds', () => {
+    // Greptile review on PR #3822: if the default ceiling equals the
+    // scheduler interval (both 60 min) and the browser fires the scheduler
+    // tick a hair early — wake-from-throttled-tab, accumulated drift —
+    // age=58m < ceiling=60m skips the rebuild and the next eligible fire
+    // is at t+118m, doubling the effective cadence. Default ceiling MUST
+    // stay below 60 min so a 58-min-old brief refreshes on the early tick.
+    // If you change this, also update DEFAULT_MAX_INTRADAY_AGE_MS comment.
+    const shouldRefresh = shouldRefreshDailyBrief({
+      available: true,
+      title: 'Brief',
+      dateKey: '2026-03-08',
+      timezone: 'UTC',
+      summary: '',
+      actionPlan: '',
+      riskWatch: '',
+      items: [],
+      provider: 'rules',
+      model: '',
+      fallback: true,
+      generatedAt: '2026-03-08T09:20:00.000Z',
+      headlineCount: 0,
+    }, 'UTC', new Date('2026-03-08T10:18:00.000Z'));
+
+    assert.equal(shouldRefresh, true);
+  });
+
+  it('honours an explicit maxIntradayAgeMs override (cost-tuning hook)', () => {
+    // Callers that want a coarser/finer cadence than the default 55 min
+    // can pass it through. 30-min-old brief with a 2h ceiling → no refresh.
+    const shouldRefresh = shouldRefreshDailyBrief(
+      {
+        available: true,
+        title: 'Brief',
+        dateKey: '2026-03-08',
+        timezone: 'UTC',
+        summary: '',
+        actionPlan: '',
+        riskWatch: '',
+        items: [],
+        provider: 'rules',
+        model: '',
+        fallback: true,
+        generatedAt: '2026-03-08T09:20:00.000Z',
+        headlineCount: 0,
+      },
+      'UTC',
+      new Date('2026-03-08T09:50:00.000Z'),
+      undefined,
+      2 * 60 * 60 * 1000,
+    );
+
+    assert.equal(shouldRefresh, false);
+  });
 });
 
 describe('buildDailyMarketBrief', () => {

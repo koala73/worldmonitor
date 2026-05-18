@@ -105,6 +105,17 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // = 6 req/min/IP base load. 60/min headroom covers tab refreshes + zoom
   // pans within a single user without flagging legitimate traffic.
   '/api/maritime/v1/get-vessel-snapshot': { limit: 60, window: '60 s' },
+  // #3805 / PR #3821: MCP proxy is a top-level Vercel Edge Function in
+  // `api/mcp-proxy.ts` (registered as `external-protocol` in
+  // api/api-route-exceptions.json — JSON-RPC shape dictated by the MCP spec),
+  // so it does NOT flow through the gateway and `checkEndpointRateLimit`
+  // never fires for it. The handler reads this policy and enforces it
+  // in-handler via `checkScopedRateLimit` — keeping the registry as the
+  // single source of truth so future audit additions (and the
+  // enforce-rate-limit-policies lint) see the endpoint. The audit script
+  // resolves edge-function paths via api/api-route-exceptions.json instead
+  // of the OpenAPI specs.
+  '/api/mcp-proxy': { limit: 30, window: '60 s' },
 };
 
 const endpointLimiters = new Map<string, Ratelimit>();
