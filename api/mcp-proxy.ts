@@ -5,7 +5,7 @@
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
 import { isCallerPremium } from '../server/_shared/premium-check';
-import { checkScopedRateLimit } from '../server/_shared/rate-limit';
+import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit } from '../server/_shared/rate-limit';
 
 export const config = { runtime: 'edge' };
 
@@ -14,9 +14,25 @@ export const config = { runtime: 'edge' };
 // 30-60s) while bounding abuse to ~1800 calls/hour/IP — well below the
 // global 600/min cap. Auth gate already requires a Pro caller; this limit
 // closes the residual surface where a single Pro key cycles the proxy.
+//
+// PR #3821 r2: source the limit from ENDPOINT_RATE_POLICIES so the
+// `enforce-rate-limit-policies` audit can see this endpoint. mcp-proxy is a
+// top-level Vercel Edge Function (not gateway-routed), so it can't use
+// `checkEndpointRateLimit`; we keep `checkScopedRateLimit` for in-handler
+// enforcement but the *policy* lives in the registry. Single source of
+// truth — tweak the limit there, this handler picks it up.
 const RATE_LIMIT_SCOPE = '/api/mcp-proxy';
-const RATE_LIMIT_MAX = 30;
-const RATE_LIMIT_WINDOW = '60 s' as const;
+const RATE_LIMIT_POLICY = ENDPOINT_RATE_POLICIES[RATE_LIMIT_SCOPE];
+if (!RATE_LIMIT_POLICY) {
+  // Module-load failure — better to crash the function cold-start with a
+  // loud message than to silently fall back to "no rate limit" if someone
+  // accidentally deletes the registry entry.
+  throw new Error(
+    `[mcp-proxy] missing ENDPOINT_RATE_POLICIES['${RATE_LIMIT_SCOPE}'] — see server/_shared/rate-limit.ts`,
+  );
+}
+const RATE_LIMIT_MAX = RATE_LIMIT_POLICY.limit;
+const RATE_LIMIT_WINDOW = RATE_LIMIT_POLICY.window;
 const RATE_LIMIT_ERROR_CODE = -32029; // JSON-RPC code mirrored from api/mcp.ts
 
 function getClientIp(req: Request): string {
@@ -479,7 +495,7 @@ export default async function handler(req) {
       JSON.stringify({
         jsonrpc: '2.0',
         id: null,
-        error: { code: RATE_LIMIT_ERROR_CODE, message: 'Rate limit exceeded. Max 30 requests per minute per IP.' },
+        error: { code: RATE_LIMIT_ERROR_CODE, message: `Rate limit exceeded. Max ${RATE_LIMIT_MAX} requests per ${RATE_LIMIT_WINDOW} per IP.` },
       }),
       {
         status: 429,

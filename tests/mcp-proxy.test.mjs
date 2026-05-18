@@ -31,15 +31,35 @@ function buildHeaders(origin, { authed = true, extra = {} } = {}) {
   return h;
 }
 
-// @upstash/ratelimit caches block decisions locally (Map keyed by identifier)
-// — so once a test rate-limits a given IP, subsequent tests using the same IP
-// stay blocked for the window even if Redis is reachable / mocked differently.
-// Generate a unique caller IP per request so tests are independent. Uses
-// cf-connecting-ip because the proxy's getClientIp prefers that header.
+// @upstash/ratelimit's module-level `Cache.blockUntil` persists block
+// decisions for the configured window — once a test rate-limits a given IP,
+// subsequent tests reusing the same IP stay blocked even if Redis is mocked
+// to allow them. The pool must therefore span the full test suite without
+// recycling. We use a /16 (10.<high>.<low>.0 = 65,536 IPs), which is the
+// TEST-NET-3-style spirit applied to RFC1918 space; the proxy's getClientIp
+// prefers cf-connecting-ip so the value is consumed verbatim (no DNS).
+//
+// Earlier this helper used `203.0.113.${counter % 250}` and wrapped at 250
+// requests — flaky as soon as the suite grew past ~250 rate-limit-touching
+// cases, because a previously-blocked IP would silently fail downstream
+// tests. PR #3821 r2.
 let __testIpCounter = 0;
 function uniqueCallerIp() {
   __testIpCounter += 1;
-  return `203.0.113.${__testIpCounter % 250}`;
+  if (__testIpCounter > 0xffff) {
+    // Hard fail rather than wrap — the wrap is the bug we're avoiding above.
+    // If the suite ever genuinely needs >65,536 unique caller IPs, expand
+    // the pool to a /8 first (and rethink whether the rate-limit cache
+    // should be reset between describe blocks instead).
+    throw new Error(
+      `[mcp-proxy test] uniqueCallerIp() exhausted the /16 pool (>${0xffff} calls). ` +
+        `Recycling an IP risks reviving @upstash/ratelimit's module-level Cache.blockUntil ` +
+        `state from an earlier test. Expand the pool or reset the limiter cache.`,
+    );
+  }
+  const high = (__testIpCounter >> 8) & 0xff;
+  const low = __testIpCounter & 0xff;
+  return `10.${high}.${low}.0`;
 }
 
 function makeGetRequest(params = {}, origin = 'https://worldmonitor.app', opts = {}) {
