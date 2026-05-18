@@ -39,7 +39,7 @@ async function getHealthHandlerBody() {
     new URL('../scripts/ais-relay.cjs', import.meta.url),
     'utf8',
   );
-  // Anchor the /health handler block. ~80-line handler — bound to 4000
+  // Anchor the /health handler block. ~80-line handler — bound to 8000
   // chars to avoid runaway matching if the handler ever grows.
   const handlerMatch = source.match(
     /if \(pathname === '\/health' \|\| pathname === '\/'\) \{[\s\S]{0,8000}?\n\s{2}\}/,
