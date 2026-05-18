@@ -247,7 +247,15 @@ http.route({
     }
     const provided =
       request.headers.get("X-Telegram-Bot-Api-Secret-Token") ?? "";
-    if (!provided || !(await timingSafeEqualStrings(provided, secret))) {
+    if (!provided) {
+      // Helps ops spot webhook re-registration drift (Telegram dropped the
+      // header) without re-enabling the bypass.
+      console.warn(
+        "[telegram-webhook] secret header absent — rejecting request",
+      );
+      return new Response("OK", { status: 200 });
+    }
+    if (!(await timingSafeEqualStrings(provided, secret))) {
       return new Response("OK", { status: 200 });
     }
 
