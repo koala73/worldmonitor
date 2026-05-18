@@ -339,22 +339,22 @@ export default async function handler(req) {
   //   (a) relay arbitrary customHeaders (Authorization, API keys) to any public
   //       MCP server under WorldMonitor's outbound IP;
   //   (b) consume our outbound-IP reputation / quota.
+  //
+  // forceKey:true is REQUIRED here. Without it, validateApiKey accepts
+  // wms_ session tokens, which are anonymous and freely mintable by any
+  // caller via POST /api/wm-session. That turns the auth gate into a
+  // two-step bypass: mint wms_, then call /api/mcp-proxy. forceKey:true
+  // rejects wms_ and accepts only enterprise keys (WORLDMONITOR_VALID_KEYS).
+  //
   // Note: isDisallowedOrigin() returns false on null Origin (correct for
-  // server-to-server callers on other endpoints), so the origin check alone
-  // does not stop curl. validateApiKey accepts wms_ session tokens and the
-  // enterprise key directly; wm_ user keys are punted to validateApiKey's
-  // {required:true, valid:false} branch (so the gateway can do Convex-backed
-  // validation), but this is a direct Edge function — there is no gateway in
-  // front of it, so we mirror the gateway's wm_ fallback inline.
-  let apiKeyResult = await validateApiKey(req);
-  if (apiKeyResult.required && !apiKeyResult.valid) {
-    const wmKey = req.headers.get('X-WorldMonitor-Key') || req.headers.get('X-Api-Key') || '';
-    if (wmKey.startsWith('wm_')) {
-      const { validateUserApiKey } = await import('../server/_shared/user-api-key');
-      const userKeyResult = await validateUserApiKey(wmKey);
-      if (userKeyResult) apiKeyResult = { valid: true, required: true, kind: 'user' };
-    }
-  }
+  // legit server-to-server callers on other endpoints), so the origin
+  // check alone does not stop curl. wm_ user keys are intentionally NOT
+  // accepted here yet — the gateway-side Convex validation path lives in
+  // server/gateway.ts and importing it from this Edge JS function violates
+  // the API-layer isolation (the path is extensionless TS and breaks under
+  // plain `node --test`). Future PR can introduce a JS-safe re-export when
+  // wm_ user keys need MCP-proxy access.
+  const apiKeyResult = await validateApiKey(req, { forceKey: true });
   if (apiKeyResult.required && !apiKeyResult.valid)
     return jsonResponse({ error: apiKeyResult.error }, 401, cors);
 

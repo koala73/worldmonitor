@@ -1,10 +1,16 @@
 import { strict as assert } from 'node:assert';
 import { describe, it, beforeEach, afterEach, before } from 'node:test';
 
-// validateApiKey (added to handler for issue #3723) requires a valid
-// X-WorldMonitor-Key. Mint a real wms_ session token for the positive-path
-// tests; explicit "no key" / "no origin" tests live in their own block.
+// validateApiKey runs with forceKey:true on this endpoint (PR #3768 review
+// finding — wms_ session tokens are anonymous and freely mintable via
+// /api/wm-session, so accepting them turned the auth gate into a two-step
+// bypass). The positive-path tests need an enterprise key, not a session
+// token. WM_SESSION_SECRET is set so the session module loads without throw;
+// SESSION_TOKEN is kept around so the explicit "wms_ tokens are rejected"
+// regression test below can prove the bypass is closed.
 process.env.WM_SESSION_SECRET ||= 'test-secret-must-be-at-least-32-chars-long-xxx';
+const ENTERPRISE_KEY = 'test-enterprise-key-mcp-proxy-123';
+process.env.WORLDMONITOR_VALID_KEYS = ENTERPRISE_KEY;
 const { issueSessionToken } = await import('../api/_session.js');
 let SESSION_TOKEN;
 before(async () => {
@@ -16,7 +22,7 @@ const originalFetch = globalThis.fetch;
 function buildHeaders(origin, { authed = true, extra = {} } = {}) {
   const h = { ...extra };
   if (origin !== null) h.origin = origin;
-  if (authed) h['X-WorldMonitor-Key'] = SESSION_TOKEN;
+  if (authed) h['X-WorldMonitor-Key'] = ENTERPRISE_KEY;
   return h;
 }
 
@@ -112,24 +118,48 @@ describe('api/mcp-proxy', () => {
       assert.equal(res.status, 204);
     });
 
-    // wm_ user-key fallback (PR review finding). validateApiKey returns
-    // {required:true, valid:false} for wm_ keys so the API-gateway can do
-    // Convex-backed validation — but /api/mcp-proxy is a direct Edge
-    // function with no gateway in front, so it must mirror the gateway's
-    // wm_ fallback inline. Without it, every wm_ user API key 401s here
-    // even though the PR description advertised wm_ support.
-    it('rejects a wm_ user key that Convex says is invalid', async () => {
-      // No CONVEX_SITE_URL / CONVEX_SERVER_SHARED_SECRET set in test env →
-      // validateUserApiKey returns null → wm_ key still rejected. Asserts
-      // the wm_ branch fails safely when the validator can't run.
+    // wms_ session tokens are anonymous and freely mintable by any caller
+    // via POST /api/wm-session. Without forceKey:true, they would pass the
+    // auth gate — turning the gate into a two-step bypass (mint + call).
+    // PR #3768 review finding; closes the residual #3723 surface.
+    it('rejects a wms_ session token even though it is technically valid (forceKey:true gate)', async () => {
       const url = new URL('https://worldmonitor.app/api/mcp-proxy');
       url.searchParams.set('serverUrl', 'https://mcp.example.com/mcp');
       const req = new Request(url.toString(), {
         method: 'GET',
-        headers: { origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': 'wm_user_definitely_not_real_abc123' },
+        headers: { origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': SESSION_TOKEN },
+      });
+      const res = await handler(req);
+      assert.equal(res.status, 401, 'wms_ session token must NOT unlock /api/mcp-proxy — Pro/enterprise auth only');
+      const body = await res.json();
+      assert.match(body.error, /Pro authentication required/i);
+    });
+
+    // wm_ user keys are NOT accepted on this endpoint at the moment — the
+    // gateway-side Convex validation lives in TS in server/ and can't be
+    // safely imported from a JS Edge function without breaking module
+    // resolution under plain `node --test` (and violating the API-layer
+    // isolation rule). When this changes, flip this test to expect 200
+    // with a mock validateUserApiKey.
+    it('rejects wm_ user keys (intentional — see handler comment for re-add path)', async () => {
+      const url = new URL('https://worldmonitor.app/api/mcp-proxy');
+      url.searchParams.set('serverUrl', 'https://mcp.example.com/mcp');
+      const req = new Request(url.toString(), {
+        method: 'GET',
+        headers: { origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': 'wm_user_abc123' },
       });
       const res = await handler(req);
       assert.equal(res.status, 401);
+    });
+
+    it('accepts a valid enterprise key', async () => {
+      // Smoke test — proves positive-path auth works after the forceKey
+      // switch. Other tests under "GET /api/mcp-proxy (list tools)" /
+      // "POST /api/mcp-proxy (call tool)" already use ENTERPRISE_KEY via
+      // the helper; this is the explicit "key works" assertion.
+      globalThis.fetch = makeMcpFetch({ tools: [] });
+      const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
+      assert.equal(res.status, 200);
     });
   });
 
@@ -149,7 +179,7 @@ describe('api/mcp-proxy', () => {
     it('returns 405 for DELETE', async () => {
       const res = await handler(new Request('https://worldmonitor.app/api/mcp-proxy', {
         method: 'DELETE',
-        headers: { origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': SESSION_TOKEN },
+        headers: { origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': ENTERPRISE_KEY },
       }));
       assert.equal(res.status, 405);
     });
@@ -157,7 +187,7 @@ describe('api/mcp-proxy', () => {
     it('returns 405 for PUT', async () => {
       const res = await handler(new Request('https://worldmonitor.app/api/mcp-proxy', {
         method: 'PUT',
-        headers: { origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': SESSION_TOKEN },
+        headers: { origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': ENTERPRISE_KEY },
         body: '{}',
       }));
       assert.equal(res.status, 405);
@@ -269,7 +299,7 @@ describe('api/mcp-proxy', () => {
       const url = new URL('https://worldmonitor.app/api/mcp-proxy');
       url.searchParams.set('serverUrl', 'https://mcp.example.com/mcp');
       url.searchParams.set('headers', 'not json');
-      const req = new Request(url.toString(), { method: 'GET', headers: { origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': SESSION_TOKEN } });
+      const req = new Request(url.toString(), { method: 'GET', headers: { origin: 'https://worldmonitor.app', 'X-WorldMonitor-Key': ENTERPRISE_KEY } });
       const res = await handler(req);
       assert.equal(res.status, 200);
     });
