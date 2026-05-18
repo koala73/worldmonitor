@@ -11788,6 +11788,14 @@ components:
                     type: integer
                     format: int64
                     description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                alertLevelMethodologyVersion:
+                    type: string
+                    description: |-
+                        Version of the editorial alert-level classifier (keyword sets, regexes,
+                         promotion rules) used to label each item's alert_level. Bumping this
+                         signals to downstream clients that the labelling rules changed so cached
+                         comparisons across versions are no longer apples-to-apples. See
+                         docs/methodology/disease-alert-level.md for the change protocol.
         worldmonitor_health_v1_DiseaseOutbreakItem:
             type: object
             properties:

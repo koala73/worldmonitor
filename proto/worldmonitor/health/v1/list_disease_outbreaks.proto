@@ -37,4 +37,10 @@ message ListDiseaseOutbreaksRequest {}
 message ListDiseaseOutbreaksResponse {
   repeated DiseaseOutbreakItem outbreaks = 1;
   int64 fetched_at = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Version of the editorial alert-level classifier (keyword sets, regexes,
+  // promotion rules) used to label each item's alert_level. Bumping this
+  // signals to downstream clients that the labelling rules changed so cached
+  // comparisons across versions are no longer apples-to-apples. See
+  // docs/methodology/disease-alert-level.md for the change protocol.
+  string alert_level_methodology_version = 3;
 }
