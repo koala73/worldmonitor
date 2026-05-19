@@ -486,6 +486,58 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(ev[0].client_user_agent.length, 256, 'pathological UA must be sliced to 256 chars');
   });
 
+  it('telemetry: circular _execute result + clean JMESPath projection stays 200 with bytes_pre_jmespath=-1 sentinel', async () => {
+    // Regression guard for the round-1 blocker fix at api/mcp.ts:3173-3184.
+    // Without the inner try/catch, the telemetry `JSON.stringify(result)`
+    // on a circular `result` throws, control jumps to the outer catch, the
+    // request becomes a 5xx + Pro-quota rollback — even though JMESPath
+    // successfully projected a clean subtree. The fix must:
+    //   (a) keep the response 200 / ok:true (telemetry must never bubble),
+    //   (b) emit `bytes_pre_jmespath: -1` (sentinel: measurement unavailable),
+    //   (c) emit `bytes_post_jmespath > 0` (projection succeeded).
+    // The sentinel is *the* observable that proves the inner catch fired.
+    process.env.MCP_TELEMETRY = 'true';
+    const freshMod = await import(`../api/mcp.ts?t=${Date.now()}`);
+    const tool = freshMod.__testing__.TOOL_REGISTRY.find((t) => t.name === 'get_commodity_geo');
+    assert.ok(tool && tool._execute, 'get_commodity_geo must exist with an _execute');
+    const originalExecute = tool._execute;
+    tool._execute = async () => {
+      const result = { sites: [{ id: 'X1', mineral: 'Gold' }], total: 1 };
+      result.self = result; // cycle — JSON.stringify(result) throws
+      return result;
+    };
+    const captured = [];
+    const origLog = console.log;
+    console.log = (line) => captured.push(line);
+    let resStatus, body;
+    try {
+      const res = await freshMod.default(makeReq('POST', {
+        jsonrpc: '2.0', id: 904, method: 'tools/call',
+        params: { name: 'get_commodity_geo', arguments: { jmespath: 'total' } },
+      }));
+      resStatus = res.status;
+      body = await res.json();
+    } finally {
+      console.log = origLog;
+      tool._execute = originalExecute;
+    }
+    assert.equal(resStatus, 200, 'circular result + clean JMESPath projection must still return HTTP 200');
+    assert.ok(body.result?.content, 'must return a successful JSON-RPC result (no -32603)');
+    assert.equal(body.result.content[0].text, '1', 'JMESPath `total` must extract the clean subtree');
+    const tc = captured
+      .filter((l) => typeof l === 'string')
+      .map((l) => { try { return JSON.parse(l); } catch { return null; } })
+      .filter((j) => j && j.tag === 'mcp.toolcall');
+    assert.equal(tc.length, 1, `expected exactly one mcp.toolcall line, got ${tc.length}`);
+    const ev = tc[0];
+    assert.equal(ev.ok, true, 'telemetry stringify failure must not flip ok to false');
+    assert.equal(ev.tool, 'get_commodity_geo');
+    assert.equal(ev.jmespath_used, true);
+    assert.equal(ev.jmespath_failed, null);
+    assert.equal(ev.bytes_pre_jmespath, -1, 'circular result must surface bytes_pre_jmespath: -1 sentinel');
+    assert.ok(ev.bytes_post_jmespath > 0, 'bytes_post_jmespath must reflect the projected size (> 0)');
+  });
+
   it('get_market_data: symbols filter narrows quote arrays across asset slices', async () => {
     const stocks = { quotes: [{ symbol: 'AAPL', price: 100 }, { symbol: 'MSFT', price: 200 }] };
     const crypto = { quotes: [{ symbol: 'BTC', price: 50000 }] };
