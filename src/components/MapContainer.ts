@@ -6,7 +6,7 @@
 import { isMobileDevice } from '@/utils';
 import { MapComponent } from './Map';
 import { DeckGLMap, type DeckMapView, type CountryClickPayload } from './DeckGLMap';
-import { GlobeMap } from './GlobeMap';
+import type { GlobeMap as GlobeMapType } from './GlobeMap';
 import type {
   MapLayers,
   Hotspot,
@@ -92,7 +92,7 @@ export class MapContainer {
   private isMobile: boolean;
   private deckGLMap: DeckGLMap | null = null;
   private svgMap: MapComponent | null = null;
-  private globeMap: GlobeMap | null = null;
+  private globeMap: GlobeMapType | null = null;
   private supplyChainPanel: import('@/components/SupplyChainPanel').SupplyChainPanel | null = null;
   private initialState: MapContainerState;
   private useDeckGL: boolean;
@@ -203,7 +203,9 @@ export class MapContainer {
   private init(): void {
     if (this.useGlobe) {
       console.log('[MapContainer] Initializing 3D globe (globe.gl mode)');
-      this.globeMap = new GlobeMap(this.container, this.initialState);
+      import('./GlobeMap').then(({ GlobeMap }) => {
+        this.globeMap = new GlobeMap(this.container, this.initialState);
+      });
     } else if (this.useDeckGL) {
       console.log('[MapContainer] Initializing deck.gl map (desktop mode)');
       try {
@@ -241,9 +243,11 @@ export class MapContainer {
     this.destroyFlatMap();
     this.useGlobe = true;
     this.useDeckGL = false;
-    this.globeMap = new GlobeMap(this.container, this.initialState);
-    this.restoreViewport(snapshot, center);
-    this.rehydrateActiveMap();
+    import('./GlobeMap').then(({ GlobeMap }) => {
+      this.globeMap = new GlobeMap(this.container, this.initialState);
+      this.restoreViewport(snapshot, center);
+      this.rehydrateActiveMap();
+    });
   }
 
   /** Reload basemap style (called when map provider changes in Settings). */
