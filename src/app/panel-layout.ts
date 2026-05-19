@@ -1038,6 +1038,10 @@ export class PanelLayoutManager implements AppModule {
 
     this.createPanel('gdelt-intel', () => new GdeltIntelPanel());
 
+    // Two-arg `.then(onFulfilled, onRejected)` so the rejection handler ONLY catches
+    // the dynamic-import promise itself (already suppressed in main.ts beforeSend) and
+    // does NOT swallow synchronous throws from the callback body (panel construction,
+    // makeDraggable, etc.) — those must continue to surface in Sentry as real bugs.
     import('@/components/DeductionPanel').then(({ DeductionPanel }) => {
       if (typeof DeductionPanel !== 'function') return;
       const deductionPanel = new DeductionPanel(() => this.ctx.allNews);
@@ -1055,7 +1059,7 @@ export class PanelLayoutManager implements AppModule {
       }
       this.applyPanelSettings();
       this.updatePanelGating(getAuthState());
-    }).catch(() => { /* dynamic import failure: stale-chunk handler in main.ts beforeSend already suppresses, swallow second unhandledrejection */ });
+    }, () => undefined);
 
     // Guard against named-export resolving to undefined (Safari ESM cache / proxy truncation
     // edge case, WORLDMONITOR-R4): `new undefined` surfaced as
@@ -1077,7 +1081,7 @@ export class PanelLayoutManager implements AppModule {
       }
       this.applyPanelSettings();
       this.updatePanelGating(getAuthState());
-    }).catch(() => { /* dynamic import failure: stale-chunk handler in main.ts beforeSend already suppresses, swallow second unhandledrejection */ });
+    }, () => undefined);
 
     if (this.shouldCreatePanel('cii')) {
       const ciiPanel = new CIIPanel();
