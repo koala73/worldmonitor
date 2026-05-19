@@ -169,6 +169,8 @@ interface PostBody {
   digestHour?: number;
   digestTimezone?: string;
   aiDigestEnabled?: boolean;
+  // Optional ISO-3166 alpha-2 country-scope; relay re-validates + normalizes.
+  countries?: string[];
 }
 
 export default async function handler(req: Request, ctx: { waitUntil: (p: Promise<unknown>) => void }): Promise<Response> {
@@ -342,7 +344,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
       }
 
       if (action === 'set-alert-rules') {
-        const { variant, enabled, eventTypes, sensitivity, channels, aiDigestEnabled } = body;
+        const { variant, enabled, eventTypes, sensitivity, channels, aiDigestEnabled, countries } = body;
         const resp = await convexRelay({
           action: 'set-alert-rules',
           userId: session.userId,
@@ -352,6 +354,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
           sensitivity,
           channels,
           aiDigestEnabled,
+          countries,
         });
         if (!resp.ok) {
           console.error('[notification-channels] POST set-alert-rules relay error:', resp.status);
@@ -420,7 +423,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
       if (action === 'set-notification-config') {
         const VALID_SENSITIVITY = new Set(['all', 'high', 'critical']);
         const VALID_DIGEST_MODE = new Set(['realtime', 'daily', 'twice_daily', 'weekly']);
-        const { variant, enabled, eventTypes, sensitivity, channels, aiDigestEnabled, digestMode, digestHour, digestTimezone } = body;
+        const { variant, enabled, eventTypes, sensitivity, channels, aiDigestEnabled, digestMode, digestHour, digestTimezone, countries } = body;
         if (!variant) return json({ error: 'variant required' }, 400, corsHeaders);
         if (sensitivity !== undefined && !VALID_SENSITIVITY.has(sensitivity)) {
           return json({ error: 'invalid sensitivity' }, 400, corsHeaders);
@@ -440,6 +443,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
           digestMode,
           digestHour,
           digestTimezone,
+          countries,
         });
         if (!resp.ok) {
           // 400 from convex/http means user-facing validation failure (e.g.

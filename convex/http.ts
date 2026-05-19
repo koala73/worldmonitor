@@ -446,6 +446,7 @@ http.route({
       digestHour?: number;
       digestTimezone?: string;
       aiDigestEnabled?: boolean;
+      countries?: string[];
     };
     try {
       body = await request.json() as typeof body;
@@ -558,7 +559,8 @@ http.route({
           typeof body.enabled !== "boolean" ||
           !Array.isArray(body.eventTypes) ||
           !Array.isArray(body.channels) ||
-          (body.sensitivity !== undefined && !VALID_SENSITIVITY.has(body.sensitivity as string))
+          (body.sensitivity !== undefined && !VALID_SENSITIVITY.has(body.sensitivity as string)) ||
+          (body.countries !== undefined && !Array.isArray(body.countries))
         ) {
           return new Response(JSON.stringify({ error: "MISSING_REQUIRED_FIELDS" }), { status: 400, headers: { "Content-Type": "application/json" } });
         }
@@ -577,6 +579,8 @@ http.route({
           sensitivity: body.sensitivity as "all" | "high" | "critical" | undefined,
           channels: body.channels as Array<"telegram" | "slack" | "email">,
           aiDigestEnabled: typeof body.aiDigestEnabled === "boolean" ? body.aiDigestEnabled : undefined,
+          // ISO-3166 alpha-2 country-scope; mutation re-validates + normalizes.
+          countries: Array.isArray(body.countries) ? (body.countries as string[]) : undefined,
         });
         return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
@@ -648,6 +652,7 @@ http.route({
             digestMode: body.digestMode as "realtime" | "daily" | "twice_daily" | "weekly" | undefined,
             digestHour: typeof body.digestHour === "number" ? body.digestHour : undefined,
             digestTimezone: typeof body.digestTimezone === "string" ? body.digestTimezone : undefined,
+            countries: Array.isArray(body.countries) ? (body.countries as string[]) : undefined,
           });
         } catch (err: unknown) {
           // Translate structured ConvexError codes into machine-readable HTTP

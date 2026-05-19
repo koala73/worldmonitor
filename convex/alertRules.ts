@@ -95,6 +95,45 @@ function assertCompatibleDeliveryMode(pair: { digestMode: DigestMode; sensitivit
   }
 }
 
+// Defensive ceiling against patched-client abuse — there are ~250 ISO-3166
+// countries; 50 is more than any real user opts into and well below any
+// validator/storage limit.
+const COUNTRIES_MAX = 50;
+
+/**
+ * Shape-validate + normalize an inbound `countries` array.
+ *  - trim each entry
+ *  - uppercase
+ *  - keep only ASCII A-Z 2-letter shapes (`^[A-Z]{2}$`); silently drop the rest
+ *  - dedupe (preserves first-seen order)
+ *  - cap at COUNTRIES_MAX
+ *
+ * NOT a strict ISO-3166 registry check — invalid alpha-2 codes (e.g. "XX")
+ * pass shape validation but the relay's includes() check just won't match
+ * any real event country. We deliberately don't soft-couple this file to a
+ * canonical registry list (that lives elsewhere as part of the
+ * followed-countries primitive) — keep alertRules independently shippable.
+ */
+function normalizeCountries(input: string[]): string[] {
+  const cleaned: string[] = [];
+  const seen = new Set<string>();
+  for (const raw of input) {
+    if (typeof raw !== "string") continue;
+    const upper = raw.trim().toUpperCase();
+    if (!/^[A-Z]{2}$/.test(upper)) continue;
+    if (seen.has(upper)) continue;
+    seen.add(upper);
+    cleaned.push(upper);
+  }
+  if (cleaned.length > COUNTRIES_MAX) {
+    throw new ConvexError({
+      code: "COUNTRIES_LIMIT_EXCEEDED",
+      message: `countries list capped at ${COUNTRIES_MAX} entries`,
+    });
+  }
+  return cleaned;
+}
+
 export const getAlertRules = query({
   args: {},
   handler: async (ctx) => {
@@ -115,6 +154,9 @@ export const setAlertRules = mutation({
     sensitivity: v.optional(sensitivityValidator),
     channels: v.array(channelTypeValidator),
     aiDigestEnabled: v.optional(v.boolean()),
+    // Optional country-scope (ISO-3166 alpha-2). Omit to preserve existing.
+    // Pass [] to explicitly reset to "all countries". Pass [...] to restrict.
+    countries: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const identity = await ctx.auth.getUserIdentity();
@@ -135,6 +177,10 @@ export const setAlertRules = mutation({
     });
     assertCompatibleDeliveryMode(pair);
 
+    const normalizedCountries = args.countries !== undefined
+      ? normalizeCountries(args.countries)
+      : undefined;
+
     const now = Date.now();
 
     if (existing) {
@@ -149,6 +195,10 @@ export const setAlertRules = mutation({
       // mutation got called without the field.
       if (args.sensitivity !== undefined) patch.sensitivity = args.sensitivity;
       if (args.aiDigestEnabled !== undefined) patch.aiDigestEnabled = args.aiDigestEnabled;
+      // Preserve-on-omit, mirror sensitivity/digestMode pattern. Caller passing
+      // countries:[] writes [] (explicit "all countries" reset). Caller omitting
+      // the field leaves the existing value intact.
+      if (normalizedCountries !== undefined) patch.countries = normalizedCountries;
       await ctx.db.patch(existing._id, patch);
     } else {
       await ctx.db.insert("alertRules", {
@@ -159,6 +209,9 @@ export const setAlertRules = mutation({
         sensitivity: pair.sensitivity,
         channels: args.channels,
         aiDigestEnabled: args.aiDigestEnabled ?? true,
+        // On insert, store undefined when caller omitted the field so existing
+        // backward-compat tests (rule has no `countries` field) still hold.
+        countries: normalizedCountries,
         updatedAt: now,
       });
     }
@@ -245,6 +298,7 @@ export const setAlertRulesForUser = internalMutation({
     sensitivity: v.optional(sensitivityValidator),
     channels: v.array(channelTypeValidator),
     aiDigestEnabled: v.optional(v.boolean()),
+    countries: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const { userId, ...rest } = args;
@@ -261,6 +315,10 @@ export const setAlertRulesForUser = internalMutation({
     });
     assertCompatibleDeliveryMode(pair);
 
+    const normalizedCountries = rest.countries !== undefined
+      ? normalizeCountries(rest.countries)
+      : undefined;
+
     const now = Date.now();
     if (existing) {
       const patch: Record<string, unknown> = {
@@ -273,6 +331,7 @@ export const setAlertRulesForUser = internalMutation({
       // existing.sensitivity for digest users on omitted-field calls.
       if (rest.sensitivity !== undefined) patch.sensitivity = rest.sensitivity;
       if (rest.aiDigestEnabled !== undefined) patch.aiDigestEnabled = rest.aiDigestEnabled;
+      if (normalizedCountries !== undefined) patch.countries = normalizedCountries;
       await ctx.db.patch(existing._id, patch);
     } else {
       await ctx.db.insert("alertRules", {
@@ -283,6 +342,7 @@ export const setAlertRulesForUser = internalMutation({
         sensitivity: pair.sensitivity,
         channels: rest.channels,
         aiDigestEnabled: rest.aiDigestEnabled,
+        countries: normalizedCountries,
         updatedAt: now,
       });
     }
@@ -500,6 +560,7 @@ export const setNotificationConfigForUser = internalMutation({
     digestMode: v.optional(digestModeValidator),
     digestHour: v.optional(v.number()),
     digestTimezone: v.optional(v.string()),
+    countries: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
     const { userId, variant } = args;
@@ -539,6 +600,10 @@ export const setNotificationConfigForUser = internalMutation({
     });
     assertCompatibleDeliveryMode(pair);
 
+    const normalizedCountries = args.countries !== undefined
+      ? normalizeCountries(args.countries)
+      : undefined;
+
     const now = Date.now();
 
     if (existing) {
@@ -552,6 +617,7 @@ export const setNotificationConfigForUser = internalMutation({
       if (args.digestMode !== undefined) patch.digestMode = args.digestMode;
       if (args.digestHour !== undefined) patch.digestHour = args.digestHour;
       if (args.digestTimezone !== undefined) patch.digestTimezone = args.digestTimezone;
+      if (normalizedCountries !== undefined) patch.countries = normalizedCountries;
       await ctx.db.patch(existing._id, patch);
     } else {
       await ctx.db.insert("alertRules", {
@@ -565,6 +631,7 @@ export const setNotificationConfigForUser = internalMutation({
         digestMode: args.digestMode,
         digestHour: args.digestHour,
         digestTimezone: args.digestTimezone,
+        countries: normalizedCountries,
         updatedAt: now,
       });
     }

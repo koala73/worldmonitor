@@ -114,6 +114,8 @@ export default defineSchema({
     digestHour: v.optional(v.number()),       // 0-23 local hour for daily/twice_daily
     digestTimezone: v.optional(v.string()),   // IANA timezone, e.g. "America/New_York"
     aiDigestEnabled: v.optional(v.boolean()), // opt-in AI executive summary in digests (default true for new rules)
+    // Optional country-scope (ISO-3166 alpha-2). Empty/absent → all countries (current behavior).
+    countries: v.optional(v.array(v.string())),
   })
     .index("by_user", ["userId"])
     .index("by_user_variant", ["userId", "variant"])
