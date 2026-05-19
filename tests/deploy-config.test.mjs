@@ -97,11 +97,14 @@ const getHeaderValue = (key) => {
 };
 
 describe('security header guardrails', () => {
-  it('includes all 5 required security headers on catch-all route', () => {
+  it('includes required security headers on catch-all route', () => {
     const required = [
       'X-Content-Type-Options',
       'Strict-Transport-Security',
       'Referrer-Policy',
+      'Reporting-Endpoints',
+      'Cross-Origin-Opener-Policy-Report-Only',
+      'Cross-Origin-Embedder-Policy-Report-Only',
       'Permissions-Policy',
       'Content-Security-Policy',
     ];
@@ -109,6 +112,42 @@ describe('security header guardrails', () => {
     for (const name of required) {
       assert.ok(headerKeys.includes(name), `Missing security header: ${name}`);
     }
+  });
+
+  it('keeps COOP/COEP in report-only mode during rollout', () => {
+    assert.equal(
+      getHeaderValue('Reporting-Endpoints'),
+      'wm-coop-coep="https://worldmonitor.app/api/security/report"',
+    );
+    assert.equal(
+      getHeaderValue('Cross-Origin-Opener-Policy-Report-Only'),
+      'same-origin; report-to="wm-coop-coep"',
+    );
+    assert.equal(
+      getHeaderValue('Cross-Origin-Embedder-Policy-Report-Only'),
+      'require-corp; report-to="wm-coop-coep"',
+    );
+    assert.equal(getHeaderValue('Cross-Origin-Opener-Policy'), null);
+    assert.equal(getHeaderValue('Cross-Origin-Embedder-Policy'), null);
+  });
+
+  it('keeps self-hosted nginx security headers aligned for COOP/COEP reporting', () => {
+    const nginxHeaders = readFileSync(
+      resolve(__dirname, '../docker/nginx-security-headers.conf'),
+      'utf-8',
+    );
+    assert.match(
+      nginxHeaders,
+      /add_header Reporting-Endpoints "wm-coop-coep=\\"https:\/\/worldmonitor\.app\/api\/security\/report\\"" always;/,
+    );
+    assert.match(
+      nginxHeaders,
+      /add_header Cross-Origin-Opener-Policy-Report-Only "same-origin; report-to=\\"wm-coop-coep\\"" always;/,
+    );
+    assert.match(
+      nginxHeaders,
+      /add_header Cross-Origin-Embedder-Policy-Report-Only "require-corp; report-to=\\"wm-coop-coep\\"" always;/,
+    );
   });
 
   it('Permissions-Policy disables all expected browser APIs', () => {
