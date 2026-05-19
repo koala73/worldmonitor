@@ -49,14 +49,26 @@ export function wrapWidgetHtml(html: string, extraClass = ''): string {
 }
 
 const widgetBodyStore = new Map<string, string>();
+const widgetTokenStore = new Map<string, string>();
 
-// Keyed by iframe element — persists HTML across DOM moves so the load listener
-// can re-post whenever the browser re-navigates the iframe after a drag.
-const iframeHtmlStore = new WeakMap<HTMLIFrameElement, string>();
+const mountedWidgetDocs = new Map<string, {
+  iframe: HTMLIFrameElement;
+  html: string;
+  token: string;
+}>();
+const pendingRemovedWidgetIframes = new Set<HTMLIFrameElement>();
+let widgetMessageListenerStarted = false;
+let removedWidgetCleanupScheduled = false;
+
+function createWidgetToken(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
 
 function buildWidgetDoc(bodyContent: string): string {
   return `<!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://cdn.jsdelivr.net; style-src 'unsafe-inline'; img-src data:; connect-src https://cdn.jsdelivr.net;">
@@ -87,31 +99,88 @@ td{padding:5px 8px;border-bottom:1px solid var(--border-subtle);color:var(--text
 </html>`;
 }
 
+function handleWidgetSandboxReady(event: MessageEvent): void {
+  const data = event.data as { type?: unknown; id?: unknown; token?: unknown } | null;
+  if (!data || data.type !== 'wm-widget-ready' || typeof data.id !== 'string' || typeof data.token !== 'string') {
+    return;
+  }
+
+  const mounted = mountedWidgetDocs.get(data.id);
+  if (!mounted || data.token !== mounted.token || event.source !== mounted.iframe.contentWindow) {
+    return;
+  }
+
+  // The sandbox deliberately omits allow-same-origin, so the child document has
+  // an opaque origin and cannot be targeted with location.origin. The per-widget
+  // token and source check above are the trust boundary before sending HTML.
+  mounted.iframe.contentWindow?.postMessage(
+    { type: 'wm-html', id: data.id, token: mounted.token, html: mounted.html },
+    '*',
+  );
+}
+
+function ensureWidgetMessageListener(): void {
+  if (widgetMessageListenerStarted || typeof window === 'undefined') return;
+  window.addEventListener('message', handleWidgetSandboxReady);
+  widgetMessageListenerStarted = true;
+}
+
+function cleanupRemovedProWidgets(): void {
+  removedWidgetCleanupScheduled = false;
+  for (const iframe of pendingRemovedWidgetIframes) {
+    const id = iframe.dataset.wmId;
+    if (!id) continue;
+    const mounted = mountedWidgetDocs.get(id);
+    if (mounted?.iframe === iframe && !iframe.isConnected) {
+      mountedWidgetDocs.delete(id);
+    }
+  }
+  pendingRemovedWidgetIframes.clear();
+}
+
+function scheduleRemovedProWidgetCleanup(iframe: HTMLIFrameElement): void {
+  pendingRemovedWidgetIframes.add(iframe);
+  if (removedWidgetCleanupScheduled) return;
+  removedWidgetCleanupScheduled = true;
+  queueMicrotask(cleanupRemovedProWidgets);
+}
+
 function mountProWidget(iframe: HTMLIFrameElement): void {
   const id = iframe.dataset.wmId;
   if (!id) return;
 
-  // Already wired up — the persistent load listener will re-post on every
-  // navigation (including after the panel is dragged to a new position).
-  if (iframeHtmlStore.has(iframe)) return;
+  if (mountedWidgetDocs.has(id)) return;
 
   const body = widgetBodyStore.get(id);
-  if (!body) return;
+  const token = widgetTokenStore.get(id);
+  if (!body || !token) return;
   widgetBodyStore.delete(id);
+  widgetTokenStore.delete(id);
   const html = buildWidgetDoc(body);
-  iframeHtmlStore.set(iframe, html);
+  // Keep the mounted entry while the iframe remains connected so sandbox
+  // reloads after DOM moves can request the same document again.
+  mountedWidgetDocs.set(id, { iframe, html, token });
+  ensureWidgetMessageListener();
 
-  // Persistent (no { once }) — fires on initial load AND whenever the browser
-  // re-navigates the iframe after its DOM position changes (drag/drop).
-  iframe.addEventListener('load', () => {
-    const storedHtml = iframeHtmlStore.get(iframe);
-    if (storedHtml) iframe.contentWindow?.postMessage({ type: 'wm-html', html: storedHtml }, '*');
-  });
+  const fragment = new URLSearchParams({ id, token }).toString();
+  iframe.src = `/wm-widget-sandbox.html#${fragment}`;
+}
+
+function scheduleRemovedProWidgets(node: Node): void {
+  if (!(node instanceof Element)) return;
+  if (node instanceof HTMLIFrameElement && node.dataset.wmId) {
+    scheduleRemovedProWidgetCleanup(node);
+  } else {
+    node.querySelectorAll<HTMLIFrameElement>('iframe[data-wm-id]').forEach(scheduleRemovedProWidgetCleanup);
+  }
 }
 
 if (typeof document !== 'undefined') {
   const observer = new MutationObserver((mutations) => {
     for (const mut of mutations) {
+      for (const node of mut.removedNodes) {
+        scheduleRemovedProWidgets(node);
+      }
       for (const node of mut.addedNodes) {
         if (!(node instanceof Element)) continue;
         if (node instanceof HTMLIFrameElement && node.dataset.wmId) {
@@ -134,6 +203,8 @@ if (typeof document !== 'undefined') {
 
 export function wrapProWidgetHtml(bodyContent: string): string {
   const id = `wm-${Math.random().toString(36).slice(2)}`;
+  const token = createWidgetToken();
   widgetBodyStore.set(id, stripLeadingPanelHeader(bodyContent));
-  return `<div class="wm-widget-shell wm-widget-pro"><iframe src="/wm-widget-sandbox.html" data-wm-id="${id}" sandbox="allow-scripts" style="width:100%;height:400px;border:none;display:block;" title="Interactive widget"></iframe></div>`;
+  widgetTokenStore.set(id, token);
+  return `<div class="wm-widget-shell wm-widget-pro"><iframe data-wm-id="${id}" sandbox="allow-scripts" style="width:100%;height:400px;border:none;display:block;" title="Interactive widget"></iframe></div>`;
 }
