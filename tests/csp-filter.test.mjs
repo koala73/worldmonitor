@@ -302,6 +302,24 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
       // we want to see — must not be swallowed by the img-src rule.
       assert.ok(!suppress('enforce', 'script-src', 'https://www.worldmonitor.app/assets/main-abc.js', '', false, FIRST_PARTY_CONVEX));
     });
+
+    // Mixed-content / wrong-scheme regression guard. Our CSP only allows `https:`
+    // for img-src, so a future `<img src="http://...">` regression on a
+    // first-party host would be blocked by the browser. The first-party host
+    // suppression MUST NOT hide that signal — it requires `https:` explicitly.
+    it('does NOT suppress http:// img-src to our own apex (mixed-content regression must surface)', () => {
+      assert.ok(!suppress('enforce', 'img-src', 'http://worldmonitor.app/favico/favicon-32x32.png', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('does NOT suppress http:// img-src to a worldmonitor.app subdomain', () => {
+      assert.ok(!suppress('enforce', 'img-src', 'http://www.worldmonitor.app/favico/favicon-32x32.png', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('does NOT suppress ws:// img-src to a worldmonitor.app subdomain (only https: is whitelisted)', () => {
+      // ws:// is not a valid img source but a malformed reference could trigger
+      // a violation; protocol gate must reject anything other than https:.
+      assert.ok(!suppress('enforce', 'img-src', 'ws://www.worldmonitor.app/socket', '', false, FIRST_PARTY_CONVEX));
+    });
   });
 
   describe('real violations pass through', () => {

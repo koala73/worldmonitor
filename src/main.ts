@@ -624,10 +624,17 @@ function shouldSuppressCspViolation(
   // hosts (a third-party CDN we never load, attacker-controlled host) still surface
   // (WORLDMONITOR-JP). Suffix check uses a leading `.` so lookalikes like
   // `worldmonitor.app.evil.com` do NOT match.
+  //
+  // REQUIRE https: protocol — our CSP only allows https: for img-src, so a real
+  // mixed-content regression (`<img src="http://worldmonitor.app/...">`) would be
+  // blocked by the browser. Suppressing http: blocks on first-party hosts would mask
+  // that regression in Sentry. The `cspConnectSrcAllowsHttps` block above uses the
+  // same protocol gate for connect-src.
   if (directive === 'img-src') {
     try {
-      const host = new URL(blockedURI).hostname;
-      if (host === 'worldmonitor.app' || host.endsWith('.worldmonitor.app')) return true;
+      const url = new URL(blockedURI);
+      if (url.protocol === 'https:'
+          && (url.hostname === 'worldmonitor.app' || url.hostname.endsWith('.worldmonitor.app'))) return true;
     } catch { /* scheme-only values fall through */ }
   }
   // YouTube IFrame API loader: explicitly allowed by our script-src
