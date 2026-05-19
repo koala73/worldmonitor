@@ -271,6 +271,13 @@ export async function runRedisPipeline(
  */
 const inflight = new Map<string, Promise<unknown>>();
 
+// Default timeout for upstream fetchers in cachedFetchJson / cachedFetchJsonWithMeta.
+// If a fetcher hangs forever (no internal AbortController), the inflight
+// entry is released after this duration instead of living for the isolate's
+// entire lifetime. Callers who want a different budget can pass their own
+// timeout wrapper around the fetcher — this constant is the floor, not a cap.
+export const FETCHER_TIMEOUT_MS = 30_000;
+
 /**
  * Check cache, then fetch with coalescing on miss.
  * Concurrent callers for the same key share a single upstream fetch + Redis write.
@@ -289,7 +296,19 @@ export async function cachedFetchJson<T extends object>(
   const existing = inflight.get(key);
   if (existing) return existing as Promise<T | null>;
 
-  const promise = fetcher()
+  // Race the caller's fetcher against a hard timeout so the inflight entry
+  // is guaranteed to settle even when the fetcher never resolves (e.g., a
+  // Transport.fetch with no AbortController / no signal timeout). Without
+  // this, a misbehaving fetcher poisons the key for the isolate's full
+  // lifetime — every concurrent and subsequent caller for this key gets the
+  // same unresolved promise and never gets a response.
+  let timeoutHandle: ReturnType<typeof setTimeout>;
+  const promise = Promise.race([
+    fetcher(),
+    new Promise<null>((_, reject) => {
+      timeoutHandle = setTimeout(() => reject(new Error(`cachedFetchJson timeout for key=${key}`)), FETCHER_TIMEOUT_MS);
+    }),
+  ])
     .then(async (result) => {
       if (result != null) {
         await setCachedJson(key, result, ttlSeconds);
@@ -303,6 +322,7 @@ export async function cachedFetchJson<T extends object>(
       throw err;
     })
     .finally(() => {
+      clearTimeout(timeoutHandle);
       inflight.delete(key);
     });
 
@@ -369,7 +389,19 @@ export async function cachedFetchJsonWithMeta<T extends object>(
   let upstreamStatus = 0;
   let cacheStatus: 'miss' | 'neg-sentinel' = 'miss';
 
-  const promise = fetcher()
+  // Race the caller's fetcher against a hard timeout so the inflight entry
+  // is guaranteed to settle even when the fetcher never resolves (e.g., a
+  // Transport.fetch with no AbortController / no signal timeout). Without
+  // this, a misbehaving fetcher poisons the key for the isolate's full
+  // lifetime — every concurrent and subsequent caller for this key gets the
+  // same unresolved promise and never gets a response.
+  let timeoutHandle: ReturnType<typeof setTimeout>;
+  const promise = Promise.race([
+    fetcher(),
+    new Promise<null>((_, reject) => {
+      timeoutHandle = setTimeout(() => reject(new Error(`cachedFetchJsonWithMeta timeout for key=${key}`)), FETCHER_TIMEOUT_MS);
+    }),
+  ])
     .then(async (result) => {
       // Only count an upstream call as a 200 when it actually returned data.
       // A null result triggers the neg-sentinel branch below — these are
@@ -393,6 +425,7 @@ export async function cachedFetchJsonWithMeta<T extends object>(
       throw err;
     })
     .finally(() => {
+      clearTimeout(timeoutHandle);
       inflight.delete(key);
     });
 

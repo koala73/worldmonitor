@@ -949,3 +949,119 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
     }
   });
 });
+
+// #3539 — cachedFetchJson/cachedFetchJsonWithMeta inflight timeout
+// Source-transform FETCHER_TIMEOUT_MS to 200 ms so hung-fetcher tests fire
+// fast (~200 ms) instead of waiting the real 30 s timeout. Also rewrites
+// relative imports to absolute file:// URLs so the temp copy has no broken
+// module references.
+async function importRedisWithShortTimeout() {
+  const sourcePath = resolve(root, 'server/_shared/redis.ts');
+  const source = readFileSync(sourcePath, 'utf-8');
+  const sharedDir = resolve(root, 'server/_shared');
+  const sharedAbs = pathToFileURL(sharedDir).href;
+  let patched = source
+    .replace(/export const FETCHER_TIMEOUT_MS = [\d_]+;/, 'export const FETCHER_TIMEOUT_MS = 200;')
+    .replaceAll(/from '(\.\.?)\//g, () => `from '${sharedAbs}/`);
+  const tempDir = mkdtempSync(join(tmpdir(), 'wm-redis-test-'));
+  const tempPath = join(tempDir, 'redis.ts');
+  writeFileSync(tempPath, patched);
+  const mod = await import(`${pathToFileURL(tempPath).href}?t=${Date.now()}-${Math.random().toString(16).slice(2)}`);
+  return {
+    module: mod,
+    cleanup() {
+      rmSync(tempDir, { recursive: true, force: true });
+    },
+  };
+}
+
+describe('inflight timeout guard', { concurrency: 1 }, () => {
+  it('rejects hung fetcher after FETCHER_TIMEOUT_MS in cachedFetchJson', async () => {
+    const { module: redis, cleanup } = await importRedisWithShortTimeout();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) return jsonResponse({ result: null });
+      if (raw.includes('/set/')) return jsonResponse({ result: 'OK' });
+      throw new Error(`Unexpected fetch: ${raw}`);
+    };
+    try {
+      const hungFetcher = async () => new Promise<{ value: number }>(() => {});
+      // assert.rejects proves the fetcher is rejected (not hanging forever).
+      // We don't measure elapsed time since FETCHER_TIMEOUT_MS (200 ms) is
+      // overridden in the test module — the real production module uses 30 s.
+      await assert.rejects(
+        redis.cachedFetchJson('timeout:test:hung', 60, hungFetcher),
+        (err) => err instanceof Error,
+        'hung fetcher must be rejected (not hang forever)',
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+      cleanup();
+    }
+  });
+
+  it('rejects hung fetcher after FETCHER_TIMEOUT_MS in cachedFetchJsonWithMeta', async () => {
+    const { module: redis, cleanup } = await importRedisWithShortTimeout();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) return jsonResponse({ result: null });
+      if (raw.includes('/set/')) return jsonResponse({ result: 'OK' });
+      throw new Error(`Unexpected fetch: ${raw}`);
+    };
+    try {
+      const hungFetcher = async () => new Promise<{ value: number }>(() => {});
+      await assert.rejects(
+        redis.cachedFetchJsonWithMeta('timeout:meta:test:hung', 60, hungFetcher),
+        (err) => err instanceof Error,
+        'hung fetcher must be rejected (not hang forever)',
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+      cleanup();
+    }
+  });
+
+  it('normal fast fetcher still works correctly after timeout fix', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) return jsonResponse({ result: null });
+      if (raw.includes('/set/')) return jsonResponse({ result: 'OK' });
+      throw new Error(`Unexpected fetch: ${raw}`);
+    };
+    try {
+      const fastFetcher = async () => {
+        await new Promise((r) => setTimeout(r, 10));
+        return { answer: 42 };
+      };
+      const result = await redis.cachedFetchJson('timeout:test:fast', 60, fastFetcher);
+      assert.deepEqual(result, { answer: 42 }, 'fast fetcher must return its result');
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+});
