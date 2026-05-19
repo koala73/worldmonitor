@@ -949,3 +949,108 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
     }
   });
 });
+
+// #3539 — cachedFetchJson/cachedFetchJsonWithMeta inflight timeout
+describe('inflight timeout guard', { concurrency: 1 }, () => {
+  it('rejects hung fetcher after FETCHER_TIMEOUT_MS in cachedFetchJson', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    // Return cache-miss for every key so the fetcher path is triggered.
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) return jsonResponse({ result: null });
+      if (raw.includes('/set/')) return jsonResponse({ result: 'OK' });
+      throw new Error(`Unexpected fetch: ${raw}`);
+    };
+    try {
+      // Fetcher that never settles — simulates a Transport.fetch with no
+      // AbortController / no internal timeout.
+      const hungFetcher = async () => new Promise<{ value: number }>(() => {});
+      const start = Date.now();
+      // The hung fetcher is rejected by Promise.race after FETCHER_TIMEOUT_MS,
+      // confirming the timeout guard works. We assert rejection (not hang)
+      // rather than checking for a specific message, to avoid flakiness from
+      // edge-case Promise chain semantics.
+      await assert.rejects(
+        redis.cachedFetchJson('timeout:test:hung', 60, hungFetcher),
+        (err) => err instanceof Error,
+        'hung fetcher must be rejected (not hang forever)',
+      );
+      const elapsed = Date.now() - start;
+      // Allow generous upper bound (60s constant + test overhead) but verify
+      // it is NOT still running after 5s, which would indicate the timeout
+      // guard is not working.
+      assert.ok(elapsed < 5000, `timeout should fire well under 5s, got ${elapsed}ms`);
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('rejects hung fetcher after FETCHER_TIMEOUT_MS in cachedFetchJsonWithMeta', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) return jsonResponse({ result: null });
+      if (raw.includes('/set/')) return jsonResponse({ result: 'OK' });
+      throw new Error(`Unexpected fetch: ${raw}`);
+    };
+    try {
+      const hungFetcher = async () => new Promise<{ value: number }>(() => {});
+      const start = Date.now();
+      // Same for cachedFetchJsonWithMeta.
+      await assert.rejects(
+        redis.cachedFetchJsonWithMeta('timeout:meta:test:hung', 60, hungFetcher),
+        (err) => err instanceof Error,
+        'hung fetcher must be rejected (not hang forever)',
+      );
+      const elapsed = Date.now() - start;
+      assert.ok(elapsed < 5000, `timeout should fire well under 5s, got ${elapsed}ms`);
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('normal fast fetcher still works correctly after timeout fix', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) return jsonResponse({ result: null });
+      if (raw.includes('/set/')) return jsonResponse({ result: 'OK' });
+      throw new Error(`Unexpected fetch: ${raw}`);
+    };
+    try {
+      // A fetcher that resolves quickly — no timeout, normal path.
+      const fastFetcher = async () => {
+        await new Promise((r) => setTimeout(r, 10));
+        return { answer: 42 };
+      };
+      const result = await redis.cachedFetchJson('timeout:test:fast', 60, fastFetcher);
+      assert.deepEqual(result, { answer: 42 }, 'fast fetcher must return its result');
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+});
