@@ -1,6 +1,9 @@
 [package]
 name = "world-monitor"
 version = "2.8.0"
+# restored after accidental downgrade in #3619; if correcting a prior erroneous
+# version bump, add a comment here so tooling comparing versions numerically
+# does not misinterpret the intent.
 description = "World Monitor desktop application"
 authors = ["World Monitor"]
 edition = "2021"
