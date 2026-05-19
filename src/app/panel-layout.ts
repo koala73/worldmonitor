@@ -1039,6 +1039,7 @@ export class PanelLayoutManager implements AppModule {
     this.createPanel('gdelt-intel', () => new GdeltIntelPanel());
 
     import('@/components/DeductionPanel').then(({ DeductionPanel }) => {
+      if (typeof DeductionPanel !== 'function') return;
       const deductionPanel = new DeductionPanel(() => this.ctx.allNews);
       this.ctx.panels['deduction'] = deductionPanel;
       const el = deductionPanel.getElement();
@@ -1054,9 +1055,13 @@ export class PanelLayoutManager implements AppModule {
       }
       this.applyPanelSettings();
       this.updatePanelGating(getAuthState());
-    });
+    }).catch(() => { /* dynamic import failure: stale-chunk handler in main.ts beforeSend already suppresses, swallow second unhandledrejection */ });
 
+    // Guard against named-export resolving to undefined (Safari ESM cache / proxy truncation
+    // edge case, WORLDMONITOR-R4): `new undefined` surfaced as
+    // `TypeError: undefined is not a constructor (evaluating 'new m')` from this exact line.
     import('@/components/RegionalIntelligenceBoard').then(({ RegionalIntelligenceBoard }) => {
+      if (typeof RegionalIntelligenceBoard !== 'function') return;
       const regionalBoard = new RegionalIntelligenceBoard();
       this.ctx.panels['regional-intelligence'] = regionalBoard;
       const el = regionalBoard.getElement();
@@ -1072,7 +1077,7 @@ export class PanelLayoutManager implements AppModule {
       }
       this.applyPanelSettings();
       this.updatePanelGating(getAuthState());
-    });
+    }).catch(() => { /* dynamic import failure: stale-chunk handler in main.ts beforeSend already suppresses, swallow second unhandledrejection */ });
 
     if (this.shouldCreatePanel('cii')) {
       const ciiPanel = new CIIPanel();
