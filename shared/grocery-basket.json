@@ -99,6 +99,24 @@
       ]
     },
     {
+      "code": "ES",
+      "name": "Spain",
+      "currency": "EUR",
+      "flag": "🇪🇸",
+      "sites": [
+        "mercadona.es",
+        "carrefour.es",
+        "elcorteingles.es",
+        "hipercor.es",
+        "dia.es",
+        "alcampo.es",
+        "lidl.es",
+        "aldi.es",
+        "eroski.es",
+        "familycash.es"
+      ]
+    },
+    {
       "code": "FR",
       "name": "France",
       "currency": "EUR",
