@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, loadSharedConfig, CHROME_UA, runSeed, sleep } from './_seed-utils.mjs';
+import { loadEnvFile, loadSharedConfig, CHROME_UA, runSeed, sleep, fetchCoinPaprikaTickersById } from './_seed-utils.mjs';
 
 const cryptoConfig = loadSharedConfig('crypto.json');
 
@@ -55,17 +55,11 @@ async function fetchFromCoinGecko() {
 }
 
 async function fetchFromCoinPaprika() {
-  console.log('  [CoinPaprika] Fetching tickers...');
-  const resp = await fetch('https://api.coinpaprika.com/v1/tickers?quotes=USD', {
-    headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!resp.ok) throw new Error(`CoinPaprika HTTP ${resp.status}`);
-  const allTickers = await resp.json();
-  const paprikaIds = new Set(CRYPTO_IDS.map((id) => COINPAPRIKA_ID_MAP[id]).filter(Boolean));
+  console.log('  [CoinPaprika] Fetching configured tickers...');
+  const paprikaIds = CRYPTO_IDS.map((id) => COINPAPRIKA_ID_MAP[id]).filter(Boolean);
+  const tickers = await fetchCoinPaprikaTickersById(paprikaIds);
   const reverseMap = new Map(Object.entries(COINPAPRIKA_ID_MAP).map(([g, p]) => [p, g]));
-  return allTickers
-    .filter((t) => paprikaIds.has(t.id))
+  return tickers
     .map((t) => ({
       id: reverseMap.get(t.id) || t.id,
       current_price: t.quotes.USD.price,

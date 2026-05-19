@@ -38,6 +38,52 @@ export function describeErr(err) {
 }
 
 /**
+ * Fetch only configured CoinPaprika ticker IDs instead of the full /tickers
+ * catalog. The catalog endpoint currently returns 13k+ records; seeders only
+ * need a small mapped subset, so per-ID reads avoid Edge/cron memory and
+ * latency spikes while preserving the same ticker shape.
+ *
+ * @param {string[]} paprikaIds CoinPaprika ids, e.g. btc-bitcoin
+ * @param {{ fetchFn?: typeof fetch, headers?: Record<string, string>, timeoutMs?: number }} [options]
+ * @returns {Promise<object[]>}
+ */
+export async function fetchCoinPaprikaTickersById(paprikaIds, options = {}) {
+  const ids = [...new Set(paprikaIds.filter(Boolean))];
+  if (ids.length === 0) return [];
+
+  const fetchFn = options.fetchFn || fetch;
+  const headers = { Accept: 'application/json', 'User-Agent': CHROME_UA, ...(options.headers || {}) };
+  const timeoutMs = options.timeoutMs || 15_000;
+
+  const results = await Promise.allSettled(ids.map(async (id) => {
+    const resp = await fetchFn(`https://api.coinpaprika.com/v1/tickers/${encodeURIComponent(id)}?quotes=USD`, {
+      headers,
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!resp.ok) throw new Error(`CoinPaprika ${id} HTTP ${resp.status}`);
+    return resp.json();
+  }));
+
+  const tickers = [];
+  const failures = [];
+  for (let i = 0; i < results.length; i += 1) {
+    const result = results[i];
+    if (result.status === 'fulfilled') {
+      tickers.push(result.value);
+    } else {
+      failures.push(result.reason);
+      console.warn(`[CoinPaprika] Skipping ${ids[i]}: ${describeErr(result.reason)}`);
+    }
+  }
+
+  if (tickers.length === 0 && failures.length > 0) {
+    throw new Error(`All ${failures.length} CoinPaprika ticker request(s) failed`);
+  }
+
+  return tickers;
+}
+
+/**
  * Return the bundle-run start timestamp injected by `_bundle-runner.mjs`
  * as the `BUNDLE_RUN_STARTED_AT_MS` env var, or `null` when the seeder
  * is running STANDALONE (manual invocation outside the bundle).
