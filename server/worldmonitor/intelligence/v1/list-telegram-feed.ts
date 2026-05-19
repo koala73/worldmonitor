@@ -9,11 +9,16 @@ import { getRelayBaseUrl, getRelayHeaders } from './_relay';
 interface TelegramRelayMessage {
   id?: string | number;
   channelId?: string | number;
+  channel?: string;
   channelName?: string;
+  channelTitle?: string;
   text?: string;
   timestamp?: string | number;
+  timestampMs?: string | number;
+  ts?: string | number;
   mediaUrls?: string[];
   sourceUrl?: string;
+  url?: string;
   topic?: string;
 }
 
@@ -32,6 +37,10 @@ function toTimestampMs(value: string | number | undefined): number {
   if (Number.isFinite(numeric) && numeric > 0) return numeric;
   const parsed = new Date(value).getTime();
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function toText(value: string | number | undefined): string {
+  return value == null ? '' : String(value);
 }
 
 /**
@@ -65,20 +74,20 @@ export const listTelegramFeed: IntelligenceServiceHandler['listTelegramFeed'] = 
     const data = (await response.json()) as TelegramRelayResponse;
     const relayMessages = Array.isArray(data.messages) ? data.messages : (data.items || []);
     const messages = relayMessages.map((message) => ({
-      id: String(message.id || ''),
-      channelId: String(message.channelId || ''),
-      channelName: String(message.channelName || ''),
-      text: String(message.text || ''),
-      timestampMs: toTimestampMs(message.timestamp),
+      id: toText(message.id),
+      channelId: toText(message.channelId),
+      channelName: toText(message.channelName || message.channelTitle || message.channel),
+      text: toText(message.text),
+      timestampMs: toTimestampMs(message.timestampMs ?? message.timestamp ?? message.ts),
       mediaUrls: Array.isArray(message.mediaUrls) ? message.mediaUrls.map(String) : [],
-      sourceUrl: String(message.sourceUrl || ''),
-      topic: String(message.topic || ''),
+      sourceUrl: toText(message.sourceUrl || message.url),
+      topic: toText(message.topic),
     }));
 
     return {
       enabled: data.enabled ?? true,
       messages,
-      count: data.count ?? messages.length,
+      count: messages.length,
       error: data.error || '',
     };
   } catch (error) {
