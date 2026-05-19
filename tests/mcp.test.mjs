@@ -36,6 +36,11 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     // No UPSTASH vars — rate limiter gracefully skipped, Redis reads return null
     delete process.env.UPSTASH_REDIS_REST_URL;
     delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    // Telemetry is default-on in prod; off in tests so the JSON line per
+    // tools/call doesn't pollute CI stdout and trip any future stdout-grep
+    // assertion. The four `telemetry:`-prefixed tests below re-enable it
+    // locally.
+    process.env.MCP_TELEMETRY = 'false';
 
     const mod = await import(`../api/mcp.ts?t=${Date.now()}`);
     handler = mod.default;
@@ -330,6 +335,207 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     const out = await callTool('get_market_data', {});
     assert.equal(out.data['stocks-bootstrap'].quotes.length, 2, 'no args → all stock quotes');
     assert.ok(out.data.crypto, 'no args → crypto slice present');
+  });
+
+  // --- Telemetry ---
+
+  it('telemetry: successful tools/call emits one mcp.toolcall line with the documented fields', async () => {
+    process.env.MCP_TELEMETRY = 'true';
+    mockCacheKeys(
+      { 'market:stocks-bootstrap:v1': { quotes: [{ symbol: 'AAPL', price: 100 }] }, 'market:crypto:v1': { quotes: [] } },
+      { 'seed-meta:market:stocks': { fetchedAt: Date.now() - 60_000, recordCount: 1 } },
+    );
+    const captured = [];
+    const origLog = console.log;
+    console.log = (line) => captured.push(line);
+    try {
+      await callTool('get_market_data', {});
+    } finally {
+      console.log = origLog;
+    }
+    const tc = captured
+      .filter((l) => typeof l === 'string')
+      .map((l) => { try { return JSON.parse(l); } catch { return null; } })
+      .filter((j) => j && j.tag === 'mcp.toolcall');
+    assert.equal(tc.length, 1, `expected exactly one mcp.toolcall line, got ${tc.length}`);
+    const ev = tc[0];
+    assert.equal(ev.tool, 'get_market_data');
+    assert.equal(ev.auth_kind, 'env_key');
+    assert.equal(ev.ok, true);
+    assert.equal(ev.jmespath_used, false);
+    assert.equal(ev.jmespath_failed, null);
+    assert.equal(typeof ev.latency_ms, 'number');
+    assert.equal(typeof ev.bytes_pre_jmespath, 'number');
+    assert.equal(typeof ev.bytes_post_jmespath, 'number');
+    assert.ok(ev.bytes_post_jmespath > 0, 'bytes_post_jmespath must be > 0 on a successful response');
+    assert.equal(typeof ev.ts, 'string');
+  });
+
+  it('telemetry: tool-execution throw emits one mcp.toolcall line with ok:false + error_kind:server_error', async () => {
+    process.env.MCP_TELEMETRY = 'true';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+    // Force the cache-tool fetch path to throw — dispatchToolsCall's outer
+    // catch fires, latency_ms is captured BEFORE rollback, and one
+    // mcp.toolcall line with ok:false must land.
+    globalThis.fetch = async () => { throw new TypeError('fetch failed'); };
+
+    const captured = [];
+    const origLog = console.log;
+    const origErr = console.error;
+    console.log = (line) => captured.push(line);
+    console.error = () => {}; // swallow the captureSilentError stderr noise
+    try {
+      const freshMod = await import(`../api/mcp.ts?t=${Date.now()}`);
+      const res = await freshMod.default(makeReq('POST', {
+        jsonrpc: '2.0', id: 901, method: 'tools/call',
+        params: { name: 'get_market_data', arguments: {} },
+      }));
+      const body = await res.json();
+      assert.equal(body.error?.code, -32603, 'must return JSON-RPC -32603 on tool throw');
+    } finally {
+      console.log = origLog;
+      console.error = origErr;
+    }
+    const tc = captured
+      .filter((l) => typeof l === 'string')
+      .map((l) => { try { return JSON.parse(l); } catch { return null; } })
+      .filter((j) => j && j.tag === 'mcp.toolcall');
+    assert.equal(tc.length, 1, `expected exactly one mcp.toolcall line, got ${tc.length}`);
+    const ev = tc[0];
+    assert.equal(ev.ok, false);
+    assert.equal(ev.error_kind, 'server_error');
+    assert.equal(ev.tool, 'get_market_data');
+    assert.equal(typeof ev.latency_ms, 'number');
+    assert.ok(Number.isFinite(ev.latency_ms), 'latency_ms must be finite (captured before rollback)');
+  });
+
+  it('telemetry: invalid jmespath expression emits ok:true with jmespath_failed=invalid_expression', async () => {
+    process.env.MCP_TELEMETRY = 'true';
+    mockCacheKeys(
+      { 'market:stocks-bootstrap:v1': { quotes: [{ symbol: 'AAPL', price: 100 }] }, 'market:crypto:v1': { quotes: [] } },
+      { 'seed-meta:market:stocks': { fetchedAt: Date.now() - 60_000, recordCount: 1 } },
+    );
+    const captured = [];
+    const origLog = console.log;
+    console.log = (line) => captured.push(line);
+    try {
+      process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+      process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+      const freshMod = await import(`../api/mcp.ts?t=${Date.now()}`);
+      const res = await freshMod.default(makeReq('POST', {
+        jsonrpc: '2.0', id: 902, method: 'tools/call',
+        params: { name: 'get_market_data', arguments: { jmespath: 'a.' } },
+      }));
+      const body = await res.json();
+      // applyJmespath soft-fails — tool dispatch still succeeds.
+      assert.ok(body.result?.content, 'soft jmespath failure must still return a successful response');
+    } finally {
+      console.log = origLog;
+    }
+    const tc = captured
+      .filter((l) => typeof l === 'string')
+      .map((l) => { try { return JSON.parse(l); } catch { return null; } })
+      .filter((j) => j && j.tag === 'mcp.toolcall');
+    assert.equal(tc.length, 1, `expected exactly one mcp.toolcall line, got ${tc.length}`);
+    const ev = tc[0];
+    assert.equal(ev.ok, true, 'jmespath failure is a *user* error, not a system error');
+    assert.equal(ev.jmespath_used, true);
+    assert.equal(ev.jmespath_failed, 'invalid_expression');
+  });
+
+  it('telemetry: initialize emits mcp.tools_list_emitted with tools_array_bytes, tool_count, client_user_agent', async () => {
+    process.env.MCP_TELEMETRY = 'true';
+    const mod = await import(`../api/mcp.ts?t=${Date.now()}`);
+    const expectedToolCount = mod.__testing__.TOOL_REGISTRY.length;
+    const captured = [];
+    const origLog = console.log;
+    console.log = (line) => captured.push(line);
+    try {
+      await mod.default(makeReq('POST', initBody(42), { 'user-agent': 'wm-test/1.0' }));
+    } finally {
+      console.log = origLog;
+    }
+    const ev = captured
+      .filter((l) => typeof l === 'string')
+      .map((l) => { try { return JSON.parse(l); } catch { return null; } })
+      .filter((j) => j && j.tag === 'mcp.tools_list_emitted');
+    assert.equal(ev.length, 1, `expected exactly one mcp.tools_list_emitted line, got ${ev.length}`);
+    assert.equal(typeof ev[0].tools_array_bytes, 'number');
+    assert.ok(ev[0].tools_array_bytes > 0, 'tools_array_bytes must be > 0');
+    assert.equal(ev[0].tool_count, expectedToolCount, 'tool_count must equal current registry size');
+    assert.equal(ev[0].client_user_agent, 'wm-test/1.0');
+  });
+
+  it('telemetry: 32 KB User-Agent is capped at 256 chars in client_user_agent', async () => {
+    process.env.MCP_TELEMETRY = 'true';
+    const mod = await import(`../api/mcp.ts?t=${Date.now()}`);
+    const captured = [];
+    const origLog = console.log;
+    console.log = (line) => captured.push(line);
+    const hugeUa = 'A'.repeat(32 * 1024);
+    try {
+      await mod.default(makeReq('POST', initBody(43), { 'user-agent': hugeUa }));
+    } finally {
+      console.log = origLog;
+    }
+    const ev = captured
+      .filter((l) => typeof l === 'string')
+      .map((l) => { try { return JSON.parse(l); } catch { return null; } })
+      .filter((j) => j && j.tag === 'mcp.tools_list_emitted');
+    assert.equal(ev[0].client_user_agent.length, 256, 'pathological UA must be sliced to 256 chars');
+  });
+
+  it('telemetry: circular _execute result + clean JMESPath projection stays 200 with bytes_pre_jmespath=-1 sentinel', async () => {
+    // Regression guard for the round-1 blocker fix at api/mcp.ts:3173-3184.
+    // Without the inner try/catch, the telemetry `JSON.stringify(result)`
+    // on a circular `result` throws, control jumps to the outer catch, the
+    // request becomes a 5xx + Pro-quota rollback — even though JMESPath
+    // successfully projected a clean subtree. The fix must:
+    //   (a) keep the response 200 / ok:true (telemetry must never bubble),
+    //   (b) emit `bytes_pre_jmespath: -1` (sentinel: measurement unavailable),
+    //   (c) emit `bytes_post_jmespath > 0` (projection succeeded).
+    // The sentinel is *the* observable that proves the inner catch fired.
+    process.env.MCP_TELEMETRY = 'true';
+    const freshMod = await import(`../api/mcp.ts?t=${Date.now()}`);
+    const tool = freshMod.__testing__.TOOL_REGISTRY.find((t) => t.name === 'get_commodity_geo');
+    assert.ok(tool && tool._execute, 'get_commodity_geo must exist with an _execute');
+    const originalExecute = tool._execute;
+    tool._execute = async () => {
+      const result = { sites: [{ id: 'X1', mineral: 'Gold' }], total: 1 };
+      result.self = result; // cycle — JSON.stringify(result) throws
+      return result;
+    };
+    const captured = [];
+    const origLog = console.log;
+    console.log = (line) => captured.push(line);
+    let resStatus, body;
+    try {
+      const res = await freshMod.default(makeReq('POST', {
+        jsonrpc: '2.0', id: 904, method: 'tools/call',
+        params: { name: 'get_commodity_geo', arguments: { jmespath: 'total' } },
+      }));
+      resStatus = res.status;
+      body = await res.json();
+    } finally {
+      console.log = origLog;
+      tool._execute = originalExecute;
+    }
+    assert.equal(resStatus, 200, 'circular result + clean JMESPath projection must still return HTTP 200');
+    assert.ok(body.result?.content, 'must return a successful JSON-RPC result (no -32603)');
+    assert.equal(body.result.content[0].text, '1', 'JMESPath `total` must extract the clean subtree');
+    const tc = captured
+      .filter((l) => typeof l === 'string')
+      .map((l) => { try { return JSON.parse(l); } catch { return null; } })
+      .filter((j) => j && j.tag === 'mcp.toolcall');
+    assert.equal(tc.length, 1, `expected exactly one mcp.toolcall line, got ${tc.length}`);
+    const ev = tc[0];
+    assert.equal(ev.ok, true, 'telemetry stringify failure must not flip ok to false');
+    assert.equal(ev.tool, 'get_commodity_geo');
+    assert.equal(ev.jmespath_used, true);
+    assert.equal(ev.jmespath_failed, null);
+    assert.equal(ev.bytes_pre_jmespath, -1, 'circular result must surface bytes_pre_jmespath: -1 sentinel');
+    assert.ok(ev.bytes_post_jmespath > 0, 'bytes_post_jmespath must reflect the projected size (> 0)');
   });
 
   it('get_market_data: symbols filter narrows quote arrays across asset slices', async () => {

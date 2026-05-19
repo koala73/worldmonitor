@@ -584,11 +584,13 @@
     weight across the remaining 3 fiscal-space indicators.
   constructStatus: observed-mechanism
   reviewNotes: |
-    Hyperinflation cap (CPI > 25%) drops gap to null for Argentina / Lebanon / Venezuela — the inflation-tax
-    term in the formula would otherwise produce misleadingly positive gaps that mask real fiscal pathology.
-    Fiscal-3 still scores these countries. Goalposts -5/+3 chosen from IMF DSA distress conventions; gap≈0
-    is debt-stabilizing (normalized score ≈ 62), gap≥+3 saturates (debt declining), gap≤-5 floors (severe
-    distress).
+    Inflation cap (CPI > 10%) drops gap to null for inflation-tax-regime countries (Argentina, Turkey,
+    Lebanon, Egypt, Nigeria, Ethiopia, Bolivia, Kazakhstan, etc.) — above this threshold the formula's
+    high nominal-growth term mechanically erodes debt while masking real fiscal pathology. Fiscal-3 still
+    scores these countries. Cap tightened from 25% in 2026-05-19 follow-up to PR #3669 after live data
+    showed Lebanon (14.6% CPI) scoring #1 globally on this indicator. Goalposts -5/+3 chosen from IMF DSA
+    distress conventions; gap≈0 is debt-stabilizing (normalized score ≈ 62), gap≥+3 saturates (debt
+    declining), gap≤-5 floors (severe distress).
 
 - indicator: recoveryReserveMonths
   dimension: reserveAdequacy

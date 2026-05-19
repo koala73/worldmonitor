@@ -97,6 +97,7 @@ import {
   SITE_VARIANT,
   ALL_PANELS,
   VARIANT_DEFAULTS,
+  isPanelInVariantDefaults,
 } from '@/config';
 import { resolveNewsCategories, enabledNewsCategoryKeys } from '@/config/feed-resolution';
 import { BETA_MODE } from '@/config/beta';
@@ -1037,7 +1038,12 @@ export class PanelLayoutManager implements AppModule {
 
     this.createPanel('gdelt-intel', () => new GdeltIntelPanel());
 
+    // Two-arg `.then(onFulfilled, onRejected)` so the rejection handler ONLY catches
+    // the dynamic-import promise itself (already suppressed in main.ts beforeSend) and
+    // does NOT swallow synchronous throws from the callback body (panel construction,
+    // makeDraggable, etc.) — those must continue to surface in Sentry as real bugs.
     import('@/components/DeductionPanel').then(({ DeductionPanel }) => {
+      if (typeof DeductionPanel !== 'function') return;
       const deductionPanel = new DeductionPanel(() => this.ctx.allNews);
       this.ctx.panels['deduction'] = deductionPanel;
       const el = deductionPanel.getElement();
@@ -1053,9 +1059,13 @@ export class PanelLayoutManager implements AppModule {
       }
       this.applyPanelSettings();
       this.updatePanelGating(getAuthState());
-    });
+    }, () => undefined);
 
+    // Guard against named-export resolving to undefined (Safari ESM cache / proxy truncation
+    // edge case, WORLDMONITOR-R4): `new undefined` surfaced as
+    // `TypeError: undefined is not a constructor (evaluating 'new m')` from this exact line.
     import('@/components/RegionalIntelligenceBoard').then(({ RegionalIntelligenceBoard }) => {
+      if (typeof RegionalIntelligenceBoard !== 'function') return;
       const regionalBoard = new RegionalIntelligenceBoard();
       this.ctx.panels['regional-intelligence'] = regionalBoard;
       const el = regionalBoard.getElement();
@@ -1071,7 +1081,7 @@ export class PanelLayoutManager implements AppModule {
       }
       this.applyPanelSettings();
       this.updatePanelGating(getAuthState());
-    });
+    }, () => undefined);
 
     if (this.shouldCreatePanel('cii')) {
       const ciiPanel = new CIIPanel();
@@ -1278,7 +1288,14 @@ export class PanelLayoutManager implements AppModule {
     this.lazyPanel('tech-readiness', () =>
       import('@/components/TechReadinessPanel').then(m => {
         const p = new m.TechReadinessPanel();
-        void p.refresh();
+        // Only auto-refresh on variants whose bootstrap seeds techReadiness
+        // (full + tech). On commodity/finance/energy the seed key is empty
+        // and the 5s fetch at services/economic/index.ts:694 just times out.
+        // The panel is still created so users who opt-in via settings can
+        // trigger a manual refresh from its UI.
+        if (isPanelInVariantDefaults('tech-readiness')) {
+          void p.refresh();
+        }
         return p;
       }),
     );

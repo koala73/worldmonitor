@@ -243,3 +243,141 @@ describe('classifyOpinion — input safety', () => {
     assert.equal(classifyOpinion(undefined), false);
   });
 });
+
+describe('classifyOpinion — STRONG #3: source-domain allowlist', () => {
+  // The 2026-05-19 regression. The Bulletin of Atomic Scientists'
+  // "How nuclear war would impact the global food system" shipped as
+  // CRITICAL story #6 in a Pro brief. STRONG #1 (URL section) missed
+  // it — no /opinion/ segment. STRONG #2 (headline prefix) missed it
+  // — no "Opinion:" prefix. CORROBORATING missed it — no quote-wrap,
+  // hard-news-shaped description. The source ITSELF is the signal:
+  // Bulletin is entirely commentary, no hard-news section to
+  // distinguish from. See docs/plans/2026-05-19-001-fix-brief-…-plan.md
+  // U1.
+
+  it('REGRESSION (May 19): Bulletin of Atomic Scientists URL → opinion', () => {
+    assert.equal(
+      classifyOpinion({
+        title: 'How nuclear war would impact the global food system. And how to prepare for it',
+        link: 'https://thebulletin.org/2026/05/how-nuclear-war-would-impact-the-global-food-system/',
+        description: 'A new analysis details the catastrophic impact of nuclear war on the global food system and outlines preparedness strategies.',
+      }),
+      true,
+    );
+  });
+
+  it('Project Syndicate, Foreign Affairs, War on the Rocks → opinion (commentary-only publishers)', () => {
+    for (const host of [
+      'project-syndicate.org',
+      'foreignaffairs.com',
+      'warontherocks.com',
+    ]) {
+      assert.equal(
+        classifyOpinion({
+          title: 'A perfectly normal hard-news-shaped headline about Iran',
+          link: `https://${host}/2026/05/article-slug`,
+        }),
+        true,
+        `${host} should classify as opinion (commentary-only publisher)`,
+      );
+    }
+  });
+
+  it('REGRESSION (PR #3835 review): foreignpolicy.com hard-news URLs are NOT blanket-allowlisted', () => {
+    // FP runs hard-news surfaces (World Brief, Situation Report) alongside
+    // op-eds. A blanket hostname allowlist would silently drop the
+    // event-shaped pieces. PR #3835 review surfaced this with a live FP
+    // World Brief story. FP commentary is still caught via the existing
+    // /opinion/ path or the "Opinion:" headline prefix — the correct
+    // granularity for mixed-content publishers.
+    assert.equal(
+      classifyOpinion({
+        title: 'G-7 Finance Ministers Discuss Economic Fallout of Iran War',
+        link: 'https://foreignpolicy.com/2026/05/19/g7-finance-ministers-iran-war-economic-fallout/',
+        description: 'Group of Seven finance ministers convened to assess the economic disruption from the Iran-Israel war.',
+      }),
+      false,
+      'FP hard-news event must NOT be dropped as opinion',
+    );
+  });
+
+  it('FP commentary still caught via the existing /opinion/ path signal', () => {
+    // Demonstrates the right granularity for FP: scope to their commentary
+    // paths, not the whole hostname. The /opinion/ URL path triggers
+    // STRONG #1, independent of any source-domain check.
+    assert.equal(
+      classifyOpinion({
+        title: 'The case for normalizing relations with Iran',
+        link: 'https://foreignpolicy.com/opinion/2026/05/19/case-for-iran-normalization/',
+      }),
+      true,
+    );
+  });
+
+  it('subdomains of allowlisted hosts (newsletter., m., www.) → opinion', () => {
+    for (const sub of ['newsletter', 'm', 'www']) {
+      assert.equal(
+        classifyOpinion({
+          title: 'Hard-news-shaped headline',
+          link: `https://${sub}.thebulletin.org/2026/05/article`,
+        }),
+        true,
+        `${sub}.thebulletin.org should classify as opinion (suffix-anchored match)`,
+      );
+    }
+  });
+
+  it('typo-domains that contain an allowlisted host as a substring are NOT classified', () => {
+    // Failure mode the suffix-anchor guards against: `evilthebulletin.org`
+    // contains `thebulletin.org` as a string suffix WITHOUT the dot.
+    // Suffix-anchored rule (`endsWith('.' + entry)`) rejects it.
+    assert.equal(
+      classifyOpinion({
+        title: 'Some breaking news',
+        link: 'https://evilthebulletin.org/2026/05/breaking',
+      }),
+      false,
+    );
+  });
+
+  it('tracking params / fragments referencing an allowlisted host on a hard-news URL are NOT classified', () => {
+    // Failure mode raw-string includes() would hit: `link.includes('thebulletin.org')`
+    // matches a tracking param or fragment outside the hostname. safeHostname
+    // returns only `URL().hostname` so the host is parsed, not substring-matched.
+    assert.equal(
+      classifyOpinion({
+        title: 'Hard-news headline',
+        link: 'https://nytimes.com/article?ref=thebulletin.org',
+      }),
+      false,
+    );
+    assert.equal(
+      classifyOpinion({
+        title: 'Hard-news headline',
+        link: 'https://nytimes.com/article#thebulletin.org-footer',
+      }),
+      false,
+    );
+  });
+
+  it('malformed URLs fall through without throwing', () => {
+    assert.doesNotThrow(() => classifyOpinion({ title: 'x', link: 'not a url' }));
+    assert.equal(classifyOpinion({ title: 'x', link: 'not a url' }), false);
+    assert.equal(classifyOpinion({ title: 'x', link: '' }), false);
+  });
+
+  it('allowlisted host PLUS hard-news-looking content → still opinion (the publisher IS the signal)', () => {
+    // The selection criterion is "publisher's whole output is commentary."
+    // Even if a Bulletin piece reads like an event, it ships as commentary
+    // (because that's all they publish). The rollback path if this is
+    // unfair is removing the publisher from the Set, not adding URL exceptions.
+    assert.equal(
+      classifyOpinion({
+        title: 'IAEA warns Iran enrichment reaches weapons-grade threshold',  // event-shaped
+        link: 'https://thebulletin.org/2026/05/iaea-warns-iran/',
+        description: 'The IAEA today announced that uranium samples reached 90% purity.',  // event-shaped
+      }),
+      true,
+    );
+  });
+});

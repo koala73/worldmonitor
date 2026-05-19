@@ -13,6 +13,7 @@ import {
   MARKET_SYMBOLS,
   SITE_VARIANT,
   LAYER_TO_SOURCE,
+  isPanelInVariantDefaults,
 } from '@/config';
 import { resolveNewsCategories, enabledNewsCategoryKeys } from '@/config/feed-resolution';
 import { INTEL_HOTSPOTS, CONFLICT_ZONES } from '@/config/geo';
@@ -593,7 +594,13 @@ export class DataLoaderManager implements AppModule {
       tasks.push({ name: 'radiation', task: runGuarded('radiation', () => this.loadRadiationWatch()) });
     }
 
-    if (SITE_VARIANT !== 'happy') {
+    // tech-readiness is only seeded on full + tech variants (api/bootstrap.js +
+    // scripts/seed-wb-indicators.mjs); on commodity/finance/energy the 5s fetch
+    // at services/economic/index.ts:694 just times out. shouldLoad() alone is
+    // not enough — loadAllData(true) on boot (App.ts:1226) bypasses the viewport
+    // check via forceAll. Gate on variant defaults so this only fires where the
+    // seed actually exists.
+    if (isPanelInVariantDefaults('tech-readiness') && shouldLoad('tech-readiness')) {
       tasks.push({ name: 'techReadiness', task: runGuarded('techReadiness', () => (this.ctx.panels['tech-readiness'] as TechReadinessPanel)?.refresh()) });
     }
     if (SITE_VARIANT !== 'happy' && shouldLoad('thermal-escalation')) {

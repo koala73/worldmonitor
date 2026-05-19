@@ -54,6 +54,46 @@ const STRONG_URL_SEGMENTS = [
 // ("Opinion polls tighten…") is not caught.
 const STRONG_HEADLINE_PREFIX_RE = /^(?:opinion|analysis|commentary|op-?ed|editorial|perspective|viewpoint)\s*:/i;
 
+// ── STRONG: source-domain allowlist ──────────────────────────────────
+// Publications whose entire output is commentary / analysis. Different
+// signal from STRONG #1: those catch op-ed SECTIONS inside hard-news
+// outlets (NYT/opinion/, BBC/views/). This catches publications where
+// the WHOLE SITE is analysis and they don't use opinion-style URL
+// paths. On 2026-05-19 the Bulletin of Atomic Scientists' "How nuclear
+// war would impact the global food system" shipped as CRITICAL story
+// #6 in a Pro brief — STRONG #1 missed it (no /opinion/ path), STRONG
+// #2 missed it (no "Opinion:" prefix), CORROBORATING missed it
+// (no quote-wrap, hard-news-shaped description).
+//
+// SELECTION CRITERIA (read before adding to this list):
+//   1. Publication's editorial mission is analysis / commentary / op-ed.
+//   2. They do NOT publish breaking-news wires or event coverage.
+//   3. Dropping every piece they publish is editorially safer than
+//      including any single piece as a brief "event."
+//
+// MAINTENANCE: this list is a permanent editorial commitment. Quarterly
+// review against `droppedOpinion` telemetry to catch (a) new commentary
+// publishers that should be added, (b) listed publishers that launched
+// a hard-news section. Owner: brief on-call author.
+//
+// ROLLBACK: if a Doomsday-Clock-style EVENT from one of these publishers
+// is unfairly dropped, remove the publisher from this Set. Do NOT add
+// ad-hoc URL exceptions — they accumulate into cruft.
+const COMMENTARY_HOSTNAMES = new Set([
+  'thebulletin.org',          // Bulletin of the Atomic Scientists — entirely commentary/analysis
+  'project-syndicate.org',    // Project Syndicate — op-eds from world leaders / academics
+  'foreignaffairs.com',       // Foreign Affairs — CFR's analysis quarterly; long-form essays
+  'warontherocks.com',        // War on the Rocks — defense analysis blog
+  // NOTE: foreignpolicy.com is INTENTIONALLY NOT here. FP runs hard-news
+  // surfaces — World Brief, Situation Report, Morning Brief — that
+  // publish event coverage (e.g., "G-7 Finance Ministers Discuss
+  // Economic Fallout of Iran War"). Allowlisting the whole hostname
+  // would silently drop those events. FP's commentary pieces still get
+  // caught by the existing /opinion/ path segment OR the "Opinion:" /
+  // "Analysis:" headline prefix; that's the right granularity for
+  // mixed-content publishers. PR #3835 review caught this.
+]);
+
 // ── CORROBORATING: description framing ───────────────────────────────
 // Columnist/argument framing in the body. Alone these false-positive
 // on quoted-statement hard news ("the minister argues that…"), so they
@@ -96,6 +136,36 @@ function safePathname(link) {
 }
 
 /**
+ * Parse the URL hostname defensively. Same shape as safePathname but
+ * for the host portion — closes the same tracking-param / fragment
+ * injection vector. A raw-string `link.includes('thebulletin.org')`
+ * would false-positive on `https://nytimes.com/article?ref=thebulletin.org`
+ * (tracking param) or `https://evil.com#thebulletin.org` (fragment).
+ * Hostname comes from the parsed URL only.
+ *
+ * Suffix-anchored match: hostname `=== entry` OR hostname `.endsWith('.' + entry)`.
+ * This catches subdomain variants (`newsletter.thebulletin.org`,
+ * `m.thebulletin.org`) while rejecting typo-domains (`evilthebulletin.org`).
+ * The plan's subdomain-policy decision (F12 in PR #3828's doc review).
+ */
+function safeHostname(link) {
+  if (typeof link !== 'string' || link.length === 0) return '';
+  try {
+    return new URL(link).hostname.toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+function matchesCommentaryHost(hostname) {
+  if (!hostname) return false;
+  for (const entry of COMMENTARY_HOSTNAMES) {
+    if (hostname === entry || hostname.endsWith('.' + entry)) return true;
+  }
+  return false;
+}
+
+/**
  * Classify a story as opinion/analysis vs hard news.
  *
  * @param {{ title?: unknown; link?: unknown; description?: unknown }} story
@@ -117,6 +187,15 @@ export function classifyOpinion(story) {
 
   // STRONG #2 — explicit headline prefix.
   if (STRONG_HEADLINE_PREFIX_RE.test(title.trim())) return true;
+
+  // STRONG #3 — source-domain allowlist. Catches commentary-only
+  // publishers whose WHOLE SITE is analysis (Bulletin of Atomic
+  // Scientists, Project Syndicate, Foreign Affairs, …) — they don't
+  // use /opinion/-style URL paths because they have no hard-news
+  // section to distinguish from. Hostname match on the parsed URL
+  // only, suffix-anchored to permit `newsletter.<host>` and `m.<host>`
+  // while rejecting typo-domains.
+  if (matchesCommentaryHost(safeHostname(link))) return true;
 
   // CORROBORATING — need at least TWO.
   let corroborating = 0;

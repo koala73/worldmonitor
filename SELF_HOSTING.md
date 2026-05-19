@@ -16,9 +16,11 @@ git clone https://github.com/koala73/worldmonitor.git
 cd worldmonitor
 npm install
 
-# 2. Set the REQUIRED secret used to authenticate the AIS relay (see below).
-#    Without this the ais-relay container will exit at startup.
+# 2. Generate the REQUIRED secrets. Without these the stack will not start
+#    (see the "Required Environment Variables" table below).
 echo "RELAY_SHARED_SECRET=$(openssl rand -hex 32)" >> .env
+echo "REDIS_PASSWORD=$(openssl rand -hex 32)"      >> .env
+echo "REDIS_TOKEN=$(openssl rand -hex 32)"         >> .env
 
 # 3. Start the stack
 docker compose up -d        # or: uvx podman-compose up -d
@@ -34,11 +36,15 @@ The dashboard works out of the box with public data sources (earthquakes, weathe
 
 ## 🔐 Required Environment Variables
 
-These must be set before `docker compose up -d`, or the relay container will exit on boot.
+These must be set before `docker compose up -d`, or one of the containers will exit on boot.
 
 | Variable | Purpose | How to generate |
 | --- | --- | --- |
 | `RELAY_SHARED_SECRET` | Authenticates every non-public request the dashboard makes to the AIS relay. The relay refuses to start without it. | `openssl rand -hex 32` |
+| `REDIS_PASSWORD` | Redis AUTH password (`--requirepass`). The Redis container refuses to start without it; the REST proxy uses it in its upstream connection string. | `openssl rand -hex 32` |
+| `REDIS_TOKEN` | Bearer token the REST proxy (`redis-rest`) requires on every request, and the value the app sends as `UPSTASH_REDIS_REST_TOKEN`. The proxy and app containers refuse to start without it. | `openssl rand -hex 32` |
+
+> Earlier releases shipped `wm-local-token` as a default for the REST token. That default has been removed (#3804) — the proxy was only reachable from `127.0.0.1:8079` so external exposure required a hostile `docker-compose.override.yml`, but any user who flipped that binding to `0.0.0.0` was instantly authenticated by a publicly documented string. Fresh installs and existing clones both need to set `REDIS_TOKEN` and `REDIS_PASSWORD` in `.env` from this release onward.
 
 > Need to bring the relay up without auth for local debugging? Set `I_UNDERSTAND_THIS_DISABLES_AUTH=true` (the deprecated `ALLOW_UNAUTHENTICATED_RELAY=true` is still accepted). The relay will log a loud `[SECURITY]` warning at boot and every 5 minutes, and every non-public route will be reachable by anyone who can hit the port — **never use this on an internet-reachable host.**
 
@@ -116,12 +122,19 @@ To automate, add a cron job:
 If you prefer to run seeders individually:
 
 ```bash
+# Source .env so REDIS_TOKEN (and any API keys it holds) become available.
+# Quick-start puts REDIS_TOKEN in .env, not in your shell — without this,
+# the next line fails-loud with "REDIS_TOKEN: parameter null or not set".
+set -a; . ./.env; set +a
+
 export UPSTASH_REDIS_REST_URL=http://localhost:8079
-export UPSTASH_REDIS_REST_TOKEN=wm-local-token
+export UPSTASH_REDIS_REST_TOKEN="${REDIS_TOKEN:?set REDIS_TOKEN in .env first}"
 node scripts/seed-earthquakes.mjs
 node scripts/seed-military-flights.mjs
 # ... etc
 ```
+
+`./scripts/run-seeders.sh` auto-sources `REDIS_TOKEN` from `.env`, so the wrapper is the simpler path. Use the manual form only when iterating on a single seeder.
 
 ## 🏗️ Architecture
 

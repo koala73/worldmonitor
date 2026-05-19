@@ -759,7 +759,22 @@ const STYLE_BLOCK = `<style>
   .page {
     flex: 0 0 100vw; width: 100vw; height: 100vh;
     padding: 6vh 6vw 10vh;
-    position: relative; overflow: hidden;
+    /* overflow-y: auto so pages whose content exceeds 100vh become
+       internally scrollable instead of silently clipping (user-reported
+       on desktop where vw-scaled body copy can be ~10-20% taller than
+       viewport; iPhone Pro Max responsive mode "worked" because narrow
+       viewport scaled the vw text down until it fit). overflow-x stays
+       hidden so the deck-level horizontal carousel isn't fought by a
+       per-page horizontal scrollbar. Pair with the wheel handler in
+       NAV_SCRIPT which now defers to native scroll when the current
+       page has remaining scroll in the wheel direction. */
+    position: relative; overflow-x: hidden; overflow-y: auto;
+    /* Smooth out the deck-level transform vs in-page scroll interaction
+       on touch + trackpad: contain scroll within the page so a fast
+       trackpad flick doesn't bubble to the body (body has overflow:hidden
+       anyway, but overscroll-behavior also disables the iOS rubber-band
+       effect that visually fights the deck transform). */
+    overscroll-behavior: contain;
     display: flex; flex-direction: column;
   }
   .mono {
@@ -1189,15 +1204,50 @@ const NAV_SCRIPT = `<script>
   function next() { go(current + 1); }
   function prev() { go(current - 1); }
   window.addEventListener('keydown', function(e) {
-    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') { e.preventDefault(); next(); }
-    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); prev(); }
+    // ArrowRight/Left are the deck axis — always paginate, no scroll
+    // conflict. PageDown/PageUp/Space conventionally scroll a long page
+    // in normal browsers; defer to native page scroll when the current
+    // page has remaining scroll in that direction, paginate only at the
+    // scroll edge. Matches the wheel-handler behaviour so keyboard and
+    // mouse users see the same model.
+    if (e.key === 'ArrowRight') { e.preventDefault(); next(); }
+    else if (e.key === 'ArrowLeft') { e.preventDefault(); prev(); }
+    else if (e.key === 'PageDown' || e.key === ' ') {
+      if (pageCanScrollVertical(pages[current], 1)) return;
+      e.preventDefault(); next();
+    } else if (e.key === 'PageUp') {
+      if (pageCanScrollVertical(pages[current], -1)) return;
+      e.preventDefault(); prev();
+    }
     else if (e.key === 'Home') { e.preventDefault(); go(0); }
     else if (e.key === 'End') { e.preventDefault(); go(total - 1); }
   });
+  // Wheel handler defers to per-page native scroll first. The page CSS
+  // is overflow-y: auto, so content longer than 100vh scrolls inside the
+  // page. Only advance/retreat the deck when the user is wheeling
+  // PAST the scroll edge in that direction — otherwise a long page is
+  // unreachable past 100vh because every wheel tick paginates instead
+  // of scrolling (user-reported: "if I try to scroll down to read it,
+  // it just goes to the next page instead"). Vertical wheel falls
+  // through to the page; horizontal wheel still paginates immediately
+  // (the deck axis IS horizontal, no scroll conflict to resolve).
+  function pageCanScrollVertical(page, deltaY) {
+    if (!page) return false;
+    var maxScroll = page.scrollHeight - page.clientHeight;
+    if (maxScroll <= 0) return false;   // page content fits — paginate
+    if (deltaY > 0) return page.scrollTop < maxScroll - 1;   // room to scroll down
+    if (deltaY < 0) return page.scrollTop > 1;               // room to scroll up
+    return false;
+  }
   window.addEventListener('wheel', function(e) {
     if (wheelLock) return;
-    var delta = Math.abs(e.deltaY) > Math.abs(e.deltaX) ? e.deltaY : e.deltaX;
+    var isVertical = Math.abs(e.deltaY) > Math.abs(e.deltaX);
+    var delta = isVertical ? e.deltaY : e.deltaX;
     if (Math.abs(delta) < 12) return;
+    if (isVertical && pageCanScrollVertical(pages[current], e.deltaY)) {
+      // Let the native scroll on .page take this wheel event.
+      return;
+    }
     wheelLock = true;
     if (delta > 0) next(); else prev();
     setTimeout(function() { wheelLock = false; }, 620);

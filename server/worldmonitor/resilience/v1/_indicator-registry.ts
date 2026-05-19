@@ -1069,20 +1069,22 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
   {
     id: 'debtSustainabilityGap',
     dimension: 'fiscalSpace',
-    description: 'Primary-balance gap to debt-stabilizing level: gap = pb − ((r−g)/(1+g))·d (IMF DSA construct). Positive = debt path declining, negative = rising. r derived from interest expense / debt (overall balance minus primary balance); g from compounded real growth × (1+CPI). Hyperinflation cap at 25% drops gap to null for Argentina/Lebanon/Venezuela; fiscal-3 still scores them.',
+    description: 'Primary-balance gap to debt-stabilizing level: gap = pb − ((r−g)/(1+g))·d (IMF DSA construct). Positive = debt path declining, negative = rising. r derived from interest expense / debt (overall balance minus primary balance); g from compounded real growth × (1+CPI). Inflation cap at 10% drops gap to null for inflation-tax-regime countries (Argentina, Turkey, Lebanon, Egypt, Nigeria, Ethiopia, etc.) where high nominal-GDP growth mechanically erodes debt while masking underlying fiscal pathology; fiscal-3 still scores them.',
     direction: 'higherBetter',
     goalposts: { worst: -5, best: 3 },
     weight: 0.35,
     sourceKey: 'resilience:recovery:fiscal-space:v1',
     scope: 'global',
     cadence: 'annual',
-    // Tier: 'enrichment' — the indicator excludes hyperinflation countries
-    // by design (CPI > 25% → gap=null), so it structurally cannot meet the
-    // Core-tier ≥180 countries coverage invariant. Scorer doesn't filter by
-    // tier; this is a quality classification. The 3 sibling fiscalSpace
-    // indicators (revenue/balance/debt) remain Core at coverage 190.
+    // Tier: 'enrichment' — the indicator excludes inflation-tax-regime
+    // countries by design (CPI > 10% → gap=null), so it structurally cannot
+    // meet the Core-tier ≥180 countries coverage invariant. Scorer doesn't
+    // filter by tier; this is a quality classification. The 3 sibling
+    // fiscalSpace indicators (revenue/balance/debt) remain Core at coverage
+    // 190. Cap tightened from 25% in 2026-05-19 follow-up to PR #3669 after
+    // Lebanon scored #1 at 14.6% inflation.
     tier: 'enrichment',
-    coverage: 150,
+    coverage: 140,
     license: 'open-data',
     comprehensive: true,
   },

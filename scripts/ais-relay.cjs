@@ -9085,6 +9085,36 @@ const server = http.createServer(async (req, res) => {
 
   if (pathname === '/health' || pathname === '/') {
     const mem = process.memoryUsage();
+    // ⚠ SECURITY — read before adding fields to this response.
+    //
+    // /health is in `isPublicRoute` (no auth check). Fields here are
+    // returned to ANY caller — uptime monitors, attackers probing the
+    // relay, anyone with the URL.
+    //
+    // Per issue #3802, two attacker-aiding fields were REMOVED from the
+    // `auth: {...}` block and the entire `rateLimit: {...}` block was
+    // removed:
+    //
+    //   • `auth.authHeader` — revealed the non-standard header name
+    //     (`x-relay-key`) attackers should target. (Technically also
+    //     exposed via the CORS Allow-Headers preflight, but bundling it
+    //     on /health made the attack one-step instead of two.)
+    //   • `auth.allowVercelPreviewOrigins` — CORS-policy leak.
+    //   • `rateLimit: {...}` — exact windowMs / defaultMax / openskyMax /
+    //     rssMax let an attacker tune scraping cadence to stay just under
+    //     the throttle thresholds.
+    //
+    // The remaining `auth.enabled` + `auth.sharedSecretEnabled` are
+    // PRESERVED intentionally: PR #3812 / #3815 added them as the
+    // operator-visible "is auth configured?" signal that monitoring
+    // tools depend on (tests in tests/relay-auth.test.mjs codify this
+    // contract). Removing them would lie to ops; the trade-off was
+    // explicitly debated and decided in favour of operability.
+    //
+    // If a future operator workflow needs the removed fields, add an
+    // AUTHENTICATED /health/full route instead of widening this public
+    // response. The `ais-relay-health-no-secret-recon` test asserts the
+    // removed fields don't reappear here.
     sendCompressed(req, res, 200, { 'Content-Type': 'application/json' }, JSON.stringify({
       status: 'ok',
       clients: clients.size,
@@ -9131,20 +9161,11 @@ const server = http.createServer(async (req, res) => {
         polymarketInflight: polymarketInflight.size,
       },
       auth: {
-        // `enabled` is the canonical operator-visible field: true when a
-        // shared secret is configured (which is what isAuthorizedRequest()
-        // actually enforces, regardless of any bypass flag). Use this to
-        // detect a no-auth deployment from monitoring without scraping logs.
+        // Preserved per PR #3812 / #3815 contract — operators monitor
+        // "is auth configured?" via these two fields. authHeader and
+        // allowVercelPreviewOrigins removed per #3802. See note above.
         enabled: !AUTH_EFFECTIVELY_DISABLED,
         sharedSecretEnabled: !!RELAY_SHARED_SECRET,
-        authHeader: RELAY_AUTH_HEADER,
-        allowVercelPreviewOrigins: ALLOW_VERCEL_PREVIEW_ORIGINS,
-      },
-      rateLimit: {
-        windowMs: RELAY_RATE_LIMIT_WINDOW_MS,
-        defaultMax: RELAY_RATE_LIMIT_MAX,
-        openskyMax: RELAY_OPENSKY_RATE_LIMIT_MAX,
-        rssMax: RELAY_RSS_RATE_LIMIT_MAX,
       },
     }));
   } else if (pathname === '/metrics') {
