@@ -75,13 +75,7 @@ describe('country-port-clusters: Asian export hubs share a lane with DE', () => 
     );
   });
 
-  it('computeLane(HK → DE, container, HS2=85) returns noModeledLane: false', async () => {
-    const res = await computeLane({ fromIso2: 'HK', toIso2: 'DE', hs2: '85', cargoType: 'container' }, new Map());
-    assert.equal(res.noModeledLane, false, 'HK → DE container/electronics must resolve a primary route (regression of the user-reported pr-3718 symptom)');
-    assert.ok(res.primaryRouteId.length > 0, 'primaryRouteId must be populated when noModeledLane is false');
-  });
-
-  it('every Asian-port country → DE resolves the geographically-faithful primaryRouteId (PR #3832 review P1 lock)', async () => {
+  it('every Asian-port country → DE resolves the geographically-faithful primaryRouteId (PR #3832 review P1 lock, includes HK→DE — the user-reported pr-3718 symptom)', async () => {
     const mismatches: string[] = [];
     for (const iso2 of ASIAN_PORT_COUNTRIES) {
       const res = await computeLane({ fromIso2: iso2, toIso2: 'DE', hs2: '85', cargoType: 'container' }, new Map());
