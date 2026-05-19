@@ -122,6 +122,11 @@ To automate, add a cron job:
 If you prefer to run seeders individually:
 
 ```bash
+# Source .env so REDIS_TOKEN (and any API keys it holds) become available.
+# Quick-start puts REDIS_TOKEN in .env, not in your shell — without this,
+# the next line fails-loud with "REDIS_TOKEN: parameter null or not set".
+set -a; . ./.env; set +a
+
 export UPSTASH_REDIS_REST_URL=http://localhost:8079
 export UPSTASH_REDIS_REST_TOKEN="${REDIS_TOKEN:?set REDIS_TOKEN in .env first}"
 node scripts/seed-earthquakes.mjs
