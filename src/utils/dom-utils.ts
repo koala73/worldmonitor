@@ -69,6 +69,18 @@ const SAFE_ATTRS = new Set(['class', 'href', 'target', 'rel', 'style']);
 // Blocks url(), expression(), javascript:, data: and other CSS injection vectors.
 const SAFE_STYLE_RE = /^color:\s*(#[0-9a-fA-F]{3,8}|rgb\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\)|[a-zA-Z]+|var\(--[\w-]+\))\s*;?\s*$/;
 
+export function ensureNoopenerRel(rel: string | null): string {
+  const tokens = new Set(
+    (rel ?? '')
+      .split(/\s+/)
+      .map((token) => token.trim().toLowerCase())
+      .filter((token) => token && token !== 'opener'),
+  );
+  tokens.add('noopener');
+  tokens.add('noreferrer');
+  return Array.from(tokens).join(' ');
+}
+
 /** Like rawHtml() but strips tags and attributes not in the allowlist. */
 export function safeHtml(html: string): DocumentFragment {
   const tpl = document.createElement('template');
@@ -103,6 +115,12 @@ export function safeHtml(html: string): DocumentFragment {
           if (!SAFE_STYLE_RE.test(style.trim())) {
             el.removeAttribute('style');
           }
+        }
+        if (
+          el.tagName.toLowerCase() === 'a' &&
+          el.getAttribute('target')?.toLowerCase() === '_blank'
+        ) {
+          el.setAttribute('rel', ensureNoopenerRel(el.getAttribute('rel')));
         }
         walk(el);
       }

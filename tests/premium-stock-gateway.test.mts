@@ -132,6 +132,32 @@ describe('premium gateway API key enforcement', () => {
       assert.notEqual(res.status, 200, `wms_ MUST NOT unlock ${path} (got ${res.status})`);
     }
   });
+
+  it('caps POST→GET array expansion per key (#3550)', async () => {
+    const handler = createDomainGateway([
+      {
+        method: 'GET',
+        path: '/api/market/v1/list-market-quotes',
+        handler: async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      },
+    ]);
+
+    const res = await handler(new Request('https://worldmonitor.app/api/market/v1/list-market-quotes', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://worldmonitor.app',
+        'Content-Type': 'application/json',
+        'X-WorldMonitor-Key': SESSION_TOKEN,
+      },
+      body: JSON.stringify({ symbols: Array.from({ length: 201 }, () => 'AAPL') }),
+    }));
+
+    assert.equal(res.status, 400);
+    const body = await res.json() as { error: string; parameter: string; maxValues: number };
+    assert.equal(body.error, 'Too many values for POST compatibility parameter');
+    assert.equal(body.parameter, 'symbols');
+    assert.equal(body.maxValues, 200);
+  });
 });
 
 // ---------------------------------------------------------------------------
