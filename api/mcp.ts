@@ -3132,6 +3132,12 @@ async function dispatchToolsCall(
 
   const jmespathArg = p.arguments?.jmespath;
   const jmespathUsed = typeof jmespathArg === 'string' && jmespathArg.length > 0;
+  // tStart is captured AFTER the Pro reservation round-trip — `latency_ms`
+  // reports time-in-tool, not time-in-tool-plus-time-in-quota-reservation.
+  // Mirrors the error-path rollback exclusion below.
+  // TODO(v1.6.x): include `mcpTokenId` in the telemetry payload for Pro
+  // contexts so downstream per-tenant aggregation can join on it. Out of
+  // scope for v1 since the dashboards we ship next only need `auth_kind`.
   const tStart = Date.now();
   try {
     let result: unknown;
@@ -3155,19 +3161,34 @@ async function dispatchToolsCall(
     // so we can report `bytes_pre_jmespath` separately from the projected
     // size.
     const { text, failed } = applyJmespath(result, jmespathArg);
+    const latencyMs = Date.now() - tStart;
+    // Outer `telemetryEnabled()` here is a perf gate: it skips the
+    // utf8ByteLength + (when JMESPath is active) JSON.stringify(result) walk
+    // when telemetry is off. `emitTelemetry` re-checks internally as the
+    // single safety gate for the initialize + error call sites, which don't
+    // have outer gating because their byte fields are zero or precomputed.
     if (telemetryEnabled()) {
       const bytesPost = utf8ByteLength(text);
       let bytesPre: number;
       if (jmespathUsed) {
-        const preStr = JSON.stringify(result);
-        bytesPre = utf8ByteLength(preStr === undefined ? 'null' : preStr);
+        // Telemetry stringify must never escape into the outer catch — a
+        // circular `result` with a clean JMESPath projection would otherwise
+        // turn a successful request into a 5xx + Pro-quota rollback. On
+        // failure, report `bytes_pre_jmespath: -1` (sentinel: measurement
+        // unavailable) and keep the response intact.
+        try {
+          const preStr = JSON.stringify(result);
+          bytesPre = utf8ByteLength(preStr === undefined ? 'null' : preStr);
+        } catch {
+          bytesPre = -1;
+        }
       } else {
         bytesPre = bytesPost;
       }
       emitTelemetry('mcp.toolcall', {
         tool: tool.name,
         auth_kind: context.kind,
-        latency_ms: Date.now() - tStart,
+        latency_ms: latencyMs,
         bytes_pre_jmespath: bytesPre,
         bytes_post_jmespath: bytesPost,
         jmespath_used: jmespathUsed,
@@ -3276,10 +3297,14 @@ export async function mcpHandler(
   switch (method) {
     case 'initialize': {
       const sessionId = crypto.randomUUID();
+      // `tools_array_bytes` is the bare TOOL_LIST_RESPONSE stringify, not the
+      // full JSON-RPC envelope (jsonrpc/id/protocolVersion/capabilities add
+      // fixed overhead). UA is sliced to 256 chars: a pathological 32 KB
+      // custom UA would otherwise inflate every emitted line for that session.
       emitTelemetry('mcp.tools_list_emitted', {
-        bytes: TOOL_LIST_BYTES,
+        tools_array_bytes: TOOL_LIST_BYTES,
         tool_count: TOOL_LIST_RESPONSE.length,
-        client_user_agent: req.headers.get('User-Agent') ?? '',
+        client_user_agent: (req.headers.get('User-Agent') ?? '').slice(0, 256),
       });
       return rpcOk(id, {
         protocolVersion: MCP_PROTOCOL_VERSION,
