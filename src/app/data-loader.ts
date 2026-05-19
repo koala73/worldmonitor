@@ -593,7 +593,13 @@ export class DataLoaderManager implements AppModule {
       tasks.push({ name: 'radiation', task: runGuarded('radiation', () => this.loadRadiationWatch()) });
     }
 
-    if (SITE_VARIANT !== 'happy') {
+    // App.ts:576-583 merges ALL_PANELS into panelSettings on every variant for
+    // cross-variant pref carryover, so shouldCreatePanel('tech-readiness') is true
+    // even on energy/finance/commodity where the bootstrap doesn't seed the key —
+    // and the panel's 5s fetch (services/economic/index.ts:694) then times out.
+    // Gate on shouldLoad() so refresh only fires when the panel is actually near
+    // the viewport (same pattern as thermal-escalation below).
+    if (SITE_VARIANT !== 'happy' && shouldLoad('tech-readiness')) {
       tasks.push({ name: 'techReadiness', task: runGuarded('techReadiness', () => (this.ctx.panels['tech-readiness'] as TechReadinessPanel)?.refresh()) });
     }
     if (SITE_VARIANT !== 'happy' && shouldLoad('thermal-escalation')) {
