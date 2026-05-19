@@ -1022,10 +1022,21 @@ export class App {
         // Entitlement just resolved → fire PRO-gated initial loads that were
         // skipped at boot. Each loader early-returns if the panel isn't
         // mounted and re-checks hasPremiumAccess() internally, so these
-        // calls are safe and idempotent. Without this, trade-policy would
-        // sit empty for up to REFRESH_INTERVALS.tradePolicy (~10 min) after
-        // sign-in because the scheduler's viewport gate is the only retry.
+        // calls are safe and idempotent. Without this, panels would sit empty
+        // until the next scheduled refresh (10+ min for trade-policy; FOREVER
+        // on the full variant for stock-analysis / stock-backtest / daily-
+        // market-brief / market-implications because their schedulers are
+        // gated to SITE_VARIANT === 'finance'). The audit-locking regression
+        // test in tests/premium-loaders-fan-out-coverage.test.mts asserts
+        // every `hasPremiumAccess() && shouldLoad('X')` gate in data-loader.ts
+        // has a matching call here.
         void this.dataLoader.loadTradePolicy();
+        void this.dataLoader.loadStockAnalysis();
+        void this.dataLoader.loadStockBacktest();
+        void this.dataLoader.loadDailyMarketBrief();
+        void this.dataLoader.loadMarketImplications();
+        void this.dataLoader.loadWsbTickers();
+        void this.dataLoader.loadResilienceRanking();
       }
       _prevHadPremium = nowPremium;
     };

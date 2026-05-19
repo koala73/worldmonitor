@@ -11,6 +11,28 @@ import { resolveR2StorageConfig, putR2JsonObject, getR2JsonObject } from './_r2-
 import { extractFirstJsonObject, extractFirstJsonArray, cleanJsonText } from './_llm-json.mjs';
 import { loadTickerSet } from './_ticker-validation.mjs';
 import { computeEmaWindows, computeRisk24h } from './_ema-threat-engine.mjs';
+// Queue / outcome / runId constants live in the shared shim so the
+// HTTP-trigger handler (server/_shared/simulation-queue.ts) and this
+// seeder agree on the Redis schema. See #3734 + docs/plans/2026-05-18-
+// 003-feat-simulation-trigger-and-runid-filter-plan.md D4.
+//
+// IMPORT PATH NOTE: the shim lives in scripts/ — NOT server/_shared/ —
+// because the Railway services that run this seeder (seed-forecasts,
+// simulation-worker, deep-forecast-worker) use nixpacks with
+// root_dir=scripts and only package scripts/ contents into /app/.
+// Any `../server/_shared/...` import escapes /app/ at runtime and
+// crashes with ERR_MODULE_NOT_FOUND. See #3811 incident logs.
+import {
+  SIMULATION_TASK_KEY_PREFIX,
+  SIMULATION_TASK_QUEUE_KEY,
+  SIMULATION_TASK_TTL_SECONDS,
+  SIMULATION_OUTCOME_LATEST_KEY,
+  SIMULATION_OUTCOME_BY_RUN_KEY_PREFIX,
+  SIMULATION_OUTCOME_BY_RUN_TTL_SECONDS,
+  SIMULATION_PACKAGE_LATEST_KEY,
+  VALID_RUN_ID_RE,
+  pkgFingerprint,
+} from './_simulation-queue-constants.mjs';
 
 const _isDirectRun = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, '/'));
 if (_isDirectRun) loadEnvFile(import.meta.url);
@@ -37,22 +59,16 @@ const FORECAST_DEEP_POLL_INTERVAL_MS = 30 * 1000;
 const FORECAST_DEEP_MAX_CANDIDATES = 3;
 const FORECAST_DEEP_RUN_PREFIX = 'seed-data/forecast-traces';
 const SIMULATION_PACKAGE_SCHEMA_VERSION = 'v1';
-const SIMULATION_PACKAGE_LATEST_KEY = 'forecast:simulation-package:latest';
-const SIMULATION_OUTCOME_LATEST_KEY = 'forecast:simulation-outcome:latest';
 const SIMULATION_OUTCOME_SCHEMA_VERSION = 'v1';
 const SIMULATION_RUNNER_VERSION = 'v1';
-const SIMULATION_TASK_KEY_PREFIX = 'forecast:simulation-task:v1';
-const SIMULATION_TASK_QUEUE_KEY = 'forecast:simulation-task-queue:v1';
 const SIMULATION_LOCK_KEY_PREFIX = 'forecast:simulation-lock:v1';
 const SIMULATION_DECORATIONS_KEY = 'forecast:sim-decorations:v1';
 const SIMULATION_DECORATIONS_META_KEY = `seed-meta:${SIMULATION_DECORATIONS_KEY}`;
 const SIMULATION_DECORATIONS_TTL_SECONDS = 86400 * 3; // 3 days — outlasts typical run cadence
 const SIMULATION_DECORATIONS_MAX_AGE_MS = 48 * 60 * 60 * 1000; // 48h — skip apply if no simulation ran recently
-const VALID_RUN_ID_RE = /^\d{13,}-[a-z0-9-]{1,64}$/i;
 const SIMULATION_ROUND1_MAX_TOKENS = 2200;
 const SIMULATION_ROUND2_MAX_TOKENS = 2500;
 const SIMULATION_LOCK_TTL_SECONDS = 20 * 60;
-const SIMULATION_TASK_TTL_SECONDS = 4 * 60 * 60;
 const SIMULATION_POLL_INTERVAL_MS = 30 * 1000;
 const PUBLISH_MIN_PROBABILITY = 0;
 const PANEL_MIN_PROBABILITY = 0.1;
@@ -663,7 +679,7 @@ async function readInputKeys() {
   const { url, token } = getRedisCredentials();
   const fredKeys = FRED_MARKET_SERIES.map((seriesId) => FRED_MARKET_INPUT_KEYS[seriesId]);
   const keys = [
-    'risk:scores:sebuf:stale:v1',
+    'risk:scores:sebuf:stale:v2',
     'temporal:anomalies:v1',
     'theater_posture:sebuf:stale:v1',
     'military:forecast-inputs:stale:v1',
@@ -748,7 +764,7 @@ async function readInputKeys() {
   );
 
   return {
-    ciiScores: parsedByKey['risk:scores:sebuf:stale:v1'],
+    ciiScores: parsedByKey['risk:scores:sebuf:stale:v2'],
     temporalAnomalies: parsedByKey['temporal:anomalies:v1'],
     theaterPosture: parsedByKey['theater_posture:sebuf:stale:v1'],
     militaryForecastInputs: parsedByKey['military:forecast-inputs:stale:v1'],
@@ -16929,20 +16945,55 @@ async function writeSimulationOutcome(pkg, outcome, { storageConfig } = {}) {
     stabilizers: (tr.stabilizers || []).slice(0, 3),
     invalidators: (tr.invalidators || []).slice(0, 2),
   }));
+  const outcomePayload = {
+    runId,
+    outcomeKey,
+    schemaVersion: SIMULATION_OUTCOME_SCHEMA_VERSION,
+    theaterCount: (outcome.theaterResults || []).length,
+    generatedAt: generatedAt || Date.now(),
+    uiTheaters,
+  };
+  const outcomePayloadString = JSON.stringify(outcomePayload);
+  // Canonical :latest write — D10. Awaited; throws propagate to the worker's
+  // try/catch and surface as `status: 'failed'`.
   await redisCommand(url, token, [
     'SET',
     SIMULATION_OUTCOME_LATEST_KEY,
-    JSON.stringify({
-      runId,
-      outcomeKey,
-      schemaVersion: SIMULATION_OUTCOME_SCHEMA_VERSION,
-      theaterCount: (outcome.theaterResults || []).length,
-      generatedAt: generatedAt || Date.now(),
-      uiTheaters,
-    }),
+    outcomePayloadString,
     'EX',
     String(TRACE_REDIS_TTL_SECONDS),
   ]);
+
+  // Secondary :by-run write — D9. Failure must NOT block the worker
+  // (R7: auto-trigger / worker liveness unchanged). On failure, log +
+  // attempt a tombstone payload so the read path can distinguish "expired"
+  // from "by-run write failed" via the get-simulation-outcome `note` text.
+  const byRunKey = `${SIMULATION_OUTCOME_BY_RUN_KEY_PREFIX}:${runId}`;
+  try {
+    await redisCommand(url, token, [
+      'SET', byRunKey, outcomePayloadString, 'EX', String(SIMULATION_OUTCOME_BY_RUN_TTL_SECONDS),
+    ]);
+  } catch (err) {
+    console.warn(`  [Simulation] by-run SET failed for ${runId}: ${err.message}`);
+    // Best-effort tombstone with NX — if the primary by-run SET actually
+    // landed server-side but the response timed out network-side, we MUST
+    // NOT overwrite the real outcome with a tombstone. NX makes the
+    // tombstone a "write only if absent" so a successful-but-throwing
+    // primary write is preserved. If Redis is fully down the tombstone
+    // also fails; the read path then sees the by-run key absent and falls
+    // back to :latest with the "may have expired" note (acceptable).
+    // (Greptile P1 review on PR #3811.)
+    try {
+      await redisCommand(url, token, [
+        'SET', byRunKey,
+        JSON.stringify({ runId, error: 'by_run_write_failed', tombstoneAt: Date.now() }),
+        'EX', String(SIMULATION_OUTCOME_BY_RUN_TTL_SECONDS), 'NX',
+      ]);
+    } catch (_err2) {
+      // Both writes failed; user-facing fallback is :latest with no
+      // tombstone distinction. Acceptable degradation.
+    }
+  }
   return { outcomeKey };
 }
 
@@ -16951,18 +17002,58 @@ function validateRunId(runId) { return typeof runId === 'string' && VALID_RUN_ID
 function buildSimulationTaskKey(runId) { return `${SIMULATION_TASK_KEY_PREFIX}:${runId}`; }
 function buildSimulationLockKey(runId) { return `${SIMULATION_LOCK_KEY_PREFIX}:${runId}`; }
 
-async function enqueueSimulationTask(runId) {
+// Backward-compatible signature: `pkgFingerprint = ''` lets the auto-trigger
+// at line 16096 keep calling with just `runId` and gets the legacy "skip
+// fingerprint verification" worker behavior. HTTP-trigger callers (via the
+// TS counterpart in server/_shared/simulation-queue.ts) always pass a real
+// fingerprint. See #3734 D5 / D7.
+//
+// On transport error this surfaces a `'redis_error'` reason (mirrors the TS
+// implementation). Without it the auto-trigger's .then/.catch at line 16096
+// would silently no-op when Upstash is degraded, losing one cron cycle.
+async function enqueueSimulationTask(runId, pkgFingerprintValue = '') {
   if (!runId) return { queued: false, reason: 'missing_run_id' };
   if (!validateRunId(runId)) return { queued: false, reason: 'invalid_run_id_format' };
   const { url, token } = getRedisCredentials();
-  const queued = await redisCommand(url, token, [
-    'SET', buildSimulationTaskKey(runId),
-    JSON.stringify({ runId, createdAt: Date.now() }),
-    'EX', String(SIMULATION_TASK_TTL_SECONDS), 'NX',
-  ]);
+  let queued;
+  try {
+    queued = await redisCommand(url, token, [
+      'SET', buildSimulationTaskKey(runId),
+      JSON.stringify({ runId, pkgFingerprint: pkgFingerprintValue, createdAt: Date.now() }),
+      'EX', String(SIMULATION_TASK_TTL_SECONDS), 'NX',
+    ]);
+  } catch (err) {
+    console.warn(`  [Simulation] enqueue SET transport error for ${runId}: ${err.message}`);
+    return { queued: false, reason: 'redis_error' };
+  }
   if (queued?.result !== 'OK') return { queued: false, reason: 'duplicate' };
-  await redisCommand(url, token, ['ZADD', SIMULATION_TASK_QUEUE_KEY, String(Date.now()), runId]);
-  await redisCommand(url, token, ['EXPIRE', SIMULATION_TASK_QUEUE_KEY, String(TRACE_REDIS_TTL_SECONDS)]);
+  // ZADD is load-bearing — the worker discovers tasks EXCLUSIVELY via ZRANGE
+  // on this set (listQueuedSimulationTasks → processNextSimulationTask). A
+  // task key without a queue member is invisible to the worker until the 4h
+  // task TTL expires. If ZADD fails, roll back the task key + surface
+  // redis_error so the auto-trigger's .catch at line 16096 logs and the
+  // HTTP-trigger handler returns 503 instead of a false success.
+  // (Human review on PR #3811.)
+  let zaddRes;
+  try {
+    zaddRes = await redisCommand(url, token, ['ZADD', SIMULATION_TASK_QUEUE_KEY, String(Date.now()), runId]);
+  } catch (err) {
+    console.warn(`  [Simulation] enqueue ZADD transport error for ${runId}: ${err.message}`);
+    try { await redisCommand(url, token, ['DEL', buildSimulationTaskKey(runId)]); } catch (_) {}
+    return { queued: false, reason: 'redis_error' };
+  }
+  if (typeof zaddRes?.result !== 'number') {
+    console.warn(`  [Simulation] enqueue ZADD returned non-numeric result for ${runId}: ${JSON.stringify(zaddRes)}`);
+    try { await redisCommand(url, token, ['DEL', buildSimulationTaskKey(runId)]); } catch (_) {}
+    return { queued: false, reason: 'redis_error' };
+  }
+  // EXPIRE is a TTL hint only — failure here doesn't lose the task; the queue
+  // member is durable. Log but don't roll back.
+  try {
+    await redisCommand(url, token, ['EXPIRE', SIMULATION_TASK_QUEUE_KEY, String(TRACE_REDIS_TTL_SECONDS)]);
+  } catch (err) {
+    console.warn(`  [Simulation] enqueue EXPIRE transport error for ${runId}: ${err.message}`);
+  }
   return { queued: true, reason: '' };
 }
 
@@ -17050,6 +17141,22 @@ async function processNextSimulationTask(options = {}) {
         console.warn(`  [Simulation] Package runId mismatch: task=${runId} pkg=${pkgPointer.runId} — using latest package (Phase 2 behaviour)`);
       }
 
+      // pkgFingerprint verification (#3734 D5/D7). Truthy guard so:
+      //   - task.pkgFingerprint missing (pre-upgrade in-flight tasks): skip
+      //     verification — preserves R7 (auto-trigger unchanged behavior).
+      //   - task.pkgFingerprint === '' (auto-trigger explicit empty default):
+      //     skip verification — same path.
+      //   - task.pkgFingerprint present + matches current pointer: pass.
+      //   - task.pkgFingerprint present + differs: log + tag outcome with
+      //     `_meta.packageRotated: true` (NOT user-facing per D8); still
+      //     proceed with latest package (preserves existing fallback at
+      //     line 17073-17075).
+      const currentFingerprint = await pkgFingerprint(pkgPointer.pkgKey);
+      const packageRotated = !!(task.pkgFingerprint && task.pkgFingerprint !== currentFingerprint);
+      if (packageRotated) {
+        console.warn(`  [Simulation] package_rotated: task=${runId} task.pkgFingerprint=${task.pkgFingerprint} current=${currentFingerprint} — proceeding with current package`);
+      }
+
       const storageConfig = resolveR2StorageConfig();
       if (!storageConfig) {
         await completeSimulationTask(runId);
@@ -17116,6 +17223,10 @@ async function processNextSimulationTask(options = {}) {
         schemaVersion: SIMULATION_OUTCOME_SCHEMA_VERSION,
         runnerVersion: SIMULATION_RUNNER_VERSION,
         sourceSimulationPackageKey: pkgPointer.pkgKey,
+        // Internal-only metadata (D8). NOT exposed via get-simulation-outcome
+        // response proto. Server-side tooling reading from Redis directly
+        // can use this; HTTP callers see a clean response shape.
+        _meta: packageRotated ? { packageRotated: true } : {},
         theaterResults,
         failedTheaters,
         globalObservations: eligibleTheaters.length === 0

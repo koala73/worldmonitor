@@ -18,7 +18,7 @@ import { getAiFlowSettings, isAnyAiProviderEnabled, subscribeAiFlowChange } from
 import { getActiveFrameworkForPanel, subscribeFrameworkChange } from '@/services/analysis-framework-store';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { FrameworkSelector } from './FrameworkSelector';
-import { getServerInsights, type ServerInsights, type ServerInsightStory } from '@/services/insights-loader';
+import { fetchServerInsights, getServerInsights, type ServerInsights, type ServerInsightStory } from '@/services/insights-loader';
 import { computeISQ, type SignalQuality, type SignalQualityInput } from '@/utils/signal-quality';
 import { extractEntitiesFromTitle } from '@/services/entity-extraction';
 import { getEntityIndex } from '@/services/entity-index';
@@ -185,7 +185,18 @@ export class InsightsPanel extends Panel {
     const thisGeneration = this.updateGeneration;
 
     // Try server-side pre-computed insights first (instant, works even without clusters)
-    const serverInsights = getServerInsights();
+    let serverInsights = getServerInsights();
+    if (!serverInsights) {
+      // Bootstrap hydration miss (mobile fast-tier abort on 4G, stale cache,
+      // or single-shot getHydratedData already consumed). On-demand refetch
+      // via the bootstrap key-filter endpoint covers all three cases —
+      // critical for mobile where the client-side LLM fallback is gated off,
+      // and a free win for desktop (no client LLM cost when server data is
+      // recoverable). Mirrors the AAIISentimentPanel pattern.
+      if (this.updateGeneration !== thisGeneration) return;
+      serverInsights = await fetchServerInsights();
+      if (this.updateGeneration !== thisGeneration) return;
+    }
     if (serverInsights) {
       await this.updateFromServer(serverInsights, clusters, thisGeneration);
       return;

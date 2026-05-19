@@ -15,12 +15,12 @@
 //     through to the original stub — the brief must always ship.
 //
 // Cache semantics:
-//   - brief:llm:whymatters:v4:{storyHash} — 24h, shared across users
+//   - brief:llm:whymatters:v5:{storyHash} — 24h, shared across users
 //     for the same story. v4 bumped from v3 alongside the F6
 //     date-grounding line: every v3 row was produced from a prompt
 //     with no notion of "today" and may state a fabricated year, so
 //     v3 rows must not survive the deploy. v2 rows were lead-blind.
-//   - brief:llm:digest:v6:{userId|public}:{sensitivity}:{poolHash}
+//   - brief:llm:digest:v8:{userId|public}:{sensitivity}:{poolHash}
 //     — 4h. The canonical synthesis is now ALWAYS produced through
 //     this path (formerly split with `generateAISummary` in the
 //     digest cron). Material includes profile-SHA, greeting bucket,
@@ -162,7 +162,13 @@ export async function generateWhyMatters(story, deps) {
   // cold-start through the date-grounded prompt on first tick after
   // deploy. (v2→v3 was the 2026-04-24 RSS-description fix.) Entries
   // expire in ≤24h so the prior prefix ages out without a DEL sweep.
-  const key = `brief:llm:whymatters:v4:${await hashBriefStory(story)}`;
+  //
+  // v4→v5: 2026-05-17 PR #3751. `hashBriefStory` folds `story.category`
+  // into the key; pre-PR every story carried 'General' (no category was
+  // persisted on story:track:v1), post-PR carries the per-story
+  // Title-Cased EventCategory value. Every v4 cache row is now stale.
+  // Bump invalidates them cleanly.
+  const key = `brief:llm:whymatters:v5:${await hashBriefStory(story)}`;
   try {
     const hit = await deps.cacheGet(key);
     if (typeof hit === 'string' && hit.length > 0) return hit;
@@ -275,14 +281,19 @@ export function parseStoryDescription(text, headline) {
  */
 export async function generateStoryDescription(story, deps) {
   // Shares hashBriefStory() with whyMatters — the key prefix
-  // (`brief:llm:description:v2:`) is what separates the two cache
+  // (`brief:llm:description:v3:`) is what separates the two cache
   // namespaces; the material is the six fields including description.
   // Bumped v1→v2 on 2026-04-24 alongside the RSS-description fix so
   // cached pre-grounding output (hallucinated named actors from
   // headline-only prompts) is evicted. hashBriefStory itself includes
   // description in the hash material, so content drift invalidates
   // naturally too — the prefix bump is belt-and-braces.
-  const key = `brief:llm:description:v2:${await hashBriefStory(story)}`;
+  //
+  // v2→v3: 2026-05-17 PR #3751. `hashBriefStory` folds `story.category`
+  // into the hash material — same story-shape change as whymatters
+  // v4→v5. Pre-PR every category was 'General'; post-PR carries the
+  // per-story Title-Cased EventCategory. Bump invalidates v2 entries.
+  const key = `brief:llm:description:v3:${await hashBriefStory(story)}`;
   try {
     const hit = await deps.cacheGet(key);
     if (typeof hit === 'string') {
@@ -333,8 +344,16 @@ const DIGEST_PROSE_SYSTEM_BASE =
   "impactful development by its specific actor and event (e.g. \"Pentagon " +
   "chief Hegseth declared the US blockade on Iran is going global\"), NOT " +
   'an editorial framing about "geopolitical tensions" or "shifting ' +
-  'landscapes". Subsequent sentences may give brief context. Reference at ' +
-  'most 1–2 threads. No vapid hedging.>",\n' +
+  'landscapes". Subsequent sentences may give brief context about THE SAME ' +
+  'story (causes, stakes, prior developments). Reference a SECOND story ONLY ' +
+  'when there is a substantive link to the primary one (shared actor, causal ' +
+  'connection, direct policy consequence, same geographic theatre). NEVER ' +
+  'staple unrelated stories together using weak temporal connectives like ' +
+  '"This comes as", "Meanwhile", "At the same time", "In other news", or ' +
+  '"Elsewhere" — those produce editorially incoherent leads that mention two ' +
+  'unrelated events in one sentence without explaining why they belong ' +
+  'together. If two top stories are unrelated, just lead with the most ' +
+  'impactful one and let the threads list cover the rest. No vapid hedging.>",\n' +
   '  "threads": [\n' +
   '    { "tag": "<one-word editorial category e.g. Energy, Diplomacy, Climate>", ' +
   '"teaser": "<one sentence naming a SPECIFIC event or actor — e.g. ' +
@@ -352,6 +371,14 @@ const DIGEST_PROSE_SYSTEM_BASE =
   '"buzzing with developments", "intricate shifts", "evolving landscape", ' +
   '"navigating", "discerning reader", "continues to simmer", "shape the ' +
   'coming months", "strategic importance".\n' +
+  'BANNED stitching phrases (do NOT use any of these to staple two stories ' +
+  'together in the lead — they signal unrelated content awkwardly joined): ' +
+  '"this comes as", "this declaration comes as", "this announcement comes as", ' +
+  '"meanwhile", "at the same time", "in other news", "elsewhere", "across the ' +
+  'world", "on another front", "in a separate development". If two stories ' +
+  'are not substantively linked (no shared actor, no causal connection, no ' +
+  'direct policy consequence, no same geographic theatre), do NOT stitch them ' +
+  'into one sentence — lead with the more impactful one alone.\n' +
   'Threads: 3–6 items reflecting actual clusters in the stories. ' +
   'Signals: 2–4 items, forward-looking. ' +
   'rankedStoryHashes: at least the top 3 stories by editorial importance, ' +
@@ -922,7 +949,28 @@ export async function generateDigestProse(userId, stories, sensitivity, deps, ct
   // shipped vapid editorial filler ("the global stage is buzzing",
   // "navigating the evolving landscape"). v3 cache rows still in
   // TTL would otherwise serve stale vapid leads for 4h post-deploy.
-  const key = `brief:llm:digest:v6:${hashDigestInput(userId, stories, sensitivity, ctx)}`;
+  //
+  // v7 (2026-05-17): bumped from v6 alongside PR #3751's category
+  // persistence. `hashDigestInput` folds `s.category` into the hash
+  // material; pre-PR every story carried 'General' (no category was
+  // persisted on story:track:v1), post-PR carries the per-story
+  // Title-Cased EventCategory value. v6 cache rows would otherwise
+  // serve digest prose generated against the pre-PR all-General pool
+  // for the full 4h TTL. Sibling bumps applied to whymatters (v4→v5)
+  // and description (v2→v3) — all three caches depend on the same
+  // story.category field via hashBriefStory / hashDigestInput.
+  //
+  // v8 (2026-05-18): bumped from v7 when DIGEST_PROSE_SYSTEM_BASE gained
+  // anti-stitching instructions (May 17 brief shipped a lead that stapled
+  // Ebola + Israel-Lebanon with "This declaration comes as…" — two
+  // unrelated top stories awkwardly joined). The prompt now explicitly
+  // forbids weak temporal connectives ("This comes as", "Meanwhile",
+  // "At the same time", "In other news", "Elsewhere", "Across the world",
+  // "On another front", "In a separate development") and instructs the
+  // model to lead with ONE primary story when two top stories aren't
+  // substantively linked. v7 cache rows would otherwise serve stitched
+  // leads for the full 4h TTL. Prompt content change → cache invalidation.
+  const key = `brief:llm:digest:v8:${hashDigestInput(userId, stories, sensitivity, ctx)}`;
   try {
     const hit = await deps.cacheGet(key);
     // CRITICAL: re-run the shape+grounding validator on cache hits.

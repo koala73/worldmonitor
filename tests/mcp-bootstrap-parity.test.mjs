@@ -53,8 +53,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'cascade-mirror: live counterpart of theater_posture:sebuf:stale:v1 (covered by get_military_posture). CASCADE_GROUPS theaterPosture entry.'],
   ['theater-posture:sebuf:backup:v1',
     'cascade-mirror: backup counterpart of theater_posture:sebuf:stale:v1 (covered by get_military_posture). CASCADE_GROUPS theaterPosture entry.'],
-  ['risk:scores:sebuf:v1',
-    'cascade-mirror: live counterpart of risk:scores:sebuf:stale:v1 (covered by get_conflict_events).'],
+  ['risk:scores:sebuf:v2',
+    'cascade-mirror: live counterpart of risk:scores:sebuf:stale:v2 (covered by get_conflict_events).'],
   ['military:flights:v1',
     'cascade-mirror: live counterpart of military:flights:stale:v1 — deferred to a future expanded military tool (no current tool exposes either variant).'],
   ['military:flights:stale:v1',
@@ -68,13 +68,13 @@ const EXCLUDED_FROM_MCP = new Map([
   ['positive-events:geo:v1',
     'cascade-mirror: live counterpart of positive_events:geo-bootstrap:v1 (covered by get_positive_events).'],
   ['aviation:delays:faa:v1',
-    'cascade-mirror: RPC variant of aviation:delays-bootstrap:v1 (covered by get_aviation_status). Same seed-meta key (seed-meta:aviation:faa).'],
+    'cascade-mirror: RPC variant of aviation:delays-bootstrap:v2 (covered by get_aviation_status). Same seed-meta key (seed-meta:aviation:faa).'],
   ['cyber:threats:v2',
     'cascade-mirror: RPC variant of cyber:threats-bootstrap:v2 (covered by get_cyber_threats). Same seed-meta key (seed-meta:cyber:threats).'],
   ['aviation:delays:intl:v3',
-    'cascade-mirror: international delays sibling of aviation:delays-bootstrap:v1 (covered by get_aviation_status) — deferred to a future expanded aviation tool that exposes the intl variant directly.'],
+    'cascade-mirror: international delays sibling of aviation:delays-bootstrap:v2 (covered by get_aviation_status) — deferred to a future expanded aviation tool that exposes the intl variant directly.'],
   ['aviation:notam:closures:v2',
-    'cascade-mirror: NOTAM closures sibling of aviation:delays-bootstrap:v1 (covered by get_aviation_status) — deferred to a future expanded aviation tool that exposes NOTAMs directly.'],
+    'cascade-mirror: NOTAM closures sibling of aviation:delays-bootstrap:v2 (covered by get_aviation_status) — deferred to a future expanded aviation tool that exposes NOTAMs directly.'],
   ['supply_chain:portwatch:v1',
     'cascade-mirror: PortWatch aggregate; per-port detail (supply_chain:portwatch-ports:v1:_countries) is the canonical key already exposed via get_chokepoint_status.'],
 
@@ -123,8 +123,10 @@ const EXCLUDED_FROM_MCP = new Map([
     'deferred: recovery pillar stub seeder, not yet deployed (api/health.js:470-471).'],
   ['resilience:recovery:import-hhi:v1',
     'deferred: recovery pillar stub seeder, not yet deployed (api/health.js:470-471).'],
-  ['resilience:recovery:fuel-stocks:v1',
-    'deferred: recovery pillar stub seeder, not yet deployed (api/health.js:470-471).'],
+  // resilience:recovery:fuel-stocks:v1 exclusion removed alongside PR #3764
+  // (api/health.js probe removal). The seeder still runs and writes the key
+  // but scoreFuelStockDays does not read it, so the key is no longer in
+  // STANDALONE_KEYS and an MCP exclusion would be a dead entry.
   ['resilience:recovery:reexport-share:v1',
     'deferred: recovery pillar stub seeder, not yet deployed.'],
   ['resilience:recovery:sovereign-wealth:v1',

@@ -202,7 +202,7 @@ describe('helpers', () => {
 // ────────────────────────────────────────────────────────────────────────────
 
 const baseSources = () => ({
-  'risk:scores:sebuf:stale:v1': {
+  'risk:scores:sebuf:stale:v2': {
     ciiScores: [
       { region: 'IR', combinedScore: 65, trend: 'TREND_DIRECTION_UP' },
       { region: 'IL', combinedScore: 55, trend: 'TREND_DIRECTION_STABLE' },
@@ -281,7 +281,7 @@ describe('computeBalanceVector', () => {
 
   it('weighted-tail domestic fragility amplifies high-criticality countries', () => {
     const sources = {
-      'risk:scores:sebuf:stale:v1': {
+      'risk:scores:sebuf:stale:v2': {
         ciiScores: [
           // Low CII for low-criticality countries
           { region: 'JO', combinedScore: 10 },
@@ -520,9 +520,9 @@ describe('snapshot meta', () => {
 
   it('buildPreMeta marks stale inputs based on max-age', () => {
     const old = { fetchedAt: Date.now() - 999_999_999 };
-    const sources = { 'risk:scores:sebuf:stale:v1': old };
+    const sources = { 'risk:scores:sebuf:stale:v2': old };
     const { pre } = buildPreMeta(sources, '1.0.0', '1.0.0');
-    assert.ok(pre.stale_inputs.includes('risk:scores:sebuf:stale:v1'));
+    assert.ok(pre.stale_inputs.includes('risk:scores:sebuf:stale:v2'));
   });
 
   it('buildFinalMeta merges pre + finalFields preserving snapshot_id', () => {
@@ -537,6 +537,187 @@ describe('snapshot meta', () => {
     assert.equal(final.trigger_reason, 'regime_shift');
     assert.equal(final.narrative_provider, 'groq');
     assert.equal(final.model_version, MODEL_VERSION);
+  });
+
+  // #3728: undated payloads were defaulting to fresh, inflating
+  // snapshot_confidence whenever an upstream seeder stalled without a
+  // timestamp. Flipped to stale so the confidence score reflects reality.
+  it('buildPreMeta treats present-but-undated inputs as stale (#3728)', () => {
+    // risk:scores:sebuf:stale:v2 has no metaKey and the payload below has
+    // no parseable timestamp field — exactly the case that used to slip
+    // through as "fresh".
+    const { pre } = buildPreMeta(
+      { 'risk:scores:sebuf:stale:v2': { ciiScores: [] } },
+      '1.0.0',
+      '1.0.0',
+    );
+    assert.ok(
+      pre.stale_inputs.includes('risk:scores:sebuf:stale:v2'),
+      'undated payload should land in stale_inputs, not be silently treated as fresh',
+    );
+  });
+
+  // #3728: valid_until was hardcoded to now+6h regardless of input TTLs, so
+  // a snapshot built from a single 30-min-TTL input that was already 20 min
+  // old would advertise validity 5.7 hours past the point where its
+  // upstream input goes stale. Derive from the registry instead.
+  it('valid_until reflects oldest fresh input TTL (#3728)', () => {
+    // risk:scores:sebuf:stale:v2 has maxAgeMin=30. With fetchedAt=20min
+    // ago, the input expires in ~10min, well before the 6h cap.
+    const now = Date.now();
+    const fetchedAt = now - 20 * 60_000;
+    const { pre } = buildPreMeta(
+      { 'risk:scores:sebuf:stale:v2': { ciiScores: [], fetchedAt } },
+      '1.0.0',
+      '1.0.0',
+    );
+    const expected = fetchedAt + 30 * 60_000; // ~10min from now
+    // 1s tolerance covers Date.now() drift between buildPreMeta and here.
+    const drift = Math.abs(pre.valid_until - expected);
+    assert.ok(
+      drift < 1000,
+      `valid_until should be ~${expected} (input ts + maxAgeMin), got ${pre.valid_until} (drift ${drift}ms)`,
+    );
+    // Sanity: must NOT be the old hardcoded now+6h.
+    const sixHoursFromNow = now + 6 * 60 * 60 * 1000;
+    assert.ok(
+      Math.abs(pre.valid_until - sixHoursFromNow) > 60_000,
+      'valid_until must NOT default to now+6h when an input has a tighter TTL',
+    );
+  });
+
+  it('valid_until = min(input TTLs) when all inputs are fresh — tightest input wins (#3728)', () => {
+    // With every registry key fresh, the tightest maxAgeMin sets the bound.
+    // Today that is relay:oref:history:v1 at 15min, so the cap (6h) is NOT
+    // the binding constraint — this asserts the "min wins" rule. The cap
+    // case is exercised separately below.
+    const now = Date.now();
+    const allKeys = {};
+    for (const s of FRESHNESS_REGISTRY) allKeys[s.key] = { fetchedAt: now };
+    const { pre } = buildPreMeta(allKeys, '1.0.0', '1.0.0');
+    const cap = now + 6 * 60 * 60 * 1000;
+    const tightestMin = Math.min(...FRESHNESS_REGISTRY.map((s) => s.maxAgeMin));
+    const expectedFromTightest = now + tightestMin * 60_000;
+    // 1s tolerance: buildPreMeta snapshots its own Date.now() internally.
+    assert.ok(
+      Math.abs(pre.valid_until - expectedFromTightest) < 1000,
+      `valid_until should be ~now + tightest TTL (${tightestMin}min); got drift ${pre.valid_until - expectedFromTightest}ms`,
+    );
+    assert.ok(pre.valid_until < cap, 'tightest input must beat the 6h cap when it is < 6h');
+  });
+
+  it('valid_until is capped at now + 6h when ALL fresh inputs have TTL > 6h (#3728)', () => {
+    // Restrict the sources map to only registry entries with maxAgeMin > 6h
+    // so the cap is the binding constraint, not any individual input TTL.
+    // (Tightest such entry today: intelligence:gpsjam:v2 at 240min = 4h, so
+    // we use a >360min threshold to actually exercise the cap.)
+    const SIX_HOURS_MIN = 6 * 60;
+    const now = Date.now();
+    const longTtlSources = {};
+    for (const s of FRESHNESS_REGISTRY) {
+      if (s.maxAgeMin > SIX_HOURS_MIN) longTtlSources[s.key] = { fetchedAt: now };
+    }
+    assert.ok(
+      Object.keys(longTtlSources).length > 0,
+      'registry must contain at least one entry with maxAgeMin > 6h for this test to be meaningful',
+    );
+    const { pre, classification } = buildPreMeta(longTtlSources, '1.0.0', '1.0.0');
+    // Sanity: every included key should be fresh (so the cap, not a stale
+    // fallback, is what's binding valid_until).
+    assert.equal(classification.fresh.length, Object.keys(longTtlSources).length);
+    const cap = now + 6 * 60 * 60 * 1000;
+    // 1s tolerance for tick drift between this Date.now() and buildPreMeta's.
+    assert.ok(
+      Math.abs(pre.valid_until - cap) < 1000,
+      `valid_until should clamp to now + 6h (${cap}) when all inputs out-TTL the cap; got ${pre.valid_until} (drift ${pre.valid_until - cap}ms)`,
+    );
+  });
+
+  it('valid_until collapses to now when all inputs are stale or missing (#3728)', () => {
+    // All inputs missing → fresh[] is empty → valid_until = now.
+    const before = Date.now();
+    const { pre } = buildPreMeta({}, '1.0.0', '1.0.0');
+    const after = Date.now();
+    assert.ok(
+      pre.valid_until >= before && pre.valid_until <= after,
+      `valid_until should collapse to ~now when no inputs are fresh, got ${pre.valid_until} (window: ${before}..${after})`,
+    );
+    // Sanity: confidence should also be 0 in this all-missing case.
+    assert.equal(pre.snapshot_confidence, 0);
+  });
+
+  it('valid_until collapses to now when present inputs are all undated (#3728)', () => {
+    // Present but undated → classified stale → fresh[] empty → valid_until=now.
+    const sources = {};
+    for (const s of FRESHNESS_REGISTRY) sources[s.key] = {}; // no timestamps
+    const before = Date.now();
+    const { pre } = buildPreMeta(sources, '1.0.0', '1.0.0');
+    const after = Date.now();
+    assert.equal(pre.stale_inputs.length, FRESHNESS_REGISTRY.length);
+    assert.ok(
+      pre.valid_until >= before && pre.valid_until <= after,
+      'undated-everywhere should collapse valid_until to now',
+    );
+  });
+
+  // #3781 follow-on: 5 upstream feeds whose payloads carry no timestamp
+  // `extractTimestamp` recognises would have flipped to STALE on first
+  // deploy under #3728's stricter logic. Each is now wired to an existing
+  // seed-meta:* companion key so the classifier can prove freshness
+  // without the data payload needing a top-level timestamp.
+  //
+  // Parameterized across all 5 wired keys: any one of them losing its
+  // metaKey hint (or the companion key going missing) would re-introduce
+  // the on-deploy STALE noise this PR removes.
+  for (const [inputKey, metaKey] of [
+    ['risk:scores:sebuf:stale:v2',          'seed-meta:intelligence:risk-scores'],
+    ['intelligence:cross-source-signals:v1', 'seed-meta:intelligence:cross-source-signals'],
+    ['energy:mix:v1:_all',                   'seed-meta:economic:owid-energy-mix'],
+    ['supply_chain:transit-summaries:v1',    'seed-meta:supply_chain:transit-summaries'],
+    ['relay:oref:history:v1',                'seed-meta:relay:oref:history'],
+  ]) {
+    it(`buildPreMeta resolves freshness via metaKey when payload has no timestamp — ${inputKey} (#3781)`, () => {
+      // Each of these keys serves a payload without a top-level timestamp
+      // field. Under the post-#3728 classifier they would land in
+      // stale_inputs[] on every run. With metaKey wired, the seed-meta:*
+      // fetchedAt is the freshness proof.
+      const now = Date.now();
+      const sources = { [inputKey]: { /* deliberately undated */ } };
+      const metaSources = { [metaKey]: { fetchedAt: now - 5 * 60_000 } };
+      const { pre, classification } = buildPreMeta(sources, '1.0.0', '1.0.0', metaSources);
+      assert.ok(
+        classification.fresh.includes(inputKey),
+        `${inputKey}: metaKey fetchedAt should classify the undated payload as fresh`,
+      );
+      assert.ok(
+        !pre.stale_inputs.includes(inputKey),
+        `${inputKey}: must not appear in stale_inputs when metaKey is fresh`,
+      );
+    });
+  }
+
+  it('5 #3781 upstream feeds declare metaKey to avoid on-deploy STALE noise', () => {
+    // Pre-empt: each of these keys serves a payload without a top-level
+    // timestamp field. Under the post-#3728 classifier they would all be
+    // classified STALE on first deploy unless their freshness registry
+    // entry points at an existing seed-meta:* companion. Lock the wiring
+    // in so a later removal will trip a test, not production.
+    const expected = {
+      'risk:scores:sebuf:stale:v2':          'seed-meta:intelligence:risk-scores',
+      'intelligence:cross-source-signals:v1': 'seed-meta:intelligence:cross-source-signals',
+      'energy:mix:v1:_all':                   'seed-meta:economic:owid-energy-mix',
+      'supply_chain:transit-summaries:v1':    'seed-meta:supply_chain:transit-summaries',
+      'relay:oref:history:v1':                'seed-meta:relay:oref:history',
+    };
+    for (const [key, metaKey] of Object.entries(expected)) {
+      const spec = FRESHNESS_REGISTRY.find((s) => s.key === key);
+      assert.ok(spec, `registry entry missing for ${key}`);
+      assert.equal(
+        spec.metaKey,
+        metaKey,
+        `${key} must declare metaKey=${metaKey} (its payload has no recognised top-level timestamp; removing this would flip it to STALE on every deploy — see PR #3781)`,
+      );
+    }
   });
 });
 
@@ -789,5 +970,97 @@ describe('end-to-end pipeline', () => {
       assert.ok(vector, `${region.id}: balance computed`);
       assert.equal(scenarios.length, 3, `${region.id}: 3 scenario sets`);
     }
+  });
+});
+
+// ────────────────────────────────────────────────────────────────────────────
+// Writer-side sanitization (defense-in-depth for stored XSS)
+//
+// Issue #3730: snapshot evidence/driver strings interpolate upstream Redis
+// fields. The renderer escapeHtml-wraps everything, but the writer also
+// strips angle brackets so a hostile upstream payload cannot smuggle markup
+// into the persisted blob. This test pins the writer-side guarantee end-to-
+// end through evidence-collector + balance-vector.
+// ────────────────────────────────────────────────────────────────────────────
+
+describe('writer-side XSS hardening (issue #3730)', () => {
+  const XSS = '<script>alert(1)</script>';
+  const IMG_XSS = '<img src=x onerror=alert(1)>';
+
+  const hostileSources = () => ({
+    'intelligence:cross-source-signals:v1': {
+      signals: [
+        {
+          id: `sig-${XSS}`,
+          type: `type-${XSS}`,
+          summary: `Broad MENA pressure signal ${XSS}`,
+          theater: 'Middle East',
+          severity: 'CRITICAL',
+          severityScore: 90,
+          detectedAt: Date.now(),
+        },
+      ],
+    },
+    'risk:scores:sebuf:stale:v2': {
+      ciiScores: [
+        { region: 'IR', combinedScore: 75, trend: `RISING${IMG_XSS}`, computedAt: Date.now() },
+      ],
+    },
+    'supply_chain:chokepoints:v4': {
+      chokepoints: [
+        { id: 'hormuz', name: `Hormuz ${XSS}`, threatLevel: `high${IMG_XSS}` },
+      ],
+    },
+    'forecast:predictions:v2': {
+      predictions: [
+        {
+          id: `fc-${XSS}`,
+          title: `Forecast ${XSS}`,
+          region: 'Middle East',
+          probability: 0.6,
+          confidence: 0.7,
+          updatedAt: Date.now(),
+        },
+      ],
+    },
+    'economic:macro-signals:v1': { verdict: `CASH${XSS}` },
+    'economic:stress-index:v1': { compositeScore: 80, label: `RISKY${XSS}` },
+  });
+
+  it('evidence summaries never contain angle brackets', () => {
+    const evidence = collectEvidence('mena', hostileSources());
+    assert.ok(evidence.length > 0, 'expected at least one evidence item');
+    for (const item of evidence) {
+      assert.ok(!item.summary.includes('<'), `summary contains "<": ${item.summary}`);
+      assert.ok(!item.summary.includes('>'), `summary contains ">": ${item.summary}`);
+      assert.ok(!item.id.includes('<'), `id contains "<": ${item.id}`);
+      assert.ok(!item.id.includes('>'), `id contains ">": ${item.id}`);
+      assert.ok(!item.theater.includes('<'), `theater contains "<": ${item.theater}`);
+      assert.ok(!item.corridor.includes('<'), `corridor contains "<": ${item.corridor}`);
+    }
+  });
+
+  it('balance driver descriptions never contain angle brackets', () => {
+    const { vector } = computeBalanceVector('mena', hostileSources());
+    const allDrivers = [...vector.pressures, ...vector.buffers];
+    assert.ok(allDrivers.length > 0, 'expected at least one driver');
+    for (const d of allDrivers) {
+      assert.ok(!d.description.includes('<'), `description contains "<": ${d.description}`);
+      assert.ok(!d.description.includes('>'), `description contains ">": ${d.description}`);
+      for (const eid of d.evidence_ids ?? []) {
+        assert.ok(!eid.includes('<'), `evidence_id contains "<": ${eid}`);
+        assert.ok(!eid.includes('>'), `evidence_id contains ">": ${eid}`);
+      }
+    }
+  });
+
+  it('the raw "<script>alert(1)</script>" sequence does not survive end-to-end', () => {
+    const sources = hostileSources();
+    const evidence = collectEvidence('mena', sources);
+    const { vector } = computeBalanceVector('mena', sources);
+    const serialized = JSON.stringify({ evidence, vector });
+    assert.ok(!serialized.includes('<script>'), 'raw <script> tag survived sanitization');
+    assert.ok(!serialized.includes('</script>'), 'raw </script> tag survived sanitization');
+    assert.ok(!serialized.includes('<img'), 'raw <img tag survived sanitization');
   });
 });

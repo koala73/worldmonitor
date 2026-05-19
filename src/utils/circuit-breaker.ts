@@ -319,11 +319,32 @@ export class CircuitBreaker<T> {
   async execute<R extends T>(
     fn: () => Promise<R>,
     defaultValue: R,
-    options: { cacheKey?: string; shouldCache?: (result: R) => boolean } = {},
+    options: {
+      cacheKey?: string;
+      shouldCache?: (result: R) => boolean;
+      /**
+       * When true, a stale-while-revalidate background refresh whose
+       * result fails `shouldCache` EVICTS the existing stale cache
+       * entry instead of just skipping the write. Without this, SWR can
+       * pin a stale-but-valid entry indefinitely once the upstream
+       * starts returning degraded/empty responses — the read-side
+       * shouldCache check passes on the previously-good cached value,
+       * so the user keeps seeing stale data and never learns the
+       * upstream is now broken.
+       *
+       * Opt-in (default: false) because some callers — e.g. market
+       * quotes — explicitly WANT the old "preserve previous good data
+       * across transient upstream blips" behaviour. Set true for
+       * surfaces where the degraded state is itself the important
+       * signal (e.g. flight-price fail-closed). See PR #3795 review-2.
+       */
+      evictOnRefreshFailure?: boolean;
+    } = {},
   ): Promise<R> {
     const offline = isDesktopOfflineMode();
     const cacheKey = this.resolveCacheKey(options.cacheKey);
     const shouldCache = options.shouldCache ?? (() => true);
+    const evictOnRefreshFailure = options.evictOnRefreshFailure ?? false;
 
     // Hydrate from persistent storage on first call (~1-5ms IndexedDB read)
     if (this.persistEnabled && !this.persistentLoadedKeys.has(cacheKey)) {
@@ -378,7 +399,21 @@ export class CircuitBreaker<T> {
           this.markSuccess(now);
           if (shouldCache(result)) {
             this.writeCacheEntry(result, cacheKey, now);
+          } else if (evictOnRefreshFailure) {
+            // Caller opted into surfacing the degraded state. Evict the
+            // stale entry so the NEXT call sees no cache, falls through
+            // to the live path, and surfaces the degraded shape. Without
+            // this, SWR keeps serving the stale entry indefinitely
+            // because (a) the read-side shouldCache check passes on the
+            // previously-good cached value, and (b) every refresh sees
+            // the same condition and silently skips writing again.
+            // Opt-in by design — see option doc. (#3795 review-2 P1.)
+            this.evictCacheKey(cacheKey);
+            if (this.persistEnabled) this.deletePersistentCache(cacheKey);
           }
+          // Else: preserve the stale entry across transient upstream
+          // blips so the user keeps seeing valid (if old) data. This is
+          // the default and matches the market-quote use case.
         }).catch(e => {
           console.warn(`[${this.name}] Background refresh failed:`, e);
           this.recordFailure(String(e));

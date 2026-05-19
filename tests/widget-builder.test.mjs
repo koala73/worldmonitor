@@ -123,6 +123,51 @@ describe('widget-agent relay — security', () => {
     );
   });
 
+  it('SSRF guard — deduct-situation blocklist entry matches the real method name (#3740)', () => {
+    // Regression: blocklist previously had a one-char typo 'deduce-situation' that
+    // never matched the real /api/intelligence/v1/deduct-situation path, leaving an
+    // expensive LLM endpoint freely callable.
+    //
+    // A fully behavioral test (calling isWidgetEndpointAllowed() with the real URL)
+    // would catch a wider set of regressions than these structural assertions, but
+    // requires extracting the function from ais-relay.cjs into its own module —
+    // ais-relay.cjs starts an HTTP server unconditionally at module-load time, so
+    // it can't be required from a unit test without that refactor. The structural
+    // checks below catch the failure modes the audit explicitly named: the typo,
+    // the substring leaving the blocked-array, and a refactor away from the
+    // substring-match dispatch that re-opens the gap.
+
+    // 1. The correct entry is present (and the typo is gone).
+    assert.ok(
+      relay.includes("'deduct-situation'"),
+      "Blocklist must contain 'deduct-situation' (matches /api/intelligence/v1/deduct-situation)",
+    );
+    assert.ok(
+      !relay.includes("'deduce-situation'"),
+      "Blocklist must not contain the typo 'deduce-situation' — it never matches any real URL",
+    );
+
+    // 2. The entry lives inside the `blocked = [...]` array literal, not in some
+    //    comment that happens to mention the method name. This catches a regression
+    //    where the array is commented out or guarded by a falsy condition but the
+    //    string survives elsewhere in the file.
+    const blockedArrayMatch = relay.match(/const blocked = \[[\s\S]*?\];/);
+    assert.ok(blockedArrayMatch, "isWidgetEndpointAllowed must define `const blocked = [...]`");
+    assert.ok(
+      blockedArrayMatch[0].includes("'deduct-situation'"),
+      "'deduct-situation' must appear inside the blocked array literal, not just somewhere in the file",
+    );
+
+    // 3. The dispatch still uses substring matching (`endpoint.includes(b)`). A
+    //    refactor to exact equality (`endpoint === b`) would silently re-open the
+    //    gap because callers pass the full `/api/intelligence/v1/deduct-situation`
+    //    path, not the bare method name.
+    assert.ok(
+      /blocked\.some\([^)]*=>\s*endpoint\.includes\(/.test(relay),
+      "isWidgetEndpointAllowed must keep substring matching (`endpoint.includes(b)`); switching to `endpoint === b` would re-open the SSRF gap",
+    );
+  });
+
   it('injection guard — isWidgetInjectionAttempt function is present', () => {
     assert.ok(relay.includes('isWidgetInjectionAttempt'), 'injection guard function must exist');
     assert.ok(relay.includes('ignore') && relay.includes('previous'), 'must detect override patterns');

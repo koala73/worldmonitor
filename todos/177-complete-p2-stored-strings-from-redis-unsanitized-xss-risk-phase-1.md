@@ -1,5 +1,5 @@
 ---
-status: pending
+status: complete
 priority: p2
 issue_id: 177
 tags: [code-review, phase-0, regional-intelligence, security, xss]
@@ -70,6 +70,33 @@ Existing convention: `SignalModal`, `StrategicRiskPanel`, `CrossSourceSignalsPan
 - [ ] Test: 10KB input is truncated to ≤200 chars.
 
 ## Work Log
+
+- 2026-05-18: Closed via PR for issue #3730. Implemented defense-in-depth:
+  - **Writer side:** Added `scripts/regional-snapshot/_sanitize.mjs` exporting
+    `sanitizeEvidenceString(value, opts?)` that strips `<>`, NUL bytes,
+    zero-width characters, collapses whitespace, trims, and caps length
+    (default 500). Applied to every upstream-string interpolation in
+    `scripts/regional-snapshot/evidence-collector.mjs` (xss summary/id/theater,
+    chokepoint name/threat, cii region/trend, forecast title/id) and
+    `scripts/regional-snapshot/balance-vector.mjs` (xss evidence ids, cii top
+    iso, macro verdict, stress label, maritime threat level).
+  - **Render side:** Added `tests/regional-snapshot-render-escape-guard.test.mjs`
+    — a text-scanning test that parses
+    `src/components/regional-intelligence-board-utils.ts` and asserts every
+    `${...}` interpolation referencing a suspect upstream field is wrapped in
+    `escapeHtml(...)`. Also forbids direct `innerHTML`/`outerHTML` assignment.
+  - **Tests:** `tests/regional-snapshot-sanitize.test.mjs` covers the
+    sanitizer; `tests/regional-snapshot.test.mjs` now has a "writer-side XSS
+    hardening (issue #3730)" suite that runs hostile inputs end-to-end
+    through `collectEvidence` + `computeBalanceVector`;
+    `tests/regional-intelligence-board.test.mts` got an additional case that
+    feeds `<script>` payloads through narrative + transmission + trigger
+    fields and asserts the rendered HTML escapes them.
+  - **Why strip-not-escape on write:** the renderer already HTML-escapes
+    every snapshot string interpolation, so writing escaped entities at the
+    seam would cause double-escaping (`&amp;lt;`). Stripping the structural
+    markers `<>` instead is null-safe with the render layer and also bounds
+    persisted payload size.
 
 ## Resources
 

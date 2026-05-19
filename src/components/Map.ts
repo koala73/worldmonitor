@@ -2524,7 +2524,12 @@ export class MapComponent {
 
         const icon = document.createElement('div');
         icon.className = 'flight-delay-icon';
-        icon.textContent = delay.delayType === 'ground_stop' ? '🛑' : delay.severity === 'severe' ? '✈️' : '🛫';
+        // #3707: 'unknown' = no telemetry. Use ❔ glyph (consistent with MapPopup)
+        // so users don't see the healthy ✈️ for uncovered airports.
+        icon.textContent = delay.severity === 'unknown' ? '❔'
+          : delay.delayType === 'ground_stop' ? '🛑'
+          : delay.severity === 'severe' ? '✈️'
+          : '🛫';
         div.appendChild(icon);
 
         if (this.state.zoom >= 3) {

@@ -1,0 +1,197 @@
+---
+title: "CII Risk Scoring Methodology"
+description: "Editorial methodology behind the Composite Instability Index (CII) and Strategic Risk roll-up. Documents per-country baselineRisk, eventMultiplier, the four-component score (Unrest, Conflict, Security, Information), strategic-risk band derivation, and the v1 formula version stamped on every CiiScore."
+---
+
+<Warning>
+**Known drift, tracked in [#3789](https://github.com/koala73/worldmonitor/issues/3789).** The server-side `BASELINE_RISK` and `EVENT_MULTIPLIER` tables disagree with the frontend `CURATED_COUNTRIES` table for 7 countries (AF, EG, IQ, JP, KR, LB, QA). The values published below reflect what the server actually applies today; the frontend may display different values for those 7 countries until reconciliation lands. **API consumers should treat the server values as authoritative.**
+</Warning>
+
+Published methodology note for the **Composite Instability Index (CII)** and
+the **Strategic Risk** roll-up surfaced by `GET /api/intelligence/risk-scores`
+(proto `worldmonitor.intelligence.v1.GetRiskScoresResponse`).
+
+These weights are **editorial** — authored by the WorldMonitor intelligence
+team based on internal review of historical incidents and current geopolitical
+posture. They are **not derived from a published academic index**, a
+peer-reviewed paper, or a third-party risk product. Treat the scores as
+opinionated, not empirical. The point of this note is to make the
+opinions inspectable so downstream consumers can decide whether they
+agree.
+
+The on-the-wire `methodology_version` field on every `CiiScore` reflects
+which revision of this document was active when the score was computed.
+The current version is **v1**.
+
+> **Heads up — coefficient changes.** Any edit to the per-country baselines,
+> event multipliers, or the strategic-risk roll-up coefficients MUST come
+> with a bump of `CII_FORMULA_VERSION` in
+> `server/worldmonitor/intelligence/v1/_risk-config.ts`, an update to this
+> document in the same commit, and a public CHANGELOG entry. Tests in
+> `tests/cii-scoring.test.mts` enforce that this document lists every
+> country code in `CURATED_COUNTRIES`.
+
+---
+
+## 1. The four CII components
+
+Each Tier-1 country gets four sub-scores in the `0–100` range. These are
+exposed on the wire as `CiiComponents`:
+
+| Wire field | Editorial meaning |
+|---|---|
+| `cii_contribution` (**U**nrest) | Civil disorder pressure: ACLED protests + riots, fatalities from those events, and confirmed internet/power outages. Reflects pre-violent friction. |
+| `geo_convergence` (**C**onflict) | Kinetic activity: ACLED battles, explosions/remote violence, and violence-against-civilians events, plus Iran-region strike intensity. Square-root fatality scaling prevents single-event saturation. |
+| `military_activity` (**S**ecurity) | Hard-security tempo near the country: GPS-jamming hex density (high vs medium severity) over the country bounding box. |
+| `news_activity` (**I**nformation) | Information-environment pressure: weighted count of classified critical/high/medium news headlines geo-attributed to the country. |
+
+The four components are weighted into the headline `combinedScore`:
+
+```
+eventScore = U * 0.25 + C * 0.30 + S * 0.20 + I * 0.25
+
+composite = baseline * 0.4
+          + eventScore * 0.6
+          + climateBoost     (≤ 15)
+          + cyberBoost       (≤ 10)
+          + fireBoost        (≤  8)
+          + advisoryBoost    (≤ 15)
+          + orefBlendBoost   (IL only, ≤ 25)
+          + displacementBoost (≤ 20)
+```
+
+`composite` is then clamped to `[floor, 100]` where `floor` is the larger of:
+
+- **UCDP floor**: 70 if a UCDP war-level event is active, 50 if a minor
+  conflict-level event is active, else 0.
+- **State Department advisory floor**: 60 for "do not travel", 50 for
+  "reconsider travel", else 0.
+
+The `dynamicScore` exposed on the wire is `composite − staticBaseline` — i.e.
+the live-event contribution above the per-country baseline.
+
+---
+
+## 2. Per-country `baselineRisk` and `eventMultiplier`
+
+These are the editorial values applied server-side. They are mirrored from
+the `CURATED_COUNTRIES` table in
+[`src/config/countries.ts`](../../src/config/countries.ts), which the
+frontend uses for client-side CII rendering. Where the two have drifted, the
+server values below are authoritative for the API response (issue #3725
+calls out the drift and is the source of this published note).
+
+**Reconciliation tracked in [#3789](https://github.com/koala73/worldmonitor/issues/3789)** —
+the 7 drift cells called out in the rightmost column below are a deliberate
+known-issue, not an oversight. That issue weighs server-authoritative vs
+frontend-authoritative vs a single-source-of-truth refactor and will land
+the reconciliation in a follow-up PR.
+
+| Code | Country | `baselineRisk` (server) | `eventMultiplier` (server) | Drift vs `CURATED_COUNTRIES` |
+|------|---------|------------------------:|---------------------------:|------------------------------|
+| AE | United Arab Emirates | 10 | 1.5 | — |
+| AF | Afghanistan | 45 | 0.8 | frontend uses baseline 15, multiplier 1 |
+| BR | Brazil | 15 | 0.6 | — |
+| CN | China | 25 | 2.5 | — |
+| CU | Cuba | 45 | 2.0 | — |
+| DE | Germany | 5 | 0.5 | — |
+| EG | Egypt | 20 | 1.0 | frontend uses baseline 15 |
+| FR | France | 10 | 0.6 | — |
+| GB | United Kingdom | 5 | 0.5 | — |
+| IL | Israel | 45 | 0.7 | — |
+| IN | India | 20 | 0.8 | — |
+| IQ | Iraq | 40 | 1.2 | frontend uses baseline 35, multiplier 1 |
+| IR | Iran | 40 | 2.0 | — |
+| JP | Japan | 5 | 0.5 | frontend uses baseline 15, multiplier 1 |
+| KP | North Korea | 45 | 3.0 | — |
+| KR | South Korea | 15 | 0.8 | frontend uses multiplier 1 |
+| LB | Lebanon | 40 | 1.5 | frontend uses baseline 15, multiplier 1 |
+| MM | Myanmar | 45 | 1.8 | — |
+| MX | Mexico | 35 | 1.0 | — |
+| PK | Pakistan | 35 | 1.5 | — |
+| PL | Poland | 10 | 0.8 | — |
+| QA | Qatar | 10 | 0.8 | frontend uses baseline 15, multiplier 1 |
+| RU | Russia | 35 | 2.0 | — |
+| SA | Saudi Arabia | 20 | 2.0 | — |
+| SY | Syria | 50 | 0.7 | — |
+| TR | Turkey | 25 | 1.2 | — |
+| TW | Taiwan | 30 | 1.5 | — |
+| UA | Ukraine | 50 | 0.8 | — |
+| US | United States | 5 | 0.3 | — |
+| VE | Venezuela | 40 | 1.8 | — |
+| YE | Yemen | 50 | 0.7 | — |
+
+**What `baselineRisk` does.** It is the country's "always-on" instability
+floor. Independent of any live event, the country starts each scoring cycle
+at `baselineRisk * 0.4` and accumulates event-driven score on top. A country
+with `baselineRisk = 5` (US, DE, GB, JP) needs much louder event signals to
+register a high `combinedScore` than a country with `baselineRisk = 50`
+(UA, SY, YE).
+
+**What `eventMultiplier` does.** It scales the contribution of live ACLED
+events into the Unrest and Conflict components. The rationale is editorial:
+in **information-rich, low-noise** geographies (US, DE, GB, JP, FR with
+multipliers `0.3–0.6`) we down-weight live events because the reporting
+density makes each individual event look bigger than it is in context. In
+**signal-poor, high-relevance** geographies (KP, CN, IR, RU with
+multipliers `2.0–3.0`) we up-weight because every confirmed event there is
+disproportionately newsworthy. For countries where `eventMultiplier < 0.7`,
+unrest counts use `log2(n+1) * multiplier * 5` instead of linear scaling,
+specifically to dampen US-style high-volume-low-intensity protest signals.
+
+---
+
+## 3. Strategic Risk roll-up
+
+The global Strategic Risk score in `StrategicRisk[0]` is a weighted average
+of the top-5 highest-scoring countries' `combinedScore` values:
+
+```
+top5         = ciiScores.slice(0, STRATEGIC_RISK_TOP_N)            # N = 5
+weights      = [1.00, 0.85, 0.70, 0.55, 0.40]                       # 1 - i * 0.15
+weightedAvg  = Σ(score_i * weight_i) / Σ(weight_i)
+overallScore = min(100, round(weightedAvg * 0.70 + 15))             # banded to [15, 85]
+```
+
+The decay step, top-N window, scale-floor (`15`), and scale-factor (`0.70`)
+are all defined in
+[`server/worldmonitor/intelligence/v1/_risk-config.ts`](../../server/worldmonitor/intelligence/v1/_risk-config.ts).
+Their **rationale**:
+
+- **`STRATEGIC_RISK_POSITIONAL_DECAY = 0.15`** — the most-affected country
+  gets full weight; weight reaches zero at position 6. Chosen so the slice
+  size of 5 falls out naturally.
+- **`STRATEGIC_RISK_TOP_N = 5`** — large enough to dilute single-country
+  spikes, small enough that the score reflects the "very top" of the
+  dashboard rather than a long tail.
+- **`STRATEGIC_RISK_SCALE_FLOOR = 15`** — the global picture is never "all
+  clear". A baseline of 15 keeps the dial visually meaningful when every
+  Tier-1 country is calm.
+- **`STRATEGIC_RISK_SCALE_FACTOR = 0.70`** — combined with the floor, this
+  compresses the weighted top-5 average from `[0, 100]` into `[15, 85]`
+  before the final `min(100)`. Prevents a single very-high country from
+  saturating the global score.
+
+The resulting severity band exposed on `StrategicRisk.level` is:
+
+- `SEVERITY_LEVEL_HIGH` if `overallScore ≥ 70`
+- `SEVERITY_LEVEL_MEDIUM` if `40 ≤ overallScore < 70`
+- `SEVERITY_LEVEL_LOW` if `overallScore < 40`
+
+---
+
+## 4. What this score is and is not
+
+**It is** a single number to help operators triage where to look first on a
+news-velocity dashboard.
+
+**It is not** a forecast, an insurance pricing input, or a substitute for
+travel-advisory guidance from a sovereign government. The published values
+in section 2 are editorial; reasonable analysts will disagree with
+individual entries.
+
+If you depend on these scores for any consequential decision, pin against
+the `methodology_version` field on each `CiiScore`, watch for version
+bumps in the public CHANGELOG, and consider the per-country weight you see
+in `event_multiplier` against your own ground truth before relying on the
+composite.

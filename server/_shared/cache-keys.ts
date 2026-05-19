@@ -1,6 +1,6 @@
 // ── Story persistence tracking keys (E3) ─────────────────────────────────────
 // Hash: firstSeen, lastSeen, mentionCount, sourceCount, currentScore, peakScore,
-//       title, link, severity, lang, description
+//       title, link, severity, lang, description, isOpinion, isFeelGood, category
 // description is authoritative per-mention: written unconditionally on every
 // HSET (empty string when the current mention has no body), so an earlier
 // mention's body never silently grounds LLMs for the current mention.
@@ -11,19 +11,23 @@ export const STORY_SOURCES_KEY_PREFIX = 'story:sources:v1:';
 export const STORY_PEAK_KEY_PREFIX = 'story:peak:v1:';
 // Sorted set: accumulator for digest mode notifications (score = pubDate epoch ms)
 export const DIGEST_ACCUMULATOR_KEY_PREFIX = 'digest:accumulator:v1:';
-// TTL for all story tracking keys (48 hours)
-export const STORY_TRACKING_TTL_S = 172800;
 
 /**
  * Story tracking keys — written by list-feed-digest.ts, read by digest cron (E2).
  * All keys use 32-char SHA-256 hex prefix of the normalised title as ${titleHash}.
  *
- *   story:track:v1:${titleHash}     Hash   firstSeen/lastSeen/title/link/severity/mentionCount/currentScore/lang/description (always-written)
+ *   story:track:v1:${titleHash}     Hash   firstSeen/lastSeen/title/link/severity/mentionCount/currentScore/lang/description/isOpinion/isFeelGood/category (always-written)
  *   story:sources:v1:${titleHash}   Set    feed IDs (SADD per appearance)
  *   story:peak:v1:${titleHash}      ZSet   single member "peak", score = highest importanceScore (ZADD GT)
  *   digest:accumulator:v1:${variant}:${lang} ZSet  member=titleHash, score=lastSeen_ms (updated every appearance)
  *
- * TTL for all: 172800s (48h), refreshed each digest cycle.
+ * TTLs are split, not uniform:
+ *   - story:track:v1 + story:sources:v1 + story:peak:v1 use STORY_TTL (7d) — sustained multi-day stories
+ *   - digest:accumulator:v1 uses DIGEST_ACCUMULATOR_TTL (48h) — lookback window for digest content
+ * A previous comment here claimed "TTL for all: 48h" alongside a dead
+ * `STORY_TRACKING_TTL_S = 172800` export; both were leftovers from before
+ * the split and were removed to prevent future readers from misreading
+ * the rollout window for category/isFeelGood/isOpinion residue.
  * Shadow scoring key (written by notification-relay.cjs, which owns the live
  * value — the constant here is documentation only, not imported):
  *   shadow:score-log:v5            ZSet   score=epoch_ms, member=JSON{ts,importanceScore,severity,eventType,title,source,publishedAt,corroborationCount,variant}
@@ -65,7 +69,7 @@ export const GAS_STORAGE_KEY_PREFIX = 'energy:gas-storage:v1:';
 export const GAS_STORAGE_COUNTRIES_KEY = 'energy:gas-storage:v1:_countries';
 export const ELECTRICITY_KEY_PREFIX = 'energy:electricity:v1:';
 export const ELECTRICITY_INDEX_KEY = 'energy:electricity:v1:index';
-export const ENERGY_INTELLIGENCE_KEY = 'energy:intelligence:v1:feed';
+export const ENERGY_INTELLIGENCE_KEY = 'energy:intelligence:feed:v1';
 export const CHOKEPOINT_FLOWS_KEY = 'energy:chokepoint-flows:v1';
 export const ENERGY_SPINE_KEY_PREFIX = 'energy:spine:v1:';
 export const ENERGY_SPINE_COUNTRIES_KEY = 'energy:spine:v1:_countries';
@@ -169,9 +173,9 @@ export const BOOTSTRAP_CACHE_KEYS: Record<string, string> = {
   renewableEnergy:  'economic:worldbank-renewable:v1',
   positiveGeoEvents: 'positive_events:geo-bootstrap:v1',
   theaterPosture:   'theater_posture:sebuf:stale:v1',
-  riskScores:       'risk:scores:sebuf:stale:v1',
+  riskScores:       'risk:scores:sebuf:stale:v2',
   naturalEvents:    'natural:events:v1',
-  flightDelays:     'aviation:delays-bootstrap:v1',
+  flightDelays:     'aviation:delays-bootstrap:v2',
   insights:         'news:insights:v1',
   predictions:      'prediction:markets-bootstrap:v1',
   cryptoQuotes:     'market:crypto:v1',

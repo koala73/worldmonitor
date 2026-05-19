@@ -1548,9 +1548,12 @@ export class DeckGLMap {
 
     // Pipelines layer — Redis-backed evidence registry (seed-pipelines-{gas,oil}.mjs),
     // colored by derived publicBadge. Available on every variant that toggles
-    // `pipelines: true`. The legacy static `PIPELINES` fallback was retired in
-    // the gap #3B rollout (plan §R/#3 decision B); createPipelinesLayer is kept
-    // in this file as a dead-code reference until the next cleanup pass.
+    // `pipelines: true`. createEnergyPipelinesLayer falls back to the legacy
+    // static `PIPELINES` layer (createPipelinesLayer below) when the bootstrap
+    // hasn't hydrated yet, so the static layer is a real fallback — not dead
+    // code despite an earlier comment claiming it was retired in the gap #3B
+    // rollout. Removing createPipelinesLayer would leave the map blank on
+    // cold loads / variant switches before the first hydrate.
     if (mapLayers.pipelines) {
       layers.push(this.createEnergyPipelinesLayer());
     } else {
@@ -2581,12 +2584,18 @@ export class DeckGLMap {
         if (d.severity === 'severe') return 15000;
         if (d.severity === 'major') return 12000;
         if (d.severity === 'moderate') return 10000;
+        // 'unknown' = no telemetry (#3707). Keep the marker visible but
+        // small so it doesn't compete with real alerts.
+        if (d.severity === 'unknown') return 6000;
         return 8000;
       },
       getFillColor: (d) => {
         if (d.severity === 'severe') return [255, 50, 50, 200] as [number, number, number, number];
         if (d.severity === 'major') return [255, 150, 0, 200] as [number, number, number, number];
         if (d.severity === 'moderate') return [255, 200, 100, 180] as [number, number, number, number];
+        // 'unknown' renders desaturated grey — distinct from the lighter grey
+        // used for 'normal' so users can tell "no data" from "healthy".
+        if (d.severity === 'unknown') return [120, 120, 130, 120] as [number, number, number, number];
         return [180, 180, 180, 150] as [number, number, number, number];
       },
       radiusMinPixels: 4,

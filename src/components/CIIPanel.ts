@@ -17,7 +17,11 @@ export class CIIPanel extends Panel {
     super({
       id: 'cii',
       title: t('panels.cii'),
-      infoTooltip: t('components.cii.infoTooltip'),
+      // Two keys (#3725 review): infoTooltip ships translated in all 21 locales;
+      // methodologyLink is shipped en-only as a stop-gap so the disclosure link is
+      // present in every locale immediately. Translators can localize the link
+      // asynchronously without holding back the transparency feature.
+      infoTooltip: `${t('components.cii.infoTooltip')} ${t('components.cii.methodologyLink')}`,
       defaultRowSpan: 2,
     });
     this.showLoading(t('common.loading'));

@@ -3306,8 +3306,8 @@ export class DataLoaderManager implements AppModule {
   }
 
   private async loadProgressData(): Promise<void> {
-    const datasets = await fetchProgressData();
-    this.callPanel('progress', 'setData', datasets);
+    const result = await fetchProgressData();
+    this.callPanel('progress', 'setData', result);
   }
 
   private async loadSpeciesData(): Promise<void> {

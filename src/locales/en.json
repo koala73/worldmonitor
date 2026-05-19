@@ -847,7 +847,9 @@
       "summarizing": "Summarizing…"
     },
     "progressCharts": {
-      "noData": "No progress data available"
+      "noData": "No progress data available",
+      "fallbackBadge": "Showing static fallback data — live series unavailable",
+      "fallbackTooltip": "The live World Bank seed could not be reached. These charts are rendered from a hardcoded snapshot last verified Feb 2026."
     },
     "monitor": {
       "placeholder": "Keywords (comma separated)",
@@ -1461,7 +1463,9 @@
     "cii": {
       "shareStory": "Share story",
       "noSignals": "No instability signals detected",
-      "infoTooltip": "<strong>Methodology</strong><ul><li><strong>U</strong>nrest: civil disorder & protests</li><li><strong>C</strong>onflict: armed conflict intensity</li><li><strong>S</strong>ecurity: military flights/vessels over territory</li><li><strong>I</strong>nformation: news velocity and focal point correlation</li><li>Hotspot proximity boost (strategic locations)</li></ul><em>U:C:S:I values show component scores.</em> Focal Point Detection correlates news entities with map signals for accurate scoring."
+      "infoTooltip": "<strong>Methodology</strong><ul><li><strong>U</strong>nrest: civil disorder & protests</li><li><strong>C</strong>onflict: armed conflict intensity</li><li><strong>S</strong>ecurity: military flights/vessels over territory</li><li><strong>I</strong>nformation: news velocity and focal point correlation</li><li>Hotspot proximity boost (strategic locations)</li></ul><em>U:C:S:I values show component scores.</em> Focal Point Detection correlates news entities with map signals for accurate scoring.",
+      "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
+      "methodologyLink": "Includes per-country baseline + event multiplier — see /docs/methodology/cii-risk-scores for the published table"
     },
     "insights": {
       "noStories": "No breaking or multi-source stories yet",
@@ -2175,6 +2179,7 @@
     },
     "diseaseOutbreaks": {
       "infoTooltip": "<strong>Disease Outbreaks</strong> Active outbreak alerts from WHO, ProMED, and health ministries. Tracks confirmed outbreaks, affected regions, case counts, and threat levels. Updated as new reports are published.",
+      "methodologyNote": "Alert / Warning / Watch levels come from an editorial keyword classifier — see /docs/methodology/disease-alert-level for the keyword table and limitations.",
       "title": "Disease Outbreaks",
       "empty": "No outbreaks match filter",
       "sourceFallback": "Source",
@@ -2296,7 +2301,7 @@
       "infoTooltip": "<strong>Keyword Monitors</strong> Add any term to track live news mentions across all WorldMonitor sources. Results update in real time as matching articles are ingested."
     },
     "renewable": {
-      "infoTooltip": "<strong>Renewable Energy</strong> Global renewable energy project pipeline: solar, wind, hydro, and storage capacity additions. Tracks announced, under-construction, and commissioned projects by region and technology type."
+      "infoTooltip": "<strong>Renewable Energy</strong> Share of electricity generation from renewables by region and year, plus US installed capacity for solar, wind, and coal (MW). Sources: World Bank (EG.ELC.RNEW.ZS) and EIA."
     },
     "socialVelocity": {
       "infoTooltip": "<strong>Social Velocity</strong> Trending topics and viral content with geopolitical significance. Measures social media velocity: how rapidly a story spreads relative to baseline. Helps surface emerging narratives before they hit mainstream news."

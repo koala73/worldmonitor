@@ -540,9 +540,47 @@ export function stripHeadlinePrefix(title) {
  * `threatLevel` is an enum and `hash` is a hex digest — neither is
  * sanitised.
  *
- * `category` / `country` default to `'General'` / `'Global'`,
- * matching `digestStoryToUpstreamTopStory` + `filterTopStories`
- * defaults, because `story:track:v1` carries neither field.
+ * `country` defaults to `'Global'` (story:track:v1 carries no country
+ * field; `digestStoryToUpstreamTopStory` + `filterTopStories` defaults
+ * fill it). `category` IS carried on story:track:v1 (persisted by
+ * buildStoryTrackHsetFields, defensive empty-string on missing), passed
+ * through buildDigest's stories.push, and reaches this function as the
+ * canonical lowercase EventCategory enum value (`'conflict'`, `'health'`,
+ * `'diplomatic'`, …).
+ *
+ * Two fallback layers for pre-stamp residue rows where category is
+ * absent — note that THIS function does NOT go through filterTopStories,
+ * so its local guard is load-bearing, not redundant:
+ *   1. **Local guard at the `category:` field write below**
+ *      (`typeof s?.category === 'string' ? s.category : 'General'`).
+ *      Fires for the synthesis-prompt path — the LLM prompt always
+ *      receives a non-empty string even when the upstream `s` has no
+ *      category field (rare in steady state; possible during the
+ *      48h-accumulator post-deploy residue window per PR #3751).
+ *   2. **filterTopStories' `asTrimmedString(raw.category) || 'General'`
+ *      at `shared/brief-filter.js:384`.** Fires for the envelope/display
+ *      path, which is a separate consumer that reads from the same
+ *      upstream story shape but takes a different code route.
+ * Removing either guard leaves the corresponding path exposed to
+ * residue rows on deploy.
+ *
+ * Intentional case divergence between synthesis and display paths
+ * (issue #3752):
+ *   - **This function** feeds the LLM synthesis prompt
+ *     (`buildDigestPrompt` in scripts/lib/brief-llm.mjs). The prompt
+ *     uses the canonical lowercase enum value as a semantic anchor for
+ *     LLM pattern-matching — the model's training distribution sees
+ *     category labels as bare nouns more often than Title-Cased
+ *     headings, so feeding `'conflict'` is the cleaner signal than
+ *     feeding `'Conflict'`.
+ *   - **The envelope/display path** goes through filterTopStories'
+ *     `out.push` (`shared/brief-filter.js`) where `titleCase` runs
+ *     once to produce `'Conflict'` for the threads card,
+ *     magazine story-page, and public-thread fallback stub. Display
+ *     surfaces want human readability.
+ * Both paths read from the same upstream `s.category` (lowercase); the
+ * divergence is downstream and load-bearing for each consumer's needs.
+ * If you change one site, audit the other.
  *
  * @param {object} s — digest-shaped story from buildDigest()
  * @returns {{ headline: string; threatLevel: string; source: string; category: string; country: string; hash: string }}
@@ -572,6 +610,10 @@ export function digestStoryToSynthesisShape(s) {
     headline: sanitizeHeadline(cleanTitle),
     threatLevel: typeof s?.severity === 'string' ? s.severity : '',
     source: sanitizeForPrompt(primarySource),
+    // `s.category` is the canonical lowercase EventCategory enum value
+    // here (synthesis-prompt path uses lowercase as semantic anchor;
+    // display path Title-Cases at the envelope-build site). See the
+    // function doc above for the case-divergence rationale (#3752).
     category: sanitizeForPrompt(typeof s?.category === 'string' ? s.category : 'General'),
     country: sanitizeForPrompt(typeof s?.countryCode === 'string' ? s.countryCode : 'Global'),
     hash: typeof s?.hash === 'string' ? s.hash : '',
@@ -581,9 +623,12 @@ export function digestStoryToSynthesisShape(s) {
 /**
  * Adapter: the digest accumulator hydrates stories from
  * story:track:v1:{hash} (title / link / severity / lang / score /
- * mentionCount / description?) + story:sources:v1:{hash} SMEMBERS. It
- * does NOT carry a category or country-code — those fields are optional
- * in the upstream brief-filter shape and default cleanly.
+ * mentionCount / description? / isOpinion / isFeelGood / category) +
+ * story:sources:v1:{hash} SMEMBERS. story:track:v1 does NOT carry a
+ * country-code — that field is optional in the upstream brief-filter
+ * shape and defaults to 'Global' cleanly. `category` IS carried (as of
+ * the U1 persistence fix); pre-stamp residue rows without the field
+ * gracefully degrade to 'General' via filterTopStories' fallback.
  *
  * Since envelope v2, the story's `link` field is carried through as
  * `primaryLink` so filterTopStories can emit a BriefStory.sourceUrl.
@@ -622,8 +667,11 @@ function digestStoryToUpstreamTopStory(s) {
     primaryLink: typeof s?.link === 'string' ? s.link : undefined,
     threatLevel: s?.severity,
     importanceScore: Number.isFinite(Number(s?.currentScore)) ? Number(s.currentScore) : undefined,
-    // story:track:v1 carries neither field, so the brief falls back
-    // to 'General' / 'Global' via filterTopStories defaults.
+    // `category` IS carried on story:track:v1 (persisted by
+    // buildStoryTrackHsetFields, passed through buildDigest's stories.push).
+    // Pre-stamp residue rows missing the field fall back to 'General' via
+    // filterTopStories' `|| 'General'` default. `countryCode` is NOT
+    // carried; falls back to 'Global' the same way.
     category: typeof s?.category === 'string' ? s.category : undefined,
     countryCode: typeof s?.countryCode === 'string' ? s.countryCode : undefined,
     // Stable digest story hash. Carried through so:

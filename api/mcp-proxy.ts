@@ -1,7 +1,70 @@
+// @ts-nocheck — Migrated from .js to .ts only to unlock the
+// `isCallerPremium` import from server/ (PR #3768 review). Body remains
+// JS-shaped; not annotating types in this commit. Future PR can add
+// types incrementally; behaviour is unchanged.
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
+import { isCallerPremium } from '../server/_shared/premium-check';
+import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit } from '../server/_shared/rate-limit';
 
 export const config = { runtime: 'edge' };
+
+// Per-IP rate limit for the MCP proxy (issue #3805 defense-in-depth).
+// 30/min/IP is generous for normal MCP polling (most clients refresh every
+// 30-60s) while bounding abuse to ~1800 calls/hour/IP — well below the
+// global 600/min cap. Auth gate already requires a Pro caller; this limit
+// closes the residual surface where a single Pro key cycles the proxy.
+//
+// PR #3821 r2: source the limit from ENDPOINT_RATE_POLICIES so the
+// `enforce-rate-limit-policies` audit can see this endpoint. mcp-proxy is a
+// top-level Vercel Edge Function (not gateway-routed), so it can't use
+// `checkEndpointRateLimit`; we keep `checkScopedRateLimit` for in-handler
+// enforcement but the *policy* lives in the registry. Single source of
+// truth — tweak the limit there, this handler picks it up.
+const RATE_LIMIT_SCOPE = '/api/mcp-proxy';
+const RATE_LIMIT_POLICY = ENDPOINT_RATE_POLICIES[RATE_LIMIT_SCOPE];
+if (!RATE_LIMIT_POLICY) {
+  // Module-load failure — better to crash the function cold-start with a
+  // loud message than to silently fall back to "no rate limit" if someone
+  // accidentally deletes the registry entry.
+  throw new Error(
+    `[mcp-proxy] missing ENDPOINT_RATE_POLICIES['${RATE_LIMIT_SCOPE}'] — see server/_shared/rate-limit.ts`,
+  );
+}
+const RATE_LIMIT_MAX = RATE_LIMIT_POLICY.limit;
+const RATE_LIMIT_WINDOW = RATE_LIMIT_POLICY.window;
+const RATE_LIMIT_ERROR_CODE = -32029; // JSON-RPC code mirrored from api/mcp.ts
+
+function getClientIp(req: Request): string {
+  // cf-connecting-ip is the only header that survives Cloudflare → Vercel
+  // unforged. x-forwarded-for is client-settable and must NOT be trusted
+  // for rate limiting — see api/_rate-limit.js notes (#3721).
+  return (
+    req.headers.get('cf-connecting-ip') ||
+    req.headers.get('x-real-ip') ||
+    '0.0.0.0'
+  );
+}
+
+function logProxyCall(entry: {
+  ip: string;
+  target_host: string;
+  target_path: string;
+  method: string;
+  header_names: string[];
+  status: number;
+  duration_ms: number;
+}): void {
+  // Structured audit log (#3805). Mirrors the `[name] { ...fields }` shape
+  // used by api/cache-purge.js so the existing log-ingest tooling parses it
+  // cleanly. Never include header VALUES — they often carry user-supplied
+  // Authorization / API-Key secrets that the proxy intentionally forwards.
+  console.log('[mcp-proxy]', {
+    event: 'mcp_proxy_call',
+    ts: new Date().toISOString(),
+    ...entry,
+  });
+}
 
 const TIMEOUT_MS = 15_000;
 const SSE_CONNECT_TIMEOUT_MS = 10_000;
@@ -326,6 +389,52 @@ async function mcpCallToolSse(serverUrl, toolName, toolArgs, customHeaders) {
 
 // --- Request handler ---
 
+interface ProxyMeta {
+  targetHost: string;
+  targetPath: string;
+  headerNames: string[];
+}
+
+function captureMeta(serverUrl: URL, customHeaders: unknown, meta: ProxyMeta): void {
+  meta.targetHost = serverUrl.hostname;
+  meta.targetPath = serverUrl.pathname;
+  meta.headerNames = Object.keys((customHeaders as Record<string, unknown>) || {})
+    .filter((k) => typeof k === 'string' && !k.includes('\r') && !k.includes('\n'))
+    .sort();
+}
+
+async function handleListTools(req: Request, cors: Record<string, string>, meta: ProxyMeta): Promise<Response> {
+  const url = new URL(req.url);
+  const rawServer = url.searchParams.get('serverUrl');
+  const rawHeaders = url.searchParams.get('headers');
+  if (!rawServer) return jsonResponse({ error: 'Missing serverUrl' }, 400, cors);
+  const serverUrl = validateServerUrl(rawServer);
+  if (!serverUrl) return jsonResponse({ error: 'Invalid serverUrl' }, 400, cors);
+  let customHeaders = {};
+  if (rawHeaders) {
+    try { customHeaders = JSON.parse(rawHeaders); } catch { /* ignore */ }
+  }
+  captureMeta(serverUrl, customHeaders, meta);
+  const tools = isSseTransport(serverUrl)
+    ? await mcpListToolsSse(serverUrl, customHeaders)
+    : await mcpListTools(serverUrl, customHeaders);
+  return jsonResponse({ tools }, 200, cors);
+}
+
+async function handleCallTool(req: Request, cors: Record<string, string>, meta: ProxyMeta): Promise<Response> {
+  const body = await req.json();
+  const { serverUrl: rawServer, toolName, toolArgs, customHeaders } = body;
+  if (!rawServer) return jsonResponse({ error: 'Missing serverUrl' }, 400, cors);
+  if (!toolName) return jsonResponse({ error: 'Missing toolName' }, 400, cors);
+  const serverUrl = validateServerUrl(rawServer);
+  if (!serverUrl) return jsonResponse({ error: 'Invalid serverUrl' }, 400, cors);
+  captureMeta(serverUrl, customHeaders, meta);
+  const result = isSseTransport(serverUrl)
+    ? await mcpCallToolSse(serverUrl, toolName, toolArgs || {}, customHeaders || {})
+    : await mcpCallTool(serverUrl, toolName, toolArgs || {}, customHeaders || {});
+  return jsonResponse({ result }, 200, { ...cors, 'Cache-Control': 'no-store' });
+}
+
 export default async function handler(req) {
   if (isDisallowedOrigin(req))
     return new Response('Forbidden', { status: 403 });
@@ -334,42 +443,99 @@ export default async function handler(req) {
   if (req.method === 'OPTIONS')
     return new Response(null, { status: 204, headers: cors });
 
+  // Auth gate (issue #3723). The proxy can relay arbitrary customHeaders
+  // (Authorization, API keys) to any public MCP server under WorldMonitor's
+  // outbound IP, and consume our outbound-IP reputation / quota — so the
+  // gate must accept ONLY paying / authorised callers.
+  //
+  // Pre-this-PR the endpoint was open. The first cut accepted wms_
+  // anonymous session tokens which are freely mintable via /api/wm-session
+  // → two-step bypass. The second cut went enterprise-key-only via
+  // validateApiKey forceKey:true, which broke the Pro "Connect MCP" UI
+  // for normal web Pro users (no enterprise key path).
+  //
+  // isCallerPremium is the project's canonical premium-caller check. It
+  // accepts: enterprise key (WORLDMONITOR_VALID_KEYS), wm_ user API key
+  // (Convex-validated + entitlement check), and Clerk Pro Bearer JWT
+  // (role==='pro' or entitlement tier>=1). It rejects wms_ session tokens
+  // by requiring keyCheck.required === true (wms_ short-circuits at
+  // required:false). isDisallowedOrigin already blocked cross-origin
+  // browser callers; this closes the curl + wms_ farm paths too.
+  //
+  // Pair: src/components/McpConnectModal.ts + McpDataPanel.ts must use
+  // premiumFetch (not plain fetch) so the renderer attaches the Bearer
+  // for Pro users; /api/mcp-proxy is now in PREMIUM_RPC_PATHS for that
+  // path-gated injection.
+  if (!(await isCallerPremium(req)))
+    return jsonResponse({ error: 'Pro authentication required' }, 401, cors);
+
+  const started = Date.now();
+  const ip = getClientIp(req);
+  const meta: ProxyMeta = { targetHost: '', targetPath: '', headerNames: [] };
+
+  // Per-IP rate limit (#3805). Runs AFTER auth/CORS so unauthenticated and
+  // cross-origin callers are still rejected first (cheaper to short-circuit
+  // without a Redis round-trip). On Redis error checkScopedRateLimit
+  // fail-opens — matches checkRateLimit / checkEndpointRateLimit semantics.
+  const scoped = await checkScopedRateLimit(RATE_LIMIT_SCOPE, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW, ip);
+  if (!scoped.allowed) {
+    const retryAfter = Math.max(1, Math.ceil((scoped.reset - Date.now()) / 1000));
+    logProxyCall({
+      ip,
+      target_host: meta.targetHost,
+      target_path: meta.targetPath,
+      method: req.method,
+      header_names: meta.headerNames,
+      status: 429,
+      duration_ms: Date.now() - started,
+    });
+    // JSON-RPC -32029 mirrors api/mcp.ts; HTTP 429 + Retry-After follows the
+    // shared rate-limit response shape.
+    return new Response(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: null,
+        error: { code: RATE_LIMIT_ERROR_CODE, message: `Rate limit exceeded. Max ${RATE_LIMIT_MAX} requests per ${RATE_LIMIT_WINDOW} per IP.` },
+      }),
+      {
+        status: 429,
+        headers: {
+          'Content-Type': 'application/json',
+          'X-RateLimit-Limit': String(scoped.limit),
+          'X-RateLimit-Remaining': '0',
+          'X-RateLimit-Reset': String(scoped.reset),
+          'Retry-After': String(retryAfter),
+          ...cors,
+        },
+      },
+    );
+  }
+
+  let response: Response;
   try {
     if (req.method === 'GET') {
-      const url = new URL(req.url);
-      const rawServer = url.searchParams.get('serverUrl');
-      const rawHeaders = url.searchParams.get('headers');
-      if (!rawServer) return jsonResponse({ error: 'Missing serverUrl' }, 400, cors);
-      const serverUrl = validateServerUrl(rawServer);
-      if (!serverUrl) return jsonResponse({ error: 'Invalid serverUrl' }, 400, cors);
-      let customHeaders = {};
-      if (rawHeaders) {
-        try { customHeaders = JSON.parse(rawHeaders); } catch { /* ignore */ }
-      }
-      const tools = isSseTransport(serverUrl)
-        ? await mcpListToolsSse(serverUrl, customHeaders)
-        : await mcpListTools(serverUrl, customHeaders);
-      return jsonResponse({ tools }, 200, cors);
+      response = await handleListTools(req, cors, meta);
+    } else if (req.method === 'POST') {
+      response = await handleCallTool(req, cors, meta);
+    } else {
+      response = jsonResponse({ error: 'Method not allowed' }, 405, cors);
     }
-
-    if (req.method === 'POST') {
-      const body = await req.json();
-      const { serverUrl: rawServer, toolName, toolArgs, customHeaders } = body;
-      if (!rawServer) return jsonResponse({ error: 'Missing serverUrl' }, 400, cors);
-      if (!toolName) return jsonResponse({ error: 'Missing toolName' }, 400, cors);
-      const serverUrl = validateServerUrl(rawServer);
-      if (!serverUrl) return jsonResponse({ error: 'Invalid serverUrl' }, 400, cors);
-      const result = isSseTransport(serverUrl)
-        ? await mcpCallToolSse(serverUrl, toolName, toolArgs || {}, customHeaders || {})
-        : await mcpCallTool(serverUrl, toolName, toolArgs || {}, customHeaders || {});
-      return jsonResponse({ result }, 200, { ...cors, 'Cache-Control': 'no-store' });
-    }
-
-    return jsonResponse({ error: 'Method not allowed' }, 405, cors);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     const isTimeout = msg.includes('TimeoutError') || msg.includes('timed out');
     // Return 422 (not 502) so Cloudflare proxy does not replace our JSON body with its own HTML error page
-    return jsonResponse({ error: isTimeout ? 'MCP server timed out' : msg }, isTimeout ? 504 : 422, cors);
+    response = jsonResponse({ error: isTimeout ? 'MCP server timed out' : msg }, isTimeout ? 504 : 422, cors);
   }
+
+  logProxyCall({
+    ip,
+    target_host: meta.targetHost,
+    target_path: meta.targetPath,
+    method: req.method,
+    header_names: meta.headerNames,
+    status: response.status,
+    duration_ms: Date.now() - started,
+  });
+
+  return response;
 }

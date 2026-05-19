@@ -70,7 +70,8 @@ export type RequestReason =
   // from auth failures.
   | 'malformed_request'
   | 'unknown_route'
-  | 'method_not_allowed';
+  | 'method_not_allowed'
+  | 'cors_error';
 
 export interface RequestEvent {
   _time: string;

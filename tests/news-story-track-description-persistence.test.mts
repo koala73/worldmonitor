@@ -11,6 +11,9 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { __testing__ } from '../server/worldmonitor/news/v1/list-feed-digest';
 
 const { buildStoryTrackHsetFields } = __testing__;
@@ -23,7 +26,7 @@ function baseItem(overrides: Record<string, unknown> = {}) {
     publishedAt: 1_745_000_000_000,
     isAlert: false,
     level: 'medium' as const,
-    category: 'world',
+    category: 'general',
     confidence: 0.9,
     classSource: 'keyword' as const,
     importanceScore: 42,
@@ -31,6 +34,7 @@ function baseItem(overrides: Record<string, unknown> = {}) {
     lang: 'en',
     description: '',
     isOpinion: false,
+    isFeelGood: false,
     ...overrides,
   };
 }
@@ -74,6 +78,68 @@ describe('buildStoryTrackHsetFields — story:track:v1 HSET contract', () => {
       fieldsToMap(buildStoryTrackHsetFields(legacyItem as Parameters<typeof buildStoryTrackHsetFields>[0], '1745000000000', 42)).get('isOpinion'),
       '0',
     );
+  });
+
+  it('writes isFeelGood as "1" / "0" — stamps the feel-good verdict on the row (Veterans-warplanes anchor)', () => {
+    // Sibling to isOpinion stamp. buildDigest excludes isFeelGood="1"
+    // rows. Same shared-row semantics: stale "1" from an earlier
+    // mention must be overwritten by the current mention's verdict.
+    const feelGoodItem = baseItem({ isFeelGood: true });
+    assert.strictEqual(fieldsToMap(buildStoryTrackHsetFields(feelGoodItem, '1745000000000', 42)).get('isFeelGood'), '1');
+    const newsItem = baseItem({ isFeelGood: false });
+    assert.strictEqual(fieldsToMap(buildStoryTrackHsetFields(newsItem, '1745000000000', 42)).get('isFeelGood'), '0');
+    // Missing field on the ParsedItem → falsy → "0". This is
+    // buildStoryTrackHsetFields' own fallback behavior. The
+    // cache-leakage failure mode this could ENABLE (cached pre-PR
+    // ParseResult with isFeelGood-less items writing '0' onto fresh
+    // story:track:v1 rows, defeating buildDigest's residue catch) is
+    // closed by the rss:feed:v4 cache-prefix bump in fetchAndParseRss —
+    // see test "rss:feed cache prefix is v4 (post-isFeelGood)" below.
+    // After the bump, no cached pre-PR ParseResult can reach this code
+    // path: every cache miss forces a fresh parseRssXml run that
+    // stamps isFeelGood correctly. Genuinely-pre-existing story:track:v1
+    // rows (written before this PR shipped) have no isFeelGood field
+    // at all, and buildDigest's stampMissing check (typeof !== 'string'
+    // || length === 0) picks those up via the residue catch.
+    const legacyItem = baseItem();
+    delete (legacyItem as Record<string, unknown>).isFeelGood;
+    assert.strictEqual(
+      fieldsToMap(buildStoryTrackHsetFields(legacyItem as Parameters<typeof buildStoryTrackHsetFields>[0], '1745000000000', 42)).get('isFeelGood'),
+      '0',
+    );
+  });
+
+  it('T1: writes category as the canonical EventCategory string (Veterans threads-card fix)', () => {
+    // PR #3697 exposed that buildStoryTrackHsetFields did not persist
+    // `category`, so the brief composer always saw the 'General' default
+    // for every story. This test locks the persistence going forward:
+    // category is written as the canonical lowercase EventCategory value
+    // (display capitalization happens once in shared/brief-filter.js at
+    // envelope build, not here). See plan
+    // docs/plans/2026-05-17-002-fix-persist-story-track-category-plan.md.
+    const conflictItem = baseItem({ category: 'conflict' });
+    assert.strictEqual(fieldsToMap(buildStoryTrackHsetFields(conflictItem, '1745000000000', 42)).get('category'), 'conflict');
+    const healthItem = baseItem({ category: 'health' });
+    assert.strictEqual(fieldsToMap(buildStoryTrackHsetFields(healthItem, '1745000000000', 42)).get('category'), 'health');
+    const techItem = baseItem({ category: 'tech' });
+    assert.strictEqual(fieldsToMap(buildStoryTrackHsetFields(techItem, '1745000000000', 42)).get('category'), 'tech');
+  });
+
+  it('T2-T4: defensive write — missing / non-string upstream category becomes empty string, never literal "undefined"', () => {
+    // The fallback chain is: missing here → '' on Redis →
+    // shared/brief-filter.js:365's `asTrimmedString(raw.category) || 'General'`
+    // converts back to 'General' for graceful degradation. The
+    // critical contract is that NO literal 'undefined' or '42' string
+    // ever reaches Redis from a malformed upstream value.
+    //
+    // T2: baseItem default fixture ('general') round-trips unchanged.
+    assert.strictEqual(fieldsToMap(buildStoryTrackHsetFields(baseItem(), '1745000000000', 42)).get('category'), 'general');
+    // T3: explicit `undefined` override → defensive empty string.
+    const undefItem = baseItem({ category: undefined });
+    assert.strictEqual(fieldsToMap(buildStoryTrackHsetFields(undefItem as Parameters<typeof buildStoryTrackHsetFields>[0], '1745000000000', 42)).get('category'), '');
+    // T4: non-string upstream value → defensive empty string (no '42').
+    const nonStringItem = baseItem({ category: 42 });
+    assert.strictEqual(fieldsToMap(buildStoryTrackHsetFields(nonStringItem as Parameters<typeof buildStoryTrackHsetFields>[0], '1745000000000', 42)).get('category'), '');
   });
 
   it('writes an empty-string description when the current mention has no body — overwrites any prior mention body', () => {
@@ -167,5 +233,33 @@ describe('buildStoryTrackHsetFields — story:track:v1 HSET contract', () => {
     assert.strictEqual(fieldsToMap(t0Fields).get('description'), 'Feed A body from T0: Mojtaba Khamenei, 56, wounded in attack.');
     assert.strictEqual(fieldsToMap(t1Fields).get('description'), '', 'T1 body-less mention must emit empty description, overwriting T0');
     assert.strictEqual(fieldsToMap(t2Fields).get('description'), 'Feed C body from T2: Leader reported in stable condition.');
+  });
+});
+
+describe('fetchAndParseRss — cache prefix invalidation contract', () => {
+  it('rss:feed cache prefix is v4 (post-isFeelGood), not v3 (pre-isFeelGood)', () => {
+    // Pre-PR ParsedItems cached at rss:feed:v3 lack the isFeelGood
+    // field. If a cache hit returned one of those, the falsy-coerce in
+    // buildStoryTrackHsetFields would stamp '0' onto the row, and
+    // buildDigest's stampMissing check (`typeof !== 'string' || length === 0`)
+    // would treat '0' as a genuine "not feel-good" verdict — defeating
+    // the residue catch for the 1h healthy-cache rollout window. The v4
+    // prefix invalidates every pre-PR entry; cold reads on the first
+    // post-deploy cron tick force fresh parseRssXml runs that stamp
+    // isFeelGood correctly. This test locks the cutover so a future
+    // refactor cannot silently revert to v3.
+    const __dirname = dirname(fileURLToPath(import.meta.url));
+    const src = readFileSync(
+      resolve(__dirname, '..', 'server', 'worldmonitor', 'news', 'v1', 'list-feed-digest.ts'),
+      'utf-8',
+    );
+    assert.ok(
+      src.includes("`rss:feed:v4:${variant}:${feed.url}`"),
+      'rss:feed cache key must use v4 prefix — see comment above the cacheKey assignment in fetchAndParseRss',
+    );
+    assert.ok(
+      !src.includes("`rss:feed:v3:${variant}:${feed.url}`"),
+      'must NOT leave a residual v3 cacheKey assignment — would silently revert the cutover',
+    );
   });
 });

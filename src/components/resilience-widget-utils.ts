@@ -301,7 +301,10 @@ const DIMENSION_LABELS: Record<string, string> = {
   energy: 'Energy',
   governanceInstitutional: 'Gov',
   socialCohesion: 'Social',
-  borderSecurity: 'Border',
+  // #3737 — internal id is `borderSecurity` for proto/cache stability,
+  // but the dimension measures UCDP armed conflict events + UNHCR
+  // displacement, not border infrastructure. Surface the truthful label.
+  borderSecurity: 'Conflict',
   informationCognitive: 'Info',
   healthPublicService: 'Health',
   foodWater: 'Food',

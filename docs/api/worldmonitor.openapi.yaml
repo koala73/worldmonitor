@@ -2405,9 +2405,15 @@ paths:
                 - name: runId
                   in: query
                   description: |-
-                    IMPORTANT: Currently a no-op. Always returns the latest available outcome regardless of runId.
-                     Per-run lookup is reserved for Phase 3. Check the response 'note' field when runId is supplied
-                     and you need to detect a mismatch between requested and returned run.
+                    Filter is active for outcomes within the 24h retention window (#3734).
+                     If runId is supplied:
+                       - Hit on the by-run key → returns that outcome, processing=false.
+                       - By-run lookup returns the tombstone (worker write transiently failed) →
+                         falls through to :latest with a 'note' describing the transient failure.
+                       - No by-run match but runId is in the queue → returns processing=true.
+                       - No match anywhere → falls back to :latest with a 'note' describing
+                         expiry-or-mismatch.
+                     If runId is empty: returns :latest (existing behavior).
                   required: false
                   schema:
                     type: string
@@ -2418,6 +2424,44 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_forecast_v1_GetSimulationOutcomeResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/forecast/v1/trigger-simulation:
+        post:
+            tags:
+                - ForecastService
+            summary: TriggerSimulation
+            description: |-
+                TriggerSimulation enqueues a simulation task for the current
+                 SIMULATION_PACKAGE_LATEST_KEY package pointer. PRO-gated. The runId
+                 is server-derived; callers cannot supply one. The Railway worker
+                 (scripts/process-simulation-tasks.mjs) polls the queue and writes
+                 outcomes; callers poll GetSimulationOutcome with the returned runId
+                 to retrieve the result. Mirrors run-scenario.ts pattern. See #3734.
+            operationId: TriggerSimulation
+            requestBody:
+                content:
+                    application/json:
+                        schema:
+                            $ref: '#/components/schemas/worldmonitor_forecast_v1_TriggerSimulationRequest'
+                required: true
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/worldmonitor_forecast_v1_TriggerSimulationResponse'
                 "400":
                     description: Validation error
                     content:
@@ -7421,9 +7465,10 @@ components:
                         - FLIGHT_DELAY_SEVERITY_MODERATE
                         - FLIGHT_DELAY_SEVERITY_MAJOR
                         - FLIGHT_DELAY_SEVERITY_SEVERE
+                        - FLIGHT_DELAY_SEVERITY_UNKNOWN
                     description: |-
                         FlightDelaySeverity represents the severity of flight delays at an airport.
-                         Maps to TS union: 'normal' | 'minor' | 'moderate' | 'major' | 'severe'.
+                         Maps to TS union: 'normal' | 'minor' | 'moderate' | 'major' | 'severe' | 'unknown'.
             description: ListAirportDelaysRequest specifies filters for retrieving airport delay alerts.
         worldmonitor_aviation_v1_ListAirportDelaysResponse:
             type: object
@@ -7489,9 +7534,10 @@ components:
                         - FLIGHT_DELAY_SEVERITY_MODERATE
                         - FLIGHT_DELAY_SEVERITY_MAJOR
                         - FLIGHT_DELAY_SEVERITY_SEVERE
+                        - FLIGHT_DELAY_SEVERITY_UNKNOWN
                     description: |-
                         FlightDelaySeverity represents the severity of flight delays at an airport.
-                         Maps to TS union: 'normal' | 'minor' | 'moderate' | 'major' | 'severe'.
+                         Maps to TS union: 'normal' | 'minor' | 'moderate' | 'major' | 'severe' | 'unknown'.
                 avgDelayMinutes:
                     type: integer
                     format: int32
@@ -7629,9 +7675,10 @@ components:
                         - FLIGHT_DELAY_SEVERITY_MODERATE
                         - FLIGHT_DELAY_SEVERITY_MAJOR
                         - FLIGHT_DELAY_SEVERITY_SEVERE
+                        - FLIGHT_DELAY_SEVERITY_UNKNOWN
                     description: |-
                         FlightDelaySeverity represents the severity of flight delays at an airport.
-                         Maps to TS union: 'normal' | 'minor' | 'moderate' | 'major' | 'severe'.
+                         Maps to TS union: 'normal' | 'minor' | 'moderate' | 'major' | 'severe' | 'unknown'.
                 topDelayReasons:
                     type: array
                     items:
@@ -8096,10 +8143,15 @@ components:
                         $ref: '#/components/schemas/worldmonitor_aviation_v1_PriceQuote'
                 provider:
                     type: string
-                    description: Provider name (e.g., "amadeus", "demo").
+                    description: |-
+                        Provider name: "travelpayouts_data", "demo", or "none" when no live
+                         provider is configured.
                 isDemoMode:
                     type: boolean
-                    description: Whether results are from demo/simulated mode.
+                    description: |-
+                        Whether results are from demo/simulated mode. Requires explicit
+                         AVIATION_DEMO_PRICES=1 opt-in on the server. Never true in default
+                         self-host / production runs. See issue #3756.
                 updatedAt:
                     type: integer
                     format: int64
@@ -8107,6 +8159,19 @@ components:
                 isIndicative:
                     type: boolean
                     description: Whether returned prices are indicative (subject to change).
+                degraded:
+                    type: boolean
+                    description: |-
+                        True when the live provider could not satisfy the request — missing
+                         credentials, upstream failure, or zero results. Mirrors the
+                         searchGoogleFlights pattern so clients can render distinct messages
+                         for each error class.
+                error:
+                    type: string
+                    description: |-
+                        Discriminator for the degraded state: "" (ok), "missing_credentials"
+                         (TRAVELPAYOUTS_API_TOKEN unset), "upstream_error" (provider call
+                         threw), "no_results" (provider returned empty for this route).
             description: SearchFlightPricesResponse contains flight price offers.
         worldmonitor_aviation_v1_PriceQuote:
             type: object
@@ -11581,9 +11646,15 @@ components:
                 runId:
                     type: string
                     description: |-
-                        IMPORTANT: Currently a no-op. Always returns the latest available outcome regardless of runId.
-                         Per-run lookup is reserved for Phase 3. Check the response 'note' field when runId is supplied
-                         and you need to detect a mismatch between requested and returned run.
+                        Filter is active for outcomes within the 24h retention window (#3734).
+                         If runId is supplied:
+                           - Hit on the by-run key → returns that outcome, processing=false.
+                           - By-run lookup returns the tombstone (worker write transiently failed) →
+                             falls through to :latest with a 'note' describing the transient failure.
+                           - No by-run match but runId is in the queue → returns processing=true.
+                           - No match anywhere → falls back to :latest with a 'note' describing
+                             expiry-or-mismatch.
+                         If runId is empty: returns :latest (existing behavior).
         worldmonitor_forecast_v1_GetSimulationOutcomeResponse:
             type: object
             properties:
@@ -11605,8 +11676,10 @@ components:
                 note:
                     type: string
                     description: |-
-                        Populated when req.runId was supplied but does not match the returned outcome's runId.
-                         Indicates that per-run filtering is not yet active and the latest outcome was returned instead.
+                        Populated when req.runId was supplied but does not match the returned outcome's runId,
+                         or when the by-run lookup returned a tombstone (Redis transient write failure).
+                         Distinguishes "your runId expired beyond 24h retention" from "by-run lookup failed
+                         (Redis transient); returned latest" so callers can react differently.
                 error:
                     type: string
                     description: |-
@@ -11618,6 +11691,71 @@ components:
                         JSON-encoded array of theater summaries for the UI (populated when found=true).
                          Shape: Array<{ theaterId, theaterLabel, stateKind, topPaths: [{label, summary, confidence, keyActors}], dominantReactions, stabilizers, invalidators }>
                          Parse with JSON.parse() on the client. Empty string when found=false.
+                processing:
+                    type: boolean
+                    description: |-
+                        True when req.runId was supplied AND the runId is currently in the simulation
+                         queue (worker hasn't drained yet). Distinguishes "your run is processing"
+                         from "your run expired beyond retention" — both previously returned NOT_FOUND.
+                         Added in #3734 to prevent the 30-day demand experiment from being contaminated
+                         by the queued-vs-expired indistinguishability.
+        worldmonitor_forecast_v1_TriggerSimulationRequest:
+            type: object
+            properties:
+                clientVersion:
+                    type: string
+                    description: |-
+                        Optional opaque client-version string for debugging (e.g., "claude-
+                         desktop/0.6.1", "mcp-client/0.2"). Server LOGS this with the success
+                         breadcrumb but never persists or branches on it. Present primarily so
+                         the generated client/server code has at least one field to reference
+                         (sebuf v0.11.1 emits a typecheck-broken POST client for fully-empty
+                         request messages). Safe to omit; default empty string.
+            description: |-
+                TriggerSimulationRequest enqueues a simulation task for the current
+                 SIMULATION_PACKAGE_LATEST_KEY package pointer. Caller-supplied
+                 run_id is intentionally absent — the runId is server-derived from
+                 the package pointer (avoids lock-key collision, queue stuffing, and
+                 race against cron rotation). See #3734 / docs/plans/2026-05-18-003-
+                 feat-simulation-trigger-and-runid-filter-plan.md D1.
+        worldmonitor_forecast_v1_TriggerSimulationResponse:
+            type: object
+            properties:
+                queued:
+                    type: boolean
+                    description: |-
+                        True when the task was newly enqueued; false on idempotency hit or
+                         no_package.
+                runId:
+                    type: string
+                    description: |-
+                        Server-derived runId from SIMULATION_PACKAGE_LATEST_KEY. Empty
+                         string when reason='no_package' (no package pointer was available).
+                pkgFingerprint:
+                    type: string
+                    description: |-
+                        Opaque fingerprint of the simulation package input (first 16 hex
+                         chars of sha256 over the package's R2 object key). Stable identifier
+                         for drift detection across trigger/read calls — clients can compare
+                         this against the fingerprint inside the by-run outcome payload to
+                         detect cron rotation. Do NOT decode. Returns empty string when
+                         reason='no_package'.
+                reason:
+                    type: string
+                    description: |-
+                        External reason taxonomy:
+                           ''                  - happy path (queued=true)
+                           'no_package'        - SIMULATION_PACKAGE_LATEST_KEY pointer absent
+                           'already-handled'   - idempotency hit (covers both "already queued"
+                                                 and "already completed this cycle"; collapsed
+                                                 externally to avoid a cron-timing oracle —
+                                                 server logs retain the distinction).
+            description: |-
+                TriggerSimulationResponse carries the outcome of an enqueue attempt.
+                 On error states (premium gate, queue capacity, Redis transport), the
+                 handler throws ApiError with the appropriate HTTP status — there is
+                 NO error field on this message. All paths that return this message
+                 represent HTTP 200.
         worldmonitor_giving_v1_GetGivingSummaryRequest:
             type: object
             properties:
@@ -11785,6 +11923,14 @@ components:
                     type: integer
                     format: int64
                     description: 'Warning: Values > 2^53 may lose precision in JavaScript'
+                alertLevelMethodologyVersion:
+                    type: string
+                    description: |-
+                        Version of the editorial alert-level classifier (keyword sets, regexes,
+                         promotion rules) used to label each item's alert_level. Bumping this
+                         signals to downstream clients that the labelling rules changed so cached
+                         comparisons across versions are no longer apples-to-apples. See
+                         docs/methodology/disease-alert-level.mdx for the change protocol.
         worldmonitor_health_v1_DiseaseOutbreakItem:
             type: object
             properties:
@@ -12518,6 +12664,27 @@ components:
                     type: integer
                     format: int64
                     description: 'Last computation time, as Unix epoch milliseconds.. Warning: Values > 2^53 may lose precision in JavaScript'
+                methodologyVersion:
+                    type: string
+                    description: |-
+                        Methodology version string for this score (e.g. "v1").
+                         Bumped whenever the editorial weights in CII_FORMULA_VERSION change so
+                         API clients can detect score drift. See docs/methodology/cii-risk-scores.mdx.
+                eventMultiplier:
+                    type: number
+                    maximum: 10
+                    minimum: 0
+                    format: double
+                    description: |-
+                        Editorial per-country event multiplier applied to live signals before
+                         they roll into the composite score. Published for transparency — issue
+                         #3725. See docs/methodology/cii-risk-scores.mdx.
+
+                         Bounds: [0, 10]. The editorial de-facto maximum across the published
+                         table is ~3.0 (KP). The upper bound of 10 gives ~3.3x headroom for
+                         future weight changes while still catching obviously-wrong inputs (e.g.
+                         a runaway computation producing 1e6 or NaN-coerced values). Added in
+                         PR #3780 review.
             description: CiiScore represents a Composite Instability Index score for a region or country.
         worldmonitor_intelligence_v1_CiiComponents:
             type: object
@@ -17714,6 +17881,21 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/worldmonitor_positive_events_v1_PositiveGeoEvent'
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: |-
+                        Unix epoch ms at which the underlying source data was last successfully
+                         fetched. Always set when serving from cache or in-process fallback; 0 if
+                         no data is available. Clients can use this to display a freshness
+                         indicator or "data is X minutes old" warning. See issue #3706.. Warning: Values > 2^53 may lose precision in JavaScript
+                stale:
+                    type: boolean
+                    description: |-
+                        True when the response is being served from the in-process fallback
+                         cache because the upstream source is unavailable or returned stale
+                         data. Clients can surface a "data may be out of date" indicator. See
+                         issue #3706.
         worldmonitor_positive_events_v1_PositiveGeoEvent:
             type: object
             properties:

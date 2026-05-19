@@ -2095,7 +2095,7 @@
       "infoTooltip": "<strong>Moniteurs de mots-clés</strong> Ajoutez n'importe quel terme pour suivre les mentions dans les actualités en temps réel à travers toutes les sources WorldMonitor. Les résultats se mettent à jour en temps réel à mesure que les articles correspondants sont ingérés."
     },
     "renewable": {
-      "infoTooltip": "<strong>Énergie renouvelable</strong> Pipeline mondial de projets d'énergie renouvelable : ajouts de capacité solaire, éolienne, hydraulique et de stockage. Suit les projets annoncés, en construction et mis en service par région et type de technologie."
+      "infoTooltip": "<strong>Énergie renouvelable</strong> Part des renouvelables dans la production d'électricité par région et année, plus la capacité installée aux États-Unis pour le solaire, l'éolien et le charbon (MW). Sources : Banque mondiale (EG.ELC.RNEW.ZS) et EIA."
     },
     "socialVelocity": {
       "infoTooltip": "<strong>Vélocité sociale</strong> Sujets tendance et contenus viraux à portée géopolitique. Mesure la vélocité des médias sociaux : la rapidité de propagation d'une histoire par rapport à la ligne de base. Aide à faire émerger des récits naissants avant qu'ils n'atteignent les médias traditionnels."

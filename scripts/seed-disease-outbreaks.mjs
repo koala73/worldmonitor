@@ -21,6 +21,7 @@ import {
   diseaseContentMeta,
   diseasePublishTransform,
   DISEASE_MAX_CONTENT_AGE_MIN,
+  ALERT_LEVEL_METHODOLOGY_VERSION,
 } from './_disease-outbreaks-helpers.mjs';
 
 loadEnvFile(import.meta.url);
@@ -197,7 +198,16 @@ async function fetchDiseaseOutbreaks() {
   // Up to 150 TGH geo-pinned alerts + up to 50 from other authoritative sources.
   const outbreaks = [...tghSorted.slice(0, 150), ...dedupedOthers.slice(0, 50)];
 
-  return { outbreaks, fetchedAt: Date.now() };
+  // Stamp the editorial-classifier version onto the wire payload so the field
+  // bumps observably when ALERT_LEVEL_METHODOLOGY_VERSION moves per the change
+  // protocol in docs/methodology/disease-alert-level.mdx. Without this, the
+  // constant exists but nothing consumes it — bumping it has no observable
+  // effect on clients or the canonical key.
+  return {
+    outbreaks,
+    fetchedAt: Date.now(),
+    alertLevelMethodologyVersion: ALERT_LEVEL_METHODOLOGY_VERSION,
+  };
 }
 
 function validate(data) {

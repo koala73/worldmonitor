@@ -21,11 +21,12 @@ function getRatelimit(): Ratelimit | null {
 function getClientIp(request: Request): string {
   // With Cloudflare proxy → Vercel, x-real-ip is the CF edge IP (shared across users).
   // cf-connecting-ip is the actual client IP set by Cloudflare — prefer it.
-  // x-forwarded-for is client-settable and MUST NOT be trusted for rate limiting.
+  // x-forwarded-for is client-settable and MUST NOT be trusted for rate limiting:
+  // any caller can set it to spoof a victim's IP (burning their budget) or cycle
+  // synthetic values to bypass their own limit. Issue #3721.
   return (
     request.headers.get('cf-connecting-ip') ||
     request.headers.get('x-real-ip') ||
-    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
     '0.0.0.0'
   );
 }
@@ -96,10 +97,25 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // inline Upstash INCR. Gateway now enforces the same budget with per-IP
   // keying in checkEndpointRateLimit.
   '/api/scenario/v1/run-scenario': { limit: 10, window: '60 s' },
+  // #3734: trigger-simulation PRO endpoint, same shape as run-scenario.
+  // Per-IP keying matches run-scenario's production behavior. Pro-identity
+  // primitive deferred (checkScopedRateLimit available if needed).
+  '/api/forecast/v1/trigger-simulation': { limit: 10, window: '60 s' },
   // Live tanker map (Energy Atlas): one user with 6 chokepoints × 1 call/min
   // = 6 req/min/IP base load. 60/min headroom covers tab refreshes + zoom
   // pans within a single user without flagging legitimate traffic.
   '/api/maritime/v1/get-vessel-snapshot': { limit: 60, window: '60 s' },
+  // #3805 / PR #3821: MCP proxy is a top-level Vercel Edge Function in
+  // `api/mcp-proxy.ts` (registered as `external-protocol` in
+  // api/api-route-exceptions.json — JSON-RPC shape dictated by the MCP spec),
+  // so it does NOT flow through the gateway and `checkEndpointRateLimit`
+  // never fires for it. The handler reads this policy and enforces it
+  // in-handler via `checkScopedRateLimit` — keeping the registry as the
+  // single source of truth so future audit additions (and the
+  // enforce-rate-limit-policies lint) see the endpoint. The audit script
+  // resolves edge-function paths via api/api-route-exceptions.json instead
+  // of the OpenAPI specs.
+  '/api/mcp-proxy': { limit: 30, window: '60 s' },
 };
 
 const endpointLimiters = new Map<string, Ratelimit>();
