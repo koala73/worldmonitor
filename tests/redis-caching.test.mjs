@@ -445,6 +445,195 @@ describe('negative-result caching', { concurrency: 1 }, () => {
   });
 });
 
+describe('cachedFetchJson inflight timeout (#3539)', { concurrency: 1 }, () => {
+  it('rejects a hung fetcher and releases the inflight slot so subsequent callers re-fetch', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) return jsonResponse({ result: undefined });
+      if (raw.includes('/set/')) return jsonResponse({ result: 'OK' });
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      redis.__setFetcherTimeoutForTests(50);
+
+      let hungCalls = 0;
+      // Fetcher that NEVER settles — simulates an upstream that hangs forever
+      // with no internal timeout and no AbortController.
+      const hungFetcher = () => {
+        hungCalls += 1;
+        return new Promise(() => {});
+      };
+
+      // Concurrent callers should all share the same hung promise (coalescing
+      // still works on the way in) and all reject with the timeout error.
+      const [r1, r2, r3] = await Promise.allSettled([
+        redis.cachedFetchJson('hang:test:key', 60, hungFetcher),
+        redis.cachedFetchJson('hang:test:key', 60, hungFetcher),
+        redis.cachedFetchJson('hang:test:key', 60, hungFetcher),
+      ]);
+
+      assert.equal(hungCalls, 1, 'fetcher should still be coalesced — one execution shared by all callers');
+      assert.equal(r1.status, 'rejected');
+      assert.equal(r2.status, 'rejected');
+      assert.equal(r3.status, 'rejected');
+      assert.match(r1.reason.message, /^cachedFetchJson timeout after 50ms for "hang:test:key"$/);
+
+      // Critical assertion: a follow-up call after the timeout must trigger a
+      // fresh fetcher execution. Pre-fix the inflight Map kept the unresolved
+      // promise forever, handing every subsequent caller the same dead handle.
+      let recovered = false;
+      const recoveredValue = await redis.cachedFetchJson('hang:test:key', 60, async () => {
+        recovered = true;
+        return { value: 'recovered' };
+      });
+      assert.equal(recovered, true, 'inflight slot must be released so a new fetcher can run');
+      assert.deepEqual(recoveredValue, { value: 'recovered' });
+    } finally {
+      redis.__resetFetcherTimeoutForTests();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('does NOT fire the timeout when the fetcher settles promptly', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) return jsonResponse({ result: undefined });
+      if (raw.includes('/set/')) return jsonResponse({ result: 'OK' });
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      redis.__setFetcherTimeoutForTests(50);
+
+      const result = await redis.cachedFetchJson('happy:test:key', 60, async () => {
+        await new Promise((r) => setTimeout(r, 5));
+        return { value: 'fast' };
+      });
+      assert.deepEqual(result, { value: 'fast' });
+
+      // Wait past the timeout window — if the timer wasn't cleared we'd see
+      // an unhandled rejection. Node's test runner surfaces those as failures.
+      await new Promise((r) => setTimeout(r, 100));
+    } finally {
+      redis.__resetFetcherTimeoutForTests();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('per-call opts.timeoutMs overrides the default ceiling', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) return jsonResponse({ result: undefined });
+      if (raw.includes('/set/')) return jsonResponse({ result: 'OK' });
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      // Default ceiling deliberately tiny; caller passes a much higher per-call
+      // budget, so a fetcher that runs 80ms should succeed. Without the
+      // override it would reject at 20ms.
+      redis.__setFetcherTimeoutForTests(20);
+
+      const result = await redis.cachedFetchJson(
+        'override:test:long',
+        60,
+        async () => {
+          await new Promise((r) => setTimeout(r, 80));
+          return { value: 'long-fetcher-allowed' };
+        },
+        undefined,
+        { timeoutMs: 500 },
+      );
+      assert.deepEqual(result, { value: 'long-fetcher-allowed' });
+
+      // Same shape for cachedFetchJsonWithMeta — opts.timeoutMs lives next to opts.usage.
+      const meta = await redis.cachedFetchJsonWithMeta(
+        'override:meta:long',
+        60,
+        async () => {
+          await new Promise((r) => setTimeout(r, 80));
+          return { value: 'meta-long-allowed' };
+        },
+        undefined,
+        { timeoutMs: 500 },
+      );
+      assert.equal(meta.source, 'fresh');
+      assert.deepEqual(meta.data, { value: 'meta-long-allowed' });
+    } finally {
+      redis.__resetFetcherTimeoutForTests();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('cachedFetchJsonWithMeta also enforces the inflight timeout', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) return jsonResponse({ result: undefined });
+      if (raw.includes('/set/')) return jsonResponse({ result: 'OK' });
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      redis.__setFetcherTimeoutForTests(50);
+
+      await assert.rejects(
+        () => redis.cachedFetchJsonWithMeta('meta:hang:key', 60, () => new Promise(() => {})),
+        /^Error: cachedFetchJsonWithMeta timeout after 50ms for "meta:hang:key"$/,
+      );
+
+      // Subsequent call must succeed against a healthy fetcher — proves the
+      // inflight slot was released even on the timeout path.
+      const { data, source } = await redis.cachedFetchJsonWithMeta('meta:hang:key', 60, async () => ({ value: 'recovered' }));
+      assert.equal(source, 'fresh');
+      assert.deepEqual(data, { value: 'recovered' });
+    } finally {
+      redis.__resetFetcherTimeoutForTests();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+});
+
 describe('theater posture caching behavior', { concurrency: 1 }, () => {
   async function importTheaterPosture() {
     return importPatchedTsModule('server/worldmonitor/military/v1/get-theater-posture.ts', {

@@ -1212,6 +1212,12 @@ export async function analyzeStock(
     });
     await storeStockAnalysisSnapshot(response, includeNews);
     return response;
+  }, undefined, {
+    // Worst-case fetcher budget: 2× UPSTREAM_TIMEOUT_MS sequenced (10s+10s for
+    // history/analyst then headlines/dividend) + 20s LLM overlay + small
+    // overhead. 60s safely sits above this so the cache safety net (#3539)
+    // doesn't pre-empt the caller's own per-stage timeouts.
+    timeoutMs: 60_000,
   });
 
   if (cached) return cached;
