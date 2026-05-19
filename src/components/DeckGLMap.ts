@@ -407,6 +407,56 @@ const TRADE_GC_INTERPOLATION_POINTS = 20;
 const CHOKEPOINT_PULSE_FREQ = 0.01;
 const CHOKEPOINT_PULSE_AMP = 0.3;
 
+// Process-wide guard so the window error listener for the deck.gl/maplibre
+// interleaved-mode render race is installed exactly once even if a hot-reload
+// or recreateWithFallback rebuilds the map.
+let __deckInterleavedRaceFilterInstalled = false;
+
+/**
+ * Swallow the well-known deck.gl 9.x + maplibre-gl 5.x interleaved-mode race:
+ *
+ *   Uncaught TypeError: Cannot read properties of null (reading 'id')
+ *     at DeckRenderer._drawLayers (deck-stack-*.js)
+ *     at LayerManager.renderLayers
+ *     at MapLibre painter.renderLayer (maplibre-*.js)
+ *
+ * Trigger: setProps({layers}) → deck _resolveLayers calls maplibre.removeLayer
+ * for a layer that's being swapped → maplibre schedules a triggerRepaint that
+ * fires the next frame → that repaint runs deck's `render()` via maplibre's
+ * custom-layer hook → deck iterates the layer list and hits a layer that was
+ * finalized between resolveLayers and renderLayers.
+ *
+ * MapboxOverlay's own onError is bypassed because maplibre — not deck — owns
+ * the render-loop callstack here (deck doesn't see the throw, so onError is
+ * never invoked). The next frame renders cleanly with no user-visible
+ * artifact, so swallowing here is safe.
+ *
+ * Sentry's beforeSend in main.ts already filters this exact pattern for
+ * telemetry (lines 313-315), but the browser still logs "Uncaught TypeError"
+ * to the console — this listener suppresses that.
+ *
+ * Narrow on BOTH the message shape AND the deck-stack chunk filename so an
+ * unrelated null-id crash in first-party code still surfaces.
+ */
+function installDeckInterleavedRaceFilter(): void {
+  if (__deckInterleavedRaceFilterInstalled) return;
+  __deckInterleavedRaceFilterInstalled = true;
+  window.addEventListener('error', (ev) => {
+    const msg = ev.error?.message ?? ev.message ?? '';
+    const file = ev.filename ?? '';
+    if (
+      /Cannot read properties of null \(reading 'id'\)|null is not an object \(evaluating '[\w.]+\.id'\)/.test(msg)
+      && /\/deck-stack-[A-Za-z0-9_-]+\.js/.test(file)
+    ) {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      if (import.meta.env.DEV) {
+        console.warn('[DeckGLMap] swallowed interleaved-mode render race (deck.gl/maplibre)');
+      }
+    }
+  }, { capture: true });
+}
+
 export class DeckGLMap {
   private static readonly MAX_CLUSTER_LEAVES = 200;
 
@@ -941,6 +991,8 @@ export class DeckGLMap {
 
   private initDeck(): void {
     if (!this.maplibreMap) return;
+
+    installDeckInterleavedRaceFilter();
 
     this.deckOverlay = new MapboxOverlay({
       interleaved: true,
