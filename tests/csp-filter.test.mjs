@@ -254,6 +254,54 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
     it('does NOT suppress connect-src to Zscaler (only frame-src is the injection)', () => {
       assert.ok(!suppress('enforce', 'connect-src', 'https://gateway.zscloud.net/api', '', false, FIRST_PARTY_CONVEX));
     });
+
+    // First-party img-src suppression — same pattern as connect-src+Convex above.
+    // Corporate proxies / privacy extensions / school content-filters can strip
+    // both `'self'` and `https:` from img-src in the user's effective policy,
+    // causing browsers to block our own favicon and panel icons even though our
+    // policy (`img-src 'self' data: blob: https:`) allows them (WORLDMONITOR-JP).
+    it('suppresses img-src to apex worldmonitor.app (favicon)', () => {
+      assert.ok(suppress('enforce', 'img-src', 'https://worldmonitor.app/favico/favicon-32x32.png', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('suppresses img-src to www.worldmonitor.app (production favicon, WORLDMONITOR-JP)', () => {
+      assert.ok(suppress('enforce', 'img-src', 'https://www.worldmonitor.app/favico/favicon-32x32.png', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('suppresses img-src to finance.worldmonitor.app subdomain', () => {
+      assert.ok(suppress('enforce', 'img-src', 'https://finance.worldmonitor.app/favico/finance/apple-touch-icon.png', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('suppresses img-src to tech.worldmonitor.app subdomain', () => {
+      assert.ok(suppress('enforce', 'img-src', 'https://tech.worldmonitor.app/favico/tech/favicon-32x32.png', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('does NOT suppress img-src to a foreign host', () => {
+      // Real third-party CDN image blocks should still surface.
+      assert.ok(!suppress('enforce', 'img-src', 'https://malicious.example.com/tracker.gif', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('does NOT suppress img-src to suffix-spoof lookalike `worldmonitor.app.evil.com`', () => {
+      // Endswith check uses a leading `.` so attacker-controlled lookalikes
+      // (`worldmonitor.app.evil.com`, `not-worldmonitor.app`) are not whitelisted.
+      assert.ok(!suppress('enforce', 'img-src', 'https://worldmonitor.app.evil.com/pixel.gif', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('does NOT suppress img-src to prefix-spoof `not-worldmonitor.app`', () => {
+      assert.ok(!suppress('enforce', 'img-src', 'https://not-worldmonitor.app/pixel.gif', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('does NOT suppress connect-src to worldmonitor.app (rule is scoped to img-src)', () => {
+      // First-party img-src rule must not bleed into other directives.
+      // A real connect-src regression to our own host must still surface.
+      assert.ok(!suppress('enforce', 'connect-src', 'https://api.worldmonitor.app/api/health', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('does NOT suppress script-src to worldmonitor.app (rule is scoped to img-src)', () => {
+      // A script-src block on our own host indicates a real CSP regression
+      // we want to see — must not be swallowed by the img-src rule.
+      assert.ok(!suppress('enforce', 'script-src', 'https://www.worldmonitor.app/assets/main-abc.js', '', false, FIRST_PARTY_CONVEX));
+    });
   });
 
   describe('real violations pass through', () => {
