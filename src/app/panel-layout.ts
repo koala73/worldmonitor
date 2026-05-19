@@ -39,6 +39,7 @@ import {
   InternetDisruptionsPanel,
   RuntimeConfigPanel,
   InsightsPanel,
+  AriaPanel,
   MacroSignalsPanel,
   FearGreedPanel,
   MarketBreadthPanel,
@@ -1346,6 +1347,7 @@ export class PanelLayoutManager implements AppModule {
     }
 
     this.createPanel('insights', () => new InsightsPanel());
+    this.createPanel('aria', () => new AriaPanel());
 
     // Global Giving panel (all variants)
     this.lazyPanel('giving', () =>
