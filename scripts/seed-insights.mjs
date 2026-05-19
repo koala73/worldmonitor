@@ -5,6 +5,22 @@ import { clusterItems, selectTopStories } from './_clustering.mjs';
 import { extractCountryCode } from './shared/geo-extract.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { pickBriefCluster, briefSystemPrompt, briefUserPrompt } from './_insights-brief.mjs';
+// Import from the scripts mirror (`scripts/shared/`) — NOT the repo-root
+// `shared/`. Railway services with nixpacks `rootDirectory=scripts` only
+// package files under scripts/; a `../shared/` import resolves to
+// `/shared/...` at runtime which is absent in the container and crashes
+// the seeder on startup. The local pattern is the `./shared/geo-extract.mjs`
+// line above. PR #3836 review caught this. See skill
+// railway-deploy-gotchas/reference/nixpacks-root-dir-scripts-cross-dir-import-escape.
+import { validateNoHallucinatedProperNouns } from './shared/brief-llm-core.js';
+
+// Hallucination validator rollout mode (PR-2 of brief-content-quality
+// regressions). `shadow` = log violations to Sentry but ship the LLM
+// output unchanged (default, safe). `enforce` = on violation, replace
+// the LLM summary with the source headline. Flip via Railway env after
+// the 7-day shadow window confirms <5% violation rate.
+const BRIEF_VALIDATOR_MODE =
+  process.env.BRIEF_VALIDATOR_MODE === 'enforce' ? 'enforce' : 'shadow';
 
 loadEnvFile(import.meta.url);
 
@@ -299,10 +315,40 @@ async function fetchInsights() {
   } else {
     const llmResult = await callLLM(topHeadline);
     if (llmResult) {
-      worldBrief = llmResult.text;
-      briefProvider = llmResult.provider;
-      briefModel = llmResult.model;
-      console.log(`  Brief generated via ${briefProvider} (${briefModel})`);
+      // Hallucination check: did the LLM invent proper nouns not in
+      // the headline? The May 19 brief shipped "Lebanese President
+      // Michel Aoun pledged..." against a headline that contained no
+      // name. See docs/plans/2026-05-19-001 U2.
+      const validation = validateNoHallucinatedProperNouns(llmResult.text, topHeadline);
+      if (!validation.ok) {
+        const hallucinated = (validation.hallucinated || []).join(' ');
+        if (BRIEF_VALIDATOR_MODE === 'enforce') {
+          // Replace the LLM summary with the source headline. R1 of the
+          // plan: "falls back to a safe summary (headline-grounded
+          // template) rather than publishing the hallucination."
+          worldBrief = topHeadline;
+          briefProvider = `${llmResult.provider}+headline-fallback`;
+          briefModel = llmResult.model;
+          console.warn(
+            `  [brief_hallucination ENFORCE] dropped LLM summary: invented "${hallucinated}" not in headline; fell back to headline`
+          );
+        } else {
+          // Shadow mode: log but ship the LLM output. The 7-day rollout
+          // window measures the false-positive rate before flipping to
+          // enforce.
+          worldBrief = llmResult.text;
+          briefProvider = llmResult.provider;
+          briefModel = llmResult.model;
+          console.warn(
+            `  [brief_hallucination SHADOW] would have dropped LLM summary: invented "${hallucinated}" not in headline`
+          );
+        }
+      } else {
+        worldBrief = llmResult.text;
+        briefProvider = llmResult.provider;
+        briefModel = llmResult.model;
+        console.log(`  Brief generated via ${briefProvider} (${briefModel})`);
+      }
     } else {
       status = 'degraded';
       console.warn('  No LLM available — publishing degraded (stories without brief)');

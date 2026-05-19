@@ -36,3 +36,10 @@ export function hashBriefStory(story: BriefStoryHashInput): Promise<string>;
 // ── v2 (analyst path only) ────────────────────────────────────────────────
 export const WHY_MATTERS_ANALYST_SYSTEM_V2: string;
 export function parseWhyMattersV2(text: unknown): string | null;
+
+// ── Hallucination validator (PR-2 of brief-content-quality regressions) ──
+export function extractProperNounSequences(text: string): string[][];
+export function validateNoHallucinatedProperNouns(
+  summary: unknown,
+  headline: unknown,
+): { ok: true } | { ok: false; hallucinated: string[] };

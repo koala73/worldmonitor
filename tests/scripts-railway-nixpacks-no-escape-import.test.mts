@@ -32,10 +32,16 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
 const scriptsDir = resolve(repoRoot, 'scripts');
 
+// Entry points that run under Railway nixpacks with `rootDirectory=scripts`.
+// PR #3836 review added `scripts/seed-insights.mjs` after a `../shared/`
+// import slipped through review (the test's pre-existing coverage stopped
+// at the three forecast/simulation services). Any new `scripts/*.mjs`
+// that ships as a Railway service MUST be added here.
 const ENTRY_POINTS = [
   'scripts/seed-forecasts.mjs',
   'scripts/process-simulation-tasks.mjs',
   'scripts/process-deep-forecast-tasks.mjs',
+  'scripts/seed-insights.mjs',
 ];
 
 const IMPORT_RE = /(?:^|[\s;])(?:import\b[\s\S]*?\bfrom|import|export\b[\s\S]*?\bfrom)\s+['"]([^'"]+)['"]/gm;
