@@ -1149,6 +1149,21 @@ export function getEffectivePanelConfig(key: string, variant: string): PanelConf
   return { ...base, ...override };
 }
 
+/**
+ * Returns true if `key` is in the current variant's default panel set.
+ *
+ * App.ts:577-583 merges ALL_PANELS into panelSettings on every variant so
+ * users can cross-enable panels, which makes `shouldCreatePanel(key)`
+ * (which just checks `key in panelSettings`) true everywhere. Auto-refresh
+ * paths that fan out a fetch must instead gate on the variant defaults —
+ * otherwise variants whose backend doesn't seed the panel's bootstrap key
+ * (e.g. tech-readiness on commodity/finance/energy) blow their 5s fetch
+ * budget on a key that will never populate.
+ */
+export function isPanelInVariantDefaults(key: string): boolean {
+  return (VARIANT_DEFAULTS[SITE_VARIANT] ?? []).includes(key);
+}
+
 export const FREE_MAX_PANELS = 40;
 export const FREE_MAX_SOURCES = 80;
 
