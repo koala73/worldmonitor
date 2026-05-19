@@ -39,7 +39,7 @@ function coerceEntry(v: unknown): MarketWatchlistEntry | null {
     return { symbol: sym };
   }
   if (v && typeof v === 'object') {
-    const obj = v as any;
+    const obj = v as Record<string, unknown>;
     const sym = normalizeSymbol(String(obj.symbol || ''));
     if (!sym) return null;
     const name = normalizeName(typeof obj.name === 'string' ? obj.name : undefined);

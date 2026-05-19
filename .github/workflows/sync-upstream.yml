@@ -1,0 +1,17 @@
+name: Sync upstream
+
+on:
+  schedule:
+    - cron: '0 6 * * *' # daily at 6 AM UTC
+  workflow_dispatch: # manual trigger from Actions tab
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync fork via GitHub API
+        run: |
+          gh api repos/${{ github.repository }}/merge-upstream \
+            -f branch=main
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
