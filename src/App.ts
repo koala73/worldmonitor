@@ -85,6 +85,7 @@ import { install as installCloudPrefsSync, onSignIn as cloudPrefsSignIn, onSignO
 import { getConvexClient, getConvexApi, waitForConvexAuth } from '@/services/convex-client';
 import { initEntitlementSubscription, destroyEntitlementSubscription, resetEntitlementState, onEntitlementChange } from '@/services/entitlements';
 import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
+import { installFollowedCountriesAuthListener } from '@/services/followed-countries';
 import {
   capturePendingCheckoutIntentFromUrl,
   initCheckoutWatchers,
@@ -998,6 +999,10 @@ export class App {
     await initAuthState();
     initAuthAnalytics();
     installCloudPrefsSync(SITE_VARIANT);
+    // Install the followed-countries auth listener once. Drives the
+    // anon→signed-in handoff (mergeAnonymousLocal mutation) and sign-out
+    // cleanup. Idempotent.
+    installFollowedCountriesAuthListener();
     this.enforceFreeTierLimits();
 
     let _prevUserId: string | null = null;

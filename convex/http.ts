@@ -747,6 +747,56 @@ http.route({
   }),
 });
 
+// Followed-countries relay (plan U14). Mirrors `/relay/user-preferences`:
+// shared-secret auth in the Authorization header, POST {userId} body, returns
+// `{ countries: string[] }`. Used by server-side cron consumers (PR C brief
+// composer) that need a typed `string[]` watchlist for a given user without
+// going through the Clerk-authenticated `listFollowed` query.
+http.route({
+  path: "/relay/followed-countries",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const secret = process.env.RELAY_SHARED_SECRET ?? "";
+    const provided = (request.headers.get("Authorization") ?? "").replace(/^Bearer\s+/, "");
+    if (!secret || !(await timingSafeEqualStrings(provided, secret))) {
+      return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    let body: { userId?: unknown };
+    try {
+      body = await request.json() as typeof body;
+    } catch {
+      return new Response(JSON.stringify({ error: "INVALID_BODY" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    // P2 #19 — Mirror /relay/user-preferences validation rigor: userId
+    // must be a non-empty string with bounded length (Clerk subjects are
+    // short, ~30 chars; cap at 256 defensively).
+    if (
+      typeof body.userId !== "string" ||
+      body.userId.length === 0 ||
+      body.userId.length > 256
+    ) {
+      return new Response(JSON.stringify({ error: "userId required" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    const countries = await ctx.runQuery(
+      internal.followedCountries.internalListFollowedForUser,
+      { userId: body.userId },
+    );
+    return new Response(JSON.stringify({ countries }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }),
+});
+
 http.route({
   path: "/relay/entitlement",
   method: "POST",

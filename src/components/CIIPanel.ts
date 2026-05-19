@@ -5,6 +5,7 @@ import { t } from '../services/i18n';
 import { h, replaceChildren, rawHtml } from '@/utils/dom-utils';
 import type { CachedRiskScores } from '@/services/cached-risk-scores';
 import { toCountryScore } from '@/services/cached-risk-scores';
+import { renderFollowButton } from '@/utils/follow-button';
 
 export class CIIPanel extends Panel {
   private scores: CountryScore[] = [];
@@ -12,6 +13,12 @@ export class CIIPanel extends Panel {
   private hasCachedRender = false;
   private onShareStory?: (code: string, name: string) => void;
   private onCountryClick?: (code: string) => void;
+  // Per-row FollowButton teardowns. Keyed by ISO code so we can tear
+  // down each one before the row is re-rendered (refresh / renderFromCached
+  // both call replaceChildren on this.content). Without this the
+  // FollowButton's watchlist + entitlement subscriptions leak each
+  // refresh tick — CIIPanel re-renders very frequently.
+  private followButtonTeardowns = new Map<string, () => void>();
 
   constructor() {
     super({
@@ -74,7 +81,34 @@ export class CIIPanel extends Panel {
     });
     shareBtn.appendChild(rawHtml(CIIPanel.SHARE_SVG));
 
+    // First child: per-row FollowButton (size sm). Insertion happens
+    // before the existing .cii-header so the star renders at the start
+    // of the row. The host wrapper owns the button's innerHTML across
+    // re-renders; teardown is tracked in `followButtonTeardowns` and
+    // fired before every wholesale rebuild + on panel destroy.
+    const followHost = h('span', {
+      className: 'cii-follow-btn-host',
+      dataset: { code: country.code },
+    });
+    const handle = renderFollowButton({
+      countryCode: country.code,
+      countryName: country.name,
+      size: 'sm',
+    });
+    followHost.innerHTML = handle.html;
+    // Attach immediately. The host doesn't need to be DOM-connected for
+    // `attach()` to install its delegated click + subscription listeners,
+    // and `attach()` re-renders into the host so any state drift is
+    // resolved on mount.
+    const teardown = handle.attach(followHost);
+    this.followButtonTeardowns.set(country.code, teardown);
+    // Stop click bubbling so the per-row `onCountryClick` doesn't fire
+    // when the user clicks the star (matches the `cii-share-btn`
+    // stopPropagation pattern in `bindShareButtons`).
+    followHost.addEventListener('click', (e) => e.stopPropagation());
+
     return h('div', { className: 'cii-country', dataset: { code: country.code } },
+      followHost,
       h('div', { className: 'cii-header' },
         h('span', { className: 'cii-emoji' }, emoji),
         h('span', { className: 'cii-name' }, country.name),
@@ -92,6 +126,17 @@ export class CIIPanel extends Panel {
         h('span', { title: t('common.information') }, `I:${country.components.information}`),
       ),
     );
+  }
+
+  private tearDownFollowButtons(): void {
+    for (const teardown of this.followButtonTeardowns.values()) {
+      try {
+        teardown();
+      } catch {
+        /* swallow — teardown should never throw, but be defensive */
+      }
+    }
+    this.followButtonTeardowns.clear();
   }
 
   private bindShareButtons(): void {
@@ -140,12 +185,18 @@ export class CIIPanel extends Panel {
       this.setCount(withData.length);
 
       if (withData.length === 0) {
+        // Tear down any previously-mounted FollowButtons before swapping
+        // the empty-state markup in (otherwise their subscriptions leak).
+        this.tearDownFollowButtons();
         this.setErrorState(false);
         replaceChildren(this.content, h('div', { className: 'empty-state' }, t('components.cii.noSignals')));
         return;
       }
 
       this.setErrorState(false);
+      // Tear down the previous batch of FollowButtons BEFORE we
+      // construct fresh rows; `buildCountry` will repopulate the map.
+      this.tearDownFollowButtons();
       const listEl = h('div', { className: 'cii-list' }, ...withData.map(s => this.buildCountry(s)));
       replaceChildren(this.content, listEl);
       this.bindShareButtons();
@@ -162,6 +213,8 @@ export class CIIPanel extends Panel {
     this.hasCachedRender = true;
     this.setCount(scores.length);
     this.setErrorState(false);
+    // Tear down previous FollowButtons before mounting the new batch.
+    this.tearDownFollowButtons();
     const listEl = h('div', { className: 'cii-list' }, ...scores.map(s => this.buildCountry(s)));
     replaceChildren(this.content, listEl);
     this.bindShareButtons();
@@ -170,5 +223,10 @@ export class CIIPanel extends Panel {
 
   public getScores(): CountryScore[] {
     return this.scores;
+  }
+
+  public override destroy(): void {
+    this.tearDownFollowButtons();
+    super.destroy();
   }
 }

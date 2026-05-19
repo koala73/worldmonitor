@@ -43,6 +43,7 @@ import { fetchMultiSectorCostShock, HS2_SHORT_LABELS } from '@/services/supply-c
 import type { MapContainer } from './MapContainer';
 import { ResilienceWidget } from './ResilienceWidget';
 import { dedupeHeadlines } from './CountryDeepDivePanel-news-utils';
+import { renderFollowButton } from '@/utils/follow-button';
 
 const DEPENDENCY_FLAG_LABELS: Record<string, { text: string; cls: string }> = {
   DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL:   { text: 'Single Source',   cls: 'cdp-dep-critical' },
@@ -140,6 +141,12 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private costShockCalcClosureDays = 30;
   private costShockCalcAbort: AbortController | null = null;
   private costShockCalcDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  // Holds the teardown returned by the FollowButton's `attach()` mounted
+  // in the title row. The skeleton is rebuilt every `show()` call (via
+  // `resetPanelContent` → `renderSkeleton`), and the panel itself is
+  // long-lived (singleton on `document.body`), so this teardown must
+  // fire BEFORE the skeleton is wiped and on `hide()`.
+  private followButtonTeardown: (() => void) | null = null;
 
   private readonly handleGlobalKeydown = (event: KeyboardEvent): void => {
     if (!this.panel.classList.contains('active')) return;
@@ -256,6 +263,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
   public hide(): void {
     this.destroyResilienceWidget();
+    this.tearDownFollowButton();
     if (this.isMaximizedState) {
       this.isMaximizedState = false;
       this.panel.classList.remove('maximized');
@@ -2337,7 +2345,21 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const name = this.el('h2', 'cdp-country-name', country);
     const subtitle = this.el('div', 'cdp-country-subtitle', `${code.toUpperCase()} • Country Intelligence`);
     titleWrap.append(name, subtitle);
-    left.append(flag, titleWrap);
+
+    // `resetPanelContent` (called at the top of renderSkeleton) already
+    // tore down the prior FollowButton's subscriptions; here we just
+    // mount a fresh one for the new country.
+    const followHost = this.el('span', 'cdp-follow-btn-host');
+    followHost.dataset.country = code;
+    const handle = renderFollowButton({
+      countryCode: code,
+      countryName: country,
+      size: 'md',
+    });
+    followHost.innerHTML = handle.html;
+    this.followButtonTeardown = handle.attach(followHost);
+
+    left.append(flag, titleWrap, followHost);
 
     const right = this.el('div', 'cdp-header-right');
 
@@ -2500,8 +2522,20 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.resilienceWidget = null;
   }
 
+  private tearDownFollowButton(): void {
+    if (this.followButtonTeardown) {
+      try {
+        this.followButtonTeardown();
+      } catch {
+        /* swallow */
+      }
+      this.followButtonTeardown = null;
+    }
+  }
+
   private resetPanelContent(): void {
     this.destroyResilienceWidget();
+    this.tearDownFollowButton();
     this.selectedSectorHs2 = null;
     this.sectorBypassAbort?.abort();
     this.sectorBypassAbort = null;

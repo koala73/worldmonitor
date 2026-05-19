@@ -35,4 +35,32 @@ crons.daily(
   {},
 );
 
+// Idempotent daily seed of the `followedCountriesShards` lock table
+// (Codex round-4 P0 v2). Skips existing shards; inserts any missing
+// shard ids in `[0, SHARD_COUNT)`. Defends against a deploy-time seed
+// step being skipped — every `followCountry` / `unfollowCountry` /
+// `mergeAnonymousLocal` mutation throws SHARDS_NOT_SEEDED if its shard
+// row is missing, so the cron is the steady-state self-heal. Cheap:
+// post-seed it just runs a 64-row collect + skip-loop.
+crons.daily(
+  "followed-countries-shards-seed",
+  { hourUTC: 3, minuteUTC: 0 },
+  internal.followedCountries._seedShards,
+);
+
+// Daily dedupe pass for the `followedCountriesShards` table. Pairs with
+// `_seedShards` above: a concurrent-seed race (e.g. the deploy step
+// running in parallel with the cron tick) can produce duplicate rows
+// for the same `shardId`. `readShardOrThrow` uses `.first()` so
+// duplicates don't break correctness, but they degrade OCC contention
+// coverage for users hashing to that shard. Running the dedupe in the
+// same daily slot, 1 minute after the seed, guarantees the table is
+// back to exactly SHARD_COUNT rows within 24h of any race. Idempotent
+// in the steady-state (no duplicates → no deletes).
+crons.daily(
+  "followed-countries-shards-dedupe",
+  { hourUTC: 3, minuteUTC: 1 },
+  internal.followedCountries._dedupeShards,
+);
+
 export default crons;

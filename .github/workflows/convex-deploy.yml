@@ -103,3 +103,18 @@ jobs:
         run: npx convex deploy --yes
         env:
           CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+      - name: Seed followedCountries shards (idempotent)
+        # The `followCountry` / `unfollowCountry` / `mergeAnonymousLocal`
+        # mutations throw `SHARDS_NOT_SEEDED` if the `followedCountriesShards`
+        # table is empty (Codex round-4 P0 v2 — pre-seeded sharded lock). The
+        # daily cron at 03:00 UTC also seeds, but a deploy that lands at
+        # 04:00 UTC would leave the feature broken for ~23h until the next
+        # cron tick. Running the seed inline AFTER `convex deploy --yes` (and
+        # therefore against the just-deployed code) closes that window.
+        # Idempotent — `_seedShards` collects existing shard ids and inserts
+        # only the missing ones. `npx convex run` targets internal functions
+        # by their file:export path; `--prod` pins the production deployment
+        # via CONVEX_DEPLOY_KEY.
+        run: npx convex run --prod followedCountries:_seedShards
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
