@@ -94,7 +94,11 @@ services:
       - "127.0.0.1:8079:80"
     environment:
       SRH_TOKEN: "${REDIS_TOKEN:?REDIS_TOKEN required — generate with: openssl rand -hex 32}"
-      SRH_CONNECTION_STRING: "redis://:${REDIS_PASSWORD}@redis:6379"
+      # Defense-in-depth: the redis service's --requirepass already fails
+      # compose validation if REDIS_PASSWORD is unset, but the explicit
+      # :? here protects against a future PR removing --requirepass or
+      # copying this connection string into a new service.
+      SRH_CONNECTION_STRING: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD required — generate with: openssl rand -hex 32}@redis:6379"
     depends_on:
       - redis
     restart: unless-stopped

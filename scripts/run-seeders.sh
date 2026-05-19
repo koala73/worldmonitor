@@ -20,7 +20,13 @@ if [ -f "$PROJECT_DIR/.env" ]; then
 fi
 
 UPSTASH_REDIS_REST_URL="${UPSTASH_REDIS_REST_URL:-http://localhost:8079}"
-if [ -z "${UPSTASH_REDIS_REST_TOKEN:-}" ] && [ -n "${REDIS_TOKEN:-}" ]; then
+# This script targets the LOCAL Docker REST proxy, so REDIS_TOKEN always
+# wins if set — even when UPSTASH_REDIS_REST_TOKEN also appears in .env
+# (e.g. a contributor who also works on the Vercel/Upstash side and keeps
+# the production token in the same file). Otherwise we'd silently send a
+# Vercel-Upstash bearer to localhost:8079 and the proxy would 401 the
+# request with no hint about why. Reviewer caught this on PR #3829.
+if [ -n "${REDIS_TOKEN:-}" ]; then
   UPSTASH_REDIS_REST_TOKEN="$REDIS_TOKEN"
 fi
 if [ -z "${UPSTASH_REDIS_REST_TOKEN:-}" ]; then

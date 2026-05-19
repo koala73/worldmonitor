@@ -58,7 +58,24 @@ describe('docker self-hosting — no default credentials (#3804)', () => {
       !/\$\{REDIS_PASSWORD:-/.test(compose),
       'docker-compose.yml must not provide a default for ${REDIS_PASSWORD}; require fail-closed via ${REDIS_PASSWORD:?...}',
     );
-    // The fail-closed assertion: both vars must use the ${VAR:?...} form somewhere in the file.
+    // The fail-closed assertion: EVERY expansion of either var must use
+    // the ${VAR:?...} form. A bare ${VAR} silently expands to empty if
+    // the upstream guard ever moves or gets deleted (PR #3829 reviewer
+    // P2 — SRH_CONNECTION_STRING used a bare ${REDIS_PASSWORD} before fix).
+    const bareTokenExpansions = compose.match(/\$\{REDIS_TOKEN(?![:?])/g) ?? [];
+    assert.equal(
+      bareTokenExpansions.length,
+      0,
+      `docker-compose.yml must use \${REDIS_TOKEN:?...} at every expansion (found ${bareTokenExpansions.length} bare \${REDIS_TOKEN})`,
+    );
+    const barePasswordExpansions = compose.match(/\$\{REDIS_PASSWORD(?![:?])/g) ?? [];
+    assert.equal(
+      barePasswordExpansions.length,
+      0,
+      `docker-compose.yml must use \${REDIS_PASSWORD:?...} at every expansion (found ${barePasswordExpansions.length} bare \${REDIS_PASSWORD})`,
+    );
+    // Both vars must appear in at least one fail-closed expansion (i.e. the
+    // file actually requires them somewhere, not just by total absence).
     assert.ok(
       /\$\{REDIS_TOKEN:\?/.test(compose),
       'docker-compose.yml must require REDIS_TOKEN via ${REDIS_TOKEN:?...} fail-closed syntax',
@@ -103,6 +120,20 @@ describe('docker self-hosting — no default credentials (#3804)', () => {
     assert.ok(
       /REDIS_TOKEN/.test(sh),
       'scripts/run-seeders.sh must reference REDIS_TOKEN so it picks up the value from .env',
+    );
+    // Precedence guard for PR #3829 reviewer P1: a developer with BOTH
+    // tokens in .env (Vercel/Upstash token + local Docker proxy token)
+    // would otherwise have UPSTASH_REDIS_REST_TOKEN populated from .env
+    // and the script would silently pass the Vercel bearer to
+    // localhost:8079 → 401 with no hint. Inversion: REDIS_TOKEN wins
+    // unconditionally if set, then fall back to UPSTASH_REDIS_REST_TOKEN.
+    assert.ok(
+      !/if \[ -z "\$\{UPSTASH_REDIS_REST_TOKEN[^}]*}" \] && \[ -n "\$\{REDIS_TOKEN/.test(sh),
+      'scripts/run-seeders.sh must not gate REDIS_TOKEN copy on UPSTASH_REDIS_REST_TOKEN being absent (PR #3829 P1)',
+    );
+    assert.ok(
+      /if \[ -n "\$\{REDIS_TOKEN[^}]*}" \]/.test(sh),
+      'scripts/run-seeders.sh must unconditionally prefer REDIS_TOKEN when set (PR #3829 P1)',
     );
   });
 
