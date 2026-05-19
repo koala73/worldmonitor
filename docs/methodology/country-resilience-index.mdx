@@ -332,14 +332,14 @@ pb*  = ((r − g) / (1 + g)) × debtToGdp
 gap  = primaryBalance − pb*       (positive ⇒ debt path declining)
 ```
 
-The gap is **computed at seed time** and stored as `debtSustainabilityGapPct` in the canonical fiscal-space blob, so the scorer just normalizes. Inputs are year-aligned via `latestCommonYear` across the 5 formula series (debt, balance, primary balance, real growth, inflation); year-mismatched countries get `gap=null` and the scorer's `weightedBlend` redistributes weight across the remaining 3 indicators. The hyperinflation cap (CPI > 25%) drops `gap` to null for Argentina / Lebanon / Venezuela — the formula's inflation-tax term would otherwise mask underlying fiscal pathology. Realistic joint coverage is ~150 countries (down from 190 nominal) because of the year-alignment + cap interaction.
+The gap is **computed at seed time** and stored as `debtSustainabilityGapPct` in the canonical fiscal-space blob, so the scorer just normalizes. Inputs are year-aligned via `latestCommonYear` across the 5 formula series (debt, balance, primary balance, real growth, inflation); year-mismatched countries get `gap=null` and the scorer's `weightedBlend` redistributes weight across the remaining 3 indicators. The inflation cap (CPI > 10%) drops `gap` to null for inflation-tax-regime countries (Argentina, Turkey, Lebanon, Egypt, Nigeria, Ethiopia, etc.) — above ~10% inflation the formula's nominal-growth term mechanically erodes debt while masking underlying fiscal pathology, and the IMF DSA framework itself only treats sustainability as meaningful below this threshold. Realistic joint coverage is ~140 countries (down from 190 nominal) because of the year-alignment + cap interaction.
 
 | Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
 |---|---|---|---|---|---|---|
 | recoveryGovRevenue | Government revenue as % of GDP (IMF GGR_G01_GDP_PT) | Higher is better | 5 - 45 | 0.25 | IMF | Annual |
 | recoveryFiscalBalance | General government net lending/borrowing as % of GDP (IMF GGXCNL_G01_GDP_PT) | Higher is better | -15 - 5 | 0.20 | IMF | Annual |
 | recoveryDebtToGdp | General government gross debt as % of GDP (IMF GGXWDG_NGDP_PT) | Lower is better | 150 - 0 | 0.20 | IMF | Annual |
-| debtSustainabilityGap | Primary-balance gap to debt-stabilizing level (IMF DSA construct); see formula above. Dropped to null when CPI > 25% to avoid hyperinflation masking. | Higher is better | -5 - 3 | 0.35 | IMF (5 series: GGXONLB_NGDP, GGXCNL_NGDP, GGXWDG_NGDP, NGDP_RPCH, PCPIPCH) | Annual |
+| debtSustainabilityGap | Primary-balance gap to debt-stabilizing level (IMF DSA construct); see formula above. Dropped to null when CPI > 10% to avoid inflation-tax masking. | Higher is better | -5 - 3 | 0.35 | IMF (5 series: GGXONLB_NGDP, GGXCNL_NGDP, GGXWDG_NGDP, NGDP_RPCH, PCPIPCH) | Annual |
 
 #### Reserve Adequacy
 

@@ -273,8 +273,11 @@ describe('validateFiscalSpace (two-floor gating)', () => {
     assert.deepEqual(FISCAL_SPACE_VALIDATION_FLOORS, { fiscal3: 150, gap: 100 });
   });
 
-  it('inflation cap constant is pinned at 25', () => {
-    assert.equal(INFLATION_GAP_CAP_PCT, 25);
+  it('inflation cap constant is pinned at 10', () => {
+    // Tightened from 25% to 10% in follow-up to PR #3669 after Lebanon
+    // (14.6% CPI) scored #1 globally on the gap indicator — see the
+    // INFLATION_GAP_CAP_PCT comment in seed-recovery-fiscal-space.mjs.
+    assert.equal(INFLATION_GAP_CAP_PCT, 10);
   });
 
   it('handles empty/malformed payloads safely', () => {
