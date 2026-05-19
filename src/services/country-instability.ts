@@ -22,7 +22,8 @@ export interface CountryScore {
   trend: 'rising' | 'stable' | 'falling';
   change24h: number;
   components: ComponentScores;
-  lastUpdated: Date;
+  // Null when the underlying source (cached proto) provided no timestamp. See #3800.
+  lastUpdated: Date | null;
 }
 
 export interface ComponentScores {
