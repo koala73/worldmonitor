@@ -125,10 +125,23 @@ function evaluateThreshold(value, threshold) {
   }
 }
 
-function isCloseToThreshold(value, threshold) {
-  // 80% of the threshold counts as "watching"
+export function isCloseToThreshold(value, threshold) {
   const target = threshold.value;
   if (target === 0) return false;
-  const ratio = value / target;
-  return ratio > 0.8 && ratio < 1.0;
+  const band = Math.abs(target) * 0.2;
+
+  switch (threshold.operator) {
+    case 'gt':
+    case 'gte':
+      return value < target && value >= target - band;
+    case 'lt':
+    case 'lte':
+      return value > target && value <= target + band;
+    // delta_* operators need historical baselines and remain dormant in Phase 0.
+    case 'delta_gt':
+    case 'delta_lt':
+      return false;
+    default:
+      return false;
+  }
 }

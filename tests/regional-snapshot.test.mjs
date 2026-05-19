@@ -22,7 +22,7 @@ import {
 import { computeBalanceVector, SCORING_VERSION } from '../scripts/regional-snapshot/balance-vector.mjs';
 import { deriveRegime, buildRegimeState } from '../scripts/regional-snapshot/regime-derivation.mjs';
 import { scoreActors } from '../scripts/regional-snapshot/actor-scoring.mjs';
-import { evaluateTriggers } from '../scripts/regional-snapshot/trigger-evaluator.mjs';
+import { evaluateTriggers, isCloseToThreshold } from '../scripts/regional-snapshot/trigger-evaluator.mjs';
 import { buildScenarioSets } from '../scripts/regional-snapshot/scenario-builder.mjs';
 import { resolveTransmissions, TEMPLATE_VERSION } from '../scripts/regional-snapshot/transmission-templates.mjs';
 import { collectEvidence } from '../scripts/regional-snapshot/evidence-collector.mjs';
@@ -408,6 +408,34 @@ describe('evaluateTriggers', () => {
     const all = [...tl.active, ...tl.watching, ...tl.dormant];
     assert.ok(!all.some((t) => t.id.startsWith('mena_')));
     assert.ok(!all.some((t) => t.id === 'hormuz_transit_drop'));
+  });
+});
+
+describe('isCloseToThreshold', () => {
+  it('treats lt thresholds as watching only before the breach', () => {
+    assert.equal(isCloseToThreshold(0.28, { operator: 'lt', value: 0.3 }), false);
+    assert.equal(isCloseToThreshold(0.32, { operator: 'lt', value: 0.3 }), true);
+  });
+
+  it('supports lte thresholds with the same pre-breach band', () => {
+    assert.equal(isCloseToThreshold(0.3, { operator: 'lte', value: 0.3 }), false);
+    assert.equal(isCloseToThreshold(0.35, { operator: 'lte', value: 0.3 }), true);
+  });
+
+  it('keeps gt/gte watching semantics for positive thresholds', () => {
+    assert.equal(isCloseToThreshold(0.85, { operator: 'gte', value: 1.0 }), true);
+    assert.equal(isCloseToThreshold(1.0, { operator: 'gte', value: 1.0 }), false);
+  });
+
+  it('handles negative fixed thresholds by distance from the threshold', () => {
+    assert.equal(isCloseToThreshold(-0.18, { operator: 'lt', value: -0.2 }), true);
+    assert.equal(isCloseToThreshold(-0.22, { operator: 'lt', value: -0.2 }), false);
+    assert.equal(isCloseToThreshold(-0.22, { operator: 'gt', value: -0.2 }), true);
+  });
+
+  it('keeps delta operators dormant in Phase 0', () => {
+    assert.equal(isCloseToThreshold(-0.18, { operator: 'delta_lt', value: -0.2 }), false);
+    assert.equal(isCloseToThreshold(14, { operator: 'delta_gt', value: 15 }), false);
   });
 });
 
