@@ -4,6 +4,7 @@ import https from 'node:https';
 import dns from 'node:dns/promises';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
+import { isIP } from 'node:net';
 import { promisify } from 'node:util';
 import { brotliCompress, gzipSync } from 'node:zlib';
 import path from 'node:path';
@@ -17,6 +18,7 @@ const brotliCompressAsync = promisify(brotliCompress);
 // IPv6 endpoints time out, causing ETIMEDOUT. This override ensures ALL
 // fetch() calls in dynamically-loaded handler modules (api/*.js) use IPv4.
 const _originalFetch = globalThis.fetch;
+const sidecarAllowedPrivateFetchOrigins = new Set();
 
 function normalizeRequestBody(body) {
   if (body == null) return null;
@@ -90,11 +92,83 @@ function sidecarYahooGate() {
   return _yahooQueue;
 }
 
+function redactUrlForLog(rawUrl) {
+  try {
+    const redacted = new URL(String(rawUrl));
+    redacted.username = '';
+    redacted.password = '';
+    redacted.search = '';
+    redacted.hash = '';
+    return redacted.toString();
+  } catch {
+    return String(rawUrl);
+  }
+}
+
+async function _privilegedFetch(...args) {
+  await acquireUpstreamSlot();
+  try {
+    return await _originalFetch(...args);
+  } finally {
+    releaseUpstreamSlot();
+  }
+}
+
+function makeSsrfBlockedError(reason, rawUrl) {
+  const error = new Error(`SSRF blocked: ${reason} (url=${redactUrlForLog(rawUrl)})`);
+  error.code = 'ERR_SSRF_BLOCKED';
+  return error;
+}
+
+function firstIPv4Address(addresses = []) {
+  return addresses.find((addr) => isIP(addr) === 4) ?? null;
+}
+
+function makePinnedLookup(address, family = 4) {
+  return (_hostname, options, callback) => {
+    const cb = typeof options === 'function' ? options : callback;
+    const lookupOptions = typeof options === 'object' && options !== null ? options : {};
+    queueMicrotask(() => {
+      if (lookupOptions.all) cb(null, [{ address, family }]);
+      else cb(null, address, family);
+    });
+  };
+}
+
+function registerSidecarAllowedPrivateFetchOrigins(port, extraOrigins = []) {
+  const origins = [
+    `http://127.0.0.1:${port}`,
+    `http://localhost:${port}`,
+    ...extraOrigins,
+  ];
+  for (const origin of origins) sidecarAllowedPrivateFetchOrigins.add(origin);
+  return () => {
+    for (const origin of origins) sidecarAllowedPrivateFetchOrigins.delete(origin);
+  };
+}
+
+function isAllowedPrivateSidecarFetch(url) {
+  return sidecarAllowedPrivateFetchOrigins.has(url.origin);
+}
+
+async function assertSafeSidecarFetchUrl(url) {
+  if (isAllowedPrivateSidecarFetch(url)) {
+    return { safe: true, resolvedAddresses: [url.hostname] };
+  }
+
+  const safety = await isSafeUrl(url.toString());
+  if (!safety.safe) {
+    throw makeSsrfBlockedError(safety.reason, url.toString());
+  }
+  return safety;
+}
+
 globalThis.fetch = async function ipv4Fetch(input, init) {
   const isRequest = input && typeof input === 'object' && 'url' in input;
   let url;
   try { url = new URL(typeof input === 'string' ? input : input.url); } catch { return _originalFetch(input, init); }
   if (url.protocol !== 'https:' && url.protocol !== 'http:') return _originalFetch(input, init);
+  const safety = await assertSafeSidecarFetchUrl(url);
   if (url.hostname.includes('finance.yahoo.com')) await sidecarYahooGate();
   await acquireUpstreamSlot();
   try {
@@ -108,8 +182,20 @@ globalThis.fetch = async function ipv4Fetch(input, init) {
         : Array.isArray(rawHeaders) ? Object.fromEntries(rawHeaders) : rawHeaders;
       Object.assign(headers, h);
     }
+    const requestOptions = {
+      hostname: url.hostname,
+      port: url.port || (url.protocol === 'https:' ? 443 : 80),
+      path: url.pathname + url.search,
+      method,
+      headers,
+      family: 4,
+    };
+    const pinnedV4 = isAllowedPrivateSidecarFetch(url) ? null : firstIPv4Address(safety.resolvedAddresses);
+    if (pinnedV4) {
+      requestOptions.lookup = makePinnedLookup(pinnedV4, 4);
+    }
     return await new Promise((resolve, reject) => {
-      const req = mod.request({ hostname: url.hostname, port: url.port || (url.protocol === 'https:' ? 443 : 80), path: url.pathname + url.search, method, headers, family: 4 }, (res) => {
+      const req = mod.request(requestOptions, (res) => {
         const chunks = [];
         res.on('data', (c) => chunks.push(c));
         res.on('end', () => {
@@ -162,9 +248,10 @@ function isPrivateIP(ip) {
   // IPv6 link-local / unique-local
   if (/^f[cd][0-9a-f]{2}:/i.test(addr)) return true; // fc00::/7 (ULA)
   if (/^fe[89ab][0-9a-f]:/i.test(addr)) return true;  // fe80::/10 (link-local)
+  if (/^ff[0-9a-f]{2}:/i.test(addr)) return true;      // ff00::/8 multicast
 
   const parts = addr.split('.').map(Number);
-  if (parts.length !== 4 || parts.some(p => isNaN(p))) return false; // not an IPv4
+  if (parts.length !== 4 || parts.some(p => Number.isNaN(p))) return false; // not an IPv4
 
   const [a, b] = parts;
   if (a === 127) return true;                       // 127.0.0.0/8  loopback
@@ -206,6 +293,9 @@ async function isSafeUrl(urlString) {
   const ipLiteral = hostname.replace(/^\[|\]$/g, '');
   if (isPrivateIP(ipLiteral)) {
     return { safe: false, reason: 'Requests to private/reserved IP addresses are not allowed' };
+  }
+  if (isIP(ipLiteral)) {
+    return { safe: true, resolvedAddresses: [ipLiteral] };
   }
 
   // DNS resolution check — resolve the hostname and verify all resolved IPs
@@ -541,6 +631,8 @@ function resolveConfig(options = {}) {
   const mode = String(options.mode ?? process.env.LOCAL_API_MODE ?? 'desktop-sidecar');
   const requestedFallback = String(options.cloudFallback ?? process.env.LOCAL_API_CLOUD_FALLBACK ?? '') === 'true';
   const cloudFallback = mode === 'docker' ? false : requestedFallback;
+  // Programmatic dev/test escape hatch only; CLI/env startup keeps private remoteBase blocked.
+  const allowPrivateRemoteBase = options.allowPrivateRemoteBase === true;
   if (mode === 'docker' && requestedFallback) {
     (options.logger ?? console).warn('[local-api] Cloud fallback disabled in Docker mode (self-hosted instances must not proxy to api.worldmonitor.app)');
   }
@@ -554,6 +646,7 @@ function resolveConfig(options = {}) {
     apiDir,
     mode,
     cloudFallback,
+    allowPrivateRemoteBase,
     logger,
   };
 }
@@ -633,20 +726,23 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
   // Use node:https with IPv4 forced — Node.js built-in fetch (undici) tries IPv6
   // first and some servers (EIA, NASA FIRMS) have broken IPv6 causing ETIMEDOUT.
   const u = new URL(url);
+  const allowPrivateNetwork = options.allowPrivateNetwork === true;
+  const fetchOptions = { ...options };
+  delete fetchOptions.allowPrivateNetwork;
   if (u.protocol === 'https:') {
     return new Promise((resolve, reject) => {
       const reqOpts = {
         hostname: u.hostname,
         port: u.port || 443,
         path: u.pathname + u.search,
-        method: options.method || 'GET',
-        headers: options.headers || {},
+        method: fetchOptions.method || 'GET',
+        headers: fetchOptions.headers || {},
         family: 4,
       };
       // Pin to a pre-resolved IP to prevent TOCTOU DNS rebinding.
       // The hostname is kept for SNI / TLS certificate validation.
-      if (options.resolvedAddress) {
-        reqOpts.lookup = (_hostname, _opts, cb) => cb(null, options.resolvedAddress, 4);
+      if (fetchOptions.resolvedAddress) {
+        reqOpts.lookup = makePinnedLookup(fetchOptions.resolvedAddress, 4);
       }
       const req = https.request(reqOpts, (res) => {
         const chunks = [];
@@ -664,8 +760,8 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
       });
       req.on('error', reject);
       req.setTimeout(timeoutMs, () => { req.destroy(new Error('Request timed out')); });
-      if (options.body) {
-        const body = normalizeRequestBody(options.body);
+      if (fetchOptions.body) {
+        const body = normalizeRequestBody(fetchOptions.body);
         if (body != null) req.write(body);
       }
       req.end();
@@ -675,17 +771,18 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
   // For pinned addresses on plain HTTP, rewrite the URL to connect to the
   // validated IP and set the Host header so virtual-host routing still works.
   let fetchUrl = url;
-  const fetchHeaders = { ...(options.headers || {}) };
-  if (options.resolvedAddress && u.protocol === 'http:') {
+  const fetchHeaders = { ...(fetchOptions.headers || {}) };
+  if (fetchOptions.resolvedAddress && u.protocol === 'http:') {
     const pinned = new URL(url);
     fetchHeaders['Host'] = pinned.host;
-    pinned.hostname = options.resolvedAddress;
+    pinned.hostname = fetchOptions.resolvedAddress;
     fetchUrl = pinned.toString();
   }
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(fetchUrl, { ...options, headers: fetchHeaders, signal: controller.signal });
+    const fetchImpl = allowPrivateNetwork ? _privilegedFetch : fetch;
+    return await fetchImpl(fetchUrl, { ...fetchOptions, headers: fetchHeaders, signal: controller.signal });
   } finally {
     clearTimeout(timer);
   }
@@ -940,12 +1037,12 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
       } catch {
         return fail('Invalid URL');
       }
-      const response = await fetchWithTimeout(probeUrl, { method: 'GET' }, 8000);
+      const response = await fetchWithTimeout(probeUrl, { method: 'GET', allowPrivateNetwork: true }, 8000);
       if (!response.ok) {
         // Fall back to native Ollama /api/tags endpoint
         try {
           const tagsUrl = new URL('/api/tags', value).toString();
-          const tagsResponse = await fetchWithTimeout(tagsUrl, { method: 'GET' }, 8000);
+          const tagsResponse = await fetchWithTimeout(tagsUrl, { method: 'GET', allowPrivateNetwork: true }, 8000);
           if (!tagsResponse.ok) return fail(`Ollama probe failed (${tagsResponse.status})`);
           return ok('Ollama endpoint verified (native API)');
         } catch {
@@ -1163,8 +1260,13 @@ async function dispatch(requestUrl, req, routes, context) {
   // TODO: refactor to import getLlmHealthStatus() once handlers share a process-level module cache.
   if (requestUrl.pathname === '/api/llm-health') {
     const PROBE_TIMEOUT = 2000;
-    async function probeOrigin(url) {
-      try { await fetch(url, { method: 'GET', signal: AbortSignal.timeout(PROBE_TIMEOUT) }); return true; } catch { return false; }
+    async function probeOrigin(url, options = {}) {
+      try {
+        await fetchWithTimeout(url, { method: 'GET', allowPrivateNetwork: options.allowPrivateNetwork === true }, PROBE_TIMEOUT);
+        return true;
+      } catch {
+        return false;
+      }
     }
     const providers = [];
     const providerChecks = [];
@@ -1176,11 +1278,11 @@ async function dispatch(requestUrl, req, routes, context) {
       try {
         const origin = new URL(ollamaUrl).origin;
         providerChecks.push(
-          probeOrigin(origin).then((available) => ({ name: 'ollama', url: origin, available })),
+          probeOrigin(origin, { allowPrivateNetwork: true }).then((available) => ({ name: 'ollama', url: origin, available })),
         );
       } catch {}
     }
-    if (groqKey && groqKey.startsWith('gsk_')) {
+    if (groqKey?.startsWith('gsk_')) {
       providerChecks.push(
         probeOrigin('https://api.groq.com').then((available) => ({ name: 'groq', url: 'https://api.groq.com', available })),
       );
@@ -1458,6 +1560,7 @@ export async function createLocalApiServer(options = {}) {
   const context = resolveConfig(options);
   loadVerboseState(context.dataDir);
   const routes = await buildRouteTable(context.apiDir);
+  let unregisterSelfFetchOrigins = null;
 
   const server = createServer(async (req, res) => {
     const requestUrl = new URL(req.url || '/', `http://127.0.0.1:${context.port}`);
@@ -1551,6 +1654,11 @@ export async function createLocalApiServer(options = {}) {
       const address = server.address();
       const boundPort = typeof address === 'object' && address?.port ? address.port : context.port;
       context.port = boundPort;
+      const extraAllowedPrivateOrigins = [];
+      if (context.allowPrivateRemoteBase) {
+        try { extraAllowedPrivateOrigins.push(new URL(context.remoteBase).origin); } catch {}
+      }
+      unregisterSelfFetchOrigins = registerSidecarAllowedPrivateFetchOrigins(boundPort, extraAllowedPrivateOrigins);
 
       const portFile = process.env.LOCAL_API_PORT_FILE;
       if (portFile) {
@@ -1567,7 +1675,8 @@ export async function createLocalApiServer(options = {}) {
           process.env.OPENROUTER_API_KEY ? 'https://openrouter.ai' : null,
         ].filter(Boolean);
         for (const url of urls) {
-          try { await fetch(url, { method: 'GET', signal: AbortSignal.timeout(2000) }); } catch {}
+          const allowPrivateNetwork = url === process.env.OLLAMA_API_URL || url === process.env.LLM_API_URL;
+          try { await fetchWithTimeout(url, { method: 'GET', allowPrivateNetwork }, 2000); } catch {}
         }
         if (urls.length) console.log(`[local-api] LLM health warmed for ${urls.length} provider(s)`);
       })();
@@ -1575,6 +1684,10 @@ export async function createLocalApiServer(options = {}) {
       return { port: boundPort };
     },
     async close() {
+      if (unregisterSelfFetchOrigins) {
+        unregisterSelfFetchOrigins();
+        unregisterSelfFetchOrigins = null;
+      }
       await new Promise((resolve, reject) => {
         server.close((error) => (error ? reject(error) : resolve()));
       });

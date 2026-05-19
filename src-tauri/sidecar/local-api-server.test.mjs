@@ -210,6 +210,7 @@ test('falls back to cloud when cloudFallback is enabled and local handler return
     apiDir: localApi.apiDir,
     remoteBase: remote.remoteBase,
     cloudFallback: 'true',
+    allowPrivateRemoteBase: true,
     logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
@@ -258,6 +259,7 @@ test('preserves POST body when cloud fallback is triggered after local non-OK re
     apiDir: localApi.apiDir,
     remoteBase: `http://127.0.0.1:${remotePort}`,
     cloudFallback: 'true',
+    allowPrivateRemoteBase: true,
     logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
@@ -390,24 +392,19 @@ test('replaces browser origin with localhost origin for local handlers', async (
 });
 
 test('preserves Request body when handler uses fetch(Request)', async () => {
-  let receivedBody = '';
-
-  const upstream = createServer((req, res) => {
-    const chunks = [];
-    req.on('data', (chunk) => chunks.push(chunk));
-    req.on('end', () => {
-      receivedBody = Buffer.concat(chunks).toString('utf8');
-      res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ receivedBody }));
-    });
-  });
-  const upstreamPort = await listen(upstream);
-  process.env.WM_TEST_UPSTREAM = `http://127.0.0.1:${upstreamPort}`;
-
   const localApi = await setupApiDir({
+    'echo-body.js': `
+      export default async function handler(request) {
+        const receivedBody = await request.text();
+        return new Response(JSON.stringify({ receivedBody }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        });
+      }
+    `,
     'request-proxy.js': `
       export default async function handler() {
-        const request = new Request(\`\${process.env.WM_TEST_UPSTREAM}/echo\`, {
+        const request = new Request(process.env.WM_TEST_UPSTREAM, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ secret: 'keep-body' }),
@@ -428,38 +425,34 @@ test('preserves Request body when handler uses fetch(Request)', async () => {
     logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
+  process.env.WM_TEST_UPSTREAM = `http://127.0.0.1:${port}/api/echo-body`;
 
   try {
     const response = await fetch(`http://127.0.0.1:${port}/api/request-proxy`);
     assert.equal(response.status, 200);
     const body = await response.json();
     assert.equal(body.receivedBody.includes('"secret":"keep-body"'), true);
-    assert.equal(receivedBody.includes('"secret":"keep-body"'), true);
   } finally {
     delete process.env.WM_TEST_UPSTREAM;
     await app.close();
     await localApi.cleanup();
-    await new Promise((resolve, reject) => {
-      upstream.close((error) => (error ? reject(error) : resolve()));
-    });
   }
 });
 
 test('returns local handler error when fetch(Request) uses a consumed body', async () => {
-  let upstreamHits = 0;
-
-  const upstream = createServer((req, res) => {
-    upstreamHits += 1;
-    res.writeHead(200, { 'content-type': 'application/json' });
-    res.end(JSON.stringify({ ok: true }));
-  });
-  const upstreamPort = await listen(upstream);
-  process.env.WM_TEST_UPSTREAM = `http://127.0.0.1:${upstreamPort}`;
-
   const localApi = await setupApiDir({
+    'echo-body.js': `
+      export default async function handler(request) {
+        const receivedBody = await request.text();
+        return new Response(JSON.stringify({ receivedBody }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' }
+        });
+      }
+    `,
     'request-consumed.js': `
       export default async function handler() {
-        const request = new Request(\`\${process.env.WM_TEST_UPSTREAM}/echo\`, {
+        const request = new Request(process.env.WM_TEST_UPSTREAM, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ secret: 'used-body' }),
@@ -480,6 +473,7 @@ test('returns local handler error when fetch(Request) uses a consumed body', asy
     logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
+  process.env.WM_TEST_UPSTREAM = `http://127.0.0.1:${port}/api/echo-body`;
 
   try {
     const response = await fetch(`http://127.0.0.1:${port}/api/request-consumed`);
@@ -488,6 +482,51 @@ test('returns local handler error when fetch(Request) uses a consumed body', asy
     assert.equal(body.error, 'Local handler error');
     assert.equal(typeof body.reason, 'string');
     assert.equal(body.reason.length > 0, true);
+  } finally {
+    delete process.env.WM_TEST_UPSTREAM;
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('blocks handler global fetches to private network targets (#3549)', async () => {
+  let upstreamHits = 0;
+
+  const upstream = createServer((_req, res) => {
+    upstreamHits += 1;
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
+  });
+  const upstreamPort = await listen(upstream);
+  process.env.WM_TEST_UPSTREAM = `http://127.0.0.1:${upstreamPort}/secret?token=super-secret`;
+
+  const localApi = await setupApiDir({
+    'private-proxy.js': `
+      export default async function handler() {
+        const upstream = await fetch(process.env.WM_TEST_UPSTREAM);
+        const payload = await upstream.text();
+        return new Response(payload, {
+          status: upstream.status,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+    `,
+  });
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/api/private-proxy`);
+    assert.equal(response.status, 502);
+    const body = await response.json();
+    assert.equal(body.error, 'Local handler error');
+    assert.match(body.reason, /SSRF blocked/);
+    assert.doesNotMatch(body.reason, /super-secret/);
     assert.equal(upstreamHits, 0);
   } finally {
     delete process.env.WM_TEST_UPSTREAM;
@@ -499,7 +538,90 @@ test('returns local handler error when fetch(Request) uses a consumed body', asy
   }
 });
 
-test('strips browser origin headers when proxying to cloud fallback (cloudFallback enabled)', async () => {
+test('uses asynchronous pinned lookup callback for handler global fetches (#3549)', async () => {
+  const originalHttpsRequest = https.request;
+  const envSnapshot = {
+    GROQ_API_KEY: process.env.GROQ_API_KEY,
+    OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+    OLLAMA_API_URL: process.env.OLLAMA_API_URL,
+    LLM_API_URL: process.env.LLM_API_URL,
+  };
+  let lookupCallbackWasSync = null;
+
+  delete process.env.GROQ_API_KEY;
+  delete process.env.OPENROUTER_API_KEY;
+  delete process.env.OLLAMA_API_URL;
+  delete process.env.LLM_API_URL;
+
+  https.request = (options, onResponse) => {
+    assert.equal(options.hostname, '93.184.216.34');
+    assert.equal(typeof options.lookup, 'function');
+
+    let sync = true;
+    options.lookup(options.hostname, { family: 4 }, (error, address, family) => {
+      assert.ifError(error);
+      assert.equal(address, '93.184.216.34');
+      assert.equal(family, 4);
+      lookupCallbackWasSync = sync;
+    });
+    sync = false;
+
+    const req = new EventEmitter();
+    req.setTimeout = () => {};
+    req.write = () => {};
+    req.destroy = (error) => {
+      if (error) req.emit('error', error);
+    };
+    req.end = () => {
+      setImmediate(() => {
+        const res = new EventEmitter();
+        res.statusCode = 200;
+        res.statusMessage = 'OK';
+        res.headers = { 'content-type': 'application/json' };
+        onResponse(res);
+        res.emit('data', Buffer.from(JSON.stringify({ ok: true })));
+        res.emit('end');
+      });
+    };
+    return req;
+  };
+
+  const localApi = await setupApiDir({
+    'public-proxy.js': `
+      export default async function handler() {
+        const upstream = await fetch('https://93.184.216.34/data');
+        const payload = await upstream.text();
+        return new Response(payload, {
+          status: upstream.status,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+    `,
+  });
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/api/public-proxy`);
+    assert.equal(response.status, 200);
+    assert.equal(lookupCallbackWasSync, false);
+  } finally {
+    https.request = originalHttpsRequest;
+    for (const [key, value] of Object.entries(envSnapshot)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('uses canonical app origin when proxying to cloud fallback (cloudFallback enabled)', async () => {
   const remote = await setupRemoteServer();
   const localApi = await setupApiDir({});
 
@@ -508,6 +630,7 @@ test('strips browser origin headers when proxying to cloud fallback (cloudFallba
     apiDir: localApi.apiDir,
     remoteBase: remote.remoteBase,
     cloudFallback: 'true',
+    allowPrivateRemoteBase: true,
     logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
@@ -519,8 +642,8 @@ test('strips browser origin headers when proxying to cloud fallback (cloudFallba
     assert.equal(response.status, 200);
     const body = await response.json();
     assert.equal(body.source, 'remote');
-    assert.equal(body.origin, null);
-    assert.equal(remote.origins[0], null);
+    assert.equal(body.origin, 'https://worldmonitor.app');
+    assert.equal(remote.origins[0], 'https://worldmonitor.app');
   } finally {
     await app.close();
     await localApi.cleanup();
