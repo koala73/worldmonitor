@@ -92,7 +92,7 @@ export function buildUsageIdentity(input: UsageIdentityInput): UsageIdentity {
 // want a sync helper for the hot path. Two rounds with different seeds give
 // ~64 bits of state, dropping birthday-collision risk well below the
 // widget-key population horizon (32-bit collides ~65k keys).
-function hashKeySync(key: string): string {
+export function hashKeySync(key: string): string {
   let h1 = 2166136261;
   let h2 = 0x811c9dc5 ^ 0xa3b2c1d4;
   for (let i = 0; i < key.length; i++) {
