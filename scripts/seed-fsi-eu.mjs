@@ -4,15 +4,21 @@ import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 loadEnvFile(import.meta.url);
 
 // ECB SDMX REST API — free, no auth required.
-// CISS: Composite Indicator of Systemic Stress (0–1 range, higher = more systemic stress).
-// Weekly frequency, Euro area aggregate; ECB publishes each Friday (SDMX series key uses 'D' but only Friday observations are present).
-const ECB_CISS_URL =
-  'https://data-api.ecb.europa.eu/service/data/CISS/D.U2.Z0Z.4F.EC.SS_CI.IDX?format=jsondata&lastNObservations=52';
+// CISS (NEW): Composite Indicator of Systemic Stress (0–1 range, higher = more systemic stress).
+// Daily frequency, Euro area aggregate. The legacy SS_CI series stopped updating in May 2025;
+// SS_CIN is the actively-published successor ("NEW CISS" per ECB metadata title).
+// Window: trailing 1 year via startPeriod (~260 daily observations).
+function buildCissUrl() {
+  const oneYearAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+  return `https://data-api.ecb.europa.eu/service/data/CISS/D.U2.Z0Z.4F.EC.SS_CIN.IDX?format=jsondata&startPeriod=${oneYearAgo}`;
+}
 
 const FSI_EU_KEY = 'economic:fsi-eu:v1';
-// Weekly cron (Saturday) — 864000s (10 days) matches other weekly seeds (bigmac, groceryBasket,
-// fuelPrices) and provides a 3-day buffer against cron-drift or missed runs.
-const FSI_EU_TTL = 864000;
+// Daily cron — 259200s (3 days) TTL provides a generous 3× safety margin against
+// cron-drift or missed runs.
+const FSI_EU_TTL = 259200;
 
 function classifyLabel(value) {
   if (value < 0.2) return 'Low';
@@ -22,7 +28,8 @@ function classifyLabel(value) {
 }
 
 async function fetchEcbCiss() {
-  const resp = await fetch(ECB_CISS_URL, {
+  const url = buildCissUrl();
+  const resp = await fetch(url, {
     headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
     signal: AbortSignal.timeout(15_000),
   });
@@ -80,7 +87,7 @@ async function fetchEcbCiss() {
 
 // Contract opt-in: canonical record count for envelope + health.
 // FSI-EU payload is `{latestValue, latestDate, label, history[], ...}`.
-// Records = weekly CISS observations in the history array.
+// Records = daily CISS observations in the history array (~260 for a 1y window).
 export function declareRecords(data) {
   return Array.isArray(data?.history) ? data.history.length : 0;
 }
@@ -106,7 +113,7 @@ if (isMain) {
     sourceVersion: 'ecb-ciss-sdmx-v1',
     declareRecords,
     schemaVersion: 1,
-    maxStaleMin: 20160, // 14 days — matches api/health.js SEED_META threshold
+    maxStaleMin: 5760, // 4 days — matches api/health.js SEED_META threshold
   }).catch((err) => {
     console.error('FATAL:', err.message || err);
     process.exit(1);

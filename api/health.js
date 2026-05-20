@@ -372,7 +372,7 @@ const SEED_META = {
   eurostatIndProd:     { key: 'seed-meta:economic:eurostat-industrial-production', maxStaleMin: 60 * 24 * 5 }, // daily cron, monthly data; 5d threshold matches TTL
   euGasStorage:      { key: 'seed-meta:economic:eu-gas-storage',      maxStaleMin: 2880 }, // daily seed (T+1); 2880min = 48h = 2x interval
   euYieldCurve:      { key: 'seed-meta:economic:yield-curve-eu',      maxStaleMin: 4320 }, // daily seed (weekdays only); 4320min = 72h = covers Fri→Mon gap
-  euFsi:             { key: 'seed-meta:economic:fsi-eu',               maxStaleMin: 20160 }, // weekly seed (Saturday); 20160min = 14d = 2x interval
+  euFsi:             { key: 'seed-meta:economic:fsi-eu',               maxStaleMin: 5760 }, // daily seed (weekdays + holidays); 5760min = 96h = covers Wed→Mon Easter gap
   newsThreatSummary: { key: 'seed-meta:news:threat-summary',          maxStaleMin: 60 }, // relay classify every ~20min; 60min = 3x interval
   shippingStress:    { key: 'seed-meta:supply_chain:shipping_stress',  maxStaleMin: 45 }, // relay loop every 15min; 45 = 3x interval (was 30 = 2×, too tight on relay hiccup)
   diseaseOutbreaks:  { key: 'seed-meta:health:disease-outbreaks',      maxStaleMin: 2880 }, // daily seed; 2880 = 48h = 2x interval
