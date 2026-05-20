@@ -145,6 +145,38 @@ describe('api/mcp.ts — telemetry redaction (closed-key allowlist)', () => {
     assert.deepEqual(offending, [], `unauthorized telemetry keys on mcp.toolcall: ${offending.join(', ')} — add to MCP_TOOLCALL_TELEMETRY_KEYS or remove from the emit site`);
   });
 
+  it('mcp.toolcall ERROR-path emitted line keys ⊆ MCP_TOOLCALL_TELEMETRY_KEYS', async () => {
+    // The catch-block emit site in dispatchToolsCall adds `error_kind` —
+    // a key the success path never sends. Without this case the allowlist
+    // promise has a hole on the error branch (greptile review on PR
+    // #3849). Force the cache-tool fetch to throw so dispatchToolsCall's
+    // outer catch fires and emits the ok:false telemetry line.
+    globalThis.fetch = async () => { throw new TypeError('fetch failed'); };
+
+    const origErr = console.error;
+    console.error = () => {}; // swallow the captureSilentError stderr noise
+
+    let res;
+    try {
+      res = await handler(makeReq({
+        jsonrpc: '2.0', id: 4, method: 'tools/call',
+        params: { name: 'get_market_data', arguments: {} },
+      }));
+    } finally {
+      console.error = origErr;
+    }
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.error?.code, -32603, 'tool throw must surface as JSON-RPC -32603');
+
+    const tc = captured.filter((l) => l && typeof l === 'object' && !Array.isArray(l) && l.tag === 'mcp.toolcall');
+    assert.equal(tc.length, 1, `expected exactly one mcp.toolcall line on the error path, got ${tc.length}`);
+    assert.equal(tc[0].ok, false, 'sanity: we hit the catch branch');
+    assert.equal(tc[0].error_kind, 'server_error', 'sanity: error_kind is populated (without it this case would not differ from success)');
+    const offending = Object.keys(tc[0]).filter((k) => !MCP_TOOLCALL_TELEMETRY_KEYS.includes(k));
+    assert.deepEqual(offending, [], `unauthorized telemetry keys on mcp.toolcall (error path): ${offending.join(', ')} — add to MCP_TOOLCALL_TELEMETRY_KEYS or remove from the catch-branch emit site`);
+  });
+
   it('mcp.tools_list_emitted line keys ⊆ MCP_TOOLS_LIST_TELEMETRY_KEYS', async () => {
     const res = await handler(makeReq(initBody(2)));
     assert.equal(res.status, 200);
