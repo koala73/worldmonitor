@@ -70,10 +70,13 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(body.error?.code, -32001);
   });
 
-  it('returns JSON-RPC -32001 when invalid API key provided', async () => {
+  it('returns HTTP 401 + WWW-Authenticate when invalid API key provided', async () => {
     const req = makeReq('POST', initBody(), { 'X-WorldMonitor-Key': 'wrong_key' });
     const res = await handler(req);
-    assert.equal(res.status, 200);
+    assert.equal(res.status, 401);
+    const wwwAuth = res.headers.get('www-authenticate') ?? '';
+    assert.ok(wwwAuth.includes('Bearer realm="worldmonitor"'), 'must include WWW-Authenticate Bearer realm');
+    assert.ok(wwwAuth.includes('error="invalid_token"'), 'must include error="invalid_token" per RFC 6750');
     const body = await res.json();
     assert.equal(body.error?.code, -32001);
   });
@@ -353,10 +356,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     } finally {
       console.log = origLog;
     }
-    const tc = captured
-      .filter((l) => typeof l === 'string')
-      .map((l) => { try { return JSON.parse(l); } catch { return null; } })
-      .filter((j) => j && j.tag === 'mcp.toolcall');
+    const tc = captured.filter((l) => l && typeof l === 'object' && !Array.isArray(l) && l.tag === 'mcp.toolcall');
     assert.equal(tc.length, 1, `expected exactly one mcp.toolcall line, got ${tc.length}`);
     const ev = tc[0];
     assert.equal(ev.tool, 'get_market_data');
@@ -369,6 +369,9 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(typeof ev.bytes_post_jmespath, 'number');
     assert.ok(ev.bytes_post_jmespath > 0, 'bytes_post_jmespath must be > 0 on a successful response');
     assert.equal(typeof ev.ts, 'string');
+    assert.equal(typeof ev.user_id, 'string');
+    assert.ok(ev.user_id.length > 0, 'user_id must be a non-empty string');
+    assert.notEqual(ev.user_id, VALID_KEY, 'env_key user_id MUST be hashed — never log the raw API key');
   });
 
   it('telemetry: tool-execution throw emits one mcp.toolcall line with ok:false + error_kind:server_error', async () => {
@@ -397,10 +400,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       console.log = origLog;
       console.error = origErr;
     }
-    const tc = captured
-      .filter((l) => typeof l === 'string')
-      .map((l) => { try { return JSON.parse(l); } catch { return null; } })
-      .filter((j) => j && j.tag === 'mcp.toolcall');
+    const tc = captured.filter((l) => l && typeof l === 'object' && !Array.isArray(l) && l.tag === 'mcp.toolcall');
     assert.equal(tc.length, 1, `expected exactly one mcp.toolcall line, got ${tc.length}`);
     const ev = tc[0];
     assert.equal(ev.ok, false);
@@ -408,6 +408,9 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(ev.tool, 'get_market_data');
     assert.equal(typeof ev.latency_ms, 'number');
     assert.ok(Number.isFinite(ev.latency_ms), 'latency_ms must be finite (captured before rollback)');
+    assert.equal(typeof ev.user_id, 'string');
+    assert.ok(ev.user_id.length > 0, 'user_id must be present on the error path too');
+    assert.notEqual(ev.user_id, VALID_KEY, 'error-path env_key user_id MUST be hashed — the key-never-logged contract holds on the ok:false branch too');
   });
 
   it('telemetry: invalid jmespath expression emits ok:true with jmespath_failed=invalid_expression', async () => {
@@ -433,10 +436,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     } finally {
       console.log = origLog;
     }
-    const tc = captured
-      .filter((l) => typeof l === 'string')
-      .map((l) => { try { return JSON.parse(l); } catch { return null; } })
-      .filter((j) => j && j.tag === 'mcp.toolcall');
+    const tc = captured.filter((l) => l && typeof l === 'object' && !Array.isArray(l) && l.tag === 'mcp.toolcall');
     assert.equal(tc.length, 1, `expected exactly one mcp.toolcall line, got ${tc.length}`);
     const ev = tc[0];
     assert.equal(ev.ok, true, 'jmespath failure is a *user* error, not a system error');
@@ -456,15 +456,16 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     } finally {
       console.log = origLog;
     }
-    const ev = captured
-      .filter((l) => typeof l === 'string')
-      .map((l) => { try { return JSON.parse(l); } catch { return null; } })
-      .filter((j) => j && j.tag === 'mcp.tools_list_emitted');
+    const ev = captured.filter((l) => l && typeof l === 'object' && !Array.isArray(l) && l.tag === 'mcp.tools_list_emitted');
     assert.equal(ev.length, 1, `expected exactly one mcp.tools_list_emitted line, got ${ev.length}`);
     assert.equal(typeof ev[0].tools_array_bytes, 'number');
     assert.ok(ev[0].tools_array_bytes > 0, 'tools_array_bytes must be > 0');
     assert.equal(ev[0].tool_count, expectedToolCount, 'tool_count must equal current registry size');
     assert.equal(ev[0].client_user_agent, 'wm-test/1.0');
+    assert.equal(ev[0].auth_kind, 'env_key');
+    assert.equal(typeof ev[0].user_id, 'string');
+    assert.ok(ev[0].user_id.length > 0, 'user_id must be present on initialize too');
+    assert.notEqual(ev[0].user_id, VALID_KEY, 'initialize user_id MUST be hashed for env_key — raw key never logged');
   });
 
   it('telemetry: 32 KB User-Agent is capped at 256 chars in client_user_agent', async () => {
@@ -479,10 +480,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     } finally {
       console.log = origLog;
     }
-    const ev = captured
-      .filter((l) => typeof l === 'string')
-      .map((l) => { try { return JSON.parse(l); } catch { return null; } })
-      .filter((j) => j && j.tag === 'mcp.tools_list_emitted');
+    const ev = captured.filter((l) => l && typeof l === 'object' && !Array.isArray(l) && l.tag === 'mcp.tools_list_emitted');
     assert.equal(ev[0].client_user_agent.length, 256, 'pathological UA must be sliced to 256 chars');
   });
 
@@ -524,10 +522,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(resStatus, 200, 'circular result + clean JMESPath projection must still return HTTP 200');
     assert.ok(body.result?.content, 'must return a successful JSON-RPC result (no -32603)');
     assert.equal(body.result.content[0].text, '1', 'JMESPath `total` must extract the clean subtree');
-    const tc = captured
-      .filter((l) => typeof l === 'string')
-      .map((l) => { try { return JSON.parse(l); } catch { return null; } })
-      .filter((j) => j && j.tag === 'mcp.toolcall');
+    const tc = captured.filter((l) => l && typeof l === 'object' && !Array.isArray(l) && l.tag === 'mcp.toolcall');
     assert.equal(tc.length, 1, `expected exactly one mcp.toolcall line, got ${tc.length}`);
     const ev = tc[0];
     assert.equal(ev.ok, true, 'telemetry stringify failure must not flip ok to false');
@@ -2304,6 +2299,41 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     const res = await mcpHandler(proReq('POST', callBody('describe_tool', { tool_name: 'get_market_data' })), deps);
     assert.equal(res.status, 200);
     assert.equal(pipe.count, 0, 'describe_tool MUST NOT increment the Pro daily quota');
+  });
+
+  it('telemetry: Pro-path tools/call AND initialize emit raw user_id === PRO_USER_ID (un-hashed)', async () => {
+    // Pro context carries a real Clerk userId — it is an internal ID, not
+    // secret material, so the log-safe principal is the raw userId itself
+    // (matches the REST gateway's customer_id convention). This locks in
+    // the Pro branch of principalIdForLog against future regressions to
+    // hashing/redacting/aliasing.
+    process.env.MCP_TELEMETRY = 'true';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'stub';
+    const { deps } = makeProDeps();
+    globalThis.fetch = async () => new Response(JSON.stringify({ result: JSON.stringify({ ok: 1 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+
+    const captured = [];
+    const origLog = console.log;
+    console.log = (line) => captured.push(line);
+    try {
+      const initRes = await mcpHandler(proReq('POST', initBody(700)), deps);
+      assert.equal(initRes.status, 200, 'initialize must succeed for Pro');
+      const callRes = await mcpHandler(proReq('POST', callBody('get_market_data', {}, 701)), deps);
+      assert.equal(callRes.status, 200, 'tools/call must succeed for Pro');
+    } finally {
+      console.log = origLog;
+    }
+
+    const init = captured.filter((l) => l && typeof l === 'object' && !Array.isArray(l) && l.tag === 'mcp.tools_list_emitted');
+    assert.equal(init.length, 1, `expected exactly one mcp.tools_list_emitted line, got ${init.length}`);
+    assert.equal(init[0].auth_kind, 'pro');
+    assert.equal(init[0].user_id, PRO_USER_ID, 'initialize user_id MUST be the raw Clerk userId on the Pro path');
+
+    const tc = captured.filter((l) => l && typeof l === 'object' && !Array.isArray(l) && l.tag === 'mcp.toolcall');
+    assert.equal(tc.length, 1, `expected exactly one mcp.toolcall line, got ${tc.length}`);
+    assert.equal(tc[0].auth_kind, 'pro');
+    assert.equal(tc[0].user_id, PRO_USER_ID, 'tools/call user_id MUST be the raw Clerk userId on the Pro path');
   });
 
   it('integration: signed header for /api/news/v1/list-feed-digest cannot be replayed against /api/intelligence/v1/deduct-situation', async () => {
