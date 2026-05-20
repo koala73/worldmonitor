@@ -356,10 +356,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     } finally {
       console.log = origLog;
     }
-    const tc = captured
-      .filter((l) => typeof l === 'string')
-      .map((l) => { try { return JSON.parse(l); } catch { return null; } })
-      .filter((j) => j && j.tag === 'mcp.toolcall');
+    const tc = captured.filter((l) => l && typeof l === 'object' && !Array.isArray(l) && l.tag === 'mcp.toolcall');
     assert.equal(tc.length, 1, `expected exactly one mcp.toolcall line, got ${tc.length}`);
     const ev = tc[0];
     assert.equal(ev.tool, 'get_market_data');
@@ -372,6 +369,9 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(typeof ev.bytes_post_jmespath, 'number');
     assert.ok(ev.bytes_post_jmespath > 0, 'bytes_post_jmespath must be > 0 on a successful response');
     assert.equal(typeof ev.ts, 'string');
+    assert.equal(typeof ev.user_id, 'string');
+    assert.ok(ev.user_id.length > 0, 'user_id must be a non-empty string');
+    assert.notEqual(ev.user_id, VALID_KEY, 'env_key user_id MUST be hashed — never log the raw API key');
   });
 
   it('telemetry: tool-execution throw emits one mcp.toolcall line with ok:false + error_kind:server_error', async () => {
@@ -400,10 +400,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       console.log = origLog;
       console.error = origErr;
     }
-    const tc = captured
-      .filter((l) => typeof l === 'string')
-      .map((l) => { try { return JSON.parse(l); } catch { return null; } })
-      .filter((j) => j && j.tag === 'mcp.toolcall');
+    const tc = captured.filter((l) => l && typeof l === 'object' && !Array.isArray(l) && l.tag === 'mcp.toolcall');
     assert.equal(tc.length, 1, `expected exactly one mcp.toolcall line, got ${tc.length}`);
     const ev = tc[0];
     assert.equal(ev.ok, false);
@@ -411,6 +408,8 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(ev.tool, 'get_market_data');
     assert.equal(typeof ev.latency_ms, 'number');
     assert.ok(Number.isFinite(ev.latency_ms), 'latency_ms must be finite (captured before rollback)');
+    assert.equal(typeof ev.user_id, 'string');
+    assert.ok(ev.user_id.length > 0, 'user_id must be present on the error path too');
   });
 
   it('telemetry: invalid jmespath expression emits ok:true with jmespath_failed=invalid_expression', async () => {
@@ -436,10 +435,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     } finally {
       console.log = origLog;
     }
-    const tc = captured
-      .filter((l) => typeof l === 'string')
-      .map((l) => { try { return JSON.parse(l); } catch { return null; } })
-      .filter((j) => j && j.tag === 'mcp.toolcall');
+    const tc = captured.filter((l) => l && typeof l === 'object' && !Array.isArray(l) && l.tag === 'mcp.toolcall');
     assert.equal(tc.length, 1, `expected exactly one mcp.toolcall line, got ${tc.length}`);
     const ev = tc[0];
     assert.equal(ev.ok, true, 'jmespath failure is a *user* error, not a system error');
@@ -459,10 +455,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     } finally {
       console.log = origLog;
     }
-    const ev = captured
-      .filter((l) => typeof l === 'string')
-      .map((l) => { try { return JSON.parse(l); } catch { return null; } })
-      .filter((j) => j && j.tag === 'mcp.tools_list_emitted');
+    const ev = captured.filter((l) => l && typeof l === 'object' && !Array.isArray(l) && l.tag === 'mcp.tools_list_emitted');
     assert.equal(ev.length, 1, `expected exactly one mcp.tools_list_emitted line, got ${ev.length}`);
     assert.equal(typeof ev[0].tools_array_bytes, 'number');
     assert.ok(ev[0].tools_array_bytes > 0, 'tools_array_bytes must be > 0');
@@ -482,10 +475,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     } finally {
       console.log = origLog;
     }
-    const ev = captured
-      .filter((l) => typeof l === 'string')
-      .map((l) => { try { return JSON.parse(l); } catch { return null; } })
-      .filter((j) => j && j.tag === 'mcp.tools_list_emitted');
+    const ev = captured.filter((l) => l && typeof l === 'object' && !Array.isArray(l) && l.tag === 'mcp.tools_list_emitted');
     assert.equal(ev[0].client_user_agent.length, 256, 'pathological UA must be sliced to 256 chars');
   });
 
@@ -527,10 +517,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(resStatus, 200, 'circular result + clean JMESPath projection must still return HTTP 200');
     assert.ok(body.result?.content, 'must return a successful JSON-RPC result (no -32603)');
     assert.equal(body.result.content[0].text, '1', 'JMESPath `total` must extract the clean subtree');
-    const tc = captured
-      .filter((l) => typeof l === 'string')
-      .map((l) => { try { return JSON.parse(l); } catch { return null; } })
-      .filter((j) => j && j.tag === 'mcp.toolcall');
+    const tc = captured.filter((l) => l && typeof l === 'object' && !Array.isArray(l) && l.tag === 'mcp.toolcall');
     assert.equal(tc.length, 1, `expected exactly one mcp.toolcall line, got ${tc.length}`);
     const ev = tc[0];
     assert.equal(ev.ok, true, 'telemetry stringify failure must not flip ok to false');

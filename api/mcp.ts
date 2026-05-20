@@ -33,6 +33,7 @@ import {
   signInternalMcpRequest,
   buildInternalMcpHeaders,
 } from '../server/_shared/mcp-internal-hmac';
+import { hashKeySync } from '../server/_shared/usage-identity';
 
 export const config = { runtime: 'edge' };
 
@@ -2662,12 +2663,18 @@ function rpcError(id: unknown, code: number, message: string): Response {
 // ---------------------------------------------------------------------------
 // Telemetry
 // ---------------------------------------------------------------------------
-// One structured single-line JSON log per `tools/call` (tag `mcp.toolcall`)
-// and one per `initialize` (tag `mcp.tools_list_emitted`). Vercel log drain
-// → analytics consumer reads these as production data on payload sizes,
-// JMESPath adoption %, latency P95, and tool usage histogram. Gated behind
+// One structured log per `tools/call` (tag `mcp.toolcall`) and one per
+// `initialize` (tag `mcp.tools_list_emitted`). Vercel log drain → analytics
+// consumer reads these as production data on payload sizes, JMESPath
+// adoption %, latency P95, and tool usage histogram. Gated behind
 // `MCP_TELEMETRY` so tests that snapshot stdout can suppress noise; default
 // ON in every other environment.
+//
+// Payload is passed to `console.log` as an object (not a pre-stringified
+// blob) so Vercel's logs UI renders it as a collapsible structured tree
+// instead of one long horizontal line. The Edge runtime serializes objects
+// to JSON when forwarding to log drains, so downstream parsers still see
+// valid JSON.
 function telemetryEnabled(): boolean {
   const v = process.env.MCP_TELEMETRY;
   return v !== 'false' && v !== '0';
@@ -2675,11 +2682,21 @@ function telemetryEnabled(): boolean {
 function emitTelemetry(event: string, payload: Record<string, unknown>): void {
   if (!telemetryEnabled()) return;
   try {
-    console.log(JSON.stringify({ tag: event, ts: new Date().toISOString(), ...payload }));
+    console.log({ tag: event, ts: new Date().toISOString(), ...payload });
   } catch {
-    // Never throw out of telemetry — a stringify failure on an
-    // unexpected circular value must not break the request path.
+    // Never throw out of telemetry — a serializer failure on an unexpected
+    // payload value must not break the request path.
   }
+}
+
+// Log-safe principal id derived from the resolved auth context:
+//   - Pro:     raw Clerk `userId` (internal ID, not a secret; matches the
+//              REST gateway's `customer_id` convention).
+//   - env_key: FNV-64 hash of the API key (secret — never log raw key
+//              material; mirrors `principal_id` in
+//              server/_shared/usage-identity.ts).
+function principalIdForLog(context: McpAuthContext): string {
+  return context.kind === 'pro' ? context.userId : hashKeySync(context.apiKey);
 }
 
 export function evaluateFreshness(checks: FreshnessCheck[], metas: unknown[], now = Date.now()): { cached_at: string | null; stale: boolean } {
@@ -3194,6 +3211,7 @@ async function dispatchToolsCall(
       emitTelemetry('mcp.toolcall', {
         tool: tool.name,
         auth_kind: context.kind,
+        user_id: principalIdForLog(context),
         latency_ms: latencyMs,
         bytes_pre_jmespath: bytesPre,
         bytes_post_jmespath: bytesPost,
@@ -3231,6 +3249,7 @@ async function dispatchToolsCall(
     emitTelemetry('mcp.toolcall', {
       tool: tool.name,
       auth_kind: context.kind,
+      user_id: principalIdForLog(context),
       latency_ms: latencyMs,
       bytes_pre_jmespath: 0,
       bytes_post_jmespath: 0,
