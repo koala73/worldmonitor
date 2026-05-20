@@ -70,10 +70,13 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(body.error?.code, -32001);
   });
 
-  it('returns JSON-RPC -32001 when invalid API key provided', async () => {
+  it('returns HTTP 401 + WWW-Authenticate when invalid API key provided', async () => {
     const req = makeReq('POST', initBody(), { 'X-WorldMonitor-Key': 'wrong_key' });
     const res = await handler(req);
-    assert.equal(res.status, 200);
+    assert.equal(res.status, 401);
+    const wwwAuth = res.headers.get('www-authenticate') ?? '';
+    assert.ok(wwwAuth.includes('Bearer realm="worldmonitor"'), 'must include WWW-Authenticate Bearer realm');
+    assert.ok(wwwAuth.includes('error="invalid_token"'), 'must include error="invalid_token" per RFC 6750');
     const body = await res.json();
     assert.equal(body.error?.code, -32001);
   });

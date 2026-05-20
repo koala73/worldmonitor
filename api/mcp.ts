@@ -2999,7 +2999,13 @@ async function resolveAuthContext(
   }
   const validKeys = (process.env.WORLDMONITOR_VALID_KEYS || '').split(',').filter(Boolean);
   if (!await timingSafeIncludes(candidateKey, validKeys)) {
-    return { ok: false, response: rpcError(null, -32001, 'Invalid API key') };
+    return {
+      ok: false,
+      response: new Response(
+        JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32001, message: 'Invalid API key' } }),
+        { status: 401, headers: { 'Content-Type': 'application/json', 'WWW-Authenticate': wwwAuthHeader(resourceMetadataUrl, 'invalid_token'), ...corsHeaders } },
+      ),
+    };
   }
   return { ok: true, context: { kind: 'env_key', apiKey: candidateKey } };
 }
