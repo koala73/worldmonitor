@@ -2689,6 +2689,45 @@ function emitTelemetry(event: string, payload: Record<string, unknown>): void {
   }
 }
 
+// Closed-key allowlists for the two telemetry events. Locking the schema at
+// the module boundary makes "while-I'm-here" additions visible at code
+// review: any new top-level key on an emitted line requires updating the
+// matching allowlist below, and `tests/mcp-telemetry-schema.test.mjs`
+// asserts the actual emitted JSON line keys ⊆ the declared set AND that
+// none of `arguments`, `params`, `payload`, `response`, `content`, `text`,
+// `result` ever appear here — those are request/response body fields and
+// MUST NOT be logged.
+//
+// Both sets include `tag` + `ts` because `emitTelemetry` adds them to every
+// line; the per-event payload keys follow the literal call-sites in
+// dispatchToolsCall (both success + error path) and the `initialize`
+// handler. Keep this in sync with those call-sites — the schema test will
+// fail by name if you don't.
+export const MCP_TOOLCALL_TELEMETRY_KEYS = Object.freeze([
+  'tag',
+  'ts',
+  'tool',
+  'auth_kind',
+  'user_id',
+  'latency_ms',
+  'bytes_pre_jmespath',
+  'bytes_post_jmespath',
+  'jmespath_used',
+  'jmespath_failed',
+  'ok',
+  'error_kind',
+] as const);
+
+export const MCP_TOOLS_LIST_TELEMETRY_KEYS = Object.freeze([
+  'tag',
+  'ts',
+  'auth_kind',
+  'user_id',
+  'tools_array_bytes',
+  'tool_count',
+  'client_user_agent',
+] as const);
+
 // Log-safe principal id derived from the resolved auth context:
 //   - Pro:     raw Clerk `userId` (internal ID, not a secret; matches the
 //              REST gateway's `customer_id` convention).
