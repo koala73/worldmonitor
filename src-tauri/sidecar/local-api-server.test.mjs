@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
-import { createServer, request as httpRequest } from 'node:http';
+import http, { createServer, request as httpRequest } from 'node:http';
 import https from 'node:https';
 import { EventEmitter } from 'node:events';
 import { brotliDecompressSync, gunzipSync } from 'node:zlib';
@@ -56,6 +56,29 @@ async function postJsonViaHttp(url, payload) {
     });
     req.on('error', reject);
     req.write(body);
+    req.end();
+  });
+}
+
+async function getJsonViaHttp(url) {
+  const target = new URL(url);
+  return new Promise((resolve, reject) => {
+    const req = httpRequest({
+      hostname: target.hostname,
+      port: Number(target.port || 80),
+      path: `${target.pathname}${target.search}`,
+      method: 'GET',
+    }, (res) => {
+      const chunks = [];
+      res.on('data', (chunk) => chunks.push(chunk));
+      res.on('end', () => {
+        const text = Buffer.concat(chunks).toString('utf8');
+        let json = null;
+        try { json = JSON.parse(text); } catch { /* non-json response */ }
+        resolve({ status: res.statusCode || 0, text, json });
+      });
+    });
+    req.on('error', reject);
     req.end();
   });
 }
@@ -612,6 +635,77 @@ test('uses asynchronous pinned lookup callback for handler global fetches (#3549
     assert.equal(lookupCallbackWasSync, false);
   } finally {
     https.request = originalHttpsRequest;
+    for (const [key, value] of Object.entries(envSnapshot)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('uses IPv4 sidecar fetch for allowed private-network LLM probes (#3549)', async () => {
+  const originalHttpRequest = http.request;
+  const envSnapshot = {
+    GROQ_API_KEY: process.env.GROQ_API_KEY,
+    OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+    OLLAMA_API_URL: process.env.OLLAMA_API_URL,
+    LLM_API_URL: process.env.LLM_API_URL,
+  };
+  let sawOllamaProbe = false;
+
+  delete process.env.GROQ_API_KEY;
+  delete process.env.OPENROUTER_API_KEY;
+  delete process.env.LLM_API_URL;
+  process.env.OLLAMA_API_URL = 'http://ollama.test:11434';
+
+  http.request = (options, onResponse) => {
+    if (options.hostname !== 'ollama.test') {
+      return originalHttpRequest.call(http, options, onResponse);
+    }
+
+    sawOllamaProbe = true;
+    assert.equal(options.family, 4);
+    assert.equal(options.path, '/');
+
+    const req = new EventEmitter();
+    req.setTimeout = () => {};
+    req.write = () => {};
+    req.destroy = (error) => {
+      if (error) req.emit('error', error);
+    };
+    req.end = () => {
+      setImmediate(() => {
+        const res = new EventEmitter();
+        res.statusCode = 200;
+        res.statusMessage = 'OK';
+        res.headers = { 'content-type': 'application/json' };
+        onResponse(res);
+        res.emit('data', Buffer.from(JSON.stringify({ ok: true })));
+        res.emit('end');
+      });
+    };
+    return req;
+  };
+
+  const localApi = await setupApiDir({});
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await getJsonViaHttp(`http://127.0.0.1:${port}/api/llm-health`);
+    assert.equal(response.status, 200);
+    assert.equal(response.json.available, true);
+    assert.deepEqual(response.json.providers, [
+      { name: 'ollama', url: 'http://ollama.test:11434', available: true },
+    ]);
+    assert.equal(sawOllamaProbe, true);
+  } finally {
+    http.request = originalHttpRequest;
     for (const [key, value] of Object.entries(envSnapshot)) {
       if (value === undefined) delete process.env[key];
       else process.env[key] = value;

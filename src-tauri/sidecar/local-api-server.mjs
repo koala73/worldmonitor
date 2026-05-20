@@ -18,6 +18,7 @@ const brotliCompressAsync = promisify(brotliCompress);
 // IPv6 endpoints time out, causing ETIMEDOUT. This override ensures ALL
 // fetch() calls in dynamically-loaded handler modules (api/*.js) use IPv4.
 const _originalFetch = globalThis.fetch;
+const ALLOW_PRIVATE_NETWORK_FETCH = Symbol('worldmonitor.allowPrivateNetworkFetch');
 const sidecarAllowedPrivateFetchOrigins = new Set();
 
 function normalizeRequestBody(body) {
@@ -105,15 +106,6 @@ function redactUrlForLog(rawUrl) {
   }
 }
 
-async function _privilegedFetch(...args) {
-  await acquireUpstreamSlot();
-  try {
-    return await _originalFetch(...args);
-  } finally {
-    releaseUpstreamSlot();
-  }
-}
-
 function makeSsrfBlockedError(reason, rawUrl) {
   const error = new Error(`SSRF blocked: ${reason} (url=${redactUrlForLog(rawUrl)})`);
   error.code = 'ERR_SSRF_BLOCKED';
@@ -168,7 +160,10 @@ globalThis.fetch = async function ipv4Fetch(input, init) {
   let url;
   try { url = new URL(typeof input === 'string' ? input : input.url); } catch { return _originalFetch(input, init); }
   if (url.protocol !== 'https:' && url.protocol !== 'http:') return _originalFetch(input, init);
-  const safety = await assertSafeSidecarFetchUrl(url);
+  const allowPrivateNetwork = init?.[ALLOW_PRIVATE_NETWORK_FETCH] === true;
+  const safety = allowPrivateNetwork
+    ? { safe: true, resolvedAddresses: [url.hostname] }
+    : await assertSafeSidecarFetchUrl(url);
   if (url.hostname.includes('finance.yahoo.com')) await sidecarYahooGate();
   await acquireUpstreamSlot();
   try {
@@ -772,8 +767,9 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const fetchImpl = allowPrivateNetwork ? _privilegedFetch : fetch;
-    return await fetchImpl(fetchUrl, { ...fetchOptions, headers: fetchHeaders, signal: controller.signal });
+    const requestOptions = { ...fetchOptions, headers: fetchHeaders, signal: controller.signal };
+    if (allowPrivateNetwork) requestOptions[ALLOW_PRIVATE_NETWORK_FETCH] = true;
+    return await fetch(fetchUrl, requestOptions);
   } finally {
     clearTimeout(timer);
   }
