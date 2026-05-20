@@ -410,6 +410,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.ok(Number.isFinite(ev.latency_ms), 'latency_ms must be finite (captured before rollback)');
     assert.equal(typeof ev.user_id, 'string');
     assert.ok(ev.user_id.length > 0, 'user_id must be present on the error path too');
+    assert.notEqual(ev.user_id, VALID_KEY, 'error-path env_key user_id MUST be hashed — the key-never-logged contract holds on the ok:false branch too');
   });
 
   it('telemetry: invalid jmespath expression emits ok:true with jmespath_failed=invalid_expression', async () => {
@@ -461,6 +462,10 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.ok(ev[0].tools_array_bytes > 0, 'tools_array_bytes must be > 0');
     assert.equal(ev[0].tool_count, expectedToolCount, 'tool_count must equal current registry size');
     assert.equal(ev[0].client_user_agent, 'wm-test/1.0');
+    assert.equal(ev[0].auth_kind, 'env_key');
+    assert.equal(typeof ev[0].user_id, 'string');
+    assert.ok(ev[0].user_id.length > 0, 'user_id must be present on initialize too');
+    assert.notEqual(ev[0].user_id, VALID_KEY, 'initialize user_id MUST be hashed for env_key — raw key never logged');
   });
 
   it('telemetry: 32 KB User-Agent is capped at 256 chars in client_user_agent', async () => {
@@ -2294,6 +2299,41 @@ describe('api/mcp.ts — U7 Pro-path', () => {
     const res = await mcpHandler(proReq('POST', callBody('describe_tool', { tool_name: 'get_market_data' })), deps);
     assert.equal(res.status, 200);
     assert.equal(pipe.count, 0, 'describe_tool MUST NOT increment the Pro daily quota');
+  });
+
+  it('telemetry: Pro-path tools/call AND initialize emit raw user_id === PRO_USER_ID (un-hashed)', async () => {
+    // Pro context carries a real Clerk userId — it is an internal ID, not
+    // secret material, so the log-safe principal is the raw userId itself
+    // (matches the REST gateway's customer_id convention). This locks in
+    // the Pro branch of principalIdForLog against future regressions to
+    // hashing/redacting/aliasing.
+    process.env.MCP_TELEMETRY = 'true';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'stub';
+    const { deps } = makeProDeps();
+    globalThis.fetch = async () => new Response(JSON.stringify({ result: JSON.stringify({ ok: 1 }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+
+    const captured = [];
+    const origLog = console.log;
+    console.log = (line) => captured.push(line);
+    try {
+      const initRes = await mcpHandler(proReq('POST', initBody(700)), deps);
+      assert.equal(initRes.status, 200, 'initialize must succeed for Pro');
+      const callRes = await mcpHandler(proReq('POST', callBody('get_market_data', {}, 701)), deps);
+      assert.equal(callRes.status, 200, 'tools/call must succeed for Pro');
+    } finally {
+      console.log = origLog;
+    }
+
+    const init = captured.filter((l) => l && typeof l === 'object' && !Array.isArray(l) && l.tag === 'mcp.tools_list_emitted');
+    assert.equal(init.length, 1, `expected exactly one mcp.tools_list_emitted line, got ${init.length}`);
+    assert.equal(init[0].auth_kind, 'pro');
+    assert.equal(init[0].user_id, PRO_USER_ID, 'initialize user_id MUST be the raw Clerk userId on the Pro path');
+
+    const tc = captured.filter((l) => l && typeof l === 'object' && !Array.isArray(l) && l.tag === 'mcp.toolcall');
+    assert.equal(tc.length, 1, `expected exactly one mcp.toolcall line, got ${tc.length}`);
+    assert.equal(tc[0].auth_kind, 'pro');
+    assert.equal(tc[0].user_id, PRO_USER_ID, 'tools/call user_id MUST be the raw Clerk userId on the Pro path');
   });
 
   it('integration: signed header for /api/news/v1/list-feed-digest cannot be replayed against /api/intelligence/v1/deduct-situation', async () => {

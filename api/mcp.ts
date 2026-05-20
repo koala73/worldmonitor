@@ -3327,6 +3327,8 @@ export async function mcpHandler(
       // fixed overhead). UA is sliced to 256 chars: a pathological 32 KB
       // custom UA would otherwise inflate every emitted line for that session.
       emitTelemetry('mcp.tools_list_emitted', {
+        auth_kind: context.kind,
+        user_id: principalIdForLog(context),
         tools_array_bytes: TOOL_LIST_BYTES,
         tool_count: TOOL_LIST_RESPONSE.length,
         client_user_agent: (req.headers.get('User-Agent') ?? '').slice(0, 256),
