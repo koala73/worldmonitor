@@ -242,6 +242,35 @@ describe('security header guardrails', () => {
       'Dual CSP enforces both; mismatched hashes block scripts.');
   });
 
+  it('CSP script-src hashes are in sync between vercel.json header and docker/nginx-security-headers.conf', () => {
+    const nginxConf = readFileSync(resolve(__dirname, '../docker/nginx-security-headers.conf'), 'utf-8');
+    const headerCsp = getHeaderValue('Content-Security-Policy');
+    const nginxMatch = nginxConf.match(/add_header\s+Content-Security-Policy\s+"([^"]+)"/i);
+    assert.ok(nginxMatch, 'nginx-security-headers.conf must have a Content-Security-Policy header');
+    const nginxCsp = nginxMatch[1];
+
+    const extractHashes = (csp) => {
+      const scriptSrc = csp.match(/script-src\s+([^;]+)/)?.[1] ?? '';
+      return new Set(scriptSrc.match(/'sha256-[A-Za-z0-9+/=]+'/g) ?? []);
+    };
+
+    const headerHashes = extractHashes(headerCsp);
+    const nginxHashes = extractHashes(nginxCsp);
+
+    const onlyHeader = [...headerHashes].filter(h => !nginxHashes.has(h));
+    const onlyNginx = [...nginxHashes].filter(h => !headerHashes.has(h));
+
+    assert.deepEqual(onlyHeader, [],
+      `script-src hashes in vercel.json but missing from nginx-security-headers.conf: ${onlyHeader.join(', ')}. ` +
+      'Self-hosted docker users must have the same CSP parity.');
+    assert.deepEqual(onlyNginx, [],
+      `script-src hashes in nginx-security-headers.conf but missing from vercel.json: ${onlyNginx.join(', ')}. ` +
+      'Self-hosted docker users must have the same CSP parity.');
+      
+    const nginxScriptSrc = nginxCsp.match(/script-src\s+([^;]+)/)?.[1] ?? '';
+    assert.ok(!nginxScriptSrc.includes("'unsafe-inline'"), "nginx script-src must not contain 'unsafe-inline' to maintain CSP parity with Vercel.");
+  });
+
   it('security.txt exists in public/.well-known/', () => {
     const secTxt = readFileSync(resolve(__dirname, '../public/.well-known/security.txt'), 'utf-8');
     assert.match(secTxt, /^Contact:/m, 'security.txt must have a Contact field');
