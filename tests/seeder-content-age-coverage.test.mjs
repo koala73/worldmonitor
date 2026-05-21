@@ -82,29 +82,65 @@ function listSeeders() {
   return readdirSync(SCRIPTS_DIR).filter((f) => /^seed-.*\.mjs$/.test(f));
 }
 
+// Strip JS comments so a config marker inside a comment — including a
+// MULTILINE block comment whose interior lines look exactly like indented
+// properties — cannot satisfy the guard. String/template literals are
+// tracked (with escape handling) so `/*` or `//` inside a string, e.g. a
+// glob like `'**/*.mjs'`, is NOT mistaken for a comment. Regex literals are
+// not separately tracked: a raw `/*` cannot begin a regex (JS parses it as a
+// comment) and an escaped one (`/\/\*/`) contains no raw `/*`, so this is
+// safe for seeder source. Comment bodies collapse to a space to preserve
+// token separation and line count is not relied on by the property regexes.
+function stripComments(src) {
+  let out = '';
+  let str = null; // active string delimiter ' " ` — or null
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i];
+    const c2 = src[i + 1];
+    if (str) {
+      out += c;
+      if (c === '\\') { out += c2 ?? ''; i++; continue; }
+      if (c === str) str = null;
+      continue;
+    }
+    if (c === '"' || c === "'" || c === '`') { str = c; out += c; continue; }
+    if (c === '/' && c2 === '/') { while (i < src.length && src[i] !== '\n') i++; out += '\n'; continue; }
+    if (c === '/' && c2 === '*') {
+      i += 2;
+      while (i < src.length && !(src[i] === '*' && src[i + 1] === '/')) i++;
+      i++; // land on the '/'
+      out += ' ';
+      continue;
+    }
+    out += c;
+  }
+  return out;
+}
+
 // `maxContentAgeMin` / `contentMeta` must be matched as a real object
-// PROPERTY — line-anchored `<indent>name:` — not as a bare substring.
-// A bare /maxContentAgeMin/ would be satisfied by a comment like
-// `// TODO: add maxContentAgeMin`, letting an unwired seeder pass the guard.
-// Property form (own line, indented) is how both the runSeed opt and the
-// non-runSeed writeFreshnessMetadata content-age trio are written; the
-// SCREAMING_CASE budget consts (IMF_WEO_MAX_CONTENT_AGE_MIN, …) never match.
+// PROPERTY — line-anchored `<indent>name:` — not as a bare substring, and
+// only after comments are stripped. A bare /maxContentAgeMin/ would be
+// satisfied by `// TODO: add maxContentAgeMin` or a block-commented config;
+// property form is how both the runSeed opt and the non-runSeed
+// writeFreshnessMetadata content-age trio are written. The SCREAMING_CASE
+// budget consts (IMF_WEO_MAX_CONTENT_AGE_MIN, …) never match.
 const MAX_CONTENT_AGE_PROP = /(?:^|\n)[ \t]*maxContentAgeMin[ \t]*:/;
 const CONTENT_META_PROP = /(?:^|\n)[ \t]*contentMeta[ \t]*:/;
 
-// A seeder is "wired" when it sets the `maxContentAgeMin` property — present
-// in both the runSeed opt and the writeFreshnessMetadata trio.
-function isWired(src) {
-  return MAX_CONTENT_AGE_PROP.test(src);
+// A seeder is "wired" when its (comment-stripped) source sets the
+// `maxContentAgeMin` property — present in the runSeed opt and the
+// writeFreshnessMetadata trio alike.
+function isWired(code) {
+  return MAX_CONTENT_AGE_PROP.test(code);
 }
 
 test('every freeze-prone seeder wires content-age detection or is exempt with a rationale', () => {
   const offenders = [];
   for (const file of listSeeders()) {
-    const src = readFileSync(join(SCRIPTS_DIR, file), 'utf8');
-    if (!FREEZE_PRONE_MARKERS.some((re) => re.test(src))) continue;
+    const code = stripComments(readFileSync(join(SCRIPTS_DIR, file), 'utf8'));
+    if (!FREEZE_PRONE_MARKERS.some((re) => re.test(code))) continue;
     const exempt = typeof EXEMPT[file] === 'string' && EXEMPT[file].trim().length > 40;
-    if (!isWired(src) && !exempt) offenders.push(file);
+    if (!isWired(code) && !exempt) offenders.push(file);
   }
   assert.deepEqual(
     offenders,
@@ -121,8 +157,8 @@ test('content-age opt-in is complete — contentMeta always paired with maxConte
   // actually runs. This static check catches a half-wire in CI instead.
   const halfWired = [];
   for (const file of listSeeders()) {
-    const src = readFileSync(join(SCRIPTS_DIR, file), 'utf8');
-    if (CONTENT_META_PROP.test(src) && !MAX_CONTENT_AGE_PROP.test(src)) halfWired.push(file);
+    const code = stripComments(readFileSync(join(SCRIPTS_DIR, file), 'utf8'));
+    if (CONTENT_META_PROP.test(code) && !MAX_CONTENT_AGE_PROP.test(code)) halfWired.push(file);
   }
   assert.deepEqual(
     halfWired,
@@ -135,25 +171,28 @@ test('no EXEMPT entry is stale — every entry points at an existing, still-unwi
   const seeders = new Set(listSeeders());
   for (const [file, reason] of Object.entries(EXEMPT)) {
     assert.ok(seeders.has(file), `EXEMPT lists ${file} but that seeder no longer exists — remove the entry.`);
-    const src = readFileSync(join(SCRIPTS_DIR, file), 'utf8');
-    assert.ok(!isWired(src), `${file} is now wired for content-age — remove it from EXEMPT.`);
+    const code = stripComments(readFileSync(join(SCRIPTS_DIR, file), 'utf8'));
+    assert.ok(!isWired(code), `${file} is now wired for content-age — remove it from EXEMPT.`);
     assert.ok(typeof reason === 'string' && reason.trim().length > 40, `EXEMPT[${file}] needs a real rationale.`);
   }
 });
 
-// Self-test of the matcher — locks the property-shape requirement so a future
-// "simplification" back to a bare /maxContentAgeMin/ substring (which a comment
-// could satisfy) fails here immediately.
+// Self-test of the matcher — locks BOTH the property-shape requirement and
+// the comment strip, so a future "simplification" (bare substring, or
+// dropping stripComments) fails here immediately.
 test('the wired-matcher requires a real property, not a comment mention', () => {
-  // Comment mentions must NOT count as wired.
+  // Comment mentions — line, trailing, inline-block, and MULTILINE block
+  // (whose interior lines mimic an indented property) — must NOT read as wired.
   for (const comment of [
     '  // TODO: add maxContentAgeMin: here',
     '// contentMeta: wire this up later',
     'const x = 1; // see maxContentAgeMin: docs',
     '/* maxContentAgeMin: 100 */',
+    '/*\n  maxContentAgeMin: 14400,\n  contentMeta: fn,\n*/',
   ]) {
-    assert.equal(isWired(comment), false, `comment must not read as wired: ${comment}`);
-    assert.equal(MAX_CONTENT_AGE_PROP.test(comment), false);
+    const code = stripComments(comment);
+    assert.equal(isWired(code), false, `comment must not read as wired: ${JSON.stringify(comment)}`);
+    assert.equal(CONTENT_META_PROP.test(code), false);
   }
   // Real opt-in property forms (own line, indented) MUST count as wired.
   for (const real of [
@@ -161,9 +200,13 @@ test('the wired-matcher requires a real property, not a comment mention', () => 
     'runSeed(d, r, k, fn, {\n  contentMeta: fn,\n  maxContentAgeMin: 14400,\n});',
     '  const contentAge = {\n    maxContentAgeMin: ESTR_MAX_CONTENT_AGE_MIN,\n  };',
   ]) {
-    assert.equal(isWired(real), true, `real property must read as wired: ${real}`);
+    assert.equal(isWired(stripComments(real)), true, `real property must read as wired: ${real}`);
   }
+  // stripComments must NOT mistake `/*` inside a string literal (e.g. a glob)
+  // for a comment — that would let it eat real code after the string.
+  const withGlob = "const g = 'scripts/**/*.mjs';\n  maxContentAgeMin: 14400,";
+  assert.equal(isWired(stripComments(withGlob)), true, 'glob string must not break comment stripping');
   // contentMeta property detection (drives the half-wire check).
-  assert.equal(CONTENT_META_PROP.test('  contentMeta: cissContentMeta,'), true);
-  assert.equal(CONTENT_META_PROP.test('// contentMeta: someday'), false);
+  assert.equal(CONTENT_META_PROP.test(stripComments('  contentMeta: cissContentMeta,')), true);
+  assert.equal(CONTENT_META_PROP.test(stripComments('// contentMeta: someday')), false);
 });
