@@ -26,6 +26,7 @@
 // `normalizeLowerBetter(value, 0, 15)` to anchor the goalpost.
 
 import { loadEnvFile, CHROME_UA, runSeed, resolveProxyForConnect, httpsProxyFetchRaw } from './_seed-utils.mjs';
+import { wbCountryDictContentMeta } from './_wb-country-dict-content-age-helpers.mjs';
 import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
 
 loadEnvFile(import.meta.url);
@@ -34,6 +35,10 @@ const WB_BASE = 'https://api.worldbank.org/v2';
 const _proxyAuth = resolveProxyForConnect();
 const CANONICAL_KEY = 'economic:wb-external-debt:v1';
 const CACHE_TTL = 35 * 24 * 3600; // 35 days; WB IDS publishes annually
+// Content-age budget — WB IDS is annual and lags ~2 years. 48 months clears
+// the lag plus a publication cycle; STALE_CONTENT fires only when WB stops
+// publishing for 2+ annual cycles. See issue #3845.
+const MAX_CONTENT_AGE_MIN = 48 * 30 * 24 * 60;
 
 const SHORT_TERM_DEBT_USD_INDICATOR = 'DT.DOD.DSTC.CD';
 const GNI_USD_INDICATOR = 'NY.GNP.MKTP.CD';
@@ -175,6 +180,8 @@ if (process.argv[1]?.endsWith('seed-wb-external-debt.mjs')) {
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: 100800,
+    contentMeta: wbCountryDictContentMeta,
+    maxContentAgeMin: MAX_CONTENT_AGE_MIN,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, runSeed, loadSharedConfig, imfSdmxFetchIndicator } from './_seed-utils.mjs';
+import { imfWeoContentMeta, IMF_WEO_MAX_CONTENT_AGE_MIN } from './_imf-weo-content-age-helpers.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -280,6 +281,11 @@ if (process.argv[1]?.endsWith('seed-recovery-fiscal-space.mjs')) {
     recordCount: (data) => Object.keys(data?.countries ?? {}).length,
 
     declareRecords,
+    // Content-age: IMF WEO per-country dict. imfWeoContentMeta maps each
+    // country's `year` via the WEO horizon-safe end-of-(year-1) convention
+    // and drops forecast years past the clock-skew limit — issue #3845.
+    contentMeta: imfWeoContentMeta,
+    maxContentAgeMin: IMF_WEO_MAX_CONTENT_AGE_MIN,
     schemaVersion: 2,
     // 90d = 3× the 30-day cron interval per the health-maxstalemin-write-cadence
     // skill (rule: maxStaleMin = write_interval × 2-3). Bumped from 86400 (2×, at

@@ -4,6 +4,7 @@ import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
 import { getHydratedData } from '@/services/bootstrap';
+import { CISS_STALE_THRESHOLD_MS } from '@/shared/ciss-staleness';
 
 let _marketClient: MarketServiceClient | null = null;
 async function getMarketClient(): Promise<MarketServiceClient> {
@@ -60,6 +61,18 @@ function cissLabelColor(label: string): string {
   if (label === 'Moderate') return '#f39c12';
   if (label === 'Elevated') return '#e67e22';
   return '#c0392b';
+}
+
+// CISS staleness guard — uses the shared CISS content-age budget. When ECB
+// stops publishing (as the legacy SS_CI series did for ~12 months, issue
+// #3845) the panel flags the value rather than present a frozen number as
+// current. Unparseable dates return false (no false-positive flag). The
+// render path prefers the server-computed `stale` flag and only falls back
+// to this for the hydrated-bootstrap path.
+function cissIsStale(latestDate: string): boolean {
+  const ts = Date.parse(latestDate);
+  if (!Number.isFinite(ts)) return false;
+  return Date.now() - ts > CISS_STALE_THRESHOLD_MS;
 }
 
 function metricCard(label: string, value: string): string {
@@ -146,6 +159,11 @@ export class FSIPanel extends Panel {
     const fillPct = Math.min(Math.max((fsiValue / 2.5) * 100, 0), 100);
     const interpretation = fsiInterpretation(fsiLabel);
 
+    // Prefer the server-computed `stale` flag (get-eu-fsi.ts applies the
+    // canonical budget); fall back to client-side derivation for the hydrated-
+    // bootstrap path, which reads the canonical key directly and so carries no
+    // `stale` field.
+    const cissStale = euFsi ? (euFsi.stale || cissIsStale(euFsi.latestDate)) : false;
     const cissSection = euFsi
       ? `<div style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.07)">
           <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px">${escapeHtml(t('components.fsi.cissTitle'))}</div>
@@ -153,9 +171,10 @@ export class FSIPanel extends Panel {
             <div style="font-size:28px;font-weight:700;color:${cissLabelColor(euFsi.label)};line-height:1">${euFsi.latestValue.toFixed(4)}</div>
             <div>
               <div style="font-size:12px;font-weight:600;color:${cissLabelColor(euFsi.label)}">${escapeHtml(cissLabelDisplay(euFsi.label))}</div>
-              <div style="font-size:10px;color:var(--text-dim)">${escapeHtml(euFsi.latestDate ? new Date(euFsi.latestDate).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '')}</div>
+              <div style="font-size:10px;color:${cissStale ? '#e67e22' : 'var(--text-dim)'}">${escapeHtml(euFsi.latestDate ? new Date(euFsi.latestDate).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '')}</div>
             </div>
           </div>
+          ${cissStale ? `<div style="font-size:9px;color:#e67e22;background:rgba(230,126,34,0.1);border-radius:4px;padding:4px 6px;margin-bottom:8px">⚠ ${escapeHtml(t('components.fsi.cissStale'))}</div>` : ''}
           <div style="background:rgba(255,255,255,0.07);border-radius:4px;height:6px;overflow:hidden">
             <div style="height:100%;width:${(euFsi.latestValue * 100).toFixed(1)}%;background:linear-gradient(90deg,#27ae60,#f39c12,#c0392b);border-radius:4px"></div>
           </div>

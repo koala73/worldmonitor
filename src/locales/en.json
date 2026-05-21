@@ -2236,6 +2236,7 @@
       "title": "Financial Stress Indicator",
       "usFsiValue": "US FSI VALUE",
       "cissTitle": "EU CISS (Euro Area Systemic Stress)",
+      "cissStale": "ECB has not published a newer value — this reading may be out of date.",
       "notAvailable": "N/A",
       "interpretation": {
         "low": "Credit markets functioning normally, equity/bond ratio healthy.",
