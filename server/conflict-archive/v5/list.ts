@@ -71,7 +71,12 @@ export async function listConflictArchiveV5(): Promise<ListConflictArchiveV5Resp
     DIGEST_KEY,
     TOP_LEVEL_TTL_S,
     async () => {
-      const rse = (await getCachedJson(RSE_KEY)) as ConflictArchiveItem[] | null;
+      // 5 s read timeout (vs the 1.5 s user-facing default): the archive is a
+      // multi-MB compressed blob (rich sources[] per item) and a timed-out
+      // read here returns an empty feed to the user. This is a cache-miss
+      // path behind a 30 s wrapper cache, so the longer wait only hits once
+      // per cache window, not per request.
+      const rse = (await getCachedJson(RSE_KEY, false, 5_000)) as ConflictArchiveItem[] | null;
 
       const merged = new Map<string, ConflictArchiveItem>();
       // Dedup by article link — the stable cross-refresh identifier.

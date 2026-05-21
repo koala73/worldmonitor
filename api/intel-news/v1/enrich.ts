@@ -1264,7 +1264,7 @@ async function runEnrichment(): Promise<EnrichResult> {
     for (const c of conflictItems) {
       byId.set(c.id, c);
     }
-    // 30-day retention + 1000-item cap (matches the legacy v1 store).
+    // 3-day retention (CONFLICT_ARCHIVE_TTL_S) + 1000-item cap.
     const cutoff = Date.now() - CONFLICT_ARCHIVE_TTL_S * 1000;
     const merged = Array.from(byId.values())
       .filter((c) => typeof c.publishedAt === 'number' && c.publishedAt >= cutoff)
