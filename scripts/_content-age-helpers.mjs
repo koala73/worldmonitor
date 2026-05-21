@@ -45,7 +45,10 @@ export const DAY_MIN = 24 * 60;
 export function periodTokenToMs(token) {
   if (typeof token !== 'string' || token === '') return null;
   let m;
-  if (/^\d{4}-\d{2}-\d{2}/.test(token)) {
+  // Bare ISO date (YYYY-MM-DD) or full ISO datetime (…-DDT…). The (?:T|$)
+  // anchor rejects trailing garbage like `2026-05-18xyz` explicitly rather
+  // than relying on a downstream Date.parse → NaN.
+  if (/^\d{4}-\d{2}-\d{2}(?:T|$)/.test(token)) {
     const ts = Date.parse(token.length === 10 ? `${token}T00:00:00Z` : token);
     return Number.isFinite(ts) ? ts : null;
   }

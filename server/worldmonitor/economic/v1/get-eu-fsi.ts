@@ -5,15 +5,13 @@ import type {
   EuFsiObservation,
 } from '../../../../src/generated/server/worldmonitor/economic/v1/service_server';
 import { getCachedJson } from '../../../_shared/redis';
+import { CISS_STALE_THRESHOLD_MS } from '../../../../src/shared/ciss-staleness';
 
 const SEED_CACHE_KEY = 'economic:fsi-eu:v1';
 
-// CISS content-age budget — mirrors CISS_MAX_CONTENT_AGE_MIN in
-// scripts/seed-fsi-eu.mjs (10 days). When the newest observation is older than
-// this, the ECB series has stopped publishing (issue #3845) and `stale` is set
+// `stale` is set when the newest observation is older than the shared CISS
+// content-age budget — the ECB series has stopped publishing (issue #3845) —
 // so no consumer presents the reading as current.
-const CISS_STALE_THRESHOLD_MS = 10 * 24 * 60 * 60 * 1000;
-
 function isStale(latestDate: string): boolean {
   const ts = Date.parse(latestDate);
   if (!Number.isFinite(ts)) return false;

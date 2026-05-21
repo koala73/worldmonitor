@@ -34,6 +34,11 @@ const FSI_EU_TTL = 259200;
 //    /api/health flips to STALE_CONTENT within ~6 ECB business days instead of
 //    staying green for a year. 10d absorbs a weekend + ECB holiday cluster +
 //    one missed cron without false-positiving.
+//
+// CANONICAL source of the 10-day threshold. The server RPC + panel mirror it
+// via src/shared/ciss-staleness.ts (the seeder is plain .mjs and cannot be
+// imported by TS code); tests/ciss-stale-threshold-consistency.test.mjs
+// asserts the two never drift.
 const CISS_MAX_CONTENT_AGE_MIN = 10 * DAY_MIN;
 
 function classifyLabel(value) {

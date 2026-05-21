@@ -21,7 +21,10 @@ test('periodTokenToMs parses each SDMX granularity to a UTC instant', () => {
 });
 
 test('periodTokenToMs returns null for unparseable / out-of-range tokens', () => {
-  for (const bad of ['', '   ', 'not-a-date', '2026-13', '2026-Q5', '2026-00', null, undefined, 42, {}]) {
+  // `2026-05-18garbage` exercises the (?:T|$) anchor — a date PREFIX with
+  // trailing garbage must be rejected, not silently accepted.
+  for (const bad of ['', '   ', 'not-a-date', '2026-13', '2026-Q5', '2026-00',
+                     '2026-05-18garbage', '2026-05-18-extra', null, undefined, 42, {}]) {
     assert.equal(periodTokenToMs(bad), null, `expected null for ${JSON.stringify(bad)}`);
   }
 });

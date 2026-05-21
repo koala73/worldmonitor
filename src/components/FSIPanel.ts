@@ -4,6 +4,7 @@ import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
 import { getHydratedData } from '@/services/bootstrap';
+import { CISS_STALE_THRESHOLD_MS } from '@/shared/ciss-staleness';
 
 let _marketClient: MarketServiceClient | null = null;
 async function getMarketClient(): Promise<MarketServiceClient> {
@@ -62,13 +63,12 @@ function cissLabelColor(label: string): string {
   return '#c0392b';
 }
 
-// CISS staleness guard — mirrors the 10-day content-age budget in
-// scripts/seed-fsi-eu.mjs (CISS_MAX_CONTENT_AGE_MIN). When ECB stops
-// publishing — as the legacy SS_CI series did for ~12 months, issue #3845 —
-// the panel must flag the value rather than present a frozen number as
-// current. Unparseable dates return false (no false-positive flag).
-const CISS_STALE_THRESHOLD_MS = 10 * 24 * 60 * 60 * 1000;
-
+// CISS staleness guard — uses the shared CISS content-age budget. When ECB
+// stops publishing (as the legacy SS_CI series did for ~12 months, issue
+// #3845) the panel flags the value rather than present a frozen number as
+// current. Unparseable dates return false (no false-positive flag). The
+// render path prefers the server-computed `stale` flag and only falls back
+// to this for the hydrated-bootstrap path.
 function cissIsStale(latestDate: string): boolean {
   const ts = Date.parse(latestDate);
   if (!Number.isFinite(ts)) return false;
