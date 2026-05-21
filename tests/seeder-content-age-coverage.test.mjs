@@ -82,13 +82,20 @@ function listSeeders() {
   return readdirSync(SCRIPTS_DIR).filter((f) => /^seed-.*\.mjs$/.test(f));
 }
 
-// A seeder is "wired" if it references the camelCase `maxContentAgeMin` —
-// present in the runSeed opt AND in the writeFreshnessMetadata content-age
-// trio used by non-runSeed seeders (e.g. seed-ecb-short-rates). The
-// SCREAMING_CASE budget consts (IMF_WEO_MAX_CONTENT_AGE_MIN, …) do not match,
-// so this only fires on a real opt-in.
+// `maxContentAgeMin` / `contentMeta` must be matched as a real object
+// PROPERTY — line-anchored `<indent>name:` — not as a bare substring.
+// A bare /maxContentAgeMin/ would be satisfied by a comment like
+// `// TODO: add maxContentAgeMin`, letting an unwired seeder pass the guard.
+// Property form (own line, indented) is how both the runSeed opt and the
+// non-runSeed writeFreshnessMetadata content-age trio are written; the
+// SCREAMING_CASE budget consts (IMF_WEO_MAX_CONTENT_AGE_MIN, …) never match.
+const MAX_CONTENT_AGE_PROP = /(?:^|\n)[ \t]*maxContentAgeMin[ \t]*:/;
+const CONTENT_META_PROP = /(?:^|\n)[ \t]*contentMeta[ \t]*:/;
+
+// A seeder is "wired" when it sets the `maxContentAgeMin` property — present
+// in both the runSeed opt and the writeFreshnessMetadata trio.
 function isWired(src) {
-  return /maxContentAgeMin/.test(src);
+  return MAX_CONTENT_AGE_PROP.test(src);
 }
 
 test('every freeze-prone seeder wires content-age detection or is exempt with a rationale', () => {
@@ -115,7 +122,7 @@ test('content-age opt-in is complete — contentMeta always paired with maxConte
   const halfWired = [];
   for (const file of listSeeders()) {
     const src = readFileSync(join(SCRIPTS_DIR, file), 'utf8');
-    if (/contentMeta/.test(src) && !/maxContentAgeMin/.test(src)) halfWired.push(file);
+    if (CONTENT_META_PROP.test(src) && !MAX_CONTENT_AGE_PROP.test(src)) halfWired.push(file);
   }
   assert.deepEqual(
     halfWired,
@@ -132,4 +139,31 @@ test('no EXEMPT entry is stale — every entry points at an existing, still-unwi
     assert.ok(!isWired(src), `${file} is now wired for content-age — remove it from EXEMPT.`);
     assert.ok(typeof reason === 'string' && reason.trim().length > 40, `EXEMPT[${file}] needs a real rationale.`);
   }
+});
+
+// Self-test of the matcher — locks the property-shape requirement so a future
+// "simplification" back to a bare /maxContentAgeMin/ substring (which a comment
+// could satisfy) fails here immediately.
+test('the wired-matcher requires a real property, not a comment mention', () => {
+  // Comment mentions must NOT count as wired.
+  for (const comment of [
+    '  // TODO: add maxContentAgeMin: here',
+    '// contentMeta: wire this up later',
+    'const x = 1; // see maxContentAgeMin: docs',
+    '/* maxContentAgeMin: 100 */',
+  ]) {
+    assert.equal(isWired(comment), false, `comment must not read as wired: ${comment}`);
+    assert.equal(MAX_CONTENT_AGE_PROP.test(comment), false);
+  }
+  // Real opt-in property forms (own line, indented) MUST count as wired.
+  for (const real of [
+    '    maxContentAgeMin: CISS_MAX_CONTENT_AGE_MIN,',
+    'runSeed(d, r, k, fn, {\n  contentMeta: fn,\n  maxContentAgeMin: 14400,\n});',
+    '  const contentAge = {\n    maxContentAgeMin: ESTR_MAX_CONTENT_AGE_MIN,\n  };',
+  ]) {
+    assert.equal(isWired(real), true, `real property must read as wired: ${real}`);
+  }
+  // contentMeta property detection (drives the half-wire check).
+  assert.equal(CONTENT_META_PROP.test('  contentMeta: cissContentMeta,'), true);
+  assert.equal(CONTENT_META_PROP.test('// contentMeta: someday'), false);
 });
