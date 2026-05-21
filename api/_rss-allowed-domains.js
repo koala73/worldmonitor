@@ -302,5 +302,13 @@ export default [
   "bitcoinmagazine.com",
   "www.dlnews.com",
   "cryptoslate.com",
-  "unchainedcrypto.com"
+  "unchainedcrypto.com",
+  "telex.hu",
+  "index.hu",
+  "hvg.hu",
+  "444.hu",
+  "24.hu",
+  "hirado.hu",
+  "portfolio.hu",
+  "www.atv.hu"
 ];
