@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, runSeed, withRetry, normalizeSdmxPeriod, imfAuthHeaders, PERMANENT_4XX_STATUSES, parseRetryAfterMs } from './_seed-utils.mjs';
+import { tokensToContentMeta, DAY_MIN } from './_content-age-helpers.mjs';
 loadEnvFile(import.meta.url);
 
 // Re-exported for the test suite. The shared normalizer lives in _seed-utils
@@ -9,6 +10,12 @@ export { normalizeSdmxPeriod as normalizePeriod };
 
 const CB_KEY = 'market:gold-cb-reserves:v1';
 const CB_TTL = 2_592_000; // 30 days — data is monthly, TTL long to survive missed runs
+// Content-age budget — IMF IRFCL is a monthly SDMX dataflow with a long
+// reporting lag (`asOfMonth` is the newest month ANY central bank reported,
+// typically 1–2 months behind). 150 days clears the worst-case lag plus a few
+// missed publishes; a genuine IRFCL freeze still flips /api/health to
+// STALE_CONTENT within ~3 monthly cycles. See issue #3845.
+const GOLD_CB_MAX_CONTENT_AGE_MIN = 150 * DAY_MIN;
 
 // IMF IRFCL (International Reserves and Foreign Currency Liquidity) dataflow
 // via SDMX 3.0. Set IMF_API_KEY for forward-compatibility — see
@@ -291,15 +298,24 @@ export function declareRecords(data) {
   return Array.isArray(data?.topHolders) ? data.topHolders.length : 0;
 }
 
+// Content-age contract: `asOfMonth` (YYYY-MM) is the newest reported month.
+// Detects a frozen IRFCL dataflow that seeder-liveness checks cannot — see
+// scripts/_content-age-helpers.mjs.
+export function goldCbContentMeta(data) {
+  return tokensToContentMeta(data?.asOfMonth);
+}
+
 if (process.argv[1]?.endsWith('seed-gold-cb-reserves.mjs')) {
   runSeed('market', 'gold-cb-reserves', CB_KEY, fetchCbReserves, {
     ttlSeconds: CB_TTL,
     validateFn: data => Array.isArray(data?.topHolders) && data.topHolders.length >= 10,
     recordCount: data => data?.topHolders?.length ?? 0,
-  
+
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: 44640,
     sourceVersion: 'imf-ifs-v1',
+    contentMeta: goldCbContentMeta,
+    maxContentAgeMin: GOLD_CB_MAX_CONTENT_AGE_MIN,
   }).catch(err => { console.error('FATAL:', err.message || err); process.exit(1); });
 }
