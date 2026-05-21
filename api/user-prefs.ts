@@ -381,6 +381,11 @@ export function buildSentryContext(
       : /"code":"InternalServerError"/.test(msg) ? 'convex_internal_error'
       : /\[Request ID:\s*[a-f0-9]+\]\s*Server Error/i.test(msg) ? 'convex_server_error'
       : /timeout|timed out|aborted/i.test(msg) ? 'transport_timeout'
+      // Cloudflare edge error (520-527) fronting the Convex deployment — see
+      // _convex-error.js. Mapped to SERVICE_UNAVAILABLE (503 + Retry-After)
+      // there; kept as its own Sentry bucket so on-call can tell CDN-layer
+      // transients apart from genuine Convex platform 5xx (WORLDMONITOR-PG).
+      : /error code:\s*52[0-7]\b/i.test(msg) ? 'transport_cloudflare'
       : /fetch failed|network|ECONN|ENOTFOUND|getaddrinfo/i.test(msg) ? 'transport_network'
       : 'unknown');
 
