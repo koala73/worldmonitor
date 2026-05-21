@@ -1,10 +1,18 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, runSeed, writeExtraKey } from './_seed-utils.mjs';
+import { tokensToContentMeta, DAY_MIN } from './_content-age-helpers.mjs';
 
 loadEnvFile(import.meta.url);
 
 const BIS_BASE = 'https://stats.bis.org/api/v1/data';
+// Content-age budget — the canonical key holds the BIS WS_CBPOL policy-rate
+// series (monthly). 75 days clears the monthly publication lag plus a missed
+// cycle; STALE_CONTENT fires if BIS stops publishing policy rates. Detects a
+// whole-feed freeze (the CISS failure mode, issue #3845); a single-series
+// freeze among policy/exchange/credit is not modelled — the canonical key is
+// policy only, and exchange/credit are best-effort extra keys.
+const BIS_POLICY_MAX_CONTENT_AGE_MIN = 75 * DAY_MIN;
 
 const BIS_COUNTRIES = {
   US: { name: 'United States', centralBank: 'Federal Reserve' },
@@ -234,6 +242,14 @@ function publishTransform(data) {
   return data.policy ?? { rates: [] };
 }
 
+// Content-age contract: newest BIS policy-rate observation date (the canonical
+// key holds `data.policy`). Runs on raw fetchAll() output, before
+// publishTransform. See scripts/_content-age-helpers.mjs.
+export function bisPolicyContentMeta(data) {
+  const rates = Array.isArray(data?.policy?.rates) ? data.policy.rates : [];
+  return tokensToContentMeta(rates.map((r) => r?.date));
+}
+
 async function afterPublish(data) {
   if (data.exchange) await writeExtraKey(KEYS.exchange, data.exchange, TTL);
   if (data.credit) await writeExtraKey(KEYS.credit, data.credit, TTL);
@@ -249,6 +265,8 @@ if (process.argv[1]?.endsWith('seed-bis-data.mjs')) {
     maxStaleMin: 10080,
     publishTransform,
     afterPublish,
+    contentMeta: bisPolicyContentMeta,
+    maxContentAgeMin: BIS_POLICY_MAX_CONTENT_AGE_MIN,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);

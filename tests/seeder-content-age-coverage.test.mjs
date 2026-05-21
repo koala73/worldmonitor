@@ -39,73 +39,56 @@ const FREEZE_PRONE_MARKERS = [
   /lastNObservations=/,          // SDMX windowed-fetch query param
 ];
 
-// Seeders that match the heuristic but intentionally do NOT wire content-age.
-// Every entry needs a concrete rationale — a placeholder is rejected by the
-// "no stale EXEMPT entry" test below. Two kinds of rationale:
-//   - "content-age does not apply" — the payload has no newest-observation
-//     semantics (forward-looking calendars, static baselines, normals).
-//   - "tracked #3845 follow-up" — content-age IS applicable but the payload
-//     shape needs a bespoke extractor (multi-series, multi-key, composite
-//     scores, WEO forecast-year horizons). Seeder liveness still covers a
-//     stopped cron in the meantime.
+// Seeders that match the heuristic but do NOT wire content-age. Every entry
+// needs a concrete STRUCTURAL rationale — these are not "do it later" punts,
+// they are seeders where content-age either does not apply or cannot be
+// computed without first reshaping the seeder's output. A placeholder is
+// rejected by the "no stale EXEMPT entry" test below.
 const EXEMPT = {
-  'seed-ecb-short-rates.mjs':
-    'Multi-frequency aggregate (daily €STR + monthly EURIBOR 3M/6M/1Y) writing ' +
-    'four separate FRED-format keys via a hand-rolled main() with no runSeed / ' +
-    'canonical key. A single maxContentAgeMin cannot model per-series freshness; ' +
-    'per-series content-age tracking is a #3845 follow-up.',
-  'seed-bis-extended.mjs':
-    'Quarterly BIS multi-series seeder (DSR / SPP / CPP) that fans out to ' +
-    'several afterPublish sub-keys. Correct content-age needs a per-series-aware ' +
-    'contentMeta across those sub-keys; tracked as a #3845 follow-up.',
-  'seed-bis-data.mjs':
-    'Quarterly BIS multi-series seeder (policy / exchange / credit) with the ' +
-    'same multi-key afterPublish shape as seed-bis-extended; same follow-up.',
-  'seed-economy.mjs':
-    'Composite economic score blended from multiple annual inputs at differing ' +
-    'cadences. The published score has no single observation date; correct ' +
-    'content-age needs per-input tracking. Tracked as a #3845 follow-up.',
   'seed-economic-calendar.mjs':
     'Forward-looking release calendar — its payload is UPCOMING economic events, ' +
     'not historical observations. Content-age does not apply; freshness is the ' +
     'seeder run itself (seed-meta liveness).',
-  'seed-supply-chain-trade.mjs':
-    'Composite supply-chain index blending FRED monthly series with UN Comtrade ' +
-    'annual data at different cadences; a single maxContentAgeMin cannot model ' +
-    'both. Per-series content-age is a #3845 follow-up.',
-  'seed-national-debt.mjs':
-    'Per-country annual debt dict sourced partly from IMF WEO, whose `year` can ' +
-    'be a FORECAST horizon — the plain country-dict mapping would future-date ' +
-    'it. Needs the WEO horizon-aware helper; tracked as a #3845 follow-up.',
-  'seed-recovery-fiscal-space.mjs':
-    'Per-country annual dict built from IMF WEO inputs (revenue / balance / ' +
-    'debt), whose `year` can be a forecast horizon — same WEO future-dating ' +
-    'trap as seed-national-debt. Needs the WEO horizon-aware helper; tracked ' +
-    'as a #3845 follow-up.',
   'seed-resilience-static.mjs':
     'Static baseline dataset (per file name and design) — a reference snapshot ' +
     'refreshed infrequently, with no rolling observation date. Content-age does ' +
     'not apply.',
-  'seed-sovereign-wealth.mjs':
-    'Per-fund AUM figures from irregular official disclosures (ministry-of-' +
-    'finance / central-bank annual reports) with no uniform observation date ' +
-    'across funds. Content-age is ill-defined here; tracked as a #3845 follow-up.',
-  'seed-wb-indicators.mjs':
-    'Multi-indicator World Bank seeder with a per-indicator latest-year ' +
-    'structure rather than the flat {countries:{year}} shape the shared helper ' +
-    'expects. Wiring needs a per-indicator extractor; #3845 follow-up.',
   'seed-climate-zone-normals.mjs':
     'Climatological 30-year normals (WMO 1991–2020 baseline) — a fixed ' +
     'reference dataset recomputed monthly, not a live observation series. ' +
     'Content-age does not apply.',
+  'seed-economy.mjs':
+    'Composite economic stress score — its `components` carry {id, label, ' +
+    'rawValue, score, weight} with NO observation date or year. The published ' +
+    'score has no datable newest observation; content-age would require every ' +
+    'component fetcher to also surface its source vintage (a seeder-shape ' +
+    'change beyond content-age wiring).',
+  'seed-national-debt.mjs':
+    'The only date signal in the payload (`entries[].baselineTs`) is derived ' +
+    'from deriveWeoYear() = max WEO year WITH DATA, which includes y+1 FORECAST ' +
+    'vintages — not a historical observation. Correct content-age needs the ' +
+    'seeder to first expose a newest non-forecast data year per entry.',
+  'seed-wb-indicators.mjs':
+    'Hand-rolled main() seeder with no runSeed / writeFreshnessMetadata path — ' +
+    'content-age requires its freshness-metadata write path to be established ' +
+    'first (a seeder-structure change beyond content-age wiring).',
+  'seed-sovereign-wealth.mjs':
+    'Per-fund `aumYear` is null for every Wikipedia-list-sourced fund (the list ' +
+    'article carries no per-row data-year). Content-age over only the official / ' +
+    'IFSWF subset would mislabel the dataset; needs per-fund vintage coverage first.',
 };
 
 function listSeeders() {
   return readdirSync(SCRIPTS_DIR).filter((f) => /^seed-.*\.mjs$/.test(f));
 }
 
+// A seeder is "wired" if it references the camelCase `maxContentAgeMin` —
+// present in the runSeed opt AND in the writeFreshnessMetadata content-age
+// trio used by non-runSeed seeders (e.g. seed-ecb-short-rates). The
+// SCREAMING_CASE budget consts (IMF_WEO_MAX_CONTENT_AGE_MIN, …) do not match,
+// so this only fires on a real opt-in.
 function isWired(src) {
-  return /contentMeta/.test(src) && /maxContentAgeMin/.test(src);
+  return /maxContentAgeMin/.test(src);
 }
 
 test('every freeze-prone seeder wires content-age detection or is exempt with a rationale', () => {

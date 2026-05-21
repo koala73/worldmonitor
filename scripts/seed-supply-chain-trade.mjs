@@ -1,8 +1,16 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep, verifySeedKey, resolveProxyForConnect, fredFetchJson } from './_seed-utils.mjs';
+import { tokensToContentMeta, DAY_MIN } from './_content-age-helpers.mjs';
 
 loadEnvFile(import.meta.url);
+
+// Content-age budget — the canonical key holds the merged shipping indices,
+// whose freshest member (BDI) is daily. 28 days clears a degraded-to-weekly
+// (SCFI/FRED-only) window plus holidays; STALE_CONTENT fires if the whole
+// shipping feed stops advancing. A single-index freeze among many is not
+// modelled — newestItemAt is the max across all indices. See issue #3845.
+const SUPPLY_CHAIN_MAX_CONTENT_AGE_MIN = 28 * DAY_MIN;
 
 const _proxyAuth = resolveProxyForConnect();
 
@@ -776,6 +784,18 @@ export function declareRecords(data) {
   return Array.isArray(data?.indices) ? data.indices.length : 0;
 }
 
+// Content-age contract: newest observation date across every shipping index's
+// accumulated history. See scripts/_content-age-helpers.mjs.
+export function supplyChainContentMeta(data) {
+  const tokens = [];
+  for (const idx of Array.isArray(data?.indices) ? data.indices : []) {
+    for (const h of Array.isArray(idx?.history) ? idx.history : []) {
+      if (h?.date) tokens.push(h.date);
+    }
+  }
+  return tokensToContentMeta(tokens);
+}
+
 // Standalone entrypoint guard. Without this, importing this file from tests
 // kicks off the whole seeder (Redis lock acquisition, external API calls,
 // Redis writes) at module-load time, which hangs the test runner.
@@ -788,6 +808,8 @@ if (process.argv[1]?.endsWith('seed-supply-chain-trade.mjs')) {
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: 420,
+    contentMeta: supplyChainContentMeta,
+    maxContentAgeMin: SUPPLY_CHAIN_MAX_CONTENT_AGE_MIN,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
     process.exit(1);
