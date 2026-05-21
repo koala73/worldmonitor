@@ -2914,8 +2914,8 @@ const POSITIVE_QUERIES = [
   'PEACEKEEPING',
 ];
 
-// urltone threshold — positive-tone articles only.
-const POSITIVE_TONE_MIN = 5;
+// urltone threshold — keep only articles with urltone strictly above this value.
+const POSITIVE_TONE_THRESHOLD = 5;
 
 // Mirrors CATEGORY_KEYWORDS from src/services/positive-classifier.ts — keep in sync
 const POSITIVE_CATEGORY_KEYWORDS = [
