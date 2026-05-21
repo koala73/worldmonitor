@@ -88,6 +88,14 @@ const SERVER_NAME = 'worldmonitor';
 // — discovery scanners cross-check both values.
 const SERVER_VERSION = '1.5.0';
 
+// MCP logging capability — valid severity levels per the 2025-03-26 spec
+// (RFC 5424 subset). Stateless HTTP transport: we ACK the level but do not
+// push async `notifications/message` log events.
+const MCP_LOG_LEVELS: ReadonlySet<string> = new Set([
+  'debug', 'info', 'notice', 'warning',
+  'error', 'critical', 'alert', 'emergency',
+]);
+
 // Universal JMESPath projection caps (v1.4.0) — applied at the dispatch
 // boundary AFTER `_postFilter` and `summary`, before serialization. Two
 // gates protect the edge function: an input gate against pathological-parse
@@ -3374,7 +3382,7 @@ export async function mcpHandler(
       });
       return rpcOk(id, {
         protocolVersion: MCP_PROTOCOL_VERSION,
-        capabilities: { tools: {} },
+        capabilities: { tools: {}, logging: {} },
         serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
         instructions: SERVER_INSTRUCTIONS,
       }, { 'Mcp-Session-Id': sessionId, ...corsHeaders });
@@ -3387,6 +3395,15 @@ export async function mcpHandler(
       return rpcOk(id, { tools: TOOL_LIST_RESPONSE }, corsHeaders);
     case 'tools/call':
       return dispatchToolsCall(req, context, deps, body, corsHeaders, ctx);
+    case 'logging/setLevel': {
+      const level = (body.params as { level?: string } | null)?.level;
+      if (typeof level !== 'string' || !MCP_LOG_LEVELS.has(level)) {
+        return rpcError(id, -32602,
+          `Invalid params: level must be one of ${[...MCP_LOG_LEVELS].join(', ')}`,
+        );
+      }
+      return rpcOk(id, {}, corsHeaders);
+    }
     default:
       return rpcError(id, -32601, `Method not found: ${method}`);
   }

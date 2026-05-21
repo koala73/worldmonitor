@@ -124,6 +124,40 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(body.error?.code, -32600);
   });
 
+  // --- logging/setLevel ---
+
+  it('logging/setLevel with valid level returns success', async () => {
+    for (const level of ['debug', 'info', 'notice', 'warning', 'error', 'critical', 'alert', 'emergency']) {
+      const res = await handler(makeReq('POST', {
+        jsonrpc: '2.0', id: 10, method: 'logging/setLevel',
+        params: { level },
+      }));
+      assert.equal(res.status, 200);
+      const body = await res.json();
+      assert.deepStrictEqual(body.result, {}, `level "${level}" must return empty success result`);
+      assert.equal(body.error, undefined, `level "${level}" must not return an error`);
+    }
+  });
+
+  it('logging/setLevel with invalid level returns JSON-RPC -32602', async () => {
+    for (const bad of ['trace', 'warn', 'CRITICAL', 'Info', '', 42, null, undefined]) {
+      const res = await handler(makeReq('POST', {
+        jsonrpc: '2.0', id: 11, method: 'logging/setLevel',
+        params: { level: bad },
+      }));
+      const body = await res.json();
+      assert.equal(body.error?.code, -32602, `level ${JSON.stringify(bad)} must be rejected with -32602`);
+    }
+  });
+
+  it('initialize response advertises logging capability', async () => {
+    const res = await handler(makeReq('POST', initBody(12)));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.ok(body.result?.capabilities?.logging, 'capabilities.logging must be present');
+    assert.deepStrictEqual(body.result.capabilities.logging, {}, 'capabilities.logging must be an empty object');
+  });
+
   // --- tools/list ---
 
   it('tools/list returns 39 tools with name, description, inputSchema', async () => {
