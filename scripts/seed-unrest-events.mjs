@@ -249,14 +249,12 @@ export async function fetchGdeltViaProxy(url, proxyAuth, opts = {}) {
   throw lastErr;
 }
 
+// v1 GKG GeoJSON accepts one theme tag per call.  Fan out + merge.
+// http://data.gdeltproject.org/documentation/GKG-MASTER-THEMELIST.TXT
+const UNREST_THEMES = ['PROTEST', 'STRIKE', 'VIOLENT_UNREST'];
+
 export async function fetchGdeltEvents(opts = {}) {
   const { _resolveProxyForConnect = resolveProxyForConnect, ..._proxyOpts } = opts;
-  const params = new URLSearchParams({
-    query: 'protest OR riot OR demonstration OR strike',
-    maxrows: '2500',
-  });
-  const url = `${GDELT_GKG_URL}?${params}`;
-
   const proxyAuth = _resolveProxyForConnect();
   if (!proxyAuth) {
     // Direct fetch hasn't worked from Railway since PR #3256; this seeder
@@ -264,48 +262,67 @@ export async function fetchGdeltEvents(opts = {}) {
     throw new Error('GDELT requires CONNECT proxy: PROXY_URL env var is not set on this Railway service');
   }
 
-  let data;
-  try {
-    data = await fetchGdeltViaProxy(url, proxyAuth, _proxyOpts);
-  } catch (proxyErr) {
-    throw Object.assign(
-      new Error(`GDELT proxy failed (3 attempts): ${describeErr(proxyErr)}`),
-      { cause: proxyErr },
-    );
+  // One shared locationMap across all theme calls so a hotspot mentioned
+  // under multiple themes sums counts + merges source URLs instead of
+  // producing duplicate events.
+  const locationMap = new Map();
+  // Cross-call URL dedup — the same article tagged with multiple themes
+  // would otherwise inflate counts across requests.
+  const seenUrls = new Set();
+  let anyThemeSucceeded = false;
+  let lastError = null;
+
+  for (let i = 0; i < UNREST_THEMES.length; i++) {
+    if (i > 0) await new Promise((r) => setTimeout(r, 5_500)); // GDELT rate limit: 1 req per 5s
+    const theme = UNREST_THEMES[i];
+    const params = new URLSearchParams({ QUERY: theme, MAXROWS: '2500' });
+    const url = `${GDELT_GKG_URL}?${params}`;
+    let data;
+    try {
+      data = await fetchGdeltViaProxy(url, proxyAuth, _proxyOpts);
+    } catch (proxyErr) {
+      lastError = proxyErr;
+      continue;
+    }
+    anyThemeSucceeded = true;
+    const features = data?.features || [];
+    for (const feature of features) {
+      const fUrl = feature.properties?.url;
+      if (fUrl && seenUrls.has(fUrl)) continue;
+      const name = feature.properties?.name || '';
+      if (!name) continue;
+      const coords = feature.geometry?.coordinates;
+      if (!Array.isArray(coords) || coords.length < 2) continue;
+      const [lon, lat] = coords;
+      if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) continue;
+      if (fUrl) seenUrls.add(fUrl);
+      const key = `${lat.toFixed(1)}:${lon.toFixed(1)}`;
+      const existing = locationMap.get(key);
+      const tone = feature.properties?.urltone;
+      if (existing) {
+        existing.count++;
+        if (typeof tone === 'number' && tone < existing.worstTone) {
+          existing.worstTone = tone;
+        }
+        existing.sourceUrls = mergeSourceUrls(existing.sourceUrls, extractGdeltSourceUrls(feature.properties));
+      } else {
+        locationMap.set(key, {
+          name,
+          lat,
+          lon,
+          count: 1,
+          worstTone: typeof tone === 'number' ? tone : 0,
+          sourceUrls: mergeSourceUrls(extractGdeltSourceUrls(feature.properties)),
+        });
+      }
+    }
   }
 
-  const features = data?.features || [];
-
-  // Aggregate by location (v1 GKG returns individual mentions, not aggregated counts)
-  const locationMap = new Map();
-  for (const feature of features) {
-    const name = feature.properties?.name || '';
-    if (!name) continue;
-
-    const coords = feature.geometry?.coordinates;
-    if (!Array.isArray(coords) || coords.length < 2) continue;
-
-    const [lon, lat] = coords;
-    if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) continue;
-
-    const key = `${lat.toFixed(1)}:${lon.toFixed(1)}`;
-    const existing = locationMap.get(key);
-    if (existing) {
-      existing.count++;
-      if (feature.properties?.urltone < existing.worstTone) {
-        existing.worstTone = feature.properties.urltone;
-      }
-      existing.sourceUrls = mergeSourceUrls(existing.sourceUrls, extractGdeltSourceUrls(feature.properties));
-    } else {
-      locationMap.set(key, {
-        name,
-        lat,
-        lon,
-        count: 1,
-        worstTone: feature.properties?.urltone ?? 0,
-        sourceUrls: mergeSourceUrls(extractGdeltSourceUrls(feature.properties)),
-      });
-    }
+  if (!anyThemeSucceeded) {
+    throw Object.assign(
+      new Error(`GDELT proxy failed for all themes (last error: ${describeErr(lastError)})`),
+      { cause: lastError },
+    );
   }
 
   const events = [];

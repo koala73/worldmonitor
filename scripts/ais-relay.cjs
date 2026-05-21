@@ -2903,11 +2903,19 @@ const POSITIVE_EVENTS_RPC_KEY = 'positive-events:geo:v1';
 const POSITIVE_EVENTS_BOOTSTRAP_KEY = 'positive_events:geo-bootstrap:v1';
 const POSITIVE_EVENTS_MAX = 500;
 
+// Single-theme queries — v1 GKG accepts one theme tag per call.
+// http://data.gdeltproject.org/documentation/GKG-MASTER-THEMELIST.TXT
 const POSITIVE_QUERIES = [
-  '(breakthrough OR discovery OR "renewable energy")',
-  '(conservation OR "poverty decline" OR "humanitarian aid")',
-  '("good news" OR volunteer OR donation OR charity)',
+  'SOC_INNOVATION',
+  'EDUCATION',
+  'MEDICAL',
+  'TOURISM',
+  'WB_1765_CULTURE_HERITAGE_AND_SUSTAINABLE_TOURISM',
+  'PEACEKEEPING',
 ];
+
+// urltone threshold — positive-tone articles only.
+const POSITIVE_TONE_MIN = 5;
 
 // Mirrors CATEGORY_KEYWORDS from src/services/positive-classifier.ts — keep in sync
 const POSITIVE_CATEGORY_KEYWORDS = [
@@ -2941,9 +2949,9 @@ function classifyPositiveName(name) {
   return 'humanity-kindness';
 }
 
-function fetchGdeltGeoPositive(query) {
+function fetchGdeltGeoPositive(query, seenUrls) {
   return new Promise((resolve) => {
-    const params = new URLSearchParams({ query, maxrows: '500' });
+    const params = new URLSearchParams({ QUERY: query, MAXROWS: '500' });
     const req = https.get(`https://api.gdeltproject.org/api/v1/gkg_geojson?${params}`, {
       headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
       timeout: 15000,
@@ -2957,6 +2965,12 @@ function fetchGdeltGeoPositive(query) {
           const features = Array.isArray(data?.features) ? data.features : [];
           const locationMap = new Map();
           for (const f of features) {
+            // Skip features already counted in a prior theme call (same article URL).
+            const url = f.properties?.url;
+            if (url && seenUrls.has(url)) continue;
+            // Tone gate — keep only positive-tone articles.
+            const tone = f.properties?.urltone;
+            if (typeof tone !== 'number' || tone <= POSITIVE_TONE_MIN) continue;
             const name = String(f.properties?.name || '').substring(0, 200);
             if (!name) continue;
             if (name.startsWith('ERROR:') || name.includes('unknown error')) continue;
@@ -2964,6 +2978,7 @@ function fetchGdeltGeoPositive(query) {
             if (!Array.isArray(coords) || coords.length < 2) continue;
             const [lon, lat] = coords;
             if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) continue;
+            if (url) seenUrls.add(url);
             const key = `${lat.toFixed(1)}:${lon.toFixed(1)}`;
             const existing = locationMap.get(key);
             if (existing) { existing.count++; }
@@ -2994,12 +3009,15 @@ async function seedPositiveEvents() {
   try {
     const allEvents = [];
     const seenNames = new Set();
+    // Cross-call URL dedup — the same article tagged with multiple themes
+    // would otherwise inflate counts across requests.
+    const seenUrls = new Set();
     let anyQuerySucceeded = false;
 
     for (let i = 0; i < POSITIVE_QUERIES.length; i++) {
       if (i > 0) await new Promise((r) => setTimeout(r, 5_500)); // GDELT rate limit: 1 req per 5s
       try {
-        const events = await fetchGdeltGeoPositive(POSITIVE_QUERIES[i]);
+        const events = await fetchGdeltGeoPositive(POSITIVE_QUERIES[i], seenUrls);
         anyQuerySucceeded = true;
         for (const e of events) {
           if (!seenNames.has(e.name)) {
