@@ -2569,9 +2569,10 @@ for (const t of TOOL_REGISTRY) {
 }
 for (const name of ['analyze_situation', 'generate_forecasts', 'get_world_brief', 'get_country_brief']) {
   const t = TOOL_REGISTRY.find((r) => r.name === name);
-  if (t) t._outputBudgetBytes = LLM_OUTPUT_BUDGET_BYTES;
+  if (!t) throw new Error(`[mcp] budget-assignment: tool '${name}' not found in TOOL_REGISTRY`);
+  t._outputBudgetBytes = LLM_OUTPUT_BUDGET_BYTES;
 }
-{ const dt = TOOL_REGISTRY.find((t) => t.name === 'describe_tool'); if (dt) dt._outputBudgetBytes = 8 * 1024; }
+{ const dt = TOOL_REGISTRY.find((t) => t.name === 'describe_tool'); if (!dt) throw new Error("[mcp] budget-assignment: 'describe_tool' not found in TOOL_REGISTRY"); dt._outputBudgetBytes = 8 * 1024; }
 
 // Public shape for tools/list — strips internal _-prefixed fields, adds MCP
 // annotations, and injects the universal `summary` flag (issue #3678) into
@@ -3290,6 +3291,9 @@ async function dispatchToolsCall(
       });
     }
     if (budgetExceeded) {
+      // Rollback Pro quota — the user received no usable data, so the
+      // daily slot should not be consumed (mirrors the catch-block rollback).
+      if (proRollback) await proRollback();
       return rpcOk(id, { content: [{ type: 'text', text: JSON.stringify({
         _budget_exceeded: true,
         budget_bytes: budget,
