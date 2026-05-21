@@ -271,6 +271,7 @@ export async function fetchGdeltEvents(opts = {}) {
   const seenUrls = new Set();
   let anyThemeSucceeded = false;
   let lastError = null;
+  let totalMentions = 0;
 
   for (let i = 0; i < UNREST_THEMES.length; i++) {
     if (i > 0) await new Promise((r) => setTimeout(r, 5_500)); // GDELT rate limit: 1 req per 5s
@@ -286,6 +287,7 @@ export async function fetchGdeltEvents(opts = {}) {
     }
     anyThemeSucceeded = true;
     const features = data?.features || [];
+    totalMentions += features.length;
     for (const feature of features) {
       const fUrl = feature.properties?.url;
       if (fUrl && seenUrls.has(fUrl)) continue;
@@ -351,7 +353,7 @@ export async function fetchGdeltEvents(opts = {}) {
     });
   }
 
-  console.log(`  GDELT: ${features.length} mentions → ${events.length} aggregated events`);
+  console.log(`  GDELT: ${totalMentions} mentions → ${events.length} aggregated events`);
   return events;
 }
 
