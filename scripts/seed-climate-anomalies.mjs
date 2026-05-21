@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, runSeed, sleep, verifySeedKey } from './_seed-utils.mjs';
+import { tokensToContentMeta, DAY_MIN } from './_content-age-helpers.mjs';
 import { CLIMATE_ZONES, MIN_CLIMATE_ZONE_COUNT, hasRequiredClimateZones } from './_climate-zones.mjs';
 import { chunkItems, fetchOpenMeteoArchiveBatch } from './_open-meteo-archive.mjs';
 import { CLIMATE_ZONE_NORMALS_KEY } from './seed-climate-zone-normals.mjs';
@@ -19,6 +20,11 @@ const CANONICAL_KEY = 'climate:anomalies:v2';
 // green. Production logs 2026-04-27T00:00:59 + 03:03:35 show the 3h+3min
 // drift pattern that produced the 2026-04-27 silent-EMPTY incident.
 const CACHE_TTL = 32400; // 9h
+// Content-age budget — each anomaly's `period` ends on the newest daily
+// observation. Open-Meteo's ERA5 archive lags ~5–7 days; 14 days clears that
+// lag plus a buffer, flipping /api/health to STALE_CONTENT if the archive
+// stops advancing. See issue #3845.
+const CLIMATE_ANOMALIES_MAX_CONTENT_AGE_MIN = 14 * DAY_MIN;
 const ANOMALY_BATCH_SIZE = 8;
 const ANOMALY_BATCH_DELAY_MS = 750;
 // Daily precipitation deltas are in mm/day (Open-Meteo daily precipitation_sum).
@@ -184,15 +190,29 @@ export function declareRecords(data) {
   return Array.isArray(data?.anomalies) ? data.anomalies.length : 0;
 }
 
+// Content-age contract: newest observation date across all zone anomalies,
+// taken from the end of each `period` ("<start> to <end>") string. Detects a
+// frozen Open-Meteo archive — see scripts/_content-age-helpers.mjs.
+export function climateAnomaliesContentMeta(data) {
+  const tokens = [];
+  for (const a of Array.isArray(data?.anomalies) ? data.anomalies : []) {
+    const end = typeof a?.period === 'string' ? a.period.split(' to ')[1]?.trim() : null;
+    if (end) tokens.push(end);
+  }
+  return tokensToContentMeta(tokens);
+}
+
 if (isMain) {
   runSeed('climate', 'anomalies', CANONICAL_KEY, fetchClimateAnomalies, {
     validateFn: validate,
     ttlSeconds: CACHE_TTL,
     sourceVersion: 'open-meteo-archive-wmo-1991-2020-v1',
-  
+
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: 240,
+    contentMeta: climateAnomaliesContentMeta,
+    maxContentAgeMin: CLIMATE_ANOMALIES_MAX_CONTENT_AGE_MIN,
   }).catch((err) => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + cause);

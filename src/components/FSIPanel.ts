@@ -159,7 +159,11 @@ export class FSIPanel extends Panel {
     const fillPct = Math.min(Math.max((fsiValue / 2.5) * 100, 0), 100);
     const interpretation = fsiInterpretation(fsiLabel);
 
-    const cissStale = euFsi ? cissIsStale(euFsi.latestDate) : false;
+    // Prefer the server-computed `stale` flag (get-eu-fsi.ts applies the
+    // canonical budget); fall back to client-side derivation for the hydrated-
+    // bootstrap path, which reads the canonical key directly and so carries no
+    // `stale` field.
+    const cissStale = euFsi ? (euFsi.stale || cissIsStale(euFsi.latestDate)) : false;
     const cissSection = euFsi
       ? `<div style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.07)">
           <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px">${escapeHtml(t('components.fsi.cissTitle'))}</div>

@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { wbCountryDictContentMeta } from './_wb-country-dict-content-age-helpers.mjs';
 import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
 
 loadEnvFile(import.meta.url);
@@ -9,6 +10,10 @@ const WB_BASE = 'https://api.worldbank.org/v2';
 const CANONICAL_KEY = 'resilience:recovery:reserve-adequacy:v1';
 const CACHE_TTL = 35 * 24 * 3600;
 const INDICATOR = 'FI.RES.TOTL.MO';
+// Content-age budget — World Bank annual indicator, ~2-year reporting lag.
+// 48 months clears the lag plus a publication cycle; STALE_CONTENT fires only
+// when WB stops publishing for 2+ annual cycles. See issue #3845.
+const MAX_CONTENT_AGE_MIN = 48 * 30 * 24 * 60;
 
 async function fetchReserveAdequacy() {
   const pages = [];
@@ -83,6 +88,8 @@ if (process.argv[1]?.endsWith('seed-recovery-reserve-adequacy.mjs')) {
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: 86400,
+    contentMeta: wbCountryDictContentMeta,
+    maxContentAgeMin: MAX_CONTENT_AGE_MIN,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);
