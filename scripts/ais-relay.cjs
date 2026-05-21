@@ -2915,7 +2915,7 @@ const POSITIVE_QUERIES = [
 ];
 
 // urltone threshold — keep only articles with urltone strictly above this value.
-const POSITIVE_TONE_THRESHOLD = 5;
+const POSITIVE_TONE_THRESHOLD = 2;
 
 // Mirrors CATEGORY_KEYWORDS from src/services/positive-classifier.ts — keep in sync
 const POSITIVE_CATEGORY_KEYWORDS = [
@@ -2949,7 +2949,13 @@ function classifyPositiveName(name) {
   return 'humanity-kindness';
 }
 
-function fetchGdeltGeoPositive(query, seenUrls) {
+function gkgFeatureUrl(p) {
+  return p?.url || p?.source_url || p?.sourceUrl
+      || p?.document_url || p?.documentUrl
+      || p?.article_url || p?.articleUrl || null;
+}
+
+function fetchGdeltGeoPositive(query, seenUrlLocs) {
   return new Promise((resolve) => {
     const params = new URLSearchParams({ QUERY: query, MAXROWS: '500' });
     const req = https.get(`https://api.gdeltproject.org/api/v1/gkg_geojson?${params}`, {
@@ -2965,9 +2971,6 @@ function fetchGdeltGeoPositive(query, seenUrls) {
           const features = Array.isArray(data?.features) ? data.features : [];
           const locationMap = new Map();
           for (const f of features) {
-            // Skip features already counted in a prior theme call (same article URL).
-            const url = f.properties?.url;
-            if (url && seenUrls.has(url)) continue;
             // Tone gate — keep only positive-tone articles.
             const tone = f.properties?.urltone;
             if (typeof tone !== 'number' || tone <= POSITIVE_TONE_THRESHOLD) continue;
@@ -2978,8 +2981,15 @@ function fetchGdeltGeoPositive(query, seenUrls) {
             if (!Array.isArray(coords) || coords.length < 2) continue;
             const [lon, lat] = coords;
             if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) continue;
-            if (url) seenUrls.add(url);
             const key = `${lat.toFixed(1)}:${lon.toFixed(1)}`;
+            // GKG v1 emits one feature per (article, location) pair, so an
+            // article mentioning N places contributes N features. Dedup key
+            // is (url, lat/lon bucket) so each (article × location) is counted
+            // once across all theme calls.
+            const url =  gkgFeatureUrl(f.properties);
+            const dedupKey = url ? `${url}|${key}` : null;
+            if (dedupKey && seenUrlLocs.has(dedupKey)) continue;
+            if (dedupKey) seenUrlLocs.add(dedupKey);
             const existing = locationMap.get(key);
             if (existing) { existing.count++; }
             else { locationMap.set(key, { latitude: lat, longitude: lon, name, count: 1 }); }
@@ -3009,15 +3019,15 @@ async function seedPositiveEvents() {
   try {
     const allEvents = [];
     const seenNames = new Set();
-    // Cross-call URL dedup — the same article tagged with multiple themes
-    // would otherwise inflate counts across requests.
-    const seenUrls = new Set();
+    // Cross-call (article × location) dedup — same article tagged with
+    // multiple themes would otherwise double-count its location buckets.
+    const seenUrlLocs = new Set();
     let anyQuerySucceeded = false;
 
     for (let i = 0; i < POSITIVE_QUERIES.length; i++) {
       if (i > 0) await new Promise((r) => setTimeout(r, 5_500)); // GDELT rate limit: 1 req per 5s
       try {
-        const events = await fetchGdeltGeoPositive(POSITIVE_QUERIES[i], seenUrls);
+        const events = await fetchGdeltGeoPositive(POSITIVE_QUERIES[i], seenUrlLocs);
         anyQuerySucceeded = true;
         for (const e of events) {
           if (!seenNames.has(e.name)) {

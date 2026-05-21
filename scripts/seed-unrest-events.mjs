@@ -266,9 +266,11 @@ export async function fetchGdeltEvents(opts = {}) {
   // under multiple themes sums counts + merges source URLs instead of
   // producing duplicate events.
   const locationMap = new Map();
-  // Cross-call URL dedup — the same article tagged with multiple themes
-  // would otherwise inflate counts across requests.
-  const seenUrls = new Set();
+  // GKG v1 emits one feature per (article, location) pair. Dedup on
+  // (url, lat/lon bucket) so an article mentioning N places still contributes
+  // N feature-counts, but the same (article × location) only counts once
+  // across multiple theme calls.
+  const seenUrlLocs = new Set();
   let anyThemeSucceeded = false;
   let lastError = null;
   let totalMentions = 0;
@@ -289,16 +291,18 @@ export async function fetchGdeltEvents(opts = {}) {
     const features = data?.features || [];
     totalMentions += features.length;
     for (const feature of features) {
-      const fUrl = feature.properties?.url;
-      if (fUrl && seenUrls.has(fUrl)) continue;
       const name = feature.properties?.name || '';
       if (!name) continue;
       const coords = feature.geometry?.coordinates;
       if (!Array.isArray(coords) || coords.length < 2) continue;
       const [lon, lat] = coords;
       if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) continue;
-      if (fUrl) seenUrls.add(fUrl);
       const key = `${lat.toFixed(1)}:${lon.toFixed(1)}`;
+      const sourceUrls = extractGdeltSourceUrls(feature.properties);
+      const fUrl = sourceUrls[0] || null;
+      const dedupKey = fUrl ? `${fUrl}|${key}` : null;
+      if (dedupKey && seenUrlLocs.has(dedupKey)) continue;
+      if (dedupKey) seenUrlLocs.add(dedupKey);
       const existing = locationMap.get(key);
       const tone = feature.properties?.urltone;
       if (existing) {
@@ -306,7 +310,7 @@ export async function fetchGdeltEvents(opts = {}) {
         if (typeof tone === 'number' && tone < existing.worstTone) {
           existing.worstTone = tone;
         }
-        existing.sourceUrls = mergeSourceUrls(existing.sourceUrls, extractGdeltSourceUrls(feature.properties));
+        existing.sourceUrls = mergeSourceUrls(existing.sourceUrls, sourceUrls);
       } else {
         locationMap.set(key, {
           name,
@@ -314,7 +318,7 @@ export async function fetchGdeltEvents(opts = {}) {
           lon,
           count: 1,
           worstTone: typeof tone === 'number' ? tone : 0,
-          sourceUrls: mergeSourceUrls(extractGdeltSourceUrls(feature.properties)),
+          sourceUrls,
         });
       }
     }

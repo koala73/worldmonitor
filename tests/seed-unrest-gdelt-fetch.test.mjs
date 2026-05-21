@@ -1,6 +1,7 @@
-// Tests for the GDELT proxy retry path in scripts/seed-unrest-events.mjs.
+// Tests for scripts/seed-unrest-events.mjs — GDELT proxy retry + multi-theme
+// fan-out aggregation.
 //
-// Locks the behavioural contract introduced in PR #3395:
+// Proxy-retry contract (locked since PR #3395):
 //
 //   1. Single attempt success — happy path, no retries fire.
 //   2. Transient proxy failure recoverable by retry — first attempt(s)
@@ -13,6 +14,24 @@
 //   5. Missing CONNECT proxy creds — fetchGdeltEvents throws with a
 //      clear "PROXY_URL env var is not set" pointer for ops, with NO
 //      proxy fetcher invocation (no wasted network).
+//
+// Fan-out aggregation contract (PR #3853 — switched from a single keyword
+// query to N theme-tag calls fanned out + merged):
+//
+//   6. End-to-end happy path with a transient flake on theme 1 — retries
+//      succeed and events aggregate across all themes.
+//   7. All proxy attempts fail across every theme — throws last error.
+//   8. Fan-out merges counts at the same location across themes (the
+//      load-bearing claim of the PR — that a hotspot mentioned under
+//      multiple themes sums into one event, not duplicates).
+//   9. One theme's proxy fails fatally — surviving themes still aggregate
+//      (the anyThemeSucceeded partial-failure path).
+//   10. Multi-location article: composite (url, lat/lon) dedup lets the
+//       same URL count at TWO different locations. URL-only dedup would
+//       collapse one of them.
+//   11. Multi-field URL resolution: a feature exposing only source_url
+//       (not url) is still deduped across themes — extractGdeltSourceUrls
+//       resolves it before the dedup key is built.
 //
 // Pre-PR-#3395 behaviour to AVOID regressing into:
 //   - Direct fetch was tried first and failed UND_ERR_CONNECT_TIMEOUT
@@ -159,11 +178,157 @@ test('fetchGdeltEvents with one transient proxy failure → recovers and aggrega
     _jitter: noJitter,
     _maxAttempts: 3,
   });
-  assert.equal(calls, 2, 'should retry exactly once after the 522');
-  assert.equal(events.length, 1, 'five mentions at one location → one aggregated event');
+  assert.equal(calls, 4, 'should retry exactly once after the 522');
+  assert.equal(events.length, 1, 'Fifteen mentions at one location → one aggregated event');
   assert.equal(events[0].country, 'Egypt');
   assert.deepEqual(events[0].sourceUrls, [
     'https://example.com/cairo-protest',
     'https://news.example.org/cairo-protest',
   ]);
+});
+
+// ─── 7. fetchGdeltEvents: every proxy call fails ──────────────────────────
+
+test('fetchGdeltEvents with all proxy attempts failing → throws last error', async () => {
+  let calls = 0;
+  const _proxyFetcher = async () => {
+    calls++;
+    throw new Error(`Proxy CONNECT: HTTP/1.1 522 Server Error`);
+  };
+  await assert.rejects(
+    fetchGdeltEvents({
+      _resolveProxyForConnect: () => PROXY_AUTH,
+      _proxyFetcher,
+      _sleep: noSleep,
+      _jitter: noJitter,
+      _maxAttempts: 3,
+    }),
+    /HTTP\/1\.1 522 Server Error/,
+  );
+  assert.equal(calls, 9, 'should retry the max number of attempts times 3 (there are 3 queries in fetchGdeltEvents)');
+});
+
+// ─── 8. fetchGdeltEvents: fan-out merges counts across themes ─────────────
+
+test('three themes hitting same location → counts sum into one merged event', async () => {
+  let calls = 0;
+  const _proxyFetcher = async () => {
+    calls++;
+    // 2 unique-URL features at Cairo per theme. No cross-theme URL overlap,
+    // so dedup is a no-op and all 6 (2 × 3 themes) must reach the location.
+    const features = Array.from({ length: 2 }, (_, j) => ({
+      properties: { name: 'Cairo, Egypt', urltone: -3, url: `https://ex.com/${calls}-${j}` },
+      geometry: { type: 'Point', coordinates: [31.2, 30.0] },
+    }));
+    return jsonBuffer({ features });
+  };
+  const events = await fetchGdeltEvents({
+    _resolveProxyForConnect: () => PROXY_AUTH,
+    _proxyFetcher,
+    _sleep: noSleep,
+    _jitter: noJitter,
+    _maxAttempts: 1,
+  });
+  assert.equal(calls, 3, 'one call per UNREST_THEMES entry');
+  assert.equal(events.length, 1, 'three themes at one location → one merged event');
+  assert.match(events[0].title, /Cairo.*6 reports/, 'counts sum across themes (2 × 3 = 6)');
+});
+
+// ─── 9. fetchGdeltEvents: partial-failure tolerance ───────────────────────
+
+test('one theme proxy fails fatally, others succeed → still aggregates from survivors', async () => {
+  let calls = 0;
+  const _proxyFetcher = async () => {
+    calls++;
+    // Theme 1 dies for good (only 1 attempt, no retry); themes 2 and 3 succeed.
+    if (calls === 1) throw new Error('Proxy CONNECT: HTTP/1.1 522 Server Error');
+    const features = Array.from({ length: 5 }, (_, j) => ({
+      properties: { name: 'Gaza, Palestine', urltone: -5, url: `https://ex.com/${calls}-${j}` },
+      geometry: { type: 'Point', coordinates: [34.4, 31.5] },
+    }));
+    return jsonBuffer({ features });
+  };
+  const events = await fetchGdeltEvents({
+    _resolveProxyForConnect: () => PROXY_AUTH,
+    _proxyFetcher,
+    _sleep: noSleep,
+    _jitter: noJitter,
+    _maxAttempts: 1,
+  });
+  assert.equal(calls, 3, 'theme 1 failure must NOT short-circuit themes 2 and 3');
+  assert.equal(events.length, 1, 'two surviving themes × 5 features → 10 mentions → 1 event');
+  assert.match(events[0].title, /Gaza.*10 reports/);
+  assert.equal(events[0].country, 'Palestine');
+});
+
+// ─── 10. composite (url, lat/lon) dedup preserves multi-location articles ─
+
+test('same article URL at two different locations → both locations counted (composite dedup)', async () => {
+  // GKG v1 emits one feature per (article, location). The dedup key must be
+  // composite (url|lat-lon) so an article mentioning Cairo + Alexandria still
+  // contributes to BOTH location buckets. URL-only dedup would skip Alexandria
+  // after Cairo claimed the URL first, leaving Alex undercounted by 1 mention
+  // per theme (Cairo=13, Alex=12 instead of both=13).
+  const sharedUrl = 'https://ex.com/multi-location-article';
+  let calls = 0;
+  const _proxyFetcher = async () => {
+    calls++;
+    const features = [
+      // The shared article appears at BOTH locations under every theme
+      { properties: { name: 'Cairo, Egypt',      urltone: -3, url: sharedUrl }, geometry: { type: 'Point', coordinates: [31.2, 30.0] } },
+      { properties: { name: 'Alexandria, Egypt', urltone: -3, url: sharedUrl }, geometry: { type: 'Point', coordinates: [29.9, 31.2] } },
+      // Padding with unique URLs so each location clears the count >= 5 floor
+      ...Array.from({ length: 4 }, (_, j) => ({
+        properties: { name: 'Cairo, Egypt', urltone: -3, url: `https://ex.com/cai-${calls}-${j}` },
+        geometry: { type: 'Point', coordinates: [31.2, 30.0] },
+      })),
+      ...Array.from({ length: 4 }, (_, j) => ({
+        properties: { name: 'Alexandria, Egypt', urltone: -3, url: `https://ex.com/alx-${calls}-${j}` },
+        geometry: { type: 'Point', coordinates: [29.9, 31.2] },
+      })),
+    ];
+    return jsonBuffer({ features });
+  };
+  const events = await fetchGdeltEvents({
+    _resolveProxyForConnect: () => PROXY_AUTH,
+    _proxyFetcher,
+    _sleep: noSleep,
+    _jitter: noJitter,
+    _maxAttempts: 1,
+  });
+  assert.equal(calls, 3);
+  assert.equal(events.length, 2, 'both locations survive — composite dedup did not collapse the shared URL');
+  const byCity = Object.fromEntries(events.map((e) => [e.title.split(',')[0], e]));
+  // Shared URL counts once at each location (theme 1 only — themes 2,3 deduped),
+  // plus 4 padding mentions per theme × 3 themes = 12. Total per city: 13.
+  assert.match(byCity['Cairo'].title, /13 reports/);
+  assert.match(byCity['Alexandria'].title, /13 reports/, 'URL-only dedup would leave Alexandria at 12 reports');
+});
+
+// ─── 11. multi-field URL resolution for dedup ─────────────────────────────
+
+test('feature exposing only source_url (no url field) is still deduped across themes', async () => {
+  // extractGdeltSourceUrls walks 7 URL fields. If the dedup key only checked
+  // properties.url, features carrying source_url/document_url/article_url
+  // would bypass dedup entirely and inflate counts 3× across the fan-out.
+  let calls = 0;
+  const _proxyFetcher = async () => {
+    calls++;
+    // Same 5 articles (by source_url) repeat in every theme call.
+    const features = Array.from({ length: 5 }, (_, j) => ({
+      properties: { name: 'Tehran, Iran', urltone: -4, source_url: `https://ex.com/article-${j}` },
+      geometry: { type: 'Point', coordinates: [51.4, 35.7] },
+    }));
+    return jsonBuffer({ features });
+  };
+  const events = await fetchGdeltEvents({
+    _resolveProxyForConnect: () => PROXY_AUTH,
+    _proxyFetcher,
+    _sleep: noSleep,
+    _jitter: noJitter,
+    _maxAttempts: 1,
+  });
+  assert.equal(calls, 3);
+  assert.equal(events.length, 1);
+  assert.match(events[0].title, /5 reports/, 'source_url-only features deduped across themes (NOT 15)');
 });
