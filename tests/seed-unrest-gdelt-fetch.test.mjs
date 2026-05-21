@@ -178,8 +178,13 @@ test('fetchGdeltEvents with one transient proxy failure → recovers and aggrega
     _jitter: noJitter,
     _maxAttempts: 3,
   });
-  assert.equal(calls, 4, 'should retry exactly once after the 522');
-  assert.equal(events.length, 1, 'Fifteen mentions at one location → one aggregated event');
+  // Theme 1: 1 throw + 1 retry-success. Themes 2 & 3: 1 call each. Total = 4.
+  assert.equal(calls, 4, 'theme 1: 1 throw + 1 retry; themes 2,3: 1 call each');
+  // Per theme: 5 features (urls A, B, then 3 with no URL). Across the 3 themes
+  // the (A|loc) and (B|loc) dedup keys block re-counting, but the 3 no-URL
+  // features always count → 5 (theme 1) + 3 + 3 = 11.
+  assert.equal(events.length, 1, '11 deduped mentions at one location → one aggregated event');
+  assert.match(events[0].title, /11 reports/, 'composite dedup blocks A and B from inflating across themes');
   assert.equal(events[0].country, 'Egypt');
   assert.deepEqual(events[0].sourceUrls, [
     'https://example.com/cairo-protest',

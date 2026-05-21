@@ -2986,7 +2986,7 @@ function fetchGdeltGeoPositive(query, seenUrlLocs) {
             // article mentioning N places contributes N features. Dedup key
             // is (url, lat/lon bucket) so each (article × location) is counted
             // once across all theme calls.
-            const url =  gkgFeatureUrl(f.properties);
+            const url = gkgFeatureUrl(f.properties);
             const dedupKey = url ? `${url}|${key}` : null;
             if (dedupKey && seenUrlLocs.has(dedupKey)) continue;
             if (dedupKey) seenUrlLocs.add(dedupKey);

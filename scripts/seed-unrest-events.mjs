@@ -275,8 +275,13 @@ export async function fetchGdeltEvents(opts = {}) {
   let lastError = null;
   let totalMentions = 0;
 
+  // Using proxy sleeps and jitter between theme calls to reduce chance of back-to-back failures.
+  const {
+    _sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
+    _jitter = () => 1500 + Math.random() * 1500
+  } = _proxyOpts;
   for (let i = 0; i < UNREST_THEMES.length; i++) {
-    if (i > 0) await new Promise((r) => setTimeout(r, 5_500)); // GDELT rate limit: 1 req per 5s
+    if (i > 0) await _sleep(_jitter()); // Jitter between theme calls to reduce chance of back-to-back failures
     const theme = UNREST_THEMES[i];
     const params = new URLSearchParams({ QUERY: theme, MAXROWS: '2500' });
     const url = `${GDELT_GKG_URL}?${params}`;
