@@ -175,6 +175,25 @@ describe('buildSentryContext — backwards-compat for non-CONFLICT callers', () 
     assert.equal(ctx.tags.error_shape, 'unknown');
   });
 
+  it('Cloudflare 524 wins transport_cloudflare even when body contains "A timeout occurred"', () => {
+    // greptile review on #3854: Cloudflare 524's error page body is literally
+    // "A timeout occurred". If the Convex client carries that body text in the
+    // error message, the /timeout/ branch would fire first and mis-bucket the
+    // 524 as transport_timeout. The `error code: 52x` branch is ordered BEFORE
+    // /timeout/ specifically to prevent this.
+    const err = new Error('<html><title>524: A timeout occurred</title><body>A timeout occurred. error code: 524</body></html>');
+    const ctx = buildSentryContext(err, err.message, baseOpts);
+    assert.equal(ctx.tags.error_shape, 'transport_cloudflare');
+  });
+
+  it('a genuine client AbortSignal timeout (no CF code) still classifies as transport_timeout', () => {
+    // Ordering guard the other way: moving error-code-52x above /timeout/ must
+    // NOT steal real client-timeout events — they carry no `error code: 52x`.
+    const err = new Error('The operation was aborted due to timeout');
+    const ctx = buildSentryContext(err, err.message, baseOpts);
+    assert.equal(ctx.tags.error_shape, 'transport_timeout');
+  });
+
   it('messageHead still in extra (non-indexed payload, not promoted)', () => {
     const err = new Error('quite a long error message that should land in extra');
     const ctx = buildSentryContext(err, err.message, baseOpts);
