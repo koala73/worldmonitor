@@ -51,6 +51,7 @@
 //     seededAt: string }
 
 import { loadEnvFile, CHROME_UA, runSeed, resolveProxyForConnect, httpsProxyFetchRaw } from './_seed-utils.mjs';
+import { tokensToContentMeta, DAY_MIN } from './_content-age-helpers.mjs';
 import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
 
 loadEnvFile(import.meta.url);
@@ -58,6 +59,11 @@ loadEnvFile(import.meta.url);
 const _proxyAuth = resolveProxyForConnect();
 const CANONICAL_KEY = 'economic:bis-lbs:v1';
 const CACHE_TTL = 100 * 24 * 3600; // 100 days; CBS publishes quarterly
+// Content-age budget — BIS CBS is a quarterly SDMX dataset published with a
+// ~5–6 month lag, so the newest `bisQuarter` is normally ~9–12 months old.
+// 15 months clears that worst case; a genuine BIS freeze still flips
+// /api/health to STALE_CONTENT within ~one missed quarterly publish. See #3845.
+const BIS_LBS_MAX_CONTENT_AGE_MIN = 15 * 30 * DAY_MIN;
 const WB_BASE = 'https://api.worldbank.org/v2';
 const BIS_BASE = 'https://stats.bis.org/api/v1/data/WS_CBS_PUB';
 
@@ -354,6 +360,13 @@ export function declareRecords(data) {
   return Object.keys(data?.countries || {}).length;
 }
 
+// Content-age contract: `bisQuarter` (YYYY-Qn) is the newest published quarter.
+// Detects a frozen BIS CBS dataset that seeder-liveness checks cannot — see
+// scripts/_content-age-helpers.mjs.
+export function bisLbsContentMeta(data) {
+  return tokensToContentMeta(data?.bisQuarter);
+}
+
 export { CANONICAL_KEY, CACHE_TTL, PARENT_COUNTRIES };
 
 if (process.argv[1]?.endsWith('seed-bis-lbs.mjs')) {
@@ -366,6 +379,8 @@ if (process.argv[1]?.endsWith('seed-bis-lbs.mjs')) {
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: 14400,
+    contentMeta: bisLbsContentMeta,
+    maxContentAgeMin: BIS_LBS_MAX_CONTENT_AGE_MIN,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);

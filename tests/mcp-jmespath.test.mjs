@@ -339,7 +339,7 @@ describe('api/mcp.ts — JMESPath projection (v1.4.0)', () => {
       const res = await mod.default(makeReq(initBody(4)));
       const body = await res.json();
       assert.equal(body.result?.protocolVersion, '2025-03-26');
-      assert.deepEqual(body.result?.capabilities, { tools: {} });
+      assert.deepEqual(body.result?.capabilities, { tools: {}, logging: {} });
       assert.equal(body.result?.serverInfo?.name, 'worldmonitor');
     });
   });
