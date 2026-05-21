@@ -2970,7 +2970,7 @@ function fetchGdeltGeoPositive(query, seenUrls) {
             if (url && seenUrls.has(url)) continue;
             // Tone gate — keep only positive-tone articles.
             const tone = f.properties?.urltone;
-            if (typeof tone !== 'number' || tone <= POSITIVE_TONE_MIN) continue;
+            if (typeof tone !== 'number' || tone <= POSITIVE_TONE_THRESHOLD) continue;
             const name = String(f.properties?.name || '').substring(0, 200);
             if (!name) continue;
             if (name.startsWith('ERROR:') || name.includes('unknown error')) continue;
