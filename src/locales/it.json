@@ -28,7 +28,7 @@
     "components": {
       "unrest": "Disordini",
       "conflict": "Conflitto",
-      "security": "Sicurezza",
+      "security": "Attività militare",
       "information": "Informazioni"
     },
     "signals": {
@@ -602,7 +602,7 @@
       "components": {
         "unrest": "Disordini",
         "conflict": "Conflitto",
-        "security": "Sicurezza",
+        "security": "Attività militare",
         "information": "Informazioni"
       },
       "signals": {
@@ -3098,7 +3098,7 @@
     "exportPdf": "Esporta PDF",
     "unrest": "Disordini",
     "conflict": "Conflitto",
-    "security": "Sicurezza",
+    "security": "Attività militare",
     "information": "Informazione",
     "shareStory": "Condividi storia",
     "selectAll": "Seleziona tutto",

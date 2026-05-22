@@ -373,7 +373,7 @@
       "components": {
         "unrest": "Onrust",
         "conflict": "Conflict",
-        "security": "Beveiliging",
+        "security": "Militaire activiteit",
         "information": "Informatie"
       },
       "signals": {
@@ -2881,7 +2881,7 @@
     "exportPdf": "PDF exporteren",
     "unrest": "Onrust",
     "conflict": "Conflict",
-    "security": "Veiligheid",
+    "security": "Militaire activiteit",
     "information": "Informatie",
     "shareStory": "Verhaal delen",
     "selectAll": "Selecteer Alles",
@@ -3010,7 +3010,7 @@
     "components": {
       "unrest": "Onrust",
       "conflict": "Conflict",
-      "security": "Beveiliging",
+      "security": "Militaire activiteit",
       "information": "Informatie"
     },
     "signals": {

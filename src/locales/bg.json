@@ -28,7 +28,7 @@
     "components": {
       "unrest": "Неразбира",
       "conflict": "Конфликт",
-      "security": "Сигурност",
+      "security": "Военна активност",
       "information": "Информация"
     },
     "signals": {
@@ -674,7 +674,7 @@
       "components": {
         "unrest": "Неразбира",
         "conflict": "Конфликт",
-        "security": "Сигурност",
+        "security": "Военна активност",
         "information": "Информация"
       },
       "signals": {
@@ -3098,7 +3098,7 @@
     "selectNone": "Не избирайте",
     "unrest": "Неразбира",
     "conflict": "Конфликт",
-    "security": "Сигурност",
+    "security": "Военна активност",
     "information": "Информация",
     "shareStory": "Дели история",
     "exportImage": "Експортирай изображение",

@@ -373,7 +373,7 @@
       "components": {
         "unrest": "Agitação",
         "conflict": "Conflito",
-        "security": "Segurança",
+        "security": "Atividade militar",
         "information": "Informação"
       },
       "signals": {
@@ -2881,7 +2881,7 @@
     "exportPdf": "Exportar PDF",
     "unrest": "Agitação",
     "conflict": "Conflito",
-    "security": "Segurança",
+    "security": "Atividade militar",
     "information": "Informação",
     "shareStory": "Compartilhar história",
     "selectAll": "Selecionar tudo",
@@ -3010,7 +3010,7 @@
     "components": {
       "unrest": "Agitação",
       "conflict": "Conflito",
-      "security": "Segurança",
+      "security": "Atividade militar",
       "information": "Informação"
     },
     "signals": {

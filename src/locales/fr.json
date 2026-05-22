@@ -28,7 +28,7 @@
     "components": {
       "unrest": "Troubles",
       "conflict": "Conflit",
-      "security": "Sécurité",
+      "security": "Activité militaire",
       "information": "Information"
     },
     "signals": {
@@ -656,7 +656,7 @@
       "components": {
         "unrest": "Troubles",
         "conflict": "Conflit",
-        "security": "Sécurité",
+        "security": "Activité militaire",
         "information": "Information"
       },
       "signals": {
@@ -3093,7 +3093,7 @@
     "exportData": "Exporter les données",
     "unrest": "Troubles",
     "conflict": "Conflit",
-    "security": "Sécurité",
+    "security": "Activité militaire",
     "information": "Information",
     "shareStory": "Partager le sujet",
     "exportImage": "Exporter l'image",

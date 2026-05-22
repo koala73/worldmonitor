@@ -28,7 +28,7 @@
     "components": {
       "unrest": "소요",
       "conflict": "분쟁",
-      "security": "안보",
+      "security": "군사 활동",
       "information": "정보"
     },
     "signals": {
@@ -674,7 +674,7 @@
       "components": {
         "unrest": "소요",
         "conflict": "분쟁",
-        "security": "안보",
+        "security": "군사 활동",
         "information": "정보"
       },
       "signals": {
@@ -3098,7 +3098,7 @@
     "selectNone": "선택 해제",
     "unrest": "소요",
     "conflict": "분쟁",
-    "security": "안보",
+    "security": "군사 활동",
     "information": "정보",
     "shareStory": "기사 공유",
     "exportImage": "이미지 내보내기",

@@ -28,7 +28,7 @@
     "components": {
       "unrest": "Bất ổn",
       "conflict": "Xung đột",
-      "security": "An ninh",
+      "security": "Hoạt động quân sự",
       "information": "Thông tin"
     },
     "signals": {
@@ -674,7 +674,7 @@
       "components": {
         "unrest": "Bất ổn",
         "conflict": "Xung đột",
-        "security": "An ninh",
+        "security": "Hoạt động quân sự",
         "information": "Thông tin"
       },
       "signals": {
@@ -3098,7 +3098,7 @@
     "selectNone": "Bỏ chọn Tất cả",
     "unrest": "Bất ổn",
     "conflict": "Xung đột",
-    "security": "An ninh",
+    "security": "Hoạt động quân sự",
     "information": "Thông tin",
     "shareStory": "Chia sẻ bài viết",
     "exportImage": "Xuất Hình ảnh",
