@@ -24,7 +24,7 @@
  * Formula version emitted on every CiiScore as `methodology_version`.
  * Bump on any coefficient change so API clients can detect score drift.
  */
-export const CII_FORMULA_VERSION = 'v1';
+export const CII_FORMULA_VERSION = 'v2';
 
 /**
  * Strategic-risk top-N positional decay step. Weight for position `i` (0-based)

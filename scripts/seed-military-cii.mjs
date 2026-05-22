@@ -332,12 +332,13 @@ function getRelayHeaders() {
   return headers;
 }
 
-// Returns { candidateReports, disruptions } — empty arrays if the relay is unreachable.
+// Returns { ok, candidateReports, disruptions }. ok=false when the relay is missing or
+// unreachable (after retries) — the caller must NOT publish the empty arrays as fresh data.
 async function fetchRelaySnapshot() {
   const base = getRelayBaseUrl();
   if (!base) {
     console.warn('  WS_RELAY_URL not set — vessels + AIS disruptions skipped');
-    return { candidateReports: [], disruptions: [] };
+    return { ok: false, candidateReports: [], disruptions: [] };
   }
   try {
     const data = await withRetry(async () => {
@@ -351,10 +352,10 @@ async function fetchRelaySnapshot() {
     // Cap to bound classification work — a hostile/buggy relay must not OOM the job
     // or overrun the lock TTL. Consumers in get-risk-scores cap reads at maxLen=10000.
     const cap = (a) => (Array.isArray(a) ? a.slice(0, 20_000) : []);
-    return { candidateReports: cap(data.candidateReports), disruptions: cap(data.disruptions) };
+    return { ok: true, candidateReports: cap(data.candidateReports), disruptions: cap(data.disruptions) };
   } catch (err) {
     console.warn(`  relay /ais/snapshot failed (${err.message || err}) — vessels + AIS skipped`);
-    return { candidateReports: [], disruptions: [] };
+    return { ok: false, candidateReports: [], disruptions: [] };
   }
 }
 
@@ -432,10 +433,28 @@ async function main() {
       console.warn(`  military:flights:v1 read failed (${err.message || err}) — flights skipped`);
     }
 
-    const { candidateReports, disruptions } = await fetchRelaySnapshot();
-    console.log(`  inputs: ${flights.length} flights, ${candidateReports.length} vessel candidates, ${disruptions.length} AIS disruptions`);
+    const relay = await fetchRelaySnapshot();
+    console.log(`  inputs: ${flights.length} flights, ${relay.candidateReports.length} vessel candidates, ${relay.disruptions.length} AIS disruptions`);
 
-    const { byCountry, militaryVesselCount } = aggregate(flights, candidateReports, disruptions);
+    // Relay unavailable: do NOT overwrite last-good vessel/AIS data with zeros. Re-publish
+    // the existing key (refreshing its TTL) so the CII engine keeps the last-good military
+    // signal until the relay recovers; fall through to a flights-only publish only when
+    // there is no prior key (cold start).
+    if (!relay.ok) {
+      const existing = await redisGetJson(url, token, LIVE_KEY).catch(() => null);
+      if (existing && existing.byCountry) {
+        await withRetry(() => redisSetJson(url, token, LIVE_KEY, existing, LIVE_TTL), 2, 1000);
+        console.warn(`  relay unavailable — preserved last-good ${LIVE_KEY} (vessels/AIS not overwritten)`);
+        return;
+      }
+      console.warn(`  relay unavailable, no prior ${LIVE_KEY} — publishing flights-only`);
+    }
+
+    const { byCountry, militaryVesselCount } = aggregate(
+      flights,
+      relay.ok ? relay.candidateReports : [],
+      relay.ok ? relay.disruptions : [],
+    );
 
     const totals = Object.values(byCountry).reduce((acc, r) => {
       acc.ownFlights += r.ownFlights; acc.foreignFlights += r.foreignFlights;
@@ -447,10 +466,11 @@ async function main() {
       assessedAt: Date.now(),
       byCountry,
       stats: {
+        relayOk: relay.ok,
         flightsInput: flights.length,
-        vesselCandidatesInput: candidateReports.length,
+        vesselCandidatesInput: relay.ok ? relay.candidateReports.length : 0,
         militaryVesselsClassified: militaryVesselCount,
-        disruptionsInput: disruptions.length,
+        disruptionsInput: relay.ok ? relay.disruptions.length : 0,
         ...totals,
       },
     };
