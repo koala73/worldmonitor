@@ -380,6 +380,16 @@ export function buildSentryContext(
       // (WORLDMONITOR-PG/PH).
       : /"code":"InternalServerError"/.test(msg) ? 'convex_internal_error'
       : /\[Request ID:\s*[a-f0-9]+\]\s*Server Error/i.test(msg) ? 'convex_server_error'
+      // Cloudflare edge error (520-527) fronting the Convex deployment — see
+      // _convex-error.js. Mapped to SERVICE_UNAVAILABLE (503 + Retry-After)
+      // there; kept as its own Sentry bucket so on-call can tell CDN-layer
+      // transients apart from genuine Convex platform 5xx (WORLDMONITOR-PG).
+      // Checked BEFORE the /timeout/ branch: Cloudflare 524's error page body
+      // is literally "A timeout occurred", so a 524 whose message carries the
+      // CF body text would otherwise be mis-bucketed as transport_timeout.
+      // A genuine client AbortSignal.timeout never carries an `error code: 52x`
+      // substring, so this ordering steals no real-timeout events.
+      : /error code:\s*52[0-7]\b/i.test(msg) ? 'transport_cloudflare'
       : /timeout|timed out|aborted/i.test(msg) ? 'transport_timeout'
       : /fetch failed|network|ECONN|ENOTFOUND|getaddrinfo/i.test(msg) ? 'transport_network'
       : 'unknown');

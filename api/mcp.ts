@@ -114,6 +114,13 @@ export const JMESPATH_MAX_EXPR_BYTES = 1024;
 export const JMESPATH_MAX_OUTPUT_BYTES = 256 * 1024;
 export type JmespathFailKind = 'expression_too_long' | 'projection_too_large' | 'invalid_expression';
 
+// Per-tool output budget (PR-B). When serialised tool output exceeds the
+// tool's budget AFTER _postFilter + summary + JMESPath, the server returns
+// a `_budget_exceeded` envelope instead of the oversized payload.
+export const DEFAULT_OUTPUT_BUDGET_BYTES = 256 * 1024;
+const CACHE_OUTPUT_BUDGET_BYTES = 128 * 1024;
+const LLM_OUTPUT_BUDGET_BYTES = 64 * 1024;
+
 // tools/list tool-description compression cap (v1.5.0). Defined here
 // rather than near `compressDescription` so SERVER_INSTRUCTIONS can
 // quote it without a temporal-dead-zone error. The compressDescription
@@ -250,6 +257,7 @@ interface BaseToolDef {
   name: string;
   description: string;
   inputSchema: { type: string; properties: Record<string, unknown>; required: string[] };
+  _outputBudgetBytes?: number;
 }
 
 interface FreshnessCheck {
@@ -2553,6 +2561,19 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
 ];
 
+// Per-category output budgets (PR-B). Applied post-hoc to keep the registry
+// literal clean — repeating the constant inline 32× adds noise without value.
+// dispatchToolsCall reads `tool._outputBudgetBytes ?? DEFAULT_OUTPUT_BUDGET_BYTES`.
+for (const t of TOOL_REGISTRY) {
+  if (t._cacheKeys) t._outputBudgetBytes = CACHE_OUTPUT_BUDGET_BYTES;
+}
+for (const name of ['analyze_situation', 'generate_forecasts', 'get_world_brief', 'get_country_brief']) {
+  const t = TOOL_REGISTRY.find((r) => r.name === name);
+  if (!t) throw new Error(`[mcp] budget-assignment: tool '${name}' not found in TOOL_REGISTRY`);
+  t._outputBudgetBytes = LLM_OUTPUT_BUDGET_BYTES;
+}
+{ const dt = TOOL_REGISTRY.find((t) => t.name === 'describe_tool'); if (!dt) throw new Error("[mcp] budget-assignment: 'describe_tool' not found in TOOL_REGISTRY"); dt._outputBudgetBytes = 8 * 1024; }
+
 // Public shape for tools/list — strips internal _-prefixed fields, adds MCP
 // annotations, and injects the universal `summary` flag (issue #3678) into
 // every cache tool's advertised schema. Cache tools are uniformly summarisable;
@@ -2724,6 +2745,7 @@ export const MCP_TOOLCALL_TELEMETRY_KEYS = Object.freeze([
   'jmespath_failed',
   'ok',
   'error_kind',
+  'budget_exceeded',
 ] as const);
 
 export const MCP_TOOLS_LIST_TELEMETRY_KEYS = Object.freeze([
@@ -3232,13 +3254,13 @@ async function dispatchToolsCall(
     // size.
     const { text, failed } = applyJmespath(result, jmespathArg);
     const latencyMs = Date.now() - tStart;
-    // Outer `telemetryEnabled()` here is a perf gate: it skips the
-    // utf8ByteLength + (when JMESPath is active) JSON.stringify(result) walk
-    // when telemetry is off. `emitTelemetry` re-checks internally as the
-    // single safety gate for the initialize + error call sites, which don't
-    // have outer gating because their byte fields are zero or precomputed.
+    // Budget gate: always compute byte length for the budget check. This
+    // replaces the previous telemetry-only perf gate for the post-JMESPath
+    // measurement — budget enforcement requires the walk unconditionally.
+    const textBytes = utf8ByteLength(text);
+    const budget = tool._outputBudgetBytes ?? DEFAULT_OUTPUT_BUDGET_BYTES;
+    const budgetExceeded = textBytes > budget;
     if (telemetryEnabled()) {
-      const bytesPost = utf8ByteLength(text);
       let bytesPre: number;
       if (jmespathUsed) {
         // Telemetry stringify must never escape into the outer catch — a
@@ -3253,7 +3275,7 @@ async function dispatchToolsCall(
           bytesPre = -1;
         }
       } else {
-        bytesPre = bytesPost;
+        bytesPre = textBytes;
       }
       emitTelemetry('mcp.toolcall', {
         tool: tool.name,
@@ -3261,11 +3283,26 @@ async function dispatchToolsCall(
         user_id: principalIdForLog(context),
         latency_ms: latencyMs,
         bytes_pre_jmespath: bytesPre,
-        bytes_post_jmespath: bytesPost,
+        bytes_post_jmespath: textBytes,
         jmespath_used: jmespathUsed,
         jmespath_failed: failed ?? null,
         ok: true,
+        budget_exceeded: budgetExceeded,
       });
+    }
+    if (budgetExceeded) {
+      // Rollback Pro quota — the user received no usable data, so the
+      // daily slot should not be consumed (mirrors the catch-block rollback).
+      if (proRollback) await proRollback();
+      const hint = jmespathUsed
+        ? 'Response still exceeds tool output budget after JMESPath projection. Use a more selective expression to project fewer fields, or apply tool-level filters to narrow the result set.'
+        : 'Response exceeds tool output budget. Use the jmespath argument to project only the fields you need, or apply filters to narrow the result set.';
+      return rpcOk(id, { content: [{ type: 'text', text: JSON.stringify({
+        _budget_exceeded: true,
+        budget_bytes: budget,
+        actual_bytes: textBytes,
+        hint,
+      }) }] }, corsHeaders);
     }
     return rpcOk(id, { content: [{ type: 'text', text }] }, corsHeaders);
   } catch (err: unknown) {
@@ -3304,6 +3341,7 @@ async function dispatchToolsCall(
       jmespath_failed: null,
       ok: false,
       error_kind: isClient4xx ? 'client_4xx' : 'server_error',
+      budget_exceeded: false,
     });
     return rpcError(id, -32603, 'Internal error: data fetch failed');
   }

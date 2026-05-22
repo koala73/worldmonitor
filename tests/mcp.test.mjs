@@ -175,6 +175,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       assert.ok(!('_coverageKeys' in tool), 'Internal _coverageKeys must not be exposed in tools/list');
       assert.ok(!('_apiPaths' in tool), 'Internal _apiPaths must not be exposed in tools/list (Tier-4 parity)');
       assert.ok(!('_postFilter' in tool), 'Internal _postFilter must not be exposed in tools/list (issue #3677)');
+      assert.ok(!('_outputBudgetBytes' in tool), 'Internal _outputBudgetBytes must not be exposed in tools/list (PR-B)');
     }
     const toolNames = body.result.tools.map((t) => t.name);
     assert.ok(toolNames.includes('get_displacement_data'), 'get_displacement_data must be registered (U1 Tier 1 regression)');
@@ -565,6 +566,102 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(ev.jmespath_failed, null);
     assert.equal(ev.bytes_pre_jmespath, -1, 'circular result must surface bytes_pre_jmespath: -1 sentinel');
     assert.ok(ev.bytes_post_jmespath > 0, 'bytes_post_jmespath must reflect the projected size (> 0)');
+  });
+
+  // --- Budget (PR-B: outputBudgetBytes) ---
+
+  it('budget: tools/call within budget returns normal response', async () => {
+    // Small payload well within the 128 KB cache-tool budget
+    const stocks = { quotes: [{ symbol: 'AAPL', price: 100 }] };
+    mockCacheKeys(
+      { 'market:stocks-bootstrap:v1': stocks, 'market:crypto:v1': { quotes: [] } },
+      { 'seed-meta:market:stocks': { fetchedAt: Date.now() - 60_000, recordCount: 1 } },
+    );
+    const out = await callTool('get_market_data', {});
+    assert.ok(out.data, 'normal response must contain data');
+    assert.equal(out._budget_exceeded, undefined, 'within-budget response must not contain _budget_exceeded');
+  });
+
+  it('budget: tools/call exceeding budget returns _budget_exceeded envelope', async () => {
+    // Generate a payload that exceeds the 128 KB cache-tool budget.
+    // Each quote entry is ~80 bytes; 3000 entries ≈ 240 KB in the stocks
+    // slice alone, comfortably above 128 KB after JSON serialisation.
+    // Pass limit: 0 to bypass the DEFAULT_LIST_LIMIT (30) cap.
+    const hugeQuotes = Array.from({ length: 3000 }, (_, i) => ({
+      symbol: `SYM${String(i).padStart(4, '0')}`,
+      price: i + 1,
+      change: 0.01 * i,
+      volume: 1000000 + i,
+    }));
+    mockCacheKeys(
+      { 'market:stocks-bootstrap:v1': { quotes: hugeQuotes }, 'market:crypto:v1': { quotes: [] } },
+      { 'seed-meta:market:stocks': { fetchedAt: Date.now() - 60_000, recordCount: hugeQuotes.length } },
+    );
+    const out = await callTool('get_market_data', { limit: 0 });
+    assert.equal(out._budget_exceeded, true, 'oversized response must return _budget_exceeded envelope');
+    assert.equal(typeof out.budget_bytes, 'number', 'envelope must include budget_bytes');
+    assert.equal(typeof out.actual_bytes, 'number', 'envelope must include actual_bytes');
+    assert.ok(out.actual_bytes > out.budget_bytes, 'actual_bytes must exceed budget_bytes');
+    assert.equal(typeof out.hint, 'string', 'envelope must include a hint string');
+  });
+
+  it('budget: telemetry includes budget_exceeded field', async () => {
+    process.env.MCP_TELEMETRY = 'true';
+    const captured = [];
+    const origLog = console.log;
+    console.log = (line) => captured.push(line);
+
+    // Small payload — within budget
+    mockCacheKeys(
+      { 'market:stocks-bootstrap:v1': { quotes: [{ symbol: 'AAPL', price: 100 }] }, 'market:crypto:v1': { quotes: [] } },
+      { 'seed-meta:market:stocks': { fetchedAt: Date.now() - 60_000, recordCount: 1 } },
+    );
+    const res = await handler(makeReq('POST', {
+      jsonrpc: '2.0', id: 800, method: 'tools/call',
+      params: { name: 'get_market_data', arguments: {} },
+    }));
+    console.log = origLog;
+    assert.equal(res.status, 200);
+
+    const tc = captured.filter((l) => l && typeof l === 'object' && !Array.isArray(l) && l.tag === 'mcp.toolcall');
+    assert.equal(tc.length, 1, `expected exactly one mcp.toolcall line, got ${tc.length}`);
+    assert.equal(tc[0].budget_exceeded, false, 'within-budget call must emit budget_exceeded: false');
+  });
+
+  it('budget: telemetry emits budget_exceeded=true when budget is exceeded', async () => {
+    process.env.MCP_TELEMETRY = 'true';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+    const captured = [];
+    const origLog = console.log;
+    console.log = (line) => captured.push(line);
+
+    // Large payload that exceeds the 128 KB cache-tool budget
+    const hugeQuotes = Array.from({ length: 3000 }, (_, i) => ({
+      symbol: `SYM${String(i).padStart(4, '0')}`,
+      price: i + 1,
+      change: 0.01 * i,
+      volume: 1000000 + i,
+    }));
+    mockCacheKeys(
+      { 'market:stocks-bootstrap:v1': { quotes: hugeQuotes }, 'market:crypto:v1': { quotes: [] } },
+      { 'seed-meta:market:stocks': { fetchedAt: Date.now() - 60_000, recordCount: hugeQuotes.length } },
+    );
+    const freshMod = await import(`../api/mcp.ts?t=${Date.now()}`);
+    const res = await freshMod.default(makeReq('POST', {
+      jsonrpc: '2.0', id: 801, method: 'tools/call',
+      params: { name: 'get_market_data', arguments: { limit: 0 } },
+    }));
+    console.log = origLog;
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    const out = JSON.parse(body.result.content[0].text);
+    assert.equal(out._budget_exceeded, true, 'sanity: response is the budget-exceeded envelope');
+
+    const tc = captured.filter((l) => l && typeof l === 'object' && !Array.isArray(l) && l.tag === 'mcp.toolcall');
+    assert.equal(tc.length, 1, `expected exactly one mcp.toolcall line, got ${tc.length}`);
+    assert.equal(tc[0].budget_exceeded, true, 'over-budget call must emit budget_exceeded: true');
+    assert.equal(tc[0].ok, true, 'budget-exceeded is a successful dispatch, not an error');
   });
 
   it('get_market_data: symbols filter narrows quote arrays across asset slices', async () => {

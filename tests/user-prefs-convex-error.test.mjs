@@ -162,6 +162,46 @@ describe('extractConvexErrorKind — Convex client error → kind', () => {
     });
   });
 
+  describe('Cloudflare edge error 520-527 fronting Convex (WORLDMONITOR-PG)', () => {
+    it('detects SERVICE_UNAVAILABLE from the "error code: 520" Cloudflare body', () => {
+      // Cloudflare returns a text/HTML body containing `error code: 52x` when
+      // the origin misbehaves; the Convex HTTP client surfaces it as
+      // `Error('error code: 520...')` with `.data === undefined`. Without this
+      // match it fell to the 'unknown' bucket at error level instead of
+      // 503 + Retry-After (WORLDMONITOR-PG: 10 events / 8 users).
+      const err = new Error('error code: 520');
+      assert.equal(extractConvexErrorKind(err, err.message), 'SERVICE_UNAVAILABLE');
+    });
+
+    it('matches the whole 520-527 Cloudflare range', () => {
+      for (const code of [520, 521, 522, 523, 524, 525, 526, 527]) {
+        const err = new Error(`<html><body>error code: ${code}</body></html>`);
+        assert.equal(
+          extractConvexErrorKind(err, err.message), 'SERVICE_UNAVAILABLE',
+          `expected SERVICE_UNAVAILABLE for Cloudflare ${code}`,
+        );
+      }
+    });
+
+    it('does NOT match non-Cloudflare codes (519/528/error code: 500)', () => {
+      // Defensive: only the real Cloudflare 520-527 range is transient-transport.
+      for (const code of [500, 503, 519, 528, 530]) {
+        const err = new Error(`error code: ${code}`);
+        assert.equal(
+          extractConvexErrorKind(err, err.message), null,
+          `expected null (no Cloudflare match) for code ${code}`,
+        );
+      }
+    });
+
+    it('structured-data path still wins over "error code: 52x" substring (forward-compat)', () => {
+      const err = Object.assign(new Error('error code: 522'), {
+        data: { kind: 'CONFLICT', actualSyncVersion: 3 },
+      });
+      assert.equal(extractConvexErrorKind(err, err.message), 'CONFLICT');
+    });
+  });
+
   describe('legacy substring-match fallback (string-data ConvexError that arrived without errorData)', () => {
     it('matches CONFLICT in the message', () => {
       const err = new Error('CONFLICT');
