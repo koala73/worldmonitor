@@ -193,6 +193,18 @@ interface CountrySignals {
   totalDisplaced: number;
   newsScore: number;
   threatSummaryScore: number;
+  // Phase 1 (CII unification, plans/unify-cii-single-source.md) — gathered, not yet scored.
+  aviationClosureCount: number;
+  aviationSevereCount: number;
+  aviationMajorCount: number;
+  aviationModerateCount: number;
+  earthquakeSignificantCount: number;
+  earthquakeMajorCount: number;
+  earthquakeSevereCount: number;
+  sanctionsEntryCount: number;
+  sanctionsNewEntryCount: number;
+  temporalAnomalyCount: number;
+  temporalAnomalyCriticalCount: number;
 }
 
 function emptySignals(): CountrySignals {
@@ -209,6 +221,10 @@ function emptySignals(): CountrySignals {
     totalDisplaced: 0,
     newsScore: 0,
     threatSummaryScore: 0,
+    aviationClosureCount: 0, aviationSevereCount: 0, aviationMajorCount: 0, aviationModerateCount: 0,
+    earthquakeSignificantCount: 0, earthquakeMajorCount: 0, earthquakeSevereCount: 0,
+    sanctionsEntryCount: 0, sanctionsNewEntryCount: 0,
+    temporalAnomalyCount: 0, temporalAnomalyCriticalCount: 0,
   };
 }
 
@@ -256,11 +272,16 @@ interface AuxiliarySources {
   newsTopStories: Array<{ countryCode: string | null; threatLevel: string; primaryTitle: string }>;
   // Per-country classified headline counts from relay seedClassify() — written to news:threat:summary:v1
   threatSummaryByCountry: Record<string, { critical: number; high: number; medium: number; low: number; info: number }> | null;
+  // Phase 1 (CII unification) — additive signal sources, all backed by an existing Redis key.
+  aviationAlerts: any[];
+  earthquakes: any[];
+  sanctionsCountries: any[];
+  temporalAnomalies: any[];
 }
 
 async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
   const currentYear = new Date().getFullYear();
-  const [ucdpRaw, outagesRaw, climateRaw, cyberRaw, firesRaw, gpsRaw, iranRaw, orefRaw, advisoriesRaw, displacementRaw, insightsRaw, threatSummaryRaw] = await Promise.all([
+  const [ucdpRaw, outagesRaw, climateRaw, cyberRaw, firesRaw, gpsRaw, iranRaw, orefRaw, advisoriesRaw, displacementRaw, insightsRaw, threatSummaryRaw, aviationRaw, earthquakesRaw, sanctionsRaw, temporalRaw] = await Promise.all([
     getCachedJson('conflict:ucdp-events:v1', true).catch(() => null),
     getCachedJson('infra:outages:v1', true).catch(() => null),
     getCachedJson(CLIMATE_ANOMALIES_KEY, true).catch(() => null),
@@ -276,6 +297,10 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
       .then(d => d ?? getCachedJson(`displacement:summary:v1:${currentYear - 1}`, true).catch(() => null)),
     getCachedJson('news:insights:v1', true).catch(() => null),
     getCachedJson('news:threat:summary:v1', true).catch(() => null),
+    getCachedJson('aviation:delays:intl:v3', true).catch(() => null),
+    getCachedJson('seismology:earthquakes:v1', true).catch(() => null),
+    getCachedJson('sanctions:pressure:v1', true).catch(() => null),
+    getCachedJson('temporal:anomalies:v1', true).catch(() => null),
   ]);
   const arr = (v: any, field?: string, maxLen = 10000) => {
     let a: any[];
@@ -335,6 +360,10 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
     displacedByIso3,
     newsTopStories,
     threatSummaryByCountry,
+    aviationAlerts: arr(aviationRaw, 'alerts'),
+    earthquakes: arr(earthquakesRaw, 'earthquakes'),
+    sanctionsCountries: arr(sanctionsRaw, 'countries'),
+    temporalAnomalies: arr(temporalRaw, 'anomalies'),
   };
 }
 
@@ -436,6 +465,51 @@ export function computeCIIScores(
     if (!code || !data[code]) continue;
     if (h.level === 'high') data[code].gpsHighCount++;
     else data[code].gpsMediumCount++;
+  }
+
+  // --- Aviation disruptions (Phase 1 — gathered, not yet scored) ---
+  // country is a name; delayType/severity may be lowercase or proto-enum form
+  // (FLIGHT_DELAY_TYPE_CLOSURE / FLIGHT_DELAY_SEVERITY_SEVERE) — substring match handles both.
+  for (const a of aux.aviationAlerts ?? []) {
+    const code = normalizeCountryName(String(a.country || ''));
+    if (!code || !data[code]) continue;
+    const dt = String(a.delayType || '').toLowerCase();
+    const sev = String(a.severity || '').toLowerCase();
+    if (dt.includes('closure')) data[code].aviationClosureCount++;
+    else if (sev.includes('severe')) data[code].aviationSevereCount++;
+    else if (sev.includes('major')) data[code].aviationMajorCount++;
+    else if (sev.includes('moderate')) data[code].aviationModerateCount++;
+  }
+
+  // --- Earthquakes (Phase 1) — magnitude >= 5.5, within 7-day lookback ---
+  const eqCutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  for (const eq of aux.earthquakes ?? []) {
+    const mag = safeNum(eq.magnitude);
+    if (mag < 5.5) continue;
+    if (safeNum(eq.occurredAt) < eqCutoff) continue;
+    const code = geoToCountry(safeNum(eq.location?.latitude), safeNum(eq.location?.longitude));
+    if (!code || !data[code]) continue;
+    if (mag >= 7.5) data[code].earthquakeSevereCount++;
+    else if (mag >= 6.5) data[code].earthquakeMajorCount++;
+    else data[code].earthquakeSignificantCount++;
+  }
+
+  // --- Sanctions pressure (Phase 1) — direct ISO2 attribution ---
+  for (const c of aux.sanctionsCountries ?? []) {
+    const code = String(c.countryCode || '').toUpperCase();
+    if (!data[code]) continue;
+    data[code].sanctionsEntryCount = safeNum(c.entryCount);
+    data[code].sanctionsNewEntryCount = safeNum(c.newEntryCount);
+  }
+
+  // --- Temporal anomalies (Phase 1) — region is ISO2 or country name; skip 'global' ---
+  for (const an of aux.temporalAnomalies ?? []) {
+    const region = String(an.region || '').trim();
+    if (!region || region.toLowerCase() === 'global') continue;
+    const code = data[region.toUpperCase()] ? region.toUpperCase() : normalizeCountryName(region);
+    if (!code || !data[code]) continue;
+    data[code].temporalAnomalyCount++;
+    if (String(an.severity || '').toLowerCase() === 'critical') data[code].temporalAnomalyCriticalCount++;
   }
 
   // --- Iran strikes with severity ---
