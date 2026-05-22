@@ -50,7 +50,9 @@ function scoreFor(scores: ReturnType<typeof computeCIIScores>, code: string) {
 }
 
 describe('CII signal wiring', () => {
-  it('Phase 3b D5/D6/D4: earthquake / sanctions / temporal signals raise the score', () => {
+  it('Phase 3b D5/D6: earthquake / sanctions signals raise the score', () => {
+    // Temporal anomalies are deliberately NOT scored — the temporal:anomalies:v1
+    // producer emits region:'global', so they cannot be country-attributed.
     const acled = [acledEvent('US', 'protest', 0)];
     const base = scoreFor(computeCIIScores(acled, emptyAux()), 'US');
     const aux = emptyAux();
@@ -59,7 +61,6 @@ describe('CII signal wiring', () => {
       { countryCode: 'US', entryCount: 10, newEntryCount: 1 },
       { countryCode: 'US', entryCount: 5, newEntryCount: 0 }, // duplicate ISO2 — must accumulate, not overwrite
     ];
-    aux.temporalAnomalies = [{ region: 'US', severity: 'critical' }];
     const withAux = scoreFor(computeCIIScores(acled, aux), 'US');
     assert.ok(withAux, 'computeCIIScores handles the aux sources without throwing');
     assert.ok(withAux!.combinedScore > base!.combinedScore,

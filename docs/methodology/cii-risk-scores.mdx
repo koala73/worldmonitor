@@ -26,10 +26,10 @@ The current version is **v2**.
 > **v2 (2026-05-22).** The `Security` component is no longer GPS-jamming-only
 > — it now scores military flights, military vessels and aviation disruptions
 > alongside GPS jamming (issue #3738). The composite blend gains
-> `newsUrgencyBoost`, `earthquakeBoost`, `sanctionsBoost`, an AIS-disruption
-> boost and a temporal-anomaly boost, and `cyberBoost`/`fireBoost` are now
-> severity-weighted rather than raw counts. `combinedScore` values shift
-> accordingly — clients pinned on `methodology_version` should re-baseline.
+> `newsUrgencyBoost`, `earthquakeBoost`, `sanctionsBoost` and an AIS-disruption
+> boost, and `cyberBoost`/`fireBoost` are now severity-weighted rather than raw
+> counts. `combinedScore` values shift accordingly — clients pinned on
+> `methodology_version` should re-baseline.
 
 > **Heads up — coefficient changes.** Any edit to the per-country baselines,
 > event multipliers, or the strategic-risk roll-up coefficients MUST come
@@ -70,7 +70,6 @@ composite = baseline * 0.4
           + earthquakeBoost   (≤ 25)
           + sanctionsBoost    (≤ 14)
           + aisBoost          (≤ 10, AIS disruptions)
-          + temporalBoost     (≤  6, temporal anomalies)
 ```
 
 `composite` is then clamped to `[floor, 100]` where `floor` is the larger of:

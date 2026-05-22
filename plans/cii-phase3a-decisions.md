@@ -152,9 +152,13 @@ Commits `94b7afa54` (C3) and `42e739f33` (blend + L1). 91 tests pass; typecheck 
 - **C1 `severityBoost`** — implemented. The server counts `highSeverityUnrest` in the ACLED
   loop and applies `min(20, count·10·mult)`.
 - **D2 / D5 / D6** — newsUrgency / earthquake / sanctions boosts ported verbatim into the blend.
-- **D4 / D7 / D8** — supplemental fully ported: AIS + temporal as their own blend terms,
-  cyber + fire severity-weighted (`cyberBoost` = crit·3+high·1.8+med·0.9; `fireBoost`
-  = highFire·1.5 + min(20,total)·0.25). Not a partial port.
+- **D4 / D7 / D8** — supplemental ported: AIS as its own blend term, cyber + fire
+  severity-weighted (`cyberBoost` = crit·3+high·1.8+med·0.9; `fireBoost`
+  = highFire·1.5 + min(20,total)·0.25). The frontend's temporal sub-boost is **not
+  wired** — the `temporal:anomalies:v1` producer emits `region:'global'` so anomalies
+  cannot be country-attributed (the frontend's temporal sub-boost is dormant for the same
+  reason). `temporalAnomaly*Count` stay gathered-not-scored; re-wire if the producer
+  emits country-scoped anomalies.
 - **L1** — `getScoreLevel` cutoffs reconciled (81 / 66 / 51 / 31).
 
 > **Correction.** C1, D7 and D8 were initially listed as deferred "missing server signal"

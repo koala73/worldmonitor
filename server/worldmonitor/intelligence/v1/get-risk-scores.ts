@@ -711,14 +711,16 @@ export function computeCIIScores(
       if (d.sanctionsNewEntryCount > 0) sanctionsBoost += 2;
     }
     // supplementalSignalBoost (D4): the frontend's helper sums AIS + fire + cyber +
-    // temporal. Here AIS + temporal are their own blend terms below; cyber + fire are the
-    // severity-weighted terms above. All four are now faithful ports of the frontend's
-    // sub-formulas — D4 is complete, not partial.
+    // temporal. AIS is its own blend term below; cyber + fire are the severity-weighted
+    // terms above. The temporal sub-boost is NOT wired — the temporal:anomalies:v1
+    // producer (list-temporal-anomalies.ts) emits every anomaly with region:'global', so
+    // they cannot be country-attributed. `temporalAnomaly*Count` stay gathered-not-scored
+    // (Phase 1 intent); re-wire a temporalBoost only if the producer emits country-scoped
+    // anomalies. The frontend's temporal sub-boost has the same dormancy for the same reason.
     const aisBoost = Math.min(
       10,
       d.aisDisruptionHighCount * 2.5 + d.aisDisruptionElevatedCount * 1.5 + d.aisDisruptionLowCount * 0.5,
     );
-    const temporalBoost = Math.min(6, d.temporalAnomalyCriticalCount * 2 + d.temporalAnomalyCount * 0.75);
 
     const blended = baseline * 0.4
       + eventScore * 0.6
@@ -731,8 +733,7 @@ export function computeCIIScores(
       + newsUrgencyBoost
       + earthquakeBoost
       + sanctionsBoost
-      + aisBoost
-      + temporalBoost;
+      + aisBoost;
 
     // --- Floors ---
     const ucdpFloor = d.ucdpWar ? 70 : (d.ucdpMinor ? 50 : 0);

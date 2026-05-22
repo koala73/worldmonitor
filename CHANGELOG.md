@@ -6,7 +6,7 @@ All notable changes to World Monitor are documented here.
 
 ### Changed
 
-- **CII formula `v2`** — the Composite Instability Index `Security` component now scores military flights, military vessels and aviation disruptions in addition to GPS jamming (previously GPS-jamming-only — issue #3738). The composite blend gains `newsUrgencyBoost`, `earthquakeBoost`, `sanctionsBoost`, an AIS-disruption boost and a temporal-anomaly boost; `cyberBoost`/`fireBoost` are now severity-weighted. Public `combinedScore` values shift accordingly and `methodology_version` is bumped `v1` → `v2` — clients pinned on it should re-baseline. See `docs/methodology/cii-risk-scores.mdx` (#3864).
+- **CII formula `v2`** — the Composite Instability Index `Security` component now scores military flights, military vessels and aviation disruptions in addition to GPS jamming (previously GPS-jamming-only — issue #3738). The composite blend gains `newsUrgencyBoost`, `earthquakeBoost`, `sanctionsBoost` and an AIS-disruption boost; `cyberBoost`/`fireBoost` are now severity-weighted. Public `combinedScore` values shift accordingly and `methodology_version` is bumped `v1` → `v2` — clients pinned on it should re-baseline. See `docs/methodology/cii-risk-scores.mdx` (#3864).
 
 ### Added
 

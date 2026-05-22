@@ -25,7 +25,7 @@
 // Railway nixpacks packaging.
 
 import { pathToFileURL } from 'node:url';
-import { loadEnvFile, CHROME_UA, getRedisCredentials, acquireLockSafely, releaseLock, withRetry } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, getRedisCredentials, acquireLockSafely, releaseLock, withRetry, writeFreshnessMetadata } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -381,7 +381,7 @@ function aggregate(flights, candidateReports, disruptions) {
     if (loc && byCountry[loc] && loc !== op) byCountry[loc].foreignFlights++;
   }
 
-  // Vessels — classify each candidate AIS report, then attribute like flights.
+  // Vessels — classify each candidate AIS report, then attribute.
   let militaryVesselCount = 0;
   for (const c of candidateReports) {
     const cls = classifyVessel(c);
@@ -390,7 +390,13 @@ function aggregate(flights, candidateReports, disruptions) {
     const op = cls.operatorIso2;
     const loc = geoToCountry(num(c.lat), num(c.lon));
     if (op && byCountry[op]) byCountry[op].ownVessels++;
-    if (loc && byCountry[loc] && loc !== op) byCountry[loc].foreignVessels++;
+    if (loc && byCountry[loc]) {
+      if (op && loc !== op) byCountry[loc].foreignVessels++;
+      // Operator unknown (e.g. classified by AIS ship-type alone): count once as local
+      // presence, NOT as foreign — foreignVessels is ×2-weighted in the CII security
+      // formula, and we cannot assert a vessel is foreign without knowing its operator.
+      else if (!op) byCountry[loc].ownVessels++;
+    }
   }
 
   // AIS disruptions — attributed by location.
@@ -444,6 +450,8 @@ async function main() {
       const existing = await redisGetJson(url, token, LIVE_KEY).catch(() => null);
       if (existing && existing.byCountry) {
         await withRetry(() => redisSetJson(url, token, LIVE_KEY, existing, LIVE_TTL), 2, 1000);
+        // The cron ran successfully (data preserved) — freshness reflects "job alive".
+        await writeFreshnessMetadata('intelligence', 'military-cii', Object.keys(existing.byCountry).length, 'seed-military-cii', LIVE_TTL);
         console.warn(`  relay unavailable — preserved last-good ${LIVE_KEY} (vessels/AIS not overwritten)`);
         return;
       }
@@ -476,6 +484,8 @@ async function main() {
     };
 
     await withRetry(() => redisSetJson(url, token, LIVE_KEY, payload, LIVE_TTL), 2, 1000);
+    // Freshness record for health/seed monitoring — seed-meta:intelligence:military-cii.
+    await writeFreshnessMetadata('intelligence', 'military-cii', Object.keys(byCountry).length, 'seed-military-cii', LIVE_TTL);
     console.log(`  wrote ${LIVE_KEY}: own ${totals.ownFlights}f/${totals.ownVessels}v, foreign ${totals.foreignFlights}f/${totals.foreignVessels}v across ${Object.keys(byCountry).length} countries`);
   } finally {
     await releaseLock('intelligence:military-cii', runId);

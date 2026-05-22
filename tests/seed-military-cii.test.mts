@@ -81,6 +81,13 @@ test('aggregate: a domestic flight is own-only, never double-counted as foreign'
   assert.equal(agg.byCountry.US.foreignFlights, 0); // loc === op → the `loc !== op` guard holds
 });
 
+test('aggregate: an unknown-operator military vessel is local presence, not x2 foreign', () => {
+  // shipType 35 (military ops) but an MMSI resolving no country → classifyVessel operatorIso2 null.
+  const agg = aggregate([], [{ mmsi: '111111111', name: '', lat: 39, lon: -98, shipType: 35 }], []);
+  assert.equal(agg.byCountry.US.ownVessels, 1, 'counted once as local military presence');
+  assert.equal(agg.byCountry.US.foreignVessels, 0, 'not x2 foreign — the operator is unknown');
+});
+
 test('aggregate: AIS disruption with unknown/missing severity falls into the low bucket', () => {
   const agg = aggregate([], [], [
     { lat: 39, lon: -98, severity: 'minor' },
