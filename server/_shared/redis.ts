@@ -302,7 +302,7 @@ export async function cachedFetchJson<T extends object>(
   // this, a misbehaving fetcher poisons the key for the isolate's full
   // lifetime — every concurrent and subsequent caller for this key gets the
   // same unresolved promise and never gets a response.
-  let timeoutHandle: ReturnType<typeof setTimeout>;
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
   const promise = Promise.race([
     fetcher(),
     new Promise<null>((_, reject) => {
@@ -395,7 +395,7 @@ export async function cachedFetchJsonWithMeta<T extends object>(
   // this, a misbehaving fetcher poisons the key for the isolate's full
   // lifetime — every concurrent and subsequent caller for this key gets the
   // same unresolved promise and never gets a response.
-  let timeoutHandle: ReturnType<typeof setTimeout>;
+  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
   const promise = Promise.race([
     fetcher(),
     new Promise<null>((_, reject) => {

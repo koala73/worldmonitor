@@ -962,7 +962,8 @@ async function importRedisWithShortTimeout() {
   const sharedAbs = pathToFileURL(sharedDir).href;
   let patched = source
     .replace(/export const FETCHER_TIMEOUT_MS = [\d_]+;/, 'export const FETCHER_TIMEOUT_MS = 200;')
-    .replaceAll(/from '(\.\.?)\//g, () => `from '${sharedAbs}/`);
+    .replaceAll(/from '\.\//g, `from '${sharedAbs}/`)
+    .replaceAll(/from '\.\.\//g, `from '${pathToFileURL(resolve(sharedDir, '..')).href}/`);
   const tempDir = mkdtempSync(join(tmpdir(), 'wm-redis-test-'));
   const tempPath = join(tempDir, 'redis.ts');
   writeFileSync(tempPath, patched);
