@@ -1695,8 +1695,12 @@ export class GlobeMap {
       if (this.tooltipHideTimer) { clearTimeout(this.tooltipHideTimer); this.tooltipHideTimer = null; }
     });
     el.addEventListener('mouseleave', () => {
-      const details = el.querySelector('.historical-profile-accordion') as HTMLDetailsElement | null;
+      const details = el.querySelector<HTMLDetailsElement>('.historical-profile-accordion');
       if (details && details.open) return;
+      if (this.tooltipHideTimer) {
+        clearTimeout(this.tooltipHideTimer);
+        this.tooltipHideTimer = null;
+      }
       this.tooltipHideTimer = setTimeout(() => this.hideTooltip(), 2000);
     });
 
@@ -1719,7 +1723,7 @@ export class GlobeMap {
     this.tooltipEl = el;
     if (this.tooltipHideTimer) clearTimeout(this.tooltipHideTimer);
 
-    const details = el.querySelector('.historical-profile-accordion');
+    const details = el.querySelector<HTMLDetailsElement>('.historical-profile-accordion');
     if (details) {
       details.addEventListener('toggle', (e) => {
         const target = e.target as HTMLDetailsElement;
