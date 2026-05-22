@@ -664,6 +664,23 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(tc[0].ok, true, 'budget-exceeded is a successful dispatch, not an error');
   });
 
+  it('budget: every TOOL_REGISTRY entry declares a positive integer _outputBudgetBytes', async () => {
+    const mod = await import(`../api/mcp.ts?t=${Date.now()}`);
+    const registry = mod.__testing__.TOOL_REGISTRY;
+    assert.ok(Array.isArray(registry) && registry.length > 0, 'TOOL_REGISTRY must be a non-empty array');
+    for (const tool of registry) {
+      assert.equal(
+        typeof tool._outputBudgetBytes,
+        'number',
+        `tool "${tool.name}" must declare _outputBudgetBytes as a number`,
+      );
+      assert.ok(
+        Number.isInteger(tool._outputBudgetBytes) && tool._outputBudgetBytes > 0,
+        `tool "${tool.name}" must declare a positive integer _outputBudgetBytes (got ${tool._outputBudgetBytes})`,
+      );
+    }
+  });
+
   it('get_market_data: symbols filter narrows quote arrays across asset slices', async () => {
     const stocks = { quotes: [{ symbol: 'AAPL', price: 100 }, { symbol: 'MSFT', price: 200 }] };
     const crypto = { quotes: [{ symbol: 'BTC', price: 50000 }] };
