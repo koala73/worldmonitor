@@ -49,25 +49,47 @@ function scoreFor(scores: ReturnType<typeof computeCIIScores>, code: string) {
   return scores.find((s) => s.region === code);
 }
 
-describe('Phase 1/2 auxiliary signals', () => {
-  it('are gathered without changing the score (additive)', () => {
+describe('CII signal wiring', () => {
+  it('earthquake / sanctions / temporal signals are still gathered without scoring (pre-Phase-3b)', () => {
+    // These three are not yet read by any formula (D4/D5/D6 land later in Phase 3b).
     const acled = [acledEvent('US', 'protest', 0)];
     const base = scoreFor(computeCIIScores(acled, emptyAux()), 'US');
     const aux = emptyAux();
-    aux.aviationAlerts = [{ country: 'United States', delayType: 'closure', severity: 'severe' }];
     aux.earthquakes = [{ magnitude: 7.0, occurredAt: Date.now(), location: { latitude: 39, longitude: -98 } }];
     aux.sanctionsCountries = [
       { countryCode: 'US', entryCount: 10, newEntryCount: 1 },
       { countryCode: 'US', entryCount: 5, newEntryCount: 0 }, // duplicate ISO2 — must accumulate, not overwrite
     ];
     aux.temporalAnomalies = [{ region: 'US', severity: 'critical' }];
-    aux.militaryCii = {
-      US: { ownFlights: 3, foreignFlights: 1, ownVessels: 2, foreignVessels: 0, aisDisruptionHigh: 1, aisDisruptionElevated: 0, aisDisruptionLow: 0 },
-    };
     const withAux = scoreFor(computeCIIScores(acled, aux), 'US');
-    assert.ok(withAux, 'computeCIIScores handles the new Phase 1/2 aux sources without throwing');
+    assert.ok(withAux, 'computeCIIScores handles the aux sources without throwing');
     assert.equal(withAux!.combinedScore, base!.combinedScore,
-      'Phase 1/2 signals are gathered into CountrySignals but no scoring formula reads them yet');
+      'earthquake/sanctions/temporal are gathered but not yet scored');
+  });
+
+  it('C3: security component scores military flights/vessels/aviation, not just GPS', () => {
+    // No GPS hexes — pre-Phase-3b this would score security 0; the 4-input formula
+    // must now pick up military activity and aviation.
+    const aux = emptyAux();
+    aux.militaryCii = {
+      US: { ownFlights: 5, foreignFlights: 0, ownVessels: 0, foreignVessels: 0, aisDisruptionHigh: 0, aisDisruptionElevated: 0, aisDisruptionLow: 0 },
+    };
+    aux.aviationAlerts = [{ country: 'United States', delayType: 'closure' }];
+    const us = scoreFor(computeCIIScores([], aux), 'US');
+    assert.ok(us, 'US scored');
+    // flightScore = min(50, 5·3=15) = 15; aviationScore (one closure) = 20; vessels/GPS = 0
+    assert.equal(us!.components!.militaryActivity, 35,
+      'security = flightScore(15) + aviationScore(20), no GPS');
+  });
+
+  it('C3: foreign military presence is weighted x2', () => {
+    const aux = emptyAux();
+    // 0 own + 5 foreign flights → reconstructed count 0 + 5·2 = 10 → flightScore min(50, 30) = 30
+    aux.militaryCii = {
+      US: { ownFlights: 0, foreignFlights: 5, ownVessels: 0, foreignVessels: 0, aisDisruptionHigh: 0, aisDisruptionElevated: 0, aisDisruptionLow: 0 },
+    };
+    const us = scoreFor(computeCIIScores([], aux), 'US');
+    assert.equal(us!.components!.militaryActivity, 30, 'foreign flights weighted x2: 5·2·3 = 30');
   });
 });
 

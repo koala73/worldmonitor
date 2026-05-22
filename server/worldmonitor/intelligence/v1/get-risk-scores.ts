@@ -620,9 +620,22 @@ export function computeCIIScores(
       : 0;
     const conflict = Math.min(100, acledScore + fatalityScore + civilianBoost + strikeBoost + orefBoost);
 
-    // --- Security score (ported from frontend calcSecurityScore) ---
+    // --- Security score (Phase 3b / decision C3 — full 4-input calcSecurityScore) ---
+    // Was GPS-only (issue #3738). Now flights + vessels + aviation + GPS, matching the
+    // frontend. Military counts reconstruct the frontend's array length: foreign presence
+    // is weighted ×2 (the intent of ingestMilitaryForCII's synthetic-{} push), applied
+    // here in the formula instead of as a representation hack.
+    const milFlights = d.militaryOwnFlights + d.militaryForeignFlights * 2;
+    const milVessels = d.militaryOwnVessels + d.militaryForeignVessels * 2;
+    const flightScore = Math.min(50, milFlights * 3);
+    const vesselScore = Math.min(30, milVessels * 5);
+    const aviationScore = Math.min(
+      40,
+      d.aviationClosureCount * 20 + d.aviationSevereCount * 15
+        + d.aviationMajorCount * 10 + d.aviationModerateCount * 5,
+    );
     const gpsJammingScore = Math.min(35, d.gpsHighCount * 5 + d.gpsMediumCount * 2);
-    const security = Math.min(100, Math.round(gpsJammingScore));
+    const security = Math.min(100, Math.round(flightScore + vesselScore + aviationScore + gpsJammingScore));
 
     // information cap raised 20 → 100 to match unrest/conflict/security ranges.
     // Previous cap silently limited information's max contribution to 5 points
