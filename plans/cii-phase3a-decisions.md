@@ -4,6 +4,7 @@ Companion to `plans/unify-cii-single-source.md`. Phase 3b implements whatever th
 decides; per the plan, Phase 3b makes **no** decisions of its own.
 
 Every row is a real divergence between the two engines, verified line-by-line:
+
 - **Engine A — frontend**: `src/services/country-instability.ts`
 - **Engine B — server**: `server/worldmonitor/intelligence/v1/get-risk-scores.ts`
 
@@ -145,6 +146,7 @@ assumption.
 Commits `94b7afa54` (C3) and `42e739f33` (blend + L1). 91 tests pass; typecheck clean.
 
 **Implemented & verified:**
+
 - **C3** — server `security` component is the full 4-input formula (flights + vessels +
   aviation + GPS). The substantive #3738 fix.
 - **C1 `severityBoost`** — implemented. The server counts `highSeverityUnrest` in the ACLED
@@ -163,9 +165,11 @@ Commits `94b7afa54` (C3) and `42e739f33` (blend + L1). 91 tests pass; typecheck 
 > simply discarding those fields (`cyberCount++`, `fireCount++`). The lesson: check what
 > the cached data carries, not what the current ingestion code reads. All three are now
 > implemented.
+
 - **C4 / D9 / D10 / N1** — no code change; the server already matched the decision.
 
 **Deferred — the accepted decision needs a server signal that does not exist yet:**
+
 - **C2 `hapiFallback` + `newsFloor`** — hapiFallback needs the per-ISO3
   `conflict:humanitarian:v1` keys plumbed; newsFloor needs per-event threat-category +
   source-tier data `threatSummaryByCountry` does not carry. Conflict already matches A's
@@ -176,6 +180,7 @@ Commits `94b7afa54` (C3) and `42e739f33` (blend + L1). 91 tests pass; typecheck 
   per-country source counts. Server `advisoryBoost` is A's formula minus that bonus.
 
 **Deferred — Phase 4:**
+
 - **S1** — `CURATED_COUNTRIES` AF/LB/EG/JP/QA/KR. The server is already authoritative for
   the API. Those fields are read only by the frontend engine, which Phase 4 deletes — the
   reconciliation happens by deletion, not by editing the table now.

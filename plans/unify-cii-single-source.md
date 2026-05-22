@@ -132,6 +132,7 @@ design-note decision table, not a PR. The Guardrails section below is **not** a 
 each test ships inside an earlier phase's PR (noted per test).
 
 ### Phase 0 — Label stopgap (ships immediately, independent)
+
 - Rename the CII component label `"Security"` → `"Mil. Activity"` in **all three**
   component blocks of `src/locales/en.json` (lines 101, 745, 3170) and the **20 non-English
   locale files** in `src/locales/*.json` (regenerate any `.d.ts` companions).
@@ -142,6 +143,7 @@ each test ships inside an earlier phase's PR (noted per test).
 - No engine change. Safe given the Scope-boundary commitment above.
 
 ### Phase 1 — Server acquires the cheap signals
+
 - `AuxiliarySources` + `fetchAuxiliarySources()`: add aviation (`aviation:delays:intl:v3`),
   earthquakes (`seismology:earthquakes:v1`, with geo→country), sanctions
   (`sanctions:pressure:v1`), temporal anomalies (`temporal:anomalies:v1`). All four are
@@ -157,6 +159,7 @@ each test ships inside an earlier phase's PR (noted per test).
   review flagged; instead AIS rides on the scheduled relay job Phase 2 already stands up.
 
 ### Phase 2 — Server military flights, vessels + AIS disruptions
+
 - Per-country aggregation of `military:flights:v1` (already operator-classified) — add
   location-code attribution for foreign presence.
 - New server-side military **vessel** classifier: port `MILITARY_VESSEL_PATTERNS` /
@@ -185,10 +188,12 @@ each test ships inside an earlier phase's PR (noted per test).
   polygon containment server-side or accept and document the precision loss.
 
 ### Phase 3a — Reconciliation decisions (design note, no code)
+
 "Port verbatim" is **not** sufficient — the formulas diverge structurally and at least one
 divergence is intentional. Before the behavior-changing PR opens, settle every decision
 below and record it in a signed-off table. Phase 3b executes this table; it does not make
 decisions inside the PR.
+
 - For **each** of the 4 component formulas and **each** blend boost
   (`hotspotBoost`, `newsUrgencyBoost`, `focalBoost`, `supplementalSignalBoost`,
   `earthquakeBoost`, `sanctionsBoost`, `displacementBoost`), a **canonical decision**: which
@@ -214,12 +219,14 @@ decisions inside the PR.
   which feature consumes each. Phase 4's irreversible deletion is gated on this table.
 
 ### Phase 3b — Server computes the full CII (implementation)
+
 This is the behavior-changing PR. It **executes** the Phase 3a decision table — it makes no
 decisions. Implement each canonical formula choice, the scalar tables, the `getScoreLevel`
 thresholds, and the proto change. Pair with the Guardrails equality/level/attribution tests
 below; the PR is not done until the equality test is green.
 
 ### Phase 3-proto — `CiiComponents` field naming
+
 Folded into the Phase 3b PR (same cache-key bump); the keep-vs-rename choice is made in
 Phase 3a. Decide: keep abusing the positional
 aliases (`militaryActivity`≡`security`, …), or rename the `.proto` fields to
@@ -230,6 +237,7 @@ aliases (`militaryActivity`≡`security`, …), or rename the `.proto` fields to
 `RISK_CACHE_KEY` (`v2`→`v3`) propagated to every reader listed at `get-risk-scores.ts:626-631`.
 
 ### Phase 4 — Frontend becomes a renderer
+
 - Repoint every CII consumer to `cached-risk-scores.ts` — both `calculateCII()` and
   `getCountryScore()` consumers. The `rg 'calculateCII|getCountryScore' src/` sweep is
   authoritative and must be run before starting; the known sites are:
@@ -249,6 +257,7 @@ aliases (`militaryActivity`≡`security`, …), or rename the `.proto` fields to
 ## Guardrails (not a standalone phase — each test ships in the phase noted)
 
 These are not an independently shippable phase; each test lands inside an earlier phase's PR.
+
 - **Equality test (lands with Phase 3b):** feed identical fixture *component-input* signals
   to the server formulas and the frontend `calc*Score` functions; assert byte-identical
   component scores. This is *formula parity* only — a green equality test is necessary but
@@ -322,6 +331,7 @@ which side is canonical before the equality test can pass.
 ## Deferred / Open Questions
 
 ### From 2026-05-22 review
+
 - **Cold-cache fallback decision (Risk 3).** Phase 4 deletes the frontend engine that today
   masks the cold-cache failure mode — on cold Redis + upstream failure the server returns
   31 baseline-only scores (`get-risk-scores.ts:694-700`). Decide before Phase 4: keep a
