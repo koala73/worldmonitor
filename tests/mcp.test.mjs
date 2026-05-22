@@ -857,6 +857,146 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(out.data['ucdp-events'].events.length, 50, 'limit: 0 must opt out of the default cap and return the full list');
   });
 
+  // --- limit on country/EU/displacement tools (env-var-gated default cap) ---
+  //
+  // Five tools — get_country_macro, get_eu_housing_cycle,
+  // get_eu_quarterly_gov_debt, get_eu_industrial_production,
+  // get_displacement_data — return per-country payloads that can exceed the
+  // per-tool output budget on default args. The four IMF/Eurostat tools cap
+  // their keyed-object country maps via `capNestedMap`, gated by
+  // `MCP_LIMIT_DEFAULT_30=on` (additive-contract: env-var off → no behaviour
+  // change). `limit: 0` is the customer-facing opt-out and always returns
+  // the full payload. `get_displacement_data` has had array-based limit since
+  // v1.3.0 (#3678) — its block is unchanged; the test below pins the
+  // existing default cap and `limit: 0` opt-out so the budget gate's hot
+  // path stays covered.
+
+  function makeCountryMap(prefix, n) {
+    return Object.fromEntries(Array.from({ length: n }, (_, i) => [`${prefix}${i}`, { value: i }]));
+  }
+
+  it('limit: get_country_macro env-var off → no cap (additive contract)', async () => {
+    const macro = { countries: makeCountryMap('C', 60) };
+    const meta = {
+      'seed-meta:economic:imf-macro': { fetchedAt: Date.now() - 60_000, recordCount: 60 },
+      'seed-meta:economic:imf-growth': { fetchedAt: Date.now() - 60_000, recordCount: 0 },
+      'seed-meta:economic:imf-labor': { fetchedAt: Date.now() - 60_000, recordCount: 0 },
+      'seed-meta:economic:imf-external': { fetchedAt: Date.now() - 60_000, recordCount: 0 },
+    };
+    mockCacheKeys({ 'economic:imf:macro:v2': macro }, meta);
+    delete process.env.MCP_LIMIT_DEFAULT_30;
+    const out = await callTool('get_country_macro', {});
+    assert.equal(Object.keys(out.data.macro.countries).length, 60,
+      'env-var off → default args returns the full country map (additive contract)');
+  });
+
+  it('limit: get_country_macro env-var on → caps every IMF dataset to 30', async () => {
+    const macro = { countries: makeCountryMap('C', 60) };
+    const meta = {
+      'seed-meta:economic:imf-macro': { fetchedAt: Date.now() - 60_000, recordCount: 60 },
+      'seed-meta:economic:imf-growth': { fetchedAt: Date.now() - 60_000, recordCount: 0 },
+      'seed-meta:economic:imf-labor': { fetchedAt: Date.now() - 60_000, recordCount: 0 },
+      'seed-meta:economic:imf-external': { fetchedAt: Date.now() - 60_000, recordCount: 0 },
+    };
+    mockCacheKeys({ 'economic:imf:macro:v2': macro }, meta);
+    process.env.MCP_LIMIT_DEFAULT_30 = 'on';
+    const out = await callTool('get_country_macro', {});
+    assert.equal(Object.keys(out.data.macro.countries).length, 30,
+      'env-var on → default args caps the country map to DEFAULT_LIST_LIMIT (30)');
+  });
+
+  it('limit: get_country_macro limit:0 → full payload regardless of env-var', async () => {
+    const macro = { countries: makeCountryMap('C', 60) };
+    const meta = {
+      'seed-meta:economic:imf-macro': { fetchedAt: Date.now() - 60_000, recordCount: 60 },
+      'seed-meta:economic:imf-growth': { fetchedAt: Date.now() - 60_000, recordCount: 0 },
+      'seed-meta:economic:imf-labor': { fetchedAt: Date.now() - 60_000, recordCount: 0 },
+      'seed-meta:economic:imf-external': { fetchedAt: Date.now() - 60_000, recordCount: 0 },
+    };
+    mockCacheKeys({ 'economic:imf:macro:v2': macro }, meta);
+    process.env.MCP_LIMIT_DEFAULT_30 = 'on';
+    const out = await callTool('get_country_macro', { limit: 0 });
+    assert.equal(Object.keys(out.data.macro.countries).length, 60,
+      'limit: 0 is the customer-facing opt-out — full payload even with env-var on');
+  });
+
+  it('limit: get_eu_housing_cycle env-var off → no cap, env-var on → cap to 30, limit:0 → full', async () => {
+    const hp = { countries: makeCountryMap('EU', 40) };
+    const meta = { 'seed-meta:economic:eurostat-house-prices': { fetchedAt: Date.now() - 60_000, recordCount: 40 } };
+
+    mockCacheKeys({ 'economic:eurostat:house-prices:v1': hp }, meta);
+    delete process.env.MCP_LIMIT_DEFAULT_30;
+    const off = await callTool('get_eu_housing_cycle', {});
+    assert.equal(Object.keys(off.data['house-prices'].countries).length, 40, 'env-var off → no cap');
+
+    mockCacheKeys({ 'economic:eurostat:house-prices:v1': hp }, meta);
+    process.env.MCP_LIMIT_DEFAULT_30 = 'on';
+    const on = await callTool('get_eu_housing_cycle', {});
+    assert.equal(Object.keys(on.data['house-prices'].countries).length, 30, 'env-var on → cap to 30');
+
+    mockCacheKeys({ 'economic:eurostat:house-prices:v1': hp }, meta);
+    const optOut = await callTool('get_eu_housing_cycle', { limit: 0 });
+    assert.equal(Object.keys(optOut.data['house-prices'].countries).length, 40, 'limit: 0 → full payload');
+  });
+
+  it('limit: get_eu_quarterly_gov_debt env-var off → no cap, env-var on → cap to 30, limit:0 → full', async () => {
+    const gd = { countries: makeCountryMap('EU', 40) };
+    const meta = { 'seed-meta:economic:eurostat-gov-debt-q': { fetchedAt: Date.now() - 60_000, recordCount: 40 } };
+
+    mockCacheKeys({ 'economic:eurostat:gov-debt-q:v1': gd }, meta);
+    delete process.env.MCP_LIMIT_DEFAULT_30;
+    const off = await callTool('get_eu_quarterly_gov_debt', {});
+    assert.equal(Object.keys(off.data['gov-debt-q'].countries).length, 40, 'env-var off → no cap');
+
+    mockCacheKeys({ 'economic:eurostat:gov-debt-q:v1': gd }, meta);
+    process.env.MCP_LIMIT_DEFAULT_30 = 'on';
+    const on = await callTool('get_eu_quarterly_gov_debt', {});
+    assert.equal(Object.keys(on.data['gov-debt-q'].countries).length, 30, 'env-var on → cap to 30');
+
+    mockCacheKeys({ 'economic:eurostat:gov-debt-q:v1': gd }, meta);
+    const optOut = await callTool('get_eu_quarterly_gov_debt', { limit: 0 });
+    assert.equal(Object.keys(optOut.data['gov-debt-q'].countries).length, 40, 'limit: 0 → full payload');
+  });
+
+  it('limit: get_eu_industrial_production env-var off → no cap, env-var on → cap to 30, limit:0 → full', async () => {
+    const ip = { countries: makeCountryMap('EU', 40) };
+    const meta = { 'seed-meta:economic:eurostat-industrial-production': { fetchedAt: Date.now() - 60_000, recordCount: 40 } };
+
+    mockCacheKeys({ 'economic:eurostat:industrial-production:v1': ip }, meta);
+    delete process.env.MCP_LIMIT_DEFAULT_30;
+    const off = await callTool('get_eu_industrial_production', {});
+    assert.equal(Object.keys(off.data['industrial-production'].countries).length, 40, 'env-var off → no cap');
+
+    mockCacheKeys({ 'economic:eurostat:industrial-production:v1': ip }, meta);
+    process.env.MCP_LIMIT_DEFAULT_30 = 'on';
+    const on = await callTool('get_eu_industrial_production', {});
+    assert.equal(Object.keys(on.data['industrial-production'].countries).length, 30, 'env-var on → cap to 30');
+
+    mockCacheKeys({ 'economic:eurostat:industrial-production:v1': ip }, meta);
+    const optOut = await callTool('get_eu_industrial_production', { limit: 0 });
+    assert.equal(Object.keys(optOut.data['industrial-production'].countries).length, 40, 'limit: 0 → full payload');
+  });
+
+  it('limit: get_displacement_data default args → ≤30 items, limit:0 → full payload', async () => {
+    const currentYear = new Date().getUTCFullYear();
+    const summary = {
+      countries: Array.from({ length: 60 }, (_, i) => ({ iso3: `C${i}`, refugees: i, idps: i })),
+      topFlows: Array.from({ length: 60 }, (_, i) => ({ originCode: `O${i}`, asylumCode: `A${i}`, count: i })),
+    };
+    const dataKey = `displacement:summary:v1:${currentYear}`;
+    const meta = { 'seed-meta:displacement:summary': { fetchedAt: Date.now() - 60_000, recordCount: 60 } };
+
+    mockCacheKeys({ [dataKey]: summary }, meta);
+    const def = await callTool('get_displacement_data', {});
+    assert.equal(def.data.summary.countries.length, 30, 'default args → countries capped to 30');
+    assert.equal(def.data.summary.topFlows.length, 30, 'default args → topFlows capped to 30');
+
+    mockCacheKeys({ [dataKey]: summary }, meta);
+    const full = await callTool('get_displacement_data', { limit: 0 });
+    assert.equal(full.data.summary.countries.length, 60, 'limit: 0 → full countries array');
+    assert.equal(full.data.summary.topFlows.length, 60, 'limit: 0 → full topFlows array');
+  });
+
   it('summary mode: collapses arrays to {count, sample} and large entity maps to {count, sample_keys}', async () => {
     // Mix: an array payload + a 10-country IMF map (well above SUMMARY_MAP_THRESHOLD=5).
     const macro = {

@@ -600,6 +600,24 @@ function pickNestedMap(data: Record<string, unknown>, label: string, child: stri
   }
 }
 
+// In-place: cap an entity-keyed map at data[label][child] to its first `n` keys
+// in insertion order. The keyed-object analogue of `capNested` (which slices
+// arrays). `n` null or ≤ 0 → no-op, so callers can pass the customer-facing
+// `limit: 0` opt-out value through unchanged.
+function capNestedMap(data: Record<string, unknown>, label: string, child: string, n: number | null): void {
+  if (n == null || n <= 0) return;
+  const parent = data[label];
+  if (parent && typeof parent === 'object' && !Array.isArray(parent)) {
+    const map = (parent as Record<string, unknown>)[child];
+    if (map && typeof map === 'object' && !Array.isArray(map)) {
+      const entries = Object.entries(map as Record<string, unknown>);
+      if (entries.length > n) {
+        (parent as Record<string, unknown>)[child] = Object.fromEntries(entries.slice(0, n));
+      }
+    }
+  }
+}
+
 // In-place: replace data[label][child] with fn(data[label][child]). The generic
 // "reach one level into a payload object and transform a value" helper, used
 // for keyed-object payloads whose narrowing doesn't fit pickNestedMap.
@@ -1153,6 +1171,7 @@ const TOOL_REGISTRY: ToolDef[] = [
           items: { type: 'string' },
           description: 'ISO 3166-1 alpha-2 country codes to keep across all four IMF datasets (e.g. ["US","DE","CN"]). Omit for all ~210 countries.',
         },
+        limit: { type: 'integer', minimum: 0, description: 'Cap each IMF dataset country map to at most this many entries when no countries filter is supplied (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
@@ -1160,7 +1179,11 @@ const TOOL_REGISTRY: ToolDef[] = [
       const codes = argStrList(params.countries);
       if (codes.length > 0) {
         for (const label of ['macro', 'growth', 'labor', 'external']) pickNestedMap(data, label, 'countries', codes);
+        return data;
       }
+      const defaultLimit = process.env.MCP_LIMIT_DEFAULT_30 === 'on' ? DEFAULT_LIST_LIMIT : 0;
+      const limit = argNum(params.limit) ?? defaultLimit;
+      for (const label of ['macro', 'growth', 'labor', 'external']) capNestedMap(data, label, 'countries', limit);
       return data;
     },
     _cacheKeys: [
@@ -1190,11 +1213,18 @@ const TOOL_REGISTRY: ToolDef[] = [
           items: { type: 'string' },
           description: 'Eurostat geo codes to keep — ISO 3166-1 alpha-2, but "EL" for Greece, plus aggregates "EA20" and "EU27_2020". Omit for all.',
         },
+        limit: { type: 'integer', minimum: 0, description: 'Cap the country map to at most this many entries when no countries filter is supplied (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
     _postFilter: (data, params) => {
-      pickNestedMap(data, 'house-prices', 'countries', argStrList(params.countries));
+      const codes = argStrList(params.countries);
+      if (codes.length > 0) {
+        pickNestedMap(data, 'house-prices', 'countries', codes);
+        return data;
+      }
+      const defaultLimit = process.env.MCP_LIMIT_DEFAULT_30 === 'on' ? DEFAULT_LIST_LIMIT : 0;
+      capNestedMap(data, 'house-prices', 'countries', argNum(params.limit) ?? defaultLimit);
       return data;
     },
     _cacheKeys: ['economic:eurostat:house-prices:v1'],
@@ -1213,11 +1243,18 @@ const TOOL_REGISTRY: ToolDef[] = [
           items: { type: 'string' },
           description: 'Eurostat geo codes to keep — ISO 3166-1 alpha-2, but "EL" for Greece, plus aggregates "EA20" and "EU27_2020". Omit for all.',
         },
+        limit: { type: 'integer', minimum: 0, description: 'Cap the country map to at most this many entries when no countries filter is supplied (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
     _postFilter: (data, params) => {
-      pickNestedMap(data, 'gov-debt-q', 'countries', argStrList(params.countries));
+      const codes = argStrList(params.countries);
+      if (codes.length > 0) {
+        pickNestedMap(data, 'gov-debt-q', 'countries', codes);
+        return data;
+      }
+      const defaultLimit = process.env.MCP_LIMIT_DEFAULT_30 === 'on' ? DEFAULT_LIST_LIMIT : 0;
+      capNestedMap(data, 'gov-debt-q', 'countries', argNum(params.limit) ?? defaultLimit);
       return data;
     },
     _cacheKeys: ['economic:eurostat:gov-debt-q:v1'],
@@ -1236,11 +1273,18 @@ const TOOL_REGISTRY: ToolDef[] = [
           items: { type: 'string' },
           description: 'Eurostat geo codes to keep — ISO 3166-1 alpha-2, but "EL" for Greece, plus aggregates "EA20" and "EU27_2020". Omit for all.',
         },
+        limit: { type: 'integer', minimum: 0, description: 'Cap the country map to at most this many entries when no countries filter is supplied (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
     _postFilter: (data, params) => {
-      pickNestedMap(data, 'industrial-production', 'countries', argStrList(params.countries));
+      const codes = argStrList(params.countries);
+      if (codes.length > 0) {
+        pickNestedMap(data, 'industrial-production', 'countries', codes);
+        return data;
+      }
+      const defaultLimit = process.env.MCP_LIMIT_DEFAULT_30 === 'on' ? DEFAULT_LIST_LIMIT : 0;
+      capNestedMap(data, 'industrial-production', 'countries', argNum(params.limit) ?? defaultLimit);
       return data;
     },
     _cacheKeys: ['economic:eurostat:industrial-production:v1'],
