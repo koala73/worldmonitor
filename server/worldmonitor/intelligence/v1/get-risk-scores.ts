@@ -668,6 +668,32 @@ export function computeCIIScores(
       ? Math.min(20, Math.max(0, Math.round((Math.log10(d.totalDisplaced) - 5) * 8 + 4)))
       : 0;
 
+    // --- Phase 3b blend reconciliation (decisions D2/D4/D5/D6) ---
+    // newsUrgencyBoost (D2): pure function of the information component.
+    const newsUrgencyBoost = information >= 70 ? 5 : information >= 50 ? 3 : 0;
+    // earthquakeBoost (D5): ported verbatim from the frontend getEarthquakeBoost.
+    const earthquakeBoost = Math.min(
+      25,
+      d.earthquakeSevereCount * 10 + d.earthquakeMajorCount * 5 + d.earthquakeSignificantCount * 2,
+    );
+    // sanctionsBoost (D6): ported verbatim from the frontend getSanctionsBoost.
+    let sanctionsBoost = 0;
+    if (d.sanctionsEntryCount > 0) {
+      sanctionsBoost = d.sanctionsEntryCount >= 2000 ? 12
+        : d.sanctionsEntryCount >= 501 ? 8
+        : d.sanctionsEntryCount >= 101 ? 5 : 3;
+      if (d.sanctionsNewEntryCount > 0) sanctionsBoost += 2;
+    }
+    // supplementalSignalBoost (D4): AIS + temporal ported exactly. The frontend also
+    // folds cyber + fire into this helper with severity-weighting; the server has only
+    // total cyber/fire counts, so cyberBoost/fireBoost above stay total-based — a
+    // documented partial port (severity-split cyber/fire ingestion is a follow-up).
+    const aisBoost = Math.min(
+      10,
+      d.aisDisruptionHighCount * 2.5 + d.aisDisruptionElevatedCount * 1.5 + d.aisDisruptionLowCount * 0.5,
+    );
+    const temporalBoost = Math.min(6, d.temporalAnomalyCriticalCount * 2 + d.temporalAnomalyCount * 0.75);
+
     const blended = baseline * 0.4
       + eventScore * 0.6
       + climateBoost
@@ -675,7 +701,12 @@ export function computeCIIScores(
       + fireBoost
       + advisoryBoost
       + orefBlendBoost
-      + displacementBoost;
+      + displacementBoost
+      + newsUrgencyBoost
+      + earthquakeBoost
+      + sanctionsBoost
+      + aisBoost
+      + temporalBoost;
 
     // --- Floors ---
     const ucdpFloor = d.ucdpWar ? 70 : (d.ucdpMinor ? 50 : 0);

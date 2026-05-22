@@ -50,8 +50,7 @@ function scoreFor(scores: ReturnType<typeof computeCIIScores>, code: string) {
 }
 
 describe('CII signal wiring', () => {
-  it('earthquake / sanctions / temporal signals are still gathered without scoring (pre-Phase-3b)', () => {
-    // These three are not yet read by any formula (D4/D5/D6 land later in Phase 3b).
+  it('Phase 3b D5/D6/D4: earthquake / sanctions / temporal signals raise the score', () => {
     const acled = [acledEvent('US', 'protest', 0)];
     const base = scoreFor(computeCIIScores(acled, emptyAux()), 'US');
     const aux = emptyAux();
@@ -63,8 +62,22 @@ describe('CII signal wiring', () => {
     aux.temporalAnomalies = [{ region: 'US', severity: 'critical' }];
     const withAux = scoreFor(computeCIIScores(acled, aux), 'US');
     assert.ok(withAux, 'computeCIIScores handles the aux sources without throwing');
-    assert.equal(withAux!.combinedScore, base!.combinedScore,
-      'earthquake/sanctions/temporal are gathered but not yet scored');
+    assert.ok(withAux!.combinedScore > base!.combinedScore,
+      'earthquake / sanctions / temporal now feed earthquakeBoost / sanctionsBoost / temporalBoost');
+  });
+
+  it('Phase 3b D6: sanctions duplicate-ISO2 rows accumulate across the tier boundary', () => {
+    const aux = emptyAux();
+    aux.sanctionsCountries = [
+      { countryCode: 'US', entryCount: 60, newEntryCount: 1 },
+      { countryCode: 'US', entryCount: 60, newEntryCount: 0 },
+    ];
+    const us = scoreFor(computeCIIScores([], aux), 'US');
+    const none = scoreFor(computeCIIScores([], emptyAux()), 'US');
+    // 60+60 = 120 entries → tier ≥101 → boost 5, +2 newEntry = 7. Had the loop overwritten
+    // instead of accumulated, 60 alone → tier <101 → boost 3+2 = 5. The gap proves accumulation.
+    assert.ok(us!.combinedScore - none!.combinedScore >= 7,
+      'duplicate-ISO2 sanctions rows accumulate (120 entries crosses the ≥101 tier)');
   });
 
   it('C3: security component scores military flights/vessels/aviation, not just GPS', () => {
