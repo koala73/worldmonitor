@@ -539,6 +539,13 @@ export interface NuclearFacility {
   type: NuclearFacilityType;
   status: 'active' | 'contested' | 'inactive' | 'decommissioned' | 'construction';
   operator?: string;  // Operating country
+
+  historicalProfile?: {
+    establishedDate?: string;
+    treaties?: string[];
+    iaeaStatus?: string;
+    timelineNotes?: string[];
+  };
 }
 
 export interface GammaIrradiator {

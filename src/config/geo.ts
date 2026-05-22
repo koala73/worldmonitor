@@ -3018,10 +3018,46 @@ export const UNDERSEA_CABLES: UnderseaCable[] = [
 
 export const NUCLEAR_FACILITIES: NuclearFacility[] = [
   // US Nuclear Labs & Weapons Complex
-  { id: 'los_alamos', name: 'Los Alamos', lat: 35.88, lon: -106.31, type: 'weapons', status: 'active', operator: 'US' },
+  {
+    id: 'los_alamos',
+    name: 'Los Alamos',
+    lat: 35.88,
+    lon: -106.31,
+    type: 'weapons',
+    status: 'active',
+    operator: 'US',
+    historicalProfile: {
+      establishedDate: '1943-01-01',
+      treaties: ['NPT', 'CTBT'],
+      iaeaStatus: 'Compliant',
+      timelineNotes: [
+        'Project Y founded under the Manhattan Project.',
+        'First nuclear device (Trinity) developed here in 1945.',
+        'Transitioned to a primary national security science laboratory in the post-Cold War era.'
+      ]
+    }
+  },
   { id: 'sandia', name: 'Sandia Labs', lat: 35.04, lon: -106.54, type: 'weapons', status: 'active', operator: 'US' },
   { id: 'livermore', name: 'LLNL', lat: 37.69, lon: -121.7, type: 'weapons', status: 'active', operator: 'US' },
-  { id: 'oak_ridge', name: 'Oak Ridge', lat: 35.93, lon: -84.31, type: 'enrichment', status: 'active', operator: 'US' },
+  {
+    id: 'oak_ridge',
+    name: 'Oak Ridge',
+    lat: 35.93,
+    lon: -84.31,
+    type: 'enrichment',
+    status: 'active',
+    operator: 'US',
+    historicalProfile: {
+      establishedDate: '1942-09-01',
+      treaties: ['NPT'],
+      iaeaStatus: 'Compliant',
+      timelineNotes: [
+        'Established as part of the Manhattan Project to enrich uranium.',
+        'Constructed the K-25, Y-12, and X-10 active enrichment sites.',
+        'Currently operates as a lead science and energy research institution.'
+      ]
+    }
+  },
   { id: 'hanford', name: 'Hanford', lat: 46.55, lon: -119.49, type: 'weapons', status: 'inactive', operator: 'US' },
   { id: 'pantex', name: 'Pantex', lat: 35.32, lon: -101.55, type: 'weapons', status: 'active', operator: 'US' },
   // US Nuclear Power Plants (major)

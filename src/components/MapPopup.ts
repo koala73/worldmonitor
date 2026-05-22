@@ -1783,6 +1783,8 @@ ${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"
       'decommissioned': 'low',
     };
 
+    const profile = facility.historicalProfile;
+
     return `
       <div class="popup-header nuclear">
         <span class="popup-title">${escapeHtml(facility.name.toUpperCase())}</span>
@@ -1805,6 +1807,19 @@ ${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"
           </div>
         </div>
         <p class="popup-description">${t('popups.nuclear.description')}</p>
+        ${profile ? `
+          <hr class="tooltip-divider" style="margin:8px 0;border:none;border-top:1px solid rgba(255,255,255,0.15);" />
+          <details class="historical-profile-accordion" style="cursor:pointer;outline:none;">
+            <summary style="font-weight:bold;color:#00d4ff;font-size:11px;margin-bottom:4px;list-style:none;display:flex;align-items:center;justify-content:space-between;">
+              <span>📜 HISTORICAL PROFILE</span><span class="arrow" style="font-size:8px;">▼</span>
+            </summary>
+            <div class="accordion-content" style="padding-left:8px;border-left:1px solid rgba(0,212,255,0.3);margin-top:4px;font-size:11px;opacity:0.85;">
+              ${profile.establishedDate ? `<p style="margin:2px 0;"><strong>Operational Since:</strong> ${escapeHtml(profile.establishedDate)}</p>` : ''}
+              ${profile.treaties ? `<p style="margin:2px 0;"><strong>Treaties:</strong> ${profile.treaties.map(escapeHtml).join(', ')}</p>` : ''}
+              ${profile.timelineNotes ? profile.timelineNotes.map(note => `<p class="timeline-note" style="margin:4px 0 2px;font-style:italic;">${escapeHtml(note)}</p>`).join('') : ''}
+            </div>
+          </details>
+        ` : ''}
       </div>
     `;
   }

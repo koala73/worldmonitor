@@ -5806,6 +5806,26 @@ body.playback-mode .status-dot {
   }
 }
 
+/* Historical Profile Accordion */
+.historical-profile-accordion summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  font-weight: bold;
+  user-select: none;
+}
+
+/* Hide native Safari/Chrome disclosure triangle */
+.historical-profile-accordion summary::-webkit-details-marker {
+  display: none;
+}
+
+/* Rotate indicator icon when open */
+.historical-profile-accordion[open] summary .arrow {
+  transform: rotate(180deg);
+}
+
 /* Gamma Irradiators */
 .irradiator-marker {
   position: absolute;
