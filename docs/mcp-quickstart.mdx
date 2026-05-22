@@ -133,20 +133,24 @@ curl -s https://worldmonitor.app/mcp \
     "params":{"name":"get_market_data","arguments":{}}
   }'
 
-# 3. Same call with a JMESPath projection (much smaller response)
+# 3. Same call with a JMESPath projection (much smaller response).
+# Heredoc keeps the single-quoted JMESPath string literals readable —
+# wrapping the JSON in -d '...' would collide with the inner quotes.
 curl -s https://worldmonitor.app/mcp \
   -H "X-WorldMonitor-Key: $WM_KEY" \
   -H 'Content-Type: application/json' \
-  -d '{
-    "jsonrpc":"2.0","id":3,
-    "method":"tools/call",
-    "params":{
-      "name":"get_market_data",
-      "arguments":{
-        "jmespath":"data.\"stocks-bootstrap\".quotes[?symbol==`AAPL` || symbol==`MSFT`].{s:symbol,p:price}"
-      }
+  --data-binary @- <<'EOF'
+{
+  "jsonrpc":"2.0","id":3,
+  "method":"tools/call",
+  "params":{
+    "name":"get_market_data",
+    "arguments":{
+      "jmespath":"data.\"stocks-bootstrap\".quotes[?symbol=='AAPL' || symbol=='MSFT'].{s:symbol,p:price}"
     }
-  }'
+  }
+}
+EOF
 ```
 
 The `wm_live_…` key goes in `X-WorldMonitor-Key`, **not** as a `Bearer` token — sending it as a bearer fails OAuth resolution and returns `401 invalid_token`. If you already have an OAuth access token from `/api/oauth/token`, use `Authorization: Bearer $TOKEN` instead and drop the `X-WorldMonitor-Key` header.
