@@ -5822,6 +5822,11 @@ body.playback-mode .status-dot {
 }
 
 /* Rotate indicator icon when open */
+.historical-profile-accordion summary .arrow {
+  display: inline-block;
+  transition: transform 0.2s ease-in-out;
+}
+
 .historical-profile-accordion[open] summary .arrow {
   transform: rotate(180deg);
 }

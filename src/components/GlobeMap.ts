@@ -226,6 +226,7 @@ interface NuclearSiteMarker extends BaseMarker {
   name: string;
   type: string;
   status: string;
+  operator?: string;
   historicalProfile?: {
     establishedDate?: string;
     treaties?: string[];
@@ -1480,7 +1481,7 @@ export class GlobeMap {
       const nc = d.status === 'active' ? '#ffd700' : d.status === 'construction' ? '#ff8800' : '#888888';
       const profile = d.historicalProfile;
       html = `<span style="color:${nc};font-weight:bold;">☢ ${esc(d.name)}</span>` +
-             `<br><span style="opacity:.7;">Status: ${esc(d.status)}</span>`;
+             `<br><span style="opacity:.7;">${esc(d.type)}${d.operator ? ' · ' + esc(d.operator) : ''} · Status: ${esc(d.status)}</span>`;
       if (profile) {
         html += `<hr class="tooltip-divider" style="margin:8px 0;border:none;border-top:1px solid rgba(255,255,255,0.15);" />` +
                 `<details class="historical-profile-accordion" style="cursor:pointer;outline:none;">` +
@@ -1490,6 +1491,7 @@ export class GlobeMap {
                 `<div class="accordion-content" style="padding-left:8px;border-left:1px solid rgba(0,212,255,0.3);margin-top:4px;font-size:10px;opacity:0.85;white-space:normal;">` +
                 (profile.establishedDate ? `<p style="margin:2px 0;"><strong>Operational Since:</strong> ${esc(profile.establishedDate)}</p>` : '') +
                 (profile.treaties ? `<p style="margin:2px 0;"><strong>Treaties:</strong> ${profile.treaties.map(esc).join(', ')}</p>` : '') +
+                (profile.iaeaStatus ? `<p style="margin:2px 0;"><strong>IAEA Status:</strong> ${esc(profile.iaeaStatus)}</p>` : '') +
                 (profile.timelineNotes ? profile.timelineNotes.map(note => `<p class="timeline-note" style="margin:4px 0 2px;font-style:italic;">${esc(note)}</p>`).join('') : '') +
                 `</div>` +
                 `</details>`;
@@ -1693,6 +1695,8 @@ export class GlobeMap {
       if (this.tooltipHideTimer) { clearTimeout(this.tooltipHideTimer); this.tooltipHideTimer = null; }
     });
     el.addEventListener('mouseleave', () => {
+      const details = el.querySelector('.historical-profile-accordion') as HTMLDetailsElement | null;
+      if (details && details.open) return;
       this.tooltipHideTimer = setTimeout(() => this.hideTooltip(), 2000);
     });
 
@@ -1714,8 +1718,25 @@ export class GlobeMap {
 
     this.tooltipEl = el;
     if (this.tooltipHideTimer) clearTimeout(this.tooltipHideTimer);
+
+    const details = el.querySelector('.historical-profile-accordion');
+    if (details) {
+      details.addEventListener('toggle', (e) => {
+        const target = e.target as HTMLDetailsElement;
+        if (target && target.open) {
+          if (this.tooltipHideTimer) {
+            clearTimeout(this.tooltipHideTimer);
+            this.tooltipHideTimer = null;
+          }
+        } else {
+          if (this.tooltipHideTimer) clearTimeout(this.tooltipHideTimer);
+          this.tooltipHideTimer = setTimeout(() => this.hideTooltip(), 3500);
+        }
+      });
+    }
+
     const richKinds = new Set(['satellite', 'flightDelay', 'cableAdvisory', 'conflictZone', 'spaceport', 'economic', 'datacenter', 'imageryScene', 'repairShip', 'aisDisruption']);
-    const autoHideDuration = (d as any).historicalProfile ? 5000 : 3500;
+    const autoHideDuration = d._kind === 'nuclearSite' && d.historicalProfile ? 5000 : 3500;
     const hideDelay = d._kind === 'webcam' ? 8000 : d._kind === 'webcam-cluster' ? 12000 : richKinds.has(d._kind) ? 6000 : autoHideDuration;
     this.tooltipHideTimer = setTimeout(() => this.hideTooltip(), hideDelay);
 
@@ -2218,6 +2239,7 @@ export class GlobeMap {
               name: f.name,
               type: f.type,
               status: f.status,
+              operator: f.operator,
               historicalProfile: f.historicalProfile,
             }));
         }

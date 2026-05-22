@@ -1816,6 +1816,7 @@ ${isFeatureAvailable('wingbitsEnrichment') ? '<div class="wingbits-live-section"
             <div class="accordion-content" style="padding-left:8px;border-left:1px solid rgba(0,212,255,0.3);margin-top:4px;font-size:11px;opacity:0.85;">
               ${profile.establishedDate ? `<p style="margin:2px 0;"><strong>Operational Since:</strong> ${escapeHtml(profile.establishedDate)}</p>` : ''}
               ${profile.treaties ? `<p style="margin:2px 0;"><strong>Treaties:</strong> ${profile.treaties.map(escapeHtml).join(', ')}</p>` : ''}
+              ${profile.iaeaStatus ? `<p style="margin:2px 0;"><strong>IAEA Status:</strong> ${escapeHtml(profile.iaeaStatus)}</p>` : ''}
               ${profile.timelineNotes ? profile.timelineNotes.map(note => `<p class="timeline-note" style="margin:4px 0 2px;font-style:italic;">${escapeHtml(note)}</p>`).join('') : ''}
             </div>
           </details>
