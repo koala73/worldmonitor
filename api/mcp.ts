@@ -3294,11 +3294,14 @@ async function dispatchToolsCall(
       // Rollback Pro quota — the user received no usable data, so the
       // daily slot should not be consumed (mirrors the catch-block rollback).
       if (proRollback) await proRollback();
+      const hint = jmespathUsed
+        ? 'Response still exceeds tool output budget after JMESPath projection. Use a more selective expression to project fewer fields, or apply tool-level filters to narrow the result set.'
+        : 'Response exceeds tool output budget. Use the jmespath argument to project only the fields you need, or apply filters to narrow the result set.';
       return rpcOk(id, { content: [{ type: 'text', text: JSON.stringify({
         _budget_exceeded: true,
         budget_bytes: budget,
         actual_bytes: textBytes,
-        hint: 'Response exceeds tool output budget. Use the jmespath argument to project only the fields you need, or apply filters to narrow the result set.',
+        hint,
       }) }] }, corsHeaders);
     }
     return rpcOk(id, { content: [{ type: 'text', text }] }, corsHeaders);

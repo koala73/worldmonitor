@@ -628,6 +628,42 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.equal(tc[0].budget_exceeded, false, 'within-budget call must emit budget_exceeded: false');
   });
 
+  it('budget: telemetry emits budget_exceeded=true when budget is exceeded', async () => {
+    process.env.MCP_TELEMETRY = 'true';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+    const captured = [];
+    const origLog = console.log;
+    console.log = (line) => captured.push(line);
+
+    // Large payload that exceeds the 128 KB cache-tool budget
+    const hugeQuotes = Array.from({ length: 3000 }, (_, i) => ({
+      symbol: `SYM${String(i).padStart(4, '0')}`,
+      price: i + 1,
+      change: 0.01 * i,
+      volume: 1000000 + i,
+    }));
+    mockCacheKeys(
+      { 'market:stocks-bootstrap:v1': { quotes: hugeQuotes }, 'market:crypto:v1': { quotes: [] } },
+      { 'seed-meta:market:stocks': { fetchedAt: Date.now() - 60_000, recordCount: hugeQuotes.length } },
+    );
+    const freshMod = await import(`../api/mcp.ts?t=${Date.now()}`);
+    const res = await freshMod.default(makeReq('POST', {
+      jsonrpc: '2.0', id: 801, method: 'tools/call',
+      params: { name: 'get_market_data', arguments: { limit: 0 } },
+    }));
+    console.log = origLog;
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    const out = JSON.parse(body.result.content[0].text);
+    assert.equal(out._budget_exceeded, true, 'sanity: response is the budget-exceeded envelope');
+
+    const tc = captured.filter((l) => l && typeof l === 'object' && !Array.isArray(l) && l.tag === 'mcp.toolcall');
+    assert.equal(tc.length, 1, `expected exactly one mcp.toolcall line, got ${tc.length}`);
+    assert.equal(tc[0].budget_exceeded, true, 'over-budget call must emit budget_exceeded: true');
+    assert.equal(tc[0].ok, true, 'budget-exceeded is a successful dispatch, not an error');
+  });
+
   it('get_market_data: symbols filter narrows quote arrays across asset slices', async () => {
     const stocks = { quotes: [{ symbol: 'AAPL', price: 100 }, { symbol: 'MSFT', price: 200 }] };
     const crypto = { quotes: [{ symbol: 'BTC', price: 50000 }] };
