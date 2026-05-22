@@ -56,9 +56,15 @@ function reportServerError(res: Response, input: RequestInfo | URL): void {
   try {
     const href = input instanceof Request ? input.url : String(input);
     const path = new URL(href, globalThis.location?.href ?? 'https://worldmonitor.app').pathname;
+    // Cloudflare edge errors (520-527) are CDN<->origin transport failures, not
+    // origin application errors — a single one is a transient blip. Capture at
+    // `warning` so a sustained outage still escalates by volume without a lone
+    // transient drowning genuine origin 5xx in the error dashboard
+    // (WORLDMONITOR-RG). Genuine origin 5xx (500-511) stay at `error`.
+    const isCloudflareEdgeError = res.status >= 520 && res.status <= 527;
     Sentry.captureMessage(`API ${res.status}: ${path}`, {
-      level: 'error',
-      tags: { kind: 'api_5xx' },
+      level: isCloudflareEdgeError ? 'warning' : 'error',
+      tags: { kind: isCloudflareEdgeError ? 'api_cf_5xx' : 'api_5xx' },
       extra: { path, status: res.status },
     });
   } catch { /* ignore URL parse errors */ }

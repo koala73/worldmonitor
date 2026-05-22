@@ -250,6 +250,11 @@ interface BaseToolDef {
   name: string;
   description: string;
   inputSchema: { type: string; properties: Record<string, unknown>; required: string[] };
+  // Per-tool output budget. When serialised tool output exceeds this AFTER
+  // _postFilter + summary + JMESPath, the server returns a `_budget_exceeded`
+  // envelope instead of the oversized payload. Required so a new tool can't
+  // be added without an explicit budget choice.
+  _outputBudgetBytes: number;
 }
 
 interface FreshnessCheck {
@@ -592,6 +597,24 @@ function pickNestedMap(data: Record<string, unknown>, label: string, child: stri
   }
 }
 
+// In-place: cap an entity-keyed map at data[label][child] to its first `n` keys
+// in insertion order. The keyed-object analogue of `capNested` (which slices
+// arrays). `n` null or ≤ 0 → no-op, so callers can pass the customer-facing
+// `limit: 0` opt-out value through unchanged.
+function capNestedMap(data: Record<string, unknown>, label: string, child: string, n: number | null): void {
+  if (n == null || n <= 0) return;
+  const parent = data[label];
+  if (parent && typeof parent === 'object' && !Array.isArray(parent)) {
+    const map = (parent as Record<string, unknown>)[child];
+    if (map && typeof map === 'object' && !Array.isArray(map)) {
+      const entries = Object.entries(map as Record<string, unknown>);
+      if (entries.length > n) {
+        (parent as Record<string, unknown>)[child] = Object.fromEntries(entries.slice(0, n));
+      }
+    }
+  }
+}
+
 // In-place: replace data[label][child] with fn(data[label][child]). The generic
 // "reach one level into a payload object and transform a value" helper, used
 // for keyed-object payloads whose narrowing doesn't fit pickNestedMap.
@@ -730,6 +753,7 @@ function summarizeData(data: Record<string, unknown>): Record<string, unknown> {
 const TOOL_REGISTRY: ToolDef[] = [
   {
     name: 'get_market_data',
+    _outputBudgetBytes: 131072,
     description: 'Real-time equity quotes, commodity prices (including gold futures GC=F), crypto prices, forex FX rates (USD/EUR, USD/JPY etc.), sector performance, ETF flows, and Gulf market quotes from WorldMonitor\'s curated bootstrap cache.',
     inputSchema: {
       type: 'object',
@@ -802,6 +826,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_conflict_events',
+    _outputBudgetBytes: 131072,
     description: 'Active armed conflict events (UCDP, Iran), unrest events with geo-coordinates, and country risk scores. Covers ongoing conflicts, protests, and instability indices worldwide.',
     inputSchema: {
       type: 'object',
@@ -858,6 +883,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_aviation_status',
+    _outputBudgetBytes: 131072,
     description: 'Airport delays, NOTAM airspace closures, and tracked military aircraft. Covers FAA delay data and active airspace restrictions.',
     inputSchema: {
       type: 'object',
@@ -890,6 +916,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_news_intelligence',
+    _outputBudgetBytes: 131072,
     description: 'AI-classified geopolitical threat news summaries, GDELT intelligence signals, cross-source signals, and security advisories from WorldMonitor\'s intelligence layer.',
     inputSchema: {
       type: 'object',
@@ -938,6 +965,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_natural_disasters',
+    _outputBudgetBytes: 131072,
     description: 'Recent earthquakes (USGS), active wildfires (NASA FIRMS), and natural hazard events. Includes magnitude, location, and threat severity.',
     inputSchema: {
       type: 'object',
@@ -986,6 +1014,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_military_posture',
+    _outputBudgetBytes: 131072,
     description: 'Theater posture assessment and military risk scores. Reflects aggregated military positioning and escalation signals across global theaters.',
     inputSchema: {
       type: 'object',
@@ -1023,6 +1052,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_cyber_threats',
+    _outputBudgetBytes: 131072,
     description: 'Active cyber threat intelligence: malware IOCs (URLhaus, Feodotracker), CISA known exploited vulnerabilities, and active command-and-control infrastructure.',
     inputSchema: {
       type: 'object',
@@ -1065,6 +1095,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_economic_data',
+    _outputBudgetBytes: 131072,
     description: 'Macro economic indicators: Fed Funds rate (FRED), economic calendar events, fuel prices, ECB FX rates, EU yield curve, earnings calendar, COT positioning, energy storage data, BIS household debt service ratio (DSR, quarterly, leading indicator of household financial stress across ~40 advanced economies), and BIS residential + commercial property price indices (real, quarterly).',
     inputSchema: {
       type: 'object',
@@ -1136,6 +1167,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_country_macro',
+    _outputBudgetBytes: 131072,
     description: 'Per-country macroeconomic indicators from IMF WEO (~210 countries, monthly cadence). Bundles fiscal/external balance (inflation, current account, gov revenue/expenditure/primary balance, CPI), growth & per-capita (real GDP growth, GDP/capita USD & PPP, savings & investment rates, savings-investment gap), labor & demographics (unemployment, population), and external trade (current account USD, import/export volume % changes). Latest available year per series. Use for country-level economic screening, peer benchmarking, and stagflation/imbalance flags. NOTE: export/import LEVELS in USD (exportsUsd, importsUsd, tradeBalanceUsd) are returned as null — WEO retracted broad coverage for BX/BM indicators in 2026-04; use currentAccountUsd or volume changes (import/exportVolumePctChg) instead.',
     inputSchema: {
       type: 'object',
@@ -1145,6 +1177,7 @@ const TOOL_REGISTRY: ToolDef[] = [
           items: { type: 'string' },
           description: 'ISO 3166-1 alpha-2 country codes to keep across all four IMF datasets (e.g. ["US","DE","CN"]). Omit for all ~210 countries.',
         },
+        limit: { type: 'integer', minimum: 0, description: 'Cap each IMF dataset country map to at most this many entries when no countries filter is supplied (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
@@ -1152,7 +1185,11 @@ const TOOL_REGISTRY: ToolDef[] = [
       const codes = argStrList(params.countries);
       if (codes.length > 0) {
         for (const label of ['macro', 'growth', 'labor', 'external']) pickNestedMap(data, label, 'countries', codes);
+        return data;
       }
+      const defaultLimit = process.env.MCP_LIMIT_DEFAULT_30 === 'on' ? DEFAULT_LIST_LIMIT : 0;
+      const limit = argNum(params.limit) ?? defaultLimit;
+      for (const label of ['macro', 'growth', 'labor', 'external']) capNestedMap(data, label, 'countries', limit);
       return data;
     },
     _cacheKeys: [
@@ -1173,6 +1210,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_eu_housing_cycle',
+    _outputBudgetBytes: 131072,
     description: 'Eurostat annual house price index (prc_hpi_a, base 2015=100) for all 27 EU members plus EA20 and EU27_2020 aggregates. Each country entry includes the latest value, prior value, date, unit, and a 10-year sparkline series. Complements BIS WS_SPP with broader EU coverage for the Housing cycle tile.',
     inputSchema: {
       type: 'object',
@@ -1182,11 +1220,18 @@ const TOOL_REGISTRY: ToolDef[] = [
           items: { type: 'string' },
           description: 'Eurostat geo codes to keep — ISO 3166-1 alpha-2, but "EL" for Greece, plus aggregates "EA20" and "EU27_2020". Omit for all.',
         },
+        limit: { type: 'integer', minimum: 0, description: 'Cap the country map to at most this many entries when no countries filter is supplied (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
     _postFilter: (data, params) => {
-      pickNestedMap(data, 'house-prices', 'countries', argStrList(params.countries));
+      const codes = argStrList(params.countries);
+      if (codes.length > 0) {
+        pickNestedMap(data, 'house-prices', 'countries', codes);
+        return data;
+      }
+      const defaultLimit = process.env.MCP_LIMIT_DEFAULT_30 === 'on' ? DEFAULT_LIST_LIMIT : 0;
+      capNestedMap(data, 'house-prices', 'countries', argNum(params.limit) ?? defaultLimit);
       return data;
     },
     _cacheKeys: ['economic:eurostat:house-prices:v1'],
@@ -1196,6 +1241,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_eu_quarterly_gov_debt',
+    _outputBudgetBytes: 131072,
     description: 'Eurostat quarterly general government gross debt (gov_10q_ggdebt, %GDP) for all 27 EU members plus EA20 and EU27_2020 aggregates. Each country entry includes latest value, prior value, quarter label, and an 8-quarter sparkline series. Provides fresher debt-trajectory signal than annual IMF GGXWDG_NGDP for EU panels.',
     inputSchema: {
       type: 'object',
@@ -1205,11 +1251,18 @@ const TOOL_REGISTRY: ToolDef[] = [
           items: { type: 'string' },
           description: 'Eurostat geo codes to keep — ISO 3166-1 alpha-2, but "EL" for Greece, plus aggregates "EA20" and "EU27_2020". Omit for all.',
         },
+        limit: { type: 'integer', minimum: 0, description: 'Cap the country map to at most this many entries when no countries filter is supplied (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
     _postFilter: (data, params) => {
-      pickNestedMap(data, 'gov-debt-q', 'countries', argStrList(params.countries));
+      const codes = argStrList(params.countries);
+      if (codes.length > 0) {
+        pickNestedMap(data, 'gov-debt-q', 'countries', codes);
+        return data;
+      }
+      const defaultLimit = process.env.MCP_LIMIT_DEFAULT_30 === 'on' ? DEFAULT_LIST_LIMIT : 0;
+      capNestedMap(data, 'gov-debt-q', 'countries', argNum(params.limit) ?? defaultLimit);
       return data;
     },
     _cacheKeys: ['economic:eurostat:gov-debt-q:v1'],
@@ -1219,6 +1272,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_eu_industrial_production',
+    _outputBudgetBytes: 131072,
     description: 'Eurostat monthly industrial production index (sts_inpr_m, NACE B-D industry excl. construction, SCA, base 2021=100) for all 27 EU members plus EA20 and EU27_2020 aggregates. Each country entry includes latest value, prior value, month label, and a 12-month sparkline series. Leading indicator of real-economy activity used by the "Real economy pulse" sparkline.',
     inputSchema: {
       type: 'object',
@@ -1228,11 +1282,18 @@ const TOOL_REGISTRY: ToolDef[] = [
           items: { type: 'string' },
           description: 'Eurostat geo codes to keep — ISO 3166-1 alpha-2, but "EL" for Greece, plus aggregates "EA20" and "EU27_2020". Omit for all.',
         },
+        limit: { type: 'integer', minimum: 0, description: 'Cap the country map to at most this many entries when no countries filter is supplied (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
     _postFilter: (data, params) => {
-      pickNestedMap(data, 'industrial-production', 'countries', argStrList(params.countries));
+      const codes = argStrList(params.countries);
+      if (codes.length > 0) {
+        pickNestedMap(data, 'industrial-production', 'countries', codes);
+        return data;
+      }
+      const defaultLimit = process.env.MCP_LIMIT_DEFAULT_30 === 'on' ? DEFAULT_LIST_LIMIT : 0;
+      capNestedMap(data, 'industrial-production', 'countries', argNum(params.limit) ?? defaultLimit);
       return data;
     },
     _cacheKeys: ['economic:eurostat:industrial-production:v1'],
@@ -1242,6 +1303,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_prediction_markets',
+    _outputBudgetBytes: 131072,
     description: 'Active Polymarket event contracts with current probabilities. Covers geopolitical, economic, and election prediction markets.',
     inputSchema: {
       type: 'object',
@@ -1286,6 +1348,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_sanctions_data',
+    _outputBudgetBytes: 131072,
     description: 'OFAC SDN sanctioned entities list and sanctions pressure scores by country. Useful for compliance screening and geopolitical pressure analysis.',
     inputSchema: {
       type: 'object',
@@ -1326,6 +1389,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_displacement_data',
+    _outputBudgetBytes: 131072,
     description: 'Refugee and IDP counts by country (UNHCR annual data).',
     inputSchema: {
       type: 'object',
@@ -1368,6 +1432,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_health_signals',
+    _outputBudgetBytes: 131072,
     description: 'Active disease outbreaks (WHO/ECDC etc.) and global air-quality station readings (OpenAQ/WAQI PM2.5). For health-risk screening.',
     inputSchema: {
       type: 'object',
@@ -1423,6 +1488,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_energy_intelligence',
+    _outputBudgetBytes: 131072,
     description: 'Energy supply, prices, storage, disruptions, and policy: EIA petroleum stocks, electricity prices (Ember), gas storage (GIE), fuel shortages, fossil & renewable shares, active energy disruptions, government crisis policies.',
     inputSchema: {
       type: 'object',
@@ -1511,6 +1577,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_climate_data',
+    _outputBudgetBytes: 131072,
     description: 'Climate intelligence: temperature/precipitation anomalies (vs 30-year WMO normals), climate-relevant disaster alerts (ReliefWeb/GDACS/FIRMS), atmospheric CO2 trend (NOAA Mauna Loa), air quality (OpenAQ/WAQI PM2.5 stations), Arctic sea ice extent and ocean heat indicators (NSIDC/NOAA), weather alerts, and climate news.',
     inputSchema: {
       type: 'object',
@@ -1568,6 +1635,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_infrastructure_status',
+    _outputBudgetBytes: 131072,
     description: 'Internet infrastructure health: Cloudflare Radar outages and service status for major cloud providers and internet services.',
     inputSchema: {
       type: 'object',
@@ -1595,6 +1663,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_supply_chain_data',
+    _outputBudgetBytes: 131072,
     description: 'Dry bulk shipping stress index, customs revenue flows, and COMTRADE bilateral trade data. Tracks global supply chain pressure and trade disruptions.',
     inputSchema: {
       type: 'object',
@@ -1637,6 +1706,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_tariff_trends',
+    _outputBudgetBytes: 131072,
     description: 'Global trade and pricing indicators: US tariff trends (HTS-coded), BigMac index, FAO Food Price Index, and per-country national debt levels.',
     inputSchema: {
       type: 'object',
@@ -1704,6 +1774,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_chokepoint_status',
+    _outputBudgetBytes: 131072,
     description: 'Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min cadence), rolling transit summaries, per-port activity, plus static reference data (chokepoint geometry, canonical 13-chokepoint registry) and flow aggregates. Covers Suez, Hormuz, Malacca, Bab-el-Mandeb, Panama, etc.',
     inputSchema: {
       type: 'object',
@@ -1786,6 +1857,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_positive_events',
+    _outputBudgetBytes: 131072,
     description: 'Positive geopolitical events: diplomatic agreements, humanitarian aid, development milestones, and peace initiatives worldwide.',
     inputSchema: {
       type: 'object',
@@ -1814,6 +1886,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_radiation_data',
+    _outputBudgetBytes: 131072,
     description: 'Radiation observation levels from global monitoring stations. Flags anomalous readings that may indicate nuclear incidents.',
     inputSchema: {
       type: 'object',
@@ -1845,6 +1918,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_research_signals',
+    _outputBudgetBytes: 131072,
     description: 'Tech and research event signals: emerging technology events bootstrap data from curated research feeds.',
     inputSchema: {
       type: 'object',
@@ -1876,6 +1950,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_forecast_predictions',
+    _outputBudgetBytes: 131072,
     description: 'AI-generated geopolitical and economic forecasts from WorldMonitor\'s predictive models. Covers upcoming risk events and probability assessments.',
     inputSchema: {
       type: 'object',
@@ -1907,6 +1982,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   // -------------------------------------------------------------------------
   {
     name: 'get_social_velocity',
+    _outputBudgetBytes: 131072,
     description: 'Reddit geopolitical social velocity: top posts from worldnews, geopolitics, and related subreddits with engagement scores and trend signals.',
     inputSchema: {
       type: 'object',
@@ -1935,6 +2011,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   // -------------------------------------------------------------------------
   {
     name: 'get_world_brief',
+    _outputBudgetBytes: 65536,
     description: 'AI-generated world intelligence brief. Fetches the latest geopolitical headlines along with their RSS article bodies and produces a grounded LLM-summarized brief. Supply an optional geo_context to focus on a region or topic.',
     inputSchema: {
       type: 'object',
@@ -1992,6 +2069,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_country_brief',
+    _outputBudgetBytes: 65536,
     description: 'AI-generated per-country intelligence brief. Produces an LLM-analyzed geopolitical and economic assessment for the given country. Supports analytical frameworks for structured lenses.',
     inputSchema: {
       type: 'object',
@@ -2055,6 +2133,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_country_risk',
+    _outputBudgetBytes: 262144,
     description: 'Structured risk intelligence for a specific country: Composite Instability Index (CII) score 0-100, component breakdown (unrest/conflict/security/news), travel advisory level, and OFAC sanctions exposure. Fast Redis read — no LLM. Use for quantitative risk screening or to answer "how risky is X right now?"',
     inputSchema: {
       type: 'object',
@@ -2080,6 +2159,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_consumer_prices',
+    _outputBudgetBytes: 262144,
     description: "Per-country consumer-prices intelligence: 30-day overview, category-level inflation, retailer spread (essentials basket), top movers, and source freshness. Requires country_code (currently only 'ae' is seeded).",
     inputSchema: {
       type: 'object',
@@ -2195,6 +2275,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_airspace',
+    _outputBudgetBytes: 262144,
     description: 'Live ADS-B aircraft over a country. Returns civilian flights (OpenSky) and identified military aircraft with callsigns, positions, altitudes, and headings. Answers questions like "how many planes are over the UAE right now?" or "are there military aircraft over Taiwan?"',
     inputSchema: {
       type: 'object',
@@ -2291,6 +2372,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_maritime_activity',
+    _outputBudgetBytes: 262144,
     description: "Live vessel traffic and maritime disruptions for a country's waters. Returns AIS density zones (ships-per-day, intensity score), dark ship events, and chokepoint congestion from AIS tracking.",
     inputSchema: {
       type: 'object',
@@ -2350,6 +2432,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'analyze_situation',
+    _outputBudgetBytes: 65536,
     description: 'AI geopolitical situation analysis (DeductionPanel). Provide a query and optional geo-political context; returns an LLM-powered analytical deduction with confidence and supporting signals.',
     inputSchema: {
       type: 'object',
@@ -2379,6 +2462,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'generate_forecasts',
+    _outputBudgetBytes: 65536,
     description: 'Generate live AI geopolitical and economic forecasts. Unlike get_forecast_predictions (pre-computed cache), this calls the forecasting model directly for fresh probability estimates. Note: slower than cache tools.',
     inputSchema: {
       type: 'object',
@@ -2406,6 +2490,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'search_flights',
+    _outputBudgetBytes: 262144,
     description: 'Search Google Flights for real-time flight options between two airports on a specific date. Returns available flights with prices, stops, airline, and segment details. Use IATA airport codes (e.g. "JFK", "LHR", "DXB").',
     inputSchema: {
       type: 'object',
@@ -2454,6 +2539,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'search_flight_prices_by_date',
+    _outputBudgetBytes: 262144,
     description: 'Search Google Flights date-grid pricing across a date range. Returns cheapest prices for each departure date between two airports. Useful for finding the cheapest day to fly. Use IATA airport codes.',
     inputSchema: {
       type: 'object',
@@ -2499,6 +2585,7 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
   {
     name: 'get_commodity_geo',
+    _outputBudgetBytes: 262144,
     description: 'Global mining sites with coordinates, operator, mineral type, and production status. Covers 71 major mines spanning gold, silver, copper, lithium, uranium, coal, and other minerals worldwide.',
     inputSchema: {
       type: 'object',
@@ -2526,6 +2613,7 @@ const TOOL_REGISTRY: ToolDef[] = [
     // long-form text in `description`. Uses the SAME buildPublicTool helper
     // as tools/list so the two surfaces can never drift.
     name: 'describe_tool',
+    _outputBudgetBytes: 8192,
     description: 'Return the full uncompressed definition of one tool by name. Use when the compressed tools/list entry is ambiguous about behaviour or argument semantics.',
     inputSchema: {
       type: 'object',
@@ -2724,6 +2812,7 @@ export const MCP_TOOLCALL_TELEMETRY_KEYS = Object.freeze([
   'jmespath_failed',
   'ok',
   'error_kind',
+  'budget_exceeded',
 ] as const);
 
 export const MCP_TOOLS_LIST_TELEMETRY_KEYS = Object.freeze([
@@ -3232,13 +3321,13 @@ async function dispatchToolsCall(
     // size.
     const { text, failed } = applyJmespath(result, jmespathArg);
     const latencyMs = Date.now() - tStart;
-    // Outer `telemetryEnabled()` here is a perf gate: it skips the
-    // utf8ByteLength + (when JMESPath is active) JSON.stringify(result) walk
-    // when telemetry is off. `emitTelemetry` re-checks internally as the
-    // single safety gate for the initialize + error call sites, which don't
-    // have outer gating because their byte fields are zero or precomputed.
+    // Budget gate: always compute byte length for the budget check. This
+    // replaces the previous telemetry-only perf gate for the post-JMESPath
+    // measurement — budget enforcement requires the walk unconditionally.
+    const textBytes = utf8ByteLength(text);
+    const budget = tool._outputBudgetBytes;
+    const budgetExceeded = textBytes > budget;
     if (telemetryEnabled()) {
-      const bytesPost = utf8ByteLength(text);
       let bytesPre: number;
       if (jmespathUsed) {
         // Telemetry stringify must never escape into the outer catch — a
@@ -3253,7 +3342,7 @@ async function dispatchToolsCall(
           bytesPre = -1;
         }
       } else {
-        bytesPre = bytesPost;
+        bytesPre = textBytes;
       }
       emitTelemetry('mcp.toolcall', {
         tool: tool.name,
@@ -3261,11 +3350,26 @@ async function dispatchToolsCall(
         user_id: principalIdForLog(context),
         latency_ms: latencyMs,
         bytes_pre_jmespath: bytesPre,
-        bytes_post_jmespath: bytesPost,
+        bytes_post_jmespath: textBytes,
         jmespath_used: jmespathUsed,
         jmespath_failed: failed ?? null,
         ok: true,
+        budget_exceeded: budgetExceeded,
       });
+    }
+    if (budgetExceeded) {
+      // Rollback Pro quota — the user received no usable data, so the
+      // daily slot should not be consumed (mirrors the catch-block rollback).
+      if (proRollback) await proRollback();
+      const hint = jmespathUsed
+        ? 'Response still exceeds tool output budget after JMESPath projection. Use a more selective expression to project fewer fields, or apply tool-level filters to narrow the result set.'
+        : 'Response exceeds tool output budget. Use the jmespath argument to project only the fields you need, or apply filters to narrow the result set.';
+      return rpcOk(id, { content: [{ type: 'text', text: JSON.stringify({
+        _budget_exceeded: true,
+        budget_bytes: budget,
+        actual_bytes: textBytes,
+        hint,
+      }) }] }, corsHeaders);
     }
     return rpcOk(id, { content: [{ type: 'text', text }] }, corsHeaders);
   } catch (err: unknown) {
@@ -3304,6 +3408,7 @@ async function dispatchToolsCall(
       jmespath_failed: null,
       ok: false,
       error_kind: isClient4xx ? 'client_4xx' : 'server_error',
+      budget_exceeded: false,
     });
     return rpcError(id, -32603, 'Internal error: data fetch failed');
   }
