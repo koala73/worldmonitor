@@ -25,7 +25,7 @@
 // Railway nixpacks packaging.
 
 import { pathToFileURL } from 'node:url';
-import { loadEnvFile, CHROME_UA, getRedisCredentials, acquireLockSafely, releaseLock } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, getRedisCredentials, acquireLockSafely, releaseLock, withRetry } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -207,8 +207,33 @@ const MILITARY_MIDS = {
   '574': 'Vietnam',
 };
 
+// Country NAME → ISO2. The classifier tables (MILITARY_MIDS, KNOWN_NAVAL_VESSELS) carry
+// names; aggregation needs ISO2. Covers every name those tables can emit so a non-TIER1
+// operator resolves to a real code instead of silently becoming null.
+const COUNTRY_NAME_TO_ISO2 = {
+  Albania: 'AL', Andorra: 'AD', Austria: 'AT', Germany: 'DE', Cyprus: 'CY', Georgia: 'GE',
+  Moldova: 'MD', Malta: 'MT', Armenia: 'AM', Denmark: 'DK', Spain: 'ES', France: 'FR',
+  Finland: 'FI', Faroe: 'FO', UK: 'GB', Gibraltar: 'GI', Greece: 'GR', Croatia: 'HR',
+  Morocco: 'MA', Hungary: 'HU', Netherlands: 'NL', Italy: 'IT', Ireland: 'IE',
+  Portugal: 'PT', Norway: 'NO', Poland: 'PL', Romania: 'RO', Sweden: 'SE', Slovakia: 'SK',
+  'San Marino': 'SM', Switzerland: 'CH', Czechia: 'CZ', Turkey: 'TR', Ukraine: 'UA',
+  'North Macedonia': 'MK', Latvia: 'LV', Estonia: 'EE', Lithuania: 'LT', Slovenia: 'SI',
+  Serbia: 'RS', Canada: 'CA', Cuba: 'CU', USA: 'US', Mexico: 'MX', Afghanistan: 'AF',
+  'Saudi Arabia': 'SA', Bangladesh: 'BD', Bahrain: 'BH', China: 'CN', Taiwan: 'TW',
+  'Sri Lanka': 'LK', India: 'IN', Iran: 'IR', Azerbaijan: 'AZ', Iraq: 'IQ', Israel: 'IL',
+  Japan: 'JP', Turkmenistan: 'TM', Kazakhstan: 'KZ', Uzbekistan: 'UZ', Jordan: 'JO',
+  'South Korea': 'KR', Palestine: 'PS', 'North Korea': 'KP', Kuwait: 'KW', Lebanon: 'LB',
+  Kyrgyzstan: 'KG', Macau: 'MO', Maldives: 'MV', Mongolia: 'MN', Nepal: 'NP', Oman: 'OM',
+  Pakistan: 'PK', Qatar: 'QA', Syria: 'SY', UAE: 'AE', Tajikistan: 'TJ', Yemen: 'YE',
+  'Hong Kong': 'HK', Australia: 'AU', Myanmar: 'MM', Brunei: 'BN', 'New Zealand': 'NZ',
+  Indonesia: 'ID', Malaysia: 'MY', Philippines: 'PH', Singapore: 'SG', Thailand: 'TH',
+  Vietnam: 'VN', Russia: 'RU',
+};
+
 function analyzeMmsi(mmsi) {
-  if (!mmsi || mmsi.length < 9) return { isPotentialMilitary: false };
+  // Reject short or non-numeric IDs before the heuristics — a letter-padded MMSI
+  // (corrupt / hostile relay data) must not slip through the suffix check.
+  if (!mmsi || mmsi.length < 9 || !/^\d+$/.test(mmsi)) return { isPotentialMilitary: false };
   const mid = mmsi.substring(0, 3);
   const country = MILITARY_MIDS[mid];
   for (const pattern of MILITARY_VESSEL_PATTERNS) {
@@ -216,8 +241,10 @@ function analyzeMmsi(mmsi) {
       return { isPotentialMilitary: true, country: pattern.country };
     }
   }
+  // The 00/99-suffix heuristic is noisy on civilian MMSIs; only trust it when the MID
+  // resolves to a known country — drops the unknown-MID civilian false positives.
   const suffix = mmsi.substring(3);
-  if (suffix.startsWith('00') || suffix.startsWith('99')) {
+  if (country && (suffix.startsWith('00') || suffix.startsWith('99'))) {
     return { isPotentialMilitary: true, country };
   }
   return { isPotentialMilitary: false, country };
@@ -227,8 +254,11 @@ function matchKnownVessel(name) {
   if (!name) return undefined;
   const normalized = name.toUpperCase().trim();
   for (const vessel of KNOWN_NAVAL_VESSELS) {
+    // Hull-number substring match only for hull numbers >=3 chars — short numeric hulls
+    // ('16','17','18') match civilian names by coincidence; those carriers still match
+    // by their distinctive name above.
     if (normalized.includes(vessel.name.toUpperCase())
-      || (vessel.hullNumber && normalized.includes(vessel.hullNumber))) {
+      || (vessel.hullNumber && vessel.hullNumber.length >= 3 && normalized.includes(vessel.hullNumber))) {
       return vessel;
     }
   }
@@ -240,7 +270,8 @@ function isMilitaryShipType(shipType) {
   return shipType === 35 || (shipType >= 50 && shipType <= 59);
 }
 
-// Returns { operatorCountry } if the candidate classifies as military, else null.
+// Returns { operatorIso2 } if the candidate classifies as military, else null.
+// operatorIso2 is null when the vessel is military by ship-type alone (no operator known).
 function classifyVessel(candidate) {
   const mmsi = String(candidate.mmsi || '');
   const name = String(candidate.name || '');
@@ -248,7 +279,8 @@ function classifyVessel(candidate) {
   const mmsiAnalysis = analyzeMmsi(mmsi);
   const aisMilitary = isMilitaryShipType(num(candidate.shipType));
   if (!known && !mmsiAnalysis.isPotentialMilitary && !aisMilitary) return null;
-  return { operatorCountry: known?.country || mmsiAnalysis.country || null };
+  const operatorName = known?.country || mmsiAnalysis.country || null;
+  return { operatorIso2: operatorName ? (COUNTRY_NAME_TO_ISO2[operatorName] || null) : null };
 }
 
 // ── Redis (Upstash REST) ──────────────────────────────────────────────────────────────
@@ -308,16 +340,18 @@ async function fetchRelaySnapshot() {
     return { candidateReports: [], disruptions: [] };
   }
   try {
-    const resp = await fetch(`${base}/ais/snapshot?candidates=true`, {
-      headers: getRelayHeaders(),
-      signal: AbortSignal.timeout(RELAY_TIMEOUT_MS),
-    });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    const data = await resp.json();
-    return {
-      candidateReports: Array.isArray(data.candidateReports) ? data.candidateReports : [],
-      disruptions: Array.isArray(data.disruptions) ? data.disruptions : [],
-    };
+    const data = await withRetry(async () => {
+      const resp = await fetch(`${base}/ais/snapshot?candidates=true`, {
+        headers: getRelayHeaders(),
+        signal: AbortSignal.timeout(RELAY_TIMEOUT_MS),
+      });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      return resp.json();
+    }, 2, 1000);
+    // Cap to bound classification work — a hostile/buggy relay must not OOM the job
+    // or overrun the lock TTL. Consumers in get-risk-scores cap reads at maxLen=10000.
+    const cap = (a) => (Array.isArray(a) ? a.slice(0, 20_000) : []);
+    return { candidateReports: cap(data.candidateReports), disruptions: cap(data.disruptions) };
   } catch (err) {
     console.warn(`  relay /ais/snapshot failed (${err.message || err}) — vessels + AIS skipped`);
     return { candidateReports: [], disruptions: [] };
@@ -352,7 +386,7 @@ function aggregate(flights, candidateReports, disruptions) {
     const cls = classifyVessel(c);
     if (!cls) continue;
     militaryVesselCount++;
-    const op = cls.operatorCountry ? normalizeCountryName(cls.operatorCountry) : null;
+    const op = cls.operatorIso2;
     const loc = geoToCountry(num(c.lat), num(c.lon));
     if (op && byCountry[op]) byCountry[op].ownVessels++;
     if (loc && byCountry[loc] && loc !== op) byCountry[loc].foreignVessels++;
@@ -380,7 +414,9 @@ async function main() {
 
   console.log('=== intelligence:military-cii Seed ===');
 
-  const lockResult = await acquireLockSafely('intelligence:military-cii', runId, 120_000, { label: 'military-cii' });
+  // 180s TTL leaves headroom above worst-case runtime (flights read + relay fetch, each
+  // with up to 2 retries) so a slow run cannot expire the lock and let a second run race.
+  const lockResult = await acquireLockSafely('intelligence:military-cii', runId, 180_000, { label: 'military-cii' });
   if (lockResult.skipped || !lockResult.locked) {
     console.log('  SKIPPED: another seed run in progress');
     process.exit(0);
@@ -419,7 +455,7 @@ async function main() {
       },
     };
 
-    await redisSetJson(url, token, LIVE_KEY, payload, LIVE_TTL);
+    await withRetry(() => redisSetJson(url, token, LIVE_KEY, payload, LIVE_TTL), 2, 1000);
     console.log(`  wrote ${LIVE_KEY}: own ${totals.ownFlights}f/${totals.ownVessels}v, foreign ${totals.foreignFlights}f/${totals.foreignVessels}v across ${Object.keys(byCountry).length} countries`);
   } finally {
     await releaseLock('intelligence:military-cii', runId);
@@ -436,4 +472,4 @@ if (isDirectRun) {
   });
 }
 
-export { aggregate, classifyVessel, analyzeMmsi, geoToCountry, normalizeCountryName };
+export { aggregate, classifyVessel, analyzeMmsi, geoToCountry, normalizeCountryName, TIER1_COUNTRIES, COUNTRY_BBOX };

@@ -88,7 +88,9 @@ const COUNTRY_KEYWORDS: Record<string, string[]> = {
   QA: ['qatar', 'qatari', 'doha', 'al jazeera'],
 };
 
-const COUNTRY_BBOX: Record<string, { minLat: number; maxLat: number; minLon: number; maxLon: number }> = {
+// Exported so the seed-military-cii.mjs drift-guard test can assert its re-embedded copy
+// stays in sync (scripts/ cannot import from server/ at runtime, but tests can).
+export const COUNTRY_BBOX: Record<string, { minLat: number; maxLat: number; minLon: number; maxLon: number }> = {
   US: { minLat: 24.5, maxLat: 49.4, minLon: -125.0, maxLon: -66.9 },
   RU: { minLat: 41.2, maxLat: 81.9, minLon: 19.6, maxLon: 180.0 },
   CN: { minLat: 18.2, maxLat: 53.6, minLon: 73.5, maxLon: 135.1 },
@@ -516,8 +518,10 @@ export function computeCIIScores(
   for (const c of aux.sanctionsCountries ?? []) {
     const code = String(c.countryCode || '').toUpperCase();
     if (!data[code]) continue;
-    data[code].sanctionsEntryCount = safeNum(c.entryCount);
-    data[code].sanctionsNewEntryCount = safeNum(c.newEntryCount);
+    // Accumulate (not assign): the producer keys per-country rows by `code:name`, so one
+    // ISO2 can appear in multiple rows when the source spells the name differently.
+    data[code].sanctionsEntryCount += safeNum(c.entryCount);
+    data[code].sanctionsNewEntryCount += safeNum(c.newEntryCount);
   }
 
   // --- Temporal anomalies (Phase 1) — region is ISO2 or country name; skip 'global' ---

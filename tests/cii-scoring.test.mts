@@ -33,6 +33,11 @@ function emptyAux() {
     displacedByIso3: {} as Record<string, number>,
     newsTopStories: [] as Array<{ countryCode: string | null; threatLevel: string; primaryTitle: string }>,
     threatSummaryByCountry: null as Record<string, { critical: number; high: number; medium: number; low: number; info: number }> | null,
+    aviationAlerts: [] as any[],
+    earthquakes: [] as any[],
+    sanctionsCountries: [] as any[],
+    temporalAnomalies: [] as any[],
+    militaryCii: null as Record<string, any> | null,
   };
 }
 
@@ -43,6 +48,28 @@ function acledEvent(country: string, type: string, fatalities = 0) {
 function scoreFor(scores: ReturnType<typeof computeCIIScores>, code: string) {
   return scores.find((s) => s.region === code);
 }
+
+describe('Phase 1/2 auxiliary signals', () => {
+  it('are gathered without changing the score (additive)', () => {
+    const acled = [acledEvent('US', 'protest', 0)];
+    const base = scoreFor(computeCIIScores(acled, emptyAux()), 'US');
+    const aux = emptyAux();
+    aux.aviationAlerts = [{ country: 'United States', delayType: 'closure', severity: 'severe' }];
+    aux.earthquakes = [{ magnitude: 7.0, occurredAt: Date.now(), location: { latitude: 39, longitude: -98 } }];
+    aux.sanctionsCountries = [
+      { countryCode: 'US', entryCount: 10, newEntryCount: 1 },
+      { countryCode: 'US', entryCount: 5, newEntryCount: 0 }, // duplicate ISO2 — must accumulate, not overwrite
+    ];
+    aux.temporalAnomalies = [{ region: 'US', severity: 'critical' }];
+    aux.militaryCii = {
+      US: { ownFlights: 3, foreignFlights: 1, ownVessels: 2, foreignVessels: 0, aisDisruptionHigh: 1, aisDisruptionElevated: 0, aisDisruptionLow: 0 },
+    };
+    const withAux = scoreFor(computeCIIScores(acled, aux), 'US');
+    assert.ok(withAux, 'computeCIIScores handles the new Phase 1/2 aux sources without throwing');
+    assert.equal(withAux!.combinedScore, base!.combinedScore,
+      'Phase 1/2 signals are gathered into CountrySignals but no scoring formula reads them yet');
+  });
+});
 
 describe('CII scoring', () => {
   it('returns scores for all 31 tier-1 countries including MX, BR, AE, LB, IQ, AF', () => {

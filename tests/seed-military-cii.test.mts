@@ -29,19 +29,26 @@ test('normalizeCountryName maps names/abbreviations to ISO2', () => {
 test('analyzeMmsi flags military by pattern, suffix, and MID', () => {
   // explicit US Navy MMSI prefix pattern
   assert.deepEqual(analyzeMmsi('369970123'), { isPotentialMilitary: true, country: 'USA' });
-  // 00/99 suffix heuristic + MID country (273 = Russia)
+  // 00-suffix heuristic fires only when the MID resolves to a known country (273 = Russia)
   assert.deepEqual(analyzeMmsi('273009999'), { isPotentialMilitary: true, country: 'Russia' });
+  // 00-suffix under an UNKNOWN MID is NOT trusted — civilian false-positive guard
+  assert.deepEqual(analyzeMmsi('999009999'), { isPotentialMilitary: false, country: undefined });
   // plain civilian MMSI under a known MID — not flagged, but country still resolved
   assert.deepEqual(analyzeMmsi('338123456'), { isPotentialMilitary: false, country: 'USA' });
+  // non-numeric / letter-padded MMSI is rejected outright
+  assert.deepEqual(analyzeMmsi('ABC009999'), { isPotentialMilitary: false });
   // too short
   assert.deepEqual(analyzeMmsi('123'), { isPotentialMilitary: false });
 });
 
 test('classifyVessel: military by pattern / known name / ship type, civilian rejected', () => {
-  assert.deepEqual(classifyVessel({ mmsi: '369970123', name: '', shipType: 0 }), { operatorCountry: 'USA' });
-  assert.deepEqual(classifyVessel({ mmsi: '', name: 'USS Nimitz underway', shipType: 0 }), { operatorCountry: 'USA' });
-  // AIS ship type 35 = military ops; no MID country → operatorCountry null
-  assert.deepEqual(classifyVessel({ mmsi: '111111111', name: 'X', shipType: 35 }), { operatorCountry: null });
+  // classifyVessel resolves the operator straight to ISO2
+  assert.deepEqual(classifyVessel({ mmsi: '369970123', name: '', shipType: 0 }), { operatorIso2: 'US' });
+  assert.deepEqual(classifyVessel({ mmsi: '', name: 'USS Nimitz underway', shipType: 0 }), { operatorIso2: 'US' });
+  // AIS ship type 35 = military ops; no operator known → operatorIso2 null
+  assert.deepEqual(classifyVessel({ mmsi: '111111111', name: 'X', shipType: 35 }), { operatorIso2: null });
+  // hull number '16' alone must NOT classify a civilian vessel as the carrier Liaoning
+  assert.equal(classifyVessel({ mmsi: '111111111', name: 'CONTAINER 16', shipType: 70 }), null);
   // ordinary cargo vessel — not military
   assert.equal(classifyVessel({ mmsi: '111111111', name: 'Cargo', shipType: 70 }), null);
 });
@@ -66,6 +73,22 @@ test('aggregate splits own vs foreign presence and buckets AIS disruptions', () 
   assert.equal(agg.byCountry.US.aisDisruptionElevated, 1);
   assert.equal(agg.byCountry.US.aisDisruptionLow, 1);
   assert.equal(agg.militaryVesselCount, 1);
+});
+
+test('aggregate: a domestic flight is own-only, never double-counted as foreign', () => {
+  const agg = aggregate([{ operatorCountry: 'USA', lat: 39, lon: -98 }], [], []);
+  assert.equal(agg.byCountry.US.ownFlights, 1);
+  assert.equal(agg.byCountry.US.foreignFlights, 0); // loc === op → the `loc !== op` guard holds
+});
+
+test('aggregate: AIS disruption with unknown/missing severity falls into the low bucket', () => {
+  const agg = aggregate([], [], [
+    { lat: 39, lon: -98, severity: 'minor' },
+    { lat: 39, lon: -98 },
+  ]);
+  assert.equal(agg.byCountry.US.aisDisruptionLow, 2);
+  assert.equal(agg.byCountry.US.aisDisruptionHigh, 0);
+  assert.equal(agg.byCountry.US.aisDisruptionElevated, 0);
 });
 
 test('aggregate emits a record for every TIER1 country, zeroed by default', () => {
