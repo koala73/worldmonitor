@@ -205,6 +205,14 @@ interface CountrySignals {
   sanctionsNewEntryCount: number;
   temporalAnomalyCount: number;
   temporalAnomalyCriticalCount: number;
+  // Phase 2 (CII unification) — military activity, gathered, not yet scored.
+  militaryOwnFlights: number;
+  militaryForeignFlights: number;
+  militaryOwnVessels: number;
+  militaryForeignVessels: number;
+  aisDisruptionHighCount: number;
+  aisDisruptionElevatedCount: number;
+  aisDisruptionLowCount: number;
 }
 
 function emptySignals(): CountrySignals {
@@ -225,6 +233,9 @@ function emptySignals(): CountrySignals {
     earthquakeSignificantCount: 0, earthquakeMajorCount: 0, earthquakeSevereCount: 0,
     sanctionsEntryCount: 0, sanctionsNewEntryCount: 0,
     temporalAnomalyCount: 0, temporalAnomalyCriticalCount: 0,
+    militaryOwnFlights: 0, militaryForeignFlights: 0,
+    militaryOwnVessels: 0, militaryForeignVessels: 0,
+    aisDisruptionHighCount: 0, aisDisruptionElevatedCount: 0, aisDisruptionLowCount: 0,
   };
 }
 
@@ -277,11 +288,14 @@ interface AuxiliarySources {
   earthquakes: any[];
   sanctionsCountries: any[];
   temporalAnomalies: any[];
+  // Phase 2 (CII unification) — per-country military activity from intelligence:military-cii:v1
+  // (written by scripts/seed-military-cii.mjs). Keyed by ISO2.
+  militaryCii: Record<string, any> | null;
 }
 
 async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
   const currentYear = new Date().getFullYear();
-  const [ucdpRaw, outagesRaw, climateRaw, cyberRaw, firesRaw, gpsRaw, iranRaw, orefRaw, advisoriesRaw, displacementRaw, insightsRaw, threatSummaryRaw, aviationRaw, earthquakesRaw, sanctionsRaw, temporalRaw] = await Promise.all([
+  const [ucdpRaw, outagesRaw, climateRaw, cyberRaw, firesRaw, gpsRaw, iranRaw, orefRaw, advisoriesRaw, displacementRaw, insightsRaw, threatSummaryRaw, aviationRaw, earthquakesRaw, sanctionsRaw, temporalRaw, militaryCiiRaw] = await Promise.all([
     getCachedJson('conflict:ucdp-events:v1', true).catch(() => null),
     getCachedJson('infra:outages:v1', true).catch(() => null),
     getCachedJson(CLIMATE_ANOMALIES_KEY, true).catch(() => null),
@@ -301,6 +315,7 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
     getCachedJson('seismology:earthquakes:v1', true).catch(() => null),
     getCachedJson('sanctions:pressure:v1', true).catch(() => null),
     getCachedJson('temporal:anomalies:v1', true).catch(() => null),
+    getCachedJson('intelligence:military-cii:v1', true).catch(() => null),
   ]);
   const arr = (v: any, field?: string, maxLen = 10000) => {
     let a: any[];
@@ -364,6 +379,9 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
     earthquakes: arr(earthquakesRaw, 'earthquakes'),
     sanctionsCountries: arr(sanctionsRaw, 'countries'),
     temporalAnomalies: arr(temporalRaw, 'anomalies'),
+    militaryCii: militaryCiiRaw && typeof militaryCiiRaw === 'object' && (militaryCiiRaw as any).byCountry
+      ? (militaryCiiRaw as any).byCountry
+      : null,
   };
 }
 
@@ -510,6 +528,19 @@ export function computeCIIScores(
     if (!code || !data[code]) continue;
     data[code].temporalAnomalyCount++;
     if (String(an.severity || '').toLowerCase() === 'critical') data[code].temporalAnomalyCriticalCount++;
+  }
+
+  // --- Military activity (Phase 2) — per-country aggregate from intelligence:military-cii:v1 ---
+  for (const [code, m] of Object.entries(aux.militaryCii ?? {})) {
+    const d = data[code];
+    if (!d || !m || typeof m !== 'object') continue;
+    d.militaryOwnFlights = safeNum((m as any).ownFlights);
+    d.militaryForeignFlights = safeNum((m as any).foreignFlights);
+    d.militaryOwnVessels = safeNum((m as any).ownVessels);
+    d.militaryForeignVessels = safeNum((m as any).foreignVessels);
+    d.aisDisruptionHighCount = safeNum((m as any).aisDisruptionHigh);
+    d.aisDisruptionElevatedCount = safeNum((m as any).aisDisruptionElevated);
+    d.aisDisruptionLowCount = safeNum((m as any).aisDisruptionLow);
   }
 
   // --- Iran strikes with severity ---
