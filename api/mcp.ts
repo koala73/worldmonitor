@@ -122,18 +122,16 @@ export const TOOL_DESCRIPTION_MAX_BYTES = 120;
 
 // Session-level discovery instructions. Per MCP 2025-03-26 lifecycle spec,
 // servers MAY return an `instructions` string in the `initialize` result;
-// clients SHOULD surface this to the model. We carry the JMESPath grammar
-// + worked examples here (rather than duplicating ~500 bytes into every
-// tool's description) so per-tool advertisements stay terse and the LLM
-// gets the full contract once per session.
+// clients SHOULD surface this to the model. We carry the JMESPath contract
+// (grammar URL, projection guide URL, limits) and the describe_tool affordance
+// here — once per session — so per-tool advertisements stay terse. Worked
+// examples used to live inline; they now live in docs/mcp-jmespath.mdx, which
+// the LLM can fetch on demand instead of amortising ~500 bytes per session.
 const SERVER_INSTRUCTIONS = [
   'Every tool accepts an optional `jmespath` string argument. The server applies the expression server-side AFTER any per-tool filter/summary args, projecting the response before serialization. This is the single most effective way to reduce response tokens — typical 80-95% reduction when you only need a subset of fields.',
   '',
   'Grammar: https://jmespath.org/specification.html',
-  'Examples:',
-  '  data.markets.stocks[*].{s:symbol,p:price}',
-  '  data.events[?fatalities > `10`].country',
-  '  data.advisories[?level==\'warning\'][].title',
+  'Guide with 12 worked examples against real response shapes: https://www.worldmonitor.app/docs/mcp-jmespath',
   '',
   `Limits: expression ≤ ${JMESPATH_MAX_EXPR_BYTES} bytes; projected payload ≤ ${JMESPATH_MAX_OUTPUT_BYTES} bytes. Failures return {_jmespath_error, original_keys} inside the normal result envelope. Bad expressions DO consume one daily quota unit on retry — original_keys is echoed so you can self-correct in one extra call.`,
   '',

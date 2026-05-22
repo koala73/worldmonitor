@@ -182,8 +182,10 @@
             "group": "MCP & Integrations",
             "pages": [
               "agent-discovery",
+              "mcp-quickstart",
               "mcp-server",
               "mcp-tools-reference",
+              "mcp-jmespath",
               "api-oauth",
               "api-notifications"
             ]
