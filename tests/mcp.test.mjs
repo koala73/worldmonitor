@@ -175,6 +175,7 @@ describe('api/mcp.ts — PRO MCP Server', () => {
       assert.ok(!('_coverageKeys' in tool), 'Internal _coverageKeys must not be exposed in tools/list');
       assert.ok(!('_apiPaths' in tool), 'Internal _apiPaths must not be exposed in tools/list (Tier-4 parity)');
       assert.ok(!('_postFilter' in tool), 'Internal _postFilter must not be exposed in tools/list (issue #3677)');
+      assert.ok(!('_outputBudgetBytes' in tool), 'Internal _outputBudgetBytes must not be exposed in tools/list (PR-B)');
     }
     const toolNames = body.result.tools.map((t) => t.name);
     assert.ok(toolNames.includes('get_displacement_data'), 'get_displacement_data must be registered (U1 Tier 1 regression)');
@@ -567,6 +568,102 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.ok(ev.bytes_post_jmespath > 0, 'bytes_post_jmespath must reflect the projected size (> 0)');
   });
 
+  // --- Budget (PR-B: outputBudgetBytes) ---
+
+  it('budget: tools/call within budget returns normal response', async () => {
+    // Small payload well within the 128 KB cache-tool budget
+    const stocks = { quotes: [{ symbol: 'AAPL', price: 100 }] };
+    mockCacheKeys(
+      { 'market:stocks-bootstrap:v1': stocks, 'market:crypto:v1': { quotes: [] } },
+      { 'seed-meta:market:stocks': { fetchedAt: Date.now() - 60_000, recordCount: 1 } },
+    );
+    const out = await callTool('get_market_data', {});
+    assert.ok(out.data, 'normal response must contain data');
+    assert.equal(out._budget_exceeded, undefined, 'within-budget response must not contain _budget_exceeded');
+  });
+
+  it('budget: tools/call exceeding budget returns _budget_exceeded envelope', async () => {
+    // Generate a payload that exceeds the 128 KB cache-tool budget.
+    // Each quote entry is ~80 bytes; 3000 entries ≈ 240 KB in the stocks
+    // slice alone, comfortably above 128 KB after JSON serialisation.
+    // Pass limit: 0 to bypass the DEFAULT_LIST_LIMIT (30) cap.
+    const hugeQuotes = Array.from({ length: 3000 }, (_, i) => ({
+      symbol: `SYM${String(i).padStart(4, '0')}`,
+      price: i + 1,
+      change: 0.01 * i,
+      volume: 1000000 + i,
+    }));
+    mockCacheKeys(
+      { 'market:stocks-bootstrap:v1': { quotes: hugeQuotes }, 'market:crypto:v1': { quotes: [] } },
+      { 'seed-meta:market:stocks': { fetchedAt: Date.now() - 60_000, recordCount: hugeQuotes.length } },
+    );
+    const out = await callTool('get_market_data', { limit: 0 });
+    assert.equal(out._budget_exceeded, true, 'oversized response must return _budget_exceeded envelope');
+    assert.equal(typeof out.budget_bytes, 'number', 'envelope must include budget_bytes');
+    assert.equal(typeof out.actual_bytes, 'number', 'envelope must include actual_bytes');
+    assert.ok(out.actual_bytes > out.budget_bytes, 'actual_bytes must exceed budget_bytes');
+    assert.equal(typeof out.hint, 'string', 'envelope must include a hint string');
+  });
+
+  it('budget: telemetry includes budget_exceeded field', async () => {
+    process.env.MCP_TELEMETRY = 'true';
+    const captured = [];
+    const origLog = console.log;
+    console.log = (line) => captured.push(line);
+
+    // Small payload — within budget
+    mockCacheKeys(
+      { 'market:stocks-bootstrap:v1': { quotes: [{ symbol: 'AAPL', price: 100 }] }, 'market:crypto:v1': { quotes: [] } },
+      { 'seed-meta:market:stocks': { fetchedAt: Date.now() - 60_000, recordCount: 1 } },
+    );
+    const res = await handler(makeReq('POST', {
+      jsonrpc: '2.0', id: 800, method: 'tools/call',
+      params: { name: 'get_market_data', arguments: {} },
+    }));
+    console.log = origLog;
+    assert.equal(res.status, 200);
+
+    const tc = captured.filter((l) => l && typeof l === 'object' && !Array.isArray(l) && l.tag === 'mcp.toolcall');
+    assert.equal(tc.length, 1, `expected exactly one mcp.toolcall line, got ${tc.length}`);
+    assert.equal(tc[0].budget_exceeded, false, 'within-budget call must emit budget_exceeded: false');
+  });
+
+  it('budget: telemetry emits budget_exceeded=true when budget is exceeded', async () => {
+    process.env.MCP_TELEMETRY = 'true';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+    const captured = [];
+    const origLog = console.log;
+    console.log = (line) => captured.push(line);
+
+    // Large payload that exceeds the 128 KB cache-tool budget
+    const hugeQuotes = Array.from({ length: 3000 }, (_, i) => ({
+      symbol: `SYM${String(i).padStart(4, '0')}`,
+      price: i + 1,
+      change: 0.01 * i,
+      volume: 1000000 + i,
+    }));
+    mockCacheKeys(
+      { 'market:stocks-bootstrap:v1': { quotes: hugeQuotes }, 'market:crypto:v1': { quotes: [] } },
+      { 'seed-meta:market:stocks': { fetchedAt: Date.now() - 60_000, recordCount: hugeQuotes.length } },
+    );
+    const freshMod = await import(`../api/mcp.ts?t=${Date.now()}`);
+    const res = await freshMod.default(makeReq('POST', {
+      jsonrpc: '2.0', id: 801, method: 'tools/call',
+      params: { name: 'get_market_data', arguments: { limit: 0 } },
+    }));
+    console.log = origLog;
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    const out = JSON.parse(body.result.content[0].text);
+    assert.equal(out._budget_exceeded, true, 'sanity: response is the budget-exceeded envelope');
+
+    const tc = captured.filter((l) => l && typeof l === 'object' && !Array.isArray(l) && l.tag === 'mcp.toolcall');
+    assert.equal(tc.length, 1, `expected exactly one mcp.toolcall line, got ${tc.length}`);
+    assert.equal(tc[0].budget_exceeded, true, 'over-budget call must emit budget_exceeded: true');
+    assert.equal(tc[0].ok, true, 'budget-exceeded is a successful dispatch, not an error');
+  });
+
   it('get_market_data: symbols filter narrows quote arrays across asset slices', async () => {
     const stocks = { quotes: [{ symbol: 'AAPL', price: 100 }, { symbol: 'MSFT', price: 200 }] };
     const crypto = { quotes: [{ symbol: 'BTC', price: 50000 }] };
@@ -758,6 +855,176 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     );
     const out = await callTool('get_conflict_events', { limit: 0 });
     assert.equal(out.data['ucdp-events'].events.length, 50, 'limit: 0 must opt out of the default cap and return the full list');
+  });
+
+  // --- limit on country/EU/displacement tools (env-var-gated default cap) ---
+  //
+  // Five tools — get_country_macro, get_eu_housing_cycle,
+  // get_eu_quarterly_gov_debt, get_eu_industrial_production,
+  // get_displacement_data — return per-country payloads that can exceed the
+  // per-tool output budget on default args. The four IMF/Eurostat tools cap
+  // their keyed-object country maps via `capNestedMap`, gated by
+  // `MCP_LIMIT_DEFAULT_30=on` (additive-contract: env-var off → no behaviour
+  // change). `limit: 0` is the customer-facing opt-out and always returns
+  // the full payload. `get_displacement_data` has had array-based limit since
+  // v1.3.0 (#3678) — its block is unchanged; the test below pins the
+  // existing default cap and `limit: 0` opt-out so the budget gate's hot
+  // path stays covered.
+
+  function makeCountryMap(prefix, n) {
+    return Object.fromEntries(Array.from({ length: n }, (_, i) => [`${prefix}${i}`, { value: i }]));
+  }
+
+  it('limit: get_country_macro env-var off → no cap (additive contract)', async () => {
+    const macro = { countries: makeCountryMap('C', 60) };
+    const meta = {
+      'seed-meta:economic:imf-macro': { fetchedAt: Date.now() - 60_000, recordCount: 60 },
+      'seed-meta:economic:imf-growth': { fetchedAt: Date.now() - 60_000, recordCount: 0 },
+      'seed-meta:economic:imf-labor': { fetchedAt: Date.now() - 60_000, recordCount: 0 },
+      'seed-meta:economic:imf-external': { fetchedAt: Date.now() - 60_000, recordCount: 0 },
+    };
+    mockCacheKeys({ 'economic:imf:macro:v2': macro }, meta);
+    delete process.env.MCP_LIMIT_DEFAULT_30;
+    const out = await callTool('get_country_macro', {});
+    assert.equal(Object.keys(out.data.macro.countries).length, 60,
+      'env-var off → default args returns the full country map (additive contract)');
+  });
+
+  it('limit: get_country_macro env-var on → caps every IMF dataset to 30', async () => {
+    // Mock all four IMF cache keys with 60 countries each so the test
+    // actually verifies the `for (const label of ['macro','growth','labor',
+    // 'external'])` capNestedMap loop, not just the macro label.
+    const payload = { countries: makeCountryMap('C', 60) };
+    const meta = {
+      'seed-meta:economic:imf-macro': { fetchedAt: Date.now() - 60_000, recordCount: 60 },
+      'seed-meta:economic:imf-growth': { fetchedAt: Date.now() - 60_000, recordCount: 60 },
+      'seed-meta:economic:imf-labor': { fetchedAt: Date.now() - 60_000, recordCount: 60 },
+      'seed-meta:economic:imf-external': { fetchedAt: Date.now() - 60_000, recordCount: 60 },
+    };
+    mockCacheKeys({
+      'economic:imf:macro:v2': payload,
+      'economic:imf:growth:v1': payload,
+      'economic:imf:labor:v1': payload,
+      'economic:imf:external:v1': payload,
+    }, meta);
+    process.env.MCP_LIMIT_DEFAULT_30 = 'on';
+    const out = await callTool('get_country_macro', {});
+    for (const label of ['macro', 'growth', 'labor', 'external']) {
+      assert.equal(Object.keys(out.data[label].countries).length, 30,
+        `env-var on → ${label}.countries capped to DEFAULT_LIST_LIMIT (30)`);
+    }
+  });
+
+  it('limit: get_country_macro countries+limit → countries filter wins, limit ignored', async () => {
+    // Design choice pinned: when countries[] is provided, the early-return
+    // path takes effect and `limit` is silently a no-op. Schema description
+    // says "when no countries filter is supplied" — this regression test
+    // pins that contract so a future "should limit further-narrow a
+    // countries result" rewrite trips the test instead of breaking callers.
+    const payload = { countries: makeCountryMap('C', 60) };
+    const meta = {
+      'seed-meta:economic:imf-macro': { fetchedAt: Date.now() - 60_000, recordCount: 60 },
+      'seed-meta:economic:imf-growth': { fetchedAt: Date.now() - 60_000, recordCount: 0 },
+      'seed-meta:economic:imf-labor': { fetchedAt: Date.now() - 60_000, recordCount: 0 },
+      'seed-meta:economic:imf-external': { fetchedAt: Date.now() - 60_000, recordCount: 0 },
+    };
+    mockCacheKeys({ 'economic:imf:macro:v2': payload }, meta);
+    process.env.MCP_LIMIT_DEFAULT_30 = 'on';
+    const out = await callTool('get_country_macro', { countries: ['C0', 'C1', 'C2', 'C3', 'C4'], limit: 1 });
+    assert.equal(Object.keys(out.data.macro.countries).length, 5,
+      'countries filter takes precedence; limit is ignored when countries is supplied');
+  });
+
+  it('limit: get_country_macro limit:0 → full payload regardless of env-var', async () => {
+    const macro = { countries: makeCountryMap('C', 60) };
+    const meta = {
+      'seed-meta:economic:imf-macro': { fetchedAt: Date.now() - 60_000, recordCount: 60 },
+      'seed-meta:economic:imf-growth': { fetchedAt: Date.now() - 60_000, recordCount: 0 },
+      'seed-meta:economic:imf-labor': { fetchedAt: Date.now() - 60_000, recordCount: 0 },
+      'seed-meta:economic:imf-external': { fetchedAt: Date.now() - 60_000, recordCount: 0 },
+    };
+    mockCacheKeys({ 'economic:imf:macro:v2': macro }, meta);
+    process.env.MCP_LIMIT_DEFAULT_30 = 'on';
+    const out = await callTool('get_country_macro', { limit: 0 });
+    assert.equal(Object.keys(out.data.macro.countries).length, 60,
+      'limit: 0 is the customer-facing opt-out — full payload even with env-var on');
+  });
+
+  it('limit: get_eu_housing_cycle env-var off → no cap, env-var on → cap to 30, limit:0 → full', async () => {
+    const hp = { countries: makeCountryMap('EU', 40) };
+    const meta = { 'seed-meta:economic:eurostat-house-prices': { fetchedAt: Date.now() - 60_000, recordCount: 40 } };
+
+    mockCacheKeys({ 'economic:eurostat:house-prices:v1': hp }, meta);
+    delete process.env.MCP_LIMIT_DEFAULT_30;
+    const off = await callTool('get_eu_housing_cycle', {});
+    assert.equal(Object.keys(off.data['house-prices'].countries).length, 40, 'env-var off → no cap');
+
+    mockCacheKeys({ 'economic:eurostat:house-prices:v1': hp }, meta);
+    process.env.MCP_LIMIT_DEFAULT_30 = 'on';
+    const on = await callTool('get_eu_housing_cycle', {});
+    assert.equal(Object.keys(on.data['house-prices'].countries).length, 30, 'env-var on → cap to 30');
+
+    mockCacheKeys({ 'economic:eurostat:house-prices:v1': hp }, meta);
+    const optOut = await callTool('get_eu_housing_cycle', { limit: 0 });
+    assert.equal(Object.keys(optOut.data['house-prices'].countries).length, 40, 'limit: 0 → full payload');
+  });
+
+  it('limit: get_eu_quarterly_gov_debt env-var off → no cap, env-var on → cap to 30, limit:0 → full', async () => {
+    const gd = { countries: makeCountryMap('EU', 40) };
+    const meta = { 'seed-meta:economic:eurostat-gov-debt-q': { fetchedAt: Date.now() - 60_000, recordCount: 40 } };
+
+    mockCacheKeys({ 'economic:eurostat:gov-debt-q:v1': gd }, meta);
+    delete process.env.MCP_LIMIT_DEFAULT_30;
+    const off = await callTool('get_eu_quarterly_gov_debt', {});
+    assert.equal(Object.keys(off.data['gov-debt-q'].countries).length, 40, 'env-var off → no cap');
+
+    mockCacheKeys({ 'economic:eurostat:gov-debt-q:v1': gd }, meta);
+    process.env.MCP_LIMIT_DEFAULT_30 = 'on';
+    const on = await callTool('get_eu_quarterly_gov_debt', {});
+    assert.equal(Object.keys(on.data['gov-debt-q'].countries).length, 30, 'env-var on → cap to 30');
+
+    mockCacheKeys({ 'economic:eurostat:gov-debt-q:v1': gd }, meta);
+    const optOut = await callTool('get_eu_quarterly_gov_debt', { limit: 0 });
+    assert.equal(Object.keys(optOut.data['gov-debt-q'].countries).length, 40, 'limit: 0 → full payload');
+  });
+
+  it('limit: get_eu_industrial_production env-var off → no cap, env-var on → cap to 30, limit:0 → full', async () => {
+    const ip = { countries: makeCountryMap('EU', 40) };
+    const meta = { 'seed-meta:economic:eurostat-industrial-production': { fetchedAt: Date.now() - 60_000, recordCount: 40 } };
+
+    mockCacheKeys({ 'economic:eurostat:industrial-production:v1': ip }, meta);
+    delete process.env.MCP_LIMIT_DEFAULT_30;
+    const off = await callTool('get_eu_industrial_production', {});
+    assert.equal(Object.keys(off.data['industrial-production'].countries).length, 40, 'env-var off → no cap');
+
+    mockCacheKeys({ 'economic:eurostat:industrial-production:v1': ip }, meta);
+    process.env.MCP_LIMIT_DEFAULT_30 = 'on';
+    const on = await callTool('get_eu_industrial_production', {});
+    assert.equal(Object.keys(on.data['industrial-production'].countries).length, 30, 'env-var on → cap to 30');
+
+    mockCacheKeys({ 'economic:eurostat:industrial-production:v1': ip }, meta);
+    const optOut = await callTool('get_eu_industrial_production', { limit: 0 });
+    assert.equal(Object.keys(optOut.data['industrial-production'].countries).length, 40, 'limit: 0 → full payload');
+  });
+
+  it('limit: get_displacement_data default args → ≤30 items, limit:0 → full payload', async () => {
+    const currentYear = new Date().getUTCFullYear();
+    const summary = {
+      countries: Array.from({ length: 60 }, (_, i) => ({ iso3: `C${i}`, refugees: i, idps: i })),
+      topFlows: Array.from({ length: 60 }, (_, i) => ({ originCode: `O${i}`, asylumCode: `A${i}`, count: i })),
+    };
+    const dataKey = `displacement:summary:v1:${currentYear}`;
+    const meta = { 'seed-meta:displacement:summary': { fetchedAt: Date.now() - 60_000, recordCount: 60 } };
+
+    mockCacheKeys({ [dataKey]: summary }, meta);
+    const def = await callTool('get_displacement_data', {});
+    assert.equal(def.data.summary.countries.length, 30, 'default args → countries capped to 30');
+    assert.equal(def.data.summary.topFlows.length, 30, 'default args → topFlows capped to 30');
+
+    mockCacheKeys({ [dataKey]: summary }, meta);
+    const full = await callTool('get_displacement_data', { limit: 0 });
+    assert.equal(full.data.summary.countries.length, 60, 'limit: 0 → full countries array');
+    assert.equal(full.data.summary.topFlows.length, 60, 'limit: 0 → full topFlows array');
   });
 
   it('summary mode: collapses arrays to {count, sample} and large entity maps to {count, sample_keys}', async () => {

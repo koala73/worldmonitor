@@ -114,6 +114,13 @@ export const JMESPATH_MAX_EXPR_BYTES = 1024;
 export const JMESPATH_MAX_OUTPUT_BYTES = 256 * 1024;
 export type JmespathFailKind = 'expression_too_long' | 'projection_too_large' | 'invalid_expression';
 
+// Per-tool output budget (PR-B). When serialised tool output exceeds the
+// tool's budget AFTER _postFilter + summary + JMESPath, the server returns
+// a `_budget_exceeded` envelope instead of the oversized payload.
+export const DEFAULT_OUTPUT_BUDGET_BYTES = 256 * 1024;
+const CACHE_OUTPUT_BUDGET_BYTES = 128 * 1024;
+const LLM_OUTPUT_BUDGET_BYTES = 64 * 1024;
+
 // tools/list tool-description compression cap (v1.5.0). Defined here
 // rather than near `compressDescription` so SERVER_INSTRUCTIONS can
 // quote it without a temporal-dead-zone error. The compressDescription
@@ -250,6 +257,7 @@ interface BaseToolDef {
   name: string;
   description: string;
   inputSchema: { type: string; properties: Record<string, unknown>; required: string[] };
+  _outputBudgetBytes?: number;
 }
 
 interface FreshnessCheck {
@@ -589,6 +597,24 @@ function pickNestedMap(data: Record<string, unknown>, label: string, child: stri
   const node = data[label];
   if (node && typeof node === 'object' && !Array.isArray(node)) {
     (node as Record<string, unknown>)[child] = pickMapKeys((node as Record<string, unknown>)[child], codes);
+  }
+}
+
+// In-place: cap an entity-keyed map at data[label][child] to its first `n` keys
+// in insertion order. The keyed-object analogue of `capNested` (which slices
+// arrays). `n` null or ≤ 0 → no-op, so callers can pass the customer-facing
+// `limit: 0` opt-out value through unchanged.
+function capNestedMap(data: Record<string, unknown>, label: string, child: string, n: number | null): void {
+  if (n == null || n <= 0) return;
+  const parent = data[label];
+  if (parent && typeof parent === 'object' && !Array.isArray(parent)) {
+    const map = (parent as Record<string, unknown>)[child];
+    if (map && typeof map === 'object' && !Array.isArray(map)) {
+      const entries = Object.entries(map as Record<string, unknown>);
+      if (entries.length > n) {
+        (parent as Record<string, unknown>)[child] = Object.fromEntries(entries.slice(0, n));
+      }
+    }
   }
 }
 
@@ -1145,6 +1171,7 @@ const TOOL_REGISTRY: ToolDef[] = [
           items: { type: 'string' },
           description: 'ISO 3166-1 alpha-2 country codes to keep across all four IMF datasets (e.g. ["US","DE","CN"]). Omit for all ~210 countries.',
         },
+        limit: { type: 'integer', minimum: 0, description: 'Cap each IMF dataset country map to at most this many entries when no countries filter is supplied (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
@@ -1152,7 +1179,11 @@ const TOOL_REGISTRY: ToolDef[] = [
       const codes = argStrList(params.countries);
       if (codes.length > 0) {
         for (const label of ['macro', 'growth', 'labor', 'external']) pickNestedMap(data, label, 'countries', codes);
+        return data;
       }
+      const defaultLimit = process.env.MCP_LIMIT_DEFAULT_30 === 'on' ? DEFAULT_LIST_LIMIT : 0;
+      const limit = argNum(params.limit) ?? defaultLimit;
+      for (const label of ['macro', 'growth', 'labor', 'external']) capNestedMap(data, label, 'countries', limit);
       return data;
     },
     _cacheKeys: [
@@ -1182,11 +1213,18 @@ const TOOL_REGISTRY: ToolDef[] = [
           items: { type: 'string' },
           description: 'Eurostat geo codes to keep — ISO 3166-1 alpha-2, but "EL" for Greece, plus aggregates "EA20" and "EU27_2020". Omit for all.',
         },
+        limit: { type: 'integer', minimum: 0, description: 'Cap the country map to at most this many entries when no countries filter is supplied (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
     _postFilter: (data, params) => {
-      pickNestedMap(data, 'house-prices', 'countries', argStrList(params.countries));
+      const codes = argStrList(params.countries);
+      if (codes.length > 0) {
+        pickNestedMap(data, 'house-prices', 'countries', codes);
+        return data;
+      }
+      const defaultLimit = process.env.MCP_LIMIT_DEFAULT_30 === 'on' ? DEFAULT_LIST_LIMIT : 0;
+      capNestedMap(data, 'house-prices', 'countries', argNum(params.limit) ?? defaultLimit);
       return data;
     },
     _cacheKeys: ['economic:eurostat:house-prices:v1'],
@@ -1205,11 +1243,18 @@ const TOOL_REGISTRY: ToolDef[] = [
           items: { type: 'string' },
           description: 'Eurostat geo codes to keep — ISO 3166-1 alpha-2, but "EL" for Greece, plus aggregates "EA20" and "EU27_2020". Omit for all.',
         },
+        limit: { type: 'integer', minimum: 0, description: 'Cap the country map to at most this many entries when no countries filter is supplied (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
     _postFilter: (data, params) => {
-      pickNestedMap(data, 'gov-debt-q', 'countries', argStrList(params.countries));
+      const codes = argStrList(params.countries);
+      if (codes.length > 0) {
+        pickNestedMap(data, 'gov-debt-q', 'countries', codes);
+        return data;
+      }
+      const defaultLimit = process.env.MCP_LIMIT_DEFAULT_30 === 'on' ? DEFAULT_LIST_LIMIT : 0;
+      capNestedMap(data, 'gov-debt-q', 'countries', argNum(params.limit) ?? defaultLimit);
       return data;
     },
     _cacheKeys: ['economic:eurostat:gov-debt-q:v1'],
@@ -1228,11 +1273,18 @@ const TOOL_REGISTRY: ToolDef[] = [
           items: { type: 'string' },
           description: 'Eurostat geo codes to keep — ISO 3166-1 alpha-2, but "EL" for Greece, plus aggregates "EA20" and "EU27_2020". Omit for all.',
         },
+        limit: { type: 'integer', minimum: 0, description: 'Cap the country map to at most this many entries when no countries filter is supplied (default 30, pass 0 for no cap).' },
       },
       required: [],
     },
     _postFilter: (data, params) => {
-      pickNestedMap(data, 'industrial-production', 'countries', argStrList(params.countries));
+      const codes = argStrList(params.countries);
+      if (codes.length > 0) {
+        pickNestedMap(data, 'industrial-production', 'countries', codes);
+        return data;
+      }
+      const defaultLimit = process.env.MCP_LIMIT_DEFAULT_30 === 'on' ? DEFAULT_LIST_LIMIT : 0;
+      capNestedMap(data, 'industrial-production', 'countries', argNum(params.limit) ?? defaultLimit);
       return data;
     },
     _cacheKeys: ['economic:eurostat:industrial-production:v1'],
@@ -2553,6 +2605,19 @@ const TOOL_REGISTRY: ToolDef[] = [
   },
 ];
 
+// Per-category output budgets (PR-B). Applied post-hoc to keep the registry
+// literal clean — repeating the constant inline 32× adds noise without value.
+// dispatchToolsCall reads `tool._outputBudgetBytes ?? DEFAULT_OUTPUT_BUDGET_BYTES`.
+for (const t of TOOL_REGISTRY) {
+  if (t._cacheKeys) t._outputBudgetBytes = CACHE_OUTPUT_BUDGET_BYTES;
+}
+for (const name of ['analyze_situation', 'generate_forecasts', 'get_world_brief', 'get_country_brief']) {
+  const t = TOOL_REGISTRY.find((r) => r.name === name);
+  if (!t) throw new Error(`[mcp] budget-assignment: tool '${name}' not found in TOOL_REGISTRY`);
+  t._outputBudgetBytes = LLM_OUTPUT_BUDGET_BYTES;
+}
+{ const dt = TOOL_REGISTRY.find((t) => t.name === 'describe_tool'); if (!dt) throw new Error("[mcp] budget-assignment: 'describe_tool' not found in TOOL_REGISTRY"); dt._outputBudgetBytes = 8 * 1024; }
+
 // Public shape for tools/list — strips internal _-prefixed fields, adds MCP
 // annotations, and injects the universal `summary` flag (issue #3678) into
 // every cache tool's advertised schema. Cache tools are uniformly summarisable;
@@ -2724,6 +2789,7 @@ export const MCP_TOOLCALL_TELEMETRY_KEYS = Object.freeze([
   'jmespath_failed',
   'ok',
   'error_kind',
+  'budget_exceeded',
 ] as const);
 
 export const MCP_TOOLS_LIST_TELEMETRY_KEYS = Object.freeze([
@@ -3232,13 +3298,13 @@ async function dispatchToolsCall(
     // size.
     const { text, failed } = applyJmespath(result, jmespathArg);
     const latencyMs = Date.now() - tStart;
-    // Outer `telemetryEnabled()` here is a perf gate: it skips the
-    // utf8ByteLength + (when JMESPath is active) JSON.stringify(result) walk
-    // when telemetry is off. `emitTelemetry` re-checks internally as the
-    // single safety gate for the initialize + error call sites, which don't
-    // have outer gating because their byte fields are zero or precomputed.
+    // Budget gate: always compute byte length for the budget check. This
+    // replaces the previous telemetry-only perf gate for the post-JMESPath
+    // measurement — budget enforcement requires the walk unconditionally.
+    const textBytes = utf8ByteLength(text);
+    const budget = tool._outputBudgetBytes ?? DEFAULT_OUTPUT_BUDGET_BYTES;
+    const budgetExceeded = textBytes > budget;
     if (telemetryEnabled()) {
-      const bytesPost = utf8ByteLength(text);
       let bytesPre: number;
       if (jmespathUsed) {
         // Telemetry stringify must never escape into the outer catch — a
@@ -3253,7 +3319,7 @@ async function dispatchToolsCall(
           bytesPre = -1;
         }
       } else {
-        bytesPre = bytesPost;
+        bytesPre = textBytes;
       }
       emitTelemetry('mcp.toolcall', {
         tool: tool.name,
@@ -3261,11 +3327,26 @@ async function dispatchToolsCall(
         user_id: principalIdForLog(context),
         latency_ms: latencyMs,
         bytes_pre_jmespath: bytesPre,
-        bytes_post_jmespath: bytesPost,
+        bytes_post_jmespath: textBytes,
         jmespath_used: jmespathUsed,
         jmespath_failed: failed ?? null,
         ok: true,
+        budget_exceeded: budgetExceeded,
       });
+    }
+    if (budgetExceeded) {
+      // Rollback Pro quota — the user received no usable data, so the
+      // daily slot should not be consumed (mirrors the catch-block rollback).
+      if (proRollback) await proRollback();
+      const hint = jmespathUsed
+        ? 'Response still exceeds tool output budget after JMESPath projection. Use a more selective expression to project fewer fields, or apply tool-level filters to narrow the result set.'
+        : 'Response exceeds tool output budget. Use the jmespath argument to project only the fields you need, or apply filters to narrow the result set.';
+      return rpcOk(id, { content: [{ type: 'text', text: JSON.stringify({
+        _budget_exceeded: true,
+        budget_bytes: budget,
+        actual_bytes: textBytes,
+        hint,
+      }) }] }, corsHeaders);
     }
     return rpcOk(id, { content: [{ type: 'text', text }] }, corsHeaders);
   } catch (err: unknown) {
@@ -3304,6 +3385,7 @@ async function dispatchToolsCall(
       jmespath_failed: null,
       ok: false,
       error_kind: isClient4xx ? 'client_4xx' : 'server_error',
+      budget_exceeded: false,
     });
     return rpcError(id, -32603, 'Internal error: data fetch failed');
   }
