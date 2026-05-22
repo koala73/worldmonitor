@@ -95,7 +95,7 @@ The 8 families the server CII does not currently *score*, and what each needs:
 | Signal | Frontend ingest | Server source today | Work |
 |---|---|---|---|
 | Aviation disruptions | `ingestAviationForCII` | `aviation:delays:intl:v3` (Redis) ✅ | Plumb into `AuxiliarySources` |
-| AIS disruptions | `ingestAisDisruptionsForCII` | `get-vessel-snapshot.ts` emits `AisDisruption` (live relay HTTP, **not** a Redis key) ⚠️ | Plumb + **geo→country** (`AisDisruption` has `{lat,lon}`+free-text `region`, no `countryCode`) |
+| AIS disruptions | `ingestAisDisruptionsForCII` | `get-vessel-snapshot.ts` emits `AisDisruption` (live relay HTTP, **not** a Redis key) ⚠️ | **Phase 2** — cached to a Redis key by Phase 2's scheduled relay job, then plumbed + **geo→country** |
 | Earthquakes | `ingestEarthquakesForCII` | `seismology:earthquakes:v1` (Redis) ✅ | Plumb + geo→country |
 | Sanctions | `ingestSanctionsForCII` | `sanctions/v1/list-sanctions-pressure.ts` (per-country) ✅ | Plumb |
 | Temporal anomalies | `ingestTemporalAnomaliesForCII` | server-detected (`TemporalAnomalyProto`, `temporal-baseline.ts consumeServerAnomalies()`) ✅ | Plumb |
@@ -142,15 +142,21 @@ each test ships inside an earlier phase's PR (noted per test).
 - No engine change. Safe given the Scope-boundary commitment above.
 
 ### Phase 1 — Server acquires the cheap signals
-- `AuxiliarySources` + `fetchAuxiliarySources()`: add aviation, AIS disruptions (with
-  geo→country), earthquakes (with geo→country), sanctions, temporal anomalies.
-- `CountrySignals` + `emptySignals()`: add the count fields, mirroring `CountryData`
-  (`aisDisruptionHighCount`, `earthquakeSignificantCount`, `sanctionsEntryCount`,
-  `temporalAnomalyCount`, …).
+- `AuxiliarySources` + `fetchAuxiliarySources()`: add aviation (`aviation:delays:intl:v3`),
+  earthquakes (`seismology:earthquakes:v1`, with geo→country), sanctions
+  (`sanctions:pressure:v1`), temporal anomalies (`temporal:anomalies:v1`). All four are
+  backed by an existing Redis key.
+- `CountrySignals` + `emptySignals()`: add the count fields
+  (`aviation{Closure,Severe,Major,Moderate}Count`, `earthquake{Significant,Major,Severe}Count`,
+  `sanctions{Entry,NewEntry}Count`, `temporalAnomaly{,Critical}Count`).
 - Wire each into the per-country accumulation loop. **No scoring change** — signals
   gathered but unused. Additive and safe.
+- **AIS disruptions moved to Phase 2.** Unlike the four above, AIS disruptions have no Redis
+  key — `get-vessel-snapshot.ts` fetches them from the Railway relay per request. Adding a
+  live relay HTTP call into the 600 s scoring path is the anti-pattern the feasibility
+  review flagged; instead AIS rides on the scheduled relay job Phase 2 already stands up.
 
-### Phase 2 — Server military flights + vessels
+### Phase 2 — Server military flights, vessels + AIS disruptions
 - Per-country aggregation of `military:flights:v1` (already operator-classified) — add
   location-code attribution for foreign presence.
 - New server-side military **vessel** classifier: port `MILITARY_VESSEL_PATTERNS` /
@@ -167,6 +173,12 @@ each test ships inside an earlier phase's PR (noted per test).
 - **Decision:** aggregation runs as a scheduled server job writing the Redis key (not a
   relay extension) — keeps `get-risk-scores.ts` reading Redis uniformly, matches the 600 s
   cadence, and avoids coupling scoring to relay request latency.
+- **AIS disruptions (moved from Phase 1).** AIS disruptions have no Redis key —
+  `get-vessel-snapshot.ts` fetches them from the relay per request. The same scheduled job
+  caches them to a Redis key with geo→country attribution (`AisDisruption` carries
+  `{lat,lon}` + a free-text `region`, no `countryCode`), so `fetchAuxiliarySources()` reads
+  them uniformly like the Phase 1 signals — no live relay call in the scoring path. Add
+  `aisDisruption{High,Elevated,Low}Count` to `CountrySignals`.
 - **Attribution caveat:** the server's `geoToCountry` (`get-risk-scores.ts:154`) is a
   bounding-box scan; the frontend uses polygon containment. For straits/borders (Hormuz,
   Taiwan Strait, Black Sea — the high-signal cases) bbox will mis-attribute. Either port
