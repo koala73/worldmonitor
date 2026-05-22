@@ -5,7 +5,11 @@ import { getAcledToken } from './shared/acled-oauth.mjs';
 
 loadEnvFile(import.meta.url);
 
-const GDELT_GKG_URL = 'https://api.gdeltproject.org/api/v1/gkg_geojson';
+// GKG v2 (api.v2) is the current stable API.
+// - query must be UPPERCASE (v1 accepted lowercase)
+// - sourcecountry=WORLD is required for global coverage (v1 defaulted to US only without it)
+// - format=json is required
+const GDELT_GKG_URL = 'https://api.gdeltproject.org/api/v2/gkg_geojson';
 const ACLED_API_URL = 'https://acleddata.com/api/acled/read';
 const CANONICAL_KEY = 'unrest:events:v1';
 const CACHE_TTL = 16200; // 4.5h — 6x the 45 min cron interval (was 1.3x)
@@ -252,7 +256,9 @@ export async function fetchGdeltViaProxy(url, proxyAuth, opts = {}) {
 export async function fetchGdeltEvents(opts = {}) {
   const { _resolveProxyForConnect = resolveProxyForConnect, ..._proxyOpts } = opts;
   const params = new URLSearchParams({
-    query: 'protest OR riot OR demonstration OR strike',
+    query: 'PROTEST OR RIOT OR DEMONSTRATION OR STRIKE',
+    sourcecountry: 'WORLD',
+    format: 'json',
     maxrows: '2500',
   });
   const url = `${GDELT_GKG_URL}?${params}`;
