@@ -138,6 +138,42 @@ assumption.
   server-reproducible inputs. N5 confirms the hotspot subsystem deletes cleanly.
 - **N3 cold-cache** — the one open decision; product/UX call; gates Phase 4.
 - **V1 military vessels** — blocked on deployment data.
-- Phase 3b is now unblocked and mechanical: implement each accepted winner, bump
-  `RISK_CACHE_KEY` (`v2→v3`) with the N2 proto rename, land the Guardrails
-  equality/level tests.
+- Phase 3b implementation status is recorded below.
+
+## Phase 3b — implementation status (2026-05-22)
+
+Commits `94b7afa54` (C3) and `42e739f33` (blend + L1). 91 tests pass; typecheck clean.
+
+**Implemented & verified:**
+- **C3** — server `security` component is the full 4-input formula (flights + vessels +
+  aviation + GPS). The substantive #3738 fix.
+- **D2 / D5 / D6** — newsUrgency / earthquake / sanctions boosts ported verbatim into the blend.
+- **D4** — supplemental: AIS + temporal ported exactly.
+- **L1** — `getScoreLevel` cutoffs reconciled (81 / 66 / 51 / 31).
+- **C4 / D9 / D10 / N1** — no code change; the server already matched the decision.
+
+**Deferred — the accepted decision needs a server signal that does not exist yet:**
+- **C1 `severityBoost`** — the server has no high-severity-protest signal distinct from
+  fatalities; `unrestFatalityBoost` (driven by `protestFatalities`) already captures protest
+  severity. Server unrest already equals the C1 hybrid *minus* `severityBoost`.
+- **C2 `hapiFallback` + `newsFloor`** — hapiFallback needs the per-ISO3
+  `conflict:humanitarian:v1` keys plumbed; newsFloor needs per-event threat-category +
+  source-tier data `threatSummaryByCountry` does not carry. Conflict already matches A's
+  primary ACLED path — the fallbacks are a robustness follow-up.
+- **D7 / D8** — cyber + fire stay total-based; A's severity-weighted versions need
+  severity-split cyber/fire ingestion (a Phase-1-style plumbing follow-up).
+- **D11** — advisory source-count bonus; `intelligence:advisories:v1` carries only the
+  level. Server `advisoryBoost` is A's formula minus the source-count bonus.
+
+**Deferred — Phase 4:**
+- **S1** — `CURATED_COUNTRIES` AF/LB/EG/JP/QA/KR. The server is already authoritative for
+  the API. Those fields are read only by the frontend engine, which Phase 4 deletes — the
+  reconciliation happens by deletion, not by editing the table now.
+- **N2** proto rename — the Phase 3b formula changes do not alter the `CiiScore` proto
+  *shape*, so no `RISK_CACHE_KEY` bump is required. The rename is cosmetic; it rides a
+  future bump.
+
+**Net:** the substantive reconciliation is done — the server CII now scores security,
+earthquakes, sanctions, temporal anomalies, and AIS, with reconciled level banding. Every
+deferral is a "needs a new server signal" follow-up, documented above; none block the
+unified engine from being correct on the signals it already has.
