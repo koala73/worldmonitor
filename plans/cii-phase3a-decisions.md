@@ -147,23 +147,33 @@ Commits `94b7afa54` (C3) and `42e739f33` (blend + L1). 91 tests pass; typecheck 
 **Implemented & verified:**
 - **C3** — server `security` component is the full 4-input formula (flights + vessels +
   aviation + GPS). The substantive #3738 fix.
+- **C1 `severityBoost`** — implemented. The server counts `highSeverityUnrest` in the ACLED
+  loop and applies `min(20, count·10·mult)`.
 - **D2 / D5 / D6** — newsUrgency / earthquake / sanctions boosts ported verbatim into the blend.
-- **D4** — supplemental: AIS + temporal ported exactly.
+- **D4 / D7 / D8** — supplemental fully ported: AIS + temporal as their own blend terms,
+  cyber + fire severity-weighted (`cyberBoost` = crit·3+high·1.8+med·0.9; `fireBoost`
+  = highFire·1.5 + min(20,total)·0.25). Not a partial port.
 - **L1** — `getScoreLevel` cutoffs reconciled (81 / 66 / 51 / 31).
+
+> **Correction.** C1, D7 and D8 were initially listed as deferred "missing server signal"
+> items. That was wrong — and worth recording. Protest *severity*, cyber *severity*, and
+> fire *brightness* are not feed signals; they are fields the cached objects already carry
+> (`classifySeverity` derives protest severity from fatalities+type; cyber threats carry
+> `severity`; fire detections carry `brightness`/`frp`). The server's CII *ingestion* was
+> simply discarding those fields (`cyberCount++`, `fireCount++`). The lesson: check what
+> the cached data carries, not what the current ingestion code reads. All three are now
+> implemented.
 - **C4 / D9 / D10 / N1** — no code change; the server already matched the decision.
 
 **Deferred — the accepted decision needs a server signal that does not exist yet:**
-- **C1 `severityBoost`** — the server has no high-severity-protest signal distinct from
-  fatalities; `unrestFatalityBoost` (driven by `protestFatalities`) already captures protest
-  severity. Server unrest already equals the C1 hybrid *minus* `severityBoost`.
 - **C2 `hapiFallback` + `newsFloor`** — hapiFallback needs the per-ISO3
   `conflict:humanitarian:v1` keys plumbed; newsFloor needs per-event threat-category +
   source-tier data `threatSummaryByCountry` does not carry. Conflict already matches A's
   primary ACLED path — the fallbacks are a robustness follow-up.
-- **D7 / D8** — cyber + fire stay total-based; A's severity-weighted versions need
-  severity-split cyber/fire ingestion (a Phase-1-style plumbing follow-up).
-- **D11** — advisory source-count bonus; `intelligence:advisories:v1` carries only the
-  level. Server `advisoryBoost` is A's formula minus the source-count bonus.
+- **D11** — advisory source-count bonus. Verified genuine: `intelligence:advisories:v1`
+  exposes only `byCountry: {code → level}` — the individual advisories and their sources
+  are collapsed away in the cache. The bonus needs the advisory seed extended to emit
+  per-country source counts. Server `advisoryBoost` is A's formula minus that bonus.
 
 **Deferred — Phase 4:**
 - **S1** — `CURATED_COUNTRIES` AF/LB/EG/JP/QA/KR. The server is already authoritative for

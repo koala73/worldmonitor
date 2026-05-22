@@ -66,6 +66,16 @@ describe('CII signal wiring', () => {
       'earthquake / sanctions / temporal now feed earthquakeBoost / sanctionsBoost / temporalBoost');
   });
 
+  it('Phase 3b D7/D8: cyber severity + high-brightness fires raise the score', () => {
+    const base = scoreFor(computeCIIScores([], emptyAux()), 'US');
+    const aux = emptyAux();
+    aux.cyber = [{ country: 'US', severity: 'critical' }, { country: 'US', severity: 'high' }];
+    aux.fires = [{ lat: 39, lon: -98, brightness: 400, frp: 60 }];
+    const us = scoreFor(computeCIIScores([], aux), 'US');
+    assert.ok(us!.combinedScore > base!.combinedScore,
+      'critical/high cyber feed the severity-weighted cyberBoost; a bright fire feeds fireBoost');
+  });
+
   it('Phase 3b D6: sanctions duplicate-ISO2 rows accumulate across the tier boundary', () => {
     const aux = emptyAux();
     aux.sanctionsCountries = [
@@ -93,6 +103,15 @@ describe('CII signal wiring', () => {
     // flightScore = min(50, 5·3=15) = 15; aviationScore (one closure) = 20; vessels/GPS = 0
     assert.equal(us!.components!.militaryActivity, 35,
       'security = flightScore(15) + aviationScore(20), no GPS');
+  });
+
+  it('Phase 3b C1: a riot adds severityBoost vs a plain protest', () => {
+    // Same unrest count (1 event), 0 fatalities, 0 outages in both — the only difference
+    // is the riot classifies as high-severity → severityBoost. Isolates C1.
+    const protest = scoreFor(computeCIIScores([acledEvent('Russia', 'Protests', 0)], emptyAux()), 'RU');
+    const riot = scoreFor(computeCIIScores([acledEvent('Russia', 'Riots', 0)], emptyAux()), 'RU');
+    assert.ok(riot!.components!.ciiContribution > protest!.components!.ciiContribution,
+      'a riot is high-severity unrest and adds severityBoost; a plain protest does not');
   });
 
   it('C3: foreign military presence is weighted x2', () => {

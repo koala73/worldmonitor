@@ -183,8 +183,11 @@ interface CountrySignals {
   outageMajorCount: number;
   outagePartialCount: number;
   climateSeverity: number;
-  cyberCount: number;
+  cyberCriticalCount: number;
+  cyberHighCount: number;
+  cyberMediumCount: number;
   fireCount: number;
+  fireHighCount: number;
   gpsHighCount: number;
   gpsMediumCount: number;
   iranStrikes: number;
@@ -195,6 +198,9 @@ interface CountrySignals {
   totalDisplaced: number;
   newsScore: number;
   threatSummaryScore: number;
+  // High-severity unrest event count (Phase 3b / C1) — a "high-severity" unrest event is
+  // one that killed someone OR is a riot, matching seed-unrest-events.mjs classifySeverity.
+  highSeverityUnrest: number;
   // Phase 1 (CII unification, plans/unify-cii-single-source.md) — gathered, not yet scored.
   aviationClosureCount: number;
   aviationSevereCount: number;
@@ -223,7 +229,9 @@ function emptySignals(): CountrySignals {
     fatalities: 0, protestFatalities: 0, conflictFatalities: 0,
     ucdpWar: false, ucdpMinor: false,
     outageTotalCount: 0, outageMajorCount: 0, outagePartialCount: 0,
-    climateSeverity: 0, cyberCount: 0, fireCount: 0,
+    climateSeverity: 0,
+    cyberCriticalCount: 0, cyberHighCount: 0, cyberMediumCount: 0,
+    fireCount: 0, fireHighCount: 0,
     gpsHighCount: 0, gpsMediumCount: 0,
     iranStrikes: 0, highSeverityStrikes: 0,
     orefAlertCount: 0, orefHistoryCount24h: 0,
@@ -231,6 +239,7 @@ function emptySignals(): CountrySignals {
     totalDisplaced: 0,
     newsScore: 0,
     threatSummaryScore: 0,
+    highSeverityUnrest: 0,
     aviationClosureCount: 0, aviationSevereCount: 0, aviationMajorCount: 0, aviationModerateCount: 0,
     earthquakeSignificantCount: 0, earthquakeMajorCount: 0, earthquakeSevereCount: 0,
     sanctionsEntryCount: 0, sanctionsNewEntryCount: 0,
@@ -418,9 +427,13 @@ export function computeCIIScores(
     if (type.includes('protest')) {
       data[code].protests += weight;
       data[code].protestFatalities += fat;
+      // High-severity = the event killed someone (classifySeverity rule).
+      if (safeNum(ev.fatalities) > 0) data[code].highSeverityUnrest += weight;
     } else if (type.includes('riot')) {
       data[code].riots += weight;
       data[code].protestFatalities += fat;
+      // A riot is always high-severity (classifySeverity rule).
+      data[code].highSeverityUnrest += weight;
     } else if (type.includes('battle')) {
       data[code].battles += weight;
       data[code].conflictFatalities += fat;
@@ -466,7 +479,12 @@ export function computeCIIScores(
   // --- Cyber ---
   for (const t of aux.cyber) {
     const code = (t.country || '').toUpperCase();
-    if (data[code]) data[code].cyberCount++;
+    if (!data[code]) continue;
+    // Split by the severity the cached cyber threat already carries (Phase 3b / D7).
+    const sev = String(t.severity || '').toLowerCase();
+    if (sev === 'critical') data[code].cyberCriticalCount++;
+    else if (sev === 'high') data[code].cyberHighCount++;
+    else if (sev === 'medium') data[code].cyberMediumCount++;
   }
 
   // --- Fires ---
@@ -474,7 +492,10 @@ export function computeCIIScores(
     const lat = safeNum(f.lat || f.latitude || f.location?.latitude);
     const lon = safeNum(f.lon || f.longitude || f.location?.longitude);
     const code = geoToCountry(lat, lon);
-    if (code && data[code]) data[code].fireCount++;
+    if (!code || !data[code]) continue;
+    data[code].fireCount++;
+    // "High" fire — bright or high radiative power (Phase 3b / D8, matches the frontend).
+    if (safeNum(f.brightness) >= 360 || safeNum(f.frp) >= 50) data[code].fireHighCount++;
   }
 
   // --- GPS hex severity split ---
@@ -607,8 +628,10 @@ export function computeCIIScores(
       : unrestCount * multiplier;
     const unrestBase = Math.min(50, adjustedCount * 8);
     const unrestFatalityBoost = Math.min(30, d.protestFatalities * 5 * multiplier);
+    // severityBoost (Phase 3b / C1) — ported from the frontend calcUnrestScore.
+    const unrestSeverityBoost = Math.min(20, d.highSeverityUnrest * 10 * multiplier);
     const outageBoost = Math.min(50, d.outageTotalCount * 30 + d.outageMajorCount * 15 + d.outagePartialCount * 5);
-    const unrest = Math.min(100, Math.round(unrestBase + unrestFatalityBoost + outageBoost));
+    const unrest = Math.min(100, Math.round(unrestBase + unrestFatalityBoost + unrestSeverityBoost + outageBoost));
 
     // --- Conflict score (ported from frontend calcConflictScore) ---
     const acledScore = Math.min(50, Math.round((d.battles * 3 + d.explosions * 4 + d.civilianViolence * 5) * multiplier));
@@ -646,8 +669,11 @@ export function computeCIIScores(
     const eventScore = unrest * 0.25 + conflict * 0.30 + security * 0.20 + information * 0.25;
 
     const climateBoost = Math.min(15, d.climateSeverity * 3);
-    const cyberBoost = Math.min(10, Math.floor(d.cyberCount / 5));
-    const fireBoost = Math.min(8, Math.floor(d.fireCount / 10));
+    // cyber + fire (Phase 3b / D7, D8) — severity-weighted, ported from the frontend
+    // getSupplementalSignalBoost. Was total-count based; the cached cyber/fire feeds
+    // already carry severity / brightness, so this is a faithful port, not a partial one.
+    const cyberBoost = Math.min(12, d.cyberCriticalCount * 3 + d.cyberHighCount * 1.8 + d.cyberMediumCount * 0.9);
+    const fireBoost = Math.min(8, d.fireHighCount * 1.5 + Math.min(20, d.fireCount) * 0.25);
 
     // --- Advisory boost ---
     const advisoryBoost = d.advisoryLevel === 'do-not-travel' ? 15
@@ -684,10 +710,10 @@ export function computeCIIScores(
         : d.sanctionsEntryCount >= 101 ? 5 : 3;
       if (d.sanctionsNewEntryCount > 0) sanctionsBoost += 2;
     }
-    // supplementalSignalBoost (D4): AIS + temporal ported exactly. The frontend also
-    // folds cyber + fire into this helper with severity-weighting; the server has only
-    // total cyber/fire counts, so cyberBoost/fireBoost above stay total-based — a
-    // documented partial port (severity-split cyber/fire ingestion is a follow-up).
+    // supplementalSignalBoost (D4): the frontend's helper sums AIS + fire + cyber +
+    // temporal. Here AIS + temporal are their own blend terms below; cyber + fire are the
+    // severity-weighted terms above. All four are now faithful ports of the frontend's
+    // sub-formulas — D4 is complete, not partial.
     const aisBoost = Math.min(
       10,
       d.aisDisruptionHighCount * 2.5 + d.aisDisruptionElevatedCount * 1.5 + d.aisDisruptionLowCount * 0.5,
