@@ -61,6 +61,16 @@ export function extractConvexErrorKind(err, msg) {
   // Sentry's classifier tags these as `transport_network` so they're queryable
   // separately from genuine Convex 503s.
   if (/Network connection lost/i.test(msg)) return 'SERVICE_UNAVAILABLE';
+  // Cloudflare edge errors (520-527) fronting the Convex deployment: a
+  // transient origin/connection failure where Cloudflare returns a text/HTML
+  // body containing `error code: 52x` instead of a JSON Convex response. The
+  // HTTP client surfaces this as `Error('error code: 520...')` — `.data` is
+  // undefined (the request never reached Convex's runtime). Same transient
+  // retry-with-back-off remediation as the platform 503. WORLDMONITOR-PG: was
+  // falling through to the 'unknown' error_shape bucket at error level instead
+  // of 503 + Retry-After. Sentry's classifier tags these `transport_cloudflare`
+  // so they stay queryable apart from genuine Convex platform 5xx.
+  if (/error code:\s*52[0-7]\b/i.test(msg)) return 'SERVICE_UNAVAILABLE';
   // Convex platform-level 401: when Clerk's OIDC token fails Convex's own
   // verification (token expired between our edge's `validateBearerToken`
   // and Convex's check, or Clerk JWKS rotated), the SDK surfaces a JSON

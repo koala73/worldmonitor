@@ -372,7 +372,7 @@ const SEED_META = {
   eurostatIndProd:     { key: 'seed-meta:economic:eurostat-industrial-production', maxStaleMin: 60 * 24 * 5 }, // daily cron, monthly data; 5d threshold matches TTL
   euGasStorage:      { key: 'seed-meta:economic:eu-gas-storage',      maxStaleMin: 2880 }, // daily seed (T+1); 2880min = 48h = 2x interval
   euYieldCurve:      { key: 'seed-meta:economic:yield-curve-eu',      maxStaleMin: 4320 }, // daily seed (weekdays only); 4320min = 72h = covers Fri→Mon gap
-  euFsi:             { key: 'seed-meta:economic:fsi-eu',               maxStaleMin: 20160 }, // weekly seed (Saturday); 20160min = 14d = 2x interval
+  euFsi:             { key: 'seed-meta:economic:fsi-eu',               maxStaleMin: 5760 }, // daily seed (weekdays + holidays); 5760min = 96h = covers Wed→Mon Easter gap. Data freshness is tracked separately via content-age (STALE_CONTENT) — see seed-fsi-eu.mjs.
   newsThreatSummary: { key: 'seed-meta:news:threat-summary',          maxStaleMin: 60 }, // relay classify every ~20min; 60min = 3x interval
   shippingStress:    { key: 'seed-meta:supply_chain:shipping_stress',  maxStaleMin: 45 }, // relay loop every 15min; 45 = 3x interval (was 30 = 2×, too tight on relay hiccup)
   diseaseOutbreaks:  { key: 'seed-meta:health:disease-outbreaks',      maxStaleMin: 2880 }, // daily seed; 2880 = 48h = 2x interval
@@ -816,7 +816,7 @@ export default async function handler(req, ctx) {
 
   const classifyCtx = { keyStrens, keyErrors, keyMetaValues, keyMetaErrors, now };
   const checks = {};
-  const counts = { ok: 0, warn: 0, onDemandWarn: 0, crit: 0 };
+  const counts = { ok: 0, warn: 0, onDemandWarn: 0, staleContent: 0, crit: 0 };
   let totalChecks = 0;
 
   const sources = [
@@ -831,6 +831,11 @@ export default async function handler(req, ctx) {
       const bucket = STATUS_COUNTS[entry.status] ?? 'warn';
       counts[bucket]++;
       if (entry.status === 'EMPTY_ON_DEMAND') counts.onDemandWarn++;
+      // STALE_CONTENT = "seeder is fresh but the upstream DATA stopped
+      // advancing" (a frozen feed — see issue #3845). It still buckets to
+      // `warn`; this sub-count surfaces it explicitly so operators can tell a
+      // frozen feed apart from an ordinary stale-seeder warn at a glance.
+      if (entry.status === 'STALE_CONTENT') counts.staleContent++;
     }
   }
 
@@ -909,6 +914,10 @@ export default async function handler(req, ctx) {
       // surfaced separately so readers can reconcile against `overall`.
       warn: realWarnCount,
       onDemandWarn: counts.onDemandWarn,
+      // `staleContent` is a SUBSET of `warn` (fresh seeder, frozen upstream
+      // data — issue #3845). Surfaced so a frozen feed is visible without
+      // walking every check entry.
+      staleContent: counts.staleContent,
       crit: critCount,
     },
     checkedAt: new Date(now).toISOString(),

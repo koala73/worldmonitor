@@ -68,7 +68,6 @@ const KNOWN_VIOLATIONS = {
   // ── Climate ──
   'CO2-Monitoring:seed-co2-monitoring.mjs': '72h TTL vs 72h cron (1×) — needs bump to ≥216h',
   'Cross-Source-Signals:seed-cross-source-signals.mjs': '30min TTL vs 15min cron (2×) — borderline',
-  'FSI-EU:seed-fsi-eu.mjs': '240h TTL vs 168h cron (1.43×)',
   'IEA-Oil-Stocks:seed-iea-oil-stocks.mjs': '40d TTL vs 40d cron (1×) — needs bump to ≥120d',
 
   // ── Macro / IMF / WB cohort ──

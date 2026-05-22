@@ -37,11 +37,16 @@
  */
 
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { tokensToContentMeta, DAY_MIN } from './_content-age-helpers.mjs';
 
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'economic:fx:yoy:v1';
 const CACHE_TTL = 25 * 3600; // 25h covers a daily cron + 1h drift buffer
+// Content-age budget — `asOf` is the newest Yahoo daily bar date. 7 days
+// absorbs a long weekend + market holidays; a frozen Yahoo feed flips
+// /api/health to STALE_CONTENT within ~5 trading days. See issue #3845.
+const FX_YOY_MAX_CONTENT_AGE_MIN = 7 * DAY_MIN;
 
 // Currency → primary ISO2 country. Multi-country currencies (EUR, XOF, XAF,
 // XCD, XPF) are intentionally omitted because shared-currency depreciation
@@ -170,16 +175,25 @@ export function declareRecords(data) {
   return Array.isArray(data?.rates) ? data.rates.length : 0;
 }
 
+// Content-age contract: the newest `asOf` bar date across all currency pairs.
+// Detects a frozen Yahoo feed that seeder-liveness checks cannot — see
+// scripts/_content-age-helpers.mjs.
+export function fxYoyContentMeta(data) {
+  return tokensToContentMeta((Array.isArray(data?.rates) ? data.rates : []).map((r) => r?.asOf));
+}
+
 if (isMain) {
   await runSeed('economic', 'fx-yoy', CANONICAL_KEY, fetchFxYoy, {
     ttlSeconds: CACHE_TTL,
     validateFn: (data) => Array.isArray(data?.rates) && data.rates.length >= 10,
     recordCount: (data) => data?.rates?.length ?? 0,
     sourceVersion: 'yahoo-fx-yoy-v1',
-  
+
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: 1500,
+    contentMeta: fxYoyContentMeta,
+    maxContentAgeMin: FX_YOY_MAX_CONTENT_AGE_MIN,
   });
 }
 
