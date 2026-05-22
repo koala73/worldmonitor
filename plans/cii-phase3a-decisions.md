@@ -7,12 +7,20 @@ Every row is a real divergence between the two engines, verified line-by-line:
 - **Engine A — frontend**: `src/services/country-instability.ts`
 - **Engine B — server**: `server/worldmonitor/intelligence/v1/get-risk-scores.ts`
 
-Each row has a **Recommendation** (pre-filled, with rationale) and a **Decision** column
-for you. Default rule from the plan: *frontend wins, except where the server intentionally
-diverged.* Fill the Decision column (`A` / `B` / `new`) — blank means "accept recommendation."
+Default rule from the plan: *frontend wins, except where the server intentionally diverged.*
 
-Caps the score anyway: the composite is `Math.min(100, Math.max(floor, blend))` in both
-engines, so individual boost caps are about *shape*, not overflow.
+## Decisions — signed off 2026-05-22
+
+**All recommendations accepted** as the canonical decision (Decision column filled per row
+below). Two items carried forward:
+
+- **N3 (cold-cache fallback)** — stays **OPEN**. No engineering recommendation exists; it is
+  a product/UX call. Does not block Phase 3b — it gates Phase 4.
+- **V1 (keep vs drop military vessels)** — **BLOCKED** on deployment data. The vessel
+  signal's weight in the blend cannot be measured until `seed-military-cii.mjs` runs on
+  Railway. Default until then: keep vessels (already built).
+
+With those two exceptions Phase 3a is settled — **Phase 3b may proceed against this table.**
 
 ---
 
@@ -20,13 +28,13 @@ engines, so individual boost caps are about *shape*, not overflow.
 
 | # | Component | Engine A (frontend) | Engine B (server) | Recommendation | Decision |
 |---|---|---|---|---|---|
-| C1 | **Unrest** | adds `severityBoost = min(20, highSeverity·10·mult)`; counts `protests.length` | no `severityBoost`; counts `protests + riots` | **A** — port `severityBoost`; keep server's `protests+riots` (riots belong in unrest). Hybrid: A's formula + riots included. | |
-| C2 | **Conflict** | has `hapiFallback` + `newsFloor` when ACLED empty; generic 7-day `recentStrikes` | no fallbacks; `iranStrikes + highSeverityStrikes` only | **A** — the fallbacks matter: without them the server scores 0 conflict whenever ACLED is empty. Port `hapiFallback` + `newsFloor`. | |
-| C3 | **Security** | `flightScore + vesselScore + aviationScore + gpsJammingScore` (4 inputs) | `gpsJammingScore` only | **A** — the 4-input formula. Server now has all inputs after Phases 1–2. This is the mechanical half of the #3738 fix. | |
-| C4 | **Information** | velocity-aware score from local `newsEvents` clustering | `newsScore + threatSummaryScore` (pre-computed, additive) | **B** — the server **cannot** run A's formula (no local `newsEvents`), and the server's cap was a deliberate #3739 improvement. Server wins; bring the frontend renderer to consume it. | |
+| C1 | **Unrest** | adds `severityBoost = min(20, highSeverity·10·mult)`; counts `protests.length` | no `severityBoost`; counts `protests + riots` | **A** — port `severityBoost`; keep server's `protests+riots` (riots belong in unrest). Hybrid: A's formula + riots included. | ✓ **HYBRID** |
+| C2 | **Conflict** | has `hapiFallback` + `newsFloor` when ACLED empty; generic 7-day `recentStrikes` | no fallbacks; `iranStrikes + highSeverityStrikes` only | **A** — the fallbacks matter: without them the server scores 0 conflict whenever ACLED is empty. Port `hapiFallback` + `newsFloor`. | ✓ **A** |
+| C3 | **Security** | `flightScore + vesselScore + aviationScore + gpsJammingScore` (4 inputs) | `gpsJammingScore` only | **A** — the 4-input formula. Server now has all inputs after Phases 1–2. This is the mechanical half of the #3738 fix. | ✓ **A** |
+| C4 | **Information** | velocity-aware score from local `newsEvents` clustering | `newsScore + threatSummaryScore` (pre-computed, additive) | **B** — the server **cannot** run A's formula (no local `newsEvents`), and the server's cap was a deliberate #3739 improvement. Server wins; bring the frontend renderer to consume it. | ✓ **B** |
 
-C4 is the one genuine "server wins" — flagged in the plan. C1's hybrid (A's formula but
-keep `riots`) is the only row that isn't a clean A-or-B; confirm it explicitly.
+C4 is the one genuine "server wins". C1's hybrid (A's formula but keep `riots`) is the only
+row that isn't a clean A-or-B — confirmed as the accepted hybrid.
 
 ## 2. eventScore weights — no decision
 
@@ -40,25 +48,25 @@ Engine B: `baseline·0.4 + eventScore·0.6 + climate + cyber + fire + advisory +
 
 | # | Item | Recommendation | Decision |
 |---|---|---|---|
-| B1 | Canonical blend shape | **A's `calculateCII` blend** (the fuller one). Server adds the missing terms. Note: A's `cyber`/`fire` live *inside* `supplementalSignalBoost` — adopting A means the server's standalone `cyberBoost`/`fireBoost` terms are removed (folded into supplemental), no double-count. | |
-| B2 | Frontend's own split: `calculateCII` includes `earthquake`+`sanctions`, `getCountryScore` omits them | **`calculateCII` is canonical.** `getCountryScore` is deleted in Phase 4; its consumers (map tint, etc.) silently gain earthquake+sanctions — intended. | |
+| B1 | Canonical blend shape | **A's `calculateCII` blend** (the fuller one). Server adds the missing terms. Note: A's `cyber`/`fire` live *inside* `supplementalSignalBoost` — adopting A means the server's standalone `cyberBoost`/`fireBoost` terms are removed (folded into supplemental), no double-count. | ✓ **A** |
+| B2 | Frontend's own split: `calculateCII` includes `earthquake`+`sanctions`, `getCountryScore` omits them | **`calculateCII` is canonical.** `getCountryScore` is deleted in Phase 4; its consumers (map tint, etc.) silently gain earthquake+sanctions — intended. | ✓ **calculateCII** |
 
 ## 4. Boost helpers
 
 | # | Boost | Engine A | Engine B | Recommendation | Decision |
 |---|---|---|---|---|---|
-| D1 | hotspotBoost | `min(10, activity·1.5)` | absent | **DROP** — `hotspotActivityMap` is a frontend-only subsystem fed by `ingest*` calls; not reproducible from server signals without porting the whole hotspot tracker. Document the gap. | |
-| D2 | newsUrgencyBoost | `info≥70→5, ≥50→3` | absent | **A (port)** — pure function of the `information` component the server already has. Trivial. | |
-| D3 | focalBoost | `focalPointDetector` urgency `critical→8, elevated→4` | absent | **DROP** — verified frontend-only (`focalPointDetector` has zero server-side references); not reproducible server-side. Document the gap. | |
-| D4 | supplementalSignalBoost | AIS + fire + cyber + temporal (severity-weighted) | partial — see D7/D8 | **A (port)** — server has all 4 inputs after Phases 1–2. Replaces server's standalone cyber/fire terms. | |
-| D5 | earthquakeBoost | `min(25, severe·10 + major·5 + significant·2)` | absent | **A (port)** — server has earthquake counts after Phase 1. | |
-| D6 | sanctionsBoost | tiered by `entryCount` + `newEntry` bonus | absent | **A (port)** — server has sanctions counts after Phase 1. | |
-| D7 | cyber (within supplemental) | severity-weighted (`crit·3 + high·1.8 + med·0.9`) | `floor(cyberCount/5)` count-discount | **A** — severity-weighting beats a raw-count discount. Folds into D4. | |
-| D8 | fire (within supplemental) | brightness-weighted | `floor(fireCount/10)` count-discount | **A** — same reasoning. Folds into D4. | |
-| D9 | displacementBoost | step: `1M→8, 100K→4` (cap 8) | log: `(log10(n)−5)·8+4` (cap 20) | **B** — the log curve is more granular and spans real crisis sizes (1M→12, 10M→20); the step function flat-lines at 8. Server wins. | |
-| D10 | climateBoost | `climateStress` uncapped | `min(15, severity·3)` | **B** — an uncapped term is a latent bug; the cap is correct. Server wins. | |
-| D11 | advisoryBoost | level + source-count bonus (`≥3→+5, ≥2→+3`) | level only | **A** — source-count corroboration is a real signal; server must start tracking advisory source count. | |
-| D12 | orefBlendBoost | IL-only blend | identical | no decision — **identical**. | |
+| D1 | hotspotBoost | `min(10, activity·1.5)` | absent | **DROP** — `hotspotActivityMap` is a frontend-only subsystem fed by `ingest*` calls; not reproducible from server signals without porting the whole hotspot tracker. Document the gap. | ✓ **DROP** |
+| D2 | newsUrgencyBoost | `info≥70→5, ≥50→3` | absent | **A (port)** — pure function of the `information` component the server already has. Trivial. | ✓ **A** |
+| D3 | focalBoost | `focalPointDetector` urgency `critical→8, elevated→4` | absent | **DROP** — verified frontend-only (`focalPointDetector` has zero server-side references); not reproducible server-side. Document the gap. | ✓ **DROP** |
+| D4 | supplementalSignalBoost | AIS + fire + cyber + temporal (severity-weighted) | partial — see D7/D8 | **A (port)** — server has all 4 inputs after Phases 1–2. Replaces server's standalone cyber/fire terms. | ✓ **A** |
+| D5 | earthquakeBoost | `min(25, severe·10 + major·5 + significant·2)` | absent | **A (port)** — server has earthquake counts after Phase 1. | ✓ **A** |
+| D6 | sanctionsBoost | tiered by `entryCount` + `newEntry` bonus | absent | **A (port)** — server has sanctions counts after Phase 1. | ✓ **A** |
+| D7 | cyber (within supplemental) | severity-weighted (`crit·3 + high·1.8 + med·0.9`) | `floor(cyberCount/5)` count-discount | **A** — severity-weighting beats a raw-count discount. Folds into D4. | ✓ **A** |
+| D8 | fire (within supplemental) | brightness-weighted | `floor(fireCount/10)` count-discount | **A** — same reasoning. Folds into D4. | ✓ **A** |
+| D9 | displacementBoost | step: `1M→8, 100K→4` (cap 8) | log: `(log10(n)−5)·8+4` (cap 20) | **B** — the log curve is more granular and spans real crisis sizes (1M→12, 10M→20); the step function flat-lines at 8. Server wins. | ✓ **B** |
+| D10 | climateBoost | `climateStress` uncapped | `min(15, severity·3)` | **B** — an uncapped term is a latent bug; the cap is correct. Server wins. | ✓ **B** |
+| D11 | advisoryBoost | level + source-count bonus (`≥3→+5, ≥2→+3`) | level only | **A** — source-count corroboration is a real signal; server must start tracking advisory source count. | ✓ **A** |
+| D12 | orefBlendBoost | IL-only blend | identical | no decision — **identical**. | — identical |
 
 ## 5. Floors — no decision
 
@@ -68,7 +76,7 @@ Engine B: `baseline·0.4 + eventScore·0.6 + climate + cyber + fire + advisory +
 
 | # | Item | Engine A `getLevel` | Engine B adapter `getScoreLevel` | Recommendation | Decision |
 |---|---|---|---|---|---|
-| L1 | critical / high / elevated / normal cutoffs | ≥81 / ≥66 / ≥51 / ≥31 | ≥70 / ≥55 / ≥40 / ≥25 | **A** — the frontend table is what the UI has always shown; changing it shifts every country's badge. Reconcile `cached-risk-scores.ts getScoreLevel` to A's cutoffs. (Override only if you want a deliberate re-banding.) | |
+| L1 | critical / high / elevated / normal cutoffs | ≥81 / ≥66 / ≥51 / ≥31 | ≥70 / ≥55 / ≥40 / ≥25 | **A** — the frontend table is what the UI has always shown; changing it shifts every country's badge. Reconcile `cached-risk-scores.ts getScoreLevel` to A's cutoffs. | ✓ **A** |
 
 ## 7. Scalar tables — `BASELINE_RISK` / `EVENT_MULTIPLIER`
 
@@ -87,27 +95,49 @@ the frontend simply lacks curation.
 
 | # | Item | Recommendation | Decision |
 |---|---|---|---|
-| S1 | Scalar-table source of truth | **B (server)** for all rows above — the server file already declares itself authoritative for these. Update `CURATED_COUNTRIES` to match, then both read one table. | |
+| S1 | Scalar-table source of truth | **B (server)** for all rows above — the server file already declares itself authoritative for these. Update `CURATED_COUNTRIES` to match, then both read one table. | ✓ **B** |
 
 ## 8. Non-formula Phase 3a decisions
 
 | # | Item | Recommendation | Decision |
 |---|---|---|---|
-| N1 | Country set — expand server set vs accept curated-only | **Accept curated-only (31).** Both engines already iterate the same 31; the frontend's dynamic extras were thin (baseline-only). No expansion. | |
-| N2 | Proto field naming — keep positional aliases vs rename to `unrest/conflict/security/information` | **Rename.** The cache-key bump (`v2→v3`) is mandatory regardless; do the rename in the same bump so the proto stops lying. | |
-| N3 | Cold-cache fallback (Risk 3 / Open Question) | **Open** — keep a thin client fallback for the empty-result case, or accept degraded baseline-only CII on cold start. Still needs your call; see the plan's Deferred section. | |
-| N4 | Signal→component mapping for the Phase 1/2 signals | **aviation → Security (C3); military flights+vessels → Security (C3); AIS disruptions + temporal anomalies → supplemental (D4); earthquakes → earthquakeBoost (D5); sanctions → sanctionsBoost (D6).** Confirm. | |
-| N5 | `ingest*ForCII` side-effect decomposition (which non-CII side effects survive Phase 4 deletion) | Enumerate before Phase 4: `trackHotspotActivity → hotspotActivityMap` is the known one. Produce the full list as part of this table. | |
+| N1 | Country set — expand server set vs accept curated-only | **Accept curated-only (31).** Both engines already iterate the same 31; the frontend's dynamic extras were thin (baseline-only). No expansion. | ✓ **curated-only** |
+| N2 | Proto field naming — keep positional aliases vs rename to `unrest/conflict/security/information` | **Rename.** The cache-key bump (`v2→v3`) is mandatory regardless; do the rename in the same bump so the proto stops lying. | ✓ **rename** |
+| N3 | Cold-cache fallback (Risk 3 / Open Question) | **Open** — keep a thin client fallback for the empty-result case, or accept degraded baseline-only CII on cold start. A product/UX call; gates Phase 4, not Phase 3b. | **OPEN — you decide** |
+| N4 | Signal→component mapping for the Phase 1/2 signals | **aviation → Security (C3); military flights+vessels → Security (C3); AIS disruptions + temporal anomalies → supplemental (D4); earthquakes → earthquakeBoost (D5); sanctions → sanctionsBoost (D6).** | ✓ **accepted** |
+| N5 | `ingest*ForCII` side-effect decomposition (which non-CII side effects survive Phase 4 deletion) | **RESOLVED — see N5 audit below.** | ✓ **resolved** |
+| V1 | Keep military vessels vs drop (Phase 2 vessel classifier) | Check the vessel signal's weight in the blend before committing; if marginal, "drop + document the gap" is valid. | **BLOCKED — needs deploy data** |
+
+### N5 audit — `ingest*ForCII` side effects (resolved 2026-05-22)
+
+Audited all 20 `ingest*ForCII` functions in `country-instability.ts` for state writes
+beyond CII scoring (`countryDataMap`). Finding:
+
+- The **only** non-CII side effect is `trackHotspotActivity` → `hotspotActivityMap`, called
+  by exactly three ingest functions: `ingestProtestsForCII` (line 258),
+  `ingestConflictsForCII` (270), `ingestMilitaryForCII` (424, 444).
+- `hotspotActivityMap` is consumed by **`getHotspotBoost` only** — a non-exported function
+  that feeds **only** `calculateCII`'s blend. Grep confirms **zero** consumers of
+  `getHotspotBoost` / `hotspotActivityMap` outside `country-instability.ts`.
+- `focalPointDetector` is read by `calculateCII` / `getCountryScore` but is **not fed by any
+  `ingest*ForCII`** — it is an independent detector, out of scope here.
+
+**Conclusion: no `ingest*ForCII` side effect needs preserving.** Because D1 drops
+`hotspotBoost` and Phase 4 deletes the CII engine, the entire hotspot subsystem
+(`hotspotActivityMap`, `trackHotspotActivity`, `getHotspotBoost`, `resetHotspotActivity`)
+is dead and deletes with it. Phase 4 deletes the `ingest*ForCII` functions **wholesale**,
+not surgically — this simplifies Phase 4 vs the plan's earlier "surgical decomposition"
+assumption.
 
 ## Summary
 
-- **15 formula/threshold rows + 5 non-formula rows.** Of the formula rows, the default
-  (frontend wins) holds for all **except**: C4 information (server — #3739), D9 displacement
-  (server — better curve), D10 climate (server — has the cap), and S1 scalar tables (server
-  — frontend is uncurated).
-- **D1 hotspot and D3 focal** are recommended **drops** — both are frontend-only
-  subsystems with no server-reproducible inputs.
-- **N3 cold-cache** is the one row that genuinely cannot be pre-recommended — it's a
-  product/UX call.
-- Once the Decision column is filled, Phase 3b is mechanical: implement each winner, bump
-  `RISK_CACHE_KEY`, land the Guardrails equality/level tests.
+- **15 formula/threshold rows + 5 non-formula rows + V1.** All recommendations accepted
+  (signed off above). Frontend wins by default; server wins only on C4 (#3739), D9
+  (log curve), D10 (the cap), S1 (frontend uncurated).
+- **D1 hotspot and D3 focal** — accepted **drops**; both frontend-only with no
+  server-reproducible inputs. N5 confirms the hotspot subsystem deletes cleanly.
+- **N3 cold-cache** — the one open decision; product/UX call; gates Phase 4.
+- **V1 military vessels** — blocked on deployment data.
+- Phase 3b is now unblocked and mechanical: implement each accepted winner, bump
+  `RISK_CACHE_KEY` (`v2→v3`) with the N2 proto rename, land the Guardrails
+  equality/level tests.
