@@ -79,7 +79,7 @@ function validate(schema, value, path = '$') {
   return errors;
 }
 
-describe('api/mcp.ts — per-tool outputSchema coverage (v1.6.0)', () => {
+describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
   let mod;
 
   beforeEach(async () => {
