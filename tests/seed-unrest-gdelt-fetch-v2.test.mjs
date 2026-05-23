@@ -13,7 +13,6 @@ process.env.UPSTASH_REDIS_REST_TOKEN = 'fake-token';
 
 const { fetchGdeltEvents } = await import('../scripts/seed-unrest-events.mjs');
 
-const URL = 'https://api.gdeltproject.org/api/v2/gkg_geojson?query=test&sourcecountry=WORLD&format=json';
 const PROXY_AUTH = 'user:pass@gate.decodo.com:7000';
 
 function jsonBuffer(obj) {
