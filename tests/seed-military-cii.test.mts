@@ -88,6 +88,15 @@ test('aggregate: an unknown-operator military vessel is local presence, not x2 f
   assert.equal(agg.byCountry.US.foreignVessels, 0, 'not x2 foreign — the operator is unknown');
 });
 
+test('aggregate: an unknown-operator military flight is local presence, not x2 foreign', () => {
+  // seed-military-flights emits operatorCountry: 'Unknown' for low-confidence matches
+  // (and 'NATO' / non-TIER1 names also fall through normalizeCountryName) — they must
+  // not inflate the location country's foreignFlights x2 weight.
+  const agg = aggregate([{ operatorCountry: 'Unknown', lat: 39, lon: -98 }], [], []);
+  assert.equal(agg.byCountry.US.ownFlights, 1, 'counted once as local military presence');
+  assert.equal(agg.byCountry.US.foreignFlights, 0, 'not x2 foreign — the operator is unknown');
+});
+
 test('aggregate: AIS disruption with unknown/missing severity falls into the low bucket', () => {
   const agg = aggregate([], [], [
     { lat: 39, lon: -98, severity: 'minor' },

@@ -374,11 +374,20 @@ function aggregate(flights, candidateReports, disruptions) {
 
   // Flights — operator country owns it; a flight located in a different country counts
   // as foreign presence there (the dual-attribution intent of ingestMilitaryForCII).
+  // When the operator is unknown (seed-military-flights emits the literal
+  // operatorCountry: 'Unknown' for `other`-class matches without source metadata, and
+  // non-TIER1 / coalition strings like 'NATO' also fall through normalizeCountryName)
+  // we count once as local presence — same logic as the vessel branch — because we
+  // cannot assert foreignness without a resolved operator, and foreignFlights is
+  // x2-weighted in the C3 security formula.
   for (const f of flights) {
     const op = normalizeCountryName(f.operatorCountry);
     const loc = geoToCountry(num(f.lat), num(f.lon));
     if (op && byCountry[op]) byCountry[op].ownFlights++;
-    if (loc && byCountry[loc] && loc !== op) byCountry[loc].foreignFlights++;
+    if (loc && byCountry[loc]) {
+      if (op && loc !== op) byCountry[loc].foreignFlights++;
+      else if (!op) byCountry[loc].ownFlights++;
+    }
   }
 
   // Vessels — classify each candidate AIS report, then attribute.
