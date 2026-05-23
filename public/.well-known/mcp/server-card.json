@@ -6,7 +6,7 @@
     "vendor": "WorldMonitor",
     "homepage": "https://www.worldmonitor.app"
   },
-  "protocolVersion": "2025-03-26",
+  "protocolVersion": "2025-06-18",
   "transport": {
     "type": "streamableHttp",
     "endpoint": "https://worldmonitor.app/mcp"

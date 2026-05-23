@@ -37,7 +37,46 @@ import { hashKeySync } from '../server/_shared/usage-identity';
 
 export const config = { runtime: 'edge' };
 
-const MCP_PROTOCOL_VERSION = '2025-03-26';
+// Protocol version advertised in the `initialize` response. Bumping this is a
+// wire-visible default-behavior change, so the bumped floor ships behind an
+// env-var gate (`MCP_PROTOCOL_FLOOR_2025_06_18`) per the operational rollout
+// cadence: off default → staging `on` ≥24h → prod `on` ≥48h → follow-up
+// commit flips the default → remove the env var the version after. The
+// published server-card (public/.well-known/mcp/server-card.json) advertises
+// the bumped floor unconditionally — the card is a static capability
+// declaration; this constant is what the live initialize handler negotiates.
+//
+// Version history (protocol floor — distinct from SERVER_VERSION below):
+//   - 2025-03-26 — initial floor; streamable HTTP transport.
+//   - 2025-06-18 (declared 2026-05-23, env-var gated, default off) — unlocks
+//     spec-native `outputSchema` per tool in a follow-up. Pre-floor clients
+//     negotiate down per MCP lifecycle spec (server returns the highest
+//     version it supports ≤ the client's request), so callers pinned to
+//     2025-03-26 continue to work unchanged.
+const MCP_PROTOCOL_FLOOR_2025_06_18_ENABLED =
+  process.env.MCP_PROTOCOL_FLOOR_2025_06_18 === 'on';
+export const MCP_PROTOCOL_VERSION = MCP_PROTOCOL_FLOOR_2025_06_18_ENABLED
+  ? '2025-06-18'
+  : '2025-03-26';
+
+// Hand-curated minimum-version matrix for MCP clients validated against
+// MCP_PROTOCOL_VERSION's current floor. Comment-grade documentation; no
+// handler reads it. Update entries (or add new clients) when bumping the
+// floor — reviewers should sanity-check that real-world clients have caught
+// up before flipping the env-var default.
+export const MCP_SUPPORTED_CLIENT_MATRIX: Record<string, string> = {
+  // source: Claude Desktop release notes — first version shipping MCP support
+  'Claude Desktop': '0.7.0',
+  // source: Claude Code CLI ships current MCP support without a pinned floor
+  'Claude Code': 'any current',
+  // source: MCP Inspector release notes
+  'MCP Inspector': '0.6.0',
+  // source: https://docs.cursor.com/ MCP integration — exact minimum not
+  // confirmed against the live docs at write time; treat as approximate and
+  // re-verify before flipping the env-var default on prod
+  'Cursor': '0.40.0',
+};
+
 const SERVER_NAME = 'worldmonitor';
 // Bumped 1.0 → 1.1.0 (2026-05-11) reflecting:
 //   - PR #3658 Tier-1+2 expansion (6 new tools added: displacement, health,
