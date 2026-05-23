@@ -153,7 +153,10 @@ const BBOX_BY_AREA = Object.entries(COUNTRY_BBOX)
   .map(([code, b]) => ({ code, ...b, area: (b.maxLat - b.minLat) * (b.maxLon - b.minLon) }))
   .sort((a, b) => a.area - b.area);
 
-function geoToCountry(lat: number, lon: number): string | null {
+// Exported so scripts/seed-military-cii.mjs's re-embedded copy can be cross-checked
+// for parity in tests/seed-military-cii-table-drift.test.mts. The seed cannot import
+// from server/ under Railway nixpacks packaging.
+export function geoToCountry(lat: number, lon: number): string | null {
   if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
   for (const b of BBOX_BY_AREA) {
     if (lat >= b.minLat && lat <= b.maxLat && lon >= b.minLon && lon <= b.maxLon) return b.code;

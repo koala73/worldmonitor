@@ -143,6 +143,10 @@ const STANDALONE_KEYS = {
   militaryBases:         'military:bases:active',
   militaryFlights:       'military:flights:v1',
   militaryFlightsStale:  'military:flights:stale:v1',
+  // STANDALONE (not BOOTSTRAP) by design — value is a single keyed payload
+  // (asOf + per-country aggregate), no per-record gating needed; health just
+  // verifies existence + freshness via the matching SEED_META entry. Same
+  // shape as militaryFlights above.
   militaryCii:           'intelligence:military-cii:v1',
   temporalAnomalies:     'temporal:anomalies:v1',
   displacement:          `displacement:summary:v1:${new Date().getUTCFullYear()}`,

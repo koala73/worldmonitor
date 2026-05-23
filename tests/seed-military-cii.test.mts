@@ -115,3 +115,26 @@ test('aggregate emits a record for every TIER1 country, zeroed by default', () =
       + rec.foreignVessels + rec.aisDisruptionHigh, 0);
   }
 });
+
+test('producer operatorCountry vocabulary: every TIER1-mapped string resolves to its ISO2', () => {
+  // Locks down the seed COUNTRY_KEYWORDS table against drift from the producer
+  // (scripts/seed-military-flights.mjs). If that script adds a new operatorCountry
+  // string that maps to a TIER1 country, the seed must resolve it — otherwise the
+  // flight silently buckets to "unknown operator" (local presence, not x2 foreign).
+  // Non-TIER1 operator strings (Australia/Canada/Kuwait/NATO) are intentionally not
+  // covered — they have nowhere to land in the TIER1-only score and should fall
+  // through to the unknown-operator branch.
+  const PRODUCER_TIER1_OPERATORS: Array<[string, string]> = [
+    ['USA', 'US'], ['UK', 'GB'], ['China', 'CN'], ['France', 'FR'], ['Germany', 'DE'],
+    ['Israel', 'IL'], ['Japan', 'JP'], ['Pakistan', 'PK'], ['Qatar', 'QA'],
+    ['Russia', 'RU'], ['Saudi Arabia', 'SA'], ['South Korea', 'KR'],
+    ['Turkey', 'TR'], ['UAE', 'AE'], ['Egypt', 'EG'],
+  ];
+  for (const [operatorString, expectedIso2] of PRODUCER_TIER1_OPERATORS) {
+    assert.equal(
+      normalizeCountryName(operatorString),
+      expectedIso2,
+      `producer emits operatorCountry='${operatorString}' but seed COUNTRY_KEYWORDS no longer resolves it to ${expectedIso2}`,
+    );
+  }
+});

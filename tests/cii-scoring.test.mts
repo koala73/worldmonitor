@@ -52,7 +52,8 @@ function scoreFor(scores: ReturnType<typeof computeCIIScores>, code: string) {
 describe('CII signal wiring', () => {
   it('Phase 3b D5/D6: earthquake / sanctions signals raise the score', () => {
     // Temporal anomalies are deliberately NOT scored — the temporal:anomalies:v1
-    // producer emits region:'global', so they cannot be country-attributed.
+    // producer emits region:'global' so they cannot be country-attributed. The
+    // score rise asserted below comes entirely from earthquakeBoost + sanctionsBoost.
     const acled = [acledEvent('US', 'protest', 0)];
     const base = scoreFor(computeCIIScores(acled, emptyAux()), 'US');
     const aux = emptyAux();
@@ -64,7 +65,7 @@ describe('CII signal wiring', () => {
     const withAux = scoreFor(computeCIIScores(acled, aux), 'US');
     assert.ok(withAux, 'computeCIIScores handles the aux sources without throwing');
     assert.ok(withAux!.combinedScore > base!.combinedScore,
-      'earthquake / sanctions / temporal now feed earthquakeBoost / sanctionsBoost / temporalBoost');
+      'earthquake + sanctions feed earthquakeBoost + sanctionsBoost in the blend');
   });
 
   it('Phase 3b D7/D8: cyber severity + high-brightness fires raise the score', () => {

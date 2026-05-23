@@ -45,6 +45,13 @@ const TIER1_COUNTRIES = {
   EG: 'Egypt', JP: 'Japan', QA: 'Qatar',
 };
 
+// Intentionally narrower than server's normalizeCountryName: this table only
+// has to resolve the operatorCountry strings emitted by seed-military-flights
+// (full country names + 'USA' / 'UK' / 'UAE'). News-title tokens like
+// 'biden' / 'trump' / 'pentagon' that normalizeCountryName carries for the
+// news-classification path don't apply here — flight operator labels are
+// constrained vocabulary. Producer-vocabulary coverage is locked down in
+// tests/seed-military-cii.test.mts ("producer operatorCountry vocabulary").
 const COUNTRY_KEYWORDS = {
   US: ['united states', 'usa', 'america', 'washington'],
   RU: ['russia', 'moscow', 'kremlin'],
@@ -118,7 +125,8 @@ const BBOX_BY_AREA = Object.entries(COUNTRY_BBOX)
   .map(([code, b]) => ({ code, ...b, area: (b.maxLat - b.minLat) * (b.maxLon - b.minLon) }))
   .sort((a, b) => a.area - b.area);
 
-function num(v) {
+// Mirrors safeNum() in server/.../get-risk-scores.ts — keep the names aligned.
+function safeNum(v) {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 }
@@ -277,7 +285,7 @@ function classifyVessel(candidate) {
   const name = String(candidate.name || '');
   const known = matchKnownVessel(name);
   const mmsiAnalysis = analyzeMmsi(mmsi);
-  const aisMilitary = isMilitaryShipType(num(candidate.shipType));
+  const aisMilitary = isMilitaryShipType(safeNum(candidate.shipType));
   if (!known && !mmsiAnalysis.isPotentialMilitary && !aisMilitary) return null;
   const operatorName = known?.country || mmsiAnalysis.country || null;
   return { operatorIso2: operatorName ? (COUNTRY_NAME_TO_ISO2[operatorName] || null) : null };
@@ -382,7 +390,7 @@ function aggregate(flights, candidateReports, disruptions) {
   // x2-weighted in the C3 security formula.
   for (const f of flights) {
     const op = normalizeCountryName(f.operatorCountry);
-    const loc = geoToCountry(num(f.lat), num(f.lon));
+    const loc = geoToCountry(safeNum(f.lat), safeNum(f.lon));
     if (op && byCountry[op]) byCountry[op].ownFlights++;
     if (loc && byCountry[loc]) {
       if (op && loc !== op) byCountry[loc].foreignFlights++;
@@ -397,7 +405,7 @@ function aggregate(flights, candidateReports, disruptions) {
     if (!cls) continue;
     militaryVesselCount++;
     const op = cls.operatorIso2;
-    const loc = geoToCountry(num(c.lat), num(c.lon));
+    const loc = geoToCountry(safeNum(c.lat), safeNum(c.lon));
     if (op && byCountry[op]) byCountry[op].ownVessels++;
     if (loc && byCountry[loc]) {
       if (op && loc !== op) byCountry[loc].foreignVessels++;
@@ -410,7 +418,7 @@ function aggregate(flights, candidateReports, disruptions) {
 
   // AIS disruptions — attributed by location.
   for (const d of disruptions) {
-    const code = geoToCountry(num(d.lat), num(d.lon));
+    const code = geoToCountry(safeNum(d.lat), safeNum(d.lon));
     if (!code || !byCountry[code]) continue;
     const sev = String(d.severity || '').toLowerCase();
     if (sev === 'high') byCountry[code].aisDisruptionHigh++;
