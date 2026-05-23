@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { XMLParser } from 'fast-xml-parser';
+import { isAllowedDomain } from '../api/_rss-allowed-domain-match.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FEEDS_PATH = join(__dirname, '..', 'src', 'config', 'feeds.ts');
@@ -12,6 +13,17 @@ const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 
 const FETCH_TIMEOUT = 15_000;
 const CONCURRENCY = 10;
 const STALE_DAYS = 30;
+
+// --ci flag hardens the validator for trusted-context CI runs (push-to-main
+// + schedule workflow). NOT enabled in PR CI — PR CI never runs this script
+// because PR contributors can rewrite feeds.ts to make GitHub runners hit
+// arbitrary URLs (SSRF surface). In CI mode:
+//   1. Reject non-https schemes (no plaintext, no file:// etc.)
+//   2. Reject hosts that don't pass api/_rss-allowed-domain-match.js
+//      isAllowedDomain (same www-normalized check the Edge proxy enforces)
+//   3. Refuse to follow cross-host redirects (manual redirect handling per
+//      hop with allowlist re-check)
+const CI_MODE = process.argv.includes('--ci');
 
 function extractFeeds() {
   const src = readFileSync(FEEDS_PATH, 'utf8');
@@ -78,10 +90,51 @@ function extractFeeds() {
   return feeds;
 }
 
+function assertCiAllowed(rawUrl) {
+  let parsed;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
+    throw new Error('Invalid URL');
+  }
+  if (parsed.protocol !== 'https:') {
+    throw new Error(`Non-https scheme rejected in --ci mode: ${parsed.protocol}`);
+  }
+  if (!isAllowedDomain(parsed.hostname)) {
+    throw new Error(`Host not in allowlist (--ci): ${parsed.hostname}`);
+  }
+  return parsed;
+}
+
 async function fetchFeed(url) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
   try {
+    if (CI_MODE) {
+      // Manual per-hop redirect handling: every hop must satisfy the same
+      // https + allowlist gates. Mirrors api/rss-proxy.js redirect re-check.
+      let currentUrl = assertCiAllowed(url).href;
+      const MAX_HOPS = 3;
+      for (let hop = 0; hop <= MAX_HOPS; hop++) {
+        const resp = await fetch(currentUrl, {
+          signal: controller.signal,
+          headers: { 'User-Agent': CHROME_UA, 'Accept': 'application/rss+xml, application/xml, text/xml, */*' },
+          redirect: 'manual',
+        });
+        if (resp.status >= 300 && resp.status < 400) {
+          if (hop === MAX_HOPS) throw new Error('Too many redirects');
+          const loc = resp.headers.get('location');
+          if (!loc) throw new Error(`HTTP ${resp.status} without Location header`);
+          const nextUrl = new URL(loc, currentUrl);
+          assertCiAllowed(nextUrl.href);
+          currentUrl = nextUrl.href;
+          continue;
+        }
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        return await resp.text();
+      }
+      throw new Error('Redirect loop');
+    }
     const resp = await fetch(url, {
       signal: controller.signal,
       headers: { 'User-Agent': CHROME_UA, 'Accept': 'application/rss+xml, application/xml, text/xml, */*' },
@@ -183,7 +236,8 @@ function pad(str, len) {
 
 async function main() {
   const feeds = extractFeeds();
-  console.log(`Validating ${feeds.length} RSS feeds (${CONCURRENCY} concurrent, ${FETCH_TIMEOUT / 1000}s timeout)...\n`);
+  const mode = CI_MODE ? 'CI (https-only + allowlist + per-hop redirect re-check)' : 'standard';
+  console.log(`Validating ${feeds.length} RSS feeds [${mode}] (${CONCURRENCY} concurrent, ${FETCH_TIMEOUT / 1000}s timeout)...\n`);
 
   const results = await runBatch(feeds, validateFeed, CONCURRENCY);
 
