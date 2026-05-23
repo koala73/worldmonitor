@@ -38,6 +38,15 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'ANSA', url: 'https://www.ansa.it/sito/ansait_rss.xml', lang: 'it' },
       { name: 'NOS Nieuws', url: 'https://feeds.nos.nl/nosnieuwsalgemeen', lang: 'nl' },
       { name: 'SVT Nyheter', url: 'https://www.svt.se/nyheter/rss.xml', lang: 'sv' },
+      // Hungarian (HU) — V4 / CEE coverage. Mirrors src/config/feeds.ts europe block.
+      { name: 'Telex', url: 'https://telex.hu/rss', lang: 'hu' },
+      { name: 'Index.hu', url: 'https://index.hu/24ora/rss', lang: 'hu' },
+      { name: 'HVG', url: 'https://hvg.hu/rss', lang: 'hu' },
+      { name: '444.hu', url: 'https://444.hu/feed', lang: 'hu' },
+      { name: '24.hu', url: 'https://24.hu/feed/', lang: 'hu' },
+      { name: 'Híradó', url: gn('site:hirado.hu when:2d'), lang: 'hu' },
+      { name: 'Portfolio.hu', url: 'https://portfolio.hu/rss/all.xml', lang: 'hu' },
+      { name: 'ATV', url: 'https://www.atv.hu/rss', lang: 'hu' },
     ],
     middleeast: [
       { name: 'BBC Middle East', url: 'https://feeds.bbci.co.uk/news/world/middle_east/rss.xml' },
