@@ -322,7 +322,10 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
       .then(d => d ?? getCachedJson(`displacement:summary:v1:${currentYear - 1}`, true).catch(() => null)),
     getCachedJson('news:insights:v1', true).catch(() => null),
     getCachedJson('news:threat:summary:v1', true).catch(() => null),
-    getCachedJson('aviation:delays:intl:v3', true).catch(() => null),
+    // Pre-merged bootstrap (seed-aviation.mjs writes it after merging FAA + intl +
+    // NOTAM-synthesized closures). Reading the intl-only key here silently dropped US
+    // FAA delays and NOTAM closures from aviationScore.
+    getCachedJson('aviation:delays-bootstrap:v2', true).catch(() => null),
     getCachedJson('seismology:earthquakes:v1', true).catch(() => null),
     getCachedJson('sanctions:pressure:v1', true).catch(() => null),
     getCachedJson('temporal:anomalies:v1', true).catch(() => null),

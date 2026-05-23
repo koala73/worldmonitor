@@ -94,7 +94,7 @@ The 8 families the server CII does not currently *score*, and what each needs:
 
 | Signal | Frontend ingest | Server source today | Work |
 |---|---|---|---|
-| Aviation disruptions | `ingestAviationForCII` | `aviation:delays:intl:v3` (Redis) ✅ | Plumb into `AuxiliarySources` |
+| Aviation disruptions | `ingestAviationForCII` | `aviation:delays-bootstrap:v2` (Redis — pre-merged FAA + intl + NOTAM by seed-aviation.mjs) ✅ | Plumb into `AuxiliarySources` |
 | AIS disruptions | `ingestAisDisruptionsForCII` | `get-vessel-snapshot.ts` emits `AisDisruption` (live relay HTTP, **not** a Redis key) ⚠️ | **Phase 2** — cached to a Redis key by Phase 2's scheduled relay job, then plumbed + **geo→country** |
 | Earthquakes | `ingestEarthquakesForCII` | `seismology:earthquakes:v1` (Redis) ✅ | Plumb + geo→country |
 | Sanctions | `ingestSanctionsForCII` | `sanctions/v1/list-sanctions-pressure.ts` (per-country) ✅ | Plumb |
@@ -144,7 +144,7 @@ each test ships inside an earlier phase's PR (noted per test).
 
 ### Phase 1 — Server acquires the cheap signals
 
-- `AuxiliarySources` + `fetchAuxiliarySources()`: add aviation (`aviation:delays:intl:v3`),
+- `AuxiliarySources` + `fetchAuxiliarySources()`: add aviation (`aviation:delays-bootstrap:v2` — the pre-merged FAA + intl + NOTAM source),
   earthquakes (`seismology:earthquakes:v1`, with geo→country), sanctions
   (`sanctions:pressure:v1`), temporal anomalies (`temporal:anomalies:v1`). All four are
   backed by an existing Redis key.
