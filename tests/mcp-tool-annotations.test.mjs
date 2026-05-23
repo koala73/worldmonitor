@@ -99,8 +99,16 @@ describe('api/mcp.ts — per-tool annotations coverage (v1.7.0)', () => {
   // Test 3 — buildPublicTool deep-clones annotations
   // --------------------------------------------------------------------
   // Same isolation contract as outputSchema (mcp-output-schema-coverage
-  // Test 4). Without this, a mutating client could poison the registry
-  // literal and corrupt the annotations seen by every subsequent caller.
+  // Test 4). Scope: this test exercises the buildPublicTool direct call
+  // path only — it confirms that mutating the object buildPublicTool
+  // returns does NOT leak back into TOOL_REGISTRY. The production
+  // tools/list handler returns the precomputed module-private
+  // TOOL_LIST_RESPONSE array (built once at module load via the same
+  // buildPublicTool helper), then JSON.stringify's it before sending —
+  // so the wire copy is always a fresh allocation regardless. The
+  // in-process static cache is not exported and has no test-reachable
+  // mutation surface; what we're guarding here is the registry-literal-
+  // sharing foot-gun, not the static cache.
   it('buildPublicTool deep-clones annotations (mutation does not leak into TOOL_REGISTRY)', () => {
     const tool = mod.__testing__.TOOL_REGISTRY.find(t => t.name === 'get_market_data');
     const pub = mod.buildPublicTool(tool, { compressDescriptions: true });

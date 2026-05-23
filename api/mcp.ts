@@ -172,8 +172,9 @@ const SERVER_NAME = 'worldmonitor';
 //     matched the old blanket. Cache tools + pure-internal RPCs now
 //     correctly advertise `openWorldHint: false` (closed-world like a
 //     memory tool — they read our seeded Redis cache); LLM-synthesized
-//     tools advertise `idempotentHint: false` (retries produce different
-//     content).
+//     tools AND live external-API reads (live ADS-B, live maritime, live
+//     flight pricing) advertise `idempotentHint: false` so MCP clients
+//     don't dedup / cache responses whose content drifts between calls.
 //   - Purely additive on the wire — clients that read only the legacy two
 //     hints keep working; new four-hint clients get a richer signal.
 // Keep aligned with public/.well-known/mcp/server-card.json::serverInfo.version
@@ -383,11 +384,22 @@ interface BaseToolDef {
   //     arguments will have no additional effect on the its environment."
   //     Spec definition is environmental (every read-only tool satisfies
   //     this). We use the stricter and more operationally useful "same
-  //     args → same result shape & content" reading: `false` for LLM-
-  //     synthesized tools (get_world_brief, get_country_brief,
-  //     analyze_situation, generate_forecasts) where retrying yields
-  //     meaningfully different content; `true` for cache / pure-data RPCs
-  //     where retrying is safe and equivalent.
+  //     args → same result content over short windows" reading, because
+  //     downstream MCP clients use this hint to decide whether to dedup,
+  //     cache, or auto-retry tool calls. Two classes of tool earn `false`:
+  //       1. LLM-synthesized tools (get_world_brief, get_country_brief,
+  //          analyze_situation, generate_forecasts) — the model output is
+  //          non-deterministic across calls.
+  //       2. Live external-API reads with rapidly-changing content
+  //          (get_airspace, get_maritime_activity, search_flights,
+  //          search_flight_prices_by_date) — flight prices and live
+  //          positions drift minute-to-minute, so a client that dedupes
+  //          on `idempotentHint: true` would silently serve stale data
+  //          as authoritative.
+  //     Cache tools and pure-internal RPCs are `true` — those serve a
+  //     deliberate snapshot from our seeded cache with `cached_at` /
+  //     `stale` envelope metadata, and client-side dedup of the snapshot
+  //     within a single request burst is desirable.
   //   - openWorldHint: "If true, this tool may interact with an 'open world'
   //     of external entities. If false, the tool's domain of interaction is
   //     closed. For example, the world of a web search tool is open, whereas
@@ -3122,7 +3134,7 @@ const TOOL_REGISTRY: ToolDef[] = [
         error: { type: 'string', description: 'Present only on unknown country_code.' },
       },
     },
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     _execute: async (params, base, context) => {
       const code = String(params.country_code ?? '').toUpperCase().slice(0, 2);
       const bbox = COUNTRY_BBOXES[code];
@@ -3238,7 +3250,7 @@ const TOOL_REGISTRY: ToolDef[] = [
         error: { type: 'string', description: 'Present only on unknown country_code.' },
       },
     },
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     _execute: async (params, base, context) => {
       const code = String(params.country_code ?? '').toUpperCase().slice(0, 2);
       const bbox = COUNTRY_BBOXES[code];
@@ -3403,7 +3415,7 @@ const TOOL_REGISTRY: ToolDef[] = [
         error: { type: 'string', description: 'Present when upstream returned a usable error message.' },
       },
     },
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     _execute: async (params, base, context) => {
       const qs = new URLSearchParams({
         origin: String(params.origin ?? ''),
@@ -3465,7 +3477,7 @@ const TOOL_REGISTRY: ToolDef[] = [
         error: { type: 'string' },
       },
     },
-    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: true },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: false, openWorldHint: true },
     _execute: async (params, base, context) => {
       const qs = new URLSearchParams({
         origin: String(params.origin ?? ''),
