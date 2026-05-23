@@ -310,5 +310,6 @@ export default [
   "24.hu",
   "hirado.hu",
   "portfolio.hu",
+  "www.portfolio.hu",
   "www.atv.hu"
 ];
