@@ -150,9 +150,19 @@ const SERVER_NAME = 'worldmonitor';
 //   - Purely additive — omitting all v1.5.0 args returns a compressed
 //     description in tools/list (observable shape change); describe_tool
 //     recovers full text.
+// Bumped 1.5.0 → 1.6.0 (2026-05-23) reflecting:
+//   - Every tool now declares the spec-defined MCP 2025-06-18 `Tool.outputSchema`
+//     field. The LLM can now write a JMESPath projection against the response
+//     on the FIRST call — previously the only path was call-then-discover-then-
+//     retry, which burned a daily quota slot on a non-projected response.
+//   - Schemas are emitted UNCONDITIONALLY on every tools/list, regardless of
+//     MCP_PROTOCOL_FLOOR_2025_06_18 — the spec convention is clients ignore
+//     unknown fields, and discovery on 2025-03-26 sessions should still benefit.
+//   - Purely additive on the wire — no input contract change. Bundle delta is
+//     documented in the v1.6.0 PR body.
 // Keep aligned with public/.well-known/mcp/server-card.json::serverInfo.version
 // — discovery scanners cross-check both values.
-const SERVER_VERSION = '1.5.0';
+const SERVER_VERSION = '1.6.0';
 
 // MCP logging capability — valid severity levels per the 2025-03-26 spec
 // (RFC 5424 subset). Stateless HTTP transport: we ACK the level but do not
@@ -319,6 +329,24 @@ interface BaseToolDef {
   // envelope instead of the oversized payload. Required so a new tool can't
   // be added without an explicit budget choice.
   _outputBudgetBytes: number;
+  // Spec-defined `Tool.outputSchema` (MCP 2025-06-18+). JSON Schema fragment
+  // describing the tool's normal (non-envelope) response shape so a compliant
+  // client can validate `tools/call` results AND so the LLM can write a
+  // JMESPath projection against the response on the FIRST call (instead of
+  // having to invoke once just to discover the shape).
+  //
+  // Required field with NO default — every new tool must make the schema
+  // an explicit deliberate authorship step, same discipline as
+  // `_outputBudgetBytes`. Source of truth: the tool's `_execute` / cache-key
+  // contract (NOT auto-inferred from a single fixture, which would lock in
+  // every observed enum value and required-flag forever).
+  //
+  // Wire behavior: emitted unconditionally on every `tools/list`. Per the
+  // MCP JSON-RPC convention, clients negotiated to 2025-03-26 ignore
+  // unknown fields, so emitting `outputSchema` on a 2025-03-26 session is
+  // practically safe and lets every LLM client benefit during the rollout
+  // window before MCP_PROTOCOL_FLOOR_2025_06_18 flips default-on.
+  outputSchema: object;
 }
 
 interface FreshnessCheck {
@@ -814,6 +842,53 @@ function summarizeData(data: Record<string, unknown>): Record<string, unknown> {
   return out;
 }
 
+// ---------------------------------------------------------------------------
+// outputSchema authoring helpers (v1.6.0)
+// ---------------------------------------------------------------------------
+// Every cache tool returns a uniform envelope from `executeTool`:
+//
+//   { cached_at: string|null, stale: boolean, data: { [label]: ... } }
+//
+// where each `label` is derived from one of the tool's `_cacheKeys` via the
+// NON_LABEL regex in executeTool. `cacheEnvelope(dataProps)` returns the spec
+// outputSchema for that envelope so the per-tool declarations stay readable
+// and consistent (the load-bearing per-tool detail is the `data.properties`
+// dictionary — everything else is uniform).
+//
+// Schema authorship rules:
+//   - Source of truth is the tool's `_execute` / cache-key contract, NOT a
+//     single captured fixture (an inferred schema would freeze every observed
+//     enum value + required flag forever and reject valid future responses).
+//   - Only the envelope (`cached_at`, `stale`, `data`) is `required`. The
+//     per-label `data` properties are intentionally NOT required because any
+//     single cache key may be transiently null without tripping the
+//     `cache_all_null` guard (which fires only when ALL keys are null).
+//   - `additionalProperties` is left implicit (true) so forward-compat fields
+//     added to a payload by a producer don't suddenly fail validation.
+//   - Per-array `items.properties` lists known top-level fields with types but
+//     does NOT enumerate every observed key — this is the LLM's hint surface
+//     for JMESPath, not an exhaustive bytecode-level contract.
+function cacheEnvelope(dataProperties: Record<string, object>): object {
+  return {
+    type: 'object',
+    required: ['cached_at', 'stale', 'data'],
+    properties: {
+      cached_at: {
+        type: ['string', 'null'],
+        description: 'ISO-8601 timestamp of the OLDEST contributing cache key, or null when no valid seed-meta is present.',
+      },
+      stale: {
+        type: 'boolean',
+        description: 'True when any contributing cache key is older than its per-key maxStaleMin freshness budget.',
+      },
+      data: { type: 'object', properties: dataProperties },
+    },
+  };
+}
+
+// Common dataset-label shape: `{ <label>: { type: ..., properties: {...} } }`
+// stays an array of objects under a single key. Most cache datasets follow
+// `{ <listKey>: [ ... ] }` plus assorted top-level metadata.
 const TOOL_REGISTRY: ToolDef[] = [
   {
     name: 'get_market_data',
@@ -836,6 +911,65 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: [],
     },
+    outputSchema: cacheEnvelope({
+      'stocks-bootstrap': {
+        type: ['object', 'null'],
+        properties: {
+          quotes: { type: 'array', items: { type: 'object', properties: { symbol: { type: 'string' }, price: { type: 'number' }, changePercent: { type: 'number' } } } },
+          finnhubSkipped: { type: 'boolean' },
+          skipReason: { type: 'string' },
+          rateLimited: { type: 'boolean' },
+        },
+      },
+      'commodities-bootstrap': {
+        type: ['object', 'null'],
+        properties: {
+          quotes: { type: 'array', items: { type: 'object', properties: { symbol: { type: 'string' }, price: { type: 'number' }, changePercent: { type: 'number' } } } },
+        },
+      },
+      crypto: {
+        type: ['object', 'null'],
+        properties: {
+          quotes: { type: 'array', items: { type: 'object', properties: { symbol: { type: 'string' }, price: { type: 'number' }, changePercent: { type: 'number' } } } },
+        },
+      },
+      sectors: {
+        type: ['object', 'null'],
+        properties: {
+          sectors: { type: 'array', items: { type: 'object', properties: { symbol: { type: 'string' }, name: { type: 'string' }, changePercent: { type: 'number' } } } },
+          valuations: { type: ['object', 'array', 'null'] },
+        },
+      },
+      'etf-flows': {
+        type: ['object', 'null'],
+        properties: {
+          timestamp: { type: ['string', 'number', 'null'] },
+          summary: { type: ['object', 'null'] },
+          etfs: { type: 'array', items: { type: 'object', properties: { ticker: { type: 'string' }, flow: { type: 'number' } } } },
+          rateLimited: { type: 'boolean' },
+        },
+      },
+      'gulf-quotes': {
+        type: ['object', 'null'],
+        properties: {
+          quotes: { type: 'array', items: { type: 'object', properties: { symbol: { type: 'string' }, price: { type: 'number' }, changePercent: { type: 'number' } } } },
+          rateLimited: { type: 'boolean' },
+        },
+      },
+      'fear-greed': {
+        type: ['object', 'null'],
+        properties: {
+          timestamp: { type: ['string', 'number', 'null'] },
+          composite: { type: ['object', 'number', 'null'], properties: {
+            score: { type: 'number' }, label: { type: 'string' }, previous: { type: ['number', 'null'] },
+          } },
+          categories: { type: ['object', 'array', 'null'] },
+          headerMetrics: { type: ['object', 'array', 'null'] },
+          sectorPerformance: { type: ['object', 'array', 'null'] },
+          unavailable: { type: 'boolean' },
+        },
+      },
+    }),
     _postFilter: (data, params) => {
       const symbols = argStrList(params.symbols);
       if (symbols.length > 0) {
@@ -907,6 +1041,51 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: [],
     },
+    outputSchema: cacheEnvelope({
+      'ucdp-events': {
+        type: ['object', 'null'],
+        properties: {
+          events: { type: 'array', items: { type: 'object', properties: {
+            id: { type: 'string' }, dateStart: { type: ['number', 'string'] }, dateEnd: { type: ['number', 'string'] },
+            location: { type: 'object', properties: { latitude: { type: 'number' }, longitude: { type: 'number' } } },
+            country: { type: 'string' }, sideA: { type: 'string' }, sideB: { type: 'string' },
+            deathsBest: { type: 'number' }, deathsLow: { type: 'number' }, deathsHigh: { type: 'number' },
+            violenceType: { type: 'string' }, sourceOriginal: { type: 'string' },
+          } } },
+          fetchedAt: { type: ['number', 'string'] },
+          version: { type: ['string', 'number'] },
+          totalRaw: { type: 'number' },
+          filteredCount: { type: 'number' },
+        },
+      },
+      'iran-events': {
+        type: ['object', 'null'],
+        properties: {
+          events: { type: 'array', items: { type: 'object', properties: {
+            id: { type: 'string' }, country: { type: 'string' },
+            location: { type: 'object', properties: { latitude: { type: 'number' }, longitude: { type: 'number' } } },
+          } } },
+          scrapedAt: { type: ['number', 'string'] },
+        },
+      },
+      events: {
+        type: ['object', 'null'],
+        properties: {
+          events: { type: 'array', items: { type: 'object', properties: {
+            country: { type: 'string' }, fatalities: { type: 'number' },
+            location: { type: 'object', properties: { latitude: { type: 'number' }, longitude: { type: 'number' } } },
+          } } },
+          clusters: { type: ['array', 'object', 'null'] },
+        },
+      },
+      scores: {
+        type: ['object', 'null'],
+        properties: {
+          ciiScores: { type: 'array', items: { type: 'object', properties: { region: { type: 'string' }, score: { type: 'number' } } } },
+          strategicRisks: { type: ['array', 'object', 'null'] },
+        },
+      },
+    }),
     _postFilter: (data, params) => {
       const country = argStr(params.country);
       const minFatal = argNum(params.min_fatalities);
@@ -962,6 +1141,17 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: [],
     },
+    outputSchema: cacheEnvelope({
+      'delays-bootstrap': {
+        type: ['object', 'null'],
+        properties: {
+          alerts: { type: 'array', items: { type: 'object', properties: {
+            iata: { type: 'string' }, country: { type: 'string' },
+            severity: { type: 'string' }, name: { type: 'string' },
+          } } },
+        },
+      },
+    }),
     _postFilter: (data, params) => {
       const country = argStr(params.country);
       const iata = argStr(params.iata);
@@ -997,6 +1187,33 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: [],
     },
+    outputSchema: cacheEnvelope({
+      insights: {
+        type: ['object', 'null'],
+        properties: {
+          topStories: { type: 'array', items: { type: 'object', properties: {
+            title: { type: 'string' }, category: { type: 'string' }, countryCode: { type: 'string' },
+            isAlert: { type: 'boolean' }, summary: { type: 'string' },
+          } } },
+        },
+      },
+      'gdelt-intel': {
+        type: ['object', 'null'],
+        properties: {
+          topics: { type: 'array', items: { type: 'object', properties: { id: { type: 'string' }, signals: { type: ['array', 'object'] } } } },
+        },
+      },
+      'cross-source-signals': {
+        type: ['object', 'null'],
+        properties: { signals: { type: 'array', items: { type: 'object' } } },
+      },
+      'advisories-bootstrap': {
+        type: ['object', 'null'],
+        properties: {
+          advisories: { type: 'array', items: { type: 'object', properties: { country: { type: 'string' }, level: { type: ['string', 'number'] } } } },
+        },
+      },
+    }),
     _postFilter: (data, params) => {
       const topic = argStr(params.topic);
       const category = argStr(params.category);
@@ -1045,6 +1262,35 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: [],
     },
+    outputSchema: cacheEnvelope({
+      earthquakes: {
+        type: ['object', 'null'],
+        properties: {
+          earthquakes: { type: 'array', items: { type: 'object', properties: {
+            magnitude: { type: 'number' }, place: { type: 'string' }, time: { type: ['number', 'string'] },
+            latitude: { type: 'number' }, longitude: { type: 'number' }, depth: { type: 'number' },
+          } } },
+        },
+      },
+      fires: {
+        type: ['object', 'null'],
+        properties: {
+          fireDetections: { type: 'array', items: { type: 'object', properties: {
+            latitude: { type: 'number' }, longitude: { type: 'number' },
+            brightness: { type: 'number' }, confidence: { type: ['number', 'string'] },
+          } } },
+        },
+      },
+      events: {
+        type: ['object', 'null'],
+        properties: {
+          events: { type: 'array', items: { type: 'object', properties: {
+            magnitude: { type: ['number', 'null'] }, closed: { type: 'boolean' },
+            country: { type: 'string' }, type: { type: 'string' }, title: { type: 'string' },
+          } } },
+        },
+      },
+    }),
     _postFilter: (data, params) => {
       const minMag = argNum(params.min_magnitude);
       const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
@@ -1089,6 +1335,17 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: [],
     },
+    outputSchema: cacheEnvelope({
+      theater_posture: {
+        type: ['object', 'null'],
+        properties: {
+          theaters: { type: 'array', items: { type: 'object', properties: {
+            theater: { type: 'string' }, postureLevel: { type: 'string' },
+            summary: { type: 'string' }, signals: { type: ['array', 'object', 'null'] },
+          } } },
+        },
+      },
+    }),
     _postFilter: (data, params) => {
       const theater = argStr(params.theater);
       const level = argStr(params.posture_level);
@@ -1132,6 +1389,17 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: [],
     },
+    outputSchema: cacheEnvelope({
+      'threats-bootstrap': {
+        type: ['object', 'null'],
+        properties: {
+          threats: { type: 'array', items: { type: 'object', properties: {
+            type: { type: 'string' }, severity: { type: 'string' }, country: { type: 'string' },
+            indicator: { type: 'string' }, description: { type: 'string' },
+          } } },
+        },
+      },
+    }),
     _postFilter: (data, params) => {
       const type = argStr(params.threat_type);
       const countries = argStrList(params.country);
@@ -1180,6 +1448,45 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: [],
     },
+    // FRED key is `economic:fred:v1:FEDFUNDS:0` — the label-walk skips the
+    // `0` suffix (NON_LABEL regex matches bare digits) and the `v1` segment,
+    // landing on `FEDFUNDS`.
+    outputSchema: cacheEnvelope({
+      FEDFUNDS: { type: ['object', 'array', 'null'] },
+      'econ-calendar': {
+        type: ['object', 'null'],
+        properties: { events: { type: 'array', items: { type: 'object', properties: {
+          country: { type: 'string' }, event: { type: 'string' }, time: { type: ['string', 'number'] },
+        } } } },
+      },
+      'fuel-prices': {
+        type: ['object', 'null'],
+        properties: { countries: { type: 'array', items: { type: 'object', properties: { code: { type: 'string' }, price: { type: 'number' }, currency: { type: 'string' } } } } },
+      },
+      'ecb-fx-rates': { type: ['object', 'null'] },
+      'yield-curve-eu': { type: ['object', 'null'] },
+      spending: {
+        type: ['object', 'null'],
+        properties: { awards: { type: 'array', items: { type: 'object' } } },
+      },
+      'earnings-calendar': {
+        type: ['object', 'null'],
+        properties: { earnings: { type: 'array', items: { type: 'object', properties: { symbol: { type: 'string' }, date: { type: 'string' } } } } },
+      },
+      cot: { type: ['object', 'null'] },
+      dsr: {
+        type: ['object', 'null'],
+        properties: { entries: { type: 'array', items: { type: 'object', properties: { countryCode: { type: 'string' }, value: { type: 'number' } } } } },
+      },
+      'property-residential': {
+        type: ['object', 'null'],
+        properties: { entries: { type: 'array', items: { type: 'object', properties: { countryCode: { type: 'string' }, value: { type: 'number' } } } } },
+      },
+      'property-commercial': {
+        type: ['object', 'null'],
+        properties: { entries: { type: 'array', items: { type: 'object', properties: { countryCode: { type: 'string' }, value: { type: 'number' } } } } },
+      },
+    }),
     _postFilter: (data, params) => {
       const countries = argStrList(params.country);
       const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
@@ -1245,6 +1552,13 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: [],
     },
+    // Each IMF label maps to `{ countries: { [iso2]: { ... per-series metrics ... } } }`.
+    outputSchema: cacheEnvelope({
+      macro: { type: ['object', 'null'], properties: { countries: { type: 'object', additionalProperties: { type: 'object' } } } },
+      growth: { type: ['object', 'null'], properties: { countries: { type: 'object', additionalProperties: { type: 'object' } } } },
+      labor: { type: ['object', 'null'], properties: { countries: { type: 'object', additionalProperties: { type: 'object' } } } },
+      external: { type: ['object', 'null'], properties: { countries: { type: 'object', additionalProperties: { type: 'object' } } } },
+    }),
     _postFilter: (data, params) => {
       const codes = argStrList(params.countries);
       if (codes.length > 0) {
@@ -1288,6 +1602,15 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: [],
     },
+    outputSchema: cacheEnvelope({
+      'house-prices': {
+        type: ['object', 'null'],
+        properties: { countries: { type: 'object', additionalProperties: { type: 'object', properties: {
+          latest: { type: ['number', 'null'] }, prior: { type: ['number', 'null'] },
+          date: { type: 'string' }, unit: { type: 'string' }, series: { type: 'array', items: { type: 'object' } },
+        } } } },
+      },
+    }),
     _postFilter: (data, params) => {
       const codes = argStrList(params.countries);
       if (codes.length > 0) {
@@ -1319,6 +1642,15 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: [],
     },
+    outputSchema: cacheEnvelope({
+      'gov-debt-q': {
+        type: ['object', 'null'],
+        properties: { countries: { type: 'object', additionalProperties: { type: 'object', properties: {
+          latest: { type: ['number', 'null'] }, prior: { type: ['number', 'null'] },
+          quarter: { type: 'string' }, series: { type: 'array', items: { type: 'object' } },
+        } } } },
+      },
+    }),
     _postFilter: (data, params) => {
       const codes = argStrList(params.countries);
       if (codes.length > 0) {
@@ -1350,6 +1682,15 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: [],
     },
+    outputSchema: cacheEnvelope({
+      'industrial-production': {
+        type: ['object', 'null'],
+        properties: { countries: { type: 'object', additionalProperties: { type: 'object', properties: {
+          latest: { type: ['number', 'null'] }, prior: { type: ['number', 'null'] },
+          month: { type: 'string' }, series: { type: 'array', items: { type: 'object' } },
+        } } } },
+      },
+    }),
     _postFilter: (data, params) => {
       const codes = argStrList(params.countries);
       if (codes.length > 0) {
@@ -1383,6 +1724,16 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: [],
     },
+    outputSchema: cacheEnvelope({
+      'markets-bootstrap': {
+        type: ['object', 'null'],
+        properties: {
+          geopolitical: { type: 'array', items: { type: 'object', properties: { title: { type: 'string' }, source: { type: 'string' }, probability: { type: 'number' } } } },
+          tech:         { type: 'array', items: { type: 'object', properties: { title: { type: 'string' }, source: { type: 'string' }, probability: { type: 'number' } } } },
+          finance:      { type: 'array', items: { type: 'object', properties: { title: { type: 'string' }, source: { type: 'string' }, probability: { type: 'number' } } } },
+        },
+      },
+    }),
     _postFilter: (data, params) => {
       const category = argStr(params.category);
       const query = argStr(params.query);
@@ -1424,6 +1775,29 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: [],
     },
+    // `_postFilter` calls `narrowArray(data, 'entities', ...)` on the
+    // entities slot, so that label's value is itself an array (not an object
+    // with a child array). The pressure label is the usual `{entries, countries}` shape.
+    outputSchema: cacheEnvelope({
+      entities: {
+        type: ['array', 'object', 'null'],
+        items: { type: 'object', properties: {
+          name: { type: 'string' }, cc: { type: 'string' }, et: { type: 'string' },
+          addr: { type: 'string' },
+        } },
+      },
+      pressure: {
+        type: ['object', 'null'],
+        properties: {
+          entries: { type: 'array', items: { type: 'object', properties: {
+            countryCodes: { type: ['array', 'string'] }, entityType: { type: 'string' },
+          } } },
+          countries: { type: 'array', items: { type: 'object', properties: {
+            countryCode: { type: 'string' }, pressureScore: { type: 'number' },
+          } } },
+        },
+      },
+    }),
     _postFilter: (data, params) => {
       const countries = argStrList(params.country);
       const etype = argStr(params.entity_type);
@@ -1467,6 +1841,19 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: [],
     },
+    outputSchema: cacheEnvelope({
+      summary: {
+        type: ['object', 'null'],
+        properties: {
+          countries: { type: 'array', items: { type: 'object', properties: {
+            code: { type: 'string' }, total: { type: ['number', 'null'] }, year: { type: ['number', 'string'] },
+          } } },
+          topFlows: { type: 'array', items: { type: 'object', properties: {
+            originCode: { type: 'string' }, asylumCode: { type: 'string' }, value: { type: ['number', 'null'] },
+          } } },
+        },
+      },
+    }),
     _postFilter: (data, params) => {
       const codes = argStrList(params.countries);
       const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
@@ -1513,6 +1900,26 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: [],
     },
+    outputSchema: cacheEnvelope({
+      'disease-outbreaks': {
+        type: ['object', 'null'],
+        properties: {
+          outbreaks: { type: 'array', items: { type: 'object', properties: {
+            disease: { type: 'string' }, country: { type: 'string' }, countryCode: { type: 'string' },
+            cases: { type: ['number', 'null'] }, deaths: { type: ['number', 'null'] }, date: { type: 'string' },
+          } } },
+        },
+      },
+      'air-quality': {
+        type: ['object', 'null'],
+        properties: {
+          stations: { type: 'array', items: { type: 'object', properties: {
+            country_code: { type: 'string' }, city: { type: 'string' }, aqi: { type: ['number', 'null'] },
+            pm25: { type: ['number', 'null'] }, latitude: { type: 'number' }, longitude: { type: 'number' },
+          } } },
+        },
+      },
+    }),
     _postFilter: (data, params) => {
       const countries = argStrList(params.country);
       const disease = argStr(params.disease);
@@ -1573,6 +1980,30 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: [],
     },
+    // Labels derived from each cache key's last informative segment:
+    //   energy:eia-petroleum:v1                  -> eia-petroleum
+    //   energy:electricity:v1:index              -> index
+    //   energy:ember:v1:_all                     -> _all
+    //   energy:gas-storage:v1:_countries         -> _countries
+    //   energy:fuel-shortages:v1                 -> fuel-shortages
+    //   energy:disruptions:v1                    -> disruptions
+    //   energy:crisis-policies:v1                -> crisis-policies
+    //   resilience:fossil-electricity-share:v1   -> fossil-electricity-share
+    //   economic:worldbank-renewable:v1          -> worldbank-renewable
+    outputSchema: cacheEnvelope({
+      'eia-petroleum': { type: ['object', 'null'] },
+      index: { type: ['object', 'null'], properties: { regions: { type: 'array', items: { type: 'object' } } } },
+      _all: { type: ['object', 'null'] },
+      _countries: { type: ['array', 'object', 'null'] },
+      'fuel-shortages': { type: ['object', 'null'], properties: { shortages: { type: ['object', 'array', 'null'] } } },
+      disruptions: { type: ['object', 'null'], properties: { events: { type: ['object', 'array', 'null'] } } },
+      'crisis-policies': { type: ['object', 'null'], properties: { policies: { type: 'array', items: { type: 'object' } } } },
+      'fossil-electricity-share': { type: ['object', 'null'], properties: { countries: { type: 'object', additionalProperties: { type: 'object' } } } },
+      'worldbank-renewable': { type: ['object', 'null'], properties: {
+        historicalData: { type: 'array', items: { type: 'object' } },
+        regions: { type: 'array', items: { type: 'object' } },
+      } },
+    }),
     _postFilter: (data, params) => {
       const countries = argStrList(params.country);
       if (countries.length > 0) {
@@ -1662,6 +2093,19 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: [],
     },
+    outputSchema: cacheEnvelope({
+      anomalies: { type: ['object', 'null'], properties: { anomalies: { type: 'array', items: { type: 'object' } } } },
+      disasters: { type: ['object', 'null'], properties: { disasters: { type: 'array', items: { type: 'object', properties: {
+        countryCode: { type: 'string' }, type: { type: 'string' }, severity: { type: 'string' },
+      } } } } },
+      'co2-monitoring': { type: ['object', 'null'] },
+      'air-quality': { type: ['object', 'null'], properties: { stations: { type: 'array', items: { type: 'object', properties: {
+        country_code: { type: 'string' }, city: { type: 'string' }, aqi: { type: ['number', 'null'] },
+      } } } } },
+      'ocean-ice': { type: ['object', 'null'] },
+      'news-intelligence': { type: ['object', 'null'], properties: { items: { type: 'array', items: { type: 'object' } } } },
+      alerts: { type: ['object', 'null'], properties: { alerts: { type: 'array', items: { type: 'object' } } } },
+    }),
     _postFilter: (data, params) => {
       const countries = argStrList(params.country);
       const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
@@ -1710,6 +2154,15 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: [],
     },
+    outputSchema: cacheEnvelope({
+      outages: {
+        type: ['object', 'null'],
+        properties: { outages: { type: 'array', items: { type: 'object', properties: {
+          country: { type: 'string' }, severity: { type: 'string' }, asn: { type: ['number', 'string'] },
+          startTime: { type: 'string' }, description: { type: 'string' },
+        } } } },
+      },
+    }),
     _postFilter: (data, params) => {
       const country = argStr(params.country);
       const severity = argStr(params.severity);
@@ -1745,6 +2198,27 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: [],
     },
+    outputSchema: cacheEnvelope({
+      shipping_stress: {
+        type: ['object', 'null'],
+        properties: { carriers: { type: 'array', items: { type: 'object', properties: {
+          name: { type: 'string' }, stressScore: { type: ['number', 'null'] },
+        } } } },
+      },
+      'customs-revenue': {
+        type: ['object', 'null'],
+        properties: { months: { type: 'array', items: { type: 'object', properties: {
+          month: { type: 'string' }, revenueUsd: { type: ['number', 'null'] },
+        } } } },
+      },
+      flows: {
+        type: ['object', 'null'],
+        properties: { flows: { type: 'array', items: { type: 'object', properties: {
+          cmdCode: { type: 'string' }, cmdDesc: { type: 'string' }, reporter: { type: 'string' },
+          partner: { type: 'string' }, value: { type: ['number', 'null'] },
+        } } } },
+      },
+    }),
     _postFilter: (data, params) => {
       const commodity = argStr(params.commodity);
       const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
@@ -1788,6 +2262,29 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: [],
     },
+    // First cache key `trade:tariffs:v1:840:all:10` — NON_LABEL drops bare digits
+    // (840, 10) and `v1`, lands on `all`.
+    outputSchema: cacheEnvelope({
+      all: {
+        type: ['object', 'null'],
+        properties: { datapoints: { type: 'array', items: { type: 'object', properties: {
+          hsCode: { type: 'string' }, rate: { type: ['number', 'null'] }, country: { type: 'string' },
+        } } } },
+      },
+      bigmac: {
+        type: ['object', 'null'],
+        properties: { countries: { type: 'array', items: { type: 'object', properties: {
+          code: { type: 'string' }, priceLocal: { type: ['number', 'null'] }, priceUsd: { type: ['number', 'null'] },
+        } } } },
+      },
+      'fao-ffpi': { type: ['object', 'null'] },
+      'national-debt': {
+        type: ['object', 'null'],
+        properties: { entries: { type: 'array', items: { type: 'object', properties: {
+          iso3: { type: 'string' }, value: { type: ['number', 'null'] }, year: { type: ['number', 'string'] },
+        } } } },
+      },
+    }),
     _postFilter: (data, params) => {
       const countries = argStrList(params.country);
       const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
@@ -1859,6 +2356,52 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: [],
     },
+    // Schema validated against tests/fixtures/jmespath-samples/thin-get-chokepoint-status.response.json.
+    outputSchema: cacheEnvelope({
+      'transit-summaries': {
+        type: ['object', 'null'],
+        properties: {
+          summaries: { type: 'object', additionalProperties: { type: 'object', properties: {
+            todayTotal: { type: ['number', 'null'] }, todayTanker: { type: ['number', 'null'] },
+            todayCargo: { type: ['number', 'null'] }, todayOther: { type: ['number', 'null'] },
+            wowChangePct: { type: ['number', 'null'] }, riskLevel: { type: 'string' },
+            incidentCount7d: { type: ['number', 'null'] }, disruptionPct: { type: ['number', 'null'] },
+            riskSummary: { type: 'string' }, riskReportAction: { type: 'string' },
+            anomaly: { type: 'object' }, dataAvailable: { type: 'boolean' },
+          } } },
+          fetchedAt: { type: ['number', 'string'] },
+        },
+      },
+      chokepoint_transits: {
+        type: ['object', 'null'],
+        properties: {
+          transits: { type: 'object', additionalProperties: { type: 'object' } },
+          fetchedAt: { type: ['number', 'string'] },
+        },
+      },
+      _countries: {
+        type: ['array', 'object', 'null'],
+        items: { type: 'string' },
+      },
+      'chokepoint-baselines': {
+        type: ['object', 'null'],
+        properties: {
+          source: { type: 'string' }, referenceYear: { type: ['number', 'string'] },
+          updatedAt: { type: 'string' },
+          chokepoints: { type: 'array', items: { type: 'object', properties: {
+            id: { type: 'string' }, relayId: { type: 'string' }, name: { type: 'string' },
+          } } },
+        },
+      },
+      ref: {
+        type: ['object', 'null'],
+        additionalProperties: { type: 'object' },
+      },
+      'chokepoint-flows': {
+        type: ['object', 'null'],
+        additionalProperties: { type: 'object' },
+      },
+    }),
     _postFilter: (data, params) => {
       const cp = argStr(params.chokepoint);
       if (cp) {
@@ -1935,6 +2478,15 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: [],
     },
+    outputSchema: cacheEnvelope({
+      'geo-bootstrap': {
+        type: ['object', 'null'],
+        properties: { events: { type: 'array', items: { type: 'object', properties: {
+          category: { type: 'string' }, title: { type: 'string' }, summary: { type: 'string' },
+          date: { type: 'string' },
+        } } } },
+      },
+    }),
     _postFilter: (data, params) => {
       const category = argStr(params.category);
       if (category) narrowNested(data, 'geo-bootstrap', 'events', (e) => argStr(e.category) === category);
@@ -1964,6 +2516,15 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: [],
     },
+    outputSchema: cacheEnvelope({
+      observations: {
+        type: ['object', 'null'],
+        properties: { observations: { type: 'array', items: { type: 'object', properties: {
+          country: { type: 'string' }, severity: { type: 'string' },
+          stationName: { type: 'string' }, value: { type: ['number', 'null'] }, unit: { type: 'string' },
+        } } } },
+      },
+    }),
     _postFilter: (data, params) => {
       const country = argStr(params.country);
       if (country) narrowNested(data, 'observations', 'observations', (o) => ciIncludes(o.country, country));
@@ -1997,6 +2558,15 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: [],
     },
+    outputSchema: cacheEnvelope({
+      'tech-events-bootstrap': {
+        type: ['object', 'null'],
+        properties: { events: { type: 'array', items: { type: 'object', properties: {
+          type: { type: 'string' }, source: { type: 'string' },
+          title: { type: 'string' }, date: { type: 'string' },
+        } } } },
+      },
+    }),
     _postFilter: (data, params) => {
       const type = argStr(params.type);
       const source = argStr(params.source);
@@ -2025,6 +2595,15 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: [],
     },
+    outputSchema: cacheEnvelope({
+      predictions: {
+        type: ['object', 'null'],
+        properties: { predictions: { type: 'array', items: { type: 'object', properties: {
+          domain: { type: 'string' }, region: { type: 'string' },
+          probability: { type: ['number', 'null'] }, title: { type: 'string' },
+        } } } },
+      },
+    }),
     _postFilter: (data, params) => {
       const domain = argStr(params.domain);
       const region = argStr(params.region);
@@ -2056,6 +2635,15 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: [],
     },
+    outputSchema: cacheEnvelope({
+      reddit: {
+        type: ['object', 'null'],
+        properties: { posts: { type: 'array', items: { type: 'object', properties: {
+          subreddit: { type: 'string' }, title: { type: 'string' },
+          score: { type: ['number', 'null'] }, url: { type: 'string' }, createdAt: { type: ['string', 'number'] },
+        } } } },
+      },
+    }),
     _postFilter: (data, params) => {
       const sub = argStr(params.subreddit);
       if (sub) narrowNested(data, 'reddit', 'posts', (p) => argStr(p.subreddit) === sub);
@@ -2083,6 +2671,18 @@ const TOOL_REGISTRY: ToolDef[] = [
         geo_context: { type: 'string', description: 'Optional focus context (e.g. "Middle East tensions", "US-China trade war")' },
       },
       required: [],
+    },
+    // RPC tool: returns the raw body of /api/news/v1/summarize-article (LLM brief).
+    outputSchema: {
+      type: 'object',
+      properties: {
+        brief: { type: 'string', description: 'LLM-summarized geopolitical brief.' },
+        summary: { type: 'string', description: 'Alternate naming used by some upstream variants.' },
+        headlines: { type: 'array', items: { type: 'string' } },
+        provider: { type: 'string' },
+        model: { type: 'string' },
+        generatedAt: { type: ['string', 'number', 'null'] },
+      },
     },
     _execute: async (params, base, context) => {
       const UA = 'worldmonitor-mcp-edge/1.0';
@@ -2142,6 +2742,17 @@ const TOOL_REGISTRY: ToolDef[] = [
         framework: { type: 'string', description: 'Optional analytical framework instructions to shape the analysis lens (e.g. Ray Dalio debt cycle, PMESII-PT)' },
       },
       required: ['country_code'],
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        country_code: { type: 'string' },
+        brief: { type: 'string', description: 'LLM-synthesized country intelligence brief.' },
+        framework: { type: 'string' },
+        generatedAt: { type: ['string', 'number', 'null'] },
+        provider: { type: 'string' },
+        model: { type: 'string' },
+      },
     },
     _execute: async (params, base, context) => {
       const UA = 'worldmonitor-mcp-edge/1.0';
@@ -2206,6 +2817,24 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: ['country_code'],
     },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        country_code: { type: 'string' },
+        cii: { type: ['number', 'null'], description: 'Composite Instability Index 0-100.' },
+        components: {
+          type: 'object',
+          properties: {
+            unrest: { type: ['number', 'null'] },
+            conflict: { type: ['number', 'null'] },
+            security: { type: ['number', 'null'] },
+            news: { type: ['number', 'null'] },
+          },
+        },
+        travelAdvisory: { type: ['object', 'string', 'null'] },
+        sanctionsExposure: { type: ['object', 'array', 'null'] },
+      },
+    },
     _execute: async (params, base, context) => {
       const code = String(params.country_code ?? '').toUpperCase().slice(0, 2);
       const url = `${base}/api/intelligence/v1/get-country-risk?country_code=${encodeURIComponent(code)}`;
@@ -2234,6 +2863,27 @@ const TOOL_REGISTRY: ToolDef[] = [
         },
       },
       required: ['country_code'],
+    },
+    // Hybrid _execute — success path returns the envelope below; missing/unknown
+    // country_code returns `{error: "..."}` instead (result-level user-input error).
+    outputSchema: {
+      type: 'object',
+      properties: {
+        cached_at: { type: ['string', 'null'] },
+        stale: { type: 'boolean' },
+        country_code: { type: 'string' },
+        data: {
+          type: 'object',
+          properties: {
+            overview: { type: ['object', 'null'] },
+            categories: { type: ['object', 'array', 'null'] },
+            movers: { type: ['object', 'array', 'null'] },
+            retailerSpread: { type: ['object', 'array', 'null'] },
+            freshness: { type: ['object', 'null'] },
+          },
+        },
+        error: { type: 'string', description: 'Present only on user-input failure (missing/unknown country_code).' },
+      },
     },
     // Hybrid _execute (not a pure cache tool) because the cache keys are
     // parameterised by country. Mirrors api/health.js::BOOTSTRAP_KEYS:55-59
@@ -2356,6 +3006,37 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: ['country_code'],
     },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        country_code: { type: 'string' },
+        bounding_box: { type: 'object', properties: {
+          sw_lat: { type: 'number' }, sw_lon: { type: 'number' },
+          ne_lat: { type: 'number' }, ne_lon: { type: 'number' },
+        } },
+        civilian_count: { type: 'number' },
+        military_count: { type: 'number' },
+        civilian_flights: { type: 'array', items: { type: 'object', properties: {
+          callsign: { type: 'string' }, icao24: { type: 'string' },
+          lat: { type: 'number' }, lon: { type: 'number' },
+          altitude_m: { type: ['number', 'null'] }, speed_kts: { type: ['number', 'null'] },
+          heading_deg: { type: ['number', 'null'] }, on_ground: { type: 'boolean' },
+        } } },
+        military_flights: { type: 'array', items: { type: 'object', properties: {
+          callsign: { type: 'string' }, hex_code: { type: 'string' },
+          aircraft_type: { type: 'string' }, aircraft_model: { type: 'string' },
+          operator: { type: 'string' }, operator_country: { type: 'string' },
+          lat: { type: ['number', 'null'] }, lon: { type: ['number', 'null'] },
+          altitude: { type: ['number', 'null'] }, heading: { type: ['number', 'null'] },
+          speed: { type: ['number', 'null'] }, is_interesting: { type: 'boolean' }, note: { type: 'string' },
+        } } },
+        partial: { type: 'boolean', description: 'True if one of the two upstream sources failed.' },
+        warnings: { type: 'array', items: { type: 'string' } },
+        source: { type: 'string' },
+        updated_at: { type: 'string' },
+        error: { type: 'string', description: 'Present only on unknown country_code.' },
+      },
+    },
     _execute: async (params, base, context) => {
       const code = String(params.country_code ?? '').toUpperCase().slice(0, 2);
       const bbox = COUNTRY_BBOXES[code];
@@ -2448,6 +3129,29 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: ['country_code'],
     },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        country_code: { type: 'string' },
+        bounding_box: { type: 'object', properties: {
+          sw_lat: { type: 'number' }, sw_lon: { type: 'number' },
+          ne_lat: { type: 'number' }, ne_lon: { type: 'number' },
+        } },
+        snapshot_at: { type: 'string' },
+        total_zones: { type: 'number' },
+        total_disruptions: { type: 'number' },
+        density_zones: { type: 'array', items: { type: 'object', properties: {
+          name: { type: 'string' }, intensity: { type: ['number', 'null'] },
+          ships_per_day: { type: ['number', 'null'] }, delta_pct: { type: ['number', 'null'] }, note: { type: 'string' },
+        } } },
+        disruptions: { type: 'array', items: { type: 'object', properties: {
+          name: { type: 'string' }, type: { type: 'string' }, severity: { type: 'string' },
+          dark_ships: { type: ['number', 'null'] }, vessel_count: { type: ['number', 'null'] },
+          region: { type: 'string' }, description: { type: 'string' },
+        } } },
+        error: { type: 'string', description: 'Present only on unknown country_code.' },
+      },
+    },
     _execute: async (params, base, context) => {
       const code = String(params.country_code ?? '').toUpperCase().slice(0, 2);
       const bbox = COUNTRY_BBOXES[code];
@@ -2507,6 +3211,19 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: ['query'],
     },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        deduction: { type: 'string', description: 'LLM-generated analytical deduction.' },
+        analysis: { type: 'string', description: 'Alternate naming for the body.' },
+        confidence: { type: ['number', 'string', 'null'] },
+        signals: { type: ['array', 'object', 'null'] },
+        framework: { type: 'string' },
+        generatedAt: { type: ['string', 'number', 'null'] },
+        provider: { type: 'string' },
+        model: { type: 'string' },
+      },
+    },
     _execute: async (params, base, context) => {
       const url = `${base}/api/intelligence/v1/deduct-situation`;
       const body = JSON.stringify({ query: String(params.query ?? ''), geoContext: String(params.context ?? ''), framework: String(params.framework ?? '') });
@@ -2535,6 +3252,18 @@ const TOOL_REGISTRY: ToolDef[] = [
         region: { type: 'string', description: 'Geographic region filter, e.g. "Middle East", "Europe", "Asia Pacific", or empty for global' },
       },
       required: [],
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        forecasts: { type: 'array', items: { type: 'object', properties: {
+          domain: { type: 'string' }, region: { type: 'string' },
+          probability: { type: ['number', 'null'] }, title: { type: 'string' }, rationale: { type: 'string' },
+        } } },
+        generatedAt: { type: ['string', 'number', 'null'] },
+        provider: { type: 'string' },
+        model: { type: 'string' },
+      },
     },
     _execute: async (params, base, context) => {
       // 25 s — stays within Vercel Edge's ~30 s hard ceiling (was 60 s, which exceeded the limit)
@@ -2569,6 +3298,21 @@ const TOOL_REGISTRY: ToolDef[] = [
         sort_by: { type: 'string', description: 'Sort order: "price" (cheapest), "duration", "departure", or "arrival" (optional)' },
       },
       required: ['origin', 'destination', 'departure_date'],
+    },
+    // Proxies SerpAPI Google Flights. Shape mirrors that upstream's JSON
+    // envelope — keep schema permissive on field types since SerpAPI rotates.
+    outputSchema: {
+      type: 'object',
+      properties: {
+        flights: { type: 'array', items: { type: 'object', properties: {
+          price: { type: ['number', 'string', 'null'] }, currency: { type: 'string' },
+          stops: { type: ['number', 'null'] }, airline: { type: 'string' },
+          total_duration: { type: ['number', 'string', 'null'] },
+          segments: { type: 'array', items: { type: 'object' } },
+        } } },
+        search_metadata: { type: ['object', 'null'] },
+        error: { type: 'string', description: 'Present when upstream returned a usable error message.' },
+      },
     },
     _execute: async (params, base, context) => {
       const qs = new URLSearchParams({
@@ -2620,6 +3364,17 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: ['origin', 'destination', 'start_date', 'end_date'],
     },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        prices: { type: 'array', items: { type: 'object', properties: {
+          date: { type: 'string' }, price: { type: ['number', 'string', 'null'] },
+          currency: { type: 'string' },
+        } } },
+        search_metadata: { type: ['object', 'null'] },
+        error: { type: 'string' },
+      },
+    },
     _execute: async (params, base, context) => {
       const qs = new URLSearchParams({
         origin: String(params.origin ?? ''),
@@ -2659,6 +3414,21 @@ const TOOL_REGISTRY: ToolDef[] = [
       },
       required: [],
     },
+    outputSchema: {
+      type: 'object',
+      required: ['sites', 'total'],
+      properties: {
+        sites: { type: 'array', items: { type: 'object', properties: {
+          id: { type: 'string' }, name: { type: 'string' },
+          lat: { type: 'number' }, lon: { type: 'number' },
+          mineral: { type: 'string' }, country: { type: 'string' },
+          operator: { type: 'string' }, status: { type: 'string' }, significance: { type: 'string' },
+          annualOutput: { type: 'string' }, productionRank: { type: 'number' },
+          openPitOrUnderground: { type: 'string' },
+        } } },
+        total: { type: 'number' },
+      },
+    },
     _execute: async (params: Record<string, unknown>) => {
       type MineSite = { id: string; name: string; lat: number; lon: number; mineral: string; country: string; operator: string; status: string; significance: string; annualOutput?: string; productionRank?: number; openPitOrUnderground?: string };
       let sites = MINING_SITES_RAW as MineSite[];
@@ -2685,6 +3455,22 @@ const TOOL_REGISTRY: ToolDef[] = [
         tool_name: { type: 'string', description: 'Exact tool name from tools/list.' },
       },
       required: ['tool_name'],
+    },
+    // Returns either the public Tool shape (see PublicToolShape) or one of the
+    // two structured error envelopes — both are tools/call results, not JSON-RPC errors.
+    outputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        description: { type: 'string' },
+        inputSchema: { type: 'object' },
+        outputSchema: { type: 'object' },
+        annotations: { type: 'object' },
+        error: { type: 'string', enum: ['missing_tool_name', 'unknown_tool'], description: 'Present only on user-input failure.' },
+        hint: { type: 'string' },
+        requested: { type: 'string' },
+        available: { type: 'array', items: { type: 'string' } },
+      },
     },
     _execute: async (params: Record<string, unknown>) => {
       const name = params.tool_name;
@@ -2761,6 +3547,7 @@ export interface PublicToolShape {
   name: string;
   description: string;
   inputSchema: { type: string; properties: Record<string, unknown>; required: string[] };
+  outputSchema: object;
   annotations: { readOnlyHint: boolean; openWorldHint: boolean };
 }
 
@@ -2799,6 +3586,9 @@ export function buildPublicTool(
       properties: clonedProperties,
       required: [...tool.inputSchema.required],
     },
+    // Deep-clone for the same reason as inputSchema.properties — mutating the
+    // returned object must not corrupt the module-level outputSchema literal.
+    outputSchema: structuredClone(tool.outputSchema),
     annotations: { readOnlyHint: true, openWorldHint: true },
   };
 }
