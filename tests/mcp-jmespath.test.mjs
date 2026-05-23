@@ -34,7 +34,7 @@ async function freshMod() {
   return import(`../api/mcp.ts?t=${Date.now()}-${Math.random()}`);
 }
 
-describe('api/mcp.ts — JMESPath projection (v1.4.0)', () => {
+describe('api/mcp.ts — JMESPath projection (v1.6.0)', () => {
   let mod;
 
   beforeEach(async () => {

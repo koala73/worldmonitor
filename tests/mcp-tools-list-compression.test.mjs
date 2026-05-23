@@ -10,7 +10,7 @@ async function freshMod() {
   return import(`../api/mcp.ts?t=${Date.now()}-${Math.random()}`);
 }
 
-describe('api/mcp.ts — tools/list description compression (v1.5.0)', () => {
+describe('api/mcp.ts — tools/list description compression (v1.6.0)', () => {
   let mod;
 
   beforeEach(async () => {

@@ -99,7 +99,14 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.6.0)', () => {
   // --------------------------------------------------------------------
   // Test 1 — every tool declares a non-empty outputSchema
   // --------------------------------------------------------------------
-  it('every tool in TOOL_REGISTRY declares a non-empty outputSchema with at least one properties key', () => {
+  // For cache tools (those with no `_execute`), the envelope helper
+  // `cacheEnvelope(dataProperties)` always produces a top-level
+  // `properties: { cached_at, stale, data }` — so a "≥1 top-level key"
+  // check would pass even for `cacheEnvelope({})` with an empty data map.
+  // Drill into `properties.data.properties` for envelope-style tools to
+  // catch that foot-gun and ensure the load-bearing per-tool data shape is
+  // actually described.
+  it('every tool in TOOL_REGISTRY declares a non-empty outputSchema with at least one properties key (and, for cache tools, at least one data.properties key)', () => {
     const registry = mod.__testing__.TOOL_REGISTRY ?? [];
     assert.ok(registry.length >= 39, `expected ≥39 tools, got ${registry.length}`);
     const failures = [];
@@ -112,6 +119,16 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.6.0)', () => {
       const props = schema.properties;
       if (!props || typeof props !== 'object' || Object.keys(props).length === 0) {
         failures.push(`${tool.name}: outputSchema.properties is empty`);
+        continue;
+      }
+      // Cache tool ⇔ no `_execute`. For these, the top-level shape is the
+      // uniform envelope; the per-tool description lives in data.properties.
+      const isCacheTool = tool._execute === undefined;
+      if (isCacheTool) {
+        const dataProps = props.data?.properties;
+        if (!dataProps || typeof dataProps !== 'object' || Object.keys(dataProps).length === 0) {
+          failures.push(`${tool.name}: cache tool outputSchema.properties.data.properties is empty (cacheEnvelope was called with an empty data map)`);
+        }
       }
     }
     assert.deepEqual(failures, [], `tools missing outputSchema:\n  ${failures.join('\n  ')}`);
