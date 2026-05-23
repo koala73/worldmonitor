@@ -54,7 +54,12 @@ export function validate(schema, value, path = '$') {
         if (key in value) errors.push(...validate(subSchema, value[key], `${path}.${key}`));
       }
     }
-    if (schema.additionalProperties && typeof schema.additionalProperties === 'object') {
+    if (schema.additionalProperties === false) {
+      const known = new Set(Object.keys(schema.properties ?? {}));
+      for (const key of Object.keys(value)) {
+        if (!known.has(key)) errors.push(`${path}.${key}: additional property not allowed`);
+      }
+    } else if (schema.additionalProperties && typeof schema.additionalProperties === 'object') {
       const known = new Set(Object.keys(schema.properties ?? {}));
       for (const [key, val] of Object.entries(value)) {
         if (known.has(key)) continue;
