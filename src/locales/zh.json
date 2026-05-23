@@ -28,7 +28,7 @@
     "components": {
       "unrest": "动荡",
       "conflict": "冲突",
-      "security": "安全",
+      "security": "军事活动",
       "information": "信息"
     },
     "signals": {
@@ -674,7 +674,7 @@
       "components": {
         "unrest": "动荡",
         "conflict": "冲突",
-        "security": "安全",
+        "security": "军事活动",
         "information": "信息"
       },
       "signals": {
@@ -3098,7 +3098,7 @@
     "selectNone": "全不选",
     "unrest": "动荡",
     "conflict": "冲突",
-    "security": "安全",
+    "security": "军事活动",
     "information": "信息",
     "shareStory": "分享报道",
     "exportImage": "导出图片",

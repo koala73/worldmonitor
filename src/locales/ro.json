@@ -28,7 +28,7 @@
     "components": {
       "unrest": "Revolte",
       "conflict": "Conflict",
-      "security": "Securitate",
+      "security": "Activitate militară",
       "information": "Informații"
     },
     "signals": {
@@ -674,7 +674,7 @@
       "components": {
         "unrest": "Neliniște",
         "conflict": "Conflict",
-        "security": "Securitate",
+        "security": "Activitate militară",
         "information": "Informații"
       },
       "signals": {
@@ -3098,7 +3098,7 @@
     "selectNone": "Selectați Niciunul",
     "unrest": "Neliniște",
     "conflict": "Conflict",
-    "security": "Securitate",
+    "security": "Activitate militară",
     "information": "Informații",
     "shareStory": "Distribuie povestea",
     "exportImage": "Exportați imaginea",

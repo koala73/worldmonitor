@@ -143,6 +143,11 @@ const STANDALONE_KEYS = {
   militaryBases:         'military:bases:active',
   militaryFlights:       'military:flights:v1',
   militaryFlightsStale:  'military:flights:stale:v1',
+  // STANDALONE (not BOOTSTRAP) by design — value is a single keyed payload
+  // (asOf + per-country aggregate), no per-record gating needed; health just
+  // verifies existence + freshness via the matching SEED_META entry. Same
+  // shape as militaryFlights above.
+  militaryCii:           'intelligence:military-cii:v1',
   temporalAnomalies:     'temporal:anomalies:v1',
   displacement:          `displacement:summary:v1:${new Date().getUTCFullYear()}`,
   displacementPrev:      `displacement:summary:v1:${new Date().getUTCFullYear() - 1}`,
@@ -300,6 +305,7 @@ const SEED_META = {
   iranEvents:       { key: 'seed-meta:conflict:iran-events',      maxStaleMin: 20160 }, // manual seed from LiveUAMap; 20160 = 14d = 2× weekly cadence
   ucdpEvents:       { key: 'seed-meta:conflict:ucdp-events',      maxStaleMin: 420 },
   militaryFlights:  { key: 'seed-meta:military:flights',           maxStaleMin: 30 }, // cron ~10min (LIVE_TTL=600s); 30min = 3x interval,
+  militaryCii:      { key: 'seed-meta:intelligence:military-cii',  maxStaleMin: 45 }, // seed-military-cii cron ~10min; 45 = generous grace (relay-dependent; preserve-last-good runs still refresh meta)
   satellites:       { key: 'seed-meta:intelligence:satellites',    maxStaleMin: 240 }, // CelesTrak every 120min; 240min = absorbs one missed cycle
   weatherAlerts:    { key: 'seed-meta:weather:alerts',             maxStaleMin: 45 }, // relay loop every 15min; 45 = 3× interval (was 30 = 2×, too tight on relay hiccup)
   spending:         { key: 'seed-meta:economic:spending',          maxStaleMin: 120 },
