@@ -16,67 +16,13 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
+import { validate } from './helpers/json-schema-mini.mjs';
+
 const VALID_KEY = 'wm_test_key_output_schema';
 const originalEnv = { ...process.env };
 
 async function freshMod() {
   return import(`../api/mcp.ts?t=${Date.now()}-${Math.random()}`);
-}
-
-// Minimal JSON-Schema-subset validator. Sufficient for the schema vocabulary
-// the registry actually uses (`type`, `properties`, `items`, `required`,
-// `additionalProperties`, `enum`). NOT a general-purpose validator — adding
-// `ajv` would balloon the PR, and the constrained vocabulary here is stable.
-function typeMatches(schemaType, value) {
-  const list = Array.isArray(schemaType) ? schemaType : [schemaType];
-  for (const t of list) {
-    if (t === 'null' && value === null) return true;
-    if (t === 'string' && typeof value === 'string') return true;
-    if (t === 'number' && typeof value === 'number') return true;
-    if (t === 'integer' && Number.isInteger(value)) return true;
-    if (t === 'boolean' && typeof value === 'boolean') return true;
-    if (t === 'array' && Array.isArray(value)) return true;
-    if (t === 'object' && value !== null && typeof value === 'object' && !Array.isArray(value)) return true;
-  }
-  return false;
-}
-
-function validate(schema, value, path = '$') {
-  const errors = [];
-  if (!schema || typeof schema !== 'object') return errors;
-  if (schema.type && !typeMatches(schema.type, value)) {
-    errors.push(`${path}: expected ${JSON.stringify(schema.type)}, got ${value === null ? 'null' : typeof value}`);
-    return errors;
-  }
-  if (Array.isArray(schema.enum) && !schema.enum.includes(value)) {
-    errors.push(`${path}: value not in enum ${JSON.stringify(schema.enum)}`);
-  }
-  if (value === null || value === undefined) return errors;
-  if (Array.isArray(value) && schema.items) {
-    for (let i = 0; i < value.length; i++) {
-      errors.push(...validate(schema.items, value[i], `${path}[${i}]`));
-    }
-  }
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
-    if (Array.isArray(schema.required)) {
-      for (const key of schema.required) {
-        if (!(key in value)) errors.push(`${path}.${key}: required key missing`);
-      }
-    }
-    if (schema.properties) {
-      for (const [key, subSchema] of Object.entries(schema.properties)) {
-        if (key in value) errors.push(...validate(subSchema, value[key], `${path}.${key}`));
-      }
-    }
-    if (schema.additionalProperties && typeof schema.additionalProperties === 'object') {
-      const known = new Set(Object.keys(schema.properties ?? {}));
-      for (const [key, val] of Object.entries(value)) {
-        if (known.has(key)) continue;
-        errors.push(...validate(schema.additionalProperties, val, `${path}.${key}`));
-      }
-    }
-  }
-  return errors;
 }
 
 describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
