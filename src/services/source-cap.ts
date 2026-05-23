@@ -69,6 +69,18 @@ export function findFullyDisabledCategories(
  *                         is responsible for distinguishing user-disabled
  *                         from auto-disabled if needed.
  * @param cap              maximum number of sources to keep enabled
+ * @param protectedNames   sources that MUST stay enabled regardless of
+ *                         declaration order — seeded into `keep` before
+ *                         round-robin runs. Counts against the cap. Typical
+ *                         use: locale-boosted sources for the user's current
+ *                         locale (otherwise late-in-bucket locale-tagged
+ *                         feeds — e.g. Hungarian entries that sit after the
+ *                         existing Europe defaults — get round-robin'd out
+ *                         and never reach the user). Names in this set that
+ *                         are ALSO in `userDisabled` stay excluded (user
+ *                         intent wins). Names not present anywhere in
+ *                         `feedsByCategory` / `intelSources` are silently
+ *                         ignored.
  *
  * Deterministic given the same inputs. Reload-stable (Object.entries
  * preserves insertion order in modern JS engines, and feeds.ts declaration
@@ -79,6 +91,7 @@ export function selectSourcesUnderCap(
   intelSources: ReadonlyArray<FeedItem>,
   userDisabled: ReadonlySet<string>,
   cap: number,
+  protectedNames: ReadonlySet<string> = new Set(),
 ): SourceCapResult {
   if (cap < 0) {
     return { keep: new Set(), autoDisabled: new Set() };
@@ -96,6 +109,24 @@ export function selectSourcesUnderCap(
   if (intelNames.length > 0) buckets.push({ category: '__intel__', remaining: intelNames });
 
   const keep = new Set<string>();
+
+  // Seed `keep` with protected names that actually exist in the eligible
+  // pool. They count against the cap (so locale-boost doesn't unbounded-
+  // expand the free-tier limit) but are guaranteed not to be auto-disabled.
+  // The round-robin loop's `keep.has(...)` skip-check below ensures buckets
+  // don't waste turns on names already kept here. Names in `protectedNames`
+  // but excluded by `userDisabled` were already filtered out of `buckets`,
+  // so they won't appear in `eligibleNames` — user intent wins automatically.
+  if (protectedNames.size > 0) {
+    const eligibleNames = new Set<string>();
+    for (const bucket of buckets) {
+      for (const name of bucket.remaining) eligibleNames.add(name);
+    }
+    for (const name of protectedNames) {
+      if (keep.size >= cap) break;
+      if (eligibleNames.has(name)) keep.add(name);
+    }
+  }
 
   // Round-robin: take one source from each non-empty bucket per pass until
   // the cap is reached or all buckets are exhausted.
