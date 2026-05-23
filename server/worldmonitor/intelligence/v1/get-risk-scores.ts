@@ -481,7 +481,9 @@ export function computeCIIScores(
     const code = (t.country || '').toUpperCase();
     if (!data[code]) continue;
     // Split by the severity the cached cyber threat already carries (Phase 3b / D7).
-    const sev = String(t.severity || '').toLowerCase();
+    // seed-cyber-threats.mjs emits the proto enum form ('CRITICALITY_LEVEL_CRITICAL' etc.)
+    // — strip the prefix so bare lowercase fixtures and the production enum both bucket.
+    const sev = String(t.severity || '').toLowerCase().replace(/^criticality_level_/, '');
     if (sev === 'critical') data[code].cyberCriticalCount++;
     else if (sev === 'high') data[code].cyberHighCount++;
     else if (sev === 'medium') data[code].cyberMediumCount++;

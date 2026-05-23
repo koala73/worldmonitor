@@ -77,6 +77,22 @@ describe('CII signal wiring', () => {
       'critical/high cyber feed the severity-weighted cyberBoost; a bright fire feeds fireBoost');
   });
 
+  it('Phase 3b D7: cyber severity accepts the production proto enum form (CRITICALITY_LEVEL_*)', () => {
+    // The cyber seed (seed-cyber-threats.mjs lines 52-55) emits the proto enum strings,
+    // not bare lowercase — the ingestion must bucket both. Without the prefix-strip,
+    // these would all fall through and cyberBoost would be 0 in production.
+    const baseAux = emptyAux();
+    const protoAux = emptyAux();
+    protoAux.cyber = [
+      { country: 'US', severity: 'CRITICALITY_LEVEL_CRITICAL' },
+      { country: 'US', severity: 'CRITICALITY_LEVEL_HIGH' },
+    ];
+    const protoScore = scoreFor(computeCIIScores([], protoAux), 'US');
+    const baseScore = scoreFor(computeCIIScores([], baseAux), 'US');
+    assert.ok(protoScore!.combinedScore > baseScore!.combinedScore,
+      'production CRITICALITY_LEVEL_* enums must feed cyberBoost');
+  });
+
   it('Phase 3b D6: sanctions duplicate-ISO2 rows accumulate across the tier boundary', () => {
     const aux = emptyAux();
     aux.sanctionsCountries = [
