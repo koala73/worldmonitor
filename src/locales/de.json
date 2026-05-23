@@ -2532,7 +2532,9 @@
         "plant": "KRAFTWERK",
         "enrichment": "ANREICHERUNG",
         "weapons": "WAFFENKOMPLEX",
-        "research": "FORSCHUNG"
+        "research": "FORSCHUNG",
+        "reprocessing": "WIEDERAUFARBEITUNGSANLAGE",
+        "testSite": "ATOMTESTGELÄNDE"
       },
       "description": "Nuklearanlage unter Überwachung. Strategische Bedeutung für regionale Sicherheit und Nichtverbreitung."
     },

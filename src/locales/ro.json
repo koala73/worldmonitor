@@ -2541,7 +2541,9 @@
         "plant": "CENTRALĂ",
         "enrichment": "ÎMBOGĂȚIRE",
         "weapons": "COMPLEX DE ARME",
-        "research": "CERCETARE"
+        "research": "CERCETARE",
+        "reprocessing": "UZINĂ DE REPROCESARE",
+        "testSite": "POLIGON NUCLEAR"
       },
       "description": "Instalatie nucleara sub monitorizare. Importanță strategică pentru securitatea regională și preocupările de neproliferare."
     },

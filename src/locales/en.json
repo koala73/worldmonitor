@@ -2609,7 +2609,9 @@
         "plant": "POWER PLANT",
         "enrichment": "ENRICHMENT",
         "weapons": "WEAPONS COMPLEX",
-        "research": "RESEARCH"
+        "research": "RESEARCH",
+        "reprocessing": "REPROCESSING PLANT",
+        "testSite": "NUCLEAR TEST SITE"
       },
       "description": "Nuclear facility under monitoring. Strategic importance for regional security and non-proliferation concerns."
     },

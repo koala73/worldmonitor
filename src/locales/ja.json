@@ -2541,7 +2541,9 @@
         "plant": "発電所",
         "enrichment": "濃縮施設",
         "weapons": "兵器複合施設",
-        "research": "研究施設"
+        "research": "研究施設",
+        "reprocessing": "再処理施設",
+        "testSite": "核実験場"
       },
       "description": "監視対象の核施設。地域安全保障と核不拡散の観点から戦略的重要性を持つ。"
     },

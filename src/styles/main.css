@@ -5763,6 +5763,11 @@ body.playback-mode .status-dot {
   box-shadow: 0 0 4px var(--text-muted);
 }
 
+.nuclear-marker.decommissioned {
+  background: var(--text-muted);
+  box-shadow: 0 0 4px var(--text-muted);
+}
+
 .nuclear-label {
   position: absolute;
   top: 14px;

@@ -2532,7 +2532,9 @@
         "plant": "CENTRAL ELÉCTRICA",
         "enrichment": "ENRIQUECIMIENTO",
         "weapons": "COMPLEJO DE ARMAS",
-        "research": "INVESTIGACIÓN"
+        "research": "INVESTIGACIÓN",
+        "reprocessing": "PLANTA DE REPROCESAMIENTO",
+        "testSite": "SITIO DE PRUEBAS NUCLEARES"
       },
       "description": "Instalación nuclear bajo vigilancia. Importancia estratégica para la seguridad regional y la no proliferación."
     },

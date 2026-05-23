@@ -2532,7 +2532,9 @@
         "plant": "ELEKTROWNIA",
         "enrichment": "WZBOGACANIE",
         "weapons": "KOMPLEKS BRONI",
-        "research": "BADANIA"
+        "research": "BADANIA",
+        "reprocessing": "ZAKŁAD PRZEROBU",
+        "testSite": "POLIGON JĄDROWY"
       },
       "description": "Obiekt nuklearny pod nadzorem. Znaczenie strategiczne dla bezpieczeństwa regionalnego i nieproliferacji."
     },

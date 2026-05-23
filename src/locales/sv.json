@@ -2319,7 +2319,9 @@
         "plant": "KRAFTVERK",
         "enrichment": "ANRIKNING",
         "weapons": "VAPENKOMPLEX",
-        "research": "FORSKNING"
+        "research": "FORSKNING",
+        "reprocessing": "UPPARBETNINGSANLÄGGNING",
+        "testSite": "KÄRNVAPENPROVPLATS"
       },
       "description": "Kärnteknisk anläggning under övervakning. Strategisk betydelse för regional säkerhet och icke-spridning."
     },

@@ -2541,7 +2541,9 @@
         "plant": "GUC SANTRALI",
         "enrichment": "ZENGINLESTIRME",
         "weapons": "SILAH KOMPLEKSI",
-        "research": "ARASTIRMA"
+        "research": "ARASTIRMA",
+        "reprocessing": "YENIDEN ISLEME TESISI",
+        "testSite": "NUKLEER TEST SAHASI"
       },
       "description": "Izleme altindaki nukleer tesis. Bolgesel guvenlik ve nukleer yayilmayi onleme acisindan stratejik oneme sahiptir."
     },

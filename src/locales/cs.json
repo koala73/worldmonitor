@@ -2533,7 +2533,9 @@
         "plant": "ELEKTRÁRNA",
         "enrichment": "OBOHACOVÁNÍ",
         "weapons": "ZBRAŇOVÝ KOMPLEX",
-        "research": "VÝZKUM"
+        "research": "VÝZKUM",
+        "reprocessing": "PŘEPRACOVACÍ ZÁVOD",
+        "testSite": "JADERNÝ TESTOVACÍ POLYGON"
       },
       "description": "Jaderné zařízení pod dohledem. Strategický význam pro regionální bezpečnost a obavy z šíření."
     },

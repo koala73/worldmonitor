@@ -2319,7 +2319,9 @@
         "plant": "KERNCENTRALE",
         "enrichment": "VERRIJKING",
         "weapons": "WAPENCOMPLEX",
-        "research": "ONDERZOEK"
+        "research": "ONDERZOEK",
+        "reprocessing": "OPWERKINGSFABRIEK",
+        "testSite": "KERNPROEFLOCATIE"
       },
       "description": "Nucleaire faciliteit onder toezicht. Strategisch belang voor regionale veiligheid en non-proliferatie."
     },

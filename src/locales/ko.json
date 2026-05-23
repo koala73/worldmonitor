@@ -2541,7 +2541,9 @@
         "plant": "발전소",
         "enrichment": "농축 시설",
         "weapons": "무기 단지",
-        "research": "연구 시설"
+        "research": "연구 시설",
+        "reprocessing": "재처리 시설",
+        "testSite": "핵실험장"
       },
       "description": "감시 대상 핵 시설. 지역 안보 및 비확산 측면에서 전략적 중요성을 보유합니다."
     },

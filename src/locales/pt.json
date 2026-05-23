@@ -2319,7 +2319,9 @@
         "plant": "CENTRAL ELÉTRICA",
         "enrichment": "ENRIQUECIMENTO",
         "weapons": "COMPLEXO DE ARMAS",
-        "research": "PESQUISA"
+        "research": "PESQUISA",
+        "reprocessing": "USINA DE REPROCESSAMENTO",
+        "testSite": "LOCAL DE TESTES NUCLEARES"
       },
       "description": "Instalação nuclear sob monitoramento. Importância estratégica para segurança regional e não proliferação."
     },

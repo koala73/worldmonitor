@@ -2532,7 +2532,9 @@
         "plant": "CENTRALE ÉLECTRIQUE",
         "enrichment": "ENRICHISSEMENT",
         "weapons": "COMPLEXE MILITAIRE",
-        "research": "RECHERCHE"
+        "research": "RECHERCHE",
+        "reprocessing": "USINE DE RETRAITEMENT",
+        "testSite": "SITE D'ESSAIS NUCLÉAIRES"
       },
       "description": "Installation nucléaire sous surveillance. Importance stratégique pour la sécurité régionale et la non-prolifération."
     },

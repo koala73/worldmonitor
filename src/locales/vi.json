@@ -2541,7 +2541,9 @@
         "plant": "NHÀ MÁY ĐIỆN",
         "enrichment": "LÀM GIÀU",
         "weapons": "TỔ HỢP VŨ KHÍ",
-        "research": "NGHIÊN CỨU"
+        "research": "NGHIÊN CỨU",
+        "reprocessing": "NHÀ MÁY TÁI CHẾ",
+        "testSite": "BÃI THỬ HẠT NHÂN"
       },
       "description": "Cơ sở hạt nhân đang được giám sát. Tầm quan trọng chiến lược cho an ninh khu vực và các mối quan ngại không phổ biến vũ khí."
     },

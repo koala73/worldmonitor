@@ -2532,7 +2532,9 @@
         "plant": "CENTRALE ELETTRICA",
         "enrichment": "ARRICCHIMENTO",
         "weapons": "COMPLESSO ARMI",
-        "research": "RICERCA"
+        "research": "RICERCA",
+        "reprocessing": "IMPIANTO DI RIPROCESSAMENTO",
+        "testSite": "SITO DI TEST NUCLEARI"
       },
       "description": "Impianto nucleare sotto monitoraggio. Importanza strategica per la sicurezza regionale e la non proliferazione."
     },

@@ -2541,7 +2541,9 @@
         "plant": "核电站",
         "enrichment": "浓缩设施",
         "weapons": "武器综合体",
-        "research": "研究设施"
+        "research": "研究设施",
+        "reprocessing": "后处理厂",
+        "testSite": "核试验场"
       },
       "description": "受监控的核设施。对区域安全和防扩散具有战略重要性。"
     },
