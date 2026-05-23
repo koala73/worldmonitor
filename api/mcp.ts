@@ -37,27 +37,54 @@ import { hashKeySync } from '../server/_shared/usage-identity';
 
 export const config = { runtime: 'edge' };
 
-// Protocol version advertised in the `initialize` response. Bumping this is a
-// wire-visible default-behavior change, so the bumped floor ships behind an
-// env-var gate (`MCP_PROTOCOL_FLOOR_2025_06_18`) per the operational rollout
-// cadence: off default → staging `on` ≥24h → prod `on` ≥48h → follow-up
-// commit flips the default → remove the env var the version after. The
-// published server-card (public/.well-known/mcp/server-card.json) advertises
-// the bumped floor unconditionally — the card is a static capability
-// declaration; this constant is what the live initialize handler negotiates.
+// MCP protocol versions this server can speak on the initialize handshake.
+// Bumping the supported set is a wire-visible default-behavior change, so the
+// bumped floor ships behind an env-var gate (`MCP_PROTOCOL_FLOOR_2025_06_18`)
+// per the operational rollout cadence: off default → staging `on` ≥24h →
+// prod `on` ≥48h → follow-up commit flips the default → remove the env var
+// the version after. The published server-card
+// (public/.well-known/mcp/server-card.json) advertises the bumped floor
+// unconditionally — the card is a static capability declaration; the live
+// initialize handler is what actually negotiates with each client.
+//
+// Negotiation rule (per MCP lifecycle spec): if the client's requested
+// `protocolVersion` is in MCP_SUPPORTED_PROTOCOL_VERSIONS, the server MUST
+// respond with that same version; otherwise the server MUST respond with
+// another version it supports — by convention the latest. The server keeps
+// both versions in the set while the floor is being bumped so callers pinned
+// to the older version continue to work unchanged across the env-var flip.
 //
 // Version history (protocol floor — distinct from SERVER_VERSION below):
 //   - 2025-03-26 — initial floor; streamable HTTP transport.
 //   - 2025-06-18 (declared 2026-05-23, env-var gated, default off) — unlocks
-//     spec-native `outputSchema` per tool in a follow-up. Pre-floor clients
-//     negotiate down per MCP lifecycle spec (server returns the highest
-//     version it supports ≤ the client's request), so callers pinned to
-//     2025-03-26 continue to work unchanged.
+//     spec-native `outputSchema` per tool in a follow-up. When the env var
+//     is on, the server supports BOTH 2025-03-26 and 2025-06-18 so old and
+//     new clients are both served correctly during the rollout window.
 const MCP_PROTOCOL_FLOOR_2025_06_18_ENABLED =
   process.env.MCP_PROTOCOL_FLOOR_2025_06_18 === 'on';
-export const MCP_PROTOCOL_VERSION = MCP_PROTOCOL_FLOOR_2025_06_18_ENABLED
+export const MCP_SUPPORTED_PROTOCOL_VERSIONS: readonly string[] =
+  MCP_PROTOCOL_FLOOR_2025_06_18_ENABLED
+    ? ['2025-03-26', '2025-06-18']
+    : ['2025-03-26'];
+// Latest supported version — used as the fallback when the client requests
+// a version this server does not support. Always the last entry of
+// MCP_SUPPORTED_PROTOCOL_VERSIONS above (invariant asserted in tests). Kept
+// as a top-level export for downstream code that needs the canonical
+// "what would the server prefer" value.
+export const MCP_PROTOCOL_VERSION: string = MCP_PROTOCOL_FLOOR_2025_06_18_ENABLED
   ? '2025-06-18'
   : '2025-03-26';
+
+// Negotiate the protocol version returned in the initialize response.
+// Lenient on missing/non-string input (some test fixtures + older clients
+// omit the field): fall back to the server's latest supported version,
+// matching the spec's "respond with what you support" stance.
+export function negotiateProtocolVersion(requested: unknown): string {
+  return typeof requested === 'string'
+    && MCP_SUPPORTED_PROTOCOL_VERSIONS.includes(requested)
+    ? requested
+    : MCP_PROTOCOL_VERSION;
+}
 
 // Hand-curated minimum-version matrix for MCP clients validated against
 // MCP_PROTOCOL_VERSION's current floor. Comment-grade documentation; no
@@ -3511,6 +3538,8 @@ export async function mcpHandler(
   switch (method) {
     case 'initialize': {
       const sessionId = crypto.randomUUID();
+      const clientRequestedVersion = (body.params as { protocolVersion?: unknown } | null | undefined)?.protocolVersion;
+      const negotiatedVersion = negotiateProtocolVersion(clientRequestedVersion);
       // `tools_array_bytes` is the bare TOOL_LIST_RESPONSE stringify, not the
       // full JSON-RPC envelope (jsonrpc/id/protocolVersion/capabilities add
       // fixed overhead). UA is sliced to 256 chars: a pathological 32 KB
@@ -3523,7 +3552,7 @@ export async function mcpHandler(
         client_user_agent: (req.headers.get('User-Agent') ?? '').slice(0, 256),
       });
       return rpcOk(id, {
-        protocolVersion: MCP_PROTOCOL_VERSION,
+        protocolVersion: negotiatedVersion,
         capabilities: { tools: {}, logging: {} },
         serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
         instructions: SERVER_INSTRUCTIONS,
