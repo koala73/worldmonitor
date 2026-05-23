@@ -1,16 +1,24 @@
-// Strict-clamp regression for the Pro daily-quota reservation under
-// contention. Complements `tests/mcp.test.mjs` "U7 Pro-path" describe (which
-// covers loose-clamp `count <= 50` at the 100/49-seed cell of the matrix).
-// Different cell, stricter invariant: at initialCount=0 with N fires where
-// N > PRO_DAILY_QUOTA_LIMIT, EXACTLY the first PRO_DAILY_QUOTA_LIMIT calls
-// must succeed, the rest must -32029, and the counter must land EXACTLY at
-// PRO_DAILY_QUOTA_LIMIT after every rejection's DECR rollback completes —
-// proving the rollback path is exact (no double-count, no leak), not just
-// bounded.
+// Strict-floor regression for the Pro daily-quota reservation, covering
+// two cells the existing `mcp.test.mjs` "U7 Pro-path" suite does not.
 //
-// A second case forces DECR rollbacks to fail (Redis hiccup). The
-// reservation helper's counter-clamp loop must bring the counter back down
-// to a bounded overshoot ceiling — never undershoot.
+// Case 1 — strict floor under contention. Complements the existing
+// 100-fire-at-count=49 test (which only asserts the loose `count <= 50`
+// bound). At initialCount=0 with N fires where N > PRO_DAILY_QUOTA_LIMIT,
+// EXACTLY the first PRO_DAILY_QUOTA_LIMIT calls succeed, the rest -32029,
+// and the counter lands EXACTLY at PRO_DAILY_QUOTA_LIMIT after every
+// rejection's DECR rollback completes — proving the rollback path is
+// exact (no double-count, no leak), not just bounded.
+//
+// Case 2 — F4 overshoot recovery. With the counter pre-seeded ABOVE the
+// cap (a Redis-hiccup scenario where a prior burst's DECR rollbacks
+// failed and left the counter stuck high), a single over-cap call must
+// drive the counter back DOWN to the cap via the F4 INCR-DECR probe +
+// clamp loop in `reserveQuota`. Without the clamp the user would be
+// 429-locked until the 48 h key TTL. Single-call by design: the F4
+// clamp is sized per-rejection (`Math.min(overshoot, 100)` DECRs), so
+// stacking concurrent rejections each issue their own full clamp pass
+// and over-correct the counter below the cap. That stacked-clamp
+// behaviour is a separate concern and isn't asserted here.
 
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
@@ -77,11 +85,12 @@ describe('api/mcp.ts — concurrent quota reservation (strict clamp)', () => {
     const rejected = responses.filter((r) => r.status === 429);
     const other = responses.filter((r) => r.status !== 200 && r.status !== 429);
 
-    // Validate every rejection body carries the -32029 error code — proves
-    // the 429s are the daily-cap rejection, not a per-minute rate-limit
-    // 429 (which uses the same HTTP status with the same JSON-RPC code in
-    // this codebase, but the production gate that fires here is the daily
-    // counter — telemetry below confirms).
+    // Validate every rejection body carries the -32029 error code, AND that
+    // the post-test `pipe.count === QUOTA_LIMIT` assertion below holds —
+    // together these prove the daily-counter path fired (not the per-minute
+    // rate-limiter, which uses the same HTTP 429 + JSON-RPC -32029 code but
+    // touches a different Redis key and would leave the daily-counter mock
+    // at its initial 0).
     const rejectedBodies = await Promise.all(rejected.map((r) => r.json()));
     const wrongCode = rejectedBodies.filter((b) => b?.error?.code !== -32029);
 
@@ -107,29 +116,33 @@ describe('api/mcp.ts — concurrent quota reservation (strict clamp)', () => {
     );
   });
 
-  it(`fires ${CONCURRENT_FIRES} concurrent tools/call at count=0 with DECR rollback failing → counter stays at or above ${QUOTA_LIMIT} (never undershoots), bounded by the clamp loop`, async () => {
-    // With decrFails=true, every rollback DECR rejects. The reservation
-    // helper's counter-clamp loop (api/mcp.ts ~line 4015) issues up to 100
-    // best-effort DECRs to bring the counter back to PRO_DAILY_QUOTA_LIMIT.
-    // Those clamp DECRs ALSO fail under decrFails — so the counter ends at
-    // whatever INCRs landed before the first rejection started cascading.
-    //
-    // The invariant we care about is one-sided: the counter must NEVER
-    // undershoot the limit (cost-protection > user-fairness). Upper bound
-    // is the total number of INCRs, which equals CONCURRENT_FIRES.
-    const { deps, pipe } = makeProDeps({ pipelineOpts: { initialCount: 0, decrFails: true } });
+  // F4 overshoot recovery — single call. Pre-seed the counter ABOVE the
+  // cap to simulate the scenario the clamp loop is designed for: a prior
+  // burst's DECR rollbacks failed and left the counter stuck high.
+  // One over-cap tools/call must trigger:
+  //   (1) INCR → newCount = overshoot+1 (above cap+1, so probe runs)
+  //   (2) rollback DECR → counter back to seed
+  //   (3) probe INCR+DECR → reads postRollbackCount = seed
+  //   (4) clamp `seed - cap` DECRs → counter ends at cap exactly
+  // The discriminating signal is `pipe.count === QUOTA_LIMIT`. Removing
+  // the clamp loop leaves the counter at the seed value (e.g. 80) and
+  // fails this assertion by exact diff.
+  const PRESEED_OVERSHOOT = 30;
 
-    const calls = Array.from({ length: CONCURRENT_FIRES },
-      () => mcpHandler(proReq('POST', callBody('get_market_data')), deps));
-    await Promise.all(calls);
+  it(`with counter pre-seeded at ${QUOTA_LIMIT + PRESEED_OVERSHOOT} (above cap), a single tools/call drives the F4 clamp; counter converges to exactly ${QUOTA_LIMIT}`, async () => {
+    const { deps, pipe } = makeProDeps({
+      pipelineOpts: { initialCount: QUOTA_LIMIT + PRESEED_OVERSHOOT },
+    });
 
-    assert.ok(
-      pipe.count >= QUOTA_LIMIT,
-      `counter must NEVER undershoot the floor; observed ${pipe.count} < ${QUOTA_LIMIT}`,
+    const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
+
+    assert.equal(
+      res.status, 429,
+      `call must reject when counter starts above cap; got status ${res.status}`,
     );
-    assert.ok(
-      pipe.count <= CONCURRENT_FIRES,
-      `counter bounded above by total INCRs (${CONCURRENT_FIRES}); observed ${pipe.count}`,
+    assert.equal(
+      pipe.count, QUOTA_LIMIT,
+      `F4 clamp must drive counter from ${QUOTA_LIMIT + PRESEED_OVERSHOOT} down to exactly ${QUOTA_LIMIT}; observed ${pipe.count}`,
     );
   });
 });
