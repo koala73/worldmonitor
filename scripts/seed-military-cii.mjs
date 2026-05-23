@@ -241,7 +241,10 @@ const COUNTRY_NAME_TO_ISO2 = {
 function analyzeMmsi(mmsi) {
   // Reject short or non-numeric IDs before the heuristics — a letter-padded MMSI
   // (corrupt / hostile relay data) must not slip through the suffix check.
-  if (!mmsi || mmsi.length < 9 || !/^\d+$/.test(mmsi)) return { isPotentialMilitary: false };
+  // Shape-consistent with the other three returns below — `country` is always
+  // present (possibly undefined) so call sites can rely on `result.country`
+  // without a null-check on the result object itself.
+  if (!mmsi || mmsi.length < 9 || !/^\d+$/.test(mmsi)) return { isPotentialMilitary: false, country: undefined };
   const mid = mmsi.substring(0, 3);
   const country = MILITARY_MIDS[mid];
   for (const pattern of MILITARY_VESSEL_PATTERNS) {

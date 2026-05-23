@@ -489,6 +489,12 @@ export function computeCIIScores(
     // Split by the severity the cached cyber threat already carries (Phase 3b / D7).
     // seed-cyber-threats.mjs emits the proto enum form ('CRITICALITY_LEVEL_CRITICAL' etc.)
     // — strip the prefix so bare lowercase fixtures and the production enum both bucket.
+    // NOTE: 'low' / 'info' / unknown severities are intentionally dropped. Pre-unification
+    // the server used a flat `cyberCount++` for every threat regardless of severity, but
+    // the only consumer (cyberBoost in the blend below) reads critical/high/medium with
+    // weights 3 / 1.8 / 0.9 — matching the frontend formula at
+    // src/services/country-instability.ts:609. A 'low' would have no coefficient to land
+    // on, so counting it would be a no-op anyway; the drop just makes the contract explicit.
     const sev = String(t.severity || '').toLowerCase().replace(/^criticality_level_/, '');
     if (sev === 'critical') data[code].cyberCriticalCount++;
     else if (sev === 'high') data[code].cyberHighCount++;

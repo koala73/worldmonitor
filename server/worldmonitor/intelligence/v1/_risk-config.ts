@@ -17,7 +17,7 @@
 //      downstream users of the proto API see why combinedScore values may
 //      shift between deploys.
 //
-// Last reviewed: 2026-05-18 (issue #3725 — methodology disclosure).
+// Last reviewed: 2026-05-23 (PR #3864 — Phase 3a CII unification, v1→v2).
 // ============================================================================
 
 /**

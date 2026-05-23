@@ -35,10 +35,11 @@ test('analyzeMmsi flags military by pattern, suffix, and MID', () => {
   assert.deepEqual(analyzeMmsi('999009999'), { isPotentialMilitary: false, country: undefined });
   // plain civilian MMSI under a known MID — not flagged, but country still resolved
   assert.deepEqual(analyzeMmsi('338123456'), { isPotentialMilitary: false, country: 'USA' });
-  // non-numeric / letter-padded MMSI is rejected outright
-  assert.deepEqual(analyzeMmsi('ABC009999'), { isPotentialMilitary: false });
+  // non-numeric / letter-padded MMSI is rejected outright — shape-consistent
+  // with the other branches (always carries a `country` key, undefined here)
+  assert.deepEqual(analyzeMmsi('ABC009999'), { isPotentialMilitary: false, country: undefined });
   // too short
-  assert.deepEqual(analyzeMmsi('123'), { isPotentialMilitary: false });
+  assert.deepEqual(analyzeMmsi('123'), { isPotentialMilitary: false, country: undefined });
 });
 
 test('classifyVessel: military by pattern / known name / ship type, civilian rejected', () => {
