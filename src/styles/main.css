@@ -5768,6 +5768,12 @@ body.playback-mode .status-dot {
   box-shadow: 0 0 4px var(--text-muted);
 }
 
+.nuclear-marker.construction {
+  background: var(--semantic-elevated);
+  box-shadow: 0 0 4px var(--semantic-elevated);
+  opacity: 0.6;
+}
+
 .nuclear-label {
   position: absolute;
   top: 14px;
