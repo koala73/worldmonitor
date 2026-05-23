@@ -268,7 +268,7 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: '444.hu', url: rss('https://444.hu/feed'), lang: 'hu' },
     { name: '24.hu', url: rss('https://24.hu/feed/'), lang: 'hu' },
     { name: 'Híradó', url: rss('https://news.google.com/rss/search?q=site:hirado.hu+when:2d&hl=hu&gl=HU&ceid=HU:hu'), lang: 'hu' },
-    { name: 'Portfolio.hu', url: rss('https://www.portfolio.hu/rss/all.xml'), lang: 'hu' },
+    { name: 'Portfolio.hu', url: rss('https://portfolio.hu/rss/all.xml'), lang: 'hu' },
     { name: 'ATV', url: rss('https://www.atv.hu/rss'), lang: 'hu' },
     // Greek (EL)
     { name: 'Kathimerini', url: rss('https://news.google.com/rss/search?q=site:kathimerini.gr+when:2d&hl=el&gl=GR&ceid=GR:el'), lang: 'el' },
