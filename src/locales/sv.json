@@ -373,7 +373,7 @@
       "components": {
         "unrest": "Oro",
         "conflict": "Konflikt",
-        "security": "Säkerhet",
+        "security": "Militär aktivitet",
         "information": "Information"
       },
       "signals": {
@@ -2881,7 +2881,7 @@
     "exportPdf": "Exportera PDF",
     "unrest": "Oroligheter",
     "conflict": "Konflikt",
-    "security": "Säkerhet",
+    "security": "Militär aktivitet",
     "information": "Information",
     "shareStory": "Dela historia",
     "selectAll": "Välj Alla",
@@ -3010,7 +3010,7 @@
     "components": {
       "unrest": "Oro",
       "conflict": "Konflikt",
-      "security": "Säkerhet",
+      "security": "Militär aktivitet",
       "information": "Information"
     },
     "signals": {

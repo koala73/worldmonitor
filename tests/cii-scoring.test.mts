@@ -33,6 +33,11 @@ function emptyAux() {
     displacedByIso3: {} as Record<string, number>,
     newsTopStories: [] as Array<{ countryCode: string | null; threatLevel: string; primaryTitle: string }>,
     threatSummaryByCountry: null as Record<string, { critical: number; high: number; medium: number; low: number; info: number }> | null,
+    aviationAlerts: [] as any[],
+    earthquakes: [] as any[],
+    sanctionsCountries: [] as any[],
+    temporalAnomalies: [] as any[],
+    militaryCii: null as Record<string, any> | null,
   };
 }
 
@@ -43,6 +48,100 @@ function acledEvent(country: string, type: string, fatalities = 0) {
 function scoreFor(scores: ReturnType<typeof computeCIIScores>, code: string) {
   return scores.find((s) => s.region === code);
 }
+
+describe('CII signal wiring', () => {
+  it('Phase 3b D5/D6: earthquake / sanctions signals raise the score', () => {
+    // Temporal anomalies are deliberately NOT scored — the temporal:anomalies:v1
+    // producer emits region:'global' so they cannot be country-attributed. The
+    // score rise asserted below comes entirely from earthquakeBoost + sanctionsBoost.
+    const acled = [acledEvent('US', 'protest', 0)];
+    const base = scoreFor(computeCIIScores(acled, emptyAux()), 'US');
+    const aux = emptyAux();
+    aux.earthquakes = [{ magnitude: 7.0, occurredAt: Date.now(), location: { latitude: 39, longitude: -98 } }];
+    aux.sanctionsCountries = [
+      { countryCode: 'US', entryCount: 10, newEntryCount: 1 },
+      { countryCode: 'US', entryCount: 5, newEntryCount: 0 }, // duplicate ISO2 — must accumulate, not overwrite
+    ];
+    const withAux = scoreFor(computeCIIScores(acled, aux), 'US');
+    assert.ok(withAux, 'computeCIIScores handles the aux sources without throwing');
+    assert.ok(withAux!.combinedScore > base!.combinedScore,
+      'earthquake + sanctions feed earthquakeBoost + sanctionsBoost in the blend');
+  });
+
+  it('Phase 3b D7/D8: cyber severity + high-brightness fires raise the score', () => {
+    const base = scoreFor(computeCIIScores([], emptyAux()), 'US');
+    const aux = emptyAux();
+    aux.cyber = [{ country: 'US', severity: 'critical' }, { country: 'US', severity: 'high' }];
+    aux.fires = [{ lat: 39, lon: -98, brightness: 400, frp: 60 }];
+    const us = scoreFor(computeCIIScores([], aux), 'US');
+    assert.ok(us!.combinedScore > base!.combinedScore,
+      'critical/high cyber feed the severity-weighted cyberBoost; a bright fire feeds fireBoost');
+  });
+
+  it('Phase 3b D7: cyber severity accepts the production proto enum form (CRITICALITY_LEVEL_*)', () => {
+    // The cyber seed (seed-cyber-threats.mjs lines 52-55) emits the proto enum strings,
+    // not bare lowercase — the ingestion must bucket both. Without the prefix-strip,
+    // these would all fall through and cyberBoost would be 0 in production.
+    const baseAux = emptyAux();
+    const protoAux = emptyAux();
+    protoAux.cyber = [
+      { country: 'US', severity: 'CRITICALITY_LEVEL_CRITICAL' },
+      { country: 'US', severity: 'CRITICALITY_LEVEL_HIGH' },
+    ];
+    const protoScore = scoreFor(computeCIIScores([], protoAux), 'US');
+    const baseScore = scoreFor(computeCIIScores([], baseAux), 'US');
+    assert.ok(protoScore!.combinedScore > baseScore!.combinedScore,
+      'production CRITICALITY_LEVEL_* enums must feed cyberBoost');
+  });
+
+  it('Phase 3b D6: sanctions duplicate-ISO2 rows accumulate across the tier boundary', () => {
+    const aux = emptyAux();
+    aux.sanctionsCountries = [
+      { countryCode: 'US', entryCount: 60, newEntryCount: 1 },
+      { countryCode: 'US', entryCount: 60, newEntryCount: 0 },
+    ];
+    const us = scoreFor(computeCIIScores([], aux), 'US');
+    const none = scoreFor(computeCIIScores([], emptyAux()), 'US');
+    // 60+60 = 120 entries → tier ≥101 → boost 5, +2 newEntry = 7. Had the loop overwritten
+    // instead of accumulated, 60 alone → tier <101 → boost 3+2 = 5. The gap proves accumulation.
+    assert.ok(us!.combinedScore - none!.combinedScore >= 7,
+      'duplicate-ISO2 sanctions rows accumulate (120 entries crosses the ≥101 tier)');
+  });
+
+  it('C3: security component scores military flights/vessels/aviation, not just GPS', () => {
+    // No GPS hexes — pre-Phase-3b this would score security 0; the 4-input formula
+    // must now pick up military activity and aviation.
+    const aux = emptyAux();
+    aux.militaryCii = {
+      US: { ownFlights: 5, foreignFlights: 0, ownVessels: 0, foreignVessels: 0, aisDisruptionHigh: 0, aisDisruptionElevated: 0, aisDisruptionLow: 0 },
+    };
+    aux.aviationAlerts = [{ country: 'United States', delayType: 'closure' }];
+    const us = scoreFor(computeCIIScores([], aux), 'US');
+    assert.ok(us, 'US scored');
+    // flightScore = min(50, 5·3=15) = 15; aviationScore (one closure) = 20; vessels/GPS = 0
+    assert.equal(us!.components!.militaryActivity, 35,
+      'security = flightScore(15) + aviationScore(20), no GPS');
+  });
+
+  it('Phase 3b C1: a riot adds severityBoost vs a plain protest', () => {
+    // Same unrest count (1 event), 0 fatalities, 0 outages in both — the only difference
+    // is the riot classifies as high-severity → severityBoost. Isolates C1.
+    const protest = scoreFor(computeCIIScores([acledEvent('Russia', 'Protests', 0)], emptyAux()), 'RU');
+    const riot = scoreFor(computeCIIScores([acledEvent('Russia', 'Riots', 0)], emptyAux()), 'RU');
+    assert.ok(riot!.components!.ciiContribution > protest!.components!.ciiContribution,
+      'a riot is high-severity unrest and adds severityBoost; a plain protest does not');
+  });
+
+  it('C3: foreign military presence is weighted x2', () => {
+    const aux = emptyAux();
+    // 0 own + 5 foreign flights → reconstructed count 0 + 5·2 = 10 → flightScore min(50, 30) = 30
+    aux.militaryCii = {
+      US: { ownFlights: 0, foreignFlights: 5, ownVessels: 0, foreignVessels: 0, aisDisruptionHigh: 0, aisDisruptionElevated: 0, aisDisruptionLow: 0 },
+    };
+    const us = scoreFor(computeCIIScores([], aux), 'US');
+    assert.equal(us!.components!.militaryActivity, 30, 'foreign flights weighted x2: 5·2·3 = 30');
+  });
+});
 
 describe('CII scoring', () => {
   it('returns scores for all 31 tier-1 countries including MX, BR, AE, LB, IQ, AF', () => {

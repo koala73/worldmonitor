@@ -98,7 +98,7 @@
     "components": {
       "unrest": "Unrest",
       "conflict": "Conflict",
-      "security": "Security",
+      "security": "Mil. Activity",
       "information": "Information"
     },
     "signals": {
@@ -742,7 +742,7 @@
       "components": {
         "unrest": "Unrest",
         "conflict": "Conflict",
-        "security": "Security",
+        "security": "Mil. Activity",
         "information": "Information"
       },
       "signals": {
@@ -3167,7 +3167,7 @@
     "selectNone": "Select None",
     "unrest": "Unrest",
     "conflict": "Conflict",
-    "security": "Security",
+    "security": "Mil. Activity",
     "information": "Information",
     "shareStory": "Share story",
     "exportImage": "Export Image",

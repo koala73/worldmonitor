@@ -5,6 +5,10 @@ description: "Connect Claude, Cursor, and other MCP-compatible clients to WorldM
 
 WorldMonitor exposes its intelligence stack as a [Model Context Protocol](https://modelcontextprotocol.io) server so any MCP-compatible client (Claude Desktop, Claude web, Cursor, MCP Inspector, custom agents) can pull live conflict, market, aviation, maritime, economic, and forecasting data directly into a model's context.
 
+<Tip>
+**New here?** The [MCP Quickstart](/mcp-quickstart) is a five-minute path from zero to a real tool call in Claude Desktop. Come back to this page for auth modes, plans, OAuth setup, and the full tool catalog.
+</Tip>
+
 <Info>
 **Pro and API tiers can both connect via OAuth — no API key required.** Pro subscribers click _"Sign in with WorldMonitor Pro"_ on the consent page; API Starter / Business / Enterprise users may sign in the same way OR paste a `wm_…` key. Free-tier users see a 401 at the OAuth step.
 </Info>
@@ -164,7 +168,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 The server exposes 39 tools. Most are cache-reads over pre-seeded Redis keys (sub-second). Six (`get_world_brief`, `get_country_brief`, `analyze_situation`, `generate_forecasts`, `search_flights`, `search_flight_prices_by_date`) call live LLMs or external APIs and are slower. One (`describe_tool`, added v1.5.0) returns the full uncompressed definition of any other tool — useful when the compressed `tools/list` description is ambiguous; exempt from the Pro daily quota.
 
 <Tip>
-For per-tool parameters, freshness budgets, timeouts, and concrete `curl` examples, see the [MCP Tools Reference](/mcp-tools-reference).
+For per-tool parameters, freshness budgets, timeouts, and concrete `curl` examples, see the [MCP Tools Reference](/mcp-tools-reference). For payload projection — every tool accepts an optional `jmespath` argument that typically cuts response size by 80-95% — see the [JMESPath guide](/mcp-jmespath).
 </Tip>
 
 ### Markets & economy
@@ -368,6 +372,9 @@ Tool-level errors return `isError: true` with a text explanation in `content`.
 
 ## Related
 
+- [MCP Quickstart](/mcp-quickstart) — five-minute zero-to-first-call walkthrough
+- [JMESPath guide](/mcp-jmespath) — projection grammar + 12 worked examples
+- [MCP Tools Reference](/mcp-tools-reference) — per-tool parameters and `curl` examples
 - [Authentication overview](/authentication) — browser vs bearer vs OAuth
 - [API Reference](/api-reference) — the same data via REST
 - [Pro features](https://www.worldmonitor.app/pro)

@@ -28,7 +28,7 @@
     "components": {
       "unrest": "اضطرابات",
       "conflict": "نزاع",
-      "security": "أمن",
+      "security": "نشاط عسكري",
       "information": "معلومات"
     },
     "signals": {
@@ -674,7 +674,7 @@
       "components": {
         "unrest": "اضطرابات",
         "conflict": "نزاع",
-        "security": "أمن",
+        "security": "نشاط عسكري",
         "information": "معلومات"
       },
       "signals": {
@@ -3096,7 +3096,7 @@
     "selectNone": "إلغاء التحديد",
     "unrest": "اضطرابات",
     "conflict": "نزاع",
-    "security": "أمن",
+    "security": "نشاط عسكري",
     "information": "معلومات",
     "shareStory": "مشاركة القصة",
     "exportImage": "تصدير صورة",

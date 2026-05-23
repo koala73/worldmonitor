@@ -1,0 +1,132 @@
+[
+  {
+    "entry": "scripts/seed-digest-notifications.mjs",
+    "deployMode": "dockerfile",
+    "dockerfile": "Dockerfile.digest-notifications",
+    "service": "digest-notifications",
+    "documentedAt": "Dockerfile.digest-notifications"
+  },
+  {
+    "entry": "scripts/ais-relay.cjs",
+    "deployMode": "dockerfile",
+    "dockerfile": "Dockerfile.relay",
+    "service": "relay",
+    "documentedAt": "Dockerfile.relay"
+  },
+  {
+    "entry": "scripts/seed-bundle-portwatch-port-activity.mjs",
+    "deployMode": "dockerfile",
+    "dockerfile": "Dockerfile.seed-bundle-portwatch-port-activity",
+    "service": "seed-bundle-portwatch-port-activity",
+    "documentedAt": "Dockerfile.seed-bundle-portwatch-port-activity"
+  },
+  {
+    "entry": "scripts/seed-bundle-resilience-validation.mjs",
+    "deployMode": "dockerfile",
+    "dockerfile": "Dockerfile.seed-bundle-resilience-validation",
+    "service": "seed-bundle-resilience-validation",
+    "documentedAt": "Dockerfile.seed-bundle-resilience-validation"
+  },
+  {
+    "entry": "scripts/seed-forecasts.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "seed-forecasts",
+    "documentedAt": "tests/scripts-railway-nixpacks-no-escape-import.test.mts (pre-registry ENTRY_POINTS)"
+  },
+  {
+    "entry": "scripts/process-simulation-tasks.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "process-simulation-tasks",
+    "documentedAt": "tests/scripts-railway-nixpacks-no-escape-import.test.mts (pre-registry ENTRY_POINTS)"
+  },
+  {
+    "entry": "scripts/process-deep-forecast-tasks.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "process-deep-forecast-tasks",
+    "documentedAt": "tests/scripts-railway-nixpacks-no-escape-import.test.mts (pre-registry ENTRY_POINTS)"
+  },
+  {
+    "entry": "scripts/seed-insights.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "seed-insights",
+    "documentedAt": "tests/scripts-railway-nixpacks-no-escape-import.test.mts (added PR #3836)"
+  },
+  {
+    "entry": "scripts/seed-bundle-ecb-eu.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "seed-bundle-ecb-eu",
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#seed-bundle-ecb-eu"
+  },
+  {
+    "entry": "scripts/seed-bundle-portwatch.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "seed-bundle-portwatch",
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#seed-bundle-portwatch"
+  },
+  {
+    "entry": "scripts/seed-bundle-static-ref.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "seed-bundle-static-ref",
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#seed-bundle-static-ref"
+  },
+  {
+    "entry": "scripts/seed-bundle-resilience.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "seed-bundle-resilience",
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#seed-bundle-resilience"
+  },
+  {
+    "entry": "scripts/seed-bundle-derived-signals.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "seed-bundle-derived-signals",
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#seed-bundle-derived-signals"
+  },
+  {
+    "entry": "scripts/seed-bundle-climate.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "seed-bundle-climate",
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#seed-bundle-climate"
+  },
+  {
+    "entry": "scripts/seed-bundle-energy-sources.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "seed-bundle-energy-sources",
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#seed-bundle-energy-sources"
+  },
+  {
+    "entry": "scripts/seed-bundle-macro.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "seed-bundle-macro",
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#seed-bundle-macro"
+  },
+  {
+    "entry": "scripts/seed-bundle-health.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "seed-bundle-health",
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#seed-bundle-health"
+  },
+  {
+    "entry": "scripts/seed-bundle-market-backup.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "seed-bundle-market-backup",
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#seed-bundle-market-backup"
+  },
+  {
+    "entry": "scripts/seed-bundle-relay-backup.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "seed-bundle-relay-backup",
+    "documentedAt": "docs/railway-seed-consolidation-runbook.md#seed-bundle-relay-backup"
+  },
+  {
+    "entry": "scripts/scenario-worker.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "scenario-worker",
+    "documentedAt": "scripts/scenario-worker.mjs (header docblock declares rootDirectory: scripts)"
+  },
+  {
+    "entry": "scripts/seed-bundle-regional.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "seed-bundle-regional",
+    "documentedAt": "scripts/seed-bundle-regional.mjs (header docblock declares rootDirectory: scripts)"
+  }
+]

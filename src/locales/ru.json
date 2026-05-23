@@ -28,7 +28,7 @@
     "components": {
       "unrest": "Беспорядки",
       "conflict": "Конфликт",
-      "security": "Безопасность",
+      "security": "Военная активность",
       "information": "Информация"
     },
     "signals": {
@@ -674,7 +674,7 @@
       "components": {
         "unrest": "Беспорядки",
         "conflict": "Конфликт",
-        "security": "Безопасность",
+        "security": "Военная активность",
         "information": "Информация"
       },
       "signals": {
@@ -3098,7 +3098,7 @@
     "selectNone": "Снять выбор",
     "unrest": "Беспорядки",
     "conflict": "Конфликт",
-    "security": "Безопасность",
+    "security": "Военная активность",
     "information": "Информация",
     "shareStory": "Поделиться сюжетом",
     "exportImage": "Экспорт изображения",

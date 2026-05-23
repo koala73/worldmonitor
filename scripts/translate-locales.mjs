@@ -18,7 +18,7 @@
  * Cost: ~8.3K strings × 20 locales backfill ≈ ~$3 on claude-haiku-4-5.
  */
 
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { Anthropic } from '@anthropic-ai/sdk';
 
@@ -29,13 +29,13 @@ const onlyArg = [...args].find(a => a.startsWith('--only='));
 const onlyLocales = onlyArg ? onlyArg.slice('--only='.length).split(',') : null;
 
 const ROOT = proTest ? 'pro-test/src/locales' : 'src/locales';
-const LOCALES = ['ar', 'bg', 'cs', 'de', 'el', 'es', 'fr', 'it', 'ja', 'ko', 'nl', 'pl', 'pt', 'ro', 'ru', 'sv', 'th', 'tr', 'vi', 'zh'];
+const LOCALES = ['ar', 'bg', 'cs', 'de', 'el', 'es', 'fr', 'hu', 'it', 'ja', 'ko', 'nl', 'pl', 'pt', 'ro', 'ru', 'sv', 'th', 'tr', 'vi', 'zh'];
 const LANG_NAMES = {
   ar: 'Arabic', bg: 'Bulgarian', cs: 'Czech', de: 'German', el: 'Greek',
-  es: 'Spanish', fr: 'French', it: 'Italian', ja: 'Japanese', ko: 'Korean',
-  nl: 'Dutch', pl: 'Polish', pt: 'Portuguese (Brazil)', ro: 'Romanian',
-  ru: 'Russian', sv: 'Swedish', th: 'Thai', tr: 'Turkish', vi: 'Vietnamese',
-  zh: 'Simplified Chinese',
+  es: 'Spanish', fr: 'French', hu: 'Hungarian', it: 'Italian', ja: 'Japanese',
+  ko: 'Korean', nl: 'Dutch', pl: 'Polish', pt: 'Portuguese (Brazil)',
+  ro: 'Romanian', ru: 'Russian', sv: 'Swedish', th: 'Thai', tr: 'Turkish',
+  vi: 'Vietnamese', zh: 'Simplified Chinese',
 };
 const BATCH_SIZE = 50;
 const MODEL = 'claude-haiku-4-5-20251001';
@@ -168,6 +168,17 @@ async function main() {
 
   for (const loc of targets) {
     const locPath = path.join(ROOT, `${loc}.json`);
+    // Skip locales that don't exist in the active root. The unified LOCALES
+    // list serves both the main app (src/locales/) and the pro-test bundle
+    // (pro-test/src/locales/), but the two roots are independent — a locale
+    // added to main may not yet have a pro-test counterpart. Skip silently
+    // so --pro-test and default modes both work without a placeholder file
+    // (placeholders trigger the pro-bundle freshness hook because they
+    // change the lazy-loaded chunk graph).
+    if (!existsSync(locPath)) {
+      console.log(`[${loc}] (no file at ${locPath}; skipping)`);
+      continue;
+    }
     const raw = JSON.parse(readFileSync(locPath, 'utf8'));
     const flat = flatten(raw);
     const missing = Object.keys(enFlat).filter(k => !(k in flat));

@@ -103,6 +103,7 @@ import {
   type StockAnalysisHistory,
 } from '@/services/stock-analysis-history';
 import { checkBatchForBreakingAlerts, dispatchOrefBreakingAlert } from '@/services/breaking-news-alerts';
+import { effectivePubDateMs } from '@/services/feed-date';
 import { mlWorker } from '@/services/ml-worker';
 import { clusterNewsHybrid } from '@/services/clustering';
 import { ingestProtests, ingestFlights, ingestVessels, ingestEarthquakes, detectGeoConvergence, geoConvergenceToSignal } from '@/services/geo-convergence';
@@ -408,7 +409,7 @@ export class DataLoaderManager implements AppModule {
   private getStaleNewsItems(category: string): NewsItem[] {
     const staleItems = this.ctx.newsByCategory[category];
     if (!Array.isArray(staleItems) || staleItems.length === 0) return [];
-    return [...staleItems].sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime());
+    return [...staleItems].sort((a, b) => effectivePubDateMs(b) - effectivePubDateMs(a));
   }
 
   private selectLimitedFeeds<T>(feeds: T[], maxFeeds: number): T[] {
@@ -856,8 +857,16 @@ export class DataLoaderManager implements AppModule {
     if (range === 'all') return items;
     const cutoff = Date.now() - this.getTimeRangeWindowMs(range);
     return items.filter((item) => {
-      const ts = item.pubDate instanceof Date ? item.pubDate.getTime() : new Date(item.pubDate).getTime();
-      return Number.isFinite(ts) ? ts >= cutoff : true;
+      // effectivePubDateMs returns 0 for items that cannot claim a real
+      // freshness rank: pubDateMissing items (the U3 contract) AND items
+      // whose pubDate is NaN/Infinity/Invalid Date (the helper's value-
+      // sanitization branch). All such items are EXCLUDED from positive-
+      // window ranges. Previous behavior wrapped raw pubDate.getTime() in
+      // Number.isFinite() and fell through to `true` on non-finite — that
+      // included corrupt-stamp items in time-range views, arguably a bug.
+      // The current shape treats untrustworthy timestamps uniformly: they
+      // never claim freshness and never appear in a "last 24h" view.
+      return effectivePubDateMs(item) >= cutoff;
     });
   }
 
@@ -3192,7 +3201,14 @@ export class DataLoaderManager implements AppModule {
     }
   }
 
-  private static readonly HAPPY_ITEMS_CACHE_KEY = 'happy-all-items';
+  // Bumped to v2 alongside src/services/rss.ts CACHE_PREFIX (`feed:` →
+  // `feed:v2:`). Pre-v2 entries here serialize NewsItem WITHOUT the new
+  // `pubDateMissing` flag — on hydrate they get `undefined`, which
+  // `effectivePubDateMs` treats as `false`, so items that previously had
+  // synthesized `Date.now()` stamps would fraudulently claim freshness
+  // for the 24h gate window. Pre-v2 entries are left to TTL out (no
+  // explicit invalidation needed).
+  private static readonly HAPPY_ITEMS_CACHE_KEY = 'happy-all-items:v2';
 
   async hydrateHappyPanelsFromCache(): Promise<void> {
     try {
@@ -3212,10 +3228,10 @@ export class DataLoaderManager implements AppModule {
       );
       this.callPanel('spotlight', 'setHeroStory',
         items.filter(item => item.happyCategory === 'humanity-kindness')
-          .sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime())[0]
+          .sort((a, b) => effectivePubDateMs(b) - effectivePubDateMs(a))[0]
       );
       this.callPanel('digest', 'setStories',
-        [...items].sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime()).slice(0, 5)
+        [...items].sort((a, b) => effectivePubDateMs(b) - effectivePubDateMs(a)).slice(0, 5)
       );
       this.callPanel('positive-feed', 'renderPositiveNews', items);
     } catch (err) {
@@ -3249,7 +3265,7 @@ export class DataLoaderManager implements AppModule {
 
     if (supplementary.length > 0) {
       const merged = [...curated, ...supplementary];
-      merged.sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime());
+      merged.sort((a, b) => effectivePubDateMs(b) - effectivePubDateMs(a));
       this.callPanel('positive-feed', 'renderPositiveNews', merged);
     }
 
@@ -3261,11 +3277,11 @@ export class DataLoaderManager implements AppModule {
 
     const heroItem = this.ctx.happyAllItems
       .filter(item => item.happyCategory === 'humanity-kindness')
-      .sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime())[0];
+      .sort((a, b) => effectivePubDateMs(b) - effectivePubDateMs(a))[0];
     this.callPanel('spotlight', 'setHeroStory', heroItem);
 
     const digestItems = [...this.ctx.happyAllItems]
-      .sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime())
+      .sort((a, b) => effectivePubDateMs(b) - effectivePubDateMs(a))
       .slice(0, 5);
     this.callPanel('digest', 'setStories', digestItems);
 

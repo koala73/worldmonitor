@@ -17,14 +17,14 @@
 //      downstream users of the proto API see why combinedScore values may
 //      shift between deploys.
 //
-// Last reviewed: 2026-05-18 (issue #3725 — methodology disclosure).
+// Last reviewed: 2026-05-23 (PR #3864 — Phase 3a CII unification, v1→v2).
 // ============================================================================
 
 /**
  * Formula version emitted on every CiiScore as `methodology_version`.
  * Bump on any coefficient change so API clients can detect score drift.
  */
-export const CII_FORMULA_VERSION = 'v1';
+export const CII_FORMULA_VERSION = 'v2';
 
 /**
  * Strategic-risk top-N positional decay step. Weight for position `i` (0-based)

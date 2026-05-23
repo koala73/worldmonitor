@@ -28,7 +28,7 @@
     "components": {
       "unrest": "Nepokoje",
       "conflict": "Konflikt",
-      "security": "Bezpečnost",
+      "security": "Vojenská aktivita",
       "information": "Informace"
     },
     "signals": {
@@ -674,7 +674,7 @@
       "components": {
         "unrest": "Nepokoje",
         "conflict": "Konflikt",
-        "security": "Bezpečnost",
+        "security": "Vojenská aktivita",
         "information": "Informace"
       },
       "signals": {
@@ -3098,7 +3098,7 @@
     "selectNone": "Nevybrat nic",
     "unrest": "Nepokoje",
     "conflict": "Konflikt",
-    "security": "Bezpečnost",
+    "security": "Vojenská aktivita",
     "information": "Informace",
     "shareStory": "Sdílet příběh",
     "exportImage": "Exportovat obrázek",

@@ -28,7 +28,7 @@
     "components": {
       "unrest": "ความไม่สงบ",
       "conflict": "ความขัดแย้ง",
-      "security": "ความมั่นคง",
+      "security": "กิจกรรมทางทหาร",
       "information": "ข้อมูลข่าวสาร"
     },
     "signals": {
@@ -674,7 +674,7 @@
       "components": {
         "unrest": "ความไม่สงบ",
         "conflict": "ความขัดแย้ง",
-        "security": "ความมั่นคง",
+        "security": "กิจกรรมทางทหาร",
         "information": "ข้อมูลข่าวสาร"
       },
       "signals": {
@@ -3098,7 +3098,7 @@
     "selectNone": "ไม่เลือก",
     "unrest": "ความไม่สงบ",
     "conflict": "ความขัดแย้ง",
-    "security": "ความมั่นคง",
+    "security": "กิจกรรมทางทหาร",
     "information": "ข้อมูล",
     "shareStory": "แชร์เรื่องราว",
     "exportImage": "ส่งออกรูปภาพ",

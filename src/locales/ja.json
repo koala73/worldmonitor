@@ -28,7 +28,7 @@
     "components": {
       "unrest": "騒乱",
       "conflict": "紛争",
-      "security": "安全保障",
+      "security": "軍事活動",
       "information": "情報"
     },
     "signals": {
@@ -674,7 +674,7 @@
       "components": {
         "unrest": "騒乱",
         "conflict": "紛争",
-        "security": "安全保障",
+        "security": "軍事活動",
         "information": "情報"
       },
       "signals": {
@@ -3098,7 +3098,7 @@
     "selectNone": "全解除",
     "unrest": "騒乱",
     "conflict": "紛争",
-    "security": "安全保障",
+    "security": "軍事活動",
     "information": "情報",
     "shareStory": "ストーリーを共有",
     "exportImage": "画像をエクスポート",

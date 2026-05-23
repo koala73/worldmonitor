@@ -28,7 +28,7 @@
     "components": {
       "unrest": "Αναταραχή",
       "conflict": "Σύγκρουση",
-      "security": "Ασφάλεια",
+      "security": "Στρατιωτική δραστηριότητα",
       "information": "Πληροφορίες"
     },
     "signals": {
@@ -674,7 +674,7 @@
       "components": {
         "unrest": "Αναταραχή",
         "conflict": "Σύγκρουση",
-        "security": "Ασφάλεια",
+        "security": "Στρατιωτική δραστηριότητα",
         "information": "Πληροφορίες"
       },
       "signals": {
@@ -3098,7 +3098,7 @@
     "selectNone": "Αποεπιλογή Όλων",
     "unrest": "Αναταραχή",
     "conflict": "Σύγκρουση",
-    "security": "Ασφάλεια",
+    "security": "Στρατιωτική δραστηριότητα",
     "information": "Πληροφορίες",
     "shareStory": "Κοινοποίηση ιστορίας",
     "exportImage": "Εξαγωγή Εικόνας",

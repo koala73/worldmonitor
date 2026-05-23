@@ -1,0 +1,494 @@
+---
+title: "JMESPath Projection Guide"
+description: "Cut MCP response payloads by 80-95% with JMESPath. Twelve worked examples against real WorldMonitor response shapes."
+---
+
+Every WorldMonitor MCP tool accepts an optional `jmespath` string argument. The server applies the expression **after** any per-tool filter and `summary` args, then projects the response before serialisation. A well-chosen projection typically cuts payload size by **80–95%** — the single most effective lever you have for keeping a long agent loop inside its context window.
+
+This page is the practical reference: a quick orientation, then twelve worked examples against three real captured tool responses. For the grammar itself, lean on the spec — [jmespath.org/specification.html](https://jmespath.org/specification.html). Coming back here is faster than re-reading the spec.
+
+## Quick orientation
+
+- Pass the expression as the `jmespath` argument on any `tools/call`. The expression root is the **full response envelope** — `{ cached_at, stale, data: { … } }` for cache tools — so most expressions start with `data.<key>` to reach the payload, and `cached_at` / `stale` are addressable from the same root when you want them.
+- **Hyphenated keys must be quoted with double quotes.** Most WorldMonitor tools have hyphenated cache keys (`stocks-bootstrap`, `ucdp-events`, `etf-flows`, `fear-greed`, `transit-summaries`). Use `data."stocks-bootstrap".quotes[*].symbol`, not `data.stocks-bootstrap.…`.
+- **Numbers and JSON literals go in backticks, strings in single quotes.** `[?deathsBest > \`5\`]` (numeric), `[?country == 'Iraq']` (string). Mixing them up silently parses the value as something else.
+- **Two server-side limits** keep edge functions healthy:
+  - Expression itself: ≤ **1024 bytes**.
+  - Projected output: ≤ **256 KB**.
+
+  Failures return `{ _jmespath_error, original_keys, ... }` inside the normal result envelope — the tool call still succeeds at the JSON-RPC layer (no `isError: true`), and `original_keys` echoes the top-level keys of the unprojected response so the model can self-correct on the next call.
+
+The three response shapes used below are the captured fixtures under `tests/fixtures/jmespath-samples/` (re-captured periodically against the prod MCP endpoint). They were picked deliberately — fat (~100 KB), medium (~30 KB), and thin (~10 KB) — to span the size tiers you'll actually project against.
+
+## The twelve examples
+
+### 1. Drill into a single nested object
+
+**Intent.** Skip the equity list and just get the WorldMonitor fear-greed composite score from `get_market_data`.
+
+**Tool call:**
+
+```json
+{
+  "name": "get_market_data",
+  "arguments": {
+    "jmespath": "data.\"fear-greed\".composite"
+  }
+}
+```
+
+**Unprojected response (~100 KB).** Hundreds of equity quotes, every sector, all of crypto, every Gulf ticker, the full fear-greed breakdown:
+
+```json
+{
+  "cached_at": "2026-05-17T10:34:00.852Z",
+  "stale": false,
+  "data": {
+    "stocks-bootstrap": { "quotes": [ /* 200+ entries */ ] },
+    "commodities-bootstrap": { "quotes": [ /* +sparkline arrays */ ] },
+    "crypto": { "quotes": [ /* … */ ] },
+    "sectors": { "sectors": [ /* … */ ] },
+    "etf-flows": { /* … */ },
+    "gulf-quotes": { /* … */ },
+    "fear-greed": {
+      "timestamp": "2026-05-17T06:01:06.163Z",
+      "composite": { "score": 66.5, "label": "Greed", "previous": 67.3 },
+      "categories": { "sentiment": { "score": 55, "weight": 0.1, "inputs": { /* … */ } }, /* … */ }
+    }
+  }
+}
+```
+
+**Projected response:**
+
+```json
+{ "score": 66.5, "label": "Greed", "previous": 67.3 }
+```
+
+**Why this works.** Drill-down is just dotted path navigation. `data."fear-greed"` quotes the hyphenated key, then `.composite` plucks the nested object. Everything else in the payload — the 100 KB of quotes — never crosses the wire.
+
+---
+
+### 2. Slim each item to a few fields (multiselect-hash)
+
+**Intent.** From `get_market_data`, get a compact table of all equity quotes: symbol, price, percent change.
+
+**Tool call:**
+
+```json
+{
+  "name": "get_market_data",
+  "arguments": {
+    "jmespath": "data.\"stocks-bootstrap\".quotes[*].{s:symbol,p:price,chg:change}"
+  }
+}
+```
+
+**Unprojected response (relevant slice).** Each quote also carries `name`, `display`, and a `sparkline` array — none of which the model usually needs for a "what moved today" question:
+
+```json
+[
+  { "symbol": "AAPL", "name": "AAPL", "display": "AAPL", "price": 300.23, "change": 0.6774, "sparkline": [] },
+  { "symbol": "AMZN", "name": "AMZN", "display": "AMZN", "price": 264.14, "change": -1.1526, "sparkline": [] }
+]
+```
+
+**Projected response:**
+
+```json
+[
+  { "s": "AAPL", "p": 300.23, "chg": 0.6774 },
+  { "s": "AMZN", "p": 264.14, "chg": -1.1526 },
+  { "s": "AVGO", "p": 425.19, "chg": -3.3198 }
+]
+```
+
+**Why this works.** `[*]` projects across every array element; `{s:symbol, p:price, chg:change}` is the multiselect-hash — it builds a new object per element using whichever fields you list. Shorter output keys (`s`, `p`, `chg`) shave a few more bytes; standard keys (`symbol`, `price`, `change`) are fine too if you want readability.
+
+---
+
+### 3. Filter on a numeric comparator
+
+**Intent.** From `get_conflict_events`, keep only UCDP events with at least one confirmed fatality.
+
+**Tool call:**
+
+```json
+{
+  "name": "get_conflict_events",
+  "arguments": {
+    "jmespath": "data.\"ucdp-events\".events[?deathsBest > `0`]"
+  }
+}
+```
+
+**Unprojected response (relevant slice).** Many UCDP entries record encounters with `deathsBest: 0` — political incidents, intercepted attacks, near-misses:
+
+```json
+[
+  { "id": "565175", "country": "Ecuador",        "deathsBest": 2,  "violenceType": "UCDP_VIOLENCE_TYPE_NON_STATE" },
+  { "id": "565999", "country": "DR Congo",       "deathsBest": 17, "violenceType": "UCDP_VIOLENCE_TYPE_ONE_SIDED" },
+  { "id": "568494", "country": "Iraq",           "deathsBest": 7,  "violenceType": "UCDP_VIOLENCE_TYPE_STATE_BASED" },
+  { "id": "560968", "country": "Ecuador",        "deathsBest": 0,  "violenceType": "UCDP_VIOLENCE_TYPE_NON_STATE" }
+]
+```
+
+**Projected response:** the `deathsBest: 0` entry is dropped.
+
+**Why this works.** `[?expr]` is the filter projection; `>` is the numeric comparator. **Backticks around the literal** matter — `[?deathsBest > 0]` (no backticks) treats `0` as an identifier, which JMESPath parses but then evaluates to `null`, and the comparison silently returns no rows. Always wrap numeric and boolean literals in backticks.
+
+---
+
+### 4. Filter on string equality
+
+**Intent.** From `get_conflict_events`, get every UCDP event whose `country` is exactly `"Iraq"`.
+
+**Tool call:**
+
+```json
+{
+  "name": "get_conflict_events",
+  "arguments": {
+    "jmespath": "data.\"ucdp-events\".events[?country == 'Iraq']"
+  }
+}
+```
+
+**Projected response:**
+
+```json
+[
+  {
+    "id": "568494",
+    "country": "Iraq",
+    "sideA": "Government of Iraq",
+    "sideB": "IS",
+    "deathsBest": 7,
+    "violenceType": "UCDP_VIOLENCE_TYPE_STATE_BASED",
+    "sourceOriginal": "the Iraqi Security Information Cell"
+  }
+]
+```
+
+**Why this works.** String literals use **single quotes**, not double quotes. Double quotes mean "identifier" in JMESPath (the same syntax used to escape hyphenated keys like `"stocks-bootstrap"`). A common first-time mistake is `[?country == "Iraq"]`, which JMESPath parses as "compare `country` to a field literally named `Iraq`", evaluates the right-hand side to `null`, and returns no rows.
+
+---
+
+### 5. Array projection — flat list of one field
+
+**Intent.** From `get_market_data`, get a flat list of sector ETF tickers.
+
+**Tool call:**
+
+```json
+{
+  "name": "get_market_data",
+  "arguments": {
+    "jmespath": "data.sectors.sectors[*].symbol"
+  }
+}
+```
+
+**Unprojected response (relevant slice):**
+
+```json
+{
+  "sectors": [
+    { "symbol": "XLK", "name": "XLK", "change": -1.805 },
+    { "symbol": "XLF", "name": "XLF", "change": -0.3704 },
+    { "symbol": "XLE", "name": "XLE", "change":  2.3592 }
+  ]
+}
+```
+
+**Projected response:**
+
+```json
+["XLK","XLF","XLE","XLV","XLY","XLI","XLP","XLU","XLB","XLRE","XLC","SMH"]
+```
+
+**Why this works.** `[*]` projects across every array element, and `.symbol` is applied to each one in turn. The result is an array of just the symbol strings — no enclosing objects.
+
+---
+
+### 6. Slice — first N elements
+
+**Intent.** From `get_conflict_events`, return only the first five UCDP events.
+
+**Tool call:**
+
+```json
+{
+  "name": "get_conflict_events",
+  "arguments": {
+    "jmespath": "data.\"ucdp-events\".events[0:5]"
+  }
+}
+```
+
+**Projected response:** a five-element array of the same shape as the unprojected `events[]`.
+
+**Why this works.** `[start:stop]` is the slice projection (`stop` is exclusive). Negative indices and a step are also supported — `[-5:]` for the last five, `[::-1]` to reverse, `[::2]` for every other element. Slicing is **post-filter** in the pipeline — to slice the filtered set, pipe (see example 12).
+
+<Tip>
+**`limit` vs. slicing.** Several tools (`get_country_macro`, `get_eu_*`, `get_displacement_data`) accept a tool-level `limit` argument that caps the response **before** projection. `limit` and JMESPath compose: the tool-level cap narrows the candidate set, then your `[0:N]` slice picks the prefix. Pass `limit: 0` to disable the tool-level cap when you want everything and intend to project further with JMESPath.
+</Tip>
+
+---
+
+### 7. `length()` for counting
+
+**Intent.** How many UCDP events are in the latest bundle?
+
+**Tool call:**
+
+```json
+{
+  "name": "get_conflict_events",
+  "arguments": {
+    "jmespath": "length(data.\"ucdp-events\".events)"
+  }
+}
+```
+
+**Projected response:**
+
+```json
+38
+```
+
+**Why this works.** `length()` is one of JMESPath's built-in functions; it works on arrays, strings, and objects (where it returns the key count). Useful as a sanity check before a longer call — a `length()` projection returns a single integer, costs nothing in tokens, and tells the model whether the bundle is empty before deciding what to project next.
+
+---
+
+### 8. `sort_by` + reverse + slice — Top-N
+
+**Intent.** From `get_conflict_events`, give me the three deadliest UCDP events with country + death count only.
+
+**Tool call:**
+
+```json
+{
+  "name": "get_conflict_events",
+  "arguments": {
+    "jmespath": "sort_by(data.\"ucdp-events\".events, &deathsBest) | reverse(@) | [0:3].{c:country, d:deathsBest}"
+  }
+}
+```
+
+**Projected response:**
+
+```json
+[
+  { "c": "DR Congo (Zaire)", "d": 17 },
+  { "c": "Iraq",             "d": 7  },
+  { "c": "Mexico",           "d": 3  }
+]
+```
+
+**Why this works.** Three stages chained with `|`:
+
+1. `sort_by(events, &deathsBest)` — JMESPath sorts ascending; `&expr` is an **expression reference** (sort key).
+2. `reverse(@)` — flip ascending to descending. `@` is the current node.
+3. `[0:3].{...}` — slice the top three, then multiselect-hash to slim each row.
+
+This is the workhorse shape for "give me the top-N by some metric". The same shape applies to top-N markets by % change, top-N countries by CII score, top-N chokepoints by incident count.
+
+---
+
+### 9. Filter on enum-string field
+
+**Intent.** From `get_conflict_events`, return only UCDP events classified as state-based violence — the highest-severity tier.
+
+**Tool call:**
+
+```json
+{
+  "name": "get_conflict_events",
+  "arguments": {
+    "jmespath": "data.\"ucdp-events\".events[?violenceType == 'UCDP_VIOLENCE_TYPE_STATE_BASED'].{c:country, a:sideA, b:sideB, d:deathsBest}"
+  }
+}
+```
+
+**Projected response:**
+
+```json
+[
+  { "c": "Iraq", "a": "Government of Iraq", "b": "IS", "d": 7 },
+  { "c": "Yemen (North Yemen)", "a": "Government of United Kingdom, Government of United States of America", "b": "Government of Yemen (North Yemen)", "d": 0 }
+]
+```
+
+**Why this works.** Filters and multiselect-hashes compose left-to-right inside the same projection — `[?...].{a:..., b:...}` filters first, then slims each surviving row. Most WorldMonitor responses use upper-snake enum strings (`SEVERITY_LEVEL_HIGH`, `TREND_DIRECTION_STABLE`, `UCDP_VIOLENCE_TYPE_*`); search them with `==` and single quotes exactly as written.
+
+---
+
+### 10. Object-as-map navigation
+
+**Intent.** From `get_chokepoint_status`, get the risk level + 7-day incident count for the Strait of Hormuz only.
+
+**Tool call:**
+
+```json
+{
+  "name": "get_chokepoint_status",
+  "arguments": {
+    "jmespath": "data.\"transit-summaries\".summaries.hormuz_strait.{risk:riskLevel, count:incidentCount7d}"
+  }
+}
+```
+
+**Unprojected response (relevant slice).** Note that `summaries` is **keyed by chokepoint name** (object map), not an array of `{name, ...}` records:
+
+```json
+{
+  "transit-summaries": {
+    "summaries": {
+      "suez":          { "riskLevel": "critical", "incidentCount7d": 28,  "wowChangePct":   4.5, "riskSummary": "..." },
+      "hormuz_strait": { "riskLevel": "critical", "incidentCount7d": 627, "wowChangePct": -72.5, "riskSummary": "..." },
+      "panama":        { "riskLevel": "",         "incidentCount7d": 0,   "wowChangePct":   0.4, "riskSummary": "" }
+    }
+  }
+}
+```
+
+**Projected response:**
+
+```json
+{ "risk": "critical", "count": 627 }
+```
+
+**Why this works.** Object-as-map shapes are everywhere in this server — chokepoints, weights inside `fear-greed.categories`, EU member-keyed series in `get_eu_housing_cycle`. Treat them as dotted path navigation: known key → use the key directly. If you don't know the key, see the next example.
+
+---
+
+### 11. Object-as-map projection — `*` and `keys()`
+
+**Intent.** From `get_chokepoint_status`, list every chokepoint currently rated "critical" with its incident count.
+
+**Tool call:**
+
+```json
+{
+  "name": "get_chokepoint_status",
+  "arguments": {
+    "jmespath": "data.\"transit-summaries\".summaries.* | [?riskLevel == 'critical'].{risk:riskLevel, count:incidentCount7d}"
+  }
+}
+```
+
+**Projected response:**
+
+```json
+[
+  { "risk": "critical", "count": 28  },
+  { "risk": "critical", "count": 627 },
+  { "risk": "critical", "count": 33  },
+  { "risk": "critical", "count": 735 }
+]
+```
+
+**Why this works.** `summaries.*` flattens the map's **values** into an array — so `suez`, `hormuz_strait`, `bab_el_mandeb`, etc. become indexable array elements. Then a normal `[?…]` filter and multiselect-hash apply.
+
+The flatten drops the original map keys (the chokepoint names). If you need the names too, project them separately with `keys(data."transit-summaries".summaries)`, or accept the structural mismatch and switch to the sibling `chokepoint_transits.transits` payload, which IS keyed-as-map of `{tanker, cargo, other, total}` with the chokepoint name as the key — `keys(data.chokepoint_transits.transits)` gets you a flat list of every chokepoint covered.
+
+---
+
+### 12. Pipe combinator — multi-stage projection
+
+**Intent.** From `get_conflict_events`, give me the five deadliest fatality-positive events with country, death count, and violence type.
+
+**Tool call:**
+
+```json
+{
+  "name": "get_conflict_events",
+  "arguments": {
+    "jmespath": "data.\"ucdp-events\".events[?deathsBest > `0`] | sort_by(@, &deathsBest) | reverse(@) | [0:5].{c:country, d:deathsBest, t:violenceType}"
+  }
+}
+```
+
+**Projected response:**
+
+```json
+[
+  { "c": "DR Congo (Zaire)", "d": 17, "t": "UCDP_VIOLENCE_TYPE_ONE_SIDED" },
+  { "c": "Iraq",             "d": 7,  "t": "UCDP_VIOLENCE_TYPE_STATE_BASED" },
+  { "c": "Mexico",           "d": 3,  "t": "UCDP_VIOLENCE_TYPE_NON_STATE" },
+  { "c": "Ecuador",          "d": 2,  "t": "UCDP_VIOLENCE_TYPE_NON_STATE" },
+  { "c": "Brazil",           "d": 1,  "t": "UCDP_VIOLENCE_TYPE_NON_STATE" }
+]
+```
+
+**Why this works.** `|` resets the context to "the result so far" and starts a new projection — so the filter runs first, the sort runs against the filtered set (not the whole array), reverse flips it, slice takes the top five, and the multiselect-hash slims each row. Pipe is the right tool whenever you need to apply a projection (like `sort_by`) *after* a filter rather than across the original array.
+
+## Escape hatches
+
+### Get the full payload (no projection)
+
+Omit the `jmespath` argument entirely. Some tools (`get_country_macro`, the three `get_eu_*` tools, `get_displacement_data`) also default-cap their list-shaped fields at 30 rows for the same reason; pass `limit: 0` to disable that cap when you genuinely want the whole bundle:
+
+```json
+{
+  "name": "get_country_macro",
+  "arguments": { "limit": 0 }
+}
+```
+
+This is the right call when you're capturing a fixture, running a one-off audit, or piping the response into a more expressive downstream filter (your own jq, a notebook). For day-to-day model context, a projection almost always wins.
+
+### `_budget_exceeded` — when the payload is too big
+
+Each tool declares a per-tool output budget (`_outputBudgetBytes`). When a tool's serialised response exceeds that budget **after** all filtering, `summary`, and JMESPath have been applied, the server returns this envelope instead of the oversized payload — still inside the normal MCP result, still HTTP 200, still `isError: false`:
+
+```json
+{
+  "_budget_exceeded": true,
+  "budget_bytes": 65536,
+  "actual_bytes": 142337,
+  "hint": "Response still exceeds tool output budget after JMESPath projection. Use a more selective expression to project fewer fields, or apply tool-level filters to narrow the result set."
+}
+```
+
+The recovery is always the same: **make the projection more selective**, or layer a tool-level filter (`country`, `since`, `limit`) underneath it. The Pro daily quota is automatically rolled back when this envelope fires — you don't pay a quota slot for a response you can't use.
+
+### `_jmespath_error` — when the projection itself fails
+
+A JMESPath expression can fail in two ways: it can be syntactically invalid, or it can blow up the per-call output limit (256 KB) via a runaway multiselect-hash. Either way you get this envelope back:
+
+```json
+{
+  "_jmespath_error": {
+    "kind": "invalid_expression",
+    "message": "Parse error: …",
+    "expression": "data.\"stocks-bootstrap\".quotes[*"
+  },
+  "original_keys": ["stocks-bootstrap", "commodities-bootstrap", "crypto", "sectors", "etf-flows", "gulf-quotes", "fear-greed"]
+}
+```
+
+`original_keys` is the top-level keys of the unprojected response — enough context for the model to retry with a corrected expression in one extra call. A bad expression **does** consume one daily quota slot per attempt; the echoed `original_keys` exists specifically to make the retry self-correcting rather than guesswork.
+
+## Complements to projection
+
+### `summary: true` flag
+
+Every cache tool also accepts a universal `summary: true` argument that returns a server-built summary (counts + samples) instead of the full payload. Use it when:
+
+- You want a quick sanity-check of what's in the bundle before designing a projection — `summary: true` returns the shape and tier counts in a handful of fields.
+- The model only needs aggregate counts ("how many active conflicts?", "how many critical chokepoints?") and not the underlying rows.
+
+`summary: true` and `jmespath` compose: the summary is built first, then the projection applies on top. Combine the two when you want the summary's pre-aggregated counts but only some of the categories.
+
+### `describe_tool`
+
+When `tools/list` returns a compressed description that's ambiguous about a tool's response shape, call `describe_tool({ tool_name: "get_market_data" })` to fetch the full uncompressed definition. `describe_tool` is metadata-only and **exempt from the Pro daily quota** — use it freely while authoring projections. If the name is wrong, the response is `{ error: "unknown_tool", available: [...] }`, again with no quota cost.
+
+## See also
+
+- [JMESPath specification](https://jmespath.org/specification.html) — the canonical grammar reference.
+- [MCP Quickstart](/mcp-quickstart) — five-minute zero-to-first-call onboarding.
+- [MCP Tools Reference](/mcp-tools-reference) — per-tool parameters, freshness budgets, and response shapes for every tool.
+- [MCP Server reference](/mcp-server) — auth, OAuth setup, plans, quotas, errors.

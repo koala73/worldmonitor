@@ -28,7 +28,7 @@
     "components": {
       "unrest": "Huzursuzluk",
       "conflict": "Catisma",
-      "security": "Guvenlik",
+      "security": "Askeri faaliyet",
       "information": "Bilgi"
     },
     "signals": {
@@ -674,7 +674,7 @@
       "components": {
         "unrest": "Huzursuzluk",
         "conflict": "Catisma",
-        "security": "Guvenlik",
+        "security": "Askeri faaliyet",
         "information": "Bilgi"
       },
       "signals": {
@@ -3098,7 +3098,7 @@
     "selectNone": "Hicbirini Secme",
     "unrest": "Huzursuzluk",
     "conflict": "Catisma",
-    "security": "Guvenlik",
+    "security": "Askeri faaliyet",
     "information": "Bilgi",
     "shareStory": "Hikayeyi paylas",
     "exportImage": "Gorsel Disari Aktar",
