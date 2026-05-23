@@ -311,7 +311,7 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
       .slice(0, AI_CLASSIFY_MAX_PER_FEED);
 
     for (const item of aiCandidates) {
-      if (!canQueueAiClassification(item.title)) continue;
+      if (!canQueueAiClassification({ link: item.link, title: item.title })) continue;
       classifyWithAI(item.title, SITE_VARIANT).then((aiResult) => {
         if (aiResult && aiResult.confidence > item.threat.confidence) {
           item.threat = aiResult;
