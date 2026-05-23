@@ -261,20 +261,17 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'TVN24', url: rss('https://tvn24.pl/swiat.xml'), lang: 'pl' },
     { name: 'Polsat News', url: rss('https://www.polsatnews.pl/rss/wszystkie.xml'), lang: 'pl' },
     { name: 'Rzeczpospolita', url: rss('https://www.rp.pl/rss_main'), lang: 'pl' },
-    // Hungarian (HU) — V4 / CEE coverage. Tagged untagged (not lang: 'hu')
-    // because 'hu' is not in SUPPORTED_LANGUAGES (src/services/i18n.ts:15),
-    // so a 'hu' tag would block fetchCategoryFeeds() in the per-feed fallback
-    // path for every user. NewsItem.lang surfaces from the server digest
-    // entries (server/worldmonitor/news/v1/_feeds.ts) which DO tag lang: 'hu'
-    // for badge rendering in NewsPanel.
-    { name: 'Telex', url: rss('https://telex.hu/rss') },
-    { name: 'Index.hu', url: rss('https://index.hu/24ora/rss') },
-    { name: 'HVG', url: rss('https://hvg.hu/rss') },
-    { name: '444.hu', url: rss('https://444.hu/feed') },
-    { name: '24.hu', url: rss('https://24.hu/feed/') },
-    { name: 'Híradó', url: rss('https://news.google.com/rss/search?q=site:hirado.hu+when:2d&hl=hu&gl=HU&ceid=HU:hu') },
-    { name: 'Portfolio.hu', url: rss('https://portfolio.hu/rss/all.xml') },
-    { name: 'ATV', url: rss('https://www.atv.hu/rss') },
+    // Hungarian (HU) — V4 / CEE coverage. Locale-gated for hu users only,
+    // matching the Tagesschau (de) / ANSA (it) / NOS Nieuws (nl) / SVT (sv)
+    // convention. `hu` is registered as a supported locale in src/services/i18n.ts.
+    { name: 'Telex', url: rss('https://telex.hu/rss'), lang: 'hu' },
+    { name: 'Index.hu', url: rss('https://index.hu/24ora/rss'), lang: 'hu' },
+    { name: 'HVG', url: rss('https://hvg.hu/rss'), lang: 'hu' },
+    { name: '444.hu', url: rss('https://444.hu/feed'), lang: 'hu' },
+    { name: '24.hu', url: rss('https://24.hu/feed/'), lang: 'hu' },
+    { name: 'Híradó', url: rss('https://news.google.com/rss/search?q=site:hirado.hu+when:2d&hl=hu&gl=HU&ceid=HU:hu'), lang: 'hu' },
+    { name: 'Portfolio.hu', url: rss('https://portfolio.hu/rss/all.xml'), lang: 'hu' },
+    { name: 'ATV', url: rss('https://www.atv.hu/rss'), lang: 'hu' },
     // Greek (EL)
     { name: 'Kathimerini', url: rss('https://news.google.com/rss/search?q=site:kathimerini.gr+when:2d&hl=el&gl=GR&ceid=GR:el'), lang: 'el' },
     { name: 'Naftemporiki', url: rss('https://www.naftemporiki.gr/feed/'), lang: 'el' },
