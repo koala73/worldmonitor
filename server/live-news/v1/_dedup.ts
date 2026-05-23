@@ -498,11 +498,10 @@ export async function classifyUnknownsAsync(
     // practice, so 60 s gives ample margin.
     timeoutMs: DEDUP_LLM_TIMEOUT_MS,
     // Bill dedup against the same dedicated paraphrase key so its cost
-    // is separable from location enrichment in the Gemini console.
-    // Falls back to GEMINI_API_KEY when the dedicated key is unset.
-    apiKeyEnv: 'GEMINI_API_KEY_PARAPHRASE',
+    // is separable from location enrichment in the eachlabs dashboard.
+    // Falls back to EACHLABS_API_KEY when the dedicated key is unset.
+    apiKeyEnv: 'EACHLABS_API_KEY_PARAPHRASE',
     jsonMode: true,
-    caller: 'live-news:dedup', // TEMP (Helicone)
   });
 
   if (!result) {

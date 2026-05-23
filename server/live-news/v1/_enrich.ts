@@ -199,7 +199,6 @@ async function enrichBatch(batch: LiveNewsItem[]): Promise<void> {
     // Gemini's JSON mode guarantees a syntactically valid response,
     // eliminating the "wrapped in code fences" failure mode.
     jsonMode: true,
-    caller: 'live-news:enrich-location', // TEMP (Helicone)
   });
 
   if (!result) {

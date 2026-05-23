@@ -354,15 +354,14 @@ async function buildSection(
     prompt: userPrompt(picked),
     model: 'gemini-2.5-flash',
     jsonMode: true,
-    // gemini-2.5-flash "thinking" draws down maxOutputTokens; left on, an
-    // 8-cluster JSON payload truncates into invalid JSON. Thinking adds
-    // nothing to fixed-schema extraction, so disable it and give the
-    // response a generous budget.
-    thinkingBudget: 0,
+    // gemini-2.5-flash "thinking" draws down the output-token budget; left
+    // unbounded, an 8-cluster JSON payload can truncate into invalid JSON.
+    // The eachlabs OpenAI-compatible router exposes no thinking toggle, so
+    // we can't disable it here — instead give the response a generous
+    // max_tokens budget to absorb any thinking overhead.
     maxTokens: 8000,
     temperature: 0.3,
     timeoutMs: 30_000,
-    caller: `world-brief:${mode}`,
   });
 
   if (!result) {

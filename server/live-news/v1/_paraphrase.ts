@@ -213,12 +213,11 @@ async function paraphraseBatch(batch: LiveNewsItem[]): Promise<void> {
     maxTokens: 6000,
     temperature: 0.3,
     // Reuse the optional separate-key pattern for billing-separation
-    // parity with the Claude pipeline. Falls back to GEMINI_API_KEY if
+    // parity with the Claude pipeline. Falls back to EACHLABS_API_KEY if
     // the dedicated key isn't configured (it usually isn't, since
     // Gemini's costs are low enough that splitting billing matters less).
-    apiKeyEnv: 'GEMINI_API_KEY_PARAPHRASE',
+    apiKeyEnv: 'EACHLABS_API_KEY_PARAPHRASE',
     jsonMode: true,
-    caller: 'live-news:paraphrase', // TEMP (Helicone)
   });
 
   if (!result) {

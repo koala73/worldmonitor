@@ -651,7 +651,6 @@ async function buildAiOverlay(
         return false;
       }
     },
-    caller: 'worldmonitor:analyze-stock', // TEMP (Helicone)
   });
 
   if (!llm) return fallback;
