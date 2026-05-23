@@ -34,6 +34,7 @@ import {
   findNewsForMarketSymbol,
 } from './entity-extraction';
 import { getEntityIndex } from './entity-index';
+import { effectivePubDateMs } from './feed-date';
 import type { ThreatLevel, EventCategory, ThreatClassification } from '@/types';
 
 const THREAT_PRIORITY: Record<ThreatLevel, number> = {
@@ -289,7 +290,7 @@ export function clusterNewsCore(
     const sorted = [...cluster].sort((a, b) => {
       const tierDiff = a.tier - b.tier;
       if (tierDiff !== 0) return tierDiff;
-      return b.pubDate.getTime() - a.pubDate.getTime();
+      return effectivePubDateMs(b) - effectivePubDateMs(a);
     });
 
     const primary = sorted[0]!;
@@ -437,7 +438,7 @@ export function detectConvergence(
     if (!event.allItems || event.allItems.length < 3) continue;
 
     const recentItems = event.allItems.filter(
-      item => now - item.pubDate.getTime() < WINDOW_MS
+      item => now - effectivePubDateMs(item) < WINDOW_MS
     );
     if (recentItems.length < 3) continue;
 

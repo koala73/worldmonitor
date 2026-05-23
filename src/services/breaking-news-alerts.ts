@@ -10,6 +10,7 @@ import { getSourceTier } from '@/config/feeds';
 import { isDesktopRuntime, getRemoteApiBaseUrl } from '@/services/runtime';
 import { getClerkToken } from '@/services/clerk';
 import { SITE_VARIANT } from '@/config/variant';
+import { effectivePubDateMs } from '@/services/feed-date';
 
 export interface BreakingAlert {
   id: string;
@@ -142,8 +143,12 @@ export function updateAlertSettings(partial: Partial<AlertSettings>): void {
 
 // ─── Gate checks ───────────────────────────────────────────────────────────
 
-function isRecent(pubDate: Date): boolean {
-  return pubDate.getTime() >= (Date.now() - RECENCY_GATE_MS);
+function isRecent(item: { pubDate: Date; pubDateMissing?: boolean }): boolean {
+  // Routes through effectivePubDateMs so items with pubDateMissing get 0
+  // and fail the recency gate (Date.now() - 0 = a huge positive number,
+  // always >= RECENCY_GATE_MS). Without the helper, the synthesized
+  // pubDate would pass this gate and fire false-fresh alerts.
+  return effectivePubDateMs(item) >= (Date.now() - RECENCY_GATE_MS);
 }
 
 function isInStartupGrace(): boolean {
@@ -233,7 +238,7 @@ export function checkBatchForBreakingAlerts(items: NewsItem[]): void {
   for (const item of items) {
     if (!item.isAlert) continue;
     if (!item.threat) continue;
-    if (!isRecent(item.pubDate)) continue;
+    if (!isRecent(item)) continue;
 
     const level = item.threat.level;
     if (level !== 'critical' && level !== 'high') continue;
@@ -257,7 +262,7 @@ export function checkBatchForBreakingAlerts(items: NewsItem[]): void {
 
     const isBetter = !best
       || (level === 'critical' && best.threatLevel !== 'critical')
-      || (level === best.threatLevel && item.pubDate.getTime() > best.timestamp.getTime());
+      || (level === best.threatLevel && effectivePubDateMs(item) > best.timestamp.getTime());
 
     if (isBetter) {
       best = {

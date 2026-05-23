@@ -2,6 +2,7 @@ import type { AppContext, AppModule } from '@/app/app-context';
 import { normalizeExclusiveChoropleths } from '@/components/resilience-choropleth-utils';
 import { replayPendingCalls, clearAllPendingCalls } from '@/app/pending-panel-data';
 import { getAlertsNearLocation } from '@/services/geo-convergence';
+import { effectivePubDateMs } from '@/services/feed-date';
 import type { ClusteredEvent } from '@/types';
 import type { RelatedAsset } from '@/types';
 import type { TheaterPostureSummary } from '@/services/military-surge';
@@ -1678,7 +1679,9 @@ export class PanelLayoutManager implements AppModule {
     };
     const cutoff = Date.now() - (ranges[range] ?? Infinity);
     return items.filter((item) => {
-      const ts = item.pubDate instanceof Date ? item.pubDate.getTime() : new Date(item.pubDate).getTime();
+      // Recency gate routed through effectivePubDateMs so pubDateMissing
+      // items fail the cutoff check rather than falsely claiming freshness.
+      const ts = effectivePubDateMs(item);
       return Number.isFinite(ts) ? ts >= cutoff : true;
     });
   }

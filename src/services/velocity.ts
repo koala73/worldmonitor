@@ -1,5 +1,6 @@
 import type { ClusteredEvent, VelocityMetrics, VelocityLevel, SentimentType } from '@/types';
 import { mlWorker } from './ml-worker';
+import { effectivePubDateMs } from './feed-date';
 
 const HOUR_MS = 60 * 60 * 1000;
 const ELEVATED_THRESHOLD = 3;
@@ -55,8 +56,8 @@ export function calculateVelocity(cluster: ClusteredEvent): VelocityMetrics {
   const sourcesPerHour = items.length / timeSpanHours;
 
   const midpoint = cluster.firstSeen.getTime() + timeSpanMs / 2;
-  const recentItems = items.filter(i => i.pubDate.getTime() > midpoint);
-  const olderItems = items.filter(i => i.pubDate.getTime() <= midpoint);
+  const recentItems = items.filter(i => effectivePubDateMs(i) > midpoint);
+  const olderItems = items.filter(i => effectivePubDateMs(i) <= midpoint);
 
   let trend: 'rising' | 'stable' | 'falling' = 'stable';
   if (recentItems.length > olderItems.length * 1.5) {
