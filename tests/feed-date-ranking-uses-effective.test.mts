@@ -47,13 +47,18 @@ interface AllowEntry {
 const ALLOW_LIST: AllowEntry[] = [
   {
     file: 'src/services/rss.ts',
-    line: 301,
+    line: 303,
     reason: 'mlWorker.vectorStoreIngest stores pubDate as embedding metadata; not used as a freshness comparator.',
   },
   {
     file: 'src/services/feed-date.ts',
-    line: 71,
+    line: 72,
     reason: 'effectivePubDateMs implementation — the helper itself necessarily calls .getTime() on the underlying Date.',
+  },
+  {
+    file: 'src/services/feed-date.ts',
+    line: 83,
+    reason: 'effectivePubDateMs implementation — string-input branch reconstructs Date and reads getTime; covered by NaN/Infinity guard immediately below.',
   },
   {
     file: 'src/services/analysis-core.ts',
@@ -92,7 +97,20 @@ const ALLOW_LIST: AllowEntry[] = [
   },
 ];
 
-const PUBDATE_GETTIME_RE = /\.pubDate\s*\.getTime\(\)/;
+// Match three shapes that all flow item.pubDate into a comparator:
+//   (a) item.pubDate.getTime()      — direct
+//   (b) item.pubDate?.getTime()     — optional chain (idiomatic TS 4+)
+//   (c) new Date(item.pubDate).getTime()  — wrap-then-getTime (real-world
+//                                          bypass found in country-intel.ts
+//                                          and several other src/app/ sites)
+// The negative-coverage tests below pin each shape so a future regex tweak
+// can't silently drop one. NOTE: paren-wrapped reads (`(item.pubDate).
+// getTime()`), aliased reads (`const t = item.pubDate; t.getTime()`), and
+// destructured reads (`const { pubDate } = item; pubDate.getTime()`) still
+// bypass this regex. They're documented residual risk — adopting AST-level
+// analysis (ts-morph or @typescript-eslint) would close them but is out of
+// scope here.
+const PUBDATE_GETTIME_RE = /(?:\.pubDate\s*\??\s*\.\s*getTime\s*\(\s*\)|new\s+Date\s*\([^)]*\bpubDate[^)]*\)\s*\.\s*getTime\s*\(\s*\))/;
 const EFFECTIVE_HELPER_RE = /effectivePubDateMs\b/;
 
 function listTsFiles(dir: string): string[] {
@@ -181,11 +199,15 @@ describe('feed-date freshness guardrail — effectivePubDateMs usage', () => {
     }
   });
 
-  // Self-fixtures: prove the regex matches BOTH shapes it claims to.
-  // Without these, a future regex simplification could silently stop
-  // matching one shape, and the audit would pass coincidentally because
-  // today's codebase happens to not have a violation in that shape.
-  it('PUBDATE_GETTIME_RE matches the sort-comparator shape', () => {
+  // Self-fixtures: prove the regex matches EVERY shape it claims to and
+  // does NOT match unrelated patterns. Without these, a future regex
+  // simplification could silently stop matching one shape, and the audit
+  // would pass coincidentally because today's codebase happens to not
+  // have a violation in that shape. Each shape below is a real-world
+  // form a developer is likely to write — country-intel.ts:297 shipped a
+  // `new Date(item.pubDate).getTime()` bypass that the original 2-shape
+  // self-fixture would have missed.
+  it('PUBDATE_GETTIME_RE matches the direct sort-comparator shape', () => {
     const sample = 'items.sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime());';
     assert.ok(PUBDATE_GETTIME_RE.test(sample));
   });
@@ -195,8 +217,23 @@ describe('feed-date freshness guardrail — effectivePubDateMs usage', () => {
     assert.ok(PUBDATE_GETTIME_RE.test(sample));
   });
 
+  it('PUBDATE_GETTIME_RE matches the optional-chain shape', () => {
+    const sample = 'const ts = item.pubDate?.getTime() ?? 0;';
+    assert.ok(PUBDATE_GETTIME_RE.test(sample));
+  });
+
+  it('PUBDATE_GETTIME_RE matches the new-Date-wrap shape', () => {
+    const sample = 'return new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime();';
+    assert.ok(PUBDATE_GETTIME_RE.test(sample));
+  });
+
   it('PUBDATE_GETTIME_RE does NOT match unrelated getTime calls', () => {
     const sample = 'const t = otherDate.getTime();';
+    assert.ok(!PUBDATE_GETTIME_RE.test(sample));
+  });
+
+  it('PUBDATE_GETTIME_RE does NOT match new Date() over an unrelated field', () => {
+    const sample = 'const t = new Date(item.endDate).getTime();';
     assert.ok(!PUBDATE_GETTIME_RE.test(sample));
   });
 

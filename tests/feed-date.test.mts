@@ -107,6 +107,19 @@ describe('effectivePubDateMs', () => {
     assert.equal(effectivePubDateMs({ pubDate: 'not a date' }), 0);
   });
 
+  it('returns 0 for NaN numeric pubDate', () => {
+    assert.equal(effectivePubDateMs({ pubDate: NaN }), 0);
+  });
+
+  it('returns 0 for Infinity numeric pubDate', () => {
+    assert.equal(effectivePubDateMs({ pubDate: Infinity }), 0);
+    assert.equal(effectivePubDateMs({ pubDate: -Infinity }), 0);
+  });
+
+  it('returns 0 for an Invalid Date instance', () => {
+    assert.equal(effectivePubDateMs({ pubDate: new Date('not a date') }), 0);
+  });
+
   describe('ranking behavior', () => {
     it('sorts missing-date items LAST in newest-first descending sort', () => {
       const items = [

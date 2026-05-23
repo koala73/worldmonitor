@@ -68,9 +68,18 @@ export function effectivePubDateMs(item: {
   pubDateMissing?: boolean;
 }): number {
   if (item.pubDateMissing === true) return 0;
-  if (item.pubDate instanceof Date) return item.pubDate.getTime();
-  if (typeof item.pubDate === 'number') return item.pubDate;
+  if (item.pubDate instanceof Date) {
+    const ms = item.pubDate.getTime();
+    return Number.isFinite(ms) ? ms : 0;
+  }
+  if (typeof item.pubDate === 'number') {
+    // Filter NaN / Infinity. Cache-deserialized entries or future numeric
+    // pubDate constructors should never claim freshness with a non-finite
+    // stamp — sort comparators on NaN have unspecified behavior per the
+    // JS spec.
+    return Number.isFinite(item.pubDate) ? item.pubDate : 0;
+  }
   // String case (serialized form, e.g. from cache deserialization).
   const ms = new Date(item.pubDate).getTime();
-  return Number.isNaN(ms) ? 0 : ms;
+  return Number.isFinite(ms) ? ms : 0;
 }

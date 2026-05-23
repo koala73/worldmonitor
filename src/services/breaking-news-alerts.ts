@@ -144,10 +144,12 @@ export function updateAlertSettings(partial: Partial<AlertSettings>): void {
 // ─── Gate checks ───────────────────────────────────────────────────────────
 
 function isRecent(item: { pubDate: Date; pubDateMissing?: boolean }): boolean {
-  // Routes through effectivePubDateMs so items with pubDateMissing get 0
-  // and fail the recency gate (Date.now() - 0 = a huge positive number,
-  // always >= RECENCY_GATE_MS). Without the helper, the synthesized
-  // pubDate would pass this gate and fire false-fresh alerts.
+  // Routes through effectivePubDateMs so items with pubDateMissing get 0.
+  // The gate `effective >= Date.now() - RECENCY_GATE_MS` then evaluates
+  // `0 >= (large positive)` → false for missing-date items, excluding
+  // them from breaking-alert eligibility. Without the helper, the
+  // synthesized pubDate (≈ Date.now()) would pass this gate and fire
+  // false-fresh alerts.
   return effectivePubDateMs(item) >= (Date.now() - RECENCY_GATE_MS);
 }
 

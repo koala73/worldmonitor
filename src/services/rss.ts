@@ -64,11 +64,13 @@ async function loadPersistentFeed(feedScope: string): Promise<NewsItem[] | null>
   const scoped = await readPersistentFeed(scopedKey);
   if (scoped) return scoped;
 
-  // Migration fallback: older builds stored feeds as `feed:v2:<feedName>` without
-  // language scope. Only use this for English to avoid mixing cached content
-  // across locales. Pre-v2 `feed:<feedScope>` and `feed:<feedName>` entries are
-  // deliberately NOT consulted — they predate the pubDateMissing schema and
-  // would re-introduce false-freshness for cached items.
+  // Language-scope migration fallback (carried forward from the pre-v2
+  // prefix era): some older v2 cache rows that predate the language-scope
+  // refactor were written without a `::<lang>` suffix. For English only,
+  // also try the unscoped key under the CURRENT v2 prefix. Pre-v2
+  // `feed:<feedScope>` and `feed:<feedName>` entries are deliberately NOT
+  // consulted — they predate the pubDateMissing schema and would
+  // re-introduce false-freshness for cached items.
   const { feedName, lang } = parseFeedScope(feedScope);
   if (lang !== 'en') return null;
   return readPersistentFeed(`${CACHE_PREFIX}${feedName}`);
