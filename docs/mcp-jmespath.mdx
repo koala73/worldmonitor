@@ -9,7 +9,7 @@ This page is the practical reference: a quick orientation, then twelve worked ex
 
 ## Quick orientation
 
-- Pass the expression as the `jmespath` argument on any `tools/call`. It applies to the **payload `data`**, not the outer `cached_at` / `stale` envelope — but you can still address the envelope with `cached_at`, `stale`, or `data.…`.
+- Pass the expression as the `jmespath` argument on any `tools/call`. The expression root is the **full response envelope** — `{ cached_at, stale, data: { … } }` for cache tools — so most expressions start with `data.<key>` to reach the payload, and `cached_at` / `stale` are addressable from the same root when you want them.
 - **Hyphenated keys must be quoted with double quotes.** Most WorldMonitor tools have hyphenated cache keys (`stocks-bootstrap`, `ucdp-events`, `etf-flows`, `fear-greed`, `transit-summaries`). Use `data."stocks-bootstrap".quotes[*].symbol`, not `data.stocks-bootstrap.…`.
 - **Numbers and JSON literals go in backticks, strings in single quotes.** `[?deathsBest > \`5\`]` (numeric), `[?country == 'Iraq']` (string). Mixing them up silently parses the value as something else.
 - **Two server-side limits** keep edge functions healthy:
