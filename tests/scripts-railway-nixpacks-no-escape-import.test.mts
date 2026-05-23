@@ -32,17 +32,27 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
 const scriptsDir = resolve(repoRoot, 'scripts');
 
-// Entry points that run under Railway nixpacks with `rootDirectory=scripts`.
-// PR #3836 review added `scripts/seed-insights.mjs` after a `../shared/`
-// import slipped through review (the test's pre-existing coverage stopped
-// at the three forecast/simulation services). Any new `scripts/*.mjs`
-// that ships as a Railway service MUST be added here.
-const ENTRY_POINTS = [
-  'scripts/seed-forecasts.mjs',
-  'scripts/process-simulation-tasks.mjs',
-  'scripts/process-deep-forecast-tasks.mjs',
-  'scripts/seed-insights.mjs',
-];
+// Entry points derived from scripts/railway-services.json, the single
+// source of truth for every script that runs as a Railway service. New
+// services are added by editing the registry, NOT this array. The
+// companion test tests/railway-services-registry-coverage.test.mts fails
+// if any Dockerfile.* or runbook entry references a script that isn't
+// in the registry — that's how drift is caught.
+interface RailwayServiceEntry {
+  entry: string;
+  deployMode: 'nixpacks-root-scripts' | 'dockerfile';
+  dockerfile?: string;
+  service: string;
+  documentedAt: string;
+}
+
+const registry = JSON.parse(
+  readFileSync(resolve(repoRoot, 'scripts/railway-services.json'), 'utf8'),
+) as RailwayServiceEntry[];
+
+const ENTRY_POINTS = registry
+  .filter((r) => r.deployMode === 'nixpacks-root-scripts')
+  .map((r) => r.entry);
 
 const IMPORT_RE = /(?:^|[\s;])(?:import\b[\s\S]*?\bfrom|import|export\b[\s\S]*?\bfrom)\s+['"]([^'"]+)['"]/gm;
 
