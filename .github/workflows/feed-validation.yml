@@ -36,6 +36,11 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
+    # Cap the job: 15s per-feed timeout * ~200 feeds / 10 concurrency ≈ 5min
+    # nominal, but a hung dependency-install or network stall could otherwise
+    # occupy a runner for the default 6h timeout. 15min gives plenty of
+    # headroom while avoiding stuck-runner alerts on real outages.
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

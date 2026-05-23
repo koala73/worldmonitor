@@ -76,6 +76,12 @@ jobs:
     needs: changes
     if: needs.changes.outputs.digest == 'true'
     runs-on: ubuntu-latest
+    # docker build with the warm runner cache typically lands in ~90s.
+    # 20min cap catches base-image-pull stalls, npm-registry flakes, and
+    # native-dep compile failures without letting one bad PR check block
+    # the queue for an hour. The static BFS import test in test:data
+    # remains the load-bearing gate; this job is the integration smoke.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - name: Build digest-notifications image (smoke)

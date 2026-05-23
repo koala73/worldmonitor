@@ -857,12 +857,16 @@ export class DataLoaderManager implements AppModule {
     if (range === 'all') return items;
     const cutoff = Date.now() - this.getTimeRangeWindowMs(range);
     return items.filter((item) => {
-      // effectivePubDateMs returns 0 for pubDateMissing items, which fails the
-      // `ts >= cutoff` test for any positive-window range — synthesized-stamp
-      // items don't claim freshness here. Defensive Number.isFinite kept for
-      // exotic shapes (cached serialized form, etc.).
-      const ts = effectivePubDateMs(item);
-      return Number.isFinite(ts) ? ts >= cutoff : true;
+      // effectivePubDateMs returns 0 for items that cannot claim a real
+      // freshness rank: pubDateMissing items (the U3 contract) AND items
+      // whose pubDate is NaN/Infinity/Invalid Date (the helper's value-
+      // sanitization branch). All such items are EXCLUDED from positive-
+      // window ranges. Previous behavior wrapped raw pubDate.getTime() in
+      // Number.isFinite() and fell through to `true` on non-finite — that
+      // included corrupt-stamp items in time-range views, arguably a bug.
+      // The current shape treats untrustworthy timestamps uniformly: they
+      // never claim freshness and never appear in a "last 24h" view.
+      return effectivePubDateMs(item) >= cutoff;
     });
   }
 
@@ -3197,7 +3201,14 @@ export class DataLoaderManager implements AppModule {
     }
   }
 
-  private static readonly HAPPY_ITEMS_CACHE_KEY = 'happy-all-items';
+  // Bumped to v2 alongside src/services/rss.ts CACHE_PREFIX (`feed:` →
+  // `feed:v2:`). Pre-v2 entries here serialize NewsItem WITHOUT the new
+  // `pubDateMissing` flag — on hydrate they get `undefined`, which
+  // `effectivePubDateMs` treats as `false`, so items that previously had
+  // synthesized `Date.now()` stamps would fraudulently claim freshness
+  // for the 24h gate window. Pre-v2 entries are left to TTL out (no
+  // explicit invalidation needed).
+  private static readonly HAPPY_ITEMS_CACHE_KEY = 'happy-all-items:v2';
 
   async hydrateHappyPanelsFromCache(): Promise<void> {
     try {

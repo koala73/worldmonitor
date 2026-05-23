@@ -264,9 +264,21 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
           link = item.querySelector('link')?.textContent || '';
         }
 
+        // Dublin Core (<dc:date>) fallback for RSS feeds. ArXiv RSS (already
+        // in the feed registry as "ArXiv AI", "ArXiv ML") ships dc:date with
+        // no <pubDate>; without this fallback every ArXiv item would land
+        // with pubDateMissing=true and get demoted in every freshness ranking.
+        // Prior precedent: PR #3417. querySelector('dc\\:date') escapes the
+        // CSS-selector colon so the XML qname matches; getElementsByTagName
+        // is an alternative that also works under browser DOMParser in XML
+        // mode. textContent reads the element's inner text without namespace
+        // gymnastics.
         const pubDateStr = isAtom
           ? (item.querySelector('published')?.textContent || item.querySelector('updated')?.textContent || '')
-          : (item.querySelector('pubDate')?.textContent || '');
+          : (item.querySelector('pubDate')?.textContent
+            || item.querySelector('dc\\:date')?.textContent
+            || item.getElementsByTagName('dc:date')[0]?.textContent
+            || '');
         const { date: pubDate, missing: pubDateMissing } = parseFeedDate(pubDateStr);
         const threat = classifyByKeyword(title, SITE_VARIANT);
         const isAlert = threat.level === 'critical' || threat.level === 'high';

@@ -47,7 +47,7 @@ interface AllowEntry {
 const ALLOW_LIST: AllowEntry[] = [
   {
     file: 'src/services/rss.ts',
-    line: 303,
+    line: 315,
     reason: 'mlWorker.vectorStoreIngest stores pubDate as embedding metadata; not used as a freshness comparator.',
   },
   {
@@ -92,7 +92,7 @@ const ALLOW_LIST: AllowEntry[] = [
   },
   {
     file: 'src/app/data-loader.ts',
-    line: 3279,
+    line: 3290,
     reason: 'Cache serialization step — wraps pubDate.getTime() into the persisted entry payload, not a comparator.',
   },
 ];

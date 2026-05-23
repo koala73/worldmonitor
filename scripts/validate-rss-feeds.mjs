@@ -107,34 +107,48 @@ function assertCiAllowed(rawUrl) {
 }
 
 async function fetchFeed(url) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
-  try {
-    if (CI_MODE) {
-      // Manual per-hop redirect handling: every hop must satisfy the same
-      // https + allowlist gates. Mirrors api/rss-proxy.js redirect re-check.
-      let currentUrl = assertCiAllowed(url).href;
-      const MAX_HOPS = 3;
-      for (let hop = 0; hop <= MAX_HOPS; hop++) {
-        const resp = await fetch(currentUrl, {
+  if (CI_MODE) {
+    // Manual per-hop redirect handling: every hop must satisfy the same
+    // https + allowlist gates. Mirrors api/rss-proxy.js redirect re-check.
+    // Per-hop timer (NOT a shared budget across hops) — each hop gets the
+    // full FETCH_TIMEOUT so "Timeout (15s)" in the report means a real
+    // 15s on a single network call, not 17s+ aggregated across a chain.
+    let currentUrl = assertCiAllowed(url).href;
+    const MAX_HOPS = 3;
+    for (let hop = 0; hop < MAX_HOPS; hop++) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
+      let resp;
+      try {
+        resp = await fetch(currentUrl, {
           signal: controller.signal,
           headers: { 'User-Agent': CHROME_UA, 'Accept': 'application/rss+xml, application/xml, text/xml, */*' },
           redirect: 'manual',
         });
-        if (resp.status >= 300 && resp.status < 400) {
-          if (hop === MAX_HOPS) throw new Error('Too many redirects');
-          const loc = resp.headers.get('location');
-          if (!loc) throw new Error(`HTTP ${resp.status} without Location header`);
-          const nextUrl = new URL(loc, currentUrl);
-          assertCiAllowed(nextUrl.href);
-          currentUrl = nextUrl.href;
-          continue;
-        }
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        return await resp.text();
+      } finally {
+        clearTimeout(timer);
       }
-      throw new Error('Redirect loop');
+      if (resp.status >= 300 && resp.status < 400) {
+        const loc = resp.headers.get('location');
+        if (!loc) throw new Error(`HTTP ${resp.status} without Location header`);
+        const nextUrl = new URL(loc, currentUrl);
+        assertCiAllowed(nextUrl.href);
+        currentUrl = nextUrl.href;
+        continue;
+      }
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      // Body stream still under the per-hop timer is the right shape, but
+      // text() can complete after clearTimeout — the controller is no
+      // longer wired to abort it. That's intentional: timing the response-
+      // body read separately is out of scope for an SSRF-guarded validator;
+      // the headers handshake is what we wanted bounded per hop.
+      return await resp.text();
     }
+    throw new Error('Too many redirects');
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
+  try {
     const resp = await fetch(url, {
       signal: controller.signal,
       headers: { 'User-Agent': CHROME_UA, 'Accept': 'application/rss+xml, application/xml, text/xml, */*' },

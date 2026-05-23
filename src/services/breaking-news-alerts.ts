@@ -236,6 +236,14 @@ export function checkBatchForBreakingAlerts(items: NewsItem[]): void {
   if (isInStartupGrace()) return;
 
   let best: BreakingAlert | null = null;
+  // Effective timestamp of the current best, captured so the tie-break
+  // comparison below is symmetric (effectivePubDateMs on both sides). The
+  // BreakingAlert type doesn't carry pubDateMissing — it's a render-time
+  // shape — so without this local, comparing the candidate's effective
+  // time against best.timestamp.getTime() would silently treat any
+  // future missing-date best as fresh. Today isRecent filters that out
+  // upstream; the local makes the gate defense-in-depth.
+  let bestEffectiveMs = -Infinity;
 
   for (const item of items) {
     if (!item.isAlert) continue;
@@ -262,11 +270,13 @@ export function checkBatchForBreakingAlerts(items: NewsItem[]): void {
     // Items below the importance threshold are too low-signal for the banner.
     if (item.importanceScore !== undefined && item.importanceScore < IMPORTANCE_SCORE_MIN) continue;
 
+    const itemEffectiveMs = effectivePubDateMs(item);
     const isBetter = !best
       || (level === 'critical' && best.threatLevel !== 'critical')
-      || (level === best.threatLevel && effectivePubDateMs(item) > best.timestamp.getTime());
+      || (level === best.threatLevel && itemEffectiveMs > bestEffectiveMs);
 
     if (isBetter) {
+      bestEffectiveMs = itemEffectiveMs;
       best = {
         id: key,
         headline: item.title,

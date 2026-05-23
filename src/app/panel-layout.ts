@@ -1681,8 +1681,12 @@ export class PanelLayoutManager implements AppModule {
     return items.filter((item) => {
       // Recency gate routed through effectivePubDateMs so pubDateMissing
       // items fail the cutoff check rather than falsely claiming freshness.
-      const ts = effectivePubDateMs(item);
-      return Number.isFinite(ts) ? ts >= cutoff : true;
+      // Items with NaN/Infinity/Invalid Date pubDates are ALSO excluded
+      // (the helper sanitizes them to 0); previous behavior fell through
+      // to `true` on non-finite, which included corrupt-stamp items in
+      // narrow time windows. Treating untrustworthy timestamps uniformly
+      // is the intentional shift — see data-loader.filterItemsByTimeRange.
+      return effectivePubDateMs(item) >= cutoff;
     });
   }
 
