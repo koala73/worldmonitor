@@ -733,8 +733,19 @@ export class App {
         const total = getTotalFeedCount();
         console.log(`[App] Sources reduction: ${defaultDisabled.length} disabled, ${total - defaultDisabled.length} enabled`);
       }
-      // Locale boost: additively enable locale-matched sources (runs once per locale)
-      const userLang = ((navigator.language ?? 'en').split('-')[0] ?? 'en').toLowerCase();
+      // Locale boost: additively enable locale-matched sources (runs once per locale).
+      // Reads the explicit-choice key (`wm-locale-explicit`, written by Settings →
+      // Language) before falling back to navigator. Mirrors the i18n.ts:99
+      // `wmExplicit` detector — without this, a user whose browser is en-US who
+      // picks Magyar in Settings never gets the locale boost (the migration's
+      // first run with `userLang='en'` sets `worldmonitor-locale-boost-en` and
+      // the `userLang !== 'en'` short-circuit means the boost block never re-fires
+      // for any subsequent locale choice). Direct localStorage read because
+      // i18next isn't initialized yet here in the constructor — `initI18n()` is
+      // called later inside `init()`.
+      let explicitLocale = '';
+      try { explicitLocale = localStorage.getItem('wm-locale-explicit') || ''; } catch { /* private mode */ }
+      const userLang = ((explicitLocale || navigator.language || 'en').split('-')[0] ?? 'en').toLowerCase();
       const localeKey = `worldmonitor-locale-boost-${userLang}`;
       if (userLang !== 'en' && !localStorage.getItem(localeKey)) {
         const boosted = getLocaleBoostedSources(userLang);
