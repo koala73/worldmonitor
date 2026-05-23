@@ -7,6 +7,14 @@ export interface ServerFeed {
 const gn = (q: string) =>
   `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=en-US&gl=US&ceid=US:en`;
 
+// Locale-aware Google News URL — for feeds tied to a non-English content
+// language whose result quality depends on Google News serving the
+// matching regional edition. Use this when the bare gn() defaults
+// (en-US/US/US:en) would return materially fewer or less relevant items
+// for the queried site than the locale-tuned edition.
+const gnLocale = (q: string, hl: string, gl: string, ceid: string) =>
+  `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=${hl}&gl=${gl}&ceid=${ceid}`;
+
 export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
   full: {
     politics: [
@@ -44,7 +52,7 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'HVG', url: 'https://hvg.hu/rss', lang: 'hu' },
       { name: '444.hu', url: 'https://444.hu/feed', lang: 'hu' },
       { name: '24.hu', url: 'https://24.hu/feed/', lang: 'hu' },
-      { name: 'Híradó', url: gn('site:hirado.hu when:2d'), lang: 'hu' },
+      { name: 'Híradó', url: gnLocale('site:hirado.hu when:2d', 'hu', 'HU', 'HU:hu'), lang: 'hu' },
       { name: 'Portfolio.hu', url: 'https://portfolio.hu/rss/all.xml', lang: 'hu' },
       { name: 'ATV', url: 'https://www.atv.hu/rss', lang: 'hu' },
     ],
