@@ -182,7 +182,7 @@ export const LANGUAGES = [
   { code: 'pl', label: 'Polski', flag: '🇵🇱' },
   { code: 'pt', label: 'Português', flag: '🇵🇹' },
   { code: 'nl', label: 'Nederlands', flag: '🇳🇱' },
-    { code: 'sl', label: 'Slovenščina', flag: '🇸🇮' },
+  { code: 'sl', label: 'Slovenščina', flag: '🇸🇮' },
   { code: 'sv', label: 'Svenska', flag: '🇸🇪' },
   { code: 'ru', label: 'Русский', flag: '🇷🇺' },
   { code: 'ja', label: '日本語', flag: '🇯🇵' },
