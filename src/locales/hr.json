@@ -766,7 +766,7 @@
       "infra": {
         "pipeline": "Cjevovodi",
         "cable": "Podmorski kabeli",
-        "datacenter": "Центри podataka",
+        "datacenter": "Podatkovni centri",
         "base": "Vojne baze",
         "nuclear": "Nuklearni objekti",
         "port": "Luke"
@@ -1030,7 +1030,7 @@
         "overview": "Pregled",
         "categories": "Kategorije",
         "movers": "Pokretači",
-        "spread": "Maržа maloprodajnog trgovca",
+        "spread": "Marža maloprodajnog trgovca",
         "health": "Zdravlje podataka"
       },
       "essentialsIndex": "Indeks nužnih dobara",
@@ -1262,7 +1262,7 @@
         "centralBank": "Središnja banka",
         "commodityHub": "Hub roba",
         "waterway": "Plovni put",
-        "highAlert": "Visoka警 uzbuna",
+        "highAlert": "Visoka uzbuna",
         "elevated": "Pojačano",
         "monitoring": "Praćenje",
         "base": "Baza",
@@ -1419,7 +1419,7 @@
           "financePipelines": "Rute naftnih/plinskih plinovoda koje utječu na energetska tržišta",
           "financeOutages": "Internetski prekidi koji mogu utjecati na rad tržišta",
           "financeCyberThreats": "Sigurnosni incidenti oko financijske infrastrukture",
-          "macroWaterways": "Strateške uske grle za商品 brodarstvo",
+          "macroWaterways": "Strateška uska grla za robno brodarstvo",
           "weatherAlertsMarket": "Ekstremne vremenske prilike s relevancijom za tržište",
           "naturalEventsMacro": "Zemljotresi, požari, poplave i ostali prirodni poremećaji",
           "timeRecent": "Filtriraj vremenski ovisne podatke na nedavne sate",
@@ -1661,7 +1661,7 @@
       "dataPreparing": "Osvežavanje podataka o tehnološkoj spremnosti — uskoro će biti dostupno.",
       "source": "Izvor: Svjetska banka",
       "updated": "Ažurirano: {{date}}",
-      "infoTooltip": "<strong>Globalna tehnološka spremnost</strong><br>Композитна ocjena (0-100) na osnovu podataka Svjetske banke:<br><br><strong>Prikazani pokazatelji:</strong><br>🌐 Korisnici interneta (% stanovništva)<br>📱 Mobilne pretplate (na 100 ljudi)<br>🔬 Rashodi na R&D (% BDP-a)<br><br><strong>Težine:</strong> R&D (35%), Internet (30%), Širokopojasni (20%), Mobilni (15%)<br><br><em>— = Nema dostupnih nedavnih podataka</em><br><em>Izvor: Svjetska banka Open Data (2019-2024)</em>"
+      "infoTooltip": "<strong>Globalna tehnološka spremnost</strong><br>Kompozitna ocjena (0-100) na osnovu podataka Svjetske banke:<br><br><strong>Prikazani pokazatelji:</strong><br>🌐 Korisnici interneta (% stanovništva)<br>📱 Mobilne pretplate (na 100 ljudi)<br>🔬 Rashodi na R&D (% BDP-a)<br><br><strong>Težine:</strong> R&D (35%), Internet (30%), Širokopojasni (20%), Mobilni (15%)<br><br><em>— = Nema dostupnih nedavnih podataka</em><br><em>Izvor: Svjetska banka Open Data (2019-2024)</em>"
     },
     "populationExposure": {
       "noData": "Nema dostupnih podataka o izloženosti",
@@ -1760,7 +1760,7 @@
       "cafIndex": "CAF Indeks",
       "candidGrants": "Candid Grantovi",
       "dataLag": "Vremenski zamak podataka",
-      "infoTooltip": "<strong>Globalni indeks aktivnosti davanja</strong> Kompozitni indeks koji prati osobnu dobrotvorno давanja na platformama za skupljanje sredstava i kripto novčanike.<ul><li><strong>Platforme</strong>: GoFundMe, GlobalGiving, JustGiving uzorci kampanja</li><li><strong>Kripto</strong>: Prilivi na lancu dobrotvornih novčanika (Endaoment, Giving Block)</li><li><strong>Institucionalno</strong>: OECD ODA, CAF World Giving Index, Candid grantovi</li></ul>Indeks je smjerodavan (ne točan iznos u dolarima). Kombinira uzorkovanje u vremenu stvarnom s objavljenim godišnjim izvještajima."
+      "infoTooltip": "<strong>Globalni indeks aktivnosti davanja</strong> Kompozitni indeks koji prati osobnu dobrotvornu davanja na platformama za skupljanje sredstava i kripto novčanike.<ul><li><strong>Platforme</strong>: GoFundMe, GlobalGiving, JustGiving uzorci kampanja</li><li><strong>Kripto</strong>: Prilivi na lancu dobrotvornih novčanika (Endaoment, Giving Block)</li><li><strong>Institucionalno</strong>: OECD ODA, CAF World Giving Index, Candid grantovi</li></ul>Indeks je smjerodavan (ne točan iznos u dolarima). Kombinira uzorkovanje u vremenu stvarnom s objavljenim godišnjim izvještajima."
     },
     "displacement": {
       "noData": "Nema podataka",
@@ -2659,7 +2659,7 @@
       "health": {
         "evidence": "DOKAZI O ZDRAVLJU"
       },
-      "description": "Podsmorski telekomunikacijski kabel koji prenosi međunarodni internetski promet. Ti optički kabeli čine okosicu globalne internetske povezanosti, prenosећи preko 95% međukontinentalnih podataka."
+      "description": "Podmorski telekomunikacijski kabel koji prenosi međunarodni internetski promet. Ti optički kabeli čine okosicu globalne internetske povezanosti, prenoseći preko 95% međukontinentalnih podataka."
     },
     "repairShip": {
       "note": "Praćenje broda za popravku pokazuje aktivno raspoređivanje prema mjestu kvara.",
@@ -3003,7 +3003,7 @@
   "signals": {
     "context": {
       "prediction_leads_news": {
-        "whyItMatters": "Tržišta predviđanja često uključe informacije prije nego što postanu vijest—trgovci mogu imati rani pristup razvoju事件。",
+        "whyItMatters": "Tržišta predviđanja često uključe informacije prije nego što postanu vijest—trgovci mogu imati rani pristup razvoju događaja.",
         "actionableInsight": "Pratite novosti koje bi mogla objasniti kretanje na tržištu u sljedećih 1-6 sati.",
         "confidenceNote": "Viša pouzdanost ako se više tržišta predviđanja kreće u istom smjeru."
       },
