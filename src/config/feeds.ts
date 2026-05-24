@@ -46,6 +46,7 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   // European Addition
   'El País': 'mainstream', 'El Mundo': 'mainstream', 'BBC Mundo': 'mainstream',
   'Tagesschau': 'mainstream', 'Der Spiegel': 'mainstream', 'Die Zeit': 'mainstream', 'DW News': 'mainstream',
+  'ORF': 'mainstream', 'Der Standard': 'mainstream', 'Die Presse': 'mainstream', 'Kurier': 'mainstream',
   'ANSA': 'wire', 'Corriere della Sera': 'mainstream', 'Repubblica': 'mainstream',
   'NOS Nieuws': 'mainstream', 'NRC': 'mainstream', 'De Telegraaf': 'mainstream',
   // Hungarian (HU)
@@ -241,6 +242,11 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'Bild', url: rss('https://www.bild.de/feed/alles.xml'), lang: 'de' },
     { name: 'Der Spiegel', url: rss('https://www.spiegel.de/schlagzeilen/tops/index.rss'), lang: 'de' },
     { name: 'Die Zeit', url: rss('https://newsfeed.zeit.de/index'), lang: 'de' },
+    // Austrian (AT) — de locale extension
+    { name: 'ORF', url: rss('https://rss.orf.at/news.xml'), lang: 'de' },
+    { name: 'Der Standard', url: rss('https://www.derstandard.at/rss'), lang: 'de' },
+    { name: 'Die Presse', url: rss('https://www.diepresse.com/rss'), lang: 'de' },
+    { name: 'Kurier', url: rss('https://kurier.at/xml/rss'), lang: 'de' },
     // Italian (IT)
     { name: 'ANSA', url: rss('https://www.ansa.it/sito/notizie/topnews/topnews_rss.xml'), lang: 'it' },
     { name: 'Corriere della Sera', url: rss('https://www.corriere.it/rss/homepage.xml'), lang: 'it' },
