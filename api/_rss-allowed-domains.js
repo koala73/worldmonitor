@@ -322,5 +322,6 @@ export default [
   "www.chosun.com",
   "rss.libsyn.com",
   "feeds.megaphone.fm",
-  "rss.art19.com"
+  "rss.art19.com",
+  "idp.nature.com"
 ];
