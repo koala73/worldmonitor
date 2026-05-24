@@ -125,6 +125,23 @@ export const SERVER_NAME = 'worldmonitor';
 //     unknown fields, and discovery on 2025-03-26 sessions should still benefit.
 //   - Purely additive on the wire — no input contract change. Bundle delta is
 //     documented in the v1.6.0 PR body.
+// Bumped 1.7.0 → 1.8.0 (2026-05-24) reflecting:
+//   - MCP `prompts` capability turned on. Six workflow templates exposed via
+//     prompts/list + prompts/get (country-briefing, energy-shock-watch,
+//     market-open-prep, conflict-pulse, route-risk-check, freshness-audit).
+//     Each template pre-bakes a literal JMESPath projection per step so the
+//     LLM doesn't have to discover the response shape on first execution.
+//   - Wire-visible additive capability — clients that ignore the new methods
+//     keep working; capable clients (Claude Desktop slash menu, MCP Inspector)
+//     surface the workflows in a discovery affordance.
+//   - prompts/list and prompts/get are quota-exempt (per-minute limit only)
+//     to mirror the describe_tool metadata posture — counting template
+//     fetches against the 50/day Pro cap would discourage exploration.
+//   - capabilities.prompts.listChanged = false advertised, because the
+//     stateless edge transport can't push notifications/prompts/list_changed
+//     today.
+//   - Server-card prompts capability flag flipped false → true in the same
+//     commit so external scanners see the wire and the card agree.
 // Bumped 1.6.0 → 1.7.0 (2026-05-23) reflecting:
 //   - De-blanket the `Tool.annotations` object. Previously buildPublicTool
 //     hard-coded `{ readOnlyHint: true, openWorldHint: true }` for every
@@ -144,7 +161,7 @@ export const SERVER_NAME = 'worldmonitor';
 //     hints keep working; new four-hint clients get a richer signal.
 // Keep aligned with public/.well-known/mcp/server-card.json::serverInfo.version
 // — discovery scanners cross-check both values.
-export const SERVER_VERSION = '1.7.0';
+export const SERVER_VERSION = '1.8.0';
 
 // MCP logging capability — valid severity levels per the 2025-03-26 spec
 // (RFC 5424 subset). Stateless HTTP transport: we ACK the level but do not
@@ -193,6 +210,8 @@ export const SERVER_INSTRUCTIONS = [
   `Limits: expression ≤ ${JMESPATH_MAX_EXPR_BYTES} bytes; projected payload ≤ ${JMESPATH_MAX_OUTPUT_BYTES} bytes. Failures return {_jmespath_error, original_keys} inside the normal result envelope. Bad expressions DO consume one daily quota unit on retry — original_keys is echoed so you can self-correct in one extra call.`,
   '',
   `tools/list returns COMPRESSED tool descriptions (first sentence, ≤${TOOL_DESCRIPTION_MAX_BYTES}B per tool). Call describe_tool({tool_name}) to get the full uncompressed definition for any tool you're considering — especially useful when the compressed entry is ambiguous about behaviour or argument semantics. describe_tool is metadata-only and is EXEMPT from the Pro daily quota (still counts toward the 60/min rate limit), so use it freely while exploring. describe_tool({tool_name: 'nonexistent'}) returns {error: 'unknown_tool', available: [...]} so you can self-correct.`,
+  '',
+  'Issue prompts/list to discover pre-built workflow templates (country-briefing, energy-shock-watch, market-open-prep, conflict-pulse, route-risk-check, freshness-audit). Each prompt pre-bakes a JMESPath projection per step so the first execution lands on the right shape. prompts/list + prompts/get are quota-exempt (per-minute limit only).',
 ].join('\n');
 
 // Country-code whitelist for get_consumer_prices. The consumer-prices seeder

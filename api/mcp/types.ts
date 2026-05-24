@@ -225,3 +225,43 @@ export interface AuthResolutionRejected {
   ok: false;
   response: Response;
 }
+
+// ---------------------------------------------------------------------------
+// Prompts registry types (MCP 2025-03-26 prompts capability)
+// ---------------------------------------------------------------------------
+export interface McpPromptArgument {
+  name: string;
+  description: string;
+  required: boolean;
+}
+
+// One tool-call step inside a prompt workflow. `args` is a JSON-shaped value
+// where string leaves may carry `${argname}` tokens; the prompt renderer
+// substitutes them against the call-time provided arguments. `jmespath` is
+// a literal expression (no substitution) validated against the targeted
+// tool's outputSchema by tests/mcp-prompts.test.mjs.
+export interface McpPromptStep {
+  tool: string;
+  args: Record<string, unknown>;
+  jmespath: string;
+  purpose: string;
+}
+
+// Optional intro conditional-substitution map. The key is a synthetic token
+// name (e.g. `country_suffix`); its presence in the intro string toggles
+// between `when_present` (any controlling arg has a non-empty value) and
+// `when_absent`. Lets the same prompt express both "filtered" and "global"
+// renders without a per-prompt code branch.
+export interface McpPromptIntroSubstitution {
+  when_present: string;
+  when_absent: string;
+}
+
+export interface McpPromptDef {
+  name: string;
+  description: string;
+  arguments: McpPromptArgument[];
+  steps: McpPromptStep[];
+  intro: string;
+  intro_substitutions?: Record<string, McpPromptIntroSubstitution>;
+}

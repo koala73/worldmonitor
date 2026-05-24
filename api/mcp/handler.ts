@@ -14,6 +14,7 @@ import {
   SERVER_VERSION,
 } from './constants';
 import { dispatchToolsCall } from './dispatch';
+import { buildPromptResponse, PROMPT_LIST_RESPONSE } from './prompts/index';
 import { TOOL_LIST_BYTES, TOOL_LIST_RESPONSE } from './registry/index';
 import { rpcError, rpcOk } from './rpc';
 import { emitTelemetry, principalIdForLog } from './telemetry';
@@ -94,7 +95,11 @@ export async function mcpHandler(
       });
       return rpcOk(id, {
         protocolVersion: negotiatedVersion,
-        capabilities: { tools: {}, logging: {} },
+        // `prompts.listChanged: false` is the spec-correct value for our
+        // transport — the stateless edge route cannot push
+        // `notifications/prompts/list_changed`, so advertising `true` would
+        // be a lie. Same posture applies if/when `resources` lands later.
+        capabilities: { tools: {}, logging: {}, prompts: { listChanged: false } },
         serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
         instructions: SERVER_INSTRUCTIONS,
       }, { 'Mcp-Session-Id': sessionId, ...corsHeaders });
@@ -107,6 +112,22 @@ export async function mcpHandler(
       return rpcOk(id, { tools: TOOL_LIST_RESPONSE }, corsHeaders);
     case 'tools/call':
       return dispatchToolsCall(req, context, deps, body, corsHeaders, ctx);
+    // Prompts are metadata-class — they ship a workflow template, not data.
+    // Symmetric posture with `describe_tool`: quota-exempt (counting template
+    // fetches against the 50/day cap would discourage exploration, which
+    // defeats the prompt-discovery point), but the per-minute rate limit
+    // applied above still gates abusive loops.
+    case 'prompts/list':
+      return rpcOk(id, { prompts: PROMPT_LIST_RESPONSE }, corsHeaders);
+    case 'prompts/get': {
+      const params = body.params as { name?: unknown; arguments?: Record<string, unknown> } | null;
+      if (!params || typeof params.name !== 'string') {
+        return rpcError(id, -32602, 'Invalid params: missing prompt name');
+      }
+      const built = buildPromptResponse(params.name, params.arguments);
+      if (!built.ok) return rpcError(id, built.code, built.message);
+      return rpcOk(id, { description: built.description, messages: built.messages }, corsHeaders);
+    }
     case 'logging/setLevel': {
       const level = (body.params as { level?: string } | null)?.level;
       if (typeof level !== 'string' || !MCP_LOG_LEVELS.has(level)) {
