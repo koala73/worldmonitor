@@ -278,6 +278,20 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'in.gr', url: rss('https://www.in.gr/feed/'), lang: 'el' },
     { name: 'iefimerida', url: rss('https://www.iefimerida.gr/rss.xml'), lang: 'el' },
     { name: 'Proto Thema', url: rss('https://news.google.com/rss/search?q=site:protothema.gr+when:2d&hl=el&gl=GR&ceid=GR:el'), lang: 'el' },
+    // Ukrainian (UK) — mainstream + investigative sources.
+    // Direct RSS: ukrinform.ua, bihus.info, slidstvo.info (verified working).
+    // Google News fallback (blocked from cloud IPs): pravda.com.ua, hromadske.ua,
+    // suspilne.media, schemes.media, zn.ua, rbc.ua, voxukraine.org.
+    { name: 'Ukrinform', url: rss('https://www.ukrinform.ua/rss/block-lastnews'), lang: 'uk' },
+    { name: 'Ukrainska Pravda', url: rss('https://news.google.com/rss/search?q=site:pravda.com.ua+when:2d&hl=uk&gl=UA&ceid=UA:uk'), lang: 'uk' },
+    { name: 'Hromadske', url: rss('https://news.google.com/rss/search?q=site:hromadske.ua+when:2d&hl=uk&gl=UA&ceid=UA:uk'), lang: 'uk' },
+    { name: 'Suspilne', url: rss('https://news.google.com/rss/search?q=site:suspilne.media+when:2d&hl=uk&gl=UA&ceid=UA:uk'), lang: 'uk' },
+    { name: 'ZN.UA', url: rss('https://news.google.com/rss/search?q=site:zn.ua+when:2d&hl=uk&gl=UA&ceid=UA:uk'), lang: 'uk' },
+    { name: 'RBC-Ukraine', url: rss('https://news.google.com/rss/search?q=site:rbc.ua+when:2d&hl=uk&gl=UA&ceid=UA:uk'), lang: 'uk' },
+    { name: 'Bihus.Info', url: rss('https://bihus.info/feed/'), lang: 'uk' },
+    { name: 'Slidstvo.Info', url: rss('https://www.slidstvo.info/feed/'), lang: 'uk' },
+    { name: 'Skhemy', url: rss('https://news.google.com/rss/search?q=site:schemes.media+when:2d&hl=uk&gl=UA&ceid=UA:uk'), lang: 'uk' },
+    { name: 'VoxUkraine', url: rss('https://news.google.com/rss/search?q=site:voxukraine.org+when:2d&hl=uk&gl=UA&ceid=UA:uk'), lang: 'uk' },
     // Russia & Ukraine (independent sources)
     { name: 'BBC Russian', url: rss('https://feeds.bbci.co.uk/russian/rss.xml'), lang: 'ru' },
     { name: 'Meduza', url: rss('https://meduza.io/rss/all'), lang: 'ru' },

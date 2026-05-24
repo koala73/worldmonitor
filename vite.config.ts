@@ -567,6 +567,10 @@ const RSS_PROXY_ALLOWED_DOMAINS = new Set([
   'news.ycombinator.com',
   // Hungarian / Central European feeds
   'telex.hu', 'index.hu', 'hvg.hu', '444.hu', '24.hu', 'hirado.hu', 'portfolio.hu', 'www.portfolio.hu', 'www.atv.hu',
+  // Ukrainian feeds
+  'www.ukrinform.ua', 'pravda.com.ua', 'hromadske.ua', 'suspilne.media',
+  'zn.ua', 'rbc.ua', 'bihus.info', 'slidstvo.info', 'www.slidstvo.info',
+  'schemes.media', 'voxukraine.org',
   // Finance variant
   'www.coindesk.com', 'cointelegraph.com',
   // Happy variant — positive news sources

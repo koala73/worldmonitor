@@ -15,6 +15,7 @@ const LANG_TO_TILE_FIELD: Record<string, string> = {
   nl: 'name:nl',
   sv: 'name:sv',
   ru: 'name:ru',
+  uk: 'name:uk',
   ar: 'name:ar',
   zh: 'name:zh',
   ja: 'name:ja',
