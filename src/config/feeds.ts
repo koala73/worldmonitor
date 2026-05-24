@@ -55,6 +55,9 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   'SVT Nyheter': 'mainstream', 'Dagens Nyheter': 'mainstream', 'Svenska Dagbladet': 'mainstream',
   // Brazilian Addition
   'Brasil Paralelo': 'mainstream',
+  // Slovak (SK)
+  'Denník N': 'mainstream', 'SME': 'mainstream', 'Aktuality': 'mainstream',
+  'Hospodárske Noviny': 'market', 'TASR': 'wire', 'Demagog.sk': 'intel',
 
   // Market/Finance
   'CNBC': 'market', 'MarketWatch': 'market', 'Yahoo Finance': 'market',
@@ -278,6 +281,13 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'in.gr', url: rss('https://www.in.gr/feed/'), lang: 'el' },
     { name: 'iefimerida', url: rss('https://www.iefimerida.gr/rss.xml'), lang: 'el' },
     { name: 'Proto Thema', url: rss('https://news.google.com/rss/search?q=site:protothema.gr+when:2d&hl=el&gl=GR&ceid=GR:el'), lang: 'el' },
+    // Slovak (SK) — mainstream + investigative
+    { name: 'Denník N', url: rss('https://dennikn.sk/feed/'), lang: 'sk' },
+    { name: 'SME', url: rss('https://news.google.com/rss/search?q=site:sme.sk+when:2d&hl=sk&gl=SK&ceid=SK:sk'), lang: 'sk' },
+    { name: 'Aktuality', url: rss('https://www.aktuality.sk/rss/'), lang: 'sk' },
+    { name: 'Hospodárske Noviny', url: rss('https://hnonline.sk/feed/'), lang: 'sk' },
+    { name: 'TASR', url: rss('https://news.google.com/rss/search?q=site:tasr.sk+when:2d&hl=sk&gl=SK&ceid=SK:sk'), lang: 'sk' },
+    { name: 'Demagog.sk', url: rss('https://news.google.com/rss/search?q=site:demagog.sk+when:14d&hl=sk&gl=SK&ceid=SK:sk'), lang: 'sk' },
     // Russia & Ukraine (independent sources)
     { name: 'BBC Russian', url: rss('https://feeds.bbci.co.uk/russian/rss.xml'), lang: 'ru' },
     { name: 'Meduza', url: rss('https://meduza.io/rss/all'), lang: 'ru' },
