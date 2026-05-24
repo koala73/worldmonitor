@@ -29,10 +29,10 @@ const onlyArg = [...args].find(a => a.startsWith('--only='));
 const onlyLocales = onlyArg ? onlyArg.slice('--only='.length).split(',') : null;
 
 const ROOT = proTest ? 'pro-test/src/locales' : 'src/locales';
-const LOCALES = ['ar', 'bg', 'cs', 'de', 'el', 'es', 'fr', 'hu', 'it', 'ja', 'ko', 'nl', 'pl', 'pt', 'ro', 'ru', 'sv', 'th', 'tr', 'vi', 'zh'];
+const LOCALES = ['ar', 'bg', 'cs', 'de', 'el', 'es', 'fr', 'hr', 'hu', 'it', 'ja', 'ko', 'nl', 'pl', 'pt', 'ro', 'ru', 'sv', 'th', 'tr', 'vi', 'zh'];
 const LANG_NAMES = {
   ar: 'Arabic', bg: 'Bulgarian', cs: 'Czech', de: 'German', el: 'Greek',
-  es: 'Spanish', fr: 'French', hu: 'Hungarian', it: 'Italian', ja: 'Japanese',
+  es: 'Spanish', fr: 'French', hr: 'Croatian', hu: 'Hungarian', it: 'Italian', ja: 'Japanese',
   ko: 'Korean', nl: 'Dutch', pl: 'Polish', pt: 'Portuguese (Brazil)',
   ro: 'Romanian', ru: 'Russian', sv: 'Swedish', th: 'Thai', tr: 'Turkish',
   vi: 'Vietnamese', zh: 'Simplified Chinese',
