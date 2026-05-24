@@ -86,6 +86,8 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   'Arms Control Assn': 'intel', 'Bulletin of Atomic Scientists': 'intel',
   // Food Security & Regional
   'FAO GIEWS': 'gov', 'EU ISS': 'intel',
+  // Investigative journalism & accountability
+  'OCCRP': 'intel', 'DFRLab': 'intel', 'Lighthouse Reports': 'intel', 'The Sentry': 'intel', 'GITOC': 'intel', 'VSquare': 'intel', 'Correctiv': 'intel',
   // New verified think tanks
   'War on the Rocks': 'intel', 'AEI': 'intel', 'Responsible Statecraft': 'intel',
   'FPRI': 'intel', 'Jamestown': 'intel',
@@ -1084,6 +1086,23 @@ export const INTEL_SOURCES: Feed[] = [
   // Economic & Food Security (Tier 2)
   { name: 'FAO News', url: rss('https://www.fao.org/feeds/fao-newsroom-rss'), type: 'economic' },
   { name: 'FAO GIEWS', url: rss('https://news.google.com/rss/search?q=site:fao.org+GIEWS+food+security+when:30d&hl=en-US&gl=US&ceid=US:en'), type: 'economic' },
+
+  // Investigative Journalism & Accountability
+  // Cross-border corruption & organized crime investigations (Panama Papers, Pandora Papers)
+  { name: 'OCCRP', url: rss('https://www.occrp.org/en/feed'), type: 'investigative' },
+  // Atlantic Council Digital Forensic Research Lab — disinformation/influence operations
+  { name: 'DFRLab', url: rss('https://dfrlab.org/feed/'), type: 'investigative' },
+  // European investigative collective — migration, extremism, accountability
+  { name: 'Lighthouse Reports', url: rss('https://www.lighthousereports.com/feed/'), type: 'investigative' },
+  // Africa-focused: war crimes, illicit finance, sanctions evasion
+  { name: 'The Sentry', url: rss('https://thesentry.org/feed/'), type: 'investigative' },
+  // Global Initiative Against Transnational Organized Crime
+  { name: 'GITOC', url: rss('https://globalinitiative.net/feed/'), type: 'investigative' },
+  // V4/CEE investigative network (OCCRP member)
+  { name: 'VSquare', url: rss('https://vsquare.org/feed/'), type: 'investigative' },
+  // German investigative journalism & fact-checking nonprofit
+  { name: 'Correctiv', url: rss('https://correctiv.org/feed/'), type: 'investigative' },
+
   { name: 'EU ISS', url: rss('https://news.google.com/rss/search?q=site:iss.europa.eu+when:7d&hl=en-US&gl=US&ceid=US:en'), type: 'intl' },
 ];
 

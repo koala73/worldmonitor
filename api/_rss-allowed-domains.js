@@ -324,4 +324,11 @@ export default [
   "feeds.megaphone.fm",
   "rss.art19.com",
   "idp.nature.com"
+  "www.occrp.org",
+  "dfrlab.org",
+  "www.lighthousereports.com",
+  "thesentry.org",
+  "globalinitiative.net",
+  "vsquare.org",
+  "correctiv.org",
 ];

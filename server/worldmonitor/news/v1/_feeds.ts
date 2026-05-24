@@ -489,4 +489,11 @@ export const INTEL_SOURCES: ServerFeed[] = [
   { name: 'Arms Control Assn', url: gn('site:armscontrol.org when:7d') },
   { name: 'Bulletin of Atomic Scientists', url: gn('site:thebulletin.org when:7d') },
   { name: 'FAO News', url: 'https://www.fao.org/feeds/fao-newsroom-rss' },
+  { name: 'OCCRP', url: 'https://www.occrp.org/en/feed' },
+  { name: 'DFRLab', url: 'https://dfrlab.org/feed/' },
+  { name: 'Lighthouse Reports', url: 'https://www.lighthousereports.com/feed/' },
+  { name: 'The Sentry', url: 'https://thesentry.org/feed/' },
+  { name: 'GITOC', url: 'https://globalinitiative.net/feed/' },
+  { name: 'VSquare', url: 'https://vsquare.org/feed/' },
+  { name: 'Correctiv', url: 'https://correctiv.org/feed/' },
 ];
