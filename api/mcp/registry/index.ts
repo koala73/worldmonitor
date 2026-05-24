@@ -27,10 +27,10 @@ export const SUMMARY_SCHEMA = {
 for (const tool of TOOL_REGISTRY) {
   const props = tool.inputSchema.properties;
   if (props && 'jmespath' in props) {
-    throw new Error(`api/mcp.ts: tool "${tool.name}" declares its own 'jmespath' property — collides with universal JMESPATH_SCHEMA injection. Remove the per-tool declaration.`);
+    throw new Error(`api/mcp/registry/index.ts: tool "${tool.name}" declares its own 'jmespath' property — collides with universal JMESPATH_SCHEMA injection. Remove the per-tool declaration.`);
   }
   if (tool._execute === undefined && props && 'summary' in props) {
-    throw new Error(`api/mcp.ts: cache tool "${tool.name}" declares its own 'summary' property — collides with universal SUMMARY_SCHEMA injection. Remove the per-tool declaration.`);
+    throw new Error(`api/mcp/registry/index.ts: cache tool "${tool.name}" declares its own 'summary' property — collides with universal SUMMARY_SCHEMA injection. Remove the per-tool declaration.`);
   }
 }
 
