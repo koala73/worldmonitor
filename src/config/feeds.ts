@@ -52,6 +52,9 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   'Telex': 'mainstream', 'Index.hu': 'mainstream', 'HVG': 'mainstream',
   '444.hu': 'mainstream', '24.hu': 'mainstream', 'Híradó': 'mainstream',
   'ATV': 'mainstream', 'Portfolio.hu': 'market',
+  // Polish (PL) additions
+  'PAP': 'wire', 'Gazeta Wyborcza': 'mainstream', 'Polityka': 'mainstream', 'Onet': 'mainstream', 'OKO.press': 'intel', 'TVP Info': 'mainstream',
+  'TVN24': 'mainstream', 'Polsat News': 'mainstream', 'Rzeczpospolita': 'mainstream',
   'SVT Nyheter': 'mainstream', 'Dagens Nyheter': 'mainstream', 'Svenska Dagbladet': 'mainstream',
   // Brazilian Addition
   'Brasil Paralelo': 'mainstream',
@@ -278,6 +281,13 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'in.gr', url: rss('https://www.in.gr/feed/'), lang: 'el' },
     { name: 'iefimerida', url: rss('https://www.iefimerida.gr/rss.xml'), lang: 'el' },
     { name: 'Proto Thema', url: rss('https://news.google.com/rss/search?q=site:protothema.gr+when:2d&hl=el&gl=GR&ceid=GR:el'), lang: 'el' },
+    // Polish (PL) additions
+    { name: 'PAP', url: rss('https://www.pap.pl/rss.xml'), lang: 'pl' },
+    { name: 'Gazeta Wyborcza', url: rss('https://news.google.com/rss/search?q=site:wyborcza.pl+when:2d&hl=pl&gl=PL&ceid=PL:pl'), lang: 'pl' },
+    { name: 'Polityka', url: rss('https://news.google.com/rss/search?q=site:polityka.pl+when:2d&hl=pl&gl=PL&ceid=PL:pl'), lang: 'pl' },
+    { name: 'Onet', url: rss('https://wiadomosci.onet.pl/rss/index.xml'), lang: 'pl' },
+    { name: 'OKO.press', url: rss('https://news.google.com/rss/search?q=site:oko.press+when:2d&hl=pl&gl=PL&ceid=PL:pl'), lang: 'pl' },
+    { name: 'TVP Info', url: rss('https://news.google.com/rss/search?q=site:tvp.info+when:2d&hl=pl&gl=PL&ceid=PL:pl'), lang: 'pl' },
     // Russia & Ukraine (independent sources)
     { name: 'BBC Russian', url: rss('https://feeds.bbci.co.uk/russian/rss.xml'), lang: 'ru' },
     { name: 'Meduza', url: rss('https://meduza.io/rss/all'), lang: 'ru' },
