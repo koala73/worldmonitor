@@ -11,7 +11,10 @@ import { VARIANT_META, type VariantMeta } from './src/config/variant-meta';
 
 
 const brotliCompressAsync = promisify(brotliCompress);
-const BROTLI_EXTENSIONS = new Set(['.js', '.mjs', '.css', '.html', '.svg', '.json', '.txt', '.xml', '.wasm']);
+const BROTLI_EXTENSIONS = new Set(['.js', '.mjs', '.css', '.html', '.svg', '.json', '.txt', '.xml', '.wasm'  'www.naftemporiki.gr',
+  'www.in.gr',
+  'www.iefimerida.gr',
+]);
 
 // Single source of truth for chunk names that must NOT be hoisted into the
 // entry HTML's modulepreload list. Used by both `manualChunks` (return values
@@ -577,6 +580,9 @@ const RSS_PROXY_ALLOWED_DOMAINS = new Set([
   'abcnews.go.com', 'abcnews.com', 'www.corriere.it', 'www.rt.com', 'www.alarabiya.net', 'tuoitrenews.vn',
   'www.yonhapnewstv.co.kr', 'www.chosun.com', 'rss.libsyn.com', 'feeds.megaphone.fm', 'rss.art19.com',
   'idp.nature.com',
+  'www.tanea.gr',
+  'www.liberal.gr',
+  'www.cnn.gr',
 ]);
 
 function rssProxyPlugin(): Plugin {
