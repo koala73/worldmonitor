@@ -55,6 +55,17 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Híradó', url: gnLocale('site:hirado.hu when:2d', 'hu', 'HU', 'HU:hu'), lang: 'hu' },
       { name: 'Portfolio.hu', url: 'https://portfolio.hu/rss/all.xml', lang: 'hu' },
       { name: 'ATV', url: 'https://www.atv.hu/rss', lang: 'hu' },
+      // Polish (PL) existing feeds — server parity
+      { name: 'TVN24', url: 'https://tvn24.pl/swiat.xml', lang: 'pl' },
+      { name: 'Polsat News', url: 'https://www.polsatnews.pl/rss/wszystkie.xml', lang: 'pl' },
+      { name: 'Rzeczpospolita', url: 'https://www.rp.pl/rss_main', lang: 'pl' },
+      // Polish (PL) additions
+      { name: 'PAP', url: 'https://www.pap.pl/rss.xml', lang: 'pl' },
+      { name: 'Gazeta Wyborcza', url: gnLocale('site:wyborcza.pl when:2d', 'pl', 'PL', 'PL:pl'), lang: 'pl' },
+      { name: 'Polityka', url: gnLocale('site:polityka.pl when:2d', 'pl', 'PL', 'PL:pl'), lang: 'pl' },
+      { name: 'Onet', url: 'https://wiadomosci.onet.pl/rss/index.xml', lang: 'pl' },
+      { name: 'OKO.press', url: gnLocale('site:oko.press when:2d', 'pl', 'PL', 'PL:pl'), lang: 'pl' },
+      { name: 'TVP Info', url: gnLocale('site:tvp.info when:2d', 'pl', 'PL', 'PL:pl'), lang: 'pl' },
     ],
     middleeast: [
       { name: 'BBC Middle East', url: 'https://feeds.bbci.co.uk/news/world/middle_east/rss.xml' },

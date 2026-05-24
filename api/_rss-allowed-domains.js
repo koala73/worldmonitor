@@ -323,5 +323,7 @@ export default [
   "rss.libsyn.com",
   "feeds.megaphone.fm",
   "rss.art19.com",
-  "idp.nature.com"
+  "idp.nature.com",
+  "www.pap.pl",
+  "wiadomosci.onet.pl",
 ];
