@@ -5,11 +5,11 @@ import { getAcledToken } from './shared/acled-oauth.mjs';
 
 loadEnvFile(import.meta.url);
 
-// GKG v2 (api.v2) is the current stable API.
+// GEO 2.0 API (api.v2) is the current stable API.
 // - query must be UPPERCASE (v1 accepted lowercase)
 // - sourcecountry=WORLD is required for global coverage (v1 defaulted to US only without it)
 // - format=json is required
-const GDELT_GKG_URL = 'https://api.gdeltproject.org/api/v2/gkg_geojson';
+const GDELT_GKG_URL = 'https://api.gdeltproject.org/api/v2/geo/geo';
 const ACLED_API_URL = 'https://acleddata.com/api/acled/read';
 const CANONICAL_KEY = 'unrest:events:v1';
 const CACHE_TTL = 16200; // 4.5h — 6x the 45 min cron interval (was 1.3x)
@@ -390,3 +390,11 @@ if (isMain) {
     process.exit(1);
   });
 }
+// NOTE: All api.gdeltproject.org v2 endpoints (/api/v2/geo/geo and
+// /api/v2/gkg_geojson) return HTTP 404 as of May 2026. The free GDELT
+// API infrastructure appears to be offline or deprecated.
+// See: https://www.reddit.com/r/gdelt/comments/1liwwml/gdelt_still_down/
+// The official successor is GDELT Cloud (https://gdeltcloud.com) which
+// requires a paid API key and has a different data model (generated
+// Events/Stories, not raw GKG GeoJSON).
+// v1 (/api/v1/gkg_geojson) still responds and is used as fallback.

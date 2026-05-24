@@ -1,6 +1,6 @@
-// Tests for GDELT GKG v2 API params in scripts/seed-unrest-events.mjs.
+// Tests for GDELT GEO 2.0 API params in scripts/seed-unrest-events.mjs.
 // Verifies that fetchGdeltEvents:
-//   1. Uses api.v2 endpoint (not deprecated api.v1)
+//   1. Uses api.v2/geo/geo endpoint (not deprecated api.v1)
 //   2. Sends query in UPPERCASE (v2 requires uppercase, v1 accepted lowercase)
 //   3. Includes sourcecountry=WORLD for global coverage (v1 defaulted to US only)
 //   4. Includes format=json
@@ -36,8 +36,8 @@ test('fetchGdeltEvents constructs v2 URL with uppercase query and sourcecountry=
     _sleep: noSleep,
     _jitter: noJitter,
   });
-  // Must use v2 endpoint
-  assert.match(capturedUrl, /api\/v2\/gkg_geojson/);
+  // Must use api.v2/geo/geo endpoint
+  assert.match(capturedUrl, /api\/v2\/geo\/geo/);
   // Query must be UPPERCASE (v2 requires uppercase)
   assert.match(capturedUrl, /query=[A-Z]/);
   // Must include sourcecountry=WORLD for global coverage (v1 defaulted to US)
