@@ -323,5 +323,10 @@ export default [
   "rss.libsyn.com",
   "feeds.megaphone.fm",
   "rss.art19.com",
-  "idp.nature.com"
+  "idp.nature.com",
+  "n1info.rs",
+  "nova.rs",
+  "www.danas.rs",
+  "www.krik.rs",
+  "www.cins.rs",
 ];

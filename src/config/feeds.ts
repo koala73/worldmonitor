@@ -52,6 +52,7 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   'Telex': 'mainstream', 'Index.hu': 'mainstream', 'HVG': 'mainstream',
   '444.hu': 'mainstream', '24.hu': 'mainstream', 'Híradó': 'mainstream',
   'ATV': 'mainstream', 'Portfolio.hu': 'market',
+  'N1 Serbia': 'mainstream', 'Nova.rs': 'mainstream', 'Danas.rs': 'mainstream', 'KRIK': 'intel', 'CINS': 'intel',
   'SVT Nyheter': 'mainstream', 'Dagens Nyheter': 'mainstream', 'Svenska Dagbladet': 'mainstream',
   // Brazilian Addition
   'Brasil Paralelo': 'mainstream',
@@ -272,6 +273,13 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'Híradó', url: rss('https://news.google.com/rss/search?q=site:hirado.hu+when:2d&hl=hu&gl=HU&ceid=HU:hu'), lang: 'hu' },
     { name: 'Portfolio.hu', url: rss('https://portfolio.hu/rss/all.xml'), lang: 'hu' },
     { name: 'ATV', url: rss('https://www.atv.hu/rss'), lang: 'hu' },
+    { name: 'N1 Serbia', url: rss('https://n1info.rs/feed/'), lang: 'sr' },
+    { name: 'Nova.rs', url: rss('https://nova.rs/feed/'), lang: 'sr' },
+    { name: 'Danas.rs', url: rss('https://www.danas.rs/feed/'), lang: 'sr' },
+    { name: 'KRIK', url: rss('https://www.krik.rs/feed/'), lang: 'sr' },
+    { name: 'CINS', url: rss('https://www.cins.rs/feed/'), lang: 'sr' },
+    { name: 'Balkan Insight', url: rss('https://balkaninsight.com/feed/') },
+
     // Greek (EL)
     { name: 'Kathimerini', url: rss('https://news.google.com/rss/search?q=site:kathimerini.gr+when:2d&hl=el&gl=GR&ceid=GR:el'), lang: 'el' },
     { name: 'Naftemporiki', url: rss('https://www.naftemporiki.gr/feed/'), lang: 'el' },
