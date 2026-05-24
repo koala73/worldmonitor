@@ -52,6 +52,8 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   'Telex': 'mainstream', 'Index.hu': 'mainstream', 'HVG': 'mainstream',
   '444.hu': 'mainstream', '24.hu': 'mainstream', 'Híradó': 'mainstream',
   'ATV': 'mainstream', 'Portfolio.hu': 'market',
+  // Latvian (LV)
+  'LSM': 'mainstream', 'Delfi LV': 'mainstream', 'Latvijas Avīze': 'mainstream', 'Diena': 'mainstream', 'TVNet': 'mainstream', 'Neatkarīgā': 'mainstream',
   'SVT Nyheter': 'mainstream', 'Dagens Nyheter': 'mainstream', 'Svenska Dagbladet': 'mainstream',
   // Brazilian Addition
   'Brasil Paralelo': 'mainstream',
@@ -278,6 +280,13 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'in.gr', url: rss('https://www.in.gr/feed/'), lang: 'el' },
     { name: 'iefimerida', url: rss('https://www.iefimerida.gr/rss.xml'), lang: 'el' },
     { name: 'Proto Thema', url: rss('https://news.google.com/rss/search?q=site:protothema.gr+when:2d&hl=el&gl=GR&ceid=GR:el'), lang: 'el' },
+    // Latvian (LV)
+    { name: 'LSM', url: rss('https://www.lsm.lv/rss/'), lang: 'lv' },
+    { name: 'Delfi LV', url: rss('https://www.delfi.lv/rss/feeds/rss.xml'), lang: 'lv' },
+    { name: 'Latvijas Avīze', url: rss('https://www.la.lv/rss'), lang: 'lv' },
+    { name: 'Diena', url: rss('https://news.google.com/rss/search?q=site:diena.lv+when:2d&hl=lv&gl=LV&ceid=LV:lv'), lang: 'lv' },
+    { name: 'TVNet', url: rss('https://news.google.com/rss/search?q=site:tvnet.lv+when:2d&hl=lv&gl=LV&ceid=LV:lv'), lang: 'lv' },
+    { name: 'Neatkarīgā', url: rss('https://news.google.com/rss/search?q=site:nra.lv+when:2d&hl=lv&gl=LV&ceid=LV:lv'), lang: 'lv' },
     // Russia & Ukraine (independent sources)
     { name: 'BBC Russian', url: rss('https://feeds.bbci.co.uk/russian/rss.xml'), lang: 'ru' },
     { name: 'Meduza', url: rss('https://meduza.io/rss/all'), lang: 'ru' },
