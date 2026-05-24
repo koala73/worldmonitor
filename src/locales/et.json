@@ -1,11 +1,11 @@
 {
   "app": {
     "title": "World Monitor",
-    "description": "Global Situation with AI Insights"
+    "description": "Globaalne olukord tehisintellekti analüüsiga"
   },
   "shell": {
     "documentTitle": "World Monitor — Globaalne luureteabe armatuurlaud reaalajas",
-    "metaDescription": "Real-time global intelligence platform. Featured in WIRED. Used by 2M+ people across 190 countries. Conflicts, markets, military, OSINT in one view.",
+    "metaDescription": "Reaalajas globaalne luureteabe platvorm. Esiletõstetud ajakirjas WIRED. Kasutatav 2M+ inimese poolt 190 riigis. Konfliktid, turud, sõjavägi, OSINT ühes vaates.",
     "offlineTitle": "Olete võrguühenduseta",
     "offlineMessage": "World Monitor vajab reaalajas luureteabe saamiseks internetiühendust.",
     "offlineRetry": "Proovi uuesti"
