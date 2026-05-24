@@ -210,6 +210,7 @@ export default [
   "www.rp.pl",
   "meduza.io",
   "novayagazeta.eu",
+  "theins.ru",
   "www.bangkokpost.com",
   "vnexpress.net",
   "www.abc.net.au",
