@@ -323,5 +323,9 @@ export default [
   "rss.libsyn.com",
   "feeds.megaphone.fm",
   "rss.art19.com",
-  "idp.nature.com"
+  "idp.nature.com",
+  "n1info.hr",
+  "www.index.hr",
+  "www.jutarnji.hr",
+  "balkaninsight.com"
 ];
