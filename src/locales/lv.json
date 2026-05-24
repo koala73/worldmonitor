@@ -1,11 +1,11 @@
 {
   "app": {
     "title": "World Monitor",
-    "description": "Global Situation with AI Insights"
+    "description": "Globālā situācija ar MI analīzi"
   },
   "shell": {
     "documentTitle": "World Monitor — Globālās izlūkošanas panelis reāllaikā",
-    "metaDescription": "Real-time global intelligence platform. Featured in WIRED. Used by 2M+ people across 190 countries. Conflicts, markets, military, OSINT in one view.",
+    "metaDescription": "Reāllaika globālā izlūkošanas platforma. Minēta WIRED. To lieto 2M+ cilvēku 190 valstīs. Konflikti, tirgi, militārais, OSINT vienā skatā.",
     "offlineTitle": "Neesat savienots",
     "offlineMessage": "World Monitor prasa interneta savienojumu reāllaika izlūkošanas datiem.",
     "offlineRetry": "Mēģināt vēlreiz"
