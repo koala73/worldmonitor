@@ -246,7 +246,7 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Product Hunt', url: 'https://www.producthunt.com/feed' },
     ],
     hardware: [
-      { name: "Tom's Hardware", url: 'https://www.tomshardware.com/feeds/all' },
+      { name: "Tom's Hardware", url: 'https://www.tomshardware.com/feeds.xml' },
       { name: 'SemiAnalysis', url: 'https://www.semianalysis.com/feed' },
       { name: 'Semiconductor News', url: gn('semiconductor OR chip OR TSMC OR NVIDIA OR Intel when:3d') },
     ],

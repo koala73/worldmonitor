@@ -162,7 +162,10 @@ async function fetchFeed(url) {
 }
 
 function parseNewestDate(xml) {
-  const parser = new XMLParser({ ignoreAttributes: false });
+  // processEntities:false — we only read date strings, never decode entity-bearing content.
+  // fast-xml-parser v5's default entity-expansion threshold trips on legit large feeds
+  // (Guardian, Fox, Axios, CISA, WHO, MIT, …) and produces false-positive DEAD rows.
+  const parser = new XMLParser({ ignoreAttributes: false, processEntities: false });
   const doc = parser.parse(xml);
 
   const dates = [];
@@ -295,7 +298,40 @@ async function main() {
   console.log(`Summary: ${ok.length} OK, ${stale.length} stale, ${dead.length} dead, ${empty.length} empty` +
     (skipped.length ? `, ${skipped.length} skipped` : ''));
 
-  if (stale.length || dead.length) process.exit(1);
+  // Exit policy:
+  //   HARD-FAIL on config/SSRF-guard drift — these are bugs the maintainer can fix.
+  //     ("Host not in allowlist", "Non-https scheme rejected", "Too many redirects")
+  //   SOFT-FAIL (exit 0 with warning) on third-party state — third-party 4xx/timeouts,
+  //     STALE feeds, EMPTY feeds. These rot naturally; failing the build on them
+  //     produces 100% CI noise and the prior workflow proved no one acts on it.
+  //   Promoting third-party failures to hard-fail requires a registry-cleanup PR
+  //   first; revisit once the long tail is groomed.
+  const isConfigDrift = (r) =>
+    typeof r.detail === 'string' && (
+      r.detail.startsWith('Host not in allowlist') ||
+      r.detail.startsWith('Non-https scheme rejected') ||
+      r.detail === 'Too many redirects'
+    );
+  const configDrift = dead.filter(isConfigDrift);
+  const thirdPartyDead = dead.filter(r => !isConfigDrift(r));
+
+  if (configDrift.length) {
+    console.error(
+      `\nFAIL: ${configDrift.length} feed(s) violate the CI guardrails ` +
+      `(allowlist drift or plaintext URL). Fix src/config/feeds.ts and/or the 4 ` +
+      `allowlist mirrors (shared/rss-allowed-domains.json, .cjs, ` +
+      `api/_rss-allowed-domains.js, vite.config.ts:RSS_PROXY_ALLOWED_DOMAINS).`
+    );
+    process.exit(1);
+  }
+
+  if (stale.length || thirdPartyDead.length || empty.length) {
+    console.warn(
+      `\nWARN: ${thirdPartyDead.length} third-party dead, ${stale.length} stale, ` +
+      `${empty.length} empty. Third-party state — not a build failure. ` +
+      `Groom src/config/feeds.ts when the count crosses a threshold worth a PR.`
+    );
+  }
 }
 
 main().catch(err => {

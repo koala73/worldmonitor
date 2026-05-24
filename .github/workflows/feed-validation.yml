@@ -7,8 +7,11 @@ name: Feed Validation
 #
 # Triggers:
 #   - push to main: catches drift introduced by merged registry edits
-#   - schedule (every 6h): catches third-party feed outages on a cadence
-#     operators can act on without staring at PR checks
+#   - schedule (daily 00:00 UTC): catches third-party feed outages on a cadence
+#     operators can act on without staring at PR checks. Earlier 6h cadence
+#     was 4× the necessary discovery rate — feed outages don't change that
+#     fast and 542 feeds × 4 runs/day was wasted runner-minutes + third-
+#     party-fetch volume that no one acted on.
 #   - workflow_dispatch: manual re-runs from the Actions UI
 #
 # The --ci flag enforces three guardrails inside scripts/validate-rss-feeds.mjs:
@@ -27,7 +30,7 @@ on:
       - 'shared/rss-allowed-domains.json'
       - '.github/workflows/feed-validation.yml'
   schedule:
-    - cron: '0 */6 * * *'
+    - cron: '0 0 * * *'
   workflow_dispatch:
 
 permissions:

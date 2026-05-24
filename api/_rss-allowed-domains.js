@@ -311,5 +311,16 @@ export default [
   "hirado.hu",
   "portfolio.hu",
   "www.portfolio.hu",
-  "www.atv.hu"
+  "www.atv.hu",
+  "abcnews.go.com",
+  "abcnews.com",
+  "www.corriere.it",
+  "www.rt.com",
+  "www.alarabiya.net",
+  "tuoitrenews.vn",
+  "www.yonhapnewstv.co.kr",
+  "www.chosun.com",
+  "rss.libsyn.com",
+  "feeds.megaphone.fm",
+  "rss.art19.com"
 ];
