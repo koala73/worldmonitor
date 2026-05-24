@@ -55,6 +55,15 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Híradó', url: gnLocale('site:hirado.hu when:2d', 'hu', 'HU', 'HU:hu'), lang: 'hu' },
       { name: 'Portfolio.hu', url: 'https://portfolio.hu/rss/all.xml', lang: 'hu' },
       { name: 'ATV', url: 'https://www.atv.hu/rss', lang: 'hu' },
+      // Czech (CS) — mainstream + investigative
+      { name: 'iRozhlas', url: 'https://www.irozhlas.cz/rss/irozhlas', lang: 'cs' },
+      { name: 'CT24', url: 'https://ct24.ceskatelevize.cz/rss', lang: 'cs' },
+      { name: 'Deník N', url: 'https://denikn.cz/feed/', lang: 'cs' },
+      { name: 'Hospodářské Noviny', url: 'https://hn.cz/rss/cz', lang: 'cs' },
+      { name: 'Novinky.cz', url: 'https://www.novinky.cz/rss2', lang: 'cs' },
+      { name: 'Aktuálně', url: gnLocale('site:aktualne.cz when:2d', 'cs', 'CZ', 'CZ:cs'), lang: 'cs' },
+      { name: 'Hlídač Pipsu', url: 'https://hlidacipes.org/feed/', lang: 'cs' },
+      { name: 'Demagog.cz', url: gnLocale('site:demagog.cz when:14d', 'cs', 'CZ', 'CZ:cs'), lang: 'cs' },
     ],
     middleeast: [
       { name: 'BBC Middle East', url: 'https://feeds.bbci.co.uk/news/world/middle_east/rss.xml' },
