@@ -323,5 +323,10 @@ export default [
   "rss.libsyn.com",
   "feeds.megaphone.fm",
   "rss.art19.com",
-  "idp.nature.com"
+  "idp.nature.com",
+  "www.dnevnik.bg",
+  "www.capital.bg",
+  "www.24chasa.bg",
+  "www.segabg.com",
+  "bivol.bg",
 ];

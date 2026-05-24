@@ -52,6 +52,9 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   'Telex': 'mainstream', 'Index.hu': 'mainstream', 'HVG': 'mainstream',
   '444.hu': 'mainstream', '24.hu': 'mainstream', 'Híradó': 'mainstream',
   'ATV': 'mainstream', 'Portfolio.hu': 'market',
+  // Bulgarian (BG)
+  'Dnevnik': 'mainstream', 'Capital.bg': 'market', '24 Chasa': 'mainstream',
+  'Sega': 'mainstream', 'Mediapool': 'mainstream', 'BTA': 'wire', 'Bivol': 'intel',
   'SVT Nyheter': 'mainstream', 'Dagens Nyheter': 'mainstream', 'Svenska Dagbladet': 'mainstream',
   // Brazilian Addition
   'Brasil Paralelo': 'mainstream',
@@ -278,6 +281,14 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'in.gr', url: rss('https://www.in.gr/feed/'), lang: 'el' },
     { name: 'iefimerida', url: rss('https://www.iefimerida.gr/rss.xml'), lang: 'el' },
     { name: 'Proto Thema', url: rss('https://news.google.com/rss/search?q=site:protothema.gr+when:2d&hl=el&gl=GR&ceid=GR:el'), lang: 'el' },
+    // Bulgarian (BG) — locale-gated; bg is registered in SUPPORTED_LANGUAGES
+    { name: 'Dnevnik', url: rss('https://www.dnevnik.bg/rss/'), lang: 'bg' },
+    { name: 'Capital.bg', url: rss('https://www.capital.bg/rss/'), lang: 'bg' },
+    { name: '24 Chasa', url: rss('https://www.24chasa.bg/rss'), lang: 'bg' },
+    { name: 'Sega', url: rss('https://www.segabg.com/rss'), lang: 'bg' },
+    { name: 'Mediapool', url: rss('https://news.google.com/rss/search?q=site:mediapool.bg+when:2d&hl=bg&gl=BG&ceid=BG:bg'), lang: 'bg' },
+    { name: 'BTA', url: rss('https://news.google.com/rss/search?q=site:bta.bg+when:2d&hl=bg&gl=BG&ceid=BG:bg'), lang: 'bg' },
+    { name: 'Bivol', url: rss('https://bivol.bg/feed'), lang: 'bg' },
     // Russia & Ukraine (independent sources)
     { name: 'BBC Russian', url: rss('https://feeds.bbci.co.uk/russian/rss.xml'), lang: 'ru' },
     { name: 'Meduza', url: rss('https://meduza.io/rss/all'), lang: 'ru' },
