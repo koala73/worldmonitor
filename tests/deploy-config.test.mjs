@@ -448,7 +448,15 @@ describe('agent readiness: MCP/OAuth origin alignment', () => {
   });
 
   it('api/mcp.ts resource_metadata is host-derived, not hardcoded', () => {
-    const source = readFileSync(resolve(__dirname, '../api/mcp.ts'), 'utf-8');
+    // After the structural split (refactor PR), the host-derivation
+    // (`requestHost = req.headers.get('host') ?? ...`) lives in
+    // api/mcp/handler.ts and the template-literal that emits
+    // `resource_metadata="${url}"` lives in api/mcp/auth.ts (the
+    // `wwwAuthHeader` helper). Concatenate both so the three sub-greps
+    // below still see the same byte surface they did pre-split.
+    const source = readFileSync(resolve(__dirname, '../api/mcp/handler.ts'), 'utf-8')
+      + '\n'
+      + readFileSync(resolve(__dirname, '../api/mcp/auth.ts'), 'utf-8');
     // Must NOT contain a hardcoded apex or api URL for resource_metadata —
     // that regressed once (PR #3351 review: apex pointer emitted from
     // api.worldmonitor.app/mcp 401s) and the grep-only test didn't catch it.
