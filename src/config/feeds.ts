@@ -55,6 +55,10 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   'SVT Nyheter': 'mainstream', 'Dagens Nyheter': 'mainstream', 'Svenska Dagbladet': 'mainstream',
   // Brazilian Addition
   'Brasil Paralelo': 'mainstream',
+  // Romanian (RO)
+  'Digi24': 'mainstream', 'G4Media': 'mainstream', 'HotNews': 'mainstream',
+  'Recorder': 'mainstream', 'Agerpres': 'wire',
+  'Ziarul Financiar': 'market', 'Rise Project': 'mainstream',
 
   // Market/Finance
   'CNBC': 'market', 'MarketWatch': 'market', 'Yahoo Finance': 'market',
@@ -278,6 +282,14 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'in.gr', url: rss('https://www.in.gr/feed/'), lang: 'el' },
     { name: 'iefimerida', url: rss('https://www.iefimerida.gr/rss.xml'), lang: 'el' },
     { name: 'Proto Thema', url: rss('https://news.google.com/rss/search?q=site:protothema.gr+when:2d&hl=el&gl=GR&ceid=GR:el'), lang: 'el' },
+    // Romanian (RO) — mainstream + investigative
+    { name: 'Digi24', url: rss('https://www.digi24.ro/rss'), lang: 'ro' },
+    { name: 'G4Media', url: rss('https://www.g4media.ro/feed'), lang: 'ro' },
+    { name: 'HotNews', url: rss('https://hotnews.ro/feed'), lang: 'ro' },
+    { name: 'Recorder', url: rss('https://recorder.ro/feed/'), lang: 'ro' },
+    { name: 'Ziarul Financiar', url: rss('https://www.zf.ro/rss/'), lang: 'ro' },
+    { name: 'Agerpres', url: rss('https://www.agerpres.ro/rss/stiri'), lang: 'ro' },
+    { name: 'Rise Project', url: rss('https://www.riseproject.ro/feed/'), lang: 'ro' },
     // Russia & Ukraine (independent sources)
     { name: 'BBC Russian', url: rss('https://feeds.bbci.co.uk/russian/rss.xml'), lang: 'ru' },
     { name: 'Meduza', url: rss('https://meduza.io/rss/all'), lang: 'ru' },

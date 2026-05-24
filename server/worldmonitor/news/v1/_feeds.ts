@@ -55,6 +55,14 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Híradó', url: gnLocale('site:hirado.hu when:2d', 'hu', 'HU', 'HU:hu'), lang: 'hu' },
       { name: 'Portfolio.hu', url: 'https://portfolio.hu/rss/all.xml', lang: 'hu' },
       { name: 'ATV', url: 'https://www.atv.hu/rss', lang: 'hu' },
+      // Romanian (RO) — mainstream + investigative
+      { name: 'Digi24', url: 'https://www.digi24.ro/rss', lang: 'ro' },
+      { name: 'G4Media', url: 'https://www.g4media.ro/feed', lang: 'ro' },
+      { name: 'HotNews', url: 'https://hotnews.ro/feed', lang: 'ro' },
+      { name: 'Recorder', url: 'https://recorder.ro/feed/', lang: 'ro' },
+      { name: 'Ziarul Financiar', url: 'https://www.zf.ro/rss/', lang: 'ro' },
+      { name: 'Agerpres', url: 'https://www.agerpres.ro/rss/stiri', lang: 'ro' },
+      { name: 'Rise Project', url: 'https://www.riseproject.ro/feed/', lang: 'ro' },
     ],
     middleeast: [
       { name: 'BBC Middle East', url: 'https://feeds.bbci.co.uk/news/world/middle_east/rss.xml' },
