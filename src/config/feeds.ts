@@ -55,6 +55,10 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   'SVT Nyheter': 'mainstream', 'Dagens Nyheter': 'mainstream', 'Svenska Dagbladet': 'mainstream',
   // Brazilian Addition
   'Brasil Paralelo': 'mainstream',
+  // Czech (CS)
+  'iRozhlas': 'mainstream', 'CT24': 'mainstream', 'Deník N': 'mainstream',
+  'Hospodářské Noviny': 'market', 'Novinky.cz': 'mainstream', 'Aktuálně': 'mainstream',
+  'Hlídač Pipsu': 'intel', 'Demagog.cz': 'intel',
 
   // Market/Finance
   'CNBC': 'market', 'MarketWatch': 'market', 'Yahoo Finance': 'market',
@@ -278,6 +282,15 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'in.gr', url: rss('https://www.in.gr/feed/'), lang: 'el' },
     { name: 'iefimerida', url: rss('https://www.iefimerida.gr/rss.xml'), lang: 'el' },
     { name: 'Proto Thema', url: rss('https://news.google.com/rss/search?q=site:protothema.gr+when:2d&hl=el&gl=GR&ceid=GR:el'), lang: 'el' },
+    // Czech (CS) — mainstream + investigative
+    { name: 'iRozhlas', url: rss('https://www.irozhlas.cz/rss/irozhlas'), lang: 'cs' },
+    { name: 'CT24', url: rss('https://ct24.ceskatelevize.cz/rss'), lang: 'cs' },
+    { name: 'Deník N', url: rss('https://denikn.cz/feed/'), lang: 'cs' },
+    { name: 'Hospodářské Noviny', url: rss('https://hn.cz/rss/cz'), lang: 'cs' },
+    { name: 'Novinky.cz', url: rss('https://www.novinky.cz/rss2'), lang: 'cs' },
+    { name: 'Aktuálně', url: rss('https://news.google.com/rss/search?q=site:aktualne.cz+when:2d&hl=cs&gl=CZ&ceid=CZ:cs'), lang: 'cs' },
+    { name: 'Hlídač Pipsu', url: rss('https://hlidacipes.org/feed/'), lang: 'cs' },
+    { name: 'Demagog.cz', url: rss('https://news.google.com/rss/search?q=site:demagog.cz+when:14d&hl=cs&gl=CZ&ceid=CZ:cs'), lang: 'cs' },
     // Russia & Ukraine (independent sources)
     { name: 'BBC Russian', url: rss('https://feeds.bbci.co.uk/russian/rss.xml'), lang: 'ru' },
     { name: 'Meduza', url: rss('https://meduza.io/rss/all'), lang: 'ru' },
