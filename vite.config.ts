@@ -563,7 +563,7 @@ const RSS_PROXY_ALLOWED_DOMAINS = new Set([
   'www.fao.org', 'worldbank.org', 'www.imf.org',
   // Regional locale feeds
   'www.hurriyet.com.tr', 'tvn24.pl', 'www.polsatnews.pl', 'www.rp.pl', 'meduza.io',
-  'novayagazeta.eu', 'www.bangkokpost.com', 'vnexpress.net', 'www.abc.net.au',
+  'novayagazeta.eu', 'theins.ru', 'www.bangkokpost.com', 'vnexpress.net', 'www.abc.net.au',
   'news.ycombinator.com',
   // Hungarian / Central European feeds
   'telex.hu', 'index.hu', 'hvg.hu', '444.hu', '24.hu', 'hirado.hu', 'portfolio.hu', 'www.portfolio.hu', 'www.atv.hu',

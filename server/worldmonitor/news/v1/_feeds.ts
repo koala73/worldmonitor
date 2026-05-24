@@ -55,6 +55,12 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Híradó', url: gnLocale('site:hirado.hu when:2d', 'hu', 'HU', 'HU:hu'), lang: 'hu' },
       { name: 'Portfolio.hu', url: 'https://portfolio.hu/rss/all.xml', lang: 'hu' },
       { name: 'ATV', url: 'https://www.atv.hu/rss', lang: 'hu' },
+      // Russian independent (RU) — exile/independent journalism only; state outlets excluded
+      { name: 'BBC Russian', url: 'https://feeds.bbci.co.uk/russian/rss.xml', lang: 'ru' },
+      { name: 'Meduza', url: 'https://meduza.io/rss/all', lang: 'ru' },
+      { name: 'Novaya Gazeta Europe', url: 'https://novayagazeta.eu/feed/rss', lang: 'ru' },
+      { name: 'The Insider', url: 'https://theins.ru/feed', lang: 'ru' },
+      { name: 'Moscow Times', url: 'https://www.themoscowtimes.com/rss/news' },
     ],
     middleeast: [
       { name: 'BBC Middle East', url: 'https://feeds.bbci.co.uk/news/world/middle_east/rss.xml' },

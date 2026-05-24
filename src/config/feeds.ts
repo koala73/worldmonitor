@@ -35,6 +35,8 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   'CSIS': 'intel', 'RAND': 'intel', 'Brookings': 'intel', 'Carnegie': 'intel',
   'IAEA': 'gov', 'WHO': 'gov', 'UNHCR': 'gov',
   'Xinhua': 'wire', 'TASS': 'wire', 'RT': 'wire', 'RT Russia': 'wire',
+  // Russian independent (exile journalism)
+  'The Insider': 'intel', 'Moscow Times': 'mainstream',
   'NHK World': 'mainstream', 'Nikkei Asia': 'market',
 
   // Mainstream outlets
@@ -282,6 +284,7 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'BBC Russian', url: rss('https://feeds.bbci.co.uk/russian/rss.xml'), lang: 'ru' },
     { name: 'Meduza', url: rss('https://meduza.io/rss/all'), lang: 'ru' },
     { name: 'Novaya Gazeta Europe', url: rss('https://novayagazeta.eu/feed/rss'), lang: 'ru' },
+    { name: 'The Insider', url: rss('https://theins.ru/feed'), lang: 'ru' },
     { name: 'TASS', url: rss('https://news.google.com/rss/search?q=site:tass.com+OR+TASS+Russia+when:1d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'RT', url: rss('https://www.rt.com/rss/') },
     { name: 'RT Russia', url: rss('https://www.rt.com/rss/russia/') },
