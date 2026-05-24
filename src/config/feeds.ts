@@ -52,6 +52,8 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   'Telex': 'mainstream', 'Index.hu': 'mainstream', 'HVG': 'mainstream',
   '444.hu': 'mainstream', '24.hu': 'mainstream', 'Híradó': 'mainstream',
   'ATV': 'mainstream', 'Portfolio.hu': 'market',
+  // Lithuanian (LT)
+  'LRT': 'mainstream', 'Delfi LT': 'mainstream', '15min': 'mainstream', 'Lrytas': 'mainstream', 'Verslo Žinios': 'market',
   'SVT Nyheter': 'mainstream', 'Dagens Nyheter': 'mainstream', 'Svenska Dagbladet': 'mainstream',
   // Brazilian Addition
   'Brasil Paralelo': 'mainstream',
@@ -278,6 +280,12 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'in.gr', url: rss('https://www.in.gr/feed/'), lang: 'el' },
     { name: 'iefimerida', url: rss('https://www.iefimerida.gr/rss.xml'), lang: 'el' },
     { name: 'Proto Thema', url: rss('https://news.google.com/rss/search?q=site:protothema.gr+when:2d&hl=el&gl=GR&ceid=GR:el'), lang: 'el' },
+    // Lithuanian (LT)
+    { name: 'LRT', url: rss('https://news.google.com/rss/search?q=site:lrt.lt+when:2d&hl=lt&gl=LT&ceid=LT:lt'), lang: 'lt' },
+    { name: 'Delfi LT', url: rss('https://www.delfi.lt/rss/feeds/rss.xml'), lang: 'lt' },
+    { name: '15min', url: rss('https://news.google.com/rss/search?q=site:15min.lt+when:2d&hl=lt&gl=LT&ceid=LT:lt'), lang: 'lt' },
+    { name: 'Lrytas', url: rss('https://news.google.com/rss/search?q=site:lrytas.lt+when:2d&hl=lt&gl=LT&ceid=LT:lt'), lang: 'lt' },
+    { name: 'Verslo Žinios', url: rss('https://news.google.com/rss/search?q=site:vz.lt+when:2d&hl=lt&gl=LT&ceid=LT:lt'), lang: 'lt' },
     // Russia & Ukraine (independent sources)
     { name: 'BBC Russian', url: rss('https://feeds.bbci.co.uk/russian/rss.xml'), lang: 'ru' },
     { name: 'Meduza', url: rss('https://meduza.io/rss/all'), lang: 'ru' },

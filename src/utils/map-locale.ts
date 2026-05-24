@@ -10,6 +10,7 @@ const LANG_TO_TILE_FIELD: Record<string, string> = {
   es: 'name:es',
   hu: 'name:hu',
   it: 'name:it',
+  lt: 'name:lt',
   pl: 'name:pl',
   pt: 'name:pt',
   nl: 'name:nl',
