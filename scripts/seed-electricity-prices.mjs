@@ -183,7 +183,7 @@ export async function fetchEiaRegion(region, apiKey, today) {
     'data[]': 'value',
     'facets[respondent][]': region.respondent,
     'facets[type][]': 'D',
-    start: isoDate(new Date(Date.now() - 2 * 24 * 3600 * 1000)),
+    start: isoDate(new Date(today.getTime() - 2 * 24 * 3600 * 1000)),
     end: dateStr,
     'sort[0][column]': 'period',
     'sort[0][direction]': 'desc',

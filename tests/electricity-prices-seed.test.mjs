@@ -230,6 +230,30 @@ describe('fetchEiaRegion query construction', () => {
     assert.equal(result.priceMwhEur, null);
   });
 
+  it('anchors the start/end window to the today argument, not wall-clock', async () => {
+    // Backfill / test-harness scenario: caller passes a historical `today`.
+    // If start were derived from Date.now() it would land after end and EIA
+    // would return zero rows silently. Window must be self-consistent with
+    // the today argument.
+    const historicalToday = new Date('2024-01-15T00:00:00Z');
+    const captured = {};
+    const restore = mockFetch(
+      {
+        ok: true,
+        json: async () => ({ response: { data: [{ period: '2024-01-15T05', value: 9000, type: 'D' }] } }),
+      },
+      captured,
+    );
+    try {
+      await fetchEiaRegion(REGION, 'test-key', historicalToday);
+    } finally {
+      restore();
+    }
+    const params = new URL(captured.url).searchParams;
+    assert.equal(params.get('end'), '2024-01-15');
+    assert.equal(params.get('start'), '2024-01-13', 'start must be today-2d, not Date.now()-2d');
+  });
+
   it('returns null when the API returns no data rows', async () => {
     const restore = mockFetch(
       { ok: true, json: async () => ({ response: { data: [] } }) },
