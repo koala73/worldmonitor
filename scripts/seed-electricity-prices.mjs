@@ -42,6 +42,7 @@ export const EIA_REGIONS = [
   { region: 'NYISO', respondent: 'NYIS',  name: 'New York' },
   { region: 'ERCO',  respondent: 'ERCO',  name: 'Texas (ERCOT)' },
   { region: 'SPP',   respondent: 'SWPP',  name: 'Southwest' },
+  { region: 'ISNE',  respondent: 'ISNE',  name: 'New England' },
 ];
 
 // ── Date helpers ─────────────────────────────────────────────────────────────
@@ -175,11 +176,13 @@ async function fetchAllEntsoE(token, today, yesterday) {
 
 // ── EIA-930 fetcher ───────────────────────────────────────────────────────────
 
-async function fetchEiaRegion(region, apiKey, today) {
+export async function fetchEiaRegion(region, apiKey, today) {
   const dateStr = isoDate(today);
   const params = new URLSearchParams({
+    frequency: 'hourly',
     'data[]': 'value',
     'facets[respondent][]': region.respondent,
+    'facets[type][]': 'D',
     start: isoDate(new Date(Date.now() - 2 * 24 * 3600 * 1000)),
     end: dateStr,
     'sort[0][column]': 'period',
