@@ -55,6 +55,17 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Híradó', url: gnLocale('site:hirado.hu when:2d', 'hu', 'HU', 'HU:hu'), lang: 'hu' },
       { name: 'Portfolio.hu', url: 'https://portfolio.hu/rss/all.xml', lang: 'hu' },
       { name: 'ATV', url: 'https://www.atv.hu/rss', lang: 'hu' },
+      // Greek (EL) additions
+      { name: 'Kathimerini', url: gnLocale('site:kathimerini.gr when:2d', 'el', 'GR', 'GR:el'), lang: 'el' },
+      { name: 'Naftemporiki', url: 'https://www.naftemporiki.gr/feed/', lang: 'el' },
+      { name: 'in.gr', url: 'https://www.in.gr/feed/', lang: 'el' },
+      { name: 'iefimerida', url: 'https://www.iefimerida.gr/rss.xml', lang: 'el' },
+      { name: 'Proto Thema', url: gnLocale('site:protothema.gr when:2d', 'el', 'GR', 'GR:el'), lang: 'el' },
+      { name: 'ERT', url: gnLocale('site:ert.gr when:2d', 'el', 'GR', 'GR:el'), lang: 'el' },
+      { name: 'AMNA', url: gnLocale('site:amna.gr when:2d', 'el', 'GR', 'GR:el'), lang: 'el' },
+      { name: 'Ta Nea', url: 'https://www.tanea.gr/feed/', lang: 'el' },
+      { name: 'Liberal GR', url: 'https://www.liberal.gr/feed', lang: 'el' },
+      { name: 'CNN Greece', url: 'https://www.cnn.gr/feed', lang: 'el' },
     ],
     middleeast: [
       { name: 'BBC Middle East', url: 'https://feeds.bbci.co.uk/news/world/middle_east/rss.xml' },
