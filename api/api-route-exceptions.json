@@ -5,7 +5,112 @@
     {
       "path": "api/mcp.ts",
       "category": "external-protocol",
-      "reason": "MCP streamable-HTTP transport — JSON-RPC 2.0 envelope dictated by the Model Context Protocol spec, not something we can or should redefine as proto.",
+      "reason": "MCP streamable-HTTP transport — JSON-RPC 2.0 envelope dictated by the Model Context Protocol spec, not something we can or should redefine as proto. After the api/mcp.ts → api/mcp/ structural split, this file is a thin re-export shim that preserves the Vercel edge route URL and the public export surface; the actual handler and supporting modules live under api/mcp/ (each listed below).",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/handler.ts",
+      "category": "external-protocol",
+      "reason": "MCP transport handler — mcpHandler + default Vercel entry. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/auth.ts",
+      "category": "external-protocol",
+      "reason": "MCP auth resolution (Bearer + X-WorldMonitor-Key), Pro pre-checks, rate-limiter init, and PRODUCTION_DEPS bundle for the MCP handler. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/quota.ts",
+      "category": "external-protocol",
+      "reason": "MCP Pro daily-quota INCR-first reservation + F4 clamp loop. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/dispatch.ts",
+      "category": "external-protocol",
+      "reason": "MCP tools/call dispatcher — executeTool (cache-tool path), dispatchToolsCall, per-tool budget gate, telemetry emission, F6 cache_all_null guard. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/registry/cache-tools.ts",
+      "category": "external-protocol",
+      "reason": "MCP TOOL_REGISTRY cache-tool entries (no _execute). Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/registry/rpc-tools.ts",
+      "category": "external-protocol",
+      "reason": "MCP TOOL_REGISTRY RPC-tool entries (with _execute, incl. describe_tool). Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/registry/index.ts",
+      "category": "external-protocol",
+      "reason": "MCP TOOL_REGISTRY merge + buildPublicTool + SUMMARY_SCHEMA + TOOL_LIST_RESPONSE precompute + collision guard. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/telemetry.ts",
+      "category": "external-protocol",
+      "reason": "MCP per-tools/call + per-initialize structured-log emission and the two closed-key telemetry allowlists (MCP_TOOLCALL_TELEMETRY_KEYS, MCP_TOOLS_LIST_TELEMETRY_KEYS). Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/constants.ts",
+      "category": "external-protocol",
+      "reason": "MCP protocol version negotiation (env-at-call-time), SERVER_NAME, SERVER_VERSION, SERVER_INSTRUCTIONS, MCP_LOG_LEVELS, byte caps. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/freshness.ts",
+      "category": "external-protocol",
+      "reason": "MCP cache-tool freshness evaluation (evaluateFreshness) — drives the per-response cached_at + stale envelope fields. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/jmespath.ts",
+      "category": "external-protocol",
+      "reason": "MCP universal JMESPath projection (applyJmespath + JMESPATH_SCHEMA) — two-gate input/output byte cap, soft-failure envelopes. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/filters.ts",
+      "category": "external-protocol",
+      "reason": "MCP cache-tool _postFilter helpers (argStr/argNum/narrowNested/etc.), summarizeData, and cacheEnvelope schema builder. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/utils.ts",
+      "category": "external-protocol",
+      "reason": "MCP utf8ByteLength + compressDescription — UTF-8 byte counting and tools/list description compression. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/rpc.ts",
+      "category": "external-protocol",
+      "reason": "MCP JSON-RPC 2.0 envelope helpers (rpcOk + rpcError). Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/types.ts",
+      "category": "external-protocol",
+      "reason": "MCP shared type declarations (McpAuthContext, McpHandlerDeps, ToolDef union, etc.). Pure types — no runtime behaviour — but lives under api/mcp/ so the contract script requires a listing.",
       "owner": "@SebastienMelki",
       "removal_issue": null
     },
