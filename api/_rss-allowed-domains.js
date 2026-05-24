@@ -311,5 +311,12 @@ export default [
   "hirado.hu",
   "portfolio.hu",
   "www.portfolio.hu",
-  "www.atv.hu"
+  "www.atv.hu",
+  "www.digi24.ro",
+  "www.g4media.ro",
+  "hotnews.ro",
+  "recorder.ro",
+  "www.zf.ro",
+  "www.agerpres.ro",
+  "www.riseproject.ro"
 ];
