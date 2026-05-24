@@ -311,5 +311,16 @@ export default [
   "hirado.hu",
   "portfolio.hu",
   "www.portfolio.hu",
-  "www.atv.hu"
+  "www.atv.hu",
+  "www.ukrinform.ua",
+  "pravda.com.ua",
+  "hromadske.ua",
+  "suspilne.media",
+  "zn.ua",
+  "rbc.ua",
+  "bihus.info",
+  "slidstvo.info",
+  "www.slidstvo.info",
+  "schemes.media",
+  "voxukraine.org"
 ];
