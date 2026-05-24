@@ -34,7 +34,7 @@ const LANG_NAMES = {
   ar: 'Arabic', bg: 'Bulgarian', cs: 'Czech', de: 'German', el: 'Greek',
   es: 'Spanish', fr: 'French', hu: 'Hungarian', it: 'Italian', ja: 'Japanese',
   ko: 'Korean', nl: 'Dutch', pl: 'Polish', pt: 'Portuguese (Brazil)',
-  ro: 'Romanian', ru: 'Russian', sv: 'Swedish', sr: 'Serbian (Latin)',, th: 'Thai', tr: 'Turkish',
+  ro: 'Romanian', ru: 'Russian', sv: 'Swedish', sr: 'Serbian (Latin)', th: 'Thai', tr: 'Turkish',
   vi: 'Vietnamese', zh: 'Simplified Chinese',
 };
 const BATCH_SIZE = 50;
