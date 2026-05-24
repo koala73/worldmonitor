@@ -54,6 +54,7 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   'ATV': 'mainstream', 'Portfolio.hu': 'market',
   // Polish (PL) additions
   'PAP': 'wire', 'Gazeta Wyborcza': 'mainstream', 'Polityka': 'mainstream', 'Onet': 'mainstream', 'OKO.press': 'intel', 'TVP Info': 'mainstream',
+  'TVN24': 'mainstream', 'Polsat News': 'mainstream', 'Rzeczpospolita': 'mainstream',
   'SVT Nyheter': 'mainstream', 'Dagens Nyheter': 'mainstream', 'Svenska Dagbladet': 'mainstream',
   // Brazilian Addition
   'Brasil Paralelo': 'mainstream',
