@@ -322,7 +322,17 @@ export function buildPromptResponse(
 
   const lines: string[] = [renderedIntro, ''];
   prompt.steps.forEach((step, i) => {
-    const renderedArgs = substituteValue(step.args, values);
+    const rawArgs = substituteValue(step.args, values) as Record<string, unknown>;
+    // Strip top-level keys that resolved to '' (an omitted optional arg —
+    // required-arg absence already returned -32602 above). Passing `""` to a
+    // tool is ambiguous: postFilters today truthy-check (safe), but a future
+    // tool that guards with `!== undefined` would try to filter by empty
+    // string and serve incorrect/empty results instead of the global view.
+    // Render the no-filter call literally as `{}` so the LLM sees the
+    // intended shape.
+    const renderedArgs = Object.fromEntries(
+      Object.entries(rawArgs).filter(([, v]) => v !== ''),
+    );
     lines.push(`Step ${i + 1} — ${step.tool}`);
     lines.push(`  purpose: ${substituteString(step.purpose, values)}`);
     lines.push(`  arguments: ${JSON.stringify(renderedArgs)}`);

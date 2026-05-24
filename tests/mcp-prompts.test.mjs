@@ -180,6 +180,28 @@ describe('api/mcp.ts — prompts capability + JMESPath-vs-schema parity', () => 
     assert.ok(text.includes('for DE'), `optional-arg-present branch must include "for DE" — got: ${text.slice(0, 200)}…`);
   });
 
+  it('prompts/get strips empty-string optional args from the rendered tool-arguments block', async () => {
+    // Regression guard: when an optional arg is omitted, the renderer must
+    // emit `arguments: {}` (no-filter) — NOT `{"country":""}`. Passing "" to
+    // a future tool that guards with `!== undefined` would filter by empty
+    // string instead of returning the global view.
+    const res = await handler(makeReq('POST', {
+      jsonrpc: '2.0', id: 9, method: 'prompts/get',
+      params: { name: 'energy-shock-watch', arguments: {} },
+    }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    const text = body.result?.messages?.[0]?.content?.text ?? '';
+    assert.ok(
+      text.includes('arguments: {}'),
+      `omitted optional arg must render as {} — got: ${text.slice(0, 400)}…`,
+    );
+    assert.ok(
+      !text.includes('"country":""'),
+      `omitted optional arg must NOT render as {"country":""} — got: ${text.slice(0, 400)}…`,
+    );
+  });
+
   // -------------------------------------------------------------------------
   // prompts/get error paths
   // -------------------------------------------------------------------------
