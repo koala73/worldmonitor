@@ -24,7 +24,6 @@ import { strict as assert } from 'node:assert';
 import {
   BASE_URL,
   HMAC_SECRET,
-  PRO_BEARER,
   makeProDeps,
   proReq,
   callBody,
@@ -49,6 +48,24 @@ describe('api/mcp.ts — protocol conformance lifecycle (in-process)', () => {
   let mcpHandler;
 
   beforeEach(async () => {
+    // UPSTASH env vars are SET (not deleted as in `mcp.test.mjs`'s default
+    // beforeEach) because `readJsonFromUpstash` in api/_upstash-json.js short-
+    // circuits to `null` when they're missing — that would trip the F6
+    // `cache_all_null` guard on every `get_market_data` call and surface as
+    // -32603 before the quota path under test could fire. Setting them keeps
+    // the cache-read path live so the fetch stub below can answer the GETs.
+    //
+    // Side effect of setting them: `getMcpProMinRatelimit()` constructs a real
+    // `Ratelimit` instance which calls `globalThis.fetch` with an EVALSHA
+    // pipeline shape that the cache-tuned stub does NOT satisfy. The thrown
+    // response is swallowed by `applyPerMinuteLimit`'s
+    // `catch { /* graceful degradation */ }`, so the 60/min gate is a no-op
+    // on every authenticated step here. That's INTENTIONAL: this suite's
+    // scope is the daily-quota lifecycle; the per-minute path is covered
+    // separately by `mcp.test.mjs::'returns JSON-RPC -32029 when rate
+    // limited'` and `mcp-quota-concurrent.test.mjs`. Same posture as both
+    // sister suites — documenting it here so it doesn't read like a latent
+    // bypass to a future reader.
     process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
     process.env.UPSTASH_REDIS_REST_TOKEN = 'stub';
     process.env.MCP_INTERNAL_HMAC_SECRET = HMAC_SECRET;
@@ -82,6 +99,24 @@ describe('api/mcp.ts — protocol conformance lifecycle (in-process)', () => {
     // Asserts the 401 envelope (HTTP status, WWW-Authenticate Bearer realm,
     // JSON-RPC code -32001) so a regression that drops the gate is caught
     // at the very first hop.
+    //
+    // Deps bundle is intentionally a thrower-stub: `resolveAuthContext` must
+    // return 401 BEFORE consulting any dep — no Bearer header means no
+    // `resolveBearerToContext` call, no API key means no validation, and 401
+    // returns before `applyPerMinuteLimit` runs. A throwing stub turns "the
+    // gate leaks and lets the request reach the deps" into a loud failure
+    // (the throw escapes the handler as a -32603, which would fail the 401
+    // assertion below). Using `makeProDeps().deps` here would mask that —
+    // the stub would silently answer instead of signaling the breach.
+    const unreachable = (name) => async () => {
+      throw new Error(`unauth path must not touch deps.${name}`);
+    };
+    const step1Deps = {
+      resolveBearerToContext: unreachable('resolveBearerToContext'),
+      validateProMcpToken: unreachable('validateProMcpToken'),
+      getEntitlements: unreachable('getEntitlements'),
+      redisPipeline: unreachable('redisPipeline'),
+    };
     const step1Res = await mcpHandler(
       new Request(BASE_URL, {
         method: 'POST',
@@ -91,7 +126,7 @@ describe('api/mcp.ts — protocol conformance lifecycle (in-process)', () => {
           params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'lifecycle-test', version: '1.0' } },
         }),
       }),
-      makeProDeps().deps,
+      step1Deps,
     );
     assert.equal(step1Res.status, 401, 'step 1 (unauth initialize): expected HTTP 401');
     assert.ok(
