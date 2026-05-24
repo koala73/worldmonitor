@@ -73,6 +73,12 @@ function extractServerMessage(body: CheckoutErrorBody | undefined): string | und
 function statusToCode(status: number, body: CheckoutErrorBody | undefined): CheckoutErrorCode {
   if (status === 401) return 'unauthorized';
   if (status === 409 && body?.error === ACTIVE_SUBSCRIPTION_EXISTS) return 'duplicate_subscription';
+  // 403 from /api/create-checkout is infrastructure (Vercel firewall / WAF / edge
+  // bot-protection) — neither the edge gateway nor the Convex relay handler
+  // ever emits 403 on this route. Treat as retryable service unavailability so
+  // the user gets accurate copy instead of the misleading "That product isn't
+  // available" they'd see under the generic 4xx → invalid_product branch.
+  if (status === 403) return 'service_unavailable';
   if (status >= 400 && status < 500) return 'invalid_product';
   if (status >= 500 && status < 600) return 'service_unavailable';
   return 'unknown';
@@ -128,4 +134,60 @@ export function classifySyntheticCheckoutError(
     userMessage: pickUserMessage(kind),
     retryable: RETRYABLE[kind],
   };
+}
+
+/**
+ * Snapshot of upstream-emitter identity captured from a failed HTTP
+ * response. Attached to the Sentry payload so a future 403/4xx event
+ * carries enough information to identify whether Cloudflare, Vercel,
+ * or our own app emitted it.
+ *
+ * Originating triage: WORLDMONITOR-RN — a 403 on /api/create-checkout
+ * had no signal beyond status code because the old failure path called
+ * `resp.json().catch(() => ({}))` and discarded both the response body
+ * (Cloudflare 403 pages are HTML and silently became `{}`) AND the
+ * response headers (cf-ray, server, x-vercel-id would have named the
+ * emitter in one glance). This snapshot is the diagnostic recovery.
+ */
+export interface UpstreamSnapshot {
+  /** Cloudflare ray identifier — presence is definitive for CF emission. */
+  cfRay?: string;
+  /** `server` response header — "cloudflare" / "Vercel" / etc. */
+  server?: string;
+  /** Vercel function/edge invocation ID — presence means Vercel saw the request. */
+  vercelId?: string;
+  /** Vercel cache status (HIT/MISS/STALE/BYPASS). */
+  vercelCache?: string;
+  /** First 200 chars of the response body (truncated). HTML 403 pages from
+   *  CF/Vercel are distinctive; our own JSON errors fit comfortably. */
+  bodySnippet?: string;
+}
+
+const BODY_SNIPPET_MAX = 200;
+
+/**
+ * Build an UpstreamSnapshot from a fetch Response (already-read text body
+ * is passed in because Response bodies are single-use; the caller must
+ * read it once for both classifier parsing and snapshot capture).
+ *
+ * All fields are optional — missing headers map to `undefined`, not
+ * empty strings, so Sentry's `extra` view filters cleanly.
+ */
+export function snapshotUpstreamResponse(
+  resp: Pick<Response, 'headers'>,
+  rawBody: string,
+): UpstreamSnapshot {
+  const headers = resp.headers;
+  const snap: UpstreamSnapshot = {
+    cfRay: headers.get('cf-ray') ?? undefined,
+    server: headers.get('server') ?? undefined,
+    vercelId: headers.get('x-vercel-id') ?? undefined,
+    vercelCache: headers.get('x-vercel-cache') ?? undefined,
+  };
+  if (rawBody.length > 0) {
+    snap.bodySnippet = rawBody.length > BODY_SNIPPET_MAX
+      ? rawBody.slice(0, BODY_SNIPPET_MAX)
+      : rawBody;
+  }
+  return snap;
 }

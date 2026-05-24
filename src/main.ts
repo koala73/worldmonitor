@@ -202,6 +202,9 @@ Sentry.init({
     /Qt\([^)]*\) is not a function/,
     /shaderSource must be an instance of WebGLShader/,
     /WebGL2RenderingContext\.shaderSource: Argument 1 is not an object/,
+    // Chrome wording for the same condition (gl.createShader returned null,
+    // typically after WebGL context loss or on degraded GPU drivers). WORLDMONITOR-RM.
+    /Failed to execute 'shaderSource' on 'WebGL2?RenderingContext': parameter 1 is not of type 'WebGLShader'/,
     /Failed to initialize WebGL/,
     /opacityVertexArray\.length/,
     /Length of new data is \d+, which doesn't match current length of/,
