@@ -567,6 +567,10 @@ const RSS_PROXY_ALLOWED_DOMAINS = new Set([
   'news.ycombinator.com',
   // Hungarian / Central European feeds
   'telex.hu', 'index.hu', 'hvg.hu', '444.hu', '24.hu', 'hirado.hu', 'portfolio.hu', 'www.portfolio.hu', 'www.atv.hu',
+  // German (DE) feeds — previously missing from vite proxy
+  'www.tagesschau.de', 'www.spiegel.de', 'newsfeed.zeit.de', 'www.bild.de',
+  // Austrian (AT) feeds
+  'rss.orf.at', 'www.derstandard.at', 'www.diepresse.com', 'kurier.at',
   // Finance variant
   'www.coindesk.com', 'cointelegraph.com',
   // Happy variant — positive news sources
