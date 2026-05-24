@@ -52,6 +52,8 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   'Telex': 'mainstream', 'Index.hu': 'mainstream', 'HVG': 'mainstream',
   '444.hu': 'mainstream', '24.hu': 'mainstream', 'Híradó': 'mainstream',
   'ATV': 'mainstream', 'Portfolio.hu': 'market',
+  // Estonian (ET)
+  'ERR': 'mainstream', 'Postimees': 'mainstream', 'Delfi ET': 'mainstream', 'EPL': 'mainstream', 'Äripäev': 'market',
   'SVT Nyheter': 'mainstream', 'Dagens Nyheter': 'mainstream', 'Svenska Dagbladet': 'mainstream',
   // Brazilian Addition
   'Brasil Paralelo': 'mainstream',
@@ -278,6 +280,12 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'in.gr', url: rss('https://www.in.gr/feed/'), lang: 'el' },
     { name: 'iefimerida', url: rss('https://www.iefimerida.gr/rss.xml'), lang: 'el' },
     { name: 'Proto Thema', url: rss('https://news.google.com/rss/search?q=site:protothema.gr+when:2d&hl=el&gl=GR&ceid=GR:el'), lang: 'el' },
+    // Estonian (ET)
+    { name: 'ERR', url: rss('https://www.err.ee/rss'), lang: 'et' },
+    { name: 'Postimees', url: rss('https://www.postimees.ee/rss'), lang: 'et' },
+    { name: 'Delfi ET', url: rss('https://www.delfi.ee/rss/feeds/rss.xml'), lang: 'et' },
+    { name: 'EPL', url: rss('https://epl.delfi.ee/rss'), lang: 'et' },
+    { name: 'Äripäev', url: rss('https://www.aripaev.ee/rss'), lang: 'et' },
     // Russia & Ukraine (independent sources)
     { name: 'BBC Russian', url: rss('https://feeds.bbci.co.uk/russian/rss.xml'), lang: 'ru' },
     { name: 'Meduza', url: rss('https://meduza.io/rss/all'), lang: 'ru' },

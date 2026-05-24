@@ -323,5 +323,10 @@ export default [
   "rss.libsyn.com",
   "feeds.megaphone.fm",
   "rss.art19.com",
-  "idp.nature.com"
+  "idp.nature.com",
+  "www.err.ee",
+  "www.postimees.ee",
+  "www.delfi.ee",
+  "epl.delfi.ee",
+  "www.aripaev.ee",
 ];
