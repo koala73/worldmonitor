@@ -13,7 +13,7 @@
     "instabilityIndex": "Индекс на нестабилност",
     "notTracked": "Не се проследява — {{country}} не е в списъка на CII tier-1",
     "intelBrief": "Разузнавателен преглед",
-    "generatingBrief": "Генериране на разузнавателен преглед...",
+    "generatingBrief": "Генерирам разузнавателен преглед...",
     "topNews": "Топ новини",
     "activeSignals": "Активни сигнали",
     "timeline": "7-дневна времева линия",
@@ -751,7 +751,9 @@
       "summarizing": "Обобщаване…"
     },
     "progressCharts": {
-      "noData": "Няма налични данни за напредъка"
+      "noData": "Няма налични данни за напредъка",
+      "fallbackBadge": "Showing static fallback data — live series unavailable",
+      "fallbackTooltip": "The live World Bank seed could not be reached. These charts are rendered from a hardcoded snapshot last verified Feb 2026."
     },
     "monitor": {
       "placeholder": "Ключови думи (разделени със запетая)",
@@ -1310,7 +1312,9 @@
     "cii": {
       "shareStory": "Дели история",
       "noSignals": "Няма открити сигнали на нестабилност",
-      "infoTooltip": "<strong>Методология</strong><ul><li><strong>U</strong>nrest: граждански безред & протести</li><li><strong>C</strong>onflict: интензивност на въоръжен конфликт</li><li><strong>S</strong>ecurity: военни полети/кораби над територия</li><li><strong>I</strong>nformation: скорост на новини и корелация на фокусни точки</li><li>Близост на гореща точка повишение (стратегически местоположения)</li></ul><em>U:C:S:I стойностите показват компонентни резултати.</em> Откритие на фокусни точки коерелира новинни субекти със сигнали на карта за точно оценяване."
+      "infoTooltip": "<strong>Методология</strong><ul><li><strong>U</strong>nrest: граждански безред & протести</li><li><strong>C</strong>onflict: интензивност на въоръжен конфликт</li><li><strong>S</strong>ecurity: военни полети/кораби над територия</li><li><strong>I</strong>nformation: скорост на новини и корелация на фокусни точки</li><li>Близост на гореща точка повишение (стратегически местоположения)</li></ul><em>U:C:S:I стойностите показват компонентни резултати.</em> Откритие на фокусни точки коерелира новинни субекти със сигнали на карта за точно оценяване.",
+      "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
+      "methodologyLink": "Includes per-country baseline + event multiplier — see /docs/methodology/cii-risk-scores for the published table"
     },
     "insights": {
       "noStories": "Няма други или многоточни истории все още",
@@ -2004,7 +2008,8 @@
       "errors": {
         "noData": "Няма налични данни за избухване",
         "failedToLoad": "Неуспешно зареждане"
-      }
+      },
+      "methodologyNote": "Alert / Warning / Watch levels come from an editorial keyword classifier — see /docs/methodology/disease-alert-level for the keyword table and limitations."
     },
     "earningsCalendar": {
       "infoTooltip": "<strong>Календар на печалбите</strong> Предстоящи и скорошни отчети за печалби на големи публични компании. Показва прогнози за EPS срещу реални, приходи и класификация превишаване/пропуск. Източник: доставчици на финансови данни.",
@@ -2067,7 +2072,8 @@
       "errors": {
         "unavailable": "FSI данни недостъпни",
         "failedToLoad": "Неуспешно зареждане"
-      }
+      },
+      "cissStale": "ECB has not published a newer value — this reading may be out of date."
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>Тракер на търговията в Хормуз</strong> Проследяване на AIS плавателни съдове в реално време през Ормузкия проток, най-критичната петролна точка на задръстване в света. Следи броя на танкери, събития на прекъсване и седмични промени в потоците. Приблизително 20% от световните доставки на петрол преминават тук ежедневно.",
@@ -3145,7 +3151,7 @@
     "documentTitle": "World Monitor — Табло за управление на глобална разузнавателна информация в реално време",
     "metaDescription": "Платформа за глобална разузнавателна информация в реално време. Представена в WIRED. Използвана от 2M+ хора в 190 страни. Конфликти, пазари, военни дела, OSINT в един изглед.",
     "offlineTitle": "Вие сте офлайн",
-    "offlineMessage": "World Monitor изисква интернет връзка за получаване на данни за разузнаване в реално време.",
+    "offlineMessage": "World Monitor изисква интернет връзка за данни за разузнаване в реално време.",
     "offlineRetry": "Повтори"
   },
   "widgets": {
