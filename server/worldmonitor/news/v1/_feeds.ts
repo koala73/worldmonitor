@@ -55,6 +55,10 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Híradó', url: gnLocale('site:hirado.hu when:2d', 'hu', 'HU', 'HU:hu'), lang: 'hu' },
       { name: 'Portfolio.hu', url: 'https://portfolio.hu/rss/all.xml', lang: 'hu' },
       { name: 'ATV', url: 'https://www.atv.hu/rss', lang: 'hu' },
+      { name: 'RTV SLO', url: 'https://img.rtvslo.si/feeds/00.xml', lang: 'sl' },
+      { name: 'N1 Slovenia', url: 'https://n1info.si/feed/', lang: 'sl' },
+      { name: '24ur', url: 'https://www.24ur.com/rss', lang: 'sl' },
+
     ],
     middleeast: [
       { name: 'BBC Middle East', url: 'https://feeds.bbci.co.uk/news/world/middle_east/rss.xml' },

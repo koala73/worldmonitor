@@ -52,6 +52,7 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   'Telex': 'mainstream', 'Index.hu': 'mainstream', 'HVG': 'mainstream',
   '444.hu': 'mainstream', '24.hu': 'mainstream', 'Híradó': 'mainstream',
   'ATV': 'mainstream', 'Portfolio.hu': 'market',
+  'RTV SLO': 'mainstream', 'N1 Slovenia': 'mainstream', '24ur': 'mainstream',
   'SVT Nyheter': 'mainstream', 'Dagens Nyheter': 'mainstream', 'Svenska Dagbladet': 'mainstream',
   // Brazilian Addition
   'Brasil Paralelo': 'mainstream',
@@ -272,6 +273,10 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'Híradó', url: rss('https://news.google.com/rss/search?q=site:hirado.hu+when:2d&hl=hu&gl=HU&ceid=HU:hu'), lang: 'hu' },
     { name: 'Portfolio.hu', url: rss('https://portfolio.hu/rss/all.xml'), lang: 'hu' },
     { name: 'ATV', url: rss('https://www.atv.hu/rss'), lang: 'hu' },
+    { name: 'RTV SLO', url: rss('https://img.rtvslo.si/feeds/00.xml'), lang: 'sl' },
+    { name: 'N1 Slovenia', url: rss('https://n1info.si/feed/'), lang: 'sl' },
+    { name: '24ur', url: rss('https://www.24ur.com/rss'), lang: 'sl' },
+
     // Greek (EL)
     { name: 'Kathimerini', url: rss('https://news.google.com/rss/search?q=site:kathimerini.gr+when:2d&hl=el&gl=GR&ceid=GR:el'), lang: 'el' },
     { name: 'Naftemporiki', url: rss('https://www.naftemporiki.gr/feed/'), lang: 'el' },

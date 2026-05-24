@@ -12,7 +12,7 @@ import enTranslation from '../locales/en.json';
 // the moment they pick another language explicitly, that choice persists here.
 const EXPLICIT_LOCALE_KEY = 'wm-locale-explicit';
 
-const SUPPORTED_LANGUAGES = ['en', 'bg', 'cs', 'fr', 'de', 'el', 'es', 'hu', 'it', 'pl', 'pt', 'nl', 'sv', 'ru', 'ar', 'zh', 'ja', 'ko', 'ro', 'tr', 'th', 'vi'] as const;
+const SUPPORTED_LANGUAGES = ['sl', 'en', 'bg', 'cs', 'fr', 'de', 'el', 'es', 'hu', 'it', 'pl', 'pt', 'nl', 'sv', 'ru', 'ar', 'zh', 'ja', 'ko', 'ro', 'tr', 'th', 'vi'] as const;
 type SupportedLanguage = typeof SUPPORTED_LANGUAGES[number];
 type TranslationDictionary = Record<string, unknown>;
 
@@ -182,6 +182,7 @@ export const LANGUAGES = [
   { code: 'pl', label: 'Polski', flag: '🇵🇱' },
   { code: 'pt', label: 'Português', flag: '🇵🇹' },
   { code: 'nl', label: 'Nederlands', flag: '🇳🇱' },
+  { code: 'sl', label: 'Slovenščina', flag: '🇸🇮' },
   { code: 'sv', label: 'Svenska', flag: '🇸🇪' },
   { code: 'ru', label: 'Русский', flag: '🇷🇺' },
   { code: 'ja', label: '日本語', flag: '🇯🇵' },

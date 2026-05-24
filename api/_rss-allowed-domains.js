@@ -323,5 +323,8 @@ export default [
   "rss.libsyn.com",
   "feeds.megaphone.fm",
   "rss.art19.com",
-  "idp.nature.com"
+  "idp.nature.com",
+  "img.rtvslo.si",
+  "n1info.si",
+  "www.24ur.com",
 ];
