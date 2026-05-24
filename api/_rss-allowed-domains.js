@@ -311,5 +311,11 @@ export default [
   "hirado.hu",
   "portfolio.hu",
   "www.portfolio.hu",
-  "www.atv.hu"
+  "www.atv.hu",
+  "dennikn.sk",
+  "sme.sk",
+  "www.aktuality.sk",
+  "hnonline.sk",
+  "tasr.sk",
+  "demagog.sk"
 ];
