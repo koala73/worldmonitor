@@ -55,6 +55,17 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Híradó', url: gnLocale('site:hirado.hu when:2d', 'hu', 'HU', 'HU:hu'), lang: 'hu' },
       { name: 'Portfolio.hu', url: 'https://portfolio.hu/rss/all.xml', lang: 'hu' },
       { name: 'ATV', url: 'https://www.atv.hu/rss', lang: 'hu' },
+      // Ukrainian (UK) — mirrors src/config/feeds.ts europe block.
+      { name: 'Ukrinform', url: 'https://www.ukrinform.ua/rss/block-lastnews', lang: 'uk' },
+      { name: 'Ukrainska Pravda', url: gnLocale('site:pravda.com.ua when:2d', 'uk', 'UA', 'UA:uk'), lang: 'uk' },
+      { name: 'Hromadske', url: gnLocale('site:hromadske.ua when:2d', 'uk', 'UA', 'UA:uk'), lang: 'uk' },
+      { name: 'Suspilne', url: gnLocale('site:suspilne.media when:2d', 'uk', 'UA', 'UA:uk'), lang: 'uk' },
+      { name: 'ZN.UA', url: gnLocale('site:zn.ua when:2d', 'uk', 'UA', 'UA:uk'), lang: 'uk' },
+      { name: 'RBC-Ukraine', url: gnLocale('site:rbc.ua when:2d', 'uk', 'UA', 'UA:uk'), lang: 'uk' },
+      { name: 'Bihus.Info', url: 'https://bihus.info/feed/', lang: 'uk' },
+      { name: 'Slidstvo.Info', url: 'https://www.slidstvo.info/feed/', lang: 'uk' },
+      { name: 'Skhemy', url: gnLocale('site:schemes.media when:2d', 'uk', 'UA', 'UA:uk'), lang: 'uk' },
+      { name: 'VoxUkraine', url: gnLocale('site:voxukraine.org when:2d', 'uk', 'UA', 'UA:uk'), lang: 'uk' },
     ],
     middleeast: [
       { name: 'BBC Middle East', url: 'https://feeds.bbci.co.uk/news/world/middle_east/rss.xml' },
