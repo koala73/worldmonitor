@@ -4,6 +4,7 @@ const LANG_TO_TILE_FIELD: Record<string, string> = {
   en: 'name:en',
   bg: 'name:bg',
   cs: 'name:cs',
+  et: 'name:et',
   fr: 'name:fr',
   de: 'name:de',
   el: 'name:el',

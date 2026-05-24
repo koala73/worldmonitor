@@ -577,6 +577,11 @@ const RSS_PROXY_ALLOWED_DOMAINS = new Set([
   'abcnews.go.com', 'abcnews.com', 'www.corriere.it', 'www.rt.com', 'www.alarabiya.net', 'tuoitrenews.vn',
   'www.yonhapnewstv.co.kr', 'www.chosun.com', 'rss.libsyn.com', 'feeds.megaphone.fm', 'rss.art19.com',
   'idp.nature.com',
+  'www.err.ee',
+  'www.postimees.ee',
+  'www.delfi.ee',
+  'epl.delfi.ee',
+  'www.aripaev.ee',
 ]);
 
 function rssProxyPlugin(): Plugin {
