@@ -55,6 +55,13 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Híradó', url: gnLocale('site:hirado.hu when:2d', 'hu', 'HU', 'HU:hu'), lang: 'hu' },
       { name: 'Portfolio.hu', url: 'https://portfolio.hu/rss/all.xml', lang: 'hu' },
       { name: 'ATV', url: 'https://www.atv.hu/rss', lang: 'hu' },
+      // Latvian (LV)
+      { name: 'LSM', url: 'https://www.lsm.lv/rss/', lang: 'lv' },
+      { name: 'Delfi LV', url: 'https://www.delfi.lv/rss/feeds/rss.xml', lang: 'lv' },
+      { name: 'Latvijas Avīze', url: 'https://www.la.lv/rss', lang: 'lv' },
+      { name: 'Diena', url: gnLocale('site:diena.lv when:2d', 'lv', 'LV', 'LV:lv'), lang: 'lv' },
+      { name: 'TVNet', url: gnLocale('site:tvnet.lv when:2d', 'lv', 'LV', 'LV:lv'), lang: 'lv' },
+      { name: 'Neatkarīgā', url: gnLocale('site:nra.lv when:2d', 'lv', 'LV', 'LV:lv'), lang: 'lv' },
     ],
     middleeast: [
       { name: 'BBC Middle East', url: 'https://feeds.bbci.co.uk/news/world/middle_east/rss.xml' },
