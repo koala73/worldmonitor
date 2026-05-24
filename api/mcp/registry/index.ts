@@ -59,10 +59,11 @@ export function buildPublicTool(
 ): PublicToolShape {
   const isCacheTool = tool._execute === undefined;
 
-  // Recursively clone each property schema. Handles direct `enum: [...]`
-  // arrays (e.g. api/mcp.ts:810) and nested `items.enum: [...]` arrays
-  // (e.g. api/mcp.ts:655) — both present in TOOL_REGISTRY. `structuredClone`
-  // is a Web Platform global on Vercel edge + Node 18+ (no polyfill needed).
+  // Recursively clone each property schema. Handles both direct `enum: [...]`
+  // arrays and nested `items.enum: [...]` arrays — both shapes appear in
+  // TOOL_REGISTRY (e.g. get_market_data's `asset_class.items.enum` and
+  // `get_news_intelligence.topic.enum`). `structuredClone` is a Web Platform
+  // global on Vercel edge + Node 18+ (no polyfill needed).
   const clonedProperties: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(tool.inputSchema.properties)) {
     clonedProperties[key] = structuredClone(value);
