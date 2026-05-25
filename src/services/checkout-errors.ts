@@ -166,6 +166,37 @@ export interface UpstreamSnapshot {
 const BODY_SNIPPET_MAX = 200;
 
 /**
+ * Safely parse a response body string into a CheckoutErrorBody.
+ *
+ * Returns `{}` for: invalid JSON, the literal `null`, JSON arrays,
+ * JSON primitives (numbers, strings, booleans). Only a plain-object
+ * parse result is accepted — anything else would be a structural lie
+ * if cast to CheckoutErrorBody (which is a `{ error?, message?, code? }`
+ * shape) and would set traps for future consumers that don't add
+ * defensive optional-chaining.
+ *
+ * Why this matters even though current callers are defensive: the cast
+ * is an implicit contract. A future consumer writing
+ * `body.message.toLowerCase()` against a server that returned `null` or
+ * `[]` would crash. Returning `{}` from this helper makes the contract
+ * "downstream may treat body as a plain CheckoutErrorBody-shaped object"
+ * actually true at runtime. (Greptile P2 review of PR #3894.)
+ */
+export function parseCheckoutErrorBody(rawText: string): CheckoutErrorBody {
+  if (rawText.length === 0) return {};
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawText);
+  } catch {
+    return {};
+  }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    return {};
+  }
+  return parsed as CheckoutErrorBody;
+}
+
+/**
  * Build an UpstreamSnapshot from a fetch Response (already-read text body
  * is passed in because Response bodies are single-use; the caller must
  * read it once for both classifier parsing and snapshot capture).

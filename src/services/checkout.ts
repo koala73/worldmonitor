@@ -22,6 +22,7 @@ import {
   classifyHttpCheckoutError,
   classifySyntheticCheckoutError,
   classifyThrownCheckoutError,
+  parseCheckoutErrorBody,
   snapshotUpstreamResponse,
   type CheckoutError,
   type CheckoutErrorBody,
@@ -745,13 +746,12 @@ export async function startCheckout(
       // for our own JSON error envelopes. WORLDMONITOR-RN.
       const rawText = await resp.text().catch(() => '');
       const upstream = snapshotUpstreamResponse(resp, rawText);
-      let body: CheckoutErrorBody = {};
-      try {
-        body = JSON.parse(rawText) as CheckoutErrorBody;
-      } catch {
-        // HTML / empty body — leave classifier with an empty object so
-        // the existing status-code-driven branches behave unchanged.
-      }
+      // parseCheckoutErrorBody returns {} for invalid JSON AND for valid
+      // JSON that isn't a plain object (null / array / primitive), making
+      // the implicit "body is CheckoutErrorBody-shaped" contract true at
+      // runtime — defensive against future consumers that don't add their
+      // own optional chaining. Greptile P2 review of PR #3894.
+      const body = parseCheckoutErrorBody(rawText);
       const error = classifyHttpCheckoutError(resp.status, body);
       reportCheckoutError(error, { productId, action: 'http-error' }, undefined, upstream);
       // 409 duplicate-subscription — confirm with the user BEFORE
