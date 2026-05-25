@@ -184,9 +184,23 @@ export const SERVER_NAME = 'worldmonitor';
 //     don't dedup / cache responses whose content drifts between calls.
 //   - Purely additive on the wire — clients that read only the legacy two
 //     hints keep working; new four-hint clients get a richer signal.
+// Bumped 1.9.0 → 1.10.0 (2026-05-25) reflecting:
+//   - SERVER_INSTRUCTIONS trimmed from 1945 B → 1397 B (548 B / 28.2%
+//     reduction) emitted once per initialize. The JMESPath and describe_tool
+//     stanzas previously inlined grammar/envelope/quota detail that is now
+//     authoritatively documented in docs/mcp-jmespath.mdx and
+//     docs/mcp-error-catalog.mdx; each stanza collapses to one sentence
+//     stating the affordance + use case + canonical-docs URL. The prompts
+//     and resources stanzas are unchanged — they have no single
+//     authoritative docs anchor today, so duplicating them in-band is still
+//     load-bearing.
+//   - Pure metadata edit: no behaviour change, no input/output schema
+//     change, no envelope-shape change. The constant emitted into
+//     initialize.result.instructions is the only wire-visible diff. The
+//     bump records it in the audit trail; rollback is git revert.
 // Keep aligned with public/.well-known/mcp/server-card.json::serverInfo.version
 // — discovery scanners cross-check both values.
-export const SERVER_VERSION = '1.9.0';
+export const SERVER_VERSION = '1.10.0';
 
 // MCP logging capability — valid severity levels per the 2025-03-26 spec
 // (RFC 5424 subset). Stateless HTTP transport: we ACK the level but do not
@@ -221,20 +235,20 @@ export const TOOL_DESCRIPTION_MAX_BYTES = 120;
 
 // Session-level discovery instructions. Per MCP 2025-03-26 lifecycle spec,
 // servers MAY return an `instructions` string in the `initialize` result;
-// clients SHOULD surface this to the model. We carry the JMESPath contract
-// (grammar URL, projection guide URL, limits) and the describe_tool affordance
-// here — once per session — so per-tool advertisements stay terse. Worked
-// examples used to live inline; they now live in docs/mcp-jmespath.mdx, which
-// the LLM can fetch on demand instead of amortising ~500 bytes per session.
+// clients SHOULD surface this to the model. Each stanza names an affordance
+// (JMESPath, describe_tool, prompts/list, resources/list), states its one-line
+// use case, and points at the authoritative docs URL for full detail — the
+// LLM does not reliably fetch URLs mid-session, so the in-band sentences must
+// stand alone. Inline guide/envelope detail used to live here; it now lives in
+// docs/mcp-jmespath.mdx, docs/mcp-error-catalog.mdx, and
+// docs/mcp-tools-reference.mdx, fetched on demand instead of amortising
+// ~550 bytes per session.
 export const SERVER_INSTRUCTIONS = [
-  'Every tool accepts an optional `jmespath` string argument. The server applies the expression server-side AFTER any per-tool filter/summary args, projecting the response before serialization. This is the single most effective way to reduce response tokens — typical 80-95% reduction when you only need a subset of fields.',
+  'Every tool accepts an optional `jmespath` string. Server-side projection applied AFTER per-tool filter/summary; typical 80-95% token reduction. Grammar: https://jmespath.org/specification.html. Guide + 12 worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.',
   '',
-  'Grammar: https://jmespath.org/specification.html',
-  'Guide with 12 worked examples against real response shapes: https://www.worldmonitor.app/docs/mcp-jmespath',
+  `Limits: expr ≤ ${JMESPATH_MAX_EXPR_BYTES}B, output ≤ ${JMESPATH_MAX_OUTPUT_BYTES}B. Bad expressions soft-fail via {_jmespath_error, original_keys} envelope (consumes one daily quota unit on retry — self-correct from original_keys). Full envelope reference: https://www.worldmonitor.app/docs/mcp-error-catalog.`,
   '',
-  `Limits: expression ≤ ${JMESPATH_MAX_EXPR_BYTES} bytes; projected payload ≤ ${JMESPATH_MAX_OUTPUT_BYTES} bytes. Failures return {_jmespath_error, original_keys} inside the normal result envelope. Bad expressions DO consume one daily quota unit on retry — original_keys is echoed so you can self-correct in one extra call.`,
-  '',
-  `tools/list returns COMPRESSED tool descriptions (first sentence, ≤${TOOL_DESCRIPTION_MAX_BYTES}B per tool). Call describe_tool({tool_name}) to get the full uncompressed definition for any tool you're considering — especially useful when the compressed entry is ambiguous about behaviour or argument semantics. describe_tool is metadata-only and is EXEMPT from the Pro daily quota (still counts toward the 60/min rate limit), so use it freely while exploring. describe_tool({tool_name: 'nonexistent'}) returns {error: 'unknown_tool', available: [...]} so you can self-correct.`,
+  `tools/list ships compressed tool descriptions (≤${TOOL_DESCRIPTION_MAX_BYTES}B). Call describe_tool({tool_name}) for the full uncompressed definition — quota-exempt, use freely. Full reference: https://www.worldmonitor.app/docs/mcp-tools-reference.`,
   '',
   'Issue prompts/list to discover pre-built workflow templates (country-briefing, energy-shock-watch, market-open-prep, conflict-pulse, route-risk-check, freshness-audit). Each prompt pre-bakes a JMESPath projection per step so the first execution lands on the right shape. prompts/list + prompts/get are quota-exempt (per-minute limit only).',
   '',
