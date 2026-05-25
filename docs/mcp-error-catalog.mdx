@@ -84,6 +84,15 @@ Two distinct triggers share this code; the HTTP status disambiguates.
 
 **Per-minute throttle — HTTP 200.** Sliding-window limiter at **60 requests / minute** keyed per API key (Starter+) or per Pro user (combined across all that user's tokens). The limiter runs in `api/mcp/handler.ts` **before** the method-dispatch switch, so **every** request that reaches it counts — `tools/call`, all metadata methods (`tools/list`, `describe_tool`, `prompts/list`, `resources/list`), AND the lifecycle methods (`initialize`, `notifications/initialized`, `ping`). There is no per-method exemption. (The Pro daily-cap exemption set is separate and narrower — see below.) Comes back as a JSON-RPC error inside HTTP 200 because the limiter is upstream of any per-id correlation. Fails OPEN on Upstash transient errors — single spikes in limiter-backend latency won't take the API down.
 
+The `message` text identifies which limiter fired. Two distinct strings:
+
+| Auth context           | `message`                                                        | Site                  |
+|------------------------|------------------------------------------------------------------|-----------------------|
+| `X-WorldMonitor-Key`   | `Rate limit exceeded. Max 60 requests per minute per API key.`   | `api/mcp/auth.ts:249` |
+| Pro OAuth bearer       | `Rate limit exceeded. Max 60 requests per minute per Pro user.`  | `api/mcp/auth.ts:257` |
+
+Example payload (Pro variant — env_key clients get the same envelope shape with the API-key message string):
+
 ```json
 {
   "jsonrpc": "2.0",
