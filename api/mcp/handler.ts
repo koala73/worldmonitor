@@ -16,6 +16,7 @@ import {
 import { dispatchToolsCall } from './dispatch';
 import { buildPromptResponse, PROMPT_LIST_RESPONSE } from './prompts/index';
 import { TOOL_LIST_BYTES, TOOL_LIST_RESPONSE } from './registry/index';
+import { buildResourceResponse, RESOURCE_LIST_RESPONSE } from './resources/index';
 import { rpcError, rpcOk } from './rpc';
 import { emitTelemetry, principalIdForLog } from './telemetry';
 import type { McpHandlerDeps } from './types';
@@ -95,11 +96,18 @@ export async function mcpHandler(
       });
       return rpcOk(id, {
         protocolVersion: negotiatedVersion,
-        // `prompts.listChanged: false` is the spec-correct value for our
-        // transport — the stateless edge route cannot push
-        // `notifications/prompts/list_changed`, so advertising `true` would
-        // be a lie. Same posture applies if/when `resources` lands later.
-        capabilities: { tools: {}, logging: {}, prompts: { listChanged: false } },
+        // `prompts.listChanged: false` and `resources.listChanged: false`
+        // are the spec-correct values for our transport — the stateless
+        // edge route cannot push `notifications/prompts/list_changed` or
+        // `notifications/resources/list_changed`, so advertising `true`
+        // would be a wire lie. `resources.subscribe: false` because
+        // resources/subscribe is not implemented.
+        capabilities: {
+          tools: {},
+          logging: {},
+          prompts: { listChanged: false },
+          resources: { subscribe: false, listChanged: false },
+        },
         serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
         instructions: SERVER_INSTRUCTIONS,
       }, { 'Mcp-Session-Id': sessionId, ...corsHeaders });
@@ -128,6 +136,20 @@ export async function mcpHandler(
       if (!built.ok) return rpcError(id, built.code, built.message);
       return rpcOk(id, { description: built.description, messages: built.messages }, corsHeaders);
     }
+    // Resources surface DATA — unlike prompts (metadata-class, quota-exempt)
+    // and describe_tool (metadata-class, quota-exempt), resources/read MUST
+    // consume the Pro daily quota IDENTICALLY to a tools/call to the
+    // equivalent tool. Asymmetric auth here is a known MCP data-leak
+    // vector (a Pro user at the daily cap could otherwise keep reading
+    // data via resources for free). The symmetry is structural:
+    // buildResourceResponse synthesizes a tools/call body and routes
+    // through dispatchToolsCall, inheriting the reservation + telemetry
+    // path. resources/list is metadata-class — quota-exempt like
+    // prompts/list, gated only by the per-minute rate limiter above.
+    case 'resources/list':
+      return rpcOk(id, { resources: RESOURCE_LIST_RESPONSE }, corsHeaders);
+    case 'resources/read':
+      return buildResourceResponse(req, context, deps, body, corsHeaders, ctx);
     case 'logging/setLevel': {
       const level = (body.params as { level?: string } | null)?.level;
       if (typeof level !== 'string' || !MCP_LOG_LEVELS.has(level)) {

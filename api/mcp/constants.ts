@@ -142,6 +142,31 @@ export const SERVER_NAME = 'worldmonitor';
 //     today.
 //   - Server-card prompts capability flag flipped false → true in the same
 //     commit so external scanners see the wire and the card agree.
+// Bumped 1.8.0 → 1.9.0 (2026-05-25) reflecting:
+//   - MCP `resources` capability turned on. Four read-only addressable URIs
+//     exposed via resources/list + resources/read:
+//       worldmonitor://countries/{iso2}/risk
+//       worldmonitor://chokepoints/{slug}/status
+//       worldmonitor://seed-meta/freshness
+//       worldmonitor://markets/{symbol}/quote
+//     Chokepoint slugs are pinned in a hand-curated kebab-case table
+//     (api/mcp/resources/slugs.ts) so a cache refresh / upstream rename
+//     never breaks a bookmarked URI.
+//   - Auth-symmetric: resources/read routes through dispatchToolsCall and
+//     inherits the Pro daily-quota reservation identical to the equivalent
+//     tools/call — UNLIKE prompts (metadata-class, quota-exempt). Asymmetric
+//     auth between resources and the equivalent tools/call is a known MCP
+//     data-leak vector; the symmetry is structural rather than
+//     replicated and is proven by tests/mcp-resources.test.mjs.
+//   - Freshness envelope on every resources/read response: cache-tool-backed
+//     resources inherit cached_at + stale from the cacheEnvelope; RPC-tool-
+//     backed resources (country risk) wrap explicitly via evaluateFreshness
+//     against the underlying seed-meta key.
+//   - capabilities.resources.{subscribe: false, listChanged: false}
+//     advertised. subscribe is unimplemented; listChanged is false for the
+//     same stateless-edge-transport reason as prompts.
+//   - Server-card resources capability flag flipped false → true in the
+//     same commit so external scanners see the wire and the card agree.
 // Bumped 1.6.0 → 1.7.0 (2026-05-23) reflecting:
 //   - De-blanket the `Tool.annotations` object. Previously buildPublicTool
 //     hard-coded `{ readOnlyHint: true, openWorldHint: true }` for every
@@ -161,7 +186,7 @@ export const SERVER_NAME = 'worldmonitor';
 //     hints keep working; new four-hint clients get a richer signal.
 // Keep aligned with public/.well-known/mcp/server-card.json::serverInfo.version
 // — discovery scanners cross-check both values.
-export const SERVER_VERSION = '1.8.0';
+export const SERVER_VERSION = '1.9.0';
 
 // MCP logging capability — valid severity levels per the 2025-03-26 spec
 // (RFC 5424 subset). Stateless HTTP transport: we ACK the level but do not
@@ -212,6 +237,8 @@ export const SERVER_INSTRUCTIONS = [
   `tools/list returns COMPRESSED tool descriptions (first sentence, ≤${TOOL_DESCRIPTION_MAX_BYTES}B per tool). Call describe_tool({tool_name}) to get the full uncompressed definition for any tool you're considering — especially useful when the compressed entry is ambiguous about behaviour or argument semantics. describe_tool is metadata-only and is EXEMPT from the Pro daily quota (still counts toward the 60/min rate limit), so use it freely while exploring. describe_tool({tool_name: 'nonexistent'}) returns {error: 'unknown_tool', available: [...]} so you can self-correct.`,
   '',
   'Issue prompts/list to discover pre-built workflow templates (country-briefing, energy-shock-watch, market-open-prep, conflict-pulse, route-risk-check, freshness-audit). Each prompt pre-bakes a JMESPath projection per step so the first execution lands on the right shape. prompts/list + prompts/get are quota-exempt (per-minute limit only).',
+  '',
+  'Issue resources/list to discover four read-only addressable resource URIs (country risk, chokepoint status, seed-meta freshness, market quote). resources/read consumes the Pro daily quota IDENTICALLY to the equivalent tools/call — there is no free path around the cap via resources.',
 ].join('\n');
 
 // Country-code whitelist for get_consumer_prices. The consumer-prices seeder

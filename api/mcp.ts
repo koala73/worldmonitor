@@ -65,16 +65,20 @@ export type {
 export { compressDescription, utf8ByteLength } from './mcp/utils';
 
 export { buildPromptResponse, PROMPT_LIST_RESPONSE, PROMPT_REGISTRY } from './mcp/prompts/index';
+export { buildResourceResponse, RESOURCE_LIST_RESPONSE, RESOURCE_REGISTRY } from './mcp/resources/index';
+export { CHOKEPOINT_SLUGS } from './mcp/resources/slugs';
 
 // Test-only escape hatch. Exposes the TOOL_REGISTRY by REFERENCE so mutations
 // inside `tests/mcp-tool-output-contracts.test.mjs` (which monkey-patches
 // `_execute` on individual RPC tools) propagate through the live binding.
-// PROMPT_REGISTRY follows the same live-binding contract so a test that
-// monkey-patches a prompt (e.g. the sabotage cases in mcp-prompts.test.mjs)
-// observes the same array the handler dispatches against.
+// PROMPT_REGISTRY + RESOURCE_REGISTRY follow the same live-binding contract
+// so tests that monkey-patch one (e.g. sabotage cases) observe the same
+// array the handler dispatches against.
 import { PROMPT_REGISTRY as __PROMPT_REGISTRY } from './mcp/prompts/index';
+import { RESOURCE_REGISTRY as __RESOURCE_REGISTRY } from './mcp/resources/index';
 import { TOOL_REGISTRY as __TOOL_REGISTRY } from './mcp/registry/index';
 export const __testing__ = {
   TOOL_REGISTRY: __TOOL_REGISTRY,
   PROMPT_REGISTRY: __PROMPT_REGISTRY,
+  RESOURCE_REGISTRY: __RESOURCE_REGISTRY,
 };

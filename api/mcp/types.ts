@@ -265,3 +265,35 @@ export interface McpPromptDef {
   intro: string;
   intro_substitutions?: Record<string, McpPromptIntroSubstitution>;
 }
+
+// ---------------------------------------------------------------------------
+// Resources registry types (MCP 2025-03-26 resources capability)
+// ---------------------------------------------------------------------------
+// Per-resource `paramExtractor` parses a concrete URI back into the
+// synthetic tools/call arguments. Discriminated return: null = prefix
+// mismatch (try the next registry entry); {ok: false, reason} = prefix
+// matched but a component is malformed (terminate with -32602);
+// {ok: true, args} = resolved cleanly. Lives in types.ts so both the
+// resources module and the test harness can reference the type without
+// importing the runtime registry.
+export type McpResourceExtractResult =
+  | { ok: true; args: Record<string, unknown> }
+  | { ok: false; reason: string };
+
+export interface McpResourceDef {
+  uri: string;
+  name: string;
+  description: string;
+  mimeType: string;
+  // Backing tool whose tools/call execution path the resources/read
+  // dispatcher routes through. Validated against TOOL_REGISTRY at test
+  // time (the resources module itself avoids the import cycle that the
+  // prompts module also avoids).
+  tool: string;
+  paramExtractor: (uri: string) => McpResourceExtractResult | null;
+  // Only set for RPC-tool-backed resources whose underlying response
+  // doesn't already carry a `{cached_at, stale}` cacheEnvelope. The
+  // dispatcher reads the named seed-meta key and prepends the envelope
+  // before re-emitting; cache-tool-backed resources omit this field.
+  freshnessWrap?: { seedMetaKey: string; maxStaleMin: number };
+}

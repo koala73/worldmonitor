@@ -122,6 +122,20 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/resources/index.ts",
+      "category": "external-protocol",
+      "reason": "MCP RESOURCE_REGISTRY + buildResourceResponse + resources/list public-shape projection. Read-only addressable URIs surfaced via resources/list + resources/read JSON-RPC methods, shape dictated by the MCP spec. Routes resources/read through dispatchToolsCall for auth-symmetric Pro daily-quota deduction.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
+      "path": "api/mcp/resources/slugs.ts",
+      "category": "external-protocol",
+      "reason": "Hand-curated kebab-case slug → matcher table for the worldmonitor://chokepoints/{slug}/status MCP resource URI. The stability contract: bookmarked URIs survive cache refreshes / upstream renames. Same external-protocol constraint as the resources index it backs.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp-proxy.ts",
       "category": "external-protocol",
       "reason": "Proxy for the MCP transport — same shape constraint as api/mcp.ts. Renamed .js → .ts in PR #3768 to unlock the isCallerPremium import from server/.",
