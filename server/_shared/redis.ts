@@ -69,19 +69,26 @@ export async function getCachedJson(key: string, raw = false): Promise<unknown |
   }
 }
 
-export async function setCachedJson(key: string, value: unknown, ttlSeconds: number, raw = false): Promise<void> {
+export async function setCachedJson(key: string, value: unknown, ttlSeconds: number, raw = false): Promise<boolean> {
   if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
     const { sidecarCacheSet } = await import('./sidecar-cache');
     sidecarCacheSet(key, value, ttlSeconds);
-    return;
+    return true;
   }
 
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return;
+  if (!url || !token) return false;
   try {
     const finalKey = raw ? key : prefixKey(key);
-    // Atomic SET with EX — single call avoids race between SET and EXPIRE (C-3 fix)
+    // Atomic SET with EX — single call avoids race between SET and EXPIRE (C-3 fix).
+    // Body-mode (`POST /` with command array) instead of URL-path encoding because
+    // `encodeURIComponent(JSON.stringify(value))` for payloads like `news:digest:v1`
+    // (~126KB) blows past Node's default ~16KB URL limit on `http.createServer` —
+    // the self-hosted `docker/redis-rest-proxy.mjs` silently drops the request with
+    // ECONNRESET/EPIPE and the key never persists. Pipeline timeout (5s) instead of
+    // the 1.5s op timeout because large payloads legitimately need the headroom and
+    // this matches the body-mode pattern used by `runRedisPipeline` below.
     const resp = await fetch(`${url}/`, {
       method: 'POST',
       headers: {
@@ -94,9 +101,12 @@ export async function setCachedJson(key: string, value: unknown, ttlSeconds: num
     const data = await resp.json().catch(() => null) as { result?: string; error?: string } | null;
     if (!resp.ok || data?.error) {
       console.warn(`[redis] setCachedJson failed:`, data?.error ?? `HTTP ${resp.status}`);
+      return false;
     }
+    return true;
   } catch (err) {
     console.warn('[redis] setCachedJson failed:', errMsg(err));
+    return false;
   }
 }
 
