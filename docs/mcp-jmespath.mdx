@@ -456,7 +456,7 @@ The recovery is always the same: **make the projection more selective**, or laye
 
 ### `_jmespath_error` — when the projection itself fails
 
-A JMESPath expression can fail three ways: the expression itself exceeds 1024 bytes, it's syntactically invalid, or it blows up the 256 KB output cap via a runaway multiselect-hash. Either way you get this envelope back — note that `_jmespath_error` is a **string** (`<kind>: <details>`), not an object:
+A JMESPath expression can fail three ways: the expression itself exceeds 1024 bytes, it's syntactically invalid, or it blows up the 256 KB output cap via a runaway multiselect-hash. In all cases you get this envelope back — note that `_jmespath_error` is a **string** (`<kind>: <details>`), not an object:
 
 ```json
 {

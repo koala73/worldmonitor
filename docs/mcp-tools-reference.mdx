@@ -67,7 +67,7 @@ Response — identical shape to a `tools/list` entry, with the full uncompressed
 `describe_tool` returns two soft-error envelopes inside the normal `content[0].text`:
 
 - `{ "error": "missing_tool_name", "hint": "Pass tool_name as a non-empty string matching a tool from tools/list." }` — `tool_name` was omitted, empty, or non-string.
-- `{ "error": "unknown_tool", "requested": "<the bad name>", "available": [...sorted list of all 39 tool names...] }` — `tool_name` didn't match. The `available` array lets the LLM self-correct in one extra call.
+- `{ "error": "unknown_tool", "requested": "<the bad name>", "available": [...sorted list of all tool names...] }` — `tool_name` didn't match. The `available` array lets the LLM self-correct in one extra call.
 
 The full per-tool reference for `describe_tool` (parameters, response shape, quota posture) is at [`describe_tool`](#describe_tool) under Meta.
 
@@ -1181,7 +1181,7 @@ Returns the full uncompressed definition of any other tool by name. Use when the
 **Soft errors** (HTTP 200, returned inside the normal `content[0].text` envelope — NOT JSON-RPC errors):
 
 - `{ "error": "missing_tool_name", "hint": "Pass tool_name as a non-empty string matching a tool from tools/list." }` — `tool_name` was omitted, empty, or non-string.
-- `{ "error": "unknown_tool", "requested": "<the bad name>", "available": [...sorted list of all 39 tool names...] }` — `tool_name` didn't match any registered tool. The `available` array lets the LLM self-correct in one extra call.
+- `{ "error": "unknown_tool", "requested": "<the bad name>", "available": [...sorted list of all tool names...] }` — `tool_name` didn't match any registered tool. The `available` array lets the LLM self-correct in one extra call.
 
 - **API endpoints:** none — server-local lookup, no upstream call.
 - **Kind:** metadata lookup — sub-millisecond, no Redis, no LLM.
