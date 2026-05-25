@@ -118,3 +118,10 @@ jobs:
         run: npx convex run --prod followedCountries:_seedShards
         env:
           CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+      - name: Seed followedCountries country locks (idempotent)
+        # Counter writes are serialized by a pre-seeded per-country lock row.
+        # The daily cron also self-heals this table, but deploying and then
+        # seeding inline avoids a temporary COUNTRY_LOCKS_NOT_SEEDED window.
+        run: npx convex run --prod followedCountries:_seedCountryLocks
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}

@@ -151,6 +151,18 @@ export default defineSchema({
     updatedAt: v.number(),
   }).index("by_country", ["country"]),
 
+  // Pre-seeded per-country lock table for aggregate counter writes.
+  // The user shard lock only serializes mutations by user; first-ever
+  // follows of the same country by different users need an existing
+  // country-scoped document for Convex OCC to serialize the lazy
+  // `followedCountriesCounts` row creation/update path. One row is seeded
+  // for each valid ISO-2 code, and every counter +/- operation reads and
+  // patches the row for that country in the same transaction.
+  followedCountriesCountryLocks: defineTable({
+    country: v.string(),
+    lastTouchedAt: v.number(),
+  }).index("by_country", ["country"]),
+
   // Per-user serialization document for the followed-countries watchlist.
   // EVERY mutation that mutates `followedCountries` for a user reads AND
   // writes this row, forcing Convex's per-document OCC to serialize

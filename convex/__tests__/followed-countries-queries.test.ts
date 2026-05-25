@@ -15,6 +15,7 @@ const modules = import.meta.glob("../**/*.ts");
 async function makeT(): Promise<ReturnType<typeof convexTest>> {
   const t = convexTest(schema, modules);
   await t.mutation(internal.followedCountries._seedShards, {});
+  await t.mutation(internal.followedCountries._seedCountryLocks, {});
   return t;
 }
 
@@ -204,6 +205,28 @@ describe("countFollowers", () => {
     expect(result).toBe(5);
     // Sanity: the floor really is 5 (catches accidental constant drift).
     expect(COUNTRY_COUNT_PRIVACY_FLOOR).toBe(5);
+  });
+
+  test("duplicate counter rows are summed so the public count does not undercount", async () => {
+    const t = await makeT();
+    await t.run(async (ctx) => {
+      const now = Date.now();
+      await ctx.db.insert("followedCountriesCounts", {
+        country: "US",
+        count: 3,
+        updatedAt: now,
+      });
+      await ctx.db.insert("followedCountriesCounts", {
+        country: "US",
+        count: 2,
+        updatedAt: now + 1,
+      });
+    });
+
+    const result = await t.query(api.followedCountries.countFollowers, {
+      country: "US",
+    });
+    expect(result).toBe(5);
   });
 
   test("exactly 4 followers (below privacy floor) → returns 0", async () => {

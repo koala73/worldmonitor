@@ -82,6 +82,7 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 const svc = await import('../src/services/followed-countries.ts');
+const convexConstants = await import('../convex/constants.ts');
 const {
   addCountry,
   removeCountry,
@@ -271,8 +272,8 @@ beforeEach(() => {
 // ---------------------------------------------------------------------------
 
 describe('followed-countries service — constants & key', () => {
-  it('exports FREE_TIER_FOLLOW_LIMIT === 3', () => {
-    assert.equal(FREE_TIER_FOLLOW_LIMIT, 3);
+  it('exports FREE_TIER_FOLLOW_LIMIT in parity with convex/constants.ts', () => {
+    assert.equal(FREE_TIER_FOLLOW_LIMIT, convexConstants.FREE_TIER_FOLLOW_LIMIT);
   });
 
   it('uses storage key wm-followed-countries-v1', () => {

@@ -4,6 +4,7 @@ import {
   internalMutation,
   internalQuery,
   type MutationCtx,
+  type QueryCtx,
   mutation,
   query,
 } from "./_generated/server";
@@ -13,7 +14,7 @@ import {
   MAX_MERGE_INPUT,
   SHARD_COUNT,
 } from "./constants";
-import { isValidIso2 } from "./lib/iso2";
+import { isValidIso2, validIso2Codes } from "./lib/iso2";
 import { userIdToShard } from "./lib/shards";
 
 /**
@@ -107,6 +108,33 @@ async function touchShard(
   await ctx.db.patch(shard._id, { lastTouchedAt: Date.now() });
 }
 
+async function readCountryLockOrThrow(
+  ctx: MutationCtx,
+  country: string,
+): Promise<Doc<"followedCountriesCountryLocks">> {
+  const lock = await ctx.db
+    .query("followedCountriesCountryLocks")
+    .withIndex("by_country", (q) => q.eq("country", country))
+    .first();
+  if (!lock) {
+    console.error(
+      JSON.stringify({
+        breadcrumb: "followed_countries_country_locks_not_seeded",
+        country,
+      }),
+    );
+    throw new ConvexError({ kind: "COUNTRY_LOCKS_NOT_SEEDED", country });
+  }
+  return lock;
+}
+
+async function touchCountryLock(
+  ctx: MutationCtx,
+  lock: Doc<"followedCountriesCountryLocks">,
+): Promise<void> {
+  await ctx.db.patch(lock._id, { lastTouchedAt: Date.now() });
+}
+
 /**
  * Read the per-user serialization row for `userId`. Returns the row (if
  * exists) and the denormalized count (0 if no row). Every mutation that
@@ -161,56 +189,78 @@ async function writeUserMeta(
   }
 }
 
+async function updateCountryCounter(
+  ctx: MutationCtx,
+  country: string,
+  delta: 1 | -1,
+): Promise<void> {
+  const countryLock = await readCountryLockOrThrow(ctx, country);
+  const rows = await ctx.db
+    .query("followedCountriesCounts")
+    .withIndex("by_country", (q) => q.eq("country", country))
+    .collect();
+  rows.sort((a, b) => a._creationTime - b._creationTime);
+  const total = rows.reduce((sum, row) => sum + row.count, 0);
+  const nextCount = Math.max(0, total + delta);
+  const now = Date.now();
+  const primary = rows[0];
+  if (primary) {
+    await ctx.db.patch(primary._id, {
+      count: nextCount,
+      updatedAt: now,
+    });
+    for (let i = 1; i < rows.length; i++) {
+      const duplicate = rows[i];
+      if (duplicate !== undefined) {
+        await ctx.db.delete(duplicate._id);
+      }
+    }
+  } else if (nextCount > 0) {
+    await ctx.db.insert("followedCountriesCounts", {
+      country,
+      count: nextCount,
+      updatedAt: now,
+    });
+  }
+  await touchCountryLock(ctx, countryLock);
+}
+
 /**
  * Atomic +1 on the `followedCountriesCounts` aggregate row for `country`.
- * Patch if the row exists, insert otherwise. Runs inside the parent
- * mutation transaction so the counter never drifts from the row table
- * (memory: `convex-mutation-from-mutation-not-one-transaction` —
- * intentionally a helper, NOT a child mutation).
+ * Counter writes also repair any duplicate rows left by the old lazy-create
+ * race: the oldest row is kept at the summed count and extras are deleted.
+ * Runs inside the parent mutation transaction so the counter never drifts
+ * from the row table (memory: `convex-mutation-from-mutation-not-one-
+ * transaction` — intentionally a helper, NOT a child mutation).
  */
 async function incrementCountryCounter(
   ctx: MutationCtx,
   country: string,
 ): Promise<void> {
-  const existing = await ctx.db
-    .query("followedCountriesCounts")
-    .withIndex("by_country", (q) => q.eq("country", country))
-    .first();
-  const now = Date.now();
-  if (existing) {
-    await ctx.db.patch(existing._id, {
-      count: existing.count + 1,
-      updatedAt: now,
-    });
-  } else {
-    await ctx.db.insert("followedCountriesCounts", {
-      country,
-      count: 1,
-      updatedAt: now,
-    });
-  }
+  await updateCountryCounter(ctx, country, 1);
 }
 
 /**
  * Atomic -1 on the `followedCountriesCounts` aggregate row for `country`,
- * defensively clamped at zero. No-op if the counter row doesn't exist
- * (the row delete that triggered this decrement was somehow ahead of an
- * insert — should never happen, but max-with-zero ensures we never write
- * a negative count).
+ * defensively clamped at zero. Also repairs duplicate counter rows produced
+ * before the country-lock migration.
  */
 async function decrementCountryCounter(
   ctx: MutationCtx,
   country: string,
 ): Promise<void> {
-  const existing = await ctx.db
+  await updateCountryCounter(ctx, country, -1);
+}
+
+async function readRawCountryFollowerCount(
+  ctx: QueryCtx,
+  country: string,
+): Promise<number> {
+  const rows = await ctx.db
     .query("followedCountriesCounts")
     .withIndex("by_country", (q) => q.eq("country", country))
-    .first();
-  if (!existing) return;
-  await ctx.db.patch(existing._id, {
-    count: Math.max(0, existing.count - 1),
-    updatedAt: Date.now(),
-  });
+    .collect();
+  return rows.reduce((sum, row) => sum + row.count, 0);
 }
 
 /**
@@ -591,9 +641,10 @@ export const listFollowed = query({
 /**
  * `countFollowers({ country })` — public, no auth.
  *
- * O(1) read of the aggregate `followedCountriesCounts` row. Validates
- * the input as canonical ISO-2 (rejects `INVALID`, `us`, `XX`, etc.)
- * and returns the count.
+ * Reads the aggregate `followedCountriesCounts` rows. The normal state is
+ * exactly one row per country, but the query sums duplicates so any rows
+ * left behind by the old lazy-create race do not undercount publicly while
+ * waiting for the next write-path repair.
  *
  * Privacy floor (P2 #12 — doc/code alignment):
  *   `raw < COUNTRY_COUNT_PRIVACY_FLOOR` returns 0. With
@@ -612,11 +663,7 @@ export const countFollowers = query({
         country: args.country,
       });
     }
-    const row = await ctx.db
-      .query("followedCountriesCounts")
-      .withIndex("by_country", (q) => q.eq("country", args.country))
-      .first();
-    const raw = row?.count ?? 0;
+    const raw = await readRawCountryFollowerCount(ctx, args.country);
     // `<` is the canonical comparator: returns 0 when count is below
     // COUNTRY_COUNT_PRIVACY_FLOOR (1-4 followers); count of 5 or more
     // is returned exactly.
@@ -746,6 +793,57 @@ export const _seedShards = internalMutation({
       }
     }
     return { seeded };
+  },
+});
+
+export const _seedCountryLocks = internalMutation({
+  args: {},
+  handler: async (ctx): Promise<{ seeded: number }> => {
+    const existing = await ctx.db
+      .query("followedCountriesCountryLocks")
+      .collect();
+    const have = new Set<string>(existing.map((r) => r.country));
+    const now = Date.now();
+    let seeded = 0;
+    for (const country of validIso2Codes()) {
+      if (!have.has(country)) {
+        await ctx.db.insert("followedCountriesCountryLocks", {
+          country,
+          lastTouchedAt: now,
+        });
+        seeded += 1;
+      }
+    }
+    return { seeded };
+  },
+});
+
+export const _dedupeCountryLocks = internalMutation({
+  args: {},
+  handler: async (ctx): Promise<{ deleted: number }> => {
+    const all = await ctx.db.query("followedCountriesCountryLocks").collect();
+    const byCountry = new Map<string, Doc<"followedCountriesCountryLocks">[]>();
+    for (const row of all) {
+      const list = byCountry.get(row.country);
+      if (list) {
+        list.push(row);
+      } else {
+        byCountry.set(row.country, [row]);
+      }
+    }
+    let deleted = 0;
+    for (const rows of byCountry.values()) {
+      if (rows.length <= 1) continue;
+      rows.sort((a, b) => a._creationTime - b._creationTime);
+      for (let i = 1; i < rows.length; i++) {
+        const extra = rows[i];
+        if (extra !== undefined) {
+          await ctx.db.delete(extra._id);
+          deleted += 1;
+        }
+      }
+    }
+    return { deleted };
   },
 });
 

@@ -25,6 +25,7 @@ const modules = import.meta.glob("../**/*.ts");
 async function makeT(): Promise<ReturnType<typeof convexTest>> {
   const t = convexTest(schema, modules);
   await t.mutation(internal.followedCountries._seedShards, {});
+  await t.mutation(internal.followedCountries._seedCountryLocks, {});
   return t;
 }
 
@@ -66,21 +67,37 @@ async function seedProEntitlement(
 }
 
 /**
- * Read the aggregate counter row for a country. Returns 0 if no row.
- * Mirrors the read-shape of the future `countFollowers` query (U14)
- * so the counter-maintenance tests assert against the same row the
- * production read path will use.
+ * Read the aggregate counter total for a country. Returns 0 if no row.
+ * Mirrors the duplicate-tolerant read-shape of `countFollowers` so the
+ * counter-maintenance tests assert against the same value the production
+ * read path will use.
  */
 async function readCounter(
   t: ReturnType<typeof convexTest>,
   country: string,
 ): Promise<number> {
   return await t.run(async (ctx) => {
-    const row = await ctx.db
+    const rows = await ctx.db
       .query("followedCountriesCounts")
       .withIndex("by_country", (q) => q.eq("country", country))
-      .first();
-    return row?.count ?? 0;
+      .collect();
+    return rows.reduce((sum, row) => sum + row.count, 0);
+  });
+}
+
+async function readCounterRows(
+  t: ReturnType<typeof convexTest>,
+  country: string,
+): Promise<{ count: number; rows: number }> {
+  return await t.run(async (ctx) => {
+    const rows = await ctx.db
+      .query("followedCountriesCounts")
+      .withIndex("by_country", (q) => q.eq("country", country))
+      .collect();
+    return {
+      count: rows.reduce((sum, row) => sum + row.count, 0),
+      rows: rows.length,
+    };
   });
 }
 
@@ -491,6 +508,64 @@ describe("counter maintenance — multi-user", () => {
       country: "US",
     });
     expect(await readCounter(t, "US")).toBe(0);
+  });
+
+  test("concurrent first follows by different users for the same country end with one counter row at count=2", async () => {
+    const t = await makeT();
+    await seedProEntitlement(t, USER_A.subject);
+    await seedProEntitlement(t, USER_B.subject);
+    const asA = t.withIdentity(USER_A);
+    const asB = t.withIdentity(USER_B);
+
+    const results = await Promise.allSettled([
+      asA.mutation(api.followedCountries.followCountry, { country: "US" }),
+      asB.mutation(api.followedCountries.followCountry, { country: "US" }),
+    ]);
+
+    expect(results.every((r) => r.status === "fulfilled")).toBe(true);
+    expect(await readUserFollows(t, USER_A.subject)).toEqual(["US"]);
+    expect(await readUserFollows(t, USER_B.subject)).toEqual(["US"]);
+    expect(await readCounterRows(t, "US")).toEqual({ count: 2, rows: 1 });
+  });
+
+  test("next same-country write repairs duplicate counter rows from the old lazy-create race", async () => {
+    const t = await makeT();
+    await t.run(async (ctx) => {
+      const now = Date.now();
+      await ctx.db.insert("followedCountriesCounts", {
+        country: "US",
+        count: 1,
+        updatedAt: now,
+      });
+      await ctx.db.insert("followedCountriesCounts", {
+        country: "US",
+        count: 1,
+        updatedAt: now + 1,
+      });
+      await ctx.db.insert("followedCountries", {
+        userId: USER_A.subject,
+        country: "US",
+        addedAt: now,
+      });
+      await ctx.db.insert("followedCountries", {
+        userId: USER_B.subject,
+        country: "US",
+        addedAt: now + 1,
+      });
+      await ctx.db.insert("followedCountriesUserMeta", {
+        userId: USER_A.subject,
+        count: 1,
+        updatedAt: now,
+      });
+    });
+
+    await t.withIdentity(USER_A).mutation(api.followedCountries.unfollowCountry, {
+      country: "US",
+    });
+
+    expect(await readUserFollows(t, USER_A.subject)).toEqual([]);
+    expect(await readUserFollows(t, USER_B.subject)).toEqual(["US"]);
+    expect(await readCounterRows(t, "US")).toEqual({ count: 1, rows: 1 });
   });
 });
 
@@ -1195,6 +1270,21 @@ describe("sharded lock — pre-seed & no-meta-dup invariant", () => {
       return rows.length;
     });
     expect(total).toBe(SHARD_COUNT);
+  });
+
+  test("operator running _seedCountryLocks after initial seed is idempotent", async () => {
+    const t = await makeT();
+    const result = await t.mutation(
+      internal.followedCountries._seedCountryLocks,
+      {},
+    );
+    expect(result).toEqual({ seeded: 0 });
+
+    const rows = await t.run(async (ctx) => {
+      return await ctx.db.query("followedCountriesCountryLocks").collect();
+    });
+    expect(rows.length).toBe(_ISO2_REGISTRY_FOR_TESTS.size);
+    expect(new Set(rows.map((r) => r.country)).size).toBe(rows.length);
   });
 
   test("SHARDS_NOT_SEEDED throw when the shards table is empty (operator error)", async () => {

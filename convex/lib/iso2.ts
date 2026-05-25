@@ -47,6 +47,10 @@ export function isValidIso2(code: string): boolean {
   return ISO2_REGISTRY.has(code);
 }
 
+export function validIso2Codes(): string[] {
+  return [...ISO2_REGISTRY];
+}
+
 /**
  * Internal-only export for the `iso2 registry parity` test in U13. NOT for
  * runtime use; mutations should call `isValidIso2` instead.

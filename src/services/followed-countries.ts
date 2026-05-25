@@ -252,6 +252,7 @@ export function _resetStateForTests(): void {
   _handoffState = 'idle';
   _handoffGeneration = 0;
   _handoffRetryAttempt = 0;
+  _authListenerInstalled = false;
   _initialSnapshotReceived = false;
   _lastKnownSubscriptionSnapshot = null;
   _stopReactiveSubscription();

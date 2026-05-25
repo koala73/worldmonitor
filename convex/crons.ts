@@ -63,4 +63,16 @@ crons.daily(
   internal.followedCountries._dedupeShards,
 );
 
+crons.daily(
+  "followed-countries-country-locks-seed",
+  { hourUTC: 3, minuteUTC: 2 },
+  internal.followedCountries._seedCountryLocks,
+);
+
+crons.daily(
+  "followed-countries-country-locks-dedupe",
+  { hourUTC: 3, minuteUTC: 3 },
+  internal.followedCountries._dedupeCountryLocks,
+);
+
 export default crons;
