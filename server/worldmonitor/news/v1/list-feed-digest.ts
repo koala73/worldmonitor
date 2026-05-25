@@ -176,6 +176,7 @@ const DIPLOMACY_FLASHPOINT_PAIRS = [
 const DIPLOMACY_FLASHPOINT_BOOST = 18;
 const ENTITY_CORROBORATION_SCORE_PER_SOURCE = 4;
 const ENTITY_CORROBORATION_WINDOW_MS = 24 * 60 * 60 * 1000;
+const DIPLOMACY_SEVERITY_PROMOTION_MIN_TIER12_SOURCES = 3;
 
 
 interface ParsedItem {
@@ -248,6 +249,23 @@ function hasDiplomacyFlashpointSignal(title: string | undefined): boolean {
     return true;
   }
   return hasAnySignal(text, DIPLOMACY_KEYWORDS) && hasAnySignal(text, FLASHPOINT_SCORING_KEYWORDS);
+}
+
+function promoteDiplomacySeverity(
+  level: ThreatLevel,
+  title: string | undefined,
+  tier12SourceCount: number,
+): ThreatLevel {
+  if (level === 'critical' || level === 'high') return level;
+  if (!title || hasHistoricalMarker(title)) return level;
+  const finite = Number.isFinite(tier12SourceCount) ? Number(tier12SourceCount) : 0;
+  if (
+    finite >= DIPLOMACY_SEVERITY_PROMOTION_MIN_TIER12_SOURCES &&
+    hasDiplomacyFlashpointSignal(title)
+  ) {
+    return 'high';
+  }
+  return level;
 }
 
 function diplomacyFlashpointBoost(title: string | undefined): number {
@@ -867,33 +885,53 @@ function entityKeysForTitle(title: string): string[] {
   return keys;
 }
 
-function computeEntityCorroborationCounts(
+interface EntityCorroborationSignal {
+  sourceCount: number;
+  tier12SourceCount: number;
+}
+
+function computeEntityCorroborationSignals(
   items: ParsedItem[],
   nowMs = Date.now(),
-): Map<string, number> {
-  const buckets = new Map<string, { items: ParsedItem[]; sources: Set<string> }>();
+): Map<string, EntityCorroborationSignal> {
+  const buckets = new Map<string, { items: ParsedItem[]; sources: Set<string>; tier12Sources: Set<string> }>();
   for (const item of items) {
     if (!item.titleHash) continue;
     if (!Number.isFinite(item.publishedAt) || nowMs - item.publishedAt > ENTITY_CORROBORATION_WINDOW_MS) continue;
     for (const key of entityKeysForTitle(item.title)) {
       let bucket = buckets.get(key);
       if (!bucket) {
-        bucket = { items: [], sources: new Set() };
+        bucket = { items: [], sources: new Set(), tier12Sources: new Set() };
         buckets.set(key, bucket);
       }
       bucket.items.push(item);
-      if (item.source) bucket.sources.add(item.source);
+      if (item.source) {
+        bucket.sources.add(item.source);
+        if (getSourceTier(item.source) <= 2) bucket.tier12Sources.add(item.source);
+      }
     }
   }
 
-  const counts = new Map<string, number>();
+  const signals = new Map<string, EntityCorroborationSignal>();
   for (const bucket of buckets.values()) {
     if (bucket.sources.size < 2) continue;
     for (const item of bucket.items) {
-      counts.set(item.titleHash!, Math.max(counts.get(item.titleHash!) ?? 0, bucket.sources.size));
+      const previous = signals.get(item.titleHash!);
+      signals.set(item.titleHash!, {
+        sourceCount: Math.max(previous?.sourceCount ?? 0, bucket.sources.size),
+        tier12SourceCount: Math.max(previous?.tier12SourceCount ?? 0, bucket.tier12Sources.size),
+      });
     }
   }
-  return counts;
+  return signals;
+}
+
+function computeEntityCorroborationCounts(
+  items: ParsedItem[],
+  nowMs = Date.now(),
+): Map<string, number> {
+  const signals = computeEntityCorroborationSignals(items, nowMs);
+  return new Map([...signals].map(([hash, signal]) => [hash, signal.sourceCount]));
 }
 
 interface StoryTrack {
@@ -1228,15 +1266,27 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
     // discards items based on their true score.
     await enrichWithAiCache(allItems);
 
-    const entityCorroborationCounts = computeEntityCorroborationCounts(allItems);
+    const entityCorroborationSignals = computeEntityCorroborationSignals(allItems);
     let diplomacySignalCount = 0;
     let entityCorroborationHitCount = 0;
+    let diplomacySeverityPromotionCount = 0;
     let llmScoredCount = 0;
     let keywordFallbackScoredCount = 0;
 
     // Compute importance score using final (post-enrichment) threat levels.
     for (const item of allItems) {
-      item.entityCorroborationCount = entityCorroborationCounts.get(item.titleHash!) ?? 0;
+      const entitySignal = entityCorroborationSignals.get(item.titleHash!);
+      item.entityCorroborationCount = entitySignal?.sourceCount ?? 0;
+      const promotedLevel = promoteDiplomacySeverity(
+        item.level,
+        item.title,
+        entitySignal?.tier12SourceCount ?? 0,
+      );
+      if (promotedLevel !== item.level) {
+        item.level = promotedLevel;
+        item.isAlert = true;
+        diplomacySeverityPromotionCount++;
+      }
       const scoringCorroboration = Math.max(item.corroborationCount, item.entityCorroborationCount);
       item.importanceScore = computeImportanceScore(
         item.level,
@@ -1260,7 +1310,8 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
         `[digest] importance signals llm=${llmScoredCount} ` +
           `keywordFallback=${keywordFallbackScoredCount} ` +
           `diplomacy=${diplomacySignalCount} ` +
-          `entityCorroboration=${entityCorroborationHitCount}`,
+          `entityCorroboration=${entityCorroborationHitCount} ` +
+          `diplomacySeverityPromotions=${diplomacySeverityPromotionCount}`,
       );
     }
 
@@ -1338,6 +1389,8 @@ export const __testing__ = {
   buildStoryTrackHsetFields,
   computeImportanceScore,
   hasDiplomacyFlashpointSignal,
+  promoteDiplomacySeverity,
+  computeEntityCorroborationSignals,
   computeEntityCorroborationCounts,
   resolveMaxAgeMs,
   capLlmUpgrade,

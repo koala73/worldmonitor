@@ -398,7 +398,10 @@ describe('computeImportanceScore parity (digest ↔ relay)', () => {
       hash: `deal-${idx}`,
       title,
       link: `https://example.com/deal-${idx}`,
-      severity: 'medium',
+      // Server story tracking promotes strongly corroborated flashpoint
+      // diplomacy to high so the scheduled digest read path does not drop
+      // the story before currentScore ranking can help.
+      severity: 'high',
       currentScore: digestScore(
         'medium',
         source,
@@ -437,7 +440,7 @@ describe('computeImportanceScore parity (digest ↔ relay)', () => {
         userId: 'user_test',
         variant: 'full',
         digestMode: 'daily',
-        sensitivity: 'all',
+        sensitivity: 'high',
         digestTimezone: 'UTC',
         updatedAt: oneHourAgo,
       },
