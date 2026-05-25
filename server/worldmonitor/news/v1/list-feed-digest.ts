@@ -28,6 +28,7 @@ import {
   DIGEST_ACCUMULATOR_TTL,
 } from '../../../_shared/cache-keys';
 import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
+import diplomacyKeywordsData from '../../../../shared/diplomacy-keywords.json';
 
 const RSS_ACCEPT = 'application/rss+xml, application/xml, text/xml, */*';
 
@@ -134,44 +135,13 @@ const SCORE_WEIGHTS = {
   recency: 0.1,
 } as const;
 
-const DIPLOMACY_KEYWORDS = [
-  'ceasefire', 'truce', 'armistice', 'treaty', 'accord', 'pact', 'diplomatic',
-  'diplomacy', 'mediate', 'mediator', 'negotiation', 'negotiations', 'negotiate',
-  'normalization', 'normalisation',
-] as const;
-
-const FLASHPOINT_SCORING_KEYWORDS = [
-  'iran', 'tehran', 'russia', 'moscow', 'china', 'beijing', 'taiwan', 'ukraine', 'kyiv',
-  'north korea', 'pyongyang', 'israel', 'gaza', 'west bank', 'syria', 'damascus',
-  'yemen', 'hezbollah', 'hamas', 'kremlin', 'pentagon', 'nato', 'wagner',
-] as const;
-
-const DIPLOMACY_FLASHPOINT_PAIRS = [
-  ['iran', 'deal'],
-  ['iran', 'talks'],
-  ['iran', 'ceasefire'],
-  ['iran', 'treaty'],
-  ['iran', 'accord'],
-  ['iran', 'peace'],
-  ['israel', 'ceasefire'],
-  ['israel', 'truce'],
-  ['israel', 'accord'],
-  ['gaza', 'ceasefire'],
-  ['gaza', 'truce'],
-  ['ukraine', 'ceasefire'],
-  ['ukraine', 'talks'],
-  ['russia', 'talks'],
-  ['russia', 'treaty'],
-  ['hamas', 'truce'],
-  ['hezbollah', 'truce'],
-  ['syria', 'ceasefire'],
-  ['china', 'talks'],
-  ['china', 'accord'],
-  ['taiwan', 'talks'],
-  ['yemen', 'ceasefire'],
-  ['north korea', 'talks'],
-  ['pyongyang', 'talks'],
-] as const;
+const DIPLOMACY_KEYWORDS: readonly string[] = diplomacyKeywordsData.diplomacyKeywords;
+const FLASHPOINT_SCORING_KEYWORDS: readonly string[] = diplomacyKeywordsData.flashpointKeywords;
+// JSON imports type each pair as `string[]` (length not statically tracked).
+// The runtime shape is `[string, string]` — enforced by
+// tests/diplomacy-keywords-parity.test.mjs against the canonical JSON.
+const DIPLOMACY_FLASHPOINT_PAIRS: ReadonlyArray<readonly [string, string]> =
+  diplomacyKeywordsData.diplomacyFlashpointPairs as unknown as ReadonlyArray<readonly [string, string]>;
 
 const DIPLOMACY_FLASHPOINT_BOOST = 18;
 const ENTITY_CORROBORATION_SCORE_PER_SOURCE = 4;
@@ -234,8 +204,18 @@ function normalizeScoringText(text: string): string {
   return text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+// Word-start containment in normalized text. Mirrors
+// shared/brief-filter.js:containsKeywordToken — prevents 'pact' inside
+// 'impact' (false positive) while still matching 'iran' inside
+// 'iranian' (demonym preserved). PR #3909 review (P2).
+function containsKeywordToken(text: string, kw: string): boolean {
+  if (!kw) return false;
+  const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|\\s)${escaped}`).test(text);
+}
+
 function hasAnySignal(text: string, keywords: readonly string[]): boolean {
-  return keywords.some((kw) => text.includes(kw));
+  return keywords.some((kw) => containsKeywordToken(text, kw));
 }
 
 function hasDiplomacyFlashpointSignal(title: string | undefined): boolean {
@@ -243,7 +223,7 @@ function hasDiplomacyFlashpointSignal(title: string | undefined): boolean {
   const text = normalizeScoringText(title);
   if (
     DIPLOMACY_FLASHPOINT_PAIRS.some(([entity, action]) =>
-      text.includes(entity) && text.includes(action),
+      containsKeywordToken(text, entity) && containsKeywordToken(text, action),
     )
   ) {
     return true;
@@ -873,7 +853,7 @@ function entityKeysForTitle(title: string): string[] {
   const text = normalizeScoringText(title);
   const keys: string[] = [];
   for (const [entity, action] of DIPLOMACY_FLASHPOINT_PAIRS) {
-    if (text.includes(entity) && text.includes(action)) keys.push(`${entity}:${action}`);
+    if (containsKeywordToken(text, entity) && containsKeywordToken(text, action)) keys.push(`${entity}:${action}`);
   }
   if (
     keys.length === 0 &&

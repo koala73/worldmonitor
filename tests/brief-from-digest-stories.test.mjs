@@ -1170,6 +1170,115 @@ describe('composeBriefFromDigestStories — synthesis splice', () => {
     assert.equal(env.data.stories[0].headline, 'LNG Tanker Exits Hormuz For India For First Time Since War Began');
     assert.deepEqual(orderEvents, [{ leadDiplomacyOverride: false }]);
   });
+
+  it('demonym forms (Iranian / Russian / Israeli) still trigger the override — start-boundary preserves prefix matches', () => {
+    // PR #3909 review (P2 round 2): a strict full word-boundary regex
+    // regressed common adjectival forms — "Iranian nuclear talks",
+    // "Israeli ceasefire", "Russian treaty". The current word-START
+    // boundary preserves these because the demonym contains the base
+    // name as a prefix (iranian / israeli / russian). This test pins
+    // that contract so a future "tighten the regex" change can't
+    // silently re-introduce the demonym regression.
+    const stories = [
+      digestStory({
+        hash: 'lng-critical-1111',
+        title: 'LNG Tanker Exits Hormuz For India For First Time Since War Began',
+        severity: 'critical',
+        currentScore: 150,
+        sources: ['Energy Wire'],
+        link: 'https://example.com/lng-tanker-hormuz',
+        category: 'energy',
+        briefTopicId: 'lng',
+      }),
+      digestStory({
+        hash: 'iranian-talks-2222',
+        title: 'Iranian nuclear talks resume in Vienna with EU mediators',
+        severity: 'high',
+        currentScore: 130,
+        sources: ['Reuters', 'AP News', 'Axios'],
+        link: 'https://example.com/iranian-talks',
+        category: 'diplomacy',
+        entityCorroborationCount: 3,
+        briefTopicId: 'iran-talks',
+      }),
+    ];
+    const orderEvents = [];
+    const env = composeBriefFromDigestStories(
+      rule({ sensitivity: 'high' }),
+      stories,
+      { clusters: 2, multiSource: 1 },
+      {
+        nowMs: NOW,
+        onOrder: (event) => orderEvents.push(event),
+        synthesis: {
+          lead: 'Iranian nuclear talks resume in Vienna with EU mediators.',
+          rankedStoryHashes: ['iranian-talks'],
+        },
+      },
+    );
+    assert.ok(env);
+    assert.equal(
+      env.data.stories[0].headline,
+      'Iranian nuclear talks resume in Vienna with EU mediators',
+      'demonym "Iranian" + flashpoint pair partner "talks" must still trigger the lead-diplomacy override',
+    );
+    assert.deepEqual(orderEvents, [{ leadDiplomacyOverride: true }]);
+  });
+
+  it('keyword token boundaries prevent "pact in impact" false-positive override', () => {
+    // PR #3909 review (P2): `text.includes('pact')` falsely matched
+    // "impact", letting a non-diplomacy rank-0 story with a flashpoint
+    // mention (e.g., Ukraine) trigger the lead-diplomacy override and
+    // jump ahead of a critical card #1. Word-boundary matching closes
+    // the gap. The corroboration count is high to make the override's
+    // OTHER gates (rank=0, corroboration>=2) all pass — so this test
+    // isolates the keyword-detection fix.
+    const stories = [
+      digestStory({
+        hash: 'lng-critical-1111',
+        title: 'LNG Tanker Exits Hormuz For India For First Time Since War Began',
+        severity: 'critical',
+        currentScore: 150,
+        sources: ['Energy Wire'],
+        link: 'https://example.com/lng-tanker-hormuz',
+        category: 'energy',
+        briefTopicId: 'lng',
+      }),
+      digestStory({
+        hash: 'ukraine-impact-2222',
+        title: 'Ukraine impact study released by independent research lab',
+        description: 'Analysis of long-term consequences across multiple sectors.',
+        severity: 'high',
+        currentScore: 130,
+        sources: ['Reuters', 'AP News', 'Axios'],
+        link: 'https://example.com/ukraine-impact',
+        category: 'research',
+        entityCorroborationCount: 3,
+        briefTopicId: 'ukraine-impact',
+      }),
+    ];
+    const orderEvents = [];
+    const env = composeBriefFromDigestStories(
+      rule({ sensitivity: 'high' }),
+      stories,
+      { clusters: 2, multiSource: 1 },
+      {
+        nowMs: NOW,
+        onOrder: (event) => orderEvents.push(event),
+        synthesis: {
+          lead: 'Ukraine impact study released by independent research lab.',
+          rankedStoryHashes: ['ukraine-impact'],
+        },
+      },
+    );
+    assert.ok(env);
+    assert.equal(
+      env.data.stories[0].headline,
+      'LNG Tanker Exits Hormuz For India For First Time Since War Began',
+      'critical card #1 must NOT be displaced by an "impact" headline that only matches diplomacy via substring',
+    );
+    assert.deepEqual(orderEvents, [{ leadDiplomacyOverride: false }]);
+  });
 });
 
 // ── Sprint 1 / U3 — stable clusterId wiring (canonical cluster-rep hash) ──

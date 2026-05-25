@@ -8,6 +8,7 @@
 import { BRIEF_ENVELOPE_VERSION } from './brief-envelope.js';
 import { assertBriefEnvelope } from '../server/_shared/brief-render.js';
 import { isInstitutionalStaticPage } from './url-classifier.js';
+import diplomacyKeywordsData from './diplomacy-keywords.json' with { type: 'json' };
 
 /**
  * @typedef {import('./brief-envelope.js').BriefEnvelope} BriefEnvelope
@@ -64,44 +65,9 @@ const SEVERITY_RANK = {
   low: 3,
 };
 
-const DIPLOMACY_KEYWORDS = [
-  'ceasefire', 'truce', 'armistice', 'treaty', 'accord', 'pact', 'diplomatic',
-  'diplomacy', 'mediate', 'mediator', 'negotiation', 'negotiations', 'negotiate',
-  'normalization', 'normalisation',
-];
-
-const FLASHPOINT_KEYWORDS = [
-  'iran', 'tehran', 'russia', 'moscow', 'china', 'beijing', 'taiwan', 'ukraine', 'kyiv',
-  'north korea', 'pyongyang', 'israel', 'gaza', 'west bank', 'syria', 'damascus',
-  'yemen', 'hezbollah', 'hamas', 'kremlin', 'pentagon', 'nato', 'wagner',
-];
-
-const DIPLOMACY_FLASHPOINT_PAIRS = [
-  ['iran', 'deal'],
-  ['iran', 'talks'],
-  ['iran', 'ceasefire'],
-  ['iran', 'treaty'],
-  ['iran', 'accord'],
-  ['iran', 'peace'],
-  ['israel', 'ceasefire'],
-  ['israel', 'truce'],
-  ['israel', 'accord'],
-  ['gaza', 'ceasefire'],
-  ['gaza', 'truce'],
-  ['ukraine', 'ceasefire'],
-  ['ukraine', 'talks'],
-  ['russia', 'talks'],
-  ['russia', 'treaty'],
-  ['hamas', 'truce'],
-  ['hezbollah', 'truce'],
-  ['syria', 'ceasefire'],
-  ['china', 'talks'],
-  ['china', 'accord'],
-  ['taiwan', 'talks'],
-  ['yemen', 'ceasefire'],
-  ['north korea', 'talks'],
-  ['pyongyang', 'talks'],
-];
+const DIPLOMACY_KEYWORDS = diplomacyKeywordsData.diplomacyKeywords;
+const FLASHPOINT_KEYWORDS = diplomacyKeywordsData.flashpointKeywords;
+const DIPLOMACY_FLASHPOINT_PAIRS = diplomacyKeywordsData.diplomacyFlashpointPairs;
 
 const LEAD_COHERENCE_MIN_ENTITY_CORROBORATION = 2;
 
@@ -116,9 +82,28 @@ function normalizeScoringText(text) {
   return text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+/**
+ * Word-start containment in normalized scoring text. The keyword must
+ * begin at start-of-string or after a whitespace boundary, but is
+ * allowed to continue with arbitrary characters — so 'iran' still
+ * matches inside "iranian", 'russia' inside "russian", 'pact' inside
+ * "pacts" (plural). The boundary STAYS on the left so 'pact' inside
+ * "impact" or 'deal' inside "ideal" do NOT match — preceded by a word
+ * character ('m', 'i'), not a boundary. Works for multi-word keywords
+ * like 'west bank' or 'north korea' (e.g. matches "north korean" via
+ * the "north korea" prefix). PR #3909 review (P2): the strict
+ * full-boundary form regressed demonyms like 'Iranian'/'Israeli'.
+ * @param {string} text @param {string} kw
+ */
+function containsKeywordToken(text, kw) {
+  if (!kw) return false;
+  const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|\\s)${escaped}`).test(text);
+}
+
 /** @param {string} text @param {string[]} keywords */
 function hasAnySignal(text, keywords) {
-  return keywords.some((kw) => text.includes(kw));
+  return keywords.some((kw) => containsKeywordToken(text, kw));
 }
 
 /**
@@ -132,7 +117,7 @@ function hasDiplomacyFlashpointSignal(story) {
   if (!text) return false;
   if (
     DIPLOMACY_FLASHPOINT_PAIRS.some(([entity, action]) =>
-      text.includes(entity) && text.includes(action),
+      containsKeywordToken(text, entity) && containsKeywordToken(text, action),
     )
   ) {
     return true;

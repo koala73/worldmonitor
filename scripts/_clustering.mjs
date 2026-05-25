@@ -4,6 +4,10 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const SOURCE_TIERS = require('./shared/source-tiers.json');
+// scripts/shared/ mirror (NOT ../shared/): seed-insights.mjs deploys via
+// nixpacks with rootDirectory=scripts, so the repo-root shared/ folder
+// is not in the container. Matches the SOURCE_TIERS pattern above.
+const DIPLOMACY_KEYWORDS_DATA = require('./shared/diplomacy-keywords.json');
 
 const SIMILARITY_THRESHOLD = 0.5;
 const ENTITY_CORROBORATION_WINDOW_MS = 24 * 60 * 60 * 1000;
@@ -38,44 +42,9 @@ const UNREST_KEYWORDS = [
   'coup', 'martial law', 'curfew', 'shutdown', 'blackout',
 ];
 
-const FLASHPOINT_KEYWORDS = [
-  'iran', 'tehran', 'russia', 'moscow', 'china', 'beijing', 'taiwan', 'ukraine', 'kyiv',
-  'north korea', 'pyongyang', 'israel', 'gaza', 'west bank', 'syria', 'damascus',
-  'yemen', 'hezbollah', 'hamas', 'kremlin', 'pentagon', 'nato', 'wagner',
-];
-
-export const DIPLOMACY_KEYWORDS = [
-  'ceasefire', 'truce', 'armistice', 'treaty', 'accord', 'pact', 'diplomatic',
-  'diplomacy', 'mediate', 'mediator', 'negotiation', 'negotiations', 'negotiate',
-  'normalization', 'normalisation',
-];
-
-export const ENTITY_BIGRAMS = [
-  ['iran', 'deal'],
-  ['iran', 'talks'],
-  ['iran', 'ceasefire'],
-  ['iran', 'treaty'],
-  ['iran', 'accord'],
-  ['iran', 'peace'],
-  ['israel', 'ceasefire'],
-  ['israel', 'truce'],
-  ['israel', 'accord'],
-  ['gaza', 'ceasefire'],
-  ['gaza', 'truce'],
-  ['ukraine', 'ceasefire'],
-  ['ukraine', 'talks'],
-  ['russia', 'talks'],
-  ['russia', 'treaty'],
-  ['hamas', 'truce'],
-  ['hezbollah', 'truce'],
-  ['syria', 'ceasefire'],
-  ['china', 'talks'],
-  ['china', 'accord'],
-  ['taiwan', 'talks'],
-  ['yemen', 'ceasefire'],
-  ['north korea', 'talks'],
-  ['pyongyang', 'talks'],
-];
+const FLASHPOINT_KEYWORDS = DIPLOMACY_KEYWORDS_DATA.flashpointKeywords;
+export const DIPLOMACY_KEYWORDS = DIPLOMACY_KEYWORDS_DATA.diplomacyKeywords;
+export const ENTITY_BIGRAMS = DIPLOMACY_KEYWORDS_DATA.diplomacyFlashpointPairs;
 
 const CRISIS_KEYWORDS = [
   'crisis', 'emergency', 'catastrophe', 'disaster', 'collapse', 'humanitarian',
@@ -150,6 +119,16 @@ function normalizedMatchText(text) {
     .replace(/[^a-z0-9\s]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+// Word-start containment in normalizedMatchText output. Mirrors
+// shared/brief-filter.js:containsKeywordToken — prevents 'pact' inside
+// 'impact' (false positive) while still matching 'iran' inside
+// 'iranian' (demonym preserved). PR #3909 review (P2).
+function containsKeywordToken(text, kw) {
+  if (!kw) return false;
+  const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|\\s)${escaped}`).test(text);
 }
 
 function jaccardSimilarity(a, b) {
@@ -338,7 +317,9 @@ function entityKeysForCluster(cluster) {
   for (const title of titles) {
     const text = normalizedMatchText(title);
     for (const [entity, action] of ENTITY_BIGRAMS) {
-      if (text.includes(entity) && text.includes(action)) keys.add(`${entity}:${action}`);
+      if (containsKeywordToken(text, entity) && containsKeywordToken(text, action)) {
+        keys.add(`${entity}:${action}`);
+      }
     }
   }
   return keys;

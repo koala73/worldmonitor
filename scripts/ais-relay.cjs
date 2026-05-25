@@ -3125,8 +3125,19 @@ function relayNormalizeScoringText(text) {
   return String(text || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
+// Word-start containment in normalized text. Mirrors
+// shared/brief-filter.js:containsKeywordToken — prevents 'pact' inside
+// 'impact' (false positive) while still matching 'iran' inside
+// 'iranian' (demonym preserved). PR #3909 review (P2). Keeps the
+// relay aligned with digest under tests/importance-score-parity.test.mjs.
+function relayContainsKeywordToken(text, kw) {
+  if (!kw) return false;
+  const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|\\s)${escaped}`).test(text);
+}
+
 function relayHasAnySignal(text, keywords) {
-  return keywords.some((kw) => text.includes(kw));
+  return keywords.some((kw) => relayContainsKeywordToken(text, kw));
 }
 
 function relayHasDiplomacyFlashpointSignal(title) {
@@ -3134,7 +3145,7 @@ function relayHasDiplomacyFlashpointSignal(title) {
   const text = relayNormalizeScoringText(title);
   if (
     RELAY_DIPLOMACY_FLASHPOINT_PAIRS.some(([entity, action]) =>
-      text.includes(entity) && text.includes(action),
+      relayContainsKeywordToken(text, entity) && relayContainsKeywordToken(text, action),
     )
   ) {
     return true;

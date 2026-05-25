@@ -24,6 +24,7 @@ import {
 } from './_digest-markdown.mjs';
 
 const require = createRequire(import.meta.url);
+const DIGEST_DIPLOMACY_DATA = require('../shared/diplomacy-keywords.json');
 const { decrypt } = require('./lib/crypto.cjs');
 const { callLLM } = require('./lib/llm-chain.cjs');
 const { fetchUserPreferences, extractUserContext, formatUserProfile } = require('./lib/user-context.cjs');
@@ -446,60 +447,35 @@ function matchesSensitivity(ruleSensitivity, severity) {
   return severity === 'critical';
 }
 
-const DIGEST_DIPLOMACY_KEYWORDS = [
-  'ceasefire', 'truce', 'armistice', 'treaty', 'accord', 'pact', 'diplomatic',
-  'diplomacy', 'mediate', 'mediator', 'negotiation', 'negotiations', 'negotiate',
-  'normalization', 'normalisation',
-];
-
-const DIGEST_FLASHPOINT_KEYWORDS = [
-  'iran', 'tehran', 'russia', 'moscow', 'china', 'beijing', 'taiwan', 'ukraine', 'kyiv',
-  'north korea', 'pyongyang', 'israel', 'gaza', 'west bank', 'syria', 'damascus',
-  'yemen', 'hezbollah', 'hamas', 'kremlin', 'pentagon', 'nato', 'wagner',
-];
-
-const DIGEST_DIPLOMACY_FLASHPOINT_PAIRS = [
-  ['iran', 'deal'],
-  ['iran', 'talks'],
-  ['iran', 'ceasefire'],
-  ['iran', 'treaty'],
-  ['iran', 'accord'],
-  ['iran', 'peace'],
-  ['israel', 'ceasefire'],
-  ['israel', 'truce'],
-  ['israel', 'accord'],
-  ['gaza', 'ceasefire'],
-  ['gaza', 'truce'],
-  ['ukraine', 'ceasefire'],
-  ['ukraine', 'talks'],
-  ['russia', 'talks'],
-  ['russia', 'treaty'],
-  ['hamas', 'truce'],
-  ['hezbollah', 'truce'],
-  ['syria', 'ceasefire'],
-  ['china', 'talks'],
-  ['china', 'accord'],
-  ['taiwan', 'talks'],
-  ['yemen', 'ceasefire'],
-  ['north korea', 'talks'],
-  ['pyongyang', 'talks'],
-];
+const DIGEST_DIPLOMACY_KEYWORDS = DIGEST_DIPLOMACY_DATA.diplomacyKeywords;
+const DIGEST_FLASHPOINT_KEYWORDS = DIGEST_DIPLOMACY_DATA.flashpointKeywords;
+const DIGEST_DIPLOMACY_FLASHPOINT_PAIRS = DIGEST_DIPLOMACY_DATA.diplomacyFlashpointPairs;
 
 function digestSignalText(text) {
   return String(text || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+// Word-start containment in digest-normalized text. Mirrors
+// shared/brief-filter.js:containsKeywordToken — prevents 'pact' inside
+// 'impact' (false positive) while still matching 'iran' inside
+// 'iranian' (demonym preserved). PR #3909 review (P2).
+function digestContainsKeywordToken(text, kw) {
+  if (!kw) return false;
+  const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|\\s)${escaped}`).test(text);
 }
 
 function digestHasDiplomacyFlashpointSignal(title) {
   const text = digestSignalText(title);
   if (
     DIGEST_DIPLOMACY_FLASHPOINT_PAIRS.some(([entity, action]) =>
-      text.includes(entity) && text.includes(action),
+      digestContainsKeywordToken(text, entity) && digestContainsKeywordToken(text, action),
     )
   ) {
     return true;
   }
-  return DIGEST_DIPLOMACY_KEYWORDS.some((kw) => text.includes(kw)) &&
-    DIGEST_FLASHPOINT_KEYWORDS.some((kw) => text.includes(kw));
+  return DIGEST_DIPLOMACY_KEYWORDS.some((kw) => digestContainsKeywordToken(text, kw)) &&
+    DIGEST_FLASHPOINT_KEYWORDS.some((kw) => digestContainsKeywordToken(text, kw));
 }
 
 function digestPercentile(sortedNumbers, pct) {

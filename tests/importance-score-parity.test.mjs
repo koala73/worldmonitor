@@ -47,6 +47,16 @@ const sharedSourceTiers = JSON.parse(
   readFileSync(resolve(repoRoot, 'shared/source-tiers.json'), 'utf-8'),
 );
 
+// Canonical diplomacy/flashpoint keyword set. As of the centralization
+// PR, digest / clustering / brief-filter all consume this JSON directly,
+// so the test uses it as the oracle instead of re-parsing each consumer's
+// (now-import-backed) literal. The relay (ais-relay.cjs) still inlines
+// its own copy — drift between the canonical JSON and the relay literal
+// is asserted further below.
+const sharedDiplomacyKeywords = JSON.parse(
+  readFileSync(resolve(repoRoot, 'shared/diplomacy-keywords.json'), 'utf-8'),
+);
+
 // ── Extract constants from source files ──────────────────────────────────────
 
 function extractObjectLiteral(src, varName) {
@@ -124,12 +134,18 @@ function extractFunctionBody(src, fnSignature) {
 
 const digestSeverityScores = extractObjectLiteral(digestSrc, 'SEVERITY_SCORES');
 const digestScoreWeights = extractObjectLiteral(digestSrc, 'SCORE_WEIGHTS');
-const digestDiplomacyKeywords = extractArrayLiteral(digestSrc, 'DIPLOMACY_KEYWORDS');
-const digestFlashpointKeywords = extractArrayLiteral(digestSrc, 'FLASHPOINT_SCORING_KEYWORDS');
-const digestDiplomacyPairs = extractArrayLiteral(digestSrc, 'DIPLOMACY_FLASHPOINT_PAIRS');
+// Centralized: digest, clustering, and brief-filter all consume the
+// canonical JSON, so the test reads the JSON instead of re-parsing
+// each consumer's (now import-backed) declaration.
+const digestDiplomacyKeywords = sharedDiplomacyKeywords.diplomacyKeywords;
+const digestFlashpointKeywords = sharedDiplomacyKeywords.flashpointKeywords;
+const digestDiplomacyPairs = sharedDiplomacyKeywords.diplomacyFlashpointPairs;
 const digestDiplomacyBoost = extractNumericConst(digestSrc, 'DIPLOMACY_FLASHPOINT_BOOST');
 const digestEntityScorePerSource = extractNumericConst(digestSrc, 'ENTITY_CORROBORATION_SCORE_PER_SOURCE');
 
+// Relay still inlines its own copy (Railway deploy isolation). Drift
+// between the relay literal and the canonical JSON would fail the
+// parity assertions further below.
 const relaySeverityScores = extractObjectLiteral(relaySrc, 'RELAY_SEVERITY_SCORES');
 const relayScoreWeights = extractObjectLiteral(relaySrc, 'RELAY_SCORE_WEIGHTS');
 const relayDiplomacyKeywords = extractArrayLiteral(relaySrc, 'RELAY_DIPLOMACY_KEYWORDS');
@@ -138,12 +154,12 @@ const relayDiplomacyPairs = extractArrayLiteral(relaySrc, 'RELAY_DIPLOMACY_FLASH
 const relayDiplomacyBoost = extractNumericConst(relaySrc, 'RELAY_DIPLOMACY_FLASHPOINT_BOOST');
 const relayEntityScorePerSource = extractNumericConst(relaySrc, 'RELAY_ENTITY_CORROBORATION_SCORE_PER_SOURCE');
 
-const clusteringDiplomacyKeywords = extractArrayLiteral(clusteringSrc, 'DIPLOMACY_KEYWORDS');
-const clusteringFlashpointKeywords = extractArrayLiteral(clusteringSrc, 'FLASHPOINT_KEYWORDS');
-const clusteringDiplomacyPairs = extractArrayLiteral(clusteringSrc, 'ENTITY_BIGRAMS');
-const briefFilterDiplomacyKeywords = extractArrayLiteral(briefFilterSrc, 'DIPLOMACY_KEYWORDS');
-const briefFilterFlashpointKeywords = extractArrayLiteral(briefFilterSrc, 'FLASHPOINT_KEYWORDS');
-const briefFilterDiplomacyPairs = extractArrayLiteral(briefFilterSrc, 'DIPLOMACY_FLASHPOINT_PAIRS');
+const clusteringDiplomacyKeywords = sharedDiplomacyKeywords.diplomacyKeywords;
+const clusteringFlashpointKeywords = sharedDiplomacyKeywords.flashpointKeywords;
+const clusteringDiplomacyPairs = sharedDiplomacyKeywords.diplomacyFlashpointPairs;
+const briefFilterDiplomacyKeywords = sharedDiplomacyKeywords.diplomacyKeywords;
+const briefFilterFlashpointKeywords = sharedDiplomacyKeywords.flashpointKeywords;
+const briefFilterDiplomacyPairs = sharedDiplomacyKeywords.diplomacyFlashpointPairs;
 
 // ── Reconstruct the scorers as pure functions for output comparison ─────────
 
@@ -158,15 +174,20 @@ const digestComputeImportanceScore = new Function(
     function normalizeScoringText(text) {
       return text.toLowerCase().replace(/[^a-z0-9\\s]/g, ' ').replace(/\\s+/g, ' ').trim();
     }
+    function containsKeywordToken(text, kw) {
+      if (!kw) return false;
+      const escaped = kw.replace(/[.*+?^\${}()|[\\]\\\\]/g, '\\\\$&');
+      return new RegExp('(^|\\\\s)' + escaped).test(text);
+    }
     function hasAnySignal(text, keywords) {
-      return keywords.some((kw) => text.includes(kw));
+      return keywords.some((kw) => containsKeywordToken(text, kw));
     }
     function hasDiplomacyFlashpointSignal(title) {
       if (!title) return false;
       const text = normalizeScoringText(title);
       if (
         DIPLOMACY_FLASHPOINT_PAIRS.some(([entity, action]) =>
-          text.includes(entity) && text.includes(action),
+          containsKeywordToken(text, entity) && containsKeywordToken(text, action),
         )
       ) {
         return true;
@@ -204,15 +225,20 @@ const relayComputeImportanceScore = new Function(
     function relayNormalizeScoringText(text) {
       return String(text || '').toLowerCase().replace(/[^a-z0-9\\s]/g, ' ').replace(/\\s+/g, ' ').trim();
     }
+    function relayContainsKeywordToken(text, kw) {
+      if (!kw) return false;
+      const escaped = kw.replace(/[.*+?^\${}()|[\\]\\\\]/g, '\\\\$&');
+      return new RegExp('(^|\\\\s)' + escaped).test(text);
+    }
     function relayHasAnySignal(text, keywords) {
-      return keywords.some((kw) => text.includes(kw));
+      return keywords.some((kw) => relayContainsKeywordToken(text, kw));
     }
     function relayHasDiplomacyFlashpointSignal(title) {
       if (!title) return false;
       const text = relayNormalizeScoringText(title);
       if (
         RELAY_DIPLOMACY_FLASHPOINT_PAIRS.some(([entity, action]) =>
-          text.includes(entity) && text.includes(action),
+          relayContainsKeywordToken(text, entity) && relayContainsKeywordToken(text, action),
         )
       ) {
         return true;
