@@ -70,11 +70,11 @@
       "interactiveChart": "Interaktivni Chart.js grafikon koji uspoređuje cijene nafte i zlata",
       "sortableTable": "Sortabilna tablica cijena kriptovaluta s filterom pretrage",
       "animatedCounters": "Animirani brojači za ključne ekonomske pokazatelje",
-      "tabbedComparison": "Tabelarisana usporedba konfliktnih događaja po regijama"
+      "tabbedComparison": "Usporedba konfliktnih događaja po regijama u karticama"
     }
   },
   "countryBrief": {
-    "identifying": "Identifikujem zemlju...",
+    "identifying": "Identificiram zemlju...",
     "locating": "Lociranje regije...",
     "geocodeFailed": "Nije moguće identificirati zemlju na ovoj lokaciji",
     "retryBtn": "Pokušaj ponovno",
@@ -144,7 +144,7 @@
     "economicIndicators": "Ekonomski pokazatelji",
     "ownFlights": "Vlastiti letovi",
     "foreignFlights": "Inozemni letovi",
-    "navalVessels": "Pomorske ladje",
+    "navalVessels": "Pomorska plovila",
     "foreignPresence": "Inozemna prisutnost",
     "nearestBases": "Najbliže vojne baze",
     "noBasesNearby": "Nema obližnjih baza u radijusu od 600 km.",
@@ -162,7 +162,7 @@
       "criticalNews": "Kritične vijesti",
       "protests": "Prosvjedi",
       "militaryAir": "Vojna zrakoplovna",
-      "navalVessels": "Pomorske ladje",
+      "navalVessels": "Pomorska plovila",
       "outages": "Prekidi",
       "aisDisruptions": "AIS prekidi",
       "satelliteFires": "Satelitski požari",
@@ -185,8 +185,8 @@
     "fallback": {
       "instabilityIndex": "**Indeks nestabilnosti: {{score}}/100** ({{level}}, {{trend}})",
       "protestsDetected": "{{count}} aktivnih prosvjeda otkriveno",
-      "aircraftTracked": "{{count}} vojnih zrakoplova prateno",
-      "vesselsTracked": "{{count}} vojnih brodova prateno",
+      "aircraftTracked": "{{count}} vojnih zrakoplova praćeno",
+      "vesselsTracked": "{{count}} vojnih brodova praćeno",
       "internetOutages": "{{count}} prekida interneta",
       "recentEarthquakes": "{{count}} nedavnih potresa",
       "stockIndex": "Indeks dionica: {{value}}",
