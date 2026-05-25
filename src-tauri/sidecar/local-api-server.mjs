@@ -162,7 +162,7 @@ const ALLOWED_ENV_KEYS = new Set([
   'VITE_OPENSKY_RELAY_URL', 'OPENSKY_CLIENT_ID', 'OPENSKY_CLIENT_SECRET',
   'AISSTREAM_API_KEY', 'VITE_WS_RELAY_URL', 'FINNHUB_API_KEY', 'NASA_FIRMS_API_KEY',
   'OLLAMA_API_URL', 'OLLAMA_MODEL', 'WORLDMONITOR_API_KEY', 'WTO_API_KEY',
-  'AVIATIONSTACK_API', 'ICAO_API_KEY', 'UCDP_ACCESS_TOKEN',
+  'AVIATIONSTACK_API', 'ICAO_API_KEY', 'UCDP_ACCESS_TOKEN', DESKTOP_AUTH_SECRET_ENV,
 ]);
 
 const CHROME_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
@@ -1086,8 +1086,11 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
     case 'ICAO_API_KEY':
       return ok('ICAO API key stored (verification requires NOTAM endpoint access)');
 
-      default:
-        return ok('Key stored');
+    case DESKTOP_AUTH_SECRET_ENV:
+      return ok('Desktop shared secret stored');
+
+    default:
+      return ok('Key stored');
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'provider probe failed';

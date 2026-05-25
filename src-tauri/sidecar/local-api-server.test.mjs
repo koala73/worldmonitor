@@ -828,6 +828,62 @@ test('accepts OLLAMA_MODEL via /api/local-env-update', async () => {
   }
 });
 
+test('accepts WM_DESKTOP_SHARED_SECRET via /api/local-env-update', async () => {
+  const originalSecret = process.env.WM_DESKTOP_SHARED_SECRET;
+  const localApi = await setupApiDir({});
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/api/local-env-update`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'WM_DESKTOP_SHARED_SECRET', value: 'desktop-secret-from-runtime' }),
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.ok, true);
+    assert.equal(body.key, 'WM_DESKTOP_SHARED_SECRET');
+    assert.equal(process.env.WM_DESKTOP_SHARED_SECRET, 'desktop-secret-from-runtime');
+  } finally {
+    if (originalSecret === undefined) delete process.env.WM_DESKTOP_SHARED_SECRET;
+    else process.env.WM_DESKTOP_SHARED_SECRET = originalSecret;
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('validates WM_DESKTOP_SHARED_SECRET without provider probe', async () => {
+  const localApi = await setupApiDir({});
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/api/local-validate-secret`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'WM_DESKTOP_SHARED_SECRET', value: 'desktop-secret-from-runtime' }),
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.valid, true);
+    assert.equal(body.message, 'Desktop shared secret stored');
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
 test('rejects unknown key via /api/local-env-update', async () => {
   const localApi = await setupApiDir({});
 
