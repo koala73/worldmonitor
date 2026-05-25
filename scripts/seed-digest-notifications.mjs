@@ -657,6 +657,12 @@ async function buildDigest(rule, windowStartMs) {
       // pre-stamp residue rows. Display-side word-wise titleCase happens
       // once at the envelope-build site in shared/brief-filter.js.
       category: typeof track.category === 'string' ? track.category : '',
+      // Cross-title entity corroboration persisted by list-feed-digest.
+      // This is distinct from exact-title source sets: the brief composer
+      // uses it only for the narrow lead/card coherence override when
+      // the LLM's top-ranked story is a corroborated flashpoint-diplomacy
+      // development.
+      entityCorroborationCount: parseInt(track.entityCorroborationCount ?? '0', 10) || 0,
     });
   }
 
@@ -1762,6 +1768,9 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
     institutional_static_page: 0,
     in: winnerStories.length,
   };
+  const orderStats = {
+    leadDiplomacyOverride: false,
+  };
   const envelope = composeBriefFromDigestStories(
     winner.rule,
     winnerStories,
@@ -1769,6 +1778,7 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
     {
       nowMs,
       onDrop: (ev) => { dropStats[ev.reason] = (dropStats[ev.reason] ?? 0) + 1; },
+      onOrder: (ev) => { orderStats.leadDiplomacyOverride = ev.leadDiplomacyOverride === true; },
       synthesis: synthesis || publicLead
         ? {
             ...(synthesis ?? {}),
@@ -1833,9 +1843,13 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
     // the wrong fit here: a single headline can carry ≥4 anchors,
     // tripping its size-based threshold up to 2.
     const coherent = leadGroundsAgainstStory(synthesis.lead, card1Headline);
+    const coherentVia = !coherent
+      ? 'mismatch'
+      : (orderStats.leadDiplomacyOverride ? 'lead_diplomacy_override' : 'natural');
     console.log(
       `[digest] lead card1 coherence user=${userId} ` +
         `coherent=${coherent} synthesis_level=${synthesisLevel} ` +
+        `coherent_via=${coherentVia} ` +
         `card1_clusterId=${card1?.clusterId ?? '?'}`,
     );
     if (!coherent) {

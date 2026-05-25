@@ -208,6 +208,7 @@ describe('buildStoryTrackHsetFields — story:track:v1 HSET contract', () => {
     const fields = buildStoryTrackHsetFields(item, '1745000000001', 99);
     const m = fieldsToMap(fields);
     assert.strictEqual(m.get('severity'), 'high');
+    assert.strictEqual(m.get('entityCorroborationCount'), '5');
   });
 
   it('does not promote generic business deals or under-corroborated diplomacy titles', () => {

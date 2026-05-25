@@ -1039,6 +1039,137 @@ describe('composeBriefFromDigestStories — synthesis splice', () => {
       ],
     );
   });
+
+  it('promotes the LLM rank-0 entity-corroborated flashpoint-diplomacy story to card #1', () => {
+    const stories = [
+      digestStory({
+        hash: 'lng-critical-1111',
+        title: 'LNG Tanker Exits Hormuz For India For First Time Since War Began',
+        severity: 'critical',
+        currentScore: 150,
+        sources: ['Energy Wire'],
+        link: 'https://example.com/lng-tanker-hormuz',
+        category: 'energy',
+        briefTopicId: 'lng',
+      }),
+      digestStory({
+        hash: 'iran-deal-2222',
+        title: 'Iran says progress has been reached on many topics in a potential deal',
+        severity: 'high',
+        currentScore: 130,
+        sources: ['Reuters', 'AP News', 'Axios'],
+        link: 'https://example.com/iran-deal-progress',
+        category: 'diplomacy',
+        entityCorroborationCount: 3,
+        briefTopicId: 'iran-deal',
+      }),
+    ];
+    const orderEvents = [];
+    const env = composeBriefFromDigestStories(
+      rule({ sensitivity: 'high' }),
+      stories,
+      { clusters: 2, multiSource: 1 },
+      {
+        nowMs: NOW,
+        onOrder: (event) => orderEvents.push(event),
+        synthesis: {
+          lead: 'Iran says progress has been reached on many topics in a potential deal.',
+          rankedStoryHashes: ['iran-deal'],
+        },
+      },
+    );
+    assert.ok(env);
+    assert.equal(env.data.stories[0].headline, 'Iran says progress has been reached on many topics in a potential deal');
+    assert.equal(env.data.stories[1].headline, 'LNG Tanker Exits Hormuz For India For First Time Since War Began');
+    assert.deepEqual(orderEvents, [{ leadDiplomacyOverride: true }]);
+  });
+
+  it('does not let rankedStoryHashes alone beat critical severity without entity corroboration', () => {
+    const stories = [
+      digestStory({
+        hash: 'lng-critical-1111',
+        title: 'LNG Tanker Exits Hormuz For India For First Time Since War Began',
+        severity: 'critical',
+        currentScore: 150,
+        sources: ['Energy Wire'],
+        link: 'https://example.com/lng-tanker-hormuz',
+        category: 'energy',
+        briefTopicId: 'lng',
+      }),
+      digestStory({
+        hash: 'iran-deal-2222',
+        title: 'Iran says progress has been reached on many topics in a potential deal',
+        severity: 'high',
+        currentScore: 130,
+        sources: ['Reuters'],
+        link: 'https://example.com/iran-deal-progress',
+        category: 'diplomacy',
+        entityCorroborationCount: 0,
+        briefTopicId: 'iran-deal',
+      }),
+    ];
+    const orderEvents = [];
+    const env = composeBriefFromDigestStories(
+      rule({ sensitivity: 'high' }),
+      stories,
+      { clusters: 2, multiSource: 0 },
+      {
+        nowMs: NOW,
+        onOrder: (event) => orderEvents.push(event),
+        synthesis: {
+          lead: 'Iran says progress has been reached on many topics in a potential deal.',
+          rankedStoryHashes: ['iran-deal'],
+        },
+      },
+    );
+    assert.ok(env);
+    assert.equal(env.data.stories[0].headline, 'LNG Tanker Exits Hormuz For India For First Time Since War Began');
+    assert.equal(env.data.stories[1].headline, 'Iran says progress has been reached on many topics in a potential deal');
+    assert.deepEqual(orderEvents, [{ leadDiplomacyOverride: false }]);
+  });
+
+  it('ignores nonexistent rankedStoryHashes without firing the lead override', () => {
+    const stories = [
+      digestStory({
+        hash: 'lng-critical-1111',
+        title: 'LNG Tanker Exits Hormuz For India For First Time Since War Began',
+        severity: 'critical',
+        currentScore: 150,
+        sources: ['Energy Wire'],
+        link: 'https://example.com/lng-tanker-hormuz',
+        category: 'energy',
+        briefTopicId: 'lng',
+      }),
+      digestStory({
+        hash: 'iran-deal-2222',
+        title: 'Iran says progress has been reached on many topics in a potential deal',
+        severity: 'high',
+        currentScore: 130,
+        sources: ['Reuters', 'AP News', 'Axios'],
+        link: 'https://example.com/iran-deal-progress',
+        category: 'diplomacy',
+        entityCorroborationCount: 3,
+        briefTopicId: 'iran-deal',
+      }),
+    ];
+    const orderEvents = [];
+    const env = composeBriefFromDigestStories(
+      rule({ sensitivity: 'high' }),
+      stories,
+      { clusters: 2, multiSource: 1 },
+      {
+        nowMs: NOW,
+        onOrder: (event) => orderEvents.push(event),
+        synthesis: {
+          lead: 'Iran says progress has been reached on many topics in a potential deal.',
+          rankedStoryHashes: ['nonexistent-hash'],
+        },
+      },
+    );
+    assert.ok(env);
+    assert.equal(env.data.stories[0].headline, 'LNG Tanker Exits Hormuz For India For First Time Since War Began');
+    assert.deepEqual(orderEvents, [{ leadDiplomacyOverride: false }]);
+  });
 });
 
 // ── Sprint 1 / U3 — stable clusterId wiring (canonical cluster-rep hash) ──

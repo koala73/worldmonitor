@@ -1085,6 +1085,13 @@ function buildStoryTrackHsetFields(
     // (treats as legacy row) instead of being mis-classified as a stale
     // row with a bogus timestamp.
     'publishedAt', Number.isFinite(item.publishedAt) ? String(item.publishedAt) : '',
+    // Entity-level cross-title corroboration count. Distinct from exact
+    // normalized-title sourceCount: this captures related flashpoint +
+    // diplomacy reports that do not collapse into the same story hash.
+    // The digest composer uses it as a narrow lead/card coherence signal.
+    'entityCorroborationCount', Number.isFinite(item.entityCorroborationCount)
+      ? String(item.entityCorroborationCount)
+      : '0',
     // Opinion/analysis flag (classifyOpinion). '1' = op-ed/column,
     // '0' = hard news. buildDigest's read-path filter excludes '1' rows
     // from the brief pool. Written unconditionally for the same
