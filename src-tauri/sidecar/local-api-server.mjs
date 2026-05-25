@@ -232,6 +232,36 @@ const CHROME_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/5
 // Block requests to private/reserved IP ranges to prevent the RSS proxy
 // from being used as a localhost pivot or internal network scanner.
 
+function ipv4ToInt(parts) {
+  return (
+    ((parts[0] << 24) >>> 0) +
+    (parts[1] << 16) +
+    (parts[2] << 8) +
+    parts[3]
+  ) >>> 0;
+}
+
+const BLOCKED_IPV4_RANGES = [
+  ['0.0.0.0', 8],       // "this" network
+  ['10.0.0.0', 8],      // RFC1918 private
+  ['100.64.0.0', 10],   // carrier-grade NAT
+  ['127.0.0.0', 8],     // loopback
+  ['169.254.0.0', 16],  // link-local
+  ['172.16.0.0', 12],   // RFC1918 private
+  ['192.0.0.0', 24],    // IETF protocol assignments
+  ['192.0.2.0', 24],    // documentation
+  ['192.88.99.0', 24],  // deprecated 6to4 relay anycast
+  ['192.168.0.0', 16],  // RFC1918 private
+  ['198.18.0.0', 15],   // benchmark testing
+  ['198.51.100.0', 24], // documentation
+  ['203.0.113.0', 24],  // documentation
+  ['224.0.0.0', 3],     // multicast, reserved, limited broadcast
+].map(([base, prefix]) => {
+  const baseInt = ipv4ToInt(base.split('.').map(Number));
+  const mask = prefix === 0 ? 0 : (0xffffffff << (32 - prefix)) >>> 0;
+  return [baseInt, mask];
+});
+
 function isPrivateIP(ip) {
   // IPv4-mapped IPv6 — extract the v4 portion
   const v4Mapped = ip.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/i);
@@ -246,17 +276,12 @@ function isPrivateIP(ip) {
   if (/^ff[0-9a-f]{2}:/i.test(addr)) return true;      // ff00::/8 multicast
 
   const parts = addr.split('.').map(Number);
-  if (parts.length !== 4 || parts.some(p => Number.isNaN(p))) return false; // not an IPv4
+  if (parts.length !== 4 || parts.some(p => !Number.isInteger(p) || p < 0 || p > 255)) return false; // not an IPv4
 
-  const [a, b] = parts;
-  if (a === 127) return true;                       // 127.0.0.0/8  loopback
-  if (a === 10) return true;                        // 10.0.0.0/8   private
-  if (a === 172 && b >= 16 && b <= 31) return true; // 172.16.0.0/12 private
-  if (a === 192 && b === 168) return true;           // 192.168.0.0/16 private
-  if (a === 169 && b === 254) return true;           // 169.254.0.0/16 link-local
-  if (a === 0) return true;                          // 0.0.0.0/8
-  if (a >= 224) return true;                         // 224.0.0.0+ multicast/reserved
-  return false;
+  const ipInt = ipv4ToInt(parts);
+  return BLOCKED_IPV4_RANGES.some(([baseInt, mask]) => {
+    return (ipInt & mask) === (baseInt & mask);
+  });
 }
 
 async function isSafeUrl(urlString) {

@@ -561,6 +561,75 @@ test('blocks handler global fetches to private network targets (#3549)', async (
   }
 });
 
+test('blocks handler global fetches to non-global IPv4 special ranges', async () => {
+  const originalHttpRequest = http.request;
+  const blockedUrls = [
+    'http://100.64.0.1/secret',
+    'http://198.18.0.1/secret',
+    'http://192.0.0.1/secret',
+    'http://192.0.2.1/secret',
+    'http://192.88.99.1/secret',
+    'http://198.51.100.1/secret',
+    'http://203.0.113.1/secret',
+    'http://240.0.0.1/secret',
+  ];
+  let outboundHits = 0;
+
+  http.request = (options, onResponse) => {
+    if (options.hostname === '127.0.0.1') {
+      return originalHttpRequest.call(http, options, onResponse);
+    }
+
+    outboundHits += 1;
+    const req = new EventEmitter();
+    req.setTimeout = () => {};
+    req.write = () => {};
+    req.destroy = (error) => {
+      if (error) req.emit('error', error);
+    };
+    req.end = () => {
+      setImmediate(() => req.emit('error', new Error(`unexpected outbound request to ${options.hostname}`)));
+    };
+    return req;
+  };
+
+  const localApi = await setupApiDir({
+    'special-range-proxy.js': `
+      export default async function handler(request) {
+        const url = new URL(request.url);
+        const upstream = await fetch(url.searchParams.get('target'));
+        const payload = await upstream.text();
+        return new Response(payload, {
+          status: upstream.status,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+    `,
+  });
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    for (const blockedUrl of blockedUrls) {
+      const response = await fetch(`http://127.0.0.1:${port}/api/special-range-proxy?target=${encodeURIComponent(blockedUrl)}`);
+      assert.equal(response.status, 502, blockedUrl);
+      const body = await response.json();
+      assert.equal(body.error, 'Local handler error', blockedUrl);
+      assert.match(body.reason, /SSRF blocked/, blockedUrl);
+    }
+    assert.equal(outboundHits, 0);
+  } finally {
+    http.request = originalHttpRequest;
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
 test('uses asynchronous pinned lookup callback for handler global fetches (#3549)', async () => {
   const originalHttpsRequest = https.request;
   const envSnapshot = {
