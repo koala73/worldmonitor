@@ -4,6 +4,12 @@ const BOT_UA =
 const SOCIAL_PREVIEW_UA =
   /twitterbot|facebookexternalhit|linkedinbot|slackbot|telegrambot|whatsapp|discordbot|redditbot/i;
 
+// AI crawlers / AEO scanners: serve a variant-aware static stub on subdomain
+// roots so each variant (tech / finance / commodity / happy / energy) is
+// indexed under its own identity rather than inheriting the 'full' SPA HTML.
+const AI_CRAWLER_UA =
+  /gptbot|claudebot|ccbot|google-extended|perplexitybot|anthropic-ai|bytespider|cohere-ai|youbot|applebot-extended|amazonbot/i;
+
 const SOCIAL_PREVIEW_PATHS = new Set(['/api/story', '/api/og-story']);
 
 // Paths that bypass bot/script UA filtering below. Each must carry its own
@@ -102,13 +108,56 @@ export default function middleware(request: Request) {
   const path = url.pathname;
   const host = normalizeHost(request.headers.get('host') ?? url.hostname);
 
-  // Social bot OG response for variant subdomain root pages
-  if (path === '/' && SOCIAL_PREVIEW_UA.test(ua)) {
-    const variant = VARIANT_HOST_MAP[host];
-    if (variant && isAllowedHost(host)) {
-      const og = VARIANT_OG[variant as keyof typeof VARIANT_OG];
-      if (og) {
-        const html = `<!DOCTYPE html><html><head>
+  // Variant-aware crawlable stub for social preview bots AND AI crawlers
+  // (GPTBot, ClaudeBot, PerplexityBot, etc.) when hitting variant subdomain
+  // roots. Social bots get OG-only; AI crawlers additionally get JSON-LD
+  // WebApplication + a body with internal links and external citations so
+  // each variant is indexed under its own identity.
+  if (path === '/') {
+    const isSocial = SOCIAL_PREVIEW_UA.test(ua);
+    const isAI = AI_CRAWLER_UA.test(ua);
+    if (isSocial || isAI) {
+      const variant = VARIANT_HOST_MAP[host];
+      if (variant && isAllowedHost(host)) {
+        const og = VARIANT_OG[variant as keyof typeof VARIANT_OG];
+        if (og) {
+          const jsonLd = isAI ? `\n<script type="application/ld+json">${JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'WebApplication',
+            name: og.title.split(' - ')[0],
+            url: og.url,
+            description: og.description,
+            applicationCategory: 'BusinessApplication',
+            operatingSystem: 'Web, Windows, macOS, Linux',
+            offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+            screenshot: og.image,
+            isPartOf: {
+              '@type': 'WebSite',
+              name: 'World Monitor',
+              url: 'https://www.worldmonitor.app/',
+            },
+            sameAs: [
+              'https://github.com/koala73/worldmonitor',
+              'https://x.com/worldmonitorai',
+            ],
+          })}</script>` : '';
+          const aiBody = isAI ? `
+<h1>${og.title}</h1>
+<p>${og.description}</p>
+<h2>Explore the platform</h2>
+<ul>
+<li><a href="https://www.worldmonitor.app/">World Monitor — geopolitics &amp; intelligence</a></li>
+<li><a href="https://tech.worldmonitor.app/">Tech Monitor</a></li>
+<li><a href="https://finance.worldmonitor.app/">Finance Monitor</a></li>
+<li><a href="https://commodity.worldmonitor.app/">Commodity Monitor</a></li>
+<li><a href="https://happy.worldmonitor.app/">Happy Monitor</a></li>
+<li><a href="https://www.worldmonitor.app/pro">World Monitor Pro</a></li>
+<li><a href="https://www.worldmonitor.app/blog/">Blog</a></li>
+<li><a href="https://github.com/koala73/worldmonitor">Open source on GitHub</a></li>
+</ul>
+<h2>Sources</h2>
+<p>Data ingested live from <a href="https://acleddata.com/">ACLED</a>, <a href="https://ucdp.uu.se/">UCDP</a>, <a href="https://firms.modaps.eosdis.nasa.gov/">NASA FIRMS</a>, <a href="https://earthquake.usgs.gov/">USGS</a>, <a href="https://opensky-network.org/">OpenSky</a>, <a href="https://aisstream.io/">AISStream</a>, <a href="https://fred.stlouisfed.org/">FRED</a>, <a href="https://www.imf.org/en/Data">IMF</a>, and <a href="https://www.bis.org/">BIS</a>.</p>` : '';
+          const html = `<!DOCTYPE html><html><head>
 <meta property="og:type" content="website"/>
 <meta property="og:title" content="${og.title}"/>
 <meta property="og:description" content="${og.description}"/>
@@ -118,16 +167,18 @@ export default function middleware(request: Request) {
 <meta name="twitter:title" content="${og.title}"/>
 <meta name="twitter:description" content="${og.description}"/>
 <meta name="twitter:image" content="${og.image}"/>
-<title>${og.title}</title>
-</head><body></body></html>`;
-        return new Response(html, {
-          status: 200,
-          headers: {
-            'Content-Type': 'text/html; charset=utf-8',
-            'Cache-Control': 'no-store',
-            'Vary': 'User-Agent, Host',
-          },
-        });
+<link rel="canonical" href="${og.url}"/>
+<title>${og.title}</title>${jsonLd}
+</head><body>${aiBody}</body></html>`;
+          return new Response(html, {
+            status: 200,
+            headers: {
+              'Content-Type': 'text/html; charset=utf-8',
+              'Cache-Control': 'no-store',
+              'Vary': 'User-Agent, Host',
+            },
+          });
+        }
       }
     }
   }

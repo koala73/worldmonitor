@@ -117,6 +117,61 @@
     }
     </script>
 
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "World Monitor",
+      "alternateName": "WorldMonitor",
+      "url": "https://www.worldmonitor.app/",
+      "logo": "https://www.worldmonitor.app/favico/apple-touch-icon.png",
+      "description": "Open-source real-time global intelligence platform aggregating conflicts, military movements, markets, infrastructure, and geopolitical data. Used by 2M+ people across 190+ countries.",
+      "founder": {
+        "@type": "Person",
+        "name": "Elie Habib",
+        "url": "https://x.com/eliehabib",
+        "sameAs": ["https://x.com/eliehabib", "https://github.com/koala73"]
+      },
+      "sameAs": [
+        "https://github.com/koala73/worldmonitor",
+        "https://x.com/worldmonitorai",
+        "https://discord.gg/re63kWKxaz",
+        "https://www.wired.me/story/the-music-streaming-ceo-who-built-a-global-war-map"
+      ],
+      "contactPoint": {
+        "@type": "ContactPoint",
+        "contactType": "customer support",
+        "email": "support@worldmonitor.app",
+        "url": "https://www.worldmonitor.app/pro"
+      }
+    }
+    </script>
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "World Monitor",
+      "alternateName": "WorldMonitor",
+      "url": "https://www.worldmonitor.app/",
+      "description": "Real-time global intelligence dashboard — live news, markets, military tracking, infrastructure monitoring, and geopolitical data.",
+      "publisher": {
+        "@type": "Organization",
+        "name": "World Monitor",
+        "url": "https://www.worldmonitor.app/"
+      },
+      "potentialAction": {
+        "@type": "SearchAction",
+        "target": {
+          "@type": "EntryPoint",
+          "urlTemplate": "https://www.worldmonitor.app/?q={search_term_string}"
+        },
+        "query-input": "required name=search_term_string"
+      },
+      "inLanguage": ["en", "fr", "de", "es", "it", "pt", "nl", "sv", "pl", "cs", "ro", "bg", "el", "ru", "tr", "ar", "zh", "ja", "ko", "th", "vi"]
+    }
+    </script>
+
     <!--
       Umami Analytics — async (not defer): defer blocks DOMContentLoaded if abacus is slow/down (15s observed when origin 502s).
       data-domains is temporarily reduced to worldmonitor.app + happy.worldmonitor.app while upstream Umami issue #4183
@@ -212,7 +267,32 @@
     <link href="https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,300;0,400;0,600;0,700;1,400&family=Tajawal:wght@200;300;400;500;700;800;900&display=swap" rel="stylesheet">
   </head>
   <body>
-    <h1 style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap">World Monitor - Real-Time Global Intelligence Dashboard</h1>
+    <div id="seo-prerender" style="position:absolute;left:-9999px;top:-9999px;overflow:hidden;width:1px;height:1px;">
+      <h1>World Monitor — Real-Time Global Intelligence Dashboard</h1>
+      <p>Free, open-source intelligence platform aggregating live news, markets, military movements, conflicts, and infrastructure into one real-time dashboard. Used by 2M+ people across 190+ countries. <a href="https://www.wired.me/story/the-music-streaming-ceo-who-built-a-global-war-map">Featured in WIRED</a>.</p>
+
+      <h2>What it tracks</h2>
+      <p>Live conflict events from <a href="https://acleddata.com/">ACLED</a> and <a href="https://ucdp.uu.se/">UCDP</a>, satellite fire detection from <a href="https://firms.modaps.eosdis.nasa.gov/">NASA FIRMS</a>, earthquakes from <a href="https://www.usgs.gov/programs/earthquake-hazards">USGS</a>, military and civilian aircraft from <a href="https://opensky-network.org/">OpenSky Network</a>, ship AIS positions from <a href="https://aisstream.io/">AISStream</a>, macro and central bank data from <a href="https://fred.stlouisfed.org/">FRED</a>, <a href="https://www.imf.org/en/Data">IMF</a>, and <a href="https://www.bis.org/">BIS</a>, plus 500+ curated RSS feeds, 50+ map layers, and AI-synthesized country briefings.</p>
+
+      <h2>Five dashboards, one platform</h2>
+      <ul>
+        <li><a href="https://www.worldmonitor.app/">World Monitor</a> — geopolitics, conflicts, military, infrastructure</li>
+        <li><a href="https://tech.worldmonitor.app/">Tech Monitor</a> — AI labs, startups, cloud, cybersecurity</li>
+        <li><a href="https://finance.worldmonitor.app/">Finance Monitor</a> — global markets, central banks, forex, crypto</li>
+        <li><a href="https://commodity.worldmonitor.app/">Commodity Monitor</a> — mining, energy, supply chains, freight</li>
+        <li><a href="https://happy.worldmonitor.app/">Happy Monitor</a> — positive news, breakthroughs, conservation</li>
+      </ul>
+
+      <h2>Learn more</h2>
+      <ul>
+        <li><a href="https://www.worldmonitor.app/pro">World Monitor Pro</a> — AI analyst, personalized digests, MCP for Claude &amp; GPT</li>
+        <li><a href="https://www.worldmonitor.app/blog/">Blog</a> — OSINT guides, geopolitics, market intelligence</li>
+        <li><a href="https://www.worldmonitor.app/blog/posts/what-is-worldmonitor-real-time-global-intelligence/">What is World Monitor?</a></li>
+        <li><a href="https://www.worldmonitor.app/blog/posts/osint-for-everyone-open-source-intelligence-democratized/">OSINT for everyone — open-source intelligence democratized</a></li>
+        <li><a href="https://www.worldmonitor.app/blog/posts/five-dashboards-one-platform-worldmonitor-variants/">Five dashboards, one platform — the variants explained</a></li>
+        <li><a href="https://github.com/koala73/worldmonitor">Open source on GitHub (AGPL-3.0)</a></li>
+      </ul>
+    </div>
     <div id="app">
       <!-- Pre-render skeleton: visible instantly, replaced when JS calls renderLayout() -->
       <div class="skeleton-shell" aria-hidden="true">
@@ -254,9 +334,9 @@
     </aside>
     <noscript>
       <div style="max-width:800px;margin:0 auto;padding:40px 20px;font-family:system-ui,sans-serif;color:#e5e5e5;background:#0a0a0a;">
-        <h1>World Monitor — Real-Time Global Intelligence Dashboard</h1>
+        <h2>World Monitor — Real-Time Global Intelligence Dashboard</h2>
         <p>AI-powered real-time global intelligence dashboard with live news, markets, military tracking, infrastructure monitoring, and geopolitical data. Used by 2M+ people across 190+ countries.</p>
-        <h2>Features</h2>
+        <h3>Features</h3>
         <ul>
           <li>Real-time conflict tracking (ACLED, UCDP)</li>
           <li>Military ADS-B flight monitoring</li>

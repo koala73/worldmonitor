@@ -8,7 +8,7 @@ heroImage: "/blog/images/blog/worldmonitor-vs-traditional-intelligence-tools.jpg
 pubDate: "2026-03-11"
 ---
 
-A Bloomberg Terminal costs $24,000 per year. A Palantir deployment starts in the millions. Dataminr licenses run six figures for enterprise teams. Recorded Future isn't cheap either.
+A [Bloomberg Terminal](https://www.bloomberg.com/professional/products/bloomberg-terminal/) costs $24,000 per year. A [Palantir](https://www.palantir.com/) deployment starts in the millions. [Dataminr](https://www.dataminr.com/) licenses run six figures for enterprise teams. [Recorded Future](https://www.recordedfuture.com/) isn't cheap either.
 
 These tools are powerful. They're also gatekept behind budgets that exclude most of the world's analysts, researchers, journalists, and security professionals.
 

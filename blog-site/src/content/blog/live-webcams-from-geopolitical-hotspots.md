@@ -94,10 +94,10 @@ The webcam becomes a ground-truth check against the signals.
 
 World Monitor also integrates **30+ live news video streams** from major broadcasters:
 
-- **Bloomberg TV** for real-time financial coverage
-- **Sky News** for UK/international breaking news
-- **Al Jazeera** for Middle East and global south perspective
-- **Reuters** and **CNN** for general breaking coverage
+- **[Bloomberg TV](https://www.bloomberg.com/live)** for real-time financial coverage
+- **[Sky News](https://news.sky.com/)** for UK/international breaking news
+- **[Al Jazeera](https://www.aljazeera.com/)** for Middle East and global south perspective
+- **[Reuters](https://www.reuters.com/)** and **[CNN](https://www.cnn.com/)** for general breaking coverage
 - **Regional broadcasters** for local context
 
 These streams use HLS (HTTP Live Streaming) and YouTube Live, with automatic quality adaptation for your connection speed.
