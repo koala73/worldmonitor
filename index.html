@@ -267,7 +267,13 @@
     <link href="https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,300;0,400;0,600;0,700;1,400&family=Tajawal:wght@200;300;400;500;700;800;900&display=swap" rel="stylesheet">
   </head>
   <body>
-    <div id="seo-prerender" style="position:absolute;left:-9999px;top:-9999px;overflow:hidden;width:1px;height:1px;">
+    <!--
+      Canonical English crawler content. The SPA is multilingual (21 locales) but
+      this prerender block is the indexable surface — language-specific content
+      hydrates client-side after JS boots. WebSite JSON-LD already advertises all
+      inLanguage values; this block is the en-US fallback.
+    -->
+    <div id="seo-prerender" lang="en" aria-hidden="true" style="position:absolute;left:-9999px;top:-9999px;overflow:hidden;width:1px;height:1px;">
       <h1>World Monitor — Real-Time Global Intelligence Dashboard</h1>
       <p>Free, open-source intelligence platform aggregating live news, markets, military movements, conflicts, and infrastructure into one real-time dashboard. Used by 2M+ people across 190+ countries. <a href="https://www.wired.me/story/the-music-streaming-ceo-who-built-a-global-war-map">Featured in WIRED</a>.</p>
 

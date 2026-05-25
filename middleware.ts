@@ -55,32 +55,40 @@ const VARIANT_HOST_MAP: Record<string, string> = {
 };
 
 // Source of truth: src/config/variant-meta.ts — keep in sync when variant metadata changes.
-const VARIANT_OG: Record<string, { title: string; description: string; image: string; url: string }> = {
+// `name` is the short brand for JSON-LD `WebApplication.name`; `title` is the full
+// page <title>. They are split fields (not derived via title.split(' - ')) so a
+// future title format change cannot silently corrupt the JSON-LD name.
+const VARIANT_OG: Record<string, { name: string; title: string; description: string; image: string; url: string }> = {
   tech: {
+    name: 'Tech Monitor',
     title: 'Tech Monitor - Real-Time AI & Tech Industry Dashboard',
     description: 'Real-time AI and tech industry dashboard tracking tech giants, AI labs, startup ecosystems, funding rounds, and tech events worldwide.',
     image: 'https://tech.worldmonitor.app/favico/tech/og-image.png',
     url: 'https://tech.worldmonitor.app/',
   },
   finance: {
+    name: 'Finance Monitor',
     title: 'Finance Monitor - Real-Time Markets & Trading Dashboard',
     description: 'Real-time finance and trading dashboard tracking global markets, stock exchanges, central banks, commodities, forex, crypto, and economic indicators worldwide.',
     image: 'https://finance.worldmonitor.app/favico/finance/og-image.png',
     url: 'https://finance.worldmonitor.app/',
   },
   commodity: {
+    name: 'Commodity Monitor',
     title: 'Commodity Monitor - Real-Time Commodity Markets & Supply Chain Dashboard',
     description: 'Real-time commodity markets dashboard tracking mining sites, processing plants, commodity ports, supply chains, and global commodity trade flows.',
     image: 'https://commodity.worldmonitor.app/favico/commodity/og-image.png',
     url: 'https://commodity.worldmonitor.app/',
   },
   happy: {
+    name: 'Happy Monitor',
     title: 'Happy Monitor - Good News & Global Progress',
     description: 'Curated positive news, progress data, and uplifting stories from around the world.',
     image: 'https://happy.worldmonitor.app/favico/happy/og-image.png',
     url: 'https://happy.worldmonitor.app/',
   },
   energy: {
+    name: 'Energy Atlas',
     title: 'Energy Atlas - Real-Time Global Energy Intelligence Dashboard',
     description: 'Real-time global energy atlas tracking oil and gas pipelines, storage facilities, chokepoints, fuel shortages, tanker flows, and disruption events worldwide.',
     image: 'https://energy.worldmonitor.app/favico/energy/og-image.png',
@@ -102,6 +110,19 @@ function isAllowedHost(host: string): boolean {
   return ALLOWED_HOSTS.has(host) || VERCEL_PREVIEW_RE.test(host);
 }
 
+// HTML-escape a string for safe interpolation into BOTH text content and
+// double-quoted attribute values. Required because VARIANT_OG values are
+// hand-edited prose and a future double-quote, ampersand, or angle bracket
+// would otherwise close the attribute early or corrupt the document.
+function escHtml(s: string): string {
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
 export default function middleware(request: Request) {
   const url = new URL(request.url);
   const ua = request.headers.get('user-agent') ?? '';
@@ -121,10 +142,17 @@ export default function middleware(request: Request) {
       if (variant && isAllowedHost(host)) {
         const og = VARIANT_OG[variant as keyof typeof VARIANT_OG];
         if (og) {
+          // Pre-escape every VARIANT_OG field used in the template. JSON-LD is
+          // safe via JSON.stringify, but the OG/Twitter/canonical attributes
+          // and the visible <h1>/<p> body need explicit HTML escaping.
+          const eTitle = escHtml(og.title);
+          const eDesc = escHtml(og.description);
+          const eImage = escHtml(og.image);
+          const eUrl = escHtml(og.url);
           const jsonLd = isAI ? `\n<script type="application/ld+json">${JSON.stringify({
             '@context': 'https://schema.org',
             '@type': 'WebApplication',
-            name: og.title.split(' - ')[0],
+            name: og.name,
             url: og.url,
             description: og.description,
             applicationCategory: 'BusinessApplication',
@@ -142,8 +170,8 @@ export default function middleware(request: Request) {
             ],
           })}</script>` : '';
           const aiBody = isAI ? `
-<h1>${og.title}</h1>
-<p>${og.description}</p>
+<h1>${eTitle}</h1>
+<p>${eDesc}</p>
 <h2>Explore the platform</h2>
 <ul>
 <li><a href="https://www.worldmonitor.app/">World Monitor — geopolitics &amp; intelligence</a></li>
@@ -157,18 +185,18 @@ export default function middleware(request: Request) {
 </ul>
 <h2>Sources</h2>
 <p>Data ingested live from <a href="https://acleddata.com/">ACLED</a>, <a href="https://ucdp.uu.se/">UCDP</a>, <a href="https://firms.modaps.eosdis.nasa.gov/">NASA FIRMS</a>, <a href="https://earthquake.usgs.gov/">USGS</a>, <a href="https://opensky-network.org/">OpenSky</a>, <a href="https://aisstream.io/">AISStream</a>, <a href="https://fred.stlouisfed.org/">FRED</a>, <a href="https://www.imf.org/en/Data">IMF</a>, and <a href="https://www.bis.org/">BIS</a>.</p>` : '';
-          const html = `<!DOCTYPE html><html><head>
+          const html = `<!DOCTYPE html><html lang="en"><head>
 <meta property="og:type" content="website"/>
-<meta property="og:title" content="${og.title}"/>
-<meta property="og:description" content="${og.description}"/>
-<meta property="og:image" content="${og.image}"/>
-<meta property="og:url" content="${og.url}"/>
+<meta property="og:title" content="${eTitle}"/>
+<meta property="og:description" content="${eDesc}"/>
+<meta property="og:image" content="${eImage}"/>
+<meta property="og:url" content="${eUrl}"/>
 <meta name="twitter:card" content="summary_large_image"/>
-<meta name="twitter:title" content="${og.title}"/>
-<meta name="twitter:description" content="${og.description}"/>
-<meta name="twitter:image" content="${og.image}"/>
-<link rel="canonical" href="${og.url}"/>
-<title>${og.title}</title>${jsonLd}
+<meta name="twitter:title" content="${eTitle}"/>
+<meta name="twitter:description" content="${eDesc}"/>
+<meta name="twitter:image" content="${eImage}"/>
+<link rel="canonical" href="${eUrl}"/>
+<title>${eTitle}</title>${jsonLd}
 </head><body>${aiBody}</body></html>`;
           return new Response(html, {
             status: 200,
