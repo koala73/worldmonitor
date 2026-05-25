@@ -118,7 +118,8 @@ const seoContent = `
     <li><a href="https://github.com/koala73/worldmonitor">Open source on GitHub (AGPL-3.0)</a></li>
     <li><a href="https://www.wired.me/story/the-music-streaming-ceo-who-built-a-global-war-map">Featured in WIRED</a></li>
   </ul>
-</div>`;
+</div>
+<script>(function(){try{var s=document.getElementById('seo-prerender');if(s){s.setAttribute('aria-hidden','true');s.setAttribute('inert','')}}catch(e){}})()</script>`;
 
 // Fail loudly if any key resolved to undefined — this prevents the build from
 // silently shipping "undefined" strings to crawlers.

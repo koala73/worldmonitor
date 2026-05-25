@@ -313,6 +313,16 @@
         <li><a href="https://github.com/koala73/worldmonitor">Open source on GitHub (AGPL-3.0)</a></li>
       </ul>
     </div>
+    <!--
+      A11y hardening for the seo-prerender block above. Runs synchronously
+      RIGHT AFTER the div is parsed (before any subsequent content paints or
+      Tab traversal can reach the links). For JS-enabled users — including
+      JS-aware screen readers and keyboard users — the block is removed from
+      the accessibility tree (aria-hidden) and the focus order (inert). For
+      crawlers (typically no JS), the attributes are never applied, so the
+      content stays indexable and the links stay countable for AEO.
+    -->
+    <script>(function(){try{var s=document.getElementById('seo-prerender');if(s){s.setAttribute('aria-hidden','true');s.setAttribute('inert','')}}catch(e){}})()</script>
     <div id="app">
       <!-- Pre-render skeleton: visible instantly, replaced when JS calls renderLayout() -->
       <div class="skeleton-shell" aria-hidden="true">
