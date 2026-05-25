@@ -185,15 +185,20 @@ export const SERVER_NAME = 'worldmonitor';
 //   - Purely additive on the wire — clients that read only the legacy two
 //     hints keep working; new four-hint clients get a richer signal.
 // Bumped 1.9.0 → 1.10.0 (2026-05-25) reflecting:
-//   - SERVER_INSTRUCTIONS trimmed from 1945 B → 1397 B (548 B / 28.2%
-//     reduction) emitted once per initialize. The JMESPath and describe_tool
-//     stanzas previously inlined grammar/envelope/quota detail that is now
+//   - SERVER_INSTRUCTIONS trimmed from 1945 B → 1577 B (368 B / 18.9%
+//     reduction) emitted once per initialize. The JMESPath stanza
+//     previously inlined grammar/envelope/quota detail that is now
 //     authoritatively documented in docs/mcp-jmespath.mdx and
-//     docs/mcp-error-catalog.mdx; each stanza collapses to one sentence
-//     stating the affordance + use case + canonical-docs URL. The prompts
-//     and resources stanzas are unchanged — they have no single
-//     authoritative docs anchor today, so duplicating them in-band is still
-//     load-bearing.
+//     docs/mcp-error-catalog.mdx; it collapses to one sentence per
+//     concern + canonical-docs URL. The describe_tool stanza was tightened
+//     in similar fashion but the 60/min rate-limit caveat and the
+//     `{error: 'unknown_tool', available: [...]}` self-correction hint
+//     are intentionally retained in-band — the block-comment contract
+//     above says stanzas must stand alone (LLMs do not reliably fetch
+//     URLs mid-session), so "use freely" without the rate-limit qualifier
+//     would mislead. The prompts and resources stanzas are unchanged —
+//     they have no single authoritative docs anchor today, so
+//     duplicating them in-band is still load-bearing.
 //   - Pure metadata edit: no behaviour change, no input/output schema
 //     change, no envelope-shape change. The constant emitted into
 //     initialize.result.instructions is the only wire-visible diff. The
@@ -248,7 +253,7 @@ export const SERVER_INSTRUCTIONS = [
   '',
   `Limits: expr ≤ ${JMESPATH_MAX_EXPR_BYTES}B, output ≤ ${JMESPATH_MAX_OUTPUT_BYTES}B. Bad expressions soft-fail via {_jmespath_error, original_keys} envelope (consumes one daily quota unit on retry — self-correct from original_keys). Full envelope reference: https://www.worldmonitor.app/docs/mcp-error-catalog.`,
   '',
-  `tools/list ships compressed tool descriptions (≤${TOOL_DESCRIPTION_MAX_BYTES}B). Call describe_tool({tool_name}) for the full uncompressed definition — quota-exempt, use freely. Full reference: https://www.worldmonitor.app/docs/mcp-tools-reference.`,
+  `tools/list ships compressed tool descriptions (≤${TOOL_DESCRIPTION_MAX_BYTES}B). Call describe_tool({tool_name}) for the full uncompressed definition — quota-exempt (still counts toward the 60/min rate limit), so use freely while exploring. describe_tool({tool_name: 'nonexistent'}) returns {error: 'unknown_tool', available: [...]} so you can self-correct. Full reference: https://www.worldmonitor.app/docs/mcp-tools-reference.`,
   '',
   'Issue prompts/list to discover pre-built workflow templates (country-briefing, energy-shock-watch, market-open-prep, conflict-pulse, route-risk-check, freshness-audit). Each prompt pre-bakes a JMESPath projection per step so the first execution lands on the right shape. prompts/list + prompts/get are quota-exempt (per-minute limit only).',
   '',
