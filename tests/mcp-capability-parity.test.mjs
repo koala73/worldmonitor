@@ -92,6 +92,11 @@ function advertisedFromInitialize(capabilities) {
 
 let handler;
 let registries;
+// Snapshot of server-card.json::capabilities, captured once per test in
+// beforeEach. Hoisted out of the individual tests so all four assertions
+// within a single run observe the exact same on-disk snapshot — and so
+// the disk read isn't repeated three times per run.
+let cardCaps;
 
 describe('api/mcp.ts — capability parity (advertised AND non-empty)', () => {
   beforeEach(async () => {
@@ -103,6 +108,7 @@ describe('api/mcp.ts — capability parity (advertised AND non-empty)', () => {
     const mod = await import(`../api/mcp.ts?t=${Date.now()}-cap-parity`);
     handler = mod.default;
     registries = mod.__testing__;
+    cardCaps = loadServerCardCapabilities();
   });
 
   afterEach(() => {
@@ -114,7 +120,6 @@ describe('api/mcp.ts — capability parity (advertised AND non-empty)', () => {
   });
 
   it('advertised-capability set parity between server-card.json and initialize', async () => {
-    const cardCaps = loadServerCardCapabilities();
     const cardSet = advertisedFromCard(cardCaps);
 
     const res = await handler(makeReq({
@@ -139,7 +144,6 @@ describe('api/mcp.ts — capability parity (advertised AND non-empty)', () => {
   });
 
   it('every advertised capability has a non-empty wire response (defense at the contract layer)', async () => {
-    const cardCaps = loadServerCardCapabilities();
     const advertised = advertisedFromCard(cardCaps);
 
     for (const cap of advertised) {
@@ -164,7 +168,6 @@ describe('api/mcp.ts — capability parity (advertised AND non-empty)', () => {
   });
 
   it('every advertised capability has a non-empty registry (defense at the source layer)', () => {
-    const cardCaps = loadServerCardCapabilities();
     const advertised = advertisedFromCard(cardCaps);
 
     for (const cap of advertised) {
@@ -184,7 +187,6 @@ describe('api/mcp.ts — capability parity (advertised AND non-empty)', () => {
   });
 
   it('logging capability is advertised AND structurally exempt from the registry check', () => {
-    const cardCaps = loadServerCardCapabilities();
     const advertised = advertisedFromCard(cardCaps);
     assert.ok(advertised.has('logging'),
       `'logging' must remain advertised — removing it requires editing this test deliberately ` +
