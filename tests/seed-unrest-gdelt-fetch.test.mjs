@@ -155,6 +155,28 @@ test('fetchGdeltEvents with no proxy creds → throws clear ops-actionable error
   assert.equal(fetcherCalled, false, 'must not attempt proxy fetch when creds missing');
 });
 
+test('fetchGdeltEvents default inter-theme delay stays above documented GDELT pacing floor', async () => {
+  let calls = 0;
+  const sleeps = [];
+  const _proxyFetcher = async () => {
+    calls++;
+    return jsonBuffer({ features: [] });
+  };
+  const events = await fetchGdeltEvents({
+    _resolveProxyForConnect: () => PROXY_AUTH,
+    _proxyFetcher,
+    _sleep: async (ms) => { sleeps.push(ms); },
+    _maxAttempts: 1,
+  });
+  assert.equal(calls, 3, 'one call per UNREST_THEMES entry');
+  assert.deepEqual(events, [], 'valid empty GDELT payloads should still be successful');
+  assert.equal(sleeps.length, 2, 'three themes should produce two inter-theme sleeps');
+  assert.ok(
+    sleeps.every((ms) => ms >= 5_500),
+    `default inter-theme sleeps must be >= 5500ms; got ${sleeps.join(', ')}`,
+  );
+});
+
 // ─── 6. fetchGdeltEvents: end-to-end with retry path ───────────────────
 
 test('fetchGdeltEvents with one transient proxy failure → recovers and aggregates events', async () => {

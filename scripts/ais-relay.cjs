@@ -2962,7 +2962,7 @@ function fetchGdeltGeoPositive(query, seenUrlLocs) {
       headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
       timeout: 15000,
     }, (resp) => {
-      if (resp.statusCode !== 200) { resp.resume(); return resolve([]); }
+      if (resp.statusCode !== 200) { resp.resume(); return resolve({ ok: false, events: [] }); }
       let body = '';
       resp.on('data', (chunk) => { body += chunk; });
       resp.on('end', () => {
@@ -2999,12 +2999,12 @@ function fetchGdeltGeoPositive(query, seenUrlLocs) {
             if (loc.count < 3) continue;
             events.push({ latitude: loc.latitude, longitude: loc.longitude, name: loc.name, category: classifyPositiveName(loc.name), count: loc.count, timestamp: Date.now() });
           }
-          resolve(events);
-        } catch { resolve([]); }
+          resolve({ ok: true, events });
+        } catch { resolve({ ok: false, events: [] }); }
       });
     });
-    req.on('error', () => resolve([]));
-    req.on('timeout', () => { req.destroy(); resolve([]); });
+    req.on('error', () => resolve({ ok: false, events: [] }));
+    req.on('timeout', () => { req.destroy(); resolve({ ok: false, events: [] }); });
   });
 }
 
@@ -3027,8 +3027,10 @@ async function seedPositiveEvents() {
     for (let i = 0; i < POSITIVE_QUERIES.length; i++) {
       if (i > 0) await new Promise((r) => setTimeout(r, 5_500)); // GDELT rate limit: 1 req per 5s
       try {
-        const events = await fetchGdeltGeoPositive(POSITIVE_QUERIES[i], seenUrlLocs);
+        const result = await fetchGdeltGeoPositive(POSITIVE_QUERIES[i], seenUrlLocs);
+        if (!result?.ok) continue;
         anyQuerySucceeded = true;
+        const events = Array.isArray(result.events) ? result.events : [];
         for (const e of events) {
           if (!seenNames.has(e.name)) {
             seenNames.add(e.name);

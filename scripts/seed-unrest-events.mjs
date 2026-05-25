@@ -10,6 +10,8 @@ const ACLED_API_URL = 'https://acleddata.com/api/acled/read';
 const CANONICAL_KEY = 'unrest:events:v1';
 const CACHE_TTL = 16200; // 4.5h — 6x the 45 min cron interval (was 1.3x)
 const MAX_SOURCE_URLS = 5;
+const GDELT_THEME_MIN_DELAY_MS = 5_500;
+const GDELT_THEME_JITTER_MS = 1_000;
 
 // ---------- ACLED Event Type Mapping (from _shared.ts) ----------
 
@@ -275,10 +277,11 @@ export async function fetchGdeltEvents(opts = {}) {
   let lastError = null;
   let totalMentions = 0;
 
-  // Using proxy sleeps and jitter between theme calls to reduce chance of back-to-back failures.
+  // GDELT asks clients to stay at or below 1 request / 5s. Keep the
+  // production fan-out default above that floor while tests can inject 0ms.
   const {
     _sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
-    _jitter = () => 1500 + Math.random() * 1500
+    _jitter = () => GDELT_THEME_MIN_DELAY_MS + Math.random() * GDELT_THEME_JITTER_MS
   } = _proxyOpts;
   for (let i = 0; i < UNREST_THEMES.length; i++) {
     if (i > 0) await _sleep(_jitter()); // Jitter between theme calls to reduce chance of back-to-back failures
