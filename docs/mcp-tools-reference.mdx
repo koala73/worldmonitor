@@ -130,10 +130,18 @@ const reply = await callTool('get_country_risk', { country_code: 'IR' });
 const text = reply.result?.content?.[0]?.text;
 if (typeof text !== 'string') throw new Error('no text payload');
 
-const parsed = JSON.parse(text) as CountryRisk | { _budget_exceeded: true };
-// Check for the soft-envelope discriminator BEFORE consuming sibling fields as data.
+type SoftEnvelope =
+  | { _budget_exceeded: true; budget_bytes: number; actual_bytes: number; hint: string }
+  | { _jmespath_error: string; original_keys: string[] };
+
+const parsed = JSON.parse(text) as CountryRisk | SoftEnvelope;
+// Check for BOTH soft-envelope discriminators BEFORE consuming sibling fields as data.
+// A `_jmespath_error` payload that falls through to the success branch would silently
+// dereference undefined — the exact anti-pattern the catalog warns against.
 if ('_budget_exceeded' in parsed) {
   // narrow with jmespath / filters and retry — see /mcp-error-catalog
+} else if ('_jmespath_error' in parsed) {
+  // fix the projection using `original_keys` as the schema hint — see /mcp-error-catalog
 } else {
   console.log(parsed.cii, parsed.components.conflict);
 }
