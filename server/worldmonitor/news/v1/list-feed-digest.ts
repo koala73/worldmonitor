@@ -134,6 +134,49 @@ const SCORE_WEIGHTS = {
   recency: 0.1,
 } as const;
 
+const DIPLOMACY_KEYWORDS = [
+  'ceasefire', 'truce', 'armistice', 'treaty', 'accord', 'pact', 'diplomatic',
+  'diplomacy', 'mediate', 'mediator', 'negotiation', 'negotiations', 'negotiate',
+  'normalization', 'normalisation',
+] as const;
+
+const FLASHPOINT_SCORING_KEYWORDS = [
+  'iran', 'tehran', 'russia', 'moscow', 'china', 'beijing', 'taiwan', 'ukraine', 'kyiv',
+  'north korea', 'pyongyang', 'israel', 'gaza', 'west bank', 'syria', 'damascus',
+  'yemen', 'hezbollah', 'hamas', 'kremlin', 'pentagon', 'nato', 'wagner',
+] as const;
+
+const DIPLOMACY_FLASHPOINT_PAIRS = [
+  ['iran', 'deal'],
+  ['iran', 'talks'],
+  ['iran', 'ceasefire'],
+  ['iran', 'treaty'],
+  ['iran', 'accord'],
+  ['iran', 'peace'],
+  ['israel', 'ceasefire'],
+  ['israel', 'truce'],
+  ['israel', 'accord'],
+  ['gaza', 'ceasefire'],
+  ['gaza', 'truce'],
+  ['ukraine', 'ceasefire'],
+  ['ukraine', 'talks'],
+  ['russia', 'talks'],
+  ['russia', 'treaty'],
+  ['hamas', 'truce'],
+  ['hezbollah', 'truce'],
+  ['syria', 'ceasefire'],
+  ['china', 'talks'],
+  ['china', 'accord'],
+  ['taiwan', 'talks'],
+  ['yemen', 'ceasefire'],
+  ['north korea', 'talks'],
+  ['pyongyang', 'talks'],
+] as const;
+
+const DIPLOMACY_FLASHPOINT_BOOST = 18;
+const ENTITY_CORROBORATION_SCORE_PER_SOURCE = 4;
+const ENTITY_CORROBORATION_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 
 interface ParsedItem {
   source: string;
@@ -147,6 +190,7 @@ interface ParsedItem {
   classSource: 'keyword' | 'keyword-historical-downgrade' | 'llm';
   importanceScore: number;
   corroborationCount: number;
+  entityCorroborationCount: number;
   titleHash?: string;
   lang: string;
   // Cleaned RSS/Atom article description: HTML-stripped, entity-decoded,
@@ -179,22 +223,64 @@ const DESCRIPTION_TAG_PRIORITY = {
   atom: ['summary', 'content'] as const,
 };
 
+interface ImportanceScoreContext {
+  title?: string;
+  classSource?: ParsedItem['classSource'] | string;
+  entityCorroborationCount?: number;
+}
+
+function normalizeScoringText(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function hasAnySignal(text: string, keywords: readonly string[]): boolean {
+  return keywords.some((kw) => text.includes(kw));
+}
+
+function hasDiplomacyFlashpointSignal(title: string | undefined): boolean {
+  if (!title) return false;
+  const text = normalizeScoringText(title);
+  if (
+    DIPLOMACY_FLASHPOINT_PAIRS.some(([entity, action]) =>
+      text.includes(entity) && text.includes(action),
+    )
+  ) {
+    return true;
+  }
+  return hasAnySignal(text, DIPLOMACY_KEYWORDS) && hasAnySignal(text, FLASHPOINT_SCORING_KEYWORDS);
+}
+
+function diplomacyFlashpointBoost(title: string | undefined): number {
+  return hasDiplomacyFlashpointSignal(title) ? DIPLOMACY_FLASHPOINT_BOOST : 0;
+}
+
+function entityCorroborationScore(count: number | undefined): number {
+  const finite = Number.isFinite(count) ? Number(count) : 0;
+  return Math.min(Math.max(finite, 0), 5) * ENTITY_CORROBORATION_SCORE_PER_SOURCE;
+}
+
 function computeImportanceScore(
   level: ThreatLevel,
   source: string,
   corroborationCount: number,
   publishedAt: number,
+  context: ImportanceScoreContext = {},
 ): number {
   const tier = getSourceTier(source);
   const tierScore = tier === 1 ? 100 : tier === 2 ? 75 : tier === 3 ? 50 : 25;
   const corroborationScore = Math.min(corroborationCount, 5) * 20;
   const ageMs = Date.now() - publishedAt;
   const recencyScore = Math.max(0, 1 - ageMs / (24 * 60 * 60 * 1000)) * 100;
-  return Math.round(
+  const base = Math.round(
     SEVERITY_SCORES[level] * SCORE_WEIGHTS.severity +
     tierScore * SCORE_WEIGHTS.sourceTier +
     corroborationScore * SCORE_WEIGHTS.corroboration +
     recencyScore * SCORE_WEIGHTS.recency,
+  );
+  return Math.round(
+    base +
+    diplomacyFlashpointBoost(context.title) +
+    entityCorroborationScore(context.entityCorroborationCount),
   );
 }
 
@@ -487,6 +573,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
       classSource: threat.source,
       importanceScore: 0,
       corroborationCount: 1,
+      entityCorroborationCount: 0,
       lang: feed.lang ?? 'en',
       description,
       isOpinion: classifyOpinion({ title, link, description }),
@@ -762,6 +849,51 @@ function normalizeTitle(title: string): string {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 120);
+}
+
+function entityKeysForTitle(title: string): string[] {
+  const text = normalizeScoringText(title);
+  const keys: string[] = [];
+  for (const [entity, action] of DIPLOMACY_FLASHPOINT_PAIRS) {
+    if (text.includes(entity) && text.includes(action)) keys.push(`${entity}:${action}`);
+  }
+  if (
+    keys.length === 0 &&
+    hasAnySignal(text, DIPLOMACY_KEYWORDS) &&
+    hasAnySignal(text, FLASHPOINT_SCORING_KEYWORDS)
+  ) {
+    keys.push('generic:diplomacy-flashpoint');
+  }
+  return keys;
+}
+
+function computeEntityCorroborationCounts(
+  items: ParsedItem[],
+  nowMs = Date.now(),
+): Map<string, number> {
+  const buckets = new Map<string, { items: ParsedItem[]; sources: Set<string> }>();
+  for (const item of items) {
+    if (!item.titleHash) continue;
+    if (!Number.isFinite(item.publishedAt) || nowMs - item.publishedAt > ENTITY_CORROBORATION_WINDOW_MS) continue;
+    for (const key of entityKeysForTitle(item.title)) {
+      let bucket = buckets.get(key);
+      if (!bucket) {
+        bucket = { items: [], sources: new Set() };
+        buckets.set(key, bucket);
+      }
+      bucket.items.push(item);
+      if (item.source) bucket.sources.add(item.source);
+    }
+  }
+
+  const counts = new Map<string, number>();
+  for (const bucket of buckets.values()) {
+    if (bucket.sources.size < 2) continue;
+    for (const item of bucket.items) {
+      counts.set(item.titleHash!, Math.max(counts.get(item.titleHash!) ?? 0, bucket.sources.size));
+    }
+  }
+  return counts;
 }
 
 interface StoryTrack {
@@ -1096,10 +1228,39 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
     // discards items based on their true score.
     await enrichWithAiCache(allItems);
 
+    const entityCorroborationCounts = computeEntityCorroborationCounts(allItems);
+    let diplomacySignalCount = 0;
+    let entityCorroborationHitCount = 0;
+    let llmScoredCount = 0;
+    let keywordFallbackScoredCount = 0;
+
     // Compute importance score using final (post-enrichment) threat levels.
     for (const item of allItems) {
+      item.entityCorroborationCount = entityCorroborationCounts.get(item.titleHash!) ?? 0;
+      const scoringCorroboration = Math.max(item.corroborationCount, item.entityCorroborationCount);
       item.importanceScore = computeImportanceScore(
-        item.level, item.source, item.corroborationCount, item.publishedAt,
+        item.level,
+        item.source,
+        scoringCorroboration,
+        item.publishedAt,
+        {
+          title: item.title,
+          classSource: item.classSource,
+          entityCorroborationCount: item.entityCorroborationCount,
+        },
+      );
+      if (hasDiplomacyFlashpointSignal(item.title)) diplomacySignalCount++;
+      if (item.entityCorroborationCount > 0) entityCorroborationHitCount++;
+      if (item.classSource === 'llm') llmScoredCount++;
+      else keywordFallbackScoredCount++;
+    }
+
+    if (diplomacySignalCount > 0 || entityCorroborationHitCount > 0) {
+      console.log(
+        `[digest] importance signals llm=${llmScoredCount} ` +
+          `keywordFallback=${keywordFallbackScoredCount} ` +
+          `diplomacy=${diplomacySignalCount} ` +
+          `entityCorroboration=${entityCorroborationHitCount}`,
       );
     }
 
@@ -1175,6 +1336,9 @@ export const __testing__ = {
   extractRawTagBody,
   extractFirstDateTag,
   buildStoryTrackHsetFields,
+  computeImportanceScore,
+  hasDiplomacyFlashpointSignal,
+  computeEntityCorroborationCounts,
   resolveMaxAgeMs,
   capLlmUpgrade,
   MAX_DESCRIPTION_LEN,

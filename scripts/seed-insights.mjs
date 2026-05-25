@@ -1,7 +1,13 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, getRedisCredentials, runSeed } from './_seed-utils.mjs';
-import { clusterItems, selectTopStories } from './_clustering.mjs';
+import {
+  clusterItems,
+  computeEntityCorroboration,
+  selectTopStories,
+  DIPLOMACY_KEYWORDS,
+  ENTITY_BIGRAMS,
+} from './_clustering.mjs';
 import { extractCountryCode } from './shared/geo-extract.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { pickBriefCluster, briefSystemPrompt, briefUserPrompt } from './_insights-brief.mjs';
@@ -216,6 +222,39 @@ function categorizeStory(title) {
   return { category: 'general', threatLevel: 'moderate' };
 }
 
+function normalizedSignalText(text) {
+  return (text || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function clusterHasDiplomacySignal(cluster) {
+  const titles = Array.isArray(cluster.memberTitles) && cluster.memberTitles.length > 0
+    ? cluster.memberTitles
+    : [cluster.primaryTitle];
+  return titles.some((title) => {
+    const text = normalizedSignalText(title);
+    return DIPLOMACY_KEYWORDS.some((kw) => text.includes(kw)) ||
+      ENTITY_BIGRAMS.some(([entity, action]) => text.includes(entity) && text.includes(action));
+  });
+}
+
+function percentile(sortedNumbers, pct) {
+  if (sortedNumbers.length === 0) return 0;
+  const idx = Math.min(sortedNumbers.length - 1, Math.floor((sortedNumbers.length - 1) * pct));
+  return sortedNumbers[idx];
+}
+
+function buildImportanceObservability(clusters, topStories) {
+  const clusterSizes = clusters.map(c => Number(c.sourceCount) || 1).sort((a, b) => a - b);
+  return {
+    llmDrivenRanked: topStories.filter(s => s.threat?.source === 'llm').length,
+    keywordFallbackRanked: topStories.filter(s => s.threat?.source !== 'llm' && !s.upstreamImportanceScore).length,
+    diplomacyHits: clusters.filter(clusterHasDiplomacySignal).length,
+    corroborationHits: clusters.filter(c => c.entityCorroboration === true).length,
+    clusterSizeP50: percentile(clusterSizes, 0.5),
+    clusterSizeP90: percentile(clusterSizes, 0.9),
+  };
+}
+
 async function warmDigestCache() {
   const apiBase = process.env.API_BASE_URL || 'https://api.worldmonitor.app';
   const headers = {
@@ -285,13 +324,26 @@ async function fetchInsights() {
     isAlert: item.isAlert || false,
     tier: item.tier,
     threat: normalizeThreat(item.threat),
+    importanceScore: item.importanceScore,
+    corroborationCount: item.corroborationCount ?? item.storyMeta?.sourceCount,
+    storyMeta: item.storyMeta,
   })).filter(item => item.title.length > 10);
 
   const clusters = clusterItems(normalizedItems);
+  computeEntityCorroboration(clusters);
   console.log(`  Clusters: ${clusters.length}`);
 
   const topStories = selectTopStories(clusters, 8);
   console.log(`  Top stories: ${topStories.length}`);
+  const observability = buildImportanceObservability(clusters, topStories);
+  console.log(
+    `  Importance signals: llm=${observability.llmDrivenRanked} ` +
+      `keywordFallback=${observability.keywordFallbackRanked} ` +
+      `diplomacy=${observability.diplomacyHits} ` +
+      `entityCorroboration=${observability.corroborationHits} ` +
+      `clusterSizeP50=${observability.clusterSizeP50} ` +
+      `clusterSizeP90=${observability.clusterSizeP90}`,
+  );
 
   if (topStories.length === 0) throw new Error('No top stories after scoring');
 
@@ -355,7 +407,7 @@ async function fetchInsights() {
     }
   }
 
-  const multiSourceCount = clusters.filter(c => c.sourceCount >= 2).length;
+  const multiSourceCount = clusters.filter(c => (c.sources?.length ?? 0) >= 2 || c.entityCorroboration === true).length;
   const fastMovingCount = 0; // velocity not available in digest items
 
   const enrichedStories = topStories.map(story => {
@@ -372,7 +424,16 @@ async function fetchInsights() {
       primaryLink: story.primaryLink,
       pubDate: story.pubDate,
       sourceCount: story.sourceCount,
+      uniqueSourceCount: Array.isArray(story.sources) ? story.sources.length : 0,
+      sources: Array.isArray(story.sources) ? story.sources : [],
+      lastUpdated: story.lastUpdated,
+      memberTitles: Array.isArray(story.memberTitles) ? story.memberTitles : [story.primaryTitle],
+      sourceTier: story.sourceTier,
+      upstreamImportanceScore: story.upstreamImportanceScore,
+      entityCorroboration: story.entityCorroboration === true,
+      corroborationSourceCount: story.corroborationSourceCount ?? 0,
       importanceScore: story.importanceScore,
+      effectiveImportanceScore: story.effectiveImportanceScore,
       velocity: { level: 'normal', sourcesPerHour: 0 },
       isAlert: story.isAlert,
       category,
@@ -391,6 +452,7 @@ async function fetchInsights() {
     clusterCount: clusters.length,
     multiSourceCount,
     fastMovingCount,
+    importanceSignals: observability,
   };
 
   // LKG preservation: don't overwrite "ok" with "degraded"
@@ -416,7 +478,7 @@ export function declareRecords(data) {
 runSeed('news', 'insights', CANONICAL_KEY, fetchInsights, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
-  sourceVersion: 'digest-clustering-v1',
+  sourceVersion: 'digest-clustering-v2-importance-diversity',
 
   declareRecords,
   schemaVersion: 1,

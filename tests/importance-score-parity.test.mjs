@@ -19,6 +19,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { composeBriefFromDigestStories } from '../scripts/lib/brief-compose.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
@@ -64,10 +65,45 @@ function extractObjectLiteral(src, varName) {
   return new Function(`return (${literal});`)();
 }
 
+function extractArrayLiteral(src, varName) {
+  const re = new RegExp(`(?:export\\s+)?const\\s+${varName}\\b[^=]*=\\s*\\[`);
+  const match = src.match(re);
+  if (!match) throw new Error(`Could not find declaration for ${varName}`);
+  const bracketStart = match.index + match[0].length - 1;
+  let depth = 1;
+  let i = bracketStart + 1;
+  while (i < src.length && depth > 0) {
+    const ch = src[i];
+    if (ch === '[') depth++;
+    else if (ch === ']') depth--;
+    i++;
+  }
+  if (depth !== 0) throw new Error(`Unbalanced brackets in ${varName}`);
+  const literal = src.slice(bracketStart, i);
+  return new Function(`return (${literal});`)();
+}
+
+function extractNumericConst(src, varName) {
+  const re = new RegExp(`const\\s+${varName}\\b[^=]*=\\s*([0-9.]+)`);
+  const match = src.match(re);
+  if (!match) throw new Error(`Could not find numeric constant ${varName}`);
+  return Number(match[1]);
+}
+
 function extractFunctionBody(src, fnSignature) {
   const idx = src.indexOf(fnSignature);
   if (idx === -1) throw new Error(`Could not find ${fnSignature}`);
-  const openIdx = src.indexOf('{', idx + fnSignature.length);
+  const parenStart = src.indexOf('(', idx);
+  let parenDepth = 1;
+  let parenEnd = parenStart + 1;
+  while (parenEnd < src.length && parenDepth > 0) {
+    const ch = src[parenEnd];
+    if (ch === '(') parenDepth++;
+    else if (ch === ')') parenDepth--;
+    parenEnd++;
+  }
+  if (parenDepth !== 0) throw new Error(`Unbalanced parameters in ${fnSignature}`);
+  const openIdx = src.indexOf('{', parenEnd);
   let depth = 1;
   let i = openIdx + 1;
   while (i < src.length && depth > 0) {
@@ -80,43 +116,112 @@ function extractFunctionBody(src, fnSignature) {
 
 const digestSeverityScores = extractObjectLiteral(digestSrc, 'SEVERITY_SCORES');
 const digestScoreWeights = extractObjectLiteral(digestSrc, 'SCORE_WEIGHTS');
+const digestDiplomacyKeywords = extractArrayLiteral(digestSrc, 'DIPLOMACY_KEYWORDS');
+const digestFlashpointKeywords = extractArrayLiteral(digestSrc, 'FLASHPOINT_SCORING_KEYWORDS');
+const digestDiplomacyPairs = extractArrayLiteral(digestSrc, 'DIPLOMACY_FLASHPOINT_PAIRS');
+const digestDiplomacyBoost = extractNumericConst(digestSrc, 'DIPLOMACY_FLASHPOINT_BOOST');
+const digestEntityScorePerSource = extractNumericConst(digestSrc, 'ENTITY_CORROBORATION_SCORE_PER_SOURCE');
 
 const relaySeverityScores = extractObjectLiteral(relaySrc, 'RELAY_SEVERITY_SCORES');
 const relayScoreWeights = extractObjectLiteral(relaySrc, 'RELAY_SCORE_WEIGHTS');
+const relayDiplomacyKeywords = extractArrayLiteral(relaySrc, 'RELAY_DIPLOMACY_KEYWORDS');
+const relayFlashpointKeywords = extractArrayLiteral(relaySrc, 'RELAY_FLASHPOINT_SCORING_KEYWORDS');
+const relayDiplomacyPairs = extractArrayLiteral(relaySrc, 'RELAY_DIPLOMACY_FLASHPOINT_PAIRS');
+const relayDiplomacyBoost = extractNumericConst(relaySrc, 'RELAY_DIPLOMACY_FLASHPOINT_BOOST');
+const relayEntityScorePerSource = extractNumericConst(relaySrc, 'RELAY_ENTITY_CORROBORATION_SCORE_PER_SOURCE');
 
 // ── Reconstruct the scorers as pure functions for output comparison ─────────
 
 const digestFnBody = extractFunctionBody(digestSrc, 'function computeImportanceScore(');
 const digestComputeImportanceScore = new Function(
-  'level', 'source', 'corroborationCount', 'publishedAt',
+  'level', 'source', 'corroborationCount', 'publishedAt', 'context',
   'SEVERITY_SCORES', 'SCORE_WEIGHTS', 'SOURCE_TIERS',
+  'DIPLOMACY_KEYWORDS', 'FLASHPOINT_SCORING_KEYWORDS', 'DIPLOMACY_FLASHPOINT_PAIRS',
+  'DIPLOMACY_FLASHPOINT_BOOST', 'ENTITY_CORROBORATION_SCORE_PER_SOURCE',
   `
     function getSourceTier(name) { return SOURCE_TIERS[name] ?? 4; }
+    function normalizeScoringText(text) {
+      return text.toLowerCase().replace(/[^a-z0-9\\s]/g, ' ').replace(/\\s+/g, ' ').trim();
+    }
+    function hasAnySignal(text, keywords) {
+      return keywords.some((kw) => text.includes(kw));
+    }
+    function hasDiplomacyFlashpointSignal(title) {
+      if (!title) return false;
+      const text = normalizeScoringText(title);
+      if (
+        DIPLOMACY_FLASHPOINT_PAIRS.some(([entity, action]) =>
+          text.includes(entity) && text.includes(action),
+        )
+      ) {
+        return true;
+      }
+      return hasAnySignal(text, DIPLOMACY_KEYWORDS) && hasAnySignal(text, FLASHPOINT_SCORING_KEYWORDS);
+    }
+    function diplomacyFlashpointBoost(title) {
+      return hasDiplomacyFlashpointSignal(title) ? DIPLOMACY_FLASHPOINT_BOOST : 0;
+    }
+    function entityCorroborationScore(count) {
+      const finite = Number.isFinite(count) ? Number(count) : 0;
+      return Math.min(Math.max(finite, 0), 5) * ENTITY_CORROBORATION_SCORE_PER_SOURCE;
+    }
     ${digestFnBody}
   `,
 );
 
-function digestScore(level, source, corroboration, publishedAt) {
+function digestScore(level, source, corroboration, publishedAt, context = {}) {
   return digestComputeImportanceScore(
-    level, source, corroboration, publishedAt,
+    level, source, corroboration, publishedAt, context,
     digestSeverityScores, digestScoreWeights, sharedSourceTiers,
+    digestDiplomacyKeywords, digestFlashpointKeywords, digestDiplomacyPairs,
+    digestDiplomacyBoost, digestEntityScorePerSource,
   );
 }
 
 const relayFnBody = extractFunctionBody(relaySrc, 'function relayComputeImportanceScore(');
 const relayComputeImportanceScore = new Function(
-  'level', 'source', 'corroborationCount', 'publishedAt',
+  'level', 'source', 'corroborationCount', 'publishedAt', 'context',
   'RELAY_SEVERITY_SCORES', 'RELAY_SCORE_WEIGHTS', 'RELAY_SOURCE_TIERS',
+  'RELAY_DIPLOMACY_KEYWORDS', 'RELAY_FLASHPOINT_SCORING_KEYWORDS', 'RELAY_DIPLOMACY_FLASHPOINT_PAIRS',
+  'RELAY_DIPLOMACY_FLASHPOINT_BOOST', 'RELAY_ENTITY_CORROBORATION_SCORE_PER_SOURCE',
   `
     function relayGetSourceTier(name) { return RELAY_SOURCE_TIERS[name] ?? 4; }
+    function relayNormalizeScoringText(text) {
+      return String(text || '').toLowerCase().replace(/[^a-z0-9\\s]/g, ' ').replace(/\\s+/g, ' ').trim();
+    }
+    function relayHasAnySignal(text, keywords) {
+      return keywords.some((kw) => text.includes(kw));
+    }
+    function relayHasDiplomacyFlashpointSignal(title) {
+      if (!title) return false;
+      const text = relayNormalizeScoringText(title);
+      if (
+        RELAY_DIPLOMACY_FLASHPOINT_PAIRS.some(([entity, action]) =>
+          text.includes(entity) && text.includes(action),
+        )
+      ) {
+        return true;
+      }
+      return relayHasAnySignal(text, RELAY_DIPLOMACY_KEYWORDS) &&
+        relayHasAnySignal(text, RELAY_FLASHPOINT_SCORING_KEYWORDS);
+    }
+    function relayDiplomacyFlashpointBoost(title) {
+      return relayHasDiplomacyFlashpointSignal(title) ? RELAY_DIPLOMACY_FLASHPOINT_BOOST : 0;
+    }
+    function relayEntityCorroborationScore(count) {
+      const finite = Number.isFinite(count) ? Number(count) : 0;
+      return Math.min(Math.max(finite, 0), 5) * RELAY_ENTITY_CORROBORATION_SCORE_PER_SOURCE;
+    }
     ${relayFnBody}
   `,
 );
 
-function relayScore(level, source, corroboration, publishedAt) {
+function relayScore(level, source, corroboration, publishedAt, context = {}) {
   return relayComputeImportanceScore(
-    level, source, corroboration, publishedAt,
+    level, source, corroboration, publishedAt, context,
     relaySeverityScores, relayScoreWeights, sharedSourceTiers,
+    relayDiplomacyKeywords, relayFlashpointKeywords, relayDiplomacyPairs,
+    relayDiplomacyBoost, relayEntityScorePerSource,
   );
 }
 
@@ -160,6 +265,20 @@ describe('SCORE_WEIGHTS parity (digest ↔ relay)', () => {
   });
 });
 
+describe('diplomacy / entity boost parity (digest ↔ relay)', () => {
+  it('matches diplomacy keyword and flashpoint-pair constants', () => {
+    assert.deepEqual(relayDiplomacyKeywords, digestDiplomacyKeywords);
+    assert.deepEqual(relayFlashpointKeywords, digestFlashpointKeywords);
+    assert.deepEqual(relayDiplomacyPairs, digestDiplomacyPairs);
+    assert.equal(relayDiplomacyBoost, digestDiplomacyBoost);
+    assert.equal(relayEntityScorePerSource, digestEntityScorePerSource);
+  });
+
+  it('does not include generic business deal as a diplomacy keyword', () => {
+    assert.equal(digestDiplomacyKeywords.includes('deal'), false);
+  });
+});
+
 describe('computeImportanceScore parity (digest ↔ relay)', () => {
   // Both scorers call Date.now() internally, so recency is non-deterministic
   // across calls but identical on the same call (we evaluate digest then relay
@@ -169,24 +288,34 @@ describe('computeImportanceScore parity (digest ↔ relay)', () => {
   const oneHourAgo = Date.now() - 3600_000;
 
   const cases = [
-    ['critical', 'Reuters',          5],
-    ['critical', 'BBC World',        3],
-    ['critical', 'Defense One',      1],
-    ['critical', 'Hacker News',      1],
-    ['high',     'AP News',          2],
-    ['high',     'Al Jazeera',       4],
-    ['high',     'unknown-source',   1],   // unknown source defaults to tier 4
-    ['medium',   'BBC World',        1],
-    ['medium',   'Federal Reserve',  5],
-    ['low',      'Reuters',          1],
-    ['info',     'Reuters',          1],
-    ['info',     'Hacker News',      5],
+    ['critical', 'Reuters',          5, {}],
+    ['critical', 'BBC World',        3, {}],
+    ['critical', 'Defense One',      1, {}],
+    ['critical', 'Hacker News',      1, {}],
+    ['high',     'AP News',          2, {}],
+    ['high',     'Al Jazeera',       4, {}],
+    ['high',     'unknown-source',   1, {}],   // unknown source defaults to tier 4
+    ['medium',   'BBC World',        1, {}],
+    ['medium',   'Federal Reserve',  5, {}],
+    ['low',      'Reuters',          1, {}],
+    ['info',     'Reuters',          1, {}],
+    ['info',     'Hacker News',      5, {}],
+    [
+      'medium',
+      'Reuters',
+      5,
+      {
+        title: 'US and Iran close deal to ease Hormuz tensions',
+        classSource: 'llm',
+        entityCorroborationCount: 5,
+      },
+    ],
   ];
 
-  for (const [level, source, corr] of cases) {
+  for (const [level, source, corr, context] of cases) {
     it(`${level} / ${source} / corr=${corr}`, () => {
-      const a = digestScore(level, source, corr, oneHourAgo);
-      const b = relayScore(level, source, corr, oneHourAgo);
+      const a = digestScore(level, source, corr, oneHourAgo, context);
+      const b = relayScore(level, source, corr, oneHourAgo, context);
       assert.equal(
         b, a,
         `score mismatch for ${level}/${source}/corr=${corr}: digest=${a} relay=${b}`,
@@ -205,5 +334,105 @@ describe('computeImportanceScore parity (digest ↔ relay)', () => {
     // digest → NaN (propagates from undefined * number); relay → finite number (?? 0 fallback)
     assert.ok(Number.isNaN(d) || d === 0, `digest should be NaN or 0, got ${d}`);
     assert.ok(Number.isFinite(r), `relay should be finite (defensive), got ${r}`);
+  });
+
+  it('boosts flashpoint diplomacy above stale same-magnitude conflict for digest ordering', () => {
+    const deal = digestScore(
+      'medium',
+      'Reuters',
+      5,
+      oneHourAgo,
+      {
+        title: 'US and Iran close deal to ease Hormuz tensions',
+        classSource: 'llm',
+        entityCorroborationCount: 5,
+      },
+    );
+    const staleConflict = digestScore(
+      'critical',
+      'unknown-source',
+      1,
+      Date.now() - 30 * 3600_000,
+      { title: 'Missile attack kills dozens as troops strike border city' },
+    );
+    assert.ok(deal > staleConflict, `expected deal score ${deal} > stale conflict ${staleConflict}`);
+  });
+
+  it('does not boost generic Apple deal headlines', () => {
+    const baseline = digestScore('medium', 'Reuters', 1, oneHourAgo);
+    const appleDeal = digestScore(
+      'medium',
+      'Reuters',
+      1,
+      oneHourAgo,
+      { title: 'Apple closes deal for new supplier contract' },
+    );
+    assert.equal(appleDeal, baseline);
+  });
+
+  it('scheduled digest regression: scored US-Iran deal stories outrank stale conflict and survive composeBriefFromDigestStories', () => {
+    const dealTitles = [
+      ['Reuters', 'US and Iran close deal to ease Hormuz tensions'],
+      ['AP News', 'Iran deal could calm oil markets after Hormuz alarm'],
+      ['Axios', 'Axios: US-Iran deal averts immediate Hormuz disruption'],
+      ['BBC World', 'BBC World reports Iran deal talks lower Gulf risk'],
+      ['Reuters World', 'Reuters World: Iran deal framework discussed with US officials'],
+    ];
+    const dealStories = dealTitles.map(([source, title], idx) => ({
+      hash: `deal-${idx}`,
+      title,
+      link: `https://example.com/deal-${idx}`,
+      severity: 'medium',
+      currentScore: digestScore(
+        'medium',
+        source,
+        5,
+        oneHourAgo,
+        { title, classSource: 'llm', entityCorroborationCount: 5 },
+      ),
+      mentionCount: 1,
+      phase: 'developing',
+      sources: [source],
+      category: 'geopolitical',
+    }));
+    const staleConflict = {
+      hash: 'stale-conflict',
+      title: 'Missile attack kills dozens as troops strike border city',
+      link: 'https://example.com/stale-conflict',
+      severity: 'critical',
+      currentScore: digestScore(
+        'critical',
+        'unknown-source',
+        1,
+        Date.now() - 30 * 3600_000,
+        { title: 'Missile attack kills dozens as troops strike border city' },
+      ),
+      mentionCount: 1,
+      phase: 'breaking',
+      sources: ['Unknown Wire'],
+      category: 'conflict',
+    };
+    const ordered = [...dealStories, staleConflict].sort((a, b) => b.currentScore - a.currentScore);
+    assert.match(ordered[0].title, /Iran|US-Iran/i);
+    assert.ok(ordered[0].currentScore > staleConflict.currentScore);
+
+    const envelope = composeBriefFromDigestStories(
+      {
+        userId: 'user_test',
+        variant: 'full',
+        digestMode: 'daily',
+        sensitivity: 'all',
+        digestTimezone: 'UTC',
+        updatedAt: oneHourAgo,
+      },
+      ordered,
+      { clusters: ordered.length, multiSource: 5 },
+      { nowMs: Date.now() },
+    );
+    assert.ok(envelope, 'expected scheduled digest compose to keep at least one story');
+    assert.ok(
+      envelope.data.stories.some((story) => /iran/i.test(story.headline) && /deal/i.test(story.headline)),
+      'expected a US-Iran deal story to survive scheduled digest composition',
+    );
   });
 });
