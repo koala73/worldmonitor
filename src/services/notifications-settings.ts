@@ -582,6 +582,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             quietHoursEnd: endEl ? Number(endEl.value) : 7,
             quietHoursTimezone: tzEl?.value || detectedTz,
             quietHoursOverride: (overrideEl?.value ?? 'critical_only') as QuietHoursOverride,
+            countries: countryPicker ? countryPicker.getValue() : undefined,
           });
         }, 800);
       };
@@ -597,6 +598,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             digestMode: (modeEl?.value ?? 'realtime') as DigestMode,
             digestHour: hourEl ? Number(hourEl.value) : 8,
             digestTimezone: tzEl?.value || detectedTz,
+            countries: countryPicker ? countryPicker.getValue() : undefined,
           });
         }, 800);
       };
@@ -666,12 +668,14 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           digestDebounceTimer = setTimeout(() => {
             void (async () => {
               try {
+                const state = getCurrentAlertRuleFormState();
                 await setNotificationConfig({
                   variant: SITE_VARIANT,
+                  ...state,
                   digestMode: target.value as DigestMode,
                   digestHour: hourEl ? Number(hourEl.value) : 8,
                   digestTimezone: tzEl?.value || detectedTz,
-                  sensitivity: snappedSensitivity, // undefined unless we just snapped
+                  ...(snappedSensitivity ? { sensitivity: snappedSensitivity } : {}),
                 });
               } catch (err) {
                 if (err instanceof IncompatibleDeliveryError) {

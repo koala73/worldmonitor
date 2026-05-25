@@ -59,6 +59,7 @@ export interface CountryChipPickerHandle {
 }
 
 const ISO2_RE = /^[A-Z]{2}$/;
+export const COUNTRY_CHIP_PICKER_MAX = 50;
 
 /**
  * Normalize one user-entered value to a valid ISO-3166 alpha-2 code, or null
@@ -75,11 +76,16 @@ function dedupe(codes: string[]): string[] {
   return [...new Set(codes)];
 }
 
+function normalizeList(codes: string[]): string[] {
+  return dedupe(codes.map(normalizeIso2).filter((c): c is string => c !== null))
+    .slice(0, COUNTRY_CHIP_PICKER_MAX);
+}
+
 export function mountCountryChipPicker(
   root: HTMLElement,
   opts: CountryChipPickerOptions = {},
 ): CountryChipPickerHandle {
-  let value: string[] = dedupe((opts.initial ?? []).map(normalizeIso2).filter((c): c is string => c !== null));
+  let value: string[] = normalizeList(opts.initial ?? []);
 
   function emit(): void {
     if (opts.onChange) opts.onChange(value.slice());
@@ -136,6 +142,13 @@ export function mountCountryChipPicker(
         if (errEl) errEl.style.display = '';
         return;
       }
+      if (!value.includes(norm) && value.length >= COUNTRY_CHIP_PICKER_MAX) {
+        if (errEl) {
+          errEl.textContent = `COUNTRIES_LIMIT_EXCEEDED: maximum ${COUNTRY_CHIP_PICKER_MAX} countries.`;
+          errEl.style.display = '';
+        }
+        return;
+      }
       if (errEl) errEl.style.display = 'none';
       if (!value.includes(norm)) {
         value = dedupe([...value, norm]);
@@ -167,7 +180,7 @@ export function mountCountryChipPicker(
   return {
     getValue: () => value.slice(),
     setValue: (codes: string[]) => {
-      value = dedupe(codes.map(normalizeIso2).filter((c): c is string => c !== null));
+      value = normalizeList(codes);
       render();
       emit();
     },

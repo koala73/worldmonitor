@@ -146,6 +146,7 @@ export async function setQuietHours(settings: {
   quietHoursEnd?: number;
   quietHoursTimezone?: string;
   quietHoursOverride?: QuietHoursOverride;
+  countries?: string[];
 }): Promise<void> {
   const res = await authFetch('/api/notification-channels', {
     method: 'POST',
@@ -160,6 +161,7 @@ export async function setDigestSettings(settings: {
   digestMode: DigestMode;
   digestHour?: number;
   digestTimezone?: string;
+  countries?: string[];
 }): Promise<void> {
   const res = await authFetch('/api/notification-channels', {
     method: 'POST',

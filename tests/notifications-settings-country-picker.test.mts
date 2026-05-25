@@ -28,6 +28,7 @@ import {
   normalizeIso2,
   mountCountryChipPicker,
   loadFollowedCountriesSafe,
+  COUNTRY_CHIP_PICKER_MAX,
 } from '../src/utils/country-chip-picker.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -199,6 +200,24 @@ describe('notifications-settings.ts — centralized save state (countries thread
       settingsSrc,
       /target\.id\s*===\s*'usNotifEnabled'\s*\|\|\s*target\.id\s*===\s*'usNotifSensitivity'[\s\S]*?const\s+state\s*=\s*getCurrentAlertRuleFormState\(\)[\s\S]*?saveAlertRules\(/,
       'enable/sensitivity save must source payload from getCurrentAlertRuleFormState',
+    );
+  });
+
+  it('quiet-hours, digest, and delivery-mode saves thread picker countries through insert-capable APIs', () => {
+    assert.match(
+      settingsSrc,
+      /setQuietHours\(\{[\s\S]*?countries:\s*countryPicker\s*\?\s*countryPicker\.getValue\(\)\s*:\s*undefined/,
+      'setQuietHours save must include current picker countries',
+    );
+    assert.match(
+      settingsSrc,
+      /setDigestSettings\(\{[\s\S]*?countries:\s*countryPicker\s*\?\s*countryPicker\.getValue\(\)\s*:\s*undefined/,
+      'setDigestSettings save must include current picker countries',
+    );
+    assert.match(
+      settingsSrc,
+      /setNotificationConfig\(\{[\s\S]*?\.\.\.state[\s\S]*?digestMode:/,
+      'setNotificationConfig save must spread current form state, including countries',
     );
   });
 
@@ -464,6 +483,25 @@ describe('mountCountryChipPicker', () => {
       initial: ['us', '  GB  ', 'US', 'United States', 'Z'],
     });
     assert.deepEqual(picker.getValue(), ['US', 'GB']);
+    picker.destroy();
+  });
+
+  it('caps initial and setValue selections at 50 countries', () => {
+    const codes: string[] = [];
+    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    outer: for (let i = 0; i < letters.length; i++) {
+      for (let j = 0; j < letters.length; j++) {
+        codes.push(letters[i] + letters[j]);
+        if (codes.length >= COUNTRY_CHIP_PICKER_MAX + 10) break outer;
+      }
+    }
+
+    const root = makeFakeElement() as unknown as HTMLElement;
+    const picker = mountCountryChipPicker(root, { initial: codes });
+    assert.equal(picker.getValue().length, COUNTRY_CHIP_PICKER_MAX);
+
+    picker.setValue(codes.reverse());
+    assert.equal(picker.getValue().length, COUNTRY_CHIP_PICKER_MAX);
     picker.destroy();
   });
 

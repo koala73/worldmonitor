@@ -664,6 +664,29 @@ function matchesSensitivity(ruleSensitivity, eventSeverity) {
   return eventSeverity === 'critical';
 }
 
+const EVENT_COUNTRY_NAME_TO_ISO2 = new Map(Object.entries({
+  'bahrain': 'BH',
+  'israel': 'IL',
+  'kuwait': 'KW',
+  'oman': 'OM',
+  'qatar': 'QA',
+  'saudi arabia': 'SA',
+  'uae': 'AE',
+  'united arab emirates': 'AE',
+  'united kingdom': 'GB',
+  'uk': 'GB',
+  'united states': 'US',
+  'usa': 'US',
+}));
+
+function normalizeEventCountryCode(raw) {
+  if (typeof raw !== 'string' || raw.trim().length === 0) return null;
+  const trimmed = raw.trim();
+  const upper = trimmed.toUpperCase();
+  if (/^[A-Z]{2}$/.test(upper)) return upper;
+  return EVENT_COUNTRY_NAME_TO_ISO2.get(trimmed.toLowerCase()) ?? null;
+}
+
 /**
  * Score-gated dispatch decision.
  *
@@ -706,10 +729,11 @@ function matchesSensitivity(ruleSensitivity, eventSeverity) {
  * match: rule.countries=['US'] + event.payload.countryCode='IR' → drop.
  *
  * Country values are normalized to uppercase ISO-3166 alpha-2 before
- * matching. Malformed values (non-2-letter, multi-word names like 'USA' or
- * 'United States') fall through to the "unattributed" branch and are
- * delivered permissively — the publisher emitted garbage, treat it as if
- * it emitted nothing.
+ * matching. Known malformed values emitted by current publishers (for
+ * example 'USA', 'United States', 'UAE') are mapped to ISO2 and filtered
+ * strictly. Unknown malformed values fall through to the "unattributed"
+ * branch and are delivered permissively — the publisher emitted garbage,
+ * treat it as if it emitted nothing.
  */
 function eventMatchesCountryScope(event, rule) {
   // Empty/absent countries on the rule → all events (no filter applied).
@@ -726,9 +750,9 @@ function eventMatchesCountryScope(event, rule) {
     return true;
   }
 
-  const normalized = eventCountry.trim().toUpperCase();
-  // Malformed (non-2-letter) → treat as unattributed → PERMISSIVE deliver.
-  if (!/^[A-Z]{2}$/.test(normalized)) return true;
+  const normalized = normalizeEventCountryCode(eventCountry);
+  // Unknown malformed value → treat as unattributed → PERMISSIVE deliver.
+  if (normalized === null) return true;
 
   return rule.countries.includes(normalized);
 }

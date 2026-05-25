@@ -24,6 +24,33 @@ const relaySrc = readFileSync(
   resolve(__dirname, '..', 'scripts', 'notification-relay.cjs'),
   'utf-8',
 );
+const aisRelaySrc = readFileSync(
+  resolve(__dirname, '..', 'scripts', 'ais-relay.cjs'),
+  'utf-8',
+);
+
+const EVENT_COUNTRY_NAME_TO_ISO2 = new Map(Object.entries({
+  'bahrain': 'BH',
+  'israel': 'IL',
+  'kuwait': 'KW',
+  'oman': 'OM',
+  'qatar': 'QA',
+  'saudi arabia': 'SA',
+  'uae': 'AE',
+  'united arab emirates': 'AE',
+  'united kingdom': 'GB',
+  'uk': 'GB',
+  'united states': 'US',
+  'usa': 'US',
+}));
+
+function normalizeEventCountryCode(raw) {
+  if (typeof raw !== 'string' || raw.trim().length === 0) return null;
+  const trimmed = raw.trim();
+  const upper = trimmed.toUpperCase();
+  if (/^[A-Z]{2}$/.test(upper)) return upper;
+  return EVENT_COUNTRY_NAME_TO_ISO2.get(trimmed.toLowerCase()) ?? null;
+}
 
 // Mirror the relay's eventMatchesCountryScope so we can run behavioural
 // assertions without requiring the .cjs module export. The relay file is a
@@ -40,9 +67,9 @@ function eventMatchesCountryScope(event, rule) {
   if (typeof eventCountry !== 'string' || eventCountry.trim().length === 0) {
     return true;
   }
-  const normalized = eventCountry.trim().toUpperCase();
-  // Malformed → permissive (deliver).
-  if (!/^[A-Z]{2}$/.test(normalized)) return true;
+  const normalized = normalizeEventCountryCode(eventCountry);
+  // Unknown malformed → permissive (deliver).
+  if (normalized === null) return true;
   return rule.countries.includes(normalized);
 }
 
@@ -90,11 +117,11 @@ describe('notification-relay eventMatchesCountryScope — source-grep contract',
     );
   });
 
-  it('malformed country (non-2-letter) → returns true (permissive, treated as unattributed)', () => {
+  it('unknown malformed country (non-2-letter) → returns true (permissive, treated as unattributed)', () => {
     assert.match(
       relaySrc,
-      /if\s*\(\s*!\/\^\[A-Z\]\{2\}\$\/\.test\(normalized\)\s*\)\s*return\s+true/,
-      'malformed country must return true (permissive)',
+      /if\s*\(\s*normalized\s*===\s*null\s*\)\s*return\s+true/,
+      'unknown malformed country must return true (permissive)',
     );
   });
 
@@ -156,13 +183,26 @@ describe('notification-relay eventMatchesCountryScope — behavioural', () => {
     assert.equal(eventMatchesCountryScope(event, { countries: ['US'] }), true);
   });
 
-  it("rule.countries=['US'] + malformed country 'USA' (3 letters) → true (permissive, malformed=unattributed)", () => {
+  it("rule.countries=['US'] + known malformed country 'USA' → true, but non-matching rules drop", () => {
     const event = { eventType: 'rss_alert', payload: { country: 'USA' } };
     assert.equal(eventMatchesCountryScope(event, { countries: ['US'] }), true);
+    assert.equal(eventMatchesCountryScope(event, { countries: ['GB'] }), false);
   });
 
-  it("rule.countries=['US'] + malformed country 'United States' → true (permissive, malformed=unattributed)", () => {
+  it("rule.countries=['US'] + known malformed country 'United States' → true, but non-matching rules drop", () => {
     const event = { eventType: 'rss_alert', payload: { country: 'United States' } };
+    assert.equal(eventMatchesCountryScope(event, { countries: ['US'] }), true);
+    assert.equal(eventMatchesCountryScope(event, { countries: ['GB'] }), false);
+  });
+
+  it("rule.countries=['AE'] + known malformed country 'UAE' → true, but non-matching rules drop", () => {
+    const event = { eventType: 'rss_alert', payload: { country: 'UAE' } };
+    assert.equal(eventMatchesCountryScope(event, { countries: ['AE'] }), true);
+    assert.equal(eventMatchesCountryScope(event, { countries: ['US'] }), false);
+  });
+
+  it("rule.countries=['US'] + unknown malformed country 'United States of Whatever' → true (permissive)", () => {
+    const event = { eventType: 'rss_alert', payload: { country: 'United States of Whatever' } };
     assert.equal(eventMatchesCountryScope(event, { countries: ['US'] }), true);
   });
 
@@ -181,5 +221,30 @@ describe('notification-relay eventMatchesCountryScope — behavioural', () => {
   it("rule.countries=undefined → all events match (backward compat)", () => {
     const event = { eventType: 'rss_alert', payload: { country: 'US' } };
     assert.equal(eventMatchesCountryScope(event, {}), true);
+  });
+});
+
+describe('ais-relay country-specific notification publishers — source-grep contract', () => {
+  it('OREF, UCDP, cyber, and NWS publish countryCode when the publisher knows country scope', () => {
+    assert.match(
+      aisRelaySrc,
+      /eventType:\s*'oref_siren'[\s\S]*?countryCode:\s*'IL'/,
+      'OREF siren notifications must publish countryCode=IL',
+    );
+    assert.match(
+      aisRelaySrc,
+      /eventType:\s*'conflict_escalation'[\s\S]*?countryCode/,
+      'UCDP conflict notifications must include normalized countryCode when available',
+    );
+    assert.match(
+      aisRelaySrc,
+      /eventType:\s*'cyber_threat'[\s\S]*?countryCode/,
+      'cyber notifications must include normalized countryCode when available',
+    );
+    assert.match(
+      aisRelaySrc,
+      /eventType:\s*'weather_alert'[\s\S]*?countryCode:\s*'US'/,
+      'NWS weather notifications must publish countryCode=US',
+    );
   });
 });

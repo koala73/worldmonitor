@@ -365,7 +365,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
 
       if (action === 'set-quiet-hours') {
         const VALID_OVERRIDE = new Set(['critical_only', 'silence_all', 'batch_on_wake']);
-        const { variant, quietHoursEnabled, quietHoursStart, quietHoursEnd, quietHoursTimezone, quietHoursOverride } = body;
+        const { variant, quietHoursEnabled, quietHoursStart, quietHoursEnd, quietHoursTimezone, quietHoursOverride, countries } = body;
         if (!variant || quietHoursEnabled === undefined) {
           return json({ error: 'variant and quietHoursEnabled required' }, 400, corsHeaders);
         }
@@ -381,6 +381,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
           quietHoursEnd,
           quietHoursTimezone,
           quietHoursOverride,
+          countries,
         });
         if (!resp.ok) {
           console.error('[notification-channels] POST set-quiet-hours relay error:', resp.status);
@@ -395,7 +396,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
 
       if (action === 'set-digest-settings') {
         const VALID_DIGEST_MODE = new Set(['realtime', 'daily', 'twice_daily', 'weekly']);
-        const { variant, digestMode, digestHour, digestTimezone } = body;
+        const { variant, digestMode, digestHour, digestTimezone, countries } = body;
         if (!variant || !digestMode || !VALID_DIGEST_MODE.has(digestMode)) {
           return json({ error: 'variant and valid digestMode required' }, 400, corsHeaders);
         }
@@ -406,6 +407,7 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
           digestMode,
           digestHour,
           digestTimezone,
+          countries,
         });
         if (!resp.ok) {
           console.error('[notification-channels] POST set-digest-settings relay error:', resp.status);
@@ -430,6 +432,9 @@ export default async function handler(req: Request, ctx: { waitUntil: (p: Promis
         }
         if (digestMode !== undefined && !VALID_DIGEST_MODE.has(digestMode)) {
           return json({ error: 'invalid digestMode' }, 400, corsHeaders);
+        }
+        if (countries !== undefined && !Array.isArray(countries)) {
+          return json({ error: 'COUNTRIES_MUST_BE_ARRAY' }, 400, corsHeaders);
         }
         const resp = await convexRelay({
           action: 'set-notification-config',

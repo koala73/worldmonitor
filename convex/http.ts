@@ -558,6 +558,7 @@ http.route({
           quietHoursEnd: body.quietHoursEnd,
           quietHoursTimezone: body.quietHoursTimezone,
           quietHoursOverride: body.quietHoursOverride as "critical_only" | "silence_all" | "batch_on_wake" | undefined,
+          countries: Array.isArray(body.countries) ? (body.countries as string[]) : undefined,
         });
         return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
@@ -576,6 +577,7 @@ http.route({
           digestMode: body.digestMode as "realtime" | "daily" | "twice_daily" | "weekly",
           digestHour: typeof body.digestHour === "number" ? body.digestHour : undefined,
           digestTimezone: typeof body.digestTimezone === "string" ? body.digestTimezone : undefined,
+          countries: Array.isArray(body.countries) ? (body.countries as string[]) : undefined,
         });
         return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
@@ -596,6 +598,9 @@ http.route({
         }
         if (body.digestMode !== undefined && !VALID_DIGEST_MODE.has(body.digestMode as string)) {
           return new Response(JSON.stringify({ error: "INVALID_DIGEST_MODE" }), { status: 400, headers: { "Content-Type": "application/json" } });
+        }
+        if (body.countries !== undefined && !Array.isArray(body.countries)) {
+          return new Response(JSON.stringify({ error: "COUNTRIES_MUST_BE_ARRAY" }), { status: 400, headers: { "Content-Type": "application/json" } });
         }
         try {
           await ctx.runMutation((internal as any).alertRules.setNotificationConfigForUser, {

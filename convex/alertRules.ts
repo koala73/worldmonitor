@@ -447,9 +447,10 @@ export const setDigestSettingsForUser = internalMutation({
     digestMode: digestModeValidator,
     digestHour: v.optional(v.number()),
     digestTimezone: v.optional(v.string()),
+    countries: v.optional(v.array(v.string())),
   },
   handler: async (ctx, args) => {
-    const { userId, variant, ...digest } = args;
+    const { userId, variant, countries, ...digest } = args;
     if (digest.digestHour !== undefined && (digest.digestHour < 0 || digest.digestHour > 23 || !Number.isInteger(digest.digestHour))) {
       throw new ConvexError("digestHour must be an integer 0–23");
     }
@@ -474,21 +475,26 @@ export const setDigestSettingsForUser = internalMutation({
     assertCompatibleDeliveryMode(pair);
 
     const now = Date.now();
+    const normalizedCountries = countries !== undefined
+      ? normalizeCountries(countries)
+      : undefined;
     if (existing) {
-      await ctx.db.patch(existing._id, { ...digest, updatedAt: now });
+      const patch: Record<string, unknown> = { ...digest, updatedAt: now };
+      if (normalizedCountries !== undefined) patch.countries = normalizedCountries;
+      await ctx.db.patch(existing._id, patch);
     } else {
       await ctx.db.insert("alertRules", {
         userId, variant, enabled: true, eventTypes: [], sensitivity: pair.sensitivity, channels: [],
-        ...digest, updatedAt: now,
+        ...digest, countries: normalizedCountries, updatedAt: now,
       });
     }
   },
 });
 
 export const setQuietHoursForUser = internalMutation({
-  args: { userId: v.string(), ...QUIET_HOURS_ARGS },
+  args: { userId: v.string(), ...QUIET_HOURS_ARGS, countries: v.optional(v.array(v.string())) },
   handler: async (ctx, args) => {
-    const { userId, ...rest } = args;
+    const { userId, countries, ...rest } = args;
     validateQuietHoursArgs(rest);
 
     const existing = await ctx.db
@@ -515,6 +521,9 @@ export const setQuietHoursForUser = internalMutation({
     const pair = resolveEffectivePair({ existing: existing ?? undefined });
 
     const now = Date.now();
+    const normalizedCountries = countries !== undefined
+      ? normalizeCountries(countries)
+      : undefined;
     const patch = {
       quietHoursEnabled: rest.quietHoursEnabled,
       quietHoursStart: rest.quietHoursStart,
@@ -522,6 +531,7 @@ export const setQuietHoursForUser = internalMutation({
       quietHoursTimezone: rest.quietHoursTimezone,
       quietHoursOverride: rest.quietHoursOverride,
       updatedAt: now,
+      ...(normalizedCountries !== undefined ? { countries: normalizedCountries } : {}),
     };
 
     if (existing) {

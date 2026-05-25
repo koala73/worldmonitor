@@ -15,7 +15,7 @@
 import { convexTest } from "convex-test";
 import { describe, expect, test } from "vitest";
 import schema from "../schema";
-import { api } from "../_generated/api";
+import { api, internal } from "../_generated/api";
 
 const modules = import.meta.glob("../**/*.ts");
 
@@ -198,7 +198,6 @@ describe("alertRules.countries — persistence + normalization", () => {
     const t = convexTest(schema, modules);
     await seedProEntitlement(t);
     // setNotificationConfigForUser is internal — call via t.run / runMutation pattern.
-    const { internal } = await import("../_generated/api");
     await t.mutation(internal.alertRules.setNotificationConfigForUser, {
       userId: USER.subject,
       variant: VARIANT,
@@ -210,5 +209,34 @@ describe("alertRules.countries — persistence + normalization", () => {
     });
     const row = await readRow(t);
     expect(row?.countries).toEqual(["FR", "DE"]);
+  });
+
+  test("setQuietHoursForUser first-row insert preserves supplied countries", async () => {
+    const t = convexTest(schema, modules);
+    await t.mutation(internal.alertRules.setQuietHoursForUser, {
+      userId: USER.subject,
+      variant: VARIANT,
+      quietHoursEnabled: true,
+      quietHoursStart: 22,
+      quietHoursEnd: 7,
+      countries: ["us", "GB", "us"],
+    });
+    const row = await readRow(t);
+    expect(row?.countries).toEqual(["US", "GB"]);
+    expect(row?.quietHoursEnabled).toBe(true);
+  });
+
+  test("setDigestSettingsForUser first-row insert preserves supplied countries", async () => {
+    const t = convexTest(schema, modules);
+    await t.mutation(internal.alertRules.setDigestSettingsForUser, {
+      userId: USER.subject,
+      variant: VARIANT,
+      digestMode: "daily",
+      digestHour: 8,
+      countries: ["il", " AE "],
+    });
+    const row = await readRow(t);
+    expect(row?.countries).toEqual(["IL", "AE"]);
+    expect(row?.digestMode).toBe("daily");
   });
 });
