@@ -360,21 +360,26 @@ Seed-level health per key: [status.worldmonitor.app](https://status.worldmonitor
 
 ## Errors
 
-| Code | Meaning |
-|------|---------|
-| 401 | Invalid / missing token |
-| 403 | Token valid but account not PRO |
-| 404 | Unknown tool name |
-| 429 | Rate limited (60 req/min/key) |
-| 503 | Upstream cache unavailable |
+The MCP handler signals failure on three independent layers — **HTTP status**, **JSON-RPC `error.code`**, and **soft-behavior envelopes inside `result.content[0].text`** — and a single failure can touch any combination.
 
-Tool-level errors return `isError: true` with a text explanation in `content`.
+| Layer        | Common shapes                                                    | Where to look       |
+|--------------|------------------------------------------------------------------|---------------------|
+| HTTP status  | `200` (default for JSON-RPC), `401`, `429`, `503`                | `WWW-Authenticate` / `Retry-After` headers |
+| JSON-RPC     | `-32001` auth · `-32029` rate-limited · `-32602` bad params · `-32603` internal | `error.code` + `error.message`           |
+| Soft envelope | `_budget_exceeded` (response too big), `_jmespath_error` (projection failed) | `result.content[0].text` parsed as JSON |
+
+Triage from the outside in: HTTP status → JSON-RPC code → soft envelope. The full per-shape reference (trigger, paired status, recovery, example payload) lives in the [MCP Error Catalog](/mcp-error-catalog). A few high-frequency callouts:
+
+- **401 + `-32001`** carries a `WWW-Authenticate` header with `resource_metadata` pointing at `/.well-known/oauth-protected-resource`. RFC 9728-aware clients re-run the OAuth flow on this header automatically.
+- **429 + `-32029`** is the Pro daily cap (`Retry-After: <seconds-until-UTC-midnight>`). The per-minute rate limit returns `-32029` inside HTTP 200, not 429 — see the catalog for the distinction.
+- **Soft envelopes return HTTP 200** with no JSON-RPC `error` field — clients that inspect only the JSON-RPC layer will silently treat them as successes. Always parse `result.content[0].text` and check for a leading-underscore discriminator key (`_budget_exceeded`, `_jmespath_error`) before consuming the payload as data.
 
 ## Related
 
 - [MCP Quickstart](/mcp-quickstart) — five-minute zero-to-first-call walkthrough
 - [JMESPath guide](/mcp-jmespath) — projection grammar + 12 worked examples
 - [MCP Tools Reference](/mcp-tools-reference) — per-tool parameters and `curl` examples
+- [MCP Error Catalog](/mcp-error-catalog) — every JSON-RPC code, HTTP status, and soft envelope the server emits
 - [Authentication overview](/authentication) — browser vs bearer vs OAuth
 - [API Reference](/api-reference) — the same data via REST
 - [Pro features](https://www.worldmonitor.app/pro)
