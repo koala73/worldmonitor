@@ -1023,7 +1023,7 @@ test('auth-required behavior unchanged — rejects unauthenticated requests when
 
   try {
     // Request without auth header should be rejected
-    const response = await authFetch(`http://127.0.0.1:${port}/api/local-env-update`, {
+    const response = await fetch(`http://127.0.0.1:${port}/api/local-env-update`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ key: 'OLLAMA_API_URL', value: 'http://127.0.0.1:11434' }),
