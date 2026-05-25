@@ -251,9 +251,19 @@ export async function buildResourceResponse(
     // Preserve the inner code (quota -32029, budget-exceeded comes back as
     // a 200 with _budget_exceeded inside content[0].text — handled below
     // as a success-shape envelope, not an error — see PR 4 design).
+    //
+    // Forward Retry-After from the inner response so quota-exhaustion
+    // (429 with seconds-until-UTC-midnight) and reservation-failure (503
+    // with 5s) honour the same client back-off contract tools/call does.
+    // Without this, a correctly-implemented client back-off would retry
+    // immediately on resources/read while waiting correctly on tools/call
+    // — directly contradicting the auth-symmetry contract.
+    const errorHeaders: Record<string, string> = { 'Content-Type': 'application/json', ...corsHeaders };
+    const retryAfter = dispatched.headers.get('Retry-After');
+    if (retryAfter !== null) errorHeaders['Retry-After'] = retryAfter;
     return new Response(
       JSON.stringify({ jsonrpc: '2.0', id: outerId, error: innerBodyParsed.error }),
-      { status: dispatched.status, headers: { 'Content-Type': 'application/json', ...corsHeaders } },
+      { status: dispatched.status, headers: errorHeaders },
     );
   }
 
@@ -272,25 +282,40 @@ export async function buildResourceResponse(
     try {
       rawPayload = JSON.parse(innerText);
     } catch {
-      // _budget_exceeded / _jmespath_error envelopes are JSON too; if the
-      // dispatcher emitted one of those, parse will still succeed. A
-      // genuine parse failure here means the underlying RPC returned
-      // non-JSON, which should already have been a -32603 inside the
-      // dispatcher — defensive fallback: surface as -32603.
+      // A parse failure means the underlying RPC returned non-JSON,
+      // which should already have been a -32603 inside the dispatcher —
+      // defensive fallback: surface as -32603.
       return rpcError(outerId, -32603, 'Internal error: resource payload was not valid JSON');
     }
-    const { seedMetaKey, maxStaleMin } = matched.def.freshnessWrap;
-    const meta = await readJsonFromUpstash(seedMetaKey).catch(() => null);
-    const { cached_at, stale } = evaluateFreshness(
-      [{ key: seedMetaKey, maxStaleMin }],
-      [meta],
-    );
-    // Merge envelope ahead of payload fields so the standard shape is
-    // visible first when humans inspect the response.
-    const merged = (rawPayload !== null && typeof rawPayload === 'object' && !Array.isArray(rawPayload))
-      ? { cached_at, stale, ...(rawPayload as Record<string, unknown>) }
-      : { cached_at, stale, data: rawPayload };
-    wrappedText = JSON.stringify(merged);
+    // Soft-error envelopes (PR 4 _budget_exceeded, PR 1.4 _jmespath_error)
+    // come back as 200 with the sentinel inside content[0].text — NOT as
+    // a JSON-RPC error. Pass these through unwrapped so the structured
+    // sentinel survives. Merging with {cached_at, stale} would otherwise
+    // produce a hybrid shape where the soft-error sentinel sits alongside
+    // freshness fields, and clients that detect via top-level key
+    // presence would see "valid-looking" content with the error buried
+    // as an inner field.
+    if (
+      rawPayload !== null
+      && typeof rawPayload === 'object'
+      && !Array.isArray(rawPayload)
+      && (('_budget_exceeded' in rawPayload) || ('_jmespath_error' in rawPayload))
+    ) {
+      wrappedText = innerText;
+    } else {
+      const { seedMetaKey, maxStaleMin } = matched.def.freshnessWrap;
+      const meta = await readJsonFromUpstash(seedMetaKey).catch(() => null);
+      const { cached_at, stale } = evaluateFreshness(
+        [{ key: seedMetaKey, maxStaleMin }],
+        [meta],
+      );
+      // Merge envelope ahead of payload fields so the standard shape is
+      // visible first when humans inspect the response.
+      const merged = (rawPayload !== null && typeof rawPayload === 'object' && !Array.isArray(rawPayload))
+        ? { cached_at, stale, ...(rawPayload as Record<string, unknown>) }
+        : { cached_at, stale, data: rawPayload };
+      wrappedText = JSON.stringify(merged);
+    }
   } else {
     wrappedText = innerText;
   }

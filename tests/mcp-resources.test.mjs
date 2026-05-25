@@ -475,6 +475,63 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
       'counter must return to the cap after the rejected reservation rolls back (initialCount=50, no net change)');
   });
 
+  it('cap-exhausted resources/read forwards Retry-After header (parity with tools/call)', async () => {
+    // Greptile P1 regression guard. A correctly-implemented MCP client
+    // backing off on 429 will retry immediately if Retry-After is absent.
+    // tools/call attaches Retry-After (seconds until UTC midnight on quota
+    // cap, "5" on reservation failure); resources/read must forward it
+    // verbatim or the auth-symmetry contract is broken on the error path.
+    const { deps: depsR } = makeProDeps({ pipelineOpts: { initialCount: 50 } });
+    const resR = await mcpHandler(
+      proReq('POST', readBody('worldmonitor://countries/de/risk')),
+      depsR,
+    );
+    assert.equal(resR.status, 429);
+    const retryAfterR = resR.headers.get('Retry-After');
+    assert.ok(retryAfterR, 'resources/read 429 MUST attach a Retry-After header (Greptile P1)');
+    // Cross-check: tools/call against the same backing tool from the same
+    // pre-seeded state must attach the SAME header. Drift in the resources
+    // re-emission would surface here as a string mismatch.
+    const { deps: depsT } = makeProDeps({ pipelineOpts: { initialCount: 50 } });
+    const resT = await mcpHandler(
+      proReq('POST', callBody('get_country_risk', { country_code: 'DE' })),
+      depsT,
+    );
+    assert.equal(resT.status, 429);
+    const retryAfterT = resT.headers.get('Retry-After');
+    assert.equal(retryAfterR, retryAfterT,
+      `Retry-After symmetry: resources/read="${retryAfterR}" must match tools/call="${retryAfterT}"`);
+  });
+
+  it('_budget_exceeded soft envelope from country-risk RPC passes through unchanged (no freshness merge)', async () => {
+    // Greptile P2 regression guard. When the RPC return exceeds the
+    // 256 KB budget, dispatchToolsCall emits a 200 with
+    // `{_budget_exceeded, budget_bytes, actual_bytes, hint}` inside
+    // content[0].text. The freshness-wrap branch must detect this and
+    // pass through unchanged — merging the sentinel with `{cached_at,
+    // stale, ...}` would produce a hybrid shape where clients detecting
+    // soft errors by top-level key see "valid-looking" content with the
+    // error sentinel buried as an inner field.
+    //
+    // Trigger: mock get_country_risk to return a payload >256 KB.
+    const huge = { padding: 'x'.repeat(300_000) }; // > 262_144 budget
+    installMockFetch({ riskPayload: huge });
+
+    const res = await handler(envKeyReq(readBody('worldmonitor://countries/de/risk')));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.error, undefined, 'budget-exceeded surfaces as success-shape, not JSON-RPC error');
+    const payload = JSON.parse(body.result.contents[0].text);
+    assert.equal(payload._budget_exceeded, true, '_budget_exceeded sentinel must survive at top level');
+    assert.equal(typeof payload.budget_bytes, 'number');
+    assert.equal(typeof payload.actual_bytes, 'number');
+    // Critically — no freshness fields silently merged onto the soft-error.
+    assert.equal(payload.cached_at, undefined,
+      'cached_at must NOT be merged onto a soft-error envelope (Greptile P2)');
+    assert.equal(payload.stale, undefined,
+      'stale must NOT be merged onto a soft-error envelope (Greptile P2)');
+  });
+
   // -------------------------------------------------------------------------
   // Tool-existence parity (every resource.tool exists in TOOL_REGISTRY)
   // -------------------------------------------------------------------------
