@@ -382,11 +382,12 @@ export function computeEntityCorroboration(clusters, nowMs = Date.now()) {
 // Note: velocity filter omitted (vs frontend selectTopStories) because digest
 // items lack velocity data. Phase B may add velocity when RPC provides it.
 export function selectTopStories(clusters, maxCount = 8) {
-  computeEntityCorroboration(clusters);
+  const nowMs = Date.now();
+  computeEntityCorroboration(clusters, nowMs);
   const scored = clusters
     .map(c => {
       const score = scoreImportance(c);
-      return { cluster: c, score, effectiveScore: score * recencyWeight(c) };
+      return { cluster: c, score, effectiveScore: score * recencyWeight(c, nowMs) };
     })
     .filter(({ cluster: c, score }) => isTopStoriesAdmissible(c, score))
     .sort((a, b) => b.effectiveScore - a.effectiveScore || b.score - a.score);
@@ -395,11 +396,11 @@ export function selectTopStories(clusters, maxCount = 8) {
   const sourceCount = new Map();
   const MAX_PER_SOURCE = 3;
 
-  for (const { cluster, score } of scored) {
+  for (const { cluster, score, effectiveScore } of scored) {
     const source = cluster.primarySource;
     const count = sourceCount.get(source) || 0;
     if (count < MAX_PER_SOURCE) {
-      selected.push({ ...cluster, importanceScore: score, effectiveImportanceScore: score * recencyWeight(cluster) });
+      selected.push({ ...cluster, importanceScore: score, effectiveImportanceScore: effectiveScore });
       sourceCount.set(source, count + 1);
     }
     if (selected.length >= maxCount) break;
