@@ -108,7 +108,7 @@ CRITICAL RULES:
 5. Output is tab-separated: one line per input, format: <key><TAB><translation>. NOTHING ELSE — no commentary, no quotes, no markdown.
 6. Translate naturally for a software UI: concise, idiomatic, no over-formal phrasing.
 7. For Arabic, use modern standard Arabic (MSA). For Chinese, use Simplified Chinese.
-8. i18next plural variants: keys ending in _zero, _one, _two, _few, _many, or _other are CLDR plural forms of the same noun. Inflect the noun's morphology to match the count range named by the suffix — e.g. _few in Czech/Polish/Russian/Croatian is for counts 2-4, _many for 5+ in those locales, _two in Arabic is the dual form for count=2, _zero in Arabic is for count=0. Keep {{count}} in the translation even when the morphology itself encodes the count (i18next convention).
+8. i18next plural variants: keys ending in _zero, _one, _two, _few, _many, or _other are CLDR plural forms of the same noun. Inflect the noun's morphology to match the CLDR plural category named by the suffix for the target locale, following the standard CLDR plural rules for that language (which include teen-case exceptions — do NOT use simplified "2-4" / "5+" rules of thumb; follow CLDR exactly). Safe per-suffix semantics that always hold: _one = singular form; _two = dual form (Arabic and a few others); _zero = the zero-count form (Arabic). Keep {{count}} in the translation even when the morphology itself encodes the count (i18next convention).
 
 Input (key<TAB>english):
 ${items}
