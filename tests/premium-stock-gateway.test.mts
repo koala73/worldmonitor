@@ -142,14 +142,16 @@ describe('premium gateway API key enforcement', () => {
       },
     ]);
 
+    const requestBody = JSON.stringify({ symbols: Array.from({ length: 201 }, () => 'AAPL') });
     const res = await handler(new Request('https://worldmonitor.app/api/market/v1/list-market-quotes', {
       method: 'POST',
       headers: {
         Origin: 'https://worldmonitor.app',
         'Content-Type': 'application/json',
+        'Content-Length': String(requestBody.length),
         'X-WorldMonitor-Key': SESSION_TOKEN,
       },
-      body: JSON.stringify({ symbols: Array.from({ length: 201 }, () => 'AAPL') }),
+      body: requestBody,
     }));
 
     assert.equal(res.status, 400);
@@ -157,6 +159,102 @@ describe('premium gateway API key enforcement', () => {
     assert.equal(body.error, 'Too many values for POST compatibility parameter');
     assert.equal(body.parameter, 'symbols');
     assert.equal(body.maxValues, 200);
+  });
+
+  it('skips POST→GET compatibility when Content-Length is missing', async () => {
+    const handler = createDomainGateway([
+      {
+        method: 'GET',
+        path: '/api/market/v1/list-market-quotes',
+        handler: async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      },
+    ]);
+    const req = new Request('https://worldmonitor.app/api/market/v1/list-market-quotes', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://worldmonitor.app',
+        'Content-Type': 'application/json',
+        'X-WorldMonitor-Key': SESSION_TOKEN,
+      },
+      body: JSON.stringify({ symbols: ['AAPL'] }),
+    });
+    req.clone = () => { throw new Error('POST compatibility must not parse missing-length bodies'); };
+
+    const res = await handler(req);
+
+    assert.equal(res.status, 405);
+  });
+
+  it('skips POST→GET compatibility when Content-Length is invalid', async () => {
+    const handler = createDomainGateway([
+      {
+        method: 'GET',
+        path: '/api/market/v1/list-market-quotes',
+        handler: async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      },
+    ]);
+    const req = new Request('https://worldmonitor.app/api/market/v1/list-market-quotes', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://worldmonitor.app',
+        'Content-Type': 'application/json',
+        'Content-Length': 'not-a-number',
+        'X-WorldMonitor-Key': SESSION_TOKEN,
+      },
+      body: JSON.stringify({ symbols: ['AAPL'] }),
+    });
+    req.clone = () => { throw new Error('POST compatibility must not parse invalid-length bodies'); };
+
+    const res = await handler(req);
+
+    assert.equal(res.status, 405);
+  });
+
+  it('skips POST→GET compatibility when declared Content-Length exceeds the cap', async () => {
+    const handler = createDomainGateway([
+      {
+        method: 'GET',
+        path: '/api/market/v1/list-market-quotes',
+        handler: async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      },
+    ]);
+    const req = new Request('https://worldmonitor.app/api/market/v1/list-market-quotes', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://worldmonitor.app',
+        'Content-Type': 'application/json',
+        'Content-Length': '1048576',
+        'X-WorldMonitor-Key': SESSION_TOKEN,
+      },
+    });
+    req.clone = () => { throw new Error('POST compatibility must not parse oversized bodies'); };
+
+    const res = await handler(req);
+
+    assert.equal(res.status, 405);
+  });
+
+  it('preserves malformed JSON fallback for bounded POST→GET compatibility bodies', async () => {
+    const handler = createDomainGateway([
+      {
+        method: 'GET',
+        path: '/api/market/v1/list-market-quotes',
+        handler: async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      },
+    ]);
+
+    const res = await handler(new Request('https://worldmonitor.app/api/market/v1/list-market-quotes', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://worldmonitor.app',
+        'Content-Type': 'application/json',
+        'Content-Length': '1',
+        'X-WorldMonitor-Key': SESSION_TOKEN,
+      },
+      body: '{',
+    }));
+
+    assert.equal(res.status, 200);
   });
 });
 
