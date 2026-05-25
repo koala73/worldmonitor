@@ -751,7 +751,9 @@
       "summarizing": "Формируем сводку…"
     },
     "progressCharts": {
-      "noData": "Нет данных о прогрессе"
+      "noData": "Нет данных о прогрессе",
+      "fallbackBadge": "Отображаются статические резервные данные — прямые данные недоступны",
+      "fallbackTooltip": "Не удалось получить доступ к прямым данным World Bank. Эти графики отображаются на основе снимка, верифицированного в феврале 2026."
     },
     "monitor": {
       "placeholder": "Ключевые слова (через запятую)",
@@ -1310,7 +1312,9 @@
     "cii": {
       "shareStory": "Поделиться сюжетом",
       "noSignals": "Сигналы нестабильности не обнаружены",
-      "infoTooltip": "<strong>Методология</strong><ul><li><strong>Б</strong>еспорядки: гражданские волнения и протесты</li><li><strong>К</strong>онфликт: интенсивность вооружённого конфликта</li><li><strong>Б</strong>езопасность: военные рейсы/суда над территорией</li><li><strong>И</strong>нформация: скорость новостей и корреляция фокусных точек</li><li>Усиление при близости к горячим точкам (стратегические объекты)</li></ul><em>Б:К:Б:И показывают оценки компонентов.</em> Обнаружение фокусных точек коррелирует сущности новостей с сигналами на карте для точной оценки."
+      "infoTooltip": "<strong>Методология</strong><ul><li><strong>Б</strong>еспорядки: гражданские волнения и протесты</li><li><strong>К</strong>онфликт: интенсивность вооружённого конфликта</li><li><strong>Б</strong>езопасность: военные рейсы/суда над территорией</li><li><strong>И</strong>нформация: скорость новостей и корреляция фокусных точек</li><li>Усиление при близости к горячим точкам (стратегические объекты)</li></ul><em>Б:К:Б:И показывают оценки компонентов.</em> Обнаружение фокусных точек коррелирует сущности новостей с сигналами на карте для точной оценки.",
+      "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
+      "methodologyLink": "Включает базовое значение по стране + множитель события — см. /docs/methodology/cii-risk-scores для опубликованной таблицы"
     },
     "insights": {
       "noStories": "Пока нет экстренных или мультиисточниковых сюжетов",
@@ -1394,7 +1398,9 @@
       "tonePositive": "Позитивный",
       "overall": "Общее: {{tone}}",
       "signalTypesEvents": "{{types}} типов сигналов • {{events}} событий",
-      "newsSignals": "{{news}} новостей • {{signals}} сигналов"
+      "newsSignals": "{{news}} новостей • {{signals}} сигналов",
+      "sources_few": "{{count}} источника",
+      "sources_many": "{{count}} источников"
     },
     "settings": {
       "dataManagementLabel": "Управление данными",
@@ -1991,7 +1997,11 @@
         "hoursAgo_one": "{{count}}ч назад",
         "hoursAgo_other": "{{count}}ч назад",
         "daysAgo_one": "{{count}}д назад",
-        "daysAgo_other": "{{count}}д назад"
+        "daysAgo_other": "{{count}}д назад",
+        "hoursAgo_few": "{{count}}ч назад",
+        "hoursAgo_many": "{{count}}ч назад",
+        "daysAgo_few": "{{count}}д назад",
+        "daysAgo_many": "{{count}}д назад"
       },
       "filters": {
         "alert_one": "{{count}} Оповещение",
@@ -1999,12 +2009,19 @@
         "warning_one": "{{count}} Предупреждение",
         "warning_other": "{{count}} Предупреждений",
         "watch_one": "{{count}} Наблюдение",
-        "watch_other": "{{count}} Наблюдений"
+        "watch_other": "{{count}} Наблюдений",
+        "alert_few": "{{count}} оповещения",
+        "alert_many": "{{count}} оповещений",
+        "warning_few": "{{count}} предупреждения",
+        "warning_many": "{{count}} предупреждений",
+        "watch_few": "{{count}} наблюдения",
+        "watch_many": "{{count}} наблюдений"
       },
       "errors": {
         "noData": "Данные о вспышках недоступны",
         "failedToLoad": "Ошибка загрузки"
-      }
+      },
+      "methodologyNote": "Уровни Alert / Warning / Watch поступают из редакционного классификатора ключевых слов — см. /docs/methodology/disease-alert-level для таблицы ключевых слов и ограничений."
     },
     "earningsCalendar": {
       "infoTooltip": "<strong>Календарь отчётности</strong> Предстоящие и недавние публикации отчётности крупных публичных компаний. Показывает оценки EPS vs. фактические, выручку и классификацию превышения/недобора. Источник: поставщики финансовых данных.",
@@ -2067,7 +2084,8 @@
       "errors": {
         "unavailable": "Данные FSI недоступны",
         "failedToLoad": "Ошибка загрузки"
-      }
+      },
+      "cissStale": "ЕЦБ не опубликовал новое значение — это показание может быть устаревшим."
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>Трекер торговли в Ормузе</strong> Отслеживание судов AIS в реальном времени через Ормузский пролив — самую критическую точку нефтяного узкого места в мире. Отслеживает количество танкеров, события нарушений и еженедельные изменения потоков. Примерно 20% мировых поставок нефти проходит здесь ежедневно.",
@@ -2174,7 +2192,9 @@
       "signals_one": "{{count}} сигнал",
       "signals_other": "{{count}} сигналов",
       "disclaimer": "AI-сгенерированные торговые сигналы только в информационных целях. Не является инвестиционным советом. Всегда проводите собственное исследование.",
-      "unavailable": "Последствия для рынка AI генерируются после каждого прогноза. Проверьте позже."
+      "unavailable": "Последствия для рынка AI генерируются после каждого прогноза. Проверьте позже.",
+      "signals_few": "{{count}} сигнала",
+      "signals_many": "{{count}} сигналов"
     },
     "forecast": {
       "infoTooltip": "<strong>AI Forecasts</strong> Сгенерированные ИИ оценки вероятности геополитических и экономических событий:<ul><li>Охват нескольких областей: конфликты, рынки, цепи поставок, кибербезопасность, политика</li><li>Каждый прогноз показывает предполагаемую вероятность, уровень уверенности и временной горизонт</li><li>Калибруется по базовым показателям рынков прогнозов, где доступно</li></ul>Прогнозы обновляются по мере поступления новых разведывательных сигналов. Фильтруйте по домену, используя вкладки выше."
@@ -2305,7 +2325,9 @@
         "unattributed": "Неатрибутированное",
         "program": "Программа",
         "undated": "без даты"
-      }
+      },
+      "designations_few": "{{count}} обозначения",
+      "designations_many": "{{count}} обозначений"
     },
     "radiationWatch": {
       "title": "Мониторинг радиации",
@@ -2340,7 +2362,11 @@
         "hoursAgo_one": "{{count}}ч назад",
         "hoursAgo_other": "{{count}}ч назад",
         "daysAgo_one": "{{count}}д назад",
-        "daysAgo_other": "{{count}}д назад"
+        "daysAgo_other": "{{count}}д назад",
+        "hoursAgo_few": "{{count}}ч назад",
+        "hoursAgo_many": "{{count}}ч назад",
+        "daysAgo_few": "{{count}}д назад",
+        "daysAgo_many": "{{count}}д назад"
       },
       "confidence": {
         "high": "высокая уверенность",
@@ -2372,7 +2398,9 @@
       "signals_one": "{{count}} сигнал",
       "signals_other": "{{count}} сигналов",
       "analyzing": "Анализ...",
-      "viewOnMap": "Просмотреть на карте"
+      "viewOnMap": "Просмотреть на карте",
+      "signals_few": "{{count}} сигнала",
+      "signals_many": "{{count}} сигналов"
     },
     "thermalEscalation": {
       "title": "Тепловая эскалация",
@@ -2406,8 +2434,18 @@
         "hoursAgo_one": "{{count}}ч назад",
         "hoursAgo_other": "{{count}}ч назад",
         "daysAgo_one": "{{count}}д назад",
-        "daysAgo_other": "{{count}}д назад"
-      }
+        "daysAgo_other": "{{count}}д назад",
+        "minutesAgo_few": "{{count}}м назад",
+        "minutesAgo_many": "{{count}}м назад",
+        "hoursAgo_few": "{{count}}ч назад",
+        "hoursAgo_many": "{{count}}ч назад",
+        "daysAgo_few": "{{count}}д назад",
+        "daysAgo_many": "{{count}}д назад"
+      },
+      "observations_few": "{{count}} набл",
+      "observations_many": "{{count}} набл",
+      "sources_few": "{{count}} ист",
+      "sources_many": "{{count}} ист"
     },
     "chokepointStrip": {
       "title": "Статус узких мест",

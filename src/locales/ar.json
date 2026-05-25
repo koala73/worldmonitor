@@ -1262,7 +1262,9 @@
     "cii": {
       "shareStory": "مشاركة القصة",
       "noSignals": "لم يتم رصد إشارات عدم استقرار",
-      "infoTooltip": "<strong>المنهجية</strong><ul><li><strong>U</strong> - الاضطرابات: الفوضى المدنية والاحتجاجات</li><li><strong>C</strong> - النزاع: شدة النزاع المسلح</li><li><strong>S</strong> - الأمن: الرحلات/السفن العسكرية فوق الإقليم</li><li><strong>I</strong> - المعلومات: سرعة الأخبار وارتباط النقاط المحورية</li><li>تعزيز قرب البؤر الساخنة (المواقع الاستراتيجية)</li></ul><em>قيم U:C:S:I تُظهر درجات المكونات.</em> كشف النقاط المحورية يربط كيانات الأخبار بإشارات الخريطة للتقييم الدقيق."
+      "infoTooltip": "<strong>المنهجية</strong><ul><li><strong>U</strong> - الاضطرابات: الفوضى المدنية والاحتجاجات</li><li><strong>C</strong> - النزاع: شدة النزاع المسلح</li><li><strong>S</strong> - الأمن: الرحلات/السفن العسكرية فوق الإقليم</li><li><strong>I</strong> - المعلومات: سرعة الأخبار وارتباط النقاط المحورية</li><li>تعزيز قرب البؤر الساخنة (المواقع الاستراتيجية)</li></ul><em>قيم U:C:S:I تُظهر درجات المكونات.</em> كشف النقاط المحورية يربط كيانات الأخبار بإشارات الخريطة للتقييم الدقيق.",
+      "_methodologyLink_translatorNote": "مهمة الترجمة (#3725): ترجمة رابط المنهجية. يتم شحن القيمة الإنجليزية إلى كل لغة كحل مؤقت حتى يكون رابط المنهجية موجودًا في جميع اللغات. يمكن ترجمتها بشكل مستقل عن infoTooltip — يتم عرض الاثنين كتلميح واحد عبر الربط في CIIPanel.ts.",
+      "methodologyLink": "يتضمن خط الأساس حسب الدولة + مضاعف الحدث — انظر /docs/methodology/cii-risk-scores للجدول المنشور"
     },
     "insights": {
       "noStories": "لا توجد قصص عاجلة أو متعددة المصادر بعد",
@@ -1346,7 +1348,11 @@
       "tonePositive": "إيجابي",
       "overall": "إجمالي: {{tone}}",
       "signalTypesEvents": "{{types}} أنواع إشارات • {{events}} أحداث",
-      "newsSignals": "{{news}} أخبار • {{signals}} إشارات"
+      "newsSignals": "{{news}} أخبار • {{signals}} إشارات",
+      "sources_zero": "{{count}} مصادر",
+      "sources_two": "{{count}} مصدران",
+      "sources_few": "{{count}} مصادر",
+      "sources_many": "{{count}} مصدر"
     },
     "cascade": {
       "noImpacts": "لم يتم رصد تأثيرات على الدول",
@@ -1882,7 +1888,9 @@
       "summarizing": "جارٍ التلخيص…"
     },
     "progressCharts": {
-      "noData": "لا تتوفر بيانات تقدم"
+      "noData": "لا تتوفر بيانات تقدم",
+      "fallbackBadge": "عرض بيانات بديلة ثابتة — السلاسل المباشرة غير متاحة",
+      "fallbackTooltip": "تعذر الوصول إلى بذرة البنك الدولي المباشرة. يتم عرض هذه الرسوم البيانية من لقطة مشفرة تم التحقق منها آخر مرة في فبراير 2026."
     },
     "settings": {
       "dataManagementLabel": "إدارة البيانات",
@@ -1991,7 +1999,15 @@
         "hoursAgo_one": "منذ {{count}}س",
         "hoursAgo_other": "منذ {{count}}س",
         "daysAgo_one": "منذ {{count}}ي",
-        "daysAgo_other": "منذ {{count}}ي"
+        "daysAgo_other": "منذ {{count}}ي",
+        "hoursAgo_zero": "منذ {{count}}س",
+        "hoursAgo_two": "منذ {{count}}س",
+        "hoursAgo_few": "منذ {{count}}س",
+        "hoursAgo_many": "منذ {{count}}س",
+        "daysAgo_zero": "منذ {{count}}ي",
+        "daysAgo_two": "منذ {{count}}ي",
+        "daysAgo_few": "منذ {{count}}ي",
+        "daysAgo_many": "منذ {{count}}ي"
       },
       "filters": {
         "alert_one": "{{count}} تنبيه",
@@ -1999,12 +2015,25 @@
         "warning_one": "{{count}} تحذير",
         "warning_other": "{{count}} تحذيرات",
         "watch_one": "{{count}} مراقبة",
-        "watch_other": "{{count}} مراقبات"
+        "watch_other": "{{count}} مراقبات",
+        "alert_zero": "{{count}} تنبيهات",
+        "alert_two": "{{count}} تنبيهان",
+        "alert_few": "{{count}} تنبيهات",
+        "alert_many": "{{count}} تنبيه",
+        "warning_zero": "{{count}} تحذيرات",
+        "warning_two": "{{count}} تحذيران",
+        "warning_few": "{{count}} تحذيرات",
+        "warning_many": "{{count}} تحذير",
+        "watch_zero": "{{count}} مراقبات",
+        "watch_two": "{{count}} مراقبتان",
+        "watch_few": "{{count}} مراقبات",
+        "watch_many": "{{count}} مراقبة"
       },
       "errors": {
         "noData": "لا توجد بيانات تفش متاحة",
         "failedToLoad": "فشل التحميل"
-      }
+      },
+      "methodologyNote": "مستويات التنبيه / التحذير / المراقبة تأتي من مصنف كلمات مفتاحية افتتاحي — انظر /docs/methodology/disease-alert-level لجدول الكلمات الرئيسية والقيود."
     },
     "earningsCalendar": {
       "infoTooltip": "<strong>تقويم الأرباح</strong> إصدارات الأرباح القادمة والأخيرة للشركات العامة الكبرى. يعرض تقديرات EPS مقابل الفعلية والإيرادات وتصنيف تجاوز/إخفاق التوقعات. المصدر: مزودو البيانات المالية.",
@@ -2067,7 +2096,8 @@
       "errors": {
         "unavailable": "بيانات FSI غير متاحة",
         "failedToLoad": "فشل التحميل"
-      }
+      },
+      "cissStale": "لم تنشر البنك المركزي الأوروبي قيمة أحدث — قد تكون هذه القراءة قديمة."
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>متتبع تجارة هرمز</strong> تتبع مباشر لسفن AIS عبر مضيق هرمز، أهم نقطة اختناق نفطية في العالم. يراقب أعداد الناقلات وأحداث التعطيل والتغيرات الأسبوعية في التدفقات. حوالي 20% من إمدادات النفط العالمية تعبر هنا يومياً.",
@@ -2174,7 +2204,11 @@
       "signals_one": "{{count}} إشارة",
       "signals_other": "{{count}} إشارة",
       "disclaimer": "إشارات تداول مولدة بالذكاء الاصطناعي لأغراض إعلامية فقط. ليست نصيحة استثمارية. قم دائماً بإجراء البحث الخاص بك.",
-      "unavailable": "يتم إنشاء تداعيات سوق الذكاء الاصطناعي بعد كل عملية توقع. تحقق لاحقاً قريباً."
+      "unavailable": "يتم إنشاء تداعيات سوق الذكاء الاصطناعي بعد كل عملية توقع. تحقق لاحقاً قريباً.",
+      "signals_zero": "{{count}} إشارات",
+      "signals_two": "{{count}} إشارتان",
+      "signals_few": "{{count}} إشارات",
+      "signals_many": "{{count}} إشارة"
     },
     "forecast": {
       "infoTooltip": "<strong>التنبؤات بالذكاء الاصطناعي</strong> تقديرات احتمالية تم إنشاؤها بواسطة الذكاء الاصطناعي للأحداث الجيوسياسية والاقتصادية:<ul><li>تغطية متعددة المجالات: النزاع والأسواق وسلسلة التوريد والأمن السيبراني والسياسة</li><li>يعرض كل تنبؤ الاحتمال المقدر ومستوى الثقة والأفق الزمني</li><li>مُعايرة مقابل خطوط أساس أسواق التنبؤ حيث تتوفر</li></ul>تتحدث التنبؤات مع وصول إشارات استخبارية جديدة. قم بالتصفية حسب المجال باستخدام علامات التبويب أعلاه."
@@ -2305,7 +2339,11 @@
         "unattributed": "غير منسوبة",
         "program": "البرنامج",
         "undated": "بدون تاريخ"
-      }
+      },
+      "designations_zero": "{{count}} تعيينات",
+      "designations_two": "{{count}} تعيينان",
+      "designations_few": "{{count}} تعيينات",
+      "designations_many": "{{count}} تعيين"
     },
     "radiationWatch": {
       "title": "مراقب الإشعاع",
@@ -2340,7 +2378,15 @@
         "hoursAgo_one": "منذ {{count}}س",
         "hoursAgo_other": "منذ {{count}}س",
         "daysAgo_one": "منذ {{count}}ي",
-        "daysAgo_other": "منذ {{count}}ي"
+        "daysAgo_other": "منذ {{count}}ي",
+        "hoursAgo_zero": "منذ {{count}}س",
+        "hoursAgo_two": "منذ {{count}}س",
+        "hoursAgo_few": "منذ {{count}}س",
+        "hoursAgo_many": "منذ {{count}}س",
+        "daysAgo_zero": "منذ {{count}}ي",
+        "daysAgo_two": "منذ {{count}}ي",
+        "daysAgo_few": "منذ {{count}}ي",
+        "daysAgo_many": "منذ {{count}}ي"
       },
       "confidence": {
         "high": "ثقة عالية",
@@ -2372,7 +2418,11 @@
       "signals_one": "{{count}} إشارة",
       "signals_other": "{{count}} إشارات",
       "analyzing": "جاري التحليل...",
-      "viewOnMap": "عرض على الخريطة"
+      "viewOnMap": "عرض على الخريطة",
+      "signals_zero": "{{count}} إشارات",
+      "signals_two": "{{count}} إشارتان",
+      "signals_few": "{{count}} إشارات",
+      "signals_many": "{{count}} إشارة"
     },
     "thermalEscalation": {
       "title": "التصعيد الحراري",
@@ -2406,8 +2456,28 @@
         "hoursAgo_one": "منذ {{count}}س",
         "hoursAgo_other": "منذ {{count}}س",
         "daysAgo_one": "منذ {{count}}ي",
-        "daysAgo_other": "منذ {{count}}ي"
-      }
+        "daysAgo_other": "منذ {{count}}ي",
+        "minutesAgo_zero": "منذ {{count}}د",
+        "minutesAgo_two": "منذ {{count}}د",
+        "minutesAgo_few": "منذ {{count}}د",
+        "minutesAgo_many": "منذ {{count}}د",
+        "hoursAgo_zero": "منذ {{count}}س",
+        "hoursAgo_two": "منذ {{count}}س",
+        "hoursAgo_few": "منذ {{count}}س",
+        "hoursAgo_many": "منذ {{count}}س",
+        "daysAgo_zero": "منذ {{count}}ي",
+        "daysAgo_two": "منذ {{count}}ي",
+        "daysAgo_few": "منذ {{count}}ي",
+        "daysAgo_many": "منذ {{count}}ي"
+      },
+      "observations_zero": "{{count}} ملاحظة",
+      "observations_two": "{{count}} ملاحظتان",
+      "observations_few": "{{count}} ملاحظات",
+      "observations_many": "{{count}} ملاحظة",
+      "sources_zero": "{{count}} مصدر",
+      "sources_two": "{{count}} مصدران",
+      "sources_few": "{{count}} مصادر",
+      "sources_many": "{{count}} مصدر"
     },
     "chokepointStrip": {
       "title": "حالة نقاط الاختناق",

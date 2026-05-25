@@ -1504,7 +1504,9 @@
     "cii": {
       "shareStory": "Compartir historia",
       "noSignals": "No se detectaron señales de inestabilidad",
-      "infoTooltip": "<strong>Metodología</strong><ul><li><strong>U</strong>nrest: desorden civil y protestas</li><li><strong>C</strong>onflicto: intensidad del conflicto armado</li><li><strong>S</strong>seguridad: vuelos/buques militares sobre territorio</li><li><strong>I</strong>nformación: velocidad de las noticias y correlación del punto focal</li><li>Aumento de proximidad del punto de acceso (ubicaciones estratégicas)</li></ul><em>Los valores U:C:S:I muestran puntuaciones de los componentes.</em> La detección de puntos focales correlaciona entidades de noticias con señales de mapa para una puntuación precisa."
+      "infoTooltip": "<strong>Metodología</strong><ul><li><strong>U</strong>nrest: desorden civil y protestas</li><li><strong>C</strong>onflicto: intensidad del conflicto armado</li><li><strong>S</strong>seguridad: vuelos/buques militares sobre territorio</li><li><strong>I</strong>nformación: velocidad de las noticias y correlación del punto focal</li><li>Aumento de proximidad del punto de acceso (ubicaciones estratégicas)</li></ul><em>Los valores U:C:S:I muestran puntuaciones de los componentes.</em> La detección de puntos focales correlaciona entidades de noticias con señales de mapa para una puntuación precisa.",
+      "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
+      "methodologyLink": "Incluye línea base por país + multiplicador de evento — véase /docs/methodology/cii-risk-scores para la tabla publicada"
     },
     "gdeltIntel": {
       "infoTooltip": "<strong>News Intelligence</strong> Monitoreo de noticias globales en tiempo real:<ul><li>Categorías de temas seleccionados (conflictos, cibernética, etc.)</li><li>Artículos de más de 100 idiomas traducidos</li><li>Actualizaciones cada 15 minutos</li><li>14-day media tone &amp; volume trend per topic</li></ul>Fuente: Proyecto GDELT (gdeltproject.org)"
@@ -1700,7 +1702,8 @@
       "tonePositive": "Positivo",
       "overall": "General: {{tone}}",
       "signalTypesEvents": "{{types}} tipos de señal • {{events}} eventos",
-      "newsSignals": "{{news}} noticias • {{signals}} señales"
+      "newsSignals": "{{news}} noticias • {{signals}} señales",
+      "sources_many": "{{count}} fuentes"
     },
     "export": {
       "exportData": "Exportar datos"
@@ -1882,7 +1885,9 @@
       "summarizing": "Resumiendo…"
     },
     "progressCharts": {
-      "noData": "No hay datos de progreso disponibles"
+      "noData": "No hay datos de progreso disponibles",
+      "fallbackBadge": "Mostrando datos estáticos de respaldo — serie en directo no disponible",
+      "fallbackTooltip": "No se pudo alcanzar la semilla en directo del Banco Mundial. Estos gráficos se renderizan desde una instantánea codificada verificada por última vez en feb 2026."
     },
     "settings": {
       "dataManagementLabel": "Gestión de datos",
@@ -1991,7 +1996,9 @@
         "hoursAgo_one": "hace {{count}}h",
         "hoursAgo_other": "hace {{count}}h",
         "daysAgo_one": "hace {{count}}d",
-        "daysAgo_other": "hace {{count}}d"
+        "daysAgo_other": "hace {{count}}d",
+        "hoursAgo_many": "hace {{count}}h",
+        "daysAgo_many": "hace {{count}}d"
       },
       "filters": {
         "alert_one": "{{count}} Alerta",
@@ -1999,12 +2006,16 @@
         "warning_one": "{{count}} Advertencia",
         "warning_other": "{{count}} Advertencias",
         "watch_one": "{{count}} Vigilancia",
-        "watch_other": "{{count}} Vigilancias"
+        "watch_other": "{{count}} Vigilancias",
+        "alert_many": "{{count}} Alertas",
+        "warning_many": "{{count}} Advertencias",
+        "watch_many": "{{count}} Monitoreos"
       },
       "errors": {
         "noData": "No hay datos de brotes disponibles",
         "failedToLoad": "Error al cargar"
-      }
+      },
+      "methodologyNote": "Los niveles Alert / Warning / Watch provienen de un clasificador de palabras clave editorial — véase /docs/methodology/disease-alert-level para la tabla de palabras clave y limitaciones."
     },
     "earningsCalendar": {
       "infoTooltip": "<strong>Calendario de resultados</strong> Publicaciones de resultados próximas y recientes de grandes empresas cotizadas. Muestra estimaciones de EPS vs. reales, ingresos y clasificación de superación/fallo. Fuente: proveedores de datos financieros.",
@@ -2067,7 +2078,8 @@
       "errors": {
         "unavailable": "Datos FSI no disponibles",
         "failedToLoad": "Error al cargar"
-      }
+      },
+      "cissStale": "El BCE no ha publicado un valor más reciente — esta lectura podría estar desactualizada."
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>Rastreador comercial de Ormuz</strong> Seguimiento AIS de buques en tiempo real a través del estrecho de Ormuz, el punto de estrangulamiento petrolero más crítico del mundo. Monitorea recuentos de petroleros, eventos de interrupción y cambios semanales de flujo. Aproximadamente el 20% del suministro mundial de petróleo transita aquí diariamente.",
@@ -2174,7 +2186,8 @@
       "signals_one": "{{count}} señal",
       "signals_other": "{{count}} señales",
       "disclaimer": "Señales comerciales generadas por IA solo con fines informativos. No es asesoramiento de inversión. Siempre investiga por tu cuenta.",
-      "unavailable": "Las implicaciones de mercado de IA se generan después de cada ejecución de pronóstico. Vuelve a consultar en breve."
+      "unavailable": "Las implicaciones de mercado de IA se generan después de cada ejecución de pronóstico. Vuelve a consultar en breve.",
+      "signals_many": "{{count}} señales"
     },
     "forecast": {
       "infoTooltip": "<strong>Pronósticos de IA</strong> Estimaciones de probabilidad generadas por IA para eventos geopolíticos y económicos:<ul><li>Cobertura multidominios: conflicto, mercados, cadena de suministro, ciberseguridad, política</li><li>Cada pronóstico muestra probabilidad estimada, nivel de confianza e horizonte temporal</li><li>Calibrado contra líneas de base de mercados de predicción donde esté disponible</li></ul>Los pronósticos se actualizan a medida que llegan nuevas señales de inteligencia. Filtra por dominio usando las pestañas anteriores."
@@ -2305,7 +2318,8 @@
         "unattributed": "Sin Atribuir",
         "program": "Programa",
         "undated": "sin fecha"
-      }
+      },
+      "designations_many": "{{count}} designaciones"
     },
     "radiationWatch": {
       "title": "Monitoreo de Radiación",
@@ -2340,7 +2354,9 @@
         "hoursAgo_one": "{{count}}h atrás",
         "hoursAgo_other": "{{count}}h atrás",
         "daysAgo_one": "{{count}}d atrás",
-        "daysAgo_other": "{{count}}d atrás"
+        "daysAgo_other": "{{count}}d atrás",
+        "hoursAgo_many": "hace {{count}}h",
+        "daysAgo_many": "hace {{count}}d"
       },
       "confidence": {
         "high": "alta confianza",
@@ -2372,7 +2388,8 @@
       "signals_one": "{{count}} señal",
       "signals_other": "{{count}} señales",
       "analyzing": "Analizando...",
-      "viewOnMap": "Ver en mapa"
+      "viewOnMap": "Ver en mapa",
+      "signals_many": "{{count}} señales"
     },
     "thermalEscalation": {
       "title": "Escalada Térmica",
@@ -2406,8 +2423,13 @@
         "hoursAgo_one": "hace {{count}}h",
         "hoursAgo_other": "hace {{count}}h",
         "daysAgo_one": "hace {{count}}d",
-        "daysAgo_other": "hace {{count}}d"
-      }
+        "daysAgo_other": "hace {{count}}d",
+        "minutesAgo_many": "hace {{count}}m",
+        "hoursAgo_many": "hace {{count}}h",
+        "daysAgo_many": "hace {{count}}d"
+      },
+      "observations_many": "{{count}} obs",
+      "sources_many": "{{count}} src"
     },
     "chokepointStrip": {
       "title": "Estado de Puntos Críticos",

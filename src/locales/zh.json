@@ -751,7 +751,9 @@
       "summarizing": "摘要生成中…"
     },
     "progressCharts": {
-      "noData": "暂无进展数据"
+      "noData": "暂无进展数据",
+      "fallbackBadge": "显示静态备用数据 — 实时数据系列不可用",
+      "fallbackTooltip": "无法连接到实时世界银行数据源。这些图表是从上次验证于 2026 年 2 月的硬编码快照生成的。"
     },
     "monitor": {
       "placeholder": "关键词（逗号分隔）",
@@ -1310,7 +1312,9 @@
     "cii": {
       "shareStory": "分享报道",
       "noSignals": "未检测到不稳定信号",
-      "infoTooltip": "<strong>方法论</strong><ul><li><strong>动</strong>荡：社会骚乱与抗议</li><li><strong>冲</strong>突：武装冲突强度</li><li><strong>安</strong>全：领土上空军用飞机/舰艇</li><li><strong>信</strong>息：新闻速度和焦点关联</li><li>热点邻近度提升（战略位置）</li></ul><em>U:C:S:I值显示各分项评分。</em>焦点检测将新闻实体与地图信号关联以实现精确评分。"
+      "infoTooltip": "<strong>方法论</strong><ul><li><strong>动</strong>荡：社会骚乱与抗议</li><li><strong>冲</strong>突：武装冲突强度</li><li><strong>安</strong>全：领土上空军用飞机/舰艇</li><li><strong>信</strong>息：新闻速度和焦点关联</li><li>热点邻近度提升（战略位置）</li></ul><em>U:C:S:I值显示各分项评分。</em>焦点检测将新闻实体与地图信号关联以实现精确评分。",
+      "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
+      "methodologyLink": "包含各国基准线 + 事件乘数 — 请参阅 /docs/methodology/cii-risk-scores 了解已发布的表格"
     },
     "insights": {
       "noStories": "暂无突发或多源报道",
@@ -2004,7 +2008,8 @@
       "errors": {
         "noData": "无可用的爆发数据",
         "failedToLoad": "加载失败"
-      }
+      },
+      "methodologyNote": "警报 / 警告 / 监视级别来自编辑关键词分类器 — 请参阅 /docs/methodology/disease-alert-level 了解关键词表和限制。"
     },
     "earningsCalendar": {
       "infoTooltip": "<strong>财报日历</strong> 大型上市公司即将和近期的财报发布。显示EPS预期与实际对比、营收及超预期/不及预期分类。来源：金融数据提供商。",
@@ -2067,7 +2072,8 @@
       "errors": {
         "unavailable": "FSI 数据不可用",
         "failedToLoad": "加载失败"
-      }
+      },
+      "cissStale": "欧洲中央银行尚未发布新数值 — 此读数可能已过期。"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>霍尔木兹贸易追踪器</strong> 通过全球最关键的石油咽喉要道霍尔木兹海峡的AIS船舶实时追踪。监控油轮数量、中断事件和每周流量变化。全球约20%的石油供应每天经此通过。",

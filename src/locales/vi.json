@@ -751,7 +751,9 @@
       "summarizing": "Đang tóm tắt…"
     },
     "progressCharts": {
-      "noData": "Không có dữ liệu tiến độ"
+      "noData": "Không có dữ liệu tiến độ",
+      "fallbackBadge": "Hiển thị dữ liệu dự phòng tĩnh — chuỗi trực tiếp không có sẵn",
+      "fallbackTooltip": "Không thể kết nối tới nguồn World Bank trực tiếp. Các biểu đồ này được hiển thị từ một bản chụp được mã hóa cứng đã xác minh lần cuối vào tháng 2 năm 2026."
     },
     "monitor": {
       "placeholder": "Từ khóa (phân cách bằng dấu phẩy)",
@@ -1310,7 +1312,9 @@
     "cii": {
       "shareStory": "Chia sẻ bài viết",
       "noSignals": "Không phát hiện tín hiệu bất ổn",
-      "infoTooltip": "<strong>Phương pháp luận</strong><ul><li><strong>U</strong> - Bất ổn: rối loạn dân sự & biểu tình</li><li><strong>C</strong> - Xung đột: cường độ xung đột vũ trang</li><li><strong>S</strong> - An ninh: chuyến bay/tàu quân sự trên lãnh thổ</li><li><strong>I</strong> - Thông tin: tốc độ tin tức và tương quan điểm hội tụ</li><li>Tăng cường theo điểm nóng gần (vị trí chiến lược)</li></ul><em>Giá trị U:C:S:I hiển thị điểm thành phần.</em> Phát hiện Điểm Hội tụ tương quan các thực thể tin tức với tín hiệu bản đồ để chấm điểm chính xác."
+      "infoTooltip": "<strong>Phương pháp luận</strong><ul><li><strong>U</strong> - Bất ổn: rối loạn dân sự & biểu tình</li><li><strong>C</strong> - Xung đột: cường độ xung đột vũ trang</li><li><strong>S</strong> - An ninh: chuyến bay/tàu quân sự trên lãnh thổ</li><li><strong>I</strong> - Thông tin: tốc độ tin tức và tương quan điểm hội tụ</li><li>Tăng cường theo điểm nóng gần (vị trí chiến lược)</li></ul><em>Giá trị U:C:S:I hiển thị điểm thành phần.</em> Phát hiện Điểm Hội tụ tương quan các thực thể tin tức với tín hiệu bản đồ để chấm điểm chính xác.",
+      "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
+      "methodologyLink": "Bao gồm đường cơ sở từng quốc gia + bộ nhân sự kiện — xem /docs/methodology/cii-risk-scores để xem bảng được công bố"
     },
     "insights": {
       "noStories": "Chưa có tin nóng hoặc tin đa nguồn",
@@ -2004,7 +2008,8 @@
       "errors": {
         "noData": "Không có dữ liệu bùng phát",
         "failedToLoad": "Không tải được"
-      }
+      },
+      "methodologyNote": "Mức Cảnh báo / Cảnh báo / Theo dõi đến từ bộ phân loại từ khóa biên tập — xem /docs/methodology/disease-alert-level để xem bảng từ khóa và các hạn chế."
     },
     "earningsCalendar": {
       "infoTooltip": "<strong>Lịch thu nhập</strong> Các công bố thu nhập sắp tới và gần đây của các công ty đại chúng lớn. Hiển thị ước tính EPS so với thực tế, doanh thu và phân loại vượt/thiếu kỳ vọng. Nguồn: nhà cung cấp dữ liệu tài chính.",
@@ -2067,7 +2072,8 @@
       "errors": {
         "unavailable": "Dữ liệu FSI không khả dụng",
         "failedToLoad": "Không tải được"
-      }
+      },
+      "cissStale": "ECB chưa công bố giá trị mới — phép đo này có thể không còn hiện tại."
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>Bộ theo dõi thương mại Hormuz</strong> Theo dõi tàu AIS trực tiếp qua eo biển Hormuz, điểm nghẽn dầu quan trọng nhất thế giới. Giám sát số lượng tàu chở dầu, sự kiện gián đoạn và thay đổi dòng chảy hàng tuần. Khoảng 20% nguồn cung dầu toàn cầu đi qua đây hàng ngày.",

@@ -751,7 +751,9 @@
       "summarizing": "요약 중…"
     },
     "progressCharts": {
-      "noData": "진행 데이터가 없습니다"
+      "noData": "진행 데이터가 없습니다",
+      "fallbackBadge": "정적 폴백 데이터를 표시 중 — 실시간 시리즈 불가",
+      "fallbackTooltip": "World Bank 실시간 시드에 연결할 수 없습니다. 이 차트는 2026년 2월에 마지막으로 확인된 하드코딩된 스냅샷에서 렌더링되었습니다."
     },
     "monitor": {
       "placeholder": "키워드 (쉼표로 구분)",
@@ -1310,7 +1312,9 @@
     "cii": {
       "shareStory": "기사 공유",
       "noSignals": "불안정 신호 감지되지 않음",
-      "infoTooltip": "<strong>방법론</strong><ul><li><strong>U</strong>nrest: 시민 소요 및 시위</li><li><strong>C</strong>onflict: 무력 분쟁 강도</li><li><strong>S</strong>ecurity: 영토 상공 군용기/함정</li><li><strong>I</strong>nformation: 뉴스 속도 및 핵심 지점 상관관계</li><li>핫스팟 근접 가산점 (전략적 위치)</li></ul><em>U:C:S:I 값은 구성 요소 점수를 표시합니다.</em> 핵심 지점 감지는 뉴스 개체와 지도 신호를 상관 분석하여 정확한 점수를 산출합니다."
+      "infoTooltip": "<strong>방법론</strong><ul><li><strong>U</strong>nrest: 시민 소요 및 시위</li><li><strong>C</strong>onflict: 무력 분쟁 강도</li><li><strong>S</strong>ecurity: 영토 상공 군용기/함정</li><li><strong>I</strong>nformation: 뉴스 속도 및 핵심 지점 상관관계</li><li>핫스팟 근접 가산점 (전략적 위치)</li></ul><em>U:C:S:I 값은 구성 요소 점수를 표시합니다.</em> 핵심 지점 감지는 뉴스 개체와 지도 신호를 상관 분석하여 정확한 점수를 산출합니다.",
+      "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
+      "methodologyLink": "국가별 기준선 + 이벤트 승수 포함 — 공개된 표는 /docs/methodology/cii-risk-scores 참조"
     },
     "insights": {
       "noStories": "아직 속보 또는 다중 출처 기사 없음",
@@ -2004,7 +2008,8 @@
       "errors": {
         "noData": "발생 데이터 없음",
         "failedToLoad": "로드 실패"
-      }
+      },
+      "methodologyNote": "Alert / Warning / Watch 수준은 편집 키워드 분류기에서 제공 — 키워드 표 및 제한사항은 /docs/methodology/disease-alert-level 참조"
     },
     "earningsCalendar": {
       "infoTooltip": "<strong>실적 캘린더</strong> 주요 상장 기업의 예정 및 최근 실적 발표. EPS 추정치 대 실적, 매출, 상회/하회 분류를 표시. 출처: 금융 데이터 제공업체.",
@@ -2067,7 +2072,8 @@
       "errors": {
         "unavailable": "FSI 데이터를 사용할 수 없음",
         "failedToLoad": "로드 실패"
-      }
+      },
+      "cissStale": "ECB가 더 최신 값을 발표하지 않았습니다 — 이 수치가 최신이 아닐 수 있습니다."
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>호르무즈 무역 추적기</strong> 세계에서 가장 중요한 석유 병목지점인 호르무즈 해협을 통과하는 AIS 선박 실시간 추적. 유조선 수, 중단 이벤트, 주간 흐름 변화를 모니터링. 전 세계 석유 공급의 약 20%가 매일 이곳을 통과.",

@@ -1160,7 +1160,9 @@
     "cii": {
       "infoTooltip": "<strong>Methodologie</strong><ul><li><strong>U</strong>nrest: burgerlijke onrust en protesten</li><li><strong>C</strong>aanval: intensiteit van gewapende conflicten</li><li><strong>S</strong>veiligheid: militaire vluchten/schepen voorbij territorium</li><li><strong>I</strong>nformatie: nieuwssnelheid en correlatie van focuspunten</li><li>Hotspot-nabijheidsboost (strategische locaties)</li></ul><em>U:C:S:I-waarden tonen componentscores.</em> Focal Point Detection correleert nieuwsentiteiten met kaartsignalen voor nauwkeurige scores.",
       "shareStory": "Verhaal delen",
-      "noSignals": "Geen instabiliteitssignalen gedetecteerd"
+      "noSignals": "Geen instabiliteitssignalen gedetecteerd",
+      "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
+      "methodologyLink": "Inclusief per-land baseline + event multiplier — zie /docs/methodology/cii-risk-scores voor de gepubliceerde tabel"
     },
     "gdeltIntel": {
       "infoTooltip": "<strong>News Intelligence</strong> Realtime monitoring van mondiaal nieuws:<ul><li>Samengestelde onderwerpcategorieën (conflicten, cyber, etc.)</li><li>Artikelen uit meer dan 100 talen vertaald</li><li>Updates elke 15 minuten</li><li>14-day media tone &amp; volume trend per topic</li></ul>Bron: GDELT Project (gdeltproject.org)"
@@ -1669,7 +1671,9 @@
       "summarizing": "Samenvatten…"
     },
     "progressCharts": {
-      "noData": "Geen voortgangsgegevens beschikbaar"
+      "noData": "Geen voortgangsgegevens beschikbaar",
+      "fallbackBadge": "Statische fallback-gegevens worden weergegeven — live-reeks niet beschikbaar",
+      "fallbackTooltip": "Het live World Bank-zaad kon niet worden bereikt. Deze grafieken worden weergegeven op basis van een hardcoded snapshot die voor het laatst is geverifieerd in februari 2026."
     },
     "settings": {
       "dataManagementLabel": "Gegevensbeheer",
@@ -1791,7 +1795,8 @@
       "errors": {
         "noData": "Geen uitbraakgegevens beschikbaar",
         "failedToLoad": "Laden mislukt"
-      }
+      },
+      "methodologyNote": "Alert / Warning / Watch niveaus komen uit een redactionele trefwoord-classificatie — zie /docs/methodology/disease-alert-level voor de trefwoordtabel en beperkingen."
     },
     "earningsCalendar": {
       "infoTooltip": "<strong>Winstkalender</strong> Aankomende en recente winstpublicaties van grote beursgenoteerde bedrijven. Toont EPS-schattingen vs. werkelijk, omzet en classificatie overtreffing/mislukking. Bron: financiële dataproviders.",
@@ -1854,7 +1859,8 @@
       "errors": {
         "unavailable": "FSI-gegevens niet beschikbaar",
         "failedToLoad": "Laden mislukt"
-      }
+      },
+      "cissStale": "ECB heeft geen nieuwere waarde gepubliceerd — deze waarde kan verouderd zijn."
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>Hormuz-handelstracker</strong> Live AIS-scheepvaarttracking door de Straat van Hormuz, het meest kritieke olieknelpunt ter wereld. Monitort tankeraantallen, verstoringsevenementen en wekelijkse stroomwijzigingen. Ongeveer 20% van de wereldwijde olietoevoer passeert hier dagelijks.",

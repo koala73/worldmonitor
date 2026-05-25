@@ -1160,7 +1160,9 @@
     "cii": {
       "infoTooltip": "<strong>Metodik</strong><ul><li><strong>U</strong>nrest: civila störningar och protester</li><li><strong>C</strong>konflikt: väpnad konfliktintensitet</li><li><strong>S</strong>kurv: militärflyg territorium</li><li><strong>I</strong>information: nyhetshastighet och brännpunktskorrelation</li><li>Hotspot-närhetsförstärkning (strategiska platser)</li></ul><em>U:C:S:I-värden visar komponentpoäng för komponentavkänningar för 7__punkter.__PH korrekt poängsättning.",
       "shareStory": "Dela historia",
-      "noSignals": "Inga instabilitetssignaler upptäckta"
+      "noSignals": "Inga instabilitetssignaler upptäckta",
+      "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
+      "methodologyLink": "Inkluderar per-land-baseline + händelsemultiplikator — se /docs/methodology/cii-risk-scores för den publicerade tabellen"
     },
     "gdeltIntel": {
       "infoTooltip": "<strong>News Intelligence</strong> Global nyhetsövervakning i realtid:<ul><li>Utvalda ämneskategorier (konflikter, cyber, etc.)</li><li>Artiklar från 100+ språk översatta</li><li>Uppdateringar var 15:e minut</li><li>14-day media tone &amp; volume trend per topic</li></ul>Källa: GDELT Project (gdeltproject.org)"
@@ -1669,7 +1671,9 @@
       "summarizing": "Sammanfattar…"
     },
     "progressCharts": {
-      "noData": "Inga framstegsdata tillgängliga"
+      "noData": "Inga framstegsdata tillgängliga",
+      "fallbackBadge": "Visar statiska reservdata — liveserier är inte tillgängliga",
+      "fallbackTooltip": "Live-anslutningen till World Bank-källan kunde inte upprättas. Dessa diagram återges från en hårdkodad ögonblicksbild som senast verifierades i februari 2026."
     },
     "settings": {
       "dataManagementLabel": "Datahantering",
@@ -1791,7 +1795,8 @@
       "errors": {
         "noData": "Ingen utbrottsdata tillgänglig",
         "failedToLoad": "Misslyckades att ladda"
-      }
+      },
+      "methodologyNote": "Nivåerna Alert / Warning / Watch kommer från en redaktionell nyckelordklassificerare — se /docs/methodology/disease-alert-level för nyckelordstabellen och begränsningarna."
     },
     "earningsCalendar": {
       "infoTooltip": "<strong>Resultatkalender</strong> Kommande och senaste resultatpubliceringar för stora börsnoterade företag. Visar EPS-estimat vs. faktiska, intäkter och klassificering överträffad/missad. Källa: finansiella dataleverantörer.",
@@ -1854,7 +1859,8 @@
       "errors": {
         "unavailable": "FSI-data är inte tillgänglig",
         "failedToLoad": "Det gick inte att läsa in"
-      }
+      },
+      "cissStale": "ECB har inte publicerat ett nyare värde — denna avläsning kan vara föråldrad."
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>Hormuz handelsspårare</strong> Live AIS-fartygsspårning genom Hormuzsundet, världens mest kritiska oljeflaskhals. Övervakar tankerantal, störningshändelser och veckovisa flödesförändringar. Cirka 20% av den globala oljeförsörjningen passerar här dagligen.",

@@ -751,7 +751,9 @@
       "summarizing": "กำลังสรุป…"
     },
     "progressCharts": {
-      "noData": "ไม่มีข้อมูลความก้าวหน้า"
+      "noData": "ไม่มีข้อมูลความก้าวหน้า",
+      "fallbackBadge": "แสดงข้อมูลสำรองแบบคงที่ — ข้อมูลอนุกรมเวลาสดใจไม่พร้อมใช้งาน",
+      "fallbackTooltip": "ไม่สามารถเข้าถึง World Bank seed สดใจได้ แผนภูมิเหล่านี้แสดงผลจากภาพรวมที่เข้ารหัสไว้ซึ่งตรวจสอบเป็นครั้งสุดท้ายในเดือนกุมภาพันธ์ 2026"
     },
     "monitor": {
       "placeholder": "คำสำคัญ (คั่นด้วยจุลภาค)",
@@ -1310,7 +1312,9 @@
     "cii": {
       "shareStory": "แชร์เรื่องราว",
       "noSignals": "ไม่พบสัญญาณความไม่มั่นคง",
-      "infoTooltip": "<strong>วิธีการ</strong><ul><li><strong>U</strong>nrest: ความไม่สงบและการประท้วง</li><li><strong>C</strong>onflict: ความรุนแรงของความขัดแย้ง</li><li><strong>S</strong>ecurity: เที่ยวบินทหาร/เรือรบเหนือดินแดน</li><li><strong>I</strong>nformation: ความเร็วข่าวและความสัมพันธ์ของจุดโฟกัส</li><li>การเพิ่มคะแนนจากจุดร้อนใกล้เคียง (สถานที่ยุทธศาสตร์)</li></ul><em>ค่า U:C:S:I แสดงคะแนนองค์ประกอบ</em> การตรวจจับจุดโฟกัสเชื่อมโยงเอนทิตีข่าวกับสัญญาณแผนที่เพื่อการให้คะแนนที่แม่นยำ"
+      "infoTooltip": "<strong>วิธีการ</strong><ul><li><strong>U</strong>nrest: ความไม่สงบและการประท้วง</li><li><strong>C</strong>onflict: ความรุนแรงของความขัดแย้ง</li><li><strong>S</strong>ecurity: เที่ยวบินทหาร/เรือรบเหนือดินแดน</li><li><strong>I</strong>nformation: ความเร็วข่าวและความสัมพันธ์ของจุดโฟกัส</li><li>การเพิ่มคะแนนจากจุดร้อนใกล้เคียง (สถานที่ยุทธศาสตร์)</li></ul><em>ค่า U:C:S:I แสดงคะแนนองค์ประกอบ</em> การตรวจจับจุดโฟกัสเชื่อมโยงเอนทิตีข่าวกับสัญญาณแผนที่เพื่อการให้คะแนนที่แม่นยำ",
+      "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink English value is shipped to every locale as a stop-gap so the methodology link is present in all languages Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts",
+      "methodologyLink": "รวมค่าฐานแต่ละประเทศ + ตัวคูณเหตุการณ์ — ดู /docs/methodology/cii-risk-scores สำหรับตารางที่เผยแพร่แล้ว"
     },
     "insights": {
       "noStories": "ยังไม่มีเรื่องราวด่วนหรือจากหลายแหล่ง",
@@ -2004,7 +2008,8 @@
       "errors": {
         "noData": "ไม่มีข้อมูลการระบาดที่พร้อมใช้งาน",
         "failedToLoad": "โหลดไม่สำเร็จ"
-      }
+      },
+      "methodologyNote": "ระดับการแจ้งเตือน / คำเตือน / การเฝ้าระวัง มาจากตัวแยกประเภทคำหลักที่บรรณาธิการ — ดู /docs/methodology/disease-alert-level สำหรับตารางคำหลักและข้อจำกัด"
     },
     "earningsCalendar": {
       "infoTooltip": "<strong>ปฏิทินผลประกอบการ</strong> การประกาศผลประกอบการที่จะมาถึงและล่าสุดของบริษัทมหาชนรายใหญ่ แสดงประมาณการ EPS เทียบกับจริง รายได้ และการจัดประเภทเกิน/พลาดเป้า แหล่งข้อมูล: ผู้ให้บริการข้อมูลทางการเงิน",
@@ -2067,7 +2072,8 @@
       "errors": {
         "unavailable": "ข้อมูล FSI ไม่พร้อมใช้งาน",
         "failedToLoad": "การโหลดล้มเหลว"
-      }
+      },
+      "cissStale": "ECB ยังไม่ได้เผยแพร่ค่าที่ใหม่กว่า — การอ่านค่านี้อาจล้าสมัยแล้ว"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>ตัวติดตามการค้าฮอร์มุซ</strong> การติดตามเรือ AIS แบบสดผ่านช่องแคบฮอร์มุซ จุดคอขวดน้ำมันที่สำคัญที่สุดของโลก ตรวจสอบจำนวนเรือบรรทุกน้ำมัน เหตุการณ์หยุดชะงัก และการเปลี่ยนแปลงการไหลรายสัปดาห์ อุปทานน้ำมันโลกประมาณ 20% ผ่านที่นี่ทุกวัน",

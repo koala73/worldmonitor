@@ -1504,7 +1504,9 @@
     "cii": {
       "shareStory": "Geschichte teilen",
       "noSignals": "Keine Instabilitätssignale erkannt",
-      "infoTooltip": "<strong>Methodik</strong><ul><li><strong>U</strong>nrest: zivile Unruhen und Proteste</li><li><strong>C</strong>Konflikt: bewaffnete Konfliktintensität</li><li><strong>S</strong>Sicherheit: Militärflüge/-schiffe über Gebiet</li><li><strong>I</strong>Informationen: Nachrichtengeschwindigkeit und Fokuspunktkorrelation</li><li>Hotspot-Näherungsschub (strategische Standorte)</li></ul><em>U:C:S:I-Werte zeigen Komponentenbewertungen.</em> Die Fokuspunkterkennung korreliert Nachrichtenentitäten mit Kartensignalen für eine genaue Bewertung."
+      "infoTooltip": "<strong>Methodik</strong><ul><li><strong>U</strong>nrest: zivile Unruhen und Proteste</li><li><strong>C</strong>Konflikt: bewaffnete Konfliktintensität</li><li><strong>S</strong>Sicherheit: Militärflüge/-schiffe über Gebiet</li><li><strong>I</strong>Informationen: Nachrichtengeschwindigkeit und Fokuspunktkorrelation</li><li>Hotspot-Näherungsschub (strategische Standorte)</li></ul><em>U:C:S:I-Werte zeigen Komponentenbewertungen.</em> Die Fokuspunkterkennung korreliert Nachrichtenentitäten mit Kartensignalen für eine genaue Bewertung.",
+      "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
+      "methodologyLink": "Umfasst länderspezifische Baseline + Ereignismultiplikator – siehe /docs/methodology/cii-risk-scores für die veröffentlichte Tabelle"
     },
     "gdeltIntel": {
       "infoTooltip": "<strong>News Intelligence</strong> Globale Nachrichtenüberwachung in Echtzeit:<ul><li>Kuratierte Themenkategorien (Konflikte, Cyber ​​usw.)</li><li>Artikel aus über 100 Sprachen übersetzt</li><li>Aktualisierungen alle 15 Minuten</li><li>14-day media tone &amp; volume trend per topic</li></ul>Quelle: GDELT-Projekt (gdeltproject.org)"
@@ -1887,7 +1889,9 @@
       "summarizing": "Zusammenfassung wird erstellt…"
     },
     "progressCharts": {
-      "noData": "Keine Fortschrittsdaten verfügbar"
+      "noData": "Keine Fortschrittsdaten verfügbar",
+      "fallbackBadge": "Zeige statische Fallback-Daten – Live-Serien nicht verfügbar",
+      "fallbackTooltip": "Die Live-Seed-Daten der Weltbank konnten nicht erreicht werden. Diese Diagramme werden aus einem hartcodierten Snapshot wiedergegeben, der zuletzt im Februar 2026 verifiziert wurde."
     },
     "settings": {
       "dataManagementLabel": "Datenverwaltung",
@@ -2004,7 +2008,8 @@
       "errors": {
         "noData": "Keine Ausbruchsdaten verfügbar",
         "failedToLoad": "Fehler beim Laden"
-      }
+      },
+      "methodologyNote": "Alert- / Warn- / Watch-Level stammen von einem redaktionellen Keyword-Klassifikator – siehe /docs/methodology/disease-alert-level für die Keyword-Tabelle und Einschränkungen."
     },
     "earningsCalendar": {
       "infoTooltip": "<strong>Ergebniskalender</strong> Bevorstehende und aktuelle Ergebnisveröffentlichungen großer börsennotierter Unternehmen. Zeigt EPS-Schätzungen vs. Ist, Umsatz und Über-/Unterschreitungsklassifizierung. Quelle: Finanzdatenanbieter.",
@@ -2067,7 +2072,8 @@
       "errors": {
         "unavailable": "FSI-Daten nicht verfügbar",
         "failedToLoad": "Fehler beim Laden"
-      }
+      },
+      "cissStale": "EZB hat keinen neueren Wert veröffentlicht – dieser Messwert könnte veraltet sein."
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>Hormuz-Handelstracker</strong> AIS-Schiffsverfolgung in Echtzeit durch die Straße von Hormuz, den kritischsten Öl-Engpass der Welt. Überwacht Tankeranzahl, Störungsereignisse und wöchentliche Flussänderungen. Etwa 20 % der globalen Ölversorgung passiert hier täglich.",

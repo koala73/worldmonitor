@@ -751,7 +751,9 @@
       "summarizing": "Rezumat..."
     },
     "progressCharts": {
-      "noData": "Nu sunt disponibile date despre progres"
+      "noData": "Nu sunt disponibile date despre progres",
+      "fallbackBadge": "Se afișează date statice de rezervă — seria live nu este disponibilă",
+      "fallbackTooltip": "Live World Bank seed nu a putut fi accesat. Aceste grafice sunt renderizate dintr-un snapshot codificat verificat ultima dată februarie 2026."
     },
     "monitor": {
       "placeholder": "Cuvinte cheie (separate prin virgulă)",
@@ -1310,7 +1312,9 @@
     "cii": {
       "shareStory": "Distribuie povestea",
       "noSignals": "Nu au fost detectate semnale de instabilitate",
-      "infoTooltip": "<strong>Metodologie</strong><ul><li><strong>U</strong>nrest: dezordine civilă și proteste</li><li><strong>C</strong>conflict: intensitatea conflictului armat</li><li><strong>S</strong>siguranță: zboruri/nave militare peste teritoriu</li><li><strong>I</strong>nformație: știri și proximitate punct focal știri și viteză de corelație (locații strategice)</li></ul><em>Valorile U:C:S:I arată scorurile componente.</em> Focal Point Detection corelează entitățile de știri cu semnalele hărții pentru scoruri precise."
+      "infoTooltip": "<strong>Metodologie</strong><ul><li><strong>U</strong>nrest: dezordine civilă și proteste</li><li><strong>C</strong>conflict: intensitatea conflictului armat</li><li><strong>S</strong>siguranță: zboruri/nave militare peste teritoriu</li><li><strong>I</strong>nformație: știri și proximitate punct focal știri și viteză de corelație (locații strategice)</li></ul><em>Valorile U:C:S:I arată scorurile componente.</em> Focal Point Detection corelează entitățile de știri cu semnalele hărții pentru scoruri precise.",
+      "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
+      "methodologyLink": "Include bază per-țară + multiplicator de evenimente — consultați /docs/methodology/cii-risk-scores pentru tabelul publicat"
     },
     "insights": {
       "noStories": "Încă nu există știri de ultimă oră sau din surse multiple",
@@ -1394,7 +1398,8 @@
       "tonePositive": "Pozitiv",
       "overall": "Overall: {{tone}}",
       "signalTypesEvents": "{{types}} tipuri de semnale • {{events}} evenimente",
-      "newsSignals": "{{news}} știri • {{signals}} semnale"
+      "newsSignals": "{{news}} știri • {{signals}} semnale",
+      "sources_few": "{{count}} surse"
     },
     "settings": {
       "dataManagementLabel": "Gestionarea datelor",
@@ -1991,7 +1996,9 @@
         "hoursAgo_one": "acum {{count}}h",
         "hoursAgo_other": "acum {{count}}h",
         "daysAgo_one": "acum {{count}}z",
-        "daysAgo_other": "acum {{count}}z"
+        "daysAgo_other": "acum {{count}}z",
+        "hoursAgo_few": "acum {{count}}h",
+        "daysAgo_few": "acum {{count}}z"
       },
       "filters": {
         "alert_one": "{{count}} Alertă",
@@ -1999,12 +2006,16 @@
         "warning_one": "{{count}} Avertisment",
         "warning_other": "{{count}} Avertismente",
         "watch_one": "{{count}} Monitorizare",
-        "watch_other": "{{count}} Monitorizări"
+        "watch_other": "{{count}} Monitorizări",
+        "alert_few": "{{count}} Alerte",
+        "warning_few": "{{count}} Avertismente",
+        "watch_few": "{{count}} Monitorizări"
       },
       "errors": {
         "noData": "Niciun dat disponibil despre focare",
         "failedToLoad": "Încărcare eșuată"
-      }
+      },
+      "methodologyNote": "Nivelurile Alert / Warning / Watch provin dintr-un clasificator de cuvinte cheie editorial — consultați /docs/methodology/disease-alert-level pentru tabelul de cuvinte cheie și limitări."
     },
     "earningsCalendar": {
       "infoTooltip": "<strong>Calendar de rezultate</strong> Publicări viitoare și recente ale rezultatelor companiilor mari listate. Afișează estimările EPS vs. reale, venituri și clasificare depășire/ratare. Sursă: furnizori de date financiare.",
@@ -2067,7 +2078,8 @@
       "errors": {
         "unavailable": "Datele FSI nu sunt disponibile",
         "failedToLoad": "Încărcarea a eșuat"
-      }
+      },
+      "cissStale": "BCE nu a publicat o valoare mai nouă — această lectură poate fi depășită."
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>Tracker comercial Hormuz</strong> Urmărire AIS a navelor în timp real prin Strâmtoarea Hormuz, cel mai critic punct de blocaj petrolier din lume. Monitorizează numărul de tancuri petroliere, evenimente de perturbare și schimbări săptămânale ale fluxurilor. Aproximativ 20% din aprovizionarea globală cu petrol tranzitează zilnic aici.",
@@ -2174,7 +2186,8 @@
       "signals_one": "{{count}} semnal",
       "signals_other": "{{count}} semnale",
       "disclaimer": "Semnale de tranzacționare generate de AI doar în scop informativ. Nu constituie sfat de investiții. Faceți întotdeauna propriile cercetări.",
-      "unavailable": "Implicațiile AI pe piață sunt generate după fiecare rulare de prognoză. Reveniți în curând."
+      "unavailable": "Implicațiile AI pe piață sunt generate după fiecare rulare de prognoză. Reveniți în curând.",
+      "signals_few": "{{count}} semnale"
     },
     "forecast": {
       "infoTooltip": "<strong>AI Forecasts</strong> Estimări de probabilitate generate de AI pentru evenimente geopolitice și economice:<ul><li>Acoperire cross-domeniu: conflict, piețe, lanț de aprovizionare, cyber, politică</li><li>Fiecare prognoză arată probabilitatea estimată, nivelul de încredere și orizontul de timp</li><li>Calibrate în raport cu bazele pieței de predicție unde sunt disponibile</li></ul>Prognozele se actualizează pe măsură ce sosesc noi semnale de informații. Filtrați după domeniu folosind filele de mai sus."
@@ -2305,7 +2318,8 @@
         "unattributed": "Neatribuit",
         "program": "Program",
         "undated": "fără dată"
-      }
+      },
+      "designations_few": "{{count}} desemnări"
     },
     "radiationWatch": {
       "title": "Monitorizare Radiații",
@@ -2340,7 +2354,9 @@
         "hoursAgo_one": "{{count}}h în urmă",
         "hoursAgo_other": "{{count}}h în urmă",
         "daysAgo_one": "{{count}}z în urmă",
-        "daysAgo_other": "{{count}}z în urmă"
+        "daysAgo_other": "{{count}}z în urmă",
+        "hoursAgo_few": "acum {{count}}h",
+        "daysAgo_few": "acum {{count}}z"
       },
       "confidence": {
         "high": "încredere ridicată",
@@ -2372,7 +2388,8 @@
       "signals_one": "{{count}} semnal",
       "signals_other": "{{count}} semnale",
       "analyzing": "Se analizează...",
-      "viewOnMap": "Vizualizare pe hartă"
+      "viewOnMap": "Vizualizare pe hartă",
+      "signals_few": "{{count}} semnale"
     },
     "thermalEscalation": {
       "title": "Escaladare termică",
@@ -2406,8 +2423,13 @@
         "hoursAgo_one": "{{count}}h în urmă",
         "hoursAgo_other": "{{count}}h în urmă",
         "daysAgo_one": "{{count}}z în urmă",
-        "daysAgo_other": "{{count}}z în urmă"
-      }
+        "daysAgo_other": "{{count}}z în urmă",
+        "minutesAgo_few": "acum {{count}}m",
+        "hoursAgo_few": "acum {{count}}h",
+        "daysAgo_few": "acum {{count}}z"
+      },
+      "observations_few": "{{count}} obs",
+      "sources_few": "{{count}} src"
     },
     "chokepointStrip": {
       "title": "Status Punct Strâmt",

@@ -1300,7 +1300,9 @@
     "cii": {
       "shareStory": "Sdílet příběh",
       "noSignals": "Nebyly zjištěny žádné signály nestability",
-      "infoTooltip": "<strong>Metodika</strong><ul><li><strong>N</strong>epokoje (Unrest): občanské nepokoje a protesty</li><li><strong>K</strong>onflikt (Conflict): intenzita ozbrojeného konfliktu</li><li><strong>B</strong>ezpečnost (Security): vojenské lety/plavidla nad územím</li><li><strong>I</strong>nformace (Information): rychlost zpráv a korelace oblastí zájmu</li><li>Zvýšení díky blízkosti hotspotu (strategické lokace)</li></ul><em>Hodnoty U:C:S:I ukazují skóre komponent.</em> Detekce oblastí zájmu (Focal Point Detection) koreluje subjekty ze zpráv se signály na mapě pro přesné skórování."
+      "infoTooltip": "<strong>Metodika</strong><ul><li><strong>N</strong>epokoje (Unrest): občanské nepokoje a protesty</li><li><strong>K</strong>onflikt (Conflict): intenzita ozbrojeného konfliktu</li><li><strong>B</strong>ezpečnost (Security): vojenské lety/plavidla nad územím</li><li><strong>I</strong>nformace (Information): rychlost zpráv a korelace oblastí zájmu</li><li>Zvýšení díky blízkosti hotspotu (strategické lokace)</li></ul><em>Hodnoty U:C:S:I ukazují skóre komponent.</em> Detekce oblastí zájmu (Focal Point Detection) koreluje subjekty ze zpráv se signály na mapě pro přesné skórování.",
+      "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
+      "methodologyLink": "Obsahuje základní hodnoty jednotlivých zemí + násobitel událostí — viz /docs/methodology/cii-risk-scores pro zveřejněnou tabulku"
     },
     "insights": {
       "noStories": "Zatím žádné bleskové nebo vícezdrojové zprávy",
@@ -1384,7 +1386,9 @@
       "tonePositive": "Pozitivní",
       "overall": "Celkem: {{tone}}",
       "signalTypesEvents": "{{types}} typů signálů • {{events}} událostí",
-      "newsSignals": "{{news}} zpráv • {{signals}} signálů"
+      "newsSignals": "{{news}} zpráv • {{signals}} signálů",
+      "sources_few": "{{count}} zdroje",
+      "sources_many": "{{count}} zdrojů"
     },
     "cascade": {
       "noImpacts": "Nezjištěny žádné dopady na země",
@@ -1887,7 +1891,9 @@
       "summarizing": "Shrnutí se vytváří…"
     },
     "progressCharts": {
-      "noData": "Žádná data o pokroku"
+      "noData": "Žádná data o pokroku",
+      "fallbackBadge": "Zobrazuji statická záložní data — živý přenos není dostupný",
+      "fallbackTooltip": "Nelze dosáhnout živého zdroje Světové banky. Tyto grafy jsou vykresleny ze zaznamenaného snímku naposledy ověřeného v únoru 2026."
     },
     "settings": {
       "dataManagementLabel": "Správa dat",
@@ -1991,7 +1997,11 @@
         "hoursAgo_one": "{{count}}h zpět",
         "hoursAgo_other": "{{count}}h zpět",
         "daysAgo_one": "{{count}}d zpět",
-        "daysAgo_other": "{{count}}d zpět"
+        "daysAgo_other": "{{count}}d zpět",
+        "hoursAgo_few": "před {{count}}h",
+        "hoursAgo_many": "před {{count}}h",
+        "daysAgo_few": "před {{count}}d",
+        "daysAgo_many": "před {{count}}d"
       },
       "filters": {
         "alert_one": "{{count}} Výstraha",
@@ -1999,12 +2009,19 @@
         "warning_one": "{{count}} Upozornění",
         "warning_other": "{{count}} Upozornění",
         "watch_one": "{{count}} Sledování",
-        "watch_other": "{{count}} Sledování"
+        "watch_other": "{{count}} Sledování",
+        "alert_few": "{{count}} upozornění",
+        "alert_many": "{{count}} upozornění",
+        "warning_few": "{{count}} varování",
+        "warning_many": "{{count}} varování",
+        "watch_few": "{{count}} sledování",
+        "watch_many": "{{count}} sledování"
       },
       "errors": {
         "noData": "Nejsou k dispozici údaje o epidemiích",
         "failedToLoad": "Selhalo načítání"
-      }
+      },
+      "methodologyNote": "Úrovně Alert / Warning / Watch pocházejí z redakčního klíčového slova klasifikátoru — viz /docs/methodology/disease-alert-level pro tabulku klíčových slov a omezení."
     },
     "earningsCalendar": {
       "infoTooltip": "<strong>Kalendář výsledků</strong> Nadcházející a nedávné výsledkové zprávy velkých veřejných společností. Zobrazuje odhady EPS vs. skutečnost, tržby a klasifikaci překonání/nesplnění. Zdroj: poskytovatelé finančních dat.",
@@ -2067,7 +2084,8 @@
       "errors": {
         "unavailable": "Data FSI není dostupná",
         "failedToLoad": "Načtení se nezdařilo"
-      }
+      },
+      "cissStale": "ECB nezveřejnila novější hodnotu — toto čtení může být zastaralé."
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>Sledování obchodu v Hormuzu</strong> Sledování AIS plavidel v reálném čase přes Hormuzský průliv, nejkritičtější ropný úzký profil na světě. Monitoruje počty tankerů, narušení a týdenní změny toků. Přibližně 20 % světových dodávek ropy tudy denně prochází.",
@@ -2174,7 +2192,9 @@
       "signals_one": "{{count}} signál",
       "signals_other": "{{count}} signály",
       "disclaimer": "Obchodní signály generované AI pouze pro informační účely. Není to investiční porada. Vždy si proveďte vlastní průzkum.",
-      "unavailable": "Implikace AI na trh se generují po každém spuštění prognózy. Zkuste to za chvíli."
+      "unavailable": "Implikace AI na trh se generují po každém spuštění prognózy. Zkuste to za chvíli.",
+      "signals_few": "{{count}} signály",
+      "signals_many": "{{count}} signálů"
     },
     "forecast": {
       "infoTooltip": "<strong>AI Prognózy</strong> AI-generované odhady pravděpodobnosti pro geopolitické a ekonomické události:<ul><li>Pokrytí více domén: konflikty, trhy, dodavatelský řetězec, kyber, politika</li><li>Každá prognóza zobrazuje odhadovanou pravděpodobnost, úroveň důvěry a časový horizont</li><li>Kalibrováno proti baseline predikčních trhů, je-li k dispozici</li></ul>Prognózy se aktualizují, když přicházejí nové zpravodajské signály. Filtrujte podle domény pomocí záložek výše."
@@ -2305,7 +2325,9 @@
         "unattributed": "Nepřiřazeno",
         "program": "Program",
         "undated": "bez data"
-      }
+      },
+      "designations_few": "{{count}} označení",
+      "designations_many": "{{count}} označení"
     },
     "radiationWatch": {
       "title": "Radiation Watch",
@@ -2340,7 +2362,11 @@
         "hoursAgo_one": "{{count}}h zpět",
         "hoursAgo_other": "{{count}}h zpět",
         "daysAgo_one": "{{count}}d zpět",
-        "daysAgo_other": "{{count}}d zpět"
+        "daysAgo_other": "{{count}}d zpět",
+        "hoursAgo_few": "před {{count}}h",
+        "hoursAgo_many": "před {{count}}h",
+        "daysAgo_few": "před {{count}}d",
+        "daysAgo_many": "před {{count}}d"
       },
       "confidence": {
         "high": "vysoká spolehlivost",
@@ -2372,7 +2398,9 @@
       "signals_one": "{{count}} signál",
       "signals_other": "{{count}} signálů",
       "analyzing": "Analyzování...",
-      "viewOnMap": "Zobrazit na mapě"
+      "viewOnMap": "Zobrazit na mapě",
+      "signals_few": "{{count}} signály",
+      "signals_many": "{{count}} signálů"
     },
     "thermalEscalation": {
       "title": "Teplotní eskalace",
@@ -2406,8 +2434,18 @@
         "hoursAgo_one": "před {{count}}h",
         "hoursAgo_other": "před {{count}}h",
         "daysAgo_one": "před {{count}}d",
-        "daysAgo_other": "před {{count}}d"
-      }
+        "daysAgo_other": "před {{count}}d",
+        "minutesAgo_few": "před {{count}}m",
+        "minutesAgo_many": "před {{count}}m",
+        "hoursAgo_few": "před {{count}}h",
+        "hoursAgo_many": "před {{count}}h",
+        "daysAgo_few": "před {{count}}d",
+        "daysAgo_many": "před {{count}}d"
+      },
+      "observations_few": "{{count}} pozor.",
+      "observations_many": "{{count}} pozor.",
+      "sources_few": "{{count}} zdrojů",
+      "sources_many": "{{count}} zdrojů"
     },
     "chokepointStrip": {
       "title": "Stav průlivů",
