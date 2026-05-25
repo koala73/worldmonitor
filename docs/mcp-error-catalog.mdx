@@ -82,7 +82,7 @@ Content-Type: application/json
 
 Two distinct triggers share this code; the HTTP status disambiguates.
 
-**Per-minute throttle — HTTP 200.** Sliding-window limiter at **60 requests / minute** keyed per API key (Starter+) or per Pro user (combined across all that user's tokens). Both `tools/call` and metadata methods (`tools/list`, `describe_tool`, `prompts/list`, `resources/list`) count toward this limit; `initialize` does not. Comes back as a JSON-RPC error inside HTTP 200 because the limiter is upstream of any per-id correlation.
+**Per-minute throttle — HTTP 200.** Sliding-window limiter at **60 requests / minute** keyed per API key (Starter+) or per Pro user (combined across all that user's tokens). The limiter runs in `api/mcp/handler.ts` **before** the method-dispatch switch, so **every** request that reaches it counts — `tools/call`, all metadata methods (`tools/list`, `describe_tool`, `prompts/list`, `resources/list`), AND the lifecycle methods (`initialize`, `notifications/initialized`, `ping`). There is no per-method exemption. (The Pro daily-cap exemption set is separate and narrower — see below.) Comes back as a JSON-RPC error inside HTTP 200 because the limiter is upstream of any per-id correlation. Fails OPEN on Upstash transient errors — single spikes in limiter-backend latency won't take the API down.
 
 ```json
 {
@@ -95,7 +95,7 @@ Two distinct triggers share this code; the HTTP status disambiguates.
 }
 ```
 
-**Pro daily cap — HTTP 429 + `Retry-After`.** Hard daily cap (default **50 tool calls / UTC day** for Pro; API tiers have larger allowances) enforced by an atomic Redis reservation BEFORE the tool runs, so the exact call that crosses the boundary rejects. Only `tools/call` and `resources/read` (the auth-symmetric resources path) count; `describe_tool`, `tools/list`, `prompts/*`, and `resources/list` are exempt.
+**Pro daily cap — HTTP 429 + `Retry-After`.** Hard daily cap (default **50 tool calls / UTC day** for Pro; API tiers have larger allowances) enforced by an atomic Redis reservation BEFORE the tool runs, so the exact call that crosses the boundary rejects. Only `tools/call` and `resources/read` (the auth-symmetric resources path) count. **Exempt from the daily cap:** `describe_tool`, `tools/list`, `prompts/list`, `prompts/get`, `resources/list`, `initialize`, `notifications/initialized`, `ping`. (These methods still count toward the per-minute limit above — daily and per-minute exemption sets are different.)
 
 ```json
 {
