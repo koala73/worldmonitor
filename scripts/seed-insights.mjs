@@ -330,7 +330,6 @@ async function fetchInsights() {
   })).filter(item => item.title.length > 10);
 
   const clusters = clusterItems(normalizedItems);
-  computeEntityCorroboration(clusters);
   console.log(`  Clusters: ${clusters.length}`);
 
   const topStories = selectTopStories(clusters, 8);
