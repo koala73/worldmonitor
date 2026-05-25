@@ -1,0 +1,197 @@
+// MCP capability-parity test — catches two structural drift modes at once:
+//
+//   1. Drift between public/.well-known/mcp/server-card.json::capabilities
+//      (what external scanners read) and initialize.result.capabilities
+//      (what the wire serves). A future PR that flips one but forgets the
+//      other ships an advertised-but-unserved capability — discovery
+//      scanners 404 on the flagged surface.
+//
+//   2. Advertised-but-empty — a capability flag is on but the matching
+//      registry is empty at runtime. The list method returns
+//      `{ <capability>: [] }`, which is spec-valid but useless to clients
+//      and indistinguishable (to a casual reader) from "capability not
+//      offered". Catches accidental truncation of PROMPT_REGISTRY,
+//      RESOURCE_REGISTRY, or TOOL_REGISTRY.
+//
+// Normalization: server-card encodes capabilities as booleans (`tools: true`);
+// initialize emits an object per capability (`tools: {}` for passive,
+// `prompts: { listChanged: false }` for config). The value shapes are not
+// commensurable — only the KEY presence is. Both sides project to
+// Set<string> of advertised capability names; the value shape is per-spec
+// opaque.
+//
+// `logging` is structurally registry-less — it's a passive-ACK capability
+// (the handler returns `{}` for `logging/setLevel` but doesn't push
+// `notifications/message`). The allowlist exempts it from the non-empty
+// check. Adding a future passive-ACK capability requires editing this file
+// deliberately — that is the discipline this test is buying.
+
+import { describe, it, beforeEach, afterEach } from 'node:test';
+import { strict as assert } from 'node:assert';
+import { readFileSync } from 'node:fs';
+
+import { BASE_URL } from './helpers/mcp-pro-deps.mjs';
+
+const originalFetch = globalThis.fetch;
+const originalEnv = { ...process.env };
+
+const VALID_KEY = 'wm_test_key_capability_parity';
+
+// Capabilities that are structurally registry-less. `logging` is a passive
+// receive-side capability — the handler ACKs `logging/setLevel` but the
+// stateless edge transport can't push `notifications/message` (same reason
+// `listChanged: false` on prompts/resources). Future passive-ACK additions
+// require an explicit edit to this allowlist AND a positive assertion in
+// the "structurally exempt" test below.
+const LOGGING_HAS_NO_REGISTRY = new Set(['logging']);
+
+// Mapping from advertised-capability name → (list-method, response-key,
+// __testing__ registry name). Three entries; an abstraction would obscure
+// the deliberate per-capability discipline this test is enforcing.
+const CAPABILITY_WIRE = {
+  tools: { method: 'tools/list', responseKey: 'tools', registryKey: 'TOOL_REGISTRY' },
+  prompts: { method: 'prompts/list', responseKey: 'prompts', registryKey: 'PROMPT_REGISTRY' },
+  resources: { method: 'resources/list', responseKey: 'resources', registryKey: 'RESOURCE_REGISTRY' },
+};
+
+function makeReq(body) {
+  return new Request(BASE_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-WorldMonitor-Key': VALID_KEY,
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+function loadServerCardCapabilities() {
+  const path = new URL('../public/.well-known/mcp/server-card.json', import.meta.url);
+  const raw = readFileSync(path, 'utf8');
+  const card = JSON.parse(raw);
+  assert.ok(card.capabilities && typeof card.capabilities === 'object',
+    'server-card.json must declare a capabilities object');
+  return card.capabilities;
+}
+
+// Project server-card { tools: true, logging: true, ... } → Set<string>.
+// Only `=== true` counts as advertised; a hypothetical `false` entry would
+// be a deliberate disable that the parity test must respect.
+function advertisedFromCard(capabilities) {
+  return new Set(
+    Object.entries(capabilities).filter(([, v]) => v === true).map(([k]) => k),
+  );
+}
+
+// Project initialize { tools: {}, prompts: { listChanged: false }, ... } →
+// Set<string>. Per spec, presence of a key in initialize.result.capabilities
+// is the advertised signal — the value is per-spec opaque (config object).
+function advertisedFromInitialize(capabilities) {
+  return new Set(Object.keys(capabilities));
+}
+
+let handler;
+let registries;
+
+describe('api/mcp.ts — capability parity (advertised AND non-empty)', () => {
+  beforeEach(async () => {
+    process.env.WORLDMONITOR_VALID_KEYS = VALID_KEY;
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    process.env.MCP_TELEMETRY = 'false';
+
+    const mod = await import(`../api/mcp.ts?t=${Date.now()}-cap-parity`);
+    handler = mod.default;
+    registries = mod.__testing__;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    Object.keys(process.env).forEach((k) => {
+      if (!(k in originalEnv)) delete process.env[k];
+    });
+    Object.assign(process.env, originalEnv);
+  });
+
+  it('advertised-capability set parity between server-card.json and initialize', async () => {
+    const cardCaps = loadServerCardCapabilities();
+    const cardSet = advertisedFromCard(cardCaps);
+
+    const res = await handler(makeReq({
+      jsonrpc: '2.0', id: 1, method: 'initialize',
+      params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'test', version: '1.0' } },
+    }));
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.ok(body.result?.capabilities && typeof body.result.capabilities === 'object',
+      'initialize.result.capabilities must be an object');
+    const initSet = advertisedFromInitialize(body.result.capabilities);
+
+    const onlyOnCard = [...cardSet].filter((k) => !initSet.has(k)).sort();
+    const onlyOnInit = [...initSet].filter((k) => !cardSet.has(k)).sort();
+    assert.deepEqual(
+      { onlyOnCard, onlyOnInit },
+      { onlyOnCard: [], onlyOnInit: [] },
+      `capability drift: server-card advertises [${[...cardSet].sort().join(', ')}]; ` +
+      `initialize advertises [${[...initSet].sort().join(', ')}]; ` +
+      `only on server-card: [${onlyOnCard.join(', ')}]; only on initialize: [${onlyOnInit.join(', ')}]`,
+    );
+  });
+
+  it('every advertised capability has a non-empty wire response (defense at the contract layer)', async () => {
+    const cardCaps = loadServerCardCapabilities();
+    const advertised = advertisedFromCard(cardCaps);
+
+    for (const cap of advertised) {
+      if (LOGGING_HAS_NO_REGISTRY.has(cap)) continue;
+      const wire = CAPABILITY_WIRE[cap];
+      assert.ok(wire,
+        `capability "${cap}" is advertised but has no CAPABILITY_WIRE mapping — ` +
+        `add a {method, responseKey, registryKey} entry or extend LOGGING_HAS_NO_REGISTRY deliberately`,
+      );
+
+      const res = await handler(makeReq({ jsonrpc: '2.0', id: 2, method: wire.method, params: {} }));
+      assert.equal(res.status, 200, `${wire.method} must return 200`);
+      const body = await res.json();
+      const list = body.result?.[wire.responseKey];
+      assert.ok(Array.isArray(list),
+        `${wire.method} result.${wire.responseKey} must be an array; got ${typeof list}`,
+      );
+      assert.ok(list.length >= 1,
+        `'${cap}' is advertised but ${wire.method} returned 0 entries — advertised-but-empty`,
+      );
+    }
+  });
+
+  it('every advertised capability has a non-empty registry (defense at the source layer)', () => {
+    const cardCaps = loadServerCardCapabilities();
+    const advertised = advertisedFromCard(cardCaps);
+
+    for (const cap of advertised) {
+      if (LOGGING_HAS_NO_REGISTRY.has(cap)) continue;
+      const wire = CAPABILITY_WIRE[cap];
+      assert.ok(wire,
+        `capability "${cap}" is advertised but has no CAPABILITY_WIRE mapping — see sibling test`,
+      );
+      const registry = registries[wire.registryKey];
+      assert.ok(Array.isArray(registry),
+        `__testing__.${wire.registryKey} must be an array; got ${typeof registry}`,
+      );
+      assert.ok(registry.length >= 1,
+        `'${cap}' is advertised but __testing__.${wire.registryKey} is empty — advertised-but-empty`,
+      );
+    }
+  });
+
+  it('logging capability is advertised AND structurally exempt from the registry check', () => {
+    const cardCaps = loadServerCardCapabilities();
+    const advertised = advertisedFromCard(cardCaps);
+    assert.ok(advertised.has('logging'),
+      `'logging' must remain advertised — removing it requires editing this test deliberately ` +
+      `(advertised: [${[...advertised].sort().join(', ')}])`,
+    );
+    assert.ok(LOGGING_HAS_NO_REGISTRY.has('logging'),
+      `'logging' must remain in LOGGING_HAS_NO_REGISTRY — removing it requires editing this test deliberately`,
+    );
+  });
+});
