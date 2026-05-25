@@ -1109,7 +1109,8 @@
       "signals_one": "{{count}} signal",
       "signals_other": "{{count}} signala",
       "disclaimer": "AI-generirani trgovinski signali samo u informativne svrhe. Nisu investicijski savjet. Uvijek napravite vlastito istraživanje.",
-      "unavailable": "AI implikacije na tržištu se generiraju nakon svakog pokretanja prognoziranja. Vratite se uskoro."
+      "unavailable": "AI implikacije na tržištu se generiraju nakon svakog pokretanja prognoziranja. Vratite se uskoro.",
+      "signals_few": "{{count}} signala"
     },
     "status": {
       "dataFeeds": "Izvori podataka",
@@ -1549,7 +1550,8 @@
       "tonePositive": "Pozitivno",
       "overall": "Ukupno: {{tone}}",
       "signalTypesEvents": "{{types}} tipova signala • {{events}} događaja",
-      "newsSignals": "{{news}} vijesti • {{signals}} signala"
+      "newsSignals": "{{news}} vijesti • {{signals}} signala",
+      "sources_few": "{{count}} izvora"
     },
     "settings": {
       "dataManagementLabel": "Upravljanje podacima",
@@ -2194,7 +2196,9 @@
         "hoursAgo_one": "{{count}}h prije",
         "hoursAgo_other": "{{count}}h prije",
         "daysAgo_one": "{{count}}d prije",
-        "daysAgo_other": "{{count}}d prije"
+        "daysAgo_other": "{{count}}d prije",
+        "daysAgo_few": "{{count}}d prije",
+        "hoursAgo_few": "{{count}}h prije"
       },
       "filters": {
         "alert_one": "{{count}} upozorenje",
@@ -2202,7 +2206,10 @@
         "warning_one": "{{count}} upozorenje",
         "warning_other": "{{count}} upozorenja",
         "watch_one": "{{count}} praćenje",
-        "watch_other": "{{count}} praćenja"
+        "watch_other": "{{count}} praćenja",
+        "alert_few": "{{count}} upozorenja",
+        "warning_few": "{{count}} upozorenja",
+        "watch_few": "{{count}} praćenja"
       },
       "errors": {
         "noData": "Nema dostupnih podataka o izbijanju",
@@ -2373,7 +2380,8 @@
         "unattributed": "Neatribuirano",
         "program": "Program",
         "undated": "bez datuma"
-      }
+      },
+      "designations_few": "{{count}} designacije"
     },
     "radiationWatch": {
       "title": "Nadzor zračenja",
@@ -2408,7 +2416,9 @@
         "hoursAgo_one": "{{count}}h prije",
         "hoursAgo_other": "{{count}}h prije",
         "daysAgo_one": "{{count}}d prije",
-        "daysAgo_other": "{{count}}d prije"
+        "daysAgo_other": "{{count}}d prije",
+        "daysAgo_few": "{{count}}d prije",
+        "hoursAgo_few": "{{count}}h prije"
       },
       "confidence": {
         "high": "visoko povjerenje",
@@ -2440,7 +2450,8 @@
       "signals_one": "{{count}} signal",
       "signals_other": "{{count}} signala",
       "analyzing": "Analiza...",
-      "viewOnMap": "Prikaži na karti"
+      "viewOnMap": "Prikaži na karti",
+      "signals_few": "{{count}} signala"
     },
     "thermalEscalation": {
       "title": "Toplinska eskalacija",
@@ -2474,8 +2485,13 @@
         "hoursAgo_one": "{{count}}h prije",
         "hoursAgo_other": "{{count}}h prije",
         "daysAgo_one": "{{count}}d prije",
-        "daysAgo_other": "{{count}}d prije"
-      }
+        "daysAgo_other": "{{count}}d prije",
+        "daysAgo_few": "{{count}}d prije",
+        "hoursAgo_few": "{{count}}h prije",
+        "minutesAgo_few": "{{count}}m prije"
+      },
+      "observations_few": "{{count}} opažanja",
+      "sources_few": "{{count}} izvora"
     },
     "chokepointStrip": {
       "title": "Status uskih mjesta",
