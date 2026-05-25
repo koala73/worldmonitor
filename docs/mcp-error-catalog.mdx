@@ -95,7 +95,7 @@ Two distinct triggers share this code; the HTTP status disambiguates.
 }
 ```
 
-**Pro daily cap — HTTP 429 + `Retry-After`.** Hard daily cap (default **50 tool calls / UTC day** for Pro; API tiers have larger allowances) enforced by an atomic Redis reservation BEFORE the tool runs, so the exact call that crosses the boundary rejects. Only `tools/call` and `resources/read` (the auth-symmetric resources path) count. **Exempt from the daily cap:** `describe_tool`, `tools/list`, `prompts/list`, `prompts/get`, `resources/list`, `initialize`, `notifications/initialized`, `ping`. (These methods still count toward the per-minute limit above — daily and per-minute exemption sets are different.)
+**Pro daily cap — HTTP 429 + `Retry-After`.** Hard daily cap (default **50 tool calls / UTC day** for Pro; API tiers have larger allowances) enforced by an atomic Redis reservation BEFORE the tool runs, so the exact call that crosses the boundary rejects. Only `tools/call` and `resources/read` (the auth-symmetric resources path) count. **Exempt from the daily cap:** `describe_tool`, `tools/list`, `prompts/list`, `prompts/get`, `resources/list`, `logging/setLevel`, `initialize`, `notifications/initialized`, `ping`. (These methods still count toward the per-minute limit above — daily and per-minute exemption sets are different.)
 
 ```json
 {
@@ -196,6 +196,16 @@ HTTP/1.1 503 Service Unavailable
 Retry-After: 5
 Content-Type: application/json
 ```
+
+The `message` text identifies the trigger. Three sites emit a 503; two distinct strings:
+
+| Trigger                                         | `message`                                              | Site                              |
+|-------------------------------------------------|--------------------------------------------------------|-----------------------------------|
+| OAuth resolution service threw (Convex blip)    | `Auth service temporarily unavailable. Try again.`     | `api/mcp/auth.ts:142`             |
+| `MCP_INTERNAL_HMAC_SECRET` unset (Pro path)     | `Service temporarily unavailable, retry in a moment.`  | `api/mcp/auth.ts:204`             |
+| Pro quota-reservation Redis failure (non-cap)   | `Service temporarily unavailable, retry in a moment.`  | `api/mcp/dispatch.ts:141`         |
+
+Client recovery is identical for all three (honour `Retry-After: 5`); the message disambiguates only for log analysis.
 
 **HTTP 200 — `resources/read` payload was empty or unparseable.** Defensive guard inside `resources/read` for the never-should-happen case where the inner `tools/call` dispatcher returned no `content[0].text` or non-JSON text.
 
