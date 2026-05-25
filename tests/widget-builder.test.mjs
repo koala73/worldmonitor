@@ -787,7 +787,6 @@ describe('i18n — widgets section completeness', () => {
   const en = JSON.parse(src('src/locales/en.json'));
 
   const REQUIRED_KEYS = [
-    'createWithAi',
     'confirmDelete',
     'chatTitle',
     'modifyTitle',
@@ -795,7 +794,6 @@ describe('i18n — widgets section completeness', () => {
     'addToDashboard',
     'applyChanges',
     'send',
-    'changeAccent',
     'modifyWithAi',
     'ready',
     'fetching',
