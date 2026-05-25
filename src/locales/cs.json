@@ -1998,10 +1998,10 @@
         "hoursAgo_other": "{{count}}h zpět",
         "daysAgo_one": "{{count}}d zpět",
         "daysAgo_other": "{{count}}d zpět",
-        "hoursAgo_few": "před {{count}}h",
-        "hoursAgo_many": "před {{count}}h",
-        "daysAgo_few": "před {{count}}d",
-        "daysAgo_many": "před {{count}}d"
+        "hoursAgo_few": "{{count}}h zpět",
+        "hoursAgo_many": "{{count}}h zpět",
+        "daysAgo_few": "{{count}}d zpět",
+        "daysAgo_many": "{{count}}d zpět"
       },
       "filters": {
         "alert_one": "{{count}} Výstraha",
@@ -2363,10 +2363,10 @@
         "hoursAgo_other": "{{count}}h zpět",
         "daysAgo_one": "{{count}}d zpět",
         "daysAgo_other": "{{count}}d zpět",
-        "hoursAgo_few": "před {{count}}h",
-        "hoursAgo_many": "před {{count}}h",
-        "daysAgo_few": "před {{count}}d",
-        "daysAgo_many": "před {{count}}d"
+        "hoursAgo_few": "{{count}}h zpět",
+        "hoursAgo_many": "{{count}}h zpět",
+        "daysAgo_few": "{{count}}d zpět",
+        "daysAgo_many": "{{count}}d zpět"
       },
       "confidence": {
         "high": "vysoká spolehlivost",

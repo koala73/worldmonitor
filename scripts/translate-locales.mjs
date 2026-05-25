@@ -144,7 +144,13 @@ Output (key<TAB>${langName}):`;
 //   ja/ko/zh/vi/th  → ['other']
 function getPluralCategories(loc) {
   try {
-    return new Intl.PluralRules(loc).resolvedOptions().pluralCategories;
+    // `?? ['one','other']` covers the case where pluralCategories itself is
+    // absent (older Node where the property predates the spec) — the catch
+    // block only fires on constructor throws (e.g. unknown locale tag), not
+    // on a successful constructor that returns an options object without
+    // the property. Without this guard the next `for (const cat of ...)`
+    // throws TypeError mid-run.
+    return new Intl.PluralRules(loc).resolvedOptions().pluralCategories ?? ['one', 'other'];
   } catch {
     return ['one', 'other'];
   }
@@ -173,6 +179,18 @@ function findPluralBases(enFlat) {
 // slot, otherwise the `_other` form — which is the more representative
 // "count != 1" sentence and the right morphological baseline for every
 // non-one category the model is being asked to inflect.
+// Convention: any dotted path segment that starts with `_` is a "private"
+// translator-instruction key (e.g. `_methodologyLink_translatorNote` is a
+// TODO note for human translators about its sibling `methodologyLink`).
+// Such values are meant to remain in English so translators reading the
+// raw locale files can understand them; sending them through the model
+// has produced visible mistranslations (Arabic/Japanese/Portuguese/Thai
+// translated the note text itself). Skip them here so they never enter
+// either the missing-keys batch or the post-write coverage scan.
+function isPrivateKey(k) {
+  return k.split('.').some(seg => seg.startsWith('_'));
+}
+
 function expectedKeysForLocale(enFlat, pluralBases, categories) {
   const expected = {};
   const pluralEnKeys = new Set();
@@ -181,9 +199,11 @@ function expectedKeysForLocale(enFlat, pluralBases, categories) {
     pluralEnKeys.add(`${base}_other`);
   }
   for (const [k, v] of Object.entries(enFlat)) {
+    if (isPrivateKey(k)) continue;
     if (!pluralEnKeys.has(k)) expected[k] = v;
   }
   for (const [base, forms] of pluralBases) {
+    if (isPrivateKey(base)) continue;
     for (const cat of categories) {
       expected[`${base}_${cat}`] = cat === 'one' ? forms.one : forms.other;
     }
@@ -205,6 +225,19 @@ function validateTranslation(en, translated) {
   const enTags = (en.match(tagPattern) || []).map(norm).sort();
   const tTags = (translated.match(tagPattern) || []).map(norm).sort();
   if (enTags.join('|') !== tTags.join('|')) return false;
+
+  // Reject if URLs/paths were dropped, rewritten, or added. Catches the case
+  // where a methodologyLink value like `/docs/methodology/cii-risk-scores`
+  // gets paraphrased away by an overconfident translation. Matches absolute
+  // URLs (http(s)://...) and bare absolute paths whose FIRST segment starts
+  // with a letter — that constraint avoids false positives on number
+  // fractions like `50/100` or interpolation tokens like `{{count}}/{{total}}`
+  // which would otherwise look like paths. Compared as a sorted multiset so
+  // word-order changes around the URL still pass.
+  const urlPattern = /(?:https?:\/\/[^\s<>"']+|\/[A-Za-z][A-Za-z0-9_\-./]*(?=[\s,.;:!?)\]]|$))/g;
+  const enUrls = (en.match(urlPattern) || []).slice().sort();
+  const tUrls = (translated.match(urlPattern) || []).slice().sort();
+  if (enUrls.join('|') !== tUrls.join('|')) return false;
 
   return true;
 }

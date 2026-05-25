@@ -2355,8 +2355,8 @@
         "hoursAgo_other": "{{count}}h în urmă",
         "daysAgo_one": "{{count}}z în urmă",
         "daysAgo_other": "{{count}}z în urmă",
-        "hoursAgo_few": "acum {{count}}h",
-        "daysAgo_few": "acum {{count}}z"
+        "hoursAgo_few": "{{count}}h în urmă",
+        "daysAgo_few": "{{count}}z în urmă"
       },
       "confidence": {
         "high": "încredere ridicată",
@@ -2424,9 +2424,9 @@
         "hoursAgo_other": "{{count}}h în urmă",
         "daysAgo_one": "{{count}}z în urmă",
         "daysAgo_other": "{{count}}z în urmă",
-        "minutesAgo_few": "acum {{count}}m",
-        "hoursAgo_few": "acum {{count}}h",
-        "daysAgo_few": "acum {{count}}z"
+        "minutesAgo_few": "{{count}}m în urmă",
+        "hoursAgo_few": "{{count}}h în urmă",
+        "daysAgo_few": "{{count}}z în urmă"
       },
       "observations_few": "{{count}} obs",
       "sources_few": "{{count}} src"

@@ -1161,7 +1161,7 @@
       "infoTooltip": "<strong>Metodologia</strong><ul><li><strong>U</strong>descanso: desordem civil e protestos</li><li><strong>C</strong>conflito: intensidade do conflito armado</li><li><strong>S</strong>segurança: voos militares/navios sobrevoados território</li><li><strong>I</strong>nformação: velocidade das notícias e correlação do ponto focal</li><li>Aumento de proximidade do ponto de acesso (locais estratégicos)</li></ul><em>U:C:S:I valores mostram pontuações de componentes.</em> A detecção de ponto focal correlaciona entidades de notícias com sinais de mapa para pontuação precisa.",
       "shareStory": "Compartilhar história",
       "noSignals": "Nenhum sinal de instabilidade detectado",
-      "_methodologyLink_translatorNote": "TRADUÇÃO PENDENTE (#3725): localizar methodologyLink. O valor em inglês é entregue em todas as localidades como medida temporária para que o link de metodologia esteja presente em todos os idiomas. Seguro para traduzir independentemente de infoTooltip — os dois são renderizados como um único tooltip por concatenação em CIIPanel.ts.",
+      "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
       "methodologyLink": "Inclui baseline por país + multiplicador de evento — veja /docs/methodology/cii-risk-scores para a tabela publicada"
     },
     "gdeltIntel": {

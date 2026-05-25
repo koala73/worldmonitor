@@ -2355,8 +2355,8 @@
         "hoursAgo_other": "{{count}}h atrás",
         "daysAgo_one": "{{count}}d atrás",
         "daysAgo_other": "{{count}}d atrás",
-        "hoursAgo_many": "hace {{count}}h",
-        "daysAgo_many": "hace {{count}}d"
+        "hoursAgo_many": "{{count}}h atrás",
+        "daysAgo_many": "{{count}}d atrás"
       },
       "confidence": {
         "high": "alta confianza",

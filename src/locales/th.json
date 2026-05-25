@@ -1313,7 +1313,7 @@
       "shareStory": "แชร์เรื่องราว",
       "noSignals": "ไม่พบสัญญาณความไม่มั่นคง",
       "infoTooltip": "<strong>วิธีการ</strong><ul><li><strong>U</strong>nrest: ความไม่สงบและการประท้วง</li><li><strong>C</strong>onflict: ความรุนแรงของความขัดแย้ง</li><li><strong>S</strong>ecurity: เที่ยวบินทหาร/เรือรบเหนือดินแดน</li><li><strong>I</strong>nformation: ความเร็วข่าวและความสัมพันธ์ของจุดโฟกัส</li><li>การเพิ่มคะแนนจากจุดร้อนใกล้เคียง (สถานที่ยุทธศาสตร์)</li></ul><em>ค่า U:C:S:I แสดงคะแนนองค์ประกอบ</em> การตรวจจับจุดโฟกัสเชื่อมโยงเอนทิตีข่าวกับสัญญาณแผนที่เพื่อการให้คะแนนที่แม่นยำ",
-      "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink English value is shipped to every locale as a stop-gap so the methodology link is present in all languages Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts",
+      "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
       "methodologyLink": "รวมค่าฐานแต่ละประเทศ + ตัวคูณเหตุการณ์ — ดู /docs/methodology/cii-risk-scores สำหรับตารางที่เผยแพร่แล้ว"
     },
     "insights": {

@@ -1263,7 +1263,7 @@
       "shareStory": "مشاركة القصة",
       "noSignals": "لم يتم رصد إشارات عدم استقرار",
       "infoTooltip": "<strong>المنهجية</strong><ul><li><strong>U</strong> - الاضطرابات: الفوضى المدنية والاحتجاجات</li><li><strong>C</strong> - النزاع: شدة النزاع المسلح</li><li><strong>S</strong> - الأمن: الرحلات/السفن العسكرية فوق الإقليم</li><li><strong>I</strong> - المعلومات: سرعة الأخبار وارتباط النقاط المحورية</li><li>تعزيز قرب البؤر الساخنة (المواقع الاستراتيجية)</li></ul><em>قيم U:C:S:I تُظهر درجات المكونات.</em> كشف النقاط المحورية يربط كيانات الأخبار بإشارات الخريطة للتقييم الدقيق.",
-      "_methodologyLink_translatorNote": "مهمة الترجمة (#3725): ترجمة رابط المنهجية. يتم شحن القيمة الإنجليزية إلى كل لغة كحل مؤقت حتى يكون رابط المنهجية موجودًا في جميع اللغات. يمكن ترجمتها بشكل مستقل عن infoTooltip — يتم عرض الاثنين كتلميح واحد عبر الربط في CIIPanel.ts.",
+      "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
       "methodologyLink": "يتضمن خط الأساس حسب الدولة + مضاعف الحدث — انظر /docs/methodology/cii-risk-scores للجدول المنشور"
     },
     "insights": {

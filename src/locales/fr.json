@@ -1997,8 +1997,8 @@
         "hoursAgo_other": "il y a {{count}}h",
         "daysAgo_one": "il y a {{count}}j",
         "daysAgo_other": "il y a {{count}}j",
-        "hoursAgo_many": "Il y a {{count}}h",
-        "daysAgo_many": "Il y a {{count}}j"
+        "hoursAgo_many": "il y a {{count}}h",
+        "daysAgo_many": "il y a {{count}}j"
       },
       "filters": {
         "alert_one": "{{count}} Alerte",
@@ -2355,8 +2355,8 @@
         "hoursAgo_other": "{{count}}h ago",
         "daysAgo_one": "{{count}}j ago",
         "daysAgo_other": "{{count}}j ago",
-        "hoursAgo_many": "Il y a {{count}}h",
-        "daysAgo_many": "Il y a {{count}}j"
+        "hoursAgo_many": "{{count}}h ago",
+        "daysAgo_many": "{{count}}j ago"
       },
       "confidence": {
         "high": "confiance élevée",
@@ -2424,9 +2424,9 @@
         "hoursAgo_other": "{{count}}h ago",
         "daysAgo_one": "{{count}}j ago",
         "daysAgo_other": "{{count}}j ago",
-        "minutesAgo_many": "Il y a {{count}}m",
-        "hoursAgo_many": "Il y a {{count}}h",
-        "daysAgo_many": "Il y a {{count}}j"
+        "minutesAgo_many": "{{count}}m ago",
+        "hoursAgo_many": "{{count}}h ago",
+        "daysAgo_many": "{{count}}j ago"
       },
       "observations_many": "{{count}} obs",
       "sources_many": "{{count}} src"
