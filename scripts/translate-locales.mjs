@@ -108,6 +108,7 @@ CRITICAL RULES:
 5. Output is tab-separated: one line per input, format: <key><TAB><translation>. NOTHING ELSE — no commentary, no quotes, no markdown.
 6. Translate naturally for a software UI: concise, idiomatic, no over-formal phrasing.
 7. For Arabic, use modern standard Arabic (MSA). For Chinese, use Simplified Chinese.
+8. i18next plural variants: keys ending in _zero, _one, _two, _few, _many, or _other are CLDR plural forms of the same noun. Inflect the noun's morphology to match the count range named by the suffix — e.g. _few in Czech/Polish/Russian/Croatian is for counts 2-4, _many for 5+ in those locales, _two in Arabic is the dual form for count=2, _zero in Arabic is for count=0. Keep {{count}} in the translation even when the morphology itself encodes the count (i18next convention).
 
 Input (key<TAB>english):
 ${items}
@@ -130,6 +131,64 @@ Output (key<TAB>${langName}):`;
     if (k && v) out[k] = v;
   }
   return out;
+}
+
+// Return the CLDR plural categories required for this locale. Driven by
+// the V8-native Intl.PluralRules so adding a new locale to LOCALES picks up
+// the right categories automatically — no per-locale lookup table to drift.
+//   en/fr/de/...    → ['one','other']
+//   ro              → ['one','few','other']
+//   hr              → ['one','few','other']
+//   cs/pl/ru        → ['one','few','many','other']
+//   ar              → ['zero','one','two','few','many','other']
+//   ja/ko/zh/vi/th  → ['other']
+function getPluralCategories(loc) {
+  try {
+    return new Intl.PluralRules(loc).resolvedOptions().pluralCategories;
+  } catch {
+    return ['one', 'other'];
+  }
+}
+
+// Identify pluralized "bases" in EN — keys where both `<base>_one` and
+// `<base>_other` exist. EN only ever defines those two (English plural
+// rules collapse everything else into _other), but the script will fan
+// these out per-locale in expectedKeysForLocale().
+function findPluralBases(enFlat) {
+  const bases = new Map();
+  for (const k of Object.keys(enFlat)) {
+    const m = k.match(/^(.+)_(one|other)$/);
+    if (!m) continue;
+    const [, base, suffix] = m;
+    if (!bases.has(base)) bases.set(base, {});
+    bases.get(base)[suffix] = enFlat[k];
+  }
+  return new Map([...bases].filter(([, v]) => v.one && v.other));
+}
+
+// Build the set of keys we EXPECT this locale to have. For non-plural
+// keys this is a 1:1 copy of EN. For pluralized bases, EN's `_one`/
+// `_other` pair is expanded to one key per CLDR category the locale
+// requires. The expected-value (the EN source) is `_one` for the `_one`
+// slot, otherwise the `_other` form — which is the more representative
+// "count != 1" sentence and the right morphological baseline for every
+// non-one category the model is being asked to inflect.
+function expectedKeysForLocale(enFlat, pluralBases, categories) {
+  const expected = {};
+  const pluralEnKeys = new Set();
+  for (const base of pluralBases.keys()) {
+    pluralEnKeys.add(`${base}_one`);
+    pluralEnKeys.add(`${base}_other`);
+  }
+  for (const [k, v] of Object.entries(enFlat)) {
+    if (!pluralEnKeys.has(k)) expected[k] = v;
+  }
+  for (const [base, forms] of pluralBases) {
+    for (const cat of categories) {
+      expected[`${base}_${cat}`] = cat === 'one' ? forms.one : forms.other;
+    }
+  }
+  return expected;
 }
 
 function validateTranslation(en, translated) {
@@ -159,7 +218,8 @@ async function main() {
 
   const enPath = path.join(ROOT, 'en.json');
   const enFlat = flatten(JSON.parse(readFileSync(enPath, 'utf8')));
-  console.log(`[translate] EN source: ${enPath} (${Object.keys(enFlat).length} keys)`);
+  const pluralBases = findPluralBases(enFlat);
+  console.log(`[translate] EN source: ${enPath} (${Object.keys(enFlat).length} keys, ${pluralBases.size} pluralized bases)`);
 
   const targets = onlyLocales || LOCALES;
   let totalMissing = 0;
@@ -181,18 +241,20 @@ async function main() {
     }
     const raw = JSON.parse(readFileSync(locPath, 'utf8'));
     const flat = flatten(raw);
-    const missing = Object.keys(enFlat).filter(k => !(k in flat));
+    const categories = getPluralCategories(loc);
+    const expected = expectedKeysForLocale(enFlat, pluralBases, categories);
+    const missing = Object.keys(expected).filter(k => !(k in flat));
     if (missing.length === 0) {
-      console.log(`[${loc}] ✓ already complete`);
+      console.log(`[${loc}] ✓ already complete (CLDR categories: ${categories.join('/')})`);
       continue;
     }
-    console.log(`[${loc}] missing ${missing.length} keys (${LANG_NAMES[loc]})`);
+    console.log(`[${loc}] missing ${missing.length} keys (${LANG_NAMES[loc]}, CLDR: ${categories.join('/')})`);
     totalMissing += missing.length;
     if (dryRun) continue;
 
     let added = 0;
     for (let i = 0; i < missing.length; i += BATCH_SIZE) {
-      const batch = missing.slice(i, i + BATCH_SIZE).map(k => [k, enFlat[k]]);
+      const batch = missing.slice(i, i + BATCH_SIZE).map(k => [k, expected[k]]);
       try {
         const translations = await translateBatch(client, LANG_NAMES[loc], batch);
         for (const [k, en] of batch) {
@@ -222,7 +284,8 @@ async function main() {
   if (!dryRun) {
     for (const loc of targets) {
       const flat = flatten(JSON.parse(readFileSync(path.join(ROOT, `${loc}.json`), 'utf8')));
-      const left = Object.keys(enFlat).filter(k => !(k in flat));
+      const expected = expectedKeysForLocale(enFlat, pluralBases, getPluralCategories(loc));
+      const left = Object.keys(expected).filter(k => !(k in flat));
       if (left.length > 0) {
         console.error(`[${loc}] ✗ still missing ${left.length} keys after run (e.g. ${left.slice(0, 3).join(', ')})`);
         stillMissing += left.length;
