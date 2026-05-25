@@ -3543,7 +3543,10 @@ async function seedClassifyForVariant(variant, seenTitles) {
           {
             title: chunk[idx],
             classSource: 'llm',
-            entityCorroborationCount: meta.corroborationCount ?? 1,
+            // The relay has only exact story-merge corroboration. Entity
+            // corroboration is a separate digest-side signal computed from
+            // flashpoint+diplomacy buckets; do not proxy source count here.
+            entityCorroborationCount: 0,
           },
         );
         publishNotificationEvent({
