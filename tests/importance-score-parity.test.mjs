@@ -32,6 +32,10 @@ const relaySrc = readFileSync(
   resolve(repoRoot, 'scripts/ais-relay.cjs'),
   'utf-8',
 );
+const clusteringSrc = readFileSync(
+  resolve(repoRoot, 'scripts/_clustering.mjs'),
+  'utf-8',
+);
 
 // Shared source of truth: both sides load this JSON at runtime.
 // The test uses it as the oracle for tier lookups.
@@ -129,6 +133,10 @@ const relayFlashpointKeywords = extractArrayLiteral(relaySrc, 'RELAY_FLASHPOINT_
 const relayDiplomacyPairs = extractArrayLiteral(relaySrc, 'RELAY_DIPLOMACY_FLASHPOINT_PAIRS');
 const relayDiplomacyBoost = extractNumericConst(relaySrc, 'RELAY_DIPLOMACY_FLASHPOINT_BOOST');
 const relayEntityScorePerSource = extractNumericConst(relaySrc, 'RELAY_ENTITY_CORROBORATION_SCORE_PER_SOURCE');
+
+const clusteringDiplomacyKeywords = extractArrayLiteral(clusteringSrc, 'DIPLOMACY_KEYWORDS');
+const clusteringFlashpointKeywords = extractArrayLiteral(clusteringSrc, 'FLASHPOINT_KEYWORDS');
+const clusteringDiplomacyPairs = extractArrayLiteral(clusteringSrc, 'ENTITY_BIGRAMS');
 
 // ── Reconstruct the scorers as pure functions for output comparison ─────────
 
@@ -274,8 +282,16 @@ describe('diplomacy / entity boost parity (digest ↔ relay)', () => {
     assert.equal(relayEntityScorePerSource, digestEntityScorePerSource);
   });
 
+  it('keeps clustering diplomacy constants aligned with digest scoring', () => {
+    assert.deepEqual(clusteringDiplomacyKeywords, digestDiplomacyKeywords);
+    assert.deepEqual(clusteringFlashpointKeywords, digestFlashpointKeywords);
+    assert.deepEqual(clusteringDiplomacyPairs, digestDiplomacyPairs);
+  });
+
   it('does not include generic business deal as a diplomacy keyword', () => {
     assert.equal(digestDiplomacyKeywords.includes('deal'), false);
+    assert.equal(relayDiplomacyKeywords.includes('deal'), false);
+    assert.equal(clusteringDiplomacyKeywords.includes('deal'), false);
   });
 });
 
