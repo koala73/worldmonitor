@@ -3,6 +3,11 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Tag <html> with .js so the seo-prerender content (visible by default
+         for AEO scanners that don't execute JS) is CSS-hidden for real users.
+         Mirrors the same pattern in the SPA's index.html. -->
+    <script>document.documentElement.classList.add('js')</script>
+    <style>html.js #seo-prerender{position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden}</style>
     <title>World Monitor Pro — AI Analyst, Personal Intelligence Desk, MCP for Claude & GPT</title>
     <meta name="description" content="The geopolitical AI layer. Ask it, subscribe to it, build on it. WM Analyst chat across 30+ live services, an AI digest delivered daily, twice-daily, or weekly to Slack, Discord, Telegram, Email, or webhook, a custom widget builder (HTML/CSS/JS + AI), and MCP connectors for Claude, GPT, and custom LLMs." />
     <meta name="keywords" content="AI analyst, geopolitical intelligence, MCP, Model Context Protocol, Claude integration, GPT integration, AI digest, intelligence platform, custom widget builder, equity research, macro analytics, Slack alerts, Discord alerts, Telegram alerts, flight search, market watchlist, central bank tracking" />

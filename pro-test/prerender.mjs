@@ -17,7 +17,7 @@ const htmlPath = resolve(__dirname, '../public/pro/index.html');
 const en = JSON.parse(readFileSync(resolve(__dirname, 'src/locales/en.json'), 'utf-8'));
 
 const seoContent = `
-<div id="seo-prerender" lang="en" aria-hidden="true" style="position:absolute;left:-9999px;top:-9999px;overflow:hidden;width:1px;height:1px;">
+<div id="seo-prerender" lang="en">
   <h1>World Monitor Pro — From ${en.hero.noiseWord} to ${en.hero.signalWord}</h1>
   <p>${en.hero.valueProps}</p>
   <p>${en.hero.launchingDate}</p>

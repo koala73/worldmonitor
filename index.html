@@ -191,8 +191,16 @@
     <link rel="apple-touch-icon" sizes="180x180" href="/favico/apple-touch-icon.png" />
 
 
-    <!-- Theme: apply stored preference before first paint to prevent FOUC -->
-    <script>(function(){try{var h=location.hostname;var v;if(h.startsWith('happy.'))v='happy';else if(h.startsWith('tech.'))v='tech';else if(h.startsWith('finance.'))v='finance';if(!v&&(h==='localhost'||h==='127.0.0.1'||'__TAURI_INTERNALS__' in window))v=localStorage.getItem('worldmonitor-variant');if(v)document.documentElement.dataset.variant=v;else document.documentElement.removeAttribute('data-variant');var t=localStorage.getItem('worldmonitor-theme');if(t==='dark'||t==='light'){document.documentElement.dataset.theme=t;}else if(v==='happy'){document.documentElement.dataset.theme='light';}}catch(e){}document.documentElement.classList.add('no-transition');})()</script>
+    <!-- Theme: apply stored preference before first paint to prevent FOUC.
+         Also tags <html> with .js so the seo-prerender content (visible body
+         text for AEO/SEO crawlers) is hidden for JS-enabled clients via the
+         .js #seo-prerender CSS rule below. Crawlers that don't execute JS
+         (the typical AEO scanner) see the prerender content as normal body
+         content — width:1px/height:1px or aria-hidden cause content-extraction
+         libraries to discount the block, so we make it crawler-visible by
+         default and CSS-hide for real users. -->
+    <script>(function(){try{var h=location.hostname;var v;if(h.startsWith('happy.'))v='happy';else if(h.startsWith('tech.'))v='tech';else if(h.startsWith('finance.'))v='finance';if(!v&&(h==='localhost'||h==='127.0.0.1'||'__TAURI_INTERNALS__' in window))v=localStorage.getItem('worldmonitor-variant');if(v)document.documentElement.dataset.variant=v;else document.documentElement.removeAttribute('data-variant');var t=localStorage.getItem('worldmonitor-theme');if(t==='dark'||t==='light'){document.documentElement.dataset.theme=t;}else if(v==='happy'){document.documentElement.dataset.theme='light';}}catch(e){}document.documentElement.classList.add('no-transition');document.documentElement.classList.add('js');})()</script>
+    <style>html.js #seo-prerender{position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden}</style>
 
     <!-- Critical CSS: inline skeleton visible before JS boots -->
     <style>
@@ -272,8 +280,14 @@
       this prerender block is the indexable surface — language-specific content
       hydrates client-side after JS boots. WebSite JSON-LD already advertises all
       inLanguage values; this block is the en-US fallback.
+
+      Visible to no-JS crawlers (AEO scanners typically don't execute JS); hidden
+      to JS-enabled clients via `html.js #seo-prerender` rule in head <style>.
+      Off-screen-with-1px-size and aria-hidden=true caused content-extraction
+      libraries to discount the block — the AEO scanner showed 0/18 internal
+      links until this switch.
     -->
-    <div id="seo-prerender" lang="en" aria-hidden="true" style="position:absolute;left:-9999px;top:-9999px;overflow:hidden;width:1px;height:1px;">
+    <div id="seo-prerender" lang="en">
       <h1>World Monitor — Real-Time Global Intelligence Dashboard</h1>
       <p>Free, open-source intelligence platform aggregating live news, markets, military movements, conflicts, and infrastructure into one real-time dashboard. Used by 2M+ people across 190+ countries. <a href="https://www.wired.me/story/the-music-streaming-ceo-who-built-a-global-war-map">Featured in WIRED</a>.</p>
 
