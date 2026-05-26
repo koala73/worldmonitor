@@ -42,6 +42,8 @@ export interface SeedHealthUpdate {
   records?: number | null;
   seedAgeMin?: number | null;
   maxStaleMin?: number | null;
+  contentAgeMin?: number | null;
+  maxContentAgeMin?: number | null;
   checkedAtMs?: number;
 }
 
@@ -153,21 +155,32 @@ class DataFreshnessTracker {
       const maxStaleMin = typeof update.maxStaleMin === 'number' && update.maxStaleMin > 0
         ? update.maxStaleMin
         : undefined;
+      const maxContentAgeMin = typeof update.maxContentAgeMin === 'number' && update.maxContentAgeMin > 0
+        ? update.maxContentAgeMin
+        : undefined;
       const checkedAtMs = Number.isFinite(update.checkedAtMs)
         ? update.checkedAtMs!
         : Date.now();
       const seedAgeMin = typeof update.seedAgeMin === 'number' && update.seedAgeMin >= 0
         ? update.seedAgeMin
         : null;
+      const contentAgeMin = typeof update.contentAgeMin === 'number' && update.contentAgeMin >= 0
+        ? update.contentAgeMin
+        : null;
+      const ageMin = update.status === 'STALE_CONTENT' && contentAgeMin !== null
+        ? contentAgeMin
+        : seedAgeMin;
 
       source.itemCount = records;
-      source.maxStaleMin = maxStaleMin;
+      source.maxStaleMin = update.status === 'STALE_CONTENT'
+        ? (maxContentAgeMin ?? maxStaleMin)
+        : maxStaleMin;
       source.healthStatus = update.status;
       source.lastError = this.healthStatusIsError(update.status) ? update.status : null;
       source.lastUpdate = this.healthStatusHasNoData(update.status)
         ? null
-        : seedAgeMin !== null
-        ? new Date(checkedAtMs - seedAgeMin * 60_000)
+        : ageMin !== null
+        ? new Date(checkedAtMs - ageMin * 60_000)
         : source.lastUpdate;
       source.status = source.enabled ? this.calculateStatus(source) : 'disabled';
       changed = true;
@@ -299,7 +312,7 @@ class DataFreshnessTracker {
     const freshThreshold = source.maxStaleMin ? source.maxStaleMin * 60_000 : FRESH_THRESHOLD;
     const staleThreshold = source.maxStaleMin ? source.maxStaleMin * 2 * 60_000 : STALE_THRESHOLD;
     const veryStaleThreshold = source.maxStaleMin ? source.maxStaleMin * 3 * 60_000 : VERY_STALE_THRESHOLD;
-    if (age <= freshThreshold) return source.healthStatus === 'COVERAGE_PARTIAL' ? 'stale' : 'fresh';
+    if (age <= freshThreshold) return source.healthStatus === 'COVERAGE_PARTIAL' || source.healthStatus === 'STALE_CONTENT' ? 'stale' : 'fresh';
     if (age <= staleThreshold) return 'stale';
     if (age <= veryStaleThreshold) return 'very_stale';
     return 'no_data'; // Too old, treat as no data

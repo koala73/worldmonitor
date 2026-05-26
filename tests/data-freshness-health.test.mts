@@ -198,4 +198,35 @@ describe('health freshness ingestion', () => {
     assert.equal(gdelt?.healthStatus, 'COVERAGE_PARTIAL');
     assert.equal(gdelt?.lastError, null);
   });
+
+  it('uses stale content age instead of seed age for STALE_CONTENT checks', async () => {
+    const checkedAtMs = Date.now();
+    const applied = await refreshDataFreshnessFromHealth({
+      endpoint: '/api/health',
+      urlResolver: (path) => path,
+      fetchFn: async () => jsonResponse({
+        checkedAt: new Date(checkedAtMs).toISOString(),
+        checks: {
+          blsSeries: {
+            status: 'STALE_CONTENT',
+            records: 9,
+            seedAgeMin: 1,
+            maxStaleMin: 360,
+            contentAgeMin: 90,
+            maxContentAgeMin: 60,
+          },
+        },
+      }),
+    });
+
+    assert.equal(applied, 1);
+
+    const bls = dataFreshness.getSource('bls');
+    assert.equal(bls?.status, 'stale');
+    assert.notEqual(bls?.status, 'fresh');
+    assert.equal(bls?.healthStatus, 'STALE_CONTENT');
+    assert.equal(bls?.lastError, null);
+    assert.equal(bls?.maxStaleMin, 60);
+    assert.equal(bls?.lastUpdate?.toISOString(), new Date(checkedAtMs - 90 * 60_000).toISOString());
+  });
 });

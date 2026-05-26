@@ -6,6 +6,8 @@ interface HealthCheck {
   records?: number | null;
   seedAgeMin?: number | null;
   maxStaleMin?: number | null;
+  contentAgeMin?: number | null;
+  maxContentAgeMin?: number | null;
 }
 
 interface HealthResponse {
@@ -64,6 +66,7 @@ function statusRank(status: string): number {
     case 'EMPTY_DATA':
       return 4;
     case 'STALE_SEED':
+    case 'STALE_CONTENT':
     case 'COVERAGE_PARTIAL':
       return 3;
     case 'EMPTY_ON_DEMAND':
@@ -78,11 +81,17 @@ function statusRank(status: string): number {
 }
 
 function stalenessRatio(update: SeedHealthUpdate): number {
-  if (update.seedAgeMin == null || update.maxStaleMin == null) return 0;
-  if (update.maxStaleMin === 0) {
-    return update.seedAgeMin === 0 ? 0 : Number.POSITIVE_INFINITY;
+  const ageMin = update.status === 'STALE_CONTENT' && update.contentAgeMin != null
+    ? update.contentAgeMin
+    : update.seedAgeMin;
+  const maxAgeMin = update.status === 'STALE_CONTENT' && update.maxContentAgeMin != null
+    ? update.maxContentAgeMin
+    : update.maxStaleMin;
+  if (ageMin == null || maxAgeMin == null) return 0;
+  if (maxAgeMin === 0) {
+    return ageMin === 0 ? 0 : Number.POSITIVE_INFINITY;
   }
-  return update.seedAgeMin / update.maxStaleMin;
+  return ageMin / maxAgeMin;
 }
 
 function isRedisOutageStatus(status: string | undefined): status is 'REDIS_DOWN' | 'REDIS_PARTIAL' {
@@ -133,6 +142,8 @@ export async function refreshDataFreshnessFromHealth(options: RefreshHealthFresh
         records: check.records,
         seedAgeMin: check.seedAgeMin,
         maxStaleMin: check.maxStaleMin,
+        contentAgeMin: check.contentAgeMin,
+        maxContentAgeMin: check.maxContentAgeMin,
         checkedAtMs: checkedAt,
       };
       const existing = updatesBySource.get(sourceId);
