@@ -155,6 +155,85 @@ describe('premium gateway API key enforcement', () => {
     assert.equal(res.status, 200);
     assert.deepEqual(await res.json(), { userId: null });
   });
+
+  it('rewrites client-supplied x-user-id on wm_ user-API-key auth (#3548)', async () => {
+    // Third injection site (sibling of the Clerk session + legacy-bearer
+    // paths). Mocks the two Convex endpoints the wm_ branch ultimately
+    // hits: /api/internal-validate-api-key (key → owner userId) and
+    // /api/internal-entitlements (tier check). Any other URL 404s so an
+    // unmocked endpoint surfaces as a clean failure, not a silent allow.
+    const handler = createDomainGateway([
+      {
+        method: 'GET',
+        path: '/api/market/v1/analyze-stock',
+        handler: async (req) =>
+          new Response(JSON.stringify({ userId: req.headers.get('x-user-id') }), { status: 200 }),
+      },
+    ]);
+
+    const originalSiteUrl = process.env.CONVEX_SITE_URL;
+    const originalSecret = process.env.CONVEX_SERVER_SHARED_SECRET;
+    const originalFetch = globalThis.fetch;
+    process.env.CONVEX_SITE_URL = 'https://test.convex.site';
+    process.env.CONVEX_SERVER_SHARED_SECRET = 'test-secret';
+    process.env.WORLDMONITOR_VALID_KEYS = 'real-key-123';
+
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
+      if (url.endsWith('/api/internal-validate-api-key')) {
+        return new Response(
+          JSON.stringify({ userId: 'owner_pro', keyId: 'k1', name: 'test' }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      if (url.endsWith('/api/internal-entitlements')) {
+        return new Response(
+          JSON.stringify({
+            planKey: 'pro_monthly',
+            validUntil: Date.now() + 86_400_000,
+            features: {
+              tier: 1,
+              apiAccess: true,
+              apiRateLimit: 60,
+              maxDashboards: 5,
+              prioritySupport: false,
+              exportFormats: [],
+              mcpAccess: true,
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return new Response('not-mocked', { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const res = await handler(
+        new Request('https://worldmonitor.app/api/market/v1/analyze-stock?symbol=AAPL', {
+          headers: {
+            Origin: 'https://worldmonitor.app',
+            'X-WorldMonitor-Key': 'wm_owner_pro_test',
+            'x-user-id': 'victim-user',
+          },
+        }),
+      );
+
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as { userId: string | null };
+      assert.equal(body.userId, 'owner_pro');
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalSiteUrl === undefined) delete process.env.CONVEX_SITE_URL;
+      else process.env.CONVEX_SITE_URL = originalSiteUrl;
+      if (originalSecret === undefined) delete process.env.CONVEX_SERVER_SHARED_SECRET;
+      else process.env.CONVEX_SERVER_SHARED_SECRET = originalSecret;
+    }
+  });
 });
 
 describe('POST-to-GET compatibility hardening', () => {

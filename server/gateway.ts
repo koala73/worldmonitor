@@ -345,13 +345,38 @@ function isPostToGetCompatibleBodySize(headers: Headers): boolean {
   return Number.isSafeInteger(contentLength) && contentLength < POST_TO_GET_MAX_BODY_BYTES;
 }
 
+// `TRUSTED_USER_ID_HEADER` (a.k.a. `x-user-id`) is gateway-internal: the
+// gateway is the ONLY layer permitted to set it, and it must reflect an
+// authenticated principal. Inbound client copies are stripped at handler
+// entry (see stripClientUserIdHeader); the authenticated value is re-
+// injected after Clerk / wm_ user-key / legacy bearer auth via
+// withAuthenticatedUserId. The internal-MCP block below has its own
+// strip-and-rebuild step that ALSO strips this header alongside
+// INTERNAL_MCP_VERIFIED_HEADER — both layers are defense-in-depth.
+function cloneRequestWithHeaders(request: Request, headers: Headers): Request {
+  return new Request(request, { headers });
+}
+
+function stripClientUserIdHeader(request: Request): Request {
+  if (!request.headers.has(TRUSTED_USER_ID_HEADER)) return request;
+  const headers = new Headers(request.headers);
+  headers.delete(TRUSTED_USER_ID_HEADER);
+  return cloneRequestWithHeaders(request, headers);
+}
+
+function withAuthenticatedUserId(request: Request, userId: string): Request {
+  const headers = new Headers(request.headers);
+  headers.set(TRUSTED_USER_ID_HEADER, userId);
+  return cloneRequestWithHeaders(request, headers);
+}
+
 export function createDomainGateway(
   routes: RouteDescriptor[],
 ): (req: Request, ctx?: GatewayCtx) => Promise<Response> {
   const router = createRouter(routes);
 
   return async function handler(originalRequest: Request, ctx?: GatewayCtx): Promise<Response> {
-    let request = originalRequest;
+    let request = stripClientUserIdHeader(originalRequest);
     const rawPathname = new URL(request.url).pathname;
     const pathname = rawPathname.length > 1 ? rawPathname.replace(/\/+$/, '') : rawPathname;
     const t0 = Date.now();
@@ -722,15 +747,7 @@ export function createDomainGateway(
       usage.sessionUserId = sessionUserId;
       usage.clerkOrgId = session?.orgId ?? null;
       if (sessionUserId) {
-        request = new Request(request.url, {
-          method: request.method,
-          headers: (() => {
-            const h = new Headers(request.headers);
-            h.set(TRUSTED_USER_ID_HEADER, sessionUserId);
-            return h;
-          })(),
-          body: request.body,
-        });
+        request = withAuthenticatedUserId(request, sessionUserId);
       }
     }
 
@@ -772,19 +789,15 @@ export function createDomainGateway(
         usage.isUserApiKey = true;
         usage.userApiKeyCustomerRef = userKeyResult.userId;
         keyCheck = { valid: true, required: true };
-        // Inject x-user-id for downstream handlers from the verified user key.
+        // Propagate the resolved key-owner identity to downstream route
+        // handlers via x-user-id. The entitlement check itself takes the
+        // userId argument directly (see checkEntitlement(sessionUserId, …))
+        // so it no longer depends on this header — the header is now for
+        // handler consumption + the internal-MCP `isCallerPremium` path.
         if (!sessionUserId) {
           sessionUserId = userKeyResult.userId;
           usage.sessionUserId = sessionUserId;
-          request = new Request(request.url, {
-            method: request.method,
-            headers: (() => {
-              const h = new Headers(request.headers);
-              h.set(TRUSTED_USER_ID_HEADER, sessionUserId);
-              return h;
-            })(),
-            body: request.body,
-          });
+          request = withAuthenticatedUserId(request, sessionUserId);
         }
       }
     }
@@ -831,15 +844,7 @@ export function createDomainGateway(
           if (session.userId) {
             sessionUserId = session.userId;
             usage.sessionUserId = session.userId;
-            request = new Request(request.url, {
-              method: request.method,
-              headers: (() => {
-                const h = new Headers(request.headers);
-                h.set(TRUSTED_USER_ID_HEADER, session.userId);
-                return h;
-              })(),
-              body: request.body,
-            });
+            request = withAuthenticatedUserId(request, session.userId);
           }
           // Accept EITHER a Clerk 'pro' role OR a Convex Dodo entitlement with
           // tier >= 1. The Dodo webhook pipeline writes Convex entitlements but
