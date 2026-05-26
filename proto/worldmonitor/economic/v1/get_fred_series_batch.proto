@@ -3,7 +3,6 @@ syntax = "proto3";
 package worldmonitor.economic.v1;
 
 import "buf/validate/validate.proto";
-import "sebuf/http/annotations.proto";
 import "worldmonitor/economic/v1/economic_data.proto";
 
 // GetFredSeriesBatchRequest looks up multiple FRED series in a single call.

@@ -1,0 +1,29 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+import "sebuf/http/annotations.proto";
+
+message GetEconomicCalendarRequest {
+  string from_date = 1 [(sebuf.http.query) = {name: "fromDate"}];
+  string to_date = 2 [(sebuf.http.query) = {name: "toDate"}];
+}
+
+message EconomicEvent {
+  string event = 1;
+  string country = 2;
+  string date = 3;
+  string impact = 4;
+  string actual = 5;
+  string estimate = 6;
+  string previous = 7;
+  string unit = 8;
+}
+
+message GetEconomicCalendarResponse {
+  repeated EconomicEvent events = 1;
+  string from_date = 2;
+  string to_date = 3;
+  int32 total = 4;
+  bool unavailable = 5;
+}

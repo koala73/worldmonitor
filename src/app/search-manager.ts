@@ -6,7 +6,8 @@ import type { Command } from '@/config/commands';
 import { SearchModal } from '@/components';
 import { CIIPanel } from '@/components';
 import { SITE_VARIANT, STORAGE_KEYS } from '@/config';
-import { getAllowedLayerKeys } from '@/config/map-layer-definitions';
+import { getAllowedLayerKeys, isLayerExecutable } from '@/config/map-layer-definitions';
+import type { MapRenderer } from '@/config/map-layer-definitions';
 import type { MapVariant } from '@/config/map-layer-definitions';
 import { LAYER_PRESETS, LAYER_KEY_MAP } from '@/config/commands';
 import { calculateCII, TIER1_COUNTRIES } from '@/services/country-instability';
@@ -25,6 +26,11 @@ import { trackSearchResultSelected, trackCountrySelected } from '@/services/anal
 import { t } from '@/services/i18n';
 import { saveToStorage, setTheme } from '@/utils';
 import { CountryIntelManager } from '@/app/country-intel';
+import type { PositionSample } from '@/services/aviation';
+import { fetchAircraftPositions } from '@/services/aviation';
+import type { MilitaryFlight } from '@/types';
+import { isProUser } from '@/services/widget-store';
+import { getAuthState } from '@/services/auth-state';
 
 export interface SearchManagerCallbacks {
   openCountryBriefByCode: (code: string, country: string) => void;
@@ -203,9 +209,63 @@ export class SearchManager implements AppModule {
 
     this.ctx.searchModal.registerSource('country', this.buildCountrySearchItems());
 
-    this.ctx.searchModal.setActivePanels(Object.keys(this.ctx.panels));
+    this.ctx.searchModal.setActivePanels(
+      Object.entries(this.ctx.panelSettings).filter(([, v]) => v.enabled).map(([k]) => k)
+    );
+    // Filter CMD+K layer commands by (a) variant-allowed, (b) renderer
+    // compatibility, (c) DeckGL state for deckGLOnly layers. Without this,
+    // layer commands surface in CMD+K on variants where they'd silently
+    // fail the variantAllowed guard in handleCommand (e.g.
+    // `layer:storageFacilities` on tech/finance/commodity/happy), or on
+    // globe / SVG-mobile where they'd hit the renderer guard. Better to
+    // hide the toggle than expose a button that does nothing.
+    this.ctx.searchModal.setLayerExecutableFn((layerKey) => {
+      const key = (LAYER_KEY_MAP[layerKey] || layerKey) as keyof MapLayers;
+      if (!(key in this.ctx.mapLayers)) return false;
+      const variantAllowed = getAllowedLayerKeys((SITE_VARIANT || 'full') as MapVariant);
+      if (!variantAllowed.has(key)) return false;
+      const renderer: MapRenderer = this.ctx.map?.isGlobeMode?.() ? 'globe' : 'flat';
+      const isDeckGL = this.ctx.map?.isDeckGLActive?.() ?? false;
+      return isLayerExecutable(key, renderer, isDeckGL);
+    });
     this.ctx.searchModal.setOnSelect((result) => this.handleSearchResult(result));
     this.ctx.searchModal.setOnCommand((cmd) => this.handleCommand(cmd));
+
+    // Always wire flight search — check pro status reactively inside the callback
+    // so mid-session sign-ins get the feature without a page reload.
+    {
+      this.ctx.searchModal.setOnFlightSearch((callsign) => {
+        if (!isProUser() && getAuthState().user?.role !== 'pro') return;
+        fetchAircraftPositions({ callsign }).then((positions) => {
+          if (!this.ctx.searchModal) return;
+          // Deduplicate by callsign: keep the most recently observed entry per callsign.
+          const seen = new Map<string, PositionSample>();
+          for (const p of positions) {
+            const key = (p.callsign || p.icao24).trim().toUpperCase();
+            const existing = seen.get(key);
+            if (!existing || p.observedAt > existing.observedAt) {
+              seen.set(key, p);
+            }
+          }
+          const items = [...seen.values()].map(p => {
+            const fl = Number.isFinite(p.altitudeFt) ? Math.round(p.altitudeFt / 100) : null;
+            const kts = Number.isFinite(p.groundSpeedKts) ? Math.round(p.groundSpeedKts) : null;
+            return {
+              id: p.icao24,
+              title: (p.callsign || p.icao24).trim().toUpperCase(),
+              subtitle: p.onGround
+                ? t('modals.search.flightOnGround')
+                : fl !== null && kts !== null
+                  ? t('modals.search.flightAirborne', { fl: String(fl), kts: String(kts) })
+                  : fl !== null ? `FL${fl}` : t('modals.search.flightOnGround'),
+              data: { kind: 'adsb' as const, lat: p.lat, lon: p.lon, layer: 'flights' as const },
+            };
+          });
+          this.ctx.searchModal.registerSource('flight', items);
+          this.ctx.searchModal.refreshSearch();
+        }).catch(() => {/* silent — show no results */});
+      });
+    }
 
     this.boundKeydownHandler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -226,8 +286,20 @@ export class SearchManager implements AppModule {
     switch (result.type) {
       case 'news': {
         const item = result.data as NewsItem;
-        this.scrollToPanel('politics');
-        this.highlightNewsItem(item.link);
+        // Find which panel contains this item (may not always be 'politics')
+        let targetPanelId = 'politics';
+        let targetPanel = this.ctx.newsPanels['politics'] ?? null;
+        for (const [panelId, panel] of Object.entries(this.ctx.newsPanels)) {
+          if (panel.hasNewsItem(item.link)) {
+            targetPanelId = panelId;
+            targetPanel = panel;
+            break;
+          }
+        }
+        this.scrollToPanel(targetPanelId);
+        if (targetPanel) {
+          setTimeout(() => targetPanel!.scrollToNewsItem(item.link), 300);
+        }
         break;
       }
       case 'hotspot': {
@@ -381,6 +453,13 @@ export class SearchManager implements AppModule {
         this.callbacks.openCountryBriefByCode(code, name);
         break;
       }
+      case 'flight': {
+        const { lat, lon, layer } = result.data as { kind: string; lat: number; lon: number; layer: keyof MapLayers };
+        this.ctx.map?.enableLayer(layer);
+        this.ctx.mapLayers[layer] = true;
+        setTimeout(() => { this.ctx.map?.setCenter(lat, lon, 9); }, 300);
+        break;
+      }
     }
   }
 
@@ -401,9 +480,21 @@ export class SearchManager implements AppModule {
 
       case 'layers': {
         const allowed = getAllowedLayerKeys((SITE_VARIANT || 'full') as MapVariant);
+        // Preset paths (`layers:all`, `layers:infra`, …) also need the
+        // renderer + DeckGL gate that per-layer toggles go through. Without
+        // it, a user in globe mode or on the SVG fallback can run
+        // `layers:infra` and silently flip `deckGLOnly` layers on — those
+        // layers set to `true` in state but produce no rendered output,
+        // and since the picker hides them under the current renderer the
+        // user has no way to toggle them back off without switching
+        // modes. Codex P2 on PR #3366.
+        const renderer: MapRenderer = this.ctx.map?.isGlobeMode?.() ? 'globe' : 'flat';
+        const isDeckGL = this.ctx.map?.isDeckGLActive?.() ?? false;
+        const executable = (k: keyof MapLayers): boolean =>
+          allowed.has(k) && isLayerExecutable(k, renderer, isDeckGL);
         if (action === 'all') {
           for (const key of Object.keys(this.ctx.mapLayers)) {
-            this.ctx.mapLayers[key as keyof MapLayers] = allowed.has(key as keyof MapLayers);
+            this.ctx.mapLayers[key as keyof MapLayers] = executable(key as keyof MapLayers);
           }
         } else if (action === 'none') {
           for (const key of Object.keys(this.ctx.mapLayers))
@@ -414,7 +505,7 @@ export class SearchManager implements AppModule {
             for (const key of Object.keys(this.ctx.mapLayers))
               this.ctx.mapLayers[key as keyof MapLayers] = false;
             for (const layer of preset) {
-              if (allowed.has(layer)) this.ctx.mapLayers[layer] = true;
+              if (executable(layer)) this.ctx.mapLayers[layer] = true;
             }
           }
         }
@@ -428,9 +519,19 @@ export class SearchManager implements AppModule {
         if (!(layerKey in this.ctx.mapLayers)) return;
         const variantAllowed = getAllowedLayerKeys((SITE_VARIANT || 'full') as MapVariant);
         if (!variantAllowed.has(layerKey)) return;
-        this.ctx.mapLayers[layerKey] = !this.ctx.mapLayers[layerKey];
+        // Renderer / DeckGL gate. Mirrors the filter applied in SearchModal
+        // so direct activation paths (keyboard-accelerator, programmatic
+        // dispatch, etc.) don't flip a layer on that can't render.
+        const renderer: MapRenderer = this.ctx.map?.isGlobeMode?.() ? 'globe' : 'flat';
+        const isDeckGL = this.ctx.map?.isDeckGLActive?.() ?? false;
+        if (!isLayerExecutable(layerKey, renderer, isDeckGL)) return;
+        let newValue = !this.ctx.mapLayers[layerKey];
+        if (newValue && layerKey === 'resilienceScore' && !this.ctx.map?.isDeckGLActive?.()) {
+          newValue = false;
+        }
+        this.ctx.mapLayers[layerKey] = newValue;
         saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
-        if (this.ctx.mapLayers[layerKey]) {
+        if (newValue) {
           this.ctx.map?.enableLayer(layerKey);
         } else {
           this.ctx.map?.setLayers(this.ctx.mapLayers);
@@ -460,6 +561,25 @@ export class SearchManager implements AppModule {
           this.ctx.unifiedSettings?.open();
         } else if (action === 'refresh') {
           window.location.reload();
+        } else if (action === 'resilience') {
+          const layerKey = 'resilienceScore' as keyof MapLayers;
+          const variantAllowed = getAllowedLayerKeys((SITE_VARIANT || 'full') as MapVariant);
+          if (!variantAllowed.has(layerKey)) break;
+          let newValue = !this.ctx.mapLayers[layerKey];
+          if (newValue && !this.ctx.map?.isDeckGLActive?.()) newValue = false;
+          this.ctx.mapLayers[layerKey] = newValue;
+          saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
+          if (newValue) {
+            this.ctx.map?.enableLayer(layerKey);
+          } else {
+            this.ctx.map?.setLayers(this.ctx.mapLayers);
+          }
+        } else if (action === 'route-explorer') {
+          void import('@/components/RouteExplorer/RouteExplorer').then((m) => {
+            const explorer = m.getRouteExplorer();
+            explorer.setMap(this.ctx.map);
+            explorer.open();
+          });
         }
         break;
 
@@ -501,16 +621,6 @@ export class SearchManager implements AppModule {
     }
   }
 
-  private highlightNewsItem(itemId: string): void {
-    setTimeout(() => {
-      const item = document.querySelector(`[data-news-id="${CSS.escape(itemId)}"]`);
-      if (item) {
-        item.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        this.applyHighlight(item);
-      }
-    }, 100);
-  }
-
   private applyHighlight(el: Element): void {
     const prev = this.highlightTimers.get(el);
     if (prev) clearTimeout(prev);
@@ -523,10 +633,48 @@ export class SearchManager implements AppModule {
     }, 3100));
   }
 
+  updateFlightSource(adsb: PositionSample[], military: MilitaryFlight[]): void {
+    if (!this.ctx.searchModal || !isProUser()) return;
+    const items = [
+      ...adsb.map(p => {
+        const fl = Number.isFinite(p.altitudeFt) ? Math.round(p.altitudeFt / 100) : null;
+        const kts = Number.isFinite(p.groundSpeedKts) ? Math.round(p.groundSpeedKts) : null;
+        return {
+          id: p.icao24,
+          title: (p.callsign || p.icao24).trim().toUpperCase(),
+          subtitle: p.onGround
+            ? t('modals.search.flightOnGround')
+            : fl !== null && kts !== null
+              ? t('modals.search.flightAirborne', { fl: String(fl), kts: String(kts) })
+              : fl !== null
+                ? `FL${fl}`
+                : t('modals.search.flightOnGround'),
+          data: { kind: 'adsb' as const, lat: p.lat, lon: p.lon, layer: 'flights' as const },
+        };
+      }),
+      ...military.map(f => {
+        const fl = Number.isFinite(f.altitude) ? Math.round(f.altitude / 100) : null;
+        return {
+          id: f.hexCode,
+          title: (f.callsign || f.hexCode).trim().toUpperCase(),
+          subtitle: f.onGround
+            ? t('modals.search.flightMilitaryOnGround', { type: f.aircraftType })
+            : fl !== null
+              ? t('modals.search.flightMilitary', { type: f.aircraftType, fl: String(fl) })
+              : t('modals.search.flightMilitaryOnGround', { type: f.aircraftType }),
+          data: { kind: 'military' as const, lat: f.lat, lon: f.lon, layer: 'military' as const },
+        };
+      }),
+    ];
+    this.ctx.searchModal.registerSource('flight', items);
+  }
+
   updateSearchIndex(): void {
     if (!this.ctx.searchModal) return;
 
-    this.ctx.searchModal.setActivePanels(Object.keys(this.ctx.panels));
+    this.ctx.searchModal.setActivePanels(
+      Object.entries(this.ctx.panelSettings).filter(([, v]) => v.enabled).map(([k]) => k)
+    );
     this.ctx.searchModal.registerSource('country', this.buildCountrySearchItems());
 
     const newsItems = this.ctx.allNews.slice(0, 500).map(n => ({

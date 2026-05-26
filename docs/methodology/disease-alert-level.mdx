@@ -1,0 +1,76 @@
+---
+title: "Disease Outbreak Alert Level"
+description: "How the Disease Outbreaks panel derives its three-level categorical alert (ALERT, WARNING, WATCH) from a keyword classifier over normalized item titles and descriptions. Editorial newsroom-triage signal, not a clinical assessment."
+---
+
+The "Disease Outbreaks" panel labels each item with one of three categorical
+levels: **ALERT**, **WARNING**, or **WATCH**. This page documents how that
+label is derived so the value is reproducible from the inputs displayed
+on the panel.
+
+## Editorial weights
+
+Levels are assigned by a keyword classifier in
+`scripts/_disease-outbreaks-helpers.mjs::detectAlertLevel` that matches
+whole-word tokens (case-insensitive) in the concatenated item title and
+description.
+
+| Level | Keywords (any match) |
+| --- | --- |
+| `alert` | `outbreak`, `emergency`, `epidemic`, `pandemic` |
+| `warning` | `warning`, `spread`, `cases increasing` |
+| `watch` | (fallback when no keyword matches) |
+
+The keyword set is **editorial** — it is not derived from a published
+classification index (ECDC, WHO EWARN, ProMED). Treat the level as an
+opinionated newsroom triage signal, not a clinical assessment.
+
+## Inputs
+
+The classifier sees the item's `title` and `desc` fields after they are
+normalized by the per-source parser:
+
+- WHO Disease Outbreak News (`whoNormalizeItem`)
+- HealthMap / ProMED RSS (`rssNormalizeItem`)
+- TGH (`tghNormalizeItem`)
+
+There are no numeric scoring weights. The label is purely categorical and
+the order shown in the panel is `alert > warning > watch`.
+
+## Known limitations
+
+1. **Newsroom phrasing, not epidemiology.** A press release that uses the
+   word "outbreak" once will be promoted to `alert` even if the situation
+   is minor. Conversely, a serious situation reported without any of the
+   keywords will fall through to `watch`.
+2. **English-only keywords.** Non-English titles will systematically
+   under-classify until the source is translated upstream.
+3. **No multi-word context.** "False outbreak rumor" will still match
+   `outbreak` and be promoted to `alert`.
+
+These limitations are accepted for now because the source feeds are
+predominantly English-language press releases and the panel is positioned
+as a "what to look at next" surface rather than a risk score.
+
+## Change protocol
+
+If the keyword sets in `DISEASE_ALERT_KEYWORDS` or `DISEASE_WARNING_KEYWORDS`
+change:
+
+1. Bump `ALERT_LEVEL_METHODOLOGY_VERSION` in the same file. The seeder
+   stamps this onto the published payload as `alertLevelMethodologyVersion`,
+   so a bump observably propagates to clients and the canonical key.
+2. Update the table above to match.
+3. Add a regression test in `tests/disease-outbreaks-seed.test.mjs` covering
+   the new keyword behavior + at least one expected non-match (substring
+   guard).
+4. Note the change in the next release's changelog so cached / pre-rendered
+   payloads can be invalidated if necessary.
+
+## See also
+
+- Source: `scripts/_disease-outbreaks-helpers.mjs` → `detectAlertLevel`
+- Consumer: `src/components/DiseaseOutbreaksPanel.ts`
+- Tests: `tests/disease-outbreaks-seed.test.mjs`
+- Tracking: [#3791](https://github.com/koala73/worldmonitor/issues/3791)
+- Pattern reference: [CII risk scoring methodology](/methodology/cii-risk-scores) (same disclosure pattern, larger scope)

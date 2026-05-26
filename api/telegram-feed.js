@@ -29,8 +29,8 @@ export default async function handler(req) {
     const channel = (url.searchParams.get('channel') || '').trim();
     const params = new URLSearchParams();
     params.set('limit', String(limit));
-    if (topic) params.set('topic', encodeURIComponent(topic));
-    if (channel) params.set('channel', encodeURIComponent(channel));
+    if (topic) params.set('topic', topic);
+    if (channel) params.set('channel', channel);
 
     const relayUrl = `${relayBaseUrl}/telegram/feed?${params}`;
     const response = await fetchWithTimeout(relayUrl, {

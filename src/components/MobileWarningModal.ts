@@ -10,6 +10,8 @@ export class MobileWarningModal {
   constructor() {
     this.element = document.createElement('div');
     this.element.className = 'mobile-warning-overlay';
+    this.element.setAttribute('role', 'dialog');
+    this.element.setAttribute('aria-modal', 'true');
     this.element.innerHTML = `
       <div class="mobile-warning-modal">
         <div class="mobile-warning-header">

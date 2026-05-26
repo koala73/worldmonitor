@@ -20,10 +20,10 @@ export async function listGroceryBasketPrices(
   try {
     const result = await getCachedJson(SEED_CACHE_KEY, true) as ListGroceryBasketPricesResponse | null;
     if (!result?.countries?.length) {
-      return { countries: [], fetchedAt: '', cheapestCountry: '', mostExpensiveCountry: '', upstreamUnavailable: true };
+      return { countries: [], fetchedAt: '', cheapestCountry: '', mostExpensiveCountry: '', upstreamUnavailable: true, wowAvgPct: 0, wowAvailable: false, prevFetchedAt: '' };
     }
     return result;
   } catch {
-    return { countries: [], fetchedAt: '', cheapestCountry: '', mostExpensiveCountry: '', upstreamUnavailable: true };
+    return { countries: [], fetchedAt: '', cheapestCountry: '', mostExpensiveCountry: '', upstreamUnavailable: true, wowAvgPct: 0, wowAvailable: false, prevFetchedAt: '' };
   }
 }

@@ -65,8 +65,11 @@ export class PlaywrightProvider implements AcquisitionProvider {
   }
 
   async teardown(): Promise<void> {
-    await this.context?.close();
-    await this.browser?.close();
+    const timeout = new Promise<void>(r => setTimeout(r, 5000));
+    await Promise.race([
+      Promise.allSettled([this.context?.close(), this.browser?.close()]),
+      timeout,
+    ]);
     this.context = null;
     this.browser = null;
   }

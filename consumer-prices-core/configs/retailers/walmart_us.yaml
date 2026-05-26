@@ -1,0 +1,23 @@
+retailer:
+  slug: walmart_us
+  name: Walmart USA
+  marketCode: us
+  currencyCode: USD
+  adapter: search
+  baseUrl: https://www.walmart.com
+  enabled: true
+
+  searchConfig:
+    numResults: 5
+    urlPathContains: /ip/
+    queryTemplate: "{canonicalName} grocery {market} price"
+
+  rateLimit:
+    requestsPerMinute: 15
+    maxConcurrency: 1
+    delayBetweenRequestsMs: 4000
+
+  discovery:
+    mode: search
+    maxPages: 20
+    seeds: []

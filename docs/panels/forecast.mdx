@@ -1,0 +1,51 @@
+---
+title: "AI Forecasts"
+description: "AI-generated geopolitical forecasts — probability-calibrated predictions across conflict, markets, supply chain, political, military, cyber, and infrastructure domains, filterable by macro region."
+---
+
+The **AI Forecasts** panel (internal id `forecast`) surfaces probability-calibrated forecasts produced by WorldMonitor's forecasting pipeline. Each forecast is a structured prediction with a probability, a domain classification, a time horizon, and supporting signals; the panel exposes two axes of filtering (domain and macro-region) so you can home in on the slice that matters to you.
+
+## What the panel shows
+
+A list of active forecasts, filtered by two pill rows:
+
+### Domain filter
+
+`All` / `Conflict` / `Market` / `Supply Chain` / `Political` / `Military` / `Cyber` / `Infrastructure`
+
+### Region filter
+
+`All Regions` / `MENA` / `East Asia` / `Europe` / `South Asia` / `Africa` / `LatAm` / `N. America`
+
+Forecasts whose region does not classify (unknown or `global`) only appear under **All Regions**. The panel's minimum-probability floor is `0.1` (10%) — predictions below that threshold are suppressed from the panel view.
+
+Each forecast row shows the prediction text, the probability, the domain (color-coded), the time horizon, and a compact provenance trail.
+
+Panel id is `forecast`; canonical component is `src/components/ForecastPanel.ts`.
+
+## How you reach it
+
+- **Cmd+K**: type *forecast*, *ai forecast*, or *predictions ai*. The command palette label is "AI Forecasts" even though the internal panel id is `forecast`.
+- **Availability by variant**: registered and enabled by default in the **full/geopolitical** variant only. Not present in the tech, finance, commodity, or happy variants. Source: `FULL_PANELS` in `src/config/panels.ts`.
+
+## Data sources
+
+Primary RPC: `GET /api/forecast/v1/get-forecasts`. The panel also consumes two adjacent RPCs for the richer deep-simulation surface:
+
+- `GET /api/forecast/v1/get-simulation-package` — the most recent simulation inputs bundle.
+- `GET /api/forecast/v1/get-simulation-outcome` — the most recent simulation result.
+
+The forecasting pipeline runs as a Railway cron that pulls recent conflict, intelligence, markets, and supply-chain signals, runs them through the forecasting model, and writes the aggregated result at `forecast:predictions:v2` in Redis. Macro-region classification comes from `shared/forecast-macro-regions.js`.
+
+## Refresh cadence
+
+The seeder runs approximately **hourly**. The key is allowed up to **90 minutes** in `api/health.js` (`maxStaleMin: 90`) before the health surface escalates.
+
+## Tier & gating
+
+On **web**, AI Forecasts is currently in **trial** — free to anyone, including unauthenticated readers. On **desktop**, the same panel ships with `premium: 'locked'` in `src/config/panels.ts` so it is gated there. This split reflects the product's current trial positioning; expect the web gating to tighten over time.
+
+## API reference
+
+- [Forecast service](/api/ForecastService.openapi.yaml) — covers `get-forecasts`, `get-simulation-outcome`, and `get-simulation-package`.
+- For **programmatic prediction generation** (fresh probabilities outside the cached cron output), see the [MCP `generate_forecasts` tool](/mcp-server#ai-intelligence-live-llm).

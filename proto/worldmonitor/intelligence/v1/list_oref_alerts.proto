@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+import "sebuf/http/annotations.proto";
+
+// Request to fetch Israeli Red Alerts (OREF).
+message ListOrefAlertsRequest {
+  enum Mode {
+    MODE_UNSPECIFIED = 0;
+    MODE_HISTORY = 1;
+  }
+  // Mode selection. MODE_UNSPECIFIED defaults to active alerts.
+  Mode mode = 1 [(sebuf.http.query) = {name: "mode"}];
+}
+
+// OREF alert wave snapshot.
+message ListOrefAlertsResponse {
+  // Whether the OREF bridge is configured.
+  bool configured = 1;
+  // List of active alerts (if mode is ALERTS).
+  repeated OrefAlert alerts = 2;
+  // List of historical waves (if mode is HISTORY).
+  repeated OrefWave history = 3;
+  // Number of alerts in the last 24 hours.
+  int32 history_count_24h = 4;
+  // Total alerts in the historical buffer.
+  int32 total_history_count = 5;
+  
+  // Unix timestamp in milliseconds of the response generation.
+  int64 timestamp_ms = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  
+  // Optional error message from the relay.
+  string error = 7;
+}
+
+// A single Red Alert event.
+message OrefAlert {
+  string id = 1;
+  string cat = 2; // Category ID
+  string title = 3; // Locality name
+  repeated string data = 4; // Additional localities or metadata
+  string desc = 5; // Alert type description
+  
+  // Unix timestamp in milliseconds for when the alert was issued.
+  int64 timestamp_ms = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}
+
+// A wave of alerts occurring at the same time.
+message OrefWave {
+  repeated OrefAlert alerts = 1;
+  
+  // Unix timestamp in milliseconds for this wave.
+  int64 timestamp_ms = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}

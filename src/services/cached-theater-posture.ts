@@ -199,7 +199,7 @@ export async function fetchCachedTheaterPosture(signal?: AbortSignal): Promise<C
       const data = toPostureData(resp);
       saveToStorage(data);
       return data;
-    }, emptyFallback()),
+    }, emptyFallback(), { shouldCache: (r) => r.postures.length > 0 }),
     signal,
   );
 

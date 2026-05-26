@@ -43,7 +43,8 @@ describe('Fix 1: message.reasoning fallback', () => {
 // ========================================================================
 
 describe('Fix 2: thinking tag stripping formats', () => {
-  const src = readSrc('server/worldmonitor/news/v1/summarize-article.ts');
+  // stripThinkingTags was consolidated into server/_shared/llm.ts (todo 056 dedup)
+  const src = readSrc('server/_shared/llm.ts');
 
   it('strips <think> tags', () => {
     assert.match(src, /<think>/i, 'Should handle <think> tags');
@@ -252,8 +253,11 @@ describe('Fix 3: hasReasoningPreamble', () => {
 describe('Fix 4: cache version bump', () => {
   const src = readSrc('src/utils/summary-cache-key.ts');
 
-  it('CACHE_VERSION is v5', () => {
-    assert.match(src, /CACHE_VERSION\s*=\s*'v5'/,
-      'CACHE_VERSION must be v5 to invalidate entries from old conflating prompts');
+  it('CACHE_VERSION is v6', () => {
+    // Bumped v5 → v6 on 2026-04-24 for the RSS-description grounding fix (U6).
+    // Callers now thread per-headline article bodies through SummarizeArticle;
+    // pre-grounding rows were built from different prompts and must age out.
+    assert.match(src, /CACHE_VERSION\s*=\s*'v6'/,
+      'CACHE_VERSION must be v6 to invalidate pre-RSS-grounding cached summaries');
   });
 });

@@ -39,7 +39,7 @@ What runs locally:
 - **Threat classification:** Categorizing news events by threat type and severity
 - **AI Deduction:** Interactive geopolitical forecasting grounded in live data
 
-The desktop app (Tauri) discovers your local Ollama instance automatically. No configuration needed. Just install Ollama, pull a model, and open World Monitor.
+The desktop app ([Tauri](https://tauri.app/)) discovers your local [Ollama](https://ollama.com/) instance automatically. No configuration needed. Just install Ollama, pull a model, and open World Monitor.
 
 ### Tier 2: Groq (Llama 3.1 8B)
 
@@ -61,7 +61,7 @@ Beyond the LLM tiers, World Monitor runs several ML pipelines entirely in your b
 
 ### Named Entity Recognition (NER)
 
-Extracts people, organizations, locations, and dates from news headlines. Runs in a Web Worker using Transformers.js with ONNX models. Never touches a server.
+Extracts people, organizations, locations, and dates from news headlines. Runs in a Web Worker using [Transformers.js](https://huggingface.co/docs/transformers.js) with ONNX models. Never touches a server.
 
 ### Sentiment Analysis
 

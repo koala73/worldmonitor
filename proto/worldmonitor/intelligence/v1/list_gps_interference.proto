@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/intelligence/v1/gps_jamming.proto";
+
+// ListGpsInterferenceRequest specifies filters for GPS interference data.
+message ListGpsInterferenceRequest {
+  // Optional region filter.
+  string region = 1 [(sebuf.http.query) = {name: "region"}];
+}
+
+// ListGpsInterferenceResponse contains GPS interference data and stats.
+message ListGpsInterferenceResponse {
+  // List of hexagons with interference.
+  repeated GpsJamHex hexes = 1;
+  // Aggregate statistics.
+  GpsJamStats stats = 2;
+  // Data source name.
+  string source = 3;
+  // Data fetch time, as Unix epoch milliseconds.
+  int64 fetched_at = 4 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}

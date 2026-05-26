@@ -1,0 +1,17 @@
+syntax = "proto3";
+package worldmonitor.intelligence.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/intelligence/v1/satellite.proto";
+
+// ListSatellitesRequest specifies filters for orbital data.
+message ListSatellitesRequest {
+  // Filter by country code. Empty returns all.
+  string country = 1 [(sebuf.http.query) = {name: "country"}];
+}
+
+// ListSatellitesResponse contains the current orbital snapshot.
+message ListSatellitesResponse {
+  // Collection of tracked satellites.
+  repeated Satellite satellites = 1;
+}

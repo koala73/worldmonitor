@@ -21,6 +21,7 @@ import type {
 import { CITY_COORDS } from '../../../../api/data/city-coords';
 import { CHROME_UA, clampInt } from '../../../_shared/constants';
 import { cachedFetchJson } from '../../../_shared/redis';
+import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
 
 const REDIS_CACHE_KEY = 'research:tech-events:v1';
 const REDIS_CACHE_TTL = 21600; // 6 hr — weekly event data
@@ -33,26 +34,7 @@ const FETCH_TIMEOUT_MS = 8000;
 
 // ---------- Relay helpers (Railway proxy for blocked sources) ----------
 
-function getRelayBaseUrl(): string | null {
-  const relayUrl = process.env.WS_RELAY_URL;
-  if (!relayUrl) return null;
-  return relayUrl
-    .replace(/^ws(s?):\/\//, 'http$1://')
-    .replace(/\/$/, '');
-}
-
-function getRelayHeaders(): Record<string, string> {
-  const headers: Record<string, string> = {
-    'User-Agent': CHROME_UA,
-    Accept: 'application/rss+xml, application/xml, text/xml, text/calendar, */*',
-  };
-  const relaySecret = process.env.RELAY_SHARED_SECRET;
-  if (relaySecret) {
-    const relayHeader = (process.env.RELAY_AUTH_HEADER || 'x-relay-key').toLowerCase();
-    headers[relayHeader] = relaySecret;
-  }
-  return headers;
-}
+const RSS_ACCEPT = 'application/rss+xml, application/xml, text/xml, text/calendar, */*';
 
 async function fetchTextWithRelay(url: string): Promise<string | null> {
   // Try direct fetch first
@@ -78,7 +60,7 @@ async function fetchTextWithRelay(url: string): Promise<string | null> {
     try {
       const relayUrl = `${relayBase}/rss?url=${encodeURIComponent(url)}`;
       const resp = await fetch(relayUrl, {
-        headers: getRelayHeaders(),
+        headers: getRelayHeaders({ Accept: RSS_ACCEPT }),
         signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
       });
       if (resp.ok) {

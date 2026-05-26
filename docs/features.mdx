@@ -234,24 +234,42 @@ This prevents background tabs from consuming bandwidth while preserving user pre
 - Polymarket integration for event probability tracking
 - Correlation analysis with news events
 
+## Workflows
+
+Two full-screen, keyboard-first workflows complement the map + panels experience:
+
+- **[Route Explorer](/route-explorer)** — plan a shipment between any two countries. Four tabs (Current / Alternatives / Land / Impact) resolve chokepoint exposure, bypass corridors, land alternatives, and per-country import exposure for the selected HS2 commodity. PRO-gated.
+- **[Scenario Engine](/scenario-engine)** — run pre-built disruption scenarios (conflict, weather, sanctions, tariff shocks) and watch the impact resolve across chokepoints, sectors, and countries on the map and in the Supply Chain panel. PRO-gated.
+
+## Country-level risk
+
+Two complementary country-scoring surfaces:
+
+- **[Country Instability Index](/country-instability-index)** — a high-frequency stress score that blends conflict, unrest, news velocity, and security signals for a curated country set.
+- **[Country Resilience Index](/methodology/country-resilience-index)** — a ~220-country, 0-100 resilience score across 6 domains and 19 dimensions (grouped into 3 pillars: structural readiness, live shock exposure, recovery capacity), refreshed every 6 hours and sourced from official/authoritative providers with transparent imputation.
+
+CII and CRI answer different questions and are not interchangeable: CII is short-horizon stress; CRI is structural resilience plus live shock exposure.
+
 ## Search (Cmd+K)
 
-Universal command palette for navigating the entire application. All 55 panels, map views, layer toggles, and country briefs are searchable:
+Universal command palette for navigating the entire application. Every panel, map view, layer toggle, workflow, and country brief is searchable:
 
-- **Map navigation**: Jump to any region (Global, MENA, Europe, Asia-Pacific, Americas, Africa, Oceania)
-- **Layer presets**: Military, Finance, Infrastructure, Intel, All, None, Minimal
-- **Individual layers**: 30+ toggleable layers (AIS, flights, conflicts, cables, fires, GPS jamming, satellites, etc.)
-- **All panels**: Every panel is searchable by name and keywords, including:
-  - Intelligence: AI Insights, AI Forecasts, Strategic Posture, Live Intelligence, Intel Feed, Deduction
-  - Correlation: Force Posture, Escalation Monitor, Economic Warfare, Disaster Cascade
-  - News: Live News, World News, regional feeds (US, Europe, Middle East, Africa, Latin America, Asia-Pacific)
-  - Markets: Markets, Commodities, Crypto, Sector Heatmap, BTC ETF Tracker, Stablecoins, Market Radar, Gulf Economies
-  - Analysis: Country Instability, Strategic Risk, Infrastructure Cascade, Trade Policy, Supply Chain, Economic Indicators
-  - Tracking: Fires, UCDP Events, Displacement, Climate Anomalies, Security Advisories, Population Exposure
-  - Other: Webcams, World Clock, Tech Readiness, Airline Intel, Telegram Intel, Israel Sirens, Layoffs, My Monitors
-- **Country briefs**: Search any country name to open its intelligence brief or navigate the map
-- **Time range**: Filter events by 1h, 6h, 24h, 48h, or 7 days
-- **View controls**: Dark/light mode, fullscreen, settings, refresh all data
+- **Map navigation**: jump to any region (Global, MENA, Europe, Asia-Pacific, Americas, Africa, Oceania)
+- **Layer presets and individual layers**: flip presets (Military, Finance, Infrastructure, Intel, All, None, Minimal) or toggle individual layers by name (AIS, flights, conflicts, cables, fires, GPS jamming, satellites, etc.)
+- **Panels by family**:
+  - **AI & intelligence**: [AI Forecasts](/panels/forecast), [Latest Brief](/panels/latest-brief), [WM Analyst](/panels/chat-analyst), [AI Market Implications](/panels/market-implications), [Deduct Situation](/panels/deduction), [Daily Market Brief](/panels/daily-market-brief), [Regional Intelligence](/panels/regional-intelligence), [AI Strategic Posture](/panels/strategic-posture)
+  - **Markets & trading**: [Premium Stock Analysis](/panels/stock-analysis), [Premium Backtesting](/panels/stock-backtest), [WSB Ticker Scanner](/panels/wsb-ticker-scanner), plus the [Indicators & Signals](/panels/indicators-and-signals) catalogue (Fear & Greed, Macro Tiles, Yield Curve, Earnings / Economic calendars, ETF flows, crypto sectors, etc.)
+  - **Geopolitical & risk**: [Country Instability](/country-instability-index), [Country Resilience](/methodology/country-resilience-index), [Strategic Risk](/strategic-risk), [Infrastructure Cascade](/infrastructure-cascade)
+  - **Trade & supply chain**: [Trade Policy](/panels/trade-policy), [Supply Chain](/panels/supply-chain), [Sanctions Pressure](/panels/sanctions-pressure), [Hormuz Trade Tracker](/panels/hormuz-tracker), [Energy Crisis Tracker](/panels/energy-crisis)
+  - **Tracking & health**: [Disease Outbreaks](/panels/disease-outbreaks), [Radiation Watch](/panels/radiation-watch), [Thermal Escalation](/panels/thermal-escalation), [Consumer Prices](/panels/consumer-prices), fires, UCDP events, displacement, climate anomalies, security advisories, population exposure
+  - **News**: see the [News Feeds](/panels/news-feeds) catalogue for regional / topical / tech / finance / happy content streams.
+  - **Utilities**: [Airline Intelligence](/panels/airline-intel), [Tech Readiness Index](/panels/tech-readiness), [World Clock](/panels/world-clock), [My Monitors](/panels/monitors), [OREF Sirens](/panels/oref-sirens), [Telegram Intel](/panels/telegram-intel), [Financial Stress](/panels/fsi), Webcams, Layoffs
+- **Workflows**: open Route Explorer or activate a Scenario Engine template directly from the palette
+- **Country briefs**: search any country name to open its intelligence brief or navigate the map
+- **Time range**: filter events by 1h, 6h, 24h, 48h, or 7 days
+- **View controls**: dark/light mode, fullscreen, settings, refresh all data
+
+The full panel inventory lives in the app itself — Cmd+K surfaces what's available in your current variant rather than a fixed list.
 
 ## Data Export
 

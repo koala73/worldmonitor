@@ -1,0 +1,69 @@
+---
+title: "Chokepoint Methodology"
+description: "How World Monitor calibrates live flow estimates for the seven global oil & gas shipping chokepoints (Hormuz, Malacca, Suez, Bab el-Mandeb, Turkish Straits, Danish Straits, Panama)."
+---
+
+## What we track
+
+Seven oil & gas shipping chokepoints:
+
+| Chokepoint        | Baseline flow (mb/d) |
+|-------------------|----------------------|
+| Strait of Hormuz  | 21.0 |
+| Strait of Malacca | 17.2 |
+| Suez Canal / SUMED| 7.6  |
+| Bab el-Mandeb     | 6.2  |
+| Danish Straits    | 3.0  |
+| Turkish Straits   | 2.9  |
+| Panama Canal      | 0.9  |
+
+Baselines are EIA's 2023 World Oil Transit Chokepoints publication. Two chokepoints (Turkish + Danish Straits) are **not** covered by common competitor sites — they show up here.
+
+## How live flow is derived
+
+Not an editorial estimate. Every published flow number is calibrated from real observations on a 6-hour refresh:
+
+1. **Portwatch DWT** — IMF / World Bank vessel-tracking aggregation produces per-chokepoint deadweight tonnage by vessel class.
+2. **AIS-relay hazard matching** — our AIS ingestion (Railway relay) tags vessels within 500 km of a chokepoint with observed disruption signals (GPS jamming, AIS-off, anchorage clusters, Red/Orange GDACS alerts).
+3. **Flow estimate** = current DWT ÷ 365-day baseline DWT, expressed as % of baseline.
+4. **Confidence band** = function of vessel sample size and disruption-signal density.
+
+Refresh cadence: `energy:chokepoint-flows:v1` (6h Railway cron) + `supply_chain:chokepoints:v4` warm-ping (30 min).
+
+## Status badge derivation
+
+Each chokepoint has a derived public badge: `normal | restricted | disrupted | closed`. The badge is a deterministic function of:
+
+- Flow ratio (current mb/d ÷ baseline)
+- Active AIS disruption count within 500 km
+- War-risk tier (low / medium / high / extreme)
+- Active navigational warnings (NGA)
+
+We do not publish a bare conclusion label ("sanctions-blocked", "closed by Iran", etc.) without the underlying evidence fields visible alongside.
+
+## Every public number carries its grounds
+
+Every chokepoint card exposes its provenance via a standard attribution footer:
+
+- Source type (`ais` for Portwatch + AIS, `regulator` for EIA baselines)
+- Sample size (N AIS observations)
+- Method (`AIS-DWT calibrated`)
+- Confidence band (`high | medium | low`)
+- Data freshness (`Xh ago`)
+
+The footer is an `HTMLElement` with `data-attr-source`, `data-attr-n`, `data-attr-confidence` attributes so agents (MCP clients, scrapers, analyst tools) can extract the same provenance the eye can read.
+
+## Known limits
+
+- AIS signal drops over heavily-jammed regions (Bab el-Mandeb, Hormuz). Gaps are surfaced as reduced confidence, not synthesized away.
+- Baselines are annual averages. Seasonal swings (e.g. Suez winter/summer) aren't modeled yet.
+- No per-commodity breakdown (crude vs products vs LNG) at the strip level. Coming in a later release via the pipeline registry crosslink.
+
+## Corrections
+
+See [`/corrections`](/corrections) for the planned revision-log shape —
+every badge transition will write an entry there once the classifier
+ships. If you spot a wrong number today, open a GitHub issue at the
+[public repository](https://github.com/koala73/worldmonitor/issues).
+Corrections are handled manually in v1 and flow through the automated
+`override`-trigger path once the classifier is live.

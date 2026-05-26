@@ -1,0 +1,85 @@
+syntax = "proto3";
+
+package worldmonitor.resilience.v1;
+
+message DimensionFreshness {
+  // Unix milliseconds when the oldest constituent signal in this
+  // dimension was last observed (min fetchedAt across INDICATOR_REGISTRY
+  // entries for this dimension). 0 when no signal has ever been
+  // observed.
+  int64 last_observed_at_ms = 1;
+  // Worst staleness level across the dimension's constituent signals,
+  // classified by classifyStaleness against each signal's cadence.
+  // One of: "fresh", "aging", "stale". Empty string when no signals.
+  string staleness = 2;
+}
+
+message ResilienceDimension {
+  string id = 1;
+  double score = 2;
+  double coverage = 3;
+  double observed_weight = 4;
+  double imputed_weight = 5;
+  // Four-class imputation taxonomy (Phase 1 T1.7). One of:
+  // "stable-absence", "unmonitored", "source-failure", "not-applicable".
+  // Empty string when the dimension has any observed data AND is not
+  // structurally not-applicable. The "not-applicable" value (plan
+  // 2026-04-26-001 §U3) is emitted when the dim's construct does not
+  // apply to this country (e.g. sovereignFiscalBuffer for non-SWF
+  // economies); it is paired with coverage:0 and observed_weight:0 so
+  // the dim contributes nothing to the domain mean and is filtered
+  // out of user-facing confidence/coverage signals on both server and
+  // client. See docs/methodology/country-resilience-index.mdx.
+  string imputation_class = 6;
+  // Freshness aggregated across the constituent signals of the
+  // dimension. Phase 1 T1.5 of the reference-grade upgrade plan.
+  // Empty `last_observed_at_ms=0` + `staleness=""` when the dimension
+  // has no signals tracked in the indicator registry.
+  DimensionFreshness freshness = 7;
+}
+
+message ResilienceDomain {
+  string id = 1;
+  double score = 2;
+  double weight = 3;
+  repeated ResilienceDimension dimensions = 4;
+}
+
+message ResilienceRankingItem {
+  string country_code = 1;
+  double overall_score = 2;
+  string level = 3;
+  bool low_confidence = 4;
+  double overall_coverage = 5;
+  bool rank_stable = 6;
+  // Plan 2026-04-26-002 §U3 (PR 2) — eligibility flag for headline
+  // ranking. PR 2 populates `true` for every country; PR 6 / §U7 swaps
+  // to coverage-and-population logic and the headline endpoint then
+  // filters by this field.
+  bool headline_eligible = 7;
+}
+
+// Phase 2 T2.1/T2.3 of the country-resilience reference-grade upgrade plan.
+// Three-pillar response shape that regroups the 6 ResilienceDomains
+// (economic, infrastructure, energy, social-governance, health-food,
+// recovery) into long-run capacity (structural-readiness), current shock
+// pressure (live-shock-exposure), and recovery capability (recovery-capacity).
+// Pillar scores and coverage are real coverage-weighted aggregates computed
+// from the constituent domains; see _pillar-membership.ts for the mapping.
+// The top-level overall_score on GetResilienceScoreResponse remains a
+// domain-weighted aggregate (Σ domain.score * domain.weight) for this
+// release cycle; a pillar-combined score with penalty term is staged in
+// _shared.ts#penalizedPillarScore and validated by
+// scripts/validate-resilience-sensitivity.mjs ahead of the activation PR.
+message ResiliencePillar {
+  // "structural-readiness" | "live-shock-exposure" | "recovery-capacity".
+  string id = 1;
+  // Pillar score in [0, 100], coverage-weighted mean of member domains.
+  double score = 2;
+  // Pillar weight in the pillar-combined score. Per the plan: 0.40 / 0.35 / 0.25.
+  double weight = 3;
+  // Coverage in [0, 1], mean of member-domain average dimension coverage.
+  double coverage = 4;
+  // Subset of the 6 ResilienceDomains that compose this pillar.
+  repeated ResilienceDomain domains = 5;
+}

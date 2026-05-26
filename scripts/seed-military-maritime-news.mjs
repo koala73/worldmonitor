@@ -27,16 +27,32 @@ loadEnvFile(import.meta.url);
 const API_BASE = 'https://api.worldmonitor.app';
 const TIMEOUT = 30_000;
 
+// Defense-in-depth auth — see seed-infra.mjs for the same pattern + rationale.
+// Set WORLDMONITOR_RELAY_KEY on the Railway service to a value already
+// present in Vercel's WORLDMONITOR_VALID_KEYS.
+const RELAY_API_KEY = process.env.WORLDMONITOR_RELAY_KEY || '';
+
+function warmPingHeaders() {
+  const h = {
+    'Content-Type': 'application/json',
+    'User-Agent': CHROME_UA,
+    Origin: 'https://worldmonitor.app',
+  };
+  if (RELAY_API_KEY) h['X-WorldMonitor-Key'] = RELAY_API_KEY;
+  return h;
+}
+
 async function warmPing(name, path, body = {}) {
   try {
     const resp = await fetch(`${API_BASE}${path}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'User-Agent': CHROME_UA, Origin: 'https://worldmonitor.app' },
+      headers: warmPingHeaders(),
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(TIMEOUT),
     });
     if (!resp.ok) {
-      console.warn(`  ${name}: HTTP ${resp.status}`);
+      const keyNote = RELAY_API_KEY ? '' : ' (WORLDMONITOR_RELAY_KEY not set — Origin-only auth)';
+      console.warn(`  ${name}: HTTP ${resp.status}${keyNote}`);
       return false;
     }
     const data = await resp.json();

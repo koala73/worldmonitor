@@ -1,0 +1,27 @@
+retailer:
+  slug: coldstorage_sg
+  name: Cold Storage Singapore
+  marketCode: sg
+  currencyCode: SGD
+  adapter: search
+  baseUrl: https://coldstorage.com.sg
+  enabled: true
+
+  searchConfig:
+    numResults: 5
+    queryTemplate: "{canonicalName} grocery singapore {currency} price"
+    # coldstorage.com.sg product URLs are `/en/p/<name>/i/<id>.html` — the
+    # previous filter `/product/` matched zero URLs and rejected every Exa
+    # result for years (logged 2026-05-09: "5 URLs from Exa, 0 passed
+    # domain check" for every basket item).
+    urlPathContains: /p/
+
+  rateLimit:
+    requestsPerMinute: 10
+    maxConcurrency: 1
+    delayBetweenRequestsMs: 6000
+
+  discovery:
+    mode: search
+    maxPages: 20
+    seeds: []

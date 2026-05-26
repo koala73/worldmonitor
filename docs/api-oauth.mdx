@@ -1,0 +1,118 @@
+---
+title: "OAuth 2.1 Server"
+description: "Dynamic client registration, authorization, and token exchange endpoints that back the WorldMonitor MCP server."
+---
+
+WorldMonitor runs a minimal OAuth 2.1 authorization server whose only client-facing purpose today is **granting access to the MCP server** at `/api/mcp`. It implements:
+
+- [RFC 7591](https://datatracker.ietf.org/doc/html/rfc7591) — Dynamic Client Registration
+- [RFC 7636](https://datatracker.ietf.org/doc/html/rfc7636) — PKCE (required, S256 only)
+- [RFC 8414](https://datatracker.ietf.org/doc/html/rfc8414) — Authorization Server Metadata
+- [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) — Protected Resource Metadata
+
+## Discovery
+
+| URL | Purpose |
+|-----|---------|
+| `/.well-known/oauth-authorization-server` | AS metadata (endpoints, supported grants, PKCE methods) |
+| `/.well-known/oauth-protected-resource` | Resource metadata (authorization servers, scopes) |
+
+## Endpoints
+
+### `POST /api/oauth/register`
+
+Dynamic Client Registration. Returns a `client_id` (public clients, no secret).
+
+**Request**:
+```json
+{
+  "redirect_uris": ["https://claude.ai/api/mcp/auth_callback"],
+  "client_name": "Claude Desktop",
+  "token_endpoint_auth_method": "none"
+}
+```
+
+**Response**: `{ "client_id": "c_01HX...", "client_id_issued_at": 1713456789, ... }`
+
+**Redirect URI allowlist**: only these prefixes are accepted:
+- `https://claude.ai/api/mcp/auth_callback`
+- `https://claude.com/api/mcp/auth_callback`
+- `http://localhost:<port>` / `http://127.0.0.1:<port>` — any port
+
+**Rate limit**: 5 registrations / 60 s / IP.
+
+**Client TTL**: 90 days sliding (every successful token exchange refreshes).
+
+### `GET /api/oauth/authorize`
+
+Starts the OAuth flow. Renders a consent page that redirects to Clerk for sign-in, then issues an authorization code bound to the caller's PRO entitlement.
+
+**Required query params**:
+- `response_type=code`
+- `client_id` — from DCR
+- `redirect_uri` — must match the one registered
+- `code_challenge` — PKCE S256
+- `code_challenge_method=S256`
+- `state` — opaque
+- `scope` (optional)
+
+**Code TTL**: 10 minutes. Single-use (atomic `GETDEL` on exchange).
+
+### `POST /api/oauth/token`
+
+Exchanges an authorization code for an access token, or refreshes an existing token.
+
+**Grant type: `authorization_code`**:
+```
+grant_type=authorization_code
+code=<from /authorize>
+code_verifier=<PKCE>
+client_id=<from DCR>
+redirect_uri=<same as /authorize>
+```
+
+**Response**:
+```json
+{
+  "access_token": "wm_oat_...",
+  "token_type": "Bearer",
+  "expires_in": 3600,
+  "refresh_token": "wm_ort_...",
+  "scope": "mcp:read"
+}
+```
+
+**Grant type: `refresh_token`**:
+```
+grant_type=refresh_token
+refresh_token=<from previous exchange>
+client_id=<from DCR>
+```
+
+**Rate limit**: 10 token requests / minute / IP.
+
+**Token TTLs**:
+- Access token: 1 hour
+- Refresh token: 7 days
+
+All token-endpoint responses include `Cache-Control: no-store, Pragma: no-cache`.
+
+## Using tokens
+
+Pass the access token on every MCP request:
+
+```
+Authorization: Bearer wm_oat_...
+```
+
+Tokens are bound to the user's account and re-check entitlement on every call — a downgrade revokes access on the next request.
+
+## Error responses
+
+Per [RFC 6749 §5.2](https://datatracker.ietf.org/doc/html/rfc6749#section-5.2):
+
+```json
+{ "error": "invalid_grant", "error_description": "..." }
+```
+
+Common errors: `invalid_request`, `invalid_client`, `invalid_grant`, `unsupported_grant_type`, `invalid_scope`.

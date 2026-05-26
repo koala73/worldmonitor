@@ -1,0 +1,24 @@
+retailer:
+  slug: bigbasket_in
+  name: BigBasket India
+  marketCode: in
+  currencyCode: INR
+  adapter: search
+  baseUrl: https://www.bigbasket.com
+  enabled: true
+
+  searchConfig:
+    numResults: 5
+    urlPathContains: /pd/
+    queryTemplate: "{canonicalName} grocery {market} {currency} price"
+    inStockFromPrice: true  # BigBasket gates on delivery pincode, not product availability
+
+  rateLimit:
+    requestsPerMinute: 10
+    maxConcurrency: 1
+    delayBetweenRequestsMs: 6000
+
+  discovery:
+    mode: search
+    maxPages: 20
+    seeds: []

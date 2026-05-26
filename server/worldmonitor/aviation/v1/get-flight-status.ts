@@ -54,7 +54,9 @@ export async function getFlightStatus(
     _ctx: ServerContext,
     req: GetFlightStatusRequest,
 ): Promise<GetFlightStatusResponse> {
-    const flightNumber = req.flightNumber?.toUpperCase().replace(/\s/g, '') || '';
+    // Normalize: strip leading zeros from numeric suffix (EK03 → EK3, BA002 → BA2)
+    const flightNumber = (req.flightNumber?.toUpperCase().replace(/\s/g, '') || '')
+        .replace(/^([A-Z]{2,3})0+(\d+)$/, '$1$2');
     const date = req.date || new Date().toISOString().slice(0, 10);
     const origin = req.origin?.toUpperCase() || '';
     const cacheKey = `aviation:status:${flightNumber}:${date}:${origin}:v1`;

@@ -7,12 +7,17 @@ interface Props {
   metaTitle?: string;
   keywords?: string;
   pubDate: Date;
+  modifiedDate?: Date;
+  author?: string;
+  authorUrl?: string;
+  authorBio?: string;
   audience?: string;
   heroImage?: string;
   slug?: string;
+  rawBody?: string;
 }
 
-const { title, description, metaTitle, keywords, pubDate, audience, heroImage, slug } = Astro.props;
+const { title, description, metaTitle, keywords, pubDate, modifiedDate, author, authorUrl, authorBio, audience, heroImage, slug, rawBody } = Astro.props;
 const ogImage = heroImage || (slug ? `https://www.worldmonitor.app/blog/images/blog/${slug}.jpg` : undefined);
 const formattedDate = pubDate.toLocaleDateString('en-US', {
   year: 'numeric',
@@ -20,6 +25,19 @@ const formattedDate = pubDate.toLocaleDateString('en-US', {
   day: 'numeric',
 });
 const isoDate = pubDate.toISOString();
+const isoModifiedDate = modifiedDate ? modifiedDate.toISOString() : isoDate;
+const DEFAULT_AUTHOR = 'Elie Habib';
+const DEFAULT_AUTHOR_URL = 'https://x.com/eliehabib';
+const DEFAULT_AUTHOR_BIO = 'Founder of World Monitor. Previously co-founder &amp; CEO of Anghami (NASDAQ: ANGH). Building open-source global intelligence infrastructure.';
+const DEFAULT_AUTHOR_GITHUB = 'koala73';
+const authorName = author || DEFAULT_AUTHOR;
+const resolvedAuthorUrl = authorUrl || (authorName === DEFAULT_AUTHOR ? DEFAULT_AUTHOR_URL : undefined);
+const resolvedAuthorBio = authorBio || (authorName === DEFAULT_AUTHOR ? DEFAULT_AUTHOR_BIO : undefined);
+const avatarSrc = authorName === DEFAULT_AUTHOR
+  ? `https://unavatar.io/github/${DEFAULT_AUTHOR_GITHUB}`
+  : '/favico/apple-touch-icon.png';
+const showUpdated = modifiedDate && modifiedDate.getTime() !== pubDate.getTime();
+const formattedModifiedDate = modifiedDate ? modifiedDate.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : '';
 
 const breadcrumbLd = {
   "@context": "https://schema.org",
@@ -41,19 +59,15 @@ const breadcrumbLd = {
 
 const jsonLd = {
   "@context": "https://schema.org",
-  "@type": "Article",
+  "@type": "BlogPosting",
   "headline": metaTitle || title,
   "description": description,
   "datePublished": isoDate,
-  "dateModified": isoDate,
+  "dateModified": isoModifiedDate,
   "author": {
-    "@type": "Organization",
-    "name": "World Monitor",
-    "url": "https://worldmonitor.app",
-    "logo": {
-      "@type": "ImageObject",
-      "url": "https://www.worldmonitor.app/favico/apple-touch-icon.png"
-    }
+    "@type": "Person",
+    "name": authorName,
+    ...(resolvedAuthorUrl ? { "url": resolvedAuthorUrl } : {})
   },
   "publisher": {
     "@type": "Organization",
@@ -72,6 +86,27 @@ const jsonLd = {
   "url": Astro.url.href,
   ...(keywords ? { "keywords": keywords } : {})
 };
+
+function extractFaqLd(body: string | undefined): object | null {
+  if (!body) return null;
+  const faqIdx = body.indexOf('## Frequently Asked Questions');
+  if (faqIdx === -1) return null;
+  const afterFaq = body.slice(faqIdx + '## Frequently Asked Questions'.length);
+  const nextHeading = afterFaq.search(/\n##\s/);
+  const faqSection = nextHeading === -1 ? afterFaq : afterFaq.slice(0, nextHeading);
+  const qaRegex = /\*\*(.+?)\*\*\n([^\n*]+(?:\n[^\n*#]+)*)/g;
+  const items: { "@type": string; name: string; acceptedAnswer: { "@type": string; text: string } }[] = [];
+  let match: RegExpExecArray | null;
+  while ((match = qaRegex.exec(faqSection)) !== null) {
+    const q = match[1].trim();
+    const a = match[2].replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').trim();
+    if (q && a) items.push({ "@type": "Question", name: q, acceptedAnswer: { "@type": "Answer", text: a } });
+  }
+  if (items.length === 0) return null;
+  return { "@context": "https://schema.org", "@type": "FAQPage", "mainEntity": items };
+}
+
+const faqLd = extractFaqLd(rawBody);
 ---
 
 <Base
@@ -82,16 +117,19 @@ const jsonLd = {
   ogType="article"
   ogImage={ogImage}
   publishedTime={isoDate}
-  modifiedTime={isoDate}
+  modifiedTime={isoModifiedDate}
+  author={authorName}
   section={audience}
   jsonLd={jsonLd}
   breadcrumbLd={breadcrumbLd}
+  faqLd={faqLd ?? undefined}
 >
   <article>
     <div class="article-header">
       <a href="/blog/" class="back">&larr; All articles</a>
       <div class="meta">
         <time datetime={isoDate}>{formattedDate}</time>
+        {showUpdated && <span> &middot; Updated <time datetime={isoModifiedDate}>{formattedModifiedDate}</time></span>}
         {audience && <span> &middot; {audience}</span>}
       </div>
     </div>
@@ -106,6 +144,18 @@ const jsonLd = {
       <h3>See the World in Real Time</h3>
       <p>Markets, geopolitics, conflicts, infrastructure. One dashboard. No login required.</p>
       <a href="https://worldmonitor.app" class="btn" target="_blank" rel="noopener noreferrer">Open Dashboard</a>
+    </div>
+    <div class="author-bio">
+      <img src={avatarSrc} alt={authorName} width="48" height="48" class="author-avatar" loading="lazy" onerror="this.src='/favico/apple-touch-icon.png'" />
+      <div class="author-info">
+        <div class="author-name">
+          {resolvedAuthorUrl
+            ? <a href={resolvedAuthorUrl} target="_blank" rel="noopener noreferrer">{authorName}</a>
+            : <span>{authorName}</span>
+          }
+        </div>
+        {resolvedAuthorBio && <div class="author-desc" set:html={resolvedAuthorBio} />}
+      </div>
     </div>
   </article>
 </Base>

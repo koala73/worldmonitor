@@ -10,6 +10,10 @@ import { CHROME_UA } from '../../../_shared/constants';
 
 // 120s for anonymous OpenSky tier (~10 req/min limit); TODO: reduce to 10s on commercial tier
 const CACHE_TTL = 120;
+// Callsign searches hit the relay's in-memory index (5min TTL); cache positive hits 60s,
+// negative hits 10s so a retry after panning into view returns fresh data quickly.
+const CALLSIGN_CACHE_TTL = 60;
+const CALLSIGN_NEGATIVE_TTL = 10;
 
 interface OpenSkyResponse {
     states?: unknown[][];
@@ -39,26 +43,6 @@ function parseOpenSkyStates(states: unknown[][]): PositionSample[] {
         }));
 }
 
-function buildSimulatedPositions(icao24: string, callsign: string, swLat: number, swLon: number, neLat: number, neLon: number): PositionSample[] {
-    const now = Date.now();
-    const latSpan = neLat - swLat;
-    const lonSpan = neLon - swLon;
-    const count = latSpan > 0 && lonSpan > 0 ? Math.floor(Math.random() * 16) + 15 : 10;
-
-    return Array.from({ length: count }, (_, i) => ({
-        icao24: icao24 || `3c${(0x6543 + i).toString(16)}`,
-        callsign: callsign || `SIM${100 + i}`,
-        lat: swLat + Math.random() * (latSpan || 5),
-        lon: swLon + Math.random() * (lonSpan || 5),
-        altitudeM: 8000 + Math.random() * 3000,
-        groundSpeedKts: 400 + Math.random() * 100,
-        trackDeg: Math.random() * 360,
-        verticalRate: (Math.random() - 0.5) * 5,
-        onGround: false,
-        source: 'POSITION_SOURCE_SIMULATED' as const,
-        observedAt: now,
-    }));
-}
 
 const OPENSKY_PUBLIC_BASE = 'https://opensky-network.org/api';
 
@@ -84,11 +68,17 @@ async function fetchOpenSkyAnonymous(req: TrackAircraftRequest): Promise<Positio
 function buildCacheKey(req: TrackAircraftRequest): string {
     if (req.icao24) return `aviation:track:icao:${req.icao24}:v1`;
     if (req.swLat != null && req.neLat != null) {
-        return `aviation:track:${Math.floor(req.swLat)}:${Math.floor(req.swLon)}:${Math.ceil(req.neLat)}:${Math.ceil(req.neLon)}:v1`;
+        return `aviation:track:bbox:${Math.floor(req.swLat)}:${Math.floor(req.swLon)}:${Math.ceil(req.neLat)}:${Math.ceil(req.neLon)}:v1`;
     }
+    if (req.callsign) return `aviation:track:callsign:${req.callsign.toUpperCase()}:v1`;
     return 'aviation:track:all:v1';
 }
 
+// Response-level source values (TrackAircraftResponse.source):
+//   'opensky'           — data from OpenSky via relay
+//   'opensky-anonymous' — data from OpenSky public API (no auth, rate-limited)
+//   'wingbits'          — data from Wingbits via relay
+//   'none'              — all real sources returned empty or failed; positions = []
 export async function trackAircraft(
     _ctx: ServerContext,
     req: TrackAircraftRequest,
@@ -97,54 +87,22 @@ export async function trackAircraft(
 
     let result: { positions: PositionSample[]; source: string } | null = null;
     try {
+        const positiveTtl = req.callsign ? CALLSIGN_CACHE_TTL : CACHE_TTL;
+        const negativeTtl = req.callsign ? CALLSIGN_NEGATIVE_TTL : CACHE_TTL;
         result = await cachedFetchJson<{ positions: PositionSample[]; source: string }>(
-            cacheKey, CACHE_TTL, async () => {
+            cacheKey, positiveTtl, async () => {
                 const relayBase = getRelayBaseUrl();
+                const isCallsignOnly = !!req.callsign && req.swLat == null && req.icao24 == null;
 
-                // Try relay first if configured
-                if (relayBase) {
+                // For callsign-only searches, try Wingbits first — commercial flights like UAE20
+                // are Wingbits-exclusive and not visible in OpenSky. Trying OpenSky first wastes
+                // time and may return an early hit with no callsign match.
+                if (isCallsignOnly && relayBase) {
                     try {
-                        let osUrl: string;
-                        if (req.swLat != null && req.neLat != null) {
-                            osUrl = `${relayBase}/opensky/states/all?lamin=${req.swLat}&lomin=${req.swLon}&lamax=${req.neLat}&lomax=${req.neLon}`;
-                        } else if (req.icao24) {
-                            osUrl = `${relayBase}/opensky/states/all?icao24=${req.icao24}`;
-                        } else {
-                            osUrl = `${relayBase}/opensky/states/all`;
-                        }
-
-                        const resp = await fetch(osUrl, {
-                            headers: getRelayHeaders({}),
-                            signal: AbortSignal.timeout(10_000),
-                        });
-
-                        if (resp.ok) {
-                            const data = await resp.json() as OpenSkyResponse;
-                            const positions = parseOpenSkyStates(data.states ?? []);
-                            if (positions.length > 0) return { positions, source: 'opensky' };
-                        }
-                    } catch (err) {
-                        console.warn(`[Aviation] Relay failed: ${err instanceof Error ? err.message : err}`);
-                    }
-                }
-
-                // Try direct OpenSky anonymous API (no auth needed, ~10 req/min limit)
-                try {
-                    const directPositions = await fetchOpenSkyAnonymous(req);
-                    if (directPositions.length > 0) {
-                        return { positions: directPositions, source: 'opensky-anonymous' };
-                    }
-                } catch (err) {
-                    console.warn(`[Aviation] Direct OpenSky anonymous failed: ${err instanceof Error ? err.message : err}`);
-                }
-
-                // Try Wingbits relay (bbox only — no global fallback)
-                if (relayBase && req.swLat != null && req.neLat != null) {
-                    try {
-                        const wbUrl = `${relayBase}/wingbits/track?lamin=${req.swLat}&lomin=${req.swLon}&lamax=${req.neLat}&lomax=${req.neLon}`;
+                        const wbUrl = `${relayBase}/wingbits/track?callsign=${encodeURIComponent(req.callsign)}`;
                         const wbResp = await fetch(wbUrl, {
                             headers: getRelayHeaders({}),
-                            signal: AbortSignal.timeout(15_000),
+                            signal: AbortSignal.timeout(20_000),
                         });
                         if (wbResp.ok) {
                             const wbData = await wbResp.json() as WingbitsRelayResponse;
@@ -153,12 +111,68 @@ export async function trackAircraft(
                             }
                         }
                     } catch (err) {
-                        console.warn(`[Aviation] Wingbits relay failed: ${err instanceof Error ? err.message : err}`);
+                        console.warn(`[Aviation] Wingbits callsign relay failed: ${err instanceof Error ? err.message : err}`);
+                    }
+                }
+
+                // For bbox queries: run OpenSky relay and Wingbits relay in parallel.
+                // Sequential was 10s + 6s + 15s = 31s worst-case, exceeding Vercel's 25s limit.
+                // Parallel caps at 10s and gives merged coverage from both sources.
+                if (!isCallsignOnly && relayBase && req.swLat != null && req.neLat != null) {
+                    const osUrl = `${relayBase}/opensky/states/all?lamin=${req.swLat}&lomin=${req.swLon}&lamax=${req.neLat}&lomax=${req.neLon}`;
+                    const wbUrl = `${relayBase}/wingbits/track?lamin=${req.swLat}&lomin=${req.swLon}&lamax=${req.neLat}&lomax=${req.neLon}`;
+
+                    const [osResult, wbResult] = await Promise.allSettled([
+                        fetch(osUrl, { headers: getRelayHeaders({}), signal: AbortSignal.timeout(10_000) })
+                            .then(r => r.ok ? r.json() as Promise<OpenSkyResponse> : Promise.resolve(null))
+                            .then(d => d ? parseOpenSkyStates(d.states ?? []) : [])
+                            .catch(() => [] as PositionSample[]),
+                        fetch(wbUrl, { headers: getRelayHeaders({}), signal: AbortSignal.timeout(10_000) })
+                            .then(r => r.ok ? r.json() as Promise<WingbitsRelayResponse> : Promise.resolve(null))
+                            .then(d => d?.positions ?? [])
+                            .catch(() => [] as PositionSample[]),
+                    ]);
+
+                    const osPositions = osResult.status === 'fulfilled' ? osResult.value : [];
+                    const wbPositions = wbResult.status === 'fulfilled' ? wbResult.value : [];
+
+                    // Merge: Wingbits preferred for duplicates (more accurate for commercial flights).
+                    const seenIcao = new Set(wbPositions.map(p => p.icao24));
+                    const merged = [...wbPositions, ...osPositions.filter(p => !seenIcao.has(p.icao24))];
+                    if (merged.length > 0) {
+                        const source = wbPositions.length > 0 && osPositions.length > 0 ? 'wingbits'
+                            : wbPositions.length > 0 ? 'wingbits' : 'opensky';
+                        return { positions: merged, source };
+                    }
+
+                    // Both relay sources empty — try OpenSky anonymous as last resort
+                    try {
+                        const directPositions = await fetchOpenSkyAnonymous(req);
+                        if (directPositions.length > 0) {
+                            return { positions: directPositions, source: 'opensky-anonymous' };
+                        }
+                    } catch (err) {
+                        console.warn(`[Aviation] OpenSky anonymous failed: ${err instanceof Error ? err.message : err}`);
+                    }
+                }
+
+                // For icao24-only queries, try OpenSky relay then Wingbits
+                if (!isCallsignOnly && relayBase && req.icao24) {
+                    try {
+                        const osUrl = `${relayBase}/opensky/states/all?icao24=${req.icao24}`;
+                        const resp = await fetch(osUrl, { headers: getRelayHeaders({}), signal: AbortSignal.timeout(8_000) });
+                        if (resp.ok) {
+                            const data = await resp.json() as OpenSkyResponse;
+                            const positions = parseOpenSkyStates(data.states ?? []);
+                            if (positions.length > 0) return { positions, source: 'opensky' };
+                        }
+                    } catch (err) {
+                        console.warn(`[Aviation] Relay icao24 failed: ${err instanceof Error ? err.message : err}`);
                     }
                 }
 
                 return null; // negative-cached briefly
-            }, CACHE_TTL, // negative TTL same as positive — retry quickly
+            }, negativeTtl,
         );
     } catch {
         /* Redis unavailable — fall through to simulated */
@@ -171,7 +185,5 @@ export async function trackAircraft(
         return { positions, source: result.source, updatedAt: Date.now() };
     }
 
-    // Fallback to simulated data (not cached — random each time)
-    const positions = buildSimulatedPositions(req.icao24, req.callsign, req.swLat, req.swLon, req.neLat, req.neLon);
-    return { positions, source: 'simulated', updatedAt: Date.now() };
+    return { positions: [], source: 'none', updatedAt: Date.now() };
 }

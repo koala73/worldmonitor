@@ -20,10 +20,10 @@ export async function listBigMacPrices(
   try {
     const result = await getCachedJson(SEED_CACHE_KEY, true) as ListBigMacPricesResponse | null;
     if (!result?.countries?.length) {
-      return { countries: [], fetchedAt: '', cheapestCountry: '', mostExpensiveCountry: '' };
+      return { countries: [], fetchedAt: '', cheapestCountry: '', mostExpensiveCountry: '', wowAvgPct: 0, wowAvailable: false, prevFetchedAt: '' };
     }
     return result;
   } catch {
-    return { countries: [], fetchedAt: '', cheapestCountry: '', mostExpensiveCountry: '' };
+    return { countries: [], fetchedAt: '', cheapestCountry: '', mostExpensiveCountry: '', wowAvgPct: 0, wowAvailable: false, prevFetchedAt: '' };
   }
 }

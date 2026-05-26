@@ -12,9 +12,10 @@ interface Props {
   section?: string;
   jsonLd?: Record<string, unknown>;
   breadcrumbLd?: Record<string, unknown>;
+  faqLd?: Record<string, unknown>;
 }
 
-const { title, description, metaTitle, keywords, ogType, ogImage, publishedTime, modifiedTime, author, section, jsonLd, breadcrumbLd } = Astro.props;
+const { title, description, metaTitle, keywords, ogType, ogImage, publishedTime, modifiedTime, author, section, jsonLd, breadcrumbLd, faqLd } = Astro.props;
 const pageTitle = metaTitle || title;
 const resolvedOgImage = ogImage || 'https://www.worldmonitor.app/favico/og-image.png';
 const resolvedOgType = ogType || 'website';
@@ -67,6 +68,9 @@ const keywordTags = keywords ? keywords.split(',').map(k => k.trim()).slice(0, 6
     )}
     {breadcrumbLd && (
       <script type="application/ld+json" set:html={JSON.stringify(breadcrumbLd)} />
+    )}
+    {faqLd && (
+      <script type="application/ld+json" set:html={JSON.stringify(faqLd)} />
     )}
 
     <style is:global>

@@ -1,0 +1,171 @@
+---
+title: "Scenarios API"
+description: "Run pre-defined supply-chain disruption scenarios against any country and poll for worker-computed results."
+---
+
+The **scenarios** API is a PRO-only, job-queued surface on top of the WorldMonitor chokepoint + trade dataset. Callers enqueue a named scenario template against an optional country, then poll a job-id until the worker completes.
+
+<Info>
+This service is proto-backed — see `proto/worldmonitor/scenario/v1/service.proto`. Auto-generated reference will replace this page once the scenario service is included in the published OpenAPI bundle.
+</Info>
+
+<Note>
+**Legacy v1 URL aliases** — the sebuf migration (#3207) renamed the three v1 endpoints to align with the proto RPC names. The old URLs are preserved as thin aliases so existing integrations keep working:
+
+| Legacy URL | Canonical URL |
+|---|---|
+| `POST /api/scenario/v1/run` | `POST /api/scenario/v1/run-scenario` |
+| `GET /api/scenario/v1/status` | `GET /api/scenario/v1/get-scenario-status` |
+| `GET /api/scenario/v1/templates` | `GET /api/scenario/v1/list-scenario-templates` |
+
+Prefer the canonical URLs in new code — the aliases will retire at the next v1→v2 break (tracked in [#3282](https://github.com/koala73/worldmonitor/issues/3282)).
+</Note>
+
+## List templates
+
+### `GET /api/scenario/v1/list-scenario-templates`
+
+Returns the catalog of pre-defined scenario templates. Cached `public, max-age=3600`.
+
+**Response** — abbreviated example using one of the live shipped templates (`server/worldmonitor/supply-chain/v1/scenario-templates.ts`):
+```json
+{
+  "templates": [
+    {
+      "id": "hormuz-tanker-blockade",
+      "name": "Hormuz Strait Tanker Blockade",
+      "affectedChokepointIds": ["hormuz_strait"],
+      "disruptionPct": 100,
+      "durationDays": 14,
+      "affectedHs2": ["27", "29"],
+      "costShockMultiplier": 2.10
+    }
+  ]
+}
+```
+
+Other shipped templates at the time of writing: `taiwan-strait-full-closure`, `suez-bab-simultaneous`, `panama-drought-50pct`, `russia-baltic-grain-suspension`, `us-tariff-escalation-electronics`. Use the live `/list-scenario-templates` response as the source of truth — the set grows over time. `affectedHs2: []` on the wire means the scenario affects ALL sectors (the registry's `null` sentinel, which `repeated string` cannot carry directly).
+
+## Run a scenario
+
+### `POST /api/scenario/v1/run-scenario`
+
+Enqueues a job. Returns the assigned `jobId` the caller must poll.
+
+- **Auth**: PRO entitlement required. Granted by either (a) a valid `X-WorldMonitor-Key` (env key from `WORLDMONITOR_VALID_KEYS`, or a user-owned `wm_`-prefixed key whose owner has the `apiAccess` entitlement), **or** (b) a Clerk bearer token whose user has role `pro` or Dodo entitlement tier ≥ 1. A trusted browser Origin alone is **not** sufficient — `isCallerPremium()` in `server/_shared/premium-check.ts` only counts explicit credentials. Browser calls work because `premiumFetch()` (`src/services/premium-fetch.ts`) injects one of the two credential forms on the caller's behalf.
+- **Rate limits**:
+  - 10 jobs / minute / IP (enforced at the gateway via `ENDPOINT_RATE_POLICIES` in `server/_shared/rate-limit.ts`)
+  - Global queue capped at 100 in-flight jobs; excess rejected with `429`
+
+**Request**:
+```json
+{
+  "scenarioId": "hormuz-tanker-blockade",
+  "iso2": "SG"
+}
+```
+
+- `scenarioId` — id from `/list-scenario-templates`. Required.
+- `iso2` — optional ISO-3166-1 alpha-2 (uppercase). Scopes the scenario to one country. Empty string = scope-all.
+
+**Response (`200`)**:
+```json
+{
+  "jobId": "scenario:1713456789012:a1b2c3d4",
+  "status": "pending",
+  "statusUrl": "/api/scenario/v1/get-scenario-status?jobId=scenario%3A1713456789012%3Aa1b2c3d4"
+}
+```
+
+- `statusUrl` — server-computed convenience URL. Callers that don't want to hardcode the status path can follow this directly (it URL-encodes the `jobId`).
+
+<Warning>
+**Wire-contract change (v1 → v1)** — the pre-sebuf-migration endpoint returned `202 Accepted` on successful enqueue; the migrated endpoint returns `200 OK`. No per-RPC status-code configuration is available in sebuf's HTTP annotations today, and introducing a `/v2` for a single status-code shift was judged heavier than the break itself.
+
+If your integration branches on `response.status === 202`, switch to branching on response body shape (`response.body.status === "pending"` indicates enqueue success). `statusUrl` is preserved exactly as before and is a safe signal to key off.
+</Warning>
+
+**Errors**:
+
+| Status | `message` | Cause |
+|--------|-----------|-------|
+| 400 | `Validation failed` (violations include `scenarioId`) | Missing or unknown `scenarioId` |
+| 400 | `Validation failed` (violations include `iso2`) | Malformed `iso2` |
+| 403 | `PRO subscription required` | Not PRO |
+| 405 | — | Method other than `POST` (enforced by sebuf service-config) |
+| 429 | `Too many requests` | Per-IP 10/min gateway rate limit |
+| 429 | `Scenario queue is at capacity, please try again later` | Global queue > 100 |
+| 502 | `Failed to enqueue scenario job` | Redis enqueue failure |
+
+## Poll job status
+
+### `GET /api/scenario/v1/get-scenario-status?jobId=<jobId>`
+
+Returns the job's current state as written by the worker, or a synthesised `pending` stub while the job is still queued.
+
+- **Auth**: same as `/run-scenario`
+- **jobId format**: `scenario:{unix-ms}:{8-char-suffix}` — strictly validated to guard against path traversal
+
+**Status lifecycle**:
+
+| `status` | When |
+|---|---|
+| `pending` | Job enqueued but worker has not picked it up yet. Synthesised by the status handler when no Redis record exists. |
+| `processing` | Worker dequeued the job and started computing. |
+| `done` | Worker completed successfully; `result` is populated. |
+| `failed` | Worker hit a computation error; `error` is populated. |
+
+**Pending response (`200`)**:
+```json
+{ "status": "pending", "error": "" }
+```
+
+**Processing response (`200`)**:
+```json
+{ "status": "processing", "error": "" }
+```
+
+**Done response (`200`)** — `result` carries the worker's computed payload:
+
+```json
+{
+  "status": "done",
+  "error": "",
+  "result": {
+    "affectedChokepointIds": ["hormuz_strait"],
+    "topImpactCountries": [
+      { "iso2": "JP", "totalImpact": 1500.0, "impactPct": 100 }
+    ],
+    "template": {
+      "name": "hormuz_strait",
+      "disruptionPct": 100,
+      "durationDays": 14,
+      "costShockMultiplier": 2.10
+    }
+  }
+}
+```
+
+**Failed response (`200`)**:
+
+```json
+{ "status": "failed", "error": "computation_error" }
+```
+
+Poll loop: treat `pending` and `processing` as non-terminal; only `done` and `failed` are terminal. Both pending and processing can legitimately persist for several seconds under load.
+
+**Errors**:
+
+| Status | `message` | Cause |
+|--------|-----------|-------|
+| 400 | `Validation failed` (violations include `jobId`) | Missing or malformed `jobId` |
+| 403 | `PRO subscription required` | Not PRO |
+| 405 | — | Method other than `GET` (enforced by sebuf service-config) |
+| 502 | `Failed to fetch job status` | Redis read failure |
+
+## Polling strategy
+
+- First poll: ~1s after enqueue.
+- Subsequent polls: exponential backoff (1s → 2s → 4s, cap 10s).
+- Workers typically complete in 5-30 seconds depending on scenario complexity.
+- If still pending after 2 minutes, the job is probably dead — re-enqueue.

@@ -11,6 +11,7 @@ import "worldmonitor/military/v1/get_wingbits_status.proto";
 import "worldmonitor/military/v1/get_usni_fleet_report.proto";
 import "worldmonitor/military/v1/list_military_bases.proto";
 import "worldmonitor/military/v1/get_wingbits_live_flight.proto";
+import "worldmonitor/military/v1/list_defense_patents.proto";
 
 // MilitaryService provides APIs for military flight and vessel tracking
 // sourced from OpenSky, Wingbits, and AIS data.
@@ -55,5 +56,10 @@ service MilitaryService {
   // GetWingbitsLiveFlight retrieves real-time position data from the Wingbits ECS network for a single aircraft.
   rpc GetWingbitsLiveFlight(GetWingbitsLiveFlightRequest) returns (GetWingbitsLiveFlightResponse) {
     option (sebuf.http.config) = {path: "/get-wingbits-live-flight", method: HTTP_METHOD_GET};
+  }
+
+  // ListDefensePatents retrieves recent defense/dual-use patent filings from USPTO PatentsView.
+  rpc ListDefensePatents(ListDefensePatentsRequest) returns (ListDefensePatentsResponse) {
+    option (sebuf.http.config) = {path: "/list-defense-patents", method: HTTP_METHOD_GET};
   }
 }

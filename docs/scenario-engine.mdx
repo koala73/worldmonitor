@@ -1,0 +1,75 @@
+---
+title: "Scenario Engine"
+description: "Run pre-built supply-chain disruption scenarios — conflicts, sanctions, tariff shocks, and weather events — and see which chokepoints, sectors, and countries are exposed, directly on the map."
+---
+
+Scenario Engine turns WorldMonitor's live supply-chain graph into an interactive what-if tool. Instead of asking "what is the state of this lane today," you pick a named disruption scenario — a Hormuz closure, a Panama drought, a tariff shock on semiconductors — and the engine resolves the downstream impact on chokepoints, HS2 sectors, and countries, then paints the result onto the existing map.
+
+## Who it is for
+
+- **Supply-chain and commodity desks** stress-testing routing assumptions against a named event.
+- **Risk and policy teams** translating a geopolitical or environmental scenario into concrete country exposure.
+- **Leadership** building talking-tracks around "if X happens, what breaks first?"
+
+## Opening the engine
+
+Scenario Engine lives inside the **Supply Chain** panel on the main dashboard. Each pre-built scenario template renders as a trigger button; clicking a scenario starts an async job and activates the visual overlay once results land.
+
+You can also drive it programmatically — see [Scenarios API](/api-scenarios) for the `/templates`, `/run`, and `/status` endpoints.
+
+## Scenario templates
+
+Templates are defined in `server/worldmonitor/supply-chain/v1/scenario-templates.ts`. Each template has a `type` drawn from a small, curated set so scenarios are browsable by category rather than a free-form list.
+
+The currently shipped types are:
+
+| Type | What it models |
+|---|---|
+| `conflict` | Chokepoint closure or degradation driven by an active conflict event (Taiwan Strait full closure, Suez + Bab-el-Mandeb simultaneous, Hormuz tanker blockade). |
+| `weather` | Climatic disruption — e.g. the Panama Canal 50% drought scenario. |
+| `sanctions` | Targeted trade restrictions (e.g. Russia / Baltic grain suspension). |
+| `tariff_shock` | A sudden tariff action and its cost pass-through (e.g. US tariff escalation on electronics). |
+
+Each template declares the chokepoints it affects (IDs from the chokepoint registry), a duration in days, affected HS2 sectors, and a cost-shock multiplier. Run them as-is — there are no sliders in v1. The `ScenarioType` union leaves room for `infrastructure` and `pandemic` categories, but no templates of those types ship today.
+
+## What you get back
+
+A completed scenario returns:
+
+- **Affected chokepoints** — which ones go red on the map.
+- **Impact ranking** — the top affected countries by ISO-2, ordered by exposure, with per-country import-value impact against the selected HS2 sectors.
+- **Sector call-outs** — which HS2 chapters take the biggest hit.
+- **A summary card** injected into the Supply Chain panel that stays visible until you deactivate the scenario.
+
+The UI is state-driven, not modal — activating a scenario sets a `scenarioState` on every map renderer (deck.gl, globe, SVG fallback) so chokepoint colors and country choropleths reflect the disruption until you deactivate. This is coordinated by `MapContainer.activateScenario` at `src/components/MapContainer.ts:1010`, which is explicitly PRO-gated.
+
+## Tier & gating
+
+Scenario Engine is **PRO**. Free users see the trigger buttons but are blocked at activation: a `scenario-engine` gate-hit event is logged and the map is not repainted. The `ScenarioService.RunScenario` handler also enforces PRO at the edge (`server/worldmonitor/scenario/v1/run-scenario.ts`).
+
+Rate limits on the API side — 10 jobs / minute / IP, with a global queue cap at 100 in-flight — are documented in [Scenarios API](/api-scenarios#run-a-scenario).
+
+## Run it yourself
+
+The workflow is inherently async — the edge function enqueues a job, a Railway worker computes the impact, and the result is polled back:
+
+1. Open the Supply Chain panel.
+2. Click a scenario trigger button (the template name).
+3. The button disables while the job runs (typically 5-30 s).
+4. When the result lands, the map repaints, and a scenario banner is prepended to the panel. The banner always shows: a ⚠ icon, the scenario name, the top 5 impacted countries with per-country impact %, and a **×** dismiss control. When the scenario's result payload includes template parameters (duration, disruption %, cost-shock multiplier), the banner additionally renders a chip row (e.g. `14d · +110% cost`) and a tagline line such as *"Simulating 14d / 100% closure / +110% cost on 1 chokepoint. Chokepoint card below shows projected score; map highlights disrupted routes."* The affected chokepoints themselves are highlighted on the map and on the chokepoint cards rather than listed by name in the banner.
+5. Click the **×** dismiss control on the banner (aria-label: "Dismiss scenario") to clear the scenario state — the map repaints to its baseline and the panel re-renders without the projected score and red-border callouts.
+
+For scripted use, see [`POST /api/scenario/v1/run-scenario`](/api-scenarios#run-a-scenario) — enqueue, then poll `GET /api/scenario/v1/get-scenario-status` until the response has a terminal status (`"done"` on success, `"failed"` on error). Non-terminal states are `"pending"` (queued) and `"processing"` (worker started); both can persist for several seconds. See the [status lifecycle table](/api-scenarios#poll-job-status) for the full contract.
+
+## Data behind Scenario Engine
+
+- **Scenario templates** — `server/worldmonitor/supply-chain/v1/scenario-templates.ts`. Additions require a proto-side change; not user-configurable today.
+- **Job queue** — Redis list `scenario-queue:pending`; worker results land at `scenario-result:{jobId}`.
+- **Chokepoint registry** — the same registry that backs live chokepoint status and Route Explorer, ensuring scenario results visually align with the rest of the product.
+- **Trade / impact data** — HS2 import exposure per country, sourced from the supply-chain cache set.
+
+## Related workflows
+
+- [Route Explorer](/route-explorer) — run a specific lane against *today's* state.
+- [Scenarios API](/api-scenarios) — the underlying HTTP contract.
+- [Supply Chain](/api/SupplyChainService.openapi.yaml) — the broader service that backs the Supply Chain panel.

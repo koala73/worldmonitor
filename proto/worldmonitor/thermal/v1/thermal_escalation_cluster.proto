@@ -2,7 +2,6 @@ syntax = "proto3";
 
 package worldmonitor.thermal.v1;
 
-import "sebuf/http/annotations.proto";
 import "worldmonitor/core/v1/geo.proto";
 
 message ThermalEscalationCluster {

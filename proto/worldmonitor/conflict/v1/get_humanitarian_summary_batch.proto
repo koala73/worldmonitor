@@ -3,7 +3,6 @@ syntax = "proto3";
 package worldmonitor.conflict.v1;
 
 import "buf/validate/validate.proto";
-import "sebuf/http/annotations.proto";
 import "worldmonitor/conflict/v1/humanitarian_summary.proto";
 
 // GetHumanitarianSummaryBatchRequest looks up humanitarian summaries for multiple countries.

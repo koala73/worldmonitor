@@ -1,0 +1,46 @@
+---
+title: "AI Market Implications"
+description: "AI-generated long/short/hedge trade signals with direction, confidence, and transmission-path context — derived from the day's news and market signals."
+---
+
+The **AI Market Implications** panel (internal id `market-implications`) turns today's intelligence and market flow into structured, probability-weighted trade ideas. Each card has a direction (`LONG` / `SHORT` / `HEDGE`), a confidence bucket (`HIGH` / `MEDIUM` / `LOW`), and a transmission-path note explaining *why* the signal was generated.
+
+<Warning>
+Panel header carries a standing disclaimer: "AI-generated trade signals for informational purposes only. Not investment advice. Always do your own research." — `DISCLAIMER` constant in `src/components/MarketImplicationsPanel.ts`.
+</Warning>
+
+## What the panel shows
+
+A list of market-implication cards. Each card shows:
+
+- **Direction** badge — `LONG` (bullish), `SHORT` (bearish), `HEDGE` (neutral / defensive).
+- **Confidence** badge — `HIGH` / `MEDIUM` / `LOW`.
+- **Asset** — ticker or instrument.
+- **Rationale** — short narrative paragraph.
+- **Transmission path** — the chain that gets from the triggering event to the named asset (`TransmissionNode[]`).
+
+Above the cards sits a **Framework selector** — the same `FrameworkSelector` used by other LLM panels — which lets PRO users re-run the analysis against an alternative analytical framework.
+
+Panel id is `market-implications`; canonical component is `src/components/MarketImplicationsPanel.ts`. Title per `src/config/panels.ts:109`.
+
+## How you reach it
+
+- **Cmd+K**: type *market implications* or *trade signals*.
+- **Availability by variant**: registered and enabled by default in the **full/geopolitical** variant only (`premium: 'locked'` at `src/config/panels.ts:109`). Not present in the tech, finance, commodity, or happy variants.
+
+## Data sources
+
+Market Implications cards are produced by the forecast-simulation pipeline in the Railway `seed-forecasts` cron: the LLM consumes the day's intelligence, conflict, and markets signals and emits a structured `MarketImplicationsData` payload. The panel reads this through `@/services/market-implications`; freshness is surfaced via `describeFreshness()` in the panel footer.
+
+## Refresh cadence
+
+Bundled into the forecast cron, which runs approximately hourly. `api/health.js` allows up to **120 minutes** (`maxStaleMin: 120`) on `seed-meta:intelligence:market-implications` — 2× the nominal interval — before the health surface escalates. Market Implications is treated as a soft-dependency seed (`marketImplications` is in `DEGRADE_TO_WARN` in `api/health.js`) because the LLM step can fail silently without corrupting upstream caches.
+
+## Tier & gating
+
+**PRO (hard-locked).** `premium: 'locked'` in `src/config/panels.ts:109`. `isPanelEntitled` unlocks it when **either** a valid `WORLDMONITOR_API_KEY` is present **or** `isPro` is true (`market-implications` is in the `apiKeyPanels` allowlist at `src/config/panels.ts:973`).
+
+## API reference
+
+- [Intelligence service](/api/IntelligenceService.openapi.yaml) — backing RPCs for the LLM-backed intelligence family.
+- Related: [AI Forecasts](/panels/forecast) — same cron produces the forecast feed.

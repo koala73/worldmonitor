@@ -65,6 +65,12 @@ message WingbitsLiveFlight {
   string photo_link = 26;
   // Photographer credit name.
   string photo_credit = 27;
+
+  // Airline — resolved server-side from the ICAO callsign prefix.
+  // IATA-equivalent callsign (e.g. "EK528" for ICAO "UAE528"). Empty if no mapping.
+  string callsign_iata = 28;
+  // Airline name (e.g. "Emirates"). Empty if no mapping.
+  string airline_name = 29;
 }
 
 // GetWingbitsLiveFlightRequest fetches live Wingbits ECS data for a single aircraft.

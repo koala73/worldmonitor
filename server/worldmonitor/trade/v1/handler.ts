@@ -5,6 +5,7 @@ import { getTariffTrends } from './get-tariff-trends';
 import { getTradeFlows } from './get-trade-flows';
 import { getTradeBarriers } from './get-trade-barriers';
 import { getCustomsRevenue } from './get-customs-revenue';
+import { listComtradeFlows } from './list-comtrade-flows';
 
 export const tradeHandler: TradeServiceHandler = {
   getTradeRestrictions,
@@ -12,4 +13,5 @@ export const tradeHandler: TradeServiceHandler = {
   getTradeFlows,
   getTradeBarriers,
   getCustomsRevenue,
+  listComtradeFlows,
 };

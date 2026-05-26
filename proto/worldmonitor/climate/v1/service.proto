@@ -3,7 +3,12 @@ syntax = "proto3";
 package worldmonitor.climate.v1;
 
 import "sebuf/http/annotations.proto";
+import "worldmonitor/climate/v1/get_co2_monitoring.proto";
+import "worldmonitor/climate/v1/get_ocean_ice_data.proto";
+import "worldmonitor/climate/v1/list_air_quality_data.proto";
 import "worldmonitor/climate/v1/list_climate_anomalies.proto";
+import "worldmonitor/climate/v1/list_climate_disasters.proto";
+import "worldmonitor/climate/v1/list_climate_news.proto";
 
 // ClimateService provides APIs for climate anomaly data sourced from Open-Meteo.
 service ClimateService {
@@ -12,5 +17,30 @@ service ClimateService {
   // ListClimateAnomalies retrieves temperature and precipitation anomalies from ERA5 data.
   rpc ListClimateAnomalies(ListClimateAnomaliesRequest) returns (ListClimateAnomaliesResponse) {
     option (sebuf.http.config) = {path: "/list-climate-anomalies", method: HTTP_METHOD_GET};
+  }
+
+  // ListClimateDisasters retrieves climate-relevant disaster events from seeded data.
+  rpc ListClimateDisasters(ListClimateDisastersRequest) returns (ListClimateDisastersResponse) {
+    option (sebuf.http.config) = {path: "/list-climate-disasters", method: HTTP_METHOD_GET};
+  }
+
+  // GetCo2Monitoring retrieves seeded NOAA greenhouse gas monitoring data.
+  rpc GetCo2Monitoring(GetCo2MonitoringRequest) returns (GetCo2MonitoringResponse) {
+    option (sebuf.http.config) = {path: "/get-co2-monitoring", method: HTTP_METHOD_GET};
+  }
+
+  // GetOceanIceData retrieves seeded Arctic sea ice, sea level, and ocean heat indicators.
+  rpc GetOceanIceData(GetOceanIceDataRequest) returns (GetOceanIceDataResponse) {
+    option (sebuf.http.config) = {path: "/get-ocean-ice-data", method: HTTP_METHOD_GET};
+  }
+
+  // ListAirQualityData retrieves recent PM2.5 station data from the shared air-quality seed.
+  rpc ListAirQualityData(ListAirQualityDataRequest) returns (ListAirQualityDataResponse) {
+    option (sebuf.http.config) = {path: "/list-air-quality-data", method: HTTP_METHOD_GET};
+  }
+
+  // ListClimateNews retrieves latest climate/environment intelligence headlines from seeded RSS feeds.
+  rpc ListClimateNews(ListClimateNewsRequest) returns (ListClimateNewsResponse) {
+    option (sebuf.http.config) = {path: "/list-climate-news", method: HTTP_METHOD_GET};
   }
 }

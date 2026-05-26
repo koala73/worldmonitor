@@ -11,9 +11,12 @@
 // - Historical Pass Log: which sats passed over a location in the last 24h
 //   (useful for identifying imaging windows after events)
 
-import { toApiUrl } from '@/services/runtime';
+import { getRpcBaseUrl } from '@/services/rpc-client';
+import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import { twoline2satrec, propagate, eciToGeodetic, gstime, degreesLong, degreesLat } from 'satellite.js';
 import type { SatRec } from 'satellite.js';
+
+const intelligenceClient = new IntelligenceServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 
 export interface SatelliteTLE {
   noradId: string;
@@ -57,13 +60,25 @@ export async function fetchSatelliteTLEs(): Promise<SatelliteTLE[] | null> {
   if (cachedData && now - cachedAt < CACHE_TTL) return cachedData;
 
   try {
-    const resp = await fetch(toApiUrl('/api/satellites'), {
-      signal: AbortSignal.timeout(20_000),
-    });
-    if (!resp.ok) return cachedData;
-
-    const raw = await resp.json();
-    const satellites = (raw.satellites ?? []) as SatelliteTLE[];
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 20_000);
+    let resp;
+    try {
+      resp = await intelligenceClient.listSatellites({ country: '' }, { signal: controller.signal });
+    } finally {
+      clearTimeout(timeoutId);
+    }
+    // Proto returns `id` (the NORAD identifier); local SatelliteTLE uses `noradId`.
+    // `alt`/`velocity`/`inclination` in the proto are unused by the propagation
+    // client — we compute them ourselves from the TLE via satellite.js.
+    const satellites: SatelliteTLE[] = (resp.satellites ?? []).map((s) => ({
+      noradId: s.id,
+      name: s.name,
+      line1: s.line1,
+      line2: s.line2,
+      type: s.type,
+      country: s.country,
+    }));
     cachedData = satellites;
     cachedAt = now;
     failures = 0;

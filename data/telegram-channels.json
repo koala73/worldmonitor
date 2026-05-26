@@ -1,13 +1,13 @@
 {
   "version": 1,
-  "updatedAt": "2026-03-19T00:00:00Z",
+  "updatedAt": "2026-04-09T00:00:00Z",
   "note": "Product-managed curated list. Not user-configurable.",
   "channels": {
     "full": [
       {
         "handle": "VahidOnline",
         "label": "Vahid Online",
-        "topic": "politics",
+        "topic": "geopolitics",
         "tier": 1,
         "enabled": true,
         "region": "iran",
@@ -77,9 +77,9 @@
         "maxMessages": 25
       },
       {
-        "handle": "iranintltv",
-        "label": "Iran International",
-        "topic": "politics",
+        "handle": "IranIntl_En",
+        "label": "Iran International EN",
+        "topic": "geopolitics",
         "tier": 2,
         "enabled": true,
         "region": "iran",
@@ -88,7 +88,7 @@
       {
         "handle": "kpszsu",
         "label": "Air Force of the Armed Forces of Ukraine",
-        "topic": "alerts",
+        "topic": "breaking",
         "tier": 2,
         "enabled": true,
         "region": "ukraine",
@@ -169,7 +169,7 @@
       {
         "handle": "nexta_tv",
         "label": "NEXTA",
-        "topic": "politics",
+        "topic": "geopolitics",
         "tier": 3,
         "enabled": true,
         "region": "europe",
@@ -232,7 +232,7 @@
       {
         "handle": "war_monitor",
         "label": "monitor",
-        "topic": "alerts",
+        "topic": "breaking",
         "tier": 3,
         "enabled": true,
         "region": "ukraine",
@@ -241,7 +241,7 @@
       {
         "handle": "nayaforiraq",
         "label": "Naya for Iraq",
-        "topic": "politics",
+        "topic": "geopolitics",
         "tier": 3,
         "enabled": true,
         "region": "middleeast",
@@ -309,6 +309,204 @@
         "enabled": true,
         "region": "middleeast",
         "maxMessages": 20
+      },
+      {
+        "handle": "middleeastobserver",
+        "label": "Middle East Observer",
+        "topic": "geopolitics",
+        "tier": 2,
+        "enabled": true,
+        "region": "middleeast",
+        "maxMessages": 20
+      },
+      {
+        "handle": "MiddleEastEye_TG",
+        "label": "Middle East Eye",
+        "topic": "geopolitics",
+        "tier": 2,
+        "enabled": true,
+        "region": "middleeast",
+        "maxMessages": 20
+      },
+      {
+        "handle": "dragonwatch",
+        "label": "Dragon Watch",
+        "topic": "geopolitics",
+        "tier": 2,
+        "enabled": true,
+        "region": "asia",
+        "maxMessages": 20
+      },
+      {
+        "handle": "IDFofficial",
+        "label": "IDF Official",
+        "topic": "breaking",
+        "tier": 1,
+        "enabled": true,
+        "region": "middleeast",
+        "maxMessages": 25
+      },
+      {
+        "handle": "RocketAlert",
+        "label": "Rocket Alert",
+        "topic": "breaking",
+        "tier": 1,
+        "enabled": true,
+        "region": "middleeast",
+        "maxMessages": 25
+      },
+      {
+        "handle": "sepah",
+        "label": "IRGC Official",
+        "topic": "conflict",
+        "tier": 2,
+        "enabled": true,
+        "region": "iran",
+        "maxMessages": 20
+      },
+      {
+        "handle": "defapress_ir",
+        "label": "DefaPress (Iran MOD)",
+        "topic": "conflict",
+        "tier": 2,
+        "enabled": true,
+        "region": "iran",
+        "maxMessages": 20
+      },
+      {
+        "handle": "TasnimNewsEN",
+        "label": "Tasnim News EN",
+        "topic": "geopolitics",
+        "tier": 2,
+        "enabled": true,
+        "region": "iran",
+        "maxMessages": 20
+      },
+      {
+        "handle": "PressTV",
+        "label": "PressTV (Iran State)",
+        "topic": "geopolitics",
+        "tier": 2,
+        "enabled": true,
+        "region": "iran",
+        "maxMessages": 20
+      },
+      {
+        "handle": "FarsNews_EN",
+        "label": "Fars News EN",
+        "topic": "geopolitics",
+        "tier": 2,
+        "enabled": true,
+        "region": "iran",
+        "maxMessages": 20
+      },
+      {
+        "handle": "SaberinFa",
+        "label": "Saberin (IRGC Intel)",
+        "topic": "conflict",
+        "tier": 2,
+        "enabled": true,
+        "region": "iran",
+        "maxMessages": 20
+      },
+      {
+        "handle": "warfareanalysis",
+        "label": "Warfare Analysis",
+        "topic": "conflict",
+        "tier": 2,
+        "enabled": true,
+        "region": "global",
+        "maxMessages": 20
+      },
+      {
+        "handle": "rnintel",
+        "label": "RN Intel",
+        "topic": "osint",
+        "tier": 2,
+        "enabled": true,
+        "region": "global",
+        "maxMessages": 20
+      },
+      {
+        "handle": "bintjbeilnews",
+        "label": "Bint Jbeil News",
+        "topic": "middleeast",
+        "tier": 3,
+        "enabled": true,
+        "region": "middleeast",
+        "maxMessages": 15
+      },
+      {
+        "handle": "HAMASW",
+        "label": "Hamas-Israel War",
+        "topic": "conflict",
+        "tier": 3,
+        "enabled": true,
+        "region": "middleeast",
+        "maxMessages": 15
+      },
+      {
+        "handle": "QudsNen",
+        "label": "Quds News",
+        "topic": "middleeast",
+        "tier": 3,
+        "enabled": true,
+        "region": "middleeast",
+        "maxMessages": 15
+      },
+      {
+        "handle": "Alsaa_plus_EN",
+        "label": "Al-Saa EN",
+        "topic": "middleeast",
+        "tier": 3,
+        "enabled": true,
+        "region": "middleeast",
+        "maxMessages": 15
+      },
+      {
+        "handle": "GeoPWatch",
+        "label": "GeoPol Watch",
+        "topic": "geopolitics",
+        "tier": 3,
+        "enabled": true,
+        "region": "global",
+        "maxMessages": 15
+      },
+      {
+        "handle": "dropsitenews",
+        "label": "Drop Site News",
+        "topic": "osint",
+        "tier": 3,
+        "enabled": true,
+        "region": "global",
+        "maxMessages": 15
+      },
+      {
+        "handle": "france24_en",
+        "label": "France 24 EN",
+        "topic": "geopolitics",
+        "tier": 3,
+        "enabled": true,
+        "region": "global",
+        "maxMessages": 15
+      },
+      {
+        "handle": "kianmeli1",
+        "label": "Kian Meli (Iran)",
+        "topic": "geopolitics",
+        "tier": 3,
+        "enabled": true,
+        "region": "iran",
+        "maxMessages": 15
+      },
+      {
+        "handle": "TimesofIsrael",
+        "label": "Times of Israel",
+        "topic": "breaking",
+        "tier": 3,
+        "enabled": true,
+        "region": "middleeast",
+        "maxMessages": 15
       }
     ],
     "tech": [
@@ -365,6 +563,24 @@
         "enabled": true,
         "region": "global",
         "maxMessages": 20
+      },
+      {
+        "handle": "vxunderground",
+        "label": "vx-underground",
+        "topic": "cyber",
+        "tier": 2,
+        "enabled": true,
+        "region": "global",
+        "maxMessages": 20
+      },
+      {
+        "handle": "falconfeeds",
+        "label": "FalconFeeds.io",
+        "topic": "cyber",
+        "tier": 3,
+        "enabled": true,
+        "region": "global",
+        "maxMessages": 15
       }
     ],
     "finance": []

@@ -23,6 +23,7 @@ message CountryBasket {
   double total_usd = 5;
   double fx_rate = 6;
   repeated GroceryItemPrice items = 7;
+  double wow_pct = 8;            // WoW % change in total_usd
 }
 
 message ListGroceryBasketPricesRequest {}
@@ -33,4 +34,7 @@ message ListGroceryBasketPricesResponse {
   string cheapest_country = 3;
   string most_expensive_country = 4;
   bool upstream_unavailable = 5;
+  double wow_avg_pct = 6;
+  bool wow_available = 7;
+  string prev_fetched_at = 8;
 }

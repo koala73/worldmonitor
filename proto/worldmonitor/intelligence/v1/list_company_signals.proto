@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+import "sebuf/http/annotations.proto";
+
+// Request to discover and classify company signals (hiring, funding, tech changes).
+message ListCompanySignalsRequest {
+  string company = 1 [(sebuf.http.query) = {name: "company"}];
+  string domain = 2 [(sebuf.http.query) = {name: "domain"}];
+}
+
+// Discovered company signals with classification and engagement metrics.
+message ListCompanySignalsResponse {
+  string company = 1;
+  string domain = 2;
+  repeated CompanySignal signals = 3;
+  SignalSummary summary = 4;
+  
+  // Unix timestamp in milliseconds when signals were discovered.
+  int64 discovered_at_ms = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+}
+
+message CompanySignal {
+  // Classification type (e.g. "Hiring", "Product Launch", "Expansion").
+  string type = 1;
+  string title = 2;
+  string url = 3;
+  string source = 4;
+  
+  // Data quality tier (1 is authoritative, 5 is low confidence).
+  int32 source_tier = 5;
+  
+  // Unix timestamp in milliseconds of the event occurrence.
+  int64 timestamp_ms = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  
+  // Qualitative strength of the signal (e.g. "Strong", "Emerging").
+  string strength = 7;
+  
+  SignalEngagement engagement = 8;
+}
+
+message SignalEngagement {
+  int32 points = 1;
+  int32 comments = 2;
+  int32 stars = 3;
+  int32 forks = 4;
+  int32 mentions = 5;
+}
+
+message SignalSummary {
+  int32 total_signals = 1;
+  map<string, int32> by_type = 2; // Count of signals per type.
+  CompanySignal strongest_signal = 3;
+  int32 signal_diversity = 4; // Number of unique sources/types.
+}

@@ -43,8 +43,11 @@ export class SatelliteFiresPanel extends Panel {
         ? `${(s.totalFrp / 1000).toFixed(1)}k`
         : Math.round(s.totalFrp).toLocaleString();
       const highClass = s.highIntensityCount > 0 ? ' fires-high' : '';
+      const explosionBadge = s.possibleExplosionCount > 0
+        ? `<span class="fires-explosion-badge" title="${t('components.satelliteFires.explosionTooltip')}">${s.possibleExplosionCount}</span>`
+        : '';
       return `<tr class="fire-row${highClass}">
-        <td class="fire-region">${escapeHtml(s.region)}</td>
+        <td class="fire-region">${escapeHtml(s.region)}${explosionBadge}</td>
         <td class="fire-count">${s.fireCount}</td>
         <td class="fire-hi">${s.highIntensityCount}</td>
         <td class="fire-frp">${frpStr}</td>
@@ -53,6 +56,7 @@ export class SatelliteFiresPanel extends Panel {
 
     const totalFrp = this.stats.reduce((sum, s) => sum + s.totalFrp, 0);
     const totalHigh = this.stats.reduce((sum, s) => sum + s.highIntensityCount, 0);
+    const totalExplosions = this.stats.reduce((sum, s) => sum + s.possibleExplosionCount, 0);
     const ago = this.lastUpdated ? timeSince(this.lastUpdated) : t('components.satelliteFires.never');
 
     this.setContent(`
@@ -76,6 +80,7 @@ export class SatelliteFiresPanel extends Panel {
             </tr>
           </tfoot>
         </table>
+        ${totalExplosions > 0 ? `<div class="fires-explosion-alert">${t('components.satelliteFires.possibleExplosions', { count: String(totalExplosions) })}</div>` : ''}
         <div class="fires-footer">
           <span class="fires-source">NASA FIRMS (VIIRS SNPP)</span>
           <span class="fires-updated">${ago}</span>

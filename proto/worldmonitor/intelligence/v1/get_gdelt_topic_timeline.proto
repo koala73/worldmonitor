@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+import "sebuf/http/annotations.proto";
+
+// GetGdeltTopicTimelineRequest retrieves tone and volume timelines for a GDELT intel topic.
+message GetGdeltTopicTimelineRequest {
+  // Topic ID (military, cyber, nuclear, sanctions, intelligence, maritime).
+  string topic = 1 [(sebuf.http.query) = { name: "topic" }];
+}
+
+// GdeltTimelinePoint is a single data point in a tone or volume timeline.
+message GdeltTimelinePoint {
+  // Date string from GDELT (e.g. "20240101T000000").
+  string date = 1;
+  // Tone or volume value at this point.
+  double value = 2;
+}
+
+// GetGdeltTopicTimelineResponse contains tone and volume timelines for a topic.
+message GetGdeltTopicTimelineResponse {
+  // Topic ID.
+  string topic = 1;
+  // Tone timeline (GDELT TimelineTone).
+  repeated GdeltTimelinePoint tone = 2;
+  // Volume timeline (GDELT TimelineVol).
+  repeated GdeltTimelinePoint vol = 3;
+  // ISO timestamp when this data was fetched.
+  string fetched_at = 4;
+  // Error message if fetch failed.
+  string error = 5;
+}

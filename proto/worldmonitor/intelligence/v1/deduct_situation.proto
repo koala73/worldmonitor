@@ -5,6 +5,8 @@ package worldmonitor.intelligence.v1;
 message DeductSituationRequest {
   string query = 1;
   string geo_context = 2;
+  // Optional analytical framework instructions.
+  string framework = 3;
 }
 
 message DeductSituationResponse {

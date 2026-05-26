@@ -111,4 +111,12 @@ message Forecast {
   Perspectives perspectives = 16;
   Projections projections = 17;
   ForecastCase case_file = 18;
+  // Simulation-scoring fields — populated when the deep forecast simulation pipeline
+  // has run for this forecast's state and produced a non-zero adjustment.
+  // simulation_adjustment: raw score delta (+0.08–+0.12 positive, -0.12/-0.15 negative).
+  // sim_path_confidence: clamped [0,1] confidence of the matched sim top-path; 0 = not set.
+  // demoted_by_simulation: true when a negative adjustment crossed the 0.50 acceptance threshold.
+  double simulation_adjustment = 20;
+  double sim_path_confidence = 21;
+  bool demoted_by_simulation = 22;
 }

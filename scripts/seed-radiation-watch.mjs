@@ -462,11 +462,19 @@ function validate(data) {
   return Array.isArray(data?.observations) && data.observations.length > 0;
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.observations) ? data.observations.length : 0;
+}
+
 runSeed('radiation', 'observations', CANONICAL_KEY, fetchRadiationWatch, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
   sourceVersion: 'epa-radnet-safecast-merge-v1',
   recordCount: (data) => data?.observations?.length ?? 0,
+
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 30,
 }).catch((err) => {
   console.error('FATAL:', err.message || err);
   process.exit(1);

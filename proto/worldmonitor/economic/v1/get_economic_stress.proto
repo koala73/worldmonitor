@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+import "sebuf/http/annotations.proto";
+
+message EconomicStressComponent {
+  string id = 1;
+  string label = 2;
+  double raw_value = 3;
+  double score = 4;
+  double weight = 5;
+  bool missing = 6;
+}
+
+message GetEconomicStressRequest {}
+
+message GetEconomicStressResponse {
+  double composite_score = 1;
+  string label = 2;
+  repeated EconomicStressComponent components = 3;
+  string seeded_at = 4;
+  bool unavailable = 5;
+}

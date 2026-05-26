@@ -1,0 +1,56 @@
+---
+title: "Airline Intelligence"
+description: "A 6-tab aviation surface covering airport ops, live flights, carriers, aircraft tracking, news, and cheapest-date pricing — driven by a user-curated airports + routes watchlist."
+---
+
+The **Airline Intelligence** panel (internal id `airline-intel`) is the dashboard's civil-aviation command surface. It tracks a user-curated watchlist of airports and routes, surfaces delay and cancellation severity, tracks specific aircraft, and can quote real-time flight prices across a date grid. Built as six tabs so each aspect renders on its own without cross-panel context switching.
+
+## What the panel shows
+
+Six tabs under a shared airport + route watchlist control:
+
+| Tab id | Shows |
+|---|---|
+| `ops` | Airport ops summary per watchlist airport — delay / cancellation severity via `FlightDelaySeverity` (`normal` / `minor` / `moderate` / `major` / `severe`, colour-bucketed). |
+| `flights` | Live flight instances at watched airports, with per-flight status badges (`scheduled` / `boarding` / `departed` / `airborne` / `landed` / `arrived` / `cancelled` / `diverted` / `unknown`) and delay stats. |
+| `airlines` | Per-carrier ops: `CarrierOps` — delay rate, cancellation rate, on-time performance. |
+| `tracking` | Live aircraft positions (`PositionSample[]`) for tracked tails, plus an individual-flight status lookup. |
+| `news` | Aviation-relevant news items (`AviationNewsItem[]`). |
+| `prices` | Google Flights quotes for a specific itinerary and a date-grid of cheapest-day prices across a range. |
+
+`TABS` is declared as `['ops', 'flights', 'airlines', 'tracking', 'news', 'prices'] as const` in `src/components/AirlineIntelPanel.ts:54`. Watchlist comes from `aviationWatchlist.get()` — the first 8 airports and the first route are seeded on mount.
+
+Panel id is `airline-intel`; canonical component is `src/components/AirlineIntelPanel.ts`. Title resolves from i18n (`panels.airlineIntel`).
+
+## How you reach it
+
+- **Cmd+K**: type *airline*, *flight*, or an IATA code.
+- **Availability by variant**: registered and enabled by default in the **full/geopolitical** (`priority: 2`), **tech** (`priority: 2`), **finance** (`priority: 2`), and **commodity** (`priority: 2`) variants. Not present in the happy variant. Source: `'airline-intel'` entries in `FULL_PANELS` (`:104`), `TECH_PANELS` (`:280`), `FINANCE_PANELS` (`:471`), and `COMMODITY_PANELS` in `src/config/panels.ts`.
+
+## Data sources
+
+Eight RPCs back the six tabs via `@/services/aviation`:
+
+- `fetchAirportOpsSummary`, `fetchAirportFlights`, `fetchCarrierOps`
+- `fetchAircraftPositions`, `fetchFlightStatus`
+- `fetchAviationNews`
+- `fetchGoogleFlights`, `fetchGoogleDates`
+
+All are backed by the **Aviation service** (`/api/aviation/v1/*`) — see the API reference below.
+
+## Refresh cadence
+
+Three distinct refresh paths in `src/components/AirlineIntelPanel.ts`:
+
+- **Auto-refresh timer** — the panel constructor sets a **5-minute `setInterval`** (`5 * 60_000`) that calls `refresh()`, which reloads the ops tab and the currently-active tab. Source: the constructor around line 173 (`setInterval(() => void this.refresh(), 5 * 60_000)`).
+- **Tab switch** — switching to `ops`, `flights`, `airlines`, `tracking`, or `news` triggers `loadTab(tab)` only when that tab's cache is empty. Repeated switches to an already-loaded tab repaint from memory without a refetch.
+- **Prices tab — explicit fetch only** — the `prices` tab is deliberately excluded from both the tab-switch and auto-refresh paths. Prices load **only on an explicit search-button click** (the `refresh()` helper skips prices with `if (this.activeTab !== 'prices') void this.loadTab(this.activeTab)` around line 291; the tab-switch guard is commented `prices tab: never auto-fetch — only on explicit search button click` around line 287).
+
+## Tier & gating
+
+**Free.** No `premium` flag in any variant registration. RPCs are public.
+
+## API reference
+
+- [Aviation service](/api/AviationService.openapi.yaml) — 11 RPCs: airport delays, ops summary, airport flights, carrier ops, flight status, aircraft tracking, aviation news, Google Flights search / date grid.
+- Related map layer: [Military & Civilian Flight Tracking](/military-tracking) for the live flights overlay that the `tracking` tab complements.

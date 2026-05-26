@@ -134,7 +134,7 @@ export async function fetchUnhcrPopulation(): Promise<UnhcrFetchResult> {
       flowLimit: 50,    // top 50 flows (matching legacy)
     });
     return toDisplaySummary(response);
-  }, emptyResult);
+  }, emptyResult, { shouldCache: (r) => r.countries.length > 0 });
 
   return {
     ok: data !== emptyResult && data.countries.length > 0,

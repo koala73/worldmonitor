@@ -74,6 +74,17 @@ class MiniNode extends EventTarget {
     return child;
   }
 
+  append(...children) {
+    children.forEach((child) => {
+      if (child == null) return;
+      if (typeof child === 'string' || typeof child === 'number') {
+        this.appendChild(new MiniText(child));
+        return;
+      }
+      this.appendChild(child);
+    });
+  }
+
   removeChild(child) {
     const index = this.childNodes.indexOf(child);
     if (index >= 0) {
@@ -109,12 +120,29 @@ class MiniNode extends EventTarget {
     return this.childNodes.at(-1) ?? null;
   }
 
+  get firstElementChild() {
+    return this.childNodes.find((child) => child instanceof MiniElement) ?? null;
+  }
+
+  get lastElementChild() {
+    return [...this.childNodes].reverse().find((child) => child instanceof MiniElement) ?? null;
+  }
+
+  get childElementCount() {
+    return this.childNodes.filter((child) => child instanceof MiniElement).length;
+  }
+
   get textContent() {
     return this.childNodes.map((child) => child.textContent ?? '').join('');
   }
 
   set textContent(value) {
     this.childNodes = [new MiniText(value ?? '')];
+  }
+
+  replaceChildren(...children) {
+    this.childNodes = [];
+    this.append(...children);
   }
 }
 
@@ -220,15 +248,24 @@ class MiniElement extends MiniNode {
     if (name === 'class') this.className = '';
   }
 
-  querySelector() {
-    return null;
+  matches(selector) {
+    return matchesSelector(this, selector);
   }
 
-  querySelectorAll() {
-    return [];
+  querySelector(selector) {
+    return querySelectorAll(this, selector)[0] ?? null;
   }
 
-  closest() {
+  querySelectorAll(selector) {
+    return querySelectorAll(this, selector);
+  }
+
+  closest(selector) {
+    let current = this;
+    while (current instanceof MiniElement) {
+      if (current.matches(selector)) return current;
+      current = current.parentElement;
+    }
     return null;
   }
 
@@ -240,6 +277,11 @@ class MiniElement extends MiniNode {
 
   getBoundingClientRect() {
     return { width: 1, height: 1, top: 0, left: 0, right: 1, bottom: 1 };
+  }
+
+  focus() {
+    const doc = this.ownerDocument ?? globalThis.document;
+    if (doc) doc.activeElement = this;
   }
 
   get nextElementSibling() {
@@ -262,6 +304,14 @@ class MiniElement extends MiniNode {
 
   get outerHTML() {
     return `<${this.tagName.toLowerCase()}>${this.innerHTML}</${this.tagName.toLowerCase()}>`;
+  }
+
+  get children() {
+    return this.childNodes.filter((child) => child instanceof MiniElement);
+  }
+
+  get offsetParent() {
+    return this.isConnected ? (this.parentElement ?? null) : null;
   }
 }
 
@@ -294,11 +344,16 @@ class MiniDocument extends EventTarget {
     this.documentElement.clientHeight = 800;
     this.documentElement.clientWidth = 1200;
     this.body = new MiniElement('body');
+    this.documentElement.ownerDocument = this;
+    this.body.ownerDocument = this;
     this.documentElement.appendChild(this.body);
+    this.activeElement = this.body;
   }
 
   createElement(tagName) {
-    return new MiniElement(tagName);
+    const element = new MiniElement(tagName);
+    element.ownerDocument = this;
+    return element;
   }
 
   createTextNode(value) {
@@ -308,9 +363,122 @@ class MiniDocument extends EventTarget {
   createDocumentFragment() {
     return new MiniDocumentFragment();
   }
+
+  getElementById(id) {
+    return querySelectorAll(this.documentElement, `#${id}`)[0] ?? null;
+  }
+
+  querySelector(selector) {
+    return this.documentElement.querySelector(selector);
+  }
+
+  querySelectorAll(selector) {
+    return this.documentElement.querySelectorAll(selector);
+  }
 }
 
-function createBrowserEnvironment() {
+function splitSelectorList(selector) {
+  return String(selector)
+    .split(',')
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function parseSimpleSelector(selector) {
+  const trimmed = selector.trim();
+  const result = {
+    tag: null,
+    id: null,
+    classes: [],
+    attributes: [],
+    notAttributes: [],
+  };
+  let remaining = trimmed;
+
+  const tagMatch = remaining.match(/^[a-zA-Z][a-zA-Z0-9-]*/);
+  if (tagMatch) {
+    result.tag = tagMatch[0].toUpperCase();
+    remaining = remaining.slice(tagMatch[0].length);
+  }
+
+  while (remaining.length > 0) {
+    if (remaining.startsWith('#')) {
+      const match = remaining.match(/^#([A-Za-z0-9_-]+)/);
+      if (!match) break;
+      result.id = match[1];
+      remaining = remaining.slice(match[0].length);
+      continue;
+    }
+
+    if (remaining.startsWith('.')) {
+      const match = remaining.match(/^\.([A-Za-z0-9_-]+)/);
+      if (!match) break;
+      result.classes.push(match[1]);
+      remaining = remaining.slice(match[0].length);
+      continue;
+    }
+
+    if (remaining.startsWith(':not(')) {
+      const match = remaining.match(/^:not\(\[([^\]=]+)(?:="([^"]*)")?\]\)/);
+      if (!match) break;
+      result.notAttributes.push({ name: match[1], value: match[2] ?? null });
+      remaining = remaining.slice(match[0].length);
+      continue;
+    }
+
+    if (remaining.startsWith('[')) {
+      const match = remaining.match(/^\[([^\]=]+)(?:="([^"]*)")?\]/);
+      if (!match) break;
+      result.attributes.push({ name: match[1], value: match[2] ?? null });
+      remaining = remaining.slice(match[0].length);
+      continue;
+    }
+
+    break;
+  }
+
+  return result;
+}
+
+function matchesSelector(element, selector) {
+  return splitSelectorList(selector).some((part) => {
+    const parsed = parseSimpleSelector(part);
+    if (parsed.tag && element.tagName !== parsed.tag) return false;
+    if (parsed.id && element.id !== parsed.id) return false;
+    if (parsed.classes.some((name) => !element.classList.contains(name))) return false;
+    if (parsed.attributes.some(({ name, value }) => {
+      if (!element.hasAttribute(name)) return true;
+      return value != null && element.getAttribute(name) !== value;
+    })) return false;
+    if (parsed.notAttributes.some(({ name, value }) => {
+      if (!element.hasAttribute(name)) return false;
+      return value == null ? true : element.getAttribute(name) === value;
+    })) return false;
+    return true;
+  });
+}
+
+function querySelectorAll(root, selector) {
+  const matches = [];
+
+  function visit(node) {
+    if (!(node instanceof MiniElement)) return;
+    if (node.matches(selector)) {
+      matches.push(node);
+    }
+    node.childNodes.forEach(visit);
+  }
+
+  if (root instanceof MiniElement) {
+    root.childNodes.forEach(visit);
+    return matches;
+  }
+
+  root.childNodes.forEach(visit);
+  return matches;
+}
+
+export function createBrowserEnvironment() {
   const document = new MiniDocument();
   const localStorage = new MiniStorage();
   const window = {
@@ -321,6 +489,15 @@ function createBrowserEnvironment() {
     addEventListener() {},
     removeEventListener() {},
     open() {},
+    location: {
+      origin: 'https://worldmonitor.test',
+      href: 'https://worldmonitor.test/',
+    },
+    navigator: {
+      clipboard: {
+        async writeText() {},
+      },
+    },
     getComputedStyle() {
       return {
         display: '',
@@ -335,10 +512,13 @@ function createBrowserEnvironment() {
     document,
     localStorage,
     window,
-    requestAnimationFrame() {
+    requestAnimationFrame(callback) {
+      if (typeof callback === 'function') callback(0);
       return 1;
     },
     cancelAnimationFrame() {},
+    HTMLElement: MiniElement,
+    HTMLButtonElement: MiniElement,
   };
 }
 
@@ -484,6 +664,19 @@ async function loadRuntimeConfigPanel() {
       export const PLAINTEXT_KEYS = new Set();
       export const MASKED_SENTINEL = '***';
     `],
+    ['panel-gating-stub', `
+      export const PanelGateReason = { NONE: 'none', ANONYMOUS: 'anonymous', UNVERIFIED: 'unverified', FREE_TIER: 'free_tier' };
+      export function getPanelGateReason() { return PanelGateReason.NONE; }
+    `],
+    ['dodo-checkout-stub', `
+      export const DodoPayments = {
+        Initialize() {},
+        Checkout: {
+          open() {},
+        },
+      };
+    `],
+    ['dodo-empty-stub', 'export {};'],
   ]);
 
   const aliasMap = new Map([
@@ -500,6 +693,11 @@ async function loadRuntimeConfigPanel() {
     ['@/utils/sanitize', 'sanitize-stub'],
     ['@/services/ollama-models', 'ollama-models-stub'],
     ['@/services/settings-constants', 'settings-constants-stub'],
+    ['@/services/panel-gating', 'panel-gating-stub'],
+    ['dodopayments-checkout', 'dodo-checkout-stub'],
+    ['dodopayments', 'dodo-empty-stub'],
+    ['@dodopayments/core', 'dodo-empty-stub'],
+    ['@dodopayments/convex', 'dodo-empty-stub'],
   ]);
 
   const plugin = {

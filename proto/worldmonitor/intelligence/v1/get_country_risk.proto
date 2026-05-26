@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+import "worldmonitor/intelligence/v1/intelligence.proto";
+
+// GetCountryRiskRequest specifies which country to retrieve risk intelligence for.
+message GetCountryRiskRequest {
+  // ISO 3166-1 alpha-2 country code.
+  string country_code = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.len = 2,
+    (buf.validate.field).string.pattern = "^[A-Z]{2}$",
+    (sebuf.http.query) = {name: "country_code"}
+  ];
+}
+
+// GetCountryRiskResponse contains composite risk intelligence for a specific country.
+message GetCountryRiskResponse {
+  // ISO 3166-1 alpha-2 country code.
+  string country_code = 1;
+  // Country name.
+  string country_name = 2;
+  // Composite Instability Index score. Absent if country is not tracked.
+  CiiScore cii = 3;
+  // Travel advisory level from government sources (e.g. "do-not-travel", "reconsider", "caution"). Empty if none.
+  string advisory_level = 4;
+  // Whether this country has active OFAC sanctions designations.
+  bool sanctions_active = 5;
+  // Count of sanctioned entities associated with this country.
+  int32 sanctions_count = 6;
+  // Data freshness timestamp derived from CII computedAt, as Unix epoch milliseconds.
+  int64 fetched_at = 7 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // True when all upstream Redis keys were unavailable. Signals CDN cache bypass.
+  bool upstream_unavailable = 8;
+}

@@ -1,0 +1,1211 @@
+---
+title: "MCP Tools Reference"
+description: "Per-tool reference for every MCP tool exposed by WorldMonitor — parameters, freshness, API endpoints, and example calls."
+---
+
+Complete reference for every MCP tool. Use this alongside the [MCP Server overview](/mcp-server) (connection, auth, plans, errors).
+
+Every tool returns the standard MCP content-block format:
+
+```json
+{ "jsonrpc": "2.0", "id": 1, "result": { "content": [{ "type": "text", "text": "{...json payload...}" }], "isError": false } }
+```
+
+Cache-backed tools (the majority) include `cached_at` (ISO timestamp) and `stale: boolean` in their JSON payload so you can reason about freshness.
+
+The `curl` examples below all assume you've exported your API key:
+
+```bash
+export WM_KEY="wm_live_..."  # or use the OAuth bearer token instead — see /mcp-server#authentication
+```
+
+If you've completed the OAuth flow instead, replace `-H "X-WorldMonitor-Key: $WM_KEY"` with `-H "Authorization: Bearer $TOKEN"` in each example.
+
+<Tip>
+**Recently added** (May 2026): `get_displacement_data`, `get_health_signals`, `get_energy_intelligence`, `get_consumer_prices`, `get_tariff_trends`, `get_chokepoint_status` — six new bundled tools that exposed previously-cached domains via MCP.
+</Tip>
+
+## Discovering tools
+
+Before diving into the per-tool reference, two affordances make discovery cheaper than reading this page top-to-bottom.
+
+### `describe_tool` — full uncompressed definition on demand
+
+Since v1.5.0, `tools/list` returns each tool's `description` truncated to the first sentence (≤120 UTF-8 bytes). That keeps the per-session input-token cost low when the LLM only needs to scan names — and the same `tools/list` entry now ships an `outputSchema` (v1.6.0) so the model can author a JMESPath projection on the first call. When the compressed description is ambiguous, call `describe_tool` for the long form:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": { "name": "describe_tool", "arguments": { "tool_name": "get_chokepoint_status" } }
+}
+```
+
+Response — identical shape to a `tools/list` entry, with the full uncompressed `description` and the full `inputSchema.properties` text:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"name\":\"get_chokepoint_status\",\"description\":\"Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min cadence), rolling transit summaries, per-port activity, plus static reference data and flow aggregates. Covers Suez, Hormuz, Malacca, Bab-el-Mandeb, Panama, etc.\",\"inputSchema\":{ /* full properties with full descriptions */ },\"outputSchema\":{ /* … */ },\"annotations\":{\"readOnlyHint\":true,\"destructiveHint\":false,\"idempotentHint\":true,\"openWorldHint\":false}}"
+      }
+    ]
+  }
+}
+```
+
+`describe_tool` is **exempt from the Pro daily quota** (per-minute rate limit still applies). The exemption is intentional — counting metadata lookups against the 50/day cap would discourage exploration, defeating the compression. Two common workflows:
+
+- **Compressed entry is ambiguous about behaviour or argument semantics.** Call `describe_tool` to see the full long-form description plus every property's full description.
+- **First-time JMESPath authoring against an unfamiliar response.** Call `describe_tool` to read the `outputSchema` (see next section) without paying a quota slot for a real `tools/call`.
+
+`describe_tool` returns two soft-error envelopes inside the normal `content[0].text`:
+
+- `{ "error": "missing_tool_name", "hint": "Pass tool_name as a non-empty string matching a tool from tools/list." }` — `tool_name` was omitted, empty, or non-string.
+- `{ "error": "unknown_tool", "requested": "<the bad name>", "available": [...sorted list of all tool names...] }` — `tool_name` didn't match. The `available` array lets the LLM self-correct in one extra call.
+
+The full per-tool reference for `describe_tool` (parameters, response shape, quota posture) is at [`describe_tool`](#describe_tool) under Meta.
+
+### `outputSchema` — typed parsing without a sample call
+
+As of v1.6.0, every tool's `tools/list` entry declares a spec-defined [MCP 2025-06-18 `Tool.outputSchema`](https://modelcontextprotocol.io/specification/2025-06-18/server/tools#tool-result-schema). The schema describes the shape of the JSON that lives inside `result.content[0].text` for that tool — letting clients author projections, validate responses, or generate types without ever issuing a real `tools/call`.
+
+Schemas are emitted **unconditionally** on every `tools/list`, regardless of the negotiated `protocolVersion`. Clients on the older `2025-03-26` floor still receive them and (per spec) are expected to ignore unknown fields rather than fail.
+
+Worked example — the `outputSchema` for `get_country_risk`:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "country_code": { "type": "string" },
+    "cii": { "type": ["number", "null"], "description": "Composite Instability Index 0-100." },
+    "components": {
+      "type": "object",
+      "properties": {
+        "unrest":   { "type": ["number", "null"] },
+        "conflict": { "type": ["number", "null"] },
+        "security": { "type": ["number", "null"] },
+        "news":     { "type": ["number", "null"] }
+      }
+    },
+    "travelAdvisory":    { "type": ["object", "string", "null"] },
+    "sanctionsExposure": { "type": ["object", "array", "null"] }
+  }
+}
+```
+
+Cache tools wrap their declared `data` shape in the standard freshness envelope:
+
+```json
+{
+  "type": "object",
+  "required": ["cached_at", "stale", "data"],
+  "properties": {
+    "cached_at": { "type": ["string", "null"], "description": "ISO-8601 timestamp of the OLDEST contributing cache key." },
+    "stale":     { "type": "boolean", "description": "True when any contributing cache key is older than its per-key maxStaleMin freshness budget." },
+    "data":      { "type": "object", "properties": { /* per-tool fields */ } }
+  }
+}
+```
+
+A typed-parsing sketch in TypeScript using the schema for compile-time hints:
+
+```ts
+// Synthesise types from the schema once (e.g. with json-schema-to-typescript).
+type CountryRisk = {
+  country_code: string;
+  cii: number | null;
+  components: { unrest: number | null; conflict: number | null; security: number | null; news: number | null };
+  travelAdvisory: object | string | null;
+  sanctionsExposure: object | unknown[] | null;
+};
+
+const reply = await callTool('get_country_risk', { country_code: 'IR' });
+const text = reply.result?.content?.[0]?.text;
+if (typeof text !== 'string') throw new Error('no text payload');
+
+type SoftEnvelope =
+  | { _budget_exceeded: true; budget_bytes: number; actual_bytes: number; hint: string }
+  | { _jmespath_error: string; original_keys: string[] };
+
+const parsed = JSON.parse(text) as CountryRisk | SoftEnvelope;
+// Check for BOTH soft-envelope discriminators BEFORE consuming sibling fields as data.
+// A `_jmespath_error` payload that falls through to the success branch would silently
+// dereference undefined — the exact anti-pattern the catalog warns against.
+if ('_budget_exceeded' in parsed) {
+  // narrow with jmespath / filters and retry — see /mcp-error-catalog
+} else if ('_jmespath_error' in parsed) {
+  // fix the projection using `original_keys` as the schema hint — see /mcp-error-catalog
+} else {
+  console.log(parsed.cii, parsed.components.conflict);
+}
+```
+
+Things to know:
+
+- `additionalProperties` is left implicit (= true) on every schema, so producer-side forward-compatible additions don't suddenly fail validation.
+- Per-array `items.properties` lists known fields but does NOT enumerate every observed key — the schema is a **hint surface** for JMESPath authoring, not a bytecode-level contract.
+- Schemas describe the success-path payload only. The two catalog-class soft envelopes (`_budget_exceeded`, `_jmespath_error`) are NOT in the per-tool schema — they replace the payload entirely and have their own shapes. See the [MCP Error Catalog](/mcp-error-catalog) for both envelopes.
+
+## Markets & economy
+
+### `get_market_data`
+
+Real-time equity quotes, commodity prices (including gold futures GC=F), crypto prices, forex FX rates (USD/EUR, USD/JPY etc.), sector performance, ETF flows, and Gulf market quotes from WorldMonitor's curated bootstrap cache.
+
+**Parameters:** none
+
+- **API endpoints:** `GET /api/market/v1/get-fear-greed-index`, `GET /api/market/v1/get-sector-summary`, `GET /api/market/v1/list-commodity-quotes`, `GET /api/market/v1/list-crypto-quotes`, `GET /api/market/v1/list-etf-flows`, `GET /api/market/v1/list-gulf-quotes`, `GET /api/market/v1/list-market-quotes`
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** up to **30 min** before `stale: true` is flagged (set by the seeder cron's expected interval).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_market_data","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_economic_data`
+
+Macro economic indicators: Fed Funds rate (FRED), economic calendar events, fuel prices, ECB FX rates, EU yield curve, earnings calendar, COT positioning, energy storage data, BIS household debt service ratio (DSR, quarterly, leading indicator of household financial stress across ~40 advanced economies), and BIS residential + commercial property price indices (real, quarterly).
+
+**Parameters:** none
+
+- **API endpoints:** `GET /api/economic/v1/get-ecb-fx-rates`, `GET /api/economic/v1/get-economic-calendar`, `GET /api/economic/v1/get-eu-yield-curve`, `GET /api/economic/v1/list-fuel-prices`, `GET /api/market/v1/get-cot-positioning`, `GET /api/market/v1/list-earnings-calendar`
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** up to **1 d** before `stale: true` is flagged (set by the seeder cron's expected interval).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_economic_data","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_country_macro`
+
+Per-country macroeconomic indicators from IMF WEO (~210 countries, monthly cadence). Bundles fiscal/external balance (inflation, current account, gov revenue/expenditure/primary balance, CPI), growth & per-capita (real GDP growth, GDP/capita USD & PPP, savings & investment rates, savings-investment gap), labor & demographics (unemployment, population), and external trade (current account USD, import/export volume % changes). Latest available year per series. Use for country-level economic screening, peer benchmarking, and stagflation/imbalance flags. NOTE: export/import LEVELS in USD (exportsUsd, importsUsd, tradeBalanceUsd) are returned as null — WEO retracted broad coverage for BX/BM indicators in 2026-04; use currentAccountUsd or volume changes (import/exportVolumePctChg) instead.
+
+**Parameters:** none
+
+- **API endpoints:** none directly — reads from a bootstrap-aggregate cache key (no 1:1 REST endpoint).
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** up to **70 d** before `stale: true` is flagged (set by the seeder cron's expected interval).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_country_macro","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_eu_housing_cycle`
+
+Eurostat annual house price index (prc_hpi_a, base 2015=100) for all 27 EU members plus EA20 and EU27_2020 aggregates. Each country entry includes the latest value, prior value, date, unit, and a 10-year sparkline series. Complements BIS WS_SPP with broader EU coverage for the Housing cycle tile.
+
+**Parameters:** none
+
+- **API endpoints:** none directly — reads from a bootstrap-aggregate cache key (no 1:1 REST endpoint).
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** up to **50 d** before `stale: true` is flagged (set by the seeder cron's expected interval).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_eu_housing_cycle","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_eu_quarterly_gov_debt`
+
+Eurostat quarterly general government gross debt (gov_10q_ggdebt, %GDP) for all 27 EU members plus EA20 and EU27_2020 aggregates. Each country entry includes latest value, prior value, quarter label, and an 8-quarter sparkline series. Provides fresher debt-trajectory signal than annual IMF GGXWDG_NGDP for EU panels.
+
+**Parameters:** none
+
+- **API endpoints:** none directly — reads from a bootstrap-aggregate cache key (no 1:1 REST endpoint).
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** up to **14 d** before `stale: true` is flagged (set by the seeder cron's expected interval).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_eu_quarterly_gov_debt","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_eu_industrial_production`
+
+Eurostat monthly industrial production index (sts_inpr_m, NACE B-D industry excl. construction, SCA, base 2021=100) for all 27 EU members plus EA20 and EU27_2020 aggregates. Each country entry includes latest value, prior value, month label, and a 12-month sparkline series. Leading indicator of real-economy activity used by the "Real economy pulse" sparkline.
+
+**Parameters:** none
+
+- **API endpoints:** none directly — reads from a bootstrap-aggregate cache key (no 1:1 REST endpoint).
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** up to **5 d** before `stale: true` is flagged (set by the seeder cron's expected interval).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_eu_industrial_production","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_tariff_trends`
+
+Global trade and pricing indicators: US tariff trends (HTS-coded), BigMac index, FAO Food Price Index, and per-country national debt levels.
+
+**Parameters:** none
+
+- **API endpoints:** `GET /api/economic/v1/get-fao-food-price-index`, `GET /api/economic/v1/get-national-debt`, `GET /api/economic/v1/list-bigmac-prices`
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** up to **9 h** before `stale: true` is flagged (set by the seeder cron's expected interval).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_tariff_trends","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_consumer_prices`
+
+Per-country consumer-prices intelligence: 30-day overview, category-level inflation, retailer spread (essentials basket), top movers, and source freshness. Requires country_code (currently only 'ae' is seeded).
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `country_code` | string | **yes** | ISO 3166-1 alpha-2 country code. Currently supported: AE (case-insensitive). |
+
+- **API endpoints:** `GET /api/consumer-prices/v1/get-consumer-price-freshness`, `GET /api/consumer-prices/v1/get-consumer-price-overview`, `GET /api/consumer-prices/v1/list-consumer-price-categories`, `GET /api/consumer-prices/v1/list-consumer-price-movers`, `GET /api/consumer-prices/v1/list-retailer-price-spreads`
+- **Kind:** hybrid — reads cache keys directly (sub-second) but requires an input parameter to select the slice.
+- **Freshness budget:** up to **25 h** per slice (24 h cron + 1 h grace) before `stale: true` is flagged.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_consumer_prices","arguments":{"country_code":"AE"}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_commodity_geo`
+
+Global mining sites with coordinates, operator, mineral type, and production status. Covers 71 major mines spanning gold, silver, copper, lithium, uranium, coal, and other minerals worldwide.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `mineral` | string | no | Filter by mineral type (e.g. "Gold", "Copper", "Lithium") |
+| `country` | string | no | Filter by country name (e.g. "Australia", "Chile") |
+
+- **API endpoints:** none — this tool reads no cache and makes no HTTP fetch.
+- **Kind:** static registry — filters the bundled `MINING_SITES_RAW` constant (in-memory, ships with the MCP server's edge bundle). Sub-millisecond, no upstream call. The dataset updates only when the MCP server is redeployed with a refreshed registry.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_commodity_geo","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_prediction_markets`
+
+Active Polymarket event contracts with current probabilities. Covers geopolitical, economic, and election prediction markets.
+
+**Parameters:** none
+
+- **API endpoints:** `GET /api/prediction/v1/list-prediction-markets`
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** up to **1.5 h** before `stale: true` is flagged (set by the seeder cron's expected interval).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_prediction_markets","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+## Energy
+
+### `get_energy_intelligence`
+
+Energy supply, prices, storage, disruptions, and policy: EIA petroleum stocks, electricity prices (Ember), gas storage (GIE), fuel shortages, fossil & renewable shares, active energy disruptions, government crisis policies.
+
+**Parameters:** none
+
+- **API endpoints:** `GET /api/economic/v1/get-energy-crisis-policies`, `GET /api/supply-chain/v1/get-fuel-shortage-detail`, `GET /api/supply-chain/v1/list-energy-disruptions`, `GET /api/supply-chain/v1/list-fuel-shortages`
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** up to **3 d** before `stale: true` is flagged (set by the seeder cron's expected interval).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_energy_intelligence","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+## Geopolitical & security
+
+### `get_conflict_events`
+
+Active armed conflict events (UCDP, Iran), unrest events with geo-coordinates, and country risk scores. Covers ongoing conflicts, protests, and instability indices worldwide.
+
+**Parameters:** none
+
+- **API endpoints:** `GET /api/conflict/v1/list-iran-events`, `GET /api/conflict/v1/list-ucdp-events`, `GET /api/unrest/v1/list-unrest-events`
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** up to **30 min** before `stale: true` is flagged (set by the seeder cron's expected interval).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_conflict_events","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_country_risk`
+
+Structured risk intelligence for a specific country: Composite Instability Index (CII) score 0-100, component breakdown (unrest/conflict/security/news), travel advisory level, and OFAC sanctions exposure. Fast Redis read — no LLM. Use for quantitative risk screening or to answer "how risky is X right now?"
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `country_code` | string | **yes** | ISO 3166-1 alpha-2 country code, e.g. "RU", "IR", "CN", "UA" |
+
+- **API endpoints:** `GET /api/intelligence/v1/get-country-risk`
+- **Kind:** live RPC — proxies a fetch to the WorldMonitor API on each call. Edge-runtime timeout: **8.0s**.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_country_risk","arguments":{"country_code":"US"}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_country_brief`
+
+AI-generated per-country intelligence brief. Produces an LLM-analyzed geopolitical and economic assessment for the given country. Supports analytical frameworks for structured lenses.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `country_code` | string | **yes** | ISO 3166-1 alpha-2 country code, e.g. "US", "DE", "CN", "IR" |
+| `framework` | string | no | Optional analytical framework instructions to shape the analysis lens (e.g. Ray Dalio debt cycle, PMESII-PT) |
+
+- **API endpoints:** `GET /api/intelligence/v1/get-country-intel-brief`
+- **Kind:** live RPC — proxies a fetch to the WorldMonitor API on each call. Worst-case total budget **~24s** (2s context-digest fetch + 22s brief generation, sequential).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_country_brief","arguments":{"country_code":"US"}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_news_intelligence`
+
+AI-classified geopolitical threat news summaries, GDELT intelligence signals, cross-source signals, and security advisories from WorldMonitor's intelligence layer.
+
+**Parameters:** none
+
+- **API endpoints:** `GET /api/intelligence/v1/list-cross-source-signals`, `GET /api/intelligence/v1/search-gdelt-documents`
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** up to **30 min** before `stale: true` is flagged (set by the seeder cron's expected interval).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_news_intelligence","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_cyber_threats`
+
+Active cyber threat intelligence: malware IOCs (URLhaus, Feodotracker), CISA known exploited vulnerabilities, and active command-and-control infrastructure.
+
+**Parameters:** none
+
+- **API endpoints:** none directly — reads from a bootstrap-aggregate cache key (no 1:1 REST endpoint).
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** up to **4 h** before `stale: true` is flagged (set by the seeder cron's expected interval).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_cyber_threats","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_sanctions_data`
+
+OFAC SDN sanctioned entities list and sanctions pressure scores by country. Useful for compliance screening and geopolitical pressure analysis.
+
+**Parameters:** none
+
+- **API endpoints:** `GET /api/sanctions/v1/list-sanctions-pressure`, `GET /api/sanctions/v1/lookup-sanction-entity`
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** up to **1 d** before `stale: true` is flagged (set by the seeder cron's expected interval).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_sanctions_data","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_social_velocity`
+
+Reddit geopolitical social velocity: top posts from worldnews, geopolitics, and related subreddits with engagement scores and trend signals.
+
+**Parameters:** none
+
+- **API endpoints:** `GET /api/intelligence/v1/get-social-velocity`
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** up to **30 min** before `stale: true` is flagged (set by the seeder cron's expected interval).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_social_velocity","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_military_posture`
+
+Theater posture assessment and military risk scores. Reflects aggregated military positioning and escalation signals across global theaters.
+
+**Parameters:** none
+
+- **API endpoints:** `GET /api/military/v1/get-theater-posture`
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** up to **2 h** before `stale: true` is flagged (set by the seeder cron's expected interval).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_military_posture","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_chokepoint_status`
+
+Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min cadence), rolling transit summaries, per-port activity, plus static reference data (chokepoint geometry, canonical 13-chokepoint registry) and flow aggregates. Covers Suez, Hormuz, Malacca, Bab-el-Mandeb, Panama, etc.
+
+**Parameters:** none
+
+- **API endpoints:** `GET /api/intelligence/v1/get-country-port-activity`, `GET /api/supply-chain/v1/get-chokepoint-status`
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget (per slice):** `stale: true` flags when ANY contributing slice exceeds its individual budget — **30 min** for live transit summaries (relay), **36 h** for PortWatch port activity, **14 d** for chokepoint flows, and up to **~400 d** for the static chokepoint registry / geographic baselines. The bundle's `cached_at` reflects the oldest contributing seed; `stale: true` doesn't mean ALL the data is old.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_chokepoint_status","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_positive_events`
+
+Positive geopolitical events: diplomatic agreements, humanitarian aid, development milestones, and peace initiatives worldwide.
+
+**Parameters:** none
+
+- **API endpoints:** `GET /api/positive-events/v1/list-positive-geo-events`
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** up to **1 h** before `stale: true` is flagged (set by the seeder cron's expected interval).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_positive_events","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+## Movement & infrastructure
+
+### `get_aviation_status`
+
+Airport delays, NOTAM airspace closures, and tracked military aircraft. Covers FAA delay data and active airspace restrictions.
+
+**Parameters:** none
+
+- **API endpoints:** none directly — reads from a bootstrap-aggregate cache key (no 1:1 REST endpoint).
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** up to **1.5 h** before `stale: true` is flagged (set by the seeder cron's expected interval).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_aviation_status","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_airspace`
+
+Live ADS-B aircraft over a country. Returns civilian flights (OpenSky) and identified military aircraft with callsigns, positions, altitudes, and headings. Answers questions like "how many planes are over the UAE right now?" or "are there military aircraft over Taiwan?"
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `country_code` | string | **yes** | ISO 3166-1 alpha-2 country code (e.g. "AE", "US", "GB", "JP") |
+| `type` | string (all / civilian / military) | no | Filter: all flights (default), civilian only, or military only |
+
+- **API endpoints:** `GET /api/aviation/v1/track-aircraft`, `GET /api/military/v1/list-military-flights`
+- **Kind:** live RPC — proxies a fetch to the WorldMonitor API on each call. Edge-runtime timeout: **8.0s**.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_airspace","arguments":{"country_code":"US"}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_maritime_activity`
+
+Live vessel traffic and maritime disruptions for a country's waters. Returns AIS density zones (ships-per-day, intensity score), dark ship events, and chokepoint congestion from AIS tracking.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `country_code` | string | **yes** | ISO 3166-1 alpha-2 country code (e.g. "AE", "SA", "JP", "EG") |
+
+- **API endpoints:** `GET /api/maritime/v1/get-vessel-snapshot`
+- **Kind:** live RPC — proxies a fetch to the WorldMonitor API on each call. Edge-runtime timeout: **8.0s**.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_maritime_activity","arguments":{"country_code":"US"}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_supply_chain_data`
+
+Dry bulk shipping stress index, customs revenue flows, and COMTRADE bilateral trade data. Tracks global supply chain pressure and trade disruptions.
+
+**Parameters:** none
+
+- **API endpoints:** `GET /api/supply-chain/v1/get-shipping-stress`, `GET /api/trade/v1/get-customs-revenue`
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** up to **2 d** before `stale: true` is flagged (set by the seeder cron's expected interval).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_supply_chain_data","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_infrastructure_status`
+
+Internet infrastructure health: Cloudflare Radar outages and service status for major cloud providers and internet services.
+
+**Parameters:** none
+
+- **API endpoints:** `GET /api/infrastructure/v1/list-internet-outages`
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** up to **30 min** before `stale: true` is flagged (set by the seeder cron's expected interval).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_infrastructure_status","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `search_flights`
+
+Search Google Flights for real-time flight options between two airports on a specific date. Returns available flights with prices, stops, airline, and segment details. Use IATA airport codes (e.g. "JFK", "LHR", "DXB").
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `origin` | string | **yes** | IATA code for the departure airport, e.g. "JFK" |
+| `destination` | string | **yes** | IATA code for the arrival airport, e.g. "LHR" |
+| `departure_date` | string | **yes** | Departure date in YYYY-MM-DD format |
+| `return_date` | string | no | Return date in YYYY-MM-DD format for round trips (optional) |
+| `cabin_class` | string | no | Cabin class: "economy", "premium_economy", "business", or "first" (optional, default economy) |
+| `max_stops` | string | no | Max stops: "0" or "non_stop" for nonstop, "1" or "one_stop" for max one stop, or omit for any (optional) |
+| `passengers` | number | no | Number of passengers (1-9, default 1) |
+| `sort_by` | string | no | Sort order: "price" (cheapest), "duration", "departure", or "arrival" (optional) |
+
+- **API endpoints:** `GET /api/aviation/v1/search-google-flights`
+- **Kind:** live RPC — proxies a fetch to the WorldMonitor API on each call. Edge-runtime timeout: **25.0s**.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"search_flights","arguments":{"origin":"JFK","destination":"LHR","departure_date":"2026-08-15"}}
+  }'
+```
+
+</CodeGroup>
+
+### `search_flight_prices_by_date`
+
+Search Google Flights date-grid pricing across a date range. Returns cheapest prices for each departure date between two airports. Useful for finding the cheapest day to fly. Use IATA airport codes.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `origin` | string | **yes** | IATA code for the departure airport, e.g. "JFK" |
+| `destination` | string | **yes** | IATA code for the arrival airport, e.g. "LHR" |
+| `start_date` | string | **yes** | Start of the date range in YYYY-MM-DD format |
+| `end_date` | string | **yes** | End of the date range in YYYY-MM-DD format |
+| `is_round_trip` | boolean | no | Whether to search round-trip prices (default false). Requires trip_duration when true. |
+| `trip_duration` | number | no | Trip duration in days — required when is_round_trip is true (e.g. 7 for a one-week trip) |
+| `cabin_class` | string | no | Cabin class: "economy", "premium_economy", "business", or "first" (optional) |
+| `passengers` | number | no | Number of passengers (1-9, default 1) |
+| `sort_by_price` | boolean | no | Sort results by price ascending (default false, sorts by date) |
+
+- **API endpoints:** `GET /api/aviation/v1/search-google-dates`
+- **Kind:** live RPC — proxies a fetch to the WorldMonitor API on each call. Edge-runtime timeout: **25.0s**.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"search_flight_prices_by_date","arguments":{"origin":"JFK","destination":"LHR","start_date":"2026-08-01","end_date":"2026-08-31"}}
+  }'
+```
+
+</CodeGroup>
+
+## Environment & science
+
+### `get_climate_data`
+
+Climate intelligence: temperature/precipitation anomalies (vs 30-year WMO normals), climate-relevant disaster alerts (ReliefWeb/GDACS/FIRMS), atmospheric CO2 trend (NOAA Mauna Loa), air quality (OpenAQ/WAQI PM2.5 stations), Arctic sea ice extent and ocean heat indicators (NSIDC/NOAA), weather alerts, and climate news.
+
+**Parameters:** none
+
+- **API endpoints:** `GET /api/climate/v1/get-co2-monitoring`, `GET /api/climate/v1/get-ocean-ice-data`, `GET /api/climate/v1/list-air-quality-data`, `GET /api/climate/v1/list-climate-anomalies`, `GET /api/climate/v1/list-climate-disasters`, `GET /api/climate/v1/list-climate-news`
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** up to **2 d** before `stale: true` is flagged (set by the seeder cron's expected interval).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_climate_data","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_natural_disasters`
+
+Recent earthquakes (USGS), active wildfires (NASA FIRMS), and natural hazard events. Includes magnitude, location, and threat severity.
+
+**Parameters:** none
+
+- **API endpoints:** `GET /api/natural/v1/list-natural-events`, `GET /api/seismology/v1/list-earthquakes`, `GET /api/wildfire/v1/list-fire-detections`
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** up to **30 min** before `stale: true` is flagged (set by the seeder cron's expected interval).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_natural_disasters","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_radiation_data`
+
+Radiation observation levels from global monitoring stations. Flags anomalous readings that may indicate nuclear incidents.
+
+**Parameters:** none
+
+- **API endpoints:** `GET /api/radiation/v1/list-radiation-observations`
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** up to **30 min** before `stale: true` is flagged (set by the seeder cron's expected interval).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_radiation_data","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_research_signals`
+
+Tech and research event signals: emerging technology events bootstrap data from curated research feeds.
+
+**Parameters:** none
+
+- **API endpoints:** `GET /api/research/v1/list-tech-events`
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** up to **8 h** before `stale: true` is flagged (set by the seeder cron's expected interval).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_research_signals","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+## Health
+
+### `get_health_signals`
+
+Active disease outbreaks (WHO/ECDC etc.) and global air-quality station readings (OpenAQ/WAQI PM2.5). For health-risk screening.
+
+**Parameters:** none
+
+- **API endpoints:** `GET /api/health/v1/list-air-quality-alerts`, `GET /api/health/v1/list-disease-outbreaks`
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** up to **2 d** before `stale: true` is flagged (set by the seeder cron's expected interval).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_health_signals","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+## Humanitarian & displacement
+
+### `get_displacement_data`
+
+Refugee and IDP counts by country (UNHCR annual data).
+
+**Parameters:** none
+
+- **API endpoints:** `GET /api/displacement/v1/get-displacement-summary`
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** up to **2.5 d** before `stale: true` is flagged (set by the seeder cron's expected interval).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_displacement_data","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+## AI intelligence (live LLM)
+
+### `get_world_brief`
+
+AI-generated world intelligence brief. Fetches the latest geopolitical headlines along with their RSS article bodies and produces a grounded LLM-summarized brief. Supply an optional geo_context to focus on a region or topic.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `geo_context` | string | no | Optional focus context (e.g. "Middle East tensions", "US-China trade war") |
+
+- **API endpoints:** `GET /api/news/v1/list-feed-digest`, `POST /api/news/v1/summarize-article`
+- **Kind:** live RPC — proxies a fetch to the WorldMonitor API on each call. Worst-case total budget **~24s** (6s digest fetch + 18s LLM summarization, sequential).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_world_brief","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `analyze_situation`
+
+AI geopolitical situation analysis (DeductionPanel). Provide a query and optional geo-political context; returns an LLM-powered analytical deduction with confidence and supporting signals.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `query` | string | **yes** | The question or situation to analyze, e.g. "What are the implications of the Taiwan strait escalation for semiconductor supply chains?" |
+| `context` | string | no | Optional additional geo-political context to include in the analysis |
+| `framework` | string | no | Optional analytical framework instructions to shape the analysis lens (e.g. Ray Dalio debt cycle, PMESII-PT, Porter's Five Forces) |
+
+- **API endpoints:** `POST /api/intelligence/v1/deduct-situation`
+- **Kind:** live RPC — proxies a fetch to the WorldMonitor API on each call. Edge-runtime timeout: **25.0s**.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"analyze_situation","arguments":{"query":"What are the implications of the Taiwan strait escalation for semiconductor supply chains?"}}
+  }'
+```
+
+</CodeGroup>
+
+### `generate_forecasts`
+
+Generate live AI geopolitical and economic forecasts. Unlike get_forecast_predictions (pre-computed cache), this calls the forecasting model directly for fresh probability estimates. Note: slower than cache tools.
+
+**Parameters:**
+
+| Name | Type | Required | Description |
+|------|------|---------:|-------------|
+| `domain` | string | no | Forecast domain: "geopolitical", "economic", "military", "climate", or empty for all domains |
+| `region` | string | no | Geographic region filter, e.g. "Middle East", "Europe", "Asia Pacific", or empty for global |
+
+- **API endpoints:** no public OpenAPI row; runtime proxies `POST /api/forecast/v1/get-forecasts` (the OpenAPI spec only declares `GET` on that path, which is covered by `get_forecast_predictions` — this tool's POST variant runs a fresh forecast).
+- **Kind:** live RPC — proxies a fetch to the WorldMonitor API on each call. Edge-runtime timeout: **25.0s**.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"generate_forecasts","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+### `get_forecast_predictions`
+
+AI-generated geopolitical and economic forecasts from WorldMonitor's predictive models. Covers upcoming risk events and probability assessments.
+
+**Parameters:** none
+
+- **API endpoints:** `GET /api/forecast/v1/get-forecasts`
+- **Kind:** cache read — sub-second response from Redis bootstrap cache.
+- **Freshness budget:** up to **1.5 h** before `stale: true` is flagged (set by the seeder cron's expected interval).
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_forecast_predictions","arguments":{}}
+  }'
+```
+
+</CodeGroup>
+
+## Meta
+
+### `describe_tool`
+
+Returns the full uncompressed definition of any other tool by name. Use when the compressed `tools/list` entry is ambiguous about behaviour or argument semantics — since v1.5.0, `tools/list` returns each tool's `description` truncated to the first sentence (≤120 UTF-8 bytes); `describe_tool` returns the full long-form text plus the same `inputSchema` (every property's full description).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `tool_name` | string | **yes** | Exact tool name from `tools/list` (e.g. `"get_market_data"`). |
+
+**Response shape:** identical to a single `tools/list` entry — `{ name, description, inputSchema, annotations }` — with the full uncompressed `description` and the same `inputSchema.properties` (including injected `summary` for cache tools and `jmespath` for every tool).
+
+**Soft errors** (HTTP 200, returned inside the normal `content[0].text` envelope — NOT JSON-RPC errors):
+
+- `{ "error": "missing_tool_name", "hint": "Pass tool_name as a non-empty string matching a tool from tools/list." }` — `tool_name` was omitted, empty, or non-string.
+- `{ "error": "unknown_tool", "requested": "<the bad name>", "available": [...sorted list of all tool names...] }` — `tool_name` didn't match any registered tool. The `available` array lets the LLM self-correct in one extra call.
+
+- **API endpoints:** none — server-local lookup, no upstream call.
+- **Kind:** metadata lookup — sub-millisecond, no Redis, no LLM.
+- **Quota:** **EXEMPT** from the Pro daily quota (50/day). Per-minute rate limit (60/min) still applies.
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"describe_tool","arguments":{"tool_name":"get_market_data"}}
+  }'
+```
+
+</CodeGroup>

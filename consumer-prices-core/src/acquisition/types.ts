@@ -17,6 +17,7 @@ export interface SearchOptions {
 
 export interface ExtractSchema {
   fields: Record<string, { description: string; type: 'string' | 'number' | 'boolean' | 'array' }>;
+  prompt?: string;
 }
 
 export interface FetchResult {

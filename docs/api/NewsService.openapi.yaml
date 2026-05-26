@@ -166,6 +166,20 @@ components:
                 lang:
                     type: string
                     description: Output language code, default "en".
+                systemAppend:
+                    type: string
+                    description: Optional system prompt append for analytical framework instructions.
+                bodies:
+                    type: array
+                    items:
+                        type: string
+                        description: |-
+                            Optional article bodies paired 1:1 with `headlines`. When bodies[i] is
+                             non-empty, the prompt interleaves it as grounding context under
+                             headlines[i]; when empty, behavior is identical to headline-only today.
+                             Callers may supply a shorter array; missing entries are treated as empty.
+                             Each body is subject to the same sanitisation as headlines before reaching
+                             the LLM prompt.
             required:
                 - provider
             description: SummarizeArticleRequest specifies parameters for LLM article summarization.
@@ -290,6 +304,24 @@ components:
                 locationName:
                     type: string
                     description: Human-readable location name.
+                importanceScore:
+                    type: integer
+                    format: int32
+                    description: 'Composite importance score (0-100): severity × 55% + source tier × 20% + corroboration × 15% + recency × 10%.'
+                corroborationCount:
+                    type: integer
+                    format: int32
+                    description: Number of distinct sources that reported the same story in this digest cycle.
+                storyMeta:
+                    $ref: '#/components/schemas/StoryMeta'
+                snippet:
+                    type: string
+                    description: |-
+                        Cleaned article description from the RSS/Atom <description> /
+                         <content:encoded> / <summary> / <content> tag: HTML-stripped,
+                         entity-decoded, whitespace-normalised, clipped to 400 chars. Empty string
+                         when unavailable or indistinguishable from the headline — consumers must
+                         fall back to the headline for display/LLM grounding in that case.
             required:
                 - source
                 - title
@@ -335,3 +367,28 @@ components:
                     format: double
                     description: Longitude in decimal degrees (-180 to 180).
             description: GeoCoordinates represents a geographic location using WGS84 coordinates.
+        StoryMeta:
+            type: object
+            properties:
+                firstSeen:
+                    type: integer
+                    format: int64
+                    description: 'Epoch ms when the story first appeared in any digest cycle.. Warning: Values > 2^53 may lose precision in JavaScript'
+                mentionCount:
+                    type: integer
+                    format: int32
+                    description: Total number of digest cycles in which this story appeared.
+                sourceCount:
+                    type: integer
+                    format: int32
+                    description: Number of unique sources that reported this story (cached from Redis Set).
+                phase:
+                    type: string
+                    enum:
+                        - STORY_PHASE_UNSPECIFIED
+                        - STORY_PHASE_BREAKING
+                        - STORY_PHASE_DEVELOPING
+                        - STORY_PHASE_SUSTAINED
+                        - STORY_PHASE_FADING
+                    description: StoryPhase represents the lifecycle stage of a tracked news story.
+            description: StoryMeta carries cross-cycle persistence data attached to each news item.

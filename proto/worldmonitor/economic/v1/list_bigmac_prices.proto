@@ -14,6 +14,7 @@ message BigMacCountryPrice {
   double fx_rate = 7;
   string source_site = 8;
   bool available = 9;
+  double wow_pct = 10;           // WoW % change in USD price
 }
 
 message ListBigMacPricesRequest {}
@@ -23,4 +24,7 @@ message ListBigMacPricesResponse {
   string fetched_at = 2;
   string cheapest_country = 3;
   string most_expensive_country = 4;
+  double wow_avg_pct = 5;       // average WoW % change across all countries with data
+  bool wow_available = 6;        // false on first run (no :prev snapshot yet)
+  string prev_fetched_at = 7;    // ISO timestamp of previous snapshot
 }

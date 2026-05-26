@@ -1,0 +1,57 @@
+---
+title: "Latest Brief"
+description: "The WorldMonitor daily AI intelligence brief, surfaced in the dashboard as a single card that links to a signed magazine-style reader and shareable public URL."
+---
+
+The **Latest Brief** panel is the dashboard surface for the WorldMonitor Brief — an AI-generated daily intelligence digest that synthesises the day's most significant events into a structured, source-attributed read. The composer runs as a Railway job once per day per user; the panel simply mirrors whatever brief exists for the signed-in reader at the moment they open the dashboard.
+
+## What the panel shows
+
+Three states are rendered, depending on the reader and the composer's progress:
+
+- **Ready** — a cover-card thumbnail, the brief's greeting, the day's thread count, and a **Read brief →** button that opens the signed magazine URL in a new tab.
+- **Composing** — a soft empty state when the composer has not yet produced today's brief. The panel auto-refreshes on the next user-visible interaction; no manual retry is needed.
+- **Locked** — a premium-upgrade overlay drawn by the base panel framework when the reader does not meet the PRO gate.
+
+Panel id is `latest-brief`; canonical component is `src/components/LatestBriefPanel.ts`.
+
+## How you reach it
+
+- **Cmd+K** — type *brief* (matches "Panel: Latest Brief" in the command palette).
+- **Availability by variant**: registered and enabled by default in the **full/geopolitical**, **tech**, **finance**, and **commodity** variants (all of them as `premium: 'locked'`). Not present in the happy variant. Source: `FULL_PANELS`, `TECH_PANELS`, `FINANCE_PANELS`, `COMMODITY_PANELS` in `src/config/panels.ts`.
+
+Clicking **Read brief →** opens the full magazine-style reader in a new tab. Sharing the brief is a separate, explicit action — see [AI Brief Endpoints](/api-brief) for how share links are materialised.
+
+## Data sources
+
+The panel calls `GET /api/latest-brief` (Clerk JWT required, PRO gated). The response is either the ready payload (`issueDate`, `dateLong`, `greeting`, `threadCount`, `magazineUrl`) or a `{ status: "composing", issueDate }` stub. The signed `magazineUrl` is generated server-side — the HMAC signing secret never lives in the client bundle.
+
+The brief itself is composed by a Railway job from:
+
+- Curated news aggregates and GDELT signals
+- The intelligence, conflict, and markets caches
+- Per-reader personalisation if the user has configured preferences
+
+**Redis key shape** (for anyone inspecting the feature from the backend):
+
+- The composer writes the envelope to `brief:{userId}:{issueSlot}` — where `issueSlot` is computed by `issueSlotInTz(nowMs, userTz)`, so two same-day compose runs in different time-of-day slots produce distinct keys.
+- A **latest pointer** is written atomically alongside: `brief:latest:{userId}` → `{ "issueSlot": "<slot>" }`. Readers (the dashboard panel, the share-URL endpoint) resolve the current brief by reading the pointer first, then fetching the slot-keyed envelope.
+- TTL is 7 days on both keys; if the pointer is absent, the reader treats the user as having no recent brief.
+
+Reference: `scripts/seed-digest-notifications.mjs` (writer) and `api/latest-brief.ts` (reader).
+
+## Refresh cadence
+
+- **Composer**: one run per eligible user per day (Railway cron).
+- **Panel — ready state**: reads on panel load; subsequent reads happen only on user-visible refresh triggers. No polling timer while the brief is already displayed.
+- **Panel — composing state**: schedules a 60-second re-poll (`COMPOSING_POLL_MS = 60_000` in `src/components/LatestBriefPanel.ts`) so the panel transitions from `composing` to `ready` on the next composer tick without requiring a full page reload. The poll timer is cleared when the panel leaves the composing state.
+
+The brief is explicitly a *daily* product — if the composer has not produced today's brief yet, the panel shows `composing` rather than yesterday's content, and auto-promotes to `ready` once the composer writes today's payload.
+
+## Tier & gating
+
+Latest Brief is **PRO**. The panel is registered with `premium: 'locked'` in `src/config/panels.ts`, so free-tier readers see the upgrade overlay and never see the brief body. Verification runs server-side in `api/latest-brief.ts` — a valid Clerk JWT and an active PRO entitlement are both required; otherwise the endpoint returns `403 pro_required`. No content is exposed over the wire for non-PRO readers.
+
+## API reference
+
+- [AI Brief Endpoints](/api-brief) — covers `/api/latest-brief`, `/api/brief/share-url`, the public `/api/brief/public/{hash}` read, the per-user per-date read, and the social-ready PNG carousel route.

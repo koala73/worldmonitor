@@ -104,7 +104,7 @@ export async function getAirportOpsSummary(
                 notamFlags,
                 severity,
                 topDelayReasons,
-                source: healthy ? 'aviationstack' : 'simulated',
+                source: healthy ? 'aviationstack' : 'degraded',
                 updatedAt: now,
             });
         }

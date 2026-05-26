@@ -155,8 +155,12 @@ export function toProtoSeverity(s: string): FlightDelaySeverity {
     moderate: 'FLIGHT_DELAY_SEVERITY_MODERATE',
     major: 'FLIGHT_DELAY_SEVERITY_MAJOR',
     severe: 'FLIGHT_DELAY_SEVERITY_SEVERE',
+    unknown: 'FLIGHT_DELAY_SEVERITY_UNKNOWN',
   };
-  return map[s] || 'FLIGHT_DELAY_SEVERITY_NORMAL';
+  // #3707: default to UNKNOWN (not NORMAL) for unrecognised input — the whole
+  // point of the fix is to refuse to render uncovered/unmappable airports as
+  // healthy.
+  return map[s] || 'FLIGHT_DELAY_SEVERITY_UNKNOWN';
 }
 
 export function toProtoRegion(r: string): AirportRegion {
@@ -172,6 +176,7 @@ export function toProtoRegion(r: string): AirportRegion {
 
 export function toProtoSource(s: string): FlightDelaySource {
   const map: Record<string, FlightDelaySource> = {
+    unspecified: 'FLIGHT_DELAY_SOURCE_UNSPECIFIED',
     faa: 'FLIGHT_DELAY_SOURCE_FAA',
     eurocontrol: 'FLIGHT_DELAY_SOURCE_EUROCONTROL',
     computed: 'FLIGHT_DELAY_SOURCE_COMPUTED',
@@ -369,25 +374,8 @@ export interface NotamClosureResult {
   notamsByIcao: Map<string, string>;
 }
 
-export function getRelayBaseUrl(): string | null {
-  const relayUrl = process.env.WS_RELAY_URL;
-  if (!relayUrl) return null;
-  return relayUrl
-    .replace('wss://', 'https://')
-    .replace('ws://', 'http://')
-    .replace(/\/$/, '');
-}
-
-export function getRelayHeaders(_extra: Record<string, string> = {}): Record<string, string> {
-  const headers: Record<string, string> = { 'User-Agent': CHROME_UA };
-  const relaySecret = process.env.RELAY_SHARED_SECRET;
-  if (relaySecret) {
-    const relayHeader = (process.env.RELAY_AUTH_HEADER || 'x-relay-key').toLowerCase();
-    headers[relayHeader] = relaySecret;
-    headers.Authorization = `Bearer ${relaySecret}`;
-  }
-  return headers;
-}
+import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
+export { getRelayBaseUrl, getRelayHeaders };
 
 export async function fetchNotamClosures(
   airports: MonitoredAirport[]

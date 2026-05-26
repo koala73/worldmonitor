@@ -1,0 +1,27 @@
+syntax = "proto3";
+
+package worldmonitor.sanctions.v1;
+
+import "sebuf/http/annotations.proto";
+
+// LookupSanctionEntityRequest searches the OFAC entity index by name, vessel, or aircraft.
+message LookupSanctionEntityRequest {
+  string q = 1 [(sebuf.http.query) = { name: "q" }];
+  int32 max_results = 2 [(sebuf.http.query) = { name: "max_results" }];
+}
+
+// SanctionEntityMatch is a compact entity match from the lookup index.
+message SanctionEntityMatch {
+  string id = 1;
+  string name = 2;
+  string entity_type = 3;
+  repeated string country_codes = 4;
+  repeated string programs = 5;
+}
+
+// LookupSanctionEntityResponse contains matched entities from OFAC + OpenSanctions.
+message LookupSanctionEntityResponse {
+  repeated SanctionEntityMatch results = 1;
+  int32 total = 2;
+  string source = 3;
+}

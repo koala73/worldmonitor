@@ -573,6 +573,49 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
   color: var(--wm-bg);
 }
 
+/* ─── Author Bio ─── */
+.author-bio {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+  margin: 2.5rem auto 0;
+  max-width: 720px;
+  padding: 1.25rem 1.5rem;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+}
+
+.author-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  object-fit: cover;
+}
+
+.author-info { flex: 1; }
+
+.author-name {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 0.3rem;
+}
+
+.author-name a {
+  color: var(--wm-green);
+  text-decoration: none;
+}
+
+.author-name a:hover { text-decoration: underline; }
+
+.author-desc {
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  line-height: 1.5;
+}
+
 /* ─── Responsive ─── */
 @media (max-width: 768px) {
   .blog-hero h1 { font-size: 2rem; }

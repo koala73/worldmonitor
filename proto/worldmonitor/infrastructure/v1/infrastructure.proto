@@ -70,6 +70,54 @@ enum OutageSeverity {
   OUTAGE_SEVERITY_TOTAL = 3;
 }
 
+// DdosAttackSummaryEntry represents a single protocol or vector and its share of DDoS traffic.
+message DdosAttackSummaryEntry {
+  // Protocol or vector name (e.g. "TCP", "UDP", "networkFlood").
+  string label = 1;
+  // Percentage share of total DDoS traffic (0–100).
+  float percentage = 2;
+}
+
+// TrafficAnomaly represents an anomalous traffic pattern detected by Cloudflare Radar.
+message TrafficAnomaly {
+  // Unique identifier for the anomaly.
+  string uuid = 1;
+  // Anomaly type (e.g. "ANOMALY_DNS", "ANOMALY_BGP").
+  string type = 2;
+  // Current status ("ONGOING" or "HISTORICAL").
+  string status = 3;
+  // Start of the anomaly, Unix epoch milliseconds.
+  int64 start_date = 4 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // End of the anomaly, Unix epoch milliseconds. Zero if ongoing.
+  int64 end_date = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Autonomous System Number affected.
+  string asn = 6;
+  // ASN display name.
+  string asn_name = 7;
+  // ISO 3166-1 alpha-2 country code.
+  string location_code = 8;
+  // Country display name.
+  string location_name = 9;
+  // Latitude of the affected location.
+  float latitude = 10;
+  // Longitude of the affected location.
+  float longitude = 11;
+}
+
+// DdosLocationHit represents a top DDoS target location with geo coordinates.
+message DdosLocationHit {
+  // ISO 3166-1 alpha-2 country code.
+  string country_code = 1;
+  // Country display name.
+  string country_name = 2;
+  // Percentage share of total DDoS traffic targeting this location (0-100).
+  float percentage = 3;
+  // Latitude of the target location.
+  float latitude = 4;
+  // Longitude of the target location.
+  float longitude = 5;
+}
+
 // ServiceOperationalStatus represents the current status of a service.
 enum ServiceOperationalStatus {
   // Unspecified status.

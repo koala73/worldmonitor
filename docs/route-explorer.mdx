@@ -1,0 +1,99 @@
+---
+title: "Route Explorer"
+description: "Plan a shipment between any two countries and see the chokepoints, bypass options, and country-level impact on a full-screen, keyboard-first map workflow."
+---
+
+Route Explorer is a full-screen workflow for reasoning about how a specific shipment moves through the world: which maritime chokepoints it crosses, what alternative routes exist, what land corridors could substitute, and which countries take the brunt of the disruption if a chokepoint closes. It is the fastest way to ask "if this lane is disrupted, what actually happens?"
+
+## Who it is for
+
+- **Shippers, traders, and freight desks** evaluating lane risk for a specific origin-destination-commodity combination.
+- **Analysts** comparing baseline routing to plausible detours under disruption.
+- **Policy and risk teams** looking at country-level import dependency and exposure.
+
+## Opening Route Explorer
+
+- **Cmd / Ctrl + K → "Route Explorer — plan a shipment"** (`src/config/commands.ts:254`).
+- Or use the dedicated action in the command palette; the workflow opens as a full-screen modal over the map.
+
+Route state is encoded in the URL (`src/components/RouteExplorer/url-state.ts`), so any configuration — origin, destination, HS2 commodity, cargo type, active tab — can be copied, shared, or bookmarked.
+
+## The four tabs
+
+Route Explorer is organized as four tabs, labelled in `src/components/RouteExplorer/RouteExplorer.ts`:
+
+### 1. Current
+
+The baseline route between the selected origin and destination, rendered on the map with chokepoint-crossing events highlighted. Shows which chokepoints the lane touches, live disruption score on each, and the live war-risk tier attached to the primary chokepoint.
+
+### 2. Alternatives
+
+Alternative maritime corridors if the primary lane is degraded — for example, Cape of Good Hope as a detour around the Suez + Bab-el-Mandeb system. Each alternative shows added transit days and an added-cost multiplier, filtered to corridors that are actually suitable for the selected cargo type.
+
+### 3. Land
+
+Land-corridor substitutions where a maritime lane has a credible rail or road counterpart (e.g. China–Europe via Middle Corridor). Useful for thinking through land-sea rebalancing rather than purely maritime detours.
+
+### 4. Impact
+
+Flips the question from "where does my cargo go" to "who is most exposed if this lane breaks." Ranks countries by import dependency on the selected HS2 chapter through the selected chokepoint.
+
+## Inputs
+
+All four tabs share a single input bar:
+
+| Input | Values |
+|---|---|
+| **From country** | Any country; ISO-3166-1 alpha-2 under the hood. |
+| **To country** | Same. |
+| **HS2 commodity** | 2-digit HS chapter (e.g. `27` — mineral fuels). Default guesses from cargo type. |
+| **Cargo type** | `container`, `tanker`, `bulk`, `roro` — filters bypass corridors to those that carry the cargo. |
+
+Every change triggers a debounced re-fetch (~250ms) so holding a key or scrubbing through options feels live.
+
+## Keyboard-first
+
+Route Explorer is built for keyboard use — all inputs and tabs are reachable without the mouse. The full binding list is shown in the in-workflow help overlay (press `?`) and lives in `src/components/RouteExplorer/KeyboardHelp.ts`:
+
+| Key | Action |
+|---|---|
+| `Esc` | Close the active picker first, then the panel |
+| `Tab` / `Shift+Tab` | Move focus between the panel and the map |
+| `F` | Jump to the From picker |
+| `T` | Jump to the To picker |
+| `P` | Jump to the Product (HS2) picker |
+| `S` | Swap From ↔ To |
+| `1` – `4` | Switch tabs (Current / Alternatives / Land / Impact) |
+| `↑` / `↓` | Navigate the ranked list in the left rail |
+| `Enter` | Commit the highlighted selection |
+| `Cmd+,` | Copy the shareable URL |
+| `?` | Show this help overlay |
+
+## Map integration
+
+While the workflow is open, the underlying map reflects your selections in real time:
+
+- The primary route is highlighted.
+- Bypass corridors render as dashed overlays when the Alternatives tab is active.
+- The viewport zooms to fit the active route set.
+
+When the workflow closes, the map restores its prior state.
+
+## Tier & gating
+
+Route Explorer is **PRO**. Free-tier visitors can open the workflow and fill in the input bar, but they hit a hard gate at fetch time — the left rail is blurred, the tab area is replaced with an "Unlock route intelligence" card and an **Upgrade to PRO** button, and no numeric payload is rendered in any tab. The underlying map, visible behind the modal, shows a generic public-route highlight as a preview of what PRO exposes.
+
+The gate path is implemented by `renderFreeGate()` in `src/components/RouteExplorer/RouteExplorer.ts:342`; a `route-explorer:free-cta-click` analytics event fires if the Upgrade button is clicked. Clicking Upgrade routes into the Pro checkout (or falls back to the Pro marketing page).
+
+## Data behind Route Explorer
+
+- **Route graph** — `/api/supply-chain/v1/get-route-explorer-lane` (generated from `proto/worldmonitor/supply_chain/v1/`). Returns primary route id, chokepoint exposures, bypass corridors, war-risk tier, and disruption score.
+- **Country impact** — `/api/supply-chain/v1/get-route-impact` for the Impact tab.
+- **Chokepoint status** — live dry-bulk congestion, AIS density, dark-ship events, and recent incident feeds.
+
+For the API-level contract, see the [Supply Chain](/api/SupplyChainService.openapi.yaml) and [Shipping v2](/api-shipping-v2) reference pages. For the underlying maritime layer on the map, see [Maritime Intelligence](/maritime-intelligence).
+
+## Related workflows
+
+- [Scenario Engine](/scenario-engine) — if Route Explorer answers "what is this lane today," Scenario Engine answers "what happens if a specific disruption event plays out."
+- [Maritime Intelligence](/maritime-intelligence) — the layer-level view of vessels, chokepoints, and corridors on the main map.

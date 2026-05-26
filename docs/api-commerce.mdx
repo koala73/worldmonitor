@@ -1,0 +1,119 @@
+---
+title: "Commerce Endpoints"
+description: "Checkout, customer portal, product catalog, and referrals. Thin edge proxies over Convex + Dodo Payments."
+---
+
+WorldMonitor uses [Dodo Payments](https://dodopayments.com) for PRO subscriptions and [Convex](https://convex.dev) as the source-of-truth for entitlements. These edge endpoints are thin auth proxies — they validate the Clerk JWT, then forward to Convex HTTP actions via `RELAY_SHARED_SECRET`.
+
+## Checkout
+
+### `POST /api/create-checkout`
+
+Creates a Dodo checkout session and returns the hosted-checkout URL.
+
+- **Auth**: Clerk bearer (required)
+- **Body**:
+  ```json
+  { "productId": "pro-monthly", "returnUrl": "https://www.worldmonitor.app/pro/success" }
+  ```
+- **Response**: `{ "checkoutUrl": "https://checkout.dodopayments.com/..." }`
+- **returnUrl** is validated against an allowlist on the Convex side.
+
+### `POST /api/customer-portal`
+
+Creates a Dodo customer-portal session for an existing subscriber (update card, cancel, view invoices).
+
+- **Auth**: Clerk bearer + active entitlement
+- **Response**: `{ "portalUrl": "..." }`
+
+## Product catalog
+
+### `GET /api/product-catalog`
+
+Returns the tier view-model used by the `/pro` pricing page. Cached in Redis under `product-catalog:v2` for 1 hour; on cache miss, fetches live prices from Dodo Payments and falls back to `_product-fallback-prices.js` if Dodo is unreachable. Response carries an `X-Product-Catalog-Source` header so probes can tell cache hits from live fetches.
+
+**Response** (tiers ordered `free`, `pro`, `api_starter`, `enterprise`):
+
+```json
+{
+  "tiers": [
+    {
+      "name": "Free",
+      "description": "Get started with the essentials",
+      "features": ["Core dashboard panels", "..."],
+      "cta": "Get Started",
+      "href": "https://worldmonitor.app",
+      "highlighted": false,
+      "price": 0,
+      "period": "forever"
+    },
+    {
+      "name": "Pro",
+      "description": "Full intelligence dashboard",
+      "features": ["..."],
+      "highlighted": true,
+      "monthlyPrice": 20,
+      "monthlyProductId": "pdt_0Nbtt71uObulf7fGXhQup",
+      "annualPrice": 180,
+      "annualProductId": "pdt_0NbttMIfjLWC10jHQWYgJ"
+    },
+    {
+      "name": "API",
+      "description": "Programmatic access to intelligence data",
+      "features": ["..."],
+      "highlighted": false,
+      "monthlyPrice": 99,
+      "monthlyProductId": "pdt_0NbttVmG1SERrxhygbbUq",
+      "annualPrice": 990,
+      "annualProductId": "pdt_0Nbu2lawHYE3dv2THgSEV"
+    },
+    {
+      "name": "Enterprise",
+      "description": "Custom solutions for organizations",
+      "features": ["..."],
+      "cta": "Contact Sales",
+      "href": "mailto:enterprise@worldmonitor.app",
+      "highlighted": false,
+      "price": null
+    }
+  ],
+  "fetchedAt": "2026-04-19T12:00:00Z",
+  "cachedUntil": "2026-04-19T13:00:00Z",
+  "priceSource": "dodo"
+}
+```
+
+Notes:
+- Price fields are flat on the tier. Paid tiers expose `monthlyPrice` / `monthlyProductId` and `annualPrice` / `annualProductId`. Free uses `price: 0, period: "forever"`; Enterprise uses `price: null`.
+- Prices are dollars (Dodo returns cents; the handler divides by 100). Currency is implicit USD for the published catalog.
+
+### `DELETE /api/product-catalog`
+
+Purges the cached catalog. Requires `Authorization: Bearer $RELAY_SHARED_SECRET`. Internal.
+
+## Referrals
+
+### `GET /api/referral/me`
+
+Returns the caller's deterministic referral code (an 8-char HMAC of the Clerk userId, stable for the life of the account) and a pre-built share URL. Clerk bearer required. The handler also fires a best-effort `ctx.waitUntil` Convex binding so future `/pro?ref=<code>` signups can attribute — this never blocks the response.
+
+```json
+{
+  "code": "a1b2c3d4",
+  "shareUrl": "https://worldmonitor.app/pro?ref=a1b2c3d4"
+}
+```
+
+Errors:
+- `401 UNAUTHENTICATED` — missing or invalid Clerk JWT.
+- `503 service_unavailable` — `BRIEF_URL_SIGNING_SECRET` not configured (the referral-code HMAC reuses that secret).
+
+No `referrals` count or `rewardMonths` is returned today — Dodo's `affonso_referral` attribution doesn't yet flow into Convex, and exposing only the waitlist-side count would mislead.
+
+`affonso_referral` is the vendor-contracted metadata key Dodo forwards to Affonso's referral-tracking webhook. The key name is load-bearing — renaming it (to `wm_referral`, `ref`, etc.) silently breaks Dodo→Affonso attribution. See `convex/payments/checkout.ts` and `convex/payments/subscriptionHelpers.ts` for the writer/reader call sites.
+
+## Waitlist
+
+### `POST /api/leads/v1/register-interest`
+
+Captures an email into the Convex waitlist table. Turnstile-verified (desktop sources bypass), rate-limited per IP. Part of `LeadsService`; see [Platform endpoints](/api-platform) for the request shape.

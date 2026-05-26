@@ -15,6 +15,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import vm from 'node:vm';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -93,17 +94,21 @@ describe('widget-agent relay — security', () => {
     assert.ok(handlerBody.includes('163840'), 'Body limit must be enforced in handleWidgetAgentRequest');
   });
 
-  it('SSRF guard — ALLOWED_ENDPOINTS set is present', () => {
-    assert.ok(relay.includes('WIDGET_ALLOWED_ENDPOINTS'), 'WIDGET_ALLOWED_ENDPOINTS not found');
+  it('SSRF guard — isWidgetEndpointAllowed function is present', () => {
     assert.ok(
-      relay.includes("new Set(["),
-      'WIDGET_ALLOWED_ENDPOINTS should be a Set',
+      relay.includes('isWidgetEndpointAllowed'),
+      'isWidgetEndpointAllowed guard function must exist',
+    );
+    // Must reject non-API paths
+    assert.ok(
+      relay.includes("startsWith('/api/')"),
+      'Guard must restrict to /api/ prefix',
     );
   });
 
   it('SSRF guard — allowlist is checked before any fetch call in tool loop', () => {
-    const allowlistCheck = relay.indexOf('WIDGET_ALLOWED_ENDPOINTS.has(endpoint)');
-    assert.ok(allowlistCheck !== -1, 'WIDGET_ALLOWED_ENDPOINTS.has() check missing');
+    const allowlistCheck = relay.indexOf('isWidgetEndpointAllowed(endpoint)');
+    assert.ok(allowlistCheck !== -1, 'isWidgetEndpointAllowed() check missing in tool loop');
     // The fetch call to api.worldmonitor.app must come AFTER the check
     const fetchCallIdx = relay.indexOf("'https://api.worldmonitor.app'", allowlistCheck);
     assert.ok(
@@ -112,18 +117,78 @@ describe('widget-agent relay — security', () => {
     );
   });
 
-  it('SSRF guard — only worldmonitor.app endpoints are in allowlist', () => {
-    const setStart = relay.indexOf('WIDGET_ALLOWED_ENDPOINTS = new Set');
-    assert.ok(setStart !== -1);
-    const setBody = relay.slice(setStart, relay.indexOf(']);', setStart) + 2);
-    // Extract all quoted strings inside the Set
-    const entries = [...setBody.matchAll(/['"]([^'"]+)['"]/g)].map(m => m[1]);
-    for (const entry of entries) {
-      assert.ok(
-        entry.startsWith('/api/'),
-        `Non-API endpoint in WIDGET_ALLOWED_ENDPOINTS: "${entry}" — must start with /api/`,
-      );
-    }
+  it('SSRF guard — dangerous inference/write paths are blocked', () => {
+    assert.ok(
+      relay.includes('analyze-stock') && relay.includes('summarize-article'),
+      'Blocklist must explicitly exclude inference-only paths',
+    );
+  });
+
+  it('SSRF guard — deduct-situation blocklist entry matches the real method name (#3740)', () => {
+    // Regression: blocklist previously had a one-char typo 'deduce-situation' that
+    // never matched the real /api/intelligence/v1/deduct-situation path, leaving an
+    // expensive LLM endpoint freely callable.
+    //
+    // A fully behavioral test (calling isWidgetEndpointAllowed() with the real URL)
+    // would catch a wider set of regressions than these structural assertions, but
+    // requires extracting the function from ais-relay.cjs into its own module —
+    // ais-relay.cjs starts an HTTP server unconditionally at module-load time, so
+    // it can't be required from a unit test without that refactor. The structural
+    // checks below catch the failure modes the audit explicitly named: the typo,
+    // the substring leaving the blocked-array, and a refactor away from the
+    // substring-match dispatch that re-opens the gap.
+
+    // 1. The correct entry is present (and the typo is gone).
+    assert.ok(
+      relay.includes("'deduct-situation'"),
+      "Blocklist must contain 'deduct-situation' (matches /api/intelligence/v1/deduct-situation)",
+    );
+    assert.ok(
+      !relay.includes("'deduce-situation'"),
+      "Blocklist must not contain the typo 'deduce-situation' — it never matches any real URL",
+    );
+
+    // 2. The entry lives inside the `blocked = [...]` array literal, not in some
+    //    comment that happens to mention the method name. This catches a regression
+    //    where the array is commented out or guarded by a falsy condition but the
+    //    string survives elsewhere in the file.
+    const blockedArrayMatch = relay.match(/const blocked = \[[\s\S]*?\];/);
+    assert.ok(blockedArrayMatch, "isWidgetEndpointAllowed must define `const blocked = [...]`");
+    assert.ok(
+      blockedArrayMatch[0].includes("'deduct-situation'"),
+      "'deduct-situation' must appear inside the blocked array literal, not just somewhere in the file",
+    );
+
+    // 3. The dispatch still uses substring matching (`endpoint.includes(b)`). A
+    //    refactor to exact equality (`endpoint === b`) would silently re-open the
+    //    gap because callers pass the full `/api/intelligence/v1/deduct-situation`
+    //    path, not the bare method name.
+    assert.ok(
+      /blocked\.some\([^)]*=>\s*endpoint\.includes\(/.test(relay),
+      "isWidgetEndpointAllowed must keep substring matching (`endpoint.includes(b)`); switching to `endpoint === b` would re-open the SSRF gap",
+    );
+  });
+
+  it('injection guard — isWidgetInjectionAttempt function is present', () => {
+    assert.ok(relay.includes('isWidgetInjectionAttempt'), 'injection guard function must exist');
+    assert.ok(relay.includes('ignore') && relay.includes('previous'), 'must detect override patterns');
+    assert.ok(relay.includes('jailbreak'), 'must detect jailbreak keyword');
+    assert.ok(relay.includes('act\\s+as'), 'must detect role hijacking');
+  });
+
+  it('injection guard — hard rejected before API call', () => {
+    const guardIdx = relay.indexOf('isWidgetInjectionAttempt(prompt)');
+    assert.ok(guardIdx !== -1, 'injection check must be called on prompt');
+    // Guard must appear before the Anthropic client is created
+    const anthropicIdx = relay.indexOf('new Anthropic(');
+    assert.ok(guardIdx < anthropicIdx, 'injection check must happen before any Anthropic API call');
+  });
+
+  it('injection guard — tool results are sanitized before context insertion', () => {
+    assert.ok(relay.includes('sanitizeToolContent'), 'sanitizeToolContent must be applied to tool results');
+    // Must be called on both search results and WM data results
+    const count = (relay.match(/sanitizeToolContent/g) || []).length;
+    assert.ok(count >= 3, `sanitizeToolContent must appear in definition + both result paths (found ${count})`);
   });
 
   it('tool loop is bounded by maxTurns (6 for basic, 10 for PRO)', () => {
@@ -221,10 +286,22 @@ describe('widget-store — constants and logic', () => {
     );
   });
 
-  it('auth gate checks wm-widget-key localStorage entry', () => {
+  it('auth gate migrates wm-widget-key to an HttpOnly session instead of storing it', () => {
     assert.ok(
       store.includes("'wm-widget-key'"),
-      "Feature gate must check localStorage key 'wm-widget-key'",
+      "Feature gate must know the legacy 'wm-widget-key' name for migration",
+    );
+    assert.ok(
+      store.includes('establishWmKeySession'),
+      'Widget key writes must go through the server session endpoint',
+    );
+    assert.ok(
+      !/localStorage\.setItem\(['"]wm-widget-key['"]/.test(store),
+      'wm-widget-key must not be written to localStorage',
+    );
+    assert.ok(
+      !/document\.cookie\s*=.*wm-widget-key.*encodeURIComponent\(.*key/s.test(store),
+      'wm-widget-key must not be written to a JS-readable cookie',
     );
   });
 
@@ -465,8 +542,8 @@ describe('panel guardrails — cw- prefix handling', () => {
 
   it('panel-layout loads widgets when feature is enabled', () => {
     assert.ok(
-      layout.includes('isWidgetFeatureEnabled'),
-      'panel-layout must check isWidgetFeatureEnabled before loading widgets',
+      layout.includes('hasPremiumAccess') || layout.includes('isProUser'),
+      'panel-layout must check hasPremiumAccess (or isProUser) before loading widgets',
     );
     assert.ok(
       layout.includes('loadWidgets'),
@@ -481,12 +558,10 @@ describe('panel guardrails — cw- prefix handling', () => {
     );
   });
 
-  it('panel-layout AI button is gated by isWidgetFeatureEnabled', () => {
-    // The AI button creation should be inside an isWidgetFeatureEnabled block
-    const featureIdx = layout.indexOf('isWidgetFeatureEnabled');
+  it('panel-layout AI button is gated by hasPremiumAccess', () => {
+    const hasCheck = layout.includes('hasPremiumAccess') || layout.includes('isProUser');
     const buttonIdx = layout.indexOf('ai-widget-block');
-    // Button CSS class or AI text should appear after the feature check
-    assert.ok(featureIdx !== -1, 'isWidgetFeatureEnabled not found in panel-layout');
+    assert.ok(hasCheck, 'hasPremiumAccess (or isProUser) not found in panel-layout');
     assert.ok(buttonIdx !== -1, 'AI widget button not found in panel-layout');
   });
 
@@ -725,7 +800,6 @@ describe('i18n — widgets section completeness', () => {
   const en = JSON.parse(src('src/locales/en.json'));
 
   const REQUIRED_KEYS = [
-    'createWithAi',
     'confirmDelete',
     'chatTitle',
     'modifyTitle',
@@ -733,7 +807,6 @@ describe('i18n — widgets section completeness', () => {
     'addToDashboard',
     'applyChanges',
     'send',
-    'changeAccent',
     'modifyWithAi',
     'ready',
     'fetching',
@@ -795,7 +868,6 @@ describe('i18n — widgets section completeness', () => {
     assert.ok(modal.includes("t('widgets.chatTitle')"), 'WidgetChatModal must use widgets.chatTitle');
     assert.ok(modal.includes("t('widgets.modifyTitle')"), 'WidgetChatModal must use widgets.modifyTitle');
     assert.ok(modal.includes("t('widgets.inputPlaceholder')"), 'WidgetChatModal must use widgets.inputPlaceholder');
-    assert.ok(panel.includes("t('widgets.changeAccent')"), 'CustomWidgetPanel must use widgets.changeAccent');
     assert.ok(panel.includes("t('widgets.modifyWithAi')"), 'CustomWidgetPanel must use widgets.modifyWithAi');
     assert.ok(events.includes("t('widgets.confirmDelete')"), 'Delete confirmation must use widgets.confirmDelete');
   });
@@ -822,22 +894,6 @@ describe('CustomWidgetPanel — header buttons and events', () => {
     assert.ok(
       panel.includes('wm:widget-modify'),
       'CustomWidgetPanel must dispatch wm:widget-modify CustomEvent',
-    );
-  });
-
-  it('ACCENT_COLORS has 9 entries (8 colors + null reset)', () => {
-    // Array spans multiple lines — use [\s\S]*? to capture across newlines
-    const match = panel.match(/ACCENT_COLORS[^=]*=\s*\[([\s\S]*?)\];/);
-    assert.ok(match, 'ACCENT_COLORS array not found');
-    const entries = match[1].split(',').map(s => s.trim()).filter(Boolean);
-    assert.equal(entries.length, 9, `ACCENT_COLORS must have 9 entries (8 colors + null), found ${entries.length}: [${entries.join(', ')}]`);
-    assert.ok(entries.includes('null'), 'ACCENT_COLORS must include null for reset');
-  });
-
-  it('accent color persists via saveWidget after color cycle', () => {
-    assert.ok(
-      panel.includes('saveWidget'),
-      'Color cycle must call saveWidget() to persist accentColor',
     );
   });
 
@@ -995,7 +1051,7 @@ describe('PRO widget — relay auth and configuration', () => {
   it('PRO system prompt allows cdn.jsdelivr.net for Chart.js', () => {
     // Use lastIndexOf to find the constant definition
     const promptIdx = relay.lastIndexOf('WIDGET_PRO_SYSTEM_PROMPT');
-    const promptRegion = relay.slice(promptIdx, promptIdx + 3500);
+    const promptRegion = relay.slice(promptIdx, promptIdx + 6000);
     assert.ok(
       promptRegion.includes('cdn.jsdelivr.net') || promptRegion.includes('chart.js') || promptRegion.includes('Chart.js'),
       'PRO system prompt must mention cdn.jsdelivr.net/Chart.js as allowed CDN',
@@ -1009,6 +1065,7 @@ describe('PRO widget — relay auth and configuration', () => {
 describe('PRO widget — store and sanitizer', () => {
   const store = src('src/services/widget-store.ts');
   const san = src('src/utils/widget-sanitizer.ts');
+  const sandbox = src('public/wm-widget-sandbox.html');
 
   it('MAX_HTML_CHARS_PRO is 80000', () => {
     const match = store.match(/MAX_HTML_CHARS_PRO\s*=\s*([\d_]+)/);
@@ -1017,14 +1074,26 @@ describe('PRO widget — store and sanitizer', () => {
     assert.equal(val, 80000, 'MAX_HTML_CHARS_PRO must be 80,000');
   });
 
-  it('isProWidgetEnabled checks wm-pro-key localStorage key', () => {
+  it('PRO auth migrates wm-pro-key to an HttpOnly session instead of storing it', () => {
     assert.ok(
       store.includes("'wm-pro-key'"),
-      "isProWidgetEnabled must check localStorage key 'wm-pro-key'",
+      "isProWidgetEnabled must know the legacy 'wm-pro-key' name for migration",
     );
     assert.ok(
       store.includes('isProWidgetEnabled'),
       'isProWidgetEnabled function must be exported',
+    );
+    assert.ok(
+      store.includes('establishWmKeySession'),
+      'PRO key writes must go through the server session endpoint',
+    );
+    assert.ok(
+      !/localStorage\.setItem\(['"]wm-pro-key['"]/.test(store),
+      'wm-pro-key must not be written to localStorage',
+    );
+    assert.ok(
+      !/document\.cookie\s*=.*wm-pro-key.*encodeURIComponent\(.*key/s.test(store),
+      'wm-pro-key must not be written to a JS-readable cookie',
     );
   });
 
@@ -1098,48 +1167,260 @@ describe('PRO widget — store and sanitizer', () => {
     );
   });
 
-  it('wrapProWidgetHtml places CSP as first head child (client-owned skeleton)', () => {
-    const fnIdx = san.indexOf('wrapProWidgetHtml');
-    const fnBody = san.slice(fnIdx, fnIdx + 800);
+  it('widget document builder places CSP as first head child (client-owned skeleton)', () => {
     assert.ok(
-      fnBody.includes('Content-Security-Policy'),
-      'wrapProWidgetHtml must embed CSP in the head',
+      san.includes('Content-Security-Policy'),
+      'widget sanitizer must embed CSP in the document head',
     );
     // CSP meta should come before any style tag
-    const cspPos = fnBody.indexOf('Content-Security-Policy');
-    const stylePos = fnBody.indexOf('<style>');
+    const cspPos = san.indexOf('Content-Security-Policy');
+    const stylePos = san.indexOf('<style>');
     assert.ok(
       cspPos < stylePos,
       'CSP meta must appear before <style> in the generated HTML skeleton',
     );
   });
 
-  it('wrapProWidgetHtml CSP has connect-src none (blocks beaconing)', () => {
-    const fnIdx = san.indexOf('wrapProWidgetHtml');
-    const fnBody = san.slice(fnIdx, fnIdx + 800);
+  it('widget document builder CSP restricts connect-src to cdn.jsdelivr.net only', () => {
     assert.ok(
-      fnBody.includes("connect-src 'none'"),
-      "CSP must include connect-src 'none' to block network beaconing from iframe",
+      san.includes('connect-src https://cdn.jsdelivr.net'),
+      'CSP connect-src must allow only cdn.jsdelivr.net (for Chart.js source maps) and nothing else',
+    );
+    assert.ok(
+      !san.includes("connect-src 'none'") && !san.includes('connect-src *'),
+      'CSP connect-src must not be wildcard or none',
     );
   });
 
-  it('wrapProWidgetHtml uses escapeSrcdoc for attribute safety', () => {
+  it('wrapProWidgetHtml uses sandbox page src (not srcdoc) for CSP isolation', () => {
+    const fnIdx = san.indexOf('wrapProWidgetHtml');
+    const fnBody = san.slice(fnIdx, fnIdx + 500);
     assert.ok(
-      san.includes('escapeSrcdoc'),
-      'wrapProWidgetHtml must escape the srcdoc attribute value',
+      fnBody.includes('wm-widget-sandbox.html'),
+      'wrapProWidgetHtml must load the dedicated sandbox page (not srcdoc) to get its own CSP',
+    );
+    assert.ok(
+      !fnBody.includes('srcdoc'),
+      'wrapProWidgetHtml must NOT use srcdoc — srcdoc inherits parent CSP',
     );
   });
 
-  it('wrapProWidgetHtml injects Chart.js from jsdelivr so new Chart() is available', () => {
-    const fnIdx = san.indexOf('wrapProWidgetHtml');
-    const fnBody = san.slice(fnIdx, fnIdx + 1500);
+  it('PRO widget iframe uses nonce handshake before posting HTML', () => {
     assert.ok(
-      fnBody.includes('cdn.jsdelivr.net') && fnBody.includes('chart.js'),
-      'wrapProWidgetHtml must inject Chart.js CDN script so widgets can call new Chart(...)',
+      san.includes('data-wm-token') && san.includes('wm-widget-ready'),
+      'parent must mint a per-widget token and wait for sandbox readiness',
     );
-    // Script must appear before </head> so Chart is defined when body scripts run
-    const scriptPos = fnBody.indexOf('chart.js');
-    const bodyPos = fnBody.indexOf('<body>');
+    assert.ok(
+      san.includes('event.source !== iframe.contentWindow'),
+      'parent must bind ready messages to the mounted iframe window',
+    );
+    assert.ok(
+      san.includes('event.data.id !== mounted.id')
+        && san.includes('event.data.token !== mounted.token'),
+      'parent must verify ready message id and token before sending HTML',
+    );
+    assert.ok(
+      sandbox.includes('e.source !== window.parent') && sandbox.includes('e.data.token !== widgetToken'),
+      'sandbox must only accept HTML from its parent with the expected token',
+    );
+  });
+
+  it('widget sandbox allows approved Vercel previews and rejects lookalike origins', () => {
+    assert.ok(
+      sandbox.includes("url.hostname === 'worldmonitor.app'")
+        && sandbox.includes("url.hostname.endsWith('.worldmonitor.app')"),
+      'sandbox must parse hostname and allow the worldmonitor.app apex/subdomains only',
+    );
+    assert.ok(
+      !sandbox.includes("endsWith('worldmonitor.app')") && !sandbox.includes('endsWith("worldmonitor.app")'),
+      'sandbox must not use raw suffix checks that allow evilworldmonitor.app',
+    );
+    // The sandbox must source allowed Vercel team slugs from a single named
+    // list — keeps the security invariant (team-slug gating) visible and
+    // makes teammate-slug additions a one-line change rather than a regex
+    // rewrite that could accidentally widen the match.
+    const teamListMatch = sandbox.match(
+      /var\s+ALLOWED_VERCEL_TEAM_SLUGS\s*=\s*\[([^\]]*)\];/,
+    );
+    assert.ok(teamListMatch, 'sandbox must declare ALLOWED_VERCEL_TEAM_SLUGS as a literal array');
+    const slugs = teamListMatch[1]
+      .split(',')
+      .map((s) => s.trim().replace(/^['"]|['"]$/g, ''))
+      .filter(Boolean);
+    assert.ok(slugs.includes('elie'), 'project-owner team slug must remain in the allowlist');
+    for (const slug of slugs) {
+      assert.match(slug, /^[a-z0-9-]+$/, `team slug "${slug}" must be url-safe`);
+    }
+    // Reconstruct the actual match function and exercise it against the
+    // production slug list — this is what protects against regex drift
+    // when teammate slugs are added later.
+    const matchesAllowedTeam = (hostname) =>
+      slugs.some((team) =>
+        new RegExp('^worldmonitor-[a-z0-9-]+-' + team + '-[a-z0-9]+\\.vercel\\.app$').test(hostname),
+      );
+    assert.equal(matchesAllowedTeam('worldmonitor-feature-elie-abc123.vercel.app'), true);
+    assert.equal(matchesAllowedTeam('worldmonitor-feature-attacker-abc123.vercel.app'), false);
+    assert.equal(matchesAllowedTeam('worldmonitor-feature-elie-abc123.vercel.app.evil.com'), false);
+    assert.equal(matchesAllowedTeam('evilworldmonitor.app'), false);
+    // A teammate slug added to the list must extend coverage WITHOUT
+    // matching look-alike teams whose slug merely starts with the same
+    // letters.
+    const withTeammate = ['elie', 'kieran'];
+    const matchesWithTeammate = (hostname) =>
+      withTeammate.some((team) =>
+        new RegExp('^worldmonitor-[a-z0-9-]+-' + team + '-[a-z0-9]+\\.vercel\\.app$').test(hostname),
+      );
+    assert.equal(matchesWithTeammate('worldmonitor-feature-kieran-abc123.vercel.app'), true);
+    assert.equal(matchesWithTeammate('worldmonitor-feature-kieranfake-abc123.vercel.app'), false);
+  });
+
+  it('widget sandbox behavior accepts Vercel previews and blocks spoofed parents', () => {
+    const script = sandbox.match(/<script>\n([\s\S]*)\n<\/script>/)?.[1];
+    assert.ok(script, 'sandbox inline script not found');
+
+    function runSandbox(referrer) {
+      const readyMessages = [];
+      const writes = [];
+      const listeners = new Map();
+      const parent = {
+        postMessage(payload, targetOrigin) {
+          readyMessages.push({ payload, targetOrigin });
+        },
+      };
+      const context = {
+        URL,
+        URLSearchParams,
+        document: {
+          referrer,
+          open() {},
+          write(html) {
+            writes.push(html);
+          },
+          close() {},
+        },
+        window: {
+          location: { hash: '#id=wm-1&token=test-token' },
+          parent,
+          addEventListener(type, listener) {
+            listeners.set(type, listener);
+          },
+        },
+      };
+      vm.runInNewContext(script, context);
+      const message = listeners.get('message');
+      assert.equal(typeof message, 'function', 'message listener must be registered');
+      return { parent, readyMessages, writes, message };
+    }
+
+    const allowed = runSandbox('https://worldmonitor-feature-elie-abc123.vercel.app/dashboard');
+    assert.equal(allowed.readyMessages.length, 1);
+    assert.equal(allowed.readyMessages[0].targetOrigin, 'https://worldmonitor-feature-elie-abc123.vercel.app');
+    assert.deepEqual(JSON.parse(JSON.stringify(allowed.readyMessages[0].payload)), {
+      type: 'wm-widget-ready',
+      id: 'wm-1',
+      token: 'test-token',
+    });
+    allowed.message({
+      data: { type: 'wm-html', id: 'wm-1', token: 'test-token', html: '<p>ok</p>' },
+      origin: 'https://worldmonitor-feature-elie-abc123.vercel.app',
+      source: allowed.parent,
+    });
+    assert.deepEqual(allowed.writes, ['<p>ok</p>']);
+
+    const spoofed = runSandbox('https://worldmonitor-feature-elie-abc123.vercel.app.evil.com/');
+    assert.deepEqual(spoofed.readyMessages, []);
+    spoofed.message({
+      data: { type: 'wm-html', id: 'wm-1', token: 'test-token', html: '<p>bad</p>' },
+      origin: 'https://worldmonitor-feature-elie-abc123.vercel.app.evil.com',
+      source: spoofed.parent,
+    });
+    assert.deepEqual(spoofed.writes, []);
+  });
+
+  it('PRO widget message listener has AbortController cleanup wired to iframe removal', () => {
+    // P1 (greptile #3912): the global `message` listener registered by
+    // mountProWidget would otherwise retain a strong reference to the
+    // iframe (and its ~80 KB HTML payload) for the lifetime of the page,
+    // even after the iframe is removed from the DOM — a real leak in any
+    // dashboard session that adds/removes widgets repeatedly. The fix is
+    // an AbortController per iframe + a MutationObserver `removedNodes`
+    // pass that calls `unmountProWidget`, which aborts the listener and
+    // clears every per-iframe WeakMap entry.
+    assert.ok(
+      san.includes('iframeAbortStore') && san.includes('new AbortController()'),
+      'mountProWidget must create an AbortController per iframe and store it',
+    );
+    assert.ok(
+      san.includes("{ signal: controller.signal }"),
+      'message listener must be registered with the AbortController signal so abort() removes it',
+    );
+    assert.ok(
+      san.includes('function unmountProWidget') && san.includes('controller.abort')
+        || (san.includes('function unmountProWidget') && san.includes('iframeAbortStore.get(iframe)?.abort()')),
+      'unmountProWidget must abort the controller (tearing down the listener)',
+    );
+    assert.ok(
+      san.includes('iframeAbortStore.delete(iframe)')
+        && san.includes('iframeTokenStore.delete(iframe)')
+        && san.includes('iframeHtmlStore.delete(iframe)'),
+      'unmountProWidget must clear every per-iframe WeakMap entry to release the HTML payload',
+    );
+    assert.ok(
+      san.includes('mut.removedNodes') && san.includes('unmountProWidget'),
+      'MutationObserver must scan removedNodes and call unmountProWidget so the cleanup actually fires when widgets are removed',
+    );
+  });
+
+  it('PRO widget re-deliveries are rate-limited to bound document.write storms', () => {
+    // P2 (greptile #3912): a malicious widget that re-reads its token from
+    // window.location.hash and re-posts wm-widget-ready could trigger an
+    // unbounded document.write loop (parent responds → write replaces doc
+    // → new doc re-posts ready → parent responds again). Rate-limiting
+    // deliveries to once per second per iframe is the smallest fix that
+    // bounds the loop while preserving legitimate drag/drop re-navigation
+    // (which is human-paced and trivially clears the floor). Greptile's
+    // suggested verbatim fix (delete iframeTokenStore after first delivery)
+    // would break the documented re-navigation use case at the call site,
+    // so we keep the token alive and gate on time instead.
+    assert.ok(
+      san.includes('MIN_DELIVERY_INTERVAL_MS') && san.includes('iframeLastDeliveryMs'),
+      'must declare a per-iframe last-delivery timestamp store and a minimum interval',
+    );
+    const intervalMatch = san.match(/MIN_DELIVERY_INTERVAL_MS\s*=\s*(\d+)/);
+    assert.ok(intervalMatch, 'MIN_DELIVERY_INTERVAL_MS must be a numeric literal');
+    const interval = Number(intervalMatch[1]);
+    assert.ok(
+      interval >= 500 && interval <= 5000,
+      `MIN_DELIVERY_INTERVAL_MS must be between 500ms and 5s (got ${interval}) — too low fails to bound a loop, too high breaks drag/drop`,
+    );
+    assert.ok(
+      san.includes('now - last < MIN_DELIVERY_INTERVAL_MS'),
+      'message handler must return early when called within the throttle window',
+    );
+    assert.ok(
+      san.includes('iframeLastDeliveryMs.set(iframe, now)'),
+      'message handler must record the delivery time so the next call is throttled',
+    );
+  });
+
+  it('widget document builder injects panel CSS classes for design-system alignment', () => {
+    assert.ok(san.includes('.panel-header'), 'must define .panel-header');
+    assert.ok(san.includes('.panel-title'), 'must define .panel-title');
+    assert.ok(san.includes('.panel-tabs'), 'must define .panel-tabs');
+    assert.ok(san.includes('.panel-tab'), 'must define .panel-tab');
+    assert.ok(san.includes('.disp-stats-grid'), 'must define .disp-stats-grid');
+    assert.ok(san.includes('.disp-stat-box'), 'must define .disp-stat-box');
+    assert.ok(san.includes('--accent'), 'must define --accent CSS variable');
+  });
+
+  it('widget document builder injects Chart.js from jsdelivr so new Chart() is available', () => {
+    assert.ok(
+      san.includes('cdn.jsdelivr.net') && san.includes('chart.js'),
+      'widget sanitizer must inject Chart.js CDN script so widgets can call new Chart(...)',
+    );
+    // Script must appear before <body> so Chart is defined when body scripts run
+    const scriptPos = san.indexOf('chart.js');
+    const bodyPos = san.indexOf('<body>');
     assert.ok(
       scriptPos < bodyPos,
       'Chart.js script tag must be in <head>, before <body>',
@@ -1207,10 +1488,10 @@ describe('PRO widget — modal and layout integration', () => {
     );
   });
 
-  it('layout has PRO create button when isProWidgetEnabled', () => {
+  it('layout has PRO create button when hasPremiumAccess', () => {
     assert.ok(
-      layout.includes('isProWidgetEnabled'),
-      'panel-layout must import/call isProWidgetEnabled',
+      layout.includes('hasPremiumAccess') || layout.includes('isProUser'),
+      'panel-layout must import/call hasPremiumAccess (or isProUser)',
     );
     assert.ok(
       layout.includes('ai-widget-block-pro'),
@@ -1279,6 +1560,424 @@ describe('PRO widget — i18n keys and CSS', () => {
     assert.ok(
       proRegion.includes('400px') || css.includes('400px'),
       'PRO iframe must have 400px height defined in CSS',
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PRO widget — edge-proxy auth (Convex entitlement fallback for paid users)
+// ---------------------------------------------------------------------------
+//
+// Dodo webhook does NOT sync Clerk publicMetadata.plan, so a paying subscriber's
+// Clerk session.role stays 'free' indefinitely. The edge proxy at
+// api/widget-agent.ts must accept EITHER Clerk role==='pro' OR Convex
+// entitlement tier>=1, mirroring server/_shared/premium-check.ts::isCallerPremium
+// and server/gateway.ts:521-526. A regression here surfaces as a misleading
+// "PRO key rejected. Update wm-pro-key…" 403 in the modal — the user has no
+// tester key, so the suggested action is a dead end.
+describe('widget-agent edge proxy — Convex entitlement fallback', () => {
+  const edge = src('api/widget-agent.ts');
+
+  it('imports getEntitlements from server/_shared/entitlement-check', () => {
+    assert.ok(
+      /import\s*\{[^}]*\bgetEntitlements\b[^}]*\}\s*from\s*['"][^'"]*entitlement-check['"]/.test(edge),
+      'api/widget-agent.ts must import getEntitlements for Dodo entitlement fallback',
+    );
+  });
+
+  it('Clerk JWT path falls back to Convex entitlement when role !== "pro"', () => {
+    const bearerIdx = edge.indexOf("authHeader?.startsWith('Bearer ')");
+    assert.ok(bearerIdx !== -1, 'Bearer-token branch not found in api/widget-agent.ts');
+    // Constrain the search to the bearer-token branch only.
+    const region = edge.slice(bearerIdx, bearerIdx + 2000);
+    assert.ok(
+      region.includes('getEntitlements(session.userId)'),
+      'Bearer-token branch must call getEntitlements(session.userId) when Clerk role !== "pro"',
+    );
+    assert.ok(
+      /features\.tier\s*>=\s*1/.test(region),
+      'Bearer-token branch must accept Convex entitlement tier >= 1',
+    );
+  });
+
+  it('does NOT 403 immediately on session.role !== "pro"', () => {
+    // The legacy shape `if (session.role !== 'pro') return 403` is the bug —
+    // it would short-circuit before the Convex fallback. Lock it out.
+    assert.ok(
+      !/if\s*\(\s*session\.role\s*!==\s*['"]pro['"]\s*\)\s*\{\s*return\s+json\([^}]*403/.test(edge),
+      'api/widget-agent.ts must NOT 403 on session.role !== "pro" without checking Convex entitlement',
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// entitlement-check — cache-write failure must NOT collapse to "no entitlement"
+// ---------------------------------------------------------------------------
+//
+// getEntitlements() returns null on three different failure modes — Convex
+// said no, Convex unreachable, and (the trap this test guards) cache-write
+// failed AFTER Convex confirmed the entitlement. Once Convex returns a valid
+// entitlement, an Upstash hiccup or any error inside setCachedJson must NOT
+// turn that yes into a null-meaning-no — that would 403 paying customers on
+// every call path this file gates, including the widget-agent fallback PR
+// #3505 just added.
+// ---------------------------------------------------------------------------
+// widget-agent relay — error classifier (no more opaque "Agent error")
+// ---------------------------------------------------------------------------
+//
+// The relay used to swallow ALL agent errors as a generic "Agent error" SSE
+// message. With nothing in Railway logs to grep and nothing useful in the
+// client, real failures (auth, rate limit, model availability, payload shape)
+// were impossible to triage. Lock in the classifier so future regressions
+// can't re-collapse the error surface.
+describe('widget-agent relay — error classifier', () => {
+  const relay = src('scripts/ais-relay.cjs');
+
+  it('classifyWidgetAgentError function is defined', () => {
+    assert.ok(
+      /function\s+classifyWidgetAgentError\s*\(/.test(relay),
+      'classifyWidgetAgentError(err, model) helper must exist',
+    );
+  });
+
+  it('catch block routes through classifyWidgetAgentError instead of hardcoded "Agent error"', () => {
+    // Find the catch block in the widget-agent handler.
+    const catchIdx = relay.indexOf("classifyWidgetAgentError");
+    assert.ok(catchIdx !== -1, 'classifyWidgetAgentError must be called somewhere in the relay');
+    // The catch site must NOT still emit the literal "Agent error" string as
+    // its primary message — the classifier covers the fallback case itself.
+    // Allow the literal in the classifier's last-resort branch only.
+    const handlerStart = relay.indexOf('async function handleWidgetAgentRequest');
+    const handlerEnd = relay.indexOf('async function ', handlerStart + 1);
+    const handlerRegion = relay.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : handlerStart + 5000);
+    assert.ok(
+      !/sendWidgetSSE\([^)]*'error'[^)]*'Agent error'/.test(handlerRegion),
+      'catch site must NOT hardcode "Agent error" — route through classifyWidgetAgentError so the client sees actionable diagnostics',
+    );
+  });
+
+  it('classifier maps Anthropic 401 to an operator-facing API-key hint', () => {
+    const fnIdx = relay.indexOf('function classifyWidgetAgentError');
+    const region = relay.slice(fnIdx, fnIdx + 3000);
+    assert.ok(
+      /status\s*===\s*401|authentication_error/.test(region),
+      'Classifier must branch on status 401 / authentication_error',
+    );
+    assert.ok(
+      /ANTHROPIC_API_KEY|API key/i.test(region),
+      'Classifier 401 branch must hint at the env-var/credential to check',
+    );
+  });
+
+  it('classifier surfaces 400 invalid_request_error with the SDK message (capped)', () => {
+    const fnIdx = relay.indexOf('function classifyWidgetAgentError');
+    const region = relay.slice(fnIdx, fnIdx + 3000);
+    assert.ok(
+      /status\s*===\s*400|invalid_request_error/.test(region),
+      'Classifier must branch on status 400 / invalid_request_error',
+    );
+    assert.ok(
+      /Invalid request to AI backend/.test(region),
+      'Classifier must include human-readable phrasing for invalid-request errors',
+    );
+  });
+
+  it('classifier scrubs Claude API keys from any fallback message', () => {
+    const fnIdx = relay.indexOf('function classifyWidgetAgentError');
+    const region = relay.slice(fnIdx, fnIdx + 3000);
+    assert.ok(
+      /sk-(?:ant-)?\[A-Za-z0-9_-\]\{20,?\}/.test(region) || /sk-\(\?:ant-\)\?\[A-Za-z0-9_-\]/.test(region),
+      'Classifier fallback must redact `sk-…` / `sk-ant-…` API keys before surfacing the message',
+    );
+    assert.ok(
+      /\[REDACTED\]/.test(region),
+      'Classifier must replace scrubbed token with a [REDACTED] sentinel',
+    );
+  });
+
+  it('classifier scrubs API keys in the 400 branch (defence-in-depth on every rawMsg interpolation)', () => {
+    // Round-trip the function for runtime check: the 400 message must redact a Claude key.
+    const fnMatch = relay.match(/function classifyWidgetAgentError[\s\S]*?\n\}/);
+    assert.ok(fnMatch, 'classifyWidgetAgentError function not extractable');
+    const fn = new Function(`${fnMatch[0]}; return classifyWidgetAgentError;`)();
+    const out = fn(
+      { status: 400, error: { type: 'invalid_request_error' }, message: 'bad header sk-ant-api03-AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA was rejected' },
+      'claude-sonnet-4-6',
+    );
+    assert.ok(
+      /\[REDACTED\]/.test(out),
+      `400 branch must scrub sk-(ant-)? tokens before surfacing rawMsg, got: ${out}`,
+    );
+    assert.ok(
+      !/sk-ant-api03-AAAAAAAAAA/.test(out),
+      '400 branch must not leak the raw API key in any form',
+    );
+  });
+
+  it('classifier handles Anthropic APITimeoutError (status 408) — does not fall through to fallback', () => {
+    const fnMatch = relay.match(/function classifyWidgetAgentError[\s\S]*?\n\}/);
+    assert.ok(fnMatch, 'classifyWidgetAgentError function not extractable');
+    const fn = new Function(`${fnMatch[0]}; return classifyWidgetAgentError;`)();
+    // Real Anthropic Node SDK timeout shape: name='APITimeoutError', status=408
+    const apiTimeout = fn({ name: 'APITimeoutError', status: 408, message: 'Request timeout.' }, 'claude-sonnet-4-6');
+    assert.equal(apiTimeout, 'AI backend timed out', 'APITimeoutError must classify as timed-out, not fallback');
+    // AbortSignal.timeout() shape (DOMException): name='TimeoutError'
+    const abortTimeout = fn({ name: 'TimeoutError', message: 'The operation timed out.' }, 'claude-sonnet-4-6');
+    assert.equal(abortTimeout, 'AI backend timed out', 'AbortSignal TimeoutError must also classify as timed-out');
+    // Bare 408 status (some HTTP layers expose only the code) — same branch.
+    const bare408 = fn({ status: 408 }, 'claude-sonnet-4-6');
+    assert.equal(bare408, 'AI backend timed out', 'Bare status 408 must classify as timed-out');
+  });
+
+  it('400 branch does NOT pre-empt timeout: APITimeoutError-with-status-400 stays a timeout (rare but defensive)', () => {
+    // Belt-and-suspenders: the timeout check sits BEFORE the 400 branch, so
+    // an APITimeoutError tagged with status 400 (defensive against future SDK
+    // shape changes) still classifies as a timeout, not "Invalid request".
+    const fnMatch = relay.match(/function classifyWidgetAgentError[\s\S]*?\n\}/);
+    const fn = new Function(`${fnMatch[0]}; return classifyWidgetAgentError;`)();
+    const out = fn({ name: 'APITimeoutError', status: 400, message: 'timeout' }, 'claude-sonnet-4-6');
+    assert.equal(out, 'AI backend timed out', 'APITimeoutError must beat the 400 branch regardless of status');
+  });
+
+  it('handler logs structured error context with status + type + model', () => {
+    const handlerStart = relay.indexOf('async function handleWidgetAgentRequest');
+    const handlerEnd = relay.indexOf('async function ', handlerStart + 1);
+    const region = relay.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : handlerStart + 8000);
+    // Look for the structured console.error inside the catch.
+    assert.ok(
+      /console\.error\([^)]*\[widget-agent\][^)]*Error/.test(region),
+      'Catch must log a `[widget-agent] Error:` line for Railway operators to grep',
+    );
+    assert.ok(
+      /\bstatus\b/.test(region) && /\btype\b/.test(region) && /\bmodel\b/.test(region),
+      'Structured error log must include status + type + model so Railway logs are diagnosable without server-side reproduction',
+    );
+  });
+
+  it('toolCallCount is declared OUTSIDE the try whose catch reads it (scoping regression guard)', () => {
+    // Bug history: an earlier revision declared `let toolCallCount = 0` INSIDE the
+    // outer agent-loop try block but read it from the catch. JavaScript `let`/`const`
+    // is block-scoped, so the catch's structured log threw a ReferenceError every
+    // time, which the inner log-try then caught and emitted the useless
+    // "[widget-agent] Error (log-failed)" fallback — defeating the entire
+    // diagnostic value of this PR. Lock the declaration position.
+    const handlerStart = relay.indexOf('async function handleWidgetAgentRequest');
+    assert.ok(handlerStart !== -1, 'handler not found');
+    const handlerEnd = relay.indexOf('async function ', handlerStart + 1);
+    const region = relay.slice(handlerStart, handlerEnd > handlerStart ? handlerEnd : handlerStart + 12000);
+
+    const declIdx = region.indexOf('let toolCallCount');
+    assert.ok(declIdx !== -1, 'toolCallCount declaration not found');
+
+    // The outer agent-loop try is the one whose first statement imports the
+    // Anthropic SDK. Anchor on that specific shape so we ignore unrelated
+    // try/catch blocks (request-body parse, search-tool fetch, log-fallback).
+    const outerTryMatch = region.match(/try\s*\{\s*\n\s*const\s*\{\s*default:\s*Anthropic/);
+    assert.ok(outerTryMatch, 'Outer agent-loop try block not found by anchor');
+    const outerTryIdx = outerTryMatch.index;
+
+    assert.ok(
+      declIdx < outerTryIdx,
+      `toolCallCount (declared at ${declIdx}) must be declared BEFORE the outer agent-loop try (try at ${outerTryIdx}). Putting it inside the try makes it inaccessible to the catch — the structured log throws ReferenceError and falls through to the useless "Error (log-failed)" fallback.`,
+    );
+
+    // Sanity-check: the catch payload still references toolCallCount, so this
+    // test is actually guarding the load-bearing reference.
+    assert.ok(
+      /catch\s*\(\s*err[^)]*\)[\s\S]*?toolCallCount/.test(region),
+      'Catch payload must still reference toolCallCount, otherwise this test is guarding nothing',
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// panel-layout — Pro CTAs must re-evaluate on Convex entitlement updates
+// ---------------------------------------------------------------------------
+//
+// "Create Interactive Widget" (proBlock) and "Connect MCP" (mcpBlock) are
+// gated by applyProBlockGating(hasPremiumAccess(...)). For a paying Dodo
+// subscriber whose Clerk publicMetadata.plan is never written, hasPremiumAccess
+// only flips true once the Convex entitlement snapshot lands via
+// onEntitlementChange — NOT via subscribeAuthState. Subscribing only to
+// subscribeAuthState (the prior shape) meant the CTAs stayed display:none for
+// the entire page lifetime for paying users. Lock the dual-subscription.
+describe('panel-layout — Pro add-block gating reacts to entitlement updates', () => {
+  const layout = src('src/app/panel-layout.ts');
+
+  it('imports onEntitlementChange', () => {
+    assert.ok(
+      /import\s*\{[^}]*\bonEntitlementChange\b[^}]*\}\s*from\s*['"][^'"]*entitlements['"]/.test(layout),
+      'panel-layout must import onEntitlementChange to re-evaluate Pro CTA gating on Convex snapshots',
+    );
+  });
+
+  it('proBlock + mcpBlock gating subscribes to BOTH auth and entitlement changes', () => {
+    // Anchor on the gating function to scope the search to its surroundings.
+    const gateFnIdx = layout.indexOf('applyProBlockGating');
+    assert.ok(gateFnIdx !== -1, 'applyProBlockGating not found in panel-layout');
+    const region = layout.slice(gateFnIdx, gateFnIdx + 1500);
+    assert.ok(
+      region.includes('subscribeAuthState'),
+      'Pro CTA gating must subscribe to subscribeAuthState (legacy auth-driven path)',
+    );
+    assert.ok(
+      region.includes('onEntitlementChange'),
+      'Pro CTA gating MUST subscribe to onEntitlementChange so paying Dodo users flip from hidden->visible when the Convex entitlement snapshot lands',
+    );
+  });
+
+  it('teardown clears the entitlement subscription so a destroyed layout does not leak callbacks', () => {
+    assert.ok(
+      layout.includes('proBlockEntitlementUnsubscribe'),
+      'panel-layout must hold a proBlockEntitlementUnsubscribe handle and clear it in destroy()',
+    );
+    // Look for the destroy() block
+    const destroyIdx = layout.indexOf('destroy(): void {');
+    assert.ok(destroyIdx !== -1, 'destroy() not found');
+    const destroyRegion = layout.slice(destroyIdx, destroyIdx + 2000);
+    assert.ok(
+      destroyRegion.includes('proBlockEntitlementUnsubscribe'),
+      'destroy() must invoke proBlockEntitlementUnsubscribe to avoid leaking callbacks across layout init/destroy cycles',
+    );
+  });
+});
+
+describe('entitlement-check — cache-write failure does not collapse confirmed entitlement', () => {
+  const src_ = src('server/_shared/entitlement-check.ts');
+
+  it('setCachedJson call is wrapped in its own try/catch', () => {
+    // Find the success-path block: `if (result) { … setCachedJson(…) … return result }`
+    const successIdx = src_.indexOf('if (result) {');
+    assert.ok(successIdx !== -1, 'success-path "if (result)" branch not found');
+    const region = src_.slice(successIdx, successIdx + 1500);
+
+    const setIdx = region.indexOf('setCachedJson(');
+    assert.ok(setIdx !== -1, 'setCachedJson call missing from success path');
+
+    // Walk backward from setCachedJson to find the nearest enclosing `try {`
+    // BEFORE the outer catch. The outer try is at the top of the function,
+    // far away — we want a LOCAL try/catch around the cache write so the
+    // safety property is explicit at the call site.
+    const beforeSet = region.slice(0, setIdx);
+    const lastTry = beforeSet.lastIndexOf('try {');
+    const lastCatch = beforeSet.lastIndexOf('catch');
+    assert.ok(
+      lastTry !== -1 && lastTry > lastCatch,
+      'setCachedJson must be inside a LOCAL try/catch within the success branch — relying on setCachedJson to swallow its own errors is fragile',
+    );
+
+    // The success-path return must come AFTER the try/catch, not inside the catch.
+    const returnIdx = region.indexOf('return result', setIdx);
+    assert.ok(
+      returnIdx !== -1,
+      '`return result` must follow the cache-write try/catch so a swallowed cache error still returns the confirmed entitlement',
+    );
+  });
+
+  it('cache-write catch logs but does not return null or throw', () => {
+    const successIdx = src_.indexOf('if (result) {');
+    const region = src_.slice(successIdx, successIdx + 1500);
+    // The catch block for cache write must NOT contain `return null` — that
+    // would re-introduce the bug. It also must not rethrow.
+    const cacheCatchMatch = region.match(/catch\s*\(\s*cacheErr[^)]*\)\s*\{([^}]*)\}/);
+    assert.ok(cacheCatchMatch, 'cache-write catch block must be named distinctly (e.g. cacheErr) so future readers see the intent');
+    const cacheCatchBody = cacheCatchMatch[1];
+    assert.ok(
+      !/return\s+null/.test(cacheCatchBody),
+      'cache-write catch must NOT return null — a confirmed entitlement must survive cache-write failure',
+    );
+    assert.ok(
+      !/throw\b/.test(cacheCatchBody),
+      'cache-write catch must NOT rethrow — that would bubble to the outer catch and collapse to null',
+    );
+  });
+});
+
+describe('WidgetChatModal — preflight 403 message branches on auth mode', () => {
+  const modal = src('src/components/WidgetChatModal.ts');
+  const en = JSON.parse(src('src/locales/en.json'));
+
+  it('buildWidgetAuthHeaders returns usedTesterKey flag', () => {
+    assert.ok(
+      modal.includes('usedTesterKey'),
+      'buildWidgetAuthHeaders must report whether a tester key was used so the 403 message can branch',
+    );
+  });
+
+  it('resolvePreflightMessage takes usedTesterKey and branches Clerk path on isPro', () => {
+    const fnIdx = modal.indexOf('function resolvePreflightMessage');
+    assert.ok(fnIdx !== -1, 'resolvePreflightMessage not found');
+    const region = modal.slice(fnIdx, fnIdx + 1200);
+    assert.ok(
+      region.includes('usedTesterKey'),
+      'resolvePreflightMessage must take usedTesterKey to branch on auth mode',
+    );
+    assert.ok(
+      region.includes('preflightProSubscriptionRequired'),
+      'Clerk-auth 403 (isPro=true) must surface preflightProSubscriptionRequired',
+    );
+    assert.ok(
+      region.includes('preflightProRequired'),
+      'Clerk-auth 403 (isPro=false, free user) must surface preflightProRequired (clean upgrade ask, no "just upgraded" language)',
+    );
+  });
+
+  it('en.json defines widgets.preflightProSubscriptionRequired (just-upgraded / outage)', () => {
+    assert.ok(
+      typeof en.widgets?.preflightProSubscriptionRequired === 'string'
+        && en.widgets.preflightProSubscriptionRequired.length > 0,
+      'en.json must define widgets.preflightProSubscriptionRequired',
+    );
+    assert.ok(
+      !/wm-pro-key/i.test(en.widgets.preflightProSubscriptionRequired),
+      'preflightProSubscriptionRequired must not mention wm-pro-key — Clerk users have no tester key',
+    );
+  });
+
+  it('en.json defines widgets.preflightProRequired (free-user upgrade ask, no "just upgraded" language)', () => {
+    assert.ok(
+      typeof en.widgets?.preflightProRequired === 'string'
+        && en.widgets.preflightProRequired.length > 0,
+      'en.json must define widgets.preflightProRequired',
+    );
+    assert.ok(
+      !/wm-pro-key/i.test(en.widgets.preflightProRequired),
+      'preflightProRequired must not mention wm-pro-key',
+    );
+    assert.ok(
+      !/just upgraded|refresh the page|contact support/i.test(en.widgets.preflightProRequired),
+      'preflightProRequired is for genuinely-free users — must not include "just upgraded / refresh / contact support" language',
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// widget-agent edge proxy — observability for fail-closed entitlement 403s
+// ---------------------------------------------------------------------------
+//
+// When getEntitlements returns null, callers can't tell "user genuinely not
+// entitled" from "entitlement service degraded" — both shapes 403 paying users
+// during a Convex/Upstash outage. Emit a structured log at the 403 site so
+// on-call can grep Vercel logs and disambiguate incident vs not-entitled
+// without waiting for refund tickets.
+describe('widget-agent edge proxy — fail-closed observability', () => {
+  const edge = src('api/widget-agent.ts');
+
+  it('403 site emits a structured log with reason + userId + entitlementTier', () => {
+    const idx = edge.indexOf("error: 'Pro subscription required'");
+    assert.ok(idx !== -1, 'Pro-required 403 site not found');
+    // Walk backward from the 403 to find the preceding console.warn — must
+    // sit in the same allowed-check block, not in some unrelated error path.
+    const before = edge.slice(Math.max(0, idx - 1500), idx);
+    assert.ok(
+      /console\.warn\([^)]*widget-agent[^)]*pro-required/i.test(before),
+      'A console.warn naming "widget-agent" + "pro-required" must precede the 403 return',
+    );
+    assert.ok(before.includes('reason'), 'Structured log must include "reason" field (not_entitled vs service_unavailable)');
+    assert.ok(before.includes('userId'), 'Structured log must include userId for grep/correlation');
+    assert.ok(
+      before.includes('service_unavailable') && before.includes('not_entitled'),
+      'Structured log must distinguish service_unavailable (Convex/Redis down) from not_entitled (real free user)',
     );
   });
 });

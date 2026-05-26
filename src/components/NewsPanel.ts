@@ -50,11 +50,22 @@ export class NewsPanel extends Panel {
   private summaryBtn: HTMLButtonElement | null = null;
   private summaryContainer: HTMLElement | null = null;
   private currentHeadlines: string[] = [];
+  // RSS descriptions paired 1:1 with currentHeadlines. Used to ground the
+  // SummarizeArticle LLM (U7) so it stops hallucinating across unrelated
+  // headlines. Empty strings preserve today headline-only behavior (R6).
+  private currentBodies: string[] = [];
   private lastHeadlineSignature = '';
   private isSummarizing = false;
 
-  constructor(id: string, title: string) {
-    super({ id, title, showCount: true, trackActivity: true });
+  // Optional risk score getter: computes 0-100 score per cluster for badge display
+  private riskScoreGetter: ((cluster: ClusteredEvent) => number | null) | null = null;
+
+  public setRiskScoreGetter(fn: (cluster: ClusteredEvent) => number | null): void {
+    this.riskScoreGetter = fn;
+  }
+
+  constructor(id: string, title: string, infoTooltip?: string) {
+    super({ id, title, showCount: true, trackActivity: true, infoTooltip });
     this.sortMode = this.loadSortMode();
     this.createDeviationIndicator();
     this.createSortToggle();
@@ -236,7 +247,13 @@ export class NewsPanel extends Panel {
     const sigAtStart = this.lastHeadlineSignature;
 
     try {
-      const result = await generateSummary(this.currentHeadlines.slice(0, 8), undefined, this.panelId, currentLang);
+      const result = await generateSummary(
+        this.currentHeadlines.slice(0, 8),
+        undefined,
+        this.panelId,
+        currentLang,
+        { bodies: this.currentBodies.slice(0, 8) },
+      );
       if (!this.element?.isConnected) return;
       if (this.lastHeadlineSignature !== sigAtStart) {
         this.hideSummary();
@@ -318,7 +335,10 @@ export class NewsPanel extends Panel {
   }
 
   private getHeadlineSignature(): string {
-    return JSON.stringify(this.currentHeadlines.slice(0, 5).sort());
+    return JSON.stringify([
+      this.currentHeadlines.slice(0, 5).sort(),
+      this.currentBodies.slice(0, 5), // NOT sorted — paired with headlines
+    ]);
   }
 
   private updateHeadlineSignature(): void {
@@ -404,6 +424,7 @@ export class NewsPanel extends Panel {
     this.setCount(0);
     this.relatedAssetContext.clear();
     this.currentHeadlines = [];
+    this.currentBodies = [];
     this.updateHeadlineSignature();
     this.setContent(`<div class="panel-empty">${escapeHtml(message)}</div>`);
   }
@@ -430,14 +451,23 @@ export class NewsPanel extends Panel {
     if (this.sortMode === 'newest') {
       sorted = [...items].sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime());
     } else {
-      sorted = items;
+      // Relevance: sort by importanceScore desc when available, fall back to pubDate
+      sorted = [...items].sort((a, b) => {
+        const sa = a.importanceScore ?? 0;
+        const sb = b.importanceScore ?? 0;
+        if (sb !== sa) return sb - sa;
+        return new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime();
+      });
     }
 
     this.setCount(sorted.length);
-    this.currentHeadlines = sorted
+    const topItems = sorted
       .slice(0, 5)
-      .map(item => item.title)
-      .filter((title): title is string => typeof title === 'string' && title.trim().length > 0);
+      .filter((item) => typeof item.title === 'string' && item.title.trim().length > 0);
+    this.currentHeadlines = topItems.map((item) => item.title);
+    // Paired RSS descriptions for LLM grounding; empty string falls back to
+    // headline-only on the server (R6).
+    this.currentBodies = topItems.map((item) => typeof item.snippet === 'string' ? item.snippet : '');
 
     this.updateHeadlineSignature();
 
@@ -448,9 +478,13 @@ export class NewsPanel extends Panel {
         <div class="item-source">
           ${escapeHtml(item.source)}
           ${item.lang && item.lang !== getCurrentLanguage() ? `<span class="lang-badge">${item.lang.toUpperCase()}</span>` : ''}
+          ${item.storyMeta?.phase === 'breaking' ? '<span class="phase-badge breaking">BREAKING</span>' : ''}
+          ${item.storyMeta?.phase === 'developing' ? `<span class="phase-badge developing">DEVELOPING${item.storyMeta.mentionCount > 1 ? ` ×${item.storyMeta.mentionCount}` : ''}</span>` : ''}
+          ${item.storyMeta?.phase === 'sustained' ? '<span class="phase-badge sustained">ONGOING</span>' : ''}
           ${item.isAlert ? '<span class="alert-tag">ALERT</span>' : ''}
         </div>
         <a class="item-title" href="${sanitizeUrl(item.link)}" target="_blank" rel="noopener">${escapeHtml(item.title)}</a>
+        ${item.snippet ? `<div class="item-snippet">${escapeHtml(item.snippet.length > 200 ? item.snippet.slice(0, 200).replace(/\s+\S*$/, '') + '…' : item.snippet)}</div>` : ''}
         <div class="item-time">
           ${formatTime(item.pubDate)}
           ${getCurrentLanguage() !== 'en' ? `<button class="item-translate-btn" title="Translate" data-text="${escapeHtml(item.title)}">文</button>` : ''}
@@ -486,6 +520,11 @@ export class NewsPanel extends Panel {
 
     // Store headlines for summarization (cap at 5 to reduce entity conflation in small models)
     this.currentHeadlines = sorted.slice(0, 5).map(c => c.primaryTitle);
+    // Cluster objects don't carry a description (news:insights:v1 producer
+    // doesn't plumb it yet). Passing empty bodies preserves today behavior
+    // (R6); when the producer adds a primarySnippet, this falls through to
+    // grounded mode without further code change.
+    this.currentBodies = sorted.slice(0, 5).map(() => '');
 
     this.updateHeadlineSignature();
 
@@ -640,6 +679,19 @@ export class NewsPanel extends Panel {
       ? `<span class="category-tag" style="color:${catColor};border-color:${catColor}40;background:${catColor}20">${catLabel}</span>`
       : '';
 
+    // Numeric risk score badge (0-100): from external getter or fallback to threat-level derivation
+    const riskScore = this.riskScoreGetter
+      ? this.riskScoreGetter(cluster)
+      : (() => {
+          if (!cluster.threat) return null;
+          const levelScore: Record<string, number> = { critical: 95, high: 75, medium: 50, low: 25, info: 10 };
+          const base = levelScore[cluster.threat.level] ?? 10;
+          return Math.round(base * (cluster.threat.confidence ?? 1));
+        })();
+    const riskBadge = riskScore !== null && riskScore >= 50
+      ? `<span class="risk-score-badge" style="color:${catColor || getCSSColor('--text-dim')};border-color:${catColor ? catColor + '40' : 'var(--border)'};background:${catColor ? catColor + '15' : 'transparent'}" title="Event risk score">${riskScore}</span>`
+      : '';
+
     // Build class list for item
     const itemClasses = [
       'item',
@@ -662,6 +714,7 @@ export class NewsPanel extends Panel {
           ${sentimentBadge}
           ${cluster.isAlert ? '<span class="alert-tag">ALERT</span>' : ''}
           ${categoryBadge}
+          ${riskBadge}
         </div>
         <a class="item-title" href="${sanitizeUrl(cluster.primaryLink)}" target="_blank" rel="noopener">${escapeHtml(cluster.primaryTitle)}</a>
         <div class="cluster-meta">
@@ -732,6 +785,58 @@ export class NewsPanel extends Panel {
       nuclear: 'modals.countryBrief.infra.nuclear',
     };
     return t(keyMap[type]);
+  }
+
+  /**
+   * Returns true if this panel contains a news item with the given link
+   * (either as a cluster primary or secondary article).
+   */
+  public hasNewsItem(link: string): boolean {
+    if (this.lastRawClusters) {
+      return this.lastRawClusters.some(
+        c => c.primaryLink === link || c.allItems.some(i => i.link === link)
+      );
+    }
+    if (this.lastRawItems) {
+      return this.lastRawItems.some(i => i.link === link);
+    }
+    return false;
+  }
+
+  /**
+   * Scroll the panel to the item with the given link and flash-highlight it.
+   * For virtual-scrolled panels, renders the containing chunk first.
+   */
+  public scrollToNewsItem(link: string): void {
+    // In clustered mode, scroll via windowedList so off-screen chunks are rendered first
+    if (this.lastRawClusters && this.windowedList) {
+      const found = this.windowedList.scrollToItem(
+        (p: { cluster: ClusteredEvent }) =>
+          p.cluster.primaryLink === link || p.cluster.allItems.some((i: { link: string }) => i.link === link)
+      );
+      if (found) {
+        setTimeout(() => {
+          const el = this.content.querySelector(`[data-news-id="${CSS.escape(link)}"]`)
+            ?? this.content.querySelector(`a[href="${CSS.escape(link)}"]`);
+          if (el) this.flashHighlight(el);
+        }, 350);
+        return;
+      }
+    }
+    // Flat mode or small lists rendered directly in DOM
+    const el = this.content.querySelector(`[data-news-id="${CSS.escape(link)}"]`)
+      ?? this.content.querySelector(`a[href="${CSS.escape(link)}"]`);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      this.flashHighlight(el);
+    }
+  }
+
+  private flashHighlight(el: Element): void {
+    el.classList.remove('search-highlight');
+    void (el as HTMLElement).offsetWidth;
+    el.classList.add('search-highlight');
+    setTimeout(() => el.classList.remove('search-highlight'), 3100);
   }
 
   /**

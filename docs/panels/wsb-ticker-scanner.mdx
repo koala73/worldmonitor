@@ -1,0 +1,46 @@
+---
+title: "WSB Ticker Scanner"
+description: "Retail-sentiment scanner that aggregates ticker mentions across Reddit WSB-style subreddits and ranks them by mention count, total score, and a velocity metric."
+---
+
+The **WSB Ticker Scanner** panel (internal id `wsb-ticker-scanner`) turns Reddit retail-investor chatter into a ranked, sortable list of tickers — with mention counts, unique-post counts, total upvote score, average upvote ratio, a representative top post, and a velocity score designed to spotlight tickers with unusual recent momentum.
+
+## What the panel shows
+
+A list of `WsbTicker` rows with:
+
+- **Symbol**
+- **Mention count** — total mentions across the tracked subreddits.
+- **Unique posts** — distinct posts that mentioned the ticker.
+- **Total upvote score** — aggregated post scores.
+- **Avg upvote ratio** — engagement quality proxy.
+- **Top post** — title / URL / score / subreddit, linking back to Reddit.
+- **Subreddits** — which communities the mentions came from.
+- **Velocity score** — coloured by threshold via `velocityColor()`: red at ≥80, orange at ≥50, yellow at ≥25, green below (`src/components/WsbTickerScannerPanel.ts:27-31`).
+
+Numeric fields are rendered compactly via `formatCompact()` (e.g. `1.2K`, `3.4M`).
+
+Sorting is user-controlled by a `SortField` union: `'mentionCount' | 'totalScore' | 'velocityScore'`.
+
+Panel id is `wsb-ticker-scanner`; canonical component is `src/components/WsbTickerScannerPanel.ts`. Title resolves from i18n (`panels.wsbTickerScanner`).
+
+## How you reach it
+
+- **Cmd+K**: type *wsb*, *retail sentiment*, or a ticker symbol.
+- **Availability by variant**: registered and enabled by default in the **full/geopolitical** and **finance** variants — locked in both, with `priority: 75` (surfacing lower in default panel grids than priority-1 panels). Not present in the tech, commodity, or happy variants. Source: `'wsb-ticker-scanner'` in `FULL_PANELS` at `src/config/panels.ts:91` and equivalent in `FINANCE_PANELS`.
+
+## Data sources
+
+The panel reads from bootstrap-hydrated data (`getHydratedData(...)`) and resolves the API URL through `toApiUrl()`. The upstream is a Reddit-scraping cron that tallies ticker mentions across the WSB-family subreddits and writes the aggregated ranking to Redis.
+
+## Refresh cadence
+
+Aggregation runs on a scheduled cron (market-hours oriented). The panel reads the most recent snapshot from bootstrap hydration — no polling.
+
+## Tier & gating
+
+**PRO (hard-locked).** `premium: 'locked'` in variant registrations. `isPanelEntitled` unlocks it when **either** a valid `WORLDMONITOR_API_KEY` is present **or** `isPro` is true (`wsb-ticker-scanner` is in the `apiKeyPanels` allowlist at `src/config/panels.ts:973`).
+
+## API reference
+
+- [Markets service](/api/MarketService.openapi.yaml) — Reddit / retail-sentiment family of RPCs (also includes premium-stock-store integrations).

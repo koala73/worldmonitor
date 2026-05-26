@@ -1,0 +1,41 @@
+syntax = "proto3";
+package worldmonitor.supply_chain.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+import "worldmonitor/supply_chain/v1/supply_chain_data.proto";
+
+message GetBypassOptionsRequest {
+  string chokepoint_id = 1 [
+    (buf.validate.field).required = true,
+    (sebuf.http.query) = {name: "chokepointId"}
+  ];
+  // container | tanker | bulk | roro  (default: "container")
+  string cargo_type = 2 [(sebuf.http.query) = {name: "cargoType"}];
+  // 0-100, percent of capacity blocked (default: 100)
+  int32 closure_pct = 3 [(sebuf.http.query) = {name: "closurePct"}];
+}
+
+message BypassOption {
+  string id = 1;
+  string name = 2;
+  string type = 3;             // 'alternative_sea_route' | 'land_bridge' | 'modal_shift' | 'pipeline'
+  int32 added_transit_days = 4;
+  double added_cost_multiplier = 5;
+  int64 capacity_constraint_tonnage = 6; // 0 = unconstrained
+  repeated string suitable_cargo_types = 7;
+  string activation_threshold = 8;      // 'partial_closure' | 'full_closure'
+  repeated string waypoint_chokepoint_ids = 9;
+  double live_score = 10;               // 0-100, lower = better (less disrupted bypass)
+  WarRiskTier bypass_war_risk_tier = 11; // max war risk tier across waypointChokepointIds
+  string notes = 12;
+}
+
+message GetBypassOptionsResponse {
+  string chokepoint_id = 1;
+  string cargo_type = 2;
+  int32 closure_pct = 3;
+  repeated BypassOption options = 4;    // ranked by live_score asc
+  string fetched_at = 5;
+  WarRiskTier primary_chokepoint_war_risk_tier = 6; // war risk tier of the queried chokepoint
+}

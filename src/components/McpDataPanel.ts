@@ -2,8 +2,11 @@ import { Panel } from './Panel';
 import type { McpPanelSpec } from '@/services/mcp-store';
 import { t } from '@/services/i18n';
 import { h } from '@/utils/dom-utils';
-import { proxyUrl } from '@/utils/proxy';
+import { proxyUrl, widgetAgentUrl } from '@/utils/proxy';
+import { premiumFetch } from '@/services/premium-fetch';
 import { escapeHtml } from '@/utils/sanitize';
+import { isProWidgetEnabled, getBrowserTesterKey, getWidgetAgentKey, getProWidgetKey } from '@/services/widget-store';
+import { wrapProWidgetHtml } from '@/utils/widget-sanitizer';
 
 type McpResult = {
   content?: Array<{ type: string; text?: string }>;
@@ -14,6 +17,11 @@ export class McpDataPanel extends Panel {
   private spec: McpPanelSpec;
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
   private lastFetchedAt: number | null = null;
+  private lastJsonHash: string | null = null;
+  private cachedWidgetHtml: string | null = null;
+  private visualizing = false;
+  private pendingHash: string | null = null;
+  private destroyController = new AbortController();
 
   constructor(spec: McpPanelSpec) {
     super({
@@ -82,7 +90,11 @@ export class McpDataPanel extends Panel {
   async fetchData(): Promise<void> {
     this.showLoading();
     try {
-      const resp = await fetch(proxyUrl('/api/mcp-proxy'), {
+      // premiumFetch attaches the Clerk Pro Bearer for normal web Pro
+      // users. /api/mcp-proxy is in PREMIUM_RPC_PATHS so the path gate
+      // fires; the server-side isCallerPremium check accepts Bearer,
+      // wm_ user keys, and enterprise keys (PR #3768).
+      const resp = await premiumFetch(proxyUrl('/api/mcp-proxy'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -104,12 +116,148 @@ export class McpDataPanel extends Panel {
   }
 
   private renderResult(result: McpResult): void {
+    const jsonData = this.extractJsonData(result);
+
+    if (jsonData !== null && isProWidgetEnabled()) {
+      const hash = JSON.stringify(jsonData).slice(0, 8192);
+      if (hash === this.lastJsonHash && this.cachedWidgetHtml) {
+        this.setContent(`
+          <div class="mcp-panel-meta">${this.buildMetaLine()}</div>
+          <div class="mcp-panel-content mcp-panel-widget">${wrapProWidgetHtml(this.cachedWidgetHtml)}</div>
+        `);
+        return;
+      }
+      this.lastJsonHash = hash;
+      this.cachedWidgetHtml = null;
+      void this.autoVisualize(jsonData, hash);
+      return;
+    }
+
     const meta = this.buildMetaLine();
     const content = this.extractText(result);
     this.setContent(`
       <div class="mcp-panel-meta">${meta}</div>
       <div class="mcp-panel-content">${content}</div>
     `);
+  }
+
+  private extractJsonData(result: McpResult): unknown | null {
+    if (Array.isArray(result.content)) {
+      for (const c of result.content as Array<{ type: string; text?: string }>) {
+        if (c.type === 'text' && c.text) {
+          const trimmed = c.text.trim();
+          if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+            try { return JSON.parse(trimmed); } catch { /* not JSON */ }
+          }
+        }
+      }
+    }
+    // Only use result directly when content wrapper is absent
+    if (!Array.isArray(result.content) && Object.keys(result).length > 0) {
+      return result;
+    }
+    return null;
+  }
+
+  private async autoVisualize(jsonData: unknown, startHash: string): Promise<void> {
+    if (this.visualizing) return;
+    this.visualizing = true;
+    this.pendingHash = startHash;
+
+    this.setContent(`
+      <div class="mcp-panel-meta">${this.buildMetaLine()}</div>
+      <div class="mcp-panel-content mcp-panel-visualizing">
+        <div class="panel-loading-radar"><span class="panel-radar-sweep"></span><span class="panel-radar-dot"></span></div>
+        <span class="mcp-vis-label">${escapeHtml(t('mcp.generatingVisualization'))}</span>
+      </div>
+    `);
+
+    const toolName = this.spec.toolName.slice(0, 100);
+    const preview = JSON.stringify(jsonData, null, 2).slice(0, 3000);
+    const prompt = `Create a compact, interactive data visualization widget for this ${toolName} data. Choose the best format (charts, tables, cards). Data:\n${preview}`;
+
+    const timeoutController = new AbortController();
+    const timeoutId = setTimeout(() => timeoutController.abort(), 120_000);
+
+    try {
+      const testerKey = getBrowserTesterKey();
+      const widgetKey = getWidgetAgentKey();
+      const proKey = getProWidgetKey();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (widgetKey) headers['X-Widget-Key'] = widgetKey;
+      if (proKey) headers['X-Pro-Key'] = proKey;
+      if (testerKey) headers['X-WorldMonitor-Key'] = testerKey;
+      const res = await fetch(widgetAgentUrl(), {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ prompt, mode: 'create', tier: 'pro' }),
+        signal: this.destroyController.signal.aborted
+          ? this.destroyController.signal
+          : timeoutController.signal,
+      });
+
+      if (!res.ok || !res.body) throw new Error(`HTTP ${res.status}`);
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+      let resultHtml = '';
+      let rendered = false;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split('\n');
+        buf = lines.pop() ?? '';
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          let event: { type: string; [k: string]: unknown };
+          try { event = JSON.parse(line.slice(6)); } catch { continue; }
+
+          if (event.type === 'html_complete') {
+            resultHtml = String(event.html ?? '');
+          } else if (event.type === 'done') {
+            // Only cache and render if data hasn't changed since we started
+            if (this.pendingHash === this.lastJsonHash) {
+              this.cachedWidgetHtml = resultHtml;
+              this.setContent(`
+                <div class="mcp-panel-meta">${this.buildMetaLine()}</div>
+                <div class="mcp-panel-content mcp-panel-widget">${wrapProWidgetHtml(resultHtml)}</div>
+              `);
+              rendered = true;
+            }
+          } else if (event.type === 'error') {
+            throw new Error(String(event.message ?? t('mcp.visualizationFailed')));
+          }
+        }
+      }
+
+      // Stream ended without 'done' — flush whatever html_complete gave us
+      if (!rendered) {
+        if (resultHtml && this.pendingHash === this.lastJsonHash) {
+          this.cachedWidgetHtml = resultHtml;
+          this.setContent(`
+            <div class="mcp-panel-meta">${this.buildMetaLine()}</div>
+            <div class="mcp-panel-content mcp-panel-widget">${wrapProWidgetHtml(resultHtml)}</div>
+          `);
+        } else if (!resultHtml) {
+          this.cachedWidgetHtml = null;
+          this.lastJsonHash = null;
+          this.showError(t('mcp.visualizationFailed'));
+        }
+      }
+    } catch (err) {
+      if ((err as { name?: string }).name === 'AbortError') return;
+      this.cachedWidgetHtml = null;
+      this.lastJsonHash = null;
+      const msg = err instanceof Error ? err.message : t('mcp.visualizationFailed');
+      this.showError(msg);
+    } finally {
+      clearTimeout(timeoutId);
+      this.pendingHash = null;
+      this.visualizing = false;
+    }
   }
 
   private buildMetaLine(): string {
@@ -157,6 +305,8 @@ export class McpDataPanel extends Panel {
     const titleEl = this.header.querySelector('.panel-title');
     if (titleEl) titleEl.textContent = spec.title;
     this.clearRefreshTimer();
+    this.lastJsonHash = null;
+    this.cachedWidgetHtml = null;
     this.scheduleRefresh(true);
   }
 
@@ -165,6 +315,7 @@ export class McpDataPanel extends Panel {
   }
 
   destroy(): void {
+    this.destroyController.abort();
     this.clearRefreshTimer();
     super.destroy();
   }

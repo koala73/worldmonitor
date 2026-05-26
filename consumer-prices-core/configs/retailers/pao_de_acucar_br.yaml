@@ -1,0 +1,23 @@
+retailer:
+  slug: pao_de_acucar_br
+  name: Pão de Açúcar Brazil
+  marketCode: br
+  currencyCode: BRL
+  adapter: search
+  baseUrl: https://www.paodeacucar.com
+  enabled: true
+
+  searchConfig:
+    numResults: 5
+    urlPathContains: /produto/
+    queryTemplate: "{canonicalName} supermercado Brasil {currency} preço"
+
+  rateLimit:
+    requestsPerMinute: 10
+    maxConcurrency: 1
+    delayBetweenRequestsMs: 6000
+
+  discovery:
+    mode: search
+    maxPages: 20
+    seeds: []

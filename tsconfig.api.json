@@ -3,5 +3,6 @@
   "compilerOptions": {
     "types": ["vite/client"]
   },
-  "include": ["api", "src/generated", "server"]
+  "include": ["api", "src/generated", "server"],
+  "exclude": ["server/__tests__/**"]
 }

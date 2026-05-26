@@ -1,0 +1,75 @@
+---
+title: "Quickstart"
+description: "Make your first WorldMonitor API call in under a minute — curl, JavaScript, and Python."
+---
+
+## 1. Get an API key
+
+PRO subscribers get an API key from [worldmonitor.app/pro](https://www.worldmonitor.app/pro). Keys look like `wm_live_...` and are at least 16 characters.
+
+<Tip>
+Browser origins on `worldmonitor.app` / `localhost` are trusted without a key. You only need a key for server-to-server use or from untrusted origins.
+</Tip>
+
+## 2. Call an endpoint
+
+### curl
+
+```bash
+curl -s 'https://api.worldmonitor.app/api/conflict/v1/list-conflict-events?limit=5' \
+  -H 'X-WorldMonitor-Key: wm_live_...'
+```
+
+### JavaScript (Node or browser)
+
+```js
+const res = await fetch(
+  'https://api.worldmonitor.app/api/market/v1/get-quotes?symbols=AAPL,TSLA',
+  { headers: { 'X-WorldMonitor-Key': process.env.WM_KEY } }
+);
+const data = await res.json();
+console.log(data);
+```
+
+### Python
+
+```python
+import os, httpx
+
+r = httpx.get(
+    "https://api.worldmonitor.app/api/economic/v1/get-fred-series",
+    params={"series_id": "FEDFUNDS"},
+    headers={"X-WorldMonitor-Key": os.environ["WM_KEY"]},
+)
+r.raise_for_status()
+print(r.json())
+```
+
+## 3. Hydrate everything at once
+
+For dashboards, use `/api/bootstrap` to pull all seeded caches in one request:
+
+```bash
+curl -s 'https://api.worldmonitor.app/api/bootstrap' \
+  -H 'X-WorldMonitor-Key: wm_live_...'
+```
+
+See [Platform endpoints](/api-platform#bootstrap) for the response shape.
+
+## 4. Plug into an MCP client
+
+Point any MCP-compatible client at the server URL — the client handles OAuth automatically:
+
+```
+https://api.worldmonitor.app/api/mcp
+```
+
+See [MCP](/mcp-server) for client-specific setup.
+
+## Next
+
+- [Authentication](/usage-auth) — all three auth modes
+- [Rate limits](/usage-rate-limits) — per-endpoint caps
+- [Errors](/usage-errors) — response shapes and retry guidance
+- [API Reference](/api-reference) — every service, RPC, and request/response schema
+- [Agent Discovery](/agent-discovery) — for AI agents and codegen tools: discover all OpenAPI / MCP / OAuth surfaces from one root URL

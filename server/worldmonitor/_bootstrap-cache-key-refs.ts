@@ -9,6 +9,7 @@ export const SEED_ONLY_BOOTSTRAP_CACHE_KEYS = {
   renewableEnergy: 'economic:worldbank-renewable:v1',
   positiveGeoEvents: 'positive_events:geo-bootstrap:v1',
   weatherAlerts: 'weather:alerts:v1',
+  climateNews: 'climate:news-intelligence:v1',
   spending: 'economic:spending:v1',
   techEvents: 'research:tech-events-bootstrap:v1',
   gdeltIntel: 'intelligence:gdelt-intel:v1',

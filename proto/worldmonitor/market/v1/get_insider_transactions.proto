@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package worldmonitor.market.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+message InsiderTransaction {
+  string name = 1;
+  int64 shares = 2 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  double value = 3;
+  string transaction_code = 4;
+  string transaction_date = 5;
+}
+
+message GetInsiderTransactionsRequest {
+  string symbol = 1 [(sebuf.http.query) = { name: "symbol" },
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 32
+  ];
+}
+
+message GetInsiderTransactionsResponse {
+  bool unavailable = 1;
+  string symbol = 2;
+  double total_buys = 3;
+  double total_sells = 4;
+  double net_value = 5;
+  repeated InsiderTransaction transactions = 6;
+  string fetched_at = 7;
+}

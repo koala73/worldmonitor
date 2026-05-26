@@ -6,6 +6,7 @@
  * 1. Discovers targets from the basket YAML config (one target per basket item)
  * 2. Calls Exa with contents.summary to get AI-extracted price text from retailer pages
  * 3. Uses regex to extract the price from the summary
+ * 4. Falls back to Firecrawl URL scrape when Exa summaries yield no price
  *
  * Basket → product match is written automatically (match_status: 'auto')
  * because the search is item-specific — no ambiguity in what was searched.
@@ -13,6 +14,8 @@
 import { loadAllBasketConfigs } from '../config/loader.js';
 import type { AdapterContext, FetchResult, ParsedProduct, RetailerAdapter, Target } from './types.js';
 import type { RetailerConfig } from '../config/types.js';
+import { MARKET_NAMES } from './market-names.js';
+import { isAllowedHost } from './search.js';
 
 const CHROME_UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
@@ -78,6 +81,8 @@ interface ExaResult {
 
 interface SearchPayload {
   exaResults: ExaResult[];
+  firecrawlMarkdown?: string;
+  firecrawlUrl?: string;
   basketSlug: string;
   itemCategory: string;
   canonicalName: string;
@@ -86,7 +91,10 @@ interface SearchPayload {
 export class ExaSearchAdapter implements RetailerAdapter {
   readonly key = 'exa-search';
 
-  constructor(private readonly apiKey: string) {}
+  constructor(
+    private readonly apiKey: string,
+    private readonly firecrawlKey?: string,
+  ) {}
 
   async discoverTargets(ctx: AdapterContext): Promise<Target[]> {
     const baskets = loadAllBasketConfigs().filter((b) => b.marketCode === ctx.config.marketCode);
@@ -112,6 +120,18 @@ export class ExaSearchAdapter implements RetailerAdapter {
     return targets;
   }
 
+  private buildQuery(canonicalName: string, currency: string, marketCode: string, template?: string): string {
+    const market = MARKET_NAMES[marketCode] ?? '';
+    if (template) {
+      return template
+        .replace('{canonicalName}', canonicalName)
+        .replace('{currency}', currency)
+        .replace('{market}', market)
+        .trim();
+    }
+    return `${canonicalName} ${market} ${currency} price`.trim();
+  }
+
   async fetchTarget(ctx: AdapterContext, target: Target): Promise<FetchResult> {
     if (!this.apiKey) throw new Error('EXA_API_KEY is required for exa-search adapter');
 
@@ -122,8 +142,15 @@ export class ExaSearchAdapter implements RetailerAdapter {
       basketSlug: string;
     };
 
+    const searchQuery = this.buildQuery(
+      canonicalName,
+      currency,
+      ctx.config.marketCode,
+      ctx.config.acquisition?.searchQueryTemplate,
+    );
+
     const body = {
-      query: `${canonicalName} ${currency} retail price`,
+      query: searchQuery,
       numResults: 5,
       type: 'auto',
       includeDomains: [domain],
@@ -151,12 +178,35 @@ export class ExaSearchAdapter implements RetailerAdapter {
     }
 
     const data = (await resp.json()) as { results?: ExaResult[] };
+    const exaResults = data.results ?? [];
+
     const payload: SearchPayload = {
-      exaResults: data.results ?? [],
+      exaResults,
       basketSlug,
       itemCategory: target.category,
       canonicalName,
     };
+
+    // Firecrawl fallback: when all Exa summaries fail price extraction,
+    // scrape the first result URL directly (JS-rendered pages expose prices in markdown).
+    const anyExaPrice = exaResults.some(
+      (r) => matchPrice(r.summary ?? '', currency) !== null || matchPrice(r.title ?? '', currency) !== null,
+    );
+
+    if (!anyExaPrice && exaResults.length > 0 && this.firecrawlKey) {
+      const firstUrl = exaResults[0].url;
+      if (firstUrl && isAllowedHost(firstUrl, domain)) {
+        try {
+          const fc = await this.firecrawlFetch(firstUrl);
+          if (fc) {
+            payload.firecrawlMarkdown = fc;
+            payload.firecrawlUrl = firstUrl;
+          }
+        } catch {
+          // fallback failed silently — Exa results will be tried in parseListing
+        }
+      }
+    }
 
     return {
       url: target.url,
@@ -166,14 +216,40 @@ export class ExaSearchAdapter implements RetailerAdapter {
     };
   }
 
+  private async firecrawlFetch(url: string): Promise<string | null> {
+    const resp = await fetch('https://api.firecrawl.dev/v1/scrape', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${this.firecrawlKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ url, formats: ['markdown'], timeout: 20_000 }),
+      signal: AbortSignal.timeout(25_000),
+    });
+
+    if (!resp.ok) return null;
+    const data = (await resp.json()) as { success: boolean; data?: { markdown?: string } };
+    return data.success ? (data.data?.markdown ?? null) : null;
+  }
+
   async parseListing(ctx: AdapterContext, result: FetchResult): Promise<ParsedProduct[]> {
     const payload = JSON.parse(result.html) as SearchPayload;
     const currency = ctx.config.currencyCode;
 
+    if (payload.exaResults.length === 0 && !payload.firecrawlMarkdown) {
+      ctx.logger.warn(`  [exa] ${payload.canonicalName}: 0 results from Exa (no indexed pages on this domain for query)`);
+      return [];
+    }
+
+    // Try Exa results first
     for (const r of payload.exaResults) {
       const price =
         matchPrice(r.summary ?? '', currency) ??
         matchPrice(r.title ?? '', currency);
+
+      if (price === null) {
+        ctx.logger.warn(`  [exa] ${payload.canonicalName}: no price in result — title="${r.title?.slice(0, 60)}" summary="${(r.summary ?? '').slice(0, 80)}"`);
+      }
 
       if (price !== null) {
         return [
@@ -200,6 +276,38 @@ export class ExaSearchAdapter implements RetailerAdapter {
           },
         ];
       }
+    }
+
+    // Firecrawl fallback: scrape the first result URL for a JS-rendered price
+    if (payload.firecrawlMarkdown && payload.firecrawlUrl) {
+      const price = matchPrice(payload.firecrawlMarkdown.slice(0, 3000), currency);
+      if (price !== null) {
+        ctx.logger.info(`  [firecrawl-fallback] ${payload.canonicalName}: found ${currency} ${price} via Firecrawl`);
+        return [
+          {
+            sourceUrl: payload.firecrawlUrl,
+            rawTitle: payload.exaResults[0]?.title ?? payload.canonicalName,
+            rawBrand: null,
+            rawSizeText: null,
+            imageUrl: null,
+            categoryText: payload.itemCategory,
+            retailerSku: null,
+            price,
+            listPrice: null,
+            promoPrice: null,
+            promoText: null,
+            inStock: true,
+            rawPayload: {
+              exaUrl: payload.firecrawlUrl,
+              firecrawlFallback: true,
+              basketSlug: payload.basketSlug,
+              itemCategory: payload.itemCategory,
+              canonicalName: payload.canonicalName,
+            },
+          },
+        ];
+      }
+      ctx.logger.warn(`  [firecrawl-fallback] ${payload.canonicalName}: no ${currency} price found in Firecrawl markdown either`);
     }
 
     return [];

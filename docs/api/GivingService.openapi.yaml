@@ -111,7 +111,7 @@ components:
                 estimatedDailyFlowUsd:
                     type: number
                     format: double
-                    description: 'Estimated daily global giving flow in USD (directional, not precise).. Warning: Values > 2^53 may lose precision in JavaScript'
+                    description: Estimated daily global giving flow in USD (directional, not precise).
                 platforms:
                     type: array
                     items:

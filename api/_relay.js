@@ -1,3 +1,4 @@
+// Edge function copy — canonical version at server/_shared/relay.ts
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { validateApiKey } from './_api-key.js';
 import { checkRateLimit } from './_rate-limit.js';
@@ -15,7 +16,9 @@ export function getRelayHeaders(baseHeaders = {}) {
   if (relaySecret) {
     const relayHeader = (process.env.RELAY_AUTH_HEADER || 'x-relay-key').toLowerCase();
     headers[relayHeader] = relaySecret;
-    headers.Authorization = `Bearer ${relaySecret}`;
+    if (relayHeader !== 'authorization') {
+      headers.Authorization = `Bearer ${relaySecret}`;
+    }
   }
   return headers;
 }
@@ -69,7 +72,7 @@ export function createRelayHandler(cfg) {
     }
 
     if (cfg.requireApiKey) {
-      const keyCheck = validateApiKey(req);
+      const keyCheck = await validateApiKey(req);
       if (keyCheck.required && !keyCheck.valid) {
         return jsonResponse({ error: keyCheck.error }, 401, corsHeaders);
       }

@@ -74,6 +74,8 @@ export interface AppContext {
   digestPanel: import('@/components/GoodThingsDigestPanel').GoodThingsDigestPanel | null;
   speciesPanel: import('@/components/SpeciesComebackPanel').SpeciesComebackPanel | null;
   renewablePanel: import('@/components/RenewableEnergyPanel').RenewableEnergyPanel | null;
+  authModal: { open(): void; close(): void; destroy(): void } | null;
+  authHeaderWidget: import('@/components/AuthHeaderWidget').AuthHeaderWidget | null;
   tvMode: import('@/services/tv-mode').TvModeController | null;
   happyAllItems: NewsItem[];
   isDestroyed: boolean;

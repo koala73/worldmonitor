@@ -10,7 +10,7 @@ const client = new EconomicServiceClient(getRpcBaseUrl(), { fetch: (...args: Par
 
 export class BigMacPanel extends Panel {
   constructor() {
-    super({ id: 'bigmac', title: t('panels.bigmac') });
+    super({ id: 'bigmac', title: t('panels.bigmac'), infoTooltip: t('components.bigmac.infoTooltip') });
   }
 
   public async fetchData(): Promise<void> {
@@ -19,6 +19,10 @@ export class BigMacPanel extends Panel {
       if (hydrated?.countries?.length) {
         if (!this.element?.isConnected) return;
         this.renderIndex(hydrated);
+        void client.listBigMacPrices({}).then(data => {
+          if (!this.element?.isConnected || !data.countries?.length) return;
+          this.renderIndex(data);
+        }).catch(() => {});
         return;
       }
       const data = await client.listBigMacPrices({});
@@ -44,28 +48,53 @@ export class BigMacPanel extends Panel {
     const maxCode = sorted[0]?.code;
     const minCode = sorted[sorted.length - 1]?.code;
 
+    const showWow = data.wowAvailable && data.wowAvgPct !== undefined;
+    const wowHeader = showWow ? `<th class="gb-cell">${t('panels.bigmacWow')}</th>` : '';
+
     const rows = sorted.map(c => {
       const cls = c.code === minCode ? 'gb-cheapest' : c.code === maxCode ? 'gb-priciest' : '';
+      let wowCell = '';
+      if (showWow) {
+        const pct = c.wowPct ?? null;
+        if (pct == null) {
+          wowCell = `<td class="gb-cell gb-na">—</td>`;
+        } else {
+          const sign = pct >= 0 ? '▲' : '▼';
+          const wowCls = pct >= 0 ? 'bm-wow-up' : 'bm-wow-down';
+          wowCell = `<td class="gb-cell ${wowCls}">${sign}${Math.abs(pct).toFixed(1)}%</td>`;
+        }
+      }
       return `<tr>
         <td class="gb-item-name">${escapeHtml(c.flag)} ${escapeHtml(c.name)}</td>
         <td class="gb-cell ${cls}">$${c.usdPrice.toFixed(2)}</td>
+        ${wowCell}
       </tr>`;
     }).join('');
+
+    let wowSummary = '';
+    if (showWow) {
+      const avg = data.wowAvgPct;
+      const sign = avg >= 0 ? '▲' : '▼';
+      const cls = avg >= 0 ? 'bm-wow-up' : 'bm-wow-down';
+      wowSummary = `<div class="bm-wow-summary">Global avg: <span class="${cls}">${sign}${Math.abs(avg).toFixed(1)}% ${t('panels.bigmacWow')}</span></div>`;
+    }
 
     const updatedAt = data.fetchedAt ? new Date(data.fetchedAt).toLocaleDateString() : '';
 
     const html = `
       <div class="gb-wrapper">
+        ${wowSummary}
         <div class="gb-scroll">
           <table class="gb-table">
             <thead><tr>
-              <th class="gb-item-col">Country</th>
+              <th class="gb-item-col">${t('panels.bigmacCountry')}</th>
               <th class="gb-cell">USD</th>
+              ${wowHeader}
             </tr></thead>
             <tbody>${rows}</tbody>
           </table>
         </div>
-        ${updatedAt ? `<div class="gb-updated">${t('common.updatedAt')}: ${updatedAt}</div>` : ''}
+        ${updatedAt ? `<div class="gb-updated">${t('components.status.updatedAt', { time: updatedAt })}</div>` : ''}
       </div>
     `;
 

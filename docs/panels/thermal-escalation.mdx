@@ -1,0 +1,49 @@
+---
+title: "Thermal Escalation"
+description: "FIRMS/VIIRS thermal anomaly clusters with baseline comparison, persistence tracking, and conflict-adjacency flags — for spotting abnormal thermal activity that may signal conflict, industrial disruption, or escalation."
+---
+
+The **Thermal Escalation** panel turns raw thermal-satellite detections (hotspots) into clustered events and evaluates each cluster against its local baseline and context. It answers two questions: where is thermal activity **abnormal**, and which clusters are **strategically relevant** — adjacent to conflict, critical infrastructure, or other high-signal contexts.
+
+## What the panel shows
+
+A card list of thermal clusters with:
+
+- **Status label** per cluster: `normal`, `elevated`, `spike`, or `persistent`.
+- **Baseline comparison** — how the current detection density differs from the cluster's baseline.
+- **Persistence tracking** — clusters that re-appear across successive windows are flagged `persistent`.
+- **Conflict-adjacent flag** — clusters near active conflict events.
+- **High-relevance flag** — clusters near critical infrastructure or other strategic context.
+
+A summary bar across the top counts: total clusters, elevated, spike, persistent, conflict-adjacent, and high-relevance.
+
+**Row interactions**:
+- Click a cluster card to jump the map to that cluster's coordinates.
+
+Panel id is `thermal-escalation`; canonical component is `src/components/ThermalEscalationPanel.ts`.
+
+## How you reach it
+
+- **Cmd+K**: type *thermal* or *escalation*.
+- **Availability by variant**: registered and enabled by default in the **full/geopolitical** variant only. Not present in the tech, finance, commodity, or happy variants. Source: `FULL_PANELS` in `src/config/panels.ts`.
+
+## Data sources
+
+Per the in-panel info tooltip, Thermal Escalation is seeded from:
+
+- **FIRMS / VIIRS** — NASA's Fire Information for Resource Management System and the Visible Infrared Imaging Radiometer Suite thermal anomaly feeds.
+
+A single RPC backs the panel: `GET /api/thermal/v1/list-thermal-escalations`. The backend seeder clusters raw detections, compares against the baseline, applies persistence and adjacency logic, and writes the result at `thermal:escalation:v1` in Redis.
+
+## Refresh cadence
+
+The seeder runs on a **~2-hour** cron. The key is allowed up to **6 hours** (`maxStaleMin: 360`) in `api/health.js` — 3× the nominal interval — before the health surface escalates. The longer grace window accommodates FIRMS refresh cycles and the clustering step's runtime.
+
+## Tier & gating
+
+Thermal Escalation is **free**. No `premium` flag in `src/config/panels.ts`; the RPC is public.
+
+## API reference
+
+- [Thermal service](/api/ThermalService.openapi.yaml) — `list-thermal-escalations`.
+- Related: [Natural Disasters / Wildfires](/natural-disasters) for the raw-detection map layer that feeds this clustering.

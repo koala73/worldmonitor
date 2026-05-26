@@ -36,6 +36,44 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/sanctions/v1/lookup-sanction-entity:
+        get:
+            tags:
+                - SanctionsService
+            summary: LookupSanctionEntity
+            description: LookupSanctionEntity searches the OFAC entity index by name, vessel, or aircraft.
+            operationId: LookupSanctionEntity
+            parameters:
+                - name: q
+                  in: query
+                  required: false
+                  schema:
+                    type: string
+                - name: max_results
+                  in: query
+                  required: false
+                  schema:
+                    type: integer
+                    format: int32
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/LookupSanctionEntityResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
 components:
     schemas:
         Error:
@@ -188,3 +226,43 @@ components:
                     type: integer
                     format: int32
             description: ProgramSanctionsPressure summarizes designation volume and recent additions by OFAC program.
+        LookupSanctionEntityRequest:
+            type: object
+            properties:
+                q:
+                    type: string
+                maxResults:
+                    type: integer
+                    format: int32
+            description: LookupSanctionEntityRequest searches the OFAC entity index by name, vessel, or aircraft.
+        LookupSanctionEntityResponse:
+            type: object
+            properties:
+                results:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/SanctionEntityMatch'
+                total:
+                    type: integer
+                    format: int32
+                source:
+                    type: string
+            description: LookupSanctionEntityResponse contains matched entities from OFAC + OpenSanctions.
+        SanctionEntityMatch:
+            type: object
+            properties:
+                id:
+                    type: string
+                name:
+                    type: string
+                entityType:
+                    type: string
+                countryCodes:
+                    type: array
+                    items:
+                        type: string
+                programs:
+                    type: array
+                    items:
+                        type: string
+            description: SanctionEntityMatch is a compact entity match from the lookup index.

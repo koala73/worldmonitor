@@ -1,6 +1,14 @@
 /** Anything that can appear as a child of h() / fragment(). */
 export type DomChild = Node | string | number | null | undefined | false;
 
+declare const trustedHtmlBrand: unique symbol;
+
+/**
+ * HTML that has already been sanitized, escaped, or proven static by its
+ * caller. Direct `innerHTML` writes outside this module are lint-guarded.
+ */
+export type TrustedHtml = string & { readonly [trustedHtmlBrand]: true };
+
 /** Props accepted by h(). */
 export interface DomProps {
   className?: string;
@@ -54,7 +62,18 @@ export function replaceChildren(el: Element, ...children: DomChild[]): void {
   el.appendChild(frag);
 }
 
-export function rawHtml(html: string): DocumentFragment {
+export function trustedHtml(html: string, reason: string): TrustedHtml {
+  if (!reason.trim()) {
+    throw new Error('trustedHtml() requires an audit reason');
+  }
+  return html as TrustedHtml;
+}
+
+export function setTrustedHtml(el: Element, html: TrustedHtml): void {
+  el.innerHTML = html;
+}
+
+export function rawHtml(html: TrustedHtml): DocumentFragment {
   const tpl = document.createElement('template');
   tpl.innerHTML = html;
   return tpl.content;
@@ -68,6 +87,18 @@ const SAFE_ATTRS = new Set(['class', 'href', 'target', 'rel', 'style']);
 // Only permit `color` declarations using hex, rgb(), named colors, or CSS vars.
 // Blocks url(), expression(), javascript:, data: and other CSS injection vectors.
 const SAFE_STYLE_RE = /^color:\s*(#[0-9a-fA-F]{3,8}|rgb\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\)|[a-zA-Z]+|var\(--[\w-]+\))\s*;?\s*$/;
+
+export function ensureNoopenerRel(rel: string | null): string {
+  const tokens = new Set(
+    (rel ?? '')
+      .split(/\s+/)
+      .map((token) => token.trim().toLowerCase())
+      .filter((token) => token && token !== 'opener'),
+  );
+  tokens.add('noopener');
+  tokens.add('noreferrer');
+  return Array.from(tokens).join(' ');
+}
 
 /** Like rawHtml() but strips tags and attributes not in the allowlist. */
 export function safeHtml(html: string): DocumentFragment {
@@ -103,6 +134,12 @@ export function safeHtml(html: string): DocumentFragment {
           if (!SAFE_STYLE_RE.test(style.trim())) {
             el.removeAttribute('style');
           }
+        }
+        if (
+          el.tagName.toLowerCase() === 'a' &&
+          el.getAttribute('target')?.toLowerCase() === '_blank'
+        ) {
+          el.setAttribute('rel', ensureNoopenerRel(el.getAttribute('rel')));
         }
         walk(el);
       }

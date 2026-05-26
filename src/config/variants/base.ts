@@ -31,11 +31,13 @@ export const REFRESH_INTERVALS = {
   cyberThreats: 10 * 60 * 1000,
   stockAnalysis: 15 * 60 * 1000,
   dailyMarketBrief: 60 * 60 * 1000,
+  marketImplications: 3 * 60 * 60 * 1000,
   stockBacktest: 4 * 60 * 60 * 1000,
   serviceStatus: 3 * 60 * 1000,
   stablecoins: 15 * 60 * 1000,
   etfFlows: 15 * 60 * 1000,
   macroSignals: 15 * 60 * 1000,
+  fearGreed: 30 * 60 * 1000,
   strategicPosture: 15 * 60 * 1000,
   strategicRisk: 5 * 60 * 1000,
   temporalBaseline: 10 * 60 * 1000,
@@ -44,8 +46,33 @@ export const REFRESH_INTERVALS = {
   telegramIntel: 60 * 1000,
   gulfEconomies: 10 * 60 * 1000,
   groceryBasket: 6 * 60 * 60 * 1000,
+  fuelPrices: 6 * 60 * 60 * 1000,
+  faoFoodPriceIndex: 24 * 60 * 60 * 1000, // monthly data; refresh daily is sufficient
+  oilInventories: 5 * 60 * 1000, // EIA weekly + EU gas daily; 5min refresh
+  climateNews: 30 * 60 * 1000, // seeded every 30min; match cadence
   intelligence: 15 * 60 * 1000,
   correlationEngine: 5 * 60 * 1000,
+  defensePatents: 24 * 60 * 60 * 1000, // 24h — data is weekly, daily poll is sufficient
+  wsbTickers: 10 * 60 * 1000,
+  crossSourceSignals: 15 * 60 * 1000,
+  hormuzTracker: 60 * 60 * 1000, // 1h — data updates daily
+  hyperliquidFlow: 5 * 60 * 1000, // 5min — matches Railway seed cadence
+  energyCrisis: 6 * 60 * 60 * 1000, // 6h — policy data updates infrequently
+  pipelineStatus: 24 * 60 * 60 * 1000, // curated registry reseeds weekly; daily poll keeps long-lived sessions fresh
+  storageFacilityMap: 24 * 60 * 60 * 1000, // curated registry reseeds weekly; daily poll keeps long-lived sessions fresh
+  fuelShortages: 60 * 60 * 1000, // active shortage alerts can change intra-day
+  energyDisruptions: 60 * 60 * 1000, // disruption log is low-volume but needs intra-day freshness
+  energyRiskOverview: 15 * 60 * 1000, // mixed market + supply-chain overview; refresh more often than the underlying weekly registries
+  chokepointStrip: 90 * 60 * 1000, // matches chokepoint client cache TTL / freshness budget
+  macroTiles: 30 * 60 * 1000,
+  fsi: 30 * 60 * 1000,
+  yieldCurve: 30 * 60 * 1000,
+  earningsCalendar: 60 * 60 * 1000,
+  economicCalendar: 60 * 60 * 1000,
+  cotPositioning: 60 * 60 * 1000,
+  goldIntelligence: 5 * 60 * 1000,
+  aaiiSentiment: 60 * 60 * 1000, // weekly data; hourly refresh is sufficient
+  marketBreadth: 60 * 60 * 1000, // seeded daily; hourly refresh is sufficient
 };
 
 // Monitor colors - shared
@@ -68,6 +95,14 @@ export const STORAGE_KEYS = {
   monitors: 'worldmonitor-monitors',
   mapLayers: 'worldmonitor-layers',
   disabledFeeds: 'worldmonitor-disabled-feeds',
+  // Schema version for the disabledFeeds set. Bumped on each migration that
+  // mutates the set in a backwards-incompatible way. Currently:
+  //   missing/0 → pre-2026-05-01 alphabetical-cap state. Eligible for
+  //               one-time recovery of fully-disabled categories.
+  //   1 → recovery has run; the set is post-migration and must NOT be
+  //       re-recovered on subsequent loads (otherwise user-explicit
+  //       full-category disabling would be silently undone forever).
+  disabledFeedsSchema: 'worldmonitor-disabled-feeds-schema',
   liveChannels: 'worldmonitor-live-channels',
   mapMode: 'worldmonitor-map-mode',          // 'flat' | 'globe'
   activeChannel: 'worldmonitor-active-channel',

@@ -21,6 +21,15 @@ message SummarizeArticleRequest {
   string variant = 5;
   // Output language code, default "en".
   string lang = 6;
+  // Optional system prompt append for analytical framework instructions.
+  string system_append = 7;
+  // Optional article bodies paired 1:1 with `headlines`. When bodies[i] is
+  // non-empty, the prompt interleaves it as grounding context under
+  // headlines[i]; when empty, behavior is identical to headline-only today.
+  // Callers may supply a shorter array; missing entries are treated as empty.
+  // Each body is subject to the same sanitisation as headlines before reaching
+  // the LLM prompt.
+  repeated string bodies = 8;
 }
 
 // SummarizeStatus indicates the outcome of a summarization request.

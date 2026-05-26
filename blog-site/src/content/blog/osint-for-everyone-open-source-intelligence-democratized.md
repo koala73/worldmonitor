@@ -16,16 +16,16 @@ World Monitor collapses that entire workflow into a single interactive dashboard
 
 If you've ever tried to monitor a developing situation, whether it's a military escalation, a natural disaster, or a supply chain disruption, you know the drill:
 
-1. Open FlightRadar24 for aircraft movements
-2. Open MarineTraffic for ship positions
-3. Open USGS for earthquake data
-4. Open ACLED for conflict events
-5. Open Liveuamap for real-time mapping
-6. Open Reuters, AP, and Al Jazeera for news
+1. Open [FlightRadar24](https://www.flightradar24.com/) for aircraft movements
+2. Open [MarineTraffic](https://www.marinetraffic.com/) for ship positions
+3. Open [USGS](https://earthquake.usgs.gov/) for earthquake data
+4. Open [ACLED](https://acleddata.com/) for conflict events
+5. Open [Liveuamap](https://liveuamap.com/) for real-time mapping
+6. Open [Reuters](https://www.reuters.com/), [AP](https://apnews.com/), and [Al Jazeera](https://www.aljazeera.com/) for news
 7. Open Telegram for raw OSINT channels
-8. Open Polymarket for prediction markets
-9. Open gpsjam.org for GPS interference
-10. Open NASA FIRMS for fire detection
+8. Open [Polymarket](https://polymarket.com/) for prediction markets
+9. Open [gpsjam.org](https://gpsjam.org/) for GPS interference
+10. Open [NASA FIRMS](https://firms.modaps.eosdis.nasa.gov/) for fire detection
 
 Each tool has its own interface, its own refresh cycle, its own learning curve. Cross-referencing between them is manual and slow. By the time you've built a picture, the situation has moved.
 

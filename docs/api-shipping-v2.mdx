@@ -1,0 +1,170 @@
+---
+title: "Shipping v2 API"
+description: "Chokepoint route-intelligence queries and webhook subscriptions for supply-chain disruption alerts."
+---
+
+The v2 shipping API is a **PRO-gated** read + webhook-subscription surface on top of WorldMonitor's chokepoint registry and AIS tracking data.
+
+<Info>
+All v2 shipping endpoints require `X-WorldMonitor-Key` (server-to-server). Browser origins are **not** trusted here — `validateApiKey` runs with `forceKey: true`.
+</Info>
+
+## Route intelligence
+
+### `GET /api/v2/shipping/route-intelligence`
+
+Scores a country-pair trade route for chokepoint exposure and current disruption risk.
+
+**Query parameters**:
+
+| Param | Required | Description |
+|-------|----------|-------------|
+| `fromIso2` | yes | Origin country, ISO-3166-1 alpha-2 (uppercase). |
+| `toIso2` | yes | Destination country, ISO-3166-1 alpha-2 (uppercase). |
+| `cargoType` | no | One of `container` (default), `tanker`, `bulk`, `roro`. |
+| `hs2` | no | 2-digit HS commodity code (default `27` — mineral fuels). |
+
+**Example**:
+```
+GET /api/v2/shipping/route-intelligence?fromIso2=AE&toIso2=NL&cargoType=tanker&hs2=27
+```
+
+**Response (`200`)**:
+```json
+{
+  "fromIso2": "AE",
+  "toIso2": "NL",
+  "cargoType": "tanker",
+  "hs2": "27",
+  "primaryRouteId": "ae-to-eu-via-hormuz-suez",
+  "chokepointExposures": [
+    { "chokepointId": "hormuz_strait", "chokepointName": "Strait of Hormuz", "exposurePct": 100 },
+    { "chokepointId": "suez",   "chokepointName": "Suez Canal",        "exposurePct": 100 }
+  ],
+  "bypassOptions": [
+    {
+      "id": "cape-of-good-hope",
+      "name": "Cape of Good Hope",
+      "type": "maritime_detour",
+      "addedTransitDays": 12,
+      "addedCostMultiplier": 1.35,
+      "activationThreshold": "DISRUPTION_SCORE_60"
+    }
+  ],
+  "warRiskTier": "WAR_RISK_TIER_ELEVATED",
+  "disruptionScore": 68,
+  "fetchedAt": "2026-04-19T12:00:00Z"
+}
+```
+
+- `disruptionScore` is 0-100 on the **primary** chokepoint for the route (higher = more disruption).
+- `warRiskTier` is one of the `WAR_RISK_TIER_*` enum values from the chokepoint status feed.
+- `bypassOptions` are filtered to those whose `suitableCargoTypes` includes `cargoType` (or is unset).
+
+**Caching**: `Cache-Control: public, max-age=60, stale-while-revalidate=120`.
+
+**Errors**:
+
+| Status | Cause |
+|--------|-------|
+| 400 | `fromIso2` or `toIso2` missing/malformed |
+| 401 | API key required or invalid |
+| 403 | `PRO subscription required` |
+| 405 | Method other than `GET` |
+
+## Webhook subscriptions
+
+### `POST /api/v2/shipping/webhooks`
+
+Registers a webhook for chokepoint disruption alerts. Returns `201 Created`.
+
+**Request**:
+```json
+{
+  "callbackUrl": "https://hooks.example.com/shipping-alerts",
+  "chokepointIds": ["hormuz_strait", "suez", "bab_el_mandeb"],
+  "alertThreshold": 60
+}
+```
+
+- `callbackUrl` — required, HTTPS only, must not resolve to a private/loopback address (SSRF guard at registration).
+- `chokepointIds` — optional. Omitting or passing an empty array subscribes to **all** registered chokepoints. Unknown IDs return `400`.
+- `alertThreshold` — numeric 0-100 (default `50`). Values outside that range return `400 "alertThreshold must be a number between 0 and 100"`.
+
+**Response (`201`)**:
+```json
+{
+  "subscriberId": "wh_a1b2c3d4e5f6a7b8c9d0e1f2",
+  "secret": "64-char-lowercase-hex-string"
+}
+```
+
+- `subscriberId` — `wh_` prefix + 24 hex chars (12 random bytes).
+- `secret` — raw 64-char lowercase hex (32 random bytes). There is no `whsec_` prefix. Persist it — the server never returns it again except on rotation.
+- **TTL**: 30 days on both the subscriber record and the per-owner index set. Only **re-registration** refreshes both, via an atomic pipeline (`SET` record with `EX`, `SADD` + `EXPIRE` on the owner index). `rotate-secret` and `reactivate` refresh the record's TTL only — they do not touch the owner-index set's expiry, so the owner index can expire independently if a caller only ever rotates or reactivates within a 30-day window. Re-register to keep both alive.
+- Ownership is tracked via SHA-256 of the caller's API key (never secret — stored as `ownerTag`).
+
+Auth: `X-WorldMonitor-Key` (forceKey: true) + PRO. Returns `401` / `403` otherwise.
+
+### `GET /api/v2/shipping/webhooks`
+
+Lists the caller's registered webhooks (filtered by the SHA-256 owner tag of the calling API key).
+
+```json
+{
+  "webhooks": [
+    {
+      "subscriberId": "wh_...",
+      "callbackUrl": "https://hooks.example.com/...",
+      "chokepointIds": ["hormuz_strait", "suez"],
+      "alertThreshold": 60,
+      "createdAt": "2026-04-19T12:00:00Z",
+      "active": true
+    }
+  ]
+}
+```
+
+The `secret` is intentionally omitted from list and status responses.
+
+### `GET /api/v2/shipping/webhooks/{subscriberId}`
+
+Status read for a single webhook. Returns the same record shape as in `GET /webhooks` (no `secret`). `404` if unknown, `403` if owned by a different API key.
+
+### `POST /api/v2/shipping/webhooks/{subscriberId}/rotate-secret`
+
+Generates and returns a **new** secret. The record's `secret` is replaced in place; the old secret stops validating immediately.
+
+```json
+{ "subscriberId": "wh_...", "secret": "new-64-char-hex", "rotatedAt": "2026-04-19T12:05:00Z" }
+```
+
+### `POST /api/v2/shipping/webhooks/{subscriberId}/reactivate`
+
+Flips `active: true` on the record (use after investigating and fixing a delivery failure that caused deactivation).
+
+```json
+{ "subscriberId": "wh_...", "active": true }
+```
+
+### Delivery format
+
+```
+POST <callbackUrl>
+Content-Type: application/json
+X-WM-Signature: sha256=<HMAC-SHA256(body, secret)>
+X-WM-Delivery-Id: <ulid>
+X-WM-Event: chokepoint.disruption
+
+{
+  "subscriberId": "wh_...",
+  "chokepointId": "hormuz_strait",
+  "score": 74,
+  "alertThreshold": 60,
+  "triggeredAt": "2026-04-19T12:03:00Z",
+  "reason": "ais_congestion_spike",
+  "details": { ... }
+}
+```
+
+The delivery worker re-resolves `callbackUrl` before each send and re-checks against `PRIVATE_HOSTNAME_PATTERNS` to mitigate DNS rebinding. Delivery is at-least-once — consumers must handle duplicates via `X-WM-Delivery-Id`.

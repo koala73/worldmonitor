@@ -50,6 +50,13 @@ const TESTS = [
     minRecords: 1,
     field: 'anomalies',
   },
+  {
+    name: 'Climate News',
+    endpoint: '/api/climate/v1/list-climate-news',
+    validate: (d) => Array.isArray(d.items) && d.items.length > 0,
+    minRecords: 1,
+    field: 'items',
+  },
 
   // Phase 2 — Parameterized endpoints
   {

@@ -19,8 +19,7 @@ message GetFlightStatusRequest {
   string date = 2 [
     (sebuf.http.query) = { name: "date" },
     (buf.validate.field).required = true,
-    (buf.validate.field).string.min_len = 10,
-    (buf.validate.field).string.max_len = 10
+    (buf.validate.field).string.len = 10
   ];
   // Optional origin airport IATA code to disambiguate.
   string origin = 3 [(sebuf.http.query) = { name: "origin" }];

@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package worldmonitor.infrastructure.v1;
+
+import "sebuf/http/annotations.proto";
+
+// GetBootstrapDataRequest parameters for multi-key fetching.
+message GetBootstrapDataRequest {
+  // Predefined tiers or specific keys.
+  string tier = 1 [(sebuf.http.query) = {name: "tier"}];
+  repeated string keys = 2 [(sebuf.http.query) = {name: "keys"}];
+}
+
+// GetBootstrapDataResponse containing pooled data objects.
+message GetBootstrapDataResponse {
+  // Map of keys to JSON-encoded data strings.
+  map<string, string> data = 1;
+  // List of keys that were not found in cache.
+  repeated string missing = 2;
+}

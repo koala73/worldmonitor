@@ -1,0 +1,23 @@
+retailer:
+  slug: ocado_gb
+  name: Ocado UK
+  marketCode: gb
+  currencyCode: GBP
+  adapter: search
+  baseUrl: https://www.ocado.com
+  enabled: true
+
+  searchConfig:
+    numResults: 5
+    queryTemplate: "{canonicalName} grocery {market} {currency} price"
+    urlPathContains: /products/
+
+  rateLimit:
+    requestsPerMinute: 10
+    maxConcurrency: 1
+    delayBetweenRequestsMs: 6000
+
+  discovery:
+    mode: search
+    maxPages: 20
+    seeds: []

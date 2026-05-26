@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+import "sebuf/http/annotations.proto";
+
+// EcbFxRate is a single ECB official reference rate for a currency pair.
+message EcbFxRate {
+  // Currency pair label, e.g. "EURUSD".
+  string pair = 1;
+  // Exchange rate (units of quote currency per 1 EUR).
+  double rate = 2;
+  // Date of the observation in YYYY-MM-DD format.
+  string date = 3;
+  // 1-day change in rate (absolute).
+  double change1d = 4;
+}
+
+// GetEcbFxRatesRequest is empty; returns all tracked EUR pairs.
+message GetEcbFxRatesRequest {
+}
+
+// GetEcbFxRatesResponse contains the latest ECB reference rates.
+message GetEcbFxRatesResponse {
+  // ECB reference rates for EUR/major currency pairs.
+  repeated EcbFxRate rates = 1;
+  // ISO 8601 timestamp of the ECB publication.
+  string updated_at = 2;
+  // Unix ms when the data was last seeded.
+  int64 seeded_at = 3;
+  // True when Redis key is missing or data is unavailable.
+  bool unavailable = 4;
+}

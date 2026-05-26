@@ -83,6 +83,15 @@ function createRedisAwareBacktestFetch(mockChartPayload: unknown) {
         redis.set(key, value);
         return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
       }
+      if (parsed.pathname === '/') {
+        const command = JSON.parse(typeof init?.body === 'string' ? init.body : '[]') as string[];
+        const [verb, key = '', value = ''] = command;
+        if (verb === 'SET') {
+          redis.set(key, value);
+          return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
+        }
+        throw new Error(`Unexpected POST / command: ${verb}`);
+      }
       if (parsed.pathname === '/pipeline') {
         const commands = JSON.parse(typeof init?.body === 'string' ? init.body : '[]') as string[][];
         const result = commands.map((command) => {
@@ -260,7 +269,7 @@ describe('MarketServiceClient listStoredStockBacktests', () => {
     await client.listStoredStockBacktests({ symbols: ['MSFT', 'NVDA'], evalWindowDays: 7 });
 
     assert.match(requestedUrl, /\/api\/market\/v1\/list-stored-stock-backtests\?/);
-    assert.match(requestedUrl, /symbols=MSFT%2CNVDA|symbols=MSFT,NVDA/);
+    assert.match(requestedUrl, /symbols=MSFT&symbols=NVDA/);
     assert.match(requestedUrl, /eval_window_days=7/);
   });
 });

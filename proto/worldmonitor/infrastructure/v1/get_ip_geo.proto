@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package worldmonitor.infrastructure.v1;
+
+
+// GetIpGeoRequest defined for future parameters (e.g., specific IP).
+message GetIpGeoRequest {}
+
+// GetIpGeoResponse contains geographic information derived from the request IP.
+message GetIpGeoResponse {
+  // ISO 3166-1 alpha-2 country code.
+  string country = 1;
+  // Region or city (if available).
+  string region = 2;
+  string city = 3;
+}

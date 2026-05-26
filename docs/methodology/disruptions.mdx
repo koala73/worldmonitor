@@ -1,0 +1,83 @@
+---
+title: "Energy Disruption Event Log Methodology"
+description: "How World Monitor curates the disruption event log shown on pipeline and storage asset drawers in the Energy Atlas."
+---
+
+## Scope
+
+The disruption event log (`energy:disruptions:v1`) is a state-machine history of outages, sanctions, maintenance windows, weather events, and commercial milestones tied to the curated assets in `energy:pipelines:gas:v1`, `energy:pipelines:oil:v1`, and `energy:storage-facilities:v1`.
+
+Release 1 ships a curated seed of notable historical and ongoing events (Nord Stream 1/2 sabotage, Druzhba sanctions, CPC force majeure, TurkStream maintenance, ESPO drone strikes, Arctic LNG 2 OFAC designation, etc.) tied to the assets that ship in the same registry. The log is curated-only today; an automated state-transition classifier was scoped but has not shipped.
+
+## Data shape
+
+Each event is a row keyed on a stable id:
+
+```ts
+{
+  id: string,
+  assetId: string,                // matches an id in the pipeline or storage registry
+  assetType: 'pipeline' | 'storage',
+  eventType: 'sabotage' | 'sanction' | 'maintenance' | 'mechanical' |
+             'weather' | 'commercial' | 'war' | 'other',
+  startAt: string,                // ISO8601
+  endAt: string | null,           // null when ongoing
+  capacityOfflineBcmYr: number,   // 0 when not applicable
+  capacityOfflineMbd: number,     // 0 when not applicable
+  causeChain: string[],           // primary cause first
+  shortDescription: string,
+  sources: Array<{
+    authority: string,
+    title: string,
+    url: string,                  // must be http(s)
+    date: string,                 // ISO8601
+    sourceType: 'regulator' | 'operator' | 'press' | 'ais-relay' | 'satellite',
+  }>,
+  classifierVersion: string,
+  classifierConfidence: number,   // 0..1
+  lastEvidenceUpdate: string,
+}
+```
+
+Every event must reference an asset that exists in the pipeline or storage registry at seed time — there is no free-floating event class.
+
+## What counts as a disruption
+
+The event log covers *state transitions*, not daily throughput noise:
+
+- **Sabotage**: explicit physical attacks (Nord Stream 2022, ESPO pumping stations 2025).
+- **Sanction**: regulator listing or operator designation that forces a commercial halt (Arctic LNG 2 OFAC designation, Druzhba North policy halt).
+- **Maintenance**: scheduled operator maintenance windows with published start/end.
+- **Mechanical**: unscheduled failures, force majeure (CPC buoy damage).
+- **Weather**: hurricane/storm-driven shutdowns (Sabine Pass Hurricane Beryl).
+- **Commercial**: material commercial changes (Power of Siberia capacity ramp).
+- **War**: war-driven operational changes (CPC, Yamal-Belarus).
+
+Normal operational variation, routine nominations, and sub-daily flow shifts are **not** disruption events. They remain in the evidence bundle of the underlying asset, not in the event log.
+
+## How the log is kept fresh
+
+- **Curation**: the event log is refreshed by `scripts/seed-energy-disruptions.mjs` on a weekly cron, reading the hand-authored JSON in `scripts/data/energy-disruptions.json`. Rows are reviewed and added by editors as new state transitions surface in the evidence bundle of each asset. See [`/corrections`](/corrections) for the planned audit-surface shape that will track future automated state-transition entries when/if an auto-classifier lands.
+- **Decay**: ongoing events (where `endAt` is null) whose `lastEvidenceUpdate` is older than 30 days drop to a "stale evidence" treatment in the panel drawer; they do not auto-resolve.
+
+## Evidence-source discipline
+
+Every event carries at least one source with a publicly-verifiable URL. `regulator` and `operator` sources take precedence over `press` for classifier confidence weighting. The `classifierConfidence` field is a quality hint for downstream consumers; it does **not** gate display — all curated events are rendered.
+
+## Public API
+
+- `ListEnergyDisruptions` — `GET /api/supply-chain/v1/list-energy-disruptions` with optional `assetId` / `assetType` / `ongoingOnly` query facets. Returns events newest-first.
+- Free tier. Gateway cache tier: `medium`.
+- Panel drawers (`PipelineStatusPanel`, `StorageFacilityMapPanel`) call this RPC lazily on drawer-open, scoped to the asset id.
+
+## Classifier version + auto-revision log
+
+Every event is versioned with `classifierVersion`. When rules change (new cause enum, new event type, tightened confidence thresholds), the version is bumped and events re-derived. The prior classifier version remains readable via the `classifierVersion` field on the row — no silent rewrites.
+
+Changes are planned to be auto-logged at [`/corrections`](/corrections) with `{field, previousValue, newValue, trigger, sourcesUsed, classifierVersion}` per entry — the designed audit surface. The event log itself is forward-looking; the revision log will be the history of how the log has evolved once the classifier ships.
+
+## Related methodology
+
+- [Pipelines](./pipelines) — the registry events tie back to.
+- [Storage](./storage) — same for storage facilities.
+- [Shortages](./shortages) — complementary layer covering consumer-facing fuel shortages rather than upstream asset events.

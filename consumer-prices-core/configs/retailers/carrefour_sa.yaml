@@ -1,0 +1,23 @@
+retailer:
+  slug: carrefour_sa
+  name: Carrefour Saudi Arabia
+  marketCode: sa
+  currencyCode: SAR
+  adapter: search
+  baseUrl: https://www.carrefourksa.com/mafsau/en
+  enabled: true # re-enabled 2026-03-23: #2148 fixed OOS prompt (returns null price instead of carousel fallback); may have low coverage if most products still OOS
+
+  searchConfig:
+    numResults: 5
+    queryTemplate: "{canonicalName} carrefour saudi"
+    urlPathContains: /p/
+
+  rateLimit:
+    requestsPerMinute: 10
+    maxConcurrency: 1
+    delayBetweenRequestsMs: 6000
+
+  discovery:
+    mode: search
+    maxPages: 20
+    seeds: []
