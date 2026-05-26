@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const vercelConfig = JSON.parse(readFileSync(resolve(__dirname, '../vercel.json'), 'utf-8'));
 const viteConfigSource = readFileSync(resolve(__dirname, '../vite.config.ts'), 'utf-8');
+const dockerfileSource = readFileSync(resolve(__dirname, '../Dockerfile'), 'utf-8');
 
 const getCacheHeaderValue = (sourcePath) => {
   const rule = vercelConfig.headers.find((entry) => entry.source === sourcePath);
@@ -59,6 +60,36 @@ describe('deploy/cache configuration guardrails', () => {
       viteConfigSource,
       /\.replace\(\/<meta name="classification" content="\.\*\?" \\\/>\/,\s*`<meta name="classification"/
     );
+  });
+});
+
+describe('docker runtime dependency guardrails', () => {
+  const runtimePackage = JSON.parse(readFileSync(resolve(__dirname, '../docker/runtime-package.json'), 'utf-8'));
+  const runtimeLock = JSON.parse(readFileSync(resolve(__dirname, '../docker/runtime-package-lock.json'), 'utf-8'));
+
+  it('installs runtime node_modules from a minimal dependency stage', () => {
+    assert.match(dockerfileSource, /FROM node:22-alpine AS runtime-deps/);
+    assert.match(dockerfileSource, /npm ci --omit=dev --omit=optional --ignore-scripts/);
+    assert.match(dockerfileSource, /COPY --from=runtime-deps \/app\/node_modules \.\/node_modules/);
+    assert.doesNotMatch(dockerfileSource, /npm prune --omit=dev/);
+    assert.doesNotMatch(dockerfileSource, /COPY --from=builder \/app\/node_modules \.\/node_modules/);
+  });
+
+  it('keeps raw JS handler packages without copying the full app dependency graph', () => {
+    assert.deepEqual(Object.keys(runtimePackage.dependencies).sort(), [
+      '@upstash/ratelimit',
+      '@upstash/redis',
+      'convex',
+    ]);
+    assert.deepEqual(
+      Object.keys(runtimeLock.packages[''].dependencies).sort(),
+      Object.keys(runtimePackage.dependencies).sort()
+    );
+
+    const lockPackageNames = Object.keys(runtimeLock.packages);
+    for (const omitted of ['node_modules/@xenova/transformers', 'node_modules/onnxruntime-web', 'node_modules/playwright']) {
+      assert.ok(!lockPackageNames.includes(omitted), `${omitted} should not be in Docker runtime deps`);
+    }
   });
 });
 

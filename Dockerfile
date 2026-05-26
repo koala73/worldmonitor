@@ -2,8 +2,9 @@
 # World Monitor — Docker Image
 # =============================================================================
 # Multi-stage build:
-#   builder  — installs deps, compiles TS handlers, builds Vite frontend
-#   final    — nginx (static) + node (API) under supervisord
+#   builder       — installs deps, compiles TS handlers, builds Vite frontend
+#   runtime-deps  — installs only packages needed by unbundled raw JS handlers
+#   final         — nginx (static) + node (API) under supervisord
 # =============================================================================
 
 # ── Stage 1: Builder ─────────────────────────────────────────────────────────
@@ -26,12 +27,21 @@ RUN node docker/build-handlers.mjs
 # Skip blog build — blog-site has its own deps not installed here
 RUN npx tsc && npx vite build
 
-# Drop dev dependencies so the copied node_modules below stays small.
-# Runtime only needs packages referenced by raw .js handlers (e.g.
-# api/enrichment/signals.js → @upstash/ratelimit).
-RUN npm prune --omit=dev
+# ── Stage 2: Runtime dependencies ───────────────────────────────────────────
+FROM node:22-alpine AS runtime-deps
 
-# ── Stage 2: Runtime ─────────────────────────────────────────────────────────
+WORKDIR /app
+
+# Keep the runtime dependency set deliberately smaller than the app's full
+# production graph. The raw api/*.js handlers are not bundled by
+# docker/build-handlers.mjs, so they still need these package imports at
+# runtime, but the frontend/server-only production deps do not belong in the
+# final image.
+COPY docker/runtime-package.json ./package.json
+COPY docker/runtime-package-lock.json ./package-lock.json
+RUN npm ci --omit=dev --omit=optional --ignore-scripts
+
+# ── Stage 3: Runtime ─────────────────────────────────────────────────────────
 FROM node:22-alpine AS final
 
 # nginx + supervisord
@@ -46,12 +56,11 @@ WORKDIR /app
 COPY --from=builder /app/src-tauri/sidecar/local-api-server.mjs ./local-api-server.mjs
 COPY --from=builder /app/src-tauri/sidecar/package.json ./package.json
 
-# Production node_modules — required by raw .js handlers that aren't
-# bundled by build-handlers.mjs (e.g. api/enrichment/signals.js, which
-# imports @upstash/ratelimit / @upstash/redis). Without this the Node
-# sidecar dispatches the route, fails to resolve the import with
-# ERR_MODULE_NOT_FOUND, and returns 502 "missing dependency".
-COPY --from=builder /app/node_modules ./node_modules
+# Minimal runtime node_modules — required by raw .js handlers that aren't
+# bundled by build-handlers.mjs. Without this the Node sidecar dispatches
+# those routes, fails to resolve package imports like @upstash/ratelimit,
+# and returns 502 "missing dependency".
+COPY --from=runtime-deps /app/node_modules ./node_modules
 
 # API handler modules (JS originals + compiled TS bundles)
 COPY --from=builder /app/api ./api
