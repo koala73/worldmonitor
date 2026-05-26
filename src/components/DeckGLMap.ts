@@ -7,7 +7,8 @@ import { MapboxOverlay } from '@deck.gl/mapbox';
 import type { Layer, LayersList, PickingInfo } from '@deck.gl/core';
 import { GeoJsonLayer, ScatterplotLayer, PathLayer, IconLayer, TextLayer, PolygonLayer } from '@deck.gl/layers';
 import maplibregl from 'maplibre-gl';
-import { registerPMTilesProtocol, FALLBACK_DARK_STYLE, FALLBACK_LIGHT_STYLE, getMapProvider, getMapTheme, getStyleForProvider, isLightMapTheme } from '@/config/basemap';
+import { FALLBACK_DARK_STYLE, FALLBACK_LIGHT_STYLE, getMapProvider, getMapTheme, isLightMapTheme } from '@/config/basemap';
+import { registerPMTilesProtocol, getStyleForProvider } from '@/config/basemap-styles';
 import Supercluster from 'supercluster';
 import type {
   MapLayers,
@@ -114,6 +115,7 @@ import { resolveTradeRouteSegments, TRADE_ROUTES as TRADE_ROUTES_LIST, type Trad
 import type { ScenarioVisualState } from '@/config/scenario-templates';
 import { getLayersForVariant, resolveLayerLabel, bindLayerSearch, type MapVariant } from '@/config/map-layer-definitions';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
+import { onEntitlementChange } from '@/services/entitlements';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { trackGateHit } from '@/services/analytics';
 import { MapPopup, type PopupType } from './MapPopup';
@@ -405,6 +407,56 @@ const TRADE_GC_INTERPOLATION_POINTS = 20;
 const CHOKEPOINT_PULSE_FREQ = 0.01;
 const CHOKEPOINT_PULSE_AMP = 0.3;
 
+// Process-wide guard so the window error listener for the deck.gl/maplibre
+// interleaved-mode render race is installed exactly once even if a hot-reload
+// or recreateWithFallback rebuilds the map.
+let __deckInterleavedRaceFilterInstalled = false;
+
+/**
+ * Swallow the well-known deck.gl 9.x + maplibre-gl 5.x interleaved-mode race:
+ *
+ *   Uncaught TypeError: Cannot read properties of null (reading 'id')
+ *     at DeckRenderer._drawLayers (deck-stack-*.js)
+ *     at LayerManager.renderLayers
+ *     at MapLibre painter.renderLayer (maplibre-*.js)
+ *
+ * Trigger: setProps({layers}) → deck _resolveLayers calls maplibre.removeLayer
+ * for a layer that's being swapped → maplibre schedules a triggerRepaint that
+ * fires the next frame → that repaint runs deck's `render()` via maplibre's
+ * custom-layer hook → deck iterates the layer list and hits a layer that was
+ * finalized between resolveLayers and renderLayers.
+ *
+ * MapboxOverlay's own onError is bypassed because maplibre — not deck — owns
+ * the render-loop callstack here (deck doesn't see the throw, so onError is
+ * never invoked). The next frame renders cleanly with no user-visible
+ * artifact, so swallowing here is safe.
+ *
+ * Sentry's beforeSend in main.ts already filters this exact pattern for
+ * telemetry (lines 313-315), but the browser still logs "Uncaught TypeError"
+ * to the console — this listener suppresses that.
+ *
+ * Narrow on BOTH the message shape AND the deck-stack chunk filename so an
+ * unrelated null-id crash in first-party code still surfaces.
+ */
+function installDeckInterleavedRaceFilter(): void {
+  if (__deckInterleavedRaceFilterInstalled) return;
+  __deckInterleavedRaceFilterInstalled = true;
+  window.addEventListener('error', (ev) => {
+    const msg = ev.error?.message ?? ev.message ?? '';
+    const file = ev.filename ?? '';
+    if (
+      /Cannot read properties of null \(reading 'id'\)|null is not an object \(evaluating '[\w.]+\.id'\)/.test(msg)
+      && /\/deck-stack-[A-Za-z0-9_-]+\.js/.test(file)
+    ) {
+      ev.preventDefault();
+      ev.stopImmediatePropagation();
+      if (import.meta.env.DEV) {
+        console.warn('[DeckGLMap] swallowed interleaved-mode render race (deck.gl/maplibre)');
+      }
+    }
+  }, { capture: true });
+}
+
 export class DeckGLMap {
   private static readonly MAX_CLUSTER_LEAVES = 200;
 
@@ -428,11 +480,15 @@ export class DeckGLMap {
   private aptGroups: import('@/types').APTGroup[] = [];
   private aptGroupsLoaded = false;
   private _unsubscribeAuthState: (() => void) | null = null;
+  private _unsubscribeEntitlement: (() => void) | null = null;
   private aptGroupsLayerFailed = false;
   private satelliteImageryLayerFailed = false;
   private iranEvents: IranEvent[] = [];
   private aisDisruptions: AisDisruptionEvent[] = [];
   private aisDensity: AisDensityZone[] = [];
+  private liveTankers: Array<{ mmsi: string; lat: number; lon: number; speed: number; shipType: number; name: string }> = [];
+  private liveTankersAbort: AbortController | null = null;
+  private liveTankersTimer: ReturnType<typeof setInterval> | null = null;
   private cableAdvisories: CableAdvisory[] = [];
   private repairShips: RepairShip[] = [];
   private healthByCableId: Record<string, CableHealthRecord> = {};
@@ -567,6 +623,12 @@ export class DeckGLMap {
   private radarRefreshIntervalId: ReturnType<typeof setInterval> | null = null;
   private radarActive = false;
   private radarTileUrl = '';
+  // Drop duplicate `once('idle', applyRadarLayer)` registrations when
+  // the source isn't loaded yet. Without this, both the style.load
+  // callback and the 5-minute refresh can register listeners in the
+  // same load window — they'd all fire on the next idle and call
+  // setTiles back-to-back. Idempotent today but wasteful.
+  private radarIdlePending = false;
   private readonly startupTime = Date.now();
   private lastCableHighlightSignature = '';
   private lastCableHealthSignature = '';
@@ -714,6 +776,23 @@ export class DeckGLMap {
     try {
       const existing = this.maplibreMap.getSource('weather-radar') as (maplibregl.RasterTileSource & { setTiles: (tiles: string[]) => void }) | undefined;
       if (existing) {
+        // Guard against the source existing in the style registry while
+        // its underlying texture is mid-load or being torn down. Calling
+        // setTiles in that window triggers a render-frame crash inside
+        // MapLibre at fa() / texture.bind() (Sentry WORLDMONITOR-P6:
+        // Firefox 149, hit on the 5-minute radar refresh interval).
+        // isSourceLoaded(id) is MapLibre's official "tiles fetched +
+        // applied to GL state" check; defer to the next idle if false.
+        if (!this.maplibreMap.isSourceLoaded('weather-radar')) {
+          if (!this.radarIdlePending) {
+            this.radarIdlePending = true;
+            this.maplibreMap.once('idle', () => {
+              this.radarIdlePending = false;
+              this.applyRadarLayer();
+            });
+          }
+          return;
+        }
         existing.setTiles([this.radarTileUrl]);
         return;
       }
@@ -912,6 +991,8 @@ export class DeckGLMap {
 
   private initDeck(): void {
     if (!this.maplibreMap) return;
+
+    installDeckInterleavedRaceFilter();
 
     this.deckOverlay = new MapboxOverlay({
       interleaved: true,
@@ -1473,7 +1554,16 @@ export class DeckGLMap {
     const { layers: mapLayers } = this.state;
     const filteredEarthquakes = mapLayers.natural ? this.filterByTimeCached(this.earthquakes, (eq) => eq.occurredAt) : [];
     const filteredNaturalEvents = mapLayers.natural ? this.filterByTimeCached(this.naturalEvents, (event) => event.date) : [];
-    const filteredDiseaseOutbreaks = mapLayers.diseaseOutbreaks ? this.filterByTimeCached(this.diseaseOutbreaks, (item) => item.publishedAt) : [];
+    // Disease outbreaks are sparse-by-nature — WHO Disease Outbreak News
+    // publishes 1-2 alerts/week, CDC HAN alerts are infrequent, and the
+    // upstream ThinkGlobalHealth tracker carries 90 days of ProMED items.
+    // Applying the global time-range filter (max '7d' in the dropdown)
+    // wholesale-zeroes the layer when the most recent WHO/CDC update is
+    // 8+ days old, which is normal for these sources. Show all items in
+    // the cache; the seeder's TTL + per-source lookback already bound
+    // freshness at write time. PR #3593: production saw 50 valid records
+    // cached but 0 rendered because the newest CDC item was 11d old.
+    const filteredDiseaseOutbreaks = mapLayers.diseaseOutbreaks ? this.diseaseOutbreaks : [];
     const filteredRadiationObservations = mapLayers.radiationWatch ? this.filterByTimeCached(this.radiationObservations, (obs) => obs.observedAt) : [];
     const filteredPositiveEvents = mapLayers.positiveEvents ? this.filterByTimeCached(this.positiveEvents, (e) => e.timestamp) : [];
     const filteredIranEvents = mapLayers.iranAttacks ? this.filterByTimeCached(this.iranEvents, (e) => e.timestamp) : [];
@@ -1510,9 +1600,12 @@ export class DeckGLMap {
 
     // Pipelines layer — Redis-backed evidence registry (seed-pipelines-{gas,oil}.mjs),
     // colored by derived publicBadge. Available on every variant that toggles
-    // `pipelines: true`. The legacy static `PIPELINES` fallback was retired in
-    // the gap #3B rollout (plan §R/#3 decision B); createPipelinesLayer is kept
-    // in this file as a dead-code reference until the next cleanup pass.
+    // `pipelines: true`. createEnergyPipelinesLayer falls back to the legacy
+    // static `PIPELINES` layer (createPipelinesLayer below) when the bootstrap
+    // hasn't hydrated yet, so the static layer is a real fallback — not dead
+    // code despite an earlier comment claiming it was retired in the gap #3B
+    // rollout. Removing createPipelinesLayer would leave the map blank on
+    // cold loads / variant switches before the first hydrate.
     if (mapLayers.pipelines) {
       layers.push(this.createEnergyPipelinesLayer());
     } else {
@@ -1540,6 +1633,28 @@ export class DeckGLMap {
       if (shortageLayer) layers.push(shortageLayer);
     } else {
       this.layerCache.delete('fuel-shortages-layer');
+    }
+
+    // Live tanker positions inside chokepoint bounding boxes. AIS ship type
+    // 80-89 (tanker class). Refreshed every 60s; one Map<chokepointId, ...>
+    // fetch per layer-tick. deckGLOnly per src/config/map-layer-definitions.ts.
+    // Powered by the relay's tankerReports field (added in PR 3 U7 alongside
+    // the existing military-only candidateReports). Energy Atlas parity-push.
+    if (mapLayers.liveTankers) {
+      // Start (or keep) the refresh loop while the layer is on. The
+      // ensure helper handles the "first time on" kick + the 60s
+      // setInterval; idempotent so calling it on every layers update is
+      // safe. Render immediately if we already have data; the interval
+      // re-renders when fresh data arrives.
+      this.ensureLiveTankersLoop();
+      if (this.liveTankers.length > 0) {
+        layers.push(this.createLiveTankersLayer());
+      }
+    } else {
+      // Layer toggled off → tear down the timer so we stop hitting the
+      // relay even when the map is still on screen.
+      this.stopLiveTankersLoop();
+      this.layerCache.delete('live-tankers-layer');
     }
 
     // Conflict zones layer
@@ -2521,12 +2636,18 @@ export class DeckGLMap {
         if (d.severity === 'severe') return 15000;
         if (d.severity === 'major') return 12000;
         if (d.severity === 'moderate') return 10000;
+        // 'unknown' = no telemetry (#3707). Keep the marker visible but
+        // small so it doesn't compete with real alerts.
+        if (d.severity === 'unknown') return 6000;
         return 8000;
       },
       getFillColor: (d) => {
         if (d.severity === 'severe') return [255, 50, 50, 200] as [number, number, number, number];
         if (d.severity === 'major') return [255, 150, 0, 200] as [number, number, number, number];
         if (d.severity === 'moderate') return [255, 200, 100, 180] as [number, number, number, number];
+        // 'unknown' renders desaturated grey — distinct from the lighter grey
+        // used for 'normal' so users can tell "no data" from "healthy".
+        if (d.severity === 'unknown') return [120, 120, 130, 120] as [number, number, number, number];
         return [180, 180, 180, 150] as [number, number, number, number];
       },
       radiusMinPixels: 4,
@@ -2952,6 +3073,105 @@ export class DeckGLMap {
       radiusMaxPixels: 12,
       pickable: true,
     });
+  }
+
+  private createLiveTankersLayer(): ScatterplotLayer {
+    return new ScatterplotLayer({
+      id: 'live-tankers-layer',
+      data: this.liveTankers,
+      getPosition: (d) => [d.lon, d.lat],
+      // Radius scales loosely with deadweight class: VLCC > Aframax > Handysize.
+      // AIS ship type 80-89 covers all tanker subtypes; we have no DWT field
+      // in the AIS message itself, so this is a constant fallback. Future
+      // enhancement: enrich via a vessel-registry lookup.
+      getRadius: 2500,
+      getFillColor: (d) => {
+        // Anchored (speed < 0.5 kn) — orange, signals waiting / loading /
+        // potential congestion. Underway (speed >= 0.5 kn) — cyan, normal
+        // transit. Unknown / missing speed — gray.
+        if (!Number.isFinite(d.speed)) return [127, 140, 141, 200] as [number, number, number, number];
+        if (d.speed < 0.5) return [255, 183, 3, 220] as [number, number, number, number]; // amber
+        return [0, 209, 255, 220] as [number, number, number, number]; // cyan
+      },
+      radiusMinPixels: 3,
+      radiusMaxPixels: 8,
+      pickable: true,
+    });
+  }
+
+  /**
+   * Idempotent: ensures the 60s tanker-refresh loop is running. Called
+   * each time the layer is observed enabled in the layers update. First
+   * call kicks an immediate load; subsequent calls no-op. Pairs with
+   * stopLiveTankersLoop() in destroy() and on layer-disable.
+   */
+  private ensureLiveTankersLoop(): void {
+    if (this.liveTankersTimer !== null) return; // already running
+    void this.loadLiveTankers();
+    this.liveTankersTimer = setInterval(() => {
+      void this.loadLiveTankers();
+    }, 60_000);
+  }
+
+  /**
+   * Stop the refresh loop and abort any in-flight fetch. Called when the
+   * layer is toggled off (and from destroy()) to keep the relay traffic
+   * scoped to active viewers.
+   */
+  private stopLiveTankersLoop(): void {
+    if (this.liveTankersTimer !== null) {
+      clearInterval(this.liveTankersTimer);
+      this.liveTankersTimer = null;
+    }
+    if (this.liveTankersAbort) {
+      this.liveTankersAbort.abort();
+      this.liveTankersAbort = null;
+    }
+  }
+
+  /**
+   * Tanker loader — called externally (or on a 60s tick) to refresh
+   * `this.liveTankers`. Imports lazily so the service module isn't pulled
+   * into the bundle for variants where the layer is disabled.
+   */
+  public async loadLiveTankers(): Promise<void> {
+    // Cancel any in-flight tick before starting another. Per skill
+    // closure-scoped-state-teardown-order: don't null out the abort
+    // controller before calling abort.
+    if (this.liveTankersAbort) {
+      this.liveTankersAbort.abort();
+    }
+    const controller = new AbortController();
+    this.liveTankersAbort = controller;
+    try {
+      const { fetchLiveTankers } = await import('@/services/live-tankers');
+      // Thread the signal so the in-flight RPC actually cancels when a
+      // newer tick starts (or the layer toggles off). Without this, a
+      // slow older refresh can race-write stale data after a newer one
+      // already populated this.liveTankers.
+      const zones = await fetchLiveTankers(undefined, { signal: controller.signal });
+      // Drop the result if this controller was aborted mid-flight or if
+      // a newer load has already replaced us. Without this guard, an
+      // older fetch that completed despite signal.aborted (e.g. the
+      // service returned cached data without checking the signal) would
+      // overwrite the newer one's data.
+      if (controller.signal.aborted || this.liveTankersAbort !== controller) {
+        return;
+      }
+      const flat = zones.flatMap((z) => z.tankers).map((t) => ({
+        mmsi: t.mmsi,
+        lat: t.lat,
+        lon: t.lon,
+        speed: t.speed,
+        shipType: t.shipType,
+        name: t.name,
+      }));
+      this.liveTankers = flat;
+      this.updateLayers();
+    } catch {
+      // Graceful: leave existing tankers in place; layer will continue
+      // rendering last-known data until the next successful tick.
+    }
   }
 
   private createGpsJammingLayer(): H3HexagonLayer {
@@ -4866,11 +5086,21 @@ export class DeckGLMap {
 
     this.container.appendChild(toggles);
 
-    // Unlock premium layers when auth state resolves (e.g., Clerk JWT arrives after map init).
-    // subscribeAuthState fires the callback synchronously if state is already available,
-    // so we defer the self-unsubscribe with queueMicrotask to ensure the assignment completes.
-    this._unsubscribeAuthState = subscribeAuthState((state) => {
-      if (!hasPremiumAccess(state)) return;
+    // Unlock premium layers when Pro status resolves. Pro can come from EITHER:
+    //   1. Clerk role === 'pro' (subscribeAuthState fires on Clerk changes)
+    //   2. Convex entitlement tier >= 1 (onEntitlementChange fires on Convex changes)
+    // Subscribing to BOTH covers Dodo subscribers whose Pro flag arrives via
+    // Convex (NOT via Clerk role). User-reported on energy.worldmonitor.app:
+    // "Pro Monthly" in settings UI but Resilience layer still showed the lock
+    // because subscribeAuthState alone never fires on Convex transitions.
+    //
+    // Whichever signal resolves Pro first does the unlock; the other becomes
+    // a no-op (early-return when not Pro; no-op .remove on already-removed
+    // class). queueMicrotask defers self-unsubscribe so both _unsubscribe*
+    // assignments complete before the unsubscribe runs. Greptile P2 fix:
+    // single helper instead of duplicated callback bodies.
+    const unlockIfPro = (): void => {
+      if (!hasPremiumAccess(getAuthState())) return;
       toggles.querySelectorAll('.layer-toggle-locked').forEach(label => {
         label.classList.remove('layer-toggle-locked');
         const input = label.querySelector('input') as HTMLInputElement | null;
@@ -4881,8 +5111,12 @@ export class DeckGLMap {
       queueMicrotask(() => {
         this._unsubscribeAuthState?.();
         this._unsubscribeAuthState = null;
+        this._unsubscribeEntitlement?.();
+        this._unsubscribeEntitlement = null;
       });
-    });
+    };
+    this._unsubscribeAuthState = subscribeAuthState(() => unlockIfPro());
+    this._unsubscribeEntitlement = onEntitlementChange(() => unlockIfPro());
 
     // Bind toggle events
     toggles.querySelectorAll('.layer-toggle input').forEach(input => {
@@ -6970,6 +7204,8 @@ export class DeckGLMap {
     this.clearTrailsBtn = null;
     this._unsubscribeAuthState?.();
     this._unsubscribeAuthState = null;
+    this._unsubscribeEntitlement?.();
+    this._unsubscribeEntitlement = null;
     window.removeEventListener('theme-changed', this.handleThemeChange);
     window.removeEventListener('map-theme-changed', this.handleMapThemeChange);
     this.debouncedRebuildLayers.cancel();
@@ -7003,6 +7239,7 @@ export class DeckGLMap {
       clearInterval(this.aircraftFetchTimer);
       this.aircraftFetchTimer = null;
     }
+    this.stopLiveTankersLoop();
 
 
     this.layerCache.clear();

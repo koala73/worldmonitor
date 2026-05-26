@@ -17,6 +17,11 @@
 // Per WorldMonitor #3027 — feeds Trade Flows card.
 
 import { loadEnvFile, runSeed, loadSharedConfig, imfSdmxFetchIndicator } from './_seed-utils.mjs';
+// Sprint 4 IMF/WEO cohort — content-age helper. NOT the WB cohort helper:
+// IMF stores forecast YEAR (not observation year), so end-of-(year-1)
+// semantics are required to avoid future-dated rejection of fresh
+// current-year forecasts. See helper module header for derivation.
+import { imfWeoContentMeta, IMF_WEO_MAX_CONTENT_AGE_MIN, maxIntegerYear } from './_imf-weo-content-age-helpers.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -82,6 +87,15 @@ export function buildExternalCountries({
       importVolumePctChg: tm?.value ?? null,
       exportVolumePctChg: tx?.value ?? null,
       year: ca?.year ?? tm?.year ?? tx?.year ?? null,
+      // Codex PR #3604 P2 — `latestYear` carries the MAX forecast year
+      // across all available indicators for this country, not the
+      // priority-first fallback. Drives content-age via the WEO helper:
+      // a row with BCA=2024 + import-volume=2026 publishes year=2024
+      // (correct: BCA's primary metric vintage) but latestYear=2026
+      // (correct: the freshest forecast horizon stored). Without this,
+      // content-age maps the row to 2023-12-31 (~17mo old) when it
+      // actually carries a 2026 metric (~5mo old in May 2026).
+      latestYear: maxIntegerYear([ca?.year, tm?.year, tx?.year]),
     };
   }
   return countries;
@@ -125,8 +139,22 @@ if (process.argv[1]?.endsWith('seed-imf-external.mjs')) {
     emptyDataIsFailure: true,
   
     declareRecords,
-    schemaVersion: 1,
+    // schemaVersion bumped 1→2 in Codex PR #3604 review fix: the per-country
+    // dict gained a new `latestYear` field (Codex P2). Adding the field is
+    // back-compat for readers (helper falls back to `year`), but the
+    // envelope's `newestItemAt` math now differs under the same shape — so
+    // bump forces a clean republish on rollout and makes any rollback
+    // observable via cache invalidation rather than silent envelope drift.
+    schemaVersion: 2,
     maxStaleMin: 100800,
+
+    // ── Content-age contract (Sprint 4 IMF/WEO cohort) ──
+    // 18-month budget = 16mo steady-state ceiling (just before next April
+    // WEO release of year+1) + 2mo slack. Trips when a full WEO year is
+    // missed (both April AND October vintages). Same budget across all 4
+    // IMF seeders — they share the WEO release cadence.
+    contentMeta: imfWeoContentMeta,
+    maxContentAgeMin: IMF_WEO_MAX_CONTENT_AGE_MIN,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);

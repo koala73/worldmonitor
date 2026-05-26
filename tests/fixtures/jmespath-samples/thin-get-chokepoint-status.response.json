@@ -1,0 +1,886 @@
+{
+  "cached_at": "2026-04-05T18:19:45.192Z",
+  "stale": true,
+  "data": {
+    "transit-summaries": {
+      "summaries": {
+        "suez": {
+          "todayTotal": 0,
+          "todayTanker": 0,
+          "todayCargo": 0,
+          "todayOther": 0,
+          "wowChangePct": 4.5,
+          "riskLevel": "critical",
+          "incidentCount7d": 28,
+          "disruptionPct": 100,
+          "riskSummary": "The Suez Canal approach has deteriorated sharply in the past 7 days with 17 material conflict events (63% of all activity). Armed confrontations and coercive military pressure are concentrated at Port",
+          "riskReportAction": "Reroute non-urgent cargo via Cape of Good Hope immediately. Additional transit time: 10-12 days. Additional cost: 18-22% for fuel and insurance. For time-sensitive shipments, transit Suez only if cargo value justifies 35-40% insurance premium increase and 2-4 day delay risk. Confirm with Egyptian Port Authority that your vessel is cleared before entering approach zone. Do not anchor in northern Red Sea until clearance is confirmed.",
+          "anomaly": {
+            "dropPct": 5,
+            "signal": false
+          },
+          "dataAvailable": true
+        },
+        "malacca_strait": {
+          "todayTotal": 0,
+          "todayTanker": 0,
+          "todayCargo": 0,
+          "todayOther": 0,
+          "wowChangePct": 3.6,
+          "riskLevel": "",
+          "incidentCount7d": 0,
+          "disruptionPct": 0,
+          "riskSummary": "",
+          "riskReportAction": "",
+          "anomaly": {
+            "dropPct": -2,
+            "signal": false
+          },
+          "dataAvailable": true
+        },
+        "hormuz_strait": {
+          "todayTotal": 0,
+          "todayTanker": 0,
+          "todayCargo": 0,
+          "todayOther": 0,
+          "wowChangePct": -72.5,
+          "riskLevel": "critical",
+          "incidentCount7d": 627,
+          "disruptionPct": 100,
+          "riskSummary": "Persian Gulf shipping corridor is under acute stress with 737 material conflict events recorded in 7 days (48% of all activity). Concentrated clashes near Bandar Abbas, Bahrain, and the UAE indicate s",
+          "riskReportAction": "REROUTE all non-essential cargo via Suez Canal immediately. Direct Hormuz transit should be limited to essential supplies with full war-risk insurance (costs +$50-80K per tanker transit). For time-sensitive freight, use Salalah (Oman) as transshipment hub instead of UAE ports — adds 3-4 days but avoids active conflict zones near Dubai/Jebel Ali. Restart Bandar Abbas operations only after 5+ consecutive days without material conflict events (Goldstein >-3.0). Bahrain port access is viable for non",
+          "anomaly": {
+            "dropPct": 79,
+            "signal": true
+          },
+          "dataAvailable": true
+        },
+        "bab_el_mandeb": {
+          "todayTotal": 0,
+          "todayTanker": 0,
+          "todayCargo": 0,
+          "todayOther": 0,
+          "wowChangePct": -4.5,
+          "riskLevel": "critical",
+          "incidentCount7d": 33,
+          "disruptionPct": 100,
+          "riskSummary": "Sustained armed conflict across Yemen's interior and coastal regions has intensified in the past 48 hours, with 10 material conflict events recorded. Multiple armed confrontations near Shabwa and Mari",
+          "riskReportAction": "Maintain RED SEA CORRIDOR USE with enhanced protocols. Route container vessels via direct Bab-el-Mandeb passage during daylight hours only; night transits add 8-12 hours buffer. Alternative: Cape of Good Hope reroute adds 10-12 days transit time and 18-24% fuel cost premium—deploy only for ultra-high-value cargo or if specific maritime incidents occur near Bab-el-Mandeb. Recommend Djibouti port for bunker/inspection (lower risk than Aden). Carriers should carry premium insurance surcharge of 0.1",
+          "anomaly": {
+            "dropPct": 9,
+            "signal": false
+          },
+          "dataAvailable": true
+        },
+        "panama": {
+          "todayTotal": 0,
+          "todayTanker": 0,
+          "todayCargo": 0,
+          "todayOther": 0,
+          "wowChangePct": 0.4,
+          "riskLevel": "",
+          "incidentCount7d": 0,
+          "disruptionPct": 0,
+          "riskSummary": "",
+          "riskReportAction": "",
+          "anomaly": {
+            "dropPct": -2,
+            "signal": false
+          },
+          "dataAvailable": true
+        },
+        "taiwan_strait": {
+          "todayTotal": 11,
+          "todayTanker": 0,
+          "todayCargo": 10,
+          "todayOther": 1,
+          "wowChangePct": -4.3,
+          "riskLevel": "critical",
+          "incidentCount7d": 735,
+          "disruptionPct": 100,
+          "riskSummary": "South China Sea corridor experiencing rapid escalation with 1,643 events in 7 days, 47% classified as material conflict. Armed clashes between Philippine and Chinese forces intensified May 2-3 near Be",
+          "riskReportAction": "REROUTE all non-essential container/break-bulk traffic away from Philippine archipelago and northern South China Sea. Recommended corridor: Singapore → Sunda/Lombok Strait → Indian Ocean → alternative Pacific routing (adds 3-5 days, +$150K-250K per 20ft container). Maintain Manila port operations for essential medical/food aid only. Tanker traffic: Use Malacca Strait with heightened piracy protocols. For urgent Manila-bound cargo: accept 6-8 day delay pending military de-escalation or authorize ",
+          "anomaly": {
+            "dropPct": 1,
+            "signal": false
+          },
+          "dataAvailable": true
+        },
+        "cape_of_good_hope": {
+          "todayTotal": 5,
+          "todayTanker": 1,
+          "todayCargo": 4,
+          "todayOther": 0,
+          "wowChangePct": -2.4,
+          "riskLevel": "",
+          "incidentCount7d": 0,
+          "disruptionPct": 0,
+          "riskSummary": "",
+          "riskReportAction": "",
+          "anomaly": {
+            "dropPct": 6,
+            "signal": false
+          },
+          "dataAvailable": true
+        },
+        "gibraltar": {
+          "todayTotal": 10,
+          "todayTanker": 3,
+          "todayCargo": 3,
+          "todayOther": 4,
+          "wowChangePct": 0.2,
+          "riskLevel": "",
+          "incidentCount7d": 0,
+          "disruptionPct": 0,
+          "riskSummary": "",
+          "riskReportAction": "",
+          "anomaly": {
+            "dropPct": -1,
+            "signal": false
+          },
+          "dataAvailable": true
+        },
+        "bosphorus": {
+          "todayTotal": 5,
+          "todayTanker": 0,
+          "todayCargo": 5,
+          "todayOther": 0,
+          "wowChangePct": 16.2,
+          "riskLevel": "critical",
+          "incidentCount7d": 274,
+          "disruptionPct": 100,
+          "riskSummary": "The Black Sea corridor is experiencing acute escalation with 752 material conflict events recorded in the past 7 days (69% of total activity). Armed clashes dominate the region: May 3 dawn attacks str",
+          "riskReportAction": "REROUTE immediately: divert all Black Sea cargo via Suez Canal (Red Sea–Mediterranean). Expected additional transit time: +8–10 days (Cape routing adds 14–16 days; Suez adds 8–10). Cost impact: +$45,000–$80,000 per TEU containerized cargo; +20–25% on bulk/tanker rates due to insurance. For urgent non-hazardous breakbulk: consider extreme risk premium routing via Georgian ports (Batumi) only if force majeure exemption acceptable—Tuapse engagement on May 3 makes Russian Black Sea ports unusable fo",
+          "anomaly": {
+            "dropPct": -4,
+            "signal": false
+          },
+          "dataAvailable": true
+        },
+        "korea_strait": {
+          "todayTotal": 19,
+          "todayTanker": 4,
+          "todayCargo": 7,
+          "todayOther": 8,
+          "wowChangePct": -4.2,
+          "riskLevel": "",
+          "incidentCount7d": 0,
+          "disruptionPct": 0,
+          "riskSummary": "",
+          "riskReportAction": "",
+          "anomaly": {
+            "dropPct": 3,
+            "signal": false
+          },
+          "dataAvailable": true
+        },
+        "dover_strait": {
+          "todayTotal": 57,
+          "todayTanker": 14,
+          "todayCargo": 34,
+          "todayOther": 9,
+          "wowChangePct": 2.4,
+          "riskLevel": "",
+          "incidentCount7d": 0,
+          "disruptionPct": 0,
+          "riskSummary": "",
+          "riskReportAction": "",
+          "anomaly": {
+            "dropPct": 0,
+            "signal": false
+          },
+          "dataAvailable": true
+        },
+        "kerch_strait": {
+          "todayTotal": 0,
+          "todayTanker": 0,
+          "todayCargo": 0,
+          "todayOther": 0,
+          "wowChangePct": 111.1,
+          "riskLevel": "",
+          "incidentCount7d": 0,
+          "disruptionPct": 0,
+          "riskSummary": "",
+          "riskReportAction": "",
+          "anomaly": {
+            "dropPct": -12,
+            "signal": false
+          },
+          "dataAvailable": true
+        },
+        "lombok_strait": {
+          "todayTotal": 0,
+          "todayTanker": 0,
+          "todayCargo": 0,
+          "todayOther": 0,
+          "wowChangePct": -7.6,
+          "riskLevel": "",
+          "incidentCount7d": 0,
+          "disruptionPct": 0,
+          "riskSummary": "",
+          "riskReportAction": "",
+          "anomaly": {
+            "dropPct": 2,
+            "signal": false
+          },
+          "dataAvailable": true
+        }
+      },
+      "fetchedAt": 1779014039783
+    },
+    "chokepoint_transits": {
+      "transits": {
+        "Strait of Hormuz": {
+          "tanker": 0,
+          "cargo": 0,
+          "other": 0,
+          "total": 0
+        },
+        "Suez Canal": {
+          "tanker": 0,
+          "cargo": 0,
+          "other": 0,
+          "total": 0
+        },
+        "Malacca Strait": {
+          "tanker": 0,
+          "cargo": 0,
+          "other": 0,
+          "total": 0
+        },
+        "Bab el-Mandeb Strait": {
+          "tanker": 0,
+          "cargo": 0,
+          "other": 0,
+          "total": 0
+        },
+        "Panama Canal": {
+          "tanker": 0,
+          "cargo": 0,
+          "other": 0,
+          "total": 0
+        },
+        "Taiwan Strait": {
+          "tanker": 0,
+          "cargo": 10,
+          "other": 1,
+          "total": 11
+        },
+        "South China Sea": {
+          "tanker": 0,
+          "cargo": 0,
+          "other": 0,
+          "total": 0
+        },
+        "Black Sea": {
+          "tanker": 1,
+          "cargo": 0,
+          "other": 1,
+          "total": 2
+        },
+        "Cape of Good Hope": {
+          "tanker": 1,
+          "cargo": 4,
+          "other": 0,
+          "total": 5
+        },
+        "Gibraltar Strait": {
+          "tanker": 3,
+          "cargo": 3,
+          "other": 4,
+          "total": 10
+        },
+        "Bosporus Strait": {
+          "tanker": 0,
+          "cargo": 5,
+          "other": 0,
+          "total": 5
+        },
+        "Korea Strait": {
+          "tanker": 4,
+          "cargo": 7,
+          "other": 8,
+          "total": 19
+        },
+        "Dover Strait": {
+          "tanker": 14,
+          "cargo": 34,
+          "other": 9,
+          "total": 57
+        },
+        "Kerch Strait": {
+          "tanker": 0,
+          "cargo": 0,
+          "other": 0,
+          "total": 0
+        },
+        "Lombok Strait": {
+          "tanker": 0,
+          "cargo": 0,
+          "other": 0,
+          "total": 0
+        }
+      },
+      "fetchedAt": 1779014039327
+    },
+    "_countries": [
+      "BR",
+      "ID",
+      "IL",
+      "IT",
+      "JM",
+      "LY",
+      "MY",
+      "MR",
+      "MX",
+      "MZ",
+      "NZ",
+      "NG",
+      "NO",
+      "OM",
+      "PH",
+      "CG",
+      "RU",
+      "SA",
+      "SN",
+      "SG",
+      "TH",
+      "TL",
+      "TN",
+      "GB",
+      "US",
+      "VE",
+      "VN",
+      "GQ",
+      "GY",
+      "AO"
+    ],
+    "chokepoint-baselines": {
+      "source": "EIA World Oil Transit Chokepoints",
+      "referenceYear": 2023,
+      "updatedAt": "2026-04-05T18:19:44.514Z",
+      "chokepoints": [
+        {
+          "id": "hormuz",
+          "name": "Strait of Hormuz",
+          "mbd": 21,
+          "lat": 26.6,
+          "lon": 56.3
+        },
+        {
+          "id": "malacca",
+          "name": "Strait of Malacca",
+          "mbd": 17.2,
+          "lat": 1.3,
+          "lon": 103.8
+        },
+        {
+          "id": "suez",
+          "name": "Suez Canal / SUMED",
+          "mbd": 7.6,
+          "lat": 30.7,
+          "lon": 32.3
+        },
+        {
+          "id": "babelm",
+          "name": "Bab el-Mandeb",
+          "mbd": 6.2,
+          "lat": 12.6,
+          "lon": 43.4
+        },
+        {
+          "id": "danish",
+          "name": "Danish Straits",
+          "mbd": 3,
+          "lat": 57.5,
+          "lon": 10.5
+        },
+        {
+          "id": "turkish",
+          "name": "Turkish Straits",
+          "mbd": 2.9,
+          "lat": 41.1,
+          "lon": 29
+        },
+        {
+          "id": "panama",
+          "name": "Panama Canal",
+          "mbd": 0.9,
+          "lat": 9.1,
+          "lon": -79.7
+        }
+      ]
+    },
+    "ref": {
+      "chokepoint1": {
+        "portId": "chokepoint1",
+        "portName": "Suez Canal",
+        "fullName": "Suez Canal",
+        "lat": 30.59334599,
+        "lon": 32.43688221,
+        "vesselCountTanker": 6418,
+        "shareMaritimeImport": 0,
+        "shareMaritimeExport": 0,
+        "industries": [
+          "Mineral Products",
+          "Vegetable Products",
+          "Chemical & Allied Industries"
+        ]
+      },
+      "chokepoint2": {
+        "portId": "chokepoint2",
+        "portName": "Panama Canal",
+        "fullName": "Panama Canal",
+        "lat": 9.120512367,
+        "lon": -79.76723825,
+        "vesselCountTanker": 4507,
+        "shareMaritimeImport": 0,
+        "shareMaritimeExport": 0,
+        "industries": [
+          "Mineral Products",
+          "Vegetable Products",
+          "Chemical & Allied Industries"
+        ]
+      },
+      "chokepoint3": {
+        "portId": "chokepoint3",
+        "portName": "Bosporus Strait",
+        "fullName": "Bosporus Strait",
+        "lat": 41.16928167,
+        "lon": 29.09150126,
+        "vesselCountTanker": 8555,
+        "shareMaritimeImport": 0,
+        "shareMaritimeExport": 0,
+        "industries": [
+          "Mineral Products",
+          "Vegetable Products",
+          "Chemical & Allied Industries"
+        ]
+      },
+      "chokepoint4": {
+        "portId": "chokepoint4",
+        "portName": "Bab el-Mandeb Strait",
+        "fullName": "Bab el-Mandeb Strait",
+        "lat": 12.78859715,
+        "lon": 43.34954476,
+        "vesselCountTanker": 6424,
+        "shareMaritimeImport": 0,
+        "shareMaritimeExport": 0,
+        "industries": [
+          "Mineral Products",
+          "Chemical & Allied Industries",
+          "Vegetable Products"
+        ]
+      },
+      "chokepoint5": {
+        "portId": "chokepoint5",
+        "portName": "Malacca Strait",
+        "fullName": "Malacca Strait",
+        "lat": 1.516954817,
+        "lon": 102.6651061,
+        "vesselCountTanker": 27469,
+        "shareMaritimeImport": 0,
+        "shareMaritimeExport": 0,
+        "industries": [
+          "Mineral Products",
+          "Chemical & Allied Industries",
+          "Vegetable Products"
+        ]
+      },
+      "chokepoint6": {
+        "portId": "chokepoint6",
+        "portName": "Strait of Hormuz",
+        "fullName": "Strait of Hormuz",
+        "lat": 26.29685349,
+        "lon": 56.85984844,
+        "vesselCountTanker": 19540,
+        "shareMaritimeImport": 0,
+        "shareMaritimeExport": 0,
+        "industries": [
+          "Mineral Products",
+          "Chemical & Allied Industries",
+          "Vegetable Products"
+        ]
+      },
+      "chokepoint7": {
+        "portId": "chokepoint7",
+        "portName": "Cape of Good Hope",
+        "fullName": "Cape of Good Hope",
+        "lat": -34.92728556,
+        "lon": 20.88273666,
+        "vesselCountTanker": 4706,
+        "shareMaritimeImport": 0,
+        "shareMaritimeExport": 0,
+        "industries": [
+          "Mineral Products",
+          "Vegetable Products",
+          "Prepared Foodstuffs & Beverages"
+        ]
+      },
+      "chokepoint8": {
+        "portId": "chokepoint8",
+        "portName": "Gibraltar Strait",
+        "fullName": "Gibraltar Strait",
+        "lat": 35.94227416,
+        "lon": -5.754895722,
+        "vesselCountTanker": 15666,
+        "shareMaritimeImport": 0,
+        "shareMaritimeExport": 0,
+        "industries": [
+          "Mineral Products",
+          "Vegetable Products",
+          "Chemical & Allied Industries"
+        ]
+      },
+      "chokepoint9": {
+        "portId": "chokepoint9",
+        "portName": "Dover Strait",
+        "fullName": "Dover Strait",
+        "lat": 51.03022414,
+        "lon": 1.505839717,
+        "vesselCountTanker": 21126,
+        "shareMaritimeImport": 0,
+        "shareMaritimeExport": 0,
+        "industries": [
+          "Mineral Products",
+          "Chemical & Allied Industries",
+          "Vegetable Products"
+        ]
+      },
+      "chokepoint10": {
+        "portId": "chokepoint10",
+        "portName": "Oresund Strait",
+        "fullName": "Oresund Strait",
+        "lat": 55.50784043,
+        "lon": 12.85079477,
+        "vesselCountTanker": 4318,
+        "shareMaritimeImport": 0,
+        "shareMaritimeExport": 0,
+        "industries": [
+          "Mineral Products",
+          "Wood & Wood Products",
+          "Chemical & Allied Industries"
+        ]
+      },
+      "chokepoint11": {
+        "portId": "chokepoint11",
+        "portName": "Taiwan Strait",
+        "fullName": "Taiwan Strait",
+        "lat": 24.72350972,
+        "lon": 119.8313644,
+        "vesselCountTanker": 20406,
+        "shareMaritimeImport": 0,
+        "shareMaritimeExport": 0,
+        "industries": [
+          "Mineral Products",
+          "Vegetable Products",
+          "Chemical & Allied Industries"
+        ]
+      },
+      "chokepoint12": {
+        "portId": "chokepoint12",
+        "portName": "Korea Strait",
+        "fullName": "Korea Strait",
+        "lat": 34.13076811,
+        "lon": 129.209206,
+        "vesselCountTanker": 22732,
+        "shareMaritimeImport": 0,
+        "shareMaritimeExport": 0,
+        "industries": [
+          "Mineral Products",
+          "Vegetable Products",
+          "Metals"
+        ]
+      },
+      "chokepoint13": {
+        "portId": "chokepoint13",
+        "portName": "Tsugaru Strait",
+        "fullName": "Tsugaru Strait",
+        "lat": 41.32803599,
+        "lon": 140.3532743,
+        "vesselCountTanker": 4443,
+        "shareMaritimeImport": 0,
+        "shareMaritimeExport": 0,
+        "industries": [
+          "Mineral Products",
+          "Vegetable Products",
+          "Metals"
+        ]
+      },
+      "chokepoint14": {
+        "portId": "chokepoint14",
+        "portName": "Luzon Strait",
+        "fullName": "Luzon Strait",
+        "lat": 20.488890710794,
+        "lon": 121.352295045579,
+        "vesselCountTanker": 8950,
+        "shareMaritimeImport": 0,
+        "shareMaritimeExport": 0,
+        "industries": [
+          "Mineral Products",
+          "Vegetable Products",
+          "Wood & Wood Products"
+        ]
+      },
+      "chokepoint15": {
+        "portId": "chokepoint15",
+        "portName": "Lombok Strait",
+        "fullName": "Lombok Strait",
+        "lat": -8.41914514129252,
+        "lon": 115.801433044024,
+        "vesselCountTanker": 2616,
+        "shareMaritimeImport": 0,
+        "shareMaritimeExport": 0,
+        "industries": [
+          "Mineral Products",
+          "Vegetable Products",
+          "Chemical & Allied Industries"
+        ]
+      },
+      "chokepoint16": {
+        "portId": "chokepoint16",
+        "portName": "Ombai Strait",
+        "fullName": "Ombai Strait",
+        "lat": -8.39854120024364,
+        "lon": 125.090981399512,
+        "vesselCountTanker": 1355,
+        "shareMaritimeImport": 0,
+        "shareMaritimeExport": 0,
+        "industries": [
+          "Mineral Products",
+          "Chemical & Allied Industries",
+          "Prepared Foodstuffs & Beverages"
+        ]
+      },
+      "chokepoint17": {
+        "portId": "chokepoint17",
+        "portName": "Bohai Strait",
+        "fullName": "Bohai Strait",
+        "lat": 38.373044249766,
+        "lon": 120.900049176636,
+        "vesselCountTanker": 13290,
+        "shareMaritimeImport": 0,
+        "shareMaritimeExport": 0,
+        "industries": [
+          "Mineral Products",
+          "Metals",
+          "Vegetable Products"
+        ]
+      },
+      "chokepoint18": {
+        "portId": "chokepoint18",
+        "portName": "Torres Strait",
+        "fullName": "Torres Strait",
+        "lat": -9.86253413199954,
+        "lon": 142.247528743501,
+        "vesselCountTanker": 739,
+        "shareMaritimeImport": 0,
+        "shareMaritimeExport": 0,
+        "industries": [
+          "Mineral Products",
+          "Vegetable Products",
+          "Chemical & Allied Industries"
+        ]
+      },
+      "chokepoint19": {
+        "portId": "chokepoint19",
+        "portName": "Sunda Strait",
+        "fullName": "Sunda Strait",
+        "lat": -5.96684057041462,
+        "lon": 105.775219888066,
+        "vesselCountTanker": 4069,
+        "shareMaritimeImport": 0,
+        "shareMaritimeExport": 0,
+        "industries": [
+          "Mineral Products",
+          "Vegetable Products",
+          "Prepared Foodstuffs & Beverages"
+        ]
+      },
+      "chokepoint20": {
+        "portId": "chokepoint20",
+        "portName": "Makassar Strait",
+        "fullName": "Makassar Strait",
+        "lat": 0.352280586988657,
+        "lon": 119.257065444388,
+        "vesselCountTanker": 1909,
+        "shareMaritimeImport": 0,
+        "shareMaritimeExport": 0,
+        "industries": [
+          "Mineral Products",
+          "Vegetable Products",
+          "Prepared Foodstuffs & Beverages"
+        ]
+      },
+      "chokepoint21": {
+        "portId": "chokepoint21",
+        "portName": "Magellan Strait",
+        "fullName": "Magellan Strait",
+        "lat": -52.6403396677892,
+        "lon": -69.5948324606974,
+        "vesselCountTanker": 359,
+        "shareMaritimeImport": 0,
+        "shareMaritimeExport": 0,
+        "industries": [
+          "Mineral Products",
+          "Vegetable Products",
+          "Prepared Foodstuffs & Beverages"
+        ]
+      },
+      "chokepoint22": {
+        "portId": "chokepoint22",
+        "portName": "Yucatan Channel",
+        "fullName": "Yucatan Channel",
+        "lat": 21.8152541926988,
+        "lon": -85.6472792223515,
+        "vesselCountTanker": 8402,
+        "shareMaritimeImport": 0,
+        "shareMaritimeExport": 0,
+        "industries": [
+          "Mineral Products",
+          "Vegetable Products",
+          "Chemical & Allied Industries"
+        ]
+      },
+      "chokepoint23": {
+        "portId": "chokepoint23",
+        "portName": "Windward Passage",
+        "fullName": "Windward Passage",
+        "lat": 19.9861871932071,
+        "lon": -73.6975398964955,
+        "vesselCountTanker": 766,
+        "shareMaritimeImport": 0,
+        "shareMaritimeExport": 0,
+        "industries": [
+          "Mineral Products",
+          "Vegetable Products",
+          "Wood & Wood Products"
+        ]
+      },
+      "chokepoint24": {
+        "portId": "chokepoint24",
+        "portName": "Mona Passage",
+        "fullName": "Mona Passage",
+        "lat": 18.4487355684237,
+        "lon": -67.7113544869163,
+        "vesselCountTanker": 899,
+        "shareMaritimeImport": 0,
+        "shareMaritimeExport": 0,
+        "industries": [
+          "Mineral Products",
+          "Vegetable Products",
+          "Chemical & Allied Industries"
+        ]
+      },
+      "chokepoint25": {
+        "portId": "chokepoint25",
+        "portName": "Balabac Strait",
+        "fullName": "Balabac Strait",
+        "lat": 7.413614993177675,
+        "lon": 117.11462168266297,
+        "vesselCountTanker": 1286,
+        "shareMaritimeImport": 0,
+        "shareMaritimeExport": 0,
+        "industries": []
+      },
+      "chokepoint26": {
+        "portId": "chokepoint26",
+        "portName": "Bering Strait",
+        "fullName": "Bering Strait",
+        "lat": 65.96648859155934,
+        "lon": -165.54982861145731,
+        "vesselCountTanker": 128,
+        "shareMaritimeImport": 0,
+        "shareMaritimeExport": 0,
+        "industries": []
+      },
+      "chokepoint27": {
+        "portId": "chokepoint27",
+        "portName": "Mindoro Strait",
+        "fullName": "Mindoro Strait",
+        "lat": 12.468315371959248,
+        "lon": 120.40342787801248,
+        "vesselCountTanker": 1334,
+        "shareMaritimeImport": 0,
+        "shareMaritimeExport": 0,
+        "industries": []
+      },
+      "chokepoint28": {
+        "portId": "chokepoint28",
+        "portName": "Kerch Strait",
+        "fullName": "Kerch Strait",
+        "lat": 45.26676309041701,
+        "lon": 36.54390169965004,
+        "vesselCountTanker": 2559,
+        "shareMaritimeImport": 0,
+        "shareMaritimeExport": 0,
+        "industries": []
+      }
+    },
+    "chokepoint-flows": {
+      "hormuz_strait": {
+        "currentMbd": 2.6,
+        "baselineMbd": 21,
+        "flowRatio": 0.123,
+        "disrupted": true,
+        "source": "portwatch-dwt",
+        "hazardAlertLevel": "RED",
+        "hazardAlertName": "HORMUZ-26"
+      },
+      "malacca_strait": {
+        "currentMbd": 15.7,
+        "baselineMbd": 17.2,
+        "flowRatio": 0.911,
+        "disrupted": false,
+        "source": "portwatch-dwt",
+        "hazardAlertLevel": null,
+        "hazardAlertName": null
+      },
+      "suez": {
+        "currentMbd": 7.6,
+        "baselineMbd": 7.6,
+        "flowRatio": 1.001,
+        "disrupted": false,
+        "source": "portwatch-dwt",
+        "hazardAlertLevel": null,
+        "hazardAlertName": null
+      },
+      "bab_el_mandeb": {
+        "currentMbd": 5.7,
+        "baselineMbd": 6.2,
+        "flowRatio": 0.912,
+        "disrupted": false,
+        "source": "portwatch-dwt",
+        "hazardAlertLevel": null,
+        "hazardAlertName": null
+      },
+      "bosphorus": {
+        "currentMbd": 3.1,
+        "baselineMbd": 2.9,
+        "flowRatio": 1.056,
+        "disrupted": false,
+        "source": "portwatch-dwt",
+        "hazardAlertLevel": null,
+        "hazardAlertName": null
+      },
+      "dover_strait": {
+        "currentMbd": 2.9,
+        "baselineMbd": 3,
+        "flowRatio": 0.966,
+        "disrupted": false,
+        "source": "portwatch-dwt",
+        "hazardAlertLevel": null,
+        "hazardAlertName": null
+      },
+      "panama": {
+        "currentMbd": 1,
+        "baselineMbd": 0.9,
+        "flowRatio": 1.092,
+        "disrupted": false,
+        "source": "portwatch-dwt",
+        "hazardAlertLevel": null,
+        "hazardAlertName": null
+      }
+    }
+  }
+}

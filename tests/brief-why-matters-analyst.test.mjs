@@ -492,21 +492,27 @@ describe('buildAnalystWhyMattersPrompt — shape and budget', () => {
     assert.ok(typeof builder === 'function');
   });
 
-  it('uses the analyst v2 system prompt (multi-sentence, grounded)', async () => {
-    const { WHY_MATTERS_ANALYST_SYSTEM_V2 } = await import('../shared/brief-llm-core.js');
-    const { system } = builder(story(), {
-      worldBrief: 'X',
-      countryBrief: '',
-      riskScores: '',
-      forecasts: '',
-      marketData: '',
-      macroSignals: '',
-      degraded: false,
-    });
-    assert.equal(system, WHY_MATTERS_ANALYST_SYSTEM_V2);
+  it('uses the analyst v2 system prompt (multi-sentence, grounded) + date-grounding line', async () => {
+    const { WHY_MATTERS_ANALYST_SYSTEM_V2, briefDateLine } = await import('../shared/brief-llm-core.js');
+    const { system } = builder(
+      story(),
+      {
+        worldBrief: 'X',
+        countryBrief: '',
+        riskScores: '',
+        forecasts: '',
+        marketData: '',
+        macroSignals: '',
+        degraded: false,
+      },
+      '2026-05-14',
+    );
+    // F6: system prompt is the static v2 const + an injected date line.
+    assert.equal(system, `${WHY_MATTERS_ANALYST_SYSTEM_V2}\n${briefDateLine('2026-05-14')}`);
     // Contract must still mention the 40–70 word target + grounding rule.
     assert.match(system, /40–70 words/);
     assert.match(system, /named person \/ country \/ organization \/ number \/ percentage \/ date \/ city/);
+    assert.match(system, /^Today is 2026-05-14\./m);
   });
 
   it('includes story fields with the multi-sentence footer', () => {

@@ -29,7 +29,13 @@ export const PIPELINES_TTL_SECONDS = 21 * 24 * 3600;
 
 const VALID_PHYSICAL_STATES = new Set(['flowing', 'reduced', 'offline', 'unknown']);
 const VALID_COMMERCIAL_STATES = new Set(['under_contract', 'expired', 'suspended', 'unknown']);
-const VALID_SOURCES = new Set(['operator', 'regulator', 'press', 'satellite', 'ais-relay']);
+// `gem` covers rows imported from Global Energy Monitor's Oil & Gas
+// Infrastructure Trackers (CC-BY 4.0). Treated as an evidence-bearing source
+// for non-flowing badges in the same way as `press` / `satellite` / `ais-relay`,
+// since GEM is an academic/curated dataset with traceable provenance — not a
+// silent default. Exported alongside VALID_OIL_PRODUCT_CLASSES so test suites
+// can assert against the same source of truth the validator uses.
+export const VALID_SOURCES = new Set(['operator', 'regulator', 'press', 'satellite', 'ais-relay', 'gem']);
 // Required on every oil pipeline. `crude` = crude-oil lines (default),
 // `products` = refined-product lines (gasoline/diesel/jet), `mixed` =
 // dual-use bridges moving both. Gas pipelines don't carry this field
@@ -38,9 +44,11 @@ const VALID_SOURCES = new Set(['operator', 'regulator', 'press', 'satellite', 'a
 // inline copy in tests could silently drift when the enum is extended.
 export const VALID_OIL_PRODUCT_CLASSES = new Set(['crude', 'products', 'mixed']);
 
-// Minimum viable registry size. Expansion to ~75 each happens in the follow-up
-// GEM import PR; this seeder doesn't care about exact counts beyond the floor.
-const MIN_PIPELINES_PER_REGISTRY = 8;
+// Minimum viable registry size. Post-GEM-import floor: 200. Live counts after
+// the 2025-11 GGIT + 2025-03 GOIT merge are 297 gas / 334 oil; 200 leaves ~100
+// rows of jitter headroom so a partial GEM re-import or a coverage-narrowing
+// release fails loud rather than silently halving the registry.
+const MIN_PIPELINES_PER_REGISTRY = 200;
 
 function loadRegistry(filename) {
   const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -90,6 +98,13 @@ export function validateRegistry(data) {
     if (!p.endPoint || typeof p.endPoint.lat !== 'number' || typeof p.endPoint.lon !== 'number') return false;
     if (!isValidLatLon(p.startPoint.lat, p.startPoint.lon)) return false;
     if (!isValidLatLon(p.endPoint.lat, p.endPoint.lon)) return false;
+    // Reject degenerate routes where startPoint == endPoint. PR #3406 review
+    // surfaced 9 GEM rows (incl. Trans-Alaska, Enbridge Line 3, Ichthys)
+    // whose source GeoJSON had a Point geometry or a single-coord LineString,
+    // producing zero-length pipelines that render as map-point artifacts and
+    // skew aggregate-length statistics. Defense in depth — converter also
+    // drops these — but the validator gate makes the contract explicit.
+    if (p.startPoint.lat === p.endPoint.lat && p.startPoint.lon === p.endPoint.lon) return false;
 
     if (!p.evidence || typeof p.evidence !== 'object') return false;
     const ev = p.evidence;
@@ -104,13 +119,16 @@ export function validateRegistry(data) {
 
     // Every non-`flowing` badge requires at least one evidence field with signal.
     // This prevents shipping an `offline` label with zero supporting evidence.
+    // `gem` joins the evidence-bearing sources because GEM is a curated
+    // academic dataset with traceable provenance, not a silent default.
     if (ev.physicalState !== 'flowing') {
       const hasEvidence =
         ev.operatorStatement != null ||
         ev.sanctionRefs.length > 0 ||
         ev.physicalStateSource === 'ais-relay' ||
         ev.physicalStateSource === 'satellite' ||
-        ev.physicalStateSource === 'press';
+        ev.physicalStateSource === 'press' ||
+        ev.physicalStateSource === 'gem';
       if (!hasEvidence) return false;
     }
   }

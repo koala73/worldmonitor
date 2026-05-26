@@ -1,8 +1,16 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, runSeed, writeExtraKeyWithMeta, sleep, verifySeedKey, resolveProxyForConnect, fredFetchJson } from './_seed-utils.mjs';
+import { tokensToContentMeta, DAY_MIN } from './_content-age-helpers.mjs';
 
 loadEnvFile(import.meta.url);
+
+// Content-age budget — the canonical key holds the merged shipping indices,
+// whose freshest member (BDI) is daily. 28 days clears a degraded-to-weekly
+// (SCFI/FRED-only) window plus holidays; STALE_CONTENT fires if the whole
+// shipping feed stops advancing. A single-index freeze among many is not
+// modelled — newestItemAt is the max across all indices. See issue #3845.
+const SUPPLY_CHAIN_MAX_CONTENT_AGE_MIN = 28 * DAY_MIN;
 
 const _proxyAuth = resolveProxyForConnect();
 
@@ -29,6 +37,15 @@ const _un2iso2 = JSON.parse(_readFileSync(_join(__dirname, 'shared', 'un-to-iso2
 
 // Populated by fetchWtoReporters() before any data fetches
 let ALL_REPORTERS = [];
+
+// Test-only seam — lets regression tests for fetchTariffTrends /
+// fetchTradeRestrictions exercise the real batch loop without first
+// running fetchWtoReporters (which would also hit the network). Production
+// code never calls this; the leading underscore + ForTesting suffix make
+// the intent explicit.
+export function _setAllReportersForTesting(reporters) {
+  ALL_REPORTERS = Array.isArray(reporters) ? reporters : [];
+}
 
 async function fetchWtoReporters() {
   const apiKey = process.env.WTO_API_KEY;
@@ -250,18 +267,44 @@ function accumulateHistory(newIndices, previousPayload) {
 
 // ─── WTO helpers ───
 
-async function wtoFetch(path, params) {
+// Returns parsed JSON on success, null on any failure (HTTP error, timeout,
+// network abort, JSON parse). The null contract lets every batch-loop caller
+// — `fetchTariffTrends`, `fetchTradeRestrictions`, `fetchTradeBarriers` —
+// degrade gracefully on a single bad batch via their existing `if (!data)`
+// guards. Pre-2026-05-01 this only caught HTTP errors and let timeouts
+// throw, so one slow batch (e.g. WTO p99 latency spike) sank an entire
+// 10-batch loop and silently expired the downstream canonical keys (8h TTL)
+// while the seeder kept "succeeding" via shipping/customs alone.
+//
+// Timeout is 60s per batch — WTO p99 latency for a 30-reporter `TP_A_0010`
+// query observed at 21s under normal load, with occasional spikes >15s.
+// Total budget across 10 batches × 60s + 1s sleeps = ~10m worst case,
+// well inside the 6h cron interval.
+export async function wtoFetch(path, params) {
   const apiKey = process.env.WTO_API_KEY;
   if (!apiKey) { console.warn('[WTO] WTO_API_KEY not set'); return null; }
   const url = new URL(`https://api.wto.org/timeseries/v1${path}`);
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
-  const resp = await fetch(url.toString(), {
-    headers: { 'Ocp-Apim-Subscription-Key': apiKey, 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (resp.status === 204) return { Dataset: [] };
-  if (!resp.ok) { console.warn(`[WTO] HTTP ${resp.status} for ${path}`); return null; }
-  return resp.json();
+  const indicator = params?.i || 'unknown';
+  const reporterCount = typeof params?.r === 'string' ? params.r.split(',').length : '?';
+  try {
+    const resp = await fetch(url.toString(), {
+      headers: { 'Ocp-Apim-Subscription-Key': apiKey, 'User-Agent': CHROME_UA },
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (resp.status === 204) return { Dataset: [] };
+    if (!resp.ok) {
+      console.warn(`[WTO] HTTP ${resp.status} for ${path} i=${indicator} reporters=${reporterCount}`);
+      return null;
+    }
+    return await resp.json();
+  } catch (err) {
+    const cause = err?.name === 'TimeoutError' || err?.name === 'AbortError'
+      ? 'timeout'
+      : (err?.cause?.code || err?.code || err?.message || 'unknown');
+    console.warn(`[WTO] FAIL ${path} i=${indicator} reporters=${reporterCount} cause=${cause}`);
+    return null;
+  }
 }
 
 // US effective tariff rate from FRED: customs duties / goods imports × 100
@@ -522,7 +565,7 @@ async function fetchTradeRestrictions() {
 
 // ─── Tariff Trends (WTO) — pre-seed major reporters ───
 
-async function fetchTariffTrends() {
+export async function fetchTariffTrends() {
   const currentYear = new Date().getFullYear();
   const trends = {};
   const usEffectiveTariffRate = await fetchEffectiveTariffRateFromFred();
@@ -585,15 +628,69 @@ async function fetchCustomsRevenue() {
   const fields = 'record_date,current_month_rcpt_outly_amt,current_fytd_rcpt_outly_amt,record_fiscal_year,record_calendar_year,record_calendar_month';
   const url = `${TREASURY_MTS_URL}?fields=${fields}&filter=classification_desc:eq:Customs%20Duties,record_date:gte:${threeYearsAgo}&sort=-record_date&page[size]=50`;
 
-  const resp = await fetch(url, {
-    headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!resp.ok) throw new Error(`Treasury MTS HTTP ${resp.status}`);
-  const json = await resp.json();
-  const rows = json.data;
-  if (!Array.isArray(rows) || rows.length === 0) throw new Error('Treasury MTS returned no data');
-  if (rows.length > 100) throw new Error(`Treasury MTS returned unexpected row count: ${rows.length}`);
+  // Treasury MTS occasionally trips up on Railway egress (transient connect /
+  // 5xx / TLS resets). 30+ hour stale windows traced back to a single rejected
+  // fetch followed by no retry until the next 6h cron tick — by which point
+  // the 24h data TTL had expired and the panel went empty. Three attempts
+  // with linear backoff (5s, 10s) plus the existing 15s per-attempt timeout
+  // give a worst-case ~60s budget per cron run, well within the bundle window.
+  // The final rejection re-throws with attempt count + last status / error
+  // so the rejection log line at fetchAll() + Sentry have enough context to
+  // triage from health output alone.
+  //
+  // Deterministic failures (4xx other than 429, schema-drift row-count
+  // violation) skip the retry loop — they cannot recover by waiting.
+  // Marking them with `{ __retryable: false }` lets the catch block
+  // short-circuit instead of burning ~30s of cron time and emitting
+  // misleading "retrying in 5000ms" warns for what is actually a fixed
+  // upstream / contract-violation condition.
+  let lastErr = null;
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const resp = await fetch(url, {
+        headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
+        signal: AbortSignal.timeout(15_000),
+      });
+      if (!resp.ok) {
+        // 4xx client errors (except 429 rate-limit) are deterministic — the
+        // request is malformed or the resource is gone; retry can't fix it.
+        const isClient4xx = resp.status >= 400 && resp.status < 500 && resp.status !== 429;
+        const err = new Error(`Treasury MTS HTTP ${resp.status}`);
+        if (isClient4xx) err.__retryable = false;
+        throw err;
+      }
+      const json = await resp.json();
+      const rows = json.data;
+      // Empty array MAY be transient (deploy gap, reseed window) — keep retryable.
+      if (!Array.isArray(rows) || rows.length === 0) throw new Error('Treasury MTS returned no data');
+      // Row-count > 100 means schema drift / new MTS response shape; second
+      // request will return the same number, so don't waste cron time.
+      if (rows.length > 100) {
+        const err = new Error(`Treasury MTS returned unexpected row count: ${rows.length}`);
+        err.__retryable = false;
+        throw err;
+      }
+      // Success — break out, fall through to parse below.
+      return parseCustomsRows(rows);
+    } catch (err) {
+      lastErr = err;
+      const msg = err?.message || String(err);
+      // Skip the rest of the retry budget on deterministic failures.
+      if (err?.__retryable === false) {
+        console.warn(`  Treasury customs attempt ${attempt}/3 hit non-retryable error (${msg}); aborting retry`);
+        break;
+      }
+      if (attempt < 3) {
+        const backoffMs = attempt * 5_000; // 5s, 10s
+        console.warn(`  Treasury customs attempt ${attempt}/3 failed (${msg}); retrying in ${backoffMs}ms`);
+        await new Promise((r) => setTimeout(r, backoffMs));
+      }
+    }
+  }
+  throw new Error(`Treasury MTS exhausted 3 attempts: ${lastErr?.message || lastErr}`);
+}
+
+function parseCustomsRows(rows) {
 
   const months = rows
     .map(r => {
@@ -687,15 +784,34 @@ export function declareRecords(data) {
   return Array.isArray(data?.indices) ? data.indices.length : 0;
 }
 
-runSeed('supply_chain', 'shipping', KEYS.shipping, fetchAll, {
-  validateFn: validate,
-  ttlSeconds: SHIPPING_TTL,
-  sourceVersion: 'fred-wto-sse-bdi-budgetlab',
+// Content-age contract: newest observation date across every shipping index's
+// accumulated history. See scripts/_content-age-helpers.mjs.
+export function supplyChainContentMeta(data) {
+  const tokens = [];
+  for (const idx of Array.isArray(data?.indices) ? data.indices : []) {
+    for (const h of Array.isArray(idx?.history) ? idx.history : []) {
+      if (h?.date) tokens.push(h.date);
+    }
+  }
+  return tokensToContentMeta(tokens);
+}
 
-  declareRecords,
-  schemaVersion: 1,
-  maxStaleMin: 420,
-}).catch((err) => {
-  const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
-  process.exit(1);
-});
+// Standalone entrypoint guard. Without this, importing this file from tests
+// kicks off the whole seeder (Redis lock acquisition, external API calls,
+// Redis writes) at module-load time, which hangs the test runner.
+if (process.argv[1]?.endsWith('seed-supply-chain-trade.mjs')) {
+  runSeed('supply_chain', 'shipping', KEYS.shipping, fetchAll, {
+    validateFn: validate,
+    ttlSeconds: SHIPPING_TTL,
+    sourceVersion: 'fred-wto-sse-bdi-budgetlab',
+
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 420,
+    contentMeta: supplyChainContentMeta,
+    maxContentAgeMin: SUPPLY_CHAIN_MAX_CONTENT_AGE_MIN,
+  }).catch((err) => {
+    const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
+    process.exit(1);
+  });
+}

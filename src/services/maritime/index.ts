@@ -161,7 +161,7 @@ interface ParsedSnapshot {
 async function fetchSnapshotPayload(includeCandidates: boolean, signal?: AbortSignal): Promise<ParsedSnapshot | null> {
   const response = await snapshotBreaker.execute(
     async () => client.getVesselSnapshot(
-      { neLat: 0, neLon: 0, swLat: 0, swLon: 0, includeCandidates },
+      { neLat: 0, neLon: 0, swLat: 0, swLon: 0, includeCandidates, includeTankers: false },
       { signal },
     ),
     emptySnapshotFallback,

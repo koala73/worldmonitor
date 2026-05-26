@@ -15,30 +15,39 @@ describe('pickBriefCluster', () => {
 
   it('returns null when every cluster is single-source', () => {
     const top = [
-      { sourceCount: 1, primaryTitle: 'A' },
-      { sourceCount: 1, primaryTitle: 'B' },
+      { sourceCount: 3, sources: ['Reuters'], primaryTitle: 'A' },
+      { sourceCount: 1, sources: ['AP News'], primaryTitle: 'B' },
     ];
     assert.equal(pickBriefCluster(top), null);
   });
 
-  it('returns the first cluster with sourceCount >= 2', () => {
+  it('returns the first cluster with at least two unique sources', () => {
     const top = [
-      { sourceCount: 1, primaryTitle: 'A' },
-      { sourceCount: 3, primaryTitle: 'B' },
-      { sourceCount: 2, primaryTitle: 'C' },
+      { sourceCount: 3, sources: ['Reuters'], primaryTitle: 'A' },
+      { sourceCount: 3, sources: ['Reuters', 'AP News'], primaryTitle: 'B' },
+      { sourceCount: 2, sources: ['BBC World', 'Axios'], primaryTitle: 'C' },
     ];
     assert.equal(pickBriefCluster(top).primaryTitle, 'B');
+  });
+
+  it('accepts a single-cluster source when entity corroboration was established across related clusters', () => {
+    const top = [
+      { sourceCount: 1, sources: ['Reuters'], entityCorroboration: true, primaryTitle: 'US and Iran close deal' },
+    ];
+    assert.equal(pickBriefCluster(top).primaryTitle, 'US and Iran close deal');
   });
 
   it('skips a higher-ranked single-source rumor for a lower-ranked multi-sourced lead (regression: News24 Iran supreme leader 2026-04-23)', () => {
     const top = [
       {
         sourceCount: 1,
+        sources: ['News24'],
         primaryTitle: 'Iran new supreme leader seriously wounded, delegates power to Revolutionary Guards',
         importanceScore: 350,
       },
       {
         sourceCount: 2,
+        sources: ['Reuters', 'AP News'],
         primaryTitle: 'Lebanon leaders accuse Israel of war crime after journalist killed',
         importanceScore: 300,
       },
@@ -52,13 +61,13 @@ describe('pickBriefCluster', () => {
   it('treats a missing sourceCount as 1 (safe default — do not brief on unknown corroboration)', () => {
     const top = [
       { primaryTitle: 'A' }, // no sourceCount field
-      { sourceCount: 2, primaryTitle: 'B' },
+      { sourceCount: 2, sources: ['Reuters', 'AP News'], primaryTitle: 'B' },
     ];
     assert.equal(pickBriefCluster(top).primaryTitle, 'B');
   });
 
   it('tolerates a null/undefined entry without throwing', () => {
-    const top = [null, undefined, { sourceCount: 2, primaryTitle: 'A' }];
+    const top = [null, undefined, { sourceCount: 2, sources: ['Reuters', 'AP News'], primaryTitle: 'A' }];
     assert.equal(pickBriefCluster(top).primaryTitle, 'A');
   });
 });

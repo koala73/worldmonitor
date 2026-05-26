@@ -92,6 +92,8 @@
               "methodology/storage",
               "methodology/shortages",
               "methodology/disruptions",
+              "methodology/cii-risk-scores",
+              "methodology/disease-alert-level",
               "corrections",
               "geographic-convergence",
               "strategic-risk",
@@ -179,7 +181,12 @@
           {
             "group": "MCP & Integrations",
             "pages": [
-              "mcp",
+              "agent-discovery",
+              "mcp-quickstart",
+              "mcp-server",
+              "mcp-tools-reference",
+              "mcp-jmespath",
+              "mcp-error-catalog",
               "api-oauth",
               "api-notifications"
             ]
@@ -220,6 +227,12 @@
       {
         "tab": "API Reference",
         "groups": [
+          {
+            "group": "Overview",
+            "pages": [
+              "api-reference"
+            ]
+          },
           {
             "group": "Geopolitical",
             "pages": [

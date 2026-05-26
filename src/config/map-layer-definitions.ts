@@ -103,6 +103,7 @@ export const LAYER_REGISTRY: Record<keyof MapLayers, LayerDefinition> = {
   // without `deckGLOnly` once both renderers gain real support.
   storageFacilities:        def('storageFacilities',        '&#127959;', 'storageFacilities',        'Storage Facilities', ['flat'], undefined, true),
   fuelShortages:            def('fuelShortages',            '&#9881;',   'fuelShortages',            'Fuel Shortages', ['flat'], undefined, true),
+  liveTankers:              def('liveTankers',              '&#128674;', 'liveTankers',              'Live Tanker Positions', ['flat'], undefined, true),
 };
 
 const VARIANT_LAYER_ORDER: Record<MapVariant, Array<keyof MapLayers>> = {
@@ -141,7 +142,7 @@ const VARIANT_LAYER_ORDER: Record<MapVariant, Array<keyof MapLayers>> = {
   energy: [
     // Core energy infrastructure — mirror of ENERGY_MAP_LAYERS in panels.ts
     'pipelines', 'storageFacilities', 'fuelShortages', 'waterways', 'commodityPorts', 'commodityHubs',
-    'ais', 'tradeRoutes', 'minerals',
+    'ais', 'liveTankers', 'tradeRoutes', 'minerals',
     // Energy-adjacent context
     'sanctions', 'fires', 'climate', 'weather', 'outages', 'natural',
     'resilienceScore', 'dayNight',

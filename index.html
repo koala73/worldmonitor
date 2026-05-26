@@ -79,7 +79,7 @@
       "applicationCategory": "SecurityApplication",
       "operatingSystem": "Web, Windows, macOS, Linux",
       "offers": [
-        { "@type": "Offer", "price": "0", "priceCurrency": "USD", "name": "Free", "description": "Full dashboard with 435+ sources, 45 map layers, BYOK AI" },
+        { "@type": "Offer", "price": "0", "priceCurrency": "USD", "name": "Free", "description": "Full dashboard with 500+ news feeds, 65+ external data sources, 50+ map layers, BYOK AI" },
         { "@type": "Offer", "price": "0", "priceCurrency": "USD", "name": "Pro (Waitlist)", "url": "https://www.worldmonitor.app/pro" }
       ],
       "author": {
@@ -103,7 +103,7 @@
         "Earthquake and natural disaster alerts",
         "Civil unrest and protest monitoring",
         "Cyber threat and BGP anomaly detection",
-        "435+ curated RSS news feeds",
+        "500+ curated RSS news feeds and 65+ external data sources (ACLED, UCDP, NASA FIRMS, USGS, USPTO, FRED, IMF, BIS, OFAC, ECMWF, IAEA, WHO, OpenSky, ADS-B Exchange, and more)",
         "21 language support with RTL"
       ],
       "screenshot": "https://www.worldmonitor.app/favico/og-image.png",
@@ -117,8 +117,72 @@
     }
     </script>
 
-    <!-- Umami Analytics -->
-    <script defer src="https://abacus.worldmonitor.app/script.js" data-website-id="e8800335-c853-46a8-8497-c993ed2f58bc" data-domains="worldmonitor.app,tech.worldmonitor.app,finance.worldmonitor.app,commodity.worldmonitor.app,happy.worldmonitor.app"></script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "World Monitor",
+      "alternateName": "WorldMonitor",
+      "url": "https://www.worldmonitor.app/",
+      "logo": "https://www.worldmonitor.app/favico/apple-touch-icon.png",
+      "description": "Open-source real-time global intelligence platform aggregating conflicts, military movements, markets, infrastructure, and geopolitical data. Used by 2M+ people across 190+ countries.",
+      "founder": {
+        "@type": "Person",
+        "name": "Elie Habib",
+        "url": "https://x.com/eliehabib",
+        "sameAs": ["https://x.com/eliehabib", "https://github.com/koala73"]
+      },
+      "sameAs": [
+        "https://github.com/koala73/worldmonitor",
+        "https://x.com/worldmonitorai",
+        "https://discord.gg/re63kWKxaz",
+        "https://www.wired.me/story/the-music-streaming-ceo-who-built-a-global-war-map"
+      ],
+      "contactPoint": {
+        "@type": "ContactPoint",
+        "contactType": "customer support",
+        "email": "support@worldmonitor.app",
+        "url": "https://www.worldmonitor.app/pro"
+      }
+    }
+    </script>
+
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "World Monitor",
+      "alternateName": "WorldMonitor",
+      "url": "https://www.worldmonitor.app/",
+      "description": "Real-time global intelligence dashboard — live news, markets, military tracking, infrastructure monitoring, and geopolitical data.",
+      "publisher": {
+        "@type": "Organization",
+        "name": "World Monitor",
+        "url": "https://www.worldmonitor.app/"
+      },
+      "potentialAction": {
+        "@type": "SearchAction",
+        "target": {
+          "@type": "EntryPoint",
+          "urlTemplate": "https://www.worldmonitor.app/?q={search_term_string}"
+        },
+        "query-input": "required name=search_term_string"
+      },
+      "inLanguage": ["en", "fr", "de", "es", "it", "pt", "nl", "sv", "pl", "cs", "ro", "bg", "el", "ru", "tr", "ar", "zh", "ja", "ko", "th", "vi"]
+    }
+    </script>
+
+    <!--
+      Umami Analytics — async (not defer): defer blocks DOMContentLoaded if abacus is slow/down (15s observed when origin 502s).
+      data-domains is temporarily reduced to worldmonitor.app + happy.worldmonitor.app while upstream Umami issue #4183
+      (https://github.com/umami-software/umami/issues/4183) is open — v3.1.0 has a race in
+      prisma.sessionData.updateMany() that returns HTTP 500 from /api/send for 4-8% of requests
+      across all listed hosts. Self-hosted Umami has no fix tag yet (master since 2026-04-17 has
+      22 commits but none touch sessionData). Tracker self-disables when current hostname isn't in
+      data-domains — same mechanism that keeps energy.worldmonitor.app silent. Restore tech, finance,
+      and commodity once #4183 ships in a tagged release.
+    -->
+    <script async src="https://abacus.worldmonitor.app/script.js" data-website-id="e8800335-c853-46a8-8497-c993ed2f58bc" data-domains="worldmonitor.app,happy.worldmonitor.app"></script>
 
     <!-- Favicons -->
     <link rel="icon" type="image/x-icon" href="/favico/favicon.ico" />
@@ -127,8 +191,16 @@
     <link rel="apple-touch-icon" sizes="180x180" href="/favico/apple-touch-icon.png" />
 
 
-    <!-- Theme: apply stored preference before first paint to prevent FOUC -->
-    <script>(function(){try{var h=location.hostname;var v;if(h.startsWith('happy.'))v='happy';else if(h.startsWith('tech.'))v='tech';else if(h.startsWith('finance.'))v='finance';if(!v&&(h==='localhost'||h==='127.0.0.1'||'__TAURI_INTERNALS__' in window))v=localStorage.getItem('worldmonitor-variant');if(v)document.documentElement.dataset.variant=v;else document.documentElement.removeAttribute('data-variant');var t=localStorage.getItem('worldmonitor-theme');if(t==='dark'||t==='light'){document.documentElement.dataset.theme=t;}else if(v==='happy'){document.documentElement.dataset.theme='light';}}catch(e){}document.documentElement.classList.add('no-transition');})()</script>
+    <!-- Theme: apply stored preference before first paint to prevent FOUC.
+         Also tags <html> with .js so the seo-prerender content (visible body
+         text for AEO/SEO crawlers) is hidden for JS-enabled clients via the
+         .js #seo-prerender CSS rule below. Crawlers that don't execute JS
+         (the typical AEO scanner) see the prerender content as normal body
+         content — width:1px/height:1px or aria-hidden cause content-extraction
+         libraries to discount the block, so we make it crawler-visible by
+         default and CSS-hide for real users. -->
+    <script>(function(){try{var h=location.hostname;var v;if(h.startsWith('happy.'))v='happy';else if(h.startsWith('tech.'))v='tech';else if(h.startsWith('finance.'))v='finance';if(!v&&(h==='localhost'||h==='127.0.0.1'||'__TAURI_INTERNALS__' in window))v=localStorage.getItem('worldmonitor-variant');if(v)document.documentElement.dataset.variant=v;else document.documentElement.removeAttribute('data-variant');var t=localStorage.getItem('worldmonitor-theme');if(t==='dark'||t==='light'){document.documentElement.dataset.theme=t;}else if(v==='happy'){document.documentElement.dataset.theme='light';}}catch(e){}document.documentElement.classList.add('no-transition');document.documentElement.classList.add('js');})()</script>
+    <style>html.js #seo-prerender{position:absolute;left:-9999px;top:-9999px;width:1px;height:1px;overflow:hidden}</style>
 
     <!-- Critical CSS: inline skeleton visible before JS boots -->
     <style>
@@ -203,7 +275,54 @@
     <link href="https://fonts.googleapis.com/css2?family=Nunito:ital,wght@0,300;0,400;0,600;0,700;1,400&family=Tajawal:wght@200;300;400;500;700;800;900&display=swap" rel="stylesheet">
   </head>
   <body>
-    <h1 style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap">World Monitor - Real-Time Global Intelligence Dashboard</h1>
+    <!--
+      Canonical English crawler content. The SPA is multilingual (21 locales) but
+      this prerender block is the indexable surface — language-specific content
+      hydrates client-side after JS boots. WebSite JSON-LD already advertises all
+      inLanguage values; this block is the en-US fallback.
+
+      Visible to no-JS crawlers (AEO scanners typically don't execute JS); hidden
+      to JS-enabled clients via `html.js #seo-prerender` rule in head <style>.
+      Off-screen-with-1px-size and aria-hidden=true caused content-extraction
+      libraries to discount the block — the AEO scanner showed 0/18 internal
+      links until this switch.
+    -->
+    <div id="seo-prerender" lang="en">
+      <h1>World Monitor — Real-Time Global Intelligence Dashboard</h1>
+      <p>Free, open-source intelligence platform aggregating live news, markets, military movements, conflicts, and infrastructure into one real-time dashboard. Used by 2M+ people across 190+ countries. <a href="https://www.wired.me/story/the-music-streaming-ceo-who-built-a-global-war-map">Featured in WIRED</a>.</p>
+
+      <h2>What it tracks</h2>
+      <p>Live conflict events from <a href="https://acleddata.com/">ACLED</a> and <a href="https://ucdp.uu.se/">UCDP</a>, satellite fire detection from <a href="https://firms.modaps.eosdis.nasa.gov/">NASA FIRMS</a>, earthquakes from <a href="https://www.usgs.gov/programs/earthquake-hazards">USGS</a>, military and civilian aircraft from <a href="https://opensky-network.org/">OpenSky Network</a>, ship AIS positions from <a href="https://aisstream.io/">AISStream</a>, macro and central bank data from <a href="https://fred.stlouisfed.org/">FRED</a>, <a href="https://www.imf.org/en/Data">IMF</a>, and <a href="https://www.bis.org/">BIS</a>, plus 500+ curated RSS feeds, 50+ map layers, and AI-synthesized country briefings.</p>
+
+      <h2>Five dashboards, one platform</h2>
+      <ul>
+        <li><a href="https://www.worldmonitor.app/">World Monitor</a> — geopolitics, conflicts, military, infrastructure</li>
+        <li><a href="https://tech.worldmonitor.app/">Tech Monitor</a> — AI labs, startups, cloud, cybersecurity</li>
+        <li><a href="https://finance.worldmonitor.app/">Finance Monitor</a> — global markets, central banks, forex, crypto</li>
+        <li><a href="https://commodity.worldmonitor.app/">Commodity Monitor</a> — mining, energy, supply chains, freight</li>
+        <li><a href="https://happy.worldmonitor.app/">Happy Monitor</a> — positive news, breakthroughs, conservation</li>
+      </ul>
+
+      <h2>Learn more</h2>
+      <ul>
+        <li><a href="https://www.worldmonitor.app/pro">World Monitor Pro</a> — AI analyst, personalized digests, MCP for Claude &amp; GPT</li>
+        <li><a href="https://www.worldmonitor.app/blog/">Blog</a> — OSINT guides, geopolitics, market intelligence</li>
+        <li><a href="https://www.worldmonitor.app/blog/posts/what-is-worldmonitor-real-time-global-intelligence/">What is World Monitor?</a></li>
+        <li><a href="https://www.worldmonitor.app/blog/posts/osint-for-everyone-open-source-intelligence-democratized/">OSINT for everyone — open-source intelligence democratized</a></li>
+        <li><a href="https://www.worldmonitor.app/blog/posts/five-dashboards-one-platform-worldmonitor-variants/">Five dashboards, one platform — the variants explained</a></li>
+        <li><a href="https://github.com/koala73/worldmonitor">Open source on GitHub (AGPL-3.0)</a></li>
+      </ul>
+    </div>
+    <!--
+      A11y hardening for the seo-prerender block above. Runs synchronously
+      RIGHT AFTER the div is parsed (before any subsequent content paints or
+      Tab traversal can reach the links). For JS-enabled users — including
+      JS-aware screen readers and keyboard users — the block is removed from
+      the accessibility tree (aria-hidden) and the focus order (inert). For
+      crawlers (typically no JS), the attributes are never applied, so the
+      content stays indexable and the links stay countable for AEO.
+    -->
+    <script>(function(){try{var s=document.getElementById('seo-prerender');if(s){s.setAttribute('aria-hidden','true');s.setAttribute('inert','')}}catch(e){}})()</script>
     <div id="app">
       <!-- Pre-render skeleton: visible instantly, replaced when JS calls renderLayout() -->
       <div class="skeleton-shell" aria-hidden="true">
@@ -245,20 +364,16 @@
     </aside>
     <noscript>
       <div style="max-width:800px;margin:0 auto;padding:40px 20px;font-family:system-ui,sans-serif;color:#e5e5e5;background:#0a0a0a;">
-        <h1>World Monitor — Real-Time Global Intelligence Dashboard</h1>
-        <p>AI-powered real-time global intelligence dashboard with live news, markets, military tracking, infrastructure monitoring, and geopolitical data. Used by 2M+ people across 190+ countries.</p>
-        <h2>Features</h2>
-        <ul>
-          <li>Real-time conflict tracking (ACLED, UCDP)</li>
-          <li>Military ADS-B flight monitoring</li>
-          <li>Maritime AIS ship tracking and dark vessel detection</li>
-          <li>Stock market, commodity, and crypto tracking</li>
-          <li>AI-powered intelligence synthesis and daily briefs</li>
-          <li>Country Instability Index (CII) scoring</li>
-          <li>435+ curated RSS news feeds, 45 map layers</li>
-          <li>21 language support</li>
-        </ul>
-        <p><a href="https://www.worldmonitor.app/pro" style="color:#4ade80;">Upgrade to World Monitor Pro</a></p>
+        <h2>World Monitor — Real-Time Global Intelligence Dashboard</h2>
+        <p>AI-powered real-time global intelligence dashboard with live news, markets, military tracking, infrastructure monitoring, and geopolitical data. Used by 2M+ people across 190+ countries. <a href="https://www.wired.me/story/the-music-streaming-ceo-who-built-a-global-war-map" style="color:#4ade80;" rel="noopener noreferrer">Featured in WIRED</a>.</p>
+
+        <p>The platform combines real-time conflict events from <a href="https://acleddata.com/" style="color:#4ade80;" rel="noopener noreferrer">ACLED</a> and <a href="https://ucdp.uu.se/" style="color:#4ade80;" rel="noopener noreferrer">UCDP</a>, satellite fire detection from <a href="https://firms.modaps.eosdis.nasa.gov/" style="color:#4ade80;" rel="noopener noreferrer">NASA FIRMS</a>, earthquakes from <a href="https://earthquake.usgs.gov/" style="color:#4ade80;" rel="noopener noreferrer">USGS</a>, aircraft tracking from <a href="https://opensky-network.org/" style="color:#4ade80;" rel="noopener noreferrer">OpenSky</a>, ship AIS from <a href="https://aisstream.io/" style="color:#4ade80;" rel="noopener noreferrer">AISStream</a>, and macro data from <a href="https://fred.stlouisfed.org/" style="color:#4ade80;" rel="noopener noreferrer">FRED</a>, <a href="https://www.imf.org/en/Data" style="color:#4ade80;" rel="noopener noreferrer">IMF</a>, and <a href="https://www.bis.org/" style="color:#4ade80;" rel="noopener noreferrer">BIS</a>.</p>
+
+        <h3>Five dashboards, one platform</h3>
+        <p>Explore the variant that matches what you track: <a href="https://www.worldmonitor.app/" style="color:#4ade80;">World Monitor</a> for geopolitics and conflicts, <a href="https://tech.worldmonitor.app/" style="color:#4ade80;">Tech Monitor</a> for AI labs and startups, <a href="https://finance.worldmonitor.app/" style="color:#4ade80;">Finance Monitor</a> for markets and central banks, <a href="https://commodity.worldmonitor.app/" style="color:#4ade80;">Commodity Monitor</a> for mining and supply chains, and <a href="https://happy.worldmonitor.app/" style="color:#4ade80;">Happy Monitor</a> for positive news and progress.</p>
+
+        <h3>Read more</h3>
+        <p>Learn what the platform does in <a href="https://www.worldmonitor.app/blog/posts/what-is-worldmonitor-real-time-global-intelligence/" style="color:#4ade80;">What is World Monitor?</a>, how OSINT applies in <a href="https://www.worldmonitor.app/blog/posts/osint-for-everyone-open-source-intelligence-democratized/" style="color:#4ade80;">OSINT for everyone</a>, or compare to traditional tools in <a href="https://www.worldmonitor.app/blog/posts/worldmonitor-vs-traditional-intelligence-tools/" style="color:#4ade80;">World Monitor vs Bloomberg, Palantir, Dataminr</a>. Full source on <a href="https://github.com/koala73/worldmonitor" style="color:#4ade80;" rel="noopener noreferrer">GitHub (AGPL-3.0)</a>, or <a href="https://www.worldmonitor.app/pro" style="color:#4ade80;">upgrade to World Monitor Pro</a> for the AI analyst, custom widget builder, and MCP for Claude and GPT.</p>
       </div>
     </noscript>
     <!-- Force-clear stale service worker if module scripts 404 (post-deploy cache mismatch) -->

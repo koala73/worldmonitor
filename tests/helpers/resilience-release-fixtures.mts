@@ -394,6 +394,19 @@ export function buildReleaseGateFixtures(): ReleaseGateFixtureMap {
     };
   }
 
+  // Plan 2026-04-26-002 §U7 (PR 6) — IMF labor seed must carry
+  // population for the headline-eligible gate's "population >= 200k"
+  // branch. Without this fixture, every release-gate country would
+  // fall through to the coverage>=0.85 conjunct only; G20+EU27
+  // members are by definition large states (well above 0.2M) so a
+  // uniform 50M placeholder satisfies the gate without distorting
+  // any other test that reads this seed.
+  fixtures['economic:imf:labor:v1'] = {
+    countries: Object.fromEntries(
+      descriptors.map(({ code }) => [code, { unemploymentPct: 5.0, populationMillions: 50, year: 2025 }]),
+    ),
+    seededAt: '2026-04-04T00:00:00.000Z',
+  };
   fixtures['economic:national-debt:v1'] = { entries: debtEntries };
   fixtures['economic:bis:credit:v1'] = { entries: bisCreditEntries };
   fixtures['economic:bis:eer:v1'] = { rates: bisExchangeRates };

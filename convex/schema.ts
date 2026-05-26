@@ -138,9 +138,223 @@ export default defineSchema({
     referralCode: v.optional(v.string()),
     referredBy: v.optional(v.string()),
     referralCount: v.optional(v.number()),
+    // Per-row stamp recording which PRO-launch broadcast wave a
+    // registrant landed in (e.g. "canary-250", "wave-2", "wave-3").
+    // Future wave-export actions filter on `proLaunchWave === undefined`
+    // to pick only un-emailed registrants. Optional so existing rows
+    // pass schema validation; the canary-250 backfill stamps the 244
+    // contacts already emailed yesterday, future waves stamp themselves
+    // at export time.
+    proLaunchWave: v.optional(v.string()),
+    proLaunchWaveAssignedAt: v.optional(v.number()),
   })
     .index("by_normalized_email", ["normalizedEmail"])
-    .index("by_referral_code", ["referralCode"]),
+    .index("by_referral_code", ["referralCode"])
+    // Index on the wave stamp so future picks can scan only-stamped
+    // / only-unstamped efficiently without a full table scan against
+    // tens of thousands of registrations.
+    .index("by_proLaunchWave", ["proLaunchWave"]),
+
+  // Singleton config for the cron-driven broadcast ramp runner. One
+  // row, keyed by the literal string "current" so admin mutations
+  // can target it without juggling Convex ids.
+  //
+  // The daily cron reads this row, checks the previous wave's
+  // kill-gate metrics, and (if green) advances to the next tier in
+  // `rampCurve`. Operator interventions (pause / resume / clear
+  // kill-gate / abort) are admin mutations on this row.
+  //
+  // We DELIBERATELY don't auto-clear `killGateTripped` — once the
+  // ramp halts itself, an operator must explicitly clear before the
+  // next cron run resumes. Better one extra dashboard click than a
+  // silent resumption after a real deliverability incident.
+  broadcastRampConfig: defineTable({
+    key: v.string(), // always "current"
+    active: v.boolean(),
+    // Wave sizes in order. e.g. [500, 1500, 5000, 15000, 25000].
+    // Each cron tick advances `currentTier` by 1 and uses
+    // `rampCurve[currentTier]` as the next wave's count.
+    rampCurve: v.array(v.number()),
+    // Index into rampCurve. -1 = not started; ramp ends when
+    // currentTier === rampCurve.length - 1.
+    currentTier: v.number(),
+    // Naming prefix for waves; e.g. "wave" → "wave-2", "wave-3".
+    // The number suffix is `currentTier + waveLabelOffset` so the
+    // first auto-ramp wave can pick up where manual canary/wave-2
+    // left off (default offset 3 means tier 0 → "wave-3").
+    waveLabelPrefix: v.string(),
+    waveLabelOffset: v.number(),
+    // Kill thresholds. Defaults match metrics.ts: 4% bounce, 0.08%
+    // complaint. Stored on the config so an operator can tighten
+    // them without redeploying.
+    bounceKillThreshold: v.number(),
+    complaintKillThreshold: v.number(),
+    // Kill-gate latch. Set to true by the cron when the prior
+    // wave's stats trip a threshold. Cleared only by explicit
+    // operator action.
+    killGateTripped: v.boolean(),
+    killGateReason: v.optional(v.string()),
+    // Tracking the last successfully-sent wave so the next cron
+    // tick can fetch its stats for the kill-gate check.
+    lastWaveLabel: v.optional(v.string()),
+    lastWaveBroadcastId: v.optional(v.string()),
+    lastWaveSegmentId: v.optional(v.string()),
+    lastWaveSentAt: v.optional(v.number()),
+    lastWaveAssigned: v.optional(v.number()),
+    // Status of the last cron run — distinct from the last wave.
+    // `succeeded`        — wave sent cleanly
+    // `kill-gate-tripped`— prior-wave check halted the ramp
+    // `pool-drained`     — assignAndExportWave returned underfilled
+    //                      with assigned < threshold
+    // `partial-failure`  — wave action threw mid-flight; needs ops
+    //                      intervention before next run
+    // `awaiting-prior-stats` — prior wave hasn't accumulated enough
+    //                      delivered events yet; cron will retry
+    lastRunStatus: v.optional(v.string()),
+    lastRunAt: v.optional(v.number()),
+    lastRunError: v.optional(v.string()),
+    // Lease for the in-flight cron run. Set atomically by `_claimTierForRun`
+    // BEFORE the runner makes any external side effects (assignAndExportWave,
+    // createProLaunchBroadcast, sendProLaunchBroadcast). Cleared by
+    // `_recordWaveSent` (success), `_recordRunOutcome` (failure for the
+    // owning runId), `recoverFromPartialFailure` (operator), or
+    // `forceReleaseLease` (operator, last-resort). Two overlapping cron runs
+    // both attempting `_claimTierForRun` will see a lease already held and
+    // exit before any duplicate emails go out. There is NO automatic
+    // staleness override — long-running side effects (large waves) must not
+    // be racable just because they exceed an arbitrary clock; recovery from
+    // a genuinely-stuck lease is operator-only via `forceReleaseLease`.
+    pendingRunId: v.optional(v.string()),
+    pendingRunStartedAt: v.optional(v.number()),
+    // Per-step progress markers persisted by the in-flight run AFTER each
+    // external action succeeds. Lets `recoverFromPartialFailure` recover
+    // without operator-supplied metadata when the action dies between steps
+    // (e.g. Convex action timeout, OOM) before the catch can record
+    // partial-failure. Cleared on successful `_recordWaveSent` and on
+    // `recoverFromPartialFailure` completion.
+    pendingWaveLabel: v.optional(v.string()),
+    pendingSegmentId: v.optional(v.string()),
+    pendingAssigned: v.optional(v.number()),
+    pendingExportAt: v.optional(v.number()),
+    pendingBroadcastId: v.optional(v.string()),
+    pendingBroadcastAt: v.optional(v.number()),
+    // Locale filter switch — when true, pickWaveAction excludes
+    // contacts whose `users.localePrimary` (or email-TLD heuristic
+    // fallback) is non-English. Optional + missing-reads-as-false on
+    // the config — existing ramp rows that pre-date this feature
+    // continue with byte-identical behavior. Operator opts in via
+    // `initRamp({excludeNonEnglish: true})`.
+    excludeNonEnglish: v.optional(v.boolean()),
+  }).index("by_key", ["key"]),
+
+  // ────────────────────────────────────────────────────────────────────────
+  // Plan 2026-04-29 (post-launch-stabilization PR 2): wave-loading state
+  // machine. Replaces the monolithic `assignAndExportWave` action — which
+  // hits the Convex 10-min runtime budget at ~1500 contacts — with a
+  // multi-step pipeline (pick → push-batch×N → finalize) that fits within
+  // budget at any wave size.
+  //
+  // `waveRuns` is the per-run state row. `wavePickedContacts` is the
+  // per-contact tri-state row that the push pipeline drains in batches.
+  // Together they are the durable source of truth for an in-flight wave;
+  // `broadcastRampConfig.lastWave*` is updated atomically by
+  // `_finalizeWaveRun` only when the whole pipeline succeeds.
+  //
+  // See `convex/broadcast/waveRuns.ts` for the function-shape rules
+  // (internalAction = external I/O, internalMutation = DB writes only)
+  // and the lease/recovery semantics.
+  // ────────────────────────────────────────────────────────────────────────
+  waveRuns: defineTable({
+    // Unique per pickWave call. Same string is set as
+    // `broadcastRampConfig.pendingRunId` for lease coordination — the
+    // existing rampRunner lease pattern. Cleared on `_finalizeWaveRun`
+    // success or operator recovery (`discardWaveRun`).
+    runId: v.string(),
+    waveLabel: v.string(),
+    segmentId: v.optional(v.string()),
+    // Lifecycle:
+    //   picking            → reservoir-sampling + creating segment + persisting picked rows
+    //   segment-created    → ready for first pushBatchAction
+    //   pushing            → at least one batch in flight; remaining `pending` rows
+    //   broadcast-created  → all contacts pushed; broadcast object exists in Resend; send may have failed
+    //   sent               → terminal success — broadcastRampConfig advanced atomically by _finalizeWaveRun
+    //   failed             → terminal-by-failure; substatus carries reason and dictates which operator
+    //                        recovery mutation applies (resumeStalledWaveRun, resumeFinalizeWaveRun,
+    //                        markFinalizeRecovered, or discardWaveRun)
+    status: v.union(
+      v.literal("picking"),
+      v.literal("segment-created"),
+      v.literal("pushing"),
+      v.literal("broadcast-created"),
+      v.literal("sent"),
+      v.literal("failed"),
+    ),
+    // Operator-supplied count from `pickWaveAction` args. May exceed pool —
+    // the actual picked count is in `totalCount`, with `underfilled=true`.
+    requestedCount: v.number(),
+    // = picked.length after reservoir sampling. Finalization gates on
+    // "zero `pending` rows for this runId", NOT on pushedCount === totalCount —
+    // failed contacts are tolerated up to the 5% threshold.
+    totalCount: v.number(),
+    underfilled: v.boolean(),
+    pushedCount: v.number(),
+    failedCount: v.number(),
+    batchSize: v.number(),
+    // Updated by every successful batch + by lease-revalidating recovery
+    // mutations. Used (with createdAt/updatedAt fallback) by `runDailyRamp`'s
+    // 15-min in-flight guard to distinguish "actively running" from "stalled
+    // — needs operator intervention".
+    lastBatchAt: v.optional(v.number()),
+    broadcastId: v.optional(v.string()),
+    // Discriminator for `failed` status. Drives operator recovery routing:
+    //   'create-broadcast-failed'      → segment ready, no broadcast yet → resumeFinalizeWaveRun retries create
+    //   'send-broadcast-failed'        → segment + broadcast ready, send failed → resumeFinalizeWaveRun({confirmedNotSent:true}) OR markFinalizeRecovered
+    //   'discarded-by-operator'        → discardWaveRun ran; cleanup cron prunes the rows
+    //   'batch-failure-rate-exceeded'  → push-side >5% failures → discardWaveRun (transient retry won't help)
+    //   'empty-pool'                   → pickWave found zero unstamped registrations → terminal no-op
+    //   'segment-create-failed'        → Resend createSegment failed → operator inspects + discards
+    //   'persist-failed'               → mid-loop _persistPickedBatch failed → operator inspects + discards
+    failureSubstatus: v.optional(v.string()),
+    error: v.optional(v.string()),
+    // Pool-filter audit fields (added 2026-05-10 alongside `users` table +
+    // `excludeNonEnglish` flag). Populated by pickWaveAction's pool selection
+    // step so any past wave's filter behavior is auditable from the
+    // `waveRuns` row alone — no log archaeology required. Optional so
+    // pre-existing rows pass schema validation.
+    excludeNonEnglish: v.optional(v.boolean()),
+    eligiblePoolCount: v.optional(v.number()),
+    excludedCount: v.optional(v.number()),
+    excludedLocaleCounts: v.optional(v.record(v.string(), v.number())),
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+    .index("by_runId", ["runId"])
+    .index("by_status", ["status"]),
+
+  // Per-contact tri-state row written by `_persistPickedBatch` during pick
+  // and patched atomically by `_markContactPushed` / `_markContactFailed`
+  // during push. The CAS guard on those mutations (no-op unless
+  // status==='pending') makes them idempotent under overlapping
+  // pushBatchAction invocations or operator-resume-while-original-still-running.
+  //
+  // Rows are NOT deleted synchronously on `discardWaveRun` — the daily
+  // `cleanupDiscardedWavePickedContactsAction` cron prunes them in 500-row
+  // batches to avoid hitting Convex's per-mutation write limits on bulk
+  // deletion of up to 25k rows.
+  wavePickedContacts: defineTable({
+    runId: v.string(),
+    normalizedEmail: v.string(),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("pushed"),
+      v.literal("failed"),
+    ),
+    pushedAt: v.optional(v.number()),
+    failedAt: v.optional(v.number()),
+    failedReason: v.optional(v.string()),
+  })
+    .index("by_runId", ["runId"])
+    .index("by_runId_status", ["runId", "status"]),
 
   // Phase 9 / Todo #223 — Clerk-user referral codes.
   // The `registrations.referralCode` column uses a 6-char hash of
@@ -195,11 +409,29 @@ export default defineSchema({
     currentPeriodStart: v.number(),
     currentPeriodEnd: v.number(),
     cancelledAt: v.optional(v.number()),
+    // Stable first-class projection of `rawPayload.customer.customer_id`
+    // (the Dodo customer this sub was paid as). Optional because
+    // `DodoSubscriptionData.customer` is itself optional and lifecycle
+    // event payloads (`subscription.renewed`, `.on_hold`, `.cancelled`,
+    // `.plan_changed`, `.expired`) sometimes arrive without it — a
+    // blind `rawPayload: data` patch would otherwise wipe the value.
+    // Webhook handlers write this field with `data.customer?.customer_id
+    // ?? existing.dodoCustomerId` (see `mergeDodoCustomerId` in
+    // `subscriptionHelpers.ts`) so it survives lifecycle patches.
+    //
+    // Manage Billing prefers this column when populated — see
+    // `payments/billing:getDodoCustomerIdForUserPortal`, which is a
+    // 3-tier resolver (this column → `rawPayload.customer.customer_id`
+    // → `customers.dodoCustomerId` for the same userId). Pre-PR rows
+    // may still rely on tiers 2-3 until
+    // `backfillSubscriptionDodoCustomerId` lands their values here.
+    dodoCustomerId: v.optional(v.string()),
     rawPayload: v.any(),
     updatedAt: v.number(),
   })
     .index("by_userId", ["userId"])
-    .index("by_dodoSubscriptionId", ["dodoSubscriptionId"]),
+    .index("by_dodoSubscriptionId", ["dodoSubscriptionId"])
+    .index("by_dodoCustomerId", ["dodoCustomerId"]),
 
   entitlements: defineTable({
     userId: v.string(),
@@ -211,6 +443,11 @@ export default defineSchema({
       apiRateLimit: v.number(),
       prioritySupport: v.boolean(),
       exportFormats: v.array(v.string()),
+      // Optional for backward-compat with existing rows written before
+      // plan 2026-05-10-001 (Pro MCP). Dodo webhooks repopulate this on
+      // the next subscription event; legacy rows return undefined and
+      // every consumer treats undefined as "no MCP access" (fail-closed).
+      mcpAccess: v.optional(v.boolean()),
     }),
     validUntil: v.number(),
     // Optional complimentary-entitlement floor. When set and in the future,
@@ -224,11 +461,48 @@ export default defineSchema({
     userId: v.string(),
     dodoCustomerId: v.optional(v.string()),
     email: v.string(),
+    // Lowercased + trimmed mirror of `email`. Required for O(1) joins from
+    // `registrations`/`emailSuppressions` (both keyed on `normalizedEmail`)
+    // when building broadcast audiences — without this, dedup is a full
+    // table scan and paid users can leak into "buy PRO!" sends.
+    // Optional so existing rows pass schema validation; backfilled via
+    // `npx convex run payments/backfillCustomerNormalizedEmail:backfill`.
+    normalizedEmail: v.optional(v.string()),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
     .index("by_userId", ["userId"])
-    .index("by_dodoCustomerId", ["dodoCustomerId"]),
+    .index("by_dodoCustomerId", ["dodoCustomerId"])
+    .index("by_normalized_email", ["normalizedEmail"]),
+
+  // Canonical per-Clerk-user record. Populated on first authenticated session
+  // by client → `users:ensureRecord` (see convex/users.ts). Distinct from
+  // `customers` (which is paid-only, populated by Dodo subscription webhook):
+  // `users` covers EVERY Clerk-authenticated user, free or paid. Holds
+  // operational properties used for product personalization and broadcast
+  // audience filtering — locale, timezone, country, first/last seen.
+  //
+  // ⚠️ Authority of `country`: client-reported (derived from a `cf-ipcountry`
+  // cookie or similar). NOT authoritative. Do NOT use for compliance, geo-
+  // gating, or anything where a malicious client could spoof a different
+  // country to gain or evade something. Server-side derivation (Vercel edge
+  // wrapper reading `cf-ipcountry` from the actual request headers) is a
+  // future v2 concern; v1 just stores what the client passes for analytics
+  // use only.
+  users: defineTable({
+    userId: v.string(), // Clerk userId; primary identifier
+    email: v.optional(v.string()), // Server-derived from ctx.auth.getUserIdentity()
+    normalizedEmail: v.optional(v.string()), // Lowercased mirror of email; joined against registrations
+    localeTag: v.optional(v.string()), // Full BCP 47 tag (e.g. "zh-CN", "en-US"); kept for future analytics
+    localePrimary: v.optional(v.string()), // Lowercased primary subtag (e.g. "zh", "en"); broadcast filter target
+    timezone: v.optional(v.string()), // IANA zone (e.g. "Asia/Shanghai")
+    country: v.optional(v.string()), // ISO 3166-1 alpha-2; CLIENT-REPORTED — see warning above
+    firstSeenAt: v.number(),
+    lastSeenAt: v.number(),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_normalizedEmail", ["normalizedEmail"])
+    .index("by_localePrimary", ["localePrimary"]),
 
   webhookEvents: defineTable({
     webhookId: v.string(),
@@ -275,10 +549,45 @@ export default defineSchema({
     .index("by_userId", ["userId"])
     .index("by_keyHash", ["keyHash"]),
 
+  // Non-key Pro MCP identity rows. One row per OAuth grant for a Pro user.
+  // Referenced from OAuth code/token records as `mcpTokenId` — never carries
+  // plaintext or `wm_` keys. Revoke deletes the row's revokedAt → next
+  // bearer-resolution at api/mcp.ts returns 401 (no token-index sweep needed).
+  // See plan: docs/plans/2026-05-10-001-feat-pro-mcp-clerk-auth-quota-plan.md
+  mcpProTokens: defineTable({
+    userId: v.string(),
+    clientId: v.optional(v.string()),
+    name: v.optional(v.string()),
+    createdAt: v.number(),
+    lastUsedAt: v.optional(v.number()),
+    revokedAt: v.optional(v.number()),
+  }).index("by_userId", ["userId"]),
+
   emailSuppressions: defineTable({
     normalizedEmail: v.string(),
     reason: v.union(v.literal("bounce"), v.literal("complaint"), v.literal("manual")),
     suppressedAt: v.number(),
     source: v.optional(v.string()),
   }).index("by_normalized_email", ["normalizedEmail"]),
+
+  // Per-event log of Resend webhook deliveries tagged with a broadcast_id.
+  // Used as forensic detail to drive engineer-level inspection alongside
+  // Resend's dashboard. Idempotent on `webhookEventId` — Resend retries
+  // on 5xx and we MUST treat every delivery as at-most-once.
+  //
+  // No recipient email stored, AND no rawPayload stored — Resend's
+  // `data` object includes `to: string[]` (recipient addresses), `from`,
+  // `subject`, etc. that are PII or PII-adjacent. Convex dashboard rows
+  // are observable to anyone with project access. We keep only the
+  // identifying metadata; if a specific event needs deeper inspection,
+  // look it up by `emailMessageId` in the Resend dashboard.
+  broadcastEvents: defineTable({
+    webhookEventId: v.string(),
+    broadcastId: v.string(),
+    emailMessageId: v.optional(v.string()),
+    eventType: v.string(),
+    occurredAt: v.number(),
+  })
+    .index("by_webhookEventId", ["webhookEventId"])
+    .index("by_broadcast_event", ["broadcastId", "eventType"]),
 });

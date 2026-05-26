@@ -11,6 +11,7 @@ import {
   GAS_CANONICAL_KEY,
   OIL_CANONICAL_KEY,
   VALID_OIL_PRODUCT_CLASSES,
+  VALID_SOURCES,
 } from '../scripts/_pipeline-registry.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -87,7 +88,7 @@ describe('pipeline registries — evidence', () => {
       const hasEvidence =
         p.evidence.operatorStatement != null ||
         p.evidence.sanctionRefs.length > 0 ||
-        ['ais-relay', 'satellite', 'press'].includes(p.evidence.physicalStateSource);
+        ['ais-relay', 'satellite', 'press', 'gem'].includes(p.evidence.physicalStateSource);
       assert.ok(hasEvidence, `${p.id} has no supporting evidence for state=${p.evidence.physicalState}`);
     }
   });
@@ -156,7 +157,7 @@ describe('pipeline registries — productClass', () => {
     const { productClass: _drop, ...stripped } = oilSample;
     const bad = {
       pipelines: Object.fromEntries(
-        Array.from({ length: 8 }, (_, i) => [`p${i}`, { ...stripped, id: `p${i}` }]),
+        Array.from({ length: 210 }, (_, i) => [`p${i}`, { ...stripped, id: `p${i}` }]),
       ),
     };
     assert.equal(validateRegistry(bad), false);
@@ -166,7 +167,7 @@ describe('pipeline registries — productClass', () => {
     const oilSample = oil.pipelines[Object.keys(oil.pipelines)[0]!];
     const bad = {
       pipelines: Object.fromEntries(
-        Array.from({ length: 8 }, (_, i) => [
+        Array.from({ length: 210 }, (_, i) => [
           `p${i}`,
           { ...oilSample, id: `p${i}`, productClass: 'diesel-only' },
         ]),
@@ -179,7 +180,7 @@ describe('pipeline registries — productClass', () => {
     const gasSample = gas.pipelines[Object.keys(gas.pipelines)[0]!];
     const bad = {
       pipelines: Object.fromEntries(
-        Array.from({ length: 8 }, (_, i) => [
+        Array.from({ length: 210 }, (_, i) => [
           `p${i}`,
           { ...gasSample, id: `p${i}`, productClass: 'crude' },
         ]),
@@ -201,7 +202,7 @@ describe('pipeline registries — validateRegistry rejects bad input', () => {
   test('rejects a pipeline with no evidence', () => {
     const bad = {
       pipelines: Object.fromEntries(
-        Array.from({ length: 8 }, (_, i) => [`p${i}`, {
+        Array.from({ length: 210 }, (_, i) => [`p${i}`, {
           id: `p${i}`, name: 'x', operator: 'y', commodityType: 'gas',
           fromCountry: 'US', toCountry: 'CA', transitCountries: [],
           capacityBcmYr: 1, startPoint: { lat: 0, lon: 0 }, endPoint: { lat: 1, lon: 1 },
@@ -213,6 +214,90 @@ describe('pipeline registries — validateRegistry rejects bad input', () => {
 
   test('rejects below MIN_PIPELINES_PER_REGISTRY', () => {
     const bad = { pipelines: { onlyOne: gas.pipelines[Object.keys(gas.pipelines)[0]!] } };
+    assert.equal(validateRegistry(bad), false);
+  });
+});
+
+describe('pipeline registries — GEM source enum', () => {
+  test('VALID_SOURCES exported and includes the existing six members plus gem', () => {
+    // Same source-of-truth pattern as VALID_OIL_PRODUCT_CLASSES (PR #3383):
+    // export the Set so future tests can't drift from the validator.
+    assert.ok(VALID_SOURCES.has('operator'));
+    assert.ok(VALID_SOURCES.has('regulator'));
+    assert.ok(VALID_SOURCES.has('press'));
+    assert.ok(VALID_SOURCES.has('satellite'));
+    assert.ok(VALID_SOURCES.has('ais-relay'));
+    assert.ok(VALID_SOURCES.has('gem'));
+  });
+
+  test('validateRegistry accepts GEM-sourced minimum-viable evidence (state=unknown)', () => {
+    // GEM rows ship as state=unknown until classifier promotes them.
+    // physicalStateSource='gem' is sufficient evidence per the audit.
+    const gasSample = gas.pipelines[Object.keys(gas.pipelines)[0]!];
+    const good = {
+      pipelines: Object.fromEntries(
+        Array.from({ length: 210 }, (_, i) => [`p${i}`, {
+          ...gasSample,
+          id: `p${i}`,
+          evidence: {
+            physicalState: 'unknown',
+            physicalStateSource: 'gem',
+            commercialState: 'unknown',
+            operatorStatement: null,
+            sanctionRefs: [],
+            classifierVersion: 'gem-import-v1',
+            classifierConfidence: 0.4,
+            lastEvidenceUpdate: '2026-04-25T00:00:00Z',
+          },
+        }])
+      ),
+    };
+    assert.equal(validateRegistry(good), true);
+  });
+
+  test('validateRegistry accepts GEM-sourced offline row (state=offline + only source=gem)', () => {
+    // Per plan U1 audit: 'gem' is evidence-bearing for non-flowing badges,
+    // parity with press/satellite/ais-relay. An offline row with no operator
+    // statement and no sanctionRefs but physicalStateSource='gem' should pass
+    // validation (the public-badge derivation downstream will then map it
+    // to "disputed" via the external-signal rule).
+    const gasSample = gas.pipelines[Object.keys(gas.pipelines)[0]!];
+    const good = {
+      pipelines: Object.fromEntries(
+        Array.from({ length: 210 }, (_, i) => [`p${i}`, {
+          ...gasSample,
+          id: `p${i}`,
+          evidence: {
+            physicalState: 'offline',
+            physicalStateSource: 'gem',
+            commercialState: 'unknown',
+            operatorStatement: null,
+            sanctionRefs: [],
+            classifierVersion: 'gem-import-v1',
+            classifierConfidence: 0.4,
+            lastEvidenceUpdate: '2026-04-25T00:00:00Z',
+          },
+        }])
+      ),
+    };
+    assert.equal(validateRegistry(good), true);
+  });
+
+  test('validateRegistry still rejects unknown physicalStateSource values', () => {
+    // Adding 'gem' must not loosen the enum — unknown sources still fail.
+    const gasSample = gas.pipelines[Object.keys(gas.pipelines)[0]!];
+    const bad = {
+      pipelines: Object.fromEntries(
+        Array.from({ length: 210 }, (_, i) => [`p${i}`, {
+          ...gasSample,
+          id: `p${i}`,
+          evidence: {
+            ...gasSample.evidence,
+            physicalStateSource: 'rumor',
+          },
+        }])
+      ),
+    };
     assert.equal(validateRegistry(bad), false);
   });
 });

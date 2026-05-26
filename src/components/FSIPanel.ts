@@ -4,6 +4,7 @@ import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
 import { getHydratedData } from '@/services/bootstrap';
+import { CISS_STALE_THRESHOLD_MS } from '@/shared/ciss-staleness';
 
 let _marketClient: MarketServiceClient | null = null;
 async function getMarketClient(): Promise<MarketServiceClient> {
@@ -33,10 +34,26 @@ function fsiLabelColor(label: string): string {
 }
 
 function fsiInterpretation(label: string): string {
-  if (label === 'Low Stress') return 'Credit markets functioning normally, equity/bond ratio healthy.';
-  if (label === 'Moderate Stress') return 'Some deterioration in credit conditions, monitor closely.';
-  if (label === 'Elevated Stress') return 'Significant credit market stress, defensive positioning warranted.';
-  return 'Severe financial stress, systemic risk elevated.';
+  if (label === 'Low Stress') return t('components.fsi.interpretation.low');
+  if (label === 'Moderate Stress') return t('components.fsi.interpretation.moderate');
+  if (label === 'Elevated Stress') return t('components.fsi.interpretation.elevated');
+  return t('components.fsi.interpretation.severe');
+}
+
+function fsiLabelDisplay(label: string): string {
+  if (label === 'Low Stress') return t('components.fsi.labels.lowStress');
+  if (label === 'Moderate Stress') return t('components.fsi.labels.moderateStress');
+  if (label === 'Elevated Stress') return t('components.fsi.labels.elevatedStress');
+  if (label === 'Severe Stress') return t('components.fsi.labels.severeStress');
+  return label;
+}
+
+function cissLabelDisplay(label: string): string {
+  if (label === 'Low') return t('components.fsi.cissLabels.low');
+  if (label === 'Moderate') return t('components.fsi.cissLabels.moderate');
+  if (label === 'Elevated') return t('components.fsi.cissLabels.elevated');
+  if (label === 'High') return t('components.fsi.cissLabels.high');
+  return label;
 }
 
 function cissLabelColor(label: string): string {
@@ -44,6 +61,18 @@ function cissLabelColor(label: string): string {
   if (label === 'Moderate') return '#f39c12';
   if (label === 'Elevated') return '#e67e22';
   return '#c0392b';
+}
+
+// CISS staleness guard — uses the shared CISS content-age budget. When ECB
+// stops publishing (as the legacy SS_CI series did for ~12 months, issue
+// #3845) the panel flags the value rather than present a frozen number as
+// current. Unparseable dates return false (no false-positive flag). The
+// render path prefers the server-computed `stale` flag and only falls back
+// to this for the hydrated-bootstrap path.
+function cissIsStale(latestDate: string): boolean {
+  const ts = Date.parse(latestDate);
+  if (!Number.isFinite(ts)) return false;
+  return Date.now() - ts > CISS_STALE_THRESHOLD_MS;
 }
 
 function metricCard(label: string, value: string): string {
@@ -57,7 +86,7 @@ export class FSIPanel extends Panel {
   private _hasData = false;
 
   constructor() {
-    super({ id: 'fsi', title: 'Financial Stress Indicator', showCount: false, infoTooltip: t('components.fsi.infoTooltip') });
+    super({ id: 'fsi', title: t('components.fsi.title'), showCount: false, infoTooltip: t('components.fsi.infoTooltip') });
   }
 
   public async fetchData(): Promise<boolean> {
@@ -93,7 +122,7 @@ export class FSIPanel extends Panel {
       }
 
       if (fsiValue <= 0) {
-        if (!this._hasData) this.showError('FSI data unavailable', () => void this.fetchData());
+        if (!this._hasData) this.showError(t('components.fsi.errors.unavailable'), () => void this.fetchData());
         return false;
       }
 
@@ -116,7 +145,7 @@ export class FSIPanel extends Panel {
       this.render({ fsiValue, fsiLabel, hygPrice, tltPrice, vix, hySpread }, euFsi);
       return true;
     } catch (e) {
-      if (!this._hasData) this.showError(e instanceof Error ? e.message : 'Failed to load', () => void this.fetchData());
+      if (!this._hasData) this.showError(e instanceof Error ? e.message : t('components.fsi.errors.failedToLoad'), () => void this.fetchData());
       return false;
     }
   }
@@ -130,44 +159,50 @@ export class FSIPanel extends Panel {
     const fillPct = Math.min(Math.max((fsiValue / 2.5) * 100, 0), 100);
     const interpretation = fsiInterpretation(fsiLabel);
 
+    // Prefer the server-computed `stale` flag (get-eu-fsi.ts applies the
+    // canonical budget); fall back to client-side derivation for the hydrated-
+    // bootstrap path, which reads the canonical key directly and so carries no
+    // `stale` field.
+    const cissStale = euFsi ? (euFsi.stale || cissIsStale(euFsi.latestDate)) : false;
     const cissSection = euFsi
       ? `<div style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.07)">
-          <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px">EU CISS (Euro Area Systemic Stress)</div>
+          <div style="font-size:10px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:8px">${escapeHtml(t('components.fsi.cissTitle'))}</div>
           <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px">
             <div style="font-size:28px;font-weight:700;color:${cissLabelColor(euFsi.label)};line-height:1">${euFsi.latestValue.toFixed(4)}</div>
             <div>
-              <div style="font-size:12px;font-weight:600;color:${cissLabelColor(euFsi.label)}">${escapeHtml(euFsi.label)}</div>
-              <div style="font-size:10px;color:var(--text-dim)">${escapeHtml(euFsi.latestDate ? new Date(euFsi.latestDate).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '')}</div>
+              <div style="font-size:12px;font-weight:600;color:${cissLabelColor(euFsi.label)}">${escapeHtml(cissLabelDisplay(euFsi.label))}</div>
+              <div style="font-size:10px;color:${cissStale ? '#e67e22' : 'var(--text-dim)'}">${escapeHtml(euFsi.latestDate ? new Date(euFsi.latestDate).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : '')}</div>
             </div>
           </div>
+          ${cissStale ? `<div style="font-size:9px;color:#e67e22;background:rgba(230,126,34,0.1);border-radius:4px;padding:4px 6px;margin-bottom:8px">⚠ ${escapeHtml(t('components.fsi.cissStale'))}</div>` : ''}
           <div style="background:rgba(255,255,255,0.07);border-radius:4px;height:6px;overflow:hidden">
             <div style="height:100%;width:${(euFsi.latestValue * 100).toFixed(1)}%;background:linear-gradient(90deg,#27ae60,#f39c12,#c0392b);border-radius:4px"></div>
           </div>
           <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-dim);margin-top:3px">
-            <span>0 — No stress</span><span>1 — Extreme stress</span>
+            <span>${escapeHtml(t('components.fsi.scale.noStress'))}</span><span>${escapeHtml(t('components.fsi.scale.extremeStress'))}</span>
           </div>
         </div>`
       : '';
 
     const html = `<div style="padding:12px 14px">
       <div style="text-align:center;margin-bottom:16px">
-        <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px">US FSI VALUE</div>
+        <div style="font-size:11px;color:var(--text-dim);margin-bottom:4px">${escapeHtml(t('components.fsi.usFsiValue'))}</div>
         <div style="font-size:36px;font-weight:700;color:${labelColor};line-height:1">${fsiValue.toFixed(4)}</div>
-        <div style="font-size:13px;font-weight:600;color:${labelColor};margin-top:4px">${escapeHtml(fsiLabel)}</div>
+        <div style="font-size:13px;font-weight:600;color:${labelColor};margin-top:4px">${escapeHtml(fsiLabelDisplay(fsiLabel))}</div>
       </div>
       <div style="margin:0 0 12px">
         <div style="display:flex;justify-content:space-between;font-size:9px;color:var(--text-dim);margin-bottom:3px">
-          <span>High Stress</span><span>Low Stress</span>
+          <span>${escapeHtml(t('components.fsi.scale.highStress'))}</span><span>${escapeHtml(t('components.fsi.scale.lowStress'))}</span>
         </div>
         <div style="background:rgba(255,255,255,0.07);border-radius:4px;height:8px;overflow:hidden">
           <div style="height:100%;width:${fillPct.toFixed(1)}%;background:linear-gradient(90deg,#c0392b,#f39c12,#27ae60);border-radius:4px"></div>
         </div>
       </div>
       <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-bottom:12px">
-        ${metricCard('VIX', vix > 0 ? vix.toFixed(2) : 'N/A')}
-        ${metricCard('HY Spread', hySpread > 0 ? hySpread.toFixed(2) + '%' : 'N/A')}
-        ${metricCard('HYG Price', hygPrice > 0 ? '$' + hygPrice.toFixed(2) : 'N/A')}
-        ${metricCard('TLT Price', tltPrice > 0 ? '$' + tltPrice.toFixed(2) : 'N/A')}
+        ${metricCard(t('components.fsi.metrics.vix'), vix > 0 ? vix.toFixed(2) : t('components.fsi.notAvailable'))}
+        ${metricCard(t('components.fsi.metrics.hySpread'), hySpread > 0 ? hySpread.toFixed(2) + '%' : t('components.fsi.notAvailable'))}
+        ${metricCard(t('components.fsi.metrics.hygPrice'), hygPrice > 0 ? '$' + hygPrice.toFixed(2) : t('components.fsi.notAvailable'))}
+        ${metricCard(t('components.fsi.metrics.tltPrice'), tltPrice > 0 ? '$' + tltPrice.toFixed(2) : t('components.fsi.notAvailable'))}
       </div>
       <div style="font-size:11px;color:var(--text-dim);background:rgba(255,255,255,0.03);border-radius:6px;padding:8px 10px;border-left:3px solid ${labelColor}">
         ${escapeHtml(interpretation)}

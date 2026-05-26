@@ -123,8 +123,8 @@ export function declareRecords(data) {
 async function main() {
   const apiKey = process.env.NASA_FIRMS_API_KEY || process.env.FIRMS_API_KEY || '';
   if (!apiKey) {
-    console.log('NASA_FIRMS_API_KEY not set — skipping fire detections seed');
-    process.exit(0);
+    console.error('[seed-fire-detections] NASA_FIRMS_API_KEY (or FIRMS_API_KEY) is required but not set. Refusing to run.');
+    process.exit(1);
   }
 
   console.log('  FIRMS key configured');

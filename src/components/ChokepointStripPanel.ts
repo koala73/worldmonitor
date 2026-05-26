@@ -1,4 +1,5 @@
 import { Panel } from './Panel';
+import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
 import { getHydratedData } from '@/services/bootstrap';
 import { fetchChokepointStatus } from '@/services/supply-chain';
@@ -17,15 +18,21 @@ const STRIP_ORDER = [
   'panama',
 ];
 
-const SHORT_NAME: Record<string, string> = {
-  hormuz_strait: 'Hormuz',
-  malacca_strait: 'Malacca',
-  suez: 'Suez',
-  bab_el_mandeb: 'Bab el-Mandeb',
-  bosphorus: 'Turkish Straits',
-  dover_strait: 'Danish Straits',
-  panama: 'Panama',
-};
+function shortName(id: string): string {
+  switch (id) {
+    case 'hormuz_strait': return t('components.chokepointStrip.shortName.hormuzStrait');
+    case 'malacca_strait': return t('components.chokepointStrip.shortName.malaccaStrait');
+    case 'suez': return t('components.chokepointStrip.shortName.suez');
+    case 'bab_el_mandeb': return t('components.chokepointStrip.shortName.babElMandeb');
+    case 'bosphorus': return t('components.chokepointStrip.shortName.bosphorus');
+    case 'dover_strait': return t('components.chokepointStrip.shortName.danishStraits');
+    case 'panama': return t('components.chokepointStrip.shortName.panama');
+    // Empty string lets the call site's `|| cp.name` fallback fire so any
+    // future chokepoint added to the API but not yet in this switch
+    // displays its server-supplied name instead of its raw machine ID.
+    default: return '';
+  }
+}
 
 function statusColor(status: string): string {
   const s = (status || '').toLowerCase();
@@ -39,8 +46,8 @@ function formatFlow(cp: ChokepointInfo): string {
   const est = cp.flowEstimate;
   if (!est || typeof est.currentMbd !== 'number' || typeof est.baselineMbd !== 'number') return '—';
   const pct = est.baselineMbd > 0 ? Math.round((est.currentMbd / est.baselineMbd) * 100) : null;
-  if (pct == null) return `${est.currentMbd.toFixed(1)} mb/d`;
-  return `${pct}% of baseline`;
+  if (pct == null) return t('components.chokepointStrip.flow.mbd', { value: est.currentMbd.toFixed(1) });
+  return t('components.chokepointStrip.flow.pctOfBaseline', { pct });
 }
 
 export class ChokepointStripPanel extends Panel {
@@ -49,11 +56,8 @@ export class ChokepointStripPanel extends Panel {
   constructor() {
     super({
       id: 'chokepoint-strip',
-      title: 'Chokepoint Status',
-      infoTooltip:
-        'Live status for the seven global oil & gas shipping chokepoints. ' +
-        'Flow estimates calibrated from Portwatch DWT + AIS observations. ' +
-        'See /docs/methodology/chokepoints for methodology.',
+      title: t('components.chokepointStrip.title'),
+      infoTooltip: t('components.chokepointStrip.infoTooltip'),
     });
   }
 
@@ -77,13 +81,13 @@ export class ChokepointStripPanel extends Panel {
     } catch (err) {
       if (this.isAbortError(err)) return;
       if (!this.element?.isConnected) return;
-      this.showError('Chokepoint status unavailable', () => void this.fetchData());
+      this.showError(t('components.chokepointStrip.errors.unavailable'), () => void this.fetchData());
     }
   }
 
   private render(): void {
     if (!this.data?.chokepoints?.length) {
-      this.showError('No chokepoint data yet', () => void this.fetchData());
+      this.showError(t('components.chokepointStrip.errors.noData'), () => void this.fetchData());
       return;
     }
 
@@ -94,13 +98,13 @@ export class ChokepointStripPanel extends Panel {
 
     const chips = ordered.map(cp => {
       const color = statusColor(cp.status);
-      const short = SHORT_NAME[cp.id] || cp.name;
+      const short = shortName(cp.id) || cp.name;
       const flow = formatFlow(cp);
       const warnings = cp.activeWarnings > 0
         ? `<span class="cp-chip-warn">${cp.activeWarnings}</span>`
         : '';
       return `
-        <div class="cp-chip" data-cp="${escapeHtml(cp.id)}" title="${escapeHtml(cp.name)} — ${escapeHtml(cp.status || 'unknown')}">
+        <div class="cp-chip" data-cp="${escapeHtml(cp.id)}" title="${escapeHtml(cp.name)} — ${escapeHtml(cp.status || t('components.chokepointStrip.unknown'))}">
           <div class="cp-chip-dot" style="background:${color}"></div>
           <div class="cp-chip-body">
             <div class="cp-chip-name">${escapeHtml(short)}${warnings}</div>
@@ -112,11 +116,11 @@ export class ChokepointStripPanel extends Panel {
     const nAis = ordered.reduce((sum, cp) => sum + (cp.aisDisruptions ?? 0), 0);
     const footer = attributionFooterHtml({
       sourceType: 'ais',
-      method: 'Portwatch DWT + AIS calibration',
+      method: t('components.chokepointStrip.attribution.method'),
       sampleSize: nAis || undefined,
-      sampleLabel: 'AIS disruption signals',
+      sampleLabel: t('components.chokepointStrip.attribution.sampleLabel'),
       updatedAt: this.data.fetchedAt,
-      creditName: 'EIA World Oil Transit Chokepoints',
+      creditName: t('components.chokepointStrip.attribution.creditName'),
     });
 
     this.setContent(`

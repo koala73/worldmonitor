@@ -125,7 +125,7 @@ describe('computeLowConfidence: retired-dim exclusion', () => {
     const dims = [
       dim('macroFiscal', 0.9),
       dim('currencyExternal', 0),   // non-retired coverage=0
-      dim('tradeSanctions', 0),     // non-retired coverage=0
+      dim('tradePolicy', 0),     // non-retired coverage=0
       dim('cyberDigital', 0),       // non-retired coverage=0
     ];
     assert.equal(computeLowConfidence(dims, 0), true,

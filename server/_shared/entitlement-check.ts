@@ -26,6 +26,14 @@ interface CachedEntitlements {
     maxDashboards: number;
     prioritySupport: boolean;
     exportFormats: string[];
+    /**
+     * Pro MCP access (plan 2026-05-10-001). Undefined on legacy entitlement
+     * rows written before the catalog field landed; every consumer
+     * (gateway HMAC verifier, isCallerPremium, MCP edge handler) treats
+     * undefined as `false` — fail-closed. The Dodo webhook repopulates
+     * this on the next subscription event.
+     */
+    mcpAccess?: boolean;
   };
   validUntil: number;
 }
@@ -40,12 +48,18 @@ interface CachedEntitlements {
  *
  * Adding a new gated endpoint = adding one line to this map.
  * Endpoints NOT in this map are unrestricted.
+ *
+ * Stock-analysis endpoints sit at tier 1 (Pro) — the productCatalog markets
+ * "AI stock analysis & backtesting" as a Pro feature, and these paths are
+ * also in PREMIUM_RPC_PATHS where the legacy bearer gate accepts tier >= 1.
+ * Tier-2 here would have made the new gate stricter than the legacy one and
+ * 403'd real Pro subscribers calling via Clerk session (no tester key).
  */
 const ENDPOINT_ENTITLEMENTS: Record<string, number> = {
-  '/api/market/v1/analyze-stock': 2,
-  '/api/market/v1/get-stock-analysis-history': 2,
-  '/api/market/v1/backtest-stock': 2,
-  '/api/market/v1/list-stored-stock-backtests': 2,
+  '/api/market/v1/analyze-stock': 1,
+  '/api/market/v1/get-stock-analysis-history': 1,
+  '/api/market/v1/backtest-stock': 1,
+  '/api/market/v1/list-stored-stock-backtests': 1,
 };
 
 const CONVEX_INTERNAL_ENTITLEMENTS_PATH = '/api/internal-entitlements';
@@ -116,11 +130,26 @@ async function _getEntitlementsImpl(userId: string): Promise<CachedEntitlements 
 
     if (cached && typeof cached === 'object') {
       const ent = cached as CachedEntitlements;
-      // Only use cached data if it hasn't expired
-      if (ent.validUntil >= Date.now()) {
+      // Only use cached data if it hasn't expired AND has the post-U10 shape.
+      //
+      // Legacy cache entries written before plan 2026-05-10-001 U10 lack the
+      // `features.mcpAccess` field. The Convex read path read-time-merges
+      // catalog defaults (convex/entitlements.ts:50), but bare-cache reads
+      // bypass that merge — paying users with hot pre-deploy cache entries
+      // would see `mcpAccess !== true` at the grant/MCP gates and get
+      // blocked for up to 15 min until the cache expires. Treating
+      // missing-field cache entries as stale falls through to Convex,
+      // which returns the merged shape and rewrites the cache with the
+      // post-U10 layout. Self-healing, bounded to one extra Convex
+      // round-trip per affected user during the migration window.
+      // Reviewer round-2 P2 (cache layer).
+      if (
+        ent.validUntil >= Date.now() &&
+        typeof (ent.features as { mcpAccess?: boolean }).mcpAccess === 'boolean'
+      ) {
         return ent;
       }
-      // Expired -- fall through to Convex
+      // Expired OR legacy shape -- fall through to Convex.
     }
 
     // Convex fallback on cache miss or expired cache
@@ -141,8 +170,23 @@ async function _getEntitlementsImpl(userId: string): Promise<CachedEntitlements 
     const result = await response.json() as CachedEntitlements | null;
 
     if (result) {
-      // Populate Redis cache for subsequent requests (15-min TTL, raw key)
-      await setCachedJson(`entitlements:${ENV_PREFIX}:${userId}`, result, ENTITLEMENT_CACHE_TTL_SECONDS, true);
+      // Populate Redis cache for subsequent requests (15-min TTL, raw key).
+      //
+      // Cache-write failures must NOT collapse "entitlement confirmed by Convex"
+      // into the null-means-no-entitlement return. Today setCachedJson swallows
+      // its own Upstash errors via an internal try/catch (server/_shared/redis.ts),
+      // but that contract is fragile — the tauri-sidecar dynamic import path at
+      // redis.ts:142-146 is OUTSIDE the inner try/catch, and any future code
+      // motion could let other errors propagate. Wrap explicitly here so the
+      // property "Convex said yes ⇒ caller sees yes" is local and load-bearing.
+      // Without this, an Upstash hiccup would 403 every paying customer on the
+      // very call paths this file gates — the same shape PR #3505 fixed for the
+      // Clerk-only-no-Convex outlier in api/widget-agent.ts.
+      try {
+        await setCachedJson(`entitlements:${ENV_PREFIX}:${userId}`, result, ENTITLEMENT_CACHE_TTL_SECONDS, true);
+      } catch (cacheErr) {
+        console.warn('[entitlement-check] cache write failed (non-fatal):', cacheErr instanceof Error ? cacheErr.message : String(cacheErr));
+      }
       return result as CachedEntitlements;
     }
 

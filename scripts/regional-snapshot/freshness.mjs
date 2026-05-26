@@ -28,17 +28,17 @@
  * @type {SourceFreshnessSpec[]}
  */
 export const FRESHNESS_REGISTRY = [
-  { key: 'risk:scores:sebuf:stale:v1',          maxAgeMin: 30,    feedsAxes: ['domestic_fragility', 'coercive_pressure'] },
+  { key: 'risk:scores:sebuf:stale:v2',          maxAgeMin: 30,    feedsAxes: ['domestic_fragility', 'coercive_pressure'], metaKey: 'seed-meta:intelligence:risk-scores' },
   { key: 'forecast:predictions:v2',              maxAgeMin: 180,   feedsAxes: ['scenarios', 'actors'] },
   { key: 'supply_chain:chokepoints:v4',          maxAgeMin: 30,    feedsAxes: ['maritime_access', 'corridors'] },
-  { key: 'supply_chain:transit-summaries:v1',    maxAgeMin: 30,    feedsAxes: ['maritime_access'] },
-  { key: 'intelligence:cross-source-signals:v1', maxAgeMin: 45,    feedsAxes: ['coercive_pressure', 'evidence'] },
-  { key: 'relay:oref:history:v1',                maxAgeMin: 15,    feedsAxes: ['coercive_pressure', 'triggers'] },
+  { key: 'supply_chain:transit-summaries:v1',    maxAgeMin: 30,    feedsAxes: ['maritime_access'], metaKey: 'seed-meta:supply_chain:transit-summaries' },
+  { key: 'intelligence:cross-source-signals:v1', maxAgeMin: 45,    feedsAxes: ['coercive_pressure', 'evidence'], metaKey: 'seed-meta:intelligence:cross-source-signals' },
+  { key: 'relay:oref:history:v1',                maxAgeMin: 15,    feedsAxes: ['coercive_pressure', 'triggers'], metaKey: 'seed-meta:relay:oref:history' },
   { key: 'economic:macro-signals:v1',            maxAgeMin: 60,    feedsAxes: ['capital_stress'] },
   { key: 'economic:national-debt:v1',            maxAgeMin: 86400, feedsAxes: ['capital_stress'], metaKey: 'seed-meta:economic:national-debt' }, // monthly seed (30d cron), 60d window absorbs one missed run — mirrors api/health.js nationalDebt. metaKey is the primary freshness source (payload's seededAt is also recognized by extractTimestamp as a fallback).
   { key: 'economic:stress-index:v1',             maxAgeMin: 120,   feedsAxes: ['capital_stress'] },
-  { key: 'energy:mix:v1:_all',                   maxAgeMin: 50400, feedsAxes: ['energy_vulnerability'] },
-  { key: 'economic:eu-gas-storage:v1',           maxAgeMin: 2880,  feedsAxes: ['energy_vulnerability'] },
+  { key: 'energy:mix:v1:_all',                   maxAgeMin: 50400, feedsAxes: ['energy_vulnerability'], metaKey: 'seed-meta:economic:owid-energy-mix' },
+  { key: 'economic:eu-gas-storage:v1',           maxAgeMin: 2880,  feedsAxes: ['energy_vulnerability'], metaKey: 'seed-meta:economic:eu-gas-storage' }, // runSeed writes seed-meta with numeric fetchedAt; metaKey takes priority over payload fields, defense-in-depth against a future refactor that strips fetchedAt/seededAt from the payload (regression risk that produced #3728).
   { key: 'economic:spr:v1',                      maxAgeMin: 10080, feedsAxes: ['energy_buffer'] },
   // Mobility v1 (Phase 2 PR2) — feed the MobilityState block via mobility.mjs.
   // maxAgeMin matches each seeder's cron interval + safety buffer.
@@ -71,10 +71,11 @@ export const ALL_INPUT_KEYS = FRESHNESS_REGISTRY.map((s) => s.key);
  *      a top-level timestamp (FAA alerts, AviationStack, NOTAM, GPS jam).
  *   2. Otherwise, pull a timestamp from the primary payload via
  *      extractTimestamp (fetchedAt, generatedAt, timestamp, updatedAt,
- *      lastUpdate).
- *   3. If neither yields a timestamp, fall back to "fresh" (cannot prove
- *      staleness). This fallback remains so we don't regress existing
- *      keys that have never needed a meta key.
+ *      lastUpdate, seededAt).
+ *   3. If neither yields a timestamp, classify as stale. A present-but-undated
+ *      payload cannot be proven fresh — defaulting to fresh let stalled
+ *      seeders silently inflate snapshot_confidence (#3728). Forcing stale
+ *      pressures upstream to emit a timestamp.
  *
  * @param {Record<string, unknown>} payloads - Map of key -> raw value (or null)
  * @param {Record<string, unknown>} [metaPayloads] - Map of metaKey -> raw value (or null)
@@ -104,8 +105,10 @@ export function classifyInputs(payloads, metaPayloads = {}) {
     if (ts === null) ts = extractTimestamp(payload);
 
     if (ts === null) {
-      // Present but undated — treat as fresh (we cannot prove staleness).
-      fresh.push(spec.key);
+      // Present but undated — classify as stale. We cannot prove freshness,
+      // and the previous "default to fresh" behavior fabricated
+      // snapshot_confidence whenever a seeder stalled with no timestamp.
+      stale.push(spec.key);
       continue;
     }
     const ageMin = (now - ts) / 60_000;
@@ -116,6 +119,29 @@ export function classifyInputs(payloads, metaPayloads = {}) {
     }
   }
   return { fresh, stale, missing };
+}
+
+/**
+ * Resolve the effective timestamp for an input, preferring the metaKey
+ * (when declared) over the payload's own timestamp. Returns null if neither
+ * source carries a parseable timestamp.
+ *
+ * Exported for snapshot-meta.mjs, which needs the per-input timestamp to
+ * derive valid_until from the registry's maxAgeMin.
+ *
+ * @param {SourceFreshnessSpec} spec
+ * @param {unknown} payload
+ * @param {Record<string, unknown>} metaPayloads
+ * @returns {number | null}
+ */
+export function resolveInputTimestamp(spec, payload, metaPayloads) {
+  let ts = null;
+  if (spec.metaKey) {
+    const meta = metaPayloads[spec.metaKey];
+    ts = extractTimestamp(meta);
+  }
+  if (ts === null) ts = extractTimestamp(payload);
+  return ts;
 }
 
 /** Pull a timestamp out of common payload shapes; null if none found. */

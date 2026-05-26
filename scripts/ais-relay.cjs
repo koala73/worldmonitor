@@ -78,11 +78,16 @@ const MEMORY_CLEANUP_THRESHOLD_GB = (() => {
 })();
 const RELAY_SHARED_SECRET = process.env.RELAY_SHARED_SECRET || '';
 const RELAY_AUTH_HEADER = (process.env.RELAY_AUTH_HEADER || 'x-relay-key').toLowerCase();
-const ALLOW_UNAUTHENTICATED_RELAY = process.env.ALLOW_UNAUTHENTICATED_RELAY === 'true';
-const IS_PRODUCTION_RELAY = process.env.NODE_ENV === 'production'
-  || !!process.env.RAILWAY_ENVIRONMENT
-  || !!process.env.RAILWAY_PROJECT_ID
-  || !!process.env.RAILWAY_STATIC_URL;
+// Auth bypass: new canonical name + legacy alias. The new name's verbose
+// wording is intentional — it should be hard to set in production by accident.
+// The legacy `ALLOW_UNAUTHENTICATED_RELAY` is still accepted but emits a
+// deprecation warning so existing self-hosted operators are not broken.
+const _AUTH_BYPASS_NEW = process.env.I_UNDERSTAND_THIS_DISABLES_AUTH === 'true';
+const _AUTH_BYPASS_OLD = process.env.ALLOW_UNAUTHENTICATED_RELAY === 'true';
+const ALLOW_UNAUTHENTICATED_RELAY = _AUTH_BYPASS_NEW || _AUTH_BYPASS_OLD;
+if (_AUTH_BYPASS_OLD && !_AUTH_BYPASS_NEW) {
+  console.warn('[DEPRECATED] ALLOW_UNAUTHENTICATED_RELAY=true is deprecated. Use I_UNDERSTAND_THIS_DISABLES_AUTH=true instead.');
+}
 const RELAY_RATE_LIMIT_WINDOW_MS = Math.max(1000, Number(process.env.RELAY_RATE_LIMIT_WINDOW_MS || 60000));
 const RELAY_RATE_LIMIT_MAX = Number.isFinite(Number(process.env.RELAY_RATE_LIMIT_MAX))
   ? Number(process.env.RELAY_RATE_LIMIT_MAX) : 1200;
@@ -146,11 +151,44 @@ const OREF_LOCAL_FILE = (() => {
 const RELAY_OREF_RATE_LIMIT_MAX = Number.isFinite(Number(process.env.RELAY_OREF_RATE_LIMIT_MAX))
   ? Number(process.env.RELAY_OREF_RATE_LIMIT_MAX) : 600;
 
-if (IS_PRODUCTION_RELAY && !RELAY_SHARED_SECRET && !ALLOW_UNAUTHENTICATED_RELAY) {
-  console.error('[Relay] Error: RELAY_SHARED_SECRET is required in production');
-  console.error('[Relay] Set RELAY_SHARED_SECRET on Railway and Vercel to secure relay endpoints');
-  console.error('[Relay] To bypass temporarily (not recommended), set ALLOW_UNAUTHENTICATED_RELAY=true');
+// Fail-closed: refuse to boot without a shared secret. This applies in ALL
+// environments (production, dev, self-hosted Docker, etc.) so a self-hosted
+// `docker compose up -d` against the published image cannot accidentally
+// expose every route. Operators who genuinely need an unauthenticated relay
+// must opt in explicitly with the loud `I_UNDERSTAND_THIS_DISABLES_AUTH=true`.
+// (#3801 — closes the IS_PRODUCTION_RELAY-only gate that left self-hosted
+// deployments wide open.)
+if (!RELAY_SHARED_SECRET && !ALLOW_UNAUTHENTICATED_RELAY) {
+  console.error('[Relay] FATAL: RELAY_SHARED_SECRET is not set.');
+  console.error('[Relay] Generate a strong random secret and set it on every host running the relay:');
+  console.error('[Relay]   RELAY_SHARED_SECRET="$(openssl rand -hex 32)"');
+  console.error('[Relay] To explicitly opt out (DEV ONLY — leaves all routes publicly accessible):');
+  console.error('[Relay]   I_UNDERSTAND_THIS_DISABLES_AUTH=true   (formerly ALLOW_UNAUTHENTICATED_RELAY=true)');
   process.exit(1);
+}
+
+// Loud recurring SECURITY warning when auth is effectively disabled. Operators
+// who opt out with the bypass var get a bright reminder both at boot and every
+// 5 minutes in long-running logs so the no-auth state stays visible.
+//
+// Auth is effectively disabled ONLY when there's no secret to check. If a
+// secret IS set, isAuthorizedRequest() enforces it regardless of the bypass
+// flag — the bypass branch only runs when the secret is absent — so we must
+// not warn (or report auth.enabled=false on /health) when the secret is set.
+const AUTH_EFFECTIVELY_DISABLED = !RELAY_SHARED_SECRET;
+if (AUTH_EFFECTIVELY_DISABLED) {
+  console.warn('[SECURITY] relay is running WITHOUT auth — RELAY_SHARED_SECRET unset and I_UNDERSTAND_THIS_DISABLES_AUTH=true. All non-public routes are reachable by anyone who can hit this port.');
+  setInterval(() => {
+    console.warn('[SECURITY] relay STILL running without auth — set RELAY_SHARED_SECRET to lock down non-public routes.');
+  }, 5 * 60 * 1000).unref();
+}
+
+// Separately: if the bypass is set redundantly alongside a real secret, the
+// bypass is silently ignored (isAuthorizedRequest enforces the secret). Emit
+// a single INFO line so operators can clean up their env without wondering
+// why their bypass appears to have no effect.
+if (RELAY_SHARED_SECRET && ALLOW_UNAUTHENTICATED_RELAY) {
+  console.info('[Relay] I_UNDERSTAND_THIS_DISABLES_AUTH=true is ignored — RELAY_SHARED_SECRET is configured and takes precedence. Unset the bypass flag to silence this notice.');
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -428,12 +466,46 @@ function notifySimpleHash(str) {
   return Math.abs(h).toString(36);
 }
 
+/**
+ * Slot B helper: derive a coalesce-family key from an NWS VTEC string.
+ *
+ * NWS VTEC format (https://www.weather.gov/vtec/):
+ *   /O.NEW.KSGF.SV.W.0034.250427T1257Z-250427T1330Z/
+ *    │  │   │   │  │  │
+ *    │  │   │   │  │  └── event tracking number (per-office, per-phenomenon, per-significance)
+ *    │  │   │   │  └───── significance: W=warning, A=watch, Y=advisory, etc.
+ *    │  │   │   └──────── phenomenon: SV=severe thunderstorm, TO=tornado, FF=flash flood, etc.
+ *    │  │   └──────────── forecast office (4-letter ICAO)
+ *    │  └──────────────── action: NEW, CON (continued), CAN (cancel), EXP (expired), etc.
+ *    └─────────────────── product status: O=operational, T=test, E=exercise, X=experimental
+ *
+ * The (office, phenomenon, significance, eventID) tuple identifies one logical
+ * event across adjacent zones — exactly what we want to coalesce. We drop the
+ * action so NEW + CON + CAN bulletins for the same event also collapse.
+ *
+ * Returns a stable family key like "nws:KSGF.SV.W.0034" or undefined if the
+ * VTEC string is missing or malformed.
+ */
+function deriveWeatherCoalesceKey(vtec) {
+  if (typeof vtec !== 'string') return undefined;
+  const m = vtec.match(/\/[OTEX]\.[A-Z]+\.([A-Z]{4})\.([A-Z]{2})\.([A-Z])\.(\d{4})\./);
+  if (!m) return undefined;
+  return `nws:${m[1]}.${m[2]}.${m[3]}.${m[4]}`;
+}
+
 async function publishNotificationEvent({ eventType, payload, severity, variant, dedupTtl = 1800 }) {
   try {
     // Include variant in dedup key so each variant can independently publish the same title
-    // (e.g. finance and world users both receive an alert for the same headline)
+    // (e.g. finance and world users both receive an alert for the same headline).
+    // Slot B: when payload.coalesceKey is set (e.g. NWS VTEC family), key on it
+    // instead of the title hash so adjacent-zone alerts for the same logical
+    // event collapse at the publisher (queue stays clean) instead of N times
+    // per recipient at the relay.
     const variantSuffix = variant ? `:${variant}` : '';
-    const dedupKey = `wm:notif:scan-dedup:${eventType}${variantSuffix}:${notifySimpleHash(`${eventType}:${payload.title ?? ''}`)}`;
+    const dedupMaterial = payload?.coalesceKey
+      ? `coalesce:${payload.coalesceKey}`
+      : `${eventType}:${payload.title ?? ''}`;
+    const dedupKey = `wm:notif:scan-dedup:${eventType}${variantSuffix}:${notifySimpleHash(dedupMaterial)}`;
     const isNew = await upstashSetNx(dedupKey, '1', dedupTtl);
     if (!isNew) {
       console.log(`[Notify] Dedup hit — ${eventType}: ${String(payload.title ?? '').slice(0, 60)}`);
@@ -1181,6 +1253,25 @@ async function orefPersistHistory() {
     const ok = await envelopeWrite(OREF_REDIS_KEY, payload, OREF_PERSIST_TTL_SECONDS, { recordCount: waves.length, sourceVersion: 'oref', zeroOk: true });
     if (ok) {
       orefState._lastPersistedVersion = versionAtStart;
+    }
+    // Companion seed-meta:* write — the OREF payload only carries `persistedAt`
+    // (an ISO string not in extractTimestamp's recognised set), so without this
+    // key the regional-snapshot freshness classifier would flag the input as
+    // STALE on every run (#3781). Tracked by api/health.js for staleness alerts.
+    //
+    // Gate on `ok`: if the envelope write failed (Upstash 5xx / network blip),
+    // a successful meta write alone would tell the freshness classifier the
+    // input is FRESH for data that does not actually exist in Redis. The 7d
+    // meta TTL is deliberately wider than the 15min maxAgeMin so a brief
+    // seed gap keeps the meta around for diagnostics; freshness still flips
+    // STALE off the now-vs-fetchedAt delta.
+    //
+    // NOTE (#3781 review): the transit-summaries write at line ~7370 still
+    // does its meta write unconditionally and has the same failure mode.
+    // That is a pre-existing bug intentionally left out of scope here; it
+    // should be fixed in a follow-up PR.
+    if (ok) {
+      await upstashSet('seed-meta:relay:oref:history', { fetchedAt: Date.now(), recordCount: waves.length }, 604800);
     }
     orefSaveLocalHistory();
   } finally {
@@ -2991,6 +3082,86 @@ const RELAY_TIER4_SOURCES = new Set(
 
 const RELAY_SCORE_WEIGHTS = { severity: 0.55, sourceTier: 0.2, corroboration: 0.15, recency: 0.1 };
 const RELAY_SEVERITY_SCORES = { critical: 100, high: 75, medium: 50, low: 25, info: 0 };
+const RELAY_DIPLOMACY_KEYWORDS = [
+  'ceasefire', 'truce', 'armistice', 'treaty', 'accord', 'pact', 'diplomatic',
+  'diplomacy', 'mediate', 'mediator', 'negotiation', 'negotiations', 'negotiate',
+  'normalization', 'normalisation',
+];
+const RELAY_FLASHPOINT_SCORING_KEYWORDS = [
+  'iran', 'tehran', 'russia', 'moscow', 'china', 'beijing', 'taiwan', 'ukraine', 'kyiv',
+  'north korea', 'pyongyang', 'israel', 'gaza', 'west bank', 'syria', 'damascus',
+  'yemen', 'hezbollah', 'hamas', 'kremlin', 'pentagon', 'nato', 'wagner',
+];
+const RELAY_DIPLOMACY_FLASHPOINT_PAIRS = [
+  ['iran', 'deal'],
+  ['iran', 'talks'],
+  ['iran', 'ceasefire'],
+  ['iran', 'treaty'],
+  ['iran', 'accord'],
+  ['iran', 'peace'],
+  ['israel', 'ceasefire'],
+  ['israel', 'truce'],
+  ['israel', 'accord'],
+  ['gaza', 'ceasefire'],
+  ['gaza', 'truce'],
+  ['ukraine', 'ceasefire'],
+  ['ukraine', 'talks'],
+  ['russia', 'talks'],
+  ['russia', 'treaty'],
+  ['hamas', 'truce'],
+  ['hezbollah', 'truce'],
+  ['syria', 'ceasefire'],
+  ['china', 'talks'],
+  ['china', 'accord'],
+  ['taiwan', 'talks'],
+  ['yemen', 'ceasefire'],
+  ['north korea', 'talks'],
+  ['pyongyang', 'talks'],
+];
+const RELAY_DIPLOMACY_FLASHPOINT_BOOST = 18;
+const RELAY_ENTITY_CORROBORATION_SCORE_PER_SOURCE = 4;
+
+function relayNormalizeScoringText(text) {
+  return String(text || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+// Word-start containment in normalized text. Mirrors
+// shared/brief-filter.js:containsKeywordToken — prevents 'pact' inside
+// 'impact' (false positive) while still matching 'iran' inside
+// 'iranian' (demonym preserved). PR #3909 review (P2). Keeps the
+// relay aligned with digest under tests/importance-score-parity.test.mjs.
+function relayContainsKeywordToken(text, kw) {
+  if (!kw) return false;
+  const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|\\s)${escaped}`).test(text);
+}
+
+function relayHasAnySignal(text, keywords) {
+  return keywords.some((kw) => relayContainsKeywordToken(text, kw));
+}
+
+function relayHasDiplomacyFlashpointSignal(title) {
+  if (!title) return false;
+  const text = relayNormalizeScoringText(title);
+  if (
+    RELAY_DIPLOMACY_FLASHPOINT_PAIRS.some(([entity, action]) =>
+      relayContainsKeywordToken(text, entity) && relayContainsKeywordToken(text, action),
+    )
+  ) {
+    return true;
+  }
+  return relayHasAnySignal(text, RELAY_DIPLOMACY_KEYWORDS) &&
+    relayHasAnySignal(text, RELAY_FLASHPOINT_SCORING_KEYWORDS);
+}
+
+function relayDiplomacyFlashpointBoost(title) {
+  return relayHasDiplomacyFlashpointSignal(title) ? RELAY_DIPLOMACY_FLASHPOINT_BOOST : 0;
+}
+
+function relayEntityCorroborationScore(count) {
+  const finite = Number.isFinite(count) ? Number(count) : 0;
+  return Math.min(Math.max(finite, 0), 5) * RELAY_ENTITY_CORROBORATION_SCORE_PER_SOURCE;
+}
 
 // Mirrors computeImportanceScore() in list-feed-digest.ts with ONE intentional
 // deviation: the relay defensively returns 0 for unknown severity levels
@@ -2998,17 +3169,22 @@ const RELAY_SEVERITY_SCORES = { critical: 100, high: 75, medium: 50, low: 25, in
 // exercised in tests/importance-score-parity.test.mjs "unknown severity" case.
 // Caller responsibility: pass defined values; relay publish site defaults
 // corroborationCount → 1 and publishedAt → Date.now() when upstream omits them.
-function relayComputeImportanceScore(level, source, corroborationCount, publishedAt) {
+function relayComputeImportanceScore(level, source, corroborationCount, publishedAt, context = {}) {
   const tier = relayGetSourceTier(source);
   const tierScore = tier === 1 ? 100 : tier === 2 ? 75 : tier === 3 ? 50 : 25;
   const corroborationScore = Math.min(corroborationCount, 5) * 20;
   const ageMs = Date.now() - publishedAt;
   const recencyScore = Math.max(0, 1 - ageMs / (24 * 60 * 60 * 1000)) * 100;
-  return Math.round(
+  const base = Math.round(
     (RELAY_SEVERITY_SCORES[level] ?? 0) * RELAY_SCORE_WEIGHTS.severity +
     tierScore * RELAY_SCORE_WEIGHTS.sourceTier +
     corroborationScore * RELAY_SCORE_WEIGHTS.corroboration +
     recencyScore * RELAY_SCORE_WEIGHTS.recency,
+  );
+  return Math.round(
+    base +
+    relayDiplomacyFlashpointBoost(context.title) +
+    relayEntityCorroborationScore(context.entityCorroborationCount),
   );
 }
 
@@ -3125,9 +3301,21 @@ function matchCountryNamesInText(text) {
   return [];
 }
 
+// v5 (2026-04-28): bumped from v4 in lockstep with
+// server/worldmonitor/intelligence/v1/_shared.ts and
+// server/worldmonitor/news/v1/list-feed-digest.ts to evict cache entries
+// that landed under the pre-publisher-prefix-fix classifier (PR #3480).
+// Brand-prefixed retrospective titles ("CBS News Radio flashback: ...")
+// had been promoted to severity=critical via the `invasion` keyword;
+// the new brand-prefix branch in _classifier.ts re-rules those rows on
+// next touch.
+// The relay maintains its own inline helper because .cjs cannot import
+// from .ts; the prefix-audit static-analysis test
+// (tests/news-classify-cache-prefix-audit.test.mjs) cross-checks all
+// three sites.
 function classifyCacheKey(title) {
   const hash = crypto.createHash('sha256').update(title.toLowerCase()).digest('hex').slice(0, 16);
-  return `classify:sebuf:v3:${hash}`;
+  return `classify:sebuf:v5:${hash}`;
 }
 
 // LLM provider fallback chain — mirrors seed-insights.mjs LLM_PROVIDERS
@@ -3363,6 +3551,14 @@ async function seedClassifyForVariant(variant, seenTitles) {
           meta.source,
           meta.corroborationCount ?? 1,
           meta.publishedAt ?? Date.now(),
+          {
+            title: chunk[idx],
+            classSource: 'llm',
+            // The relay has only exact story-merge corroboration. Entity
+            // corroboration is a separate digest-side signal computed from
+            // flashpoint+diplomacy buckets; do not proxy source count here.
+            entityCorroborationCount: 0,
+          },
         );
         publishNotificationEvent({
           eventType: 'rss_alert',
@@ -4032,6 +4228,48 @@ function startTheaterPostureSeedLoop() {
 }
 
 // ─────────────────────────────────────────────────────────────
+// Warm-ping shared auth — relay → api.worldmonitor.app
+//
+// All warm-pings call api.worldmonitor.app/api/* edge functions. Pre-2026-05-02
+// these used Origin-trust alone (the relay sent `Origin: https://worldmonitor.app`
+// which `api/_api-key.js::validateApiKey` accepts via BROWSER_ORIGIN_PATTERNS).
+// On 2026-05-02 ALL three warm-pings (CII + Chokepoints + CableHealth) started
+// returning HTTP 401 simultaneously despite the relay sending the correct
+// Origin header. Root cause unclear (Vercel firewall change, CDN cache
+// poisoning, deploy mismatch) — but Origin-trust is fragile by nature: any
+// intermediary (CF, Vercel firewall, future CDN) can strip or rewrite Origin
+// without leaving a trace.
+//
+// Defense-in-depth: send an explicit X-WorldMonitor-Key in addition to the
+// Origin header. The gateway accepts EITHER, so when Origin trust breaks
+// the key carries the auth. When the key isn't configured, fall through to
+// Origin-only — preserves backward compatibility for local dev / before the
+// env var is provisioned on Railway.
+//
+// Required env var on Railway ais-relay service:
+//   WORLDMONITOR_RELAY_KEY=<value present in Vercel WORLDMONITOR_VALID_KEYS>
+// ─────────────────────────────────────────────────────────────
+const RELAY_API_KEY = process.env.WORLDMONITOR_RELAY_KEY || '';
+// Surface the auth-mode at boot so misconfig (env var on wrong service,
+// typo'd name, missing on a fresh Railway deploy) is visible in the first
+// log lines instead of waiting for the first 401. PR #3565 review P2.
+if (!RELAY_API_KEY) {
+  console.warn('[Relay] WORLDMONITOR_RELAY_KEY not set — warm-pings will rely on Origin-trust only (fragile against CDN/firewall changes)');
+} else {
+  console.log('[Relay] WORLDMONITOR_RELAY_KEY configured — warm-pings will send X-WorldMonitor-Key');
+}
+
+function warmPingHeaders(extra = {}) {
+  const h = {
+    'User-Agent': CHROME_UA,
+    Origin: 'https://worldmonitor.app',
+    ...extra,
+  };
+  if (RELAY_API_KEY) h['X-WorldMonitor-Key'] = RELAY_API_KEY;
+  return h;
+}
+
+// ─────────────────────────────────────────────────────────────
 // CII Risk Scores warm-ping — keeps RPC cache fresh so
 // bootstrap stale key never expires.
 // The RPC handler itself refreshes the stale key on every call.
@@ -4042,14 +4280,11 @@ const CII_RPC_URL = 'https://api.worldmonitor.app/api/intelligence/v1/get-risk-s
 async function seedCiiWarmPing() {
   try {
     const resp = await fetch(CII_RPC_URL, {
-      headers: {
-        'User-Agent': CHROME_UA,
-        Origin: 'https://worldmonitor.app',
-      },
+      headers: warmPingHeaders(),
       signal: AbortSignal.timeout(60_000),
     });
     if (!resp.ok) {
-      console.warn(`[CII] Warm-ping failed: HTTP ${resp.status}`);
+      console.warn(`[CII] Warm-ping failed: HTTP ${resp.status}${RELAY_API_KEY ? '' : ' (no WORLDMONITOR_RELAY_KEY set; relying on Origin-trust)'}`);
       return;
     }
     const data = await resp.json();
@@ -4084,12 +4319,12 @@ async function seedChokepointWarmPing() {
   try {
     const resp = await fetch(CHOKEPOINT_RPC_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'User-Agent': CHROME_UA, Origin: 'https://worldmonitor.app' },
+      headers: warmPingHeaders({ 'Content-Type': 'application/json' }),
       body: '{}',
       signal: AbortSignal.timeout(60_000),
     });
     if (!resp.ok) {
-      console.warn(`[Chokepoints] Warm-ping failed: HTTP ${resp.status}`);
+      console.warn(`[Chokepoints] Warm-ping failed: HTTP ${resp.status}${RELAY_API_KEY ? '' : ' (no WORLDMONITOR_RELAY_KEY set; relying on Origin-trust)'}`);
       return;
     }
     const data = await resp.json();
@@ -4122,12 +4357,12 @@ async function seedCableHealthWarmPing() {
   try {
     const resp = await fetch(CABLE_HEALTH_RPC_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'User-Agent': CHROME_UA, Origin: 'https://worldmonitor.app' },
+      headers: warmPingHeaders({ 'Content-Type': 'application/json' }),
       body: '{}',
       signal: AbortSignal.timeout(60_000),
     });
     if (!resp.ok) {
-      console.warn(`[CableHealth] Warm-ping failed: HTTP ${resp.status}`);
+      console.warn(`[CableHealth] Warm-ping failed: HTTP ${resp.status}${RELAY_API_KEY ? '' : ' (no WORLDMONITOR_RELAY_KEY set; relying on Origin-trust)'}`);
       return;
     }
     const data = await resp.json();
@@ -4194,11 +4429,17 @@ async function seedWeatherAlerts() {
         const centroid = coords.length > 0
           ? [coords.reduce((s, c) => s + c[0], 0) / coords.length, coords.reduce((s, c) => s + c[1], 0) / coords.length]
           : undefined;
+        // Slot B: NWS VTEC string. NWS wraps VTEC in an array under
+        // properties.parameters.VTEC; pick the first entry (most alerts have one;
+        // multi-VTEC alerts use the primary). Used to derive a coalesce family key
+        // so adjacent-zone alerts for the same logical event collapse at the
+        // publisher and at the per-user dedup.
+        const vtec = Array.isArray(p?.parameters?.VTEC) ? p.parameters.VTEC[0] : undefined;
         return {
           id: f.id || '', event: p.event || '', severity: p.severity || 'Unknown',
           headline: p.headline || '', description: (p.description || '').slice(0, 500),
           areaDesc: p.areaDesc || '', onset: p.onset || '', expires: p.expires || '',
-          coordinates: coords, centroid,
+          coordinates: coords, centroid, vtec,
         };
       });
     if (alerts.length === 0) {
@@ -4213,10 +4454,40 @@ async function seedWeatherAlerts() {
     const ok2 = await upstashSet('seed-meta:weather:alerts', { fetchedAt: Date.now(), recordCount: alerts.length }, 604800);
     console.log(`[Weather] Seeded ${alerts.length} alerts (redis: ${ok1 && ok2 ? 'OK' : 'PARTIAL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
     const highSeverityAlerts = alerts.filter(a => a.severity === 'Extreme' || a.severity === 'Severe');
-    for (const a of highSeverityAlerts.slice(0, 3)) {
+    // Pick up to 3 DISTINCT event families before publishing. The naive
+    // `slice(0, 3)` would silently lose distinct families: if the first 3 raw
+    // alerts are adjacent-zone duplicates for one VTEC family (one storm
+    // crossing 3 counties), the publisher-side dedup collapses them to 1
+    // notification and a 4th genuinely-distinct family (tornado / flood /
+    // different storm) sitting at index 3+ would NEVER be considered.
+    // Dedupe by coalesceKey FIRST, then take the top 3 distinct families.
+    // Slot B regression fix from PR #3467 review.
+    const seenFamilyKeys = new Set();
+    const distinctFamilyAlerts = [];
+    for (const a of highSeverityAlerts) {
+      // Family key: prefer VTEC-derived coalesce key; fall back to a stable
+      // identity from the alert (NWS feature.id, then headline/event) so
+      // VTEC-less alerts still deduplicate against themselves.
+      const familyKey = deriveWeatherCoalesceKey(a.vtec)
+        ?? `nws:fallback:${a.id || a.headline || a.event || ''}`;
+      if (seenFamilyKeys.has(familyKey)) continue;
+      seenFamilyKeys.add(familyKey);
+      distinctFamilyAlerts.push(a);
+      if (distinctFamilyAlerts.length >= 3) break;
+    }
+    for (const a of distinctFamilyAlerts) {
+      // Slot B: derive a coalesceKey from the NWS VTEC string (when present)
+      // so adjacent-zone bulletins for the same logical event collapse to one
+      // notification per user. Falls back to title-based dedup when VTEC is
+      // absent (rare advisory types or missing parameters).
+      const coalesceKey = deriveWeatherCoalesceKey(a.vtec);
       publishNotificationEvent({
         eventType: 'weather_alert',
-        payload: { title: a.headline || a.event || 'Weather alert', source: 'NWS' },
+        payload: {
+          title: a.headline || a.event || 'Weather alert',
+          source: 'NWS',
+          ...(coalesceKey ? { coalesceKey } : {}),
+        },
         severity: a.severity === 'Extreme' ? 'critical' : 'high',
         variant: undefined,
       }).catch(e => console.warn('[Notify] Weather publish error:', e?.message));
@@ -6147,7 +6418,14 @@ function getRelaySecretFromRequest(req) {
 }
 
 function isAuthorizedRequest(req) {
-  if (!RELAY_SHARED_SECRET) return true;
+  if (!RELAY_SHARED_SECRET) {
+    // Defensive: the startup guard rejects an empty secret unless the
+    // operator explicitly opted out via I_UNDERSTAND_THIS_DISABLES_AUTH
+    // (or the deprecated ALLOW_UNAUTHENTICATED_RELAY). In that bypass case
+    // every request is allowed; otherwise this branch is unreachable. Keeping
+    // the explicit check makes this function safe to call in isolation.
+    return ALLOW_UNAUTHENTICATED_RELAY;
+  }
   const provided = getRelaySecretFromRequest(req);
   if (!provided) return false;
   return safeTokenEquals(provided, RELAY_SHARED_SECRET);
@@ -6360,11 +6638,37 @@ const SNAPSHOT_INTERVAL_MS = Math.max(2000, Number(process.env.AIS_SNAPSHOT_INTE
 const CANDIDATE_RETENTION_MS = 2 * 60 * 60 * 1000; // 2 hours
 const MAX_DENSITY_ZONES = 200;
 const MAX_CANDIDATE_REPORTS = 1500;
+// Hard size cap for vesselMeta. Active global AIS fleet is ~50-70k unique
+// MMSIs at any given time (UNCTAD/MarineTraffic estimates). 50k headroom
+// covers steady state with the 24h TTL; a hostile or buggy upstream that
+// floods unique MMSIs gets bounded after this cap. Pairs with the TTL
+// loop in cleanupAggregates so eviction has both age-based and size-based
+// gates, matching the pattern used by tankerReports / candidateReports /
+// densityGrid / vesselHistory.
+const MAX_VESSEL_META = 50000;
 
 const vessels = new Map();
 const vesselHistory = new Map();
 const densityGrid = new Map();
 const candidateReports = new Map();
+// Parallel store for tanker (AIS ship type 80-89) position reports — populated
+// alongside candidateReports but with a different inclusion predicate.
+// Required by the Energy Atlas live-tanker map layer (parity-push PR 3).
+// Kept SEPARATE from candidateReports so the existing military-detection
+// consumer's contract is unchanged.
+const tankerReports = new Map();
+
+// MMSI → { shipType, shipName, lastSeen } cache populated from
+// ShipStaticData messages. AISStream's PositionReport message does NOT
+// carry ShipType in MetaData (per their schema), so a relay that filters
+// to PositionReport-only never gets the type signal — tanker classification
+// (which needs shipType ∈ 80..89) is impossible on PositionReport alone.
+// Static data arrives every ~6 minutes per MMSI so the cache hits steady
+// state quickly. Without this, tankerReports stays permanently empty and
+// the live-tanker layer renders zero vessels — root cause identified
+// 2026-04-25 when the layer shipped (#3402) but rendered empty.
+const vesselMeta = new Map();
+const VESSEL_META_TTL_MS = 24 * 60 * 60 * 1000; // 24h — well over the 6-min broadcast cycle
 
 let snapshotSequence = 0;
 let lastSnapshot = null;
@@ -6424,9 +6728,15 @@ function getGridKey(lat, lon) {
   return `${gridLat},${gridLon}`;
 }
 
-function isLikelyMilitaryCandidate(meta) {
+function isLikelyMilitaryCandidate(meta, resolvedShipType) {
   const mmsi = String(meta?.MMSI || '');
-  const shipType = Number(meta?.ShipType);
+  // Prefer caller-resolved shipType (typically from vesselMeta cache) so
+  // PositionReport callers — where MetaData lacks ShipType — still hit the
+  // type-based military arm (35/55/50-59) instead of relying purely on
+  // NAVAL_PREFIX_RE + MMSI-suffix fallbacks.
+  const shipType = Number.isFinite(Number(resolvedShipType))
+    ? Number(resolvedShipType)
+    : Number(meta?.ShipType);
   const name = (meta?.ShipName || '').trim().toUpperCase();
 
   if (Number.isFinite(shipType) && (shipType === 35 || shipType === 55 || (shipType >= 50 && shipType <= 59))) {
@@ -6561,6 +6871,12 @@ function processRawUpstreamMessage(raw) {
     const parsed = JSON.parse(raw);
     if (parsed?.MessageType === 'PositionReport') {
       processPositionReportForSnapshot(parsed);
+    } else if (parsed?.MessageType === 'ShipStaticData') {
+      // Cache ShipType + ShipName by MMSI so subsequent PositionReports
+      // can classify the vessel as a tanker. AISStream broadcasts static
+      // data ~every 6 min per vessel; in steady state the cache covers
+      // most active MMSIs within minutes of relay startup.
+      processShipStaticDataForMeta(parsed);
     }
   } catch {
     // Ignore malformed upstream payloads
@@ -6581,6 +6897,34 @@ function processRawUpstreamMessage(raw) {
   }
 }
 
+function processShipStaticDataForMeta(data) {
+  // AISStream Type 5 (ShipStaticData). Carries ShipType, ShipName, IMO,
+  // CallSign, dimensions. We only need ShipType + ShipName for classification.
+  const meta = data?.MetaData;
+  const sd = data?.Message?.ShipStaticData;
+  if (!meta || !sd) return;
+  // MMSI fallback: AISStream's PositionReport wrapper puts MMSI under
+  // MetaData.MMSI, but the ShipStaticData payload sample shows MMSI mirrored
+  // as `UserID` on the message body itself. Read MetaData.MMSI first (the
+  // documented wrapper field), then fall back to the message-body field so
+  // a wrapper schema variant doesn't silently re-empty vesselMeta.
+  const mmsi = String(meta.MMSI || sd.UserID || '');
+  if (!mmsi) return;
+  // ShipType lives in the message body, not MetaData, on Type 5 frames.
+  // Gate on `> 0` (not just `Number.isFinite`) so that Number(null) === 0
+  // and AIS code 0 ("Not available" per ITU-R M.1371) don't overwrite a
+  // previously-cached valid type. Otherwise a vessel that broadcasts
+  // {Type: 85} then later {Type: null} would be downgraded to non-tanker
+  // because the second write replaces the first with shipType=0.
+  const shipType = Number(sd.Type);
+  if (!Number.isFinite(shipType) || shipType <= 0) return;
+  vesselMeta.set(mmsi, {
+    shipType,
+    shipName: (sd.Name || meta.ShipName || '').trim(),
+    lastSeen: Date.now(),
+  });
+}
+
 function processPositionReportForSnapshot(data) {
   const meta = data?.MetaData;
   const pos = data?.Message?.PositionReport;
@@ -6595,13 +6939,29 @@ function processPositionReportForSnapshot(data) {
 
   const now = Date.now();
 
+  // Resolve ShipType ONCE per position report and feed it to every consumer
+  // below (vessels record, military classifier, tanker capture). Pre-fix,
+  // each consumer read meta.ShipType directly — but AISStream's PositionReport
+  // MetaData does NOT carry that field; ShipType only arrives via Type 5
+  // ShipStaticData frames cached in vesselMeta. The consequence wasn't just
+  // an empty tanker layer (PR #3410 original scope) — `vessels[mmsi].shipType`
+  // was also undefined, so classifyVesselType(vessel?.shipType) used by
+  // chokepoint transit logging at line ~6555 always returned 'other'. That
+  // silently broke per-type transit counts in /seedChokepointTransits and
+  // every downstream consumer of transit-by-type breakdowns. PR3410 review
+  // catch — same root cause, same vesselMeta cache fixes all three sites.
+  const cachedMeta = vesselMeta.get(mmsi);
+  const effectiveShipType = Number.isFinite(Number(meta.ShipType))
+    ? Number(meta.ShipType)
+    : (cachedMeta ? cachedMeta.shipType : undefined);
+
   vessels.set(mmsi, {
     mmsi,
-    name: meta.ShipName || '',
+    name: meta.ShipName || (cachedMeta && cachedMeta.shipName) || '',
     lat,
     lon,
     timestamp: now,
-    shipType: meta.ShipType,
+    shipType: effectiveShipType,
     heading: pos.TrueHeading,
     speed: pos.Sog,
     course: pos.Cog,
@@ -6630,13 +6990,33 @@ function processPositionReportForSnapshot(data) {
   // Maintain exact chokepoint membership so moving vessels don't get "stuck" in old buckets.
   updateVesselChokepoints(mmsi, lat, lon);
 
-  if (isLikelyMilitaryCandidate(meta)) {
+  if (isLikelyMilitaryCandidate(meta, effectiveShipType)) {
     candidateReports.set(mmsi, {
       mmsi,
-      name: meta.ShipName || '',
+      name: meta.ShipName || (cachedMeta && cachedMeta.shipName) || '',
       lat,
       lon,
-      shipType: meta.ShipType,
+      shipType: effectiveShipType,
+      heading: pos.TrueHeading,
+      speed: pos.Sog,
+      course: pos.Cog,
+      timestamp: now,
+    });
+  }
+
+  // Tanker capture for the Energy Atlas live-tanker layer. AIS ship type
+  // 80-89 covers all tanker subtypes per ITU-R M.1371 (oil/chemical tanker,
+  // hazardous cargo classes A-D, and other tanker variants). Stored in a
+  // SEPARATE Map from candidateReports so the existing military-detection
+  // consumer never sees tankers (their contract is unchanged).
+  const shipType = Number.isFinite(Number(effectiveShipType)) ? Number(effectiveShipType) : NaN;
+  if (Number.isFinite(shipType) && shipType >= 80 && shipType <= 89) {
+    tankerReports.set(mmsi, {
+      mmsi,
+      name: (cachedMeta && cachedMeta.shipName) || meta.ShipName || '',
+      lat,
+      lon,
+      shipType,
       heading: pos.TrueHeading,
       speed: pos.Sog,
       course: pos.Cog,
@@ -6700,6 +7080,32 @@ function cleanupAggregates() {
   }
   // Hard cap: keep freshest candidate reports.
   evictMapByTimestamp(candidateReports, MAX_CANDIDATE_REPORTS, (report) => report.timestamp || 0);
+
+  // Tanker reports: same retention window as candidate reports — a vessel
+  // that hasn't broadcast a position in CANDIDATE_RETENTION_MS is no longer
+  // useful for a live-tanker map layer. Cap at 2× the per-response cap so
+  // we have headroom for bbox filtering to find recent fixes anywhere on
+  // the globe (not just one chokepoint).
+  for (const [mmsi, report] of tankerReports) {
+    if (report.timestamp < now - CANDIDATE_RETENTION_MS) {
+      tankerReports.delete(mmsi);
+    }
+  }
+  evictMapByTimestamp(tankerReports, MAX_TANKER_REPORTS_PER_RESPONSE * 10, (report) => report.timestamp || 0);
+
+  // vesselMeta TTL eviction: drop entries older than VESSEL_META_TTL_MS so
+  // long-running relays don't accumulate metadata for vessels that have
+  // sailed out of any tracked region. ShipStaticData is rebroadcast every
+  // ~6 min, so a 24h TTL covers vessels with intermittent visibility.
+  for (const [mmsi, entry] of vesselMeta) {
+    if (entry.lastSeen < now - VESSEL_META_TTL_MS) {
+      vesselMeta.delete(mmsi);
+    }
+  }
+  // Hard size cap as defense-in-depth against a hostile/buggy upstream
+  // flooding unique MMSIs faster than the TTL eviction can drain them.
+  // Matches the pattern used by every peer Map in this function.
+  evictMapByTimestamp(vesselMeta, MAX_VESSEL_META, (entry) => entry.lastSeen || 0);
 
   // Clean chokepoint buckets: remove stale vessels
   for (const [cpName, bucket] of chokepointBuckets) {
@@ -6842,6 +7248,55 @@ function getCandidateReportsSnapshot() {
   return Array.from(candidateReports.values())
     .sort((a, b) => b.timestamp - a.timestamp)
     .slice(0, MAX_CANDIDATE_REPORTS);
+}
+
+// Server-side cap for tanker_reports per request — protects the response
+// payload from a misbehaving filter that returns thousands of vessels.
+// 200/zone × 6 chokepoints in worst case is well under any practical
+// CDN/edge payload budget. Energy Atlas live-tanker layer also caps
+// client-side on top of this.
+const MAX_TANKER_REPORTS_PER_RESPONSE = 200;
+
+/**
+ * Parse a "bbox" query param of the form "swLat,swLon,neLat,neLon" into a
+ * {sw: {lat, lon}, ne: {lat, lon}} or null if absent / malformed.
+ *
+ * Validates:
+ *   - 4 comma-separated finite numbers
+ *   - sw <= ne (after normalization)
+ *   - bbox size ≤ 10° on both lat and lon (10° max per parity-push plan U7;
+ *     prevents pulling every vessel through one query)
+ *
+ * @param {string | null | undefined} raw
+ * @returns {{ sw: {lat:number, lon:number}, ne: {lat:number, lon:number} } | null}
+ */
+function parseBbox(raw) {
+  if (!raw) return null;
+  const parts = String(raw).split(',').map(Number);
+  if (parts.length !== 4 || parts.some((v) => !Number.isFinite(v))) return null;
+  const [swLat, swLon, neLat, neLon] = parts;
+  if (swLat > neLat || swLon > neLon) return null;
+  if (swLat < -90 || neLat > 90 || swLon < -180 || neLon > 180) return null;
+  if (neLat - swLat > 10 || neLon - swLon > 10) return null; // 10° guard
+  return { sw: { lat: swLat, lon: swLon }, ne: { lat: neLat, lon: neLon } };
+}
+
+/**
+ * Filtered + capped tanker reports. Sorted by recency of last fix so the
+ * 200-cap keeps the most-recently-seen vessels rather than a random subset.
+ *
+ * @param {{ sw: {lat:number,lon:number}, ne: {lat:number,lon:number} } | null} bbox
+ */
+function getTankerReportsSnapshot(bbox) {
+  let arr = Array.from(tankerReports.values());
+  if (bbox) {
+    arr = arr.filter(
+      (r) => r.lat >= bbox.sw.lat && r.lat <= bbox.ne.lat &&
+             r.lon >= bbox.sw.lon && r.lon <= bbox.ne.lon,
+    );
+  }
+  arr.sort((a, b) => b.timestamp - a.timestamp);
+  return arr.slice(0, MAX_TANKER_REPORTS_PER_RESPONSE);
 }
 
 function buildSnapshot() {
@@ -8723,6 +9178,36 @@ const server = http.createServer(async (req, res) => {
 
   if (pathname === '/health' || pathname === '/') {
     const mem = process.memoryUsage();
+    // ⚠ SECURITY — read before adding fields to this response.
+    //
+    // /health is in `isPublicRoute` (no auth check). Fields here are
+    // returned to ANY caller — uptime monitors, attackers probing the
+    // relay, anyone with the URL.
+    //
+    // Per issue #3802, two attacker-aiding fields were REMOVED from the
+    // `auth: {...}` block and the entire `rateLimit: {...}` block was
+    // removed:
+    //
+    //   • `auth.authHeader` — revealed the non-standard header name
+    //     (`x-relay-key`) attackers should target. (Technically also
+    //     exposed via the CORS Allow-Headers preflight, but bundling it
+    //     on /health made the attack one-step instead of two.)
+    //   • `auth.allowVercelPreviewOrigins` — CORS-policy leak.
+    //   • `rateLimit: {...}` — exact windowMs / defaultMax / openskyMax /
+    //     rssMax let an attacker tune scraping cadence to stay just under
+    //     the throttle thresholds.
+    //
+    // The remaining `auth.enabled` + `auth.sharedSecretEnabled` are
+    // PRESERVED intentionally: PR #3812 / #3815 added them as the
+    // operator-visible "is auth configured?" signal that monitoring
+    // tools depend on (tests in tests/relay-auth.test.mjs codify this
+    // contract). Removing them would lie to ops; the trade-off was
+    // explicitly debated and decided in favour of operability.
+    //
+    // If a future operator workflow needs the removed fields, add an
+    // AUTHENTICATED /health/full route instead of widening this public
+    // response. The `ais-relay-health-no-secret-recon` test asserts the
+    // removed fields don't reappear here.
     sendCompressed(req, res, 200, { 'Content-Type': 'application/json' }, JSON.stringify({
       status: 'ok',
       clients: clients.size,
@@ -8769,15 +9254,11 @@ const server = http.createServer(async (req, res) => {
         polymarketInflight: polymarketInflight.size,
       },
       auth: {
+        // Preserved per PR #3812 / #3815 contract — operators monitor
+        // "is auth configured?" via these two fields. authHeader and
+        // allowVercelPreviewOrigins removed per #3802. See note above.
+        enabled: !AUTH_EFFECTIVELY_DISABLED,
         sharedSecretEnabled: !!RELAY_SHARED_SECRET,
-        authHeader: RELAY_AUTH_HEADER,
-        allowVercelPreviewOrigins: ALLOW_VERCEL_PREVIEW_ORIGINS,
-      },
-      rateLimit: {
-        windowMs: RELAY_RATE_LIMIT_WINDOW_MS,
-        defaultMax: RELAY_RATE_LIMIT_MAX,
-        openskyMax: RELAY_OPENSKY_RATE_LIMIT_MAX,
-        rssMax: RELAY_RSS_RATE_LIMIT_MAX,
       },
     }));
   } else if (pathname === '/metrics') {
@@ -8791,19 +9272,40 @@ const server = http.createServer(async (req, res) => {
     buildSnapshot(); // ensures cache is warm
     const url = new URL(req.url, `http://localhost:${PORT}`);
     const includeCandidates = url.searchParams.get('candidates') === 'true';
-    const json = includeCandidates ? lastSnapshotWithCandJson : lastSnapshotJson;
-    const gz = includeCandidates ? lastSnapshotWithCandGzip : lastSnapshotGzip;
-    const br = includeCandidates ? lastSnapshotWithCandBrotli : lastSnapshotBrotli;
+    const includeTankers = url.searchParams.get('tankers') === 'true';
+    const bbox = parseBbox(url.searchParams.get('bbox'));
 
-    if (json) {
-      sendPreGzipped(req, res, 200, {
-        'Content-Type': 'application/json',
-        'Cache-Control': 'public, max-age=2',
-        'CDN-Cache-Control': 'public, max-age=10',
-      }, json, gz, br);
+    // Fast path: pre-gzipped cache covers the {with|without}-candidates
+    // case only (no tankers, no bbox). Used by the existing AIS density +
+    // military-detection consumers, which are the vast majority of traffic.
+    if (!includeTankers && !bbox) {
+      const json = includeCandidates ? lastSnapshotWithCandJson : lastSnapshotJson;
+      const gz = includeCandidates ? lastSnapshotWithCandGzip : lastSnapshotGzip;
+      const br = includeCandidates ? lastSnapshotWithCandBrotli : lastSnapshotBrotli;
+      if (json) {
+        sendPreGzipped(req, res, 200, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'public, max-age=2',
+          'CDN-Cache-Control': 'public, max-age=10',
+        }, json, gz, br);
+      } else {
+        const payload = { ...lastSnapshot, candidateReports: includeCandidates ? getCandidateReportsSnapshot() : [], tankerReports: [] };
+        sendCompressed(req, res, 200, {
+          'Content-Type': 'application/json',
+          'Cache-Control': 'public, max-age=2',
+          'CDN-Cache-Control': 'public, max-age=10',
+        }, JSON.stringify(payload));
+      }
     } else {
-      // Cold start fallback
-      const payload = { ...lastSnapshot, candidateReports: includeCandidates ? getCandidateReportsSnapshot() : [] };
+      // Live-tanker path: bbox-filtered + tanker-included responses skip the
+      // pre-gzipped cache (bbox space would explode the cache key set).
+      // Handler-side 60s cache (server/worldmonitor/maritime/v1/get-vessel-snapshot.ts)
+      // and the gateway 'live' tier absorb identical-bbox requests.
+      const payload = {
+        ...lastSnapshot,
+        candidateReports: includeCandidates ? getCandidateReportsSnapshot() : [],
+        tankerReports: includeTankers ? getTankerReportsSnapshot(bbox) : [],
+      };
       sendCompressed(req, res, 200, {
         'Content-Type': 'application/json',
         'Cache-Control': 'public, max-age=2',
@@ -9039,7 +9541,16 @@ const server = http.createServer(async (req, res) => {
             'Accept-Language': 'en-US,en;q=0.9',
             ...conditionalHeaders,
           },
-          timeout: 15000
+          timeout: 15000,
+          // Bumped from Node's 16KB default. Some publishers (Substack, big-CDN-
+          // fronted feeds) chain Set-Cookie + CSP + Permissions-Policy + tracking
+          // headers that exceed 16KB, which makes Node's HTTP parser throw
+          // `Parse Error: Header overflow` and fail every fetch from this relay.
+          // The relay's in-memory rssResponseCache used to mask this on long-
+          // running deploys; a redeploy clears the cache and the broken feeds
+          // surface immediately. 64KB is well above any legitimate header set,
+          // and is per-request (no process-level Node flag needed).
+          maxHeaderSize: 65536,
         }, (response) => {
           if ([301, 302, 303, 307, 308].includes(response.statusCode) && response.headers.location) {
             const redirectUrl = response.headers.location.startsWith('http')
@@ -9667,7 +10178,7 @@ function isWidgetEndpointAllowed(endpoint) {
   if (!endpoint.startsWith('/api/')) return false;
   const blocked = [
     'analyze-stock', 'backtest-stock', 'summarize-article', 'classify-event',
-    'deduce-situation', 'track-aircraft', 'search-flight-prices', 'get-youtube',
+    'deduct-situation', 'track-aircraft', 'search-flight-prices', 'get-youtube',
     'get-vessel-snapshot', 'lookup-sanction', 'get-ip-geo', 'get-simulation',
   ];
   return !blocked.some(b => endpoint.includes(b));
@@ -10133,6 +10644,14 @@ async function handleWidgetAgentRequest(req, res) {
     if (!res.writableEnded) res.end();
   }, timeoutMs);
 
+  // Hoisted out of the try block so the catch's structured-log payload can
+  // read it. `let` is block-scoped — declaring `toolCallCount` inside the
+  // try would make any reference from the catch throw a ReferenceError,
+  // which the inner log-fallback would silently swallow into "[widget-agent]
+  // Error (log-failed)" — defeating the entire diagnostic value of this
+  // log line. `completed` doesn't need hoisting (not read in catch).
+  let toolCallCount = 0;
+
   try {
     const { default: Anthropic } = await import('@anthropic-ai/sdk');
     const client = new Anthropic({ apiKey: WIDGET_ANTHROPIC_KEY });
@@ -10152,7 +10671,6 @@ async function handleWidgetAgentRequest(req, res) {
     messages.push({ role: 'user', content: String(prompt).slice(0, 2000) });
 
     let completed = false;
-    let toolCallCount = 0;
     for (let turn = 0; turn < maxTurns; turn++) {
       if (cancelled) break;
 
@@ -10262,12 +10780,94 @@ async function handleWidgetAgentRequest(req, res) {
       }
     }
   } catch (err) {
-    if (!cancelled) sendWidgetSSE(res, 'error', { message: 'Agent error' });
-    console.error('[widget-agent] Error:', err.message);
+    // Classify the error so the client gets an actionable message instead
+    // of the opaque "Agent error" that leaves the user (and operator) blind.
+    // Anthropic SDK errors expose .status / .error.type / .message; none of
+    // those leak the API key, but the fallback path scrubs sk-* tokens just
+    // in case the SDK changes its error shape.
+    if (!cancelled) {
+      sendWidgetSSE(res, 'error', { message: classifyWidgetAgentError(err, model) });
+    }
+    // Verbose structured log so Railway operators can diagnose without
+    // server-side reproduction. Includes status + type + request shape;
+    // omits headers/body to avoid leaking the prompt or auth headers.
+    try {
+      console.error('[widget-agent] Error:', JSON.stringify({
+        message: err && err.message ? String(err.message).slice(0, 500) : String(err).slice(0, 500),
+        status: err && typeof err.status === 'number' ? err.status : null,
+        type: (err && err.error && err.error.type) || (err && err.type) || null,
+        name: err && err.name ? String(err.name) : null,
+        isPro,
+        model,
+        toolCallCount,
+        promptLen: typeof prompt === 'string' ? prompt.length : 0,
+        historyLen: Array.isArray(conversationHistory) ? conversationHistory.length : 0,
+      }));
+      if (err && err.stack) console.error('[widget-agent] Stack:', err.stack);
+    } catch (logErr) {
+      console.error('[widget-agent] Error (log-failed):', err && err.message);
+    }
   } finally {
     clearTimeout(timeout);
     if (!cancelled && !res.writableEnded) res.end();
   }
+}
+
+// Map a thrown error from the agent loop to a user-facing message.
+// Inputs:
+//   err   - any thrown value (Anthropic SDK error, Error, string, ...)
+//   model - the model identifier we attempted, surfaced in the model-not-found path
+// Output: a short, actionable string safe to send to the client.
+function classifyWidgetAgentError(err, model) {
+  if (err && err.name === 'AbortError') return 'Request cancelled';
+  const status = err && typeof err.status === 'number' ? err.status : null;
+  const type = (err && err.error && err.error.type) || (err && err.type) || null;
+  const rawMsg = err && err.message ? String(err.message) : String(err || '');
+  // Scrub `sk-…` / `sk-ant-…` Claude API keys before surfacing ANY rawMsg
+  // to the client. Today the SDK does not bubble keys into thrown messages,
+  // but we apply this on every branch that interpolates rawMsg (400 +
+  // fallback) so a future SDK change can't leak the key in a single round.
+  const scrub = (s) => String(s || '').replace(/sk-(?:ant-)?[A-Za-z0-9_-]{20,}/g, '[REDACTED]');
+  if (status === 401 || type === 'authentication_error') {
+    // Operator hint without revealing which env var or its value.
+    return 'AI backend rejected the API key. Operator: check ANTHROPIC_API_KEY on the relay.';
+  }
+  if (status === 403 || type === 'permission_error') {
+    return 'AI backend denied access (permission_error).';
+  }
+  if (status === 429 || type === 'rate_limit_error') {
+    return 'AI backend rate limit reached. Try again in a moment.';
+  }
+  if (status === 404 || type === 'not_found_error' || /model.*not.*found|not_found_error/i.test(rawMsg)) {
+    return `AI model "${model}" unavailable on this account. Operator: verify model availability.`;
+  }
+  // Anthropic SDK APITimeoutError carries status 408. We catch it BEFORE the
+  // generic 400 branch so request-level timeouts surface as the friendlier
+  // "timed out" message instead of "Invalid request to AI backend".
+  if (
+    status === 408
+    || (err && (err.name === 'TimeoutError' || err.name === 'APITimeoutError'))
+  ) {
+    return 'AI backend timed out';
+  }
+  if (status === 400 || type === 'invalid_request_error') {
+    // Pass through the SDK's own description (it explains shape issues —
+    // wrong tool definition, malformed messages, oversized prompt — that
+    // are the most useful diagnostics). Cap to 200 chars defensively AND
+    // scrub keys: today Anthropic's 400 messages describe request-shape,
+    // not credentials, but this is on the data path that ends at the
+    // user's screen — keep the same scrub hardening as the fallback.
+    return `Invalid request to AI backend: ${scrub(rawMsg).slice(0, 200)}`;
+  }
+  if ((status !== null && status >= 500) || type === 'api_error' || type === 'overloaded_error') {
+    return 'AI backend temporarily unavailable. Try again in a moment.';
+  }
+  if (/ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENOTFOUND/i.test(rawMsg)) {
+    return 'Network error reaching AI backend. Try again in a moment.';
+  }
+  // Last-resort fallback for anything we did not classify above.
+  const safe = scrub(rawMsg).slice(0, 200);
+  return safe ? `Agent error: ${safe}` : 'Agent error';
 }
 
 const WIDGET_PRO_SYSTEM_PROMPT = `You are a WorldMonitor PRO widget builder. Your job is to fetch live data and generate an interactive HTML widget body with inline JavaScript.
@@ -10490,7 +11090,13 @@ function connectUpstream() {
     socket.send(JSON.stringify({
       APIKey: API_KEY,
       BoundingBoxes: [[[-90, -180], [90, 180]]],
-      FilterMessageTypes: ['PositionReport'],
+      // ShipStaticData (AIS Type 5) carries ShipType, which PositionReport
+      // does not. Required for tanker classification on the Energy Atlas
+      // live-tanker layer — without it, vesselMeta cache stays empty and
+      // tankerReports never populates. Static data is broadcast every ~6
+      // min per vessel (ITU-R M.1371), so the volume add is small relative
+      // to PositionReport (which broadcasts every 2-10s underway).
+      FilterMessageTypes: ['PositionReport', 'ShipStaticData'],
     }));
   });
 

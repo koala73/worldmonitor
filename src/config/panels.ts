@@ -81,6 +81,7 @@ const FULL_PANELS: Record<string, PanelConfig> = {
   'storage-facility-map': { name: 'Strategic Storage Atlas', enabled: true, priority: 2 },
   'fuel-shortages': { name: 'Global Fuel Shortage Registry', enabled: true, priority: 2 },
   'energy-disruptions': { name: 'Energy Disruptions Log', enabled: true, priority: 2 },
+  'energy-risk-overview': { name: 'Global Energy Risk Overview', enabled: false, priority: 2 },
   'gulf-economies': { name: 'Gulf Economies', enabled: false, priority: 2 },
   'consumer-prices': { name: 'Consumer Prices', enabled: false, priority: 2 },
   'grocery-basket': { name: 'Grocery Index', enabled: false, priority: 2 },
@@ -929,6 +930,7 @@ const COMMODITY_MOBILE_MAP_LAYERS: MapLayers = {
 // ============================================
 const ENERGY_PANELS: Record<string, PanelConfig> = {
   map: { name: 'Energy Atlas Map', enabled: true, priority: 1 },
+  'energy-risk-overview': { name: 'Global Energy Risk Overview', enabled: true, priority: 1 },
   'chokepoint-strip': { name: 'Chokepoint Status', enabled: true, priority: 1 },
   'pipeline-status': { name: 'Oil & Gas Pipeline Status', enabled: true, priority: 1 },
   'storage-facility-map': { name: 'Strategic Storage Atlas', enabled: true, priority: 1 },
@@ -1021,6 +1023,7 @@ const ENERGY_MAP_LAYERS: MapLayers = {
   diseaseOutbreaks: false,
   storageFacilities: true, // UGS / SPR / LNG / crude hubs (Day 9-10 registry)
   fuelShortages: true,     // Global fuel shortage alerts (Day 11-12 registry)
+  liveTankers: true,       // AIS ship type 80-89 inside chokepoint bboxes (parity-push PR 3)
 };
 
 const ENERGY_MOBILE_MAP_LAYERS: MapLayers = {
@@ -1078,6 +1081,7 @@ const ENERGY_MOBILE_MAP_LAYERS: MapLayers = {
   diseaseOutbreaks: false,
   storageFacilities: true,
   fuelShortages: true,
+  liveTankers: true,
 };
 
 // ============================================
@@ -1143,6 +1147,21 @@ export function getEffectivePanelConfig(key: string, variant: string): PanelConf
   if (!base) return { name: key, enabled: false, priority: 2 };
   const override = VARIANT_PANEL_OVERRIDES[variant]?.[key] ?? {};
   return { ...base, ...override };
+}
+
+/**
+ * Returns true if `key` is in the current variant's default panel set.
+ *
+ * App.ts:577-583 merges ALL_PANELS into panelSettings on every variant so
+ * users can cross-enable panels, which makes `shouldCreatePanel(key)`
+ * (which just checks `key in panelSettings`) true everywhere. Auto-refresh
+ * paths that fan out a fetch must instead gate on the variant defaults —
+ * otherwise variants whose backend doesn't seed the panel's bootstrap key
+ * (e.g. tech-readiness on commodity/finance/energy) blow their 5s fetch
+ * budget on a key that will never populate.
+ */
+export function isPanelInVariantDefaults(key: string): boolean {
+  return (VARIANT_DEFAULTS[SITE_VARIANT] ?? []).includes(key);
 }
 
 export const FREE_MAX_PANELS = 40;
@@ -1242,7 +1261,7 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   },
   marketsFinance: {
     labelKey: 'header.panelCatMarketsFinance',
-    panelKeys: ['commodities', 'energy-complex', 'pipeline-status', 'storage-facility-map', 'fuel-shortages', 'energy-disruptions', 'hormuz-tracker', 'energy-crisis', 'markets', 'economic', 'trade-policy', 'sanctions-pressure', 'supply-chain', 'finance', 'polymarket', 'macro-signals', 'gulf-economies', 'etf-flows', 'stablecoins', 'crypto', 'heatmap'],
+    panelKeys: ['commodities', 'energy-complex', 'energy-risk-overview', 'pipeline-status', 'storage-facility-map', 'fuel-shortages', 'energy-disruptions', 'hormuz-tracker', 'energy-crisis', 'markets', 'economic', 'trade-policy', 'sanctions-pressure', 'supply-chain', 'finance', 'polymarket', 'macro-signals', 'gulf-economies', 'etf-flows', 'stablecoins', 'crypto', 'heatmap'],
   },
   topical: {
     labelKey: 'header.panelCatTopical',
@@ -1321,10 +1340,12 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   happyNews: {
     labelKey: 'header.panelCatHappyNews',
     panelKeys: ['positive-feed', 'progress', 'counters', 'spotlight', 'breakthroughs', 'digest'],
+    variants: ['happy'],
   },
   happyPlanet: {
     labelKey: 'header.panelCatHappyPlanet',
     panelKeys: ['species', 'renewable', 'giving'],
+    variants: ['happy'],
   },
 };
 

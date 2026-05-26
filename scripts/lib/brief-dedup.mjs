@@ -409,10 +409,19 @@ export function groupTopicsPostDedup(top, cfg, embeddingByHash, deps = {}) {
     });
 
     // Concatenate: for each topic in topicOrder, emit its members in
-    // their intra-topic order.
+    // their intra-topic order. Attach transient topic metadata to the
+    // rep object so the brief composer can preserve topic blocks after
+    // severity bucketing and LLM rank tie-breaking. These fields never
+    // enter the persisted BriefStory envelope.
     const order = [];
     for (const t of topicOrder) {
-      for (const i of membersOf[t]) order.push(i);
+      const topicId = topicTieHash[t] ?? String(t);
+      for (const i of membersOf[t]) {
+        top[i].briefTopicId = topicId;
+        top[i].briefTopicSize = topicSize[t];
+        top[i].briefTopicMaxScore = topicMax[t];
+        order.push(i);
+      }
     }
 
     return {

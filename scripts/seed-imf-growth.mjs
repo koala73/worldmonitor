@@ -17,6 +17,8 @@
 // used by seed-imf-macro.mjs.
 
 import { loadEnvFile, runSeed, loadSharedConfig, imfSdmxFetchIndicator } from './_seed-utils.mjs';
+// Sprint 4 IMF/WEO cohort content-age helper — see header for forecast-year semantics.
+import { imfWeoContentMeta, IMF_WEO_MAX_CONTENT_AGE_MIN, maxIntegerYear } from './_imf-weo-content-age-helpers.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -99,6 +101,10 @@ export function buildGrowthCountries(perIndicator) {
       savingsPct:         sav?.value ?? null,
       savingsInvestmentGap: savInvGap,
       year: growth?.year ?? gdpPc?.year ?? realGdpV?.year ?? pppPc?.year ?? pppGdpV?.year ?? inv?.year ?? sav?.year ?? null,
+      // Codex PR #3604 P2 — see seed-imf-external.mjs for the full
+      // rationale. `latestYear` = max forecast year across all this
+      // country's indicators; drives content-age in the WEO helper.
+      latestYear: maxIntegerYear([growth?.year, gdpPc?.year, realGdpV?.year, pppPc?.year, pppGdpV?.year, inv?.year, sav?.year]),
     };
   }
   return countries;
@@ -158,8 +164,16 @@ if (process.argv[1]?.endsWith('seed-imf-growth.mjs')) {
     emptyDataIsFailure: true,
   
     declareRecords,
-    schemaVersion: 1,
+    // schemaVersion bumped 1→2 in Codex PR #3604 review fix: see
+    // seed-imf-external.mjs for the rationale (new `latestYear` field).
+    schemaVersion: 2,
     maxStaleMin: 100800,
+
+    // ── Content-age contract (Sprint 4 IMF/WEO cohort) ──
+    // 18-month budget = 16mo steady-state ceiling + 2mo slack.
+    // See _imf-weo-content-age-helpers.mjs JSDoc for derivation.
+    contentMeta: imfWeoContentMeta,
+    maxContentAgeMin: IMF_WEO_MAX_CONTENT_AGE_MIN,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);

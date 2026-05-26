@@ -186,12 +186,59 @@ describe('parseRssXml — integration with description', () => {
         <pubDate>Thu, 24 Apr 2026 08:02:00 GMT</pubDate>
       </item>
     `);
-    const items = parseRssXml(xml, FEED, 'full');
-    assert.ok(items, 'parseRssXml returns non-null for populated feed');
-    assert.strictEqual(items!.length, 2);
-    assert.ok(items![0]!.description.length > 0, 'first item has a real description');
-    assert.ok(items![0]!.description.includes('substantive'));
-    assert.strictEqual(items![1]!.description, '', 'second item falls back to empty string');
+    const result = parseRssXml(xml, FEED, 'full');
+    assert.ok(result, 'parseRssXml returns non-null for populated feed');
+    const items = result!.items;
+    assert.strictEqual(items.length, 2);
+    assert.ok(items[0]!.description.length > 0, 'first item has a real description');
+    assert.ok(items[0]!.description.includes('substantive'));
+    assert.strictEqual(items[1]!.description, '', 'second item falls back to empty string');
+  });
+
+  it('every ParsedItem carries an isOpinion flag — hard news false, op-ed true (F3)', () => {
+    const xml = wrapRss(`
+      <item>
+        <title>Putin tests nuclear-capable Sarmat missile</title>
+        <link>https://news.example.com/world/sarmat-test</link>
+        <pubDate>Thu, 24 Apr 2026 08:01:00 GMT</pubDate>
+        <description><![CDATA[<p>Russia test-fired the intercontinental ballistic missile from Plesetsk on Thursday morning.</p>]]></description>
+      </item>
+      <item>
+        <title>Opinion: The west has misjudged this moment</title>
+        <link>https://news.example.com/opinion/west-misjudged</link>
+        <pubDate>Thu, 24 Apr 2026 08:02:00 GMT</pubDate>
+        <description><![CDATA[<p>Our columnist argues that the strategic picture has shifted decisively.</p>]]></description>
+      </item>
+    `);
+    const result = parseRssXml(xml, FEED, 'full');
+    assert.ok(result);
+    const items = result!.items;
+    assert.strictEqual(items.length, 2);
+    assert.strictEqual(items[0]!.isOpinion, false, 'hard-news item is not opinion');
+    assert.strictEqual(items[1]!.isOpinion, true, 'Opinion:-prefixed item under /opinion/ is opinion');
+  });
+
+  it('every ParsedItem carries an isFeelGood flag — hard news false, feel-good true (Veterans-warplanes anchor)', () => {
+    const xml = wrapRss(`
+      <item>
+        <title>Putin tests nuclear-capable Sarmat missile</title>
+        <link>https://news.example.com/world/sarmat-test</link>
+        <pubDate>Thu, 24 Apr 2026 08:01:00 GMT</pubDate>
+        <description><![CDATA[<p>Russia test-fired the intercontinental ballistic missile from Plesetsk on Thursday morning.</p>]]></description>
+      </item>
+      <item>
+        <title>Veterans reunite with their vintage war planes</title>
+        <link>https://news.example.com/features/veterans-vintage-warplanes</link>
+        <pubDate>Sat, 17 May 2026 08:02:00 GMT</pubDate>
+        <description><![CDATA[<p>In Peru, Illinois, military veterans recently reunited with the vintage warplanes they once piloted, evoking powerful memories and connections.</p>]]></description>
+      </item>
+    `);
+    const result = parseRssXml(xml, FEED, 'full');
+    assert.ok(result);
+    const items = result!.items;
+    assert.strictEqual(items.length, 2);
+    assert.strictEqual(items[0]!.isFeelGood, false, 'hard-news Sarmat item is not feel-good');
+    assert.strictEqual(items[1]!.isFeelGood, true, 'Veterans-warplanes item is feel-good (STRONG /features/ URL)');
   });
 
   it('Atom feed ParsedItems carry a description field from <summary>/<content>', () => {
@@ -203,10 +250,11 @@ describe('parseRssXml — integration with description', () => {
         <summary>An Atom summary body long enough to pass the minimum grounding gate for descriptions.</summary>
       </entry>
     `);
-    const items = parseRssXml(xml, FEED, 'full');
-    assert.ok(items);
-    assert.strictEqual(items!.length, 1);
-    assert.ok(items![0]!.description.startsWith('An Atom summary'));
+    const result = parseRssXml(xml, FEED, 'full');
+    assert.ok(result);
+    const items = result!.items;
+    assert.strictEqual(items.length, 1);
+    assert.ok(items[0]!.description.startsWith('An Atom summary'));
   });
 
   it('News24 Iran-leader reproduction: description contains the article-named actor, not the parametric one', () => {
@@ -222,10 +270,11 @@ describe('parseRssXml — integration with description', () => {
         <description><![CDATA[<p>Mojtaba Khamenei, 56, was seriously wounded in an attack this week, and has delegated operational authority to the Revolutionary Guards, multiple regional sources told News24.</p>]]></description>
       </item>
     `);
-    const items = parseRssXml(xml, FEED, 'full');
-    assert.ok(items);
-    assert.strictEqual(items!.length, 1);
-    const desc = items![0]!.description;
+    const result = parseRssXml(xml, FEED, 'full');
+    assert.ok(result);
+    const items = result!.items;
+    assert.strictEqual(items.length, 1);
+    const desc = items[0]!.description;
     assert.ok(desc.includes('Mojtaba'), 'grounding requires the article-named actor');
     assert.ok(!desc.toLowerCase().includes('ali khamenei'), 'description must not contain the parametric/hallucinated name');
   });

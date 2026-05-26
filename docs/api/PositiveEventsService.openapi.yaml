@@ -71,6 +71,21 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/PositiveGeoEvent'
+                fetchedAt:
+                    type: integer
+                    format: int64
+                    description: |-
+                        Unix epoch ms at which the underlying source data was last successfully
+                         fetched. Always set when serving from cache or in-process fallback; 0 if
+                         no data is available. Clients can use this to display a freshness
+                         indicator or "data is X minutes old" warning. See issue #3706.. Warning: Values > 2^53 may lose precision in JavaScript
+                stale:
+                    type: boolean
+                    description: |-
+                        True when the response is being served from the in-process fallback
+                         cache because the upstream source is unavailable or returned stale
+                         data. Clients can surface a "data may be out of date" indicator. See
+                         issue #3706.
         PositiveGeoEvent:
             type: object
             properties:

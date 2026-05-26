@@ -1,4 +1,5 @@
 import { Panel } from './Panel';
+import { t, getLocale } from '@/services/i18n';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { h, replaceChildren } from '@/utils/dom-utils';
 import { sanitizeUrl } from '@/utils/sanitize';
@@ -7,13 +8,18 @@ import type { DefensePatentFiling } from '@/generated/client/worldmonitor/milita
 
 type ViewMode = 'all' | 'H04B' | 'H01L' | 'F42B' | 'G06N' | 'C12N';
 
-const CPC_LABELS: Record<string, string> = {
-  H04B: 'Comms',
-  H01L: 'Semiconductors',
-  F42B: 'Ammunition',
-  G06N: 'AI',
-  C12N: 'Biotech',
-};
+function cpcLabel(code: string): string {
+  switch (code) {
+    case 'H04B': return t('components.defensePatents.cpcLabels.H04B');
+    case 'H01L': return t('components.defensePatents.cpcLabels.H01L');
+    case 'F42B': return t('components.defensePatents.cpcLabels.F42B');
+    case 'G06N': return t('components.defensePatents.cpcLabels.G06N');
+    case 'C12N': return t('components.defensePatents.cpcLabels.C12N');
+    default: return code;
+  }
+}
+
+const CPC_CODES: ViewMode[] = ['H04B', 'H01L', 'F42B', 'G06N', 'C12N'];
 
 const CPC_ICONS: Record<string, string> = {
   H04B: '📡',
@@ -23,7 +29,16 @@ const CPC_ICONS: Record<string, string> = {
   C12N: '🧬',
 };
 
-const militaryClient = new MilitaryServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
+// Lazy singleton: top-level `new X(...)` evaluates at module-init time, which
+// TDZ'd under cluster-chunk splits when this panel's chunk initialised before
+// the chunk owning MilitaryServiceClient. Defer construction until first call.
+let _militaryClient: MilitaryServiceClient | null = null;
+function militaryClient(): MilitaryServiceClient {
+  if (!_militaryClient) {
+    _militaryClient = new MilitaryServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
+  }
+  return _militaryClient;
+}
 
 export class DefensePatentsPanel extends Panel {
   private viewMode: ViewMode = 'all';
@@ -34,9 +49,9 @@ export class DefensePatentsPanel extends Panel {
   constructor() {
     super({
       id: 'defense-patents',
-      title: 'R&D Signal',
+      title: t('components.defensePatents.title'),
       showCount: true,
-      infoTooltip: 'Weekly defense and dual-use patent filings by Raytheon, Lockheed, Huawei, DARPA, and other strategic organizations. Categories: H04B (comms), H01L (semiconductors), F42B (ammunition), G06N (AI), C12N (biotech). Source: USPTO PatentsView.',
+      infoTooltip: t('components.defensePatents.infoTooltip'),
     });
     this.element.classList.add('panel-tall');
     void this.fetchPatents();
@@ -48,7 +63,7 @@ export class DefensePatentsPanel extends Panel {
     this.render();
 
     try {
-      const data = await militaryClient.listDefensePatents({ cpcCode: '', assignee: '', limit: 100 });
+      const data = await militaryClient().listDefensePatents({ cpcCode: '', assignee: '', limit: 100 });
       if (!this.element?.isConnected) return;
       this.patents = data.patents ?? [];
       this.setCount(data.total ?? this.patents.length);
@@ -56,7 +71,7 @@ export class DefensePatentsPanel extends Panel {
     } catch (err) {
       if (this.isAbortError(err)) return;
       if (!this.element?.isConnected) return;
-      this.error = 'Failed to load patent data.';
+      this.error = t('components.defensePatents.error');
       console.error('[DefensePatents] Fetch error:', err);
     }
     this.loading = false;
@@ -68,7 +83,7 @@ export class DefensePatentsPanel extends Panel {
       replaceChildren(this.content,
         h('div', { className: 'defense-patents-loading' },
           h('div', { className: 'loading-spinner' }),
-          h('span', null, 'Loading R&D filings…'),
+          h('span', null, t('components.defensePatents.loading')),
         ),
       );
       return;
@@ -82,8 +97,8 @@ export class DefensePatentsPanel extends Panel {
     this.setErrorState(false);
 
     const tabs: [ViewMode, string][] = [
-      ['all', 'All'],
-      ...Object.entries(CPC_LABELS).map(([code, label]): [ViewMode, string] => [code as ViewMode, label]),
+      ['all', t('components.defensePatents.tabs.all')],
+      ...CPC_CODES.map((code): [ViewMode, string] => [code, cpcLabel(code)]),
     ];
 
     const filtered = this.getFiltered();
@@ -101,7 +116,7 @@ export class DefensePatentsPanel extends Panel {
         h('div', { className: 'defense-patents-list' },
           ...(filtered.length > 0
             ? filtered.map(p => this.buildRow(p))
-            : [h('div', { className: 'empty-state' }, 'No filings in this category.')]),
+            : [h('div', { className: 'empty-state' }, t('components.defensePatents.empty'))]),
         ),
       ),
     );
@@ -113,7 +128,7 @@ export class DefensePatentsPanel extends Panel {
   }
 
   private buildRow(p: DefensePatentFiling): HTMLElement {
-    const date = p.date ? new Date(p.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '';
+    const date = p.date ? new Date(p.date).toLocaleDateString(getLocale(), { month: 'short', day: 'numeric', year: 'numeric' }) : '';
     const icon = CPC_ICONS[p.cpcCode] ?? '🔬';
     const safeUrl = sanitizeUrl(p.url || '');
 
@@ -123,7 +138,7 @@ export class DefensePatentsPanel extends Panel {
         h('div', { className: 'patent-header' },
           h('span', { className: 'patent-assignee' }, p.assignee),
           safeUrl
-            ? h('a', { href: safeUrl, target: '_blank', rel: 'noopener', className: 'patent-link', title: 'View on USPTO' }, '↗')
+            ? h('a', { href: safeUrl, target: '_blank', rel: 'noopener', className: 'patent-link', title: t('components.defensePatents.viewOnUspto') }, '↗')
             : false,
         ),
         h('div', { className: 'patent-title' }, p.title),

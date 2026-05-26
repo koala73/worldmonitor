@@ -29,7 +29,7 @@
           { "id": "stateContinuity", "score": 85, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" }
         ]},
         { "id": "economic", "score": 74, "weight": 0.17, "dimensions": [
-          { "id": "tradeSanctions", "score": 54, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" },
+          { "id": "tradePolicy", "score": 54, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" },
           { "id": "currencyExternal", "score": 73, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" },
           { "id": "macroFiscal", "score": 80, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" }
         ]},
@@ -66,7 +66,7 @@
           { "id": "stateContinuity", "score": 80, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" }
         ]},
         { "id": "economic", "score": 78, "weight": 0.17, "dimensions": [
-          { "id": "tradeSanctions", "score": 82, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" },
+          { "id": "tradePolicy", "score": 82, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" },
           { "id": "currencyExternal", "score": 86, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" },
           { "id": "macroFiscal", "score": 70, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" }
         ]},
@@ -101,7 +101,7 @@
           { "id": "externalDebtCoverage", "score": 100, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" }
         ]},
         { "id": "economic", "score": 78, "weight": 0.17, "dimensions": [
-          { "id": "tradeSanctions", "score": 82, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" }
+          { "id": "tradePolicy", "score": 82, "coverage": 1.0, "observedWeight": 1, "imputedWeight": 0, "imputationClass": "" }
         ]}
       ]
     },

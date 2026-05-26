@@ -2,6 +2,8 @@ import { createCircuitBreaker } from '@/utils';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { premiumFetch } from '@/services/premium-fetch';
 import { getHydratedData } from '@/services/bootstrap';
+import { hasPremiumAccess } from '@/services/panel-gating';
+import { toApiUrl } from '@/services/runtime';
 import {
   SanctionsServiceClient,
   type SanctionsEntry as ProtoSanctionsEntry,
@@ -157,6 +159,31 @@ export async function fetchSanctionsPressure(): Promise<SanctionsPressureResult>
     const result = toResult(hydrated);
     latestSanctionsPressureResult = result;
     return result;
+  }
+
+  // Anonymous (non-premium) users: do NOT call the Pro-gated RPC. The
+  // RPC at /api/sanctions/v1/list-sanctions-pressure is in
+  // PREMIUM_RPC_PATHS, so an anonymous client gets a deterministic 401
+  // and the breaker fallback returns emptyResult anyway — same outcome
+  // as us, minus the Sentry/console noise. Try the public bootstrap
+  // endpoint as a second-best read path and surface whatever it serves
+  // (or emptyResult on any failure).
+  if (!hasPremiumAccess()) {
+    try {
+      const resp = await fetch(toApiUrl('/api/bootstrap?keys=sanctionsPressure'), {
+        signal: AbortSignal.timeout(5_000),
+      });
+      if (resp.ok) {
+        const { data } = (await resp.json()) as { data?: { sanctionsPressure?: ListSanctionsPressureResponse } };
+        const payload = data?.sanctionsPressure;
+        if (payload?.entries?.length || payload?.countries?.length || payload?.programs?.length) {
+          const result = toResult(payload);
+          latestSanctionsPressureResult = result;
+          return result;
+        }
+      }
+    } catch { /* fall through to emptyResult */ }
+    return emptyResult;
   }
 
   return breaker.execute(async () => {

@@ -31,6 +31,23 @@ const MANIFEST_PATH = resolve(here, './swf-classification-manifest.yaml');
  * @property {number} access       0..1 inclusive
  * @property {number} liquidity    0..1 inclusive
  * @property {number} transparency 0..1 inclusive
+ * @property {number} [aumPctOfAudited]  OPTIONAL 0..1; multiplier applied
+ *                                       to the matched audited AUM, used
+ *                                       when one entry represents only a
+ *                                       fraction of a combined audited
+ *                                       fund (e.g. KIA-GRF vs KIA-FGF
+ *                                       split of audited KIA AUM).
+ * @property {boolean} [excludedOverlapsWithReserves] OPTIONAL; when true,
+ *                                       the seeder loads the entry for
+ *                                       documentation but EXCLUDES it
+ *                                       from buffer calculation. Used
+ *                                       for funds whose AUM is already
+ *                                       counted in central-bank FX
+ *                                       reserves (SAFE Investment Co,
+ *                                       HKMA Exchange Fund) to avoid
+ *                                       double-counting against the
+ *                                       reserveAdequacy /
+ *                                       liquidReserveAdequacy dims.
  */
 
 /**
@@ -52,8 +69,20 @@ const MANIFEST_PATH = resolve(here, './swf-classification-manifest.yaml');
  * @property {string} displayName   human-readable fund name
  * @property {SwfWikipediaHints} [wikipedia] optional lookup hints for the
  *                                           Wikipedia fallback scraper
+ * @property {number} [aumUsd]      OPTIONAL primary-source AUM in USD.
+ *                                  When present AND `aumVerified === true`,
+ *                                  the seeder uses this value directly
+ *                                  instead of resolving via Wikipedia.
+ * @property {number} [aumYear]     OPTIONAL year of the primary-source
+ *                                  AUM disclosure (e.g. 2024).
+ * @property {boolean} [aumVerified] OPTIONAL primary-source-confirmed flag.
+ *                                  When false, the entry is loaded for
+ *                                  documentation but EXCLUDED from buffer
+ *                                  scoring (data-integrity rule).
  * @property {SwfClassification} classification
- * @property {{ access: string, liquidity: string, transparency: string }} rationale
+ * @property {{ access: string, liquidity: string, transparency: string,
+ *              [aum_pct_of_audited]: string,
+ *              [excluded_overlaps_with_reserves]: string }} rationale
  * @property {string[]} sources
  */
 
@@ -93,7 +122,35 @@ function validateClassification(cls, path) {
   assertZeroToOne(c.access,       `${path}.access`);
   assertZeroToOne(c.liquidity,    `${path}.liquidity`);
   assertZeroToOne(c.transparency, `${path}.transparency`);
-  return { access: c.access, liquidity: c.liquidity, transparency: c.transparency };
+
+  // OPTIONAL: aum_pct_of_audited multiplier (KIA-GRF/FGF split case).
+  let aumPctOfAudited;
+  if (c.aum_pct_of_audited != null) {
+    if (typeof c.aum_pct_of_audited !== 'number'
+        || Number.isNaN(c.aum_pct_of_audited)
+        || c.aum_pct_of_audited <= 0
+        || c.aum_pct_of_audited > 1) {
+      fail(`${path}.aum_pct_of_audited: expected number in (0, 1], got ${JSON.stringify(c.aum_pct_of_audited)}`);
+    }
+    aumPctOfAudited = c.aum_pct_of_audited;
+  }
+
+  // OPTIONAL: excluded_overlaps_with_reserves flag (SAFE-IC / HKMA case).
+  let excludedOverlapsWithReserves;
+  if (c.excluded_overlaps_with_reserves != null) {
+    if (typeof c.excluded_overlaps_with_reserves !== 'boolean') {
+      fail(`${path}.excluded_overlaps_with_reserves: expected boolean, got ${JSON.stringify(c.excluded_overlaps_with_reserves)}`);
+    }
+    excludedOverlapsWithReserves = c.excluded_overlaps_with_reserves;
+  }
+
+  return {
+    access: c.access,
+    liquidity: c.liquidity,
+    transparency: c.transparency,
+    ...(aumPctOfAudited != null ? { aumPctOfAudited } : {}),
+    ...(excludedOverlapsWithReserves != null ? { excludedOverlapsWithReserves } : {}),
+  };
 }
 
 function validateRationale(rat, path) {
@@ -102,7 +159,19 @@ function validateRationale(rat, path) {
   assertNonEmptyString(r.access,       `${path}.access`);
   assertNonEmptyString(r.liquidity,    `${path}.liquidity`);
   assertNonEmptyString(r.transparency, `${path}.transparency`);
-  return { access: r.access, liquidity: r.liquidity, transparency: r.transparency };
+  // Optional rationale paragraphs for the new schema fields. Required
+  // ONLY when the corresponding classification field is present (paired
+  // with a rationale in validateFundEntry).
+  const out = { access: r.access, liquidity: r.liquidity, transparency: r.transparency };
+  if (r.aum_pct_of_audited != null) {
+    assertNonEmptyString(r.aum_pct_of_audited, `${path}.aum_pct_of_audited`);
+    out.aumPctOfAudited = r.aum_pct_of_audited;
+  }
+  if (r.excluded_overlaps_with_reserves != null) {
+    assertNonEmptyString(r.excluded_overlaps_with_reserves, `${path}.excluded_overlaps_with_reserves`);
+    out.excludedOverlapsWithReserves = r.excluded_overlaps_with_reserves;
+  }
+  return out;
 }
 
 function validateSources(sources, path) {
@@ -154,6 +223,19 @@ function validateFundEntry(raw, idx, seenFundKeys) {
   if (!raw || typeof raw !== 'object') fail(`${path}: expected object`);
   const f = /** @type {Record<string, unknown>} */ (raw);
 
+  // Misplacement gate. `aum_pct_of_audited` and
+  // `excluded_overlaps_with_reserves` are CLASSIFICATION fields.
+  // If they appear at the top level of a fund entry, the loader
+  // rejects with a clear error rather than silently accepting the
+  // misplaced field (which would be ignored by the schema and
+  // produce wrong scoring). Codex Round 1 #4.
+  if (f.aum_pct_of_audited !== undefined) {
+    fail(`${path}: aum_pct_of_audited must be placed under classification:, not top-level`);
+  }
+  if (f.excluded_overlaps_with_reserves !== undefined) {
+    fail(`${path}: excluded_overlaps_with_reserves must be placed under classification:, not top-level`);
+  }
+
   assertIso2(f.country, `${path}.country`);
   assertNonEmptyString(f.fund, `${path}.fund`);
   assertNonEmptyString(f.display_name, `${path}.display_name`);
@@ -162,16 +244,59 @@ function validateFundEntry(raw, idx, seenFundKeys) {
   if (seenFundKeys.has(dedupeKey)) fail(`${path}: duplicate fund identifier ${dedupeKey}`);
   seenFundKeys.add(dedupeKey);
 
+  // OPTIONAL primary-source AUM fields. When `aum_verified === true`
+  // AND `aum_usd` present, the seeder uses these directly without
+  // querying Wikipedia. When `aum_verified === false`, the entry
+  // is loaded for documentation but EXCLUDED from buffer scoring
+  // (data-integrity rule from plan §Phase 1A).
+  let aumUsd;
+  if (f.aum_usd != null) {
+    if (typeof f.aum_usd !== 'number' || !Number.isFinite(f.aum_usd) || f.aum_usd <= 0) {
+      fail(`${path}.aum_usd: expected positive finite number, got ${JSON.stringify(f.aum_usd)}`);
+    }
+    aumUsd = f.aum_usd;
+  }
+  let aumYear;
+  if (f.aum_year != null) {
+    if (typeof f.aum_year !== 'number' || !Number.isInteger(f.aum_year) || f.aum_year < 2000 || f.aum_year > 2100) {
+      fail(`${path}.aum_year: expected integer year in [2000, 2100], got ${JSON.stringify(f.aum_year)}`);
+    }
+    aumYear = f.aum_year;
+  }
+  let aumVerified;
+  if (f.aum_verified != null) {
+    if (typeof f.aum_verified !== 'boolean') {
+      fail(`${path}.aum_verified: expected boolean, got ${JSON.stringify(f.aum_verified)}`);
+    }
+    aumVerified = f.aum_verified;
+  }
+  // Coherence: if aum_verified === true, both aum_usd and aum_year MUST be present.
+  // (A "verified" entry without an actual value is meaningless.)
+  if (aumVerified === true && (aumUsd == null || aumYear == null)) {
+    fail(`${path}: aum_verified=true requires both aum_usd and aum_year to be present`);
+  }
+
   const classification = validateClassification(f.classification, `${path}.classification`);
   const rationale = validateRationale(f.rationale, `${path}.rationale`);
   const sources = validateSources(f.sources, `${path}.sources`);
   const wikipedia = validateWikipediaHints(f.wikipedia, `${path}.wikipedia`);
+
+  // Coherence: rationale MUST cover any classification field that is set.
+  if (classification.aumPctOfAudited != null && rationale.aumPctOfAudited == null) {
+    fail(`${path}.rationale.aum_pct_of_audited: required when classification.aum_pct_of_audited is set`);
+  }
+  if (classification.excludedOverlapsWithReserves === true && rationale.excludedOverlapsWithReserves == null) {
+    fail(`${path}.rationale.excluded_overlaps_with_reserves: required when classification.excluded_overlaps_with_reserves is true`);
+  }
 
   return {
     country: f.country,
     fund: f.fund,
     displayName: f.display_name,
     ...(wikipedia ? { wikipedia } : {}),
+    ...(aumUsd != null ? { aumUsd } : {}),
+    ...(aumYear != null ? { aumYear } : {}),
+    ...(aumVerified != null ? { aumVerified } : {}),
     classification,
     rationale,
     sources,

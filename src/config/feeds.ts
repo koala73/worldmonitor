@@ -1,6 +1,7 @@
 import type { Feed } from '@/types';
 import { SITE_VARIANT } from './variant';
 import { rssProxyUrl } from '@/utils';
+import { mergeCanonicalFeeds } from './feed-resolution';
 
 const rss = rssProxyUrl;
 const railwayRss = rssProxyUrl;
@@ -47,6 +48,13 @@ export const SOURCE_TYPES: Record<string, SourceType> = {
   'Tagesschau': 'mainstream', 'Der Spiegel': 'mainstream', 'Die Zeit': 'mainstream', 'DW News': 'mainstream',
   'ANSA': 'wire', 'Corriere della Sera': 'mainstream', 'Repubblica': 'mainstream',
   'NOS Nieuws': 'mainstream', 'NRC': 'mainstream', 'De Telegraaf': 'mainstream',
+  // Croatian (HR)
+  'N1 Croatia': 'mainstream', 'Index.hr': 'mainstream', 'Jutarnji list': 'mainstream',
+  'Balkan Insight': 'intel',
+  // Hungarian (HU)
+  'Telex': 'mainstream', 'Index.hu': 'mainstream', 'HVG': 'mainstream',
+  '444.hu': 'mainstream', '24.hu': 'mainstream', 'Híradó': 'mainstream',
+  'ATV': 'mainstream', 'Portfolio.hu': 'market',
   'SVT Nyheter': 'mainstream', 'Dagens Nyheter': 'mainstream', 'Svenska Dagbladet': 'mainstream',
   // Brazilian Addition
   'Brasil Paralelo': 'mainstream',
@@ -161,6 +169,12 @@ let _sourcePanelMap: Map<string, string> | null = null;
 export function getSourcePanelId(sourceName: string): string {
   if (!_sourcePanelMap) {
     _sourcePanelMap = new Map();
+    // Seed with CANONICAL_FEEDS first so a source belonging to a cross-variant
+    // custom panel still resolves to its real panel. The active-variant FEEDS
+    // pass below then overwrites, so the active preset wins any collision.
+    for (const [category, feeds] of Object.entries(CANONICAL_FEEDS)) {
+      for (const feed of feeds) _sourcePanelMap.set(feed.name, category);
+    }
     for (const [category, feeds] of Object.entries(FEEDS)) {
       for (const feed of feeds) _sourcePanelMap.set(feed.name, category);
     }
@@ -250,6 +264,22 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'TVN24', url: rss('https://tvn24.pl/swiat.xml'), lang: 'pl' },
     { name: 'Polsat News', url: rss('https://www.polsatnews.pl/rss/wszystkie.xml'), lang: 'pl' },
     { name: 'Rzeczpospolita', url: rss('https://www.rp.pl/rss_main'), lang: 'pl' },
+    // Hungarian (HU) — V4 / CEE coverage. Locale-gated for hu users only,
+    // matching the Tagesschau (de) / ANSA (it) / NOS Nieuws (nl) / SVT (sv)
+    // convention. `hu` is registered as a supported locale in src/services/i18n.ts.
+    { name: 'Telex', url: rss('https://telex.hu/rss'), lang: 'hu' },
+    { name: 'Index.hu', url: rss('https://index.hu/24ora/rss'), lang: 'hu' },
+    { name: 'HVG', url: rss('https://hvg.hu/rss'), lang: 'hu' },
+    { name: '444.hu', url: rss('https://444.hu/feed'), lang: 'hu' },
+    { name: '24.hu', url: rss('https://24.hu/feed/'), lang: 'hu' },
+    { name: 'Híradó', url: rss('https://news.google.com/rss/search?q=site:hirado.hu+when:2d&hl=hu&gl=HU&ceid=HU:hu'), lang: 'hu' },
+    { name: 'Portfolio.hu', url: rss('https://portfolio.hu/rss/all.xml'), lang: 'hu' },
+    { name: 'ATV', url: rss('https://www.atv.hu/rss'), lang: 'hu' },
+    // Croatian (HR) — mainstream + investigative
+    { name: 'N1 Croatia', url: rss('https://n1info.hr/feed/'), lang: 'hr' },
+    { name: 'Index.hr', url: rss('https://www.index.hr/rss'), lang: 'hr' },
+    { name: 'Jutarnji list', url: rss('https://www.jutarnji.hr/feed'), lang: 'hr' },
+    { name: 'Balkan Insight', url: rss('https://balkaninsight.com/feed/') },
     // Greek (EL)
     { name: 'Kathimerini', url: rss('https://news.google.com/rss/search?q=site:kathimerini.gr+when:2d&hl=el&gl=GR&ceid=GR:el'), lang: 'el' },
     { name: 'Naftemporiki', url: rss('https://www.naftemporiki.gr/feed/'), lang: 'el' },
@@ -273,7 +303,7 @@ const FULL_FEEDS: Record<string, Feed[]> = {
     { name: 'Al Arabiya', url: { en: rss('https://news.google.com/rss/search?q=site:english.alarabiya.net+when:2d&hl=en-US&gl=US&ceid=US:en'), ar: rss('https://www.alarabiya.net/tools/mrss/?cat=main') } },
     // Arab News and Times of Israel removed — 403 from cloud IPs
     { name: 'Guardian ME', url: rss('https://www.theguardian.com/world/middleeast/rss') },
-    { name: 'BBC Persian', url: rss('http://feeds.bbci.co.uk/persian/tv-and-radio-37434376/rss.xml') },
+    { name: 'BBC Persian', url: rss('https://feeds.bbci.co.uk/persian/rss.xml') },
     { name: 'Iran International', url: rss('https://news.google.com/rss/search?q=site:iranintl.com+when:2d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Fars News', url: rss('https://news.google.com/rss/search?q=site:farsnews.ir+when:2d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'IRNA', url: rss('https://en.irna.ir/rss') },
@@ -601,7 +631,7 @@ const TECH_FEEDS: Record<string, Feed[]> = {
     { name: 'Seeking Alpha Tech', url: rss('https://seekingalpha.com/market_currents.xml') },
   ],
   hardware: [
-    { name: "Tom's Hardware", url: rss('https://www.tomshardware.com/feeds/all') },
+    { name: "Tom's Hardware", url: rss('https://www.tomshardware.com/feeds.xml') },
     { name: 'SemiAnalysis', url: rss('https://news.google.com/rss/search?q=site:semianalysis.com+when:7d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Semiconductor News', url: rss('https://news.google.com/rss/search?q=semiconductor+OR+chip+OR+TSMC+OR+NVIDIA+OR+Intel+when:3d&hl=en-US&gl=US&ceid=US:en') },
   ],
@@ -689,7 +719,13 @@ const FINANCE_FEEDS: Record<string, Feed[]> = {
     { name: 'Crypto News', url: rss('https://news.google.com/rss/search?q=(bitcoin+OR+ethereum+OR+crypto+OR+"digital+assets")+when:1d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'DeFi News', url: rss('https://news.google.com/rss/search?q=(DeFi+OR+"decentralized+finance"+OR+DEX+OR+"yield+farming")+when:3d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Decrypt', url: rss('https://decrypt.co/feed') },
-    { name: 'Blockworks', url: rss('https://blockworks.co/feed') },
+    // Blockworks REMOVED (PR #3715 review): blockworks.co/feed is
+    // Cloudflare-blocked from both Vercel edge AND Railway egress, AND Google
+    // News returns 0 items for site:blockworks.co at every probed time window
+    // (publisher likely blocks Googlebot on the same wholesale tier — so the
+    // Google News fallback we tried first is a silent placeholder). The Block
+    // (above) covers the same institutional-crypto territory; no coverage
+    // lost. Also removed from the server feeds (_feeds.ts) for parity.
     { name: 'The Defiant', url: rss('https://thedefiant.io/feed') },
     { name: 'Bitcoin Magazine', url: rss('https://bitcoinmagazine.com/feed') },
     { name: 'DL News', url: rss('https://news.google.com/rss/search?q=site:dlnews.com+when:3d&hl=en-US&gl=US&ceid=US:en') },
@@ -800,24 +836,41 @@ const HAPPY_FEEDS: Record<string, Feed[]> = {
 // Commodity variant feeds (from commodity.ts)
 const COMMODITY_FEEDS: Record<string, Feed[]> = {
   'commodity-news': [
-    { name: 'Kitco News', url: rss('https://www.kitco.com/rss/KitcoNews.xml') },
+    // Kitco shut down their public RSS feeds in 2025 (every /rss/*, /news/feed,
+    // /news/category/*/feed path now returns an HTML SPA page, not XML). Fall
+    // back to Google News scoped to site:kitco.com, matching the pattern used
+    // by TASS / Kyiv Independent / Telegraaf elsewhere in this file.
+    { name: 'Kitco News', url: rss('https://news.google.com/rss/search?q=site:kitco.com+(gold+OR+silver+OR+metals)+when:1d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Mining.com', url: rss('https://www.mining.com/feed/') },
     { name: 'Bloomberg Commodities', url: rss('https://news.google.com/rss/search?q=site:bloomberg.com+commodities+OR+metals+OR+mining+when:1d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Reuters Commodities', url: rss('https://news.google.com/rss/search?q=site:reuters.com+commodities+OR+metals+OR+mining+when:1d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'S&P Global Commodity', url: rss('https://news.google.com/rss/search?q=site:spglobal.com+commodities+metals+when:3d&hl=en-US&gl=US&ceid=US:en') },
-    { name: 'Commodity Trade Mantra', url: rss('https://www.commoditytrademantra.com/feed/') },
+    // Commodity Trade Mantra REMOVED (PR #3715 review):
+    // commoditytrademantra.com wholesale-403s any direct fetch AND Google News
+    // returns 0 items for site:commoditytrademantra.com at every probed time
+    // window (publisher effectively not indexed by Google News). commodity-news
+    // still has Mining.com / Bloomberg / Reuters / S&P Global / CNBC —
+    // coverage isn't lost.
     { name: 'CNBC Commodities', url: rss('https://news.google.com/rss/search?q=site:cnbc.com+(commodities+OR+metals+OR+gold+OR+copper)+when:1d&hl=en-US&gl=US&ceid=US:en') },
   ],
   'gold-silver': [
-    { name: 'Kitco Gold', url: rss('https://www.kitco.com/rss/KitcoGold.xml') },
+    // Kitco RSS shutdown (see Kitco News comment in commodity-news above).
+    // Gold-scoped Google News query targeting site:kitco.com.
+    { name: 'Kitco Gold', url: rss('https://news.google.com/rss/search?q=site:kitco.com+gold+when:1d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Gold Price News', url: rss('https://news.google.com/rss/search?q=(gold+price+OR+"gold+market"+OR+bullion+OR+LBMA)+when:1d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Silver Price News', url: rss('https://news.google.com/rss/search?q=(silver+price+OR+"silver+market"+OR+"silver+futures")+when:2d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Precious Metals', url: rss('https://news.google.com/rss/search?q=("precious+metals"+OR+platinum+OR+palladium+OR+"gold+ETF"+OR+GLD+OR+SLV)+when:2d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'World Gold Council', url: rss('https://news.google.com/rss/search?q="World+Gold+Council"+OR+"central+bank+gold"+OR+"gold+reserves"+when:7d&hl=en-US&gl=US&ceid=US:en') },
-    { name: 'GoldSeek', url: rss('https://news.goldseek.com/GoldSeek/rss.xml') },
-    { name: 'SilverSeek', url: rss('https://news.silverseek.com/SilverSeek/rss.xml') },
+    // GoldSeek + SilverSeek moved their feeds from the `news.*` subdomain to
+    // the apex domain (the old subdomain returns 404; the apex /rss.xml on
+    // both returns application/rss+xml).
+    { name: 'GoldSeek', url: rss('https://www.goldseek.com/rss.xml') },
+    { name: 'SilverSeek', url: rss('https://www.silverseek.com/rss.xml') },
     { name: 'Gold Silver Worlds', url: rss('https://goldsilverworlds.com/feed/') },
-    { name: 'FX Empire Gold', url: rss('https://www.fxempire.com/api/v1/en/markets/commodity/Gold/news/feed') },
+    // The /api/v1/.../feed endpoint FX Empire used to expose was deprecated;
+    // their generic /feed now returns text/html, not RSS. Google News scoped
+    // to site:fxempire.com for gold articles.
+    { name: 'FX Empire Gold', url: rss('https://news.google.com/rss/search?q=site:fxempire.com+gold+when:1d&hl=en-US&gl=US&ceid=US:en') },
   ],
   energy: [
     { name: 'OilPrice.com', url: rss('https://oilprice.com/rss/main') },
@@ -829,9 +882,16 @@ const COMMODITY_FEEDS: Record<string, Feed[]> = {
     { name: 'Reuters Energy', url: rss('https://news.google.com/rss/search?q=site:reuters.com+(oil+OR+gas+OR+energy)+when:1d&hl=en-US&gl=US&ceid=US:en') },
   ],
   'mining-news': [
-    { name: 'Mining Journal', url: rss('https://www.mining-journal.com/feed/') },
+    // mining-journal.com migrated to Kreatio CMS; /feed/ now returns
+    // text/html (the homepage SPA), not RSS — produces "Parse error for
+    // Mining Journal" in the client. Google News fallback.
+    { name: 'Mining Journal', url: rss('https://news.google.com/rss/search?q=site:mining-journal.com+when:2d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Northern Miner', url: rss('https://www.northernminer.com/feed/') },
-    { name: 'Mining Weekly', url: rss('https://www.miningweekly.com/rss/') },
+    // www.miningweekly.com domain-wide 403s every IP-based fetch (homepage
+    // included), not just Vercel edge — Railway relay likely wouldn't help.
+    // Google News scoped to site:miningweekly.com is the reliable path and
+    // matches the pattern used for other wholesale-blocked publishers.
+    { name: 'Mining Weekly', url: rss('https://news.google.com/rss/search?q=site:miningweekly.com+when:2d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Mining Technology', url: rss('https://www.mining-technology.com/feed/') },
     { name: 'Australian Mining', url: rss('https://www.australianmining.com.au/feed/') },
     { name: 'Mine Web (SNL)', url: rss('https://news.google.com/rss/search?q=("mining+company"+OR+"mine+production"+OR+"mining+operations")+when:2d&hl=en-US&gl=US&ceid=US:en') },
@@ -936,6 +996,22 @@ export const FEEDS = SITE_VARIANT === 'tech'
           ? ENERGY_FEEDS
           : FULL_FEEDS;
 
+// Canonical category→feeds map: the union of every variant's feed set.
+// `FEEDS` (above) is just the active variant's PRESET; users freely customize
+// their panel set, so any enabled news panel must be able to resolve its feeds
+// regardless of which variant it "belongs" to. Consumers:
+//  • data-loader `loadNews()` — loads preset categories + custom enabled panels
+//  • panel-layout — creates a NewsPanel for any enabled category, not just preset
+// See src/config/feed-resolution.ts for the merge + resolution helpers.
+export const CANONICAL_FEEDS: Record<string, Feed[]> = mergeCanonicalFeeds([
+  FULL_FEEDS,
+  TECH_FEEDS,
+  FINANCE_FEEDS,
+  COMMODITY_FEEDS,
+  ENERGY_FEEDS,
+  HAPPY_FEEDS,
+]);
+
 export const SOURCE_REGION_MAP: Record<string, { labelKey: string; feedKeys: string[] }> = {
   // Full (geopolitical) variant regions
   worldwide: { labelKey: 'header.sourceRegionWorldwide', feedKeys: ['politics', 'crisis'] },
@@ -1023,7 +1099,7 @@ export const INTEL_SOURCES: Feed[] = [
 export const DEFAULT_ENABLED_SOURCES: Record<string, string[]> = {
   politics: ['BBC World', 'Guardian World', 'AP News', 'Reuters World', 'CNN World'],
   us: ['Reuters US', 'NPR News', 'PBS NewsHour', 'ABC News', 'CBS News', 'NBC News', 'Wall Street Journal', 'Politico', 'The Hill'],
-  europe: ['France 24', 'EuroNews', 'Le Monde', 'DW News', 'Tagesschau', 'ANSA', 'NOS Nieuws', 'SVT Nyheter'],
+  europe: ['France 24', 'EuroNews', 'Le Monde', 'DW News', 'Tagesschau', 'ANSA', 'NOS Nieuws', 'SVT Nyheter', 'Balkan Insight'],
   middleeast: ['BBC Middle East', 'Al Jazeera', 'Al Arabiya', 'Guardian ME', 'BBC Persian', 'Iran International', 'IRNA', 'Mehr News', 'Haaretz', 'Jerusalem Post', 'Ynetnews', 'Asharq News', 'The National'],
   africa: ['BBC Africa', 'News24', 'Africanews', 'Jeune Afrique', 'Africa News', 'Premium Times', 'Channels TV', 'Sahel Crisis'],
   latam: ['BBC Latin America', 'Reuters LatAm', 'InSight Crime', 'Mexico News Daily', 'Clarín', 'Primicias', 'Infobae Americas', 'El Universo'],

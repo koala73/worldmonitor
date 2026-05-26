@@ -6,7 +6,8 @@
     "enterprise": "Enterprise",
     "reserveAccess": "Rezervujte si raný přístup",
     "signIn": "Přihlásit se",
-    "upgradeToPro": "Upgrade na Pro"
+    "upgradeToPro": "Upgrade na Pro",
+    "goToDashboard": "Přejít na Ovládací panel"
   },
   "hero": {
     "noiseWord": "Šum",
@@ -18,7 +19,8 @@
     "emailPlaceholder": "Zadejte e-mail",
     "emailAriaLabel": "E-mailová adresa pro čekací listinu",
     "choosePlan": "Vyberte plán",
-    "signIn": "Přihlásit se"
+    "signIn": "Přihlásit se",
+    "goToDashboard": "Přejít na Ovládací panel"
   },
   "wired": {
     "asFeaturedIn": "Zmíněno v"
@@ -50,7 +52,8 @@
     "entF9": "Android TV aplikace pro SOC stěny a trading floory",
     "entF10": "Cloud, on-premises nebo air-gapped nasazení",
     "entF11": "Dedikovaný onboarding a podpora",
-    "entCta": "Kontaktujte prodej"
+    "entCta": "Kontaktujte prodej",
+    "freeF2": "500+ kanálů, 65+ zdrojů, 50+ mapových vrstev"
   },
   "whyUpgrade": {
     "title": "Proč upgradovat",
@@ -83,7 +86,7 @@
     "openFullScreen": "Otevřít na celé obrazovce",
     "tryLiveDashboard": "Vyzkoušejte živý dashboard",
     "iframeTitle": "World Monitor — Živý zpravodajský dashboard",
-    "description": "3D WebGL zeměkoule · 45+ interaktivních vrstev mapy · Data trhů, makro, geopolitiky, energie a infrastruktury v reálném čase"
+    "description": "3D WebGL glóbus · 50+ interaktivních mapových vrstev · Data v reálném čase o trzích, makroekonomii, geopolitice, energetice a infrastruktuře"
   },
   "socialProof": {
     "uniqueVisitors": "Unikátní návštěvníci",
@@ -139,31 +142,8 @@
   },
   "tiers": {
     "free": "Zdarma",
-    "freeTagline": "Vidět vše",
-    "freeDesc": "Open-source dashboard",
-    "freeF1": "Obnovování 5-15 min",
-    "freeF2": "500+ feedů, 45 vrstev mapy",
-    "freeF3": "BYOK pro AI",
-    "freeF4": "Zdarma navždy",
-    "openDashboard": "Otevřít dashboard",
     "pro": "Pro",
-    "proTagline": "Trhy, makro a geopolitika",
-    "proDesc": "Váš AI analytik",
-    "proF1": "Equity research a analýza akcií",
-    "proF2": "+ denní digesty, ekonomická analytika",
-    "proF3": "AI v ceně, 1 klíč",
-    "proF4": "Prioritní obnovování dat (Brzy)",
-    "priceMonthly": "$39,99 / měsíc",
-    "priceAnnual": "$399,99 / rok",
-    "annualSavingsNote": "2 měsíce zdarma",
-    "enterprise": "Enterprise",
-    "enterpriseTagline": "Jednejte dříve než ostatní",
-    "enterpriseDesc": "Zpravodajská platforma",
-    "entF1": "Satelitní snímky live",
-    "entF2": "+ AI agenti, 50K+ infra, SAR",
-    "entF3": "Vlastní AI, investor persony",
-    "entF4": "Kontaktujte nás",
-    "contactSales": "Kontaktovat prodej"
+    "enterprise": "Enterprise"
   },
   "proShowcase": {
     "proTier": "PRO ÚROVEŇ",
@@ -281,7 +261,6 @@
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + webhook",
     "fMcpBulk": "+ MCP + hromadné",
-    "f45": "45",
     "fTensOfThousands": "+ desítky tisíc",
     "fLiveTracking": "Živé sledování",
     "fPassAlerts": "Alerty přeletu + analýza",
@@ -292,7 +271,8 @@
     "fStandard": "Standard",
     "fKeyAuth": "Auth klíčem",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
-    "noteBelow": "Jádro platformy zůstává zdarma. Placené plány odemykají equity research, makro analytiku, AI briefingy a organizační použití."
+    "noteBelow": "Jádro platformy zůstává zdarma. Placené plány odemykají equity research, makro analytiku, AI briefingy a organizační použití.",
+    "f50plus": "50+"
   },
   "faq": {
     "title": "Často kladené otázky",
@@ -354,5 +334,76 @@
     "youreIn": "Jste uvnitř!",
     "invitedBanner": "Byli jste pozváni — připojte se k čekací listině"
   },
-  "soonBadge": "Brzy"
+  "soonBadge": "Brzy",
+  "meta": {
+    "title": "World Monitor Pro — AI analytik, osobní inteligentní plocha, MCP pro Claude a GPT",
+    "description": "Geopolitická vrstva AI. Ptejte se na ni, přihlaste se k ní, vytvářejte na ní. Chat WM Analyst přes 30+ živých služeb, denní, dvakrát denní nebo týdenní AI přehled doručovaný do Slack, Discord, Telegram, Email nebo webhooku, vlastní tvůrce widgetů (HTML/CSS/JS + AI) a MCP konektory pro Claude, GPT a vlastní LLM.",
+    "ogTitle": "World Monitor Pro — Geopolitická vrstva AI",
+    "ogDescription": "Ptejte se na ni, přihlaste se k ní, vytvářejte na ní. Chat WM Analyst, AI přehled podle vašeho harmonogramu (denně, dvakrát denně nebo týdně), vlastní tvůrce widgetů a MCP pro Claude/GPT — přes 30+ živých služeb pod jedním klíčem."
+  },
+  "pricing": {
+    "suffixForever": "navždy",
+    "suffixTailored": "přizpůsobeno vám",
+    "suffixPerMonth": "/měs",
+    "suffixPerYear": "/rok",
+    "amountCustom": "Vlastní",
+    "opening": "Otevírání…",
+    "headerTitle": "Vyberte si svůj plán",
+    "headerSubtitle": "Od monitorování v reálném čase až po kompletní infrastrukturu pro zpravodajství. Zvolte úroveň, která vyhovuje vaší misi.",
+    "billingMonthly": "Měsíčně",
+    "billingAnnual": "Ročně",
+    "saveAnnual": "Ušetřete 17 %",
+    "mostPopular": "Nejpopulárnější",
+    "promoCodeNote": "Máte propagační kód? Zadejte jej během platby.",
+    "tiers": {
+      "free": {
+        "description": "Začněte se základními funkcemi",
+        "features": [
+          "Základní panely dashboardu",
+          "Globální zdroj zpráv",
+          "Výstrahy zemětřesení a počasí",
+          "Základní zobrazení mapy"
+        ],
+        "cta": "Začít"
+      },
+      "pro": {
+        "description": "Kompletní dashboard pro zpravodajství",
+        "features": [
+          "Vše ze zdarma verze",
+          "AI analýza akcií a backtesting",
+          "Denní tržní přehledy",
+          "Sledování vojenských a geopolitických situací",
+          "Tvůrce vlastních widgetů",
+          "MCP konektory dat",
+          "Prioritní obnovení dat"
+        ]
+      },
+      "api": {
+        "description": "Programmatický přístup k datům zpravodajství",
+        "features": [
+          "Přístup k REST API",
+          "Datové toky v reálném čase",
+          "1 000 požadavků denně",
+          "Webhook oznámení",
+          "Vlastní export dat"
+        ]
+      },
+      "enterprise": {
+        "description": "Vlastní řešení pro organizace",
+        "features": [
+          "Vše z Pro + API",
+          "Neomezené API požadavky",
+          "Vyhrazená podpora",
+          "Vlastní integrace",
+          "Záruka SLA",
+          "Možnost on-premise"
+        ],
+        "cta": "Kontaktujte prodej"
+      }
+    },
+    "cta": {
+      "checkoutDefault": "Začít",
+      "learnMore": "Další informace"
+    }
+  }
 }

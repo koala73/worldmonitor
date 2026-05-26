@@ -3004,3 +3004,145 @@ a.hub-top-story {
   color: var(--text-muted, #888);
   font-size: 12px;
 }
+
+/* ----------------------------------------------------------
+   Watchlist Table View (StockAnalysisPanel, StockBacktestPanel)
+   Option B from watchlist-panel-playground.html — replaces the
+   one-long-card-per-symbol scroll with a sortable summary table
+   that expands inline on row click. Scales to 50+ symbols.
+   ---------------------------------------------------------- */
+.watchlist-table-view {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.watchlist-intro {
+  font-size: 12px;
+  color: var(--text-dim);
+  line-height: 1.5;
+  padding: 4px 0;
+}
+
+.watchlist-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 0 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.watchlist-search {
+  width: 100%;
+  background: var(--input-bg, #1a1a1a);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 5px 8px;
+  font-family: inherit;
+  font-size: 11px;
+  border-radius: 3px;
+}
+.watchlist-search:focus {
+  outline: none;
+  border-color: var(--border-strong);
+}
+
+.watchlist-control-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.watchlist-pills {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.watchlist-pill {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  padding: 3px 8px;
+  font-family: inherit;
+  font-size: 10px;
+  cursor: pointer;
+  border-radius: 10px;
+  transition: color 0.1s ease, border-color 0.1s ease, background 0.1s ease;
+}
+.watchlist-pill:hover {
+  color: var(--text);
+  border-color: var(--border-strong);
+}
+.watchlist-pill-active {
+  color: var(--accent);
+  background: var(--overlay-medium);
+  border-color: var(--border-strong);
+}
+
+.watchlist-sort {
+  margin-left: auto;
+  background: var(--input-bg, #1a1a1a);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 3px 6px;
+  font-family: inherit;
+  font-size: 11px;
+  border-radius: 3px;
+}
+
+.watchlist-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.watchlist-table thead th {
+  text-align: left;
+  color: var(--text-dim);
+  font-weight: 500;
+  text-transform: uppercase;
+  font-size: 9px;
+  letter-spacing: 0.4px;
+  padding: 6px 4px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.watchlist-table thead th.watchlist-th-right {
+  text-align: right;
+}
+.watchlist-table thead th.watchlist-th-sortable {
+  cursor: pointer;
+  user-select: none;
+}
+.watchlist-table thead th.watchlist-th-sortable:hover {
+  color: var(--text);
+}
+.watchlist-table tbody tr.watchlist-row {
+  cursor: pointer;
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background 0.1s ease;
+}
+.watchlist-table tbody tr.watchlist-row:hover {
+  background: var(--overlay-subtle);
+}
+.watchlist-table tbody tr.watchlist-row-expanded {
+  background: var(--overlay-light);
+}
+.watchlist-table tbody td {
+  padding: 6px 4px;
+}
+.watchlist-table tbody td.watchlist-td-right {
+  text-align: right;
+}
+.watchlist-table tbody tr.watchlist-detail-row > td {
+  padding: 0;
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+}
+.watchlist-empty {
+  padding: 24px;
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 11px;
+}

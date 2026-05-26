@@ -18,6 +18,14 @@ export interface EntitlementState {
     maxDashboards: number;
     prioritySupport: boolean;
     exportFormats: string[];
+    /**
+     * Pro MCP access (plan 2026-05-10-001). Undefined on legacy entitlement
+     * snapshots that pre-date the catalog field. `hasFeature('mcpAccess')`
+     * coerces undefined → false via Boolean(), so the settings tab
+     * fails-closed for unrefreshed Pro users (they'll see it appear once
+     * Dodo's next webhook repopulates the field).
+     */
+    mcpAccess?: boolean;
   };
   validUntil: number;
 }

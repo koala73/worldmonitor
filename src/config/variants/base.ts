@@ -58,6 +58,12 @@ export const REFRESH_INTERVALS = {
   hormuzTracker: 60 * 60 * 1000, // 1h — data updates daily
   hyperliquidFlow: 5 * 60 * 1000, // 5min — matches Railway seed cadence
   energyCrisis: 6 * 60 * 60 * 1000, // 6h — policy data updates infrequently
+  pipelineStatus: 24 * 60 * 60 * 1000, // curated registry reseeds weekly; daily poll keeps long-lived sessions fresh
+  storageFacilityMap: 24 * 60 * 60 * 1000, // curated registry reseeds weekly; daily poll keeps long-lived sessions fresh
+  fuelShortages: 60 * 60 * 1000, // active shortage alerts can change intra-day
+  energyDisruptions: 60 * 60 * 1000, // disruption log is low-volume but needs intra-day freshness
+  energyRiskOverview: 15 * 60 * 1000, // mixed market + supply-chain overview; refresh more often than the underlying weekly registries
+  chokepointStrip: 90 * 60 * 1000, // matches chokepoint client cache TTL / freshness budget
   macroTiles: 30 * 60 * 1000,
   fsi: 30 * 60 * 1000,
   yieldCurve: 30 * 60 * 1000,
@@ -89,6 +95,14 @@ export const STORAGE_KEYS = {
   monitors: 'worldmonitor-monitors',
   mapLayers: 'worldmonitor-layers',
   disabledFeeds: 'worldmonitor-disabled-feeds',
+  // Schema version for the disabledFeeds set. Bumped on each migration that
+  // mutates the set in a backwards-incompatible way. Currently:
+  //   missing/0 → pre-2026-05-01 alphabetical-cap state. Eligible for
+  //               one-time recovery of fully-disabled categories.
+  //   1 → recovery has run; the set is post-migration and must NOT be
+  //       re-recovered on subsequent loads (otherwise user-explicit
+  //       full-category disabling would be silently undone forever).
+  disabledFeedsSchema: 'worldmonitor-disabled-feeds-schema',
   liveChannels: 'worldmonitor-live-channels',
   mapMode: 'worldmonitor-map-mode',          // 'flat' | 'globe'
   activeChannel: 'worldmonitor-active-channel',

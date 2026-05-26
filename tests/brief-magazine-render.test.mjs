@@ -38,6 +38,11 @@ function story(overrides = {}) {
       'Tehran publicly reopened the Strait of Hormuz to commercial shipping today.',
     source: 'Multiple wires',
     sourceUrl: 'https://example.com/hormuz-open',
+    // v4: clusterId required. Tests that exercise clusterId-specific
+    // failure modes override this field directly. Default fixture must
+    // remain a VALID v4 envelope so the bulk of the suite keeps testing
+    // rendering, not validation.
+    clusterId: 'cluster-energy-hormuz-001',
     whyMatters:
       'Hormuz is roughly a fifth of global seaborne oil — a 9% move in a single session is a repricing, not a wobble.',
     ...overrides,
@@ -414,8 +419,208 @@ describe('renderBriefMagazine — envelope validation', () => {
 });
 
 describe('BRIEF_ENVELOPE_VERSION', () => {
-  it('is the literal 2 (bump requires cross-producer coordination)', () => {
-    assert.equal(BRIEF_ENVELOPE_VERSION, 2);
+  it('is the literal 4 (bump requires cross-producer coordination)', () => {
+    // Bumped 3 → 4 (2026-05-06, Sprint 1 canonical contract) when
+    // BriefStory gained the required `clusterId` field. v1-v3
+    // envelopes still in the 7-day TTL window remain readable — see
+    // SUPPORTED_ENVELOPE_VERSIONS = [1, 2, 3, 4] — but composers
+    // ONLY ever emit version=4 from this point. clusterId is the
+    // stable rep `hash` (mergedHashes[0]) per the Sprint-1 plan;
+    // U3 wires the value, U1 (this commit) only adds the schema +
+    // assertion plumbing.
+    assert.equal(BRIEF_ENVELOPE_VERSION, 4);
+  });
+});
+
+describe('renderBriefMagazine — v3 publicLead field (Codex Round-3 Medium #2)', () => {
+  it('accepts a v3 envelope with publicLead', () => {
+    const env = envelope();
+    env.version = 3;
+    env.data.digest.publicLead = 'A non-personalised editorial lead for share-URL surface readers.';
+    // Should NOT throw — publicLead is now an allowed digest key.
+    const html = renderBriefMagazine(env);
+    assert.ok(typeof html === 'string' && html.length > 0);
+  });
+
+  it('rejects a publicLead that is not a non-empty string', () => {
+    const env = envelope();
+    env.version = 3;
+    env.data.digest.publicLead = 42;
+    assert.throws(
+      () => renderBriefMagazine(env),
+      /envelope\.data\.digest\.publicLead, when present, must be a non-empty string/,
+    );
+  });
+
+  it('accepts a v2 envelope still in TTL window without publicLead (back-compat)', () => {
+    // v2 envelopes already in Redis at v3 rollout MUST keep rendering
+    // — SUPPORTED_ENVELOPE_VERSIONS = [1, 2, 3]. publicLead is
+    // optional; absence is the v2 shape.
+    const env = envelope();
+    env.version = 2;
+    delete env.data.digest.publicLead;
+    const html = renderBriefMagazine(env);
+    assert.ok(typeof html === 'string' && html.length > 0);
+  });
+
+  it('rejects an envelope with an unknown digest key (closed-key-set still enforced)', () => {
+    const env = envelope();
+    env.version = 3;
+    env.data.digest.synthesisLevel = 1;  // would-be ad-hoc metadata
+    assert.throws(
+      () => renderBriefMagazine(env),
+      /envelope\.data\.digest has unexpected key "synthesisLevel"/,
+    );
+  });
+});
+
+describe('renderBriefMagazine — v4 clusterId field (Sprint 1 canonical contract)', () => {
+  /**
+   * Build a v4-shaped envelope: every story carries `clusterId`. The
+   * default `envelope()` factory already produces v4 (since the v3→v4
+   * bump in this PR), so v4Envelope() is a thin alias that exists
+   * mostly to make the back-compat shape contrast obvious.
+   */
+  function v4Envelope() {
+    return envelope();
+  }
+
+  /**
+   * Build a v3-shaped envelope (no clusterId on stories). Emulates
+   * what's still resident in Redis under the 7-day brief TTL at the
+   * moment the v4 renderer deploys — the renderer must keep accepting
+   * the v3 shape for the full back-compat window before
+   * SUPPORTED_ENVELOPE_VERSIONS can shrink. Mirrors the v1 back-compat
+   * pattern below.
+   */
+  function v3Envelope() {
+    const v4 = v4Envelope();
+    const stories = v4.data.stories.map(({ clusterId: _ignore, ...rest }) => rest);
+    return /** @type {any} */ ({ ...v4, version: 3, data: { ...v4.data, stories } });
+  }
+
+  it('accepts a v4 envelope where every story carries a non-empty clusterId', () => {
+    const env = v4Envelope();
+    const html = renderBriefMagazine(env);
+    assert.ok(typeof html === 'string' && html.length > 0);
+  });
+
+  it('rejects a v4 envelope when ANY story is missing clusterId', () => {
+    const env = v4Envelope();
+    /** @type {any} */ (env.data.stories[0]).clusterId = undefined;
+    assert.throws(
+      () => renderBriefMagazine(env),
+      /envelope\.data\.stories\[0\]\.clusterId must be a non-empty string on v4 envelopes/,
+    );
+  });
+
+  it('rejects a v4 envelope when clusterId is the empty string', () => {
+    const env = v4Envelope();
+    /** @type {any} */ (env.data.stories[1]).clusterId = '';
+    assert.throws(
+      () => renderBriefMagazine(env),
+      /envelope\.data\.stories\[1\]\.clusterId must be a non-empty string on v4 envelopes/,
+    );
+  });
+
+  it('rejects a v4 envelope when clusterId is null', () => {
+    const env = v4Envelope();
+    /** @type {any} */ (env.data.stories[0]).clusterId = null;
+    assert.throws(
+      () => renderBriefMagazine(env),
+      /envelope\.data\.stories\[0\]\.clusterId must be a non-empty string on v4 envelopes/,
+    );
+  });
+
+  it('rejects a v4 envelope when clusterId is a non-string type', () => {
+    const env = v4Envelope();
+    /** @type {any} */ (env.data.stories[0]).clusterId = 12345;
+    assert.throws(
+      () => renderBriefMagazine(env),
+      /envelope\.data\.stories\[0\]\.clusterId must be a non-empty string on v4 envelopes/,
+    );
+  });
+
+  // Characterization snapshot: v3 envelopes still in the 7-day TTL
+  // window MUST keep rendering after the v4 bump — this is the
+  // back-compat regression guard. If a future change tightens
+  // assertBriefEnvelope to refuse the absence of clusterId on v3,
+  // this test fails loudly. The 7d brief TTL covers every downstream
+  // TTL (story:track:v1 7d, digest:accumulator:v1 shorter, panel
+  // circuit-breaker shorter), so we don't need a longer window here.
+  it('accepts a v3 envelope WITHOUT clusterId on any story (7d TTL back-compat)', () => {
+    const env = v3Envelope();
+    const html = renderBriefMagazine(env);
+    assert.ok(typeof html === 'string' && html.length > 0);
+    // Sanity: the rendered HTML still emits a source line per story.
+    const labelCount = (html.match(/<div class="source">/g) ?? []).length;
+    assert.equal(labelCount, env.data.stories.length);
+  });
+
+  it('rejects a v3 envelope where a story carries an empty-string clusterId (defence-in-depth)', () => {
+    // A v3 envelope shouldn't carry clusterId at all; if a composer
+    // bug somehow stamps an empty string, surface it loudly rather
+    // than poisoning the dedup key in U4.
+    const env = v3Envelope();
+    /** @type {any} */ (env.data.stories[0]).clusterId = '';
+    assert.throws(
+      () => renderBriefMagazine(env),
+      /envelope\.data\.stories\[0\]\.clusterId, when present on v3, must be a non-empty string/,
+    );
+  });
+
+  // Codex PR #3614 P2 regression — sourceUrl is required on v2+, not
+  // just on the latest version. Pre-fix (`env.version === BRIEF_ENVELOPE_VERSION`)
+  // exempted v2 + v3 envelopes from the required-sourceUrl check after
+  // the v4 bump, contradicting the v2+ contract. Tests below lock in
+  // the corrected `env.version >= 2` semantic.
+  it('rejects a v3 envelope where a story is missing sourceUrl (Codex PR #3614 P2)', () => {
+    const env = v3Envelope();
+    /** @type {any} */ (env.data.stories[0]).sourceUrl = undefined;
+    assert.throws(
+      () => renderBriefMagazine(env),
+      /envelope\.data\.stories\[0\]\.sourceUrl/,
+    );
+  });
+
+  it('rejects a v2-shaped envelope where a story is missing sourceUrl (Codex PR #3614 P2)', () => {
+    // v2 envelopes don't carry publicLead/publicSignals/publicThreads
+    // (that's v3) and don't carry clusterId (that's v4). Build the v2
+    // shape from v3Envelope by stripping v3-only public-share fields.
+    const v3 = v3Envelope();
+    const v2Stories = v3.data.stories.map(({ ...rest }) => rest);
+    const v2 = /** @type {any} */ ({
+      ...v3,
+      version: 2,
+      data: { ...v3.data, stories: v2Stories },
+    });
+    delete v2.data.publicLead;
+    delete v2.data.publicSignals;
+    delete v2.data.publicThreads;
+    /** @type {any} */ (v2.data.stories[0]).sourceUrl = undefined;
+    assert.throws(
+      () => renderBriefMagazine(v2),
+      /envelope\.data\.stories\[0\]\.sourceUrl/,
+    );
+  });
+
+  it('accepts a v3 envelope where every story has a valid sourceUrl (positive control)', () => {
+    const env = v3Envelope();
+    const html = renderBriefMagazine(env);
+    assert.ok(typeof html === 'string' && html.length > 0);
+  });
+
+  it('rejects a v5 envelope (forward-incompatible — not in SUPPORTED_ENVELOPE_VERSIONS)', () => {
+    // The v3 → v4 bump expanded the supported set to {1, 2, 3, 4}.
+    // A v5 envelope is composer drift (or a future bump that hasn't
+    // shipped a matching renderer) and must be rejected at the version
+    // gate before any per-story validation runs.
+    const env = /** @type {any} */ (v4Envelope());
+    env.version = 5;
+    assert.throws(
+      () => renderBriefMagazine(env),
+      /is not in supported set/,
+    );
   });
 });
 
@@ -425,11 +630,16 @@ describe('renderBriefMagazine — v1 envelopes (back-compat window)', () => {
    * sourceUrl. Emulates what's still resident in Redis under the 7-day
    * TTL at the moment the v2 renderer deploys — the renderer must
    * degrade gracefully instead of 404ing the still-live link.
+   *
+   * v1 envelopes also don't carry clusterId (a v4 field) — strip it
+   * here so the fixture matches the historical Redis shape exactly.
+   * The validator's "absent OR non-empty string" rule for clusterId
+   * on v1-v3 envelopes is exercised by the v4 back-compat block above.
    */
   function v1Envelope() {
-    const v2 = envelope();
-    const stories = v2.data.stories.map(({ sourceUrl: _ignore, ...rest }) => rest);
-    return /** @type {any} */ ({ ...v2, version: 1, data: { ...v2.data, stories } });
+    const v4 = envelope();
+    const stories = v4.data.stories.map(({ sourceUrl: _ignoreUrl, clusterId: _ignoreCluster, ...rest }) => rest);
+    return /** @type {any} */ ({ ...v4, version: 1, data: { ...v4.data, stories } });
   }
 
   it('accepts version=1 without sourceUrl and renders plain source line (no anchor)', () => {
@@ -699,6 +909,175 @@ describe('renderBriefMagazine — publicMode', () => {
     const b = renderBriefMagazine(env, {});
     assert.equal(a, b);
   });
+
+  // ── Public-share lead fail-safe (Codex Round-2 High security) ──────
+  //
+  // Personalised `digest.lead` carries profile context (watched assets,
+  // saved regions, etc.). On the public-share surface we MUST render
+  // `publicLead` (a non-personalised parallel synthesis) instead, OR
+  // omit the pull-quote entirely. NEVER fall back to the personalised
+  // lead.
+
+  it('renders publicLead in the pull-quote when v3 envelope carries it', () => {
+    const env = envelope();
+    env.version = 3;
+    env.data.digest.lead = 'Personal lead with watched-asset details that must NOT leak.';
+    env.data.digest.publicLead = 'A non-personalised editorial lead suitable for share readers.';
+    const html = renderBriefMagazine(env, { publicMode: true });
+    assert.ok(
+      html.includes('non-personalised editorial lead'),
+      'pull-quote must render the publicLead text',
+    );
+    assert.ok(
+      !html.includes('watched-asset details'),
+      'personalised lead text must NEVER appear on the public surface',
+    );
+  });
+
+  it('OMITS the pull-quote when publicLead is absent (v2 envelope back-compat)', () => {
+    // v2 envelopes still in TTL window have no publicLead. Public-mode
+    // render MUST omit the blockquote rather than render the
+    // personalised lead.
+    const env = envelope();
+    env.version = 2;
+    env.data.digest.lead = 'Personal lead with watched-asset details that must NOT leak.';
+    delete env.data.digest.publicLead;
+    const html = renderBriefMagazine(env, { publicMode: true });
+    assert.ok(
+      !html.includes('watched-asset details'),
+      'personalised lead text must NEVER appear on the public surface',
+    );
+    // Sanity: the rest of the page (greeting + greeting block) is
+    // still rendered — only the blockquote is omitted.
+    assert.ok(html.includes('At The Top Of The Hour'));
+  });
+
+  it('OMITS the pull-quote when publicLead is empty string (defensive)', () => {
+    const env = envelope();
+    env.version = 3;
+    env.data.digest.lead = 'Personal lead that must NOT leak.';
+    // Defensive: publicLead set to empty string by a buggy producer.
+    // The render path treats empty as absent, omitting the pull-quote.
+    // (assertBriefEnvelope rejects publicLead='' as a non-empty-string
+    // violation, so this only matters if a future code path bypasses
+    // validation — belt-and-braces.)
+    env.data.digest.publicLead = '';
+    // Validator rejects empty publicLead first, so render throws —
+    // proves the contract is enforced before redactForPublic runs.
+    assert.throws(
+      () => renderBriefMagazine(env, { publicMode: true }),
+      /publicLead, when present, must be a non-empty string/,
+    );
+  });
+
+  it('private (non-public) render still uses the personalised lead', () => {
+    const env = envelope();
+    env.version = 3;
+    env.data.digest.lead = 'Personal lead for the authenticated reader.';
+    env.data.digest.publicLead = 'Generic public lead.';
+    const html = renderBriefMagazine(env);  // private path
+    assert.ok(html.includes('Personal lead for the authenticated reader'));
+    assert.ok(!html.includes('Generic public lead'), 'publicLead is share-only');
+  });
+
+  // ── Public signals + threads fail-safe (extends Codex Round-2 High security) ──
+
+  it('substitutes publicSignals when present — personalised signals never reach the public surface', () => {
+    const env = envelope();
+    env.version = 3;
+    env.data.digest.lead = 'Personal lead.';
+    env.data.digest.publicLead = 'Generic public lead.';
+    // Personalised signals can echo a user's watched assets ("your
+    // Saudi exposure"). Anonymous public readers must never see this.
+    env.data.digest.signals = ['Watch Saudi crude exposure on your watchlist for OPEC moves'];
+    env.data.digest.publicSignals = ['Watch OPEC for production-quota signals'];
+    const html = renderBriefMagazine(env, { publicMode: true });
+    assert.ok(html.includes('OPEC for production-quota'), 'publicSignals must render');
+    assert.ok(!html.includes('your watchlist'), 'personalised signals must NEVER appear on public');
+    assert.ok(!html.includes('Saudi crude exposure'), 'personalised signal phrase must NEVER appear on public');
+  });
+
+  it('OMITS the signals page when publicSignals is absent (fail-safe — never serves personalised signals)', () => {
+    const env = envelope();
+    env.version = 3;
+    env.data.digest.lead = 'Personal lead.';
+    env.data.digest.publicLead = 'Generic public lead.';
+    env.data.digest.signals = ['Watch your private watchlist for OPEC moves'];
+    delete env.data.digest.publicSignals;
+    const html = renderBriefMagazine(env, { publicMode: true });
+    // Renderer's hasSignals gate hides the signals page when the
+    // array is empty. Personalised signal phrase must NOT appear.
+    assert.ok(!html.includes('your private watchlist'), 'personalised signals must NEVER appear on public');
+    assert.ok(!html.includes('Digest / 04'), 'signals page section must be omitted');
+  });
+
+  it('substitutes publicThreads when present — personalised thread teasers never reach public', () => {
+    const env = envelope();
+    env.version = 3;
+    env.data.digest.lead = 'Personal lead.';
+    env.data.digest.publicLead = 'Generic public lead.';
+    env.data.digest.threads = [
+      { tag: 'Energy', teaser: 'Saudi exposure on your portfolio is at risk this week' },
+    ];
+    env.data.digest.publicThreads = [
+      { tag: 'Energy', teaser: 'OPEC production quota debate intensifies' },
+    ];
+    const html = renderBriefMagazine(env, { publicMode: true });
+    assert.ok(html.includes('OPEC production quota'), 'publicThreads must render');
+    assert.ok(!html.includes('your portfolio'), 'personalised thread teaser must NEVER appear on public');
+  });
+
+  it('falls back to category-derived threads stub when publicThreads absent', () => {
+    const env = envelope();
+    env.version = 3;
+    env.data.digest.lead = 'Personal lead.';
+    env.data.digest.publicLead = 'Generic public lead.';
+    env.data.digest.threads = [
+      { tag: 'Energy', teaser: 'Saudi exposure on your portfolio is at risk this week' },
+    ];
+    delete env.data.digest.publicThreads;
+    const html = renderBriefMagazine(env, { publicMode: true });
+    assert.ok(!html.includes('your portfolio'), 'personalised thread must NEVER appear on public');
+    // Stub teaser pattern — generic phrasing derived from story
+    // categories. Renderer still produces a threads page.
+    assert.ok(
+      html.includes('thread on the desk today') || html.includes('threads on the desk today'),
+      'category-derived threads stub renders',
+    );
+  });
+
+  it('rejects malformed publicSignals (validator contract)', () => {
+    const env = envelope();
+    env.version = 3;
+    env.data.digest.publicSignals = ['ok signal', 42];  // 42 is not a string
+    assert.throws(
+      () => renderBriefMagazine(env, { publicMode: true }),
+      /publicSignals\[1\] must be a non-empty string/,
+    );
+  });
+
+  it('rejects malformed publicThreads (validator contract)', () => {
+    const env = envelope();
+    env.version = 3;
+    env.data.digest.publicThreads = [{ tag: 'Energy' }];  // missing teaser
+    assert.throws(
+      () => renderBriefMagazine(env, { publicMode: true }),
+      /publicThreads\[0\]\.teaser must be a non-empty string/,
+    );
+  });
+
+  it('private render ignores publicSignals + publicThreads — uses personalised', () => {
+    const env = envelope();
+    env.version = 3;
+    env.data.digest.signals = ['Personalised signal for authenticated reader'];
+    env.data.digest.publicSignals = ['Generic public signal'];
+    env.data.digest.threads = [{ tag: 'Energy', teaser: 'Personalised teaser' }];
+    env.data.digest.publicThreads = [{ tag: 'Energy', teaser: 'Generic public teaser' }];
+    const html = renderBriefMagazine(env);
+    assert.ok(html.includes('Personalised signal'), 'private render uses personalised signals');
+    assert.ok(!html.includes('Generic public signal'), 'public siblings ignored on private path');
+    assert.ok(html.includes('Personalised teaser'), 'private render uses personalised threads');
+  });
 });
 
 // ── Regression: cover greeting follows envelope.data.digest.greeting ─────────
@@ -762,5 +1141,98 @@ describe('cover greeting ↔ digest.greeting parity', () => {
     const cover = extractCover(renderBriefMagazine(env));
     assert.ok(!cover.includes('<script>alert'));
     assert.ok(cover.includes('&lt;script&gt;'));
+  });
+});
+
+
+describe('renderBriefMagazine — page-overflow / scroll-vs-paginate contract', () => {
+  // User-reported on a Pro subscription (2026-05-19): "the text is outside
+  // of the window and I have to zoom the page out to read it ... if I try
+  // to scroll down to read it, it just goes to the next page instead. The
+  // only way I found that works is to enable Responsive Design Mode and
+  // change the preset to iPhone Pro Max." Three compounding bugs in the
+  // pre-fix renderer:
+  //   1. .page CSS was `overflow: hidden` with `height: 100vh` — long
+  //      content was silently clipped.
+  //   2. Fonts size via vw units, so wide desktop viewports scale text UP
+  //      and trigger overflow more often than narrow ones (iPhone Pro Max
+  //      responsive mode "worked" by shrinking everything proportionally).
+  //   3. The global wheel handler paginated on every wheel tick, regardless
+  //      of whether the current page could still scroll — so a long page
+  //      was unreachable past the first 100vh.
+  // These tests pin the fix shape so a future "simplification" can't
+  // silently reintroduce any of the three.
+
+  // Extract the top-level `.page { ... }` rule body and strip CSS
+  // `/* ... */` comments. Necessary because the production CSS carries a
+  // multi-line comment explaining WHY overflow changed shape — a naive
+  // regex against the raw HTML matches the comment text (e.g. "body has
+  // overflow:hidden anyway") and fires false-positives. The body is what
+  // the browser actually applies, so that's what we assert against.
+  function getPageRuleBlock(html) {
+    const m = html.match(/\.page\s*\{((?:[^{}]|\{[^}]*\})*?)\}/);
+    assert.ok(m, '.page rule block not found in rendered CSS');
+    return m[1].replace(/\/\*[\s\S]*?\*\//g, '');
+  }
+
+  it('.page CSS allows internal vertical scroll (overflow-y: auto)', () => {
+    const env = envelope();
+    const body = getPageRuleBlock(renderBriefMagazine(env));
+    assert.match(
+      body,
+      /\boverflow-y\s*:\s*auto\b/,
+      '.page must set overflow-y: auto so long content is reachable instead of clipped',
+    );
+    // The killer regression: shorthand `overflow: hidden` would re-clip
+    // everything. Require declaration form (terminated by `;` or end of
+    // block) so the assertion can't be defeated by a property name like
+    // `overflow-x`.
+    assert.doesNotMatch(
+      body,
+      /\boverflow\s*:\s*hidden\s*[;}]/,
+      '.page must NOT use the shorthand `overflow: hidden` — that re-enables the clipping bug',
+    );
+  });
+
+  it('.page keeps overflow-x: hidden so the horizontal deck carousel is not fought by per-page scrollbars', () => {
+    const env = envelope();
+    const body = getPageRuleBlock(renderBriefMagazine(env));
+    assert.match(body, /\boverflow-x\s*:\s*hidden\b/);
+  });
+
+  it('NAV_SCRIPT wheel handler defers to native page scroll when the page can still scroll in that direction', () => {
+    const env = envelope();
+    const html = renderBriefMagazine(env);
+    // The function name itself is the contract — if a future refactor
+    // renames or removes it, this test fails with a clear message.
+    assert.match(
+      html,
+      /function\s+pageCanScrollVertical\s*\(/,
+      'NAV_SCRIPT must expose a pageCanScrollVertical predicate the wheel handler can call to defer to native scroll',
+    );
+    // Wheel handler must consult the predicate before paginating.
+    assert.match(
+      html,
+      /pageCanScrollVertical\s*\(\s*pages\s*\[\s*current\s*\]/,
+      'wheel handler must check pageCanScrollVertical on the current page before paginating, or long pages stay unreachable',
+    );
+  });
+
+  it('NAV_SCRIPT keyboard handler routes PageDown/PageUp/Space through the scroll-then-paginate predicate', () => {
+    const env = envelope();
+    const html = renderBriefMagazine(env);
+    // Spec match: the predicate must appear inside the keydown branches
+    // for PageDown and PageUp (Space is included in the PageDown branch).
+    // Looser regex than a structural parse, but tight enough that the
+    // predicate-less original code would fail.
+    const pageDownBranch = /PageDown[^}]+pageCanScrollVertical/;
+    const pageUpBranch = /PageUp[^}]+pageCanScrollVertical/;
+    assert.match(html, pageDownBranch, 'PageDown/Space must defer to native scroll before paginating');
+    assert.match(html, pageUpBranch, 'PageUp must defer to native scroll before paginating');
+    // ArrowRight/Left are the deck axis (no scroll conflict) and should
+    // still paginate immediately — guard against a future "fix" that
+    // routes them through the predicate too and breaks deck navigation.
+    assert.doesNotMatch(html, /ArrowRight[^}]+pageCanScrollVertical/);
+    assert.doesNotMatch(html, /ArrowLeft[^}]+pageCanScrollVertical/);
   });
 });

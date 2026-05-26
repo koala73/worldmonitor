@@ -1,5 +1,8 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { computeMonthlyNormals, buildZoneNormalsFromBatch } from '../scripts/seed-climate-zone-normals.mjs';
 import { hasRequiredClimateZones } from '../scripts/_climate-zones.mjs';
@@ -625,5 +628,92 @@ describe('open-meteo archive helper', () => {
     } finally {
       globalThis.fetch = originalFetch;
     }
+  });
+});
+
+describe('climate-anomalies CACHE_TTL + maxStaleMin co-pinned to 3h cron cadence', () => {
+  // Regression-locks the fix for the 2026-04-27 silent-EMPTY-window incident.
+  // climate-anomalies is bundled into seed-bundle-climate (cron `0 */3 * * *`,
+  // every 3h, runbook Bundle 6). The previous CACHE_TTL=10800s (3h) equalled
+  // the cron cadence exactly — any cron jitter (1-3min normal Railway
+  // variance) caused the data key to expire BEFORE the next cron could
+  // refresh it, with health emitting status=EMPTY records=0 because
+  // seedAgeMin (~3h+drift) was still < maxStaleMin (4h). Production logs
+  // 2026-04-27T00:00:59 + 03:03:35 show the 3h+3min drift pattern.
+  //
+  // Fix: TTL = 9h (3× cron cadence) so data survives one missed cron + drift,
+  // co-pinned to maxStaleMin (also 9h / 540min) so the data key is always
+  // alive when the alarm would fire — no silent-EMPTY window. maxStaleMin =
+  // 9h (3× cron cadence per project convention) fires on a real outage but
+  // tolerates routine drift. (An earlier draft used TTL=6h but the
+  // `TTL_min >= maxStaleMin` test below caught the residual 6h-9h gap and
+  // forced TTL up to match.)
+
+  const __dirname = dirname(fileURLToPath(import.meta.url));
+  const root = resolve(__dirname, '..');
+  const seedSrc = readFileSync(resolve(root, 'scripts/seed-climate-anomalies.mjs'), 'utf-8');
+  const healthSrc = readFileSync(resolve(root, 'api/health.js'), 'utf-8');
+  const bundleSrc = readFileSync(resolve(root, 'scripts/seed-bundle-climate.mjs'), 'utf-8');
+
+  function extractCacheTtlSec() {
+    const m = seedSrc.match(/const\s+CACHE_TTL\s*=\s*(\d+)/m);
+    if (!m) throw new Error('could not find CACHE_TTL in seed-climate-anomalies.mjs');
+    return parseInt(m[1], 10);
+  }
+
+  function extractBundleSectionGateSec(label) {
+    const re = new RegExp(`label:\\s*'${label}'[\\s\\S]*?intervalMs:\\s*(\\d+)\\s*\\*\\s*HOUR`, 'm');
+    const m = bundleSrc.match(re);
+    if (!m) throw new Error(`could not find bundle entry for ${label}`);
+    return parseInt(m[1], 10) * 3600;
+  }
+
+  function extractMaxStaleMin(name) {
+    const re = new RegExp(`${name}:\\s*\\{[^}]*?maxStaleMin:\\s*(\\d+)`, 'ms');
+    const m = healthSrc.match(re);
+    if (!m) throw new Error(`could not find ${name}.maxStaleMin in health src`);
+    return parseInt(m[1], 10);
+  }
+
+  it('Anomalies bundle section gate is 3h (matches cron cadence)', () => {
+    assert.equal(extractBundleSectionGateSec('Anomalies'), 3 * 3600);
+  });
+
+  it('CACHE_TTL is 32400s (9h, 3× the 3h cron cadence; co-pinned to maxStaleMin)', () => {
+    assert.equal(extractCacheTtlSec(), 32400);
+  });
+
+  it('CACHE_TTL > cron cadence (data survives one missed cron + drift)', () => {
+    const ttl = extractCacheTtlSec();
+    const cron = extractBundleSectionGateSec('Anomalies');
+    assert.ok(
+      ttl >= cron * 2,
+      `CACHE_TTL (${ttl}s) must be >= 2× cron cadence (${cron * 2}s); ` +
+      `tighter values create silent-EMPTY windows on every cron-jitter cycle — see 2026-04-27 incident.`,
+    );
+  });
+
+  it('climateAnomalies.maxStaleMin is 540 (3× cron cadence per project convention)', () => {
+    assert.equal(extractMaxStaleMin('climateAnomalies'), 540);
+  });
+
+  it('CACHE_TTL_min >= maxStaleMin (no silent-EMPTY window: data survives at least until alarm fires)', () => {
+    const ttlMin = extractCacheTtlSec() / 60;
+    const maxStale = extractMaxStaleMin('climateAnomalies');
+    assert.ok(
+      ttlMin >= maxStale,
+      `CACHE_TTL_min (${ttlMin}) must be >= maxStaleMin (${maxStale}); ` +
+      `larger maxStaleMin creates a (TTL, maxStaleMin) silent window where data is gone but no alarm fires.`,
+    );
+  });
+
+  it('maxStaleMin >= 2.5× cron cadence (no false-STALE on routine cron drift)', () => {
+    const cronMin = extractBundleSectionGateSec('Anomalies') / 60;
+    const maxStale = extractMaxStaleMin('climateAnomalies');
+    assert.ok(
+      maxStale >= cronMin * 2.5,
+      `climateAnomalies.maxStaleMin (${maxStale}) must be >= ${cronMin * 2.5} (2.5× cron cadence); ` +
+      `tighter values flip to STALE_SEED on routine cron drift.`,
+    );
   });
 });

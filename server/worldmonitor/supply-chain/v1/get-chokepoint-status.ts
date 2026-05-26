@@ -257,7 +257,14 @@ async function fetchChokepointData(): Promise<ChokepointFetchResult> {
 
   const [navResult, vesselResult, transitSummariesData, flowsData] = await Promise.all([
     listNavigationalWarnings(ctx, { area: '', pageSize: 0, cursor: '' }).catch((): ListNavigationalWarningsResponse => { navFailed = true; return { warnings: [], pagination: undefined }; }),
-    getVesselSnapshot(ctx, { neLat: 90, neLon: 180, swLat: -90, swLon: -180, includeCandidates: false }).catch((): GetVesselSnapshotResponse => { vesselFailed = true; return { snapshot: undefined }; }),
+    // All-zero bbox = "no filter, full snapshot" per the new bbox extractor
+    // in get-vessel-snapshot.ts. Previously this passed (-90, -180, 90, 180)
+    // because the handler ignored bbox entirely; the new 10° max-bbox guard
+    // (added for the live-tanker contract) would reject that range. This
+    // call doesn't need bbox filtering — it wants the global density +
+    // disruption surface — so pass zeros and skip both candidate and tanker
+    // payload tiers.
+    getVesselSnapshot(ctx, { neLat: 0, neLon: 0, swLat: 0, swLon: 0, includeCandidates: false, includeTankers: false }).catch((): GetVesselSnapshotResponse => { vesselFailed = true; return { snapshot: undefined }; }),
     getCachedJson(TRANSIT_SUMMARIES_KEY, true).catch(() => null) as Promise<TransitSummariesPayload | null>,
     getCachedJson(FLOWS_KEY, true).catch(() => null) as Promise<Record<string, FlowEstimateEntry> | null>,
   ]);

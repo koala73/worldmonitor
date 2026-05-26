@@ -1,7 +1,23 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, it } from 'node:test';
 
-import { computeCIIScores } from '../server/worldmonitor/intelligence/v1/get-risk-scores.ts';
+import { CURATED_COUNTRIES, TIER1_COUNTRIES } from '../src/config/countries.ts';
+import {
+  CII_FORMULA_VERSION,
+  STRATEGIC_RISK_POSITIONAL_DECAY,
+  STRATEGIC_RISK_SCALE_FACTOR,
+  STRATEGIC_RISK_SCALE_FLOOR,
+  STRATEGIC_RISK_TOP_N,
+} from '../server/worldmonitor/intelligence/v1/_risk-config.ts';
+import {
+  BASELINE_RISK,
+  EVENT_MULTIPLIER,
+  computeCIIScores,
+  computeStrategicRisks,
+} from '../server/worldmonitor/intelligence/v1/get-risk-scores.ts';
 
 function emptyAux() {
   return {
@@ -17,6 +33,11 @@ function emptyAux() {
     displacedByIso3: {} as Record<string, number>,
     newsTopStories: [] as Array<{ countryCode: string | null; threatLevel: string; primaryTitle: string }>,
     threatSummaryByCountry: null as Record<string, { critical: number; high: number; medium: number; low: number; info: number }> | null,
+    aviationAlerts: [] as any[],
+    earthquakes: [] as any[],
+    sanctionsCountries: [] as any[],
+    temporalAnomalies: [] as any[],
+    militaryCii: null as Record<string, any> | null,
   };
 }
 
@@ -27,6 +48,100 @@ function acledEvent(country: string, type: string, fatalities = 0) {
 function scoreFor(scores: ReturnType<typeof computeCIIScores>, code: string) {
   return scores.find((s) => s.region === code);
 }
+
+describe('CII signal wiring', () => {
+  it('Phase 3b D5/D6: earthquake / sanctions signals raise the score', () => {
+    // Temporal anomalies are deliberately NOT scored — the temporal:anomalies:v1
+    // producer emits region:'global' so they cannot be country-attributed. The
+    // score rise asserted below comes entirely from earthquakeBoost + sanctionsBoost.
+    const acled = [acledEvent('US', 'protest', 0)];
+    const base = scoreFor(computeCIIScores(acled, emptyAux()), 'US');
+    const aux = emptyAux();
+    aux.earthquakes = [{ magnitude: 7.0, occurredAt: Date.now(), location: { latitude: 39, longitude: -98 } }];
+    aux.sanctionsCountries = [
+      { countryCode: 'US', entryCount: 10, newEntryCount: 1 },
+      { countryCode: 'US', entryCount: 5, newEntryCount: 0 }, // duplicate ISO2 — must accumulate, not overwrite
+    ];
+    const withAux = scoreFor(computeCIIScores(acled, aux), 'US');
+    assert.ok(withAux, 'computeCIIScores handles the aux sources without throwing');
+    assert.ok(withAux!.combinedScore > base!.combinedScore,
+      'earthquake + sanctions feed earthquakeBoost + sanctionsBoost in the blend');
+  });
+
+  it('Phase 3b D7/D8: cyber severity + high-brightness fires raise the score', () => {
+    const base = scoreFor(computeCIIScores([], emptyAux()), 'US');
+    const aux = emptyAux();
+    aux.cyber = [{ country: 'US', severity: 'critical' }, { country: 'US', severity: 'high' }];
+    aux.fires = [{ lat: 39, lon: -98, brightness: 400, frp: 60 }];
+    const us = scoreFor(computeCIIScores([], aux), 'US');
+    assert.ok(us!.combinedScore > base!.combinedScore,
+      'critical/high cyber feed the severity-weighted cyberBoost; a bright fire feeds fireBoost');
+  });
+
+  it('Phase 3b D7: cyber severity accepts the production proto enum form (CRITICALITY_LEVEL_*)', () => {
+    // The cyber seed (seed-cyber-threats.mjs lines 52-55) emits the proto enum strings,
+    // not bare lowercase — the ingestion must bucket both. Without the prefix-strip,
+    // these would all fall through and cyberBoost would be 0 in production.
+    const baseAux = emptyAux();
+    const protoAux = emptyAux();
+    protoAux.cyber = [
+      { country: 'US', severity: 'CRITICALITY_LEVEL_CRITICAL' },
+      { country: 'US', severity: 'CRITICALITY_LEVEL_HIGH' },
+    ];
+    const protoScore = scoreFor(computeCIIScores([], protoAux), 'US');
+    const baseScore = scoreFor(computeCIIScores([], baseAux), 'US');
+    assert.ok(protoScore!.combinedScore > baseScore!.combinedScore,
+      'production CRITICALITY_LEVEL_* enums must feed cyberBoost');
+  });
+
+  it('Phase 3b D6: sanctions duplicate-ISO2 rows accumulate across the tier boundary', () => {
+    const aux = emptyAux();
+    aux.sanctionsCountries = [
+      { countryCode: 'US', entryCount: 60, newEntryCount: 1 },
+      { countryCode: 'US', entryCount: 60, newEntryCount: 0 },
+    ];
+    const us = scoreFor(computeCIIScores([], aux), 'US');
+    const none = scoreFor(computeCIIScores([], emptyAux()), 'US');
+    // 60+60 = 120 entries → tier ≥101 → boost 5, +2 newEntry = 7. Had the loop overwritten
+    // instead of accumulated, 60 alone → tier <101 → boost 3+2 = 5. The gap proves accumulation.
+    assert.ok(us!.combinedScore - none!.combinedScore >= 7,
+      'duplicate-ISO2 sanctions rows accumulate (120 entries crosses the ≥101 tier)');
+  });
+
+  it('C3: security component scores military flights/vessels/aviation, not just GPS', () => {
+    // No GPS hexes — pre-Phase-3b this would score security 0; the 4-input formula
+    // must now pick up military activity and aviation.
+    const aux = emptyAux();
+    aux.militaryCii = {
+      US: { ownFlights: 5, foreignFlights: 0, ownVessels: 0, foreignVessels: 0, aisDisruptionHigh: 0, aisDisruptionElevated: 0, aisDisruptionLow: 0 },
+    };
+    aux.aviationAlerts = [{ country: 'United States', delayType: 'closure' }];
+    const us = scoreFor(computeCIIScores([], aux), 'US');
+    assert.ok(us, 'US scored');
+    // flightScore = min(50, 5·3=15) = 15; aviationScore (one closure) = 20; vessels/GPS = 0
+    assert.equal(us!.components!.militaryActivity, 35,
+      'security = flightScore(15) + aviationScore(20), no GPS');
+  });
+
+  it('Phase 3b C1: a riot adds severityBoost vs a plain protest', () => {
+    // Same unrest count (1 event), 0 fatalities, 0 outages in both — the only difference
+    // is the riot classifies as high-severity → severityBoost. Isolates C1.
+    const protest = scoreFor(computeCIIScores([acledEvent('Russia', 'Protests', 0)], emptyAux()), 'RU');
+    const riot = scoreFor(computeCIIScores([acledEvent('Russia', 'Riots', 0)], emptyAux()), 'RU');
+    assert.ok(riot!.components!.ciiContribution > protest!.components!.ciiContribution,
+      'a riot is high-severity unrest and adds severityBoost; a plain protest does not');
+  });
+
+  it('C3: foreign military presence is weighted x2', () => {
+    const aux = emptyAux();
+    // 0 own + 5 foreign flights → reconstructed count 0 + 5·2 = 10 → flightScore min(50, 30) = 30
+    aux.militaryCii = {
+      US: { ownFlights: 0, foreignFlights: 5, ownVessels: 0, foreignVessels: 0, aisDisruptionHigh: 0, aisDisruptionElevated: 0, aisDisruptionLow: 0 },
+    };
+    const us = scoreFor(computeCIIScores([], aux), 'US');
+    assert.equal(us!.components!.militaryActivity, 30, 'foreign flights weighted x2: 5·2·3 = 30');
+  });
+});
 
 describe('CII scoring', () => {
   it('returns scores for all 31 tier-1 countries including MX, BR, AE, LB, IQ, AF', () => {
@@ -202,22 +317,25 @@ describe('CII scoring', () => {
       `RU with threat summary (${withThreat.combinedScore}) should exceed baseline (${withoutThreat.combinedScore})`);
   });
 
-  it('newsTopStories newsActivity capped at 20', () => {
+  // Cap raised 20 → 100 per issue #3739 — the 20 cap silently limited
+  // information's max contribution to 5/25 points despite the equal 0.25 weight.
+  it('newsTopStories newsActivity scales above 20 with heavy input and is capped at 100', () => {
     const aux = emptyAux();
     aux.newsTopStories = Array.from({ length: 20 }, () => ({
       countryCode: 'SY', threatLevel: 'critical', primaryTitle: 'Syria conflict escalates',
     }));
     const scores = computeCIIScores([], aux);
     const sy = scoreFor(scores, 'SY')!;
-    assert.ok(sy.components!.newsActivity <= 20, `newsActivity ${sy.components!.newsActivity} should be capped at 20`);
+    assert.ok(sy.components!.newsActivity > 20, `newsActivity ${sy.components!.newsActivity} should exceed 20 (cap raised to 100 per #3739)`);
+    assert.ok(sy.components!.newsActivity <= 100, `newsActivity ${sy.components!.newsActivity} should be capped at 100`);
   });
 
-  it('threatSummaryByCountry newsActivity capped at 20', () => {
+  it('threatSummaryByCountry newsActivity is capped at 100 (per-source threatSummaryScore still inner-capped at 20)', () => {
     const aux = emptyAux();
     aux.threatSummaryByCountry = { SY: { critical: 100, high: 100, medium: 100, low: 100, info: 100 } };
     const scores = computeCIIScores([], aux);
     const sy = scoreFor(scores, 'SY')!;
-    assert.ok(sy.components!.newsActivity <= 20, `newsActivity ${sy.components!.newsActivity} should be capped at 20`);
+    assert.ok(sy.components!.newsActivity <= 100, `newsActivity ${sy.components!.newsActivity} should be capped at 100`);
   });
 
   it('newsTopStories moderate threat contributes (not silently dropped)', () => {
@@ -266,5 +384,215 @@ describe('CII scoring', () => {
     for (const s of scores) {
       assert.equal(s.components!.newsActivity, 0, `${s.region} should have zero newsActivity with null threatSummary`);
     }
+  });
+
+  // ===== Disclosure fields (issue #3725) =====
+
+  it('every score carries methodologyVersion === CII_FORMULA_VERSION', () => {
+    const scores = computeCIIScores([], emptyAux());
+    assert.ok(scores.length > 0, 'expected non-empty score set');
+    for (const s of scores) {
+      assert.equal(
+        (s as unknown as { methodologyVersion: string }).methodologyVersion,
+        CII_FORMULA_VERSION,
+        `${s.region} methodologyVersion should equal '${CII_FORMULA_VERSION}'`,
+      );
+      assert.equal(typeof (s as unknown as { methodologyVersion: string }).methodologyVersion, 'string');
+    }
+  });
+
+  it('every score carries an eventMultiplier > 0 matching a known editorial value', () => {
+    const scores = computeCIIScores([], emptyAux());
+    // Server tables intentionally drift from CURATED_COUNTRIES for some
+    // countries (documented in docs/methodology/cii-risk-scores.mdx). The
+    // server value is authoritative on the wire — assert presence + finite
+    // > 0 rather than equality with the frontend table.
+    for (const s of scores) {
+      const mult = (s as unknown as { eventMultiplier: number }).eventMultiplier;
+      assert.ok(Number.isFinite(mult), `${s.region} eventMultiplier should be finite, got ${mult}`);
+      assert.ok(mult > 0, `${s.region} eventMultiplier should be > 0, got ${mult}`);
+      assert.ok(mult <= 5, `${s.region} eventMultiplier should be <= 5 (sanity), got ${mult}`);
+    }
+  });
+
+  it('staticBaseline is in [0, 100] for every score', () => {
+    const scores = computeCIIScores([], emptyAux());
+    for (const s of scores) {
+      assert.ok(s.staticBaseline >= 0 && s.staticBaseline <= 100,
+        `${s.region} staticBaseline ${s.staticBaseline} out of [0, 100]`);
+    }
+  });
+
+  it('representative countries: server staticBaseline matches CURATED_COUNTRIES (no-drift codes)', () => {
+    // Spot-check countries that we expect to NOT have drifted (per
+    // docs/methodology/cii-risk-scores.mdx drift table). If these ever drift
+    // the methodology doc must be updated too — flagged here so the test
+    // fails loudly rather than silently.
+    const noDriftCodes = ['US', 'RU', 'CN', 'UA', 'IR', 'IL', 'DE', 'GB'];
+    const scores = computeCIIScores([], emptyAux());
+    for (const code of noDriftCodes) {
+      const s = scoreFor(scores, code);
+      assert.ok(s, `${code} score missing`);
+      const expected = CURATED_COUNTRIES[code]?.baselineRisk;
+      assert.equal(s!.staticBaseline, expected,
+        `${code} staticBaseline ${s!.staticBaseline} should match CURATED_COUNTRIES.${code}.baselineRisk ${expected}`);
+      const expectedMult = CURATED_COUNTRIES[code]?.eventMultiplier;
+      const actualMult = (s as unknown as { eventMultiplier: number }).eventMultiplier;
+      assert.equal(actualMult, expectedMult,
+        `${code} eventMultiplier ${actualMult} should match CURATED_COUNTRIES.${code}.eventMultiplier ${expectedMult}`);
+    }
+  });
+
+  // ===== Strategic risk roll-up (issue #3725) =====
+
+  it('computeStrategicRisks: score is in [STRATEGIC_RISK_SCALE_FLOOR, 100]', () => {
+    const scores = computeCIIScores([], emptyAux());
+    const risks = computeStrategicRisks(scores);
+    assert.equal(risks.length, 1);
+    const score = risks[0]!.score;
+    assert.ok(score >= STRATEGIC_RISK_SCALE_FLOOR && score <= 100,
+      `strategic risk ${score} should be in [${STRATEGIC_RISK_SCALE_FLOOR}, 100]`);
+  });
+
+  it('computeStrategicRisks: equals STRATEGIC_RISK_SCALE_FLOOR (15) when all CII scores are 0', () => {
+    const zeros = Array.from({ length: STRATEGIC_RISK_TOP_N }, (_, i) => ({
+      region: `Z${i}`,
+      staticBaseline: 0,
+      dynamicScore: 0,
+      combinedScore: 0,
+      trend: 'TREND_DIRECTION_STABLE',
+      components: { newsActivity: 0, ciiContribution: 0, geoConvergence: 0, militaryActivity: 0 },
+      computedAt: 0,
+    })) as unknown as ReturnType<typeof computeCIIScores>;
+    const risks = computeStrategicRisks(zeros);
+    assert.equal(risks[0]!.score, STRATEGIC_RISK_SCALE_FLOOR,
+      `all-zero top-N should yield exactly STRATEGIC_RISK_SCALE_FLOOR (${STRATEGIC_RISK_SCALE_FLOOR}), got ${risks[0]!.score}`);
+  });
+
+  it('computeStrategicRisks: empty input does not throw and yields floor score', () => {
+    const risks = computeStrategicRisks([]);
+    assert.equal(risks.length, 1);
+    assert.equal(risks[0]!.score, STRATEGIC_RISK_SCALE_FLOOR);
+  });
+
+  it('strategic risk uses positional decay 1 - i * 0.15 (top-5 weights = [1, 0.85, 0.7, 0.55, 0.4])', () => {
+    // Two top entries with very different scores should produce a roll-up
+    // score that respects the weighted-average — first slot heavier than
+    // second by the declared decay step.
+    const expected = [1, 0.85, 0.7, 0.55, 0.4];
+    for (let i = 0; i < STRATEGIC_RISK_TOP_N; i++) {
+      const w = 1 - i * STRATEGIC_RISK_POSITIONAL_DECAY;
+      assert.ok(Math.abs(w - expected[i]!) < 1e-9,
+        `position ${i} weight ${w} should equal ${expected[i]} given decay ${STRATEGIC_RISK_POSITIONAL_DECAY}`);
+    }
+    // STRATEGIC_RISK_SCALE_FACTOR sanity (used in the doc).
+    assert.equal(STRATEGIC_RISK_SCALE_FACTOR, 0.7,
+      `STRATEGIC_RISK_SCALE_FACTOR is documented as 0.7 — bump CII_FORMULA_VERSION and update docs/methodology/cii-risk-scores.mdx if changing.`);
+  });
+
+  // ===== Methodology doc drift guard (issue #3725) =====
+
+  it('docs/methodology/cii-risk-scores.mdx lists every CURATED_COUNTRIES code', () => {
+    const docPath = resolve(
+      fileURLToPath(new URL('.', import.meta.url)),
+      '..',
+      'docs',
+      'methodology',
+      'cii-risk-scores.mdx',
+    );
+    const doc = readFileSync(docPath, 'utf8');
+    const missing: string[] = [];
+    for (const code of Object.keys(CURATED_COUNTRIES)) {
+      // Match `| <CODE> |` in the per-country table.
+      if (!new RegExp(`\\|\\s${code}\\s\\|`).test(doc)) missing.push(code);
+    }
+    assert.equal(missing.length, 0,
+      `docs/methodology/cii-risk-scores.mdx is missing rows for: ${missing.join(', ')}. Update the methodology doc and bump CII_FORMULA_VERSION.`);
+  });
+
+  it('methodology doc baseline/multiplier columns match BASELINE_RISK and EVENT_MULTIPLIER exactly (numeric drift guard)', () => {
+    // PR #3780 review hardening: the previous regex-existence check only
+    // verified that a row exists for each code. That lets the doc and the
+    // code silently disagree on the numeric values — exactly the kind of
+    // drift this whole methodology disclosure was meant to prevent.
+    //
+    // This stricter test parses each row's numeric columns and asserts they
+    // match BASELINE_RISK[code] and EVENT_MULTIPLIER[code] character-for-
+    // character. Bump CII_FORMULA_VERSION and update the doc together when
+    // either changes.
+    const docPath = resolve(
+      fileURLToPath(new URL('.', import.meta.url)),
+      '..',
+      'docs',
+      'methodology',
+      'cii-risk-scores.mdx',
+    );
+    const doc = readFileSync(docPath, 'utf8');
+    // Parse the per-country table. Rows look like:
+    //   | AE | United Arab Emirates | 10 | 1.5 | — |
+    // The first non-header table row defines the column count; we tolerate
+    // any number of trailing columns (drift notes etc.) but require at least
+    // 4 columns: code, name, baseline, multiplier.
+    const drifts: string[] = [];
+    for (const code of Object.keys(BASELINE_RISK)) {
+      // Capture the row for this code. Anchor on `| <CODE> |` then non-greedy
+      // up to end-of-line.
+      const rowRe = new RegExp(`^\\|\\s${code}\\s\\|([^\\n]+)$`, 'm');
+      const m = doc.match(rowRe);
+      if (!m) {
+        drifts.push(`${code}: no row in methodology doc`);
+        continue;
+      }
+      // Split the remaining row on `|`, strip whitespace.
+      const cols = m[1]!.split('|').map((c) => c.trim());
+      // cols = [name, baseline, multiplier, driftNote, '']  (5 entries after split)
+      // We need cols[1] and cols[2].
+      if (cols.length < 4) {
+        drifts.push(`${code}: malformed row, expected at least 4 columns, got ${cols.length}`);
+        continue;
+      }
+      const docBaseline = Number(cols[1]);
+      const docMultiplier = Number(cols[2]);
+      const expectedBaseline = BASELINE_RISK[code]!;
+      const expectedMultiplier = EVENT_MULTIPLIER[code]!;
+      if (docBaseline !== expectedBaseline) {
+        drifts.push(`${code}: baseline doc=${cols[1]} code=${expectedBaseline}`);
+      }
+      if (docMultiplier !== expectedMultiplier) {
+        drifts.push(`${code}: multiplier doc=${cols[2]} code=${expectedMultiplier}`);
+      }
+    }
+    assert.equal(drifts.length, 0,
+      `methodology doc drift:\n  ${drifts.join('\n  ')}\nBump CII_FORMULA_VERSION and reconcile docs/methodology/cii-risk-scores.mdx with server BASELINE_RISK / EVENT_MULTIPLIER.`);
+  });
+
+  it('every TIER1_COUNTRIES code is listed in the methodology doc (server tables stay in sync)', () => {
+    const docPath = resolve(
+      fileURLToPath(new URL('.', import.meta.url)),
+      '..',
+      'docs',
+      'methodology',
+      'cii-risk-scores.mdx',
+    );
+    const doc = readFileSync(docPath, 'utf8');
+    const missing: string[] = [];
+    for (const code of Object.keys(TIER1_COUNTRIES)) {
+      if (!new RegExp(`\\|\\s${code}\\s\\|`).test(doc)) missing.push(code);
+    }
+    assert.equal(missing.length, 0,
+      `docs/methodology/cii-risk-scores.mdx is missing rows for TIER1 codes: ${missing.join(', ')}.`);
+  });
+
+  it('methodology doc references the current CII_FORMULA_VERSION', () => {
+    const docPath = resolve(
+      fileURLToPath(new URL('.', import.meta.url)),
+      '..',
+      'docs',
+      'methodology',
+      'cii-risk-scores.mdx',
+    );
+    const doc = readFileSync(docPath, 'utf8');
+    assert.ok(doc.includes(`**${CII_FORMULA_VERSION}**`) || doc.includes(`'${CII_FORMULA_VERSION}'`) || doc.includes(`"${CII_FORMULA_VERSION}"`),
+      `methodology doc must mention current CII_FORMULA_VERSION '${CII_FORMULA_VERSION}' — bump the version and update the doc together.`);
   });
 });

@@ -1152,7 +1152,13 @@ export class GlobeMap {
       el.innerHTML = GlobeMap.wrapHit(`<div style="font-size:10px;color:#cc88ff;text-shadow:0 0 3px #cc88ff88;">💎</div>`);
       el.title = `${d.mineral} — ${d.name}`;
     } else if (d._kind === 'flightDelay') {
-      const sc = d.severity === 'severe' ? '#ff2020' : d.severity === 'major' ? '#ff6600' : d.severity === 'moderate' ? '#ffaa00' : '#ffee44';
+      // 'unknown' = no telemetry (#3707). Render desaturated grey so users
+      // don't conflate "no data" with the green/yellow "minor / normal" tier.
+      const sc = d.severity === 'severe' ? '#ff2020'
+               : d.severity === 'major' ? '#ff6600'
+               : d.severity === 'moderate' ? '#ffaa00'
+               : d.severity === 'unknown' ? '#7d7d8a'
+               : '#ffee44';
       el.innerHTML = GlobeMap.wrapHit(`<div style="font-size:11px;color:${sc};text-shadow:0 0 4px ${sc}88;">✈</div>`);
       el.title = `${d.iata} — ${d.severity}`;
     } else if (d._kind === 'notamRing') {
@@ -1498,7 +1504,14 @@ export class GlobeMap {
              `<br><span style="opacity:.7;">${esc(d.name)} · ${esc(d.country)}</span>` +
              `<br><span style="opacity:.5;">${esc(d.status)}</span>`;
     } else if (d._kind === 'flightDelay') {
-      const sc = d.severity === 'severe' ? '#ff3030' : d.severity === 'major' ? '#ff6600' : d.severity === 'moderate' ? '#ffaa00' : '#ffee44';
+      // #3707: 'unknown' = no telemetry. Render desaturated grey (mirrors the
+      // marker branch at line 1157) so the tooltip doesn't show yellow for
+      // uncovered airports.
+      const sc = d.severity === 'severe' ? '#ff3030'
+               : d.severity === 'major' ? '#ff6600'
+               : d.severity === 'moderate' ? '#ffaa00'
+               : d.severity === 'unknown' ? '#7d7d8a'
+               : '#ffee44';
       html = `<span style="color:${sc};font-weight:bold;">✈ ${esc(d.iata)} — ${esc(d.severity.toUpperCase())}</span>` +
              `<br><span style="opacity:.7;">${esc(d.name)}, ${esc(d.country)}</span>` +
              `<br><span style="opacity:.7;">${esc(d.delayType.replace(/_/g, ' '))}` +

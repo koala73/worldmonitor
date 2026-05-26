@@ -29,6 +29,7 @@ import * as ts from 'typescript'; // TypeScript compiler API — available via t
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 const economicPath = resolve(root, 'src/services/economic/index.ts');
+const techReadinessPanelPath = resolve(root, 'src/components/TechReadinessPanel.ts');
 
 function loadEconomicSourceFile() {
   return ts.createSourceFile(
@@ -38,6 +39,10 @@ function loadEconomicSourceFile() {
     true,
     ts.ScriptKind.TS,
   );
+}
+
+function loadTechReadinessPanelSource() {
+  return readFileSync(techReadinessPanelPath, 'utf-8');
 }
 
 function walk(node, visit) {
@@ -321,5 +326,30 @@ describe('getTechReadinessRankings — bootstrap-only data flow', () => {
     assert.ok(keys.has('IT.CEL.SETS.P2'), 'Mobile Subscriptions indicator must be present');
     assert.ok(keys.has('IT.NET.BBND.P2'), 'Fixed Broadband indicator must be present');
     assert.ok(keys.has('GB.XPD.RSDV.GD.ZS'), 'R&D Expenditure indicator must be present');
+  });
+});
+
+// ============================================================
+// 4. TechReadinessPanel: soft-refresh retry UX regressions
+// ============================================================
+
+describe('TechReadinessPanel — empty/error retry UX', () => {
+  const panelSrc = loadTechReadinessPanelSource();
+
+  it('does not set the count badge to 0 before the empty-result soft state', () => {
+    assert.doesNotMatch(
+      panelSrc,
+      /this\.setCount\(result\.length\)/,
+      'empty result must not write count badge 0 before showSoftRefreshing()',
+    );
+    assert.match(panelSrc, /this\.hideCountBadge\(\);[\s\S]*?this\.setContent\(`\s*<div class="panel-soft-empty"/);
+    assert.match(panelSrc, /this\.showCountBadge\(this\.rankings\.length\);/);
+  });
+
+  it('resets retry budget only on external refreshes, not scheduled retries', () => {
+    assert.match(panelSrc, /public async refresh\(isRetry = false\): Promise<void>/);
+    assert.match(panelSrc, /if \(!isRetry\) this\.localRetryAttempt = 0;/);
+    assert.match(panelSrc, /void this\.refresh\(true\);/);
+    assert.doesNotMatch(panelSrc, /void this\.refresh\(\);\s*\}, delay\);/);
   });
 });

@@ -7,7 +7,7 @@
 //    brief key is user-scoped. Multi-variant users must produce exactly
 //    one brief per issue, with a deterministic tie-breaker.
 
-import { describe, it } from 'node:test';
+import { before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   dedupeRulesByUser,
@@ -250,6 +250,156 @@ describe('aiDigestEnabled default parity', () => {
     assert.ok(
       src.includes('rule.aiDigestEnabled !== false'),
       'seed-digest-notifications.mjs must keep `rule.aiDigestEnabled !== false`',
+    );
+  });
+});
+
+// ── Sprint 1 / U2 — option (a) canonicalisation (source-level guards) ─────
+//
+// These are deliberately source-text assertions (not behavior assertions on
+// the live cron). The full integration shape — compose → send loop →
+// channel formatter — requires Upstash + Convex + Resend mocks that are
+// out of scope for this PR. The pure-function half of the U2 contract
+// lives in tests/digest-orchestration-helpers.test.mjs as the
+// `selectCanonicalSendRule` describe block; this block locks the
+// SOURCE-level invariants that protect the contract from regressing
+// silently in scripts/seed-digest-notifications.mjs.
+
+describe('Sprint 1 U2 — multi-rule canonicalisation (option a) source guards', () => {
+  let cronSrc;
+
+  before(async () => {
+    const fs = await import('node:fs/promises');
+    cronSrc = await fs.readFile(
+      new URL('../scripts/seed-digest-notifications.mjs', import.meta.url),
+      'utf8',
+    );
+  });
+
+  it('imports selectCanonicalSendRule from digest-orchestration-helpers', () => {
+    // The send loop MUST filter to the winner rule per user before the
+    // per-rule isDue + channel-fetch + synthesis cascade. Without this
+    // import, the cron is by definition fanning out to all rules per
+    // user (the pre-U2 divergence shape).
+    assert.match(
+      cronSrc,
+      /selectCanonicalSendRule/,
+      'cron must import the option-(a) canonical-rule selector helper',
+    );
+  });
+
+  it('does NOT carry the pre-U2 "Per-rule synthesis" comment block', () => {
+    // The comment block at lines 1713-1732 of pre-U2 source documented
+    // the divergence as an accepted trade-off ("Channel-body lead vs
+    // magazine lead may therefore differ for non-winner rules"). U2
+    // resolves the divergence; the comment must be replaced. If a
+    // future refactor reintroduces the per-rule fan-out shape, the
+    // commenter is likely to copy the old block back — this guard
+    // catches that. Tests strip newlines so cross-line phrases match.
+    const flat = cronSrc.replace(/\s+/g, ' ');
+    assert.doesNotMatch(
+      flat,
+      /Channel-body lead vs magazine lead may.{0,40}differ for non-winner rules/,
+      'cron must not carry the pre-U2 divergence-acceptance comment',
+    );
+    assert.doesNotMatch(
+      flat,
+      /the send-loop body for a non-winner rule needs.{0,20}ITS OWN lead/,
+      'cron must not carry the pre-U2 per-rule synthesis rationale',
+    );
+  });
+
+  it('parity log records winner_match as the universal expectation (option a invariant)', () => {
+    // The runtime parity log around lines 1838-1866 of pre-U2 source
+    // permitted winner_match=false as "expected divergence" for
+    // non-winner rule sends. Under option (a) every send IS the
+    // winner — winner_match=false now means a real bug. The log line
+    // and its surrounding comment must reflect the new universal
+    // invariant.
+    assert.match(
+      cronSrc,
+      /winner_match/,
+      'parity log must still emit winner_match for observability',
+    );
+    // The "Expected divergence, not a regression" reasoning is the
+    // pre-U2 trade-off acceptance language. Must be gone.
+    const flat = cronSrc.replace(/\s+/g, ' ');
+    assert.doesNotMatch(
+      flat,
+      /Expected divergence, not a regression/,
+      'pre-U2 "expected divergence" framing must be replaced by a universal-equality guarantee',
+    );
+  });
+
+  it('canonical-send mapping is documented near the send loop (option a docblock present)', () => {
+    // Discoverability: a future operator reading the send loop must
+    // immediately see WHY only one rule per user is processed. The
+    // replacement comment block names option (a) explicitly.
+    assert.match(
+      cronSrc,
+      /option \(a\)/i,
+      'send loop must document option (a) canonicalisation by name',
+    );
+  });
+
+  // Codex PR #3614 P1 regression — the canonical filter must NOT
+  // suppress digest delivery when briefByUser is empty (compose
+  // disabled, signing secret missing, per-user compose error caught).
+  // The fix gates the canonical filter on `if (briefForUser)` and
+  // falls through to the legacy per-rule send when missing, with a
+  // loud one-warn-per-user log so Sentry surfaces the compose-miss.
+  it('canonical filter is gated on briefForUser existence (compose-miss falls through)', () => {
+    // The fix shape: `if (briefForUser) { selectCanonicalSendRule(...) }`
+    // not `selectCanonicalSendRule(briefForUser, ...)` unconditionally.
+    // We assert the gating shape exists in the source.
+    assert.match(
+      cronSrc,
+      /if \(briefForUser\)\s*\{[\s\S]{0,400}?selectCanonicalSendRule/,
+      'canonical filter must be gated on briefForUser truthiness — Codex PR #3614 P1',
+    );
+  });
+
+  it('compose-miss path emits a loud one-per-user warn (not silent suppression)', () => {
+    // The fall-through path must be observable. We assert the warn
+    // string + the once-per-user dedup Set both exist in the source.
+    assert.match(
+      cronSrc,
+      /composeMissUsers/,
+      'cron must track which users have already been warned to dedup compose-miss logs to once per tick',
+    );
+    assert.match(
+      cronSrc,
+      /\[digest\] compose-miss user=/,
+      'cron must emit a [digest] compose-miss user=... warn line for Sentry breadcrumbs',
+    );
+    assert.match(
+      cronSrc,
+      /console\.warn[\s\S]{0,200}compose-miss/,
+      'compose-miss must use console.warn (not console.log) so Sentry promotes it to a breadcrumb',
+    );
+  });
+
+  it('compose-miss comment cites Codex PR #3614 P1 + names the failure modes', () => {
+    // Discoverability: a future operator hitting the warn must be
+    // able to find the rationale immediately. The docblock cites the
+    // review item by ID and names the three failure modes (signing
+    // secret, compose disabled, per-user compose error) so on-call
+    // can triage without spelunking through git history.
+    assert.match(
+      cronSrc,
+      /Codex PR #3614 P1/,
+      'fall-through docblock must cite the review item it addresses',
+    );
+    const flat = cronSrc.replace(/\s+/g, ' ');
+    assert.match(
+      flat,
+      /BRIEF_SIGNING_SECRET/,
+      'docblock must name BRIEF_SIGNING_SECRET as one of the compose-miss failure modes',
+    );
+    assert.match(
+      flat,
+      /per-user compose error/i,
+      'docblock must name caught-per-user-error as one of the compose-miss failure modes',
     );
   });
 });

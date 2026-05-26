@@ -10,14 +10,13 @@ export type StockAnalysisHistory = Record<string, StockAnalysisSnapshot[]>;
 
 const client = new MarketServiceClient(getRpcBaseUrl(), { fetch: premiumFetch });
 
-const DEFAULT_LIMIT = 4;
 const DEFAULT_LIMIT_PER_SYMBOL = 4;
 const MAX_SNAPSHOTS_PER_SYMBOL = 32;
 export const STOCK_ANALYSIS_FRESH_MS = 15 * 60 * 1000;
 
-async function getTargetSymbols(limit: number): Promise<string[]> {
+async function getTargetSymbols(limitOverride?: number): Promise<string[]> {
   const { getStockAnalysisTargets } = await import('./stock-analysis');
-  return getStockAnalysisTargets(limit).map((target) => target.symbol);
+  return getStockAnalysisTargets(limitOverride).map((target) => target.symbol);
 }
 
 function compareSnapshots(a: StockAnalysisSnapshot, b: StockAnalysisSnapshot): number {
@@ -55,12 +54,12 @@ export function mergeStockAnalysisHistory(
   return next;
 }
 
-export function getLatestStockAnalysisSnapshots(history: StockAnalysisHistory, limit = DEFAULT_LIMIT): StockAnalysisSnapshot[] {
-  return Object.values(history)
+export function getLatestStockAnalysisSnapshots(history: StockAnalysisHistory, limit?: number): StockAnalysisSnapshot[] {
+  const snapshots = Object.values(history)
     .map((items) => items[0])
     .filter((item): item is StockAnalysisSnapshot => !!item?.available)
-    .sort(compareSnapshots)
-    .slice(0, limit);
+    .sort(compareSnapshots);
+  return limit != null ? snapshots.slice(0, limit) : snapshots;
 }
 
 // Snapshots written before the analyst-revisions rollout have neither
@@ -104,10 +103,10 @@ export function getMissingOrStaleStockAnalysisSymbols(
 }
 
 export async function fetchStockAnalysisHistory(
-  limit = DEFAULT_LIMIT,
+  limitOverride?: number,
   limitPerSymbol = DEFAULT_LIMIT_PER_SYMBOL,
 ): Promise<StockAnalysisHistory> {
-  const symbols = await getTargetSymbols(limit);
+  const symbols = await getTargetSymbols(limitOverride);
   const response = await client.getStockAnalysisHistory({
     symbols,
     limitPerSymbol,

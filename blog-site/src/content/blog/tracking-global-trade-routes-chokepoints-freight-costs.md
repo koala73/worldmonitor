@@ -125,13 +125,13 @@ No single data source shows this full picture. World Monitor puts chokepoint sta
 Transparency matters. Here is where the data comes from:
 
 - **Vessel transit data**: AIS (Automatic Identification System) feeds, cross-referenced with historical baselines
-- **Conflict events**: ACLED (Armed Conflict Location & Event Data Project), 7-day rolling windows
+- **Conflict events**: [ACLED](https://acleddata.com/) (Armed Conflict Location & Event Data Project), 7-day rolling windows
 - **Shipping advisories**: AI-generated from combined conflict, navigational, and AIS disruption signals
-- **Container indices**: Shanghai Shipping Exchange (SSE) public JSON API
-- **Bulk indices**: Baltic Exchange via HandyBulk daily reports
-- **Economic indices**: FRED (Federal Reserve Economic Data)
-- **Trade policy**: WTO I-TIP (Integrated Trade Intelligence Portal)
-- **Critical minerals**: USGS mineral commodity data with HHI calculations
+- **Container indices**: [Shanghai Shipping Exchange (SSE)](https://en.sse.net.cn/) public JSON API
+- **Bulk indices**: [Baltic Exchange](https://www.balticexchange.com/) via HandyBulk daily reports
+- **Economic indices**: [FRED](https://fred.stlouisfed.org/) (Federal Reserve Economic Data)
+- **Trade policy**: [WTO I-TIP](https://i-tip.wto.org/) (Integrated Trade Intelligence Portal)
+- **Critical minerals**: [USGS](https://www.usgs.gov/centers/national-minerals-information-center) mineral commodity data with HHI calculations
 
 All sources are public. No proprietary data feeds. No paywall.
 

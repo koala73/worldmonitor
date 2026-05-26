@@ -5,8 +5,18 @@ import type {
   EuFsiObservation,
 } from '../../../../src/generated/server/worldmonitor/economic/v1/service_server';
 import { getCachedJson } from '../../../_shared/redis';
+import { CISS_STALE_THRESHOLD_MS } from '../../../../src/shared/ciss-staleness';
 
 const SEED_CACHE_KEY = 'economic:fsi-eu:v1';
+
+// `stale` is set when the newest observation is older than the shared CISS
+// content-age budget — the ECB series has stopped publishing (issue #3845) —
+// so no consumer presents the reading as current.
+function isStale(latestDate: string): boolean {
+  const ts = Date.parse(latestDate);
+  if (!Number.isFinite(ts)) return false;
+  return Date.now() - ts > CISS_STALE_THRESHOLD_MS;
+}
 
 function buildFallbackResult(): GetEuFsiResponse {
   return {
@@ -16,6 +26,7 @@ function buildFallbackResult(): GetEuFsiResponse {
     history: [],
     seededAt: '',
     unavailable: true,
+    stale: false,
   };
 }
 
@@ -28,14 +39,16 @@ export async function getEuFsi(
     if (!raw || raw.unavailable) return buildFallbackResult();
 
     const history = (Array.isArray(raw.history) ? raw.history : []) as EuFsiObservation[];
+    const latestDate = String(raw.latestDate ?? '');
 
     return {
       latestValue: Number(raw.latestValue ?? 0),
-      latestDate: String(raw.latestDate ?? ''),
+      latestDate,
       label: String(raw.label ?? ''),
       history,
       seededAt: String(raw.seededAt ?? ''),
       unavailable: false,
+      stale: isStale(latestDate),
     };
   } catch {
     return buildFallbackResult();

@@ -189,11 +189,15 @@ describe('Frontend hydration (src/services/bootstrap.ts)', () => {
     }
   });
 
-  it('keeps web bootstrap tier timeouts under 2 seconds', () => {
+  it('keeps web bootstrap tier timeouts within budget', () => {
     const timeouts = Array.from(src.matchAll(/(\d[_\d]*)\)/g))
       .map((m) => parseInt(m[1].replace(/_/g, ''), 10))
-      .filter((n) => n === 1200 || n === 1800);
-    assert.deepEqual(timeouts, [1200, 1800], `Expected aggressive web bootstrap timeouts (1200, 1800)`);
+      .filter((n) => n === 1200 || n === 3000);
+    assert.deepEqual(
+      timeouts,
+      [1200, 3000],
+      `Expected web bootstrap timeouts (fast=1200, slow=3000) — slow tier was bumped from 1.8s to 3.0s to avoid hydration-cascade aborts`,
+    );
   });
 
   it('allows longer bootstrap timeouts for desktop runtime', () => {

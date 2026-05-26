@@ -49,8 +49,8 @@ export const DATASET_TO_DIMENSIONS: Readonly<Record<string, ReadonlyArray<Resili
   tradeToGdp: ['logisticsSupply'],
   // World Bank FX reserves (months of imports) → currencyExternal.
   fxReservesMonths: ['currencyExternal'],
-  // WB applied tariff rate → tradeSanctions.
-  appliedTariffRate: ['tradeSanctions'],
+  // WB applied tariff rate → tradePolicy.
+  appliedTariffRate: ['tradePolicy'],
 };
 
 /**

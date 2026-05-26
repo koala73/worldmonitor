@@ -44,7 +44,16 @@ let overlay: HTMLElement | null = null;
 let abortController: AbortController | null = null;
 let clientTimeout: ReturnType<typeof setTimeout> | null = null;
 
-async function buildWidgetAuthHeaders(isPro: boolean): Promise<Record<string, string>> {
+interface BuiltAuthHeaders {
+  headers: Record<string, string>;
+  /** True when the request is authenticated with a tester key (wm-widget-key /
+   *  wm-pro-key / wm-worldmonitor-key) rather than a Clerk JWT. Used to pick
+   *  the right 403 error message — the "Update wm-pro-key" hint is misleading
+   *  for normal paying users who have no tester key. */
+  usedTesterKey: boolean;
+}
+
+async function buildWidgetAuthHeaders(isPro: boolean): Promise<BuiltAuthHeaders> {
   const testerKey = getBrowserTesterKey();
   const widgetKey = getWidgetAgentKey();
   const proKey = getProWidgetKey();
@@ -53,11 +62,11 @@ async function buildWidgetAuthHeaders(isPro: boolean): Promise<Record<string, st
     if (testerKey) headers['X-WorldMonitor-Key'] = testerKey;
     if (widgetKey) headers['X-Widget-Key'] = widgetKey;
     if (isPro && proKey) headers['X-Pro-Key'] = proKey;
-    return headers;
+    return { headers, usedTesterKey: true };
   }
   const token = await getClerkToken();
-  if (token) return { 'Authorization': `Bearer ${token}` };
-  return {};
+  if (token) return { headers: { 'Authorization': `Bearer ${token}` }, usedTesterKey: false };
+  return { headers: {}, usedTesterKey: false };
 }
 
 export function openWidgetChatModal(options: WidgetChatOptions): void {
@@ -159,13 +168,13 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
   async function runPreflight(): Promise<void> {
     setReadinessState(readinessEl, 'checking', t('widgets.checkingConnection'));
     try {
-      const headers = await buildWidgetAuthHeaders(isPro);
-      const res = await fetch(widgetAgentHealthUrl(), { headers });
+      const auth = await buildWidgetAuthHeaders(isPro);
+      const res = await fetch(widgetAgentHealthUrl(), { headers: auth.headers });
       let payload: WidgetAgentHealth | null = null;
       try { payload = await res.json() as WidgetAgentHealth; } catch { /* ignore */ }
 
       if (!res.ok) {
-        const message = resolvePreflightMessage(res.status, payload, isPro);
+        const message = resolvePreflightMessage(res.status, payload, isPro, auth.usedTesterKey);
         preflightReady = false;
         setReadinessState(readinessEl, 'error', message);
         setFooterStatus(footerStatusEl, message, 'error');
@@ -240,9 +249,10 @@ export function openWidgetChatModal(options: WidgetChatOptions): void {
     }, timeoutMs);
 
     try {
+      const auth = await buildWidgetAuthHeaders(isPro);
       const reqHeaders: Record<string, string> = {
         'Content-Type': 'application/json',
-        ...(await buildWidgetAuthHeaders(isPro)),
+        ...auth.headers,
       };
 
       const res = await fetch(widgetAgentUrl(), {
@@ -386,8 +396,25 @@ function renderExampleChips(container: HTMLElement, inputEl: HTMLTextAreaElement
   }
 }
 
-function resolvePreflightMessage(status: number, payload: WidgetAgentHealth | null, isPro: boolean): string {
-  if (status === 403) return isPro ? t('widgets.preflightInvalidProKey') : t('widgets.preflightInvalidKey');
+function resolvePreflightMessage(
+  status: number,
+  payload: WidgetAgentHealth | null,
+  isPro: boolean,
+  usedTesterKey: boolean,
+): string {
+  if (status === 403) {
+    // Tester-key path: tell the operator to update the wm-*-key they actually have.
+    if (usedTesterKey) return isPro ? t('widgets.preflightInvalidProKey') : t('widgets.preflightInvalidKey');
+    // Clerk-auth path: split on isPro.
+    //   isPro=true  — the modal believes the user is Pro; a 403 means either
+    //                 (a) they just upgraded (entitlement still propagating)
+    //                 or (b) the entitlement service is degraded. Tell them to
+    //                 refresh / contact support.
+    //   isPro=false — a free user reached a Pro action; "contact support" is
+    //                 wrong, they need to upgrade. Surface a clean upgrade ask
+    //                 without the "just upgraded" language.
+    return isPro ? t('widgets.preflightProSubscriptionRequired') : t('widgets.preflightProRequired');
+  }
   if (status === 503 && payload?.proKeyConfigured === false) return t('widgets.preflightProUnavailable');
   if (payload?.anthropicConfigured === false) return t('widgets.preflightAiUnavailable');
   return t('widgets.preflightUnavailable');

@@ -184,7 +184,7 @@ describe('sensitivity v2: computePillarScoresFromDomains', () => {
     const dims = [
       { id: 'macroFiscal', score: 80, coverage: 1 },
       { id: 'currencyExternal', score: 60, coverage: 1 },
-      { id: 'tradeSanctions', score: 70, coverage: 1 },
+      { id: 'tradePolicy', score: 70, coverage: 1 },
       { id: 'cyberDigital', score: 50, coverage: 1 },
       { id: 'logisticsSupply', score: 40, coverage: 1 },
       { id: 'infrastructure', score: 60, coverage: 1 },
@@ -205,7 +205,7 @@ describe('sensitivity v2: computePillarScoresFromDomains', () => {
     const dimensionDomains = {
       macroFiscal: 'economic',
       currencyExternal: 'economic',
-      tradeSanctions: 'economic',
+      tradePolicy: 'economic',
       cyberDigital: 'infrastructure',
       logisticsSupply: 'infrastructure',
       infrastructure: 'infrastructure',

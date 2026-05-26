@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { wbCountryDictContentMeta } from './_wb-country-dict-content-age-helpers.mjs';
 import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
 
 loadEnvFile(import.meta.url);
@@ -9,6 +10,10 @@ const WB_BASE = 'https://api.worldbank.org/v2';
 const CANONICAL_KEY = 'resilience:recovery:reserve-adequacy:v1';
 const CACHE_TTL = 35 * 24 * 3600;
 const INDICATOR = 'FI.RES.TOTL.MO';
+// Content-age budget — World Bank annual indicator, ~2-year reporting lag.
+// 48 months clears the lag plus a publication cycle; STALE_CONTENT fires only
+// when WB stops publishing for 2+ annual cycles. See issue #3845.
+const MAX_CONTENT_AGE_MIN = 48 * 30 * 24 * 60;
 
 async function fetchReserveAdequacy() {
   const pages = [];
@@ -16,7 +21,12 @@ async function fetchReserveAdequacy() {
   let totalPages = 1;
 
   while (page <= totalPages) {
-    const url = `${WB_BASE}/country/all/indicator/${INDICATOR}?format=json&per_page=500&page=${page}&mrv=1`;
+    // mrv=5 (NOT mrv=1) per memory `feedback_wb_bulk_mrv1_null_coverage_trap`:
+    // mrv=1 returns a SINGLE year across all countries with `value: null`
+    // for late-reporters (KW/QA/AE/etc. publish 1-2y behind G7), silently
+    // dropping them from the dataset. mrv=5 + per-country pickLatest gives
+    // a true latest-available-non-null per country.
+    const url = `${WB_BASE}/country/all/indicator/${INDICATOR}?format=json&per_page=500&page=${page}&mrv=5`;
     const resp = await fetch(url, {
       headers: { 'User-Agent': CHROME_UA },
       signal: AbortSignal.timeout(30_000),
@@ -35,14 +45,26 @@ async function fetchReserveAdequacy() {
     const rawCode = record?.countryiso3code ?? record?.country?.id ?? '';
     const iso2 = rawCode.length === 3 ? (iso3ToIso2[rawCode] ?? null) : (rawCode.length === 2 ? rawCode : null);
     if (!iso2) continue;
-    const value = Number(record?.value);
+    // CRITICAL: skip null records BEFORE Number() coercion.
+    // Number(null) === 0 (not NaN), which would pass Number.isFinite()
+    // and let a `value: null` record overwrite an older non-null record
+    // in the latest-picker below — silently defeating the mrv=5 +
+    // pickLatest fix. WB returns null for late-reporters; those must
+    // not be coerced to 0 reserveMonths. Spotted by reviewer post-PR-#3427.
+    if (record?.value == null) continue;
+    const value = Number(record.value);
     if (!Number.isFinite(value)) continue;
     const year = Number(record?.date);
+    if (!Number.isFinite(year)) continue;
 
-    countries[iso2] = {
-      reserveMonths: value,
-      year: Number.isFinite(year) ? year : null,
-    };
+    // Per-country latest-non-null (mrv=5 returns up to 5 records per country).
+    const existing = countries[iso2];
+    if (!existing || year > existing.year) {
+      countries[iso2] = {
+        reserveMonths: value,
+        year,
+      };
+    }
   }
 
   return { countries, seededAt: new Date().toISOString() };
@@ -66,6 +88,8 @@ if (process.argv[1]?.endsWith('seed-recovery-reserve-adequacy.mjs')) {
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: 86400,
+    contentMeta: wbCountryDictContentMeta,
+    maxContentAgeMin: MAX_CONTENT_AGE_MIN,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);

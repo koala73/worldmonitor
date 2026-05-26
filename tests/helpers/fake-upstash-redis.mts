@@ -69,6 +69,16 @@ export function createRedisFetch(fixtures: Record<string, unknown>): FakeRedisSt
       return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
     }
 
+    if (parsed.pathname === '/') {
+      const command = JSON.parse(typeof init?.body === 'string' ? init.body : '[]') as string[];
+      const [verb, key = '', value = ''] = command;
+      if (verb === 'SET') {
+        redis.set(key, value);
+        return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
+      }
+      throw new Error(`Unexpected POST / command: ${verb}`);
+    }
+
     if (parsed.pathname === '/pipeline') {
       const commands = JSON.parse(typeof init?.body === 'string' ? init.body : '[]') as Array<Array<string | number>>;
       const result = commands.map((command) => {
@@ -82,6 +92,13 @@ export function createRedisFetch(fixtures: Record<string, unknown>): FakeRedisSt
         if (verb === 'SET') {
           redis.set(redisKey, String(args[0] || ''));
           return { result: 'OK' };
+        }
+
+        if (verb === 'EXISTS') {
+          // Real Redis EXISTS returns 1/0 for single key, count for multi-key.
+          // The handler's parity check uses single-key form per pipeline entry,
+          // so we just mirror that shape here.
+          return { result: redis.has(redisKey) ? 1 : 0 };
         }
 
         if (verb === 'ZADD') {

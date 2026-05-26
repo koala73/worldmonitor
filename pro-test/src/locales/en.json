@@ -1,4 +1,75 @@
 {
+  "pricing": {
+    "suffixForever": "forever",
+    "suffixTailored": "tailored to you",
+    "suffixPerMonth": "/mo",
+    "suffixPerYear": "/yr",
+    "amountCustom": "Custom",
+    "opening": "Opening…",
+    "headerTitle": "Choose Your Plan",
+    "headerSubtitle": "From real-time monitoring to full intelligence infrastructure. Pick the tier that fits your mission.",
+    "billingMonthly": "Monthly",
+    "billingAnnual": "Annual",
+    "saveAnnual": "Save 17%",
+    "mostPopular": "Most Popular",
+    "promoCodeNote": "Have a promo code? Enter it during checkout.",
+    "cta": {
+      "checkoutDefault": "Get Started",
+      "learnMore": "Learn More"
+    },
+    "tiers": {
+      "free": {
+        "description": "Get started with the essentials",
+        "features": [
+          "Core dashboard panels",
+          "Global news feed",
+          "Earthquake & weather alerts",
+          "Basic map view"
+        ],
+        "cta": "Get Started"
+      },
+      "pro": {
+        "description": "Full intelligence dashboard",
+        "features": [
+          "Everything in Free",
+          "AI stock analysis & backtesting",
+          "Daily market briefs",
+          "Military & geopolitical tracking",
+          "Custom widget builder",
+          "MCP data connectors",
+          "Priority data refresh"
+        ]
+      },
+      "api": {
+        "description": "Programmatic access to intelligence data",
+        "features": [
+          "REST API access",
+          "Real-time data streams",
+          "1,000 requests/day",
+          "Webhook notifications",
+          "Custom data exports"
+        ]
+      },
+      "enterprise": {
+        "description": "Custom solutions for organizations",
+        "features": [
+          "Everything in Pro + API",
+          "Unlimited API requests",
+          "Dedicated support",
+          "Custom integrations",
+          "SLA guarantee",
+          "On-premise option"
+        ],
+        "cta": "Contact Sales"
+      }
+    }
+  },
+  "meta": {
+    "title": "World Monitor Pro — AI Analyst, Personal Intelligence Desk, MCP for Claude & GPT",
+    "description": "The geopolitical AI layer. Ask it, subscribe to it, build on it. WM Analyst chat across 30+ live services, an AI digest delivered daily, twice-daily, or weekly to Slack, Discord, Telegram, Email, or webhook, a custom widget builder (HTML/CSS/JS + AI), and MCP connectors for Claude, GPT, and custom LLMs.",
+    "ogTitle": "World Monitor Pro — The Geopolitical AI Layer",
+    "ogDescription": "Ask it, subscribe to it, build on it. WM Analyst chat, an AI digest on your schedule (daily, twice-daily, or weekly), custom widget builder, and MCP for Claude/GPT — across 30+ live services under one key."
+  },
   "nav": {
     "free": "Free",
     "pro": "Pro",
@@ -52,7 +123,8 @@
     "entF9": "Android TV app for SOC walls & trading floors",
     "entF10": "Cloud, on-prem, or air-gapped deployment",
     "entF11": "Dedicated onboarding & support",
-    "entCta": "Talk to Sales"
+    "entCta": "Talk to Sales",
+    "freeF2": "500+ feeds, 65+ sources, 50+ map layers"
   },
   "whyUpgrade": {
     "title": "Why upgrade",
@@ -85,7 +157,7 @@
     "openFullScreen": "Open full screen",
     "tryLiveDashboard": "Try the Live Dashboard",
     "iframeTitle": "World Monitor — Live Intelligence Dashboard",
-    "description": "3D WebGL globe · 45+ interactive map layers · Real-time market, macro, geopolitical, energy, and infrastructure data"
+    "description": "3D WebGL globe · 50+ interactive map layers · Real-time market, macro, geopolitical, energy, and infrastructure data"
   },
   "socialProof": {
     "uniqueVisitors": "Unique visitors",
@@ -141,31 +213,11 @@
   },
   "tiers": {
     "free": "Free",
-    "freeTagline": "See everything",
-    "freeDesc": "The open-source dashboard",
-    "freeF1": "5-15 min refresh",
-    "freeF2": "500+ feeds, 45 map layers",
-    "freeF3": "BYOK for AI",
-    "freeF4": "Free forever",
-    "openDashboard": "Open Dashboard",
     "pro": "Pro",
-    "proTagline": "Markets, macro & geopolitics",
-    "proDesc": "Your AI analyst",
-    "proF1": "Equity research & stock analysis",
-    "proF2": "+ daily briefs, economy analytics",
-    "proF3": "AI included, 1 key",
-    "proF4": "Priority data refresh (Soon)",
+    "enterprise": "Enterprise",
     "priceMonthly": "$39.99 / month",
     "priceAnnual": "$399.99 / year",
-    "annualSavingsNote": "2 months free",
-    "enterprise": "Enterprise",
-    "enterpriseTagline": "Act before anyone else",
-    "enterpriseDesc": "The intelligence platform",
-    "entF1": "Live-edge + satellite imagery",
-    "entF2": "+ AI agents, 50K+ infra, SAR",
-    "entF3": "Custom AI, investor personas",
-    "entF4": "Contact us",
-    "contactSales": "Contact Sales"
+    "annualSavingsNote": "2 months free"
   },
   "proShowcase": {
     "proTier": "PRO TIER",
@@ -283,7 +335,6 @@
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + webhook",
     "fMcpBulk": "+ MCP + bulk",
-    "f45": "45",
     "fTensOfThousands": "+ tens of thousands",
     "fLiveTracking": "Live tracking",
     "fPassAlerts": "Pass alerts + analysis",
@@ -294,7 +345,8 @@
     "fStandard": "Standard",
     "fKeyAuth": "Key auth",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
-    "noteBelow": "The core platform remains free. Paid plans unlock equity research, macro analytics, AI briefings, and organizational use."
+    "noteBelow": "The core platform remains free. Paid plans unlock equity research, macro analytics, AI briefings, and organizational use.",
+    "f50plus": "50+"
   },
   "faq": {
     "title": "Frequently Asked Questions",

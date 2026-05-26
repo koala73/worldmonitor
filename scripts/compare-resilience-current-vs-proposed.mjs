@@ -264,11 +264,21 @@ const EXTRACTION_RULES = {
   fxVolatility: { type: 'not-implemented', reason: 'BIS REER annualized volatility needs scorer monthly-change std-dev; helper not exported' },
   fxDeviation: { type: 'not-implemented', reason: 'BIS REER absolute deviation from 100 needs scorer latest-value selection; helper not exported' },
 
-  // ── tradeSanctions ──────────────────────────────────────────────────
-  sanctionCount: { type: 'sanctions-count' },
+  // ── tradePolicy (renamed from tradeSanctions in plan 2026-04-25-004 Ship 1) ──
+  // sanctionCount indicator dropped — OFAC component removed from formula.
   tradeRestrictions: { type: 'count-trade-restrictions' },
   tradeBarriers: { type: 'count-trade-barriers' },
   appliedTariffRate: { type: 'static-path', path: ['appliedTariffRate', 'value'] },
+
+  // ── financialSystemExposure (added in plan 2026-04-25-004 Ship 2) ──
+  // All 4 indicators are seeder-driven (component seeders ship in same PR);
+  // extractors are out of scope for this comparison harness in v1 —
+  // marked not-implemented per the harness's escape hatch. A follow-up PR
+  // can wire seed-payload extractors after the seeders are populating.
+  shortTermExternalDebtPctGni: { type: 'not-implemented', reason: 'WB IDS seed-payload extractor pending seeder rollout (plan 2026-04-25-004 Ship 2)' },
+  bisLbsXborderPctGdp: { type: 'not-implemented', reason: 'BIS LBS seed-payload extractor pending seeder rollout (plan 2026-04-25-004 Ship 2)' },
+  fatfListingStatus: { type: 'not-implemented', reason: 'FATF seed-payload extractor pending seeder rollout (plan 2026-04-25-004 Ship 2)' },
+  financialCenterRedundancy: { type: 'not-implemented', reason: 'BIS LBS by-parent count extractor pending seeder rollout (plan 2026-04-25-004 Ship 2)' },
 
   // ── cyberDigital (scorer-aggregated event streams) ──────────────────
   cyberThreats: { type: 'summarize-cyber' },
@@ -356,6 +366,7 @@ const EXTRACTION_RULES = {
   recoveryGovRevenue: { type: 'recovery-country-field', key: 'resilience:recovery:fiscal-space:v1', field: 'govRevenuePct' },
   recoveryFiscalBalance: { type: 'recovery-country-field', key: 'resilience:recovery:fiscal-space:v1', field: 'fiscalBalancePct' },
   recoveryDebtToGdp: { type: 'recovery-country-field', key: 'resilience:recovery:fiscal-space:v1', field: 'debtToGdpPct' },
+  debtSustainabilityGap: { type: 'recovery-country-field', key: 'resilience:recovery:fiscal-space:v1', field: 'debtSustainabilityGapPct' },
   recoveryReserveMonths: { type: 'recovery-country-field', key: 'resilience:recovery:reserve-adequacy:v1', field: 'reserveMonths' },
   // PR 2 §3.4: replacement for recoveryReserveMonths at the tighter 1..12
   // anchor. Same seed key + field; the harness extracts the same value

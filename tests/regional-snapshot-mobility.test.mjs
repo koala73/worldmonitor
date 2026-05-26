@@ -594,12 +594,13 @@ describe('classifyInputs metaKey fallback (PR #2976 P2 #2)', () => {
     assert.ok(!result.fresh.includes('aviation:delays:faa:v1'));
   });
 
-  it('undated payload + missing meta → falls back to fresh (cannot prove staleness)', () => {
+  it('undated payload + missing meta → classified as stale (cannot prove freshness, #3728)', () => {
     const result = classifyInputs(
       { 'aviation:delays:faa:v1': { alerts: [] } },
       {}, // no meta at all
     );
-    assert.ok(result.fresh.includes('aviation:delays:faa:v1'));
+    assert.ok(result.stale.includes('aviation:delays:faa:v1'));
+    assert.ok(!result.fresh.includes('aviation:delays:faa:v1'));
   });
 
   it('missing payload → classified as missing regardless of meta', () => {

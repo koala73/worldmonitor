@@ -235,7 +235,7 @@ intervals, change attribution, external expert review).
 - **Cache keys** (all in `_shared.ts`): `resilience:score:v7:<cc>` (6h),
   `resilience:ranking:v8` (6h, written only when all countries scored),
   `resilience:history:v4:<cc>` (daily sorted set, 30-day retention),
-  `resilience:intervals:v1:<cc>` (95% CI from backtest).
+  `resilience:intervals:v2:<cc>` (95% CI from backtest).
 - **Warmup:** handler-owned, up to 200 missing countries per ranking request
   via `warmMissingResilienceScores()` in `get-resilience-ranking.ts`.
 - **Static seeding**, 11 slots in `scripts/seed-resilience-static.mjs` (WGI,

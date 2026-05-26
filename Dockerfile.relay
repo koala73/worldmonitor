@@ -32,6 +32,7 @@ COPY scripts/_seed-utils.mjs ./scripts/_seed-utils.mjs
 COPY scripts/_seed-envelope-source.mjs ./scripts/_seed-envelope-source.mjs
 COPY scripts/_seed-contract.mjs ./scripts/_seed-contract.mjs
 COPY scripts/_country-resolver.mjs ./scripts/_country-resolver.mjs
+COPY scripts/_climate-news-helpers.mjs ./scripts/_climate-news-helpers.mjs
 COPY scripts/seed-climate-news.mjs ./scripts/seed-climate-news.mjs
 COPY scripts/seed-chokepoint-flows.mjs ./scripts/seed-chokepoint-flows.mjs
 COPY scripts/seed-ember-electricity.mjs ./scripts/seed-ember-electricity.mjs

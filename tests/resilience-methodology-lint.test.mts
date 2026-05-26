@@ -35,14 +35,18 @@ const METHODOLOGY_CANDIDATES = [
 const HEADING_TO_DIMENSION: Readonly<Record<string, ResilienceDimensionId>> = {
   'Macro-Fiscal': 'macroFiscal',
   'Currency & External': 'currencyExternal',
-  'Trade & Sanctions': 'tradeSanctions',
+  'Trade Policy': 'tradePolicy',
+  'Financial System Exposure': 'financialSystemExposure',
   'Cyber & Digital': 'cyberDigital',
   'Logistics & Supply': 'logisticsSupply',
   'Infrastructure': 'infrastructure',
   'Energy': 'energy',
   'Governance': 'governanceInstitutional',
   'Social Cohesion': 'socialCohesion',
-  'Border Security': 'borderSecurity',
+  // #3737 — methodology doc heading relabeled from 'Border Security' to match
+  // what the scorer actually measures. Internal id `borderSecurity` retained
+  // for proto / cache-key stability.
+  'Conflict & Displacement': 'borderSecurity',
   'Information & Cognitive': 'informationCognitive',
   'Health & Public Service': 'healthPublicService',
   'Food & Water': 'foodWater',

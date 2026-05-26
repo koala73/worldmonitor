@@ -16,10 +16,15 @@ export const config = { runtime: 'edge' };
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { jsonResponse } from './_json-response.js';
+// @ts-expect-error — JS module, no declaration file
+import { captureSilentError } from './_sentry-edge.js';
 import { validateBearerToken } from '../server/auth-session';
 import { invalidateApiKeyCache } from '../server/_shared/user-api-key';
 
-export default async function handler(req: Request): Promise<Response> {
+export default async function handler(
+  req: Request,
+  ctx?: { waitUntil: (p: Promise<unknown>) => void },
+): Promise<Response> {
   if (isDisallowedOrigin(req)) {
     return jsonResponse({ error: 'Origin not allowed' }, 403);
   }
@@ -91,6 +96,10 @@ export default async function handler(req: Request): Promise<Response> {
   } catch (err) {
     // Fail-closed: ownership check failed — reject to surface the issue
     console.warn('[invalidate-cache] Ownership check failed:', err instanceof Error ? err.message : String(err));
+    captureSilentError(err, {
+      tags: { route: 'api/invalidate-user-api-key-cache', step: 'ownership-check' },
+      ctx,
+    });
     return jsonResponse({ error: 'Service unavailable' }, 503, cors);
   }
 

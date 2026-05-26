@@ -1,6 +1,6 @@
 import type { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
 import { Panel } from './Panel';
-import { t } from '@/services/i18n';
+import { t, getLocale } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
 
 let _client: MarketServiceClient | null = null;
@@ -53,9 +53,9 @@ function dateLabel(dateStr: string): string {
   const d = new Date(`${dateStr}T00:00:00`);
   if (Number.isNaN(d.getTime())) return dateStr;
   const days = Math.round((d.getTime() - today.getTime()) / 86_400_000);
-  const formatted = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-  if (days === 0) return `TODAY · ${formatted}`;
-  if (days === 1) return `TOMORROW · ${formatted}`;
+  const formatted = d.toLocaleDateString(getLocale(), { weekday: 'short', month: 'short', day: 'numeric' });
+  if (days === 0) return t('components.earningsCalendar.today', { date: formatted });
+  if (days === 1) return t('components.earningsCalendar.tomorrow', { date: formatted });
   return formatted.toUpperCase().replace(',', ' ·');
 }
 
@@ -80,21 +80,25 @@ function renderEntry(e: EarningsEntry): string {
       : e.surpriseDirection === 'miss'
         ? 'background:rgba(231,76,60,0.2);color:#e74c3c'
         : 'background:rgba(255,255,255,0.08);color:var(--text-dim)';
-    const badgeLabel = e.surpriseDirection === 'beat' ? 'BEAT' : e.surpriseDirection === 'miss' ? 'MISS' : 'IN LINE';
+    const badgeLabel = e.surpriseDirection === 'beat'
+      ? t('components.earningsCalendar.surprise.beat')
+      : e.surpriseDirection === 'miss'
+        ? t('components.earningsCalendar.surprise.miss')
+        : t('components.earningsCalendar.surprise.inLine');
     const pct = surprisePct(e.epsActual, e.epsEstimate);
     epsHtml = `
-      <span style="font-size:11px;font-weight:600;color:var(--text)">EPS ${escapeHtml(epsActFmt)}</span>
+      <span style="font-size:11px;font-weight:600;color:var(--text)">${escapeHtml(t('components.earningsCalendar.epsActual', { value: epsActFmt }))}</span>
       <span style="font-size:9px;font-weight:700;padding:1px 4px;border-radius:3px;${badgeStyle}">${escapeHtml(badgeLabel)}${pct ? ` ${escapeHtml(pct)}` : ''}</span>`;
   } else if (epsEstFmt) {
-    epsHtml = `<span style="font-size:11px;color:var(--text-dim)">EPS est ${escapeHtml(epsEstFmt)}</span>`;
+    epsHtml = `<span style="font-size:11px;color:var(--text-dim)">${escapeHtml(t('components.earningsCalendar.epsEstimate', { value: epsEstFmt }))}</span>`;
   }
 
   // Revenue section
   let revHtml = '';
   if (e.hasActuals && revActFmt) {
-    revHtml = `<span style="font-size:10px;color:var(--text-dim)">${escapeHtml(revActFmt)} rev</span>`;
+    revHtml = `<span style="font-size:10px;color:var(--text-dim)">${escapeHtml(t('components.earningsCalendar.revenueActual', { value: revActFmt }))}</span>`;
   } else if (revEstFmt) {
-    revHtml = `<span style="font-size:10px;color:rgba(255,255,255,0.25)">${escapeHtml(revEstFmt)} est</span>`;
+    revHtml = `<span style="font-size:10px;color:rgba(255,255,255,0.25)">${escapeHtml(t('components.earningsCalendar.revenueEstimate', { value: revEstFmt }))}</span>`;
   }
 
   return `
@@ -126,7 +130,7 @@ export class EarningsCalendarPanel extends Panel {
   private _hasData = false;
 
   constructor() {
-    super({ id: 'earnings-calendar', title: 'Earnings Calendar', showCount: false, infoTooltip: t('components.earningsCalendar.infoTooltip') });
+    super({ id: 'earnings-calendar', title: t('components.earningsCalendar.title'), showCount: false, infoTooltip: t('components.earningsCalendar.infoTooltip') });
   }
 
   public async fetchData(): Promise<boolean> {
@@ -145,14 +149,14 @@ export class EarningsCalendarPanel extends Panel {
       const resp = await client.listEarningsCalendar({ fromDate, toDate });
 
       if (resp.unavailable || !resp.earnings?.length) {
-        if (!this._hasData) this.showError('No earnings data', () => void this.fetchData());
+        if (!this._hasData) this.showError(t('components.earningsCalendar.errors.noData'), () => void this.fetchData());
         return false;
       }
 
       this.render(resp.earnings as EarningsEntry[]);
       return true;
     } catch (e) {
-      if (!this._hasData) this.showError(e instanceof Error ? e.message : 'Failed to load', () => void this.fetchData());
+      if (!this._hasData) this.showError(e instanceof Error ? e.message : t('components.earningsCalendar.errors.failedToLoad'), () => void this.fetchData());
       return false;
     }
   }

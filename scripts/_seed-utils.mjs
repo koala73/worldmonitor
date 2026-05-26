@@ -18,6 +18,26 @@ const __seed_dirname = dirname(fileURLToPath(import.meta.url));
 export { CHROME_UA };
 
 /**
+ * Unwrap fetch / network errors so log lines surface the actual cause
+ * (DNS / TCP reset / TLS abort) instead of undici's bare "fetch failed".
+ * Pulls `err.cause.code` (preferred — `ENOTFOUND`, `ECONNRESET`, etc.),
+ * `err.cause.errno`, or `err.cause.message` in that order; falls back to
+ * the outer error message when no cause is attached. Used by seeders
+ * with multi-tier fallback chains (FATF, GDELT) where the failure mode
+ * dictates the next-tier decision and operators need to distinguish
+ * routing / DNS / handshake failures from per-host throttling.
+ *
+ * @param {unknown} err
+ * @returns {string}
+ */
+export function describeErr(err) {
+  if (!err) return 'unknown';
+  const cause = err.cause;
+  const causeCode = cause?.code || cause?.errno || cause?.message || (typeof cause === 'string' ? cause : null);
+  return causeCode ? `${err.message} (cause: ${causeCode})` : (err.message || String(err));
+}
+
+/**
  * Return the bundle-run start timestamp injected by `_bundle-runner.mjs`
  * as the `BUNDLE_RUN_STARTED_AT_MS` env var, or `null` when the seeder
  * is running STANDALONE (manual invocation outside the bundle).
@@ -125,7 +145,22 @@ async function redisCommand(url, token, command) {
   });
   if (!resp.ok) {
     const text = await resp.text().catch(() => '');
-    throw new Error(`Redis command failed: HTTP ${resp.status} — ${text.slice(0, 200)}`);
+    const err = new Error(`Redis command failed: HTTP ${resp.status} — ${text.slice(0, 200)}`);
+    // Tag errors so callers wrapping in withRetry know whether to back off.
+    // Permanent 4xx (auth, payload-too-large, etc.) won't recover on retry —
+    // mark non-retryable so withRetry exits the loop in ~10ms instead of
+    // wasting backoff on a guaranteed-fail. Only 429 (rate-limited) should
+    // keep retrying among the 4xx set, with the upstream Retry-After hint
+    // honoured. Transient 5xx and timeouts fall through with no flag —
+    // withRetry's default backoff applies.
+    if (PERMANENT_4XX_STATUSES.has(resp.status)) {
+      err.nonRetryable = true;
+    } else if (resp.status === 429) {
+      const retryAfterMs = parseRetryAfterMs(resp.headers.get('retry-after'));
+      if (retryAfterMs != null) err.retryAfterMs = retryAfterMs;
+    }
+    err.httpStatus = resp.status;
+    throw err;
   }
   return resp.json();
 }
@@ -202,8 +237,6 @@ export async function releaseLock(domain, runId) {
 
 export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds, options = {}) {
   const { url, token } = getRedisCredentials();
-  const runId = String(Date.now());
-  const stagingKey = `${canonicalKey}:staging:${runId}`;
 
   if (validateFn) {
     const valid = validateFn(data);
@@ -226,35 +259,161 @@ export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds, 
     throw new Error(`Payload too large: ${(payloadBytes / 1024 / 1024).toFixed(1)}MB > 5MB limit`);
   }
 
-  // Write to staging key
-  await redisSet(url, token, stagingKey, payloadValue, 300); // 5 min staging TTL
+  // Retry the entire 3-call publish unit on transient Upstash failures.
+  // Pre-fix: a single timeout on the canonical SET would crash the whole
+  // seeder run and Railway just waited for the next cron tick (1h for
+  // seed-forecasts). On 2026-05-10 this exact failure mode produced a
+  // ~3h gap on forecasts + marketImplications. Wrapping the body means
+  // a transient 5xx/timeout retries automatically with exponential
+  // backoff. Permanent 4xx (auth, payload-too-large) get the
+  // `nonRetryable: true` flag from redisCommand and abort immediately.
+  //
+  // Each attempt re-stages with a fresh runId so a previous attempt's
+  // staging key (if it landed server-side but the response was lost)
+  // doesn't shadow the retry. The 5-min staging TTL cleans up any
+  // orphaned stagings naturally.
+  return await withRetry(
+    async () => {
+      const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const stagingKey = `${canonicalKey}:staging:${runId}`;
 
-  // Overwrite canonical key
-  if (ttlSeconds) {
-    await redisCommand(url, token, ['SET', canonicalKey, payload, 'EX', ttlSeconds]);
-  } else {
-    await redisCommand(url, token, ['SET', canonicalKey, payload]);
-  }
+      // Write to staging key
+      await redisSet(url, token, stagingKey, payloadValue, 300); // 5 min staging TTL
 
-  // Cleanup staging
-  await redisDel(url, token, stagingKey).catch(() => {});
+      // Overwrite canonical key
+      if (ttlSeconds) {
+        await redisCommand(url, token, ['SET', canonicalKey, payload, 'EX', ttlSeconds]);
+      } else {
+        await redisCommand(url, token, ['SET', canonicalKey, payload]);
+      }
 
-  return { payloadBytes, recordCount: Array.isArray(data) ? data.length : null };
+      // Cleanup staging
+      await redisDel(url, token, stagingKey).catch(() => {});
+
+      return { payloadBytes, recordCount: Array.isArray(data) ? data.length : null };
+    },
+    2,    // 2 retries (3 attempts total) — sufficient for transient blips
+    1000, // 1s base delay; exponential backoff → 1s + 2s = ~3s worst-case
+          // cumulative wait between attempts. Plus per-attempt fetch time
+          // (15s timeout each) means total worst-case before propagating ≈ 48s.
+  );
 }
 
-export async function writeFreshnessMetadata(domain, resource, count, source, ttlSeconds) {
+export async function writeFreshnessMetadata(domain, resource, count, source, ttlSeconds, fetchedAtOverride, contentAge) {
   const { url, token } = getRedisCredentials();
   const metaKey = `seed-meta:${domain}:${resource}`;
   const meta = {
-    fetchedAt: Date.now(),
+    // Default to now; callers that want to mirror an existing canonical
+    // envelope (validate-fail branch in runSeed) pass the canonical's
+    // original fetchedAt so health doesn't lie about freshness — see
+    // readCanonicalEnvelopeMeta() and the skipped-validate path below.
+    fetchedAt: typeof fetchedAtOverride === 'number' ? fetchedAtOverride : Date.now(),
     recordCount: count,
     sourceVersion: source || '',
   };
+  // Content-age trio (2026-05-04 health-readiness plan). Pass when the seeder
+  // opted in. Presence of maxContentAgeMin is the opt-in signal that the
+  // health classifier reads. newestItemAt/oldestItemAt may be explicit null
+  // when contentMeta returned null — classifier reads as STALE_CONTENT.
+  if (contentAge && typeof contentAge === 'object' && Number.isInteger(contentAge.maxContentAgeMin)) {
+    meta.newestItemAt = contentAge.newestItemAt ?? null;
+    meta.oldestItemAt = contentAge.oldestItemAt ?? null;
+    meta.maxContentAgeMin = contentAge.maxContentAgeMin;
+  }
   // Use the data TTL if it exceeds 7 days so monthly/annual seeds don't lose
   // their meta key before the health check maxStaleMin threshold is reached.
   const metaTtl = Math.max(86400 * 7, ttlSeconds || 0);
   await redisSet(url, token, metaKey, meta, metaTtl);
   return meta;
+}
+
+/**
+ * Read the canonical key's contract-mode envelope meta. Used by runSeed's
+ * validate-fail branch to mirror canonical state into seed-meta instead
+ * of overwriting it with recordCount=0 (which makes /api/health report
+ * EMPTY_DATA when the canonical key still holds last-good data — see
+ * PR #3581 for the production incident).
+ *
+ * Returns the {fetchedAt, recordCount, sourceVersion} block when canonicalKey
+ * is contract-mode (envelope dual-write) AND has a valid recordCount > 0.
+ * Returns null for legacy (bare-shape) keys, missing keys, parse errors,
+ * or zero envelopes — caller falls back to its existing default behavior.
+ *
+ * Defensive: any read/parse error → null. No throws bubble up.
+ */
+export async function readCanonicalEnvelopeMeta(canonicalKey) {
+  try {
+    const { url, token } = getRedisCredentials();
+    const resp = await fetch(`${url}/get/${encodeURIComponent(canonicalKey)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!resp.ok) return null;
+    const data = await resp.json();
+    if (!data || !data.result) return null;
+    let parsed;
+    try { parsed = JSON.parse(data.result); } catch { return null; }
+    if (!parsed || typeof parsed !== 'object') return null;
+    const seed = parsed._seed;
+    if (!seed || typeof seed !== 'object') return null;
+    if (typeof seed.fetchedAt !== 'number' || typeof seed.recordCount !== 'number') return null;
+    if (seed.recordCount <= 0) return null;
+    // Content-age fields propagate through the validate-fail mirror so the
+    // health classifier doesn't lose the STALE_CONTENT signal exactly when
+    // last-good-with-stale-content data is being served (Codex round 1 P0b).
+    // All three fields are optional in the envelope; carry them through as a
+    // trio when present, otherwise undefined (caller checks).
+    const contentAge = (typeof seed.maxContentAgeMin === 'number')
+      ? {
+          newestItemAt: typeof seed.newestItemAt === 'number' ? seed.newestItemAt : null,
+          oldestItemAt: typeof seed.oldestItemAt === 'number' ? seed.oldestItemAt : null,
+          maxContentAgeMin: seed.maxContentAgeMin,
+        }
+      : undefined;
+    return {
+      fetchedAt: seed.fetchedAt,
+      recordCount: seed.recordCount,
+      sourceVersion: typeof seed.sourceVersion === 'string' ? seed.sourceVersion : '',
+      contentAge,
+    };
+  } catch {
+    return null;
+  }
+}
+
+// HTTP statuses where retrying CAN'T succeed because the failure is in the
+// caller's request shape, not server load:
+//   400 malformed query   401 bad auth      403 forbidden
+//   404 missing path      410 permanently gone
+//   422 semantic error    451 legal block
+// 408 Request Timeout and 429 Too Many Requests are deliberately excluded —
+// both are explicit "back off and retry" signals, often paired with a
+// Retry-After header. Tagging them nonRetryable would convert transient
+// rate-limits into immediate seed failures (especially under parallel
+// fetches like seed-imf-* WEO bundles).
+export const PERMANENT_4XX_STATUSES = new Set([400, 401, 403, 404, 410, 422, 451]);
+
+// Cap upstream Retry-After hints so a stuck/abusive header can't park the
+// bundle past its section timeoutMs. Mirrors _yahoo-fetch.mjs convention.
+const MAX_RETRY_AFTER_MS = 60_000;
+
+/**
+ * Parse `Retry-After` header value (seconds OR HTTP-date). Returns null
+ * when missing/unparseable so callers can fall back to default backoff.
+ * Duplicates exist in _yahoo-fetch / _gdelt-fetch / _open-meteo-archive —
+ * those predate this helper; consolidating them is a separate refactor.
+ */
+export function parseRetryAfterMs(value) {
+  if (!value) return null;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds > 0) {
+    return Math.min(seconds * 1000, MAX_RETRY_AFTER_MS);
+  }
+  const retryAt = Date.parse(value);
+  if (Number.isFinite(retryAt)) {
+    return Math.min(Math.max(retryAt - Date.now(), 1000), MAX_RETRY_AFTER_MS);
+  }
+  return null;
 }
 
 export async function withRetry(fn, maxRetries = 3, delayMs = 1000) {
@@ -264,8 +423,17 @@ export async function withRetry(fn, maxRetries = 3, delayMs = 1000) {
       return await fn();
     } catch (err) {
       lastErr = err;
+      // Permanent failures (4xx auth/permission, missing config) burn the
+      // bundle timeoutMs if retried. Callers tag with `nonRetryable: true`
+      // so the loop fails in ~10ms instead of waiting through every backoff.
+      if (err?.nonRetryable) throw err;
       if (attempt < maxRetries) {
-        const wait = delayMs * 2 ** attempt;
+        // Honor upstream `Retry-After` hint when caller attached it
+        // (typically 429 / 503). Take whichever is longer — the upstream
+        // hint OR the exponential backoff — so a generous server hint
+        // isn't undercut, and a missing/short hint still gets back-off.
+        const baseWait = delayMs * 2 ** attempt;
+        const wait = err?.retryAfterMs ? Math.max(baseWait, err.retryAfterMs) : baseWait;
         const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
         console.warn(`  Retry ${attempt + 1}/${maxRetries} in ${wait}ms: ${err.message || err}${cause}`);
         await new Promise(r => setTimeout(r, wait));
@@ -489,10 +657,71 @@ export async function imfFetchJson(url, proxyAuth) {
 }
 
 // ---------------------------------------------------------------------------
-// IMF SDMX 3.0 API (api.imf.org) — replaces blocked DataMapper API
+// IMF SDMX 3.0 API (api.imf.org) — replaces blocked DataMapper API.
+//
+// Auth status (2026-05): currently allows unauthenticated requests, but the
+// gateway has been observed flipping to hard 401 enforcement intermittently
+// (one ~hours-long window on 2026-05-09 SIGTERM'd seed-bundle-market-backup
+// in production). Set IMF_API_KEY to send `Ocp-Apim-Subscription-Key` for
+// forward-compatibility — get a key at https://portal.api.imf.org/ (Sign in
+// → Products → IMF Data SDMX API → Subscribe → Profile → Subscriptions →
+// Primary key). One subscription unlocks both SDMX 2.1 and 3.0. The gateway
+// returns a misleading `WWW-Authenticate: Bearer` 401; the actual scheme is
+// APIM subscription key, NOT Bearer.
 // ---------------------------------------------------------------------------
 const IMF_SDMX_BASE = 'https://api.imf.org/external/sdmx/3.0';
 
+// Build auth headers for api.imf.org. Returns {} when IMF_API_KEY is unset —
+// IMF currently allows unauthenticated requests through, but flipped to hard
+// 401 enforcement for ~hours on 2026-05-09 (captured in seed-bundle-market-
+// backup logs). Sending the key when we have it is forward-compatible with
+// permanent enforcement; the omit-on-empty path preserves today's working
+// state. The `nonRetryable` 4xx guard in the fetcher (paired with this
+// helper) prevents a 180s SIGTERM the next time enforcement lands.
+export function imfAuthHeaders() {
+  const key = process.env.IMF_API_KEY;
+  return key ? { 'Ocp-Apim-Subscription-Key': key } : {};
+}
+
+/**
+ * Normalize an SDMX 3.0 monthly period from `YYYY-MMM` (the on-the-wire
+ * shape, e.g. `2026-M03`) to ISO `YYYY-MM` so downstream date math —
+ * `period.split('-')`, `parseInt(month, 10)`, key comparisons — works
+ * without special-casing. The M-prefix silently corrupts these
+ * computations: `parseInt("M03", 10)` returns NaN, so 12-month delta
+ * lookups against `byMonth[priorMonth]` always miss.
+ *
+ * Other SDMX 3.0 frequencies pass through unchanged:
+ *   - Annual:    `YYYY`               (e.g. `2024`) — used by WEO/FM
+ *   - Quarterly: `YYYY-Q1..Q4`        (e.g. `2024-Q3`) — sortable as-is
+ *   - Daily:     `YYYY-MM-DD`         (e.g. `2024-03-15`) — used by ECB
+ *   - Monthly:   `YYYY-MMM` → YYYY-MM (e.g. `2026-M03` → `2026-03`)
+ *
+ * Future monthly/quarterly SDMX consumers MUST call this at ingest
+ * (right after reading `timeValues[parseInt(obsKey, 10)]`) so callers
+ * downstream can keep using simple string comparisons and ISO splits.
+ *
+ * @param {string|null|undefined} period
+ * @returns {string|null|undefined} Normalized period (or input unchanged for falsy/non-string)
+ */
+export function normalizeSdmxPeriod(period) {
+  if (typeof period !== 'string') return period;
+  return period.replace(/-M(\d{2})$/, '-$1');
+}
+
+/**
+ * IMF WEO/FM annual indicator fetcher. Hardcoded to annual frequency by URL
+ * construction (`*.${indicator}.A`) — period values come back as bare year
+ * strings (`"2024"`), so no SDMX-period normalization is required here.
+ *
+ * NOTE for future extensions: if you need IMF monthly or quarterly data
+ * (e.g. IRFCL, IFS, BOP), do NOT bolt frequency onto this helper — the
+ * dimension layout differs (e.g. IRFCL is 4-dim COUNTRY.INDICATOR.SECTOR.FREQUENCY,
+ * not WEO's 2-dim COUNTRY.INDICATOR). Roll a custom fetch and call
+ * `normalizeSdmxPeriod()` on every period before storing it as a key.
+ * See `scripts/seed-gold-cb-reserves.mjs::fetchIrfclMonthlySeries` for the
+ * canonical monthly pattern.
+ */
 export async function imfSdmxFetchIndicator(indicator, { database = 'WEO', years } = {}) {
   const agencyMap = { WEO: 'IMF.RES', FM: 'IMF.FAD' };
   const agency = agencyMap[database] || 'IMF.RES';
@@ -500,10 +729,19 @@ export async function imfSdmxFetchIndicator(indicator, { database = 'WEO', years
 
   const json = await withRetry(async () => {
     const r = await fetch(url, {
-      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
+      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json', ...imfAuthHeaders() },
       signal: AbortSignal.timeout(60_000),
     });
-    if (!r.ok) throw new Error(`IMF SDMX ${indicator}: HTTP ${r.status}`);
+    if (!r.ok) {
+      const err = new Error(`IMF SDMX ${indicator}: HTTP ${r.status}`);
+      if (PERMANENT_4XX_STATUSES.has(r.status)) err.nonRetryable = true;
+      // 429 (rate limit) and 503 (overloaded) typically carry Retry-After;
+      // attach so withRetry can honor the upstream hint.
+      if (r.status === 429 || r.status === 503) {
+        err.retryAfterMs = parseRetryAfterMs(r.headers.get('retry-after'));
+      }
+      throw err;
+    }
     return r.json();
   }, 2, 2000);
 
@@ -821,6 +1059,8 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     sourceVersion,         // new — required when declareRecords is passed
     schemaVersion,         // new — required when declareRecords is passed
     zeroIsValid = false,   // new — when true, recordCount=0 is OK_ZERO, not RETRY
+    contentMeta,           // (rawData) => {newestItemAt, oldestItemAt} | null
+    maxContentAgeMin,      // positive integer minutes — opts in together with contentMeta
   } = opts;
   const contractMode = typeof declareRecords === 'function';
   if (contractMode) {
@@ -831,6 +1071,20 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     if (typeof opts.maxStaleMin !== 'number') missing.push('maxStaleMin');
     if (missing.length) {
       console.warn(`  [seed-contract] ${domain}:${resource} missing fields: ${missing.join(', ')} — required in PR 3`);
+    }
+  }
+  // Content-age contract validation (2026-05-04 health-readiness plan).
+  // contentMeta and maxContentAgeMin opt in TOGETHER. Hard-fail at config time
+  // on misconfig — silently disabling the check would defeat the alarm.
+  const contentAgeOptedIn = contentMeta != null || maxContentAgeMin != null;
+  if (contentAgeOptedIn) {
+    if (typeof contentMeta !== 'function') {
+      console.error(`  CONTRACT VIOLATION: ${domain}:${resource} declares maxContentAgeMin without contentMeta function`);
+      process.exit(1);
+    }
+    if (!Number.isInteger(maxContentAgeMin) || maxContentAgeMin <= 0) {
+      console.error(`  CONTRACT VIOLATION: ${domain}:${resource} maxContentAgeMin must be a positive integer (minutes), got ${JSON.stringify(maxContentAgeMin)}`);
+      process.exit(1);
     }
   }
   const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -853,42 +1107,67 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     process.exit(0);
   }
 
-  // SIGTERM handler, SCOPED to the fetch phase only. _bundle-runner.mjs
-  // sends SIGTERM when a section's timeout fires, then SIGKILL after
-  // KILL_GRACE_MS (5s). The fetch phase is the long-running blocking
-  // call where timeout realistically fires; publish/verify is bounded
-  // Redis writes. Narrowing the handler's lifetime prevents it from
-  // racing graceful exit paths that MUST NOT refresh TTL — notably the
-  // `emptyDataIsFailure: true` strict-floor branch (IMF-External,
-  // WB-bulk) which deliberately avoids refreshing seed-meta so the next
-  // cron tick retries. Release lock + extend existing-data TTL in
-  // parallel (disjoint keys; serializing compounds Upstash latency
-  // during the exact failure mode this handler exists to handle).
+  // SIGTERM handler — installed BEFORE fetch and KEPT installed through
+  // publish. _bundle-runner.mjs sends SIGTERM when a section's timeout
+  // fires, then SIGKILL after KILL_GRACE_MS (5s). Without a publish-phase
+  // handler, a timeout that fires during atomicPublish or extendExistingTtl
+  // leaves seed-lock:<domain>:<resource> dangling for the full lockTtlMs
+  // (default 120s). For seeders bundled in fast-firing crons (e.g.
+  // seed-bis-lbs.mjs in seed-bundle-macro.mjs) the next tick can collide
+  // with that orphaned lock and SKIP repeatedly — the canonical key never
+  // gets published and /api/health reports `EMPTY`.
+  //
+  // The handler is phase-aware so it preserves the strict-floor invariant
+  // (emptyDataIsFailure seeders MUST NOT refresh seed-meta on validation
+  // reject — see imf-external Railway log 2026-04-13). During fetch we
+  // release lock + extend existing-data TTL so consumers keep seeing
+  // last-good. During publish we release lock ONLY: data was fetched but
+  // not yet stored; refreshing TTL here would silently re-anchor stale
+  // data and corrupt the strict-floor retry path.
+  //
+  // Releases run in parallel (disjoint keys; serializing compounds Upstash
+  // latency during the exact failure mode this handler exists to handle).
   // Exit 143 = POSIX convention for SIGTERM-terminated process.
+  let currentPhase = 'fetch';
   const sigTermHandler = async () => {
-    console.error(`  [${domain}:${resource}] SIGTERM received — releasing lock runId=${runId}, extending existing TTL`);
+    console.error(`  [${domain}:${resource}] SIGTERM received during ${currentPhase} phase — releasing lock runId=${runId}`);
     try {
-      const ttl = ttlSeconds || 600;
-      const keys = [canonicalKey, `seed-meta:${domain}:${resource}`];
-      if (extraKeys) keys.push(...extraKeys.map((ek) => ek.key));
-      await Promise.allSettled([
-        releaseLock(`${domain}:${resource}`, runId),
-        extendExistingTtl(keys, ttl),
-      ]);
+      if (currentPhase === 'fetch') {
+        const ttl = ttlSeconds || 600;
+        const keys = [canonicalKey, `seed-meta:${domain}:${resource}`];
+        if (extraKeys) keys.push(...extraKeys.map((ek) => ek.key));
+        await Promise.allSettled([
+          releaseLock(`${domain}:${resource}`, runId),
+          extendExistingTtl(keys, ttl),
+        ]);
+      } else {
+        await releaseLock(`${domain}:${resource}`, runId);
+      }
     } catch (err) {
       console.error(`  [${domain}:${resource}] SIGTERM cleanup error: ${err?.message || err}`);
     } finally {
       process.exit(143);
     }
   };
+  process.once('SIGTERM', sigTermHandler);
 
   // Phase 1: Fetch data (graceful on failure — extend TTL on stale data)
   let data;
   try {
-    process.once('SIGTERM', sigTermHandler);
     data = await withRetry(fetchFn);
   } catch (err) {
-    process.off('SIGTERM', sigTermHandler);
+    // Keep the SIGTERM handler installed across the fetch-failure
+    // cleanup. Earlier code did `process.off('SIGTERM', sigTermHandler)`
+    // here, which opened a new leak window: SIGTERM during the
+    // releaseLock + extendExistingTtl awaits below would fall through
+    // to Node's default termination and could strand seed-lock or skip
+    // the TTL extension. Both paths (this catch's manual ops and the
+    // handler's parallel ops) are idempotent — the LUA verify-and-DEL
+    // releases at most once for a given runId, and EXPIRE pipelines on
+    // existing keys are safely re-runnable — so a race between the
+    // catch path and the handler converges on the correct end state.
+    // process.exit(0) below terminates before any pending SIGTERM can
+    // fire on the success path of cleanup.
     await releaseLock(`${domain}:${resource}`, runId);
     const durationMs = Date.now() - startMs;
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
@@ -901,16 +1180,39 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
 
     console.log(`\n=== Failed gracefully (${Math.round(durationMs)}ms) ===`);
     process.exit(0);
-  } finally {
-    // Remove the SIGTERM handler unconditionally: success path (fall
-    // through to publish), catch path (already removed above), and any
-    // future exit path added inside the try. process.off is a safe
-    // no-op when the listener was never registered or already removed.
-    process.off('SIGTERM', sigTermHandler);
   }
+  // Transition to publish phase — handler stays installed but switches
+  // behavior via the phase tracker.
+  currentPhase = 'publish';
 
   // Phase 2: Publish to Redis (rethrow on failure — data was fetched but not stored)
   try {
+    // Content-age contract: invoke contentMeta on RAW fetcher output BEFORE
+    // publishTransform runs. This lets seeders carry pre-publish helper fields
+    // (e.g. _publishedAtIsSynthetic) on items that contentMeta reads, then
+    // strip them via publishTransform before they reach the canonical key
+    // and downstream clients. See the 2026-05-04 health-readiness plan,
+    // Sprint 1 / Sprint 2 disease-outbreaks pilot.
+    //
+    // contentMeta returning null OR throwing both signal "no usable item
+    // timestamps" → write newestItemAt: null in the envelope, which the
+    // health classifier reads as STALE_CONTENT.
+    let contentNewestAt = null;
+    let contentOldestAt = null;
+    if (contentAgeOptedIn) {
+      try {
+        const result = contentMeta(data);
+        if (result && typeof result === 'object'
+            && Number.isFinite(result.newestItemAt) && result.newestItemAt > 0
+            && Number.isFinite(result.oldestItemAt) && result.oldestItemAt > 0) {
+          contentNewestAt = result.newestItemAt;
+          contentOldestAt = result.oldestItemAt;
+        }
+      } catch (err) {
+        console.warn(`  [content-age] ${domain}:${resource}: contentMeta threw, treating as null: ${err?.message || err}`);
+      }
+    }
+
     const publishData = publishTransform ? publishTransform(data) : data;
 
     // In contract mode, resolve recordCount from declareRecords BEFORE publish so
@@ -943,6 +1245,16 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
           schemaVersion: schemaVersion || 1,
           state: contractState,
         };
+        // Carry content-age fields when seeder opted in. Presence of
+        // maxContentAgeMin in the envelope is the opt-in signal for the
+        // health classifier. newestItemAt/oldestItemAt may be explicit null
+        // when contentMeta returned null OR all items lacked usable
+        // timestamps — classifier reads those as STALE_CONTENT.
+        if (contentAgeOptedIn) {
+          envelopeMeta.newestItemAt = contentNewestAt;
+          envelopeMeta.oldestItemAt = contentOldestAt;
+          envelopeMeta.maxContentAgeMin = maxContentAgeMin;
+        }
       }
     }
 
@@ -977,8 +1289,47 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
         // Write seed-meta even when data is empty so health can distinguish
         // "seeder ran but nothing to publish" from "seeder stopped" (quiet-
         // period feeds: news, events, sparse indicators).
-        await writeFreshnessMetadata(domain, resource, 0, opts.sourceVersion, ttlSeconds);
-        console.log(`  SKIPPED: validation failed (empty data) — seed-meta refreshed, existing cache TTL extended`);
+        //
+        // BUT — when the canonical key still holds last-good contract-mode
+        // data with recordCount > 0, mirror its (fetchedAt, recordCount)
+        // into seed-meta instead of writing zero. This keeps /api/health
+        // reporting an accurate count when validateFn rejects a transient
+        // upstream blip (e.g. WB late-reporter variation that drops a
+        // resilience indicator from 153 → 149 countries when the floor was
+        // 150 — production incident 2026-05-03 for resilience:power-losses
+        // where canonical had 216 countries but seed-meta got overwritten
+        // with 0 → EMPTY_DATA). The mirrored fetchedAt is canonical's
+        // ORIGINAL fetch time, NOT now, so STALE_SEED still fires naturally
+        // once the canonical data ages past maxStaleMin — preserving the
+        // strict-floor honesty WITHOUT punishing a transient blip with a
+        // misleading zero.
+        //
+        // Falls back to writing 0 (legacy quiet-period behavior) when:
+        //   - canonical key is missing
+        //   - canonical envelope is malformed / legacy bare shape
+        //   - canonical envelope has recordCount <= 0
+        const canonicalMeta = await readCanonicalEnvelopeMeta(canonicalKey);
+        if (canonicalMeta) {
+          // Pass-through canonical's contentAge so health doesn't lose the
+          // STALE_CONTENT signal exactly when last-good-with-stale-content
+          // data is being served (Codex round 1 P0b).
+          await writeFreshnessMetadata(
+            domain, resource, canonicalMeta.recordCount,
+            canonicalMeta.sourceVersion || opts.sourceVersion,
+            ttlSeconds,
+            canonicalMeta.fetchedAt,
+            canonicalMeta.contentAge,
+          );
+          console.log(
+            `  SKIPPED: validation failed (empty/partial fetch) — seed-meta mirrors canonical ` +
+            `(fetchedAt=${new Date(canonicalMeta.fetchedAt).toISOString()}, recordCount=${canonicalMeta.recordCount}` +
+            `${canonicalMeta.contentAge ? `, newestItemAt=${canonicalMeta.contentAge.newestItemAt == null ? 'null' : new Date(canonicalMeta.contentAge.newestItemAt).toISOString()}` : ''}); ` +
+            `existing cache TTL extended`,
+          );
+        } else {
+          await writeFreshnessMetadata(domain, resource, 0, opts.sourceVersion, ttlSeconds);
+          console.log(`  SKIPPED: validation failed (empty data) — seed-meta refreshed (recordCount=0), existing cache TTL extended`);
+        }
       }
       console.log(`\n=== Done (${Math.round(durationMs)}ms, no write) ===`);
       await releaseLock(`${domain}:${resource}`, runId);
@@ -1032,7 +1383,30 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       await afterPublish(data, { canonicalKey, ttlSeconds, recordCount, runId });
     }
 
-    const meta = await writeFreshnessMetadata(domain, resource, recordCount, opts.sourceVersion, ttlSeconds);
+    // Mirror content-age fields into seed-meta when the seeder opted in.
+    //
+    // Read content-age from the LOCAL `contentNewestAt`/`contentOldestAt`
+    // computed back at line ~1088 — NOT from `envelopeMeta`. The local
+    // values are populated whenever the seeder opted in (`contentAgeOptedIn`
+    // === true); `envelopeMeta` is null for non-contract-mode seeders, so
+    // gating on `envelopeMeta` silently dropped the content-age signal for
+    // every seeder that hadn't migrated to contract mode yet — defeating
+    // the opt-in for the majority of the cohort.
+    //
+    // Both branches publish the same trio (envelopeMeta carries the same
+    // values when contract mode populates it at line ~1141); reading from
+    // the local source unifies the two paths and makes the seed-meta
+    // mirror match the contract-mode envelope exactly.
+    const successContentAge = contentAgeOptedIn ? {
+      newestItemAt: contentNewestAt,
+      oldestItemAt: contentOldestAt,
+      maxContentAgeMin,
+    } : undefined;
+    const meta = await writeFreshnessMetadata(
+      domain, resource, recordCount, opts.sourceVersion, ttlSeconds,
+      undefined,            // fetchedAtOverride — success path uses now
+      successContentAge,
+    );
 
     const durationMs = Date.now() - startMs;
     logSeedResult(domain, recordCount, durationMs, { payloadBytes, contractMode, state: contractState || 'LEGACY' });

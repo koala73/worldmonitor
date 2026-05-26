@@ -7,7 +7,11 @@ import type {
 import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
 import { sha256Hex } from './_shared';
 import { callLlmReasoning } from '../../../_shared/llm';
-import { sanitizeHeadline } from '../../../_shared/llm-sanitize.js';
+// Issue #3724 (extension): prediction-market titles flow into the deduction
+// LLM's prompt. Use sanitizeForPrompt (semantic + structural), not the lighter
+// sanitizeHeadline, so that a compromised market feed cannot inject
+// instruction-override phrases into the forecaster's context.
+import { sanitizeForPrompt } from '../../../_shared/llm-sanitize.js';
 import { buildDeductionPrompt, postProcessDeductionOutput } from './deduction-prompt';
 import { isCallerPremium } from '../../../_shared/premium-check';
 
@@ -62,7 +66,7 @@ function buildPredictionContext(query: string, bootstrap: PredictionBootstrap): 
   if (!matched.length) return '';
 
   const lines = matched.map((m) => {
-    const title = sanitizeHeadline(m.title);
+    const title = sanitizeForPrompt(m.title);
     if (!title) return null;
     const pct = Math.round(m.yesPrice / 5) * 5;
     const vol = formatVolume(m.volume);
@@ -125,7 +129,12 @@ export async function deductSituation(
             if (!result) return null;
             const analysis = postProcessDeductionOutput(result.content, mode);
             return { analysis, model: result.model, provider: result.provider };
-        }
+        },
+        undefined,
+        // Cache safety net must sit above the LLM's own timeout so the
+        // caller's bound wins; otherwise the inflight wrapper rejects at
+        // the 30s default before callLlmReasoning can complete (#3539).
+        { timeoutMs: DEDUCT_TIMEOUT_MS + 5_000 },
     );
 
     if (!cached?.analysis) {

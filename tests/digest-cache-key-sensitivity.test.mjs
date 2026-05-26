@@ -32,13 +32,16 @@ const src = readFileSync(
 );
 
 describe('digestFor cache key includes sensitivity', () => {
-  it('memoization key interpolates candidate.sensitivity', () => {
+  it('memoization key interpolates cand.rule.sensitivity', () => {
     // The key must include sensitivity alongside variant+lang+windowStart
     // so stricter users do not inherit a looser populator's pool.
+    // Post-canonical-window-fix: digestFor receives the annotated candidate
+    // (`cand`) instead of just the rule, and reaches sensitivity via
+    // cand.rule.sensitivity.
     assert.match(
       src,
-      /const\s+key\s*=\s*`\$\{candidate\.variant[^`]*?\$\{candidate\.sensitivity[^`]*?\$\{windowStart\}`/,
-      'digestFor cache key must interpolate candidate.sensitivity',
+      /const\s+key\s*=\s*`\$\{cand\.rule\.variant[^`]*?\$\{cand\.rule\.sensitivity[^`]*?\$\{windowStart\}`/,
+      'digestFor cache key must interpolate cand.rule.sensitivity',
     );
   });
 
@@ -50,11 +53,11 @@ describe('digestFor cache key includes sensitivity', () => {
     // something else).
     //
     // Anchor the match to the cache-key template-literal context so it
-    // cannot be satisfied by an unrelated `chosenCandidate.sensitivity
-    // ?? 'high'` elsewhere in the file (e.g. the new operator log line).
+    // cannot be satisfied by an unrelated `cand.rule.sensitivity ?? 'high'`
+    // elsewhere in the file (e.g. the new operator log line).
     assert.match(
       src,
-      /\$\{candidate\.sensitivity\s*\?\?\s*'high'\}\s*:\s*\$\{windowStart\}/,
+      /\$\{cand\.rule\.sensitivity\s*\?\?\s*'high'\}\s*:\s*\$\{windowStart\}/,
       'cache key default for sensitivity must be "high" to align with buildDigest default, anchored inside the cache-key template literal',
     );
   });
@@ -63,12 +66,12 @@ describe('digestFor cache key includes sensitivity', () => {
     // Sanity: ensure the key construction is not pulled out into a
     // separate helper whose shape this test can no longer see.
     const digestForBlock = src.match(
-      /async\s+function\s+digestFor\s*\(candidate\)\s*\{[\s\S]*?\n\s*\}/,
+      /async\s+function\s+digestFor\s*\(cand\)\s*\{[\s\S]*?\n\s*\}/,
     );
     assert.ok(digestForBlock, 'digestFor function block should exist');
     assert.match(
       digestForBlock[0],
-      /candidate\.sensitivity/,
+      /cand\.rule\.sensitivity/,
       'sensitivity must be referenced inside digestFor',
     );
   });

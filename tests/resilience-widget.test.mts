@@ -76,6 +76,39 @@ test('formatResilienceConfidence shows sparse-data copy when low confidence is s
   );
 });
 
+// Plan 2026-04-26-002 §U7 (PR #3469) + §U8 widget polish:
+// headlineEligible=false surfaces a distinct badge ("Outside headline
+// ranking") rather than reusing the sparse-data copy. The two reasons
+// are different and the user should see them as different.
+//   - lowConfidence=true → data we have is too sparse / volatile.
+//   - headlineEligible=false → country is correctly tracked but failed
+//     the universe gate (population<200k AND coverage<85%, or
+//     coverage<65%). Microstates land here.
+// Order matters: lowConfidence is more specific so it wins when both
+// flags fire on the same country.
+test('formatResilienceConfidence: headlineEligible=false renders the outside-ranking badge', () => {
+  assert.equal(
+    formatResilienceConfidence({ ...baseResponse, headlineEligible: false }),
+    'Outside headline ranking',
+  );
+});
+
+test('formatResilienceConfidence: lowConfidence wins when both flags fire (specificity precedence)', () => {
+  assert.equal(
+    formatResilienceConfidence({ ...baseResponse, lowConfidence: true, headlineEligible: false }),
+    'Low confidence — sparse data',
+  );
+});
+
+test('formatResilienceConfidence: headlineEligible=true is the silent normal case (Coverage % ✓)', () => {
+  // Regression guard: verifying the eligible path doesn't accidentally
+  // trip the new false-branch.
+  assert.equal(
+    formatResilienceConfidence({ ...baseResponse, headlineEligible: true }),
+    'Coverage 90% ✓',
+  );
+});
+
 // PR 3 §3.5 follow-up: retired dimensions (fuelStockDays, post-PR-3)
 // return coverage=0 structurally (by design, not by sparsity) and
 // contribute zero weight to domain scoring. The widget's displayed
@@ -187,17 +220,20 @@ test('baseResponse includes dataVersion (regression for T1.4 wiring)', () => {
 // scorer dimension must have a stable display label and a consistent
 // status classification.
 
-test('getResilienceDimensionLabel returns short stable labels for all 21 dimensions', () => {
+test('getResilienceDimensionLabel returns short stable labels for all 22 dimensions', () => {
   assert.equal(getResilienceDimensionLabel('macroFiscal'), 'Macro');
   assert.equal(getResilienceDimensionLabel('currencyExternal'), 'Currency');
-  assert.equal(getResilienceDimensionLabel('tradeSanctions'), 'Trade');
+  assert.equal(getResilienceDimensionLabel('tradePolicy'), 'Trade');
   assert.equal(getResilienceDimensionLabel('cyberDigital'), 'Cyber');
   assert.equal(getResilienceDimensionLabel('logisticsSupply'), 'Logistics');
   assert.equal(getResilienceDimensionLabel('infrastructure'), 'Infra');
   assert.equal(getResilienceDimensionLabel('energy'), 'Energy');
   assert.equal(getResilienceDimensionLabel('governanceInstitutional'), 'Gov');
   assert.equal(getResilienceDimensionLabel('socialCohesion'), 'Social');
-  assert.equal(getResilienceDimensionLabel('borderSecurity'), 'Border');
+  // #3737 — relabeled from 'Border' so the displayed dimension name matches
+  // what it actually measures (UCDP conflict + UNHCR displacement, not border
+  // control infrastructure). Internal id stays `borderSecurity` for stability.
+  assert.equal(getResilienceDimensionLabel('borderSecurity'), 'Conflict');
   assert.equal(getResilienceDimensionLabel('informationCognitive'), 'Info');
   assert.equal(getResilienceDimensionLabel('healthPublicService'), 'Health');
   assert.equal(getResilienceDimensionLabel('foodWater'), 'Food');
@@ -260,7 +296,7 @@ test('formatDimensionConfidence classifies partial dimensions (mixed observed an
 
 test('formatDimensionConfidence classifies all-imputed dimensions as imputed', () => {
   const result = formatDimensionConfidence({
-    id: 'tradeSanctions',
+    id: 'tradePolicy',
     coverage: 0.3,
     observedWeight: 0,
     imputedWeight: 1,

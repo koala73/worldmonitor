@@ -11,6 +11,8 @@
 // sub-metric) and CountryDeepDivePanel demographic tiles (LP).
 
 import { loadEnvFile, runSeed, loadSharedConfig, imfSdmxFetchIndicator } from './_seed-utils.mjs';
+// Sprint 4 IMF/WEO cohort content-age helper — see header for forecast-year semantics.
+import { imfWeoContentMeta, IMF_WEO_MAX_CONTENT_AGE_MIN, maxIntegerYear } from './_imf-weo-content-age-helpers.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -56,10 +58,24 @@ export function buildLaborCountries({ unemployment = {}, population = {} }) {
 
     if (!lur && !lp) continue;
 
+    // IMF SDMX `LP` indicator returns Population in PERSONS (raw count,
+    // e.g. US ≈ 342_594_000), not millions. The downstream field is named
+    // `populationMillions` and consumed as such by every reader (resilience
+    // per-capita normalization in _dimension-scorers.ts; cohort builder in
+    // dry-run-resilience-rebalance.mjs; src/services/imf-country-data.ts).
+    // Divide by 1e6 here so the field name matches its semantic. Pre-fix
+    // the field stored raw persons, silently breaking the §U6 per-capita
+    // normalization (denominator was 1e6× too large → unrest score
+    // saturated at 100 for every country).
+    const popMillions = lp?.value != null ? lp.value / 1_000_000 : null;
     countries[iso2] = {
       unemploymentPct: lur?.value ?? null,
-      populationMillions: lp?.value ?? null,
+      populationMillions: popMillions,
       year: lur?.year ?? lp?.year ?? null,
+      // Codex PR #3604 P2 — see seed-imf-external.mjs for the full
+      // rationale. `latestYear` = max forecast year across all this
+      // country's indicators; drives content-age in the WEO helper.
+      latestYear: maxIntegerYear([lur?.year, lp?.year]),
     };
   }
   return countries;
@@ -100,8 +116,16 @@ if (process.argv[1]?.endsWith('seed-imf-labor.mjs')) {
     emptyDataIsFailure: true,
   
     declareRecords,
-    schemaVersion: 1,
+    // schemaVersion bumped 1→2 in Codex PR #3604 review fix: see
+    // seed-imf-external.mjs for the rationale (new `latestYear` field).
+    schemaVersion: 2,
     maxStaleMin: 100800,
+
+    // ── Content-age contract (Sprint 4 IMF/WEO cohort) ──
+    // 18-month budget = 16mo steady-state ceiling + 2mo slack.
+    // See _imf-weo-content-age-helpers.mjs JSDoc for derivation.
+    contentMeta: imfWeoContentMeta,
+    maxContentAgeMin: IMF_WEO_MAX_CONTENT_AGE_MIN,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);

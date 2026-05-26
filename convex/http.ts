@@ -52,6 +52,37 @@ async function timingSafeEqualStrings(a: string, b: string): Promise<boolean> {
   return diff === 0;
 }
 
+/**
+ * Extract a stable error `code` from a thrown ConvexError.
+ *
+ * Convex's runtime serializes `error.data` to a JSON string before re-throwing
+ * across the function boundary (see registration_impl::serializeConvexErrorData),
+ * so by the time an http action's catch block sees the error, `err.data` is a
+ * JSON-encoded string. Both shapes are handled:
+ *   - `throw new ConvexError("PRO_REQUIRED")`  → data = '"PRO_REQUIRED"' → "PRO_REQUIRED"
+ *   - `throw new ConvexError({code: "X", ...})` → data = '{"code":"X",…}'  → "X"
+ */
+function extractConvexErrorCode(err: unknown): string | null {
+  const raw = (err as { data?: unknown } | undefined)?.data;
+  if (typeof raw !== "string") {
+    if (raw && typeof raw === "object" && "code" in (raw as Record<string, unknown>)) {
+      return String((raw as Record<string, unknown>).code);
+    }
+    return null;
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (typeof parsed === "string") return parsed;
+    if (parsed && typeof parsed === "object" && "code" in parsed) {
+      return String((parsed as Record<string, unknown>).code);
+    }
+    return null;
+  } catch {
+    // Not JSON — treat the raw string as the code itself.
+    return raw;
+  }
+}
+
 const http = httpRouter();
 
 http.route({
@@ -146,7 +177,7 @@ http.route({
     }
 
     try {
-      const result = await ctx.runMutation(
+      const result = (await ctx.runMutation(
         anyApi.userPreferences!.setPreferences as any,
         {
           variant: body.variant,
@@ -154,10 +185,33 @@ http.route({
           expectedSyncVersion: body.expectedSyncVersion,
           schemaVersion: body.schemaVersion,
         },
+      )) as
+        | { ok: true; syncVersion: number }
+        | { ok: false; reason: "CONFLICT"; actualSyncVersion: number };
+      // PR 3 (post-launch-stabilization): setPreferences now returns a
+      // discriminated result for CONFLICT instead of throwing. Mirror the
+      // wire shape from api/user-prefs.ts (Vercel) so clients see the same
+      // 409 + actualSyncVersion regardless of which `/api/user-prefs` host
+      // they hit.
+      if (result.ok === false) {
+        return new Response(
+          JSON.stringify({
+            error: "CONFLICT",
+            actualSyncVersion: result.actualSyncVersion,
+          }),
+          { status: 409, headers },
+        );
+      }
+      return new Response(
+        JSON.stringify({ syncVersion: result.syncVersion }),
+        { status: 200, headers },
       );
-      return new Response(JSON.stringify(result), { status: 200, headers });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
+      // Defensive: keep CONFLICT-throw fallback for the deploy-ordering
+      // window where this http action may run against an older Convex
+      // deployment that still throws. Once both layers have soaked, this
+      // branch is unreachable and can be removed.
       if (msg.includes("CONFLICT")) {
         return new Response(JSON.stringify({ error: "CONFLICT" }), {
           status: 409,
@@ -179,19 +233,31 @@ http.route({
   path: "/api/telegram-pair-callback",
   method: "POST",
   handler: httpAction(async (ctx, request) => {
-    // Always return 200 — non-200 triggers Telegram retry storm
+    // Always return 200 — non-200 triggers Telegram retry storm.
+    // Fail closed: drop the update unless the request carries the secret
+    // header set when we registered the webhook. Returning 200 without
+    // processing keeps Telegram from retrying spoofed requests while still
+    // refusing to run the pairing-token claim path on unauthenticated input.
     const secret = process.env.TELEGRAM_WEBHOOK_SECRET ?? "";
-    const provided =
-      request.headers.get("X-Telegram-Bot-Api-Secret-Token") ?? "";
-
-    // Drop only when a secret header IS provided but doesn't match (spoofing).
-    // If the header is absent, Telegram's secret_token registration may have
-    // silently failed — the pairing token (43-char, single-use, 15-min TTL)
-    // provides sufficient defence against token guessing.
-    if (provided && secret && !(await timingSafeEqualStrings(provided, secret))) {
+    if (!secret) {
+      console.error(
+        "[telegram-webhook] TELEGRAM_WEBHOOK_SECRET not configured — rejecting all requests",
+      );
       return new Response("OK", { status: 200 });
     }
-    if (!provided) console.warn("[telegram-webhook] secret header absent — relying on pairing token auth");
+    const provided =
+      request.headers.get("X-Telegram-Bot-Api-Secret-Token") ?? "";
+    if (!provided) {
+      // Helps ops spot webhook re-registration drift (Telegram dropped the
+      // header) without re-enabling the bypass.
+      console.warn(
+        "[telegram-webhook] secret header absent — rejecting request",
+      );
+      return new Response("OK", { status: 200 });
+    }
+    if (!(await timingSafeEqualStrings(provided, secret))) {
+      return new Response("OK", { status: 200 });
+    }
 
     let update: {
       message?: {
@@ -501,7 +567,14 @@ http.route({
           variant: body.variant,
           enabled: body.enabled,
           eventTypes: body.eventTypes as string[],
-          sensitivity: (body.sensitivity ?? "all") as "all" | "high" | "critical",
+          // Pass body.sensitivity through unchanged (may be undefined).
+          // setAlertRulesForUser now accepts optional sensitivity and uses
+          // resolveEffectivePair to preserve existing.sensitivity on patch and
+          // default to 'high' only on fresh insert. A blind '?? "all"' fallback
+          // here would silently narrow existing daily+all digest users to
+          // daily+high whenever a caller omits the field.
+          // See plans/forbid-realtime-all-events.md §1c.
+          sensitivity: body.sensitivity as "all" | "high" | "critical" | undefined,
           channels: body.channels as Array<"telegram" | "slack" | "email">,
           aiDigestEnabled: typeof body.aiDigestEnabled === "boolean" ? body.aiDigestEnabled : undefined,
         });
@@ -543,6 +616,67 @@ http.route({
           digestHour: typeof body.digestHour === "number" ? body.digestHour : undefined,
           digestTimezone: typeof body.digestTimezone === "string" ? body.digestTimezone : undefined,
         });
+        return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+
+      // Atomic update of (digestMode, sensitivity) and any subset of the alert-rule /
+      // digest-schedule fields. Used by the settings UI's delivery-mode change flow
+      // to avoid the two-call race that the legacy set-alert-rules + set-digest-settings
+      // pair has against the cross-field validator.
+      // See plans/forbid-realtime-all-events.md §1d, §1f.
+      if (action === "set-notification-config") {
+        const VALID_SENSITIVITY = new Set(["all", "high", "critical"]);
+        const VALID_DIGEST_MODE = new Set(["realtime", "daily", "twice_daily", "weekly"]);
+        if (typeof body.variant !== "string" || !body.variant) {
+          return new Response(JSON.stringify({ error: "MISSING_VARIANT" }), { status: 400, headers: { "Content-Type": "application/json" } });
+        }
+        if (body.sensitivity !== undefined && !VALID_SENSITIVITY.has(body.sensitivity as string)) {
+          return new Response(JSON.stringify({ error: "INVALID_SENSITIVITY" }), { status: 400, headers: { "Content-Type": "application/json" } });
+        }
+        if (body.digestMode !== undefined && !VALID_DIGEST_MODE.has(body.digestMode as string)) {
+          return new Response(JSON.stringify({ error: "INVALID_DIGEST_MODE" }), { status: 400, headers: { "Content-Type": "application/json" } });
+        }
+        try {
+          await ctx.runMutation((internal as any).alertRules.setNotificationConfigForUser, {
+            userId,
+            variant: body.variant,
+            enabled: typeof body.enabled === "boolean" ? body.enabled : undefined,
+            eventTypes: Array.isArray(body.eventTypes) ? (body.eventTypes as string[]) : undefined,
+            sensitivity: body.sensitivity as "all" | "high" | "critical" | undefined,
+            channels: Array.isArray(body.channels) ? (body.channels as Array<"telegram" | "slack" | "email" | "discord" | "webhook" | "web_push">) : undefined,
+            aiDigestEnabled: typeof body.aiDigestEnabled === "boolean" ? body.aiDigestEnabled : undefined,
+            digestMode: body.digestMode as "realtime" | "daily" | "twice_daily" | "weekly" | undefined,
+            digestHour: typeof body.digestHour === "number" ? body.digestHour : undefined,
+            digestTimezone: typeof body.digestTimezone === "string" ? body.digestTimezone : undefined,
+          });
+        } catch (err: unknown) {
+          // Translate structured ConvexError codes into machine-readable HTTP
+          // responses so the UI can route to inline helper text (400) or to
+          // the upgrade flow (402). Do NOT swallow as a generic 500 — the
+          // client needs the structured `error` field to render the right
+          // surface.
+          const data = (err as { data?: unknown } | undefined)?.data;
+          if (data && typeof data === "object") {
+            const errPayload = data as { code?: string; message?: string };
+            if (errPayload.code === "INCOMPATIBLE_DELIVERY") {
+              return new Response(
+                JSON.stringify({ error: errPayload.code, message: errPayload.message ?? "" }),
+                { status: 400, headers: { "Content-Type": "application/json" } },
+              );
+            }
+            if (errPayload.code === "PRO_REQUIRED") {
+              // 402 Payment Required — the canonical HTTP status for
+              // paywall-gated content. Client reads `error: "PRO_REQUIRED"`
+              // to route to the upgrade flow rather than show a generic
+              // failure toast.
+              return new Response(
+                JSON.stringify({ error: errPayload.code, message: errPayload.message ?? "" }),
+                { status: 402, headers: { "Content-Type": "application/json" } },
+              );
+            }
+          }
+          throw err;
+        }
         return new Response(JSON.stringify({ ok: true }), { status: 200, headers: { "Content-Type": "application/json" } });
       }
 
@@ -744,8 +878,13 @@ http.route({
     );
 
     if (result) {
-      // Fire-and-forget: update lastUsedAt (don't await, don't block response)
-      void ctx.runMutation((internal as any).apiKeys.touchKeyLastUsed, { keyId: result.id });
+      try {
+        await ctx.scheduler.runAfter(0, (internal as any).apiKeys.touchKeyLastUsed, { keyId: result.id });
+      } catch (err) {
+        // sentry-coverage-ok: re-throwing here would 500 the gateway, which coerces to null
+        // and stamps a 60s negative-cache sentinel for a valid key. lastUsedAt is best-effort telemetry.
+        console.warn("[validate-api-key] touchKeyLastUsed schedule failed:", err instanceof Error ? err.message : String(err));
+      }
     }
 
     return new Response(JSON.stringify(result), {
@@ -796,6 +935,223 @@ http.route({
       status: 200,
       headers: { "Content-Type": "application/json" },
     });
+  }),
+});
+
+// ---------------------------------------------------------------------------
+// Pro MCP token routes (service-to-service, x-convex-shared-secret auth).
+// Called by the Vercel edge (api/oauth/authorize-pro, api/mcp.ts, settings).
+// See plan U1 / docs/plans/2026-05-10-001-feat-pro-mcp-clerk-auth-quota-plan.md
+// ---------------------------------------------------------------------------
+
+http.route({
+  path: "/api/internal-issue-pro-mcp-token",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const providedSecret = request.headers.get("x-convex-shared-secret") ?? "";
+    const expectedSecret = process.env.CONVEX_SERVER_SHARED_SECRET ?? "";
+    if (!expectedSecret || !(await timingSafeEqualStrings(providedSecret, expectedSecret))) {
+      return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    let body: { userId?: unknown; clientId?: unknown; name?: unknown };
+    try {
+      body = await request.json() as typeof body;
+    } catch {
+      return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    if (typeof body.userId !== "string" || body.userId.length === 0) {
+      return new Response(JSON.stringify({ error: "MISSING_USER_ID" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    try {
+      const result = await ctx.runMutation(
+        (internal as any).mcpProTokens.issueProMcpToken,
+        {
+          userId: body.userId,
+          clientId: typeof body.clientId === "string" ? body.clientId : undefined,
+          name: typeof body.name === "string" ? body.name : undefined,
+        },
+      );
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch (err: unknown) {
+      const code = extractConvexErrorCode(err);
+      if (code === "PRO_REQUIRED") {
+        return new Response(JSON.stringify({ error: "PRO_REQUIRED" }), {
+          status: 403,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (code === "INVALID_USER_ID") {
+        return new Response(JSON.stringify({ error: "INVALID_USER_ID" }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      throw err;
+    }
+  }),
+});
+
+http.route({
+  path: "/api/internal-validate-pro-mcp-token",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const providedSecret = request.headers.get("x-convex-shared-secret") ?? "";
+    const expectedSecret = process.env.CONVEX_SERVER_SHARED_SECRET ?? "";
+    if (!expectedSecret || !(await timingSafeEqualStrings(providedSecret, expectedSecret))) {
+      return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    let body: { tokenId?: unknown };
+    try {
+      body = await request.json() as typeof body;
+    } catch {
+      return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    if (typeof body.tokenId !== "string" || body.tokenId.length === 0) {
+      return new Response(JSON.stringify({ error: "MISSING_TOKEN_ID" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    try {
+      const result = await ctx.runQuery(
+        (internal as any).mcpProTokens.validateProMcpToken,
+        { tokenId: body.tokenId },
+      );
+
+      if (result) {
+        try {
+          await ctx.scheduler.runAfter(
+            0,
+            (internal as any).mcpProTokens.touchProMcpTokenLastUsed,
+            { tokenId: body.tokenId },
+          );
+        } catch (err) {
+          // sentry-coverage-ok: best-effort lastUsedAt bump; mirrors the
+          // touchKeyLastUsed pattern in /api/internal-validate-api-key.
+          console.warn(
+            "[validate-pro-mcp-token] touch schedule failed:",
+            err instanceof Error ? err.message : String(err),
+          );
+        }
+      }
+
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch (err: unknown) {
+      // Convex `v.id("mcpProTokens")` validator rejects malformed ids with
+      // a runtime error — surface as null (caller treats as "no such token")
+      // instead of 500-ing the gateway.
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("ArgumentValidationError") || msg.includes("not a valid id")) {
+        return new Response(JSON.stringify(null), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      throw err;
+    }
+  }),
+});
+
+http.route({
+  path: "/api/internal-revoke-pro-mcp-token",
+  method: "POST",
+  handler: httpAction(async (ctx, request) => {
+    const providedSecret = request.headers.get("x-convex-shared-secret") ?? "";
+    const expectedSecret = process.env.CONVEX_SERVER_SHARED_SECRET ?? "";
+    if (!expectedSecret || !(await timingSafeEqualStrings(providedSecret, expectedSecret))) {
+      return new Response(JSON.stringify({ error: "UNAUTHORIZED" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    let body: { userId?: unknown; tokenId?: unknown };
+    try {
+      body = await request.json() as typeof body;
+    } catch {
+      return new Response(JSON.stringify({ error: "INVALID_JSON" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    if (typeof body.userId !== "string" || body.userId.length === 0) {
+      return new Response(JSON.stringify({ error: "MISSING_USER_ID" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (typeof body.tokenId !== "string" || body.tokenId.length === 0) {
+      return new Response(JSON.stringify({ error: "MISSING_TOKEN_ID" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // Service-to-service revoke. The shared secret + supplied userId is the
+    // tenancy gate (the user-facing /api/v1/mcp-pro-tokens revoke endpoint
+    // re-validates ownership through requireUserId in the public mutation).
+    // This route bypasses requireUserId because the edge caller is trusted
+    // (e.g. authorize-pro rolling back an aborted issue).
+    try {
+      const result = await ctx.runMutation(
+        (internal as any).mcpProTokens.internalRevokeProMcpToken,
+        { userId: body.userId, tokenId: body.tokenId },
+      );
+      return new Response(JSON.stringify(result), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    } catch (err: unknown) {
+      const code = extractConvexErrorCode(err);
+      if (code === "NOT_FOUND") {
+        return new Response(JSON.stringify({ error: "NOT_FOUND" }), {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      if (code === "ALREADY_REVOKED") {
+        return new Response(JSON.stringify({ error: "ALREADY_REVOKED" }), {
+          status: 409,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("ArgumentValidationError") || msg.includes("not a valid id")) {
+        return new Response(JSON.stringify({ error: "NOT_FOUND" }), {
+          status: 404,
+          headers: { "Content-Type": "application/json" },
+        });
+      }
+      throw err;
+    }
   }),
 });
 

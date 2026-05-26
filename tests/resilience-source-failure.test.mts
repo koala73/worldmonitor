@@ -129,7 +129,7 @@ describe('resilience source-failure module', () => {
       const validIds: ReadonlySet<ResilienceDimensionId> = new Set([
         'macroFiscal',
         'currencyExternal',
-        'tradeSanctions',
+        'tradePolicy',
         'cyberDigital',
         'logisticsSupply',
         'infrastructure',

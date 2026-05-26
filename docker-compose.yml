@@ -22,7 +22,7 @@ services:
       - "${WM_PORT:-3000}:8080"
     environment:
       UPSTASH_REDIS_REST_URL: "http://redis-rest:80"
-      UPSTASH_REDIS_REST_TOKEN: "${REDIS_TOKEN:-wm-local-token}"
+      UPSTASH_REDIS_REST_TOKEN: "${REDIS_TOKEN:?REDIS_TOKEN required — generate with: openssl rand -hex 32}"
       LOCAL_API_PORT: "46123"
       LOCAL_API_MODE: "docker"
       LOCAL_API_CLOUD_FALLBACK: "false"
@@ -72,7 +72,14 @@ services:
   redis:
     image: docker.io/redis:7-alpine
     container_name: worldmonitor-redis
-    command: redis-server --maxmemory 256mb --maxmemory-policy allkeys-lru
+    # --requirepass closes off the network so any future sidecar / compromised
+    # dependency added to the worldmonitor network can't read or write cache
+    # entries without the password. Defense-in-depth alongside the REST token.
+    command: >
+      redis-server
+      --requirepass "${REDIS_PASSWORD:?REDIS_PASSWORD required — generate with: openssl rand -hex 32}"
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
     volumes:
       - redis-data:/data
     restart: unless-stopped
@@ -86,8 +93,12 @@ services:
     ports:
       - "127.0.0.1:8079:80"
     environment:
-      SRH_TOKEN: "${REDIS_TOKEN:-wm-local-token}"
-      SRH_CONNECTION_STRING: "redis://redis:6379"
+      SRH_TOKEN: "${REDIS_TOKEN:?REDIS_TOKEN required — generate with: openssl rand -hex 32}"
+      # Defense-in-depth: the redis service's --requirepass already fails
+      # compose validation if REDIS_PASSWORD is unset, but the explicit
+      # :? here protects against a future PR removing --requirepass or
+      # copying this connection string into a new service.
+      SRH_CONNECTION_STRING: "redis://:${REDIS_PASSWORD:?REDIS_PASSWORD required — generate with: openssl rand -hex 32}@redis:6379"
     depends_on:
       - redis
     restart: unless-stopped

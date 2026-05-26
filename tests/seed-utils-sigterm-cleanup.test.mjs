@@ -99,8 +99,8 @@ test('runSeed releases lock and extends existing TTL on SIGTERM', async () => {
   // back to a signal termination, so accept either code or signal.
   assert.ok(code === 143 || signal === 'SIGTERM',
     `expected exit 143 or SIGTERM; got code=${code} signal=${signal}\nstderr:\n${stderr}`);
-  assert.match(stderr, /SIGTERM received — releasing lock/,
-    `expected SIGTERM cleanup log; stderr:\n${stderr}`);
+  assert.match(stderr, /SIGTERM received during fetch phase — releasing lock/,
+    `expected fetch-phase SIGTERM cleanup log; stderr:\n${stderr}`);
 
   // Verify cleanup actually ISSUED the Redis ops, not just logged intent.
   // Extract FETCH_OP lines; separate the acquire-time ops from SIGTERM-time.
@@ -191,41 +191,68 @@ test('runSeed SIGTERM handler fires once even if multiple SIGTERMs arrive', asyn
   }
 });
 
-test('SIGTERM handler is removed AFTER fetchFn completes (no race with publish-phase exit)', async () => {
-  // After the fetch phase returns, runSeed's try/finally removes the
-  // SIGTERM listener. Verify by: fetchFn returns synthetic data → runSeed
-  // enters publish phase (which will fail on our empty fetch mock that
-  // doesn't simulate atomicPublish success) → SIGTERM arriving AFTER
-  // fetchFn-resolution must fall through to Node's default handler (fast
-  // exit with signal=SIGTERM, NO "SIGTERM received" cleanup line).
+test('publish-phase SIGTERM releases lock but does NOT extend TTL (strict-floor invariant preserved)', async () => {
+  // After fetchFn returns, runSeed transitions to publish phase. The
+  // SIGTERM handler is now KEPT installed (whole-run scope) so a SIGTERM
+  // during atomicPublish/extendExistingTtl/verify still releases the
+  // lock — closes the leak path that was leaving seed-lock:<domain>
+  // dangling for the full lockTtlMs (default 120s) when bundle-runner
+  // SIGTERMed mid-publish.
   //
-  // This pins the narrowed-scope contract: the cleanup handler exists
-  // only during the long-running fetch, and post-fetch SIGTERMs do
-  // NOT trigger runSeed's TTL-extension code path — critical for
-  // strict-floor seeders (emptyDataIsFailure: true) that must NOT
-  // refresh seed-meta on empty data.
+  // STRICT-FLOOR INVARIANT (still preserved): publish-phase cleanup must
+  // NOT extend canonical/seed-meta TTL. Strict-floor seeders
+  // (emptyDataIsFailure: true — IMF-External, WB-bulk) deliberately let
+  // seed-meta fetchedAt go stale on rejection so health flips to
+  // STALE_SEED and the bundle retries on the next cron tick. If the
+  // publish-phase handler refreshed TTL, it would silently mask that
+  // failure mode. We assert this by counting pipeline-EXPIRE ops AFTER
+  // SIGTERM: must be exactly 0.
+  //
+  // Driving the seeder INTO publish phase deterministically: stub Redis
+  // so the first post-fetch op (the seed-meta SETEX inside atomicPublish)
+  // never resolves. fetchFn returns synthetic data → publish starts →
+  // first SETEX hangs → SIGTERM arrives → handler fires.
   const body = `
     import { runSeed } from './_seed-utils.mjs';
-    // Redis stub: lock SET NX → OK, everything else → OK.
+    let opIndex = 0;
+    let postFetchReady = false;
     globalThis.fetch = async (url, opts = {}) => {
       const body = opts?.body ? (() => { try { return JSON.parse(opts.body); } catch { return opts.body; } })() : null;
-      if (Array.isArray(body) && Array.isArray(body[0])) {
-        return new Response(JSON.stringify(body.map(() => ({ result: 0 }))), { status: 200 });
+      let shape = 'other';
+      if (Array.isArray(body)) {
+        if (Array.isArray(body[0])) {
+          shape = body[0][0] === 'EXPIRE' ? 'pipeline-EXPIRE' : 'pipeline-other';
+        } else if (body[0] === 'EVAL') {
+          shape = 'EVAL';
+        } else {
+          shape = 'cmd-' + body[0];
+        }
       }
-      return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
+      console.error('FETCH_OP idx=' + (opIndex++) + ' shape=' + shape + ' body=' + JSON.stringify(body));
+      // ONLY the acquireLock op (SET key val NX PX ttl) and the SIGTERM
+      // handler's releaseLock EVAL get real OKs. The lock-release path
+      // must NOT hang — otherwise the handler would block on its own
+      // releaseLock call and never reach process.exit(143).
+      if (Array.isArray(body) && body[0] === 'SET' && body[3] === 'NX') {
+        return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
+      }
+      if (Array.isArray(body) && body[0] === 'EVAL') {
+        return new Response(JSON.stringify({ result: 1 }), { status: 200 });
+      }
+      // First non-lock op signals the test we've entered publish phase,
+      // then hangs so SIGTERM has time to arrive. setInterval keeps the
+      // event loop alive — without it Node's "unsettled top-level await"
+      // detection bails before setImmediate fires.
+      if (!postFetchReady) {
+        postFetchReady = true;
+        setInterval(() => {}, 10_000);
+        setImmediate(() => console.log('PUBLISH_HUNG'));
+      }
+      return new Promise(() => {});  // never resolves
     };
-    // fetchFn resolves IMMEDIATELY with data, then we signal READY and
-    // hang in the publish phase so the test can send SIGTERM. Using
-    // atomicPublish's Lua-redirect stub response ('OK') will keep the
-    // seeder alive in verify-retry; setInterval ensures event loop stays up.
     const quickFetch = async () => {
-      const data = { items: [{ k: 1 }] };
-      // Give the SIGTERM handler a microtask to be removed by the
-      // try{ ... } finally{ process.off } after withRetry resolves.
-      // Then signal ready.
-      setInterval(() => {}, 10_000);
-      setImmediate(() => console.log('POST_FETCH_READY'));
-      return data;
+      // Tiny payload — atomicPublish should accept it past validate.
+      return { items: [{ k: 1 }] };
     };
     await runSeed('test-domain', 'post-fetch', 'data:test:post-fetch:v1', quickFetch, {
       ttlSeconds: 900,
@@ -246,24 +273,164 @@ test('SIGTERM handler is removed AFTER fetchFn completes (no race with publish-p
       });
       let stdout = '';
       let stderr = '';
+      let sigtermSent = false;
       child.stdout.on('data', (c) => { stdout += c; });
       child.stderr.on('data', (c) => { stderr += c; });
       const ready = setInterval(() => {
-        if (stdout.includes('POST_FETCH_READY')) {
+        if (stdout.includes('PUBLISH_HUNG') && !sigtermSent) {
           clearInterval(ready);
-          // Give one extra event-loop tick so the finally{process.off} runs.
-          setTimeout(() => child.kill('SIGTERM'), 50);
+          sigtermSent = true;
+          child.kill('SIGTERM');
         }
       }, 25);
       child.on('close', (code, signal) => {
         clearInterval(ready);
-        // Post-fetch SIGTERM falls through to Node default: no "SIGTERM
-        // received" cleanup log from our handler. Exit may be signal=SIGTERM
-        // or code (Node varies), but the decisive signal is the ABSENCE of
-        // the cleanup log line.
-        const cleanupFired = /SIGTERM received — releasing lock/.test(stderr);
-        assert.equal(cleanupFired, false,
-          `post-fetch SIGTERM must NOT trigger runSeed cleanup (strict-floor safety). stderr:\n${stderr}`);
+        // Cleanup log line MUST appear AND must indicate publish-phase context.
+        // We anchor every "post-SIGTERM" assertion to the position of THIS log
+        // line in stderr — not to a parent-side op-count snapshot. The
+        // op-count approach was IPC-buffer-lag-sensitive: pre-SIGTERM child
+        // ops not yet flushed to the parent at SIGTERM-send time would later
+        // appear with idx >= snapshot and could falsely satisfy "post-SIGTERM"
+        // assertions even if the handler never fired. The cleanup log is
+        // emitted SYNCHRONOUSLY by the handler before any cleanup op runs, so
+        // anything stderr-after that line was emitted by the handler or later.
+        const cleanupLogIdx = stderr.search(/SIGTERM received during publish phase — releasing lock/);
+        assert.ok(cleanupLogIdx >= 0,
+          `expected publish-phase SIGTERM cleanup log; stderr:\n${stderr}`);
+        const postCleanupStderr = stderr.slice(cleanupLogIdx);
+        // Lock release MUST happen — at least one EVAL (the LUA verify-and-DEL)
+        // must appear AFTER the cleanup log line, AND its body must carry the
+        // runSeed-generated runId pattern (matches test 1 line 121's idiom).
+        // The runId pin defends against any pre-cleanup EVAL the publish path
+        // might issue in the future (currently atomicPublish uses SET/DEL only,
+        // but future refactors could change that — Greptile P2 on PR #3414).
+        const evalAfter = (postCleanupStderr.match(/^FETCH_OP idx=\d+ shape=EVAL[^\n]*/gm) || []);
+        assert.ok(evalAfter.length >= 1,
+          `publish-phase SIGTERM must release the lock; saw 0 EVAL ops after cleanup log\nstderr:\n${stderr}`);
+        const evalCarriesRunId = evalAfter.some((l) => /"\d{10,}-[a-z0-9]{6}"/.test(l));
+        assert.ok(evalCarriesRunId,
+          `EVAL after cleanup log must carry the runSeed-generated runId; stderr:\n${stderr}`);
+        // Critical strict-floor invariant: NO pipeline-EXPIRE ops AFTER cleanup
+        // log. publish-phase handler releases lock only.
+        const expireAfter = (postCleanupStderr.match(/^FETCH_OP idx=\d+ shape=pipeline-EXPIRE[^\n]*/gm) || []);
+        assert.equal(expireAfter.length, 0,
+          `publish-phase SIGTERM must NOT extend TTL (strict-floor invariant); saw ${expireAfter.length} pipeline-EXPIRE ops after cleanup log\nstderr:\n${stderr}`);
+        // Process should exit 143 (SIGTERM convention) or be killed by signal.
+        assert.ok(code === 143 || signal === 'SIGTERM',
+          `expected exit 143 or SIGTERM signal; got code=${code} signal=${signal}\nstderr:\n${stderr}`);
+        resolve();
+      });
+      setTimeout(() => { try { child.kill('SIGKILL'); } catch {} }, 10_000);
+    });
+  } finally {
+    try { unlinkSync(path); } catch {}
+  }
+});
+
+test('SIGTERM during fetch-failure cleanup still triggers handler (no leak window between catch and process.exit)', async () => {
+  // Pre-fix code path: the fetch-failure catch block did
+  //   process.off('SIGTERM', sigTermHandler);
+  //   await releaseLock(...);   ← if SIGTERM lands here, no handler
+  //   await extendExistingTtl(...);  ← or here
+  //   process.exit(0);
+  // That window (the two Upstash awaits, ~100ms-1s) was unprotected: a
+  // bundle-runner SIGTERM during it fell through to Node's default
+  // termination and could leak the lock or skip the TTL extension.
+  //
+  // Fix: keep the handler installed across the cleanup. Both code
+  // paths (catch's manual ops and the handler's parallel ops) are
+  // idempotent (LUA verify-and-DEL; pipeline-EXPIRE on existing
+  // keys), so a race converges on correct end state.
+  //
+  // This test drives the seeder INTO the catch block by throwing from
+  // fetchFn, then hangs the catch's first Upstash await (the manual
+  // releaseLock EVAL) so SIGTERM has a deterministic window to land.
+  // Asserts that the handler still fires (cleanup log appears) and
+  // that exit code is 143 (handler-driven) rather than 0 (catch's
+  // process.exit) or signal=SIGTERM (no handler ran).
+  const body = `
+    import { runSeed } from './_seed-utils.mjs';
+    let opIndex = 0;
+    let cleanupHung = false;
+    globalThis.fetch = async (url, opts = {}) => {
+      const body = opts?.body ? (() => { try { return JSON.parse(opts.body); } catch { return opts.body; } })() : null;
+      let shape = 'other';
+      if (Array.isArray(body)) {
+        if (Array.isArray(body[0])) {
+          shape = body[0][0] === 'EXPIRE' ? 'pipeline-EXPIRE' : 'pipeline-other';
+        } else if (body[0] === 'EVAL') {
+          shape = 'EVAL';
+        } else {
+          shape = 'cmd-' + body[0];
+        }
+      }
+      const idx = opIndex++;
+      console.error('FETCH_OP idx=' + idx + ' shape=' + shape + ' body=' + JSON.stringify(body));
+      // acquireLock SET NX → return OK (lock free)
+      if (Array.isArray(body) && body[0] === 'SET' && body[3] === 'NX') {
+        return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
+      }
+      // First EVAL is the catch block's manual releaseLock — HANG it so
+      // SIGTERM has a deterministic window. Subsequent EVALs (e.g. from
+      // the handler firing) must succeed so the handler can complete
+      // and exit 143.
+      if (shape === 'EVAL' && !cleanupHung) {
+        cleanupHung = true;
+        setInterval(() => {}, 10_000);
+        setImmediate(() => console.log('FETCH_FAILURE_CLEANUP_HUNG'));
+        return new Promise(() => {});  // never resolves
+      }
+      // Subsequent EVALs (handler-issued) succeed.
+      if (shape === 'EVAL') {
+        return new Response(JSON.stringify({ result: 1 }), { status: 200 });
+      }
+      // Pipeline-EXPIRE (handler's extendExistingTtl) — succeed.
+      if (Array.isArray(body) && Array.isArray(body[0])) {
+        return new Response(JSON.stringify(body.map(() => ({ result: 1 }))), { status: 200 });
+      }
+      return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
+    };
+    // fetchFn rejects so runSeed enters the fetch-failure catch path.
+    const failingFetch = async () => { throw new Error('synthetic upstream failure'); };
+    await runSeed('test-domain', 'fetch-fail', 'data:test:fetch-fail:v1', failingFetch, {
+      ttlSeconds: 900,
+      lockTtlMs: 60_000,
+      maxRetries: 0,  // fail fast — no withRetry retries
+    });
+  `;
+  const path = join(SCRIPTS_DIR, `_sigterm-fetchfail-fixture-${Date.now()}.mjs`);
+  writeFileSync(path, body);
+  try {
+    await new Promise((resolve) => {
+      const child = spawn(process.execPath, [path], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: {
+          ...process.env,
+          UPSTASH_REDIS_REST_URL: 'https://fake-upstash.example.com',
+          UPSTASH_REDIS_REST_TOKEN: 'fake-token',
+        },
+      });
+      let stdout = '';
+      let stderr = '';
+      child.stdout.on('data', (c) => { stdout += c; });
+      child.stderr.on('data', (c) => { stderr += c; });
+      const ready = setInterval(() => {
+        if (stdout.includes('FETCH_FAILURE_CLEANUP_HUNG')) {
+          clearInterval(ready);
+          child.kill('SIGTERM');
+        }
+      }, 25);
+      child.on('close', (code, signal) => {
+        clearInterval(ready);
+        // Decisive signal that the handler fired (NOT default termination):
+        // the cleanup log line. Pre-fix this would NOT appear because
+        // process.off had already removed the handler.
+        assert.match(stderr, /SIGTERM received during fetch phase — releasing lock/,
+          `handler must fire even when SIGTERM lands during fetch-failure cleanup; stderr:\n${stderr}`);
+        // Process exits 143 from the handler (NOT 0 from catch's
+        // process.exit, NOT signal=SIGTERM from default termination).
+        assert.ok(code === 143 || signal === 'SIGTERM',
+          `expected exit 143 (handler-driven) or SIGTERM signal; got code=${code} signal=${signal}\nstderr:\n${stderr}`);
         resolve();
       });
       setTimeout(() => { try { child.kill('SIGKILL'); } catch {} }, 10_000);

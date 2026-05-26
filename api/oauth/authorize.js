@@ -95,9 +95,23 @@ function htmlError(title, detail) {
 </body></html>`, { status: 400, headers: PAGE_HEADERS });
 }
 
-function consentPage(params, nonce, errorMsg = '') {
+// Exported for unit tests (tests/oauth-authorize.test.mjs).
+//
+// Default state: API-key form is hidden behind a "Use API key instead"
+// disclosure — Pro users see only the brand-green Pro CTA. The form is
+// auto-revealed in two cases (handled by the inline script):
+//   1. When `errorMsg` is truthy (invalid-key retry path at handler line ~302)
+//      — the `<p class="error">` element renders with no inline display:none
+//      and the script reveals the form whenever `#ke` is non-empty. Hiding
+//      the form after a bad-key submit would be hostile to Starter+ users.
+//   2. When the URL fragment is `#api-key` — Starter+ users can bookmark
+//      `…/oauth/authorize?…#api-key` to skip the disclosure click.
+export function consentPage(params, nonce, errorMsg = '') {
   const { client_name, redirect_uri } = params;
   const redirectHost = new URL(redirect_uri).hostname;
+  // U3 contract: bridge URL is apex (no www, no return_to). Apex page reads
+  // oauth:nonce:<nonce> itself to recover client metadata + mint a grant.
+  const proCtaHref = `https://worldmonitor.app/mcp-grant?nonce=${encodeURIComponent(nonce)}`;
   return new Response(`<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Authorize &#x2014; WorldMonitor MCP</title>
@@ -126,6 +140,11 @@ input[type=password]:focus{border-color:#2d8a6e}
 button{width:100%;margin-top:1.25rem;padding:.75rem;background:#2563eb;color:#fff;border:none;font-family:inherit;font-size:.9rem;cursor:pointer;font-weight:500;letter-spacing:.02em;border-radius:0}
 button:hover{background:#1d4ed8}
 button:disabled{opacity:.5;cursor:default}
+.pro-cta{display:block;width:100%;padding:.75rem;background:#2d8a6e;color:#fff;border:none;font-family:inherit;font-size:.9rem;font-weight:500;letter-spacing:.02em;text-align:center;text-decoration:none;cursor:pointer;border-radius:0}
+.pro-cta:hover{background:#246e58}
+.disclosure{margin-top:1rem;text-align:center}
+.disclosure a{font-size:.75rem;color:#555;text-decoration:none;letter-spacing:.02em;cursor:pointer}
+.disclosure a:hover{color:#888;text-decoration:underline}
 .footer{font-size:.7rem;color:#2a2a2a;text-align:center;margin-top:1.25rem}
 .footer a{color:#333;text-decoration:none}
 .footer a:hover{color:#555}
@@ -147,18 +166,20 @@ button:disabled{opacity:.5;cursor:default}
 <li>Markets: stocks, commodities, crypto &amp; FX</li>
 </ul>
 <hr>
-<form id="cf" method="POST" action="https://api.worldmonitor.app/oauth/authorize">
+<a id="pc" class="pro-cta" href="${escapeHtml(proCtaHref)}">Sign in with WorldMonitor Pro</a>
+<div class="disclosure" id="dt"><a id="tk" role="button" tabindex="0">Use API key instead</a></div>
+<form id="cf" method="POST" action="https://api.worldmonitor.app/oauth/authorize" style="display:none;margin-top:1.25rem">
 <input type="hidden" name="_nonce" id="nn" value="${escapeHtml(nonce)}">
 <input type="hidden" name="_js" id="jf" value="">
 <label for="api_key">API Key</label>
-<input type="password" id="api_key" name="api_key" placeholder="wm_&#8230;" autocomplete="current-password" required>
+<input type="password" id="api_key" name="api_key" placeholder="wm_&#8230;" autocomplete="current-password">
 <p class="hint">No key? <a href="https://www.worldmonitor.app/pro" target="_blank" rel="noopener">Get one at worldmonitor.app/pro &#x2192;</a></p>
 <p class="error" id="ke"${errorMsg ? '' : ' style="display:none"'}>${errorMsg ? escapeHtml(errorMsg) : ''}</p>
 <button type="submit" id="ab">Authorize</button>
 </form>
 </div>
 <p class="footer"><a href="https://www.worldmonitor.app" target="_blank" rel="noopener">worldmonitor.app</a> &middot; <a href="https://www.worldmonitor.app/pro" target="_blank" rel="noopener">Get an API key &#x2192;</a></p>
-<script>document.getElementById('cf').addEventListener('submit',function(e){e.preventDefault();var jf=document.getElementById('jf');if(jf)jf.value='1';var b=document.getElementById('ab');b.disabled=true;b.textContent='Authorizing\u2026';var d=new URLSearchParams(new FormData(e.target));fetch('/oauth/authorize',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:d}).then(function(r){var c=r.headers.get('Content-Type')||'';if(c.indexOf('json')>=0)return r.json().then(function(j){if(j.location){window.location.replace(j.location);return;}if(j.error==='invalid_key'){var n=document.getElementById('nn');if(n)n.value=j.nonce||'';var em=document.getElementById('ke');if(em){em.textContent='Invalid API key. Please check and try again.';em.style.display='';}}b.disabled=false;b.textContent='Authorize';});return r.text().then(function(h){document.open();document.write(h);document.close();});}).catch(function(){b.disabled=false;b.textContent='Authorize';});})</script>
+<script>(function(){function showForm(){var f=document.getElementById('cf');if(f)f.style.display='';var d=document.getElementById('dt');if(d)d.style.display='none';var k=document.getElementById('api_key');if(k){k.required=true;try{k.focus();}catch(e){}}}var em=document.getElementById('ke');if(em&&em.textContent&&em.textContent.length>0){showForm();}if(window.location.hash==='#api-key'){showForm();}var tk=document.getElementById('tk');if(tk){tk.addEventListener('click',function(e){e.preventDefault();showForm();});tk.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();showForm();}});}var cf=document.getElementById('cf');if(cf){cf.addEventListener('submit',function(e){e.preventDefault();var jf=document.getElementById('jf');if(jf)jf.value='1';var b=document.getElementById('ab');b.disabled=true;b.textContent='Authorizing…';var d=new URLSearchParams(new FormData(e.target));fetch('/oauth/authorize',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:d}).then(function(r){var c=r.headers.get('Content-Type')||'';if(c.indexOf('json')>=0)return r.json().then(function(j){if(j.location){window.location.replace(j.location);return;}if(j.error==='invalid_key'){var n=document.getElementById('nn');if(n)n.value=j.nonce||'';var em2=document.getElementById('ke');if(em2){em2.textContent='Invalid API key. Please check and try again.';em2.style.display='';}showForm();}b.disabled=false;b.textContent='Authorize';});return r.text().then(function(h){document.open();document.write(h);document.close();});}).catch(function(){b.disabled=false;b.textContent='Authorize';});});}})();</script>
 </body></html>`, { status: 200, headers: PAGE_HEADERS });
 }
 

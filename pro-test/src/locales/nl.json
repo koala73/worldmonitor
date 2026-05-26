@@ -6,7 +6,8 @@
     "enterprise": "Enterprise",
     "reserveAccess": "Reserveer je vroege toegang",
     "signIn": "Inloggen",
-    "upgradeToPro": "Upgrade naar Pro"
+    "upgradeToPro": "Upgrade naar Pro",
+    "goToDashboard": "Naar Dashboard"
   },
   "hero": {
     "noiseWord": "Ruis",
@@ -18,7 +19,8 @@
     "emailPlaceholder": "Voer je e-mail in",
     "emailAriaLabel": "E-mailadres voor de wachtlijst",
     "choosePlan": "Kies je plan",
-    "signIn": "Inloggen"
+    "signIn": "Inloggen",
+    "goToDashboard": "Naar Dashboard"
   },
   "wired": {
     "asFeaturedIn": "Te zien in"
@@ -50,7 +52,8 @@
     "entF9": "Android TV-app voor SOC-muren en trading floors",
     "entF10": "Cloud, on-premises of air-gapped deployment",
     "entF11": "Dedicated onboarding en support",
-    "entCta": "Praat met sales"
+    "entCta": "Praat met sales",
+    "freeF2": "500+ feeds, 65+ bronnen, 50+ kaartlagen"
   },
   "whyUpgrade": {
     "title": "Waarom upgraden",
@@ -83,7 +86,7 @@
     "openFullScreen": "Open volledig scherm",
     "tryLiveDashboard": "Probeer het live dashboard",
     "iframeTitle": "World Monitor — Live Intelligence Dashboard",
-    "description": "3D WebGL-globe · 45+ interactieve kaartlagen · Realtime markt-, macro-, geopolitieke, energie- en infrastructuurdata"
+    "description": "3D WebGL-globe · 50+ interactieve kaartlagen · Real-time markt-, macro-, geopolitieke, energie- en infrastructuurgegevens"
   },
   "socialProof": {
     "uniqueVisitors": "Unieke bezoekers",
@@ -139,31 +142,8 @@
   },
   "tiers": {
     "free": "Gratis",
-    "freeTagline": "Zie alles",
-    "freeDesc": "Het open-source dashboard",
-    "freeF1": "Refresh 5-15 min",
-    "freeF2": "500+ feeds, 45 kaartlagen",
-    "freeF3": "BYOK voor AI",
-    "freeF4": "Altijd gratis",
-    "openDashboard": "Dashboard openen",
     "pro": "Pro",
-    "proTagline": "Markten, macro en geopolitiek",
-    "proDesc": "Jouw AI-analist",
-    "proF1": "Equity research en aandelenanalyse",
-    "proF2": "+ dagelijkse briefings, economische analytics",
-    "proF3": "AI inbegrepen, 1 sleutel",
-    "proF4": "Prioritaire data-refresh (Binnenkort)",
-    "priceMonthly": "$39,99 / maand",
-    "priceAnnual": "$399,99 / jaar",
-    "annualSavingsNote": "2 maanden gratis",
-    "enterprise": "Enterprise",
-    "enterpriseTagline": "Handel eerder dan iedereen",
-    "enterpriseDesc": "Het intelligence platform",
-    "entF1": "Live-edge satellietbeelden",
-    "entF2": "+ AI-agents, 50K+ infra, SAR",
-    "entF3": "Eigen AI, investor-personas",
-    "entF4": "Neem contact op",
-    "contactSales": "Contact sales"
+    "enterprise": "Enterprise"
   },
   "proShowcase": {
     "proTier": "PRO-NIVEAU",
@@ -281,7 +261,6 @@
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + webhook",
     "fMcpBulk": "+ MCP + bulk",
-    "f45": "45",
     "fTensOfThousands": "+ tienduizenden",
     "fLiveTracking": "Live tracking",
     "fPassAlerts": "Passage-alerts + analyse",
@@ -292,7 +271,8 @@
     "fStandard": "Standaard",
     "fKeyAuth": "Sleutel-auth",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
-    "noteBelow": "Het kernplatform blijft gratis. Betaalde plannen ontgrendelen equity research, macro-analytics, AI-briefings en organisatiegebruik."
+    "noteBelow": "Het kernplatform blijft gratis. Betaalde plannen ontgrendelen equity research, macro-analytics, AI-briefings en organisatiegebruik.",
+    "f50plus": "50+"
   },
   "faq": {
     "title": "Veelgestelde vragen",
@@ -354,5 +334,76 @@
     "youreIn": "Je bent erbij!",
     "invitedBanner": "Je bent uitgenodigd — sluit je aan bij de wachtlijst"
   },
-  "soonBadge": "Binnenkort"
+  "soonBadge": "Binnenkort",
+  "meta": {
+    "title": "World Monitor Pro — AI Analyst, Personal Intelligence Desk, MCP voor Claude & GPT",
+    "description": "De geopolitieke AI-laag. Stel er vragen aan, abonneer je erop, bouw erop voort. WM Analyst chat over 30+ live services, een AI-digest dagelijks, twee keer per dag of wekelijks naar Slack, Discord, Telegram, Email of webhook, een custom widget builder (HTML/CSS/JS + AI), en MCP connectors voor Claude, GPT en aangepaste LLM's.",
+    "ogTitle": "World Monitor Pro — The Geopolitical AI Layer",
+    "ogDescription": "Stel er vragen aan, abonneer je erop, bouw erop voort. WM Analyst chat, een AI-digest volgens je schema (dagelijks, twee keer per dag of wekelijks), custom widget builder en MCP voor Claude/GPT — over 30+ live services onder één sleutel."
+  },
+  "pricing": {
+    "suffixForever": "altijd",
+    "suffixTailored": "op maat voor jou",
+    "suffixPerMonth": "/mnd",
+    "suffixPerYear": "/jr",
+    "amountCustom": "Aangepast",
+    "opening": "Openen…",
+    "headerTitle": "Kies Uw Plan",
+    "headerSubtitle": "Van real-time monitoring tot volledige intelligence-infrastructuur. Kies de laag die bij uw missie past.",
+    "billingMonthly": "Maandelijks",
+    "billingAnnual": "Jaarlijks",
+    "saveAnnual": "Bespaar 17%",
+    "mostPopular": "Meest Populair",
+    "promoCodeNote": "Hebt u een promotiecode? Voer deze in bij het afrekenen.",
+    "tiers": {
+      "free": {
+        "description": "Aan de slag met de essentiële functies",
+        "features": [
+          "Centrale dashboardpanelen",
+          "Wereldwijd nieuwsfeed",
+          "Aardbevings- en weerswaarschuwingen",
+          "Basiskaartweergave"
+        ],
+        "cta": "Aan de slag"
+      },
+      "pro": {
+        "description": "Volledig intelligence-dashboard",
+        "features": [
+          "Alles in Gratis",
+          "AI-aandelen analyse & backtesting",
+          "Dagelijkse marktbriefings",
+          "Militair- en geopolitieke tracking",
+          "Aangepaste widget builder",
+          "MCP-gegevensconnectoren",
+          "Prioriteit gegevensvernieuwing"
+        ]
+      },
+      "api": {
+        "description": "Programmatische toegang tot intelligence-gegevens",
+        "features": [
+          "REST API-toegang",
+          "Real-time gegevensstromen",
+          "1.000 aanvragen/dag",
+          "Webhook-meldingen",
+          "Aangepaste gegevensexports"
+        ]
+      },
+      "enterprise": {
+        "description": "Aangepaste oplossingen voor organisaties",
+        "features": [
+          "Alles in Pro + API",
+          "Onbeperkte API-aanvragen",
+          "Speciale ondersteuning",
+          "Aangepaste integraties",
+          "SLA-garantie",
+          "On-premise optie"
+        ],
+        "cta": "Contact Verkoop"
+      }
+    },
+    "cta": {
+      "checkoutDefault": "Aan de slag",
+      "learnMore": "Meer informatie"
+    }
+  }
 }

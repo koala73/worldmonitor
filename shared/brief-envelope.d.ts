@@ -19,7 +19,7 @@
 // stripped at compose time. See PR #3143 for the notify-endpoint fix
 // that established this rule.
 
-export const BRIEF_ENVELOPE_VERSION: 2;
+export const BRIEF_ENVELOPE_VERSION: 4;
 
 /**
  * Versions the renderer accepts from Redis on READ. Always contains
@@ -69,6 +69,36 @@ export interface BriefDigest {
   threads: BriefThread[];
   /** Signals-to-watch. The "04 · Signals" page is omitted when empty. */
   signals: string[];
+  /**
+   * Non-personalised lead for the share-URL surface (v3+). Generated
+   * by `generateDigestProsePublic` with profile/greeting stripped.
+   * The renderer's public-mode lead block reads this when present
+   * and OMITS the pull-quote when absent — never falls back to the
+   * personalised `lead` (which would leak watched-asset/region
+   * context). Optional for v2-envelope back-compat through the
+   * 7-day TTL window.
+   */
+  publicLead?: string;
+  /**
+   * Non-personalised "signals to watch" array for the share-URL
+   * surface (v3+). The personalised `signals` array is generated
+   * with `ctx.profile` set, so its phrasing can echo a user's
+   * watched assets / regions ("Watch for OPEC headlines on your
+   * Saudi exposure"). The public-share renderer MUST substitute
+   * `publicSignals` (or omit the signals page entirely when absent)
+   * — never serve the personalised `signals` to anonymous readers.
+   */
+  publicSignals?: string[];
+  /**
+   * Non-personalised threads array for the share-URL surface (v3+).
+   * Threads are mostly content-derived but the prompt instructs the
+   * model to surface clusters that align with user interests; in
+   * personalised mode that bias can leak. The public-share renderer
+   * substitutes `publicThreads` when present, falls back to a
+   * category-derived stub otherwise — never serves the personalised
+   * `threads` to anonymous readers.
+   */
+  publicThreads?: BriefThread[];
 }
 
 export interface BriefStory {
@@ -90,6 +120,22 @@ export interface BriefStory {
    * remain banned in `data`.
    */
   sourceUrl?: string;
+  /**
+   * Stable per-story-cluster identity (v4+). Sourced from the rep
+   * `hash` of `mergedHashes[0]` after `materializeCluster` — survives
+   * wire rewordings at the upstream ingester's identity layer, stable
+   * across ticks (unlike the per-tick numeric `clusterId` produced by
+   * brief-dedup-replay-log). Drives the per-channel/per-cluster
+   * delivered-log key (`digest:sent:v1:{userId}:{channel}:{ruleId}:
+   * {clusterId}`) and the `digest.cards ⊆ brief.cards` CI invariant.
+   *
+   * REQUIRED on v4 envelopes (write-time enforced). OPTIONAL on
+   * v1-v3 envelopes still resident in Redis under the 7-day brief
+   * TTL window (read-time back-compat). Composers must never write
+   * an empty string — write-time validation rejects "" the same as
+   * undefined for v4.
+   */
+  clusterId?: string;
   /** Per-user LLM-generated rationale. */
   whyMatters: string;
 }

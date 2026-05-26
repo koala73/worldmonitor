@@ -26,6 +26,7 @@ import { sparkline } from '@/utils/sparkline';
 import { getAuthState } from '@/services/auth-state';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { trackGateHit } from '@/services/analytics';
+import { renderPopupSourceLinks } from './map-popup-source-links';
 
 // ── Static HS2 sector breakdown per chokepoint ────────────────────────────────
 // Based on IEA/UNCTAD estimated trade composition. Updated periodically.
@@ -1461,6 +1462,7 @@ export class MapPopup {
     const actorsSection = event.actors?.length
       ? `<div class="popup-stat"><span class="stat-label">${t('popups.actors')}</span><span class="stat-value">${event.actors.map(a => escapeHtml(a)).join(', ')}</span></div>`
       : '';
+    const sourceLinks = renderPopupSourceLinks(event.sourceUrls, { label: t('popups.source') });
     const tagsSection = event.tags?.length
       ? `<div class="popup-tags">${event.tags.map(t => `<span class="popup-tag">${escapeHtml(t)}</span>`).join('')}</div>`
       : '';
@@ -1491,6 +1493,7 @@ export class MapPopup {
           ${actorsSection}
         </div>
         ${event.title ? `<p class="popup-description">${escapeHtml(event.title)}</p>` : ''}
+        ${sourceLinks}
         ${tagsSection}
         ${relatedHotspots}
       </div>
@@ -1518,7 +1521,11 @@ export class MapPopup {
       const dateStr = event.time.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
       const city = event.city ? escapeHtml(event.city) : '';
       const title = event.title ? `: ${escapeHtml(event.title.slice(0, 40))}${event.title.length > 40 ? '...' : ''}` : '';
-      return `<li class="cluster-item ${sevClass}">${icon} ${dateStr}${city ? ` • ${city}` : ''}${title}</li>`;
+      const sourceUrl = event.sourceUrls?.find(url => sanitizeUrl(url));
+      const sourceLink = sourceUrl
+        ? ` <a class="popup-link cluster-source-link" href="${sanitizeUrl(sourceUrl)}" target="_blank" rel="noopener noreferrer nofollow">${t('popups.source')} →</a>`
+        : '';
+      return `<li class="cluster-item ${sevClass}">${icon} ${dateStr}${city ? ` • ${city}` : ''}${title}${sourceLink}</li>`;
     }).join('');
 
     const renderedCount = Math.min(10, data.items.length);
@@ -1547,7 +1554,11 @@ export class MapPopup {
 
   private renderFlightPopup(delay: AirportDelayAlert): string {
     const severityClass = escapeHtml(delay.severity);
-    const severityLabel = escapeHtml(delay.severity.toUpperCase());
+    // #3707: render 'unknown' as a neutral "No data" badge so users don't
+    // read it as "healthy / normal". All other severities keep raw label.
+    const severityLabel = delay.severity === 'unknown'
+      ? 'NO DATA'
+      : escapeHtml(delay.severity.toUpperCase());
     const delayTypeLabels: Record<string, string> = {
       'ground_stop': t('popups.flight.groundStop'),
       'ground_delay': t('popups.flight.groundDelay'),
@@ -1556,14 +1567,23 @@ export class MapPopup {
       'general': t('popups.flight.delaysReported'),
       'closure': t('popups.flight.closure'),
     };
-    const delayTypeLabel = delayTypeLabels[delay.delayType] || t('popups.flight.delays');
-    const icon = delay.delayType === 'closure' ? '🚫' : delay.delayType === 'ground_stop' ? '🛑' : delay.severity === 'severe' ? '✈️' : '🛫';
+    // #3707: when severity is 'unknown' we have no delay-type signal either.
+    const delayTypeLabel = delay.severity === 'unknown'
+      ? 'Coverage unavailable'
+      : (delayTypeLabels[delay.delayType] || t('popups.flight.delays'));
+    const icon = delay.severity === 'unknown'
+      ? '❔'
+      : delay.delayType === 'closure' ? '🚫'
+      : delay.delayType === 'ground_stop' ? '🛑'
+      : delay.severity === 'severe' ? '✈️'
+      : '🛫';
     const sourceLabels: Record<string, string> = {
       'faa': t('popups.flight.sources.faa'),
       'eurocontrol': t('popups.flight.sources.eurocontrol'),
       'computed': t('popups.flight.sources.computed'),
       'aviationstack': t('popups.flight.sources.aviationstack'),
       'notam': t('popups.flight.sources.notam'),
+      'unspecified': '—',
     };
     const sourceLabel = sourceLabels[delay.source] || escapeHtml(delay.source);
     const regionLabels: Record<string, string> = {

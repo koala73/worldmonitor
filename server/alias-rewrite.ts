@@ -13,10 +13,13 @@
  *
  * Trivially deleted when v1 retires — just `rm` the alias files.
  */
+type GatewayCtx = { waitUntil: (p: Promise<unknown>) => void };
+
 export async function rewriteToSebuf(
   req: Request,
   newPath: string,
-  gateway: (req: Request) => Promise<Response>,
+  gateway: (req: Request, ctx: GatewayCtx) => Promise<Response>,
+  ctx: GatewayCtx,
 ): Promise<Response> {
   const url = new URL(req.url);
   url.pathname = newPath;
@@ -27,5 +30,5 @@ export async function rewriteToSebuf(
     headers: req.headers,
     body,
   });
-  return gateway(rewritten);
+  return gateway(rewritten, ctx);
 }

@@ -1,7 +1,22 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { latestMonth, monthOffset, buildReservesPayload } from '../scripts/seed-gold-cb-reserves.mjs';
+import { latestMonth, monthOffset, buildReservesPayload, normalizePeriod } from '../scripts/seed-gold-cb-reserves.mjs';
+
+describe('seed-gold-cb-reserves: normalizePeriod (SDMX 3.0 YYYY-MMM → ISO YYYY-MM)', () => {
+  it('strips the M prefix from month component', () => {
+    assert.equal(normalizePeriod('2026-M03'), '2026-03');
+    assert.equal(normalizePeriod('2025-M12'), '2025-12');
+    assert.equal(normalizePeriod('2024-M01'), '2024-01');
+  });
+  it('passes ISO YYYY-MM through unchanged', () => {
+    assert.equal(normalizePeriod('2026-03'), '2026-03');
+  });
+  it('returns falsy/non-string inputs unchanged', () => {
+    assert.equal(normalizePeriod(null), null);
+    assert.equal(normalizePeriod(undefined), undefined);
+  });
+});
 
 describe('seed-gold-cb-reserves: latestMonth', () => {
   it('returns the lexicographically latest YYYY-MM key', () => {
@@ -69,15 +84,70 @@ describe('seed-gold-cb-reserves: buildReservesPayload (ounces indicator)', () =>
     assert.equal(payload, null);
   });
 
-  it('skips countries missing the latest month value', () => {
+  it('still drops countries with no value within the 2-month lookback window', () => {
     const partial = {
-      USA: { name: 'United States', byMonth: { '2025-01': 261_500_000, '2026-01': 261_500_000 } },
-      DEU: { name: 'Germany', byMonth: { '2025-01': 108_000_000 } }, // no 2026-01
+      USA: { name: 'United States', byMonth: { '2025-01': 261_500_000, '2026-04': 261_500_000 } },
+      DEU: { name: 'Germany', byMonth: { '2025-01': 108_000_000 } }, // last data 2025-01, asOfMonth 2026-04 → out of window
     };
     const payload = buildReservesPayload(partial, 'RAFAGOLDV_OZT');
     assert.ok(payload);
     assert.equal(payload.topHolders.length, 1);
     assert.equal(payload.topHolders[0].iso3, 'USA');
+  });
+
+  it('keeps countries reporting 1-2 months behind the global asOfMonth', () => {
+    // Regression: when ONE fast-reporting CB advances asOfMonth, lagging
+    // reporters used to get filtered out, dropping topHolders below the
+    // validateFn floor (>=10) and triggering the soft-skip EMPTY_DATA path.
+    const raw = {
+      USA: { name: 'United States', byMonth: { '2025-03': 261_500_000, '2026-03': 261_500_000 } },
+      // Germany only has data through 2026-02 (one-month lag).
+      DEU: { name: 'Germany',       byMonth: { '2025-02': 108_000_000, '2026-02': 108_500_000 } },
+      // Italy only has data through 2026-01 (two-month lag).
+      ITA: { name: 'Italy',         byMonth: { '2025-01':  78_000_000, '2026-01':  78_500_000 } },
+    };
+    const payload = buildReservesPayload(raw, 'IRFCLDT1_IRFCL56_FTO');
+    assert.ok(payload);
+    assert.equal(payload.asOfMonth, '2026-03');
+    const isoSet = new Set(payload.topHolders.map(h => h.iso3));
+    assert.ok(isoSet.has('USA'));
+    assert.ok(isoSet.has('DEU'), 'DEU (1-month lag) must survive');
+    assert.ok(isoSet.has('ITA'), 'ITA (2-month lag) must survive');
+  });
+
+  it('computes 12-month delta relative to per-country resolved month, not global asOfMonth', () => {
+    // DEU's resolved month is 2026-02 (1 month behind global). Prior must be
+    // 2025-02 (12 months before 2026-02), not 2025-03 (12 months before
+    // global 2026-03) — otherwise the delta is off by one month and may
+    // silently produce a phantom buy/sell signal.
+    const raw = {
+      USA: { name: 'United States', byMonth: { '2025-03': 261_500_000, '2026-03': 261_500_000 } },
+      DEU: { name: 'Germany',       byMonth: { '2025-02': 100_000_000, '2026-02': 110_000_000 } },
+    };
+    const payload = buildReservesPayload(raw, 'IRFCLDT1_IRFCL56_FTO');
+    const de = payload.topHolders.find(h => h.iso3 === 'DEU');
+    assert.ok(de, 'Germany must be in topHolders');
+    const buy = payload.topBuyers12m.find(m => m.iso3 === 'DEU');
+    assert.ok(buy, 'Germany 12m buy delta must be computed against 2025-02 (its own -12m), not 2025-03');
+    // +10M oz / 32150.7 oz-per-tonne ≈ 311.05 tonnes
+    assert.ok(Math.abs(buy.deltaTonnes12m - 311.05) < 0.5, `expected ~311.05, got ${buy.deltaTonnes12m}`);
+  });
+
+  it('handles real SDMX 3.0 YYYY-MMM keys end-to-end after normalization', () => {
+    // Fixture mirrors what the IMF SDMX endpoint actually returns post-fetch
+    // (after normalizePeriod has been applied at ingest). This is the shape
+    // buildReservesPayload sees today in production.
+    const raw = {
+      USA: { name: 'United States', byMonth: { '2025-03': 261_500_000, '2026-03': 261_500_000 } },
+      DEU: { name: 'Germany',       byMonth: { '2025-03': 108_000_000, '2026-03': 108_500_000 } },
+    };
+    const payload = buildReservesPayload(raw, 'IRFCLDT1_IRFCL56_FTO');
+    assert.ok(payload);
+    assert.equal(payload.asOfMonth, '2026-03');
+    assert.equal(payload.topHolders.length, 2);
+    // Both deltas should be computed (was empty before SDMX format fix)
+    const buys = payload.topBuyers12m.map(m => m.iso3);
+    assert.ok(buys.includes('DEU'), 'DEU 12m buy delta should be present (was always empty pre-fix)');
   });
 });
 
@@ -144,10 +214,10 @@ describe('seed-gold-cb-reserves: pctOfReserves computation', () => {
     const totalUsd = { USA: { byMonth: { '2026-02': 800_000_000_000 } } };
     const payload = buildReservesPayload(raw, 'IRFCLDT1_IRFCL56_FTO', goldUsd, totalUsd);
     assert.equal(payload.asOfMonth, '2026-03');
-    assert.equal(payload.topHolders[0].pctOfReserves, 50, '2026-02 total is within the 3-month lookback window');
+    assert.equal(payload.topHolders[0].pctOfReserves, 50, '2026-02 total is within the 2-month lookback window');
   });
 
-  it('rejects a denominator older than 3 months (stale data shouldn\'t contaminate current pct)', () => {
+  it('rejects a denominator older than the 2-month window (stale data shouldn\'t contaminate current pct)', () => {
     const raw = {
       USA: { name: 'United States', byMonth: { '2026-06': 261_500_000 } },
     };
@@ -155,6 +225,6 @@ describe('seed-gold-cb-reserves: pctOfReserves computation', () => {
     // Total reserves last reported 2026-01 — 5 months before; outside the window.
     const totalUsd = { USA: { byMonth: { '2026-01': 800_000_000_000 } } };
     const payload = buildReservesPayload(raw, 'IRFCLDT1_IRFCL56_FTO', goldUsd, totalUsd);
-    assert.equal(payload.topHolders[0].pctOfReserves, 0, 'stale denominator (>3mo) is dropped');
+    assert.equal(payload.topHolders[0].pctOfReserves, 0, 'stale denominator (outside 2-month window) is dropped');
   });
 });

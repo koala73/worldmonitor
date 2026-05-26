@@ -7,6 +7,7 @@
 
 import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
+import { PRODUCT_CATALOG } from "../config/productCatalog";
 
 const RESEND_URL = "https://api.resend.com/emails";
 const FROM = "World Monitor <noreply@worldmonitor.app>";
@@ -211,6 +212,78 @@ function userWelcomeHtml(planName: string, planKey: string): string {
 }
 
 /**
+ * Format a minor-unit amount (cents) into "$X.XX USD" / "€X.XX EUR" etc.
+ * Falls back to "<amount> <currency>" if the currency lacks a known symbol.
+ */
+const CURRENCY_SYMBOL: Record<string, string> = {
+  USD: "$", EUR: "€", GBP: "£", CAD: "$", AUD: "$", JPY: "¥", INR: "₹",
+};
+function formatMoney(amountMinor: number, currency: string): string {
+  const cur = currency.toUpperCase();
+  const symbol = CURRENCY_SYMBOL[cur] ?? "";
+  // JPY (and a few others) have no minor unit — Dodo still passes integers
+  // in the smallest unit, but JPY's "smallest unit" is the yen itself.
+  const divisor = cur === "JPY" ? 1 : 100;
+  const major = (amountMinor / divisor).toFixed(divisor === 1 ? 0 : 2);
+  return symbol ? `${symbol}${major} ${cur}` : `${major} ${cur}`;
+}
+
+/**
+ * Build the Amount/Discount rows for the admin notification.
+ * Compares the actual recurring charge against the catalog list price to
+ * surface the discount delta — that's the signal "did this user pay full
+ * price or use a code", which the raw subscription_id never communicated.
+ */
+function buildPriceRowsHtml(args: {
+  planKey: string;
+  recurringPreTaxAmount?: number;
+  currency?: string;
+  taxInclusive?: boolean;
+  discountId?: string;
+}): string {
+  const rows: string[] = [];
+  const currency = args.currency ?? "USD";
+  const paid = args.recurringPreTaxAmount;
+  const listCents = PRODUCT_CATALOG[args.planKey]?.priceCents;
+
+  if (typeof paid === "number") {
+    const taxNote = args.taxInclusive ? " (tax incl.)" : " (pre-tax)";
+    rows.push(
+      `<tr><td style="color: #888; padding-right: 16px;">Amount Paid:</td><td style="color: #fff;">${formatMoney(paid, currency)}${taxNote}</td></tr>`,
+    );
+    // List Price / Saved comparison is USD-only. PRODUCT_CATALOG.priceCents is
+    // hard-coded in USD, so subtracting it from a non-USD `paid` (Dodo's
+    // adaptive-currency mode bills EUR/GBP/etc.) would produce a meaningless
+    // delta with the wrong currency label. Skip the comparison rows in that
+    // case rather than show misleading numbers — Amount Paid + Discount are
+    // still rendered.
+    if (
+      currency.toUpperCase() === "USD" &&
+      typeof listCents === "number" &&
+      listCents > 0 &&
+      listCents !== paid
+    ) {
+      const savedCents = listCents - paid;
+      const pct = Math.round((savedCents / listCents) * 100);
+      rows.push(
+        `<tr><td style="color: #888; padding-right: 16px;">List Price:</td><td style="color: #fff;">${formatMoney(listCents, currency)}</td></tr>`,
+      );
+      if (savedCents > 0) {
+        rows.push(
+          `<tr><td style="color: #888; padding-right: 16px;">Saved:</td><td style="color: #4ade80;">${formatMoney(savedCents, currency)} (${pct}% off)</td></tr>`,
+        );
+      }
+    }
+  }
+  if (args.discountId) {
+    rows.push(
+      `<tr><td style="color: #888; padding-right: 16px;">Discount:</td><td style="color: #fff; font-size: 12px;">${args.discountId}</td></tr>`,
+    );
+  }
+  return rows.join("");
+}
+
+/**
  * Send welcome email to user + admin notification on new subscription.
  * Scheduled from handleSubscriptionActive via ctx.scheduler.
  */
@@ -219,7 +292,15 @@ export const sendSubscriptionEmails = internalAction({
     userEmail: v.string(),
     planKey: v.string(),
     userId: v.string(),
-    subscriptionId: v.string(),
+    // Optional: previously rendered as a "Subscription:" row in the admin
+    // email, now dropped (opaque sub_… IDs were never the question being
+    // answered when the email landed). Kept as v.optional so any in-flight
+    // scheduled action enqueued before this deploy still validates on retry.
+    subscriptionId: v.optional(v.string()),
+    recurringPreTaxAmount: v.optional(v.number()),
+    currency: v.optional(v.string()),
+    taxInclusive: v.optional(v.boolean()),
+    discountId: v.optional(v.string()),
   },
   handler: async (_ctx, args) => {
     const apiKey = process.env.RESEND_API_KEY;
@@ -242,7 +323,16 @@ export const sendSubscriptionEmails = internalAction({
     );
     console.log(`[subscriptionEmails] Welcome email sent to ${args.userEmail}`);
 
-    // 2. Admin notification
+    // 2. Admin notification — leads with what the user actually paid (and how
+    // it compares to list price) instead of the opaque subscription_id, which
+    // is rarely the question being asked when this email lands.
+    const priceRows = buildPriceRowsHtml({
+      planKey: args.planKey,
+      recurringPreTaxAmount: args.recurringPreTaxAmount,
+      currency: args.currency,
+      taxInclusive: args.taxInclusive,
+      discountId: args.discountId,
+    });
     await sendEmail(
       apiKey,
       ADMIN_EMAIL,
@@ -252,8 +342,8 @@ export const sendSubscriptionEmails = internalAction({
         <table style="font-size: 14px; line-height: 1.8;">
           <tr><td style="color: #888; padding-right: 16px;">Plan:</td><td style="color: #fff;">${planName}</td></tr>
           <tr><td style="color: #888; padding-right: 16px;">Email:</td><td style="color: #fff;">${args.userEmail}</td></tr>
+          ${priceRows}
           <tr><td style="color: #888; padding-right: 16px;">User ID:</td><td style="color: #fff; font-size: 12px;">${args.userId}</td></tr>
-          <tr><td style="color: #888; padding-right: 16px;">Subscription:</td><td style="color: #fff; font-size: 12px;">${args.subscriptionId}</td></tr>
         </table>
       </div>`,
     );
