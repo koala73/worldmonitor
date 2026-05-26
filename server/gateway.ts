@@ -631,7 +631,7 @@ export function createDomainGateway(
           }
         } catch { /* non-JSON body — skip POST→GET conversion */ }
         if (oversizedKey !== null) {
-          emitRequest(400, 'ok', null);
+          emitRequest(400, 'malformed_request', null);
           return new Response(JSON.stringify({
             error: 'Too many values for POST compatibility parameter',
             parameter: oversizedKey,
