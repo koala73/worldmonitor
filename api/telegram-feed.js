@@ -189,6 +189,13 @@ export default async function handler(req) {
     const body = await response.text();
 
     let cacheControl = 'public, max-age=30, s-maxage=120, stale-while-revalidate=60, stale-if-error=120';
+    if (!response.ok) {
+      return buildRelayResponse(response, body, {
+        'Cache-Control': 'no-store',
+        ...corsHeaders,
+      });
+    }
+
     try {
       const parsed = /** @type {RawTelegramFeedResponse} */ (JSON.parse(body));
       const normalized = normalizeTelegramFeed(parsed);
@@ -196,13 +203,13 @@ export default async function handler(req) {
         cacheControl = 'public, max-age=0, s-maxage=15, stale-while-revalidate=10';
       }
       return buildRelayResponse(response, JSON.stringify(normalized), {
-        'Cache-Control': response.ok ? cacheControl : 'no-store',
+        'Cache-Control': cacheControl,
         ...corsHeaders,
       });
     } catch {}
 
     return buildRelayResponse(response, body, {
-      'Cache-Control': response.ok ? cacheControl : 'no-store',
+      'Cache-Control': cacheControl,
       ...corsHeaders,
     });
   } catch (error) {

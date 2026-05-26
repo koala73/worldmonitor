@@ -117,6 +117,45 @@ describe('api/telegram-feed contract normalization', () => {
     const data = await res.json();
     assert.equal(data.items[0].ts, new Date(1_000_000_000_000).toISOString());
   });
+
+  it('passes through relay JSON error responses without normalizing them as empty feeds', async () => {
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      error: 'rate_limited',
+      retryAfter: 30,
+    }), {
+      status: 429,
+      headers: { 'Content-Type': 'application/json' },
+    });
+
+    const handler = (await import(`../api/telegram-feed.js?t=${Date.now()}`)).default;
+    const res = await handler(makeRequest());
+    assert.equal(res.status, 429);
+    assert.equal(res.headers.get('cache-control'), 'no-store');
+
+    const data = await res.json();
+    assert.deepEqual(data, {
+      error: 'rate_limited',
+      retryAfter: 30,
+    });
+  });
+
+  it('wraps non-JSON relay error responses while preserving the upstream status', async () => {
+    globalThis.fetch = async () => new Response('temporary overload', {
+      status: 503,
+      headers: { 'Content-Type': 'text/plain' },
+    });
+
+    const handler = (await import(`../api/telegram-feed.js?t=${Date.now()}`)).default;
+    const res = await handler(makeRequest());
+    assert.equal(res.status, 503);
+    assert.equal(res.headers.get('cache-control'), 'no-store');
+
+    const data = await res.json();
+    assert.deepEqual(data, {
+      error: 'Upstream error: HTTP 503',
+      status: 503,
+    });
+  });
 });
 
 describe('server listTelegramFeed relay normalization', () => {
