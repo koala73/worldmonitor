@@ -278,7 +278,7 @@ describe('scoped rate-limit degraded call-site policy (#3531)', () => {
     const fs = await import('node:fs');
     const cp = await import('node:child_process');
     const repo = new URL('..', import.meta.url);
-    const output = cp.execFileSync('rg', ['-l', 'checkScopedRateLimit\\(', 'server', 'api'], {
+    const output = cp.execFileSync('git', ['grep', '-lF', 'checkScopedRateLimit(', '--', 'server', 'api'], {
       cwd: repo,
       encoding: 'utf8',
     });
