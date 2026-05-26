@@ -30,6 +30,26 @@ function cookieValue(cookies, name) {
   return decodeURIComponent(found.slice(prefix.length).split(';')[0]);
 }
 
+function finalCookieJar(cookies) {
+  const jar = new Map();
+  for (const cookie of cookies) {
+    const [nameValue, ...attrs] = cookie.split(';').map((part) => part.trim());
+    const [name, encodedValue = ''] = nameValue.split('=');
+    const domainAttr = attrs.find((attr) => attr.toLowerCase().startsWith('domain='));
+    const pathAttr = attrs.find((attr) => attr.toLowerCase().startsWith('path='));
+    const maxAgeAttr = attrs.find((attr) => attr.toLowerCase().startsWith('max-age='));
+    const domain = domainAttr ? domainAttr.slice('domain='.length).toLowerCase() : 'api.worldmonitor.app';
+    const path = pathAttr ? pathAttr.slice('path='.length) : '/';
+    const key = `${name};${domain};${path}`;
+    if (maxAgeAttr && Number(maxAgeAttr.slice('max-age='.length)) <= 0) {
+      jar.delete(key);
+      continue;
+    }
+    jar.set(key, decodeURIComponent(encodedValue));
+  }
+  return jar;
+}
+
 test('POST from trusted origin sets a valid HttpOnly wms_ session cookie without exposing token JSON', async () => {
   const resp = await handler(makeReq('POST', { origin: 'https://worldmonitor.app' }));
   assert.equal(resp.status, 200);
@@ -95,6 +115,22 @@ test('legacy widget/pro keys are moved into short-lived HttpOnly cookies', async
   assert.match(joined, /wm-widget-key=widget-secret;.*Domain=\.worldmonitor\.app/);
   assert.match(joined, /wm-pro-key=pro-secret;.*Domain=\.worldmonitor\.app/);
   assert.match(joined, /Max-Age=43200/);
+});
+
+test('legacy cookie tombstones do not delete replacement HttpOnly key cookies', async () => {
+  const req = new Request('https://api.worldmonitor.app/api/wm-session', {
+    method: 'POST',
+    headers: {
+      origin: 'https://worldmonitor.app',
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify({ widgetKey: 'widget-secret', proKey: 'pro-secret' }),
+  });
+  const resp = await handler(req);
+  assert.equal(resp.status, 200);
+  const jar = finalCookieJar(setCookies(resp));
+  assert.equal(jar.get('wm-widget-key;.worldmonitor.app;/'), 'widget-secret');
+  assert.equal(jar.get('wm-pro-key;.worldmonitor.app;/'), 'pro-secret');
 });
 
 test('Returns 503 when WM_SESSION_SECRET is missing', async () => {
