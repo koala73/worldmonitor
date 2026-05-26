@@ -74,17 +74,46 @@ describe('nuclear facility registry invariants', () => {
     assert.equal(byId.get('tianwan')?.status, 'active');
   });
 
-  it('keeps earthquake test-site enrichment synced with the nuclear registry', () => {
-    const registrySites = parseNuclearFacilities()
-      .filter((facility) => facility.type === 'test-site')
-      .map(({ name, lat, lon }) => ({ name, lat, lon }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+  it('keeps earthquake scoring limited to canonical nuclear-test centroids', () => {
+    const seedSites = parseArrayLiteral(src('scripts/seed-earthquakes.mjs'), 'TEST_SITES');
+    const seedNames = seedSites.map(({ name }) => name).sort();
 
-    const seedSites = parseArrayLiteral(src('scripts/seed-earthquakes.mjs'), 'TEST_SITES')
-      .map(({ name, lat, lon }) => ({ name, lat, lon }))
-      .sort((a, b) => a.name.localeCompare(b.name));
+    assert.deepEqual(seedNames, [
+      'Chagai-II',
+      'Fangataufa',
+      'In Eker',
+      'Lop Nur',
+      'Moruroa',
+      'Nevada National Security Site',
+      'Novaya Zemlya',
+      'Pokhran',
+      'Punggye-ri Nuclear Test Site',
+      'Reggane',
+      'Semipalatinsk Test Site',
+    ]);
 
-    assert.deepEqual(seedSites, registrySites);
+    assert.deepEqual(
+      seedNames.filter((name) => ['Sary Shagan', 'Kapustin Yar', 'Totsky shooting range', 'Salmon Site', 'Area 2', 'Degelen'].includes(name)),
+      [],
+    );
+
+    const registryByName = new Map(parseNuclearFacilities().map((facility) => [facility.name, facility]));
+    for (const site of seedSites) {
+      assert.ok(registryByName.has(site.name), `${site.name} should stay backed by the nuclear registry`);
+    }
+  });
+
+  it('deduplicates known stacked nuclear facility markers', () => {
+    const facilities = parseNuclearFacilities();
+    const byId = new Map(facilities.map((facility) => [facility.id, facility]));
+
+    for (const removedId of ['gentilly_ca', 'marcoule_fr', 'tricastin_fr', 'pierrelatte_fr', 'pierrelatte_3', 'tokai_no', 'tokai_jp']) {
+      assert.equal(byId.has(removedId), false, `${removedId} should be folded into a canonical site marker`);
+    }
+
+    assert.equal(byId.get('pierrelatte')?.name, 'Pierrelatte nuclear site (Comurhex/FBFC/Orano)');
+    assert.equal(byId.get('tokai')?.name, 'Tokai Nuclear Power Site (Tokai-1/Tokai-2)');
+    assert.equal(byId.get('kaiga_atomic_power_station')?.name, 'Kaiga Atomic Power Station');
   });
 
   it('defines popup labels for every nuclear facility type in every supported locale', () => {
