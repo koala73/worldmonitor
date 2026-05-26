@@ -54,6 +54,20 @@ const widgetBodyStore = new Map<string, string>();
 // after initial mount or iframe re-navigation.
 const iframeHtmlStore = new WeakMap<HTMLIFrameElement, string>();
 const iframeTokenStore = new WeakMap<HTMLIFrameElement, { id: string; token: string }>();
+// AbortController per mounted iframe — scopes the global `message` listener
+// to the iframe's DOM lifetime so it can be torn down on iframe removal.
+// Without this, every mounted PRO widget leaks a window-level listener that
+// retains a strong reference to the iframe element (and its ~80 KB HTML
+// payload via iframeHtmlStore), preventing garbage collection in long-
+// running dashboard sessions that add/remove widgets repeatedly.
+const iframeAbortStore = new WeakMap<HTMLIFrameElement, AbortController>();
+// Throttle re-deliveries of the same HTML to one per second per iframe.
+// A real iframe re-navigation (drag/drop reload) is human-paced and easily
+// clears this floor; a malicious widget script that re-posts wm-widget-
+// ready in a tight loop after receiving its document is rate-gated and
+// cannot trigger an unbounded document.write storm.
+const iframeLastDeliveryMs = new WeakMap<HTMLIFrameElement, number>();
+const MIN_DELIVERY_INTERVAL_MS = 1000;
 
 function createWidgetToken(): string {
   const crypto = globalThis.crypto;
@@ -117,6 +131,9 @@ function mountProWidget(iframe: HTMLIFrameElement): void {
   iframeHtmlStore.set(iframe, html);
   iframeTokenStore.set(iframe, { id, token });
 
+  const controller = new AbortController();
+  iframeAbortStore.set(iframe, controller);
+
   window.addEventListener('message', (event) => {
     const mounted = iframeTokenStore.get(iframe);
     if (!mounted) return;
@@ -124,13 +141,24 @@ function mountProWidget(iframe: HTMLIFrameElement): void {
     if (!event.data || event.data.type !== 'wm-widget-ready') return;
     if (event.data.id !== mounted.id || event.data.token !== mounted.token) return;
     const storedHtml = iframeHtmlStore.get(iframe);
-    if (storedHtml) {
-      iframe.contentWindow?.postMessage(
-        { type: 'wm-html', id: mounted.id, token: mounted.token, html: storedHtml },
-        '*',
-      );
-    }
-  });
+    if (!storedHtml) return;
+    const now = performance.now();
+    const last = iframeLastDeliveryMs.get(iframe) ?? 0;
+    if (now - last < MIN_DELIVERY_INTERVAL_MS) return;
+    iframeLastDeliveryMs.set(iframe, now);
+    iframe.contentWindow?.postMessage(
+      { type: 'wm-html', id: mounted.id, token: mounted.token, html: storedHtml },
+      '*',
+    );
+  }, { signal: controller.signal });
+}
+
+function unmountProWidget(iframe: HTMLIFrameElement): void {
+  iframeAbortStore.get(iframe)?.abort();
+  iframeAbortStore.delete(iframe);
+  iframeTokenStore.delete(iframe);
+  iframeHtmlStore.delete(iframe);
+  iframeLastDeliveryMs.delete(iframe);
 }
 
 if (typeof document !== 'undefined') {
@@ -142,6 +170,14 @@ if (typeof document !== 'undefined') {
           mountProWidget(node);
         } else {
           node.querySelectorAll<HTMLIFrameElement>('iframe[data-wm-id]').forEach(mountProWidget);
+        }
+      }
+      for (const node of mut.removedNodes) {
+        if (!(node instanceof Element)) continue;
+        if (node instanceof HTMLIFrameElement && node.dataset.wmId) {
+          unmountProWidget(node);
+        } else {
+          node.querySelectorAll<HTMLIFrameElement>('iframe[data-wm-id]').forEach(unmountProWidget);
         }
       }
     }

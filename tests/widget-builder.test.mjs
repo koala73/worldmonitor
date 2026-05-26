@@ -1313,6 +1313,72 @@ describe('PRO widget — store and sanitizer', () => {
     assert.deepEqual(spoofed.writes, []);
   });
 
+  it('PRO widget message listener has AbortController cleanup wired to iframe removal', () => {
+    // P1 (greptile #3912): the global `message` listener registered by
+    // mountProWidget would otherwise retain a strong reference to the
+    // iframe (and its ~80 KB HTML payload) for the lifetime of the page,
+    // even after the iframe is removed from the DOM — a real leak in any
+    // dashboard session that adds/removes widgets repeatedly. The fix is
+    // an AbortController per iframe + a MutationObserver `removedNodes`
+    // pass that calls `unmountProWidget`, which aborts the listener and
+    // clears every per-iframe WeakMap entry.
+    assert.ok(
+      san.includes('iframeAbortStore') && san.includes('new AbortController()'),
+      'mountProWidget must create an AbortController per iframe and store it',
+    );
+    assert.ok(
+      san.includes("{ signal: controller.signal }"),
+      'message listener must be registered with the AbortController signal so abort() removes it',
+    );
+    assert.ok(
+      san.includes('function unmountProWidget') && san.includes('controller.abort')
+        || (san.includes('function unmountProWidget') && san.includes('iframeAbortStore.get(iframe)?.abort()')),
+      'unmountProWidget must abort the controller (tearing down the listener)',
+    );
+    assert.ok(
+      san.includes('iframeAbortStore.delete(iframe)')
+        && san.includes('iframeTokenStore.delete(iframe)')
+        && san.includes('iframeHtmlStore.delete(iframe)'),
+      'unmountProWidget must clear every per-iframe WeakMap entry to release the HTML payload',
+    );
+    assert.ok(
+      san.includes('mut.removedNodes') && san.includes('unmountProWidget'),
+      'MutationObserver must scan removedNodes and call unmountProWidget so the cleanup actually fires when widgets are removed',
+    );
+  });
+
+  it('PRO widget re-deliveries are rate-limited to bound document.write storms', () => {
+    // P2 (greptile #3912): a malicious widget that re-reads its token from
+    // window.location.hash and re-posts wm-widget-ready could trigger an
+    // unbounded document.write loop (parent responds → write replaces doc
+    // → new doc re-posts ready → parent responds again). Rate-limiting
+    // deliveries to once per second per iframe is the smallest fix that
+    // bounds the loop while preserving legitimate drag/drop re-navigation
+    // (which is human-paced and trivially clears the floor). Greptile's
+    // suggested verbatim fix (delete iframeTokenStore after first delivery)
+    // would break the documented re-navigation use case at the call site,
+    // so we keep the token alive and gate on time instead.
+    assert.ok(
+      san.includes('MIN_DELIVERY_INTERVAL_MS') && san.includes('iframeLastDeliveryMs'),
+      'must declare a per-iframe last-delivery timestamp store and a minimum interval',
+    );
+    const intervalMatch = san.match(/MIN_DELIVERY_INTERVAL_MS\s*=\s*(\d+)/);
+    assert.ok(intervalMatch, 'MIN_DELIVERY_INTERVAL_MS must be a numeric literal');
+    const interval = Number(intervalMatch[1]);
+    assert.ok(
+      interval >= 500 && interval <= 5000,
+      `MIN_DELIVERY_INTERVAL_MS must be between 500ms and 5s (got ${interval}) — too low fails to bound a loop, too high breaks drag/drop`,
+    );
+    assert.ok(
+      san.includes('now - last < MIN_DELIVERY_INTERVAL_MS'),
+      'message handler must return early when called within the throttle window',
+    );
+    assert.ok(
+      san.includes('iframeLastDeliveryMs.set(iframe, now)'),
+      'message handler must record the delivery time so the next call is throttled',
+    );
+  });
+
   it('widget document builder injects panel CSS classes for design-system alignment', () => {
     assert.ok(san.includes('.panel-header'), 'must define .panel-header');
     assert.ok(san.includes('.panel-title'), 'must define .panel-title');
