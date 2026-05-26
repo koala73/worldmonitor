@@ -123,6 +123,14 @@ describe('api/brief followed-countries telemetry fetch', () => {
       '503 envelope-read path should hand the telemetry promise to waitUntil before returning',
     );
   });
+
+  it('drains the in-flight telemetry lookup when the envelope is missing', () => {
+    assert.match(
+      src,
+      /if \(!envelope\) \{\s*ctx\?\.waitUntil\(followedCountriesPromise\);\s*return htmlResponse\(req, 404, EXPIRED_PAGE\);\s*\}/,
+      '404 envelope-miss path should hand the telemetry promise to waitUntil before returning',
+    );
+  });
 });
 
 describe('infrastructure-error vs miss (both routes must not collapse)', () => {

@@ -223,6 +223,7 @@ export default async function handler(
     return htmlResponse(req, 503, UNAVAILABLE_PAGE);
   }
   if (!envelope) {
+    ctx?.waitUntil(followedCountriesPromise);
     return htmlResponse(req, 404, EXPIRED_PAGE);
   }
 
