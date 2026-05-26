@@ -124,6 +124,7 @@ export function __resetWmSessionForTests(): void {
   cached = null;
   inflight = null;
   interceptorInstalled = false;
+  retryRejectedWarned = false;
 }
 
 // Install a one-shot fetch wrapper that includes HttpOnly session cookies on

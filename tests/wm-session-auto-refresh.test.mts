@@ -391,9 +391,19 @@ describe('wm-session refresh-on-401 (Layer 2)', () => {
       return Promise.resolve(new Response('still-rejected', { status: 401 }));
     };
 
-    const resp = await wrappedFetch('https://api.worldmonitor.app/api/bootstrap');
-    assert.equal(resp.status, 401, 'returns second 401 instead of looping');
+    const warnings: string[] = [];
+    const originalWarn = console.warn;
+    console.warn = (...args: unknown[]) => { warnings.push(args.map(String).join(' ')); };
+    try {
+      const resp = await wrappedFetch('https://api.worldmonitor.app/api/bootstrap');
+      assert.equal(resp.status, 401, 'returns second 401 instead of looping');
+    } finally {
+      console.warn = originalWarn;
+    }
     assert.equal(bootstrapAttempts, 2, 'exactly one retry — no infinite loop');
-    assert.equal(mintCalls, 1, 'exactly one mint between the two attempts');
+    assert.equal(mintCalls, 2, 'initial preflight mint plus one refresh mint after the first 401');
+    assert.deepEqual(warnings, [
+      '[wm-session] API request still returned 401 after refreshing HttpOnly session cookie',
+    ]);
   });
 });
