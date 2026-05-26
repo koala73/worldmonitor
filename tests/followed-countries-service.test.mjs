@@ -93,6 +93,7 @@ const {
   FREE_TIER_FOLLOW_LIMIT,
   FOLLOWED_COUNTRIES_STORAGE_KEY,
   WM_FOLLOWED_COUNTRIES_CHANGED,
+  installFollowedCountriesAuthListener,
   _setDepsForTests,
   _resetStateForTests,
   _emitAuthStateForTests,
@@ -467,6 +468,30 @@ describe('followed-countries service — feature flag', () => {
     assert.equal(_localStorage.getItem(FOLLOWED_COUNTRIES_STORAGE_KEY), null);
     assert.equal(eventFires, 0);
     unsub();
+  });
+
+  it('flag off: installFollowedCountriesAuthListener does not register the picker global', () => {
+    _setDepsForTests({ featureFlagEnabled: false });
+    installFollowedCountriesAuthListener();
+    assert.equal(_window.__wmFollowedCountries, undefined);
+  });
+});
+
+describe('followed-countries service — global picker contract', () => {
+  it('installFollowedCountriesAuthListener registers window.__wmFollowedCountries.getFollowed', async () => {
+    await addCountry('US');
+    installFollowedCountriesAuthListener();
+
+    assert.equal(typeof _window.__wmFollowedCountries?.getFollowed, 'function');
+    assert.deepEqual(_window.__wmFollowedCountries.getFollowed(), ['US']);
+  });
+
+  it('_resetStateForTests removes the picker global', () => {
+    installFollowedCountriesAuthListener();
+    assert.equal(typeof _window.__wmFollowedCountries?.getFollowed, 'function');
+
+    _resetStateForTests();
+    assert.equal(_window.__wmFollowedCountries, undefined);
   });
 });
 

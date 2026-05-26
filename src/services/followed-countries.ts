@@ -85,6 +85,14 @@ export type FollowMutationResult =
 
 export type ServiceEntitlementState = 'pro' | 'free' | 'loading';
 
+declare global {
+  interface Window {
+    __wmFollowedCountries?: {
+      getFollowed: () => string[];
+    };
+  }
+}
+
 /**
  * Strongly-typed Convex function references for the followedCountries
  * surface. Using `FunctionReference<...>` (vs the previous `unknown`
@@ -265,6 +273,9 @@ export function _resetStateForTests(): void {
     window.removeEventListener('storage', _crossTabStorageListener);
   }
   _crossTabStorageListener = null;
+  if (typeof window !== 'undefined') {
+    delete window.__wmFollowedCountries;
+  }
 }
 
 /**
@@ -556,6 +567,11 @@ export function serviceEntitlementState(): ServiceEntitlementState {
 
 let _authListenerInstalled = false;
 
+function installFollowedCountriesGlobal(): void {
+  if (typeof window === 'undefined') return;
+  window.__wmFollowedCountries = { getFollowed };
+}
+
 /**
  * Install the auth-state listener AND the cross-tab `storage` listener
  * (P1 #10). Idempotent. Called once from app boot. Tests don't call
@@ -563,6 +579,8 @@ let _authListenerInstalled = false;
  * `_emitAuthStateForTests`.
  */
 export function installFollowedCountriesAuthListener(): void {
+  if (!isFollowFeatureEnabled()) return;
+  installFollowedCountriesGlobal();
   if (_authListenerInstalled) return;
   _authListenerInstalled = true;
   _subscribeAuthState((state) => {
