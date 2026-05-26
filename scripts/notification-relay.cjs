@@ -7,6 +7,7 @@ const { Resend } = require('resend');
 const { decrypt } = require('./lib/crypto.cjs');
 const { callLLM } = require('./lib/llm-chain.cjs');
 const { fetchUserPreferences, extractUserContext, formatUserProfile } = require('./lib/user-context.cjs');
+const { countryNameToIso2 } = require('./shared/country-name-to-iso2.cjs');
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
@@ -664,27 +665,8 @@ function matchesSensitivity(ruleSensitivity, eventSeverity) {
   return eventSeverity === 'critical';
 }
 
-const EVENT_COUNTRY_NAME_TO_ISO2 = new Map(Object.entries({
-  'bahrain': 'BH',
-  'israel': 'IL',
-  'kuwait': 'KW',
-  'oman': 'OM',
-  'qatar': 'QA',
-  'saudi arabia': 'SA',
-  'uae': 'AE',
-  'united arab emirates': 'AE',
-  'united kingdom': 'GB',
-  'uk': 'GB',
-  'united states': 'US',
-  'usa': 'US',
-}));
-
 function normalizeEventCountryCode(raw) {
-  if (typeof raw !== 'string' || raw.trim().length === 0) return null;
-  const trimmed = raw.trim();
-  const upper = trimmed.toUpperCase();
-  if (/^[A-Z]{2}$/.test(upper)) return upper;
-  return EVENT_COUNTRY_NAME_TO_ISO2.get(trimmed.toLowerCase()) ?? null;
+  return countryNameToIso2(raw);
 }
 
 /**

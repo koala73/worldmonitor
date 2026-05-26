@@ -165,6 +165,19 @@ describe('notifications-settings.ts — centralized save state (countries thread
     );
   });
 
+  it('picker-absent saves intentionally pass countries: undefined for preserve-on-omit', () => {
+    assert.match(
+      settingsSrc,
+      /const\s+alertRuleCountries\s*=\s*countryPicker\s*\?\s*countryPicker\.getValue\(\)\s*:\s*undefined/,
+      'helper must name the picker-absent undefined fallback so preserve-on-omit is deliberate',
+    );
+    assert.match(
+      settingsSrc,
+      /countries:\s*alertRuleCountries/,
+      'helper must pass the named fallback through as countries',
+    );
+  });
+
   it('saveCurrentAlertRule uses getCurrentAlertRuleFormState (debounced picker save)', () => {
     assert.match(
       settingsSrc,

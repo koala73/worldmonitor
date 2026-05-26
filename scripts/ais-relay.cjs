@@ -27,6 +27,7 @@ const crypto = require('crypto');
 const v8 = require('v8');
 const { WebSocketServer, WebSocket } = require('ws');
 const { parseProxyConfig, resolveProxyString } = require('./_proxy-utils.cjs');
+const { countryNameToIso2 } = require('./shared/country-name-to-iso2.cjs');
 const parseProxyUrl = parseProxyConfig;
 
 const httpsKeepAliveAgent = new https.Agent({ keepAlive: true, maxSockets: 6, timeout: 60_000 });
@@ -428,25 +429,8 @@ function notifySimpleHash(str) {
   return Math.abs(h).toString(36);
 }
 
-const NOTIFICATION_COUNTRY_NAME_TO_ISO2 = new Map(Object.entries({
-  'bahrain': 'BH',
-  'israel': 'IL',
-  'kuwait': 'KW',
-  'oman': 'OM',
-  'qatar': 'QA',
-  'saudi arabia': 'SA',
-  'uae': 'AE',
-  'united arab emirates': 'AE',
-  'united states': 'US',
-  'usa': 'US',
-}));
-
 function normalizeNotificationCountryCode(raw) {
-  if (typeof raw !== 'string' || raw.trim().length === 0) return undefined;
-  const trimmed = raw.trim();
-  const upper = trimmed.toUpperCase();
-  if (/^[A-Z]{2}$/.test(upper)) return upper;
-  return NOTIFICATION_COUNTRY_NAME_TO_ISO2.get(trimmed.toLowerCase());
+  return countryNameToIso2(raw) ?? undefined;
 }
 
 /**

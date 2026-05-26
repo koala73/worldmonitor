@@ -515,16 +515,17 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         )
           .filter(el => el.classList.contains('us-notif-ch-on'))
           .map(el => el.dataset.channelType as ChannelType);
+        // Picker may be absent during async mount or gated render. In that
+        // case send undefined so insert-capable APIs preserve-on-omit instead
+        // of accidentally clearing the stored country scope.
+        const alertRuleCountries = countryPicker ? countryPicker.getValue() : undefined;
         return {
           enabled: enabledEl?.checked ?? false,
           eventTypes: [],
           sensitivity: (sensitivityEl?.value ?? 'all') as 'all' | 'high' | 'critical',
           channels: connectedChannelTypes,
           aiDigestEnabled: aiDigestEl?.checked ?? true,
-          // The picker is mounted asynchronously after reloadNotifSection
-          // resolves; if it hasn't mounted yet we send undefined so the
-          // server preserves the existing stored value (preserve-on-omit).
-          countries: countryPicker ? countryPicker.getValue() : undefined,
+          countries: alertRuleCountries,
         };
       }
 

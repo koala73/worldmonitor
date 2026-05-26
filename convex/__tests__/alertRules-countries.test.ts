@@ -226,6 +226,20 @@ describe("alertRules.countries — persistence + normalization", () => {
     expect(row?.quietHoursEnabled).toBe(true);
   });
 
+  test("setQuietHoursForUser first-row insert omitting countries leaves countries absent", async () => {
+    const t = convexTest(schema, modules);
+    await t.mutation(internal.alertRules.setQuietHoursForUser, {
+      userId: USER.subject,
+      variant: VARIANT,
+      quietHoursEnabled: true,
+      quietHoursStart: 22,
+      quietHoursEnd: 7,
+    });
+    const row = await readRow(t);
+    expect(row?.countries).toBeUndefined();
+    expect(row?.quietHoursEnabled).toBe(true);
+  });
+
   test("setDigestSettingsForUser first-row insert preserves supplied countries", async () => {
     const t = convexTest(schema, modules);
     await t.mutation(internal.alertRules.setDigestSettingsForUser, {
@@ -237,6 +251,19 @@ describe("alertRules.countries — persistence + normalization", () => {
     });
     const row = await readRow(t);
     expect(row?.countries).toEqual(["IL", "AE"]);
+    expect(row?.digestMode).toBe("daily");
+  });
+
+  test("setDigestSettingsForUser first-row insert omitting countries leaves countries absent", async () => {
+    const t = convexTest(schema, modules);
+    await t.mutation(internal.alertRules.setDigestSettingsForUser, {
+      userId: USER.subject,
+      variant: VARIANT,
+      digestMode: "daily",
+      digestHour: 8,
+    });
+    const row = await readRow(t);
+    expect(row?.countries).toBeUndefined();
     expect(row?.digestMode).toBe("daily");
   });
 });

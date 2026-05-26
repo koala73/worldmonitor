@@ -15,11 +15,17 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
+const {
+  COUNTRY_NAME_TO_ISO2,
+  countryNameToIso2,
+} = require('../scripts/shared/country-name-to-iso2.cjs');
 const relaySrc = readFileSync(
   resolve(__dirname, '..', 'scripts', 'notification-relay.cjs'),
   'utf-8',
@@ -29,27 +35,8 @@ const aisRelaySrc = readFileSync(
   'utf-8',
 );
 
-const EVENT_COUNTRY_NAME_TO_ISO2 = new Map(Object.entries({
-  'bahrain': 'BH',
-  'israel': 'IL',
-  'kuwait': 'KW',
-  'oman': 'OM',
-  'qatar': 'QA',
-  'saudi arabia': 'SA',
-  'uae': 'AE',
-  'united arab emirates': 'AE',
-  'united kingdom': 'GB',
-  'uk': 'GB',
-  'united states': 'US',
-  'usa': 'US',
-}));
-
 function normalizeEventCountryCode(raw) {
-  if (typeof raw !== 'string' || raw.trim().length === 0) return null;
-  const trimmed = raw.trim();
-  const upper = trimmed.toUpperCase();
-  if (/^[A-Z]{2}$/.test(upper)) return upper;
-  return EVENT_COUNTRY_NAME_TO_ISO2.get(trimmed.toLowerCase()) ?? null;
+  return countryNameToIso2(raw);
 }
 
 // Mirror the relay's eventMatchesCountryScope so we can run behavioural
@@ -74,6 +61,29 @@ function eventMatchesCountryScope(event, rule) {
 }
 
 describe('notification-relay eventMatchesCountryScope — source-grep contract', () => {
+  it('publisher and dispatcher both import the shared country-name map', () => {
+    assert.match(
+      relaySrc,
+      /require\(['"]\.\/shared\/country-name-to-iso2\.cjs['"]\)/,
+      'notification-relay must import the shared country-name normalizer',
+    );
+    assert.match(
+      aisRelaySrc,
+      /require\(['"]\.\/shared\/country-name-to-iso2\.cjs['"]\)/,
+      'ais-relay must import the same shared country-name normalizer',
+    );
+    assert.doesNotMatch(
+      relaySrc,
+      /EVENT_COUNTRY_NAME_TO_ISO2\s*=\s*new Map/,
+      'notification-relay must not keep a private country-name map',
+    );
+    assert.doesNotMatch(
+      aisRelaySrc,
+      /NOTIFICATION_COUNTRY_NAME_TO_ISO2\s*=\s*new Map/,
+      'ais-relay must not keep a private country-name map',
+    );
+  });
+
   it('declares eventMatchesCountryScope helper', () => {
     assert.match(
       relaySrc,
@@ -137,6 +147,19 @@ describe('notification-relay eventMatchesCountryScope — source-grep contract',
 });
 
 describe('notification-relay eventMatchesCountryScope — behavioural', () => {
+  it('shared country-name map covers UK aliases used by both publisher and dispatcher', () => {
+    assert.equal(COUNTRY_NAME_TO_ISO2['united kingdom'], 'GB');
+    assert.equal(COUNTRY_NAME_TO_ISO2.uk, 'GB');
+    assert.equal(normalizeEventCountryCode('United Kingdom'), 'GB');
+    assert.equal(normalizeEventCountryCode('UK'), 'GB');
+  });
+
+  it("rule.countries=['GB'] + event.payload.country='United Kingdom' → true", () => {
+    const event = { eventType: 'rss_alert', payload: { country: 'United Kingdom' } };
+    assert.equal(eventMatchesCountryScope(event, { countries: ['GB'] }), true);
+    assert.equal(eventMatchesCountryScope(event, { countries: ['US'] }), false);
+  });
+
   it('rule.countries=[] → all events match', () => {
     const event = { eventType: 'rss_alert', payload: { country: 'US' } };
     assert.equal(eventMatchesCountryScope(event, { countries: [] }), true);
