@@ -169,10 +169,11 @@ export class StrategicRiskPanel extends Panel {
     if (now - this.lastHealthFreshnessRefreshAt < 60_000) return;
     try {
       await refreshDataFreshnessFromHealth({ signal: this.signal });
-      this.lastHealthFreshnessRefreshAt = Date.now();
     } catch (error) {
       // Health is additive; local session freshness remains useful if it fails.
       console.debug('[StrategicRiskPanel] Health freshness fetch failed (non-fatal)', error);
+    } finally {
+      this.lastHealthFreshnessRefreshAt = Date.now();
     }
   }
 

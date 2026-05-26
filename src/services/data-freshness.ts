@@ -312,7 +312,11 @@ class DataFreshnessTracker {
     const freshThreshold = source.maxStaleMin ? source.maxStaleMin * 60_000 : FRESH_THRESHOLD;
     const staleThreshold = source.maxStaleMin ? source.maxStaleMin * 2 * 60_000 : STALE_THRESHOLD;
     const veryStaleThreshold = source.maxStaleMin ? source.maxStaleMin * 3 * 60_000 : VERY_STALE_THRESHOLD;
-    if (age <= freshThreshold) return source.healthStatus === 'COVERAGE_PARTIAL' || source.healthStatus === 'STALE_CONTENT' ? 'stale' : 'fresh';
+    if (age <= freshThreshold) return source.healthStatus === 'COVERAGE_PARTIAL'
+      || source.healthStatus === 'STALE_CONTENT'
+      || source.healthStatus === 'STALE_SEED'
+      ? 'stale'
+      : 'fresh';
     if (age <= staleThreshold) return 'stale';
     if (age <= veryStaleThreshold) return 'very_stale';
     return 'no_data'; // Too old, treat as no data
