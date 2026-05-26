@@ -227,9 +227,18 @@ export async function setCachedJson(key: string, value: unknown, ttlSeconds: num
 const NEG_SENTINEL = '__WM_NEG__';
 const FETCH_ERROR_NEGATIVE_TTL_SECONDS = 30;
 const REDIS_FAILURE_POSITIVE_TTL_SECONDS = 30;
+const LOCAL_FALLBACK_MAX_ENTRIES = 5000;
 
 const localNegativeUntil = new Map<string, number>();
 const localPositiveFallback = new Map<string, { value: unknown; expiresAt: number }>();
+
+function evictOldestLocalFallbackEntries<T>(map: Map<string, T>): void {
+  while (map.size > LOCAL_FALLBACK_MAX_ENTRIES) {
+    const oldestKey = map.keys().next().value;
+    if (oldestKey === undefined) return;
+    map.delete(oldestKey);
+  }
+}
 
 function effectiveFetchErrorNegativeTtlSeconds(negativeTtlSeconds: number): number {
   return Math.max(1, Math.min(negativeTtlSeconds, FETCH_ERROR_NEGATIVE_TTL_SECONDS));
@@ -237,6 +246,7 @@ function effectiveFetchErrorNegativeTtlSeconds(negativeTtlSeconds: number): numb
 
 function armLocalNegativeCooldown(key: string, ttlSeconds: number): void {
   localNegativeUntil.set(key, Date.now() + ttlSeconds * 1000);
+  evictOldestLocalFallbackEntries(localNegativeUntil);
 }
 
 function hasLocalNegativeCooldown(key: string): boolean {
@@ -251,12 +261,15 @@ function effectiveRedisFailurePositiveTtlSeconds(ttlSeconds: number): number {
   return Math.max(1, Math.min(ttlSeconds, REDIS_FAILURE_POSITIVE_TTL_SECONDS));
 }
 
+// Positive fallback is only a short isolate-local bridge for Redis outages.
+// Keep it capped and clamp caller TTLs so stale fresh data never lingers.
 function armLocalPositiveFallback(key: string, value: unknown, ttlSeconds: number): void {
   const effectiveTtlSeconds = effectiveRedisFailurePositiveTtlSeconds(ttlSeconds);
   localPositiveFallback.set(key, {
     value,
     expiresAt: Date.now() + effectiveTtlSeconds * 1000,
   });
+  evictOldestLocalFallbackEntries(localPositiveFallback);
 }
 
 function readLocalPositiveFallback(key: string): unknown | undefined {
@@ -464,6 +477,9 @@ export async function cachedFetchJson<T extends object>(
     .then(async (result) => {
       if (result != null) {
         const wrote = await setCachedJson(key, result, ttlSeconds);
+        // Remote Redis write/read failures should not force every caller back
+        // upstream while the isolate is still warm. Sidecar/local mode skips
+        // this bridge because hasRemoteRedisConfig() is false there.
         if (hadCacheReadError || (!wrote && hasRemoteRedisConfig())) {
           armLocalPositiveFallback(key, result, ttlSeconds);
         }
@@ -568,6 +584,8 @@ export async function cachedFetchJsonWithMeta<T extends object>(
       if (result != null) {
         upstreamStatus = 200;
         const wrote = await setCachedJson(key, result, ttlSeconds);
+        // See cachedFetchJson(): this short in-process bridge is only for
+        // remote Redis outages, not local sidecar cache writes.
         if (hadCacheReadError || (!wrote && hasRemoteRedisConfig())) {
           armLocalPositiveFallback(key, result, ttlSeconds);
         }
