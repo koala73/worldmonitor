@@ -1447,6 +1447,8 @@ export class App {
 
     const toast = document.createElement('div');
     toast.className = 'wm-followed-cap-drop-toast update-toast';
+    toast.setAttribute('role', 'status');
+    toast.setAttribute('aria-live', 'polite');
 
     const body = document.createElement('div');
     body.className = 'update-toast-body';
@@ -1483,7 +1485,7 @@ export class App {
         .closest<HTMLElement>('[data-action]')
         ?.dataset.action;
       if (clickedAction === 'upgrade') {
-        window.open('/pro#pricing', '_blank');
+        window.open('/pro#pricing', '_blank', 'noopener');
         window.clearTimeout(autoTimer);
         toast.remove();
       } else if (clickedAction === 'dismiss') {

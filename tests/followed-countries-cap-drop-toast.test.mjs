@@ -48,8 +48,18 @@ describe('followed countries cap-drop toast wiring', () => {
     );
     assert.match(
       appSrc,
-      /window\.open\('\/pro#pricing', '_blank'\)/,
-      'toast must give the user an upgrade action',
+      /window\.open\('\/pro#pricing', '_blank', 'noopener'\)/,
+      'toast must give the user an upgrade action without exposing window.opener',
+    );
+    assert.match(
+      appSrc,
+      /toast\.setAttribute\('role', 'status'\)/,
+      'toast must announce the cap drop to assistive technology',
+    );
+    assert.match(
+      appSrc,
+      /toast\.setAttribute\('aria-live', 'polite'\)/,
+      'toast announcement should be polite, not interruptive',
     );
   });
 });
