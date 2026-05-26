@@ -95,20 +95,22 @@ const UNAVAILABLE_PAGE = renderErrorPage(
   'The brief service is not fully configured. Please try again shortly.',
 );
 
-const FOLLOWED_COUNTRIES_TIMEOUT_MS = 1500;
+const FOLLOWED_COUNTRIES_TIMEOUT_MS = 500;
 
 /**
  * Best-effort fetch of the recipient's followed-country watchlist for
  * U11 telemetry stamping. Mirrors `scripts/lib/followed-countries-
  * fetch.cjs` but inlined here because that helper is CJS / Node-only
- * and this route runs on the edge runtime. Never throws — every soft-
+ * and this route runs on the edge runtime. Never throws — every soft
  * failure path returns `[]` so the magazine still renders even when
- * the relay is unavailable. The watchlist is purely informational
- * (baked into `data-followed` attributes on source-link anchors);
- * a missing list yields `followed: false` events, which is correct
- * (we cannot prove a follow we couldn't read).
+ * the relay is unavailable. The watchlist is telemetry-only: missing
+ * relay data degrades `data-followed` to "unknown encoded as false"
+ * and never affects visible magazine content.
  */
-async function fetchFollowedCountriesEdge(userId: string): Promise<string[]> {
+async function fetchFollowedCountriesEdge(
+  userId: string,
+  ctx?: { waitUntil: (p: Promise<unknown>) => void },
+): Promise<string[]> {
   const convexSiteUrl =
     process.env.CONVEX_SITE_URL
     ?? (process.env.CONVEX_URL ?? '').replace('.convex.cloud', '.convex.site');
@@ -126,6 +128,15 @@ async function fetchFollowedCountriesEdge(userId: string): Promise<string[]> {
       body: JSON.stringify({ userId }),
       signal: AbortSignal.timeout(FOLLOWED_COUNTRIES_TIMEOUT_MS),
     });
+    if (res.status === 401) {
+      const err = new Error('followed-countries relay returned 401');
+      console.warn('[api/brief] followed-countries relay auth failed');
+      captureSilentError(err, {
+        tags: { route: 'api/brief', step: 'followed-countries-relay', status: '401' },
+        ctx,
+      });
+      return [];
+    }
     if (!res.ok) return [];
     const data = (await res.json()) as { countries?: unknown };
     if (!data || typeof data !== 'object' || !Array.isArray(data.countries)) {
@@ -191,6 +202,11 @@ export default async function handler(
     return htmlResponse(req, 403, FORBIDDEN_PAGE);
   }
 
+  // U11: start the telemetry-only watchlist lookup before the Redis
+  // envelope read so relay latency overlaps the required brief fetch.
+  // The promise never rejects and is bounded by FOLLOWED_COUNTRIES_TIMEOUT_MS.
+  const followedCountriesPromise = fetchFollowedCountriesEdge(userId, ctx);
+
   // The helper throws on infrastructure failure (Upstash down, config
   // missing, parse failure). Only a genuine miss returns null. We must
   // distinguish those two — a reader with a valid brief deserves a
@@ -248,14 +264,12 @@ export default async function handler(
     }
   }
 
-  // U11: stamp the magazine's source-link anchors with `data-followed`
-  // so the inline tracker can emit `brief-thread-open` events with
-  // accurate per-thread follow state. Best-effort — a relay outage,
-  // missing config, or empty watchlist all yield an empty list, which
-  // collapses to `followed: false` on every story (correct: we can't
-  // prove a follow we didn't read). Bounded by FOLLOWED_COUNTRIES_TIMEOUT_MS
-  // so a hung relay never blocks the magazine render past its budget.
-  const followedCountries = await fetchFollowedCountriesEdge(userId);
+  // Stamp source-link anchors with `data-followed` so the inline tracker
+  // can emit `brief-thread-open` events with per-thread follow state.
+  // Best-effort telemetry only: a relay outage, missing config, or
+  // empty watchlist yields an empty list, so all stories stamp
+  // `followed=false`. Visible content and story order are unchanged.
+  const followedCountries = await followedCountriesPromise;
 
   // Cast to BriefEnvelope; renderBriefMagazine runs its own
   // assertBriefEnvelope at the top and will throw on any shape
