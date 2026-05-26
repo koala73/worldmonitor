@@ -6,6 +6,7 @@ import { callLlm } from '../server/_shared/llm.ts';
 const originalFetch = globalThis.fetch;
 const originalGroqApiKey = process.env.GROQ_API_KEY;
 const originalOpenRouterApiKey = process.env.OPENROUTER_API_KEY;
+const originalNovitaApiKey = process.env.NOVITA_API_KEY;
 const originalOllamaApiUrl = process.env.OLLAMA_API_URL;
 const originalLlmApiUrl = process.env.LLM_API_URL;
 const originalLlmApiKey = process.env.LLM_API_KEY;
@@ -18,6 +19,9 @@ afterEach(() => {
 
   if (originalOpenRouterApiKey === undefined) delete process.env.OPENROUTER_API_KEY;
   else process.env.OPENROUTER_API_KEY = originalOpenRouterApiKey;
+
+  if (originalNovitaApiKey === undefined) delete process.env.NOVITA_API_KEY;
+  else process.env.NOVITA_API_KEY = originalNovitaApiKey;
 
   if (originalOllamaApiUrl === undefined) delete process.env.OLLAMA_API_URL;
   else process.env.OLLAMA_API_URL = originalOllamaApiUrl;
@@ -162,5 +166,85 @@ describe('callLlm', () => {
       'https://openrouter.ai/api/v1/chat/completions',
       'https://api.groq.com/openai/v1/chat/completions',
     ]);
+  });
+
+  it('supports novita provider with default model', async () => {
+    process.env.NOVITA_API_KEY = 'novita-test-key';
+    delete process.env.GROQ_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
+    delete process.env.OLLAMA_API_URL;
+    delete process.env.LLM_API_URL;
+    delete process.env.LLM_API_KEY;
+
+    const postBodies: Array<{ url: string; body: Record<string, unknown> }> = [];
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+
+      if ((init?.method || 'GET') === 'GET') {
+        return new Response('', { status: 200 });
+      }
+
+      const body = JSON.parse(String(init?.body || '{}')) as Record<string, unknown>;
+      postBodies.push({ url, body });
+
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: 'novita response' } }],
+        usage: { total_tokens: 50 },
+      }), { status: 200 });
+    }) as typeof fetch;
+
+    const result = await callLlm({
+      messages: [{ role: 'user', content: 'Test Novita integration.' }],
+    });
+
+    assert.ok(result);
+    assert.equal(result.provider, 'novita');
+    assert.equal(result.model, 'moonshotai/kimi-k2.5');
+    assert.equal(postBodies.length, 1);
+    assert.equal(postBodies[0]?.url, 'https://api.novita.ai/openai/v1/chat/completions');
+    assert.equal(postBodies[0]?.body.model, 'moonshotai/kimi-k2.5');
+  });
+
+  it('supports novita provider with model override', async () => {
+    process.env.NOVITA_API_KEY = 'novita-test-key';
+    delete process.env.GROQ_API_KEY;
+    delete process.env.OPENROUTER_API_KEY;
+    delete process.env.OLLAMA_API_URL;
+    delete process.env.LLM_API_URL;
+    delete process.env.LLM_API_KEY;
+
+    const postBodies: Array<{ url: string; body: Record<string, unknown> }> = [];
+
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+
+      if ((init?.method || 'GET') === 'GET') {
+        return new Response('', { status: 200 });
+      }
+
+      const body = JSON.parse(String(init?.body || '{}')) as Record<string, unknown>;
+      postBodies.push({ url, body });
+
+      return new Response(JSON.stringify({
+        choices: [{ message: { content: 'novita glm response' } }],
+        usage: { total_tokens: 75 },
+      }), { status: 200 });
+    }) as typeof fetch;
+
+    const result = await callLlm({
+      messages: [{ role: 'user', content: 'Use GLM model.' }],
+      providerOrder: ['novita'],
+      modelOverrides: {
+        novita: 'zai-org/glm-5',
+      },
+    });
+
+    assert.ok(result);
+    assert.equal(result.provider, 'novita');
+    assert.equal(result.model, 'zai-org/glm-5');
+    assert.equal(postBodies.length, 1);
+    assert.equal(postBodies[0]?.url, 'https://api.novita.ai/openai/v1/chat/completions');
+    assert.equal(postBodies[0]?.body.model, 'zai-org/glm-5');
   });
 });
