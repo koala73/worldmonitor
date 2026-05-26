@@ -1211,15 +1211,43 @@ describe('PRO widget — store and sanitizer', () => {
       !sandbox.includes("endsWith('worldmonitor.app')") && !sandbox.includes('endsWith("worldmonitor.app")'),
       'sandbox must not use raw suffix checks that allow evilworldmonitor.app',
     );
-    const previewPattern = sandbox.match(
-      /\/\^worldmonitor-\[a-z0-9-\]\+-elie-\[a-z0-9\]\+\\\.vercel\\\.app\$\/\.test/,
+    // The sandbox must source allowed Vercel team slugs from a single named
+    // list — keeps the security invariant (team-slug gating) visible and
+    // makes teammate-slug additions a one-line change rather than a regex
+    // rewrite that could accidentally widen the match.
+    const teamListMatch = sandbox.match(
+      /var\s+ALLOWED_VERCEL_TEAM_SLUGS\s*=\s*\[([^\]]*)\];/,
     );
-    assert.ok(previewPattern, 'sandbox must include the approved Vercel preview hostname pattern');
-    const allowedPreview = /^worldmonitor-[a-z0-9-]+-elie-[a-z0-9]+\.vercel\.app$/;
-    assert.equal(allowedPreview.test('worldmonitor-feature-elie-abc123.vercel.app'), true);
-    assert.equal(allowedPreview.test('worldmonitor-feature-attacker-abc123.vercel.app'), false);
-    assert.equal(allowedPreview.test('worldmonitor-feature-elie-abc123.vercel.app.evil.com'), false);
-    assert.equal(allowedPreview.test('evilworldmonitor.app'), false);
+    assert.ok(teamListMatch, 'sandbox must declare ALLOWED_VERCEL_TEAM_SLUGS as a literal array');
+    const slugs = teamListMatch[1]
+      .split(',')
+      .map((s) => s.trim().replace(/^['"]|['"]$/g, ''))
+      .filter(Boolean);
+    assert.ok(slugs.includes('elie'), 'project-owner team slug must remain in the allowlist');
+    for (const slug of slugs) {
+      assert.match(slug, /^[a-z0-9-]+$/, `team slug "${slug}" must be url-safe`);
+    }
+    // Reconstruct the actual match function and exercise it against the
+    // production slug list — this is what protects against regex drift
+    // when teammate slugs are added later.
+    const matchesAllowedTeam = (hostname) =>
+      slugs.some((team) =>
+        new RegExp('^worldmonitor-[a-z0-9-]+-' + team + '-[a-z0-9]+\\.vercel\\.app$').test(hostname),
+      );
+    assert.equal(matchesAllowedTeam('worldmonitor-feature-elie-abc123.vercel.app'), true);
+    assert.equal(matchesAllowedTeam('worldmonitor-feature-attacker-abc123.vercel.app'), false);
+    assert.equal(matchesAllowedTeam('worldmonitor-feature-elie-abc123.vercel.app.evil.com'), false);
+    assert.equal(matchesAllowedTeam('evilworldmonitor.app'), false);
+    // A teammate slug added to the list must extend coverage WITHOUT
+    // matching look-alike teams whose slug merely starts with the same
+    // letters.
+    const withTeammate = ['elie', 'kieran'];
+    const matchesWithTeammate = (hostname) =>
+      withTeammate.some((team) =>
+        new RegExp('^worldmonitor-[a-z0-9-]+-' + team + '-[a-z0-9]+\\.vercel\\.app$').test(hostname),
+      );
+    assert.equal(matchesWithTeammate('worldmonitor-feature-kieran-abc123.vercel.app'), true);
+    assert.equal(matchesWithTeammate('worldmonitor-feature-kieranfake-abc123.vercel.app'), false);
   });
 
   it('widget sandbox behavior accepts Vercel previews and blocks spoofed parents', () => {

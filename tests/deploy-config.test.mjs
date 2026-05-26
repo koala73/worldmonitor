@@ -115,9 +115,14 @@ describe('security header guardrails', () => {
   });
 
   it('keeps COOP/COEP in report-only mode during rollout', () => {
+    // Relative URL so the apex + every variant subdomain (tech/finance/
+    // commodity/happy, all on the same Vercel deployment) reports
+    // same-origin. An absolute apex URL would force cross-origin POSTs
+    // on subdomain hosts with stripped credentials and inconsistent
+    // browser sampling.
     assert.equal(
       getHeaderValue('Reporting-Endpoints'),
-      'wm-coop-coep="https://worldmonitor.app/api/security/report"',
+      'wm-coop-coep="/api/security/report"',
     );
     assert.equal(
       getHeaderValue('Cross-Origin-Opener-Policy-Report-Only'),
@@ -138,7 +143,7 @@ describe('security header guardrails', () => {
     );
     assert.match(
       nginxHeaders,
-      /add_header Reporting-Endpoints "wm-coop-coep=\\"https:\/\/worldmonitor\.app\/api\/security\/report\\"" always;/,
+      /add_header Reporting-Endpoints "wm-coop-coep=\\"\/api\/security\/report\\"" always;/,
     );
     assert.match(
       nginxHeaders,

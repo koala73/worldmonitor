@@ -10,6 +10,26 @@
   var parentOrigin = '';
   var handled = false;
 
+  // Vercel preview hostnames have the shape
+  //   {project-slug}-{branch-slug}-{team-slug}-{hash}.vercel.app
+  // The team-slug segment is the URL-safe Vercel team identifier and is the
+  // load-bearing security invariant: an attacker who registers a Vercel
+  // project named `worldmonitor-...` under their OWN team account would get
+  // a different team-slug, so gating on this list rejects look-alike previews.
+  // Add a teammate's Vercel team slug here when they need to mount PRO
+  // widgets in preview deployments; never widen this to a wildcard.
+  var ALLOWED_VERCEL_TEAM_SLUGS = ['elie'];
+
+  function isAllowedVercelPreview(hostname) {
+    for (var i = 0; i < ALLOWED_VERCEL_TEAM_SLUGS.length; i++) {
+      var team = ALLOWED_VERCEL_TEAM_SLUGS[i];
+      if (!/^[a-z0-9-]+$/.test(team)) continue;
+      var re = new RegExp('^worldmonitor-[a-z0-9-]+-' + team + '-[a-z0-9]+\\.vercel\\.app$');
+      if (re.test(hostname)) return true;
+    }
+    return false;
+  }
+
   function isAllowedParentOrigin(origin) {
     try {
       var url = new URL(origin);
@@ -23,7 +43,7 @@
       if (url.hostname === 'worldmonitor.app' || url.hostname.endsWith('.worldmonitor.app')) {
         return true;
       }
-      return /^worldmonitor-[a-z0-9-]+-elie-[a-z0-9]+\.vercel\.app$/.test(url.hostname);
+      return isAllowedVercelPreview(url.hostname);
     } catch (_err) {
       return false;
     }

@@ -88,7 +88,7 @@
         { "key": "X-Frame-Options", "value": "SAMEORIGIN" },
         { "key": "Strict-Transport-Security", "value": "max-age=63072000; includeSubDomains; preload" },
         { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
-        { "key": "Reporting-Endpoints", "value": "wm-coop-coep=\"https://worldmonitor.app/api/security/report\"" },
+        { "key": "Reporting-Endpoints", "value": "wm-coop-coep=\"/api/security/report\"" },
         { "key": "Cross-Origin-Opener-Policy-Report-Only", "value": "same-origin; report-to=\"wm-coop-coep\"" },
         { "key": "Cross-Origin-Embedder-Policy-Report-Only", "value": "require-corp; report-to=\"wm-coop-coep\"" },
         { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=(self), accelerometer=(), autoplay=(self \"https://www.youtube.com\" \"https://www.youtube-nocookie.com\"), bluetooth=(), display-capture=(), encrypted-media=(self \"https://www.youtube.com\" \"https://www.youtube-nocookie.com\"), gyroscope=(), hid=(), idle-detection=(), magnetometer=(), midi=(), payment=(self \"https://checkout.dodopayments.com\" \"https://test.checkout.dodopayments.com\" \"https://pay.google.com\" \"https://hooks.stripe.com\" \"https://js.stripe.com\"), picture-in-picture=(self \"https://www.youtube.com\" \"https://www.youtube-nocookie.com\" \"https://challenges.cloudflare.com\"), screen-wake-lock=(), serial=(), usb=(), xr-spatial-tracking=(\"https://challenges.cloudflare.com\")" },
