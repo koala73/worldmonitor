@@ -43,12 +43,20 @@ export default async function handler(req: Request): Promise<Response> {
 
   try {
     const body = await listConflictArchiveV5();
+    const count = body.items?.length ?? 0;
+    // Truthful log line — Vercel tags each log with its region, so filtering
+    // by region shows what US users were actually served (not just a 200).
+    console.log(`[conflict-archive:v5] served items=${count}${count === 0 ? ' (EMPTY — not caching)' : ''}`);
     return new Response(JSON.stringify(body), {
       status: 200,
       headers: {
         ...corsHeaders,
         'Content-Type': 'application/json',
-        'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60, stale-if-error=300',
+        // Never cache an empty archive; a populated one gets a long stale
+        // window so a primed region never goes blank through a Redis outage.
+        'Cache-Control': count === 0
+          ? 'no-store'
+          : 'public, s-maxage=60, stale-while-revalidate=600, stale-if-error=86400',
       },
     });
   } catch (err) {
