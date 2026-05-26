@@ -192,6 +192,30 @@ describe('rate-limit fail-open / fail-closed posture (#3531 M9)', () => {
     assert.equal(res.headers.get('X-RateLimit-Mode'), 'degraded');
   });
 
+  it('checkEndpointRateLimit keeps unrecognised paths unguarded even with fail-closed defaults', async () => {
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    const mod = await importFreshRateLimitModule();
+
+    const res = await mod.checkEndpointRateLimit(
+      makeRequest({ 'cf-connecting-ip': '203.0.113.7' }),
+      '/api/not-a-rate-limited-endpoint',
+      {},
+    );
+
+    assert.equal(res, null);
+  });
+
+  it('server rate-limit degraded logs are also sent through Sentry capture', async () => {
+    const fs = await import('node:fs');
+    const src = fs.readFileSync(new URL('../server/_shared/rate-limit.ts', import.meta.url), 'utf8');
+
+    assert.match(src, /import\s+\{\s*captureSilentError\s+\}\s+from\s+['"]\.\.\/\.\.\/api\/_sentry-edge\.js['"]/);
+    assert.match(src, /captureSilentError\(err,\s*\{/);
+    assert.match(src, /surface:\s*'server'/);
+    assert.match(src, /fingerprint:\s*\['rate-limit',\s*'redis-error',\s*stage\]/);
+  });
+
   it('checkScopedRateLimit reports degraded when Upstash env is missing', async () => {
     delete process.env.UPSTASH_REDIS_REST_URL;
     delete process.env.UPSTASH_REDIS_REST_TOKEN;

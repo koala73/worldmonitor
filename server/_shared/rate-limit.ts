@@ -1,5 +1,7 @@
 import { Ratelimit, type Duration } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
+// @ts-expect-error — JS module, no declaration file
+import { captureSilentError } from '../../api/_sentry-edge.js';
 
 let ratelimit: Ratelimit | null = null;
 
@@ -31,6 +33,10 @@ export const UNKNOWN_CLIENT_IP = 'unknown';
 function logRateLimitDegraded(stage: string, err: unknown): void {
   const msg = err instanceof Error ? err.message : String(err);
   console.error(`[rate-limit] redis-error stage=${stage} msg=${msg}`);
+  captureSilentError(err, {
+    tags: { surface: 'server', component: 'rate-limit', stage },
+    fingerprint: ['rate-limit', 'redis-error', stage],
+  });
 }
 
 // Marker header set on every degraded (fail-closed) response so observability
