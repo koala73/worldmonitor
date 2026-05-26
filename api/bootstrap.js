@@ -200,22 +200,44 @@ async function setCachedJsonBatch(entries, ttlSeconds) {
 // ── Upstream fetch ─────────────────────────────────────────────────
 
 async function fetchUpstreamBootstrap(tier) {
+  const url = `${UPSTREAM_BASE}/api/bootstrap?tier=${tier}`;
+  // The Vercel region this function ran in. The upstream's Cloudflare appears
+  // to block SOME of Vercel's egress IPs (the 401s are intermittent) — logging
+  // the region on both success and failure lets us see whether the blocks
+  // cluster in one region (e.g. iad1/US), which would explain a region-specific
+  // conversion impact while other regions stay healthy.
+  const region = process.env.VERCEL_REGION || '-';
   try {
-    const resp = await fetch(`${UPSTREAM_BASE}/api/bootstrap?tier=${tier}`, {
+    const resp = await fetch(url, {
       headers: UPSTREAM_HEADERS,
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
     if (!resp.ok) {
-      console.warn(`[upstream] bootstrap/${tier} → HTTP ${resp.status}`);
+      // A bare status code can't tell us WHY upstream rejects us. Capture the
+      // body + telling headers so we can distinguish:
+      //   • auth failure  → JSON error body and/or `www-authenticate`
+      //   • Cloudflare bot-block → `cf-ray` + `cf-mitigated`, HTML "Just a
+      //     moment…" / "Attention Required" body, `server: cloudflare`
+      //   • rate limiting → `retry-after` / 429-style body
+      // Body is truncated + whitespace-collapsed to keep the log line readable.
+      const bodyText = await resp.text().catch(() => '');
+      const h = (k) => resp.headers.get(k) || '-';
+      console.warn(
+        `[upstream] bootstrap/${tier} → HTTP ${resp.status} region=${region} ${url} ` +
+        `ct="${h('content-type')}" server="${h('server')}" ` +
+        `cf-ray=${h('cf-ray')} cf-mitigated=${h('cf-mitigated')} ` +
+        `www-authenticate="${h('www-authenticate')}" retry-after=${h('retry-after')} ` +
+        `body="${bodyText.slice(0, 300).replace(/\s+/g, ' ').trim()}"`,
+      );
       return null;
     }
     const body = await resp.json();
     if (!body?.data) return null;
     const keys = Object.keys(body.data);
-    console.log(`[upstream] bootstrap/${tier} → ${keys.length} keys fetched`);
+    console.log(`[upstream] bootstrap/${tier} → ${keys.length} keys fetched region=${region}`);
     return body.data;
   } catch (err) {
-    console.warn(`[upstream] bootstrap/${tier} failed:`, err?.message || err);
+    console.warn(`[upstream] bootstrap/${tier} failed region=${region}:`, err?.message || err);
     return null;
   }
 }
