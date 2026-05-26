@@ -499,6 +499,7 @@ export interface GetEuFsiResponse {
   history: EuFsiObservation[];
   seededAt: string;
   unavailable: boolean;
+  stale: boolean;
 }
 
 export interface EuFsiObservation {

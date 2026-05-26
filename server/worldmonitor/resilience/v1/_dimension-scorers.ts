@@ -73,6 +73,14 @@ interface WeightedMetric {
   // T1.7 schema pass: populated only when imputed=true so weightedBlend can
   // aggregate a dominant class at the dimension level.
   imputationClass?: ImputationClass;
+  // #3787 follow-up: design-time weight, used as the coverage-computation
+  // denominator share when the runtime `weight` has been attenuated by a
+  // confidence factor (e.g. langFactor in scoreInformationCognitive). Without
+  // this, attenuating `weight` shrinks the coverage denominator alongside the
+  // numerator and the dimension reports a HIGHER coverage for sparse-coverage
+  // countries — the inverse of the intended semantic. Omit when `weight` is
+  // already the nominal design-time value (default = weight).
+  nominalWeight?: number;
 }
 
 // Four-class imputation taxonomy (Phase 1 T1.7 of the country-resilience
@@ -648,12 +656,25 @@ function weightedBlend(metrics: WeightedMetric[]): ResilienceDimensionScore {
 
   const weightedScore = available.reduce((sum, metric) => sum + (metric.score || 0) * metric.weight, 0) / availableWeight;
 
-  // Coverage: weighted average of certainty per metric.
-  // Real data → 1.0; imputed (certaintyCoverage set) → partial; absent (null, no imputation) → 0.
+  // Coverage: weighted average of certainty per metric, computed against the
+  // NOMINAL design-time weight rather than the runtime weight. Real data → 1.0;
+  // imputed (certaintyCoverage set) → partial; absent (null, no imputation) → 0.
+  //
+  // The nominalWeight vs weight split matters whenever a caller attenuates
+  // `weight` by a confidence factor (e.g. scoreInformationCognitive scales
+  // velocity/threat sub-indicator weights by langFactor). If coverage were
+  // computed against the attenuated weights, the denominator would shrink
+  // alongside the numerator and sparse-coverage countries would report a
+  // HIGHER coverage than primary-coverage ones — the inverse of the intended
+  // semantic (#3787). Using nominalWeight keeps coverage as a stable
+  // measurement of "what fraction of designed signal we observed", independent
+  // of the confidence weighting applied to the score.
+  const totalNominalWeight = metrics.reduce((sum, metric) => sum + (metric.nominalWeight ?? metric.weight), 0);
   const weightedCertainty = metrics.reduce((sum, metric) => {
     const certainty = metric.certaintyCoverage ?? (metric.score != null ? 1 : 0);
-    return sum + metric.weight * certainty;
-  }, 0) / totalWeight;
+    const nominalWeight = metric.nominalWeight ?? metric.weight;
+    return sum + nominalWeight * certainty;
+  }, 0) / totalNominalWeight;
 
   // Track provenance: observed (real data) vs imputed weight.
   // Metrics with imputed=true → imputed (synthetic absence-based scores).
@@ -722,16 +743,75 @@ function matchesCountryIdentifier(value: unknown, countryCode: string): boolean 
   return getCountryAliases(countryCode).has(normalized);
 }
 
-const AMBIGUOUS_ALIASES = new Set([
-  'guinea', 'congo', 'niger', 'samoa', 'sudan', 'korea', 'virgin', 'georgia', 'dominica',
+// Per-alias disambiguation. The previous AMBIGUOUS_ALIASES blocklist
+// silently zeroed Reddit velocity for any country whose only alias was
+// ambiguous (Niger, Georgia, Guinea, Samoa, Sudan, Dominica — see #3744).
+// Replaced with predicates that accept the match only when surrounding
+// context rules out the colliding token. Aliases not listed here are
+// matched unconditionally.
+//
+// Markers preferred over name forms because COUNTRY_NAME_ALIASES is built
+// from shared/country-names.json and may not contain every directional
+// variant.
+const GEORGIA_COUNTRY_MARKERS = [
+  'tbilisi', 'georgian', 'abkhazia', 'ossetia', 'caucasus',
+  'saakashvili', 'ivanishvili', 'batumi', 'kutaisi',
+];
+
+type DisambiguationPredicate = (paddedInput: string) => boolean;
+
+const DISAMBIGUATION_RULES = new Map<string, DisambiguationPredicate>([
+  ['niger', (s) => hasBareToken(s, 'niger', {
+    notFollowedBy: ['river', 'delta', 'state', 'basin'],
+  })],
+  ['sudan', (s) => hasBareToken(s, 'sudan', { notPrecededBy: ['south'] })],
+  ['samoa', (s) => hasBareToken(s, 'samoa', { notPrecededBy: ['american'] })],
+  ['guinea', (s) => hasBareToken(s, 'guinea', {
+    notPrecededBy: ['equatorial', 'new'],
+    notFollowedBy: ['bissau'],
+  })],
+  ['congo', (s) => hasBareToken(s, 'congo', {
+    notPrecededBy: ['dr', 'drc', 'democratic', 'kinshasa'],
+    notFollowedBy: ['kinshasa', 'dem'],
+  })],
+  ['georgia', (s) => GEORGIA_COUNTRY_MARKERS.some((m) => s.includes(` ${m} `))],
 ]);
 
-function matchesCountryText(value: unknown, countryCode: string): boolean {
+function hasBareToken(
+  paddedInput: string,
+  token: string,
+  opts: { notPrecededBy?: string[]; notFollowedBy?: string[] },
+): boolean {
+  const target = ` ${token} `;
+  let idx = paddedInput.indexOf(target);
+  while (idx !== -1) {
+    let ok = true;
+    if (opts.notPrecededBy) {
+      const beforeStart = paddedInput.lastIndexOf(' ', idx - 1);
+      const beforeWord = paddedInput.slice(beforeStart + 1, idx);
+      if (opts.notPrecededBy.includes(beforeWord)) ok = false;
+    }
+    if (ok && opts.notFollowedBy) {
+      const afterStart = idx + target.length - 1;
+      const afterEnd = paddedInput.indexOf(' ', afterStart + 1);
+      const afterWord = paddedInput.slice(afterStart + 1, afterEnd === -1 ? paddedInput.length : afterEnd);
+      if (opts.notFollowedBy.includes(afterWord)) ok = false;
+    }
+    if (ok) return true;
+    idx = paddedInput.indexOf(target, idx + 1);
+  }
+  return false;
+}
+
+export function matchesCountryText(value: unknown, countryCode: string): boolean {
   const normalized = normalizeCountryToken(value);
   if (!normalized) return false;
+  const padded = ` ${normalized} `;
   for (const alias of COUNTRY_NAME_ALIASES.get(countryCode.toUpperCase()) ?? []) {
-    if (AMBIGUOUS_ALIASES.has(alias)) continue;
-    if (` ${normalized} `.includes(` ${alias} `)) return true;
+    if (!padded.includes(` ${alias} `)) continue;
+    const rule = DISAMBIGUATION_RULES.get(alias);
+    if (rule && !rule(padded)) continue;
+    return true;
   }
   return false;
 }
@@ -1856,6 +1936,20 @@ export async function scoreSocialCohesion(
   return weightedBlend([gpiRow, displacementRow, unrestRow]);
 }
 
+// #3737 — despite the legacy `scoreBorderSecurity` / `borderSecurity` name,
+// this scorer measures UCDP armed-conflict event intensity and UNHCR
+// refugee displacement. It does NOT measure border-control infrastructure,
+// customs throughput, or cross-border-crime enforcement.
+//
+// The user-facing label is "Conflict" / "Conflict & Displacement" in the
+// widget and methodology docs respectively. The internal identifier is
+// retained as `borderSecurity` because the proto enum, Redis cache prefixes,
+// snapshot fixtures, and dozens of downstream tests are keyed on it — a
+// rename would cascade through ~100 files for a string the user never sees.
+//
+// If/when this dimension is replaced with genuine border-control indicators
+// (UNODC cross-border crime, FRONTEX/WCO data, CBP seizure stats), introduce
+// the new dimension under a fresh id and migrate cleanly.
 export async function scoreBorderSecurity(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
@@ -1909,14 +2003,36 @@ export async function scoreInformationCognitive(
   const velocity = summarizeSocialVelocity(socialVelocityRaw, countryCode);
   const threatScore = getThreatSummaryScore(threatSummaryRaw, countryCode);
 
+  // Language-coverage adjustment (fixes #3736).
+  //
+  // The previous implementation divided raw velocity + threatScore by
+  // `langFactor` (range 0.2..1.0), which AMPLIFIED signal for countries with
+  // sparse English-language news coverage by up to 5x. Effect: a small uptick
+  // in coverage-poor countries scored worse than a substantial signal in
+  // coverage-rich ones — exactly the inverse of what the data justifies.
+  //
+  // Correct framing: sparse English coverage means LOW CONFIDENCE in the
+  // observable velocity/threat sub-signals, not a higher inferred underlying
+  // signal. Apply `langFactor` to the WEIGHT of those sub-indicators, not to
+  // the signal value itself. Raw signals flow through unchanged; coverage-poor
+  // countries lean more heavily on the static RSF press-freedom indicator
+  // (which IS coverage-independent and the most reliable annual signal).
+  //
+  // #3787 follow-up: the velocity/threat sub-indicators also pass `nominalWeight`
+  // so that `weightedBlend` computes the dimension's `coverage` field against
+  // the un-attenuated design-time weights (0.15 + 0.30 + 0.55 = 1.0). Without
+  // this, attenuating `weight` would shrink the coverage denominator alongside
+  // the numerator, and a minimal-coverage country reporting the same data shape
+  // as a primary-coverage country would inadvertently report a HIGHER coverage
+  // value — the inverse of the intended semantic. With nominalWeight, coverage
+  // stays a stable measurement of "what fraction of designed signal we observed"
+  // independent of the confidence-weighting applied to the score.
   const langFactor = getLanguageCoverageFactor(countryCode);
-  const adjustedVelocity = velocity > 0 ? Math.min(velocity / Math.max(langFactor, 0.1), 1000) : 0;
-  const adjustedThreat = threatScore != null ? Math.min(threatScore / Math.max(langFactor, 0.1), 100) : null;
 
   return weightedBlend([
     { score: rsfScore == null ? null : normalizeLowerBetter(rsfScore, 0, 100), weight: 0.55 },
-    { score: adjustedVelocity > 0 ? normalizeLowerBetter(Math.log10(adjustedVelocity + 1), 0, 3) : null, weight: 0.15 },
-    { score: adjustedThreat == null ? null : normalizeLowerBetter(adjustedThreat, 0, 20), weight: 0.3 },
+    { score: velocity > 0 ? normalizeLowerBetter(Math.log10(velocity + 1), 0, 3) : null, weight: 0.15 * langFactor, nominalWeight: 0.15 },
+    { score: threatScore == null ? null : normalizeLowerBetter(threatScore, 0, 20), weight: 0.30 * langFactor, nominalWeight: 0.30 },
   ]);
 }
 
@@ -1981,6 +2097,14 @@ interface RecoveryFiscalSpaceCountry {
   fiscalBalancePct?: number | null;
   debtToGdpPct?: number | null;
   year?: number | null;
+  // Gap-indicator fields (schemaVersion 2). Only populated when all 5
+  // formula inputs share a common WEO year per latestCommonYear() in the
+  // seeder. Otherwise null; the scorer's weightedBlend redistributes.
+  primaryBalancePct?: number | null;
+  realGdpGrowthPct?: number | null;
+  inflationPct?: number | null;
+  debtSustainabilityGapPct?: number | null;
+  gapYear?: number | null;
 }
 
 interface RecoveryReserveAdequacyCountry {
@@ -2027,10 +2151,17 @@ export async function scoreFiscalSpace(
     };
   }
 
+  // Weight rebalance + new indicator (debtSustainabilityGap) per
+  // plans/add-debt-sustainability-gap-indicator.md. The gap (pb − pb*)
+  // is the most informative single fiscal signal — it integrates pb, r,
+  // g, and d with their interaction term — and earns the largest slice.
+  // The other three are co-signals confirming the direction.
+  //   sum = 0.25 + 0.20 + 0.20 + 0.35 = 1.0
   return weightedBlend([
-    { score: entry.govRevenuePct == null ? null : normalizeHigherBetter(entry.govRevenuePct, 5, 45), weight: 0.4 },
-    { score: entry.fiscalBalancePct == null ? null : normalizeHigherBetter(entry.fiscalBalancePct, -15, 5), weight: 0.3 },
-    { score: entry.debtToGdpPct == null ? null : normalizeLowerBetter(entry.debtToGdpPct, 0, 150), weight: 0.3 },
+    { score: entry.govRevenuePct == null ? null : normalizeHigherBetter(entry.govRevenuePct, 5, 45), weight: 0.25 },
+    { score: entry.fiscalBalancePct == null ? null : normalizeHigherBetter(entry.fiscalBalancePct, -15, 5), weight: 0.20 },
+    { score: entry.debtToGdpPct == null ? null : normalizeLowerBetter(entry.debtToGdpPct, 0, 150), weight: 0.20 },
+    { score: entry.debtSustainabilityGapPct == null ? null : normalizeHigherBetter(entry.debtSustainabilityGapPct, -5, 3), weight: 0.35 },
   ]);
 }
 

@@ -267,6 +267,16 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
     // through this gate.
     ['Failed to fetch', 'TypeError'],
     ['TypeError: Failed to fetch', 'TypeError'],
+    // Safari module-loader abort / streaming-fetch interruption
+    // (WORLDMONITOR-RF). iOS Safari fires `SyntaxError: Unexpected EOF`
+    // via `onunhandledrejection` with no captured frames when a dynamic
+    // `import()` or service-worker-mediated fetch is truncated mid-stream
+    // during PWA lifecycle transitions. Our own `JSON.parse` produces
+    // engine-prefixed phrasings (V8: `Unexpected end of JSON input`;
+    // Safari: `JSON Parse error: Unexpected EOF`) — bare `Unexpected EOF`
+    // is engine-emitted only.
+    ['Unexpected EOF', 'SyntaxError'],
+    ['SyntaxError: Unexpected EOF', 'SyntaxError'],
   ];
 
   for (const [msg, type] of zeroFrameErrors) {

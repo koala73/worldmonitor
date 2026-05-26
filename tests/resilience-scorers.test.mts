@@ -149,13 +149,19 @@ describe('resilience scorer contracts', () => {
     // per-capita normalized (review fix: it's an event-count-scaled term,
     // not dimensionless), accounting for the additional +1.0pt vs the
     // initial commit's 65.25 expectation.
+    // Plan 2026-05-12 debtSustainabilityGap addition: recovery 48.75 → 49.63.
+    // The new gap indicator (weight 0.35) inside fiscalSpace lifts the US
+    // fiscalSpace sub-score because the fixture's gap value (0.02, near
+    // debt-stabilizing) normalizes to ~63 against the -5/+3 goalposts,
+    // higher than the level-only blend the previous weights produced for
+    // a country with debt=122% GDP.
     assert.deepEqual(domainAverages, {
       economic: 53.25,
       infrastructure: 79,
       energy: 80,
       'social-governance': 66.25,
       'health-food': 60.5,
-      recovery: 48.75,
+      recovery: 49.63,
     });
 
     function round(v: number, d = 2) { return Number(v.toFixed(d)); }
@@ -211,7 +217,11 @@ describe('resilience scorer contracts', () => {
     // sovereignFiscalBuffer at IMPUTE 50/0.3 since US has no SWF
     // manifest entry — fixture defaults). Halving its already-low
     // contribution lifts the baseline mean.
-    assert.equal(baselineScore, 62.72);
+    // Plan 2026-05-12 debtSustainabilityGap addition: 62.72 → 63.29.
+    // fiscalSpace re-weighting (0.4/0.3/0.3 → 0.25/0.20/0.20/0.35) +
+    // new gap sub-score lifts US fiscalSpace, which is in the recovery
+    // domain feeding the baseline aggregate.
+    assert.equal(baselineScore, 63.29);
     // PR 3 §3.5: 65.84 → 67.85 (fuelStockDays retirement) → 67.21
     // (currencyExternal rebuilt on IMF inflation + WB reserves, coverage
     // shifts and US stress score moves).
@@ -292,7 +302,8 @@ describe('resilience scorer contracts', () => {
     // by ~+0.86 (imputed dims contribute less, population-normalized
     // event-counts boost socialCohesion + borderSecurity for high-pop
     // countries).
-    assert.equal(overallScore, 65.64);
+    // Plan 2026-05-12 debtSustainabilityGap addition: 65.64 → 66.02.
+    assert.equal(overallScore, 66.02);
   });
 
   it('baselineScore is computed from baseline + mixed dimensions only', async () => {
@@ -398,7 +409,10 @@ describe('resilience scorer contracts', () => {
     // a couple of WTO/BIS imputes); U6 per-capita normalization (incl.
     // typeWeight per the review fix) bumps social-cohesion + border-
     // security for the US (333M pop) since event-counts/M are tiny.
-    assert.equal(expected, 65.64, 'overallScore should match sum(domainScore * domainWeight); plan 002 §U4+§U6 64.78 → 65.64');
+    // Plan 2026-05-12 debtSustainabilityGap addition: 65.64 → 66.02.
+    // Recovery domain lifts by ~0.88 (48.75 → 49.63) which translates to
+    // overall +0.38 at the recovery domain weight.
+    assert.equal(expected, 66.02, 'overallScore should match sum(domainScore * domainWeight); plan 002 §U4+§U6 64.78 → 65.64 → plan 2026-05-12 → 66.02');
   });
 
   it('stressFactor is still computed (informational) and clamped to [0, 0.5]', () => {

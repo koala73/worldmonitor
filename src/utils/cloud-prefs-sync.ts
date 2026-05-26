@@ -16,7 +16,12 @@ import { CLOUD_SYNC_KEYS, type CloudSyncKey } from './sync-keys';
 import { isDesktopRuntime } from '@/services/runtime';
 import { getClerkToken } from '@/services/clerk';
 import { FEEDS } from '@/config/feeds';
-import { applyMigrationChain, buildMigrations } from './cloud-prefs-migrations';
+import {
+  applyMigrationChain,
+  buildMigrations,
+  mergeCloudWithLocalDirty,
+  settledDirtyKeys,
+} from './cloud-prefs-migrations';
 
 const ENABLED = import.meta.env.VITE_CLOUD_PREFS_ENABLED === 'true';
 
@@ -65,6 +70,32 @@ let _currentVariant = 'full';
 let _installed = false;
 let _suppressPatch = false; // prevents applyCloudBlob from re-triggering upload
 let _cachedToken: string | null = null; // synchronous token cache for flush()
+
+// Sync keys the user has mutated locally since the last clean upload. On a
+// 409 CONFLICT we must NOT overwrite these with the cloud blob — they are
+// the edits the user just made (e.g. a watchlist typed seconds ago). The
+// install() setItem/removeItem patch records them; a clean upload clears the
+// SETTLED ones. See resolveConflictWithMerge + mergeCloudWithLocalDirty.
+const _dirtyKeys = new Set<CloudSyncKey>();
+
+/**
+ * Clear dirty keys that a just-succeeded upload actually durably synced —
+ * NOT the whole set. A user can mutate another pref *while postCloudPrefs is
+ * in flight*: the setItem patch marks it dirty, but it was never in the
+ * posted blob. Blanket-clearing would drop that tracking, so a subsequent
+ * 409 would see an empty dirty set and mergeCloudWithLocalDirty would let
+ * applyCloudBlob clobber the just-made edit — the very bug this set exists
+ * to prevent.
+ *
+ * The "settled" decision is the pure `settledDirtyKeys` (testable without
+ * the sync runtime): a key is settled iff the posted value still equals the
+ * current local value.
+ */
+function clearSettledDirtyKeys(postedBlob: Record<string, string>): void {
+  for (const key of settledDirtyKeys(postedBlob, buildCloudBlob(), _dirtyKeys)) {
+    _dirtyKeys.delete(key as CloudSyncKey);
+  }
+}
 
 // ── 503 retry tracking ───────────────────────────────────────────────────────
 //
@@ -320,6 +351,41 @@ async function postCloudPrefs(
 
 // ── Core logic ────────────────────────────────────────────────────────────────
 
+/**
+ * Resolve a 409 CONFLICT without losing local edits. Fetch the fresh cloud
+ * row, merge the user's locally-dirty keys over it (mergeCloudWithLocalDirty),
+ * apply the merge to localStorage, and re-post. On success the dirty set is
+ * cleared and state goes 'synced'; on a second conflict or a failed fetch the
+ * dirty set is preserved so the next pref change / sign-in retries.
+ *
+ * Replaces the previous "fetch cloud → applyCloudBlob → re-post buildCloudBlob"
+ * path, which overwrote localStorage with the cloud blob *before* rebuilding
+ * the post body — silently discarding the edit the user had just made (e.g. a
+ * watchlist typed seconds earlier, then lost on the debounced upload's 409).
+ */
+async function resolveConflictWithMerge(token: string, variant: string): Promise<boolean> {
+  const fresh = await fetchCloudPrefs(token, variant);
+  if (!fresh) {
+    setState('error');
+    return false;
+  }
+  const migratedCloud = applyMigrations(fresh.data, fresh.schemaVersion ?? 1);
+  const merged = mergeCloudWithLocalDirty(migratedCloud, buildCloudBlob(), _dirtyKeys);
+  applyCloudBlob(merged);
+  setSyncVersion(fresh.syncVersion);
+  setLocalSchemaVersion(CURRENT_PREFS_SCHEMA_VERSION);
+  const retry = await postCloudPrefs(token, variant, merged, fresh.syncVersion);
+  if ('conflict' in retry) {
+    setState('conflict');
+    return false;
+  }
+  setSyncVersion(retry.syncVersion);
+  clearSettledDirtyKeys(merged);
+  Storage.prototype.setItem.call(localStorage, KEY_LAST_SYNC_AT, String(Date.now()));
+  setState('synced');
+  return true;
+}
+
 export async function onSignIn(userId: string, variant: string): Promise<void> {
   if (!isEnabled()) return;
 
@@ -347,18 +413,23 @@ export async function onSignIn(userId: string, variant: string): Promise<void> {
 
       const migrated = applyMigrations(cloud.data, cloud.schemaVersion ?? 1);
       const migrationChanged = (cloud.schemaVersion ?? 1) < CURRENT_PREFS_SCHEMA_VERSION;
-      applyCloudBlob(migrated);
+      // Cloud is ahead, but the user may have un-uploaded local edits — e.g.
+      // onSignIn re-fired by a 503 retry after the user changed a pref. Merge
+      // those dirty keys over the cloud blob instead of clobbering them.
+      const hasDirty = _dirtyKeys.size > 0;
+      const toApply = hasDirty
+        ? mergeCloudWithLocalDirty(migrated, buildCloudBlob(), _dirtyKeys)
+        : migrated;
+      applyCloudBlob(toApply);
       setSyncVersion(cloud.syncVersion);
       // After applyCloudBlob, local data IS at CURRENT schema (applyMigrations
       // ran every step from cloud.schemaVersion to CURRENT). Mark it so the
       // post paths don't redundantly re-run migrations on already-clean data.
       setLocalSchemaVersion(CURRENT_PREFS_SCHEMA_VERSION);
-      // If applyMigrations advanced the schema, force an upload so the cloud
-      // row's schemaVersion catches up. Without this, the cloud blob stays at
-      // the old schemaVersion and the migration re-runs on every load until
-      // any user pref change happens to fire schedulePrefUpload organically.
-      // Idempotent migrations make that harmless but wasteful and noisy.
-      if (migrationChanged) schedulePrefUpload(variant);
+      // Force an upload when the cloud row's schemaVersion is behind (so it
+      // catches up — otherwise the migration re-runs every load) OR when we
+      // merged in local dirty keys the cloud row doesn't have yet.
+      if (migrationChanged || hasDirty) schedulePrefUpload(variant);
       Storage.prototype.setItem.call(localStorage, KEY_LAST_SYNC_AT, String(Date.now()));
 
       if (isFirstEverSync && prevBlobJson && Object.keys(cloud.data).length > 0) {
@@ -377,19 +448,13 @@ export async function onSignIn(userId: string, variant: string): Promise<void> {
       const result = await postCloudPrefs(token, variant, blob, getSyncVersion());
 
       if ('conflict' in result) {
-        setState('conflict');
-        const fresh = await fetchCloudPrefs(token, variant);
-        if (fresh) {
-          const migrated = applyMigrations(fresh.data, fresh.schemaVersion ?? 1);
-          applyCloudBlob(migrated);
-          setSyncVersion(fresh.syncVersion);
-          setLocalSchemaVersion(CURRENT_PREFS_SCHEMA_VERSION);
-          setState('synced');
-        } else {
-          setState('error');
-        }
+        // Merge instead of clobber — see resolveConflictWithMerge. The old
+        // path here applied the cloud blob over localStorage and stopped,
+        // discarding the local edits this branch was trying to upload.
+        await resolveConflictWithMerge(token, variant);
       } else {
         setSyncVersion(result.syncVersion);
+        clearSettledDirtyKeys(blob);
         Storage.prototype.setItem.call(localStorage, KEY_LAST_SYNC_AT, String(Date.now()));
         setState('synced');
       }
@@ -452,6 +517,9 @@ export function onSignOut(): void {
   clearRetryTimer();
   _authGeneration += 1;
   _cachedToken = null;
+  // Dirty-key tracking is per-user session state — drop it so edits made by
+  // the next signed-in user don't merge against the prior user's pending set.
+  _dirtyKeys.clear();
 
   // Preserve prefs; only clear sync metadata
   localStorage.removeItem(KEY_SYNC_VERSION);
@@ -475,30 +543,19 @@ async function uploadNow(variant: string): Promise<void> {
   setState('syncing');
 
   try {
-    const result = await postCloudPrefs(token, variant, migrateLocalBlobIfNeeded(), getSyncVersion());
+    const postedBlob = migrateLocalBlobIfNeeded();
+    const result = await postCloudPrefs(token, variant, postedBlob, getSyncVersion());
 
     if ('conflict' in result) {
       setState('conflict');
-      const fresh = await fetchCloudPrefs(token, variant);
-      if (fresh) {
-        const migrated = applyMigrations(fresh.data, fresh.schemaVersion ?? 1);
-        applyCloudBlob(migrated);
-        setSyncVersion(fresh.syncVersion);
-        // applyCloudBlob just put migrated data into local at CURRENT schema.
-        setLocalSchemaVersion(CURRENT_PREFS_SCHEMA_VERSION);
-        const retryResult = await postCloudPrefs(token, variant, buildCloudBlob(), fresh.syncVersion);
-        if (!('conflict' in retryResult)) {
-          setSyncVersion(retryResult.syncVersion);
-          Storage.prototype.setItem.call(localStorage, KEY_LAST_SYNC_AT, String(Date.now()));
-          setState('synced');
-        } else {
-          setState('conflict');
-        }
-      } else {
-        setState('error');
-      }
+      // Merge the user's locally-dirty keys over the fresh cloud row instead
+      // of overwriting localStorage with cloud (the old path did
+      // applyCloudBlob(cloud) then re-posted buildCloudBlob() — which by then
+      // WAS the cloud blob, so the user's just-made edit was silently lost).
+      await resolveConflictWithMerge(token, variant);
     } else {
       setSyncVersion(result.syncVersion);
+      clearSettledDirtyKeys(postedBlob);
       Storage.prototype.setItem.call(localStorage, KEY_LAST_SYNC_AT, String(Date.now()));
       setState('synced');
     }
@@ -573,6 +630,7 @@ export function install(variant: string): void {
   Storage.prototype.setItem = function setItem(key: string, value: string) {
     originalSetItem.call(this, key, value);
     if (this === localStorage && !_suppressPatch && CLOUD_SYNC_KEYS.includes(key as CloudSyncKey)) {
+      _dirtyKeys.add(key as CloudSyncKey);
       schedulePrefUpload(_currentVariant);
     }
   };
@@ -581,6 +639,7 @@ export function install(variant: string): void {
   Storage.prototype.removeItem = function removeItem(key: string) {
     originalRemoveItem.call(this, key);
     if (this === localStorage && !_suppressPatch && CLOUD_SYNC_KEYS.includes(key as CloudSyncKey)) {
+      _dirtyKeys.add(key as CloudSyncKey);
       schedulePrefUpload(_currentVariant);
     }
   };

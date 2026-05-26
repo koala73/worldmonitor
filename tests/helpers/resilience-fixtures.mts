@@ -433,8 +433,23 @@ export const RESILIENCE_FIXTURES: FixtureMap = {
   },
   'resilience:recovery:fiscal-space:v1': {
     countries: {
-      NO: { govRevenuePct: 42, fiscalBalancePct: 10, debtToGdpPct: 40, year: 2025 },
-      US: { govRevenuePct: 30, fiscalBalancePct: -6, debtToGdpPct: 122, year: 2025 },
+      // NO: full gap inputs — strong fiscal position, debt path declining
+      // (gap ≈ +11.4 → clamps to 100 against -5/+3 goalposts).
+      NO: {
+        govRevenuePct: 42, fiscalBalancePct: 10, debtToGdpPct: 40, year: 2025,
+        primaryBalancePct: 11, realGdpGrowthPct: 1, inflationPct: 2.5,
+        debtSustainabilityGapPct: 11.4, gapYear: 2025,
+      },
+      // US: full gap inputs — near debt-stabilizing point (gap ≈ 0.02 →
+      // normalized score ≈ 63 against -5/+3 goalposts).
+      US: {
+        govRevenuePct: 30, fiscalBalancePct: -6, debtToGdpPct: 122, year: 2025,
+        primaryBalancePct: -3, realGdpGrowthPct: 2, inflationPct: 3,
+        debtSustainabilityGapPct: 0.02, gapYear: 2025,
+      },
+      // YE: fiscal-3 only, no gap inputs (realistic for data-sparse country).
+      // Scorer's weightedBlend redistributes weight across the 3 populated
+      // indicators, demonstrating null-gap fallback behavior.
       YE: { govRevenuePct: 8, fiscalBalancePct: -10, debtToGdpPct: 80, year: 2024 },
     },
     seededAt: '2026-04-04T00:00:00.000Z',

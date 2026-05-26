@@ -24,6 +24,14 @@
  */
 
 import { loadEnvFile, CHROME_UA, runSeed, writeExtraKey, extendExistingTtl, writeSeedMeta } from './_seed-utils.mjs';
+import { tokensToContentMeta, DAY_MIN } from './_content-age-helpers.mjs';
+
+// Content-age budget — the canonical key holds the quarterly BIS WS_DSR
+// debt-service-ratio series. BIS publishes DSR quarterly with a ~2-quarter
+// lag, so the newest period is normally ~6–9 months old. 15 months clears
+// that plus a missed publish; STALE_CONTENT fires if BIS stops publishing DSR.
+// (SPP/CPP go to independent keys and are not modelled here.) See #3845.
+const BIS_DSR_MAX_CONTENT_AGE_MIN = 15 * 30 * DAY_MIN;
 
 loadEnvFile(import.meta.url);
 
@@ -460,6 +468,14 @@ export function declareRecords(data) {
   return Array.isArray(payload?.entries) ? payload.entries.length : 0;
 }
 
+// Content-age contract: newest DSR quarter across all entries. Runs on raw
+// fetchAll() output (before publishTransform); each DSR entry carries a
+// `period` quarter token (YYYY-Qn). See scripts/_content-age-helpers.mjs.
+export function bisDsrContentMeta(data) {
+  const entries = Array.isArray(data?.dsr?.entries) ? data.dsr.entries : [];
+  return tokensToContentMeta(entries.map((e) => e?.period));
+}
+
 if (process.argv[1]?.endsWith('seed-bis-extended.mjs')) {
   runSeed('economic', 'bis-extended', KEYS.dsr, fetchAll, {
     validateFn: validate,
@@ -470,6 +486,8 @@ if (process.argv[1]?.endsWith('seed-bis-extended.mjs')) {
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: 1440,
+    contentMeta: bisDsrContentMeta,
+    maxContentAgeMin: BIS_DSR_MAX_CONTENT_AGE_MIN,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);

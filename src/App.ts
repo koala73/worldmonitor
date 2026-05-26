@@ -86,6 +86,11 @@ import { getConvexClient, getConvexApi, waitForConvexAuth } from '@/services/con
 import { initEntitlementSubscription, destroyEntitlementSubscription, resetEntitlementState, onEntitlementChange } from '@/services/entitlements';
 import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
 import {
+  FREE_TIER_FOLLOW_LIMIT,
+  WM_FOLLOWED_COUNTRIES_CAP_DROP,
+  installFollowedCountriesAuthListener,
+} from '@/services/followed-countries';
+import {
   capturePendingCheckoutIntentFromUrl,
   initCheckoutWatchers,
   resumePendingCheckout,
@@ -136,6 +141,7 @@ export class App {
   private webMcpController: AbortController | null = null;
   private visiblePanelPrimed = new Set<string>();
   private visiblePanelPrimeRaf: number | null = null;
+  private followedCountriesCapDropToastTimer: number | null = null;
   private bootstrapHydrationState: BootstrapHydrationState = getBootstrapHydrationState();
   private cachedModeBannerEl: HTMLElement | null = null;
   private readonly handleViewportPrime = (): void => {
@@ -147,6 +153,13 @@ export class App {
   };
   private readonly handleConnectivityChange = (): void => {
     this.updateConnectivityUi();
+  };
+  private readonly handleFollowedCountriesCapDrop = (ev: Event): void => {
+    const detail = (ev as CustomEvent<{ kept?: unknown; dropped?: unknown }>).detail;
+    const dropped = typeof detail?.dropped === 'number' ? detail.dropped : 0;
+    const kept = typeof detail?.kept === 'number' ? detail.kept : FREE_TIER_FOLLOW_LIMIT;
+    if (dropped <= 0) return;
+    this.showFollowedCountriesCapDropToast(kept, dropped);
   };
 
   private isPanelNearViewport(panelId: string, marginPx = 400): boolean {
@@ -733,8 +746,19 @@ export class App {
         const total = getTotalFeedCount();
         console.log(`[App] Sources reduction: ${defaultDisabled.length} disabled, ${total - defaultDisabled.length} enabled`);
       }
-      // Locale boost: additively enable locale-matched sources (runs once per locale)
-      const userLang = ((navigator.language ?? 'en').split('-')[0] ?? 'en').toLowerCase();
+      // Locale boost: additively enable locale-matched sources (runs once per locale).
+      // Reads the explicit-choice key (`wm-locale-explicit`, written by Settings →
+      // Language) before falling back to navigator. Mirrors the i18n.ts:99
+      // `wmExplicit` detector — without this, a user whose browser is en-US who
+      // picks Magyar in Settings never gets the locale boost (the migration's
+      // first run with `userLang='en'` sets `worldmonitor-locale-boost-en` and
+      // the `userLang !== 'en'` short-circuit means the boost block never re-fires
+      // for any subsequent locale choice). Direct localStorage read because
+      // i18next isn't initialized yet here in the constructor — `initI18n()` is
+      // called later inside `init()`.
+      let explicitLocale = '';
+      try { explicitLocale = localStorage.getItem('wm-locale-explicit') || ''; } catch { /* private mode */ }
+      const userLang = ((explicitLocale || navigator.language || 'en').split('-')[0] ?? 'en').toLowerCase();
       const localeKey = `worldmonitor-locale-boost-${userLang}`;
       if (userLang !== 'en' && !localStorage.getItem(localeKey)) {
         const boosted = getLocaleBoostedSources(userLang);
@@ -893,6 +917,32 @@ export class App {
 
     await initDB();
     await initI18n();
+    // Localize the static index.html shell — <title>, meta description, and
+    // sr-only <h1> are baked in English so search crawlers see something
+    // before JS runs; once i18n is ready we swap them to the user's locale.
+    document.title = t('shell.documentTitle');
+    const setMeta = (sel: string, val: string) => {
+      const el = document.querySelector(sel);
+      if (el) el.setAttribute('content', val);
+    };
+    setMeta('meta[name="description"]', t('shell.metaDescription'));
+    setMeta('meta[property="og:title"]', t('shell.documentTitle'));
+    setMeta('meta[property="og:description"]', t('shell.metaDescription'));
+    setMeta('meta[name="twitter:title"]', t('shell.documentTitle'));
+    setMeta('meta[name="twitter:description"]', t('shell.metaDescription'));
+    // Mirror of OG_LOCALE in pro-test/src/i18n.ts. The two packages have
+    // separate Vite roots and bundlers and can't share an import — keep the
+    // tables aligned by hand when adding a locale here OR there.
+    const ogLocaleMap: Record<string, string> = {
+      en: 'en_US', ar: 'ar_SA', bg: 'bg_BG', cs: 'cs_CZ', de: 'de_DE', el: 'el_GR',
+      es: 'es_ES', fr: 'fr_FR', it: 'it_IT', ja: 'ja_JP', ko: 'ko_KR', nl: 'nl_NL',
+      pl: 'pl_PL', pt: 'pt_BR', ro: 'ro_RO', ru: 'ru_RU', sv: 'sv_SE', th: 'th_TH',
+      tr: 'tr_TR', vi: 'vi_VN', zh: 'zh_CN',
+    };
+    const baseLang = (document.documentElement.lang || 'en').split('-')[0] || 'en';
+    setMeta('meta[property="og:locale"]', ogLocaleMap[baseLang] || `${baseLang}_${baseLang.toUpperCase()}`);
+    const srH1 = document.querySelector('body > h1');
+    if (srH1) srH1.textContent = t('shell.documentTitle');
     const aiFlow = getAiFlowSettings();
     if (aiFlow.browserModel || isDesktopRuntime()) {
       await mlWorker.init();
@@ -972,6 +1022,11 @@ export class App {
     await initAuthState();
     initAuthAnalytics();
     installCloudPrefsSync(SITE_VARIANT);
+    // Install the followed-countries auth listener once. Drives the
+    // anon→signed-in handoff (mergeAnonymousLocal mutation) and sign-out
+    // cleanup. Idempotent.
+    installFollowedCountriesAuthListener();
+    window.addEventListener(WM_FOLLOWED_COUNTRIES_CAP_DROP, this.handleFollowedCountriesCapDrop);
     this.enforceFreeTierLimits();
 
     let _prevUserId: string | null = null;
@@ -996,10 +1051,21 @@ export class App {
         // Entitlement just resolved → fire PRO-gated initial loads that were
         // skipped at boot. Each loader early-returns if the panel isn't
         // mounted and re-checks hasPremiumAccess() internally, so these
-        // calls are safe and idempotent. Without this, trade-policy would
-        // sit empty for up to REFRESH_INTERVALS.tradePolicy (~10 min) after
-        // sign-in because the scheduler's viewport gate is the only retry.
+        // calls are safe and idempotent. Without this, panels would sit empty
+        // until the next scheduled refresh (10+ min for trade-policy; FOREVER
+        // on the full variant for stock-analysis / stock-backtest / daily-
+        // market-brief / market-implications because their schedulers are
+        // gated to SITE_VARIANT === 'finance'). The audit-locking regression
+        // test in tests/premium-loaders-fan-out-coverage.test.mts asserts
+        // every `hasPremiumAccess() && shouldLoad('X')` gate in data-loader.ts
+        // has a matching call here.
         void this.dataLoader.loadTradePolicy();
+        void this.dataLoader.loadStockAnalysis();
+        void this.dataLoader.loadStockBacktest();
+        void this.dataLoader.loadDailyMarketBrief();
+        void this.dataLoader.loadMarketImplications();
+        void this.dataLoader.loadWsbTickers();
+        void this.dataLoader.loadResilienceRanking();
       }
       _prevHadPremium = nowPremium;
     };
@@ -1314,7 +1380,22 @@ export class App {
       return count;
     })();
     if (totalEligible > FREE_MAX_SOURCES) {
-      const { keep, autoDisabled } = selectSourcesUnderCap(FEEDS, INTEL_SOURCES, disabledSources, FREE_MAX_SOURCES);
+      // Protect locale-boosted sources from the cap. Without this, locale-
+      // tagged feeds that sit late in their category bucket (e.g. Hungarian
+      // entries in the Europe bucket, declared AFTER the existing en/de/it/
+      // nl/sv defaults) get round-robin'd out — the locale boost re-enables
+      // them, then the cap immediately auto-disables them again. Free-tier
+      // users on the boosted locale lose their locale's defaults entirely.
+      // userLang derivation mirrors the locale-boost migration (earlier in
+      // the App constructor) and the i18n.ts:99 `wmExplicit` detector:
+      // explicit Settings choice wins, navigator is the fallback. Direct
+      // localStorage read because i18next isn't initialized yet at the
+      // constructor stage where enforceFreeTierLimits also runs.
+      let explicitLocale = '';
+      try { explicitLocale = localStorage.getItem('wm-locale-explicit') || ''; } catch { /* private mode */ }
+      const userLang = ((explicitLocale || navigator.language || 'en').split('-')[0] ?? 'en').toLowerCase();
+      const protectedNames = userLang === 'en' ? new Set<string>() : getLocaleBoostedSources(userLang);
+      const { keep, autoDisabled } = selectSourcesUnderCap(FEEDS, INTEL_SOURCES, disabledSources, FREE_MAX_SOURCES, protectedNames);
       // Defense in depth: feeds.ts has 35+ source names that appear in
       // multiple category buckets. The helper guarantees keep ∩ autoDisabled
       // = ∅, but a regression there would silently re-disable a kept source
@@ -1334,6 +1415,7 @@ export class App {
     window.removeEventListener('resize', this.handleViewportPrime);
     window.removeEventListener('online', this.handleConnectivityChange);
     window.removeEventListener('offline', this.handleConnectivityChange);
+    window.removeEventListener(WM_FOLLOWED_COUNTRIES_CAP_DROP, this.handleFollowedCountriesCapDrop);
     if (this.visiblePanelPrimeRaf !== null) {
       window.cancelAnimationFrame(this.visiblePanelPrimeRaf);
       this.visiblePanelPrimeRaf = null;
@@ -1352,6 +1434,10 @@ export class App {
     destroyBreakingNewsAlerts();
     this.cachedModeBannerEl?.remove();
     this.cachedModeBannerEl = null;
+    if (this.followedCountriesCapDropToastTimer !== null) {
+      window.clearTimeout(this.followedCountriesCapDropToastTimer);
+      this.followedCountriesCapDropToastTimer = null;
+    }
     this.state.map?.destroy();
     disconnectAisStream();
     // Unregister every WebMCP tool so a same-document re-init (tests,
@@ -1359,6 +1445,75 @@ export class App {
     // pointing at a disposed App.
     this.webMcpController?.abort();
     this.webMcpController = null;
+  }
+
+  private showFollowedCountriesCapDropToast(kept: number, dropped: number): void {
+    if (this.followedCountriesCapDropToastTimer !== null) {
+      window.clearTimeout(this.followedCountriesCapDropToastTimer);
+      this.followedCountriesCapDropToastTimer = null;
+    }
+    document.querySelector('.wm-followed-cap-drop-toast')?.remove();
+
+    const toast = document.createElement('div');
+    toast.className = 'wm-followed-cap-drop-toast update-toast';
+    toast.setAttribute('role', 'status');
+    toast.setAttribute('aria-live', 'polite');
+
+    const body = document.createElement('div');
+    body.className = 'update-toast-body';
+
+    const title = document.createElement('div');
+    title.className = 'update-toast-title';
+    title.textContent = 'Follow limit reached';
+
+    const detail = document.createElement('div');
+    detail.className = 'update-toast-detail';
+    const countryWord = dropped === 1 ? 'country was' : 'countries were';
+    detail.textContent = `${kept} kept. ${dropped} ${countryWord} not added because the free plan supports ${FREE_TIER_FOLLOW_LIMIT} followed countries.`;
+
+    body.append(title, detail);
+
+    const action = document.createElement('button');
+    action.type = 'button';
+    action.className = 'update-toast-action';
+    action.dataset.action = 'upgrade';
+    action.textContent = 'Upgrade';
+
+    const dismiss = document.createElement('button');
+    dismiss.type = 'button';
+    dismiss.className = 'update-toast-dismiss';
+    dismiss.dataset.action = 'dismiss';
+    dismiss.setAttribute('aria-label', 'Dismiss');
+    dismiss.textContent = '\u00d7';
+
+    toast.append(body, action, dismiss);
+
+    this.followedCountriesCapDropToastTimer = window.setTimeout(() => {
+      toast.remove();
+      this.followedCountriesCapDropToastTimer = null;
+    }, 8000);
+    toast.addEventListener('click', (e) => {
+      const clickedAction = (e.target as HTMLElement)
+        .closest<HTMLElement>('[data-action]')
+        ?.dataset.action;
+      if (clickedAction === 'upgrade') {
+        window.open('/pro#pricing', '_blank', 'noopener');
+        if (this.followedCountriesCapDropToastTimer !== null) {
+          window.clearTimeout(this.followedCountriesCapDropToastTimer);
+          this.followedCountriesCapDropToastTimer = null;
+        }
+        toast.remove();
+      } else if (clickedAction === 'dismiss') {
+        if (this.followedCountriesCapDropToastTimer !== null) {
+          window.clearTimeout(this.followedCountriesCapDropToastTimer);
+          this.followedCountriesCapDropToastTimer = null;
+        }
+        toast.remove();
+      }
+    });
+
+    document.body.appendChild(toast);
+    window.requestAnimationFrame(() => toast.classList.add('visible'));
   }
 
   // Waits for Phase-4 UI modules (searchManager + countryIntel) to finish

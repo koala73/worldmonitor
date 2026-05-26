@@ -6,7 +6,8 @@
     "enterprise": "Enterprise",
     "reserveAccess": "预订早鸟访问",
     "signIn": "登录",
-    "upgradeToPro": "升级到 Pro"
+    "upgradeToPro": "升级到 Pro",
+    "goToDashboard": "转到仪表板"
   },
   "hero": {
     "noiseWord": "噪音",
@@ -18,7 +19,8 @@
     "emailPlaceholder": "输入您的邮箱",
     "emailAriaLabel": "等候名单邮箱地址",
     "choosePlan": "选择方案",
-    "signIn": "登录"
+    "signIn": "登录",
+    "goToDashboard": "转到仪表板"
   },
   "wired": {
     "asFeaturedIn": "被报道于"
@@ -50,7 +52,8 @@
     "entF9": "用于 SOC 墙和交易大厅的 Android TV 应用",
     "entF10": "云、本地或气隙部署",
     "entF11": "专属上手与支持",
-    "entCta": "联系销售"
+    "entCta": "联系销售",
+    "freeF2": "500+ 个源、65+ 个来源、50+ 个地图图层"
   },
   "whyUpgrade": {
     "title": "为什么升级",
@@ -83,7 +86,7 @@
     "openFullScreen": "全屏打开",
     "tryLiveDashboard": "试用实时仪表板",
     "iframeTitle": "World Monitor — 实时情报仪表板",
-    "description": "3D WebGL 地球 · 45+ 交互式地图图层 · 实时的市场、宏观、地缘政治、能源与基础设施数据"
+    "description": "3D WebGL 地球仪 · 50+ 个交互式地图图层 · 实时市场、宏观、地缘政治、能源和基础设施数据"
   },
   "socialProof": {
     "uniqueVisitors": "独立访客",
@@ -139,31 +142,8 @@
   },
   "tiers": {
     "free": "免费",
-    "freeTagline": "纵览一切",
-    "freeDesc": "开源仪表板",
-    "freeF1": "刷新 5-15 分钟",
-    "freeF2": "500+ feed,45 个地图图层",
-    "freeF3": "AI 自带密钥",
-    "freeF4": "永久免费",
-    "openDashboard": "打开仪表板",
     "pro": "Pro",
-    "proTagline": "市场、宏观与地缘政治",
-    "proDesc": "您的 AI 分析师",
-    "proF1": "股票研究与股票分析",
-    "proF2": "+ 每日摘要、经济分析",
-    "proF3": "AI 内含、一把密钥",
-    "proF4": "优先数据刷新(即将推出)",
-    "priceMonthly": "$39.99 / 月",
-    "priceAnnual": "$399.99 / 年",
-    "annualSavingsNote": "2 个月免费",
-    "enterprise": "Enterprise",
-    "enterpriseTagline": "抢先于任何人行动",
-    "enterpriseDesc": "情报平台",
-    "entF1": "实时卫星图像",
-    "entF2": "+ AI 代理、50K+ 基础设施、SAR",
-    "entF3": "定制 AI、投资者人设",
-    "entF4": "联系我们",
-    "contactSales": "联系销售"
+    "enterprise": "Enterprise"
   },
   "proShowcase": {
     "proTier": "PRO 等级",
@@ -281,7 +261,6 @@
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + webhook",
     "fMcpBulk": "+ MCP + 批量",
-    "f45": "45",
     "fTensOfThousands": "+ 数万",
     "fLiveTracking": "实时追踪",
     "fPassAlerts": "过顶告警 + 分析",
@@ -292,7 +271,8 @@
     "fStandard": "标准",
     "fKeyAuth": "密钥鉴权",
     "fSsoMfa": "SSO/MFA/RBAC/审计",
-    "noteBelow": "核心平台保持免费。付费方案解锁股票研究、宏观分析、AI 简报与组织级使用。"
+    "noteBelow": "核心平台保持免费。付费方案解锁股票研究、宏观分析、AI 简报与组织级使用。",
+    "f50plus": "50+"
   },
   "faq": {
     "title": "常见问题",
@@ -354,5 +334,76 @@
     "youreIn": "您已入列!",
     "invitedBanner": "您已被邀请 — 加入等候名单"
   },
-  "soonBadge": "即将推出"
+  "soonBadge": "即将推出",
+  "meta": {
+    "title": "World Monitor Pro — AI 分析师、个人智能助手、Claude & GPT 的 MCP",
+    "description": "地缘政治 AI 层。提问、订阅、构建。WM Analyst 聊天支持 30+ 个实时服务，AI 摘要按日、两次日或周频率投送至 Slack、Discord、Telegram、Email 或 webhook，自定义小部件构建器（HTML/CSS/JS + AI），以及 Claude、GPT 和自定义 LLM 的 MCP 连接器。",
+    "ogTitle": "World Monitor Pro — 地缘政治 AI 层",
+    "ogDescription": "提问、订阅、构建。WM Analyst 聊天、按您的时间表（日、两次日或周）投送的 AI 摘要、自定义小部件构建器，以及 Claude/GPT 的 MCP — 跨 30+ 个实时服务，一个密钥管理。"
+  },
+  "pricing": {
+    "suffixForever": "永久",
+    "suffixTailored": "为您量身定制",
+    "suffixPerMonth": "/月",
+    "suffixPerYear": "/年",
+    "amountCustom": "自定义",
+    "opening": "打开中…",
+    "headerTitle": "选择您的计划",
+    "headerSubtitle": "从实时监控到完整的情报基础设施。选择适合您任务的层级。",
+    "billingMonthly": "月度",
+    "billingAnnual": "年度",
+    "saveAnnual": "节省 17%",
+    "mostPopular": "最受欢迎",
+    "promoCodeNote": "有促销代码？在结账时输入。",
+    "tiers": {
+      "free": {
+        "description": "从基础功能开始",
+        "features": [
+          "核心仪表板面板",
+          "全球新闻源",
+          "地震和天气警报",
+          "基础地图视图"
+        ],
+        "cta": "开始使用"
+      },
+      "pro": {
+        "description": "完整的情报仪表板",
+        "features": [
+          "免费版的所有功能",
+          "AI 股票分析和回测",
+          "每日市场简报",
+          "军事和地缘政治追踪",
+          "自定义小部件构建器",
+          "MCP 数据连接器",
+          "优先级数据刷新"
+        ]
+      },
+      "api": {
+        "description": "对情报数据的程序化访问",
+        "features": [
+          "REST API 访问",
+          "实时数据流",
+          "每天 1,000 个请求",
+          "Webhook 通知",
+          "自定义数据导出"
+        ]
+      },
+      "enterprise": {
+        "description": "为组织提供的自定义解决方案",
+        "features": [
+          "Pro + API 的所有功能",
+          "无限 API 请求",
+          "专属支持",
+          "自定义集成",
+          "SLA 保证",
+          "本地部署选项"
+        ],
+        "cta": "联系销售"
+      }
+    },
+    "cta": {
+      "checkoutDefault": "开始使用",
+      "learnMore": "了解更多"
+    }
+  }
 }

@@ -6,7 +6,8 @@
     "enterprise": "Enterprise",
     "reserveAccess": "Đặt trước quyền truy cập sớm",
     "signIn": "Đăng nhập",
-    "upgradeToPro": "Nâng cấp lên Pro"
+    "upgradeToPro": "Nâng cấp lên Pro",
+    "goToDashboard": "Đi tới Bảng điều khiển"
   },
   "hero": {
     "noiseWord": "Nhiễu",
@@ -18,7 +19,8 @@
     "emailPlaceholder": "Nhập email của bạn",
     "emailAriaLabel": "Địa chỉ email cho danh sách chờ",
     "choosePlan": "Chọn gói",
-    "signIn": "Đăng nhập"
+    "signIn": "Đăng nhập",
+    "goToDashboard": "Đi tới Bảng điều khiển"
   },
   "wired": {
     "asFeaturedIn": "Được giới thiệu trên"
@@ -50,7 +52,8 @@
     "entF9": "Ứng dụng Android TV cho tường SOC và sàn giao dịch",
     "entF10": "Triển khai đám mây, on-premises hoặc air-gapped",
     "entF11": "Onboarding và hỗ trợ chuyên trách",
-    "entCta": "Liên hệ kinh doanh"
+    "entCta": "Liên hệ kinh doanh",
+    "freeF2": "500+ nguồn cấp dữ liệu, 65+ nguồn, 50+ lớp bản đồ"
   },
   "whyUpgrade": {
     "title": "Tại sao nâng cấp",
@@ -83,7 +86,7 @@
     "openFullScreen": "Mở toàn màn hình",
     "tryLiveDashboard": "Dùng thử bảng điều khiển trực tiếp",
     "iframeTitle": "World Monitor — Bảng điều khiển tình báo trực tiếp",
-    "description": "Quả cầu 3D WebGL · 45+ lớp bản đồ tương tác · Dữ liệu thị trường, vĩ mô, địa chính trị, năng lượng và cơ sở hạ tầng theo thời gian thực"
+    "description": "Quả cầu WebGL 3D · 50+ lớp bản đồ tương tác · Dữ liệu thị trường, vĩ mô, địa chính trị, năng lượng và cơ sở hạ tầng theo thời gian thực"
   },
   "socialProof": {
     "uniqueVisitors": "Khách truy cập duy nhất",
@@ -139,31 +142,8 @@
   },
   "tiers": {
     "free": "Miễn phí",
-    "freeTagline": "Xem tất cả",
-    "freeDesc": "Bảng điều khiển mã nguồn mở",
-    "freeF1": "Làm mới 5-15 phút",
-    "freeF2": "500+ nguồn cấp, 45 lớp bản đồ",
-    "freeF3": "BYOK cho AI",
-    "freeF4": "Miễn phí vĩnh viễn",
-    "openDashboard": "Mở bảng điều khiển",
     "pro": "Pro",
-    "proTagline": "Thị trường, vĩ mô và địa chính trị",
-    "proDesc": "Nhà phân tích AI của bạn",
-    "proF1": "Equity research và phân tích cổ phiếu",
-    "proF2": "+ digest hàng ngày, phân tích kinh tế",
-    "proF3": "AI bao gồm, 1 khóa",
-    "proF4": "Làm mới dữ liệu ưu tiên (Sắp ra mắt)",
-    "priceMonthly": "$39,99 / tháng",
-    "priceAnnual": "$399,99 / năm",
-    "annualSavingsNote": "2 tháng miễn phí",
-    "enterprise": "Enterprise",
-    "enterpriseTagline": "Hành động trước mọi người",
-    "enterpriseDesc": "Nền tảng tình báo",
-    "entF1": "Hình ảnh vệ tinh trực tiếp",
-    "entF2": "+ AI agents, 50K+ cơ sở hạ tầng, SAR",
-    "entF3": "AI tùy chỉnh, persona nhà đầu tư",
-    "entF4": "Liên hệ với chúng tôi",
-    "contactSales": "Liên hệ kinh doanh"
+    "enterprise": "Enterprise"
   },
   "proShowcase": {
     "proTier": "CẤP ĐỘ PRO",
@@ -281,7 +261,6 @@
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + webhook",
     "fMcpBulk": "+ MCP + hàng loạt",
-    "f45": "45",
     "fTensOfThousands": "+ hàng chục nghìn",
     "fLiveTracking": "Theo dõi trực tiếp",
     "fPassAlerts": "Cảnh báo đi qua + phân tích",
@@ -292,7 +271,8 @@
     "fStandard": "Tiêu chuẩn",
     "fKeyAuth": "Xác thực khóa",
     "fSsoMfa": "SSO/MFA/RBAC/kiểm toán",
-    "noteBelow": "Nền tảng cốt lõi vẫn miễn phí. Các gói trả phí mở khóa Equity research, phân tích vĩ mô, bản tóm tắt AI và sử dụng tổ chức."
+    "noteBelow": "Nền tảng cốt lõi vẫn miễn phí. Các gói trả phí mở khóa Equity research, phân tích vĩ mô, bản tóm tắt AI và sử dụng tổ chức.",
+    "f50plus": "50+"
   },
   "faq": {
     "title": "Câu hỏi thường gặp",
@@ -354,5 +334,76 @@
     "youreIn": "Bạn đã tham gia!",
     "invitedBanner": "Bạn đã được mời — hãy tham gia danh sách chờ"
   },
-  "soonBadge": "Sắp ra mắt"
+  "soonBadge": "Sắp ra mắt",
+  "meta": {
+    "title": "World Monitor Pro — Nhà phân tích AI, Bàn làm việc Trí tuệ Cá nhân, MCP cho Claude & GPT",
+    "description": "Lớp AI địa chính trị. Hỏi nó, đăng ký nó, xây dựng trên nó. Chat WM Analyst trên 30+ dịch vụ trực tiếp, bản tóm tắt AI gửi hàng ngày, hai lần mỗi ngày hoặc hàng tuần đến Slack, Discord, Telegram, Email hoặc webhook, trình xây dựng widget tùy chỉnh (HTML/CSS/JS + AI), và trình kết nối MCP cho Claude, GPT và LLM tùy chỉnh.",
+    "ogTitle": "World Monitor Pro — Lớp AI Địa chính trị",
+    "ogDescription": "Hỏi nó, đăng ký nó, xây dựng trên nó. Chat WM Analyst, bản tóm tắt AI theo lịch của bạn (hàng ngày, hai lần mỗi ngày hoặc hàng tuần), trình xây dựng widget tùy chỉnh, và MCP cho Claude/GPT — trên 30+ dịch vụ trực tiếp dưới một khóa."
+  },
+  "pricing": {
+    "suffixForever": "mãi mãi",
+    "suffixTailored": "được tùy chỉnh cho bạn",
+    "suffixPerMonth": "/tháng",
+    "suffixPerYear": "/năm",
+    "amountCustom": "Tùy chỉnh",
+    "opening": "Đang mở…",
+    "headerTitle": "Chọn Gói Của Bạn",
+    "headerSubtitle": "Từ giám sát thời gian thực đến cơ sở hạ tầng trí tuệ toàn diện. Chọn mức giá phù hợp với nhiệm vụ của bạn.",
+    "billingMonthly": "Hàng tháng",
+    "billingAnnual": "Hàng năm",
+    "saveAnnual": "Tiết kiệm 17%",
+    "mostPopular": "Phổ biến nhất",
+    "promoCodeNote": "Có mã khuyến mãi? Nhập nó khi thanh toán.",
+    "tiers": {
+      "free": {
+        "description": "Bắt đầu với các tính năng cơ bản",
+        "features": [
+          "Bảng điều khiển cốt lõi",
+          "Nguồn cấp tin tức toàn cầu",
+          "Cảnh báo động đất & thời tiết",
+          "Chế độ xem bản đồ cơ bản"
+        ],
+        "cta": "Bắt đầu"
+      },
+      "pro": {
+        "description": "Bảng điều khiển trí tuệ đầy đủ",
+        "features": [
+          "Tất cả trong Miễn phí",
+          "Phân tích cổ phiếu AI & backtesting",
+          "Tóm tắt thị trường hàng ngày",
+          "Theo dõi quân sự & địa chính trị",
+          "Trình tạo widget tùy chỉnh",
+          "Trình kết nối dữ liệu MCP",
+          "Làm mới dữ liệu ưu tiên"
+        ]
+      },
+      "api": {
+        "description": "Truy cập theo chương trình vào dữ liệu trí tuệ",
+        "features": [
+          "Truy cập REST API",
+          "Luồng dữ liệu thời gian thực",
+          "1.000 yêu cầu/ngày",
+          "Thông báo Webhook",
+          "Xuất dữ liệu tùy chỉnh"
+        ]
+      },
+      "enterprise": {
+        "description": "Giải pháp tùy chỉnh cho các tổ chức",
+        "features": [
+          "Tất cả trong Pro + API",
+          "Yêu cầu API không giới hạn",
+          "Hỗ trợ chuyên dụng",
+          "Tích hợp tùy chỉnh",
+          "Bảo đảm SLA",
+          "Tuỳ chọn tại chỗ"
+        ],
+        "cta": "Liên hệ Phòng bán hàng"
+      }
+    },
+    "cta": {
+      "checkoutDefault": "Bắt Đầu",
+      "learnMore": "Tìm Hiểu Thêm"
+    }
+  }
 }

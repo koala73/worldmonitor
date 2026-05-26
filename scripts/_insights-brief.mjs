@@ -1,24 +1,26 @@
 // Pure helpers for the WORLD BRIEF pipeline. Split out from seed-insights.mjs
 // so tests can import without triggering the top-level runSeed() call.
 
+import { isBriefLeadEligible } from './_clustering.mjs';
+
 /**
  * Choose which clustered story to summarize for the WORLD BRIEF.
  *
- * Returns the first entry in `topStories` with sourceCount >= 2, or null if
- * no such entry exists. Callers should treat null as "publish status=degraded,
- * no brief" — the top-stories list itself is still published; only the brief
- * paragraph is suppressed.
+ * Returns the first entry in `topStories` with either publisher diversity
+ * (`sources.length >= 2`) or entity corroboration across related clusters.
+ * Callers should treat null as "publish status=degraded, no brief" — the
+ * top-stories list itself is still published; only the brief paragraph is
+ * suppressed.
  *
  * Why not just topStories[0]? scoreImportance() in _clustering.mjs is
- * keyword-heavy (violence +100+25/match, flashpoint +60+15/match, ×1.5 when
- * both hit) and can rank a single-source sensational rumor ahead of a
- * 2-source lead. The brief should only ever publish claims that at least two
- * outlets have independently reported — corroboration as a hard requirement,
- * not a tiebreaker.
+ * allowed to admit single-source alerts and high-score stories into the
+ * headline list, but the brief lead should only publish claims with an
+ * independent reporting signal — corroboration as a hard requirement, not a
+ * tiebreaker.
  */
 export function pickBriefCluster(topStories) {
   if (!Array.isArray(topStories)) return null;
-  return topStories.find((s) => (s?.sourceCount || 1) >= 2) ?? null;
+  return topStories.find(isBriefLeadEligible) ?? null;
 }
 
 /**

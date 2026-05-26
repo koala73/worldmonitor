@@ -12,8 +12,24 @@ interface BaselineEntry {
 
 let db: IDBDatabase | null = null;
 
+// Environments where `indexedDB` is unavailable: Firefox/Brave private mode,
+// some embedded webviews, sandboxed iframes, and any non-browser context that
+// somehow loads this chunk. Pre-fix: `indexedDB.open(...)` threw
+// `ReferenceError: indexedDB is not defined` as an unhandled rejection
+// (Sentry WORLDMONITOR-7479081164). Now: probe up-front and reject with a
+// named error that `withTransaction` recognises and degrades gracefully.
+export class IndexedDBUnavailableError extends Error {
+  constructor() {
+    super('IndexedDB is not available in this environment');
+    this.name = 'IndexedDBUnavailableError';
+  }
+}
+
 export async function initDB(): Promise<IDBDatabase> {
   if (db) return db;
+  if (typeof indexedDB === 'undefined') {
+    throw new IndexedDBUnavailableError();
+  }
 
   return new Promise((resolve, reject) => {
     const request = indexedDB.open(DB_NAME, DB_VERSION);
@@ -68,6 +84,13 @@ async function withTransaction<T>(
         if (attempt === 0) continue;
         console.warn('[Storage] IndexedDB connection closing after retry');
         if (mode === 'readwrite') throw new DOMException('IndexedDB write failed — connection closing', 'InvalidStateError');
+        return undefined as T;
+      }
+      // Environments without IndexedDB (private mode, some webviews) hit
+      // this branch. Degrade silently for reads; throw a typed error on
+      // writes so callers can opt into different handling.
+      if (err instanceof IndexedDBUnavailableError) {
+        if (mode === 'readwrite') throw err;
         return undefined as T;
       }
       throw err;

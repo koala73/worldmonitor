@@ -1,4 +1,5 @@
 import { Panel } from './Panel';
+import { t } from '@/services/i18n';
 import type { ConvergenceCard, CorrelationDomain } from '@/services/correlation-engine';
 import { h, replaceChildren } from '@/utils/dom-utils';
 import { getHydratedData } from '@/services/bootstrap';
@@ -41,7 +42,7 @@ export class CorrelationPanel extends Panel {
       this.cards = cards;
       this.requestRender();
     } else {
-      this.showLoading('Waiting for data...');
+      this.showLoading(t('components.correlation.loading'));
     }
 
     this.boundUpdateHandler = ((e: CustomEvent) => {
@@ -87,7 +88,7 @@ export class CorrelationPanel extends Panel {
       replaceChildren(this.content, h('div', {
         className: 'correlation-empty',
         style: 'padding:12px;text-align:center;opacity:0.5;font-size:11px;',
-      }, 'No active convergence detected'));
+      }, t('components.correlation.empty')));
       return;
     }
 
@@ -116,7 +117,7 @@ export class CorrelationPanel extends Panel {
       }, card.title),
       h('span', {
         style: 'font-size:9px;opacity:0.6;white-space:nowrap;',
-      }, `${card.signals.length} signals`),
+      }, t('components.correlation.signals', { count: card.signals.length })),
       h('span', {
         style: `font-size:12px;color:${trend.color};`,
       }, trend.symbol),
@@ -163,13 +164,13 @@ export class CorrelationPanel extends Panel {
     } else if (card.score >= 60 && this.hasLiveData) {
       children.push(h('div', {
         style: 'padding:4px;font-size:9px;opacity:0.4;font-style:italic;',
-      }, 'Analyzing...'));
+      }, t('components.correlation.analyzing')));
     }
 
     if (card.location) {
       const mapBtn = h('button', {
         style: 'margin-top:4px;padding:3px 8px;font-size:9px;border:1px solid rgba(255,255,255,0.15);border-radius:3px;background:transparent;color:inherit;cursor:pointer;',
-      }, 'View on map');
+      }, t('components.correlation.viewOnMap'));
       mapBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         this.onMapNavigate?.(card.location!.lat, card.location!.lon);

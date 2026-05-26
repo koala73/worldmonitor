@@ -43,6 +43,8 @@ import { fetchMultiSectorCostShock, HS2_SHORT_LABELS } from '@/services/supply-c
 import type { MapContainer } from './MapContainer';
 import { ResilienceWidget } from './ResilienceWidget';
 import { dedupeHeadlines } from './CountryDeepDivePanel-news-utils';
+import { renderFollowButton } from '@/utils/follow-button';
+import { renderNotifyCountryLink } from '@/utils/notify-country-link';
 
 const DEPENDENCY_FLAG_LABELS: Record<string, { text: string; cls: string }> = {
   DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL:   { text: 'Single Source',   cls: 'cdp-dep-critical' },
@@ -140,6 +142,15 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private costShockCalcClosureDays = 30;
   private costShockCalcAbort: AbortController | null = null;
   private costShockCalcDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  // Holds the teardown returned by the FollowButton's `attach()` mounted
+  // in the title row. The skeleton is rebuilt every `show()` call (via
+  // `resetPanelContent` → `renderSkeleton`), and the panel itself is
+  // long-lived (singleton on `document.body`), so this teardown must
+  // fire BEFORE the skeleton is wiped and on `hide()`.
+  private followButtonTeardown: (() => void) | null = null;
+  // Sibling teardown for the U8 "Notify me about this country" sub-action
+  // mounted alongside the FollowButton. Same lifecycle constraints.
+  private notifyLinkTeardown: (() => void) | null = null;
 
   private readonly handleGlobalKeydown = (event: KeyboardEvent): void => {
     if (!this.panel.classList.contains('active')) return;
@@ -256,6 +267,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
   public hide(): void {
     this.destroyResilienceWidget();
+    this.tearDownFollowButton();
     if (this.isMaximizedState) {
       this.isMaximizedState = false;
       this.panel.classList.remove('maximized');
@@ -2204,7 +2216,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     }
     if (top) {
       const updatedEl = top.querySelector('.cdp-updated');
-      if (updatedEl) updatedEl.textContent = `Updated ${this.shortDate(score?.lastUpdated ?? new Date())}`;
+      if (updatedEl) updatedEl.textContent = `Updated ${score?.lastUpdated ? this.shortDate(score.lastUpdated) : '—'}`;
     }
     if (score) {
       const band = this.ciiBand(score.score);
@@ -2337,7 +2349,36 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const name = this.el('h2', 'cdp-country-name', country);
     const subtitle = this.el('div', 'cdp-country-subtitle', `${code.toUpperCase()} • Country Intelligence`);
     titleWrap.append(name, subtitle);
-    left.append(flag, titleWrap);
+
+    // `resetPanelContent` (called at the top of renderSkeleton) already
+    // tore down the prior FollowButton's subscriptions; here we just
+    // mount a fresh one for the new country.
+    const followHost = this.el('span', 'cdp-follow-btn-host');
+    followHost.dataset.country = code;
+    const handle = renderFollowButton({
+      countryCode: code,
+      countryName: country,
+      size: 'md',
+    });
+    followHost.innerHTML = handle.html;
+    this.followButtonTeardown = handle.attach(followHost);
+
+    // U8 (degraded path) — "Notify me about this country" sub-action.
+    // Visible only when the user is currently following this country.
+    // The schema PR for `alertRules.countries` has NOT merged, so the
+    // click just opens the existing notifications settings tab — no
+    // pre-fill. See plan U8 R9 + the TODO inside notify-country-link.ts
+    // for the future pre-fill injection point.
+    const notifyHost = this.el('span', 'cdp-notify-link-host');
+    notifyHost.dataset.country = code;
+    const notifyHandle = renderNotifyCountryLink({
+      countryCode: code,
+      countryName: country,
+    });
+    notifyHost.innerHTML = notifyHandle.html;
+    this.notifyLinkTeardown = notifyHandle.attach(notifyHost);
+
+    left.append(flag, titleWrap, followHost, notifyHost);
 
     const right = this.el('div', 'cdp-header-right');
 
@@ -2386,7 +2427,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.scoreCard = scoreCard;
     const top = this.el('div', 'cdp-score-top');
     const label = this.el('span', 'cdp-score-label', t('countryBrief.instabilityIndex'));
-    const updated = this.el('span', 'cdp-updated', `Updated ${this.shortDate(score?.lastUpdated ?? new Date())}`);
+    const updated = this.el('span', 'cdp-updated', `Updated ${score?.lastUpdated ? this.shortDate(score.lastUpdated) : '—'}`);
     top.append(label, updated);
     scoreCard.append(top);
 
@@ -2500,8 +2541,28 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.resilienceWidget = null;
   }
 
+  private tearDownFollowButton(): void {
+    if (this.followButtonTeardown) {
+      try {
+        this.followButtonTeardown();
+      } catch {
+        /* swallow */
+      }
+      this.followButtonTeardown = null;
+    }
+    if (this.notifyLinkTeardown) {
+      try {
+        this.notifyLinkTeardown();
+      } catch {
+        /* swallow */
+      }
+      this.notifyLinkTeardown = null;
+    }
+  }
+
   private resetPanelContent(): void {
     this.destroyResilienceWidget();
+    this.tearDownFollowButton();
     this.selectedSectorHs2 = null;
     this.sectorBypassAbort?.abort();
     this.sectorBypassAbort = null;
@@ -2730,7 +2791,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const shell = this.el('div', 'country-deep-dive-shell');
     const close = this.el('button', 'panel-close', '×') as HTMLButtonElement;
     close.id = 'deep-dive-close';
-    close.setAttribute('aria-label', 'Close');
+    close.setAttribute('aria-label', t('common.close'));
 
     const content = this.el('div', 'panel-content');
     content.id = 'deep-dive-content';

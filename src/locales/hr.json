@@ -1,0 +1,3285 @@
+{
+  "app": {
+    "title": "Svjetski Monitor",
+    "description": "Globalna Situacija s AI Uvidima"
+  },
+  "shell": {
+    "documentTitle": "Svjetski Monitor — Nadzorna Ploča Globalne Obavještajne Informacije u Realnom Vremenu",
+    "metaDescription": "Platforma globalne obavještajne informacije u realnom vremenu. Prikazana u WIRED-u. Koristi je 2M+ osoba u 190 zemalja. Konflikti, tržišta, vojska, OSINT na jednom mjestu.",
+    "offlineTitle": "Niste Mrežom Povezani",
+    "offlineMessage": "Svjetski Monitor zahtijeva internetsku vezu za podatke obavještajne informacije u realnom vremenu.",
+    "offlineRetry": "Pokušaj Ponovno"
+  },
+  "widgets": {
+    "createWithAi": "Kreiraj s AI-om",
+    "confirmDelete": "Trajno ukloniti ovaj widget?",
+    "chatTitle": "Graditelj Widgeta",
+    "modifyTitle": "Izmijeni Widget",
+    "inputPlaceholder": "Opiši svoj widget...",
+    "addToDashboard": "Dodaj na Nadzornu Ploču",
+    "applyChanges": "Primijeni Promjene",
+    "send": "Pošalji",
+    "changeAccent": "Promijeni boju naglaska",
+    "modifyWithAi": "Izmijeni widget s AI-om",
+    "ready": "Widget spreman: {{title}}",
+    "fetching": "Preuzimanje {{target}}...",
+    "requestTimedOut": "Zahtjev je istekao. Pokušaj ponovno.",
+    "serverError": "Greška servera: {{status}}",
+    "unknownError": "Nepoznata greška",
+    "generatedWidget": "Generirani widget: {{title}}",
+    "checkingConnection": "Provjera pristupa widgetu…",
+    "preflightConnected": "Povezano s agentom widgeta",
+    "preflightInvalidKey": "Ključ widgeta odbijen. Ažuriraj wm-widget-key i ponovno učitaj.",
+    "preflightUnavailable": "Agent widgeta je privremeno nedostupan.",
+    "preflightAiUnavailable": "AI pozadina je nedostupna. Pokušaj kasnije.",
+    "readyToGenerate": "Spreman za generiranje. Odaberi primjer ili opiši svoj widget.",
+    "readyToApply": "Prikaz spreman za {{title}}. Provjeri ga, zatim ga dodaj na nadzornu ploču.",
+    "modifyHint": "Prikaz trenutnog widgeta. Podnesi zahtjev za izmjenu kako bi ga revidiram.",
+    "generating": "Generiranje…",
+    "examplesTitle": "Ideje za upite",
+    "previewTitle": "Direktan Prikaz",
+    "phaseChecking": "Provjera",
+    "phaseReadyToPrompt": "Spreman",
+    "phaseFetching": "Preuzimanje",
+    "phaseComposing": "Sastavljanje",
+    "phaseComplete": "Spreman",
+    "phaseError": "Greška",
+    "previewCheckingHeading": "Povezivanje graditelja widgeta",
+    "previewReadyHeading": "Opiši widget koji želiš",
+    "previewFetchingHeading": "Preuzimanje uživo WorldMonitor podataka",
+    "previewComposingHeading": "Sastavljanje rasporeda widgeta",
+    "previewErrorHeading": "Prikaz treba pažnju",
+    "previewCheckingCopy": "Provjeravamo tvoj ključ widgeta i dostupnost pozadine prije omogućavanja generiranja.",
+    "previewReadyCopy": "Koristi primjer upita ili opiši točan direktan prikaz koji želiš. Prikaz će se ažurirati ovdje prije nego što ga spremiš.",
+    "previewFetchingCopy": "Agent poziva odobrene WorldMonitor krajnje točke i oblikuje skup podataka za widget.",
+    "previewComposingCopy": "Prikaz se prikazuje s najnovijim uživo podacima i stilizacijom nadzorne ploče.",
+    "previewErrorCopy": "Ispravi problem, zatim pokušaj ponovno. Tvoji postojeći widgeti nisu na udaru.",
+    "createInteractive": "Kreiraj interaktivni widget",
+    "proBadge": "PRO",
+    "preflightProUnavailable": "PRO widget agent nije dostupan. Provjeri PRO_WIDGET_KEY na serveru.",
+    "preflightInvalidProKey": "PRO ključ odbijen. Ažuriraj wm-pro-key i ponovno učitaj.",
+    "preflightProSubscriptionRequired": "Potrebna Pro pretplata. Ako si se upravo nadogradio, osvježi stranicu; inače kontaktiraj podršku.",
+    "preflightProRequired": "Pro pretplata je obavezna za korištenje Widget Builder-a. Nadogradi se kako bi otključao funkcionalnost.",
+    "examples": {
+      "oilGold": "Prikaži mi cijenu sirove nafte naspram zlata za danas",
+      "cryptoMovers": "Kreiraj widget za najbolje kriptovalutne pokrete u zadnjih 24 sata",
+      "flightDelays": "Sažmi najgore međunarodne kašnjenja letova upravo sada",
+      "conflictHotspots": "Mapira najnovije UCDP konfliktne žarišne točke s kratkim oznakama"
+    },
+    "proExamples": {
+      "interactiveChart": "Interaktivni Chart.js grafikon koji uspoređuje cijene nafte i zlata",
+      "sortableTable": "Sortabilna tablica cijena kriptovaluta s filterom pretrage",
+      "animatedCounters": "Animirani brojači za ključne ekonomske pokazatelje",
+      "tabbedComparison": "Usporedba konfliktnih događaja po regijama u karticama"
+    }
+  },
+  "countryBrief": {
+    "identifying": "Identificiram zemlju...",
+    "locating": "Lociranje regije...",
+    "geocodeFailed": "Nije moguće identificirati zemlju na ovoj lokaciji",
+    "retryBtn": "Pokušaj ponovno",
+    "closeBtn": "Zatvori",
+    "limitedCoverage": "Ograničena pokrivenost",
+    "instabilityIndex": "Indeks nestabilnosti",
+    "notTracked": "Nije praćeno — {{country}} se ne nalazi na CII tier-1 listi",
+    "intelBrief": "Obavještajni pregled",
+    "generatingBrief": "Generiranje obavještajnog pregleda...",
+    "topNews": "Top vijesti",
+    "activeSignals": "Signali zemlje",
+    "timeline": "7-dnevna vremenka",
+    "predictionMarkets": "Tržišta predviđanja",
+    "loadingMarkets": "Učitavanje tržišta predviđanja...",
+    "infrastructure": "Izloženost infrastrukture",
+    "briefUnavailable": "AI pregled nije dostupan — konfiguriraj GROQ_API_KEY u Postavkama.",
+    "cached": "Keširano",
+    "fresh": "Novo",
+    "noMarkets": "Nema aktivnih tržišta za ovu zemlju.",
+    "loadingIndex": "Učitavanje indeksa...",
+    "components": {
+      "unrest": "Nemiri",
+      "conflict": "Konflikt",
+      "security": "Mil. aktivnost",
+      "information": "Informacije"
+    },
+    "signals": {
+      "protests": "prosvjedi",
+      "militaryAir": "mil. zrakoplovi",
+      "militarySea": "mil. brodovi",
+      "outages": "prekidi",
+      "earthquakes": "potresi",
+      "displaced": "raseljeni",
+      "climate": "Klimatski stres",
+      "conflictEvents": "konfliktni događaji",
+      "activeStrikes": "aktivni štrajkovi",
+      "aviationDisruptions": "prekidi na zračnim lukama",
+      "gpsJammingZones": "GPS blokiranje zona"
+    },
+    "timeAgo": {
+      "m": "{{count}}m prije",
+      "h": "{{count}}h prije",
+      "d": "{{count}}d prije"
+    },
+    "infra": {
+      "pipeline": "Cjevovodi",
+      "cable": "Podmorski kablovi",
+      "datacenter": "Podatkovni centri",
+      "base": "Vojne baze",
+      "nuclear": "Bližnje nuklearne",
+      "port": "Lukama"
+    },
+    "levels": {
+      "critical": "Kritično",
+      "high": "Visoko",
+      "elevated": "Povišeno",
+      "moderate": "Umjereno",
+      "normal": "Normalno",
+      "low": "Nisko"
+    },
+    "trends": {
+      "rising": "Uzlazno",
+      "falling": "Padajuće",
+      "stable": "Stabilno"
+    },
+    "militaryActivity": "Vojna aktivnost",
+    "economicIndicators": "Ekonomski pokazatelji",
+    "ownFlights": "Vlastiti letovi",
+    "foreignFlights": "Inozemni letovi",
+    "navalVessels": "Pomorska plovila",
+    "foreignPresence": "Inozemna prisutnost",
+    "nearestBases": "Najbliže vojne baze",
+    "noBasesNearby": "Nema obližnjih baza u radijusu od 600 km.",
+    "noInfrastructure": "U radijusu od 600 km nije pronađena nikakva kritična infrastruktura.",
+    "noGeometry": "Nema dostupne geometrije za korelaciju infrastrukture.",
+    "noSignals": "Nema nedavnih signala visoke težine.",
+    "assessmentUnavailable": "Procjena nije dostupna.",
+    "noNews": "Nema nedavnog pokrivanja specifičnog za zemlju.",
+    "noIndicators": "Nema dostupnih indikatora specifičnih za zemlju.",
+    "nearbyPorts": "Obližne luke",
+    "detected": "Otkriveno",
+    "notDetected": "Ne",
+    "ciiUnavailable": "CII rezultat nije dostupan za ovu zemlju.",
+    "chips": {
+      "criticalNews": "Kritične vijesti",
+      "protests": "Prosvjedi",
+      "militaryAir": "Vojna zrakoplovna",
+      "navalVessels": "Pomorska plovila",
+      "outages": "Prekidi",
+      "aisDisruptions": "AIS prekidi",
+      "satelliteFires": "Satelitski požari",
+      "temporalAnomalies": "Vremenske anomalije",
+      "cyberThreats": "Cyber prijetnje",
+      "earthquakes": "Zemljotresi",
+      "displaced": "Raseljeni",
+      "climateStress": "Klimatski stres",
+      "conflictEvents": "Događaji sukoba",
+      "activeStrikes": "Aktivni napadi",
+      "doNotTravel": "Ne putuj",
+      "reconsiderTravel": "Ponovno razmotriti putovanje",
+      "exerciseCaution": "Budi oprezan",
+      "advisory": "Savjet",
+      "activeSirens": "Aktivne sirene",
+      "sirens24h": "Sirene / 24h",
+      "aviationDisruptions": "Poremećaji u zrakoplovstvu",
+      "gpsJammingZones": "Zone ometanja GPS-a"
+    },
+    "fallback": {
+      "instabilityIndex": "**Indeks nestabilnosti: {{score}}/100** ({{level}}, {{trend}})",
+      "protestsDetected": "{{count}} aktivnih prosvjeda otkriveno",
+      "aircraftTracked": "{{count}} vojnih zrakoplova praćeno",
+      "vesselsTracked": "{{count}} vojnih brodova praćeno",
+      "internetOutages": "{{count}} prekida interneta",
+      "recentEarthquakes": "{{count}} nedavnih potresa",
+      "stockIndex": "Indeks dionica: {{value}}",
+      "recentHeadlines": "**Nedavne vijesti:**",
+      "activeStrikes": "{{count}} aktivnih štrajkova otkriveno"
+    },
+    "countryFacts": "Činjenice o zemlji",
+    "loadingFacts": "Učitavanje činjenica o zemlji...",
+    "noFacts": "Činjenice o zemlji nisu dostupne.",
+    "facts": {
+      "headOfState": "Šef države",
+      "population": "Stanovništvo",
+      "capital": "Glavni grad",
+      "languages": "Jezici",
+      "currencies": "Valute",
+      "area": "Površina"
+    }
+  },
+  "header": {
+    "world": "SVIJET",
+    "tech": "TEHNOLOGIJA",
+    "live": "UŽIVO",
+    "cached": "KEŠIRANO",
+    "unavailable": "NEDOSTUPNO",
+    "search": "Pretraga",
+    "settings": "POSTAVKE",
+    "sources": "IZVORI",
+    "copyLink": "Poveznica",
+    "downloadApp": "Preuzmi aplikaciju",
+    "fullscreen": "Cijeli zaslon",
+    "pinMap": "Učvrsti kartu na vrh",
+    "selectRegion": "Odaberi regiju",
+    "viewOnGitHub": "Pogledaj na GitHubu",
+    "filterSources": "Filtriraj izvore...",
+    "sourcesEnabled": "{{enabled}}/{{total}} omogućeno",
+    "finance": "FINANCIJE",
+    "commodity": "ROBE",
+    "energy": "ENERGIJA",
+    "toggleTheme": "Promijeni tamnu/svijetlu temu",
+    "panelDisplayCaption": "Odaberi koje ploče prikazati na kontrolnoj ploči",
+    "tabGeneral": "Općenito",
+    "tabSettings": "Postavke",
+    "tabPanels": "Ploče",
+    "tabSources": "Izvori",
+    "tabNotifications": "Obavijesti",
+    "languageLabel": "Jezik",
+    "sourceRegionAll": "Sve",
+    "sourceRegionWorldwide": "Svjetsko",
+    "sourceRegionUS": "Sjedinjene Države",
+    "sourceRegionMiddleEast": "Bliski Istok",
+    "sourceRegionAfrica": "Afrika",
+    "sourceRegionLatAm": "Latinska Amerika",
+    "sourceRegionAsiaPacific": "Azija-Pacifik",
+    "sourceRegionEurope": "Europa",
+    "sourceRegionTopical": "Po temama",
+    "sourceRegionIntel": "Obavještajne informacije",
+    "sourceRegionTechNews": "Tehnološke vijesti",
+    "sourceRegionAiMl": "AI & ML",
+    "sourceRegionStartupsVc": "Startupsi & VC",
+    "sourceRegionRegionalTech": "Regionalni ekosistemi",
+    "sourceRegionDeveloper": "Razvoj",
+    "sourceRegionCybersecurity": "Kibernetička sigurnost",
+    "sourceRegionTechPolicy": "Politika & Istraživanja",
+    "sourceRegionTechMedia": "Mediji & Podcasti",
+    "sourceRegionMarkets": "Tržišta & Analiza",
+    "sourceRegionFixedIncomeFx": "Obveznice & Devize",
+    "sourceRegionCommodities": "Robe",
+    "sourceRegionCryptoDigital": "Kripto & Digitalno",
+    "sourceRegionCentralBanks": "Središnje banke & Ekonomija",
+    "sourceRegionDeals": "Dogovori & Korporativno",
+    "sourceRegionFinRegulation": "Financijska regulacija",
+    "sourceRegionGulfMena": "Perzijski zaljev & MENA",
+    "filterPanels": "Filtriraj panele...",
+    "resetLayout": "Resetiraj raspored",
+    "resetLayoutTooltip": "Vrati zadanu postavku panela",
+    "unsavedChanges": "Imate nespremljene promjene panela. Odbaciti ih?",
+    "panelCatCore": "Jezgra",
+    "panelCatIntelligence": "Obavještajne informacije",
+    "panelCatCorrelation": "Povezanost",
+    "panelCatRegionalNews": "Regionalne vijesti",
+    "panelCatMarketsFinance": "Tržišta & Financije",
+    "panelCatTopical": "Po temama",
+    "panelCatDataTracking": "Podaci & Praćenje",
+    "panelCatTechAi": "Tehnologija & AI",
+    "panelCatStartupsVc": "Startupsi & VC",
+    "panelCatSecurityPolicy": "Sigurnost & Politika",
+    "panelCatMarkets": "Tržišta",
+    "panelCatFixedIncomeFx": "Obveznice & Devize",
+    "panelCatCommodities": "Robe",
+    "panelCatCryptoDigital": "Kripto & Digitalno",
+    "panelCatCentralBanks": "Središnje banke & Ekonomija",
+    "panelCatDeals": "Dogovori & Institucije",
+    "panelCatGulfMena": "Perzijski zaljev & MENA",
+    "panelCatTradePolicy": "Trgovinska politika",
+    "panelCatCommodityPrices": "Cijene i tržišta",
+    "panelCatMining": "Rudarstvo i opskrbni lanac",
+    "panelCatCommodityEcon": "Ekonomija i trgovina",
+    "panelCatHappyNews": "Dobre vijesti",
+    "panelCatHappyPlanet": "Planet i pomoć"
+  },
+  "panels": {
+    "liveNews": "Vijesti uživo",
+    "markets": "Tržišta",
+    "marketImplications": "Implikacije AI na tržištu",
+    "map": "Globalna situacija",
+    "techMap": "Globalna tehnologija",
+    "techHubs": "Vruća tehnološka središta",
+    "status": "Stanje sustava",
+    "insights": "AI uvidi",
+    "strategicPosture": "AI strateška pozicija",
+    "cii": "Nestabilnost država",
+    "strategicRisk": "Pregled strateškog rizika",
+    "intel": "Intel feed",
+    "gdeltIntel": "Uživa obavještajna aktivnost",
+    "cascade": "Kaskada infrastrukture",
+    "politics": "Svjetske vijesti",
+    "us": "Sjedinjene Države",
+    "europe": "Europa",
+    "middleeast": "Bliskoistočna regija",
+    "africa": "Afrika",
+    "latam": "Latinska Amerika",
+    "asia": "Azija i Pacifik",
+    "energy": "Energija i resursi",
+    "energyComplex": "Energetski kompleks",
+    "oilInventories": "Zalihe nafte",
+    "energyCrisis": "Praćenje energetske krize",
+    "goldIntelligence": "Obavještajne podatke o zlatu",
+    "gov": "Vlada",
+    "thinktanks": "Think Tankovi",
+    "polymarket": "Predviđanja",
+    "commodities": "Metali i materijali",
+    "economic": "Makroekonomski stress",
+    "tradePolicy": "Trgovinska politika",
+    "supplyChain": "Opskrbni lanac",
+    "finance": "Financije",
+    "tech": "Tehnologija",
+    "crypto": "Kripto",
+    "heatmap": "Sektorska toplinska karta",
+    "ai": "AI/ML",
+    "layoffs": "Praćenje otkaza",
+    "monitors": "Moji monitori",
+    "satelliteFires": "Požari",
+    "macroSignals": "BTC režim",
+    "etfFlows": "Praćenje BTC ETF",
+    "stablecoins": "Stablecoins",
+    "deduction": "Odbitna Situacija",
+    "wsbTickerScanner": "WSB Ticker Skener",
+    "ucdpEvents": "Događaji Oružanih Sukoba",
+    "giving": "Globalno Davanje",
+    "displacement": "UNHCR Raseljavanje",
+    "climate": "Klimatske Anomalije",
+    "populationExposure": "Izloženost Stanovništva",
+    "securityAdvisories": "Sigurnosne Preporuke",
+    "orefSirens": "Sirene u Izraelu",
+    "telegramIntel": "Telegram Obavještajci",
+    "startups": "Startups & VC",
+    "vcblogs": "VC Uvidi i Eseji",
+    "regionalStartups": "Globalne Startup Vijesti",
+    "unicorns": "Pratilac Jednoroga",
+    "accelerators": "Akceleratatori & Demo Dani",
+    "security": "Kibernetska Sigurnost",
+    "policy": "AI Politika & Regulacija",
+    "regulation": "AI Ploča Regulacije",
+    "finRegulation": "Financijska Regulacija",
+    "hardware": "Polupropvodnici & Hardver",
+    "cloud": "Cloud & Infrastruktura",
+    "dev": "Zajednica Razvijatelja",
+    "github": "GitHub Trending",
+    "ipo": "IPO & SPAC",
+    "funding": "Financiranje & VC",
+    "producthunt": "Product Hunt",
+    "events": "Tech Događaji",
+    "serviceStatus": "Status Usluge",
+    "internetDisruptions": "Prekidi Interneta",
+    "internetDisruptionsTabs": {
+      "outages": "Zastoji",
+      "ddos": "DDoS",
+      "anomalies": "Anomalije"
+    },
+    "techReadiness": "Indeks Tehnološke Spremnosti",
+    "gccInvestments": "GCC Investicije",
+    "geoHubs": "Geopolitički Čvorišta",
+    "liveWebcams": "Užive Kamere",
+    "windyWebcams": "Windy Uživa Kamera",
+    "gulfEconomies": "Gospodarstva Perzijskog Zaljeva",
+    "groceryBasket": "Indeks Namirnica",
+    "groceryItem": "Stavka",
+    "bigmac": "Pravi Indeks Big Maca",
+    "bigmacDesc": "Cijene Big Maca u zemljama Bliskog Istoka (Indeks Big Maca)",
+    "bigmacWow": "WoW",
+    "bigmacCountry": "Država",
+    "faoFoodPriceIndex": "FAO Indeks Cijene Hrane",
+    "fuelPrices": "Cijene Goriva",
+    "fuelPricesDesc": "Maloprodajne cijene benzina i dizelskog goriva u 30+ zemalja širom svijeta",
+    "fuelPricesCountry": "Država",
+    "fuelPricesGasoline": "Benzin",
+    "fuelPricesDiesel": "Dizel",
+    "fuelPricesSource": "Izvor",
+    "groceryBasketDesc": "Usporedba cijena namirnica u 24 zemlje širom svijeta",
+    "gulfIndices": "Indeksi Zaliva",
+    "gulfCurrencies": "Valute Zaliva",
+    "gulfOil": "Nafta Zaliva",
+    "airlineIntel": "✈️ Obavještenja o Zrakoplovnim Kompanijama",
+    "consumerPrices": "Cijene za Potrošače",
+    "fearGreed": "Strah & Pohlepa",
+    "marketBreadth": "Širina Tržišta",
+    "climateNews": "Klimatske Vijesti"
+  },
+  "commands": {
+    "prefixes": {
+      "map": "Mapa",
+      "panel": "Ploča",
+      "brief": "Izvještaj"
+    },
+    "categories": {
+      "navigate": "Navigacija",
+      "layers": "Slojevi",
+      "panels": "Ploče",
+      "view": "Prikaz",
+      "actions": "Radnje",
+      "country": "Država"
+    },
+    "regions": {
+      "global": "Globalni prikaz",
+      "mena": "Bliski Istok i Sjeverna Afrika",
+      "eu": "Europa",
+      "asia": "Azija-Pacifik",
+      "america": "Amerika",
+      "africa": "Afrika",
+      "latam": "Latinška Amerika",
+      "oceania": "Oceanija"
+    },
+    "tips": {
+      "map": "Upišite naziv zemlje za letenje tamo na karti",
+      "panel": "Upišite naziv ploče za pomicanje do nje",
+      "brief": "Upišite naziv zemlje za obavještajni izvještaj",
+      "layers": "Upišite \"military\" ili \"finance\" za unaprijed postavljene slojeve",
+      "time": "Upišite \"1h\", \"24h\" ili \"7d\" za filtriranje po vremenu",
+      "settings": "Upišite \"dark mode\", \"settings\" ili \"fullscreen\"",
+      "flight": "Pretražite direktne letove prema pozivu (PRO)",
+      "mapExample": "iran",
+      "panelExample": "news",
+      "briefExample": "brief china",
+      "layersExample": "military layers",
+      "timeExample": "24h",
+      "settingsExample": "dark mode",
+      "flightExample": "UAE528"
+    },
+    "keywords": {
+      "military": "military",
+      "finance": "finance",
+      "infrastructure": "infrastructure",
+      "intelligence": "intelligence",
+      "news": "news",
+      "dark": "dark",
+      "light": "light",
+      "settings": "settings",
+      "fullscreen": "fullscreen",
+      "refresh": "Osvježi"
+    },
+    "labels": {
+      "layers": {
+        "military": "Prikaži vojne slojeve",
+        "finance": "Prikaži financijske slojeve",
+        "infra": "Prikaži slojeve infrastrukture",
+        "intel": "Prikaži slojeve obavještajnog podatka",
+        "all": "Omogući sve slojeve",
+        "none": "Sakrij sve slojeve",
+        "minimal": "Minimalni slojevi (konflikti + kritične točke)"
+      },
+      "layer": {
+        "ais": "Uključi/isključi praćenje AIS plovila",
+        "flights": "Uključi/isključi vojne letove",
+        "conflicts": "Uključi/isključi zone konflikta",
+        "hotspots": "Uključi/isključi obavještajne kritične točke",
+        "protests": "Uključi/isključi prostore i nemire",
+        "cables": "Uključi/isključi podmorske kablove",
+        "pipelines": "Uključi/isključi naftovode",
+        "nuclear": "Uključi/isključi nuklearne objekte",
+        "bases": "Uključi/isključi vojne baze",
+        "fires": "Uključi/isključi požare iz satelita",
+        "weather": "Uključi/isključi vremensku prognozu",
+        "cyber": "Uključi/isključi kibernetske prijetnje",
+        "displacement": "Uključi/isključi tokove raseljenih osoba",
+        "climate": "Uključi/isključi klimatske anomalije",
+        "outages": "Uključi/isključi ispade interneta",
+        "tradeRoutes": "Uključi/isključi trgovačke rute"
+      },
+      "view": {
+        "dark": "Prebedi na tamni način",
+        "light": "Prebedi na svijetli način",
+        "fullscreen": "Uključi/isključi cijeli zaslon",
+        "settings": "Otvori postavke",
+        "refresh": "Osvježi sve podatke"
+      },
+      "time": {
+        "1h": "Prikaži događaje iz zadnjeg sata",
+        "6h": "Prikaži događaje iz zadnjih 6 sati",
+        "24h": "Prikaži događaje iz zadnjih 24 sata",
+        "48h": "Prikaži događaje iz zadnjih 48 sati",
+        "7d": "Prikaži događaje iz zadnjih 7 dana"
+      }
+    }
+  },
+  "modals": {
+    "search": {
+      "placeholder": "Pretraži ili unesite naredbu...",
+      "hint": "Pretraživanje • Zemlje • Slojevi • Ploče • Navigacija • Postavke",
+      "placeholderTech": "Pretraži ili unesite naredbu...",
+      "hintTech": "Pretraživanje • Tvrtke • AI laboratoriji • Slojevi • Navigacija • Postavke",
+      "placeholderFinance": "Pretraži ili unesite naredbu...",
+      "hintFinance": "Pretraživanje • Burze • Tržišta • Slojevi • Navigacija • Postavke",
+      "recent": "Nedavna pretraživanja",
+      "empty": "Pretraži podatke ili pokreni naredbe",
+      "noResults": "Nema rezultata",
+      "commands": "Naredbe",
+      "results": "Rezultati",
+      "seeAllCommands": "Vidi sve naredbe",
+      "hideCommandList": "Natrag",
+      "navigate": "Navigiraj",
+      "select": "Odaberi",
+      "close": "Zatvori",
+      "types": {
+        "country": "Država",
+        "news": "Vijesti",
+        "hotspot": "Žarišna točka",
+        "market": "Tržište",
+        "prediction": "Prognoza",
+        "conflict": "Sukob",
+        "base": "Vojna baza",
+        "pipeline": "Naftovod",
+        "cable": "Podmorski kabel",
+        "datacenter": "Podatkovni centar",
+        "earthquake": "Potres",
+        "outage": "Prekid",
+        "nuclear": "Nuklearna instalacija",
+        "irradiator": "Zračilac",
+        "techcompany": "Tehnološka tvrtka",
+        "ailab": "AI laboratorij",
+        "startup": "Startup",
+        "techevent": "Tehnološki događaj",
+        "techhq": "Tehnološka sjedišta",
+        "accelerator": "Akcelerator",
+        "flight": "Let"
+      },
+      "flightOnGround": "Na zemlji",
+      "flightAirborne": "FL{{fl}} · {{kts}} kts",
+      "flightMilitary": "Vojni · {{type}} · FL{{fl}}",
+      "flightMilitaryOnGround": "Vojni · {{type}} · na zemlji",
+      "flightSearchHint": "Pritisnite Enter ili kliknite za pronalaženje pozicije",
+      "flightNotFound": "Nijedna aktivna pozicija pronađena za {{callsign}}"
+    },
+    "signal": {
+      "title": "OBAVJEŠTAJNI NALAZ",
+      "soundAlerts": "Zvučne notifikacije",
+      "dismiss": "Odbaci",
+      "confidence": "Pouzdanost",
+      "country": "Država:",
+      "scoreChange": "Promjena rezultata:",
+      "instabilityLevel": "Razina nestabilnosti:",
+      "primaryDriver": "Primarni uzrok:",
+      "location": "Lokacija:",
+      "eventTypes": "Vrste događaja:",
+      "eventCount": "Broj događaja:",
+      "eventCountValue": "{{count}} događaja u 24h",
+      "source": "Izvor:",
+      "countriesAffected": "Zahvaćene države:",
+      "impactLevel": "Razina utjecaja:",
+      "focalPoints": "POVEZANE ŽARIŠNE TOČKE",
+      "newsCorrelation": "KORELACIJA S VIJESTIMA",
+      "viewOnMap": "Prikazi na karti",
+      "whyItMatters": "Zašto je važno:",
+      "action": "Akcija:",
+      "note": "Bilješka:",
+      "suppress": "Suzbij ovaj termin",
+      "suppressed": "Suzbijeno",
+      "predictionLeading": "Predviđanje u Vođstvu",
+      "newsLeading": "Vijesti u Vođstvu",
+      "silentDivergence": "Tiha Divergencija",
+      "velocitySpike": "Skok Brzine",
+      "keywordSpike": "Skok Ključne Reči",
+      "convergence": "Konvergencija",
+      "triangulation": "Triangulacija",
+      "flowDrop": "Pad Toka",
+      "flowPriceDivergence": "Divergencija Toka/Cene",
+      "geoConvergence": "Geografska Konvergencija",
+      "marketMove": "Objasnjena Kretanja na Tržištu",
+      "sectorCascade": "Kaskada Sektora",
+      "militarySurge": "Vojni Porast"
+    },
+    "story": {
+      "generating": "Generisanje priče...",
+      "close": "Zatvori",
+      "shareTitle": "Deli priču",
+      "save": "Spremi",
+      "whatsapp": "WhatsApp",
+      "twitter": "X",
+      "linkedin": "LinkedIn",
+      "copyLink": "Veza",
+      "saved": "Spremljeno!",
+      "copied": "Kopirano!",
+      "opening": "Otvaranje...",
+      "error": "Neuspelo generisanje priče."
+    },
+    "mobileWarning": {
+      "title": "Mobilni Pregled",
+      "description": "Gledate pojednostavljenu mobilnu verziju fokusirano na MENA regiju sa omogućenim bitnim slojevima.",
+      "tip": "Savet: Koristite dugmadi za prikaz (GLOBAL/US/MENA) da biste promenili regije. Dodirnite oznake za detalje.",
+      "dontShowAgain": "Ne prikazuj ponovo",
+      "gotIt": "Razumem"
+    },
+    "downloadBanner": {
+      "title": "Dostupna Deskto Verzija",
+      "description": "Prirodne performanse, sigurna lokalna skladišta ključeva, offline prikaz mapa.",
+      "macSilicon": "macOS (Apple Silicon)",
+      "macIntel": "macOS (Intel)",
+      "windows": "Windows (.exe)",
+      "linux": "Linux (.AppImage)",
+      "showAllPlatforms": "Prikaži sve platforme",
+      "showLess": "Prikaži manje",
+      "dismiss": "Otpusti"
+    },
+    "runtimeConfig": {
+      "title": "Konfiguracija Desktop-a",
+      "alertTitle": {
+        "configured": "Desktop postavke konfigurisane",
+        "needsKeys": "Konfiguriši API ključeve da otključaš funkcije",
+        "some": "Neke funkcije trebaju API ključeve"
+      },
+      "openSettings": "Otvori Postavke",
+      "reserveEarlyAccess": "Rezerviši Rani Pristup",
+      "skipSetup": "Preskoči postavljanje — jedna World Monitor licenca otključava sve. Pridruži se listi čekanja za rani pristup.",
+      "summary": {
+        "desktop": "Desktop režim",
+        "web": "Web režim (samo čitanje, kredencijali upravljani serverom)",
+        "secrets": "lokalne tajne konfigurisane",
+        "available": "dostupne funkcije"
+      },
+      "status": {
+        "ready": "Spremno",
+        "staged": "Pripremljeno",
+        "needsKeys": "Potrebni ključevi",
+        "invalid": "Neispravno",
+        "missing": "Nedostaje",
+        "valid": "Ispravno",
+        "looksInvalid": "Izgleda neispravno"
+      },
+      "placeholder": {
+        "setSecret": "Postavi tajnu",
+        "staged": "Pripremljeno (spremi sa OK)"
+      },
+      "help": {
+        "URLHAUS_AUTH_KEY": "Koristi se za URLhaus i ThreatFox API-je.",
+        "OTX_API_KEY": "Opcionalni izvor obogaćivanja za sloj cyber prijetnji.",
+        "ABUSEIPDB_API_KEY": "Opcionalni izvor obogaćivanja za reputaciju zlonamjernih IP adresa.",
+        "FINNHUB_API_KEY": "Cijene dionica u realnom vremenu i tržišni podaci.",
+        "NASA_FIRMS_API_KEY": "Sustav za upravljanje informacijama o požarima.",
+        "OLLAMA_API_URL": "npr. http://127.0.0.1:11434 (Ollama) ili http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-kompatibilan endpoint.",
+        "OLLAMA_MODEL": "npr. llama3.1:8b — tag modela za summarizaciju."
+      }
+    },
+    "settingsWindow": {
+      "shellTitle": "Postavke Svjetskog monitoringa",
+      "shellSearchPlaceholder": "Pretraži postavke...",
+      "shellCancel": "Odustani",
+      "shellSaveClose": "Spremi i zatvori",
+      "freePanelLimit": "Besplatni plan: maks {{max}} panela. Nadogradi na PRO za neograničeno.",
+      "freeSourceLimit": "Besplatni plan: maks {{max}} izvora. Nadogradi na PRO za neograničeno.",
+      "validating": "Provjera API ključeva...",
+      "saved": "Postavke spremljene",
+      "failed": "Spremanje neuspješno: {{error}}",
+      "verifyFailed": "Provjereni ključevi spremljeni. Neuspješni: {{errors}}",
+      "verboseOn": "Detaljno logiranje sidecara UKLJUČENO (spremljeno)",
+      "verboseOff": "Detaljno logiranje sidecara ISKLJUČENO (spremljeno)",
+      "invokeFail": "Neuspješno izvršavanje {{command}}. Provjeri dnevnik radne površine.",
+      "openLogs": "Mapa dnevnika otvorena",
+      "openApiLog": "API dnevnik otvoren",
+      "sidecarError": "Nije moguće pristupiti sidecaru za promjenu detaljnog moda",
+      "noTraffic": "Nema zabilježenog prometa.",
+      "sidecarUnreachable": "Sidecar nije dostupan.",
+      "logCleared": "Dnevnik obrisan.",
+      "worldMonitor": {
+        "tabLabel": "Svjetski monitoring",
+        "heroTitle": "Jedan ključ. Sve uključeno.",
+        "heroDescription": "Jedna licenca Svjetskog monitoringa zamjenjuje svaki API ključ i LLM davatelja koji bi inače trebao konfigurirati sam. AI sažetci, obavještenja u realnom vremenu, tržišni podaci, praćenje sukoba, detekcija požara, satelitske slike — sve pokriveno, sve upravljano, bez postave.",
+        "apiKey": {
+          "title": "Ključ licence",
+          "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
+          "description": "Zalijepi svoju licencu kako bi odmah otključao sve izvore podataka i AI značajke.",
+          "statusValid": "LICENCIRANO",
+          "statusMissing": "NEMA LICENCE"
+        },
+        "dividerOr": "ILI",
+        "register": {
+          "title": "Rezerviraj svoje mjesto",
+          "description": "Pripremamo lansiranje Svjetskog monitoringa licenci. Registriraj se sada i budi prvi u redu — rani članovi dobivaju prioritetni pristup i cijene za članove osnivače.",
+          "emailPlaceholder": "tvoj@email.com",
+          "submitBtn": "Pridruži se listi čekanja",
+          "submitting": "Slanje...",
+          "success": "Već si na listi! Obavijestit ćemo te prvi.",
+          "alreadyRegistered": "Već ste na listi čekanja.",
+          "error": "Registracija nije uspjela. Pokušajte ponovno.",
+          "invalidEmail": "Unesite valjanu email adresu."
+        },
+        "byokTitle": "Ili donesite vlastite ključeve",
+        "byokDescription": "Želite potpunu kontrolu? Otvorite kartice API ključevi i LLM-ovi kako biste konfigurirali svaki izvor podataka i AI pružatelja posebno."
+      },
+      "table": {
+        "time": "Vrijeme",
+        "method": "Metoda",
+        "path": "Putanja",
+        "status": "Status",
+        "duration": "Trajanje"
+      }
+    },
+    "countryIntel": {
+      "identifying": "Prepoznavanje zemlje...",
+      "locating": "Lociranje regije...",
+      "instabilityIndex": "Indeks nestabilnosti",
+      "protests": "prosvjedi",
+      "militaryAircraft": "mil. zrakoplovi",
+      "militaryVessels": "mil. brodovi",
+      "outages": "prekidi",
+      "earthquakes": "potresi",
+      "loadingIndex": "Učitavanje indeksa...",
+      "loadingMarkets": "Učitavanje tržišta predviđanja...",
+      "generatingBrief": "Generiranje obavještajnog izvještaja...",
+      "cached": "Cache",
+      "fresh": "Novo",
+      "noMarkets": "Nema pronađenih tržišta predviđanja",
+      "predictionMarkets": "Tržišta predviđanja",
+      "unavailable": "AI izvještaj nije dostupan — konfigurirajte GROQ_API_KEY u Postavkama."
+    },
+    "countryBrief": {
+      "identifying": "Prepoznavanje zemlje...",
+      "locating": "Lociranje regije...",
+      "limitedCoverage": "Ograničena pokrivenost",
+      "instabilityIndex": "Indeks nestabilnosti",
+      "notTracked": "Nije praćena — {{country}} nije na CII listi razine 1",
+      "intelBrief": "Obavještajni izvještaj",
+      "generatingBrief": "Generiranje obavještajnog izvještaja...",
+      "topNews": "Glavne vijesti",
+      "activeSignals": "Signali zemlje",
+      "timeline": "Vremenska linija od 7 dana",
+      "predictionMarkets": "Tržišta predviđanja",
+      "loadingMarkets": "Učitavanje tržišta predviđanja...",
+      "infrastructure": "Izloženost infrastrukture",
+      "briefUnavailable": "AI izvještaj nije dostupan — konfigurirajte GROQ_API_KEY u Postavkama.",
+      "cached": "Cache",
+      "fresh": "Novo",
+      "noMarkets": "Nema pronađenih tržišta predviđanja",
+      "loadingIndex": "Učitavanje indeksa...",
+      "components": {
+        "unrest": "Nemir",
+        "conflict": "Sukob",
+        "security": "Mil. aktivnost",
+        "information": "Informacije"
+      },
+      "signals": {
+        "protests": "prosvjedi",
+        "militaryAir": "mil. zrakoplovi",
+        "militarySea": "vojna plovila",
+        "outages": "prekidi",
+        "earthquakes": "potresi",
+        "displaced": "raseljeni",
+        "climate": "klimatski stres",
+        "conflictEvents": "događaji u sukobu",
+        "activeStrikes": "aktivni štrajkovi",
+        "aviationDisruptions": "prekidi na aerodromima",
+        "gpsJammingZones": "GPS zone smetnji"
+      },
+      "timeAgo": {
+        "m": "prije {{count}}m",
+        "h": "prije {{count}}h",
+        "d": "prije {{count}}d"
+      },
+      "infra": {
+        "pipeline": "Cjevovodi",
+        "cable": "Podmorski kabeli",
+        "datacenter": "Podatkovni centri",
+        "base": "Vojne baze",
+        "nuclear": "Nuklearni objekti",
+        "port": "Luke"
+      },
+      "levels": {
+        "critical": "Kritično",
+        "high": "Visoko",
+        "elevated": "Povećano",
+        "moderate": "Umjereno",
+        "normal": "Normalno",
+        "low": "Nisko"
+      },
+      "trends": {
+        "rising": "Rastući",
+        "falling": "Padajući",
+        "stable": "Stabilan"
+      },
+      "fallback": {
+        "instabilityIndex": "**Indeks nestabilnosti: {{score}}/100** ({{level}}, {{trend}})",
+        "protestsDetected": "{{count}} aktivnih prosvjeda detektirano",
+        "aircraftTracked": "{{count}} vojnih zrakoplova praćeno",
+        "vesselsTracked": "{{count}} vojnih plovila praćeno",
+        "activeStrikes": "{{count}} aktivnih štrajkova detektirano",
+        "internetOutages": "{{count}} prekida interneta",
+        "recentEarthquakes": "{{count}} nedavnih potresa",
+        "stockIndex": "Burovski indeks: {{value}}",
+        "recentHeadlines": "**Nedavne vijesti:**"
+      }
+    }
+  },
+  "components": {
+    "webcams": {
+      "expand": "Proširi",
+      "paused": "Web kamere pauziran",
+      "pausedIdle": "Web kamere pauziran — pomaknite miš da nastavite",
+      "regions": {
+        "all": "SVE",
+        "mideast": "BLISKI ISTOK",
+        "europe": "EUROPA",
+        "americas": "AMERIKE",
+        "asia": "AZIJA",
+        "space": "SVEMIR"
+      }
+    },
+    "pinnedWebcams": {
+      "pinFromMap": "Prikvačite web kameru sa karte"
+    },
+    "positiveNewsFeed": {
+      "noStories": "Nema članka u ovoj kategoriji"
+    },
+    "breakthroughsTicker": {
+      "noData": "Nema znanstvenih proboja"
+    },
+    "airlineIntel": {
+      "infoTooltip": "<strong>Obavještajni sustav zrakoplovnih linija</strong> Podaci o realnom vremenu operativnog rada zrakoplovnih linija: suspenzija ruta, zatvaranja zračnog prostora, savjetodavne informacije za prijevoznike i hitne rute. Izvor: NOTAM od zrakoplovnih vlasti i bilteni prijevoznika.",
+      "noOpsData": "Nema operativnih podataka — učitavanje…",
+      "noFlights": "Nema letova — odaberite aerodrom u postavkama.",
+      "noCarrierData": "Nema podataka o prijevozniku.",
+      "noTrackingData": "Nema podataka o praćenju zrakoplova.",
+      "noNews": "Nema vijesti iz avijacije.",
+      "enterRoute": "Unesite rutu i pretražite cijene.",
+      "cachedInsight": "Spremljeni uvid",
+      "demoMode": "DEMO NAČIN",
+      "pricesIndicative": "Sve cijene su okvirne",
+      "searchFlights": "Pretražite letove",
+      "bestDates": "Najbolji datumi",
+      "cabinClass": "Kabina",
+      "enterRouteAndDate": "Unesite rutu i datum za pretragu",
+      "enterDateRange": "Unesite rutu i raspon datuma",
+      "degradedResults": "Neki rezultati mogu biti nepotpuni",
+      "nonstop": "direktno",
+      "roundTrip": "Povratni let",
+      "tripDays": "Dani putovanja",
+      "cheapest": "Najjeftinije"
+    },
+    "goodThingsDigest": {
+      "noStories": "Nema dostupnih priča",
+      "summarizing": "Sažimanje…"
+    },
+    "progressCharts": {
+      "noData": "Nema dostupnih podataka o napretku",
+      "fallbackBadge": "Prikazujem statičke fallback podatke — live serija nije dostupna",
+      "fallbackTooltip": "Live World Bank seed nije dostupan. Ovi grafikoni su prikazani iz snimljene kopije koja je zadnja verificirana u veljači 2026."
+    },
+    "monitor": {
+      "placeholder": "Ključne riječi (odvojene zarezom)",
+      "add": "+ Dodaj praćenje",
+      "addKeywords": "Dodajte ključne riječi za praćenje vijesti",
+      "noMatches": "Nema podudaranja u {{count}} članaka",
+      "showingMatches": "Prikazujem {{count}} od {{total}} podudaranja",
+      "match": "podudaranje",
+      "matches": "podudaranja"
+    },
+    "regulation": {
+      "infoTooltip": "<strong>Uredba</strong> Regulatorne mjere, promjene politike i ažuriranja primjene od strane globalnih regulatora: financijske, tehnološke, energetske i trgovačke vlasti. Preuzeto iz službenih publikacija vlade i regulatornih tijela.",
+      "dashboard": "Nadzorna ploča AI regulacije",
+      "timeline": "Vremenska linija",
+      "deadlines": "Rokovi",
+      "regulations": "Uredbe",
+      "countries": "Zemlje",
+      "recentActions": "Nedavne regulatorne mjere (Posljednjih 12 mjeseci)",
+      "upcomingDeadlines": "Nadolazeći rokovi sukladnosti",
+      "activeRegulations": "Aktivne uredbe",
+      "proposedRegulations": "Predložene uredbe",
+      "globalLandscape": "Globalni regulatorni pejzaž",
+      "emptyActions": "Nema nedavnih regulatornih mjera",
+      "emptyDeadlines": "Nema nadolazećih rokova sukladnosti u sljedećih 12 mjeseci",
+      "keyProvisions": "Ključne odredbe",
+      "learnMore": "Saznajte više",
+      "active": "Aktivno",
+      "proposed": "Predloženo",
+      "updated": "Ažurirano",
+      "actionsCount": "{{count}} mjera",
+      "deadlinesCount": "{{count}} rokova",
+      "days": "dani",
+      "activeCount": "Aktivne Uredbe ({{count}})",
+      "proposedCount": "Predložene Uredbe ({{count}})",
+      "moreProvisions": "+{{count}} više...",
+      "source": "Izvor",
+      "stances": {
+        "strict": "Stroga",
+        "moderate": "Umjerena",
+        "permissive": "Dozvoljiva",
+        "undefined": "Nedefinisana"
+      }
+    },
+    "economic": {
+      "indicators": "Pokazatelji",
+      "gov": "Vlada",
+      "centralBanks": "Središnje Banke",
+      "laborMarket": "Tržište Rada",
+      "metroUnemployment": "Nezaposlenost po Većem Području",
+      "noIndicatorData": "Nema podataka o pokazateljima — FRED se možda učitava",
+      "fredKeyMissing": "Potreban je FRED API ključ. Dodajte ga u Postavke kako biste omogućili ekonomske pokazatelje.",
+      "noSpending": "Nema nedavnih javnih ugovora",
+      "awards": "ugovori",
+      "in": "u",
+      "noBisData": "BIS podaci privremeno nisu dostupni — pokušaj će se ponoviti",
+      "policyRate": "Stopa Politike",
+      "exchangeRate": "Tečaj",
+      "creditToGdp": "Kredit / BDP",
+      "realEer": "Realni EER",
+      "change": "Promjena",
+      "cut": "smanjenje",
+      "hike": "povećanje",
+      "hold": "stabilnost",
+      "pressure": {
+        "label": "Makro pritisak",
+        "stress": "Stres",
+        "watch": "Praćenje",
+        "steady": "Stabilno",
+        "stressDetail": "Volatilnost i pritisak na krivulju su povećani.",
+        "watchDetail": "Uvjeti na tržištima trebaju bliže praćenje.",
+        "steadyDetail": "Makro uvjeti su trenutno stabilni."
+      },
+      "infoTooltip": "<strong>Makro Stres</strong> Makro mjerače, javne rashode i podatke središnjih banaka:<ul><li><strong>Pokazatelji</strong>: VIX, stope, krivulja prinosa, rad, inflacija</li><li><strong>Vlada</strong>: Nedavni javni ugovori SAD-a</li><li><strong>Središnje Banke</strong>: BIS stope politike i podaci o tečajima</li></ul>"
+    },
+    "oilInventories": {
+      "infoTooltip": "<strong>Zalihe Nafte</strong> Sirova nafta SAD-a i SPR zalihe (EIA tjedno), skladištenje prirodnog plina, EU postotak punjenja plina (GIE AGSI+) i OECD zalihe nafte mjerene danima pokrivenosti (IEA mjesečno)."
+    },
+    "energyComplex": {
+      "noData": "Energetski podaci privremeno nisu dostupni — pokušaj će se ponoviti",
+      "liveTape": "Uživo Trak",
+      "liveTapeSource": "Tržišne cijene",
+      "infoTooltip": "<strong>Energetski Kompleks</strong> Fizički i trgovinski energetski signali na jednom mjestu:<ul><li><strong>EIA metrike</strong>: WTI, Brent, proizvodnja SAD-a i zalihe</li><li><strong>Uživo trak</strong>: Trgovinske cijene energenata poput sirove nafte i prirodnog plina</li><li><strong>Svrha</strong>: Odvajanje fizičkog energetskog stresa od šire makro i robe panela</li></ul>"
+    },
+    "supplyChain": {
+      "chokepoints": "Uska Grla",
+      "shipping": "Stope Dostave",
+      "minerals": "Kritični Minerali",
+      "noChokepoints": "Podaci o uskim grlima se učitavaju...",
+      "noShipping": "Podaci o stopama dostave nisu dostupni",
+      "noMinerals": "Podaci o mineralima se učitavaju...",
+      "fredKeyMissing": "FRED API ključ je potreban za stope dostave — dodajte ga u Postavke. Uska grla i minerali dostupni bez ključa.",
+      "upstreamUnavailable": "Podaci lanaca nabave privremeno nisu dostupni — prikazuju se keširani podaci",
+      "spikeAlert": "Detektiran skok — stopa značajno iznad prosjeka od 52 tjedna (tjedno)",
+      "warnings": "upozorenje(a)",
+      "aisDisruptions": "AIS poremećaj(a)",
+      "transit24h": "24h",
+      "tankers": "tankerski brodovi",
+      "cargo": "teret",
+      "wowChange": "WoW promjena",
+      "vesselTransits": "Tranziti brodova (180d)",
+      "riskLevel": "Razina rizika",
+      "routingAction": "Rutiranje",
+      "disruption": "Poremećaj",
+      "vessels": "brodovi",
+      "incidents7d": "incidenti (7d)",
+      "flowUnavailable": "Podaci o tokovima nedostupni",
+      "containerRates": "Stope za kontejnere",
+      "bulkShipping": "Rasuti transport",
+      "economicIndicators": "Ekonomski indikatori",
+      "corridorDisruption": "Poremećaj koridora",
+      "corridor": "Koridor",
+      "loadingCorridors": "Učitavanje podataka o koridorima...",
+      "loadingHistory": "Učitavanje zgodovine tranzita…",
+      "historyUnavailable": "Povijest tranzita nedostupna",
+      "transitDataUnavailable": "Podaci o tranzitu nedostupni (upstream parcijalno)",
+      "mineral": "Mineral",
+      "topProducers": "Najveći proizvođači",
+      "risk": "Rizik",
+      "sources": "IMF PortWatch / AISStream / CorridorRisk / NGA / USGS",
+      "infoTooltip": "<strong>Monitor opskrbnog lanca</strong> Globalno praćenje logistike i resursa:<ul><li><strong>Uska grla</strong>: Status pomorskog tranzita, ocjene poremećaja i broj brodova</li><li><strong>Transport</strong>: Baltic Dry Index i trendovi cijena prijevoza</li><li><strong>Minerali</strong>: Rizik koncentracije kritičnih minerala (HHI) i najveći proizvođači</li></ul>Kliknite na karticu uskog grla za prikaz grafikona povijesti tranzita."
+    },
+    "tradePolicy": {
+      "restrictions": "Ograničenja",
+      "overview": "Pregled",
+      "tariffs": "Carine",
+      "flows": "Tokovi trgovine",
+      "barriers": "Barijere",
+      "noRestrictions": "Nema aktivnih trgovinskih ograničenja",
+      "noOverviewData": "Nema dostupnih podataka pregleda carina",
+      "noTariffData": "Nema dostupnih podataka o carinama",
+      "noFlowData": "Nema dostupnih podataka o tokovima trgovine",
+      "noBarriers": "Nisu izvještene trgovinske barijere",
+      "apiKeyMissing": "Obavezan API ključ WTO — dodajte ga u Postavke",
+      "upstreamUnavailable": "WTO podaci privremeno nedostupni — prikazivanje keširanih podataka",
+      "appliedRate": "Primijenjena stopa",
+      "mfnAppliedRate": "Primijenjena MFN stopa",
+      "baselineMfnTariff": "Osnovna MFN carinska stopa",
+      "effectiveTariffRateLabel": "Efektivna carinska stopa",
+      "gapLabel": "Razlika",
+      "gapVsMfnLabel": "Razlika prema MFN",
+      "noEffectiveCoverageForCountry": "Nema pokrivanja efektivne stope za ovu zemlju",
+      "effectiveMinusBaseline": "Efektivna stopa minus WTO MFN osnovna stopa",
+      "wtoBaselineMeta": "WTO MFN primijenjena stopa | {{year}}",
+      "overviewNoteNoEffective": "Ove brojke su WTO MFN osnovne stope, a ne trenutno opterećenje carina iz jednostranih carinskih mjera.",
+      "usBaselineLabel": "US WTO MFN osnovna stopa",
+      "overviewNoteTail": "Ove kartice prikazuju WTO osnovne dogovore, ne trenutno važeće carinsko opterećenje.",
+      "boundRate": "Vezana stopa",
+      "exports": "Izvoz",
+      "imports": "Uvoz",
+      "yoyChange": "Godišnja promjena",
+      "highTariff": "Visoka",
+      "moderateTariff": "Umjerena",
+      "lowTariff": "Niska",
+      "revenue": "Američki prihodi",
+      "noRevenueData": "Nema dostupnih podataka o carinama",
+      "treasuryUnavailable": "Podaci Blagajne privremeno nisu dostupni",
+      "fytdLabel": "FY{{year}} YTD",
+      "vsPriorFy": "vs FY{{year}}",
+      "sourceWto": "WTO",
+      "sourceTreasury": "Američka blagajna",
+      "colDate": "Datum",
+      "colMonthly": "Mjesečno",
+      "colFytd": "FY YTD",
+      "strategicFlows": "Strateški tokovi",
+      "noComtradeData": "Nema dostupnih podataka o strateških tokovima",
+      "comtradeUnavailable": "UN Comtrade podaci privremeno nisu dostupni",
+      "sourceComtrade": "UN Comtrade",
+      "anomalyBadge": "Anomalija",
+      "colReporter": "Država",
+      "colCommodity": "Roba",
+      "colTradeValue": "Vrijednost trgovine",
+      "infoTooltip": "<strong>Trgovinska politika</strong> WTO osnovni i monitoring utjecaja carinama:<ul><li><strong>Pregled</strong>: WTO MFN osnovne stope s kontekstom američke efektivne stope kada je dostupna</li><li><strong>Carine</strong>: Trendovi WTO MFN carinama u odnosu na procjenu američke efektivne carine</li><li><strong>Trgovinski tokovi</strong>: Količine izvoza/uvoza s godišnjim promjenama</li><li><strong>Barijere</strong>: Tehnička ograničenja trgovini (TBT/SPS obavijesti)</li><li><strong>Prihodi</strong>: Mjesečni američki prihodi od carinskog nadzora (US Treasury MTS podaci)</li></ul>"
+    },
+    "consumerPrices": {
+      "title": "Cijene za potrošače",
+      "subtitle": "Praćenje cijena košarice na ključnim tržištima",
+      "tabs": {
+        "overview": "Pregled",
+        "categories": "Kategorije",
+        "movers": "Pokretači",
+        "spread": "Marža maloprodajnog trgovca",
+        "health": "Zdravlje podataka"
+      },
+      "essentialsIndex": "Indeks nužnih dobara",
+      "valueBasketIndex": "Vrijednosna košarica",
+      "wowChange": "Tjedna promjena",
+      "momChange": "Mjesečna promjena",
+      "retailerSpread": "Marža maloprodajnog trgovca",
+      "coveragePct": "Pokrivanje",
+      "freshnessLag": "Zastoj svježine",
+      "noCategories": "Nema dostupnih podataka o kategorijama",
+      "noMovers": "Nema dostupnih pokretača cijena",
+      "noSpread": "Nema dostupnih podataka o marži maloprodajnog trgovca",
+      "noHealth": "Nema informacija o zdravlju podataka",
+      "upstreamUnavailable": "Podaci o cijenama za potrošače privremeno nisu dostupni",
+      "allCategories": "Sve kategorije",
+      "risers": "Rastuće",
+      "fallers": "Padajuće",
+      "unitPrice": "Jedinična cijena",
+      "freshLabel": "Svježe",
+      "staleLabel": "Zastarjelo",
+      "laggingLabel": "Zaostaje",
+      "stalledLabel": "Stagnacija",
+      "retailer": "Maloprodajac",
+      "lastUpdated": "Zadnja ažuriranja",
+      "retailers": "maloprodajci",
+      "items": "stavke",
+      "infoTooltip": "<strong>Cijene za kupce</strong> Praćenje cijena košarice u stvarnom vremenu:<ul><li><strong>Pregled</strong>: Indeks esencijala, vrijednosna košarica i promjena tjedan-na-tjedan</li><li><strong>Kategorije</strong>: Trendovi cijena po kategoriji s rasponom od 30 dana</li><li><strong>Pomicači</strong>: Stavke koje se najviše podižu i padaju ovog tjedna</li><li><strong>Raspon</strong>: Razlike u cijenama između maloprodajaca za istu košaricu</li></ul>Podaci prikupljeni iz živog praćenja cijena maloprodajaca."
+    },
+    "gdelt": {
+      "empty": "Nema nedavnih članaka na ovu temu"
+    },
+    "geoHubs": {
+      "tooltip": "<strong>Geopolitički čvorovi aktivnosti</strong><br>Prikazuje regije s najvećom aktivnošću vijesti.<br><br><em>Tipovi čvorova:</em><br>• 🏛️ Glavni gradovi — svjetski glavni gradovi i vladini centri<br>• ⚔️ Zone konflikta — Područja aktivnog konflikta<br>• ⚓ Strateški — Kritične točke i ključne regije<br>• 🏢 Organizacije — UN, NATO, IAEA, itd.<br><br><em>Razine aktivnosti:</em><br>• <span style=\"color: #ff4444\">Visoka</span> — Hitne vijesti ili ocjena 70+<br>• <span style=\"color: #ff8844\">Pojačana</span> — Ocjena 40-69<br>• <span style=\"color: #888\">Niska</span> — Ocjena ispod 40<br><br>Kliknite na čvor da zumirate na njegovu lokaciju.",
+      "noActive": "Nema aktivnih geopolitičkih čvorova",
+      "story": "članak",
+      "stories": "članci",
+      "infoTooltip": "<strong>Geopolitički čvorovi aktivnosti</strong><br>Prikazuje regije s najvećom aktivnošću vijesti.<br><br><em>Tipovi čvorova:</em><br>• 🏛️ Glavni gradovi — svjetski glavni gradovi i vladini centri<br>• ⚔️ Zone konflikta — Područja aktivnog konflikta<br>• ⚓ Strateški — Kritične točke i ključne regije<br>• 🏢 Organizacije — UN, NATO, IAEA, itd.<br><br><em>Razine aktivnosti:</em><br>• <span style=\"color: {{highColor}}\">Visoka</span> — Hitne vijesti ili ocjena 70+<br>• <span style=\"color: {{elevatedColor}}\">Pojačana</span> — Ocjena 40-69<br>• <span style=\"color: {{lowColor}}\">Niska</span> — Ocjena ispod 40<br><br>Kliknite na čvor da zumirate na njegovu lokaciju."
+    },
+    "techHubs": {
+      "tooltip": "<strong>Aktivnost tehnoloških čvorova</strong><br>Prikazuje tehnološke čvorove s najvećom aktivnošću vijesti.<br><br><em>Razine aktivnosti:</em><br>• <span style=\"color: #00ff88\">Visoka</span> — Hitne vijesti ili ocjena 50+<br>• <span style=\"color: #ffc800\">Pojačana</span> — Ocjena 20-49<br>• <span style=\"color: #888\">Niska</span> — Ocjena ispod 20<br><br>Kliknite na čvor da zumirate na njegovu lokaciju.",
+      "noActive": "Nema aktivnih tehnoloških čvorova",
+      "infoTooltip": "<strong>Aktivnost tehnoloških čvorova</strong><br>Prikazuje tehnološke čvorove s najvećom aktivnošću vijesti.<br><br><em>Razine aktivnosti:</em><br>• <span style=\"color: {{highColor}}\">Visoka</span> — Hitne vijesti ili ocjena 50+<br>• <span style=\"color: {{elevatedColor}}\">Pojačana</span> — Ocjena 20-49<br>• <span style=\"color: {{lowColor}}\">Niska</span> — Ocjena ispod 20<br><br>Kliknite na čvor da zumirate na njegovu lokaciju."
+    },
+    "predictions": {
+      "tooltip": "<strong>Tržišta prognoza</strong><br>Tržišta prognoza s pravim novcem:<br><ul><li>Cijene odražavaju procjene vjerojatnosti mase</li><li>Veći volumen = pouzdaniji signal</li><li>Fokus na geopolitiku i aktualne događaje</li></ul>Izvori: Polymarket, Kalshi",
+      "error": "Neuspješno učitavanje prognoza",
+      "yes": "Da",
+      "no": "Ne",
+      "vol": "Vol",
+      "closes": "Zatvara se",
+      "leanYes": "Blago da",
+      "leanNo": "Blago ne",
+      "tossUp": "Neizvjesno"
+    },
+    "stablecoins": {
+      "pegHealth": "Zdravlje veza",
+      "supplyVolume": "Ponuda i volumen",
+      "unavailable": "Podaci o stablecoinima privremeno nedostupni",
+      "token": "Token",
+      "mcap": "Tržišna vrijednost",
+      "vol24h": "Volumen 24h",
+      "chg24h": "Promjena 24h",
+      "infoTooltip": "<strong>Stablecoini</strong> Zdravlje veza, tržišna vrijednost i volumen za 24h za glavne tokene vezane uz USD (USDT, USDC, DAI, BUSD). Pokidana veza signalizira sustavni rizik."
+    },
+    "marketImplications": {
+      "infoTooltip": "<strong>AI implikacije na tržištu</strong> LLM-generirani trgovinski signali izvedeni iz živog geopolitičkog, commodityja i makro stanja nakon svakog ciklusa prognoziranja.<ul><li><strong>Smjer</strong>: LONG / SHORT / HEDGE s ocjenom pouzdanosti</li><li><strong>Vremenski okvir</strong>: 1T, 2T, 1M ili 3M horizont</li><li><strong>Pokretač</strong>: Ključni katalizator iza signala</li><li><strong>Rizik</strong>: Napomena ili uvjet poništavanja</li></ul><em>Samo u informativne svrhe. Nije investicijski savjet.</em>",
+      "title": "AI implikacije na tržištu",
+      "directions": {
+        "long": "LONG",
+        "short": "SHORT",
+        "hedge": "HEDGE"
+      },
+      "rationale": "Obrazloženje:",
+      "driver": "Pokretač:",
+      "appliesToNext": "Primjenjuje se na sljedeću AI regeneraciju",
+      "signals_one": "{{count}} signal",
+      "signals_other": "{{count}} signala",
+      "disclaimer": "AI-generirani trgovinski signali samo u informativne svrhe. Nisu investicijski savjet. Uvijek napravite vlastito istraživanje.",
+      "unavailable": "AI implikacije na tržištu se generiraju nakon svakog pokretanja prognoziranja. Vratite se uskoro.",
+      "signals_few": "{{count}} signala"
+    },
+    "status": {
+      "dataFeeds": "Izvori podataka",
+      "apiStatus": "Status API-ja",
+      "storage": "Pohrana",
+      "systemStatus": "Stanje sustava",
+      "updatedJustNow": "Ažurirano upravo sada",
+      "updatedAt": "Ažurirano {{time}}",
+      "storageUnavailable": "Informacije o pohrani nisu dostupne"
+    },
+    "playback": {
+      "toggleMode": "Promijeni način reprodukcije",
+      "live": "UŽIVO",
+      "historicalPlayback": "Reprodukcija povijest",
+      "close": "Zatvori",
+      "skipToStart": "Preskoči na početak",
+      "previous": "Prethodno",
+      "next": "Sljedeće",
+      "skipToEnd": "Preskoči na kraj"
+    },
+    "pizzint": {
+      "title": "Pentagon Pizza Index",
+      "defcon": "DEFCON {{level}}",
+      "updated": "Ažurirano {{timeAgo}}",
+      "tensionsTitle": "Geopolitička napetost",
+      "source": "Izvor:",
+      "statusClosed": "ZATVORENO",
+      "statusSpike": "SKOK",
+      "statusHigh": "VISOKO",
+      "statusElevated": "POVIŠENO",
+      "statusNominal": "NORMALNO",
+      "statusQuiet": "MIRNO",
+      "justNow": "upravo sada",
+      "minutesAgo": "prije {{m}}m",
+      "hoursAgo": "prije {{h}}h",
+      "defconLabels": {
+        "1": "REVOLVER SPREMAN - MAKSIMALNA SPREMNOST",
+        "2": "BRZ TEMPO - ORUŽANE SNAGE SPREMNE",
+        "3": "KRUŽNI DIM - POVEĆANA SPREMNOST SNAGA",
+        "4": "DVOSTRUKI POGLED - POJAČANO OBAVJEŠTAJNO PRAĆENJE",
+        "5": "BLIJEDI IZLAZ - NAJNIŽA SPREMNOST"
+      }
+    },
+    "strategicPosture": {
+      "elapsed": "Proteklo: {{elapsed}} s",
+      "clickToView": "Klikni za prikaz {{name}} na karti",
+      "clickToViewMap": "Klikni za prikaz na karti",
+      "refresh": "Osvježi",
+      "units": {
+        "fighters": "Lovci",
+        "tankers": "Tankerji",
+        "awacs": "AWACS",
+        "recon": "Izviđanje",
+        "transport": "Prijevoz",
+        "bombers": "Bombarderi",
+        "drones": "Dronovi",
+        "aircraft": "Zrakoplovi",
+        "carriers": "Nosači",
+        "destroyers": "Razarači",
+        "frigates": "Fregata",
+        "submarines": "Podmornice",
+        "patrol": "Patrolja",
+        "auxiliary": "Pomoćni",
+        "navalVessels": "Brodovi"
+      },
+      "infoTooltip": "<strong>Metodologija</strong><p>Agregira vojne zrakoplove i brodove po teatru djelovanja.</p><ul><li><strong>Normalno:</strong> Osnovni nivo aktivnosti</li><li><strong>Pojačano:</strong> Iznad praga (50+ zrakoplova)</li><li><strong>Kritično:</strong> Velika koncentracija (100+ zrakoplova)</li></ul><p><strong>Sposobno za udar:</strong> Tankerski zrakoplovi + AWACS + Lovci prisutni u dovoljnom broju za održane operacije.</p>",
+      "scanningTheaters": "Skeniranje teatara",
+      "positions": "Pozicije zrakoplova",
+      "navalVesselsLoading": "Brojevni brodovi",
+      "theaterAnalysis": "Analiza teatra",
+      "connectingStreams": "Povezivanje na live ADS-B & AIS tokove...",
+      "initialLoadNote": "Početno učitavanje traje 30-60 sekundi dok se podaci praćenja prikupljaju",
+      "acquiringData": "Prikupljanje podataka",
+      "acquiringDesc": "Povezivanje na ADS-B mrežu za podatke vojnih letova. Ovo može trajati 30-60 sekundi pri prvom učitavanju.",
+      "openSkyAdsb": "OpenSky ADS-B",
+      "aisVesselStream": "AIS tok brodova",
+      "retryNow": "Pokušaj ponovno",
+      "feedRateLimited": "Brzina feed-a ograničena",
+      "rateLimitedDesc": "OpenSky API ima ograničenja zahtjeva. Ploča će automatski pokušati ponovno za nekoliko minuta, ili možete pokušati sada.",
+      "rateLimitedTip": "Savjet: Vremenske kulminacije (UTC 12:00-20:00) često imaju viša ograničenja.",
+      "tryAgain": "Pokušaj ponovno",
+      "badges": {
+        "critical": "KRIT",
+        "elevated": "POJAČ",
+        "normal": "NORM"
+      },
+      "trendStable": "stabilno",
+      "domains": {
+        "air": "ZRAK",
+        "sea": "MORE"
+      },
+      "strike": "UDAR",
+      "staleWarning": "Korištenje cachiranog podataka - live feed privremeno nedostupan",
+      "updated": "Ažurirano:",
+      "emojiKeyLabel": "Ključ emoji-ja",
+      "emojiKeyAir": "Zračna sredstva",
+      "emojiKeyNaval": "Brojevna sredstva",
+      "theaters": {
+        "iran-theater": "Iranski teatar",
+        "taiwan-theater": "Tajvanskog prolaza",
+        "baltic-theater": "Baltički teatar",
+        "blacksea-theater": "Crno more",
+        "korea-theater": "Korejski poluotok",
+        "south-china-sea": "Južno-kinesko more",
+        "east-med-theater": "Istočno Sredozemlje",
+        "israel-gaza-theater": "Izrael/Gaza",
+        "yemen-redsea-theater": "Jemen/Crveno more"
+      }
+    },
+    "countryBrief": {
+      "shareLink": "Dijeli vezu",
+      "shareStory": "Dijeli priču",
+      "printPdf": "Ispiši / PDF",
+      "exportData": "Izvezi podatke",
+      "sourceRef": "Izvor [{{n}}]"
+    },
+    "relatedAssets": {
+      "pipeline": "Cjevovod",
+      "cable": "Kabel",
+      "datacenter": "Podatkovni centar",
+      "base": "Baza",
+      "nuclear": "Nuklearna"
+    },
+    "community": {
+      "joinDiscussion": "Pomozi oblikovati što dolazi",
+      "openDiscussion": "Pridruži se Discordu",
+      "dontShowAgain": "Nemoj pokazati opet",
+      "sectionLabel": "Zajednica"
+    },
+    "threatLabels": {
+      "critical": "KRIT",
+      "high": "VISOKO",
+      "medium": "SRED",
+      "low": "NISKO",
+      "info": "INFO"
+    },
+    "deckgl": {
+      "zoomIn": "Približi",
+      "zoomOut": "Udalji",
+      "resetView": "Vrati prikaz",
+      "legend": {
+        "title": "LEGENDA",
+        "startupHub": "Startup Hub",
+        "techHQ": "Tech HQ",
+        "accelerator": "Akcelerator",
+        "cloudRegion": "Cloud Region",
+        "datacenter": "Datacenter",
+        "stockExchange": "Burza",
+        "financialCenter": "Financijski centar",
+        "centralBank": "Središnja banka",
+        "commodityHub": "Hub roba",
+        "waterway": "Plovni put",
+        "highAlert": "Visoka uzbuna",
+        "elevated": "Pojačano",
+        "monitoring": "Praćenje",
+        "base": "Baza",
+        "nuclear": "Nuklearno",
+        "aircraft": "Zrakoplov",
+        "miningSite": "Rudnik",
+        "commodityPort": "Luka roba",
+        "pipeline": "Cjevovod",
+        "processingPlant": "Proizvodna tvornica",
+        "conflict": "Zona konflikta",
+        "diseaseAlert": "Upozorenje na bolest",
+        "diseaseWarning": "Upozorenje na bolest",
+        "diseaseWatch": "Praćenje bolesti",
+        "ciiLow": "Nisko (0–30)",
+        "ciiNormal": "Normalno (31–50)",
+        "ciiElevated": "Pojačano (51–65)",
+        "ciiHigh": "Visoko (66–80)",
+        "ciiCritical": "Kritično (81–100)"
+      },
+      "layerGuide": "Vodič slojeva",
+      "layerWarningTitle": "Obavijest o performansama",
+      "layerWarningBody": "Omogućavanje više od {{threshold}} slojeva može utjecati na performanse prikaza i brzinu kadra.",
+      "layerWarningDismiss": "Ne prikazuj više",
+      "layerWarningOk": "Shvaćam",
+      "layersTitle": "Slojevi",
+      "layerSearch": "Pretraži slojeve...",
+      "timeAll": "Sve",
+      "views": {
+        "global": "Globalno",
+        "americas": "Amerike",
+        "mena": "MENA",
+        "europe": "Evropa",
+        "asia": "Azija",
+        "latam": "Latinska Amerika",
+        "africa": "Afrika",
+        "oceania": "Oceanija"
+      },
+      "layers": {
+        "startupHubs": "Startup Hub-ovi",
+        "techHQs": "Tehnološke Glavnice",
+        "accelerators": "Akceleratori",
+        "cloudRegions": "Područja Oblaka",
+        "aiDataCenters": "AI Data Centri",
+        "underseaCables": "Podmorski Kabeli",
+        "internetOutages": "Prekidi Interneta",
+        "cyberThreats": "Kibernetske Prijetnje",
+        "techEvents": "Tehnološki Događaji",
+        "naturalEvents": "Prirodni Događaji",
+        "fires": "Požari",
+        "intelHotspots": "Intel Žarišta",
+        "conflictZones": "Zone Konflikta",
+        "militaryBases": "Vojne Baze",
+        "nuclearSites": "Nuklearna Mjesta",
+        "gammaIrradiators": "Gamma Zračitelji",
+        "radiationSpike": "Skok radijacije",
+        "radiationElevated": "Povećana radijacija",
+        "spaceports": "Svemirske Luke",
+        "satellites": "Orbitalna Nadzorna Oprema",
+        "pipelines": "Cjevovodi",
+        "militaryActivity": "Vojna Aktivnost",
+        "shipTraffic": "Brodski Promet",
+        "flightDelays": "Letenje",
+        "protests": "Prosvjedi",
+        "ucdpEvents": "Događaji Oružanih Konfliktaa",
+        "displacementFlows": "Tokovi Raseljenih",
+        "climateAnomalies": "Klimatske Anomalije",
+        "weatherAlerts": "Vremenske Upozorenja",
+        "strategicWaterways": "Uska Grla",
+        "economicCenters": "Ekonomski Centri",
+        "criticalMinerals": "Kritični Minerali",
+        "stockExchanges": "Burze",
+        "financialCenters": "Financijski Centri",
+        "centralBanks": "Središnje Banke",
+        "commodityHubs": "Okna za Robu",
+        "gulfInvestments": "GCC Ulaganja",
+        "tradeRoutes": "Trgovačke Rute",
+        "iranAttacks": "Iranski Napadi",
+        "gpsJamming": "GPS OMETANJE",
+        "ciiChoropleth": "CII Nestabilnost",
+        "dayNight": "Dan/Noć",
+        "positiveEvents": "Pozitivni Događaji",
+        "kindness": "Čini Ljubaznosti",
+        "happiness": "Svjetsko Blagostanje",
+        "speciesRecovery": "Oporavak vrsta",
+        "renewableInstallations": "Čista energija"
+      },
+      "tooltip": {
+        "earthquake": "Zemljotres",
+        "militaryAircraft": "Vojni zrakoplov",
+        "vesselCluster": "Skupin broda",
+        "vessels": "brodova",
+        "flightCluster": "Skupin letova",
+        "aircraft": "zrakoplova",
+        "protest": "Protest",
+        "protestsCount": "{{count}} protesta",
+        "techHQsCount": "{{count}} tehnoloških sjedišta",
+        "techEventsCount": "{{count}} tehnoloških događaja",
+        "dataCentersCount": "{{count}} podatkovnih centara",
+        "underseaCable": "Podvodni kabel",
+        "pipeline": "Cjevovod",
+        "conflictZone": "Konfliktna zona",
+        "naturalEvent": "Prirodni događaj",
+        "financialCenter": "financijski centar",
+        "port": "Luka",
+        "disruption": "Prekid",
+        "advisory": "Upozorenje",
+        "repairShip": "Popravni brod",
+        "internetOutage": "Prekid interneta",
+        "medium": "srednje",
+        "news": "Vijesti",
+        "undisclosed": "Neobjavljen",
+        "stake": "udjel"
+      },
+      "layerHelp": {
+        "title": "Vodič slojeva mape",
+        "labels": {
+          "countries": "Zemlje",
+          "timeRecent": "1H/6H/24H",
+          "timeExtended": "7D/30D/ALL",
+          "sanctions": "Sankcije",
+          "shipping": "Pomorstvo"
+        },
+        "sections": {
+          "techEcosystem": "Tehnološki ekosistem",
+          "infrastructure": "Infrastruktura",
+          "naturalEconomic": "Priroda i ekonomija",
+          "financeCore": "Jezgra financija",
+          "infrastructureRisk": "Infrastruktura i rizik",
+          "macroContext": "Makrokontekst",
+          "timeFilter": "Vremenski filtar (gore desno)",
+          "geopolitical": "Geopolitika",
+          "militaryStrategic": "Vojska i strategija",
+          "transport": "Prijevoz",
+          "labels": "Oznake",
+          "overlays": "Preklapanja i oznake"
+        },
+        "descriptions": {
+          "techStartupHubs": "Glavni ekosistemi startupa (SF, NYC, London, itd.)",
+          "techCloudRegions": "AWS, Azure, GCP regije podatkovnih centara",
+          "techHQs": "Sjedišta najvećih tehnoloških tvrtki",
+          "techAccelerators": "Y Combinator, Techstars, 500 Startups lokacije",
+          "infraCables": "Glavnih podmorskih optičkih kablova (internetska osnovna mreža)",
+          "infraDatacenters": "AI compute klasteri >=10.000 GPU-a",
+          "infraOutages": "Internetske crne točke i prekidi usluga",
+          "naturalEventsTech": "Zemljotresi, oluje, požari (mogu utjecati na podatkovne centre)",
+          "weatherAlerts": "Upozorenja za ekstremne vremenske prilike",
+          "economicCenters": "Berzanske bolnice i središnje banke",
+          "countriesOverlay": "Oznake imena država",
+          "financeExchanges": "Glavne svjetske berze po razredu tržišta",
+          "financeCenters": "Globalni i regionalni financijski centri",
+          "financeCentralBanks": "Institucije monetarne politike diljem svijeta",
+          "financeCommodityHubs": "Ključne berze, luke i rafinerijske centre",
+          "financeCables": "Glavne podvodne svjetlovodne rute vezane na tržišnu infrastrukturu",
+          "financePipelines": "Rute naftnih/plinskih plinovoda koje utječu na energetska tržišta",
+          "financeOutages": "Internetski prekidi koji mogu utjecati na rad tržišta",
+          "financeCyberThreats": "Sigurnosni incidenti oko financijske infrastrukture",
+          "macroWaterways": "Strateška uska grla za robno brodarstvo",
+          "weatherAlertsMarket": "Ekstremne vremenske prilike s relevancijom za tržište",
+          "naturalEventsMacro": "Zemljotresi, požari, poplave i ostali prirodni poremećaji",
+          "timeRecent": "Filtriraj vremenski ovisne podatke na nedavne sate",
+          "timeExtended": "Prikaži podatke iz prošlog tjedna, mjeseca ili cijelog vremena",
+          "geoConflicts": "Aktivne ratne zone (Ukrajina, Gaza, itd.) s granicama",
+          "geoHotspots": "Regije napetosti - kodirane boje po razini aktivnosti vijesti",
+          "geoSanctions": "Zemlje pod ekonomskim sankcijama SAD-a/EU-a/UN-a",
+          "geoProtests": "Građanski nemiri, demonstracije (vremenski filtrirano)",
+          "militaryBases": "Vojne instalacije SAD-a/NATO-a, Kine, Rusije (150+)",
+          "militaryNuclear": "Nuklearne elektrane, obogaćivanje, skladišta oružja",
+          "militaryIrradiators": "Industrijski gamma iradijatori",
+          "militaryActivity": "Praćenje vojnih zrakoplova i brodova u stvarnom vremenu",
+          "infraCablesFull": "Glavne podvodne svjetlovodne kabeli (20 okosnih ruta)",
+          "infraPipelinesFull": "Naftni/plinski plinovodi (Nord Stream, TAPI, itd.)",
+          "infraDatacentersFull": "AI compute klasteri >=10.000 GPU-a samo",
+          "transportShipping": "Praćenje brodova u stvarnom vremenu via AIS (pozicije brodova)",
+          "transportDelays": "Kašnjenja na aerodromima, zaustavljanja i NOTAM zatvaranja",
+          "naturalEventsFull": "Zemljotresi (USGS) + oluje, požari, vulkani, poplave (NASA EONET)",
+          "firesFull": "Aktivne šumske požare i perimetra požara (NASA FIRMS)",
+          "climateAnomalies": "Anomalije temperature i oborina",
+          "waterwaysLabels": "Oznake strateških uskih grla",
+          "geoUcdpEvents": "Uppsala Conflict Data Program događaji oružanih sukoba",
+          "geoDisplacement": "Tokovi izbjeglica i raseljenih osoba",
+          "militarySpaceports": "Centri za lansiranje raketa i svemirskih postrojenja",
+          "infraCyberThreats": "Cyber napadi i sigurnosni incidenti",
+          "mineralsFull": "Strateški depoziti mineralnih sirovina i rudnici",
+          "techCyberThreats": "Cyber napadi i sigurnosni incidenti",
+          "techEvents": "Velike tehnološke konferencije i događaji",
+          "techFires": "Aktivne šumske požare blizu tehnološke infrastrukture",
+          "financeGulfInvestments": "Investicije GCC suverenih fondova bogatstva i FDI",
+          "tradeRoutes": "Glavne globalne brodske rute koje povezuju luke kroz strateške uske grle",
+          "dayNight": "Praćenje solarnog terminatora u stvarnom vremenu - prikaz dnevne i noćne zone",
+          "geoBoundaries": "Demilitarizirane zone, linije primirja i sporne granice",
+          "ciiChoropleth": "Indeks nestabilnosti države toplinska mapa — boji zemlje po CII rezultatu (zelena=stabilna, crvena=kritična)"
+        },
+        "notes": {
+          "timeAffects": "Utječe na: Zemljotresi, Vrijeme, Protesti, Prekidi"
+        }
+      }
+    },
+    "cii": {
+      "shareStory": "Podijeli priču",
+      "noSignals": "Nisu otkriveni signali nestabilnosti",
+      "infoTooltip": "<strong>Metodologija</strong><ul><li><strong>U</strong>nrest: građanski nemiri i prosvjedi</li><li><strong>C</strong>onflict: intenzitet oružanog sukoba</li><li><strong>S</strong>ecurity: vojni letovi/brodovi preko područja</li><li><strong>I</strong>nformation: brzina vijesti i korelacija žarišne točke</li><li>Pojačanje blizine žarišne točke (strateške lokacije)</li></ul><em>Vrijednosti U:C:S:I pokazuju rezultate komponenti.</em> Detekcija Žarišne Točke povezuje vijesti sa signalima na karti za točnije bodovanje.",
+      "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
+      "methodologyLink": "Uključuje referencu po zemlji + množitelj događaja — vidi /docs/methodology/cii-risk-scores za objavljenu tablicu"
+    },
+    "insights": {
+      "noStories": "Još nema važnih ili multi-izvornih vijesti",
+      "step": "Korak {{step}}/{{total}}",
+      "waitingForData": "Čekam podatke vijesti...",
+      "rankingStories": "Rangiranje važnih vijesti...",
+      "analyzingSentiment": "Analiza sentimenta...",
+      "generatingBrief": "Generiranje svjetskog sažetka...",
+      "infoTooltip": "<strong>AI-pogonjena analiza</strong><br>• <strong>World Brief</strong>: AI sažetak (Groq/OpenRouter)<br>• <strong>Sentiment</strong>: Analiza tona vijesti<br>• <strong>Velocity</strong>: Brzo pokretne vijesti<br>• <strong>Focal Points</strong>: Povezuje vijesti sa signalima na karti (vojska, prosvjedi, ispadi)<br><em>Samo desktop • Pokreće Llama 3.3 + Detekcija Žarišne Točke</em>",
+      "settingsTitle": "Postavke",
+      "sectionMap": "Karta",
+      "sectionAi": "AI analiza",
+      "sectionStreaming": "Streaming",
+      "streamQualityLabel": "Kvaliteta videa",
+      "streamQualityDesc": "Postavi kvalitetu za sve live streamove (niža kvaliteta štedi bandwidth)",
+      "globeRenderQualityLabel": "Kvaliteta prikaza globusa",
+      "globeRenderQualityDesc": "Kontrolira rezoluciju kanvasa globusa. Veće vrijednosti izgledaju oštrice na 4K zaslonima, ali mogu opteretiti GPU.",
+      "globeRenderScaleOptions": {
+        "1": "Eco (1x)",
+        "2": "4K (2x)",
+        "3": "Insane (3x)",
+        "auto": "Auto (uređaj)",
+        "1_5": "Sharp (1.5x)"
+      },
+      "mapFlashLabel": "Live Event Pulse",
+      "mapFlashDesc": "Osvjetli lokacije na karti kada stignu važne vijesti",
+      "aiFlowTitle": "Postavke",
+      "aiFlowCloudLabel": "Cloud AI (Groq & OpenRouter)",
+      "aiFlowCloudDesc": "Pošalji naslove u oblak za AI sažimanje (preporučeno)",
+      "aiFlowBrowserLabel": "Lokalni model preglednika",
+      "aiFlowBrowserDesc": "Pokreni AI lokalno u svom pregledniku",
+      "aiFlowBrowserWarn": "Preuzima ~250 MB podataka modela u tvoj preglednik",
+      "aiFlowOllamaCta": "Želiš potpuno lokalni AI?",
+      "aiFlowOllamaCtaDesc": "Preuzmi desktop aplikaciju za podršku Ollama",
+      "aiFlowDownloadDesktop": "Preuzmi Desktop Aplikaciju →",
+      "aiFlowStatusActive": "Cloud AI aktivan",
+      "aiFlowStatusCloudAndBrowser": "Cloud AI + Browser model aktivan",
+      "aiFlowStatusBrowserOnly": "Samo browser model",
+      "aiFlowStatusDisabled": "Nijedan AI davatelj nije aktiviran",
+      "insightsDisabledTitle": "AI analiza je onemogućena",
+      "insightsDisabledHint": "Aktiviraj davatelje preko zupčanika postavki u zaglavlju karte",
+      "sectionPanels": "Paneli",
+      "badgeAnimLabel": "Animacije bedža",
+      "badgeAnimDesc": "Animiraj značke ažuriranja na zaglavlju panela",
+      "sectionIntelligence": "Obavještajna analiza",
+      "headlineMemoryLabel": "Memorija naslova",
+      "headlineMemoryDesc": "Zapamti viđene naslove kako bi se istaknule nove vijesti",
+      "analysisFrameworksLabel": "Okviri analize",
+      "analysisFrameworksActivePerPanel": "Aktivno po panelu",
+      "analysisFrameworksSkillLibrary": "Knjižnica vještina",
+      "analysisFrameworksImportBtn": "Uvezi okvir",
+      "analysisFrameworksDefaultNeutral": "Zadano (Neutralno)",
+      "analysisFrameworksImportTitle": "Uvezi okvir",
+      "analysisFrameworksFromAgentskills": "Iz agentskills.io",
+      "analysisFrameworksPasteJson": "Zalijepi JSON",
+      "analysisFrameworksSaveToLibrary": "Spremi u knjižnicu",
+      "streamAlwaysOnLabel": "Održi užive tokove aktivnima",
+      "streamAlwaysOnDesc": "Sprječava automatsku pauziranje živih kamera i živih vijesti kada ste neaktivni. Preporučeno za uporabu na drugim monitorima / tablicama. Onemogući (Eko) za uštedu CPU/propusnosti.",
+      "frameworkNote": "Primjenjuje se samo na analizu generirane od strane klijenta",
+      "loadingServerInsights": "Učitavanje server uvida...",
+      "usingCachedBrief": "Korištenje keširanih sažetaka...",
+      "multiPerspectiveAnalysis": "Analiza iz više perspektiva...",
+      "generatingBriefSub": "Generiranje sažetka: {{msg}}",
+      "breakingConfirmed": "PREKRETNICA I POTVRĐENO",
+      "multiSource": "Više izvora",
+      "fastMoving": "Brzo mijenja",
+      "clusters": "Skupovi",
+      "alertsLabel": "Upozorenja",
+      "alert": "UPOZORENJE",
+      "sources_one": "{{count}} izvor",
+      "sources_other": "{{count}} izvora",
+      "briefTech": "TEHNIČKI SAŽETAK",
+      "briefCommodity": "SAŽETAK ROBA",
+      "briefEnergy": "ENERGETSKI SAŽETAK",
+      "briefWorld": "SVJETSKI SAŽETAK",
+      "mlDetected": "ML DETEKTIRANO",
+      "geographicConvergence": "GEOGRAFSKA KONVERGENCIJA",
+      "focalPoints": "ŽARIŠNE TOČKE",
+      "toneMixed": "Miješano",
+      "toneNegative": "Negativno",
+      "tonePositive": "Pozitivno",
+      "overall": "Ukupno: {{tone}}",
+      "signalTypesEvents": "{{types}} tipova signala • {{events}} događaja",
+      "newsSignals": "{{news}} vijesti • {{signals}} signala",
+      "sources_few": "{{count}} izvora"
+    },
+    "settings": {
+      "dataManagementLabel": "Upravljanje podacima",
+      "exportSettings": "Izvezi postavke",
+      "importSettings": "Uvezi postavke",
+      "exportSuccess": "Postavke uspješno izvezene",
+      "exportFailed": "Neuspješan izvoz postavki",
+      "importSuccess": "Uvezeno {{count}} postavki",
+      "importFailed": "Neuspješan uvoz postavki",
+      "reloadNow": "Učitaj ponovo sada"
+    },
+    "cascade": {
+      "noImpacts": "Nema detektiranih utjecaja na zemlje",
+      "filters": {
+        "cables": "Kabeli",
+        "pipelines": "Cjevovodi",
+        "ports": "Luke",
+        "chokepoints": "Uska grla"
+      },
+      "filterType": {
+        "cable": "kabel",
+        "pipeline": "cjevovod",
+        "port": "luka",
+        "chokepoint": "uska grla",
+        "country": "država"
+      },
+      "selectPrompt": "Odaberi {{type}}...",
+      "analyzeImpact": "Analiziraj utjecaj",
+      "impactLevels": {
+        "critical": "kritičan",
+        "high": "visok",
+        "medium": "srednji",
+        "low": "nizak"
+      },
+      "capacityPercent": "{{percent}}% kapaciteta",
+      "noCountryImpacts": "Nema otkrivenih utjecaja na zemlje",
+      "alternativeRoutes": "Alternativne rute",
+      "countriesAffected": "Zahvaćene zemlje ({{count}})",
+      "links": "linkovi",
+      "selectInfrastructureHint": "Odaberi infrastrukturu za analizu kaskadnog utjecaja",
+      "infoTooltip": "<strong>Analiza kaskade</strong> Modelira ovisnosti infrastrukture:<ul><li>Podmorski kabeli, cjevovodi, luke, uska grla</li><li>Odaberi infrastrukturu za simulaciju otkaza</li><li>Prikazuje zahvaćene zemlje i gubitak kapaciteta</li><li>Identificira redundantne rute</li></ul>Podaci iz TeleGeography-a i industrijskih izvora."
+    },
+    "strategicRisk": {
+      "noRisks": "Nema otkrivenih značajnih rizika",
+      "levels": {
+        "critical": "Kritičan",
+        "elevated": "Povišen",
+        "moderate": "Umjeren",
+        "low": "Nizak"
+      },
+      "trend": "Trend",
+      "trends": {
+        "escalating": "Eskalacija",
+        "deEscalating": "De-eskalacija",
+        "stable": "Stabilan"
+      },
+      "insufficientData": "Nedovoljan udio podataka",
+      "unableToAssess": "Nije moguće procijeniti razinu rizika.",
+      "enableDataSources": "Aktiviraj izvore podataka za početak nadzora.",
+      "requiredDataSources": "Obavezni izvori podataka",
+      "optionalSources": "Dodatni izvori",
+      "enableCoreFeeds": "Aktiviraj glavne izvore",
+      "waitingForData": "Čekanje na podatke...",
+      "refresh": "Osvježi",
+      "learningMode": "Način učenja - {{minutes}}m do pouzdanosti",
+      "noData": "nema podataka",
+      "enable": "Aktiviraj",
+      "convergenceMetric": "Konvergencija",
+      "ciiDeviation": "CII odstupanje",
+      "infraEvents": "Događaji infrastrukture",
+      "highAlerts": "Visoki alarmi",
+      "topRisks": "Najveći rizici",
+      "recentAlerts": "Nedavni alarmi ({{count}})",
+      "updated": "Ažurirano: {{time}}",
+      "time": {
+        "justNow": "upravo sada",
+        "minutesAgo": "prije {{count}}m",
+        "hoursAgo": "prije {{count}}h"
+      },
+      "infoTooltip": "<strong>Metodologija</strong> Kombinirana ocjena (0-100) koja uključuje:<ul><li>50% Nestabilnost zemlje (top 5 ponderirano)</li><li>30% Zone geografske konvergencije</li><li>20% Incidenti infrastrukture</li></ul>Automatski osvježava se svakih 5 minuta."
+    },
+    "techEvents": {
+      "infoTooltip": "<strong>Tehnološki eventi</strong> Nadolazeći i nedavni tehnološki eventi: konferencije, lansiranja proizvoda, regulatorna saslušanja i earnings callovi. Agregirani iz službenih kalenda događaja i industrijskih izvora.",
+      "loading": "Učitavanje tehnoloških događaja...",
+      "noEvents": "Nema događaja za prikaz",
+      "showOnMap": "Prikaži na karti",
+      "moreInfo": "Više informacija",
+      "retry": "Pokušaj ponovno",
+      "upcoming": "Nadolazeći",
+      "conferences": "Konferencije",
+      "earnings": "Financijski rezultati",
+      "all": "Sve",
+      "conferencesCount": "{{count}} konferencija",
+      "onMap": "{{count}} na karti",
+      "techmemeEvents": "Techmeme Events ↗",
+      "today": "DANAS",
+      "soon": "USKORO"
+    },
+    "techReadiness": {
+      "internetUsers": "Korisnici interneta",
+      "mobileSubscriptions": "Mobilne pretplate",
+      "rdSpending": "Rashodi na R&D",
+      "fetchingData": "Preuzimanje podataka Svjetske banke",
+      "internetUsersIndicator": "Korisnici interneta",
+      "mobileSubscriptionsIndicator": "Mobilne pretplate",
+      "broadbandAccess": "Pristup širokopojasnom internetu",
+      "rdExpenditure": "Rashodi na R&D",
+      "analyzingCountries": "Analiza 200+ zemalja...",
+      "dataPreparing": "Osvežavanje podataka o tehnološkoj spremnosti — uskoro će biti dostupno.",
+      "source": "Izvor: Svjetska banka",
+      "updated": "Ažurirano: {{date}}",
+      "infoTooltip": "<strong>Globalna tehnološka spremnost</strong><br>Kompozitna ocjena (0-100) na osnovu podataka Svjetske banke:<br><br><strong>Prikazani pokazatelji:</strong><br>🌐 Korisnici interneta (% stanovništva)<br>📱 Mobilne pretplate (na 100 ljudi)<br>🔬 Rashodi na R&D (% BDP-a)<br><br><strong>Težine:</strong> R&D (35%), Internet (30%), Širokopojasni (20%), Mobilni (15%)<br><br><em>— = Nema dostupnih nedavnih podataka</em><br><em>Izvor: Svjetska banka Open Data (2019-2024)</em>"
+    },
+    "populationExposure": {
+      "noData": "Nema dostupnih podataka o izloženosti",
+      "totalAffected": "Ukupno pogođenih",
+      "affectedCount": "{{count}} pogođenih",
+      "radiusKm": "Radijus od {{km}} km",
+      "infoTooltip": "<strong>Procjene izloženosti stanovništva</strong> Procijenjena populacija u radijusu utjecaja događaja. Na osnovu podataka gustoće stanovništva WorldPop.<ul><li>Konflikt: 50 km radijus</li><li>Potres: 100 km radijus</li><li>Poplava: 100 km radijus</li><li>Požar: 30 km radijus</li></ul>"
+    },
+    "securityAdvisories": {
+      "loading": "Preuzimanje putnih savjeta...",
+      "noMatching": "Nema savjeta koji se podudaraju s ovim filterom",
+      "critical": "Kritično",
+      "health": "Zdravlje",
+      "sources": "US State Dept, AU DFAT, UK FCDO, NZ MFAT, CDC, ECDC, WHO, US Embassies",
+      "refresh": "Osvježi",
+      "levels": {
+        "doNotTravel": "Nemojte putovati",
+        "reconsider": "Ponovno razmotriti putovanje",
+        "caution": "Vježbajte oprez",
+        "normal": "Normalno",
+        "info": "Informacija"
+      },
+      "time": {
+        "justNow": "upravo sada",
+        "minutesAgo": "prije {{count}}m",
+        "hoursAgo": "prije {{count}}h",
+        "daysAgo": "prije {{count}}d"
+      },
+      "infoTooltip": "<strong>Sigurnosni savjeti</strong><br>Putni savjeti i sigurnosna upozorenja od vladinih agencija:<br><br><strong>Izvori:</strong><br>🇺🇸 US State Dept putni savjeti<br>🇦🇺 AU DFAT Smartraveller<br>🇬🇧 UK FCDO Travel Advice<br>🇳🇿 NZ MFAT SafeTravel<br><br><strong>Nivoi:</strong><br>🟥 Nemojte putovati<br>🟧 Ponovno razmotriti putovanje<br>🟨 Vježbajte oprez<br>🟩 Normalne mjere opreza"
+    },
+    "orefSirens": {
+      "checking": "Provjera upozorenja sirena...",
+      "noAlerts": "Nema aktivnih sirena — sve je u redu",
+      "notConfigured": "Usluga sirena nije konfigurirana",
+      "activeSirens": "{{count}} aktivnih sirena",
+      "area": "Područje",
+      "time": "Vrijeme",
+      "justNow": "upravo sada",
+      "historyCount": "{{count}} upozorenja u zadnjih 24h",
+      "historySummary": "{{count}} upozorenja u 24h — {{waves}} valova",
+      "loadingHistory": "Učitavanje zgodovine...",
+      "infoTooltip": "<strong>Izraelske sirene</strong><br>Upozorenja u realnom vremenu o raketama i projektilima od Izraelskog vijeća za domaću obranu.<br><br>Podaci se osvježavaju svakih 10 sekundi. Pulsirajući crveni indikator znači da su sirene aktivne."
+    },
+    "satelliteFires": {
+      "noData": "Nema dostupnih podataka o požarima",
+      "region": "Regija",
+      "fires": "Požari",
+      "high": "Visoko",
+      "total": "Ukupno",
+      "never": "nikad",
+      "time": {
+        "justNow": "upravo sada",
+        "minutesAgo": "prije {{count}}m",
+        "hoursAgo": "prije {{count}}h"
+      },
+      "infoTooltip": "NASA FIRMS VIIRS satelitske toplinske detekcije na monitoriranim područjima sukoba. Visok intenzitet = sjajnost >360K i pouzdanost >80%.",
+      "possibleExplosions": "Detektirano {{count}} mogućih eksplozija",
+      "explosionTooltip": "Toplinska signatka konzistentna s eksplozijom (FRP >80 MW, sjajnost >380 K)"
+    },
+    "ucdpEvents": {
+      "stateBased": "Državni konflikt",
+      "nonState": "Nedržavni",
+      "oneSided": "Jednostrani",
+      "country": "Država",
+      "deaths": "Preminuli",
+      "date": "Datum",
+      "actors": "Akteri",
+      "deathsCount": "{{count}} preminulih",
+      "moreNotShown": "{{count}} više događaja nije prikazano",
+      "noEvents": "Nema događaja u ovoj kategoriji",
+      "infoTooltip": "<strong>Događaji oružanih sukoba</strong> Podaci o sukobima na razini događaja od Uppsalskog sveučilišta (UCDP).<ul><li><strong>Državni konflikt</strong>: Vlada protiv skupine pripadnika bune</li><li><strong>Nedržavni</strong>: Oružana grupa protiv oružane grupe</li><li><strong>Jednostrani</strong>: Nasilje prema civilnom stanovništvu</li></ul>Broj preminulih prikazan kao najbolja procjena (nisko-visoki raspon). Duplikati iz ACLED-a se automatski filtriraju."
+    },
+    "giving": {
+      "activityIndex": "Indeks aktivnosti",
+      "trend": "Trend",
+      "estDailyFlow": "Proc. dnevni tok",
+      "cryptoDaily": "Kripto dnevno",
+      "tabs": {
+        "platforms": "Platforme",
+        "categories": "Kategorije",
+        "crypto": "Kripto",
+        "institutional": "Institucijski"
+      },
+      "platform": "Platforma",
+      "dailyVol": "Dnevni vol.",
+      "velocity": "Brzina",
+      "freshness": "Podaci",
+      "category": "Kategorija",
+      "share": "Udio",
+      "trending": "TREND",
+      "dailyInflow": "Dnevni priliv",
+      "wallets": "Novčanici",
+      "ofTotal": "% od ukupno",
+      "topReceivers": "Glavni primatelji",
+      "oecdOda": "OECD ODA",
+      "cafIndex": "CAF Indeks",
+      "candidGrants": "Candid Grantovi",
+      "dataLag": "Vremenski zamak podataka",
+      "infoTooltip": "<strong>Globalni indeks aktivnosti davanja</strong> Kompozitni indeks koji prati osobnu dobrotvornu davanja na platformama za skupljanje sredstava i kripto novčanike.<ul><li><strong>Platforme</strong>: GoFundMe, GlobalGiving, JustGiving uzorci kampanja</li><li><strong>Kripto</strong>: Prilivi na lancu dobrotvornih novčanika (Endaoment, Giving Block)</li><li><strong>Institucionalno</strong>: OECD ODA, CAF World Giving Index, Candid grantovi</li></ul>Indeks je smjerodavan (ne točan iznos u dolarima). Kombinira uzorkovanje u vremenu stvarnom s objavljenim godišnjim izvještajima."
+    },
+    "displacement": {
+      "noData": "Nema podataka",
+      "refugees": "Izbjeglice",
+      "asylumSeekers": "Tražitelji azila",
+      "idps": "Interno raseljene osobe",
+      "total": "Ukupno",
+      "origins": "Zemlje porijekla",
+      "hosts": "Zemlje domaćina",
+      "badges": {
+        "crisis": "KRIZA",
+        "high": "VISOKO",
+        "elevated": "POVIŠENO"
+      },
+      "country": "Država",
+      "status": "Stanje",
+      "count": "Broj",
+      "infoTooltip": "<strong>UNHCR podaci o raseljenju</strong> Globalni brojevi izbjeglica, tražitelja azila i interno raseljenih osoba od UNHCR-a.<ul><li><strong>Zemlje porijekla</strong>: Zemlje iz kojih ljudi bježe</li><li><strong>Zemlje domaćina</strong>: Zemlje koje gošće izbjeglice</li><li>Znakovi krize: >1M | Visoko: >500K raseljenih</li></ul>Podaci se ažuriraju godišnje. CC BY 4.0 licenca."
+    },
+    "climate": {
+      "noAnomalies": "Nisu detektirane značajne anomalije",
+      "zone": "Zona",
+      "temp": "Temp",
+      "precip": "Precip",
+      "severityLabel": "Intenzitet",
+      "severity": {
+        "extreme": "EKSTREMNO",
+        "moderate": "UMJERENO",
+        "normal": "NORMALNO"
+      },
+      "infoTooltip": "<strong>Monitor klimatskih anomalija</strong> Anomalije temperature i oborina od 7 dana u odnosu na mjesečne norme 1991-2020. Podaci od Open-Meteo (ERA5 reanaliza).<ul><li><strong>Ekstremno</strong>: >5°C ili >12mm/dan anomalija</li><li><strong>Umjereno</strong>: >3°C ili >6mm/dan anomalija</li></ul>Prati klimatski osjetljive zone za trajnog odmaka od WMO baznih vrijednosti."
+    },
+    "newsPanel": {
+      "close": "Zatvori",
+      "summarize": "Sažmi ovaj panel",
+      "generatingSummary": "Generiranje sažetka...",
+      "summaryError": "Nije moguće generirati sažetak",
+      "summaryFailed": "Sažetak neuspješan",
+      "sources": "{{count}} izvora",
+      "relatedAssetsNear": "Povezana sredstva blizu {{location}}",
+      "sortBy": "Sortiraj po",
+      "sortNewest": "Najnovije",
+      "sortRelevance": "Relevantnost"
+    },
+    "export": {
+      "exportData": "Izvezi podatke"
+    },
+    "runtimeConfig": {
+      "getApiKey": "Preuzmi API ključ"
+    },
+    "breakingNews": {
+      "critical": "KRITIČNO",
+      "high": "VISOKO",
+      "dismiss": "Odbaci",
+      "enableNotifications": "Omogući obavijesti na računalu"
+    },
+    "intelligenceFindings": {
+      "breakingAlerts": "Slomljivi alarmi",
+      "popupAlerts": "Prikaži nove alarme",
+      "badgeTitle": "Rezultati obavještajnih podataka",
+      "title": "Rezultati obavještajnih podataka",
+      "none": "Nema nedavnih rezultata obavještajnih podataka",
+      "monitoring": "PRAĆENJE",
+      "scanning": "Skeniranje korelacija i anomalija...",
+      "reviewRecommended": "{{count}} obavještajnih nalaza - pregled preporučen",
+      "count": "{{count}} obavještajni nalaz",
+      "detected": "{{count}} DETEKTIRANO",
+      "critical": "{{count}} KRITIČNO",
+      "highPriority": "{{count}} VISOKOG PRIORITETA",
+      "hideFindings": "Sakrij nalaze",
+      "more": "+{{count}} više nalaza",
+      "all": "Svi obavještajni nalazi ({{count}})",
+      "priority": {
+        "critical": "KRITIČNO",
+        "high": "VISOKO",
+        "medium": "SREDNJE",
+        "low": "NISKO"
+      },
+      "insights": {
+        "criticalDestabilization": "Kritična destabilizacija - hitna pozornost potrebna",
+        "significantShift": "Značajna promjena - praćenje je potrebno",
+        "developingSituation": "Razvojna situacija - prativanje za eskalaciju",
+        "convergence": "Više događaja grupirano u regiji",
+        "cascade": "Širenje prekida infrastrukture",
+        "review": "Pregled za situacionu svjesnost"
+      },
+      "time": {
+        "justNow": "upravo sada",
+        "minutesAgo": "{{count}}m prije",
+        "hoursAgo": "{{count}}h prije",
+        "daysAgo": "{{count}}d prije"
+      }
+    },
+    "countryTimeline": {
+      "now": "sada",
+      "noEventsIn7Days": "Nema događaja u 7 dana"
+    },
+    "gdeltIntel": {
+      "infoTooltip": "<strong>Obavještajnost vijestima</strong> Praćenje vijestima u realnom vremenu:<ul><li>Kurirane kategorije tema (sukobi, kibernetika, itd.)</li><li>Članci iz 100+ jezika prevedeni</li><li>Ažuriranja svakih 15 minuta</li><li>14-dnevni tren medijskih tonova i volumena po temi</li><li>14-dnevni tren medijskih tonova i volumena po temi</li></ul>Izvor: GDELT Project (gdeltproject.org)"
+    },
+    "telegramIntel": {
+      "infoTooltip": "Signali u realnom vremenu s praćenih Telegram OSINT kanala",
+      "loading": "Povezivanje na Telegram relej...",
+      "empty": "Nema dostupnih poruka",
+      "disabled": "Telegram relej nije aktivan",
+      "filterAll": "Sve",
+      "filterBreaking": "Hitne vijesti",
+      "filterConflict": "Sukobi",
+      "filterAlerts": "Upozorenja",
+      "filterOsint": "OSINT",
+      "filterPolitics": "Politika",
+      "filterMiddleeast": "Bliski Istok",
+      "live": "UŽIVO",
+      "viewSource": "Prikazi izvor",
+      "filterGeopolitics": "Geopolitika",
+      "filterCyber": "Kibernetika"
+    },
+    "investments": {
+      "infoTooltip": "Baza podataka o stranim direktnim investicijama Saudijske Arabije i UAE-a u globalnu kritičnu infrastrukturu. Kliknite na red da letite do investicije na karti.",
+      "searchPlaceholder": "Pretraži imovinu, zemlje, subjekte…",
+      "allCountries": "Sve zemlje",
+      "saudiArabia": "Saudijska Arabija",
+      "uae": "UAE",
+      "allSectors": "Svi sektori",
+      "allEntities": "Svi subjekti",
+      "allStatuses": "Svi statusi",
+      "operational": "Operativan",
+      "underConstruction": "U gradnji",
+      "announced": "Objavljeno",
+      "rumoured": "Rumorira se",
+      "divested": "Otuđeno",
+      "asset": "Imovina",
+      "country": "Država",
+      "sector": "Sektor",
+      "status": "Status",
+      "investment": "Investicija",
+      "year": "Godina",
+      "noMatch": "Nema investicija koje se poklapaju s filterima",
+      "undisclosed": "Neobjavljena",
+      "sectors": {
+        "ports": "Luke",
+        "pipelines": "Cjevovodi",
+        "energy": "Energetika",
+        "datacenters": "Centri podataka",
+        "airports": "Aerodromi",
+        "railways": "Željeznice",
+        "telecoms": "Telekomunikacije",
+        "water": "Voda",
+        "logistics": "Logistika",
+        "mining": "Rudarstvo",
+        "realEstate": "Nekretnine",
+        "manufacturing": "Proizvodnja"
+      }
+    },
+    "prediction": {
+      "infoTooltip": "<strong>Tržišta predviđanja</strong> Tržišta za predviđanja s pravim novcem:<ul><li>Cijene odražavaju procjene vjerojatnosti publike</li><li>Veći volumen = pouzdaniji signal</li><li>Fokus na geopolitičke i trenutne događaje</li></ul>Izvori: Polymarket, Kalshi"
+    },
+    "etfFlows": {
+      "unavailable": "Podaci ETF-a trenutno nisu dostupni",
+      "rateLimited": "Podaci ETF-a trenutno nisu dostupni (ograničena brzina) — ponovno pokušavamo uskoro",
+      "netFlow": "Neto tok",
+      "estFlow": "Proc. tok",
+      "totalVol": "Ukupni vol",
+      "etfs": "ETF-ovi",
+      "netInflow": "NETO PRILIV",
+      "netOutflow": "NETO ODLIV",
+      "table": {
+        "ticker": "Oznaka",
+        "issuer": "Izdavač",
+        "estFlow": "Proc. tok",
+        "volume": "Volumen",
+        "change": "Promjena"
+      },
+      "infoTooltip": "<strong>BTC ETF praćenje</strong> Prati dnevne procijenjene tokove sredstava za američka spot Bitcoin ETF-ove:<ul><li>Smjer i veličina priliva/odliva</li><li>Volumen i promjena cijene po fondu</li><li>Ukupni agregirani tok kroz sve praćene ETF-ove</li></ul>"
+    },
+    "macroSignals": {
+      "overall": "Ukupno",
+      "verdict": {
+        "buy": "KUPNJA",
+        "cash": "GOTOVINA"
+      },
+      "bullish": "{{count}}/{{total}} bullish",
+      "signals": {
+        "liquidity": "Likvidnost",
+        "flow": "Tok",
+        "regime": "Režim",
+        "btcTrend": "BTC trend",
+        "hashRate": "Hash brzina",
+        "momentum": "Momentum",
+        "fearGreed": "Strah i pohlepa"
+      },
+      "infoTooltip": "<strong>BTC režim</strong> Kombinirani signal za pozicioniranje Bitcoina i apatit za rizik:<ul><li><strong>Likvidnost</strong>: Proxy neto Fed likvidnosti</li><li><strong>Tok</strong>: BTC vs QQQ 5-dnevni povrati</li><li><strong>Režim</strong>: Rotacija QQQ vs XLP (risk-on/off)</li><li><strong>BTC trend</strong>: Cijena vs SMA50/200, Mayer Multiple</li><li><strong>Hash brzina</strong>: 30-dnevna promjena mrežnog heša</li><li><strong>Strah i pohlepa</strong>: Indeks tržišnih osjećaja</li></ul>Ovaj panel je za režim i pozicioniranje, ne za šira makroekonomska data."
+    },
+    "forecast": {
+      "infoTooltip": "<strong>AI Prognoze</strong> AI-generirane procjene vjerojatnosti za geopolitičke i ekonomske događaje:<ul><li>Pokrivanje više domena: sukobi, tržišta, lanac opskrbe, cyber, politika</li><li>Svaka prognoza prikazuje procijenjenu vjerojatnost, razinu pouzdanosti i vremenski horizont</li><li>Kalibrirana u odnosu na bazične vrijednosti tržišta predviđanja gdje su dostupne</li></ul>Prognoze se ažuriraju kako stignu novi signali obavještajnih službi. Filtrirajte po domeni koristeći kartice gore."
+    },
+    "escalationCorrelation": {
+      "infoTooltip": "<strong>Monitor eskalacije</strong> Detektira konvergirajuće geopolitičke signale:<ul><li>Korelira vojne pokrete, sukobne događaje i vrhunce vijesti</li><li>Boduje zone konvergencije prema težini (kritično/visoko/srednje/nisko)</li><li>Prati trendove eskalacije ili de-eskalacije tijekom vremena</li></ul>Kliknite na karticu za uvećanje regije na karti."
+    },
+    "economicCorrelation": {
+      "infoTooltip": "<strong>Ekonomsko ratovanje</strong> Detektira konvergirajuće signale ekonomskog pritiska:<ul><li>Sankcije, trgovinska ograničenja i kretanja valuta</li><li>Prekidi u roblji povezani s geopolitičkim akterima</li><li>Međudomenska korelacija između ekonomskih i sigurnosnih događaja</li></ul>Kliknite na karticu za uvećanje pogođene regije."
+    },
+    "militaryCorrelation": {
+      "infoTooltip": "<strong>Vojna pozicioniranost</strong> Korelira vojnu aktivnost s geopolitičkim kontekstom:<ul><li>Koncentracije vojnih zrakoplova i ratnih brodova po regiji</li><li>Međusobna provjera s aktivnim zonama sukoba i vrhuncima vijesti</li><li>Ističe neuobičajene vojne nagomilaje ili promjene pozicije</li></ul>Kliknite na karticu za uvećanje regije na karti."
+    },
+    "disasterCorrelation": {
+      "infoTooltip": "<strong>Kaskada katastrofa</strong> Detektira konvergirajuće signale prirodnih katastrofa i infrastrukture:<ul><li>Korelira zemljotrese, šumske požare, poplave i ekstremne vremenske pojave</li><li>Prati kaskadne učinke na infrastrukturu i lanac opskrbe</li><li>Ističe regije s povećanim rizikom od više katastrofa</li></ul>Kliknite na karticu za uvećanje pogođene regije."
+    },
+    "markets": {
+      "infoTooltip": "<strong>Tržišta</strong> Životijedni indeksi dionica, dionice i cijene kriptovaluta. Prilagodite svoju listu praćenja gumbom Watchlist. Sparklines prikazuju nedavni trend cijena."
+    },
+    "heatmap": {
+      "infoTooltip": "<strong>Toplinska karta sektora</strong> Izvedba S&P 500 sektora na prvi pogled. Intenzitet boje odražava veličinu dnevne promjene. Zelena = dobit, Crvena = gubitak."
+    },
+    "commodities": {
+      "infoTooltip": "<strong>Robe</strong> Trgovinska robu fokusirana na metale i materijale, bez energenata. Cijene energije nalaze se u Energy Complex; makroekonomski indikatori stresa nalaze se u Macro Stress."
+    },
+    "crypto": {
+      "infoTooltip": "<strong>Kriptovalute</strong> Životijedne cijene, 24h promjene i volumen za glavne kriptovalute. Podaci su preuzeti s CoinGecka."
+    },
+    "defiTokens": {
+      "infoTooltip": "<strong>DeFi tokeni</strong> Cijene i 24h/7d izvedba za glavne tokene decentraliziranih financijskih protokola — DEXes, platforme za kreditiranje i yield protokole."
+    },
+    "aiTokens": {
+      "infoTooltip": "<strong>AI tokeni</strong> Cijene i 24h/7d izvedba za tokene AI i sektora strojnog učenja — računalne mreže, decentraliziranu AI infrastrukturu i protokole za podatke."
+    },
+    "altTokens": {
+      "infoTooltip": "<strong>Alt tokeni</strong> Cijene i 24h/7d izvedba za alternativne i nove kriptovalutne tokene izvan glavnih stupnjeva kapitalizacije."
+    },
+    "stockAnalysis": {
+      "infoTooltip": "<strong>Premijska analiza dionica</strong> AI-pokrenuta analiza za dionice na vašoj listi praćenja — signali kupnje/držanja/prodaje, ciljne cijene, ključni rizici i katalizatori ažurirani dnevno."
+    },
+    "stockBacktest": {
+      "infoTooltip": "<strong>Premijsko testiranje unazad</strong> Testiranja povijesne izvedbe za dionice na vašoj listi praćenja — prethodne povrate, maksimalno osciliranje i metrike volatilnosti."
+    },
+    "dailyMarketBrief": {
+      "infoTooltip": "<strong>Dnevni tržišni pregled</strong> AI-generirani dnevni sažetak svjetskih tržišnih uvjeta, ključnih makroekonomskih trendova i signala na razini sektora — osvježava se svakim danom trgovanja."
+    },
+    "centralBankWatch": {
+      "infoTooltip": "<strong>Monitoring centralne banke</strong> Najnovije izjave, odluke o stopama i komunikacije od Federalne rezerve, ECB, Bank of England i ostalih glavnih centralnih banaka diljem svijeta."
+    },
+    "gulfEconomies": {
+      "infoTooltip": "<strong>Ekonomije Zaliva</strong> Životijedni indeksi dionica Zaliva, tečajevi valuta i cijene nafte za GCC ekonomije (Saudijska Arabija, UAE, Kuvajt, Katar, Bahrein, Oman)."
+    },
+    "groceryBasket": {
+      "infoTooltip": "<strong>Indeks namirnica</strong> Globalna usporedba cijena namirnica u 24 zemlje — prati stvarnu inflaciju potrošnih dobara izvan glavnog CPI-ja."
+    },
+    "bigmac": {
+      "infoTooltip": "<strong>Stvarni Big Mac indeks</strong> Indeks Big Mac časopisa The Economist mjeri paritet kupovne moći usporedbom cijena McDonaldova hamburgera u zemljama. Ažurira se kada su dostupni novi podaci (tromjesečno/godišnje)."
+    },
+    "fuelPrices": {
+      "infoTooltip": "<strong>Cijene goriva</strong> Maloprodajne cijene na pumpama za benzin i dizel u 30+ zemalja, normalizirane na USD/litra za usporedbu. Cijene su preuzete iz službenih državnih programa otvorenih podataka i ažuriraju se tjedno. Najjeftinije i najskupnije zemlje su istaknute. Promjena WoW se prikazuje kada su dostupni podaci iz prethodnog tjedna.",
+      "countries": "zemlje"
+    },
+    "faoFoodPriceIndex": {
+      "infoTooltip": "<strong>FAO indeks cijena hrane</strong> Indeks cijena hrane FAO Ujedinjenih nacija (FFPI) prati međunarodne izvozne cijene za košaru prehrambenih roba (Žitarice, Mliječni proizvodi, Meso, Ulja, Šećer), baza 2014-2016=100. Ažurira se mjesečno prvoga petka u mjesecu.",
+      "indexLabel": "FFPI (2014-16=100)",
+      "mom": "M/M",
+      "yoy": "G/G",
+      "asOf": "Na dan",
+      "baseNote": "Baza: 2014-2016 = 100 | Izvor: UN FAO",
+      "ffpi": "Hrana",
+      "cereals": "Žitarice",
+      "meat": "Meso",
+      "dairy": "Mliječni proizvodi",
+      "oils": "Ulja",
+      "sugar": "Šećer"
+    },
+    "panel": {
+      "showMethodologyInfo": "Prikazi informacije o metodologiji",
+      "dragToResize": "Povucite za promjenu veličine (dvostruki klik za resetiranje)",
+      "openSettings": "Otvori postavke",
+      "closePanel": "Zatvori ploču",
+      "collapsePanel": "Sažmi ploču",
+      "expandPanel": "Proširi ploču",
+      "addPanel": "Dodaj ploču"
+    },
+    "languageSelector": {
+      "selectLanguage": "Odaberi jezik",
+      "mapLabelsFallbackVi": "Oznake na karti trenutno padaju na engleski za vijetnamski."
+    },
+    "internetDisruptions": {
+      "noOutages": "Nema aktivnih prekida",
+      "noDdos": "Nema dostupnih DDoS podataka",
+      "noAnomalies": "Nema detektiranih anomalija u prometu",
+      "byProtocol": "Protokol napada",
+      "byVector": "Vektor napada",
+      "topTargets": "Zemlje s najviše ciljeva",
+      "infoTooltip": "<strong>Prekidi interneta</strong> Životijedni interni prekidi, DDoS napadi i anomalije u prometu iz globalne mrežne nadzora:<ul><li><strong>Prekidi</strong>: BGP-detektirani kvarovi povezanosti po zemlji</li><li><strong>DDoS</strong>: Izvještaji o volumetrijskim napadima po protokolu i vektoru</li><li><strong>Anomalije</strong>: Neuobičajeni obrasci prometa iz Cloudflare Radara</li></ul>"
+    },
+    "serviceStatus": {
+      "infoTooltip": "<strong>Status usluge</strong> Životijedni operativni status glavnih cloud platformi, financijske infrastrukture i kritičnih internetskih usluga. Preuzeto sa službenih stranica statusa (AWS, Azure, GCP, Cloudflare, burze). Incidenti mogu ukazati na šire događaje prekida.",
+      "checkingServices": "Provjera servisa...",
+      "allOperational": "Svi servisi su funkcionalni",
+      "ok": "U redu",
+      "degraded": "Smanjena performansa",
+      "outage": "Prekid servisa",
+      "backendUnavailable": "Lokalna zaslonska aplikacija nije dostupna. Prebacivanje na cloud API.",
+      "desktopReadiness": "Spremnost zaslonske aplikacije",
+      "acceptanceChecks": "Provjere prihvaćanja: {{ready}}/{{total}} spremno · značajke s ključem {{available}}/{{featureTotal}}",
+      "nonParityFallbacks": "Fallback opcije bez parnosti ({{count}})",
+      "categories": {
+        "all": "Sve",
+        "cloud": "Cloud",
+        "dev": "Dev alati",
+        "comm": "Komunikacija",
+        "ai": "AI",
+        "saas": "SaaS"
+      }
+    },
+    "verification": {
+      "title": "Lista provjere verifikacije informacija",
+      "hint": "Na temelju Bellingcatovog OSH okvira",
+      "verdicts": {
+        "verified": "VERIFICIRANO",
+        "likely": "VJEROJATNO AUTENTIČNO",
+        "uncertain": "NESIGURNO",
+        "unreliable": "NEPOUZDANO"
+      },
+      "notesTitle": "Napomene verifikacije",
+      "noNotes": "Nema dodanih napomena",
+      "addNotePlaceholder": "Dodaj napomenu verifikacije...",
+      "add": "Dodaj",
+      "resetChecklist": "Resetiraj listu provjere",
+      "checks": {
+        "recency": "Noviji vremenski pečat potvrđen",
+        "geolocation": "Lokacija verificirana",
+        "source": "Primarni izvor identificiran",
+        "crossref": "Međusobno provjeren s drugim izvorima",
+        "noAi": "Nema artefakata AI generiranja",
+        "noRecrop": "Nije reciklirani/stari video sadržaj",
+        "metadata": "Metapodaci verificirani",
+        "context": "Kontekst uspostavljen"
+      }
+    },
+    "liveNews": {
+      "retry": "Pokušaj ponovno",
+      "notLive": "{{name}} trenutno nije aktivna",
+      "cannotEmbed": "{{name}} se ne može reproducirati ovdje — može biti ograničena u vašoj regiji (greška {{code}})",
+      "botCheck": "YouTube traži prijavu za reproduciranje {{name}}",
+      "signInToYouTube": "Prijavi se na YouTube",
+      "openOnYouTube": "Otvori na YouTube-u",
+      "manage": "Upravljaj kanalima",
+      "addChannel": "Dodaj kanal",
+      "remove": "Ukloni",
+      "youtubeHandle": "YouTube pokazivač (npr. @Kanal)",
+      "youtubeHandleOrUrl": "YouTube pokazivač ili URL",
+      "displayName": "Prikazano ime (neobavezno)",
+      "openPanelSettings": "Postavke prikaza panela",
+      "channelSettings": "Postavke kanala",
+      "save": "Spremi",
+      "cancel": "Otkaži",
+      "confirmDelete": "Obrisati ovaj kanal?",
+      "confirmTitle": "Potvrdi",
+      "restoreDefaults": "Vrati zadane kanale",
+      "availableChannels": "Dostupni kanali",
+      "noResults": "Nema kanala koji odgovaraju \"{{term}}\"",
+      "customChannel": "Prilagođeni kanal",
+      "regionAll": "Sve",
+      "regionNorthAmerica": "Sjeverna Amerika",
+      "regionEurope": "Europa",
+      "regionLatinAmerica": "Latinska Amerika",
+      "regionAsia": "Azija",
+      "regionMiddleEast": "Bliski istok",
+      "regionAfrica": "Afrika",
+      "regionOceania": "Oceanija",
+      "invalidHandle": "Unesite valjanu YouTube adresu (npr. @ImeKanala)",
+      "channelNotFound": "YouTube kanal nije pronađen",
+      "verifying": "Provjera…",
+      "hlsUrl": "HLS Stream URL (neobavezno)",
+      "invalidHlsUrl": "Unesite validan HLS stream URL (.m3u8)"
+    },
+    "map": {
+      "showMap": "Prikaži mapu",
+      "hideMap": "Sakrij mapu",
+      "clearTrails": "Očisti tragove"
+    },
+    "climateNews": {
+      "infoTooltip": "<strong>Climate News</strong> Najnovije vijesti o okolišu i klimi od Carbon Brief, UNEP, NASA, The Guardian i drugih pouzdanih izvora. Ažurirano svakih 30 minuta.",
+      "loadError": "Climate News privremeno nije dostupan"
+    },
+    "chatAnalyst": {
+      "infoTooltip": "<strong>WM Analyst</strong> AI analitičar sa živim kontekstom kroz geopolitičke, tržišne, vojne i ekonomske domene. Pogonjen s Claude-om sa podacima u realnom vremenu ubrizganim iz aktivnih WorldMonitor feedova."
+    },
+    "cotPositioning": {
+      "infoTooltip": "<strong>CFTC COT Positioning</strong> Izvještaj Commitments of Traders: neto pozicioniranje komercijalaca, velikih špekulanata i malih trgovaca na robama i financijskim futures. Objavljeno tjedno (petak). Izvor: CFTC."
+    },
+    "liquidityShifts": {
+      "title": "Pomaci likvidnosti",
+      "infoTooltip": "<strong>Pomaci likvidnosti</strong> Monitor pozicioniranja visoke likvidnosti i dnevnih pomaka za naftu, zlato, srebro, futures indeksa dionica i vrhunske američke dionice. COT asset-manager neto i leveraged-funds neto nasuprot dnevne promjene cijene.",
+      "cotSection": "Nafta / Zlato / Srebro + Pozicioniranje indeksa (COT)",
+      "stocksSection": "Vrhunske američke dionice: Dnevni pomak",
+      "longShort": "Dugo {{long}} / Kratko {{short}}",
+      "lev": "Lev",
+      "noCot": "Nema dostupnih COT redaka.",
+      "noStocks": "Nema dostupnih vrhovnih kotacija dionica.",
+      "reportDate": "Datum COT izvještaja: {{date}}",
+      "unavailable": "Podaci likvidnosti nisu dostupni",
+      "failed": "Nije uspjelo učitavanje"
+    },
+    "positioning247": {
+      "title": "24/7 Pozicioniranje",
+      "infoTooltip": "<strong>24/7 Pozicioniranje</strong> Stres pozicioniranja perpetualnih ugovora od Hyperliquida. Trgovanje tijekom cijelog dana, prikazujući što se gradi kada su tradicionalna tržišta zatvorena. Kompozitni rezultat (0-100) od stope financiranja, volumena, otvorenih pozicija i spot-perp baze. Zeleno = dugi poziciji skupljeni (bullish nagib), crveno = kratki poziciji skupljeni (bearish nagib).",
+      "commodities": "ROBE",
+      "crypto": "KRIPTO",
+      "fx": "FX",
+      "warmup": "Izgradnja baznih linija. Povijest volumena i OI popunjava se tijekom sjedećeg sata.",
+      "unavailable": "Podaci pozicioniranja nisu dostupni",
+      "footer": "5min · Hyperliquid perps · 24/7"
+    },
+    "goldIntelligence": {
+      "infoTooltip": "<strong>Gold Intelligence</strong> Spot cijena zlata, omjer zlata/srebra, premija zlata nasuprot platini, cross-currency XAU cijene (EUR, GBP, JPY, CNY, INR, CHF) i CFTC pozicioniranje upravljanog novca. Izvori: Yahoo Finance, CFTC COT."
+    },
+    "counters": {
+      "infoTooltip": "<strong>Live Brojači</strong> Brojači u realnom vremenu sa ekstrapolacijom za globalne metrike: vojni rashodi, prirodne katastrofe, teret bolesti i drugo. Brojevi su statističke procjene temeljene na godišnjim stopama podataka."
+    },
+    "diseaseOutbreaks": {
+      "infoTooltip": "<strong>Izbijanja bolesti</strong> Aktivne upozore o izbijanju od WHO, ProMED i zdravstvenih ministarstava. Prati potvrđena izbijanja, zahvaćene regije, brojeve slučajeva i razine prijetnje. Ažurirano kada se objave novi izvještaji.",
+      "methodologyNote": "Razine Alert / Warning / Watch dolaze iz uredničkog klasifikatora ključnih riječi — pogledajte /docs/methodology/disease-alert-level za tablicu ključnih riječi i ograničenja.",
+      "title": "Izbijanja bolesti",
+      "empty": "Nema izbijanja koja odgovaraju filteru",
+      "sourceFallback": "Izvor",
+      "attribution": "WHO · ProMED · HealthMap",
+      "levels": {
+        "alert": "UPOZORENJE",
+        "warning": "UPOZORENJE",
+        "watch": "PRAĆENJE"
+      },
+      "time": {
+        "justNow": "upravo sada",
+        "hoursAgo_one": "{{count}}h prije",
+        "hoursAgo_other": "{{count}}h prije",
+        "daysAgo_one": "{{count}}d prije",
+        "daysAgo_other": "{{count}}d prije",
+        "daysAgo_few": "{{count}}d prije",
+        "hoursAgo_few": "{{count}}h prije"
+      },
+      "filters": {
+        "alert_one": "{{count}} upozorenje",
+        "alert_other": "{{count}} upozorenja",
+        "warning_one": "{{count}} upozorenje",
+        "warning_other": "{{count}} upozorenja",
+        "watch_one": "{{count}} praćenje",
+        "watch_other": "{{count}} praćenja",
+        "alert_few": "{{count}} upozorenja",
+        "warning_few": "{{count}} upozorenja",
+        "watch_few": "{{count}} praćenja"
+      },
+      "errors": {
+        "noData": "Nema dostupnih podataka o izbijanju",
+        "failedToLoad": "Učitavanje nije uspjelo"
+      }
+    },
+    "earningsCalendar": {
+      "infoTooltip": "<strong>Kalendar zarada</strong> Nadolazeća i nedavna objavljivanja zarada za najveće javne korporacije. Prikazuje EPS procjene naspram stvarnih vrijednosti, prihode i klasifikaciju premašenja/manjka. Izvor: davatelji financijskih podataka.",
+      "title": "Kalendar zarada",
+      "today": "DANAS · {{date}}",
+      "tomorrow": "SUTRA · {{date}}",
+      "epsActual": "EPS {{value}}",
+      "epsEstimate": "EPS proc {{value}}",
+      "revenueActual": "{{value}} prihod",
+      "revenueEstimate": "{{value}} proc",
+      "surprise": {
+        "beat": "PREMAŠENO",
+        "miss": "MANJAK",
+        "inLine": "U SKLADU"
+      },
+      "errors": {
+        "noData": "Nema podataka o zaradama",
+        "failedToLoad": "Učitavanje nije uspjelo"
+      }
+    },
+    "economicCalendar": {
+      "infoTooltip": "<strong>Ekonomski kalendar</strong> Planirana makroekonomska objavljivanja: CPI, NFP, GDP, PMI i odluke središnjih banaka. Prikazuje prognozu naspram stvarnih vrijednosti naspram prethodnih. Događaji visokog utjecaja su označeni. Izvor: davatelji ekonomskih podataka."
+    },
+    "fsi": {
+      "infoTooltip": "<strong>Indikator financijskog stresa</strong> Indeks financijskog stresa Federalne rezervne banke Kansas City (KCFSI): mjeri stres na američkim financijskim tržištima koristeći 11 indikatora uključujući razlike u prinosima, volatilnost i međukorelacije. Pozitivne vrijednosti ukazuju na stres iznad prosjeka. Izvor: Federalna rezervna banka Kansas City.",
+      "title": "Indikator financijskog stresa",
+      "usFsiValue": "VRIJEDNOST US FSI",
+      "cissTitle": "EU CISS (Sustavni stres evrske zone)",
+      "cissStale": "ECB nije objavio noviju vrijednost — ovo očitanje može biti zastarjelo.",
+      "notAvailable": "N/D",
+      "interpretation": {
+        "low": "Kreditna tržišta funkcioniraju normalno, omjer dionica/obveznica je zdrav.",
+        "moderate": "Određeno pogoršanje kreditnih uvjeta, pratite pažljivo.",
+        "elevated": "Značajnom stresnom na kreditnom tržištu, opravdana je defenzivna pozicija.",
+        "severe": "Težak financijski stres, sustavni rizik je povećan."
+      },
+      "labels": {
+        "lowStress": "Nizak stres",
+        "moderateStress": "Umjereni stres",
+        "elevatedStress": "Povećan stres",
+        "severeStress": "Težak stres"
+      },
+      "cissLabels": {
+        "low": "Nizak",
+        "moderate": "Umjeren",
+        "elevated": "Povećan",
+        "high": "Visoko"
+      },
+      "scale": {
+        "noStress": "0 — Nema stresa",
+        "extremeStress": "1 — Ekstremni stres",
+        "highStress": "Visok stres",
+        "lowStress": "Nizak stres"
+      },
+      "metrics": {
+        "vix": "VIX",
+        "hySpread": "HY Spread",
+        "hygPrice": "HYG cijena",
+        "tltPrice": "TLT cijena"
+      },
+      "errors": {
+        "unavailable": "FSI podaci nisu dostupni",
+        "failedToLoad": "Učitavanje nije uspjelo"
+      }
+    },
+    "energyCrisis": {
+      "infoTooltip": "<strong>Energy Crisis Tracker</strong> IEA 2026 Energy Crisis Policy Response Tracker. Prati mjere vlade za uštedu energije i podršku potrošačima kao odgovor na sukob na Bliskom istoku i prekide opskrbe kroz Hormuzanski tjesnac. Pokriva 60+ zemalja s gotovo 200 mjera politike."
+    },
+    "hormuzTracker": {
+      "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Praćenje živih AIS plovila kroz Hormuzanski tjesnac, svjetski najkritičnije prometno usko grlo za naftu. Prati broj tankera, događaje prekida i tjedne promjene protoka. Približno 20% svjetske opskrbe naftom prolazi ovdje dnevno.",
+      "title": "Hormuz Trade Tracker",
+      "noData": "Nema podataka",
+      "notAvailable": "N/A",
+      "chartUnavailable": "Podaci grafikona nisu dostupni",
+      "sourcePrefix": "Izvor:",
+      "units": {
+        "ktPerDay": "kt/dan",
+        "generic": "jedinice"
+      },
+      "errors": {
+        "unavailable": "Hormuz podaci nisu dostupni",
+        "failedToLoad": "Učitavanje nije uspjelo"
+      }
+    },
+    "liveWebcams": {
+      "infoTooltip": "<strong>Live Webcams</strong> Živući prijenos iz geopolitički važnih lokacija diljem svijeta: područja sukoba, glavnih gradova, graničnih prijelaza i strateških tjesnaca. Tokovi iz YouTubea i javnih mreža."
+    },
+    "macroTiles": {
+      "infoTooltip": "<strong>Macro Indicators</strong> Ključni makroekonomski pokazatelji za SAD i eurozone: CPI, nezaposlenost, BDP i kamatne stope središnjih banaka. Vrijednosti prikazane s razlikom od prethodnog razdoblja. Izvor: FRED (Federal Reserve Economic Data)."
+    },
+    "monitors": {
+      "infoTooltip": "<strong>Keyword Monitors</strong> Dodajte bilo koji pojam kako biste pratili živu spomenuću vijesti na svim WorldMonitor izvorima. Rezultati se ažuriraju u realnom vremenu dok se upareni članci primaju."
+    },
+    "renewable": {
+      "infoTooltip": "<strong>Renewable Energy</strong> Udio proizvodnje električne energije iz obnovljivih izvora po regiji i godini, plus instalirana US kapaciteta za solarnu energiju, vjetar i ugljen (MW). Izvori: World Bank (EG.ELC.RNEW.ZS) i EIA."
+    },
+    "socialVelocity": {
+      "infoTooltip": "<strong>Social Velocity</strong> Trendske teme i virusni sadržaj s geopolitičkom važnošću. Mjeri brzinu društvenih mreža: kako brzo se priča širi u odnosu na osnovu. Pomaže pri otkrivanju emerging narativa prije nego što stignu u mainstream vijesti."
+    },
+    "wsbTickerScanner": {
+      "infoTooltip": "<strong>WSB Ticker Scanner</strong> Stvarno vrijeme spominjanja tikera iz r/wallstreetbets, r/stocks i r/investing. Rangirana po frekvenciji spominjanja i angažmanu. Brzina mjeri kako brzo ticker dobiva zamah kroz postove."
+    },
+    "conservationWins": {
+      "infoTooltip": "<strong>Conservation Wins</strong> Pozitivne vijesti o zaštiti: oporavci populacija vrsta, kameni mnogih oporavka staništa i nastojanja de-extincije. Iz IUCN, WWF i publikacija konzervacijskih istraživanja."
+    },
+    "worldClock": {
+      "infoTooltip": "<strong>World Clock</strong> Živoa lokalno vrijeme i status tržišne sesije za glavne svjetske financijske centre. Pokazuje status otvoreno/zatvoreno za NYSE, LSE, TSE, SGX i druge burze."
+    },
+    "yieldCurve": {
+      "infoTooltip": "<strong>Yield Curve &amp; Rates</strong> Krivulja prinosa američki trezora (2Y, 5Y, 10Y, 30Y) i ključni spread stopa uključujući 10Y-2Y inverziski indikator. Također prikazuje stope eurozone (EURIBOR, ESTR). Obrnuta krivulja povijesno prethodi recesijama. Izvor: FRED."
+    },
+    "proBanner": {
+      "badge": "PRO",
+      "headline": "Pro je lansiran",
+      "tagline": "Više signala, manje šuma. Više AI sažetaka. Geopolitički i equity istraživač samo za vas.",
+      "cta": "Nadogradi na Pro →",
+      "dismiss": "Odbaci"
+    },
+    "checkoutFailureBanner": {
+      "message": "Plaćanje nije moglo biti dovršeno. Nije izvršena nikakva naplata.",
+      "retry": "Pokušaj ponovno",
+      "retrying": "Ponovno pokušavam…",
+      "dismiss": "Odbaci"
+    },
+    "frameworkSelector": {
+      "label": "Analysis Framework",
+      "defaultNeutral": "Default (Neutral)",
+      "titlePrefix": "Framework: {{name}}",
+      "titleNone": "Analysis framework"
+    },
+    "sanctionsPressure": {
+      "title": "Sankcije i Označavanja",
+      "infoTooltip": "OFAC sankcijama označavanja iz SDN i Consolidated Lists. Prikazuje koje zemlje suočavaju najveću tlak označavanja, koji programi ga pokrivaju i što je novo dodano od posljednje ažuriranja.",
+      "loading": "Učitavanje podataka sankcija...",
+      "unavailable": "Podaci sankcija nisu dostupni.",
+      "summary": {
+        "new": "Novo",
+        "vessels": "Plovila",
+        "aircraft": "Zrakoplov"
+      },
+      "sections": {
+        "countries": "Zemlje pod sankcijama",
+        "entries": "Nedavne designacije",
+        "programs": "Programi"
+      },
+      "empty": {
+        "countries": "Nema dostupne atribucije zemlje.",
+        "entries": "Nema nedavnih designacija.",
+        "programs": "Nema detalja programa."
+      },
+      "footer": {
+        "updated": "Ažurirano {{time}}",
+        "dataset": "skup podataka {{date}}",
+        "source": "Izvor: OFAC"
+      },
+      "pills": {
+        "newCount": "+{{count}} novo",
+        "new": "novo"
+      },
+      "designations_one": "{{count}} designacija",
+      "designations_other": "{{count}} designacija",
+      "fallbacks": {
+        "unattributed": "Neatribuirano",
+        "program": "Program",
+        "undated": "bez datuma"
+      },
+      "designations_few": "{{count}} designacije"
+    },
+    "radiationWatch": {
+      "title": "Nadzor zračenja",
+      "infoTooltip": "EPA RadNet i Safecast očitanja obogaćena bodovanjem anomalija i sintezom povjerenja u izvor. Ovaj panel pokazuje što je normalno, što je povišeno i koje anomalije su potvrđene naspram preliminarnih.",
+      "loading": "Učitavanje podataka o zračenju...",
+      "empty": "Nema dostupnih opažanja zračenja.",
+      "baseline": "{{value}} bazna vrijednost",
+      "flags": {
+        "confirmed": "potvrđeno",
+        "conflict": "sukob",
+        "cpmDerived": "izvedeno iz CPM-a"
+      },
+      "headers": {
+        "station": "Stanica",
+        "reading": "Očitanje",
+        "delta": "Delta",
+        "status": "Status",
+        "observed": "Opaženo"
+      },
+      "summary": {
+        "anomalies": "Anomalije",
+        "elevated": "Povišeno",
+        "confirmed": "Potvrđeno",
+        "lowConfidence": "Nisko povjerenje",
+        "conflicts": "Sukobi",
+        "spikes": "Skokovi"
+      },
+      "footer": {
+        "updated": "Ažurirano {{time}}"
+      },
+      "observed": {
+        "hoursAgo_one": "{{count}}h prije",
+        "hoursAgo_other": "{{count}}h prije",
+        "daysAgo_one": "{{count}}d prije",
+        "daysAgo_other": "{{count}}d prije",
+        "daysAgo_few": "{{count}}d prije",
+        "hoursAgo_few": "{{count}}h prije"
+      },
+      "confidence": {
+        "high": "visoko povjerenje",
+        "medium": "srednje povjerenje",
+        "low": "nisko povjerenje"
+      }
+    },
+    "defensePatents": {
+      "title": "R&D signal",
+      "infoTooltip": "Tjedna podnošenja obrana i patenta dvojne namjene od strane Raytheona, Lockheed-a, Huawei-a, DARPE-a i drugih strateških organizacija. Kategorije: H04B (komunikacije), H01L (poluvodiči), F42B (municija), G06N (AI), C12N (biotehnologija). Izvor: USPTO PatentsView.",
+      "loading": "Učitavanje R&D podnošenja…",
+      "error": "Neuspjelo učitavanje podataka o patentima.",
+      "empty": "Nema podnošenja u ovoj kategoriji.",
+      "viewOnUspto": "Pogledaj na USPTO-u",
+      "tabs": {
+        "all": "Sve"
+      },
+      "cpcLabels": {
+        "H04B": "Komunikacije",
+        "H01L": "Poluvodići",
+        "F42B": "Municija",
+        "G06N": "AI",
+        "C12N": "Biotehnologija"
+      }
+    },
+    "correlation": {
+      "loading": "Čekanje podataka...",
+      "empty": "Nema aktivne konvergencije",
+      "signals_one": "{{count}} signal",
+      "signals_other": "{{count}} signala",
+      "analyzing": "Analiza...",
+      "viewOnMap": "Prikaži na karti",
+      "signals_few": "{{count}} signala"
+    },
+    "thermalEscalation": {
+      "title": "Toplinska eskalacija",
+      "infoTooltip": "FIRMS/VIIRS toplotne anomalije s baznom linijom, praćenjem trajnosti i strateškim kontekstom. Ovaj panel pokazuje gdje je toplinska aktivnost nenormalna i koji skupovi mogu ukazivati na konflikt, industrijske poremećaje ili eskalaciju.",
+      "loading": "Učitavanje toplinskih podataka...",
+      "empty": "Nema detektovanih skupova toplinske eskalacije.",
+      "footer": {
+        "updated": "Ažurirano {{time}}"
+      },
+      "summary": {
+        "total": "Ukupno",
+        "elevated": "Povišeno",
+        "spikes": "Vrhunci",
+        "persist": "Trajno",
+        "conflict": "Konflikt",
+        "strategic": "Strateško"
+      },
+      "badges": {
+        "conflictAdjacent": "conflict-adj",
+        "energyAdjacent": "energy-adj",
+        "industrial": "industrial",
+        "strategic": "strategic"
+      },
+      "observations_one": "{{count}} opažanja",
+      "observations_other": "{{count}} opažanja",
+      "sources_one": "{{count}} izvor",
+      "sources_other": "{{count}} izvora",
+      "age": {
+        "minutesAgo_one": "{{count}}m prije",
+        "minutesAgo_other": "{{count}}m prije",
+        "hoursAgo_one": "{{count}}h prije",
+        "hoursAgo_other": "{{count}}h prije",
+        "daysAgo_one": "{{count}}d prije",
+        "daysAgo_other": "{{count}}d prije",
+        "daysAgo_few": "{{count}}d prije",
+        "hoursAgo_few": "{{count}}h prije",
+        "minutesAgo_few": "{{count}}m prije"
+      },
+      "observations_few": "{{count}} opažanja",
+      "sources_few": "{{count}} izvora"
+    },
+    "chokepointStrip": {
+      "title": "Status uskih mjesta",
+      "infoTooltip": "Aktivni status za sedam globalnih uskih mjesta u pomorskoj trgovini naftom i plinom. Procjene protoka usklađene s Portwatch DWT + AIS podacima. Vidjeti /docs/methodology/chokepoints za metodologiju.",
+      "unknown": "nepoznato",
+      "shortName": {
+        "hormuzStrait": "Hormuz",
+        "malaccaStrait": "Malakka",
+        "suez": "Suez",
+        "babElMandeb": "Bab el-Mandeb",
+        "bosphorus": "Turski prolazi",
+        "panama": "Panamski",
+        "danishStraits": "Sjeverni prolazi"
+      },
+      "flow": {
+        "mbd": "{{value}} mb/d",
+        "pctOfBaseline": "{{pct}}% bazne vrijednosti"
+      },
+      "errors": {
+        "unavailable": "Status uskih mjesta nije dostupan",
+        "noData": "Nema podataka o uskim mjestima"
+      },
+      "attribution": {
+        "method": "Portwatch DWT + AIS kalibracija",
+        "sampleLabel": "AIS signali smetnji",
+        "creditName": "EIA World Oil Transit Chokepoints"
+      }
+    }
+  },
+  "popups": {
+    "startDate": "POČETNI DATUM",
+    "endDate": "ZAVRŠNI DATUM",
+    "magnitude": "Magnitude",
+    "depth": "Dubina",
+    "intensity": "Intenzitet",
+    "type": "Vrsta",
+    "status": "Status",
+    "severity": "Težina",
+    "location": "LOKACIJA",
+    "coordinates": "Koordinate",
+    "casualties": "ŽRTVE",
+    "displaced": "RASELJENE OSOBE",
+    "belligerents": "RATUJUĆE STRANE",
+    "keyDevelopments": "KLJUČNA RAZVOJA",
+    "unknown": "Nepoznato",
+    "source": "Izvor",
+    "target": "Cilj",
+    "events": "Događaji",
+    "impact": "Učinak",
+    "capacity": "Kapacitet",
+    "alerts": "Aktivna Upozorenja",
+    "updated": "Ažurirano",
+    "common": {
+      "start": "POČETAK",
+      "end": "KRAJ",
+      "updated": "AŽURIRANO"
+    },
+    "conflict": {
+      "title": "ZONA SUKOBA"
+    },
+    "earthquake": {
+      "levels": {
+        "major": "VELIKI",
+        "moderate": "UMJEREN",
+        "minor": "MALI"
+      }
+    },
+    "base": {
+      "types": {
+        "us-nato": "US/NATO",
+        "china": "CHINA",
+        "russia": "RUSSIA"
+      }
+    },
+    "protest": {
+      "acledVerified": "ACLED (potvrđeno)",
+      "gdelt": "GDELT",
+      "riots": "Neredi",
+      "highSeverity": "Visoka Težina"
+    },
+    "gpsJamming": {
+      "title": "GPS/GNSS Smetnje",
+      "navPerformance": "Performanse Navigacije",
+      "samples": "ADS-B Uzorci",
+      "aircraft": "Zrakoplovi",
+      "h3Hex": "H3 Hex"
+    },
+    "flight": {
+      "scheduled": "Planirano",
+      "estimated": "Procijenjeno",
+      "groundStop": "ZAUSTAVLJEN NA ZEMLJI",
+      "groundDelay": "PROGRAM KAŠNJENJA NA ZEMLJI",
+      "departureDelay": "KAŠNJENJA POLIJETANJA",
+      "arrivalDelay": "KAŠNJENJA PRILIKOM DOLASKA",
+      "delaysReported": "PRIJAVLJENA KAŠNJENJA",
+      "closure": "ZATVARANJE AERODROMA",
+      "delays": "KAŠNJENJA",
+      "avgDelay": "PROSJEČNO KAŠNJENJE",
+      "cancelled": "OTKAZANO",
+      "sources": {
+        "faa": "FAA ASWS",
+        "eurocontrol": "Eurocontrol",
+        "computed": "Izračunato",
+        "aviationstack": "Letni podaci",
+        "notam": "NOTAM"
+      },
+      "regions": {
+        "americas": "Amerika",
+        "europe": "Europa",
+        "apac": "Azija i Pacifik",
+        "mena": "Bliski istok",
+        "africa": "Afrika"
+      }
+    },
+    "aircraft": {
+      "altitude": "Nadmorska visina",
+      "speed": "Brzina prema zemlji",
+      "heading": "Smjer",
+      "position": "Položaj",
+      "ground": "Na tlu",
+      "airborne": "U zraku"
+    },
+    "apt": {
+      "description": "Grupa naprednih stalnih prijetnji s mogućnostima na razini države. Poznata po sofisticiranim kibernetskim operacijama usmjerenim na kritičnu infrastrukturu, vladu i obranu."
+    },
+    "cyberThreat": {
+      "title": "KIBERNETSKA PRIJETNJA"
+    },
+    "nuclear": {
+      "types": {
+        "plant": "NUKLEARNA ELEKTRANA",
+        "enrichment": "OBOGAĆIVANJE",
+        "weapons": "KOMPLEKS ZA ORUŽJE",
+        "research": "ISTRAŽIVANJE"
+      },
+      "description": "Nuklearna objekta pod nadzorom. Strateško značenje za regionalnu sigurnost i brigu o neširenoj proliferaciji."
+    },
+    "economic": {
+      "types": {
+        "exchange": "BURZA VRIJEDNOSNIH PAPIRA",
+        "centralBank": "SREDIŠNJA BANKA",
+        "financialHub": "FINANCIJSKI CENTAR"
+      },
+      "closed": "ZATVORENO"
+    },
+    "irradiator": {
+      "subtitle": "Industrijski postrojenja gamma-zraču",
+      "description": "Industrijska postrojenja za ozračivanje korištenjem izvora Kobalta-60 ili Cezija-137 za sterilizaciju medicinskih uređaja, konzerviranje hrane ili obrada materijala. Izvor: IAEA DIIF baza podataka."
+    },
+    "pipeline": {
+      "title": "CJEVOVOD",
+      "types": {
+        "oil": "NAFTOVOD",
+        "gas": "GASVOD",
+        "products": "CJEVOVOD ZA PROIZVODE"
+      },
+      "status": {
+        "operating": "U POGONU",
+        "construction": "U GRADNJI"
+      },
+      "description": "Glavna {{type}} infrastruktura cjevovoda. {{status}}"
+    },
+    "pipelineStatusDesc": {
+      "operating": "Trenutno operativan i transportira resurse.",
+      "construction": "Trenutno u gradnji."
+    },
+    "cable": {
+      "fault": "KVAR",
+      "degraded": "OŠTEĆENO",
+      "active": "AKTIVNO",
+      "major": "GLAVNO",
+      "cable": "KABEL",
+      "subtitle": "Podmorski optički kabel",
+      "type": "PODMORSKI KABEL",
+      "advisory": "SAVJET O KVARU",
+      "repairDeployment": "RASPOREĐIVANJE POPRAVKE",
+      "repairStatus": {
+        "onStation": "Na mjestu",
+        "enRoute": "U dolasku"
+      },
+      "health": {
+        "evidence": "DOKAZI O ZDRAVLJU"
+      },
+      "description": "Podmorski telekomunikacijski kabel koji prenosi međunarodni internetski promet. Ti optički kabeli čine okosicu globalne internetske povezanosti, prenoseći preko 95% međukontinentalnih podataka."
+    },
+    "repairShip": {
+      "note": "Praćenje broda za popravku pokazuje aktivno raspoređivanje prema mjestu kvara.",
+      "badge": "BROD ZA POPRAVKU",
+      "description": "Praćenje broda za popravku pokazuje aktivno raspoređivanje u potporu obnavljanju podmorskog kabela.",
+      "status": {
+        "onStation": "NA MJESTU",
+        "enRoute": "U DOLASKU"
+      }
+    },
+    "strategic": "STRATEŠKI",
+    "verified": "POTVRĐENO",
+    "sampledList": "Prikazujem uzorkovanu listu od {{count}} događaja.",
+    "reason": "RAZLOG",
+    "threat": "PRIJETNJA",
+    "aka": "Poznato i kao",
+    "sponsor": "SPONZOR",
+    "origin": "PODRIJETLO",
+    "country": "DRŽAVA",
+    "malware": "ZLONAMJERNOG SOFTVERA",
+    "lastSeen": "ZADNJI PUT VIĐENO",
+    "open": "OTVORENO",
+    "tradingHours": "VRIJEME TRGOVANJA",
+    "gamma": "GAMMA",
+    "city": "GRAD",
+    "length": "DULJINA",
+    "operator": "OPERATOR",
+    "countries": "DRŽAVE",
+    "waypoints": "TOČKE RUTE",
+    "repairEta": "PROCIJENJENO VRIJEME DOLASKA",
+    "timeUnits": {
+      "m": "m",
+      "h": "h",
+      "d": "d"
+    },
+    "hotspot": {
+      "escalation": "PROCJENA ESKALACIJE",
+      "baseline": "Osnovna razina",
+      "score": "Rezultat",
+      "trend": "Trend",
+      "components": {
+        "news": "Vijesti",
+        "cii": "CII",
+        "geo": "Geo",
+        "military": "Vojska"
+      },
+      "levels": {
+        "stable": "STABILNO",
+        "watch": "POD NADZOROM",
+        "elevated": "POVEĆANO",
+        "high": "VISOKO",
+        "critical": "KRITIČNO"
+      }
+    },
+    "buttons": {
+      "track": "Prati problem",
+      "details": "Pregledaj detalje"
+    },
+    "historicalContext": "POVIJESNI KONTEKST",
+    "lastMajorEvent": "Posljednji veliki događaj",
+    "precedents": "Prethodni primjeri",
+    "cyclicalPattern": "Ciklički obrazac",
+    "whyItMatters": "ZAŠTO JE VAŽNO",
+    "keyEntities": "KLJUČNE SUBJEKTE",
+    "relatedHeadlines": "POVEZANE VIJESTI",
+    "liveIntel": "Obavještajne informacije u realnom vremenu",
+    "loadingNews": "Učitavanje svjetskih vijesti...",
+    "noCoverage": "Nema nedavnog svjetskog pokrivanja",
+    "time": "Vrijeme",
+    "area": "Područje",
+    "expires": "Ističe",
+    "aisGapSpike": "SKOK JAZA AIS-a",
+    "chokepointCongestion": "ZAGUŠENJE NA USKIM MJESTIMA",
+    "darkening": "POTAMNJENJE",
+    "density": "GUSTOĆA",
+    "darkShips": "TAMNI BRODOVI",
+    "vesselCount": "BROJ BRODOVA",
+    "window": "VREMENSKI PROZOR",
+    "region": "REGIJA",
+    "fatalities": "SMRTNI SLUČAJEVI",
+    "actors": "AKTERI",
+    "near": "Blizu",
+    "moreEvents": "više događaja",
+    "monitoring": "Praćenje",
+    "viewUSGS": "Pogledaj na USGS",
+    "expired": "Isteklo",
+    "timeAgo": {
+      "s": "prije {{count}}s",
+      "m": "prije {{count}}m",
+      "h": "prije {{count}}h",
+      "d": "prije {{count}}d"
+    },
+    "cableAdvisory": {
+      "reported": "PRIJAVLJENO",
+      "impact": "UTJECAJ",
+      "eta": "PROCIJENJENO VRIJEME DOLASKA"
+    },
+    "outage": {
+      "levels": {
+        "total": "POTPUNI PREKID",
+        "major": "VELIKI PREKID",
+        "partial": "PARCIJALNI PREKID",
+        "disruption": "POREMEĆAJ"
+      },
+      "reported": "PRIJAVLJENO",
+      "categories": "KATEGORIJE",
+      "readReport": "Pročitaj puni izvještaj"
+    },
+    "datacenter": {
+      "status": {
+        "existing": "OPERATIVAN",
+        "planned": "PLANIRANO",
+        "decommissioned": "IZVAN POGONA",
+        "unknown": "NEPOZNATO"
+      },
+      "gpuChipCount": "BROJ GPU/ČIPOVA",
+      "chipType": "VRSTA ČIPA",
+      "power": "SNAGA",
+      "sector": "SEKTOR",
+      "attribution": "Podaci: Epoch AI GPU klasteri",
+      "chips": "čipovi",
+      "cluster": {
+        "title": "{{count}} podatkovnih centara",
+        "totalChips": "UKUPNO ČIPOVA",
+        "totalPower": "UKUPNA SNAGA",
+        "operational": "OPERATIVNO",
+        "planned": "PLANIRANO",
+        "moreDataCenters": "+ {{count}} dodatnih podatkovnih centara",
+        "sampledSites": "Prikazivanje uzorkovanog popisa od {{count}} mjesta."
+      }
+    },
+    "startupHub": {
+      "tiers": {
+        "mega": "MEGA HUB",
+        "major": "VELIKI HUB",
+        "emerging": "EMERGING",
+        "hub": "HUB"
+      },
+      "unicorns": "UNICORNI"
+    },
+    "cloudRegion": {
+      "provider": "PRUŽATELJ",
+      "availabilityZones": "ZONE DOSTUPNOSTI"
+    },
+    "techHQ": {
+      "types": {
+        "faang": "BIG TECH",
+        "unicorn": "UNICORN",
+        "public": "JAVNO",
+        "tech": "TEHNOLOGIJA"
+      },
+      "marketCap": "TRŽIŠNA VRIJEDNOST",
+      "employees": "ZAPOSLENICI"
+    },
+    "accelerator": {
+      "types": {
+        "accelerator": "AKCELERATOR",
+        "incubator": "INKUBATOR",
+        "studio": "STARTUP STUDIO"
+      },
+      "founded": "OSNOVAN",
+      "notableAlumni": "ZNAČAJNI ALUMNI"
+    },
+    "techEvent": {
+      "days": {
+        "today": "DANAS",
+        "tomorrow": "SUTRA",
+        "inDays": "ZA {{count}} DANA"
+      },
+      "date": "DATUM",
+      "moreInformation": "Više informacija"
+    },
+    "techHQCluster": {
+      "companiesCount": "{{count}} TVRTKI",
+      "bigTechCount": "{{count}} Big Tech",
+      "unicornsCount": "{{count}} Unicorna",
+      "publicCount": "{{count}} Javnih",
+      "sampled": "Prikazivanje uzorkovanog popisa od {{count}} tvrtki."
+    },
+    "techEventCluster": {
+      "eventsCount": "{{count}} DOGAĐAJA",
+      "upcomingWithin2Weeks": "{{count}} predstojećih tijekom 2 tjedna",
+      "sampled": "Prikazivanje uzorkovanog popisa od {{count}} događaja."
+    },
+    "militaryFlight": {
+      "types": {
+        "fighter": "Lovac",
+        "bomber": "Bombarder",
+        "transport": "Transport",
+        "tanker": "Tanker",
+        "awacs": "AWACS/AEW",
+        "reconnaissance": "Izvidnica",
+        "helicopter": "Helikopter",
+        "drone": "UAV/Dron",
+        "patrol": "Patrola",
+        "specialOps": "Specijalne operacije",
+        "vip": "VIP Transport"
+      },
+      "altitude": "NADMORSKA VISINA",
+      "ground": "Zemlja",
+      "speed": "BRZINA",
+      "heading": "SMJER",
+      "hexCode": "HEX KÔD",
+      "squawk": "SQUAWK",
+      "attribution": "Izvor: OpenSky Network"
+    },
+    "militaryVessel": {
+      "aisDark": "AIS NEVIDLJIV",
+      "vessel": "Brod",
+      "speed": "BRZINA",
+      "heading": "SMJER",
+      "mmsi": "MMSI",
+      "hull": "BROJ TRUPA",
+      "region": "REGIJA",
+      "strikeGroup": "GRUPA NAPADA",
+      "deploymentStatus": "STATUS",
+      "usniIntel": "USNI Intel",
+      "usniSource": "Izvor: USNI News Fleet Tracker",
+      "approximatePosition": "Položaj približan — na temelju USNI tjedno izvješće, ne podatke AIS u stvarnom vremenu.",
+      "darkDescription": "⚠ Brod je nestao — AIS signal je izgubljen. Može ukazivati na osjetljive operacije.",
+      "estPosition": "PROC. POLOŽAJ",
+      "aisLive": "AIS UŽIVO",
+      "recentTracking": "Nedavno praćenje",
+      "lastReport": "NAJNOVIJE",
+      "nearChokepoint": "BLIZU USKOG GRLA",
+      "nearBase": "BLIZU BAZE",
+      "lastSeen": "ZADNJE VIĐENO"
+    },
+    "militaryCluster": {
+      "flightActivity": {
+        "exercise": "Vojska vježba",
+        "patrol": "Patrolna djelatnost",
+        "transport": "Transportne operacije",
+        "unknown": "Vojna aktivnost"
+      },
+      "moreAircraft": "+{{count}} dodatnih zrakoplova",
+      "aircraftCount": "{{count}} ZRAKOPLOVA",
+      "aircraft": "ZRAKOPLOVI",
+      "activity": "AKTIVNOST",
+      "primary": "PRIMARNI",
+      "trackedAircraft": "PRAĆENI ZRAKOPLOVI",
+      "vesselActivity": {
+        "exercise": "Pomorska vježba",
+        "deployment": "Pomorska raspodijela",
+        "patrol": "Patrolna djelatnost",
+        "transit": "Tranzit flote",
+        "unknown": "Pomorska aktivnost"
+      },
+      "moreVessels": "+{{count}} dodatnih brodova",
+      "vesselsCount": "{{count}} BRODOVA",
+      "vessels": "BRODOVI",
+      "trackedVessels": "PRAĆENI BRODOVI"
+    },
+    "naturalEvent": {
+      "closed": "ZATVORENO",
+      "active": "AKTIVNO",
+      "reported": "PRIJAVLJENO",
+      "viewOnSource": "Pogledaj na {{source}}",
+      "attribution": "Podaci: NASA EONET",
+      "storm": "Oluja",
+      "classification": "Klasifikacija",
+      "maxWind": "Maks. brzina vjetra",
+      "pressure": "Tlak",
+      "movement": "Kretanje",
+      "tropicalSystem": "Tropski sustav"
+    },
+    "port": {
+      "types": {
+        "container": "KONTEJNERSKA LUKA",
+        "oil": "NAFTNA TERMINALA",
+        "lng": "LNG TERMINALA",
+        "naval": "VOJNA LUKA",
+        "mixed": "MJEŠOVITA",
+        "bulk": "RASUTIH TERETA"
+      },
+      "worldRank": "SVJETSKI RANG"
+    },
+    "spaceport": {
+      "status": {
+        "active": "AKTIVNA",
+        "construction": "U GRADNJI",
+        "inactive": "NEAKTIVNA"
+      },
+      "launchActivity": "AKTIVNOST LANSIRANJA",
+      "description": "Strateški objekat za lansiranje svemirskih letjelica. Kadenca lansiranja i mogućnosti pristupa orbiti ključni su geopolitički pokazatelji."
+    },
+    "mineral": {
+      "status": {
+        "producing": "PROIZVODNJA",
+        "development": "RAZVOJ",
+        "exploration": "ISTRAŽIVANJE"
+      },
+      "projectSubtitle": "{{mineral}} PROJEKT"
+    },
+    "stockExchange": {
+      "marketCap": "TRŽIŠNA KAPITALIZACIJA"
+    },
+    "financialCenter": {
+      "gfciRank": "GFCI RANG",
+      "specialties": "SPECIJALIZACIJE"
+    },
+    "centralBank": {
+      "currency": "VALUTA"
+    },
+    "commodityHub": {
+      "commodities": "ROBE"
+    },
+    "iranEvent": {
+      "relatedEvents": "Povezani događaji"
+    },
+    "hotspotSubtexts": {
+      "conflict_zone": "Zona konflikta",
+      "dprk_watch": "DPRK Nadzor",
+      "egypt_gis": "Egipat/GIS",
+      "energy_space": "Energija/Svemir",
+      "financial_hub": "Financijski centar",
+      "gchq_mi6": "GCHQ/MI6",
+      "greenland_intel": "Grenland obavještajne službe",
+      "haiti_crisis": "Haiti kriza",
+      "irgc_activity": "IRGC Aktivnost",
+      "insurgency_coups": "Ustaništvo/Državni udari",
+      "iraq_pmf": "Irak/PMF",
+      "kremlin_activity": "Kremaljska aktivnost",
+      "lebanon_hezbollah": "Libanon/Hezbollah",
+      "mossad_idf": "Mossad/IDF",
+      "nato_hq": "NATO sjedište",
+      "pla_mss_activity": "PLA/MSS Aktivnost",
+      "pentagon_pizza_index": "Pentagon Pizza indeks",
+      "piracy_conflict": "Piratstvo/Konflikt",
+      "qatar_al_udeid": "Katar/Al Udeid",
+      "saudi_gip_mbs": "Saudijska Arabija GIP/MBS",
+      "strait_watch": "Nadzor Tjesnaca",
+      "syria_crisis": "Sirijska Kriza",
+      "tech_ai_hub": "Tech/AI Hub",
+      "turkey_mit": "Turska/MIT",
+      "uae_ecsr": "UAE/ECSR",
+      "venezuela_crisis": "Venezuelanska Kriza",
+      "yemen_houthis": "Jemen/Houthiji"
+    }
+  },
+  "signals": {
+    "context": {
+      "prediction_leads_news": {
+        "whyItMatters": "Tržišta predviđanja često uključe informacije prije nego što postanu vijest—trgovci mogu imati rani pristup razvoju događaja.",
+        "actionableInsight": "Pratite novosti koje bi mogla objasniti kretanje na tržištu u sljedećih 1-6 sati.",
+        "confidenceNote": "Viša pouzdanost ako se više tržišta predviđanja kreće u istom smjeru."
+      },
+      "news_leads_markets": {
+        "whyItMatters": "Vijesti se brže pojavljuju nego što se tržišta reagiraju—potencijalna prilika pogrešnog vrednovanja.",
+        "actionableInsight": "Pratite kako se tržišta prilagođavaju dok algoritmi i trgovci procesiraju vijesti.",
+        "confidenceNote": "Jači signal ako su vijesti od Tier 1 agencija."
+      },
+      "silent_divergence": {
+        "whyItMatters": "Tržište se značajno kreće bez identificirajućeg katalizatora vijesti—moguće interno znanje, algoritamska trgovanja ili neobjavljena razvoja.",
+        "actionableInsight": "Istražite alternativne izvore podataka; vijesti mogu kasnije objasniti kretanje.",
+        "confidenceNote": "Niža pouzdanost jer je uzrok nepoznat—tretirajte kao rano upozorenje, nije potvrđena obavjest."
+      },
+      "velocity_spike": {
+        "whyItMatters": "Priča se ubrzava kroz više izvora vijesti—ukazuje na rastući značaj i potencijal za tržišni ili politički utjecaj.",
+        "actionableInsight": "Ova tema zahtijeva neposrednu pozornost; očekujte službene izjave ili tržišne reakcije.",
+        "confidenceNote": "Viša pouzdanost s više izvora; provjerite jesu li Tier 1 izvori među njima."
+      },
+      "keyword_spike": {
+        "whyItMatters": "Pojam se pojavljuje značajno većom frekvencijom od svoje osnovne vrijednosti kroz više izvora, što ukazuje na razvijajuću priču.",
+        "actionableInsight": "Pregledajte povezane naslove i AI sažetak, zatim korelirajte s nestabilnošću zemlje i tržišnim kretanjima.",
+        "confidenceNote": "Pouzdanost raste s jačim bazičnim multiplikantorom i širom raznolikošću izvora."
+      },
+      "convergence": {
+        "whyItMatters": "Više nezavisnih vrsta izvora potvrđuje isti događaj—unakrsna validacija povećava vjerojatnost točnosti.",
+        "actionableInsight": "Tretirajte ovo kao obavjestu s visokom pouzdanošću; triangulacija smanjuje rizik lažnih pozitiva.",
+        "confidenceNote": "Vrlo visoka pouzdanost kada se agencije, vladini izvori i obavještajni izvori usklađuju."
+      },
+      "triangulation": {
+        "whyItMatters": "\"Trokut autoritetnosti\" (agencije, vladini izvori, obavještajni stručnjaci) su usklađeni—ovo je zlatni standard za potvrdu novosti.",
+        "actionableInsight": "Ovo je akcijska obavjest; očekujte tržišne ili političke reakcije u doglednoj vremenu.",
+        "confidenceNote": "Najveća pouzdanost signala u sustavu—više autoritativnih izvora se slaže."
+      },
+      "flow_drop": {
+        "whyItMatters": "Detektirana je prekida fizičkog toka robe—ograničenja opskrbe često prethode skokovanju cijena.",
+        "actionableInsight": "Pratite cijene energetskih roba; procijenjte izloženost lancu opskrbe.",
+        "confidenceNote": "Pouzdanost ovisi o trajanju prekida i dostupnosti alternativne opskrbe."
+      },
+      "flow_price_divergence": {
+        "whyItMatters": "Vijesti o prekidu opskrbe još nisu odražene u cijenama roba—potencijalna informacijska prednost.",
+        "actionableInsight": "Ili se tržišta sporo reagiraju, ili je prekid manje značajan nego što se navodi.",
+        "confidenceNote": "Srednja pouzdanost—tržišta mogu imati bolje informacije nego izvještaji vijesti."
+      },
+      "geo_convergence": {
+        "whyItMatters": "Više vijesti o događajima grupirano oko istog geografskog područja—potencijalna eskalacija ili koordinirana aktivnost.",
+        "actionableInsight": "Povećajte prioritet nadzora za ovo područje; korelirajte sa satelitskim/AIS podacima ako je dostupno.",
+        "confidenceNote": "Viša pouzdanost ako događaji obuhvaćaju više vrsta izvora i vremenskih razdoblja."
+      },
+      "explained_market_move": {
+        "whyItMatters": "Tržišno kretanje ima jasan katalizator vijesti—bez misterija, cijena akcije odražava poznate informacije.",
+        "actionableInsight": "Razumite narativ koji vodi kretanja; procijenjite je li reakcija proporcionalna.",
+        "confidenceNote": "Visoka pouzdanost—vijesti i cijena akcije su korelirane."
+      },
+      "hotspot_escalation": {
+        "whyItMatters": "Geopolitička žarišta pokazuju značajnu eskalaciju na osnovu aktivnosti vijesti, nestabilnosti zemlje, geografske konvergencije i vojne prisutnosti.",
+        "actionableInsight": "Povećajte prioritet nadzora; procijenjite dozvučne utjecaje na infrastrukturu, tržišta i regionalnu stabilnost.",
+        "confidenceNote": "Pouzdanost ponderirana s više izvora podataka—vijesti (35%), nestabilnost zemlje (25%), geo-konvergencija (25%), vojna aktivnost (15%)."
+      },
+      "sector_cascade": {
+        "whyItMatters": "Tržišno kretanje se kaskadira kroz povezane sektore—ukazuje na sustavnu reakciju na katalizator.",
+        "actionableInsight": "Identificirajte primarni katalizator; procijenjite izloženost kroz povezanu imovinu.",
+        "confidenceNote": "Viša pouzdanost kada se nekoliko sektora kreće s sličnom brzinom i smjerom."
+      },
+      "military_surge": {
+        "whyItMatters": "Vojna transportna aktivnost značajno iznad osnovne vrijednosti—ukazuje na potencijalno raspoređivanje, humanitarnu operaciju ili projekciju sile.",
+        "actionableInsight": "Korelirajte s regionalnim vijestima; procijenjte aktivnost obližnje baze i pomorska kretanja.",
+        "confidenceNote": "Viša pouzdanost s trajnom aktivnošću tijekom nekoliko sati i raznovrsnim vrstama zrakoplova."
+      },
+      "fallback": {
+        "whyItMatters": "Signal je detektiran.",
+        "actionableInsight": "Pratite razvoj situacije.",
+        "confidenceNote": "Standardna pouzdanost."
+      }
+    }
+  },
+  "alerts": {
+    "instabilityRising": "{{country}} - Nestabilnost raste",
+    "instabilityFalling": "{{country}} - Nestabilnost pada",
+    "indexRose": "Indeks nestabilnosti porastao sa {{from}} na {{to}} ({{change}}). Uzrok: {{driver}}",
+    "indexFell": "Indeks nestabilnosti pao sa {{from}} na {{to}} ({{change}}). Uzrok: {{driver}}",
+    "geoAlert": "Geografski alarm: {{location}}",
+    "cascadeAlert": "Alarm kaskadnog prekida infrastrukture",
+    "infraAlert": "Alarm infrastrukture: {{name}}",
+    "countriesAffected": "{{count}} država pogođeno, najveći utjecaj: {{impact}}",
+    "alert": "Alarm: {{location}}",
+    "multipleRegions": "Više regija",
+    "trending": "\"{{term}}\" u trendu - {{count}} spominjanja u {{hours}}h",
+    "eventsDetected": "{{count}} događaja detektirano u regiji ({{lat}}°, {{lon}}°)"
+  },
+  "intel": {
+    "topics": {
+      "military": {
+        "name": "Vojna aktivnost",
+        "description": "Vojne vježbe, raspoređivanja i operacije"
+      },
+      "cyber": {
+        "name": "Kibernetske prijetnje",
+        "description": "Kibernetski napadi, ransomware i digitalne prijetnje"
+      },
+      "nuclear": {
+        "name": "Nuklearno",
+        "description": "Nuklearni programi, IAEA inspeksije, proliferacija"
+      },
+      "sanctions": {
+        "name": "Sankcije",
+        "description": "Ekonomske sankcije i trgovinska ograničenja"
+      },
+      "intelligence": {
+        "name": "Obavještajne službe",
+        "description": "Špijunažu, obavještajne operacije, nadzor"
+      },
+      "maritime": {
+        "name": "Pomorska sigurnost",
+        "description": "Pomorske operacije, pomorska uska grla, pomorske rute"
+      }
+    }
+  },
+  "common": {
+    "loading": "Učitavanje...",
+    "error": "Greška",
+    "noData": "Nema dostupnih podataka",
+    "noDataAvailable": "Nema dostupnih podataka",
+    "updated": "Ažurirano upravo sada",
+    "ago": "{{time}} unazad",
+    "retrying": "Pokušaj ponovno...",
+    "failedToLoad": "Privremeno nedostupno — ponovno pokušavanje",
+    "noDataShort": "Nema podataka",
+    "dataTemporarilyUnavailable": "Podaci privremeno nedostupni",
+    "upstreamUnavailable": "Upstream API nedostupan — automatski pokušaj ponovno",
+    "loadingUcdpEvents": "Učitavanje događaja oružanih sukoba",
+    "loadingStablecoins": "Učitavanje stablecoina...",
+    "scanningThermalData": "Skeniranje termijskih podataka",
+    "calculatingExposure": "Izračunavanje izloženosti",
+    "computingSignals": "Izračunavanje signala...",
+    "loadingEtfData": "Učitavanje ETF podataka...",
+    "loadingGiving": "Učitavanje globalne donacije",
+    "loadingDisplacement": "Učitavanje podataka o raseljenim osobama",
+    "loadingClimateData": "Učitavanje klimatskih podataka",
+    "failedTechReadiness": "Podaci o tehnološkoj spremnosti privremeno nedostupni",
+    "failedRiskOverview": "Pregled rizika privremeno nedostupan",
+    "failedPredictions": "Prognoze privremeno nedostupne",
+    "failedCII": "CII podaci privremeno nedostupni",
+    "failedDependencyGraph": "Grafikon ovisnosti privremeno nije dostupan",
+    "failedIntelFeed": "Feed obavještajnih podataka privremeno nije dostupan",
+    "failedMarketData": "Tržišni podaci privremeno nisu dostupni",
+    "failedSectorData": "Podaci sektora privremeno nisu dostupni",
+    "failedCommodities": "Podaci roba privremeno nisu dostupni",
+    "failedCryptoData": "Podaci o kriptovalutama privremeno nisu dostupni",
+    "rateLimitedMarket": "Tržišni podaci privremeno nisu dostupni (ograničena brzina) — pokušaj brzo",
+    "failedClusterNews": "Grupiranje vijesti nije uspjelo",
+    "noNewsAvailable": "Nema dostupnih vijesti",
+    "noActiveTechHubs": "Nema aktivnih tehnoloških čvorišta",
+    "noActiveGeoHubs": "Nema aktivnih geopolitičkih čvorišta",
+    "allSourcesDisabled": "Svi izvori su onemogućeni",
+    "allIntelSourcesDisabled": "Svi obavještajni izvori su onemogućeni",
+    "noEventsInCategory": "Nema događaja u ovoj kategoriji",
+    "exportCsv": "Preuzmi CSV",
+    "exportJson": "Preuzmi JSON",
+    "exportData": "Preuzmi podatke",
+    "selectAll": "Odaberi sve",
+    "selectNone": "Odaberi ništa",
+    "unrest": "Nemiri",
+    "conflict": "Sukob",
+    "security": "Vojna aktivnost",
+    "information": "Informacija",
+    "shareStory": "Dijeli vijest",
+    "exportImage": "Preuzmi sliku",
+    "exportPdf": "Preuzmi PDF",
+    "new": "NOVO",
+    "live": "UŽIVO",
+    "cached": "MEMORIZIRANO",
+    "unavailable": "NEDOSTUPNO",
+    "close": "Zatvori",
+    "cancel": "Otkaži",
+    "currentVariant": "(trenutno)",
+    "retry": "Pokušaj ponovno",
+    "refresh": "Osvježi",
+    "all": "Sve"
+  },
+  "connectivity": {
+    "offlineCached": "Offline — prikazujem memorizirane podatke od {{freshness}}.",
+    "offlineUnavailable": "Offline — podaci uživo nisu dostupni.",
+    "cachedFallback": "Podaci uživo nisu dostupni — prikazujem memorizirane podatke od {{freshness}}."
+  },
+  "preferences": {
+    "display": "Prikaz",
+    "intelligence": "Obavještajni podaci",
+    "media": "Mediji",
+    "panels": "Ploče",
+    "dataAndCommunity": "Podaci i zajednica",
+    "theme": "Tema",
+    "themeDesc": "Automatski slijedi vašu sistemsku postavku.",
+    "themeAuto": "Automatski (pratiti sustav)",
+    "themeDark": "Tamna",
+    "themeLight": "Svijetla",
+    "mapProvider": "Davatelj karata",
+    "mapProviderDesc": "Odaberite odakle se učitavaju pločice karte. Automatski koristi samoposlužujući PMTiles s OpenFreeMap rezervom.",
+    "mapTheme": "Tema Karte",
+    "mapThemeDesc": "Vizualni stil pločica karte. Opcije se razlikuju ovisno o pružatelju.",
+    "globePreset": "Vizualni Predpreset",
+    "globePresetDesc": "Prebacujte se između klasičnog i poboljšanog prikaza globusa za usporedbu.",
+    "fontFamily": "Obitelj Fonta",
+    "fontFamilyDesc": "Monospace za tehnički izgled, zadanu vrijednost sustava za lakše čitanje.",
+    "fontMono": "Monospace",
+    "fontSystem": "Zadana vrijednost sustava"
+  },
+  "premium": {
+    "pro": "PRO",
+    "lockedDesc": "Zahtijeva ključ World Monitor licence",
+    "joinWaitlist": "Pridruži se Listi Čekanja",
+    "signInToUnlock": "Prijavite se da biste otključali premium značajke",
+    "signIn": "Prijavite se za Otključavanje",
+    "verifyEmailToUnlock": "Potvrdite vašu e-poštu za pristup premium značajkama",
+    "resendVerification": "Ponovno Pošalji Provjeru",
+    "upgradeDesc": "Nadogradite se na Pro za potpun pristup premium analitici",
+    "upgradeToPro": "Nadogradite se na Pro",
+    "features": {
+      "orefSirens1": "Upozorenja o raketama i raketama u izraelskom realnom vremenu",
+      "orefSirens2": "Mapiranje zone sirena s klasifikacijom prijetnje",
+      "telegramIntel1": "Kurirani Telegram OSINT kanali",
+      "telegramIntel2": "Ažuriranja o konfliktima i geopolitici u blizini realnog vremena"
+    }
+  },
+  "contextMenu": {
+    "openCountryBrief": "Otvori Sažetak Zemlje",
+    "copyCoordinates": "Kopiraj Koordinate"
+  },
+  "auth": {
+    "signIn": "Prijava",
+    "createAccount": "Kreiraj račun",
+    "settings": "Postavke"
+  },
+  "mcp": {
+    "connectPanel": "Poveži MCP",
+    "modalTitle": "Povežite MCP Server",
+    "serverUrl": "URL Servera",
+    "authHeader": "Zaglavlje Autentifikacije",
+    "optional": "opciono",
+    "apiKey": "API Ključ",
+    "apiKeyPlaceholder": "Zalijepite vašu API ključ",
+    "useCustomHeaders": "Napredno: koristi prilagođena zaglavlja ↓",
+    "useApiKey": "← Koristi API ključ",
+    "connectBtn": "Poveži i Prikaži Alate",
+    "connecting": "Povezivanje...",
+    "foundTools": "Pronađeno {{count}} alata",
+    "connectFailed": "Povezivanje nije uspjelo",
+    "selectTool": "Odaberi alat",
+    "toolArgs": "Argumenti (JSON)",
+    "panelTitle": "Naslov Ploče",
+    "panelTitlePlaceholder": "Moja MCP Ploča",
+    "refreshEvery": "Osvježi svaki",
+    "seconds": "sekundi",
+    "addPanel": "Dodaj Ploču",
+    "configure": "Konfiguriraj MCP",
+    "refreshNow": "Osvježi sada",
+    "invalidJson": "Neispravan JSON",
+    "confirmDelete": "Ukloniti ovaj MCP panel?",
+    "quickConnect": "Brzo povezivanje",
+    "or": "ili unesite prilagođeni poslužitelj",
+    "generatingVisualization": "Izrada vizualizacije...",
+    "visualizationFailed": "Vizualizacija nije uspjela"
+  }
+}

@@ -87,7 +87,7 @@ function resolveMetric(metric, sources, balance, regionId) {
   if (metric.startsWith('cii:')) {
     const parts = metric.split(':');
     const [, iso] = parts;
-    const cii = sources['risk:scores:sebuf:stale:v1']?.ciiScores;
+    const cii = sources['risk:scores:sebuf:stale:v2']?.ciiScores;
     if (!Array.isArray(cii)) return null;
     const entry = cii.find((s) => s?.region === iso);
     return entry ? num(entry.combinedScore) : null;

@@ -3,7 +3,6 @@
 **Real-time global intelligence dashboard** — AI-powered news aggregation, geopolitical monitoring, and infrastructure tracking in a unified situational awareness interface.
 
 [![GitHub stars](https://img.shields.io/github/stars/koala73/worldmonitor?style=social)](https://github.com/koala73/worldmonitor/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/koala73/worldmonitor?style=social)](https://github.com/koala73/worldmonitor/network/members)
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?style=flat&logo=discord&logoColor=white)](https://discord.gg/re63kWKxaz)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
@@ -51,6 +50,20 @@ For the full feature list, architecture, data sources, and algorithms, see the *
 
 ---
 
+## Support Status
+
+All site variants and desktop binaries are built from a single codebase and ship from the same release process. The table below clarifies maintenance status so you know which surfaces are safe to depend on.
+
+| Surface | Status | Notes |
+|---------|--------|-------|
+| `worldmonitor.app`, `tech.`, `finance.`, `commodity.`, `happy.` | Stable | Public deployments built from this repo, actively maintained |
+| `energy.worldmonitor.app` | Experimental | Scaffolded but not advertised in the header badges; expect rough edges |
+| Desktop binaries (Windows / macOS Apple Silicon / macOS Intel / Linux AppImage) | Stable | One Tauri binary that switches variants in-app; current CI release targets are `full` and `tech` |
+
+Issues filed against any of the above are triaged from the same backlog — see the [issues board](https://github.com/koala73/worldmonitor/issues) for currently-open work.
+
+---
+
 ## Quick Start
 
 ```bash
@@ -60,7 +73,9 @@ npm install
 npm run dev
 ```
 
-Open [localhost:5173](http://localhost:5173). No environment variables required for basic operation.
+Open [localhost:5173](http://localhost:5173). The app runs with no environment variables.
+
+Feature-specific data sources may require credentials — for example, the flight-price command (`fly LON DXB`) needs `TRAVELPAYOUTS_API_TOKEN` to return live quotes; without it the command shows a "credentials required" message rather than synthetic data. See `.env.example` for the full list.
 
 For variant-specific development:
 

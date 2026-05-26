@@ -853,6 +853,19 @@ async function initSettingsWindow(): Promise<void> {
   applyStoredTheme();
   applyFont();
 
+  // Localize the static HTML shell (settings.html) — labels are baked in
+  // English so the page paints something before this script runs; once
+  // i18n is ready we swap them to the user's locale.
+  document.title = t('modals.settingsWindow.shellTitle');
+  const headerTitle = document.querySelector('.settings-header-title');
+  if (headerTitle) headerTitle.textContent = t('modals.settingsWindow.shellTitle');
+  const searchInputEl = document.getElementById('settingsSearch') as HTMLInputElement | null;
+  if (searchInputEl) searchInputEl.placeholder = t('modals.settingsWindow.shellSearchPlaceholder');
+  const cancelEl = document.getElementById('cancelBtn');
+  if (cancelEl) cancelEl.textContent = t('modals.settingsWindow.shellCancel');
+  const okEl = document.getElementById('okBtn');
+  if (okEl) okEl.textContent = t('modals.settingsWindow.shellSaveClose');
+
   try { await resolveLocalApiPort(); } catch { /* use default */ }
 
   requestAnimationFrame(() => {

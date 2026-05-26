@@ -87,6 +87,26 @@ export function isAllowedHost(url: string, allowedHost: string): boolean {
   }
 }
 
+/**
+ * Normalize urlPathContains config (string | string[] | undefined) into an
+ * array. Empty array means "no path constraint" (any path passes).
+ */
+export function normalizePathFilters(value: string | string[] | undefined): string[] {
+  if (!value) return [];
+  return Array.isArray(value) ? value.filter((s) => s.length > 0) : [value];
+}
+
+/**
+ * URL passes the path filter if filters list is empty OR any listed substring
+ * appears in the URL. Multi-pattern support is required for retailers like
+ * Carrefour BR that mix legacy `/produto/<slug>` URLs with VTEX `<slug>/p`
+ * URLs — a single substring can't match both.
+ */
+export function matchesAnyPathFilter(url: string, filters: string[]): boolean {
+  if (filters.length === 0) return true;
+  return filters.some((p) => url.includes(p));
+}
+
 interface ExtractedProduct {
   productName?: string;
   price?: number;
@@ -309,17 +329,28 @@ export class SearchAdapter implements RetailerAdapter {
       throw new Error(`Exa: no pages found for "${canonicalName}" on ${domain}`);
     }
 
-    const pathFilter = cfg?.urlPathContains;
+    const pathFilters = normalizePathFilters(cfg?.urlPathContains);
     const safeUrls = exaResults
       .map((r) => r.url)
-      .filter((url) => !!url && isAllowedHost(url, domain) && (!pathFilter || url.includes(pathFilter)));
+      .filter((url) => !!url && isAllowedHost(url, domain) && matchesAnyPathFilter(url, pathFilters));
 
     ctx.logger.info(
       `  [search:discovery] ${canonicalName}: ${exaResults.length} URLs from Exa, ${safeUrls.length} passed domain check`,
     );
 
     if (safeUrls.length === 0) {
-      throw new Error(`Exa: all ${exaResults.length} results failed domain check (expected hostname: ${domain}${pathFilter ? `, path: *${pathFilter}*` : ''})`);
+      // Self-diagnostic: log the rejected URLs so a future config drift (Exa
+      // returning new path patterns the YAML doesn't list, or hostname shift
+      // to a subdomain) is debuggable from the log alone — without this, a
+      // run goes from "0 passed domain check" straight to a thrown error
+      // with no record of what Exa actually returned.
+      const sample = exaResults.slice(0, 5).map((r) => r.url).filter(Boolean).join(' | ');
+      ctx.logger.warn(
+        `  [search:discovery] ${canonicalName}: 0 of ${exaResults.length} URLs passed filter (host=${domain}, path=${pathFilters.length ? pathFilters.join('|') : '<none>'}). Rejected: ${sample}`,
+      );
+      throw new Error(
+        `Exa: all ${exaResults.length} results failed domain check (expected hostname: ${domain}${pathFilters.length ? `, path: *${pathFilters.join('|')}*` : ''})`,
+      );
     }
 
     // Stage 2: Firecrawl structured extraction — iterate safe URLs until one yields a valid price

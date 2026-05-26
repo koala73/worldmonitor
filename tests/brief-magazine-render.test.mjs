@@ -1143,3 +1143,96 @@ describe('cover greeting ↔ digest.greeting parity', () => {
     assert.ok(cover.includes('&lt;script&gt;'));
   });
 });
+
+
+describe('renderBriefMagazine — page-overflow / scroll-vs-paginate contract', () => {
+  // User-reported on a Pro subscription (2026-05-19): "the text is outside
+  // of the window and I have to zoom the page out to read it ... if I try
+  // to scroll down to read it, it just goes to the next page instead. The
+  // only way I found that works is to enable Responsive Design Mode and
+  // change the preset to iPhone Pro Max." Three compounding bugs in the
+  // pre-fix renderer:
+  //   1. .page CSS was `overflow: hidden` with `height: 100vh` — long
+  //      content was silently clipped.
+  //   2. Fonts size via vw units, so wide desktop viewports scale text UP
+  //      and trigger overflow more often than narrow ones (iPhone Pro Max
+  //      responsive mode "worked" by shrinking everything proportionally).
+  //   3. The global wheel handler paginated on every wheel tick, regardless
+  //      of whether the current page could still scroll — so a long page
+  //      was unreachable past the first 100vh.
+  // These tests pin the fix shape so a future "simplification" can't
+  // silently reintroduce any of the three.
+
+  // Extract the top-level `.page { ... }` rule body and strip CSS
+  // `/* ... */` comments. Necessary because the production CSS carries a
+  // multi-line comment explaining WHY overflow changed shape — a naive
+  // regex against the raw HTML matches the comment text (e.g. "body has
+  // overflow:hidden anyway") and fires false-positives. The body is what
+  // the browser actually applies, so that's what we assert against.
+  function getPageRuleBlock(html) {
+    const m = html.match(/\.page\s*\{((?:[^{}]|\{[^}]*\})*?)\}/);
+    assert.ok(m, '.page rule block not found in rendered CSS');
+    return m[1].replace(/\/\*[\s\S]*?\*\//g, '');
+  }
+
+  it('.page CSS allows internal vertical scroll (overflow-y: auto)', () => {
+    const env = envelope();
+    const body = getPageRuleBlock(renderBriefMagazine(env));
+    assert.match(
+      body,
+      /\boverflow-y\s*:\s*auto\b/,
+      '.page must set overflow-y: auto so long content is reachable instead of clipped',
+    );
+    // The killer regression: shorthand `overflow: hidden` would re-clip
+    // everything. Require declaration form (terminated by `;` or end of
+    // block) so the assertion can't be defeated by a property name like
+    // `overflow-x`.
+    assert.doesNotMatch(
+      body,
+      /\boverflow\s*:\s*hidden\s*[;}]/,
+      '.page must NOT use the shorthand `overflow: hidden` — that re-enables the clipping bug',
+    );
+  });
+
+  it('.page keeps overflow-x: hidden so the horizontal deck carousel is not fought by per-page scrollbars', () => {
+    const env = envelope();
+    const body = getPageRuleBlock(renderBriefMagazine(env));
+    assert.match(body, /\boverflow-x\s*:\s*hidden\b/);
+  });
+
+  it('NAV_SCRIPT wheel handler defers to native page scroll when the page can still scroll in that direction', () => {
+    const env = envelope();
+    const html = renderBriefMagazine(env);
+    // The function name itself is the contract — if a future refactor
+    // renames or removes it, this test fails with a clear message.
+    assert.match(
+      html,
+      /function\s+pageCanScrollVertical\s*\(/,
+      'NAV_SCRIPT must expose a pageCanScrollVertical predicate the wheel handler can call to defer to native scroll',
+    );
+    // Wheel handler must consult the predicate before paginating.
+    assert.match(
+      html,
+      /pageCanScrollVertical\s*\(\s*pages\s*\[\s*current\s*\]/,
+      'wheel handler must check pageCanScrollVertical on the current page before paginating, or long pages stay unreachable',
+    );
+  });
+
+  it('NAV_SCRIPT keyboard handler routes PageDown/PageUp/Space through the scroll-then-paginate predicate', () => {
+    const env = envelope();
+    const html = renderBriefMagazine(env);
+    // Spec match: the predicate must appear inside the keydown branches
+    // for PageDown and PageUp (Space is included in the PageDown branch).
+    // Looser regex than a structural parse, but tight enough that the
+    // predicate-less original code would fail.
+    const pageDownBranch = /PageDown[^}]+pageCanScrollVertical/;
+    const pageUpBranch = /PageUp[^}]+pageCanScrollVertical/;
+    assert.match(html, pageDownBranch, 'PageDown/Space must defer to native scroll before paginating');
+    assert.match(html, pageUpBranch, 'PageUp must defer to native scroll before paginating');
+    // ArrowRight/Left are the deck axis (no scroll conflict) and should
+    // still paginate immediately — guard against a future "fix" that
+    // routes them through the predicate too and breaks deck navigation.
+    assert.doesNotMatch(html, /ArrowRight[^}]+pageCanScrollVertical/);
+    assert.doesNotMatch(html, /ArrowLeft[^}]+pageCanScrollVertical/);
+  });
+});

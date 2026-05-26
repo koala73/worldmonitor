@@ -10,13 +10,12 @@ const client = new MarketServiceClient(getRpcBaseUrl(), { fetch: premiumFetch })
 
 export type StockBacktestResult = BacktestStockResponse;
 
-const DEFAULT_LIMIT = 4;
 const DEFAULT_EVAL_WINDOW_DAYS = 10;
 export const STOCK_BACKTEST_FRESH_MS = 24 * 60 * 60 * 1000;
 
-async function getTargets(limit: number) {
+async function getTargets(limitOverride?: number) {
   const { getStockAnalysisTargets } = await import('./stock-analysis');
-  return getStockAnalysisTargets(limit);
+  return getStockAnalysisTargets(limitOverride);
 }
 
 export async function fetchStockBacktestsForTargets(
@@ -33,17 +32,17 @@ export async function fetchStockBacktestsForTargets(
 }
 
 export async function fetchStockBacktests(
-  limit = DEFAULT_LIMIT,
+  limitOverride?: number,
   evalWindowDays = DEFAULT_EVAL_WINDOW_DAYS,
 ): Promise<StockBacktestResult[]> {
-  return fetchStockBacktestsForTargets(await getTargets(limit), evalWindowDays);
+  return fetchStockBacktestsForTargets(await getTargets(limitOverride), evalWindowDays);
 }
 
 export async function fetchStoredStockBacktests(
-  limit = DEFAULT_LIMIT,
+  limitOverride?: number,
   evalWindowDays = DEFAULT_EVAL_WINDOW_DAYS,
 ): Promise<StockBacktestResult[]> {
-  const targets = await getTargets(limit);
+  const targets = await getTargets(limitOverride);
   const symbols = targets.map((target) => target.symbol);
   const response = await client.listStoredStockBacktests({
     symbols,

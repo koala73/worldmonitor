@@ -24,11 +24,16 @@ function getRatelimit() {
 export function getClientIp(request) {
   // With Cloudflare proxy -> Vercel, x-real-ip is the CF edge IP (shared
   // across users). cf-connecting-ip is the actual client IP — prefer it.
-  // (Matches server/_shared/rate-limit.ts)
+  // x-forwarded-for is client-settable and MUST NOT be trusted for rate
+  // limiting: any caller can set it to spoof a victim's IP (burning their
+  // budget) or cycle synthetic values to bypass their own limit. Critically,
+  // /api/wm-session uses this helper — a spoofable rate limit there enables
+  // mass-minting wms_ anonymous session tokens which a separate auth gate
+  // (e.g. /api/mcp-proxy without forceKey) would otherwise accept. Issue
+  // #3721 (matches server/_shared/rate-limit.ts).
   return (
     request.headers.get('cf-connecting-ip') ||
     request.headers.get('x-real-ip') ||
-    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
     '0.0.0.0'
   );
 }

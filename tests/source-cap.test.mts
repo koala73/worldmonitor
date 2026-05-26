@@ -99,6 +99,64 @@ describe('selectSourcesUnderCap: round-robin per-category fairness', () => {
     assert.equal(r.keep.size, 3);
   });
 
+  it('REGRESSION (PR #3857): locale-late entries in a bucket survive the cap when protected', () => {
+    // Reproduces the Hungarian-feeds-disabled-by-cap bug: hu-tagged entries
+    // declared AFTER the existing Europe defaults get round-robin'd out
+    // for free-tier hu users without `protectedNames`. Numbers chosen so
+    // cap stops before reaching hu entries in the baseline, and so cap
+    // can fit all hu entries plus some defaults in the protected run.
+    const europe = F(
+      // English/German/Italian/Dutch/Swedish defaults (positions 1-12)
+      'EuroNews', 'DW News', 'Tagesschau', 'ANSA', 'NOS Nieuws', 'SVT Nyheter',
+      'France 24', 'Le Monde', 'Corriere', 'Repubblica', 'NRC', 'Dagens Nyheter',
+      // Hungarian (positions 13-18 in declaration order)
+      'Telex', 'Index.hu', 'HVG', '444.hu', '24.hu', 'ATV',
+    );
+    const feeds = { europe };
+    const huBoost = new Set(['Telex', 'Index.hu', 'HVG', '444.hu', '24.hu', 'ATV']);
+    const CAP = 10;
+
+    // Without protection: round-robin with a single bucket eats positions
+    // 1-CAP in declaration order → all 10 slots go to en/de/it defaults,
+    // zero Hungarian sources reached.
+    const baseline = selectSourcesUnderCap(feeds, [], new Set(), CAP);
+    for (const hu of huBoost) {
+      assert.ok(!baseline.keep.has(hu), `baseline should NOT keep ${hu} (proves the bug exists)`);
+    }
+    assert.equal(baseline.keep.size, CAP);
+
+    // With protection: all 6 Hungarian sources kept, remaining 4 cap slots
+    // go to round-robin defaults (EuroNews, DW News, Tagesschau, ANSA).
+    const protectedRun = selectSourcesUnderCap(feeds, [], new Set(), CAP, huBoost);
+    for (const hu of huBoost) {
+      assert.ok(protectedRun.keep.has(hu), `protected run MUST keep ${hu}`);
+    }
+    assert.equal(protectedRun.keep.size, CAP, 'protected names count toward cap (no unbounded expansion)');
+
+    // Cap < protected.size: protected fills first, takes a prefix. No
+    // unbounded expansion; some protected names get dropped (matches the
+    // overall "cap is a hard ceiling" contract).
+    const tinyCapRun = selectSourcesUnderCap(feeds, [], new Set(), 3, huBoost);
+    assert.equal(tinyCapRun.keep.size, 3, 'cap is a hard ceiling even with protected names');
+  });
+
+  it('protected name in userDisabled stays excluded (user intent wins)', () => {
+    const feeds = { a: F('a1', 'a2'), b: F('b1', 'b2') };
+    const userDisabled = new Set(['a1']);
+    const protectedNames = new Set(['a1', 'b1']);
+    const r = selectSourcesUnderCap(feeds, [], userDisabled, 4, protectedNames);
+    assert.ok(!r.keep.has('a1'), 'user-disabled MUST stay disabled even when protected');
+    assert.ok(r.keep.has('b1'), 'non-conflicting protected stays kept');
+  });
+
+  it('protected names not in any bucket are silently ignored', () => {
+    const feeds = { a: F('a1', 'a2') };
+    const protectedNames = new Set(['nonexistent-source-name']);
+    const r = selectSourcesUnderCap(feeds, [], new Set(), 2, protectedNames);
+    assert.equal(r.keep.size, 2);
+    assert.ok(!r.keep.has('nonexistent-source-name'));
+  });
+
   it('is deterministic across repeated calls with same input', () => {
     const feeds = {
       a: F('a1', 'a2', 'a3'),

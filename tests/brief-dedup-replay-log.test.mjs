@@ -386,7 +386,7 @@ describe('writeReplayLog — behaviour', () => {
     assert.equal(pipe.calls.length, 0);
   });
 
-  it('flag ON + stories → RPUSH + EXPIRE 30d on correct key', async () => {
+  it('flag ON + stories → RPUSH + LTRIM cap + EXPIRE 30d on correct key', async () => {
     const pipe = mockPipeline();
     const warn = mockWarn();
     const res = await writeReplayLog({
@@ -398,11 +398,22 @@ describe('writeReplayLog — behaviour', () => {
     assert.equal(res.skipped, null);
     assert.equal(pipe.calls.length, 1);
     const [commands] = pipe.calls;
-    assert.equal(commands.length, 2, 'two commands: RPUSH + EXPIRE');
-    const [rpushCmd, expireCmd] = commands;
+    // RPUSH appends → LTRIM caps the per-day list at the most recent N
+    // entries → EXPIRE refreshes the 30d TTL. The cap was added on
+    // 2026-05-10 after busy days (~420K entries) hit Upstash's 500MB
+    // max-record-size and back-pressured adjacent writes.
+    assert.equal(commands.length, 3, 'three commands: RPUSH + LTRIM + EXPIRE');
+    const [rpushCmd, ltrimCmd, expireCmd] = commands;
     assert.equal(rpushCmd[0], 'RPUSH');
     assert.equal(rpushCmd[1], 'digest:replay-log:v1:full:en:high:2026-04-23');
     assert.equal(rpushCmd.length, 4, 'RPUSH + key + 2 story records');
+    assert.equal(ltrimCmd[0], 'LTRIM');
+    assert.equal(ltrimCmd[1], 'digest:replay-log:v1:full:en:high:2026-04-23');
+    // `-N..-1` keeps the most recent N entries (tail-keep). The cap
+    // value is sourced from REPLAY_LOG_MAX_ENTRIES_PER_DAY in the
+    // module so a future bump only needs one location change.
+    assert.match(ltrimCmd[2], /^-\d+$/, 'start index is negative (tail offset)');
+    assert.equal(ltrimCmd[3], '-1', 'end index is -1 (last element)');
     assert.equal(expireCmd[0], 'EXPIRE');
     assert.equal(expireCmd[1], 'digest:replay-log:v1:full:en:high:2026-04-23');
     assert.equal(expireCmd[2], String(30 * 24 * 60 * 60));
@@ -416,6 +427,24 @@ describe('writeReplayLog — behaviour', () => {
     assert.equal(rec1.isRep, false);
     assert.equal(rec1.clusterId, 0, 'h2 is in the same cluster as h1');
     assert.equal(warn.lines.length, 0);
+  });
+
+  it('LTRIM uses the exported cap constant (REPLAY_LOG_MAX_ENTRIES_PER_DAY)', async () => {
+    // Don't hard-code 100000 here — read from the module so a future
+    // bump propagates without a brittle dual-update. This regression
+    // guard fails loudly if the writer drifts away from the constant.
+    const { REPLAY_LOG_MAX_ENTRIES_PER_DAY } = await import('../scripts/lib/brief-dedup-replay-log.mjs');
+    const pipe = mockPipeline();
+    await writeReplayLog({
+      ...baseArgs(),
+      deps: { env: { DIGEST_DEDUP_REPLAY_LOG: '1' }, redisPipeline: pipe.impl, warn: () => {} },
+    });
+    const ltrimCmd = pipe.calls[0][1];
+    assert.equal(ltrimCmd[2], `-${REPLAY_LOG_MAX_ENTRIES_PER_DAY}`);
+    // Sanity — keep the constant inside a band that's reasonable for
+    // the 500MB Upstash limit at observed entry sizes (~1.5KB).
+    assert.ok(REPLAY_LOG_MAX_ENTRIES_PER_DAY >= 10_000, 'cap must allow useful sample');
+    assert.ok(REPLAY_LOG_MAX_ENTRIES_PER_DAY <= 200_000, 'cap must stay under the 500MB record limit at observed entry sizes');
   });
 
   it('pipeline returns null → warn + skipped=null + wrote=0', async () => {

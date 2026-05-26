@@ -168,6 +168,218 @@ describe('filterTopStories', () => {
     assert.equal(out.length, 1);
     assert.equal(out[0].sourceUrl, 'https://example.com/keep');
   });
+
+  it('orders critical stories ahead of lower-severity LLM-ranked stories', () => {
+    const out = filterTopStories({
+      stories: [
+        upstreamStory({
+          primaryTitle: 'High story ranked by the model',
+          threatLevel: 'high',
+          hash: 'high111111111111',
+          primarySource: 'Wire A',
+          category: 'Diplomacy',
+        }),
+        upstreamStory({
+          primaryTitle: 'Critical story not ranked by the model',
+          threatLevel: 'critical',
+          hash: 'crit222222222222',
+          primarySource: 'Wire B',
+          category: 'Security',
+        }),
+      ],
+      sensitivity: 'all',
+      rankedStoryHashes: ['high1111'],
+      maxPerSourceTopic: Infinity,
+    });
+
+    assert.equal(out.length, 2);
+    assert.equal(out[0].headline, 'Critical story not ranked by the model');
+    assert.equal(out[1].headline, 'High story ranked by the model');
+  });
+
+  it('keeps larger critical-anchored topic blocks contiguous ahead of ranked singletons', () => {
+    const out = filterTopStories({
+      stories: [
+        upstreamStory({
+          primaryTitle: 'Ranked singleton critical',
+          threatLevel: 'critical',
+          hash: 'solo111111111111',
+          briefTopicId: 'singleton',
+          importanceScore: 999,
+          primarySource: 'Wire A',
+          category: 'Security',
+        }),
+        upstreamStory({
+          primaryTitle: 'Cluster critical anchor',
+          threatLevel: 'critical',
+          hash: 'clust22222222222',
+          briefTopicId: 'critical-cluster',
+          importanceScore: 120,
+          primarySource: 'Wire B',
+          category: 'Security',
+        }),
+        upstreamStory({
+          primaryTitle: 'Cluster related high follow-up',
+          threatLevel: 'high',
+          hash: 'clust33333333333',
+          briefTopicId: 'critical-cluster',
+          importanceScore: 100,
+          primarySource: 'Wire C',
+          category: 'Diplomacy',
+        }),
+      ],
+      sensitivity: 'all',
+      rankedStoryHashes: ['solo1111'],
+      maxPerSourceTopic: Infinity,
+    });
+
+    assert.deepEqual(
+      out.map((story) => story.headline),
+      [
+        'Cluster critical anchor',
+        'Cluster related high follow-up',
+        'Ranked singleton critical',
+      ],
+    );
+  });
+
+  it('orders concentrated top-severity blocks before broader lower-tier context', () => {
+    const out = filterTopStories({
+      stories: [
+        upstreamStory({
+          primaryTitle: 'Broad block critical anchor',
+          threatLevel: 'critical',
+          hash: 'broad1111111111',
+          briefTopicId: 'broad',
+          importanceScore: 900,
+          primarySource: 'Wire A',
+          category: 'Security',
+        }),
+        upstreamStory({
+          primaryTitle: 'Broad block high context one',
+          threatLevel: 'high',
+          hash: 'broad2222222222',
+          briefTopicId: 'broad',
+          importanceScore: 800,
+          primarySource: 'Wire B',
+          category: 'Diplomacy',
+        }),
+        upstreamStory({
+          primaryTitle: 'Broad block high context two',
+          threatLevel: 'high',
+          hash: 'broad3333333333',
+          briefTopicId: 'broad',
+          importanceScore: 700,
+          primarySource: 'Wire C',
+          category: 'Economy',
+        }),
+        upstreamStory({
+          primaryTitle: 'Dense block critical one',
+          threatLevel: 'critical',
+          hash: 'dense4444444444',
+          briefTopicId: 'dense',
+          importanceScore: 100,
+          primarySource: 'Wire D',
+          category: 'Military',
+        }),
+        upstreamStory({
+          primaryTitle: 'Dense block critical two',
+          threatLevel: 'critical',
+          hash: 'dense5555555555',
+          briefTopicId: 'dense',
+          importanceScore: 90,
+          primarySource: 'Wire E',
+          category: 'Military',
+        }),
+      ],
+      sensitivity: 'all',
+      rankedStoryHashes: ['broad111'],
+      maxPerSourceTopic: Infinity,
+    });
+
+    assert.deepEqual(
+      out.map((story) => story.headline),
+      [
+        'Dense block critical one',
+        'Dense block critical two',
+        'Broad block critical anchor',
+        'Broad block high context one',
+        'Broad block high context two',
+      ],
+    );
+  });
+
+  it('uses max score before LLM rank when severity mass is tied', () => {
+    const out = filterTopStories({
+      stories: [
+        upstreamStory({
+          primaryTitle: 'Ranked lower-score critical',
+          threatLevel: 'critical',
+          hash: 'rank11111111111',
+          briefTopicId: 'ranked',
+          importanceScore: 100,
+          primarySource: 'Wire A',
+          category: 'Security',
+        }),
+        upstreamStory({
+          primaryTitle: 'Unranked higher-score critical',
+          threatLevel: 'critical',
+          hash: 'score2222222222',
+          briefTopicId: 'scored',
+          importanceScore: 200,
+          primarySource: 'Wire B',
+          category: 'Diplomacy',
+        }),
+      ],
+      sensitivity: 'all',
+      rankedStoryHashes: ['rank111'],
+      maxPerSourceTopic: Infinity,
+    });
+
+    assert.deepEqual(
+      out.map((story) => story.headline),
+      [
+        'Unranked higher-score critical',
+        'Ranked lower-score critical',
+      ],
+    );
+  });
+
+  it('uses best LLM rank only after severity mass and score tie', () => {
+    const out = filterTopStories({
+      stories: [
+        upstreamStory({
+          primaryTitle: 'Unranked equal-score critical',
+          threatLevel: 'critical',
+          hash: 'tie111111111111',
+          briefTopicId: 'tie-a',
+          importanceScore: 100,
+          primarySource: 'Wire A',
+          category: 'Security',
+        }),
+        upstreamStory({
+          primaryTitle: 'Ranked equal-score critical',
+          threatLevel: 'critical',
+          hash: 'tie222222222222',
+          briefTopicId: 'tie-b',
+          importanceScore: 100,
+          primarySource: 'Wire B',
+          category: 'Diplomacy',
+        }),
+      ],
+      sensitivity: 'all',
+      rankedStoryHashes: ['tie222'],
+      maxPerSourceTopic: Infinity,
+    });
+
+    assert.deepEqual(
+      out.map((story) => story.headline),
+      [
+        'Ranked equal-score critical',
+        'Unranked equal-score critical',
+      ],
+    );
+  });
 });
 
 describe('assembleStubbedBriefEnvelope', () => {
@@ -355,10 +567,10 @@ describe('filterTopStories — onDrop metrics', () => {
     for (const ev of calls) assert.equal(ev.reason, 'cap');
   });
 
-  it('cap events do NOT count earlier severity/headline/url drops twice', () => {
-    // The cap-emit loop runs from the break point onward — earlier
-    // valid stories that pushed `out` to maxStories are not re-emitted,
-    // and earlier-dropped stories are accounted under their own reason.
+  it('cap events count only otherwise-renderable stories after maxStories', () => {
+    // After deterministic re-ordering, excluded stories may move after
+    // the cap point. They should keep their root-cause reason instead
+    // of being counted as cap-truncated valid cards.
     const tally = { severity: 0, headline: 0, url: 0, shape: 0, cap: 0 };
     filterTopStories({
       stories: [
@@ -366,15 +578,15 @@ describe('filterTopStories — onDrop metrics', () => {
         upstreamStory({ threatLevel: 'low' }),        // severity (not cap)
         upstreamStory({ primaryTitle: 'B' }),         // kept (out reaches 2)
         upstreamStory({ primaryTitle: 'C' }),         // cap
-        upstreamStory({ primaryLink: 'ftp://bad' }),  // cap (loop short-circuits past url check)
+        upstreamStory({ primaryLink: 'ftp://bad' }),  // url (not cap)
       ],
       sensitivity,
       maxStories: 2,
       onDrop: (ev) => { tally[ev.reason]++; },
     });
     assert.equal(tally.severity, 1);
-    assert.equal(tally.cap, 2);
-    assert.equal(tally.url, 0, 'url drop should NOT fire after cap break');
+    assert.equal(tally.cap, 1);
+    assert.equal(tally.url, 1, 'url drop should keep its root-cause reason after cap is full');
   });
 
   it('reconciliation invariant: in === out + sum(dropped_*) across all reasons', () => {
@@ -616,5 +828,168 @@ describe('filterTopStories — source-topic cap (U5/R6)', () => {
     assert.equal(out[0].headline, 'A top');
     assert.equal(out[1].headline, 'C low');
     assert.equal(drops.filter((d) => d.reason === 'source_topic_cap').length, 1);
+  });
+});
+
+describe('filterTopStories — U3: word-wise titleCase on emitted category (envelope-build normalization)', () => {
+  let _linkCounter = 0;
+  function makeStoryWithCategory(category) {
+    _linkCounter += 1;
+    return upstreamStory({ category, primaryLink: `https://example.com/x-${_linkCounter}` });
+  }
+
+  it('T9: lowercase EventCategory `conflict` → emitted envelope category `Conflict`', () => {
+    const out = filterTopStories({ stories: [makeStoryWithCategory('conflict')], sensitivity: 'all' });
+    assert.equal(out.length, 1);
+    assert.equal(out[0].category, 'Conflict');
+  });
+
+  it('T10: parameterized — all canonical EventCategory enum values title-case correctly', () => {
+    const cases = [
+      ['health', 'Health'],
+      ['diplomatic', 'Diplomatic'],
+      ['tech', 'Tech'],
+      ['environmental', 'Environmental'],
+      ['terrorism', 'Terrorism'],
+      ['protest', 'Protest'],
+      ['disaster', 'Disaster'],
+      ['economic', 'Economic'],
+      ['cyber', 'Cyber'],
+      ['military', 'Military'],
+      ['crime', 'Crime'],
+      ['infrastructure', 'Infrastructure'],
+      ['general', 'General'],
+    ];
+    for (const [input, expected] of cases) {
+      const out = filterTopStories({ stories: [makeStoryWithCategory(input)], sensitivity: 'all' });
+      assert.equal(out.length, 1, `input "${input}" should survive the filter`);
+      assert.equal(out[0].category, expected, `category "${input}" should normalize to "${expected}"`);
+    }
+  });
+
+  it('T10b: multi-word category `world politics` → `World Politics` (composeBriefForRule protection)', () => {
+    // filterTopStories is shared with composeBriefForRule callers that
+    // pass multi-word legacy categories like 'world politics'. A
+    // first-letter-only helper would corrupt these to 'World politics'.
+    // Word-wise titleCase preserves both words capitalized.
+    const out = filterTopStories({ stories: [makeStoryWithCategory('world politics')], sensitivity: 'all' });
+    assert.equal(out.length, 1);
+    assert.equal(out[0].category, 'World Politics');
+  });
+
+  it('T11: critical-regression — cap-key is case-folded so residue and fresh rows share a bucket', () => {
+    // The cap-key uses `category.toLowerCase()` (added by adversarial
+    // review of PR #3751). Mixed-case fixtures from the same source
+    // collapse into ONE cap bucket because:
+    //   - Pre-PR residue: `asTrimmedString(undefined) || 'General'` →
+    //     'General' (capital G from the fallback).
+    //   - Fresh post-PR: canonical lowercase EventCategory enum value
+    //     like 'general' / 'conflict'.
+    //   - Without case-folding, these produce distinct cap keys
+    //     ('Reuters\x1fGeneral' vs 'Reuters\x1fgeneral') and the cap
+    //     would silently bypass the residue subset for up to 7d of
+    //     STORY_TTL — exactly the editorial-clutter failure PR #3697
+    //     was created to prevent.
+    // T11b (source-textual) locks the structural ordering: pairKey is
+    // computed before titleCase fires at out.push. The two together
+    // prove cap-on-raw (not cap-on-display) AND case-folded.
+    const out = filterTopStories({
+      stories: [
+        upstreamStory({
+          primaryTitle: 'Story A',
+          primaryLink: 'https://example.com/cap-a',
+          primarySource: 'Reuters',
+          category: 'conflict',
+          importanceScore: 500,
+        }),
+        upstreamStory({
+          primaryTitle: 'Story B',
+          primaryLink: 'https://example.com/cap-b',
+          primarySource: 'Reuters',
+          category: 'Conflict',
+          importanceScore: 400,
+        }),
+      ],
+      sensitivity: 'all',
+      maxPerSourceTopic: 1,
+    });
+    assert.equal(out.length, 1, 'case-folded cap-key: lowercase and Capitalized share a bucket → cap fires at 1');
+    assert.equal(out[0].category, 'Conflict', 'survivor displays as Title-Cased Conflict');
+  });
+
+  it('T11c: critical-regression — pre-PR residue and fresh general rows share a cap bucket (case-folding fix)', () => {
+    // The adversarial-review-driven failure scenario: pre-PR residue
+    // rows have `track.category === undefined`, which buildDigest passes
+    // as empty string, which `asTrimmedString(...) || 'General'` resolves
+    // to 'General' (capital). Fresh post-PR rows from
+    // `classifyByKeyword` produce 'general' (lowercase, no-match
+    // fallback). Both from the same source must collapse into one cap
+    // bucket — otherwise the cap is silently bypassed for the residue
+    // subset during the up-to-7d STORY_TTL rollout window.
+    const out = filterTopStories({
+      stories: [
+        upstreamStory({
+          primaryTitle: 'Residue story (pre-PR)',
+          primaryLink: 'https://example.com/cap-residue',
+          primarySource: 'Reuters',
+          // Simulates a pre-PR row where category was never persisted —
+          // upstream `raw.category` is missing so `asTrimmedString` returns
+          // '' and `|| 'General'` fires.
+          category: undefined,
+          importanceScore: 500,
+        }),
+        upstreamStory({
+          primaryTitle: 'Fresh story (post-PR)',
+          primaryLink: 'https://example.com/cap-fresh',
+          primarySource: 'Reuters',
+          // classifyByKeyword's no-match fallback emits lowercase 'general'.
+          category: 'general',
+          importanceScore: 400,
+        }),
+      ],
+      sensitivity: 'all',
+      maxPerSourceTopic: 1,
+    });
+    assert.equal(out.length, 1, 'residue General + fresh general must share cap bucket via .toLowerCase()');
+    assert.equal(out[0].category, 'General', 'survivor displays as General (the residue winner, with idempotent titleCase)');
+  });
+
+  it('T12: fallback idempotency — missing category hits filterTopStories `|| \'General\'` default and titleCase leaves it as `General`', () => {
+    const out = filterTopStories({ stories: [upstreamStory({ category: undefined, primaryLink: 'https://example.com/t12' })], sensitivity: 'all' });
+    assert.equal(out.length, 1);
+    assert.equal(out[0].category, 'General');
+  });
+
+  it('T13: defensive — empty / non-string category falls through to `General` without throw', () => {
+    const empty = filterTopStories({ stories: [upstreamStory({ category: '', primaryLink: 'https://example.com/t13-empty' })], sensitivity: 'all' });
+    assert.equal(empty.length, 1);
+    assert.equal(empty[0].category, 'General');
+
+    const nonStr = filterTopStories({ stories: [upstreamStory({ category: 42, primaryLink: 'https://example.com/t13-nonstr' })], sensitivity: 'all' });
+    assert.equal(nonStr.length, 1);
+    assert.equal(nonStr[0].category, 'General');
+  });
+});
+
+describe('filterTopStories — U3 T11b: source-textual cap-key ordering invariant', () => {
+  it('pairKey is computed BEFORE titleCase(category) call in out.push (locks structural ordering)', async () => {
+    // Belt-and-suspenders: lock the structural ordering in source so a
+    // future refactor cannot silently move titleCase upstream of pairKey
+    // and break the cap grouping.
+    const { readFileSync } = await import('node:fs');
+    const { resolve, dirname } = await import('node:path');
+    const { fileURLToPath } = await import('node:url');
+    const src = readFileSync(
+      resolve(dirname(fileURLToPath(import.meta.url)), '..', 'shared', 'brief-filter.js'),
+      'utf-8',
+    );
+    const pairKeyIdx = src.indexOf('const pairKey = source + KEY_DELIM + category');
+    assert.ok(pairKeyIdx !== -1, 'pairKey computation site must exist');
+    const titleCaseCallIdx = src.indexOf('titleCase(category)');
+    assert.ok(titleCaseCallIdx !== -1, 'titleCase(category) call must exist at the out.push site');
+    assert.ok(
+      pairKeyIdx < titleCaseCallIdx,
+      'pairKey must be computed BEFORE titleCase(category) — otherwise the cap groups on display value, not raw',
+    );
   });
 });

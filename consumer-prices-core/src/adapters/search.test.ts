@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isTitlePlausible, isAllowedHost } from './search.js';
+import { isTitlePlausible, isAllowedHost, normalizePathFilters, matchesAnyPathFilter } from './search.js';
 
 describe('isAllowedHost', () => {
   it('accepts exact domain match', () => {
@@ -58,5 +58,67 @@ describe('isTitlePlausible', () => {
   it('ignores short tokens (≤2 chars)', () => {
     // "1L" → filtered out, only "Milk" counts
     expect(isTitlePlausible('Milk 1L', 'Fresh Milk Whole 1 Litre')).toBe(true);
+  });
+});
+
+describe('normalizePathFilters', () => {
+  it('returns [] for undefined / empty / falsy', () => {
+    expect(normalizePathFilters(undefined)).toEqual([]);
+    expect(normalizePathFilters('')).toEqual([]);
+  });
+
+  it('wraps a single string in an array', () => {
+    expect(normalizePathFilters('/p/')).toEqual(['/p/']);
+  });
+
+  it('passes arrays through, dropping empty strings', () => {
+    expect(normalizePathFilters(['/produto/', '/p'])).toEqual(['/produto/', '/p']);
+    expect(normalizePathFilters(['/produto/', '', '/p'])).toEqual(['/produto/', '/p']);
+  });
+});
+
+describe('matchesAnyPathFilter', () => {
+  it('passes any URL when filter list is empty (no constraint)', () => {
+    expect(matchesAnyPathFilter('https://x.com/whatever', [])).toBe(true);
+  });
+
+  it('passes when at least one filter matches (multi-pattern Carrefour BR fix)', () => {
+    // Real URLs Exa returns for mercado.carrefour.com.br — the previous
+    // single-substring `/p/` filter rejected all of them.
+    const filters = ['/produto/', '/p'];
+    expect(matchesAnyPathFilter('https://mercado.carrefour.com.br/produto/arroz-4289', filters)).toBe(true);
+    expect(matchesAnyPathFilter('https://mercado.carrefour.com.br/arroz-saboroso-1kg-6565310/p', filters)).toBe(true);
+    expect(matchesAnyPathFilter('https://mercado.carrefour.com.br/busca/arroz%20branco', filters)).toBe(false);
+  });
+
+  it('Cold Storage SG: `/p/` matches /en/p/<name>/i/<id>.html (not /product/)', () => {
+    // Real URLs Exa returns for coldstorage.com.sg — the previous
+    // `/product/` filter matched zero of them.
+    const filters = ['/p/'];
+    expect(
+      matchesAnyPathFilter('https://coldstorage.com.sg/en/p/Chews%20Eggs%2010s/i/101640975.html', filters),
+    ).toBe(true);
+    expect(matchesAnyPathFilter('https://coldstorage.com.sg/category/eggs', filters)).toBe(false);
+  });
+
+  it('rejects when no filter matches', () => {
+    expect(matchesAnyPathFilter('https://x.com/category/foo', ['/product/', '/item/'])).toBe(false);
+  });
+
+  // Documents a known tradeoff for the carrefour_br fix: `/p` over-matches
+  // non-product paths like `/promo/`, `/pages/`, `/popular/`, `/help/`.
+  // Acceptable because (a) the host check already pins us to the storefront,
+  // (b) Firecrawl extraction rejects pages with no price/title at the next
+  // stage. Cost is one extra Firecrawl call per false-positive URL. If this
+  // ever shows up as material API spend, swap to regex with `/p$` anchor.
+  // Update: PR review (codex) round 2 P2 — see carrefour_br.yaml comment.
+  it('Carrefour BR `/p` filter: known over-match cases (acceptable tradeoff)', () => {
+    const filters = ['/produto/', '/p'];
+    // These are NOT product URLs but the loose `/p` substring matches them.
+    // Documenting so a future tightening (regex `/p$`) has a regression test
+    // to flip — these should become `false` once the filter is anchored.
+    expect(matchesAnyPathFilter('https://mercado.carrefour.com.br/promocoes/semana', filters)).toBe(true);
+    expect(matchesAnyPathFilter('https://mercado.carrefour.com.br/pages/about', filters)).toBe(true);
+    expect(matchesAnyPathFilter('https://mercado.carrefour.com.br/popular/today', filters)).toBe(true);
   });
 });

@@ -21,8 +21,7 @@
  *      With no key present it returns { valid: false, required: true } →
  *      gateway emits 401.
  *
- * Net effect: Pro users on subdomains whose localStorage didn't carry a
- * tester key got 401s on FRED + BLS + BIS etc., while anon users (whose
+ * Net effect: Pro users without a tester session got 401s on FRED + BLS + BIS etc., while anon users (whose
  * premiumFetch falls through to globalThis.fetch and the interceptor
  * attaches wms_) saw the data normally — the inverse of the expected
  * "Pro sees more" behaviour.
@@ -56,12 +55,22 @@ function reportServerError(res: Response, input: RequestInfo | URL): void {
   try {
     const href = input instanceof Request ? input.url : String(input);
     const path = new URL(href, globalThis.location?.href ?? 'https://worldmonitor.app').pathname;
+    // Cloudflare edge errors (520-527) are CDN<->origin transport failures, not
+    // origin application errors — a single one is a transient blip. Capture at
+    // `warning` so a sustained outage still escalates by volume without a lone
+    // transient drowning genuine origin 5xx in the error dashboard
+    // (WORLDMONITOR-RG). Genuine origin 5xx (500-511) stay at `error`.
+    const isCloudflareEdgeError = res.status >= 520 && res.status <= 527;
     Sentry.captureMessage(`API ${res.status}: ${path}`, {
-      level: 'error',
-      tags: { kind: 'api_5xx' },
+      level: isCloudflareEdgeError ? 'warning' : 'error',
+      tags: { kind: isCloudflareEdgeError ? 'api_cf_5xx' : 'api_5xx' },
       extra: { path, status: res.status },
     });
   } catch { /* ignore URL parse errors */ }
+}
+
+function withCredentials(init?: RequestInit): RequestInit {
+  return { ...(init ?? {}), credentials: init?.credentials ?? 'include' };
 }
 
 /**
@@ -118,7 +127,7 @@ export async function premiumFetch(
   // Skip injection if the caller already set an auth header.
   const existing = new Headers(init?.headers);
   if (existing.has('Authorization') || existing.has('X-WorldMonitor-Key')) {
-    const res = await globalThis.fetch(input, init);
+    const res = await globalThis.fetch(input, withCredentials(init));
     reportServerError(res, input);
     return res;
   }
@@ -129,22 +138,19 @@ export async function premiumFetch(
     const wmKey = getRuntimeConfigSnapshot().secrets['WORLDMONITOR_API_KEY']?.value;
     if (wmKey) {
       existing.set('X-WorldMonitor-Key', wmKey);
-      const res = await globalThis.fetch(input, { ...init, headers: existing });
+      const res = await globalThis.fetch(input, { ...withCredentials(init), headers: existing });
       reportServerError(res, input);
       return res;
     }
   } catch { /* not available — fall through */ }
 
-  // 2. Tester / widget keys from localStorage.
-  // Must run BEFORE Clerk to prevent a free Clerk session from intercepting the
-  // request and returning 403 before the tester key is ever checked.
-  // Try wm-pro-key first, then wm-widget-key. A relay-only pro key can be invalid
-  // for the gateway even when the widget key is valid for premium RPC access.
+  // 2. Legacy in-memory test seam. In production, tester/widget keys are
+  // HttpOnly cookies and ride along through credentials: 'include'.
   const testerKeys = await loadTesterKeys();
   for (const testerKey of testerKeys) {
     const testerHeaders = new Headers(existing);
     testerHeaders.set('X-WorldMonitor-Key', testerKey);
-    const res = await globalThis.fetch(input, { ...init, headers: testerHeaders });
+    const res = await globalThis.fetch(input, { ...withCredentials(init), headers: testerHeaders });
     if (res.status !== 401) {
       reportServerError(res, input);
       return res;
@@ -168,7 +174,7 @@ export async function premiumFetch(
       }
       if (token) {
         existing.set('Authorization', `Bearer ${token}`);
-        const res = await globalThis.fetch(input, { ...init, headers: existing });
+        const res = await globalThis.fetch(input, { ...withCredentials(init), headers: existing });
         reportServerError(res, input);
         return res;
       }
@@ -180,7 +186,7 @@ export async function premiumFetch(
   // attaches wms_) → gateway accepts → 200. For premium paths reached here
   // (no API key, no tester key, no Clerk Bearer) the gateway will return
   // 401, which is correct.
-  const res = await globalThis.fetch(input, init);
+  const res = await globalThis.fetch(input, withCredentials(init));
   reportServerError(res, input);
   return res;
 }

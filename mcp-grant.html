@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Authorize MCP — WorldMonitor</title>
+    <style>
+      *{box-sizing:border-box;margin:0;padding:0}
+      body{font-family:ui-monospace,'SF Mono','Cascadia Code','JetBrains Mono',monospace;background:#0a0a0a;color:#e8e8e8;min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:1.5rem}
+      .wm-logo{display:flex;align-items:center;gap:.5rem;margin-bottom:2rem;text-decoration:none}
+      .wm-logo svg{color:#2d8a6e}
+      .wm-logo-text{font-size:.75rem;color:#555;letter-spacing:.1em;text-transform:uppercase}
+      .card{width:100%;max-width:440px;background:#111;border:1px solid #1e1e1e;padding:2rem}
+      .client-hd{margin-bottom:1.25rem}
+      .client-name{font-size:1rem;color:#fff;font-weight:600;margin-bottom:.25rem}
+      .client-host{font-size:.75rem;color:#444}
+      hr{border:none;border-top:1px solid #1e1e1e;margin:1.25rem 0}
+      .scope-label{font-size:.65rem;text-transform:uppercase;letter-spacing:.1em;color:#444;margin-bottom:.6rem}
+      .scope-list{list-style:none}
+      .scope-list li{font-size:.8rem;color:#666;padding:.2rem 0;display:flex;align-items:flex-start;gap:.5rem}
+      .scope-list li::before{content:'→';color:#2d8a6e;flex-shrink:0;margin-top:.05em}
+      button{width:100%;margin-top:1.25rem;padding:.75rem;background:#2d8a6e;color:#fff;border:none;font-family:inherit;font-size:.9rem;cursor:pointer;font-weight:500;letter-spacing:.02em;border-radius:0}
+      button:hover{background:#246d57}
+      button:disabled{opacity:.5;cursor:default}
+      .error{color:#ef4444;font-size:.8rem;margin:.5rem 0 0;line-height:1.5}
+      .footer{font-size:.7rem;color:#2a2a2a;text-align:center;margin-top:1.25rem}
+      .footer a{color:#333;text-decoration:none}
+      .footer a:hover{color:#555}
+      .placeholder{color:#333}
+      .spinner{display:inline-block;width:.8em;height:.8em;border:2px solid #2a2a2a;border-top-color:#2d8a6e;border-radius:50%;animation:spin .9s linear infinite;vertical-align:-.05em;margin-right:.5em}
+      @keyframes spin{to{transform:rotate(360deg)}}
+    </style>
+    <!-- No inline scripts — global CSP at vercel.json:92 is hash-based and we
+         don't allowlist this page's hashes individually. The bundled module
+         at src/mcp-grant-main.ts handles theme application on DOMContentLoaded;
+         a brief default-theme flash on light-preference users is acceptable
+         for a transient consent UI (reviewer round-2 P3). -->
+  </head>
+  <body>
+    <a href="https://www.worldmonitor.app" class="wm-logo" target="_blank" rel="noopener">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+      <span class="wm-logo-text">WorldMonitor MCP</span>
+    </a>
+    <div class="card" id="card">
+      <div id="loading"><span class="spinner"></span><span class="placeholder">Loading authorization request…</span></div>
+      <div id="consent" hidden>
+        <div class="client-hd">
+          <div class="client-name"><span id="clientName"></span> wants access</div>
+          <div class="client-host">via <span id="clientHost"></span></div>
+        </div>
+        <hr>
+        <p class="scope-label">Read-only access to</p>
+        <ul class="scope-list">
+          <li>Real-time news &amp; events from 100+ global sources</li>
+          <li>Live flight tracking &amp; AIS vessel positions</li>
+          <li>Weather alerts, earthquakes &amp; natural disasters</li>
+          <li>Geopolitical risk indicators &amp; conflict data</li>
+          <li>Markets: stocks, commodities, crypto &amp; FX</li>
+        </ul>
+        <hr>
+        <p style="font-size:.72rem;color:#444;line-height:1.5">Signed in as <span id="userEmail" style="color:#666"></span>. <a href="/settings" style="color:#2d8a6e;text-decoration:none">Manage connected MCP clients →</a></p>
+        <button type="button" id="authorizeBtn">Authorize</button>
+        <p class="error" id="mintError" hidden></p>
+      </div>
+      <div id="errorView" hidden>
+        <div class="client-name" style="color:#ef4444;font-size:.95rem;font-weight:600;margin-bottom:.5rem">Authorization request expired</div>
+        <p style="font-size:.8rem;color:#666;line-height:1.5" id="errorBody">This authorization request expired or is invalid. Start over from your MCP client (e.g. Claude Desktop).</p>
+      </div>
+    </div>
+    <p class="footer"><a href="https://www.worldmonitor.app" target="_blank" rel="noopener">worldmonitor.app</a> &middot; <a href="https://www.worldmonitor.app/pro" target="_blank" rel="noopener">Pro plan →</a></p>
+    <script type="module" src="/src/mcp-grant-main.ts"></script>
+  </body>
+</html>

@@ -6,7 +6,8 @@
     "enterprise": "Enterprise",
     "reserveAccess": "얼리 액세스 예약",
     "signIn": "로그인",
-    "upgradeToPro": "Pro로 업그레이드"
+    "upgradeToPro": "Pro로 업그레이드",
+    "goToDashboard": "대시보드로 이동"
   },
   "hero": {
     "noiseWord": "노이즈",
@@ -18,7 +19,8 @@
     "emailPlaceholder": "이메일 입력",
     "emailAriaLabel": "대기자 명단용 이메일 주소",
     "choosePlan": "플랜 선택",
-    "signIn": "로그인"
+    "signIn": "로그인",
+    "goToDashboard": "대시보드로 이동"
   },
   "wired": {
     "asFeaturedIn": "소개된 매체"
@@ -50,7 +52,8 @@
     "entF9": "SOC 벽과 트레이딩 플로어용 Android TV 앱",
     "entF10": "클라우드, 온프레미스 또는 에어갭 배포",
     "entF11": "전담 온보딩과 지원",
-    "entCta": "영업 문의"
+    "entCta": "영업 문의",
+    "freeF2": "500+ 피드, 65+ 소스, 50+ 지도 레이어"
   },
   "whyUpgrade": {
     "title": "왜 업그레이드해야 할까",
@@ -83,7 +86,7 @@
     "openFullScreen": "전체 화면으로 열기",
     "tryLiveDashboard": "라이브 대시보드 체험",
     "iframeTitle": "World Monitor — 라이브 인텔리전스 대시보드",
-    "description": "3D WebGL 지구본 · 45+ 인터랙티브 지도 레이어 · 실시간 시장, 매크로, 지정학, 에너지, 인프라 데이터"
+    "description": "3D WebGL 글로브 · 50+ 인터랙티브 지도 레이어 · 실시간 시장, 거시경제, 지정학, 에너지, 인프라 데이터"
   },
   "socialProof": {
     "uniqueVisitors": "순 방문자",
@@ -139,31 +142,8 @@
   },
   "tiers": {
     "free": "무료",
-    "freeTagline": "전부 보기",
-    "freeDesc": "오픈 소스 대시보드",
-    "freeF1": "갱신 5-15분",
-    "freeF2": "500+ 피드, 45 지도 레이어",
-    "freeF3": "AI는 BYOK",
-    "freeF4": "영구 무료",
-    "openDashboard": "대시보드 열기",
     "pro": "Pro",
-    "proTagline": "시장, 매크로와 지정학",
-    "proDesc": "당신의 AI 애널리스트",
-    "proF1": "Equity research와 주식 분석",
-    "proF2": "+ 일일 다이제스트, 경제 분석",
-    "proF3": "AI 포함, 1개 키",
-    "proF4": "우선 데이터 갱신 (출시 예정)",
-    "priceMonthly": "$39.99 / 월",
-    "priceAnnual": "$399.99 / 년",
-    "annualSavingsNote": "2개월 무료",
-    "enterprise": "Enterprise",
-    "enterpriseTagline": "누구보다 먼저 행동",
-    "enterpriseDesc": "인텔리전스 플랫폼",
-    "entF1": "라이브 엣지 위성 이미지",
-    "entF2": "+ AI 에이전트, 50K+ 인프라, SAR",
-    "entF3": "맞춤형 AI, 투자자 페르소나",
-    "entF4": "문의하기",
-    "contactSales": "영업 연락"
+    "enterprise": "Enterprise"
   },
   "proShowcase": {
     "proTier": "PRO 티어",
@@ -281,7 +261,6 @@
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + 웹훅",
     "fMcpBulk": "+ MCP + 벌크",
-    "f45": "45",
     "fTensOfThousands": "+ 수만 개",
     "fLiveTracking": "라이브 트래킹",
     "fPassAlerts": "통과 알림 + 분석",
@@ -292,7 +271,8 @@
     "fStandard": "표준",
     "fKeyAuth": "키 인증",
     "fSsoMfa": "SSO/MFA/RBAC/감사",
-    "noteBelow": "핵심 플랫폼은 무료로 유지. 유료 플랜은 Equity research, 매크로 분석, AI 브리핑, 조직 사용을 잠금 해제합니다."
+    "noteBelow": "핵심 플랫폼은 무료로 유지. 유료 플랜은 Equity research, 매크로 분석, AI 브리핑, 조직 사용을 잠금 해제합니다.",
+    "f50plus": "50+"
   },
   "faq": {
     "title": "자주 묻는 질문",
@@ -354,5 +334,76 @@
     "youreIn": "참여 완료!",
     "invitedBanner": "초대되었습니다 — 대기자 명단에 참여"
   },
-  "soonBadge": "출시 예정"
+  "soonBadge": "출시 예정",
+  "meta": {
+    "title": "World Monitor Pro — AI 분석가, 개인 인텔리전스 데스크, Claude & GPT용 MCP",
+    "description": "지정학적 AI 레이어. 질문하고, 구독하고, 구축하세요. WM Analyst 채팅(30개 이상의 라이브 서비스), 일일/주 2회/주간 AI 다이제스트(Slack, Discord, Telegram, Email, webhook 배송), 커스텀 위젯 빌더(HTML/CSS/JS + AI), Claude/GPT/커스텀 LLM용 MCP 커넥터.",
+    "ogTitle": "World Monitor Pro — 지정학적 AI 레이어",
+    "ogDescription": "질문하고, 구독하고, 구축하세요. WM Analyst 채팅, 맞춤형 AI 다이제스트(일일/주 2회/주간), 커스텀 위젯 빌더, Claude/GPT용 MCP — 하나의 키로 30개 이상의 라이브 서비스 통합."
+  },
+  "pricing": {
+    "suffixForever": "영구적으로",
+    "suffixTailored": "당신을 위해 맞춤화됨",
+    "suffixPerMonth": "/월",
+    "suffixPerYear": "/년",
+    "amountCustom": "맞춤형",
+    "opening": "열 중…",
+    "headerTitle": "요금제 선택",
+    "headerSubtitle": "실시간 모니터링부터 완벽한 인텔리전스 인프라까지. 당신의 미션에 맞는 요금제를 선택하세요.",
+    "billingMonthly": "월간",
+    "billingAnnual": "연간",
+    "saveAnnual": "17% 절약",
+    "mostPopular": "가장 인기있음",
+    "promoCodeNote": "프로모 코드가 있으신가요? 결제 시 입력하세요.",
+    "tiers": {
+      "free": {
+        "description": "필수 기능으로 시작하세요",
+        "features": [
+          "핵심 대시보드 패널",
+          "글로벌 뉴스 피드",
+          "지진 및 날씨 알림",
+          "기본 지도 보기"
+        ],
+        "cta": "시작하기"
+      },
+      "pro": {
+        "description": "완벽한 인텔리전스 대시보드",
+        "features": [
+          "Free의 모든 기능",
+          "AI 주식 분석 및 백테스팅",
+          "일일 시장 브리프",
+          "군사 및 지정학적 추적",
+          "커스텀 위젯 빌더",
+          "MCP 데이터 커넥터",
+          "우선 데이터 새로고침"
+        ]
+      },
+      "api": {
+        "description": "인텔리전스 데이터에 대한 프로그래매틱 접근",
+        "features": [
+          "REST API 접근",
+          "실시간 데이터 스트림",
+          "일일 1,000개 요청",
+          "웹훅 알림",
+          "커스텀 데이터 내보내기"
+        ]
+      },
+      "enterprise": {
+        "description": "조직을 위한 커스텀 솔루션",
+        "features": [
+          "Pro + API의 모든 기능",
+          "무제한 API 요청",
+          "전담 지원",
+          "커스텀 통합",
+          "SLA 보증",
+          "온프레미스 옵션"
+        ],
+        "cta": "영업팀에 문의"
+      }
+    },
+    "cta": {
+      "checkoutDefault": "시작하기",
+      "learnMore": "자세히 알아보기"
+    }
+  }
 }

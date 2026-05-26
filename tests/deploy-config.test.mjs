@@ -16,8 +16,31 @@ const getCacheHeaderValue = (sourcePath) => {
 
 describe('deploy/cache configuration guardrails', () => {
   it('disables caching for HTML entry routes on Vercel', () => {
-    const spaNoCache = getCacheHeaderValue('/((?!api|mcp|oauth|assets|blog|docs|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|\\.well-known|wm-widget-sandbox\\.html).*)');
+    // /mcp-grant added to the negative-lookahead by plan 2026-05-10-001 U3 — apex
+    // Pro-MCP consent page must opt out of the SPA catch-all rewrite (it is its
+    // own HTML entry registered in vite.config.ts rollupOptions.input).
+    //
+    // The exclusion uses literal alternation (`mcp-grant\\.html|mcp-grant`)
+    // rather than a non-capturing group with `?` quantifier — Vercel's
+    // path-to-regexp source-pattern parser rejects `(?:...)` in `source` fields
+    // (deploy-fail PR #3646 round-2 review).
+    const spaNoCache = getCacheHeaderValue('/((?!api|mcp|oauth|assets|blog|docs|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)');
     assert.equal(spaNoCache, 'no-cache, no-store, must-revalidate');
+  });
+
+  it('disables caching for the apex /mcp-grant Pro-MCP consent page (both URL forms)', () => {
+    // The Pro-MCP consent page is its own HTML entry. Both /mcp-grant (the
+    // pretty URL, rewritten to /mcp-grant.html by vercel.json:12) and
+    // /mcp-grant.html (the bundle path) must carry no-store. Vercel needs
+    // explicit per-source rules — `(?:\\.html)?` quantifiers aren't supported.
+    assert.equal(
+      getCacheHeaderValue('/mcp-grant'),
+      'no-cache, no-store, must-revalidate'
+    );
+    assert.equal(
+      getCacheHeaderValue('/mcp-grant.html'),
+      'no-cache, no-store, must-revalidate'
+    );
   });
 
   it('keeps immutable caching for hashed static assets', () => {
@@ -74,11 +97,14 @@ const getHeaderValue = (key) => {
 };
 
 describe('security header guardrails', () => {
-  it('includes all 5 required security headers on catch-all route', () => {
+  it('includes required security headers on catch-all route', () => {
     const required = [
       'X-Content-Type-Options',
       'Strict-Transport-Security',
       'Referrer-Policy',
+      'Reporting-Endpoints',
+      'Cross-Origin-Opener-Policy-Report-Only',
+      'Cross-Origin-Embedder-Policy-Report-Only',
       'Permissions-Policy',
       'Content-Security-Policy',
     ];
@@ -86,6 +112,47 @@ describe('security header guardrails', () => {
     for (const name of required) {
       assert.ok(headerKeys.includes(name), `Missing security header: ${name}`);
     }
+  });
+
+  it('keeps COOP/COEP in report-only mode during rollout', () => {
+    // Relative URL so the apex + every variant subdomain (tech/finance/
+    // commodity/happy, all on the same Vercel deployment) reports
+    // same-origin. An absolute apex URL would force cross-origin POSTs
+    // on subdomain hosts with stripped credentials and inconsistent
+    // browser sampling.
+    assert.equal(
+      getHeaderValue('Reporting-Endpoints'),
+      'wm-coop-coep="/api/security/report"',
+    );
+    assert.equal(
+      getHeaderValue('Cross-Origin-Opener-Policy-Report-Only'),
+      'same-origin; report-to="wm-coop-coep"',
+    );
+    assert.equal(
+      getHeaderValue('Cross-Origin-Embedder-Policy-Report-Only'),
+      'require-corp; report-to="wm-coop-coep"',
+    );
+    assert.equal(getHeaderValue('Cross-Origin-Opener-Policy'), null);
+    assert.equal(getHeaderValue('Cross-Origin-Embedder-Policy'), null);
+  });
+
+  it('keeps self-hosted nginx security headers aligned for COOP/COEP reporting', () => {
+    const nginxHeaders = readFileSync(
+      resolve(__dirname, '../docker/nginx-security-headers.conf'),
+      'utf-8',
+    );
+    assert.match(
+      nginxHeaders,
+      /add_header Reporting-Endpoints "wm-coop-coep=\\"\/api\/security\/report\\"" always;/,
+    );
+    assert.match(
+      nginxHeaders,
+      /add_header Cross-Origin-Opener-Policy-Report-Only "same-origin; report-to=\\"wm-coop-coep\\"" always;/,
+    );
+    assert.match(
+      nginxHeaders,
+      /add_header Cross-Origin-Embedder-Policy-Report-Only "require-corp; report-to=\\"wm-coop-coep\\"" always;/,
+    );
   });
 
   it('Permissions-Policy disables all expected browser APIs', () => {
@@ -425,7 +492,15 @@ describe('agent readiness: MCP/OAuth origin alignment', () => {
   });
 
   it('api/mcp.ts resource_metadata is host-derived, not hardcoded', () => {
-    const source = readFileSync(resolve(__dirname, '../api/mcp.ts'), 'utf-8');
+    // After the structural split (refactor PR), the host-derivation
+    // (`requestHost = req.headers.get('host') ?? ...`) lives in
+    // api/mcp/handler.ts and the template-literal that emits
+    // `resource_metadata="${url}"` lives in api/mcp/auth.ts (the
+    // `wwwAuthHeader` helper). Concatenate both so the three sub-greps
+    // below still see the same byte surface they did pre-split.
+    const source = readFileSync(resolve(__dirname, '../api/mcp/handler.ts'), 'utf-8')
+      + '\n'
+      + readFileSync(resolve(__dirname, '../api/mcp/auth.ts'), 'utf-8');
     // Must NOT contain a hardcoded apex or api URL for resource_metadata —
     // that regressed once (PR #3351 review: apex pointer emitted from
     // api.worldmonitor.app/mcp 401s) and the grep-only test didn't catch it.

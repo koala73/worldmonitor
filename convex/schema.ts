@@ -121,6 +121,99 @@ export default defineSchema({
     .index("by_user_variant", ["userId", "variant"])
     .index("by_enabled", ["enabled"]),
 
+  // ────────────────────────────────────────────────────────────────────────
+  // Followed countries (watchlist primitive). See
+  // docs/plans/2026-05-02-001-feat-followed-countries-watchlist-primitive-plan.md
+  // (U12). One row per (userId, country) follow; uniqueness is enforced by
+  // the `followCountry` mutation via the `by_user_country` index check, NOT
+  // by Convex schema (Convex does not support unique constraints).
+  //
+  // `country` is a canonical ISO 3166-1 alpha-2 code (uppercase, e.g. "US",
+  // "GB", "JP"). Validation against the canonical alpha-2 registry happens
+  // at the mutation boundary (U13: `convex/lib/iso2.ts::isValidIso2`).
+  followedCountries: defineTable({
+    userId: v.string(),
+    country: v.string(),
+    addedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_country", ["country"])
+    .index("by_user_country", ["userId", "country"]),
+
+  // Aggregate-counter table for `countFollowers`. One row per country, kept
+  // in lockstep with `followedCountries` row inserts/deletes by the
+  // followCountry/unfollowCountry/mergeAnonymousLocal mutations (atomic
+  // patch within the same Convex mutation transaction). Lets the public
+  // `countFollowers` query be O(1) instead of O(n) per call. The privacy
+  // floor (`COUNTRY_COUNT_PRIVACY_FLOOR`) is applied at read time in the
+  // query, not at write time — the row stores the true count.
+  followedCountriesCounts: defineTable({
+    country: v.string(),
+    count: v.number(),
+    updatedAt: v.number(),
+  }).index("by_country", ["country"]),
+
+  // Pre-seeded per-country lock table for aggregate counter writes.
+  // The user shard lock only serializes mutations by user; first-ever
+  // follows of the same country by different users need an existing
+  // country-scoped document for Convex OCC to serialize the lazy
+  // `followedCountriesCounts` row creation/update path. One row is seeded
+  // for each valid ISO-2 code, and every counter +/- operation reads and
+  // patches the row for that country in the same transaction.
+  followedCountriesCountryLocks: defineTable({
+    country: v.string(),
+    lastTouchedAt: v.number(),
+  }).index("by_country", ["country"]),
+
+  // Per-user serialization document for the followed-countries watchlist.
+  // EVERY mutation that mutates `followedCountries` for a user reads AND
+  // writes this row, forcing Convex's per-document OCC to serialize
+  // concurrent same-user mutations. Without this, two parallel
+  // `followCountry` calls from the same user can both pass the cap check
+  // (Convex OCC tracks reads at the document level, not at the index-range
+  // level), both insert, and bypass the cap. The denormalized `count`
+  // also lets the cap check be O(1) instead of O(n) — happy side effect.
+  //
+  // Invariant: `count` MUST equal the row count of `followedCountries`
+  // for `userId`. The mutations are the only writers; tests assert this
+  // parity after every operation. See plan U13 / Codex round-3 P0
+  // (run 20260502-195816-dae403d7).
+  //
+  // KEY CAVEAT (Codex round-4 P0 v2): this row is created LAZILY on the
+  // first mutation, so its OCC alone does NOT close a brand-new user's
+  // race — two parallel first-ever mutations would both read empty and
+  // both insert, producing duplicate meta rows. The fix is the pre-seeded
+  // `followedCountriesShards` table below: every mutation reads + patches
+  // the shard row at `userIdToShard(userId)` BEFORE this lazy-create can
+  // happen, and Convex's OCC on the shard row serializes the two parallel
+  // mutations so the second one observes the first's user-meta insert.
+  followedCountriesUserMeta: defineTable({
+    userId: v.string(),
+    count: v.number(),
+    updatedAt: v.number(),
+  }).index("by_user", ["userId"]),
+
+  // Pre-seeded sharded lock table for the followed-countries watchlist
+  // (Codex round-4 P0 v2). One row per shard id `0..SHARD_COUNT-1`.
+  // Mapped to via `convex/lib/shards.ts::userIdToShard(userId)`, a
+  // deterministic non-cryptographic hash. Every mutation that touches
+  // `followedCountries` for a user reads the shard row at the top of the
+  // handler AND patches `lastTouchedAt` at the end — that read+write pair
+  // is what triggers Convex's per-document OCC to serialize concurrent
+  // same-user mutations. Because rows are pre-seeded (never lazily
+  // created), there is no TOCTOU window: the loser of an OCC race retries
+  // against the post-winner state, sees the user-meta row the winner
+  // inserted, and proceeds correctly.
+  //
+  // SHARD_COUNT is fixed at deploy time. Re-seeding requires draining
+  // in-flight mutations; do not change without an operator runbook.
+  // Seeding is idempotent — `_seedShards` skips existing rows. A daily
+  // cron + manual operator mutation guarantee the table stays seeded.
+  followedCountriesShards: defineTable({
+    shardId: v.number(),
+    lastTouchedAt: v.number(),
+  }).index("by_shard", ["shardId"]),
+
   telegramPairingTokens: defineTable({
     userId: v.string(),
     token: v.string(),
@@ -240,6 +333,13 @@ export default defineSchema({
     pendingExportAt: v.optional(v.number()),
     pendingBroadcastId: v.optional(v.string()),
     pendingBroadcastAt: v.optional(v.number()),
+    // Locale filter switch — when true, pickWaveAction excludes
+    // contacts whose `users.localePrimary` (or email-TLD heuristic
+    // fallback) is non-English. Optional + missing-reads-as-false on
+    // the config — existing ramp rows that pre-date this feature
+    // continue with byte-identical behavior. Operator opts in via
+    // `initRamp({excludeNonEnglish: true})`.
+    excludeNonEnglish: v.optional(v.boolean()),
   }).index("by_key", ["key"]),
 
   // ────────────────────────────────────────────────────────────────────────
@@ -311,6 +411,15 @@ export default defineSchema({
     //   'persist-failed'               → mid-loop _persistPickedBatch failed → operator inspects + discards
     failureSubstatus: v.optional(v.string()),
     error: v.optional(v.string()),
+    // Pool-filter audit fields (added 2026-05-10 alongside `users` table +
+    // `excludeNonEnglish` flag). Populated by pickWaveAction's pool selection
+    // step so any past wave's filter behavior is auditable from the
+    // `waveRuns` row alone — no log archaeology required. Optional so
+    // pre-existing rows pass schema validation.
+    excludeNonEnglish: v.optional(v.boolean()),
+    eligiblePoolCount: v.optional(v.number()),
+    excludedCount: v.optional(v.number()),
+    excludedLocaleCounts: v.optional(v.record(v.string(), v.number())),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -376,7 +485,8 @@ export default defineSchema({
     message: v.optional(v.string()),
     source: v.string(),
     receivedAt: v.number(),
-  }),
+    normalizedEmail: v.optional(v.string()),
+  }).index("by_normalized_email_received", ["normalizedEmail", "receivedAt"]),
 
   counters: defineTable({
     name: v.string(),
@@ -394,11 +504,29 @@ export default defineSchema({
     currentPeriodStart: v.number(),
     currentPeriodEnd: v.number(),
     cancelledAt: v.optional(v.number()),
+    // Stable first-class projection of `rawPayload.customer.customer_id`
+    // (the Dodo customer this sub was paid as). Optional because
+    // `DodoSubscriptionData.customer` is itself optional and lifecycle
+    // event payloads (`subscription.renewed`, `.on_hold`, `.cancelled`,
+    // `.plan_changed`, `.expired`) sometimes arrive without it — a
+    // blind `rawPayload: data` patch would otherwise wipe the value.
+    // Webhook handlers write this field with `data.customer?.customer_id
+    // ?? existing.dodoCustomerId` (see `mergeDodoCustomerId` in
+    // `subscriptionHelpers.ts`) so it survives lifecycle patches.
+    //
+    // Manage Billing prefers this column when populated — see
+    // `payments/billing:getDodoCustomerIdForUserPortal`, which is a
+    // 3-tier resolver (this column → `rawPayload.customer.customer_id`
+    // → `customers.dodoCustomerId` for the same userId). Pre-PR rows
+    // may still rely on tiers 2-3 until
+    // `backfillSubscriptionDodoCustomerId` lands their values here.
+    dodoCustomerId: v.optional(v.string()),
     rawPayload: v.any(),
     updatedAt: v.number(),
   })
     .index("by_userId", ["userId"])
-    .index("by_dodoSubscriptionId", ["dodoSubscriptionId"]),
+    .index("by_dodoSubscriptionId", ["dodoSubscriptionId"])
+    .index("by_dodoCustomerId", ["dodoCustomerId"]),
 
   entitlements: defineTable({
     userId: v.string(),
@@ -410,6 +538,11 @@ export default defineSchema({
       apiRateLimit: v.number(),
       prioritySupport: v.boolean(),
       exportFormats: v.array(v.string()),
+      // Optional for backward-compat with existing rows written before
+      // plan 2026-05-10-001 (Pro MCP). Dodo webhooks repopulate this on
+      // the next subscription event; legacy rows return undefined and
+      // every consumer treats undefined as "no MCP access" (fail-closed).
+      mcpAccess: v.optional(v.boolean()),
     }),
     validUntil: v.number(),
     // Optional complimentary-entitlement floor. When set and in the future,
@@ -436,6 +569,35 @@ export default defineSchema({
     .index("by_userId", ["userId"])
     .index("by_dodoCustomerId", ["dodoCustomerId"])
     .index("by_normalized_email", ["normalizedEmail"]),
+
+  // Canonical per-Clerk-user record. Populated on first authenticated session
+  // by client → `users:ensureRecord` (see convex/users.ts). Distinct from
+  // `customers` (which is paid-only, populated by Dodo subscription webhook):
+  // `users` covers EVERY Clerk-authenticated user, free or paid. Holds
+  // operational properties used for product personalization and broadcast
+  // audience filtering — locale, timezone, country, first/last seen.
+  //
+  // ⚠️ Authority of `country`: client-reported (derived from a `cf-ipcountry`
+  // cookie or similar). NOT authoritative. Do NOT use for compliance, geo-
+  // gating, or anything where a malicious client could spoof a different
+  // country to gain or evade something. Server-side derivation (Vercel edge
+  // wrapper reading `cf-ipcountry` from the actual request headers) is a
+  // future v2 concern; v1 just stores what the client passes for analytics
+  // use only.
+  users: defineTable({
+    userId: v.string(), // Clerk userId; primary identifier
+    email: v.optional(v.string()), // Server-derived from ctx.auth.getUserIdentity()
+    normalizedEmail: v.optional(v.string()), // Lowercased mirror of email; joined against registrations
+    localeTag: v.optional(v.string()), // Full BCP 47 tag (e.g. "zh-CN", "en-US"); kept for future analytics
+    localePrimary: v.optional(v.string()), // Lowercased primary subtag (e.g. "zh", "en"); broadcast filter target
+    timezone: v.optional(v.string()), // IANA zone (e.g. "Asia/Shanghai")
+    country: v.optional(v.string()), // ISO 3166-1 alpha-2; CLIENT-REPORTED — see warning above
+    firstSeenAt: v.number(),
+    lastSeenAt: v.number(),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_normalizedEmail", ["normalizedEmail"])
+    .index("by_localePrimary", ["localePrimary"]),
 
   webhookEvents: defineTable({
     webhookId: v.string(),
@@ -481,6 +643,20 @@ export default defineSchema({
   })
     .index("by_userId", ["userId"])
     .index("by_keyHash", ["keyHash"]),
+
+  // Non-key Pro MCP identity rows. One row per OAuth grant for a Pro user.
+  // Referenced from OAuth code/token records as `mcpTokenId` — never carries
+  // plaintext or `wm_` keys. Revoke deletes the row's revokedAt → next
+  // bearer-resolution at api/mcp.ts returns 401 (no token-index sweep needed).
+  // See plan: docs/plans/2026-05-10-001-feat-pro-mcp-clerk-auth-quota-plan.md
+  mcpProTokens: defineTable({
+    userId: v.string(),
+    clientId: v.optional(v.string()),
+    name: v.optional(v.string()),
+    createdAt: v.number(),
+    lastUsedAt: v.optional(v.number()),
+    revokedAt: v.optional(v.number()),
+  }).index("by_userId", ["userId"]),
 
   emailSuppressions: defineTable({
     normalizedEmail: v.string(),

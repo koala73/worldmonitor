@@ -10,7 +10,7 @@ pubDate: "2026-03-03"
 
 Intelligence is about the past and present. Forecasting is about what comes next. Most dashboards give you one or the other. World Monitor gives you both.
 
-By integrating **Polymarket prediction market data** with **AI-powered geopolitical forecasting**, World Monitor lets you see not just what's happening, but what the collective intelligence of bettors and algorithms thinks will happen.
+By integrating **[Polymarket](https://polymarket.com/) prediction market data** with **AI-powered geopolitical forecasting**, World Monitor lets you see not just what's happening, but what the collective intelligence of bettors and algorithms thinks will happen.
 
 ## Polymarket Integration: The Wisdom of Crowds
 

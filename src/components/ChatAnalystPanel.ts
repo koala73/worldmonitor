@@ -4,7 +4,7 @@ import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { postProcessAnalystHtml } from '@/utils/analyst-markdown';
 import { premiumFetch } from '@/services/premium-fetch';
-import { h, replaceChildren } from '@/utils/dom-utils';
+import { h, replaceChildren, setTrustedHtml, trustedHtml, type TrustedHtml } from '@/utils/dom-utils';
 
 const API_URL = '/api/chat-analyst';
 const MAX_HISTORY = 20;
@@ -58,9 +58,12 @@ const ANALYST_PURIFY_CONFIG = {
   ALLOW_DATA_ATTR: false,
 };
 
-function renderMarkdown(raw: string): string {
+function renderMarkdown(raw: string): TrustedHtml {
   const sanitized = DOMPurify.sanitize(marked.parse(raw) as string, ANALYST_PURIFY_CONFIG);
-  return postProcessAnalystHtml(sanitized as string);
+  return trustedHtml(
+    postProcessAnalystHtml(sanitized as string),
+    'Chat analyst markdown is sanitized by DOMPurify before insertion',
+  );
 }
 
 export class ChatAnalystPanel extends Panel {
@@ -70,6 +73,7 @@ export class ChatAnalystPanel extends Panel {
   private isStreaming = false;
   private messagesEl!: HTMLElement;
   private inputEl: HTMLTextAreaElement | null = null;
+  private contentDelegationAttached = false;
 
   constructor() {
     super({
@@ -138,6 +142,13 @@ export class ChatAnalystPanel extends Panel {
   }
 
   private attachListeners(): void {
+    // Click + keydown are both delegated on this.content (the persistent
+    // panel content div), so attaching exactly once survives every buildUI()
+    // re-render — including the FREE→PRO unlock rebuild path. Re-attaching
+    // would duplicate handlers and fire send() N times per Enter.
+    if (this.contentDelegationAttached) return;
+    this.contentDelegationAttached = true;
+
     this.content.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
 
@@ -163,14 +174,14 @@ export class ChatAnalystPanel extends Panel {
       }
     });
 
-    if (this.inputEl) {
-      this.inputEl.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && !e.shiftKey) {
-          e.preventDefault();
-          this.sendFromInput();
-        }
-      });
-    }
+    this.content.addEventListener('keydown', (e) => {
+      const target = e.target as HTMLElement | null;
+      if (!target || target !== this.inputEl) return;
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        this.sendFromInput();
+      }
+    });
   }
 
   private setDomain(domain: string): void {
@@ -204,7 +215,7 @@ export class ChatAnalystPanel extends Panel {
     const label = role === 'user' ? 'YOU' : 'ANALYST';
     const body = h('div', { className: 'chat-msg-body' });
     if (role === 'assistant') {
-      body.innerHTML = renderMarkdown(content);
+      setTrustedHtml(body, renderMarkdown(content));
     } else {
       body.textContent = content;
     }
@@ -417,7 +428,7 @@ export class ChatAnalystPanel extends Panel {
   }
 
   private finalizeStreamingBubble(bodyEl: HTMLElement, text: string, success: boolean): void {
-    bodyEl.innerHTML = renderMarkdown(text);
+    setTrustedHtml(bodyEl, renderMarkdown(text));
     if (!success) bodyEl.classList.add('chat-msg-error');
     this.scrollToBottom();
   }
@@ -445,6 +456,20 @@ export class ChatAnalystPanel extends Panel {
     a.download = `wm-analyst-session-${Date.now()}.md`;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  // Panel.unlockPanel() does `replaceChildren(this.content)` (empties it)
+  // when a previously-locked panel transitions to unlocked. The chat surface
+  // (chips, messages, quick actions, input row) lives entirely in buildUI()
+  // and is only constructed once in the ctor — without a rebuild here, the
+  // body would stay empty after the FREE→PRO unlock fired by
+  // panel-layout.ts:updatePanelGating(). Re-detect via querySelector so we
+  // only pay the cost when the wipe actually happened.
+  override unlockPanel(): void {
+    super.unlockPanel();
+    if (!this.content.querySelector('.chat-analyst-wrapper')) {
+      this.buildUI();
+    }
   }
 
   override destroy(): void {

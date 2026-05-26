@@ -493,6 +493,60 @@ describe('resilience dimension scorers', () => {
     assert.ok(score.score === 20, `RSF only (no threat, no velocity), got ${score.score}`);
   });
 
+  // Regression for #3736 / #3787 — the old implementation divided raw
+  // velocity/threat by `langFactor`, amplifying signal for minimal-coverage
+  // countries up to 5x. The fix attenuates the sub-indicator WEIGHTS by
+  // langFactor instead; raw signal values flow through unchanged.
+  //
+  // This test pins the EXACT post-fix scores so regressions in either
+  // direction are caught:
+  //   - Re-introducing divide-amplification would saturate BF's threat
+  //     score at the worst goalpost, collapsing BF.score to ~26.
+  //   - Attenuating weights too aggressively (e.g. `weight: 0` instead of
+  //     `weight: 0.30 * langFactor`) would pin BF.score to its RSF-only
+  //     baseline of 40.
+  //   - The correct fix lands BF.score ≈ 41 (RSF dominates but threat still
+  //     contributes a small attenuated weight).
+  //
+  // Threat sub-signal is chosen to be BELOW the worst-goalpost (20) so it
+  // produces a discriminating normalized value (not clamped to 0) under
+  // both the old and new formulas — the bug the v1 of this test missed.
+  it('scoreInformationCognitive: weight-attenuation produces specific scores per langFactor tier (#3736 / #3787)', async () => {
+    // Threat = 0*4 + 2*2 + 4*1 + 2*0.5 = 9 (below worst-goalpost of 20).
+    // RSF = 60 → normalizeLowerBetter(60, 0, 100) = 40.
+    // Threat = 9 → normalizeLowerBetter(9, 0, 20) = 55.
+    const makeReader = (iso: string) => async (key: string): Promise<unknown | null> => {
+      if (key === `resilience:static:${iso}`) return { rsf: { score: 60, rank: 50, year: 2025 } };
+      if (key === 'intelligence:social:reddit:v1') return { posts: [] };
+      if (key === 'news:threat:summary:v1') return {
+        byCountry: { [iso]: { critical: 0, high: 2, medium: 4, low: 2 } },
+        generatedAt: '2026-04-06T00:00:00.000Z',
+      };
+      return null;
+    };
+
+    const primary = await scoreInformationCognitive('US', makeReader('US')); // lf=1.0
+    const minimal = await scoreInformationCognitive('BF', makeReader('BF')); // lf=0.2
+
+    // US (lf=1.0): (40*0.55 + 55*0.30) / (0.55+0.30) = 38.5 / 0.85 = 45.29
+    assert.equal(Math.round(primary.score), 45,
+      `US (primary, lf=1.0) should score ~45 on this fixture; got ${primary.score}. Likely a regression in the weight or normalize logic.`);
+
+    // BF (lf=0.2): (40*0.55 + 55*0.06) / (0.55+0.06) = 25.3 / 0.61 = 41.48
+    // Under the old divide-amplification bug, this would have been ~26 (threat
+    // saturates at worst-goalpost). Under "attenuate too hard" (weight=0), this
+    // would be exactly 40 (RSF-only). The 41 value is the correct fix.
+    assert.equal(Math.round(minimal.score), 41,
+      `BF (minimal, lf=0.2) should score ~41 on this fixture; got ${minimal.score}. Likely a regression: divide-amplification re-introduced (~26) or attenuation too aggressive (~40).`);
+
+    // #3787 fix: coverage must NOT invert between sparse and primary countries.
+    // With `nominalWeight` on the attenuated sub-indicators, both countries
+    // observe the same fraction of designed signal (RSF + threat with data,
+    // velocity null) and must report the same coverage value.
+    assert.equal(primary.coverage, minimal.coverage,
+      `coverage must be identical for primary and minimal countries with identical signal availability (#3787 coverage-inversion regression): primary.coverage=${primary.coverage}, minimal.coverage=${minimal.coverage}`);
+  });
+
   it('scoreBorderSecurity: zero UCDP events still scores (UCDP is global registry)', async () => {
     const reader = async (key: string): Promise<unknown | null> => {
       if (key === 'conflict:ucdp-events:v1') return { events: [] };

@@ -11,6 +11,7 @@
 
 import * as Sentry from '@sentry/browser';
 import { getConvexClient, getConvexApi } from './convex-client';
+import { extractBillingErrorKind } from './_billing-error';
 
 export interface SubscriptionInfo {
   planKey: string;
@@ -154,16 +155,36 @@ export function prereserveBillingPortalTab(): Window | null {
   return window.open('', '_blank', 'noopener,noreferrer');
 }
 
-export async function openBillingPortal(preopened?: Window | null): Promise<string | null> {
+export type OpenBillingPortalOutcome =
+  | { outcome: 'opened'; url: string }
+  | { outcome: 'no-customer' };
+
+export async function openBillingPortal(
+  preopened?: Window | null,
+): Promise<OpenBillingPortalOutcome> {
   const reservedWin = preopened ?? null;
-  const navigate = (url: string): string => {
+  const navigate = (url: string): { outcome: 'opened'; url: string } => {
     if (reservedWin && !reservedWin.closed) {
       reservedWin.location.href = url;
     } else {
       const fresh = window.open(url, '_blank', 'noopener,noreferrer');
       if (!fresh) window.location.assign(url);
     }
-    return url;
+    return { outcome: 'opened', url };
+  };
+
+  // NO_CUSTOMER means the user is entitled (comp grant, recently-restored
+  // sub, or sub state where Dodo already purged the customer row) but no
+  // Dodo customer record exists to open a portal session for. Navigating
+  // them to the generic Dodo portal (`customer.dodopayments.com`) is
+  // actively misleading — that portal won't recognise them. Close the
+  // pre-reserved tab and return a typed outcome so callers with an
+  // in-app toast surface (UnifiedSettings) can tell the user what
+  // happened. Callers that don't handle the outcome silently drop the
+  // pre-reserved tab — still better UX than landing in a stranger's
+  // portal. WORLDMONITOR-R5.
+  const closeReserved = (): void => {
+    if (reservedWin && !reservedWin.closed) reservedWin.close();
   };
 
   try {
@@ -181,11 +202,35 @@ export async function openBillingPortal(preopened?: Window | null): Promise<stri
     const url = (result?.portal_url as string | undefined) ?? DODO_PORTAL_FALLBACK_URL;
     return navigate(url);
   } catch (err) {
-    console.warn('[billing] Failed to get customer portal URL, falling back:', err);
+    // Convex object-data ConvexError surfaces `err.data.kind` reliably on the
+    // wire; string-data and plain-Error throws arrive as
+    // `[Request ID: X] Server Error` with `err.data === undefined`. Read kind
+    // and split severity: NO_CUSTOMER is EXPECTED for entitled users who
+    // have no Dodo customer row, so it shouldn't drown real config/SDK bugs
+    // in error-level alerts. Anything else (DODO_API_KEY_MISSING, Dodo SDK
+    // throw, network failure, unknown shape) stays at the default `error`
+    // level. WORLDMONITOR-R5.
+    const kind = extractBillingErrorKind(err);
+    const isNoCustomer = kind === 'NO_CUSTOMER';
+    const level: 'warning' | 'error' = isNoCustomer ? 'warning' : 'error';
+    const log = level === 'warning' ? console.warn : console.error;
+    log('[billing] Failed to get customer portal URL:', err);
     Sentry.captureException(
       normalizeCaughtError('openBillingPortal', err),
-      { tags: { component: 'dodo-billing', action: 'openBillingPortal' } },
+      {
+        tags: {
+          component: 'dodo-billing',
+          action: 'openBillingPortal',
+          ...(kind ? { billing_error_kind: kind } : {}),
+        },
+        level,
+      },
     );
+    if (isNoCustomer) {
+      closeReserved();
+      return { outcome: 'no-customer' };
+    }
     return navigate(DODO_PORTAL_FALLBACK_URL);
   }
 }
+

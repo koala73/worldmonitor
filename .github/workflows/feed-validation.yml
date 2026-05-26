@@ -1,0 +1,54 @@
+name: Feed Validation
+
+# Runs npm run test:feeds:ci against the live RSS registry. NOT triggered by
+# pull_request — that would let a hostile PR rewrite src/config/feeds.ts to
+# make GitHub runners hit arbitrary URLs (SSRF surface). PR CI relies on the
+# static tests in test:data + the digest-image build smoke instead.
+#
+# Triggers:
+#   - push to main: catches drift introduced by merged registry edits
+#   - schedule (daily 00:00 UTC): catches third-party feed outages on a cadence
+#     operators can act on without staring at PR checks. Earlier 6h cadence
+#     was 4× the necessary discovery rate — feed outages don't change that
+#     fast and 542 feeds × 4 runs/day was wasted runner-minutes + third-
+#     party-fetch volume that no one acted on.
+#   - workflow_dispatch: manual re-runs from the Actions UI
+#
+# The --ci flag enforces three guardrails inside scripts/validate-rss-feeds.mjs:
+#   1. Reject non-https URLs (no plaintext, no file://)
+#   2. Reject hosts that don't pass api/_rss-allowed-domain-match.js
+#      isAllowedDomain (same www-normalized check the Edge proxy enforces)
+#   3. Refuse cross-host redirects without per-hop allowlist re-check
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src/config/feeds.ts'
+      - 'scripts/validate-rss-feeds.mjs'
+      - 'api/_rss-allowed-domain-match.js'
+      - 'api/_rss-allowed-domains.js'
+      - 'shared/rss-allowed-domains.json'
+      - '.github/workflows/feed-validation.yml'
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    # Cap the job: 15s per-feed timeout * ~200 feeds / 10 concurrency ≈ 5min
+    # nominal, but a hung dependency-install or network stall could otherwise
+    # occupy a runner for the default 6h timeout. 15min gives plenty of
+    # headroom while avoiding stuck-runner alerts on real outages.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run test:feeds:ci

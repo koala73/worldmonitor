@@ -29,6 +29,27 @@ const KEY_PREFIX = 'digest:replay-log:v1';
 const TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days
 
 /**
+ * Per-day list cap. Each record is ~1.0-1.7KB JSON; Upstash enforces a
+ * 500MB max-record-size on the Fixed plan. Without a cap, busy days
+ * (~420K entries observed in production on 2026-05-07) hit the limit
+ * and back-pressure adjacent Redis writes — see WM 2026-05-10 incident
+ * where seed-forecasts publish timed out coincident with Max Record Size
+ * alerts.
+ *
+ * 100,000 entries × 1.5KB ≈ 150MB → ~3× safety margin under 500MB.
+ * For the calibration use-case (replay/sweep tooling consumes the
+ * NEWEST entries to evaluate dedup quality), tail-keep semantics are
+ * correct: LTRIM `-N..-1` keeps the most recent N records.
+ *
+ * Tradeoff: very busy days lose the OLDEST entries beyond 100K. The
+ * U6 14-day replay harness aggregates ACROSS days and uses repHash
+ * stability for cluster identity, so within-day eviction of older
+ * entries is acceptable — operators get a representative sample of
+ * each day's traffic, not exhaustive coverage.
+ */
+export const REPLAY_LOG_MAX_ENTRIES_PER_DAY = 100_000;
+
+/**
  * Env-read at call time so Railway can flip the flag without a redeploy.
  * Anything other than literal '1' (including unset, '0', 'yes', 'true',
  * mis-cased 'True') is treated as OFF — fail-closed so a typo can't
@@ -316,13 +337,17 @@ export async function writeReplayLog(args) {
       return { wrote: 0, key: null, skipped: 'empty' };
     }
     const key = buildReplayLogKey(tickContext?.ruleId, tickContext?.tsMs ?? Date.now());
-    // Single RPUSH with variadic values (one per story) + EXPIRE. Keep
-    // to two commands so Upstash's pipeline stays cheap even on large
-    // ticks. Stringify each record individually so downstream readers
-    // can consume with LRANGE + JSON.parse.
+    // RPUSH + LTRIM + EXPIRE in one pipeline. LTRIM `-N..-1` keeps the
+    // last N entries (most recent), evicting the oldest beyond the cap.
+    // This bounds each per-day key under ~150MB at observed entry sizes,
+    // well under Upstash's 500MB max-record-size that production hit on
+    // 2026-05-10 (busy days reached 420K entries ≈ 630MB without a cap).
+    // Stringify each record individually so downstream readers can
+    // consume with LRANGE + JSON.parse.
     const rpushCmd = ['RPUSH', key, ...records.map((r) => JSON.stringify(r))];
+    const ltrimCmd = ['LTRIM', key, `-${REPLAY_LOG_MAX_ENTRIES_PER_DAY}`, '-1'];
     const expireCmd = ['EXPIRE', key, String(TTL_SECONDS)];
-    const result = await pipelineImpl([rpushCmd, expireCmd]);
+    const result = await pipelineImpl([rpushCmd, ltrimCmd, expireCmd]);
     if (result == null) {
       warn(`[digest] replay-log: pipeline returned null (creds missing or upstream down) key=${key}`);
       return { wrote: 0, key, skipped: null };

@@ -26,6 +26,14 @@ interface CachedEntitlements {
     maxDashboards: number;
     prioritySupport: boolean;
     exportFormats: string[];
+    /**
+     * Pro MCP access (plan 2026-05-10-001). Undefined on legacy entitlement
+     * rows written before the catalog field landed; every consumer
+     * (gateway HMAC verifier, isCallerPremium, MCP edge handler) treats
+     * undefined as `false` — fail-closed. The Dodo webhook repopulates
+     * this on the next subscription event.
+     */
+    mcpAccess?: boolean;
   };
   validUntil: number;
 }
@@ -122,11 +130,26 @@ async function _getEntitlementsImpl(userId: string): Promise<CachedEntitlements 
 
     if (cached && typeof cached === 'object') {
       const ent = cached as CachedEntitlements;
-      // Only use cached data if it hasn't expired
-      if (ent.validUntil >= Date.now()) {
+      // Only use cached data if it hasn't expired AND has the post-U10 shape.
+      //
+      // Legacy cache entries written before plan 2026-05-10-001 U10 lack the
+      // `features.mcpAccess` field. The Convex read path read-time-merges
+      // catalog defaults (convex/entitlements.ts:50), but bare-cache reads
+      // bypass that merge — paying users with hot pre-deploy cache entries
+      // would see `mcpAccess !== true` at the grant/MCP gates and get
+      // blocked for up to 15 min until the cache expires. Treating
+      // missing-field cache entries as stale falls through to Convex,
+      // which returns the merged shape and rewrites the cache with the
+      // post-U10 layout. Self-healing, bounded to one extra Convex
+      // round-trip per affected user during the migration window.
+      // Reviewer round-2 P2 (cache layer).
+      if (
+        ent.validUntil >= Date.now() &&
+        typeof (ent.features as { mcpAccess?: boolean }).mcpAccess === 'boolean'
+      ) {
         return ent;
       }
-      // Expired -- fall through to Convex
+      // Expired OR legacy shape -- fall through to Convex.
     }
 
     // Convex fallback on cache miss or expired cache
@@ -184,7 +207,7 @@ async function _getEntitlementsImpl(userId: string): Promise<CachedEntitlements 
  *     or the user's tier is below the required tier (fail-closed)
  */
 export async function checkEntitlement(
-  request: Request,
+  userId: string | null,
   pathname: string,
   corsHeaders: Record<string, string>,
 ): Promise<Response | null> {
@@ -194,9 +217,6 @@ export async function checkEntitlement(
     return null;
   }
 
-  // Extract userId from request header (set by session middleware).
-  // Fail-closed: if no userId on a gated endpoint, block the request.
-  const userId = request.headers.get('x-user-id');
   if (!userId) {
     return new Response(
       JSON.stringify({ error: 'Authentication required', requiredTier }),

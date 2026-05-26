@@ -1,11 +1,17 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { tokensToContentMeta, DAY_MIN } from './_content-age-helpers.mjs';
 
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'economic:yield-curve-eu:v1';
 const TTL = 259200; // 72h = 3× daily seed interval
+// Content-age budget — ECB YC is a daily (business-day) SDMX series, the same
+// family as the CISS series that froze undetected for ~12 months (issue #3845).
+// 10 days absorbs a weekend + ECB holiday cluster + one missed cron while still
+// flipping /api/health to STALE_CONTENT within ~6 business days of a freeze.
+const YIELD_CURVE_MAX_CONTENT_AGE_MIN = 10 * DAY_MIN;
 
 // ECB SDMX-JSON endpoint — all 6 tenors in one request, latest observation only
 const ECB_URL =
@@ -110,16 +116,25 @@ export function declareRecords(data) {
   return Object.keys(data?.rates || {}).length;
 }
 
+// Content-age contract: the single observation date the curve was sampled on.
+// Detects an upstream freeze that seeder-liveness checks cannot — see
+// scripts/_content-age-helpers.mjs.
+export function yieldCurveContentMeta(data) {
+  return tokensToContentMeta(data?.date);
+}
+
 if (process.argv[1]?.endsWith('seed-yield-curve-eu.mjs')) {
   runSeed('economic', 'yield-curve-eu', CANONICAL_KEY, fetchEcbYieldCurve, {
     validateFn: validate,
     ttlSeconds: TTL,
     sourceVersion: 'ecb-sdmx-v1',
     recordCount: (data) => Object.keys(data?.rates ?? {}).length,
-  
+
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: 4320,
+    contentMeta: yieldCurveContentMeta,
+    maxContentAgeMin: YIELD_CURVE_MAX_CONTENT_AGE_MIN,
   }).catch((err) => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + cause);

@@ -8,7 +8,7 @@ import { getStreamQuality, subscribeStreamQualityChange } from '@/services/ai-fl
 import { isMobileDevice, loadFromStorage, saveToStorage } from '@/utils';
 import { getLiveStreamsAlwaysOn, subscribeLiveStreamsSettingsChange } from '@/services/live-stream-settings';
 
-type WebcamRegion = 'iran' | 'middle-east' | 'europe' | 'asia' | 'americas' | 'space';
+type WebcamRegion = 'middle-east' | 'europe' | 'asia' | 'americas' | 'space';
 
 interface WebcamFeed {
   id: string;
@@ -22,14 +22,9 @@ interface WebcamFeed {
 // Verified YouTube live stream IDs — validated Feb 2026 via title cross-check.
 // IDs may rotate; update when stale.
 const WEBCAM_FEEDS: WebcamFeed[] = [
-  // Iran Attacks — Tehran, Tel Aviv, Jerusalem
-  { id: 'iran-tehran', city: 'Tehran', country: 'Iran', region: 'iran', channelHandle: '@IranHDCams', fallbackVideoId: '-zGuR1qVKrU' },
-  { id: 'iran-telaviv', city: 'Tel Aviv', country: 'Israel', region: 'iran', channelHandle: '@IsraelLiveCam', fallbackVideoId: 'gmtlJ_m2r5A' },
-  { id: 'iran-jerusalem', city: 'Jerusalem', country: 'Israel', region: 'iran', channelHandle: '@JerusalemLive', fallbackVideoId: 'fIurYTprwzg' },
-  { id: 'iran-multicam', city: 'Middle East', country: 'Multi', region: 'iran', channelHandle: '@MiddleEastCams', fallbackVideoId: 'KSwPNkzEgxg' },
   // Middle East — Jerusalem & Tehran adjacent (conflict hotspots)
   { id: 'jerusalem', city: 'Jerusalem', country: 'Israel', region: 'middle-east', channelHandle: '@TheWesternWall', fallbackVideoId: 'e34xb-Fbl0U' },
-  { id: 'tehran', city: 'Tehran', country: 'Iran', region: 'middle-east', channelHandle: '@IranHDCams', fallbackVideoId: '-zGuR1qVKrU' },
+  { id: 'middle-east', city: 'Middle East', country: 'Multi', region: 'middle-east', channelHandle: '@MiddleEastCams', fallbackVideoId: 'oxT5R6I0N6E' },
   { id: 'tel-aviv', city: 'Tel Aviv', country: 'Israel', region: 'middle-east', channelHandle: '@IsraelLiveCam', fallbackVideoId: 'gmtlJ_m2r5A' },
   { id: 'mecca', city: 'Mecca', country: 'Saudi Arabia', region: 'middle-east', channelHandle: '@MakkahLive', fallbackVideoId: 'kJwEsQTegxk' },
   { id: 'beirut-mtv', city: 'Beirut', country: 'Lebanon', region: 'middle-east', channelHandle: '@MTVLebanonNews', fallbackVideoId: 'djF-Lkgfp6k' },
@@ -66,7 +61,7 @@ const IDLE_ACTIVITY_EVENTS = ['mousedown', 'keydown', 'scroll', 'touchstart', 'm
 type ViewMode = 'grid' | 'single';
 type RegionFilter = 'all' | WebcamRegion;
 
-const ALL_REGIONS: RegionFilter[] = ['all', 'iran', 'middle-east', 'europe', 'americas', 'asia', 'space'];
+const ALL_REGIONS: RegionFilter[] = ['all', 'middle-east', 'europe', 'americas', 'asia', 'space'];
 
 interface WebcamPrefs {
   regionFilter: RegionFilter;
@@ -77,7 +72,7 @@ interface WebcamPrefs {
 function loadWebcamPrefs(forceSingleView: boolean): WebcamPrefs {
   const stored = loadFromStorage<Partial<WebcamPrefs>>(STORAGE_KEYS.webcamPrefs, {});
   const region = stored.regionFilter as RegionFilter;
-  const regionFilter = ALL_REGIONS.includes(region) ? region : 'iran';
+  const regionFilter = ALL_REGIONS.includes(region) ? region : 'all';
   const viewMode = forceSingleView ? 'single'
     : (stored.viewMode === 'grid' || stored.viewMode === 'single' ? stored.viewMode : 'grid');
   const regionFeeds = regionFilter === 'all' ? WEBCAM_FEEDS
@@ -100,7 +95,7 @@ interface WebcamIframeTracker {
 
 export class LiveWebcamsPanel extends Panel {
   private viewMode: ViewMode = 'grid';
-  private regionFilter: RegionFilter = 'iran';
+  private regionFilter: RegionFilter = 'all';
   private activeFeed: WebcamFeed = WEBCAM_FEEDS[0]!;
   private toolbar: HTMLElement | null = null;
   private iframes: HTMLIFrameElement[] = [];
@@ -190,7 +185,7 @@ export class LiveWebcamsPanel extends Panel {
     return WEBCAM_FEEDS.filter(f => f.region === this.regionFilter);
   }
 
-  private static readonly ALL_GRID_IDS = ['jerusalem', 'tehran', 'kyiv', 'washington'];
+  private static readonly ALL_GRID_IDS = ['jerusalem', 'middle-east', 'kyiv', 'washington'];
 
   private get gridFeeds(): WebcamFeed[] {
     if (this.regionFilter === 'all') {
@@ -209,7 +204,6 @@ export class LiveWebcamsPanel extends Panel {
     regionGroup.className = 'webcam-toolbar-group';
 
     const regions: { key: RegionFilter; label: string }[] = [
-      { key: 'iran', label: t('components.webcams.regions.iran') },
       { key: 'all', label: t('components.webcams.regions.all') },
       { key: 'middle-east', label: t('components.webcams.regions.mideast') },
       { key: 'europe', label: t('components.webcams.regions.europe') },

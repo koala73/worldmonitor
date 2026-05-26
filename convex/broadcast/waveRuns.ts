@@ -61,6 +61,7 @@ import {
   createSegment,
   upsertContactToSegment,
 } from "./_resendContacts";
+import { filterPageForEligibility } from "./_poolSelection";
 
 // ───────────────────────────────────────────────────────────────────────────
 // Constants
@@ -250,6 +251,228 @@ export const _getRegistrationsPage = internalQuery({
     return await ctx.db
       .query("registrations")
       .paginate({ cursor, numItems });
+  },
+});
+
+/**
+ * Look up users-table rows for a list of normalized emails. Returns only
+ * matched rows (missing emails are absent from the result, NOT represented
+ * as null). Convex wire format: array of records, NOT a Map (Maps aren't
+ * serializable across the action↔query boundary).
+ *
+ * Caller (pickWaveAction / _dryRunNonEnglishExclusion) is expected to
+ * dedupe inputs before calling.
+ *
+ * Performance: parallelizes index lookups via `Promise.all` inside the
+ * query handler. Convex query handlers can issue concurrent
+ * `ctx.db.query(...).first()` reads against an index — they run within
+ * the same transaction (read isolation) but don't serialize round-trips.
+ * For a 1000-email input, this turns ~1000 sequential awaits (~1s+) into
+ * one parallel batch (~100ms typical).
+ *
+ * Future scaling consideration: at >10k authenticated users in
+ * production, consider materializing `localePrimary` on
+ * `registrations.localePrimary` directly via `users:ensureRecord`'s
+ * second write. That eliminates this cross-table lookup entirely from
+ * the broadcast hot path, at the cost of one extra patch per ensureRecord
+ * call. Bulk-loading all users via `.collect()` is NOT a safe interim
+ * step — Convex's per-query transaction limit (~8MB / ~16k rows) caps
+ * this. For wave-8 today (~hundreds of authenticated users), the
+ * Promise.all batched approach is sufficient and forward-compatible
+ * with either follow-up architecture.
+ */
+export const _getUsersByEmailPage = internalQuery({
+  args: {
+    emails: v.array(v.string()),
+  },
+  handler: async (ctx, { emails }) => {
+    const validEmails = emails.filter((e) => e && e.length > 0);
+    if (validEmails.length === 0) return [];
+    const rows = await Promise.all(
+      validEmails.map((email) =>
+        ctx.db
+          .query("users")
+          .withIndex("by_normalizedEmail", (q) =>
+            q.eq("normalizedEmail", email),
+          )
+          .first(),
+      ),
+    );
+    const out: Array<{ normalizedEmail: string; localePrimary?: string }> = [];
+    for (const row of rows) {
+      if (row && row.normalizedEmail) {
+        out.push({
+          normalizedEmail: row.normalizedEmail,
+          localePrimary: row.localePrimary,
+        });
+      }
+    }
+    return out;
+  },
+});
+
+/**
+ * Operator pre-flight: report the IMPACT of running pickWaveAction with
+ * `excludeNonEnglish: true` against the CURRENT eligible pool, WITHOUT
+ * actually firing a wave. Mirrors pickWaveAction's read path
+ * (suppressed + paid + paginated registrations + per-page _getUsersByEmailPage
+ * + filterPageForEligibility) but does NOT touch Resend / scheduler /
+ * wavePickedContacts / waveRuns.
+ *
+ * Operator runbook: run BEFORE flipping `excludeNonEnglish: true` on a
+ * real ramp. Inspect the returned counters; sanity-check that the
+ * `excludedByLocale` distribution matches expected demographics (e.g.,
+ * `zh > ru > ko > ja` for an English-launch list). If `excludedTotal /
+ * eligibleTotal > 10%`, the heuristic is over-aggressive — investigate
+ * before enabling.
+ *
+ * CLI:
+ *   npx convex run broadcast/waveRuns:_dryRunNonEnglishExclusion '{}'
+ */
+export const _dryRunNonEnglishExclusion = internalAction({
+  args: {
+    sampleSize: v.optional(v.number()),
+  },
+  handler: async (
+    ctx,
+    args,
+  ): Promise<{
+    eligibleTotal: number;
+    excludedTotal: number;
+    excludedByLocale: Record<string, number>;
+    sampleExcludedEmails: string[];
+  }> => {
+    const sampleSize =
+      typeof args.sampleSize === "number" && args.sampleSize > 0
+        ? Math.min(args.sampleSize, 200)
+        : 20;
+
+    const [suppressed, paid] = await Promise.all([
+      ctx.runQuery(internal.broadcast.waveRuns._getSuppressedEmails, {}),
+      ctx.runQuery(internal.broadcast.waveRuns._getPaidEmails, {}),
+    ]);
+    const suppressedSet = new Set(suppressed);
+    const paidSet = new Set(paid);
+
+    let eligibleTotal = 0;
+    let excludedTotal = 0;
+    const excludedByLocale: Record<string, number> = {};
+    const sampleExcludedEmails: string[] = [];
+
+    let cursor: string | null = null;
+    while (true) {
+      const page: {
+        page: Array<{ normalizedEmail: string; proLaunchWave?: string }>;
+        isDone: boolean;
+        continueCursor: string;
+      } = await ctx.runQuery(
+        internal.broadcast.waveRuns._getRegistrationsPage,
+        { cursor, numItems: REGISTRATIONS_PAGE_SIZE },
+      );
+
+      // Fetch users-table rows for THIS PAGE's candidates only — bounded
+      // by page size, not table size.
+      const candidates: string[] = [];
+      for (const row of page.page) {
+        const e = row.normalizedEmail;
+        if (!e || e.length === 0) continue;
+        if (suppressedSet.has(e)) continue;
+        if (paidSet.has(e)) continue;
+        if (row.proLaunchWave) continue;
+        candidates.push(e);
+      }
+      const dedup = Array.from(new Set(candidates));
+      const usersByEmail: Map<string, { localePrimary?: string }> = new Map();
+      if (dedup.length > 0) {
+        const userRows: Array<{
+          normalizedEmail: string;
+          localePrimary?: string;
+        }> = await ctx.runQuery(
+          internal.broadcast.waveRuns._getUsersByEmailPage,
+          { emails: dedup },
+        );
+        for (const u of userRows) {
+          usersByEmail.set(u.normalizedEmail, {
+            localePrimary: u.localePrimary,
+          });
+        }
+      }
+
+      const result = filterPageForEligibility({
+        page: page.page,
+        suppressedSet,
+        paidSet,
+        usersByEmail,
+        excludeNonEnglish: true,
+      });
+
+      eligibleTotal += result.pageEligibleCount;
+      excludedTotal += result.pageExcludedTotal;
+      for (const [locale, count] of Object.entries(result.pageExcludedByLocale)) {
+        excludedByLocale[locale] = (excludedByLocale[locale] ?? 0) + count;
+      }
+
+      // Collect a small sample of excluded emails for operator inspection.
+      // Sampled in encounter order (good enough; not statistical). Build a
+      // Set from `result.eligible` once per page so the membership check is
+      // O(1) instead of O(eligible.length) per row — without this, the
+      // worst-case sample-collection cost is O(page_size × eligible_size)
+      // ≈ O(1000²) per page on a fully-eligible page (per greptile P2,
+      // PR #3643).
+      if (sampleExcludedEmails.length < sampleSize) {
+        const eligibleSet = new Set(result.eligible);
+        for (const row of page.page) {
+          if (sampleExcludedEmails.length >= sampleSize) break;
+          const e = row.normalizedEmail;
+          if (!e) continue;
+          if (suppressedSet.has(e) || paidSet.has(e) || row.proLaunchWave) continue;
+          // If this email made it into result.eligible, it's NOT excluded.
+          if (!eligibleSet.has(e)) {
+            sampleExcludedEmails.push(e);
+          }
+        }
+      }
+
+      if (page.isDone) break;
+      cursor = page.continueCursor;
+    }
+
+    return { eligibleTotal, excludedTotal, excludedByLocale, sampleExcludedEmails };
+  },
+});
+
+/**
+ * Persist pool-filter audit fields onto the waveRuns row at the end of
+ * pickWaveAction's pool-selection phase. NOT lease-validating: audit
+ * fields are operational metadata, not state-machine state, and recording
+ * them for THIS run's pool selection remains useful even if the lease has
+ * since rotated. Throws only if the run row itself is missing (a logic
+ * bug in the caller, not a normal recovery scenario).
+ */
+export const _recordPoolFilterStats = internalMutation({
+  args: {
+    runId: v.string(),
+    excludeNonEnglish: v.boolean(),
+    eligiblePoolCount: v.number(),
+    excludedCount: v.number(),
+    excludedLocaleCounts: v.record(v.string(), v.number()),
+  },
+  handler: async (ctx, args) => {
+    const run = await ctx.db
+      .query("waveRuns")
+      .withIndex("by_runId", (q) => q.eq("runId", args.runId))
+      .unique();
+    if (!run) {
+      throw new Error(`[_recordPoolFilterStats] no run ${args.runId}`);
+    }
+    await ctx.db.patch(run._id, {
+      excludeNonEnglish: args.excludeNonEnglish,
+      eligiblePoolCount: args.eligiblePoolCount,
+      excludedCount: args.excludedCount,
+      excludedLocaleCounts: args.excludedLocaleCounts,
+      updatedAt: Date.now(),
+    });
+    return { ok: true as const };
   },
 });
 
@@ -462,6 +685,12 @@ export const pickWaveAction = internalAction({
     runId: v.string(),
     requestedCount: v.number(),
     batchSize: v.optional(v.number()),
+    // Filter contacts whose locale (from `users.localePrimary` or email-TLD
+    // heuristic fallback) is non-English. Filter runs INSIDE the registration
+    // pagination loop, BEFORE reservoir sampling — sampling-then-filtering
+    // would silently underfill (sample 1000, exclude 200, send 800 even
+    // though thousands of eligible English contacts existed elsewhere).
+    excludeNonEnglish: v.optional(v.boolean()),
   },
   handler: async (ctx, args): Promise<{ ok: boolean; reason?: string }> => {
     const apiKey = process.env.RESEND_API_KEY;
@@ -477,6 +706,7 @@ export const pickWaveAction = internalAction({
       throw new Error("[pickWaveAction] waveLabel must be 1-64 chars");
     }
     const batchSize = args.batchSize ?? DEFAULT_BATCH_SIZE;
+    const excludeNonEnglish = args.excludeNonEnglish === true;
 
     // Step 1: claim lease + insert waveRuns row.
     const claim: ClaimLeaseResult = await ctx.runMutation(
@@ -496,7 +726,7 @@ export const pickWaveAction = internalAction({
     }
 
     try {
-      // Step 2: stream registrations + reservoir-sample.
+      // Step 2: stream registrations + filter (per-page) + reservoir-sample.
       const [suppressed, paid] = await Promise.all([
         ctx.runQuery(internal.broadcast.waveRuns._getSuppressedEmails, {}),
         ctx.runQuery(internal.broadcast.waveRuns._getPaidEmails, {}),
@@ -505,6 +735,13 @@ export const pickWaveAction = internalAction({
       const paidSet = new Set(paid);
 
       const reservoir = new Reservoir<string>(args.requestedCount);
+      // Pool-filter audit accumulators — persisted to waveRuns at end of pool
+      // selection so any past wave's filter behavior is auditable from the
+      // row alone (no log archaeology).
+      let eligiblePoolCount = 0;
+      let excludedCount = 0;
+      const excludedLocaleCounts: Record<string, number> = {};
+
       let cursor: string | null = null;
       while (true) {
         const page: {
@@ -515,17 +752,70 @@ export const pickWaveAction = internalAction({
           internal.broadcast.waveRuns._getRegistrationsPage,
           { cursor, numItems: REGISTRATIONS_PAGE_SIZE },
         );
-        for (const row of page.page) {
-          const email = row.normalizedEmail;
-          if (!email || email.length === 0) continue;
-          if (suppressedSet.has(email)) continue;
-          if (paidSet.has(email)) continue;
-          if (row.proLaunchWave) continue;
-          reservoir.offer(email);
+
+        // When filtering is active, fetch users-table data for THIS PAGE's
+        // candidate emails (those that survive the non-locale filters).
+        // Bounded by page size, NOT reservoir size — explicitly per-page to
+        // avoid read-limit surprises on a 100k+ registration table.
+        let usersByEmail: Map<string, { localePrimary?: string }> = new Map();
+        if (excludeNonEnglish) {
+          const candidates: string[] = [];
+          for (const row of page.page) {
+            const e = row.normalizedEmail;
+            if (!e || e.length === 0) continue;
+            if (suppressedSet.has(e)) continue;
+            if (paidSet.has(e)) continue;
+            if (row.proLaunchWave) continue;
+            candidates.push(e);
+          }
+          const dedup = Array.from(new Set(candidates));
+          if (dedup.length > 0) {
+            const userRows: Array<{
+              normalizedEmail: string;
+              localePrimary?: string;
+            }> = await ctx.runQuery(
+              internal.broadcast.waveRuns._getUsersByEmailPage,
+              { emails: dedup },
+            );
+            for (const u of userRows) {
+              usersByEmail.set(u.normalizedEmail, {
+                localePrimary: u.localePrimary,
+              });
+            }
+          }
         }
+
+        const result = filterPageForEligibility({
+          page: page.page,
+          suppressedSet,
+          paidSet,
+          usersByEmail,
+          excludeNonEnglish,
+        });
+
+        for (const email of result.eligible) reservoir.offer(email);
+        eligiblePoolCount += result.pageEligibleCount;
+        excludedCount += result.pageExcludedTotal;
+        for (const [locale, count] of Object.entries(result.pageExcludedByLocale)) {
+          excludedLocaleCounts[locale] = (excludedLocaleCounts[locale] ?? 0) + count;
+        }
+
         if (page.isDone) break;
         cursor = page.continueCursor;
       }
+
+      // Persist pool-filter audit fields BEFORE the empty-pool guard so even
+      // a discard-by-empty-pool run records what was filtered out.
+      await ctx.runMutation(
+        internal.broadcast.waveRuns._recordPoolFilterStats,
+        {
+          runId: args.runId,
+          excludeNonEnglish,
+          eligiblePoolCount,
+          excludedCount,
+          excludedLocaleCounts,
+        },
+      );
 
       const picked = reservoir.values();
 

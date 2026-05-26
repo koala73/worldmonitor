@@ -50,9 +50,37 @@ export function wrapWidgetHtml(html: string, extraClass = ''): string {
 
 const widgetBodyStore = new Map<string, string>();
 
-// Keyed by iframe element — persists HTML across DOM moves so the load listener
-// can re-post whenever the browser re-navigates the iframe after a drag.
+// Keyed by iframe element so the parent can answer sandbox readiness messages
+// after initial mount or iframe re-navigation.
 const iframeHtmlStore = new WeakMap<HTMLIFrameElement, string>();
+const iframeTokenStore = new WeakMap<HTMLIFrameElement, { id: string; token: string }>();
+// AbortController per mounted iframe — scopes the global `message` listener
+// to the iframe's DOM lifetime so it can be torn down on iframe removal.
+// Without this, every mounted PRO widget leaks a window-level listener that
+// retains a strong reference to the iframe element (and its ~80 KB HTML
+// payload via iframeHtmlStore), preventing garbage collection in long-
+// running dashboard sessions that add/remove widgets repeatedly.
+const iframeAbortStore = new WeakMap<HTMLIFrameElement, AbortController>();
+// Throttle re-deliveries of the same HTML to one per second per iframe.
+// A real iframe re-navigation (drag/drop reload) is human-paced and easily
+// clears this floor; a malicious widget script that re-posts wm-widget-
+// ready in a tight loop after receiving its document is rate-gated and
+// cannot trigger an unbounded document.write storm.
+const iframeLastDeliveryMs = new WeakMap<HTMLIFrameElement, number>();
+const MIN_DELIVERY_INTERVAL_MS = 1000;
+
+function createWidgetToken(): string {
+  const crypto = globalThis.crypto;
+  if (!crypto) {
+    throw new Error('crypto API unavailable for widget sandbox token');
+  }
+  if (crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
 
 function buildWidgetDoc(bodyContent: string): string {
   return `<!DOCTYPE html>
@@ -91,22 +119,46 @@ function mountProWidget(iframe: HTMLIFrameElement): void {
   const id = iframe.dataset.wmId;
   if (!id) return;
 
-  // Already wired up — the persistent load listener will re-post on every
-  // navigation (including after the panel is dragged to a new position).
+  // Already wired up — the sandbox will request HTML again after re-navigation.
   if (iframeHtmlStore.has(iframe)) return;
 
   const body = widgetBodyStore.get(id);
   if (!body) return;
   widgetBodyStore.delete(id);
   const html = buildWidgetDoc(body);
+  const token = iframe.dataset.wmToken;
+  if (!token) return;
   iframeHtmlStore.set(iframe, html);
+  iframeTokenStore.set(iframe, { id, token });
 
-  // Persistent (no { once }) — fires on initial load AND whenever the browser
-  // re-navigates the iframe after its DOM position changes (drag/drop).
-  iframe.addEventListener('load', () => {
+  const controller = new AbortController();
+  iframeAbortStore.set(iframe, controller);
+
+  window.addEventListener('message', (event) => {
+    const mounted = iframeTokenStore.get(iframe);
+    if (!mounted) return;
+    if (event.source !== iframe.contentWindow) return;
+    if (!event.data || event.data.type !== 'wm-widget-ready') return;
+    if (event.data.id !== mounted.id || event.data.token !== mounted.token) return;
     const storedHtml = iframeHtmlStore.get(iframe);
-    if (storedHtml) iframe.contentWindow?.postMessage({ type: 'wm-html', html: storedHtml }, '*');
-  });
+    if (!storedHtml) return;
+    const now = performance.now();
+    const last = iframeLastDeliveryMs.get(iframe) ?? 0;
+    if (now - last < MIN_DELIVERY_INTERVAL_MS) return;
+    iframeLastDeliveryMs.set(iframe, now);
+    iframe.contentWindow?.postMessage(
+      { type: 'wm-html', id: mounted.id, token: mounted.token, html: storedHtml },
+      '*',
+    );
+  }, { signal: controller.signal });
+}
+
+function unmountProWidget(iframe: HTMLIFrameElement): void {
+  iframeAbortStore.get(iframe)?.abort();
+  iframeAbortStore.delete(iframe);
+  iframeTokenStore.delete(iframe);
+  iframeHtmlStore.delete(iframe);
+  iframeLastDeliveryMs.delete(iframe);
 }
 
 if (typeof document !== 'undefined') {
@@ -118,6 +170,14 @@ if (typeof document !== 'undefined') {
           mountProWidget(node);
         } else {
           node.querySelectorAll<HTMLIFrameElement>('iframe[data-wm-id]').forEach(mountProWidget);
+        }
+      }
+      for (const node of mut.removedNodes) {
+        if (!(node instanceof Element)) continue;
+        if (node instanceof HTMLIFrameElement && node.dataset.wmId) {
+          unmountProWidget(node);
+        } else {
+          node.querySelectorAll<HTMLIFrameElement>('iframe[data-wm-id]').forEach(unmountProWidget);
         }
       }
     }
@@ -134,6 +194,8 @@ if (typeof document !== 'undefined') {
 
 export function wrapProWidgetHtml(bodyContent: string): string {
   const id = `wm-${Math.random().toString(36).slice(2)}`;
+  const token = createWidgetToken();
   widgetBodyStore.set(id, stripLeadingPanelHeader(bodyContent));
-  return `<div class="wm-widget-shell wm-widget-pro"><iframe src="/wm-widget-sandbox.html" data-wm-id="${id}" sandbox="allow-scripts" style="width:100%;height:400px;border:none;display:block;" title="Interactive widget"></iframe></div>`;
+  const src = `/wm-widget-sandbox.html#id=${encodeURIComponent(id)}&token=${encodeURIComponent(token)}`;
+  return `<div class="wm-widget-shell wm-widget-pro"><iframe src="${src}" data-wm-id="${id}" data-wm-token="${token}" sandbox="allow-scripts" style="width:100%;height:400px;border:none;display:block;" title="Interactive widget"></iframe></div>`;
 }

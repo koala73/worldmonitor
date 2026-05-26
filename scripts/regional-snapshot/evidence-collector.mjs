@@ -4,6 +4,7 @@
 // balance drivers, narrative sections, and triggers.
 
 import { num } from './_helpers.mjs';
+import { sanitizeEvidenceString } from './_sanitize.mjs';
 // Use scripts/shared mirror (not repo-root shared/): Railway service has
 // rootDirectory=scripts so ../../shared/ escapes the deploy root. See #2954.
 import { REGIONS, getRegionCorridors, isSignalInRegion } from '../shared/geography.js';
@@ -30,30 +31,32 @@ export function collectEvidence(regionId, sources) {
     for (const s of xss) {
       if (!isSignalInRegion(s?.theater, region)) continue;
       out.push({
-        id: String(s?.id ?? `xss:${out.length}`),
+        id: sanitizeEvidenceString(s?.id ?? `xss:${out.length}`),
         type: 'market_signal',
         source: 'cross-source',
-        summary: String(s?.summary ?? s?.type ?? 'cross-source signal'),
+        summary: sanitizeEvidenceString(s?.summary ?? s?.type ?? 'cross-source signal'),
         confidence: num(s?.severityScore, 50) / 100,
         observed_at: num(s?.detectedAt, Date.now()),
-        theater: String(s?.theater ?? ''),
+        theater: sanitizeEvidenceString(s?.theater),
         corridor: '',
       });
     }
   }
 
   // CII spikes for region countries
-  const cii = sources['risk:scores:sebuf:stale:v1']?.ciiScores;
+  const cii = sources['risk:scores:sebuf:stale:v2']?.ciiScores;
   if (Array.isArray(cii)) {
     const regionCountries = new Set(region.keyCountries);
     for (const c of cii) {
       if (!regionCountries.has(String(c?.region ?? ''))) continue;
       if (num(c?.combinedScore) < 50) continue;
+      const safeRegion = sanitizeEvidenceString(c.region);
+      const safeTrend = sanitizeEvidenceString(c.trend ?? 'STABLE');
       out.push({
-        id: `cii:${c.region}`,
+        id: `cii:${safeRegion}`,
         type: 'cii_spike',
         source: 'risk-scores',
-        summary: `${c.region} CII ${num(c.combinedScore).toFixed(0)} (trend ${c.trend ?? 'STABLE'})`,
+        summary: `${safeRegion} CII ${num(c.combinedScore).toFixed(0)} (trend ${safeTrend})`,
         confidence: 0.9,
         observed_at: num(c?.computedAt, Date.now()),
         theater: '',
@@ -73,15 +76,17 @@ export function collectEvidence(regionId, sources) {
   const cps = sources['supply_chain:chokepoints:v4']?.chokepoints;
   if (Array.isArray(cps)) {
     for (const cp of cps) {
-      const cpId = String(cp?.id ?? '');
+      const cpId = sanitizeEvidenceString(cp?.id);
       if (!regionChokepointIds.has(cpId)) continue;
       const threat = String(cp?.threatLevel ?? '').toLowerCase();
       if (threat === 'normal' || threat === '') continue;
+      const safeName = sanitizeEvidenceString(cp?.name) || cpId;
+      const safeThreat = sanitizeEvidenceString(threat);
       out.push({
         id: `chokepoint:${cpId}`,
         type: 'chokepoint_status',
         source: 'supply-chain',
-        summary: `${cp?.name ?? cpId}: ${threat}`,
+        summary: `${safeName}: ${safeThreat}`,
         confidence: 0.95,
         observed_at: Date.now(),
         theater: '',
@@ -98,10 +103,10 @@ export function collectEvidence(regionId, sources) {
       if (!fRegion.includes(region.forecastLabel.toLowerCase())) continue;
       if (num(f?.probability) < 0.3) continue;
       out.push({
-        id: `forecast:${f.id}`,
+        id: `forecast:${sanitizeEvidenceString(f.id)}`,
         type: 'news_headline',
         source: 'forecast',
-        summary: String(f?.title ?? 'forecast'),
+        summary: sanitizeEvidenceString(f?.title ?? 'forecast'),
         confidence: num(f?.confidence, 0.5),
         observed_at: num(f?.updatedAt, Date.now()),
         theater: '',

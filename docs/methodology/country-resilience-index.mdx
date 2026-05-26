@@ -60,7 +60,7 @@ The index is organized into 6 domains. Each domain weight reflects its relative 
 | Economic | `economic` | 0.17 | Macro-Fiscal, Currency & External, Trade Policy, Financial System Exposure |
 | Infrastructure | `infrastructure` | 0.15 | Cyber & Digital, Logistics & Supply, Infrastructure |
 | Energy | `energy` | 0.11 | Energy |
-| Social & Governance | `social-governance` | 0.19 | Governance, Social Cohesion, Border Security, Information |
+| Social & Governance | `social-governance` | 0.19 | Governance, Social Cohesion, Conflict & Displacement, Information |
 | Health & Food | `health-food` | 0.13 | Health & Public Service, Food & Water |
 | Recovery | `recovery` | 0.25 | Fiscal Space, Reserve Adequacy, External Debt Coverage, Import Concentration, State Continuity, Fuel Stock Days |
 
@@ -252,7 +252,13 @@ still observed. Seed-outage paths (raw payload absent) continue to
 drop the weight rather than imputing — the outage-vs-absence
 distinction is preserved.
 
-#### Border Security
+#### Conflict & Displacement
+
+This dimension measures **armed-conflict event intensity and refugee
+displacement**. It does **not** measure border-control infrastructure,
+customs throughput, or cross-border-crime enforcement. The internal
+identifier is `borderSecurity` for proto / cache-key stability; the
+relabeling is tracked in #3737.
 
 | Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
 |---|---|---|---|---|---|---|
@@ -317,11 +323,23 @@ by its weight before computing the domain average, so a dim with
 
 #### Fiscal Space
 
+The first three indicators measure the **state** of public finances; the fourth — `debtSustainabilityGap` — measures the **trajectory**. The gap is the standard IMF DSA construct (used by Article IV missions, ECB MIP scoreboard, and S&P sovereign methodology):
+
+```
+g    = (1 + realGdpGrowth/100) × (1 + cpiInflation/100) − 1
+r    = max(0, (primaryBalance − fiscalBalance) / debtToGdp)
+pb*  = ((r − g) / (1 + g)) × debtToGdp
+gap  = primaryBalance − pb*       (positive ⇒ debt path declining)
+```
+
+The gap is **computed at seed time** and stored as `debtSustainabilityGapPct` in the canonical fiscal-space blob, so the scorer just normalizes. Inputs are year-aligned via `latestCommonYear` across the 5 formula series (debt, balance, primary balance, real growth, inflation); year-mismatched countries get `gap=null` and the scorer's `weightedBlend` redistributes weight across the remaining 3 indicators. The inflation cap (CPI > 10%) drops `gap` to null for inflation-tax-regime countries (Argentina, Turkey, Lebanon, Egypt, Nigeria, Ethiopia, etc.) — above ~10% inflation the formula's nominal-growth term mechanically erodes debt while masking underlying fiscal pathology, and the IMF DSA framework itself only treats sustainability as meaningful below this threshold. Realistic joint coverage is ~140 countries (down from 190 nominal) because of the year-alignment + cap interaction.
+
 | Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
 |---|---|---|---|---|---|---|
-| recoveryGovRevenue | Government revenue as % of GDP (IMF GGR_G01_GDP_PT) | Higher is better | 5 - 45 | 0.40 | IMF | Annual |
-| recoveryFiscalBalance | General government net lending/borrowing as % of GDP (IMF GGXCNL_G01_GDP_PT) | Higher is better | -15 - 5 | 0.30 | IMF | Annual |
-| recoveryDebtToGdp | General government gross debt as % of GDP (IMF GGXWDG_NGDP_PT) | Lower is better | 150 - 0 | 0.30 | IMF | Annual |
+| recoveryGovRevenue | Government revenue as % of GDP (IMF GGR_G01_GDP_PT) | Higher is better | 5 - 45 | 0.25 | IMF | Annual |
+| recoveryFiscalBalance | General government net lending/borrowing as % of GDP (IMF GGXCNL_G01_GDP_PT) | Higher is better | -15 - 5 | 0.20 | IMF | Annual |
+| recoveryDebtToGdp | General government gross debt as % of GDP (IMF GGXWDG_NGDP_PT) | Lower is better | 150 - 0 | 0.20 | IMF | Annual |
+| debtSustainabilityGap | Primary-balance gap to debt-stabilizing level (IMF DSA construct); see formula above. Dropped to null when CPI > 10% to avoid inflation-tax masking. | Higher is better | -5 - 3 | 0.35 | IMF (5 series: GGXONLB_NGDP, GGXCNL_NGDP, GGXWDG_NGDP, NGDP_RPCH, PCPIPCH) | Annual |
 
 #### Reserve Adequacy
 

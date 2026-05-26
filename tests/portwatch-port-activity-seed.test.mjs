@@ -102,8 +102,11 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     assert.ok(matches.length >= 2, `expected returnGeometry:'false' in both paginators, found ${matches.length}`);
   });
 
-  it('fetchWithTimeout combines caller signal with FETCH_TIMEOUT via AbortSignal.any', () => {
-    assert.match(src, /AbortSignal\.any\(\[signal,\s*AbortSignal\.timeout\(FETCH_TIMEOUT\)\]\)/);
+  it('fetchWithTimeout combines caller signal with the per-call timeoutMs via AbortSignal.any', () => {
+    // PR #3711 P1: timeoutMs is now a parameterized option (defaults to
+    // FETCH_TIMEOUT) so preflight can override with PREFLIGHT_FETCH_TIMEOUT.
+    // The AbortSignal.any composition is unchanged.
+    assert.match(src, /AbortSignal\.any\(\[signal,\s*AbortSignal\.timeout\(timeoutMs\)\]\)/);
   });
 
   it('paginators check signal.aborted between pages', () => {
@@ -122,15 +125,240 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     assert.match(src, /if\s*\(!\/Invalid query parameters\/i\.test\(msg\)\)\s*throw\s+err/);
   });
 
+  it('captures the ArcGIS error body after FETCH_TIMEOUT via diagnostic re-fetch (WM 2026-05-15)', () => {
+    // ArcGIS Daily_Ports_Data, during degradation episodes, returns
+    // HTTP 200 with a 400 error body after 30-56s. The 45s FETCH_TIMEOUT
+    // misses it; the upstream circuit-breaker on /Invalid query parameters/i
+    // never fires. Diagnostic re-fetch with +20s budget surfaces the body so
+    // the circuit-breaker can act on the upstream-degraded signal instead
+    // of treating every degraded country as a generic timeout.
+    assert.match(src, /ERROR_BODY_CAPTURE_EXTRA_MS\s*=\s*40_000/);
+    assert.match(src, /async function _captureErrorBodyAfterTimeout/);
+    // fetchWithTimeout calls it on the timeout-like-error path, before
+    // routing to proxy.
+    assert.match(src, /const captured = await _captureErrorBodyAfterTimeout\(url, signal\)/);
+    // If the captured body has an ArcGIS error, surface its message so
+    // fetchWithRetryOnInvalidParams's pattern matcher can fire.
+    assert.match(src, /if\s*\(captured\?\.error\)\s*{[\s\S]{0,160}throw new Error\(`ArcGIS error:/);
+  });
+
+  it('body capture path is gated by success + attempt caps and currently disabled', () => {
+    // WM 2026-05-15 rebalance: proxy retry now has enough budget (70s) to
+    // catch ArcGIS's 51-56s response directly, and arcgisProxyRetry already
+    // throws the parsed `body.error.message` as an Error that
+    // fetchWithRetryOnInvalidParams's regex matches. The diagnostic capture
+    // path is redundant in this mode, so attempts are set to 0 (path code
+    // intact for future scenarios where direct-fetch DOES land close to a
+    // body, e.g. non-Railway egress).
+    assert.match(src, /MAX_BODY_CAPTURE_SUCCESSES\s*=\s*1/);
+    assert.match(src, /MAX_BODY_CAPTURE_ATTEMPTS\s*=\s*0/);
+    assert.match(src, /let _bodyCaptureSuccessCount\s*=\s*0/);
+    assert.match(src, /let _bodyCaptureAttemptCount\s*=\s*0/);
+    // Gate code still wires both counters — preserves the once-per-run
+    // semantics if the constant is ever re-enabled.
+    assert.match(src, /_bodyCaptureSuccessCount\s*<\s*MAX_BODY_CAPTURE_SUCCESSES[\s\S]{0,80}_bodyCaptureAttemptCount\s*<\s*MAX_BODY_CAPTURE_ATTEMPTS/);
+    assert.match(src, /_bodyCaptureAttemptCount\s*\+=\s*1/);
+    assert.match(src, /_bodyCaptureSuccessCount\s*\+=\s*1/);
+    // Test-only reset helper.
+    assert.match(src, /export function _resetBodyCapturedFlag/);
+  });
+
+  it('proxy-confirmed Invalid query parameters short-circuits the retry (Greptile PR #3760 P2)', () => {
+    // The short-circuit was briefly removed on 2026-05-18 based on a
+    // standalone laptop probe showing proxy retries DO recover. But
+    // inside the seeder's 90s per-country wrap, by the time we hit
+    // this catch we've already used direct(30s) + proxy(50s) ≈ 80s.
+    // A retry's 500ms backoff + new direct+proxy can't fit in the
+    // ~10s remaining before the wrap aborts. Restored: keep the
+    // short-circuit so proxy-returned 400 bodies don't burn the
+    // remaining budget on a retry that mostly gets cancelled.
+    // INVALID_PARAMS_RETRY_THRESHOLD still ticks for global visibility.
+    assert.match(src, /if\s*\(\/via proxy after\/i\.test\(msg\)\)\s*throw err/);
+    // Threshold counter is present + increments + emits degraded message.
+    assert.match(src, /_invalidParamsErrorCount\s*\+=\s*1/);
+    assert.match(src, /_invalidParamsErrorCount\s*>\s*INVALID_PARAMS_RETRY_THRESHOLD/);
+    assert.match(src, /ArcGIS degraded — \$\{_invalidParamsErrorCount\}/);
+  });
+
+  it('canonical/seed-meta advance only when coverage >= MIN_CANONICAL_PUBLISH (Greptile PR #3760 P1)', () => {
+    // Gate=5 lets per-country writes through (cache rotation accumulates)
+    // but CANONICAL_KEY + META_KEY require a higher coverage floor before
+    // they advance — protects consumers from a 5-country canonical
+    // published as "healthy" during a recovery from full outage.
+    assert.match(src, /const MIN_CANONICAL_PUBLISH\s*=\s*50/);
+    // The gate is evaluated and used to conditionally write canonical/meta:
+    assert.match(src, /const canonicalAdvances = countryData\.size\s*>=\s*MIN_CANONICAL_PUBLISH/);
+    assert.match(src, /if\s*\(canonicalAdvances\)\s*\{[\s\S]{0,300}SET',\s*CANONICAL_KEY/);
+    // Below the floor, extendExistingTtl preserves canonical + meta +
+    // prior per-country keys, and a PARTIAL PERSIST log line surfaces
+    // what happened to operators. Greptile PR #3760 round 3 P1: WITHOUT
+    // prevCountryKeys in the extend list, untouched countries' payloads
+    // (TTL=3d) can expire during a multi-day partial recovery while the
+    // canonical list still references them.
+    assert.match(src, /extendExistingTtl\(\[CANONICAL_KEY,\s*META_KEY,\s*\.\.\.prevCountryKeys\],\s*TTL\)/);
+    assert.match(src, /PARTIAL PERSIST/);
+  });
+
+  it('cap-mode bypass requires fresh upstream contact (PR #3701 review P1)', () => {
+    // Pre-fix the cap-mode bypass was unconditional: any countryData.size
+    // ≥ MIN_VALID_COUNTRIES + capTriggered = bypass, even if ALL entries
+    // were stale-served prior-run data. That meant an "ArcGIS completely
+    // down" run with freshFetched=0 + cacheHits=0 + servedStale=27 could
+    // shrink the canonical list from ~174 → 27 stale-only entries and
+    // advance seed-meta as healthy — hiding the outage from operators.
+    // Fix: gate bypass on freshFetched + cacheHits ≥ floor.
+    assert.match(src, /MIN_FRESH_FETCH_FOR_CAP_BYPASS\s*=\s*5/);
+    // Counter is tracked in fetchAll's fetched-fresh path:
+    assert.match(src, /let freshFetchedCount\s*=\s*0/);
+    assert.match(src, /freshFetchedCount\+\+/);
+    // Counts are surfaced out of fetchAll:
+    assert.match(src, /freshFetchedCount,[\s\n]+cacheHitCount: cacheHits/);
+    // main() gates the bypass on the combined fresh upstream contact:
+    assert.match(src, /const upstreamContactCount = freshFetchedCount \+ cacheHitCount/);
+    assert.match(src, /const capBypassEarned = capTriggered && upstreamContactCount >= MIN_FRESH_FETCH_FOR_CAP_BYPASS/);
+    // When cap-mode is triggered but bypass NOT earned, refuse to publish
+    // a stale-only set and fall through to the 80% guard (which will fire
+    // and extendExistingTtl).
+    assert.match(src, /CAP-MODE BYPASS REFUSED/);
+  });
+
+  it('inter-batch sleep is abort-aware (PR #3701 review P2)', () => {
+    // Pre-fix the 5s batch backoff used plain `setTimeout` that ignored
+    // the caller signal mid-sleep, so a SIGTERM during the 5s wait still
+    // forced the full 5s before observing the abort. Fix: race the
+    // setTimeout against signal's abort event so the loop exits
+    // immediately on a real cancellation.
+    assert.match(src, /const timer = setTimeout\(resolve, BATCH_BACKOFF_MS\)/);
+    assert.match(src, /signal\.addEventListener\('abort', onAbort/);
+    assert.match(src, /clearTimeout\(timer\)/);
+  });
+
+  it('bail-don\'t-retry on >5 Invalid query parameters errors per run (degradation signal)', () => {
+    // WM 2026-05-15 degradation: 30 cold fetches all hit the same 400,
+    // retry burned ~22 minutes of container budget for zero recoveries.
+    // Threshold preserves the legit transient-flake retry while protecting
+    // budget during global degradation.
+    assert.match(src, /INVALID_PARAMS_RETRY_THRESHOLD\s*=\s*5/);
+    assert.match(src, /let _invalidParamsErrorCount\s*=\s*0/);
+    // Counter increments + threshold check + bail-don't-retry path:
+    assert.match(src, /_invalidParamsErrorCount\s*\+=\s*1/);
+    assert.match(src, /if\s*\(_invalidParamsErrorCount\s*>\s*INVALID_PARAMS_RETRY_THRESHOLD\)/);
+    assert.match(src, /ArcGIS degraded — \${_invalidParamsErrorCount} 'Invalid query parameters'/);
+    // Test-only reset helper for re-exercising the threshold in unit tests.
+    assert.match(src, /export function _resetInvalidParamsErrorCount/);
+  });
+
   it('both EP3 + EP4 paginators route through fetchWithRetryOnInvalidParams', () => {
     const matches = src.match(/fetchWithRetryOnInvalidParams\(/g) ?? [];
     // Called in: fetchAllPortRefs (EP4), fetchCountryAccum (EP3). 2+ usages.
     assert.ok(matches.length >= 2, `expected retry wrapper used by both paginators, found ${matches.length}`);
   });
 
-  it('CONCURRENCY is 12 and PER_COUNTRY_TIMEOUT_MS is 90s', () => {
-    assert.match(src, /CONCURRENCY\s*=\s*12/);
+  it('CONCURRENCY is 6 and PER_COUNTRY_TIMEOUT_MS is 90s', () => {
+    // Halved from 12 → 6 on 2026-05-14 (PR #3694) to ease pressure on both
+    // ArcGIS-direct AND Decodo-proxy rate-limits during the ongoing
+    // ArcGIS degradation. Math at concurrency 6 + cold-fetch cap 30:
+    //   5 batches × ~60s realistic (90s worst case) + 4×5s backoff
+    //   ≈ 320s realistic, 470s worst case — still fits the 570s
+    //   bundle budget.
+    assert.match(src, /const CONCURRENCY\s*=\s*6/);
     assert.match(src, /PER_COUNTRY_TIMEOUT_MS\s*=\s*90_000/);
+  });
+
+  it('BATCH_BACKOFF_MS spaces out per-batch bursts + signal-aborts break the loop', () => {
+    // Inter-batch sleep prevents back-to-back rate-limit hits on Decodo +
+    // ArcGIS. Post-#3681 run #2 showed Decodo throttling us after run #1
+    // hammered it (24/30 → 5/30 success degradation). 5s × 4 = 20s total
+    // added; negligible against the 570s bundle budget.
+    assert.match(src, /const BATCH_BACKOFF_MS\s*=\s*5_000/);
+    // The sleep itself is gated on not-last-batch. Pre-Greptile P2 it was
+    // also gated on !signal.aborted but the loop kept iterating after the
+    // skipped sleep — defeating the SIGTERM-responsiveness intent. Now an
+    // aborted signal `break`s the loop entirely (Greptile PR #3694 P2).
+    assert.match(src, /if\s*\(\s*signal\?\.aborted\s*\)\s*break/);
+    assert.match(src, /if\s*\(\s*batchIdx\s*<\s*batches\s*\)/);
+    // PR #3701 review P2: the sleep itself races against signal.aborted
+    // so a mid-sleep SIGTERM exits the wait immediately instead of
+    // forcing the full BATCH_BACKOFF_MS.
+    assert.match(src, /setTimeout\(resolve,\s*BATCH_BACKOFF_MS\)/);
+  });
+
+  it('MIN_VALID_COUNTRIES is temporarily lowered to 5 (ArcGIS degraded further)', () => {
+    // 2026-05-18: lowered 20 → 5 because actual success rate dropped to
+    // 6-10/30 per cold-fetch batch — well below the gate=20 set on
+    // 2026-05-16. Every run was failing validation and
+    // extendExistingTtl-only, so fresh successes were never written to
+    // Redis and the cap-mode rotation never accumulated. Floor at 5
+    // matches MIN_FRESH_FETCH_FOR_CAP_BYPASS (silent-loss safety still
+    // intact). Pre-2026-05-14 value: 50.
+    assert.match(src, /const MIN_VALID_COUNTRIES\s*=\s*5/);
+    // Canary: require an anchor to the original permanent baseline (50)
+    // and a Revert path so the temporary nature has a concrete reference
+    // point. A vague "lowered for now" edit would lose the canary.
+    assert.match(src, /Revert path/);
+    // Allow a newline between "was" and "50" since the comment may wrap.
+    assert.match(src, /was[\s\/\n]+50/);
+    // Greptile PR #3760 P1: gate=5 alone would have let a 5-country run
+    // replace the 174-country canonical snapshot. The comment must call
+    // out the paired MIN_CANONICAL_PUBLISH gate so a future reviewer
+    // understands why the validateFn floor was safely lowered.
+    assert.match(src, /MIN_CANONICAL_PUBLISH/);
+  });
+
+  // Greptile PR #3694 round 3 P1: with the temp gate lowered to 25 but the
+  // 80% degradation guard unchanged, a cap-mode partial-success run that
+  // CLEARS the coverage gate (countryData.size ≥ 25) would STILL fail the
+  // degradation guard (countryData.size < prevCount × 0.8 ≈ 139). The fix
+  // is to bypass the degradation guard when capTriggered.
+  it('degradation guard is bypassed when capTriggered (cap-mode partial publish)', () => {
+    // fetchAll must surface capTriggered + counter fields to main()
+    assert.match(src, /capTriggered,\s*\n\s*servedStaleCount,/);
+    assert.match(src, /droppedTooOldCount,/);
+    assert.match(src, /droppedNoCacheCount,/);
+    // main() must read those fields off the fetchAll result (plus the
+    // PR #3701 review P1 additions: freshFetchedCount + cacheHitCount).
+    assert.match(src, /capTriggered,\s*\n\s*servedStaleCount,\s*\n\s*droppedTooOldCount,\s*\n\s*droppedNoCacheCount,\s*\n\s*freshFetchedCount,\s*\n\s*cacheHitCount,\s*\n\s*\}\s*=\s*await fetchAll/);
+    // The earned-bypass branch (PR #3701 review P1) must lead to the
+    // PARTIAL PUBLISH log; falling through to the 80%-degradation-guard
+    // branch is the silent-loss protection.
+    assert.match(src, /if\s*\(\s*capBypassEarned\s*\)\s*\{[\s\S]+?PARTIAL PUBLISH \(cap-mode\)/);
+  });
+
+  it('cap-mode partial publish logs operator-visible bucket counts', () => {
+    // Without this log, operators see seed-meta advance but have no signal
+    // that the publish was partial. The log must include servedStale,
+    // droppedTooOld, droppedNoCache counts so /api/health WARNING ↔ HEALTHY
+    // transitions are explainable from the seed log alone.
+    assert.match(src, /PARTIAL PUBLISH \(cap-mode\)/);
+    assert.match(src, /\$\{servedStaleCount\}\s*stale-served/);
+    assert.match(src, /\$\{droppedTooOldCount\}\s*dropped/);
+    assert.match(src, /\$\{droppedNoCacheCount\}\s*dropped/);
+    assert.match(src, /Degradation guard bypassed/);
+  });
+
+  it('non-cap-mode runs still enforce the 80% degradation guard (silent-loss protection)', () => {
+    // The bypass MUST only fire when capTriggered AND the cap-mode bypass
+    // has been earned (sufficient fresh upstream contact). A run where
+    // needsFetch.length ≤ MAX_COLD_FETCH_PER_RUN (normal happy path) must
+    // still apply the 80% guard so an ArcGIS schema regression that
+    // silently drops 100 → 50 countries can't sneak through as a publish.
+    //
+    // Assert by structure: a DEGRADATION GUARD error+return follows the
+    // prevCount × 0.8 comparison.
+    assert.match(src, /prevCount\s*\*\s*0\.8[\s\S]{0,400}DEGRADATION GUARD/);
+    // PR #3701 review P1 introduces a SECOND 80%-guard branch inside the
+    // `capTriggered && !capBypassEarned` block (cap-mode without enough
+    // fresh upstream contact also falls back to the 80% guard). So the
+    // threshold now appears in two condition + two Math.ceil sites = 4.
+    // More than 4 would imply a duplicated check leaked outside the
+    // guard scoping.
+    const matches = src.match(/prevCount\s*\*\s*0\.8/g) ?? [];
+    assert.equal(
+      matches.length,
+      4,
+      `expected exactly 4 prevCount × 0.8 references (2 conditions + 2 Math.ceil error-msg suggestions, ` +
+      `one set per guard branch — cap-mode-without-bypass-earned + non-cap-mode), found ${matches.length}`,
+    );
   });
 
   it('batch loop wires eager .catch for mid-batch SIGTERM diagnostics', () => {
@@ -304,6 +532,144 @@ describe('ArcGIS 429 proxy fallback', () => {
 
   it('429 proxy fallback threads caller signal', () => {
     assert.match(src, /httpsProxyFetchRaw\(url,\s*proxyAuth,\s*\{[^}]*signal\s*\}/s);
+  });
+
+  // WM 2026-05-13 incident: ArcGIS silently stalled instead of returning
+  // 429, so all 30 cold-fetches timed out at 45s without ever entering
+  // the 429 retry branch. Fix: also fall through to proxy on timeout /
+  // transient network errors.
+  it('proxy fallback also fires on timeout (not just HTTP 429)', () => {
+    // The fetchWithTimeout body must wrap `await fetch(...)` in try/catch
+    // so a thrown AbortError (timeout) can be inspected and re-dispatched
+    // to the proxy path. Pre-fix the fetch was bare-awaited, so any
+    // throw exited the function before the 429 branch.
+    assert.match(src, /try\s*\{[\s\S]*?resp\s*=\s*await fetch\(url/);
+    // The catch block must detect timeout-class errors before deciding to
+    // re-throw vs retry-via-proxy.
+    assert.match(src, /errName\s*===\s*'TimeoutError'/);
+    assert.match(src, /isTimeoutLike/);
+  });
+
+  it('proxy retry helper is shared between 429 and timeout paths', () => {
+    // Centralized in arcgisProxyRetry so both branches behave identically
+    // (same Decodo creds resolution, same proxy-side timeout budget, same
+    // error message format). Pre-fix the 429 branch had inline proxy
+    // logic; the timeout path would have duplicated it. Refactored to
+    // share the helper.
+    assert.match(src, /async function arcgisProxyRetry/);
+    // Both branches must dispatch through the helper:
+    const callSites = src.match(/arcgisProxyRetry\(url,/g) ?? [];
+    assert.ok(
+      callSites.length >= 2,
+      `arcgisProxyRetry must be called from both 429 and timeout paths, found ${callSites.length}`,
+    );
+  });
+
+  it('caller signal-abort propagates without proxy retry (real cancellation)', () => {
+    // If the OUTER signal aborts (SIGTERM, per-country 90s timeout), we
+    // must NOT silently retry via proxy — the caller is asking us to
+    // stop. The check is `if (signal?.aborted) throw err`. Without this,
+    // a SIGTERM-triggered abort would still fire a proxy attempt and
+    // potentially miss the shutdown window.
+    assert.match(src, /if\s*\(\s*signal\?\.aborted\s*\)\s*throw err/);
+  });
+
+  it('proxy fallback distinguishes timeout error sources for operator visibility', () => {
+    // Pre-fix the 429 warn log said only "429 rate-limited — retrying via
+    // proxy". Post-fix the same helper is reused with a reason string,
+    // so operator logs distinguish "HTTP 429 rate-limited" from "direct
+    // TimeoutError" from "direct AbortError". Critical for diagnosing
+    // whether ArcGIS is explicitly rate-limiting (429) or silently
+    // stalling (timeout) — different mitigation paths.
+    assert.match(src, /direct \$\{errName \|\| 'timeout'\}/);
+    assert.match(src, /'HTTP 429 rate-limited'/);
+  });
+
+  // Greptile PR #3681 review round 2 P2: combined direct + proxy budget must
+  // stay under PER_COUNTRY_TIMEOUT_MS with slack for proxy setup overhead.
+  it('preflight uses a tight budget + skips proxy fallback (PR #3711 P1)', () => {
+    // Greptile PR #3711 P1: preflight runs fetchMaxDate for all 174
+    // eligible countries at PREFLIGHT_CONCURRENCY=24 BEFORE the cold-fetch
+    // cap. Without a tighter budget the preflight phase alone could blow
+    // the 570s container budget under ArcGIS degradation:
+    //   ceil(174/24)=8 waves × (FETCH_TIMEOUT + PROXY_FETCH_TIMEOUT)
+    //   exceeds the 570s bundle budget BEFORE any useful work
+    //   (e.g. 30+50=80s × 8 = 640s today; was 15+70=85s × 8 = 680s).
+    // Fix: tight direct timeout (5s) + skip proxy fallback so preflight
+    // fails fast and falls through to the expensive per-country path,
+    // where the full budget is available.
+    assert.match(src, /const PREFLIGHT_FETCH_TIMEOUT\s*=\s*5_000/);
+    // fetchWithTimeout accepts options for timeoutMs + noProxyFallback
+    assert.match(src, /async function fetchWithTimeout\(url,\s*{\s*signal,\s*timeoutMs\s*=\s*FETCH_TIMEOUT,\s*noProxyFallback\s*=\s*false\s*}\s*=\s*{}\s*\)/);
+    // Internal timeout uses the override
+    assert.match(src, /AbortSignal\.timeout\(timeoutMs\)/);
+    // noProxyFallback skips arcgisProxyRetry on timeout-like errors
+    assert.match(src, /if\s*\(noProxyFallback\)\s*throw err/);
+    // noProxyFallback also skips proxy on 429
+    assert.match(src, /if\s*\(noProxyFallback\)\s*throw new Error\(`ArcGIS HTTP 429 \(preflight/);
+    // fetchMaxDate uses both options + bypasses fetchWithRetryOnInvalidParams
+    assert.match(src, /timeoutMs:\s*PREFLIGHT_FETCH_TIMEOUT,\s*\n\s*noProxyFallback:\s*true/);
+  });
+
+  it('preflight worst-case wall-clock stays well under container budget', () => {
+    // Documentation-grade test: encodes the budget math so a future tweak
+    // (bumping PREFLIGHT_FETCH_TIMEOUT or PREFLIGHT_CONCURRENCY) surfaces
+    // the implication via failure rather than silent drift.
+    const preflightTimeout = src.match(/const PREFLIGHT_FETCH_TIMEOUT\s*=\s*(\d+_?\d*)/)?.[1];
+    const preflightConcurrency = src.match(/const PREFLIGHT_CONCURRENCY\s*=\s*(\d+)/)?.[1];
+    const parseMs = (s) => parseInt((s ?? '0').replace(/_/g, ''), 10);
+    const timeoutMs = parseMs(preflightTimeout);
+    const concurrency = parseInt(preflightConcurrency, 10);
+    const countries = 174;
+    const waves = Math.ceil(countries / concurrency);
+    const worstCaseMs = waves * timeoutMs;
+    const containerBudgetMs = 540_000;
+    assert.ok(
+      worstCaseMs < containerBudgetMs / 4,
+      `preflight worst-case (${waves} waves × ${timeoutMs}ms = ${worstCaseMs}ms) must stay well under container budget (${containerBudgetMs}ms / 4 = ${containerBudgetMs / 4}ms); leaves >75% for activity phase`,
+    );
+  });
+
+  it('direct + proxy budget split (WM 2026-05-18 re-measurement)', () => {
+    // WM 2026-05-18: residential laptop probe of today's failing-country
+    // set showed direct response times of 1.8-28.4s, with 6/12 over the
+    // PR #3711 FETCH_TIMEOUT=15s budget. Upstream shifted from "fully
+    // blocked" to "slow but reachable", so the 15s was killing ~50% of
+    // recoverable direct fetches. Rebalanced to 30s direct + 50s proxy.
+    // Total 80s within the 90s PER_COUNTRY_TIMEOUT_MS wrap.
+    assert.match(src, /const FETCH_TIMEOUT\s*=\s*30_000/);
+    assert.match(src, /const PROXY_FETCH_TIMEOUT\s*=\s*50_000/);
+    // The proxy retry MUST pass PROXY_FETCH_TIMEOUT, not FETCH_TIMEOUT:
+    assert.match(src, /timeoutMs:\s*PROXY_FETCH_TIMEOUT/);
+    // And the budget invariant: direct + proxy < per-country.
+    const fetchTimeout = src.match(/const FETCH_TIMEOUT\s*=\s*(\d+_?\d*)/)?.[1];
+    const proxyTimeout = src.match(/const PROXY_FETCH_TIMEOUT\s*=\s*(\d+_?\d*)/)?.[1];
+    const perCountry = src.match(/const PER_COUNTRY_TIMEOUT_MS\s*=\s*(\d+_?\d*)/)?.[1];
+    const parseMs = (s) => parseInt((s ?? '0').replace(/_/g, ''), 10);
+    const total = parseMs(fetchTimeout) + parseMs(proxyTimeout);
+    const perCountryMs = parseMs(perCountry);
+    assert.ok(
+      total < perCountryMs,
+      `direct(${fetchTimeout}) + proxy(${proxyTimeout}) = ${total}ms must be < PER_COUNTRY_TIMEOUT_MS(${perCountryMs}); ` +
+      `pre-fix 45+45=90 exactly equalled per-country, no slack for proxy setup.`,
+    );
+    // Specifically require ≥5s slack for the TCP handshake and CONNECT setup
+    // to Decodo, which can run ~3-5s on cold connections.
+    assert.ok(
+      perCountryMs - total >= 5000,
+      `proxy setup needs ≥5s slack; got ${perCountryMs - total}ms`,
+    );
+  });
+
+  // Greptile PR #3681 review round 2 P2: ArcGIS can return error objects
+  // without a `message` field (observed `{"error":{"code":400}}`). The thrown
+  // message must stay informative on unexpected shapes.
+  it('proxy error message falls back through message → code → JSON.stringify', () => {
+    assert.match(
+      src,
+      /proxied\.error\.message\s*\?\?\s*proxied\.error\.code\s*\?\?\s*JSON\.stringify\(proxied\.error\)/,
+      'proxy error path must fall back through message → code → JSON.stringify so `undefined` never reaches the thrown message',
+    );
   });
 });
 
@@ -689,5 +1055,129 @@ describe('resolveArcgisDateField (runtime, schema-flap defence)', () => {
       assert.equal(c, 'date');
       assert.equal(calls, 1, 'three concurrent first-callers must share ONE schema fetch');
     } finally { restoreFetch(); }
+  });
+});
+
+// WM 2026-05-13 incident: when upstream advanced ArcGIS data after two days of
+// "frozen" runs, every cached country's `asof` mismatched, producing a
+// 174-country cold-fetch. The 570s bundle budget couldn't cover it (preflight
+// alone took 360s; batch 1 of 15 hit 12 errors at 45s before SIGTERM).
+// Result: 37 hours of stale data + UptimeRobot WARNING.
+//
+// Fix: cap cold-fetches per run; serve the deferred countries from prior
+// (slightly-stale) cache rather than dropping them. Full rotation across
+// ~ceil(N / cap) runs.
+describe('cold-fetch cap prevents 174-country cliff (WM 2026-05-13)', () => {
+  it('MAX_COLD_FETCH_PER_RUN constant is declared with a sane value', () => {
+    // The cap value must allow the cold-fetch loop to fit comfortably inside
+    // the 570s bundle budget at the observed ~3-5s/country with concurrency
+    // 12. 30 × 5s / 12 ≈ 13s — well under budget, with plenty of room for
+    // preflight + write phases.
+    assert.match(src, /const MAX_COLD_FETCH_PER_RUN\s*=\s*30/);
+  });
+
+  it('cap triggers when needsFetch exceeds the cap (not a no-op)', () => {
+    // The guard must be a > comparison so a needsFetch of EXACTLY the cap
+    // doesn't trigger the partition path (which would create an unnecessary
+    // shuffle/log line for the happy case where everything fits).
+    assert.match(src, /if\s*\(\s*needsFetch\.length\s*>\s*MAX_COLD_FETCH_PER_RUN\s*\)/);
+  });
+
+  it('deferred countries are served from prior payload with staleAsof=true', () => {
+    // Without this fallback, a deferred country DROPS from the canonical
+    // output — that's the same as a hard-fail for the consumer. Marking
+    // staleAsof preserves the country's data shape but signals "one window
+    // behind" so downstream can render or warn accordingly.
+    assert.match(src, /\.\.\.prev,\s*staleAsof:\s*true/);
+  });
+
+  it('deferred-stale path respects MAX_CACHE_AGE_MS hard-drop (Greptile P1)', () => {
+    // The cacheFresh check enforces a 7-day age gate via `(now - cacheWrittenAt)
+    // < MAX_CACHE_AGE_MS`. The deferred-stale fallback MUST enforce the same
+    // gate, otherwise a country repeatedly deferred across enough runs while
+    // upstream was frozen >4 days could publish data older than the intended
+    // hard-drop threshold (window-drift). Greptile review P1 on PR #3676.
+    //
+    // Assert the age comparison appears inside the cap block (between the
+    // shuffle and the needsFetch reassignment) — using a multi-line regex
+    // that requires shuffle → cacheWrittenAt → MAX_CACHE_AGE_MS in order.
+    const capBlock = src.match(
+      /needsFetch\.length\s*>\s*MAX_COLD_FETCH_PER_RUN[\s\S]+?needsFetch\s*=\s*shuffled\.slice/,
+    );
+    assert.ok(capBlock, 'cap block found');
+    assert.match(
+      capBlock[0],
+      /cacheWrittenAt[\s\S]{0,200}MAX_CACHE_AGE_MS/,
+      'deferred-stale path must compare prev.cacheWrittenAt against MAX_CACHE_AGE_MS',
+    );
+    // And the failure-bucket counter exists so operators can see how many
+    // countries dropped via the age gate (vs no-cache).
+    assert.match(src, /droppedTooOld/);
+  });
+
+  it('partition path captures prevPayload alongside iso3/iso2/upstreamMaxDate', () => {
+    // The needsFetch entries gained a 4th field (prevPayload) so the cap
+    // logic can fall back to cached data per-country. Pre-fix the entries
+    // were {iso3, iso2, upstreamMaxDate} — adding prevPayload is the
+    // critical contract change for the deferred-serving path.
+    assert.match(src, /needsFetch\.push\(\{\s*iso3,\s*iso2,\s*upstreamMaxDate,\s*prevPayload:\s*prev\s*\}\)/);
+  });
+
+  it('cap logs refresh count + defer count for operator visibility', () => {
+    // When the cap fires, an operator hitting `/api/health?history=1` and
+    // pulling the Railway log needs to see "X refreshing, Y deferred on
+    // stale cache, Z dropped (cache too old), W dropped (no prior payload)"
+    // — without per-bucket counts, "everything looked fine" (174 records
+    // published) would mask that some are a window behind and some are
+    // beyond the hard-drop threshold.
+    assert.match(src, /Cold-fetch capped/);
+    assert.match(src, /refreshing/);
+    assert.match(src, /\$\{servedStale\}/);
+    assert.match(src, /\$\{droppedTooOld\}/);
+    assert.match(src, /\$\{droppedNoCache\}/);
+  });
+
+  it('rotation arithmetic uses MAX_COLD_FETCH_PER_RUN directly, not needsFetch.length (Greptile P2)', () => {
+    // After `needsFetch = shuffled.slice(0, MAX_COLD_FETCH_PER_RUN)`,
+    // `needsFetch.length` numerically equals MAX_COLD_FETCH_PER_RUN — so the
+    // pre-fix arithmetic was coincidentally correct. But if the log block
+    // is ever reordered above the reassignment (or the cap value changes
+    // dynamically), `needsFetch.length` would silently break. Using the
+    // constant directly makes the intent unambiguous. Greptile review P2
+    // on PR #3676.
+    const capBlock = src.match(
+      /needsFetch\.length\s*>\s*MAX_COLD_FETCH_PER_RUN[\s\S]+?Rotation:/,
+    );
+    assert.ok(capBlock, 'cap block found');
+    // The rotation expression must reference MAX_COLD_FETCH_PER_RUN, not
+    // needsFetch.length, in its numerator/denominator.
+    assert.match(
+      capBlock[0],
+      /originalMisses\s*=\s*MAX_COLD_FETCH_PER_RUN/,
+      'rotation total must be expressed as cap + stale + dropped, using the constant',
+    );
+  });
+
+  it('needsFetch is declared with let (mutable) — cap path reassigns it', () => {
+    // The cap path slices needsFetch to keep only the refresh-now subset.
+    // Pre-fix needsFetch was const. This regression-guards a future cleanup
+    // that switches it back without realizing the cap path mutates it.
+    assert.match(src, /let needsFetch\s*=\s*\[\]/);
+    // And the reassignment in the cap path:
+    assert.match(src, /needsFetch\s*=\s*shuffled\.slice\(0,\s*MAX_COLD_FETCH_PER_RUN\)/);
+  });
+
+  it('full rotation is computable: ~ceil(174 / 30) = 6 runs ≈ 3 days at 12h cadence', () => {
+    // Documentation-grade test: encodes the rotation math so a future
+    // bump to the cap (or a different country count) surfaces the
+    // implication via failure rather than silent drift.
+    const cap = 30;
+    const countries = 174;
+    const cronIntervalHours = 12;
+    const runs = Math.ceil(countries / cap);
+    const fullRotationHours = runs * cronIntervalHours;
+    assert.equal(runs, 6);
+    assert.equal(fullRotationHours, 72, 'full rotation must stay under MAX_CACHE_AGE_MS (7d = 168h)');
+    assert.ok(fullRotationHours < 168, 'rotation must complete before MAX_CACHE_AGE_MS forces hard drops');
   });
 });

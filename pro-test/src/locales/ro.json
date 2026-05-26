@@ -6,7 +6,8 @@
     "enterprise": "Enterprise",
     "reserveAccess": "Rezervă-ți accesul anticipat",
     "signIn": "Autentificare",
-    "upgradeToPro": "Upgrade la Pro"
+    "upgradeToPro": "Upgrade la Pro",
+    "goToDashboard": "Accesați tabloul de bord"
   },
   "hero": {
     "noiseWord": "Zgomot",
@@ -18,7 +19,8 @@
     "emailPlaceholder": "Introdu e-mailul",
     "emailAriaLabel": "Adresă de e-mail pentru lista de așteptare",
     "choosePlan": "Alege planul",
-    "signIn": "Autentificare"
+    "signIn": "Autentificare",
+    "goToDashboard": "Accesați tabloul de bord"
   },
   "wired": {
     "asFeaturedIn": "Apărut în"
@@ -50,7 +52,8 @@
     "entF9": "Aplicație Android TV pentru pereți SOC și trading floor-uri",
     "entF10": "Deployment cloud, on-premises sau air-gapped",
     "entF11": "Onboarding și suport dedicate",
-    "entCta": "Vorbește cu vânzările"
+    "entCta": "Vorbește cu vânzările",
+    "freeF2": "500+ feeds, 65+ surse, 50+ straturi de hartă"
   },
   "whyUpgrade": {
     "title": "De ce să faci upgrade",
@@ -83,7 +86,7 @@
     "openFullScreen": "Deschide pe ecran complet",
     "tryLiveDashboard": "Încearcă panoul live",
     "iframeTitle": "World Monitor — Panou live de intelligence",
-    "description": "Glob WebGL 3D · 45+ straturi de hartă interactive · Date piețe, macro, geopolitice, energie și infrastructură în timp real"
+    "description": "Glob WebGL 3D · 50+ straturi de hartă interactive · Date în timp real despre piață, macroeconomie, geopolitică, energie și infrastructură"
   },
   "socialProof": {
     "uniqueVisitors": "Vizitatori unici",
@@ -139,31 +142,8 @@
   },
   "tiers": {
     "free": "Gratuit",
-    "freeTagline": "Vezi tot",
-    "freeDesc": "Panoul open-source",
-    "freeF1": "Refresh 5-15 min",
-    "freeF2": "500+ feed-uri, 45 straturi de hartă",
-    "freeF3": "BYOK pentru IA",
-    "freeF4": "Gratuit pentru totdeauna",
-    "openDashboard": "Deschide panoul",
     "pro": "Pro",
-    "proTagline": "Piețe, macro și geopolitică",
-    "proDesc": "Analistul tău IA",
-    "proF1": "Equity research și analiză de acțiuni",
-    "proF2": "+ digesturi zilnice, analitică economică",
-    "proF3": "IA inclus, 1 cheie",
-    "proF4": "Refresh prioritar de date (În curând)",
-    "priceMonthly": "$39,99 / lună",
-    "priceAnnual": "$399,99 / an",
-    "annualSavingsNote": "2 luni gratis",
-    "enterprise": "Enterprise",
-    "enterpriseTagline": "Acționează înaintea tuturor",
-    "enterpriseDesc": "Platforma de intelligence",
-    "entF1": "Imagini satelitare live",
-    "entF2": "+ agenți IA, 50K+ infra, SAR",
-    "entF3": "IA personalizat, personalități de investitor",
-    "entF4": "Contactează-ne",
-    "contactSales": "Contactează vânzările"
+    "enterprise": "Enterprise"
   },
   "proShowcase": {
     "proTier": "NIVEL PRO",
@@ -281,7 +261,6 @@
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + webhook",
     "fMcpBulk": "+ MCP + în masă",
-    "f45": "45",
     "fTensOfThousands": "+ zeci de mii",
     "fLiveTracking": "Urmărire live",
     "fPassAlerts": "Alerte trecere + analiză",
@@ -292,7 +271,8 @@
     "fStandard": "Standard",
     "fKeyAuth": "Auth cu cheie",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
-    "noteBelow": "Platforma de bază rămâne gratuită. Planurile plătite deblochează equity research, analitică macro, briefinguri IA și utilizare organizațională."
+    "noteBelow": "Platforma de bază rămâne gratuită. Planurile plătite deblochează equity research, analitică macro, briefinguri IA și utilizare organizațională.",
+    "f50plus": "50+"
   },
   "faq": {
     "title": "Întrebări frecvente",
@@ -354,5 +334,76 @@
     "youreIn": "Ești înăuntru!",
     "invitedBanner": "Ai fost invitat — alătură-te listei de așteptare"
   },
-  "soonBadge": "În curând"
+  "soonBadge": "În curând",
+  "meta": {
+    "title": "World Monitor Pro — AI Analyst, Personal Intelligence Desk, MCP pentru Claude & GPT",
+    "description": "Stratul geopolitic AI. Întrebați-l, abonați-vă la el, construiți pe el. WM Analyst chat în 30+ servicii live, un rezumat AI livrat zilnic, de două ori pe zi sau săptămânal către Slack, Discord, Telegram, Email sau webhook, un constructor de widget-uri personalizat (HTML/CSS/JS + AI) și conectori MCP pentru Claude, GPT și LLM-uri personalizate.",
+    "ogTitle": "World Monitor Pro — Stratul Geopolitic AI",
+    "ogDescription": "Întrebați-l, abonați-vă la el, construiți pe el. WM Analyst chat, un rezumat AI după programul dvs. (zilnic, de două ori pe zi sau săptămânal), constructor de widget-uri personalizat și MCP pentru Claude/GPT — în 30+ servicii live sub o singură cheie."
+  },
+  "pricing": {
+    "suffixForever": "pentru totdeauna",
+    "suffixTailored": "adaptat pentru tine",
+    "suffixPerMonth": "/lună",
+    "suffixPerYear": "/an",
+    "amountCustom": "Personalizat",
+    "opening": "Se deschide…",
+    "headerTitle": "Alegeți Planul Dumneavoastră",
+    "headerSubtitle": "De la monitorizarea în timp real la infrastructura completă de intelligence. Alegeți nivelul potrivit pentru misiunea dumneavoastră.",
+    "billingMonthly": "Lunar",
+    "billingAnnual": "Anual",
+    "saveAnnual": "Economisiți 17%",
+    "mostPopular": "Cel Mai Popular",
+    "promoCodeNote": "Aveți un cod promo? Introduceți-l la finalizarea comenzii.",
+    "tiers": {
+      "free": {
+        "description": "Începeți cu elementele esențiale",
+        "features": [
+          "Panouri de bază ale tabloului de bord",
+          "Flux de știri global",
+          "Alerte pentru cutremure și vreme",
+          "Vizualizare hartă de bază"
+        ],
+        "cta": "Începeți"
+      },
+      "pro": {
+        "description": "Tablou de bord complet de intelligence",
+        "features": [
+          "Totul din Gratuit",
+          "Analiza și backtesting pentru acțiuni cu AI",
+          "Rezumate zilnice de piață",
+          "Urmărirea militară și geopolitică",
+          "Constructor de widget-uri personalizate",
+          "Conectoare de date MCP",
+          "Reîmprospătare prioritară a datelor"
+        ]
+      },
+      "api": {
+        "description": "Acces programatic la date de intelligence",
+        "features": [
+          "Acces REST API",
+          "Fluxuri de date în timp real",
+          "1.000 de cereri/zi",
+          "Notificări webhook",
+          "Exporturi de date personalizate"
+        ]
+      },
+      "enterprise": {
+        "description": "Soluții personalizate pentru organizații",
+        "features": [
+          "Totul din Pro + API",
+          "Cereri API nelimitate",
+          "Suport dedicat",
+          "Integrări personalizate",
+          "Garanție SLA",
+          "Opțiune on-premise"
+        ],
+        "cta": "Contactați Vânzări"
+      }
+    },
+    "cta": {
+      "checkoutDefault": "Să încep",
+      "learnMore": "Aflați mai multe"
+    }
+  }
 }

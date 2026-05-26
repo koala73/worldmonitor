@@ -62,3 +62,4 @@ Current `note` text: "runId filter not yet active; returned outcome may differ f
 ## Work Log
 
 - 2026-03-24: Found by compound-engineering:review:agent-native-reviewer in PR #2220 review
+- 2026-05-18: Filter is now ACTUALLY active end-to-end (not just docs). The 2026-03-24 "complete" mark was docs-only — the runId query param continued to be ignored in the handler until this PR. `get-simulation-outcome` now does by-run lookup with `processing` state and tombstone-aware fallback (5 distinct paths). See `fix/3734-trigger-simulation` branch + `docs/plans/2026-05-18-003-feat-simulation-trigger-and-runid-filter-plan.md` U6.

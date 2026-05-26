@@ -1,11 +1,17 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { tokensToContentMeta, DAY_MIN } from './_content-age-helpers.mjs';
 
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'economic:ecb-fx-rates:v1';
 const TTL = 259200; // 3 × 86400 — seeded daily
+// Content-age budget — ECB EXR is a daily (business-day) SDMX series, the same
+// family as the CISS series that froze undetected for ~12 months (issue #3845).
+// 10 days absorbs a weekend + ECB holiday cluster + one missed cron while still
+// flipping /api/health to STALE_CONTENT within ~6 business days of a freeze.
+const ECB_FX_MAX_CONTENT_AGE_MIN = 10 * DAY_MIN;
 
 const ECB_URL =
   'https://data-api.ecb.europa.eu/service/data/EXR/D.USD+GBP+JPY+CHF+CAD+AUD+CNY.EUR.SP00.A' +
@@ -127,16 +133,25 @@ export function declareRecords(data) {
   return Object.keys(data?.rates || {}).length;
 }
 
+// Content-age contract: the newest per-pair observation date. Detects an
+// upstream freeze (HTTP 200 with frozen observations) that seeder-liveness
+// checks cannot — see scripts/_content-age-helpers.mjs.
+export function ecbFxContentMeta(data) {
+  return tokensToContentMeta(Object.values(data?.rates || {}).map((r) => r?.date));
+}
+
 if (process.argv[1]?.endsWith('seed-ecb-fx-rates.mjs')) {
   runSeed('economic', 'ecb-fx-rates', CANONICAL_KEY, fetchEcbFxRates, {
     validateFn: validate,
     ttlSeconds: TTL,
     sourceVersion: 'ecb-data-portal',
     recordCount: (data) => Object.keys(data?.rates ?? {}).length,
-  
+
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: 5760,
+    contentMeta: ecbFxContentMeta,
+    maxContentAgeMin: ECB_FX_MAX_CONTENT_AGE_MIN,
   }).catch(err => {
     const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + cause);

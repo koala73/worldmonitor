@@ -34,8 +34,10 @@ import {
   SITE_VARIANT,
   LAYER_TO_SOURCE,
   FEEDS,
+  CANONICAL_FEEDS,
   INTEL_SOURCES,
 } from '@/config';
+import { resolveNewsCategories, enabledNewsCategoryKeys } from '@/config/feed-resolution';
 import { VARIANT_META } from '@/config/variant-meta';
 import { isDesktopRuntime } from '@/services/runtime';
 import {
@@ -61,6 +63,7 @@ import { getCachedGpsInterference } from '@/services/gps-interference';
 import { dataFreshness } from '@/services/data-freshness';
 import { mlWorker } from '@/services/ml-worker';
 import { UnifiedSettings } from '@/components/UnifiedSettings';
+import { WM_OPEN_NOTIFICATIONS_FOR_COUNTRY } from '@/utils/notify-country-link';
 import { AuthLauncher } from '@/components/AuthLauncher';
 import { AuthHeaderWidget } from '@/components/AuthHeaderWidget';
 import { t } from '@/services/i18n';
@@ -107,6 +110,7 @@ export class EventHandlerManager implements AppModule {
   private boundPanelCloseHandler: ((e: Event) => void) | null = null;
   private boundWidgetModifyHandler: ((e: Event) => void) | null = null;
   private boundUndoHandler: ((e: KeyboardEvent) => void) | null = null;
+  private boundNotifyForCountryHandler: ((e: Event) => void) | null = null;
   private proGateUnsubscribers: Array<() => void> = [];
   private closedPanelStack: string[] = []; // max-items: 20
   private idleTimeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -303,6 +307,13 @@ export class EventHandlerManager implements AppModule {
     if (this.boundUndoHandler) {
       document.removeEventListener('keydown', this.boundUndoHandler);
       this.boundUndoHandler = null;
+    }
+    if (this.boundNotifyForCountryHandler) {
+      window.removeEventListener(
+        WM_OPEN_NOTIFICATIONS_FOR_COUNTRY,
+        this.boundNotifyForCountryHandler,
+      );
+      this.boundNotifyForCountryHandler = null;
     }
     for (const unsub of this.proGateUnsubscribers) unsub();
     this.proGateUnsubscribers = [];
@@ -1112,6 +1123,25 @@ export class EventHandlerManager implements AppModule {
     if (mobileBtn) {
       mobileBtn.addEventListener('click', () => this.ctx.unifiedSettings?.open());
     }
+
+    // U8 (degraded path) — listen for the deep-dive "Notify me about this
+    // country" sub-action and open the notifications tab. Today the
+    // event detail.country is informational only; when the alertRules
+    // schema PR lands, the future PR will read it here and forward to
+    // a pre-filled create-form open. See plan U8 R9 + the TODO inside
+    // src/utils/notify-country-link.ts.
+    //
+    // Stored on a bound handler field so `destroy()` can remove it.
+    // Same-document reinit (HMR, test harnesses, multiple App instances)
+    // would otherwise accumulate anonymous listeners that retain the
+    // stale AppContext closure — every click would fire all of them.
+    this.boundNotifyForCountryHandler = (_e: Event) => {
+      this.ctx.unifiedSettings?.open('notifications');
+    };
+    window.addEventListener(
+      WM_OPEN_NOTIFICATIONS_FOR_COUNTRY,
+      this.boundNotifyForCountryHandler,
+    );
   }
 
   setupAuthWidget(): void {
@@ -1542,9 +1572,10 @@ export class EventHandlerManager implements AppModule {
 
   getAllSourceNames(): string[] {
     const sources = new Set<string>();
-    Object.values(FEEDS).forEach(feeds => {
-      if (feeds) feeds.forEach(f => sources.add(f.name));
-    });
+    // Preset feeds + sources from any custom news panels the user added, so
+    // the source manager stays in sync with what loadNews() actually fetches.
+    const categories = resolveNewsCategories(FEEDS, CANONICAL_FEEDS, enabledNewsCategoryKeys(this.ctx.newsPanels, this.ctx.panels, this.ctx.panelSettings));
+    categories.forEach(({ feeds }) => feeds.forEach(f => sources.add(f.name)));
     INTEL_SOURCES.forEach(f => sources.add(f.name));
     return Array.from(sources).sort((a, b) => a.localeCompare(b));
   }

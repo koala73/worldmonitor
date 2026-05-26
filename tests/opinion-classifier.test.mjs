@@ -1,0 +1,383 @@
+// Unit tests for the opinion/analysis classifier (F3, Phase 3).
+//
+// classifyOpinion is the single shared classifier — imported by the
+// ingest path (list-feed-digest.ts, stamps `isOpinion` on the
+// story:track:v1 row) and the read path (buildDigest, re-classifies
+// residue). The brief is event-driven intelligence; an op-ed column
+// is not an event. See docs/plans/2026-05-14-001-…-plan.md.
+
+import { describe, it } from 'node:test';
+import assert from 'node:assert/strict';
+import { classifyOpinion } from '../server/_shared/opinion-classifier.js';
+
+describe('classifyOpinion — STRONG signals (sufficient alone)', () => {
+  it('URL path /opinion/ → opinion', () => {
+    assert.equal(
+      classifyOpinion({ title: 'A perfectly normal hard-news headline', link: 'https://example.com/opinion/2026/05/14/foo' }),
+      true,
+    );
+  });
+
+  it('URL path variants /views/ /commentary/ /editorial/ /op-ed/ /columnists/ → opinion', () => {
+    for (const seg of ['/views/', '/commentary/', '/editorial/', '/op-ed/', '/columnists/', '/columns/']) {
+      assert.equal(
+        classifyOpinion({ title: 'Normal headline', link: `https://example.com${seg}article` }),
+        true,
+        `${seg} should classify as opinion`,
+      );
+    }
+  });
+
+  it('explicit "Opinion:" / "Analysis:" / "Commentary:" / "Op-Ed:" headline prefix → opinion', () => {
+    for (const prefix of ['Opinion:', 'Analysis:', 'Commentary:', 'Op-Ed:', 'Op-ed:', 'Editorial:', 'Viewpoint:']) {
+      assert.equal(
+        classifyOpinion({ title: `${prefix} The case for sanctions`, link: 'https://example.com/world/article' }),
+        true,
+        `"${prefix}" prefix should classify as opinion`,
+      );
+    }
+  });
+});
+
+describe('classifyOpinion — CORROBORATING signals (need a STRONG signal OR two CORROBORATING)', () => {
+  it('REGRESSION (May 14): the Le Monde Gilles Paris column → opinion', () => {
+    // The verbatim May 14 story: a fully quote-wrapped headline (1
+    // corroborating) + "posits that" framing in the description (1
+    // corroborating) = 2 → opinion. This shipped as story #1, tagged
+    // Critical, ahead of a nuclear ICBM test.
+    assert.equal(
+      classifyOpinion({
+        title: "'Russia's invasion of Ukraine could have warned Trump from the pitfalls he now faces in Iran'",
+        link: 'https://www.lemonde.fr/en/international/article/2026/05/14/foo_123_4.html',
+        description: "Le Monde's Gilles Paris posits that Trump's miscalculation regarding Iran mirrors Putin's Ukraine invasion, offering a cautionary tale for Xi Jinping's Taiwan ambitions.",
+      }),
+      true,
+    );
+  });
+
+  it('two corroborating (quote-wrapped headline + /analysis/ URL) → opinion', () => {
+    assert.equal(
+      classifyOpinion({
+        title: "'The west has misjudged this moment'",
+        link: 'https://example.com/analysis/2026/foo',
+        description: 'A straightforward report with no framing words.',
+      }),
+      true,
+    );
+  });
+
+  it('ONE corroborating signal alone → NOT opinion (false-negative is safer than false-positive)', () => {
+    // /analysis/ URL alone — many outlets file hard-news explainers there.
+    assert.equal(
+      classifyOpinion({ title: 'Sudan airstrike kills 100 at market', link: 'https://example.com/analysis/sudan-airstrike' }),
+      false,
+    );
+    // A quote-wrapped headline alone — could be a quoted-statement lead.
+    assert.equal(
+      classifyOpinion({ title: "'We will respond decisively'", link: 'https://example.com/world/iran-statement', description: 'The foreign ministry issued a statement.' }),
+      false,
+    );
+    // Description framing alone.
+    assert.equal(
+      classifyOpinion({ title: 'Minister addresses parliament', link: 'https://example.com/world/x', description: 'The minister argues that the budget must pass.' }),
+      false,
+    );
+  });
+});
+
+describe('classifyOpinion — does NOT false-positive on hard news', () => {
+  it('REGRESSION (A3): a hard-news story under /analysis/ with no other signal is NOT dropped', () => {
+    assert.equal(
+      classifyOpinion({
+        title: 'What we know about the Strait of Hormuz closure',
+        link: 'https://example.com/analysis/hormuz-closure-explainer',
+        description: 'Shipping data shows a 40% drop in transits since Tuesday.',
+      }),
+      false,
+    );
+  });
+
+  it('REGRESSION (A3): a hard-news headline that QUOTES a phrase (not whole-wrapped) is NOT dropped', () => {
+    // "'on life support'" is a quoted phrase inside the headline — the
+    // headline as a whole is not quote-wrapped.
+    assert.equal(
+      classifyOpinion({
+        title: "Trump says Iran ceasefire is 'on life support' after he rejects Tehran's response",
+        link: 'https://example.com/world/trump-iran-ceasefire',
+        description: 'Former President Trump rejected the latest proposal.',
+      }),
+      false,
+    );
+  });
+
+  it('a bare-noun headline starting with "Opinion" / "Analysis" (no colon) is NOT caught', () => {
+    assert.equal(
+      classifyOpinion({ title: 'Opinion polls tighten ahead of the election', link: 'https://example.com/world/polls' }),
+      false,
+    );
+    assert.equal(
+      classifyOpinion({ title: 'Analysis firm downgrades the bank', link: 'https://example.com/business/downgrade' }),
+      false,
+    );
+  });
+
+  it('REGRESSION (PR #3690 review): a hard-news slug containing "opinion-" is NOT a strong URL match', () => {
+    // STRONG_URL_SEGMENTS entries are slash-delimited path segments,
+    // not substrings. `/world/opinion-polls-tighten-election` is a
+    // hard-news ARTICLE SLUG that merely starts with "opinion-" — it
+    // must NOT classify as opinion. An unbounded `/opinion-` prefix
+    // was removed from STRONG_URL_SEGMENTS for exactly this.
+    assert.equal(
+      classifyOpinion({
+        title: 'Opinion polls tighten ahead of the election',
+        link: 'https://example.com/world/opinion-polls-tighten-election',
+        description: 'A new survey shows the race narrowing in three swing states.',
+      }),
+      false,
+    );
+    // A genuine /opinion/ SECTION (slash-delimited) is still caught.
+    assert.equal(
+      classifyOpinion({
+        title: 'The election is closer than it looks',
+        link: 'https://example.com/opinion/election-closer-than-it-looks',
+      }),
+      true,
+    );
+  });
+
+  it('a plain hard-news event → NOT opinion', () => {
+    assert.equal(
+      classifyOpinion({
+        title: 'Putin tests nuclear-capable Sarmat missile',
+        link: 'https://example.com/world/russia-sarmat-test',
+        description: 'Russia test-fired the intercontinental ballistic missile from Plesetsk.',
+      }),
+      false,
+    );
+  });
+});
+
+describe('classifyOpinion — URL match uses parsed pathname, not raw .includes() (backport from PR #3748 / adv-002)', () => {
+  // Pre-backport: lowerLink.includes('/opinion/') returned true for any
+  // URL whose query string OR fragment contained "/opinion/" — including
+  // legitimate aggregator tracking params like ?utm_campaign=/opinion/promo.
+  // The same bug existed in feelgood-classifier.js until PR #3748 closed
+  // it; this PR brings the opinion-classifier to parity by parsing the
+  // URL and matching against pathname.toLowerCase() inside a try/catch.
+  it('tracking param containing /opinion/ does NOT trigger STRONG', () => {
+    assert.equal(
+      classifyOpinion({
+        title: 'Hard news headline',
+        link: 'https://example.com/world/news?utm_campaign=/opinion/promo',
+      }),
+      false,
+    );
+  });
+
+  it('URL fragment containing /commentary/ does NOT trigger STRONG', () => {
+    assert.equal(
+      classifyOpinion({
+        title: 'Hard news headline',
+        link: 'https://example.com/world/news#/commentary/footer',
+      }),
+      false,
+    );
+  });
+
+  it('tracking param containing /analysis/ does NOT trigger CORROBORATING', () => {
+    // Single CORROBORATING signal would not classify on its own, but
+    // combined with a quoted-statement headline (which is the legit
+    // hard-news case the previous code FP'd on), the .includes() bug
+    // would have pushed total to 2. Verify the pathname parse prevents this.
+    assert.equal(
+      classifyOpinion({
+        title: "'We will respond decisively'",
+        link: 'https://example.com/world/iran-statement?utm_campaign=/analysis/section',
+        description: 'The foreign ministry issued a statement.',
+      }),
+      false,
+    );
+  });
+
+  it('malformed URL handled defensively (no throw)', () => {
+    assert.doesNotThrow(() =>
+      classifyOpinion({ title: 'Hard news', link: 'not a valid URL' }),
+    );
+    assert.equal(
+      classifyOpinion({ title: 'Hard news', link: 'not a valid URL' }),
+      false,
+    );
+  });
+
+  it('REGRESSION: a genuine /opinion/ pathname still classifies (the fix does not over-correct)', () => {
+    assert.equal(
+      classifyOpinion({
+        title: 'The election is closer than it looks',
+        link: 'https://example.com/opinion/election-closer-than-it-looks?utm_source=newsletter',
+      }),
+      true,
+    );
+  });
+
+  it('REGRESSION: a genuine /analysis/ pathname still contributes CORROBORATING', () => {
+    // Two corroborating: quote-wrapped headline + /analysis/ pathname
+    // (with a tracking param to verify the pathname parse strips the query).
+    assert.equal(
+      classifyOpinion({
+        title: "'The west has misjudged this moment'",
+        link: 'https://example.com/analysis/2026/foo?ref=twitter',
+        description: 'A straightforward report with no framing words.',
+      }),
+      true,
+    );
+  });
+});
+
+describe('classifyOpinion — input safety', () => {
+  it('handles missing / non-string fields without throwing', () => {
+    assert.equal(classifyOpinion({}), false);
+    assert.equal(classifyOpinion({ title: 42, link: null, description: undefined }), false);
+    // @ts-expect-error testing unexpected input
+    assert.doesNotThrow(() => classifyOpinion(null));
+    // @ts-expect-error testing unexpected input
+    assert.equal(classifyOpinion(undefined), false);
+  });
+});
+
+describe('classifyOpinion — STRONG #3: source-domain allowlist', () => {
+  // The 2026-05-19 regression. The Bulletin of Atomic Scientists'
+  // "How nuclear war would impact the global food system" shipped as
+  // CRITICAL story #6 in a Pro brief. STRONG #1 (URL section) missed
+  // it — no /opinion/ segment. STRONG #2 (headline prefix) missed it
+  // — no "Opinion:" prefix. CORROBORATING missed it — no quote-wrap,
+  // hard-news-shaped description. The source ITSELF is the signal:
+  // Bulletin is entirely commentary, no hard-news section to
+  // distinguish from. See docs/plans/2026-05-19-001-fix-brief-…-plan.md
+  // U1.
+
+  it('REGRESSION (May 19): Bulletin of Atomic Scientists URL → opinion', () => {
+    assert.equal(
+      classifyOpinion({
+        title: 'How nuclear war would impact the global food system. And how to prepare for it',
+        link: 'https://thebulletin.org/2026/05/how-nuclear-war-would-impact-the-global-food-system/',
+        description: 'A new analysis details the catastrophic impact of nuclear war on the global food system and outlines preparedness strategies.',
+      }),
+      true,
+    );
+  });
+
+  it('Project Syndicate, Foreign Affairs, War on the Rocks → opinion (commentary-only publishers)', () => {
+    for (const host of [
+      'project-syndicate.org',
+      'foreignaffairs.com',
+      'warontherocks.com',
+    ]) {
+      assert.equal(
+        classifyOpinion({
+          title: 'A perfectly normal hard-news-shaped headline about Iran',
+          link: `https://${host}/2026/05/article-slug`,
+        }),
+        true,
+        `${host} should classify as opinion (commentary-only publisher)`,
+      );
+    }
+  });
+
+  it('REGRESSION (PR #3835 review): foreignpolicy.com hard-news URLs are NOT blanket-allowlisted', () => {
+    // FP runs hard-news surfaces (World Brief, Situation Report) alongside
+    // op-eds. A blanket hostname allowlist would silently drop the
+    // event-shaped pieces. PR #3835 review surfaced this with a live FP
+    // World Brief story. FP commentary is still caught via the existing
+    // /opinion/ path or the "Opinion:" headline prefix — the correct
+    // granularity for mixed-content publishers.
+    assert.equal(
+      classifyOpinion({
+        title: 'G-7 Finance Ministers Discuss Economic Fallout of Iran War',
+        link: 'https://foreignpolicy.com/2026/05/19/g7-finance-ministers-iran-war-economic-fallout/',
+        description: 'Group of Seven finance ministers convened to assess the economic disruption from the Iran-Israel war.',
+      }),
+      false,
+      'FP hard-news event must NOT be dropped as opinion',
+    );
+  });
+
+  it('FP commentary still caught via the existing /opinion/ path signal', () => {
+    // Demonstrates the right granularity for FP: scope to their commentary
+    // paths, not the whole hostname. The /opinion/ URL path triggers
+    // STRONG #1, independent of any source-domain check.
+    assert.equal(
+      classifyOpinion({
+        title: 'The case for normalizing relations with Iran',
+        link: 'https://foreignpolicy.com/opinion/2026/05/19/case-for-iran-normalization/',
+      }),
+      true,
+    );
+  });
+
+  it('subdomains of allowlisted hosts (newsletter., m., www.) → opinion', () => {
+    for (const sub of ['newsletter', 'm', 'www']) {
+      assert.equal(
+        classifyOpinion({
+          title: 'Hard-news-shaped headline',
+          link: `https://${sub}.thebulletin.org/2026/05/article`,
+        }),
+        true,
+        `${sub}.thebulletin.org should classify as opinion (suffix-anchored match)`,
+      );
+    }
+  });
+
+  it('typo-domains that contain an allowlisted host as a substring are NOT classified', () => {
+    // Failure mode the suffix-anchor guards against: `evilthebulletin.org`
+    // contains `thebulletin.org` as a string suffix WITHOUT the dot.
+    // Suffix-anchored rule (`endsWith('.' + entry)`) rejects it.
+    assert.equal(
+      classifyOpinion({
+        title: 'Some breaking news',
+        link: 'https://evilthebulletin.org/2026/05/breaking',
+      }),
+      false,
+    );
+  });
+
+  it('tracking params / fragments referencing an allowlisted host on a hard-news URL are NOT classified', () => {
+    // Failure mode raw-string includes() would hit: `link.includes('thebulletin.org')`
+    // matches a tracking param or fragment outside the hostname. safeHostname
+    // returns only `URL().hostname` so the host is parsed, not substring-matched.
+    assert.equal(
+      classifyOpinion({
+        title: 'Hard-news headline',
+        link: 'https://nytimes.com/article?ref=thebulletin.org',
+      }),
+      false,
+    );
+    assert.equal(
+      classifyOpinion({
+        title: 'Hard-news headline',
+        link: 'https://nytimes.com/article#thebulletin.org-footer',
+      }),
+      false,
+    );
+  });
+
+  it('malformed URLs fall through without throwing', () => {
+    assert.doesNotThrow(() => classifyOpinion({ title: 'x', link: 'not a url' }));
+    assert.equal(classifyOpinion({ title: 'x', link: 'not a url' }), false);
+    assert.equal(classifyOpinion({ title: 'x', link: '' }), false);
+  });
+
+  it('allowlisted host PLUS hard-news-looking content → still opinion (the publisher IS the signal)', () => {
+    // The selection criterion is "publisher's whole output is commentary."
+    // Even if a Bulletin piece reads like an event, it ships as commentary
+    // (because that's all they publish). The rollback path if this is
+    // unfair is removing the publisher from the Set, not adding URL exceptions.
+    assert.equal(
+      classifyOpinion({
+        title: 'IAEA warns Iran enrichment reaches weapons-grade threshold',  // event-shaped
+        link: 'https://thebulletin.org/2026/05/iaea-warns-iran/',
+        description: 'The IAEA today announced that uranium samples reached 90% purity.',  // event-shaped
+      }),
+      true,
+    );
+  });
+});
