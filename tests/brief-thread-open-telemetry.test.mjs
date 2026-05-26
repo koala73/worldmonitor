@@ -32,6 +32,7 @@ import { BRIEF_ENVELOPE_VERSION } from '../shared/brief-envelope.js';
 
 function story(overrides = {}) {
   return {
+    clusterId: 'cluster-test-default',
     category: 'Energy',
     country: 'IR',
     threatLevel: 'high',
