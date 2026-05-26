@@ -48,7 +48,10 @@ import {
   getConvexApi as _getConvexApi,
   waitForConvexAuth as _waitForConvexAuth,
 } from './convex-client';
-import type { MergeAnonymousLocalResult as ServerMergeAnonymousLocalResult } from '../../convex/followedCountries';
+import type {
+  FollowMutationResult as ServerFollowMutationResult,
+  MergeAnonymousLocalResult as ServerMergeAnonymousLocalResult,
+} from '../../convex/followedCountries';
 
 // ---------------------------------------------------------------------------
 // Public constants & types
@@ -106,7 +109,7 @@ type FollowCountryRef = FunctionReference<
   'mutation',
   'public',
   { country: string },
-  { ok: true; idempotent: boolean }
+  ServerFollowMutationResult
 >;
 type UnfollowCountryRef = FunctionReference<
   'mutation',
@@ -1138,7 +1141,7 @@ export async function addCountry(input: string): Promise<FollowMutationResult> {
       if (!client || !api) {
         return { ok: false, reason: 'HANDOFF_PENDING' };
       }
-      await client.mutation(
+      const result = await client.mutation(
         api.followedCountries.followCountry,
         { country: code },
       );
@@ -1148,6 +1151,21 @@ export async function addCountry(input: string): Promise<FollowMutationResult> {
       if (!_authStillMatches(userIdAtStart, genAtStart)) {
         return { ok: false, reason: 'HANDOFF_PENDING' };
       }
+      // Return-instead-of-throw FREE_CAP path. The server returns the
+      // discriminated union to avoid Convex auto-Sentry forwarding the
+      // ConvexError on every free-tier-cap hit (companion skill:
+      // `convex-gotchas/reference/convex-autosentry-forwards-intentional-convexerror-throws.md`).
+      // The catch block below still handles FREE_CAP from a legacy
+      // server response (deploy-skew window) — keep both paths until the
+      // next deploy cycle, then collapse to return-only.
+      if (result && result.ok === false && result.reason === 'FREE_CAP') {
+        return {
+          ok: false,
+          reason: 'FREE_CAP',
+          currentCount: result.currentCount,
+          limit: result.limit,
+        };
+      }
       // The reactive subscription will pick up the new row and dispatch
       // WM_FOLLOWED_COUNTRIES_CHANGED; no need to manually fire here.
       return { ok: true };
@@ -1155,6 +1173,10 @@ export async function addCountry(input: string): Promise<FollowMutationResult> {
       const kind = _extractConvexErrorKind(err);
       const data = _extractConvexErrorData(err);
       if (kind === 'FREE_CAP') {
+        // Legacy deploy-skew path: a new client talking to an old server
+        // that still throws ConvexError({kind:'FREE_CAP'}). Safe to drop
+        // one deploy cycle after the server refactor lands. See companion
+        // skill `convex-gotchas/reference/convex-autosentry-forwards-intentional-convexerror-throws.md`.
         const currentCount =
           typeof data?.currentCount === 'number'
             ? (data.currentCount as number)

@@ -267,10 +267,21 @@ async function readRawCountryFollowerCount(
  * Discriminated return shape for `followCountry` and `unfollowCountry`.
  * `idempotent: true` means the mutation observed the desired end state
  * already and made no changes (counter NOT touched).
+ *
+ * `ok: false, reason: 'FREE_CAP'` is `followCountry`-only — emitted when a
+ * tier=0 caller hits the free-tier cap. Previously thrown as
+ * `ConvexError({kind:'FREE_CAP', ...})`; the throw was forwarded by Convex
+ * Cloud's server-side auto-Sentry directly to our DSN (bypassing browser
+ * `Sentry.init({ignoreErrors:[...]})`), producing high-volume noise from
+ * an expected business condition. Return-instead-of-throw eliminates the
+ * source — see also `convex/userPreferences.ts:81-83` (CAS-guard CONFLICT)
+ * for the same pattern. Skill:
+ * `convex-gotchas/reference/convex-autosentry-forwards-intentional-convexerror-throws.md`.
  */
 export type FollowMutationResult =
   | { ok: true; idempotent: false }
-  | { ok: true; idempotent: true };
+  | { ok: true; idempotent: true }
+  | { ok: false; reason: "FREE_CAP"; currentCount: number; limit: number };
 
 /**
  * Return shape for `mergeAnonymousLocal`. `accepted` is the list of
@@ -296,7 +307,9 @@ export type MergeAnonymousLocalResult = {
  * 3. Idempotent on (userId, country) — second call returns
  *    {idempotent:true} and does NOT touch the counter or user-meta.
  * 4. Free-tier cap: tier=0 callers with currentCount >= FREE_TIER_FOLLOW_LIMIT
- *    throw ConvexError({kind:'FREE_CAP', currentCount, limit}). PRO callers
+ *    RETURN {ok:false, reason:'FREE_CAP', currentCount, limit} (was thrown
+ *    as ConvexError pre-PR; switched to return-instead-of-throw to avoid
+ *    Convex auto-Sentry noise on an expected business condition). PRO callers
  *    are unlimited.
  * 5. Atomic counter +1 in the same transaction as the row insert.
  * 6. Atomic per-user-meta count patch — THIS is the OCC-serializing write.
@@ -357,13 +370,22 @@ export const followCountry = mutation({
     // P3 #21 — Tier-first cap check using the denormalized count. PRO
     // users have no cap (returned for free); for free users the
     // denormalized count is the cap input — no `.collect()` needed.
+    //
+    // Return-instead-of-throw: see FollowMutationResult doc comment and
+    // companion skill `convex-gotchas/reference/convex-autosentry-forwards-intentional-convexerror-throws.md`.
+    // Throwing here forwarded to Sentry via Convex auto-Sentry on every
+    // hit (high-volume by nature, expected business behavior). Other
+    // throws in this handler (UNAUTHENTICATED, INVALID_COUNTRY, shard
+    // missing) intentionally still throw — those ARE bugs and we WANT
+    // them in Sentry.
     const tier = await readEntitlementTier(ctx, userId);
     if (tier < 1 && currentCount >= FREE_TIER_FOLLOW_LIMIT) {
-      throw new ConvexError({
-        kind: "FREE_CAP",
+      return {
+        ok: false,
+        reason: "FREE_CAP",
         currentCount,
         limit: FREE_TIER_FOLLOW_LIMIT,
-      });
+      };
     }
 
     await ctx.db.insert("followedCountries", {

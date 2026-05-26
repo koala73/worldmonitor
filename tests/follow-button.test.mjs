@@ -208,7 +208,14 @@ function makeFakeConvex({ tier = 1, capLimit = 3, initialRows = [] } = {}) {
         const { country } = args;
         if (rows.find((r) => r.country === country)) return { ok: true, idempotent: true };
         if (tier < 1 && rows.length >= capLimit) {
-          throw new ConvexErrorCtor({ kind: 'FREE_CAP', currentCount: rows.length, limit: capLimit });
+          // Post-refactor: server returns discriminated union instead of
+          // throwing. Mock mirrors convex/followedCountries.ts behavior.
+          return {
+            ok: false,
+            reason: 'FREE_CAP',
+            currentCount: rows.length,
+            limit: capLimit,
+          };
         }
         rows.push({ country, addedAt: Date.now() + rows.length });
         fireSnapshot();

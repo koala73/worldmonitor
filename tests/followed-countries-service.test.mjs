@@ -137,7 +137,15 @@ function makeFakeConvex({ tier, capLimit = 3 }) {
           return { ok: true, idempotent: true };
         }
         if (tier < 1 && rows.length >= capLimit) {
-          throw new ConvexErrorCtor({ kind: 'FREE_CAP', currentCount: rows.length, limit: capLimit });
+          // Post-refactor: server returns the FREE_CAP discriminated union
+          // instead of throwing ConvexError. See convex/followedCountries.ts
+          // and companion skill `convex-gotchas/reference/convex-autosentry-forwards-intentional-convexerror-throws.md`.
+          return {
+            ok: false,
+            reason: 'FREE_CAP',
+            currentCount: rows.length,
+            limit: capLimit,
+          };
         }
         rows.push({ country, addedAt: Date.now() + rows.length });
         fireSnapshot();

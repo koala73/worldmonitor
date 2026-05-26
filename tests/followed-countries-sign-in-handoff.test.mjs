@@ -157,7 +157,14 @@ function makeFakeConvex({
         const { country } = args;
         if (rows.find((r) => r.country === country)) return { ok: true, idempotent: true };
         if (tier < 1 && rows.length >= capLimit) {
-          throw new ConvexErrorCtor({ kind: 'FREE_CAP', currentCount: rows.length, limit: capLimit });
+          // Post-refactor: server returns discriminated union instead of
+          // throwing. Mock mirrors convex/followedCountries.ts behavior.
+          return {
+            ok: false,
+            reason: 'FREE_CAP',
+            currentCount: rows.length,
+            limit: capLimit,
+          };
         }
         rows.push({ country, addedAt: Date.now() + rows.length });
         fireSnapshot();
@@ -708,12 +715,57 @@ describe('U3 — concurrent two-tab sign-in merge dedupes via OCC', () => {
 });
 
 describe('U3 — followCountry post-handoff: wire-level Convex error mapping', () => {
-  it("followCountry returns FREE_CAP with currentCount/limit when Convex throws ConvexError({kind:'FREE_CAP'})", async () => {
+  it("followCountry returns FREE_CAP with currentCount/limit when Convex returns {ok:false, reason:'FREE_CAP'}", async () => {
+    // Post-refactor: server returns the discriminated union directly. Mock
+    // mirrors convex/followedCountries.ts behavior. Companion skill:
+    // `convex-gotchas/reference/convex-autosentry-forwards-intentional-convexerror-throws.md`.
     setLocalStorageList([]);
     const fake = makeFakeConvex({ tier: 0, capLimit: 3, initialRows: ['JP', 'CN', 'DE'] });
     setupSignedIn('user_cap', { tier: 0, fakeClient: fake });
 
     await _emitAuthStateForTests({ id: 'user_cap' });
+    await flushMicrotasks();
+
+    const res = await addCountry('FR');
+    assert.equal(res.ok, false);
+    assert.equal(res.reason, 'FREE_CAP');
+    assert.equal(res.currentCount, 3);
+    assert.equal(res.limit, 3);
+  });
+
+  it("followCountry returns FREE_CAP with currentCount/limit when LEGACY server throws ConvexError({kind:'FREE_CAP'}) — deploy-skew safety", async () => {
+    // During the deploy window between server-refactor merge and Convex
+    // deploy completing, a new client may briefly receive a thrown
+    // ConvexError from the OLD server. The client's catch block still
+    // handles this path (src/services/followed-countries.ts FREE_CAP catch).
+    // Safe to drop this test one Convex deploy cycle after the server
+    // refactor lands. Tracking via the inline `Legacy deploy-skew path`
+    // comment in src/services/followed-countries.ts.
+    const ConvexErrorCtor = class extends Error {
+      constructor(data) {
+        super(`ConvexError: ${JSON.stringify(data)}`);
+        this.data = data;
+      }
+    };
+    const legacyThrowingClient = {
+      async mutation(ref) {
+        if (ref === FAKE_API.followedCountries.followCountry) {
+          throw new ConvexErrorCtor({ kind: 'FREE_CAP', currentCount: 3, limit: 3 });
+        }
+        throw new Error('unmocked');
+      },
+      onUpdate(ref, _a, cb) {
+        if (ref === FAKE_API.followedCountries.listFollowed) {
+          Promise.resolve().then(() => cb(['JP', 'CN', 'DE']));
+          return () => {};
+        }
+        throw new Error('unmocked');
+      },
+    };
+    setLocalStorageList([]);
+    setupSignedIn('user_legacy_cap', { tier: 0, fakeClient: legacyThrowingClient });
+
+    await _emitAuthStateForTests({ id: 'user_legacy_cap' });
     await flushMicrotasks();
 
     const res = await addCountry('FR');
