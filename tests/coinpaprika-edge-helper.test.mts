@@ -95,4 +95,56 @@ describe('market Edge CoinPaprika fallback', () => {
     assert.deepEqual(markets.map(item => item.id), ['bitcoin']);
     assert.equal(warnings.some(args => String(args[0]).includes('Skipping eth-ethereum')), true);
   });
+
+  it('bounds CoinPaprika fallback fanout for larger configured sets', async () => {
+    const ids = [
+      'bitcoin',
+      'ethereum',
+      'binancecoin',
+      'solana',
+      'ripple',
+      'cardano',
+      'dogecoin',
+      'tron',
+      'avalanche-2',
+      'chainlink',
+    ];
+    let activePaprika = 0;
+    let maxActivePaprika = 0;
+
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('api.coingecko.com')) {
+        return new Response('unavailable', { status: 503 });
+      }
+
+      activePaprika += 1;
+      maxActivePaprika = Math.max(maxActivePaprika, activePaprika);
+      await new Promise(resolve => setTimeout(resolve, 5));
+      activePaprika -= 1;
+
+      const id = url.match(/tickers\/([^?]+)/)?.[1] ?? 'unknown';
+      return Response.json({
+        id,
+        name: id,
+        symbol: id.slice(0, 3).toUpperCase(),
+        quotes: {
+          USD: {
+            price: 100,
+            volume_24h: 123,
+            market_cap: 456,
+            percent_change_24h: 1.5,
+            percent_change_7d: 2.5,
+          },
+        },
+      });
+    }) as typeof fetch;
+
+    console.warn = () => {};
+
+    const markets = await fetchCryptoMarkets(ids);
+
+    assert.equal(markets.length, ids.length);
+    assert.equal(maxActivePaprika, 4);
+  });
 });

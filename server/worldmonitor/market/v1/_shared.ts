@@ -381,20 +381,22 @@ interface CoinPaprikaTicker {
   };
 }
 
+const COINPAPRIKA_FETCH_CONCURRENCY = 4;
+
 async function fetchCoinPaprikaTickersById(
   paprikaIds: string[],
 ): Promise<CoinPaprikaTicker[]> {
   const ids = [...new Set(paprikaIds.filter((id): id is string => Boolean(id)))];
   if (ids.length === 0) return [];
 
-  const results = await Promise.allSettled(ids.map(async id => {
+  const results = await allSettledWithConcurrency(ids, COINPAPRIKA_FETCH_CONCURRENCY, async id => {
     const resp = await fetch(`https://api.coinpaprika.com/v1/tickers/${encodeURIComponent(id)}?quotes=USD`, {
       headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
       signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
     });
     if (!resp.ok) throw new Error(`CoinPaprika ${id} HTTP ${resp.status}`);
     return resp.json() as Promise<CoinPaprikaTicker>;
-  }));
+  });
 
   const tickers: CoinPaprikaTicker[] = [];
   const failures: unknown[] = [];
@@ -412,6 +414,30 @@ async function fetchCoinPaprikaTickersById(
   }
 
   return tickers;
+}
+
+async function allSettledWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<R>,
+): Promise<PromiseSettledResult<R>[]> {
+  const results: PromiseSettledResult<R>[] = new Array(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(Math.max(1, concurrency), items.length);
+
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      try {
+        results[index] = { status: 'fulfilled', value: await mapper(items[index]!, index) };
+      } catch (reason) {
+        results[index] = { status: 'rejected', reason };
+      }
+    }
+  }));
+
+  return results;
 }
 
 export async function fetchCoinPaprikaMarkets(

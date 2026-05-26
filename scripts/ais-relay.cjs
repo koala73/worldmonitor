@@ -2180,6 +2180,7 @@ const CRYPTO_SEED_TTL = 7200; // 2h — 1h buffer over 5min cron cadence (was 1h
 // that run in the same cycle can share overlap without fetching the full catalog.
 const _paprikaTickerCache = new Map();
 const _PAPRIKA_CACHE_MS = 5 * 60 * 1000;
+const _PAPRIKA_FETCH_CONCURRENCY = 4;
 
 async function _fetchCoinPaprikaTickerById(id) {
   const url = `https://api.coinpaprika.com/v1/tickers/${encodeURIComponent(id)}?quotes=USD`;
@@ -2211,11 +2212,11 @@ async function _fetchCoinPaprikaTickersById(paprikaIds) {
     }
   }
 
-  const results = await Promise.allSettled(misses.map(async (id) => {
+  const results = await allSettledWithConcurrency(misses, _PAPRIKA_FETCH_CONCURRENCY, async (id) => {
     const ticker = await _fetchCoinPaprikaTickerById(id);
     _paprikaTickerCache.set(id, { ticker, cachedAt: Date.now() });
     return ticker;
-  }));
+  });
 
   const failures = [];
   for (let i = 0; i < results.length; i += 1) {
@@ -2233,6 +2234,24 @@ async function _fetchCoinPaprikaTickersById(paprikaIds) {
   }
 
   return tickers;
+}
+
+async function allSettledWithConcurrency(items, concurrency, mapper) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(Math.max(1, concurrency), items.length);
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      try {
+        results[index] = { status: 'fulfilled', value: await mapper(items[index], index) };
+      } catch (reason) {
+        results[index] = { status: 'rejected', reason };
+      }
+    }
+  }));
+  return results;
 }
 
 async function fetchCryptoCoinPaprika() {

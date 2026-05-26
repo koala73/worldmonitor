@@ -54,15 +54,16 @@ export async function fetchCoinPaprikaTickersById(paprikaIds, options = {}) {
   const fetchFn = options.fetchFn || fetch;
   const headers = { Accept: 'application/json', 'User-Agent': CHROME_UA, ...(options.headers || {}) };
   const timeoutMs = options.timeoutMs || 15_000;
+  const concurrency = Math.max(1, Math.min(Number(options.concurrency || 4), ids.length));
 
-  const results = await Promise.allSettled(ids.map(async (id) => {
+  const results = await allSettledWithConcurrency(ids, concurrency, async (id) => {
     const resp = await fetchFn(`https://api.coinpaprika.com/v1/tickers/${encodeURIComponent(id)}?quotes=USD`, {
       headers,
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!resp.ok) throw new Error(`CoinPaprika ${id} HTTP ${resp.status}`);
     return resp.json();
-  }));
+  });
 
   const tickers = [];
   const failures = [];
@@ -81,6 +82,26 @@ export async function fetchCoinPaprikaTickersById(paprikaIds, options = {}) {
   }
 
   return tickers;
+}
+
+async function allSettledWithConcurrency(items, concurrency, mapper) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(concurrency, items.length);
+
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      try {
+        results[index] = { status: 'fulfilled', value: await mapper(items[index], index) };
+      } catch (reason) {
+        results[index] = { status: 'rejected', reason };
+      }
+    }
+  }));
+
+  return results;
 }
 
 /**

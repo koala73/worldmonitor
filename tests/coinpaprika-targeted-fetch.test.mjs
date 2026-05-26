@@ -73,6 +73,28 @@ describe('fetchCoinPaprikaTickersById', () => {
     assert.equal(seen[0]['X-Test'], '1');
   });
 
+  it('bounds per-id request fanout', async () => {
+    let active = 0;
+    let maxActive = 0;
+    await fetchCoinPaprikaTickersById(['a-a', 'b-b', 'c-c', 'd-d', 'e-e', 'f-f'], {
+      concurrency: 2,
+      fetchFn: async (url) => {
+        active += 1;
+        maxActive = Math.max(maxActive, active);
+        await new Promise(resolve => setTimeout(resolve, 5));
+        active -= 1;
+        return {
+          ok: true,
+          async json() {
+            return { id: url.match(/tickers\/([^?]+)/)[1], quotes: { USD: { price: 1 } } };
+          },
+        };
+      },
+    });
+
+    assert.equal(maxActive, 2);
+  });
+
   it('still fails when every configured ticker request fails', async () => {
     const originalWarn = console.warn;
     console.warn = () => {};
@@ -96,6 +118,7 @@ describe('ais-relay CoinPaprika fallback', () => {
     assert.doesNotMatch(src, /api\.coinpaprika\.com\/v1\/tickers\?quotes=USD/);
     assert.match(src, /api\.coinpaprika\.com\/v1\/tickers\/\$\{encodeURIComponent\(id\)\}\?quotes=USD/);
     assert.match(src, /async function _fetchCoinPaprikaTickersById\(paprikaIds\)/);
-    assert.match(src, /Promise\.allSettled\(misses\.map/);
+    assert.match(src, /const _PAPRIKA_FETCH_CONCURRENCY = 4/);
+    assert.match(src, /allSettledWithConcurrency\(misses, _PAPRIKA_FETCH_CONCURRENCY/);
   });
 });
