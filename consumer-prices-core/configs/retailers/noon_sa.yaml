@@ -1,0 +1,23 @@
+retailer:
+  slug: noon_sa
+  name: Noon Saudi Arabia
+  marketCode: sa
+  currencyCode: SAR
+  adapter: search
+  baseUrl: https://www.noon.com/saudi-en
+  enabled: true
+
+  searchConfig:
+    numResults: 5
+    queryTemplate: "{canonicalName} grocery SAR saudi noon"
+    urlPathContains: /saudi-en/  # restrict to SA storefront; noon.com also serves UAE (/uae-en/) and Egypt
+
+  rateLimit:
+    requestsPerMinute: 10
+    maxConcurrency: 1
+    delayBetweenRequestsMs: 6000
+
+  discovery:
+    mode: search
+    maxPages: 20
+    seeds: []

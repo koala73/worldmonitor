@@ -44,7 +44,7 @@ export async function fetchPositiveGeoEvents(): Promise<PositiveGeoEvent[]> {
       count: event.count,
       timestamp: event.timestamp,
     }));
-  }, []);
+  }, [], { shouldCache: (r) => r.length > 0 });
 }
 
 /**

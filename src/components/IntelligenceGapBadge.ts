@@ -229,7 +229,9 @@ export class IntelligenceFindingsBadge {
 
   private startRefresh(): void {
     document.addEventListener('wm:intelligence-updated', this.boundUpdate);
-    this.refreshInterval = setInterval(this.boundUpdate, REFRESH_INTERVAL_MS);
+    this.refreshInterval = setInterval(() => {
+      if (document.visibilityState === 'visible') this.boundUpdate();
+    }, REFRESH_INTERVAL_MS);
   }
 
   public update(): void {

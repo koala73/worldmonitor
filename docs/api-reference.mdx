@@ -1,0 +1,72 @@
+---
+title: "API Reference"
+description: "Catalog of every WorldMonitor REST service. All endpoints follow /api/<service>/v1/<rpc-name>."
+---
+
+WorldMonitor exposes its data through a family of versioned REST services. Every endpoint follows the same shape:
+
+```
+https://api.worldmonitor.app/api/<service>/v1/<rpc-name>
+```
+
+`<rpc-name>` is kebab-case (e.g. `list-acled-events`, `get-resilience-ranking`). Auth is the same on every service — pass `X-WorldMonitor-Key: wm_live_...` (or rely on a trusted browser origin). See [Authentication](/usage-auth) for details.
+
+The grouped pages in the left sidebar render the full OpenAPI spec — request parameters, response schemas, and try-it-out — for each service.
+
+## Machine-readable discovery
+
+Building an agent or codegen pipeline? Point at `https://worldmonitor.app/` and follow the `Link:` header — every OpenAPI spec, MCP server card, OAuth endpoint, and agent-skill bundle is discoverable from one root URL via standard `.well-known` paths. See [Agent Discovery](/agent-discovery) for the full walkthrough.
+
+The single bundled spec is at [`/openapi.yaml`](https://www.worldmonitor.app/openapi.yaml) — feed it to any OpenAPI generator to produce typed clients for all 30+ services in one pass.
+
+## Service catalog
+
+**Geopolitical** — Conflicts, Military, Unrest, Intelligence, Displacement, Cyber, Sanctions
+
+**Natural events** — Natural Disasters, Seismology, Climate, Wildfires, Radiation, Thermal
+
+**Economy and markets** — Economic (FRED / IMF / BIS / country macro), Markets (quotes / indices / FX / commodities), Trade, Supply Chain, Consumer Prices, Predictions (prediction markets), Forecasts
+
+**Infrastructure and transport** — Aviation (aircraft tracking, flight search), Maritime (vessels, density zones), Infrastructure, Resilience (country resilience score and ranking)
+
+**Health and environment** — Public Health, Imagery, Webcams
+
+**Other** — News (feed digest, article summaries), Research, Positive Events, Giving
+
+Open any group in the sidebar to browse its operations.
+
+## MCP equivalents
+
+If you've been using the [MCP server](/mcp-server) and want REST equivalents, the relationship isn't always 1:1. Most MCP tools fall into one of three buckets:
+
+**Bundled cache-reads** — the MCP tool reads multiple Redis keys in one call. There's no single REST RPC that returns the same envelope; instead, REST exposes the underlying domains as fine-grained operations you can mix-and-match. Examples: `get_market_data` (bundles equity / commodity / crypto / sectors / ETF flows / Gulf / fear-greed) → see `list-market-quotes`, `list-commodity-quotes`, `list-crypto-quotes`, `get-sector-summary`, `list-etf-flows`, `list-gulf-quotes`, `get-fear-greed-index` in MarketService. Same shape for `get_economic_data`, `get_country_macro` (IMF WEO macro), and `get_eu_*`.
+
+**1:1 RPC tools** — the MCP tool wraps a single REST RPC:
+
+| MCP tool | REST endpoint |
+|---|---|
+| `get_conflict_events` | `/api/conflict/v1/list-acled-events` (also `list-ucdp-events`, `list-iran-events`) |
+| `get_news_intelligence` | `/api/news/v1/list-feed-digest`, `/api/news/v1/summarize-article` |
+| `get_natural_disasters` | `/api/natural/v1/list-natural-events` |
+| `get_military_posture` | `/api/military/v1/list-military-flights`, `/api/military/v1/get-theater-posture` |
+| `get_cyber_threats` | `/api/cyber/v1/list-cyber-threats` |
+| `get_prediction_markets` | `/api/prediction/v1/list-prediction-markets` |
+| `get_sanctions_data` | `/api/sanctions/v1/list-sanctions-pressure`, `/api/sanctions/v1/lookup-sanction-entity` |
+| `get_climate_data` | `/api/climate/v1/list-climate-anomalies`, `/api/climate/v1/get-co2-monitoring`, `/api/climate/v1/get-ocean-ice-data`, `/api/climate/v1/list-air-quality-data`, … |
+| `get_infrastructure_status` | `/api/infrastructure/v1/list-internet-outages`, `/api/infrastructure/v1/list-service-statuses` |
+| `get_supply_chain_data` | `/api/supply-chain/v1/get-shipping-stress`, `/api/supply-chain/v1/get-chokepoint-status`, `/api/supply-chain/v1/get-critical-minerals`, … |
+| `get_positive_events` | `/api/positive-events/v1/list-positive-geo-events` |
+| `get_radiation_data` | `/api/radiation/v1/list-radiation-observations` |
+| `get_research_signals` | `/api/research/v1/list-arxiv-papers`, `/api/research/v1/list-trending-repos`, `/api/research/v1/list-hackernews-items`, `/api/research/v1/list-tech-events` |
+| `get_forecast_predictions` | `/api/forecast/v1/get-forecasts` |
+| `get_maritime_activity` | `/api/maritime/v1/get-vessel-snapshot` |
+| `get_aviation_status` | `/api/aviation/v1/list-airport-delays`, `/api/aviation/v1/track-aircraft`, `/api/aviation/v1/get-flight-status` |
+| `search_flights` / `search_flight_prices_by_date` | `/api/aviation/v1/search-google-flights`, `/api/aviation/v1/search-google-dates` |
+
+**Composite / LLM tools** — `get_world_brief`, `get_country_brief`, `get_country_risk`, `get_airspace`, `analyze_situation`, `generate_forecasts` fan out to multiple REST RPCs and apply LLM synthesis or geographic filtering. There's no single REST equivalent — call the underlying RPCs and combine client-side.
+
+Always cross-check against [the bundled OpenAPI spec](https://www.worldmonitor.app/openapi.yaml) — that's the source of truth for path names, parameters, and response shapes.
+
+## Platform endpoints
+
+Bootstrap, health, version, and cache-purge live outside the per-service catalog — see [Platform Endpoints](/api-platform).

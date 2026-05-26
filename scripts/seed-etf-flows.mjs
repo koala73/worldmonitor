@@ -1,41 +1,21 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, loadSharedConfig, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { loadEnvFile, loadSharedConfig, runSeed } from './_seed-utils.mjs';
+import { fetchYahooJson } from './_yahoo-fetch.mjs';
+import { fetchAvBulkQuotes } from './_shared-av.mjs';
 
 const etfConfig = loadSharedConfig('etfs.json');
 
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'market:etf-flows:v1';
-const CACHE_TTL = 3600;
+const CACHE_TTL = 5400; // 90min — 1h buffer over 15min cron cadence (was 60min = 45min buffer)
 const YAHOO_DELAY_MS = 200;
 
 const ETF_LIST = etfConfig.btcSpot;
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
-}
-
-async function fetchYahooWithRetry(url, label, maxAttempts = 4) {
-  for (let i = 0; i < maxAttempts; i++) {
-    const resp = await fetch(url, {
-      headers: { 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (resp.status === 429) {
-      const wait = 5000 * (i + 1);
-      console.warn(`  [Yahoo] ${label} 429 — waiting ${wait / 1000}s (attempt ${i + 1}/${maxAttempts})`);
-      await sleep(wait);
-      continue;
-    }
-    if (!resp.ok) {
-      console.warn(`  [Yahoo] ${label} HTTP ${resp.status}`);
-      return null;
-    }
-    return resp;
-  }
-  console.warn(`  [Yahoo] ${label} rate limited after ${maxAttempts} attempts`);
-  return null;
 }
 
 function parseEtfChartData(chart, ticker, issuer) {
@@ -81,23 +61,48 @@ function parseEtfChartData(chart, ticker, issuer) {
 async function fetchEtfFlows() {
   const etfs = [];
   let misses = 0;
+  const avKey = process.env.ALPHA_VANTAGE_API_KEY;
+  const covered = new Set();
 
+  // --- Primary: Alpha Vantage REALTIME_BULK_QUOTES ---
+  if (avKey) {
+    const tickers = ETF_LIST.map(e => e.ticker);
+    const avData = await fetchAvBulkQuotes(tickers, avKey);
+    for (const { ticker, issuer } of ETF_LIST) {
+      const av = avData.get(ticker);
+      if (!av) continue;
+      const { price, change: priceChange, volume } = av;
+      const direction = priceChange > 0.1 ? 'inflow' : priceChange < -0.1 ? 'outflow' : 'neutral';
+      const estFlow = Math.round(volume * price * (priceChange > 0 ? 1 : -1) * 0.1);
+      // avgVolume and volumeRatio require 5-day history not available from REALTIME_BULK_QUOTES
+      etfs.push({ ticker, issuer, price: +price.toFixed(2), priceChange: +priceChange.toFixed(2), volume, avgVolume: 0, volumeRatio: 0, direction, estFlow });
+      covered.add(ticker);
+      console.log(`  [AV] ${ticker}: $${price.toFixed(2)} (${direction})`);
+    }
+  }
+
+  // --- Fallback: Yahoo (for any ETFs not covered by AV) ---
+  let yahooIdx = 0;
   for (let i = 0; i < ETF_LIST.length; i++) {
     const { ticker, issuer } = ETF_LIST[i];
-    if (i > 0) await sleep(YAHOO_DELAY_MS);
+    if (covered.has(ticker)) continue;
+    if (yahooIdx > 0) await sleep(YAHOO_DELAY_MS);
+    yahooIdx++;
 
     try {
       const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?range=5d&interval=1d`;
-      const resp = await fetchYahooWithRetry(url, ticker);
-      if (!resp) {
+      let chart;
+      try {
+        chart = await fetchYahooJson(url, { label: ticker });
+      } catch {
         misses++;
         continue;
       }
-      const chart = await resp.json();
       const parsed = parseEtfChartData(chart, ticker, issuer);
       if (parsed) {
         etfs.push(parsed);
-        console.log(`  ${ticker}: $${parsed.price} (${parsed.direction})`);
+        covered.add(ticker);
+        console.log(`  [Yahoo] ${ticker}: $${parsed.price} (${parsed.direction})`);
       } else {
         misses++;
       }
@@ -139,10 +144,18 @@ function validate(data) {
   return Array.isArray(data?.etfs) && data.etfs.length >= 1;
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.etfs) ? data.etfs.length : 0;
+}
+
 runSeed('market', 'etf-flows', CANONICAL_KEY, fetchEtfFlows, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
-  sourceVersion: 'yahoo-chart-5d',
+  sourceVersion: 'alphavantage+yahoo-chart-5d',
+
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 60,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);

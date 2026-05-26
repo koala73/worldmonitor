@@ -6,7 +6,7 @@ loadEnvFile(import.meta.url);
 
 const API_BASE = 'https://api.usaspending.gov/api/v2';
 const CANONICAL_KEY = 'economic:spending:v1';
-const CACHE_TTL = 3600; // 1 hour
+const CACHE_TTL = 7200; // 2h — 1h buffer over 1h cron cadence (was 1h = 0 buffer)
 
 const AWARD_TYPE_MAP = {
   'A': 'contract', 'B': 'contract', 'C': 'contract', 'D': 'contract',
@@ -78,10 +78,18 @@ function validate(data) {
   return Array.isArray(data?.awards) && data.awards.length >= 1;
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.awards) ? data.awards.length : 0;
+}
+
 runSeed('economic', 'spending', CANONICAL_KEY, fetchSpending, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
   sourceVersion: 'usaspending-v2',
+
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 120,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);

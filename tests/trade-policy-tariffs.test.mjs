@@ -11,6 +11,7 @@ const root = resolve(__dirname, '..');
 const protoSrc = readFileSync(join(root, 'proto/worldmonitor/trade/v1/get_tariff_trends.proto'), 'utf-8');
 const tradeDataProtoSrc = readFileSync(join(root, 'proto/worldmonitor/trade/v1/trade_data.proto'), 'utf-8');
 const seedSrc = readFileSync(join(root, 'scripts/seed-supply-chain-trade.mjs'), 'utf-8');
+const healthSrc = readFileSync(join(root, 'api/health.js'), 'utf-8');
 const panelSrc = readFileSync(join(root, 'src/components/TradePolicyPanel.ts'), 'utf-8');
 const serviceSrc = readFileSync(join(root, 'src/services/trade/index.ts'), 'utf-8');
 const clientGeneratedSrc = readFileSync(join(root, 'src/generated/client/worldmonitor/trade/v1/service_client.ts'), 'utf-8');
@@ -42,10 +43,10 @@ describe('Generated tariff types', () => {
   });
 });
 
-describe('Budget Lab effective tariff seed integration', () => {
-  it('imports parse helpers from shared utils module', () => {
-    assert.match(seedSrc, /_trade-parse-utils\.mjs/);
-    assert.match(seedSrc, /parseBudgetLabEffectiveTariffHtml/);
+describe('FRED effective tariff rate seed integration', () => {
+  it('uses FRED customs duties and imports of goods series', () => {
+    assert.match(seedSrc, /B235RC1Q027SBEA/);
+    assert.match(seedSrc, /A255RC1Q027SBEA/);
   });
 
   it('attaches the effective tariff snapshot only to the US tariff payload', () => {
@@ -55,6 +56,62 @@ describe('Budget Lab effective tariff seed integration', () => {
   it('keeps restrictions snapshot labeled as WTO MFN baseline data', () => {
     assert.match(seedSrc, /measureType: 'WTO MFN Baseline'/);
     assert.match(seedSrc, /description: `WTO MFN baseline: \$\{value\.toFixed\(1\)\}%`/);
+  });
+});
+
+describe('tariffTrendsUs health-check maxStaleMin must not exceed TARIFF_TTL (silent-EMPTY-window guard)', () => {
+  // Regression-locks the fix for the 2026-04-27 silent EMPTY window where
+  // TARIFF_TTL was 480min (8h) but maxStaleMin was 900 (15h). Between
+  // minute 480 and minute 900, the data key was gone but seed-meta was
+  // still considered fresh, so health emitted status=EMPTY (records=0)
+  // with no STALE_SEED alarm. UptimeRobot keyword-checks for "HEALTHY"
+  // continued to pass while paying users saw "data unavailable" panels.
+  // Rule: maxStaleMin must be tightly co-pinned to TTL_DATA + small grace.
+
+  function extractSeconds(varName) {
+    const re = new RegExp(`const\\s+${varName}\\s*=\\s*(\\d+)`, 'm');
+    const m = seedSrc.match(re);
+    if (!m) throw new Error(`could not find ${varName} in seed src`);
+    return parseInt(m[1], 10);
+  }
+
+  function extractMaxStaleMin(name) {
+    // Lazy `[^}]*?` instead of greedy + `ms` flag so the pattern still works
+    // if the entry ever grows multi-line or contains nested inline objects.
+    // Failure mode is noisy regardless — test throws when no match — but the
+    // lazy form is more forgiving against future formatting changes.
+    const re = new RegExp(`${name}:\\s*\\{[^}]*?maxStaleMin:\\s*(\\d+)`, 'ms');
+    const m = healthSrc.match(re);
+    if (!m) throw new Error(`could not find ${name}.maxStaleMin in health src`);
+    return parseInt(m[1], 10);
+  }
+
+  it('TARIFF_TTL is 28800s (8h) — pinned so the relationship below stays meaningful', () => {
+    assert.equal(extractSeconds('TARIFF_TTL'), 28800);
+  });
+
+  it('tariffTrendsUs.maxStaleMin is 540min — TARIFF_TTL/60 + 60min grace', () => {
+    assert.equal(extractMaxStaleMin('tariffTrendsUs'), 540);
+  });
+
+  it('maxStaleMin <= TARIFF_TTL_min + 120 grace ceiling (no silent EMPTY window > 2h)', () => {
+    const ttlMin = extractSeconds('TARIFF_TTL') / 60;
+    const maxStale = extractMaxStaleMin('tariffTrendsUs');
+    assert.ok(
+      maxStale <= ttlMin + 120,
+      `maxStaleMin (${maxStale}) must be <= TARIFF_TTL_min (${ttlMin}) + 120 grace; ` +
+      `larger gap creates a silent EMPTY window where data has expired but no STALE_SEED fires.`,
+    );
+  });
+
+  it('maxStaleMin >= TARIFF_TTL_min (no false STALE before data even expires)', () => {
+    const ttlMin = extractSeconds('TARIFF_TTL') / 60;
+    const maxStale = extractMaxStaleMin('tariffTrendsUs');
+    assert.ok(
+      maxStale >= ttlMin,
+      `maxStaleMin (${maxStale}) must be >= TARIFF_TTL_min (${ttlMin}); ` +
+      `tighter would fire STALE_SEED before the data has even expired.`,
+    );
   });
 });
 

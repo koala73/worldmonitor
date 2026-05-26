@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package worldmonitor.scenario.v1;
+
+import "buf/validate/validate.proto";
+
+// RunScenarioRequest enqueues a scenario job on the scenario-queue:pending
+// Upstash list for the async scenario-worker to pick up.
+message RunScenarioRequest {
+  // Scenario template id — must match an entry in SCENARIO_TEMPLATES.
+  string scenario_id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 128
+  ];
+  // Optional 2-letter ISO country code to scope the impact computation.
+  // When absent, the worker computes for all countries with seeded exposure.
+  string iso2 = 2 [
+    (buf.validate.field).string.pattern = "^([A-Z]{2})?$"
+  ];
+}
+
+// RunScenarioResponse carries the enqueued job id. Clients poll
+// GetScenarioStatus with this id until status != "pending".
+//
+// NOTE: the legacy (pre-sebuf) endpoint returned HTTP 202 Accepted on
+// enqueue; the sebuf-generated server emits 200 OK for all successful
+// responses (no per-RPC status-code configuration is available in the
+// current sebuf HTTP annotations). The 202 → 200 shift on a same-version
+// (v1 → v1) migration is called out in docs/api-scenarios.mdx and the
+// OpenAPI bundle; external consumers keying off `response.status === 202`
+// need to branch on response body shape instead.
+message RunScenarioResponse {
+  // Generated job id of the form `scenario:{epoch_ms}:{8-char-suffix}`.
+  string job_id = 1;
+  // Always "pending" at enqueue time.
+  string status = 2;
+  // Convenience URL the caller can use to poll this job's status.
+  // Server-computed as `/api/scenario/v1/get-scenario-status?jobId=<job_id>`.
+  // Restored after the v1 → v1 sebuf migration because external callers
+  // may key off this field.
+  string status_url = 3;
+}

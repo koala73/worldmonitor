@@ -388,3 +388,61 @@ Polymarket geopolitical markets are queried using tag-based filters (Ukraine, Ir
 Once browser-direct succeeds, the system caches this state and skips fallback tiers on subsequent requests. Country-specific markets are fetched by mapping countries to Polymarket tags with name-variant matching (e.g., "Russia" matches titles containing "Russian", "Moscow", "Kremlin", "Putin").
 
 Markets are filtered to exclude sports and entertainment (100+ exclusion keywords), require meaningful price divergence from 50% or volume above $50K, and are ranked by trading volume. Each variant gets different tag sets — geopolitical focus queries politics/world/ukraine/middle-east tags, while tech focus queries ai/crypto/business tags.
+
+---
+
+## Provider Credits
+
+WorldMonitor is grateful to the following organizations for making their data publicly accessible.
+
+### Energy & Commodities
+| Provider | Data | Link |
+|----------|------|------|
+| GIE AGSI+ | EU natural gas storage levels | [agsi.gie.eu](https://agsi.gie.eu) |
+| U.S. EIA | Crude oil inventories, fuel prices, energy data | [eia.gov/opendata](https://www.eia.gov/opendata) |
+
+### Finance & Economics
+| Provider | Data | Link |
+|----------|------|------|
+| ECB Data Portal | FX reference rates, yield curve, ESTR/EURIBOR, financial stress index | [data-api.ecb.europa.eu](https://data-api.ecb.europa.eu) |
+| Eurostat | Euro Area CPI, GDP, unemployment, economic indicators | [ec.europa.eu/eurostat](https://ec.europa.eu/eurostat) |
+| FRED — St. Louis Fed | US/global interest rates, macroeconomic series | [fred.stlouisfed.org](https://fred.stlouisfed.org) |
+| World Bank Open Data | Development indicators, renewable energy, technology readiness | [data.worldbank.org](https://data.worldbank.org) |
+| BIS Statistics | Central bank policy rates, REER, credit-to-GDP | [stats.bis.org](https://stats.bis.org) |
+| U.S. BLS | US labor statistics | [bls.gov/developers](https://www.bls.gov/developers) |
+| USA Spending | US federal spending and contracts | [api.usaspending.gov](https://api.usaspending.gov) |
+| UN Comtrade | Global merchandise trade flows | [comtradeapi.un.org](https://comtradeapi.un.org) |
+| CoinGecko | Cryptocurrency prices and market data | [coingecko.com](https://www.coingecko.com) |
+
+### Geopolitics & Conflict
+| Provider | Data | Link |
+|----------|------|------|
+| ACLED | Armed conflict and protest event data | [acleddata.com](https://acleddata.com) |
+| UCDP | Uppsala Conflict Data Program — conflict events | [ucdp.uu.se](https://ucdp.uu.se) |
+| GDELT | Global event, language, and tone database | [gdeltproject.org](https://www.gdeltproject.org) |
+| IMF PortWatch | Chokepoint transit intelligence | [portwatch.imf.org](https://portwatch.imf.org) |
+
+### Environment & Disasters
+| Provider | Data | Link |
+|----------|------|------|
+| USGS Earthquake Hazards | Global seismic activity | [earthquake.usgs.gov](https://earthquake.usgs.gov) |
+| NASA FIRMS | Near real-time wildfire/fire detections (VIIRS) | [firms.modaps.eosdis.nasa.gov](https://firms.modaps.eosdis.nasa.gov) |
+| NASA EONET | Natural events — storms, volcanoes, floods | [eonet.gsfc.nasa.gov](https://eonet.gsfc.nasa.gov) |
+| GDACS | UN-coordinated global disaster alerts | [gdacs.org](https://www.gdacs.org) |
+| Open-Meteo | ERA5 reanalysis climate data | [open-meteo.com](https://open-meteo.com) |
+
+### Infrastructure & Cyber
+| Provider | Data | Link |
+|----------|------|------|
+| Cloudflare Radar | Internet outages and traffic anomalies | [radar.cloudflare.com](https://radar.cloudflare.com) |
+| Submarine Cable Map | Global submarine cable infrastructure | [submarinecablemap.com](https://www.submarinecablemap.com) |
+| AbuseIPDB | Crowd-sourced malicious IP reports | [abuseipdb.com](https://www.abuseipdb.com) |
+| CelesTrak | Satellite TLE data for orbital tracking | [celestrak.org](https://celestrak.org) |
+
+### Aviation
+| Provider | Data | Link |
+|----------|------|------|
+| Wingbits | Live ADS-B flight data | [wingbits.com](https://wingbits.com) |
+| OpenSky Network | ADS-B flight tracking (fallback) | [opensky-network.org](https://opensky-network.org) |
+| FAA ASWS | US airport delay and ground stop data | [nasstatus.faa.gov](https://nasstatus.faa.gov) |
+| ICAO | NOTAM airspace closure data | [icao.int](https://www.icao.int) |

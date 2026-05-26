@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package worldmonitor.infrastructure.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/infrastructure/v1/infrastructure.proto";
+
+// ListInternetDdosAttacksRequest specifies filters for retrieving DDoS attack summaries.
+message ListInternetDdosAttacksRequest {}
+
+// ListInternetDdosAttacksResponse contains DDoS attack protocol and vector breakdowns.
+message ListInternetDdosAttacksResponse {
+  // Protocol distribution (TCP, UDP, ICMP, GRE).
+  repeated DdosAttackSummaryEntry protocol = 1;
+  // Attack vector distribution.
+  repeated DdosAttackSummaryEntry vector = 2;
+  // ISO 8601 start of the data window.
+  string date_range_start = 3;
+  // ISO 8601 end of the data window.
+  string date_range_end = 4;
+  // Top DDoS target locations with geo coordinates.
+  repeated DdosLocationHit top_target_locations = 5;
+}

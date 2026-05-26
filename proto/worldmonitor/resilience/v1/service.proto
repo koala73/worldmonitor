@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package worldmonitor.resilience.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/resilience/v1/get_resilience_ranking.proto";
+import "worldmonitor/resilience/v1/get_resilience_score.proto";
+
+service ResilienceService {
+  option (sebuf.http.service_config) = {base_path: "/api/resilience/v1"};
+
+  rpc GetResilienceScore(GetResilienceScoreRequest) returns (GetResilienceScoreResponse) {
+    option (sebuf.http.config) = {path: "/get-resilience-score", method: HTTP_METHOD_GET};
+  }
+
+  rpc GetResilienceRanking(GetResilienceRankingRequest) returns (GetResilienceRankingResponse) {
+    option (sebuf.http.config) = {path: "/get-resilience-ranking", method: HTTP_METHOD_GET};
+  }
+}

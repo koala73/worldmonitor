@@ -1,16 +1,16 @@
 {
   "sectors": [
-    { "symbol": "XLK", "name": "Tech" },
-    { "symbol": "XLF", "name": "Finance" },
+    { "symbol": "XLK", "name": "Technology" },
+    { "symbol": "XLF", "name": "Financials" },
     { "symbol": "XLE", "name": "Energy" },
-    { "symbol": "XLV", "name": "Health" },
-    { "symbol": "XLY", "name": "Consumer" },
-    { "symbol": "XLI", "name": "Industrial" },
-    { "symbol": "XLP", "name": "Staples" },
+    { "symbol": "XLV", "name": "Health Care" },
+    { "symbol": "XLY", "name": "Consumer Disc." },
+    { "symbol": "XLI", "name": "Industrials" },
+    { "symbol": "XLP", "name": "Con. Staples" },
     { "symbol": "XLU", "name": "Utilities" },
     { "symbol": "XLB", "name": "Materials" },
-    { "symbol": "XLRE", "name": "Real Est" },
-    { "symbol": "XLC", "name": "Comms" },
-    { "symbol": "SMH", "name": "Semis" }
+    { "symbol": "XLRE", "name": "Real Estate" },
+    { "symbol": "XLC", "name": "Comm. Svcs" },
+    { "symbol": "SMH", "name": "Semiconductors" }
   ]
 }

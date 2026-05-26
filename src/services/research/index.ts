@@ -29,7 +29,7 @@ export async function fetchArxivPapers(
       cursor: '',
     });
     return resp.papers;
-  }, []);
+  }, [], { cacheKey: `${category}:${query}:${pageSize}` });
 }
 
 export async function fetchTrendingRepos(
@@ -45,7 +45,7 @@ export async function fetchTrendingRepos(
       cursor: '',
     });
     return resp.repos;
-  }, []);
+  }, [], { cacheKey: `${language}:${period}:${pageSize}` });
 }
 
 export async function fetchHackernewsItems(
@@ -59,5 +59,5 @@ export async function fetchHackernewsItems(
       cursor: '',
     });
     return resp.items;
-  }, []);
+  }, [], { cacheKey: `${feedType}:${pageSize}` });
 }

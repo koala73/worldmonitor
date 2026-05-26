@@ -142,7 +142,7 @@ export async function fetchThermalEscalations(maxItems = 12): Promise<ThermalEsc
         highRelevanceCount: response.summary?.highRelevanceCount ?? 0,
       },
     };
-  }, emptyResult);
+  }, emptyResult, { shouldCache: (r) => r.clusters.length > 0 });
 }
 
 function toCluster(cluster: ProtoThermalEscalationCluster): ThermalEscalationCluster {

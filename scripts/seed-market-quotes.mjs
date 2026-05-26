@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, loadSharedConfig, CHROME_UA, sleep, runSeed, parseYahooChart, writeExtraKey } from './_seed-utils.mjs';
+import { loadEnvFile, loadSharedConfig, sleep, CHROME_UA, runSeed, parseYahooChart, writeExtraKey } from './_seed-utils.mjs';
+import { fetchYahooJson } from './_yahoo-fetch.mjs';
+import { fetchAvBulkQuotes } from './_shared-av.mjs';
 
 const stocksConfig = loadSharedConfig('stocks.json');
 
@@ -31,34 +33,11 @@ async function fetchFinnhubQuote(symbol, apiKey) {
   }
 }
 
-async function fetchYahooWithRetry(url, label, maxAttempts = 4) {
-  for (let i = 0; i < maxAttempts; i++) {
-    const resp = await fetch(url, {
-      headers: { 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(10_000),
-    });
-    if (resp.status === 429) {
-      const wait = 5000 * (i + 1);
-      console.warn(`  [Yahoo] ${label} 429 — waiting ${wait / 1000}s (attempt ${i + 1}/${maxAttempts})`);
-      await sleep(wait);
-      continue;
-    }
-    if (!resp.ok) {
-      console.warn(`  [Yahoo] ${label} HTTP ${resp.status}`);
-      return null;
-    }
-    return resp;
-  }
-  console.warn(`  [Yahoo] ${label} rate limited after ${maxAttempts} attempts`);
-  return null;
-}
-
 async function fetchYahooQuote(symbol) {
   try {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}`;
-    const resp = await fetchYahooWithRetry(url, symbol);
-    if (!resp) return null;
-    return parseYahooChart(await resp.json(), symbol);
+    const chart = await fetchYahooJson(url, { label: symbol });
+    return parseYahooChart(chart, symbol);
   } catch (err) {
     console.warn(`  [Yahoo] ${symbol} error: ${err.message}`);
     return null;
@@ -67,34 +46,48 @@ async function fetchYahooQuote(symbol) {
 
 async function fetchMarketQuotes() {
   const quotes = [];
-  const apiKey = process.env.FINNHUB_API_KEY;
-  const finnhubSymbols = MARKET_SYMBOLS.filter((s) => !YAHOO_ONLY.has(s));
-  const yahooSymbols = MARKET_SYMBOLS.filter((s) => YAHOO_ONLY.has(s));
+  const avKey = process.env.ALPHA_VANTAGE_API_KEY;
+  const finnhubKey = process.env.FINNHUB_API_KEY;
 
-  if (apiKey && finnhubSymbols.length > 0) {
+  // --- Primary: Alpha Vantage REALTIME_BULK_QUOTES ---
+  if (avKey) {
+    // AV doesn't support Indian NSE symbols or Yahoo-only indices — skip those
+    const avSymbols = MARKET_SYMBOLS.filter((s) => !YAHOO_ONLY.has(s) && !s.endsWith('.NS'));
+    const avResults = await fetchAvBulkQuotes(avSymbols, avKey);
+    for (const [sym, q] of avResults) {
+      const meta = stocksConfig.symbols.find(s => s.symbol === sym);
+      quotes.push({ symbol: sym, name: meta?.name || sym, display: meta?.display || sym, price: q.price, change: q.change, sparkline: [] });
+      console.log(`  [AV] ${sym}: $${q.price} (${q.change > 0 ? '+' : ''}${q.change.toFixed(2)}%)`);
+    }
+  }
+
+  const covered = new Set(quotes.map((q) => q.symbol));
+
+  // --- Secondary: Finnhub (for any stocks not covered by AV or if AV key not set) ---
+  if (finnhubKey) {
+    const finnhubSymbols = MARKET_SYMBOLS.filter((s) => !covered.has(s) && !YAHOO_ONLY.has(s));
     for (let i = 0; i < finnhubSymbols.length; i++) {
       if (i > 0 && i % 10 === 0) await sleep(100);
-      const r = await fetchFinnhubQuote(finnhubSymbols[i], apiKey);
+      const r = await fetchFinnhubQuote(finnhubSymbols[i], finnhubKey);
       if (r) {
         quotes.push(r);
+        covered.add(r.symbol);
         console.log(`  [Finnhub] ${r.symbol}: $${r.price} (${r.change > 0 ? '+' : ''}${r.change}%)`);
       }
     }
   }
 
-  const missedFinnhub = apiKey
-    ? finnhubSymbols.filter((s) => !quotes.some((q) => q.symbol === s))
-    : finnhubSymbols;
-  const allYahoo = [...yahooSymbols, ...missedFinnhub];
-
+  // --- Fallback: Yahoo (for remaining symbols including Yahoo-only and Indian markets) ---
+  const allYahoo = MARKET_SYMBOLS.filter((s) => !covered.has(s));
   for (let i = 0; i < allYahoo.length; i++) {
     const s = allYahoo[i];
-    if (quotes.some((q) => q.symbol === s)) continue;
     if (i > 0) await sleep(YAHOO_DELAY_MS);
     const q = await fetchYahooQuote(s);
     if (q) {
-      quotes.push(q);
-      console.log(`  [Yahoo] ${q.symbol}: $${q.price} (${q.change > 0 ? '+' : ''}${q.change}%)`);
+      const meta = stocksConfig.symbols.find(x => x.symbol === s);
+      quotes.push({ ...q, symbol: s, name: meta?.name || s, display: meta?.display || s });
+      covered.add(s);
+      console.log(`  [Yahoo] ${s}: $${q.price} (${q.change > 0 ? '+' : ''}${q.change}%)`);
     }
   }
 
@@ -102,19 +95,20 @@ async function fetchMarketQuotes() {
     throw new Error('All market quote fetches failed');
   }
 
-  const coveredByYahoo = finnhubSymbols.every((s) => quotes.some((q) => q.symbol === s));
-  const skipped = !apiKey && !coveredByYahoo;
-
   return {
     quotes,
-    finnhubSkipped: skipped,
-    skipReason: skipped ? 'FINNHUB_API_KEY not configured' : '',
+    finnhubSkipped: !finnhubKey && !avKey,
+    skipReason: (!finnhubKey && !avKey) ? 'ALPHA_VANTAGE_API_KEY and FINNHUB_API_KEY not configured' : '',
     rateLimited: false,
   };
 }
 
 function validate(data) {
   return Array.isArray(data?.quotes) && data.quotes.length >= 1;
+}
+
+export function declareRecords(data) {
+  return Array.isArray(data?.quotes) ? data.quotes.length : 0;
 }
 
 let seedData = null;
@@ -127,7 +121,10 @@ async function fetchAndStash() {
 runSeed('market', 'quotes', CANONICAL_KEY, fetchAndStash, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
-  sourceVersion: 'yahoo+finnhub',
+  sourceVersion: 'alphavantage+finnhub+yahoo',
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 30,
 }).then(async (result) => {
   if (result?.skipped || !seedData) return;
   const rpcKey = `market:quotes:v1:${[...MARKET_SYMBOLS].sort().join(',')}`;

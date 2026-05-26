@@ -35,7 +35,8 @@ function resolveCommandLabel(cmd: Command): string {
     case 'country-map':
       return `${t('commands.prefixes.map')}: ${cmd.label}`;
     case 'panel': {
-      const panelName = t('panels.' + kebabToCamel(action), { defaultValue: cmd.label });
+      const fallback = cmd.label.startsWith('Panel: ') ? cmd.label.slice(7) : cmd.label;
+      const panelName = t('panels.' + kebabToCamel(action), { defaultValue: fallback });
       return `${t('commands.prefixes.panel')}: ${panelName}`;
     }
     case 'country':
@@ -95,8 +96,17 @@ export class SearchModal {
   private onQueryChange?: (rawInput: string) => void;
   private onFlightSearch?: (callsign: string) => void;
   private currentFlightCallsign: string | null = null;
+  private flightSearchFired = false;
   private placeholder: string;
   private activePanelIds: Set<string> = new Set();
+  /**
+   * Caller-supplied predicate that returns true iff a `layer:<key>` command
+   * can actually execute right now (current renderer supports the layer +
+   * DeckGL gate for DeckGL-only layers). Hooked from SearchManager so
+   * renderer knowledge lives in one place. Defaults to "always true" when
+   * not set (back-compat for any instantiator that doesn't wire it).
+   */
+  private layerExecutableFn: (layerKey: string) => boolean = () => true;
   private isMobile: boolean;
   /** When true, results area shows the full command list (opt-in). Sourced from getAllCommands(); no separate list to maintain. */
   private showingAllCommands = false;
@@ -141,6 +151,10 @@ export class SearchModal {
     this.activePanelIds = new Set(panelIds);
   }
 
+  public setLayerExecutableFn(fn: (layerKey: string) => boolean): void {
+    this.layerExecutableFn = fn;
+  }
+
   public open(): void {
     if (this.closeTimeoutId) {
       clearTimeout(this.closeTimeoutId);
@@ -154,6 +168,7 @@ export class SearchModal {
     const flightIdx = this.sources.findIndex(s => s.type === 'flight');
     if (flightIdx >= 0) this.sources[flightIdx] = { type: 'flight', items: [] };
     this.currentFlightCallsign = null;
+    this.flightSearchFired = false;
     this.createModal();
     this.input?.focus();
     this.showingAllCommands = false;
@@ -178,6 +193,7 @@ export class SearchModal {
         this.commandResults = [];
         this.selectedIndex = 0;
         this.currentFlightCallsign = null;
+        this.flightSearchFired = false;
       };
       if (this.isMobile) {
         this.closeTimeoutId = setTimeout(() => {
@@ -196,6 +212,8 @@ export class SearchModal {
 
   private createModal(): void {
     this.overlay = document.createElement('div');
+    this.overlay.setAttribute('role', 'dialog');
+    this.overlay.setAttribute('aria-modal', 'true');
 
     if (this.isMobile) {
       this.overlay.className = 'search-overlay search-mobile';
@@ -268,9 +286,17 @@ export class SearchModal {
     if (query.length < 2) return [];
     const matched: CommandResult[] = [];
     for (const cmd of getAllCommands()) {
-      if (cmd.id.startsWith('panel:') && this.activePanelIds.size > 0) {
+      if (cmd.id.startsWith('panel:')) {
         const panelId = cmd.id.slice(6);
         if (!this.activePanelIds.has(panelId)) continue;
+      }
+      // Hide layer commands whose layer can't render under the current
+      // map renderer / DeckGL mode. Without this, CMD+K surfaces toggles
+      // that silently no-op (e.g. storageFacilities in globe mode, or
+      // flat-only DeckGL layers while on the SVG/mobile fallback).
+      if (cmd.id.startsWith('layer:')) {
+        const layerKey = cmd.id.slice(6);
+        if (!this.layerExecutableFn(layerKey)) continue;
       }
       const label = resolveCommandLabel(cmd).toLowerCase();
       const allTerms = [...cmd.keywords, label];
@@ -309,6 +335,7 @@ export class SearchModal {
     // "flight {callsign}" prefix: bypass command matching entirely — "flight ek36" contains
     // substrings like "light" that spuriously match unrelated commands (e.g. "Switch to light mode").
     this.currentFlightCallsign = null;
+    this.flightSearchFired = false;
     if (rawInput.startsWith('flight ') && this.onFlightSearch) {
       const callsign = rawInput.slice(7).trim().toUpperCase();
       if (callsign.length > 0) {
@@ -494,9 +521,12 @@ export class SearchModal {
 
     const allCommands = getAllCommands();
     const commands = allCommands.filter(cmd => {
-      if (cmd.id.startsWith('panel:') && this.activePanelIds.size > 0) {
+      if (cmd.id.startsWith('panel:')) {
         const panelId = cmd.id.slice(6);
         if (!this.activePanelIds.has(panelId)) return false;
+      }
+      if (cmd.id.startsWith('layer:')) {
+        if (!this.layerExecutableFn(cmd.id.slice(6))) return false;
       }
       return true;
     });
@@ -565,7 +595,15 @@ export class SearchModal {
 
     if (this.commandResults.length === 0 && this.results.length === 0) {
       if (this.currentFlightCallsign && this.onFlightSearch) {
-        this.renderFlightSearchTrigger(this.currentFlightCallsign);
+        if (this.flightSearchFired) {
+          this.resultsList.innerHTML = `
+            <div class="search-empty">
+              <div class="search-empty-icon">\u2708\uFE0F</div>
+              <div>${escapeHtml(t('modals.search.flightNotFound', { callsign: this.currentFlightCallsign }))}</div>
+            </div>`;
+        } else {
+          this.renderFlightSearchTrigger(this.currentFlightCallsign);
+        }
         return;
       }
       this.resultsList.innerHTML = `
@@ -667,6 +705,7 @@ export class SearchModal {
 
   private triggerFlightSearch(callsign: string): void {
     if (!this.onFlightSearch || !this.resultsList) return;
+    this.flightSearchFired = true;
     this.resultsList.innerHTML = `
       <div class="search-result-item">
         <span class="search-result-icon">\u2708\uFE0F</span>

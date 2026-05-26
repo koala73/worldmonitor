@@ -1,0 +1,72 @@
+---
+title: "Errors"
+description: "Standard error shape, common status codes, and retry strategies."
+---
+
+## Error shape
+
+All error responses are JSON with `Content-Type: application/json`:
+
+```json
+{ "error": "brief_not_found" }
+```
+
+Some endpoints include additional fields:
+
+```json
+{
+  "error": "invalid_request",
+  "error_description": "iso2 must be a 2-letter uppercase country code",
+  "field": "iso2"
+}
+```
+
+OAuth endpoints follow [RFC 6749 §5.2](https://datatracker.ietf.org/doc/html/rfc6749#section-5.2) error codes: `invalid_request`, `invalid_client`, `invalid_grant`, `unsupported_grant_type`, `invalid_scope`.
+
+## Status codes
+
+| Code | Meaning | Retry? |
+|------|---------|--------|
+| `200` | OK | — |
+| `202` | Accepted — job enqueued. Poll for terminal status. | — |
+| `304` | Not Modified (conditional cache hit) | — |
+| `400` | Bad request — validation error | No — fix input |
+| `401` | Missing / invalid auth | No — fix auth |
+| `403` | Authenticated but not entitled (usually `pro_required`) | No — upgrade |
+| `404` | Resource / tool / brief / entity not found | No |
+| `405` | Method not allowed | No |
+| `409` | Conflict (duplicate webhook registration, etc.) | No |
+| `413` | Payload too large | No |
+| `429` | Rate limited | Yes — honor `Retry-After` |
+| `500` | Server bug | Yes — with backoff, then report |
+| `502` | Upstream / Convex / Dodo failure | Yes — exponential backoff |
+| `503` | Service unavailable — missing env or dependency down | Yes — exponential backoff |
+| `504` | Upstream timeout | Yes — with backoff |
+
+## Common error strings
+
+| `error` value | Meaning |
+|---------------|---------|
+| `UNAUTHENTICATED` | No valid Clerk JWT or API key. |
+| `pro_required` | Authenticated, but account is not PRO. |
+| `invalid_payload` | Body failed schema validation. |
+| `invalid_date_shape` | Date param not `YYYY-MM-DD`. |
+| `brief_not_found` | No composed brief for the requested `{userId, issueDate}`. |
+| `Rate limit exceeded` | 429 fired; honor `Retry-After`. |
+| `Service temporarily unavailable` | Upstash or another hard dependency missing at request time. |
+| `service_unavailable` | Signing secret / required env not configured. |
+| `Failed to enqueue scenario job` | Redis pipeline failure on `/api/scenario/v1/run-scenario`. |
+
+## Retry strategy
+
+**Idempotent reads** (`GET`): retry 429/5xx with exponential backoff (1s, 2s, 4s, cap 30s, 5 attempts). Most GET responses are cached at the edge, so the retry usually goes faster.
+
+**Writes**: never auto-retry 4xx. For 5xx on writes, inspect: `POST /api/brief/share-url` and `POST /api/v2/shipping/webhooks` are idempotent; `POST /api/scenario/v1/run-scenario` is **not** — it enqueues a new job on each call. Retrying a 5xx on `run-scenario` may double-charge the rate-limit counter.
+
+**MCP**: the server returns tool errors in the JSON-RPC result with `isError: true` and a text explanation — those are not HTTP errors. Handle them at the tool-call layer.
+
+## Debugging
+
+- Every edge response includes `x-vercel-id` and `x-worldmonitor-deploy` headers — include those when reporting issues.
+- Sentry alerts forward to [status.worldmonitor.app](https://status.worldmonitor.app/).
+- `GET /api/health` and `GET /api/seed-health` show per-seed freshness; a stale seed is the most common root cause of unexpected empty payloads.

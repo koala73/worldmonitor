@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, runSeed, getRedisCredentials } from './_seed-utils.mjs';
+import { loadEnvFile, runSeed, getRedisCredentials, loadSharedConfig } from './_seed-utils.mjs';
+import { resolveIso2, normalizeCountryToken } from './_country-resolver.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -53,86 +54,8 @@ function haversineKm(lat1, lon1, lat2, lon2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// ── Country Name Resolution ─────────────────────────────────
-const COUNTRY_NAME_TO_ISO2 = {
-  'afghanistan': 'AF', 'albania': 'AL', 'algeria': 'DZ', 'angola': 'AO',
-  'argentina': 'AR', 'armenia': 'AM', 'australia': 'AU', 'austria': 'AT',
-  'azerbaijan': 'AZ', 'bahrain': 'BH', 'bangladesh': 'BD', 'belarus': 'BY',
-  'belgium': 'BE', 'bolivia': 'BO', 'bosnia and herzegovina': 'BA',
-  'brazil': 'BR', 'bulgaria': 'BG', 'burkina faso': 'BF', 'burma': 'MM',
-  'cambodia': 'KH', 'cameroon': 'CM', 'canada': 'CA', 'chad': 'TD',
-  'chile': 'CL', 'china': 'CN', 'colombia': 'CO', 'congo': 'CG',
-  'costa rica': 'CR', 'croatia': 'HR', 'cuba': 'CU', 'cyprus': 'CY',
-  'czech republic': 'CZ', 'czechia': 'CZ',
-  'democratic republic of the congo': 'CD', 'dr congo': 'CD', 'drc': 'CD',
-  'denmark': 'DK', 'djibouti': 'DJ', 'dominican republic': 'DO',
-  'ecuador': 'EC', 'egypt': 'EG', 'el salvador': 'SV', 'eritrea': 'ER',
-  'estonia': 'EE', 'ethiopia': 'ET', 'finland': 'FI', 'france': 'FR',
-  'gabon': 'GA', 'georgia': 'GE', 'germany': 'DE', 'ghana': 'GH',
-  'greece': 'GR', 'guatemala': 'GT', 'guinea': 'GN', 'haiti': 'HT',
-  'honduras': 'HN', 'hungary': 'HU', 'iceland': 'IS', 'india': 'IN',
-  'indonesia': 'ID', 'iran': 'IR', 'iraq': 'IQ', 'ireland': 'IE',
-  'israel': 'IL', 'italy': 'IT', 'ivory coast': 'CI', "cote d'ivoire": 'CI',
-  'jamaica': 'JM', 'japan': 'JP', 'jordan': 'JO', 'kazakhstan': 'KZ',
-  'kenya': 'KE', 'kosovo': 'XK', 'kuwait': 'KW', 'kyrgyzstan': 'KG',
-  'laos': 'LA', 'latvia': 'LV', 'lebanon': 'LB', 'libya': 'LY',
-  'lithuania': 'LT', 'madagascar': 'MG', 'malawi': 'MW', 'malaysia': 'MY',
-  'mali': 'ML', 'mauritania': 'MR', 'mexico': 'MX', 'moldova': 'MD',
-  'mongolia': 'MN', 'montenegro': 'ME', 'morocco': 'MA', 'mozambique': 'MZ',
-  'myanmar': 'MM', 'namibia': 'NA', 'nepal': 'NP', 'netherlands': 'NL',
-  'new zealand': 'NZ', 'nicaragua': 'NI', 'niger': 'NE', 'nigeria': 'NG',
-  'north korea': 'KP', 'north macedonia': 'MK', 'norway': 'NO',
-  'oman': 'OM', 'pakistan': 'PK', 'palestine': 'PS', 'panama': 'PA',
-  'papua new guinea': 'PG', 'paraguay': 'PY', 'peru': 'PE',
-  'philippines': 'PH', 'poland': 'PL', 'portugal': 'PT', 'qatar': 'QA',
-  'romania': 'RO', 'russia': 'RU', 'rwanda': 'RW', 'saudi arabia': 'SA',
-  'senegal': 'SN', 'serbia': 'RS', 'sierra leone': 'SL', 'singapore': 'SG',
-  'slovakia': 'SK', 'slovenia': 'SI', 'somalia': 'SO', 'south africa': 'ZA',
-  'south korea': 'KR', 'south sudan': 'SS', 'spain': 'ES',
-  'sri lanka': 'LK', 'sudan': 'SD', 'sweden': 'SE', 'switzerland': 'CH',
-  'syria': 'SY', 'taiwan': 'TW', 'tajikistan': 'TJ', 'tanzania': 'TZ',
-  'thailand': 'TH', 'togo': 'TG', 'trinidad and tobago': 'TT',
-  'tunisia': 'TN', 'turkey': 'TR', 'turkmenistan': 'TM', 'uganda': 'UG',
-  'ukraine': 'UA', 'united arab emirates': 'AE', 'uae': 'AE',
-  'united kingdom': 'GB', 'uk': 'GB', 'united states': 'US', 'usa': 'US',
-  'uruguay': 'UY', 'uzbekistan': 'UZ', 'venezuela': 'VE', 'vietnam': 'VN',
-  'yemen': 'YE', 'zambia': 'ZM', 'zimbabwe': 'ZW',
-  'east timor': 'TL', 'cape verde': 'CV', 'swaziland': 'SZ',
-  'republic of the congo': 'CG',
-};
-
-const ISO3_TO_ISO2 = {
-  'AFG': 'AF', 'ALB': 'AL', 'DZA': 'DZ', 'AGO': 'AO', 'ARG': 'AR',
-  'ARM': 'AM', 'AUS': 'AU', 'AUT': 'AT', 'AZE': 'AZ', 'BHR': 'BH',
-  'BGD': 'BD', 'BLR': 'BY', 'BEL': 'BE', 'BOL': 'BO', 'BIH': 'BA',
-  'BRA': 'BR', 'BGR': 'BG', 'BFA': 'BF', 'KHM': 'KH', 'CMR': 'CM',
-  'CAN': 'CA', 'TCD': 'TD', 'CHL': 'CL', 'CHN': 'CN', 'COL': 'CO',
-  'COG': 'CG', 'CRI': 'CR', 'HRV': 'HR', 'CUB': 'CU', 'CYP': 'CY',
-  'CZE': 'CZ', 'COD': 'CD', 'DNK': 'DK', 'DJI': 'DJ', 'DOM': 'DO',
-  'ECU': 'EC', 'EGY': 'EG', 'SLV': 'SV', 'ERI': 'ER', 'EST': 'EE',
-  'ETH': 'ET', 'FIN': 'FI', 'FRA': 'FR', 'GAB': 'GA', 'GEO': 'GE',
-  'DEU': 'DE', 'GHA': 'GH', 'GRC': 'GR', 'GTM': 'GT', 'GIN': 'GN',
-  'HTI': 'HT', 'HND': 'HN', 'HUN': 'HU', 'ISL': 'IS', 'IND': 'IN',
-  'IDN': 'ID', 'IRN': 'IR', 'IRQ': 'IQ', 'IRL': 'IE', 'ISR': 'IL',
-  'ITA': 'IT', 'CIV': 'CI', 'JAM': 'JM', 'JPN': 'JP', 'JOR': 'JO',
-  'KAZ': 'KZ', 'KEN': 'KE', 'XKX': 'XK', 'KWT': 'KW', 'KGZ': 'KG',
-  'LAO': 'LA', 'LVA': 'LV', 'LBN': 'LB', 'LBY': 'LY', 'LTU': 'LT',
-  'MDG': 'MG', 'MWI': 'MW', 'MYS': 'MY', 'MLI': 'ML', 'MRT': 'MR',
-  'MEX': 'MX', 'MDA': 'MD', 'MNG': 'MN', 'MNE': 'ME', 'MAR': 'MA',
-  'MOZ': 'MZ', 'MMR': 'MM', 'NAM': 'NA', 'NPL': 'NP', 'NLD': 'NL',
-  'NZL': 'NZ', 'NIC': 'NI', 'NER': 'NE', 'NGA': 'NG', 'PRK': 'KP',
-  'MKD': 'MK', 'NOR': 'NO', 'OMN': 'OM', 'PAK': 'PK', 'PSE': 'PS',
-  'PAN': 'PA', 'PNG': 'PG', 'PRY': 'PY', 'PER': 'PE', 'PHL': 'PH',
-  'POL': 'PL', 'PRT': 'PT', 'QAT': 'QA', 'ROU': 'RO', 'RUS': 'RU',
-  'RWA': 'RW', 'SAU': 'SA', 'SEN': 'SN', 'SRB': 'RS', 'SLE': 'SL',
-  'SGP': 'SG', 'SVK': 'SK', 'SVN': 'SI', 'SOM': 'SO', 'ZAF': 'ZA',
-  'KOR': 'KR', 'SSD': 'SS', 'ESP': 'ES', 'LKA': 'LK', 'SDN': 'SD',
-  'SWE': 'SE', 'CHE': 'CH', 'SYR': 'SY', 'TWN': 'TW', 'TJK': 'TJ',
-  'TZA': 'TZ', 'THA': 'TH', 'TGO': 'TG', 'TTO': 'TT', 'TUN': 'TN',
-  'TUR': 'TR', 'TKM': 'TM', 'UGA': 'UG', 'UKR': 'UA', 'ARE': 'AE',
-  'GBR': 'GB', 'USA': 'US', 'URY': 'UY', 'UZB': 'UZ', 'VEN': 'VE',
-  'VNM': 'VN', 'YEM': 'YE', 'ZMB': 'ZM', 'ZWE': 'ZW',
-};
+const COUNTRY_NAME_TO_ISO2 = loadSharedConfig('country-names.json');
+const ISO3_TO_ISO2 = loadSharedConfig('iso3-to-iso2.json');
 
 const COUNTRY_CENTROIDS = {
   'AF':[33.9,67.7],'AL':[41.2,20.2],'DZ':[28.0,1.7],'AO':[-11.2,17.9],'AR':[-38.4,-63.6],
@@ -181,23 +104,21 @@ function nearestCountryByCoords(lat, lon) {
 
 function normalizeToCode(country, lat, lon) {
   if (country) {
-    const t = country.trim();
-    if (t.length === 2) return t.toUpperCase();
-    if (t.length === 3) return ISO3_TO_ISO2[t.toUpperCase()] ?? undefined;
-    const fromName = COUNTRY_NAME_TO_ISO2[t.toLowerCase()];
-    if (fromName) return fromName;
+    const resolved = resolveIso2({ iso2: country, iso3: country, name: country });
+    if (resolved) return resolved;
   }
   return nearestCountryByCoords(lat, lon);
 }
 
 const COUNTRY_NAME_ENTRIES = Object.entries(COUNTRY_NAME_TO_ISO2)
-  .filter(([name]) => name.length >= 4)
+  .filter(([name]) => name.length >= 2)
   .sort((a, b) => b[0].length - a[0].length)
   .map(([name, code]) => ({ name, code, regex: new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i') }));
 
-function matchCountryNamesInText(text) {
+export function matchCountryNamesInText(text) {
   const matched = [];
-  let remaining = text.toLowerCase();
+  let remaining = text.normalize('NFKD').replace(/\p{Diacritic}/gu, '').toLowerCase()
+    .replace(/['.(),/-]/g, ' ').replace(/\s+/g, ' ');
   for (const { code, regex } of COUNTRY_NAME_ENTRIES) {
     if (regex.test(remaining)) {
       matched.push(code);
@@ -612,7 +533,11 @@ function clusterByEntity(signals) {
 }
 
 // ── Scoring ─────────────────────────────────────────────────
-function scoreClusters(clusters, weights, threshold) {
+// Returns ALL scored clusters (un-thresholded). Callers apply the threshold
+// filter so observability logs can report `topScore` even when zero cards
+// pass — distinguishing "clusters formed, score below threshold" from
+// "no clusters formed at all" without re-running the scoring pass.
+function scoreClusters(clusters, weights, _threshold) {
   return clusters
     .map(cluster => {
       const perType = new Map();
@@ -644,8 +569,7 @@ function scoreClusters(clusters, weights, threshold) {
       const key = cluster.country ?? cluster.entityKey ?? `${centroidLat?.toFixed(1)},${centroidLon?.toFixed(1)}`;
 
       return { cluster, score, countries, centroidLat, centroidLon, key };
-    })
-    .filter(c => c.score >= threshold);
+    });
 }
 
 // ── Card Generation ─────────────────────────────────────────
@@ -744,50 +668,89 @@ async function computeCorrelation() {
     lon: s.lon,
   }));
 
+  // Observability — raw inputs at the seam between fetchInputData and the
+  // per-domain pipelines. Without this it was impossible to tell whether
+  // 0-card domains meant "no input signals" vs "scored too low against
+  // threshold" vs "no clusters formed". news-with-coords is broken out
+  // because escalation/disaster spatial paths depend on it.
+  const newsWithCoords = newsClusters.filter(c => c.lat != null && c.lon != null).length;
+  console.log(
+    `  [Correlation] inputs: flights=${rawFlights.length} protests=${protests.length} ` +
+    `outages=${outages.length} quakes=${earthquakes.length} markets=${allMarkets.length} ` +
+    `news=${newsClusters.length} (${newsWithCoords} with lat/lon)`,
+  );
+
   const result = { military: [], escalation: [], economic: [], disaster: [], computedAt: Date.now() };
+
+  // Helper — apply threshold + emit one diagnostic line per domain.
+  // Logs signals, clusters, topScore (max regardless of threshold), and
+  // cards (count clearing threshold). topScore=0 when no clusters formed,
+  // distinguishing "scoring rejected everything" from "nothing to score".
+  const buildDomain = (domain, signals, clusters, scored, threshold, titleFn) => {
+    const topScore = scored.length > 0
+      ? Math.round(Math.max(...scored.map(s => s.score)))
+      : 0;
+    const passing = scored.filter(s => s.score >= threshold);
+    const cards = passing.map(s => toCard(s, domain, titleFn)).sort((a, b) => b.score - a.score);
+    console.log(
+      `  [Correlation] ${domain.padEnd(10)} signals=${signals.length} ` +
+      `clusters=${scored.length} topScore=${topScore} threshold=${threshold} cards=${cards.length}`,
+    );
+    return cards;
+  };
 
   // Military
   const milSignals = collectMilitarySignals(rawFlights);
   const milClusters = clusterByProximity(milSignals, 500);
   const milScored = scoreClusters(milClusters, DOMAINS.military.weights, DOMAINS.military.threshold);
-  result.military = milScored.map(s => toCard(s, 'military', generateMilitaryTitle)).sort((a, b) => b.score - a.score);
+  result.military = buildDomain('military', milSignals, milClusters, milScored, DOMAINS.military.threshold, generateMilitaryTitle);
 
   // Escalation
   const escSignals = collectEscalationSignals(protests, outages, newsClusters);
   const escClusters = clusterByCountry(escSignals);
   const escScored = scoreClusters(escClusters, DOMAINS.escalation.weights, DOMAINS.escalation.threshold);
-  result.escalation = escScored.map(s => toCard(s, 'escalation', generateEscalationTitle)).sort((a, b) => b.score - a.score);
+  result.escalation = buildDomain('escalation', escSignals, escClusters, escScored, DOMAINS.escalation.threshold, generateEscalationTitle);
 
   // Economic
   const ecoSignals = collectEconomicSignals(allMarkets, newsClusters);
   const ecoClusters = clusterByEntity(ecoSignals);
   const ecoScored = scoreClusters(ecoClusters, DOMAINS.economic.weights, DOMAINS.economic.threshold);
-  result.economic = ecoScored.map(s => toCard(s, 'economic', generateEconomicTitle)).sort((a, b) => b.score - a.score);
+  result.economic = buildDomain('economic', ecoSignals, ecoClusters, ecoScored, DOMAINS.economic.threshold, generateEconomicTitle);
 
   // Disaster
   const disSignals = collectDisasterSignals(earthquakes, outages, protests);
   const disClusters = clusterByProximity(disSignals, 500);
   const disScored = scoreClusters(disClusters, DOMAINS.disaster.weights, DOMAINS.disaster.threshold);
-  result.disaster = disScored.map(s => toCard(s, 'disaster', generateDisasterTitle)).sort((a, b) => b.score - a.score);
+  result.disaster = buildDomain('disaster', disSignals, disClusters, disScored, DOMAINS.disaster.threshold, generateDisasterTitle);
 
   return result;
 }
 
-runSeed('correlation', 'cards', CANONICAL_KEY, computeCorrelation, {
-  ttlSeconds: CACHE_TTL,
-  sourceVersion: 'correlation-engine-v1',
-  recordCount: (data) => (data.military?.length ?? 0) + (data.escalation?.length ?? 0) + (data.economic?.length ?? 0) + (data.disaster?.length ?? 0),
-  extraKeys: [
-    { key: 'correlation:military:v1', ttl: CACHE_TTL },
-    { key: 'correlation:escalation:v1', ttl: CACHE_TTL },
-    { key: 'correlation:economic:v1', ttl: CACHE_TTL },
-    { key: 'correlation:disaster:v1', ttl: CACHE_TTL },
-  ].map(ek => ({
-    key: ek.key,
-    ttl: ek.ttl,
-    transform: (data) => data[ek.key.split(':')[1]],
-  })),
-}).catch((err) => {
-  const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
-  process.exit(1);
-});
+export function declareRecords(data) {
+  return (data?.military?.length ?? 0) + (data?.escalation?.length ?? 0) + (data?.economic?.length ?? 0) + (data?.disaster?.length ?? 0);
+}
+
+if (process.argv[1]?.endsWith('seed-correlation.mjs')) {
+  runSeed('correlation', 'cards', CANONICAL_KEY, computeCorrelation, {
+    ttlSeconds: CACHE_TTL,
+    sourceVersion: 'correlation-engine-v1',
+    recordCount: (data) => (data.military?.length ?? 0) + (data.escalation?.length ?? 0) + (data.economic?.length ?? 0) + (data.disaster?.length ?? 0),
+    extraKeys: [
+      { key: 'correlation:military:v1', ttl: CACHE_TTL },
+      { key: 'correlation:escalation:v1', ttl: CACHE_TTL },
+      { key: 'correlation:economic:v1', ttl: CACHE_TTL },
+      { key: 'correlation:disaster:v1', ttl: CACHE_TTL },
+    ].map(ek => ({
+      key: ek.key,
+      ttl: ek.ttl,
+      transform: (data) => data[ek.key.split(':')[1]],
+    })),
+  
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 15,
+  }).catch((err) => {
+    const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
+    process.exit(1);
+  });
+}

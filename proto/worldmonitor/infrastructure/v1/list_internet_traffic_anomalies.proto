@@ -1,0 +1,20 @@
+syntax = "proto3";
+
+package worldmonitor.infrastructure.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/infrastructure/v1/infrastructure.proto";
+
+// ListInternetTrafficAnomaliesRequest specifies filters for traffic anomalies.
+message ListInternetTrafficAnomaliesRequest {
+  // Optional ISO 3166-1 alpha-2 country code filter.
+  string country = 1 [(sebuf.http.query) = {name: "country"}];
+}
+
+// ListInternetTrafficAnomaliesResponse contains detected traffic anomalies.
+message ListInternetTrafficAnomaliesResponse {
+  // Detected traffic anomalies.
+  repeated TrafficAnomaly anomalies = 1;
+  // Total anomaly count before filtering.
+  int32 total_count = 2;
+}

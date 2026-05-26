@@ -3,7 +3,6 @@
 **Real-time global intelligence dashboard** — AI-powered news aggregation, geopolitical monitoring, and infrastructure tracking in a unified situational awareness interface.
 
 [![GitHub stars](https://img.shields.io/github/stars/koala73/worldmonitor?style=social)](https://github.com/koala73/worldmonitor/stargazers)
-[![GitHub forks](https://img.shields.io/github/forks/koala73/worldmonitor?style=social)](https://github.com/koala73/worldmonitor/network/members)
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?style=flat&logo=discord&logoColor=white)](https://discord.gg/re63kWKxaz)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
@@ -26,9 +25,9 @@
 </p>
 
 <p align="center">
-  <a href="https://docs.worldmonitor.app"><strong>Documentation</strong></a> &nbsp;·&nbsp;
+  <a href="https://www.worldmonitor.app/docs/documentation"><strong>Documentation</strong></a> &nbsp;·&nbsp;
   <a href="https://github.com/koala73/worldmonitor/releases/latest"><strong>Releases</strong></a> &nbsp;·&nbsp;
-  <a href="https://docs.worldmonitor.app/contributing"><strong>Contributing</strong></a>
+  <a href="https://www.worldmonitor.app/docs/contributing"><strong>Contributing</strong></a>
 </p>
 
 ![World Monitor Dashboard](docs/images/worldmonitor-7-mar-2026.jpg)
@@ -37,7 +36,7 @@
 
 ## What It Does
 
-- **435+ curated news feeds** across 15 categories, AI-synthesized into briefs
+- **500+ curated news feeds** across 15 categories, AI-synthesized into briefs
 - **Dual map engine** — 3D globe (globe.gl) and WebGL flat map (deck.gl) with 45 data layers
 - **Cross-stream correlation** — military, economic, disaster, and escalation signal convergence
 - **Country Intelligence Index** — composite risk scoring across 12 signal categories
@@ -47,7 +46,21 @@
 - **Native desktop app** (Tauri 2) for macOS, Windows, and Linux
 - **21 languages** with native-language feeds and RTL support
 
-For the full feature list, architecture, data sources, and algorithms, see the **[documentation](https://docs.worldmonitor.app)**.
+For the full feature list, architecture, data sources, and algorithms, see the **[documentation](https://www.worldmonitor.app/docs/documentation)**.
+
+---
+
+## Support Status
+
+All site variants and desktop binaries are built from a single codebase and ship from the same release process. The table below clarifies maintenance status so you know which surfaces are safe to depend on.
+
+| Surface | Status | Notes |
+|---------|--------|-------|
+| `worldmonitor.app`, `tech.`, `finance.`, `commodity.`, `happy.` | Stable | Public deployments built from this repo, actively maintained |
+| `energy.worldmonitor.app` | Experimental | Scaffolded but not advertised in the header badges; expect rough edges |
+| Desktop binaries (Windows / macOS Apple Silicon / macOS Intel / Linux AppImage) | Stable | One Tauri binary that switches variants in-app; current CI release targets are `full` and `tech` |
+
+Issues filed against any of the above are triaged from the same backlog — see the [issues board](https://github.com/koala73/worldmonitor/issues) for currently-open work.
 
 ---
 
@@ -60,7 +73,9 @@ npm install
 npm run dev
 ```
 
-Open [localhost:5173](http://localhost:5173). No environment variables required for basic operation.
+Open [localhost:5173](http://localhost:5173). The app runs with no environment variables.
+
+Feature-specific data sources may require credentials — for example, the flight-price command (`fly LON DXB`) needs `TRAVELPAYOUTS_API_TOKEN` to return live quotes; without it the command shows a "credentials required" message rather than synthetic data. See `.env.example` for the full list.
 
 For variant-specific development:
 
@@ -71,7 +86,7 @@ npm run dev:commodity  # commodity.worldmonitor.app
 npm run dev:happy      # happy.worldmonitor.app
 ```
 
-See the **[self-hosting guide](https://docs.worldmonitor.app/getting-started)** for deployment options (Vercel, Docker, static).
+See the **[self-hosting guide](https://www.worldmonitor.app/docs/getting-started)** for deployment options (Vercel, Docker, static).
 
 ---
 
@@ -86,7 +101,19 @@ See the **[self-hosting guide](https://docs.worldmonitor.app/getting-started)** 
 | **Deployment** | Vercel Edge Functions (60+), Railway relay, Tauri, PWA |
 | **Caching** | Redis (Upstash), 3-tier cache, CDN, service worker |
 
-Full stack details in the **[architecture docs](https://docs.worldmonitor.app/architecture)**.
+Full stack details in the **[architecture docs](https://www.worldmonitor.app/docs/architecture)**.
+
+---
+
+## Flight Data
+
+Flight data provided gracefully by [Wingbits](https://wingbits.com?utm_source=worldmonitor&utm_medium=referral&utm_campaign=worldmonitor), the most advanced ADS-B flight data solution.
+
+---
+
+## Data Sources
+
+WorldMonitor aggregates 65+ external data sources across geopolitics, finance, energy, climate, aviation, cyber, military, infrastructure, and news intelligence. See the full [data sources catalog](https://www.worldmonitor.app/docs/data-sources) for providers, feed tiers, and collection methods.
 
 ---
 
@@ -140,7 +167,7 @@ See our [Security Policy](./SECURITY.md) for responsible disclosure guidelines.
 
 <p align="center">
   <a href="https://worldmonitor.app">worldmonitor.app</a> &nbsp;·&nbsp;
-  <a href="https://docs.worldmonitor.app">docs.worldmonitor.app</a> &nbsp;·&nbsp;
+  <a href="https://www.worldmonitor.app/docs/documentation">docs.worldmonitor.app</a> &nbsp;·&nbsp;
   <a href="https://finance.worldmonitor.app">finance.worldmonitor.app</a> &nbsp;·&nbsp;
   <a href="https://commodity.worldmonitor.app">commodity.worldmonitor.app</a>
 </p>

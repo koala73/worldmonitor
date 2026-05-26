@@ -21,6 +21,6 @@ export async function fetchEarthquakes(): Promise<Earthquake[]> {
 
   const response = await breaker.execute(async () => {
     return client.listEarthquakes({ minMagnitude: 0, start: 0, end: 0, pageSize: 0, cursor: '' });
-  }, emptyFallback);
+  }, emptyFallback, { shouldCache: (r) => r.earthquakes.length > 0 });
   return response.earthquakes;
 }

@@ -10,6 +10,10 @@ const blog = defineCollection({
     keywords: z.string(),
     audience: z.string(),
     pubDate: z.coerce.date(),
+    modifiedDate: z.coerce.date().optional(),
+    author: z.string().optional(),
+    authorUrl: z.string().url().optional(),
+    authorBio: z.string().optional(),
     heroImage: z.string().optional(),
   }),
 });

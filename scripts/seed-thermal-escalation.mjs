@@ -7,7 +7,7 @@ loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'thermal:escalation:v1';
 const HISTORY_KEY = 'thermal:escalation:history:v1';
-const CACHE_TTL = 3 * 60 * 60;
+const CACHE_TTL = 6 * 60 * 60; // 6h — cron runs every 2h; 3x interval so one missed run does not expire the key (was 3h = 1.5x, too tight)
 const SOURCE_VERSION = 'thermal-escalation-v1';
 let latestHistoryPayload = { updatedAt: '', cells: {} };
 
@@ -35,6 +35,10 @@ async function fetchEscalations() {
   return result;
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.clusters) ? data.clusters.length : 0;
+}
+
 async function main() {
   await runSeed('thermal', 'escalation', CANONICAL_KEY, async () => {
     const result = await fetchEscalations();
@@ -45,6 +49,9 @@ async function main() {
     lockTtlMs: 180_000,
     sourceVersion: SOURCE_VERSION,
     recordCount: (data) => data?.clusters?.length ?? 0,
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 360,
     afterPublish: async () => {
       await writeExtraKeyWithMeta(
         HISTORY_KEY,

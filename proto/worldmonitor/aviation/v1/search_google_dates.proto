@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package worldmonitor.aviation.v1;
+
+import "sebuf/http/annotations.proto";
+
+// DatePriceEntry pairs a departure date (and optional return date) with its cheapest price.
+message DatePriceEntry {
+  // Departure date in YYYY-MM-DD format.
+  string date = 1;
+  // Return date in YYYY-MM-DD format; empty for one-way results.
+  string return_date = 2;
+  double price = 3;
+}
+
+// SearchGoogleDatesRequest specifies parameters for a Google Flights date-range price search.
+message SearchGoogleDatesRequest {
+  // Departure airport IATA code (e.g. "JFK").
+  string origin = 1 [(sebuf.http.query) = {name: "origin"}];
+  // Arrival airport IATA code (e.g. "LHR").
+  string destination = 2 [(sebuf.http.query) = {name: "destination"}];
+  // Start of date range in YYYY-MM-DD format.
+  string start_date = 3 [(sebuf.http.query) = {name: "start_date"}];
+  // End of date range in YYYY-MM-DD format.
+  string end_date = 4 [(sebuf.http.query) = {name: "end_date"}];
+  // Trip duration in days (required for round-trip searches).
+  int32 trip_duration = 5 [(sebuf.http.query) = {name: "trip_duration"}];
+  // Whether to search for round-trip flights.
+  bool is_round_trip = 6 [(sebuf.http.query) = {name: "is_round_trip"}];
+  // Cabin class: ECONOMY, PREMIUM_ECONOMY, BUSINESS, or FIRST.
+  string cabin_class = 7 [(sebuf.http.query) = {name: "cabin_class"}];
+  // Stop filter: ANY, NON_STOP, ONE_STOP, or TWO_PLUS_STOPS.
+  string max_stops = 8 [(sebuf.http.query) = {name: "max_stops"}];
+  // Departure time window in HH-HH format (e.g. "6-20").
+  string departure_window = 9 [(sebuf.http.query) = {name: "departure_window"}];
+  // Airline IATA codes to filter by (e.g. ["BA", "AA"]).
+  repeated string airlines = 10 [(sebuf.http.query) = {name: "airlines"}];
+  // Whether to sort results by price (lowest first).
+  bool sort_by_price = 11 [(sebuf.http.query) = {name: "sort_by_price"}];
+  // Number of adult passengers (1-9).
+  int32 passengers = 12 [(sebuf.http.query) = {name: "passengers"}];
+}
+
+// SearchGoogleDatesResponse contains cheapest-date results from Google Flights.
+message SearchGoogleDatesResponse {
+  repeated DatePriceEntry dates = 1;
+  bool degraded = 2;
+  string error = 3;
+}

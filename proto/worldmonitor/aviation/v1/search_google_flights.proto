@@ -1,0 +1,56 @@
+syntax = "proto3";
+
+package worldmonitor.aviation.v1;
+
+import "sebuf/http/annotations.proto";
+
+// GoogleFlightLeg represents a single flight segment (one plane, one takeoff and landing).
+message GoogleFlightLeg {
+  string airline_code = 1;
+  string flight_number = 2;
+  string departure_airport = 3;
+  string arrival_airport = 4;
+  // ISO 8601 local datetime, e.g. "2025-06-01T08:45".
+  string departure_datetime = 5;
+  string arrival_datetime = 6;
+  int32 duration_minutes = 7;
+}
+
+// GoogleFlightResult represents a complete itinerary (one or more legs).
+message GoogleFlightResult {
+  repeated GoogleFlightLeg legs = 1;
+  double price = 2;
+  int32 duration_minutes = 3;
+  int32 stops = 4;
+}
+
+// SearchGoogleFlightsRequest specifies parameters for a Google Flights search.
+message SearchGoogleFlightsRequest {
+  // Departure airport IATA code (e.g. "JFK").
+  string origin = 1 [(sebuf.http.query) = {name: "origin"}];
+  // Arrival airport IATA code (e.g. "LHR").
+  string destination = 2 [(sebuf.http.query) = {name: "destination"}];
+  // Departure date in YYYY-MM-DD format.
+  string departure_date = 3 [(sebuf.http.query) = {name: "departure_date"}];
+  // Return date in YYYY-MM-DD format; omit for one-way.
+  string return_date = 4 [(sebuf.http.query) = {name: "return_date"}];
+  // Cabin class: ECONOMY, PREMIUM_ECONOMY, BUSINESS, or FIRST.
+  string cabin_class = 5 [(sebuf.http.query) = {name: "cabin_class"}];
+  // Stop filter: ANY, NON_STOP, ONE_STOP, or TWO_PLUS_STOPS.
+  string max_stops = 6 [(sebuf.http.query) = {name: "max_stops"}];
+  // Departure time window in HH-HH format (e.g. "6-20").
+  string departure_window = 7 [(sebuf.http.query) = {name: "departure_window"}];
+  // Airline IATA codes to filter by (e.g. ["BA", "AA"]).
+  repeated string airlines = 8 [(sebuf.http.query) = {name: "airlines"}];
+  // Sort order: CHEAPEST, DURATION, DEPARTURE_TIME, or ARRIVAL_TIME.
+  string sort_by = 9 [(sebuf.http.query) = {name: "sort_by"}];
+  // Number of adult passengers (1-9).
+  int32 passengers = 10 [(sebuf.http.query) = {name: "passengers"}];
+}
+
+// SearchGoogleFlightsResponse contains flight results from Google Flights.
+message SearchGoogleFlightsResponse {
+  repeated GoogleFlightResult flights = 1;
+  bool degraded = 2;
+  string error = 3;
+}

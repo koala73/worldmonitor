@@ -1,29 +1,15 @@
 # World Monitor - protect API routes from crawlers
+
+# AI content-usage preferences (contentsignals.org draft RFC).
+# Origin-wide directive, NOT scoped under User-agent per the spec.
+Content-Signal: ai-train=no, search=yes, ai-input=yes
+
 User-agent: *
 Allow: /
+Allow: /api/story
+Allow: /api/og-story
 Disallow: /api/
 Disallow: /tests/
 
 Sitemap: https://www.worldmonitor.app/sitemap.xml
 Sitemap: https://www.worldmonitor.app/blog/sitemap-index.xml
-
-# Allow social media bots for OG previews
-User-agent: Twitterbot
-Allow: /api/story
-Allow: /api/og-story
-
-User-agent: facebookexternalhit
-Allow: /api/story
-Allow: /api/og-story
-
-User-agent: LinkedInBot
-Allow: /api/story
-Allow: /api/og-story
-
-User-agent: Slackbot
-Allow: /api/story
-Allow: /api/og-story
-
-User-agent: Discordbot
-Allow: /api/story
-Allow: /api/og-story

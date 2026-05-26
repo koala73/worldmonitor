@@ -65,6 +65,24 @@ async function importPatchedTsModule(relPath, replacements) {
   };
 }
 
+// Match the body-mode shape `setCachedJson` emits: `POST /` with body
+// ['SET', key, value, 'EX', ttl]. The previous URL-path form
+// (`POST /set/{key}/{value}/EX/{ttl}`) is no longer produced by any caller,
+// so we don't bother matching it.
+function isSetRequest(_url, init) {
+  try {
+    const body = JSON.parse(String(init?.body ?? 'null'));
+    return Array.isArray(body) && body[0] === 'SET';
+  } catch {
+    return false;
+  }
+}
+
+function parseSetRequest(_url, init) {
+  const body = JSON.parse(String(init.body));
+  return { key: body[1], value: body[2] };
+}
+
 describe('redis caching behavior', { concurrency: 1 }, () => {
   it('coalesces concurrent misses into one upstream fetcher execution', async () => {
     const redis = await importRedisFresh();
@@ -78,13 +96,13 @@ describe('redis caching behavior', { concurrency: 1 }, () => {
 
     let getCalls = 0;
     let setCalls = 0;
-    globalThis.fetch = async (url) => {
+    globalThis.fetch = async (url, init) => {
       const raw = String(url);
       if (raw.includes('/get/')) {
         getCalls += 1;
         return jsonResponse({ result: undefined });
       }
-      if (raw.includes('/set/')) {
+      if (isSetRequest(url, init)) {
         setCalls += 1;
         return jsonResponse({ result: 'OK' });
       }
@@ -198,10 +216,10 @@ describe('cachedFetchJsonWithMeta source labeling', { concurrency: 1 }, () => {
     });
     const originalFetch = globalThis.fetch;
 
-    globalThis.fetch = async (url) => {
+    globalThis.fetch = async (url, init) => {
       const raw = String(url);
       if (raw.includes('/get/')) return jsonResponse({ result: undefined });
-      if (raw.includes('/set/')) return jsonResponse({ result: 'OK' });
+      if (isSetRequest(url, init)) return jsonResponse({ result: 'OK' });
       throw new Error(`Unexpected fetch URL: ${raw}`);
     };
 
@@ -228,10 +246,10 @@ describe('cachedFetchJsonWithMeta source labeling', { concurrency: 1 }, () => {
     });
     const originalFetch = globalThis.fetch;
 
-    globalThis.fetch = async (url) => {
+    globalThis.fetch = async (url, init) => {
       const raw = String(url);
       if (raw.includes('/get/')) return jsonResponse({ result: undefined });
-      if (raw.includes('/set/')) return jsonResponse({ result: 'OK' });
+      if (isSetRequest(url, init)) return jsonResponse({ result: 'OK' });
       throw new Error(`Unexpected fetch URL: ${raw}`);
     };
 
@@ -274,7 +292,7 @@ describe('cachedFetchJsonWithMeta source labeling', { concurrency: 1 }, () => {
 
     // First call: cache miss. Second call (from a "different instance"): cache hit.
     let getCalls = 0;
-    globalThis.fetch = async (url) => {
+    globalThis.fetch = async (url, init) => {
       const raw = String(url);
       if (raw.includes('/get/')) {
         getCalls += 1;
@@ -282,7 +300,7 @@ describe('cachedFetchJsonWithMeta source labeling', { concurrency: 1 }, () => {
         // Simulate another instance populating cache between calls
         return jsonResponse({ result: JSON.stringify({ value: 'from-other-instance' }) });
       }
-      if (raw.includes('/set/')) return jsonResponse({ result: 'OK' });
+      if (isSetRequest(url, init)) return jsonResponse({ result: 'OK' });
       throw new Error(`Unexpected fetch URL: ${raw}`);
     };
 
@@ -320,17 +338,15 @@ describe('negative-result caching', { concurrency: 1 }, () => {
     const originalFetch = globalThis.fetch;
 
     const store = new Map();
-    globalThis.fetch = async (url) => {
+    globalThis.fetch = async (url, init) => {
       const raw = String(url);
       if (raw.includes('/get/')) {
         const key = decodeURIComponent(raw.split('/get/').pop() || '');
         const val = store.get(key);
         return jsonResponse({ result: val ?? undefined });
       }
-      if (raw.includes('/set/')) {
-        const parts = raw.split('/set/').pop().split('/');
-        const key = decodeURIComponent(parts[0]);
-        const value = decodeURIComponent(parts[1]);
+      if (isSetRequest(raw, init)) {
+        const { key, value } = parseSetRequest(raw, init);
         store.set(key, value);
         return jsonResponse({ result: 'OK' });
       }
@@ -369,17 +385,15 @@ describe('negative-result caching', { concurrency: 1 }, () => {
     const originalFetch = globalThis.fetch;
 
     const store = new Map();
-    globalThis.fetch = async (url) => {
+    globalThis.fetch = async (url, init) => {
       const raw = String(url);
       if (raw.includes('/get/')) {
         const key = decodeURIComponent(raw.split('/get/').pop() || '');
         const val = store.get(key);
         return jsonResponse({ result: val ?? undefined });
       }
-      if (raw.includes('/set/')) {
-        const parts = raw.split('/set/').pop().split('/');
-        const key = decodeURIComponent(parts[0]);
-        const value = decodeURIComponent(parts[1]);
+      if (isSetRequest(raw, init)) {
+        const { key, value } = parseSetRequest(raw, init);
         store.set(key, value);
         return jsonResponse({ result: 'OK' });
       }
@@ -414,10 +428,10 @@ describe('negative-result caching', { concurrency: 1 }, () => {
     const originalFetch = globalThis.fetch;
 
     let setCalls = 0;
-    globalThis.fetch = async (url) => {
+    globalThis.fetch = async (url, init) => {
       const raw = String(url);
       if (raw.includes('/get/')) return jsonResponse({ result: undefined });
-      if (raw.includes('/set/')) {
+      if (isSetRequest(url, init)) {
         setCalls += 1;
         return jsonResponse({ result: 'OK' });
       }
@@ -439,6 +453,195 @@ describe('negative-result caching', { concurrency: 1 }, () => {
       await assert.rejects(() => redis2.cachedFetchJson('neg:test:throw', 300, throwingFetcher));
       assert.equal(fetcherCalls, 2, 'fetcher should run again after a thrown error (no sentinel)');
     } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+});
+
+describe('cachedFetchJson inflight timeout (#3539)', { concurrency: 1 }, () => {
+  it('rejects a hung fetcher and releases the inflight slot so subsequent callers re-fetch', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) return jsonResponse({ result: undefined });
+      if (raw.includes('/set/')) return jsonResponse({ result: 'OK' });
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      redis.__setFetcherTimeoutForTests(50);
+
+      let hungCalls = 0;
+      // Fetcher that NEVER settles — simulates an upstream that hangs forever
+      // with no internal timeout and no AbortController.
+      const hungFetcher = () => {
+        hungCalls += 1;
+        return new Promise(() => {});
+      };
+
+      // Concurrent callers should all share the same hung promise (coalescing
+      // still works on the way in) and all reject with the timeout error.
+      const [r1, r2, r3] = await Promise.allSettled([
+        redis.cachedFetchJson('hang:test:key', 60, hungFetcher),
+        redis.cachedFetchJson('hang:test:key', 60, hungFetcher),
+        redis.cachedFetchJson('hang:test:key', 60, hungFetcher),
+      ]);
+
+      assert.equal(hungCalls, 1, 'fetcher should still be coalesced — one execution shared by all callers');
+      assert.equal(r1.status, 'rejected');
+      assert.equal(r2.status, 'rejected');
+      assert.equal(r3.status, 'rejected');
+      assert.match(r1.reason.message, /^cachedFetchJson timeout after 50ms for "hang:test:key"$/);
+
+      // Critical assertion: a follow-up call after the timeout must trigger a
+      // fresh fetcher execution. Pre-fix the inflight Map kept the unresolved
+      // promise forever, handing every subsequent caller the same dead handle.
+      let recovered = false;
+      const recoveredValue = await redis.cachedFetchJson('hang:test:key', 60, async () => {
+        recovered = true;
+        return { value: 'recovered' };
+      });
+      assert.equal(recovered, true, 'inflight slot must be released so a new fetcher can run');
+      assert.deepEqual(recoveredValue, { value: 'recovered' });
+    } finally {
+      redis.__resetFetcherTimeoutForTests();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('does NOT fire the timeout when the fetcher settles promptly', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) return jsonResponse({ result: undefined });
+      if (raw.includes('/set/')) return jsonResponse({ result: 'OK' });
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      redis.__setFetcherTimeoutForTests(50);
+
+      const result = await redis.cachedFetchJson('happy:test:key', 60, async () => {
+        await new Promise((r) => setTimeout(r, 5));
+        return { value: 'fast' };
+      });
+      assert.deepEqual(result, { value: 'fast' });
+
+      // Wait past the timeout window — if the timer wasn't cleared we'd see
+      // an unhandled rejection. Node's test runner surfaces those as failures.
+      await new Promise((r) => setTimeout(r, 100));
+    } finally {
+      redis.__resetFetcherTimeoutForTests();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('per-call opts.timeoutMs overrides the default ceiling', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) return jsonResponse({ result: undefined });
+      if (raw.includes('/set/')) return jsonResponse({ result: 'OK' });
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      // Default ceiling deliberately tiny; caller passes a much higher per-call
+      // budget, so a fetcher that runs 80ms should succeed. Without the
+      // override it would reject at 20ms.
+      redis.__setFetcherTimeoutForTests(20);
+
+      const result = await redis.cachedFetchJson(
+        'override:test:long',
+        60,
+        async () => {
+          await new Promise((r) => setTimeout(r, 80));
+          return { value: 'long-fetcher-allowed' };
+        },
+        undefined,
+        { timeoutMs: 500 },
+      );
+      assert.deepEqual(result, { value: 'long-fetcher-allowed' });
+
+      // Same shape for cachedFetchJsonWithMeta — opts.timeoutMs lives next to opts.usage.
+      const meta = await redis.cachedFetchJsonWithMeta(
+        'override:meta:long',
+        60,
+        async () => {
+          await new Promise((r) => setTimeout(r, 80));
+          return { value: 'meta-long-allowed' };
+        },
+        undefined,
+        { timeoutMs: 500 },
+      );
+      assert.equal(meta.source, 'fresh');
+      assert.deepEqual(meta.data, { value: 'meta-long-allowed' });
+    } finally {
+      redis.__resetFetcherTimeoutForTests();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('cachedFetchJsonWithMeta also enforces the inflight timeout', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) return jsonResponse({ result: undefined });
+      if (raw.includes('/set/')) return jsonResponse({ result: 'OK' });
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      redis.__setFetcherTimeoutForTests(50);
+
+      await assert.rejects(
+        () => redis.cachedFetchJsonWithMeta('meta:hang:key', 60, () => new Promise(() => {})),
+        /^Error: cachedFetchJsonWithMeta timeout after 50ms for "meta:hang:key"$/,
+      );
+
+      // Subsequent call must succeed against a healthy fetcher — proves the
+      // inflight slot was released even on the timeout path.
+      const { data, source } = await redis.cachedFetchJsonWithMeta('meta:hang:key', 60, async () => ({ value: 'recovered' }));
+      assert.equal(source, 'fresh');
+      assert.deepEqual(data, { value: 'recovered' });
+    } finally {
+      redis.__resetFetcherTimeoutForTests();
       globalThis.fetch = originalFetch;
       restoreEnv();
     }
@@ -514,7 +717,7 @@ describe('theater posture caching behavior', { concurrency: 1 }, () => {
 
     const staleData = { theaters: [{ theater: 'stale-test', postureLevel: 'normal', activeFlights: 1, trackedVessels: 0, activeOperations: [], assessedAt: 1 }] };
 
-    globalThis.fetch = async (url) => {
+    globalThis.fetch = async (url, init) => {
       const raw = String(url);
       if (raw.includes('/get/')) {
         const key = decodeURIComponent(raw.split('/get/').pop() || '');
@@ -526,7 +729,7 @@ describe('theater posture caching behavior', { concurrency: 1 }, () => {
         }
         return jsonResponse({ result: undefined });
       }
-      if (raw.includes('/set/')) {
+      if (isSetRequest(url, init)) {
         return jsonResponse({ result: 'OK' });
       }
       if (raw.includes('opensky-network.org')) {
@@ -558,12 +761,12 @@ describe('theater posture caching behavior', { concurrency: 1 }, () => {
     });
     const originalFetch = globalThis.fetch;
 
-    globalThis.fetch = async (url) => {
+    globalThis.fetch = async (url, init) => {
       const raw = String(url);
       if (raw.includes('/get/')) {
         return jsonResponse({ result: undefined });
       }
-      if (raw.includes('/set/')) {
+      if (isSetRequest(url, init)) {
         return jsonResponse({ result: 'OK' });
       }
       if (raw.includes('opensky-network.org')) {
@@ -591,12 +794,12 @@ describe('theater posture caching behavior', { concurrency: 1 }, () => {
     const originalFetch = globalThis.fetch;
 
     const cacheWrites = [];
-    globalThis.fetch = async (url) => {
+    globalThis.fetch = async (url, init) => {
       const raw = String(url);
       if (raw.includes('/get/')) {
         return jsonResponse({ result: undefined });
       }
-      if (raw.includes('/set/') || raw.includes('/pipeline')) {
+      if (isSetRequest(url, init) || raw.includes('/pipeline')) {
         cacheWrites.push(raw);
         return jsonResponse({ result: 'OK' });
       }
@@ -623,6 +826,9 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       '../../../_shared/llm-health': resolve(root, 'tests/helpers/llm-health-stub.ts'),
       '../../../_shared/llm': resolve(root, 'server/_shared/llm.ts'),
       '../../../_shared/hash': resolve(root, 'server/_shared/hash.ts'),
+      '../../../_shared/premium-check': resolve(root, 'tests/helpers/premium-check-stub.ts'),
+      '../../../_shared/llm-sanitize.js': resolve(root, 'server/_shared/llm-sanitize.js'),
+      '../../../_shared/cache-keys': resolve(root, 'server/_shared/cache-keys.ts'),
     });
   }
 
@@ -662,10 +868,9 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
         const key = parseRedisKey(raw, 'get');
         return jsonResponse({ result: store.get(key) });
       }
-      if (raw.includes('/set/')) {
-        const key = parseRedisKey(raw, 'set');
-        const encodedValue = raw.slice(raw.indexOf('/set/') + 5).split('/')[1] || '';
-        store.set(key, decodeURIComponent(encodedValue));
+      if (isSetRequest(raw, init)) {
+        const { key, value } = parseSetRequest(raw, init);
+        store.set(key, value);
         if (!key.startsWith('seed-meta:')) setKeys.push(key);
         return jsonResponse({ result: 'OK' });
       }
@@ -687,8 +892,8 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       assert.equal(groqCalls, 2, 'different contexts should not share one cache entry');
       assert.equal(setKeys.length, 2, 'one cache write per unique context');
       assert.notEqual(setKeys[0], setKeys[1], 'context hash should differentiate cache keys');
-      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v2:IL:'), 'cache key should use v2 country-intel namespace');
-      assert.ok(setKeys[1]?.startsWith('ci-sebuf:v2:IL:'), 'cache key should use v2 country-intel namespace');
+      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v3:IL:'), 'cache key should use v3 country-intel namespace');
+      assert.ok(setKeys[1]?.startsWith('ci-sebuf:v3:IL:'), 'cache key should use v3 country-intel namespace');
       assert.equal(alpha.brief, 'brief-1');
       assert.equal(beta.brief, 'brief-2');
       assert.equal(alphaCached.brief, 'brief-1', 'same context should hit cache');
@@ -726,10 +931,9 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
         const key = parseRedisKey(raw, 'get');
         return jsonResponse({ result: store.get(key) });
       }
-      if (raw.includes('/set/')) {
-        const key = parseRedisKey(raw, 'set');
-        const encodedValue = raw.slice(raw.indexOf('/set/') + 5).split('/')[1] || '';
-        store.set(key, decodeURIComponent(encodedValue));
+      if (isSetRequest(raw, init)) {
+        const { key, value } = parseSetRequest(raw, init);
+        store.set(key, value);
         if (!key.startsWith('seed-meta:')) setKeys.push(key);
         return jsonResponse({ result: 'OK' });
       }
@@ -809,8 +1013,8 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
       const result = await module.listMilitaryFlights({}, request);
       assert.deepEqual(
         result.flights.map((flight) => flight.id),
-        ['in-bounds'],
-        'response should not include out-of-viewport flights',
+        ['IN-BOUNDS'],
+        'response should not include out-of-viewport flights (hex_code canonical form is uppercase)',
       );
 
       assert.equal(fetchUrls.length, 1);
@@ -872,6 +1076,192 @@ describe('military flights bbox behavior', { concurrency: 1 }, () => {
     } finally {
       cleanup();
       globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  // #3277 — fetchStaleFallback NEG_TTL parity with the legacy
+  // /api/military-flights handler. Without the negative cache, a sustained
+  // relay+seed outage would Redis-hammer the stale key on every request.
+  it('suppresses stale Redis read for 30s after a stale-key miss (NEG_TTL parity)', async () => {
+    const { module, cleanup } = await importListMilitaryFlights();
+    module._resetStaleNegativeCacheForTests();
+
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      LOCAL_API_MODE: undefined,
+      WS_RELAY_URL: undefined,
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+
+    const staleGetCalls = [];
+    globalThis.fetch = async (url) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) {
+        if (raw.includes('military%3Aflights%3Astale%3Av1')) {
+          staleGetCalls.push(raw);
+        }
+        // Both keys empty — drives cachedFetchJson to call the fetcher
+        // (which returns null because no relay) and then the handler falls
+        // through to fetchStaleFallback (which returns null because stale
+        // is also empty → arms the negative cache).
+        return jsonResponse({ result: null });
+      }
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      const ctx = { request: new Request('https://wm.test/api/military/v1/list-military-flights') };
+
+      // Call 1 — live empty + stale empty. Stale key MUST be read once,
+      // and the negative cache MUST be armed for the next 30s.
+      const r1 = await module.listMilitaryFlights(ctx, request);
+      assert.deepEqual(r1.flights, [], 'no live, no stale → empty response');
+      assert.equal(staleGetCalls.length, 1, 'first call reads stale key once');
+
+      // Call 2 — within the 30s negative-cache window. Live cache may be
+      // re-checked but the stale key MUST NOT be re-read.
+      staleGetCalls.length = 0;
+      const r2 = await module.listMilitaryFlights(ctx, request);
+      assert.deepEqual(r2.flights, [], 'still empty during negative-cache window');
+      assert.equal(
+        staleGetCalls.length,
+        0,
+        'second call within NEG_TTL window must not re-read stale key',
+      );
+
+      // Reset the negative cache (simulates wall-clock advance past 30s) →
+      // stale read should resume.
+      module._resetStaleNegativeCacheForTests();
+      const r3 = await module.listMilitaryFlights(ctx, request);
+      assert.deepEqual(r3.flights, []);
+      assert.equal(
+        staleGetCalls.length,
+        1,
+        'after negative-cache reset, stale key is re-read',
+      );
+    } finally {
+      cleanup();
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+});
+
+describe('setCachedJson wire shape and failure reporting', { concurrency: 1 }, () => {
+  it('emits POST / with body ["SET", key, value, "EX", String(ttl)]', async () => {
+    // Pins the body-mode wire shape so a future "simplification" back to
+    // URL-path encoding (`POST /set/{key}/{value}/EX/{ttl}`) fails loudly.
+    // That regression silently broke large-payload writes (e.g. news:digest:v1
+    // at ~126KB) because the self-hosted redis-rest-proxy runs Node's
+    // http.createServer, which rejects URLs >~16KB with ECONNRESET.
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+
+    const captured = [];
+    globalThis.fetch = async (url, init) => {
+      captured.push({ url: String(url), init });
+      return jsonResponse({ result: 'OK' });
+    };
+
+    try {
+      const key = 'news:digest:v1';
+      const value = { items: [{ id: 'a' }, { id: 'b' }] };
+      const ttl = 600;
+      const ok = await redis.setCachedJson(key, value, ttl);
+
+      assert.equal(ok, true, 'setCachedJson should return true on success');
+      assert.equal(captured.length, 1, 'exactly one Redis write should be issued');
+      const [req] = captured;
+      assert.equal(req.init.method, 'POST');
+      assert.equal(req.url, 'https://redis.test/', 'POST goes to base URL (not /set/...)');
+      assert.equal(
+        req.init.headers['Content-Type'],
+        'application/json',
+        'body-mode requires JSON Content-Type',
+      );
+      assert.deepEqual(
+        JSON.parse(String(req.init.body)),
+        ['SET', key, JSON.stringify(value), 'EX', String(ttl)],
+        'body must carry the SET command + args verbatim',
+      );
+      assert.ok(
+        !req.url.includes('/set/'),
+        'URL must NOT carry payload in path — that was the original bug',
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('returns false and warns when Upstash returns an error in the body', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    const originalWarn = console.warn;
+    const warnings = [];
+    console.warn = (...args) => { warnings.push(args); };
+
+    globalThis.fetch = async () => jsonResponse({ error: 'WRONGTYPE' });
+
+    try {
+      const ok = await redis.setCachedJson('k', { v: 1 }, 30);
+      assert.equal(ok, false, 'Upstash error must surface as false');
+      assert.equal(warnings.length, 1, 'should warn exactly once');
+      const [msg, detail] = warnings[0];
+      assert.match(String(msg), /setCachedJson failed/);
+      assert.equal(detail, 'WRONGTYPE', 'warn payload should be the Upstash error string');
+    } finally {
+      globalThis.fetch = originalFetch;
+      console.warn = originalWarn;
+      restoreEnv();
+    }
+  });
+
+  it('returns false and warns on non-2xx HTTP responses', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    const originalWarn = console.warn;
+    const warnings = [];
+    console.warn = (...args) => { warnings.push(args); };
+
+    globalThis.fetch = async () => ({
+      ok: false,
+      status: 503,
+      async json() { return null; },
+    });
+
+    try {
+      const ok = await redis.setCachedJson('k', { v: 1 }, 30);
+      assert.equal(ok, false, 'HTTP failure must surface as false');
+      assert.equal(warnings.length, 1, 'should warn exactly once');
+      const [msg, detail] = warnings[0];
+      assert.match(String(msg), /setCachedJson failed/);
+      assert.equal(detail, 'HTTP 503', 'warn payload should name the HTTP status');
+    } finally {
+      globalThis.fetch = originalFetch;
+      console.warn = originalWarn;
       restoreEnv();
     }
   });

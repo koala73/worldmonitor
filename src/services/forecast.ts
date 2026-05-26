@@ -21,3 +21,8 @@ export async function fetchForecasts(domain?: string, region?: string): Promise<
   const resp = await getClient().getForecasts({ domain: domain || '', region: region || '' });
   return resp.forecasts || [];
 }
+
+export async function fetchSimulationOutcome(): Promise<string> {
+  const resp = await getClient().getSimulationOutcome({ runId: '' });
+  return (resp.found && resp.theaterSummariesJson) ? resp.theaterSummariesJson : '';
+}

@@ -17,7 +17,10 @@ interface FirecrawlSearchResponse {
 
 interface FirecrawlExtractResponse {
   success: boolean;
-  data?: Record<string, unknown>;
+  data?: {
+    extract?: Record<string, unknown>;
+    metadata?: Record<string, unknown>;
+  };
 }
 
 export class FirecrawlProvider implements AcquisitionProvider {
@@ -109,7 +112,7 @@ export class FirecrawlProvider implements AcquisitionProvider {
       body: JSON.stringify({
         url,
         formats: ['extract'],
-        extract: { schema: jsonSchema },
+        extract: { schema: jsonSchema, ...(schema.prompt ? { prompt: schema.prompt } : {}) },
         timeout: opts.timeout ?? 30_000,
       }),
     });
@@ -120,7 +123,7 @@ export class FirecrawlProvider implements AcquisitionProvider {
 
     return {
       url,
-      data: (data.data ?? {}) as T,
+      data: (data.data?.extract ?? {}) as T,
       provider: this.name,
       fetchedAt: new Date(),
     };

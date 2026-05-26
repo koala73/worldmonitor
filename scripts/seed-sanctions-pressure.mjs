@@ -6,13 +6,22 @@
 // 120MB XML download against Railway's 512MB container limit.
 import sax from 'sax';
 
-import { CHROME_UA, loadEnvFile, runSeed, verifySeedKey } from './_seed-utils.mjs';
+import { CHROME_UA, loadEnvFile, runSeed, verifySeedKey, writeExtraKeyWithMeta } from './_seed-utils.mjs';
 
 loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'sanctions:pressure:v1';
 const STATE_KEY = 'sanctions:pressure:state:v1';
-const CACHE_TTL = 12 * 60 * 60;
+const ENTITY_INDEX_KEY = 'sanctions:entities:v1';
+const COUNTRY_COUNTS_KEY = 'sanctions:country-counts:v1';
+const CACHE_TTL = 15 * 60 * 60; // 15h — 3h buffer over 12h cron cadence (was 12h = 0 buffer)
+// Compact entity type codes for the lookup index (saves space vs full enum strings)
+const ET_CODE = {
+  SANCTIONS_ENTITY_TYPE_VESSEL: 'vessel',
+  SANCTIONS_ENTITY_TYPE_AIRCRAFT: 'aircraft',
+  SANCTIONS_ENTITY_TYPE_INDIVIDUAL: 'individual',
+  SANCTIONS_ENTITY_TYPE_ENTITY: 'entity',
+};
 const DEFAULT_RECENT_LIMIT = 60;
 const OFAC_TIMEOUT_MS = 45_000;
 const PROGRAM_CODE_RE = /^[A-Z0-9][A-Z0-9-]{1,24}$/;
@@ -69,6 +78,18 @@ function buildCountryPressure(entries) {
   return [...map.values()]
     .sort((a, b) => b.newEntryCount - a.newEntryCount || b.entryCount - a.entryCount || a.countryName.localeCompare(b.countryName))
     .slice(0, 12);
+}
+
+// Full ISO2 → entryCount map across ALL entries (not truncated like buildCountryPressure).
+// Used by get-country-risk RPC for accurate per-country sanctions screening.
+function buildCountryCounts(entries) {
+  const map = {};
+  for (const entry of entries) {
+    for (const code of entry.countryCodes) {
+      if (code && code !== 'XX') map[code] = (map[code] ?? 0) + 1;
+    }
+  }
+  return map;
 }
 
 function buildProgramPressure(entries) {
@@ -488,6 +509,18 @@ async function fetchSanctionsPressure() {
   const aircraftCount = entries.filter((entry) => entry.entityType === 'SANCTIONS_ENTITY_TYPE_AIRCRAFT').length;
   console.log(`  Merged: ${totalCount} total (${results[0]?.entries.length ?? 0} SDN + ${results[1]?.entries.length ?? 0} consolidated), ${newEntryCount} new, ${vesselCount} vessels, ${aircraftCount} aircraft`);
 
+  // Build compact entity index for name-based lookup (Phase 1 — issue #2042).
+  // Each record: { id, name, et (compact type), cc (country codes), pr (programs) }
+  // Stored as a flat array in a single Redis key for O(N) in-memory search.
+  const _entityIndex = entries.map((e) => ({
+    id: e.id,
+    name: e.name,
+    et: ET_CODE[e.entityType] ?? 'entity',
+    cc: e.countryCodes.slice(0, 3),
+    pr: e.programs.slice(0, 3),
+  }));
+  console.log(`  Entity index: ${_entityIndex.length} records (~${Math.round(JSON.stringify(_entityIndex).length / 1024)}KB)`);
+
   return {
     fetchedAt: String(Date.now()),
     datasetDate: String(datasetDate),
@@ -500,6 +533,8 @@ async function fetchSanctionsPressure() {
     countries: buildCountryPressure(entries),
     programs: buildProgramPressure(entries),
     entries: sortedEntries.slice(0, DEFAULT_RECENT_LIMIT),
+    _entityIndex,
+    _countryCounts: buildCountryCounts(entries),
     _state: {
       entryIds: entries.map((entry) => entry.id),
     },
@@ -510,19 +545,60 @@ function validate(data) {
   return (data?.totalCount ?? 0) > 0;
 }
 
+export function declareRecords(data) {
+  return data?.totalCount ?? 0;
+}
+
 runSeed('sanctions', 'pressure', CANONICAL_KEY, fetchSanctionsPressure, {
   ttlSeconds: CACHE_TTL,
   validateFn: validate,
   sourceVersion: 'ofac-sls-advanced-xml-v1',
   recordCount: (data) => data.totalCount ?? 0,
+  // Strip internal-only fields before writing the main key so the pressure payload
+  // does not include the entity index (~hundreds of KB) or state snapshot.
+  publishTransform: (data) => {
+    const { _entityIndex: _ei, _state: _s, _countryCounts: _cc, ...rest } = data;
+    return rest;
+  },
   extraKeys: [
     {
       key: STATE_KEY,
       ttl: CACHE_TTL,
       transform: (data) => data._state,
     },
+    {
+      key: COUNTRY_COUNTS_KEY,
+      ttl: CACHE_TTL,
+      transform: (data) => data._countryCounts,
+    },
   ],
   afterPublish: async (data, _ctx) => {
+    // Write entity lookup index with seed-meta so health.js can monitor it.
+    // Uses writeExtraKeyWithMeta rather than extraKeys because runSeed's extraKeys
+    // calls writeExtraKey (no meta), and we need a seed-meta key for health tracking.
+    if (data._entityIndex) {
+      await writeExtraKeyWithMeta(
+        ENTITY_INDEX_KEY,
+        data._entityIndex,
+        CACHE_TTL,
+        data._entityIndex.length,
+      );
+    }
+    // Write full ISO2→count map for per-country sanctions lookup (no top-12 truncation).
+    if (data._countryCounts) {
+      await writeExtraKeyWithMeta(
+        COUNTRY_COUNTS_KEY,
+        data._countryCounts,
+        CACHE_TTL,
+        Object.keys(data._countryCounts).length,
+      );
+    }
     delete data._state;
+    delete data._entityIndex;
+    delete data._countryCounts;
   },
+
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 720,
 });

@@ -1,0 +1,115 @@
+---
+title: "Indicators & Signals"
+description: "Catalogue of compact market-indicator panels, correlation panels, and misc signal surfaces — each a tight tile-style read that complements the deep-dive panels."
+---
+
+WorldMonitor ships many **tile-style** indicator, correlation, and signal panels — compact surfaces that show one or two readings each and are designed to be composed alongside the deep-dive panels. This page is the collective reference so each tile is findable without writing a dedicated page per panel.
+
+When a tile is empty, check [Data Sources](/data-sources) and the [health endpoint](/health-endpoints) for upstream status.
+
+## Sentiment tiles
+
+| Panel id | Title | What it shows |
+|---|---|---|
+| `fear-greed` | Fear & Greed | CNN Fear & Greed Index gauge (0-100). |
+| `positioning-247` | 24/7 Positioning | Always-on positioning flow signal. |
+| `aaii-sentiment` | AAII Sentiment | AAII bull/bear retail sentiment survey (weekly). |
+
+## Macro tiles
+
+| Panel id | Title |
+|---|---|
+| `macro-tiles` | Macro Indicators (CPI, unemployment, GDP, policy rates; US + Euro Area) |
+| `yield-curve` | Yield Curve |
+| `national-debt` | Global Debt Clock |
+| `liquidity-shifts` | Liquidity Shifts |
+| `macro-signals` | Market Regime / Market Radar |
+
+## Calendars
+
+| Panel id | Title |
+|---|---|
+| `earnings-calendar` | Earnings Calendar (EPS estimate vs actual, beat/miss) |
+| `economic-calendar` | Economic Calendar (CPI / NFP / GDP / PMI / central bank decisions) |
+
+## Market-structure tiles
+
+| Panel id | Title |
+|---|---|
+| `market-breadth` | Market Breadth |
+| `etf-flows` | BTC ETF Tracker |
+| `cot-positioning` | COT Positioning |
+
+## Commodity tiles
+
+| Panel id | Title |
+|---|---|
+| `energy-complex` | Energy Complex |
+| `oil-inventories` | Oil Inventories |
+| `base-metals` | Base Metals |
+| `gold-silver` | Gold & Silver |
+| `gold-intelligence` | Gold Intelligence |
+| `mining-companies` | Mining Companies |
+| `critical-minerals` | Critical Minerals |
+| `fao-food-price-index` | FAO Food Price Index |
+| `grocery-basket` | Grocery Index |
+| `bigmac` | Big Mac Index |
+| `fuel-prices` | Fuel Prices |
+
+## Crypto tiles
+
+| Panel id | Title |
+|---|---|
+| `crypto-heatmap` | Crypto Sectors |
+| `ai-tokens` | AI Tokens |
+| `defi-tokens` | DeFi Tokens |
+| `other-tokens` | Alt Tokens |
+| `stablecoins` | Stablecoins |
+
+## Regional economy tiles
+
+| Panel id | Title |
+|---|---|
+| `gulf-economies` | Gulf Economies / Gulf & OPEC Economies |
+| `gcc-investments` | GCC Investments / GCC Resource Investments |
+| `gccNews` | GCC Business News |
+
+## Correlation panels
+
+These panels visualise cross-domain correlation over a rolling window — useful for spotting regime shifts and unusual co-movement.
+
+| Panel id | Title | Cross-domain pair |
+|---|---|---|
+| `military-correlation` | Force Posture | Military × events |
+| `escalation-correlation` | Escalation Monitor | Conflict × tone |
+| `economic-correlation` | Economic Warfare | Sanctions × markets |
+| `disaster-correlation` | Disaster Cascade | Natural × infra |
+| `cross-source-signals` | Cross-Source Signals | Multi-source signal agreement |
+
+## Misc signals
+
+| Panel id | Title | What it shows |
+|---|---|---|
+| `geo-hubs` | Geopolitical Hubs | Hotspot concentration map. |
+| `social-velocity` | Social Velocity | Reddit r/worldnews + r/geopolitics velocity; same feed as the MCP `get_social_velocity` tool. |
+| `population-exposure` | Population Exposure | Population within a buffer of active events. |
+| `satellite-fires` | Fires | FIRMS/VIIRS thermal detections on the map. See [Thermal Escalation](/panels/thermal-escalation) for the clustered + baseline-aware view. |
+| `ucdp-events` | UCDP Conflict Events | UCDP georeferenced conflict event dataset. |
+| `internet-disruptions` | Internet Disruptions | Cloudflare Radar outages + service status. |
+| `service-status` | Service Status | Internet-service status surface. |
+| `positive-feed` | Good News Feed | Curated constructive-news stream. |
+| `live-webcams` | Live Webcams | See [Webcam layer](/webcam-layer) for the map-layer equivalent. |
+| `windy-webcams` | Windy Live Webcam | Windy.com-backed webcam. |
+
+## Shared behaviour
+
+- All panels above are **free** unless noted otherwise — none are `premium: 'locked'` in `src/config/panels.ts`.
+- Compact tiles are registered across multiple variants; the per-variant registration determines whether a tile is enabled by default. Check `src/config/panels.ts` directly when confirming availability.
+- Most tile-style panels hydrate from the bootstrap payload (`getHydratedData(...)`) and fall back to a fresh RPC call so the initial paint is immediate.
+
+## Related
+
+- [Features & Interface](/features) — overview of the panel system, Cmd+K, and layout.
+- [Data Sources](/data-sources) — full upstream source list.
+- [Finance Data](/finance-data) — deeper reference for the financial tiles as a family.
+- [Country Instability Index](/country-instability-index) and [Country Resilience Index](/methodology/country-resilience-index) — the country-level risk complements.

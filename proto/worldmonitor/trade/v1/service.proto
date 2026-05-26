@@ -8,6 +8,7 @@ import "worldmonitor/trade/v1/get_tariff_trends.proto";
 import "worldmonitor/trade/v1/get_trade_flows.proto";
 import "worldmonitor/trade/v1/get_trade_barriers.proto";
 import "worldmonitor/trade/v1/get_customs_revenue.proto";
+import "worldmonitor/trade/v1/list_comtrade_flows.proto";
 
 // Trade policy intelligence from WTO and US Treasury data sources.
 service TradeService {
@@ -36,5 +37,10 @@ service TradeService {
   // Get US customs duties revenue (Treasury MTS data, seeded by Railway).
   rpc GetCustomsRevenue(GetCustomsRevenueRequest) returns (GetCustomsRevenueResponse) {
     option (sebuf.http.config) = {path: "/get-customs-revenue", method: HTTP_METHOD_GET};
+  }
+
+  // List UN Comtrade strategic commodity flows with anomaly detection.
+  rpc ListComtradeFlows(ListComtradeFlowsRequest) returns (ListComtradeFlowsResponse) {
+    option (sebuf.http.config) = {path: "/list-comtrade-flows", method: HTTP_METHOD_GET};
   }
 }

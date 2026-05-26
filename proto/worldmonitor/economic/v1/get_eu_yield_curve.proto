@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+// GetEuYieldCurveRequest fetches the ECB Euro Area AAA sovereign yield curve.
+message GetEuYieldCurveRequest {}
+
+// EuYieldCurveData holds a single observation of the ECB Euro Area AAA yield curve.
+message EuYieldCurveData {
+  // Date of the observation (YYYY-MM or YYYY-MM-DD).
+  string date = 1;
+  // Spot rates by tenor. Keys: "1Y", "2Y", "5Y", "10Y", "20Y", "30Y".
+  map<string, double> rates = 2;
+  // Data source identifier (e.g. "ecb-aaa").
+  string source = 3;
+  // ISO 8601 timestamp when this was last seeded.
+  string updated_at = 4;
+}
+
+// GetEuYieldCurveResponse contains the latest ECB Euro Area AAA sovereign yield curve.
+message GetEuYieldCurveResponse {
+  // Latest ECB yield curve snapshot.
+  EuYieldCurveData data = 1;
+  // True if data is not yet available in cache.
+  bool unavailable = 2;
+}

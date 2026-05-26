@@ -1,0 +1,34 @@
+syntax = "proto3";
+
+package worldmonitor.scenario.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/scenario/v1/run_scenario.proto";
+import "worldmonitor/scenario/v1/get_scenario_status.proto";
+import "worldmonitor/scenario/v1/list_scenario_templates.proto";
+
+// ScenarioService exposes the scenario engine: enqueue a scenario job,
+// poll its status, and list the template catalog.
+service ScenarioService {
+  option (sebuf.http.service_config) = {base_path: "/api/scenario/v1"};
+
+  // RunScenario enqueues a scenario job on scenario-queue:pending. PRO-gated.
+  // The scenario-worker (scripts/scenario-worker.mjs) pulls jobs off the
+  // queue via BLMOVE and writes results under scenario-result:{job_id}.
+  rpc RunScenario(RunScenarioRequest) returns (RunScenarioResponse) {
+    option (sebuf.http.config) = {path: "/run-scenario", method: HTTP_METHOD_POST};
+  }
+
+  // GetScenarioStatus polls a single job's result. PRO-gated.
+  // Returns status="pending" when no result key exists, mirroring the
+  // worker's lifecycle state once the key is written.
+  rpc GetScenarioStatus(GetScenarioStatusRequest) returns (GetScenarioStatusResponse) {
+    option (sebuf.http.config) = {path: "/get-scenario-status", method: HTTP_METHOD_GET};
+  }
+
+  // ListScenarioTemplates returns the catalog of pre-defined scenarios.
+  // Not PRO-gated — used by documented public API consumers.
+  rpc ListScenarioTemplates(ListScenarioTemplatesRequest) returns (ListScenarioTemplatesResponse) {
+    option (sebuf.http.config) = {path: "/list-scenario-templates", method: HTTP_METHOD_GET};
+  }
+}

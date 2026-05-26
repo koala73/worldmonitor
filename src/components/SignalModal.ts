@@ -17,6 +17,8 @@ export class SignalModal {
   constructor() {
     this.element = document.createElement('div');
     this.element.className = 'signal-modal-overlay';
+    this.element.setAttribute('role', 'dialog');
+    this.element.setAttribute('aria-modal', 'true');
     this.element.innerHTML = `
       <div class="signal-modal">
         <div class="signal-modal-header">

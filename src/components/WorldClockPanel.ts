@@ -1,5 +1,5 @@
 import { Panel } from './Panel';
-import { getLocale } from '@/services/i18n';
+import { t, getLocale } from '@/services/i18n';
 
 interface CityEntry {
   id: string;
@@ -143,7 +143,7 @@ export class WorldClockPanel extends Panel {
   private dragStartY = 0;
 
   constructor() {
-    super({ id: 'world-clock', title: 'World Clock', trackActivity: false });
+    super({ id: 'world-clock', title: 'World Clock', trackActivity: false, infoTooltip: t('components.worldClock.infoTooltip') });
     this.homeCityId = detectHomeCity();
     this.selectedCities = loadSelectedCities();
 
@@ -217,10 +217,12 @@ export class WorldClockPanel extends Panel {
       const row = handle.closest('.wc-row') as HTMLElement | null;
       if (!row) return;
       e.preventDefault();
+      e.stopPropagation();
       this.dragCityId = row.dataset.cityId ?? null;
       this.dragStartY = e.clientY;
       this.dragging = false;
       row.classList.add('wc-dragging');
+      content.classList.add('wc-content-dragging');
     });
 
     document.addEventListener('mousemove', (e: MouseEvent) => {
@@ -245,6 +247,7 @@ export class WorldClockPanel extends Panel {
       this.dragCityId = null;
       const rows = content.querySelectorAll('.wc-row[data-city-id]');
       rows.forEach(r => r.classList.remove('wc-dragging', 'wc-drag-over-above', 'wc-drag-over-below'));
+      content.classList.remove('wc-content-dragging');
 
       if (this.dragging) {
         let targetId: string | null = null;

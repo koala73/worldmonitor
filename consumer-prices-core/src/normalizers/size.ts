@@ -25,6 +25,9 @@ const UNIT_MAP: Record<string, { base: string; factor: number }> = {
   cl: { base: 'ml', factor: 10 },
   oz: { base: 'g', factor: 28.3495 },
   lb: { base: 'g', factor: 453.592 },
+  gallon: { base: 'ml', factor: 3785.41 },
+  gal: { base: 'ml', factor: 3785.41 },
+  fl: { base: 'ml', factor: 29.5735 },
   ct: { base: 'ct', factor: 1 },
   pc: { base: 'ct', factor: 1 },
   pcs: { base: 'ct', factor: 1 },
@@ -40,7 +43,7 @@ const UNIT_MAP: Record<string, { base: string; factor: number }> = {
   sachets: { base: 'ct', factor: 1 },
 };
 
-const PACK_PATTERN = /^(\d+)\s*[x×]\s*(.+)$/i;
+const PACK_PATTERN = /^(\d+)\s*(?:[x×]|pack\b)\s*(.+)$/i;
 const SIZE_PATTERN = /(\d+(?:\.\d+)?)\s*([a-z]+)/i;
 
 export function parseSize(raw: string | null | undefined): ParsedSize | null {

@@ -1,0 +1,24 @@
+retailer:
+  slug: coop_ch
+  name: Coop Switzerland
+  marketCode: ch
+  currencyCode: CHF
+  adapter: search
+  baseUrl: https://www.coop.ch
+  # disabled 2026-03: Exa returns competitor domain URLs (domain bleed) for CH queries; 0/12 every run.
+  enabled: false
+
+  searchConfig:
+    numResults: 5
+    urlPathContains: /de/lebensmittel/
+    queryTemplate: "{canonicalName} Lebensmittel {market} {currency} Preis"
+
+  rateLimit:
+    requestsPerMinute: 10
+    maxConcurrency: 1
+    delayBetweenRequestsMs: 6000
+
+  discovery:
+    mode: search
+    maxPages: 20
+    seeds: []

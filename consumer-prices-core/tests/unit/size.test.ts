@@ -46,6 +46,26 @@ describe('parseSize', () => {
     expect(r?.baseQuantity).toBe(24);
   });
 
+  it('parses gallon', () => {
+    const r = parseSize('1 gallon');
+    expect(r?.baseUnit).toBe('ml');
+    expect(r?.baseQuantity).toBeCloseTo(3785.41);
+  });
+
+  it('parses gal abbreviation', () => {
+    const r = parseSize('1gal');
+    expect(r?.baseUnit).toBe('ml');
+    expect(r?.baseQuantity).toBeCloseTo(3785.41);
+  });
+
+  it('parses pack word separator (24 pack 16oz)', () => {
+    const r = parseSize('24 pack 16oz');
+    expect(r?.packCount).toBe(24);
+    expect(r?.sizeValue).toBe(16);
+    expect(r?.baseUnit).toBe('g');
+    expect(r?.baseQuantity).toBeCloseTo(24 * 16 * 28.3495);
+  });
+
   it('returns null for unparseable text', () => {
     expect(parseSize('large')).toBeNull();
     expect(parseSize(null)).toBeNull();

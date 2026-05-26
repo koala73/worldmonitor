@@ -21,11 +21,12 @@ function getRatelimit(): Ratelimit | null {
 function getClientIp(request: Request): string {
   // With Cloudflare proxy → Vercel, x-real-ip is the CF edge IP (shared across users).
   // cf-connecting-ip is the actual client IP set by Cloudflare — prefer it.
-  // x-forwarded-for is client-settable and MUST NOT be trusted for rate limiting.
+  // x-forwarded-for is client-settable and MUST NOT be trusted for rate limiting:
+  // any caller can set it to spoof a victim's IP (burning their budget) or cycle
+  // synthetic values to bypass their own limit. Issue #3721.
   return (
     request.headers.get('cf-connecting-ip') ||
     request.headers.get('x-real-ip') ||
-    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
     '0.0.0.0'
   );
 }
@@ -77,9 +78,44 @@ interface EndpointRatePolicy {
   window: Duration;
 }
 
-const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
+// Exported so scripts/enforce-rate-limit-policies.mjs can import it directly
+// (#3278) instead of regex-parsing this file. Internal callers should keep
+// using checkEndpointRateLimit / hasEndpointRatePolicy below — the export is
+// for tooling, not new runtime callers.
+export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   '/api/news/v1/summarize-article-cache': { limit: 3000, window: '60 s' },
   '/api/intelligence/v1/classify-event': { limit: 600, window: '60 s' },
+  // Legacy /api/sanctions-entity-search rate limit was 30/min per IP. Preserve
+  // that budget now that LookupSanctionEntity proxies OpenSanctions live.
+  '/api/sanctions/v1/lookup-sanction-entity': { limit: 30, window: '60 s' },
+  // Lead capture: preserve the 3/hr and 5/hr budgets from legacy api/contact.js
+  // and api/register-interest.js. Lower limits than normal IP rate limit since
+  // these hit Convex + Resend per request.
+  '/api/leads/v1/submit-contact': { limit: 3, window: '1 h' },
+  '/api/leads/v1/register-interest': { limit: 5, window: '1 h' },
+  // Scenario engine: legacy /api/scenario/v1/run capped at 10 jobs/min/IP via
+  // inline Upstash INCR. Gateway now enforces the same budget with per-IP
+  // keying in checkEndpointRateLimit.
+  '/api/scenario/v1/run-scenario': { limit: 10, window: '60 s' },
+  // #3734: trigger-simulation PRO endpoint, same shape as run-scenario.
+  // Per-IP keying matches run-scenario's production behavior. Pro-identity
+  // primitive deferred (checkScopedRateLimit available if needed).
+  '/api/forecast/v1/trigger-simulation': { limit: 10, window: '60 s' },
+  // Live tanker map (Energy Atlas): one user with 6 chokepoints × 1 call/min
+  // = 6 req/min/IP base load. 60/min headroom covers tab refreshes + zoom
+  // pans within a single user without flagging legitimate traffic.
+  '/api/maritime/v1/get-vessel-snapshot': { limit: 60, window: '60 s' },
+  // #3805 / PR #3821: MCP proxy is a top-level Vercel Edge Function in
+  // `api/mcp-proxy.ts` (registered as `external-protocol` in
+  // api/api-route-exceptions.json — JSON-RPC shape dictated by the MCP spec),
+  // so it does NOT flow through the gateway and `checkEndpointRateLimit`
+  // never fires for it. The handler reads this policy and enforces it
+  // in-handler via `checkScopedRateLimit` — keeping the registry as the
+  // single source of truth so future audit additions (and the
+  // enforce-rate-limit-policies lint) see the endpoint. The audit script
+  // resolves edge-function paths via api/api-route-exceptions.json instead
+  // of the OpenAPI specs.
+  '/api/mcp-proxy': { limit: 30, window: '60 s' },
 };
 
 const endpointLimiters = new Map<string, Ratelimit>();
@@ -129,5 +165,61 @@ export async function checkEndpointRateLimit(
     return null;
   } catch {
     return null;
+  }
+}
+
+// --- In-handler scoped rate limits ---
+//
+// Handlers that need a per-subscope cap *in addition to* the gateway-level
+// endpoint policy (e.g. a tighter budget for one request variant) use this
+// helper. Gateway's checkEndpointRateLimit still runs first — this is a
+// second stage.
+
+const scopedLimiters = new Map<string, Ratelimit>();
+
+function getScopedRatelimit(scope: string, limit: number, window: Duration): Ratelimit | null {
+  const cacheKey = `${scope}|${limit}|${window}`;
+  const cached = scopedLimiters.get(cacheKey);
+  if (cached) return cached;
+
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return null;
+
+  const rl = new Ratelimit({
+    redis: new Redis({ url, token }),
+    limiter: Ratelimit.slidingWindow(limit, window),
+    prefix: 'rl:scope',
+    analytics: false,
+  });
+  scopedLimiters.set(cacheKey, rl);
+  return rl;
+}
+
+export interface ScopedRateLimitResult {
+  allowed: boolean;
+  limit: number;
+  reset: number;
+}
+
+/**
+ * Returns whether the request is under the scoped budget. `scope` is an
+ * opaque namespace (e.g. `${pathname}#desktop`); `identifier` is usually the
+ * client IP but can be any stable caller identifier. Fail-open on Redis errors
+ * to stay consistent with checkRateLimit / checkEndpointRateLimit semantics.
+ */
+export async function checkScopedRateLimit(
+  scope: string,
+  limit: number,
+  window: Duration,
+  identifier: string,
+): Promise<ScopedRateLimitResult> {
+  const rl = getScopedRatelimit(scope, limit, window);
+  if (!rl) return { allowed: true, limit, reset: 0 };
+  try {
+    const result = await rl.limit(`${scope}:${identifier}`);
+    return { allowed: result.success, limit: result.limit, reset: result.reset };
+  } catch {
+    return { allowed: true, limit, reset: 0 };
   }
 }

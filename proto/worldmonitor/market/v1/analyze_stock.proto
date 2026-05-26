@@ -78,4 +78,44 @@ message AnalyzeStockResponse {
   double stop_loss = 44;
   double take_profit = 45;
   string engine_version = 46;
+
+  AnalystConsensus analyst_consensus = 47;
+  PriceTarget price_target = 48;
+  repeated UpgradeDowngrade recent_upgrades = 49;
+
+  double dividend_yield = 50;
+  double trailing_annual_dividend_rate = 51;
+  int64 ex_dividend_date = 52 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  optional double payout_ratio = 53;
+  reserved 54;
+  reserved "five_year_avg_dividend_yield";
+  string dividend_frequency = 55;
+  double dividend_cagr = 56;
+}
+
+message AnalystConsensus {
+  int32 strong_buy = 1;
+  int32 buy = 2;
+  int32 hold = 3;
+  int32 sell = 4;
+  int32 strong_sell = 5;
+  int32 total = 6;
+  string period = 7;
+}
+
+message PriceTarget {
+  optional double high = 1;
+  optional double low = 2;
+  optional double mean = 3;
+  optional double median = 4;
+  optional double current = 5;
+  int32 number_of_analysts = 6;
+}
+
+message UpgradeDowngrade {
+  string firm = 1;
+  string to_grade = 2;
+  string from_grade = 3;
+  string action = 4;
+  int64 epoch_grade_date = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
 }

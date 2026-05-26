@@ -7,6 +7,7 @@ import "worldmonitor/intelligence/v1/deduct_situation.proto";
 import "worldmonitor/intelligence/v1/get_company_enrichment.proto";
 import "worldmonitor/intelligence/v1/get_country_facts.proto";
 import "worldmonitor/intelligence/v1/get_country_intel_brief.proto";
+import "worldmonitor/intelligence/v1/get_country_risk.proto";
 import "worldmonitor/intelligence/v1/get_pizzint_status.proto";
 import "worldmonitor/intelligence/v1/get_risk_scores.proto";
 import "worldmonitor/intelligence/v1/list_security_advisories.proto";
@@ -16,6 +17,16 @@ import "worldmonitor/intelligence/v1/list_oref_alerts.proto";
 import "worldmonitor/intelligence/v1/list_satellites.proto";
 import "worldmonitor/intelligence/v1/list_telegram_feed.proto";
 import "worldmonitor/intelligence/v1/search_gdelt_documents.proto";
+import "worldmonitor/intelligence/v1/get_gdelt_topic_timeline.proto";
+import "worldmonitor/intelligence/v1/list_cross_source_signals.proto";
+import "worldmonitor/intelligence/v1/list_market_implications.proto";
+import "worldmonitor/intelligence/v1/get_social_velocity.proto";
+import "worldmonitor/intelligence/v1/get_country_energy_profile.proto";
+import "worldmonitor/intelligence/v1/compute_energy_shock.proto";
+import "worldmonitor/intelligence/v1/get_country_port_activity.proto";
+import "worldmonitor/intelligence/v1/get_regional_snapshot.proto";
+import "worldmonitor/intelligence/v1/get_regime_history.proto";
+import "worldmonitor/intelligence/v1/get_regional_brief.proto";
 
 // IntelligenceService provides APIs for technical and strategic intelligence.
 service IntelligenceService {
@@ -40,6 +51,14 @@ service IntelligenceService {
   // ClassifyEvent analyzes a news event using AI models.
   rpc ClassifyEvent(ClassifyEventRequest) returns (ClassifyEventResponse) {
     option (sebuf.http.config) = {path: "/classify-event", method: HTTP_METHOD_GET};
+  }
+
+  // GetCountryRisk retrieves composite risk intelligence for a specific country.
+  rpc GetCountryRisk(GetCountryRiskRequest) returns (GetCountryRiskResponse) {
+    option (sebuf.http.config) = {
+      path: "/get-country-risk"
+      method: HTTP_METHOD_GET
+    };
   }
 
   // GetCountryIntelBrief generates a strategic brief for a specific country.
@@ -119,5 +138,60 @@ service IntelligenceService {
   // ListSecurityAdvisories retrieves pre-seeded travel and health advisories.
   rpc ListSecurityAdvisories(ListSecurityAdvisoriesRequest) returns (ListSecurityAdvisoriesResponse) {
     option (sebuf.http.config) = {path: "/list-security-advisories", method: HTTP_METHOD_GET};
+  }
+
+  // GetGdeltTopicTimeline retrieves tone and volume timelines for a GDELT intel topic.
+  rpc GetGdeltTopicTimeline(GetGdeltTopicTimelineRequest) returns (GetGdeltTopicTimelineResponse) {
+    option (sebuf.http.config) = {path: "/get-gdelt-topic-timeline", method: HTTP_METHOD_GET};
+  }
+
+  // ListCrossSourceSignals returns cross-domain signals ranked by severity with composite escalation detection.
+  rpc ListCrossSourceSignals(ListCrossSourceSignalsRequest) returns (ListCrossSourceSignalsResponse) {
+    option (sebuf.http.config) = {path: "/list-cross-source-signals", method: HTTP_METHOD_GET};
+  }
+
+  // ListMarketImplications returns AI-generated trade-implication cards from live world state.
+  rpc ListMarketImplications(ListMarketImplicationsRequest) returns (ListMarketImplicationsResponse) {
+    option (sebuf.http.config) = {path: "/list-market-implications", method: HTTP_METHOD_GET};
+  }
+
+  // GetSocialVelocity returns trending Reddit posts from r/worldnews and r/geopolitics ranked by velocity.
+  rpc GetSocialVelocity(GetSocialVelocityRequest) returns (GetSocialVelocityResponse) {
+    option (sebuf.http.config) = {path: "/get-social-velocity", method: HTTP_METHOD_GET};
+  }
+
+  // GetCountryEnergyProfile aggregates Phase 1/2/2.5 energy data per country.
+  rpc GetCountryEnergyProfile(GetCountryEnergyProfileRequest) returns (GetCountryEnergyProfileResponse) {
+    option (sebuf.http.config) = {path: "/get-country-energy-profile", method: HTTP_METHOD_GET};
+  }
+
+  // ComputeEnergyShockScenario computes on-demand product supply shock for a given country + chokepoint.
+  rpc ComputeEnergyShockScenario(ComputeEnergyShockScenarioRequest) returns (ComputeEnergyShockScenarioResponse) {
+    option (sebuf.http.config) = {path: "/compute-energy-shock", method: HTTP_METHOD_GET};
+  }
+
+  // GetCountryPortActivity returns port-level tanker traffic and trade volumes for a country.
+  rpc GetCountryPortActivity(GetCountryPortActivityRequest) returns (CountryPortActivityResponse) {
+    option (sebuf.http.config) = {path: "/get-country-port-activity", method: HTTP_METHOD_GET};
+  }
+
+  // GetRegionalSnapshot returns the latest persisted RegionalSnapshot for a
+  // region. The snapshot is written every 6h by scripts/seed-regional-snapshots.mjs;
+  // this handler only reads canonical state. Premium-gated.
+  rpc GetRegionalSnapshot(GetRegionalSnapshotRequest) returns (GetRegionalSnapshotResponse) {
+    option (sebuf.http.config) = {path: "/get-regional-snapshot", method: HTTP_METHOD_GET};
+  }
+
+  // GetRegimeHistory returns the region's regime transition log newest-first.
+  // Entries are append-only from the seed writer, recorded only when
+  // diffRegionalSnapshot reports regime_changed. Premium-gated.
+  rpc GetRegimeHistory(GetRegimeHistoryRequest) returns (GetRegimeHistoryResponse) {
+    option (sebuf.http.config) = {path: "/get-regime-history", method: HTTP_METHOD_GET};
+  }
+
+  // GetRegionalBrief returns the latest weekly intelligence brief for a region.
+  // Written by scripts/seed-regional-briefs.mjs on a weekly cron. Premium-gated.
+  rpc GetRegionalBrief(GetRegionalBriefRequest) returns (GetRegionalBriefResponse) {
+    option (sebuf.http.config) = {path: "/get-regional-brief", method: HTTP_METHOD_GET};
   }
 }

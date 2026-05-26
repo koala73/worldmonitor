@@ -2,8 +2,9 @@ import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { validateApiKey } from './_api-key.js';
 import { checkRateLimit } from './_rate-limit.js';
 import { getRelayBaseUrl, getRelayHeaders, fetchWithTimeout } from './_relay.js';
-import RSS_ALLOWED_DOMAINS from './_rss-allowed-domains.js';
+import { isAllowedDomain } from './_rss-allowed-domain-match.js';
 import { jsonResponse } from './_json-response.js';
+import { captureSilentError } from './_sentry-edge.js';
 
 export const config = { runtime: 'edge' };
 
@@ -48,14 +49,9 @@ async function fetchViaRailway(feedUrl, timeoutMs) {
   }, timeoutMs);
 }
 
-// Allowed RSS feed domains — shared source of truth (shared/rss-allowed-domains.js)
-const ALLOWED_DOMAINS = RSS_ALLOWED_DOMAINS;
-
-function isAllowedDomain(hostname) {
-  const bare = hostname.replace(/^www\./, '');
-  const withWww = hostname.startsWith('www.') ? hostname : `www.${hostname}`;
-  return ALLOWED_DOMAINS.includes(hostname) || ALLOWED_DOMAINS.includes(bare) || ALLOWED_DOMAINS.includes(withWww);
-}
+// Allowlist + match predicate live in api/_rss-allowed-domain-match.js
+// (shared with scripts/validate-rss-feeds.mjs --ci so the SSRF guard runs
+// identically in the Edge handler and the build-time validator).
 
 function isGoogleNewsFeedUrl(feedUrl) {
   try {
@@ -65,7 +61,7 @@ function isGoogleNewsFeedUrl(feedUrl) {
   }
 }
 
-export default async function handler(req) {
+export default async function handler(req, ctx) {
   const corsHeaders = getCorsHeaders(req, 'GET, OPTIONS');
 
   if (isDisallowedOrigin(req)) {
@@ -80,7 +76,7 @@ export default async function handler(req) {
     return jsonResponse({ error: 'Method not allowed' }, 405, corsHeaders);
   }
 
-  const keyCheck = validateApiKey(req);
+  const keyCheck = await validateApiKey(req);
   if (keyCheck.required && !keyCheck.valid) {
     return jsonResponse({ error: keyCheck.error }, 401, corsHeaders);
   }
@@ -182,6 +178,11 @@ export default async function handler(req) {
   } catch (error) {
     const isTimeout = error.name === 'AbortError';
     console.error('RSS proxy error:', feedUrl, error.message);
+    // Skip Sentry capture on timeout — Sentry would drown in transient
+    // upstream-feed timeouts which are routine. Only surface "real" errors.
+    if (!isTimeout) {
+      captureSilentError(error, { tags: { route: 'api/rss-proxy', step: 'fetch', feed: feedUrl }, ctx });
+    }
     return jsonResponse({
       error: isTimeout ? 'Feed timeout' : 'Failed to fetch feed',
       details: error.message,

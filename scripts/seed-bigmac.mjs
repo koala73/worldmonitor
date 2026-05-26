@@ -265,13 +265,22 @@ async function fetchBigMacPrices(prevSnapshot) {
 
 const prevSnapshot = await readSeedSnapshot(CANONICAL_KEY);
 
+export function declareRecords(data) {
+  return data?.countries?.filter(c => c.available).length || 0;
+}
+
 await runSeed('economic', 'bigmac', CANONICAL_KEY, () => fetchBigMacPrices(prevSnapshot), {
   ttlSeconds: CACHE_TTL,
   validateFn: (data) => data?.countries?.length > 0,
   recordCount: (data) => data?.countries?.filter(c => c.available).length || 0,
+  declareRecords,
+  sourceVersion: 'economist-bigmac-v1',
+  schemaVersion: 1,
+  maxStaleMin: 10080,
   extraKeys: prevSnapshot ? [{
     key: `${CANONICAL_KEY}:prev`,
     transform: () => prevSnapshot,  // write PRE-overwrite snapshot; ignore new data
     ttl: CACHE_TTL * 2,
+    declareRecords,
   }] : undefined,
 });

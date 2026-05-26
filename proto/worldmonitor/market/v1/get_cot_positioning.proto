@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package worldmonitor.market.v1;
+
+import "sebuf/http/annotations.proto";
+
+message GetCotPositioningRequest {}
+
+message CotInstrument {
+  string name = 1;
+  string code = 2;
+  string report_date = 3;
+  int64 asset_manager_long = 4;
+  int64 asset_manager_short = 5;
+  int64 leveraged_funds_long = 6;
+  int64 leveraged_funds_short = 7;
+  int64 dealer_long = 8;
+  int64 dealer_short = 9;
+  double net_pct = 10;
+}
+
+message GetCotPositioningResponse {
+  repeated CotInstrument instruments = 1;
+  string report_date = 2;
+  bool unavailable = 3;
+}

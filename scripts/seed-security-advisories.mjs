@@ -6,7 +6,7 @@ loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'intelligence:advisories:v1';
 const BOOTSTRAP_KEY = 'intelligence:advisories-bootstrap:v1';
-const TTL = 7200; // 120min (2x cron interval; ensures data outlives maxStaleMin:120)
+const TTL = 10800; // 180min — 2h buffer over 1h cron cadence (was 120min = exactly 1h buffer)
 
 const ALLOWED_DOMAINS = new Set(loadSharedConfig('rss-allowed-domains.json'));
 
@@ -60,13 +60,21 @@ function parseLevel(title, parser) {
 
 const COUNTRY_NAMES = loadSharedConfig('country-names.json');
 const SORTED_COUNTRY_ENTRIES = Object.entries(COUNTRY_NAMES).sort((a, b) => b[0].length - a[0].length);
+// Reverse map: ISO2 → display name (title-cased from the config keys).
+const BY_COUNTRY_NAME = Object.fromEntries(
+  Object.entries(COUNTRY_NAMES).map(([name, code]) => [
+    code,
+    name.replace(/\b\w/g, (c) => c.toUpperCase()),
+  ]),
+);
 
 function extractCountry(title, feed) {
   if (feed.targetCountry) return feed.targetCountry;
   if (feed.sourceCountry === 'EU' || feed.sourceCountry === 'INT') return undefined;
-  const lower = title.toLowerCase();
+  const normalized = title.normalize('NFKD').replace(/\p{Diacritic}/gu, '').toLowerCase()
+    .replace(/['.(),/-]/g, ' ').replace(/\s+/g, ' ');
   for (const [name, code] of SORTED_COUNTRY_ENTRIES) {
-    if (lower.includes(name)) return code;
+    if (normalized.includes(name)) return code;
   }
   return undefined;
 }
@@ -195,7 +203,7 @@ async function fetchAll() {
   deduped.sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime());
 
   const byCountry = buildByCountryMap(deduped);
-  const report = { byCountry, advisories: deduped, fetchedAt: new Date().toISOString() };
+  const report = { byCountry, byCountryName: BY_COUNTRY_NAME, advisories: deduped, fetchedAt: new Date().toISOString() };
 
   console.log(`  ${deduped.length} advisories, ${Object.keys(byCountry).length} countries with levels`);
 
@@ -206,12 +214,20 @@ function validate(data) {
   return Array.isArray(data?.advisories) && data.advisories.length > 0;
 }
 
+export function declareRecords(data) {
+  return Array.isArray(data?.advisories) ? data.advisories.length : 0;
+}
+
 runSeed('intelligence', 'advisories', CANONICAL_KEY, fetchAll, {
   validateFn: validate,
   ttlSeconds: TTL,
   recordCount: (d) => d?.advisories?.length || 0,
   sourceVersion: 'rss-feeds',
-  extraKeys: [{ key: BOOTSTRAP_KEY, transform: (d) => d, ttl: TTL }],
+  extraKeys: [{ key: BOOTSTRAP_KEY, transform: (d) => d, ttl: TTL, declareRecords }],
+
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 120,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);

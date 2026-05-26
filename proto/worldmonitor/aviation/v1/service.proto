@@ -11,6 +11,8 @@ import "worldmonitor/aviation/v1/list_airport_delays.proto";
 import "worldmonitor/aviation/v1/list_airport_flights.proto";
 import "worldmonitor/aviation/v1/list_aviation_news.proto";
 import "worldmonitor/aviation/v1/search_flight_prices.proto";
+import "worldmonitor/aviation/v1/search_google_flights.proto";
+import "worldmonitor/aviation/v1/search_google_dates.proto";
 import "worldmonitor/aviation/v1/track_aircraft.proto";
 
 // AviationService provides APIs for flight delays, airport operations,
@@ -88,5 +90,15 @@ service AviationService {
       path: "/list-aviation-news"
       method: HTTP_METHOD_GET
     };
+  }
+
+  // SearchGoogleFlights searches Google Flights for available itineraries on a specific date.
+  rpc SearchGoogleFlights(SearchGoogleFlightsRequest) returns (SearchGoogleFlightsResponse) {
+    option (sebuf.http.config) = {path: "/search-google-flights", method: HTTP_METHOD_GET};
+  }
+
+  // SearchGoogleDates finds the cheapest travel dates across a flexible date range via Google Flights.
+  rpc SearchGoogleDates(SearchGoogleDatesRequest) returns (SearchGoogleDatesResponse) {
+    option (sebuf.http.config) = {path: "/search-google-dates", method: HTTP_METHOD_GET};
   }
 }

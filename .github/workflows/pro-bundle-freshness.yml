@@ -1,0 +1,52 @@
+name: Pro bundle freshness
+
+# Rebuilds pro-test on any PR that touches pro-test/** or public/pro/**
+# and fails if the committed public/pro/ doesn't match the build output.
+#
+# Why: public/pro/ is committed to the repo and served verbatim by Vercel.
+# The root build script does NOT run pro-test's vite build, so if a PR
+# changes pro-test/src/** but forgets to commit the regenerated bundle,
+# the deploy silently ships stale JS. Happened with PR #3227 → #3228.
+
+on:
+  pull_request:
+    paths:
+      - 'pro-test/**'
+      - 'public/pro/**'
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: pro-test/package-lock.json
+
+      - name: Install pro-test deps
+        run: cd pro-test && npm ci
+
+      - name: Build pro-test
+        run: cd pro-test && npm run build
+
+      - name: Verify public/pro/ matches build output
+        run: |
+          if ! git diff --exit-code public/pro/; then
+            echo "::error::pro-test sources changed but public/pro/ is stale."
+            echo "Vercel ships whatever is committed under public/pro/ — it does NOT rebuild pro-test on deploy."
+            echo "Run 'cd pro-test && npm run build' locally and commit the regenerated bundle."
+            exit 1
+          fi
+          UNTRACKED=$(git ls-files --others --exclude-standard public/pro/)
+          if [ -n "$UNTRACKED" ]; then
+            echo "::error::Untracked files in public/pro/ after rebuild:"
+            echo "$UNTRACKED"
+            echo "Run 'git add public/pro/' and commit the regenerated bundle."
+            exit 1
+          fi

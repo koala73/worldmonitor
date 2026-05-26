@@ -87,55 +87,11 @@ function normalizeFlights(flights: AVSFlight[], now: number): FlightInstance[] {
     });
 }
 
-function buildSimulatedFlights(airport: string, direction: string, limit: number, now: number): FlightInstance[] {
-    const destinations = { IST: ['LHR', 'FRA', 'CDG', 'AMS', 'MAD'], LHR: ['IST', 'JFK', 'FRA', 'SIN'], FRA: ['IST', 'LHR', 'CDG', 'JFK'] };
-    const origins = (destinations as Record<string, string[]>)[airport] ?? ['LHR', 'FRA', 'CDG'];
-    const carriers = [
-        { iataCode: 'TK', icaoCode: 'THY', name: 'Turkish Airlines' },
-        { iataCode: 'LH', icaoCode: 'DLH', name: 'Lufthansa' },
-        { iataCode: 'BA', icaoCode: 'BAW', name: 'British Airways' },
-    ];
 
-    const flights: FlightInstance[] = [];
-    const count = Math.min(limit, 10);
-
-    for (let i = 0; i < count; i++) {
-        const isArr = direction === 'FLIGHT_DIRECTION_ARRIVAL' || (direction === 'FLIGHT_DIRECTION_BOTH' && i % 2 === 0);
-        const other = origins[i % origins.length]!;
-        const carrier = carriers[i % carriers.length]!;
-        const schedTime = now + (isArr ? -1 : 1) * (30 + i * 25) * 60_000;
-        const delayed = i === 1 || i === 4;
-        const delayMin = delayed ? 20 + Math.floor(Math.random() * 40) : 0;
-
-        flights.push({
-            flightNumber: `${carrier.iataCode}${1000 + i * 17}`,
-            date: new Date(schedTime).toISOString().slice(0, 10),
-            operatingCarrier: carrier,
-            origin: isArr ? { iata: other, icao: '', name: other, timezone: 'UTC' } : { iata: airport, icao: '', name: airport, timezone: 'UTC' },
-            destination: isArr ? { iata: airport, icao: '', name: airport, timezone: 'UTC' } : { iata: other, icao: '', name: other, timezone: 'UTC' },
-            scheduledDeparture: isArr ? 0 : schedTime,
-            estimatedDeparture: isArr ? 0 : schedTime + delayMin * 60_000,
-            actualDeparture: 0,
-            scheduledArrival: isArr ? schedTime : 0,
-            estimatedArrival: isArr ? schedTime + delayMin * 60_000 : 0,
-            actualArrival: 0,
-            status: 'FLIGHT_INSTANCE_STATUS_SCHEDULED',
-            delayMinutes: delayMin,
-            cancelled: false,
-            diverted: false,
-            gate: `${String.fromCharCode(65 + (i % 5))}${10 + i}`,
-            terminal: String(1 + (i % 3)),
-            aircraftIcao24: '',
-            aircraftType: 'B738',
-            codeshareFlightNumbers: [],
-            source: 'simulated',
-            updatedAt: now,
-        });
-    }
-
-    return flights;
-}
-
+// Response-level source values (ListAirportFlightsResponse.source):
+//   'aviationstack' — live data from AviationStack via relay
+//   'none'          — relay not configured; flights = []
+//   'error'         — relay fetch failed; flights = []
 export async function listAirportFlights(
     _ctx: ServerContext,
     req: ListAirportFlightsRequest,
@@ -151,7 +107,7 @@ export async function listAirportFlights(
             cacheKey, CACHE_TTL, async () => {
                 const relayBase = getRelayBaseUrl();
                 if (!relayBase) {
-                    return { flights: buildSimulatedFlights(airport, direction, limit, now), source: 'simulated' };
+                    return { flights: [], source: 'none' };
                 }
 
                 const paramKey = direction === 'FLIGHT_DIRECTION_ARRIVAL' ? 'arr_iata' : 'dep_iata';
@@ -173,7 +129,7 @@ export async function listAirportFlights(
                     return { flights, source: 'aviationstack' };
                 } catch (err) {
                     console.warn(`[Aviation] Flights relay fetch failed for ${airport}: ${err instanceof Error ? err.message : err}`);
-                    return { flights: buildSimulatedFlights(airport, direction, limit, now), source: 'simulated' };
+                    return { flights: [], source: 'error' };
                 }
             }
         );

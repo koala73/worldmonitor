@@ -33,12 +33,43 @@ export { deduplicateHeadlines } from './dedup.mjs';
 // SummarizeArticle: Full prompt builder (ported from _summarize-handler.js)
 // ========================================================================
 
+const MAX_BODY_INTERPOLATION_LEN = 400;
+
 export function buildArticlePrompts(
   headlines: string[],
   uniqueHeadlines: string[],
-  opts: { mode: string; geoContext: string; variant: string; lang: string },
+  opts: {
+    mode: string;
+    geoContext: string;
+    variant: string;
+    lang: string;
+    // Optional article bodies paired 1:1 with uniqueHeadlines. When a body is
+    // non-empty, the prompt interleaves it as `    Context: <body>` under its
+    // headline so the LLM grounds on the article instead of hallucinating
+    // from the headline metadata. Bodies must be pre-sanitised by the caller
+    // (summarize-article.ts runs them through sanitizeForPrompt). Skipped
+    // entirely in translate mode — that path is headline[0]-only.
+    bodies?: string[];
+  },
 ): { systemPrompt: string; userPrompt: string } {
-  const headlineText = uniqueHeadlines.map((h, i) => `${i + 1}. ${h}`).join('\n');
+  // When bodies are provided and this mode interpolates them, render each
+  // numbered headline with its Context line beneath. Otherwise render the
+  // original headline-only format (byte-identical prompt to pre-fix — R6).
+  const interpolateBodies = opts.mode !== 'translate'
+    && Array.isArray(opts.bodies)
+    && opts.bodies.some((b) => typeof b === 'string' && b.length > 0);
+  const headlineText = interpolateBodies
+    ? uniqueHeadlines.map((h, i) => {
+        // typeof check was redundant: ?? '' handles undefined; string-only
+        // input contract is enforced by the caller (summarize-article.ts
+        // sanitises bodies into string values before passing here).
+        const rawBody = opts.bodies?.[i] ?? '';
+        const clipped = rawBody.slice(0, MAX_BODY_INTERPOLATION_LEN);
+        return clipped.length > 0
+          ? `${i + 1}. ${h}\n    Context: ${clipped}`
+          : `${i + 1}. ${h}`;
+      }).join('\n')
+    : uniqueHeadlines.map((h, i) => `${i + 1}. ${h}`).join('\n');
   const intelSection = opts.geoContext ? `\n\n${opts.geoContext}` : '';
   const isTechVariant = opts.variant === 'tech';
   const dateContext = `Current date: ${new Date().toISOString().split('T')[0]}.${isTechVariant ? '' : ' Provide geopolitical context appropriate for the current date.'}`;

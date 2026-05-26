@@ -18,8 +18,25 @@ WORKDIR /app
 COPY scripts/package.json scripts/package-lock.json ./scripts/
 RUN npm ci --prefix scripts --omit=dev
 
-# Relay script
+# Relay script and shared helpers
 COPY scripts/ais-relay.cjs ./scripts/ais-relay.cjs
+COPY scripts/_proxy-utils.cjs ./scripts/_proxy-utils.cjs
+COPY scripts/shared/country-name-to-iso2.cjs ./scripts/shared/country-name-to-iso2.cjs
+COPY scripts/_seed-utils.mjs ./scripts/_seed-utils.mjs
+# _seed-envelope-source.mjs and _seed-contract.mjs are transitively imported
+# by _seed-utils.mjs (lines 9-10) and by seed-chokepoint-flows.mjs /
+# seed-ember-electricity.mjs directly. Missing them here = silent
+# ERR_MODULE_NOT_FOUND on every execFile invocation, which looks like a hung
+# Railway cron (the initial-seed path throws, the 6h setInterval keeps firing
+# but each child dies on import). tests/dockerfile-relay-imports.test.mjs
+# guards this COPY list against future regressions.
+COPY scripts/_seed-envelope-source.mjs ./scripts/_seed-envelope-source.mjs
+COPY scripts/_seed-contract.mjs ./scripts/_seed-contract.mjs
+COPY scripts/_country-resolver.mjs ./scripts/_country-resolver.mjs
+COPY scripts/_climate-news-helpers.mjs ./scripts/_climate-news-helpers.mjs
+COPY scripts/seed-climate-news.mjs ./scripts/seed-climate-news.mjs
+COPY scripts/seed-chokepoint-flows.mjs ./scripts/seed-chokepoint-flows.mjs
+COPY scripts/seed-ember-electricity.mjs ./scripts/seed-ember-electricity.mjs
 
 # Shared helper required by the relay (rss-allowed-domains.cjs)
 COPY shared/ ./shared/

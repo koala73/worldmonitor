@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package worldmonitor.economic.v1;
+
+import "sebuf/http/annotations.proto";
+
+message GetEuFsiRequest {}
+
+message EuFsiObservation {
+  string date = 1;
+  double value = 2;
+}
+
+message GetEuFsiResponse {
+  double latest_value = 1;
+  string latest_date = 2;
+  string label = 3;
+  repeated EuFsiObservation history = 4;
+  string seeded_at = 5;
+  bool unavailable = 6;
+  // True when latest_date is older than the CISS content-age budget — the ECB
+  // series has stopped publishing (issue #3845). Consumers must not present a
+  // stale reading as current. Seeder-side detection is content-age
+  // (STALE_CONTENT in /api/health); this flag is the per-request equivalent.
+  bool stale = 7;
+}

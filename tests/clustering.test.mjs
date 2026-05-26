@@ -1,6 +1,13 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { clusterItems, scoreImportance, selectTopStories } from '../scripts/_clustering.mjs';
+import {
+  clusterItems,
+  computeEntityCorroboration,
+  isBriefLeadEligible,
+  scoreImportance,
+  selectTopStories,
+} from '../scripts/_clustering.mjs';
+import { pickBriefCluster } from '../scripts/_insights-brief.mjs';
 
 describe('_clustering.mjs', () => {
   describe('clusterItems', () => {
@@ -57,10 +64,26 @@ describe('_clustering.mjs', () => {
       assert.ok(scoreImportance(pure) > scoreImportance(business));
     });
 
-    it('adds alert bonus', () => {
+    it('does not make alerts brief-lead eligible without corroboration', () => {
       const noAlert = { primaryTitle: 'Earthquake hits region', sourceCount: 1, isAlert: false };
       const alert = { primaryTitle: 'Earthquake hits region', sourceCount: 1, isAlert: true };
-      assert.ok(scoreImportance(alert) > scoreImportance(noAlert));
+      assert.equal(scoreImportance(alert), scoreImportance(noAlert));
+      assert.equal(isBriefLeadEligible(alert), false);
+    });
+
+    it('does not treat generic business deals as diplomacy', () => {
+      const top = selectTopStories([
+        {
+          primaryTitle: 'Apple closes deal for new supplier contract',
+          primarySource: 'Reuters',
+          primaryLink: 'http://apple',
+          sources: ['Reuters'],
+          sourceCount: 1,
+          sourceTier: 1,
+          isAlert: false,
+        },
+      ]);
+      assert.equal(top.length, 0);
     });
   });
 
@@ -103,6 +126,106 @@ describe('_clustering.mjs', () => {
       }));
       const top = selectTopStories(clusters, 8);
       assert.ok(top.length <= 3);
+    });
+
+    it('elevates split US-Iran deal coverage into top 5 and brief lead via entity corroboration', () => {
+      const now = Date.now();
+      const fresh = new Date(now - 30 * 60_000).toISOString();
+      const stale = new Date(now - 30 * 3600_000).toISOString();
+      const items = [
+        {
+          title: 'US and Iran close deal to ease Hormuz tensions',
+          source: 'Reuters',
+          link: 'http://deal-1',
+          pubDate: fresh,
+          importanceScore: 62,
+          threat: { level: 'medium', source: 'llm', category: 'geopolitical' },
+        },
+        {
+          title: 'Iran deal could calm oil markets after Hormuz alarm',
+          source: 'AP News',
+          link: 'http://deal-2',
+          pubDate: fresh,
+          importanceScore: 60,
+          threat: { level: 'medium', source: 'llm', category: 'geopolitical' },
+        },
+        {
+          title: 'Axios: US-Iran deal averts immediate Hormuz disruption',
+          source: 'Axios',
+          link: 'http://deal-3',
+          pubDate: fresh,
+          importanceScore: 59,
+          threat: { level: 'medium', source: 'llm', category: 'geopolitical' },
+        },
+        {
+          title: 'BBC World reports Iran deal talks lower Gulf risk',
+          source: 'BBC World',
+          link: 'http://deal-4',
+          pubDate: fresh,
+          importanceScore: 58,
+          threat: { level: 'medium', source: 'llm', category: 'geopolitical' },
+        },
+        {
+          title: 'Reuters World: Iran deal framework discussed with US officials',
+          source: 'Reuters World',
+          link: 'http://deal-5',
+          pubDate: fresh,
+          importanceScore: 57,
+          threat: { level: 'medium', source: 'llm', category: 'geopolitical' },
+        },
+        {
+          title: 'Missile attack kills dozens as troops strike border city',
+          source: 'Unknown Wire',
+          link: 'http://stale-1',
+          pubDate: stale,
+          importanceScore: 75,
+          isAlert: true,
+          threat: { level: 'critical', source: 'keyword', category: 'conflict' },
+        },
+        {
+          title: 'Iran missile attack kills dozens in airstrike',
+          source: 'Unknown Wire 2',
+          link: 'http://stale-2',
+          pubDate: stale,
+          importanceScore: 74,
+          isAlert: true,
+          threat: { level: 'critical', source: 'keyword', category: 'conflict' },
+        },
+      ];
+
+      const clusters = clusterItems(items);
+      const top = selectTopStories(clusters, 5);
+      const deal = top.find(story => /iran/i.test(story.primaryTitle) && /deal/i.test(story.primaryTitle));
+      assert.ok(deal, 'expected at least one US-Iran deal cluster in the top 5');
+      assert.equal(deal.entityCorroboration, true);
+
+      const lead = pickBriefCluster(top);
+      assert.ok(lead, 'expected a corroborated brief lead');
+      assert.match(lead.primaryTitle, /iran/i);
+      assert.match(lead.primaryTitle, /deal/i);
+    });
+
+    it('does not entity-corroborate Reuters-only reposts', () => {
+      const now = Date.now();
+      const clusters = clusterItems([
+        { title: 'US and Iran close deal to ease Hormuz tensions', source: 'Reuters', link: 'http://a', pubDate: new Date(now).toISOString() },
+        { title: 'Iran deal may ease Hormuz pressure', source: 'Reuters', link: 'http://b', pubDate: new Date(now).toISOString() },
+        { title: 'US-Iran deal calms oil market fears', source: 'Reuters', link: 'http://c', pubDate: new Date(now).toISOString() },
+      ]);
+      computeEntityCorroboration(clusters, now);
+      assert.equal(clusters.some(c => c.entityCorroboration), false);
+      assert.equal(pickBriefCluster(selectTopStories(clusters, 8)), null);
+    });
+
+    it('does not entity-corroborate stale diplomacy pairs older than 24h', () => {
+      const now = Date.now();
+      const old = new Date(now - 25 * 3600_000).toISOString();
+      const clusters = clusterItems([
+        { title: 'US and Iran close deal to ease Hormuz tensions', source: 'Reuters', link: 'http://a', pubDate: old },
+        { title: 'Iran deal may ease Hormuz pressure', source: 'AP News', link: 'http://b', pubDate: old },
+      ]);
+      computeEntityCorroboration(clusters, now);
+      assert.equal(clusters.some(c => c.entityCorroboration), false);
     });
   });
 });

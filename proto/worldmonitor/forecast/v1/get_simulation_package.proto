@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package worldmonitor.forecast.v1;
+
+import "sebuf/http/annotations.proto";
+
+message GetSimulationPackageRequest {
+  // Currently ignored; always returns the latest package. Reserved for Phase 3 per-run lookup.
+  string run_id = 1 [(sebuf.http.query) = { name: "runId" }];
+}
+
+message GetSimulationPackageResponse {
+  bool found = 1;
+  string run_id = 2;
+  string pkg_key = 3;
+  string schema_version = 4;
+  int32 theater_count = 5;
+  // Unix timestamp in milliseconds (from Date.now()). Warning: Values > 2^53 may lose precision in JavaScript.
+  int64 generated_at = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Populated when req.runId was supplied but does not match the returned package's runId.
+  // Indicates that per-run filtering is not yet active and the latest package was returned instead.
+  string note = 7;
+  // Populated when the Redis lookup failed. Distinguish from healthy not-found (found=false, error="").
+  // Value: "redis_unavailable" on Redis errors.
+  string error = 8;
+}

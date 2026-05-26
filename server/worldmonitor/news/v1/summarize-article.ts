@@ -7,7 +7,6 @@ import type {
 import { cachedFetchJsonWithMeta } from '../../../_shared/redis';
 import {
   CACHE_TTL_SECONDS,
-  deduplicateHeadlines,
   buildArticlePrompts,
   getProviderCredentials,
   getCacheKey,
@@ -15,6 +14,8 @@ import {
 import { CHROME_UA } from '../../../_shared/constants';
 import { isProviderAvailable } from '../../../_shared/llm-health';
 import { sanitizeHeadlinesLight, sanitizeHeadlines, sanitizeForPrompt } from '../../../_shared/llm-sanitize.js';
+import { isCallerPremium } from '../../../_shared/premium-check';
+import { stripThinkingTags } from '../../../_shared/llm';
 
 // ======================================================================
 // Reasoning preamble detection
@@ -34,14 +35,17 @@ export function hasReasoningPreamble(text: string): boolean {
 // ======================================================================
 
 export async function summarizeArticle(
-  _ctx: ServerContext,
+  ctx: ServerContext,
   req: SummarizeArticleRequest,
 ): Promise<SummarizeArticleResponse> {
+  const isPremium = await isCallerPremium(ctx.request);
   const { provider, mode = 'brief', geoContext = '', variant = 'full', lang = 'en' } = req;
+  const systemAppend = isPremium && typeof req.systemAppend === 'string' ? req.systemAppend : '';
 
   const MAX_HEADLINES = 10;
   const MAX_HEADLINE_LEN = 500;
   const MAX_GEO_CONTEXT_LEN = 2000;
+  const MAX_BODY_LEN = 400;
 
   // Bounded raw headlines — used for cache key so browser/server keys agree.
   // Only structural patterns stripped (delimiters, control chars); semantic
@@ -56,6 +60,17 @@ export async function summarizeArticle(
   const sanitizedGeoContext = sanitizeForPrompt(
     typeof geoContext === 'string' ? geoContext.slice(0, MAX_GEO_CONTEXT_LEN) : '',
   );
+
+  // Bodies (RSS descriptions) paired 1:1 with headlines. Full injection
+  // sanitisation applied — bodies are untrusted upstream text identical in
+  // trust-level to geoContext. Padded to match headlines length so pair-wise
+  // cache-key identity stays stable. Callers may omit (old path) or pass a
+  // shorter/longer array (handler tolerates).
+  const rawBodies = Array.isArray(req.bodies) ? req.bodies : [];
+  const bodies = headlines.map((_, i) => {
+    const b = rawBodies[i];
+    return typeof b === 'string' ? sanitizeForPrompt(b.slice(0, MAX_BODY_LEN)) : '';
+  });
 
   // Provider credential check
   const skipReasons: Record<string, string> = {
@@ -97,7 +112,7 @@ export async function summarizeArticle(
   }
 
   try {
-    const cacheKey = getCacheKey(headlines, mode, sanitizedGeoContext, variant, lang);
+    const cacheKey = getCacheKey(headlines, mode, sanitizedGeoContext, variant, lang, systemAppend || undefined, bodies);
 
     // Single atomic call — source tracking happens inside cachedFetchJsonWithMeta,
     // eliminating the TOCTOU race between a separate getCachedJson and cachedFetchJson.
@@ -111,14 +126,42 @@ export async function summarizeArticle(
         // Headlines are re-sanitized here (not at cache-key time) so that
         // the cache key stays aligned with the browser while the actual
         // prompt is protected against semantic injection phrases.
-        const promptHeadlines = sanitizeHeadlines(headlines);
-        const uniqueHeadlines = deduplicateHeadlines(promptHeadlines.slice(0, 5));
+        //
+        // Pair headlines with bodies BEFORE deduping so sanitizeHeadlines
+        // drops / merges don't break the 1:1 mapping. sanitizeHeadlines
+        // operates elementwise so paired indices survive per-element
+        // replacement; we then dedup pairs together (seen-set on the
+        // sanitized headline) to preserve the pairing post-dedup.
+        const paired = headlines.map((h, i) => ({
+          h: sanitizeHeadlines([h])[0] ?? '',
+          b: bodies[i] ?? '',
+        }));
+        const nonEmpty = paired.filter((p) => p.h.length > 0);
+        const uniquePairs: Array<{ h: string; b: string }> = [];
+        const seen = new Set<string>();
+        for (const p of nonEmpty.slice(0, 5)) {
+          if (!seen.has(p.h)) {
+            seen.add(p.h);
+            uniquePairs.push(p);
+          }
+        }
+        // Preserves the existing variable name for downstream prompt
+        // builder callers that expect the full sanitised-headline list.
+        const promptHeadlines = nonEmpty.map((p) => p.h);
+        const uniqueHeadlines = uniquePairs.map((p) => p.h);
+        const uniqueBodies = uniquePairs.map((p) => p.b);
         const { systemPrompt, userPrompt } = buildArticlePrompts(promptHeadlines, uniqueHeadlines, {
           mode,
           geoContext: sanitizedGeoContext,
           variant,
           lang,
+          bodies: uniqueBodies,
         });
+
+        const sanitizedAppend = systemAppend ? sanitizeForPrompt(systemAppend) : '';
+        const effectiveSystemPrompt = sanitizedAppend
+          ? `${systemPrompt}\n\n---\n\n${sanitizedAppend}`
+          : systemPrompt;
 
         const response = await fetch(apiUrl, {
           method: 'POST',
@@ -126,7 +169,7 @@ export async function summarizeArticle(
           body: JSON.stringify({
             model,
             messages: [
-              { role: 'system', content: systemPrompt },
+              { role: 'system', content: effectiveSystemPrompt },
               { role: 'user', content: userPrompt },
             ],
             temperature: 0.3,
@@ -146,24 +189,8 @@ export async function summarizeArticle(
         const data = await response.json() as any;
         const tokens = (data.usage?.total_tokens as number) || 0;
         const message = data.choices?.[0]?.message;
-        let rawContent = typeof message?.content === 'string' ? message.content.trim() : '';
-
-        rawContent = rawContent
-          .replace(/<think>[\s\S]*?<\/think>/gi, '')
-          .replace(/<\|thinking\|>[\s\S]*?<\|\/thinking\|>/gi, '')
-          .replace(/<reasoning>[\s\S]*?<\/reasoning>/gi, '')
-          .replace(/<reflection>[\s\S]*?<\/reflection>/gi, '')
-          .replace(/<\|begin_of_thought\|>[\s\S]*?<\|end_of_thought\|>/gi, '')
-          .trim();
-
-        // Strip unterminated thinking blocks (no closing tag)
-        rawContent = rawContent
-          .replace(/<think>[\s\S]*/gi, '')
-          .replace(/<\|thinking\|>[\s\S]*/gi, '')
-          .replace(/<reasoning>[\s\S]*/gi, '')
-          .replace(/<reflection>[\s\S]*/gi, '')
-          .replace(/<\|begin_of_thought\|>[\s\S]*/gi, '')
-          .trim();
+        const rawText = typeof message?.content === 'string' ? message.content.trim() : '';
+        let rawContent = stripThinkingTags(rawText);
 
         if (['brief', 'analysis'].includes(mode) && rawContent.length < 20) {
           console.warn(`[SummarizeArticle:${provider}] Output too short after stripping (${rawContent.length} chars), rejecting`);

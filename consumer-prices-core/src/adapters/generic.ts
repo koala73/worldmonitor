@@ -55,6 +55,7 @@ export class GenericPlaywrightAdapter implements RetailerAdapter {
   }
 
   async fetchTarget(ctx: AdapterContext, target: Target): Promise<FetchResult> {
+    if (!ctx.config.acquisition) throw new Error(`Generic adapter requires acquisition config (retailer: ${ctx.config.slug})`);
     const result = await fetchWithFallback(target.url, ctx.config.acquisition, ctx.config.rateLimit ? {
       timeout: 30_000,
     } : undefined);

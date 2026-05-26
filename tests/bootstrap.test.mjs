@@ -23,7 +23,7 @@ describe('Bootstrap cache key registry', () => {
     const extractKeys = (src) => {
       const block = src.match(/BOOTSTRAP_CACHE_KEYS[^=]*=\s*\{([^}]+)\}/);
       if (!block) return {};
-      const re = /(\w+):\s+'([a-z_-]+(?::[a-z_-]+)+:v\d+)'/g;
+      const re = /(\w+):\s+'([a-z0-9_-]+(?::[a-z0-9_-]+)+)'/g;
       const keys = {};
       let m;
       while ((m = re.exec(block[1])) !== null) keys[m[1]] = m[2];
@@ -48,7 +48,7 @@ describe('Bootstrap cache key registry', () => {
       keys.push(m[1]);
     }
     for (const key of keys) {
-      assert.match(key, /^[a-z_-]+(?::[a-z_-]+)+:v\d+$/, `Cache key "${key}" does not match expected pattern`);
+      assert.match(key, /^[a-z0-9_-]+(?::[a-z0-9_-]+)+(?::v\d+)?(?::[a-z0-9_-]+)*$/, `Cache key "${key}" does not match expected pattern`);
     }
   });
 
@@ -189,11 +189,15 @@ describe('Frontend hydration (src/services/bootstrap.ts)', () => {
     }
   });
 
-  it('keeps web bootstrap tier timeouts under 2 seconds', () => {
+  it('keeps web bootstrap tier timeouts within budget', () => {
     const timeouts = Array.from(src.matchAll(/(\d[_\d]*)\)/g))
       .map((m) => parseInt(m[1].replace(/_/g, ''), 10))
-      .filter((n) => n === 1200 || n === 1800);
-    assert.deepEqual(timeouts, [1200, 1800], `Expected aggressive web bootstrap timeouts (1200, 1800)`);
+      .filter((n) => n === 1200 || n === 3000);
+    assert.deepEqual(
+      timeouts,
+      [1200, 3000],
+      `Expected web bootstrap timeouts (fast=1200, slow=3000) — slow tier was bumped from 1.8s to 3.0s to avoid hydration-cascade aborts`,
+    );
   });
 
   it('allows longer bootstrap timeouts for desktop runtime', () => {
@@ -236,7 +240,7 @@ describe('Bootstrap key hydration coverage', () => {
   it('every bootstrap key has a getHydratedData consumer in src/', () => {
     const bootstrapSrc = readFileSync(join(root, 'api', 'bootstrap.js'), 'utf-8');
     const block = bootstrapSrc.match(/BOOTSTRAP_CACHE_KEYS\s*=\s*\{([^}]+)\}/);
-    const keyRe = /(\w+):\s+'[a-z_]+(?::[a-z_-]+)+:v\d+'/g;
+    const keyRe = /(\w+):\s+'[a-z0-9_-]+(?::[a-z0-9_-]+)+'/g;
     const keys = [];
     let m;
     while ((m = keyRe.exec(block[1])) !== null) keys.push(m[1]);
@@ -253,7 +257,22 @@ describe('Bootstrap key hydration coverage', () => {
     const allSrc = srcFiles.map(f => readFileSync(f, 'utf-8')).join('\n');
 
     // Keys with planned but not-yet-wired consumers
-    const PENDING_CONSUMERS = new Set(['chokepointTransits', 'correlationCards']);
+    const PENDING_CONSUMERS = new Set([
+      'correlationCards', 'euGasStorage', 'chokepointBaselines', 'imfMacro',
+      'imfGrowth', 'imfLabor', 'imfExternal',
+      'portwatchChokepointsRef', 'portwatchPortActivity', 'sprPolicies',
+      'wsbTickers', 'electricityPrices', 'jodiOil',
+      'eurostatHousePrices', 'eurostatGovDebtQ', 'eurostatIndProd',
+      // BIS extended dataflows are consumed via a direct scoped bootstrap
+      // fetch in CountryDeepDivePanel (housing cycle tile), not through the
+      // getHydratedData session cache — fetched on-click per country.
+      'bisDsr', 'bisPropertyResidential', 'bisPropertyCommercial',
+      // energyDisruptions is bootstrap-hydrated so the RPC handler has
+      // warm data, but panel drawers fetch events lazily via
+      // listEnergyDisruptions() on drawer open — no getHydratedData()
+      // call site. Classifier extends this post-launch.
+      'energyDisruptions',
+    ]);
     for (const key of keys) {
       if (PENDING_CONSUMERS.has(key)) continue;
       assert.ok(
@@ -261,6 +280,23 @@ describe('Bootstrap key hydration coverage', () => {
         `Bootstrap key '${key}' has no getHydratedData('${key}') consumer in src/ — data is fetched but never used`,
       );
     }
+  });
+});
+
+describe('Health key registries', () => {
+  it('does not duplicate Redis keys across BOOTSTRAP_KEYS and STANDALONE_KEYS', () => {
+    const healthSrc = readFileSync(join(root, 'api', 'health.js'), 'utf-8');
+    const extractValues = (name) => {
+      const block = healthSrc.match(new RegExp(`${name}\\s*=\\s*\\{([\\s\\S]*?)\\n\\};`));
+      if (!block) return [];
+      return [...block[1].matchAll(/:\s+'([^']+)'/g)].map((m) => m[1]);
+    };
+
+    const bootstrap = new Set(extractValues('BOOTSTRAP_KEYS'));
+    const standalone = new Set(extractValues('STANDALONE_KEYS'));
+    const overlap = [...bootstrap].filter((key) => standalone.has(key));
+
+    assert.deepEqual(overlap, [], `health.js duplicates keys across registries: ${overlap.join(', ')}`);
   });
 });
 

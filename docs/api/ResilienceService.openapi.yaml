@@ -1,0 +1,305 @@
+openapi: 3.1.0
+info:
+    title: ResilienceService API
+    version: 1.0.0
+paths:
+    /api/resilience/v1/get-resilience-score:
+        get:
+            tags:
+                - ResilienceService
+            summary: GetResilienceScore
+            operationId: GetResilienceScore
+            parameters:
+                - name: countryCode
+                  in: query
+                  required: true
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetResilienceScoreResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+    /api/resilience/v1/get-resilience-ranking:
+        get:
+            tags:
+                - ResilienceService
+            summary: GetResilienceRanking
+            operationId: GetResilienceRanking
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/GetResilienceRankingResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
+components:
+    schemas:
+        Error:
+            type: object
+            properties:
+                message:
+                    type: string
+                    description: Error message (e.g., 'user not found', 'database connection failed')
+            description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        FieldViolation:
+            type: object
+            properties:
+                field:
+                    type: string
+                    description: The field path that failed validation (e.g., 'user.email' for nested fields). For header validation, this will be the header name (e.g., 'X-API-Key')
+                description:
+                    type: string
+                    description: Human-readable description of the validation violation (e.g., 'must be a valid email address', 'required field missing')
+            required:
+                - field
+                - description
+            description: FieldViolation describes a single validation error for a specific field.
+        ValidationError:
+            type: object
+            properties:
+                violations:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FieldViolation'
+                    description: List of validation violations
+            required:
+                - violations
+            description: ValidationError is returned when request validation fails. It contains a list of field violations describing what went wrong.
+        GetResilienceScoreRequest:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+        GetResilienceScoreResponse:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                overallScore:
+                    type: number
+                    format: double
+                level:
+                    type: string
+                domains:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ResilienceDomain'
+                trend:
+                    type: string
+                change30d:
+                    type: number
+                    format: double
+                lowConfidence:
+                    type: boolean
+                imputationShare:
+                    type: number
+                    format: double
+                baselineScore:
+                    type: number
+                    format: double
+                stressScore:
+                    type: number
+                    format: double
+                stressFactor:
+                    type: number
+                    format: double
+                dataVersion:
+                    type: string
+                scoreInterval:
+                    $ref: '#/components/schemas/ScoreInterval'
+                pillars:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ResiliencePillar'
+                schemaVersion:
+                    type: string
+                    description: |-
+                        Phase 2 T2.1/T2.3: "2.0" is the current default (adds pillars; keeps
+                         overall_score / baseline_score / etc. populated for backward compat).
+                         "1.0" is the legacy opt-out shape (pillars empty) retained for one
+                         release cycle. Controlled at response build time by the
+                         RESILIENCE_SCHEMA_V2_ENABLED env flag (defaults to "true" → v2).
+                headlineEligible:
+                    type: boolean
+                    description: |-
+                        Plan 2026-04-26-002 §U3 (PR 2) — eligibility flag for headline
+                         ranking inclusion. PR 2 introduces the field populated `true` for
+                         every country (no behavior change). PR 6 / §U7 swaps the population
+                         logic to coverage ≥ 0.65 AND (population ≥ 200k OR coverage ≥ 0.85)
+                         AND !lowConfidence; the headline ranking endpoint then filters by
+                         `headlineEligible: true`. Raw API endpoints keep returning the full
+                         set unfiltered. Widget consumes the field starting in PR 6 to show
+                         a "Low confidence — outside headline ranking" badge for
+                         `headlineEligible: false` countries on country detail pages.
+        ResilienceDomain:
+            type: object
+            properties:
+                id:
+                    type: string
+                score:
+                    type: number
+                    format: double
+                weight:
+                    type: number
+                    format: double
+                dimensions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ResilienceDimension'
+        ResilienceDimension:
+            type: object
+            properties:
+                id:
+                    type: string
+                score:
+                    type: number
+                    format: double
+                coverage:
+                    type: number
+                    format: double
+                observedWeight:
+                    type: number
+                    format: double
+                imputedWeight:
+                    type: number
+                    format: double
+                imputationClass:
+                    type: string
+                    description: |-
+                        Four-class imputation taxonomy (Phase 1 T1.7). One of:
+                         "stable-absence", "unmonitored", "source-failure", "not-applicable".
+                         Empty string when the dimension has any observed data AND is not
+                         structurally not-applicable. The "not-applicable" value (plan
+                         2026-04-26-001 §U3) is emitted when the dim's construct does not
+                         apply to this country (e.g. sovereignFiscalBuffer for non-SWF
+                         economies); it is paired with coverage:0 and observed_weight:0 so
+                         the dim contributes nothing to the domain mean and is filtered
+                         out of user-facing confidence/coverage signals on both server and
+                         client. See docs/methodology/country-resilience-index.mdx.
+                freshness:
+                    $ref: '#/components/schemas/DimensionFreshness'
+        DimensionFreshness:
+            type: object
+            properties:
+                lastObservedAtMs:
+                    type: string
+                    format: int64
+                    description: |-
+                        Unix milliseconds when the oldest constituent signal in this
+                         dimension was last observed (min fetchedAt across INDICATOR_REGISTRY
+                         entries for this dimension). 0 when no signal has ever been
+                         observed.
+                staleness:
+                    type: string
+                    description: |-
+                        Worst staleness level across the dimension's constituent signals,
+                         classified by classifyStaleness against each signal's cadence.
+                         One of: "fresh", "aging", "stale". Empty string when no signals.
+        ScoreInterval:
+            type: object
+            properties:
+                p05:
+                    type: number
+                    format: double
+                p95:
+                    type: number
+                    format: double
+        ResiliencePillar:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: '"structural-readiness" | "live-shock-exposure" | "recovery-capacity".'
+                score:
+                    type: number
+                    format: double
+                    description: Pillar score in [0, 100], coverage-weighted mean of member domains.
+                weight:
+                    type: number
+                    format: double
+                    description: 'Pillar weight in the pillar-combined score. Per the plan: 0.40 / 0.35 / 0.25.'
+                coverage:
+                    type: number
+                    format: double
+                    description: Coverage in [0, 1], mean of member-domain average dimension coverage.
+                domains:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ResilienceDomain'
+            description: |-
+                Phase 2 T2.1/T2.3 of the country-resilience reference-grade upgrade plan.
+                 Three-pillar response shape that regroups the 6 ResilienceDomains
+                 (economic, infrastructure, energy, social-governance, health-food,
+                 recovery) into long-run capacity (structural-readiness), current shock
+                 pressure (live-shock-exposure), and recovery capability (recovery-capacity).
+                 Pillar scores and coverage are real coverage-weighted aggregates computed
+                 from the constituent domains; see _pillar-membership.ts for the mapping.
+                 The top-level overall_score on GetResilienceScoreResponse remains a
+                 domain-weighted aggregate (Σ domain.score * domain.weight) for this
+                 release cycle; a pillar-combined score with penalty term is staged in
+                 _shared.ts#penalizedPillarScore and validated by
+                 scripts/validate-resilience-sensitivity.mjs ahead of the activation PR.
+        GetResilienceRankingRequest:
+            type: object
+        GetResilienceRankingResponse:
+            type: object
+            properties:
+                items:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ResilienceRankingItem'
+                greyedOut:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ResilienceRankingItem'
+        ResilienceRankingItem:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                overallScore:
+                    type: number
+                    format: double
+                level:
+                    type: string
+                lowConfidence:
+                    type: boolean
+                overallCoverage:
+                    type: number
+                    format: double
+                rankStable:
+                    type: boolean
+                headlineEligible:
+                    type: boolean
+                    description: |-
+                        Plan 2026-04-26-002 §U3 (PR 2) — eligibility flag for headline
+                         ranking. PR 2 populates `true` for every country; PR 6 / §U7 swaps
+                         to coverage-and-population logic and the headline endpoint then
+                         filters by this field.

@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package worldmonitor.resilience.v1;
+
+import "sebuf/http/annotations.proto";
+import "worldmonitor/resilience/v1/resilience.proto";
+
+message GetResilienceScoreRequest {
+  string country_code = 1 [(sebuf.http.query) = { name: "countryCode", required: true }];
+}
+
+message ScoreInterval {
+  double p05 = 1;
+  double p95 = 2;
+}
+
+message GetResilienceScoreResponse {
+  string country_code = 1;
+  double overall_score = 2;
+  string level = 3;
+  repeated ResilienceDomain domains = 4;
+  reserved 5;
+  string trend = 6;
+  double change_30d = 7;
+  bool low_confidence = 8;
+  double imputation_share = 9;
+  double baseline_score = 10;
+  double stress_score = 11;
+  double stress_factor = 12;
+  string data_version = 13;
+  ScoreInterval score_interval = 14;
+  // Phase 2 T2.1/T2.3: three-pillar schema. Populated with real
+  // coverage-weighted pillar scores when schema_version == "2.0" (the
+  // current default). Empty array when schema_version == "1.0", which is
+  // the legacy opt-out path retained for one release cycle via the
+  // RESILIENCE_SCHEMA_V2_ENABLED env flag.
+  repeated ResiliencePillar pillars = 15;
+  // Phase 2 T2.1/T2.3: "2.0" is the current default (adds pillars; keeps
+  // overall_score / baseline_score / etc. populated for backward compat).
+  // "1.0" is the legacy opt-out shape (pillars empty) retained for one
+  // release cycle. Controlled at response build time by the
+  // RESILIENCE_SCHEMA_V2_ENABLED env flag (defaults to "true" → v2).
+  string schema_version = 16;
+  // Plan 2026-04-26-002 §U3 (PR 2) — eligibility flag for headline
+  // ranking inclusion. PR 2 introduces the field populated `true` for
+  // every country (no behavior change). PR 6 / §U7 swaps the population
+  // logic to coverage ≥ 0.65 AND (population ≥ 200k OR coverage ≥ 0.85)
+  // AND !lowConfidence; the headline ranking endpoint then filters by
+  // `headlineEligible: true`. Raw API endpoints keep returning the full
+  // set unfiltered. Widget consumes the field starting in PR 6 to show
+  // a "Low confidence — outside headline ranking" badge for
+  // `headlineEligible: false` countries on country detail pages.
+  bool headline_eligible = 17;
+}

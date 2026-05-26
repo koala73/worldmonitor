@@ -3,12 +3,12 @@ retailer:
   name: Carrefour UAE
   marketCode: ae
   currencyCode: AED
-  adapter: exa-search
+  adapter: search
   baseUrl: https://www.carrefouruae.com
   enabled: true
 
-  acquisition:
-    provider: exa
+  searchConfig:
+    numResults: 5
 
   rateLimit:
     requestsPerMinute: 20

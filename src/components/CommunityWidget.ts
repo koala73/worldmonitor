@@ -12,25 +12,18 @@ export function mountCommunityWidget(): void {
   widget.className = 'community-widget';
   widget.innerHTML = `
     <div class="cw-pill">
-      <div class="cw-dot"></div>
-      <span class="cw-text">${t('components.community.joinDiscussion')}</span>
-      <a class="cw-cta" href="${DISCUSSION_URL}" target="_blank" rel="noopener">${t('components.community.openDiscussion')}</a>
+      <a class="cw-cta" href="${DISCUSSION_URL}" target="_blank" rel="noopener">Join the Discord Community</a>
       <button class="cw-close" aria-label="${t('common.close')}">&times;</button>
     </div>
-    <button class="cw-dismiss">${t('components.community.dontShowAgain')}</button>
   `;
 
   const dismiss = () => {
+    setDismissed(DISMISSED_KEY);
     widget.classList.add('cw-hiding');
     setTimeout(() => widget.remove(), 300);
   };
 
   widget.querySelector('.cw-close')!.addEventListener('click', dismiss);
-
-  widget.querySelector('.cw-dismiss')!.addEventListener('click', () => {
-    setDismissed(DISMISSED_KEY);
-    dismiss();
-  });
 
   document.body.appendChild(widget);
 }

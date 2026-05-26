@@ -9,12 +9,31 @@ import { getFontFamily, setFontFamily, type FontFamily } from '@/services/font-s
 import { escapeHtml } from '@/utils/sanitize';
 import { trackLanguageChange } from '@/services/analytics';
 import { exportSettings, importSettings, type ImportResult } from '@/utils/settings-persistence';
+import { getSyncState, getLastSyncAt, syncNow, isCloudSyncEnabled } from '@/utils/cloud-prefs-sync';
+
+const SYNC_STATE_LABELS: Record<string, string> = {
+  synced: 'Synced', pending: 'Pending', syncing: 'Syncing\u2026',
+  conflict: 'Conflict', offline: 'Offline', 'signed-out': 'Signed out', error: 'Error',
+};
+const SYNC_STATE_COLORS: Record<string, string> = {
+  synced: 'var(--color-ok, #34d399)', pending: 'var(--color-warn, #fbbf24)', syncing: 'var(--color-warn, #fbbf24)',
+  conflict: 'var(--color-error, #f87171)', offline: 'var(--text-faint, #888)', 'signed-out': 'var(--text-faint, #888)', error: 'var(--color-error, #f87171)',
+};
+import {
+  loadFrameworkLibrary,
+  saveImportedFramework,
+  deleteImportedFramework,
+  renameImportedFramework,
+  getActiveFrameworkForPanel,
+  type AnalysisPanelId,
+} from '@/services/analysis-framework-store';
 
 const DESKTOP_RELEASES_URL = 'https://github.com/koala73/worldmonitor/releases';
 
 export interface PreferencesHost {
   isDesktopApp: boolean;
   onMapProviderChange?: (provider: MapProvider) => void;
+  isSignedIn?: boolean;
 }
 
 export interface PreferencesResult {
@@ -22,15 +41,21 @@ export interface PreferencesResult {
   attach: (container: HTMLElement) => () => void;
 }
 
-function toggleRowHtml(id: string, label: string, desc: string, checked: boolean): string {
+function toggleRowHtml(
+  id: string,
+  label: string,
+  desc: string,
+  checked: boolean,
+  disabled = false,
+): string {
   return `
-    <div class="ai-flow-toggle-row">
+    <div class="ai-flow-toggle-row${disabled ? ' is-disabled' : ''}">
       <div class="ai-flow-toggle-label-wrap">
         <div class="ai-flow-toggle-label">${label}</div>
         <div class="ai-flow-toggle-desc">${desc}</div>
       </div>
-      <label class="ai-flow-switch">
-        <input type="checkbox" id="${id}"${checked ? ' checked' : ''}>
+      <label class="ai-flow-switch${disabled ? ' is-disabled' : ''}">
+        <input type="checkbox" id="${id}"${checked ? ' checked' : ''}${disabled ? ' disabled' : ''}>
         <span class="ai-flow-slider"></span>
       </label>
     </div>
@@ -44,6 +69,20 @@ function renderMapThemeDropdown(container: HTMLElement, provider: MapProvider): 
   select.innerHTML = MAP_THEME_OPTIONS[provider]
     .map(opt => `<option value="${opt.value}"${opt.value === currentTheme ? ' selected' : ''}>${escapeHtml(opt.label)}</option>`)
     .join('');
+}
+
+function updateSyncStatusUI(container: HTMLElement): void {
+  const dot = container.querySelector<HTMLElement>('#usSyncDot');
+  const label = container.querySelector<HTMLElement>('#usSyncLabel');
+  const time = container.querySelector<HTMLElement>('#usSyncTime');
+  if (!dot || !label || !time) return;
+
+  const state = getSyncState();
+  const lastSync = getLastSyncAt();
+
+  dot.style.background = (SYNC_STATE_COLORS[state] ?? SYNC_STATE_COLORS.error) as string;
+  label.textContent = SYNC_STATE_LABELS[state] ?? 'Unknown';
+  time.textContent = `Last synced: ${lastSync ? new Date(lastSync).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }) : 'Never'}`;
 }
 
 function updateAiStatus(container: HTMLElement): void {
@@ -194,7 +233,89 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
     `;
   }
 
-  html += toggleRowHtml('us-headline-memory', t('components.insights.headlineMemoryLabel'), t('components.insights.headlineMemoryDesc'), settings.headlineMemory);
+  // Headline Memory requires Browser Local Model (it loads an embeddings
+  // model in the ML worker). Disable the toggle when the parent is off so
+  // the user sees the dependency rather than wondering why their Headline
+  // Memory toggle "did nothing."
+  const headlineDisabled = !host.isDesktopApp && !settings.browserModel;
+  html += toggleRowHtml(
+    'us-headline-memory',
+    t('components.insights.headlineMemoryLabel'),
+    t('components.insights.headlineMemoryDesc'),
+    settings.headlineMemory,
+    headlineDisabled,
+  );
+
+  html += `</div></details>`;
+
+  // ── Analysis Frameworks group ──
+  html += `<details class="wm-pref-group">`;
+  html += `<summary>${t('components.insights.analysisFrameworksLabel')}</summary>`;
+  html += `<div class="wm-pref-group-content">`;
+
+  // Per-panel active framework display
+  const panelIds: Array<{ id: AnalysisPanelId; label: string }> = [
+    { id: 'insights', label: 'Insights' },
+    { id: 'country-brief', label: 'Country Brief' },
+    { id: 'daily-market-brief', label: 'Market Brief' },
+    { id: 'deduction', label: 'Deduction' },
+  ];
+  html += `<div class="ai-flow-section-label">${t('components.insights.analysisFrameworksActivePerPanel')}</div>`;
+  html += `<div class="fw-panel-status-list" id="fwPanelStatusList">`;
+  for (const { id, label } of panelIds) {
+    const active = getActiveFrameworkForPanel(id);
+    html += `<div class="fw-panel-status-row">
+      <span class="fw-panel-status-name">${escapeHtml(label)}</span>
+      <span class="fw-panel-status-val">${active ? escapeHtml(active.name) : t('components.insights.analysisFrameworksDefaultNeutral')}</span>
+    </div>`;
+  }
+  html += `</div>`;
+
+  // Skill library list
+  html += `<div class="ai-flow-section-label">${t('components.insights.analysisFrameworksSkillLibrary')}</div>`;
+  html += `<div class="fw-library-list" id="fwLibraryList">`;
+  html += renderFrameworkLibraryHtml();
+  html += `</div>`;
+
+  // Import button
+  html += `<div class="fw-import-row">
+    <button type="button" class="settings-btn settings-btn-secondary fw-import-btn" id="fwImportBtn">${t('components.insights.analysisFrameworksImportBtn')}</button>
+  </div>`;
+
+  // Import modal (hidden by default)
+  html += `<div class="fw-import-modal-backdrop" id="fwImportModalBackdrop" style="display:none">
+    <div class="fw-import-modal" role="dialog" aria-modal="true" aria-label="Import framework">
+      <div class="fw-import-modal-header">
+        <span class="fw-import-modal-title">${t('components.insights.analysisFrameworksImportTitle')}</span>
+        <button type="button" class="fw-import-modal-close" id="fwImportModalClose" aria-label="Close">&times;</button>
+      </div>
+      <div class="fw-import-tabs">
+        <button type="button" class="fw-import-tab active" data-fw-tab="agentskills" id="fwTabAgentskills">${t('components.insights.analysisFrameworksFromAgentskills')}</button>
+        <button type="button" class="fw-import-tab" data-fw-tab="json" id="fwTabJson">${t('components.insights.analysisFrameworksPasteJson')}</button>
+      </div>
+      <div class="fw-import-tab-panel active" id="fwTabPanelAgentskills">
+        <div class="fw-import-field">
+          <label class="fw-import-label">agentskills.io URL or ID</label>
+          <input type="text" class="fw-import-input" id="fwAgentskillsUrl" placeholder="https://agentskills.io/skills/..." />
+        </div>
+        <button type="button" class="settings-btn settings-btn-secondary" id="fwFetchBtn">Fetch</button>
+        <div class="fw-import-preview" id="fwAgentskillsPreview" style="display:none">
+          <div class="fw-import-preview-name" id="fwPreviewName"></div>
+          <div class="fw-import-preview-desc" id="fwPreviewDesc"></div>
+          <button type="button" class="settings-btn settings-btn-primary fw-save-btn" id="fwAgentskillsSaveBtn">${t('components.insights.analysisFrameworksSaveToLibrary')}</button>
+        </div>
+        <div class="fw-import-error" id="fwAgentskillsError" style="display:none"></div>
+      </div>
+      <div class="fw-import-tab-panel" id="fwTabPanelJson">
+        <div class="fw-import-field">
+          <label class="fw-import-label">${t('components.insights.analysisFrameworksPasteJson')}</label>
+          <textarea class="fw-import-textarea" id="fwJsonInput" rows="6" placeholder='{ "name": "...", "instructions": "..." }'></textarea>
+        </div>
+        <div class="fw-import-error" id="fwJsonError" style="display:none"></div>
+        <button type="button" class="settings-btn settings-btn-primary fw-save-btn" id="fwJsonSaveBtn">${t('components.insights.analysisFrameworksSaveToLibrary')}</button>
+      </div>
+    </div>
+  </div>`;
 
   html += `</div></details>`;
 
@@ -232,6 +353,28 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
   html += `<div class="wm-pref-group-content">`;
   html += toggleRowHtml('us-badge-anim', t('components.insights.badgeAnimLabel'), t('components.insights.badgeAnimDesc'), settings.badgeAnimation);
   html += `</div></details>`;
+
+  // ── Cloud Sync group (web-only, signed-in, feature flag on) ──
+  if (!host.isDesktopApp && host.isSignedIn && isCloudSyncEnabled()) {
+    const syncState = getSyncState();
+    const lastSync = getLastSyncAt();
+    const lastSyncStr = lastSync
+      ? new Date(lastSync).toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' })
+      : 'Never';
+
+    html += `<details class="wm-pref-group">`;
+    html += `<summary>Cloud Sync</summary>`;
+    html += `<div class="wm-pref-group-content">`;
+    html += `<div class="wm-sync-status-row">
+      <div class="wm-sync-status-info">
+        <span class="wm-sync-status-dot" id="usSyncDot" style="background:${SYNC_STATE_COLORS[syncState] ?? SYNC_STATE_COLORS.error}"></span>
+        <span class="wm-sync-status-label" id="usSyncLabel">${SYNC_STATE_LABELS[syncState] ?? 'Unknown'}</span>
+        <span class="wm-sync-status-time" id="usSyncTime">Last synced: ${escapeHtml(lastSyncStr)}</span>
+      </div>
+      <button type="button" class="settings-btn settings-btn-secondary wm-sync-now-btn" id="usSyncNowBtn">Sync now</button>
+    </div>`;
+    html += `</div></details>`;
+  }
 
   // ── Data & Community group ──
   html += `<details class="wm-pref-group">`;
@@ -323,6 +466,18 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           setAiFlowSetting('browserModel', target.checked);
           const warn = container.querySelector('.ai-flow-toggle-warn') as HTMLElement;
           if (warn) warn.style.display = target.checked ? 'block' : 'none';
+          // Headline Memory is a child of Browser Local Model — keep its
+          // toggle's enabled/disabled state in sync without re-rendering
+          // the whole panel. The runtime gate (`isHeadlineMemoryEnabled`)
+          // already AND-gates both flags; this just mirrors that visually.
+          const hmInput = container.querySelector<HTMLInputElement>('#us-headline-memory');
+          const hmRow = hmInput?.closest('.ai-flow-toggle-row');
+          const hmSwitch = hmInput?.closest('.ai-flow-switch');
+          if (hmInput && !host.isDesktopApp) {
+            hmInput.disabled = !target.checked;
+            hmRow?.classList.toggle('is-disabled', !target.checked);
+            hmSwitch?.classList.toggle('is-disabled', !target.checked);
+          }
           updateAiStatus(container);
         } else if (target.id === 'us-map-flash') {
           setAiFlowSetting('mapNewsFlash', target.checked);
@@ -348,13 +503,214 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           container.querySelector<HTMLInputElement>('#usImportInput')?.click();
           return;
         }
+
+        // ── Framework settings handlers ──
+
+        if (target.closest('#fwImportBtn')) {
+          const backdrop = container.querySelector<HTMLElement>('#fwImportModalBackdrop');
+          if (backdrop) backdrop.style.display = 'flex';
+          return;
+        }
+
+        if (target.closest('#fwImportModalClose') || target.id === 'fwImportModalBackdrop') {
+          const backdrop = container.querySelector<HTMLElement>('#fwImportModalBackdrop');
+          if (backdrop) backdrop.style.display = 'none';
+          return;
+        }
+
+        const tab = target.closest<HTMLElement>('[data-fw-tab]');
+        if (tab?.dataset.fwTab) {
+          const tabId = tab.dataset.fwTab;
+          container.querySelectorAll('.fw-import-tab').forEach(el => el.classList.toggle('active', (el as HTMLElement).dataset.fwTab === tabId));
+          container.querySelectorAll('.fw-import-tab-panel').forEach(el => {
+            const panelEl = el as HTMLElement;
+            panelEl.classList.toggle('active', panelEl.id === `fwTabPanel${tabId.charAt(0).toUpperCase() + tabId.slice(1)}`);
+          });
+          return;
+        }
+
+        if (target.closest('#fwFetchBtn')) {
+          const urlInput = container.querySelector<HTMLInputElement>('#fwAgentskillsUrl');
+          const errEl = container.querySelector<HTMLElement>('#fwAgentskillsError');
+          const preview = container.querySelector<HTMLElement>('#fwAgentskillsPreview');
+          if (!urlInput) return;
+          hideImportError(errEl);
+          if (preview) preview.style.display = 'none';
+          const urlVal = urlInput.value.trim();
+          if (!urlVal.includes('agentskills.io')) {
+            showImportError(errEl, 'Only agentskills.io URLs are supported.');
+            return;
+          }
+          const fetchBtn = container.querySelector<HTMLButtonElement>('#fwFetchBtn');
+          if (fetchBtn) fetchBtn.disabled = true;
+          fetch('/api/skills/fetch-agentskills', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: urlVal }),
+            signal,
+          }).then(async (res) => {
+            if (res.status === 429) throw new Error('rate-limit');
+            if (!res.ok) throw new Error('network');
+            return res.json() as Promise<{ name?: string; description?: string; instructions?: string }>;
+          }).then((data) => {
+            if (!data.instructions) {
+              showImportError(errEl, 'This skill has no instructions — it may use tools only (not supported).');
+              return;
+            }
+            const nameEl = container.querySelector<HTMLElement>('#fwPreviewName');
+            const descEl = container.querySelector<HTMLElement>('#fwPreviewDesc');
+            if (nameEl) nameEl.textContent = data.name ?? 'Unnamed skill';
+            if (descEl) descEl.textContent = data.instructions.slice(0, 200) + (data.instructions.length > 200 ? '…' : '');
+            if (preview) {
+              preview.style.display = 'block';
+              (preview as HTMLElement & { _fwData?: { name: string; description: string; instructions: string } })._fwData = {
+                name: data.name ?? 'Unnamed skill',
+                description: data.description ?? '',
+                instructions: data.instructions,
+              };
+            }
+          }).catch((err: Error) => {
+            if (err.name === 'AbortError') return;
+            if (err.message === 'rate-limit') {
+              showImportError(errEl, 'Too many import requests. Try again in an hour.');
+            } else {
+              showImportError(errEl, 'Could not reach agentskills.io. Check your connection.');
+            }
+          }).finally(() => {
+            if (fetchBtn) fetchBtn.disabled = false;
+          });
+          return;
+        }
+
+        if (target.closest('#fwAgentskillsSaveBtn')) {
+          const preview = container.querySelector<HTMLElement>('#fwAgentskillsPreview');
+          const errEl = container.querySelector<HTMLElement>('#fwAgentskillsError');
+          const fwData = (preview as HTMLElement & { _fwData?: { name: string; description: string; instructions: string } } | null)?._fwData;
+          if (!fwData) return;
+          try {
+            saveImportedFramework({ id: crypto.randomUUID(), name: fwData.name, description: fwData.description, systemPromptAppend: fwData.instructions });
+            refreshFrameworkLibrary(container);
+            const backdrop = container.querySelector<HTMLElement>('#fwImportModalBackdrop');
+            if (backdrop) backdrop.style.display = 'none';
+          } catch (err) {
+            showImportError(errEl, (err as Error).message);
+          }
+          return;
+        }
+
+        if (target.closest('#fwJsonSaveBtn')) {
+          const textarea = container.querySelector<HTMLTextAreaElement>('#fwJsonInput');
+          const errEl = container.querySelector<HTMLElement>('#fwJsonError');
+          if (!textarea) return;
+          hideImportError(errEl);
+          let parsed: { name?: string; description?: string; instructions?: string };
+          try {
+            parsed = JSON.parse(textarea.value) as typeof parsed;
+          } catch {
+            showImportError(errEl, 'Could not parse skill definition. Paste valid JSON.');
+            return;
+          }
+          if (!parsed.instructions) {
+            showImportError(errEl, 'This skill has no instructions — it may use tools only (not supported).');
+            return;
+          }
+          try {
+            saveImportedFramework({
+              id: crypto.randomUUID(),
+              name: parsed.name ?? 'Imported skill',
+              description: parsed.description ?? '',
+              systemPromptAppend: parsed.instructions,
+            });
+            textarea.value = '';
+            refreshFrameworkLibrary(container);
+            const backdrop = container.querySelector<HTMLElement>('#fwImportModalBackdrop');
+            if (backdrop) backdrop.style.display = 'none';
+          } catch (err) {
+            showImportError(errEl, (err as Error).message);
+          }
+          return;
+        }
+
+        const deleteBtn = target.closest<HTMLElement>('.fw-delete-btn');
+        if (deleteBtn?.dataset.fwId) {
+          deleteImportedFramework(deleteBtn.dataset.fwId);
+          refreshFrameworkLibrary(container);
+          return;
+        }
+
+        const renameBtn = target.closest<HTMLElement>('.fw-rename-btn');
+        if (renameBtn?.dataset.fwId) {
+          const fwId = renameBtn.dataset.fwId;
+          const current = renameBtn.closest('.fw-library-item')?.querySelector('.fw-library-item-name');
+          const currentName = current?.childNodes[0]?.textContent?.trim() ?? '';
+          const newName = prompt('Rename framework:', currentName);
+          if (newName && newName.trim() && newName.trim() !== currentName) {
+            renameImportedFramework(fwId, newName.trim());
+            refreshFrameworkLibrary(container);
+          }
+          return;
+        }
       }, { signal });
 
       if (!host.isDesktopApp) updateAiStatus(container);
 
+      // ── Cloud Sync: wire "Sync now" button + live state updates ──
+      if (!host.isDesktopApp && host.isSignedIn && isCloudSyncEnabled()) {
+        const syncBtn = container.querySelector<HTMLButtonElement>('#usSyncNowBtn');
+        if (syncBtn) {
+          syncBtn.addEventListener('click', () => {
+            syncBtn.disabled = true;
+            syncBtn.textContent = 'Syncing\u2026';
+            syncNow().finally(() => {
+              syncBtn.disabled = false;
+              syncBtn.textContent = 'Sync now';
+              updateSyncStatusUI(container);
+            });
+          }, { signal });
+        }
+        const syncPollId = setInterval(() => updateSyncStatusUI(container), 2000);
+        signal.addEventListener('abort', () => clearInterval(syncPollId));
+      }
+
       return () => ac.abort();
     },
   };
+}
+
+function renderFrameworkLibraryHtml(): string {
+  const frameworks = loadFrameworkLibrary();
+  if (frameworks.length === 0) return '<div class="fw-library-empty">No frameworks in library.</div>';
+  return frameworks.map(fw => `
+    <div class="fw-library-item" data-fw-id="${escapeHtml(fw.id)}">
+      <div class="fw-library-item-info">
+        <div class="fw-library-item-name">${escapeHtml(fw.name)}${fw.isBuiltIn ? ' <span class="fw-builtin-badge">built-in</span>' : ''}</div>
+        <div class="fw-library-item-desc">${escapeHtml(fw.description)}</div>
+      </div>
+      ${!fw.isBuiltIn ? `
+        <div class="fw-library-item-actions">
+          <button type="button" class="fw-lib-btn fw-rename-btn" data-fw-id="${escapeHtml(fw.id)}">Rename</button>
+          <button type="button" class="fw-lib-btn fw-lib-btn-danger fw-delete-btn" data-fw-id="${escapeHtml(fw.id)}">Delete</button>
+        </div>
+      ` : ''}
+    </div>
+  `).join('');
+}
+
+function refreshFrameworkLibrary(container: HTMLElement): void {
+  const list = container.querySelector('#fwLibraryList');
+  if (list) list.innerHTML = renderFrameworkLibraryHtml();
+}
+
+function showImportError(el: HTMLElement | null, msg: string): void {
+  if (!el) return;
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+function hideImportError(el: HTMLElement | null): void {
+  if (!el) return;
+  el.textContent = '';
+  el.style.display = 'none';
 }
 
 function showToast(container: HTMLElement, msg: string, success: boolean): void {

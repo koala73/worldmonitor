@@ -7,7 +7,9 @@ import "worldmonitor/infrastructure/v1/get_bootstrap_data.proto";
 import "worldmonitor/infrastructure/v1/get_cable_health.proto";
 import "worldmonitor/infrastructure/v1/get_ip_geo.proto";
 import "worldmonitor/infrastructure/v1/get_temporal_baseline.proto";
+import "worldmonitor/infrastructure/v1/list_internet_ddos_attacks.proto";
 import "worldmonitor/infrastructure/v1/list_internet_outages.proto";
+import "worldmonitor/infrastructure/v1/list_internet_traffic_anomalies.proto";
 import "worldmonitor/infrastructure/v1/list_service_statuses.proto";
 import "worldmonitor/infrastructure/v1/list_temporal_anomalies.proto";
 import "worldmonitor/infrastructure/v1/record_baseline_snapshot.proto";
@@ -83,6 +85,22 @@ service InfrastructureService {
   rpc ListTemporalAnomalies(ListTemporalAnomaliesRequest) returns (ListTemporalAnomaliesResponse) {
     option (sebuf.http.config) = {
       path: "/list-temporal-anomalies"
+      method: HTTP_METHOD_GET
+    };
+  }
+
+  // ListInternetDdosAttacks retrieves L3/L4 DDoS attack summaries from Cloudflare Radar.
+  rpc ListInternetDdosAttacks(ListInternetDdosAttacksRequest) returns (ListInternetDdosAttacksResponse) {
+    option (sebuf.http.config) = {
+      path: "/list-internet-ddos-attacks"
+      method: HTTP_METHOD_GET
+    };
+  }
+
+  // ListInternetTrafficAnomalies retrieves traffic anomaly events from Cloudflare Radar.
+  rpc ListInternetTrafficAnomalies(ListInternetTrafficAnomaliesRequest) returns (ListInternetTrafficAnomaliesResponse) {
+    option (sebuf.http.config) = {
+      path: "/list-internet-traffic-anomalies"
       method: HTTP_METHOD_GET
     };
   }

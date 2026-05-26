@@ -8,6 +8,8 @@ const config = loadSharedConfig('grocery-basket.json');
 
 const CANONICAL_KEY = 'economic:grocery-basket:v1';
 const CACHE_TTL = 864000; // 10 days — weekly seed with 3-day cron-drift buffer
+// Bump when basket composition changes materially — invalidates WoW until a new baseline runs.
+const BASKET_VERSION = 2; // v2: oil changed from sunflower to canola
 const EXA_DELAY_MS = 150;
 
 const FIRECRAWL_DELAY_MS = 500;
@@ -137,11 +139,16 @@ const SYMBOL_MAP = { '£': 'GBP', '€': 'EUR', '¥': 'JPY', '₩': 'KRW', '₹'
 
 // Minimum plausible local price per currency — prevents matching product codes / IDs
 // e.g. IDR 4 = $0.0003 (nonsense), NGN 20 = $0.01 (nonsense), KRW 5 = $0.004 (nonsense)
-const CURRENCY_MIN = { NGN: 50, IDR: 500, ARS: 50, KRW: 1000, ZAR: 2, PKR: 20, LBP: 1000 };
+// JPY: grocery items in Japan cost 100+ yen; under 50 = product code or sub-unit price.
+// TRY: Turkish supermarket shelf prices ≥ 10 TRY; under 10 = per-100g sub-unit match.
+// EGP: Egyptian supermarket prices ≥ 5 EGP; under 5 = subsidised/fractional unit.
+// INR: Indian supermarket prices ≥ 12 INR; under 12 = product code or stale clearance.
+const CURRENCY_MIN = { NGN: 50, IDR: 500, ARS: 50, KRW: 1000, ZAR: 2, PKR: 20, LBP: 1000, JPY: 50, TRY: 10, EGP: 5, INR: 12 };
 
-// Maximum plausible USD price per item — catches bulk/wholesale products (e.g. 25lb salt bag)
-// Applied only to USD-denominated countries; other currencies vary too widely in purchasing power
-const ITEM_USD_MAX = { sugar: 8, salt: 5, rice: 6, pasta: 4, potatoes: 6, oil: 15, flour: 8, eggs: 12, milk: 8, bread: 8 };
+// Maximum plausible USD price per item — catches bulk/wholesale/specialty products.
+// Set to ~2× the most expensive legitimate retail price globally for each item.
+// Previous caps were too loose (e.g. sugar: 8 allowed 5.99 EUR organic sugar from carrefour.fr).
+const ITEM_USD_MAX = { sugar: 3.5, salt: 2.5, rice: 6, pasta: 3.5, potatoes: 6, oil: 10, flour: 4.5, eggs: 12, milk: 5, bread: 6 };
 
 // Pattern order matters: try currency-FIRST (e.g. "GBP 1.50") before number-first
 // to avoid matching pack sizes / weights that precede a currency token (e.g. "12 SAR" in "eggs 12 SAR 8.99")
@@ -207,8 +214,11 @@ async function fetchGroceryBasketPrices(prevSnapshot) {
 
   const countriesResult = [];
 
-  // Load all learned routes in one pipeline request before the country loop
-  const routeKeys = config.countries.flatMap(c => config.items.map(i => `${c.code}:${i.id}`));
+  // Load all learned routes in one pipeline request before the country loop.
+  // Include sentinel keys for one-time migrations so each eviction only fires once.
+  const OIL_MIGRATION_KEY = '_migration:canola-oil-v1';
+  const BAD_PRICES_KEY    = '_migration:bad-prices-v1'; // JP/TR/EG/IN sub-unit scrapes + JP site change
+  const routeKeys = [...config.countries.flatMap(c => config.items.map(i => `${c.code}:${i.id}`)), OIL_MIGRATION_KEY, BAD_PRICES_KEY];
   const learnedRoutes = await bulkReadLearnedRoutes('grocery-basket', routeKeys).catch((err) => {
     console.warn(`  [routes] load failed (non-fatal): ${err.message}`);
     return new Map();
@@ -216,6 +226,40 @@ async function fetchGroceryBasketPrices(prevSnapshot) {
   const routeUpdates = new Map();
   const routeDeletes = new Set();
   console.log(`  [routes] loaded ${learnedRoutes.size} learned routes`);
+
+  // One-time migration: evict stale oil routes when query changed sunflower → canola.
+  // Guarded by OIL_MIGRATION_KEY so it only fires once; subsequent runs skip entirely.
+  if (!learnedRoutes.has(OIL_MIGRATION_KEY)) {
+    const oilEvictions = new Set(config.countries.map(c => `${c.code}:oil`).filter(k => learnedRoutes.has(k)));
+    if (oilEvictions.size > 0) {
+      console.log(`  [routes] one-time migration: evicting ${oilEvictions.size} stale oil routes (sunflower → canola)`);
+      await bulkWriteLearnedRoutes('grocery-basket', new Map(), oilEvictions).catch(err =>
+        console.warn(`  [routes] oil eviction failed (non-fatal): ${err.message}`)
+      );
+      for (const k of oilEvictions) learnedRoutes.delete(k);
+    }
+    routeUpdates.set(OIL_MIGRATION_KEY, 'done'); // persisted at end of run alongside other route updates
+  }
+
+  // One-time eviction: clear known-bad routes from the previous site config (JP) and
+  // from confirmed sub-unit price scrapes (TR/EG/IN). Forces fresh EXA searches on next run.
+  // All JP routes evicted because sites changed from aggregators (kakaku.com) to supermarkets.
+  if (!learnedRoutes.has(BAD_PRICES_KEY)) {
+    const knownBad = new Set([
+      ...config.countries.filter(c => c.code === 'JP').flatMap(c => config.items.map(i => `JP:${i.id}`)),
+      'TR:sugar', 'TR:eggs', 'TR:milk', 'TR:oil',
+      'EG:salt', 'EG:bread', 'EG:milk',
+      'IN:potatoes', 'IN:milk',
+    ].filter(k => learnedRoutes.has(k)));
+    if (knownBad.size > 0) {
+      console.log(`  [routes] one-time eviction: clearing ${knownBad.size} known-bad price routes (JP sites + TR/EG/IN sub-unit)`);
+      await bulkWriteLearnedRoutes('grocery-basket', new Map(), knownBad).catch(err =>
+        console.warn(`  [routes] bad-prices eviction failed (non-fatal): ${err.message}`)
+      );
+      for (const k of knownBad) learnedRoutes.delete(k);
+    }
+    routeUpdates.set(BAD_PRICES_KEY, 'done');
+  }
 
   for (const country of config.countries) {
     console.log(`\n  Processing ${country.flag} ${country.name} (${country.currency})...`);
@@ -327,6 +371,47 @@ async function fetchGroceryBasketPrices(prevSnapshot) {
     console.warn(`  [routes] write failed (non-fatal): ${err.message}`)
   );
 
+  // Cross-country outlier gate — bilateral: rejects per-item prices that are either
+  //   > 4× the median (bulk/wholesale/specialty scrape error)
+  //   < ¼ the median (sub-unit price, product code, stale scraped value)
+  // Both directions evict the learned route so the bad URL isn't replayed next seed.
+  const itemIds = config.items.map(i => i.id);
+  const outlierEvictions = new Set();
+  for (const itemId of itemIds) {
+    const pricePoints = countriesResult
+      .map(c => c.items.find(i => i.itemId === itemId)?.usdPrice)
+      .filter(p => p != null && p > 0);
+    if (pricePoints.length < 3) continue; // need ≥ 3 data points for meaningful median
+    pricePoints.sort((a, b) => a - b);
+    const median = pricePoints[Math.floor(pricePoints.length / 2)];
+    const ceiling = median * 4;
+    const floor = median / 4;
+    for (const country of countriesResult) {
+      const item = country.items.find(i => i.itemId === itemId);
+      if (!item?.usdPrice || item.usdPrice <= 0) continue;
+      const isHigh = item.usdPrice > ceiling;
+      const isLow  = item.usdPrice < floor;
+      if (!isHigh && !isLow) continue;
+      const reason = isHigh
+        ? `$${item.usdPrice.toFixed(4)} > 4× median $${median.toFixed(2)}`
+        : `$${item.usdPrice.toFixed(4)} < ¼ median $${median.toFixed(2)}`;
+      console.warn(`  [outlier] ${country.code}/${itemId}: ${reason} — clearing + evicting learned route`);
+      item.available = false;
+      item.localPrice = null;
+      item.usdPrice = null;
+      outlierEvictions.add(`${country.code}:${itemId}`);
+    }
+  }
+  if (outlierEvictions.size > 0) {
+    await bulkWriteLearnedRoutes('grocery-basket', new Map(), outlierEvictions).catch(err =>
+      console.warn(`  [routes] outlier eviction write failed (non-fatal): ${err.message}`)
+    );
+  }
+  // Recompute totals after outlier pass
+  for (const country of countriesResult) {
+    country.totalUsd = +country.items.reduce((s, ip) => s + (ip.usdPrice ?? 0), 0).toFixed(2);
+  }
+
   // Only rank countries with enough items found — a country with 4/10 items
   // could appear "cheapest" purely due to missing data, not actual prices.
   const MIN_ITEMS_FOR_RANKING = Math.ceil(config.items.length * 0.7); // ≥ 70% coverage
@@ -337,8 +422,9 @@ async function fetchGroceryBasketPrices(prevSnapshot) {
   const cheapest = rankable.length ? rankable.reduce((a, b) => a.totalUsd < b.totalUsd ? a : b).code : '';
   const mostExpensive = rankable.length ? rankable.reduce((a, b) => a.totalUsd > b.totalUsd ? a : b).code : '';
 
-  // Compute WoW per country
-  const wowAvailable = prevSnapshot?.countries?.length > 0;
+  // Compute WoW per country — only valid when prev snapshot used the same basket composition.
+  // A version mismatch (e.g. oil changed from sunflower to canola) would produce bogus deltas.
+  const wowAvailable = prevSnapshot?.countries?.length > 0 && prevSnapshot.basketVersion === BASKET_VERSION;
   if (wowAvailable) {
     const prevMap = Object.fromEntries(prevSnapshot.countries.map(c => [c.code, c.totalUsd]));
     for (const country of countriesResult) {
@@ -363,18 +449,35 @@ async function fetchGroceryBasketPrices(prevSnapshot) {
     wowAvgPct,
     wowAvailable,
     prevFetchedAt: wowAvailable ? (prevSnapshot.fetchedAt ?? '') : '',
+    basketVersion: BASKET_VERSION,
   };
 }
 
 const prevSnapshot = await readSeedSnapshot(CANONICAL_KEY);
 
+export function declareRecords(data) {
+  return Array.isArray(data?.countries) ? data.countries.length : 0;
+}
+
 await runSeed('economic', 'grocery-basket', CANONICAL_KEY, () => fetchGroceryBasketPrices(prevSnapshot), {
   ttlSeconds: CACHE_TTL,
-  validateFn: (data) => data?.countries?.length > 0,
+  validateFn: (data) => {
+    if (!data?.countries?.length) return false;
+    const minItems = Math.ceil(config.items.length * 0.4); // 40% item coverage per country
+    const covered = data.countries.filter(c => c.items.filter(i => i.available).length >= minItems);
+    if (covered.length < 5) { console.warn(`  [validate] only ${covered.length} countries with ≥40% item coverage — rejecting`); return false; }
+    return true;
+  },
   recordCount: (data) => data?.countries?.length || 0,
   extraKeys: prevSnapshot ? [{
     key: `${CANONICAL_KEY}:prev`,
     transform: () => prevSnapshot,  // write PRE-overwrite snapshot; ignore new data
     ttl: CACHE_TTL * 2,
+    declareRecords,
   }] : undefined,
+
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 10080,
+  sourceVersion: 'grocery-basket-v1',
 });

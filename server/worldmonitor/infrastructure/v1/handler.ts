@@ -1,7 +1,9 @@
 import type { InfrastructureServiceHandler } from '../../../../src/generated/server/worldmonitor/infrastructure/v1/service_server';
 
 import { getCableHealth } from './get-cable-health';
+import { listInternetDdosAttacks } from './list-ddos-attacks';
 import { listInternetOutages } from './list-internet-outages';
+import { listInternetTrafficAnomalies } from './list-traffic-anomalies';
 import { listServiceStatuses } from './list-service-statuses';
 import { getTemporalBaseline } from './get-temporal-baseline';
 import { recordBaselineSnapshot } from './record-baseline-snapshot';
@@ -12,7 +14,9 @@ import { getBootstrapData } from './get-bootstrap-data';
 
 export const infrastructureHandler: InfrastructureServiceHandler = {
   getCableHealth,
+  listInternetDdosAttacks,
   listInternetOutages,
+  listInternetTrafficAnomalies,
   listServiceStatuses,
   getTemporalBaseline,
   recordBaselineSnapshot,

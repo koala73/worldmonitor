@@ -225,10 +225,17 @@ function validate(data) {
 const currentYear = new Date().getFullYear();
 const canonicalKey = `${CANONICAL_KEY_PREFIX}:${currentYear}`;
 
+export function declareRecords(data) {
+  return data?.summary?.countries?.length ?? 0;
+}
+
 runSeed('displacement', 'summary', canonicalKey, fetchDisplacementSummary, {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
   sourceVersion: `unhcr-${currentYear}`,
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 3600,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);

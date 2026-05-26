@@ -10,5 +10,5 @@
     "outDir": "./_generated"
   },
   "include": ["./**/*.ts"],
-  "exclude": ["./_generated"]
+  "exclude": ["./_generated", "./__tests__"]
 }

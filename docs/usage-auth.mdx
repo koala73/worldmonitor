@@ -1,0 +1,95 @@
+---
+title: "Authentication"
+description: "Three auth modes — browser origin, API key, and OAuth bearer — plus how server-side enforcement works."
+---
+
+WorldMonitor has **three** authentication modes. Which one applies depends on how you're calling.
+
+## Auth matrix
+
+| Mode | Header | Used by | Trusted on which endpoints? |
+|------|--------|---------|------------------------------|
+| **Browser origin** | `Origin: https://www.worldmonitor.app` (browser-set) | Dashboard, desktop app | Most public endpoints — but **not** `forceKey: true` routes. |
+| **API key** | `X-WorldMonitor-Key: wm_live_...` | Server-to-server, scripts, SDKs | All endpoints, including `forceKey: true`. |
+| **OAuth bearer** | `Authorization: Bearer <oauth-token>` | MCP clients (Claude, Cursor, Inspector) | `/api/mcp`. The handler also accepts a direct `X-WorldMonitor-Key` in lieu of an OAuth token — see [MCP](/mcp-server#authentication). |
+| **Clerk session JWT** | `Authorization: Bearer <clerk-jwt>` | Authenticated browser users | User-specific routes: `/api/latest-brief`, `/api/user-prefs`, `/api/notification-channels`, `/api/brief/share-url`, etc. |
+
+## `forceKey: true` — which endpoints ignore browser origin?
+
+Some endpoints explicitly reject the "trusted browser origin" shortcut and require a real API key even from inside the dashboard:
+
+- `/api/v2/shipping/route-intelligence`
+- `/api/v2/shipping/webhooks`
+- `/api/widget-agent`
+- Vendor / partner endpoints
+
+For these, you **must** send `X-WorldMonitor-Key`.
+
+## Browser origin mode
+
+CORS and `validateApiKey` together decide whether a given `Origin` is trusted. The allowlist is centralized in `api/_cors.js`.
+
+- Allowed origins get `Access-Control-Allow-Origin: <echoed>` and pass the key check.
+- Disallowed origins get no CORS header (browser rejects) and fail the key check.
+
+See [CORS](/cors) for the origin patterns.
+
+<Warning>
+**A Cloudflare Worker** (`api-cors-preflight`) is the authoritative CORS handler for `api.worldmonitor.app` — it overrides `_cors.js` and `vercel.json`. If you're changing origin rules, change them in the Cloudflare dashboard.
+</Warning>
+
+## API key mode
+
+### Generate a key
+
+PRO subscribers get a key automatically on subscription. To rotate, contact support.
+
+### Use it
+
+```
+X-WorldMonitor-Key: wm_live_abcdef0123456789...
+```
+
+Minimum 16 characters. Keep keys out of client-side code — use a server-side proxy if you need to call from the browser to a `forceKey` endpoint.
+
+### Server-side validation
+
+The edge function calls `validateApiKey(req, { forceKey?: boolean })`:
+
+1. If `forceKey` is false AND the origin is trusted → pass.
+2. Else, check `X-WorldMonitor-Key` against `WORLDMONITOR_VALID_KEYS` (env).
+3. Also check the caller's entitlement cache (`invalidate-user-api-key-cache` flushes this).
+4. If neither passes → 401.
+
+## OAuth bearer (MCP only)
+
+Full flow documented at [OAuth 2.1 Server](/api-oauth). For client setup, see [MCP](/mcp-server).
+
+## Clerk session (authenticated dashboard)
+
+The dashboard exchanges Clerk's `__session` cookie for a JWT and sends it on user-specific API calls:
+
+```
+Authorization: Bearer eyJhbGc...
+```
+
+Server-side verification uses `jose` with a cached JWKS — no round-trip to Clerk per request. Implemented in `server/auth-session.ts`. See [Authentication overview](/authentication) for full details.
+
+## Entitlement / tier gating
+
+**Valid key ≠ PRO.** Authentication and entitlement are orthogonal. Every PRO-gated endpoint runs a separate `isCallerPremium(req)` check (`server/_shared/premium-check.ts`) that **does not** accept a trusted browser Origin as proof of PRO, even though it accepts Origin for anonymous/public access.
+
+`isCallerPremium` returns true only when one of these is present:
+
+- A valid `X-WorldMonitor-Key` (env-allowlisted from `WORLDMONITOR_VALID_KEYS`, or a user-owned `wm_`-prefixed key whose Convex record has the `apiAccess` entitlement), **or**
+- A Clerk `Authorization: Bearer …` token whose user has role `pro` or Dodo entitlement tier ≥ 1.
+
+From the browser, `premiumFetch()` (`src/services/premium-fetch.ts`) handles this by injecting one of those credentials on every request. Desktop app uses `WORLDMONITOR_API_KEY` from the runtime config. Server-to-server callers must send the header explicitly.
+
+| Tier | Access |
+|------|--------|
+| Anonymous | Public reads only (conflicts, natural disasters, markets basics) |
+| Signed-in free | Same as anonymous + user preferences |
+| PRO | All endpoints, MCP, AI Brief, Shipping v2, Scenarios |
+
+Tier is resolved from Convex on each call, so a subscription change takes effect on the next request (after cache invalidation).

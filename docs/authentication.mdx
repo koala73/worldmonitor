@@ -1,0 +1,144 @@
+---
+title: "Authentication & Panel Gating"
+description: "How user authentication, premium panel gating, and server-side session enforcement work in WorldMonitor."
+---
+
+WorldMonitor uses [Clerk](https://clerk.com) for authentication. The auth system gates premium panels behind sign-in and tier checks, and enforces session-based access on server-side API endpoints via local JWT verification.
+
+---
+
+## Auth Stack
+
+| Layer | Technology | Purpose |
+|-------|-----------|---------|
+| Auth provider | Clerk | Sign-in (email, social), session management, hosted UI |
+| JWT verification | jose + Clerk JWKS | Server-side bearer token validation (no round-trip) |
+| Convex integration | Clerk JWT template (`convex`) | Convex auth with `applicationID: "convex"` |
+| Auth state | `auth-state.ts` | Reactive browser auth state, role caching |
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `convex/auth.config.ts` | Convex auth provider config — Clerk JWT issuer + applicationID |
+| `src/services/clerk.ts` | Clerk instance init, `getClerkToken()` for Convex JWT template |
+| `src/services/auth-state.ts` | Reactive auth state, role fetching, session hydration |
+| `src/components/AuthHeaderWidget.ts` | Header sign-in button, Clerk UserButton |
+| `server/auth-session.ts` | Server-side JWT validation with jose + cached JWKS |
+
+---
+
+## Panel Gating
+
+Premium panels show a CTA overlay instead of content until the user meets the access requirements.
+
+### Gate Reasons
+
+| Reason | What the user sees | Resolution |
+|--------|-------------------|------------|
+| `ANONYMOUS` | "Sign In to Unlock" | Sign in via Clerk |
+| `FREE_TIER` | "Upgrade to Pro" | Upgrade subscription |
+| `NONE` | Normal panel content | Already unlocked |
+
+### How to Configure Which Panels Are Premium
+
+Three files control gating. **All three must stay in sync** when adding or removing premium panels.
+
+#### 1. Panel config — `src/config/panels.ts`
+
+Add `premium: 'locked'` to the panel entry in the relevant variant:
+
+```ts
+// In FULL_PANELS, FINANCE_PANELS, etc.
+'my-panel': { name: 'My Panel', enabled: true, premium: 'locked' }
+```
+
+#### 2. Client-side gate set — `src/app/panel-layout.ts`
+
+Add the panel key to `WEB_PREMIUM_PANELS`:
+
+```ts
+const WEB_PREMIUM_PANELS = new Set([
+  'stock-analysis',
+  'stock-backtest',
+  'daily-market-brief',
+  'my-panel',  // <-- add here
+]);
+```
+
+This set drives the reactive UI gating — when auth state changes, panels in this set get checked and show/hide CTAs accordingly.
+
+#### 3. Server-side API enforcement (if the panel calls premium APIs)
+
+**Client token injection** — `src/services/runtime.ts` (`WEB_PREMIUM_API_PATHS`):
+
+```ts
+const WEB_PREMIUM_API_PATHS = new Set([
+  '/api/market/v1/analyze-stock',
+  '/api/market/v1/get-stock-analysis-history',
+  '/api/market/v1/backtest-stock',
+  '/api/market/v1/list-stored-stock-backtests',
+  '/api/my-domain/v1/my-endpoint',  // <-- add here
+]);
+```
+
+When a fetch request matches a path in this set and the user has a Clerk session, the client automatically injects `Authorization: Bearer <token>`.
+
+**Server gateway** — `server/gateway.ts` (`PREMIUM_RPC_PATHS`):
+
+```ts
+const PREMIUM_RPC_PATHS = new Set([
+  '/api/market/v1/analyze-stock',
+  '/api/market/v1/get-stock-analysis-history',
+  '/api/market/v1/backtest-stock',
+  '/api/market/v1/list-stored-stock-backtests',
+  '/api/my-domain/v1/my-endpoint',  // <-- add here
+]);
+```
+
+The gateway validates the bearer token via local JWKS verification (jose) and checks `session.role === 'pro'`. Returns 403 if the user isn't pro.
+
+### Currently Gated Panels
+
+| Panel | Variants | Gate type |
+|-------|----------|-----------|
+| `stock-analysis` | full, finance | `locked` (web) |
+| `stock-backtest` | full, finance | `locked` (web) |
+| `daily-market-brief` | full, finance | `locked` (web) |
+
+### Desktop Behavior
+
+Desktop users with a valid `WORLDMONITOR_API_KEY` in the Tauri keychain bypass all panel gating. The existing API key flow is unaffected — bearer tokens are a **second auth path**, not a replacement.
+
+---
+
+## Server-Side Session Enforcement
+
+The Vercel API gateway accepts two forms of authentication for premium endpoints:
+
+1. **Static API key** — `X-WorldMonitor-Key` header (existing flow, unchanged)
+2. **Bearer token** — `Authorization: Bearer <clerk_jwt>` (for web users)
+
+The gateway tries the API key first. If that fails on a premium endpoint, it falls back to bearer token validation using local JWKS verification via `server/auth-session.ts`. The JWT is verified against:
+- **Issuer**: `CLERK_JWT_ISSUER_DOMAIN`
+- **Audience**: `convex` (matches the Clerk JWT template)
+- **Signature**: RSA256 via Clerk's published JWKS
+
+Non-premium endpoints don't require any authentication from web origins.
+
+---
+
+## Environment Variables
+
+| Variable | Where | Purpose |
+|----------|-------|---------|
+| `CLERK_JWT_ISSUER_DOMAIN` | Convex + Vercel | Clerk issuer domain for JWT verification |
+| `VITE_CLERK_PUBLISHABLE_KEY` | Vercel | Client-side Clerk publishable key |
+
+---
+
+## User Roles
+
+User roles (`pro` / `free`) are stored as a `plan` claim in the Clerk JWT. The server extracts this from the verified token payload. Unknown or missing `plan` values default to `free` (fail closed — never pro).
+
+On the client side, `getAuthState().user?.role` exposes the role. Both `isProUser()` and `hasPremiumAccess()` check this alongside legacy API key gates.

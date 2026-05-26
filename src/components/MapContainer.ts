@@ -38,12 +38,22 @@ import type { KindnessPoint } from '@/services/kindness-data';
 import type { HappinessData } from '@/services/happiness-data';
 import type { SpeciesRecovery } from '@/services/conservation-data';
 import type { RenewableInstallation } from '@/services/renewable-installations';
+import type { ResilienceRankingItem } from '@/services/resilience';
 import type { RadiationObservation } from '@/services/radiation';
 import type { GpsJamHex } from '@/services/gps-interference';
 import type { SatellitePosition } from '@/services/satellites';
 import type { IranEvent } from '@/services/conflict';
 import type { ImageryScene } from '@/generated/server/worldmonitor/imagery/v1/service_server';
 import type { WebcamEntry, WebcamCluster } from '@/generated/client/worldmonitor/webcam/v1/service_client';
+import type { TrafficAnomaly as ProtoTrafficAnomaly, DdosLocationHit } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
+import type { DiseaseOutbreakItem } from '@/services/disease-outbreaks';
+import type { GetChokepointStatusResponse } from '@/services/supply-chain';
+import type { ScenarioVisualState, ScenarioResult } from '@/config/scenario-templates';
+import { getAuthState } from '@/services/auth-state';
+import { hasPremiumAccess } from '@/services/panel-gating';
+import { trackGateHit } from '@/services/analytics';
+
+export type { ScenarioVisualState, ScenarioResult };
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
 export type MapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
@@ -83,6 +93,7 @@ export class MapContainer {
   private deckGLMap: DeckGLMap | null = null;
   private svgMap: MapComponent | null = null;
   private globeMap: GlobeMap | null = null;
+  private supplyChainPanel: import('@/components/SupplyChainPanel').SupplyChainPanel | null = null;
   private initialState: MapContainerState;
   private useDeckGL: boolean;
   private useGlobe: boolean;
@@ -123,6 +134,7 @@ export class MapContainer {
   private cachedRadiationObservations: RadiationObservation[] | null = null;
   private cachedGpsJamming: GpsJamHex[] | null = null;
   private cachedSatellites: SatellitePosition[] | null = null;
+  private cachedDiseaseOutbreaks: DiseaseOutbreakItem[] | null = null;
   private cachedCyberThreats: CyberThreat[] | null = null;
   private cachedIranEvents: IranEvent[] | null = null;
   private cachedNewsLocations: NewsLocationMarker[] | null = null;
@@ -130,6 +142,8 @@ export class MapContainer {
   private cachedKindnessData: KindnessPoint[] | null = null;
   private cachedHappinessScores: HappinessData | null = null;
   private cachedCIIScores: CIIScore[] | null = null;
+  private cachedResilienceRanking: ResilienceRankingItem[] | null = null;
+  private cachedResilienceGreyedOut: ResilienceRankingItem[] = [];
   private cachedSpeciesRecovery: SpeciesRecovery[] | null = null;
   private cachedRenewableInstallations: RenewableInstallation[] | null = null;
   private cachedHotspotActivity: NewsItem[] | null = null;
@@ -144,8 +158,11 @@ export class MapContainer {
     this.isMobile = isMobileDevice();
     this.useGlobe = preferGlobe && this.hasWebGLSupport();
 
-    // Use deck.gl on desktop with WebGL support, SVG on mobile
     this.useDeckGL = !this.useGlobe && this.shouldUseDeckGL();
+
+    if (!this.useDeckGL && this.initialState.layers?.resilienceScore) {
+      this.initialState = { ...this.initialState, layers: { ...this.initialState.layers, resilienceScore: false } };
+    }
 
     this.init();
   }
@@ -288,6 +305,7 @@ export class MapContainer {
     if (this.cachedRadiationObservations) this.setRadiationObservations(this.cachedRadiationObservations);
     if (this.cachedGpsJamming) this.setGpsJamming(this.cachedGpsJamming);
     if (this.cachedSatellites) this.setSatellites(this.cachedSatellites);
+    if (this.cachedDiseaseOutbreaks) this.setDiseaseOutbreaks(this.cachedDiseaseOutbreaks);
     if (this.cachedCyberThreats) this.setCyberThreats(this.cachedCyberThreats);
     if (this.cachedIranEvents) this.setIranEvents(this.cachedIranEvents);
     if (this.cachedNewsLocations) this.setNewsLocations(this.cachedNewsLocations);
@@ -295,6 +313,7 @@ export class MapContainer {
     if (this.cachedKindnessData) this.setKindnessData(this.cachedKindnessData);
     if (this.cachedHappinessScores) this.setHappinessScores(this.cachedHappinessScores);
     if (this.cachedCIIScores) this.setCIIScores(this.cachedCIIScores);
+    if (this.cachedResilienceRanking) this.setResilienceRanking(this.cachedResilienceRanking, this.cachedResilienceGreyedOut);
     if (this.cachedSpeciesRecovery) this.setSpeciesRecoveryZones(this.cachedSpeciesRecovery);
     if (this.cachedRenewableInstallations) this.setRenewableInstallations(this.cachedRenewableInstallations);
     if (this.cachedHotspotActivity) this.updateHotspotActivity(this.cachedHotspotActivity);
@@ -309,6 +328,10 @@ export class MapContainer {
 
   public isGlobeMode(): boolean {
     return this.useGlobe;
+  }
+
+  public isDeckGLActive(): boolean {
+    return this.useDeckGL;
   }
 
   private destroyFlatMap(): void {
@@ -345,9 +368,9 @@ export class MapContainer {
     if (this.useDeckGL) { this.deckGLMap?.setIsResizing(isResizing); } else { this.svgMap?.setIsResizing(isResizing); }
   }
 
-  public setView(view: MapView): void {
-    if (this.useGlobe) { this.globeMap?.setView(view); return; }
-    if (this.useDeckGL) { this.deckGLMap?.setView(view as DeckMapView); } else { this.svgMap?.setView(view); }
+  public setView(view: MapView, zoom?: number): void {
+    if (this.useGlobe) { this.globeMap?.setView(view, zoom); return; }
+    if (this.useDeckGL) { this.deckGLMap?.setView(view as DeckMapView, zoom); } else { this.svgMap?.setView(view, zoom); }
   }
 
   public setZoom(zoom: number): void {
@@ -383,8 +406,9 @@ export class MapContainer {
   }
 
   public setLayers(layers: MapLayers): void {
-    if (this.useGlobe) { this.globeMap?.setLayers(layers); return; }
-    if (this.useDeckGL) { this.deckGLMap?.setLayers(layers); } else { this.svgMap?.setLayers(layers); }
+    const sanitized = !this.useDeckGL && layers.resilienceScore ? { ...layers, resilienceScore: false } : layers;
+    if (this.useGlobe) { this.globeMap?.setLayers(sanitized); return; }
+    if (this.useDeckGL) { this.deckGLMap?.setLayers(sanitized); } else { this.svgMap?.setLayers(sanitized); }
   }
 
   public getState(): MapContainerState {
@@ -427,6 +451,16 @@ export class MapContainer {
     this.cachedOutages = outages;
     if (this.useGlobe) { this.globeMap?.setOutages(outages); return; }
     if (this.useDeckGL) { this.deckGLMap?.setOutages(outages); } else { this.svgMap?.setOutages(outages); }
+  }
+
+  public setTrafficAnomalies(anomalies: ProtoTrafficAnomaly[]): void {
+    if (this.useGlobe) { this.globeMap?.setTrafficAnomalies(anomalies); return; }
+    if (this.useDeckGL) { this.deckGLMap?.setTrafficAnomalies(anomalies); }
+  }
+
+  public setDdosLocations(hits: DdosLocationHit[]): void {
+    if (this.useGlobe) { this.globeMap?.setDdosLocations(hits); return; }
+    if (this.useDeckGL) { this.deckGLMap?.setDdosLocations(hits); }
   }
 
   public setAisData(disruptions: AisDisruptionEvent[], density: AisDensityZone[]): void {
@@ -577,6 +611,12 @@ export class MapContainer {
     if (this.useGlobe) { this.globeMap?.setSatellites(positions); return; }
   }
 
+  public setDiseaseOutbreaks(outbreaks: DiseaseOutbreakItem[]): void {
+    this.cachedDiseaseOutbreaks = outbreaks;
+    if (this.useGlobe) return; // TODO: add globe support for disease outbreaks layer
+    if (this.useDeckGL) this.deckGLMap?.setDiseaseOutbreaks(outbreaks);
+  }
+
   public setCyberThreats(threats: CyberThreat[]): void {
     this.cachedCyberThreats = threats;
     if (this.useGlobe) { this.globeMap?.setCyberThreats(threats); return; }
@@ -634,10 +674,24 @@ export class MapContainer {
     // SVG map does not support choropleth overlay
   }
 
+  public setChokepointData(data: GetChokepointStatusResponse | null): void {
+    if (this.useGlobe) { this.globeMap?.setChokepointData(data); return; }
+    if (this.useDeckGL) { this.deckGLMap?.setChokepointData(data); return; }
+    this.svgMap?.setChokepointData(data);
+  }
+
   public setCIIScores(scores: CIIScore[]): void {
     this.cachedCIIScores = scores;
     if (this.useGlobe) { this.globeMap?.setCIIScores(scores); return; }
     if (this.useDeckGL) { this.deckGLMap?.setCIIScores(scores); }
+  }
+
+  public setResilienceRanking(items: ResilienceRankingItem[], greyedOut: ResilienceRankingItem[] = []): void {
+    this.cachedResilienceRanking = items;
+    this.cachedResilienceGreyedOut = greyedOut;
+    if (this.useDeckGL) {
+      this.deckGLMap?.setResilienceRanking(items, greyedOut);
+    }
   }
 
   public setSpeciesRecoveryZones(species: SpeciesRecovery[]): void {
@@ -797,6 +851,7 @@ export class MapContainer {
 
   // Layer enable/disable and trigger methods
   public enableLayer(layer: keyof MapLayers): void {
+    if (layer === 'resilienceScore' && !this.useDeckGL) return;
     if (this.useGlobe) { this.globeMap?.enableLayer(layer); return; }
     if (this.useDeckGL) {
       this.deckGLMap?.enableLayer(layer);
@@ -917,6 +972,67 @@ export class MapContainer {
     }
   }
 
+  // ─── Route Highlight ─────────────────────────────────────────────────────────
+
+  public highlightRoute(routeIds: string[]): void {
+    this.deckGLMap?.highlightRoute(routeIds);
+  }
+
+  public clearHighlightedRoute(): void {
+    this.deckGLMap?.clearHighlightedRoute();
+  }
+
+  public setBypassRoutes(corridors: Array<{fromPort: [number, number]; toPort: [number, number]}>): void {
+    this.deckGLMap?.setBypassRoutes(corridors);
+  }
+
+  public clearBypassRoutes(): void {
+    this.deckGLMap?.clearBypassRoutes();
+  }
+
+  public zoomToRoutes(routeIds: string[]): void {
+    this.deckGLMap?.zoomToRoutes(routeIds);
+  }
+
+  // ─── Scenario Engine ─────────────────────────────────────────────────────────
+
+  public setSupplyChainPanel(panel: import('@/components/SupplyChainPanel').SupplyChainPanel): void {
+    this.supplyChainPanel = panel;
+  }
+
+  /**
+   * Activate a scenario across all active renderers.
+   * PRO-gated — free users trigger `trackGateHit('scenario-engine')` only.
+   *
+   * @param scenarioId  Template ID from scenario-templates.ts
+   * @param result      Computed result from the scenario worker
+   */
+  public activateScenario(scenarioId: string, result: ScenarioResult): void {
+    if (!hasPremiumAccess(getAuthState())) {
+      trackGateHit('scenario-engine');
+      return;
+    }
+    const state: ScenarioVisualState = {
+      scenarioId,
+      disruptedChokepointIds: result.affectedChokepointIds,
+      affectedIso2s: result.topImpactCountries.map((c: { iso2: string }) => c.iso2),
+    };
+    this.deckGLMap?.setScenarioState(state);
+    this.svgMap?.setScenarioState(state);
+    this.globeMap?.setScenarioState(state);
+    this.supplyChainPanel?.showScenarioSummary(scenarioId, result);
+  }
+
+  /**
+   * Deactivate the current scenario and restore normal visual state.
+   */
+  public deactivateScenario(): void {
+    this.deckGLMap?.setScenarioState(null);
+    this.svgMap?.setScenarioState(null);
+    this.globeMap?.setScenarioState(null);
+    this.supplyChainPanel?.hideScenarioSummary();
+  }
+
   // Utility methods
   public isDeckGLMode(): boolean {
     return this.useDeckGL;
@@ -966,6 +1082,7 @@ export class MapContainer {
     this.cachedRadiationObservations = null;
     this.cachedGpsJamming = null;
     this.cachedSatellites = null;
+    this.cachedDiseaseOutbreaks = null;
     this.cachedCyberThreats = null;
     this.cachedIranEvents = null;
     this.cachedNewsLocations = null;

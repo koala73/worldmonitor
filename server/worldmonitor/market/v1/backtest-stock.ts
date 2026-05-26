@@ -12,6 +12,7 @@ import {
   getFallbackOverlay,
   signalDirection,
   type Candle,
+  type AnalystData,
   STOCK_ANALYSIS_ENGINE_VERSION,
 } from './analyze-stock';
 import {
@@ -136,6 +137,11 @@ async function _ensureHistoricalAnalysisLedger(
     const analysisAt = candles[index]?.timestamp || 0;
     if (!analysisAt) continue;
 
+    const emptyAnalyst: AnalystData = {
+      analystConsensus: { strongBuy: 0, buy: 0, hold: 0, sell: 0, strongSell: 0, total: 0, period: '' },
+      priceTarget: { high: 0, low: 0, mean: 0, median: 0, current: 0, numberOfAnalysts: 0 },
+      recentUpgrades: [],
+    };
     generated.push(buildAnalysisResponse({
       symbol,
       name,
@@ -143,6 +149,7 @@ async function _ensureHistoricalAnalysisLedger(
       technical,
       headlines: [],
       overlay: getFallbackOverlay(name, technical, []),
+      analystData: emptyAnalyst,
       includeNews: false,
       analysisAt,
       generatedAt: new Date(analysisAt).toISOString(),

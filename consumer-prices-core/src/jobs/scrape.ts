@@ -10,9 +10,13 @@ import { loadAllRetailerConfigs, loadRetailerConfig } from '../config/loader.js'
 import { initProviders, teardownAll } from '../acquisition/registry.js';
 import { GenericPlaywrightAdapter } from '../adapters/generic.js';
 import { ExaSearchAdapter } from '../adapters/exa-search.js';
+import { SearchAdapter } from '../adapters/search.js';
+import { ExaProvider } from '../acquisition/exa.js';
+import { FirecrawlProvider } from '../acquisition/firecrawl.js';
 import type { AdapterContext } from '../adapters/types.js';
 import { upsertCanonicalProduct } from '../db/queries/products.js';
-import { getBasketItemId, upsertProductMatch } from '../db/queries/matches.js';
+import { getBasketItemId, getPinnedUrlsForRetailer, getDisabledPinsForRecovery, upsertProductMatch } from '../db/queries/matches.js';
+import { AUTO_MATCH_THRESHOLD, type ValidatorResult } from '../adapters/validator.js';
 
 const logger = {
   info: (msg: string, ...args: unknown[]) => console.log(`[scrape] ${msg}`, ...args),
@@ -26,13 +30,13 @@ async function sleep(ms: number) {
 
 async function getOrCreateRetailer(slug: string, config: ReturnType<typeof loadRetailerConfig>) {
   const result = await query<{ id: string }>(
-    `INSERT INTO retailers (slug, name, market_code, country_code, currency_code, adapter_key, base_url)
-     VALUES ($1,$2,$3,$3,$4,$5,$6)
+    `INSERT INTO retailers (slug, name, market_code, country_code, currency_code, adapter_key, base_url, active)
+     VALUES ($1,$2,$3,$3,$4,$5,$6,$7)
      ON CONFLICT (slug) DO UPDATE SET
        name = EXCLUDED.name, adapter_key = EXCLUDED.adapter_key,
-       base_url = EXCLUDED.base_url, updated_at = NOW()
+       base_url = EXCLUDED.base_url, active = EXCLUDED.active, updated_at = NOW()
      RETURNING id`,
-    [slug, config.name, config.marketCode, config.currencyCode, config.adapter, config.baseUrl],
+    [slug, config.name, config.marketCode, config.currencyCode, config.adapter, config.baseUrl, config.enabled],
   );
   return result.rows[0].id;
 }
@@ -59,25 +63,67 @@ async function updateScrapeRun(
   );
 }
 
-export async function scrapeRetailer(slug: string) {
-  initProviders(process.env as Record<string, string>);
+// Pin disable + auto-recovery helpers extracted to ./scrape-pin-recovery.ts
+// for unit-testability (avoids pulling scrape.ts's heavy transitive deps —
+// exa-js, playwright, etc. — into the test environment).
+import { handleStaleOnInStock, handleStaleOnOutOfStock, handlePinError } from './scrape-pin-recovery.js';
 
+export async function scrapeRetailer(slug: string) {
   const config = loadRetailerConfig(slug);
+
+  // Always sync active state from YAML to DB, even for disabled retailers.
+  const retailerId = await getOrCreateRetailer(slug, config);
+
   if (!config.enabled) {
     logger.info(`${slug} is disabled, skipping`);
     return;
   }
 
-  const retailerId = await getOrCreateRetailer(slug, config);
-  const runId = await createScrapeRun(retailerId);
+  // Validate API keys before opening a scrape_run row — an early throw here
+  // would otherwise leave the run stuck in status='running' forever.
+  const exaKey = (process.env.EXA_API_KEYS || process.env.EXA_API_KEY || '').split(/[\n,]+/)[0].trim();
+  const fcKey = process.env.FIRECRAWL_API_KEY ?? '';
 
+  if (config.adapter === 'search') {
+    if (!exaKey) throw new Error(`search adapter requires EXA_API_KEY / EXA_API_KEYS (retailer: ${slug})`);
+    if (!fcKey) throw new Error(`search adapter requires FIRECRAWL_API_KEY (retailer: ${slug})`);
+  }
+
+  const runId = await createScrapeRun(retailerId);
   logger.info(`Run ${runId} started for ${slug}`);
 
+  // Active pins (healthy) — every cycle.
+  const activePins = await getPinnedUrlsForRetailer(retailerId);
+  // Recovery probes (sticky-disabled) — bounded slice per cycle so the
+  // disable trap can't make decay permanent (PR #3627 P1 review). The
+  // recovery counter (consecutive_in_stock) accumulates over multiple
+  // probe cycles; after 3 successful in-stock observations,
+  // handleStaleOnInStock clears pin_disabled_at and the pin returns to
+  // active rotation. Aggregation gates (worldmonitor.ts) keep filtering
+  // pin_disabled_at IS NULL so probed-but-still-disabled pins don't leak
+  // into spread until they've fully recovered.
+  const RECOVERY_PROBE_LIMIT = 10;
+  const recoveryPins = await getDisabledPinsForRecovery(retailerId, RECOVERY_PROBE_LIMIT);
+  // Merge: active pins take precedence on key collision (active set is
+  // healthier; collision is rare but possible if two retailer_products
+  // both match the same basket item).
+  const pinnedUrls = new Map(activePins);
+  let recoveryAdded = 0;
+  for (const [key, val] of recoveryPins) {
+    if (!pinnedUrls.has(key)) {
+      pinnedUrls.set(key, val);
+      recoveryAdded++;
+    }
+  }
+  logger.info(`${slug}: ${activePins.size} active pins + ${recoveryAdded} recovery probes (${pinnedUrls.size} total)`);
+
   const adapter =
-    config.adapter === 'exa-search'
-      ? new ExaSearchAdapter((process.env.EXA_API_KEYS || process.env.EXA_API_KEY || '').split(/[\n,]+/)[0].trim())
+    config.adapter === 'search'
+      ? new SearchAdapter(new ExaProvider(exaKey), new FirecrawlProvider(fcKey))
+      : config.adapter === 'exa-search'
+      ? new ExaSearchAdapter(exaKey, process.env.FIRECRAWL_API_KEY)
       : new GenericPlaywrightAdapter();
-  const ctx: AdapterContext = { config, runId, logger };
+  const ctx: AdapterContext = { config, runId, logger, retailerId, pinnedUrls };
 
   const targets = await adapter.discoverTargets(ctx);
   logger.info(`Discovered ${targets.length} targets`);
@@ -90,13 +136,52 @@ export async function scrapeRetailer(slug: string) {
 
   for (const target of targets) {
     pagesAttempted++;
+    const isDirect = target.metadata?.direct === true;
+    const pinnedProductId = target.metadata?.pinnedProductId as string | undefined;
+    const pinnedMatchId = target.metadata?.matchId as string | undefined;
     try {
       const fetchResult = await adapter.fetchTarget(ctx, target);
       const products = await adapter.parseListing(ctx, fetchResult);
 
+      if (products.length === 0) {
+        logger.warn(`  [${target.id}] parsed 0 products — counting as error`);
+        errorsCount++;
+        if (isDirect && pinnedProductId && pinnedMatchId) {
+          await handlePinError(pinnedProductId, pinnedMatchId, target.id);
+        }
+        continue;
+      }
       logger.info(`  [${target.id}] parsed ${products.length} products`);
 
       for (const product of products) {
+        // wasDirectHit=true only when the pin URL itself was successfully used.
+        // fetchTarget sets direct:false in the payload when it falls back to Exa,
+        // so this correctly distinguishes "pin worked" from "pin failed, Exa used instead".
+        const wasDirectHit = isDirect && product.rawPayload.direct === true;
+
+        // Direct-hit validator enforcement — the pin path's common steady
+        // state. The legacy isTitlePlausible gate inside _extractFromUrl
+        // already let this hit through, so the strict validator here acts
+        // as a second opinion that specifically catches pins that have
+        // drifted onto the wrong product (e.g. "White Sugar 1kg" now
+        // resolving to "mango sugar baby india"). If the validator
+        // disagrees, skip the observation entirely and route this target
+        // through the existing pin-error counter so the pin soft-disables
+        // after repeated failures. Aggregates never see the bad price.
+        if (wasDirectHit) {
+          const v = product.rawPayload.validator as ValidatorResult | undefined;
+          if (v && !v.ok) {
+            logger.warn(
+              `  [${target.id}] pin validator reject — skipping observation, counting as pin error. reasons=${v.reasons.join(',')} score=${v.score.toFixed(2)} title="${product.rawTitle}"`,
+            );
+            errorsCount++;
+            if (pinnedProductId && pinnedMatchId) {
+              await handlePinError(pinnedProductId, pinnedMatchId, target.id);
+            }
+            continue;
+          }
+        }
+
         const productId = await upsertRetailerProduct({
           retailerId,
           retailerSku: product.retailerSku,
@@ -126,10 +211,31 @@ export async function scrapeRetailer(slug: string) {
           rawPayloadJson: product.rawPayload,
         });
 
-        // For exa-search adapter: auto-create product → basket match since we
-        // searched for a specific basket item (no ambiguity in what was scraped).
+        // Stale-pin maintenance — only when the pin URL was actually used (not Exa fallback).
+        // Symmetric disable + auto-recovery (3 consecutive observations either way).
+        // See migration 009 + memory `sticky-disable-without-auto-recovery-decays`
+        // for why both halves matter: code alone leaves historical sticky-decay,
+        // migration alone restarts decay immediately on next nightly scrape.
+        if (wasDirectHit && pinnedProductId && pinnedMatchId) {
+          if (product.inStock) {
+            await handleStaleOnInStock(pinnedProductId, pinnedMatchId, target.id);
+          } else {
+            await handleStaleOnOutOfStock(pinnedProductId, pinnedMatchId, target.id);
+          }
+        }
+
+        // When a pinned target fell back to Exa (isDirect but !wasDirectHit),
+        // increment pin_error_count so the old broken pin eventually gets disabled.
+        if (isDirect && !wasDirectHit && pinnedProductId && pinnedMatchId) {
+          await handlePinError(pinnedProductId, pinnedMatchId, target.id);
+        }
+
+        // For search-based adapters: auto-create product → basket match.
+        // Skip only when the pin URL was used directly — the match already exists.
+        // Allow when this is a fresh Exa discovery (including Exa fallback from a broken pin).
         if (
-          config.adapter === 'exa-search' &&
+          !wasDirectHit &&
+          (config.adapter === 'exa-search' || config.adapter === 'search') &&
           product.rawPayload.basketSlug &&
           product.rawPayload.canonicalName
         ) {
@@ -143,12 +249,31 @@ export async function scrapeRetailer(slug: string) {
               product.rawPayload.canonicalName as string,
             );
             if (basketItemId) {
+              // Use the validator result threaded through the adapter payload
+              // to pick the match state. No validator = legacy fallback at
+              // score 1.0 / auto (keeps the pre-validator adapters working
+              // unchanged). The strict path scores real hits and downgrades
+              // weak ones to 'candidate' so they never enter aggregates.
+              const validator = product.rawPayload.validator as ValidatorResult | undefined;
+              const hasValidator = validator != null;
+              const score = hasValidator ? validator.score : 1.0;
+              const status: 'auto' | 'candidate' =
+                !hasValidator || (validator.ok && score >= AUTO_MATCH_THRESHOLD) ? 'auto' : 'candidate';
+              const evidence = hasValidator
+                ? { validator: { reasons: validator.reasons, signals: validator.signals } }
+                : {};
+              if (status === 'candidate') {
+                logger.warn(
+                  `  [${target.id}] downgraded to candidate score=${score.toFixed(2)} reasons=${validator?.reasons.join(',')}`,
+                );
+              }
               await upsertProductMatch({
                 retailerProductId: productId,
                 canonicalProductId: canonicalId,
                 basketItemId,
-                matchScore: 1.0,
-                matchStatus: 'auto',
+                matchScore: score,
+                matchStatus: status,
+                evidence,
               });
             }
           } catch (matchErr) {
@@ -161,6 +286,9 @@ export async function scrapeRetailer(slug: string) {
     } catch (err) {
       errorsCount++;
       logger.error(`  [${target.id}] failed: ${err}`);
+      if (isDirect && pinnedProductId && pinnedMatchId) {
+        await handlePinError(pinnedProductId, pinnedMatchId, target.id);
+      }
     }
 
     if (pagesAttempted < targets.length) await sleep(delay);
@@ -184,22 +312,46 @@ export async function scrapeRetailer(slug: string) {
     [retailerId, isSuccess ? new Date() : null, status, Math.round(parseSuccessRate * 100) / 100],
   );
 
-  await teardownAll();
 }
 
 export async function scrapeAll() {
+  // initProviders is required for GenericPlaywrightAdapter (playwright/p0 adapters use the
+  // registry via fetchWithFallback). SearchAdapter and ExaSearchAdapter construct their own
+  // provider instances directly from env vars and bypass the registry.
   initProviders(process.env as Record<string, string>);
-  const configs = loadAllRetailerConfigs().filter((c) => c.enabled);
-  logger.info(`Scraping ${configs.length} retailers`);
-  for (const c of configs) {
-    await scrapeRetailer(c.slug);
-  }
+  // Iterate ALL configs (including disabled) so getOrCreateRetailer syncs active=false to DB.
+  // scrapeRetailer() returns early after the upsert for disabled retailers.
+  const configs = loadAllRetailerConfigs();
+  logger.info(`Syncing ${configs.length} retailers (${configs.filter((c) => c.enabled).length} enabled)`);
+
+  // Run retailers in parallel: each hits a different domain so rate limits don't conflict.
+  // Cap at 5 concurrent to avoid saturating Firecrawl's global request limits.
+  const CONCURRENCY = 5;
+  const queue = [...configs];
+  const workers = Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
+    while (queue.length > 0) {
+      const cfg = queue.shift()!;
+      try {
+        await scrapeRetailer(cfg.slug);
+      } catch (err) {
+        logger.warn(`scrapeRetailer ${cfg.slug} failed: ${err}`);
+      }
+    }
+  });
+  await Promise.all(workers);
+
+  await teardownAll();
 }
 
 async function main() {
   try {
     if (process.argv[2]) {
-      await scrapeRetailer(process.argv[2]);
+      initProviders(process.env as Record<string, string>);
+      try {
+        await scrapeRetailer(process.argv[2]);
+      } finally {
+        await teardownAll();
+      }
     } else {
       await scrapeAll();
     }

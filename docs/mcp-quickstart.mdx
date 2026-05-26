@@ -1,0 +1,167 @@
+---
+title: "MCP Quickstart"
+description: "Connect Claude Desktop to WorldMonitor and make your first real intelligence call in five minutes."
+---
+
+WorldMonitor exposes 39 live tools — markets, conflict events, maritime chokepoints, aviation, climate, AI briefs — over the [Model Context Protocol](https://modelcontextprotocol.io). This page is the shortest path from zero to a useful response inside Claude. Everything else in the [MCP Server reference](/mcp-server) is optional reading once this works.
+
+## 1. Pick a tier and grab credentials
+
+Free accounts can't reach the MCP server — the OAuth flow returns `401 INSUFFICIENT_TIER`. You need one of:
+
+- **Pro** — sign in with your WorldMonitor account, no key to manage. 50 tool calls per UTC day.
+- **API Starter / Business / Enterprise** — paste a `wm_live_…` key in your client, or use the same OAuth flow as Pro. 1,000 / 10,000 / unlimited calls per day.
+
+Upgrade or generate a key at [worldmonitor.app/pro](https://www.worldmonitor.app/pro). The rest of this guide assumes Claude Desktop + OAuth (the simplest path); if you'd rather paste a `wm_…` key into a `curl` script, jump to [Server-side curl](#server-side-curl) at the bottom.
+
+## 2. Add the server to Claude Desktop
+
+Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or the Windows equivalent at `%APPDATA%\Claude\claude_desktop_config.json` and add the `worldmonitor` entry:
+
+```json
+{
+  "mcpServers": {
+    "worldmonitor": {
+      "url": "https://worldmonitor.app/mcp"
+    }
+  }
+}
+```
+
+Restart Claude Desktop. The first time you mention WorldMonitor in a chat, Claude pops the OAuth consent screen — click **Sign in with WorldMonitor Pro**, authenticate in your browser, and the token is stored locally by Claude. No API key ever touches your filesystem.
+
+<Tip>
+Cursor, Claude web, and MCP Inspector use the same URL. See [client setup](/mcp-server#client-setup) for the exact config field per client.
+</Tip>
+
+## 3. Ask your first question
+
+Open a new chat in Claude Desktop and try:
+
+> _What's the current US equity market sentiment and which sectors are leading or lagging today?_
+
+Claude will pick `get_market_data` from the WorldMonitor toolset, call it with no arguments, and answer in plain English. The raw tool response is a single bootstrap bundle covering quotes, sector ETFs, crypto, gulf quotes, ETF flows, and the WorldMonitor fear-greed composite. Typical latency: **300–800 ms** (cache read from Redis, no upstream API call).
+
+Behind the scenes, the tool call looks like this:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": { "name": "get_market_data", "arguments": {} }
+}
+```
+
+And the response is a standard MCP content block — a single text block whose `text` field is the JSON payload:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      { "type": "text", "text": "{\"cached_at\":\"2026-05-17T10:34:00.852Z\",\"stale\":false,\"data\":{\"stocks-bootstrap\":{...},\"sectors\":{...},\"fear-greed\":{...}}}" }
+    ],
+    "isError": false
+  }
+}
+```
+
+Two payload-level fields you'll see on every cache tool:
+
+- `cached_at` — ISO timestamp of the oldest contributing data point. Use this to reason about how fresh the answer is.
+- `stale` — `true` when any contributing seed exceeded its freshness budget. Tells the model when to caveat its answer.
+
+## 4. Trim the response (when it matters)
+
+`get_market_data` returns roughly 100 KB unfiltered. That's fine for one call, but if you're chaining several reads inside a longer conversation, you'll burn context fast. Every tool accepts an optional `jmespath` argument that projects the response server-side **before** it crosses the wire:
+
+```json
+{
+  "name": "get_market_data",
+  "arguments": {
+    "jmespath": "data.\"stocks-bootstrap\".quotes[?symbol=='AAPL' || symbol=='MSFT'].{s:symbol,p:price,chg:change}"
+  }
+}
+```
+
+Same call, ~120 bytes of response instead of 100 KB. JMESPath cuts payload by **80–95%** for typical projections.
+
+Don't try to memorise the grammar from scratch — head to the [JMESPath guide](/mcp-jmespath) for the 12 worked examples covering filters, projections, multiselect-hash, and the rest of the slices you'll actually use.
+
+## 5. Browse the full tool catalog
+
+`get_market_data` is one of 39 tools. The rest cover:
+
+- **Geopolitical & security** — `get_conflict_events`, `get_country_risk`, `get_military_posture`, `get_cyber_threats`, `get_sanctions_data`, `get_news_intelligence`.
+- **Movement & infrastructure** — `get_chokepoint_status`, `get_maritime_activity`, `get_airspace`, `get_aviation_status`, `search_flights`.
+- **Energy & macro** — `get_energy_intelligence`, `get_economic_data`, `get_country_macro`, `get_tariff_trends`, `get_eu_housing_cycle`, `get_eu_quarterly_gov_debt`, `get_eu_industrial_production`.
+- **Environment & health** — `get_climate_data`, `get_natural_disasters`, `get_radiation_data`, `get_health_signals`.
+- **AI synthesis** (live LLM, slower — 1–4 s) — `get_world_brief`, `get_country_brief`, `analyze_situation`, `generate_forecasts`.
+
+Full per-tool parameters, freshness budgets, and `curl` examples are in the [MCP Tools Reference](/mcp-tools-reference). When the compressed `tools/list` description is ambiguous about a specific tool, call `describe_tool` with `tool_name: "<name>"` for the full uncompressed definition — it's exempt from your daily quota, so use it freely while exploring.
+
+## What just happened
+
+The MCP handshake is invisible from the chat side, but here's the sequence so you know where to look if something breaks:
+
+1. Claude Desktop reads `claude_desktop_config.json`, sees the WorldMonitor server, and on first use POSTs `initialize` to `https://worldmonitor.app/mcp`. The server responds with its capabilities, the protocol version (`2025-03-26`), and a session-level `instructions` string that tells the model about the universal `jmespath` argument.
+2. Claude Desktop calls `tools/list` and receives 39 compressed tool descriptions (`≤120` bytes per tool). The compressed form keeps `tools/list` cheap; `describe_tool` returns the full definition on demand.
+3. When you ask a question that needs live data, Claude picks a tool, calls `tools/call`, and inlines the response into its reply. Cache tools return in under a second; LLM-backed tools (`get_world_brief`, `analyze_situation`, etc.) take 1–4 s.
+
+## Server-side curl
+
+If you'd rather skip the OAuth dance and drive MCP from a script:
+
+```bash
+export WM_KEY="wm_live_..."  # API Starter+ key from worldmonitor.app/settings
+
+# 1. List tools (compressed descriptions)
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+
+# 2. Call a cache tool
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":2,
+    "method":"tools/call",
+    "params":{"name":"get_market_data","arguments":{}}
+  }'
+
+# 3. Same call with a JMESPath projection (much smaller response).
+# Heredoc keeps the single-quoted JMESPath string literals readable —
+# wrapping the JSON in -d '...' would collide with the inner quotes.
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  --data-binary @- <<'EOF'
+{
+  "jsonrpc":"2.0","id":3,
+  "method":"tools/call",
+  "params":{
+    "name":"get_market_data",
+    "arguments":{
+      "jmespath":"data.\"stocks-bootstrap\".quotes[?symbol=='AAPL' || symbol=='MSFT'].{s:symbol,p:price}"
+    }
+  }
+}
+EOF
+```
+
+The `wm_live_…` key goes in `X-WorldMonitor-Key`, **not** as a `Bearer` token — sending it as a bearer fails OAuth resolution and returns `401 invalid_token`. If you already have an OAuth access token from `/api/oauth/token`, use `Authorization: Bearer $TOKEN` instead and drop the `X-WorldMonitor-Key` header.
+
+## Where to go next
+
+- **[JMESPath guide](/mcp-jmespath)** — projection grammar with 12 worked examples against real response shapes. Read this before your second day of MCP use; it will pay for itself in saved tokens within an hour.
+- **[MCP Tools Reference](/mcp-tools-reference)** — per-tool parameters, freshness budgets, API endpoint mapping, and `curl` examples for every tool.
+- **[MCP Server reference](/mcp-server)** — auth modes, OAuth setup, plans & quotas, error codes, and freshness model.
+- **[Authentication overview](/authentication)** — when to use a `wm_live_…` key vs. OAuth vs. browser session.
+
+## Operational note (for ops, not callers)
+
+Every `initialize` and `tools/call` emits a structured telemetry line tagged `mcp.toolcall` or `mcp.initialize` with latency, payload bytes (pre and post JMESPath), `jmespath_used`, and `budget_exceeded`. Pipe Vercel / log-drain consumers at this line if you want a real P95 per tool. Caller-facing behaviour is unaffected.

@@ -1,0 +1,65 @@
+syntax = "proto3";
+package worldmonitor.intelligence.v1;
+import "sebuf/http/annotations.proto";
+option go_package = "github.com/koala73/worldmonitor/worldmonitor/intelligence/v1";
+
+message ComputeEnergyShockScenarioRequest {
+  string country_code   = 1 [(sebuf.http.query) = {name: "country_code"}];
+  string chokepoint_id  = 2 [(sebuf.http.query) = {name: "chokepoint_id"}];
+  int32  disruption_pct = 3 [(sebuf.http.query) = {name: "disruption_pct"}];
+  string fuel_mode      = 4 [(sebuf.http.query) = {name: "fuel_mode"}]; // "oil"|"gas"|"both", default "oil"
+}
+
+message ProductImpact {
+  string product         = 1;
+  double output_loss_kbd = 2;
+  double demand_kbd      = 3;
+  double deficit_pct     = 4;
+}
+
+message GasStorageBuffer {
+  double fill_pct    = 1;
+  double gas_twh     = 2;
+  double buffer_days = 3;
+  string trend       = 4;
+  string date        = 5;
+  string scope       = 6;
+}
+
+message GasImpact {
+  double lng_share_of_imports = 1;
+  double lng_imports_tj       = 2;
+  double lng_disruption_tj    = 3;
+  double total_demand_tj      = 4;
+  double deficit_pct          = 5;
+  bool   data_available       = 6;
+  string assessment           = 7;
+  GasStorageBuffer storage    = 8;
+  string data_source          = 9;
+}
+
+message ComputeEnergyShockScenarioResponse {
+  string country_code         = 1;
+  string chokepoint_id        = 2;
+  int32  disruption_pct       = 3;
+  double gulf_crude_share     = 4;
+  double crude_loss_kbd       = 5;
+  repeated ProductImpact products = 6;
+  int32  effective_cover_days = 7;
+  string assessment           = 8;
+  bool   data_available       = 9;  // oil mode: equals jodi_oil_coverage; gas mode: equals gas data available; both mode: true if either has data. Use per-source coverage fields 11-14 for precise checks.
+
+  // field 10 reserved for future use
+
+  // v2 fields
+  bool   jodi_oil_coverage     = 11;  // JODI oil data present for this country
+  bool   comtrade_coverage     = 12;  // Comtrade crude flows data present
+  bool   iea_stocks_coverage   = 13;  // IEA strategic stocks data present
+  bool   portwatch_coverage    = 14;  // PortWatch live flow data present
+  string coverage_level        = 15;  // "full" | "partial" | "unsupported"
+  repeated string limitations  = 16;  // model assumption strings
+  bool   degraded              = 17;  // true when PortWatch absent/stale
+  string chokepoint_confidence = 18;  // "high" | "low" | "none"
+  optional double live_flow_ratio = 19;  // from energy:chokepoint-flows:v1, 0-1.5; absent when portwatch_coverage=false
+  GasImpact gas_impact        = 20;
+}

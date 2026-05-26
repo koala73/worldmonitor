@@ -1,0 +1,13 @@
+ISO 3 code,Date,Variable,Unit,Value,Category
+USA,2024-01-01,Fossil,TWh,400,
+USA,2024-01-01,Renewables,TWh,300,
+USA,2024-01-01,Nuclear,TWh,100,
+USA,2024-01-01,Coal,TWh,200,
+USA,2024-01-01,Gas,TWh,200,
+USA,2024-01-01,Total Generation,TWh,800,
+DEU,2024-01-01,Fossil,TWh,200,
+DEU,2024-01-01,Renewables,TWh,500,
+DEU,2024-01-01,Nuclear,TWh,0,
+DEU,2024-01-01,Coal,TWh,100,
+DEU,2024-01-01,Gas,TWh,100,
+DEU,2024-01-01,Total Generation,TWh,700,
