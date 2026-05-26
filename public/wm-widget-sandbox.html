@@ -4,17 +4,56 @@
 <body>
 <script>
 (function () {
+  var params = new URLSearchParams(window.location.hash.slice(1));
+  var widgetId = params.get('id') || '';
+  var widgetToken = params.get('token') || '';
+  var parentOrigin = '';
   var handled = false;
+
+  function isAllowedParentOrigin(origin) {
+    try {
+      var url = new URL(origin);
+      var isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+      if ((url.protocol === 'http:' || url.protocol === 'https:') && isLocalhost) {
+        return true;
+      }
+      if (url.protocol !== 'https:') {
+        return false;
+      }
+      if (url.hostname === 'worldmonitor.app' || url.hostname.endsWith('.worldmonitor.app')) {
+        return true;
+      }
+      return /^worldmonitor-[a-z0-9-]+-elie-[a-z0-9]+\.vercel\.app$/.test(url.hostname);
+    } catch (_err) {
+      return false;
+    }
+  }
+
+  try {
+    parentOrigin = document.referrer ? new URL(document.referrer).origin : '';
+  } catch (_err) {
+    parentOrigin = '';
+  }
+
   window.addEventListener('message', function (e) {
     if (handled) return;
     if (!e.data || e.data.type !== 'wm-html') return;
-    var origin = e.origin || '';
-    if (!origin.endsWith('worldmonitor.app') && !/^https?:\/\/localhost/.test(origin)) return;
+    if (!widgetId || !widgetToken || e.data.id !== widgetId || e.data.token !== widgetToken) return;
+    if (e.source !== window.parent) return;
+    if (!parentOrigin || e.origin !== parentOrigin || !isAllowedParentOrigin(parentOrigin)) return;
+    if (typeof e.data.html !== 'string') return;
     handled = true;
     document.open();
     document.write(e.data.html);
     document.close();
   });
+
+  if (widgetId && widgetToken && parentOrigin && isAllowedParentOrigin(parentOrigin)) {
+    window.parent.postMessage(
+      { type: 'wm-widget-ready', id: widgetId, token: widgetToken },
+      parentOrigin,
+    );
+  }
 }());
 </script>
 </body>

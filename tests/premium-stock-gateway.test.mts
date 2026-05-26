@@ -133,128 +133,117 @@ describe('premium gateway API key enforcement', () => {
     }
   });
 
-  it('caps POST→GET array expansion per key (#3550)', async () => {
+  it('strips client-supplied x-user-id before an anonymous session reaches handlers', async () => {
     const handler = createDomainGateway([
       {
         method: 'GET',
         path: '/api/market/v1/list-market-quotes',
-        handler: async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
+        handler: async (request) => new Response(JSON.stringify({
+          userId: request.headers.get('x-user-id'),
+        }), { status: 200 }),
       },
     ]);
 
-    const requestBody = JSON.stringify({ symbols: Array.from({ length: 201 }, () => 'AAPL') });
-    const res = await handler(new Request('https://worldmonitor.app/api/market/v1/list-market-quotes', {
-      method: 'POST',
+    const res = await handler(new Request('https://worldmonitor.app/api/market/v1/list-market-quotes?symbols=AAPL', {
       headers: {
         Origin: 'https://worldmonitor.app',
-        'Content-Type': 'application/json',
-        'Content-Length': String(requestBody.length),
         'X-WorldMonitor-Key': SESSION_TOKEN,
+        'x-user-id': 'attacker-controlled-user',
       },
-      body: requestBody,
-    }));
-
-    assert.equal(res.status, 400);
-    const body = await res.json() as { error: string; parameter: string; maxValues: number };
-    assert.equal(body.error, 'Too many values for POST compatibility parameter');
-    assert.equal(body.parameter, 'symbols');
-    assert.equal(body.maxValues, 200);
-  });
-
-  it('skips POST→GET compatibility when Content-Length is missing', async () => {
-    const handler = createDomainGateway([
-      {
-        method: 'GET',
-        path: '/api/market/v1/list-market-quotes',
-        handler: async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
-      },
-    ]);
-    const req = new Request('https://worldmonitor.app/api/market/v1/list-market-quotes', {
-      method: 'POST',
-      headers: {
-        Origin: 'https://worldmonitor.app',
-        'Content-Type': 'application/json',
-        'X-WorldMonitor-Key': SESSION_TOKEN,
-      },
-      body: JSON.stringify({ symbols: ['AAPL'] }),
-    });
-    req.clone = () => { throw new Error('POST compatibility must not parse missing-length bodies'); };
-
-    const res = await handler(req);
-
-    assert.equal(res.status, 405);
-  });
-
-  it('skips POST→GET compatibility when Content-Length is invalid', async () => {
-    const handler = createDomainGateway([
-      {
-        method: 'GET',
-        path: '/api/market/v1/list-market-quotes',
-        handler: async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
-      },
-    ]);
-    const req = new Request('https://worldmonitor.app/api/market/v1/list-market-quotes', {
-      method: 'POST',
-      headers: {
-        Origin: 'https://worldmonitor.app',
-        'Content-Type': 'application/json',
-        'Content-Length': 'not-a-number',
-        'X-WorldMonitor-Key': SESSION_TOKEN,
-      },
-      body: JSON.stringify({ symbols: ['AAPL'] }),
-    });
-    req.clone = () => { throw new Error('POST compatibility must not parse invalid-length bodies'); };
-
-    const res = await handler(req);
-
-    assert.equal(res.status, 405);
-  });
-
-  it('skips POST→GET compatibility when declared Content-Length exceeds the cap', async () => {
-    const handler = createDomainGateway([
-      {
-        method: 'GET',
-        path: '/api/market/v1/list-market-quotes',
-        handler: async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
-      },
-    ]);
-    const req = new Request('https://worldmonitor.app/api/market/v1/list-market-quotes', {
-      method: 'POST',
-      headers: {
-        Origin: 'https://worldmonitor.app',
-        'Content-Type': 'application/json',
-        'Content-Length': '1048576',
-        'X-WorldMonitor-Key': SESSION_TOKEN,
-      },
-    });
-    req.clone = () => { throw new Error('POST compatibility must not parse oversized bodies'); };
-
-    const res = await handler(req);
-
-    assert.equal(res.status, 405);
-  });
-
-  it('preserves malformed JSON fallback for bounded POST→GET compatibility bodies', async () => {
-    const handler = createDomainGateway([
-      {
-        method: 'GET',
-        path: '/api/market/v1/list-market-quotes',
-        handler: async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
-      },
-    ]);
-
-    const res = await handler(new Request('https://worldmonitor.app/api/market/v1/list-market-quotes', {
-      method: 'POST',
-      headers: {
-        Origin: 'https://worldmonitor.app',
-        'Content-Type': 'application/json',
-        'Content-Length': '1',
-        'X-WorldMonitor-Key': SESSION_TOKEN,
-      },
-      body: '{',
     }));
 
     assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { userId: null });
+  });
+});
+
+describe('POST-to-GET compatibility hardening', () => {
+  function makePublicMarketHandler() {
+    let seenUrl: URL | null = null;
+    const handler = createDomainGateway([
+      {
+        method: 'GET',
+        path: '/api/market/v1/list-market-quotes',
+        handler: async (req) => {
+          seenUrl = new URL(req.url);
+          return new Response(JSON.stringify({ ok: true }), { status: 200 });
+        },
+      },
+    ]);
+    return {
+      handler,
+      seenUrl: () => seenUrl,
+    };
+  }
+
+  function compatPost(body: string, headers: Record<string, string> = {}) {
+    return new Request('https://worldmonitor.app/api/market/v1/list-market-quotes', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://worldmonitor.app',
+        'X-WorldMonitor-Key': SESSION_TOKEN,
+        'Content-Type': 'application/json',
+        ...headers,
+      },
+      body,
+    });
+  }
+
+  it('converts bounded scalar and array JSON bodies to GET query params', async () => {
+    const { handler, seenUrl } = makePublicMarketHandler();
+    const body = JSON.stringify({ symbols: ['AAPL', 'MSFT'], includeExtended: true });
+
+    const res = await handler(compatPost(body, { 'Content-Length': String(Buffer.byteLength(body)) }));
+
+    assert.equal(res.status, 200);
+    assert.deepEqual(seenUrl()?.searchParams.getAll('symbols'), ['AAPL', 'MSFT']);
+    assert.equal(seenUrl()?.searchParams.get('includeExtended'), 'true');
+  });
+
+  it('rejects POST-to-GET array expansion over 200 values', async () => {
+    const { handler } = makePublicMarketHandler();
+    const body = JSON.stringify({
+      symbols: Array.from({ length: 201 }, (_, i) => `SYM${i}`),
+    });
+
+    const res = await handler(compatPost(body, { 'Content-Length': String(Buffer.byteLength(body)) }));
+
+    assert.equal(res.status, 400);
+    assert.deepEqual(await res.json(), {
+      error: 'Too many values for POST compatibility parameter',
+      parameter: 'symbols',
+      maxValues: 200,
+    });
+  });
+
+  it('skips POST-to-GET compatibility before reading bodies with missing, invalid, or oversized Content-Length', async () => {
+    const { handler } = makePublicMarketHandler();
+    const body = JSON.stringify({ symbols: ['AAPL'] });
+
+    const missingReq = compatPost(body);
+    missingReq.clone = () => { throw new Error('POST compatibility must not parse missing-length bodies'); };
+    const missing = await handler(missingReq);
+    assert.equal(missing.status, 405);
+
+    const invalidReq = compatPost(body, { 'Content-Length': 'abc' });
+    invalidReq.clone = () => { throw new Error('POST compatibility must not parse invalid-length bodies'); };
+    const invalid = await handler(invalidReq);
+    assert.equal(invalid.status, 405);
+
+    const oversizedReq = compatPost(body, { 'Content-Length': '1048576' });
+    oversizedReq.clone = () => { throw new Error('POST compatibility must not parse oversized bodies'); };
+    const oversized = await handler(oversizedReq);
+    assert.equal(oversized.status, 405);
+  });
+
+  it('preserves malformed JSON compatibility by falling back to matching GET without query params', async () => {
+    const { handler, seenUrl } = makePublicMarketHandler();
+    const body = '{not json';
+
+    const res = await handler(compatPost(body, { 'Content-Length': String(Buffer.byteLength(body)) }));
+
+    assert.equal(res.status, 200);
+    assert.equal(seenUrl()?.search, '');
   });
 });
 
@@ -452,5 +441,29 @@ describe('premium gateway bearer token auth', () => {
       },
     }));
     assert.equal(rankingRes.status, 200);
+  });
+
+  it('rewrites spoofed x-user-id from a verified legacy bearer before reaching handlers', async () => {
+    const token = await signToken({ sub: 'user_pro', plan: 'pro' });
+    const headerEchoHandler = createDomainGateway([
+      {
+        method: 'GET',
+        path: '/api/resilience/v1/get-resilience-score',
+        handler: async (request) => new Response(JSON.stringify({
+          userId: request.headers.get('x-user-id'),
+        }), { status: 200 }),
+      },
+    ]);
+
+    const res = await headerEchoHandler(new Request('https://worldmonitor.app/api/resilience/v1/get-resilience-score?countryCode=US', {
+      headers: {
+        Origin: 'https://worldmonitor.app',
+        Authorization: `Bearer ${token}`,
+        'x-user-id': 'attacker-controlled-user',
+      },
+    }));
+
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { userId: 'user_pro' });
   });
 });

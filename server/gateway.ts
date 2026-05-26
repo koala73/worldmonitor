@@ -475,8 +475,8 @@ export function createDomainGateway(
     // Defense-in-depth: strip client-controlled copies of the trusted
     // internal-MCP markers BEFORE any other logic runs. The gateway is the
     // ONLY layer permitted to set `x-wm-mcp-internal-verified` /
-    // `x-user-id` (the latter is also set by the Clerk-session block
-    // below from a verified bearer). Without the strip step, an attacker
+    // `x-user-id` (the latter is also set by verified session / user-key
+    // paths below). Without the strip step, an attacker
     // who sends `x-wm-mcp-internal-verified: 1` from outside could spoof
     // premium context to any handler that reads these markers via
     // `isCallerPremium`. The strip MUST run regardless of whether the
@@ -726,7 +726,7 @@ export function createDomainGateway(
           method: request.method,
           headers: (() => {
             const h = new Headers(request.headers);
-            h.set('x-user-id', sessionUserId);
+            h.set(TRUSTED_USER_ID_HEADER, sessionUserId);
             return h;
           })(),
           body: request.body,
@@ -772,7 +772,7 @@ export function createDomainGateway(
         usage.isUserApiKey = true;
         usage.userApiKeyCustomerRef = userKeyResult.userId;
         keyCheck = { valid: true, required: true };
-        // Inject x-user-id for downstream entitlement checks
+        // Inject x-user-id for downstream handlers from the verified user key.
         if (!sessionUserId) {
           sessionUserId = userKeyResult.userId;
           usage.sessionUserId = sessionUserId;
@@ -780,7 +780,7 @@ export function createDomainGateway(
             method: request.method,
             headers: (() => {
               const h = new Headers(request.headers);
-              h.set('x-user-id', sessionUserId);
+              h.set(TRUSTED_USER_ID_HEADER, sessionUserId);
               return h;
             })(),
             body: request.body,
@@ -831,6 +831,15 @@ export function createDomainGateway(
           if (session.userId) {
             sessionUserId = session.userId;
             usage.sessionUserId = session.userId;
+            request = new Request(request.url, {
+              method: request.method,
+              headers: (() => {
+                const h = new Headers(request.headers);
+                h.set(TRUSTED_USER_ID_HEADER, session.userId);
+                return h;
+              })(),
+              body: request.body,
+            });
           }
           // Accept EITHER a Clerk 'pro' role OR a Convex Dodo entitlement with
           // tier >= 1. The Dodo webhook pipeline writes Convex entitlements but
@@ -885,15 +894,12 @@ export function createDomainGateway(
     // freely mintable by any caller and are NOT user-bound (PR #3557 review).
     //
     // Internal-MCP verified path also bypasses: we already confirmed
-    // tier ≥ 1 + mcpAccess === true above, and `checkEntitlement` reads
-    // x-user-id from the request — which IS set on the trusted request,
-    // but ENDPOINT_ENTITLEMENTS treats `tier=2` (api) as required for
-    // some routes. Pro = tier 1; we don't want a tier-2-required route
-    // to 403 a Pro caller via the MCP path because Pro callers reach
-    // the gateway only through the MCP edge's whitelisted tool set.
+    // tier ≥ 1 + mcpAccess === true above. Some ENDPOINT_ENTITLEMENTS
+    // routes require tier 2, but Pro MCP callers only reach the gateway
+    // through the MCP edge's whitelisted tool set.
     const isEnterpriseAuth = keyCheck.valid && wmKey && !isUserApiKey && keyCheck.kind === 'enterprise';
     if (!isEnterpriseAuth && !internalMcpVerified) {
-      const entitlementResponse = await checkEntitlement(request, pathname, corsHeaders);
+      const entitlementResponse = await checkEntitlement(sessionUserId, pathname, corsHeaders);
       if (entitlementResponse) {
         const entReason: RequestReason =
           entitlementResponse.status === 401 ? 'auth_401'
@@ -940,7 +946,15 @@ export function createDomainGateway(
         const url = new URL(request.url);
         let oversizedKey: string | null = null;
         try {
-          const body = await request.clone().json();
+          const bodyText = await request.clone().text();
+          if (new TextEncoder().encode(bodyText).byteLength >= POST_TO_GET_MAX_BODY_BYTES) {
+            emitRequest(400, 'malformed_request', null);
+            return new Response(JSON.stringify({ error: 'malformed_request' }), {
+              status: 400,
+              headers: { 'Content-Type': 'application/json', ...corsHeaders },
+            });
+          }
+          const body = JSON.parse(bodyText);
           const isScalar = (x: unknown): x is string | number | boolean =>
             typeof x === 'string' || typeof x === 'number' || typeof x === 'boolean';
           for (const [k, v] of Object.entries(body as Record<string, unknown>)) {
@@ -952,7 +966,7 @@ export function createDomainGateway(
               v.forEach((item) => { if (isScalar(item)) url.searchParams.append(k, String(item)); });
             } else if (isScalar(v)) url.searchParams.set(k, String(v));
           }
-        } catch { /* non-JSON body — skip POST→GET conversion */ }
+        } catch { /* non-JSON body — preserve legacy POST→GET fallback */ }
         if (oversizedKey !== null) {
           emitRequest(400, 'malformed_request', null);
           return new Response(JSON.stringify({

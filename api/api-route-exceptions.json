@@ -73,6 +73,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/security/report.js",
+      "category": "external-protocol",
+      "reason": "Browser Reporting API collector for COOP/COEP reports. Request body and content type are dictated by the Reporting API, not a product data API contract.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/freshness.ts",
       "category": "external-protocol",
       "reason": "MCP cache-tool freshness evaluation (evaluateFreshness) — drives the per-response cached_at + stale envelope fields. Extracted from api/mcp.ts during the structural split; same external-protocol constraint as the parent shim.",

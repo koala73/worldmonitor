@@ -120,11 +120,11 @@ describe('dom-utils safe link helpers', () => {
   it('safeHtml enforces noopener on blank-target anchors (#3550)', () => {
     withMinimalDom(() => {
       const fragment = safeHtml(
-        '<a href="https://example.com" target="_blank" rel="nofollow opener" onclick="alert(1)">Source</a>',
+        '<a href="https://example.com" target="_blank" rel="nofollow opener ugc noopener" onclick="alert(1)">Source</a>',
       ) as unknown as TestDocumentFragment;
       const anchor = fragment.childNodes[0]!;
 
-      assert.equal(anchor.getAttribute('rel'), 'nofollow noopener noreferrer');
+      assert.equal(anchor.getAttribute('rel'), 'nofollow ugc noopener noreferrer');
       assert.equal(anchor.getAttribute('onclick'), null);
     });
   });

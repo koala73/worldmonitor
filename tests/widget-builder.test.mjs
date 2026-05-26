@@ -15,6 +15,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import vm from 'node:vm';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -1052,6 +1053,7 @@ describe('PRO widget — relay auth and configuration', () => {
 describe('PRO widget — store and sanitizer', () => {
   const store = src('src/services/widget-store.ts');
   const san = src('src/utils/widget-sanitizer.ts');
+  const sandbox = src('public/wm-widget-sandbox.html');
 
   it('MAX_HTML_CHARS_PRO is 80000', () => {
     const match = store.match(/MAX_HTML_CHARS_PRO\s*=\s*([\d_]+)/);
@@ -1177,6 +1179,110 @@ describe('PRO widget — store and sanitizer', () => {
       !fnBody.includes('srcdoc'),
       'wrapProWidgetHtml must NOT use srcdoc — srcdoc inherits parent CSP',
     );
+  });
+
+  it('PRO widget iframe uses nonce handshake before posting HTML', () => {
+    assert.ok(
+      san.includes('data-wm-token') && san.includes('wm-widget-ready'),
+      'parent must mint a per-widget token and wait for sandbox readiness',
+    );
+    assert.ok(
+      san.includes('event.source !== iframe.contentWindow'),
+      'parent must bind ready messages to the mounted iframe window',
+    );
+    assert.ok(
+      san.includes('event.data.id !== mounted.id')
+        && san.includes('event.data.token !== mounted.token'),
+      'parent must verify ready message id and token before sending HTML',
+    );
+    assert.ok(
+      sandbox.includes('e.source !== window.parent') && sandbox.includes('e.data.token !== widgetToken'),
+      'sandbox must only accept HTML from its parent with the expected token',
+    );
+  });
+
+  it('widget sandbox allows approved Vercel previews and rejects lookalike origins', () => {
+    assert.ok(
+      sandbox.includes("url.hostname === 'worldmonitor.app'")
+        && sandbox.includes("url.hostname.endsWith('.worldmonitor.app')"),
+      'sandbox must parse hostname and allow the worldmonitor.app apex/subdomains only',
+    );
+    assert.ok(
+      !sandbox.includes("endsWith('worldmonitor.app')") && !sandbox.includes('endsWith("worldmonitor.app")'),
+      'sandbox must not use raw suffix checks that allow evilworldmonitor.app',
+    );
+    const previewPattern = sandbox.match(
+      /\/\^worldmonitor-\[a-z0-9-\]\+-elie-\[a-z0-9\]\+\\\.vercel\\\.app\$\/\.test/,
+    );
+    assert.ok(previewPattern, 'sandbox must include the approved Vercel preview hostname pattern');
+    const allowedPreview = /^worldmonitor-[a-z0-9-]+-elie-[a-z0-9]+\.vercel\.app$/;
+    assert.equal(allowedPreview.test('worldmonitor-feature-elie-abc123.vercel.app'), true);
+    assert.equal(allowedPreview.test('worldmonitor-feature-attacker-abc123.vercel.app'), false);
+    assert.equal(allowedPreview.test('worldmonitor-feature-elie-abc123.vercel.app.evil.com'), false);
+    assert.equal(allowedPreview.test('evilworldmonitor.app'), false);
+  });
+
+  it('widget sandbox behavior accepts Vercel previews and blocks spoofed parents', () => {
+    const script = sandbox.match(/<script>\n([\s\S]*)\n<\/script>/)?.[1];
+    assert.ok(script, 'sandbox inline script not found');
+
+    function runSandbox(referrer) {
+      const readyMessages = [];
+      const writes = [];
+      const listeners = new Map();
+      const parent = {
+        postMessage(payload, targetOrigin) {
+          readyMessages.push({ payload, targetOrigin });
+        },
+      };
+      const context = {
+        URL,
+        URLSearchParams,
+        document: {
+          referrer,
+          open() {},
+          write(html) {
+            writes.push(html);
+          },
+          close() {},
+        },
+        window: {
+          location: { hash: '#id=wm-1&token=test-token' },
+          parent,
+          addEventListener(type, listener) {
+            listeners.set(type, listener);
+          },
+        },
+      };
+      vm.runInNewContext(script, context);
+      const message = listeners.get('message');
+      assert.equal(typeof message, 'function', 'message listener must be registered');
+      return { parent, readyMessages, writes, message };
+    }
+
+    const allowed = runSandbox('https://worldmonitor-feature-elie-abc123.vercel.app/dashboard');
+    assert.equal(allowed.readyMessages.length, 1);
+    assert.equal(allowed.readyMessages[0].targetOrigin, 'https://worldmonitor-feature-elie-abc123.vercel.app');
+    assert.deepEqual(JSON.parse(JSON.stringify(allowed.readyMessages[0].payload)), {
+      type: 'wm-widget-ready',
+      id: 'wm-1',
+      token: 'test-token',
+    });
+    allowed.message({
+      data: { type: 'wm-html', id: 'wm-1', token: 'test-token', html: '<p>ok</p>' },
+      origin: 'https://worldmonitor-feature-elie-abc123.vercel.app',
+      source: allowed.parent,
+    });
+    assert.deepEqual(allowed.writes, ['<p>ok</p>']);
+
+    const spoofed = runSandbox('https://worldmonitor-feature-elie-abc123.vercel.app.evil.com/');
+    assert.deepEqual(spoofed.readyMessages, []);
+    spoofed.message({
+      data: { type: 'wm-html', id: 'wm-1', token: 'test-token', html: '<p>bad</p>' },
+      origin: 'https://worldmonitor-feature-elie-abc123.vercel.app.evil.com',
+      source: spoofed.parent,
+    });
+    assert.deepEqual(spoofed.writes, []);
   });
 
   it('widget document builder injects panel CSS classes for design-system alignment', () => {
