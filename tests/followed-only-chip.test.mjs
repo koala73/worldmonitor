@@ -474,7 +474,7 @@ describe('renderFollowedOnlyChip — integration: filter pass against a country-
     assert.equal(filtered.length, 5);
   });
 
-  it('chip on but watchlist empty → filter yields 0 rows + chip is disabled (UI surfaces empty-state)', () => {
+  it('stale active + empty watchlist → clears persisted state and does not filter', () => {
     setupAnonymousFlagOn();
     // Persist "1" as if the user toggled on previously, then unfollowed everything.
     _localStorage.setItem('wm-followed-only-filter-integ-3', '1');
@@ -486,14 +486,15 @@ describe('renderFollowedOnlyChip — integration: filter pass against a country-
 
     // The chip is rendered disabled because watchlist is empty.
     assert.match(host.innerHTML, /\bdisabled\b/);
-    // BUT the persisted state still says active — so a panel that
-    // checks isActive() will filter to zero.
-    assert.equal(handle.isActive(), true);
+    // The stale active bit is cleared so panel filter passes do not get
+    // trapped in an empty state the disabled chip cannot turn off.
+    assert.equal(handle.isActive(), false);
+    assert.equal(_localStorage.getItem('wm-followed-only-filter-integ-3'), null);
 
     const followed = []; // empty watchlist
     const filtered = handle.isActive()
       ? items.filter((it) => followed.includes(it.code))
       : items;
-    assert.equal(filtered.length, 0);
+    assert.equal(filtered.length, 3);
   });
 });

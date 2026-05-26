@@ -85,7 +85,11 @@ import { install as installCloudPrefsSync, onSignIn as cloudPrefsSignIn, onSignO
 import { getConvexClient, getConvexApi, waitForConvexAuth } from '@/services/convex-client';
 import { initEntitlementSubscription, destroyEntitlementSubscription, resetEntitlementState, onEntitlementChange } from '@/services/entitlements';
 import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/billing';
-import { installFollowedCountriesAuthListener } from '@/services/followed-countries';
+import {
+  FREE_TIER_FOLLOW_LIMIT,
+  WM_FOLLOWED_COUNTRIES_CAP_DROP,
+  installFollowedCountriesAuthListener,
+} from '@/services/followed-countries';
 import {
   capturePendingCheckoutIntentFromUrl,
   initCheckoutWatchers,
@@ -148,6 +152,13 @@ export class App {
   };
   private readonly handleConnectivityChange = (): void => {
     this.updateConnectivityUi();
+  };
+  private readonly handleFollowedCountriesCapDrop = (ev: Event): void => {
+    const detail = (ev as CustomEvent<{ kept?: unknown; dropped?: unknown }>).detail;
+    const dropped = typeof detail?.dropped === 'number' ? detail.dropped : 0;
+    const kept = typeof detail?.kept === 'number' ? detail.kept : FREE_TIER_FOLLOW_LIMIT;
+    if (dropped <= 0) return;
+    this.showFollowedCountriesCapDropToast(kept, dropped);
   };
 
   private isPanelNearViewport(panelId: string, marginPx = 400): boolean {
@@ -1014,6 +1025,7 @@ export class App {
     // anon→signed-in handoff (mergeAnonymousLocal mutation) and sign-out
     // cleanup. Idempotent.
     installFollowedCountriesAuthListener();
+    window.addEventListener(WM_FOLLOWED_COUNTRIES_CAP_DROP, this.handleFollowedCountriesCapDrop);
     this.enforceFreeTierLimits();
 
     let _prevUserId: string | null = null;
@@ -1402,6 +1414,7 @@ export class App {
     window.removeEventListener('resize', this.handleViewportPrime);
     window.removeEventListener('online', this.handleConnectivityChange);
     window.removeEventListener('offline', this.handleConnectivityChange);
+    window.removeEventListener(WM_FOLLOWED_COUNTRIES_CAP_DROP, this.handleFollowedCountriesCapDrop);
     if (this.visiblePanelPrimeRaf !== null) {
       window.cancelAnimationFrame(this.visiblePanelPrimeRaf);
       this.visiblePanelPrimeRaf = null;
@@ -1427,6 +1440,60 @@ export class App {
     // pointing at a disposed App.
     this.webMcpController?.abort();
     this.webMcpController = null;
+  }
+
+  private showFollowedCountriesCapDropToast(kept: number, dropped: number): void {
+    document.querySelector('.wm-followed-cap-drop-toast')?.remove();
+
+    const toast = document.createElement('div');
+    toast.className = 'wm-followed-cap-drop-toast update-toast';
+
+    const body = document.createElement('div');
+    body.className = 'update-toast-body';
+
+    const title = document.createElement('div');
+    title.className = 'update-toast-title';
+    title.textContent = 'Follow limit reached';
+
+    const detail = document.createElement('div');
+    detail.className = 'update-toast-detail';
+    const countryWord = dropped === 1 ? 'country was' : 'countries were';
+    detail.textContent = `${kept} kept. ${dropped} ${countryWord} not added because the free plan supports ${FREE_TIER_FOLLOW_LIMIT} followed countries.`;
+
+    body.append(title, detail);
+
+    const action = document.createElement('button');
+    action.type = 'button';
+    action.className = 'update-toast-action';
+    action.dataset.action = 'upgrade';
+    action.textContent = 'Upgrade';
+
+    const dismiss = document.createElement('button');
+    dismiss.type = 'button';
+    dismiss.className = 'update-toast-dismiss';
+    dismiss.dataset.action = 'dismiss';
+    dismiss.setAttribute('aria-label', 'Dismiss');
+    dismiss.textContent = '\u00d7';
+
+    toast.append(body, action, dismiss);
+
+    const autoTimer = window.setTimeout(() => toast.remove(), 8000);
+    toast.addEventListener('click', (e) => {
+      const clickedAction = (e.target as HTMLElement)
+        .closest<HTMLElement>('[data-action]')
+        ?.dataset.action;
+      if (clickedAction === 'upgrade') {
+        window.open('/pro#pricing', '_blank');
+        window.clearTimeout(autoTimer);
+        toast.remove();
+      } else if (clickedAction === 'dismiss') {
+        window.clearTimeout(autoTimer);
+        toast.remove();
+      }
+    });
+
+    document.body.appendChild(toast);
+    window.requestAnimationFrame(() => toast.classList.add('visible'));
   }
 
   // Waits for Phase-4 UI modules (searchManager + countryIntel) to finish

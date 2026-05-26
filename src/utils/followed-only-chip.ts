@@ -107,6 +107,17 @@ function writeActive(panelId: string, active: boolean): void {
   }
 }
 
+function readEffectiveActive(panelId: string, followedCount: number): boolean {
+  const active = readActive(panelId);
+  if (!active) return false;
+  if (followedCount > 0) return true;
+  // A persisted active filter with no followed countries is impossible to use:
+  // the button is disabled, so the user cannot click it off. Clear the stale
+  // bit and expose inactive state to panel filter passes.
+  writeActive(panelId, false);
+  return false;
+}
+
 // ---------------------------------------------------------------------------
 // Render
 // ---------------------------------------------------------------------------
@@ -127,8 +138,9 @@ function computeViewState(props: FollowedOnlyChipProps): ViewState {
       label: props.label ?? 'Followed only',
     };
   }
-  const active = readActive(props.panelId);
-  const disabled = getFollowed().length === 0;
+  const followedCount = getFollowed().length;
+  const disabled = followedCount === 0;
+  const active = readEffectiveActive(props.panelId, followedCount);
   return {
     visible: true,
     active,
@@ -266,7 +278,10 @@ export function renderFollowedOnlyChip(
         }
       };
     },
-    isActive: () => readActive(props.panelId),
+    isActive: () => {
+      if (!isFollowFeatureEnabled()) return false;
+      return readEffectiveActive(props.panelId, getFollowed().length);
+    },
   };
 }
 

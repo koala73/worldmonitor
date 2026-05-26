@@ -24,6 +24,10 @@
 
 import { describe, it, before, beforeEach, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+const ROOT = resolve(new URL('.', import.meta.url).pathname, '..');
 
 // ---------------------------------------------------------------------------
 // Browser-global stubs
@@ -393,6 +397,30 @@ describe('country-scoped panels — chip placement keeps close button rightmost'
     const host = { className: 'panel-header-followed-only-host' };
     mountChipBeforeClose(header, host);
     assert.equal(header.lastChild?.className, 'panel-header-followed-only-host');
+  });
+
+  it('DisplacementPanel destroy removes the inserted followed-only host', () => {
+    const src = readFileSync(resolve(ROOT, 'src/components/DisplacementPanel.ts'), 'utf8');
+    assert.match(
+      src,
+      /private followedOnlyHost: HTMLElement \| null = null;/,
+      'DisplacementPanel must retain the inserted header host for cleanup',
+    );
+    assert.match(
+      src,
+      /this\.followedOnlyHost = host;/,
+      'DisplacementPanel must store the host when mounting the chip',
+    );
+    assert.match(
+      src,
+      /this\.followedOnlyHost\.parentElement\.removeChild\(this\.followedOnlyHost\)/,
+      'destroy() must remove the chip host from the panel header',
+    );
+    assert.match(
+      src,
+      /this\.followedOnlyHost = null;/,
+      'destroy() must clear the host reference',
+    );
   });
 });
 

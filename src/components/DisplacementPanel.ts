@@ -14,6 +14,7 @@ export class DisplacementPanel extends Panel {
   private activeTab: DisplacementTab = 'origins';
   private onCountryClick?: (lat: number, lon: number) => void;
   private followedOnlyChip: FollowedOnlyChipHandle | null = null;
+  private followedOnlyHost: HTMLElement | null = null;
   private followedOnlyTeardown: (() => void) | null = null;
   private followedUnsub: (() => void) | null = null;
 
@@ -48,6 +49,7 @@ export class DisplacementPanel extends Panel {
   private mountFollowedOnlyChip(): void {
     const host = document.createElement('span');
     host.className = 'panel-header-followed-only-host';
+    this.followedOnlyHost = host;
     this.followedOnlyChip = renderFollowedOnlyChip({
       panelId: 'displacement',
       onChange: () => {
@@ -206,6 +208,10 @@ export class DisplacementPanel extends Panel {
       }
       this.followedUnsub = null;
     }
+    if (this.followedOnlyHost && this.followedOnlyHost.parentElement) {
+      this.followedOnlyHost.parentElement.removeChild(this.followedOnlyHost);
+    }
+    this.followedOnlyHost = null;
     this.followedOnlyChip = null;
     super.destroy();
   }
