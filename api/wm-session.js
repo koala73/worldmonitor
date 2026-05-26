@@ -134,15 +134,18 @@ export default async function handler(req) {
     return jsonResponse({ error: 'Invalid session key' }, 401, cors);
   }
 
-  // Best-effort cleanup for the old JS-readable cookies with the same names.
-  // HttpOnly cookies cannot be cleared from JS; setting these tombstones from
-  // the server removes any legacy non-HttpOnly variants the browser still has.
-  let headers = appendHeader(cors, 'Set-Cookie', clearReadableCookie(WIDGET_KEY_COOKIE));
-  headers = appendHeader(headers, 'Set-Cookie', clearReadableCookie(PRO_KEY_COOKIE));
+  let headers = appendHeader(cors, 'Set-Cookie', sessionCookie(req, SESSION_COOKIE, issued.token));
 
-  headers = appendHeader(headers, 'Set-Cookie', sessionCookie(req, SESSION_COOKIE, issued.token));
-  if (widgetKey) headers = appendHeader(headers, 'Set-Cookie', sessionCookie(req, WIDGET_KEY_COOKIE, widgetKey));
-  if (proKey) headers = appendHeader(headers, 'Set-Cookie', sessionCookie(req, PRO_KEY_COOKIE, proKey));
+  // Best-effort cleanup for old JS-readable cookies only when replacing that
+  // key. A no-key session refresh must preserve existing HttpOnly key cookies.
+  if (widgetKey) {
+    headers = appendHeader(headers, 'Set-Cookie', clearReadableCookie(WIDGET_KEY_COOKIE));
+    headers = appendHeader(headers, 'Set-Cookie', sessionCookie(req, WIDGET_KEY_COOKIE, widgetKey));
+  }
+  if (proKey) {
+    headers = appendHeader(headers, 'Set-Cookie', clearReadableCookie(PRO_KEY_COOKIE));
+    headers = appendHeader(headers, 'Set-Cookie', sessionCookie(req, PRO_KEY_COOKIE, proKey));
+  }
 
   return jsonResponse({ ok: true, exp: issued.exp }, 200, headers);
 }

@@ -100,6 +100,15 @@ test('No origin (curl) is allowed (rate limit + token TTL are the throttles)', a
   assert.match(cookieValue(setCookies(resp), 'wm-session'), /^wms_/);
 });
 
+test('no-key session refresh preserves existing HttpOnly key cookies', async () => {
+  const resp = await handler(makeReq('POST', { origin: 'https://worldmonitor.app' }));
+  assert.equal(resp.status, 200);
+  const cookies = setCookies(resp);
+  assert.ok(cookies.some((cookie) => cookie.startsWith('wm-session=')));
+  assert.equal(cookies.some((cookie) => cookie.startsWith('wm-widget-key=')), false);
+  assert.equal(cookies.some((cookie) => cookie.startsWith('wm-pro-key=')), false);
+});
+
 test('legacy widget/pro keys are moved into short-lived HttpOnly cookies', async () => {
   const req = new Request('https://api.worldmonitor.app/api/wm-session', {
     method: 'POST',
