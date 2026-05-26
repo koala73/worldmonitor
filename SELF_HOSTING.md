@@ -181,6 +181,7 @@ docker compose down && docker compose up -d
 - The Docker image uses **Node.js 22 Alpine** for both builder and runtime stages
 - Blog site build is skipped in Docker (separate dependencies)
 - The runtime stage needs `gettext` (Alpine package) for `envsubst` in the nginx config
+- Docker nginx mirrors Vercel's `script-src` policy and does not allow `'unsafe-inline'`; hash-pin any custom inline scripts before adding them to a self-hosted build.
 - If you hit `npm ci` sync errors in Docker, regenerate the lockfile with the container's npm version:
   ```bash
   docker run --rm -v "$(pwd)":/app -w /app node:22-alpine npm install --package-lock-only
