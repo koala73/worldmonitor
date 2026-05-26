@@ -1,7 +1,8 @@
 import { isDesktopRuntime } from '../services/runtime';
 import { invokeTauri } from '../services/tauri-bridge';
 import { t } from '../services/i18n';
-import { h, replaceChildren, safeHtml } from '../utils/dom-utils';
+import { h, replaceChildren, safeHtml as sanitizeHtmlFragment } from '../utils/dom-utils';
+import { safeHtmlToString, type SafeHtml } from '@/utils/sanitize';
 import { trackPanelResized } from '@/services/analytics';
 import { getAiFlowSettings } from '@/services/ai-flow-settings';
 import { getSecretState } from '@/services/runtime-config';
@@ -275,7 +276,7 @@ export class Panel {
       const infoBtn = h('button', { className: 'panel-info-btn', 'aria-label': t('components.panel.showMethodologyInfo') }, '?');
 
       const tooltip = h('div', { className: 'panel-info-tooltip' });
-      tooltip.appendChild(safeHtml(options.infoTooltip));
+      tooltip.appendChild(sanitizeHtmlFragment(options.infoTooltip));
 
       infoBtn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -1042,6 +1043,14 @@ export class Panel {
   }
 
   public setContent(html: string): void {
+    this.setContentHtml(html);
+  }
+
+  public setSafeContent(html: SafeHtml): void {
+    this.setContentHtml(safeHtmlToString(html));
+  }
+
+  private setContentHtml(html: string): void {
     if (this._locked) return;
     this.setErrorState(false);
     this.clearRetryCountdown();
