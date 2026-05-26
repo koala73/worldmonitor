@@ -226,6 +226,13 @@ interface NuclearSiteMarker extends BaseMarker {
   name: string;
   type: string;
   status: string;
+  operator?: string;
+  historicalProfile?: {
+    establishedDate?: string;
+    treaties?: string[];
+    iaeaStatus?: string;
+    timelineNotes?: string[];
+  };
 }
 interface IrradiatorSiteMarker extends BaseMarker {
   _kind: 'irradiator';
@@ -1333,7 +1340,7 @@ export class GlobeMap {
       'font-size:11px',
       'font-family:var(--font-mono)',
       'color:#d4d4d4',
-      'max-width:280px',
+      'max-width:300px',
       'z-index:1000',
       'pointer-events:auto',
       'line-height:1.5',
@@ -1472,8 +1479,23 @@ export class GlobeMap {
              `<br><span style="opacity:.7;">${esc(d.type)}${d.country ? ' · ' + esc(d.country) : ''}</span>`;
     } else if (d._kind === 'nuclearSite') {
       const nc = d.status === 'active' ? '#ffd700' : d.status === 'construction' ? '#ff8800' : '#888888';
+      const profile = d.historicalProfile;
       html = `<span style="color:${nc};font-weight:bold;">☢ ${esc(d.name)}</span>` +
-             `<br><span style="opacity:.7;">${esc(d.type)} · ${esc(d.status)}</span>`;
+             `<br><span style="opacity:.7;">${esc(d.type)}${d.operator ? ' · ' + esc(d.operator) : ''} · Status: ${esc(d.status)}</span>`;
+      if (profile) {
+        html += `<hr class="tooltip-divider" style="margin:8px 0;border:none;border-top:1px solid rgba(255,255,255,0.15);" />` +
+                `<details class="historical-profile-accordion" style="cursor:pointer;outline:none;">` +
+                `<summary style="font-weight:bold;color:#00d4ff;font-size:10px;margin-bottom:4px;list-style:none;display:flex;align-items:center;justify-content:space-between;">` +
+                `<span>📜 HISTORICAL PROFILE</span><span class="arrow" style="font-size:8px;">▼</span>` +
+                `</summary>` +
+                `<div class="accordion-content" style="padding-left:8px;border-left:1px solid rgba(0,212,255,0.3);margin-top:4px;font-size:10px;opacity:0.85;white-space:normal;">` +
+                (profile.establishedDate ? `<p style="margin:2px 0;"><strong>Operational Since:</strong> ${esc(profile.establishedDate)}</p>` : '') +
+                (profile.treaties ? `<p style="margin:2px 0;"><strong>Treaties:</strong> ${profile.treaties.map(esc).join(', ')}</p>` : '') +
+                (profile.iaeaStatus ? `<p style="margin:2px 0;"><strong>IAEA Status:</strong> ${esc(profile.iaeaStatus)}</p>` : '') +
+                (profile.timelineNotes ? profile.timelineNotes.map(note => `<p class="timeline-note" style="margin:4px 0 2px;font-style:italic;">${esc(note)}</p>`).join('') : '') +
+                `</div>` +
+                `</details>`;
+      }
     } else if (d._kind === 'irradiator') {
       html = `<span style="color:#ff8800;font-weight:bold;">⚠ Gamma Irradiator</span>` +
              `<br><span style="opacity:.7;">${esc(d.city)}, ${esc(d.country)}</span>`;
@@ -1673,6 +1695,12 @@ export class GlobeMap {
       if (this.tooltipHideTimer) { clearTimeout(this.tooltipHideTimer); this.tooltipHideTimer = null; }
     });
     el.addEventListener('mouseleave', () => {
+      const details = el.querySelector<HTMLDetailsElement>('.historical-profile-accordion');
+      if (details && details.open) return;
+      if (this.tooltipHideTimer) {
+        clearTimeout(this.tooltipHideTimer);
+        this.tooltipHideTimer = null;
+      }
       this.tooltipHideTimer = setTimeout(() => this.hideTooltip(), 2000);
     });
 
@@ -1694,8 +1722,26 @@ export class GlobeMap {
 
     this.tooltipEl = el;
     if (this.tooltipHideTimer) clearTimeout(this.tooltipHideTimer);
+
+    const details = el.querySelector<HTMLDetailsElement>('.historical-profile-accordion');
+    if (details) {
+      details.addEventListener('toggle', (e) => {
+        const target = e.target as HTMLDetailsElement;
+        if (target && target.open) {
+          if (this.tooltipHideTimer) {
+            clearTimeout(this.tooltipHideTimer);
+            this.tooltipHideTimer = null;
+          }
+        } else {
+          if (this.tooltipHideTimer) clearTimeout(this.tooltipHideTimer);
+          this.tooltipHideTimer = setTimeout(() => this.hideTooltip(), 3500);
+        }
+      });
+    }
+
     const richKinds = new Set(['satellite', 'flightDelay', 'cableAdvisory', 'conflictZone', 'spaceport', 'economic', 'datacenter', 'imageryScene', 'repairShip', 'aisDisruption']);
-    const hideDelay = d._kind === 'webcam' ? 8000 : d._kind === 'webcam-cluster' ? 12000 : richKinds.has(d._kind) ? 6000 : 3500;
+    const autoHideDuration = d._kind === 'nuclearSite' && d.historicalProfile ? 5000 : 3500;
+    const hideDelay = d._kind === 'webcam' ? 8000 : d._kind === 'webcam-cluster' ? 12000 : richKinds.has(d._kind) ? 6000 : autoHideDuration;
     this.tooltipHideTimer = setTimeout(() => this.hideTooltip(), hideDelay);
 
     if (d._kind === 'webcam-cluster') {
@@ -2197,6 +2243,8 @@ export class GlobeMap {
               name: f.name,
               type: f.type,
               status: f.status,
+              operator: f.operator,
+              historicalProfile: f.historicalProfile,
             }));
         }
         break;
