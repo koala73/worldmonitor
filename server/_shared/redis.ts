@@ -54,6 +54,61 @@ export function __resetKeyPrefixCacheForTests(): void {
   cachedPrefix = undefined;
 }
 
+type CacheReadResult =
+  | { status: 'hit'; value: unknown }
+  | { status: 'miss' }
+  | { status: 'error'; error: unknown };
+
+async function readCachedJson(key: string, raw = false): Promise<CacheReadResult> {
+  if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
+    try {
+      const { sidecarCacheGet } = await import('./sidecar-cache');
+      const value = sidecarCacheGet(key);
+      return value == null ? { status: 'miss' } : { status: 'hit', value };
+    } catch (error) {
+      return { status: 'error', error };
+    }
+  }
+
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token) return { status: 'miss' };
+  try {
+    const finalKey = raw ? key : prefixKey(key);
+    const resp = await fetch(`${url}/get/${encodeURIComponent(finalKey)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(REDIS_OP_TIMEOUT_MS),
+    });
+    if (!resp.ok) throw new Error(`Redis HTTP ${resp.status}`);
+    const data = (await resp.json()) as { result?: string };
+    if (!data.result) return { status: 'miss' };
+    // Envelope-aware by default — RPC consumers get the bare payload regardless
+    // of whether the writer has migrated to contract mode. Legacy shapes pass
+    // through unchanged (unwrapEnvelope returns {_seed: null, data: raw}).
+    return { status: 'hit', value: unwrapEnvelope(JSON.parse(data.result)).data };
+  } catch (error) {
+    return { status: 'error', error };
+  }
+}
+
+function logCacheReadError(key: string, err: unknown): void {
+  // Structured timeout log goes to Sentry via Vercel integration. Large-
+  // payload timeouts used to silently return null and let downstream callers
+  // cache zero-state — see docs/plans/chokepoint-rpc-payload-split.md for
+  // the incident that added this tag.
+  //
+  // AbortSignal.timeout() throws DOMException name='TimeoutError' (on V8
+  // runtimes incl. Vercel Edge); manual controller.abort() throws
+  // 'AbortError'. Checking only 'AbortError' meant the [REDIS-TIMEOUT] log
+  // never fired — every timeout fell through to the generic console.warn.
+  const isTimeout = err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError');
+  if (isTimeout) {
+    console.error(`[REDIS-TIMEOUT] getCachedJson key=${key} timeoutMs=${REDIS_OP_TIMEOUT_MS}`);
+  } else {
+    console.warn('[redis] getCachedJson failed:', errMsg(err));
+  }
+}
+
 /**
  * Like getCachedJson but throws on Redis/network failures instead of returning null.
  * Always uses the raw (unprefixed) key — callers that write via seed scripts (which bypass
@@ -118,45 +173,10 @@ export async function getCachedRawString(key: string): Promise<string | null> {
 }
 
 export async function getCachedJson(key: string, raw = false): Promise<unknown | null> {
-  if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
-    const { sidecarCacheGet } = await import('./sidecar-cache');
-    return sidecarCacheGet(key);
-  }
-
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return null;
-  try {
-    const finalKey = raw ? key : prefixKey(key);
-    const resp = await fetch(`${url}/get/${encodeURIComponent(finalKey)}`, {
-      headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(REDIS_OP_TIMEOUT_MS),
-    });
-    if (!resp.ok) return null;
-    const data = (await resp.json()) as { result?: string };
-    if (!data.result) return null;
-    // Envelope-aware by default — RPC consumers get the bare payload regardless
-    // of whether the writer has migrated to contract mode. Legacy shapes pass
-    // through unchanged (unwrapEnvelope returns {_seed: null, data: raw}).
-    return unwrapEnvelope(JSON.parse(data.result)).data;
-  } catch (err) {
-    // Structured timeout log goes to Sentry via Vercel integration. Large-
-    // payload timeouts used to silently return null and let downstream callers
-    // cache zero-state — see docs/plans/chokepoint-rpc-payload-split.md for
-    // the incident that added this tag.
-    //
-    // AbortSignal.timeout() throws DOMException name='TimeoutError' (on V8
-    // runtimes incl. Vercel Edge); manual controller.abort() throws
-    // 'AbortError'. Checking only 'AbortError' meant the [REDIS-TIMEOUT] log
-    // never fired — every timeout fell through to the generic console.warn.
-    const isTimeout = err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError');
-    if (isTimeout) {
-      console.error(`[REDIS-TIMEOUT] getCachedJson key=${key} timeoutMs=${REDIS_OP_TIMEOUT_MS}`);
-    } else {
-      console.warn('[redis] getCachedJson failed:', errMsg(err));
-    }
-    return null;
-  }
+  const read = await readCachedJson(key, raw);
+  if (read.status === 'hit') return read.value;
+  if (read.status === 'error') logCacheReadError(key, read.error);
+  return null;
 }
 
 export async function setCachedJson(key: string, value: unknown, ttlSeconds: number, raw = false): Promise<boolean> {
@@ -201,6 +221,25 @@ export async function setCachedJson(key: string, value: unknown, ttlSeconds: num
 }
 
 const NEG_SENTINEL = '__WM_NEG__';
+const FETCH_ERROR_NEGATIVE_TTL_SECONDS = 30;
+
+const localNegativeUntil = new Map<string, number>();
+
+function effectiveFetchErrorNegativeTtlSeconds(negativeTtlSeconds: number): number {
+  return Math.max(1, Math.min(negativeTtlSeconds, FETCH_ERROR_NEGATIVE_TTL_SECONDS));
+}
+
+function armLocalNegativeCooldown(key: string, ttlSeconds: number): void {
+  localNegativeUntil.set(key, Date.now() + ttlSeconds * 1000);
+}
+
+function hasLocalNegativeCooldown(key: string): boolean {
+  const expiresAt = localNegativeUntil.get(key);
+  if (expiresAt === undefined) return false;
+  if (expiresAt > Date.now()) return true;
+  localNegativeUntil.delete(key);
+  return false;
+}
 
 /**
  * Batch GET using Upstash pipeline API — single HTTP round-trip for N keys.
@@ -378,9 +417,15 @@ export async function cachedFetchJson<T extends object>(
   negativeTtlSeconds = 120,
   opts?: CachedFetchOpts,
 ): Promise<T | null> {
-  const cached = await getCachedJson(key);
-  if (cached === NEG_SENTINEL) return null;
-  if (cached !== null) return cached as T;
+  const cached = await readCachedJson(key);
+  if (cached.status === 'hit') {
+    if (cached.value === NEG_SENTINEL) return null;
+    return cached.value as T;
+  }
+  if (cached.status === 'error') {
+    logCacheReadError(key, cached.error);
+    if (hasLocalNegativeCooldown(key)) return null;
+  }
 
   const existing = inflight.get(key);
   if (existing) return existing as Promise<T | null>;
@@ -391,11 +436,15 @@ export async function cachedFetchJson<T extends object>(
       if (result != null) {
         await setCachedJson(key, result, ttlSeconds);
       } else {
+        armLocalNegativeCooldown(key, negativeTtlSeconds);
         await setCachedJson(key, NEG_SENTINEL, negativeTtlSeconds);
       }
       return result;
     })
-    .catch((err: unknown) => {
+    .catch(async (err: unknown) => {
+      const errorTtlSeconds = effectiveFetchErrorNegativeTtlSeconds(negativeTtlSeconds);
+      armLocalNegativeCooldown(key, errorTtlSeconds);
+      await setCachedJson(key, NEG_SENTINEL, errorTtlSeconds);
       console.warn(`[redis] cachedFetchJson fetcher failed for "${key}":`, errMsg(err));
       throw err;
     })
@@ -452,9 +501,15 @@ export async function cachedFetchJsonWithMeta<T extends object>(
   negativeTtlSeconds = 120,
   opts?: { usage?: UsageHook; timeoutMs?: number },
 ): Promise<{ data: T | null; source: 'cache' | 'fresh' }> {
-  const cached = await getCachedJson(key);
-  if (cached === NEG_SENTINEL) return { data: null, source: 'cache' };
-  if (cached !== null) return { data: cached as T, source: 'cache' };
+  const cached = await readCachedJson(key);
+  if (cached.status === 'hit') {
+    if (cached.value === NEG_SENTINEL) return { data: null, source: 'cache' };
+    return { data: cached.value as T, source: 'cache' };
+  }
+  if (cached.status === 'error') {
+    logCacheReadError(key, cached.error);
+    if (hasLocalNegativeCooldown(key)) return { data: null, source: 'cache' };
+  }
 
   const existing = inflight.get(key);
   if (existing) {
@@ -481,12 +536,17 @@ export async function cachedFetchJsonWithMeta<T extends object>(
       } else {
         upstreamStatus = 0;
         cacheStatus = 'neg-sentinel';
+        armLocalNegativeCooldown(key, negativeTtlSeconds);
         await setCachedJson(key, NEG_SENTINEL, negativeTtlSeconds);
       }
       return result;
     })
-    .catch((err: unknown) => {
+    .catch(async (err: unknown) => {
       upstreamStatus = 0;
+      cacheStatus = 'neg-sentinel';
+      const errorTtlSeconds = effectiveFetchErrorNegativeTtlSeconds(negativeTtlSeconds);
+      armLocalNegativeCooldown(key, errorTtlSeconds);
+      await setCachedJson(key, NEG_SENTINEL, errorTtlSeconds);
       console.warn(`[redis] cachedFetchJsonWithMeta fetcher failed for "${key}":`, errMsg(err));
       throw err;
     })

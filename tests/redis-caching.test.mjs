@@ -80,7 +80,7 @@ function isSetRequest(_url, init) {
 
 function parseSetRequest(_url, init) {
   const body = JSON.parse(String(init.body));
-  return { key: body[1], value: body[2] };
+  return { key: body[1], value: body[2], ttlSeconds: Number(body[4]) };
 }
 
 describe('redis caching behavior', { concurrency: 1 }, () => {
@@ -417,7 +417,7 @@ describe('negative-result caching', { concurrency: 1 }, () => {
     }
   });
 
-  it('does not cache sentinel when fetcher throws', async () => {
+  it('caches a short sentinel when fetcher throws, while preserving the leader rejection', async () => {
     const redis = await importRedisFresh();
     const restoreEnv = withEnv({
       UPSTASH_REDIS_REST_URL: 'https://redis.test',
@@ -427,12 +427,20 @@ describe('negative-result caching', { concurrency: 1 }, () => {
     });
     const originalFetch = globalThis.fetch;
 
+    const store = new Map();
+    const ttls = new Map();
     let setCalls = 0;
     globalThis.fetch = async (url, init) => {
       const raw = String(url);
-      if (raw.includes('/get/')) return jsonResponse({ result: undefined });
+      if (raw.includes('/get/')) {
+        const key = decodeURIComponent(raw.split('/get/').pop() || '');
+        return jsonResponse({ result: store.get(key) ?? undefined });
+      }
       if (isSetRequest(url, init)) {
+        const { key, value, ttlSeconds } = parseSetRequest(url, init);
         setCalls += 1;
+        store.set(key, value);
+        ttls.set(key, ttlSeconds);
         return jsonResponse({ result: 'OK' });
       }
       throw new Error(`Unexpected fetch URL: ${raw}`);
@@ -447,11 +455,57 @@ describe('negative-result caching', { concurrency: 1 }, () => {
 
       await assert.rejects(() => redis.cachedFetchJson('neg:test:throw', 300, throwingFetcher));
       assert.equal(fetcherCalls, 1);
-      assert.equal(setCalls, 0, 'no sentinel should be cached when fetcher throws');
+      assert.equal(setCalls, 1, 'throw path should write a cooldown sentinel');
+      assert.equal(JSON.parse(store.get('neg:test:throw')), '__WM_NEG__');
+      assert.equal(ttls.get('neg:test:throw'), 30, 'throw path should use a short error cooldown TTL');
 
       const redis2 = await importRedisFresh();
-      await assert.rejects(() => redis2.cachedFetchJson('neg:test:throw', 300, throwingFetcher));
-      assert.equal(fetcherCalls, 2, 'fetcher should run again after a thrown error (no sentinel)');
+      const second = await redis2.cachedFetchJson('neg:test:throw', 300, throwingFetcher);
+      assert.equal(second, null, 'subsequent call should resolve from the cooldown sentinel');
+      assert.equal(fetcherCalls, 1, 'fetcher should NOT run again while the sentinel is live');
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('uses in-process cooldown on Redis read errors instead of treating them as plain misses', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+
+    let readMode = 'miss';
+    globalThis.fetch = async (url, init) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) {
+        if (readMode === 'throw') throw new Error('Redis ECONNRESET');
+        return jsonResponse({ result: undefined });
+      }
+      if (isSetRequest(url, init)) {
+        throw new Error('Redis SET failed');
+      }
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      let fetcherCalls = 0;
+      const throwingFetcher = async () => {
+        fetcherCalls += 1;
+        throw new Error('upstream ETIMEDOUT');
+      };
+
+      await assert.rejects(() => redis.cachedFetchJson('neg:test:redis-read-error', 300, throwingFetcher));
+      assert.equal(fetcherCalls, 1, 'first miss should run the fetcher and preserve its rejection');
+
+      readMode = 'throw';
+      const second = await redis.cachedFetchJson('neg:test:redis-read-error', 300, throwingFetcher);
+      assert.equal(second, null, 'Redis read error should use the local cooldown sentinel');
+      assert.equal(fetcherCalls, 1, 'read-error path must not stampede upstream while cooldown is active');
     } finally {
       globalThis.fetch = originalFetch;
       restoreEnv();
