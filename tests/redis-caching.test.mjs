@@ -324,6 +324,54 @@ describe('cachedFetchJsonWithMeta source labeling', { concurrency: 1 }, () => {
       restoreEnv();
     }
   });
+
+  it('uses an in-process positive fallback after Redis read errors even when the write succeeds', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+
+    let getCalls = 0;
+    let setCalls = 0;
+    globalThis.fetch = async (url, init) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) {
+        getCalls += 1;
+        throw new Error('Redis GET failed');
+      }
+      if (isSetRequest(url, init)) {
+        setCalls += 1;
+        return jsonResponse({ result: 'OK' });
+      }
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      let fetcherCalls = 0;
+      const fetcher = async () => {
+        fetcherCalls += 1;
+        return { value: 'fresh-during-read-outage' };
+      };
+
+      const first = await redis.cachedFetchJsonWithMeta('meta:test:local-positive-read-error', 300, fetcher);
+      assert.equal(first.source, 'fresh');
+      assert.deepEqual(first.data, { value: 'fresh-during-read-outage' });
+
+      const second = await redis.cachedFetchJsonWithMeta('meta:test:local-positive-read-error', 300, fetcher);
+      assert.equal(second.source, 'cache', 'local fallback should report cache semantics');
+      assert.deepEqual(second.data, { value: 'fresh-during-read-outage' });
+      assert.equal(fetcherCalls, 1, 'read-error path must not refetch while local positive fallback is live');
+      assert.equal(getCalls, 2, 'each call may still probe Redis before using the local fallback');
+      assert.equal(setCalls, 1, 'only the fresh leader should write Redis');
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
 });
 
 describe('negative-result caching', { concurrency: 1 }, () => {
@@ -506,6 +554,52 @@ describe('negative-result caching', { concurrency: 1 }, () => {
       const second = await redis.cachedFetchJson('neg:test:redis-read-error', 300, throwingFetcher);
       assert.equal(second, null, 'Redis read error should use the local cooldown sentinel');
       assert.equal(fetcherCalls, 1, 'read-error path must not stampede upstream while cooldown is active');
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('uses an in-process positive fallback when Redis write fails after a successful fetch', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+
+    let getCalls = 0;
+    let setCalls = 0;
+    globalThis.fetch = async (url, init) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) {
+        getCalls += 1;
+        return jsonResponse({ result: undefined });
+      }
+      if (isSetRequest(url, init)) {
+        setCalls += 1;
+        return jsonResponse({ error: 'Redis SET failed' }, false);
+      }
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      let fetcherCalls = 0;
+      const fetcher = async () => {
+        fetcherCalls += 1;
+        return { value: 'fresh-during-write-outage' };
+      };
+
+      const first = await redis.cachedFetchJson('pos:test:local-positive-write-error', 300, fetcher);
+      assert.deepEqual(first, { value: 'fresh-during-write-outage' });
+
+      const second = await redis.cachedFetchJson('pos:test:local-positive-write-error', 300, fetcher);
+      assert.deepEqual(second, { value: 'fresh-during-write-outage' });
+      assert.equal(fetcherCalls, 1, 'write-failure path must not refetch while local positive fallback is live');
+      assert.equal(getCalls, 2, 'each call may still probe Redis before using the local fallback');
+      assert.equal(setCalls, 1, 'only the fresh leader should attempt the failed write');
     } finally {
       globalThis.fetch = originalFetch;
       restoreEnv();

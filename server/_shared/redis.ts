@@ -29,6 +29,10 @@ function errMsg(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+function hasRemoteRedisConfig(): boolean {
+  return Boolean(process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN);
+}
+
 /**
  * Environment-based key prefix to avoid collisions when multiple deployments
  * share the same Upstash Redis instance (M-6 fix).
@@ -222,8 +226,10 @@ export async function setCachedJson(key: string, value: unknown, ttlSeconds: num
 
 const NEG_SENTINEL = '__WM_NEG__';
 const FETCH_ERROR_NEGATIVE_TTL_SECONDS = 30;
+const REDIS_FAILURE_POSITIVE_TTL_SECONDS = 30;
 
 const localNegativeUntil = new Map<string, number>();
+const localPositiveFallback = new Map<string, { value: unknown; expiresAt: number }>();
 
 function effectiveFetchErrorNegativeTtlSeconds(negativeTtlSeconds: number): number {
   return Math.max(1, Math.min(negativeTtlSeconds, FETCH_ERROR_NEGATIVE_TTL_SECONDS));
@@ -239,6 +245,26 @@ function hasLocalNegativeCooldown(key: string): boolean {
   if (expiresAt > Date.now()) return true;
   localNegativeUntil.delete(key);
   return false;
+}
+
+function effectiveRedisFailurePositiveTtlSeconds(ttlSeconds: number): number {
+  return Math.max(1, Math.min(ttlSeconds, REDIS_FAILURE_POSITIVE_TTL_SECONDS));
+}
+
+function armLocalPositiveFallback(key: string, value: unknown, ttlSeconds: number): void {
+  const effectiveTtlSeconds = effectiveRedisFailurePositiveTtlSeconds(ttlSeconds);
+  localPositiveFallback.set(key, {
+    value,
+    expiresAt: Date.now() + effectiveTtlSeconds * 1000,
+  });
+}
+
+function readLocalPositiveFallback(key: string): unknown | undefined {
+  const cached = localPositiveFallback.get(key);
+  if (cached === undefined) return undefined;
+  if (cached.expiresAt > Date.now()) return cached.value;
+  localPositiveFallback.delete(key);
+  return undefined;
 }
 
 /**
@@ -422,6 +448,9 @@ export async function cachedFetchJson<T extends object>(
     if (cached.value === NEG_SENTINEL) return null;
     return cached.value as T;
   }
+  const localPositive = readLocalPositiveFallback(key);
+  if (localPositive !== undefined) return localPositive as T;
+  const hadCacheReadError = cached.status === 'error';
   if (cached.status === 'error') {
     logCacheReadError(key, cached.error);
     if (hasLocalNegativeCooldown(key)) return null;
@@ -434,7 +463,10 @@ export async function cachedFetchJson<T extends object>(
   const promise = withFetcherTimeout(fetcher(), key, timeoutMs, 'cachedFetchJson')
     .then(async (result) => {
       if (result != null) {
-        await setCachedJson(key, result, ttlSeconds);
+        const wrote = await setCachedJson(key, result, ttlSeconds);
+        if (hadCacheReadError || (!wrote && hasRemoteRedisConfig())) {
+          armLocalPositiveFallback(key, result, ttlSeconds);
+        }
       } else {
         armLocalNegativeCooldown(key, negativeTtlSeconds);
         await setCachedJson(key, NEG_SENTINEL, negativeTtlSeconds);
@@ -506,6 +538,9 @@ export async function cachedFetchJsonWithMeta<T extends object>(
     if (cached.value === NEG_SENTINEL) return { data: null, source: 'cache' };
     return { data: cached.value as T, source: 'cache' };
   }
+  const localPositive = readLocalPositiveFallback(key);
+  if (localPositive !== undefined) return { data: localPositive as T, source: 'cache' };
+  const hadCacheReadError = cached.status === 'error';
   if (cached.status === 'error') {
     logCacheReadError(key, cached.error);
     if (hasLocalNegativeCooldown(key)) return { data: null, source: 'cache' };
@@ -532,7 +567,10 @@ export async function cachedFetchJsonWithMeta<T extends object>(
       // the structural detail.
       if (result != null) {
         upstreamStatus = 200;
-        await setCachedJson(key, result, ttlSeconds);
+        const wrote = await setCachedJson(key, result, ttlSeconds);
+        if (hadCacheReadError || (!wrote && hasRemoteRedisConfig())) {
+          armLocalPositiveFallback(key, result, ttlSeconds);
+        }
       } else {
         upstreamStatus = 0;
         cacheStatus = 'neg-sentinel';
