@@ -5,7 +5,7 @@
  * instead of reading localStorage keys directly. Resolution order:
  *
  *   1. Clerk auth (via getCurrentClerkUser() — the initialized clerkInstance)
- *   2. Legacy wm-pro-key from localStorage
+ *   2. Legacy wm-pro-key through the HttpOnly-session migration helper
  *   3. Stable anonymous ID (auto-generated, persisted in localStorage)
  *
  * This module is the "identity bridge" between checkout, billing,
@@ -27,9 +27,20 @@
  */
 
 import { getCurrentClerkUser } from './clerk';
+import { migrateLegacyKeysToHttpOnlySession, readLegacySessionKey } from './browser-key-session';
 
-const LEGACY_PRO_KEY = 'wm-pro-key';
 const ANON_KEY = 'wm-anon-id';
+let legacyProMigrationStarted = false;
+
+function legacyProKeyForMigration(): string {
+  const proKey = readLegacySessionKey('wm-pro-key');
+  if (!proKey || legacyProMigrationStarted) return proKey;
+  legacyProMigrationStarted = true;
+  void migrateLegacyKeysToHttpOnlySession({ proKey }).catch(() => {
+    legacyProMigrationStarted = false;
+  });
+  return proKey;
+}
 
 /**
  * Returns (or creates) a stable anonymous ID for this browser.
@@ -62,11 +73,10 @@ export function getUserId(): string | null {
   const clerkUser = getCurrentClerkUser();
   if (clerkUser?.id) return clerkUser.id;
 
-  // 2. Legacy wm-pro-key
-  try {
-    const proKey = localStorage.getItem(LEGACY_PRO_KEY);
-    if (proKey) return proKey;
-  } catch { /* SSR or restricted context */ }
+  // 2. Legacy wm-pro-key: preserve existing identity behavior while moving the
+  // key into a server-issued HttpOnly cookie and clearing JS-readable storage.
+  const proKey = legacyProKeyForMigration();
+  if (proKey) return proKey;
 
   // 3. Stable anonymous ID — always available
   return getOrCreateAnonId();
@@ -82,9 +92,5 @@ export function hasUserIdentity(): boolean {
   if (clerkUser?.id) return true;
 
   // 2. Legacy pro key
-  try {
-    return !!localStorage.getItem(LEGACY_PRO_KEY);
-  } catch {
-    return false;
-  }
+  return !!legacyProKeyForMigration();
 }

@@ -278,6 +278,7 @@ describe('widget-agent relay — security', () => {
 // ---------------------------------------------------------------------------
 describe('widget-store — constants and logic', () => {
   const store = src('src/services/widget-store.ts');
+  const browserKeySession = src('src/services/browser-key-session.ts');
 
   it('storage key is wm-custom-widgets', () => {
     assert.ok(
@@ -292,7 +293,8 @@ describe('widget-store — constants and logic', () => {
       "Feature gate must know the legacy 'wm-widget-key' name for migration",
     );
     assert.ok(
-      store.includes('establishWmKeySession'),
+      store.includes('migrateLegacyKeysToHttpOnlySession') &&
+        browserKeySession.includes('establishWmKeySession'),
       'Widget key writes must go through the server session endpoint',
     );
     assert.ok(
@@ -1075,6 +1077,7 @@ describe('PRO widget — store and sanitizer', () => {
   });
 
   it('PRO auth migrates wm-pro-key to an HttpOnly session instead of storing it', () => {
+    const browserKeySession = src('src/services/browser-key-session.ts');
     assert.ok(
       store.includes("'wm-pro-key'"),
       "isProWidgetEnabled must know the legacy 'wm-pro-key' name for migration",
@@ -1084,7 +1087,8 @@ describe('PRO widget — store and sanitizer', () => {
       'isProWidgetEnabled function must be exported',
     );
     assert.ok(
-      store.includes('establishWmKeySession'),
+      store.includes('migrateLegacyKeysToHttpOnlySession') &&
+        browserKeySession.includes('establishWmKeySession'),
       'PRO key writes must go through the server session endpoint',
     );
     assert.ok(
@@ -1094,6 +1098,18 @@ describe('PRO widget — store and sanitizer', () => {
     assert.ok(
       !/document\.cookie\s*=.*wm-pro-key.*encodeURIComponent\(.*key/s.test(store),
       'wm-pro-key must not be written to a JS-readable cookie',
+    );
+  });
+
+  it('user identity migrates legacy wm-pro-key instead of reading localStorage directly', () => {
+    const identity = src('src/services/user-identity.ts');
+    assert.ok(
+      identity.includes('readLegacySessionKey') && identity.includes('migrateLegacyKeysToHttpOnlySession'),
+      'user-identity must route legacy wm-pro-key through the HttpOnly migration helper',
+    );
+    assert.ok(
+      !/localStorage\.getItem\(['"]wm-pro-key['"]/.test(identity),
+      'user-identity must not read wm-pro-key directly from localStorage',
     );
   });
 
