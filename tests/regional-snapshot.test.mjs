@@ -423,6 +423,7 @@ describe('isCloseToThreshold', () => {
   });
 
   it('keeps gt/gte watching semantics for positive thresholds', () => {
+    assert.equal(isCloseToThreshold(0.85, { operator: 'gt', value: 1.0 }), true);
     assert.equal(isCloseToThreshold(0.85, { operator: 'gte', value: 1.0 }), true);
     assert.equal(isCloseToThreshold(1.0, { operator: 'gte', value: 1.0 }), false);
   });
