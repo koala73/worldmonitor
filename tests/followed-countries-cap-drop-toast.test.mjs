@@ -61,5 +61,15 @@ describe('followed countries cap-drop toast wiring', () => {
       /toast\.setAttribute\('aria-live', 'polite'\)/,
       'toast announcement should be polite, not interruptive',
     );
+    assert.match(
+      appSrc,
+      /followedCountriesCapDropToastTimer/,
+      'App must track the toast auto-dismiss timer for destroy-time cleanup',
+    );
+    assert.match(
+      appSrc,
+      /window\.clearTimeout\(this\.followedCountriesCapDropToastTimer\)/,
+      'App destroy and manual dismiss must clear the toast auto-dismiss timer',
+    );
   });
 });

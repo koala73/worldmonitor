@@ -141,6 +141,7 @@ export class App {
   private webMcpController: AbortController | null = null;
   private visiblePanelPrimed = new Set<string>();
   private visiblePanelPrimeRaf: number | null = null;
+  private followedCountriesCapDropToastTimer: number | null = null;
   private bootstrapHydrationState: BootstrapHydrationState = getBootstrapHydrationState();
   private cachedModeBannerEl: HTMLElement | null = null;
   private readonly handleViewportPrime = (): void => {
@@ -1433,6 +1434,10 @@ export class App {
     destroyBreakingNewsAlerts();
     this.cachedModeBannerEl?.remove();
     this.cachedModeBannerEl = null;
+    if (this.followedCountriesCapDropToastTimer !== null) {
+      window.clearTimeout(this.followedCountriesCapDropToastTimer);
+      this.followedCountriesCapDropToastTimer = null;
+    }
     this.state.map?.destroy();
     disconnectAisStream();
     // Unregister every WebMCP tool so a same-document re-init (tests,
@@ -1443,6 +1448,10 @@ export class App {
   }
 
   private showFollowedCountriesCapDropToast(kept: number, dropped: number): void {
+    if (this.followedCountriesCapDropToastTimer !== null) {
+      window.clearTimeout(this.followedCountriesCapDropToastTimer);
+      this.followedCountriesCapDropToastTimer = null;
+    }
     document.querySelector('.wm-followed-cap-drop-toast')?.remove();
 
     const toast = document.createElement('div');
@@ -1479,17 +1488,26 @@ export class App {
 
     toast.append(body, action, dismiss);
 
-    const autoTimer = window.setTimeout(() => toast.remove(), 8000);
+    this.followedCountriesCapDropToastTimer = window.setTimeout(() => {
+      toast.remove();
+      this.followedCountriesCapDropToastTimer = null;
+    }, 8000);
     toast.addEventListener('click', (e) => {
       const clickedAction = (e.target as HTMLElement)
         .closest<HTMLElement>('[data-action]')
         ?.dataset.action;
       if (clickedAction === 'upgrade') {
         window.open('/pro#pricing', '_blank', 'noopener');
-        window.clearTimeout(autoTimer);
+        if (this.followedCountriesCapDropToastTimer !== null) {
+          window.clearTimeout(this.followedCountriesCapDropToastTimer);
+          this.followedCountriesCapDropToastTimer = null;
+        }
         toast.remove();
       } else if (clickedAction === 'dismiss') {
-        window.clearTimeout(autoTimer);
+        if (this.followedCountriesCapDropToastTimer !== null) {
+          window.clearTimeout(this.followedCountriesCapDropToastTimer);
+          this.followedCountriesCapDropToastTimer = null;
+        }
         toast.remove();
       }
     });
