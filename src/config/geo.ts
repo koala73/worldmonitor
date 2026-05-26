@@ -3317,7 +3317,7 @@ export const NUCLEAR_FACILITIES: NuclearFacility[] = [
   { id: 'longmen', name: 'Longmen Nuclear Power Plant', lat: 25.04, lon: 121.92, type: 'plant', status: 'construction', operator: 'TW' },
   { id: 'maanshan', name: 'Maanshan Nuclear Power Plant', lat: 21.96, lon: 120.75, type: 'plant', status: 'active', operator: 'TW' },
   // --- UA ---
-  { id: 'chernobyl', name: 'Chernobyl Nuclear Power Plant', lat: 51.39, lon: 30.1, type: 'plant', status: 'contested', operator: 'UA' },
+  { id: 'chernobyl', name: 'Chernobyl Nuclear Power Plant', lat: 51.39, lon: 30.1, type: 'plant', status: 'decommissioned', operator: 'UA' },
   { id: 'khmelnytskyi', name: 'Khmelnytskyi Nuclear Power Plant', lat: 50.3, lon: 26.64, type: 'plant', status: 'active', operator: 'UA' },
   { id: 'main_storage_of_spent_nuclear_fuel', name: 'Main storage of spent nuclear fuel', lat: 51.27, lon: 30.22, type: 'research', status: 'decommissioned', operator: 'UA' },
   { id: 'rivne', name: 'Rivne Nuclear Power Plant', lat: 51.33, lon: 25.89, type: 'plant', status: 'active', operator: 'UA' },
