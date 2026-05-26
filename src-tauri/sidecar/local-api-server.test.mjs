@@ -87,6 +87,9 @@ async function getJsonViaHttp(url) {
       port: Number(target.port || 80),
       path: `${target.pathname}${target.search}`,
       method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${process.env.LOCAL_API_TOKEN || ''}`,
+      },
     }, (res) => {
       const chunks = [];
       res.on('data', (chunk) => chunks.push(chunk));
@@ -370,6 +373,7 @@ test('signs desktop register-interest cloud fallback when shared secret is confi
     port: 0,
     apiDir: localApi.apiDir,
     remoteBase: remote.remoteBase,
+    allowPrivateRemoteBase: true,
     logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
@@ -675,7 +679,7 @@ test('blocks handler global fetches to private network targets (#3549)', async (
   const { port } = await app.start();
 
   try {
-    const response = await fetch(`http://127.0.0.1:${port}/api/private-proxy`);
+    const response = await authFetch(`http://127.0.0.1:${port}/api/private-proxy`);
     assert.equal(response.status, 502);
     const body = await response.json();
     assert.equal(body.error, 'Local handler error');
@@ -747,7 +751,7 @@ test('blocks handler global fetches to non-global IPv4 special ranges', async ()
 
   try {
     for (const blockedUrl of blockedUrls) {
-      const response = await fetch(`http://127.0.0.1:${port}/api/special-range-proxy?target=${encodeURIComponent(blockedUrl)}`);
+      const response = await authFetch(`http://127.0.0.1:${port}/api/special-range-proxy?target=${encodeURIComponent(blockedUrl)}`);
       assert.equal(response.status, 502, blockedUrl);
       const body = await response.json();
       assert.equal(body.error, 'Local handler error', blockedUrl);
@@ -830,7 +834,7 @@ test('uses asynchronous pinned lookup callback for handler global fetches (#3549
   const { port } = await app.start();
 
   try {
-    const response = await fetch(`http://127.0.0.1:${port}/api/public-proxy`);
+    const response = await authFetch(`http://127.0.0.1:${port}/api/public-proxy`);
     assert.equal(response.status, 200);
     assert.equal(lookupCallbackWasSync, false);
   } finally {
@@ -1161,7 +1165,7 @@ test('accepts WM_DESKTOP_SHARED_SECRET via /api/local-env-update', async () => {
   const { port } = await app.start();
 
   try {
-    const response = await fetch(`http://127.0.0.1:${port}/api/local-env-update`, {
+    const response = await authFetch(`http://127.0.0.1:${port}/api/local-env-update`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ key: 'WM_DESKTOP_SHARED_SECRET', value: 'desktop-secret-from-runtime' }),
@@ -1190,7 +1194,7 @@ test('validates WM_DESKTOP_SHARED_SECRET without provider probe', async () => {
   const { port } = await app.start();
 
   try {
-    const response = await fetch(`http://127.0.0.1:${port}/api/local-validate-secret`, {
+    const response = await authFetch(`http://127.0.0.1:${port}/api/local-validate-secret`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ key: 'WM_DESKTOP_SHARED_SECRET', value: 'desktop-secret-from-runtime' }),
