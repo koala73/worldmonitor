@@ -285,10 +285,22 @@ describe('widget-store — constants and logic', () => {
     );
   });
 
-  it('auth gate checks wm-widget-key localStorage entry', () => {
+  it('auth gate migrates wm-widget-key to an HttpOnly session instead of storing it', () => {
     assert.ok(
       store.includes("'wm-widget-key'"),
-      "Feature gate must check localStorage key 'wm-widget-key'",
+      "Feature gate must know the legacy 'wm-widget-key' name for migration",
+    );
+    assert.ok(
+      store.includes('establishWmKeySession'),
+      'Widget key writes must go through the server session endpoint',
+    );
+    assert.ok(
+      !/localStorage\.setItem\(['"]wm-widget-key['"]/.test(store),
+      'wm-widget-key must not be written to localStorage',
+    );
+    assert.ok(
+      !/document\.cookie\s*=.*wm-widget-key.*encodeURIComponent\(.*key/s.test(store),
+      'wm-widget-key must not be written to a JS-readable cookie',
     );
   });
 
@@ -1060,14 +1072,26 @@ describe('PRO widget — store and sanitizer', () => {
     assert.equal(val, 80000, 'MAX_HTML_CHARS_PRO must be 80,000');
   });
 
-  it('isProWidgetEnabled checks wm-pro-key localStorage key', () => {
+  it('PRO auth migrates wm-pro-key to an HttpOnly session instead of storing it', () => {
     assert.ok(
       store.includes("'wm-pro-key'"),
-      "isProWidgetEnabled must check localStorage key 'wm-pro-key'",
+      "isProWidgetEnabled must know the legacy 'wm-pro-key' name for migration",
     );
     assert.ok(
       store.includes('isProWidgetEnabled'),
       'isProWidgetEnabled function must be exported',
+    );
+    assert.ok(
+      store.includes('establishWmKeySession'),
+      'PRO key writes must go through the server session endpoint',
+    );
+    assert.ok(
+      !/localStorage\.setItem\(['"]wm-pro-key['"]/.test(store),
+      'wm-pro-key must not be written to localStorage',
+    );
+    assert.ok(
+      !/document\.cookie\s*=.*wm-pro-key.*encodeURIComponent\(.*key/s.test(store),
+      'wm-pro-key must not be written to a JS-readable cookie',
     );
   });
 

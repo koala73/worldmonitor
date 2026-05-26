@@ -148,8 +148,8 @@ after(() => {
 
 // Helpers --------------------------------------------------------------------
 
-function setStoredToken(token: string, expMs: number): void {
-  memoryStorage.set('wm-session-token', JSON.stringify({ token, exp: expMs }));
+function setStoredSessionExp(_token: string, expMs: number): void {
+  memoryStorage.set('wm-session-exp', JSON.stringify({ exp: expMs }));
 }
 
 // Fresh = exp far in the future. Expired = exp in the past (or within the
@@ -172,7 +172,7 @@ async function primeCachedFromStorage(): Promise<void> {
 describe('wm-session periodic refresh (Layer 1)', () => {
   it('skips the periodic mint when document is hidden', async () => {
     // Cached token is expired so the interval would otherwise mint.
-    setStoredToken('wms_old', PAST);
+    setStoredSessionExp('wms_old', PAST);
     await primeCachedFromStorage(); // cached stays null because PAST is not fresh
 
     stubDocument.visibilityState = 'hidden';
@@ -182,7 +182,7 @@ describe('wm-session periodic refresh (Layer 1)', () => {
       const url = typeof input === 'string' ? input : (input instanceof URL ? input.href : input.url);
       if (url.includes('/api/wm-session')) {
         mintCalls += 1;
-        return Promise.resolve(new Response(JSON.stringify({ token: 'wms_new', exp: FAR_FUTURE }), {
+        return Promise.resolve(new Response(JSON.stringify({ exp: FAR_FUTURE }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         }));
@@ -199,7 +199,7 @@ describe('wm-session periodic refresh (Layer 1)', () => {
   });
 
   it('skips the periodic mint when the cached token is still fresh', async () => {
-    setStoredToken('wms_fresh', FAR_FUTURE);
+    setStoredSessionExp('wms_fresh', FAR_FUTURE);
     await primeCachedFromStorage(); // primes `cached` with fresh value
 
     stubDocument.visibilityState = 'visible';
@@ -209,7 +209,7 @@ describe('wm-session periodic refresh (Layer 1)', () => {
       const url = typeof input === 'string' ? input : (input instanceof URL ? input.href : input.url);
       if (url.includes('/api/wm-session')) {
         mintCalls += 1;
-        return Promise.resolve(new Response(JSON.stringify({ token: 'wms_new', exp: FAR_FUTURE }), {
+        return Promise.resolve(new Response(JSON.stringify({ exp: FAR_FUTURE }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         }));
@@ -231,7 +231,7 @@ describe('wm-session periodic refresh (Layer 1)', () => {
       const url = typeof input === 'string' ? input : (input instanceof URL ? input.href : input.url);
       if (url.includes('/api/wm-session')) {
         mintCalls += 1;
-        return Promise.resolve(new Response(JSON.stringify({ token: `wms_visible_${mintCalls}`, exp: FAR_FUTURE }), {
+        return Promise.resolve(new Response(JSON.stringify({ exp: FAR_FUTURE }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         }));
@@ -247,7 +247,7 @@ describe('wm-session periodic refresh (Layer 1)', () => {
   });
 
   it('visibilitychange handler does NOT mint when the cached token is fresh', async () => {
-    setStoredToken('wms_fresh_visible', FAR_FUTURE);
+    setStoredSessionExp('wms_fresh_visible', FAR_FUTURE);
     await primeCachedFromStorage(); // primes cached with fresh token
 
     let mintCalls = 0;
@@ -255,7 +255,7 @@ describe('wm-session periodic refresh (Layer 1)', () => {
       const url = typeof input === 'string' ? input : (input instanceof URL ? input.href : input.url);
       if (url.includes('/api/wm-session')) {
         mintCalls += 1;
-        return Promise.resolve(new Response(JSON.stringify({ token: 'wms_unused', exp: FAR_FUTURE }), {
+        return Promise.resolve(new Response(JSON.stringify({ exp: FAR_FUTURE }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         }));
@@ -277,10 +277,10 @@ describe('wm-session periodic refresh (Layer 1)', () => {
 
 describe('wm-session refresh-on-401 (Layer 2)', () => {
   it('retries an API 401 with a freshly-minted token', async () => {
-    // Prime cached with a token the server will reject.
-    setStoredToken('wms_stale', FAR_FUTURE);
+    // Prime cached with an expiry for a cookie the server will reject.
+    setStoredSessionExp('wms_stale', FAR_FUTURE);
     await primeCachedFromStorage();
-    assert.equal(mod.getWmSessionToken(), 'wms_stale');
+    assert.equal(mod.getWmSessionToken(), null);
 
     let bootstrapAttempts = 0;
     let mintCalls = 0;
@@ -288,18 +288,17 @@ describe('wm-session refresh-on-401 (Layer 2)', () => {
       const url = typeof input === 'string' ? input : (input instanceof URL ? input.href : input.url);
       if (url.includes('/api/wm-session')) {
         mintCalls += 1;
-        return Promise.resolve(new Response(JSON.stringify({ token: 'wms_new', exp: FAR_FUTURE }), {
+        return Promise.resolve(new Response(JSON.stringify({ exp: FAR_FUTURE }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         }));
       }
       if (url.includes('/api/bootstrap')) {
         bootstrapAttempts += 1;
-        const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
-        const sent = headers.get('X-WorldMonitor-Key');
-        if (sent === 'wms_stale') return Promise.resolve(new Response('expired', { status: 401 }));
-        if (sent === 'wms_new') return Promise.resolve(new Response('ok', { status: 200 }));
-        return Promise.resolve(new Response('no-key', { status: 401 }));
+        assert.equal(init?.credentials, 'include');
+        return Promise.resolve(new Response(bootstrapAttempts === 1 ? 'expired' : 'ok', {
+          status: bootstrapAttempts === 1 ? 401 : 200,
+        }));
       }
       return Promise.resolve(new Response('unhandled', { status: 500 }));
     };
@@ -311,7 +310,7 @@ describe('wm-session refresh-on-401 (Layer 2)', () => {
   });
 
   it('does NOT retry when the path is in PREMIUM_RPC_PATHS', async () => {
-    setStoredToken('wms_anything', FAR_FUTURE);
+    setStoredSessionExp('wms_anything', FAR_FUTURE);
     await primeCachedFromStorage();
 
     let attempts = 0;
@@ -320,7 +319,7 @@ describe('wm-session refresh-on-401 (Layer 2)', () => {
       const url = typeof input === 'string' ? input : (input instanceof URL ? input.href : input.url);
       if (url.includes('/api/wm-session')) {
         mintCalls += 1;
-        return Promise.resolve(new Response(JSON.stringify({ token: 'wms_new', exp: FAR_FUTURE }), {
+        return Promise.resolve(new Response(JSON.stringify({ exp: FAR_FUTURE }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         }));
@@ -337,7 +336,7 @@ describe('wm-session refresh-on-401 (Layer 2)', () => {
   });
 
   it('does NOT retry when the caller supplied Authorization', async () => {
-    setStoredToken('wms_anything', FAR_FUTURE);
+    setStoredSessionExp('wms_anything', FAR_FUTURE);
     await primeCachedFromStorage();
 
     let attempts = 0;
@@ -347,7 +346,7 @@ describe('wm-session refresh-on-401 (Layer 2)', () => {
       const url = typeof input === 'string' ? input : (input instanceof URL ? input.href : input.url);
       if (url.includes('/api/wm-session')) {
         mintCalls += 1;
-        return Promise.resolve(new Response(JSON.stringify({ token: 'wms_new', exp: FAR_FUTURE }), {
+        return Promise.resolve(new Response(JSON.stringify({ exp: FAR_FUTURE }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         }));
@@ -368,9 +367,8 @@ describe('wm-session refresh-on-401 (Layer 2)', () => {
   });
 
   it('returns the second 401 if the retry also fails (no infinite loop)', async () => {
-    // No cached token, no stored token — the first send goes out with NO
-    // X-WorldMonitor-Key header (token = null). Server 401s, the interceptor
-    // mints a fresh token, replays with the new header, server 401s again.
+    // No cached expiry and no stored expiry. Server 401s, the interceptor
+    // mints a fresh cookie, replays with credentials, server 401s again.
     // The second 401 must be returned as-is (no further retry) — the
     // retryGuard semantics are encoded by `fresh === token`-bail and by the
     // structural fact that the retry path is never re-entered.
@@ -384,7 +382,7 @@ describe('wm-session refresh-on-401 (Layer 2)', () => {
         mintCalls += 1;
         // Mint always succeeds with a fresh token; server still rejects on
         // /api/bootstrap to simulate HMAC-key rotation lag.
-        return Promise.resolve(new Response(JSON.stringify({ token: `wms_attempt_${mintCalls}`, exp: FAR_FUTURE }), {
+        return Promise.resolve(new Response(JSON.stringify({ exp: FAR_FUTURE }), {
           status: 200,
           headers: { 'Content-Type': 'application/json' },
         }));

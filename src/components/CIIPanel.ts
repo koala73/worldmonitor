@@ -2,7 +2,7 @@ import { Panel } from './Panel';
 import { getCSSColor } from '@/utils';
 import { calculateCII, type CountryScore } from '@/services/country-instability';
 import { t } from '../services/i18n';
-import { h, replaceChildren, rawHtml } from '@/utils/dom-utils';
+import { h, replaceChildren, rawHtml, trustedHtml, type TrustedHtml } from '@/utils/dom-utils';
 import type { CachedRiskScores } from '@/services/cached-risk-scores';
 import { toCountryScore } from '@/services/cached-risk-scores';
 
@@ -55,7 +55,10 @@ export class CIIPanel extends Panel {
     }
   }
 
-  private static readonly SHARE_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 002 2h12a2 2 0 002-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>';
+  private static readonly SHARE_SVG: TrustedHtml = trustedHtml(
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 002 2h12a2 2 0 002-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>',
+    'Static share icon SVG defined in source',
+  );
 
   private buildTrendArrow(trend: CountryScore['trend'], change: number): HTMLElement {
     if (trend === 'rising') return h('span', { className: 'trend-up' }, `↑${change > 0 ? change : ''}`);

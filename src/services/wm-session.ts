@@ -1,23 +1,21 @@
-// Client-side helper for the anonymous-browser session token (issue #3541).
+// Client-side helper for the anonymous-browser session cookie (issue #3541).
 //
 // The server's validateApiKey() (api/_api-key.js) no longer trusts header-only
 // signals like Origin / Referer / Sec-Fetch-Site to authorize key-less browser
 // access — every header is forgeable by curl. Anonymous browsers now mint a
-// short-lived HMAC-signed token via POST /api/wm-session at boot and include
-// it on subsequent API calls via the X-WorldMonitor-Key header.
+// short-lived HMAC-signed token via POST /api/wm-session. The token is stored
+// by the server in an HttpOnly cookie; JavaScript only tracks the expiry.
 //
 // Two pieces:
-//   1. ensureWmSession() — fetch + cache the token in sessionStorage.
+//   1. ensureWmSession() — asks the server to mint/refresh the HttpOnly cookie.
 //   2. installWmSessionFetchInterceptor() — patch globalThis.fetch ONCE so
-//      every call to our API origin auto-gets the header. Avoids touching
-//      ~50 fetch sites individually. Skipped if the caller already supplied
-//      auth (Authorization, X-WorldMonitor-Key, X-Api-Key) — Bearer JWT and
-//      explicit user-key paths still take precedence.
+//      every call to our API origin includes credentials. Avoids touching
+//      ~50 fetch sites individually.
 
 import { getCanonicalApiOrigin, toApiUrl } from './runtime';
 import { PREMIUM_RPC_PATHS } from '@/shared/premium-paths';
 
-const STORAGE_KEY = 'wm-session-token';
+const STORAGE_KEY = 'wm-session-exp';
 // Refresh well before expiry so a half-loaded page doesn't fail mid-flight.
 const REFRESH_MARGIN_MS = 5 * 60 * 1000;
 // Periodic refresh cadence — wake every 30 minutes to renew before the
@@ -26,13 +24,14 @@ const REFRESH_MARGIN_MS = 5 * 60 * 1000;
 const PERIODIC_REFRESH_MS = 30 * 60 * 1000;
 
 interface StoredSession {
-  token: string;
   exp: number;
 }
 
 let cached: StoredSession | null = null;
-let inflight: Promise<string | null> | null = null;
+let inflight: Promise<boolean> | null = null;
 let interceptorInstalled = false;
+let nativeSessionFetch: typeof fetch | null = null;
+let retryRejectedWarned = false;
 
 function isFresh(s: StoredSession | null): s is StoredSession {
   return !!s && s.exp - REFRESH_MARGIN_MS > Date.now();
@@ -43,9 +42,7 @@ function loadFromStorage(): StoredSession | null {
     const raw = sessionStorage.getItem(STORAGE_KEY);
     if (!raw) return null;
     const parsed = JSON.parse(raw) as Partial<StoredSession>;
-    if (typeof parsed?.token === 'string' && typeof parsed?.exp === 'number') {
-      return { token: parsed.token, exp: parsed.exp };
-    }
+    if (typeof parsed?.exp === 'number') return { exp: parsed.exp };
   } catch { /* ignore */ }
   return null;
 }
@@ -54,47 +51,63 @@ function saveToStorage(s: StoredSession): void {
   try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(s)); } catch { /* ignore */ }
 }
 
-async function fetchNewToken(): Promise<StoredSession | null> {
+async function fetchNewSession(body?: { widgetKey?: string; proKey?: string }): Promise<StoredSession | null> {
   try {
-    const resp = await fetch(toApiUrl('/api/wm-session'), {
+    const fetchImpl = nativeSessionFetch ?? globalThis.fetch;
+    const resp = await fetchImpl(toApiUrl('/api/wm-session'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: body ? JSON.stringify(body) : undefined,
     });
     if (!resp.ok) return null;
-    const data = await resp.json() as { token?: unknown; exp?: unknown };
-    if (typeof data?.token !== 'string' || typeof data?.exp !== 'number') return null;
-    return { token: data.token, exp: data.exp };
+    const data = await resp.json() as { exp?: unknown };
+    if (typeof data?.exp !== 'number') return null;
+    return { exp: data.exp };
   } catch {
     return null;
   }
 }
 
-export async function ensureWmSession(): Promise<string | null> {
-  if (isFresh(cached)) return cached.token;
+export async function ensureWmSession(): Promise<boolean> {
+  if (isFresh(cached)) return true;
   if (inflight) return inflight;
 
   const stored = loadFromStorage();
   if (isFresh(stored)) {
     cached = stored;
-    return cached.token;
+    return true;
   }
 
   inflight = (async () => {
-    const fresh = await fetchNewToken();
+    const fresh = await fetchNewSession();
     if (fresh) {
       cached = fresh;
       saveToStorage(fresh);
-      return fresh.token;
+      return true;
     }
-    return null;
+    return false;
   })().finally(() => { inflight = null; });
 
   return inflight;
 }
 
 export function getWmSessionToken(): string | null {
-  if (isFresh(cached)) return cached.token;
+  // Tokens are HttpOnly now; callers can only know whether the cookie should
+  // be fresh by calling ensureWmSession().
   return null;
+}
+
+export async function establishWmKeySession(keys: { widgetKey?: string; proKey?: string }): Promise<boolean> {
+  const fresh = await fetchNewSession(keys);
+  if (!fresh) return false;
+  cached = fresh;
+  saveToStorage(fresh);
+  return true;
+}
+
+function withCredentials(init?: RequestInit): RequestInit {
+  return { ...(init ?? {}), credentials: init?.credentials ?? 'include' };
 }
 
 // Test-only escape hatch. The interceptor lifecycle is module-scoped (one
@@ -113,7 +126,8 @@ export function __resetWmSessionForTests(): void {
   interceptorInstalled = false;
 }
 
-// Install a one-shot fetch wrapper that adds X-WorldMonitor-Key to API calls.
+// Install a one-shot fetch wrapper that includes HttpOnly session cookies on
+// API calls.
 // Only patches calls to our API origin (or relative /api/ paths). Other fetches
 // (Sentry, Clerk, third-party CDNs) are forwarded to native fetch unchanged.
 //
@@ -179,6 +193,7 @@ export function installWmSessionFetchInterceptor(): void {
   // `fetch` is already bound to its global receiver and the unbound
   // reference works correctly when called as `original(...)`.
   const original = window.fetch;
+  nativeSessionFetch = original;
 
   window.fetch = async function wmSessionFetch(input, init) {
     const url = (() => {
@@ -204,7 +219,7 @@ export function installWmSessionFetchInterceptor(): void {
         return url.split('?')[0] ?? url;
       }
     })();
-    if (PREMIUM_RPC_PATHS.has(path)) return original(input, init);
+    if (PREMIUM_RPC_PATHS.has(path)) return original(input, withCredentials(init));
 
     const headers = new Headers(
       init?.headers ?? (input instanceof Request ? input.headers : undefined),
@@ -217,11 +232,10 @@ export function installWmSessionFetchInterceptor(): void {
       headers.has('X-WorldMonitor-Key') ||
       headers.has('X-Api-Key')
     ) {
-      return original(input, init);
+      return original(input, withCredentials(init));
     }
 
-    const token = getWmSessionToken();
-    if (token) headers.set('X-WorldMonitor-Key', token);
+    await ensureWmSession().catch(() => false);
 
     // A Request body is a one-shot stream — clone BEFORE the first send so
     // the refresh-on-401 retry below has an intact body to replay. For
@@ -230,10 +244,10 @@ export function installWmSessionFetchInterceptor(): void {
 
     const sendWith = (h: Headers, src: typeof input): Promise<Response> => {
       if (src instanceof Request) {
-        const cloned = new Request(src, { headers: h });
-        return original(cloned, init);
+        const cloned = new Request(src, { ...withCredentials(init), headers: h });
+        return original(cloned);
       }
-      return original(src, { ...(init ?? {}), headers: h });
+      return original(src, { ...withCredentials(init), headers: h });
     };
 
     const resp = await sendWith(headers, input);
@@ -245,24 +259,24 @@ export function installWmSessionFetchInterceptor(): void {
     // wms_ token is irrelevant there.
     if (resp.status !== 401) return resp;
 
-    // Invalidate the cached token (and its sessionStorage twin) before
+    // Invalidate the cached expiry (and its sessionStorage twin) before
     // re-minting. ensureWmSession() is opportunistic — without invalidation,
     // it would return the same not-yet-clock-expired token that the server
     // just rejected (HMAC-key rotation: token signature is wrong even though
     // `exp` is in the future), and the retry would 401 with the same header.
-    if (token && cached?.token === token) {
-      cached = null;
-      try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
-    }
+    cached = null;
+    try { sessionStorage.removeItem(STORAGE_KEY); } catch { /* ignore */ }
 
-    const fresh = await ensureWmSession().catch(() => null);
-    // Bail if mint failed, or the "fresh" token is identical to what we just
-    // sent (cache returned the same value — retry would 401 again).
-    if (!fresh || fresh === token) return resp;
+    const fresh = await ensureWmSession().catch(() => false);
+    if (!fresh) return resp;
 
     const retryHeaders = new Headers(headers);
-    retryHeaders.set('X-WorldMonitor-Key', fresh);
-    return sendWith(retryHeaders, requestClone ?? input);
+    const retryResp = await sendWith(retryHeaders, requestClone ?? input);
+    if (retryResp.status === 401 && !retryRejectedWarned) {
+      retryRejectedWarned = true;
+      console.warn('[wm-session] API request still returned 401 after refreshing HttpOnly session cookie');
+    }
+    return retryResp;
   };
 
   // Layer 1 — periodic refresh. The token is short-lived (12h server-side)

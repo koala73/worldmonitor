@@ -9,6 +9,7 @@
     "lint:fix": "biome check ./src ./server ./api ./tests ./e2e ./scripts ./middleware.ts --fix",
     "lint:boundaries": "node scripts/lint-boundaries.mjs",
     "lint:api-contract": "node scripts/enforce-sebuf-api-contract.mjs",
+    "lint:safe-html": "node scripts/enforce-safe-html.mjs",
     "lint:rate-limit-policies": "tsx scripts/enforce-rate-limit-policies.mjs",
     "lint:premium-fetch": "tsx scripts/enforce-premium-fetch.mjs",
     "lint:mintlify-slugs": "node scripts/enforce-mintlify-reserved-slugs.mjs",
