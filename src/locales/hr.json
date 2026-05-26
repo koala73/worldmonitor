@@ -2625,7 +2625,9 @@
         "plant": "NUKLEARNA ELEKTRANA",
         "enrichment": "OBOGAĆIVANJE",
         "weapons": "KOMPLEKS ZA ORUŽJE",
-        "research": "ISTRAŽIVANJE"
+        "research": "ISTRAŽIVANJE",
+        "reprocessing": "POSTROJENJE ZA PRERADU",
+        "testSite": "NUKLEARNO TESTNO MJESTO"
       },
       "description": "Nuklearna objekta pod nadzorom. Strateško značenje za regionalnu sigurnost i brigu o neširenoj proliferaciji."
     },

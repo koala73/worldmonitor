@@ -11,11 +11,22 @@ const CACHE_TTL = 21600; // 6h — 6x the 1h cron interval (was 2x = survived on
 // Canonical coordinates: src/config/geo.ts NUCLEAR_FACILITIES (type: 'test-site').
 // Keep in sync — drift here mislabels seismic events near nuclear infrastructure.
 const TEST_SITES = [
-  { name: 'Punggye-ri',    lat: 41.28, lon: 129.08 },
-  { name: 'Lop Nur',       lat: 40.81, lon: 89.79  },
-  { name: 'Novaya Zemlya', lat: 73.37, lon: 54.78  },
-  { name: 'Nevada NTS',    lat: 37.07, lon: -116.05 },
-  { name: 'Semipalatinsk', lat: 50.07, lon: 78.43  },
+  { name: 'Lop Nur', lat: 40.81, lon: 89.79 },
+  { name: 'In Eker', lat: 24.06, lon: 5.05 },
+  { name: 'Reggane', lat: 26.31, lon: -0.06 },
+  { name: 'Fangataufa', lat: -22.25, lon: -138.75 },
+  { name: 'Moruroa', lat: -21.83, lon: -138.92 },
+  { name: 'Punggye-ri Nuclear Test Site', lat: 41.28, lon: 129.09 },
+  { name: 'Degelen', lat: 49.81, lon: 78.12 },
+  { name: 'Sary Shagan', lat: 46.38, lon: 72.87 },
+  { name: 'Semipalatinsk Test Site', lat: 50.38, lon: 77.78 },
+  { name: 'Chagai-II', lat: 28.43, lon: 63.86 },
+  { name: 'Kapustin Yar', lat: 48.59, lon: 45.72 },
+  { name: 'Totsky shooting range', lat: 52.55, lon: 52.82 },
+  { name: 'Novaya Zemlya', lat: 73.37, lon: 54.78 },
+  { name: 'Area 2', lat: 37.14, lon: -116.07 },
+  { name: 'Nevada National Security Site', lat: 37.12, lon: -116.05 },
+  { name: 'Salmon Site', lat: 31.14, lon: -89.57 },
 ];
 const TEST_SITE_RADIUS_KM = 100;
 

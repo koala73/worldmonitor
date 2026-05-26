@@ -3072,7 +3072,7 @@ export const NUCLEAR_FACILITIES: NuclearFacility[] = [
   { id: 'shidao_bay', name: 'Shidao Bay Nuclear Power Plant', lat: 36.97, lon: 122.53, type: 'plant', status: 'active', operator: 'CN' },
   { id: 'taipingling', name: 'Taipingling Nuclear Power Plant', lat: 22.7, lon: 114.98, type: 'plant', status: 'construction', operator: 'CN' },
   { id: 'taishan', name: 'Taishan Nuclear Power Plant', lat: 21.92, lon: 112.98, type: 'plant', status: 'active', operator: 'CN' },
-  { id: 'tianwan', name: 'Tianwan Nuclear Power Plant', lat: 34.69, lon: 119.46, type: 'plant', status: 'construction', operator: 'CN' },
+  { id: 'tianwan', name: 'Tianwan Nuclear Power Plant', lat: 34.69, lon: 119.46, type: 'plant', status: 'active', operator: 'CN' },
   { id: 'xiapu', name: 'Xiapu Nuclear Power Plant', lat: 26.8, lon: 120.16, type: 'plant', status: 'construction', operator: 'CN' },
   { id: 'xudabao', name: 'Xudabao Nuclear Power Plant', lat: 40.35, lon: 120.55, type: 'plant', status: 'construction', operator: 'CN' },
   { id: 'xuwei', name: 'Xuwei Nuclear Power Plant', lat: 34.62, lon: 119.51, type: 'plant', status: 'construction', operator: 'CN' },
@@ -3322,7 +3322,7 @@ export const NUCLEAR_FACILITIES: NuclearFacility[] = [
   { id: 'main_storage_of_spent_nuclear_fuel', name: 'Main storage of spent nuclear fuel', lat: 51.27, lon: 30.22, type: 'research', status: 'decommissioned', operator: 'UA' },
   { id: 'rivne', name: 'Rivne Nuclear Power Plant', lat: 51.33, lon: 25.89, type: 'plant', status: 'active', operator: 'UA' },
   { id: 'south_ukraine', name: 'South Ukraine Nuclear Power Plant', lat: 47.82, lon: 31.22, type: 'plant', status: 'active', operator: 'UA' },
-  { id: 'zaporizhzhia', name: 'Zaporizhzhia Nuclear Power Plant', lat: 47.51, lon: 34.59, type: 'plant', status: 'active', operator: 'UA' },
+  { id: 'zaporizhzhia', name: 'Zaporizhzhia Nuclear Power Plant', lat: 47.51, lon: 34.59, type: 'plant', status: 'contested', operator: 'UA' },
   // --- US ---
   { id: 'ames', name: 'Ames National Laboratory', lat: 42.03, lon: -93.65, type: 'research', status: 'active', operator: 'US' },
   { id: 'area', name: 'Area 2', lat: 37.14, lon: -116.07, type: 'test-site', status: 'decommissioned', operator: 'US' },

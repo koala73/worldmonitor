@@ -2426,7 +2426,9 @@
         "plant": "ATOMERŐMŰ",
         "enrichment": "GAZDAGÍTÁS",
         "weapons": "FEGYVERKOMPLEX",
-        "research": "KUTATÁS"
+        "research": "KUTATÁS",
+        "reprocessing": "ÚJRAFELDOLGOZÓ ÜZEM",
+        "testSite": "NUKLEÁRIS TESZTTERÜLET"
       },
       "description": "Felügyelet alatt álló nukleáris létesítmény. Stratégiai fontosság a regionális biztonság és a fegyverzetcsökkentési aggályok szempontjából."
     },

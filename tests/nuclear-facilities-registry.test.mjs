@@ -1,0 +1,108 @@
+import assert from 'node:assert/strict';
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { describe, it } from 'node:test';
+
+const ROOT = process.cwd();
+
+function src(path) {
+  return readFileSync(join(ROOT, path), 'utf8');
+}
+
+function parseArrayLiteral(source, declarationName) {
+  const start = source.indexOf(`const ${declarationName} = [`);
+  assert.notEqual(start, -1, `expected ${declarationName} declaration`);
+
+  const arrayStart = source.indexOf('[', start);
+  let depth = 0;
+  for (let i = arrayStart; i < source.length; i += 1) {
+    const char = source[i];
+    if (char === '[') depth += 1;
+    if (char === ']') {
+      depth -= 1;
+      if (depth === 0) {
+        return Function(`"use strict"; return (${source.slice(arrayStart, i + 1)});`)();
+      }
+    }
+  }
+
+  throw new Error(`unterminated ${declarationName} array`);
+}
+
+function parseNuclearFacilities() {
+  const source = src('src/config/geo.ts');
+  const start = source.indexOf('export const NUCLEAR_FACILITIES');
+  assert.notEqual(start, -1, 'expected NUCLEAR_FACILITIES export');
+
+  const assignment = source.indexOf('=', start);
+  assert.notEqual(assignment, -1, 'expected NUCLEAR_FACILITIES assignment');
+  const arrayStart = source.indexOf('[', assignment);
+  let depth = 0;
+  for (let i = arrayStart; i < source.length; i += 1) {
+    const char = source[i];
+    if (char === '[') depth += 1;
+    if (char === ']') {
+      depth -= 1;
+      if (depth === 0) {
+        return Function(`"use strict"; return (${source.slice(arrayStart, i + 1)});`)();
+      }
+    }
+  }
+
+  throw new Error('unterminated NUCLEAR_FACILITIES array');
+}
+
+function lookup(obj, key) {
+  return key.split('.').reduce((cur, part) => cur?.[part], obj);
+}
+
+function supportedLanguages() {
+  const match = src('src/services/i18n.ts').match(/SUPPORTED_LANGUAGES = \[([^\]]+)\]/);
+  assert.ok(match, 'expected SUPPORTED_LANGUAGES declaration');
+  return Array.from(match[1].matchAll(/'([^']+)'/g), ([, language]) => language);
+}
+
+function nuclearTypeLabelKey(type) {
+  return type === 'test-site' ? 'testSite' : type;
+}
+
+describe('nuclear facility registry invariants', () => {
+  it('keeps high-risk site statuses from regressing', () => {
+    const byId = new Map(parseNuclearFacilities().map((facility) => [facility.id, facility]));
+
+    assert.equal(byId.get('zaporizhzhia')?.status, 'contested');
+    assert.equal(byId.get('tianwan')?.status, 'active');
+  });
+
+  it('keeps earthquake test-site enrichment synced with the nuclear registry', () => {
+    const registrySites = parseNuclearFacilities()
+      .filter((facility) => facility.type === 'test-site')
+      .map(({ name, lat, lon }) => ({ name, lat, lon }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    const seedSites = parseArrayLiteral(src('scripts/seed-earthquakes.mjs'), 'TEST_SITES')
+      .map(({ name, lat, lon }) => ({ name, lat, lon }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    assert.deepEqual(seedSites, registrySites);
+  });
+
+  it('defines popup labels for every nuclear facility type in every supported locale', () => {
+    const requiredKeys = Array.from(
+      new Set(parseNuclearFacilities().map((facility) => `popups.nuclear.types.${nuclearTypeLabelKey(facility.type)}`)),
+    ).sort();
+
+    const missing = [];
+    for (const language of supportedLanguages()) {
+      const locale = JSON.parse(src(`src/locales/${language}.json`));
+      for (const key of requiredKeys) {
+        const value = lookup(locale, key);
+        if (typeof value !== 'string' || value.trim().length === 0) {
+          missing.push(`${language}.json: ${key}`);
+        }
+      }
+    }
+
+    assert.equal(missing.length, 0, `missing nuclear popup type labels:\n  ${missing.join('\n  ')}`);
+  });
+});
