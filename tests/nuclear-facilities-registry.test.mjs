@@ -71,6 +71,9 @@ describe('nuclear facility registry invariants', () => {
     const byId = new Map(parseNuclearFacilities().map((facility) => [facility.id, facility]));
 
     assert.equal(byId.get('zaporizhzhia')?.status, 'contested');
+    assert.equal(byId.get('chernobyl')?.status, 'decommissioned');
+    assert.equal(byId.get('west_valley')?.status, 'decommissioned');
+    assert.equal(byId.get('ehemalige_uranerzaufbereitungsanlage_ellweiler')?.status, 'decommissioned');
     assert.equal(byId.get('tianwan')?.status, 'active');
   });
 
@@ -114,6 +117,17 @@ describe('nuclear facility registry invariants', () => {
     assert.equal(byId.get('pierrelatte')?.name, 'Pierrelatte nuclear site (Comurhex/FBFC/Orano)');
     assert.equal(byId.get('tokai')?.name, 'Tokai Nuclear Power Site (Tokai-1/Tokai-2)');
     assert.equal(byId.get('kaiga_atomic_power_station')?.name, 'Kaiga Atomic Power Station');
+    assert.equal(byId.has('bruce_nuclear_generating_stationc'), false);
+    assert.equal(byId.get('bruce_nuclear_generating_station')?.name, 'Bruce Nuclear Generating Station');
+  });
+
+  it('styles every nuclear facility status used by the registry', () => {
+    const css = src('src/styles/main.css');
+    const statuses = Array.from(new Set(parseNuclearFacilities().map((facility) => facility.status))).sort();
+
+    for (const status of statuses) {
+      assert.match(css, new RegExp(`\\.nuclear-marker\\.${status}\\s*\\{`), `${status} needs a marker style`);
+    }
   });
 
   it('defines popup labels for every nuclear facility type in every supported locale', () => {
