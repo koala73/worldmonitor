@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 const ROOT = process.cwd();
+const LOCALES_DIR = 'src/locales';
 
 function src(path) {
   return readFileSync(join(ROOT, path), 'utf8');
@@ -13,35 +14,53 @@ function lookup(obj, key) {
   return key.split('.').reduce((cur, part) => cur?.[part], obj);
 }
 
+function loadLocales() {
+  return readdirSync(join(ROOT, LOCALES_DIR))
+    .filter((f) => f.endsWith('.json'))
+    .sort()
+    .map((file) => ({ file, data: JSON.parse(src(`${LOCALES_DIR}/${file}`)) }));
+}
+
+const COUNTRY_BRIEF_KEYS = [
+  'countryBrief.levels.critical',
+  'countryBrief.levels.high',
+  'countryBrief.levels.elevated',
+  'countryBrief.levels.moderate',
+  'countryBrief.levels.normal',
+  'countryBrief.levels.low',
+  'countryBrief.trends.rising',
+  'countryBrief.trends.falling',
+  'countryBrief.trends.stable',
+  'countryBrief.fallback.instabilityIndex',
+  'countryBrief.fallback.protestsDetected',
+  'countryBrief.fallback.aircraftTracked',
+  'countryBrief.fallback.vesselsTracked',
+  'countryBrief.fallback.activeStrikes',
+  'countryBrief.fallback.internetOutages',
+  'countryBrief.fallback.recentEarthquakes',
+  'countryBrief.fallback.stockIndex',
+];
+
 describe('country brief i18n keys', () => {
-  const en = JSON.parse(src('src/locales/en.json'));
+  it('resolves severity, trend, and fallback labels in every locale', () => {
+    const locales = loadLocales();
+    assert.ok(locales.length > 0, `expected at least one locale in ${LOCALES_DIR}`);
 
-  it('keeps severity, trend, and fallback labels under the namespace used by country brief UI', () => {
-    const keys = [
-      'countryBrief.levels.critical',
-      'countryBrief.levels.high',
-      'countryBrief.levels.elevated',
-      'countryBrief.levels.moderate',
-      'countryBrief.levels.normal',
-      'countryBrief.levels.low',
-      'countryBrief.trends.rising',
-      'countryBrief.trends.falling',
-      'countryBrief.trends.stable',
-      'countryBrief.fallback.instabilityIndex',
-      'countryBrief.fallback.protestsDetected',
-      'countryBrief.fallback.aircraftTracked',
-      'countryBrief.fallback.vesselsTracked',
-      'countryBrief.fallback.activeStrikes',
-      'countryBrief.fallback.internetOutages',
-      'countryBrief.fallback.recentEarthquakes',
-      'countryBrief.fallback.stockIndex',
-    ];
-
-    for (const key of keys) {
-      const value = lookup(en, key);
-      assert.equal(typeof value, 'string', `${key} must resolve to a string`);
-      assert.ok(value.trim().length > 0, `${key} must not be empty`);
+    const missing = [];
+    for (const { file, data } of locales) {
+      for (const key of COUNTRY_BRIEF_KEYS) {
+        const value = lookup(data, key);
+        if (typeof value !== 'string' || value.trim().length === 0) {
+          missing.push(`${file}: ${key}`);
+        }
+      }
     }
+
+    assert.equal(
+      missing.length,
+      0,
+      `country brief labels missing or empty:\n  ${missing.join('\n  ')}`,
+    );
   });
 
   it('uses the locale namespace where severity, trend, and fallback labels are defined', () => {
