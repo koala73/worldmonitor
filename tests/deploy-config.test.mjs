@@ -14,6 +14,15 @@ const getCacheHeaderValue = (sourcePath) => {
   return header?.value ?? null;
 };
 
+const getCspDirectiveTokens = (csp, directive) => {
+  const directiveSource = csp
+    .split(';')
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${directive} `));
+  const tokens = directiveSource?.slice(directive.length).trim().split(/\s+/).filter(Boolean) ?? [];
+  return [...new Set(tokens)].sort();
+};
+
 describe('deploy/cache configuration guardrails', () => {
   it('disables caching for HTML entry routes on Vercel', () => {
     // /mcp-grant added to the negative-lookahead by plan 2026-05-10-001 U3 — apex
@@ -216,57 +225,47 @@ describe('security header guardrails', () => {
     );
   });
 
-  it('CSP script-src hashes are in sync between vercel.json header and index.html meta tag', () => {
+  it('CSP script-src is in sync between vercel.json header and index.html meta tag', () => {
     const indexHtml = readFileSync(resolve(__dirname, '../index.html'), 'utf-8');
     const headerCsp = getHeaderValue('Content-Security-Policy');
     const metaMatch = indexHtml.match(/http-equiv="Content-Security-Policy"\s+content="([^"]*)"/i);
     assert.ok(metaMatch, 'index.html must have a CSP meta tag');
     const metaCsp = metaMatch[1];
 
-    const extractHashes = (csp) => {
-      const scriptSrc = csp.match(/script-src\s+([^;]+)/)?.[1] ?? '';
-      return new Set(scriptSrc.match(/'sha256-[A-Za-z0-9+/=]+'/g) ?? []);
-    };
+    const headerTokens = getCspDirectiveTokens(headerCsp, 'script-src');
+    const metaTokens = getCspDirectiveTokens(metaCsp, 'script-src');
 
-    const headerHashes = extractHashes(headerCsp);
-    const metaHashes = extractHashes(metaCsp);
-
-    const onlyHeader = [...headerHashes].filter(h => !metaHashes.has(h));
-    const onlyMeta = [...metaHashes].filter(h => !headerHashes.has(h));
+    const onlyHeader = headerTokens.filter((token) => !metaTokens.includes(token));
+    const onlyMeta = metaTokens.filter((token) => !headerTokens.includes(token));
 
     assert.deepEqual(onlyHeader, [],
-      `script-src hashes in vercel.json but missing from index.html: ${onlyHeader.join(', ')}. ` +
-      'Dual CSP enforces both; mismatched hashes block scripts.');
+      `script-src tokens in vercel.json but missing from index.html: ${onlyHeader.join(', ')}. ` +
+      'Dual CSP enforces both; mismatched tokens block scripts.');
     assert.deepEqual(onlyMeta, [],
-      `script-src hashes in index.html but missing from vercel.json: ${onlyMeta.join(', ')}. ` +
-      'Dual CSP enforces both; mismatched hashes block scripts.');
+      `script-src tokens in index.html but missing from vercel.json: ${onlyMeta.join(', ')}. ` +
+      'Dual CSP enforces both; mismatched tokens block scripts.');
   });
 
-  it('CSP script-src hashes are in sync between vercel.json header and docker/nginx-security-headers.conf', () => {
+  it('CSP script-src is in sync between vercel.json header and docker/nginx-security-headers.conf', () => {
     const nginxConf = readFileSync(resolve(__dirname, '../docker/nginx-security-headers.conf'), 'utf-8');
     const headerCsp = getHeaderValue('Content-Security-Policy');
     const nginxMatch = nginxConf.match(/add_header\s+Content-Security-Policy\s+"([^"]+)"/i);
     assert.ok(nginxMatch, 'nginx-security-headers.conf must have a Content-Security-Policy header');
     const nginxCsp = nginxMatch[1];
 
-    const extractHashes = (csp) => {
-      const scriptSrc = csp.match(/script-src\s+([^;]+)/)?.[1] ?? '';
-      return new Set(scriptSrc.match(/'sha256-[A-Za-z0-9+/=]+'/g) ?? []);
-    };
+    const headerTokens = getCspDirectiveTokens(headerCsp, 'script-src');
+    const nginxTokens = getCspDirectiveTokens(nginxCsp, 'script-src');
 
-    const headerHashes = extractHashes(headerCsp);
-    const nginxHashes = extractHashes(nginxCsp);
-
-    const onlyHeader = [...headerHashes].filter(h => !nginxHashes.has(h));
-    const onlyNginx = [...nginxHashes].filter(h => !headerHashes.has(h));
+    const onlyHeader = headerTokens.filter((token) => !nginxTokens.includes(token));
+    const onlyNginx = nginxTokens.filter((token) => !headerTokens.includes(token));
 
     assert.deepEqual(onlyHeader, [],
-      `script-src hashes in vercel.json but missing from nginx-security-headers.conf: ${onlyHeader.join(', ')}. ` +
+      `script-src tokens in vercel.json but missing from nginx-security-headers.conf: ${onlyHeader.join(', ')}. ` +
       'Self-hosted docker users must have the same CSP parity.');
     assert.deepEqual(onlyNginx, [],
-      `script-src hashes in nginx-security-headers.conf but missing from vercel.json: ${onlyNginx.join(', ')}. ` +
+      `script-src tokens in nginx-security-headers.conf but missing from vercel.json: ${onlyNginx.join(', ')}. ` +
       'Self-hosted docker users must have the same CSP parity.');
-      
+
     const nginxScriptSrc = nginxCsp.match(/script-src\s+([^;]+)/)?.[1] ?? '';
     assert.ok(!nginxScriptSrc.includes("'unsafe-inline'"), "nginx script-src must not contain 'unsafe-inline' to maintain CSP parity with Vercel.");
   });
