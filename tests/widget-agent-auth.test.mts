@@ -131,6 +131,24 @@ describe('widget-agent unified tester key auth', () => {
     });
   });
 
+  it('rejects disallowed origins before cookie-backed auth reaches the relay', async () => {
+    const res = await handler(new Request('https://www.worldmonitor.app/api/widget-agent', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://evil.example.com',
+        'Content-Type': 'application/json',
+        Cookie: `wm-widget-key=${encodeURIComponent('server-widget-key')}; wm-pro-key=${encodeURIComponent('server-pro-key')}`,
+      },
+      body: JSON.stringify({ prompt: 'Build a widget', mode: 'create', tier: 'basic' }),
+    }));
+
+    assert.equal(res.status, 403);
+    assert.equal(fetchMock.mock.calls.length, 0);
+
+    const body = await res.json() as { error: string };
+    assert.equal(body.error, 'Origin not allowed');
+  });
+
   it('rejects invalid X-WorldMonitor-Key before relay fetch', async () => {
     const res = await handler(new Request('https://www.worldmonitor.app/api/widget-agent', {
       method: 'POST',

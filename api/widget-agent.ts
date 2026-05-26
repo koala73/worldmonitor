@@ -18,7 +18,7 @@
 export const config = { runtime: 'edge' };
 
 // @ts-expect-error — JS module, no declaration file
-import { getCorsHeaders } from './_cors.js';
+import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { validateBearerToken } from '../server/auth-session';
 import { getEntitlements } from '../server/_shared/entitlement-check';
 
@@ -60,6 +60,10 @@ function json(body: unknown, status: number, cors: Record<string, string>): Resp
 }
 
 export default async function handler(req: Request): Promise<Response> {
+  if (isDisallowedOrigin(req)) {
+    return json({ error: 'Origin not allowed' }, 403, {});
+  }
+
   const corsHeaders = getCorsHeaders(req) as Record<string, string>;
 
   if (req.method === 'OPTIONS') {
