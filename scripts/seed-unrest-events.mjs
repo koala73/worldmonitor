@@ -10,6 +10,8 @@ const ACLED_API_URL = 'https://acleddata.com/api/acled/read';
 const CANONICAL_KEY = 'unrest:events:v1';
 const CACHE_TTL = 16200; // 4.5h — 6x the 45 min cron interval (was 1.3x)
 const MAX_SOURCE_URLS = 5;
+const GDELT_THEME_MIN_DELAY_MS = 5_500;
+const GDELT_THEME_JITTER_MS = 1_000;
 
 // ---------- ACLED Event Type Mapping (from _shared.ts) ----------
 
@@ -249,14 +251,12 @@ export async function fetchGdeltViaProxy(url, proxyAuth, opts = {}) {
   throw lastErr;
 }
 
+// v1 GKG GeoJSON accepts one theme tag per call.  Fan out + merge.
+// http://data.gdeltproject.org/documentation/GKG-MASTER-THEMELIST.TXT
+const UNREST_THEMES = ['PROTEST', 'STRIKE', 'VIOLENT_UNREST'];
+
 export async function fetchGdeltEvents(opts = {}) {
   const { _resolveProxyForConnect = resolveProxyForConnect, ..._proxyOpts } = opts;
-  const params = new URLSearchParams({
-    query: 'protest OR riot OR demonstration OR strike',
-    maxrows: '2500',
-  });
-  const url = `${GDELT_GKG_URL}?${params}`;
-
   const proxyAuth = _resolveProxyForConnect();
   if (!proxyAuth) {
     // Direct fetch hasn't worked from Railway since PR #3256; this seeder
@@ -264,48 +264,79 @@ export async function fetchGdeltEvents(opts = {}) {
     throw new Error('GDELT requires CONNECT proxy: PROXY_URL env var is not set on this Railway service');
   }
 
-  let data;
-  try {
-    data = await fetchGdeltViaProxy(url, proxyAuth, _proxyOpts);
-  } catch (proxyErr) {
-    throw Object.assign(
-      new Error(`GDELT proxy failed (3 attempts): ${describeErr(proxyErr)}`),
-      { cause: proxyErr },
-    );
+  // One shared locationMap across all theme calls so a hotspot mentioned
+  // under multiple themes sums counts + merges source URLs instead of
+  // producing duplicate events.
+  const locationMap = new Map();
+  // GKG v1 emits one feature per (article, location) pair. Dedup on
+  // (url, lat/lon bucket) so an article mentioning N places still contributes
+  // N feature-counts, but the same (article × location) only counts once
+  // across multiple theme calls.
+  const seenUrlLocs = new Set();
+  let anyThemeSucceeded = false;
+  let lastError = null;
+  let totalMentions = 0;
+
+  // GDELT asks clients to stay at or below 1 request / 5s. Keep the
+  // production fan-out default above that floor while tests can inject 0ms.
+  const {
+    _sleep = (ms) => new Promise((r) => setTimeout(r, ms)),
+    _jitter = () => GDELT_THEME_MIN_DELAY_MS + Math.random() * GDELT_THEME_JITTER_MS
+  } = _proxyOpts;
+  for (let i = 0; i < UNREST_THEMES.length; i++) {
+    if (i > 0) await _sleep(_jitter()); // Jitter between theme calls to reduce chance of back-to-back failures
+    const theme = UNREST_THEMES[i];
+    const params = new URLSearchParams({ QUERY: theme, MAXROWS: '2500' });
+    const url = `${GDELT_GKG_URL}?${params}`;
+    let data;
+    try {
+      data = await fetchGdeltViaProxy(url, proxyAuth, _proxyOpts);
+    } catch (proxyErr) {
+      lastError = proxyErr;
+      continue;
+    }
+    anyThemeSucceeded = true;
+    const features = data?.features || [];
+    totalMentions += features.length;
+    for (const feature of features) {
+      const name = feature.properties?.name || '';
+      if (!name) continue;
+      const coords = feature.geometry?.coordinates;
+      if (!Array.isArray(coords) || coords.length < 2) continue;
+      const [lon, lat] = coords;
+      if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) continue;
+      const key = `${lat.toFixed(1)}:${lon.toFixed(1)}`;
+      const sourceUrls = extractGdeltSourceUrls(feature.properties);
+      const fUrl = sourceUrls[0] || null;
+      const dedupKey = fUrl ? `${fUrl}|${key}` : null;
+      if (dedupKey && seenUrlLocs.has(dedupKey)) continue;
+      if (dedupKey) seenUrlLocs.add(dedupKey);
+      const existing = locationMap.get(key);
+      const tone = feature.properties?.urltone;
+      if (existing) {
+        existing.count++;
+        if (typeof tone === 'number' && tone < existing.worstTone) {
+          existing.worstTone = tone;
+        }
+        existing.sourceUrls = mergeSourceUrls(existing.sourceUrls, sourceUrls);
+      } else {
+        locationMap.set(key, {
+          name,
+          lat,
+          lon,
+          count: 1,
+          worstTone: typeof tone === 'number' ? tone : 0,
+          sourceUrls,
+        });
+      }
+    }
   }
 
-  const features = data?.features || [];
-
-  // Aggregate by location (v1 GKG returns individual mentions, not aggregated counts)
-  const locationMap = new Map();
-  for (const feature of features) {
-    const name = feature.properties?.name || '';
-    if (!name) continue;
-
-    const coords = feature.geometry?.coordinates;
-    if (!Array.isArray(coords) || coords.length < 2) continue;
-
-    const [lon, lat] = coords;
-    if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) continue;
-
-    const key = `${lat.toFixed(1)}:${lon.toFixed(1)}`;
-    const existing = locationMap.get(key);
-    if (existing) {
-      existing.count++;
-      if (feature.properties?.urltone < existing.worstTone) {
-        existing.worstTone = feature.properties.urltone;
-      }
-      existing.sourceUrls = mergeSourceUrls(existing.sourceUrls, extractGdeltSourceUrls(feature.properties));
-    } else {
-      locationMap.set(key, {
-        name,
-        lat,
-        lon,
-        count: 1,
-        worstTone: feature.properties?.urltone ?? 0,
-        sourceUrls: mergeSourceUrls(extractGdeltSourceUrls(feature.properties)),
-      });
-    }
+  if (!anyThemeSucceeded) {
+    throw Object.assign(
+      new Error(`GDELT proxy failed for all themes (last error: ${describeErr(lastError)})`),
+      { cause: lastError },
+    );
   }
 
   const events = [];
@@ -334,7 +365,7 @@ export async function fetchGdeltEvents(opts = {}) {
     });
   }
 
-  console.log(`  GDELT: ${features.length} mentions → ${events.length} aggregated events`);
+  console.log(`  GDELT: ${totalMentions} mentions → ${events.length} aggregated events`);
   return events;
 }
 

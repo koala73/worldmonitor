@@ -68,6 +68,22 @@ describe('ais-relay importanceScore publish path', () => {
     );
   });
 
+  it('does not proxy exact-story corroboration into entityCorroborationCount', () => {
+    const branchStart = relaySrc.indexOf("if (level === 'critical' || level === 'high')");
+    const branchEnd = relaySrc.indexOf('[Notify] Classify publish error', branchStart);
+    const block = relaySrc.slice(branchStart, branchEnd);
+    assert.match(
+      block,
+      /entityCorroborationCount:\s*0\b/,
+      'relay must not award entity-corroboration bonus unless it computed entity corroboration',
+    );
+    assert.doesNotMatch(
+      block,
+      /entityCorroborationCount:\s*meta\.corroborationCount/,
+      'meta.corroborationCount is already included through corroborationScore and must not be double-counted',
+    );
+  });
+
   it('relayComputeImportanceScore is defined once at module scope', () => {
     const defs = relaySrc.match(/function\s+relayComputeImportanceScore\s*\(/g) || [];
     assert.equal(defs.length, 1, `expected single definition of relayComputeImportanceScore, found ${defs.length}`);

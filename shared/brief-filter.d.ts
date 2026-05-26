@@ -57,6 +57,10 @@ export type DropMetricsFn = (event: {
   sourceUrl?: string;
 }) => void;
 
+export type OrderMetricsFn = (event: {
+  leadDiplomacyOverride: boolean;
+}) => void;
+
 /**
  * Filters the upstream `topStories` array against a user's
  * `alertRules.sensitivity` setting and caps at `maxStories`. Stories
@@ -74,7 +78,10 @@ export type DropMetricsFn = (event: {
  * concentrated top severity before breadth: a block with two critical
  * stories sorts ahead of a block with one critical plus many high
  * stories. `rankedStoryHashes` remains a tie-breaker inside similarly
- * severe/sized blocks, matched by short-hash prefix (≥4 chars). This
+ * severe/sized blocks, matched by short-hash prefix (≥4 chars), except
+ * for the rank-0 lead coherence override: an entity-corroborated
+ * flashpoint-diplomacy story selected first by the synthesis ranks
+ * ahead of severity-only ordering so the lead and card #1 align. This
  * keeps critical topic clusters contiguous instead of letting model
  * ranking pull unrelated singletons above them.
  *
@@ -91,6 +98,7 @@ export function filterTopStories(input: {
   maxStories?: number;
   maxPerSourceTopic?: number;
   onDrop?: DropMetricsFn;
+  onOrder?: OrderMetricsFn;
   rankedStoryHashes?: string[];
 }): BriefStory[];
 
@@ -150,6 +158,17 @@ export interface UpstreamTopStory {
    * compose paths write this from story:track:v1.currentScore.
    */
   importanceScore?: unknown;
+  /**
+   * Transient entity-level corroboration count from story:track:v1.
+   * Used only by the rank-0 flashpoint-diplomacy lead coherence override
+   * before BriefStory assembly; not serialized into the envelope.
+   */
+  entityCorroborationCount?: unknown;
+  /**
+   * Boolean alias retained for callers that already precompute
+   * entity-level corroboration.
+   */
+  entityCorroboration?: unknown;
   /**
    * Legacy upstream score alias retained for callers that still feed
    * raw news:insights:v1 rows directly into filterTopStories.

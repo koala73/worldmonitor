@@ -569,6 +569,8 @@ const RSS_PROXY_ALLOWED_DOMAINS = new Set([
   'telex.hu', 'index.hu', 'hvg.hu', '444.hu', '24.hu', 'hirado.hu', 'portfolio.hu', 'www.portfolio.hu', 'www.atv.hu',
   // Investigative journalism sources
   'www.occrp.org', 'dfrlab.org', 'www.lighthousereports.com', 'thesentry.org', 'globalinitiative.net', 'vsquare.org', 'correctiv.org',
+  // Croatian feeds
+  'n1info.hr', 'www.index.hr', 'www.jutarnji.hr', 'balkaninsight.com',
   // Finance variant
   'www.coindesk.com', 'cointelegraph.com',
   // Happy variant — positive news sources

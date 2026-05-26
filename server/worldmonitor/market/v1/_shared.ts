@@ -381,22 +381,72 @@ interface CoinPaprikaTicker {
   };
 }
 
+const COINPAPRIKA_FETCH_CONCURRENCY = 4;
+
+async function fetchCoinPaprikaTickersById(
+  paprikaIds: string[],
+): Promise<CoinPaprikaTicker[]> {
+  const ids = [...new Set(paprikaIds.filter((id): id is string => Boolean(id)))];
+  if (ids.length === 0) return [];
+
+  const results = await allSettledWithConcurrency(ids, COINPAPRIKA_FETCH_CONCURRENCY, async id => {
+    const resp = await fetch(`https://api.coinpaprika.com/v1/tickers/${encodeURIComponent(id)}?quotes=USD`, {
+      headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+      signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
+    });
+    if (!resp.ok) throw new Error(`CoinPaprika ${id} HTTP ${resp.status}`);
+    return resp.json() as Promise<CoinPaprikaTicker>;
+  });
+
+  const tickers: CoinPaprikaTicker[] = [];
+  const failures: unknown[] = [];
+  for (const [index, result] of results.entries()) {
+    if (result.status === 'fulfilled') {
+      tickers.push(result.value);
+    } else {
+      failures.push(result.reason);
+      console.warn(`[CoinPaprika] Skipping ${ids[index] ?? 'unknown'}:`, (result.reason as Error).message || result.reason);
+    }
+  }
+
+  if (tickers.length === 0 && failures.length > 0) {
+    throw new Error(`All ${failures.length} CoinPaprika ticker request(s) failed`);
+  }
+
+  return tickers;
+}
+
+async function allSettledWithConcurrency<T, R>(
+  items: T[],
+  concurrency: number,
+  mapper: (item: T, index: number) => Promise<R>,
+): Promise<PromiseSettledResult<R>[]> {
+  const results: PromiseSettledResult<R>[] = new Array(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(Math.max(1, concurrency), items.length);
+
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      try {
+        results[index] = { status: 'fulfilled', value: await mapper(items[index]!, index) };
+      } catch (reason) {
+        results[index] = { status: 'rejected', reason };
+      }
+    }
+  }));
+
+  return results;
+}
+
 export async function fetchCoinPaprikaMarkets(
   geckoIds: string[],
 ): Promise<CoinGeckoMarketItem[]> {
-  const paprikaIds = geckoIds.map(id => COINPAPRIKA_ID_MAP[id]).filter(Boolean);
+  const paprikaIds = geckoIds.map(id => COINPAPRIKA_ID_MAP[id]).filter((id): id is string => Boolean(id));
   if (paprikaIds.length === 0) throw new Error('No CoinPaprika ID mapping for requested coins');
 
-  const resp = await fetch('https://api.coinpaprika.com/v1/tickers?quotes=USD', {
-    headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(UPSTREAM_TIMEOUT_MS),
-  });
-  if (!resp.ok) throw new Error(`CoinPaprika HTTP ${resp.status}`);
-
-  const allTickers: CoinPaprikaTicker[] = await resp.json();
-  const paprikaSet = new Set(paprikaIds);
-  const matched = allTickers.filter(t => paprikaSet.has(t.id));
-
+  const matched = await fetchCoinPaprikaTickersById(paprikaIds);
   const reverseMap = new Map(Object.entries(COINPAPRIKA_ID_MAP).map(([g, p]) => [p, g]));
 
   return matched.map(t => {

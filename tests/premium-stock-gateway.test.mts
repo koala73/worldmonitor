@@ -132,6 +132,198 @@ describe('premium gateway API key enforcement', () => {
       assert.notEqual(res.status, 200, `wms_ MUST NOT unlock ${path} (got ${res.status})`);
     }
   });
+
+  it('strips client-supplied x-user-id before an anonymous session reaches handlers', async () => {
+    const handler = createDomainGateway([
+      {
+        method: 'GET',
+        path: '/api/market/v1/list-market-quotes',
+        handler: async (request) => new Response(JSON.stringify({
+          userId: request.headers.get('x-user-id'),
+        }), { status: 200 }),
+      },
+    ]);
+
+    const res = await handler(new Request('https://worldmonitor.app/api/market/v1/list-market-quotes?symbols=AAPL', {
+      headers: {
+        Origin: 'https://worldmonitor.app',
+        'X-WorldMonitor-Key': SESSION_TOKEN,
+        'x-user-id': 'attacker-controlled-user',
+      },
+    }));
+
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { userId: null });
+  });
+
+  it('rewrites client-supplied x-user-id on wm_ user-API-key auth (#3548)', async () => {
+    // Third injection site (sibling of the Clerk session + legacy-bearer
+    // paths). Mocks the two Convex endpoints the wm_ branch ultimately
+    // hits: /api/internal-validate-api-key (key → owner userId) and
+    // /api/internal-entitlements (tier check). Any other URL 404s so an
+    // unmocked endpoint surfaces as a clean failure, not a silent allow.
+    const handler = createDomainGateway([
+      {
+        method: 'GET',
+        path: '/api/market/v1/analyze-stock',
+        handler: async (req) =>
+          new Response(JSON.stringify({ userId: req.headers.get('x-user-id') }), { status: 200 }),
+      },
+    ]);
+
+    const originalSiteUrl = process.env.CONVEX_SITE_URL;
+    const originalSecret = process.env.CONVEX_SERVER_SHARED_SECRET;
+    const originalFetch = globalThis.fetch;
+    process.env.CONVEX_SITE_URL = 'https://test.convex.site';
+    process.env.CONVEX_SERVER_SHARED_SECRET = 'test-secret';
+    process.env.WORLDMONITOR_VALID_KEYS = 'real-key-123';
+
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+      const url =
+        typeof input === 'string'
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input.url;
+      if (url.endsWith('/api/internal-validate-api-key')) {
+        return new Response(
+          JSON.stringify({ userId: 'owner_pro', keyId: 'k1', name: 'test' }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      if (url.endsWith('/api/internal-entitlements')) {
+        return new Response(
+          JSON.stringify({
+            planKey: 'pro_monthly',
+            validUntil: Date.now() + 86_400_000,
+            features: {
+              tier: 1,
+              apiAccess: true,
+              apiRateLimit: 60,
+              maxDashboards: 5,
+              prioritySupport: false,
+              exportFormats: [],
+              mcpAccess: true,
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+      return new Response('not-mocked', { status: 404 });
+    }) as typeof fetch;
+
+    try {
+      const res = await handler(
+        new Request('https://worldmonitor.app/api/market/v1/analyze-stock?symbol=AAPL', {
+          headers: {
+            Origin: 'https://worldmonitor.app',
+            'X-WorldMonitor-Key': 'wm_owner_pro_test',
+            'x-user-id': 'victim-user',
+          },
+        }),
+      );
+
+      assert.equal(res.status, 200);
+      const body = (await res.json()) as { userId: string | null };
+      assert.equal(body.userId, 'owner_pro');
+    } finally {
+      globalThis.fetch = originalFetch;
+      if (originalSiteUrl === undefined) delete process.env.CONVEX_SITE_URL;
+      else process.env.CONVEX_SITE_URL = originalSiteUrl;
+      if (originalSecret === undefined) delete process.env.CONVEX_SERVER_SHARED_SECRET;
+      else process.env.CONVEX_SERVER_SHARED_SECRET = originalSecret;
+    }
+  });
+});
+
+describe('POST-to-GET compatibility hardening', () => {
+  function makePublicMarketHandler() {
+    let seenUrl: URL | null = null;
+    const handler = createDomainGateway([
+      {
+        method: 'GET',
+        path: '/api/market/v1/list-market-quotes',
+        handler: async (req) => {
+          seenUrl = new URL(req.url);
+          return new Response(JSON.stringify({ ok: true }), { status: 200 });
+        },
+      },
+    ]);
+    return {
+      handler,
+      seenUrl: () => seenUrl,
+    };
+  }
+
+  function compatPost(body: string, headers: Record<string, string> = {}) {
+    return new Request('https://worldmonitor.app/api/market/v1/list-market-quotes', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://worldmonitor.app',
+        'X-WorldMonitor-Key': SESSION_TOKEN,
+        'Content-Type': 'application/json',
+        ...headers,
+      },
+      body,
+    });
+  }
+
+  it('converts bounded scalar and array JSON bodies to GET query params', async () => {
+    const { handler, seenUrl } = makePublicMarketHandler();
+    const body = JSON.stringify({ symbols: ['AAPL', 'MSFT'], includeExtended: true });
+
+    const res = await handler(compatPost(body, { 'Content-Length': String(Buffer.byteLength(body)) }));
+
+    assert.equal(res.status, 200);
+    assert.deepEqual(seenUrl()?.searchParams.getAll('symbols'), ['AAPL', 'MSFT']);
+    assert.equal(seenUrl()?.searchParams.get('includeExtended'), 'true');
+  });
+
+  it('rejects POST-to-GET array expansion over 200 values', async () => {
+    const { handler } = makePublicMarketHandler();
+    const body = JSON.stringify({
+      symbols: Array.from({ length: 201 }, (_, i) => `SYM${i}`),
+    });
+
+    const res = await handler(compatPost(body, { 'Content-Length': String(Buffer.byteLength(body)) }));
+
+    assert.equal(res.status, 400);
+    assert.deepEqual(await res.json(), {
+      error: 'Too many values for POST compatibility parameter',
+      parameter: 'symbols',
+      maxValues: 200,
+    });
+  });
+
+  it('skips POST-to-GET compatibility before reading bodies with missing, invalid, or oversized Content-Length', async () => {
+    const { handler } = makePublicMarketHandler();
+    const body = JSON.stringify({ symbols: ['AAPL'] });
+
+    const missingReq = compatPost(body);
+    missingReq.clone = () => { throw new Error('POST compatibility must not parse missing-length bodies'); };
+    const missing = await handler(missingReq);
+    assert.equal(missing.status, 405);
+
+    const invalidReq = compatPost(body, { 'Content-Length': 'abc' });
+    invalidReq.clone = () => { throw new Error('POST compatibility must not parse invalid-length bodies'); };
+    const invalid = await handler(invalidReq);
+    assert.equal(invalid.status, 405);
+
+    const oversizedReq = compatPost(body, { 'Content-Length': '1048576' });
+    oversizedReq.clone = () => { throw new Error('POST compatibility must not parse oversized bodies'); };
+    const oversized = await handler(oversizedReq);
+    assert.equal(oversized.status, 405);
+  });
+
+  it('preserves malformed JSON compatibility by falling back to matching GET without query params', async () => {
+    const { handler, seenUrl } = makePublicMarketHandler();
+    const body = '{not json';
+
+    const res = await handler(compatPost(body, { 'Content-Length': String(Buffer.byteLength(body)) }));
+
+    assert.equal(res.status, 200);
+    assert.equal(seenUrl()?.search, '');
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -328,5 +520,70 @@ describe('premium gateway bearer token auth', () => {
       },
     }));
     assert.equal(rankingRes.status, 200);
+  });
+
+  it('rewrites spoofed x-user-id from a verified legacy bearer before reaching handlers', async () => {
+    const token = await signToken({ sub: 'user_pro', plan: 'pro' });
+    const headerEchoHandler = createDomainGateway([
+      {
+        method: 'GET',
+        path: '/api/resilience/v1/get-resilience-score',
+        handler: async (request) => new Response(JSON.stringify({
+          userId: request.headers.get('x-user-id'),
+        }), { status: 200 }),
+      },
+    ]);
+
+    const res = await headerEchoHandler(new Request('https://worldmonitor.app/api/resilience/v1/get-resilience-score?countryCode=US', {
+      headers: {
+        Origin: 'https://worldmonitor.app',
+        Authorization: `Bearer ${token}`,
+        'x-user-id': 'attacker-controlled-user',
+      },
+    }));
+
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { userId: 'user_pro' });
+  });
+
+  it('forwards POST body alongside trusted x-user-id on the legacy bearer path', async () => {
+    // The gateway rebuilds the Request to inject the trusted x-user-id
+    // header on the bearer path (`withAuthenticatedUserId`). The rebuild
+    // must use `new Request(originalRequest, { headers })` (WHATWG input-
+    // clone semantics) rather than `new Request(url, { body: req.body })`
+    // — the latter would either require `duplex: 'half'` under undici or
+    // hand the handler a stream already locked by the auth path.
+    // This test pins both the body integrity AND the trusted userId
+    // override on the same request, so a regression to the broken pattern
+    // surfaces immediately on POST bearer auth.
+    const token = await signToken({ sub: 'user_pro', plan: 'pro' });
+    const echoHandler = createDomainGateway([
+      {
+        method: 'POST',
+        path: '/api/intelligence/v1/deduct-situation',
+        handler: async (request) => {
+          const body = await request.json();
+          return new Response(JSON.stringify({
+            userId: request.headers.get('x-user-id'),
+            body,
+          }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        },
+      },
+    ]);
+
+    const payload = { situation: 'test', evidence: ['a', 'b', 'c'], count: 42 };
+    const res = await echoHandler(new Request('https://worldmonitor.app/api/intelligence/v1/deduct-situation', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://worldmonitor.app',
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'x-user-id': 'attacker-controlled-user',
+      },
+      body: JSON.stringify(payload),
+    }));
+
+    assert.equal(res.status, 200);
+    assert.deepEqual(await res.json(), { userId: 'user_pro', body: payload });
   });
 });

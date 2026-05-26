@@ -14,6 +14,10 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+const ROOT = resolve(new URL('.', import.meta.url).pathname, '..');
 
 describe('api/brief/[userId]/[issueDate] module resolution', () => {
   it('loads the handler and its renderer dependency without error', async () => {
@@ -74,6 +78,58 @@ describe('api/brief handler behaviour (no secrets / no Redis)', () => {
     const body = await res.text();
     assert.equal(body, '', 'HEAD must not carry a body');
     assert.equal(res.headers.get('Content-Type'), 'text/html; charset=utf-8');
+  });
+});
+
+describe('api/brief followed-countries telemetry fetch', () => {
+  const src = readFileSync(resolve(ROOT, 'api/brief/[userId]/[issueDate].ts'), 'utf8');
+
+  it('bounds followed-countries relay latency to telemetry budget', () => {
+    assert.match(
+      src,
+      /const FOLLOWED_COUNTRIES_TIMEOUT_MS = 500;/,
+      'followed-country relay must not add a 1.5s TTFB tail to magazine rendering',
+    );
+  });
+
+  it('starts followed-countries lookup before the required Redis envelope read', () => {
+    const followedIdx = src.indexOf('const followedCountriesPromise = fetchFollowedCountriesEdge(userId, ctx);');
+    const envelopeIdx = src.indexOf('envelope = await readRawJsonFromUpstash(`brief:${userId}:${issueDate}`);');
+    assert.ok(followedIdx !== -1, 'followedCountriesPromise start not found');
+    assert.ok(envelopeIdx !== -1, 'envelope read not found');
+    assert.ok(
+      followedIdx < envelopeIdx,
+      'followed-country relay lookup should overlap the Redis envelope read',
+    );
+  });
+
+  it('documents missing followed data as telemetry degradation, not ground truth', () => {
+    assert.doesNotMatch(
+      src,
+      /correct: we can't\s+prove a follow we (?:couldn't|didn't) read/,
+      'comments must not describe missing relay data as accurate negative follow state',
+    );
+    assert.match(
+      src,
+      /Best-effort telemetry only/,
+      'route comment should frame missing followed data as a telemetry-only degradation',
+    );
+  });
+
+  it('drains the in-flight telemetry lookup when envelope read returns 503', () => {
+    assert.match(
+      src,
+      /catch \(err\) \{[\s\S]*?step: 'envelope-read'[\s\S]*?ctx\?\.waitUntil\(followedCountriesPromise\)[\s\S]*?return htmlResponse\(req, 503, UNAVAILABLE_PAGE\)/,
+      '503 envelope-read path should hand the telemetry promise to waitUntil before returning',
+    );
+  });
+
+  it('drains the in-flight telemetry lookup when the envelope is missing', () => {
+    assert.match(
+      src,
+      /if \(!envelope\) \{\s*ctx\?\.waitUntil\(followedCountriesPromise\);\s*return htmlResponse\(req, 404, EXPIRED_PAGE\);\s*\}/,
+      '404 envelope-miss path should hand the telemetry promise to waitUntil before returning',
+    );
   });
 });
 

@@ -1,8 +1,4 @@
 {
-  "app": {
-    "title": "World Monitor",
-    "description": "AI驱动的全球态势感知"
-  },
   "countryBrief": {
     "identifying": "正在识别国家...",
     "locating": "正在定位区域...",
@@ -120,7 +116,6 @@
       "internetOutages": "{{count}}起互联网中断",
       "recentEarthquakes": "{{count}}起近期地震",
       "stockIndex": "股票指数：{{value}}",
-      "recentHeadlines": "**近期头条：**",
       "activeStrikes": "检测到{{count}}起活跃罢工"
     },
     "countryFacts": "国家概况",
@@ -151,9 +146,7 @@
     "filterSources": "筛选数据源...",
     "sourcesEnabled": "已启用{{enabled}}/{{total}}",
     "finance": "金融",
-    "toggleTheme": "切换深色/浅色模式",
     "panelDisplayCaption": "选择要在仪表板上显示的面板",
-    "tabGeneral": "常规",
     "tabSettings": "设置",
     "tabPanels": "面板",
     "tabSources": "来源",
@@ -204,7 +197,6 @@
     "panelCatCentralBanks": "央行与经济",
     "panelCatDeals": "交易与机构",
     "panelCatGulfMena": "海湾与中东",
-    "panelCatTradePolicy": "贸易政策",
     "cached": "已缓存",
     "unavailable": "不可用",
     "commodity": "商品",
@@ -287,8 +279,6 @@
     "techReadiness": "科技就绪指数",
     "gccInvestments": "GCC投资",
     "geoHubs": "地缘政治枢纽",
-    "liveYouTube": "实时摄像头",
-    "pinnedWebcams": "Pinned Webcams",
     "gulfEconomies": "海湾经济",
     "gulfIndices": "海湾指数",
     "gulfCurrencies": "海湾货币",
@@ -426,11 +416,8 @@
   "modals": {
     "search": {
       "placeholder": "搜索或输入命令...",
-      "hint": "搜索 • 国家 • 图层 • 面板 • 导航 • 设置",
       "placeholderTech": "搜索或输入命令...",
-      "hintTech": "搜索 • 公司 • AI实验室 • 图层 • 导航 • 设置",
       "placeholderFinance": "搜索或输入命令...",
-      "hintFinance": "搜索 • 交易所 • 市场 • 图层 • 导航 • 设置",
       "recent": "最近搜索",
       "empty": "搜索数据或执行命令",
       "noResults": "无结果",
@@ -494,7 +481,6 @@
       "action": "行动：",
       "note": "备注：",
       "suppress": "屏蔽此词条",
-      "suppressed": "已屏蔽",
       "predictionLeading": "预测领先",
       "newsLeading": "新闻领先",
       "silentDivergence": "静默背离",
@@ -531,15 +517,13 @@
       "gotIt": "知道了"
     },
     "downloadBanner": {
-      "title": "桌面版可用",
       "description": "原生性能，安全的本地密钥存储，离线地图切片。",
       "macSilicon": "macOS (Apple Silicon)",
       "macIntel": "macOS (Intel)",
       "windows": "Windows (.exe)",
       "linux": "Linux (.AppImage)",
       "showAllPlatforms": "显示所有平台",
-      "showLess": "收起",
-      "dismiss": "忽略"
+      "showLess": "收起"
     },
     "runtimeConfig": {
       "title": "桌面端配置",
@@ -548,7 +532,6 @@
         "needsKeys": "配置API密钥以解锁功能",
         "some": "部分功能需要API密钥"
       },
-      "openSettings": "打开设置",
       "skipSetup": "跳过设置 — 一个World Monitor许可证即可解锁全部功能。加入候补名单抢先体验。",
       "summary": {
         "desktop": "桌面模式",
@@ -595,30 +578,17 @@
       "sidecarUnreachable": "Sidecar不可达。",
       "logCleared": "日志已清除。",
       "worldMonitor": {
-        "tabLabel": "World Monitor",
-        "heroTitle": "一个密钥，万事俱备。",
-        "heroDescription": "一个World Monitor许可证即可替代所有需要自行配置的API密钥和LLM提供商。AI摘要、实时情报、市场数据、冲突追踪、火灾检测、卫星图像 — 全部就绪，全部托管，零配置。",
         "apiKey": {
           "title": "许可证密钥",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "粘贴您的许可证，即刻解锁所有数据源和AI功能。",
-          "statusValid": "已授权",
-          "statusMissing": "未授权"
+          "description": "粘贴您的许可证，即刻解锁所有数据源和AI功能。"
         },
         "dividerOr": "或",
         "register": {
           "title": "预留您的名额",
           "description": "World Monitor许可证即将上线。立即注册成为首批用户 — 早期会员享有优先访问和创始会员价格。",
-          "emailPlaceholder": "your@email.com",
-          "submitBtn": "加入候补名单",
-          "submitting": "提交中...",
-          "success": "您已加入名单！我们会第一时间通知您。",
-          "alreadyRegistered": "您已在候补名单中。",
-          "error": "注册失败，请重试。",
-          "invalidEmail": "请输入有效的电子邮件地址。"
-        },
-        "byokTitle": "或使用自有密钥",
-        "byokDescription": "偏好完全掌控？前往API密钥和LLM标签页，逐一配置各数据源和AI提供商。"
+          "submitBtn": "加入候补名单"
+        }
       },
       "table": {
         "time": "时间",
@@ -702,36 +672,11 @@
         "base": "军事基地",
         "nuclear": "附近核设施",
         "port": "港口"
-      },
-      "levels": {
-        "critical": "Critical",
-        "high": "High",
-        "elevated": "Elevated",
-        "moderate": "Moderate",
-        "normal": "Normal",
-        "low": "Low"
-      },
-      "trends": {
-        "rising": "Rising",
-        "falling": "Falling",
-        "stable": "Stable"
-      },
-      "fallback": {
-        "instabilityIndex": "**Instability Index: {{score}}/100** ({{level}}, {{trend}})",
-        "protestsDetected": "{{count}} active protests detected",
-        "aircraftTracked": "{{count}} military aircraft tracked",
-        "vesselsTracked": "{{count}} military vessels tracked",
-        "activeStrikes": "检测到{{count}}起活跃罢工",
-        "internetOutages": "{{count}} internet outages",
-        "recentEarthquakes": "{{count}} recent earthquakes",
-        "stockIndex": "Stock index: {{value}}",
-        "recentHeadlines": "**Recent headlines:**"
       }
     }
   },
   "components": {
     "webcams": {
-      "expand": "展开",
       "paused": "摄像头已暂停",
       "pausedIdle": "摄像头已暂停 — 移动鼠标以恢复",
       "regions": {
@@ -751,7 +696,9 @@
       "summarizing": "摘要生成中…"
     },
     "progressCharts": {
-      "noData": "暂无进展数据"
+      "noData": "暂无进展数据",
+      "fallbackBadge": "显示静态备用数据 — 实时数据系列不可用",
+      "fallbackTooltip": "无法连接到实时世界银行数据源。这些图表是从上次验证于 2026 年 2 月的硬编码快照生成的。"
     },
     "monitor": {
       "placeholder": "关键词（逗号分隔）",
@@ -770,8 +717,6 @@
       "countries": "国家",
       "recentActions": "近期监管行动（过去12个月）",
       "upcomingDeadlines": "即将到来的合规截止日期",
-      "activeRegulations": "现行法规",
-      "proposedRegulations": "拟议法规",
       "globalLandscape": "全球监管格局",
       "emptyActions": "无近期监管行动",
       "emptyDeadlines": "未来12个月内无合规截止日期",
@@ -797,27 +742,19 @@
     },
     "economic": {
       "indicators": "指标",
-      "oil": "石油",
       "gov": "政府",
-      "noData": "无可用经济数据",
-      "noOilData": "石油数据不可用",
-      "noOilMetrics": "无可用石油指标。请添加EIA_API_KEY以启用。",
       "noSpending": "无近期政府采购",
       "awards": "笔采购",
       "noIndicatorData": "尚无指标数据 - FRED可能正在加载",
       "fredKeyMissing": "需要FRED API密钥 — 请在设置中添加以启用经济指标",
-      "noOilDataRetry": "石油数据暂时不可用 - 将自动重试",
-      "vsPreviousWeek": "与上周相比",
       "in": "于",
       "centralBanks": "Central Banks",
       "laborMarket": "Labor Market",
       "metroUnemployment": "Metro Unemployment",
       "noBisData": "BIS data temporarily unavailable - will retry",
       "policyRate": "Policy Rate",
-      "exchangeRate": "Exchange Rate",
       "creditToGdp": "Credit / GDP",
       "realEer": "Real EER",
-      "change": "Change",
       "cut": "cut",
       "hike": "hike",
       "hold": "hold",
@@ -839,12 +776,10 @@
       "noChokepoints": "正在加载咽喉要道数据...",
       "noShipping": "航运费率数据不可用",
       "noMinerals": "正在加载矿产数据...",
-      "fredKeyMissing": "航运费率需要FRED API密钥 — 请在设置中添加。咽喉要道和矿产无需密钥即可使用。",
       "upstreamUnavailable": "供应链数据暂时不可用 — 显示缓存数据",
       "spikeAlert": "检测到异常飙升 — 费率显著高于52周均值（周度）",
       "warnings": "条警告",
       "aisDisruptions": "AIS中断",
-      "routingAction": "Routing",
       "disruption": "Disruption",
       "vessels": "vessels",
       "incidents7d": "incidents (7d)",
@@ -854,12 +789,7 @@
       "mineral": "矿产",
       "topProducers": "主要生产国",
       "risk": "风险",
-      "sources": "FRED / NGA / USGS",
-      "transit24h": "24小时",
-      "tankers": "油轮",
-      "cargo": "货物",
       "wowChange": "周涨跌",
-      "vesselTransits": "船舶过境（180天）",
       "riskLevel": "风险等级",
       "flowUnavailable": "流量数据不可用",
       "containerRates": "集装箱运费",
@@ -871,18 +801,14 @@
       "infoTooltip": "<strong>供应链监控</strong> 全球物流与资源追踪：<ul><li><strong>战略要道</strong>：海上过境状态、中断评分和船舶数量</li><li><strong>航运</strong>：波罗的海干散货指数和运费趋势</li><li><strong>矿物</strong>：关键矿物浓度风险(HHI)和主要生产国</li></ul>点击要道卡片可展开过境历史图表。"
     },
     "tradePolicy": {
-      "restrictions": "限制措施",
       "tariffs": "关税",
       "flows": "贸易流量",
       "barriers": "贸易壁垒",
-      "noRestrictions": "无有效贸易限制",
       "noTariffData": "无可用关税数据",
       "noFlowData": "无可用贸易流量数据",
       "noBarriers": "未报告贸易壁垒",
       "apiKeyMissing": "需要WTO API密钥 — 请在设置中添加",
       "upstreamUnavailable": "WTO数据暂时不可用 — 显示缓存数据",
-      "appliedRate": "适用税率",
-      "boundRate": "约束税率",
       "exports": "出口",
       "imports": "进口",
       "yoyChange": "同比变化",
@@ -926,20 +852,14 @@
       "empty": "该主题暂无近期文章"
     },
     "geoHubs": {
-      "tooltip": "<strong>地缘政治活动枢纽</strong><br>显示新闻活动最多的地区。<br><br><em>枢纽类型：</em><br>• 🏛️ 首都 — 世界各国首都和政府中心<br>• ⚔️ 冲突区 — 活跃冲突地区<br>• ⚓ 战略要地 — 咽喉要道和关键区域<br>• 🏢 国际组织 — 联合国、NATO、IAEA等<br><br><em>活动级别：</em><br>• <span style=\"color: #ff4444\">高</span> — 突发新闻或70+评分<br>• <span style=\"color: #ff8844\">升高</span> — 评分40-69<br>• <span style=\"color: #888\">低</span> — 评分低于40<br><br>点击枢纽可缩放到其位置。",
-      "noActive": "无活跃的地缘政治枢纽",
       "story": "条报道",
       "stories": "条报道",
       "infoTooltip": "<strong>地缘政治活动枢纽</strong><br>显示新闻活动最多的地区。<br><br><em>枢纽类型：</em><br>• 🏛️ 首都 — 世界各国首都和政府中心<br>• ⚔️ 冲突区 — 活跃冲突地区<br>• ⚓ 战略要地 — 咽喉要道和关键区域<br>• 🏢 国际组织 — 联合国、NATO、IAEA等<br><br><em>活动级别：</em><br>• <span style=\"color: {{highColor}}\">高</span> — 突发新闻或70+评分<br>• <span style=\"color: {{elevatedColor}}\">升高</span> — 评分40-69<br>• <span style=\"color: {{lowColor}}\">低</span> — 评分低于40<br><br>点击枢纽可缩放到其位置。"
     },
     "techHubs": {
-      "tooltip": "<strong>科技中心活动</strong><br>显示新闻活动最多的科技中心。<br><br><em>活动级别：</em><br>• <span style=\"color: #00ff88\">高</span> — 突发新闻或50+评分<br>• <span style=\"color: #ffc800\">升高</span> — 评分20-49<br>• <span style=\"color: #888\">低</span> — 评分低于20<br><br>点击中心可缩放到其位置。",
-      "noActive": "无活跃的科技中心",
       "infoTooltip": "<strong>科技中心活动</strong><br>显示新闻活动最多的科技中心。<br><br><em>活动级别：</em><br>• <span style=\"color: {{highColor}}\">高</span> — 突发新闻或50+评分<br>• <span style=\"color: {{elevatedColor}}\">升高</span> — 评分20-49<br>• <span style=\"color: {{lowColor}}\">低</span> — 评分低于20<br><br>点击中心可缩放到其位置。"
     },
     "predictions": {
-      "tooltip": "<strong>预测市场</strong><br>真金白银的预测市场：<br><ul><li>价格反映群体概率估计</li><li>交易量越高 = 信号越可靠</li><li>聚焦地缘政治和时事</li></ul>数据来源：Polymarket (polymarket.com)",
-      "error": "加载预测失败",
       "yes": "是",
       "no": "否",
       "vol": "交易量",
@@ -951,7 +871,6 @@
     "stablecoins": {
       "pegHealth": "锚定健康度",
       "supplyVolume": "供应量与交易量",
-      "unavailable": "稳定币数据暂时不可用",
       "token": "代币",
       "mcap": "市值",
       "vol24h": "24小时交易量",
@@ -959,13 +878,7 @@
       "infoTooltip": "<strong>Stablecoins</strong> Peg health, market cap, and 24h volume for major USD-pegged tokens (USDT, USDC, DAI, BUSD). A broken peg signals systemic risk."
     },
     "status": {
-      "dataFeeds": "数据源",
-      "apiStatus": "API状态",
-      "storage": "存储",
-      "systemStatus": "系统状态",
-      "updatedJustNow": "刚刚更新",
-      "updatedAt": "更新于{{time}}",
-      "storageUnavailable": "存储信息不可用"
+      "updatedAt": "更新于{{time}}"
     },
     "playback": {
       "toggleMode": "切换回放模式",
@@ -1070,8 +983,7 @@
       "shareLink": "分享链接",
       "shareStory": "分享报道",
       "printPdf": "打印 / PDF",
-      "exportData": "导出数据",
-      "sourceRef": "来源 [{{n}}]"
+      "exportData": "导出数据"
     },
     "relatedAssets": {
       "pipeline": "管道",
@@ -1081,10 +993,7 @@
       "nuclear": "核设施"
     },
     "community": {
-      "joinDiscussion": "Help Shape What's Next",
-      "openDiscussion": "Join Discord",
-      "dontShowAgain": "不再显示",
-      "sectionLabel": "社区"
+      "joinDiscussion": "Help Shape What's Next"
     },
     "threatLabels": {
       "critical": "危急",
@@ -1115,11 +1024,6 @@
         "base": "基地",
         "nuclear": "核设施",
         "aircraft": "飞机",
-        "ciiLow": "低 (0–30)",
-        "ciiNormal": "正常 (31–50)",
-        "ciiElevated": "偏高 (51–65)",
-        "ciiHigh": "高 (66–80)",
-        "ciiCritical": "危急 (81–100)",
         "miningSite": "采矿场",
         "commodityPort": "商品港口",
         "pipeline": "管道",
@@ -1308,9 +1212,10 @@
       }
     },
     "cii": {
-      "shareStory": "分享报道",
       "noSignals": "未检测到不稳定信号",
-      "infoTooltip": "<strong>方法论</strong><ul><li><strong>动</strong>荡：社会骚乱与抗议</li><li><strong>冲</strong>突：武装冲突强度</li><li><strong>安</strong>全：领土上空军用飞机/舰艇</li><li><strong>信</strong>息：新闻速度和焦点关联</li><li>热点邻近度提升（战略位置）</li></ul><em>U:C:S:I值显示各分项评分。</em>焦点检测将新闻实体与地图信号关联以实现精确评分。"
+      "infoTooltip": "<strong>方法论</strong><ul><li><strong>动</strong>荡：社会骚乱与抗议</li><li><strong>冲</strong>突：武装冲突强度</li><li><strong>安</strong>全：领土上空军用飞机/舰艇</li><li><strong>信</strong>息：新闻速度和焦点关联</li><li>热点邻近度提升（战略位置）</li></ul><em>U:C:S:I值显示各分项评分。</em>焦点检测将新闻实体与地图信号关联以实现精确评分。",
+      "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
+      "methodologyLink": "包含各国基准线 + 事件乘数 — 请参阅 /docs/methodology/cii-risk-scores 了解已发布的表格"
     },
     "insights": {
       "noStories": "暂无突发或多源报道",
@@ -1320,14 +1225,8 @@
       "analyzingSentiment": "Analyzing sentiment...",
       "generatingBrief": "Generating world brief...",
       "infoTooltip": "<strong>AI驱动分析</strong><br>• <strong>世界简报</strong>：AI摘要（Groq/OpenRouter）<br>• <strong>情绪分析</strong>：新闻情感分析<br>• <strong>传播速度</strong>：快速传播的报道<br>• <strong>焦点</strong>：将新闻实体与地图信号（军事、抗议、中断）关联<br><em>仅限桌面端 • 由Llama 3.3 + 焦点检测驱动</em>",
-      "settingsTitle": "Settings",
-      "sectionMap": "Map",
-      "sectionAi": "AI Analysis",
-      "sectionStreaming": "直播",
       "streamQualityLabel": "视频画质",
       "streamQualityDesc": "设置所有直播流的画质（低画质可节省带宽）",
-      "globeRenderQualityLabel": "地球渲染质量",
-      "globeRenderQualityDesc": "控制地球画布分辨率。较高的值在4K显示器上更清晰，但可能导致GPU过载。",
       "globeRenderScaleOptions": {
         "1": "节能 (1x)",
         "2": "4K (2x)",
@@ -1337,7 +1236,6 @@
       },
       "mapFlashLabel": "Live Event Pulse",
       "mapFlashDesc": "Flash locations on the map when breaking news arrives",
-      "aiFlowTitle": "Settings",
       "aiFlowCloudLabel": "云端AI（Groq & OpenRouter）",
       "aiFlowCloudDesc": "将标题发送到云端进行AI摘要（推荐）",
       "aiFlowBrowserLabel": "浏览器本地模型",
@@ -1352,10 +1250,8 @@
       "aiFlowStatusDisabled": "没有启用的AI提供商",
       "insightsDisabledTitle": "AI分析已禁用",
       "insightsDisabledHint": "Enable providers via the settings gear in the map header",
-      "sectionPanels": "面板",
       "badgeAnimLabel": "徽章动画",
       "badgeAnimDesc": "在面板标题中显示更新徽章动画",
-      "sectionIntelligence": "情报",
       "headlineMemoryLabel": "标题记忆",
       "headlineMemoryDesc": "记住已阅标题以突出显示新内容",
       "streamAlwaysOnLabel": "保持实时流持续播放",
@@ -1397,7 +1293,6 @@
       "newsSignals": "{{news}} 条新闻 • {{signals}} 个信号"
     },
     "settings": {
-      "dataManagementLabel": "数据管理",
       "exportSettings": "导出设置",
       "importSettings": "导入设置",
       "exportSuccess": "设置导出成功",
@@ -1407,7 +1302,6 @@
       "reloadNow": "立即重新加载"
     },
     "cascade": {
-      "noImpacts": "未检测到国家影响",
       "filters": {
         "cables": "电缆",
         "pipelines": "管道",
@@ -1481,7 +1375,6 @@
       "noEvents": "无可显示的活动",
       "showOnMap": "在地图上显示",
       "moreInfo": "更多信息",
-      "retry": "Retry",
       "upcoming": "Upcoming",
       "conferences": "Conferences",
       "earnings": "Earnings",
@@ -1509,7 +1402,6 @@
       "dataPreparing": "刷新技术就绪数据中——即将显示。"
     },
     "populationExposure": {
-      "noData": "无可用暴露数据",
       "totalAffected": "受影响总数",
       "affectedCount": "{{count}}人受影响",
       "radiusKm": "{{km}}km半径",
@@ -1542,16 +1434,12 @@
       "noAlerts": "No active sirens — all clear",
       "notConfigured": "Sirens service not configured",
       "activeSirens": "{{count}} active siren(s)",
-      "area": "Area",
-      "time": "Time",
       "justNow": "just now",
-      "historyCount": "{{count}} alerts in last 24h",
       "historySummary": "24小时内{{count}}次警报 — {{waves}}波次",
       "loadingHistory": "正在加载历史记录...",
       "infoTooltip": "<strong>Israel Sirens</strong><br>Real-time rocket and missile siren alerts from Israel Home Front Command.<br><br>Data is polled every 10 seconds. A pulsing red indicator means active sirens are sounding."
     },
     "satelliteFires": {
-      "noData": "无可用火灾数据",
       "region": "区域",
       "fires": "火灾",
       "high": "高强度",
@@ -1576,7 +1464,6 @@
       "actors": "行为方",
       "deathsCount": "{{count}}人死亡",
       "moreNotShown": "还有{{count}}个事件未显示",
-      "noEvents": "该类别暂无事件",
       "infoTooltip": "<strong>UCDP地理参考事件</strong>来自乌普萨拉大学的事件级冲突数据。<ul><li><strong>国家冲突</strong>：政府与反政府武装</li><li><strong>非国家冲突</strong>：武装团体之间</li><li><strong>单方暴力</strong>：针对平民的暴力</li></ul>死亡人数显示为最佳估计（低-高范围）。ACLED重复数据已自动过滤。"
     },
     "giving": {
@@ -1608,7 +1495,6 @@
       "infoTooltip": "<strong>全球捐赠活动指数</strong> 跟踪众筹平台和加密钱包个人捐赠的综合指数。<ul><li><strong>平台</strong>：GoFundMe、GlobalGiving、JustGiving活动抽样</li><li><strong>加密</strong>：链上慈善钱包流入（Endaoment、Giving Block）</li><li><strong>机构</strong>：OECD ODA、CAF世界捐赠指数、Candid拨款</li></ul>指数为方向性指标，非精确金额。结合实时抽样与已发布年度报告。"
     },
     "displacement": {
-      "noData": "无数据",
       "refugees": "难民",
       "asylumSeekers": "寻求庇护者",
       "idps": "国内流离失所者",
@@ -1650,17 +1536,10 @@
       "sortNewest": "最新",
       "sortRelevance": "相关性"
     },
-    "export": {
-      "exportData": "导出数据"
-    },
-    "runtimeConfig": {
-      "getApiKey": "获取API密钥"
-    },
     "breakingNews": {
       "critical": "紧急",
       "high": "重要",
-      "dismiss": "忽略",
-      "enableNotifications": "开启桌面通知"
+      "dismiss": "忽略"
     },
     "intelligenceFindings": {
       "breakingAlerts": "突发警报",
@@ -1714,9 +1593,7 @@
       "filterAll": "全部",
       "filterBreaking": "突发",
       "filterConflict": "冲突",
-      "filterAlerts": "警报",
       "filterOsint": "OSINT",
-      "filterPolitics": "政治",
       "filterMiddleeast": "中东",
       "live": "直播",
       "viewSource": "查看来源",
@@ -1740,7 +1617,6 @@
       "asset": "Asset",
       "country": "Country",
       "sector": "Sector",
-      "status": "Status",
       "investment": "Investment",
       "year": "Year",
       "noMatch": "No investments match filters",
@@ -1809,7 +1685,6 @@
       "addPanel": "添加面板"
     },
     "languageSelector": {
-      "selectLanguage": "Select Language",
       "mapLabelsFallbackVi": "越南语地图标签目前回退为英语显示。"
     },
     "serviceStatus": {
@@ -1818,10 +1693,6 @@
       "ok": "OK",
       "degraded": "Degraded",
       "outage": "Outage",
-      "backendUnavailable": "Desktop local backend unavailable. Falling back to cloud API.",
-      "desktopReadiness": "Desktop readiness",
-      "acceptanceChecks": "Acceptance checks: {{ready}}/{{total}} ready · key-backed features {{available}}/{{featureTotal}}",
-      "nonParityFallbacks": "Non-parity fallbacks ({{count}})",
       "categories": {
         "all": "All",
         "cloud": "Cloud",
@@ -1858,7 +1729,6 @@
       }
     },
     "liveNews": {
-      "retry": "Retry",
       "notLive": "{{name}} is not currently live",
       "cannotEmbed": "{{name}} 无法在此播放 — 可能在您所在的地区受到限制（错误 {{code}}）",
       "botCheck": "YouTube要求登录才能播放{{name}}",
@@ -1870,17 +1740,13 @@
       "youtubeHandle": "YouTube 句柄（如 @Channel）",
       "youtubeHandleOrUrl": "YouTube 频道名称或链接",
       "displayName": "显示名称（可选）",
-      "openPanelSettings": "面板显示设置",
       "channelSettings": "频道设置",
       "save": "保存",
       "cancel": "取消",
-      "confirmDelete": "确定要删除此频道吗？",
-      "confirmTitle": "确认",
       "restoreDefaults": "恢复默认频道",
       "availableChannels": "可用频道",
       "noResults": "未找到与\"{{term}}\"匹配的频道",
       "customChannel": "自定义频道",
-      "regionAll": "全部",
       "regionNorthAmerica": "北美",
       "regionEurope": "欧洲",
       "regionLatinAmerica": "拉丁美洲",
@@ -1889,7 +1755,6 @@
       "regionAfrica": "非洲",
       "regionOceania": "大洋洲",
       "invalidHandle": "请输入有效的YouTube用户名（例如 @ChannelName）",
-      "channelNotFound": "未找到YouTube频道",
       "verifying": "验证中…",
       "hlsUrl": "HLS流地址（可选）",
       "invalidHlsUrl": "请输入有效的HLS流地址（.m3u8）"
@@ -1952,19 +1817,14 @@
       "noTrackingData": "无飞机追踪数据。",
       "noNews": "无航空新闻。",
       "enterRoute": "输入路线并搜索价格。",
-      "cachedInsight": "缓存洞察",
-      "demoMode": "演示模式",
-      "pricesIndicative": "所有价格仅供参考",
       "searchFlights": "搜索航班",
       "bestDates": "最佳日期",
-      "cabinClass": "舱位",
       "enterRouteAndDate": "输入路线和日期搜索",
       "enterDateRange": "输入路线和日期范围",
       "degradedResults": "部分结果可能不完整",
       "nonstop": "直飞",
       "roundTrip": "往返",
-      "tripDays": "行程天数",
-      "cheapest": "最便宜"
+      "tripDays": "行程天数"
     },
     "chatAnalyst": {
       "infoTooltip": "<strong>WM 分析师</strong> 具有地缘政治、市场、军事和经济领域实时上下文的AI分析师。由Claude驱动，注入WorldMonitor活跃数据源的实时数据。"
@@ -2004,7 +1864,8 @@
       "errors": {
         "noData": "无可用的爆发数据",
         "failedToLoad": "加载失败"
-      }
+      },
+      "methodologyNote": "警报 / 警告 / 监视级别来自编辑关键词分类器 — 请参阅 /docs/methodology/disease-alert-level 了解关键词表和限制。"
     },
     "earningsCalendar": {
       "infoTooltip": "<strong>财报日历</strong> 大型上市公司即将和近期的财报发布。显示EPS预期与实际对比、营收及超预期/不及预期分类。来源：金融数据提供商。",
@@ -2067,7 +1928,8 @@
       "errors": {
         "unavailable": "FSI 数据不可用",
         "failedToLoad": "加载失败"
-      }
+      },
+      "cissStale": "欧洲中央银行尚未发布新数值 — 此读数可能已过期。"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>霍尔木兹贸易追踪器</strong> 通过全球最关键的石油咽喉要道霍尔木兹海峡的AIS船舶实时追踪。监控油轮数量、中断事件和每周流量变化。全球约20%的石油供应每天经此通过。",
@@ -2125,8 +1987,6 @@
       "infoTooltip": "<strong>能源综合体</strong> 一处查看物理和可交易能源信号：<ul><li><strong>EIA 指标</strong>：WTI、布伦特、美国产量和库存</li><li><strong>实时行情</strong>：可交易能源价格，如原油和天然气</li><li><strong>目的</strong>：将物理能源压力与更广泛的宏观和商品面板分开</li></ul>"
     },
     "consumerPrices": {
-      "title": "消费者价格",
-      "subtitle": "关键市场的篮子价格追踪",
       "tabs": {
         "overview": "概览",
         "categories": "分类",
@@ -2134,30 +1994,6 @@
         "spread": "零售商价差",
         "health": "数据健康度"
       },
-      "essentialsIndex": "生活必需品指数",
-      "valueBasketIndex": "价值篮子",
-      "wowChange": "周环比",
-      "momChange": "月环比",
-      "retailerSpread": "零售商价差",
-      "coveragePct": "覆盖率",
-      "freshnessLag": "数据新鲜度滞后",
-      "noCategories": "暂无品类数据",
-      "noMovers": "暂无价格变动数据",
-      "noSpread": "暂无零售商价差数据",
-      "noHealth": "暂无数据健康度信息",
-      "upstreamUnavailable": "消费者价格数据暂时不可用",
-      "allCategories": "所有品类",
-      "risers": "上升",
-      "fallers": "下降",
-      "unitPrice": "单价",
-      "freshLabel": "最新",
-      "staleLabel": "陈旧",
-      "laggingLabel": "滞后",
-      "stalledLabel": "停滞",
-      "retailer": "零售商",
-      "lastUpdated": "最后更新",
-      "retailers": "零售商",
-      "items": "商品",
       "infoTooltip": "<strong>消费者价格</strong> 实时购物篮价格跟踪：<ul><li><strong>概览</strong>：生活必需品指数、价值篮子及周环比变化</li><li><strong>品类</strong>：各品类价格趋势及30天价格区间</li><li><strong>变动</strong>：本周价格涨跌最快的商品</li><li><strong>价差</strong>：同一购物篮在不同零售商之间的价格差异</li></ul>数据来自实时零售商价格爬取。"
     },
     "marketImplications": {
@@ -2239,14 +2075,10 @@
       "crypto": "加密货币",
       "fx": "外汇",
       "warmup": "正在构建基准数据。交易量和未平仓合约历史将在下一小时内填充。",
-      "unavailable": "头寸数据无法获取",
       "footer": "5分钟 · Hyperliquid永续合约 · 24/7"
     },
     "goldIntelligence": {
       "infoTooltip": "<strong>黄金情报</strong>黄金现货价格、金银比、黄金vs铂金溢价、交叉货币XAU价格(欧元、英镑、日元、人民币、印度卢比、瑞郎)和CFTC管理资金头寸。来源：Yahoo Finance、CFTC COT。"
-    },
-    "energyCrisis": {
-      "infoTooltip": "<strong>能源危机追踪器</strong>IEA 2026能源危机政策应对追踪器。追踪政府为应对中东冲突和霍尔木兹海峡供应中断而采取的节能和消费者支持措施。涵盖60多个国家的近200项政策措施。"
     },
     "wsbTickerScanner": {
       "infoTooltip": "<strong>WSB股票代码扫描器</strong>来自r/wallstreetbets、r/stocks和r/investing的实时股票代码提及。按提及频率和参与度排名。速度指标衡量股票代码在帖子中获得动量的速度。"
@@ -2439,7 +2271,6 @@
   },
   "popups": {
     "startDate": "开始日期",
-    "endDate": "结束日期",
     "magnitude": "震级",
     "depth": "深度",
     "intensity": "强度",
@@ -2454,20 +2285,9 @@
     "keyDevelopments": "关键进展",
     "unknown": "未知",
     "source": "来源",
-    "target": "目标",
     "events": "事件",
-    "impact": "影响",
     "capacity": "容量",
-    "alerts": "活跃警报",
     "updated": "已更新",
-    "common": {
-      "start": "开始",
-      "end": "结束",
-      "updated": "已更新"
-    },
-    "conflict": {
-      "title": "冲突区"
-    },
     "earthquake": {
       "levels": {
         "major": "重大",
@@ -2529,9 +2349,6 @@
       "position": "位置",
       "ground": "地面",
       "airborne": "空中"
-    },
-    "apt": {
-      "description": "具有国家级能力的高级持续性威胁组织。以针对关键基础设施、政府和国防部门的复杂网络行动而闻名。"
     },
     "cyberThreat": {
       "title": "网络威胁"
@@ -2607,9 +2424,7 @@
     "sampledList": "显示{{count}}个事件的抽样列表。",
     "reason": "原因",
     "threat": "威胁",
-    "aka": "又称",
     "sponsor": "资助方",
-    "origin": "来源",
     "country": "国家",
     "malware": "恶意软件",
     "lastSeen": "最后发现",
@@ -2630,8 +2445,6 @@
     "hotspot": {
       "escalation": "升级评估",
       "baseline": "基线",
-      "score": "评分",
-      "trend": "趋势",
       "components": {
         "news": "新闻",
         "cii": "CII",
@@ -2645,10 +2458,6 @@
         "high": "高",
         "critical": "危急"
       }
-    },
-    "buttons": {
-      "track": "跟踪问题",
-      "details": "查看详情"
     },
     "historicalContext": "历史背景",
     "lastMajorEvent": "上次重大事件",
@@ -2804,10 +2613,8 @@
       "speed": "速度",
       "heading": "航向",
       "mmsi": "MMSI",
-      "hull": "舷号",
       "region": "REGION",
       "strikeGroup": "STRIKE GROUP",
-      "deploymentStatus": "STATUS",
       "usniIntel": "USNI Intel",
       "usniSource": "Source: USNI News Fleet Tracker",
       "approximatePosition": "Position approximate — based on USNI weekly report, not real-time AIS.",
@@ -3058,8 +2865,6 @@
     "error": "错误",
     "noData": "无可用数据",
     "noDataAvailable": "无可用数据",
-    "updated": "刚刚更新",
-    "ago": "{{time}}前",
     "retrying": "正在重试...",
     "failedToLoad": "加载数据失败",
     "noDataShort": "无数据",
@@ -3084,7 +2889,6 @@
     "failedCommodities": "加载大宗商品失败",
     "failedCryptoData": "加载加密货币数据失败",
     "rateLimitedMarket": "市场数据暂时不可用（请求受限）— 即将自动重试",
-    "failedClusterNews": "新闻聚类失败",
     "noNewsAvailable": "无可用新闻",
     "noActiveTechHubs": "无活跃的科技中心",
     "noActiveGeoHubs": "无活跃的地缘政治枢纽",
@@ -3112,7 +2916,6 @@
     "retry": "Retry",
     "refresh": "Refresh",
     "all": "全部",
-    "dataTemporarilyUnavailable": "数据暂时不可用",
     "cancel": "取消"
   },
   "preferences": {
@@ -3149,7 +2952,6 @@
     "offlineRetry": "重试"
   },
   "widgets": {
-    "createWithAi": "使用 AI 创建",
     "confirmDelete": "永久删除此小组件?",
     "chatTitle": "小组件生成器",
     "modifyTitle": "编辑小组件",
@@ -3157,7 +2959,6 @@
     "addToDashboard": "添加到仪表板",
     "applyChanges": "应用更改",
     "send": "发送",
-    "changeAccent": "更改强调色",
     "modifyWithAi": "使用 AI 编辑小组件",
     "ready": "小组件已就绪: {{title}}",
     "fetching": "正在获取 {{target}}...",
@@ -3219,11 +3020,8 @@
   "premium": {
     "pro": "PRO",
     "lockedDesc": "需要 World Monitor 许可证密钥",
-    "joinWaitlist": "加入等待列表",
     "signInToUnlock": "登录以解锁高级功能",
     "signIn": "登录以解锁",
-    "verifyEmailToUnlock": "验证您的邮箱以访问高级功能",
-    "resendVerification": "重新发送验证",
     "upgradeDesc": "升级到 Pro 以获得完整的高级分析访问权限",
     "upgradeToPro": "升级到 Pro",
     "features": {

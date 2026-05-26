@@ -186,6 +186,7 @@
               "mcp-server",
               "mcp-tools-reference",
               "mcp-jmespath",
+              "mcp-error-catalog",
               "api-oauth",
               "api-notifications"
             ]

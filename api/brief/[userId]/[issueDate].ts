@@ -95,6 +95,62 @@ const UNAVAILABLE_PAGE = renderErrorPage(
   'The brief service is not fully configured. Please try again shortly.',
 );
 
+const FOLLOWED_COUNTRIES_TIMEOUT_MS = 500;
+
+/**
+ * Best-effort edge-runtime fetch of the recipient's followed-country
+ * watchlist for U11 telemetry stamping. This intentionally differs
+ * from the cron helper: it uses a much smaller latency budget and emits
+ * a Sentry breadcrumb on relay-auth 401 because this route sits on the
+ * reader-facing TTFB path. Never throws — every soft failure path
+ * returns `[]` so the magazine still renders even when the relay is
+ * unavailable. The watchlist is telemetry-only: missing relay data
+ * degrades `data-followed` to "unknown encoded as false" and never
+ * affects visible magazine content.
+ */
+async function fetchFollowedCountriesEdge(
+  userId: string,
+  ctx?: { waitUntil: (p: Promise<unknown>) => void },
+): Promise<string[]> {
+  const convexSiteUrl =
+    process.env.CONVEX_SITE_URL
+    ?? (process.env.CONVEX_URL ?? '').replace('.convex.cloud', '.convex.site');
+  const relaySecret = process.env.RELAY_SHARED_SECRET ?? '';
+  if (!convexSiteUrl || !relaySecret) return [];
+  if (typeof userId !== 'string' || userId.length === 0) return [];
+  try {
+    const res = await fetch(`${convexSiteUrl}/relay/followed-countries`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${relaySecret}`,
+        'User-Agent': 'worldmonitor-brief-render/1.0',
+      },
+      body: JSON.stringify({ userId }),
+      signal: AbortSignal.timeout(FOLLOWED_COUNTRIES_TIMEOUT_MS),
+    });
+    if (res.status === 401) {
+      const err = new Error('followed-countries relay returned 401');
+      console.warn('[api/brief] followed-countries relay auth failed');
+      captureSilentError(err, {
+        tags: { route: 'api/brief', step: 'followed-countries-relay', status: '401' },
+        ctx,
+      });
+      return [];
+    }
+    if (!res.ok) return [];
+    const data = (await res.json()) as { countries?: unknown };
+    if (!data || typeof data !== 'object' || !Array.isArray(data.countries)) {
+      return [];
+    }
+    return (data.countries as unknown[]).filter(
+      (c): c is string => typeof c === 'string' && c.length > 0,
+    );
+  } catch {
+    return [];
+  }
+}
+
 export default async function handler(
   req: Request,
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
@@ -147,6 +203,11 @@ export default async function handler(
     return htmlResponse(req, 403, FORBIDDEN_PAGE);
   }
 
+  // U11: start the telemetry-only watchlist lookup before the Redis
+  // envelope read so relay latency overlaps the required brief fetch.
+  // The promise never rejects and is bounded by FOLLOWED_COUNTRIES_TIMEOUT_MS.
+  const followedCountriesPromise = fetchFollowedCountriesEdge(userId, ctx);
+
   // The helper throws on infrastructure failure (Upstash down, config
   // missing, parse failure). Only a genuine miss returns null. We must
   // distinguish those two — a reader with a valid brief deserves a
@@ -158,9 +219,11 @@ export default async function handler(
   } catch (err) {
     console.error('[api/brief] Upstash read failed:', (err as Error).message);
     captureSilentError(err, { tags: { route: 'api/brief', step: 'envelope-read' }, ctx });
+    ctx?.waitUntil(followedCountriesPromise);
     return htmlResponse(req, 503, UNAVAILABLE_PAGE);
   }
   if (!envelope) {
+    ctx?.waitUntil(followedCountriesPromise);
     return htmlResponse(req, 404, EXPIRED_PAGE);
   }
 
@@ -204,6 +267,13 @@ export default async function handler(
     }
   }
 
+  // Stamp source-link anchors with `data-followed` so the inline tracker
+  // can emit `brief-thread-open` events with per-thread follow state.
+  // Best-effort telemetry only: a relay outage, missing config, or
+  // empty watchlist yields an empty list, so all stories stamp
+  // `followed=false`. Visible content and story order are unchanged.
+  const followedCountries = await followedCountriesPromise;
+
   // Cast to BriefEnvelope; renderBriefMagazine runs its own
   // assertBriefEnvelope at the top and will throw on any shape
   // mismatch, which we catch below.
@@ -211,7 +281,7 @@ export default async function handler(
   try {
     html = renderBriefMagazine(
       envelope as Parameters<typeof renderBriefMagazine>[0],
-      { shareUrl },
+      { shareUrl, followedCountries },
     );
   } catch (err) {
     // Malformed envelope in Redis (composer bug, version drift, etc.)

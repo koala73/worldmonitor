@@ -55,6 +55,11 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Híradó', url: gnLocale('site:hirado.hu when:2d', 'hu', 'HU', 'HU:hu'), lang: 'hu' },
       { name: 'Portfolio.hu', url: 'https://portfolio.hu/rss/all.xml', lang: 'hu' },
       { name: 'ATV', url: 'https://www.atv.hu/rss', lang: 'hu' },
+      // Croatian (HR) — mainstream + investigative; Balkan Insight is English-language (no lang tag)
+      { name: 'N1 Croatia', url: 'https://n1info.hr/feed/', lang: 'hr' },
+      { name: 'Index.hr', url: 'https://www.index.hr/rss', lang: 'hr' },
+      { name: 'Jutarnji list', url: 'https://www.jutarnji.hr/feed', lang: 'hr' },
+      { name: 'Balkan Insight', url: 'https://balkaninsight.com/feed/' },
     ],
     middleeast: [
       { name: 'BBC Middle East', url: 'https://feeds.bbci.co.uk/news/world/middle_east/rss.xml' },

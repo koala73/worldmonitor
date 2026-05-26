@@ -45,8 +45,8 @@ World Monitor's API is organized into domain-specific services:
 
 | Domain | What It Covers |
 |--------|---------------|
-| **Conflict** | ACLED events, UCDP data, hotspot scoring |
-| **Military** | Bases, ADS-B flights, AIS vessels, USNI reports |
+| **Conflict** | [ACLED](https://acleddata.com/) events, [UCDP](https://ucdp.uu.se/) data, hotspot scoring |
+| **Military** | Bases, ADS-B flights, AIS vessels, [USNI](https://news.usni.org/) reports |
 | **Market** | Stock quotes, forex, commodities, sector performance |
 | **Crypto** | BTC signals, stablecoin pegs, ETF flows, Fear & Greed |
 | **Aviation** | Airport delays, flight tracking, airspace data |
@@ -56,12 +56,12 @@ World Monitor's API is organized into domain-specific services:
 | **News** | Aggregated RSS feeds, trending keywords |
 | **Intelligence** | CII scores, theater posture, convergence events |
 | **Infrastructure** | Cables, pipelines, nuclear facilities, datacenters |
-| **Prediction** | Polymarket data, forecast probabilities |
+| **Prediction** | [Polymarket](https://polymarket.com/) data, forecast probabilities |
 | **Cyber** | Threat feeds, C2 servers, malware URLs |
 | **Disaster** | Earthquakes, fires, volcanic events |
 | **Displacement** | UNHCR refugee and IDP data |
 | **Travel** | Government advisories, risk levels |
-| **Central Bank** | Policy rates, BIS data, REER |
+| **Central Bank** | Policy rates, [BIS](https://www.bis.org/) data, REER |
 | **Tech** | AI labs, startups, accelerators, tech hubs |
 | **Commodity** | Mining sites, exchange hubs, energy infrastructure |
 | **Regulation** | AI policy tracking, regulatory changes |

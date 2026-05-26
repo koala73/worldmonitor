@@ -456,20 +456,16 @@ The recovery is always the same: **make the projection more selective**, or laye
 
 ### `_jmespath_error` — when the projection itself fails
 
-A JMESPath expression can fail in two ways: it can be syntactically invalid, or it can blow up the per-call output limit (256 KB) via a runaway multiselect-hash. Either way you get this envelope back:
+A JMESPath expression can fail three ways: the expression itself exceeds 1024 bytes, it's syntactically invalid, or it blows up the 256 KB output cap via a runaway multiselect-hash. In all cases you get this envelope back — note that `_jmespath_error` is a **string** (`<kind>: <details>`), not an object:
 
 ```json
 {
-  "_jmespath_error": {
-    "kind": "invalid_expression",
-    "message": "Parse error: …",
-    "expression": "data.\"stocks-bootstrap\".quotes[*"
-  },
+  "_jmespath_error": "invalid_expression: Parse error at column 32: expected one of [LBRACKET, DOT]",
   "original_keys": ["stocks-bootstrap", "commodities-bootstrap", "crypto", "sectors", "etf-flows", "gulf-quotes", "fear-greed"]
 }
 ```
 
-`original_keys` is the top-level keys of the unprojected response — enough context for the model to retry with a corrected expression in one extra call. A bad expression **does** consume one daily quota slot per attempt; the echoed `original_keys` exists specifically to make the retry self-correcting rather than guesswork.
+`original_keys` is the top-level keys of the unprojected response — enough context for the model to retry with a corrected expression in one extra call. A bad expression **does** consume one daily quota slot per attempt; the echoed `original_keys` exists specifically to make the retry self-correcting rather than guesswork. The three kinds (`expression_too_long`, `invalid_expression`, `projection_too_large`) and their exact discriminator strings live in the [MCP Error Catalog](/mcp-error-catalog#_jmespath_error--projection-failed).
 
 ## Complements to projection
 
@@ -492,3 +488,4 @@ When `tools/list` returns a compressed description that's ambiguous about a tool
 - [MCP Quickstart](/mcp-quickstart) — five-minute zero-to-first-call onboarding.
 - [MCP Tools Reference](/mcp-tools-reference) — per-tool parameters, freshness budgets, and response shapes for every tool.
 - [MCP Server reference](/mcp-server) — auth, OAuth setup, plans, quotas, errors.
+- [MCP Error Catalog](/mcp-error-catalog) — every JSON-RPC code, HTTP status, and soft envelope (including `_budget_exceeded` and the three `_jmespath_error` kinds).

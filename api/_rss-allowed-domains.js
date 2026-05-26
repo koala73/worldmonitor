@@ -331,4 +331,8 @@ export default [
   "globalinitiative.net",
   "vsquare.org",
   "correctiv.org",
+  "n1info.hr",
+  "www.index.hr",
+  "www.jutarnji.hr",
+  "balkaninsight.com"
 ];

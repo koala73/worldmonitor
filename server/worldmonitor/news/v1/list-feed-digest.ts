@@ -28,6 +28,7 @@ import {
   DIGEST_ACCUMULATOR_TTL,
 } from '../../../_shared/cache-keys';
 import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
+import diplomacyKeywordsData from '../../../../shared/diplomacy-keywords.json';
 
 const RSS_ACCEPT = 'application/rss+xml, application/xml, text/xml, */*';
 
@@ -134,6 +135,19 @@ const SCORE_WEIGHTS = {
   recency: 0.1,
 } as const;
 
+const DIPLOMACY_KEYWORDS: readonly string[] = diplomacyKeywordsData.diplomacyKeywords;
+const FLASHPOINT_SCORING_KEYWORDS: readonly string[] = diplomacyKeywordsData.flashpointKeywords;
+// JSON imports type each pair as `string[]` (length not statically tracked).
+// The runtime shape is `[string, string]` — enforced by
+// tests/diplomacy-keywords-parity.test.mjs against the canonical JSON.
+const DIPLOMACY_FLASHPOINT_PAIRS: ReadonlyArray<readonly [string, string]> =
+  diplomacyKeywordsData.diplomacyFlashpointPairs as unknown as ReadonlyArray<readonly [string, string]>;
+
+const DIPLOMACY_FLASHPOINT_BOOST = 18;
+const ENTITY_CORROBORATION_SCORE_PER_SOURCE = 4;
+const ENTITY_CORROBORATION_WINDOW_MS = 24 * 60 * 60 * 1000;
+const DIPLOMACY_SEVERITY_PROMOTION_MIN_TIER12_SOURCES = 3;
+
 
 interface ParsedItem {
   source: string;
@@ -147,6 +161,7 @@ interface ParsedItem {
   classSource: 'keyword' | 'keyword-historical-downgrade' | 'llm';
   importanceScore: number;
   corroborationCount: number;
+  entityCorroborationCount: number;
   titleHash?: string;
   lang: string;
   // Cleaned RSS/Atom article description: HTML-stripped, entity-decoded,
@@ -179,22 +194,91 @@ const DESCRIPTION_TAG_PRIORITY = {
   atom: ['summary', 'content'] as const,
 };
 
+interface ImportanceScoreContext {
+  title?: string;
+  classSource?: ParsedItem['classSource'] | string;
+  entityCorroborationCount?: number;
+}
+
+function normalizeScoringText(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+// Word-start containment in normalized text. Mirrors
+// shared/brief-filter.js:containsKeywordToken — prevents 'pact' inside
+// 'impact' (false positive) while still matching 'iran' inside
+// 'iranian' (demonym preserved). PR #3909 review (P2).
+function containsKeywordToken(text: string, kw: string): boolean {
+  if (!kw) return false;
+  const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|\\s)${escaped}`).test(text);
+}
+
+function hasAnySignal(text: string, keywords: readonly string[]): boolean {
+  return keywords.some((kw) => containsKeywordToken(text, kw));
+}
+
+function hasDiplomacyFlashpointSignal(title: string | undefined): boolean {
+  if (!title) return false;
+  const text = normalizeScoringText(title);
+  if (
+    DIPLOMACY_FLASHPOINT_PAIRS.some(([entity, action]) =>
+      containsKeywordToken(text, entity) && containsKeywordToken(text, action),
+    )
+  ) {
+    return true;
+  }
+  return hasAnySignal(text, DIPLOMACY_KEYWORDS) && hasAnySignal(text, FLASHPOINT_SCORING_KEYWORDS);
+}
+
+function promoteDiplomacySeverity(
+  level: ThreatLevel,
+  title: string | undefined,
+  tier12SourceCount: number,
+): ThreatLevel {
+  if (level === 'critical' || level === 'high') return level;
+  if (!title || hasHistoricalMarker(title)) return level;
+  const finite = Number.isFinite(tier12SourceCount) ? Number(tier12SourceCount) : 0;
+  if (
+    finite >= DIPLOMACY_SEVERITY_PROMOTION_MIN_TIER12_SOURCES &&
+    hasDiplomacyFlashpointSignal(title)
+  ) {
+    return 'high';
+  }
+  return level;
+}
+
+function diplomacyFlashpointBoost(title: string | undefined): number {
+  return hasDiplomacyFlashpointSignal(title) ? DIPLOMACY_FLASHPOINT_BOOST : 0;
+}
+
+function entityCorroborationScore(count: number | undefined): number {
+  const finite = Number.isFinite(count) ? Number(count) : 0;
+  return Math.min(Math.max(finite, 0), 5) * ENTITY_CORROBORATION_SCORE_PER_SOURCE;
+}
+
 function computeImportanceScore(
   level: ThreatLevel,
   source: string,
   corroborationCount: number,
   publishedAt: number,
+  context: ImportanceScoreContext = {},
 ): number {
   const tier = getSourceTier(source);
   const tierScore = tier === 1 ? 100 : tier === 2 ? 75 : tier === 3 ? 50 : 25;
   const corroborationScore = Math.min(corroborationCount, 5) * 20;
   const ageMs = Date.now() - publishedAt;
   const recencyScore = Math.max(0, 1 - ageMs / (24 * 60 * 60 * 1000)) * 100;
-  return Math.round(
+  const base = Math.round(
     SEVERITY_SCORES[level] * SCORE_WEIGHTS.severity +
     tierScore * SCORE_WEIGHTS.sourceTier +
     corroborationScore * SCORE_WEIGHTS.corroboration +
     recencyScore * SCORE_WEIGHTS.recency,
+  );
+  return Math.round(
+    base +
+    diplomacyFlashpointBoost(context.title) +
+    entityCorroborationScore(context.entityCorroborationCount),
   );
 }
 
@@ -487,6 +571,7 @@ function parseRssXml(xml: string, feed: ServerFeed, variant: string): ParseResul
       classSource: threat.source,
       importanceScore: 0,
       corroborationCount: 1,
+      entityCorroborationCount: 0,
       lang: feed.lang ?? 'en',
       description,
       isOpinion: classifyOpinion({ title, link, description }),
@@ -764,6 +849,71 @@ function normalizeTitle(title: string): string {
     .slice(0, 120);
 }
 
+function entityKeysForTitle(title: string): string[] {
+  const text = normalizeScoringText(title);
+  const keys: string[] = [];
+  for (const [entity, action] of DIPLOMACY_FLASHPOINT_PAIRS) {
+    if (containsKeywordToken(text, entity) && containsKeywordToken(text, action)) keys.push(`${entity}:${action}`);
+  }
+  if (
+    keys.length === 0 &&
+    hasAnySignal(text, DIPLOMACY_KEYWORDS) &&
+    hasAnySignal(text, FLASHPOINT_SCORING_KEYWORDS)
+  ) {
+    keys.push('generic:diplomacy-flashpoint');
+  }
+  return keys;
+}
+
+interface EntityCorroborationSignal {
+  sourceCount: number;
+  tier12SourceCount: number;
+}
+
+function computeEntityCorroborationSignals(
+  items: ParsedItem[],
+  nowMs = Date.now(),
+): Map<string, EntityCorroborationSignal> {
+  const buckets = new Map<string, { items: ParsedItem[]; sources: Set<string>; tier12Sources: Set<string> }>();
+  for (const item of items) {
+    if (!item.titleHash) continue;
+    if (!Number.isFinite(item.publishedAt) || nowMs - item.publishedAt > ENTITY_CORROBORATION_WINDOW_MS) continue;
+    for (const key of entityKeysForTitle(item.title)) {
+      let bucket = buckets.get(key);
+      if (!bucket) {
+        bucket = { items: [], sources: new Set(), tier12Sources: new Set() };
+        buckets.set(key, bucket);
+      }
+      bucket.items.push(item);
+      if (item.source) {
+        bucket.sources.add(item.source);
+        if (getSourceTier(item.source) <= 2) bucket.tier12Sources.add(item.source);
+      }
+    }
+  }
+
+  const signals = new Map<string, EntityCorroborationSignal>();
+  for (const bucket of buckets.values()) {
+    if (bucket.sources.size < 2) continue;
+    for (const item of bucket.items) {
+      const previous = signals.get(item.titleHash!);
+      signals.set(item.titleHash!, {
+        sourceCount: Math.max(previous?.sourceCount ?? 0, bucket.sources.size),
+        tier12SourceCount: Math.max(previous?.tier12SourceCount ?? 0, bucket.tier12Sources.size),
+      });
+    }
+  }
+  return signals;
+}
+
+function computeEntityCorroborationCounts(
+  items: ParsedItem[],
+  nowMs = Date.now(),
+): Map<string, number> {
+  const signals = computeEntityCorroborationSignals(items, nowMs);
+  return new Map([...signals].map(([hash, signal]) => [hash, signal.sourceCount]));
+}
+
 interface StoryTrack {
   firstSeen: number;
   lastSeen: number;
@@ -915,6 +1065,13 @@ function buildStoryTrackHsetFields(
     // (treats as legacy row) instead of being mis-classified as a stale
     // row with a bogus timestamp.
     'publishedAt', Number.isFinite(item.publishedAt) ? String(item.publishedAt) : '',
+    // Entity-level cross-title corroboration count. Distinct from exact
+    // normalized-title sourceCount: this captures related flashpoint +
+    // diplomacy reports that do not collapse into the same story hash.
+    // The digest composer uses it as a narrow lead/card coherence signal.
+    'entityCorroborationCount', Number.isFinite(item.entityCorroborationCount)
+      ? String(item.entityCorroborationCount)
+      : '0',
     // Opinion/analysis flag (classifyOpinion). '1' = op-ed/column,
     // '0' = hard news. buildDigest's read-path filter excludes '1' rows
     // from the brief pool. Written unconditionally for the same
@@ -1096,10 +1253,52 @@ async function buildDigest(variant: string, lang: string): Promise<ListFeedDiges
     // discards items based on their true score.
     await enrichWithAiCache(allItems);
 
+    const entityCorroborationSignals = computeEntityCorroborationSignals(allItems);
+    let diplomacySignalCount = 0;
+    let entityCorroborationHitCount = 0;
+    let diplomacySeverityPromotionCount = 0;
+    let llmScoredCount = 0;
+    let keywordFallbackScoredCount = 0;
+
     // Compute importance score using final (post-enrichment) threat levels.
     for (const item of allItems) {
+      const entitySignal = entityCorroborationSignals.get(item.titleHash!);
+      item.entityCorroborationCount = entitySignal?.sourceCount ?? 0;
+      const promotedLevel = promoteDiplomacySeverity(
+        item.level,
+        item.title,
+        entitySignal?.tier12SourceCount ?? 0,
+      );
+      if (promotedLevel !== item.level) {
+        item.level = promotedLevel;
+        item.isAlert = true;
+        diplomacySeverityPromotionCount++;
+      }
+      const scoringCorroboration = Math.max(item.corroborationCount, item.entityCorroborationCount);
       item.importanceScore = computeImportanceScore(
-        item.level, item.source, item.corroborationCount, item.publishedAt,
+        item.level,
+        item.source,
+        scoringCorroboration,
+        item.publishedAt,
+        {
+          title: item.title,
+          classSource: item.classSource,
+          entityCorroborationCount: item.entityCorroborationCount,
+        },
+      );
+      if (hasDiplomacyFlashpointSignal(item.title)) diplomacySignalCount++;
+      if (item.entityCorroborationCount > 0) entityCorroborationHitCount++;
+      if (item.classSource === 'llm') llmScoredCount++;
+      else keywordFallbackScoredCount++;
+    }
+
+    if (diplomacySignalCount > 0 || entityCorroborationHitCount > 0) {
+      console.log(
+        `[digest] importance signals llm=${llmScoredCount} ` +
+          `keywordFallback=${keywordFallbackScoredCount} ` +
+          `diplomacy=${diplomacySignalCount} ` +
+          `entityCorroboration=${entityCorroborationHitCount} ` +
+          `diplomacySeverityPromotions=${diplomacySeverityPromotionCount}`,
       );
     }
 
@@ -1175,6 +1374,11 @@ export const __testing__ = {
   extractRawTagBody,
   extractFirstDateTag,
   buildStoryTrackHsetFields,
+  computeImportanceScore,
+  hasDiplomacyFlashpointSignal,
+  promoteDiplomacySeverity,
+  computeEntityCorroborationSignals,
+  computeEntityCorroborationCounts,
   resolveMaxAgeMs,
   capLlmUpgrade,
   MAX_DESCRIPTION_LEN,

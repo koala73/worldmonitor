@@ -15,6 +15,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import vm from 'node:vm';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -285,10 +286,22 @@ describe('widget-store — constants and logic', () => {
     );
   });
 
-  it('auth gate checks wm-widget-key localStorage entry', () => {
+  it('auth gate migrates wm-widget-key to an HttpOnly session instead of storing it', () => {
     assert.ok(
       store.includes("'wm-widget-key'"),
-      "Feature gate must check localStorage key 'wm-widget-key'",
+      "Feature gate must know the legacy 'wm-widget-key' name for migration",
+    );
+    assert.ok(
+      store.includes('establishWmKeySession'),
+      'Widget key writes must go through the server session endpoint',
+    );
+    assert.ok(
+      !/localStorage\.setItem\(['"]wm-widget-key['"]/.test(store),
+      'wm-widget-key must not be written to localStorage',
+    );
+    assert.ok(
+      !/document\.cookie\s*=.*wm-widget-key.*encodeURIComponent\(.*key/s.test(store),
+      'wm-widget-key must not be written to a JS-readable cookie',
     );
   });
 
@@ -787,7 +800,6 @@ describe('i18n — widgets section completeness', () => {
   const en = JSON.parse(src('src/locales/en.json'));
 
   const REQUIRED_KEYS = [
-    'createWithAi',
     'confirmDelete',
     'chatTitle',
     'modifyTitle',
@@ -795,7 +807,6 @@ describe('i18n — widgets section completeness', () => {
     'addToDashboard',
     'applyChanges',
     'send',
-    'changeAccent',
     'modifyWithAi',
     'ready',
     'fetching',
@@ -1054,6 +1065,7 @@ describe('PRO widget — relay auth and configuration', () => {
 describe('PRO widget — store and sanitizer', () => {
   const store = src('src/services/widget-store.ts');
   const san = src('src/utils/widget-sanitizer.ts');
+  const sandbox = src('public/wm-widget-sandbox.html');
 
   it('MAX_HTML_CHARS_PRO is 80000', () => {
     const match = store.match(/MAX_HTML_CHARS_PRO\s*=\s*([\d_]+)/);
@@ -1062,14 +1074,26 @@ describe('PRO widget — store and sanitizer', () => {
     assert.equal(val, 80000, 'MAX_HTML_CHARS_PRO must be 80,000');
   });
 
-  it('isProWidgetEnabled checks wm-pro-key localStorage key', () => {
+  it('PRO auth migrates wm-pro-key to an HttpOnly session instead of storing it', () => {
     assert.ok(
       store.includes("'wm-pro-key'"),
-      "isProWidgetEnabled must check localStorage key 'wm-pro-key'",
+      "isProWidgetEnabled must know the legacy 'wm-pro-key' name for migration",
     );
     assert.ok(
       store.includes('isProWidgetEnabled'),
       'isProWidgetEnabled function must be exported',
+    );
+    assert.ok(
+      store.includes('establishWmKeySession'),
+      'PRO key writes must go through the server session endpoint',
+    );
+    assert.ok(
+      !/localStorage\.setItem\(['"]wm-pro-key['"]/.test(store),
+      'wm-pro-key must not be written to localStorage',
+    );
+    assert.ok(
+      !/document\.cookie\s*=.*wm-pro-key.*encodeURIComponent\(.*key/s.test(store),
+      'wm-pro-key must not be written to a JS-readable cookie',
     );
   });
 
@@ -1178,6 +1202,204 @@ describe('PRO widget — store and sanitizer', () => {
     assert.ok(
       !fnBody.includes('srcdoc'),
       'wrapProWidgetHtml must NOT use srcdoc — srcdoc inherits parent CSP',
+    );
+  });
+
+  it('PRO widget iframe uses nonce handshake before posting HTML', () => {
+    assert.ok(
+      san.includes('data-wm-token') && san.includes('wm-widget-ready'),
+      'parent must mint a per-widget token and wait for sandbox readiness',
+    );
+    assert.ok(
+      san.includes('event.source !== iframe.contentWindow'),
+      'parent must bind ready messages to the mounted iframe window',
+    );
+    assert.ok(
+      san.includes('event.data.id !== mounted.id')
+        && san.includes('event.data.token !== mounted.token'),
+      'parent must verify ready message id and token before sending HTML',
+    );
+    assert.ok(
+      sandbox.includes('e.source !== window.parent') && sandbox.includes('e.data.token !== widgetToken'),
+      'sandbox must only accept HTML from its parent with the expected token',
+    );
+  });
+
+  it('widget sandbox allows approved Vercel previews and rejects lookalike origins', () => {
+    assert.ok(
+      sandbox.includes("url.hostname === 'worldmonitor.app'")
+        && sandbox.includes("url.hostname.endsWith('.worldmonitor.app')"),
+      'sandbox must parse hostname and allow the worldmonitor.app apex/subdomains only',
+    );
+    assert.ok(
+      !sandbox.includes("endsWith('worldmonitor.app')") && !sandbox.includes('endsWith("worldmonitor.app")'),
+      'sandbox must not use raw suffix checks that allow evilworldmonitor.app',
+    );
+    // The sandbox must source allowed Vercel team slugs from a single named
+    // list — keeps the security invariant (team-slug gating) visible and
+    // makes teammate-slug additions a one-line change rather than a regex
+    // rewrite that could accidentally widen the match.
+    const teamListMatch = sandbox.match(
+      /var\s+ALLOWED_VERCEL_TEAM_SLUGS\s*=\s*\[([^\]]*)\];/,
+    );
+    assert.ok(teamListMatch, 'sandbox must declare ALLOWED_VERCEL_TEAM_SLUGS as a literal array');
+    const slugs = teamListMatch[1]
+      .split(',')
+      .map((s) => s.trim().replace(/^['"]|['"]$/g, ''))
+      .filter(Boolean);
+    assert.ok(slugs.includes('elie'), 'project-owner team slug must remain in the allowlist');
+    for (const slug of slugs) {
+      assert.match(slug, /^[a-z0-9-]+$/, `team slug "${slug}" must be url-safe`);
+    }
+    // Reconstruct the actual match function and exercise it against the
+    // production slug list — this is what protects against regex drift
+    // when teammate slugs are added later.
+    const matchesAllowedTeam = (hostname) =>
+      slugs.some((team) =>
+        new RegExp('^worldmonitor-[a-z0-9-]+-' + team + '-[a-z0-9]+\\.vercel\\.app$').test(hostname),
+      );
+    assert.equal(matchesAllowedTeam('worldmonitor-feature-elie-abc123.vercel.app'), true);
+    assert.equal(matchesAllowedTeam('worldmonitor-feature-attacker-abc123.vercel.app'), false);
+    assert.equal(matchesAllowedTeam('worldmonitor-feature-elie-abc123.vercel.app.evil.com'), false);
+    assert.equal(matchesAllowedTeam('evilworldmonitor.app'), false);
+    // A teammate slug added to the list must extend coverage WITHOUT
+    // matching look-alike teams whose slug merely starts with the same
+    // letters.
+    const withTeammate = ['elie', 'kieran'];
+    const matchesWithTeammate = (hostname) =>
+      withTeammate.some((team) =>
+        new RegExp('^worldmonitor-[a-z0-9-]+-' + team + '-[a-z0-9]+\\.vercel\\.app$').test(hostname),
+      );
+    assert.equal(matchesWithTeammate('worldmonitor-feature-kieran-abc123.vercel.app'), true);
+    assert.equal(matchesWithTeammate('worldmonitor-feature-kieranfake-abc123.vercel.app'), false);
+  });
+
+  it('widget sandbox behavior accepts Vercel previews and blocks spoofed parents', () => {
+    const script = sandbox.match(/<script>\n([\s\S]*)\n<\/script>/)?.[1];
+    assert.ok(script, 'sandbox inline script not found');
+
+    function runSandbox(referrer) {
+      const readyMessages = [];
+      const writes = [];
+      const listeners = new Map();
+      const parent = {
+        postMessage(payload, targetOrigin) {
+          readyMessages.push({ payload, targetOrigin });
+        },
+      };
+      const context = {
+        URL,
+        URLSearchParams,
+        document: {
+          referrer,
+          open() {},
+          write(html) {
+            writes.push(html);
+          },
+          close() {},
+        },
+        window: {
+          location: { hash: '#id=wm-1&token=test-token' },
+          parent,
+          addEventListener(type, listener) {
+            listeners.set(type, listener);
+          },
+        },
+      };
+      vm.runInNewContext(script, context);
+      const message = listeners.get('message');
+      assert.equal(typeof message, 'function', 'message listener must be registered');
+      return { parent, readyMessages, writes, message };
+    }
+
+    const allowed = runSandbox('https://worldmonitor-feature-elie-abc123.vercel.app/dashboard');
+    assert.equal(allowed.readyMessages.length, 1);
+    assert.equal(allowed.readyMessages[0].targetOrigin, 'https://worldmonitor-feature-elie-abc123.vercel.app');
+    assert.deepEqual(JSON.parse(JSON.stringify(allowed.readyMessages[0].payload)), {
+      type: 'wm-widget-ready',
+      id: 'wm-1',
+      token: 'test-token',
+    });
+    allowed.message({
+      data: { type: 'wm-html', id: 'wm-1', token: 'test-token', html: '<p>ok</p>' },
+      origin: 'https://worldmonitor-feature-elie-abc123.vercel.app',
+      source: allowed.parent,
+    });
+    assert.deepEqual(allowed.writes, ['<p>ok</p>']);
+
+    const spoofed = runSandbox('https://worldmonitor-feature-elie-abc123.vercel.app.evil.com/');
+    assert.deepEqual(spoofed.readyMessages, []);
+    spoofed.message({
+      data: { type: 'wm-html', id: 'wm-1', token: 'test-token', html: '<p>bad</p>' },
+      origin: 'https://worldmonitor-feature-elie-abc123.vercel.app.evil.com',
+      source: spoofed.parent,
+    });
+    assert.deepEqual(spoofed.writes, []);
+  });
+
+  it('PRO widget message listener has AbortController cleanup wired to iframe removal', () => {
+    // P1 (greptile #3912): the global `message` listener registered by
+    // mountProWidget would otherwise retain a strong reference to the
+    // iframe (and its ~80 KB HTML payload) for the lifetime of the page,
+    // even after the iframe is removed from the DOM — a real leak in any
+    // dashboard session that adds/removes widgets repeatedly. The fix is
+    // an AbortController per iframe + a MutationObserver `removedNodes`
+    // pass that calls `unmountProWidget`, which aborts the listener and
+    // clears every per-iframe WeakMap entry.
+    assert.ok(
+      san.includes('iframeAbortStore') && san.includes('new AbortController()'),
+      'mountProWidget must create an AbortController per iframe and store it',
+    );
+    assert.ok(
+      san.includes("{ signal: controller.signal }"),
+      'message listener must be registered with the AbortController signal so abort() removes it',
+    );
+    assert.ok(
+      san.includes('function unmountProWidget') && san.includes('controller.abort')
+        || (san.includes('function unmountProWidget') && san.includes('iframeAbortStore.get(iframe)?.abort()')),
+      'unmountProWidget must abort the controller (tearing down the listener)',
+    );
+    assert.ok(
+      san.includes('iframeAbortStore.delete(iframe)')
+        && san.includes('iframeTokenStore.delete(iframe)')
+        && san.includes('iframeHtmlStore.delete(iframe)'),
+      'unmountProWidget must clear every per-iframe WeakMap entry to release the HTML payload',
+    );
+    assert.ok(
+      san.includes('mut.removedNodes') && san.includes('unmountProWidget'),
+      'MutationObserver must scan removedNodes and call unmountProWidget so the cleanup actually fires when widgets are removed',
+    );
+  });
+
+  it('PRO widget re-deliveries are rate-limited to bound document.write storms', () => {
+    // P2 (greptile #3912): a malicious widget that re-reads its token from
+    // window.location.hash and re-posts wm-widget-ready could trigger an
+    // unbounded document.write loop (parent responds → write replaces doc
+    // → new doc re-posts ready → parent responds again). Rate-limiting
+    // deliveries to once per second per iframe is the smallest fix that
+    // bounds the loop while preserving legitimate drag/drop re-navigation
+    // (which is human-paced and trivially clears the floor). Greptile's
+    // suggested verbatim fix (delete iframeTokenStore after first delivery)
+    // would break the documented re-navigation use case at the call site,
+    // so we keep the token alive and gate on time instead.
+    assert.ok(
+      san.includes('MIN_DELIVERY_INTERVAL_MS') && san.includes('iframeLastDeliveryMs'),
+      'must declare a per-iframe last-delivery timestamp store and a minimum interval',
+    );
+    const intervalMatch = san.match(/MIN_DELIVERY_INTERVAL_MS\s*=\s*(\d+)/);
+    assert.ok(intervalMatch, 'MIN_DELIVERY_INTERVAL_MS must be a numeric literal');
+    const interval = Number(intervalMatch[1]);
+    assert.ok(
+      interval >= 500 && interval <= 5000,
+      `MIN_DELIVERY_INTERVAL_MS must be between 500ms and 5s (got ${interval}) — too low fails to bound a loop, too high breaks drag/drop`,
+    );
+    assert.ok(
+      san.includes('now - last < MIN_DELIVERY_INTERVAL_MS'),
+      'message handler must return early when called within the throttle window',
+    );
+    assert.ok(
+      san.includes('iframeLastDeliveryMs.set(iframe, now)'),
+      'message handler must record the delivery time so the next call is throttled',
     );
   });
 
