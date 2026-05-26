@@ -14,6 +14,10 @@ function lookup(obj, key) {
   return key.split('.').reduce((cur, part) => cur?.[part], obj);
 }
 
+function stripComments(text) {
+  return text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/[^\n]*/g, '');
+}
+
 function loadLocales() {
   return readdirSync(join(ROOT, LOCALES_DIR))
     .filter((f) => f.endsWith('.json'))
@@ -71,8 +75,9 @@ describe('country brief i18n keys', () => {
     ];
 
     for (const file of files) {
-      assert.match(src(file), /t\((?:'|"|`)countryBrief\.(?:levels|trends|fallback)\./, `${file} should use countryBrief for these labels`);
-      assert.doesNotMatch(src(file), /t\((?:'|"|`)modals\.countryBrief\.(?:levels|trends|fallback)\./, `${file} should not use modals.countryBrief for these labels`);
+      const body = stripComments(src(file));
+      assert.match(body, /t\((?:'|"|`)countryBrief\.(?:levels|trends|fallback)\./, `${file} should use countryBrief for these labels`);
+      assert.doesNotMatch(body, /t\((?:'|"|`)modals\.countryBrief\.(?:levels|trends|fallback)\./, `${file} should not use modals.countryBrief for these labels`);
     }
   });
 });
