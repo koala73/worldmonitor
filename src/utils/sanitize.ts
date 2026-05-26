@@ -56,6 +56,10 @@ export function unsafeRawHtml(html: string, reason: string): SafeHtml {
   return new SafeHtmlValue(String(html));
 }
 
+/**
+ * Joins already-safe HTML fragments. String separators are treated as text and
+ * escaped; pass safeHtml`<br>` or unsafeRawHtml('<br>', reason) for markup.
+ */
 export function joinSafeHtml(parts: SafeHtml[], separator: SafeHtml | string = ''): SafeHtml {
   const safeSeparator = isSafeHtml(separator) ? separator.toString() : escapeHtml(separator);
   return new SafeHtmlValue(parts.map(safeHtmlToString).join(safeSeparator));
@@ -102,5 +106,6 @@ export function escapeAttr(str: string): string {
 }
 
 export function safeUrlAttr(url: string): SafeHtml {
+  // sanitizeUrl() returns an attribute-escaped URL or an empty string.
   return unsafeRawHtml(sanitizeUrl(url), 'URL passed through sanitizeUrl() for HTML attribute interpolation');
 }
