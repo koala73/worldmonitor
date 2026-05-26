@@ -145,7 +145,22 @@ async function redisCommand(url, token, command) {
   });
   if (!resp.ok) {
     const text = await resp.text().catch(() => '');
-    throw new Error(`Redis command failed: HTTP ${resp.status} — ${text.slice(0, 200)}`);
+    const err = new Error(`Redis command failed: HTTP ${resp.status} — ${text.slice(0, 200)}`);
+    // Tag errors so callers wrapping in withRetry know whether to back off.
+    // Permanent 4xx (auth, payload-too-large, etc.) won't recover on retry —
+    // mark non-retryable so withRetry exits the loop in ~10ms instead of
+    // wasting backoff on a guaranteed-fail. Only 429 (rate-limited) should
+    // keep retrying among the 4xx set, with the upstream Retry-After hint
+    // honoured. Transient 5xx and timeouts fall through with no flag —
+    // withRetry's default backoff applies.
+    if (PERMANENT_4XX_STATUSES.has(resp.status)) {
+      err.nonRetryable = true;
+    } else if (resp.status === 429) {
+      const retryAfterMs = parseRetryAfterMs(resp.headers.get('retry-after'));
+      if (retryAfterMs != null) err.retryAfterMs = retryAfterMs;
+    }
+    err.httpStatus = resp.status;
+    throw err;
   }
   return resp.json();
 }
@@ -222,8 +237,6 @@ export async function releaseLock(domain, runId) {
 
 export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds, options = {}) {
   const { url, token } = getRedisCredentials();
-  const runId = String(Date.now());
-  const stagingKey = `${canonicalKey}:staging:${runId}`;
 
   if (validateFn) {
     const valid = validateFn(data);
@@ -246,23 +259,47 @@ export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds, 
     throw new Error(`Payload too large: ${(payloadBytes / 1024 / 1024).toFixed(1)}MB > 5MB limit`);
   }
 
-  // Write to staging key
-  await redisSet(url, token, stagingKey, payloadValue, 300); // 5 min staging TTL
+  // Retry the entire 3-call publish unit on transient Upstash failures.
+  // Pre-fix: a single timeout on the canonical SET would crash the whole
+  // seeder run and Railway just waited for the next cron tick (1h for
+  // seed-forecasts). On 2026-05-10 this exact failure mode produced a
+  // ~3h gap on forecasts + marketImplications. Wrapping the body means
+  // a transient 5xx/timeout retries automatically with exponential
+  // backoff. Permanent 4xx (auth, payload-too-large) get the
+  // `nonRetryable: true` flag from redisCommand and abort immediately.
+  //
+  // Each attempt re-stages with a fresh runId so a previous attempt's
+  // staging key (if it landed server-side but the response was lost)
+  // doesn't shadow the retry. The 5-min staging TTL cleans up any
+  // orphaned stagings naturally.
+  return await withRetry(
+    async () => {
+      const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const stagingKey = `${canonicalKey}:staging:${runId}`;
 
-  // Overwrite canonical key
-  if (ttlSeconds) {
-    await redisCommand(url, token, ['SET', canonicalKey, payload, 'EX', ttlSeconds]);
-  } else {
-    await redisCommand(url, token, ['SET', canonicalKey, payload]);
-  }
+      // Write to staging key
+      await redisSet(url, token, stagingKey, payloadValue, 300); // 5 min staging TTL
 
-  // Cleanup staging
-  await redisDel(url, token, stagingKey).catch(() => {});
+      // Overwrite canonical key
+      if (ttlSeconds) {
+        await redisCommand(url, token, ['SET', canonicalKey, payload, 'EX', ttlSeconds]);
+      } else {
+        await redisCommand(url, token, ['SET', canonicalKey, payload]);
+      }
 
-  return { payloadBytes, recordCount: Array.isArray(data) ? data.length : null };
+      // Cleanup staging
+      await redisDel(url, token, stagingKey).catch(() => {});
+
+      return { payloadBytes, recordCount: Array.isArray(data) ? data.length : null };
+    },
+    2,    // 2 retries (3 attempts total) — sufficient for transient blips
+    1000, // 1s base delay; exponential backoff → 1s + 2s = ~3s worst-case
+          // cumulative wait between attempts. Plus per-attempt fetch time
+          // (15s timeout each) means total worst-case before propagating ≈ 48s.
+  );
 }
 
-export async function writeFreshnessMetadata(domain, resource, count, source, ttlSeconds, fetchedAtOverride) {
+export async function writeFreshnessMetadata(domain, resource, count, source, ttlSeconds, fetchedAtOverride, contentAge) {
   const { url, token } = getRedisCredentials();
   const metaKey = `seed-meta:${domain}:${resource}`;
   const meta = {
@@ -274,6 +311,15 @@ export async function writeFreshnessMetadata(domain, resource, count, source, tt
     recordCount: count,
     sourceVersion: source || '',
   };
+  // Content-age trio (2026-05-04 health-readiness plan). Pass when the seeder
+  // opted in. Presence of maxContentAgeMin is the opt-in signal that the
+  // health classifier reads. newestItemAt/oldestItemAt may be explicit null
+  // when contentMeta returned null — classifier reads as STALE_CONTENT.
+  if (contentAge && typeof contentAge === 'object' && Number.isInteger(contentAge.maxContentAgeMin)) {
+    meta.newestItemAt = contentAge.newestItemAt ?? null;
+    meta.oldestItemAt = contentAge.oldestItemAt ?? null;
+    meta.maxContentAgeMin = contentAge.maxContentAgeMin;
+  }
   // Use the data TTL if it exceeds 7 days so monthly/annual seeds don't lose
   // their meta key before the health check maxStaleMin threshold is reached.
   const metaTtl = Math.max(86400 * 7, ttlSeconds || 0);
@@ -312,14 +358,62 @@ export async function readCanonicalEnvelopeMeta(canonicalKey) {
     if (!seed || typeof seed !== 'object') return null;
     if (typeof seed.fetchedAt !== 'number' || typeof seed.recordCount !== 'number') return null;
     if (seed.recordCount <= 0) return null;
+    // Content-age fields propagate through the validate-fail mirror so the
+    // health classifier doesn't lose the STALE_CONTENT signal exactly when
+    // last-good-with-stale-content data is being served (Codex round 1 P0b).
+    // All three fields are optional in the envelope; carry them through as a
+    // trio when present, otherwise undefined (caller checks).
+    const contentAge = (typeof seed.maxContentAgeMin === 'number')
+      ? {
+          newestItemAt: typeof seed.newestItemAt === 'number' ? seed.newestItemAt : null,
+          oldestItemAt: typeof seed.oldestItemAt === 'number' ? seed.oldestItemAt : null,
+          maxContentAgeMin: seed.maxContentAgeMin,
+        }
+      : undefined;
     return {
       fetchedAt: seed.fetchedAt,
       recordCount: seed.recordCount,
       sourceVersion: typeof seed.sourceVersion === 'string' ? seed.sourceVersion : '',
+      contentAge,
     };
   } catch {
     return null;
   }
+}
+
+// HTTP statuses where retrying CAN'T succeed because the failure is in the
+// caller's request shape, not server load:
+//   400 malformed query   401 bad auth      403 forbidden
+//   404 missing path      410 permanently gone
+//   422 semantic error    451 legal block
+// 408 Request Timeout and 429 Too Many Requests are deliberately excluded —
+// both are explicit "back off and retry" signals, often paired with a
+// Retry-After header. Tagging them nonRetryable would convert transient
+// rate-limits into immediate seed failures (especially under parallel
+// fetches like seed-imf-* WEO bundles).
+export const PERMANENT_4XX_STATUSES = new Set([400, 401, 403, 404, 410, 422, 451]);
+
+// Cap upstream Retry-After hints so a stuck/abusive header can't park the
+// bundle past its section timeoutMs. Mirrors _yahoo-fetch.mjs convention.
+const MAX_RETRY_AFTER_MS = 60_000;
+
+/**
+ * Parse `Retry-After` header value (seconds OR HTTP-date). Returns null
+ * when missing/unparseable so callers can fall back to default backoff.
+ * Duplicates exist in _yahoo-fetch / _gdelt-fetch / _open-meteo-archive —
+ * those predate this helper; consolidating them is a separate refactor.
+ */
+export function parseRetryAfterMs(value) {
+  if (!value) return null;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds > 0) {
+    return Math.min(seconds * 1000, MAX_RETRY_AFTER_MS);
+  }
+  const retryAt = Date.parse(value);
+  if (Number.isFinite(retryAt)) {
+    return Math.min(Math.max(retryAt - Date.now(), 1000), MAX_RETRY_AFTER_MS);
+  }
+  return null;
 }
 
 export async function withRetry(fn, maxRetries = 3, delayMs = 1000) {
@@ -329,8 +423,17 @@ export async function withRetry(fn, maxRetries = 3, delayMs = 1000) {
       return await fn();
     } catch (err) {
       lastErr = err;
+      // Permanent failures (4xx auth/permission, missing config) burn the
+      // bundle timeoutMs if retried. Callers tag with `nonRetryable: true`
+      // so the loop fails in ~10ms instead of waiting through every backoff.
+      if (err?.nonRetryable) throw err;
       if (attempt < maxRetries) {
-        const wait = delayMs * 2 ** attempt;
+        // Honor upstream `Retry-After` hint when caller attached it
+        // (typically 429 / 503). Take whichever is longer — the upstream
+        // hint OR the exponential backoff — so a generous server hint
+        // isn't undercut, and a missing/short hint still gets back-off.
+        const baseWait = delayMs * 2 ** attempt;
+        const wait = err?.retryAfterMs ? Math.max(baseWait, err.retryAfterMs) : baseWait;
         const cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
         console.warn(`  Retry ${attempt + 1}/${maxRetries} in ${wait}ms: ${err.message || err}${cause}`);
         await new Promise(r => setTimeout(r, wait));
@@ -554,9 +657,31 @@ export async function imfFetchJson(url, proxyAuth) {
 }
 
 // ---------------------------------------------------------------------------
-// IMF SDMX 3.0 API (api.imf.org) — replaces blocked DataMapper API
+// IMF SDMX 3.0 API (api.imf.org) — replaces blocked DataMapper API.
+//
+// Auth status (2026-05): currently allows unauthenticated requests, but the
+// gateway has been observed flipping to hard 401 enforcement intermittently
+// (one ~hours-long window on 2026-05-09 SIGTERM'd seed-bundle-market-backup
+// in production). Set IMF_API_KEY to send `Ocp-Apim-Subscription-Key` for
+// forward-compatibility — get a key at https://portal.api.imf.org/ (Sign in
+// → Products → IMF Data SDMX API → Subscribe → Profile → Subscriptions →
+// Primary key). One subscription unlocks both SDMX 2.1 and 3.0. The gateway
+// returns a misleading `WWW-Authenticate: Bearer` 401; the actual scheme is
+// APIM subscription key, NOT Bearer.
 // ---------------------------------------------------------------------------
 const IMF_SDMX_BASE = 'https://api.imf.org/external/sdmx/3.0';
+
+// Build auth headers for api.imf.org. Returns {} when IMF_API_KEY is unset —
+// IMF currently allows unauthenticated requests through, but flipped to hard
+// 401 enforcement for ~hours on 2026-05-09 (captured in seed-bundle-market-
+// backup logs). Sending the key when we have it is forward-compatible with
+// permanent enforcement; the omit-on-empty path preserves today's working
+// state. The `nonRetryable` 4xx guard in the fetcher (paired with this
+// helper) prevents a 180s SIGTERM the next time enforcement lands.
+export function imfAuthHeaders() {
+  const key = process.env.IMF_API_KEY;
+  return key ? { 'Ocp-Apim-Subscription-Key': key } : {};
+}
 
 /**
  * Normalize an SDMX 3.0 monthly period from `YYYY-MMM` (the on-the-wire
@@ -604,10 +729,19 @@ export async function imfSdmxFetchIndicator(indicator, { database = 'WEO', years
 
   const json = await withRetry(async () => {
     const r = await fetch(url, {
-      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
+      headers: { 'User-Agent': CHROME_UA, Accept: 'application/json', ...imfAuthHeaders() },
       signal: AbortSignal.timeout(60_000),
     });
-    if (!r.ok) throw new Error(`IMF SDMX ${indicator}: HTTP ${r.status}`);
+    if (!r.ok) {
+      const err = new Error(`IMF SDMX ${indicator}: HTTP ${r.status}`);
+      if (PERMANENT_4XX_STATUSES.has(r.status)) err.nonRetryable = true;
+      // 429 (rate limit) and 503 (overloaded) typically carry Retry-After;
+      // attach so withRetry can honor the upstream hint.
+      if (r.status === 429 || r.status === 503) {
+        err.retryAfterMs = parseRetryAfterMs(r.headers.get('retry-after'));
+      }
+      throw err;
+    }
     return r.json();
   }, 2, 2000);
 
@@ -925,6 +1059,8 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     sourceVersion,         // new — required when declareRecords is passed
     schemaVersion,         // new — required when declareRecords is passed
     zeroIsValid = false,   // new — when true, recordCount=0 is OK_ZERO, not RETRY
+    contentMeta,           // (rawData) => {newestItemAt, oldestItemAt} | null
+    maxContentAgeMin,      // positive integer minutes — opts in together with contentMeta
   } = opts;
   const contractMode = typeof declareRecords === 'function';
   if (contractMode) {
@@ -935,6 +1071,20 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     if (typeof opts.maxStaleMin !== 'number') missing.push('maxStaleMin');
     if (missing.length) {
       console.warn(`  [seed-contract] ${domain}:${resource} missing fields: ${missing.join(', ')} — required in PR 3`);
+    }
+  }
+  // Content-age contract validation (2026-05-04 health-readiness plan).
+  // contentMeta and maxContentAgeMin opt in TOGETHER. Hard-fail at config time
+  // on misconfig — silently disabling the check would defeat the alarm.
+  const contentAgeOptedIn = contentMeta != null || maxContentAgeMin != null;
+  if (contentAgeOptedIn) {
+    if (typeof contentMeta !== 'function') {
+      console.error(`  CONTRACT VIOLATION: ${domain}:${resource} declares maxContentAgeMin without contentMeta function`);
+      process.exit(1);
+    }
+    if (!Number.isInteger(maxContentAgeMin) || maxContentAgeMin <= 0) {
+      console.error(`  CONTRACT VIOLATION: ${domain}:${resource} maxContentAgeMin must be a positive integer (minutes), got ${JSON.stringify(maxContentAgeMin)}`);
+      process.exit(1);
     }
   }
   const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -1037,6 +1187,32 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
 
   // Phase 2: Publish to Redis (rethrow on failure — data was fetched but not stored)
   try {
+    // Content-age contract: invoke contentMeta on RAW fetcher output BEFORE
+    // publishTransform runs. This lets seeders carry pre-publish helper fields
+    // (e.g. _publishedAtIsSynthetic) on items that contentMeta reads, then
+    // strip them via publishTransform before they reach the canonical key
+    // and downstream clients. See the 2026-05-04 health-readiness plan,
+    // Sprint 1 / Sprint 2 disease-outbreaks pilot.
+    //
+    // contentMeta returning null OR throwing both signal "no usable item
+    // timestamps" → write newestItemAt: null in the envelope, which the
+    // health classifier reads as STALE_CONTENT.
+    let contentNewestAt = null;
+    let contentOldestAt = null;
+    if (contentAgeOptedIn) {
+      try {
+        const result = contentMeta(data);
+        if (result && typeof result === 'object'
+            && Number.isFinite(result.newestItemAt) && result.newestItemAt > 0
+            && Number.isFinite(result.oldestItemAt) && result.oldestItemAt > 0) {
+          contentNewestAt = result.newestItemAt;
+          contentOldestAt = result.oldestItemAt;
+        }
+      } catch (err) {
+        console.warn(`  [content-age] ${domain}:${resource}: contentMeta threw, treating as null: ${err?.message || err}`);
+      }
+    }
+
     const publishData = publishTransform ? publishTransform(data) : data;
 
     // In contract mode, resolve recordCount from declareRecords BEFORE publish so
@@ -1069,6 +1245,16 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
           schemaVersion: schemaVersion || 1,
           state: contractState,
         };
+        // Carry content-age fields when seeder opted in. Presence of
+        // maxContentAgeMin in the envelope is the opt-in signal for the
+        // health classifier. newestItemAt/oldestItemAt may be explicit null
+        // when contentMeta returned null OR all items lacked usable
+        // timestamps — classifier reads those as STALE_CONTENT.
+        if (contentAgeOptedIn) {
+          envelopeMeta.newestItemAt = contentNewestAt;
+          envelopeMeta.oldestItemAt = contentOldestAt;
+          envelopeMeta.maxContentAgeMin = maxContentAgeMin;
+        }
       }
     }
 
@@ -1124,15 +1310,20 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
         //   - canonical envelope has recordCount <= 0
         const canonicalMeta = await readCanonicalEnvelopeMeta(canonicalKey);
         if (canonicalMeta) {
+          // Pass-through canonical's contentAge so health doesn't lose the
+          // STALE_CONTENT signal exactly when last-good-with-stale-content
+          // data is being served (Codex round 1 P0b).
           await writeFreshnessMetadata(
             domain, resource, canonicalMeta.recordCount,
             canonicalMeta.sourceVersion || opts.sourceVersion,
             ttlSeconds,
             canonicalMeta.fetchedAt,
+            canonicalMeta.contentAge,
           );
           console.log(
             `  SKIPPED: validation failed (empty/partial fetch) — seed-meta mirrors canonical ` +
-            `(fetchedAt=${new Date(canonicalMeta.fetchedAt).toISOString()}, recordCount=${canonicalMeta.recordCount}); ` +
+            `(fetchedAt=${new Date(canonicalMeta.fetchedAt).toISOString()}, recordCount=${canonicalMeta.recordCount}` +
+            `${canonicalMeta.contentAge ? `, newestItemAt=${canonicalMeta.contentAge.newestItemAt == null ? 'null' : new Date(canonicalMeta.contentAge.newestItemAt).toISOString()}` : ''}); ` +
             `existing cache TTL extended`,
           );
         } else {
@@ -1192,7 +1383,30 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       await afterPublish(data, { canonicalKey, ttlSeconds, recordCount, runId });
     }
 
-    const meta = await writeFreshnessMetadata(domain, resource, recordCount, opts.sourceVersion, ttlSeconds);
+    // Mirror content-age fields into seed-meta when the seeder opted in.
+    //
+    // Read content-age from the LOCAL `contentNewestAt`/`contentOldestAt`
+    // computed back at line ~1088 — NOT from `envelopeMeta`. The local
+    // values are populated whenever the seeder opted in (`contentAgeOptedIn`
+    // === true); `envelopeMeta` is null for non-contract-mode seeders, so
+    // gating on `envelopeMeta` silently dropped the content-age signal for
+    // every seeder that hadn't migrated to contract mode yet — defeating
+    // the opt-in for the majority of the cohort.
+    //
+    // Both branches publish the same trio (envelopeMeta carries the same
+    // values when contract mode populates it at line ~1141); reading from
+    // the local source unifies the two paths and makes the seed-meta
+    // mirror match the contract-mode envelope exactly.
+    const successContentAge = contentAgeOptedIn ? {
+      newestItemAt: contentNewestAt,
+      oldestItemAt: contentOldestAt,
+      maxContentAgeMin,
+    } : undefined;
+    const meta = await writeFreshnessMetadata(
+      domain, resource, recordCount, opts.sourceVersion, ttlSeconds,
+      undefined,            // fetchedAtOverride — success path uses now
+      successContentAge,
+    );
 
     const durationMs = Date.now() - startMs;
     logSeedResult(domain, recordCount, durationMs, { payloadBytes, contractMode, state: contractState || 'LEGACY' });

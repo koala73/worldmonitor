@@ -108,23 +108,90 @@ export function buildHistory(features) {
     .sort((a, b) => a.date.localeCompare(b.date));
 }
 
-export async function fetchAll() {
-  const sinceEpoch = Date.now() - HISTORY_DAYS * 24 * 60 * 60 * 1000;
+/**
+ * Run the chokepoint fetch pipeline with batched concurrency + sequential
+ * retry-on-empty. Extracted so tests can inject a mock `fetchPagesFn`
+ * without hitting the real ArcGIS API.
+ *
+ * Retry rationale (PR #3611, 2026-05-06):
+ *
+ * The previous implementation silently dropped any chokepoint whose
+ * upstream fetch returned `{features: []}` (empty 200) — a class of
+ * transient failure that ArcGIS produces under per-egress-IP rate limits.
+ * The pattern was bursty: 2 of 3 chokepoints in the same Promise.allSettled
+ * batch came back empty, with no log line and no retry, while a manual
+ * fetch from any other IP returned 179 features for the same query. The
+ * 0-record outcome propagated through `seedTransitSummaries` (ais-relay.cjs)
+ * → `dataAvailable: Boolean(cpData)` flipped false → /api/health flagged
+ * `chokepoints: COVERAGE_PARTIAL`.
+ *
+ * Two changes here:
+ *   1. **Log on empty**: surface the silent-drop path so Railway logs
+ *      tell us which chokepoint(s) returned 0 features, and how often.
+ *   2. **Sequential retry pass**: any chokepoint that came back empty
+ *      OR rejected on the concurrent first pass gets retried alone with
+ *      a small delay — stepping out of any rate-limit window the
+ *      concurrent batch may have hit. Recovers transients without
+ *      changing the steady-state code path.
+ *
+ * The retry is intentionally "1 attempt" — a permanent ArcGIS issue
+ * for a given chokepoint should still surface as missing in seed-meta
+ * recordCount so /api/health can flag it.
+ */
+export async function runFetchPipeline(chokepoints, sinceEpoch, fetchPagesFn, retryDelayMs = 500) {
   const result = {};
-  for (let i = 0; i < CHOKEPOINTS.length; i += CONCURRENCY) {
-    const batch = CHOKEPOINTS.slice(i, i + CONCURRENCY);
-    const settled = await Promise.allSettled(batch.map(cp => fetchAllPages(cp.name, sinceEpoch)));
+  const missing = [];
+
+  // First pass: concurrent batches.
+  for (let i = 0; i < chokepoints.length; i += CONCURRENCY) {
+    const batch = chokepoints.slice(i, i + CONCURRENCY);
+    const settled = await Promise.allSettled(batch.map(cp => fetchPagesFn(cp.name, sinceEpoch)));
     for (let j = 0; j < batch.length; j++) {
       const outcome = settled[j];
+      const cp = batch[j];
       if (outcome.status === 'rejected') {
-        console.warn(`  [PortWatch] ${batch[j].name}: ${outcome.reason?.message || outcome.reason}`);
+        console.warn(`  [PortWatch] ${cp.name}: rejected — ${outcome.reason?.message || outcome.reason}`);
+        missing.push(cp);
         continue;
       }
-      if (!outcome.value.length) continue;
+      if (!outcome.value.length) {
+        // Empty 200 — most often ArcGIS rate limit or transient. Queue for retry.
+        console.warn(`  [PortWatch] ${cp.name}: 0 features (empty 200) — queued for retry`);
+        missing.push(cp);
+        continue;
+      }
       const history = buildHistory(outcome.value);
-      result[batch[j].id] = { history, wowChangePct: computeWow(history) };
+      result[cp.id] = { history, wowChangePct: computeWow(history) };
     }
   }
+
+  // Second pass: sequential retry of any chokepoint that came back empty or rejected.
+  // Sequential (not concurrent) to step out of any rate-limit burst from the first pass.
+  if (missing.length > 0) {
+    console.warn(`[PortWatch] Retrying ${missing.length} chokepoint(s) sequentially: ${missing.map(c => c.id).join(', ')}`);
+    for (const cp of missing) {
+      if (retryDelayMs > 0) await new Promise(r => setTimeout(r, retryDelayMs));
+      try {
+        const features = await fetchPagesFn(cp.name, sinceEpoch);
+        if (features.length === 0) {
+          console.warn(`  [PortWatch] ${cp.name}: still 0 features after retry — dropping`);
+          continue;
+        }
+        const history = buildHistory(features);
+        result[cp.id] = { history, wowChangePct: computeWow(history) };
+        console.log(`  [PortWatch] ${cp.name}: recovered ${features.length} features on retry`);
+      } catch (e) {
+        console.warn(`  [PortWatch] ${cp.name}: retry rejected — ${e?.message || e}`);
+      }
+    }
+  }
+
+  return result;
+}
+
+export async function fetchAll() {
+  const sinceEpoch = Date.now() - HISTORY_DAYS * 24 * 60 * 60 * 1000;
+  const result = await runFetchPipeline(CHOKEPOINTS, sinceEpoch, fetchAllPages);
   if (Object.keys(result).length === 0) throw new Error('No chokepoints returned data');
   return result;
 }

@@ -565,12 +565,20 @@ const RSS_PROXY_ALLOWED_DOMAINS = new Set([
   'www.hurriyet.com.tr', 'tvn24.pl', 'www.polsatnews.pl', 'www.rp.pl', 'meduza.io',
   'novayagazeta.eu', 'www.bangkokpost.com', 'vnexpress.net', 'www.abc.net.au',
   'news.ycombinator.com',
+  // Hungarian / Central European feeds
+  'telex.hu', 'index.hu', 'hvg.hu', '444.hu', '24.hu', 'hirado.hu', 'portfolio.hu', 'www.portfolio.hu', 'www.atv.hu',
+  // Croatian feeds
+  'n1info.hr', 'www.index.hr', 'www.jutarnji.hr', 'balkaninsight.com',
   // Finance variant
   'www.coindesk.com', 'cointelegraph.com',
   // Happy variant — positive news sources
   'www.goodnewsnetwork.org', 'www.positive.news', 'reasonstobecheerful.world',
   'www.optimistdaily.com', 'www.sunnyskyz.com', 'www.huffpost.com',
   'www.sciencedaily.com', 'feeds.nature.com', 'www.livescience.com', 'www.newscientist.com',
+  // Feed-registry coverage (PR fix/feed-validation-unblock — kept sync with shared/rss-allowed-domains.json)
+  'abcnews.go.com', 'abcnews.com', 'www.corriere.it', 'www.rt.com', 'www.alarabiya.net', 'tuoitrenews.vn',
+  'www.yonhapnewstv.co.kr', 'www.chosun.com', 'rss.libsyn.com', 'feeds.megaphone.fm', 'rss.art19.com',
+  'idp.nature.com',
 ]);
 
 function rssProxyPlugin(): Plugin {
@@ -948,6 +956,7 @@ export default defineConfig(({ mode }) => {
           main: resolve(__dirname, 'index.html'),
           settings: resolve(__dirname, 'settings.html'),
           liveChannels: resolve(__dirname, 'live-channels.html'),
+          mcpGrant: resolve(__dirname, 'mcp-grant.html'),
         },
         output: {
           manualChunks(id) {

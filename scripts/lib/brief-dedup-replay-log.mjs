@@ -29,6 +29,27 @@ const KEY_PREFIX = 'digest:replay-log:v1';
 const TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days
 
 /**
+ * Per-day list cap. Each record is ~1.0-1.7KB JSON; Upstash enforces a
+ * 500MB max-record-size on the Fixed plan. Without a cap, busy days
+ * (~420K entries observed in production on 2026-05-07) hit the limit
+ * and back-pressure adjacent Redis writes — see WM 2026-05-10 incident
+ * where seed-forecasts publish timed out coincident with Max Record Size
+ * alerts.
+ *
+ * 100,000 entries × 1.5KB ≈ 150MB → ~3× safety margin under 500MB.
+ * For the calibration use-case (replay/sweep tooling consumes the
+ * NEWEST entries to evaluate dedup quality), tail-keep semantics are
+ * correct: LTRIM `-N..-1` keeps the most recent N records.
+ *
+ * Tradeoff: very busy days lose the OLDEST entries beyond 100K. The
+ * U6 14-day replay harness aggregates ACROSS days and uses repHash
+ * stability for cluster identity, so within-day eviction of older
+ * entries is acceptable — operators get a representative sample of
+ * each day's traffic, not exhaustive coverage.
+ */
+export const REPLAY_LOG_MAX_ENTRIES_PER_DAY = 100_000;
+
+/**
  * Env-read at call time so Railway can flip the flag without a redeploy.
  * Anything other than literal '1' (including unset, '0', 'yes', 'true',
  * mis-cased 'True') is treated as OFF — fail-closed so a typo can't
@@ -117,6 +138,56 @@ export function buildReplayRecords(stories, reps, embeddingByHash, cfg, tickCont
     }
   }
 
+  // Codex PR #3617 P1 — Sprint 1 / U6 cluster identity contract.
+  //
+  // Map storyHash → rep.hash so every record can carry the canonical
+  // stable cluster identity (the rep's own hash, which equals
+  // mergedHashes[0] by U3's contract from Sprint 1). The pre-fix
+  // writer only emitted a per-tick numeric clusterId and the rep's
+  // mergedHashes was unreachable from non-rep records; U6's harness
+  // had to guess at cluster identity by re-deriving from individual
+  // storyHashes, splitting clusters whenever a non-rep story got
+  // sampled.
+  //
+  // Now: every record carries `repHash` (stable across ticks). U6
+  // collapses by repHash to get one timeline per (ruleId, cluster)
+  // regardless of which member story happened to be in the dedup
+  // input that tick.
+  //
+  // We also retain a separate Map of rep.hash → mergedHashes so the
+  // record builder can stamp mergedHashes ONLY onto rep records (the
+  // mergedHashes set lives on the rep object, not on individual input
+  // stories — readers asking "which storyHashes are in this cluster?"
+  // need to consult the rep, not the member).
+  const repHashByStoryHash = new Map();
+  const mergedHashesByRepHash = new Map();
+  // Codex PR #3617 round-3 P1 — sources live on REP objects (post
+  // pre-hydration in seed-digest-notifications), NOT on the original
+  // pre-dedup `stories` array. materializeCluster() in brief-dedup-jaccard
+  // copies the rep into a new object, so mutations to dedupedAll[i].sources
+  // never reach the input `stories[i]` references the writer iterates
+  // below. Build a sourcesByRepHash Map here so EVERY record (rep AND
+  // non-rep cluster member) gets the rep's hydrated source set —
+  // non-reps share the rep's source identity by definition (the rep
+  // is the cluster's canonical view).
+  const sourcesByRepHash = new Map();
+  if (Array.isArray(reps)) {
+    for (const rep of reps) {
+      const hashes = Array.isArray(rep?.mergedHashes) ? rep.mergedHashes : [rep?.hash];
+      for (const h of hashes) {
+        if (typeof h === 'string' && typeof rep?.hash === 'string' && !repHashByStoryHash.has(h)) {
+          repHashByStoryHash.set(h, rep.hash);
+        }
+      }
+      if (typeof rep?.hash === 'string' && Array.isArray(rep?.mergedHashes)) {
+        mergedHashesByRepHash.set(rep.hash, rep.mergedHashes);
+      }
+      if (typeof rep?.hash === 'string' && Array.isArray(rep?.sources)) {
+        sourcesByRepHash.set(rep.hash, rep.sources);
+      }
+    }
+  }
+
   const tickConfig = {
     mode: cfg?.mode ?? null,
     clustering: cfg?.clustering ?? null,
@@ -141,25 +212,66 @@ export function buildReplayRecords(stories, reps, embeddingByHash, cfg, tickCont
     // "embed path completed" from "embed path fell back to Jaccard".
     const hasEmbedding =
       embeddingByHash instanceof Map && embeddingByHash.has(story?.hash);
+    // Codex PR #3617 P1 — Sprint 1 / U6 fields. headline + sourceUrl
+    // are the canonical names U5's classifier expects (matches the
+    // BriefStory schema and the digest-cooldown-decision input shape).
+    // We keep `title` and `link` as legacy aliases for any older
+    // consumer that pinned to the v1 shape.
+    const link = typeof story?.link === 'string' ? story.link : null;
+    const sourceUrl = link;
+    const isRep = repHashes.has(story?.hash);
+    // Codex PR #3617 round-3 P1 — read sources from the rep's hydrated
+    // set (sourcesByRepHash) keyed by repHash, NOT from the input
+    // story's `sources` field. The latter is empty at writeReplayLog
+    // call time because materializeCluster returned copied rep objects
+    // and pre-hydration mutates dedupedAll, not the input `stories`.
+    const repHashForStory = repHashByStoryHash.has(story?.hash)
+      ? repHashByStoryHash.get(story?.hash)
+      : null;
+    const repSources = repHashForStory && sourcesByRepHash.has(repHashForStory)
+      ? sourcesByRepHash.get(repHashForStory)
+      : null;
     records.push({
-      v: 1,
+      v: 2, // Codex PR #3617 P1 — bump to v2 for repHash + headline + sourceUrl additions
       briefTickId: tickContext.briefTickId,
       ruleId: tickContext.ruleId,
       tsMs: tickContext.tsMs,
       storyHash: story?.hash ?? null,
       originalIndex,
-      isRep: repHashes.has(story?.hash),
+      isRep,
       clusterId: clusterByHash.has(story?.hash)
         ? clusterByHash.get(story?.hash)
         : null,
+      // Codex PR #3617 P1 — stable cluster identity (rep's own hash)
+      // for every record, including non-rep cluster members. U6
+      // collapses timelines by this field.
+      repHash: repHashForStory,
+      // Only reps carry the full mergedHashes set. Non-reps get null
+      // (their cluster membership is preserved via repHash). The set
+      // lives on the rep object (looked up via mergedHashesByRepHash);
+      // input stories don't carry mergedHashes themselves.
+      mergedHashes: isRep && typeof story?.hash === 'string' && mergedHashesByRepHash.has(story.hash)
+        ? mergedHashesByRepHash.get(story.hash)
+        : null,
       title: rawTitle,
+      headline: rawTitle, // U5/U6 prefer this name; matches BriefStory.headline
       normalizedTitle,
-      link: typeof story?.link === 'string' ? story.link : null,
+      link,
+      sourceUrl, // U5/U6 prefer this name; matches BriefStory.sourceUrl
       severity: story?.severity ?? null,
       currentScore: Number(story?.currentScore ?? 0),
       mentionCount: Number(story?.mentionCount ?? 1),
       phase: story?.phase ?? null,
-      sources: Array.isArray(story?.sources) ? story.sources : [],
+      // Codex PR #3617 round-3 P1 — sources from the rep's hydrated
+      // set, not the input story's (empty by construction at this point).
+      // Non-rep records inherit the rep's set so cluster source-count
+      // identity is uniform across all member records. Falls back to
+      // the input story's sources when the rep map has no entry (e.g.
+      // a synthetic test fixture passing pre-hydrated input stories
+      // and bypass-rep-build paths) so existing tests don't break.
+      sources: Array.isArray(repSources)
+        ? repSources
+        : (Array.isArray(story?.sources) ? story.sources : []),
       embeddingCacheKey: cacheKey,
       hasEmbedding,
       // Per-record shallow copy so an in-memory consumer (future
@@ -225,13 +337,17 @@ export async function writeReplayLog(args) {
       return { wrote: 0, key: null, skipped: 'empty' };
     }
     const key = buildReplayLogKey(tickContext?.ruleId, tickContext?.tsMs ?? Date.now());
-    // Single RPUSH with variadic values (one per story) + EXPIRE. Keep
-    // to two commands so Upstash's pipeline stays cheap even on large
-    // ticks. Stringify each record individually so downstream readers
-    // can consume with LRANGE + JSON.parse.
+    // RPUSH + LTRIM + EXPIRE in one pipeline. LTRIM `-N..-1` keeps the
+    // last N entries (most recent), evicting the oldest beyond the cap.
+    // This bounds each per-day key under ~150MB at observed entry sizes,
+    // well under Upstash's 500MB max-record-size that production hit on
+    // 2026-05-10 (busy days reached 420K entries ≈ 630MB without a cap).
+    // Stringify each record individually so downstream readers can
+    // consume with LRANGE + JSON.parse.
     const rpushCmd = ['RPUSH', key, ...records.map((r) => JSON.stringify(r))];
+    const ltrimCmd = ['LTRIM', key, `-${REPLAY_LOG_MAX_ENTRIES_PER_DAY}`, '-1'];
     const expireCmd = ['EXPIRE', key, String(TTL_SECONDS)];
-    const result = await pipelineImpl([rpushCmd, expireCmd]);
+    const result = await pipelineImpl([rpushCmd, ltrimCmd, expireCmd]);
     if (result == null) {
       warn(`[digest] replay-log: pipeline returned null (creds missing or upstream down) key=${key}`);
       return { wrote: 0, key, skipped: null };

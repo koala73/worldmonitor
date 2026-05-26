@@ -5,6 +5,7 @@
  */
 
 import { ConvexHttpClient } from 'convex/browser';
+import { ConvexError } from 'convex/values';
 import type {
   ServerContext,
   SubmitContactRequest,
@@ -154,14 +155,25 @@ export async function submitContact(
   }
 
   const client = new ConvexHttpClient(convexUrl);
-  await client.mutation('contactMessages:submit' as any, {
-    name: safeName,
-    email: email.trim(),
-    organization: safeOrg,
-    phone: safePhone,
-    message: safeMsg,
-    source: safeSource,
-  });
+  try {
+    await client.mutation('contactMessages:submit' as any, {
+      name: safeName,
+      email: email.trim(),
+      organization: safeOrg,
+      phone: safePhone,
+      message: safeMsg,
+      source: safeSource,
+    });
+  } catch (err) {
+    // Translate the Convex per-email throttle into a proper 429 so the
+    // browser can show "try again in an hour" instead of an opaque 500.
+    // Convex serializes ConvexError payloads onto err.data.
+    const data = (err as { data?: { kind?: string; message?: string } } | null)?.data;
+    if (err instanceof ConvexError && data?.kind === 'rate_limited') {
+      throw new ApiError(429, data.message || 'Too many requests', '');
+    }
+    throw err;
+  }
 
   const emailSent = await sendNotificationEmail(
     safeName,

@@ -30,6 +30,20 @@
 
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
+// Shared content-age helper for WB per-country annual seeders.
+// Per-seeder budget lives below — same shape, different publication lags.
+import { wbCountryDictContentMeta } from './_wb-country-dict-content-age-helpers.mjs';
+
+// 36mo budget — verified against live WB API on 2026-05-05: max year across
+// the three constituent indicators (NUCL/RNEW/HYRO) is 2024 (driven by
+// nuclear and hydro; renewables lags to 2021 but is masked by MAX-of-3 in
+// the seeder's countries[iso2].year). End-of-2024 = ~17mo before NOW, so
+// fresh-arrival lag is comfortably inside 36mo. Steady-state ceiling for
+// annual WB indicators = max_publication_lag (~18mo) + cycle_length (12mo)
+// = 30mo. 36mo = 30mo ceiling + 6mo slack. Same math as power-reliability
+// (#3602 review); see `_power-reliability-helpers.mjs` JSDoc for full
+// derivation.
+const MAX_CONTENT_AGE_MIN = 36 * 30 * 24 * 60;
 
 loadEnvFile(import.meta.url);
 
@@ -132,6 +146,13 @@ if (process.argv[1]?.endsWith('seed-low-carbon-generation.mjs')) {
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: 8 * 24 * 60, // weekly cadence + 1 day slack
+
+    // ── Content-age contract (Sprint 4 cohort follow-up) ──
+    // Seeder takes MAX year across NUCL/RNEW/HYRO per country (line ~109);
+    // contentMeta then takes MAX year across countries. Budget rationale
+    // documented at the MAX_CONTENT_AGE_MIN constant above.
+    contentMeta: wbCountryDictContentMeta,
+    maxContentAgeMin: MAX_CONTENT_AGE_MIN,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);

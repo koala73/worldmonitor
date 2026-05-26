@@ -7,6 +7,7 @@ export interface ListDiseaseOutbreaksRequest {
 export interface ListDiseaseOutbreaksResponse {
   outbreaks: DiseaseOutbreakItem[];
   fetchedAt: number;
+  alertLevelMethodologyVersion: string;
 }
 
 export interface DiseaseOutbreakItem {

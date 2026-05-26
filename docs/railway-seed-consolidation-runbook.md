@@ -5,6 +5,14 @@
 **Current services:** 100 (at Railway limit)
 **Target services:** 65 (~35 slots freed)
 
+> **Single source of truth for Railway-deployed scripts:** `scripts/railway-services.json`.
+> When adding a new Railway service (nixpacks or Dockerfile), add an entry to the
+> registry before merging. Both `tests/scripts-railway-nixpacks-no-escape-import.test.mts`
+> and `tests/dockerfile-digest-notifications-imports.test.mjs` derive their entry
+> lists from the registry, and `tests/railway-services-registry-coverage.test.mts`
+> fails if a `Dockerfile.*` CMD or a runbook "Start command:" entry references a
+> script the registry doesn't know about.
+
 ---
 
 ## Prerequisites
@@ -163,7 +171,7 @@ All new services share these settings:
 | **Watch paths** | `scripts/**`, `shared/**` |
 | **Replaces** | 4 services (ecb-fx-rates, ecb-short-rates, yield-curve-eu, fsi-eu) |
 | **Net savings** | 3 slots |
-| **Members** | ECB FX Rates (daily), ECB Short Rates (daily), Yield Curve EU (daily), FSI EU (weekly, skips 6/7 runs) |
+| **Members** | ECB FX Rates (daily), ECB Short Rates (daily), Yield Curve EU (daily), FSI EU (daily) |
 
 ### Bundle 2: seed-bundle-portwatch
 

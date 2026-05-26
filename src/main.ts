@@ -9,11 +9,16 @@ import { installUtmInterceptor } from './utils/utm';
 const sentryDsn = import.meta.env.VITE_SENTRY_DSN?.trim();
 
 // Known third-party hosts fetched by MapLibre (tiles, styles, glyphs, sprites).
-// Used by the beforeSend `Failed to fetch (<host>)` filter to avoid suppressing
-// failures from our self-hosted R2 PMTiles bucket or any api.worldmonitor.app
-// fetches that happen to land on a maplibre-framed stack.
-const MAPLIBRE_THIRD_PARTY_TILE_HOSTS = new Set([
+// Hosts whose `Failed to fetch (<host>)` errors are suppressed in beforeSend.
+// Originally maplibre-only (transient tile/style failures), expanded to cover
+// first-party callers that hit the same hosts directly (e.g.
+// `MapContainer.fetchAndApplyRadar` → `api.rainviewer.com`). The set IS the
+// safety: only known third-party hosts are suppressed; first-party fetches
+// to `api.worldmonitor.app` and the self-hosted R2 PMTiles bucket are NOT
+// in the set, so genuine basemap / API regressions still surface.
+const THIRD_PARTY_FETCH_HOST_ALLOWLIST = new Set([
   'tilecache.rainviewer.com',
+  'api.rainviewer.com', // weather radar API used by MapContainer.fetchAndApplyRadar — WORLDMONITOR-QG
   'basemaps.cartocdn.com',
   'tiles.openfreemap.org',
   'protomaps.github.io',
@@ -49,6 +54,13 @@ Sentry.init({
     /Unable to load image/,
     /Non-Error promise rejection captured with value:/,
     /Connection to Indexed Database server lost/,
+    // Library-thrown (Convex client / Clerk persistent cache) when the user's
+    // browser has IndexedDB disabled (Safari Private Browsing, hardened
+    // Firefox, some WebView contexts). Our code only initializes the
+    // library; the throw is environmental and unavoidable from our side.
+    // Same disposition as the existing "Connection to Indexed Database
+    // server lost" entry above. WORLDMONITOR-RC.
+    /^IndexedDBUnavailableError|IndexedDB is not available in this environment/,
     /webkit\.messageHandlers/,
     /(?:unsafe-eval.*Content Security Policy|Content Security Policy.*unsafe-eval)/,
     /Fullscreen request denied/,
@@ -99,6 +111,11 @@ Sentry.init({
     /setting 'luma'/,
     /ML request .* timed out/,
     /(?:AbortError: )?The operation was aborted\.?\s*$/,
+    // Bare `Uncaught Error: AbortError` (no message body) from Convex
+    // server-side action timeouts auto-captured by Convex's Sentry
+    // integration. Zero-frame, environment 'prod', no actionable context
+    // — the action retries cleanly. WORLDMONITOR-QH.
+    /^Uncaught Error: AbortError$/,
     /Unexpected end of script/,
     /Style is not done loading/,
     /Event `CustomEvent`.*captured as promise rejection/,
@@ -185,6 +202,9 @@ Sentry.init({
     /Qt\([^)]*\) is not a function/,
     /shaderSource must be an instance of WebGLShader/,
     /WebGL2RenderingContext\.shaderSource: Argument 1 is not an object/,
+    // Chrome wording for the same condition (gl.createShader returned null,
+    // typically after WebGL context loss or on degraded GPU drivers). WORLDMONITOR-RM.
+    /Failed to execute 'shaderSource' on 'WebGL2?RenderingContext': parameter 1 is not of type 'WebGLShader'/,
     /Failed to initialize WebGL/,
     /opacityVertexArray\.length/,
     /Length of new data is \d+, which doesn't match current length of/,
@@ -192,6 +212,8 @@ Sentry.init({
     /^NetworkError: Load failed$/,
     /^A network error occurred\.?$/,
     /nmhCrx is not defined/,
+    /\bcrusoe is not defined\b/, // WORLDMONITOR-R3 — injected userscript reference, anonymous-frames-only stack
+    /\bvc_request_action is not defined\b/, // WORLDMONITOR-RB — Samsung Internet / Tizen smart-view-cast global injection
     /navigationPerformanceLoggerJavascriptInterface/,
     /jQuery is not defined/,
     /illegal UTF-16 sequence/,
@@ -291,7 +313,7 @@ Sentry.init({
     const hasFirstParty = nonInfraFrames.some(f => firstPartyFile(f.filename ?? ''));
     const hasAnyStack = nonInfraFrames.length > 0;
     // Suppress maplibre internal null-access crashes (light, placement) only when stack is in map chunk
-    if (/this\.style\._layers|reading '_layers'|this\.(light|sky) is null|can't access property "(id|type|setFilter)"[,] ?\w+ is (null|undefined)|can't access property "(id|type)" of null|Cannot read properties of null \(reading '(id|type|setFilter|_layers)'\)|null is not an object \(evaluating '\w{1,3}\.(id|style)|^\w{1,2} is null$/.test(msg)) {
+    if (/this\.style\._layers|reading '_layers'|this\.(light|sky) is null|can't access property "(id|type|setFilter|bind)"[,] ?[\w.]+ is (null|undefined)|can't access property "(id|type)" of null|Cannot read properties of null \(reading '(id|type|setFilter|_layers)'\)|null is not an object \(evaluating '\w{1,3}\.(id|style)|^\w{1,2} is null$/.test(msg)) {
       if (frames.some(f => /\/(map|maplibre|deck-stack)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
     }
     // Suppress any TypeError / RangeError that happens entirely within maplibre or deck.gl internals.
@@ -301,22 +323,32 @@ Sentry.init({
     // so a self-hosted R2 PMTiles / first-party basemap regression isn't silently dropped just
     // because its stack happens to be all-vendor frames (WORLDMONITOR-NE/NF follow-up).
     const excType = event.exception?.values?.[0]?.type ?? '';
-    const isMaplibreAjaxFailure = excType === 'TypeError' && /^Failed to fetch \([^)]+\)$/.test(msg);
-    if (!isMaplibreAjaxFailure
+    // `TypeError: Failed to fetch (<host>)` shape — emitted by maplibre's AJAX
+    // wrapper AND by first-party fetch callers that surface a host-suffixed
+    // network error. The host allowlist below is the load-bearing safety;
+    // this match is just the shape detector.
+    const isHostScopedFetchFailure = excType === 'TypeError' && /^Failed to fetch \([^)]+\)$/.test(msg);
+    if (!isHostScopedFetchFailure
         && (excType === 'TypeError' || excType === 'RangeError' || /^(?:TypeError|RangeError):/.test(msg))
         && frames.length > 0) {
       if (nonInfraFrames.length > 0 && nonInfraFrames.every(f => /\/(map|maplibre|deck-stack)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
     }
-    // Suppress MapLibre AJAXError for third-party tile fetches: maplibre wraps transient
-    // network errors as `Failed to fetch (<hostname>)` and rethrows in a Generator-backed
-    // Promise that leaks to onunhandledrejection even though DeckGLMap's map-error handler
-    // already logs it as a warning. Allowlist KNOWN third-party tile/style/glyph hosts —
-    // leaves first-party fetch failures (self-hosted R2 PMTiles bucket, api.worldmonitor.app)
-    // to surface so a real basemap regression is never silently dropped (WORLDMONITOR-NE/NF).
-    if (isMaplibreAjaxFailure && frames.some(f => /\/maplibre-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) {
+    // Suppress `Failed to fetch (<host>)` for known third-party hosts. Originally
+    // scoped to maplibre's tile/style/glyph fetches (which wrap transient network
+    // errors and rethrow in a Generator-backed Promise that leaks to
+    // onunhandledrejection even though DeckGLMap's map-error handler already
+    // logs the warning). Expanded (WORLDMONITOR-QG) to also cover first-party
+    // call sites that fetch the same allowlisted hosts directly — e.g.
+    // `MapContainer.fetchAndApplyRadar` hitting `api.rainviewer.com`. The
+    // host-allowlist set is the load-bearing safety: only known third-party
+    // hosts get suppressed; first-party fetch failures (self-hosted R2 PMTiles
+    // bucket, `api.worldmonitor.app`) are intentionally NOT in the set so a
+    // real basemap / API regression is never silently dropped
+    // (WORLDMONITOR-NE/NF, WORLDMONITOR-QG).
+    if (isHostScopedFetchFailure) {
       const hostMatch = msg.match(/^Failed to fetch \(([^)]+)\)$/);
       const host = hostMatch?.[1];
-      if (host && MAPLIBRE_THIRD_PARTY_TILE_HOSTS.has(host)) return null;
+      if (host && THIRD_PARTY_FETCH_HOST_ALLOWLIST.has(host)) return null;
     }
     // Suppress Three.js/globe.gl TypeError crashes in main bundle (reading 'type'/'pathType'/'count'/'__globeObjType' on undefined during WebGL traversal/raycast).
     // __globeObjType is exclusively set by three-globe on its own objects and we have no user onClick/onHover handler, so it is always globe.gl internal even when the stack shows the bundled main chunk (WORLDMONITOR-ME).
@@ -406,8 +438,8 @@ Sentry.init({
     if (excType === 'SyntaxError' && /is not valid JSON/.test(msg) && !hasFirstParty && frames.some(f => /onmessage/.test(f.function ?? ''))) return null;
     // Suppress errors originating from UV proxy (Ultraviolet service worker)
     if (frames.some(f => /\/uv\/service\//.test(f.filename ?? '') || /uv\.handler/.test(f.filename ?? ''))) return null;
-    // Suppress Greasemonkey/Tampermonkey userscript errors (x-plugin-script)
-    if (frames.length > 0 && frames.every(f => !f.filename || /\/x-plugin-script\//.test(f.filename))) return null;
+    // Suppress Greasemonkey/Tampermonkey userscript errors (x-plugin-script, stay-userscript.html)
+    if (frames.length > 0 && frames.every(f => !f.filename || /\/x-plugin-script\/|\/stay-userscript\.html$/.test(f.filename))) return null;
     // Suppress YouTube IFrame widget API internal errors
     if (frames.some(f => /www-widgetapi\.js/.test(f.filename ?? ''))) return null;
     // Suppress Sentry beacon XHR transport errors (readyState on aborted XHR — not our code)
@@ -509,9 +541,21 @@ Sentry.init({
         // failing in our shipped code surfaces with at least one
         // source-mapped .ts frame on the rejection (the awaiting site).
         // The hostname-suffixed variant `Failed to fetch (<host>)` is
-        // handled above by `isMaplibreAjaxFailure` which does its own
+        // handled above by `isHostScopedFetchFailure` which does its own
         // first-party-host allowlist (WORLDMONITOR-KM).
         || /^(?:TypeError: )?Failed to fetch$/.test(msg)
+        // Safari module-loader abort / streaming-fetch interruption: iOS
+        // Safari emits `SyntaxError: Unexpected EOF` with zero captured
+        // frames via `onunhandledrejection` when a dynamic `import()` or
+        // service-worker-mediated fetch is truncated mid-stream (PWA
+        // lifecycle transitions, background-tab termination, network blip
+        // during app boot). Our own `JSON.parse` calls produce
+        // engine-specific phrasings — V8: `Unexpected end of JSON input`;
+        // Safari: `JSON Parse error: Unexpected EOF` (with prefix) — so
+        // bare `Unexpected EOF` is engine-emitted only. Same `!hasFirstParty`
+        // safety as the `Failed to fetch` / `signal timed out` blocks above
+        // (WORLDMONITOR-RF).
+        || /^(?:SyntaxError: )?Unexpected EOF$/.test(msg)
       )
     ) return null;
     if (hasAnyStack && !hasFirstParty && (
@@ -572,6 +616,28 @@ function shouldSuppressCspViolation(
   if (directive === 'connect-src' && firstPartyConvexHost) {
     try {
       if (new URL(blockedURI).hostname === firstPartyConvexHost) return true;
+    } catch { /* scheme-only values fall through */ }
+  }
+  // First-party img-src block on OUR registrable domain: same pattern as the Convex
+  // connect-src case above. Corporate proxies / privacy extensions (Zscaler, Symantec
+  // CloudSOC, school content-filters) can strip both `'self'` and `https:` from img-src
+  // in the user's effective policy, causing our own favicon and panel icons to be
+  // CSP-blocked even though our policy (`img-src 'self' data: blob: https:`) allows
+  // them. Scope to `worldmonitor.app` and its subdomains — img-src blocks to foreign
+  // hosts (a third-party CDN we never load, attacker-controlled host) still surface
+  // (WORLDMONITOR-JP). Suffix check uses a leading `.` so lookalikes like
+  // `worldmonitor.app.evil.com` do NOT match.
+  //
+  // REQUIRE https: protocol — our CSP only allows https: for img-src, so a real
+  // mixed-content regression (`<img src="http://worldmonitor.app/...">`) would be
+  // blocked by the browser. Suppressing http: blocks on first-party hosts would mask
+  // that regression in Sentry. The `cspConnectSrcAllowsHttps` block above uses the
+  // same protocol gate for connect-src.
+  if (directive === 'img-src') {
+    try {
+      const url = new URL(blockedURI);
+      if (url.protocol === 'https:'
+          && (url.hostname === 'worldmonitor.app' || url.hostname.endsWith('.worldmonitor.app'))) return true;
     } catch { /* scheme-only values fall through */ }
   }
   // YouTube IFrame API loader: explicitly allowed by our script-src

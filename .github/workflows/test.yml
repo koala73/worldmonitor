@@ -15,6 +15,7 @@ jobs:
       pull-requests: read
     outputs:
       code: ${{ steps.diff.outputs.code }}
+      digest: ${{ steps.diff.outputs.digest }}
     steps:
       - id: diff
         env:
@@ -22,12 +23,20 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "push" ]; then
             echo "code=true" >> "$GITHUB_OUTPUT"
+            echo "digest=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           FILES=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.number }}/files" \
             --paginate --jq '.[].filename')
           CODE=$(echo "$FILES" | grep -vcE '\.md$|^docs/|^src-tauri/|^CHANGELOG\.md$|^LICENSE$|\.github/workflows/(build-desktop|docker-publish)\.yml$' || echo 0)
           echo "code=$( [ "$CODE" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+          # digest-image job: build Dockerfile.digest-notifications when a PR
+          # touches its inputs (scripts/, shared/, server/_shared/, api/, the
+          # Dockerfile itself, or the root package manifest). Catches the
+          # cross-directory-import + native-dep breakage class documented in
+          # tests/dockerfile-digest-notifications-imports.test.mjs.
+          DIGEST=$(echo "$FILES" | grep -cE '^(scripts/|shared/|server/_shared/|api/|Dockerfile\.digest-notifications|package\.json|package-lock\.json)' || echo 0)
+          echo "digest=$( [ "$DIGEST" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
 
   unit:
     needs: changes
@@ -43,9 +52,43 @@ jobs:
       - run: npm run test:data
       - name: Edge function bundle check
         run: |
-          find api/ -name "*.js" -not -name "_*" | while read f; do
+          # JS edge entries (existing loop, unchanged).
+          find api/ -name "*.js" -not -name "_*" -not -name "*.test.*" | while read f; do
             npx esbuild "$f" --bundle --format=esm --platform=browser --outfile=/dev/null || {
               echo "ERROR: esbuild failed to bundle $f"
               exit 1
             }
           done
+          # TS edge entries — opt-in allowlist. Most TS endpoints pull in
+          # loaders esbuild doesn't ship by default (e.g. @vercel/og WASM
+          # imports under api/brief/carousel/...), so we don't auto-include
+          # api/*.ts the way we do api/*.js. Add a new entry to this list
+          # ONLY after confirming `npx esbuild <file> --bundle --format=esm
+          # --platform=browser --outfile=/dev/null` succeeds locally.
+          for f in api/mcp.ts; do
+            npx esbuild "$f" --bundle --format=esm --platform=browser --outfile=/dev/null || {
+              echo "ERROR: esbuild failed to bundle $f"
+              exit 1
+            }
+          done
+
+  digest-image:
+    needs: changes
+    if: needs.changes.outputs.digest == 'true'
+    runs-on: ubuntu-latest
+    # docker build with the warm runner cache typically lands in ~90s.
+    # 20min cap catches base-image-pull stalls, npm-registry flakes, and
+    # native-dep compile failures without letting one bad PR check block
+    # the queue for an hour. The static BFS import test in test:data
+    # remains the load-bearing gate; this job is the integration smoke.
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build digest-notifications image (smoke)
+        # No push, no tag publish. Catches cross-directory-import breakage
+        # before it reaches main. Pairs with the BFS import test in
+        # tests/dockerfile-digest-notifications-imports.test.mjs — that test
+        # walks the import graph statically; this job actually executes the
+        # COPY+install steps and surfaces native-dep / package-lock issues
+        # the static walk can't see.
+        run: docker build -f Dockerfile.digest-notifications -t wm-digest .

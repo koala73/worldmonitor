@@ -1,8 +1,18 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, getRedisCredentials, withRetry, writeFreshnessMetadata, extendExistingTtl, acquireLockSafely, releaseLock, logSeedResult } from './_seed-utils.mjs';
+import { tokensToContentMeta, DAY_MIN } from './_content-age-helpers.mjs';
 
 loadEnvFile(import.meta.url);
+
+// Content-age budget — tracked against the daily €STR series (the primary
+// euro short-term rate). 10 days absorbs a weekend + ECB holiday cluster
+// while flipping /api/health to STALE_CONTENT within ~6 business days of a
+// freeze. This detects an €STR freeze and a whole-ECB-SDMX outage (both stop
+// €STR); an EURIBOR-only freeze is not modelled — the three EURIBOR series
+// are monthly and a single maxContentAgeMin cannot cover both cadences. See
+// issue #3845.
+const ESTR_MAX_CONTENT_AGE_MIN = 10 * DAY_MIN;
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -150,12 +160,14 @@ async function main() {
   const { url: redisUrl, token: redisToken } = getRedisCredentials();
   let successCount = 0;
   let totalObs = 0;
+  let estrObservations = null;
   const failedSeries = [];
 
   for (const def of ECB_SERIES) {
     try {
       const observations = await withRetry(() => fetchEcbSeries(def), 2, 2000);
       await writeSeriesKey(redisUrl, redisToken, def, observations);
+      if (def.id === 'ESTR') estrObservations = observations;
       successCount++;
       totalObs += observations.length;
     } catch (err) {
@@ -178,7 +190,16 @@ async function main() {
     throw new Error(`All ECB series failed: ${failedSeries.join(', ')}`);
   }
 
-  await writeFreshnessMetadata(domain, resource, totalObs, 'ecb-sdmx');
+  // Content-age: report the €STR observation span so /api/health can fire
+  // STALE_CONTENT if the series freezes (issue #3845). estrObservations is
+  // null when the €STR fetch failed → newest/oldest null → STALE_CONTENT.
+  const estrSpan = tokensToContentMeta((estrObservations ?? []).map((o) => o?.date));
+  const contentAge = {
+    newestItemAt: estrSpan?.newestItemAt ?? null,
+    oldestItemAt: estrSpan?.oldestItemAt ?? null,
+    maxContentAgeMin: ESTR_MAX_CONTENT_AGE_MIN,
+  };
+  await writeFreshnessMetadata(domain, resource, totalObs, 'ecb-sdmx', TTL, undefined, contentAge);
 
   const durationMs = Date.now() - startMs;
   logSeedResult(domain, totalObs, durationMs, { successCount, failedSeries });

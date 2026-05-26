@@ -6,7 +6,8 @@
     "enterprise": "Enterprise",
     "reserveAccess": "Reserva tu acceso anticipado",
     "signIn": "Iniciar sesión",
-    "upgradeToPro": "Mejorar a Pro"
+    "upgradeToPro": "Mejorar a Pro",
+    "goToDashboard": "Ir al Panel"
   },
   "hero": {
     "noiseWord": "Ruido",
@@ -18,7 +19,8 @@
     "emailPlaceholder": "Introduce tu correo",
     "emailAriaLabel": "Correo electrónico para la lista de espera",
     "choosePlan": "Elige tu plan",
-    "signIn": "Iniciar sesión"
+    "signIn": "Iniciar sesión",
+    "goToDashboard": "Ir al Panel"
   },
   "wired": {
     "asFeaturedIn": "Destacado en"
@@ -50,7 +52,8 @@
     "entF9": "App para Android TV para salas SOC y salas de trading",
     "entF10": "Despliegue en la nube, on-premises o air-gapped",
     "entF11": "Onboarding y soporte dedicados",
-    "entCta": "Habla con ventas"
+    "entCta": "Habla con ventas",
+    "freeF2": "500+ feeds, 65+ fuentes, 50+ capas de mapa"
   },
   "whyUpgrade": {
     "title": "Por qué mejorar",
@@ -83,7 +86,7 @@
     "openFullScreen": "Abrir pantalla completa",
     "tryLiveDashboard": "Prueba el panel en vivo",
     "iframeTitle": "World Monitor — Panel de inteligencia en vivo",
-    "description": "Globo WebGL 3D · 45+ capas de mapa interactivas · Datos de mercados, macro, geopolítica, energía e infraestructura en tiempo real"
+    "description": "Globo 3D WebGL · 50+ capas de mapa interactivas · Datos en tiempo real de mercado, macro, geopolíticos, energéticos e infraestructura"
   },
   "socialProof": {
     "uniqueVisitors": "Visitantes únicos",
@@ -139,31 +142,8 @@
   },
   "tiers": {
     "free": "Gratis",
-    "freeTagline": "Ve todo",
-    "freeDesc": "El panel de código abierto",
-    "freeF1": "Actualización 5-15 min",
-    "freeF2": "500+ feeds, 45 capas de mapa",
-    "freeF3": "BYOK para IA",
-    "freeF4": "Gratis para siempre",
-    "openDashboard": "Abrir panel",
     "pro": "Pro",
-    "proTagline": "Mercados, macro y geopolítica",
-    "proDesc": "Tu analista de IA",
-    "proF1": "Investigación bursátil y análisis de acciones",
-    "proF2": "+ resúmenes diarios, analítica económica",
-    "proF3": "IA incluida, 1 clave",
-    "proF4": "Actualización de datos prioritaria (Próximamente)",
-    "priceMonthly": "$39,99 / mes",
-    "priceAnnual": "$399,99 / año",
-    "annualSavingsNote": "2 meses gratis",
-    "enterprise": "Enterprise",
-    "enterpriseTagline": "Actúa antes que nadie",
-    "enterpriseDesc": "La plataforma de inteligencia",
-    "entF1": "Imágenes satelitales en vivo",
-    "entF2": "+ agentes IA, 50K+ infraestructura, SAR",
-    "entF3": "IA personalizada, personas de inversor",
-    "entF4": "Contáctanos",
-    "contactSales": "Contactar ventas"
+    "enterprise": "Enterprise"
   },
   "proShowcase": {
     "proTier": "NIVEL PRO",
@@ -281,7 +261,6 @@
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + webhook",
     "fMcpBulk": "+ MCP + masivo",
-    "f45": "45",
     "fTensOfThousands": "+ decenas de miles",
     "fLiveTracking": "Seguimiento en vivo",
     "fPassAlerts": "Alertas de paso + análisis",
@@ -292,7 +271,8 @@
     "fStandard": "Estándar",
     "fKeyAuth": "Autenticación por clave",
     "fSsoMfa": "SSO/MFA/RBAC/auditoría",
-    "noteBelow": "La plataforma principal sigue siendo gratuita. Los planes de pago desbloquean investigación bursátil, analítica macro, resúmenes IA y uso organizacional."
+    "noteBelow": "La plataforma principal sigue siendo gratuita. Los planes de pago desbloquean investigación bursátil, analítica macro, resúmenes IA y uso organizacional.",
+    "f50plus": "50+"
   },
   "faq": {
     "title": "Preguntas frecuentes",
@@ -354,5 +334,76 @@
     "youreIn": "¡Estás dentro!",
     "invitedBanner": "Te han invitado — únete a la lista de espera"
   },
-  "soonBadge": "Próximamente"
+  "soonBadge": "Próximamente",
+  "meta": {
+    "title": "World Monitor Pro — Analista de IA, Centro de Inteligencia Personal, MCP para Claude y GPT",
+    "description": "La capa de IA geopolítica. Pregúntale, suscríbete, construye sobre ella. Chat WM Analyst en 30+ servicios en directo, un resumen de IA entregado diariamente, dos veces al día o semanalmente en Slack, Discord, Telegram, correo electrónico o webhook, un constructor de widgets personalizado (HTML/CSS/JS + IA) y conectores MCP para Claude, GPT y LLMs personalizados.",
+    "ogTitle": "World Monitor Pro — La Capa de IA Geopolítica",
+    "ogDescription": "Pregúntale, suscríbete, construye sobre ella. Chat WM Analyst, un resumen de IA según tu horario (diario, dos veces al día o semanal), constructor de widgets personalizado y MCP para Claude/GPT — en 30+ servicios en directo bajo una única clave."
+  },
+  "pricing": {
+    "suffixForever": "por siempre",
+    "suffixTailored": "personalizado para ti",
+    "suffixPerMonth": "/mes",
+    "suffixPerYear": "/año",
+    "amountCustom": "Personalizado",
+    "opening": "Abriendo…",
+    "headerTitle": "Elige Tu Plan",
+    "headerSubtitle": "Desde monitoreo en tiempo real hasta infraestructura de inteligencia completa. Selecciona el nivel que se ajuste a tu misión.",
+    "billingMonthly": "Mensual",
+    "billingAnnual": "Anual",
+    "saveAnnual": "Ahorra 17%",
+    "mostPopular": "Más Popular",
+    "promoCodeNote": "¿Tienes un código promocional? Introdúcelo durante el pago.",
+    "tiers": {
+      "free": {
+        "description": "Comienza con lo esencial",
+        "features": [
+          "Paneles del panel de control principal",
+          "Feed de noticias global",
+          "Alertas de terremotos y clima",
+          "Vista de mapa básica"
+        ],
+        "cta": "Comenzar"
+      },
+      "pro": {
+        "description": "Panel de inteligencia completo",
+        "features": [
+          "Todo en Free",
+          "Análisis de acciones e histórico con IA",
+          "Resúmenes diarios del mercado",
+          "Seguimiento militar y geopolítico",
+          "Constructor de widgets personalizado",
+          "Conectores de datos MCP",
+          "Actualización de datos prioritaria"
+        ]
+      },
+      "api": {
+        "description": "Acceso programático a datos de inteligencia",
+        "features": [
+          "Acceso a API REST",
+          "Flujos de datos en tiempo real",
+          "1.000 solicitudes/día",
+          "Notificaciones por webhook",
+          "Exportaciones de datos personalizadas"
+        ]
+      },
+      "enterprise": {
+        "description": "Soluciones personalizadas para organizaciones",
+        "features": [
+          "Todo en Pro + API",
+          "Solicitudes de API ilimitadas",
+          "Soporte dedicado",
+          "Integraciones personalizadas",
+          "Garantía SLA",
+          "Opción local"
+        ],
+        "cta": "Contactar Ventas"
+      }
+    },
+    "cta": {
+      "checkoutDefault": "Comenzar",
+      "learnMore": "Más Información"
+    }
+  }
 }

@@ -102,6 +102,106 @@ describe('extractConvexErrorKind — Convex client error → kind', () => {
     });
   });
 
+  describe('Convex platform 500 — InternalServerError JSON body (transient runtime failure)', () => {
+    it('detects SERVICE_UNAVAILABLE from the {"code":"InternalServerError"} JSON shape', () => {
+      // WORLDMONITOR-PG/PH: Convex runtime occasionally surfaces
+      //   `{"code":"InternalServerError","message":"Your request couldn't
+      //     be completed. Try again later."}`
+      // when an action / mutation fails internally. Same retry-with-backoff
+      // remediation as ServiceUnavailable, so we map to SERVICE_UNAVAILABLE
+      // → 503 + Retry-After. Sentry's `error_shape` classifier still
+      // discriminates these two cases via its own msg pattern.
+      const err = new Error('{"code":"InternalServerError","message":"Your request couldn\'t be completed. Try again later."}');
+      assert.equal(extractConvexErrorKind(err, err.message), 'SERVICE_UNAVAILABLE');
+    });
+
+    it('does NOT match the loose phrase "internal server error" without the JSON code field', () => {
+      // Defensive: detector keys off the exact JSON shape, not free-form
+      // prose, so unrelated upstreams that mention the words don't get
+      // bucketed together.
+      const err = new Error('upstream returned an internal server error, retrying');
+      assert.equal(extractConvexErrorKind(err, err.message), null);
+    });
+
+    it('structured-data path still wins over JSON-shape InternalServerError (forward-compat)', () => {
+      const err = Object.assign(new Error('{"code":"InternalServerError","message":"x"}'), {
+        data: { kind: 'CONFLICT' },
+      });
+      assert.equal(extractConvexErrorKind(err, err.message), 'CONFLICT');
+    });
+  });
+
+  describe('Vercel edge transient — "Network connection lost." (WORLDMONITOR-QE)', () => {
+    it('detects SERVICE_UNAVAILABLE from the exact "Network connection lost." shape', () => {
+      // Vercel/Cloudflare edge runtime surface this when the upstream socket
+      // is reset mid-request from inside `ConvexHttpClient`'s inner fetch.
+      // Same retry-with-backoff remediation as ServiceUnavailable — without
+      // this match, the catch falls to the 'unknown' bucket at error level
+      // instead of 503 + Retry-After (WORLDMONITOR-QE: 2 events / 2 users).
+      const err = new Error('Network connection lost.');
+      assert.equal(extractConvexErrorKind(err, err.message), 'SERVICE_UNAVAILABLE');
+    });
+
+    it('is case-insensitive (matches mid-message variants)', () => {
+      const err = new Error('TypeError: network connection LOST during fetch');
+      assert.equal(extractConvexErrorKind(err, err.message), 'SERVICE_UNAVAILABLE');
+    });
+
+    it('does NOT match unrelated "network" mentions', () => {
+      // Defensive: detector keys off the exact phrase, not loose "network"
+      // mentions, so generic transport prose isn't incorrectly bucketed.
+      const err = new Error('Network error: connection refused');
+      assert.equal(extractConvexErrorKind(err, err.message), null);
+    });
+
+    it('structured-data path still wins over "Network connection lost" substring (forward-compat)', () => {
+      const err = Object.assign(new Error('Network connection lost.'), {
+        data: { kind: 'CONFLICT', actualSyncVersion: 7 },
+      });
+      assert.equal(extractConvexErrorKind(err, err.message), 'CONFLICT');
+    });
+  });
+
+  describe('Cloudflare edge error 520-527 fronting Convex (WORLDMONITOR-PG)', () => {
+    it('detects SERVICE_UNAVAILABLE from the "error code: 520" Cloudflare body', () => {
+      // Cloudflare returns a text/HTML body containing `error code: 52x` when
+      // the origin misbehaves; the Convex HTTP client surfaces it as
+      // `Error('error code: 520...')` with `.data === undefined`. Without this
+      // match it fell to the 'unknown' bucket at error level instead of
+      // 503 + Retry-After (WORLDMONITOR-PG: 10 events / 8 users).
+      const err = new Error('error code: 520');
+      assert.equal(extractConvexErrorKind(err, err.message), 'SERVICE_UNAVAILABLE');
+    });
+
+    it('matches the whole 520-527 Cloudflare range', () => {
+      for (const code of [520, 521, 522, 523, 524, 525, 526, 527]) {
+        const err = new Error(`<html><body>error code: ${code}</body></html>`);
+        assert.equal(
+          extractConvexErrorKind(err, err.message), 'SERVICE_UNAVAILABLE',
+          `expected SERVICE_UNAVAILABLE for Cloudflare ${code}`,
+        );
+      }
+    });
+
+    it('does NOT match non-Cloudflare codes (519/528/error code: 500)', () => {
+      // Defensive: only the real Cloudflare 520-527 range is transient-transport.
+      for (const code of [500, 503, 519, 528, 530]) {
+        const err = new Error(`error code: ${code}`);
+        assert.equal(
+          extractConvexErrorKind(err, err.message), null,
+          `expected null (no Cloudflare match) for code ${code}`,
+        );
+      }
+    });
+
+    it('structured-data path still wins over "error code: 52x" substring (forward-compat)', () => {
+      const err = Object.assign(new Error('error code: 522'), {
+        data: { kind: 'CONFLICT', actualSyncVersion: 3 },
+      });
+      assert.equal(extractConvexErrorKind(err, err.message), 'CONFLICT');
+    });
+  });
+
   describe('legacy substring-match fallback (string-data ConvexError that arrived without errorData)', () => {
     it('matches CONFLICT in the message', () => {
       const err = new Error('CONFLICT');

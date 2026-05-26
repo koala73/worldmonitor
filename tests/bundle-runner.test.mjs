@@ -61,13 +61,30 @@ test('streams child stdout live and reports Done on success', async () => {
 test('timeout emits terminal reason BEFORE SIGTERM/SIGKILL grace (survives container kill)', async () => {
   const cleanup = writeFixture(
     '_bundle-fixture-hang.mjs',
-    // Ignore SIGTERM so the runner must SIGKILL.
+    // Ignore SIGTERM so the runner must SIGKILL. Handler registers FIRST
+    // (synchronously, before any I/O) so even a slow cold-start gets the
+    // SIGTERM-ignore behaviour as soon as Node finishes parsing this line.
     `process.on('SIGTERM', () => {}); console.log('hung'); setInterval(() => {}, 1000);\n`,
   );
   try {
     const t0 = Date.now();
+    // Cold-Node startup on slow CI runners (GitHub-hosted, under load)
+    // can exceed 1s before user code parses + executes. A 1s timeout
+    // produced a real flake on PR #3617's post-merge run: SIGTERM
+    // arrived before the fixture's `process.on('SIGTERM', () => {})`
+    // handler registered, so the child died via default SIGTERM
+    // handling before logging 'hung' or surviving to SIGKILL — total
+    // elapsed 1.1s instead of the expected ~11s (1s + 10s grace), and
+    // the `[HANG] hung` assertion failed.
+    //
+    // 3000ms gives generous cold-start margin (typical Node startup
+    // is 50-200ms; even loaded CI shouldn't exceed 1-2s) while still
+    // exercising the same timeout → SIGTERM → grace → SIGKILL flow
+    // the test is here to validate. The 20s cap below remains
+    // comfortably above 3s + 10s grace + overhead.
+    const TIMEOUT_MS = 3000;
     const { code, stdout, stderr } = await runBundleWith([
-      { label: 'HANG', script: '_bundle-fixture-hang.mjs', intervalMs: 1, timeoutMs: 1000 },
+      { label: 'HANG', script: '_bundle-fixture-hang.mjs', intervalMs: 1, timeoutMs: TIMEOUT_MS },
     ]);
     const elapsedMs = Date.now() - t0;
     assert.equal(code, 1, 'bundle must exit non-zero on failure');
@@ -80,9 +97,12 @@ test('timeout emits terminal reason BEFORE SIGTERM/SIGKILL grace (survives conta
     const sigkillIdx = combined.indexOf('SIGKILL');
     assert.ok(failIdx >= 0, 'must emit Failed line');
     assert.ok(sigkillIdx > failIdx, 'Failed line must precede SIGKILL escalation');
-    assert.match(combined, /Failed after .*s: timeout after 1s — sending SIGTERM/);
+    // Match the timeout-seconds value loosely so a future bump doesn't
+    // require a coordinated regex update — the assertion's purpose is
+    // "Failed line names the timeout-after-N pattern", not the literal N.
+    assert.match(combined, /Failed after .*s: timeout after \d+s — sending SIGTERM/);
     assert.match(combined, /Did not exit on SIGTERM.*SIGKILL/);
-    // 1s timeout + 10s SIGTERM grace + overhead; cap well above that to avoid flake.
+    // timeout + 10s SIGTERM grace + overhead; cap well above that to avoid flake.
     assert.ok(elapsedMs < 20_000, `timeout escalation took ${elapsedMs}ms — too slow`);
   } finally {
     cleanup();

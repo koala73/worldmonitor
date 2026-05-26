@@ -24,14 +24,16 @@ export interface CachedCIIScore {
   trend: 'rising' | 'stable' | 'falling';
   change24h: number;
   components: ComponentScores;
-  lastUpdated: string;
+  // Null when upstream proto provided no computedAt — adapter MUST NOT fabricate `now`.
+  lastUpdated: string | null;
 }
 
 export interface CachedStrategicRisk {
   score: number;
   level: string;
   trend: string;
-  lastUpdated: string;
+  // Derived from max CII computedAt; null when no CII carries a real timestamp.
+  lastUpdated: string | null;
   contributors: Array<{
     country: string;
     code: string;
@@ -44,7 +46,8 @@ export interface CachedRiskScores {
   cii: CachedCIIScore[];
   strategicRisk: CachedStrategicRisk;
   protestCount: number;
-  computedAt: string;
+  // Derived from max CII computedAt; null when no CII carries a real timestamp.
+  computedAt: string | null;
   cached: boolean;
 }
 
@@ -71,10 +74,12 @@ const SEVERITY_REVERSE: Record<string, string> = {
 };
 
 function getScoreLevel(score: number): 'low' | 'normal' | 'elevated' | 'high' | 'critical' {
-  if (score >= 70) return 'critical';
-  if (score >= 55) return 'high';
-  if (score >= 40) return 'elevated';
-  if (score >= 25) return 'normal';
+  // Phase 3b / decision L1 — reconciled to the frontend getLevel cutoffs
+  // (was 70 / 55 / 40 / 25). The frontend table is the canonical badge banding.
+  if (score >= 81) return 'critical';
+  if (score >= 66) return 'high';
+  if (score >= 51) return 'elevated';
+  if (score >= 31) return 'normal';
   return 'low';
 }
 
@@ -92,18 +97,34 @@ function toCachedCII(proto: CiiScore): CachedCIIScore {
       security: proto.components?.militaryActivity ?? 0,
       information: proto.components?.newsActivity ?? 0,
     },
-    lastUpdated: proto.computedAt ? new Date(proto.computedAt).toISOString() : new Date().toISOString(),
+    // Preserve upstream computedAt verbatim; surface null when absent so the UI does not lie.
+    lastUpdated: proto.computedAt ? new Date(proto.computedAt).toISOString() : null,
   };
 }
 
-function toCachedStrategicRisk(risks: StrategicRisk[], ciiScores: CiiScore[]): CachedStrategicRisk {
+// Strategic-risk and aggregate timestamps are derived from the freshest CII computedAt the
+// adapter saw. The proto carries no dedicated timestamp on StrategicRisk or
+// GetRiskScoresResponse (see #3800 — server-side end-to-end timestamps are a follow-up).
+function deriveMaxCiiTimestamp(ciiScores: CiiScore[]): string | null {
+  let max: number | null = null;
+  for (const s of ciiScores) {
+    if (s.computedAt && (max === null || s.computedAt > max)) max = s.computedAt;
+  }
+  return max === null ? null : new Date(max).toISOString();
+}
+
+function toCachedStrategicRisk(
+  risks: StrategicRisk[],
+  ciiScores: CiiScore[],
+  derivedTimestamp: string | null,
+): CachedStrategicRisk {
   const global = risks[0];
   const ciiMap = new Map(ciiScores.map((s) => [s.region, s]));
   return {
     score: global?.score ?? 0,
     level: SEVERITY_REVERSE[global?.level ?? ''] || 'low',
     trend: TREND_REVERSE[global?.trend ?? ''] || 'stable',
-    lastUpdated: new Date().toISOString(),
+    lastUpdated: derivedTimestamp,
     contributors: (global?.factors ?? []).map((code) => {
       const cii = ciiMap.get(code);
       return {
@@ -117,11 +138,12 @@ function toCachedStrategicRisk(risks: StrategicRisk[], ciiScores: CiiScore[]): C
 }
 
 export function toRiskScores(resp: GetRiskScoresResponse): CachedRiskScores {
+  const derivedTimestamp = deriveMaxCiiTimestamp(resp.ciiScores);
   return {
     cii: resp.ciiScores.map(toCachedCII),
-    strategicRisk: toCachedStrategicRisk(resp.strategicRisks, resp.ciiScores),
+    strategicRisk: toCachedStrategicRisk(resp.strategicRisks, resp.ciiScores, derivedTimestamp),
     protestCount: 0,
-    computedAt: new Date().toISOString(),
+    computedAt: derivedTimestamp,
     cached: true,
   };
 }
@@ -185,11 +207,12 @@ if (stored && stored.cii.length > 0) {
 }
 
 function emptyFallback(): CachedRiskScores {
+  // No data → no timestamp. The UI must render "—" / "Unavailable", not "Updated now".
   return {
     cii: [],
-    strategicRisk: { score: 0, level: 'low', trend: 'stable', lastUpdated: new Date().toISOString(), contributors: [] },
+    strategicRisk: { score: 0, level: 'low', trend: 'stable', lastUpdated: null, contributors: [] },
     protestCount: 0,
-    computedAt: new Date().toISOString(),
+    computedAt: null,
     cached: true,
   };
 }
@@ -276,6 +299,6 @@ export function toCountryScore(cached: CachedCIIScore): CountryScore {
     trend: cached.trend,
     change24h: cached.change24h,
     components: cached.components,
-    lastUpdated: new Date(cached.lastUpdated),
+    lastUpdated: cached.lastUpdated ? new Date(cached.lastUpdated) : null,
   };
 }

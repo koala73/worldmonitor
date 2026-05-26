@@ -247,3 +247,48 @@ export function readTimeAgeCutoffMs(windowStartMs) {
   const STALE_BUFFER_MS = 24 * 60 * 60 * 1000;
   return windowStartMs - STALE_BUFFER_MS;
 }
+
+/**
+ * Sprint 1 / U2 — option (a) canonical-send mapping.
+ *
+ * Given the per-user winner record from the compose phase
+ * (briefByUser.get(userId), shape: `{ envelope, magazineUrl, chosenVariant,
+ * synthesisLevel }`) and the candidate rule list for that user, return
+ * the SINGLE rule whose channel body the send loop should use for this
+ * user-slot. Under option (a), the email body and the magazine URL
+ * BOTH come from this rule's pool — no per-rule fan-out, no
+ * winner-vs-non-winner channel divergence.
+ *
+ * Returns null when:
+ *   - briefByUser has no entry for this user (compose found no
+ *     non-empty pool — nothing to send).
+ *   - briefByUser entry has no chosenVariant (defensive; treat as
+ *     "no canonical winner identified" and skip the send).
+ *   - candidate list contains no rule whose `variant` matches
+ *     `chosenVariant` (rule was deleted between compose and send;
+ *     skip rather than misroute to a sibling rule).
+ *
+ * The send loop calls this BEFORE the per-rule isDue check — non-
+ * winner rules are dropped here, so the cron's `digest:last-sent:v1:
+ * ${userId}:${variant}` write only ever happens for the winner-variant
+ * key. Old non-winner-variant keys from pre-option-(a) sends remain in
+ * Redis until their 8d TTL elapses; they are orphan but harmless
+ * (nothing reads them after this change).
+ *
+ * Pure helper — no I/O.
+ *
+ * @param {{ chosenVariant?: string } | null | undefined} brief
+ * @param {Array<{ userId?: string; variant?: string }>} userRules — all rules for ONE user
+ * @returns {{ userId?: string; variant?: string } | null}
+ */
+export function selectCanonicalSendRule(brief, userRules) {
+  if (!brief || typeof brief.chosenVariant !== 'string' || brief.chosenVariant === '') {
+    return null;
+  }
+  if (!Array.isArray(userRules) || userRules.length === 0) return null;
+  for (const rule of userRules) {
+    if (!rule || typeof rule.variant !== 'string') continue;
+    if (rule.variant === brief.chosenVariant) return rule;
+  }
+  return null;
+}

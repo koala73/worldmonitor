@@ -44,9 +44,10 @@ Set these before enabling strict relay auth.
 | `PORT` | Railway/local | `3004` | No | HTTP server listen port for relay process. |
 | `WS_RELAY_URL` | Vercel + server handlers | none | Yes (for relay-backed features) | Base URL used by Vercel/server to reach Railway relay. |
 | `VITE_WS_RELAY_URL` | Browser (local dev) | none | No | Localhost fallback path for direct browser calls in development only. |
-| `RELAY_SHARED_SECRET` | Railway + Vercel | empty | Yes in production | Shared secret for non-public relay routes. |
+| `RELAY_SHARED_SECRET` | Railway + Vercel + self-hosted | empty | **Yes (always)** | Shared secret for non-public relay routes. The relay refuses to start without it unless `I_UNDERSTAND_THIS_DISABLES_AUTH=true`. |
 | `RELAY_AUTH_HEADER` | Railway + Vercel | `x-relay-key` | No (but recommended explicit) | Header name carrying relay secret. |
-| `ALLOW_UNAUTHENTICATED_RELAY` | Railway | `false` | No | Emergency override. If `true`, production can start without secret. Keep `false`. |
+| `I_UNDERSTAND_THIS_DISABLES_AUTH` | Railway / self-hosted | `false` | No | Dev-only escape hatch. If `true`, the relay boots WITHOUT a shared secret, logs a loud `[SECURITY]` line at boot and every 5 minutes, and accepts every request on non-public routes. Never set in production. |
+| `ALLOW_UNAUTHENTICATED_RELAY` | Railway / self-hosted | `false` | No | **Deprecated** alias of `I_UNDERSTAND_THIS_DISABLES_AUTH`. Still accepted for back-compat; the relay logs a `[DEPRECATED]` warning when this name is used. |
 | `ALLOW_VERCEL_PREVIEW_ORIGINS` | Railway | `false` | No | If `true`, allows `*.vercel.app` origins in relay CORS checks. |
 
 ## Relay-Adjacent Feature Flags
@@ -110,11 +111,12 @@ These are used only for production detection and are usually injected by platfor
 These are safe starting points for a busy relay:
 
 ```bash
-# Auth + routing
-RELAY_SHARED_SECRET=<strong-random-secret>
+# Auth + routing — RELAY_SHARED_SECRET is REQUIRED (the relay exits at startup
+# without it unless I_UNDERSTAND_THIS_DISABLES_AUTH=true is set).
+RELAY_SHARED_SECRET=<strong-random-secret>   # openssl rand -hex 32
 RELAY_AUTH_HEADER=x-relay-key
 WS_RELAY_URL=https://<your-railway-relay>.up.railway.app
-ALLOW_UNAUTHENTICATED_RELAY=false
+# I_UNDERSTAND_THIS_DISABLES_AUTH=false   # dev-only override; do NOT set in prod
 
 # OpenSky cache/cardinality
 OPENSKY_CACHE_MAX_ENTRIES=256
@@ -162,7 +164,7 @@ curl -sS https://<relay>/metrics \
 
 Expected checks:
 
-- `auth.sharedSecretEnabled` is `true` in `/health`.
+- `auth.enabled` is `true` in `/health` (canonical operator-visible flag — `true` only when a shared secret is configured AND the `I_UNDERSTAND_THIS_DISABLES_AUTH` bypass is NOT engaged). `auth.sharedSecretEnabled` is preserved for back-compat.
 - `/metrics.opensky.hitRatio` is stable and high under load.
 - `/metrics.ais.dropsPerSec` stays at `0` in normal operation.
 - `/metrics.ais.queueMax` is comfortably below `AIS_UPSTREAM_QUEUE_HARD_CAP`.

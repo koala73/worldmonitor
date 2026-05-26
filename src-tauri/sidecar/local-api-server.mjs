@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import http, { createServer } from 'node:http';
 import https from 'node:https';
+import { createHmac } from 'node:crypto';
 import dns from 'node:dns/promises';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { readdir } from 'node:fs/promises';
@@ -10,6 +11,9 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const brotliCompressAsync = promisify(brotliCompress);
+const DESKTOP_AUTH_SECRET_ENV = 'WM_DESKTOP_SHARED_SECRET';
+const DESKTOP_AUTH_TIMESTAMP_HEADER = 'X-WorldMonitor-Desktop-Timestamp';
+const DESKTOP_AUTH_SIGNATURE_HEADER = 'X-WorldMonitor-Desktop-Signature';
 
 // Monkey-patch globalThis.fetch to force IPv4 for HTTPS requests.
 // Node.js built-in fetch (undici) tries IPv6 first via Happy Eyeballs.
@@ -47,6 +51,22 @@ function buildSafeResponse(statusCode, statusText, headers, bodyBuffer) {
   const status = Number.isInteger(statusCode) ? statusCode : 500;
   const body = (status === 204 || status === 205 || status === 304) ? null : bodyBuffer;
   return new Response(body, { status, statusText, headers });
+}
+
+function canonicalizeDesktopAuthPayload(payload) {
+  return JSON.stringify({
+    email: typeof payload?.email === 'string' ? payload.email : '',
+    source: typeof payload?.source === 'string' ? payload.source : '',
+    appVersion: typeof payload?.appVersion === 'string' ? payload.appVersion : '',
+    referredBy: typeof payload?.referredBy === 'string' ? payload.referredBy : '',
+    website: typeof payload?.website === 'string' ? payload.website : '',
+    turnstileToken: typeof payload?.turnstileToken === 'string' ? payload.turnstileToken : '',
+  });
+}
+
+function signDesktopAuthPayload(secret, timestamp, payload) {
+  const message = `${timestamp}\n${canonicalizeDesktopAuthPayload(payload)}`;
+  return `sha256=${createHmac('sha256', secret).update(message).digest('hex')}`;
 }
 
 function isTransientVerificationError(error) {
@@ -142,7 +162,7 @@ const ALLOWED_ENV_KEYS = new Set([
   'VITE_OPENSKY_RELAY_URL', 'OPENSKY_CLIENT_ID', 'OPENSKY_CLIENT_SECRET',
   'AISSTREAM_API_KEY', 'VITE_WS_RELAY_URL', 'FINNHUB_API_KEY', 'NASA_FIRMS_API_KEY',
   'OLLAMA_API_URL', 'OLLAMA_MODEL', 'WORLDMONITOR_API_KEY', 'WTO_API_KEY',
-  'AVIATIONSTACK_API', 'ICAO_API_KEY', 'UCDP_ACCESS_TOKEN',
+  'AVIATIONSTACK_API', 'ICAO_API_KEY', 'UCDP_ACCESS_TOKEN', DESKTOP_AUTH_SECRET_ENV,
 ]);
 
 const CHROME_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
@@ -414,11 +434,66 @@ async function proxyToCloud(requestUrl, req, remoteBase) {
   // Identify sidecar as trusted origin so the cloud API key validator
   // doesn't reject the request (no origin + no key = 401).
   headers.set('Origin', 'https://worldmonitor.app');
+  // Inject the configured enterprise key for cloud calls that pass through the
+  // sidecar so auth-gated endpoints (e.g. /api/mcp-proxy per PR #3768, issue
+  // #3723) succeed without each renderer call having to attach it. Renderer-
+  // supplied X-WorldMonitor-Key (e.g. a wm_ user key from runtime config) wins
+  // — don't clobber it.
+  if (!headers.has('X-WorldMonitor-Key')) {
+    const wmKey = process.env.WORLDMONITOR_API_KEY;
+    if (wmKey) headers.set('X-WorldMonitor-Key', wmKey);
+  }
   return fetch(target, {
     method: req.method,
     headers,
     body,
   });
+}
+
+async function proxyRegisterInterestToCloud(requestUrl, req, context) {
+  const target = `${context.remoteBase}${requestUrl.pathname}${requestUrl.search}`;
+  const bodyBuffer = await readBody(req);
+  let payload = {};
+  if (bodyBuffer?.length) {
+    try {
+      payload = JSON.parse(bodyBuffer.toString('utf8'));
+    } catch {
+      payload = {};
+    }
+  }
+
+  const normalizedPayload = {
+    ...payload,
+    source: 'desktop-settings',
+  };
+  const body = JSON.stringify(normalizedPayload);
+  const headers = toHeaders(req.headers, { stripOrigin: true });
+  headers.delete('Authorization');
+  headers.delete('If-None-Match');
+  headers.delete('If-Modified-Since');
+  headers.delete('Transfer-Encoding');
+  headers.delete('Content-Encoding');
+  headers.delete('Connection');
+  headers.delete('Expect');
+  headers.delete(DESKTOP_AUTH_TIMESTAMP_HEADER);
+  headers.delete(DESKTOP_AUTH_SIGNATURE_HEADER);
+  headers.set('Origin', 'https://worldmonitor.app');
+  headers.set('User-Agent', CHROME_UA);
+  headers.set('Content-Type', 'application/json');
+  headers.set('Content-Length', String(Buffer.byteLength(body)));
+
+  const secret = process.env[DESKTOP_AUTH_SECRET_ENV];
+  if (secret) {
+    const timestamp = String(Date.now());
+    headers.set(DESKTOP_AUTH_TIMESTAMP_HEADER, timestamp);
+    headers.set(DESKTOP_AUTH_SIGNATURE_HEADER, signDesktopAuthPayload(secret, timestamp, normalizedPayload));
+  }
+
+  return fetchWithTimeout(target, {
+    method: 'POST',
+    headers: Object.fromEntries(headers.entries()),
+    body,
+  }, 15000);
 }
 
 function pickModule(pathname, routes) {
@@ -614,7 +689,7 @@ function makeCorsHeaders(req) {
   return {
     'Access-Control-Allow-Origin': getSidecarCorsOrigin(req),
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-WorldMonitor-Desktop-Timestamp, X-WorldMonitor-Desktop-Signature',
     'Access-Control-Max-Age': '86400',
     'Vary': 'Origin',
   };
@@ -643,14 +718,16 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
         const chunks = [];
         res.on('data', (c) => chunks.push(c));
         res.on('end', () => {
-          const body = Buffer.concat(chunks).toString();
-          resolve({
-            ok: res.statusCode >= 200 && res.statusCode < 300,
-            status: res.statusCode,
-            headers: { get: (k) => res.headers[k.toLowerCase()] || null },
-            text: () => Promise.resolve(body),
-            json: () => Promise.resolve(JSON.parse(body)),
-          });
+          const body = Buffer.concat(chunks);
+          const headers = new Headers();
+          for (const [key, value] of Object.entries(res.headers)) {
+            if (value) headers.set(key, Array.isArray(value) ? value.join(', ') : value);
+          }
+          try {
+            resolve(buildSafeResponse(res.statusCode, res.statusMessage, headers, body));
+          } catch (error) {
+            reject(error);
+          }
         });
       });
       req.on('error', reject);
@@ -1018,8 +1095,11 @@ async function validateSecretAgainstProvider(key, rawValue, context = {}) {
     case 'ICAO_API_KEY':
       return ok('ICAO API key stored (verification requires NOTAM endpoint access)');
 
-      default:
-        return ok('Key stored');
+    case DESKTOP_AUTH_SECRET_ENV:
+      return ok('Desktop shared secret stored');
+
+    default:
+      return ok('Key stored');
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'provider probe failed';
@@ -1130,13 +1210,25 @@ async function dispatch(requestUrl, req, routes, context) {
   // Every endpoint below requires a valid LOCAL_API_TOKEN.  This prevents
   // other local processes, malicious browser scripts, and rogue extensions
   // from accessing the sidecar API without the per-session token.
+  //
+  // Default-deny: if LOCAL_API_TOKEN is unset/empty we reject every request.
+  // Treating "unset" as "auth disabled" turns any standalone sidecar run
+  // (e.g. Docker mode) into an open local-HTTP proxy reachable by other
+  // local users, browser tabs on allowed origins, etc. The Tauri Rust
+  // shell always sets LOCAL_API_TOKEN at launch; production callers must
+  // do the same.
   const expectedToken = process.env.LOCAL_API_TOKEN;
-  if (expectedToken) {
-    const authHeader = req.headers.authorization || '';
-    if (authHeader !== `Bearer ${expectedToken}`) {
-      context.logger.warn(`[local-api] unauthorized request to ${requestUrl.pathname}`);
-      return json({ error: 'Unauthorized' }, 401);
-    }
+  if (!expectedToken) {
+    context.logger.warn(
+      `[local-api] LOCAL_API_TOKEN not set — refusing request to ${requestUrl.pathname}. ` +
+      `Set LOCAL_API_TOKEN before starting the sidecar.`,
+    );
+    return json({ error: 'Service misconfigured: LOCAL_API_TOKEN not set' }, 503);
+  }
+  const authHeader = req.headers.authorization || '';
+  if (authHeader !== `Bearer ${expectedToken}`) {
+    context.logger.warn(`[local-api] unauthorized request to ${requestUrl.pathname}`);
+    return json({ error: 'Unauthorized' }, 401);
   }
 
   if (requestUrl.pathname === '/api/local-status') {
@@ -1219,8 +1311,15 @@ async function dispatch(requestUrl, req, routes, context) {
     if (!convexUrl) {
       const cloudUrl = new URL(requestUrl);
       cloudUrl.pathname = '/api/leads/v1/register-interest';
-      const cloudResponse = await tryCloudFallback(cloudUrl, req, context, 'no CONVEX_URL');
-      if (cloudResponse) return cloudResponse;
+      try {
+        const cloudResponse = await proxyRegisterInterestToCloud(cloudUrl, req, context);
+        if (!cloudResponse.ok) {
+          context.logger.warn(`[local-api] cloud returned ${cloudResponse.status} for ${cloudUrl.pathname}`);
+        }
+        return cloudResponse;
+      } catch (error) {
+        context.logger.error('[local-api] register-interest cloud fallback failed', error);
+      }
       return json({ error: 'Registration service unavailable' }, 503);
     }
     try {

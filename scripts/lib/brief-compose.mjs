@@ -23,6 +23,7 @@ import {
   filterTopStories,
   issueDateInTz,
 } from '../../shared/brief-filter.js';
+import { sanitizeForPrompt, sanitizeHeadline } from '../../server/_shared/llm-sanitize.js';
 
 // ── Rule dedupe (one brief per user, not per variant) ───────────────────────
 
@@ -242,6 +243,193 @@ export function composeBriefForRule(rule, insights, { nowMs = Date.now() } = {})
 const HEADLINE_SUFFIX_RE_PART = /\s+[-\u2013\u2014|]\s+([^\s].*)$/;
 
 /**
+ * Wire-name vs feed-name match. Returns true when `tail` is a shorter
+ * (or equal) word-boundary prefix of `publisher` — i.e. when the
+ * headline ended with the wire-service short name (e.g. "Reuters")
+ * but the configured publisher is the longer feed-name expansion
+ * (e.g. "Reuters World" / "Reuters Politics"). Strict equality
+ * (the v1 implementation) missed this case — observed live on the
+ * May 13 brief: "Putin says Russia will deploy new Sarmat nuclear
+ * missile this year - Reuters" had publisher "Reuters World" and the
+ * strict-equality check passed the suffix to the magazine.
+ *
+ * The direction is asymmetric ON PURPOSE: we never accept the inverse
+ * (publisher word-prefix of tail), because that case admits editorial
+ * suffixes like "Story - AP News analysis" — the tail "AP News
+ * analysis" extends the publisher "AP News" with an editorial word,
+ * not a desk-name suffix, and stripping it would lose real content.
+ *
+ * Word-boundary requirement (trailing space) prevents "iran" matching
+ * "iranian" — only space-delimited extensions ("Reuters" / "Reuters
+ * World") succeed.
+ *
+ * @param {string} tail — already lowercased, trimmed
+ * @param {string} publisher — already lowercased, trimmed
+ * @returns {boolean}
+ */
+function isPublisherWordPrefix(tail, publisher) {
+  if (tail === publisher) return true;
+  if (tail.length >= publisher.length) return false;
+  return publisher.startsWith(tail + ' ');
+}
+
+// ── Layer 2 helpers (publisher-naming variants) ───────────────────────────
+//
+// Layer 1's strict word-prefix test misses three structural classes of
+// variant between the headline-suffix's publisher form and the configured
+// `source` field. All three observed live on the May 15 brief:
+//   1. Article insertion — tail "Bulletin of the Atomic Scientists"
+//      vs source "Bulletin of Atomic Scientists" (the/no-the).
+//   2. Trailing wire-suffix word — tail "BBC News" vs source "BBC".
+//   3. Abbreviation ↔ long-form — tail "Department of Justice (.gov)"
+//      vs source "DOJ".
+//
+// Layer 2 adds two source-aware paths after Layer 1:
+//   Path 2a — `normalizePublisher` on both sides + the same asymmetric
+//             prefix test (handles classes 1, 2, 3).
+//   Path 2b — acronym-shape-gated initials equivalence using a separate
+//             `tailForInitials` (handles class 3 when source is an
+//             explicit ALL-CAPS acronym like DOJ/NPR/AP/BBC).
+//
+// No source-blind layer. Considered and rejected on Codex review —
+// integrity risk (feed-controlled text could force user-visible
+// truncation). See docs/plans/2026-05-15-001-fix-headline-suffix-strip-
+// publisher-naming-variants-plan.md for the full rationale.
+
+const ARTICLE_TOKENS = new Set(['the', 'a']);
+
+// Wire-suffix tokens stripped ONLY from the trailing position of a
+// normalised publisher. Iteratively from the end, never from leading
+// or middle positions — stripping globally would corrupt names like
+// "Daily Mail", "News Corp", "Press TV", "The Press Democrat".
+const WIRE_SUFFIX_TOKENS = new Set([
+  'news', 'online', 'press', 'wire', 'daily', 'weekly',
+]);
+
+// Connector words allowed inside a publisher-shape tail. Lowercase
+// exact match (case-insensitive on the lowercased token).
+const PUBLISHER_CONNECTOR_TOKENS = new Set([
+  'of', 'the', 'and', 'du', 'de', 'le', 'la', 'el', 'al', 'in', 'for',
+]);
+
+// Title-Case token: starts with an uppercase letter, then word chars or
+// apostrophe/hyphen. Accepts "BBC", "O'Reilly", "Al-Jazeera", "News".
+const TITLE_CASE_TOKEN_RE = /^[A-Z][\w'-]*$/;
+// Trailing domain paren: " (.gov)", " (.org)", " (.com)", " (.io)" etc.
+const DOMAIN_PAREN_TRAILING_RE = /\s*\(\.\w{2,4}\)\s*$/;
+// Explicit acronym shape on the ORIGINAL configured publisher field —
+// 1-5 all-uppercase letters, no spaces. Matching on the unaltered
+// field is what prevents Title-Case 4-char names like "Time"/"Wired"
+// from accidentally activating the initials path.
+const PUBLISHER_ACRONYM_RE = /^[A-Z]{1,5}$/;
+
+/**
+ * Normalise a publisher-name string for the asymmetric prefix test in
+ * Path 2a. Lowercases, strips trailing domain paren, removes article
+ * words from any position, removes wire-suffix words ONLY from the
+ * trailing position iteratively, then strips non-alphanumerics per
+ * token.
+ *
+ * Trailing-only suffix-strip is load-bearing: stripping `news` / `press`
+ * / `daily` from leading or middle positions would corrupt names like
+ * "Daily Mail", "News Corp", "Press TV", "The Press Democrat".
+ *
+ * Used ONLY in Path 2a. Path 2b's initials test uses tailForInitials()
+ * which preserves wire-suffix words — the `Press` in "Associated Press"
+ * must survive to count toward the AP initials.
+ *
+ * @param {unknown} s
+ * @returns {string}
+ */
+function normalizePublisher(s) {
+  if (typeof s !== 'string') return '';
+  const trimmed = s.trim().toLowerCase();
+  if (trimmed.length === 0) return '';
+  const stripped = trimmed.replace(DOMAIN_PAREN_TRAILING_RE, '');
+  let tokens = stripped
+    .split(/\s+/)
+    .filter((t) => t.length > 0 && !ARTICLE_TOKENS.has(t));
+  while (tokens.length > 0 && WIRE_SUFFIX_TOKENS.has(tokens[tokens.length - 1])) {
+    tokens.pop();
+  }
+  tokens = tokens
+    .map((t) => t.replace(/[^a-z0-9]/g, ''))
+    .filter((t) => t.length > 0);
+  return tokens.join(' ');
+}
+
+/**
+ * Tail normalisation for the initials path (Path 2b). Same as
+ * normalizePublisher MINUS the wire-suffix strip — distinct because
+ * "Associated Press" must keep `press` so initialsOf yields `ap`, not
+ * just `a`. Reusing normalizePublisher here would corrupt the
+ * Associated Press → AP / National Public Radio → NPR cases.
+ *
+ * @param {unknown} s
+ * @returns {string}
+ */
+function tailForInitials(s) {
+  if (typeof s !== 'string') return '';
+  const trimmed = s.trim().toLowerCase();
+  if (trimmed.length === 0) return '';
+  const stripped = trimmed.replace(DOMAIN_PAREN_TRAILING_RE, '');
+  const tokens = stripped
+    .split(/\s+/)
+    .filter((t) => t.length > 0 && !ARTICLE_TOKENS.has(t))
+    .map((t) => t.replace(/[^a-z0-9]/g, ''))
+    .filter((t) => t.length > 0);
+  return tokens.join(' ');
+}
+
+/**
+ * First letter of each whitespace-separated token, joined and
+ * lowercased, alpha only. Returns '' for empty or all-non-alpha input.
+ *
+ * @param {string} s
+ * @returns {string}
+ */
+function initialsOf(s) {
+  if (typeof s !== 'string' || s.length === 0) return '';
+  return s
+    .split(/\s+/)
+    .map((t) => (t.length > 0 ? t[0] : ''))
+    .filter((c) => /^[a-z]$/i.test(c))
+    .join('')
+    .toLowerCase();
+}
+
+/**
+ * "Looks like a publisher attribution" shape check on the original tail
+ * (post domain-paren strip, pre other normalisation). Every token must
+ * be either Title-Case (matches TITLE_CASE_TOKEN_RE) OR a permitted
+ * lowercase connector. Token cap of 8 keeps the function focused on
+ * filtering editorial fragments, not enforcing publisher length.
+ *
+ * Used in Path 2b as the second of two gates on the initials path; the
+ * first gate is the all-uppercase acronym check on the original
+ * publisher field. Together they block both editorial-text false
+ * positives (lowercase tokens fail this gate) and ordinary-Title-Case-
+ * publisher false positives (`Time`/`Wired` configured as source fail
+ * the acronym gate).
+ *
+ * @param {unknown} s
+ * @returns {boolean}
+ */
+function looksLikePublisherShape(s) {
+  if (typeof s !== 'string') return false;
+  const stripped = s.trim().replace(DOMAIN_PAREN_TRAILING_RE, '');
+  if (stripped.length === 0) return false;
+  const tokens = stripped.split(/\s+/);
+  if (tokens.length === 0 || tokens.length > 8) return false;
+  for (const tok of tokens) {
+    if (TITLE_CASE_TOKEN_RE.test(tok)) continue;
+    if (PUBLISHER_CONNECTOR_TOKENS.has(tok.toLowerCase())) continue;
+    return false;
+  }
+  return true;
+}
+
+/**
  * @param {string} title
  * @param {string} publisher
  * @returns {string}
@@ -253,19 +441,194 @@ export function stripHeadlineSuffix(title, publisher) {
   const m = trimmed.match(HEADLINE_SUFFIX_RE_PART);
   if (!m) return trimmed;
   const tail = m[1].trim();
-  // Case-insensitive full-string match. We're conservative: only strip
-  // when the tail EQUALS the publisher — a tail that merely contains
-  // it (e.g. "- AP News analysis") is editorial content and stays.
-  if (tail.toLowerCase() !== publisher.toLowerCase()) return trimmed;
-  return trimmed.slice(0, m.index).trimEnd();
+  const stripped = trimmed.slice(0, m.index).trimEnd();
+  // Layer 1: existing strict asymmetric word-prefix test (load-bearing
+  // PR #3673 protection — tail must be a SHORTER prefix of publisher).
+  // Stripping "AP News analysis" against "AP News" is REJECTED here,
+  // and Layer 2 below preserves the same asymmetry.
+  if (isPublisherWordPrefix(tail.toLowerCase(), publisher.toLowerCase())) {
+    return stripped;
+  }
+  // Layer 2 — Path 2a: source-aware fuzzy match via normalised
+  // asymmetric prefix. normalizePublisher strips articles globally and
+  // wire-suffix words trailing-only, so "Bulletin of the Atomic
+  // Scientists" matches "Bulletin of Atomic Scientists" and "BBC News"
+  // matches "BBC" — without mangling "Daily Mail" or "News Corp".
+  const normTail = normalizePublisher(tail);
+  const normPub = normalizePublisher(publisher);
+  if (
+    normTail.length > 0
+    && normPub.length > 0
+    && isPublisherWordPrefix(normTail, normPub)
+  ) {
+    return stripped;
+  }
+  // Layer 2 — Path 2b: acronym-shape-gated initials equivalence. The
+  // ORIGINAL publisher must match /^[A-Z]{1,5}$/ (DOJ, NPR, AP, BBC),
+  // gated on the unaltered field as authored — Title-Case names like
+  // "Time"/"Wired" do not opt in. The tail must also be Title-Case-or-
+  // connector shaped, blocking lowercase editorial text. Initials use
+  // tailForInitials (NOT normalizePublisher) so wire-suffix words like
+  // `Press` in "Associated Press" survive to count toward `ap`.
+  if (
+    PUBLISHER_ACRONYM_RE.test(publisher)
+    && looksLikePublisherShape(tail)
+    && initialsOf(tailForInitials(tail)) === publisher.toLowerCase()
+  ) {
+    return stripped;
+  }
+  return trimmed;
+}
+
+// Editorial-format prefixes some feeds prepend to headlines. They tell
+// the user nothing the magazine card doesn't already convey (every
+// card has its own source line and body block), so they just dilute
+// the headline. Conservative list — only patterns observed in
+// production briefs (May 12 magazine page 16/18: "Video: Philippine
+// senator flees ICC arrest..."). The trailing colon is REQUIRED so a
+// real headline starting with the bare word "Video game regulator
+// fines..." stays intact.
+const HEADLINE_PREFIX_RE = /^(?:video|watch|live|photos?|gallery|listen|podcast|breaking|exclusive|opinion|analysis|update)\s*:\s*/i;
+
+/**
+ * Strip editorial-format prefixes like "Video: ", "Watch: ", "Live: ",
+ * "Photos: ", "Breaking: " from the start of a headline.
+ *
+ * @param {string} title
+ * @returns {string}
+ */
+export function stripHeadlinePrefix(title) {
+  if (typeof title !== 'string' || title.length === 0) return '';
+  return title.trim().replace(HEADLINE_PREFIX_RE, '').trimStart();
+}
+
+/**
+ * Adapter for the SYNTHESIS boundary — distinct from
+ * `digestStoryToUpstreamTopStory` (the compose-envelope boundary).
+ *
+ * The canonical synthesis (`generateDigestProse` via
+ * `runSynthesisWithFallback` / `generateDigestProsePublic`) is handed
+ * the raw `buildDigest` pool, whose stories carry
+ * `{ title, severity, sources }`. But `buildDigestPrompt`,
+ * `checkLeadGrounding`, and `hashDigestInput` all read
+ * `{ headline, threatLevel, source, category, country }`. The
+ * field-name mismatch meant every synthesis prompt rendered every
+ * story line as `[h:hash] [] undefined — undefined · undefined ·
+ * undefined` — the model got NO story content and confabulated the
+ * lead/threads/signals wholesale (the May 12 / May 14 hallucinations),
+ * and `checkLeadGrounding` saw empty headlines so the grounding gate
+ * skipped every time. See plan
+ * docs/plans/2026-05-14-001-fix-brief-pipeline-parity-grounding-opinion-plan.md
+ * (F2, Phase 2).
+ *
+ * This is the SINGLE normalisation point — apply it once at each
+ * synthesis call site, never patch the three readers individually.
+ * The headline gets the same prefix/suffix cleanup the magazine
+ * headline gets (so the lead grounds against the same text the
+ * reader sees). Sanitisation closes the prompt-injection vector
+ * (F8) — the digest-prose prompt carries the reader's profile
+ * context, so an unsanitised hostile RSS `<title>` is a real risk.
+ * The headline is normalised to a single line and then run through
+ * `sanitizeHeadline` (structural delimiters only) — the full
+ * `sanitizeForPrompt` would mangle legitimate news headlines whose
+ * SUBJECT is an injection phrase, e.g. "Senator urges Trump to ignore
+ * all previous instructions on tariffs". The single-line normalisation
+ * closes the one gap structural-only sanitisation leaves: a multi-line
+ * hostile `<title>` injecting a line-start role turn. The other
+ * free-text fields (`source`, `category`, `country`) are metadata,
+ * not headlines, so they get the full `sanitizeForPrompt`.
+ * `threatLevel` is an enum and `hash` is a hex digest — neither is
+ * sanitised.
+ *
+ * `country` defaults to `'Global'` (story:track:v1 carries no country
+ * field; `digestStoryToUpstreamTopStory` + `filterTopStories` defaults
+ * fill it). `category` IS carried on story:track:v1 (persisted by
+ * buildStoryTrackHsetFields, defensive empty-string on missing), passed
+ * through buildDigest's stories.push, and reaches this function as the
+ * canonical lowercase EventCategory enum value (`'conflict'`, `'health'`,
+ * `'diplomatic'`, …).
+ *
+ * Two fallback layers for pre-stamp residue rows where category is
+ * absent — note that THIS function does NOT go through filterTopStories,
+ * so its local guard is load-bearing, not redundant:
+ *   1. **Local guard at the `category:` field write below**
+ *      (`typeof s?.category === 'string' ? s.category : 'General'`).
+ *      Fires for the synthesis-prompt path — the LLM prompt always
+ *      receives a non-empty string even when the upstream `s` has no
+ *      category field (rare in steady state; possible during the
+ *      48h-accumulator post-deploy residue window per PR #3751).
+ *   2. **filterTopStories' `asTrimmedString(raw.category) || 'General'`
+ *      at `shared/brief-filter.js:384`.** Fires for the envelope/display
+ *      path, which is a separate consumer that reads from the same
+ *      upstream story shape but takes a different code route.
+ * Removing either guard leaves the corresponding path exposed to
+ * residue rows on deploy.
+ *
+ * Intentional case divergence between synthesis and display paths
+ * (issue #3752):
+ *   - **This function** feeds the LLM synthesis prompt
+ *     (`buildDigestPrompt` in scripts/lib/brief-llm.mjs). The prompt
+ *     uses the canonical lowercase enum value as a semantic anchor for
+ *     LLM pattern-matching — the model's training distribution sees
+ *     category labels as bare nouns more often than Title-Cased
+ *     headings, so feeding `'conflict'` is the cleaner signal than
+ *     feeding `'Conflict'`.
+ *   - **The envelope/display path** goes through filterTopStories'
+ *     `out.push` (`shared/brief-filter.js`) where `titleCase` runs
+ *     once to produce `'Conflict'` for the threads card,
+ *     magazine story-page, and public-thread fallback stub. Display
+ *     surfaces want human readability.
+ * Both paths read from the same upstream `s.category` (lowercase); the
+ * divergence is downstream and load-bearing for each consumer's needs.
+ * If you change one site, audit the other.
+ *
+ * @param {object} s — digest-shaped story from buildDigest()
+ * @returns {{ headline: string; threatLevel: string; source: string; category: string; country: string; hash: string }}
+ */
+export function digestStoryToSynthesisShape(s) {
+  const sources = Array.isArray(s?.sources) ? s.sources : [];
+  // An empty / whitespace-only first entry passes the `typeof` guard but
+  // is not a real source — fall back to 'Multiple wires' so a prompt line
+  // never renders with a trailing blank attribution.
+  const primarySource = sources.length > 0
+    && typeof sources[0] === 'string'
+    && sources[0].trim().length > 0
+    ? sources[0]
+    : 'Multiple wires';
+  // Collapse all whitespace to single spaces up front: a headline is one
+  // line by definition, and a multi-line hostile RSS <title> must not be
+  // able to break the prompt's per-story line into a fake line-start role
+  // turn ("...\nassistant: ignore all previous instructions").
+  const rawTitle = typeof s?.title === 'string' ? s.title.replace(/\s+/g, ' ').trim() : '';
+  const cleanTitle = stripHeadlineSuffix(stripHeadlinePrefix(rawTitle), primarySource);
+  return {
+    // sanitizeHeadline (structural-only) — NOT sanitizeForPrompt — so a
+    // legitimate headline that quotes an injection phrase as its news
+    // subject survives intact. See the doc comment above. The rawTitle
+    // single-line normalisation above closes the newline-injection gap
+    // that structural-only sanitisation would otherwise leave open.
+    headline: sanitizeHeadline(cleanTitle),
+    threatLevel: typeof s?.severity === 'string' ? s.severity : '',
+    source: sanitizeForPrompt(primarySource),
+    // `s.category` is the canonical lowercase EventCategory enum value
+    // here (synthesis-prompt path uses lowercase as semantic anchor;
+    // display path Title-Cases at the envelope-build site). See the
+    // function doc above for the case-divergence rationale (#3752).
+    category: sanitizeForPrompt(typeof s?.category === 'string' ? s.category : 'General'),
+    country: sanitizeForPrompt(typeof s?.countryCode === 'string' ? s.countryCode : 'Global'),
+    hash: typeof s?.hash === 'string' ? s.hash : '',
+  };
 }
 
 /**
  * Adapter: the digest accumulator hydrates stories from
  * story:track:v1:{hash} (title / link / severity / lang / score /
- * mentionCount / description?) + story:sources:v1:{hash} SMEMBERS. It
- * does NOT carry a category or country-code — those fields are optional
- * in the upstream brief-filter shape and default cleanly.
+ * mentionCount / description? / isOpinion / isFeelGood / category) +
+ * story:sources:v1:{hash} SMEMBERS. story:track:v1 does NOT carry a
+ * country-code — that field is optional in the upstream brief-filter
+ * shape and defaults to 'Global' cleanly. `category` IS carried (as of
+ * the U1 persistence fix); pre-stamp residue rows without the field
+ * gracefully degrade to 'General' via filterTopStories' fallback.
  *
  * Since envelope v2, the story's `link` field is carried through as
  * `primaryLink` so filterTopStories can emit a BriefStory.sourceUrl.
@@ -286,7 +649,12 @@ function digestStoryToUpstreamTopStory(s) {
   const sources = Array.isArray(s?.sources) ? s.sources : [];
   const primarySource = sources.length > 0 ? sources[0] : 'Multiple wires';
   const rawTitle = typeof s?.title === 'string' ? s.title : '';
-  const cleanTitle = stripHeadlineSuffix(rawTitle, primarySource);
+  // Two-stage cleanup: strip editorial-format prefix first ("Video:",
+  // "Watch:", "Breaking:") then publisher suffix (" - Reuters",
+  // "| AP News"). Order matters because some headlines have both:
+  // "Video: Philippine senator flees ICC arrest - Al Jazeera" should
+  // become "Philippine senator flees ICC arrest".
+  const cleanTitle = stripHeadlineSuffix(stripHeadlinePrefix(rawTitle), primarySource);
   const rawDescription = typeof s?.description === 'string' ? s.description.trim() : '';
   return {
     primaryTitle: cleanTitle,
@@ -298,21 +666,54 @@ function digestStoryToUpstreamTopStory(s) {
     primarySource,
     primaryLink: typeof s?.link === 'string' ? s.link : undefined,
     threatLevel: s?.severity,
-    // story:track:v1 carries neither field, so the brief falls back
-    // to 'General' / 'Global' via filterTopStories defaults.
+    importanceScore: Number.isFinite(Number(s?.currentScore)) ? Number(s.currentScore) : undefined,
+    // Transient coherence signal from story:track:v1. Not written into
+    // BriefStory; shared/brief-filter.js consumes it before envelope
+    // assembly to keep an entity-corroborated flashpoint-diplomacy lead
+    // aligned with the first rendered card when the LLM ranked it first.
+    entityCorroborationCount: Number.isFinite(Number(s?.entityCorroborationCount))
+      ? Number(s.entityCorroborationCount)
+      : 0,
+    // `category` IS carried on story:track:v1 (persisted by
+    // buildStoryTrackHsetFields, passed through buildDigest's stories.push).
+    // Pre-stamp residue rows missing the field fall back to 'General' via
+    // filterTopStories' `|| 'General'` default. `countryCode` is NOT
+    // carried; falls back to 'Global' the same way.
     category: typeof s?.category === 'string' ? s.category : undefined,
     countryCode: typeof s?.countryCode === 'string' ? s.countryCode : undefined,
     // Stable digest story hash. Carried through so:
     //   (a) the canonical synthesis prompt can emit `rankedStoryHashes`
     //       referencing each story by hash (not position, not title),
-    //   (b) `filterTopStories` can re-order the pool by ranking BEFORE
-    //       applying the MAX_STORIES_PER_USER cap, so the model's
-    //       editorial judgment of importance survives the cap.
+    //   (b) `filterTopStories` can use the model's order as the final
+    //       tie-breaker after deterministic severity/topic-block mass
+    //       and score, before applying the MAX_STORIES_PER_USER cap.
     // Falls back to titleHash when the digest path didn't materialise
     // a primary `hash` (rare; shape varies across producer versions).
     hash: typeof s?.hash === 'string' && s.hash.length > 0
       ? s.hash
       : (typeof s?.titleHash === 'string' ? s.titleHash : undefined),
+    // Sprint 1 / U3: canonical cluster-rep hash threaded into
+    // BriefStory.clusterId via filterTopStories. For multi-story
+    // clusters, materializeCluster (in brief-dedup-jaccard.mjs) sets
+    // `mergedHashes[]` on the rep — `mergedHashes[0]` is the
+    // deterministic cluster identity (sort: score DESC, mentionCount
+    // DESC, hash ASC), shared by every member that maps back to this
+    // rep. For singleton clusters (no clustering pass, or one-member
+    // result) `mergedHashes` is absent — fall back to the rep's own
+    // hash so singletons satisfy the plan invariant "clusterId equals
+    // the story's own hash" naturally.
+    clusterRepHash: Array.isArray(s?.mergedHashes) && s.mergedHashes.length > 0
+      && typeof s.mergedHashes[0] === 'string' && s.mergedHashes[0].length > 0
+      ? s.mergedHashes[0]
+      : (typeof s?.hash === 'string' && s.hash.length > 0 ? s.hash : undefined),
+    // Transient topic-ordering metadata from groupTopicsPostDedup.
+    // filterTopStories consumes these before writing BriefStory; they
+    // are not part of the persisted envelope schema.
+    briefTopicId: typeof s?.briefTopicId === 'string' && s.briefTopicId.length > 0
+      ? s.briefTopicId
+      : undefined,
+    briefTopicSize: Number.isFinite(Number(s?.briefTopicSize)) ? Number(s.briefTopicSize) : undefined,
+    briefTopicMaxScore: Number.isFinite(Number(s?.briefTopicMaxScore)) ? Number(s.briefTopicMaxScore) : undefined,
   };
 }
 
@@ -336,6 +737,7 @@ function digestStoryToUpstreamTopStory(s) {
  * @param {{
  *   nowMs?: number,
  *   onDrop?: import('../../shared/brief-filter.js').DropMetricsFn,
+ *   onOrder?: import('../../shared/brief-filter.js').OrderMetricsFn,
  *   synthesis?: {
  *     lead?: string,
  *     threads?: Array<{ tag: string, teaser: string }>,
@@ -349,12 +751,15 @@ function digestStoryToUpstreamTopStory(s) {
  *   `onDrop` is forwarded to filterTopStories so the seeder can
  *   aggregate per-user filter-drop counts without this module knowing
  *   how they are reported.
+ *   `onOrder` is forwarded the same way for aggregate-only ordering
+ *   telemetry; the callback receives no raw headlines.
  *   `synthesis` (when provided) substitutes envelope.digest.lead /
  *   threads / signals / publicLead with the canonical synthesis from
- *   the orchestration layer, and re-orders the candidate pool by
- *   `synthesis.rankedStoryHashes` before applying the cap.
+ *   the orchestration layer. `synthesis.rankedStoryHashes` is passed to
+ *   the filter as a tie-breaker after severity/topic-cluster ordering,
+ *   before applying the cap.
  */
-export function composeBriefFromDigestStories(rule, digestStories, insightsNumbers, { nowMs = Date.now(), onDrop, synthesis } = {}) {
+export function composeBriefFromDigestStories(rule, digestStories, insightsNumbers, { nowMs = Date.now(), onDrop, onOrder, synthesis } = {}) {
   if (!Array.isArray(digestStories) || digestStories.length === 0) return null;
   // Default to 'high' (NOT 'all') for undefined sensitivity, aligning
   // with buildDigest at scripts/seed-digest-notifications.mjs:392 and
@@ -373,6 +778,7 @@ export function composeBriefFromDigestStories(rule, digestStories, insightsNumbe
     sensitivity,
     maxStories: MAX_STORIES_PER_USER,
     onDrop,
+    onOrder,
     rankedStoryHashes: synthesis?.rankedStoryHashes,
   });
   if (stories.length === 0) return null;
@@ -418,4 +824,61 @@ export function composeBriefFromDigestStories(rule, digestStories, insightsNumbe
     }
   }
   return envelope;
+}
+
+/**
+ * Derive the rendered `digest.threads` from the FINAL ordered story
+ * walk (plan F7 / Phase 6).
+ *
+ * The LLM still emits `synthesis.threads` — that stays the haystack
+ * `checkLeadGrounding` inspects — but the rendered "On The Desk"
+ * threads page is no longer an independent editorial judgment that can
+ * disagree with the story walk. On 2026-05-13 the threads page listed
+ * topics in an order the story walk did not follow, and a story
+ * (hantavirus) was covered by no thread at all. Here threads are one
+ * per topic-cluster, in the EXACT order the stories render.
+ *
+ * `orderBriefCandidates` (shared/brief-filter.js) emits same-cluster
+ * stories contiguously, so a consecutive-run group on `clusterId`
+ * reproduces the walk's block order without needing the transient
+ * topic key (which is deliberately not written onto BriefStory).
+ *
+ * `tag` is the cluster's category; `teaser` is the cluster's lead
+ * (first, highest-ranked) story's `description`. Call this AFTER
+ * `enrichBriefEnvelopeWithLLM` so the teaser is the LLM editorial
+ * sentence; the filter-stage `description = rawDescription || headline`
+ * fallback guarantees a non-empty string either way.
+ *
+ * @param {Array<{ clusterId?: string; category?: string; headline?: string; description?: string }>} stories
+ *   the FINAL ordered `envelope.data.stories[]`
+ * @returns {Array<{ tag: string; teaser: string }>}
+ */
+export function deriveThreadsFromOrderedStories(stories) {
+  if (!Array.isArray(stories)) return [];
+  /** @type {Array<{ tag: string; teaser: string }>} */
+  const threads = [];
+  let lastClusterId;
+  let started = false;
+  for (const s of stories) {
+    const clusterId = typeof s?.clusterId === 'string' && s.clusterId.length > 0
+      ? s.clusterId
+      : null;
+    // New cluster boundary → this story leads a new thread. A null
+    // clusterId (defensive — the filter guarantees a non-empty one)
+    // never coalesces: each such story becomes its own thread.
+    const isBoundary = !started || clusterId === null || clusterId !== lastClusterId;
+    if (!isBoundary) continue;
+    const tag = typeof s?.category === 'string' && s.category.trim().length > 0
+      ? s.category.trim()
+      : 'General';
+    const description = typeof s?.description === 'string' ? s.description.trim() : '';
+    const headline = typeof s?.headline === 'string' ? s.headline.trim() : '';
+    const teaser = description.length > 0 ? description : headline;
+    // Skip a cluster lead with no usable text rather than emit an
+    // invalid `{tag, teaser:''}` the renderer's assert would reject.
+    if (teaser.length > 0) threads.push({ tag, teaser });
+    lastClusterId = clusterId;
+    started = true;
+  }
+  return threads;
 }

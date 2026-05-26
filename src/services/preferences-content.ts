@@ -41,15 +41,21 @@ export interface PreferencesResult {
   attach: (container: HTMLElement) => () => void;
 }
 
-function toggleRowHtml(id: string, label: string, desc: string, checked: boolean): string {
+function toggleRowHtml(
+  id: string,
+  label: string,
+  desc: string,
+  checked: boolean,
+  disabled = false,
+): string {
   return `
-    <div class="ai-flow-toggle-row">
+    <div class="ai-flow-toggle-row${disabled ? ' is-disabled' : ''}">
       <div class="ai-flow-toggle-label-wrap">
         <div class="ai-flow-toggle-label">${label}</div>
         <div class="ai-flow-toggle-desc">${desc}</div>
       </div>
-      <label class="ai-flow-switch">
-        <input type="checkbox" id="${id}"${checked ? ' checked' : ''}>
+      <label class="ai-flow-switch${disabled ? ' is-disabled' : ''}">
+        <input type="checkbox" id="${id}"${checked ? ' checked' : ''}${disabled ? ' disabled' : ''}>
         <span class="ai-flow-slider"></span>
       </label>
     </div>
@@ -227,7 +233,18 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
     `;
   }
 
-  html += toggleRowHtml('us-headline-memory', t('components.insights.headlineMemoryLabel'), t('components.insights.headlineMemoryDesc'), settings.headlineMemory);
+  // Headline Memory requires Browser Local Model (it loads an embeddings
+  // model in the ML worker). Disable the toggle when the parent is off so
+  // the user sees the dependency rather than wondering why their Headline
+  // Memory toggle "did nothing."
+  const headlineDisabled = !host.isDesktopApp && !settings.browserModel;
+  html += toggleRowHtml(
+    'us-headline-memory',
+    t('components.insights.headlineMemoryLabel'),
+    t('components.insights.headlineMemoryDesc'),
+    settings.headlineMemory,
+    headlineDisabled,
+  );
 
   html += `</div></details>`;
 
@@ -449,6 +466,18 @@ export function renderPreferences(host: PreferencesHost): PreferencesResult {
           setAiFlowSetting('browserModel', target.checked);
           const warn = container.querySelector('.ai-flow-toggle-warn') as HTMLElement;
           if (warn) warn.style.display = target.checked ? 'block' : 'none';
+          // Headline Memory is a child of Browser Local Model — keep its
+          // toggle's enabled/disabled state in sync without re-rendering
+          // the whole panel. The runtime gate (`isHeadlineMemoryEnabled`)
+          // already AND-gates both flags; this just mirrors that visually.
+          const hmInput = container.querySelector<HTMLInputElement>('#us-headline-memory');
+          const hmRow = hmInput?.closest('.ai-flow-toggle-row');
+          const hmSwitch = hmInput?.closest('.ai-flow-switch');
+          if (hmInput && !host.isDesktopApp) {
+            hmInput.disabled = !target.checked;
+            hmRow?.classList.toggle('is-disabled', !target.checked);
+            hmSwitch?.classList.toggle('is-disabled', !target.checked);
+          }
           updateAiStatus(container);
         } else if (target.id === 'us-map-flash') {
           setAiFlowSetting('mapNewsFlash', target.checked);

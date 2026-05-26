@@ -11,7 +11,27 @@
 // Shape: { countries: { [ISO2]: { value: 0-100, year } }, seededAt }
 
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+// Shared content-age helper for WB per-country annual seeders.
+import { wbCountryDictContentMeta } from './_wb-country-dict-content-age-helpers.mjs';
+// Greptile PR #3603 P2 — `import` declarations belong at the top of the
+// module, not after a `const`. ES module `import`s are hoisted regardless
+// of source order, but interleaving with declarations confuses readers
+// (the code "looks" sequential but the import actually executes first).
 import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
+
+// 48mo budget — verified against live WB API on 2026-05-05: max year for
+// EG.ELC.FOSL.ZS is 2023 (NOT 2024 like power-losses or low-carbon). That's
+// already ~29mo old at fresh-arrival, so this indicator publishes slower
+// than the rest of the WB cohort.
+//
+// Steady-state ceiling = max_publication_lag (~30mo) + cycle_length (12mo)
+// = 42mo. 48mo budget = 42mo ceiling + 6mo slack. Trips only on
+// multi-cycle silent stalls; tolerates "next year publishing late."
+//
+// Don't share with low-carbon-generation (36mo) — these indicators have
+// genuinely different cadences. Per-seeder constants prevent the
+// "tightest-cohort budget false-positives the slowest-cohort" trap.
+const MAX_CONTENT_AGE_MIN = 48 * 30 * 24 * 60;
 
 loadEnvFile(import.meta.url);
 
@@ -89,6 +109,12 @@ if (process.argv[1]?.endsWith('seed-fossil-electricity-share.mjs')) {
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: 8 * 24 * 60,
+
+    // ── Content-age contract (Sprint 4 cohort follow-up) ──
+    // 48mo budget chosen to match this indicator's slower fresh-arrival
+    // lag (29mo on 2026-05-05). See MAX_CONTENT_AGE_MIN constant above.
+    contentMeta: wbCountryDictContentMeta,
+    maxContentAgeMin: MAX_CONTENT_AGE_MIN,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);

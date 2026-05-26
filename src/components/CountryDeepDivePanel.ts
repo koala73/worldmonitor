@@ -2204,7 +2204,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     }
     if (top) {
       const updatedEl = top.querySelector('.cdp-updated');
-      if (updatedEl) updatedEl.textContent = `Updated ${this.shortDate(score?.lastUpdated ?? new Date())}`;
+      if (updatedEl) updatedEl.textContent = `Updated ${score?.lastUpdated ? this.shortDate(score.lastUpdated) : '—'}`;
     }
     if (score) {
       const band = this.ciiBand(score.score);
@@ -2386,7 +2386,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.scoreCard = scoreCard;
     const top = this.el('div', 'cdp-score-top');
     const label = this.el('span', 'cdp-score-label', t('countryBrief.instabilityIndex'));
-    const updated = this.el('span', 'cdp-updated', `Updated ${this.shortDate(score?.lastUpdated ?? new Date())}`);
+    const updated = this.el('span', 'cdp-updated', `Updated ${score?.lastUpdated ? this.shortDate(score.lastUpdated) : '—'}`);
     top.append(label, updated);
     scoreCard.append(top);
 
@@ -2730,7 +2730,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const shell = this.el('div', 'country-deep-dive-shell');
     const close = this.el('button', 'panel-close', '×') as HTMLButtonElement;
     close.id = 'deep-dive-close';
-    close.setAttribute('aria-label', 'Close');
+    close.setAttribute('aria-label', t('common.close'));
 
     const content = this.el('div', 'panel-content');
     content.id = 'deep-dive-content';

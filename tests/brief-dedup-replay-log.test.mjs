@@ -168,6 +168,80 @@ describe('buildReplayRecords — record shape', () => {
     assert.equal(byHash.get('h3').isRep, true);
   });
 
+  // Codex PR #3617 P1 — Sprint 1 / U6 v2 shape: every record carries
+  // `repHash` (canonical stable cluster identity), reps additionally
+  // carry `mergedHashes`, and `headline`/`sourceUrl` aliases for the
+  // U5 classifier shape.
+  it('repHash is the rep\'s own hash, set on EVERY record (rep AND non-rep) — Codex PR #3617 P1', () => {
+    const records = buildReplayRecords(stories, reps, new Map(), cfg, tickContext);
+    const byHash = new Map(records.map((r) => [r.storyHash, r]));
+    assert.equal(byHash.get('h1').repHash, 'h1', 'rep h1 → repHash=h1');
+    assert.equal(byHash.get('h2').repHash, 'h1', 'non-rep h2 in cluster {h1,h2} → repHash=h1');
+    assert.equal(byHash.get('h3').repHash, 'h3', 'singleton h3 → repHash=h3');
+  });
+
+  it('mergedHashes is set on rep records, null on non-rep records', () => {
+    const records = buildReplayRecords(stories, reps, new Map(), cfg, tickContext);
+    const byHash = new Map(records.map((r) => [r.storyHash, r]));
+    assert.deepEqual(byHash.get('h1').mergedHashes, ['h1', 'h2']);
+    assert.equal(byHash.get('h2').mergedHashes, null, 'non-rep gets null mergedHashes');
+    assert.deepEqual(byHash.get('h3').mergedHashes, ['h3']);
+  });
+
+  it('headline aliases title; sourceUrl aliases link (U5 classifier-shape compat)', () => {
+    const sWithLink = { ...s1, link: 'https://example.com/n1' };
+    const repsWithLink = [rep('h1', ['h1'], { currentScore: 10 })];
+    const records = buildReplayRecords([sWithLink], repsWithLink, new Map(), cfg, tickContext);
+    assert.equal(records[0].headline, sWithLink.title);
+    assert.equal(records[0].sourceUrl, 'https://example.com/n1');
+    // Legacy fields preserved for back-compat.
+    assert.equal(records[0].title, sWithLink.title);
+    assert.equal(records[0].link, 'https://example.com/n1');
+  });
+
+  it('writer emits v=2 (Codex PR #3617 P1 bump)', () => {
+    const records = buildReplayRecords(stories, reps, new Map(), cfg, tickContext);
+    for (const r of records) assert.equal(r.v, 2, `record v should be 2; got ${r.v}`);
+  });
+
+  // Codex PR #3617 round-3 P1 — sources come from the REP's hydrated
+  // set, not from individual input stories. Pre-fix mutating
+  // dedupedAll[i].sources didn't reach the writer because it iterated
+  // input `stories` (which materializeCluster() never wrote back to).
+  it('sources are sourced from the rep object (not input story.sources)', () => {
+    // Rep with hydrated sources, input story with EMPTY sources.
+    // Pre-fix the writer would have emitted sources: [] (reading from
+    // the input story). Post-fix it reads from the rep.
+    const repWithSources = rep('h1', ['h1', 'h2'], { currentScore: 10, sources: ['Reuters', 'AP', 'BBC'] });
+    const recs = buildReplayRecords(
+      [story('a', { hash: 'h1', sources: [] }), story('b', { hash: 'h2', sources: [] })],
+      [repWithSources],
+      new Map(),
+      cfg,
+      tickContext,
+    );
+    const byHash = new Map(recs.map((r) => [r.storyHash, r]));
+    assert.deepEqual(byHash.get('h1').sources, ['Reuters', 'AP', 'BBC']);
+    // Non-rep gets the SAME hydrated sources (cluster source-count
+    // identity is uniform across members — the rep is the canonical view).
+    assert.deepEqual(byHash.get('h2').sources, ['Reuters', 'AP', 'BBC']);
+  });
+
+  it('falls back to story.sources when rep has none (defensive — fixture compatibility)', () => {
+    // Some test fixtures pass pre-populated input story.sources and
+    // omit them on the rep. The writer should still emit those rather
+    // than dropping them silently.
+    const repNoSources = { hash: 'h1', mergedHashes: ['h1'], currentScore: 5, mentionCount: 1 };
+    const recs = buildReplayRecords(
+      [story('a', { hash: 'h1', sources: ['fixture-source'] })],
+      [repNoSources],
+      new Map(),
+      cfg,
+      tickContext,
+    );
+    assert.deepEqual(recs[0].sources, ['fixture-source']);
+  });
+
   it('clusterId derives from rep.mergedHashes (s1+s2 → 0, s3 → 1)', () => {
     const records = buildReplayRecords(stories, reps, new Map(), cfg, tickContext);
     const byHash = new Map(records.map((r) => [r.storyHash, r]));
@@ -242,7 +316,10 @@ describe('buildReplayRecords — record shape', () => {
       assert.equal(r.briefTickId, 'tick-1');
       assert.equal(r.ruleId, 'full:en:high');
       assert.equal(r.tsMs, 1000);
-      assert.equal(r.v, 1);
+      // Codex PR #3617 P1 — bumped to v2 (added repHash + mergedHashes
+      // + headline + sourceUrl). v1 envelopes still in 30d TTL are
+      // accepted on read by the U6 harness via legacy-field fallbacks.
+      assert.equal(r.v, 2);
     }
   });
 
@@ -309,7 +386,7 @@ describe('writeReplayLog — behaviour', () => {
     assert.equal(pipe.calls.length, 0);
   });
 
-  it('flag ON + stories → RPUSH + EXPIRE 30d on correct key', async () => {
+  it('flag ON + stories → RPUSH + LTRIM cap + EXPIRE 30d on correct key', async () => {
     const pipe = mockPipeline();
     const warn = mockWarn();
     const res = await writeReplayLog({
@@ -321,11 +398,22 @@ describe('writeReplayLog — behaviour', () => {
     assert.equal(res.skipped, null);
     assert.equal(pipe.calls.length, 1);
     const [commands] = pipe.calls;
-    assert.equal(commands.length, 2, 'two commands: RPUSH + EXPIRE');
-    const [rpushCmd, expireCmd] = commands;
+    // RPUSH appends → LTRIM caps the per-day list at the most recent N
+    // entries → EXPIRE refreshes the 30d TTL. The cap was added on
+    // 2026-05-10 after busy days (~420K entries) hit Upstash's 500MB
+    // max-record-size and back-pressured adjacent writes.
+    assert.equal(commands.length, 3, 'three commands: RPUSH + LTRIM + EXPIRE');
+    const [rpushCmd, ltrimCmd, expireCmd] = commands;
     assert.equal(rpushCmd[0], 'RPUSH');
     assert.equal(rpushCmd[1], 'digest:replay-log:v1:full:en:high:2026-04-23');
     assert.equal(rpushCmd.length, 4, 'RPUSH + key + 2 story records');
+    assert.equal(ltrimCmd[0], 'LTRIM');
+    assert.equal(ltrimCmd[1], 'digest:replay-log:v1:full:en:high:2026-04-23');
+    // `-N..-1` keeps the most recent N entries (tail-keep). The cap
+    // value is sourced from REPLAY_LOG_MAX_ENTRIES_PER_DAY in the
+    // module so a future bump only needs one location change.
+    assert.match(ltrimCmd[2], /^-\d+$/, 'start index is negative (tail offset)');
+    assert.equal(ltrimCmd[3], '-1', 'end index is -1 (last element)');
     assert.equal(expireCmd[0], 'EXPIRE');
     assert.equal(expireCmd[1], 'digest:replay-log:v1:full:en:high:2026-04-23');
     assert.equal(expireCmd[2], String(30 * 24 * 60 * 60));
@@ -339,6 +427,24 @@ describe('writeReplayLog — behaviour', () => {
     assert.equal(rec1.isRep, false);
     assert.equal(rec1.clusterId, 0, 'h2 is in the same cluster as h1');
     assert.equal(warn.lines.length, 0);
+  });
+
+  it('LTRIM uses the exported cap constant (REPLAY_LOG_MAX_ENTRIES_PER_DAY)', async () => {
+    // Don't hard-code 100000 here — read from the module so a future
+    // bump propagates without a brittle dual-update. This regression
+    // guard fails loudly if the writer drifts away from the constant.
+    const { REPLAY_LOG_MAX_ENTRIES_PER_DAY } = await import('../scripts/lib/brief-dedup-replay-log.mjs');
+    const pipe = mockPipeline();
+    await writeReplayLog({
+      ...baseArgs(),
+      deps: { env: { DIGEST_DEDUP_REPLAY_LOG: '1' }, redisPipeline: pipe.impl, warn: () => {} },
+    });
+    const ltrimCmd = pipe.calls[0][1];
+    assert.equal(ltrimCmd[2], `-${REPLAY_LOG_MAX_ENTRIES_PER_DAY}`);
+    // Sanity — keep the constant inside a band that's reasonable for
+    // the 500MB Upstash limit at observed entry sizes (~1.5KB).
+    assert.ok(REPLAY_LOG_MAX_ENTRIES_PER_DAY >= 10_000, 'cap must allow useful sample');
+    assert.ok(REPLAY_LOG_MAX_ENTRIES_PER_DAY <= 200_000, 'cap must stay under the 500MB record limit at observed entry sizes');
   });
 
   it('pipeline returns null → warn + skipped=null + wrote=0', async () => {

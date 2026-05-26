@@ -809,7 +809,11 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     comprehensive: false,
   },
 
-  // ── borderSecurity (2 sub-metrics) ────────────────────────────────────────
+  // ── borderSecurity / "Conflict & Displacement" (2 sub-metrics) ───────────
+  // #3737 — internal id stays `borderSecurity` for proto / cache stability,
+  // but the dimension measures armed-conflict event intensity + refugee
+  // displacement, not border-control infrastructure. User-facing label is
+  // "Conflict" (widget) / "Conflict & Displacement" (methodology doc).
   {
     id: 'ucdpConflict',
     dimension: 'borderSecurity',
@@ -847,10 +851,11 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
   },
 
   // ── informationCognitive (3 sub-metrics) ──────────────────────────────────
-  // Promoted back to Core in T2.9 after language / source-density
-  // normalization landed (getLanguageCoverageFactor in _language-coverage.ts).
-  // Social velocity and news threat scores are now adjusted by the
-  // English-language coverage factor before normalization.
+  // The velocity + news-threat sub-indicators are weight-attenuated by
+  // `getLanguageCoverageFactor` (_language-coverage.ts) so that countries with
+  // sparse English-language news coverage lean more heavily on the static RSF
+  // press-freedom indicator (which is coverage-independent). See #3736 for the
+  // earlier divide-amplification bug this replaced.
   {
     id: 'rsfPressFreedom',
     dimension: 'informationCognitive',
@@ -869,7 +874,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
   {
     id: 'socialVelocity',
     dimension: 'informationCognitive',
-    description: 'Reddit social velocity score (log10(velocity+1)); language-normalized viral narrative stress',
+    description: 'Reddit social velocity score (log10(velocity+1)); sub-indicator weight scales with English-language coverage',
     direction: 'lowerBetter',
     goalposts: { worst: 3, best: 0 },
     weight: 0.15,
@@ -884,7 +889,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
   {
     id: 'newsThreatScore',
     dimension: 'informationCognitive',
-    description: 'AI news threat summary (critical=4x, high=2x, medium=1x, low=0.5x); language-normalized',
+    description: 'AI news threat summary (critical=4x, high=2x, medium=1x, low=0.5x); sub-indicator weight scales with English-language coverage',
     direction: 'lowerBetter',
     goalposts: { worst: 20, best: 0 },
     weight: 0.3,
@@ -1011,14 +1016,18 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     comprehensive: true,
   },
 
-  // ── fiscalSpace (3 sub-metrics) ──────────────────────────────────────────
+  // ── fiscalSpace (4 sub-metrics) ──────────────────────────────────────────
+  // Weights rebalanced from 0.4/0.3/0.3 → 0.25/0.20/0.20/0.35 to make room
+  // for debtSustainabilityGap as the largest single slice (it's the most
+  // informative single signal — integrates pb, r, g, d, and their
+  // interaction). Sum invariant: 0.25 + 0.20 + 0.20 + 0.35 = 1.0.
   {
     id: 'recoveryGovRevenue',
     dimension: 'fiscalSpace',
     description: 'Government revenue as % of GDP (IMF GGR_G01_GDP_PT); fiscal mobilization capacity for recovery',
     direction: 'higherBetter',
     goalposts: { worst: 5, best: 45 },
-    weight: 0.4,
+    weight: 0.25,
     sourceKey: 'resilience:recovery:fiscal-space:v1',
     scope: 'global',
     cadence: 'annual',
@@ -1033,7 +1042,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     description: 'General government net lending/borrowing as % of GDP (IMF GGXCNL_G01_GDP_PT); deficit signals reduced recovery firepower',
     direction: 'higherBetter',
     goalposts: { worst: -15, best: 5 },
-    weight: 0.3,
+    weight: 0.20,
     sourceKey: 'resilience:recovery:fiscal-space:v1',
     scope: 'global',
     cadence: 'annual',
@@ -1048,12 +1057,34 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     description: 'General government gross debt as % of GDP (IMF GGXWDG_NGDP_PT); high debt limits recovery borrowing capacity',
     direction: 'lowerBetter',
     goalposts: { worst: 150, best: 0 },
-    weight: 0.3,
+    weight: 0.20,
     sourceKey: 'resilience:recovery:fiscal-space:v1',
     scope: 'global',
     cadence: 'annual',
     tier: 'core',
     coverage: 190,
+    license: 'open-data',
+    comprehensive: true,
+  },
+  {
+    id: 'debtSustainabilityGap',
+    dimension: 'fiscalSpace',
+    description: 'Primary-balance gap to debt-stabilizing level: gap = pb − ((r−g)/(1+g))·d (IMF DSA construct). Positive = debt path declining, negative = rising. r derived from interest expense / debt (overall balance minus primary balance); g from compounded real growth × (1+CPI). Inflation cap at 10% drops gap to null for inflation-tax-regime countries (Argentina, Turkey, Lebanon, Egypt, Nigeria, Ethiopia, etc.) where high nominal-GDP growth mechanically erodes debt while masking underlying fiscal pathology; fiscal-3 still scores them.',
+    direction: 'higherBetter',
+    goalposts: { worst: -5, best: 3 },
+    weight: 0.35,
+    sourceKey: 'resilience:recovery:fiscal-space:v1',
+    scope: 'global',
+    cadence: 'annual',
+    // Tier: 'enrichment' — the indicator excludes inflation-tax-regime
+    // countries by design (CPI > 10% → gap=null), so it structurally cannot
+    // meet the Core-tier ≥180 countries coverage invariant. Scorer doesn't
+    // filter by tier; this is a quality classification. The 3 sibling
+    // fiscalSpace indicators (revenue/balance/debt) remain Core at coverage
+    // 190. Cap tightened from 25% in 2026-05-19 follow-up to PR #3669 after
+    // Lebanon scored #1 at 14.6% inflation.
+    tier: 'enrichment',
+    coverage: 140,
     license: 'open-data',
     comprehensive: true,
   },
@@ -1245,7 +1276,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
   {
     id: 'recoveryFuelStockDays',
     dimension: 'fuelStockDays',
-    description: 'RETIRED in PR 3. Legacy days-of-fuel-stock-cover (IEA Oil Stocks / EIA Weekly Petroleum Status). Does not contribute to the score — scoreFuelStockDays returns coverage=0 + imputationClass=null, and the dimension is excluded from confidence/coverage averages via the RESILIENCE_RETIRED_DIMENSIONS registry. Kept in the registry as tier=experimental for structural continuity; a globally-comparable recovery-fuel concept could replace this in a future PR.',
+    description: 'RETIRED in PR 3. Legacy days-of-fuel-stock-cover (IEA Oil Stocks / EIA Weekly Petroleum Status). Does not contribute to the score — scoreFuelStockDays returns coverage=0 + imputationClass=null, and the dimension is excluded from confidence/coverage averages via the RESILIENCE_RETIRED_DIMENSIONS registry. Kept in the registry as tier=experimental for structural continuity; a globally-comparable recovery-fuel concept could replace this in a future PR. NOTE: the seed-recovery-fuel-stocks Railway slot continues to populate `sourceKey` weekly even though scoreFuelStockDays does not read it — the data is preserved so a replacement dimension has historical timeseries to draw on. The matching /api/health probe was removed in PR #3764 because reporting STATUS:OK on data nothing reads was actively misleading.',
     direction: 'higherBetter',
     goalposts: { worst: 0, best: 120 },
     weight: 1.0,

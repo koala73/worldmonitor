@@ -27,7 +27,9 @@ const MENU_HELP_GITHUB_ID: &str = "help.github";
 #[cfg(feature = "devtools")]
 const MENU_HELP_DEVTOOLS_ID: &str = "help.devtools";
 const TRUSTED_WINDOWS: [&str; 3] = ["main", "settings", "live-channels"];
-const SUPPORTED_SECRET_KEYS: [&str; 28] = [
+const DESKTOP_SHARED_SECRET_KEY: &str = "WM_DESKTOP_SHARED_SECRET";
+const BUILD_TIME_SIDECAR_ENV_KEYS: [&str; 2] = ["CONVEX_URL", DESKTOP_SHARED_SECRET_KEY];
+const SUPPORTED_SECRET_KEYS: [&str; 29] = [
     "GROQ_API_KEY",
     "OPENROUTER_API_KEY",
     "TAVILY_API_KEYS",
@@ -56,6 +58,7 @@ const SUPPORTED_SECRET_KEYS: [&str; 28] = [
     "WTO_API_KEY",
     "AVIATIONSTACK_API",
     "ICAO_API_KEY",
+    DESKTOP_SHARED_SECRET_KEY,
 ];
 
 struct LocalApiState {
@@ -872,9 +875,27 @@ fn sanitize_path_for_node(p: &Path) -> String {
     }
 }
 
+fn build_time_sidecar_env_value(key: &str) -> Option<&'static str> {
+    match key {
+        "CONVEX_URL" => option_env!("CONVEX_URL"),
+        DESKTOP_SHARED_SECRET_KEY => option_env!("WM_DESKTOP_SHARED_SECRET"),
+        _ => None,
+    }
+    .filter(|value| !value.trim().is_empty())
+}
+
+fn sidecar_env_value(key: &str) -> Option<String> {
+    build_time_sidecar_env_value(key)
+        .map(ToString::to_string)
+        .or_else(|| std::env::var(key).ok().filter(|value| !value.trim().is_empty()))
+}
+
 #[cfg(test)]
 mod sanitize_path_tests {
-    use super::sanitize_path_for_node;
+    use super::{
+        build_time_sidecar_env_value, sanitize_path_for_node, BUILD_TIME_SIDECAR_ENV_KEYS,
+        DESKTOP_SHARED_SECRET_KEY, SUPPORTED_SECRET_KEYS,
+    };
     use std::path::Path;
 
     #[test]
@@ -902,6 +923,21 @@ mod sanitize_path_tests {
             sanitize_path_for_node(raw),
             r"C:\Users\alice\sidecar\local-api-server.mjs".to_string()
         );
+    }
+
+    #[test]
+    fn supports_desktop_shared_secret_for_keychain_injection() {
+        assert!(SUPPORTED_SECRET_KEYS.contains(&DESKTOP_SHARED_SECRET_KEY));
+    }
+
+    #[test]
+    fn supports_desktop_shared_secret_for_packaged_sidecar_env() {
+        assert!(BUILD_TIME_SIDECAR_ENV_KEYS.contains(&DESKTOP_SHARED_SECRET_KEY));
+    }
+
+    #[test]
+    fn ignores_unknown_build_time_sidecar_env_keys() {
+        assert_eq!(build_time_sidecar_env_value("NOT_A_SUPPORTED_SIDECAR_KEY"), None);
     }
 }
 
@@ -1136,11 +1172,11 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
         &format!("injected {secret_count} keychain secrets into sidecar env"),
     );
 
-    // Inject build-time secrets (CI) with runtime env fallback (dev)
-    if let Some(url) = option_env!("CONVEX_URL") {
-        cmd.env("CONVEX_URL", url);
-    } else if let Ok(url) = std::env::var("CONVEX_URL") {
-        cmd.env("CONVEX_URL", url);
+    // Inject packaged secrets (CI) with runtime env fallback (dev).
+    for key in BUILD_TIME_SIDECAR_ENV_KEYS {
+        if let Some(value) = sidecar_env_value(key) {
+            cmd.env(key, value);
+        }
     }
 
     let child = cmd

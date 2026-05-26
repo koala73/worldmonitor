@@ -1,8 +1,4 @@
 {
-  "app": {
-    "title": "월드 모니터",
-    "description": "AI 인사이트 기반 글로벌 상황"
-  },
   "countryBrief": {
     "identifying": "국가 식별 중...",
     "locating": "지역 탐색 중...",
@@ -28,7 +24,7 @@
     "components": {
       "unrest": "소요",
       "conflict": "분쟁",
-      "security": "안보",
+      "security": "군사 활동",
       "information": "정보"
     },
     "signals": {
@@ -120,7 +116,6 @@
       "internetOutages": "{{count}}건의 인터넷 장애",
       "recentEarthquakes": "{{count}}건의 최근 지진",
       "stockIndex": "주가 지수: {{value}}",
-      "recentHeadlines": "**최근 헤드라인:**",
       "activeStrikes": "{{count}}건의 활성 공습 감지"
     },
     "countryFacts": "국가 정보",
@@ -151,9 +146,7 @@
     "filterSources": "소스 필터...",
     "sourcesEnabled": "{{enabled}}/{{total}} 활성화됨",
     "finance": "금융",
-    "toggleTheme": "다크/라이트 모드 전환",
     "panelDisplayCaption": "대시보드에 표시할 패널을 선택하세요",
-    "tabGeneral": "일반",
     "tabSettings": "설정",
     "tabPanels": "패널",
     "tabSources": "소스",
@@ -204,7 +197,17 @@
     "panelCatCentralBanks": "중앙은행 & 경제",
     "panelCatDeals": "딜 & 기관",
     "panelCatGulfMena": "걸프 & MENA",
-    "panelCatTradePolicy": "통상 정책"
+    "cached": "캐시됨",
+    "unavailable": "사용 불가",
+    "commodity": "상품",
+    "energy": "에너지",
+    "tabNotifications": "알림",
+    "panelCatCorrelation": "상관관계",
+    "panelCatCommodityPrices": "가격 & 시장",
+    "panelCatMining": "채굴 & 공급망",
+    "panelCatCommodityEcon": "경제 & 무역",
+    "panelCatHappyNews": "좋은 소식",
+    "panelCatHappyPlanet": "지구 & 기부"
   },
   "panels": {
     "liveNews": "실시간 뉴스",
@@ -276,13 +279,43 @@
     "techReadiness": "기술 준비 지수",
     "gccInvestments": "GCC 투자",
     "geoHubs": "지정학 허브",
-    "liveYouTube": "실시간 웹캠",
-    "pinnedWebcams": "Pinned Webcams",
     "gulfEconomies": "걸프 경제",
     "gulfIndices": "걸프 지수",
     "gulfCurrencies": "걸프 통화",
     "gulfOil": "걸프 석유",
-    "bigmac": "Real Big Mac Index"
+    "bigmac": "Real Big Mac Index",
+    "marketImplications": "AI 시장 영향",
+    "energyComplex": "에너지 복합체",
+    "oilInventories": "석유 재고",
+    "energyCrisis": "에너지 위기 추적기",
+    "goldIntelligence": "금 인텔리전스",
+    "wsbTickerScanner": "WSB 티커 스캐너",
+    "internetDisruptions": "인터넷 장애",
+    "internetDisruptionsTabs": {
+      "outages": "중단",
+      "ddos": "DDoS",
+      "anomalies": "이상 현상"
+    },
+    "liveWebcams": "라이브 웹캠",
+    "windyWebcams": "Windy 라이브 웹캠",
+    "groceryBasket": "식료품 지수",
+    "groceryItem": "품목",
+    "bigmacDesc": "중동 국가의 빅맥 가격(빅맥 지수)",
+    "bigmacWow": "와우",
+    "bigmacCountry": "국가",
+    "faoFoodPriceIndex": "FAO 식품 가격 지수",
+    "fuelPrices": "연료 가격",
+    "fuelPricesDesc": "30개 이상의 국가에서의 소매 휘발유 및 경유 가격",
+    "fuelPricesCountry": "국가",
+    "fuelPricesGasoline": "휘발유",
+    "fuelPricesDiesel": "경유",
+    "fuelPricesSource": "출처",
+    "groceryBasketDesc": "전 세계 24개 국가의 식료품 바구니 가격 비교",
+    "airlineIntel": "✈️ 항공사 인텔리전스",
+    "consumerPrices": "소비자 물가",
+    "fearGreed": "공포 & 탐욕",
+    "marketBreadth": "시장 폭",
+    "climateNews": "기후 뉴스"
   },
   "commands": {
     "prefixes": {
@@ -320,7 +353,9 @@
       "briefExample": "brief china",
       "layersExample": "military layers",
       "timeExample": "24h",
-      "settingsExample": "dark mode"
+      "settingsExample": "dark mode",
+      "flight": "콜사인으로 실시간 항공편 검색 (PRO)",
+      "flightExample": "UAE528"
     },
     "keywords": {
       "military": "군사",
@@ -381,11 +416,8 @@
   "modals": {
     "search": {
       "placeholder": "검색 또는 명령어 입력...",
-      "hint": "검색 • 국가 • 레이어 • 패널 • 탐색 • 설정",
       "placeholderTech": "검색 또는 명령어 입력...",
-      "hintTech": "검색 • 기업 • AI 연구소 • 레이어 • 탐색 • 설정",
       "placeholderFinance": "검색 또는 명령어 입력...",
-      "hintFinance": "검색 • 거래소 • 시장 • 레이어 • 탐색 • 설정",
       "recent": "최근 검색",
       "empty": "데이터를 검색하거나 명령어를 실행하세요",
       "noResults": "결과 없음",
@@ -416,8 +448,15 @@
         "startup": "스타트업",
         "techevent": "기술 이벤트",
         "techhq": "기술 본사",
-        "accelerator": "액셀러레이터"
-      }
+        "accelerator": "액셀러레이터",
+        "flight": "항공편"
+      },
+      "flightOnGround": "지상",
+      "flightAirborne": "FL{{fl}} · {{kts}} kts",
+      "flightMilitary": "군용기 · {{type}} · FL{{fl}}",
+      "flightMilitaryOnGround": "군용기 · {{type}} · 지상",
+      "flightSearchHint": "Enter를 누르거나 클릭하여 실시간 위치 조회",
+      "flightNotFound": "{{callsign}}의 실시간 위치를 찾을 수 없음"
     },
     "signal": {
       "title": "정보 발견",
@@ -442,7 +481,6 @@
       "action": "조치:",
       "note": "참고:",
       "suppress": "이 용어 숨기기",
-      "suppressed": "숨겨짐",
       "predictionLeading": "예측 선행",
       "newsLeading": "뉴스 선행",
       "silentDivergence": "잠재적 괴리",
@@ -479,15 +517,13 @@
       "gotIt": "확인"
     },
     "downloadBanner": {
-      "title": "데스크톱 앱 이용 가능",
       "description": "네이티브 성능, 안전한 로컬 키 저장, 오프라인 지도 타일.",
       "macSilicon": "macOS (Apple Silicon)",
       "macIntel": "macOS (Intel)",
       "windows": "Windows (.exe)",
       "linux": "Linux (.AppImage)",
       "showAllPlatforms": "모든 플랫폼 보기",
-      "showLess": "접기",
-      "dismiss": "닫기"
+      "showLess": "접기"
     },
     "runtimeConfig": {
       "title": "데스크톱 구성",
@@ -496,7 +532,6 @@
         "needsKeys": "기능을 활성화하려면 API 키를 구성하세요",
         "some": "일부 기능에 API 키가 필요합니다"
       },
-      "openSettings": "설정 열기",
       "skipSetup": "설정을 건너뛰세요 — 하나의 World Monitor 라이선스로 모든 것을 이용할 수 있습니다. 대기 목록에 등록하여 조기 액세스를 받으세요.",
       "summary": {
         "desktop": "데스크톱 모드",
@@ -525,7 +560,8 @@
         "NASA_FIRMS_API_KEY": "자원 관리 시스템을 위한 화재 정보.",
         "OLLAMA_API_URL": "예: http://127.0.0.1:11434 (Ollama) 또는 http://127.0.0.1:1234/v1 (LM Studio) — OpenAI 호환 엔드포인트.",
         "OLLAMA_MODEL": "예: llama3.1:8b — 요약에 사용할 모델 태그."
-      }
+      },
+      "reserveEarlyAccess": "조기 접근 예약"
     },
     "settingsWindow": {
       "validating": "API 키 검증 중...",
@@ -542,30 +578,17 @@
       "sidecarUnreachable": "사이드카에 연결할 수 없습니다.",
       "logCleared": "로그가 삭제되었습니다.",
       "worldMonitor": {
-        "tabLabel": "World Monitor",
-        "heroTitle": "하나의 키. 모든 것이 포함됩니다.",
-        "heroDescription": "하나의 World Monitor 라이선스로 직접 구성해야 하는 모든 API 키와 LLM 프로바이더를 대체합니다. AI 요약, 실시간 정보, 시장 데이터, 분쟁 추적, 화재 감지, 위성 이미지 — 모두 지원되고, 모두 관리되며, 설정이 필요 없습니다.",
         "apiKey": {
           "title": "라이선스 키",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "라이선스를 붙여넣으면 모든 데이터 소스와 AI 기능이 즉시 활성화됩니다.",
-          "statusValid": "라이선스 활성",
-          "statusMissing": "라이선스 없음"
+          "description": "라이선스를 붙여넣으면 모든 데이터 소스와 AI 기능이 즉시 활성화됩니다."
         },
         "dividerOr": "또는",
         "register": {
           "title": "슬롯을 예약하세요",
           "description": "World Monitor 라이선스 출시를 준비하고 있습니다. 지금 등록하고 가장 먼저 — 초기 회원은 우선 액세스 및 창립 멤버 가격을 받게 됩니다.",
-          "emailPlaceholder": "your@email.com",
-          "submitBtn": "대기 목록 등록",
-          "submitting": "제출 중...",
-          "success": "목록에 등록되었습니다! 가장 먼저 알려드리겠습니다.",
-          "alreadyRegistered": "이미 대기 목록에 등록되어 있습니다.",
-          "error": "등록에 실패했습니다. 다시 시도해 주세요.",
-          "invalidEmail": "유효한 이메일 주소를 입력하세요."
-        },
-        "byokTitle": "또는 직접 키를 사용하세요",
-        "byokDescription": "완전한 제어를 원하시나요? API 키 및 LLM 탭에서 각 데이터 소스와 AI 프로바이더를 개별적으로 구성하세요."
+          "submitBtn": "대기 목록 등록"
+        }
       },
       "table": {
         "time": "시간",
@@ -573,7 +596,13 @@
         "path": "경로",
         "status": "상태",
         "duration": "소요 시간"
-      }
+      },
+      "shellTitle": "World Monitor 설정",
+      "shellSearchPlaceholder": "설정 검색...",
+      "shellCancel": "취소",
+      "shellSaveClose": "저장 및 닫기",
+      "freePanelLimit": "무료 플랜: 최대 {{max}}개 패널. PRO로 업그레이드하면 무제한.",
+      "freeSourceLimit": "무료 플랜: 최대 {{max}}개 소스. PRO로 업그레이드하면 무제한."
     },
     "countryIntel": {
       "identifying": "국가 식별 중...",
@@ -615,7 +644,7 @@
       "components": {
         "unrest": "소요",
         "conflict": "분쟁",
-        "security": "안보",
+        "security": "군사 활동",
         "information": "정보"
       },
       "signals": {
@@ -643,40 +672,14 @@
         "base": "군사 기지",
         "nuclear": "인근 핵시설",
         "port": "항구"
-      },
-      "levels": {
-        "critical": "심각",
-        "high": "높음",
-        "elevated": "경계",
-        "moderate": "보통",
-        "normal": "정상",
-        "low": "낮음"
-      },
-      "trends": {
-        "rising": "상승",
-        "falling": "하락",
-        "stable": "안정"
-      },
-      "fallback": {
-        "instabilityIndex": "**불안정 지수: {{score}}/100** ({{level}}, {{trend}})",
-        "protestsDetected": "{{count}}건의 활성 시위 감지",
-        "aircraftTracked": "{{count}}대의 군용 항공기 추적 중",
-        "vesselsTracked": "{{count}}척의 군함 추적 중",
-        "activeStrikes": "{{count}}건의 활성 공습 감지",
-        "internetOutages": "{{count}}건의 인터넷 장애",
-        "recentEarthquakes": "{{count}}건의 최근 지진",
-        "stockIndex": "주가 지수: {{value}}",
-        "recentHeadlines": "**최근 헤드라인:**"
       }
     }
   },
   "components": {
     "webcams": {
-      "expand": "확장",
       "paused": "웹캠 일시정지됨",
       "pausedIdle": "웹캠 일시정지됨 — 마우스를 움직여 재개",
       "regions": {
-        "iran": "이란 공습",
         "all": "전체",
         "mideast": "중동",
         "europe": "유럽",
@@ -693,7 +696,9 @@
       "summarizing": "요약 중…"
     },
     "progressCharts": {
-      "noData": "진행 데이터가 없습니다"
+      "noData": "진행 데이터가 없습니다",
+      "fallbackBadge": "정적 폴백 데이터를 표시 중 — 실시간 시리즈 불가",
+      "fallbackTooltip": "World Bank 실시간 시드에 연결할 수 없습니다. 이 차트는 2026년 2월에 마지막으로 확인된 하드코딩된 스냅샷에서 렌더링되었습니다."
     },
     "monitor": {
       "placeholder": "키워드 (쉼표로 구분)",
@@ -712,8 +717,6 @@
       "countries": "국가",
       "recentActions": "최근 규제 조치 (최근 12개월)",
       "upcomingDeadlines": "예정된 준수 기한",
-      "activeRegulations": "시행 중인 규제",
-      "proposedRegulations": "제안된 규제",
       "globalLandscape": "글로벌 규제 현황",
       "emptyActions": "최근 규제 조치 없음",
       "emptyDeadlines": "향후 12개월 내 예정된 준수 기한 없음",
@@ -739,30 +742,32 @@
     },
     "economic": {
       "indicators": "경제 지표",
-      "oil": "원유",
       "gov": "정부",
-      "noData": "경제 정보 없음",
-      "noOilData": "원유 정보 없음",
-      "noOilMetrics": "원유 지표를 사용할 수 없습니다. EIA_API_KEY를 추가하여 활성화하세요.",
       "noSpending": "최근 정부 계약 없음",
       "awards": "계약",
       "noIndicatorData": "지표 정보 없음 — FRED를 불러오는 중일 수 있습니다",
       "fredKeyMissing": "FRED API 키 필요 — 설정에서 추가하여 경제 지표를 활성화하세요",
-      "noOilDataRetry": "원유 정보 일시적으로 사용 불가 — 재시도 예정",
-      "vsPreviousWeek": "전주 대비",
       "in": "지역",
       "centralBanks": "중앙은행",
       "laborMarket": "Labor Market",
       "metroUnemployment": "Metro Unemployment",
       "noBisData": "BIS 정보 일시적으로 사용 불가 — 재시도 예정",
       "policyRate": "정책 금리",
-      "exchangeRate": "환율",
       "creditToGdp": "신용 / GDP",
       "realEer": "실질 실효환율",
-      "change": "변동",
       "cut": "인하",
       "hike": "인상",
-      "hold": "동결"
+      "hold": "동결",
+      "pressure": {
+        "label": "거시 압력",
+        "stress": "스트레스",
+        "watch": "주의",
+        "steady": "안정",
+        "stressDetail": "변동성과 곡선 압력이 높음.",
+        "watchDetail": "시장 간 상황을 더 자세히 모니터링해야 함.",
+        "steadyDetail": "거시 상황이 현재 안정적."
+      },
+      "infoTooltip": "<strong>거시 스트레스</strong> 거시 지표, 정부 지출, 중앙은행 데이터:<ul><li><strong>지표</strong>: VIX, 금리, 수익률 곡선, 고용, 인플레이션</li><li><strong>정부</strong>: 최근 미국 정부 계약 낙찰</li><li><strong>중앙은행</strong>: BIS 정책 금리 및 환율 데이터</li></ul>"
     },
     "supplyChain": {
       "chokepoints": "병목 지점",
@@ -771,12 +776,10 @@
       "noChokepoints": "병목 지점 정보 불러오는 중...",
       "noShipping": "해운 운임 정보 없음",
       "noMinerals": "자원 정보 불러오는 중...",
-      "fredKeyMissing": "해운 운임에 FRED API 키 필요 — 설정에서 추가하세요. 병목 지점 및 광물은 키 없이 이용 가능합니다.",
       "upstreamUnavailable": "공급망 정보 일시적으로 사용 불가 — 캐시된 정보 표시 중",
       "spikeAlert": "급등 감지 — 52주 평균(주간)을 크게 상회하는 운임",
       "warnings": "경고",
       "aisDisruptions": "AIS 두절",
-      "routingAction": "Routing",
       "disruption": "Disruption",
       "vessels": "vessels",
       "incidents7d": "incidents (7d)",
@@ -786,46 +789,77 @@
       "mineral": "광물",
       "topProducers": "주요 생산국",
       "risk": "위험도",
-      "sources": "FRED / NGA / USGS"
+      "wowChange": "주간 변화",
+      "riskLevel": "위험 수준",
+      "flowUnavailable": "유동 데이터 미제공",
+      "containerRates": "컨테이너 요금",
+      "bulkShipping": "벌크 해운",
+      "economicIndicators": "경제 지표",
+      "loadingHistory": "통과 이력 로드 중…",
+      "historyUnavailable": "통과 이력 미제공",
+      "transitDataUnavailable": "통과 데이터 미제공 (업스트림 부분)",
+      "infoTooltip": "<strong>공급망 모니터</strong> 글로벌 물류 및 자원 추적:<ul><li><strong>병목지점</strong>: 해상 통과 상태, 지장 점수, 선박 수</li><li><strong>해운</strong>: 발틱 건화물지수 및 운임 추세</li><li><strong>광물</strong>: 주요 광물 집중 위험(HHI) 및 주요 생산국</li></ul>병목지점 카드를 클릭하면 통과 이력 차트가 확대됩니다."
     },
     "tradePolicy": {
-      "restrictions": "제한 조치",
       "tariffs": "관세",
       "flows": "무역 흐름",
       "barriers": "무역 장벽",
-      "noRestrictions": "시행 중인 무역 제한 없음",
       "noTariffData": "관세 정보 없음",
       "noFlowData": "무역 흐름 정보 없음",
       "noBarriers": "보고된 무역 장벽 없음",
       "apiKeyMissing": "WTO API 키 필요 — 설정에서 추가하세요",
       "upstreamUnavailable": "WTO 정보 일시적으로 사용 불가 — 캐시된 정보 표시 중",
-      "appliedRate": "실행 관세율",
-      "boundRate": "양허 관세율",
       "exports": "수출",
       "imports": "수입",
       "yoyChange": "전년 대비 변동",
       "highTariff": "높음",
       "moderateTariff": "보통",
-      "lowTariff": "낮음"
+      "lowTariff": "낮음",
+      "overview": "개요",
+      "noOverviewData": "관세 개요 데이터 미제공",
+      "mfnAppliedRate": "최혜국 적용 요금",
+      "baselineMfnTariff": "최혜국 기준 관세",
+      "effectiveTariffRateLabel": "유효 관세율",
+      "gapLabel": "격차",
+      "gapVsMfnLabel": "최혜국 대비 격차",
+      "noEffectiveCoverageForCountry": "이 국가에 대한 유효율 적용 범위 없음",
+      "effectiveMinusBaseline": "유효율 - WTO 최혜국 기준",
+      "wtoBaselineMeta": "WTO 최혜국 적용 요금 | {{year}}",
+      "overviewNoteNoEffective": "이 수치는 WTO 최혜국 기준 요금이며 일방적 관세 조치로 인한 현재 관세 부담이 아닙니다.",
+      "usBaselineLabel": "미국 WTO 최혜국 기준",
+      "overviewNoteTail": "이 카드는 WTO 기준 약정을 나타내며 실시간 유효 관세 부담이 아닙니다.",
+      "revenue": "미국 수입",
+      "noRevenueData": "관세 수입 데이터 미제공",
+      "treasuryUnavailable": "재무부 데이터 일시 미제공",
+      "fytdLabel": "FY{{year}} YTD",
+      "vsPriorFy": "FY{{year}} 대비",
+      "sourceWto": "WTO",
+      "sourceTreasury": "미국 재무부",
+      "colDate": "날짜",
+      "colMonthly": "월별",
+      "colFytd": "회계연도 YTD",
+      "strategicFlows": "전략적 흐름",
+      "noComtradeData": "전략적 흐름 데이터 미제공",
+      "comtradeUnavailable": "UN Comtrade 데이터 일시 미제공",
+      "sourceComtrade": "UN Comtrade",
+      "anomalyBadge": "이상",
+      "colReporter": "국가",
+      "colCommodity": "상품",
+      "colTradeValue": "무역액",
+      "infoTooltip": "<strong>무역 정책</strong> WTO 기준 및 관세 영향 모니터링:<ul><li><strong>개요</strong>: WTO 최혜국 기준 요금 및 미국 유효율 맥락(제공 시)</li><li><strong>관세</strong>: WTO 최혜국 관세 추세 vs 미국 유효 관세 추정치</li><li><strong>무역 흐름</strong>: 수출입량 및 전년 대비 변화</li><li><strong>장벽</strong>: 무역 기술 장벽(TBT/SPS) 통지</li><li><strong>수입</strong>: 월별 미국 관세 수입(미국 재무부 MTS 데이터)</li></ul>"
     },
     "gdelt": {
       "empty": "이 주제에 대한 최근 기사 없음"
     },
     "geoHubs": {
-      "tooltip": "<strong>지정학적 활동 허브</strong><br>뉴스 활동이 가장 많은 지역을 표시합니다.<br><br><em>허브 유형:</em><br>• 🏛️ 수도 — 세계 수도 및 정부 중심지<br>• ⚔️ 분쟁 지역 — 활성 분쟁 지역<br>• ⚓ 전략적 — 병목 지점 및 주요 지역<br>• 🏢 기구 — UN, NATO, IAEA 등<br><br><em>활동 수준:</em><br>• <span style=\"color: #ff4444\">높음</span> — 속보 또는 점수 70+<br>• <span style=\"color: #ff8844\">경계</span> — 점수 40-69<br>• <span style=\"color: #888\">낮음</span> — 점수 40 미만<br><br>허브를 클릭하면 해당 위치로 이동합니다.",
-      "noActive": "활성 지정학적 허브 없음",
       "story": "기사",
       "stories": "기사",
       "infoTooltip": "<strong>지정학적 활동 허브</strong><br>뉴스 활동이 가장 많은 지역을 표시합니다.<br><br><em>허브 유형:</em><br>• 🏛️ 수도 — 세계 수도 및 정부 중심지<br>• ⚔️ 분쟁 지역 — 활성 분쟁 지역<br>• ⚓ 전략적 — 병목 지점 및 주요 지역<br>• 🏢 기구 — UN, NATO, IAEA 등<br><br><em>활동 수준:</em><br>• <span style=\"color: {{highColor}}\">높음</span> — 속보 또는 점수 70+<br>• <span style=\"color: {{elevatedColor}}\">경계</span> — 점수 40-69<br>• <span style=\"color: {{lowColor}}\">낮음</span> — 점수 40 미만<br><br>허브를 클릭하면 해당 위치로 이동합니다."
     },
     "techHubs": {
-      "tooltip": "<strong>기술 허브 활동</strong><br>뉴스 활동이 가장 많은 기술 허브를 표시합니다.<br><br><em>활동 수준:</em><br>• <span style=\"color: #00ff88\">높음</span> — 속보 또는 점수 50+<br>• <span style=\"color: #ffc800\">경계</span> — 점수 20-49<br>• <span style=\"color: #888\">낮음</span> — 점수 20 미만<br><br>허브를 클릭하면 해당 위치로 이동합니다.",
-      "noActive": "활성 기술 허브 없음",
       "infoTooltip": "<strong>기술 허브 활동</strong><br>뉴스 활동이 가장 많은 기술 허브를 표시합니다.<br><br><em>활동 수준:</em><br>• <span style=\"color: {{highColor}}\">높음</span> — 속보 또는 점수 50+<br>• <span style=\"color: {{elevatedColor}}\">경계</span> — 점수 20-49<br>• <span style=\"color: {{lowColor}}\">낮음</span> — 점수 20 미만<br><br>허브를 클릭하면 해당 위치로 이동합니다."
     },
     "predictions": {
-      "tooltip": "<strong>예측 시장</strong><br>실제 자금 기반 예측 시장:<br><ul><li>가격은 군중의 확률 추정치를 반영</li><li>거래량이 높을수록 신뢰도가 높은 신호</li><li>지정학 및 시사 이벤트 중심</li></ul>출처: Polymarket (polymarket.com)",
-      "error": "예측 정보 로딩 실패",
       "yes": "예",
       "no": "아니오",
       "vol": "거래량",
@@ -837,7 +871,6 @@
     "stablecoins": {
       "pegHealth": "페그 건전성",
       "supplyVolume": "공급량 및 거래량",
-      "unavailable": "스테이블코인 정보 일시적으로 사용 불가",
       "token": "토큰",
       "mcap": "시가총액",
       "vol24h": "24시간 거래량",
@@ -845,13 +878,7 @@
       "infoTooltip": "<strong>Stablecoins</strong> Peg health, market cap, and 24h volume for major USD-pegged tokens (USDT, USDC, DAI, BUSD). A broken peg signals systemic risk."
     },
     "status": {
-      "dataFeeds": "데이터 피드",
-      "apiStatus": "API 상태",
-      "storage": "저장소",
-      "systemStatus": "시스템 상태",
-      "updatedJustNow": "방금 업데이트됨",
-      "updatedAt": "{{time}}에 업데이트됨",
-      "storageUnavailable": "저장소 정보 없음"
+      "updatedAt": "{{time}}에 업데이트됨"
     },
     "playback": {
       "toggleMode": "재생 모드 전환",
@@ -947,14 +974,16 @@
         "east-med-theater": "동지중해",
         "israel-gaza-theater": "이스라엘/가자",
         "yemen-redsea-theater": "예멘/홍해"
-      }
+      },
+      "emojiKeyLabel": "이모지 범례",
+      "emojiKeyAir": "항공 자산",
+      "emojiKeyNaval": "해상 자산"
     },
     "countryBrief": {
       "shareLink": "링크 공유",
       "shareStory": "기사 공유",
       "printPdf": "인쇄 / PDF",
-      "exportData": "데이터 내보내기",
-      "sourceRef": "출처 [{{n}}]"
+      "exportData": "데이터 내보내기"
     },
     "relatedAssets": {
       "pipeline": "파이프라인",
@@ -964,10 +993,7 @@
       "nuclear": "핵 시설"
     },
     "community": {
-      "joinDiscussion": "Help Shape What's Next",
-      "openDiscussion": "Join Discord",
-      "dontShowAgain": "다시 표시하지 않기",
-      "sectionLabel": "커뮤니티"
+      "joinDiscussion": "Help Shape What's Next"
     },
     "threatLabels": {
       "critical": "심각",
@@ -998,11 +1024,14 @@
         "base": "기지",
         "nuclear": "핵",
         "aircraft": "항공기",
-        "ciiLow": "낮음 (0–30)",
-        "ciiNormal": "보통 (31–50)",
-        "ciiElevated": "경계 (51–65)",
-        "ciiHigh": "높음 (66–80)",
-        "ciiCritical": "심각 (81–100)"
+        "miningSite": "광산",
+        "commodityPort": "상품 항구",
+        "pipeline": "파이프라인",
+        "processingPlant": "처리 시설",
+        "conflict": "분쟁 지역",
+        "diseaseAlert": "질병 경보",
+        "diseaseWarning": "질병 경고",
+        "diseaseWatch": "질병 관찰"
       },
       "layerGuide": "레이어 가이드",
       "layerWarningTitle": "성능 안내",
@@ -1067,7 +1096,9 @@
         "kindness": "선행",
         "happiness": "세계 행복도",
         "speciesRecovery": "종 복원",
-        "renewableInstallations": "클린 에너지"
+        "renewableInstallations": "클린 에너지",
+        "radiationSpike": "방사능 급증",
+        "radiationElevated": "상승된 방사능"
       },
       "tooltip": {
         "earthquake": "지진",
@@ -1181,9 +1212,10 @@
       }
     },
     "cii": {
-      "shareStory": "기사 공유",
       "noSignals": "불안정 신호 감지되지 않음",
-      "infoTooltip": "<strong>방법론</strong><ul><li><strong>U</strong>nrest: 시민 소요 및 시위</li><li><strong>C</strong>onflict: 무력 분쟁 강도</li><li><strong>S</strong>ecurity: 영토 상공 군용기/함정</li><li><strong>I</strong>nformation: 뉴스 속도 및 핵심 지점 상관관계</li><li>핫스팟 근접 가산점 (전략적 위치)</li></ul><em>U:C:S:I 값은 구성 요소 점수를 표시합니다.</em> 핵심 지점 감지는 뉴스 개체와 지도 신호를 상관 분석하여 정확한 점수를 산출합니다."
+      "infoTooltip": "<strong>방법론</strong><ul><li><strong>U</strong>nrest: 시민 소요 및 시위</li><li><strong>C</strong>onflict: 무력 분쟁 강도</li><li><strong>S</strong>ecurity: 영토 상공 군용기/함정</li><li><strong>I</strong>nformation: 뉴스 속도 및 핵심 지점 상관관계</li><li>핫스팟 근접 가산점 (전략적 위치)</li></ul><em>U:C:S:I 값은 구성 요소 점수를 표시합니다.</em> 핵심 지점 감지는 뉴스 개체와 지도 신호를 상관 분석하여 정확한 점수를 산출합니다.",
+      "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
+      "methodologyLink": "국가별 기준선 + 이벤트 승수 포함 — 공개된 표는 /docs/methodology/cii-risk-scores 참조"
     },
     "insights": {
       "noStories": "아직 속보 또는 다중 출처 기사 없음",
@@ -1193,14 +1225,8 @@
       "analyzingSentiment": "감성 분석 중...",
       "generatingBrief": "세계 브리핑 생성 중...",
       "infoTooltip": "<strong>AI 기반 분석</strong><br>• <strong>세계 브리핑</strong>: AI 요약 (Groq/OpenRouter)<br>• <strong>감성</strong>: 뉴스 논조 분석<br>• <strong>속도</strong>: 빠르게 전개되는 기사<br>• <strong>핵심 지점</strong>: 뉴스 개체와 지도 신호 상관 분석 (군사, 시위, 장애)<br><em>데스크톱 전용 • Llama 3.3 + 핵심 지점 감지 기반</em>",
-      "settingsTitle": "설정",
-      "sectionMap": "지도",
-      "sectionAi": "AI 분석",
-      "sectionStreaming": "스트리밍",
       "streamQualityLabel": "영상 품질",
       "streamQualityDesc": "모든 라이브 스트림의 품질 설정 (낮추면 대역폭 절약)",
-      "globeRenderQualityLabel": "지구본 렌더링 품질",
-      "globeRenderQualityDesc": "지구본 캔버스 해상도를 제어합니다. 높은 값은 4K 디스플레이에서 선명하지만 GPU에 부담을 줄 수 있습니다.",
       "globeRenderScaleOptions": {
         "1": "에코 (1x)",
         "2": "4K (2x)",
@@ -1210,7 +1236,6 @@
       },
       "mapFlashLabel": "실시간 이벤트 펄스",
       "mapFlashDesc": "속보 수신 시 지도에서 해당 위치를 깜박임",
-      "aiFlowTitle": "설정",
       "aiFlowCloudLabel": "클라우드 AI (Groq 및 OpenRouter)",
       "aiFlowCloudDesc": "헤드라인을 클라우드로 전송하여 AI 요약 (권장)",
       "aiFlowBrowserLabel": "브라우저 로컬 모델",
@@ -1225,17 +1250,49 @@
       "aiFlowStatusDisabled": "AI 제공자 비활성화됨",
       "insightsDisabledTitle": "AI 분석이 비활성화되었습니다",
       "insightsDisabledHint": "지도 헤더의 설정 기어를 통해 제공자를 활성화하세요",
-      "sectionPanels": "패널",
       "badgeAnimLabel": "배지 애니메이션",
       "badgeAnimDesc": "패널 헤더의 업데이트 배지 애니메이션",
-      "sectionIntelligence": "인텔리전스",
       "headlineMemoryLabel": "헤드라인 메모리",
       "headlineMemoryDesc": "본 헤드라인을 기억하여 새 기사 강조",
       "streamAlwaysOnLabel": "라이브 스트림 계속 실행",
-      "streamAlwaysOnDesc": "유휴 상태일 때 Live Cams와 Live News가 자동으로 일시중지되는 것을 방지합니다. 보조 모니터 / 월보드 용도에 권장됩니다. CPU/대역폭 절약을 위해 (Eco)를 끄세요."
+      "streamAlwaysOnDesc": "유휴 상태일 때 Live Cams와 Live News가 자동으로 일시중지되는 것을 방지합니다. 보조 모니터 / 월보드 용도에 권장됩니다. CPU/대역폭 절약을 위해 (Eco)를 끄세요.",
+      "analysisFrameworksLabel": "분석 프레임워크",
+      "analysisFrameworksActivePerPanel": "패널당 활성",
+      "analysisFrameworksSkillLibrary": "스킬 라이브러리",
+      "analysisFrameworksImportBtn": "프레임워크 가져오기",
+      "analysisFrameworksDefaultNeutral": "기본 (중립)",
+      "analysisFrameworksImportTitle": "프레임워크 가져오기",
+      "analysisFrameworksFromAgentskills": "agentskills.io에서",
+      "analysisFrameworksPasteJson": "JSON 붙여넣기",
+      "analysisFrameworksSaveToLibrary": "라이브러리에 저장",
+      "frameworkNote": "클라이언트가 생성한 분석에만 적용됨",
+      "loadingServerInsights": "서버 인사이트 로드 중...",
+      "usingCachedBrief": "캐시된 브리프 사용 중...",
+      "multiPerspectiveAnalysis": "다각도 분석...",
+      "generatingBriefSub": "브리프 생성 중: {{msg}}",
+      "breakingConfirmed": "속보 & 확인됨",
+      "multiSource": "다중 출처",
+      "fastMoving": "빠르게 변동",
+      "clusters": "클러스터",
+      "alertsLabel": "알림",
+      "alert": "알림",
+      "sources_one": "{{count}}개 출처",
+      "sources_other": "{{count}}개 출처",
+      "briefTech": "기술 브리프",
+      "briefCommodity": "상품 브리프",
+      "briefEnergy": "에너지 브리프",
+      "briefWorld": "세계 브리프",
+      "mlDetected": "ML 감지됨",
+      "geographicConvergence": "지역 수렴",
+      "focalPoints": "초점 영역",
+      "toneMixed": "혼합",
+      "toneNegative": "부정적",
+      "tonePositive": "긍정적",
+      "overall": "전체: {{tone}}",
+      "signalTypesEvents": "{{types}}개 신호 유형 • {{events}}개 이벤트",
+      "newsSignals": "{{news}}개 뉴스 • {{signals}}개 신호"
     },
     "settings": {
-      "dataManagementLabel": "데이터 관리",
       "exportSettings": "설정 내보내기",
       "importSettings": "설정 가져오기",
       "exportSuccess": "설정을 성공적으로 내보냈습니다",
@@ -1245,7 +1302,6 @@
       "reloadNow": "지금 새로고침"
     },
     "cascade": {
-      "noImpacts": "국가 영향 감지되지 않음",
       "filters": {
         "cables": "케이블",
         "pipelines": "파이프라인",
@@ -1319,7 +1375,6 @@
       "noEvents": "표시할 이벤트 없음",
       "showOnMap": "지도에 표시",
       "moreInfo": "자세히 보기",
-      "retry": "재시도",
       "upcoming": "예정",
       "conferences": "컨퍼런스",
       "earnings": "실적 발표",
@@ -1343,10 +1398,10 @@
       "analyzingCountries": "200개 이상 국가 분석 중...",
       "source": "출처: 세계은행",
       "updated": "업데이트: {{date}}",
-      "infoTooltip": "<strong>글로벌 기술 준비도</strong><br>세계은행 데이터 기반 종합 점수 (0-100):<br><br><strong>표시 지표:</strong><br>🌐 인터넷 사용자 (인구 비율)<br>📱 모바일 가입 (인구 100명당)<br>🔬 R&D 지출 (GDP 비율)<br><br><strong>가중치:</strong> R&D (35%), 인터넷 (30%), 광대역 (20%), 모바일 (15%)<br><br><em>— = 최근 데이터 없음</em><br><em>출처: 세계은행 공개 데이터 (2019-2024)</em>"
+      "infoTooltip": "<strong>글로벌 기술 준비도</strong><br>세계은행 데이터 기반 종합 점수 (0-100):<br><br><strong>표시 지표:</strong><br>🌐 인터넷 사용자 (인구 비율)<br>📱 모바일 가입 (인구 100명당)<br>🔬 R&D 지출 (GDP 비율)<br><br><strong>가중치:</strong> R&D (35%), 인터넷 (30%), 광대역 (20%), 모바일 (15%)<br><br><em>— = 최근 데이터 없음</em><br><em>출처: 세계은행 공개 데이터 (2019-2024)</em>",
+      "dataPreparing": "기술 준비도 데이터 새로고침 중 — 곧 표시됩니다."
     },
     "populationExposure": {
-      "noData": "노출 정보 없음",
       "totalAffected": "총 영향 인구",
       "affectedCount": "{{count}}명 영향",
       "radiusKm": "{{km}}km 반경",
@@ -1379,16 +1434,12 @@
       "noAlerts": "활성 공습 경보 없음 — 안전",
       "notConfigured": "공습 경보 서비스가 구성되지 않음",
       "activeSirens": "{{count}}개 활성 공습 경보",
-      "area": "지역",
-      "time": "시간",
       "justNow": "방금",
-      "historyCount": "최근 24시간 {{count}}개 경보",
       "historySummary": "24시간 내 {{count}}건의 경보 — {{waves}}회 파동",
       "loadingHistory": "이력 불러오는 중...",
       "infoTooltip": "<strong>Israel Sirens</strong><br>Real-time rocket and missile siren alerts from Israel Home Front Command.<br><br>Data is polled every 10 seconds. A pulsing red indicator means active sirens are sounding."
     },
     "satelliteFires": {
-      "noData": "화재 데이터 없음",
       "region": "지역",
       "fires": "화재",
       "high": "높음",
@@ -1399,7 +1450,9 @@
         "minutesAgo": "{{count}}m 전",
         "hoursAgo": "{{count}}h 전"
       },
-      "infoTooltip": "NASA FIRMS VIIRS 위성 열 감지. 감시 대상 분쟁 지역 전체. 고강도 = 밝기 >360K 및 신뢰도 >80%."
+      "infoTooltip": "NASA FIRMS VIIRS 위성 열 감지. 감시 대상 분쟁 지역 전체. 고강도 = 밝기 >360K 및 신뢰도 >80%.",
+      "possibleExplosions": "{{count}}건의 폭발 가능성 감지됨",
+      "explosionTooltip": "열 서명이 폭발과 일치함 (FRP >80 MW, 밝기 >380 K)"
     },
     "ucdpEvents": {
       "stateBased": "국가 기반",
@@ -1411,7 +1464,6 @@
       "actors": "행위자",
       "deathsCount": "사망자 {{count}}명",
       "moreNotShown": "{{count}}건의 추가 사건 미표시",
-      "noEvents": "이 카테고리에 사건 없음",
       "infoTooltip": "<strong>UCDP 지리참조 사건</strong> 웁살라 대학교의 사건 수준 분쟁 데이터.<ul><li><strong>국가 기반</strong>: 정부 대 반군</li><li><strong>비국가</strong>: 무장 단체 대 무장 단체</li><li><strong>일방적</strong>: 민간인 대상 폭력</li></ul>사망자는 최선 추정치(하한-상한 범위)로 표시. ACLED 중복은 자동으로 필터링됩니다."
     },
     "giving": {
@@ -1443,7 +1495,6 @@
       "infoTooltip": "<strong>글로벌 기부 활동 지수</strong> 크라우드펀딩 플랫폼 및 암호화폐 지갑을 통한 개인 기부를 추적하는 종합 지수.<ul><li><strong>플랫폼</strong>: GoFundMe, GlobalGiving, JustGiving 캠페인 샘플링</li><li><strong>암호화폐</strong>: 온체인 자선 지갑 유입 (Endaoment, Giving Block)</li><li><strong>기관</strong>: OECD ODA, CAF 세계 기부 지수, Candid 보조금</li></ul>지수는 방향성 지표입니다 (정확한 금액 아님). 실시간 샘플링과 연간 보고서를 결합합니다."
     },
     "displacement": {
-      "noData": "데이터 없음",
       "refugees": "난민",
       "asylumSeekers": "망명 신청자",
       "idps": "국내 실향민",
@@ -1480,19 +1531,15 @@
       "summaryError": "요약을 생성할 수 없습니다",
       "summaryFailed": "요약 실패",
       "sources": "{{count}}개 출처",
-      "relatedAssetsNear": "{{location}} 인근 관련 자산"
-    },
-    "export": {
-      "exportData": "데이터 내보내기"
-    },
-    "runtimeConfig": {
-      "getApiKey": "API 키 발급"
+      "relatedAssetsNear": "{{location}} 인근 관련 자산",
+      "sortBy": "정렬 기준",
+      "sortNewest": "최신순",
+      "sortRelevance": "관련성"
     },
     "breakingNews": {
       "critical": "심각",
       "high": "높음",
-      "dismiss": "닫기",
-      "enableNotifications": "데스크톱 알림 활성화"
+      "dismiss": "닫기"
     },
     "intelligenceFindings": {
       "breakingAlerts": "긴급 경보",
@@ -1546,9 +1593,7 @@
       "filterAll": "전체",
       "filterBreaking": "속보",
       "filterConflict": "분쟁",
-      "filterAlerts": "경보",
       "filterOsint": "OSINT",
-      "filterPolitics": "정치",
       "filterMiddleeast": "중동",
       "live": "실시간",
       "viewSource": "출처 보기",
@@ -1572,7 +1617,6 @@
       "asset": "자산",
       "country": "국가",
       "sector": "업종",
-      "status": "상태",
       "investment": "투자",
       "year": "연도",
       "noMatch": "필터에 일치하는 투자 없음",
@@ -1610,7 +1654,8 @@
         "estFlow": "추정 흐름",
         "volume": "거래량",
         "change": "변동"
-      }
+      },
+      "infoTooltip": "<strong>BTC ETF 추적기</strong> 미국 현물 비트코인 ETF의 일일 예상 펀드 플로우 추적:<ul><li>유입/유출 방향 및 규모</li><li>펀드별 거래량 및 가격 변화</li><li>추적 대상 모든 ETF의 순 집계 플로우</li></ul>"
     },
     "macroSignals": {
       "overall": "종합",
@@ -1627,15 +1672,19 @@
         "hashRate": "해시레이트",
         "momentum": "Momentum",
         "fearGreed": "공포 & 탐욕"
-      }
+      },
+      "infoTooltip": "<strong>BTC 레짐</strong> 비트코인 포지셔닝 및 위험 선호도를 위한 복합 신호 대시보드:<ul><li><strong>유동성</strong>: 연방준비제도 순 유동성 대체 지표</li><li><strong>플로우</strong>: BTC vs QQQ 5일 수익률</li><li><strong>레짐</strong>: QQQ vs XLP 회전 (위험 온/오프)</li><li><strong>BTC 추세</strong>: 가격 vs SMA50/200, Mayer Multiple</li><li><strong>해시율</strong>: 30일 네트워크 해시 변화</li><li><strong>공포 & 탐욕</strong>: 시장 심리 지수</li></ul>이 패널은 레짐 및 포지셔닝용이며, 광범위한 거시 데이터용이 아닙니다."
     },
     "panel": {
       "showMethodologyInfo": "방법론 정보 표시",
       "dragToResize": "드래그하여 크기 조정 (더블클릭으로 초기화)",
-      "openSettings": "설정 열기"
+      "openSettings": "설정 열기",
+      "closePanel": "패널 닫기",
+      "collapsePanel": "패널 축소",
+      "expandPanel": "패널 확장",
+      "addPanel": "패널 추가"
     },
     "languageSelector": {
-      "selectLanguage": "언어 선택",
       "mapLabelsFallbackVi": "베트남어 지도 라벨은 현재 영어로 대체됩니다."
     },
     "serviceStatus": {
@@ -1644,10 +1693,6 @@
       "ok": "정상",
       "degraded": "저하",
       "outage": "장애",
-      "backendUnavailable": "데스크톱 로컬 백엔드 사용 불가. 클라우드 API로 전환합니다.",
-      "desktopReadiness": "데스크톱 준비 상태",
-      "acceptanceChecks": "수용 검사: {{ready}}/{{total}} 준비 완료 · 키 기반 기능 {{available}}/{{featureTotal}}",
-      "nonParityFallbacks": "비동등 폴백 ({{count}})",
       "categories": {
         "all": "전체",
         "cloud": "클라우드",
@@ -1684,7 +1729,6 @@
       }
     },
     "liveNews": {
-      "retry": "재시도",
       "notLive": "{{name}}은(는) 현재 라이브 중이 아닙니다",
       "cannotEmbed": "{{name}}을(를) 여기서 재생할 수 없습니다 — 지역 제한일 수 있습니다 (오류 {{code}})",
       "botCheck": "YouTube에서 {{name}} 재생을 위해 로그인을 요청합니다",
@@ -1696,17 +1740,13 @@
       "youtubeHandle": "YouTube 핸들 (예: @Channel)",
       "youtubeHandleOrUrl": "YouTube 핸들 또는 URL",
       "displayName": "표시 이름 (선택)",
-      "openPanelSettings": "패널 표시 설정",
       "channelSettings": "채널 설정",
       "save": "저장",
       "cancel": "취소",
-      "confirmDelete": "이 채널을 삭제하시겠습니까?",
-      "confirmTitle": "확인",
       "restoreDefaults": "기본 채널 복원",
       "availableChannels": "사용 가능한 채널",
       "noResults": "\"{{term}}\"과(와) 일치하는 채널이 없습니다",
       "customChannel": "사용자 지정 채널",
-      "regionAll": "전체",
       "regionNorthAmerica": "북미",
       "regionEurope": "유럽",
       "regionLatinAmerica": "중남미",
@@ -1715,17 +1755,23 @@
       "regionAfrica": "아프리카",
       "regionOceania": "오세아니아",
       "invalidHandle": "유효한 YouTube 핸들을 입력하세요 (예: @ChannelName)",
-      "channelNotFound": "YouTube 채널을 찾을 수 없습니다",
       "verifying": "확인 중…",
       "hlsUrl": "HLS 스트림 URL (선택사항)",
       "invalidHlsUrl": "유효한 HLS 스트림 URL (.m3u8)을 입력하세요"
     },
     "map": {
       "showMap": "지도 표시",
-      "hideMap": "지도 숨기기"
+      "hideMap": "지도 숨기기",
+      "clearTrails": "추적 기록 삭제"
     },
     "internetDisruptions": {
-      "infoTooltip": "<strong>Internet Disruptions</strong> Real-time internet outages, DDoS attacks, and traffic anomalies from global network monitoring:<ul><li><strong>Outages</strong>: BGP-detected connectivity failures by country</li><li><strong>DDoS</strong>: Volumetric attack reports by protocol and vector</li><li><strong>Anomalies</strong>: Unusual traffic patterns from Cloudflare Radar</li></ul>"
+      "infoTooltip": "<strong>Internet Disruptions</strong> Real-time internet outages, DDoS attacks, and traffic anomalies from global network monitoring:<ul><li><strong>Outages</strong>: BGP-detected connectivity failures by country</li><li><strong>DDoS</strong>: Volumetric attack reports by protocol and vector</li><li><strong>Anomalies</strong>: Unusual traffic patterns from Cloudflare Radar</li></ul>",
+      "noOutages": "활성 중단 감지 안 됨",
+      "noDdos": "DDoS 데이터 없음",
+      "noAnomalies": "트래픽 이상 감지 안 됨",
+      "byProtocol": "공격 프로토콜",
+      "byVector": "공격 벡터",
+      "topTargets": "상위 대상 국가"
     },
     "commodities": {
       "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress."
@@ -1764,7 +1810,21 @@
       "infoTooltip": "<strong>Central Bank Watch</strong> Latest statements, rate decisions, and communications from the Federal Reserve, ECB, Bank of England, and other major central banks worldwide."
     },
     "airlineIntel": {
-      "infoTooltip": "<strong>항공 인텔리전스</strong> 실시간 항공사 운영 데이터: 노선 중단, 영공 폐쇄, 항공사 권고, 긴급 회항. 항공 당국 NOTAM 및 항공사 공지가 출처."
+      "infoTooltip": "<strong>항공 인텔리전스</strong> 실시간 항공사 운영 데이터: 노선 중단, 영공 폐쇄, 항공사 권고, 긴급 회항. 항공 당국 NOTAM 및 항공사 공지가 출처.",
+      "noOpsData": "운영 데이터 없음 — 로딩 중…",
+      "noFlights": "항공편 없음 — 설정에서 공항을 선택하세요.",
+      "noCarrierData": "항공사 데이터 없음.",
+      "noTrackingData": "항공기 추적 데이터 없음.",
+      "noNews": "항공 뉴스 없음.",
+      "enterRoute": "노선을 입력하고 가격을 검색하세요.",
+      "searchFlights": "항공편 검색",
+      "bestDates": "최적 날짜",
+      "enterRouteAndDate": "노선과 날짜를 입력하여 검색",
+      "enterDateRange": "노선과 날짜 범위를 입력하세요",
+      "degradedResults": "일부 결과가 불완전할 수 있음",
+      "nonstop": "직항",
+      "roundTrip": "왕복",
+      "tripDays": "여행 기간"
     },
     "chatAnalyst": {
       "infoTooltip": "<strong>WM 애널리스트</strong> 지정학, 시장, 군사, 경제 분야의 실시간 컨텍스트를 갖춘 AI 애널리스트. WorldMonitor 활성 피드에서 실시간 데이터가 주입된 Claude로 구동."
@@ -1776,19 +1836,116 @@
       "infoTooltip": "<strong>실시간 카운터</strong> 글로벌 지표의 실시간 추정 카운터: 군사비, 자연재해, 질병 부담 등. 수치는 연간 데이터 비율에 기반한 통계적 추정치."
     },
     "diseaseOutbreaks": {
-      "infoTooltip": "<strong>질병 발생</strong> WHO, ProMED 및 보건부의 활성 발생 경보. 확인된 발생, 영향 지역, 사례 수, 위협 수준을 추적. 새 보고서 발표 시 업데이트."
+      "infoTooltip": "<strong>질병 발생</strong> WHO, ProMED 및 보건부의 활성 발생 경보. 확인된 발생, 영향 지역, 사례 수, 위협 수준을 추적. 새 보고서 발표 시 업데이트.",
+      "title": "질병 발생",
+      "empty": "필터와 일치하는 발생 없음",
+      "sourceFallback": "출처",
+      "attribution": "WHO · ProMED · HealthMap",
+      "levels": {
+        "alert": "경보",
+        "warning": "경고",
+        "watch": "감시"
+      },
+      "time": {
+        "justNow": "방금",
+        "hoursAgo_one": "{{count}}시간 전",
+        "hoursAgo_other": "{{count}}시간 전",
+        "daysAgo_one": "{{count}}일 전",
+        "daysAgo_other": "{{count}}일 전"
+      },
+      "filters": {
+        "alert_one": "{{count}} 알림",
+        "alert_other": "{{count}} 알림",
+        "warning_one": "{{count}} 경고",
+        "warning_other": "{{count}} 경고",
+        "watch_one": "{{count}} 감시",
+        "watch_other": "{{count}} 감시"
+      },
+      "errors": {
+        "noData": "발생 데이터 없음",
+        "failedToLoad": "로드 실패"
+      },
+      "methodologyNote": "Alert / Warning / Watch 수준은 편집 키워드 분류기에서 제공 — 키워드 표 및 제한사항은 /docs/methodology/disease-alert-level 참조"
     },
     "earningsCalendar": {
-      "infoTooltip": "<strong>실적 캘린더</strong> 주요 상장 기업의 예정 및 최근 실적 발표. EPS 추정치 대 실적, 매출, 상회/하회 분류를 표시. 출처: 금융 데이터 제공업체."
+      "infoTooltip": "<strong>실적 캘린더</strong> 주요 상장 기업의 예정 및 최근 실적 발표. EPS 추정치 대 실적, 매출, 상회/하회 분류를 표시. 출처: 금융 데이터 제공업체.",
+      "title": "어닝 캘린더",
+      "today": "오늘 · {{date}}",
+      "tomorrow": "내일 · {{date}}",
+      "epsActual": "EPS {{value}}",
+      "epsEstimate": "EPS 예상 {{value}}",
+      "revenueActual": "{{value}} 매출",
+      "revenueEstimate": "{{value}} 예상",
+      "surprise": {
+        "beat": "상회",
+        "miss": "하회",
+        "inLine": "부합"
+      },
+      "errors": {
+        "noData": "어닝 데이터 없음",
+        "failedToLoad": "로드 실패"
+      }
     },
     "economicCalendar": {
       "infoTooltip": "<strong>경제 캘린더</strong> 예정된 거시경제 발표: CPI, NFP, GDP, PMI 및 중앙은행 결정. 전망 대 실제 대 이전을 표시. 고영향 이벤트 강조 표시. 출처: 경제 데이터 제공업체."
     },
     "fsi": {
-      "infoTooltip": "<strong>금융 스트레스 지표</strong> 캔자스시티 연준 금융 스트레스 지수(KCFSI): 수익률 스프레드, 변동성, 교차 상관관계를 포함한 11개 지표를 사용하여 미국 금융 시장의 스트레스를 측정. 양수 값은 평균 이상의 스트레스를 나타냄. 출처: 캔자스시티 연방준비은행."
+      "infoTooltip": "<strong>금융 스트레스 지표</strong> 캔자스시티 연준 금융 스트레스 지수(KCFSI): 수익률 스프레드, 변동성, 교차 상관관계를 포함한 11개 지표를 사용하여 미국 금융 시장의 스트레스를 측정. 양수 값은 평균 이상의 스트레스를 나타냄. 출처: 캔자스시티 연방준비은행.",
+      "title": "금융 스트레스 지표",
+      "usFsiValue": "미국 FSI 값",
+      "cissTitle": "EU CISS (유로존 시스템 스트레스)",
+      "notAvailable": "해당 없음",
+      "interpretation": {
+        "low": "신용 시장이 정상 작동, 주식/채권 비율 양호.",
+        "moderate": "신용 조건이 다소 악화, 면밀한 감시 필요.",
+        "elevated": "신용 시장 스트레스 심각, 방어적 포지셔닝 권장.",
+        "severe": "심각한 금융 스트레스, 시스템 리스크 상승."
+      },
+      "labels": {
+        "lowStress": "낮은 스트레스",
+        "moderateStress": "중간 스트레스",
+        "elevatedStress": "상승된 스트레스",
+        "severeStress": "심각한 스트레스"
+      },
+      "cissLabels": {
+        "low": "낮음",
+        "moderate": "중간",
+        "elevated": "상승",
+        "high": "높음"
+      },
+      "scale": {
+        "noStress": "0 — 스트레스 없음",
+        "extremeStress": "1 — 극심한 스트레스",
+        "highStress": "높은 스트레스",
+        "lowStress": "낮은 스트레스"
+      },
+      "metrics": {
+        "vix": "VIX",
+        "hySpread": "HY Spread",
+        "hygPrice": "HYG Price",
+        "tltPrice": "TLT Price"
+      },
+      "errors": {
+        "unavailable": "FSI 데이터를 사용할 수 없음",
+        "failedToLoad": "로드 실패"
+      },
+      "cissStale": "ECB가 더 최신 값을 발표하지 않았습니다 — 이 수치가 최신이 아닐 수 있습니다."
     },
     "hormuzTracker": {
-      "infoTooltip": "<strong>호르무즈 무역 추적기</strong> 세계에서 가장 중요한 석유 병목지점인 호르무즈 해협을 통과하는 AIS 선박 실시간 추적. 유조선 수, 중단 이벤트, 주간 흐름 변화를 모니터링. 전 세계 석유 공급의 약 20%가 매일 이곳을 통과."
+      "infoTooltip": "<strong>호르무즈 무역 추적기</strong> 세계에서 가장 중요한 석유 병목지점인 호르무즈 해협을 통과하는 AIS 선박 실시간 추적. 유조선 수, 중단 이벤트, 주간 흐름 변화를 모니터링. 전 세계 석유 공급의 약 20%가 매일 이곳을 통과.",
+      "title": "호르무즈 무역 추적기",
+      "noData": "데이터 없음",
+      "notAvailable": "해당 없음",
+      "chartUnavailable": "차트 데이터를 사용할 수 없음",
+      "sourcePrefix": "출처:",
+      "units": {
+        "ktPerDay": "kt/일",
+        "generic": "단위"
+      },
+      "errors": {
+        "unavailable": "호르무즈 데이터를 사용할 수 없음",
+        "failedToLoad": "로드 실패"
+      }
     },
     "liveWebcams": {
       "infoTooltip": "<strong>실시간 웹캠</strong> 전 세계 지정학적으로 중요한 장소의 실시간 피드: 분쟁 지역, 수도, 국경 검문소, 전략적 병목지점. YouTube 및 공개 네트워크의 스트림."
@@ -1800,7 +1957,7 @@
       "infoTooltip": "<strong>키워드 모니터</strong> 모든 WorldMonitor 소스에서 실시간 뉴스 언급을 추적하기 위해 용어를 추가하세요. 일치하는 기사가 수집되면 결과가 실시간으로 업데이트."
     },
     "renewable": {
-      "infoTooltip": "<strong>재생 에너지</strong> 글로벌 재생 에너지 프로젝트 파이프라인: 태양광, 풍력, 수력, 저장 용량 추가. 지역 및 기술 유형별 발표, 건설 중, 가동 개시 프로젝트 추적."
+      "infoTooltip": "<strong>재생 에너지</strong> 지역과 연도별 전력 생산에서 재생 에너지 비중, 그리고 미국 태양광, 풍력, 석탄의 설비 용량 (MW). 출처: 세계은행 (EG.ELC.RNEW.ZS) 및 EIA."
     },
     "socialVelocity": {
       "infoTooltip": "<strong>소셜 벨로시티</strong> 지정학적 중요성을 가진 트렌딩 토픽과 바이럴 콘텐츠. 소셜 미디어 속도 측정: 기준선 대비 스토리가 얼마나 빠르게 확산되는지. 주류 뉴스에 도달하기 전에 새로운 내러티브를 부각하는 데 도움."
@@ -1813,11 +1970,307 @@
     },
     "yieldCurve": {
       "infoTooltip": "<strong>수익률 곡선 &amp; 금리</strong> 미국 국채 수익률 곡선(2Y, 5Y, 10Y, 30Y) 및 10Y-2Y 역전 지표를 포함한 주요 금리 스프레드. 유로존 금리(EURIBOR, ESTR)도 표시. 역전된 곡선은 역사적으로 경기 침체에 선행. 출처: FRED."
+    },
+    "pinnedWebcams": {
+      "pinFromMap": "지도에서 웹캠 고정"
+    },
+    "breakthroughsTicker": {
+      "noData": "과학 돌파구 없음"
+    },
+    "oilInventories": {
+      "infoTooltip": "<strong>석유 재고</strong> 미국 원유 및 SPR 비축량(EIA 주간), 천연가스 저장량, EU 가스 충전율(GIE AGSI+), OECD 석유 재고 일수(IEA 월간)."
+    },
+    "energyComplex": {
+      "noData": "에너지 데이터를 일시적으로 사용할 수 없습니다 - 재시도 예정",
+      "liveTape": "실시간 테이프",
+      "liveTapeSource": "시장 호가",
+      "infoTooltip": "<strong>에너지 복합</strong> 한 곳에서 물리적 및 거래 가능한 에너지 신호:<ul><li><strong>EIA 지표</strong>: WTI, 브렌트유, 미국 생산량 및 재고</li><li><strong>실시간 테이프</strong>: 원유 및 천연가스 같은 거래 가능한 에너지 가격</li><li><strong>목적</strong>: 물리적 에너지 스트레스와 광범위한 거시 및 상품 패널 분리</li></ul>"
+    },
+    "consumerPrices": {
+      "tabs": {
+        "overview": "개요",
+        "categories": "범주",
+        "movers": "변동 상품",
+        "spread": "소매점 가격 편차",
+        "health": "데이터 상태"
+      },
+      "infoTooltip": "<strong>소비자 가격</strong> 실시간 바구니 가격 추적:<ul><li><strong>개요</strong>: 필수품 지수, 가치 바구니 및 주간 변동</li><li><strong>카테고리</strong>: 카테고리별 가격 추세 및 30일 범위</li><li><strong>변동 상품</strong>: 이번 주 가장 큰 상승 및 하락 상품</li><li><strong>편차</strong>: 동일 바구니에 대한 소매점 간 가격 변동</li></ul>라이브 소매점 가격 스크래핑에서 소싱된 데이터."
+    },
+    "marketImplications": {
+      "infoTooltip": "<strong>AI 시장 영향</strong> 각 예측 사이클 후 라이브 지정학, 상품 및 거시 상태에서 파생된 LLM 생성 거래 신호.<ul><li><strong>방향</strong>: LONG / SHORT / HEDGE (신뢰도 등급 포함)</li><li><strong>기간</strong>: 1W, 2W, 1M 또는 3M 시간대</li><li><strong>동인</strong>: 신호 뒤의 핵심 촉발 요인</li><li><strong>위험</strong>: 주의 또는 무효화 조건</li></ul><em>정보 제공 목적으로만 제공됩니다. 투자 조언이 아닙니다.</em>",
+      "title": "AI 시장 영향",
+      "directions": {
+        "long": "롱",
+        "short": "숏",
+        "hedge": "헤지"
+      },
+      "rationale": "근거:",
+      "driver": "동인:",
+      "appliesToNext": "다음 AI 재생성에 적용",
+      "signals_one": "{{count}}개 신호",
+      "signals_other": "{{count}}개 신호",
+      "disclaimer": "AI 생성 거래 신호는 정보 제공 목적입니다. 투자 조언이 아닙니다. 항상 자신의 조사를 수행하세요.",
+      "unavailable": "AI 시장 영향은 각 예측 실행 후 생성됩니다. 잠시 후 다시 확인하세요."
+    },
+    "forecast": {
+      "infoTooltip": "<strong>AI 예측</strong> 지정학적 및 경제 이벤트에 대한 AI 생성 확률 추정:<ul><li>교차 도메인 범위: 분쟁, 시장, 공급망, 사이버, 정치</li><li>각 예측은 예상 확률, 신뢰도 및 시간 범위를 표시</li><li>사용 가능한 경우 예측 시장 기준선을 기준으로 보정됨</li></ul>새로운 인텔리전스 신호가 들어올 때 예측이 업데이트됩니다. 위의 탭을 사용하여 도메인별로 필터링합니다."
+    },
+    "escalationCorrelation": {
+      "infoTooltip": "<strong>에스컬레이션 모니터</strong> 수렴하는 지정학적 신호 감지:<ul><li>군사 움직임, 분쟁 이벤트 및 뉴스 급증 상관관계</li><li>수렴 영역의 심각도 점수 (긴급/높음/중간/낮음)</li><li>시간 경과에 따른 에스컬레이션 또는 완화 추세 추적</li></ul>카드를 클릭하여 지도의 해당 지역으로 확대합니다."
+    },
+    "economicCorrelation": {
+      "infoTooltip": "<strong>경제 전쟁</strong> 수렴하는 경제 압박 신호 감지:<ul><li>제재, 무역 제한 및 통화 변동</li><li>지정학적 행위자와 연결된 상품 중단</li><li>경제와 보안 이벤트 간의 교차 도메인 상관관계</li></ul>카드를 클릭하여 영향을 받는 지역으로 확대합니다."
+    },
+    "militaryCorrelation": {
+      "infoTooltip": "<strong>군사 태세</strong> 군사 활동과 지정학적 맥락의 상관관계:<ul><li>지역별 군용 항공기 및 해군 함선 집중</li><li>활성 분쟁 지역 및 뉴스 급증과의 교차 참조</li><li>비상 군사 집결 또는 재배치 강조</li></ul>카드를 클릭하여 지도의 해당 지역으로 확대합니다."
+    },
+    "disasterCorrelation": {
+      "infoTooltip": "<strong>재난 연쇄 반응</strong> 수렴하는 자연재해 및 인프라 신호 감지:<ul><li>지진, 산불, 홍수 및 극한 날씨의 상관관계</li><li>인프라 및 공급망에 대한 연쇄 효과 추적</li><li>복합 재난 위험이 있는 지역 강조</li></ul>카드를 클릭하여 영향을 받는 지역으로 확대합니다."
+    },
+    "markets": {
+      "infoTooltip": "<strong>시장</strong> 실시간 주식 지수, 주식 및 암호화폐 가격. 감시목록 버튼으로 감시목록을 사용자 정의합니다. 스파크라인은 최근 가격 추세를 표시합니다."
+    },
+    "heatmap": {
+      "infoTooltip": "<strong>섹터 히트맵</strong> S&P 500 섹터 성과를 한눈에 확인합니다. 색상 강도는 일일 변화의 규모를 반영합니다. 녹색 = 상승, 빨강 = 하락."
+    },
+    "fuelPrices": {
+      "infoTooltip": "<strong>연료 가격</strong> 30개 이상 국가의 휘발유 및 디젤 소매 펌프 가격(USD/리터로 정규화). 가격은 공식 정부 공개 데이터 프로그램에서 수집되며 주간 업데이트됩니다. 가장 저렴한 국가와 가장 비싼 국가가 강조됩니다. 이전 주 데이터를 사용할 수 있는 경우 주간 변화가 표시됩니다.",
+      "countries": "개국"
+    },
+    "faoFoodPriceIndex": {
+      "infoTooltip": "<strong>FAO 식품 가격 지수</strong> UN 식량농업기구의 FFPI는 식품 상품 바스켓(곡물, 유제품, 육류, 유지, 설탕)의 국제 수출 가격을 추적하며, 기준 2014-2016=100입니다. 매월 첫 번째 금요일에 업데이트됩니다.",
+      "indexLabel": "FFPI (2014-16=100)",
+      "mom": "전월비",
+      "yoy": "전년비",
+      "asOf": "기준일",
+      "baseNote": "기준: 2014-2016 = 100 | 출처: UN FAO",
+      "ffpi": "식품",
+      "cereals": "곡류",
+      "meat": "육류",
+      "dairy": "유제품",
+      "oils": "유지류",
+      "sugar": "설탕"
+    },
+    "climateNews": {
+      "infoTooltip": "<strong>기후 뉴스</strong> Carbon Brief, UNEP, NASA, The Guardian 및 기타 신뢰할 수 있는 출처의 최신 환경 및 기후 정보입니다. 30분마다 업데이트됩니다.",
+      "loadError": "기후 뉴스를 일시적으로 사용할 수 없습니다"
+    },
+    "liquidityShifts": {
+      "title": "유동성 변화",
+      "infoTooltip": "<strong>유동성 변화</strong> 석유, 금, 은, 주식지수 선물 및 상위 미국 주식의 고유동성 포지셔닝 및 일일 변화 모니터입니다. COT 자산운용사 순포지션 및 레버리지펀드 순포지션 대 일일 가격 변화입니다.",
+      "cotSection": "석유 / 금 / 은 + 지수 포지셔닝 (COT)",
+      "stocksSection": "상위 미국 주식: 일일 변화",
+      "longShort": "롱 {{long}} / 숏 {{short}}",
+      "lev": "레버리지",
+      "noCot": "사용 가능한 COT 행이 없습니다.",
+      "noStocks": "사용 가능한 주식 시세가 없습니다.",
+      "reportDate": "COT 보고 날짜: {{date}}",
+      "unavailable": "유동성 데이터 없음",
+      "failed": "로드 실패"
+    },
+    "positioning247": {
+      "title": "24/7 포지셔닝",
+      "infoTooltip": "<strong>24/7 포지셔닝</strong> Hyperliquid의 무기한 계약 포지셔닝 스트레스입니다. 전통 시장이 닫혀있을 때 무엇이 구축되고 있는지 보여주는 24시간 거래입니다. 펀딩 레이트, 거래량, 미결제약정 및 현물-선물 베이시스로부터의 복합 점수(0-100)입니다. 녹색 = 롱 혼잡(강세 기울기), 빨간색 = 숏 혼잡(약세 기울기)입니다.",
+      "commodities": "상품",
+      "crypto": "암호화폐",
+      "fx": "외환",
+      "warmup": "기초선을 구축 중입니다. 거래량 및 미결제약정 기록이 다음 시간 동안 채워집니다.",
+      "footer": "5분 · Hyperliquid 무기한 계약 · 24/7"
+    },
+    "goldIntelligence": {
+      "infoTooltip": "<strong>금 인텔리전스</strong> 금 현물 가격, 금/은 비율, 금 대 백금 프리미엄, 교차통화 XAU 가격(EUR, GBP, JPY, CNY, INR, CHF) 및 CFTC 운용사 포지셔닝입니다. 출처: Yahoo Finance, CFTC COT."
+    },
+    "wsbTickerScanner": {
+      "infoTooltip": "<strong>WSB 티커 스캐너</strong> r/wallstreetbets, r/stocks 및 r/investing의 실시간 티커 언급입니다. 언급 빈도 및 참여도로 순위를 매깁니다. 속도는 티커가 게시물 전반에서 얼마나 빠르게 모멘텀을 얻는지 측정합니다."
+    },
+    "proBanner": {
+      "badge": "PRO",
+      "headline": "Pro 출시됨",
+      "tagline": "더 많은 신호, 더 적은 잡음. 더 많은 AI 브리핑. 당신만을 위한 지정학 및 주식 연구원입니다.",
+      "cta": "Pro로 업그레이드 →",
+      "dismiss": "닫기"
+    },
+    "checkoutFailureBanner": {
+      "message": "결제를 완료할 수 없습니다. 청구되지 않았습니다.",
+      "retry": "다시 시도",
+      "retrying": "재시도 중…",
+      "dismiss": "닫기"
+    },
+    "frameworkSelector": {
+      "label": "분석 프레임워크",
+      "defaultNeutral": "기본값 (중립)",
+      "titlePrefix": "프레임워크: {{name}}",
+      "titleNone": "분석 프레임워크"
+    },
+    "sanctionsPressure": {
+      "title": "제재 및 지정",
+      "infoTooltip": "SDN 및 통합 목록의 OFAC 제재 지정. 어느 국가가 가장 높은 지정 압력을 받고 있는지, 어떤 프로그램이 이를 주도하고 있는지, 마지막 업데이트 이후 새로 추가된 것이 무엇인지를 보여줍니다.",
+      "loading": "제재 데이터 로드 중...",
+      "unavailable": "제재 데이터를 사용할 수 없습니다.",
+      "summary": {
+        "new": "신규",
+        "vessels": "선박",
+        "aircraft": "항공기"
+      },
+      "sections": {
+        "countries": "제재 대상국",
+        "entries": "최근 지정",
+        "programs": "프로그램"
+      },
+      "empty": {
+        "countries": "국가 귀속 정보가 없습니다.",
+        "entries": "최근 지정이 없습니다.",
+        "programs": "프로그램 분석이 없습니다."
+      },
+      "footer": {
+        "updated": "{{time}}에 업데이트됨",
+        "dataset": "데이터셋 {{date}}",
+        "source": "출처: OFAC"
+      },
+      "pills": {
+        "newCount": "+{{count}} 신규",
+        "new": "신규"
+      },
+      "designations_one": "{{count}}개 지정",
+      "designations_other": "{{count}}개 지정",
+      "fallbacks": {
+        "unattributed": "미귀속",
+        "program": "프로그램",
+        "undated": "날짜 미지정"
+      }
+    },
+    "radiationWatch": {
+      "title": "방사선 감시",
+      "infoTooltip": "EPA RadNet 및 Safecast 측정값에 이상 감지 및 출처 신뢰도 종합을 적용. 이 패널은 정상값, 상승된 값, 확인된 이상 현상과 예정된 이상 현상을 구분합니다.",
+      "loading": "방사선 데이터를 로드 중입니다...",
+      "empty": "사용 가능한 방사선 관측이 없습니다.",
+      "baseline": "{{value}} 기준선",
+      "flags": {
+        "confirmed": "확인됨",
+        "conflict": "충돌",
+        "cpmDerived": "CPM 파생"
+      },
+      "headers": {
+        "station": "관측소",
+        "reading": "수치",
+        "delta": "차이",
+        "status": "상태",
+        "observed": "관측"
+      },
+      "summary": {
+        "anomalies": "이상 현상",
+        "elevated": "상승",
+        "confirmed": "확인됨",
+        "lowConfidence": "신뢰도 낮음",
+        "conflicts": "충돌",
+        "spikes": "급증"
+      },
+      "footer": {
+        "updated": "{{time}}에 업데이트됨"
+      },
+      "observed": {
+        "hoursAgo_one": "{{count}}시간 전",
+        "hoursAgo_other": "{{count}}시간 전",
+        "daysAgo_one": "{{count}}일 전",
+        "daysAgo_other": "{{count}}일 전"
+      },
+      "confidence": {
+        "high": "높은 신뢰도",
+        "medium": "중간 신뢰도",
+        "low": "낮은 신뢰도"
+      }
+    },
+    "defensePatents": {
+      "title": "R&D 신호",
+      "infoTooltip": "Raytheon, Lockheed, Huawei, DARPA 및 기타 전략 기관의 주간 방위 및 이중용도 특허 출원. 카테고리: H04B (통신), H01L (반도체), F42B (탄약), G06N (AI), C12N (생명공학). 출처: USPTO PatentsView.",
+      "loading": "R&D 출원을 로드 중입니다…",
+      "error": "특허 데이터를 로드할 수 없습니다.",
+      "empty": "이 카테고리에는 출원이 없습니다.",
+      "viewOnUspto": "USPTO에서 보기",
+      "tabs": {
+        "all": "모두"
+      },
+      "cpcLabels": {
+        "H04B": "통신",
+        "H01L": "반도체",
+        "F42B": "탄약",
+        "G06N": "AI",
+        "C12N": "생명공학"
+      }
+    },
+    "correlation": {
+      "loading": "데이터를 기다리는 중입니다...",
+      "empty": "검출된 활성 수렴이 없습니다.",
+      "signals_one": "{{count}}개 신호",
+      "signals_other": "{{count}}개 신호",
+      "analyzing": "분석 중입니다...",
+      "viewOnMap": "지도에서 보기"
+    },
+    "thermalEscalation": {
+      "title": "열 급증",
+      "infoTooltip": "기준선 비교, 지속성 추적, 전략적 맥락이 포함된 FIRMS/VIIRS 열 이상 클러스터. 이 패널은 열 활동이 비정상인 위치와 어떤 클러스터가 분쟁, 산업 중단 또는 급증을 신호할 수 있는지를 답합니다.",
+      "loading": "열 데이터를 로드 중입니다...",
+      "empty": "검출된 열 급증 클러스터가 없습니다.",
+      "footer": {
+        "updated": "{{time}}에 업데이트됨"
+      },
+      "summary": {
+        "total": "합계",
+        "elevated": "상승",
+        "spikes": "급증",
+        "persist": "지속",
+        "conflict": "분쟁",
+        "strategic": "전략"
+      },
+      "badges": {
+        "conflictAdjacent": "conflict-adj",
+        "energyAdjacent": "energy-adj",
+        "industrial": "industrial",
+        "strategic": "strategic"
+      },
+      "observations_one": "{{count}} obs",
+      "observations_other": "{{count}} obs",
+      "sources_one": "{{count}} src",
+      "sources_other": "{{count}} src",
+      "age": {
+        "minutesAgo_one": "{{count}}분 전",
+        "minutesAgo_other": "{{count}}분 전",
+        "hoursAgo_one": "{{count}}시간 전",
+        "hoursAgo_other": "{{count}}시간 전",
+        "daysAgo_one": "{{count}}일 전",
+        "daysAgo_other": "{{count}}일 전"
+      }
+    },
+    "chokepointStrip": {
+      "title": "초크포인트 상태",
+      "infoTooltip": "전 세계 7개 석유·가스 해운 초크포인트의 실시간 상태입니다. 유량 추정값은 Portwatch DWT + AIS 관측값으로 보정되었습니다. /docs/methodology/chokepoints에서 방법론을 확인하세요.",
+      "unknown": "알 수 없음",
+      "shortName": {
+        "hormuzStrait": "호르무즈",
+        "malaccaStrait": "말라카",
+        "suez": "수에즈",
+        "babElMandeb": "바브엘만데브",
+        "bosphorus": "터키 해협",
+        "panama": "파나마",
+        "danishStraits": "덴마크 해협"
+      },
+      "flow": {
+        "mbd": "{{value}} mb/d",
+        "pctOfBaseline": "{{pct}}% of baseline"
+      },
+      "errors": {
+        "unavailable": "초크포인트 상태를 사용할 수 없습니다",
+        "noData": "초크포인트 데이터가 아직 없습니다"
+      },
+      "attribution": {
+        "method": "Portwatch DWT + AIS 보정",
+        "sampleLabel": "AIS 중단 신호",
+        "creditName": "EIA World Oil Transit Chokepoints"
+      }
     }
   },
   "popups": {
     "startDate": "시작일",
-    "endDate": "종료일",
     "magnitude": "규모",
     "depth": "깊이",
     "intensity": "진도",
@@ -1832,20 +2285,9 @@
     "keyDevelopments": "주요 진전",
     "unknown": "미상",
     "source": "출처",
-    "target": "표적",
     "events": "사건",
-    "impact": "영향",
     "capacity": "용량",
-    "alerts": "활성 경보",
     "updated": "업데이트",
-    "common": {
-      "start": "시작",
-      "end": "종료",
-      "updated": "업데이트"
-    },
-    "conflict": {
-      "title": "분쟁 지역"
-    },
     "earthquake": {
       "levels": {
         "major": "대규모",
@@ -1896,7 +2338,9 @@
         "apac": "아시아-태평양",
         "mena": "중동",
         "africa": "아프리카"
-      }
+      },
+      "scheduled": "예정",
+      "estimated": "추정"
     },
     "aircraft": {
       "altitude": "고도",
@@ -1905,9 +2349,6 @@
       "position": "위치",
       "ground": "지상",
       "airborne": "비행 중"
-    },
-    "apt": {
-      "description": "국가 수준의 역량을 보유한 지능형 지속 위협(APT) 그룹. 주요 인프라, 정부 및 국방 부문을 대상으로 하는 정교한 사이버 작전으로 알려져 있습니다."
     },
     "cyberThreat": {
       "title": "사이버 위협"
@@ -1983,9 +2424,7 @@
     "sampledList": "{{count}}건의 사건 중 샘플 목록을 표시합니다.",
     "reason": "사유",
     "threat": "위협",
-    "aka": "다른 명칭",
     "sponsor": "후원국",
-    "origin": "출처",
     "country": "국가",
     "malware": "악성코드",
     "lastSeen": "최종 확인",
@@ -2006,8 +2445,6 @@
     "hotspot": {
       "escalation": "고조 평가",
       "baseline": "기준선",
-      "score": "점수",
-      "trend": "추세",
       "components": {
         "news": "뉴스",
         "cii": "CII",
@@ -2021,10 +2458,6 @@
         "high": "높음",
         "critical": "심각"
       }
-    },
-    "buttons": {
-      "track": "이슈 추적",
-      "details": "상세 보기"
     },
     "historicalContext": "역사적 맥락",
     "lastMajorEvent": "최근 주요 사건",
@@ -2180,10 +2613,8 @@
       "speed": "속도",
       "heading": "방위",
       "mmsi": "MMSI",
-      "hull": "선체 번호",
       "region": "지역",
       "strikeGroup": "전투단",
-      "deploymentStatus": "상태",
       "usniIntel": "USNI 정보",
       "usniSource": "출처: USNI News Fleet Tracker",
       "approximatePosition": "대략적 위치 — USNI 주간 보고서 기반이며 실시간 AIS가 아닙니다.",
@@ -2192,7 +2623,9 @@
       "lastReport": "LATEST",
       "nearChokepoint": "NEAR CHOKEPOINT",
       "nearBase": "NEAR BASE",
-      "lastSeen": "LAST SEEN"
+      "lastSeen": "LAST SEEN",
+      "estPosition": "예상 위치",
+      "aisLive": "AIS 실시간"
     },
     "militaryCluster": {
       "flightActivity": {
@@ -2224,7 +2657,13 @@
       "active": "활성",
       "reported": "보고됨",
       "viewOnSource": "{{source}}에서 보기",
-      "attribution": "데이터: NASA EONET"
+      "attribution": "데이터: NASA EONET",
+      "storm": "폭풍",
+      "classification": "분류",
+      "maxWind": "최대 풍속",
+      "pressure": "기압",
+      "movement": "이동",
+      "tropicalSystem": "열대 저기압"
     },
     "port": {
       "types": {
@@ -2426,8 +2865,6 @@
     "error": "오류",
     "noData": "데이터 없음",
     "noDataAvailable": "데이터 없음",
-    "updated": "방금 업데이트됨",
-    "ago": "{{time}} 전",
     "retrying": "재시도 중...",
     "failedToLoad": "데이터 로드 실패",
     "noDataShort": "데이터 없음",
@@ -2452,7 +2889,6 @@
     "failedCommodities": "원자재 로드 실패",
     "failedCryptoData": "암호화폐 데이터 로드 실패",
     "rateLimitedMarket": "시장 데이터 일시적 이용 불가 (속도 제한) — 잠시 후 재시도합니다",
-    "failedClusterNews": "뉴스 클러스터링 실패",
     "noNewsAvailable": "뉴스 없음",
     "noActiveTechHubs": "활성 기술 허브 없음",
     "noActiveGeoHubs": "활성 지정학적 허브 없음",
@@ -2466,7 +2902,7 @@
     "selectNone": "선택 해제",
     "unrest": "소요",
     "conflict": "분쟁",
-    "security": "안보",
+    "security": "군사 활동",
     "information": "정보",
     "shareStory": "기사 공유",
     "exportImage": "이미지 내보내기",
@@ -2479,7 +2915,8 @@
     "currentVariant": "(현재)",
     "retry": "재시도",
     "refresh": "새로고침",
-    "all": "전체"
+    "all": "전체",
+    "cancel": "취소"
   },
   "preferences": {
     "display": "디스플레이",
@@ -2497,10 +2934,136 @@
     "mapTheme": "지도 테마",
     "mapThemeDesc": "지도 타일의 시각적 스타일.",
     "globePreset": "시각적 프리셋",
-    "globePresetDesc": "클래식과 향상된 글로브 시각화 간 전환."
+    "globePresetDesc": "클래식과 향상된 글로브 시각화 간 전환.",
+    "fontFamily": "글꼴 패밀리",
+    "fontFamilyDesc": "기술적 모양을 위해 모노스페이스, 더 쉬운 읽기를 위해 시스템 기본값.",
+    "fontMono": "모노스페이스",
+    "fontSystem": "시스템 기본값"
   },
   "contextMenu": {
     "openCountryBrief": "국가 개요 열기",
     "copyCoordinates": "좌표 복사"
+  },
+  "shell": {
+    "documentTitle": "World Monitor — 실시간 글로벌 인텔리전스 대시보드",
+    "metaDescription": "실시간 글로벌 인텔리전스 플랫폼. WIRED 소개. 190개 국가 200만+ 사용자 이용. 분쟁, 시장, 군사, OSINT을 한 화면에서 확인.",
+    "offlineTitle": "오프라인입니다",
+    "offlineMessage": "World Monitor는 실시간 인텔리전스 데이터를 위해 인터넷 연결이 필요합니다.",
+    "offlineRetry": "다시 시도"
+  },
+  "widgets": {
+    "confirmDelete": "이 위젯을 영구적으로 제거하시겠습니까?",
+    "chatTitle": "위젯 빌더",
+    "modifyTitle": "위젯 수정",
+    "inputPlaceholder": "위젯을 설명해주세요...",
+    "addToDashboard": "대시보드에 추가",
+    "applyChanges": "변경 사항 적용",
+    "send": "전송",
+    "modifyWithAi": "AI로 위젯 수정",
+    "ready": "위젯 준비 완료: {{title}}",
+    "fetching": "{{target}} 가져오는 중...",
+    "requestTimedOut": "요청 시간 초과. 다시 시도해주세요.",
+    "serverError": "서버 오류: {{status}}",
+    "unknownError": "알 수 없는 오류",
+    "generatedWidget": "생성된 위젯: {{title}}",
+    "checkingConnection": "위젯 액세스 확인 중…",
+    "preflightConnected": "위젯 에이전트에 연결됨",
+    "preflightInvalidKey": "위젯 키가 거부되었습니다. wm-widget-key를 업데이트하고 다시 로드하세요.",
+    "preflightUnavailable": "위젯 에이전트를 일시적으로 사용할 수 없습니다.",
+    "preflightAiUnavailable": "AI 백엔드를 사용할 수 없습니다. 나중에 다시 시도하세요.",
+    "readyToGenerate": "생성 준비 완료. 예제를 선택하거나 위젯을 설명해주세요.",
+    "readyToApply": "{{title}}의 미리보기 준비 완료. 검토한 후 대시보드에 추가하세요.",
+    "modifyHint": "현재 위젯을 미리보고 있습니다. 변경 요청을 제출하여 수정하세요.",
+    "generating": "생성 중…",
+    "examplesTitle": "프롬프트 아이디어",
+    "previewTitle": "라이브 미리보기",
+    "phaseChecking": "확인 중",
+    "phaseReadyToPrompt": "준비 완료",
+    "phaseFetching": "가져오는 중",
+    "phaseComposing": "구성 중",
+    "phaseComplete": "준비 완료",
+    "phaseError": "오류",
+    "previewCheckingHeading": "위젯 빌더 연결 중",
+    "previewReadyHeading": "원하는 위젯을 설명해주세요",
+    "previewFetchingHeading": "라이브 WorldMonitor 데이터 가져오는 중",
+    "previewComposingHeading": "위젯 레이아웃 구성 중",
+    "previewErrorHeading": "미리보기에 주의가 필요합니다",
+    "previewCheckingCopy": "위젯 키와 백엔드 가용성을 검증한 후 생성을 활성화하고 있습니다.",
+    "previewReadyCopy": "프롬프트 예제를 사용하거나 원하는 정확한 라이브 뷰를 설명해주세요. 저장하기 전에 미리보기가 여기서 업데이트됩니다.",
+    "previewFetchingCopy": "에이전트가 승인된 WorldMonitor 엔드포인트를 호출하고 위젯의 데이터셋을 구성하고 있습니다.",
+    "previewComposingCopy": "미리보기가 최신 라이브 데이터와 대시보드 스타일링으로 렌더링되고 있습니다.",
+    "previewErrorCopy": "문제를 해결한 후 다시 시도하세요. 기존 위젯은 영향을 받지 않습니다.",
+    "createInteractive": "인터랙티브 위젯 생성",
+    "proBadge": "PRO",
+    "preflightProUnavailable": "PRO 위젯 에이전트를 사용할 수 없습니다. 서버의 PRO_WIDGET_KEY를 확인하세요.",
+    "preflightInvalidProKey": "PRO 키가 거부되었습니다. wm-pro-key를 업데이트하고 다시 로드하세요.",
+    "preflightProSubscriptionRequired": "Pro 구독이 필요합니다. 최근 업그레이드하신 경우 페이지를 새로고침하세요. 그 외에는 지원팀에 문의하세요.",
+    "preflightProRequired": "Pro 구독이 필요합니다. 업그레이드하여 Widget Builder를 사용하세요.",
+    "examples": {
+      "oilGold": "오늘의 원유 가격과 금 가격을 비교해 보세요",
+      "cryptoMovers": "지난 24시간 암호화폐 상위 변동 자산에 대한 위젯 생성",
+      "flightDelays": "현재 국제 항공편 연착 현황 요약",
+      "conflictHotspots": "최신 UCDP 분쟁 지역을 짧은 레이블과 함께 표시"
+    },
+    "proExamples": {
+      "interactiveChart": "원유와 금 가격을 비교하는 대화형 Chart.js 차트",
+      "sortableTable": "검색 필터가 있는 정렬 가능한 암호화폐 가격 테이블",
+      "animatedCounters": "주요 경제 지표를 위한 애니메이션 카운터",
+      "tabbedComparison": "지역별 분쟁 이벤트 탭 비교"
+    }
+  },
+  "connectivity": {
+    "offlineCached": "오프라인 — {{freshness}}의 캐시된 데이터를 표시 중입니다.",
+    "offlineUnavailable": "오프라인 — 실시간 데이터를 현재 사용할 수 없습니다.",
+    "cachedFallback": "실시간 데이터를 사용할 수 없음 — {{freshness}}의 캐시된 데이터를 표시 중입니다."
+  },
+  "premium": {
+    "pro": "PRO",
+    "lockedDesc": "World Monitor 라이선스 키가 필요합니다",
+    "signInToUnlock": "프리미엄 기능을 잠금 해제하려면 로그인하세요",
+    "signIn": "로그인하여 잠금 해제",
+    "upgradeDesc": "Pro로 업그레이드하여 프리미엄 분석에 전체 접근권한을 얻으세요",
+    "upgradeToPro": "Pro로 업그레이드",
+    "features": {
+      "orefSirens1": "실시간 이스라엘 미사일 및 로켓 경보",
+      "orefSirens2": "경보 영역 지도 및 위협 분류",
+      "telegramIntel1": "큐레이션된 Telegram OSINT 채널",
+      "telegramIntel2": "거의 실시간 분쟁 및 지정학 업데이트"
+    }
+  },
+  "auth": {
+    "signIn": "로그인",
+    "createAccount": "계정 만들기",
+    "settings": "설정"
+  },
+  "mcp": {
+    "connectPanel": "MCP 연결",
+    "modalTitle": "MCP 서버 연결",
+    "serverUrl": "서버 URL",
+    "authHeader": "인증 헤더",
+    "optional": "선택사항",
+    "apiKey": "API 키",
+    "apiKeyPlaceholder": "API 키를 붙여넣으세요",
+    "useCustomHeaders": "고급: 사용자 정의 헤더 사용 ↓",
+    "useApiKey": "← API 키 사용",
+    "connectBtn": "연결 및 도구 나열",
+    "connecting": "연결 중...",
+    "foundTools": "{{count}}개의 도구를 찾았습니다",
+    "connectFailed": "연결 실패",
+    "selectTool": "도구 선택",
+    "toolArgs": "인수 (JSON)",
+    "panelTitle": "패널 제목",
+    "panelTitlePlaceholder": "내 MCP 패널",
+    "refreshEvery": "새로고침 간격",
+    "seconds": "초",
+    "addPanel": "패널 추가",
+    "configure": "MCP 구성",
+    "refreshNow": "지금 새로고침",
+    "invalidJson": "잘못된 JSON",
+    "confirmDelete": "이 MCP 패널을 제거하시겠습니까?",
+    "quickConnect": "빠른 연결",
+    "or": "또는 사용자 지정 서버 입력",
+    "generatingVisualization": "시각화 구성 중...",
+    "visualizationFailed": "시각화 실패"
   }
 }

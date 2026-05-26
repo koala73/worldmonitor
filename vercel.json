@@ -9,11 +9,13 @@
     { "source": "/docs/:match*", "destination": "https://worldmonitor.mintlify.dev/docs/:match*" },
     { "source": "/pro", "destination": "/pro/index.html" },
     { "source": "/mcp", "destination": "/api/mcp" },
+    { "source": "/mcp-grant", "destination": "/mcp-grant.html" },
     { "source": "/oauth/token", "destination": "/api/oauth/token" },
     { "source": "/oauth/register", "destination": "/api/oauth/register" },
     { "source": "/oauth/authorize", "destination": "/api/oauth/authorize" },
+    { "source": "/oauth/authorize-pro", "destination": "/api/oauth/authorize-pro" },
     { "source": "/.well-known/oauth-protected-resource", "destination": "/api/oauth-protected-resource" },
-    { "source": "/((?!api|mcp|oauth|assets|blog|docs|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|\\.well-known|wm-widget-sandbox\\.html).*)", "destination": "/index.html" }
+    { "source": "/((?!api|mcp|oauth|assets|blog|docs|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)", "destination": "/index.html" }
   ],
   "headers": [
     {
@@ -123,7 +125,19 @@
       ]
     },
     {
-      "source": "/((?!api|mcp|oauth|assets|blog|docs|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|\\.well-known|wm-widget-sandbox\\.html).*)",
+      "source": "/mcp-grant",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/mcp-grant.html",
+      "headers": [
+        { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/((?!api|mcp|oauth|assets|blog|docs|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)",
       "headers": [
         { "key": "Cache-Control", "value": "no-cache, no-store, must-revalidate" }
       ]

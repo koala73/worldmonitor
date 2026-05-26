@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+// Pure contentMeta helper lives in its own module so tests can import the
+// real code (no replicas, no drift). See helpers module header for rationale.
+import { climateNewsContentMeta, CLIMATE_NEWS_MAX_CONTENT_AGE_MIN } from './_climate-news-helpers.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -205,6 +208,17 @@ runSeed('climate', 'news-intelligence', CANONICAL_KEY, fetchClimateNews, {
   declareRecords,
   schemaVersion: 1,
   maxStaleMin: 90,
+
+  // ── Content-age contract (Sprint 3a of the 2026-05-04 health-readiness plan) ──
+  //
+  // 7-day budget chosen so a real upstream-aggregator outage (every climate
+  // feed's parse breaks simultaneously, e.g. a webpack bundle change in our
+  // RSS regex matching) trips STALE_CONTENT, while a normal holiday-weekend
+  // cadence dip across the listed sources does not. seed-climate-news.mjs
+  // already filters items with publishedAt=0 at parse time, so contentMeta
+  // can read item.publishedAt directly — no synthetic-tagging needed.
+  contentMeta: climateNewsContentMeta,
+  maxContentAgeMin: CLIMATE_NEWS_MAX_CONTENT_AGE_MIN,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
   console.error('FATAL:', (err.message || err) + _cause);

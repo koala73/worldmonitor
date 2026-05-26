@@ -52,6 +52,25 @@ export function extractConvexErrorKind(err, msg) {
   // pattern (`transport_timeout` vs `convex_service_unavailable`).
   const errName = /** @type {{ name?: string } | null | undefined} */ (err)?.name;
   if (errName === 'TimeoutError' || errName === 'AbortError') return 'SERVICE_UNAVAILABLE';
+  // Vercel edge runtime transient: the upstream connection dropped mid-flight
+  // (Cloudflare Workers / Vercel edge surface `TypeError: Network connection
+  // lost.` from the inner `fetch` when the socket is reset during an in-flight
+  // request). Same recovery profile as the platform 503 — transient, retry
+  // with back-off. WORLDMONITOR-QE: was previously falling through to the
+  // 'unknown' error_shape bucket at error level instead of 503 + Retry-After.
+  // Sentry's classifier tags these as `transport_network` so they're queryable
+  // separately from genuine Convex 503s.
+  if (/Network connection lost/i.test(msg)) return 'SERVICE_UNAVAILABLE';
+  // Cloudflare edge errors (520-527) fronting the Convex deployment: a
+  // transient origin/connection failure where Cloudflare returns a text/HTML
+  // body containing `error code: 52x` instead of a JSON Convex response. The
+  // HTTP client surfaces this as `Error('error code: 520...')` — `.data` is
+  // undefined (the request never reached Convex's runtime). Same transient
+  // retry-with-back-off remediation as the platform 503. WORLDMONITOR-PG: was
+  // falling through to the 'unknown' error_shape bucket at error level instead
+  // of 503 + Retry-After. Sentry's classifier tags these `transport_cloudflare`
+  // so they stay queryable apart from genuine Convex platform 5xx.
+  if (/error code:\s*52[0-7]\b/i.test(msg)) return 'SERVICE_UNAVAILABLE';
   // Convex platform-level 401: when Clerk's OIDC token fails Convex's own
   // verification (token expired between our edge's `validateBearerToken`
   // and Convex's check, or Clerk JWKS rotated), the SDK surfaces a JSON
@@ -62,6 +81,15 @@ export function extractConvexErrorKind(err, msg) {
   // the edge handler maps it to 401 and tags it as `convex_auth_drift`
   // (WORLDMONITOR-PG).
   if (msg.includes('"code":"Unauthenticated"')) return 'UNAUTHENTICATED';
+  // Convex platform-level 500: `{"code":"InternalServerError","message":
+  // "Your request couldn't be completed. Try again later."}` — runtime
+  // signals an internal failure that the SDK can't classify further. Same
+  // remediation profile as the platform 503 (transient, retry with
+  // back-off), so reuse SERVICE_UNAVAILABLE → 503 + Retry-After response.
+  // Sentry `error_shape` discriminates via msg-pattern fallback so the
+  // dashboard can tell internal-500s apart from genuine ServiceUnavailable
+  // 503s (WORLDMONITOR-PG / WORLDMONITOR-PH).
+  if (msg.includes('"code":"InternalServerError"')) return 'SERVICE_UNAVAILABLE';
   if (msg.includes('CONFLICT')) return 'CONFLICT';
   if (msg.includes('BLOB_TOO_LARGE')) return 'BLOB_TOO_LARGE';
   if (msg.includes('UNAUTHENTICATED')) return 'UNAUTHENTICATED';

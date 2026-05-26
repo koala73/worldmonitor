@@ -105,6 +105,15 @@ export interface NewsItem {
   title: string;
   link: string;
   pubDate: Date;
+  /**
+   * True when the upstream feed item had no parseable pubDate/published/
+   * updated timestamp. The `pubDate` field is still populated (synthesized
+   * stamp) for display, but ranking/recency consumers MUST route through
+   * `effectivePubDateMs` from feed-date.ts so these items don't claim
+   * false freshness. Optional so synthesized items from non-RSS producers
+   * don't need to set it explicitly — `undefined` is treated as `false`.
+   */
+  pubDateMissing?: boolean;
   isAlert: boolean;
   monitorColor?: string;
   tier?: number;

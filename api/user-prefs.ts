@@ -88,11 +88,20 @@ export default async function handler(
       // caught earlier (the `validateBearerToken` 401 above) and never reach
       // this catch. Capture before returning 401 so the drift surfaces under
       // a stable Sentry bucket instead of silently 401'ing every request.
+      //
+      // `level: 'warning'` because the observed pattern is one transient
+      // event per user (5ev/5u over a week — WORLDMONITOR-QK), which a
+      // client retry recovers cleanly. Keeping the capture at error
+      // drowned real bugs in the dashboard while delivering no operational
+      // signal beyond "drift happened" (already evident from the warning
+      // bucket). A genuine systemic drift incident would still surface
+      // because volume would escalate and reopen the archived issue.
       if (kind === 'UNAUTHENTICATED') {
-        console.error('[user-prefs] GET convex auth drift:', err);
+        console.warn('[user-prefs] GET convex auth drift:', err);
         captureSilentError(err, buildSentryContext(err, msg, {
           method: 'GET', convexFn: 'userPreferences:getPreferences',
           userId: session.userId, variant, ctx,
+          level: 'warning',
         }));
         return jsonResponse({ error: 'UNAUTHENTICATED' }, 401, cors);
       }
@@ -190,14 +199,17 @@ export default async function handler(
     if (kind === 'UNAUTHENTICATED') {
       // See GET branch above — UNAUTHENTICATED here means Clerk-vs-Convex
       // auth drift (token already passed validateBearerToken). Capture
-      // before returning 401 so the drift is visible.
-      console.error('[user-prefs] POST convex auth drift:', err);
+      // at `warning` for visibility without paging — the observed pattern
+      // is transient single-event-per-user that recovers on client retry
+      // (WORLDMONITOR-QK).
+      console.warn('[user-prefs] POST convex auth drift:', err);
       captureSilentError(err, buildSentryContext(err, msg, {
         method: 'POST', convexFn: 'userPreferences:setPreferences',
         userId: session.userId, variant: body.variant, ctx,
         schemaVersion: typeof body.schemaVersion === 'number' ? body.schemaVersion : null,
         expectedSyncVersion: body.expectedSyncVersion,
         blobSize: body.data !== undefined ? JSON.stringify(body.data).length : 0,
+        level: 'warning',
       }));
       return jsonResponse({ error: 'UNAUTHENTICATED' }, 401, cors);
     }
@@ -361,7 +373,23 @@ export function buildSentryContext(
     // case-sensitive.
     ?? (/UNAUTHENTICATED|"code":"Unauthenticated"/.test(msg) ? 'convex_auth_drift'
       : /"code":"ServiceUnavailable"/.test(msg) ? 'convex_service_unavailable'
+      // Convex platform 500 — runtime can't recover the request. Same
+      // 503-with-Retry-After remediation as ServiceUnavailable in
+      // _convex-error.js, but kept as its own Sentry bucket so on-call can
+      // tell internal-500s apart from genuine 503s when triaging
+      // (WORLDMONITOR-PG/PH).
+      : /"code":"InternalServerError"/.test(msg) ? 'convex_internal_error'
       : /\[Request ID:\s*[a-f0-9]+\]\s*Server Error/i.test(msg) ? 'convex_server_error'
+      // Cloudflare edge error (520-527) fronting the Convex deployment — see
+      // _convex-error.js. Mapped to SERVICE_UNAVAILABLE (503 + Retry-After)
+      // there; kept as its own Sentry bucket so on-call can tell CDN-layer
+      // transients apart from genuine Convex platform 5xx (WORLDMONITOR-PG).
+      // Checked BEFORE the /timeout/ branch: Cloudflare 524's error page body
+      // is literally "A timeout occurred", so a 524 whose message carries the
+      // CF body text would otherwise be mis-bucketed as transport_timeout.
+      // A genuine client AbortSignal.timeout never carries an `error code: 52x`
+      // substring, so this ordering steals no real-timeout events.
+      : /error code:\s*52[0-7]\b/i.test(msg) ? 'transport_cloudflare'
       : /timeout|timed out|aborted/i.test(msg) ? 'transport_timeout'
       : /fetch failed|network|ECONN|ENOTFOUND|getaddrinfo/i.test(msg) ? 'transport_network'
       : 'unknown');

@@ -5,6 +5,7 @@
 // Metro-area unemployment rates (LAUMT*) are dropped; no FRED equivalent exists.
 
 import { loadEnvFile, runSeed, writeExtraKeyWithMeta, sleep, resolveProxyForConnect, fredFetchJson } from './_seed-utils.mjs';
+import { tokensToContentMeta, DAY_MIN } from './_content-age-helpers.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -13,6 +14,13 @@ const _proxyAuth = resolveProxyForConnect();
 const CANONICAL_KEY = 'bls:series:v1';
 const KEY_PREFIX = 'bls:series';
 const CACHE_TTL = 259200; // 72h = 3× daily seed interval
+// Content-age budget — the newest observation across the FRED-mirrored BLS
+// series. The dominant freeze mode is FRED-stops or BLS-discontinues; 75 days
+// clears the monthly publication lag plus a missed cycle while flipping
+// /api/health to STALE_CONTENT well before a real BLS outage is invisible.
+// (Note: catches a whole-upstream freeze; a single discontinued series among
+// several would be masked by the others — newestItemAt is the max.) See #3845.
+const BLS_MAX_CONTENT_AGE_MIN = 75 * DAY_MIN;
 
 // FRED equivalents for the national BLS series.
 // seriesId must match what the RPC handler and frontend BLS_SERIES array use.
@@ -112,6 +120,20 @@ export function declareRecords(data) {
   return Array.isArray(data?.series) ? data.series.length : 0;
 }
 
+// Content-age contract: newest observation across all series, derived from the
+// BLS year + period (M01..M12) pair. Detects a frozen FRED/BLS feed that
+// seeder-liveness checks cannot — see scripts/_content-age-helpers.mjs.
+export function blsContentMeta(data) {
+  const tokens = [];
+  for (const s of Array.isArray(data?.series) ? data.series : []) {
+    for (const o of Array.isArray(s?.observations) ? s.observations : []) {
+      const mm = /^M(\d{2})$/.exec(o?.period ?? '');
+      if (mm && o?.year) tokens.push(`${o.year}-${mm[1]}`);
+    }
+  }
+  return tokensToContentMeta(tokens);
+}
+
 if (process.argv[1]?.endsWith('seed-bls-series.mjs')) {
   runSeed('economic', 'bls-series', CANONICAL_KEY, fetchAllSeries, {
     validateFn: validate,
@@ -119,10 +141,12 @@ if (process.argv[1]?.endsWith('seed-bls-series.mjs')) {
     sourceVersion: 'fred-v1',
     publishTransform,
     afterPublish,
-  
+
     declareRecords,
     schemaVersion: 1,
     maxStaleMin: 2880,
+    contentMeta: blsContentMeta,
+    maxContentAgeMin: BLS_MAX_CONTENT_AGE_MIN,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);

@@ -9,7 +9,12 @@
 
 import { Panel } from './Panel';
 import * as d3 from 'd3';
-import { type ProgressDataSet, type ProgressDataPoint } from '@/services/progress-data';
+import {
+  type ProgressDataSet,
+  type ProgressDataPoint,
+  type ProgressDataResult,
+  type ProgressDataSource,
+} from '@/services/progress-data';
 import { getCSSColor } from '@/utils';
 import { replaceChildren } from '@/utils/dom-utils';
 import { escapeHtml } from '@/utils/sanitize';
@@ -21,6 +26,7 @@ const RESIZE_DEBOUNCE_MS = 200;
 
 export class ProgressChartsPanel extends Panel {
   private datasets: ProgressDataSet[] = [];
+  private source: ProgressDataSource = 'hydrated';
   private resizeObserver: ResizeObserver | null = null;
   private resizeDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private tooltip: HTMLDivElement | null = null;
@@ -31,10 +37,17 @@ export class ProgressChartsPanel extends Panel {
   }
 
   /**
-   * Set chart data and render all 4 area charts.
+   * Set chart data and render all 4 area charts. Accepts either a
+   * `ProgressDataResult` (preferred — carries a source tag so the panel
+   * can disclose fallback state per #3758) or a raw `ProgressDataSet[]`
+   * for backward compatibility with callers that haven't been updated.
    */
-  public setData(datasets: ProgressDataSet[]): void {
+  public setData(input: ProgressDataResult | ProgressDataSet[]): void {
+    const { datasets, source } = Array.isArray(input)
+      ? { datasets: input, source: 'hydrated' as ProgressDataSource }
+      : input;
     this.datasets = datasets;
+    this.source = source;
 
     // Clear existing content
     replaceChildren(this.content);
@@ -46,6 +59,12 @@ export class ProgressChartsPanel extends Panel {
       return;
     }
 
+    // Disclose hardcoded-fallback state before the charts so the user
+    // does not mistake a degraded panel for live data (#3758).
+    if (source === 'fallback') {
+      this.renderFallbackBanner();
+    }
+
     // Create tooltip once (shared by all charts)
     this.createTooltip();
 
@@ -53,6 +72,28 @@ export class ProgressChartsPanel extends Panel {
     for (const dataset of valid) {
       this.renderChart(dataset);
     }
+  }
+
+  private renderFallbackBanner(): void {
+    const banner = document.createElement('div');
+    banner.className = 'progress-charts-fallback-banner';
+    banner.setAttribute('role', 'status');
+    banner.setAttribute('data-source', 'fallback');
+    banner.title = t('components.progressCharts.fallbackTooltip');
+    Object.assign(banner.style, {
+      display: 'flex',
+      alignItems: 'center',
+      gap: '6px',
+      margin: '0 0 8px 0',
+      padding: '6px 8px',
+      fontSize: '11px',
+      color: 'var(--text-dim)',
+      background: 'var(--bg-subtle, rgba(255,255,255,0.04))',
+      border: '1px solid var(--border-subtle, rgba(255,255,255,0.12))',
+      borderRadius: '4px',
+    });
+    banner.textContent = t('components.progressCharts.fallbackBadge');
+    this.content.appendChild(banner);
   }
 
   /**
@@ -333,7 +374,7 @@ export class ProgressChartsPanel extends Panel {
         clearTimeout(this.resizeDebounceTimer);
       }
       this.resizeDebounceTimer = setTimeout(() => {
-        this.setData(this.datasets);
+        this.setData({ datasets: this.datasets, source: this.source });
       }, RESIZE_DEBOUNCE_MS);
     });
     this.resizeObserver.observe(this.content);

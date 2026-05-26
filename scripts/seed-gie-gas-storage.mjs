@@ -36,40 +36,25 @@ function parseFillEntry(entry) {
   return { fill, gwh, date };
 }
 
-async function fetchEuGasStorage() {
-  const apiKey = process.env.GIE_API_KEY || process.env.AGSI_API_KEY || '';
-
-  if (!apiKey) {
-    console.warn('  WARNING: GIE_API_KEY / AGSI_API_KEY not set — attempting unauthenticated request');
-  }
-
-  // Fetch latest 5 days of EU aggregate data
-  const latestParams = new URLSearchParams({ type: 'eu', size: '5' });
-  const latestData = await fetchGieData(latestParams);
-
-  // AGSI+ returns { data: [...], name, code, url, type } at the root
-  let entries = [];
-  if (Array.isArray(latestData)) {
-    entries = latestData;
-  } else if (Array.isArray(latestData?.data)) {
-    entries = latestData.data;
-  } else if (latestData?.gasDayStart) {
-    entries = [latestData];
-  }
-
-  if (!entries.length) {
+// Pure payload builder — exported for unit tests. Takes the raw entry array
+// returned by GIE AGSI+ and produces the canonical payload shape (or throws
+// on invalid fillPct).
+export function buildEuGasStoragePayload(entries) {
+  if (!Array.isArray(entries) || entries.length === 0) {
     throw new Error('GIE AGSI+: empty data array in response');
   }
 
-  // Sort by date descending (most recent first)
-  entries.sort((a, b) => {
+  // Sort by date descending (most recent first). Clone so we don't mutate
+  // the caller's array — important when this is unit-tested with shared
+  // fixtures.
+  const sorted = [...entries].sort((a, b) => {
     const da = a.gasDayStart ?? a.date ?? '';
     const db = b.gasDayStart ?? b.date ?? '';
     return db.localeCompare(da);
   });
 
-  const current = parseFillEntry(entries[0]);
-  const previous = entries.length > 1 ? parseFillEntry(entries[1]) : null;
+  const current = parseFillEntry(sorted[0]);
+  const previous = sorted.length > 1 ? parseFillEntry(sorted[1]) : null;
 
   const fillPct = current.fill;
   if (!Number.isFinite(fillPct) || fillPct <= 0 || fillPct > 100) {
@@ -91,7 +76,7 @@ async function fetchEuGasStorage() {
     : 0;
 
   // Build 5-day history
-  const history = entries.map(e => {
+  const history = sorted.map((e) => {
     const p = parseFillEntry(e);
     return {
       date: p.date,
@@ -100,15 +85,50 @@ async function fetchEuGasStorage() {
     };
   });
 
-  const result = {
+  // Freshness contract (regional-snapshot/freshness.mjs::extractTimestamp):
+  //   - `fetchedAt` (numeric epoch ms) is checked FIRST → guaranteed pickup.
+  //   - `seededAt` (ISO string) is checked LAST as a fallback and matches
+  //     the convention used by other runSeed-based seeders.
+  //   - `updatedAt` here holds the GIE *data date* (e.g. "2024-05-20"), not
+  //     fetch time. The classifier currently checks `updatedAt` BEFORE
+  //     `seededAt`, so without `fetchedAt` on the payload the snapshot
+  //     would resolve to the data date and flip STALE over weekends when
+  //     GIE doesn't publish new readings.
+  const now = Date.now();
+  return {
     fillPct: +(fillPct.toFixed(2)),
     fillPctChange1d,
     gasDaysConsumption,
     trend,
     history,
-    seededAt: String(Date.now()),
+    fetchedAt: now,
+    seededAt: new Date(now).toISOString(),
     updatedAt: current.date,
   };
+}
+
+async function fetchEuGasStorage() {
+  const apiKey = process.env.GIE_API_KEY || process.env.AGSI_API_KEY || '';
+
+  if (!apiKey) {
+    console.warn('  WARNING: GIE_API_KEY / AGSI_API_KEY not set — attempting unauthenticated request');
+  }
+
+  // Fetch latest 5 days of EU aggregate data
+  const latestParams = new URLSearchParams({ type: 'eu', size: '5' });
+  const latestData = await fetchGieData(latestParams);
+
+  // AGSI+ returns { data: [...], name, code, url, type } at the root
+  let entries = [];
+  if (Array.isArray(latestData)) {
+    entries = latestData;
+  } else if (Array.isArray(latestData?.data)) {
+    entries = latestData.data;
+  } else if (latestData?.gasDayStart) {
+    entries = [latestData];
+  }
+
+  const result = buildEuGasStoragePayload(entries);
 
   console.log(`  EU gas storage: fill=${result.fillPct}%, change1d=${result.fillPctChange1d}, trend=${result.trend}`);
   return result;

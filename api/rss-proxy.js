@@ -2,7 +2,7 @@ import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { validateApiKey } from './_api-key.js';
 import { checkRateLimit } from './_rate-limit.js';
 import { getRelayBaseUrl, getRelayHeaders, fetchWithTimeout } from './_relay.js';
-import RSS_ALLOWED_DOMAINS from './_rss-allowed-domains.js';
+import { isAllowedDomain } from './_rss-allowed-domain-match.js';
 import { jsonResponse } from './_json-response.js';
 import { captureSilentError } from './_sentry-edge.js';
 
@@ -49,14 +49,9 @@ async function fetchViaRailway(feedUrl, timeoutMs) {
   }, timeoutMs);
 }
 
-// Allowed RSS feed domains — shared source of truth (shared/rss-allowed-domains.js)
-const ALLOWED_DOMAINS = RSS_ALLOWED_DOMAINS;
-
-function isAllowedDomain(hostname) {
-  const bare = hostname.replace(/^www\./, '');
-  const withWww = hostname.startsWith('www.') ? hostname : `www.${hostname}`;
-  return ALLOWED_DOMAINS.includes(hostname) || ALLOWED_DOMAINS.includes(bare) || ALLOWED_DOMAINS.includes(withWww);
-}
+// Allowlist + match predicate live in api/_rss-allowed-domain-match.js
+// (shared with scripts/validate-rss-feeds.mjs --ci so the SSRF guard runs
+// identically in the Edge handler and the build-time validator).
 
 function isGoogleNewsFeedUrl(feedUrl) {
   try {

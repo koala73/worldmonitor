@@ -91,11 +91,12 @@ Use **Option 2**. Distinguishing "Bearer present but invalid" from "no auth" is 
 
 ## Acceptance Criteria
 
-- [ ] `POST /mcp` with expired/unknown Bearer token returns HTTP 401 (not 200)
-- [ ] HTTP 401 response includes `WWW-Authenticate: Bearer realm="worldmonitor", error="invalid_token"`
-- [ ] `POST /mcp` with no credentials returns HTTP 200 with JSON-RPC `-32001` error (existing behavior for non-OAuth clients)
-- [ ] `POST /mcp` with valid Bearer token works normally
-- [ ] curl test confirms: `curl -si -X POST /mcp -H "Authorization: Bearer invalid" | head -5` shows `HTTP/1.1 401`
+- [x] `POST /mcp` with expired/unknown Bearer token returns HTTP 401 (not 200)
+- [x] HTTP 401 response includes `WWW-Authenticate: Bearer realm="worldmonitor", error="invalid_token"`
+- [x] `POST /mcp` with no credentials returns HTTP 401 + `WWW-Authenticate` (upgraded from the original ACG, which permitted 200; full RFC 6750 compliance now applies on every auth-failure branch)
+- [x] `POST /mcp` with valid Bearer token works normally
+- [x] curl test confirms: `curl -si -X POST /mcp -H "Authorization: Bearer invalid" | head -5` shows `HTTP/1.1 401`
+- [x] `POST /mcp` with invalid `X-WorldMonitor-Key` returns HTTP 401 + `WWW-Authenticate: Bearer realm="worldmonitor", error="invalid_token"`
 
 ## Work Log
 
@@ -122,3 +123,13 @@ Use **Option 2**. Distinguishing "Bearer present but invalid" from "no auth" is 
 ```
 
 **Still pending:** The "no credentials at all" path and "invalid direct key" path still return HTTP 200 via `rpcError`. For claude.ai OAuth clients specifically this is acceptable (they always send a Bearer header), but it is a RFC 6750 non-compliance for any client that calls the endpoint without any auth. Full fix requires either: (a) special-casing -32001 in `rpcError` to return 401, or (b) manually constructing the 401 response for the "no candidateKey" and "invalid candidateKey" branches.
+
+### 2026-05-20 — Residual closed (invalid env-key returns 401)
+
+**By:** Claude Code
+
+**Actions:**
+
+- Replaced the `rpcError(null, -32001, 'Invalid API key')` call in `resolveAuthContext` (formerly `api/mcp.ts:439-443`, now at the env-key validation branch) with a manual `Response` mirroring the no-credentials and invalid-Bearer branches: `status: 401` + `WWW-Authenticate: Bearer realm="worldmonitor", error="invalid_token", resource_metadata="..."` via the shared `wwwAuthHeader` helper.
+- Updated `tests/mcp.test.mjs` to assert 401 + the `WWW-Authenticate` header on `X-WorldMonitor-Key: wrong_key` (previously asserted 200).
+- The "no credentials" branch had already been upgraded to HTTP 401 in a prior commit, so all three auth-failure exit paths (no creds, invalid env-key, invalid Bearer) are now RFC 6750-compliant.

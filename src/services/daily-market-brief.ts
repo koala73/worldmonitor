@@ -2,6 +2,19 @@ import type { MarketData, NewsItem } from '@/types';
 import type { MarketWatchlistEntry } from './market-watchlist';
 import { getMarketWatchlistEntries } from './market-watchlist';
 import type { SummarizationResult } from './summarization';
+import { effectivePubDateMs } from './feed-date';
+import { withTimeout } from '@/utils/with-timeout';
+
+/**
+ * Upper bound on the LLM summarization step. The full chain
+ * (newsClient.summarizeArticle → Vercel function → OpenRouter/Groq) has
+ * no per-call timeout of its own; without this cap a hung upstream
+ * leaves the panel stuck on "Building daily market brief..." and the
+ * try/catch below is useless against a pending-forever promise. On
+ * timeout we fall through to the rules-based summary (already
+ * pre-computed by `buildRuleSummary` at the top of this branch).
+ */
+const SUMMARIZER_TIMEOUT_MS = 45_000;
 
 export interface DailyMarketBriefItem {
   symbol: string;
@@ -71,6 +84,11 @@ export interface BuildDailyMarketBriefOptions {
   sectorContext?: SectorBriefContext;
   frameworkAppend?: string;
   newsCategories?: string[];
+  /** Override the per-call summarizer budget. Defaults to
+   *  `SUMMARIZER_TIMEOUT_MS` (45s). Tests pass a small value to assert the
+   *  rules-based fallback fires when the LLM hangs without having to wait
+   *  the full prod budget. */
+  summarizerTimeoutMs?: number;
   summarize?: (
     headlines: string[],
     onProgress?: undefined,
@@ -95,6 +113,15 @@ async function getPersistentCacheApi(): Promise<{
 const CACHE_PREFIX = 'premium:daily-market-brief:v1';
 const DEFAULT_SCHEDULE_HOUR = 8;
 const DEFAULT_TARGET_COUNT = 4;
+// Intraday refresh ceiling. Without this, shouldRefreshDailyBrief returns
+// false for every tick after the first build of the day (same `dateKey`),
+// which silently disables the 60-min scheduler in App.ts and leaves the
+// panel showing a 9 AM snapshot of prices+news+regime+yield+sector for the
+// rest of the day. Deliberately set 5 min UNDER the 60-min scheduler interval
+// so a slightly-early tick (browser timer jitter, wake-from-throttled-tab)
+// still satisfies `age >= ceiling` and rebuilds — a ceiling equal to the
+// interval rounds the effective cadence up to 2× when the timer drifts early.
+const DEFAULT_MAX_INTRADAY_AGE_MS = 55 * 60 * 1000;
 const BRIEF_NEWS_CATEGORIES = ['markets', 'economic', 'crypto', 'finance'];
 const COMMON_NAME_TOKENS = new Set(['inc', 'corp', 'group', 'holdings', 'company', 'companies', 'class', 'common', 'plc', 'limited', 'ltd', 'adr']);
 
@@ -188,7 +215,7 @@ function collectHeadlinePool(newsByCategory: Record<string, NewsItem[]>, extraCa
   return cats
     .flatMap((category) => newsByCategory[category] || [])
     .filter((item) => !!item?.title)
-    .sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime());
+    .sort((a, b) => effectivePubDateMs(b) - effectivePubDateMs(a));
 }
 
 function resolveTargets(markets: MarketData[], explicitTargets?: MarketWatchlistEntry[]): MarketData[] {
@@ -200,6 +227,7 @@ function resolveTargets(markets: MarketData[], explicitTargets?: MarketWatchlist
   const resolved: MarketData[] = [];
   const seen = new Set<string>();
 
+  // User/explicit picks lead — they care about those most.
   for (const entry of targetEntries) {
     const match = bySymbol.get(entry.symbol);
     if (!match || seen.has(match.symbol)) continue;
@@ -208,13 +236,15 @@ function resolveTargets(markets: MarketData[], explicitTargets?: MarketWatchlist
     if (resolved.length >= DEFAULT_TARGET_COUNT) return resolved;
   }
 
-  if (!explicitEntries && !(watchlistEntries && watchlistEntries.length > 0)) {
-    for (const market of markets) {
-      if (seen.has(market.symbol)) continue;
-      seen.add(market.symbol);
-      resolved.push(market);
-      if (resolved.length >= DEFAULT_TARGET_COUNT) break;
-    }
+  // ...then top up with default markets. The watchlist is additive: a
+  // one-entry watchlist must still produce a full brief, not collapse to a
+  // single item (matches the additive behaviour of the Markets panel and
+  // getStockAnalysisTargets).
+  for (const market of markets) {
+    if (seen.has(market.symbol)) continue;
+    seen.add(market.symbol);
+    resolved.push(market);
+    if (resolved.length >= DEFAULT_TARGET_COUNT) break;
   }
 
   return resolved;
@@ -355,11 +385,20 @@ export function shouldRefreshDailyBrief(
   timezone = 'UTC',
   now = new Date(),
   scheduleHour = DEFAULT_SCHEDULE_HOUR,
+  maxIntradayAgeMs = DEFAULT_MAX_INTRADAY_AGE_MS,
 ): boolean {
   if (!brief?.available) return true;
   const resolvedTimezone = resolveTimeZone(timezone || brief.timezone);
   const dateKey = getDateKey(now, resolvedTimezone);
-  if (brief.dateKey === dateKey) return false;
+  if (brief.dateKey === dateKey) {
+    // Same calendar day: refresh once the cached brief is older than the
+    // intraday ceiling. Without this gate the 60-min scheduler in App.ts is
+    // dead code after the first build of the day — the panel is stuck on
+    // the morning snapshot until tomorrow's schedule hour.
+    const generatedMs = new Date(brief.generatedAt).getTime();
+    if (!Number.isFinite(generatedMs)) return false;
+    return now.getTime() - generatedMs >= maxIntradayAgeMs;
+  }
   return getLocalHour(now, resolvedTimezone) >= scheduleHour;
 }
 
@@ -426,11 +465,10 @@ export async function buildDailyMarketBrief(options: BuildDailyMarketBriefOption
   if (summaryHeadlines.length >= 1) {
     try {
       const summaryProvider = options.summarize || await getDefaultSummarizer();
-      const generated = await summaryProvider(
-        summaryHeadlines,
-        undefined,
-        extendedContext,
-        'en',
+      const generated = await withTimeout(
+        summaryProvider(summaryHeadlines, undefined, extendedContext, 'en'),
+        options.summarizerTimeoutMs ?? SUMMARIZER_TIMEOUT_MS,
+        'daily-brief-summary',
       );
       if (generated?.summary) {
         summary = generated.summary.trim();

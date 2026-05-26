@@ -7,7 +7,7 @@ import { getPersistentCache, setPersistentCache } from './persistent-cache';
 import { dataFreshness } from './data-freshness';
 import { ingestHeadlines } from './trending-keywords';
 import { getCurrentLanguage } from './i18n';
-import { parseFeedDateOrNow } from './feed-date';
+import { parseFeedDate, effectivePubDateMs } from './feed-date';
 import { canQueueAiClassification, AI_CLASSIFY_MAX_PER_FEED } from './ai-classify-queue';
 import { mlWorker } from './ml-worker';
 import { isHeadlineMemoryEnabled } from './ai-flow-settings';
@@ -28,6 +28,14 @@ function fromSerializable(items: Array<Omit<NewsItem, 'pubDate'> & { pubDate: st
   return items.map(item => ({ ...item, pubDate: new Date(item.pubDate) }));
 }
 
+// Cache key prefix. Bumped from `feed:` → `feed:v2:` when the item schema
+// gained `pubDateMissing` (U3 of plan 2026-05-23-001). Old `feed:`-prefix
+// entries deserialize without the flag, which would silently keep the
+// false-freshness bug alive in cached items until natural TTL. The bump
+// invalidates cleanly; old entries can be left to expire. See skill
+// `redis-cache-staleness-gotchas` for the recipe.
+const CACHE_PREFIX = 'feed:v2:';
+
 function getFeedScope(feedName: string, lang: string): string {
   return `${feedName}${FEED_SCOPE_SEPARATOR}${lang}`;
 }
@@ -42,7 +50,7 @@ function parseFeedScope(feedScope: string): { feedName: string; lang: string } {
 }
 
 function getPersistentFeedKey(feedScope: string): string {
-  return `feed:${feedScope}`;
+  return `${CACHE_PREFIX}${feedScope}`;
 }
 
 async function readPersistentFeed(key: string): Promise<NewsItem[] | null> {
@@ -56,11 +64,16 @@ async function loadPersistentFeed(feedScope: string): Promise<NewsItem[] | null>
   const scoped = await readPersistentFeed(scopedKey);
   if (scoped) return scoped;
 
-  // Migration fallback: older builds stored feeds as `feed:<feedName>` without language scope.
-  // Only use this for English to avoid mixing cached content across locales.
+  // Language-scope migration fallback (carried forward from the pre-v2
+  // prefix era): some older v2 cache rows that predate the language-scope
+  // refactor were written without a `::<lang>` suffix. For English only,
+  // also try the unscoped key under the CURRENT v2 prefix. Pre-v2
+  // `feed:<feedScope>` and `feed:<feedName>` entries are deliberately NOT
+  // consulted — they predate the pubDateMissing schema and would
+  // re-introduce false-freshness for cached items.
   const { feedName, lang } = parseFeedScope(feedScope);
   if (lang !== 'en') return null;
-  return readPersistentFeed(`feed:${feedName}`);
+  return readPersistentFeed(`${CACHE_PREFIX}${feedName}`);
 }
 
 // Clean up stale entries to prevent unbounded growth
@@ -251,10 +264,22 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
           link = item.querySelector('link')?.textContent || '';
         }
 
+        // Dublin Core (<dc:date>) fallback for RSS feeds. ArXiv RSS (already
+        // in the feed registry as "ArXiv AI", "ArXiv ML") ships dc:date with
+        // no <pubDate>; without this fallback every ArXiv item would land
+        // with pubDateMissing=true and get demoted in every freshness ranking.
+        // Prior precedent: PR #3417. querySelector('dc\\:date') escapes the
+        // CSS-selector colon so the XML qname matches; getElementsByTagName
+        // is an alternative that also works under browser DOMParser in XML
+        // mode. textContent reads the element's inner text without namespace
+        // gymnastics.
         const pubDateStr = isAtom
           ? (item.querySelector('published')?.textContent || item.querySelector('updated')?.textContent || '')
-          : (item.querySelector('pubDate')?.textContent || '');
-        const pubDate = parseFeedDateOrNow(pubDateStr);
+          : (item.querySelector('pubDate')?.textContent
+            || item.querySelector('dc\\:date')?.textContent
+            || item.getElementsByTagName('dc:date')[0]?.textContent
+            || '');
+        const { date: pubDate, missing: pubDateMissing } = parseFeedDate(pubDateStr);
         const threat = classifyByKeyword(title, SITE_VARIANT);
         const isAlert = threat.level === 'critical' || threat.level === 'high';
         const geoMatches = inferGeoHubsFromTitle(title);
@@ -265,6 +290,7 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
           title,
           link,
           pubDate,
+          pubDateMissing,
           isAlert,
           threat,
           ...(topGeo && { lat: topGeo.hub.lat, lon: topGeo.hub.lon, locationName: topGeo.hub.name }),
@@ -295,11 +321,11 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
 
     const aiCandidates = parsed
       .filter(item => item.threat.source === 'keyword')
-      .sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime())
+      .sort((a, b) => effectivePubDateMs(b) - effectivePubDateMs(a))
       .slice(0, AI_CLASSIFY_MAX_PER_FEED);
 
     for (const item of aiCandidates) {
-      if (!canQueueAiClassification(item.title)) continue;
+      if (!canQueueAiClassification({ link: item.link, title: item.title })) continue;
       classifyWithAI(item.title, SITE_VARIANT).then((aiResult) => {
         if (aiResult && aiResult.confidence > item.threat.confidence) {
           item.threat = aiResult;
@@ -337,22 +363,22 @@ export async function fetchCategoryFeeds(
   const topItems: NewsItem[] = [];
   let totalItems = 0;
 
-  const ensureSortedDescending = () => [...topItems].sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime());
+  const ensureSortedDescending = () => [...topItems].sort((a, b) => effectivePubDateMs(b) - effectivePubDateMs(a));
 
   const insertTopItem = (item: NewsItem) => {
     totalItems += 1;
     if (topItems.length < topLimit) {
       topItems.push(item);
-      if (topItems.length === topLimit) topItems.sort((a, b) => a.pubDate.getTime() - b.pubDate.getTime());
+      if (topItems.length === topLimit) topItems.sort((a, b) => effectivePubDateMs(a) - effectivePubDateMs(b));
       return;
     }
 
-    const itemTime = item.pubDate.getTime();
-    if (itemTime <= topItems[0]!.pubDate.getTime()) return;
+    const itemTime = effectivePubDateMs(item);
+    if (itemTime <= effectivePubDateMs(topItems[0]!)) return;
 
     topItems[0] = item;
     for (let i = 0; i < topItems.length - 1; i += 1) {
-      if (topItems[i]!.pubDate.getTime() <= topItems[i + 1]!.pubDate.getTime()) break;
+      if (effectivePubDateMs(topItems[i]!) <= effectivePubDateMs(topItems[i + 1]!)) break;
       [topItems[i], topItems[i + 1]] = [topItems[i + 1]!, topItems[i]!];
     }
   };

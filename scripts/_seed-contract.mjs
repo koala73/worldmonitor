@@ -44,6 +44,15 @@ const OPTIONAL_FIELDS = new Set([
   'groupMembers',
   'recordCount',     // legacy — kept optional through PR 2, removed in PR 3 in favor of declareRecords
   'metaTtlSeconds',  // legacy — used today by writeSeedMeta / writeExtraKeyWithMeta (e.g. scripts/seed-jodi-gas.mjs); removed in PR 3 when legacy meta writes go away
+  // Content-age contract (2026-05-04 health-readiness plan).
+  // `contentMeta` is a function `(rawData) => {newestItemAt, oldestItemAt} | null`
+  // invoked by runSeed BEFORE publishTransform so seeders can compute item-age
+  // metadata from helper fields that are stripped before publish.
+  // `maxContentAgeMin` is the seeder's content-staleness budget in minutes.
+  // The two opt in TOGETHER: declaring contentMeta without maxContentAgeMin
+  // (or vice-versa) is a contract violation — see the cross-field check below.
+  'contentMeta',
+  'maxContentAgeMin',
 ]);
 
 /**
@@ -112,6 +121,35 @@ export function validateDescriptor(descriptor) {
       `runSeed descriptor populationMode must be 'scheduled' or 'on_demand', got ${descriptor.populationMode}`,
       { descriptor, field: 'populationMode' }
     );
+  }
+
+  // Content-age contract: `contentMeta` and `maxContentAgeMin` opt in together.
+  // Declaring one without the other is a misconfig that would either silently
+  // disable the check (the original `?? null` trap) or produce a function call
+  // to a non-existent budget. Hard-fail at config time.
+  const hasContentMeta = descriptor.contentMeta != null;
+  const hasMaxContentAge = descriptor.maxContentAgeMin != null;
+  if (hasContentMeta !== hasMaxContentAge) {
+    const missing = hasContentMeta ? 'maxContentAgeMin' : 'contentMeta';
+    throw new SeedContractError(
+      `runSeed descriptor declares ${hasContentMeta ? 'contentMeta' : 'maxContentAgeMin'} but is missing ${missing} — both must be present together`,
+      { descriptor, field: missing }
+    );
+  }
+  if (hasContentMeta && typeof descriptor.contentMeta !== 'function') {
+    throw new SeedContractError(
+      `runSeed descriptor contentMeta must be a function, got ${typeof descriptor.contentMeta}`,
+      { descriptor, field: 'contentMeta' }
+    );
+  }
+  if (hasMaxContentAge) {
+    const v = descriptor.maxContentAgeMin;
+    if (!Number.isInteger(v) || v <= 0) {
+      throw new SeedContractError(
+        `runSeed descriptor maxContentAgeMin must be a positive integer (minutes), got ${JSON.stringify(v)}`,
+        { descriptor, field: 'maxContentAgeMin' }
+      );
+    }
   }
 
   const known = new Set([...REQUIRED_FIELDS, ...OPTIONAL_FIELDS]);

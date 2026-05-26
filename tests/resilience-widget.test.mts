@@ -230,7 +230,10 @@ test('getResilienceDimensionLabel returns short stable labels for all 22 dimensi
   assert.equal(getResilienceDimensionLabel('energy'), 'Energy');
   assert.equal(getResilienceDimensionLabel('governanceInstitutional'), 'Gov');
   assert.equal(getResilienceDimensionLabel('socialCohesion'), 'Social');
-  assert.equal(getResilienceDimensionLabel('borderSecurity'), 'Border');
+  // #3737 — relabeled from 'Border' so the displayed dimension name matches
+  // what it actually measures (UCDP conflict + UNHCR displacement, not border
+  // control infrastructure). Internal id stays `borderSecurity` for stability.
+  assert.equal(getResilienceDimensionLabel('borderSecurity'), 'Conflict');
   assert.equal(getResilienceDimensionLabel('informationCognitive'), 'Info');
   assert.equal(getResilienceDimensionLabel('healthPublicService'), 'Health');
   assert.equal(getResilienceDimensionLabel('foodWater'), 'Food');

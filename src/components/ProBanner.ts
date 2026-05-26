@@ -2,6 +2,7 @@ import { trackGateHit } from '@/services/analytics';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { onEntitlementChange, getEntitlementState } from '@/services/entitlements';
 import { getCurrentClerkUser } from '@/services/clerk';
+import { t } from '@/services/i18n';
 
 let bannerEl: HTMLElement | null = null;
 // Cached at first showProBanner() call (App.ts always calls it once at init,
@@ -78,12 +79,12 @@ export function showProBanner(container: HTMLElement): void {
   const banner = document.createElement('div');
   banner.className = 'pro-banner';
   banner.innerHTML = `
-    <span class="pro-banner-badge">PRO</span>
+    <span class="pro-banner-badge">${t('components.proBanner.badge')}</span>
     <span class="pro-banner-text">
-      <strong>Pro is launched</strong> — More Signal, Less Noise. More AI Briefings. A Geopolitical &amp; Equity Researcher just for you.
+      <strong>${t('components.proBanner.headline')}</strong> — ${t('components.proBanner.tagline')}
     </span>
-    <a class="pro-banner-cta" href="/pro#pricing">Upgrade to Pro →</a>
-    <button class="pro-banner-close" aria-label="Dismiss">×</button>
+    <a class="pro-banner-cta" href="/pro#pricing">${t('components.proBanner.cta')}</a>
+    <button class="pro-banner-close" aria-label="${t('components.proBanner.dismiss')}">×</button>
   `;
 
   banner.querySelector('.pro-banner-close')!.addEventListener('click', (e) => {

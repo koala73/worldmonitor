@@ -10,7 +10,11 @@ retailer:
   searchConfig:
     numResults: 5
     queryTemplate: "{canonicalName} grocery singapore {currency} price"
-    urlPathContains: /product/
+    # coldstorage.com.sg product URLs are `/en/p/<name>/i/<id>.html` — the
+    # previous filter `/product/` matched zero URLs and rejected every Exa
+    # result for years (logged 2026-05-09: "5 URLs from Exa, 0 passed
+    # domain check" for every basket item).
+    urlPathContains: /p/
 
   rateLimit:
     requestsPerMinute: 10

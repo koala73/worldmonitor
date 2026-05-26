@@ -6,7 +6,8 @@
     "enterprise": "Enterprise",
     "reserveAccess": "Zarezerwuj wczesny dostęp",
     "signIn": "Zaloguj się",
-    "upgradeToPro": "Upgrade do Pro"
+    "upgradeToPro": "Upgrade do Pro",
+    "goToDashboard": "Przejdź do Pulpitu"
   },
   "hero": {
     "noiseWord": "Szum",
@@ -18,7 +19,8 @@
     "emailPlaceholder": "Wpisz swój e-mail",
     "emailAriaLabel": "Adres e-mail do listy oczekujących",
     "choosePlan": "Wybierz plan",
-    "signIn": "Zaloguj się"
+    "signIn": "Zaloguj się",
+    "goToDashboard": "Przejdź do Pulpitu"
   },
   "wired": {
     "asFeaturedIn": "Wyróżnione w"
@@ -50,7 +52,8 @@
     "entF9": "Aplikacja Android TV do ścian SOC i trading floorów",
     "entF10": "Wdrożenie w chmurze, on-premises lub air-gapped",
     "entF11": "Dedykowane wdrożenie i wsparcie",
-    "entCta": "Porozmawiaj ze sprzedażą"
+    "entCta": "Porozmawiaj ze sprzedażą",
+    "freeF2": "500+ kanałów, 65+ źródeł, 50+ warstw mapy"
   },
   "whyUpgrade": {
     "title": "Dlaczego upgrade",
@@ -83,7 +86,7 @@
     "openFullScreen": "Otwórz na pełnym ekranie",
     "tryLiveDashboard": "Wypróbuj panel na żywo",
     "iframeTitle": "World Monitor — Panel wywiadowczy na żywo",
-    "description": "Globus 3D WebGL · 45+ interaktywnych warstw mapy · Dane rynkowe, makro, geopolityczne, energetyczne i infrastrukturalne w czasie rzeczywistym"
+    "description": "3D globus WebGL · 50+ interaktywnych warstw mapy · Dane rynkowe, makroekonomiczne, geopolityczne, energetyczne i infrastrukturalne w czasie rzeczywistym"
   },
   "socialProof": {
     "uniqueVisitors": "Unikalni odwiedzający",
@@ -139,31 +142,8 @@
   },
   "tiers": {
     "free": "Bezpłatnie",
-    "freeTagline": "Zobacz wszystko",
-    "freeDesc": "Panel open-source",
-    "freeF1": "Odświeżanie 5-15 min",
-    "freeF2": "500+ feedów, 45 warstw mapy",
-    "freeF3": "BYOK dla AI",
-    "freeF4": "Bezpłatnie na zawsze",
-    "openDashboard": "Otwórz panel",
     "pro": "Pro",
-    "proTagline": "Rynki, makro i geopolityka",
-    "proDesc": "Twój analityk AI",
-    "proF1": "Equity research i analiza akcji",
-    "proF2": "+ codzienne digesty, analiza ekonomiczna",
-    "proF3": "AI wliczone, 1 klucz",
-    "proF4": "Priorytetowe odświeżanie danych (Wkrótce)",
-    "priceMonthly": "$39,99 / miesiąc",
-    "priceAnnual": "$399,99 / rok",
-    "annualSavingsNote": "2 miesiące gratis",
-    "enterprise": "Enterprise",
-    "enterpriseTagline": "Działaj przed innymi",
-    "enterpriseDesc": "Platforma wywiadowcza",
-    "entF1": "Obrazy satelitarne na żywo",
-    "entF2": "+ agenci AI, 50K+ infra, SAR",
-    "entF3": "Własne AI, persony inwestorskie",
-    "entF4": "Skontaktuj się z nami",
-    "contactSales": "Kontakt ze sprzedażą"
+    "enterprise": "Enterprise"
   },
   "proShowcase": {
     "proTier": "POZIOM PRO",
@@ -281,7 +261,6 @@
     "fSiemMcp": "+ SIEM/MCP",
     "fRestWebhook": "REST + webhook",
     "fMcpBulk": "+ MCP + masowe",
-    "f45": "45",
     "fTensOfThousands": "+ dziesiątki tysięcy",
     "fLiveTracking": "Śledzenie na żywo",
     "fPassAlerts": "Alerty przelotu + analiza",
@@ -292,7 +271,8 @@
     "fStandard": "Standard",
     "fKeyAuth": "Uwierzytelnianie kluczem",
     "fSsoMfa": "SSO/MFA/RBAC/audyt",
-    "noteBelow": "Rdzeń platformy pozostaje bezpłatny. Plany płatne odblokowują equity research, analizę makro, briefy AI i użycie organizacyjne."
+    "noteBelow": "Rdzeń platformy pozostaje bezpłatny. Plany płatne odblokowują equity research, analizę makro, briefy AI i użycie organizacyjne.",
+    "f50plus": "50+"
   },
   "faq": {
     "title": "Najczęściej zadawane pytania",
@@ -354,5 +334,76 @@
     "youreIn": "Jesteś w środku!",
     "invitedBanner": "Zostałeś zaproszony — dołącz do listy oczekujących"
   },
-  "soonBadge": "Wkrótce"
+  "soonBadge": "Wkrótce",
+  "meta": {
+    "title": "World Monitor Pro — Analityk AI, Osobiste Biuro Inteligencji, MCP dla Claude i GPT",
+    "description": "Geopolityczna warstwa AI. Zadaj pytanie, subskrybuj, rozwijaj. Chat WM Analyst w ponad 30 usługach na żywo, codzienny, dwukrotnie dziennie lub tygodniowy digest AI dostarczany do Slack, Discord, Telegram, Email lub webhook, konstruktor niestandardowych widżetów (HTML/CSS/JS + AI) i łączniki MCP dla Claude, GPT i niestandardowych LLM.",
+    "ogTitle": "World Monitor Pro — Geopolityczna warstwa AI",
+    "ogDescription": "Zadaj pytanie, subskrybuj, rozwijaj. Chat WM Analyst, digest AI według Twojego harmonogramu (codziennie, dwukrotnie dziennie lub tygodniowo), konstruktor niestandardowych widżetów i MCP dla Claude/GPT — w ponad 30 usługach na żywo pod jednym kluczem."
+  },
+  "pricing": {
+    "suffixForever": "na zawsze",
+    "suffixTailored": "dostosowany do Ciebie",
+    "suffixPerMonth": "/mies.",
+    "suffixPerYear": "/rok",
+    "amountCustom": "Niestandardowe",
+    "opening": "Otwieranie…",
+    "headerTitle": "Wybierz swój plan",
+    "headerSubtitle": "Od monitorowania w czasie rzeczywistym do pełnej infrastruktury analitycznej. Wybierz poziom pasujący do Twojej misji.",
+    "billingMonthly": "Miesięcznie",
+    "billingAnnual": "Rocznie",
+    "saveAnnual": "Oszczędź 17%",
+    "mostPopular": "Najpopularniejszy",
+    "promoCodeNote": "Masz kod promocyjny? Wpisz go podczas finalizowania zamówienia.",
+    "tiers": {
+      "free": {
+        "description": "Zacznij z niezbędnymi funkcjami",
+        "features": [
+          "Panele pulpitu głównego",
+          "Globalna tablica wiadomości",
+          "Alerty trzęsień ziemi i pogodowe",
+          "Widok mapy podstawowej"
+        ],
+        "cta": "Zacznij"
+      },
+      "pro": {
+        "description": "Pełny pulpit analityczny",
+        "features": [
+          "Wszystko z planu Free",
+          "Analiza akcji i backtesting AI",
+          "Codzienne briefingi rynkowe",
+          "Śledzenie geopolityczne i wojskowe",
+          "Konstruktor widżetów niestandardowych",
+          "Konektory danych MCP",
+          "Priorytetowe odświeżanie danych"
+        ]
+      },
+      "api": {
+        "description": "Programowy dostęp do danych analitycznych",
+        "features": [
+          "Dostęp do REST API",
+          "Strumienie danych w czasie rzeczywistym",
+          "1000 żądań/dzień",
+          "Powiadomienia webhook",
+          "Niestandardowe eksporty danych"
+        ]
+      },
+      "enterprise": {
+        "description": "Rozwiązania dostosowane dla organizacji",
+        "features": [
+          "Wszystko z planu Pro + API",
+          "Nieograniczone żądania API",
+          "Wsparcie dedykowane",
+          "Niestandardowe integracje",
+          "Gwarancja SLA",
+          "Opcja on-premise"
+        ],
+        "cta": "Skontaktuj się z działem sprzedaży"
+      }
+    },
+    "cta": {
+      "checkoutDefault": "Rozpocznij",
+      "learnMore": "Dowiedz się więcej"
+    }
+  }
 }

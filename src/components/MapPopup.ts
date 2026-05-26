@@ -1554,7 +1554,11 @@ export class MapPopup {
 
   private renderFlightPopup(delay: AirportDelayAlert): string {
     const severityClass = escapeHtml(delay.severity);
-    const severityLabel = escapeHtml(delay.severity.toUpperCase());
+    // #3707: render 'unknown' as a neutral "No data" badge so users don't
+    // read it as "healthy / normal". All other severities keep raw label.
+    const severityLabel = delay.severity === 'unknown'
+      ? 'NO DATA'
+      : escapeHtml(delay.severity.toUpperCase());
     const delayTypeLabels: Record<string, string> = {
       'ground_stop': t('popups.flight.groundStop'),
       'ground_delay': t('popups.flight.groundDelay'),
@@ -1563,14 +1567,23 @@ export class MapPopup {
       'general': t('popups.flight.delaysReported'),
       'closure': t('popups.flight.closure'),
     };
-    const delayTypeLabel = delayTypeLabels[delay.delayType] || t('popups.flight.delays');
-    const icon = delay.delayType === 'closure' ? '🚫' : delay.delayType === 'ground_stop' ? '🛑' : delay.severity === 'severe' ? '✈️' : '🛫';
+    // #3707: when severity is 'unknown' we have no delay-type signal either.
+    const delayTypeLabel = delay.severity === 'unknown'
+      ? 'Coverage unavailable'
+      : (delayTypeLabels[delay.delayType] || t('popups.flight.delays'));
+    const icon = delay.severity === 'unknown'
+      ? '❔'
+      : delay.delayType === 'closure' ? '🚫'
+      : delay.delayType === 'ground_stop' ? '🛑'
+      : delay.severity === 'severe' ? '✈️'
+      : '🛫';
     const sourceLabels: Record<string, string> = {
       'faa': t('popups.flight.sources.faa'),
       'eurocontrol': t('popups.flight.sources.eurocontrol'),
       'computed': t('popups.flight.sources.computed'),
       'aviationstack': t('popups.flight.sources.aviationstack'),
       'notam': t('popups.flight.sources.notam'),
+      'unspecified': '—',
     };
     const sourceLabel = sourceLabels[delay.source] || escapeHtml(delay.source);
     const regionLabels: Record<string, string> = {

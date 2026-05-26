@@ -165,69 +165,69 @@ Open `docs/api/SeismologyService.openapi.yaml` — the new endpoint should appea
 
 ## Adding a new service
 
-Example: adding a `SanctionsService`.
+Example: adding a hypothetical `WeatherService`. (No `weather` domain exists in this repo — the example below is purely illustrative; copy-pasting any path from this section will hit a 404.)
 
 ### 1. Create the proto directory
 
 ```
-proto/worldmonitor/sanctions/v1/
+proto/worldmonitor/weather/v1/
 ```
 
 ### 2. Define entity messages
 
-Create `proto/worldmonitor/sanctions/v1/sanctions_entry.proto`:
+Create `proto/worldmonitor/weather/v1/weather_station.proto`:
 
 ```protobuf
 syntax = "proto3";
-package worldmonitor.sanctions.v1;
+package worldmonitor.weather.v1;
 
 import "buf/validate/validate.proto";
 import "sebuf/http/annotations.proto";
 
-// SanctionsEntry represents a single entity on a sanctions list.
-message SanctionsEntry {
-  // Unique identifier.
+// WeatherStation represents a single ground-based observation station.
+message WeatherStation {
+  // Unique identifier (e.g., WMO station number).
   string id = 1 [
     (buf.validate.field).required = true,
     (buf.validate.field).string.min_len = 1
   ];
-  // Name of the sanctioned entity or individual.
+  // Human-readable station name.
   string name = 2;
-  // Issuing authority (e.g., "OFAC", "EU", "UN").
-  string authority = 3;
-  // ISO 3166-1 alpha-2 country code of the target.
+  // Operating network (e.g., "NWS", "WMO", "NOAA").
+  string network = 3;
+  // ISO 3166-1 alpha-2 country code where the station is located.
   string country_code = 4;
-  // Date the sanction was imposed, as Unix epoch milliseconds.
-  int64 imposed_at = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Date the station first reported observations, as Unix epoch milliseconds.
+  int64 first_seen_at = 5 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
 }
 ```
 
 ### 3. Define request/response messages
 
-Create `proto/worldmonitor/sanctions/v1/list_sanctions.proto`:
+Create `proto/worldmonitor/weather/v1/list_weather_stations.proto`:
 
 ```protobuf
 syntax = "proto3";
-package worldmonitor.sanctions.v1;
+package worldmonitor.weather.v1;
 
 import "buf/validate/validate.proto";
 import "worldmonitor/core/v1/pagination.proto";
-import "worldmonitor/sanctions/v1/sanctions_entry.proto";
+import "worldmonitor/weather/v1/weather_station.proto";
 
-// ListSanctionsRequest specifies filters for sanctions data.
-message ListSanctionsRequest {
-  // Filter by issuing authority (e.g., "OFAC"). Empty returns all.
-  string authority = 1;
+// ListWeatherStationsRequest specifies filters for weather station data.
+message ListWeatherStationsRequest {
+  // Filter by operating network (e.g., "NWS"). Empty returns all.
+  string network = 1;
   // Filter by country code.
   string country_code = 2 [(buf.validate.field).string.max_len = 2];
   // Pagination parameters.
   worldmonitor.core.v1.PaginationRequest pagination = 3;
 }
 
-// ListSanctionsResponse contains the matching sanctions entries.
-message ListSanctionsResponse {
-  // The list of sanctions entries.
-  repeated SanctionsEntry entries = 1;
+// ListWeatherStationsResponse contains the matching stations.
+message ListWeatherStationsResponse {
+  // The list of weather stations.
+  repeated WeatherStation stations = 1;
   // Pagination metadata.
   worldmonitor.core.v1.PaginationResponse pagination = 2;
 }
@@ -235,22 +235,22 @@ message ListSanctionsResponse {
 
 ### 4. Define the service
 
-Create `proto/worldmonitor/sanctions/v1/service.proto`:
+Create `proto/worldmonitor/weather/v1/service.proto`:
 
 ```protobuf
 syntax = "proto3";
-package worldmonitor.sanctions.v1;
+package worldmonitor.weather.v1;
 
 import "sebuf/http/annotations.proto";
-import "worldmonitor/sanctions/v1/list_sanctions.proto";
+import "worldmonitor/weather/v1/list_weather_stations.proto";
 
-// SanctionsService provides APIs for international sanctions monitoring.
-service SanctionsService {
-  option (sebuf.http.service_config) = {base_path: "/api/sanctions/v1"};
+// WeatherService provides APIs for weather observation stations.
+service WeatherService {
+  option (sebuf.http.service_config) = {base_path: "/api/weather/v1"};
 
-  // ListSanctions retrieves sanctions entries matching the given filters.
-  rpc ListSanctions(ListSanctionsRequest) returns (ListSanctionsResponse) {
-    option (sebuf.http.config) = {path: "/list-sanctions"};
+  // ListWeatherStations retrieves stations matching the given filters.
+  rpc ListWeatherStations(ListWeatherStationsRequest) returns (ListWeatherStationsResponse) {
+    option (sebuf.http.config) = {path: "/list-weather-stations"};
   }
 }
 ```
@@ -266,37 +266,37 @@ make check   # lint + generate in one step
 Create the handler directory and files:
 
 ```
-server/worldmonitor/sanctions/v1/
-├── handler.ts               # thin re-export
-└── list-sanctions.ts        # RPC implementation
+server/worldmonitor/weather/v1/
+├── handler.ts                     # thin re-export
+└── list-weather-stations.ts       # RPC implementation
 ```
 
-`server/worldmonitor/sanctions/v1/list-sanctions.ts`:
+`server/worldmonitor/weather/v1/list-weather-stations.ts`:
 ```typescript
 import type {
-  SanctionsServiceHandler,
+  WeatherServiceHandler,
   ServerContext,
-  ListSanctionsRequest,
-  ListSanctionsResponse,
-} from '../../../../src/generated/server/worldmonitor/sanctions/v1/service_server';
+  ListWeatherStationsRequest,
+  ListWeatherStationsResponse,
+} from '../../../../src/generated/server/worldmonitor/weather/v1/service_server';
 
-export const listSanctions: SanctionsServiceHandler['listSanctions'] = async (
+export const listWeatherStations: WeatherServiceHandler['listWeatherStations'] = async (
   _ctx: ServerContext,
-  req: ListSanctionsRequest,
-): Promise<ListSanctionsResponse> => {
+  req: ListWeatherStationsRequest,
+): Promise<ListWeatherStationsResponse> => {
   // Your implementation here — fetch from upstream API, transform to proto shape
-  return { entries: [], pagination: undefined };
+  return { stations: [], pagination: undefined };
 };
 ```
 
-`server/worldmonitor/sanctions/v1/handler.ts`:
+`server/worldmonitor/weather/v1/handler.ts`:
 ```typescript
-import type { SanctionsServiceHandler } from '../../../../src/generated/server/worldmonitor/sanctions/v1/service_server';
+import type { WeatherServiceHandler } from '../../../../src/generated/server/worldmonitor/weather/v1/service_server';
 
-import { listSanctions } from './list-sanctions';
+import { listWeatherStations } from './list-weather-stations';
 
-export const sanctionsHandler: SanctionsServiceHandler = {
-  listSanctions,
+export const weatherHandler: WeatherServiceHandler = {
+  listWeatherStations,
 };
 ```
 
@@ -305,12 +305,12 @@ export const sanctionsHandler: SanctionsServiceHandler = {
 Edit `api/[[...path]].js` — add the import and mount the routes:
 
 ```typescript
-import { createSanctionsServiceRoutes } from '../src/generated/server/worldmonitor/sanctions/v1/service_server';
-import { sanctionsHandler } from './server/worldmonitor/sanctions/v1/handler';
+import { createWeatherServiceRoutes } from '../src/generated/server/worldmonitor/weather/v1/service_server';
+import { weatherHandler } from './server/worldmonitor/weather/v1/handler';
 
 const allRoutes = [
   // ... existing routes ...
-  ...createSanctionsServiceRoutes(sanctionsHandler, serverOptions),
+  ...createWeatherServiceRoutes(weatherHandler, serverOptions),
 ];
 ```
 
@@ -320,28 +320,28 @@ Edit `vite.config.ts` — add the lazy import and route mount inside the `sebufA
 
 ### 9. Create the frontend service wrapper
 
-Create `src/services/sanctions.ts`:
+Create `src/services/weather.ts`:
 
 ```typescript
 import {
-  SanctionsServiceClient,
-  type SanctionsEntry,
-  type ListSanctionsResponse,
-} from '@/generated/client/worldmonitor/sanctions/v1/service_client';
+  WeatherServiceClient,
+  type WeatherStation,
+  type ListWeatherStationsResponse,
+} from '@/generated/client/worldmonitor/weather/v1/service_client';
 import { createCircuitBreaker } from '@/utils';
 
-export type { SanctionsEntry };
+export type { WeatherStation };
 
-const client = new SanctionsServiceClient('', { fetch: fetch.bind(globalThis) });
-const breaker = createCircuitBreaker<ListSanctionsResponse>({ name: 'Sanctions' });
+const client = new WeatherServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
+const breaker = createCircuitBreaker<ListWeatherStationsResponse>({ name: 'Weather' });
 
-const emptyFallback: ListSanctionsResponse = { entries: [] };
+const emptyFallback: ListWeatherStationsResponse = { stations: [] };
 
-export async function fetchSanctions(authority?: string): Promise<SanctionsEntry[]> {
+export async function fetchWeatherStations(network?: string): Promise<WeatherStation[]> {
   const response = await breaker.execute(async () => {
-    return client.listSanctions({ authority: authority ?? '', countryCode: '', pagination: undefined });
+    return client.listWeatherStations({ network: network ?? '', countryCode: '', pagination: undefined });
   }, emptyFallback);
-  return response.entries;
+  return response.stations;
 }
 ```
 
@@ -357,7 +357,7 @@ These conventions are enforced across the codebase. Follow them for consistency.
 
 ### File naming
 
-- One file per message type: `earthquake.proto`, `sanctions_entry.proto`
+- One file per message type: `earthquake.proto`, `weather_station.proto`
 - One file per RPC pair: `list_earthquakes.proto`, `get_earthquake_details.proto`
 - Service definition: `service.proto`
 - Use `snake_case` for file names and field names
@@ -428,10 +428,10 @@ buf lint enforces comments on all messages, fields, services, RPCs, and enum val
 Always type the handler function against the generated interface using indexed access:
 
 ```typescript
-export const listSanctions: SanctionsServiceHandler['listSanctions'] = async (
+export const listWeatherStations: WeatherServiceHandler['listWeatherStations'] = async (
   _ctx: ServerContext,
-  req: ListSanctionsRequest,
-): Promise<ListSanctionsResponse> => {
+  req: ListWeatherStationsRequest,
+): Promise<ListWeatherStationsResponse> => {
   // ...
 };
 ```
@@ -440,13 +440,13 @@ This ensures the compiler catches any mismatch between your implementation and t
 
 ### Client construction
 
-Always pass `{ fetch: fetch.bind(globalThis) }` when creating clients:
+Always pass `{ fetch: (...args) => globalThis.fetch(...args) }` when creating clients:
 
 ```typescript
-const client = new SanctionsServiceClient('', { fetch: fetch.bind(globalThis) });
+const client = new WeatherServiceClient('', { fetch: (...args) => globalThis.fetch(...args) });
 ```
 
-The empty string base URL works because both Vite dev server and Vercel serve the API on the same origin. The `fetch.bind(globalThis)` is required for Tauri compatibility.
+The empty string base URL works because both Vite dev server and Vercel serve the API on the same origin. The arrow-function wrapper around `globalThis.fetch` is required for Tauri compatibility AND for the runtime fetch interceptor — `fetch.bind(globalThis)` is **banned** because it freezes a reference to the global `fetch` at module-init time, which bypasses any later interceptor (auth headers, request logging, retry shims) installed on `globalThis.fetch`. The arrow-function wrapper resolves `globalThis.fetch` on every call.
 
 ## Generated documentation
 

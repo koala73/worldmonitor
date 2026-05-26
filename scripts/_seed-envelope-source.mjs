@@ -76,11 +76,24 @@ export function stripSeedEnvelope(raw) {
  * Build an envelope for a seeder's successful run. Does NOT validate the seed
  * meta fields beyond what the type expects; `validateDescriptor` in
  * scripts/_seed-contract.mjs handles pre-publish validation.
+ *
+ * Content-age fields (`newestItemAt`, `oldestItemAt`, `maxContentAgeMin`) are
+ * the opt-in content-freshness contract from the 2026-05-04 health-readiness
+ * plan. The presence of `maxContentAgeMin` is the opt-in signal: when set,
+ * health classifies the entry against `newestItemAt`/`maxContentAgeMin`. The
+ * other two tag along — `newestItemAt` may be explicit `null` when the
+ * seeder's `contentMeta` returned null (no usable item timestamps), which
+ * the classifier reads as STALE_CONTENT.
  */
-export function buildEnvelope({ fetchedAt, recordCount, sourceVersion, schemaVersion, state, failedDatasets, errorReason, groupId, data }) {
+export function buildEnvelope({ fetchedAt, recordCount, sourceVersion, schemaVersion, state, failedDatasets, errorReason, groupId, newestItemAt, oldestItemAt, maxContentAgeMin, data }) {
   const _seed = { fetchedAt, recordCount, sourceVersion, schemaVersion, state };
   if (failedDatasets != null) _seed.failedDatasets = failedDatasets;
   if (errorReason != null) _seed.errorReason = errorReason;
   if (groupId != null) _seed.groupId = groupId;
+  if (maxContentAgeMin !== undefined) {
+    _seed.newestItemAt = newestItemAt ?? null;
+    _seed.oldestItemAt = oldestItemAt ?? null;
+    _seed.maxContentAgeMin = maxContentAgeMin;
+  }
   return { _seed, data };
 }

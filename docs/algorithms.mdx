@@ -30,6 +30,8 @@ The server-side score (`get-risk-scores.ts`) uses the same formulas as the front
 
 **Boosts**: Advisory boost (+15 do-not-travel, +10 reconsider, +5 caution), OREF blend boost for Israel (+15 active alerts, +5/10 based on 24h history count), climate severity (up to +15), cyber threats (up to +10), wildfires (up to +8).
 
+See [CII Risk Scoring Methodology](/methodology/cii-risk-scores) for the published per-country `baselineRisk` and `eventMultiplier` tables, the strategic-risk band derivation, and the known 7-country server vs frontend drift.
+
 ### Hotspot Escalation Scoring
 
 Intelligence hotspots receive dynamic escalation scores blending four normalized signals (0–100):

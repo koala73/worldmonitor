@@ -6,6 +6,7 @@ import {
 } from '../services/analysis-framework-store';
 import { PanelGateReason } from '../services/panel-gating';
 import type { Panel } from './Panel';
+import { t } from '../services/i18n';
 
 interface FrameworkSelectorOptions {
   panelId: AnalysisPanelId;
@@ -66,7 +67,7 @@ export class FrameworkSelector {
 
   private updateBtnTitle(): void {
     const fw = this.select ? getActiveFrameworkForPanel(this.panelId) : null;
-    this.btn.title = fw ? `Framework: ${fw.name}` : 'Analysis framework';
+    this.btn.title = fw ? t('components.frameworkSelector.titlePrefix', { name: fw.name }) : t('components.frameworkSelector.titleNone');
   }
 
   private openPopup(): void {
@@ -79,7 +80,7 @@ export class FrameworkSelector {
 
     const label = document.createElement('div');
     label.className = 'framework-settings-label';
-    label.textContent = 'Analysis Framework';
+    label.textContent = t('components.frameworkSelector.label');
     popup.appendChild(label);
 
     if (this.select) {
@@ -124,7 +125,7 @@ export class FrameworkSelector {
     select.innerHTML = '';
     const defaultOpt = document.createElement('option');
     defaultOpt.value = '';
-    defaultOpt.textContent = 'Default (Neutral)';
+    defaultOpt.textContent = t('components.frameworkSelector.defaultNeutral');
     select.appendChild(defaultOpt);
 
     for (const fw of loadFrameworkLibrary()) {

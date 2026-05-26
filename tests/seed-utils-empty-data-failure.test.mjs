@@ -109,15 +109,24 @@ test('validation failure WITHOUT emptyDataIsFailure DOES refresh seed-meta (quie
 // EMPTY_DATA even though the canonical data was fine. The mirror behavior
 // keeps health honest while preserving STALE_SEED honesty (mirrored
 // fetchedAt is the canonical's ORIGINAL value, not now).
-function withCanonicalEnvelope({ canonicalKey, fetchedAt, recordCount, sourceVersion = 'test-v1' }) {
+function withCanonicalEnvelope({ canonicalKey, fetchedAt, recordCount, sourceVersion = 'test-v1', contentAge }) {
+  const seed = {
+    fetchedAt,
+    recordCount,
+    sourceVersion,
+    schemaVersion: 1,
+    state: 'OK',
+  };
+  // Optional content-age trio (2026-05-04 health-readiness plan).
+  // Used by the Sprint 1 anti-regression test that asserts the validate-fail
+  // mirror preserves content fields end-to-end (Codex round 1 P0b).
+  if (contentAge && typeof contentAge === 'object') {
+    seed.newestItemAt = contentAge.newestItemAt ?? null;
+    seed.oldestItemAt = contentAge.oldestItemAt ?? null;
+    seed.maxContentAgeMin = contentAge.maxContentAgeMin;
+  }
   const envelope = {
-    _seed: {
-      fetchedAt,
-      recordCount,
-      sourceVersion,
-      schemaVersion: 1,
-      state: 'OK',
-    },
+    _seed: seed,
     data: { items: Array.from({ length: recordCount }, (_, i) => ({ id: i })) },
   };
   return async (url, opts = {}) => {
@@ -194,4 +203,74 @@ test('PR #3582: validation failure with MISSING canonical falls back to recordCo
   const meta = lastMetaSetBody('no-canonical');
   assert.ok(meta, 'seed-meta must still be written when no canonical envelope to mirror');
   assert.equal(meta.recordCount, 0, 'falls back to recordCount=0 when canonical envelope is missing/malformed');
+});
+
+// Sprint 1 (2026-05-04 health-readiness plan, Codex round 1 P0b):
+// validate-fail mirror MUST preserve content-age fields from the canonical
+// envelope. Without this, /api/health loses the STALE_CONTENT signal exactly
+// when last-good-with-stale-content data is being served — the worst possible
+// time for the alarm to vanish.
+test('Sprint 1: validation failure with canonical contentAge MIRRORS newestItemAt/oldestItemAt/maxContentAgeMin', async () => {
+  const FROZEN_FETCHED_AT = 1700000000000;
+  const FROZEN_NEWEST_AT = 1699000000000;   // older than fetchedAt = realistic for sparse upstream
+  const FROZEN_OLDEST_AT = 1690000000000;
+  const RECORD_COUNT = 216;
+  globalThis.fetch = withCanonicalEnvelope({
+    canonicalKey: 'test:content-age-mirror:v1',
+    fetchedAt: FROZEN_FETCHED_AT,
+    recordCount: RECORD_COUNT,
+    sourceVersion: 'tgh-bundle-v2',
+    contentAge: {
+      newestItemAt: FROZEN_NEWEST_AT,
+      oldestItemAt: FROZEN_OLDEST_AT,
+      maxContentAgeMin: 12960,    // 9 days, matching disease-outbreaks pilot
+    },
+  });
+
+  await runWithExitTrap(() =>
+    runSeed('test', 'content-age-mirror', 'test:content-age-mirror:v1', async () => ({ items: [] }), {
+      validateFn: (d) => d?.items?.length >= 10,    // rejects → mirror branch
+      ttlSeconds: 3600,
+    }),
+  );
+
+  const meta = lastMetaSetBody('content-age-mirror');
+  assert.ok(meta, 'seed-meta must be written via the mirror branch');
+  assert.equal(meta.recordCount, RECORD_COUNT, 'recordCount mirrored');
+  assert.equal(meta.fetchedAt, FROZEN_FETCHED_AT, 'fetchedAt mirrored (canonical original, not now)');
+  assert.equal(
+    meta.newestItemAt, FROZEN_NEWEST_AT,
+    'newestItemAt MUST be mirrored — without this, STALE_CONTENT signal vanishes during transient validate-fails',
+  );
+  assert.equal(meta.oldestItemAt, FROZEN_OLDEST_AT, 'oldestItemAt mirrored');
+  assert.equal(meta.maxContentAgeMin, 12960, 'maxContentAgeMin mirrored');
+});
+
+// Anti-regression: legacy seeder (no contentMeta) — meta must NOT carry
+// content fields. Proves the mirror is gated on canonical envelope presence
+// of the content trio, not added unconditionally.
+test('Sprint 1: validation failure with canonical envelope BUT no contentAge writes legacy meta shape', async () => {
+  const FROZEN_FETCHED_AT = 1700000000000;
+  const RECORD_COUNT = 100;
+  globalThis.fetch = withCanonicalEnvelope({
+    canonicalKey: 'test:legacy-mirror:v1',
+    fetchedAt: FROZEN_FETCHED_AT,
+    recordCount: RECORD_COUNT,
+    // no contentAge — legacy contract-mode seeder
+  });
+
+  await runWithExitTrap(() =>
+    runSeed('test', 'legacy-mirror', 'test:legacy-mirror:v1', async () => ({ items: [] }), {
+      validateFn: (d) => d?.items?.length >= 10,
+      ttlSeconds: 3600,
+    }),
+  );
+
+  const meta = lastMetaSetBody('legacy-mirror');
+  assert.ok(meta, 'seed-meta written via mirror');
+  assert.equal(meta.recordCount, RECORD_COUNT);
+  assert.equal(meta.fetchedAt, FROZEN_FETCHED_AT);
+  assert.ok(!('newestItemAt' in meta), 'newestItemAt absent for legacy seeders');
+  assert.ok(!('oldestItemAt' in meta), 'oldestItemAt absent for legacy seeders');
+  assert.ok(!('maxContentAgeMin' in meta), 'maxContentAgeMin absent for legacy seeders');
 });

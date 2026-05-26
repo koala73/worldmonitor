@@ -56,7 +56,7 @@ The command palette uses **case-insensitive fuzzy matching** with intelligent ra
 
 - Type "taiwan" → Shows Taiwan country brief, Taiwan Strait theater, nearby bases
 - Type "crypto" → Shows crypto panel, stablecoin monitor, BTC signals
-- Type "fire" → Shows NASA FIRMS layer, fire-related news
+- Type "fire" → Shows [NASA FIRMS](https://firms.modaps.eosdis.nasa.gov/) layer, fire-related news
 - Type "base" → Shows military bases layer
 - Type "iran" → Shows Iran country brief, Iran theater, Iran-related panels
 
@@ -123,7 +123,7 @@ The command palette is panel-aware. When you have specific panels open, related 
 
 1. Cmd+K → "finance" preset → Enter
 2. Cmd+K → "macro" → Enter (7-signal radar)
-3. Cmd+K → "prediction" → Enter (Polymarket)
+3. Cmd+K → "prediction" → Enter ([Polymarket](https://polymarket.com/))
 4. Cmd+K → "commodity" → Enter (price panel)
 
 The command palette turns World Monitor from a visual dashboard into a queryable intelligence system. Ask it anything, get there instantly. Explore the [five dashboard variants](/blog/posts/five-dashboards-one-platform-worldmonitor-variants/) to see how the palette adapts to different operational contexts.

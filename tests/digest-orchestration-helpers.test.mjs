@@ -20,6 +20,7 @@ import {
   pickWinningCandidateWithPool,
   readTimeAgeCutoffMs,
   runSynthesisWithFallback,
+  selectCanonicalSendRule,
   shouldDropTrackByAge,
   subjectForBrief,
 } from '../scripts/lib/digest-orchestration-helpers.mjs';
@@ -352,7 +353,7 @@ describe('runSynthesisWithFallback — three-level chain', () => {
     const trace = [];
     const result = await runSynthesisWithFallback(
       'u1',
-      [{ hash: 'h1', headline: 'Story 1', threatLevel: 'critical' }],
+      [{ hash: 'h1', headline: 'Hormuz blockade threatens Gaza shipping', threatLevel: 'critical' }],
       'all',
       { profile: 'Watching: oil', greeting: 'Good morning' },
       deps,
@@ -378,7 +379,7 @@ describe('runSynthesisWithFallback — three-level chain', () => {
     const trace = [];
     const result = await runSynthesisWithFallback(
       'u1',
-      [{ hash: 'h1', headline: 'Story 1', threatLevel: 'critical' }],
+      [{ hash: 'h1', headline: 'Hormuz blockade threatens Gaza shipping', threatLevel: 'critical' }],
       'all',
       { profile: 'Watching: oil', greeting: 'Good morning' },
       deps,
@@ -398,7 +399,7 @@ describe('runSynthesisWithFallback — three-level chain', () => {
     const trace = [];
     const result = await runSynthesisWithFallback(
       'u1',
-      [{ hash: 'h1', headline: 'Story 1', threatLevel: 'critical' }],
+      [{ hash: 'h1', headline: 'Hormuz blockade threatens Gaza shipping', threatLevel: 'critical' }],
       'all',
       { profile: null, greeting: null },
       deps,
@@ -428,7 +429,7 @@ describe('runSynthesisWithFallback — three-level chain', () => {
     };
     const result = await runSynthesisWithFallback(
       'u1',
-      [{ hash: 'h1', headline: 'Story 1', threatLevel: 'critical' }],
+      [{ hash: 'h1', headline: 'Hormuz blockade threatens Gaza shipping', threatLevel: 'critical' }],
       'all',
       { profile: null, greeting: null },
       deps,
@@ -441,7 +442,7 @@ describe('runSynthesisWithFallback — three-level chain', () => {
     const deps = makeDeps(async () => { throw new Error('LLM totally down'); });
     const result = await runSynthesisWithFallback(
       'u1',
-      [{ hash: 'h1', headline: 'Story 1', threatLevel: 'critical' }],
+      [{ hash: 'h1', headline: 'Hormuz blockade threatens Gaza shipping', threatLevel: 'critical' }],
       'all',
       { profile: null, greeting: null },
       deps,
@@ -457,7 +458,7 @@ describe('runSynthesisWithFallback — three-level chain', () => {
     // No trace argument
     const result = await runSynthesisWithFallback(
       'u1',
-      [{ hash: 'h1', headline: 'Story 1', threatLevel: 'critical' }],
+      [{ hash: 'h1', headline: 'Hormuz blockade threatens Gaza shipping', threatLevel: 'critical' }],
       'all',
       { profile: null, greeting: null },
       deps,
@@ -567,5 +568,118 @@ describe('shouldDropTrackByAge — predicate matrix', () => {
       true,
       'Months-old residue with a real publishedAt must be dropped',
     );
+  });
+});
+
+// ── selectCanonicalSendRule — Sprint 1 U2 (option (a)) ─────────────────────
+//
+// Under option (a) canonicalisation, the per-user "winning rule" picked by
+// the compose phase drives BOTH the email body and the magazine URL. The
+// send loop must therefore filter the rule list down to ONE rule per user
+// per slot (the winner) before the isDue / channel-fetch / synthesis cascade
+// runs. This helper is that filter — pure, no I/O, exhaustively tested
+// here so the cron's main() loop can rely on its contract without a
+// full-mock integration harness.
+//
+// Why this matters: pre-U2, the send loop ran a separate synthesis per
+// enabled rule and dispatched one email per rule. A multi-rule user
+// received an email body keyed to one rule's pool while the magazine URL
+// pointed at a DIFFERENT rule's envelope (the compose-phase winner). U2
+// collapses the divergence — every channel body now reads from the same
+// canonical winning rule.
+
+describe('selectCanonicalSendRule — option (a) canonical mapping', () => {
+  function makeBrief(overrides = {}) {
+    return {
+      envelope: { v: 4, data: {} },
+      magazineUrl: 'https://example/brief/u/2026-05-06-0800',
+      chosenVariant: 'full',
+      synthesisLevel: 1,
+      ...overrides,
+    };
+  }
+  function makeRule(overrides = {}) {
+    return {
+      userId: 'user_abc',
+      variant: 'full',
+      enabled: true,
+      digestMode: 'daily',
+      sensitivity: 'high',
+      aiDigestEnabled: true,
+      digestTimezone: 'UTC',
+      updatedAt: 1_700_000_000_000,
+      ...overrides,
+    };
+  }
+
+  it('returns the winner rule when it exists in the candidate list', () => {
+    const winner = makeRule({ variant: 'full' });
+    const sibling = makeRule({ variant: 'finance' });
+    const out = selectCanonicalSendRule(makeBrief({ chosenVariant: 'full' }), [sibling, winner]);
+    assert.equal(out, winner);
+  });
+
+  it('multi-rule user: only the winner rule is selected; non-winner siblings are dropped', () => {
+    // The defining U2 invariant. A user with full + finance + tech rules
+    // and a compose-phase winner of "tech" must see the send loop fire
+    // for the tech rule ONLY — full and finance do not get their own
+    // separate emails any more.
+    const full = makeRule({ variant: 'full' });
+    const finance = makeRule({ variant: 'finance' });
+    const tech = makeRule({ variant: 'tech' });
+    const userRules = [full, finance, tech];
+    const out = selectCanonicalSendRule(makeBrief({ chosenVariant: 'tech' }), userRules);
+    assert.equal(out, tech, 'winner=tech must be selected');
+    assert.notEqual(out, full);
+    assert.notEqual(out, finance);
+  });
+
+  it('returns null when the brief has no chosenVariant (compose did not identify a winner)', () => {
+    const userRules = [makeRule()];
+    const out = selectCanonicalSendRule(makeBrief({ chosenVariant: undefined }), userRules);
+    assert.equal(out, null);
+  });
+
+  it('returns null when brief is undefined / null (compose phase produced nothing for this user)', () => {
+    const userRules = [makeRule()];
+    assert.equal(selectCanonicalSendRule(undefined, userRules), null);
+    assert.equal(selectCanonicalSendRule(null, userRules), null);
+  });
+
+  it('returns null when the winner variant no longer exists in the rule list (rule deleted between compose and send)', () => {
+    // Defensive: rather than misrouting to a sibling rule when the
+    // winner has been deleted, skip the send entirely. The next cron
+    // tick will recompose with the remaining rules.
+    const out = selectCanonicalSendRule(
+      makeBrief({ chosenVariant: 'tech' }),
+      [makeRule({ variant: 'full' }), makeRule({ variant: 'finance' })],
+    );
+    assert.equal(out, null);
+  });
+
+  it('returns null on empty userRules list (defensive)', () => {
+    assert.equal(selectCanonicalSendRule(makeBrief(), []), null);
+  });
+
+  it('returns null when chosenVariant is the empty string (defensive — treat as missing)', () => {
+    const out = selectCanonicalSendRule(makeBrief({ chosenVariant: '' }), [makeRule()]);
+    assert.equal(out, null);
+  });
+
+  it('single-rule user with matching winner: no behavior change vs pre-U2', () => {
+    // Regression guard for the happy-path single-rule case.
+    const r = makeRule({ variant: 'full' });
+    const out = selectCanonicalSendRule(makeBrief({ chosenVariant: 'full' }), [r]);
+    assert.equal(out, r);
+  });
+
+  it('skips entries with non-string variant defensively (does not crash on malformed input)', () => {
+    const winner = makeRule({ variant: 'full' });
+    const malformed = { userId: 'user_abc', variant: undefined };
+    const out = selectCanonicalSendRule(
+      makeBrief({ chosenVariant: 'full' }),
+      [/** @type {any} */ (malformed), winner],
+    );
+    assert.equal(out, winner);
   });
 });

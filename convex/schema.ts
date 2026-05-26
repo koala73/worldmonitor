@@ -238,6 +238,13 @@ export default defineSchema({
     pendingExportAt: v.optional(v.number()),
     pendingBroadcastId: v.optional(v.string()),
     pendingBroadcastAt: v.optional(v.number()),
+    // Locale filter switch — when true, pickWaveAction excludes
+    // contacts whose `users.localePrimary` (or email-TLD heuristic
+    // fallback) is non-English. Optional + missing-reads-as-false on
+    // the config — existing ramp rows that pre-date this feature
+    // continue with byte-identical behavior. Operator opts in via
+    // `initRamp({excludeNonEnglish: true})`.
+    excludeNonEnglish: v.optional(v.boolean()),
   }).index("by_key", ["key"]),
 
   // ────────────────────────────────────────────────────────────────────────
@@ -309,6 +316,15 @@ export default defineSchema({
     //   'persist-failed'               → mid-loop _persistPickedBatch failed → operator inspects + discards
     failureSubstatus: v.optional(v.string()),
     error: v.optional(v.string()),
+    // Pool-filter audit fields (added 2026-05-10 alongside `users` table +
+    // `excludeNonEnglish` flag). Populated by pickWaveAction's pool selection
+    // step so any past wave's filter behavior is auditable from the
+    // `waveRuns` row alone — no log archaeology required. Optional so
+    // pre-existing rows pass schema validation.
+    excludeNonEnglish: v.optional(v.boolean()),
+    eligiblePoolCount: v.optional(v.number()),
+    excludedCount: v.optional(v.number()),
+    excludedLocaleCounts: v.optional(v.record(v.string(), v.number())),
     createdAt: v.number(),
     updatedAt: v.number(),
   })
@@ -374,7 +390,8 @@ export default defineSchema({
     message: v.optional(v.string()),
     source: v.string(),
     receivedAt: v.number(),
-  }),
+    normalizedEmail: v.optional(v.string()),
+  }).index("by_normalized_email_received", ["normalizedEmail", "receivedAt"]),
 
   counters: defineTable({
     name: v.string(),
@@ -392,11 +409,29 @@ export default defineSchema({
     currentPeriodStart: v.number(),
     currentPeriodEnd: v.number(),
     cancelledAt: v.optional(v.number()),
+    // Stable first-class projection of `rawPayload.customer.customer_id`
+    // (the Dodo customer this sub was paid as). Optional because
+    // `DodoSubscriptionData.customer` is itself optional and lifecycle
+    // event payloads (`subscription.renewed`, `.on_hold`, `.cancelled`,
+    // `.plan_changed`, `.expired`) sometimes arrive without it — a
+    // blind `rawPayload: data` patch would otherwise wipe the value.
+    // Webhook handlers write this field with `data.customer?.customer_id
+    // ?? existing.dodoCustomerId` (see `mergeDodoCustomerId` in
+    // `subscriptionHelpers.ts`) so it survives lifecycle patches.
+    //
+    // Manage Billing prefers this column when populated — see
+    // `payments/billing:getDodoCustomerIdForUserPortal`, which is a
+    // 3-tier resolver (this column → `rawPayload.customer.customer_id`
+    // → `customers.dodoCustomerId` for the same userId). Pre-PR rows
+    // may still rely on tiers 2-3 until
+    // `backfillSubscriptionDodoCustomerId` lands their values here.
+    dodoCustomerId: v.optional(v.string()),
     rawPayload: v.any(),
     updatedAt: v.number(),
   })
     .index("by_userId", ["userId"])
-    .index("by_dodoSubscriptionId", ["dodoSubscriptionId"]),
+    .index("by_dodoSubscriptionId", ["dodoSubscriptionId"])
+    .index("by_dodoCustomerId", ["dodoCustomerId"]),
 
   entitlements: defineTable({
     userId: v.string(),
@@ -408,6 +443,11 @@ export default defineSchema({
       apiRateLimit: v.number(),
       prioritySupport: v.boolean(),
       exportFormats: v.array(v.string()),
+      // Optional for backward-compat with existing rows written before
+      // plan 2026-05-10-001 (Pro MCP). Dodo webhooks repopulate this on
+      // the next subscription event; legacy rows return undefined and
+      // every consumer treats undefined as "no MCP access" (fail-closed).
+      mcpAccess: v.optional(v.boolean()),
     }),
     validUntil: v.number(),
     // Optional complimentary-entitlement floor. When set and in the future,
@@ -434,6 +474,35 @@ export default defineSchema({
     .index("by_userId", ["userId"])
     .index("by_dodoCustomerId", ["dodoCustomerId"])
     .index("by_normalized_email", ["normalizedEmail"]),
+
+  // Canonical per-Clerk-user record. Populated on first authenticated session
+  // by client → `users:ensureRecord` (see convex/users.ts). Distinct from
+  // `customers` (which is paid-only, populated by Dodo subscription webhook):
+  // `users` covers EVERY Clerk-authenticated user, free or paid. Holds
+  // operational properties used for product personalization and broadcast
+  // audience filtering — locale, timezone, country, first/last seen.
+  //
+  // ⚠️ Authority of `country`: client-reported (derived from a `cf-ipcountry`
+  // cookie or similar). NOT authoritative. Do NOT use for compliance, geo-
+  // gating, or anything where a malicious client could spoof a different
+  // country to gain or evade something. Server-side derivation (Vercel edge
+  // wrapper reading `cf-ipcountry` from the actual request headers) is a
+  // future v2 concern; v1 just stores what the client passes for analytics
+  // use only.
+  users: defineTable({
+    userId: v.string(), // Clerk userId; primary identifier
+    email: v.optional(v.string()), // Server-derived from ctx.auth.getUserIdentity()
+    normalizedEmail: v.optional(v.string()), // Lowercased mirror of email; joined against registrations
+    localeTag: v.optional(v.string()), // Full BCP 47 tag (e.g. "zh-CN", "en-US"); kept for future analytics
+    localePrimary: v.optional(v.string()), // Lowercased primary subtag (e.g. "zh", "en"); broadcast filter target
+    timezone: v.optional(v.string()), // IANA zone (e.g. "Asia/Shanghai")
+    country: v.optional(v.string()), // ISO 3166-1 alpha-2; CLIENT-REPORTED — see warning above
+    firstSeenAt: v.number(),
+    lastSeenAt: v.number(),
+  })
+    .index("by_userId", ["userId"])
+    .index("by_normalizedEmail", ["normalizedEmail"])
+    .index("by_localePrimary", ["localePrimary"]),
 
   webhookEvents: defineTable({
     webhookId: v.string(),
@@ -479,6 +548,20 @@ export default defineSchema({
   })
     .index("by_userId", ["userId"])
     .index("by_keyHash", ["keyHash"]),
+
+  // Non-key Pro MCP identity rows. One row per OAuth grant for a Pro user.
+  // Referenced from OAuth code/token records as `mcpTokenId` — never carries
+  // plaintext or `wm_` keys. Revoke deletes the row's revokedAt → next
+  // bearer-resolution at api/mcp.ts returns 401 (no token-index sweep needed).
+  // See plan: docs/plans/2026-05-10-001-feat-pro-mcp-clerk-auth-quota-plan.md
+  mcpProTokens: defineTable({
+    userId: v.string(),
+    clientId: v.optional(v.string()),
+    name: v.optional(v.string()),
+    createdAt: v.number(),
+    lastUsedAt: v.optional(v.number()),
+    revokedAt: v.optional(v.number()),
+  }).index("by_userId", ["userId"]),
 
   emailSuppressions: defineTable({
     normalizedEmail: v.string(),

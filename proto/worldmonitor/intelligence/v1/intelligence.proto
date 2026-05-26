@@ -31,6 +31,23 @@ message CiiScore {
   CiiComponents components = 6;
   // Last computation time, as Unix epoch milliseconds.
   int64 computed_at = 7 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Methodology version string for this score (e.g. "v1").
+  // Bumped whenever the editorial weights in CII_FORMULA_VERSION change so
+  // API clients can detect score drift. See docs/methodology/cii-risk-scores.mdx.
+  string methodology_version = 8;
+  // Editorial per-country event multiplier applied to live signals before
+  // they roll into the composite score. Published for transparency — issue
+  // #3725. See docs/methodology/cii-risk-scores.mdx.
+  //
+  // Bounds: [0, 10]. The editorial de-facto maximum across the published
+  // table is ~3.0 (KP). The upper bound of 10 gives ~3.3x headroom for
+  // future weight changes while still catching obviously-wrong inputs (e.g.
+  // a runaway computation producing 1e6 or NaN-coerced values). Added in
+  // PR #3780 review.
+  double event_multiplier = 9 [
+    (buf.validate.field).double.gte = 0,
+    (buf.validate.field).double.lte = 10
+  ];
 }
 
 // CiiComponents represents the contributing factors to a CII score.
