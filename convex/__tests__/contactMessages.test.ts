@@ -67,7 +67,7 @@ describe("contactMessages.submit", () => {
     expect(rows[0].source.length).toBe(100);
   });
 
-  test("strips control characters from inputs", async () => {
+  test("strips control characters from short fields (name/source)", async () => {
     const t = convexTest(schema, modules);
     await t.mutation(api.contactMessages.submit, {
       name: "Ada\u0000\nLovelace",
@@ -77,6 +77,38 @@ describe("contactMessages.submit", () => {
     const rows = await t.run((ctx) => ctx.db.query("contactMessages").collect());
     expect(rows[0].name).toBe("AdaLovelace");
     expect(rows[0].source).toBe("testline");
+  });
+
+  test("preserves newlines and tabs in message but strips other controls", async () => {
+    // Regression for the original P2: clip() stripped ALL C0 controls
+    // including LF, collapsing multi-line enterprise-contact prose into
+    // a single line. The message field must keep LF and TAB so operators
+    // see the submission formatted the way the user typed it, while
+    // NULs, CR, and other control bytes still get scrubbed.
+    const LF = String.fromCharCode(10);
+    const CR = String.fromCharCode(13);
+    const NUL = String.fromCharCode(0);
+    const TAB = String.fromCharCode(9);
+    const input =
+      "Line 1" + LF +
+      "Line 2" + LF +
+      TAB + "indented bullet" + LF +
+      NUL + " NUL stripped" + CR + "CR stripped";
+    const expected =
+      "Line 1" + LF +
+      "Line 2" + LF +
+      TAB + "indented bullet" + LF +
+      " NUL strippedCR stripped";
+
+    const t = convexTest(schema, modules);
+    await t.mutation(api.contactMessages.submit, {
+      name: "Ada",
+      email: "ada@example.com",
+      message: input,
+      source: "test",
+    });
+    const rows = await t.run((ctx) => ctx.db.query("contactMessages").collect());
+    expect(rows[0].message).toBe(expected);
   });
 
   test("rate-limits more than 5 submissions per email per hour", async () => {

@@ -21,10 +21,24 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PER_EMAIL_WINDOW_MS = 60 * 60 * 1000;   // 1h
 const PER_EMAIL_LIMIT = 5;                    // submissions per email per window
 
-function clip(value: string | undefined, max: number): string | undefined {
+// Strict policy: strip ALL C0 controls + DEL. Used for short single-line
+// fields where CR/LF could enable header- or log-forging when the value is
+// later interpolated into single-line output (email subjects, log lines).
+const STRICT_CONTROL_RE = /[\x00-\x1F\x7F]/g;
+// Multiline policy: preserve TAB (\x09), LF (\x0A). Used for `message` so
+// enterprise-contact prose retains line breaks and indentation. CR (\x0D)
+// stays stripped — Windows-style line endings collapse to LF, which is what
+// downstream consumers (email subjects, log lines) expect.
+const MULTILINE_CONTROL_RE = /[\x00-\x08\x0B-\x1F\x7F]/g;
+
+function clip(
+  value: string | undefined,
+  max: number,
+  opts: { preserveNewlines?: boolean } = {},
+): string | undefined {
   if (value === undefined) return undefined;
-  // strip control chars (incl. NULs / CR / LF in headers/log forging contexts)
-  const cleaned = value.replace(/[\u0000-\u001F\u007F]/g, "").trim();
+  const re = opts.preserveNewlines ? MULTILINE_CONTROL_RE : STRICT_CONTROL_RE;
+  const cleaned = value.replace(re, "").trim();
   if (cleaned.length === 0) return undefined;
   return cleaned.slice(0, max);
 }
@@ -46,7 +60,7 @@ export const submit = mutation({
     const email = clip(args.email, MAX_EMAIL);
     const organization = clip(args.organization, MAX_ORG);
     const phone = clip(args.phone, MAX_PHONE);
-    const message = clip(args.message, MAX_MESSAGE);
+    const message = clip(args.message, MAX_MESSAGE, { preserveNewlines: true });
     const source = clip(args.source, MAX_SOURCE) ?? "unknown";
 
     if (!name) throw new ConvexError("Name is required");
