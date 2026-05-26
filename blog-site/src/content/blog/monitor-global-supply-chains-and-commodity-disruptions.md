@@ -86,7 +86,7 @@ When you overlay the conflict layer, you immediately see which ports are near ac
 
 ## AIS Maritime Tracking
 
-World Monitor's AIS (Automatic Identification System) layer shows live vessel positions from AISStream.io, merged with USNI fleet reports. For supply chain monitoring, this means:
+World Monitor's AIS (Automatic Identification System) layer shows live vessel positions from [AISStream.io](https://aisstream.io/), merged with [USNI](https://news.usni.org/) fleet reports. For supply chain monitoring, this means:
 
 - **Track bulk carriers** moving commodities between ports
 - **Detect dark vessels** that have turned off transponders (potential sanctions evasion)
@@ -141,8 +141,8 @@ These cascade effects are what turn a localized incident into a global supply ch
 
 Supply chains don't just face geopolitical risk. Environmental events are equally disruptive:
 
-- **USGS Earthquakes (M4.5+):** Automatic alerts for seismic events near industrial infrastructure
-- **NASA FIRMS (VIIRS):** Satellite-detected fires that could affect agricultural regions or industrial facilities
+- **[USGS](https://earthquake.usgs.gov/) Earthquakes (M4.5+):** Automatic alerts for seismic events near industrial infrastructure
+- **[NASA FIRMS](https://firms.modaps.eosdis.nasa.gov/) (VIIRS):** Satellite-detected fires that could affect agricultural regions or industrial facilities
 - **NASA EONET:** Volcanic eruptions, floods, and severe storms
 - **Cloudflare Radar:** Internet outages that disrupt digital supply chains
 

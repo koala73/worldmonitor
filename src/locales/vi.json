@@ -1,8 +1,4 @@
 {
-  "app": {
-    "title": "World Monitor",
-    "description": "Tình hình Toàn cầu với Phân tích AI"
-  },
   "countryBrief": {
     "identifying": "Đang xác định quốc gia...",
     "locating": "Đang định vị khu vực...",
@@ -28,7 +24,7 @@
     "components": {
       "unrest": "Bất ổn",
       "conflict": "Xung đột",
-      "security": "An ninh",
+      "security": "Hoạt động quân sự",
       "information": "Thông tin"
     },
     "signals": {
@@ -120,7 +116,6 @@
       "internetOutages": "{{count}} sự cố gián đoạn internet",
       "recentEarthquakes": "{{count}} trận động đất gần đây",
       "stockIndex": "Chỉ số chứng khoán: {{value}}",
-      "recentHeadlines": "**Tin tức gần đây:**",
       "activeStrikes": "Phát hiện {{count}} cuộc đình công đang diễn ra"
     },
     "countryFacts": "Thông tin quốc gia",
@@ -151,9 +146,7 @@
     "filterSources": "Lọc nguồn...",
     "sourcesEnabled": "{{enabled}}/{{total}} đã bật",
     "finance": "TÀI CHÍNH",
-    "toggleTheme": "Chuyển chế độ sáng/tối",
     "panelDisplayCaption": "Chọn bảng hiển thị trên bảng điều khiển",
-    "tabGeneral": "Chung",
     "tabSettings": "Cài đặt",
     "tabPanels": "Bảng",
     "tabSources": "Nguồn",
@@ -204,7 +197,6 @@
     "panelCatCentralBanks": "Ngân hàng Trung ương & Kinh tế",
     "panelCatDeals": "Giao dịch & Tổ chức",
     "panelCatGulfMena": "Vùng Vịnh & MENA",
-    "panelCatTradePolicy": "Chính sách Thương mại",
     "cached": "ĐÃ LƯU VÀO BỘ NHỚ CACHE",
     "unavailable": "KHÔNG CÓ SẴN",
     "commodity": "HÀNG HÓA",
@@ -287,8 +279,6 @@
     "techReadiness": "Chỉ số Sẵn sàng Công nghệ",
     "gccInvestments": "Đầu tư GCC",
     "geoHubs": "Trung tâm Địa chính trị",
-    "liveYouTube": "Webcam Trực tiếp",
-    "pinnedWebcams": "Pinned Webcams",
     "gulfEconomies": "Kinh tế vùng Vịnh",
     "gulfIndices": "Chỉ số vùng Vịnh",
     "gulfCurrencies": "Tiền tệ vùng Vịnh",
@@ -426,11 +416,8 @@
   "modals": {
     "search": {
       "placeholder": "Tìm kiếm hoặc nhập lệnh...",
-      "hint": "Tìm kiếm • Quốc gia • Lớp • Bảng • Điều hướng • Cài đặt",
       "placeholderTech": "Tìm kiếm hoặc nhập lệnh...",
-      "hintTech": "Tìm kiếm • Công ty • Phòng thí nghiệm AI • Lớp • Điều hướng • Cài đặt",
       "placeholderFinance": "Tìm kiếm hoặc nhập lệnh...",
-      "hintFinance": "Tìm kiếm • Sàn giao dịch • Thị trường • Lớp • Điều hướng • Cài đặt",
       "recent": "Tìm kiếm Gần đây",
       "empty": "Tìm dữ liệu hoặc chạy lệnh",
       "noResults": "Không có kết quả",
@@ -494,7 +481,6 @@
       "action": "Hành động:",
       "note": "Ghi chú:",
       "suppress": "Ẩn thuật ngữ này",
-      "suppressed": "Đã ẩn",
       "predictionLeading": "Dự đoán Dẫn trước",
       "newsLeading": "Tin tức Dẫn trước",
       "silentDivergence": "Phân kỳ Im lặng",
@@ -531,15 +517,13 @@
       "gotIt": "Đã hiểu"
     },
     "downloadBanner": {
-      "title": "Phiên bản Desktop",
       "description": "Hiệu suất gốc, lưu trữ khóa cục bộ an toàn, bản đồ ngoại tuyến.",
       "macSilicon": "macOS (Apple Silicon)",
       "macIntel": "macOS (Intel)",
       "windows": "Windows (.exe)",
       "linux": "Linux (.AppImage)",
       "showAllPlatforms": "Hiện tất cả nền tảng",
-      "showLess": "Thu gọn",
-      "dismiss": "Bỏ qua"
+      "showLess": "Thu gọn"
     },
     "runtimeConfig": {
       "title": "Cấu hình Desktop",
@@ -548,7 +532,6 @@
         "needsKeys": "Cấu hình khóa API để mở khóa tính năng",
         "some": "Một số tính năng cần khóa API"
       },
-      "openSettings": "Mở Cài đặt",
       "skipSetup": "Bỏ qua cài đặt — một giấy phép World Monitor mở khóa tất cả. Tham gia danh sách chờ để truy cập sớm.",
       "summary": {
         "desktop": "Chế độ desktop",
@@ -595,30 +578,17 @@
       "sidecarUnreachable": "Không thể kết nối sidecar.",
       "logCleared": "Đã xóa log.",
       "worldMonitor": {
-        "tabLabel": "World Monitor",
-        "heroTitle": "Một khóa. Bao gồm tất cả.",
-        "heroDescription": "Một giấy phép World Monitor thay thế mọi khóa API và nhà cung cấp LLM mà bạn phải tự cấu hình. Tóm tắt AI, tình báo thời gian thực, dữ liệu thị trường, theo dõi xung đột, phát hiện cháy, ảnh vệ tinh — tất cả được vận hành, quản lý, không cần cài đặt.",
         "apiKey": {
           "title": "Khóa Giấy phép",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "Dán giấy phép của bạn để mở khóa mọi nguồn dữ liệu và tính năng AI ngay lập tức.",
-          "statusValid": "ĐÃ CẤP PHÉP",
-          "statusMissing": "CHƯA CÓ GIẤY PHÉP"
+          "description": "Dán giấy phép của bạn để mở khóa mọi nguồn dữ liệu và tính năng AI ngay lập tức."
         },
         "dividerOr": "HOẶC",
         "register": {
           "title": "Đặt chỗ của bạn",
           "description": "Chúng tôi đang chuẩn bị ra mắt giấy phép World Monitor. Đăng ký ngay để được ưu tiên — thành viên sớm được quyền truy cập trước và giá ưu đãi.",
-          "emailPlaceholder": "email@cuaban.com",
-          "submitBtn": "Tham gia Danh sách Chờ",
-          "submitting": "Đang gửi...",
-          "success": "Bạn đã vào danh sách! Chúng tôi sẽ thông báo cho bạn đầu tiên.",
-          "alreadyRegistered": "Bạn đã có trong danh sách chờ.",
-          "error": "Đăng ký thất bại. Vui lòng thử lại.",
-          "invalidEmail": "Vui lòng nhập địa chỉ email hợp lệ."
-        },
-        "byokTitle": "Hoặc sử dụng khóa của riêng bạn",
-        "byokDescription": "Muốn kiểm soát hoàn toàn? Đến tab Khóa API và LLM để cấu hình từng nguồn dữ liệu và nhà cung cấp AI riêng lẻ."
+          "submitBtn": "Tham gia Danh sách Chờ"
+        }
       },
       "table": {
         "time": "Thời gian",
@@ -674,7 +644,7 @@
       "components": {
         "unrest": "Bất ổn",
         "conflict": "Xung đột",
-        "security": "An ninh",
+        "security": "Hoạt động quân sự",
         "information": "Thông tin"
       },
       "signals": {
@@ -702,36 +672,11 @@
         "base": "Căn cứ Quân sự",
         "nuclear": "Hạt nhân lân cận",
         "port": "Cảng biển"
-      },
-      "levels": {
-        "critical": "Nghiêm trọng",
-        "high": "Cao",
-        "elevated": "Nâng cao",
-        "moderate": "Trung bình",
-        "normal": "Bình thường",
-        "low": "Thấp"
-      },
-      "trends": {
-        "rising": "Tăng",
-        "falling": "Giảm",
-        "stable": "Ổn định"
-      },
-      "fallback": {
-        "instabilityIndex": "**Chỉ số Bất ổn: {{score}}/100** ({{level}}, {{trend}})",
-        "protestsDetected": "Phát hiện {{count}} cuộc biểu tình đang diễn ra",
-        "aircraftTracked": "Đang theo dõi {{count}} máy bay quân sự",
-        "vesselsTracked": "Đang theo dõi {{count}} tàu quân sự",
-        "activeStrikes": "Phát hiện {{count}} cuộc đình công đang diễn ra",
-        "internetOutages": "{{count}} sự cố gián đoạn internet",
-        "recentEarthquakes": "{{count}} trận động đất gần đây",
-        "stockIndex": "Chỉ số chứng khoán: {{value}}",
-        "recentHeadlines": "**Tin tức gần đây:**"
       }
     }
   },
   "components": {
     "webcams": {
-      "expand": "Mở rộng",
       "paused": "Webcam đã tạm dừng",
       "pausedIdle": "Webcam đã tạm dừng — di chuyển chuột để tiếp tục",
       "regions": {
@@ -751,7 +696,9 @@
       "summarizing": "Đang tóm tắt…"
     },
     "progressCharts": {
-      "noData": "Không có dữ liệu tiến độ"
+      "noData": "Không có dữ liệu tiến độ",
+      "fallbackBadge": "Hiển thị dữ liệu dự phòng tĩnh — chuỗi trực tiếp không có sẵn",
+      "fallbackTooltip": "Không thể kết nối tới nguồn World Bank trực tiếp. Các biểu đồ này được hiển thị từ một bản chụp được mã hóa cứng đã xác minh lần cuối vào tháng 2 năm 2026."
     },
     "monitor": {
       "placeholder": "Từ khóa (phân cách bằng dấu phẩy)",
@@ -770,8 +717,6 @@
       "countries": "Quốc gia",
       "recentActions": "Hành động Quy định Gần đây (12 Tháng qua)",
       "upcomingDeadlines": "Thời hạn Tuân thủ Sắp tới",
-      "activeRegulations": "Quy định Đang hiệu lực",
-      "proposedRegulations": "Quy định Đề xuất",
       "globalLandscape": "Bối cảnh Quy định Toàn cầu",
       "emptyActions": "Không có hành động quy định gần đây",
       "emptyDeadlines": "Không có thời hạn tuân thủ sắp tới trong 12 tháng tới",
@@ -797,27 +742,19 @@
     },
     "economic": {
       "indicators": "Chỉ số",
-      "oil": "Dầu mỏ",
       "gov": "Chính phủ",
-      "noData": "Không có dữ liệu kinh tế",
-      "noOilData": "Dữ liệu dầu mỏ không khả dụng",
-      "noOilMetrics": "Không có chỉ số dầu mỏ. Thêm EIA_API_KEY để kích hoạt.",
       "noSpending": "Không có hợp đồng chính phủ gần đây",
       "awards": "hợp đồng",
       "noIndicatorData": "Chưa có dữ liệu chỉ số - FRED có thể đang tải",
       "fredKeyMissing": "Cần khóa API FRED — thêm trong Cài đặt để bật chỉ số kinh tế",
-      "noOilDataRetry": "Dữ liệu dầu mỏ tạm thời không khả dụng - sẽ thử lại",
-      "vsPreviousWeek": "so với tuần trước",
       "in": "trong",
       "centralBanks": "Central Banks",
       "laborMarket": "Labor Market",
       "metroUnemployment": "Metro Unemployment",
       "noBisData": "BIS data temporarily unavailable - will retry",
       "policyRate": "Policy Rate",
-      "exchangeRate": "Exchange Rate",
       "creditToGdp": "Credit / GDP",
       "realEer": "Real EER",
-      "change": "Change",
       "cut": "cut",
       "hike": "hike",
       "hold": "hold",
@@ -839,12 +776,10 @@
       "noChokepoints": "Đang tải dữ liệu điểm nghẽn...",
       "noShipping": "Dữ liệu giá cước vận chuyển không khả dụng",
       "noMinerals": "Đang tải dữ liệu khoáng sản...",
-      "fredKeyMissing": "Cần khóa API FRED cho giá cước vận chuyển — thêm trong Cài đặt. Điểm nghẽn và khoáng sản khả dụng mà không cần khóa.",
       "upstreamUnavailable": "Dữ liệu chuỗi cung ứng tạm thời không khả dụng — hiển thị dữ liệu đã lưu cache",
       "spikeAlert": "Phát hiện đột biến — giá cao hơn đáng kể so với trung bình 52 tuần (hàng tuần)",
       "warnings": "cảnh báo",
       "aisDisruptions": "Gián đoạn AIS",
-      "routingAction": "Routing",
       "disruption": "Disruption",
       "vessels": "vessels",
       "incidents7d": "incidents (7d)",
@@ -854,12 +789,7 @@
       "mineral": "Khoáng sản",
       "topProducers": "Nhà sản xuất hàng đầu",
       "risk": "Rủi ro",
-      "sources": "FRED / NGA / USGS",
-      "transit24h": "24h",
-      "tankers": "Tàu chở dầu",
-      "cargo": "Hàng hóa",
       "wowChange": "Thay đổi WoW",
-      "vesselTransits": "Vận tải tàu (180 ngày)",
       "riskLevel": "Mức rủi ro",
       "flowUnavailable": "Dữ liệu lưu lượng không có sẵn",
       "containerRates": "Giá vận chuyển container",
@@ -871,18 +801,14 @@
       "infoTooltip": "<strong>Supply Chain Monitor</strong> Theo dõi logistics và tài nguyên toàn cầu:<ul><li><strong>Điểm tắc nghẽn</strong>: Trạng thái vận tải biển, điểm số gián đoạn và số lượng tàu</li><li><strong>Vận chuyển</strong>: Chỉ số Baltic Dry Index và xu hướng giá vận chuyển</li><li><strong>Khoáng sản</strong>: Rủi ro tập trung khoáng sản quan trọng (HHI) và nhà sản xuất hàng đầu</li></ul>Nhấp vào thẻ điểm tắc nghẽn để mở rộng biểu đồ lịch sử vận tải."
     },
     "tradePolicy": {
-      "restrictions": "Hạn chế",
       "tariffs": "Thuế quan",
       "flows": "Dòng chảy Thương mại",
       "barriers": "Rào cản",
-      "noRestrictions": "Không có hạn chế thương mại đang hoạt động",
       "noTariffData": "Không có dữ liệu thuế quan",
       "noFlowData": "Không có dữ liệu dòng chảy thương mại",
       "noBarriers": "Không có rào cản thương mại được báo cáo",
       "apiKeyMissing": "Cần khóa API WTO — thêm trong Cài đặt",
       "upstreamUnavailable": "Dữ liệu WTO tạm thời không khả dụng — hiển thị dữ liệu đã lưu",
-      "appliedRate": "Thuế suất Áp dụng",
-      "boundRate": "Thuế suất Ràng buộc",
       "exports": "Xuất khẩu",
       "imports": "Nhập khẩu",
       "yoyChange": "Thay đổi theo Năm",
@@ -926,20 +852,14 @@
       "empty": "Không có bài viết gần đây cho chủ đề này"
     },
     "geoHubs": {
-      "tooltip": "<strong>Trung tâm Hoạt động Địa chính trị</strong><br>Hiển thị các khu vực có nhiều hoạt động tin tức nhất.<br><br><em>Loại trung tâm:</em><br>• 🏛️ Thủ đô — Thủ đô và trung tâm chính phủ<br>• ⚔️ Vùng Xung đột — Khu vực xung đột đang diễn ra<br>• ⚓ Chiến lược — Điểm nghẽn và khu vực trọng yếu<br>• 🏢 Tổ chức — UN, NATO, IAEA, v.v.<br><br><em>Mức hoạt động:</em><br>• <span style=\"color: #ff4444\">Cao</span> — Tin nóng hoặc điểm 70+<br>• <span style=\"color: #ff8844\">Nâng cao</span> — Điểm 40-69<br>• <span style=\"color: #888\">Thấp</span> — Điểm dưới 40<br><br>Nhấp vào trung tâm để phóng to vị trí.",
-      "noActive": "Không có trung tâm địa chính trị hoạt động",
       "story": "bài viết",
       "stories": "bài viết",
       "infoTooltip": "<strong>Trung tâm Hoạt động Địa chính trị</strong><br>Hiển thị các khu vực có nhiều hoạt động tin tức nhất.<br><br><em>Loại trung tâm:</em><br>• 🏛️ Thủ đô — Thủ đô và trung tâm chính phủ<br>• ⚔️ Vùng Xung đột — Khu vực xung đột đang diễn ra<br>• ⚓ Chiến lược — Điểm nghẽn và khu vực trọng yếu<br>• 🏢 Tổ chức — UN, NATO, IAEA, v.v.<br><br><em>Mức hoạt động:</em><br>• <span style=\"color: {{highColor}}\">Cao</span> — Tin nóng hoặc điểm 70+<br>• <span style=\"color: {{elevatedColor}}\">Nâng cao</span> — Điểm 40-69<br>• <span style=\"color: {{lowColor}}\">Thấp</span> — Điểm dưới 40<br><br>Nhấp vào trung tâm để phóng to vị trí."
     },
     "techHubs": {
-      "tooltip": "<strong>Hoạt động Trung tâm Công nghệ</strong><br>Hiển thị các trung tâm công nghệ có nhiều hoạt động tin tức nhất.<br><br><em>Mức hoạt động:</em><br>• <span style=\"color: #00ff88\">Cao</span> — Tin nóng hoặc điểm 50+<br>• <span style=\"color: #ffc800\">Nâng cao</span> — Điểm 20-49<br>• <span style=\"color: #888\">Thấp</span> — Điểm dưới 20<br><br>Nhấp vào trung tâm để phóng to vị trí.",
-      "noActive": "Không có trung tâm công nghệ hoạt động",
       "infoTooltip": "<strong>Hoạt động Trung tâm Công nghệ</strong><br>Hiển thị các trung tâm công nghệ có nhiều hoạt động tin tức nhất.<br><br><em>Mức hoạt động:</em><br>• <span style=\"color: {{highColor}}\">Cao</span> — Tin nóng hoặc điểm 50+<br>• <span style=\"color: {{elevatedColor}}\">Nâng cao</span> — Điểm 20-49<br>• <span style=\"color: {{lowColor}}\">Thấp</span> — Điểm dưới 20<br><br>Nhấp vào trung tâm để phóng to vị trí."
     },
     "predictions": {
-      "tooltip": "<strong>Thị trường Dự đoán</strong><br>Thị trường dự báo bằng tiền thật:<br><ul><li>Giá phản ánh ước tính xác suất của đám đông</li><li>Khối lượng cao hơn = tín hiệu đáng tin cậy hơn</li><li>Tập trung vào địa chính trị và sự kiện thời sự</li></ul>Nguồn: Polymarket (polymarket.com)",
-      "error": "Không thể tải dự đoán",
       "yes": "Có",
       "no": "Không",
       "vol": "KL",
@@ -951,7 +871,6 @@
     "stablecoins": {
       "pegHealth": "Sức khỏe Neo giá",
       "supplyVolume": "Cung & Khối lượng",
-      "unavailable": "Dữ liệu stablecoin tạm thời không khả dụng",
       "token": "Token",
       "mcap": "Vốn hóa",
       "vol24h": "KL 24h",
@@ -959,13 +878,7 @@
       "infoTooltip": "<strong>Stablecoins</strong> Peg health, market cap, and 24h volume for major USD-pegged tokens (USDT, USDC, DAI, BUSD). A broken peg signals systemic risk."
     },
     "status": {
-      "dataFeeds": "Nguồn Dữ liệu",
-      "apiStatus": "Trạng thái API",
-      "storage": "Lưu trữ",
-      "systemStatus": "Trạng thái Hệ thống",
-      "updatedJustNow": "Vừa cập nhật",
-      "updatedAt": "Cập nhật {{time}}",
-      "storageUnavailable": "Thông tin lưu trữ không khả dụng"
+      "updatedAt": "Cập nhật {{time}}"
     },
     "playback": {
       "toggleMode": "Chuyển Chế độ Phát lại",
@@ -1070,8 +983,7 @@
       "shareLink": "Chia sẻ liên kết",
       "shareStory": "Chia sẻ bài viết",
       "printPdf": "In / PDF",
-      "exportData": "Xuất dữ liệu",
-      "sourceRef": "Nguồn [{{n}}]"
+      "exportData": "Xuất dữ liệu"
     },
     "relatedAssets": {
       "pipeline": "Đường ống",
@@ -1081,10 +993,7 @@
       "nuclear": "Hạt nhân"
     },
     "community": {
-      "joinDiscussion": "Help Shape What's Next",
-      "openDiscussion": "Join Discord",
-      "dontShowAgain": "Không hiển thị lại",
-      "sectionLabel": "Cộng đồng"
+      "joinDiscussion": "Help Shape What's Next"
     },
     "threatLabels": {
       "critical": "N.TRỌNG",
@@ -1115,11 +1024,6 @@
         "base": "Căn cứ",
         "nuclear": "Hạt nhân",
         "aircraft": "Máy bay",
-        "ciiLow": "Thấp (0–30)",
-        "ciiNormal": "Bình thường (31–50)",
-        "ciiElevated": "Tăng cao (51–65)",
-        "ciiHigh": "Cao (66–80)",
-        "ciiCritical": "Nghiêm trọng (81–100)",
         "miningSite": "Khu khai thác",
         "commodityPort": "Cảng hàng hóa",
         "pipeline": "Đường ống",
@@ -1308,9 +1212,10 @@
       }
     },
     "cii": {
-      "shareStory": "Chia sẻ bài viết",
       "noSignals": "Không phát hiện tín hiệu bất ổn",
-      "infoTooltip": "<strong>Phương pháp luận</strong><ul><li><strong>U</strong> - Bất ổn: rối loạn dân sự & biểu tình</li><li><strong>C</strong> - Xung đột: cường độ xung đột vũ trang</li><li><strong>S</strong> - An ninh: chuyến bay/tàu quân sự trên lãnh thổ</li><li><strong>I</strong> - Thông tin: tốc độ tin tức và tương quan điểm hội tụ</li><li>Tăng cường theo điểm nóng gần (vị trí chiến lược)</li></ul><em>Giá trị U:C:S:I hiển thị điểm thành phần.</em> Phát hiện Điểm Hội tụ tương quan các thực thể tin tức với tín hiệu bản đồ để chấm điểm chính xác."
+      "infoTooltip": "<strong>Phương pháp luận</strong><ul><li><strong>U</strong> - Bất ổn: rối loạn dân sự & biểu tình</li><li><strong>C</strong> - Xung đột: cường độ xung đột vũ trang</li><li><strong>S</strong> - An ninh: chuyến bay/tàu quân sự trên lãnh thổ</li><li><strong>I</strong> - Thông tin: tốc độ tin tức và tương quan điểm hội tụ</li><li>Tăng cường theo điểm nóng gần (vị trí chiến lược)</li></ul><em>Giá trị U:C:S:I hiển thị điểm thành phần.</em> Phát hiện Điểm Hội tụ tương quan các thực thể tin tức với tín hiệu bản đồ để chấm điểm chính xác.",
+      "_methodologyLink_translatorNote": "TRANSLATION TODO (#3725): localize methodologyLink. English value is shipped to every locale as a stop-gap so the methodology link is present in all languages. Safe to translate independently of infoTooltip — the two render as a single tooltip via concatenation in CIIPanel.ts.",
+      "methodologyLink": "Bao gồm đường cơ sở từng quốc gia + bộ nhân sự kiện — xem /docs/methodology/cii-risk-scores để xem bảng được công bố"
     },
     "insights": {
       "noStories": "Chưa có tin nóng hoặc tin đa nguồn",
@@ -1320,14 +1225,8 @@
       "analyzingSentiment": "Đang phân tích cảm xúc...",
       "generatingBrief": "Đang tạo bản tin thế giới...",
       "infoTooltip": "<strong>Phân tích Hỗ trợ AI</strong><br>• <strong>Bản tin Thế giới</strong>: Tóm tắt AI (Groq/OpenRouter)<br>• <strong>Cảm xúc</strong>: Phân tích sắc thái tin tức<br>• <strong>Tốc độ</strong>: Tin đang lan nhanh<br>• <strong>Điểm Hội tụ</strong>: Tương quan thực thể tin tức với tín hiệu bản đồ (quân sự, biểu tình, gián đoạn)<br><em>Chỉ Desktop • Được hỗ trợ bởi Llama 3.3 + Phát hiện Điểm Hội tụ</em>",
-      "settingsTitle": "Settings",
-      "sectionMap": "Map",
-      "sectionAi": "AI Analysis",
-      "sectionStreaming": "Phát trực tiếp",
       "streamQualityLabel": "Chất lượng Video",
       "streamQualityDesc": "Đặt chất lượng cho tất cả luồng phát trực tiếp (thấp hơn tiết kiệm băng thông)",
-      "globeRenderQualityLabel": "Chất lượng hiển thị địa cầu",
-      "globeRenderQualityDesc": "Điều chỉnh độ phân giải canvas địa cầu. Giá trị cao sắc nét hơn trên màn hình 4K nhưng có thể làm GPU quá tải.",
       "globeRenderScaleOptions": {
         "1": "Tiết kiệm (1x)",
         "2": "4K (2x)",
@@ -1337,7 +1236,6 @@
       },
       "mapFlashLabel": "Live Event Pulse",
       "mapFlashDesc": "Flash locations on the map when breaking news arrives",
-      "aiFlowTitle": "Settings",
       "aiFlowCloudLabel": "Cloud AI (Groq & OpenRouter)",
       "aiFlowCloudDesc": "Gửi tiêu đề tới cloud để AI tóm tắt (khuyến nghị)",
       "aiFlowBrowserLabel": "Mô hình cục bộ trên trình duyệt",
@@ -1352,10 +1250,8 @@
       "aiFlowStatusDisabled": "Không có nhà cung cấp AI nào được bật",
       "insightsDisabledTitle": "Phân tích AI đã bị tắt",
       "insightsDisabledHint": "Enable providers via the settings gear in the map header",
-      "sectionPanels": "Bảng điều khiển",
       "badgeAnimLabel": "Hoạt ảnh huy hiệu",
       "badgeAnimDesc": "Hoạt ảnh huy hiệu cập nhật trên tiêu đề bảng",
-      "sectionIntelligence": "Tình báo",
       "headlineMemoryLabel": "Bộ nhớ tiêu đề",
       "headlineMemoryDesc": "Ghi nhớ tiêu đề đã xem để làm nổi bật tin mới",
       "streamAlwaysOnLabel": "Giữ luồng trực tiếp luôn chạy",
@@ -1397,7 +1293,6 @@
       "newsSignals": "{{news}} tin tức • {{signals}} tín hiệu"
     },
     "settings": {
-      "dataManagementLabel": "Quản lý dữ liệu",
       "exportSettings": "Xuất cài đặt",
       "importSettings": "Nhập cài đặt",
       "exportSuccess": "Xuất cài đặt thành công",
@@ -1407,7 +1302,6 @@
       "reloadNow": "Tải lại ngay"
     },
     "cascade": {
-      "noImpacts": "Không phát hiện tác động quốc gia",
       "filters": {
         "cables": "Cáp ngầm",
         "pipelines": "Đường ống",
@@ -1481,7 +1375,6 @@
       "noEvents": "Không có sự kiện để hiển thị",
       "showOnMap": "Hiện trên bản đồ",
       "moreInfo": "Thêm thông tin",
-      "retry": "Thử lại",
       "upcoming": "Sắp tới",
       "conferences": "Hội nghị",
       "earnings": "Báo cáo Thu nhập",
@@ -1509,7 +1402,6 @@
       "dataPreparing": "Đang làm mới dữ liệu sẵn sàng công nghệ — sẽ xuất hiện ngay."
     },
     "populationExposure": {
-      "noData": "Không có dữ liệu phơi nhiễm",
       "totalAffected": "Tổng bị Ảnh hưởng",
       "affectedCount": "{{count}} bị ảnh hưởng",
       "radiusKm": "bán kính {{km}}km",
@@ -1542,16 +1434,12 @@
       "noAlerts": "No active sirens — all clear",
       "notConfigured": "Sirens service not configured",
       "activeSirens": "{{count}} active siren(s)",
-      "area": "Area",
-      "time": "Time",
       "justNow": "just now",
-      "historyCount": "{{count}} alerts in last 24h",
       "historySummary": "{{count}} cảnh báo trong 24h — {{waves}} đợt",
       "loadingHistory": "Đang tải lịch sử...",
       "infoTooltip": "<strong>Israel Sirens</strong><br>Real-time rocket and missile siren alerts from Israel Home Front Command.<br><br>Data is polled every 10 seconds. A pulsing red indicator means active sirens are sounding."
     },
     "satelliteFires": {
-      "noData": "Không có dữ liệu cháy",
       "region": "Khu vực",
       "fires": "Đám cháy",
       "high": "Cao",
@@ -1576,7 +1464,6 @@
       "actors": "Bên tham chiến",
       "deathsCount": "{{count}} thương vong",
       "moreNotShown": "{{count}} sự kiện khác không hiển thị",
-      "noEvents": "Không có sự kiện trong danh mục này",
       "infoTooltip": "<strong>Sự kiện Định vị UCDP</strong> Dữ liệu xung đột cấp sự kiện từ Đại học Uppsala.<ul><li><strong>Nhà nước</strong>: Chính phủ đối đầu nhóm nổi dậy</li><li><strong>Phi Nhà nước</strong>: Nhóm vũ trang đối đầu nhóm vũ trang</li><li><strong>Một chiều</strong>: Bạo lực nhắm vào thường dân</li></ul>Thương vong hiển thị ước tính tốt nhất (khoảng thấp-cao). Trùng lặp ACLED được lọc tự động."
     },
     "giving": {
@@ -1608,7 +1495,6 @@
       "infoTooltip": "<strong>Chỉ số Hoạt động Từ thiện Toàn cầu</strong> Chỉ số tổng hợp theo dõi quyên góp cá nhân qua nền tảng gây quỹ cộng đồng và ví tiền mã hóa.<ul><li><strong>Nền tảng</strong>: GoFundMe, GlobalGiving, JustGiving lấy mẫu chiến dịch</li><li><strong>Crypto</strong>: Dòng tiền vào ví từ thiện on-chain (Endaoment, Giving Block)</li><li><strong>Tổ chức</strong>: OECD ODA, CAF World Giving Index, tài trợ Candid</li></ul>Chỉ số mang tính định hướng (không phải số tiền chính xác). Kết hợp lấy mẫu trực tiếp với báo cáo thường niên đã công bố."
     },
     "displacement": {
-      "noData": "Không có dữ liệu",
       "refugees": "Người tị nạn",
       "asylumSeekers": "Người xin Tị nạn",
       "idps": "Người Di dời Nội bộ",
@@ -1650,17 +1536,10 @@
       "sortNewest": "Mới nhất",
       "sortRelevance": "Mức độ liên quan"
     },
-    "export": {
-      "exportData": "Xuất Dữ liệu"
-    },
-    "runtimeConfig": {
-      "getApiKey": "Lấy khóa API"
-    },
     "breakingNews": {
       "critical": "NGHIÊM TRỌNG",
       "high": "CAO",
-      "dismiss": "Bỏ qua",
-      "enableNotifications": "Bật thông báo trên máy tính"
+      "dismiss": "Bỏ qua"
     },
     "intelligenceFindings": {
       "breakingAlerts": "Cảnh báo Khẩn cấp",
@@ -1714,9 +1593,7 @@
       "filterAll": "Tất cả",
       "filterBreaking": "Nóng",
       "filterConflict": "Xung đột",
-      "filterAlerts": "Cảnh báo",
       "filterOsint": "OSINT",
-      "filterPolitics": "Chính trị",
       "filterMiddleeast": "Trung Đông",
       "live": "TRỰC TIẾP",
       "viewSource": "Xem nguồn",
@@ -1740,7 +1617,6 @@
       "asset": "Tài sản",
       "country": "Quốc gia",
       "sector": "Ngành",
-      "status": "Trạng thái",
       "investment": "Đầu tư",
       "year": "Năm",
       "noMatch": "Không có đầu tư phù hợp bộ lọc",
@@ -1809,7 +1685,6 @@
       "addPanel": "Thêm bảng điều khiển"
     },
     "languageSelector": {
-      "selectLanguage": "Chọn Ngôn ngữ",
       "mapLabelsFallbackVi": "Nhãn bản đồ hiện sẽ dùng tiếng Anh khi chọn tiếng Việt."
     },
     "serviceStatus": {
@@ -1818,10 +1693,6 @@
       "ok": "OK",
       "degraded": "Suy giảm",
       "outage": "Gián đoạn",
-      "backendUnavailable": "Backend cục bộ desktop không khả dụng. Chuyển sang API đám mây.",
-      "desktopReadiness": "Mức sẵn sàng desktop",
-      "acceptanceChecks": "Kiểm tra chấp nhận: {{ready}}/{{total}} sẵn sàng · tính năng có khóa {{available}}/{{featureTotal}}",
-      "nonParityFallbacks": "Dự phòng không tương đương ({{count}})",
       "categories": {
         "all": "Tất cả",
         "cloud": "Đám mây",
@@ -1858,7 +1729,6 @@
       }
     },
     "liveNews": {
-      "retry": "Thử lại",
       "notLive": "{{name}} hiện không phát trực tiếp",
       "cannotEmbed": "Không thể phát {{name}} tại đây — có thể bị hạn chế ở khu vực của bạn (lỗi {{code}})",
       "botCheck": "YouTube yêu cầu đăng nhập để phát {{name}}",
@@ -1870,17 +1740,13 @@
       "youtubeHandle": "Handle YouTube (vd: @Channel)",
       "youtubeHandleOrUrl": "Tên kênh hoặc URL YouTube",
       "displayName": "Tên hiển thị (tùy chọn)",
-      "openPanelSettings": "Cài đặt hiển thị bảng",
       "channelSettings": "Cài đặt kênh",
       "save": "Lưu",
       "cancel": "Hủy",
-      "confirmDelete": "Xóa kênh này?",
-      "confirmTitle": "Xác nhận",
       "restoreDefaults": "Khôi phục kênh mặc định",
       "availableChannels": "Kênh có sẵn",
       "noResults": "Không tìm thấy kênh phù hợp với \"{{term}}\"",
       "customChannel": "Kênh tùy chỉnh",
-      "regionAll": "Tất cả",
       "regionNorthAmerica": "Bắc Mỹ",
       "regionEurope": "Châu Âu",
       "regionLatinAmerica": "Mỹ Latinh",
@@ -1889,7 +1755,6 @@
       "regionAfrica": "Châu Phi",
       "regionOceania": "Châu Đại Dương",
       "invalidHandle": "Nhập handle YouTube hợp lệ (ví dụ: @TênKênh)",
-      "channelNotFound": "Không tìm thấy kênh YouTube",
       "verifying": "Đang xác minh…",
       "hlsUrl": "URL luồng HLS (tùy chọn)",
       "invalidHlsUrl": "Nhập URL luồng HLS hợp lệ (.m3u8)"
@@ -1952,19 +1817,14 @@
       "noTrackingData": "Không có dữ liệu theo dõi máy bay.",
       "noNews": "Không có tin tức hàng không.",
       "enterRoute": "Nhập tuyến đường và tìm kiếm giá.",
-      "cachedInsight": "Thông tin đã lưu",
-      "demoMode": "CHẾ ĐỘ DEMO",
-      "pricesIndicative": "Tất cả giá đều mang tính chất tham khảo",
       "searchFlights": "Tìm kiếm chuyến bay",
       "bestDates": "Ngày tốt nhất",
-      "cabinClass": "Hạng ghế",
       "enterRouteAndDate": "Nhập tuyến đường và ngày để tìm kiếm",
       "enterDateRange": "Nhập tuyến đường và khoảng thời gian",
       "degradedResults": "Một số kết quả có thể không đầy đủ",
       "nonstop": "không dừng",
       "roundTrip": "Khứ hồi",
-      "tripDays": "Ngày chuyến đi",
-      "cheapest": "Rẻ nhất"
+      "tripDays": "Ngày chuyến đi"
     },
     "chatAnalyst": {
       "infoTooltip": "<strong>Nhà phân tích WM</strong> Nhà phân tích AI với bối cảnh trực tiếp trên các lĩnh vực địa chính trị, thị trường, quân sự và kinh tế. Được hỗ trợ bởi Claude với dữ liệu thời gian thực từ các nguồn cấp WorldMonitor đang hoạt động."
@@ -2004,7 +1864,8 @@
       "errors": {
         "noData": "Không có dữ liệu bùng phát",
         "failedToLoad": "Không tải được"
-      }
+      },
+      "methodologyNote": "Mức Cảnh báo / Cảnh báo / Theo dõi đến từ bộ phân loại từ khóa biên tập — xem /docs/methodology/disease-alert-level để xem bảng từ khóa và các hạn chế."
     },
     "earningsCalendar": {
       "infoTooltip": "<strong>Lịch thu nhập</strong> Các công bố thu nhập sắp tới và gần đây của các công ty đại chúng lớn. Hiển thị ước tính EPS so với thực tế, doanh thu và phân loại vượt/thiếu kỳ vọng. Nguồn: nhà cung cấp dữ liệu tài chính.",
@@ -2067,7 +1928,8 @@
       "errors": {
         "unavailable": "Dữ liệu FSI không khả dụng",
         "failedToLoad": "Không tải được"
-      }
+      },
+      "cissStale": "ECB chưa công bố giá trị mới — phép đo này có thể không còn hiện tại."
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>Bộ theo dõi thương mại Hormuz</strong> Theo dõi tàu AIS trực tiếp qua eo biển Hormuz, điểm nghẽn dầu quan trọng nhất thế giới. Giám sát số lượng tàu chở dầu, sự kiện gián đoạn và thay đổi dòng chảy hàng tuần. Khoảng 20% nguồn cung dầu toàn cầu đi qua đây hàng ngày.",
@@ -2125,8 +1987,6 @@
       "infoTooltip": "<strong>Khu vực năng lượng</strong> Các tín hiệu năng lượng vật lý và giao dịch được ở một nơi:<ul><li><strong>Chỉ số EIA</strong>: WTI, Brent, sản xuất Mỹ và kho dự trữ</li><li><strong>Bản ghi trực tiếp</strong>: Giá năng lượng giao dịch được như dầu thô và khí tự nhiên</li><li><strong>Mục đích</strong>: Phân tách áp lực năng lượng vật lý khỏi các bảng vĩ mô và hàng hóa rộng hơn</li></ul>"
     },
     "consumerPrices": {
-      "title": "Giá tiêu dùng",
-      "subtitle": "Theo dõi giá rổ hàng trên các thị trường chính",
       "tabs": {
         "overview": "Tổng quan",
         "categories": "Danh mục",
@@ -2134,30 +1994,6 @@
         "spread": "Chênh lệch giá bán lẻ",
         "health": "Tình trạng dữ liệu"
       },
-      "essentialsIndex": "Chỉ số hàng thiết yếu",
-      "valueBasketIndex": "Giỏ hàng giá trị",
-      "wowChange": "Tuần trên tuần",
-      "momChange": "Tháng trên tháng",
-      "retailerSpread": "Chênh lệch giá bán lẻ",
-      "coveragePct": "Phạm vi bao phủ",
-      "freshnessLag": "Độ trễ dữ liệu",
-      "noCategories": "Không có dữ liệu danh mục",
-      "noMovers": "Không có dữ liệu thay đổi giá",
-      "noSpread": "Không có dữ liệu chênh lệch giá bán lẻ",
-      "noHealth": "Không có thông tin tình trạng dữ liệu",
-      "upstreamUnavailable": "Dữ liệu giá tiêu dùng tạm thời không khả dụng",
-      "allCategories": "Tất cả danh mục",
-      "risers": "Tăng giá",
-      "fallers": "Giảm giá",
-      "unitPrice": "Giá đơn vị",
-      "freshLabel": "Mới",
-      "staleLabel": "Cũ",
-      "laggingLabel": "Chậm",
-      "stalledLabel": "Dừng",
-      "retailer": "Nhà bán lẻ",
-      "lastUpdated": "Cập nhật lần cuối",
-      "retailers": "nhà bán lẻ",
-      "items": "mặt hàng",
       "infoTooltip": "<strong>Giá tiêu dùng</strong> Theo dõi giỏ hàng theo thời gian thực:<ul><li><strong>Tổng quan</strong>: Chỉ số hàng thiết yếu, giỏ hàng giá trị và thay đổi tuần trên tuần</li><li><strong>Danh mục</strong>: Xu hướng giá theo từng danh mục với phạm vi 30 ngày</li><li><strong>Những mặt hàng thay đổi giá</strong>: Mặt hàng tăng và giảm giá lớn nhất tuần này</li><li><strong>Chênh lệch</strong>: Sự chênh lệch giá giữa các nhà bán lẻ cho cùng một giỏ hàng</li></ul>Dữ liệu từ việc quét giá nhà bán lẻ trực tiếp."
     },
     "marketImplications": {
@@ -2239,14 +2075,10 @@
       "crypto": "TIỀN Mã HÓA",
       "fx": "NGOẠI HỐI",
       "warmup": "Đang xây dựng đường cơ sở. Lịch sử khối lượng và OI sẽ được điền trong giờ tiếp theo.",
-      "unavailable": "Dữ liệu định vị không khả dụng",
       "footer": "5 phút · Hyperliquid perps · 24/7"
     },
     "goldIntelligence": {
       "infoTooltip": "<strong>Gold Intelligence</strong> Giá vàng ghi tức thời, tỷ lệ vàng/bạc, phí cộng vàng so với bạn kim loại quý, giá XAU qua các loại tiền tệ (EUR, GBP, JPY, CNY, INR, CHF) và định vị quản lý tiền của CFTC. Nguồn: Yahoo Finance, CFTC COT."
-    },
-    "energyCrisis": {
-      "infoTooltip": "<strong>Energy Crisis Tracker</strong> Trình theo dõi Phản ứng chính sách Cuộc khủng hoảng năng lượng 2026 của IEA. Theo dõi các biện pháp của chính phủ để tiết kiệm năng lượng và hỗ trợ người tiêu dùng để ứng phó với xung đột Trung Đông và sự gián đoạn nguồn cung eo biển Hormuz. Bao gồm hơn 60 quốc gia với gần 200 biện pháp chính sách."
     },
     "wsbTickerScanner": {
       "infoTooltip": "<strong>WSB Ticker Scanner</strong> Các lượt nhắc đến ticker theo thời gian thực từ r/wallstreetbets, r/stocks và r/investing. Được xếp hạng theo tần suất và mức độ tham gia. Vận tốc đo lường tốc độ nhanh chóng mà một ticker tăng đà trên các bài đăng."
@@ -2439,7 +2271,6 @@
   },
   "popups": {
     "startDate": "NGÀY BẮT ĐẦU",
-    "endDate": "NGÀY KẾT THÚC",
     "magnitude": "Cường độ",
     "depth": "Độ sâu",
     "intensity": "Cường độ",
@@ -2454,20 +2285,9 @@
     "keyDevelopments": "DIỄN BIẾN CHÍNH",
     "unknown": "Không rõ",
     "source": "Nguồn",
-    "target": "Mục tiêu",
     "events": "Sự kiện",
-    "impact": "Tác động",
     "capacity": "Công suất",
-    "alerts": "Cảnh báo Đang hoạt động",
     "updated": "Cập nhật",
-    "common": {
-      "start": "BẮT ĐẦU",
-      "end": "KẾT THÚC",
-      "updated": "CẬP NHẬT"
-    },
-    "conflict": {
-      "title": "VÙNG XUNG ĐỘT"
-    },
     "earthquake": {
       "levels": {
         "major": "LỚN",
@@ -2529,9 +2349,6 @@
       "position": "Vị trí",
       "ground": "Trên mặt đất",
       "airborne": "Đang bay"
-    },
-    "apt": {
-      "description": "Nhóm Mối đe dọa Liên tục Nâng cao có năng lực cấp quốc gia. Nổi tiếng với các chiến dịch mạng tinh vi nhắm vào hạ tầng quan trọng, chính phủ và các lĩnh vực quốc phòng."
     },
     "cyberThreat": {
       "title": "MỐI ĐE DỌA MẠNG"
@@ -2609,9 +2426,7 @@
     "sampledList": "Hiển thị danh sách mẫu gồm {{count}} sự kiện.",
     "reason": "LÝ DO",
     "threat": "MỐI ĐE DỌA",
-    "aka": "Còn được gọi là",
     "sponsor": "NHÀ TÀI TRỢ",
-    "origin": "NGUỒN GỐC",
     "country": "QUỐC GIA",
     "malware": "PHẦN MỀM ĐỘC HẠI",
     "lastSeen": "LẦN CUỐI THẤY",
@@ -2632,8 +2447,6 @@
     "hotspot": {
       "escalation": "ĐÁNH GIÁ LEO THANG",
       "baseline": "Cơ sở",
-      "score": "Điểm",
-      "trend": "Xu hướng",
       "components": {
         "news": "Tin tức",
         "cii": "CII",
@@ -2647,10 +2460,6 @@
         "high": "CAO",
         "critical": "NGHIÊM TRỌNG"
       }
-    },
-    "buttons": {
-      "track": "Theo dõi Vấn đề",
-      "details": "Xem Chi tiết"
     },
     "historicalContext": "BỐI CẢNH LỊCH SỬ",
     "lastMajorEvent": "Sự kiện Lớn Gần nhất",
@@ -2806,10 +2615,8 @@
       "speed": "TỐC ĐỘ",
       "heading": "HƯỚNG ĐI",
       "mmsi": "MMSI",
-      "hull": "SỐ THÂN TÀU",
       "region": "KHU VỰC",
       "strikeGroup": "NHÓM TẤN CÔNG",
-      "deploymentStatus": "TRẠNG THÁI",
       "usniIntel": "Tình báo USNI",
       "usniSource": "Nguồn: USNI News Fleet Tracker",
       "approximatePosition": "Vị trí ước tính — dựa trên báo cáo hàng tuần USNI, không phải AIS thời gian thực.",
@@ -3060,8 +2867,6 @@
     "error": "Lỗi",
     "noData": "Không có dữ liệu",
     "noDataAvailable": "Không có dữ liệu",
-    "updated": "Vừa cập nhật",
-    "ago": "{{time}} trước",
     "retrying": "Đang thử lại...",
     "failedToLoad": "Không thể tải dữ liệu",
     "noDataShort": "Không có dữ liệu",
@@ -3086,7 +2891,6 @@
     "failedCommodities": "Không thể tải dữ liệu hàng hóa",
     "failedCryptoData": "Không thể tải dữ liệu tiền mã hóa",
     "rateLimitedMarket": "Dữ liệu thị trường tạm thời không khả dụng (bị giới hạn tốc độ) — đang thử lại",
-    "failedClusterNews": "Không thể phân cụm tin tức",
     "noNewsAvailable": "Không có tin tức",
     "noActiveTechHubs": "Không có trung tâm công nghệ hoạt động",
     "noActiveGeoHubs": "Không có trung tâm địa chính trị hoạt động",
@@ -3100,7 +2904,7 @@
     "selectNone": "Bỏ chọn Tất cả",
     "unrest": "Bất ổn",
     "conflict": "Xung đột",
-    "security": "An ninh",
+    "security": "Hoạt động quân sự",
     "information": "Thông tin",
     "shareStory": "Chia sẻ bài viết",
     "exportImage": "Xuất Hình ảnh",
@@ -3114,7 +2918,6 @@
     "retry": "Thử lại",
     "refresh": "Làm mới",
     "all": "Tất cả",
-    "dataTemporarilyUnavailable": "Dữ liệu tạm thời không khả dụng",
     "cancel": "Hủy"
   },
   "preferences": {
@@ -3151,7 +2954,6 @@
     "offlineRetry": "Thử Lại"
   },
   "widgets": {
-    "createWithAi": "Tạo bằng AI",
     "confirmDelete": "Xóa tiện ích này vĩnh viễn?",
     "chatTitle": "Trình tạo tiện ích",
     "modifyTitle": "Chỉnh sửa tiện ích",
@@ -3159,7 +2961,6 @@
     "addToDashboard": "Thêm vào bảng điều khiển",
     "applyChanges": "Áp dụng thay đổi",
     "send": "Gửi",
-    "changeAccent": "Thay đổi màu nhấn",
     "modifyWithAi": "Chỉnh sửa tiện ích bằng AI",
     "ready": "Tiện ích sẵn sàng: {{title}}",
     "fetching": "Đang tìm nạp {{target}}...",
@@ -3221,11 +3022,8 @@
   "premium": {
     "pro": "PRO",
     "lockedDesc": "Yêu cầu khóa giấy phép World Monitor",
-    "joinWaitlist": "Tham gia danh sách chờ",
     "signInToUnlock": "Đăng nhập để mở khóa các tính năng cao cấp",
     "signIn": "Đăng nhập để mở khóa",
-    "verifyEmailToUnlock": "Xác minh email của bạn để truy cập các tính năng cao cấp",
-    "resendVerification": "Gửi lại xác minh",
     "upgradeDesc": "Nâng cấp lên Pro để có quyền truy cập đầy đủ vào phân tích cao cấp",
     "upgradeToPro": "Nâng cấp lên Pro",
     "features": {

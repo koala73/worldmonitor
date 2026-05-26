@@ -2,6 +2,7 @@ import type { MarketData, NewsItem } from '@/types';
 import type { MarketWatchlistEntry } from './market-watchlist';
 import { getMarketWatchlistEntries } from './market-watchlist';
 import type { SummarizationResult } from './summarization';
+import { effectivePubDateMs } from './feed-date';
 import { withTimeout } from '@/utils/with-timeout';
 
 /**
@@ -214,7 +215,7 @@ function collectHeadlinePool(newsByCategory: Record<string, NewsItem[]>, extraCa
   return cats
     .flatMap((category) => newsByCategory[category] || [])
     .filter((item) => !!item?.title)
-    .sort((a, b) => b.pubDate.getTime() - a.pubDate.getTime());
+    .sort((a, b) => effectivePubDateMs(b) - effectivePubDateMs(a));
 }
 
 function resolveTargets(markets: MarketData[], explicitTargets?: MarketWatchlistEntry[]): MarketData[] {

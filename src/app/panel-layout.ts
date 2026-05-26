@@ -2,6 +2,7 @@ import type { AppContext, AppModule } from '@/app/app-context';
 import { normalizeExclusiveChoropleths } from '@/components/resilience-choropleth-utils';
 import { replayPendingCalls, clearAllPendingCalls } from '@/app/pending-panel-data';
 import { getAlertsNearLocation } from '@/services/geo-convergence';
+import { effectivePubDateMs } from '@/services/feed-date';
 import type { ClusteredEvent } from '@/types';
 import type { RelatedAsset } from '@/types';
 import type { TheaterPostureSummary } from '@/services/military-surge';
@@ -1678,8 +1679,14 @@ export class PanelLayoutManager implements AppModule {
     };
     const cutoff = Date.now() - (ranges[range] ?? Infinity);
     return items.filter((item) => {
-      const ts = item.pubDate instanceof Date ? item.pubDate.getTime() : new Date(item.pubDate).getTime();
-      return Number.isFinite(ts) ? ts >= cutoff : true;
+      // Recency gate routed through effectivePubDateMs so pubDateMissing
+      // items fail the cutoff check rather than falsely claiming freshness.
+      // Items with NaN/Infinity/Invalid Date pubDates are ALSO excluded
+      // (the helper sanitizes them to 0); previous behavior fell through
+      // to `true` on non-finite, which included corrupt-stamp items in
+      // narrow time windows. Treating untrustworthy timestamps uniformly
+      // is the intentional shift — see data-loader.filterItemsByTimeRange.
+      return effectivePubDateMs(item) >= cutoff;
     });
   }
 

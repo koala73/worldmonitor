@@ -761,13 +761,16 @@ export function installWebApiRedirect(): void {
 
   const nativeFetch = window.fetch.bind(window);
   const shouldRedirectPath = (pathWithQuery: string): boolean => pathWithQuery.startsWith('/api/');
+  const withCredentials = (init?: RequestInit): RequestInit => (
+    { ...(init ?? {}), credentials: init?.credentials ?? 'include' }
+  );
 
   /**
    * For premium API paths, inject auth when the user has premium access but no
    * existing auth header is present. Priority order:
    *   1. Existing auth headers — left unchanged (API key users keep their flow)
    *   2. WORLDMONITOR_API_KEY from runtime config → X-WorldMonitor-Key
-   *   3. Tester key (wm-pro-key / wm-widget-key) → X-WorldMonitor-Key
+   *   3. Tester session (wm-pro-key / wm-widget-key HttpOnly cookie)
    *   4. Clerk Pro session → Authorization: Bearer <token>
    * Runs on every web deployment (with or without API base redirect).
    * Returns the original init unchanged for non-premium paths (zero overhead).
@@ -784,23 +787,22 @@ export function installWebApiRedirect(): void {
       const wmKey = getRuntimeConfigSnapshot().secrets['WORLDMONITOR_API_KEY']?.value;
       if (wmKey) {
         headers.set('X-WorldMonitor-Key', wmKey);
-        return { ...init, headers };
+        return { ...withCredentials(init), headers };
       }
     } catch { /* runtime-config unavailable — fall through */ }
-    // Tester key (wm-pro-key / wm-widget-key): forward as API key header.
-    // Must run BEFORE Clerk to prevent a free Clerk session from intercepting
-    // the request and returning 403 before the tester key is ever tried.
+    // Legacy test seam. In production, tester keys live in HttpOnly cookies
+    // and are sent through credentials: 'include'.
     const { getBrowserTesterKey } = await import('@/services/widget-store');
     const testerKey = getBrowserTesterKey();
     if (testerKey) {
       headers.set('X-WorldMonitor-Key', testerKey);
-      return { ...init, headers };
+      return { ...withCredentials(init), headers };
     }
     // Clerk Pro: inject Bearer token (fallback for users without a tester key)
     const token = await getClerkToken();
     if (token) {
       headers.set('Authorization', `Bearer ${token}`);
-      return { ...init, headers };
+      return { ...withCredentials(init), headers };
     }
     return init;
   };
@@ -833,26 +835,26 @@ export function installWebApiRedirect(): void {
         if (shouldRedirectPath(input)) {
           // Relative /api/... path — redirect to API base and inject auth.
           const enriched = await enrichInitForPremium(input, init);
-          return fetchWithRedirectFallback(`${API_BASE}${input}`, input, enriched);
+          return fetchWithRedirectFallback(`${API_BASE}${input}`, input, enriched ? withCredentials(enriched) : withCredentials(init));
         }
         // Absolute URL already targeting the API base (generated clients call fetch
         // with full URLs like https://api.worldmonitor.app/api/...) — just inject auth.
         if (input.startsWith(`${API_BASE}/api/`)) {
           const pathAndSearch = input.slice(API_BASE.length);
           const enriched = await enrichInitForPremium(pathAndSearch, init);
-          return nativeFetch(input, enriched ?? init);
+          return nativeFetch(input, enriched ? withCredentials(enriched) : withCredentials(init));
         }
       }
       if (input instanceof URL) {
         const pathAndSearch = `${input.pathname}${input.search}`;
         if (input.origin === window.location.origin && shouldRedirectPath(pathAndSearch)) {
           const enriched = await enrichInitForPremium(pathAndSearch, init);
-          return fetchWithRedirectFallback(new URL(`${API_BASE}${pathAndSearch}`), input, enriched);
+          return fetchWithRedirectFallback(new URL(`${API_BASE}${pathAndSearch}`), input, enriched ? withCredentials(enriched) : withCredentials(init));
         }
         // URL object already targeting the API base.
         if (input.origin === API_BASE && pathAndSearch.startsWith('/api/')) {
           const enriched = await enrichInitForPremium(pathAndSearch, init);
-          return nativeFetch(input, enriched ?? init);
+          return nativeFetch(input, enriched ? withCredentials(enriched) : withCredentials(init));
         }
       }
       if (input instanceof Request) {
@@ -863,13 +865,13 @@ export function installWebApiRedirect(): void {
           return fetchWithRedirectFallback(
             new Request(`${API_BASE}${pathAndSearch}`, input),
             input.clone(),
-            enriched,
+            enriched ? withCredentials(enriched) : withCredentials(init),
           );
         }
         // Request object already targeting the API base.
         if (u.origin === API_BASE && pathAndSearch.startsWith('/api/')) {
           const enriched = await enrichInitForPremium(pathAndSearch, init);
-          if (enriched) return nativeFetch(new Request(input, enriched));
+          return nativeFetch(new Request(input, enriched ? withCredentials(enriched) : withCredentials(init)));
         }
       }
       return nativeFetch(input, init);
@@ -880,12 +882,12 @@ export function installWebApiRedirect(): void {
       if (typeof input === 'string') {
         if (shouldRedirectPath(input)) {
           const enriched = await enrichInitForPremium(input, init);
-          return nativeFetch(input, enriched ?? init);
+          return nativeFetch(input, enriched ? withCredentials(enriched) : withCredentials(init));
         }
         if (input.startsWith(`${DEFAULT_WEB_API_URL}/api/`)) {
           const pathAndSearch = input.slice(DEFAULT_WEB_API_URL.length);
           const enriched = await enrichInitForPremium(pathAndSearch, init);
-          return nativeFetch(input, enriched ?? init);
+          return nativeFetch(input, enriched ? withCredentials(enriched) : withCredentials(init));
         }
       }
       if (input instanceof URL) {
@@ -893,7 +895,7 @@ export function installWebApiRedirect(): void {
         if ((input.origin === window.location.origin || input.origin === DEFAULT_WEB_API_URL)
             && (shouldRedirectPath(pathAndSearch) || pathAndSearch.startsWith('/api/'))) {
           const enriched = await enrichInitForPremium(pathAndSearch, init);
-          return nativeFetch(input, enriched ?? init);
+          return nativeFetch(input, enriched ? withCredentials(enriched) : withCredentials(init));
         }
       }
       if (input instanceof Request) {
@@ -902,7 +904,7 @@ export function installWebApiRedirect(): void {
         if ((u.origin === window.location.origin || u.origin === DEFAULT_WEB_API_URL)
             && (shouldRedirectPath(pathAndSearch) || pathAndSearch.startsWith('/api/'))) {
           const enriched = await enrichInitForPremium(pathAndSearch, init);
-          if (enriched) return nativeFetch(new Request(input, enriched));
+          return nativeFetch(new Request(input, enriched ? withCredentials(enriched) : withCredentials(init)));
         }
       }
       return nativeFetch(input, init);

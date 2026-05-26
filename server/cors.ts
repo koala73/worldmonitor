@@ -33,8 +33,9 @@ export function getCorsHeaders(req: Request): Record<string, string> {
   const allowOrigin = isAllowedOrigin(origin) ? origin : 'https://worldmonitor.app';
   return {
     'Access-Control-Allow-Origin': allowOrigin,
+    'Access-Control-Allow-Credentials': 'true',
     'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-WorldMonitor-Key, X-Api-Key, X-Widget-Key, X-Pro-Key',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-WorldMonitor-Key, X-Api-Key, X-Widget-Key, X-Pro-Key, X-WorldMonitor-Desktop-Timestamp, X-WorldMonitor-Desktop-Signature',
     'Access-Control-Max-Age': '3600',
     'Vary': 'Origin',
   };

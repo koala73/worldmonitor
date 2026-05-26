@@ -9,12 +9,13 @@ process.env.WORLDMONITOR_VALID_KEYS = ENTERPRISE_KEY;
 const { validateApiKey } = await import('./_api-key.js');
 const { issueSessionToken } = await import('./_session.js');
 
-function makeReq({ origin, referer, secFetchSite, key } = {}) {
+function makeReq({ origin, referer, secFetchSite, key, cookie } = {}) {
   const headers = new Headers();
   if (origin) headers.set('origin', origin);
   if (referer) headers.set('referer', referer);
   if (secFetchSite) headers.set('sec-fetch-site', secFetchSite);
   if (key) headers.set('x-worldmonitor-key', key);
+  if (cookie) headers.set('cookie', cookie);
   return new Request('https://api.worldmonitor.app/api/test', { headers });
 }
 
@@ -63,6 +64,30 @@ test('valid wms_ session token from any origin is accepted (forceKey=false)', as
   assert.equal(r.valid, true);
   assert.equal(r.required, false);
   assert.equal(r.kind, 'session', 'must tag as session — gateway uses kind to decide entitlement bypass');
+});
+
+test('valid HttpOnly wm-session cookie is accepted without JS-readable auth header', async () => {
+  const { token } = await issueSessionToken();
+  const r = await validateApiKey(makeReq({ cookie: `wm-session=${encodeURIComponent(token)}` }));
+  assert.equal(r.valid, true);
+  assert.equal(r.required, false);
+  assert.equal(r.kind, 'session');
+});
+
+test('HttpOnly wm-pro-key cookie is accepted as enterprise key without a JS-readable header', async () => {
+  const r = await validateApiKey(makeReq({ cookie: `wm-pro-key=${encodeURIComponent(ENTERPRISE_KEY)}` }));
+  assert.equal(r.valid, true);
+  assert.equal(r.required, true);
+  assert.equal(r.kind, 'enterprise');
+});
+
+test('dual wm-pro-key cookies use the first value sent by the browser', async () => {
+  const r = await validateApiKey(makeReq({
+    cookie: `wm-pro-key=${encodeURIComponent(ENTERPRISE_KEY)}; wm-pro-key=old-js-readable-key`,
+  }));
+  assert.equal(r.valid, true);
+  assert.equal(r.required, true);
+  assert.equal(r.kind, 'enterprise');
 });
 
 test('PR #3557 review: wms_ session token is REJECTED when forceKey=true (premium endpoints)', async () => {

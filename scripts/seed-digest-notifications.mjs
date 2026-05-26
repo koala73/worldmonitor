@@ -24,6 +24,7 @@ import {
 } from './_digest-markdown.mjs';
 
 const require = createRequire(import.meta.url);
+const DIGEST_DIPLOMACY_DATA = require('../shared/diplomacy-keywords.json');
 const { decrypt } = require('./lib/crypto.cjs');
 const { callLLM } = require('./lib/llm-chain.cjs');
 const { fetchUserPreferences, extractUserContext, formatUserProfile } = require('./lib/user-context.cjs');
@@ -446,6 +447,63 @@ function matchesSensitivity(ruleSensitivity, severity) {
   return severity === 'critical';
 }
 
+const DIGEST_DIPLOMACY_KEYWORDS = DIGEST_DIPLOMACY_DATA.diplomacyKeywords;
+const DIGEST_FLASHPOINT_KEYWORDS = DIGEST_DIPLOMACY_DATA.flashpointKeywords;
+const DIGEST_DIPLOMACY_FLASHPOINT_PAIRS = DIGEST_DIPLOMACY_DATA.diplomacyFlashpointPairs;
+
+function digestSignalText(text) {
+  return String(text || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+// Word-start containment in digest-normalized text. Mirrors
+// shared/brief-filter.js:containsKeywordToken — prevents 'pact' inside
+// 'impact' (false positive) while still matching 'iran' inside
+// 'iranian' (demonym preserved). PR #3909 review (P2).
+function digestContainsKeywordToken(text, kw) {
+  if (!kw) return false;
+  const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|\\s)${escaped}`).test(text);
+}
+
+function digestHasDiplomacyFlashpointSignal(title) {
+  const text = digestSignalText(title);
+  if (
+    DIGEST_DIPLOMACY_FLASHPOINT_PAIRS.some(([entity, action]) =>
+      digestContainsKeywordToken(text, entity) && digestContainsKeywordToken(text, action),
+    )
+  ) {
+    return true;
+  }
+  return DIGEST_DIPLOMACY_KEYWORDS.some((kw) => digestContainsKeywordToken(text, kw)) &&
+    DIGEST_FLASHPOINT_KEYWORDS.some((kw) => digestContainsKeywordToken(text, kw));
+}
+
+function digestPercentile(sortedNumbers, pct) {
+  if (sortedNumbers.length === 0) return 0;
+  const idx = Math.min(sortedNumbers.length - 1, Math.floor((sortedNumbers.length - 1) * pct));
+  return sortedNumbers[idx];
+}
+
+function logDigestImportanceObservability(stories, { variant, lang, sensitivity }) {
+  if (!Array.isArray(stories) || stories.length === 0) return;
+  const clusterSizes = stories
+    .map((s) => Array.isArray(s.mergedHashes) && s.mergedHashes.length > 0 ? s.mergedHashes.length : 1)
+    .sort((a, b) => a - b);
+  const diplomacyHits = stories.filter((s) => digestHasDiplomacyFlashpointSignal(s.title)).length;
+  const corroborationHits = stories.filter((s) =>
+    (Array.isArray(s.sources) && s.sources.length >= 2) ||
+    (Array.isArray(s.mergedHashes) && s.mergedHashes.length >= 2)
+  ).length;
+  if (diplomacyHits === 0 && corroborationHits === 0) return;
+  console.log(
+    `[digest] buildDigest importance signals variant=${variant} lang=${lang} ` +
+      `sensitivity=${sensitivity} diplomacy=${diplomacyHits} ` +
+      `corroboration=${corroborationHits} ` +
+      `clusterSizeP50=${digestPercentile(clusterSizes, 0.5)} ` +
+      `clusterSizeP90=${digestPercentile(clusterSizes, 0.9)}`,
+  );
+}
+
 // ── Digest content ────────────────────────────────────────────────────────────
 
 // Dedup lives in scripts/lib/brief-dedup.mjs (orchestrator) with the
@@ -575,6 +633,12 @@ async function buildDigest(rule, windowStartMs) {
       // pre-stamp residue rows. Display-side word-wise titleCase happens
       // once at the envelope-build site in shared/brief-filter.js.
       category: typeof track.category === 'string' ? track.category : '',
+      // Cross-title entity corroboration persisted by list-feed-digest.
+      // This is distinct from exact-title source sets: the brief composer
+      // uses it only for the narrow lead/card coherence override when
+      // the LLM's top-ranked story is a corroborated flashpoint-diplomacy
+      // development.
+      entityCorroborationCount: parseInt(track.entityCorroborationCount ?? '0', 10) || 0,
     });
   }
 
@@ -762,6 +826,12 @@ async function buildDigest(rule, windowStartMs) {
   // hydration block that lived here pre-fix has been removed; it would
   // have RESET (top[i].sources = []) and re-fetched, doubling the
   // SMEMBERS pipeline cost per tick for no functional benefit.
+
+  logDigestImportanceObservability(top, {
+    variant,
+    lang,
+    sensitivity: rule.sensitivity ?? 'high',
+  });
 
   return top;
 }
@@ -1674,6 +1744,9 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
     institutional_static_page: 0,
     in: winnerStories.length,
   };
+  const orderStats = {
+    leadDiplomacyOverride: false,
+  };
   const envelope = composeBriefFromDigestStories(
     winner.rule,
     winnerStories,
@@ -1681,6 +1754,7 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
     {
       nowMs,
       onDrop: (ev) => { dropStats[ev.reason] = (dropStats[ev.reason] ?? 0) + 1; },
+      onOrder: (ev) => { orderStats.leadDiplomacyOverride = ev.leadDiplomacyOverride === true; },
       synthesis: synthesis || publicLead
         ? {
             ...(synthesis ?? {}),
@@ -1745,9 +1819,13 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
     // the wrong fit here: a single headline can carry ≥4 anchors,
     // tripping its size-based threshold up to 2.
     const coherent = leadGroundsAgainstStory(synthesis.lead, card1Headline);
+    const coherentVia = !coherent
+      ? 'mismatch'
+      : (orderStats.leadDiplomacyOverride ? 'lead_diplomacy_override' : 'natural');
     console.log(
       `[digest] lead card1 coherence user=${userId} ` +
         `coherent=${coherent} synthesis_level=${synthesisLevel} ` +
+        `coherent_via=${coherentVia} ` +
         `card1_clusterId=${card1?.clusterId ?? '?'}`,
     );
     if (!coherent) {

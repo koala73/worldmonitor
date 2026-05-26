@@ -72,8 +72,13 @@ function extractFeedRouting(filePath) {
     const urlMatch = window.match(/\burl:\s*([\s\S]*?)(?:,\s*$|}\s*[,\]])/m);
     if (!urlMatch) continue;
     const urlExpr = urlMatch[1];
+    // Match the bare `gn(...)` helper AND any sibling like `gnLocale(...)` —
+    // both emit `news.google.com/rss/search?...` URLs that the cache /
+    // user-experience pipeline should treat identically. Don't widen this to
+    // unrelated `gn*` identifiers; restrict to known prefixes that wrap GN.
     const isGN =
-      /news\.google\.com\/rss\/search/i.test(urlExpr) || /\bgn\s*\(/.test(urlExpr);
+      /news\.google\.com\/rss\/search/i.test(urlExpr) ||
+      /\bgn(?:Locale)?\s*\(/.test(urlExpr);
     // First-seen wins — names can repeat across categories (localized
     // variants etc.); the first definition is the canonical routing.
     if (!out.has(name)) {

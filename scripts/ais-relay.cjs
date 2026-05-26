@@ -2903,11 +2903,19 @@ const POSITIVE_EVENTS_RPC_KEY = 'positive-events:geo:v1';
 const POSITIVE_EVENTS_BOOTSTRAP_KEY = 'positive_events:geo-bootstrap:v1';
 const POSITIVE_EVENTS_MAX = 500;
 
+// Single-theme queries — v1 GKG accepts one theme tag per call.
+// http://data.gdeltproject.org/documentation/GKG-MASTER-THEMELIST.TXT
 const POSITIVE_QUERIES = [
-  '(breakthrough OR discovery OR "renewable energy")',
-  '(conservation OR "poverty decline" OR "humanitarian aid")',
-  '("good news" OR volunteer OR donation OR charity)',
+  'SOC_INNOVATION',
+  'EDUCATION',
+  'MEDICAL',
+  'TOURISM',
+  'WB_1765_CULTURE_HERITAGE_AND_SUSTAINABLE_TOURISM',
+  'PEACEKEEPING',
 ];
+
+// urltone threshold — keep only articles with urltone strictly above this value.
+const POSITIVE_TONE_THRESHOLD = 2;
 
 // Mirrors CATEGORY_KEYWORDS from src/services/positive-classifier.ts — keep in sync
 const POSITIVE_CATEGORY_KEYWORDS = [
@@ -2941,14 +2949,20 @@ function classifyPositiveName(name) {
   return 'humanity-kindness';
 }
 
-function fetchGdeltGeoPositive(query) {
+function gkgFeatureUrl(p) {
+  return p?.url || p?.source_url || p?.sourceUrl
+      || p?.document_url || p?.documentUrl
+      || p?.article_url || p?.articleUrl || null;
+}
+
+function fetchGdeltGeoPositive(query, seenUrlLocs) {
   return new Promise((resolve) => {
-    const params = new URLSearchParams({ query, maxrows: '500' });
+    const params = new URLSearchParams({ QUERY: query, MAXROWS: '500' });
     const req = https.get(`https://api.gdeltproject.org/api/v1/gkg_geojson?${params}`, {
       headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
       timeout: 15000,
     }, (resp) => {
-      if (resp.statusCode !== 200) { resp.resume(); return resolve([]); }
+      if (resp.statusCode !== 200) { resp.resume(); return resolve({ ok: false, events: [] }); }
       let body = '';
       resp.on('data', (chunk) => { body += chunk; });
       resp.on('end', () => {
@@ -2957,6 +2971,9 @@ function fetchGdeltGeoPositive(query) {
           const features = Array.isArray(data?.features) ? data.features : [];
           const locationMap = new Map();
           for (const f of features) {
+            // Tone gate — keep only positive-tone articles.
+            const tone = f.properties?.urltone;
+            if (typeof tone !== 'number' || tone <= POSITIVE_TONE_THRESHOLD) continue;
             const name = String(f.properties?.name || '').substring(0, 200);
             if (!name) continue;
             if (name.startsWith('ERROR:') || name.includes('unknown error')) continue;
@@ -2965,6 +2982,14 @@ function fetchGdeltGeoPositive(query) {
             const [lon, lat] = coords;
             if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) continue;
             const key = `${lat.toFixed(1)}:${lon.toFixed(1)}`;
+            // GKG v1 emits one feature per (article, location) pair, so an
+            // article mentioning N places contributes N features. Dedup key
+            // is (url, lat/lon bucket) so each (article × location) is counted
+            // once across all theme calls.
+            const url = gkgFeatureUrl(f.properties);
+            const dedupKey = url ? `${url}|${key}` : null;
+            if (dedupKey && seenUrlLocs.has(dedupKey)) continue;
+            if (dedupKey) seenUrlLocs.add(dedupKey);
             const existing = locationMap.get(key);
             if (existing) { existing.count++; }
             else { locationMap.set(key, { latitude: lat, longitude: lon, name, count: 1 }); }
@@ -2974,12 +2999,12 @@ function fetchGdeltGeoPositive(query) {
             if (loc.count < 3) continue;
             events.push({ latitude: loc.latitude, longitude: loc.longitude, name: loc.name, category: classifyPositiveName(loc.name), count: loc.count, timestamp: Date.now() });
           }
-          resolve(events);
-        } catch { resolve([]); }
+          resolve({ ok: true, events });
+        } catch { resolve({ ok: false, events: [] }); }
       });
     });
-    req.on('error', () => resolve([]));
-    req.on('timeout', () => { req.destroy(); resolve([]); });
+    req.on('error', () => resolve({ ok: false, events: [] }));
+    req.on('timeout', () => { req.destroy(); resolve({ ok: false, events: [] }); });
   });
 }
 
@@ -2994,13 +3019,18 @@ async function seedPositiveEvents() {
   try {
     const allEvents = [];
     const seenNames = new Set();
+    // Cross-call (article × location) dedup — same article tagged with
+    // multiple themes would otherwise double-count its location buckets.
+    const seenUrlLocs = new Set();
     let anyQuerySucceeded = false;
 
     for (let i = 0; i < POSITIVE_QUERIES.length; i++) {
       if (i > 0) await new Promise((r) => setTimeout(r, 5_500)); // GDELT rate limit: 1 req per 5s
       try {
-        const events = await fetchGdeltGeoPositive(POSITIVE_QUERIES[i]);
+        const result = await fetchGdeltGeoPositive(POSITIVE_QUERIES[i], seenUrlLocs);
+        if (!result?.ok) continue;
         anyQuerySucceeded = true;
+        const events = Array.isArray(result.events) ? result.events : [];
         for (const e of events) {
           if (!seenNames.has(e.name)) {
             seenNames.add(e.name);
@@ -3082,6 +3112,86 @@ const RELAY_TIER4_SOURCES = new Set(
 
 const RELAY_SCORE_WEIGHTS = { severity: 0.55, sourceTier: 0.2, corroboration: 0.15, recency: 0.1 };
 const RELAY_SEVERITY_SCORES = { critical: 100, high: 75, medium: 50, low: 25, info: 0 };
+const RELAY_DIPLOMACY_KEYWORDS = [
+  'ceasefire', 'truce', 'armistice', 'treaty', 'accord', 'pact', 'diplomatic',
+  'diplomacy', 'mediate', 'mediator', 'negotiation', 'negotiations', 'negotiate',
+  'normalization', 'normalisation',
+];
+const RELAY_FLASHPOINT_SCORING_KEYWORDS = [
+  'iran', 'tehran', 'russia', 'moscow', 'china', 'beijing', 'taiwan', 'ukraine', 'kyiv',
+  'north korea', 'pyongyang', 'israel', 'gaza', 'west bank', 'syria', 'damascus',
+  'yemen', 'hezbollah', 'hamas', 'kremlin', 'pentagon', 'nato', 'wagner',
+];
+const RELAY_DIPLOMACY_FLASHPOINT_PAIRS = [
+  ['iran', 'deal'],
+  ['iran', 'talks'],
+  ['iran', 'ceasefire'],
+  ['iran', 'treaty'],
+  ['iran', 'accord'],
+  ['iran', 'peace'],
+  ['israel', 'ceasefire'],
+  ['israel', 'truce'],
+  ['israel', 'accord'],
+  ['gaza', 'ceasefire'],
+  ['gaza', 'truce'],
+  ['ukraine', 'ceasefire'],
+  ['ukraine', 'talks'],
+  ['russia', 'talks'],
+  ['russia', 'treaty'],
+  ['hamas', 'truce'],
+  ['hezbollah', 'truce'],
+  ['syria', 'ceasefire'],
+  ['china', 'talks'],
+  ['china', 'accord'],
+  ['taiwan', 'talks'],
+  ['yemen', 'ceasefire'],
+  ['north korea', 'talks'],
+  ['pyongyang', 'talks'],
+];
+const RELAY_DIPLOMACY_FLASHPOINT_BOOST = 18;
+const RELAY_ENTITY_CORROBORATION_SCORE_PER_SOURCE = 4;
+
+function relayNormalizeScoringText(text) {
+  return String(text || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+// Word-start containment in normalized text. Mirrors
+// shared/brief-filter.js:containsKeywordToken — prevents 'pact' inside
+// 'impact' (false positive) while still matching 'iran' inside
+// 'iranian' (demonym preserved). PR #3909 review (P2). Keeps the
+// relay aligned with digest under tests/importance-score-parity.test.mjs.
+function relayContainsKeywordToken(text, kw) {
+  if (!kw) return false;
+  const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|\\s)${escaped}`).test(text);
+}
+
+function relayHasAnySignal(text, keywords) {
+  return keywords.some((kw) => relayContainsKeywordToken(text, kw));
+}
+
+function relayHasDiplomacyFlashpointSignal(title) {
+  if (!title) return false;
+  const text = relayNormalizeScoringText(title);
+  if (
+    RELAY_DIPLOMACY_FLASHPOINT_PAIRS.some(([entity, action]) =>
+      relayContainsKeywordToken(text, entity) && relayContainsKeywordToken(text, action),
+    )
+  ) {
+    return true;
+  }
+  return relayHasAnySignal(text, RELAY_DIPLOMACY_KEYWORDS) &&
+    relayHasAnySignal(text, RELAY_FLASHPOINT_SCORING_KEYWORDS);
+}
+
+function relayDiplomacyFlashpointBoost(title) {
+  return relayHasDiplomacyFlashpointSignal(title) ? RELAY_DIPLOMACY_FLASHPOINT_BOOST : 0;
+}
+
+function relayEntityCorroborationScore(count) {
+  const finite = Number.isFinite(count) ? Number(count) : 0;
+  return Math.min(Math.max(finite, 0), 5) * RELAY_ENTITY_CORROBORATION_SCORE_PER_SOURCE;
+}
 
 // Mirrors computeImportanceScore() in list-feed-digest.ts with ONE intentional
 // deviation: the relay defensively returns 0 for unknown severity levels
@@ -3089,17 +3199,22 @@ const RELAY_SEVERITY_SCORES = { critical: 100, high: 75, medium: 50, low: 25, in
 // exercised in tests/importance-score-parity.test.mjs "unknown severity" case.
 // Caller responsibility: pass defined values; relay publish site defaults
 // corroborationCount → 1 and publishedAt → Date.now() when upstream omits them.
-function relayComputeImportanceScore(level, source, corroborationCount, publishedAt) {
+function relayComputeImportanceScore(level, source, corroborationCount, publishedAt, context = {}) {
   const tier = relayGetSourceTier(source);
   const tierScore = tier === 1 ? 100 : tier === 2 ? 75 : tier === 3 ? 50 : 25;
   const corroborationScore = Math.min(corroborationCount, 5) * 20;
   const ageMs = Date.now() - publishedAt;
   const recencyScore = Math.max(0, 1 - ageMs / (24 * 60 * 60 * 1000)) * 100;
-  return Math.round(
+  const base = Math.round(
     (RELAY_SEVERITY_SCORES[level] ?? 0) * RELAY_SCORE_WEIGHTS.severity +
     tierScore * RELAY_SCORE_WEIGHTS.sourceTier +
     corroborationScore * RELAY_SCORE_WEIGHTS.corroboration +
     recencyScore * RELAY_SCORE_WEIGHTS.recency,
+  );
+  return Math.round(
+    base +
+    relayDiplomacyFlashpointBoost(context.title) +
+    relayEntityCorroborationScore(context.entityCorroborationCount),
   );
 }
 
@@ -3466,6 +3581,14 @@ async function seedClassifyForVariant(variant, seenTitles) {
           meta.source,
           meta.corroborationCount ?? 1,
           meta.publishedAt ?? Date.now(),
+          {
+            title: chunk[idx],
+            classSource: 'llm',
+            // The relay has only exact story-merge corroboration. Entity
+            // corroboration is a separate digest-side signal computed from
+            // flashpoint+diplomacy buckets; do not proxy source count here.
+            entityCorroborationCount: 0,
+          },
         );
         publishNotificationEvent({
           eventType: 'rss_alert',

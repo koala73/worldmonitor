@@ -4,6 +4,10 @@ All notable changes to World Monitor are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- **CII formula `v2`** — the Composite Instability Index `Security` component now scores military flights, military vessels and aviation disruptions in addition to GPS jamming (previously GPS-jamming-only — issue #3738). The composite blend gains `newsUrgencyBoost`, `earthquakeBoost`, `sanctionsBoost` and an AIS-disruption boost; `cyberBoost`/`fireBoost` are now severity-weighted. Public `combinedScore` values shift accordingly and `methodology_version` is bumped `v1` → `v2` — clients pinned on it should re-baseline. See `docs/methodology/cii-risk-scores.mdx` (#3864).
+
 ### Added
 
 - **Unified OpenAPI bundle** — `docs/api/worldmonitor.openapi.yaml` is now emitted alongside per-service specs, merging every WorldMonitor RPC into a single OpenAPI 3.1 document (190 operations). Powered by sebuf v0.11.1's origin-level bundle support ([SebastienMelki/sebuf#158](https://github.com/SebastienMelki/sebuf/issues/158)). Bumps `SEBUF_VERSION` in the Makefile from v0.7.0 to v0.11.1 — rerun `make install-plugins` after pulling.

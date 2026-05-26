@@ -119,6 +119,99 @@ export default defineSchema({
     .index("by_user_variant", ["userId", "variant"])
     .index("by_enabled", ["enabled"]),
 
+  // ────────────────────────────────────────────────────────────────────────
+  // Followed countries (watchlist primitive). See
+  // docs/plans/2026-05-02-001-feat-followed-countries-watchlist-primitive-plan.md
+  // (U12). One row per (userId, country) follow; uniqueness is enforced by
+  // the `followCountry` mutation via the `by_user_country` index check, NOT
+  // by Convex schema (Convex does not support unique constraints).
+  //
+  // `country` is a canonical ISO 3166-1 alpha-2 code (uppercase, e.g. "US",
+  // "GB", "JP"). Validation against the canonical alpha-2 registry happens
+  // at the mutation boundary (U13: `convex/lib/iso2.ts::isValidIso2`).
+  followedCountries: defineTable({
+    userId: v.string(),
+    country: v.string(),
+    addedAt: v.number(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_country", ["country"])
+    .index("by_user_country", ["userId", "country"]),
+
+  // Aggregate-counter table for `countFollowers`. One row per country, kept
+  // in lockstep with `followedCountries` row inserts/deletes by the
+  // followCountry/unfollowCountry/mergeAnonymousLocal mutations (atomic
+  // patch within the same Convex mutation transaction). Lets the public
+  // `countFollowers` query be O(1) instead of O(n) per call. The privacy
+  // floor (`COUNTRY_COUNT_PRIVACY_FLOOR`) is applied at read time in the
+  // query, not at write time — the row stores the true count.
+  followedCountriesCounts: defineTable({
+    country: v.string(),
+    count: v.number(),
+    updatedAt: v.number(),
+  }).index("by_country", ["country"]),
+
+  // Pre-seeded per-country lock table for aggregate counter writes.
+  // The user shard lock only serializes mutations by user; first-ever
+  // follows of the same country by different users need an existing
+  // country-scoped document for Convex OCC to serialize the lazy
+  // `followedCountriesCounts` row creation/update path. One row is seeded
+  // for each valid ISO-2 code, and every counter +/- operation reads and
+  // patches the row for that country in the same transaction.
+  followedCountriesCountryLocks: defineTable({
+    country: v.string(),
+    lastTouchedAt: v.number(),
+  }).index("by_country", ["country"]),
+
+  // Per-user serialization document for the followed-countries watchlist.
+  // EVERY mutation that mutates `followedCountries` for a user reads AND
+  // writes this row, forcing Convex's per-document OCC to serialize
+  // concurrent same-user mutations. Without this, two parallel
+  // `followCountry` calls from the same user can both pass the cap check
+  // (Convex OCC tracks reads at the document level, not at the index-range
+  // level), both insert, and bypass the cap. The denormalized `count`
+  // also lets the cap check be O(1) instead of O(n) — happy side effect.
+  //
+  // Invariant: `count` MUST equal the row count of `followedCountries`
+  // for `userId`. The mutations are the only writers; tests assert this
+  // parity after every operation. See plan U13 / Codex round-3 P0
+  // (run 20260502-195816-dae403d7).
+  //
+  // KEY CAVEAT (Codex round-4 P0 v2): this row is created LAZILY on the
+  // first mutation, so its OCC alone does NOT close a brand-new user's
+  // race — two parallel first-ever mutations would both read empty and
+  // both insert, producing duplicate meta rows. The fix is the pre-seeded
+  // `followedCountriesShards` table below: every mutation reads + patches
+  // the shard row at `userIdToShard(userId)` BEFORE this lazy-create can
+  // happen, and Convex's OCC on the shard row serializes the two parallel
+  // mutations so the second one observes the first's user-meta insert.
+  followedCountriesUserMeta: defineTable({
+    userId: v.string(),
+    count: v.number(),
+    updatedAt: v.number(),
+  }).index("by_user", ["userId"]),
+
+  // Pre-seeded sharded lock table for the followed-countries watchlist
+  // (Codex round-4 P0 v2). One row per shard id `0..SHARD_COUNT-1`.
+  // Mapped to via `convex/lib/shards.ts::userIdToShard(userId)`, a
+  // deterministic non-cryptographic hash. Every mutation that touches
+  // `followedCountries` for a user reads the shard row at the top of the
+  // handler AND patches `lastTouchedAt` at the end — that read+write pair
+  // is what triggers Convex's per-document OCC to serialize concurrent
+  // same-user mutations. Because rows are pre-seeded (never lazily
+  // created), there is no TOCTOU window: the loser of an OCC race retries
+  // against the post-winner state, sees the user-meta row the winner
+  // inserted, and proceeds correctly.
+  //
+  // SHARD_COUNT is fixed at deploy time. Re-seeding requires draining
+  // in-flight mutations; do not change without an operator runbook.
+  // Seeding is idempotent — `_seedShards` skips existing rows. A daily
+  // cron + manual operator mutation guarantee the table stays seeded.
+  followedCountriesShards: defineTable({
+    shardId: v.number(),
+    lastTouchedAt: v.number(),
+  }).index("by_shard", ["shardId"]),
+
   telegramPairingTokens: defineTable({
     userId: v.string(),
     token: v.string(),
@@ -390,7 +483,8 @@ export default defineSchema({
     message: v.optional(v.string()),
     source: v.string(),
     receivedAt: v.number(),
-  }),
+    normalizedEmail: v.optional(v.string()),
+  }).index("by_normalized_email_received", ["normalizedEmail", "receivedAt"]),
 
   counters: defineTable({
     name: v.string(),

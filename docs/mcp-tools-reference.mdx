@@ -25,6 +25,134 @@ If you've completed the OAuth flow instead, replace `-H "X-WorldMonitor-Key: $WM
 **Recently added** (May 2026): `get_displacement_data`, `get_health_signals`, `get_energy_intelligence`, `get_consumer_prices`, `get_tariff_trends`, `get_chokepoint_status` — six new bundled tools that exposed previously-cached domains via MCP.
 </Tip>
 
+## Discovering tools
+
+Before diving into the per-tool reference, two affordances make discovery cheaper than reading this page top-to-bottom.
+
+### `describe_tool` — full uncompressed definition on demand
+
+Since v1.5.0, `tools/list` returns each tool's `description` truncated to the first sentence (≤120 UTF-8 bytes). That keeps the per-session input-token cost low when the LLM only needs to scan names — and the same `tools/list` entry now ships an `outputSchema` (v1.6.0) so the model can author a JMESPath projection on the first call. When the compressed description is ambiguous, call `describe_tool` for the long form:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "method": "tools/call",
+  "params": { "name": "describe_tool", "arguments": { "tool_name": "get_chokepoint_status" } }
+}
+```
+
+Response — identical shape to a `tools/list` entry, with the full uncompressed `description` and the full `inputSchema.properties` text:
+
+```json
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\"name\":\"get_chokepoint_status\",\"description\":\"Live maritime chokepoint status: per-chokepoint vessel transit counts (10-min cadence), rolling transit summaries, per-port activity, plus static reference data and flow aggregates. Covers Suez, Hormuz, Malacca, Bab-el-Mandeb, Panama, etc.\",\"inputSchema\":{ /* full properties with full descriptions */ },\"outputSchema\":{ /* … */ },\"annotations\":{\"readOnlyHint\":true,\"destructiveHint\":false,\"idempotentHint\":true,\"openWorldHint\":false}}"
+      }
+    ]
+  }
+}
+```
+
+`describe_tool` is **exempt from the Pro daily quota** (per-minute rate limit still applies). The exemption is intentional — counting metadata lookups against the 50/day cap would discourage exploration, defeating the compression. Two common workflows:
+
+- **Compressed entry is ambiguous about behaviour or argument semantics.** Call `describe_tool` to see the full long-form description plus every property's full description.
+- **First-time JMESPath authoring against an unfamiliar response.** Call `describe_tool` to read the `outputSchema` (see next section) without paying a quota slot for a real `tools/call`.
+
+`describe_tool` returns two soft-error envelopes inside the normal `content[0].text`:
+
+- `{ "error": "missing_tool_name", "hint": "Pass tool_name as a non-empty string matching a tool from tools/list." }` — `tool_name` was omitted, empty, or non-string.
+- `{ "error": "unknown_tool", "requested": "<the bad name>", "available": [...sorted list of all tool names...] }` — `tool_name` didn't match. The `available` array lets the LLM self-correct in one extra call.
+
+The full per-tool reference for `describe_tool` (parameters, response shape, quota posture) is at [`describe_tool`](#describe_tool) under Meta.
+
+### `outputSchema` — typed parsing without a sample call
+
+As of v1.6.0, every tool's `tools/list` entry declares a spec-defined [MCP 2025-06-18 `Tool.outputSchema`](https://modelcontextprotocol.io/specification/2025-06-18/server/tools#tool-result-schema). The schema describes the shape of the JSON that lives inside `result.content[0].text` for that tool — letting clients author projections, validate responses, or generate types without ever issuing a real `tools/call`.
+
+Schemas are emitted **unconditionally** on every `tools/list`, regardless of the negotiated `protocolVersion`. Clients on the older `2025-03-26` floor still receive them and (per spec) are expected to ignore unknown fields rather than fail.
+
+Worked example — the `outputSchema` for `get_country_risk`:
+
+```json
+{
+  "type": "object",
+  "properties": {
+    "country_code": { "type": "string" },
+    "cii": { "type": ["number", "null"], "description": "Composite Instability Index 0-100." },
+    "components": {
+      "type": "object",
+      "properties": {
+        "unrest":   { "type": ["number", "null"] },
+        "conflict": { "type": ["number", "null"] },
+        "security": { "type": ["number", "null"] },
+        "news":     { "type": ["number", "null"] }
+      }
+    },
+    "travelAdvisory":    { "type": ["object", "string", "null"] },
+    "sanctionsExposure": { "type": ["object", "array", "null"] }
+  }
+}
+```
+
+Cache tools wrap their declared `data` shape in the standard freshness envelope:
+
+```json
+{
+  "type": "object",
+  "required": ["cached_at", "stale", "data"],
+  "properties": {
+    "cached_at": { "type": ["string", "null"], "description": "ISO-8601 timestamp of the OLDEST contributing cache key." },
+    "stale":     { "type": "boolean", "description": "True when any contributing cache key is older than its per-key maxStaleMin freshness budget." },
+    "data":      { "type": "object", "properties": { /* per-tool fields */ } }
+  }
+}
+```
+
+A typed-parsing sketch in TypeScript using the schema for compile-time hints:
+
+```ts
+// Synthesise types from the schema once (e.g. with json-schema-to-typescript).
+type CountryRisk = {
+  country_code: string;
+  cii: number | null;
+  components: { unrest: number | null; conflict: number | null; security: number | null; news: number | null };
+  travelAdvisory: object | string | null;
+  sanctionsExposure: object | unknown[] | null;
+};
+
+const reply = await callTool('get_country_risk', { country_code: 'IR' });
+const text = reply.result?.content?.[0]?.text;
+if (typeof text !== 'string') throw new Error('no text payload');
+
+type SoftEnvelope =
+  | { _budget_exceeded: true; budget_bytes: number; actual_bytes: number; hint: string }
+  | { _jmespath_error: string; original_keys: string[] };
+
+const parsed = JSON.parse(text) as CountryRisk | SoftEnvelope;
+// Check for BOTH soft-envelope discriminators BEFORE consuming sibling fields as data.
+// A `_jmespath_error` payload that falls through to the success branch would silently
+// dereference undefined — the exact anti-pattern the catalog warns against.
+if ('_budget_exceeded' in parsed) {
+  // narrow with jmespath / filters and retry — see /mcp-error-catalog
+} else if ('_jmespath_error' in parsed) {
+  // fix the projection using `original_keys` as the schema hint — see /mcp-error-catalog
+} else {
+  console.log(parsed.cii, parsed.components.conflict);
+}
+```
+
+Things to know:
+
+- `additionalProperties` is left implicit (= true) on every schema, so producer-side forward-compatible additions don't suddenly fail validation.
+- Per-array `items.properties` lists known fields but does NOT enumerate every observed key — the schema is a **hint surface** for JMESPath authoring, not a bytecode-level contract.
+- Schemas describe the success-path payload only. The two catalog-class soft envelopes (`_budget_exceeded`, `_jmespath_error`) are NOT in the per-tool schema — they replace the payload entirely and have their own shapes. See the [MCP Error Catalog](/mcp-error-catalog) for both envelopes.
+
 ## Markets & economy
 
 ### `get_market_data`
@@ -1061,7 +1189,7 @@ Returns the full uncompressed definition of any other tool by name. Use when the
 **Soft errors** (HTTP 200, returned inside the normal `content[0].text` envelope — NOT JSON-RPC errors):
 
 - `{ "error": "missing_tool_name", "hint": "Pass tool_name as a non-empty string matching a tool from tools/list." }` — `tool_name` was omitted, empty, or non-string.
-- `{ "error": "unknown_tool", "requested": "<the bad name>", "available": [...sorted list of all 39 tool names...] }` — `tool_name` didn't match any registered tool. The `available` array lets the LLM self-correct in one extra call.
+- `{ "error": "unknown_tool", "requested": "<the bad name>", "available": [...sorted list of all tool names...] }` — `tool_name` didn't match any registered tool. The `available` array lets the LLM self-correct in one extra call.
 
 - **API endpoints:** none — server-local lookup, no upstream call.
 - **Kind:** metadata lookup — sub-millisecond, no Redis, no LLM.

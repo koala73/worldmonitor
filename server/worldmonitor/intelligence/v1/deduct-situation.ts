@@ -129,7 +129,12 @@ export async function deductSituation(
             if (!result) return null;
             const analysis = postProcessDeductionOutput(result.content, mode);
             return { analysis, model: result.model, provider: result.provider };
-        }
+        },
+        undefined,
+        // Cache safety net must sit above the LLM's own timeout so the
+        // caller's bound wins; otherwise the inflight wrapper rejects at
+        // the 30s default before callLlmReasoning can complete (#3539).
+        { timeoutMs: DEDUCT_TIMEOUT_MS + 5_000 },
     );
 
     if (!cached?.analysis) {

@@ -11,6 +11,7 @@ import type {
 } from '@/components/CountryBriefPanel';
 import { CountryDeepDivePanel } from '@/components/CountryDeepDivePanel';
 import { reverseGeocode } from '@/utils/reverse-geocode';
+import { effectivePubDateMs } from '@/services/feed-date';
 import {
   getCountryAtCoordinates,
   getCountryCentroid,
@@ -294,7 +295,7 @@ export class CountryIntelManager implements AppModule {
     }).sort((a, b) => {
       const severityDelta = this.newsSeverityRank(b) - this.newsSeverityRank(a);
       if (severityDelta !== 0) return severityDelta;
-      return new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime();
+      return effectivePubDateMs(b) - effectivePubDateMs(a);
     });
     this.ctx.countryBriefPage.updateNews(filteredNews.slice(0, 10));
 

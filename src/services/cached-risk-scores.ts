@@ -74,10 +74,12 @@ const SEVERITY_REVERSE: Record<string, string> = {
 };
 
 function getScoreLevel(score: number): 'low' | 'normal' | 'elevated' | 'high' | 'critical' {
-  if (score >= 70) return 'critical';
-  if (score >= 55) return 'high';
-  if (score >= 40) return 'elevated';
-  if (score >= 25) return 'normal';
+  // Phase 3b / decision L1 — reconciled to the frontend getLevel cutoffs
+  // (was 70 / 55 / 40 / 25). The frontend table is the canonical badge banding.
+  if (score >= 81) return 'critical';
+  if (score >= 66) return 'high';
+  if (score >= 51) return 'elevated';
+  if (score >= 31) return 'normal';
   return 'low';
 }
 

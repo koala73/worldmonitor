@@ -10,7 +10,7 @@ async function freshMod() {
   return import(`../api/mcp.ts?t=${Date.now()}-${Math.random()}`);
 }
 
-describe('api/mcp.ts — tools/list description compression (v1.5.0)', () => {
+describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
   let mod;
 
   beforeEach(async () => {
@@ -136,11 +136,11 @@ describe('api/mcp.ts — tools/list description compression (v1.5.0)', () => {
       return body.result.tools;
     }
 
-    it('compressDescriptions=true returns { name, description, inputSchema, annotations } with no other top-level keys', async () => {
+    it('compressDescriptions=true returns { name, description, inputSchema, outputSchema, annotations } with no other top-level keys', async () => {
       const tools = await getRegistry();
       const t = tools.find(t => t.name === 'get_market_data');
       assert.ok(t, 'get_market_data must be registered');
-      assert.deepEqual(Object.keys(t).sort(), ['annotations', 'description', 'inputSchema', 'name']);
+      assert.deepEqual(Object.keys(t).sort(), ['annotations', 'description', 'inputSchema', 'name', 'outputSchema']);
     });
 
     it('every cache-tool result has inputSchema.properties.summary STRUCTURALLY equal to SUMMARY_SCHEMA (deepEqual not ===)', async () => {
@@ -239,11 +239,20 @@ describe('api/mcp.ts — tools/list description compression (v1.5.0)', () => {
 
     it('R9: no key starting with _ appears anywhere in any returned tool object (recursive scan)', async () => {
       const tools = await getRegistry();
+      // v1.6.0: skip `outputSchema` subtrees from this scan. The R9 guard
+      // exists to prevent INTERNAL/CONFIG fields (e.g. `_apiPaths`,
+      // `_cacheKeys`, `_outputBudgetBytes`) leaking onto the wire via
+      // buildPublicTool. outputSchema describes legitimate RESPONSE content,
+      // which can include any key (e.g. the cache-key-derived labels
+      // `_all`, `_countries` produced by the executeTool label walk).
+      // Conflating "response-shape descriptor key" with "BaseToolDef internal
+      // field" would force schema authors to rename real labels.
       function scanForUnderscoreKey(value, pathStack) {
         if (Array.isArray(value)) {
           for (let i = 0; i < value.length; i++) scanForUnderscoreKey(value[i], [...pathStack, `[${i}]`]);
         } else if (value && typeof value === 'object') {
           for (const k of Object.keys(value)) {
+            if (k === 'outputSchema') continue;
             if (k.startsWith('_')) {
               throw new Error(`Internal field leak: tools/list contains key "${k}" at path ${pathStack.join('.')}`);
             }
@@ -350,14 +359,14 @@ describe('api/mcp.ts — tools/list description compression (v1.5.0)', () => {
     // ============================================================
     // U4: Version bump + SERVER_INSTRUCTIONS + server-card sync
     // ============================================================
-    it('serverInfo.version === "1.5.0"', async () => {
+    it('serverInfo.version === "1.10.0"', async () => {
       const res = await mod.default(new Request('https://worldmonitor.app/mcp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': VALID_KEY },
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 't', version: '1' } } }),
       }));
       const body = await res.json();
-      assert.equal(body.result?.serverInfo?.version, '1.5.0');
+      assert.equal(body.result?.serverInfo?.version, '1.10.0');
     });
 
     it('initialize.result.instructions mentions describe_tool AND the TOOL_DESCRIPTION_MAX_BYTES cap value', async () => {
@@ -374,9 +383,9 @@ describe('api/mcp.ts — tools/list description compression (v1.5.0)', () => {
         'instructions should mention the TOOL_DESCRIPTION_MAX_BYTES cap');
     });
 
-    it('server-card.json version matches SERVER_VERSION (1.5.0) AND tools.count matches (39)', () => {
+    it('server-card.json version matches SERVER_VERSION (1.10.0) AND tools.count matches (39)', () => {
       const card = JSON.parse(readFileSync(new URL('../public/.well-known/mcp/server-card.json', import.meta.url), 'utf8'));
-      assert.equal(card.serverInfo.version, '1.5.0');
+      assert.equal(card.serverInfo.version, '1.10.0');
       assert.equal(card.tools.count, 39);
       assert.equal(card.features?.toolDescriptionCompression, true);
       assert.equal(card.features?.responseProjection, 'jmespath',
@@ -386,32 +395,44 @@ describe('api/mcp.ts — tools/list description compression (v1.5.0)', () => {
     // ============================================================
     // U5: Reduction-target regression guard (R1: ≥8%)
     // ============================================================
-    it('R1: tools/list compression reduces total envelope by ≥8% UTF-8 bytes vs v1.4.0 baseline', async () => {
+    it('R1: tools/list description compression reduces total envelope vs uncompressed baseline', async () => {
       const tools = await getToolsList();
-      // v1.4.0 baseline: same tools EXCEPT describe_tool (v1.5.0 addition),
+      // Baseline: same tools EXCEPT describe_tool (v1.5.0 addition),
       // with full uncompressed descriptions. Use describe_tool to recover
       // full text for each tool — same self-contained measurement strategy
       // the U5 script uses.
-      const v14 = [];
+      const baseline = [];
       for (const t of tools) {
         if (t.name === 'describe_tool') continue;
         const full = await callDescribeTool(t.name);
-        v14.push(full);
+        baseline.push(full);
       }
-      const v14Bytes = mod.utf8ByteLength(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { tools: v14 } }));
-      const v15Bytes = mod.utf8ByteLength(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { tools } }));
-      const reductionPct = ((v14Bytes - v15Bytes) / v14Bytes) * 100;
-      assert.ok(reductionPct >= 8,
-        `reduction ${reductionPct.toFixed(2)}% below R1 target (≥8%). v1.4.0=${v14Bytes}B v1.5.0=${v15Bytes}B`);
+      const baselineBytes = mod.utf8ByteLength(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { tools: baseline } }));
+      const currentBytes = mod.utf8ByteLength(JSON.stringify({ jsonrpc: '2.0', id: 1, result: { tools } }));
+      const reductionPct = ((baselineBytes - currentBytes) / baselineBytes) * 100;
+      // Floor lowered from 8% → 4% in v1.6.0. The R1 target was set against a
+      // v1.4.0 envelope that did NOT carry outputSchema. v1.6.0 emits an
+      // outputSchema on every tool — that adds wire bytes to BOTH the compressed
+      // and uncompressed sides equally, which dilutes the % savings even though
+      // the description-compression mechanism still saves the same absolute bytes.
+      // The 4% floor catches a true regression of the compression mechanism
+      // without re-flagging the legitimate v1.6.0 envelope growth.
+      assert.ok(reductionPct >= 4,
+        `reduction ${reductionPct.toFixed(2)}% below R1 v1.6.0 target (≥4%). baseline=${baselineBytes}B current=${currentBytes}B`);
     });
 
     it('round-trip: every tool returned by describe_tool has no _-prefixed key (R9)', async () => {
       const tools = await getToolsList();
+      // Same rationale as the tools/list-side R9 scan above: outputSchema is
+      // a response-shape descriptor whose keys legitimately mirror executeTool's
+      // cache-key labels (`_all`, `_countries`, ...). Only the internal
+      // BaseToolDef _-prefixed fields should be guarded against here.
       function scanForUnderscoreKey(value, pathStack) {
         if (Array.isArray(value)) {
           for (let i = 0; i < value.length; i++) scanForUnderscoreKey(value[i], [...pathStack, `[${i}]`]);
         } else if (value && typeof value === 'object') {
           for (const k of Object.keys(value)) {
+            if (k === 'outputSchema') continue;
             if (k.startsWith('_')) {
               throw new Error(`describe_tool leaked internal key "${k}" at ${pathStack.join('.')}`);
             }

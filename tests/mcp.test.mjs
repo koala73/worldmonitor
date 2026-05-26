@@ -1,11 +1,21 @@
 import { describe, it, beforeEach, afterEach, mock } from 'node:test';
 import { strict as assert } from 'node:assert';
+import {
+  BASE_URL,
+  HMAC_SECRET,
+  PRO_USER_ID,
+  PRO_TOKEN_ID,
+  PRO_BEARER,
+  makePipelineMock,
+  makeProDeps,
+  proReq,
+  callBody,
+} from './helpers/mcp-pro-deps.mjs';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
 
 const VALID_KEY = 'wm_test_key_123';
-const BASE_URL = 'https://worldmonitor.app/mcp';
 
 function makeReq(method = 'POST', body = null, headers = {}) {
   return new Request(BASE_URL, {
@@ -2275,88 +2285,9 @@ describe('api/mcp.ts — PRO MCP Server', () => {
 // ===========================================================================
 // U7 — Pro-path: McpAuthContext, INCR-first daily quota, internal-HMAC tool fetches
 // ===========================================================================
-
-const PRO_USER_ID = 'user_pro_xyz';
-const PRO_TOKEN_ID = 'k57mcptokenid';
-const PRO_BEARER = 'pro-bearer-uuid';
-const HMAC_SECRET = 'test-secret-mcp-internal-32-bytes-1234';
-
-/** Create a mock pipeline impl over an in-memory map for the daily counter. */
-function makePipelineMock({ initialCount = 0, throwOnIncr = false, decrFails = false } = {}) {
-  const store = new Map();
-  // Pre-seed via INCR-equivalent so newCount math lines up.
-  if (initialCount > 0) store.set('seed', initialCount);
-  let counter = initialCount;
-  const ops = [];
-  const pipeline = async (commands) => {
-    ops.push(commands);
-    if (throwOnIncr && commands.some((c) => c[0] === 'INCR')) {
-      throw new Error('redis pipeline failed');
-    }
-    if (decrFails && commands.some((c) => c[0] === 'DECR')) {
-      throw new Error('redis decr failed');
-    }
-    const out = [];
-    for (const cmd of commands) {
-      if (cmd[0] === 'INCR') {
-        counter += 1;
-        out.push({ result: counter });
-      } else if (cmd[0] === 'DECR') {
-        counter = Math.max(0, counter - 1);
-        out.push({ result: counter });
-      } else if (cmd[0] === 'EXPIRE') {
-        out.push({ result: 1 });
-      } else {
-        out.push({ result: null });
-      }
-    }
-    return out;
-  };
-  return {
-    pipeline,
-    ops,
-    get count() { return counter; },
-  };
-}
-
-function makeProDeps(overrides = {}) {
-  const pipe = makePipelineMock(overrides.pipelineOpts ?? {});
-  return {
-    deps: {
-      resolveBearerToContext: overrides.resolveBearerToContext ?? (async (token) => {
-        if (token === PRO_BEARER) return { kind: 'pro', userId: PRO_USER_ID, mcpTokenId: PRO_TOKEN_ID };
-        return null;
-      }),
-      validateProMcpToken: overrides.validateProMcpToken ?? (async (id) => {
-        if (id === PRO_TOKEN_ID) return { userId: PRO_USER_ID };
-        return null;
-      }),
-      getEntitlements: overrides.getEntitlements ?? (async () => ({
-        planKey: 'pro',
-        features: { tier: 1, mcpAccess: true },
-        validUntil: Date.now() + 86_400_000,
-      })),
-      redisPipeline: pipe.pipeline,
-    },
-    pipe,
-  };
-}
-
-function proReq(method = 'POST', body = null, headers = {}) {
-  return new Request(BASE_URL, {
-    method,
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${PRO_BEARER}`,
-      ...headers,
-    },
-    body: body ? JSON.stringify(body) : undefined,
-  });
-}
-
-function callBody(toolName, args = {}, id = 100) {
-  return { jsonrpc: '2.0', id, method: 'tools/call', params: { name: toolName, arguments: args } };
-}
+// Pro-path fixtures (PRO_USER_ID, makePipelineMock, makeProDeps, proReq,
+// callBody) live in tests/helpers/mcp-pro-deps.mjs so the concurrent-quota
+// and per-tool contract suites can share them.
 
 describe('api/mcp.ts — U7 Pro-path', () => {
   let mcpHandler;

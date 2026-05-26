@@ -1,6 +1,6 @@
 ---
 title: "CII Risk Scoring Methodology"
-description: "Editorial methodology behind the Composite Instability Index (CII) and Strategic Risk roll-up. Documents per-country baselineRisk, eventMultiplier, the four-component score (Unrest, Conflict, Security, Information), strategic-risk band derivation, and the v1 formula version stamped on every CiiScore."
+description: "Editorial methodology behind the Composite Instability Index (CII) and Strategic Risk roll-up. Documents per-country baselineRisk, eventMultiplier, the four-component score (Unrest, Conflict, Security, Information), strategic-risk band derivation, and the v2 formula version stamped on every CiiScore."
 ---
 
 <Warning>
@@ -21,7 +21,15 @@ agree.
 
 The on-the-wire `methodology_version` field on every `CiiScore` reflects
 which revision of this document was active when the score was computed.
-The current version is **v1**.
+The current version is **v2**.
+
+> **v2 (2026-05-22).** The `Security` component is no longer GPS-jamming-only
+> — it now scores military flights, military vessels and aviation disruptions
+> alongside GPS jamming (issue #3738). The composite blend gains
+> `newsUrgencyBoost`, `earthquakeBoost`, `sanctionsBoost` and an AIS-disruption
+> boost, and `cyberBoost`/`fireBoost` are now severity-weighted rather than raw
+> counts. `combinedScore` values shift accordingly — clients pinned on
+> `methodology_version` should re-baseline.
 
 > **Heads up — coefficient changes.** Any edit to the per-country baselines,
 > event multipliers, or the strategic-risk roll-up coefficients MUST come
@@ -42,7 +50,7 @@ exposed on the wire as `CiiComponents`:
 |---|---|
 | `cii_contribution` (**U**nrest) | Civil disorder pressure: ACLED protests + riots, fatalities from those events, and confirmed internet/power outages. Reflects pre-violent friction. |
 | `geo_convergence` (**C**onflict) | Kinetic activity: ACLED battles, explosions/remote violence, and violence-against-civilians events, plus Iran-region strike intensity. Square-root fatality scaling prevents single-event saturation. |
-| `military_activity` (**S**ecurity) | Hard-security tempo near the country: GPS-jamming hex density (high vs medium severity) over the country bounding box. |
+| `military_activity` (**S**ecurity) | Hard-security tempo near the country: military flight activity, military vessel activity, aviation disruptions (closures/delays), and GPS-jamming hex density. Foreign military presence is weighted ×2. |
 | `news_activity` (**I**nformation) | Information-environment pressure: weighted count of classified critical/high/medium news headlines geo-attributed to the country. |
 
 The four components are weighted into the headline `combinedScore`:
@@ -52,12 +60,16 @@ eventScore = U * 0.25 + C * 0.30 + S * 0.20 + I * 0.25
 
 composite = baseline * 0.4
           + eventScore * 0.6
-          + climateBoost     (≤ 15)
-          + cyberBoost       (≤ 10)
-          + fireBoost        (≤  8)
-          + advisoryBoost    (≤ 15)
-          + orefBlendBoost   (IL only, ≤ 25)
+          + climateBoost      (≤ 15)
+          + cyberBoost        (≤ 12, severity-weighted)
+          + fireBoost         (≤  8, high-fire weighted)
+          + advisoryBoost     (≤ 15)
+          + orefBlendBoost    (IL only, ≤ 25)
           + displacementBoost (≤ 20)
+          + newsUrgencyBoost  (≤  5)
+          + earthquakeBoost   (≤ 25)
+          + sanctionsBoost    (≤ 14)
+          + aisBoost          (≤ 10, AIS disruptions)
 ```
 
 `composite` is then clamped to `[floor, 100]` where `floor` is the larger of:

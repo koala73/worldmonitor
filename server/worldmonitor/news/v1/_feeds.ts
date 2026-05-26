@@ -7,6 +7,14 @@ export interface ServerFeed {
 const gn = (q: string) =>
   `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=en-US&gl=US&ceid=US:en`;
 
+// Locale-aware Google News URL — for feeds tied to a non-English content
+// language whose result quality depends on Google News serving the
+// matching regional edition. Use this when the bare gn() defaults
+// (en-US/US/US:en) would return materially fewer or less relevant items
+// for the queried site than the locale-tuned edition.
+const gnLocale = (q: string, hl: string, gl: string, ceid: string) =>
+  `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=${hl}&gl=${gl}&ceid=${ceid}`;
+
 export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
   full: {
     politics: [
@@ -38,6 +46,20 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'ANSA', url: 'https://www.ansa.it/sito/ansait_rss.xml', lang: 'it' },
       { name: 'NOS Nieuws', url: 'https://feeds.nos.nl/nosnieuwsalgemeen', lang: 'nl' },
       { name: 'SVT Nyheter', url: 'https://www.svt.se/nyheter/rss.xml', lang: 'sv' },
+      // Hungarian (HU) — V4 / CEE coverage. Mirrors src/config/feeds.ts europe block.
+      { name: 'Telex', url: 'https://telex.hu/rss', lang: 'hu' },
+      { name: 'Index.hu', url: 'https://index.hu/24ora/rss', lang: 'hu' },
+      { name: 'HVG', url: 'https://hvg.hu/rss', lang: 'hu' },
+      { name: '444.hu', url: 'https://444.hu/feed', lang: 'hu' },
+      { name: '24.hu', url: 'https://24.hu/feed/', lang: 'hu' },
+      { name: 'Híradó', url: gnLocale('site:hirado.hu when:2d', 'hu', 'HU', 'HU:hu'), lang: 'hu' },
+      { name: 'Portfolio.hu', url: 'https://portfolio.hu/rss/all.xml', lang: 'hu' },
+      { name: 'ATV', url: 'https://www.atv.hu/rss', lang: 'hu' },
+      // Croatian (HR) — mainstream + investigative; Balkan Insight is English-language (no lang tag)
+      { name: 'N1 Croatia', url: 'https://n1info.hr/feed/', lang: 'hr' },
+      { name: 'Index.hr', url: 'https://www.index.hr/rss', lang: 'hr' },
+      { name: 'Jutarnji list', url: 'https://www.jutarnji.hr/feed', lang: 'hr' },
+      { name: 'Balkan Insight', url: 'https://balkaninsight.com/feed/' },
     ],
     middleeast: [
       { name: 'BBC Middle East', url: 'https://feeds.bbci.co.uk/news/world/middle_east/rss.xml' },
@@ -229,7 +251,7 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Product Hunt', url: 'https://www.producthunt.com/feed' },
     ],
     hardware: [
-      { name: "Tom's Hardware", url: 'https://www.tomshardware.com/feeds/all' },
+      { name: "Tom's Hardware", url: 'https://www.tomshardware.com/feeds.xml' },
       { name: 'SemiAnalysis', url: 'https://www.semianalysis.com/feed' },
       { name: 'Semiconductor News', url: gn('semiconductor OR chip OR TSMC OR NVIDIA OR Intel when:3d') },
     ],

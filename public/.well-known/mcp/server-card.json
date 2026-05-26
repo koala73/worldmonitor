@@ -1,12 +1,12 @@
 {
   "serverInfo": {
     "name": "worldmonitor",
-    "version": "1.5.0",
+    "version": "1.10.0",
     "description": "WorldMonitor's live global-intelligence stack as an MCP server: real-time markets, conflict events, aviation, maritime, energy, climate, health, displacement, supply chain, and AI-generated regional briefs.",
     "vendor": "WorldMonitor",
     "homepage": "https://www.worldmonitor.app"
   },
-  "protocolVersion": "2025-03-26",
+  "protocolVersion": "2025-06-18",
   "transport": {
     "type": "streamableHttp",
     "endpoint": "https://worldmonitor.app/mcp"
@@ -14,8 +14,8 @@
   "capabilities": {
     "tools": true,
     "logging": true,
-    "resources": false,
-    "prompts": false
+    "resources": true,
+    "prompts": true
   },
   "tools": {
     "count": 39,
@@ -57,7 +57,7 @@
       "apiBusiness": 10000,
       "enterprise": null
     },
-    "notes": "Per-day quota (dailyByPlan) counts only tools/call — initialize, tools/list, ping, and notifications/initialized are exempt. The `describe_tool` tools/call is also exempt (v1.5.0 metadata escape hatch — SERVER_INSTRUCTIONS encourages calling it freely while exploring; otherwise a Pro user at the 50/day cap could not fetch tool definitions). Per-minute (60/min, per-user on Pro, per-key on API tiers) counts ALL methods, so a tight discovery probe loop on tools/list will still trip the throttle."
+    "notes": "Per-day quota (dailyByPlan) counts tools/call AND resources/read — initialize, tools/list, ping, notifications/initialized, prompts/list, prompts/get, and resources/list are exempt. The `describe_tool` tools/call is also exempt (v1.5.0 metadata escape hatch — SERVER_INSTRUCTIONS encourages calling it freely while exploring; otherwise a Pro user at the 50/day cap could not fetch tool definitions). resources/read intentionally counts toward the cap symmetrically with the equivalent tools/call — asymmetric auth is a known MCP data-leak vector. Per-minute (60/min, per-user on Pro, per-key on API tiers) counts ALL methods, so a tight discovery probe loop on tools/list will still trip the throttle."
   },
   "tags": [
     "geopolitical-intelligence",

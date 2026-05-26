@@ -71,6 +71,12 @@ COPY shared/brief-filter.js shared/brief-filter.d.ts ./shared/
 # See feedback_validation_docker_ship_full_scripts_dir.md — the tight COPY
 # list keeps biting whenever a shared/*.js file gets a new cross-file import.
 COPY shared/url-classifier.js ./shared/
+# brief-filter.js imports diplomacy-keywords.json (canonical lead-coherence
+# keyword set). seed-digest-notifications.mjs ALSO imports it directly.
+# Without this COPY, the cron crashes at startup with ERR_MODULE_NOT_FOUND
+# on /app/shared/diplomacy-keywords.json. Guarded by
+# tests/dockerfile-digest-notifications-imports.test.mjs.
+COPY shared/diplomacy-keywords.json ./shared/
 COPY shared/brief-llm-core.js shared/brief-llm-core.d.ts ./shared/
 COPY server/_shared/brief-render.js server/_shared/brief-render.d.ts ./server/_shared/
 # llm-sanitize is imported by scripts/lib/brief-llm.mjs on the fallback

@@ -2,6 +2,7 @@ import { loadFromStorage, saveToStorage } from '@/utils';
 import { sanitizeWidgetHtml } from '@/utils/widget-sanitizer';
 import { getAuthState } from '@/services/auth-state';
 import { isEntitled } from '@/services/entitlements';
+import { establishWmKeySession } from '@/services/wm-session';
 
 const STORAGE_KEY = 'wm-custom-widgets';
 const PANEL_SPANS_KEY = 'worldmonitor-panel-spans';
@@ -97,54 +98,95 @@ export function getWidget(id: string): CustomWidgetSpec | null {
   return loadWidgets().find(w => w.id === id) ?? null;
 }
 
-// ── Cross-domain key helpers ──────────────────────────────────────────────
-// Cookies with domain=.worldmonitor.app are shared across all subdomains
-// (worldmonitor.app, tech., finance., commodity., happy., etc.).
-// We read cookie first and fall back to localStorage for migration compat.
+// ── Browser tester key helpers ─────────────────────────────────────────────
+// Legacy wm-widget-key / wm-pro-key values used to live in localStorage and
+// JS-readable cookies. New writes go to /api/wm-session, which sets short-lived
+// HttpOnly cookies. We keep only a tab-local hint so current-page flows can
+// update immediately without re-exposing the raw key after reload.
 
-const COOKIE_DOMAIN = '.worldmonitor.app';
-const KEY_MAX_AGE = 365 * 24 * 60 * 60;
+let widgetSessionHint = false;
+let proSessionHint = false;
+let migrationStarted = false;
 
-function usesCookies(): boolean {
-  return location.hostname.endsWith('worldmonitor.app');
+function safeLocalStorageGet(name: string): string {
+  try { return localStorage.getItem(name) ?? ''; } catch { return ''; }
 }
 
-function getCookieValue(name: string): string {
+function safeLocalStorageRemove(name: string): void {
+  try { localStorage.removeItem(name); } catch { /* ignore */ }
+}
+
+function clearLegacyReadableCookie(name: string): void {
   try {
-    const match = document.cookie.split('; ').find((c) => c.startsWith(`${name}=`));
-    return match ? match.slice(name.length + 1) : '';
+    document.cookie = `${name}=; domain=.worldmonitor.app; path=/; max-age=0; SameSite=Lax; Secure`;
+    document.cookie = `${name}=; path=/; max-age=0; SameSite=Lax; Secure`;
+  } catch {
+    // ignore
+  }
+}
+
+function safeReadableCookieGet(name: string): string {
+  try {
+    const prefix = `${name}=`;
+    const match = document.cookie.split(';').map(c => c.trim()).find(c => c.startsWith(prefix));
+    return match ? decodeURIComponent(match.slice(prefix.length)).trim() : '';
   } catch {
     return '';
   }
 }
 
-function setDomainCookie(name: string, value: string): void {
-  if (!usesCookies()) return;
-  document.cookie = `${name}=${encodeURIComponent(value)}; domain=${COOKIE_DOMAIN}; path=/; max-age=${KEY_MAX_AGE}; SameSite=Lax; Secure`;
+function clearLegacyKeyStorage(name: string): void {
+  safeLocalStorageRemove(name);
+  clearLegacyReadableCookie(name);
 }
 
-function getKey(name: string): string {
-  const cookieVal = getCookieValue(name);
-  if (cookieVal) return decodeURIComponent(cookieVal);
-  try { return localStorage.getItem(name) ?? ''; } catch { return ''; }
+function migrateLegacyKeyStorage(): void {
+  if (migrationStarted || typeof window === 'undefined') return;
+  migrationStarted = true;
+  const widgetKey = safeLocalStorageGet('wm-widget-key').trim() || safeReadableCookieGet('wm-widget-key');
+  const proKey = safeLocalStorageGet('wm-pro-key').trim() || safeReadableCookieGet('wm-pro-key');
+  if (!widgetKey && !proKey) return;
+  widgetSessionHint = !!widgetKey;
+  proSessionHint = !!proKey;
+  void establishWmKeySession({ widgetKey, proKey }).then((ok) => {
+    if (!ok) return;
+    clearLegacyKeyStorage('wm-widget-key');
+    clearLegacyKeyStorage('wm-pro-key');
+  }).catch(() => { /* retry on next boot; keep legacy storage until success */ });
 }
 
 export function setWidgetKey(key: string): void {
-  setDomainCookie('wm-widget-key', key);
-  try { localStorage.setItem('wm-widget-key', key); } catch { /* ignore */ }
+  const trimmed = key.trim();
+  widgetSessionHint = !!trimmed;
+  if (!trimmed) {
+    clearLegacyKeyStorage('wm-widget-key');
+    return;
+  }
+  void establishWmKeySession({ widgetKey: trimmed }).then((ok) => {
+    if (ok) clearLegacyKeyStorage('wm-widget-key');
+  }).catch(() => { /* caller can retry; no new JS-readable write */ });
 }
 
 export function setProKey(key: string): void {
-  setDomainCookie('wm-pro-key', key);
-  try { localStorage.setItem('wm-pro-key', key); } catch { /* ignore */ }
+  const trimmed = key.trim();
+  proSessionHint = !!trimmed;
+  if (!trimmed) {
+    clearLegacyKeyStorage('wm-pro-key');
+    return;
+  }
+  void establishWmKeySession({ proKey: trimmed }).then((ok) => {
+    if (ok) clearLegacyKeyStorage('wm-pro-key');
+  }).catch(() => { /* caller can retry; no new JS-readable write */ });
 }
 
 export function isWidgetFeatureEnabled(): boolean {
-  return !!getKey('wm-widget-key');
+  migrateLegacyKeyStorage();
+  return widgetSessionHint;
 }
 
 export function getWidgetAgentKey(): string {
-  return getKey('wm-widget-key');
+  migrateLegacyKeyStorage();
+  return '';
 }
 
 export function getBrowserTesterKeys(): string[] {
@@ -165,7 +207,8 @@ export function getBrowserTesterKey(): string {
 }
 
 export function isProWidgetEnabled(): boolean {
-  return !!getKey('wm-pro-key');
+  migrateLegacyKeyStorage();
+  return proSessionHint;
 }
 
 export function isProUser(): boolean {
@@ -178,7 +221,8 @@ export function isProUser(): boolean {
 }
 
 export function getProWidgetKey(): string {
-  return getKey('wm-pro-key');
+  migrateLegacyKeyStorage();
+  return '';
 }
 
 function cleanSpanEntry(storageKey: string, panelId: string): void {

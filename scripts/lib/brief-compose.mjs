@@ -667,6 +667,13 @@ function digestStoryToUpstreamTopStory(s) {
     primaryLink: typeof s?.link === 'string' ? s.link : undefined,
     threatLevel: s?.severity,
     importanceScore: Number.isFinite(Number(s?.currentScore)) ? Number(s.currentScore) : undefined,
+    // Transient coherence signal from story:track:v1. Not written into
+    // BriefStory; shared/brief-filter.js consumes it before envelope
+    // assembly to keep an entity-corroborated flashpoint-diplomacy lead
+    // aligned with the first rendered card when the LLM ranked it first.
+    entityCorroborationCount: Number.isFinite(Number(s?.entityCorroborationCount))
+      ? Number(s.entityCorroborationCount)
+      : 0,
     // `category` IS carried on story:track:v1 (persisted by
     // buildStoryTrackHsetFields, passed through buildDigest's stories.push).
     // Pre-stamp residue rows missing the field fall back to 'General' via
@@ -730,6 +737,7 @@ function digestStoryToUpstreamTopStory(s) {
  * @param {{
  *   nowMs?: number,
  *   onDrop?: import('../../shared/brief-filter.js').DropMetricsFn,
+ *   onOrder?: import('../../shared/brief-filter.js').OrderMetricsFn,
  *   synthesis?: {
  *     lead?: string,
  *     threads?: Array<{ tag: string, teaser: string }>,
@@ -743,13 +751,15 @@ function digestStoryToUpstreamTopStory(s) {
  *   `onDrop` is forwarded to filterTopStories so the seeder can
  *   aggregate per-user filter-drop counts without this module knowing
  *   how they are reported.
+ *   `onOrder` is forwarded the same way for aggregate-only ordering
+ *   telemetry; the callback receives no raw headlines.
  *   `synthesis` (when provided) substitutes envelope.digest.lead /
  *   threads / signals / publicLead with the canonical synthesis from
  *   the orchestration layer. `synthesis.rankedStoryHashes` is passed to
  *   the filter as a tie-breaker after severity/topic-cluster ordering,
  *   before applying the cap.
  */
-export function composeBriefFromDigestStories(rule, digestStories, insightsNumbers, { nowMs = Date.now(), onDrop, synthesis } = {}) {
+export function composeBriefFromDigestStories(rule, digestStories, insightsNumbers, { nowMs = Date.now(), onDrop, onOrder, synthesis } = {}) {
   if (!Array.isArray(digestStories) || digestStories.length === 0) return null;
   // Default to 'high' (NOT 'all') for undefined sensitivity, aligning
   // with buildDigest at scripts/seed-digest-notifications.mjs:392 and
@@ -768,6 +778,7 @@ export function composeBriefFromDigestStories(rule, digestStories, insightsNumbe
     sensitivity,
     maxStories: MAX_STORIES_PER_USER,
     onDrop,
+    onOrder,
     rankedStoryHashes: synthesis?.rankedStoryHashes,
   });
   if (stories.length === 0) return null;

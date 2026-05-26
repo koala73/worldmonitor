@@ -4,7 +4,7 @@ import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import { postProcessAnalystHtml } from '@/utils/analyst-markdown';
 import { premiumFetch } from '@/services/premium-fetch';
-import { h, replaceChildren } from '@/utils/dom-utils';
+import { h, replaceChildren, setTrustedHtml, trustedHtml, type TrustedHtml } from '@/utils/dom-utils';
 
 const API_URL = '/api/chat-analyst';
 const MAX_HISTORY = 20;
@@ -58,9 +58,12 @@ const ANALYST_PURIFY_CONFIG = {
   ALLOW_DATA_ATTR: false,
 };
 
-function renderMarkdown(raw: string): string {
+function renderMarkdown(raw: string): TrustedHtml {
   const sanitized = DOMPurify.sanitize(marked.parse(raw) as string, ANALYST_PURIFY_CONFIG);
-  return postProcessAnalystHtml(sanitized as string);
+  return trustedHtml(
+    postProcessAnalystHtml(sanitized as string),
+    'Chat analyst markdown is sanitized by DOMPurify before insertion',
+  );
 }
 
 export class ChatAnalystPanel extends Panel {
@@ -212,7 +215,7 @@ export class ChatAnalystPanel extends Panel {
     const label = role === 'user' ? 'YOU' : 'ANALYST';
     const body = h('div', { className: 'chat-msg-body' });
     if (role === 'assistant') {
-      body.innerHTML = renderMarkdown(content);
+      setTrustedHtml(body, renderMarkdown(content));
     } else {
       body.textContent = content;
     }
@@ -425,7 +428,7 @@ export class ChatAnalystPanel extends Panel {
   }
 
   private finalizeStreamingBubble(bodyEl: HTMLElement, text: string, success: boolean): void {
-    bodyEl.innerHTML = renderMarkdown(text);
+    setTrustedHtml(bodyEl, renderMarkdown(text));
     if (!success) bodyEl.classList.add('chat-msg-error');
     this.scrollToBottom();
   }

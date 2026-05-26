@@ -155,11 +155,22 @@ describe('Dockerfile.digest-notifications — transitive-import closure', () => 
   });
 
   // BFS from the cron entrypoint through the import graph; every
-  // tracked-prefix file reached must be covered.
+  // tracked-prefix file reached must be covered. Entrypoint is derived
+  // from scripts/railway-services.json (the single source of truth for
+  // Railway-deployed scripts) — filtered to the digest-notifications
+  // Dockerfile so this test stays scoped to its own image.
   it('every transitively-imported tracked-prefix file is COPY\'d', () => {
-    const entrypoints = [
-      resolve(root, 'scripts/seed-digest-notifications.mjs'),
-    ];
+    const registry = JSON.parse(
+      readFileSync(resolve(root, 'scripts/railway-services.json'), 'utf8'),
+    );
+    const digestEntries = registry
+      .filter((r) => r.deployMode === 'dockerfile' && r.dockerfile === 'Dockerfile.digest-notifications')
+      .map((r) => resolve(root, r.entry));
+    assert.ok(
+      digestEntries.length > 0,
+      'No registry entry found for Dockerfile.digest-notifications — registry corrupt or out of sync',
+    );
+    const entrypoints = digestEntries;
     const missing = [];
     const visited = new Set();
     const queue = [...entrypoints];
