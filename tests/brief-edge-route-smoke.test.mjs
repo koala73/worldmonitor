@@ -115,6 +115,14 @@ describe('api/brief followed-countries telemetry fetch', () => {
       'route comment should frame missing followed data as a telemetry-only degradation',
     );
   });
+
+  it('drains the in-flight telemetry lookup when envelope read returns 503', () => {
+    assert.match(
+      src,
+      /catch \(err\) \{[\s\S]*?step: 'envelope-read'[\s\S]*?ctx\?\.waitUntil\(followedCountriesPromise\)[\s\S]*?return htmlResponse\(req, 503, UNAVAILABLE_PAGE\)/,
+      '503 envelope-read path should hand the telemetry promise to waitUntil before returning',
+    );
+  });
 });
 
 describe('infrastructure-error vs miss (both routes must not collapse)', () => {

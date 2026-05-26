@@ -98,14 +98,15 @@ const UNAVAILABLE_PAGE = renderErrorPage(
 const FOLLOWED_COUNTRIES_TIMEOUT_MS = 500;
 
 /**
- * Best-effort fetch of the recipient's followed-country watchlist for
- * U11 telemetry stamping. Mirrors `scripts/lib/followed-countries-
- * fetch.cjs` but inlined here because that helper is CJS / Node-only
- * and this route runs on the edge runtime. Never throws — every soft
- * failure path returns `[]` so the magazine still renders even when
- * the relay is unavailable. The watchlist is telemetry-only: missing
- * relay data degrades `data-followed` to "unknown encoded as false"
- * and never affects visible magazine content.
+ * Best-effort edge-runtime fetch of the recipient's followed-country
+ * watchlist for U11 telemetry stamping. This intentionally differs
+ * from the cron helper: it uses a much smaller latency budget and emits
+ * a Sentry breadcrumb on relay-auth 401 because this route sits on the
+ * reader-facing TTFB path. Never throws — every soft failure path
+ * returns `[]` so the magazine still renders even when the relay is
+ * unavailable. The watchlist is telemetry-only: missing relay data
+ * degrades `data-followed` to "unknown encoded as false" and never
+ * affects visible magazine content.
  */
 async function fetchFollowedCountriesEdge(
   userId: string,
@@ -218,6 +219,7 @@ export default async function handler(
   } catch (err) {
     console.error('[api/brief] Upstash read failed:', (err as Error).message);
     captureSilentError(err, { tags: { route: 'api/brief', step: 'envelope-read' }, ctx });
+    ctx?.waitUntil(followedCountriesPromise);
     return htmlResponse(req, 503, UNAVAILABLE_PAGE);
   }
   if (!envelope) {

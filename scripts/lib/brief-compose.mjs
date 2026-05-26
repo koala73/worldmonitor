@@ -857,11 +857,11 @@ function digestStoryToUpstreamTopStory(s) {
  *   the orchestration layer. `synthesis.rankedStoryHashes` is passed to
  *   the filter as a tie-breaker after severity/topic-cluster ordering,
  *   before applying the cap.
- *   `followedCountries` (PR C / U10) lifts stories whose countryCode
- *   matches by FOLLOWED_BIAS_MULTIPLIER (1.25× by default) within
- *   the same severity lane. Critical-severity stories always surface
- *   regardless of bias (R10 hard contract). Caller is expected to
- *   already have applied any free-tier clamp (memory:
+ *   `followedCountries` (PR C / U10) clusters matching stories ahead
+ *   of non-followed stories within the same severity lane while
+ *   preserving original order inside each subgroup. Critical-severity
+ *   stories always surface regardless of bias (R10 hard contract).
+ *   Caller is expected to already have applied any free-tier clamp (memory:
  *   `paywalled-feature-needs-three-layer-entitlement-gate`).
  *   When `synthesis.rankedStoryHashes` is supplied, that LLM-driven
  *   editorial ranking takes priority over the followed-country bias.
