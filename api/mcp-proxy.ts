@@ -475,8 +475,9 @@ export default async function handler(req) {
 
   // Per-IP rate limit (#3805). Runs AFTER auth/CORS so unauthenticated and
   // cross-origin callers are still rejected first (cheaper to short-circuit
-  // without a Redis round-trip). On Redis error checkScopedRateLimit
-  // fail-opens — matches checkRateLimit / checkEndpointRateLimit semantics.
+  // without a Redis round-trip). This endpoint is already premium-auth gated,
+  // so Redis-degraded scoped limits intentionally stay availability-first;
+  // checkScopedRateLimit logs/Sentry-captures the degraded path.
   const scoped = await checkScopedRateLimit(RATE_LIMIT_SCOPE, RATE_LIMIT_MAX, RATE_LIMIT_WINDOW, ip);
   if (!scoped.allowed) {
     const retryAfter = Math.max(1, Math.ceil((scoped.reset - Date.now()) / 1000));

@@ -260,6 +260,48 @@ describe('rate-limit fail-closed call-site policy (#3531)', () => {
   }
 });
 
+describe('scoped rate-limit degraded call-site policy (#3531)', () => {
+  const SCOPED_RATE_LIMIT_CALLERS = [
+    {
+      path: 'server/worldmonitor/leads/v1/register-interest.ts',
+      expected: /if\s*\(\s*scoped\.degraded\s*\)\s*\{/,
+      reason: 'desktop lead capture bypasses Turnstile, so Redis degradation must fail closed locally',
+    },
+    {
+      path: 'api/mcp-proxy.ts',
+      expected: /Redis-degraded scoped limits intentionally stay availability-first/,
+      reason: 'MCP proxy is already premium-auth gated; scoped limit degradation is logged and remains availability-first',
+    },
+  ];
+
+  it('keeps every checkScopedRateLimit caller audited for degraded handling', async () => {
+    const fs = await import('node:fs');
+    const cp = await import('node:child_process');
+    const repo = new URL('..', import.meta.url);
+    const output = cp.execFileSync('rg', ['-l', 'checkScopedRateLimit\\(', 'server', 'api'], {
+      cwd: repo,
+      encoding: 'utf8',
+    });
+    const callers = output
+      .trim()
+      .split('\n')
+      .filter(Boolean)
+      .filter(path => path !== 'server/_shared/rate-limit.ts')
+      .sort();
+
+    assert.deepEqual(
+      callers,
+      SCOPED_RATE_LIMIT_CALLERS.map(({ path }) => path).sort(),
+      'new checkScopedRateLimit callers must be added here with a degraded-path decision',
+    );
+
+    for (const { path, expected, reason } of SCOPED_RATE_LIMIT_CALLERS) {
+      const src = fs.readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
+      assert.match(src, expected, `${path}: ${reason}`);
+    }
+  });
+});
+
 describe('rate-limit constants', () => {
   it('exposes the degraded marker shape both surfaces depend on', () => {
     assert.equal(RATE_LIMIT_DEGRADED_HEADERS['X-RateLimit-Mode'], 'degraded');

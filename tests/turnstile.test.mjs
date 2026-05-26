@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { UNKNOWN_CLIENT_IP } from '../server/_shared/rate-limit.ts';
 import { getClientIp, verifyTurnstile } from '../server/_shared/turnstile.ts';
 
 const originalFetch = globalThis.fetch;
@@ -50,7 +51,7 @@ test('getClientIp ignores spoofable x-forwarded-for and returns unknown sentinel
     headers: { 'x-forwarded-for': '198.51.100.8, 203.0.113.10' },
   });
 
-  assert.equal(getClientIp(request), 'unknown');
+  assert.equal(getClientIp(request), UNKNOWN_CLIENT_IP);
 });
 
 test('verifyTurnstile allows missing secret when policy is allow', async () => {
