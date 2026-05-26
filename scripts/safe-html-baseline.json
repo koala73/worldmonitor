@@ -1,1989 +1,3118 @@
 {
-  "note": "Baseline of legacy direct innerHTML/outerHTML assignments for scripts/enforce-safe-html.mjs. Do not add entries for new code; route through src/utils/dom-utils.ts or add a wm-safe-html audited comment for narrow exceptions.",
+  "note": "Baseline of legacy direct innerHTML/outerHTML assignments and Panel.setContent() call sites for scripts/enforce-safe-html.mjs. Do not add entries for new code; route through src/utils/dom-utils.ts, Panel.setSafeContent(), or add a wm-safe-html audited comment for narrow exceptions.",
   "entries": [
     {
       "file": "src/app/desktop-updater.ts",
       "line": 172,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/app/desktop-updater.ts:c06935588b5374a4",
       "code": "toast.innerHTML = `"
     },
     {
       "file": "src/app/event-handlers.ts",
       "line": 806,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/app/event-handlers.ts:de4fdca99d254769",
       "code": "dropdown.innerHTML = `"
     },
     {
       "file": "src/app/event-handlers.ts",
       "line": 1551,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/app/event-handlers.ts:7e914e79b5f3b1ee",
       "code": "btn.innerHTML = isFullscreen ? shrinkSvg : expandSvg;"
     },
     {
       "file": "src/app/panel-layout.ts",
       "line": 477,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/app/panel-layout.ts:ae5f28d4b6c3506c",
       "code": "this.ctx.container.innerHTML = `"
     },
     {
       "file": "src/app/panel-layout.ts",
       "line": 785,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/app/panel-layout.ts:8d36fe6bc7543989",
       "code": "this.criticalBannerEl.innerHTML = `"
     },
     {
       "file": "src/bootstrap/sw-update.ts",
       "line": 160,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/bootstrap/sw-update.ts:e8c276a4867843ba",
       "code": "toast.innerHTML = `"
     },
     {
+      "file": "src/components/AAIISentimentPanel.ts",
+      "line": 252,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/AAIISentimentPanel.ts:setContent:68260c6d090f7098",
+      "code": "this.setContent(html);"
+    },
+    {
       "file": "src/components/AirlineIntelPanel.ts",
       "line": 365,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/AirlineIntelPanel.ts:a51c7ef5a50d4ad1",
       "code": "this.content.innerHTML = `<div class=\"panel-loading\">${t('common.loading')}</div>`;"
     },
     {
       "file": "src/components/AirlineIntelPanel.ts",
       "line": 383,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/AirlineIntelPanel.ts:845a355b1fdf1cd6",
       "code": "this.content.innerHTML = `<div class=\"no-data\">${t('components.airlineIntel.noOpsData')}</div>`;"
     },
     {
       "file": "src/components/AirlineIntelPanel.ts",
       "line": 396,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/AirlineIntelPanel.ts:c805243e6b65155b",
       "code": "this.content.innerHTML = `<div class=\"ops-grid\">${rows}</div>`;"
     },
     {
       "file": "src/components/AirlineIntelPanel.ts",
       "line": 402,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/AirlineIntelPanel.ts:b7c63c0e684fc177",
       "code": "this.content.innerHTML = `<div class=\"no-data\">${t('components.airlineIntel.noFlights')}</div>`;"
     },
     {
       "file": "src/components/AirlineIntelPanel.ts",
       "line": 416,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/AirlineIntelPanel.ts:29995f9e924027e1",
       "code": "this.content.innerHTML = `<div class=\"flights-list\">${rows}</div>`;"
     },
     {
       "file": "src/components/AirlineIntelPanel.ts",
       "line": 422,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/AirlineIntelPanel.ts:9368374d90209c66",
       "code": "this.content.innerHTML = `<div class=\"no-data\">${t('components.airlineIntel.noCarrierData')}</div>`;"
     },
     {
       "file": "src/components/AirlineIntelPanel.ts",
       "line": 432,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/AirlineIntelPanel.ts:859ef4d92e9df5ff",
       "code": "this.content.innerHTML = `<div class=\"carriers-list\">${rows}</div>`;"
     },
     {
       "file": "src/components/AirlineIntelPanel.ts",
       "line": 447,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/AirlineIntelPanel.ts:8d0dad3693c75de3",
       "code": "this.content.innerHTML = `${searchBar}<div class=\"panel-loading\">${t('common.loading')}</div>`;"
     },
     {
       "file": "src/components/AirlineIntelPanel.ts",
       "line": 474,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/AirlineIntelPanel.ts:4d3b4578a3759adb",
       "code": "this.content.innerHTML = `${searchBar}<div>${rows}</div>`;"
     },
     {
       "file": "src/components/AirlineIntelPanel.ts",
       "line": 487,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/AirlineIntelPanel.ts:7c169c2946f631c5",
       "code": "this.content.innerHTML = `${searchBar}<div class=\"tracking-list\">${rows}</div>`;"
     },
     {
       "file": "src/components/AirlineIntelPanel.ts",
       "line": 494,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/AirlineIntelPanel.ts:8abdddd38db4cf13",
       "code": "this.content.innerHTML = `${searchBar}${emptyMsg}`;"
     },
     {
       "file": "src/components/AirlineIntelPanel.ts",
       "line": 500,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/AirlineIntelPanel.ts:712b15ec705b7105",
       "code": "this.content.innerHTML = `<div class=\"no-data\">${t('components.airlineIntel.noNews')}</div>`;"
     },
     {
       "file": "src/components/AirlineIntelPanel.ts",
       "line": 508,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/AirlineIntelPanel.ts:ff7ba12149bbe2c6",
       "code": "this.content.innerHTML = `<div class=\"news-list\" style=\"padding:0 4px\">${items}</div>`;"
     },
     {
       "file": "src/components/AirlineIntelPanel.ts",
       "line": 572,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/AirlineIntelPanel.ts:8a22caed07f3bc3f",
       "code": "this.content.innerHTML = `${toggle}${form}${degradedBanner}${body}`;"
     },
     {
       "file": "src/components/AirlineIntelPanel.ts",
       "line": 619,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/AirlineIntelPanel.ts:8a22caed07f3bc3f",
       "code": "this.content.innerHTML = `${toggle}${form}${degradedBanner}${body}`;"
     },
     {
       "file": "src/components/AuthHeaderWidget.ts",
       "line": 81,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/AuthHeaderWidget.ts:a3ff13907251517c",
       "code": "settingsBtn.innerHTML = SETTINGS_ICON;"
     },
     {
       "file": "src/components/AviationCommandBar.ts",
       "line": 316,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/AviationCommandBar.ts:2d63d0122fbc8ec8",
       "code": "this.overlay.innerHTML = `"
     },
     {
       "file": "src/components/AviationCommandBar.ts",
       "line": 372,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/AviationCommandBar.ts:2986b94dd76c8540",
       "code": "resultEl.innerHTML = '<div style=\"color:var(--text-dim,#9ca3af);font-size:12px\">Running…</div>';"
     },
     {
       "file": "src/components/AviationCommandBar.ts",
       "line": 377,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/AviationCommandBar.ts:978e19bbe665d371",
       "code": "resultEl.innerHTML = result.html;"
     },
     {
       "file": "src/components/AviationCommandBar.ts",
       "line": 379,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/AviationCommandBar.ts:36c7b194df376420",
       "code": "resultEl.innerHTML = `<div style=\"color:#ef4444\">Error: ${err instanceof Error ? escapeHtml(err.message) : 'Unknown error'}</div>`;"
     },
     {
       "file": "src/components/AviationCommandBar.ts",
       "line": 398,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/AviationCommandBar.ts:e465b7851e95d3bd",
       "code": "if (!h.length) { el.innerHTML = ''; return; }"
     },
     {
       "file": "src/components/AviationCommandBar.ts",
       "line": 399,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/AviationCommandBar.ts:6a5a75303b130872",
       "code": "el.innerHTML = `<div style=\"font-size:11px;color:#6b7280;margin-top:4px\">${h.map(c =>"
     },
     {
       "file": "src/components/AviationCommandBar.ts",
       "line": 419,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/AviationCommandBar.ts:7a016f14f42347a6",
       "code": "if (!val || !suggestions.length) { el.innerHTML = ''; return; }"
     },
     {
       "file": "src/components/AviationCommandBar.ts",
       "line": 420,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/AviationCommandBar.ts:5369fc129a85d423",
       "code": "el.innerHTML = suggestions.slice(0, 4).map(s =>"
     },
     {
+      "file": "src/components/BigMacPanel.ts",
+      "line": 101,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/BigMacPanel.ts:setContent:cf483246b75d03f6",
+      "code": "this.setContent(html);"
+    },
+    {
       "file": "src/components/BreakthroughsTickerPanel.ts",
       "line": 48,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/BreakthroughsTickerPanel.ts:65d836e9ebb41569",
       "code": "this.tickerTrack.innerHTML ="
     },
     {
       "file": "src/components/BreakthroughsTickerPanel.ts",
       "line": 65,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/BreakthroughsTickerPanel.ts:6630a92e185404ba",
       "code": "this.tickerTrack.innerHTML = itemsHtml + itemsHtml;"
     },
     {
       "file": "src/components/CascadePanel.ts",
       "line": 193,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/CascadePanel.ts:c18f576920f8d903",
       "code": "this.content.innerHTML = `"
     },
     {
       "file": "src/components/checkout-failure-banner.ts",
       "line": 67,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/checkout-failure-banner.ts:4cca590949f326fd",
       "code": "banner.innerHTML = `"
     },
     {
       "file": "src/components/CIIPanel.ts",
       "line": 124,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/CIIPanel.ts:dff93108a9474989",
       "code": "followHost.innerHTML = handle.html;"
     },
     {
+      "file": "src/components/ClimateAnomalyPanel.ts",
+      "line": 33,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/ClimateAnomalyPanel.ts:setContent:3f81c68f6a880abc",
+      "code": "this.setContent(`<div class=\"panel-empty\">${t('components.climate.noAnomalies')}</div>`);"
+    },
+    {
+      "file": "src/components/ClimateAnomalyPanel.ts",
+      "line": 57,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/ClimateAnomalyPanel.ts:setContent:8648fcaf68ce33b5",
+      "code": "this.setContent(`"
+    },
+    {
       "file": "src/components/CommunityWidget.ts",
       "line": 13,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/CommunityWidget.ts:31f706a3b7e4efbe",
       "code": "widget.innerHTML = `"
     },
     {
+      "file": "src/components/ConsumerPricesPanel.ts",
+      "line": 234,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/ConsumerPricesPanel.ts:setContent:3f75e3dcd1c187aa",
+      "code": "this.setContent(`"
+    },
+    {
+      "file": "src/components/ConsumerPricesPanel.ts",
+      "line": 248,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/ConsumerPricesPanel.ts:setContent:972443567b34ca2f",
+      "code": "this.setContent(`"
+    },
+    {
+      "file": "src/components/ConsumerPricesPanel.ts",
+      "line": 283,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/ConsumerPricesPanel.ts:setContent:b72a76d5a658ef61",
+      "code": "this.setContent(`"
+    },
+    {
+      "file": "src/components/CotPositioningPanel.ts",
+      "line": 104,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/CotPositioningPanel.ts:setContent:099076b952db137d",
+      "code": "this.setContent(html);"
+    },
+    {
       "file": "src/components/CountryBriefPage.ts",
       "line": 96,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/CountryBriefPage.ts:baf4f21bba34ad16",
       "code": "linkShareBtn.innerHTML = '<svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"20 6 9 17 4 12\"/></svg>';"
     },
     {
       "file": "src/components/CountryBriefPage.ts",
       "line": 97,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/CountryBriefPage.ts:ee59379658005560",
       "code": "setTimeout(() => { linkShareBtn.innerHTML = orig; }, 1500);"
     },
     {
       "file": "src/components/CountryBriefPage.ts",
       "line": 291,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/CountryBriefPage.ts:a1fa267e8af92eee",
       "code": "this.overlay.innerHTML = `"
     },
     {
       "file": "src/components/CountryBriefPage.ts",
       "line": 384,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/CountryBriefPage.ts:a1fa267e8af92eee",
       "code": "this.overlay.innerHTML = `"
     },
     {
       "file": "src/components/CountryBriefPage.ts",
       "line": 501,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/CountryBriefPage.ts:44fca4c0b23749a6",
       "code": "section.innerHTML = `<div class=\"intel-error\">${escapeHtml(msg)}</div>`;"
     },
     {
       "file": "src/components/CountryBriefPage.ts",
       "line": 507,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/CountryBriefPage.ts:70a7a38432e04ebc",
       "code": "section.innerHTML = `"
     },
     {
       "file": "src/components/CountryBriefPage.ts",
       "line": 520,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/CountryBriefPage.ts:4dee2c8a4bbf7270",
       "code": "section.innerHTML = `<span class=\"cb-empty\">${t('modals.countryBrief.noMarkets')}</span>`;"
     },
     {
       "file": "src/components/CountryBriefPage.ts",
       "line": 524,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/CountryBriefPage.ts:6581a3fc67d94653",
       "code": "section.innerHTML = markets.slice(0, 3).map(m => {"
     },
     {
       "file": "src/components/CountryBriefPage.ts",
       "line": 556,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/CountryBriefPage.ts:ca22481e64be2969",
       "code": "el.innerHTML = `${arrow} ${escapeHtml(data.indexName)}: ${sign}${data.weekChangePercent}% (1W)`;"
     },
     {
       "file": "src/components/CountryBriefPage.ts",
       "line": 569,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/CountryBriefPage.ts:e13326ae33bab193",
       "code": "content.innerHTML = items.map((item, i) => {"
     },
     {
       "file": "src/components/CountryBriefPage.ts",
       "line": 637,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/CountryBriefPage.ts:753ddb6c10df9980",
       "code": "content.innerHTML = html;"
     },
     {
       "file": "src/components/CountryDeepDivePanel.ts",
       "line": 1901,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/CountryDeepDivePanel.ts:531dcecf276d1f8f",
       "code": "pathEl.innerHTML = `${escapeHtml(route.name)}: ${pathStr}`;"
     },
     {
       "file": "src/components/CountryDeepDivePanel.ts",
       "line": 1907,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/CountryDeepDivePanel.ts:2613781f7b6ffdf2",
       "code": "distEl.innerHTML = `Distance: <span>\\u2014</span>`;"
     },
     {
       "file": "src/components/CountryDeepDivePanel.ts",
       "line": 1909,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/CountryDeepDivePanel.ts:84e905bc0896ee30",
       "code": "transitEl.innerHTML = `Transit: <span>\\u2014</span>`;"
     },
     {
       "file": "src/components/CountryDeepDivePanel.ts",
       "line": 1913,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/CountryDeepDivePanel.ts:8bf827a020f58978",
       "code": "riskEl.innerHTML = `Chokepoint Risk: <span style=\"color:${riskColor}\">${riskScore.toFixed(0)}/100</span>`;"
     },
     {
       "file": "src/components/CountryDeepDivePanel.ts",
       "line": 1915,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/CountryDeepDivePanel.ts:fc649803a05256bd",
       "code": "routeCountEl.innerHTML = `Routes via chokepoint: <span>${matchingRoutes.length}</span>`;"
     },
     {
       "file": "src/components/CountryDeepDivePanel.ts",
       "line": 2314,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/CountryDeepDivePanel.ts:a5cbb6fe0a443895",
       "code": "text.innerHTML = summaryHtml;"
     },
     {
       "file": "src/components/CountryDeepDivePanel.ts",
       "line": 2325,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/CountryDeepDivePanel.ts:8621496ea4ede24f",
       "code": "fullText.innerHTML = this.formatBrief(data.brief, this.currentHeadlineCount);"
     },
     {
       "file": "src/components/CountryDeepDivePanel.ts",
       "line": 2363,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/CountryDeepDivePanel.ts:f91d233f94399399",
       "code": "followHost.innerHTML = handle.html;"
     },
     {
       "file": "src/components/CountryDeepDivePanel.ts",
       "line": 2378,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/CountryDeepDivePanel.ts:a9bb0694a1109e67",
       "code": "notifyHost.innerHTML = notifyHandle.html;"
     },
     {
       "file": "src/components/CountryDeepDivePanel.ts",
       "line": 2397,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/CountryDeepDivePanel.ts:7e53038ce33b673e",
       "code": "shareBtn.innerHTML = '<svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M4 12v7a2 2 0 002 2h12a2 2 0 002-2v-7\"/><polyline points=\"16 6 12 2 8 6\"/><line x1=\"12\" y1=\"2\" x2=\"12\" y2=\"15\"/></svg>';"
     },
     {
       "file": "src/components/CountryDeepDivePanel.ts",
       "line": 2403,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/CountryDeepDivePanel.ts:4e0f1b1c468742f8",
       "code": "shareBtn.innerHTML = '<svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><polyline points=\"20 6 9 17 4 12\"/></svg>';"
     },
     {
       "file": "src/components/CountryDeepDivePanel.ts",
       "line": 2404,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/CountryDeepDivePanel.ts:e4723ebdf6722a6d",
       "code": "setTimeout(() => { shareBtn.innerHTML = orig; }, 1500);"
     },
     {
       "file": "src/components/CountryIntelModal.ts",
       "line": 63,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/CountryIntelModal.ts:fbb389f227790e6d",
       "code": "this.overlay.innerHTML = `"
     },
     {
       "file": "src/components/CountryIntelModal.ts",
       "line": 137,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/CountryIntelModal.ts:47aa8d127c23c307",
       "code": "host.innerHTML = handle.html;"
     },
     {
       "file": "src/components/CountryIntelModal.ts",
       "line": 147,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/CountryIntelModal.ts:24e7c3f6fe193fe6",
       "code": "this.headerEl.innerHTML = `"
     },
     {
       "file": "src/components/CountryIntelModal.ts",
       "line": 151,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/CountryIntelModal.ts:6a64786309f6cdef",
       "code": "this.contentEl.innerHTML = `"
     },
     {
       "file": "src/components/CountryIntelModal.ts",
       "line": 174,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/CountryIntelModal.ts:24e7c3f6fe193fe6",
       "code": "this.headerEl.innerHTML = `"
     },
     {
       "file": "src/components/CountryIntelModal.ts",
       "line": 223,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/CountryIntelModal.ts:f02c49384803c534",
       "code": "this.contentEl.innerHTML = html;"
     },
     {
       "file": "src/components/CountryIntelModal.ts",
       "line": 244,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/CountryIntelModal.ts:bd94f924cb7b1de8",
       "code": "briefSection.innerHTML = `<div class=\"intel-error\">${escapeHtml(msg)}</div>`;"
     },
     {
       "file": "src/components/CountryIntelModal.ts",
       "line": 253,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/CountryIntelModal.ts:088e54df144ddba1",
       "code": "briefSection.innerHTML = `"
     },
     {
       "file": "src/components/CountryIntelModal.ts",
       "line": 267,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/CountryIntelModal.ts:e7e3e755c08ea6ed",
       "code": "section.innerHTML = `<span class=\"intel-loading-text\" style=\"opacity:0.5\">${t('modals.countryIntel.noMarkets')}</span>`;"
     },
     {
       "file": "src/components/CountryIntelModal.ts",
       "line": 283,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/CountryIntelModal.ts:681ea1fde2a16f32",
       "code": "section.innerHTML = `<div class=\"markets-label\">📊 ${t('modals.countryIntel.predictionMarkets')}</div>${items}`;"
     },
     {
       "file": "src/components/CountryIntelModal.ts",
       "line": 300,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/CountryIntelModal.ts:0ba4397ff3f3f98b",
       "code": "el.innerHTML = `${arrow} ${escapeHtml(data.indexName)}: ${sign}${data.weekChangePercent}% (1W)`;"
     },
     {
       "file": "src/components/CountryTimeline.ts",
       "line": 260,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/CountryTimeline.ts:84629fa5c5e22788",
       "code": "tooltip.innerHTML = `<strong>${escapeHtml(d.label)}</strong><br/>${escapeHtml(dateStr)}`;"
     },
     {
+      "file": "src/components/CrossSourceSignalsPanel.ts",
+      "line": 170,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/CrossSourceSignalsPanel.ts:setContent:b20c196a0801f577",
+      "code": "this.setContent('<div style=\"padding:16px 0;text-align:center;font-size:12px;color:var(--text-dim)\">No cross-source signals detected.</div>');"
+    },
+    {
+      "file": "src/components/CrossSourceSignalsPanel.ts",
+      "line": 185,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/CrossSourceSignalsPanel.ts:setContent:53975dc95e41b303",
+      "code": "this.setContent(`"
+    },
+    {
+      "file": "src/components/CustomWidgetPanel.ts",
+      "line": 56,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/CustomWidgetPanel.ts:setContent:b798169657aff156",
+      "code": "this.setContent(wrapProWidgetHtml(this.spec.html));"
+    },
+    {
+      "file": "src/components/CustomWidgetPanel.ts",
+      "line": 58,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/CustomWidgetPanel.ts:setContent:097387a893dccd88",
+      "code": "this.setContent(wrapWidgetHtml(this.spec.html));"
+    },
+    {
+      "file": "src/components/DailyMarketBriefPanel.ts",
+      "line": 110,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/DailyMarketBriefPanel.ts:setContent:49e851eddb985610",
+      "code": "this.setContent(html);"
+    },
+    {
       "file": "src/components/DeckGLMap.ts",
       "line": 837,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/DeckGLMap.ts:0a94d078b07fa176",
       "code": "attribution.innerHTML = isHappyVariant"
     },
     {
       "file": "src/components/DeckGLMap.ts",
       "line": 864,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/DeckGLMap.ts:ab25a5238c3ca81c",
       "code": "if (attr) attr.innerHTML = '© <a href=\"https://openfreemap.org\" target=\"_blank\" rel=\"noopener\">OpenFreeMap</a> © <a href=\"https://www.openstreetmap.org/copyright\" target=\"_blank\" rel=\"noopener\">OpenStreetMap</a>';"
     },
     {
       "file": "src/components/DeckGLMap.ts",
       "line": 895,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/DeckGLMap.ts:ab25a5238c3ca81c",
       "code": "if (attr) attr.innerHTML = '© <a href=\"https://openfreemap.org\" target=\"_blank\" rel=\"noopener\">OpenFreeMap</a> © <a href=\"https://www.openstreetmap.org/copyright\" target=\"_blank\" rel=\"noopener\">OpenStreetMap</a>';"
     },
     {
       "file": "src/components/DeckGLMap.ts",
       "line": 4970,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/DeckGLMap.ts:43ba57c1c1e57b1b",
       "code": "controls.innerHTML = `"
     },
     {
       "file": "src/components/DeckGLMap.ts",
       "line": 5018,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/DeckGLMap.ts:d7c059552ad0b0ed",
       "code": "slider.innerHTML = `"
     },
     {
       "file": "src/components/DeckGLMap.ts",
       "line": 5061,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/DeckGLMap.ts:ce641111bda7ff43",
       "code": "toggles.innerHTML = `"
     },
     {
       "file": "src/components/DeckGLMap.ts",
       "line": 5177,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/DeckGLMap.ts:74f661d2944047b3",
       "code": "if (collapseBtn) collapseBtn.innerHTML = toggleList?.classList.contains('collapsed') ? '&#9654;' : '&#9660;';"
     },
     {
       "file": "src/components/DeckGLMap.ts",
       "line": 5313,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/DeckGLMap.ts:174b30b6d19a854e",
       "code": "popup.innerHTML = SITE_VARIANT === 'tech'"
     },
     {
       "file": "src/components/DeckGLMap.ts",
       "line": 5429,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/DeckGLMap.ts:6e16953165a31f29",
       "code": "legend.innerHTML = `"
     },
     {
       "file": "src/components/DeckGLMap.ts",
       "line": 5439,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/DeckGLMap.ts:02ed2f39631f8cda",
       "code": "ciiLegend.innerHTML = `"
     },
     {
       "file": "src/components/DeductionPanel.ts",
       "line": 187,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/DeductionPanel.ts:36912935f10299b9",
       "code": "bodyDiv.innerHTML = clone.innerHTML.replace(/^[\\s:–—-]+/, '');"
     },
     {
       "file": "src/components/DeductionPanel.ts",
       "line": 238,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/DeductionPanel.ts:ca0b887598b035f8",
       "code": "this.resultContainer.innerHTML = '<div class=\"deduction-loading-dots\"><span></span><span></span><span></span></div>Analyzing…';"
     },
     {
       "file": "src/components/DeductionPanel.ts",
       "line": 253,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/DeductionPanel.ts:1897775751b1f97f",
       "code": "this.resultContainer.innerHTML = safe;"
     },
     {
       "file": "src/components/DiseaseOutbreaksPanel.ts",
       "line": 84,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/DiseaseOutbreaksPanel.ts:6ef3009f4eb0e843",
       "code": "host.innerHTML = this._followedOnlyChip.html;"
     },
     {
+      "file": "src/components/DiseaseOutbreaksPanel.ts",
+      "line": 207,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/DiseaseOutbreaksPanel.ts:setContent:466f45969ff634b0",
+      "code": "this.setContent(`"
+    },
+    {
       "file": "src/components/DisplacementPanel.ts",
       "line": 60,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/DisplacementPanel.ts:7983473a7f1a8276",
       "code": "host.innerHTML = this.followedOnlyChip.html;"
     },
     {
+      "file": "src/components/DisplacementPanel.ts",
+      "line": 183,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/DisplacementPanel.ts:setContent:40fb42fd73730f89",
+      "code": "this.setContent(`"
+    },
+    {
+      "file": "src/components/EarningsCalendarPanel.ts",
+      "line": 182,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/EarningsCalendarPanel.ts:setContent:932d4b838ec7f7b0",
+      "code": "this.setContent(html);"
+    },
+    {
+      "file": "src/components/EconomicCalendarPanel.ts",
+      "line": 234,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/EconomicCalendarPanel.ts:setContent:b085f9dc475f879c",
+      "code": "this.setContent(html);"
+    },
+    {
+      "file": "src/components/EconomicPanel.ts",
+      "line": 268,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/EconomicPanel.ts:setContent:7bd618b637eb5e4e",
+      "code": "this.setContent(`"
+    },
+    {
+      "file": "src/components/EnergyComplexPanel.ts",
+      "line": 152,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/EnergyComplexPanel.ts:setContent:60a5cda227706d7a",
+      "code": "this.setContent(`<div class=\"economic-empty\">${t('components.energyComplex.noData')}</div>`);"
+    },
+    {
+      "file": "src/components/EnergyComplexPanel.ts",
+      "line": 184,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/EnergyComplexPanel.ts:setContent:f4afc75d71025024",
+      "code": "this.setContent(`"
+    },
+    {
+      "file": "src/components/EnergyCrisisPanel.ts",
+      "line": 112,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/EnergyCrisisPanel.ts:setContent:945cd7dc295a5cb2",
+      "code": "this.setContent('<div class=\"panel-empty\">No energy crisis policies tracked.</div>');"
+    },
+    {
+      "file": "src/components/EnergyCrisisPanel.ts",
+      "line": 170,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/EnergyCrisisPanel.ts:setContent:8ff25c61ac07b1b4",
+      "code": "this.setContent(`"
+    },
+    {
+      "file": "src/components/EnergyDisruptionsPanel.ts",
+      "line": 213,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/EnergyDisruptionsPanel.ts:setContent:bd77c31374010c56",
+      "code": "this.setContent(`"
+    },
+    {
+      "file": "src/components/EnergyRiskOverviewPanel.ts",
+      "line": 142,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/EnergyRiskOverviewPanel.ts:setContent:944cdd71137e007f",
+      "code": "this.setContent(html);"
+    },
+    {
+      "file": "src/components/ETFFlowsPanel.ts",
+      "line": 88,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/ETFFlowsPanel.ts:setContent:beb7028b29994c58",
+      "code": "this.setContent(`<div class=\"panel-loading-text\">${msg}</div>`);"
+    },
+    {
+      "file": "src/components/ETFFlowsPanel.ts",
+      "line": 142,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/ETFFlowsPanel.ts:setContent:c30c73260c4ab409",
+      "code": "this.setContent(html);"
+    },
+    {
+      "file": "src/components/FaoFoodPriceIndexPanel.ts",
+      "line": 154,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/FaoFoodPriceIndexPanel.ts:setContent:720fb98edbbad124",
+      "code": "this.setContent(`<div class=\"fao-food-price-index-panel\">${headline}${chart}${legend}${base}</div>`);"
+    },
+    {
+      "file": "src/components/FearGreedPanel.ts",
+      "line": 296,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/FearGreedPanel.ts:setContent:cd873c2a88e3bedd",
+      "code": "this.setContent(html);"
+    },
+    {
+      "file": "src/components/ForecastPanel.ts",
+      "line": 368,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/ForecastPanel.ts:setContent:6f39d267b0b2b6c2",
+      "code": "this.setContent(`"
+    },
+    {
+      "file": "src/components/ForecastPanel.ts",
+      "line": 387,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/ForecastPanel.ts:setContent:146e54c428edcef1",
+      "code": "this.setContent(`"
+    },
+    {
       "file": "src/components/FrameworkSelector.ts",
       "line": 33,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/FrameworkSelector.ts:b57b76bad269c5d1",
       "code": "btn.innerHTML = '⚙';"
     },
     {
+      "file": "src/components/FSIPanel.ts",
+      "line": 213,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/FSIPanel.ts:setContent:ffc681298359f96c",
+      "code": "this.setContent(html);"
+    },
+    {
+      "file": "src/components/FuelPricesPanel.ts",
+      "line": 99,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/FuelPricesPanel.ts:setContent:6a2e5d45f26fb4c4",
+      "code": "this.setContent(html);"
+    },
+    {
+      "file": "src/components/FuelShortagePanel.ts",
+      "line": 263,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/FuelShortagePanel.ts:setContent:2c295c15889c954e",
+      "code": "this.setContent(`"
+    },
+    {
       "file": "src/components/GdeltIntelPanel.ts",
       "line": 110,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GdeltIntelPanel.ts:d6642f643c38c2c0",
       "code": "toneGroup.innerHTML = miniSparkline(toneVals, toneChange, 60, 18);"
     },
     {
       "file": "src/components/GdeltIntelPanel.ts",
       "line": 116,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GdeltIntelPanel.ts:0b630d81f5458bbf",
       "code": "volGroup.innerHTML = miniSparkline(volVals, 1, 60, 18);"
     },
     {
+      "file": "src/components/GeoHubsPanel.ts",
+      "line": 108,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/GeoHubsPanel.ts:setContent:adea9dc9ff6d8448",
+      "code": "this.setContent(html);"
+    },
+    {
       "file": "src/components/GivingPanel.ts",
       "line": 90,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GivingPanel.ts:ac9527116ca7ded5",
       "code": "this.content.innerHTML = `"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 660,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:6632ffe31813492b",
       "code": "attribution.innerHTML = '© <a href=\"https://www.openstreetmap.org/copyright\" target=\"_blank\" rel=\"noopener\">OpenStreetMap</a> © <a href=\"https://www.naturalearthdata.com\" target=\"_blank\" rel=\"noopener\">Natural Earth</a>';"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 947,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:580435ecd3d1bcb6",
       "code": "el.innerHTML = GlobeMap.wrapHit(`"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 965,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:580435ecd3d1bcb6",
       "code": "el.innerHTML = GlobeMap.wrapHit(`"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 977,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:580435ecd3d1bcb6",
       "code": "el.innerHTML = GlobeMap.wrapHit(`"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 994,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:10c367a0245f4fd7",
       "code": "el.innerHTML = GlobeMap.wrapHit("
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1005,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:10c367a0245f4fd7",
       "code": "el.innerHTML = GlobeMap.wrapHit("
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1017,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:05847181990dc68d",
       "code": "el.innerHTML = GlobeMap.wrapHit(`<div style=\"font-size:9px;color:${c};text-shadow:0 0 4px ${c}88;font-weight:bold;\">⚡</div>`);"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1027,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:10c367a0245f4fd7",
       "code": "el.innerHTML = GlobeMap.wrapHit("
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1037,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:519515e86a3d9bbe",
       "code": "el.innerHTML = GlobeMap.wrapHit(`<div style=\"font-size:11px;\">${icon}</div>`);"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1041,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:580435ecd3d1bcb6",
       "code": "el.innerHTML = GlobeMap.wrapHit(`"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1049,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:321049a17798cb73",
       "code": "el.innerHTML = GlobeMap.wrapHit(`<div style=\"font-size:12px;color:${sc};text-shadow:0 0 4px ${sc}88;\">📡</div>`);"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1052,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:0d22a43e98e70790",
       "code": "el.innerHTML = GlobeMap.wrapHit(`<div style=\"font-size:10px;color:#ffa000;text-shadow:0 0 4px #ffa00088;font-weight:bold;\">⚡</div>`);"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1055,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:7230b2e5c6d13f42",
       "code": "el.innerHTML = GlobeMap.wrapHit(`<div style=\"font-size:10px;color:#b400ff;text-shadow:0 0 4px #b400ff88;font-weight:bold;\">⚔</div>`);"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1059,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:cd402fd57f3cf14e",
       "code": "el.innerHTML = GlobeMap.wrapHit(`<div style=\"font-size:10px;color:${sc};text-shadow:0 0 4px ${sc}88;font-weight:bold;\">🛡</div>`);"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1063,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:73077ba515bc87ee",
       "code": "el.innerHTML = GlobeMap.wrapHit(`<div style=\"font-size:10px;color:${intensity};text-shadow:0 0 4px ${intensity}88;\">🔥</div>`);"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1071,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:c64176fd64130225",
       "code": "el.innerHTML = GlobeMap.wrapHit(`<div style=\"font-size:11px;color:${c};text-shadow:0 0 4px ${c}88;\">📢</div>`);"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1075,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:580435ecd3d1bcb6",
       "code": "el.innerHTML = GlobeMap.wrapHit(`"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1081,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:b89670e524337a36",
       "code": "el.innerHTML = GlobeMap.wrapHit(`<div style=\"font-size:11px;color:#88bbff;text-shadow:0 0 4px #88bbff88;\">👥</div>`);"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1086,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:40d7fc8311f1de10",
       "code": "el.innerHTML = GlobeMap.wrapHit(`<div style=\"font-size:10px;color:${c};text-shadow:0 0 4px ${c}88;\">🌡</div>`);"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1090,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:5acedaa21f9efa9a",
       "code": "el.innerHTML = GlobeMap.wrapHit(`<div style=\"font-size:10px;color:${c};text-shadow:0 0 4px ${c}88;\">📡</div>`);"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1093,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:7c6b4baf92aa8a46",
       "code": "el.innerHTML = GlobeMap.wrapHit(`<div style=\"font-size:10px;color:#44aaff;text-shadow:0 0 4px #44aaff88;\">💻</div>`);"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1097,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:bd69761beae469f5",
       "code": "el.innerHTML = `"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1118,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:580435ecd3d1bcb6",
       "code": "el.innerHTML = GlobeMap.wrapHit(`"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1128,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:ea43cd7510756308",
       "code": "el.innerHTML = GlobeMap.wrapHit(`<div style=\"font-size:11px;color:#ffd700;text-shadow:0 0 4px #ffd70088;\">☢</div>`);"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1131,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:a9023c50e7393ea2",
       "code": "el.innerHTML = GlobeMap.wrapHit(`<div style=\"font-size:10px;color:#ff8800;text-shadow:0 0 3px #ff880088;\">⚠</div>`);"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1134,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:5a7c93da3d313e12",
       "code": "el.innerHTML = GlobeMap.wrapHit(`<div style=\"font-size:11px;color:#88ddff;text-shadow:0 0 4px #88ddff88;\">🚀</div>`);"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1139,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:6c49aca25b2e3f18",
       "code": "el.innerHTML = GlobeMap.wrapHit(`<div style=\"width:${sz}px;height:${sz}px;border-radius:50%;background:${mc}44;border:2px solid ${mc};box-shadow:0 0 6px 2px ${mc}55;\"></div>`);"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1143,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:d75ed92c9b1a52c9",
       "code": "el.innerHTML = GlobeMap.wrapHit(`<div style=\"font-size:11px;color:${ec};text-shadow:0 0 4px ${ec}88;\">💰</div>`);"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1146,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:b9b654499c22929c",
       "code": "el.innerHTML = GlobeMap.wrapHit(`<div style=\"font-size:10px;color:#88aaff;text-shadow:0 0 3px #88aaff88;\">🖥</div>`);"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1149,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:73c1520d699967fb",
       "code": "el.innerHTML = GlobeMap.wrapHit(`<div style=\"font-size:10px;color:#44aadd;text-shadow:0 0 3px #44aadd88;\">⚓</div>`);"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1152,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:88e1d26e810a4dfa",
       "code": "el.innerHTML = GlobeMap.wrapHit(`<div style=\"font-size:10px;color:#cc88ff;text-shadow:0 0 3px #cc88ff88;\">💎</div>`);"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1162,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:8f3a594e7d5f71d5",
       "code": "el.innerHTML = GlobeMap.wrapHit(`<div style=\"font-size:11px;color:${sc};text-shadow:0 0 4px ${sc}88;\">✈</div>`);"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1165,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:7a3ec8e0fe6bacb8",
       "code": "el.innerHTML = `<div style=\"position:relative;width:20px;height:20px;display:flex;align-items:center;justify-content:center;\"><div style=\"position:absolute;inset:-3px;border-radius:50%;border:2px solid #ff282888;${this.pulseStyle('2s')}\"></div><div style=\"font-size:12px;color:#ff2828;text-shadow:0 0 6px #ff282888;\">⚠</div></div>`;"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1169,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:98b66c7d69982061",
       "code": "el.innerHTML = GlobeMap.wrapHit(`<div style=\"font-size:11px;color:${sc};text-shadow:0 0 4px ${sc}88;\">🔌</div>`);"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1173,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:e53824f84edd6150",
       "code": "el.innerHTML = GlobeMap.wrapHit(`<div style=\"font-size:11px;color:${sc};text-shadow:0 0 4px ${sc}88;\">🚢</div>`);"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1180,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:bd69761beae469f5",
       "code": "el.innerHTML = `"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1188,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:0f9f34fa2532b74c",
       "code": "el.innerHTML = GlobeMap.wrapHit(`<div style=\"font-size:11px;color:${sc};text-shadow:0 0 4px ${sc}88;\">⛴</div>`);"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1192,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:13efa6ff7a6c5191",
       "code": "el.innerHTML = `<div class=\"sat-hit\" style=\"width:16px;height:16px;display:flex;align-items:center;justify-content:center;margin:-8px 0 0 -8px;color:${c}\"><div class=\"sat-dot\" style=\"width:5px;height:5px;border-radius:50%;background:${c};box-shadow:0 0 6px 2px ${c}88;transition:transform .15s,box-shadow .15s;\"></div></div>`;"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1197,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:37fef0d55067b2c6",
       "code": "el.innerHTML = `<div style=\"width:12px;height:12px;border-radius:50%;border:1px solid ${c}66;background:${c}15;margin:-6px 0 0 -6px\"></div>`;"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1200,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:6a3c67efd773e993",
       "code": "el.innerHTML = GlobeMap.wrapHit(`<div style=\"font-size:11px;color:#00b4ff;text-shadow:0 0 4px #00b4ff88;\">&#128752;</div>`);"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1205,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:cc77f27affabf81c",
       "code": "el.innerHTML = GlobeMap.wrapHit(`<span style=\"background:${style.color}33;border:1px solid ${style.color}88;border-radius:10px;padding:1px 5px;font-size:12px;\">${emoji}</span>`);"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1208,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:8539044d2198f03a",
       "code": "el.innerHTML = GlobeMap.wrapHit(`<span style=\"background:#00d4ff33;border:1px solid #00d4ff88;border-radius:12px;padding:2px 7px;font-size:11px;font-weight:bold;color:#00d4ff;\">${d.count}</span>`);"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1212,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:bd69761beae469f5",
       "code": "el.innerHTML = `"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1579,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:b624c9fd93dc86ff",
       "code": "el.innerHTML = `<div style=\"padding-right:16px;position:relative;\">${closeBtn}${html}</div>`;"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1785,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:bd69761beae469f5",
       "code": "el.innerHTML = `"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1831,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:bd69761beae469f5",
       "code": "el.innerHTML = `"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1884,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:f5258639b833132b",
       "code": "modeBtn.innerHTML = renderModeLabel();"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1890,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:f5258639b833132b",
       "code": "modeBtn.innerHTML = renderModeLabel();"
     },
     {
       "file": "src/components/GlobeMap.ts",
       "line": 1914,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GlobeMap.ts:e86b2ed760b10f0b",
       "code": "if (collapseBtn) (collapseBtn as HTMLElement).innerHTML = collapsed ? '&#9654;' : '&#9660;';"
     },
     {
+      "file": "src/components/GoldIntelligencePanel.ts",
+      "line": 423,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/GoldIntelligencePanel.ts:setContent:66aae6d9836e18e3",
+      "code": "this.setContent(`<div style=\"padding:10px 14px\">${html}</div>`);"
+    },
+    {
       "file": "src/components/GoodThingsDigestPanel.ts",
       "line": 21,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GoodThingsDigestPanel.ts:0b59ef1e28691268",
       "code": "this.content.innerHTML = '<p class=\"digest-placeholder\">Loading today\\u2019s digest\\u2026</p>';"
     },
     {
       "file": "src/components/GoodThingsDigestPanel.ts",
       "line": 38,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GoodThingsDigestPanel.ts:f665f5864f51d7f9",
       "code": "this.content.innerHTML = `<p class=\"digest-placeholder\">${escapeHtml(t('components.goodThingsDigest.noStories'))}</p>`;"
     },
     {
       "file": "src/components/GoodThingsDigestPanel.ts",
       "line": 53,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/GoodThingsDigestPanel.ts:70424cf27a5afa55",
       "code": "card.innerHTML = `"
     },
     {
+      "file": "src/components/GroceryBasketPanel.ts",
+      "line": 110,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/GroceryBasketPanel.ts:setContent:911a1135adb1b3b2",
+      "code": "this.setContent(html);"
+    },
+    {
+      "file": "src/components/GulfEconomiesPanel.ts",
+      "line": 74,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/GulfEconomiesPanel.ts:setContent:de0b3e37e0b78228",
+      "code": "this.setContent(html);"
+    },
+    {
       "file": "src/components/HeroSpotlightPanel.ts",
       "line": 21,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/HeroSpotlightPanel.ts:ec21fce1274eb7a9",
       "code": "this.content.innerHTML ="
     },
     {
       "file": "src/components/HeroSpotlightPanel.ts",
       "line": 30,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/HeroSpotlightPanel.ts:ec21fce1274eb7a9",
       "code": "this.content.innerHTML ="
     },
     {
       "file": "src/components/HeroSpotlightPanel.ts",
       "line": 53,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/HeroSpotlightPanel.ts:8f2d489eaff63571",
       "code": "this.content.innerHTML = `<div class=\"hero-card\">"
     },
     {
+      "file": "src/components/HormuzPanel.ts",
+      "line": 137,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/HormuzPanel.ts:setContent:71311bb24a1d4642",
+      "code": "this.setContent(html);"
+    },
+    {
+      "file": "src/components/InsightsPanel.ts",
+      "line": 169,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/InsightsPanel.ts:setContent:18f2a87d7085a063",
+      "code": "this.setContent(`"
+    },
+    {
+      "file": "src/components/InsightsPanel.ts",
+      "line": 207,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/InsightsPanel.ts:setContent:3ff3bf1faa9742f3",
+      "code": "this.setContent(`<div class=\"insights-empty\">${t('components.insights.waitingForData')}</div>`);"
+    },
+    {
+      "file": "src/components/InsightsPanel.ts",
+      "line": 214,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/InsightsPanel.ts:setContent:6da06bcd625769dd",
+      "code": "this.setContent(`<div class=\"insights-empty\">${t('components.insights.waitingForData')}</div>`);"
+    },
+    {
+      "file": "src/components/InsightsPanel.ts",
+      "line": 380,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/InsightsPanel.ts:setContent:4f1ecee2acc586fc",
+      "code": "this.setContent(`<div class=\"insights-empty\">${t('components.insights.noStories')}</div>`);"
+    },
+    {
+      "file": "src/components/InsightsPanel.ts",
+      "line": 469,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/InsightsPanel.ts:setContent:102d6c0194ca536e",
+      "code": "this.setContent(`"
+    },
+    {
+      "file": "src/components/InsightsPanel.ts",
+      "line": 495,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/InsightsPanel.ts:setContent:518d9b8d94dc9ada",
+      "code": "this.setContent(`"
+    },
+    {
+      "file": "src/components/InsightsPanel.ts",
+      "line": 816,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/InsightsPanel.ts:setContent:deb2b2f7eb1fe61d",
+      "code": "this.setContent(`"
+    },
+    {
       "file": "src/components/IntelligenceGapBadge.ts",
       "line": 62,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/IntelligenceGapBadge.ts:f89e3e9006feb45f",
       "code": "this.badge.innerHTML = '<span class=\"findings-icon\">🎯</span><span class=\"findings-count\">0</span>';"
     },
     {
       "file": "src/components/IntelligenceGapBadge.ts",
       "line": 200,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/IntelligenceGapBadge.ts:be7b7ae0cdc54c9b",
       "code": "menu.innerHTML = `<div class=\"context-menu-item\">${t('components.intelligenceFindings.hideFindings')}</div>`;"
     },
     {
       "file": "src/components/IntelligenceGapBadge.ts",
       "line": 343,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/IntelligenceGapBadge.ts:450b545d1785aef9",
       "code": "this.dropdown.innerHTML = `"
     },
     {
       "file": "src/components/IntelligenceGapBadge.ts",
       "line": 394,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/IntelligenceGapBadge.ts:450b545d1785aef9",
       "code": "this.dropdown.innerHTML = `"
     },
     {
       "file": "src/components/IntelligenceGapBadge.ts",
       "line": 502,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/IntelligenceGapBadge.ts:b7edb2c101e4922d",
       "code": "overlay.innerHTML = `"
     },
     {
+      "file": "src/components/InvestmentsPanel.ts",
+      "line": 193,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/InvestmentsPanel.ts:setContent:e78240d38132735b",
+      "code": "this.setContent(html);"
+    },
+    {
+      "file": "src/components/LiquidityShiftsPanel.ts",
+      "line": 137,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/LiquidityShiftsPanel.ts:setContent:f98ad9490925f50b",
+      "code": "this.setContent(`"
+    },
+    {
       "file": "src/components/LiveNewsPanel.ts",
       "line": 722,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/LiveNewsPanel.ts:db697fc55036df24",
       "code": "this.liveBtn.innerHTML = this.isPlaying"
     },
     {
       "file": "src/components/LiveNewsPanel.ts",
       "line": 760,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/LiveNewsPanel.ts:7677211b8d973b9c",
       "code": "this.fullscreenBtn.innerHTML = '<svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M8 3H5a2 2 0 0 0-2 2v3\"/><path d=\"M21 8V5a2 2 0 0 0-2-2h-3\"/><path d=\"M3 16v3a2 2 0 0 0 2 2h3\"/><path d=\"M16 21h3a2 2 0 0 0 2-2v-3\"/></svg>';"
     },
     {
       "file": "src/components/LiveNewsPanel.ts",
       "line": 777,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/LiveNewsPanel.ts:f17a969622308daa",
       "code": "this.fullscreenBtn.innerHTML = this.isFullscreen"
     },
     {
       "file": "src/components/LiveNewsPanel.ts",
       "line": 789,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/LiveNewsPanel.ts:2df2aab7dbb748de",
       "code": "this.muteBtn.innerHTML = this.isMuted"
     },
     {
       "file": "src/components/LiveNewsPanel.ts",
       "line": 897,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/LiveNewsPanel.ts:b37fb532b79754f6",
       "code": "openBtn.innerHTML ="
     },
     {
       "file": "src/components/LiveNewsPanel.ts",
       "line": 920,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/LiveNewsPanel.ts:cd366276ad7dee1b",
       "code": "closeBtn.innerHTML = '&times;';"
     },
     {
       "file": "src/components/LiveNewsPanel.ts",
       "line": 1053,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/LiveNewsPanel.ts:3ff1004679d41e13",
       "code": "this.content.innerHTML = `"
     },
     {
       "file": "src/components/LiveNewsPanel.ts",
       "line": 1071,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/LiveNewsPanel.ts:3ff1004679d41e13",
       "code": "this.content.innerHTML = `"
     },
     {
       "file": "src/components/LiveWebcamsPanel.ts",
       "line": 149,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/LiveWebcamsPanel.ts:37760362d0b575b4",
       "code": "this.fullscreenBtn.innerHTML = '<svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><path d=\"M8 3H5a2 2 0 0 0-2 2v3\"/><path d=\"M21 8V5a2 2 0 0 0-2-2h-3\"/><path d=\"M3 16v3a2 2 0 0 0 2 2h3\"/><path d=\"M16 21h3a2 2 0 0 0 2-2v-3\"/></svg>';"
     },
     {
       "file": "src/components/LiveWebcamsPanel.ts",
       "line": 165,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/LiveWebcamsPanel.ts:bf1458ab57164485",
       "code": "this.fullscreenBtn.innerHTML = this.isFullscreen"
     },
     {
       "file": "src/components/LiveWebcamsPanel.ts",
       "line": 230,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/LiveWebcamsPanel.ts:0c0708962442736a",
       "code": "gridBtn.innerHTML = '<svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"currentColor\" stroke=\"none\"><rect x=\"3\" y=\"3\" width=\"8\" height=\"8\" rx=\"1\"/><rect x=\"13\" y=\"3\" width=\"8\" height=\"8\" rx=\"1\"/><rect x=\"3\" y=\"13\" width=\"8\" height=\"8\" rx=\"1\"/><rect x=\"13\" y=\"13\" width=\"8\" height=\"8\" rx=\"1\"/></svg>';"
     },
     {
       "file": "src/components/LiveWebcamsPanel.ts",
       "line": 237,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/LiveWebcamsPanel.ts:7cb04dd3c010cd0e",
       "code": "singleBtn.innerHTML = '<svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"currentColor\" stroke=\"none\"><rect x=\"3\" y=\"3\" width=\"18\" height=\"14\" rx=\"2\"/><rect x=\"3\" y=\"19\" width=\"18\" height=\"2\" rx=\"1\"/></svg>';"
     },
     {
       "file": "src/components/LiveWebcamsPanel.ts",
       "line": 470,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/LiveWebcamsPanel.ts:8784ba77374d9c2f",
       "code": "this.content.innerHTML = `<div class=\"webcam-placeholder\">${escapeHtml(t('components.webcams.paused'))}</div>`;"
     },
     {
       "file": "src/components/LiveWebcamsPanel.ts",
       "line": 503,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/LiveWebcamsPanel.ts:291bfe051fb5101c",
       "code": "label.innerHTML = `<span class=\"webcam-live-dot\"></span><span class=\"webcam-city\">${escapeHtml(feed.city.toUpperCase())}</span>`;"
     },
     {
       "file": "src/components/LiveWebcamsPanel.ts",
       "line": 511,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/LiveWebcamsPanel.ts:b8e92c4945b5b639",
       "code": "expandBtn.innerHTML = '<svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><polyline points=\"15 3 21 3 21 9\"/><polyline points=\"9 21 3 21 3 15\"/><line x1=\"21\" y1=\"3\" x2=\"14\" y2=\"10\"/><line x1=\"3\" y1=\"21\" x2=\"10\" y2=\"14\"/></svg>';"
     },
     {
       "file": "src/components/LiveWebcamsPanel.ts",
       "line": 568,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/LiveWebcamsPanel.ts:fc8d36e60e587406",
       "code": "backBtn.innerHTML = '<svg width=\"12\" height=\"12\" viewBox=\"0 0 24 24\" fill=\"currentColor\" stroke=\"none\"><rect x=\"3\" y=\"3\" width=\"8\" height=\"8\" rx=\"1\"/><rect x=\"13\" y=\"3\" width=\"8\" height=\"8\" rx=\"1\"/><rect x=\"3\" y=\"13\" width=\"8\" height=\"8\" rx=\"1\"/><rect x=\"13\" y=\"13\" width=\"8\" height=\"8\" rx=\"1\"/></svg> Grid';"
     },
     {
       "file": "src/components/LiveWebcamsPanel.ts",
       "line": 681,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/LiveWebcamsPanel.ts:33e026a32089e4f9",
       "code": "this.content.innerHTML = `<div class=\"webcam-placeholder\">${escapeHtml(t('components.webcams.pausedIdle'))}</div>`;"
     },
     {
+      "file": "src/components/MacroSignalsPanel.ts",
+      "line": 219,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/MacroSignalsPanel.ts:setContent:5d5cae25dcee8bc4",
+      "code": "this.setContent(html);"
+    },
+    {
+      "file": "src/components/MacroTilesPanel.ts",
+      "line": 197,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/MacroTilesPanel.ts:setContent:bf21b2e5c7265cd4",
+      "code": "this.setContent(tabBar + body);"
+    },
+    {
       "file": "src/components/Map.ts",
       "line": 289,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/Map.ts:b891492fcaf144b1",
       "code": "controls.innerHTML = `"
     },
     {
       "file": "src/components/Map.ts",
       "line": 320,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/Map.ts:3e12b232b64b8fd0",
       "code": "slider.innerHTML = `"
     },
     {
       "file": "src/components/Map.ts",
       "line": 645,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/Map.ts:9b8864d2b981c9f7",
       "code": "popup.innerHTML = SITE_VARIANT === 'tech'"
     },
     {
       "file": "src/components/Map.ts",
       "line": 688,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/Map.ts:de795081ba3235f4",
       "code": "legend.innerHTML = `"
     },
     {
       "file": "src/components/Map.ts",
       "line": 697,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/Map.ts:de795081ba3235f4",
       "code": "legend.innerHTML = `"
     },
     {
       "file": "src/components/Map.ts",
       "line": 702,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/Map.ts:de795081ba3235f4",
       "code": "legend.innerHTML = `"
     },
     {
       "file": "src/components/Map.ts",
       "line": 1568,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/Map.ts:8d5df1cc23264f99",
       "code": "div.innerHTML = `"
     },
     {
       "file": "src/components/Map.ts",
       "line": 3219,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/Map.ts:8d5df1cc23264f99",
       "code": "div.innerHTML = `"
     },
     {
       "file": "src/components/MapPopup.ts",
       "line": 256,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/MapPopup.ts:3a47ba9d2feb0542",
       "code": "this.popup.innerHTML = this.isMobileSheet"
     },
     {
       "file": "src/components/MapPopup.ts",
       "line": 448,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/MapPopup.ts:0eed442c56c66b26",
       "code": "this.popup.innerHTML = html;"
     },
     {
       "file": "src/components/MapPopup.ts",
       "line": 1063,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/MapPopup.ts:f5d0da2f4895abfb",
       "code": "container.innerHTML = `"
     },
     {
       "file": "src/components/MapPopup.ts",
       "line": 1070,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/MapPopup.ts:f5d0da2f4895abfb",
       "code": "container.innerHTML = `"
     },
     {
       "file": "src/components/MapPopup.ts",
       "line": 1078,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/MapPopup.ts:f5d0da2f4895abfb",
       "code": "container.innerHTML = `"
     },
     {
       "file": "src/components/MapPopup.ts",
       "line": 1171,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/MapPopup.ts:f8116727281ea950",
       "code": "section.innerHTML = `"
     },
     {
+      "file": "src/components/MarketBreadthPanel.ts",
+      "line": 263,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/MarketBreadthPanel.ts:setContent:b7ae9bcc269d9f9b",
+      "code": "this.setContent(html);"
+    },
+    {
+      "file": "src/components/MarketImplicationsPanel.ts",
+      "line": 122,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/MarketImplicationsPanel.ts:setContent:83730685b1de4fc6",
+      "code": "this.setContent(html);"
+    },
+    {
+      "file": "src/components/MarketImplicationsPanel.ts",
+      "line": 130,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/MarketImplicationsPanel.ts:setContent:f30e88cb8ba8d3b3",
+      "code": "this.setContent(html);"
+    },
+    {
+      "file": "src/components/MarketPanel.ts",
+      "line": 40,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/MarketPanel.ts:setContent:fcbeb3277011dbf4",
+      "code": "this.setContent(html);"
+    },
+    {
+      "file": "src/components/MarketPanel.ts",
+      "line": 115,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/MarketPanel.ts:setContent:31b0ff8aa6c510ab",
+      "code": "this.setContent(tabBar + this._renderValuations());"
+    },
+    {
+      "file": "src/components/MarketPanel.ts",
+      "line": 119,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/MarketPanel.ts:setContent:666b2bf8194d189e",
+      "code": "this.setContent(tabBar + this._renderPerformance());"
+    },
+    {
+      "file": "src/components/MarketPanel.ts",
+      "line": 469,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/MarketPanel.ts:setContent:b235bad4d5f574e9",
+      "code": "this.setContent(tabBar + `<div class=\"commodities-grid\">${items}</div><div style=\"margin-top:6px;font-size:9px;color:var(--text-dim)\">Source: ECB</div>`);"
+    },
+    {
+      "file": "src/components/MarketPanel.ts",
+      "line": 474,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/MarketPanel.ts:setContent:304138b717aaaf45",
+      "code": "this.setContent(tabBar + this._renderXau());"
+    },
+    {
+      "file": "src/components/MarketPanel.ts",
+      "line": 487,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/MarketPanel.ts:setContent:15c4f61243f349ba",
+      "code": "this.setContent(tabBar + `<div style=\"padding:8px;color:var(--text-dim);font-size:12px\">${t('common.failedCommodities')}</div>`);"
+    },
+    {
+      "file": "src/components/MarketPanel.ts",
+      "line": 501,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/MarketPanel.ts:setContent:5ef3403017462038",
+      "code": "this.setContent(tabBar + grid);"
+    },
+    {
+      "file": "src/components/MarketPanel.ts",
+      "line": 534,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/MarketPanel.ts:setContent:757cd76e67dfa154",
+      "code": "this.setContent(html);"
+    },
+    {
+      "file": "src/components/MarketPanel.ts",
+      "line": 564,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/MarketPanel.ts:setContent:e489f4c3d880fffa",
+      "code": "this.setContent(html);"
+    },
+    {
+      "file": "src/components/MarketPanel.ts",
+      "line": 593,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/MarketPanel.ts:setContent:4eb7da909fdf2324",
+      "code": "this.setContent(rows);"
+    },
+    {
       "file": "src/components/McpConnectModal.ts",
       "line": 91,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/McpConnectModal.ts:b957e4c8357bf16e",
       "code": "modal.innerHTML = `"
     },
     {
       "file": "src/components/McpConnectModal.ts",
       "line": 317,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/McpConnectModal.ts:55a08e6b187d6bd5",
       "code": "toolsList.innerHTML = `<div class=\"mcp-tool-item selected\"><span class=\"mcp-tool-name\">${escapeHtml(presetTool)}</span></div>`;"
     },
     {
       "file": "src/components/McpConnectModal.ts",
       "line": 329,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/McpConnectModal.ts:b246fe57a91221b8",
       "code": "toolsList.innerHTML = `<div class=\"mcp-tool-item selected\">${escapeHtml(existing.toolName)}</div>`;"
     },
     {
       "file": "src/components/McpConnectModal.ts",
       "line": 355,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/McpConnectModal.ts:35161240dd7c483e",
       "code": "item.innerHTML = `"
     },
     {
+      "file": "src/components/McpDataPanel.ts",
+      "line": 124,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/McpDataPanel.ts:setContent:f25e4ce553e1ce62",
+      "code": "this.setContent(`"
+    },
+    {
+      "file": "src/components/McpDataPanel.ts",
+      "line": 138,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/McpDataPanel.ts:setContent:02c5435a33001f2c",
+      "code": "this.setContent(`"
+    },
+    {
+      "file": "src/components/McpDataPanel.ts",
+      "line": 167,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/McpDataPanel.ts:setContent:20cca6e2983e897e",
+      "code": "this.setContent(`"
+    },
+    {
+      "file": "src/components/McpDataPanel.ts",
+      "line": 224,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/McpDataPanel.ts:setContent:6db28c70a4cd251a",
+      "code": "this.setContent(`"
+    },
+    {
+      "file": "src/components/McpDataPanel.ts",
+      "line": 240,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/McpDataPanel.ts:setContent:e32f46a450ace198",
+      "code": "this.setContent(`"
+    },
+    {
       "file": "src/components/MobileWarningModal.ts",
       "line": 15,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/MobileWarningModal.ts:ddcb7e9f3967b0d4",
       "code": "this.element.innerHTML = `"
     },
     {
+      "file": "src/components/NationalDebtPanel.ts",
+      "line": 189,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/NationalDebtPanel.ts:setContent:b4a75affdcb30df3",
+      "code": "this.setContent(`"
+    },
+    {
+      "file": "src/components/NationalDebtPanel.ts",
+      "line": 276,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/NationalDebtPanel.ts:setContent:820a94e38c05308c",
+      "code": "this.setContent(html);"
+    },
+    {
       "file": "src/components/NewsPanel.ts",
       "line": 188,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/NewsPanel.ts:f33d6b8d3c238d16",
       "code": "this.sortBtn.innerHTML = icon;"
     },
     {
       "file": "src/components/NewsPanel.ts",
       "line": 211,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/NewsPanel.ts:c88e35e274bd6f2e",
       "code": "this.summaryBtn.innerHTML = '✨';"
     },
     {
       "file": "src/components/NewsPanel.ts",
       "line": 242,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/NewsPanel.ts:ca43982e801b8718",
       "code": "this.summaryBtn.innerHTML = '<span class=\"panel-summarize-spinner\"></span>';"
     },
     {
       "file": "src/components/NewsPanel.ts",
       "line": 245,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/NewsPanel.ts:b41f2251a082b920",
       "code": "this.summaryContainer.innerHTML = `<div class=\"panel-summary-loading\">${t('components.newsPanel.generatingSummary')}</div>`;"
     },
     {
       "file": "src/components/NewsPanel.ts",
       "line": 266,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/NewsPanel.ts:ac0918ba5992ddec",
       "code": "this.summaryContainer.innerHTML = `<div class=\"panel-summary-error\">${t('components.newsPanel.summaryError')}</div>`;"
     },
     {
       "file": "src/components/NewsPanel.ts",
       "line": 271,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/NewsPanel.ts:8885a4511f312c40",
       "code": "this.summaryContainer.innerHTML = `<div class=\"panel-summary-error\">${t('components.newsPanel.summaryFailed')}</div>`;"
     },
     {
       "file": "src/components/NewsPanel.ts",
       "line": 276,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/NewsPanel.ts:c88e35e274bd6f2e",
       "code": "this.summaryBtn.innerHTML = '✨';"
     },
     {
       "file": "src/components/NewsPanel.ts",
       "line": 292,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/NewsPanel.ts:e0039258d761eecd",
       "code": "element.innerHTML = '...';"
     },
     {
       "file": "src/components/NewsPanel.ts",
       "line": 301,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/NewsPanel.ts:5dd775c534b0874b",
       "code": "element.innerHTML = '✓';"
     },
     {
       "file": "src/components/NewsPanel.ts",
       "line": 305,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/NewsPanel.ts:374871c90042db4e",
       "code": "element.innerHTML = '文';"
     },
     {
       "file": "src/components/NewsPanel.ts",
       "line": 311,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/NewsPanel.ts:374871c90042db4e",
       "code": "element.innerHTML = '文';"
     },
     {
       "file": "src/components/NewsPanel.ts",
       "line": 322,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/NewsPanel.ts:6a1ece9bfe520812",
       "code": "this.summaryContainer.innerHTML = `"
     },
     {
+      "file": "src/components/NewsPanel.ts",
+      "line": 429,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/NewsPanel.ts:setContent:6f23b5793b65a30a",
+      "code": "this.setContent(`<div class=\"panel-empty\">${escapeHtml(message)}</div>`);"
+    },
+    {
+      "file": "src/components/NewsPanel.ts",
+      "line": 497,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/NewsPanel.ts:setContent:98ec082057503c91",
+      "code": "this.setContent(html);"
+    },
+    {
+      "file": "src/components/NewsPanel.ts",
+      "line": 568,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/NewsPanel.ts:setContent:883d3e64027bce61",
+      "code": "this.setContent(html);"
+    },
+    {
+      "file": "src/components/OilInventoriesPanel.ts",
+      "line": 279,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/OilInventoriesPanel.ts:setContent:1cf36d18384addd1",
+      "code": "this.setContent(`<div class=\"energy-complex-content\">${parts[0]}${legend}${parts.slice(1).join('')}"
+    },
+    {
       "file": "src/components/Panel.ts",
       "line": 851,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/Panel.ts:5c1ef0827dd24c06",
       "code": "iconEl.innerHTML = lockSvg;"
     },
     {
       "file": "src/components/Panel.ts",
       "line": 913,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/Panel.ts:be859a567c0d629d",
       "code": "iconEl.innerHTML = entry.icon;"
     },
     {
       "file": "src/components/Panel.ts",
       "line": 1058,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/Panel.ts:efa9db7dfe4ae0d6",
       "code": "if (this.pendingContentHtml === html || this.content.innerHTML === html) {"
     },
     {
       "file": "src/components/Panel.ts",
       "line": 1082,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/Panel.ts:193465d3c104d374",
       "code": "this.content.innerHTML = html;"
     },
     {
       "file": "src/components/payment-failure-banner.ts",
       "line": 64,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/payment-failure-banner.ts:1ffa4b9047d4e373",
       "code": "banner.innerHTML = `"
     },
     {
+      "file": "src/components/PipelineStatusPanel.ts",
+      "line": 359,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/PipelineStatusPanel.ts:setContent:07f8447466bc15f0",
+      "code": "this.setContent(`"
+    },
+    {
       "file": "src/components/PlaybackControl.ts",
       "line": 14,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/PlaybackControl.ts:d96dd0d4fc29fa0e",
       "code": "this.element.innerHTML = `"
     },
     {
+      "file": "src/components/PopulationExposurePanel.ts",
+      "line": 29,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/PopulationExposurePanel.ts:setContent:90a000d253c6ff46",
+      "code": "this.setContent(`<div class=\"panel-empty\">${t('common.noDataAvailable')}</div>`);"
+    },
+    {
+      "file": "src/components/PopulationExposurePanel.ts",
+      "line": 47,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/PopulationExposurePanel.ts:setContent:e0d19b06dfe679a0",
+      "code": "this.setContent(`"
+    },
+    {
+      "file": "src/components/PositioningPanel.ts",
+      "line": 259,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/PositioningPanel.ts:setContent:47c8d9ff5c2c024c",
+      "code": "this.setContent(`<div class=\"pos-panel\"><div class=\"pos-warmup\">${escapeHtml(t('components.positioning247.warmup'))}</div></div>`);"
+    },
+    {
+      "file": "src/components/PositioningPanel.ts",
+      "line": 275,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/PositioningPanel.ts:setContent:9f57fab79d745e32",
+      "code": "this.setContent(`<div class=\"pos-panel\">${sections.join('')}</div>`);"
+    },
+    {
       "file": "src/components/PositiveNewsFeedPanel.ts",
       "line": 109,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/PositiveNewsFeedPanel.ts:8969e12ee817b15f",
       "code": "this.content.innerHTML = `<div class=\"positive-feed-empty\">${escapeHtml(t('components.positiveNewsFeed.noStories'))}</div>`;"
     },
     {
       "file": "src/components/PositiveNewsFeedPanel.ts",
       "line": 113,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/PositiveNewsFeedPanel.ts:211150c2244fe050",
       "code": "this.content.innerHTML = items.map((item, idx) => this.renderCard(item, idx)).join('');"
     },
     {
+      "file": "src/components/PredictionPanel.ts",
+      "line": 83,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/PredictionPanel.ts:setContent:f88ca2a03613206e",
+      "code": "this.setContent(html);"
+    },
+    {
       "file": "src/components/ProBanner.ts",
       "line": 81,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/ProBanner.ts:88ba026afc70b0fd",
       "code": "banner.innerHTML = `"
     },
     {
       "file": "src/components/ProgressChartsPanel.ts",
       "line": 58,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/ProgressChartsPanel.ts:13c63c2381712d61",
       "code": "this.content.innerHTML = `<div class=\"progress-charts-empty\" style=\"padding:16px;color:var(--text-dim);text-align:center;\">${escapeHtml(t('components.progressCharts.noData'))}</div>`;"
     },
     {
+      "file": "src/components/RadiationWatchPanel.ts",
+      "line": 53,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/RadiationWatchPanel.ts:setContent:5f0889d5da18712a",
+      "code": "this.setContent(`<div class=\"panel-empty\">${escapeHtml(t('components.radiationWatch.empty'))}</div>`);"
+    },
+    {
+      "file": "src/components/RadiationWatchPanel.ts",
+      "line": 119,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/RadiationWatchPanel.ts:setContent:066eec063596d488",
+      "code": "this.setContent(`"
+    },
+    {
       "file": "src/components/RegionalIntelligenceBoard.ts",
       "line": 287,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/RegionalIntelligenceBoard.ts:677cfd020efea9aa",
       "code": "this.body.innerHTML ="
     },
     {
       "file": "src/components/RegionalIntelligenceBoard.ts",
       "line": 292,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/RegionalIntelligenceBoard.ts:677cfd020efea9aa",
       "code": "this.body.innerHTML ="
     },
     {
       "file": "src/components/RegionalIntelligenceBoard.ts",
       "line": 297,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/RegionalIntelligenceBoard.ts:b37488901d9a52d2",
       "code": "this.body.innerHTML = `<div class=\"rib-status rib-status-error\" style=\"padding:16px;color:var(--danger);font-size:12px\">We couldn't load this region right now: ${escapeHtml(message)}</div>`;"
     },
     {
       "file": "src/components/RegionalIntelligenceBoard.ts",
       "line": 330,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/RegionalIntelligenceBoard.ts:2e14ff1c6b80bc28",
       "code": "this.body.innerHTML = html;"
     },
     {
       "file": "src/components/RegulationPanel.ts",
       "line": 22,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/RegulationPanel.ts:3eb7f025704afeba",
       "code": "this.content.innerHTML = `"
     },
     {
       "file": "src/components/RouteExplorer/components/LeftRail.ts",
       "line": 50,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/RouteExplorer/components/LeftRail.ts:38d1a2bd7f65cae3",
       "code": "this.element.innerHTML ="
     },
     {
       "file": "src/components/RouteExplorer/components/LeftRail.ts",
       "line": 55,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/RouteExplorer/components/LeftRail.ts:38d1a2bd7f65cae3",
       "code": "this.element.innerHTML ="
     },
     {
       "file": "src/components/RouteExplorer/components/LeftRail.ts",
       "line": 60,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/RouteExplorer/components/LeftRail.ts:38d1a2bd7f65cae3",
       "code": "this.element.innerHTML ="
     },
     {
       "file": "src/components/RouteExplorer/components/LeftRail.ts",
       "line": 65,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/RouteExplorer/components/LeftRail.ts:38d1a2bd7f65cae3",
       "code": "this.element.innerHTML ="
     },
     {
       "file": "src/components/RouteExplorer/components/LeftRail.ts",
       "line": 70,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/RouteExplorer/components/LeftRail.ts:38d1a2bd7f65cae3",
       "code": "this.element.innerHTML ="
     },
     {
       "file": "src/components/RouteExplorer/components/LeftRail.ts",
       "line": 85,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/RouteExplorer/components/LeftRail.ts:d7033efdc138b1f7",
       "code": "el.innerHTML = '<h3 class=\"re-leftrail__title\">Dependency Flags</h3><div class=\"re-leftrail__placeholder-text\">No critical dependencies identified</div>';"
     },
     {
       "file": "src/components/RouteExplorer/components/LeftRail.ts",
       "line": 91,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/RouteExplorer/components/LeftRail.ts:ce1e3ed144e45559",
       "code": "el.innerHTML = `<h3 class=\"re-leftrail__title\">Dependency Flags</h3><div class=\"re-leftrail__flags\">${flagHtml}</div>`;"
     },
     {
       "file": "src/components/RouteExplorer/components/LeftRail.ts",
       "line": 99,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/RouteExplorer/components/LeftRail.ts:32c642fca522925d",
       "code": "this.element.innerHTML = ["
     },
     {
       "file": "src/components/RouteExplorer/components/RouteCard.ts",
       "line": 43,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/RouteExplorer/components/RouteCard.ts:61e9eccb72b852d3",
       "code": "card.innerHTML = ["
     },
     {
       "file": "src/components/RouteExplorer/CountryPicker.ts",
       "line": 103,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/RouteExplorer/CountryPicker.ts:d2f5944ef91076c7",
       "code": "li.innerHTML = `<span class=\"re-picker__flag\">${entry.flag}</span><span class=\"re-picker__name\">${escapeHtml(entry.name)}</span><span class=\"re-picker__code\">${entry.iso2}</span>`;"
     },
     {
       "file": "src/components/RouteExplorer/Hs2Picker.ts",
       "line": 100,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/RouteExplorer/Hs2Picker.ts:f3067dc54359c220",
       "code": "li.innerHTML = `<span class=\"re-picker__code\">HS ${entry.hs2}</span><span class=\"re-picker__name\">${escapeHtml(entry.label)}</span>`;"
     },
     {
       "file": "src/components/RouteExplorer/KeyboardHelp.ts",
       "line": 34,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/RouteExplorer/KeyboardHelp.ts:656ad0ec2656c7bf",
       "code": "header.innerHTML ="
     },
     {
       "file": "src/components/RouteExplorer/KeyboardHelp.ts",
       "line": 42,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/RouteExplorer/KeyboardHelp.ts:7db4aaece7de1ffb",
       "code": "row.innerHTML = `<td class=\"re-help__key\"><kbd>${escapeHtml(key)}</kbd></td><td class=\"re-help__label\">${escapeHtml(label)}</td>`;"
     },
     {
       "file": "src/components/RouteExplorer/RouteExplorer.ts",
       "line": 332,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/RouteExplorer/RouteExplorer.ts:2d3ddc9604e3fc22",
       "code": "this.contentEl.innerHTML = '<div class=\"re-content__loading\">Loading lane data\\u2026</div>';"
     },
     {
       "file": "src/components/RouteExplorer/RouteExplorer.ts",
       "line": 338,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/RouteExplorer/RouteExplorer.ts:425e3f190eeb0542",
       "code": "this.contentEl.innerHTML = '<div class=\"re-content__error\">Failed to load lane data. Try again.</div>';"
     },
     {
       "file": "src/components/RouteExplorer/RouteExplorer.ts",
       "line": 346,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/RouteExplorer/RouteExplorer.ts:5a189051dcaa9292",
       "code": "this.contentEl.innerHTML ="
     },
     {
       "file": "src/components/RouteExplorer/RouteExplorer.ts",
       "line": 477,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/RouteExplorer/RouteExplorer.ts:7e44f8778837eaa6",
       "code": "button.innerHTML = `<span class=\"re-tabstrip__digit\">${n}</span><span class=\"re-tabstrip__label\">${TAB_LABELS[n]}</span>`;"
     },
     {
       "file": "src/components/RouteExplorer/tabs/AlternativesTab.ts",
       "line": 49,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/RouteExplorer/tabs/AlternativesTab.ts:42501fd179aa326f",
       "code": "this.element.innerHTML ="
     },
     {
       "file": "src/components/RouteExplorer/tabs/AlternativesTab.ts",
       "line": 54,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/RouteExplorer/tabs/AlternativesTab.ts:42501fd179aa326f",
       "code": "this.element.innerHTML ="
     },
     {
       "file": "src/components/RouteExplorer/tabs/AlternativesTab.ts",
       "line": 59,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/RouteExplorer/tabs/AlternativesTab.ts:42501fd179aa326f",
       "code": "this.element.innerHTML ="
     },
     {
       "file": "src/components/RouteExplorer/tabs/CountryImpactTab.ts",
       "line": 59,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/RouteExplorer/tabs/CountryImpactTab.ts:95782a7259142271",
       "code": "this.element.innerHTML ="
     },
     {
       "file": "src/components/RouteExplorer/tabs/CountryImpactTab.ts",
       "line": 64,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/RouteExplorer/tabs/CountryImpactTab.ts:95782a7259142271",
       "code": "this.element.innerHTML ="
     },
     {
       "file": "src/components/RouteExplorer/tabs/CountryImpactTab.ts",
       "line": 72,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/RouteExplorer/tabs/CountryImpactTab.ts:95782a7259142271",
       "code": "this.element.innerHTML ="
     },
     {
       "file": "src/components/RouteExplorer/tabs/CountryImpactTab.ts",
       "line": 80,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/RouteExplorer/tabs/CountryImpactTab.ts:95782a7259142271",
       "code": "this.element.innerHTML ="
     },
     {
       "file": "src/components/RouteExplorer/tabs/CountryImpactTab.ts",
       "line": 111,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/RouteExplorer/tabs/CountryImpactTab.ts:2be0e5aef89b3c56",
       "code": "this.element.innerHTML = `${bannerHtml}${laneHtml}${flagsHtml}${resHtml}<h3 class=\"re-impact__products-title\">Top strategic products</h3>${productsHtml}`;"
     },
     {
       "file": "src/components/RouteExplorer/tabs/CurrentRouteTab.ts",
       "line": 47,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/RouteExplorer/tabs/CurrentRouteTab.ts:afa81860d60bd5f7",
       "code": "this.element.innerHTML ="
     },
     {
       "file": "src/components/RouteExplorer/tabs/CurrentRouteTab.ts",
       "line": 52,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/RouteExplorer/tabs/CurrentRouteTab.ts:afa81860d60bd5f7",
       "code": "this.element.innerHTML ="
     },
     {
       "file": "src/components/RouteExplorer/tabs/CurrentRouteTab.ts",
       "line": 63,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/RouteExplorer/tabs/CurrentRouteTab.ts:d7fb7a940c37fa9a",
       "code": "this.element.innerHTML = `${summaryHtml}${chokepointsHtml}`;"
     },
     {
       "file": "src/components/RouteExplorer/tabs/LandTab.ts",
       "line": 52,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/RouteExplorer/tabs/LandTab.ts:89c4ac36d952d58d",
       "code": "this.element.innerHTML ="
     },
     {
       "file": "src/components/RouteExplorer/tabs/LandTab.ts",
       "line": 57,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/RouteExplorer/tabs/LandTab.ts:89c4ac36d952d58d",
       "code": "this.element.innerHTML ="
     },
     {
       "file": "src/components/RouteExplorer/tabs/LandTab.ts",
       "line": 62,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/RouteExplorer/tabs/LandTab.ts:89c4ac36d952d58d",
       "code": "this.element.innerHTML ="
     },
     {
       "file": "src/components/RuntimeConfigPanel.ts",
       "line": 239,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/RuntimeConfigPanel.ts:a439d3f66f7a9406",
       "code": "this.content.innerHTML = `"
     },
     {
       "file": "src/components/RuntimeConfigPanel.ts",
       "line": 255,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/RuntimeConfigPanel.ts:a439d3f66f7a9406",
       "code": "this.content.innerHTML = `"
     },
     {
       "file": "src/components/RuntimeConfigPanel.ts",
       "line": 543,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/RuntimeConfigPanel.ts:9ef50d2c7edac044",
       "code": "select.innerHTML = '<option value=\"\" disabled selected>Set Ollama URL first</option>';"
     },
     {
       "file": "src/components/RuntimeConfigPanel.ts",
       "line": 562,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/RuntimeConfigPanel.ts:5882b8d6a0db1501",
       "code": "select.innerHTML = models.map(name =>"
     },
     {
+      "file": "src/components/SanctionsPressurePanel.ts",
+      "line": 29,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/SanctionsPressurePanel.ts:setContent:9281a8351134bae2",
+      "code": "this.setContent(`<div class=\"economic-empty\">${escapeHtml(t('components.sanctionsPressure.unavailable'))}</div>`);"
+    },
+    {
+      "file": "src/components/SanctionsPressurePanel.ts",
+      "line": 61,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/SanctionsPressurePanel.ts:setContent:193d55445a6eb249",
+      "code": "this.setContent(`"
+    },
+    {
+      "file": "src/components/SatelliteFiresPanel.ts",
+      "line": 37,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/SatelliteFiresPanel.ts:setContent:13c9dd80a5f45de7",
+      "code": "this.setContent(`<div class=\"panel-empty\">${t('common.noDataAvailable')}</div>`);"
+    },
+    {
+      "file": "src/components/SatelliteFiresPanel.ts",
+      "line": 62,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/SatelliteFiresPanel.ts:setContent:155983b7d8007ff4",
+      "code": "this.setContent(`"
+    },
+    {
       "file": "src/components/SearchModal.ts",
       "line": 220,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/SearchModal.ts:220a5e4019f0f267",
       "code": "this.overlay.innerHTML = `"
     },
     {
       "file": "src/components/SearchModal.ts",
       "line": 255,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/SearchModal.ts:220a5e4019f0f267",
       "code": "this.overlay.innerHTML = `"
     },
     {
       "file": "src/components/SearchModal.ts",
       "line": 427,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/SearchModal.ts:343c0c96709df760",
       "code": "this.resultsList.innerHTML = `<div class=\"search-section-header\">${t('modals.search.recent')}</div>`;"
     },
     {
       "file": "src/components/SearchModal.ts",
       "line": 486,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/SearchModal.ts:e99e2ce944367f5c",
       "code": "this.resultsList.innerHTML = html;"
     },
     {
       "file": "src/components/SearchModal.ts",
       "line": 568,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/SearchModal.ts:e99e2ce944367f5c",
       "code": "this.resultsList.innerHTML = html;"
     },
     {
       "file": "src/components/SearchModal.ts",
       "line": 599,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/SearchModal.ts:1ceb77afe9869aab",
       "code": "this.resultsList.innerHTML = `"
     },
     {
       "file": "src/components/SearchModal.ts",
       "line": 609,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/SearchModal.ts:1ceb77afe9869aab",
       "code": "this.resultsList.innerHTML = `"
     },
     {
       "file": "src/components/SearchModal.ts",
       "line": 680,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/SearchModal.ts:e99e2ce944367f5c",
       "code": "this.resultsList.innerHTML = html;"
     },
     {
       "file": "src/components/SearchModal.ts",
       "line": 692,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/SearchModal.ts:1ceb77afe9869aab",
       "code": "this.resultsList.innerHTML = `"
     },
     {
       "file": "src/components/SearchModal.ts",
       "line": 709,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/SearchModal.ts:1ceb77afe9869aab",
       "code": "this.resultsList.innerHTML = `"
     },
     {
       "file": "src/components/SearchModal.ts",
       "line": 738,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/SearchModal.ts:c3e03b065bbc7a18",
       "code": "this.chipsContainer.innerHTML = chips.map(c =>"
     },
     {
+      "file": "src/components/SecurityAdvisoriesPanel.ts",
+      "line": 116,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/SecurityAdvisoriesPanel.ts:setContent:bb756712af0aa4d1",
+      "code": "this.setContent(`<div class=\"panel-empty\">${t('common.noDataAvailable')}</div>`);"
+    },
+    {
+      "file": "src/components/SecurityAdvisoriesPanel.ts",
+      "line": 186,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/SecurityAdvisoriesPanel.ts:setContent:1939823c73911945",
+      "code": "this.setContent(`"
+    },
+    {
       "file": "src/components/SignalModal.ts",
       "line": 22,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/SignalModal.ts:7efddddef6416270",
       "code": "this.element.innerHTML = `"
     },
     {
       "file": "src/components/SignalModal.ts",
       "line": 273,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/SignalModal.ts:ee61704720a4cfcd",
       "code": "content.innerHTML = `"
     },
     {
       "file": "src/components/SignalModal.ts",
       "line": 395,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/SignalModal.ts:470d2dddf229c1f7",
       "code": "content.innerHTML = html;"
     },
     {
+      "file": "src/components/SocialVelocityPanel.ts",
+      "line": 90,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/SocialVelocityPanel.ts:setContent:188c68e54dde81f0",
+      "code": "this.setContent(`"
+    },
+    {
+      "file": "src/components/StablecoinPanel.ts",
+      "line": 87,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/StablecoinPanel.ts:setContent:d273010ae4a3af65",
+      "code": "this.setContent(`<div class=\"panel-empty\">${t('common.noDataShort')}</div>`);"
+    },
+    {
+      "file": "src/components/StablecoinPanel.ts",
+      "line": 136,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/StablecoinPanel.ts:setContent:2e81bb930f93e840",
+      "code": "this.setContent(html);"
+    },
+    {
+      "file": "src/components/StockAnalysisPanel.ts",
+      "line": 147,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/StockAnalysisPanel.ts:setContent:041fa0841f688213",
+      "code": "this.setContent(this.tableView.render());"
+    },
+    {
+      "file": "src/components/StockBacktestPanel.ts",
+      "line": 104,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/StockBacktestPanel.ts:setContent:a9143854632fe4dc",
+      "code": "this.setContent(this.tableView.render());"
+    },
+    {
+      "file": "src/components/StorageFacilityMapPanel.ts",
+      "line": 341,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/StorageFacilityMapPanel.ts:setContent:16558f3f369830a7",
+      "code": "this.setContent(`"
+    },
+    {
       "file": "src/components/StoryModal.ts",
       "line": 23,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/StoryModal.ts:73d822bdbb24b163",
       "code": "modalEl.innerHTML = `"
     },
     {
       "file": "src/components/StoryModal.ts",
       "line": 79,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/StoryModal.ts:2e30fdf13fe91b99",
       "code": "if (content) content.innerHTML = `<div class=\"story-error\">${t('modals.story.error')}</div>`;"
     },
     {
+      "file": "src/components/StrategicPosturePanel.ts",
+      "line": 57,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/StrategicPosturePanel.ts:setContent:c20b37973b700629",
+      "code": "this.setContent(`"
+    },
+    {
+      "file": "src/components/StrategicPosturePanel.ts",
+      "line": 306,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/StrategicPosturePanel.ts:setContent:5d6815c671a7008c",
+      "code": "this.setContent(`"
+    },
+    {
+      "file": "src/components/StrategicPosturePanel.ts",
+      "line": 333,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/StrategicPosturePanel.ts:setContent:25c8ec966554ffae",
+      "code": "this.setContent(`"
+    },
+    {
+      "file": "src/components/StrategicPosturePanel.ts",
+      "line": 498,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/StrategicPosturePanel.ts:setContent:32c4e38362b77e1b",
+      "code": "this.setContent(html);"
+    },
+    {
       "file": "src/components/StrategicRiskPanel.ts",
       "line": 469,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/StrategicRiskPanel.ts:67c26457acc4ae1c",
       "code": "this.content.innerHTML = html;"
     },
     {
       "file": "src/components/SupplyChainPanel.ts",
+      "line": 155,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/SupplyChainPanel.ts:setContent:0b8cefc47887320e",
+      "code": "this.setContent(`"
+    },
+    {
+      "file": "src/components/SupplyChainPanel.ts",
       "line": 284,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/SupplyChainPanel.ts:e2b4dc13e871df71",
       "code": "container.innerHTML = renderGate();"
     },
     {
       "file": "src/components/SupplyChainPanel.ts",
       "line": 292,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/SupplyChainPanel.ts:6903aea552b8a876",
       "code": "container.innerHTML = renderRows(bypassOptions);"
     },
     {
       "file": "src/components/SupplyChainPanel.ts",
       "line": 304,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/SupplyChainPanel.ts:cd5163e4161d684c",
       "code": "container.innerHTML = `<div class=\"sc-bypass-loading\">Loading bypass options\\u2026</div>`;"
     },
     {
       "file": "src/components/SupplyChainPanel.ts",
       "line": 307,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/SupplyChainPanel.ts:a00d40b001fc4cdd",
       "code": "container.innerHTML = renderRows(resp.options);"
     },
     {
       "file": "src/components/SupplyChainPanel.ts",
       "line": 310,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/SupplyChainPanel.ts:b9c3f71ab1cd4c6d",
       "code": "container.innerHTML = `<div class=\"sc-bypass-error\">Bypass data unavailable</div>`;"
     },
     {
       "file": "src/components/SupplyChainPanel.ts",
       "line": 322,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/SupplyChainPanel.ts:b9c3f71ab1cd4c6d",
       "code": "container.innerHTML = `<div class=\"sc-bypass-error\">Bypass data unavailable</div>`;"
     },
     {
       "file": "src/components/SupplyChainPanel.ts",
       "line": 784,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/SupplyChainPanel.ts:b87e98ca5153204f",
       "code": "banner.innerHTML = ["
     },
     {
+      "file": "src/components/TechHubsPanel.ts",
+      "line": 130,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/TechHubsPanel.ts:setContent:9bf2d9f7478a5d09",
+      "code": "this.setContent(html);"
+    },
+    {
+      "file": "src/components/TechReadinessPanel.ts",
+      "line": 161,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/TechReadinessPanel.ts:setContent:ddc371fa5ca0d2f1",
+      "code": "this.setContent(`"
+    },
+    {
+      "file": "src/components/TechReadinessPanel.ts",
+      "line": 176,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/TechReadinessPanel.ts:setContent:1eb26f10c97b0039",
+      "code": "this.setContent(`"
+    },
+    {
+      "file": "src/components/TechReadinessPanel.ts",
+      "line": 185,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/TechReadinessPanel.ts:setContent:0df144651c68ebb4",
+      "code": "this.setContent(`"
+    },
+    {
+      "file": "src/components/TechReadinessPanel.ts",
+      "line": 270,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/TechReadinessPanel.ts:setContent:14cde7135e300a3e",
+      "code": "this.setContent(html);"
+    },
+    {
+      "file": "src/components/ThermalEscalationPanel.ts",
+      "line": 57,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/ThermalEscalationPanel.ts:setContent:f0e01a4dd9f37674",
+      "code": "this.setContent(`<div class=\"panel-empty\">${escapeHtml(t('components.thermalEscalation.empty'))}</div>`);"
+    },
+    {
+      "file": "src/components/ThermalEscalationPanel.ts",
+      "line": 65,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/ThermalEscalationPanel.ts:setContent:8b104e7eaeca71b3",
+      "code": "this.setContent(`"
+    },
+    {
+      "file": "src/components/TradePolicyPanel.ts",
+      "line": 83,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/TradePolicyPanel.ts:setContent:afb24ad03f06bd5e",
+      "code": "this.setContent(`<div class=\"economic-empty\">${t('components.tradePolicy.apiKeyMissing')}</div>`);"
+    },
+    {
+      "file": "src/components/TradePolicyPanel.ts",
+      "line": 151,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/TradePolicyPanel.ts:setContent:b1438ba72507a3c6",
+      "code": "this.setContent(`"
+    },
+    {
+      "file": "src/components/UcdpEventsPanel.ts",
+      "line": 116,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/UcdpEventsPanel.ts:setContent:085b6d44a4cc9cba",
+      "code": "this.setContent(`"
+    },
+    {
       "file": "src/components/UnifiedSettings.ts",
       "line": 296,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/UnifiedSettings.ts:b6cec2a3de2bb8b3",
       "code": "panel.innerHTML = this.renderApiKeysContent();"
     },
     {
       "file": "src/components/UnifiedSettings.ts",
       "line": 332,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/UnifiedSettings.ts:7df96b6739fe7f39",
       "code": "fresh.innerHTML = this.renderUpgradeSection().trim();"
     },
     {
       "file": "src/components/UnifiedSettings.ts",
       "line": 367,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/UnifiedSettings.ts:f21624844772e213",
       "code": "btn.innerHTML = GEAR_SVG;"
     },
     {
       "file": "src/components/UnifiedSettings.ts",
       "line": 414,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/UnifiedSettings.ts:332d4e06e9359c84",
       "code": "this.overlay.innerHTML = `"
     },
     {
       "file": "src/components/UnifiedSettings.ts",
       "line": 728,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/UnifiedSettings.ts:8fdf13538757dcd7",
       "code": "bar.innerHTML = categories.map(c =>"
     },
     {
       "file": "src/components/UnifiedSettings.ts",
       "line": 740,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/UnifiedSettings.ts:68ed341c6345e497",
       "code": "container.innerHTML = entries.map(([key, panel]) => {"
     },
     {
       "file": "src/components/UnifiedSettings.ts",
       "line": 901,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/UnifiedSettings.ts:fc7789eacc2fea77",
       "code": "bar.innerHTML = regions.map(r =>"
     },
     {
       "file": "src/components/UnifiedSettings.ts",
       "line": 913,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/UnifiedSettings.ts:c95cfb6b6b9714a2",
       "code": "container.innerHTML = sources.map(source => {"
     },
     {
       "file": "src/components/UnifiedSettings.ts",
       "line": 1072,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/UnifiedSettings.ts:5de3d7504ee4144d",
       "code": "banner.innerHTML = `"
     },
     {
       "file": "src/components/UnifiedSettings.ts",
       "line": 1106,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/UnifiedSettings.ts:6cdbb8d2667baeca",
       "code": "container.innerHTML = '<div class=\"api-keys-loading\">Loading...</div>';"
     },
     {
       "file": "src/components/UnifiedSettings.ts",
       "line": 1116,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/UnifiedSettings.ts:fe58991b3e24134e",
       "code": "container.innerHTML = '<div class=\"api-keys-empty\">No API keys yet. Create one above to get started.</div>';"
     },
     {
       "file": "src/components/UnifiedSettings.ts",
       "line": 1140,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/UnifiedSettings.ts:d375af99f6af3be9",
       "code": "container.innerHTML = active.map(renderKey).join('')"
     },
     {
       "file": "src/components/UnifiedSettings.ts",
       "line": 1246,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/UnifiedSettings.ts:c8d920eb261d8b8c",
       "code": "if (el) el.innerHTML = this.renderMcpQuotaText();"
     },
     {
       "file": "src/components/UnifiedSettings.ts",
       "line": 1304,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/UnifiedSettings.ts:8d87b746c915e953",
       "code": "container.innerHTML = '<div class=\"mcp-clients-loading\">Loading...</div>';"
     },
     {
       "file": "src/components/UnifiedSettings.ts",
       "line": 1315,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/UnifiedSettings.ts:9d34be55af26b59e",
       "code": "container.innerHTML = `"
     },
     {
       "file": "src/components/UnifiedSettings.ts",
       "line": 1358,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/UnifiedSettings.ts:c1a1947eb49d04d3",
       "code": "container.innerHTML = active.map(renderClient).join('')"
     },
     {
       "file": "src/components/VirtualList.ts",
       "line": 393,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/VirtualList.ts:f5b7edbf0113d5e5",
       "code": "element.innerHTML = html;"
     },
     {
       "file": "src/components/watchlist-modal.ts",
       "line": 42,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/watchlist-modal.ts:1554fcf25f3d982f",
       "code": "modal.innerHTML = `"
     },
     {
       "file": "src/components/WatchlistEditor.ts",
       "line": 235,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/WatchlistEditor.ts:be18eb407a58ada8",
       "code": "li.innerHTML ="
     },
     {
       "file": "src/components/WatchlistEditor.ts",
       "line": 258,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/WatchlistEditor.ts:812dfeec66b54547",
       "code": "chip.innerHTML ="
     },
     {
       "file": "src/components/WidgetChatModal.ts",
       "line": 89,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/WidgetChatModal.ts:9eafdba6e2dfb2a3",
       "code": "modal.innerHTML = `"
     },
     {
       "file": "src/components/WidgetChatModal.ts",
       "line": 275,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/WidgetChatModal.ts:abd795cab5dc7278",
       "code": "radarEl.innerHTML = '<span class=\"panel-loading-radar\"><span class=\"panel-radar-sweep\"></span><span class=\"panel-radar-dot\"></span></span>';"
     },
     {
       "file": "src/components/WidgetChatModal.ts",
       "line": 438,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/WidgetChatModal.ts:b4c18ddf5cd919d5",
       "code": "container.innerHTML = `"
     },
     {
       "file": "src/components/WidgetChatModal.ts",
       "line": 478,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/components/WidgetChatModal.ts:b4c18ddf5cd919d5",
       "code": "container.innerHTML = `"
     },
     {
+      "file": "src/components/WorldClockPanel.ts",
+      "line": 208,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/WorldClockPanel.ts:setContent:0e1ec7122a76a52c",
+      "code": "this.setContent(html);"
+    },
+    {
+      "file": "src/components/WorldClockPanel.ts",
+      "line": 287,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/WorldClockPanel.ts:setContent:55b85dd190fccd6f",
+      "code": "this.setContent('<div class=\"wc-empty\">No cities selected. Click \\u2699 to add cities.</div>');"
+    },
+    {
+      "file": "src/components/WorldClockPanel.ts",
+      "line": 315,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/WorldClockPanel.ts:setContent:8724712d7ba1ebae",
+      "code": "this.setContent(html);"
+    },
+    {
+      "file": "src/components/WsbTickerScannerPanel.ts",
+      "line": 138,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/WsbTickerScannerPanel.ts:setContent:c4031d5994d33f64",
+      "code": "this.setContent(`"
+    },
+    {
+      "file": "src/components/YieldCurvePanel.ts",
+      "line": 305,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/YieldCurvePanel.ts:setContent:535b2d069bc7ee25",
+      "code": "this.setContent(`<div style=\"padding:10px 14px 6px\">${tabBar}${renderRatesTab(this._rateRows)}</div>`);"
+    },
+    {
+      "file": "src/components/YieldCurvePanel.ts",
+      "line": 327,
+      "kind": "panel-set-content",
+      "fingerprint": "src/components/YieldCurvePanel.ts:setContent:587e9086f345e585",
+      "code": "this.setContent(`"
+    },
+    {
       "file": "src/e2e/mobile-map-harness.ts",
       "line": 66,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/e2e/mobile-map-harness.ts:a59a39f3a67c5ba3",
       "code": "hotspot.innerHTML = '<div class=\"hotspot-marker high\"></div>';"
     },
     {
       "file": "src/live-channels-window.ts",
       "line": 446,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/live-channels-window.ts:6fd68aa7b8023656",
       "code": "appEl.innerHTML = `"
     },
     {
       "file": "src/services/notifications-settings.ts",
       "line": 432,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/services/notifications-settings.ts:3f7e0b8bcee3a3a1",
       "code": "contentEl.innerHTML = renderNotifContent(data);"
     },
     {
       "file": "src/services/notifications-settings.ts",
       "line": 772,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/services/notifications-settings.ts:77132ac7b44ebd6a",
       "code": "rowEl.innerHTML = `<div class=\"us-notif-ch-icon\">${channelIcon('telegram')}</div><div class=\"us-notif-ch-body\"><div class=\"us-notif-ch-name\">Telegram</div><div class=\"us-notif-ch-sub\">Generating code…</div></div>`;"
     },
     {
       "file": "src/services/notifications-settings.ts",
       "line": 780,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/services/notifications-settings.ts:a25d2e5e6fb4acab",
       "code": "rowEl.innerHTML = `"
     },
     {
       "file": "src/services/notifications-settings.ts",
       "line": 810,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/services/notifications-settings.ts:a25d2e5e6fb4acab",
       "code": "rowEl.innerHTML = `"
     },
     {
       "file": "src/services/notifications-settings.ts",
       "line": 832,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/services/notifications-settings.ts:728ed9d0ecf34ea6",
       "code": "rowEl.innerHTML = `<div class=\"us-notif-ch-icon\">${channelIcon('telegram')}</div><div class=\"us-notif-ch-body\"><div class=\"us-notif-ch-name\">Telegram</div><div class=\"us-notif-ch-sub us-notif-tg-expired\">Failed to generate code</div></div><div class=\"us-notif-ch-actions\"><button type=\"button\" class=\"us-notif-ch-btn us-notif-ch-btn-primary us-notif-tg-regen\">Try again</button></div>`;"
     },
     {
       "file": "src/services/notifications-settings.ts",
       "line": 915,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/services/notifications-settings.ts:38ac757a9d62c28a",
       "code": "rowEl.querySelector('.us-notif-ch-actions')!.innerHTML = `"
     },
     {
       "file": "src/services/preferences-content.ts",
       "line": 69,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/services/preferences-content.ts:d23ae2534321e81d",
       "code": "select.innerHTML = MAP_THEME_OPTIONS[provider]"
     },
     {
       "file": "src/services/preferences-content.ts",
       "line": 701,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/services/preferences-content.ts:2493e2d9ca6b2ab7",
       "code": "if (list) list.innerHTML = renderFrameworkLibraryHtml();"
     },
     {
       "file": "src/services/preferences-content.ts",
       "line": 720,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/services/preferences-content.ts:7e0149aca6838fc1",
       "code": "toast.innerHTML = success"
     },
     {
       "file": "src/settings-main.ts",
       "line": 149,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/settings-main.ts:1c3ed6efdb55a06f",
       "code": "nav.innerHTML = items.join('');"
     },
     {
       "file": "src/settings-main.ts",
       "line": 203,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/settings-main.ts:b8f51ee172b4d470",
       "code": "area.innerHTML = `"
     },
     {
       "file": "src/settings-main.ts",
       "line": 323,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/settings-main.ts:b8f51ee172b4d470",
       "code": "area.innerHTML = `"
     },
     {
       "file": "src/settings-main.ts",
       "line": 538,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/settings-main.ts:cfa807e7d642088e",
       "code": "select.innerHTML = '<option value=\"\" disabled selected>Set Ollama URL first</option>';"
     },
     {
       "file": "src/settings-main.ts",
       "line": 572,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/settings-main.ts:8f0163c2d563e110",
       "code": "select.innerHTML = options + models.map(name =>"
     },
     {
       "file": "src/settings-main.ts",
       "line": 580,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/settings-main.ts:b8f51ee172b4d470",
       "code": "area.innerHTML = `"
     },
     {
       "file": "src/settings-main.ts",
       "line": 711,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/settings-main.ts:f1517a3ef4a6e9b6",
       "code": "trafficLogEl.innerHTML = `<p class=\"diag-empty\">${t('modals.settingsWindow.noTraffic')}</p>`;"
     },
     {
       "file": "src/settings-main.ts",
       "line": 721,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/settings-main.ts:d3fadc5a598ba0bb",
       "code": "trafficLogEl.innerHTML = `<table class=\"diag-table\"><thead><tr><th>${t('modals.settingsWindow.table.time')}</th><th>${t('modals.settingsWindow.table.method')}</th><th>${t('modals.settingsWindow.table.path')}</th><th>${t('modals.settingsWindow.table.status')}</th><th>${t('modals.settingsWindow.table.duration')}</th></tr></thead><tbody>${rows}</tbody></table>`;"
     },
     {
       "file": "src/settings-main.ts",
       "line": 723,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/settings-main.ts:242d84e270138e5c",
       "code": "trafficLogEl.innerHTML = `<p class=\"diag-empty\">${t('modals.settingsWindow.sidecarUnreachable')}</p>`;"
     },
     {
       "file": "src/settings-main.ts",
       "line": 731,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/settings-main.ts:9a69c5a7f51fa408",
       "code": "if (trafficLogEl) trafficLogEl.innerHTML = `<p class=\"diag-empty\">${t('modals.settingsWindow.logCleared')}</p>`;"
     },
     {
       "file": "src/settings-main.ts",
       "line": 799,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/settings-main.ts:e185d4bf94623235",
       "code": "area.innerHTML = `<div class=\"settings-search-empty\"><p>No features match \"${escapeHtml(query)}\"</p></div>`;"
     },
     {
       "file": "src/settings-main.ts",
       "line": 839,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/settings-main.ts:b8f51ee172b4d470",
       "code": "area.innerHTML = `"
     },
     {
       "file": "src/settings-window.ts",
       "line": 66,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/settings-window.ts:738ac090bb0fd914",
       "code": "grid.innerHTML = panelHtml;"
     },
     {
       "file": "src/settings-window.ts",
       "line": 86,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/settings-window.ts:8255268ae413f228",
       "code": "appEl.innerHTML = `"
     },
     {
       "file": "src/utils/cloud-prefs-sync.ts",
       "line": 221,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/utils/cloud-prefs-sync.ts:38bb7fdc8f08dfe8",
       "code": "toast.innerHTML = `"
     },
     {
       "file": "src/utils/country-chip-picker.ts",
       "line": 110,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/utils/country-chip-picker.ts:a197efe414e98daf",
       "code": "root.innerHTML = `"
     },
     {
       "file": "src/utils/export.ts",
       "line": 361,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/utils/export.ts:fd139d9796d9574d",
       "code": "this.element.innerHTML = `"
     },
     {
       "file": "src/utils/follow-button.ts",
       "line": 307,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/utils/follow-button.ts:689bb4e5914479cb",
       "code": "host.innerHTML = renderHtml(next, props);"
     },
     {
       "file": "src/utils/followed-only-chip.ts",
       "line": 224,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/utils/followed-only-chip.ts:8da5f0791e465ef8",
       "code": "host.innerHTML = renderHtml(next);"
     },
     {
       "file": "src/utils/layer-warning.ts",
       "line": 15,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/utils/layer-warning.ts:fbf8e424278f06df",
       "code": "overlay.innerHTML = `"
     },
     {
       "file": "src/utils/notify-country-link.ts",
       "line": 190,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/utils/notify-country-link.ts:2c10f8a1e566624d",
       "code": "host.innerHTML = renderHtml(next, props);"
     },
     {
       "file": "src/utils/transit-chart.ts",
       "line": 132,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/utils/transit-chart.ts:ef7a0cd379ecf496",
       "code": "tabs.innerHTML ="
     },
     {
       "file": "src/utils/transit-chart.ts",
       "line": 168,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/utils/transit-chart.ts:8a4a78de84944a31",
       "code": "leg.innerHTML = VESSEL_LABELS.map((label, i) => {"
     },
     {
       "file": "src/utils/transit-chart.ts",
       "line": 299,
+      "kind": "direct-html-assignment",
       "fingerprint": "src/utils/transit-chart.ts:6bb46aeda9a20d55",
       "code": "tooltip.innerHTML ="
     }

@@ -53,4 +53,21 @@ describe('safe HTML lint guard', () => {
 
     assert.equal(result.status, 0, result.stderr);
   });
+
+  it('blocks unreviewed Panel setContent calls', () => {
+    const root = makeFixture('class TestPanel {\n  render(userHtml) {\n    this.setContent(`<div>${userHtml}</div>`);\n  }\n}\n');
+    const result = runGuard(root);
+
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /Panel\.setContent\(\) calls are also blocked/);
+    assert.match(result.stderr, /src\/fixture\.ts:3/);
+    assert.match(result.stderr, /\[panel-set-content\]/);
+  });
+
+  it('allows audited Panel setContent exceptions', () => {
+    const root = makeFixture('class TestPanel {\n  render(staticHtml) {\n    // wm-safe-html: audited - static trusted fixture HTML\n    this.setContent(staticHtml);\n  }\n}\n');
+    const result = runGuard(root);
+
+    assert.equal(result.status, 0, result.stderr);
+  });
 });

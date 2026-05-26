@@ -74,6 +74,21 @@ function fingerprint(file, line) {
   return `${file}:${hash}`;
 }
 
+function setContentFingerprint(file, line, lineNumber) {
+  const normalized = line.replace(/\s+/g, ' ').trim();
+  const hash = createHash('sha256').update(`setContent\0${file}\0${lineNumber}\0${normalized}`).digest('hex').slice(0, 16);
+  return `${file}:setContent:${hash}`;
+}
+
+function isSetContentCall(line) {
+  return /\.\s*setContent\s*\(/.test(line);
+}
+
+function isCommentOnlyLine(line) {
+  const trimmed = line.trim();
+  return trimmed.startsWith('//') || trimmed.startsWith('/*') || trimmed.startsWith('*');
+}
+
 export function findUnsafeHtmlAssignments(root = repoRoot) {
   const findings = [];
 
@@ -85,16 +100,32 @@ export function findUnsafeHtmlAssignments(root = repoRoot) {
       const lines = readFileSync(filePath, 'utf8').split('\n');
       for (let i = 0; i < lines.length; i += 1) {
         const line = lines[i];
-        if (!/\.(?:innerHTML|outerHTML)\s*=/.test(line)) continue;
-        if (isClearOperation(line)) continue;
-        if (hasAuditComment(lines, i)) continue;
+        if (/\.(?:innerHTML|outerHTML)\s*=/.test(line)) {
+          if (isClearOperation(line)) continue;
+          if (hasAuditComment(lines, i)) continue;
 
-        findings.push({
-          file: rel,
-          line: i + 1,
-          code: line.trim(),
-          fingerprint: fingerprint(rel, line),
-        });
+          findings.push({
+            file: rel,
+            line: i + 1,
+            kind: 'direct-html-assignment',
+            code: line.trim(),
+            fingerprint: fingerprint(rel, line),
+          });
+          continue;
+        }
+
+        if (isSetContentCall(line)) {
+          if (isCommentOnlyLine(line)) continue;
+          if (hasAuditComment(lines, i)) continue;
+
+          findings.push({
+            file: rel,
+            line: i + 1,
+            kind: 'panel-set-content',
+            code: line.trim(),
+            fingerprint: setContentFingerprint(rel, line, i + 1),
+          });
+        }
       }
     }
   }
@@ -110,10 +141,10 @@ function readBaseline(baselinePath) {
 
 function writeBaseline(baselinePath, findings) {
   const entries = findings
-    .map(({ file, line, code, fingerprint }) => ({ file, line, fingerprint, code }))
+    .map(({ file, line, kind, code, fingerprint }) => ({ file, line, kind, fingerprint, code }))
     .sort((a, b) => a.file.localeCompare(b.file) || a.line - b.line);
   const payload = {
-    note: 'Baseline of legacy direct innerHTML/outerHTML assignments for scripts/enforce-safe-html.mjs. Do not add entries for new code; route through src/utils/dom-utils.ts or add a wm-safe-html audited comment for narrow exceptions.',
+    note: 'Baseline of legacy direct innerHTML/outerHTML assignments and Panel.setContent() call sites for scripts/enforce-safe-html.mjs. Do not add entries for new code; route through src/utils/dom-utils.ts, Panel.setSafeContent(), or add a wm-safe-html audited comment for narrow exceptions.',
     entries,
   };
   writeFileSync(baselinePath, `${JSON.stringify(payload, null, 2)}\n`);
@@ -132,14 +163,15 @@ function main() {
   const baseline = readBaseline(args.baseline);
   const newFindings = findings.filter(finding => !baseline.has(finding.fingerprint));
   if (newFindings.length === 0) {
-    console.log(`Safe HTML guard passed (${findings.length} legacy assignments tracked).`);
+    console.log(`Safe HTML guard passed (${findings.length} legacy HTML sinks tracked).`);
     return;
   }
 
   console.error('Direct innerHTML/outerHTML assignment is blocked.');
-  console.error('Use setTrustedHtml()/trustedHtml() from src/utils/dom-utils.ts, use clearChildren()/replaceChildren(), or add an adjacent `wm-safe-html: audited - ...` comment for a narrow intentional exception.');
+  console.error('Panel.setContent() calls are also blocked unless they are already baselined or have an adjacent `wm-safe-html: audited - ...` comment.');
+  console.error('Use setTrustedHtml()/trustedHtml() from src/utils/dom-utils.ts, Panel.setSafeContent(), use clearChildren()/replaceChildren(), or add an adjacent audit comment for a narrow intentional exception.');
   for (const finding of newFindings.slice(0, 25)) {
-    console.error(`- ${finding.file}:${finding.line}: ${finding.code}`);
+    console.error(`- ${finding.file}:${finding.line} [${finding.kind}]: ${finding.code}`);
   }
   if (newFindings.length > 25) {
     console.error(`...and ${newFindings.length - 25} more.`);
