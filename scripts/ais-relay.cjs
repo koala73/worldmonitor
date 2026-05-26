@@ -2176,34 +2176,70 @@ const CRYPTO_PAPRIKA_MAP = _cryptoCfg.coinpaprika;
 const CRYPTO_SEED_TTL = 7200; // 2h — 1h buffer over 5min cron cadence (was 1h = 55min buffer)
 
 // Shared CoinPaprika tickers fetcher — direct first, PROXY_URL fallback.
-// Cached for 5 min so the 3 crypto seeders (crypto, stablecoins, token-panels)
-// that run in the same cycle don't triple-fetch the same 2000-item response.
-let _paprikaCached = null;
-let _paprikaCachedAt = 0;
+// Cached per ticker for 5 min so crypto, stablecoins, sectors, and token panels
+// that run in the same cycle can share overlap without fetching the full catalog.
+const _paprikaTickerCache = new Map();
 const _PAPRIKA_CACHE_MS = 5 * 60 * 1000;
-const _PAPRIKA_URL = 'https://api.coinpaprika.com/v1/tickers?quotes=USD';
 
-async function _fetchCoinPaprikaTickers() {
-  if (_paprikaCached && Date.now() - _paprikaCachedAt < _PAPRIKA_CACHE_MS) return _paprikaCached;
-  // Try direct
-  let data = await cyberHttpGetJson(_PAPRIKA_URL, { Accept: 'application/json' }, 15000);
-  if (Array.isArray(data) && data.length > 0) { _paprikaCached = data; _paprikaCachedAt = Date.now(); return data; }
-  // Fallback via proxy
-  if (!PROXY_URL) throw new Error('CoinPaprika direct failed and no PROXY_URL configured');
+async function _fetchCoinPaprikaTickerById(id) {
+  const url = `https://api.coinpaprika.com/v1/tickers/${encodeURIComponent(id)}?quotes=USD`;
+  const direct = await cyberHttpGetJson(url, { Accept: 'application/json' }, 15000);
+  if (direct && typeof direct === 'object' && direct.id) return direct;
+
+  if (!PROXY_URL) throw new Error(`CoinPaprika ${id} direct failed and no PROXY_URL configured`);
   const proxy = { ...parseProxyUrl(PROXY_URL), tls: true };
-  const resp = await ytFetchViaProxy(_PAPRIKA_URL, proxy);
-  if (!resp?.ok) throw new Error(`CoinPaprika proxy HTTP ${resp?.status || 'unavailable'}`);
-  data = JSON.parse(resp.body);
-  if (!Array.isArray(data)) throw new Error('CoinPaprika proxy returned non-array');
-  _paprikaCached = data; _paprikaCachedAt = Date.now();
+  const resp = await ytFetchViaProxy(url, proxy);
+  if (!resp?.ok) throw new Error(`CoinPaprika ${id} proxy HTTP ${resp?.status || 'unavailable'}`);
+  const data = JSON.parse(resp.body);
+  if (!data || typeof data !== 'object' || !data.id) throw new Error(`CoinPaprika ${id} proxy returned invalid ticker`);
   return data;
 }
 
+async function _fetchCoinPaprikaTickersById(paprikaIds) {
+  const ids = [...new Set(paprikaIds.filter(Boolean))];
+  if (ids.length === 0) return [];
+
+  const now = Date.now();
+  const tickers = [];
+  const misses = [];
+  for (const id of ids) {
+    const cached = _paprikaTickerCache.get(id);
+    if (cached && now - cached.cachedAt < _PAPRIKA_CACHE_MS) {
+      tickers.push(cached.ticker);
+    } else {
+      misses.push(id);
+    }
+  }
+
+  const results = await Promise.allSettled(misses.map(async (id) => {
+    const ticker = await _fetchCoinPaprikaTickerById(id);
+    _paprikaTickerCache.set(id, { ticker, cachedAt: Date.now() });
+    return ticker;
+  }));
+
+  const failures = [];
+  for (let i = 0; i < results.length; i += 1) {
+    const result = results[i];
+    if (result.status === 'fulfilled') {
+      tickers.push(result.value);
+    } else {
+      failures.push(result.reason);
+      console.warn(`[CoinPaprika] Skipping ${misses[i]}: ${result.reason?.message || result.reason}`);
+    }
+  }
+
+  if (tickers.length === 0 && failures.length > 0) {
+    throw new Error(`All ${failures.length} CoinPaprika ticker request(s) failed`);
+  }
+
+  return tickers;
+}
+
 async function fetchCryptoCoinPaprika() {
-  const data = await _fetchCoinPaprikaTickers();
-  const paprikaIds = new Set(CRYPTO_IDS.map((id) => CRYPTO_PAPRIKA_MAP[id]).filter(Boolean));
+  const paprikaIds = CRYPTO_IDS.map((id) => CRYPTO_PAPRIKA_MAP[id]).filter(Boolean);
+  const data = await _fetchCoinPaprikaTickersById(paprikaIds);
   const reverseMap = Object.fromEntries(Object.entries(CRYPTO_PAPRIKA_MAP).map(([g, p]) => [p, g]));
-  return data.filter((t) => paprikaIds.has(t.id)).map((t) => ({
+  return data.map((t) => ({
     id: reverseMap[t.id] || t.id, current_price: t.quotes.USD.price,
     price_change_percentage_24h: t.quotes.USD.percent_change_24h,
     sparkline_in_7d: undefined, symbol: t.symbol.toLowerCase(), name: t.name,
@@ -2257,11 +2293,11 @@ const STABLECOIN_PAPRIKA_MAP = { tether: 'usdt-tether', 'usd-coin': 'usdc-usd-co
 const STABLECOIN_SEED_TTL = 7200; // 2h — 1h buffer over 5min cron cadence (was 1h = 55min buffer)
 
 async function fetchStablecoinCoinPaprika() {
-  const data = await _fetchCoinPaprikaTickers();
   const ids = STABLECOIN_IDS.split(',');
-  const paprikaIds = new Set(ids.map((id) => STABLECOIN_PAPRIKA_MAP[id]).filter(Boolean));
+  const paprikaIds = ids.map((id) => STABLECOIN_PAPRIKA_MAP[id]).filter(Boolean);
+  const data = await _fetchCoinPaprikaTickersById(paprikaIds);
   const reverseMap = Object.fromEntries(Object.entries(STABLECOIN_PAPRIKA_MAP).map(([g, p]) => [p, g]));
-  return data.filter((t) => paprikaIds.has(t.id)).map((t) => ({
+  return data.map((t) => ({
     id: reverseMap[t.id] || t.id, current_price: t.quotes.USD.price,
     price_change_percentage_24h: t.quotes.USD.percent_change_24h,
     price_change_percentage_7d_in_currency: t.quotes.USD.percent_change_7d,
@@ -2319,11 +2355,9 @@ async function seedCryptoSectors() {
   } catch (err) {
     console.warn(`[CryptoSectors] CoinGecko failed: ${err.message} — trying CoinPaprika`);
     try {
-      const paprika = await _fetchCoinPaprikaTickers();
-      data = paprika.filter((t) => {
-        const geckoId = Object.entries(CRYPTO_PAPRIKA_MAP).find(([, p]) => p === t.id)?.[0];
-        return geckoId && allIds.includes(geckoId);
-      }).map((t) => {
+      const paprikaIds = allIds.map((id) => CRYPTO_PAPRIKA_MAP[id]).filter(Boolean);
+      const paprika = await _fetchCoinPaprikaTickersById(paprikaIds);
+      data = paprika.map((t) => {
         const geckoId = Object.entries(CRYPTO_PAPRIKA_MAP).find(([, p]) => p === t.id)?.[0] || t.id;
         return { id: geckoId, price_change_percentage_24h: t.quotes?.USD?.percent_change_24h ?? 0 };
       });
@@ -2367,10 +2401,10 @@ function _mapTokens(ids, meta, byId) {
 }
 
 async function fetchTokenPanelsCoinPaprika(allIds) {
-  const data = await _fetchCoinPaprikaTickers();
-  const paprikaIds = new Set(allIds.map((id) => TOKEN_PANELS_PAPRIKA_MAP[id]).filter(Boolean));
+  const paprikaIds = allIds.map((id) => TOKEN_PANELS_PAPRIKA_MAP[id]).filter(Boolean);
+  const data = await _fetchCoinPaprikaTickersById(paprikaIds);
   const reverseMap = Object.fromEntries(Object.entries(TOKEN_PANELS_PAPRIKA_MAP).map(([g, p]) => [p, g]));
-  return data.filter((t) => paprikaIds.has(t.id)).map((t) => ({
+  return data.map((t) => ({
     id: reverseMap[t.id] || t.id,
     current_price: t.quotes.USD.price,
     price_change_percentage_24h: t.quotes.USD.percent_change_24h,

@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 import { fetchCoinPaprikaTickersById } from '../scripts/_seed-utils.mjs';
 
@@ -85,5 +86,16 @@ describe('fetchCoinPaprikaTickersById', () => {
     } finally {
       console.warn = originalWarn;
     }
+  });
+});
+
+describe('ais-relay CoinPaprika fallback', () => {
+  it('does not fetch the full CoinPaprika ticker catalog in the primary market seed path', () => {
+    const src = readFileSync(new URL('../scripts/ais-relay.cjs', import.meta.url), 'utf8');
+
+    assert.doesNotMatch(src, /api\.coinpaprika\.com\/v1\/tickers\?quotes=USD/);
+    assert.match(src, /api\.coinpaprika\.com\/v1\/tickers\/\$\{encodeURIComponent\(id\)\}\?quotes=USD/);
+    assert.match(src, /async function _fetchCoinPaprikaTickersById\(paprikaIds\)/);
+    assert.match(src, /Promise\.allSettled\(misses\.map/);
   });
 });
