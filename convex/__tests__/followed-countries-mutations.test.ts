@@ -281,7 +281,12 @@ describe("followCountry — free-tier cap", () => {
     expect(await readUserFollows(t, USER_A.subject)).toEqual(["GB", "JP", "US"]);
   });
 
-  test("free user with 3 rows → followCountry('FR') throws FREE_CAP with currentCount=3, limit=3", async () => {
+  test("free user with 3 rows → followCountry('FR') returns FREE_CAP with currentCount=3, limit=3", async () => {
+    // Refactored from throw → return-discriminated-union. Convex auto-Sentry
+    // forwards every server throw to our DSN; FREE_CAP is an expected
+    // business signal the client handles gracefully, so return instead of
+    // throw eliminates the noise source. See companion skill
+    // `convex-gotchas/reference/convex-autosentry-forwards-intentional-convexerror-throws.md`.
     const t = await makeT();
     const asUser = t.withIdentity(USER_A);
     await asUser.mutation(api.followedCountries.followCountry, {
@@ -294,11 +299,16 @@ describe("followCountry — free-tier cap", () => {
       country: "DE",
     });
 
-    await expect(
-      asUser.mutation(api.followedCountries.followCountry, {
-        country: "FR",
-      }),
-    ).rejects.toThrow(/FREE_CAP/);
+    const result = await asUser.mutation(
+      api.followedCountries.followCountry,
+      { country: "FR" },
+    );
+    expect(result).toEqual({
+      ok: false,
+      reason: "FREE_CAP",
+      currentCount: 3,
+      limit: 3,
+    });
     // Counter for FR must NOT have been incremented (atomicity).
     expect(await readCounter(t, "FR")).toBe(0);
     expect(await readUserFollows(t, USER_A.subject)).toEqual([
@@ -322,11 +332,16 @@ describe("followCountry — free-tier cap", () => {
     await asUser.mutation(api.followedCountries.followCountry, {
       country: "DE",
     });
-    await expect(
-      asUser.mutation(api.followedCountries.followCountry, {
-        country: "FR",
-      }),
-    ).rejects.toThrow(/FREE_CAP/);
+    const result = await asUser.mutation(
+      api.followedCountries.followCountry,
+      { country: "FR" },
+    );
+    expect(result).toEqual({
+      ok: false,
+      reason: "FREE_CAP",
+      currentCount: 3,
+      limit: 3,
+    });
   });
 });
 
@@ -963,24 +978,29 @@ describe("per-user serialization — cap-bypass mitigation (P0)", () => {
     const asUser = t.withIdentity(USER_A);
 
     // Both calls target NEW countries. Under our fix: post-serialization,
-    // second call sees count=3 if the first succeeded, throws FREE_CAP.
-    const results = await Promise.allSettled([
+    // second call sees count=3 if the first succeeded, returns FREE_CAP
+    // (refactored from throw → return; see companion skill
+    // `convex-gotchas/reference/convex-autosentry-forwards-intentional-convexerror-throws.md`).
+    const [r1, r2] = await Promise.all([
       asUser.mutation(api.followedCountries.followCountry, { country: "GB" }),
       asUser.mutation(api.followedCountries.followCountry, { country: "JP" }),
     ]);
 
-    const fulfilled = results.filter((r) => r.status === "fulfilled");
-    const rejected = results.filter((r) => r.status === "rejected");
-
-    // Either both fit (one succeeded → cap reached → second throws) OR
-    // both succeed because cap is exactly 3 and seeds put us at 2; here
-    // (2 + 2 attempts = 4 attempted, cap=3) → exactly one succeeds and
-    // one throws FREE_CAP.
-    expect(fulfilled.length).toBe(1);
-    expect(rejected.length).toBe(1);
-    expect((rejected[0] as PromiseRejectedResult).reason.message).toMatch(
-      /FREE_CAP/,
+    // (2 seeded + 2 attempted = 4 attempted, cap=3) → exactly one succeeds
+    // and one returns FREE_CAP. Order is implementation-defined under
+    // convex-test's serialization; we don't pin which one wins.
+    const successes = [r1, r2].filter((r) => r.ok === true);
+    const capRefusals = [r1, r2].filter(
+      (r) => r.ok === false && r.reason === "FREE_CAP",
     );
+    expect(successes.length).toBe(1);
+    expect(capRefusals.length).toBe(1);
+    expect(capRefusals[0]).toEqual({
+      ok: false,
+      reason: "FREE_CAP",
+      currentCount: 3,
+      limit: 3,
+    });
 
     // Final row count must NEVER exceed cap.
     const finalCount = (await readUserFollows(t, USER_A.subject)).length;
@@ -1131,16 +1151,29 @@ describe("per-user serialization — cap-bypass mitigation (P0)", () => {
     expect(await readUserMetaCount(t, USER_A.subject)).toBe(0);
   });
 
-  test("FREE_CAP throw rolls back all writes — meta is unchanged", async () => {
+  test("FREE_CAP return skips all writes — meta is unchanged (no rollback needed: the early return happens before any write)", async () => {
+    // Refactored from throw → return-discriminated-union. The cap check
+    // now `return`s BEFORE any db.insert / counter increment / meta patch,
+    // so no transaction rollback is needed — the writes simply never
+    // happen. Same observable end state as the old throw-rolls-back path.
+    // See companion skill
+    // `convex-gotchas/reference/convex-autosentry-forwards-intentional-convexerror-throws.md`.
     const t = await makeT();
     // Free user at cap.
     await seedFollowedCountries(t, USER_A.subject, ["US", "GB", "JP"]);
     expect(await readUserMetaCount(t, USER_A.subject)).toBe(3);
     const asUser = t.withIdentity(USER_A);
 
-    await expect(
-      asUser.mutation(api.followedCountries.followCountry, { country: "FR" }),
-    ).rejects.toThrow(/FREE_CAP/);
+    const result = await asUser.mutation(
+      api.followedCountries.followCountry,
+      { country: "FR" },
+    );
+    expect(result).toEqual({
+      ok: false,
+      reason: "FREE_CAP",
+      currentCount: 3,
+      limit: 3,
+    });
 
     // Meta count, row count, and counter for FR must all be unchanged.
     expect(await readUserMetaCount(t, USER_A.subject)).toBe(3);
