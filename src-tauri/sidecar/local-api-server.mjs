@@ -116,6 +116,23 @@ function firstIPv4Address(addresses = []) {
   return addresses.find((addr) => isIP(addr) === 4) ?? null;
 }
 
+function firstIPv6Address(addresses = []) {
+  return addresses.find((addr) => isIP(addr) === 6) ?? null;
+}
+
+// IPv4-first, IPv6 fallback. Returning the family alongside the address lets
+// the caller pin both the lookup callback AND http(s).request({ family })
+// to the same family — otherwise an IPv6-only public hostname would be
+// validated against AAAA records but reconnected under family:4 by the OS,
+// reopening the TOCTOU window the pinned lookup is meant to close.
+function pickPinnedAddress(addresses = []) {
+  const v4 = firstIPv4Address(addresses);
+  if (v4) return { address: v4, family: 4 };
+  const v6 = firstIPv6Address(addresses);
+  if (v6) return { address: v6, family: 6 };
+  return null;
+}
+
 function makePinnedLookup(address, family = 4) {
   return (_hostname, options, callback) => {
     const cb = typeof options === 'function' ? options : callback;
@@ -177,17 +194,20 @@ globalThis.fetch = async function ipv4Fetch(input, init) {
         : Array.isArray(rawHeaders) ? Object.fromEntries(rawHeaders) : rawHeaders;
       Object.assign(headers, h);
     }
+    const pinned = isAllowedPrivateSidecarFetch(url) ? null : pickPinnedAddress(safety.resolvedAddresses);
     const requestOptions = {
       hostname: url.hostname,
       port: url.port || (url.protocol === 'https:' ? 443 : 80),
       path: url.pathname + url.search,
       method,
       headers,
-      family: 4,
+      // Default to IPv4 (broken-IPv6 servers like EIA/NASA FIRMS); when we
+      // pinned a specific address, use its family so http(s).request and the
+      // lookup callback agree.
+      family: pinned?.family ?? 4,
     };
-    const pinnedV4 = isAllowedPrivateSidecarFetch(url) ? null : firstIPv4Address(safety.resolvedAddresses);
-    if (pinnedV4) {
-      requestOptions.lookup = makePinnedLookup(pinnedV4, 4);
+    if (pinned) {
+      requestOptions.lookup = makePinnedLookup(pinned.address, pinned.family);
     }
     return await new Promise((resolve, reject) => {
       const req = mod.request(requestOptions, (res) => {
@@ -628,6 +648,15 @@ async function importHandler(modulePath) {
   }
 }
 
+function remoteBaseLooksPrivate(remoteBase) {
+  let parsed;
+  try { parsed = new URL(remoteBase); } catch { return false; }
+  const hostname = parsed.hostname.replace(/^\[|\]$/g, '');
+  if (hostname === 'localhost') return true;
+  if (isIP(hostname)) return isPrivateIP(hostname);
+  return false;
+}
+
 function resolveConfig(options = {}) {
   const port = Number(options.port ?? process.env.LOCAL_API_PORT ?? 46123);
   const remoteBase = String(options.remoteBase ?? process.env.LOCAL_API_REMOTE_BASE ?? 'https://api.worldmonitor.app').replace(/\/$/, '');
@@ -644,10 +673,23 @@ function resolveConfig(options = {}) {
   const cloudFallback = mode === 'docker' ? false : requestedFallback;
   // Programmatic dev/test escape hatch only; CLI/env startup keeps private remoteBase blocked.
   const allowPrivateRemoteBase = options.allowPrivateRemoteBase === true;
-  if (mode === 'docker' && requestedFallback) {
-    (options.logger ?? console).warn('[local-api] Cloud fallback disabled in Docker mode (self-hosted instances must not proxy to api.worldmonitor.app)');
-  }
+  // Programmatic-only test escape hatch for adding extra origins to the
+  // private-fetch allowlist (e.g. distinct upstream test servers). Mirrors
+  // allowPrivateRemoteBase: no env-var path, so production startup can't
+  // widen the SSRF boundary by accident.
+  const allowPrivateFetchOrigins = Array.isArray(options.allowPrivateFetchOrigins)
+    ? options.allowPrivateFetchOrigins.filter((o) => typeof o === 'string' && o.length > 0)
+    : [];
   const logger = options.logger ?? console;
+  if (mode === 'docker' && requestedFallback) {
+    logger.warn('[local-api] Cloud fallback disabled in Docker mode (self-hosted instances must not proxy to api.worldmonitor.app)');
+  }
+  if (cloudFallback && !allowPrivateRemoteBase && remoteBaseLooksPrivate(remoteBase)) {
+    logger.warn(
+      `[local-api] cloudFallback enabled but remoteBase=${remoteBase} is private/loopback; ` +
+      'requests will be blocked by SSRF protection. Pass allowPrivateRemoteBase=true programmatically for dev/test.'
+    );
+  }
 
   return {
     port,
@@ -658,6 +700,7 @@ function resolveConfig(options = {}) {
     mode,
     cloudFallback,
     allowPrivateRemoteBase,
+    allowPrivateFetchOrigins,
     logger,
   };
 }
@@ -701,7 +744,17 @@ async function tryCloudFallback(requestUrl, req, context, reason) {
     }
     return resp;
   } catch (error) {
-    context.logger.error('[local-api] cloud fallback failed', requestUrl.pathname, error);
+    if (error?.code === 'ERR_SSRF_BLOCKED') {
+      // error.message already carries "SSRF blocked: <reason> (url=<redacted>)".
+      // Surface the actionable remediation so a misconfigured LOCAL_API_REMOTE_BASE
+      // doesn't read as a vague 5xx.
+      context.logger.error(
+        `[local-api] cloud fallback blocked by SSRF protection for ${requestUrl.pathname}: ${error.message}. ` +
+        'If remoteBase intentionally points at a private/loopback host, pass allowPrivateRemoteBase=true programmatically.'
+      );
+    } else {
+      context.logger.error('[local-api] cloud fallback failed', requestUrl.pathname, error);
+    }
     return null;
   }
 }
@@ -1669,6 +1722,9 @@ export async function createLocalApiServer(options = {}) {
       const extraAllowedPrivateOrigins = [];
       if (context.allowPrivateRemoteBase) {
         try { extraAllowedPrivateOrigins.push(new URL(context.remoteBase).origin); } catch {}
+      }
+      for (const origin of context.allowPrivateFetchOrigins) {
+        try { extraAllowedPrivateOrigins.push(new URL(origin).origin); } catch {}
       }
       unregisterSelfFetchOrigins = registerSidecarAllowedPrivateFetchOrigins(boundPort, extraAllowedPrivateOrigins);
 

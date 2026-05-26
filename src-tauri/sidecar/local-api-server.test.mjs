@@ -415,16 +415,25 @@ test('replaces browser origin with localhost origin for local handlers', async (
 });
 
 test('preserves Request body when handler uses fetch(Request)', async () => {
+  // Use a DISTINCT upstream server (not the sidecar itself) so this test
+  // exercises real "handler proxies to external host" semantics. The upstream
+  // is on 127.0.0.1, so it must be opted into the SSRF allowlist via
+  // allowPrivateFetchOrigins — production startup has no such opt-in.
+  let receivedBody = '';
+  const upstream = createServer((req, res) => {
+    const chunks = [];
+    req.on('data', (chunk) => chunks.push(chunk));
+    req.on('end', () => {
+      receivedBody = Buffer.concat(chunks).toString('utf8');
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ receivedBody }));
+    });
+  });
+  const upstreamPort = await listen(upstream);
+  const upstreamOrigin = `http://127.0.0.1:${upstreamPort}`;
+  process.env.WM_TEST_UPSTREAM = `${upstreamOrigin}/echo`;
+
   const localApi = await setupApiDir({
-    'echo-body.js': `
-      export default async function handler(request) {
-        const receivedBody = await request.text();
-        return new Response(JSON.stringify({ receivedBody }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' }
-        });
-      }
-    `,
     'request-proxy.js': `
       export default async function handler() {
         const request = new Request(process.env.WM_TEST_UPSTREAM, {
@@ -445,34 +454,39 @@ test('preserves Request body when handler uses fetch(Request)', async () => {
   const app = await createLocalApiServer({
     port: 0,
     apiDir: localApi.apiDir,
+    allowPrivateFetchOrigins: [upstreamOrigin],
     logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
-  process.env.WM_TEST_UPSTREAM = `http://127.0.0.1:${port}/api/echo-body`;
 
   try {
     const response = await fetch(`http://127.0.0.1:${port}/api/request-proxy`);
     assert.equal(response.status, 200);
     const body = await response.json();
     assert.equal(body.receivedBody.includes('"secret":"keep-body"'), true);
+    assert.equal(receivedBody.includes('"secret":"keep-body"'), true);
   } finally {
     delete process.env.WM_TEST_UPSTREAM;
     await app.close();
     await localApi.cleanup();
+    await new Promise((resolve, reject) => {
+      upstream.close((error) => (error ? reject(error) : resolve()));
+    });
   }
 });
 
 test('returns local handler error when fetch(Request) uses a consumed body', async () => {
+  let upstreamHits = 0;
+  const upstream = createServer((_req, res) => {
+    upstreamHits += 1;
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ ok: true }));
+  });
+  const upstreamPort = await listen(upstream);
+  const upstreamOrigin = `http://127.0.0.1:${upstreamPort}`;
+  process.env.WM_TEST_UPSTREAM = `${upstreamOrigin}/echo`;
+
   const localApi = await setupApiDir({
-    'echo-body.js': `
-      export default async function handler(request) {
-        const receivedBody = await request.text();
-        return new Response(JSON.stringify({ receivedBody }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' }
-        });
-      }
-    `,
     'request-consumed.js': `
       export default async function handler() {
         const request = new Request(process.env.WM_TEST_UPSTREAM, {
@@ -493,10 +507,10 @@ test('returns local handler error when fetch(Request) uses a consumed body', asy
   const app = await createLocalApiServer({
     port: 0,
     apiDir: localApi.apiDir,
+    allowPrivateFetchOrigins: [upstreamOrigin],
     logger: { log() { }, warn() { }, error() { } },
   });
   const { port } = await app.start();
-  process.env.WM_TEST_UPSTREAM = `http://127.0.0.1:${port}/api/echo-body`;
 
   try {
     const response = await fetch(`http://127.0.0.1:${port}/api/request-consumed`);
@@ -505,10 +519,14 @@ test('returns local handler error when fetch(Request) uses a consumed body', asy
     assert.equal(body.error, 'Local handler error');
     assert.equal(typeof body.reason, 'string');
     assert.equal(body.reason.length > 0, true);
+    assert.equal(upstreamHits, 0);
   } finally {
     delete process.env.WM_TEST_UPSTREAM;
     await app.close();
     await localApi.cleanup();
+    await new Promise((resolve, reject) => {
+      upstream.close((error) => (error ? reject(error) : resolve()));
+    });
   }
 });
 
