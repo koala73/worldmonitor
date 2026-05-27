@@ -28,7 +28,8 @@ const CORE_PANEL_FILES = new Set([
   'WorldClockPanel', 'AirlineIntelPanel',
   // Shared across full + finance + commodity (3 variants)
   // Note: CommoditiesPanel and HeatmapPanel are sub-exports of MarketPanel.ts, not standalone files
-  'EnergyComplexPanel', 'OilInventoriesPanel',
+  'EnergyComplexPanel', 'OilInventoriesPanel', 'LatestBriefPanel',
+  'PipelineStatusPanel', 'PositioningPanel',
   'TradePolicyPanel', 'SupplyChainPanel',
   'SanctionsPressurePanel', 'GulfEconomiesPanel', 'ConsumerPricesPanel',
   'LiquidityShiftsPanel', 'GoldIntelligencePanel',
@@ -64,6 +65,8 @@ const FULL_PANEL_FILES = new Set([
   'MarketImplicationsPanel', 'SatelliteFiresPanel', 'HormuzPanel',
   'UcdpEventsPanel', 'ClimateNewsPanel', 'DiseaseOutbreaksPanel',
   'SocialVelocityPanel', 'EnergyCrisisPanel',
+  'ChokepointStripPanel', 'StorageFacilityMapPanel', 'FuelShortagePanel',
+  'EnergyDisruptionsPanel', 'EnergyRiskOverviewPanel',
   // Full-only panels
   'ForecastPanel', 'ChatAnalystPanel', 'CrossSourceSignalsPanel',
   'DeductionPanel', 'GeoHubsPanel',

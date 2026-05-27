@@ -144,6 +144,8 @@ export class App {
   private visiblePanelPrimed = new Set<string>();
   private visiblePanelPrimeRaf: number | null = null;
   private followedCountriesCapDropToastTimer: number | null = null;
+  private mapModulesInitialized = false;
+  private pendingMobileGeoCoords: PreciseCoordinates | null = null;
   private bootstrapHydrationState: BootstrapHydrationState = getBootstrapHydrationState();
   private cachedModeBannerEl: HTMLElement | null = null;
   private readonly handleViewportPrime = (): void => {
@@ -166,7 +168,11 @@ export class App {
 
   private isPanelNearViewport(panelId: string, marginPx = 400): boolean {
     const panel = this.state.panels[panelId] as { isNearViewport?: (marginPx?: number) => boolean } | undefined;
-    return panel?.isNearViewport?.(marginPx) ?? false;
+    if (panel?.isNearViewport?.(marginPx)) return true;
+    const el = document.querySelector(`[data-panel="${CSS.escape(panelId)}"]`) as HTMLElement | null;
+    if (!el || el.hidden || el.classList.contains('hidden')) return false;
+    const rect = el.getBoundingClientRect();
+    return rect.bottom >= -marginPx && rect.top <= window.innerHeight + marginPx;
   }
 
   private isAnyPanelNearViewport(panelIds: string[], marginPx = 400): boolean {
@@ -184,6 +190,24 @@ export class App {
 
   private shouldRefreshCorrelation(): boolean {
     return this.isAnyPanelNearViewport(['military-correlation', 'escalation-correlation', 'economic-correlation', 'disaster-correlation']);
+  }
+
+  private setupMapReadyModules(): void {
+    if (this.mapModulesInitialized || !this.state.map) return;
+    this.mapModulesInitialized = true;
+    this.eventHandlers.setupMapLayerHandlers();
+    this.countryIntel.init();
+    // Unblock any WebMCP tool invocations that arrived during startup.
+    this.resolveUiReady();
+    this.eventHandlers.setupUrlStateSync();
+    if (this.pendingMobileGeoCoords) {
+      this.state.map.setCenter(this.pendingMobileGeoCoords.lat, this.pendingMobileGeoCoords.lon, 6);
+      this.pendingMobileGeoCoords = null;
+    }
+    this.state.countryBriefPage?.onStateChange?.(() => {
+      this.eventHandlers.syncUrlState();
+    });
+    this.handleDeepLinks();
   }
 
   private getCachedBootstrapUpdatedAt(): number | null {
@@ -856,6 +880,8 @@ export class App {
       loadAllData: () => this.dataLoader.loadAllData(),
       updateMonitorResults: () => this.dataLoader.updateMonitorResults(),
       loadSecurityAdvisories: () => this.dataLoader.loadSecurityAdvisories(),
+      onMapReady: () => this.setupMapReadyModules(),
+      onPanelReady: () => this.handleViewportPrime(),
     });
 
     this.eventHandlers = new EventHandlerManager(this.state, {
@@ -1136,10 +1162,14 @@ export class App {
 
     const resolvedRegion = await resolveUserRegion();
     this.state.resolvedLocation = resolvedRegion;
+    const initState = parseMapUrlState(window.location.search, this.state.mapLayers);
+    this.pendingDeepLinkCountry = initState.country ?? null;
+    this.pendingDeepLinkExpanded = initState.expanded === true;
+    const earlyParams = new URLSearchParams(window.location.search);
+    this.pendingDeepLinkStoryCode = earlyParams.get('c') ?? null;
 
-    // Phase 1: Layout (creates map + panels — they'll find hydrated data).
-    // init() is async so the dynamic MapContainer import can resolve before
-    // downstream code (e.g. mobileGeoCoords→state.map.setCenter) reads ctx.map.
+    // Phase 1: Layout (registers lazy map + panels — they'll find hydrated data).
+    // Map-dependent modules are wired from onMapReady after MapContainer loads.
     await this.panelLayout.init();
     showProBanner(this.state.container);
     this.updateConnectivityUi();
@@ -1147,8 +1177,12 @@ export class App {
     window.addEventListener('offline', this.handleConnectivityChange);
 
     const mobileGeoCoords = await geoCoordsPromise;
-    if (mobileGeoCoords && this.state.map) {
-      this.state.map.setCenter(mobileGeoCoords.lat, mobileGeoCoords.lon, 6);
+    if (mobileGeoCoords) {
+      if (this.state.map) {
+        this.state.map.setCenter(mobileGeoCoords.lat, mobileGeoCoords.lon, 6);
+      } else {
+        this.pendingMobileGeoCoords = mobileGeoCoords;
+      }
     }
 
     // Happy variant: pre-populate panels from persistent cache for instant render
@@ -1222,30 +1256,11 @@ export class App {
       });
     }
 
-    // Phase 4: SearchManager, MapLayerHandlers, CountryIntel
+    // Phase 4: SearchManager. Map-dependent modules are wired from onMapReady.
     this.searchManager.init();
-    this.eventHandlers.setupMapLayerHandlers();
-    this.countryIntel.init();
-    // Unblock any WebMCP tool invocations that arrived during startup.
-    this.resolveUiReady();
 
-    // Phase 5: Event listeners + URL sync
+    // Phase 5: Event listeners. Map URL sync is wired from onMapReady.
     this.eventHandlers.init();
-    // Capture deep link params BEFORE URL sync overwrites them
-    const initState = parseMapUrlState(window.location.search, this.state.mapLayers);
-    this.pendingDeepLinkCountry = initState.country ?? null;
-    this.pendingDeepLinkExpanded = initState.expanded === true;
-    const earlyParams = new URLSearchParams(window.location.search);
-    this.pendingDeepLinkStoryCode = earlyParams.get('c') ?? null;
-    this.eventHandlers.setupUrlStateSync();
-
-    this.state.countryBriefPage?.onStateChange?.(() => {
-      this.eventHandlers.syncUrlState();
-    });
-
-    // Start deep link handling early — its retry loop polls hasSufficientData()
-    // independently, so it must not be gated behind loadAllData() which can hang.
-    this.handleDeepLinks();
 
     // Phase 6: Data loading
     this.dataLoader.syncDataFreshnessWithLayers();
