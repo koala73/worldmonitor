@@ -50,7 +50,7 @@ async function nextAnimationFrame(page: Page): Promise<void> {
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
 }
 
-async function dragPanelToPoint(page: Page, sourceId: string, x: number, y: number): Promise<void> {
+async function beginDragToPoint(page: Page, sourceId: string, x: number, y: number): Promise<void> {
   const sourceHeader = page.locator(`${panelSelector(sourceId)} > .panel-header`).first();
   await expect(sourceHeader).toBeVisible();
   const sourceBox = await boundingBoxOrThrow(sourceHeader, `source panel ${sourceId}`);
@@ -62,7 +62,15 @@ async function dragPanelToPoint(page: Page, sourceId: string, x: number, y: numb
   await page.mouse.move(startX + 12, startY + 12, { steps: 3 });
   await page.mouse.move(x, y, { steps: 12 });
   await nextAnimationFrame(page);
+}
+
+async function releaseDrag(page: Page): Promise<void> {
   await page.mouse.up();
+}
+
+async function dragPanelToPoint(page: Page, sourceId: string, x: number, y: number): Promise<void> {
+  await beginDragToPoint(page, sourceId, x, y);
+  await releaseDrag(page);
 }
 
 async function dragPanelBelowThreshold(page: Page, sourceId: string): Promise<void> {
@@ -78,7 +86,7 @@ async function dragPanelBelowThreshold(page: Page, sourceId: string): Promise<vo
   await page.mouse.up();
 }
 
-async function dragPanelToPanel(
+async function beginDragToPanel(
   page: Page,
   sourceId: string,
   targetId: string,
@@ -89,7 +97,17 @@ async function dragPanelToPanel(
   const targetBox = await boundingBoxOrThrow(target, `target panel ${targetId}`);
   const targetX = targetBox.x + targetBox.width / 2;
   const targetY = targetBox.y + targetBox.height * (position === 'upper' ? 0.25 : 0.75);
-  await dragPanelToPoint(page, sourceId, targetX, targetY);
+  await beginDragToPoint(page, sourceId, targetX, targetY);
+}
+
+async function dragPanelToPanel(
+  page: Page,
+  sourceId: string,
+  targetId: string,
+  position: 'upper' | 'lower',
+): Promise<void> {
+  await beginDragToPanel(page, sourceId, targetId, position);
+  await releaseDrag(page);
 }
 
 async function sameGridGapPoint(page: Page, sourceId: string): Promise<{ x: number; y: number }> {
@@ -214,21 +232,9 @@ test.describe('panel drag reorder semantics', () => {
     expect(sourceId && targetId).toBeTruthy();
     const storedBefore = await page.evaluate(() => localStorage.getItem('panel-order'));
 
-    const target = page.locator(panelSelector(targetId!)).first();
-    await target.scrollIntoViewIfNeeded();
-    const targetBox = await boundingBoxOrThrow(target, `target panel ${targetId}`);
-    const sourceHeader = page.locator(`${panelSelector(sourceId!)} > .panel-header`).first();
-    const sourceBox = await boundingBoxOrThrow(sourceHeader, `source panel ${sourceId}`);
-    const startX = sourceBox.x + Math.min(48, sourceBox.width / 2);
-    const startY = sourceBox.y + sourceBox.height / 2;
-
-    await page.mouse.move(startX, startY);
-    await page.mouse.down();
-    await page.mouse.move(startX + 12, startY + 12, { steps: 3 });
-    await page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height * 0.75, { steps: 12 });
-    await nextAnimationFrame(page);
+    await beginDragToPanel(page, sourceId!, targetId!, 'lower');
     await page.keyboard.press('Escape');
-    await page.mouse.up();
+    await releaseDrag(page);
 
     await expect.poll(async () => await panelIds(page)).toEqual(before);
     expect(await page.evaluate(() => localStorage.getItem('panel-order'))).toBe(storedBefore);

@@ -2152,8 +2152,13 @@ export class PanelLayoutManager implements AppModule {
       if (panel) {
         if (panel === el || panel.parentElement !== grid) return false;
 
+        if (insertBefore) {
+          if (el.nextSibling === panel) return false;
+        } else {
+          if (panel.nextSibling === el) return false;
+        }
+
         const referenceNode = insertBefore ? panel : panel.nextSibling;
-        if (referenceNode === el || (insertBefore && el.nextSibling === panel)) return false;
         if (referenceNode && referenceNode.parentNode !== grid) return false;
 
         grid.insertBefore(el, referenceNode);
