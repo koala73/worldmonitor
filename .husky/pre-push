@@ -110,10 +110,21 @@ if echo "$CHANGED_FILES" | grep -q "^scripts/"; then RUN_SEED=true; fi
 if echo "$CHANGED_FILES" | grep -q "^server/"; then RUN_SERVER=true; fi
 if echo "$CHANGED_FILES" | grep -q "resilience"; then RUN_RESILIENCE=true; fi
 if echo "$CHANGED_FILES" | grep -q "^src/\|^api/"; then RUN_FRONTEND=true; fi
-if echo "$CHANGED_FILES" | grep -q "^tests/\|package.json\|tsconfig"; then RUN_ALL=true; fi
+# RUN_ALL fires only on config-impacting changes (package.json, tsconfig,
+# global type rewrites). Touching tests/ used to trigger RUN_ALL too, but
+# the full suite has grown past the 300s timeout (357s as of 2026-05-27,
+# 10072 tests) so every tests/-touching PR was failing the hook by timeout
+# alone. The TESTS_CHANGED capture below runs the changed test files
+# specifically — full-suite verification still happens in CI on PR open.
+if echo "$CHANGED_FILES" | grep -q "package.json\|tsconfig"; then RUN_ALL=true; fi
+
+# Test files that changed in this push — run these specifically when
+# RUN_ALL didn't fire, so editing a test doesn't escalate to the full
+# 10k-test suite. Matches both .mjs and .mts under tests/.
+TESTS_CHANGED=$(echo "$CHANGED_FILES" | grep -E "^tests/.*\.test\.(mjs|mts)$" || true)
 
 if [ "$RUN_ALL" = true ]; then
-  echo "Running full unit test suite (test files or config changed)..."
+  echo "Running full unit test suite (config changed)..."
   timeout 300 npx tsx --test tests/*.test.mjs tests/*.test.mts || exit 1
 else
   if [ "$RUN_RESILIENCE" = true ]; then
@@ -133,8 +144,13 @@ else
     echo "Running server handler tests (server/ changed)..."
     timeout 120 npx tsx --test tests/handlers.test.mts tests/server-handlers.test.mjs || exit 1
   fi
-  if [ "$RUN_RESILIENCE" = false ] && [ "$RUN_SEED" = false ] && [ "$RUN_SERVER" = false ]; then
-    echo "Skipping unit tests (frontend-only changes)."
+  if [ -n "$TESTS_CHANGED" ]; then
+    echo "Running changed test files only..."
+    # shellcheck disable=SC2086 — intentional word-split for tsx --test arglist
+    timeout 120 npx tsx --test $TESTS_CHANGED || exit 1
+  fi
+  if [ "$RUN_RESILIENCE" = false ] && [ "$RUN_SEED" = false ] && [ "$RUN_SERVER" = false ] && [ -z "$TESTS_CHANGED" ]; then
+    echo "Skipping unit tests (frontend-only changes; CI runs the full suite on PR open)."
   fi
 fi
 
