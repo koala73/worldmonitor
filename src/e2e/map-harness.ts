@@ -403,7 +403,6 @@ const commodityAllLayersEnabled: MapLayers = {
 
 const energyAllLayersEnabled: MapLayers = {
   ...allLayersEnabled,
-  commodityPorts: true,
   storageFacilities: true,
   fuelShortages: true,
   liveTankers: true,

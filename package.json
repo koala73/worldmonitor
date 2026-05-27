@@ -58,7 +58,7 @@
     "test:e2e:variant-smoke:energy": "cross-env VITE_VARIANT=energy playwright test e2e/variant-live-smoke.spec.ts",
     "test:e2e:variant-smoke:happy": "cross-env VITE_VARIANT=happy playwright test e2e/variant-live-smoke.spec.ts",
     "test:e2e:variant-smoke": "npm run test:e2e:variant-smoke:full && npm run test:e2e:variant-smoke:tech && npm run test:e2e:variant-smoke:finance && npm run test:e2e:variant-smoke:commodity && npm run test:e2e:variant-smoke:energy && npm run test:e2e:variant-smoke:happy",
-    "test:e2e": "npm run test:e2e:runtime && npm run test:e2e:full && npm run test:e2e:tech && npm run test:e2e:finance",
+    "test:e2e": "npm run test:e2e:runtime && npm run test:e2e:full && npm run test:e2e:tech && npm run test:e2e:finance && npm run test:e2e:energy",
     "test:data": "tsx --test tests/*.test.mjs tests/*.test.mts api/security/report.test.mjs",
     "dryrun:resilience": "node --import tsx/esm scripts/dry-run-resilience-rebalance.mjs",
     "test:feeds": "node scripts/validate-rss-feeds.mjs",

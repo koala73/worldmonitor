@@ -261,6 +261,11 @@ test.describe('variant live reliability smoke', () => {
     const unexpectedPageErrors = pageErrors.filter(
       (error) => !IGNORABLE_PAGE_ERROR_PATTERNS.some((pattern) => pattern.test(error))
     );
+    // Intentionally NOT asserted on — surfaced only as diagnostics so a
+    // live-upstream blip (one provider returning 5xx for a few minutes)
+    // doesn't fail this smoke test. The hard assertions below stay focused
+    // on app-level signals (variant resolved, no unexpected 401s, no
+    // unexpected page errors, expected panels mounted at all).
     const expectedPanelFailures = panelDiagnostics.panelStates.filter(
       (panel) => expectedPanelIds.includes(panel.id) && panel.state !== 'stale'
     );
