@@ -8,7 +8,7 @@ import { MODEL_CONFIGS, type ModelConfig } from '@/config/ml-config';
 import { storeVectors, searchVectors, getCount, resetStore, sanitizeTitle, type VectorSearchResult } from './vector-db';
 import { normalizeTokenClassificationOutput, type NEREntity } from './ml-ner';
 
-// Configure Transformers.js
+// Configure Hugging Face Transformers (JS).
 env.allowLocalModels = false;
 env.useBrowserCache = true;
 
@@ -205,7 +205,7 @@ async function summarizeTexts(texts: string[], modelId = 'summarization'): Promi
   for (const text of texts) {
     const output = await pipe(`summarize: ${text}`, {
       max_new_tokens: 64,
-      min_length: 10,
+      min_new_tokens: 10,
     });
     const result = (output as Array<{ generated_text: string }>)[0];
     results.push(result?.generated_text ?? '');

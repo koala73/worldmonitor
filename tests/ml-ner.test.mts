@@ -27,4 +27,16 @@ describe('normalizeTokenClassificationOutput', () => {
       { text: 'NATO', type: 'ORG', confidence: 0.93, start: 0, end: 4 },
     ]);
   });
+
+  it('infers spans when v4 token-classification output omits start and end offsets', () => {
+    assert.deepEqual(normalizeTokenClassificationOutput([
+      { entity: 'B-PER', score: 0.98, word: 'John' },
+      { entity: 'I-PER', score: 0.97, word: 'Doe' },
+      { entity: 'B-LOC', score: 0.96, word: 'New' },
+      { entity: 'I-LOC', score: 0.95, word: 'York' },
+    ], 'John Doe moved to New York'), [
+      { text: 'John Doe', type: 'PER', confidence: 0.975, start: 0, end: 8 },
+      { text: 'New York', type: 'LOC', confidence: 0.955, start: 18, end: 26 },
+    ]);
+  });
 });

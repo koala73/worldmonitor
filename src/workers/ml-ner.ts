@@ -19,10 +19,10 @@ interface AggregatedEntity extends NEREntity {
   tokenCount: number;
 }
 
-const BIO_PREFIX_RE = /^[BI]-/;
+const ENTITY_PREFIX_RE = /^[BIES]-/;
 
 function normalizeType(label: string): string {
-  return label.replace(BIO_PREFIX_RE, '');
+  return label.replace(ENTITY_PREFIX_RE, '');
 }
 
 function inferSpan(text: string, rawWord: string, cursor: number): { start: number; end: number; word: string } {
@@ -62,7 +62,7 @@ export function normalizeTokenClassificationOutput(output: unknown, text: string
     }
 
     const type = normalizeType(label);
-    const isContinuation = rawWord.startsWith('##') || label.startsWith('I-');
+    const isContinuation = rawWord.startsWith('##') || label.startsWith('I-') || label.startsWith('E-');
     const inferred = inferSpan(text, rawWord, cursor);
     const start = typeof item.start === 'number' ? item.start : inferred.start;
     const end = typeof item.end === 'number' ? item.end : inferred.end;
