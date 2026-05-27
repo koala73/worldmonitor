@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFileSync, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -91,6 +92,27 @@ describe('deploy/cache configuration guardrails', () => {
     assert.match(
       viteConfigSource,
       /\.replace\(\/<meta name="classification" content="\.\*\?" \\\/>\/,\s*`<meta name="classification"/
+    );
+  });
+});
+
+describe('deploy/API CORS guardrails', () => {
+  it('does not define static CORS headers for /api routes in vercel.json', () => {
+    const corsHeaderKeys = new Set([
+      'access-control-allow-origin',
+      'access-control-allow-methods',
+      'access-control-allow-headers',
+      'access-control-allow-credentials',
+    ]);
+    const apiCorsRules = vercelConfig.headers
+      .filter((entry) => entry.source.startsWith('/api'))
+      .filter((entry) => entry.headers?.some((header) => corsHeaderKeys.has(header.key.toLowerCase())))
+      .map((entry) => entry.source);
+
+    assert.deepEqual(
+      apiCorsRules,
+      [],
+      'API CORS must be emitted by handlers so credentialed requests get origin-specific ACAO plus ACAC=true.'
     );
   });
 });
@@ -280,6 +302,24 @@ describe('security header guardrails', () => {
     const scriptSrc = csp.match(/script-src\s+([^;]+)/)?.[1] ?? '';
     assert.ok(scriptSrc.includes("'wasm-unsafe-eval'"), 'CSP script-src must include wasm-unsafe-eval for WASM support');
     assert.ok(scriptSrc.includes("'self'"), 'CSP script-src must include self');
+  });
+
+  it('CSP script-src includes hashes for every inline script in index.html', () => {
+    const indexHtml = readFileSync(resolve(__dirname, '../index.html'), 'utf-8');
+    const csp = getHeaderValue('Content-Security-Policy');
+    const scriptTokens = getCspDirectiveTokens(csp, 'script-src');
+    const inlineHashTokens = [...indexHtml.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)]
+      .map((match) => match[1])
+      .filter((body) => body.trim().length > 0)
+      .map((body) => `'sha256-${createHash('sha256').update(body).digest('base64')}'`);
+    const missing = inlineHashTokens.filter((token) => !scriptTokens.includes(token));
+
+    assert.deepEqual(
+      missing,
+      [],
+      `CSP script-src is missing inline script hashes: ${missing.join(', ')}. ` +
+        'Any inline script edit must update the production CSP header.'
+    );
   });
 
   it('CSP script-src includes Clerk origin for auth UI', () => {
