@@ -269,7 +269,7 @@ describe('assertBriefEnvelope is shared between renderer and preview', () => {
 
 describe('api/latest-brief retry-on-Upstash-timeout', () => {
   // Regression guard for WORLDMONITOR-QJ. Locks in the retry contract:
-  // (a) one retry fires on DOMException-like `name === 'TimeoutError'`,
+  // (a) one retry fires on DOMException-like timeout/abort names,
   // (b) no retry on other error shapes, (c) per-attempt budgets are
   // FIRST_ATTEMPT_MS then RETRY_ATTEMPT_MS so worst-case wall time stays
   // under Vercel Edge's response cap. If the err-name check or attempt
@@ -293,7 +293,24 @@ describe('api/latest-brief retry-on-Upstash-timeout', () => {
     assert.equal(out, 'second-attempt-payload');
   });
 
-  it('does NOT retry on non-TimeoutError (preserves fast-fail on real bugs)', async () => {
+  it('retries once on AbortError and returns the second attempt result', async () => {
+    const { readWithOneRetry } = await import('../api/latest-brief.ts');
+    let calls = 0;
+    const attempt = async () => {
+      calls += 1;
+      if (calls === 1) {
+        const err = new Error('The operation was aborted');
+        err.name = 'AbortError';
+        throw err;
+      }
+      return 'second-attempt-payload';
+    };
+    const out = await readWithOneRetry(attempt, 'test-label');
+    assert.equal(calls, 2, 'helper must invoke the attempt twice on AbortError');
+    assert.equal(out, 'second-attempt-payload');
+  });
+
+  it('does NOT retry on non-timeout/abort errors (preserves fast-fail on real bugs)', async () => {
     const { readWithOneRetry } = await import('../api/latest-brief.ts');
     let calls = 0;
     const attempt = async () => {

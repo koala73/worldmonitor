@@ -63,7 +63,7 @@ export const RETRY_ATTEMPT_MS = 3_000;
 // successful retries would only appear in Vercel logs and we'd lose the
 // signal that informs whether the timeout budget is sized correctly.
 //
-// Duck-types on `err.name === 'TimeoutError'` rather than
+// Duck-types on abort-like `err.name` values rather than
 // `err instanceof DOMException` to survive cross-realm cases in test
 // runners where undici's DOMException may differ from globalThis.
 //
@@ -79,7 +79,7 @@ export async function readWithOneRetry<T>(
     return await attempt(FIRST_ATTEMPT_MS);
   } catch (err) {
     const name = (err as { name?: string } | null)?.name;
-    if (name === 'TimeoutError') {
+    if (name === 'TimeoutError' || name === 'AbortError') {
       console.warn(`[api/latest-brief] ${label} aborted on timeout — retrying once (${RETRY_ATTEMPT_MS}ms)`);
       captureSilentError(err, {
         tags: { route: 'api/latest-brief', step: 'upstash-retry-attempt', label },
