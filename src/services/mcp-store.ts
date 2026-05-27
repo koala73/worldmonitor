@@ -1,7 +1,8 @@
 import { loadFromStorage, saveToStorage } from '@/utils';
+import { STORAGE_KEYS } from '@/config/variants/base';
 
 const STORAGE_KEY = 'wm-mcp-panels';
-const PANEL_SPANS_KEY = 'worldmonitor-panel-spans';
+const PANEL_SPANS_KEY = STORAGE_KEYS.panelSpans;
 const PANEL_COL_SPANS_KEY = 'worldmonitor-panel-col-spans';
 const MAX_PANELS = 10;
 

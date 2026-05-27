@@ -7,6 +7,7 @@ import type { ClusteredEvent } from '@/types';
 import type { RelatedAsset } from '@/types';
 import type { TheaterPostureSummary } from '@/services/military-surge';
 import type { NewsPanel } from '@/components/NewsPanel';
+import type { AviationCommandBar } from '@/components/AviationCommandBar';
 import { debounce, saveToStorage, loadFromStorage } from '@/utils';
 import { escapeHtml } from '@/utils/sanitize';
 import {
@@ -108,7 +109,7 @@ export class PanelLayoutManager implements AppModule {
   private resolvedPanelOrder: string[] = [];
   private bottomSetMemory: Set<string> = new Set();
   private criticalBannerEl: HTMLElement | null = null;
-  private aviationCommandBar: { destroy(): void } | null = null;
+  private aviationCommandBar: AviationCommandBar | null = null;
   private readonly applyTimeRangeFilterDebounced: (() => void) & { cancel(): void };
   private unsubscribeAuth: (() => void) | null = null;
   private proBlockUnsubscribe: (() => void) | null = null;
@@ -808,10 +809,6 @@ export class PanelLayoutManager implements AppModule {
     return Object.prototype.hasOwnProperty.call(this.ctx.panelSettings, key);
   }
 
-  private shouldCreatePanel(key: string): boolean {
-    return this.hasPanelConfig(key);
-  }
-
   private isPanelEnabled(key: string): boolean {
     const config = this.ctx.panelSettings[key];
     return !!config && config.enabled !== false;
@@ -872,52 +869,68 @@ export class PanelLayoutManager implements AppModule {
     mapPlaceholder.innerHTML = '<span style="color:var(--text-secondary,#8888aa);font-size:0.85rem;">Loading map...</span>';
     mapContainer.appendChild(mapPlaceholder);
 
-    const mapObserver = new IntersectionObserver(
-      async (entries) => {
+    let mapLoadStarted = false;
+    let mapFallbackTimer: ReturnType<typeof setTimeout> | null = null;
+    let mapObserver: IntersectionObserver | null = null;
+    const loadMap = async () => {
+      if (mapLoadStarted) return;
+      mapLoadStarted = true;
+      mapObserver?.disconnect();
+      if (mapFallbackTimer !== null) {
+        clearTimeout(mapFallbackTimer);
+        mapFallbackTimer = null;
+      }
+
+      try {
+        // MapLibre CSS is injected automatically by Vite when DeckGLMap.ts
+        // (a static dependency of MapContainer) is dynamically imported.
+        const { MapContainer } = await import('@/components/MapContainer');
+
+        this.ctx.map = new MapContainer(mapContainer, {
+          zoom: this.ctx.isMobile ? 2.5 : 1.0,
+          pan: { x: 0, y: 0 },
+          view: this.ctx.isMobile ? this.ctx.resolvedLocation : 'global',
+          layers: this.ctx.mapLayers,
+          timeRange: '7d',
+        }, preferGlobe);
+
+        // Remove placeholder
+        mapPlaceholder.remove();
+
+        // Post-init setup
+        if (this.ctx.mapLayers.resilienceScore && !this.ctx.map.isDeckGLActive?.()) {
+          this.ctx.mapLayers = { ...this.ctx.mapLayers, resilienceScore: false };
+          saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
+        }
+
+        this.ctx.map.initEscalationGetters();
+        this.ctx.currentTimeRange = this.ctx.map.getTimeRange();
+
+        this.ctx.map.onTimeRangeChanged((range) => {
+          this.ctx.currentTimeRange = range;
+          this.applyTimeRangeFilterDebounced();
+        });
+
+        this.applyInitialUrlState();
+        this.notifyMapReady();
+      } catch (err) {
+        console.error('[map] Failed to load map libraries:', err);
+        this.notifyMapReady();
+      }
+    };
+
+    mapObserver = new IntersectionObserver(
+      (entries) => {
         const entry = entries[0];
         if (!entry?.isIntersecting) return;
-        mapObserver.disconnect();
-
-        try {
-          // MapLibre CSS is injected automatically by Vite when DeckGLMap.ts
-          // (a static dependency of MapContainer) is dynamically imported.
-          const { MapContainer } = await import('@/components/MapContainer');
-
-          this.ctx.map = new MapContainer(mapContainer, {
-            zoom: this.ctx.isMobile ? 2.5 : 1.0,
-            pan: { x: 0, y: 0 },
-            view: this.ctx.isMobile ? this.ctx.resolvedLocation : 'global',
-            layers: this.ctx.mapLayers,
-            timeRange: '7d',
-          }, preferGlobe);
-
-          // Remove placeholder
-          mapPlaceholder.remove();
-
-          // Post-init setup
-          if (this.ctx.mapLayers.resilienceScore && !this.ctx.map.isDeckGLActive?.()) {
-            this.ctx.mapLayers = { ...this.ctx.mapLayers, resilienceScore: false };
-            saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
-          }
-
-          this.ctx.map.initEscalationGetters();
-          this.ctx.currentTimeRange = this.ctx.map.getTimeRange();
-
-          this.ctx.map.onTimeRangeChanged((range) => {
-            this.ctx.currentTimeRange = range;
-            this.applyTimeRangeFilterDebounced();
-          });
-
-          this.applyInitialUrlState();
-          this.notifyMapReady();
-        } catch (err) {
-          console.error('[map] Failed to load map libraries:', err);
-          this.notifyMapReady();
-        }
+        void loadMap();
       },
       { rootMargin: '200px' },
     );
     mapObserver.observe(mapContainer);
+    mapFallbackTimer = setTimeout(() => {
+      void loadMap();
+    }, 2500);
 
     this.createNewsPanel('politics', 'panels.politics');
     this.createNewsPanel('tech', 'panels.tech');
@@ -1142,7 +1155,6 @@ export class PanelLayoutManager implements AppModule {
       import('@/components/StrategicPosturePanel').then(m => {
         const p = new m.StrategicPosturePanel(() => this.ctx.allNews);
         p.setLocationClickHandler((lat, lon) => {
-          console.log('[App] StrategicPosture handler called:', { lat, lon, hasMap: !!this.ctx.map });
           this.ctx.map?.setCenter(lat, lon, 4);
         });
         return p;
@@ -1289,7 +1301,7 @@ export class PanelLayoutManager implements AppModule {
     this.lazyPanel('live-news', () =>
       import('@/components/LiveNewsPanel').then(m => {
         if (m.getDefaultLiveChannels().length === 0 && m.loadChannelsFromStorage().length === 0) {
-          throw new Error('No live channels configured');
+          return null;
         }
         return new m.LiveNewsPanel();
       }),
@@ -1450,7 +1462,7 @@ export class PanelLayoutManager implements AppModule {
     }
 
     // Renewable Energy is shared by happy and energy variants.
-    if (this.shouldCreatePanel('renewable')) {
+    if (this.hasPanelConfig('renewable')) {
       this.lazyPanel('renewable', () =>
         import('@/components/RenewableEnergyPanel').then(m => {
           const p = new m.RenewableEnergyPanel();
@@ -2119,7 +2131,7 @@ export class PanelLayoutManager implements AppModule {
     el.dataset.panel = key; // for drag ordering
 
     // Size from saved user span > config defaultRowSpan > default 1
-    const savedSpans = loadFromStorage<Record<string, number>>('worldmonitor-panel-spans', {});
+    const savedSpans = loadFromStorage<Record<string, number>>(STORAGE_KEYS.panelSpans, {});
     const rowSpan = savedSpans[key] || config?.defaultRowSpan || 1;
     if (rowSpan > 1) {
       el.style.gridRow = `span ${rowSpan}`;
@@ -2148,7 +2160,7 @@ export class PanelLayoutManager implements AppModule {
    */
   private lazyPanel<T extends { getElement(): HTMLElement }>(
     key: string,
-    loader: () => Promise<T>,
+    loader: () => Promise<T | null>,
     setup?: (panel: T) => void,
     lockedFeatures?: string[],
   ): void {
@@ -2160,7 +2172,7 @@ export class PanelLayoutManager implements AppModule {
 
   private createLazyPanel<T extends { getElement(): HTMLElement }>(
     key: string,
-    loader: () => Promise<T>,
+    loader: () => Promise<T | null>,
     setup?: (panel: T) => void,
     lockedFeatures?: string[],
   ): boolean {
@@ -2187,6 +2199,11 @@ export class PanelLayoutManager implements AppModule {
       this.loadingOrLoaded.add(key);
 
       loader().then(async (panel) => {
+        if (!panel) {
+          this.loadingOrLoaded.delete(key);
+          skeleton.remove();
+          return;
+        }
         this.ctx.panels[key] = panel as unknown as Panel;
         if (lockedFeatures) {
           (panel as unknown as Panel).showLocked(lockedFeatures);

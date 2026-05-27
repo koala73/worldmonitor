@@ -875,8 +875,9 @@ export default defineConfig(({ mode }) => {
         workbox: {
           globPatterns: ['**/*.html'],
           globIgnores: ['**/ml*.js', '**/onnx*.wasm', '**/locale-*.js'],
-          // Only HTML entry points are precached now — 2 MiB is more than enough.
-          maximumFileSizeToCacheInBytes: 2 * 1024 * 1024,
+          // Only HTML entry points are precached; keep this tight so accidental
+          // asset precache regressions fail loudly.
+          maximumFileSizeToCacheInBytes: 256 * 1024,
           navigateFallback: null,
           skipWaiting: true,
           clientsClaim: true,
@@ -953,12 +954,13 @@ export default defineConfig(({ mode }) => {
               },
             },
             {
-              urlPattern: /\/assets\/locale-.*\.js$/i,
+              urlPattern: ({ url, sameOrigin }: { url: URL; sameOrigin: boolean }) =>
+                sameOrigin && /^\/assets\/locale-.*\.js$/i.test(url.pathname),
               handler: 'CacheFirst',
               options: {
                 cacheName: 'locale-files',
                 expiration: { maxEntries: 20, maxAgeSeconds: 30 * 24 * 60 * 60 },
-                cacheableResponse: { statuses: [0, 200] },
+                cacheableResponse: { statuses: [200] },
               },
             },
             {
@@ -976,7 +978,7 @@ export default defineConfig(({ mode }) => {
               options: {
                 cacheName: 'app-assets',
                 expiration: { maxEntries: 200, maxAgeSeconds: 30 * 24 * 60 * 60 },
-                cacheableResponse: { statuses: [0, 200] },
+                cacheableResponse: { statuses: [200] },
               },
             },
           ],

@@ -342,8 +342,8 @@ describe('widget-store — constants and logic', () => {
 
   it('deleteWidget cleans worldmonitor-panel-spans (aggregate map)', () => {
     assert.ok(
-      store.includes("'worldmonitor-panel-spans'"),
-      "deleteWidget must clean 'worldmonitor-panel-spans'",
+      store.includes('STORAGE_KEYS.panelSpans'),
+      'deleteWidget must clean STORAGE_KEYS.panelSpans',
     );
   });
 

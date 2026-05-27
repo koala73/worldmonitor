@@ -19,6 +19,7 @@ import { resolveNewsCategories, enabledNewsCategoryKeys } from '@/config/feed-re
 import { INTEL_HOTSPOTS, CONFLICT_ZONES } from '@/config/geo';
 import { tokenizeForMatch, matchKeyword } from '@/utils/keyword-match';
 import { withTimeout } from '@/utils/with-timeout';
+import { isLoadedPanelNearViewport } from '@/utils/viewport';
 import {
   fetchCategoryFeeds,
   getFeedFailures,
@@ -141,14 +142,12 @@ import type { GetSectorSummaryResponse, ListMarketQuotesResponse, ListCommodityQ
 import type { SectorValuation } from '@/components/MarketPanel';
 import { mountCommunityWidget } from '@/components/CommunityWidget';
 import { ResearchServiceClient } from '@/generated/client/worldmonitor/research/v1/service_client';
-import { StockAnalysisPanel } from '@/components/StockAnalysisPanel';
-import { StockBacktestPanel } from '@/components/StockBacktestPanel';
-import { MonitorPanel } from '@/components/MonitorPanel';
-import { InsightsPanel } from '@/components/InsightsPanel';
-import { UcdpEventsPanel } from '@/components/UcdpEventsPanel';
-import { WsbTickerScannerPanel } from '@/components/WsbTickerScannerPanel';
-import { AAIISentimentPanel } from '@/components/AAIISentimentPanel';
-import { MarketBreadthPanel } from '@/components/MarketBreadthPanel';
+import type { StockAnalysisPanel } from '@/components/StockAnalysisPanel';
+import type { StockBacktestPanel } from '@/components/StockBacktestPanel';
+import type { UcdpEventsPanel } from '@/components/UcdpEventsPanel';
+import type { WsbTickerScannerPanel } from '@/components/WsbTickerScannerPanel';
+import type { AAIISentimentPanel } from '@/components/AAIISentimentPanel';
+import type { MarketBreadthPanel } from '@/components/MarketBreadthPanel';
 import { classifyNewsItem } from '@/services/positive-classifier';
 import { fetchGivingSummary } from '@/services/giving';
 import { fetchProgressData } from '@/services/progress-data';
@@ -182,8 +181,6 @@ import { fetchSocialVelocity } from '@/services/social-velocity';
 import { fetchShippingStress } from '@/services/supply-chain';
 import { getTopActiveGeoHubs } from '@/services/geo-activity';
 import { getTopActiveHubs } from '@/services/tech-activity';
-import type { GeoHubsPanel } from '@/components/GeoHubsPanel';
-import type { TechHubsPanel } from '@/components/TechHubsPanel';
 
 const PROTO_TO_CLIENT_LEVEL: Record<ProtoThreatLevel, ClientThreatLevel> = {
   THREAT_LEVEL_UNSPECIFIED: 'info',
@@ -400,21 +397,16 @@ export class DataLoaderManager implements AppModule {
   }
 
   private isPanelNearViewport(panelId: string, marginPx = 400): boolean {
-    const panel = this.ctx.panels[panelId] as { isNearViewport?: (marginPx?: number) => boolean } | undefined;
-    if (panel?.isNearViewport?.(marginPx)) return true;
-    const el = document.querySelector(`[data-panel="${CSS.escape(panelId)}"]`) as HTMLElement | null;
-    if (!el || el.hidden || el.classList.contains('hidden')) return false;
-    const rect = el.getBoundingClientRect();
-    return rect.bottom >= -marginPx && rect.top <= window.innerHeight + marginPx;
+    return isLoadedPanelNearViewport(this.ctx.panels, panelId, marginPx);
   }
 
   private isAnyPanelNearViewport(panelIds: string[], marginPx = 400): boolean {
     return panelIds.some((panelId) => this.isPanelNearViewport(panelId, marginPx));
   }
 
-  private isConfiguredPanelEnabled(panelId: string): boolean {
+  private isLoadedPanelEnabled(panelId: string): boolean {
     const config = this.ctx.panelSettings[panelId];
-    return !!config && config.enabled !== false;
+    return !!this.ctx.panels[panelId] && !!config && config.enabled !== false;
   }
 
   async loadAllData(forceAll = false): Promise<void> {
@@ -521,16 +513,7 @@ export class DataLoaderManager implements AppModule {
     if (shouldLoad('giving')) {
       tasks.push({
         name: 'giving',
-        task: runGuarded('giving', async () => {
-          const givingResult = await fetchGivingSummary();
-          if (!givingResult.ok) {
-            dataFreshness.recordError('giving', 'Giving data unavailable (retaining prior state)');
-            return;
-          }
-          const data = givingResult.data;
-          this.callPanel('giving', 'setData', data);
-          if (data.platforms.length > 0) dataFreshness.recordUpdate('giving', data.platforms.length);
-        }),
+        task: runGuarded('giving', () => this.loadGivingData()),
       });
     }
 
@@ -585,11 +568,10 @@ export class DataLoaderManager implements AppModule {
     // tech-readiness is only seeded on full + tech variants (api/bootstrap.js +
     // scripts/seed-wb-indicators.mjs); on commodity/finance/energy the 5s fetch
     // at services/economic/index.ts:694 just times out. shouldLoad() alone is
-    // not enough — loadAllData(true) on boot (App.ts:1226) bypasses the viewport
-    // check via forceAll. Gate on variant defaults so this only fires where the
-    // seed actually exists.
+    // not enough on its own; this source only exists for variants that seed it.
+    // Gate on variant defaults so this only fires where the seed actually exists.
     if (SITE_VARIANT !== 'happy' && isPanelInVariantDefaults('tech-readiness') && shouldLoad('tech-readiness')) {
-      tasks.push({ name: 'techReadiness', task: runGuarded('techReadiness', async () => { this.callPanel('tech-readiness', 'refresh'); }) });
+      tasks.push({ name: 'techReadiness', task: runGuarded('techReadiness', () => this.loadTechReadiness()) });
     }
     if (SITE_VARIANT !== 'happy' && shouldLoad('thermal-escalation')) {
       tasks.push({ name: 'thermalEscalation', task: runGuarded('thermalEscalation', () => this.loadThermalEscalations()) });
@@ -1212,13 +1194,9 @@ export class DataLoaderManager implements AppModule {
         ? await clusterNewsHybrid(this.ctx.allNews)
         : await analysisWorker.clusterNews(this.ctx.allNews);
 
-      const insightsPanel = this.ctx.panels['insights'] as InsightsPanel | undefined;
-      insightsPanel?.updateInsights(this.ctx.latestClusters);
-
-      (this.ctx.panels['geo-hubs'] as GeoHubsPanel | undefined)
-        ?.setActivities(getTopActiveGeoHubs(this.ctx.latestClusters));
-      (this.ctx.panels['tech-hubs'] as TechHubsPanel | undefined)
-        ?.setActivities(getTopActiveHubs(this.ctx.latestClusters));
+      this.callPanel('insights', 'updateInsights', this.ctx.latestClusters);
+      this.callPanel('geo-hubs', 'setActivities', getTopActiveGeoHubs(this.ctx.latestClusters));
+      this.callPanel('tech-hubs', 'setActivities', getTopActiveHubs(this.ctx.latestClusters));
 
       const geoLocated = this.ctx.latestClusters
         .filter((c): c is typeof c & { lat: number; lon: number } => c.lat != null && c.lon != null)
@@ -1234,8 +1212,7 @@ export class DataLoaderManager implements AppModule {
       }
     } catch (error) {
       console.error('[App] Clustering failed, clusters unchanged:', error);
-      const insightsPanel = this.ctx.panels['insights'] as InsightsPanel | undefined;
-      insightsPanel?.updateInsights([]);
+      this.callPanel('insights', 'updateInsights', []);
     }
 
     // Happy variant: run multi-stage positive news pipeline + map layers
@@ -1407,113 +1384,123 @@ export class DataLoaderManager implements AppModule {
   }
 
   async loadMarkets(): Promise<void> {
+    const marketsEnabled = this.isLoadedPanelEnabled('markets');
+    const heatmapEnabled = this.isLoadedPanelEnabled('heatmap');
+    let stocksResult: Awaited<ReturnType<typeof fetchMultipleStocks>> = {
+      data: [],
+      skipped: false,
+      rateLimited: false,
+    };
+    const finnhubConfigMsg = 'FINNHUB_API_KEY not configured — add in Settings';
+
     try {
-      const customEntries = getMarketWatchlistEntries();
-      const effectiveSymbols = (() => {
-        if (customEntries.length === 0) return MARKET_SYMBOLS;
-        const base = MARKET_SYMBOLS.slice();
-        const seen = new Set(base.map((s) => s.symbol));
-        for (const entry of customEntries) {
-          const sym = entry.symbol;
-          if (!sym || seen.has(sym)) continue;
-          seen.add(sym);
-          base.push({ symbol: sym, name: entry.name || sym, display: entry.display || sym });
-          if (base.length >= 50) break;
+      if (marketsEnabled) {
+        const customEntries = getMarketWatchlistEntries();
+        const effectiveSymbols = (() => {
+          if (customEntries.length === 0) return MARKET_SYMBOLS;
+          const base = MARKET_SYMBOLS.slice();
+          const seen = new Set(base.map((s) => s.symbol));
+          for (const entry of customEntries) {
+            const sym = entry.symbol;
+            if (!sym || seen.has(sym)) continue;
+            seen.add(sym);
+            base.push({ symbol: sym, name: entry.name || sym, display: entry.display || sym });
+            if (base.length >= 50) break;
+          }
+          return base;
+        })();
+
+
+        // Hydrate markets from bootstrap (same pattern as sectors) — instant data on page load
+        const hydratedMarkets = getHydratedData('marketQuotes') as ListMarketQuotesResponse | undefined;
+
+        if (customEntries.length === 0 && hydratedMarkets?.quotes?.length) {
+          const symbolMetaMap = new Map(effectiveSymbols.map((s) => [s.symbol, s]));
+          const data = hydratedMarkets.quotes.map((q) => ({
+            symbol: q.symbol,
+            name: symbolMetaMap.get(q.symbol)?.name || q.name,
+            display: symbolMetaMap.get(q.symbol)?.display || q.display || q.symbol,
+            price: q.price != null ? q.price : null,
+            change: q.change ?? null,
+            sparkline: q.sparkline?.length > 0 ? q.sparkline : undefined,
+          }));
+          this.ctx.latestMarkets = data;
+          this.callPanel('markets', 'renderMarkets', data);
+          stocksResult = { data, skipped: hydratedMarkets.finnhubSkipped || undefined, rateLimited: hydratedMarkets.rateLimited || undefined };
+        } else {
+          stocksResult = await fetchMultipleStocks(effectiveSymbols, {
+            onBatch: (partialStocks) => {
+              this.ctx.latestMarkets = partialStocks;
+              this.callPanel('markets', 'renderMarkets', partialStocks);
+            },
+          });
+          this.ctx.latestMarkets = stocksResult.data;
+          this.callPanel('markets', 'renderMarkets', stocksResult.data, stocksResult.rateLimited);
         }
-        return base;
-      })();
 
+        if (stocksResult.rateLimited && stocksResult.data.length === 0) {
+          const rlMsg = 'Market data temporarily unavailable (rate limited) — retrying shortly';
+          this.callPanel('commodities', 'showError', rlMsg);
+        } else if (stocksResult.skipped) {
+          this.ctx.statusPanel?.updateApi('Finnhub', { status: 'error' });
+          if (stocksResult.data.length === 0) {
+            this.callPanel('markets', 'showConfigError', finnhubConfigMsg);
+          }
+        } else {
+          this.ctx.statusPanel?.updateApi('Finnhub', { status: 'ok' });
+        }
+      }
 
-      // Hydrate markets from bootstrap (same pattern as sectors) — instant data on page load
-      const hydratedMarkets = getHydratedData('marketQuotes') as ListMarketQuotesResponse | undefined;
-      let stocksResult: Awaited<ReturnType<typeof fetchMultipleStocks>>;
-
-      if (customEntries.length === 0 && hydratedMarkets?.quotes?.length) {
-        const symbolMetaMap = new Map(effectiveSymbols.map((s) => [s.symbol, s]));
-        const data = hydratedMarkets.quotes.map((q) => ({
-          symbol: q.symbol,
-          name: symbolMetaMap.get(q.symbol)?.name || q.name,
-          display: symbolMetaMap.get(q.symbol)?.display || q.display || q.symbol,
-          price: q.price != null ? q.price : null,
-          change: q.change ?? null,
-          sparkline: q.sparkline?.length > 0 ? q.sparkline : undefined,
-        }));
-        this.ctx.latestMarkets = data;
-        this.callPanel('markets', 'renderMarkets', data);
-        stocksResult = { data, skipped: hydratedMarkets.finnhubSkipped || undefined, rateLimited: hydratedMarkets.rateLimited || undefined };
-      } else {
-        stocksResult = await fetchMultipleStocks(effectiveSymbols, {
-          onBatch: (partialStocks) => {
-            this.ctx.latestMarkets = partialStocks;
-            this.callPanel('markets', 'renderMarkets', partialStocks);
-          },
+      if (heatmapEnabled) {
+        // Sector heatmap: always attempt loading regardless of market rate-limit status
+        const hydratedSectors = getHydratedData('sectors') as (GetSectorSummaryResponse & { valuations?: Record<string, SectorValuation> }) | undefined;
+        const sectorNameMap = new Map(SECTORS.map((s) => [s.symbol, s.name]));
+        const toHeatmapItem = (s: { symbol: string; name: string; change: number }) => ({
+          symbol: s.symbol,
+          name: sectorNameMap.get(s.symbol) ?? s.name,
+          change: s.change,
         });
-        this.ctx.latestMarkets = stocksResult.data;
-        this.callPanel('markets', 'renderMarkets', stocksResult.data, stocksResult.rateLimited);
-      }
-
-      const finnhubConfigMsg = 'FINNHUB_API_KEY not configured — add in Settings';
-
-      if (stocksResult.rateLimited && stocksResult.data.length === 0) {
-        const rlMsg = 'Market data temporarily unavailable (rate limited) — retrying shortly';
-        this.callPanel('commodities', 'showError', rlMsg);
-      } else if (stocksResult.skipped) {
-        this.ctx.statusPanel?.updateApi('Finnhub', { status: 'error' });
-        if (stocksResult.data.length === 0) {
-          this.callPanel('markets', 'showConfigError', finnhubConfigMsg);
-        }
-      } else {
-        this.ctx.statusPanel?.updateApi('Finnhub', { status: 'ok' });
-      }
-
-      // Sector heatmap: always attempt loading regardless of market rate-limit status
-      const hydratedSectors = getHydratedData('sectors') as (GetSectorSummaryResponse & { valuations?: Record<string, SectorValuation> }) | undefined;
-      const sectorNameMap = new Map(SECTORS.map((s) => [s.symbol, s.name]));
-      const toHeatmapItem = (s: { symbol: string; name: string; change: number }) => ({
-        symbol: s.symbol,
-        name: sectorNameMap.get(s.symbol) ?? s.name,
-        change: s.change,
-      });
-      const toSectorBar = (s: { symbol?: string; name: string; change: number | null }) =>
-        s.symbol && Number.isFinite(s.change) ? { symbol: s.symbol, name: s.name, change1d: s.change as number } : null;
-      // Defensive: a pre-PR bootstrap payload may have `sectors` but lack the
-      // new `valuations` field entirely. Treat that shape as a cache miss and
-      // fall through to a live fetch so the valuations tab can populate.
-      const hydratedHasValuationsField = hydratedSectors
-        ? Object.prototype.hasOwnProperty.call(hydratedSectors, 'valuations')
-        : false;
-      if (hydratedSectors?.sectors?.length && hydratedHasValuationsField) {
-        warmSectorCache(hydratedSectors);
-        const items = hydratedSectors.sectors.map(toHeatmapItem);
-        const sectorBars = items.map(toSectorBar).filter((s): s is NonNullable<typeof s> => s !== null);
-        this.callPanel('heatmap', 'renderHeatmap', items, sectorBars.length ? sectorBars : undefined);
-        this.callPanel('heatmap', 'updateValuations', hydratedSectors.valuations);
-      } else {
-        // If hydrated had sectors but no valuations field, render performance
-        // tiles immediately so users see heatmap data while the live fetch runs.
-        if (hydratedSectors?.sectors?.length) {
+        const toSectorBar = (s: { symbol?: string; name: string; change: number | null }) =>
+          s.symbol && Number.isFinite(s.change) ? { symbol: s.symbol, name: s.name, change1d: s.change as number } : null;
+        // Defensive: a pre-PR bootstrap payload may have `sectors` but lack the
+        // new `valuations` field entirely. Treat that shape as a cache miss and
+        // fall through to a live fetch so the valuations tab can populate.
+        const hydratedHasValuationsField = hydratedSectors
+          ? Object.prototype.hasOwnProperty.call(hydratedSectors, 'valuations')
+          : false;
+        if (hydratedSectors?.sectors?.length && hydratedHasValuationsField) {
+          warmSectorCache(hydratedSectors);
           const items = hydratedSectors.sectors.map(toHeatmapItem);
           const sectorBars = items.map(toSectorBar).filter((s): s is NonNullable<typeof s> => s !== null);
           this.callPanel('heatmap', 'renderHeatmap', items, sectorBars.length ? sectorBars : undefined);
-        }
-        const sectorsResp = await fetchSectors() as GetSectorSummaryResponse & { valuations?: Record<string, SectorValuation> };
-        if (sectorsResp.sectors.length > 0) {
-          const items = sectorsResp.sectors.map(toHeatmapItem);
-          const sectorBars = items.map(toSectorBar).filter((s): s is NonNullable<typeof s> => s !== null);
-          this.callPanel('heatmap', 'renderHeatmap', items, sectorBars.length ? sectorBars : undefined);
-          // Only push valuations when the response actually has the field — a
-          // payload without `valuations` must NOT clear prior valuations that
-          // may already be rendered from a previous (successful) fetch.
-          if (Object.prototype.hasOwnProperty.call(sectorsResp, 'valuations')) {
-            this.callPanel('heatmap', 'updateValuations', sectorsResp.valuations);
+          this.callPanel('heatmap', 'updateValuations', hydratedSectors.valuations);
+        } else {
+          // If hydrated had sectors but no valuations field, render performance
+          // tiles immediately so users see heatmap data while the live fetch runs.
+          if (hydratedSectors?.sectors?.length) {
+            const items = hydratedSectors.sectors.map(toHeatmapItem);
+            const sectorBars = items.map(toSectorBar).filter((s): s is NonNullable<typeof s> => s !== null);
+            this.callPanel('heatmap', 'renderHeatmap', items, sectorBars.length ? sectorBars : undefined);
           }
-        } else if (stocksResult.skipped) {
-          this.callPanel('heatmap', 'showConfigError', finnhubConfigMsg);
+          const sectorsResp = await fetchSectors() as GetSectorSummaryResponse & { valuations?: Record<string, SectorValuation> };
+          if (sectorsResp.sectors.length > 0) {
+            const items = sectorsResp.sectors.map(toHeatmapItem);
+            const sectorBars = items.map(toSectorBar).filter((s): s is NonNullable<typeof s> => s !== null);
+            this.callPanel('heatmap', 'renderHeatmap', items, sectorBars.length ? sectorBars : undefined);
+            // Only push valuations when the response actually has the field — a
+            // payload without `valuations` must NOT clear prior valuations that
+            // may already be rendered from a previous (successful) fetch.
+            if (Object.prototype.hasOwnProperty.call(sectorsResp, 'valuations')) {
+              this.callPanel('heatmap', 'updateValuations', sectorsResp.valuations);
+            }
+          } else if (stocksResult.skipped) {
+            this.callPanel('heatmap', 'showConfigError', finnhubConfigMsg);
+          }
         }
       }
 
-      const commoditiesEnabled = this.isConfiguredPanelEnabled('commodities');
-      const energyEnabled = this.isConfiguredPanelEnabled('energy-complex');
+      const commoditiesEnabled = this.isLoadedPanelEnabled('commodities');
+      const energyEnabled = this.isLoadedPanelEnabled('energy-complex');
       const mapCommodity = (c: MarketData) => ({ symbol: c.symbol, display: c.display, price: c.price, change: c.change, sparkline: c.sparkline });
       const energySymbols = new Set(['CL=F', 'BZ=F', 'NG=F']);
       const filterCommodityTape = (data: MarketData[]) => data.filter((item) => item.symbol !== '^VIX' && !energySymbols.has(item.symbol));
@@ -1598,20 +1585,20 @@ export class DataLoaderManager implements AppModule {
       this.ctx.statusPanel?.updateApi('Finnhub', { status: 'error' });
     }
 
-    try {
-      const crypto = await fetchCrypto();
-      if (this.isConfiguredPanelEnabled('crypto')) {
+    if (this.isLoadedPanelEnabled('crypto')) {
+      try {
+        const crypto = await fetchCrypto();
         this.callPanel('crypto', 'renderCrypto', crypto);
+        this.ctx.statusPanel?.updateApi('CoinGecko', { status: crypto.length > 0 ? 'ok' : 'error' });
+      } catch {
+        this.ctx.statusPanel?.updateApi('CoinGecko', { status: 'error' });
       }
-      this.ctx.statusPanel?.updateApi('CoinGecko', { status: crypto.length > 0 ? 'ok' : 'error' });
-    } catch {
-      this.ctx.statusPanel?.updateApi('CoinGecko', { status: 'error' });
     }
 
-    const cryptoHeatmapEnabled = this.isConfiguredPanelEnabled('crypto-heatmap');
-    const defiEnabled = this.isConfiguredPanelEnabled('defi-tokens');
-    const aiEnabled = this.isConfiguredPanelEnabled('ai-tokens');
-    const otherEnabled = this.isConfiguredPanelEnabled('other-tokens');
+    const cryptoHeatmapEnabled = this.isLoadedPanelEnabled('crypto-heatmap');
+    const defiEnabled = this.isLoadedPanelEnabled('defi-tokens');
+    const aiEnabled = this.isLoadedPanelEnabled('ai-tokens');
+    const otherEnabled = this.isLoadedPanelEnabled('other-tokens');
 
     if (cryptoHeatmapEnabled || defiEnabled || aiEnabled || otherEnabled) {
       try {
@@ -2657,8 +2644,7 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.setMilitaryVessels(vessels, vesselClusters);
       this.ctx.map?.updateMilitaryForEscalation(flights, vessels);
       this.loadCachedPosturesForBanner();
-      const insightsPanel = this.ctx.panels['insights'] as InsightsPanel | undefined;
-      insightsPanel?.setMilitaryFlights(flights);
+      this.callPanel('insights', 'setMilitaryFlights', flights);
       const hasData = flights.length > 0 || vessels.length > 0;
       this.ctx.map?.setLayerReady('military', hasData);
       const militaryCount = flights.length + vessels.length;
@@ -2722,8 +2708,7 @@ export class DataLoaderManager implements AppModule {
       }
 
       this.loadCachedPosturesForBanner();
-      const insightsPanel = this.ctx.panels['insights'] as InsightsPanel | undefined;
-      insightsPanel?.setMilitaryFlights(flightData.flights);
+      this.callPanel('insights', 'setMilitaryFlights', flightData.flights);
 
       const hasData = flightData.flights.length > 0 || vesselData.vessels.length > 0;
       this.ctx.map?.setLayerReady('military', hasData);
@@ -2902,7 +2887,7 @@ export class DataLoaderManager implements AppModule {
     // we don't fire 6 RPCs that all 401 on every page load — fixes the
     // console-noise + Sentry-noise bug from the 2026-04-22 trace.
     if (!hasPremiumAccess()) return;
-    if (!this.isConfiguredPanelEnabled('trade-policy')) return;
+    if (!this.isLoadedPanelEnabled('trade-policy')) return;
 
     try {
       const [restrictions, tariffs, flows, barriers, revenue, comtrade] = await Promise.allSettled([
@@ -2950,7 +2935,7 @@ export class DataLoaderManager implements AppModule {
   }
 
   async loadSupplyChain(): Promise<void> {
-    if (!this.isConfiguredPanelEnabled('supply-chain')) return;
+    if (!this.isLoadedPanelEnabled('supply-chain')) return;
 
     try {
       const [shipping, chokepoints, minerals, stress] = await Promise.allSettled([
@@ -3025,7 +3010,7 @@ export class DataLoaderManager implements AppModule {
 
   async loadEconomicStress(): Promise<void> {
     try {
-      if (!this.isConfiguredPanelEnabled('economic')) return;
+      if (!this.isLoadedPanelEnabled('economic')) return;
 
       const hydrated = getHydratedData('economicStress') as import('@/generated/client/worldmonitor/economic/v1/service_client').GetEconomicStressResponse | undefined;
       if (hydrated && !hydrated.unavailable && Number.isFinite(hydrated.compositeScore)) {
@@ -3045,8 +3030,7 @@ export class DataLoaderManager implements AppModule {
   }
 
   updateMonitorResults(): void {
-    const monitorPanel = this.ctx.panels['monitors'] as MonitorPanel | undefined;
-    monitorPanel?.renderResults(this.ctx.allNews);
+    this.callPanel('monitors', 'renderResults', this.ctx.allNews);
   }
 
   async runCorrelationAnalysis(): Promise<void> {
@@ -3061,10 +3045,8 @@ export class DataLoaderManager implements AppModule {
         ingestNewsForCII(this.ctx.latestClusters);
         dataFreshness.recordUpdate('gdelt', this.ctx.latestClusters.length);
         this.refreshCiiAndBrief();
-        (this.ctx.panels['geo-hubs'] as GeoHubsPanel | undefined)
-          ?.setActivities(getTopActiveGeoHubs(this.ctx.latestClusters));
-        (this.ctx.panels['tech-hubs'] as TechHubsPanel | undefined)
-          ?.setActivities(getTopActiveHubs(this.ctx.latestClusters));
+        this.callPanel('geo-hubs', 'setActivities', getTopActiveGeoHubs(this.ctx.latestClusters));
+        this.callPanel('tech-hubs', 'setActivities', getTopActiveHubs(this.ctx.latestClusters));
       }
 
       const signals = await analysisWorker.analyzeCorrelations(
@@ -3304,12 +3286,23 @@ export class DataLoaderManager implements AppModule {
     this.ctx.map?.setKindnessData(kindnessItems);
   }
 
-  private async loadProgressData(): Promise<void> {
+  async loadGivingData(): Promise<void> {
+    const givingResult = await fetchGivingSummary();
+    if (!givingResult.ok) {
+      dataFreshness.recordError('giving', 'Giving data unavailable (retaining prior state)');
+      return;
+    }
+    const data = givingResult.data;
+    this.callPanel('giving', 'setData', data);
+    if (data.platforms.length > 0) dataFreshness.recordUpdate('giving', data.platforms.length);
+  }
+
+  async loadProgressData(): Promise<void> {
     const result = await fetchProgressData();
     this.callPanel('progress', 'setData', result);
   }
 
-  private async loadSpeciesData(): Promise<void> {
+  async loadSpeciesData(): Promise<void> {
     const species = await fetchConservationWins();
     this.callPanel('species', 'setData', species);
     this.ctx.map?.setSpeciesRecoveryZones(species);
@@ -3321,7 +3314,7 @@ export class DataLoaderManager implements AppModule {
     }
   }
 
-  private async loadRenewableData(): Promise<void> {
+  async loadRenewableData(): Promise<void> {
     const data = await fetchRenewableEnergyData();
     this.callPanel('renewable', 'setData', data);
     if (SITE_VARIANT === 'happy' && data?.globalPercentage) {
@@ -3335,6 +3328,10 @@ export class DataLoaderManager implements AppModule {
     } catch {
       // EIA failure does not break the existing World Bank gauge
     }
+  }
+
+  async loadTechReadiness(): Promise<void> {
+    this.callPanel('tech-readiness', 'refresh');
   }
 
   async loadSecurityAdvisories(): Promise<void> {

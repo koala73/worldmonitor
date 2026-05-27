@@ -67,6 +67,19 @@ describe('deploy/cache configuration guardrails', () => {
       /globPatterns:\s*\['\*\*\/\*\.html'\]/
     );
     assert.doesNotMatch(viteConfigSource, /globPatterns:\s*\['\*\*\/\*\.\{js,css/);
+    assert.match(viteConfigSource, /maximumFileSizeToCacheInBytes:\s*256 \* 1024/);
+  });
+
+  it('caches same-origin hashed JS/CSS assets only on HTTP 200 responses', () => {
+    const appAssetsBlock = viteConfigSource.match(/cacheName:\s*'app-assets'[\s\S]*?cacheableResponse:\s*\{ statuses:\s*\[([^\]]+)\] \}/);
+    assert.ok(appAssetsBlock, 'expected app-assets runtime cache block');
+    assert.equal(appAssetsBlock[1].replace(/\s/g, ''), '200');
+  });
+
+  it('caches same-origin locale chunks only on HTTP 200 responses', () => {
+    const localeBlock = viteConfigSource.match(/cacheName:\s*'locale-files'[\s\S]*?cacheableResponse:\s*\{ statuses:\s*\[([^\]]+)\] \}/);
+    assert.ok(localeBlock, 'expected locale-files runtime cache block');
+    assert.equal(localeBlock[1].replace(/\s/g, ''), '200');
   });
 
   it('explicitly disables navigateFallback when HTML is not precached', () => {

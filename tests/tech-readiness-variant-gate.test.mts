@@ -1,10 +1,9 @@
 // Regression guard for PR #3833 follow-up: tech-readiness refresh must be
 // variant-gated, not just viewport-gated.
 //
-// Bug: `shouldLoad(id)` returns `forceAll || isPanelNearViewport(id)` and
-// `App.ts:1226` calls `loadAllData(true)` on boot — so a `shouldLoad`-only
-// gate is bypassed at startup on every variant, and tech-readiness was
-// still firing its 5s `/api/bootstrap?keys=techReadiness` fetch on
+// Bug: `shouldLoad(id)` can be widened by explicit force-all callers, so a
+// `shouldLoad`-only gate is not a variant contract. Tech-readiness was still
+// firing its 5s `/api/bootstrap?keys=techReadiness` fetch on
 // commodity/finance/energy/happy where the seed key isn't populated.
 //
 // Fix: gate on `isPanelInVariantDefaults('tech-readiness')` in BOTH paths
@@ -56,7 +55,7 @@ describe('tech-readiness variant gate', () => {
       condition,
       /isPanelInVariantDefaults\(\s*['"]tech-readiness['"]\s*\)/,
       `data-loader.ts:${ifLineIdx + 1} must gate techReadiness on isPanelInVariantDefaults('tech-readiness'); ` +
-      `\`shouldLoad\` alone is bypassed on boot because loadAllData(true) forces it true. Got: ${condition.trim()}`,
+      `\`shouldLoad\` alone is not a variant contract. Got: ${condition.trim()}`,
     );
   });
 

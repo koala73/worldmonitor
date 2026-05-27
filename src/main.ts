@@ -5,11 +5,57 @@ import './styles/happy-theme.css';
 // Captures errors thrown before Sentry loads (deferred to requestIdleCallback).
 // Errors are flushed to Sentry.captureException() once the SDK initializes.
 interface BufferedError { error: unknown; timestamp: number }
+interface BufferedCspViolation {
+  violatedDirective: string;
+  effectiveDirective: string;
+  blockedURI: string;
+  sourceFile: string;
+  lineNumber: number;
+  disposition: string;
+  timestamp: number;
+}
+interface SentryCapture {
+  captureMessage: (message: string, context: {
+    level: 'warning';
+    tags: Record<string, string>;
+    extra: Record<string, unknown>;
+  }) => void;
+}
 const __errorBuffer: BufferedError[] = [];
+const __cspViolationBuffer: BufferedCspViolation[] = [];
 const MAX_BUFFERED = 20;
 
 const _origOnError = window.onerror;
 const _origOnUnhandled = window.onunhandledrejection;
+
+const isSuppressedPreSentryRejection = (reason: unknown): boolean =>
+  !!reason &&
+  typeof reason === 'object' &&
+  (reason as { name?: unknown }).name === 'NotAllowedError';
+
+const serializeCspViolation = (e: SecurityPolicyViolationEvent): BufferedCspViolation => ({
+  violatedDirective: e.violatedDirective ?? '',
+  effectiveDirective: e.effectiveDirective ?? '',
+  blockedURI: e.blockedURI ?? '',
+  sourceFile: e.sourceFile ?? '',
+  lineNumber: e.lineNumber ?? 0,
+  disposition: e.disposition ?? '',
+  timestamp: Date.now(),
+});
+
+const bufferCspViolation = (e: SecurityPolicyViolationEvent): void => {
+  if (__cspViolationBuffer.length >= MAX_BUFFERED) __cspViolationBuffer.shift();
+  __cspViolationBuffer.push(serializeCspViolation(e));
+};
+
+window.addEventListener('securitypolicyviolation', bufferCspViolation);
+
+// Suppress NotAllowedError from YouTube IFrame API's internal play() before
+// Sentry loads. The YT IFrame API does not expose the play() promise, so browser
+// autoplay policy can leak it as an unhandled rejection during initial paint.
+window.addEventListener('unhandledrejection', (e) => {
+  if (isSuppressedPreSentryRejection(e.reason)) e.preventDefault();
+});
 
 window.onerror = (msg, source, line, col, error) => {
   if (__errorBuffer.length >= MAX_BUFFERED) __errorBuffer.shift();
@@ -19,6 +65,10 @@ window.onerror = (msg, source, line, col, error) => {
 };
 
 window.onunhandledrejection = (event: PromiseRejectionEvent) => {
+  if (isSuppressedPreSentryRejection(event.reason)) {
+    event.preventDefault();
+    return;
+  }
   if (__errorBuffer.length >= MAX_BUFFERED) __errorBuffer.shift();
   __errorBuffer.push({ error: event.reason, timestamp: Date.now() });
   _origOnUnhandled?.call(window, event);
@@ -733,9 +783,34 @@ const _firstPartyConvexHost = ((): string | null => {
 // @ts-expect-error — expose for tests
 window.__shouldSuppressCspViolation = shouldSuppressCspViolation;
 
+const captureCspViolation = (Sentry: SentryCapture, violation: BufferedCspViolation): void => {
+  const blocked = violation.blockedURI;
+  if (shouldSuppressCspViolation(
+    violation.disposition,
+    violation.effectiveDirective,
+    blocked,
+    violation.sourceFile,
+    _cspAllowsHttps,
+    _firstPartyConvexHost,
+  )) return;
+  Sentry.captureMessage(`CSP: ${violation.effectiveDirective} blocked ${blocked || '(inline)'}`, {
+    level: 'warning',
+    tags: { kind: 'csp_violation' },
+    extra: {
+      violatedDirective: violation.violatedDirective,
+      effectiveDirective: violation.effectiveDirective,
+      blockedURI: blocked,
+      sourceFile: violation.sourceFile,
+      lineNumber: violation.lineNumber,
+      disposition: violation.disposition,
+      bufferedAt: violation.timestamp,
+    },
+  });
+};
+
 // === Deferred Sentry initialization ===
 // Sentry loads via dynamic import() triggered by requestIdleCallback.
-// All config (ignoreErrors, beforeSend, CSP handler, YouTube handler) is preserved inside the callback.
+// All config (ignoreErrors, beforeSend, CSP handler) is preserved inside the callback.
 const _initSentry = () => {
   import('@sentry/browser').then((Sentry) => {
     const sentryDsn = import.meta.env.VITE_SENTRY_DSN?.trim();
@@ -758,34 +833,9 @@ const _initSentry = () => {
     });
 
     // CSP violation handler — reports non-suppressed violations to Sentry
+    window.removeEventListener('securitypolicyviolation', bufferCspViolation);
     window.addEventListener('securitypolicyviolation', (e) => {
-      const blocked = e.blockedURI ?? '';
-      if (shouldSuppressCspViolation(
-        e.disposition ?? '',
-        e.effectiveDirective ?? '',
-        blocked,
-        e.sourceFile ?? '',
-        _cspAllowsHttps,
-        _firstPartyConvexHost,
-      )) return;
-      Sentry.captureMessage(`CSP: ${e.effectiveDirective} blocked ${blocked || '(inline)'}`, {
-        level: 'warning',
-        tags: { kind: 'csp_violation' },
-        extra: {
-          violatedDirective: e.violatedDirective,
-          effectiveDirective: e.effectiveDirective,
-          blockedURI: blocked,
-          sourceFile: e.sourceFile,
-          lineNumber: e.lineNumber,
-          disposition: e.disposition,
-        },
-      });
-    });
-
-    // Suppress NotAllowedError from YouTube IFrame API's internal play() — browser autoplay policy,
-    // not actionable. The YT IFrame API doesn't expose the play() promise so it leaks as unhandled.
-    window.addEventListener('unhandledrejection', (e) => {
-      if (e.reason?.name === 'NotAllowedError') e.preventDefault();
+      captureCspViolation(Sentry, serializeCspViolation(e));
     });
 
     // Flush buffered errors captured before Sentry loaded
@@ -793,6 +843,10 @@ const _initSentry = () => {
       Sentry.captureException(error);
     }
     __errorBuffer.length = 0;
+    for (const violation of __cspViolationBuffer) {
+      captureCspViolation(Sentry, violation);
+    }
+    __cspViolationBuffer.length = 0;
 
     // Remove temporary error handlers — Sentry now owns global error capture
     window.onerror = _origOnError;

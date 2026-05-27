@@ -106,6 +106,7 @@ export const STORAGE_KEYS = {
   liveChannels: 'worldmonitor-live-channels',
   mapMode: 'worldmonitor-map-mode',          // 'flat' | 'globe'
   activeChannel: 'worldmonitor-active-channel',
+  panelSpans: 'worldmonitor-panel-spans',
   webcamPrefs: 'worldmonitor-webcam-prefs',
 } as const;
 

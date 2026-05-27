@@ -1153,8 +1153,8 @@ export function getEffectivePanelConfig(key: string, variant: string): PanelConf
  * Returns true if `key` is in the current variant's default panel set.
  *
  * App.ts:577-583 merges ALL_PANELS into panelSettings on every variant so
- * users can cross-enable panels, which makes `shouldCreatePanel(key)`
- * (which just checks `key in panelSettings`) true everywhere. Auto-refresh
+ * users can cross-enable panels, which makes `hasPanelConfig(key)`
+ * true everywhere. Auto-refresh
  * paths that fan out a fetch must instead gate on the variant defaults —
  * otherwise variants whose backend doesn't seed the panel's bootstrap key
  * (e.g. tech-readiness on commodity/finance/energy) blow their 5s fetch
@@ -1368,4 +1368,5 @@ export const STORAGE_KEYS = {
   monitors: 'worldmonitor-monitors',
   mapLayers: 'worldmonitor-layers',
   disabledFeeds: 'worldmonitor-disabled-feeds',
+  panelSpans: 'worldmonitor-panel-spans',
 } as const;
