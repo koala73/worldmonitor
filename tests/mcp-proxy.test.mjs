@@ -352,7 +352,7 @@ describe('api/mcp-proxy', () => {
 
     it('passes custom headers to upstream', async () => {
       let capturedHeaders = {};
-      globalThis.fetch = async (_url, opts) => {
+      globalThis.fetch = async (url, opts) => {
         capturedHeaders = Object.fromEntries(Object.entries(opts?.headers || {}));
         return makeMcpFetch({ tools: [] })(url, opts);
       };
@@ -366,7 +366,7 @@ describe('api/mcp-proxy', () => {
 
     it('strips CRLF from injected headers', async () => {
       let capturedHeaders = {};
-      globalThis.fetch = async (_url, opts) => {
+      globalThis.fetch = async (url, opts) => {
         capturedHeaders = Object.fromEntries(Object.entries(opts?.headers || {}));
         return makeMcpFetch({ tools: [] })(url, opts);
       };
