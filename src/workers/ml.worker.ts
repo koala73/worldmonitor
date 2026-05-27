@@ -6,6 +6,7 @@
 import { pipeline, env } from '@huggingface/transformers';
 import { MODEL_CONFIGS, type ModelConfig } from '@/config/ml-config';
 import { storeVectors, searchVectors, getCount, resetStore, sanitizeTitle, type VectorSearchResult } from './vector-db';
+import { normalizeTokenClassificationOutput, type NEREntity } from './ml-ner';
 
 // Configure Transformers.js
 env.allowLocalModels = false;
@@ -232,14 +233,6 @@ async function classifySentiment(texts: string[]): Promise<Array<{ label: string
   return results;
 }
 
-interface NEREntity {
-  text: string;
-  type: string;
-  confidence: number;
-  start: number;
-  end: number;
-}
-
 async function extractEntities(texts: string[]): Promise<NEREntity[][]> {
   await loadModel('ner');
   const pipe = loadedPipelines.get('ner')!;
@@ -247,20 +240,7 @@ async function extractEntities(texts: string[]): Promise<NEREntity[][]> {
   const results: NEREntity[][] = [];
   for (const text of texts) {
     const output = await pipe(text);
-    const entities = (output as Array<{
-      entity_group: string;
-      score: number;
-      word: string;
-      start: number;
-      end: number;
-    }>).map(e => ({
-      text: e.word,
-      type: e.entity_group,
-      confidence: e.score,
-      start: e.start,
-      end: e.end,
-    }));
-    results.push(entities);
+    results.push(normalizeTokenClassificationOutput(output, text));
   }
 
   return results;

@@ -139,7 +139,6 @@
     "jose": "^6.2.2",
     "maplibre-gl": "^5.16.0",
     "marked": "^17.0.3",
-    "onnxruntime-web": "^1.23.2",
     "papaparse": "^5.5.3",
     "pmtiles": "^4.4.0",
     "preact": "^10.25.4",
