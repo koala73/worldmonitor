@@ -141,7 +141,7 @@ export async function triggerSimulation(
     : (authHeader ? 'clerk_jwt' : 'unknown');
   // clientVersion echoed per the proto comment promise (Greptile P2 review on PR #3811).
   // Sanitized to a short slug to keep the log line bounded; never persisted.
-  const clientVersion = String(req.clientVersion ?? '').slice(0, 64).replace(/[^a-zA-Z0-9._/\-]/g, '');
+  const clientVersion = String(req.clientVersion ?? '').slice(0, 64).replace(/[^a-zA-Z0-9._/-]/g, '');
   console.log(`[TriggerSimulation] queued runId=${pointer.runId} authKind=${authKind} pkgFingerprint=${pointer.pkgFingerprint} clientVersion=${clientVersion}`);
   markNoCacheResponse(ctx.request);
   return {

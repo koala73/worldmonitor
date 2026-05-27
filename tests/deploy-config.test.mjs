@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { readFileSync, existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -95,6 +96,27 @@ describe('deploy/cache configuration guardrails', () => {
   });
 });
 
+describe('deploy/API CORS guardrails', () => {
+  it('does not define static CORS headers for /api routes in vercel.json', () => {
+    const corsHeaderKeys = new Set([
+      'access-control-allow-origin',
+      'access-control-allow-methods',
+      'access-control-allow-headers',
+      'access-control-allow-credentials',
+    ]);
+    const apiCorsRules = vercelConfig.headers
+      .filter((entry) => entry.source.startsWith('/api'))
+      .filter((entry) => entry.headers?.some((header) => corsHeaderKeys.has(header.key.toLowerCase())))
+      .map((entry) => entry.source);
+
+    assert.deepEqual(
+      apiCorsRules,
+      [],
+      'API CORS must be emitted by handlers so credentialed requests get origin-specific ACAO plus ACAC=true.'
+    );
+  });
+});
+
 describe('docker runtime dependency guardrails', () => {
   const runtimePackage = JSON.parse(readFileSync(resolve(__dirname, '../docker/runtime-package.json'), 'utf-8'));
   const runtimeLock = JSON.parse(readFileSync(resolve(__dirname, '../docker/runtime-package-lock.json'), 'utf-8'));
@@ -134,6 +156,16 @@ const getHeaderValue = (key) => {
   const headers = getSecurityHeaders();
   const header = headers.find((h) => h.key.toLowerCase() === key.toLowerCase());
   return header?.value ?? null;
+};
+
+const getNginxHeaderValue = (key) => {
+  const nginxConf = readFileSync(resolve(__dirname, '../docker/nginx-security-headers.conf'), 'utf-8');
+  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const line = nginxConf
+    .split('\n')
+    .find((candidate) => new RegExp(`^add_header\\s+${escapedKey}\\s+"`, 'i').test(candidate));
+  const match = line?.match(/^add_header\s+\S+\s+"(.*)"\s+always;$/i);
+  return match?.[1].replace(/\\"/g, '"') ?? null;
 };
 
 describe('security header guardrails', () => {
@@ -242,6 +274,22 @@ describe('security header guardrails', () => {
     );
   });
 
+  it('Permissions-Policy explicitly opts embedded documents into unload handlers', () => {
+    const policy = getHeaderValue('Permissions-Policy');
+    assert.ok(
+      policy.includes('unload=(*)'),
+      'Permissions-Policy should explicitly allow embedded unload handlers to avoid third-party iframe console violations'
+    );
+  });
+
+  it('Permissions-Policy is in sync between vercel.json header and docker/nginx-security-headers.conf', () => {
+    assert.equal(
+      getNginxHeaderValue('Permissions-Policy'),
+      getHeaderValue('Permissions-Policy'),
+      'Self-hosted docker users must have the same Permissions-Policy as Vercel.'
+    );
+  });
+
   it('CSP connect-src does not allow unencrypted WebSocket (ws:)', () => {
     const csp = getHeaderValue('Content-Security-Policy');
     const connectSrc = csp.match(/connect-src\s+([^;]+)/)?.[1] ?? '';
@@ -280,6 +328,24 @@ describe('security header guardrails', () => {
     const scriptSrc = csp.match(/script-src\s+([^;]+)/)?.[1] ?? '';
     assert.ok(scriptSrc.includes("'wasm-unsafe-eval'"), 'CSP script-src must include wasm-unsafe-eval for WASM support');
     assert.ok(scriptSrc.includes("'self'"), 'CSP script-src must include self');
+  });
+
+  it('CSP script-src includes hashes for every inline script in index.html', () => {
+    const indexHtml = readFileSync(resolve(__dirname, '../index.html'), 'utf-8');
+    const csp = getHeaderValue('Content-Security-Policy');
+    const scriptTokens = getCspDirectiveTokens(csp, 'script-src');
+    const inlineHashTokens = [...indexHtml.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)]
+      .map((match) => match[1])
+      .filter((body) => body.trim().length > 0)
+      .map((body) => `'sha256-${createHash('sha256').update(body).digest('base64')}'`);
+    const missing = inlineHashTokens.filter((token) => !scriptTokens.includes(token));
+
+    assert.deepEqual(
+      missing,
+      [],
+      `CSP script-src is missing inline script hashes: ${missing.join(', ')}. ` +
+        'Any inline script edit must update the production CSP header.'
+    );
   });
 
   it('CSP script-src includes Clerk origin for auth UI', () => {
@@ -322,11 +388,9 @@ describe('security header guardrails', () => {
   });
 
   it('CSP script-src is in sync between vercel.json header and docker/nginx-security-headers.conf', () => {
-    const nginxConf = readFileSync(resolve(__dirname, '../docker/nginx-security-headers.conf'), 'utf-8');
     const headerCsp = getHeaderValue('Content-Security-Policy');
-    const nginxMatch = nginxConf.match(/add_header\s+Content-Security-Policy\s+"([^"]+)"/i);
-    assert.ok(nginxMatch, 'nginx-security-headers.conf must have a Content-Security-Policy header');
-    const nginxCsp = nginxMatch[1];
+    const nginxCsp = getNginxHeaderValue('Content-Security-Policy');
+    assert.ok(nginxCsp, 'nginx-security-headers.conf must have a Content-Security-Policy header');
 
     const headerTokens = getCspDirectiveTokens(headerCsp, 'script-src');
     const nginxTokens = getCspDirectiveTokens(nginxCsp, 'script-src');

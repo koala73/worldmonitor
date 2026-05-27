@@ -54,7 +54,7 @@ export function markdownToEmailHtml(md) {
     const trimmed = line.trim();
     if (!trimmed) { flush(); continue; }
 
-    const bullet = line.match(/^\s*[\*\-]\s+(.+)$/);
+    const bullet = line.match(/^\s*[*-]\s+(.+)$/);
     if (bullet) {
       if (!current || current.type !== 'ul') { flush(); current = { type: 'ul', items: [] }; }
       current.items.push(bullet[1]);
@@ -91,7 +91,7 @@ export function escapeTelegramHtml(str) {
 export function markdownToTelegramHtml(md) {
   let html = escapeTelegramHtml(md);
   // Bullets first (Telegram HTML has no list elements, render as • char)
-  html = html.replace(/^[\*\-]\s+/gm, '• ');
+  html = html.replace(/^[*-]\s+/gm, '• ');
   // Bold: **text** or __text__
   html = html.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
   html = html.replace(/__(.+?)__/g, '<b>$1</b>');
@@ -115,7 +115,7 @@ export function escapeSlackMrkdwn(str) {
 export function markdownToSlackMrkdwn(md) {
   let txt = escapeSlackMrkdwn(md);
   // Bullets first (avoid collision with italic single-asterisk regex)
-  txt = txt.replace(/^[\*\-]\s+/gm, '• ');
+  txt = txt.replace(/^[*-]\s+/gm, '• ');
   // Bold: **text** or __text__ → *text* (Slack uses single asterisk).
   // Use \u0001 placeholder so italic pass below doesn't re-match.
   txt = txt.replace(/\*\*(.+?)\*\*/g, '\u0001$1\u0001');

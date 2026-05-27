@@ -44,7 +44,7 @@ async function fetchSectorData() {
   const sectors = SECTORS.map(sector => {
     const changes = sector.tokens
       .map(id => byId.get(id))
-      .filter(v => typeof v === 'number' && isFinite(v));
+      .filter(v => typeof v === 'number' && Number.isFinite(v));
     const change = changes.length > 0 ? changes.reduce((a, b) => a + b, 0) / changes.length : 0;
     return { id: sector.id, name: sector.name, change };
   });

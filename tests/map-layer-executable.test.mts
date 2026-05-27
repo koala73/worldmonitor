@@ -21,23 +21,25 @@ import {
 } from '../src/config/map-layer-definitions';
 
 describe('LAYER_REGISTRY — deckGLOnly flag', () => {
-  test('storageFacilities and fuelShortages are marked deckGLOnly', () => {
-    // These two layers ship in PR #3366 with DeckGL-only render paths.
-    // GlobeMap has no branch for them in ensureStaticDataForLayer, and
-    // Map.ts SVG fallback has no render code. The `deckGLOnly: true`
+  test('layers with only DeckGL render paths are marked deckGLOnly', () => {
+    // These layers have DeckGL-only render paths. GlobeMap has no branch for
+    // them, and Map.ts SVG fallback has no render code. The `deckGLOnly: true`
     // flag is the signal that non-DeckGL contexts must not flip them on.
     assert.equal(LAYER_REGISTRY.storageFacilities.deckGLOnly, true,
       'storageFacilities must be marked deckGLOnly');
     assert.equal(LAYER_REGISTRY.fuelShortages.deckGLOnly, true,
       'fuelShortages must be marked deckGLOnly');
+    assert.equal(LAYER_REGISTRY.diseaseOutbreaks.deckGLOnly, true,
+      'diseaseOutbreaks must be marked deckGLOnly');
   });
 
-  test('storageFacilities and fuelShortages are flat-only (no globe)', () => {
+  test('DeckGL-only layers are flat-only (no globe)', () => {
     // Renderer restriction is belt to the deckGLOnly suspenders — it
     // hides the toggle from the globe picker, while deckGLOnly also
     // blocks dispatch on the SVG fallback even though SVG is "flat".
     assert.deepEqual(LAYER_REGISTRY.storageFacilities.renderers, ['flat']);
     assert.deepEqual(LAYER_REGISTRY.fuelShortages.renderers, ['flat']);
+    assert.deepEqual(LAYER_REGISTRY.diseaseOutbreaks.renderers, ['flat']);
   });
 
   test('layers without deckGLOnly do not accidentally set the flag to false', () => {

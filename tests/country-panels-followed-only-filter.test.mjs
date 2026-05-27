@@ -447,7 +447,7 @@ describe('country-scoped panels — re-filter on watchlist change', () => {
     });
 
     // Initial pass — only US.
-    let filtered = applyFollowedOnlyFilter(rows, handle.isActive());
+    const filtered = applyFollowedOnlyFilter(rows, handle.isActive());
     assert.deepEqual(filtered.map((r) => r.code), ['US']);
 
     // External add: user follows IR via another tab / surface.

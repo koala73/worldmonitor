@@ -530,7 +530,7 @@ export class ForecastPanel extends Panel {
     const sigs = f.signals || [];
     const signalsHtml = sigs.length > 0
       ? sigs.map(s =>
-          `<div class="fc-signal">${escapeHtml(s.value.replace(/^[\s\u2013\u2014\-]+/, ''))}</div>`
+          `<div class="fc-signal">${escapeHtml(s.value.replace(/^[\s\u2013\u2014-]+/, ''))}</div>`
         ).join('')
       : '';
 

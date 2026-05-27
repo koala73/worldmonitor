@@ -67,7 +67,7 @@ function setNested(obj, dotted, value) {
   // typing so we can materialise arrays vs objects on demand.
   const tokens = [];
   for (const part of dotted.split('.')) {
-    const m = part.match(/^([^\[]*)((?:\[\d+\])+)?$/);
+    const m = part.match(/^([^[]*)((?:\[\d+\])+)?$/);
     if (m && m[1]) tokens.push({ type: 'key', value: m[1] });
     if (m && m[2]) {
       for (const idx of m[2].matchAll(/\[(\d+)\]/g)) {

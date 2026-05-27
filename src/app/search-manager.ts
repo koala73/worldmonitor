@@ -230,42 +230,39 @@ export class SearchManager implements AppModule {
     });
     this.ctx.searchModal.setOnSelect((result) => this.handleSearchResult(result));
     this.ctx.searchModal.setOnCommand((cmd) => this.handleCommand(cmd));
-
-    // Always wire flight search — check pro status reactively inside the callback
+    // Always wire flight search; check pro status reactively inside the callback
     // so mid-session sign-ins get the feature without a page reload.
-    {
-      this.ctx.searchModal.setOnFlightSearch((callsign) => {
-        if (!isProUser() && getAuthState().user?.role !== 'pro') return;
-        fetchAircraftPositions({ callsign }).then((positions) => {
-          if (!this.ctx.searchModal) return;
-          // Deduplicate by callsign: keep the most recently observed entry per callsign.
-          const seen = new Map<string, PositionSample>();
-          for (const p of positions) {
-            const key = (p.callsign || p.icao24).trim().toUpperCase();
-            const existing = seen.get(key);
-            if (!existing || p.observedAt > existing.observedAt) {
-              seen.set(key, p);
-            }
+    this.ctx.searchModal.setOnFlightSearch((callsign) => {
+      if (!isProUser() && getAuthState().user?.role !== 'pro') return;
+      fetchAircraftPositions({ callsign }).then((positions) => {
+        if (!this.ctx.searchModal) return;
+        // Deduplicate by callsign: keep the most recently observed entry per callsign.
+        const seen = new Map<string, PositionSample>();
+        for (const p of positions) {
+          const key = (p.callsign || p.icao24).trim().toUpperCase();
+          const existing = seen.get(key);
+          if (!existing || p.observedAt > existing.observedAt) {
+            seen.set(key, p);
           }
-          const items = [...seen.values()].map(p => {
-            const fl = Number.isFinite(p.altitudeFt) ? Math.round(p.altitudeFt / 100) : null;
-            const kts = Number.isFinite(p.groundSpeedKts) ? Math.round(p.groundSpeedKts) : null;
-            return {
-              id: p.icao24,
-              title: (p.callsign || p.icao24).trim().toUpperCase(),
-              subtitle: p.onGround
-                ? t('modals.search.flightOnGround')
-                : fl !== null && kts !== null
-                  ? t('modals.search.flightAirborne', { fl: String(fl), kts: String(kts) })
-                  : fl !== null ? `FL${fl}` : t('modals.search.flightOnGround'),
-              data: { kind: 'adsb' as const, lat: p.lat, lon: p.lon, layer: 'flights' as const },
-            };
-          });
-          this.ctx.searchModal.registerSource('flight', items);
-          this.ctx.searchModal.refreshSearch();
-        }).catch(() => {/* silent — show no results */});
-      });
-    }
+        }
+        const items = [...seen.values()].map(p => {
+          const fl = Number.isFinite(p.altitudeFt) ? Math.round(p.altitudeFt / 100) : null;
+          const kts = Number.isFinite(p.groundSpeedKts) ? Math.round(p.groundSpeedKts) : null;
+          return {
+            id: p.icao24,
+            title: (p.callsign || p.icao24).trim().toUpperCase(),
+            subtitle: p.onGround
+              ? t('modals.search.flightOnGround')
+              : fl !== null && kts !== null
+                ? t('modals.search.flightAirborne', { fl: String(fl), kts: String(kts) })
+                : fl !== null ? `FL${fl}` : t('modals.search.flightOnGround'),
+            data: { kind: 'adsb' as const, lat: p.lat, lon: p.lon, layer: 'flights' as const },
+          };
+        });
+        this.ctx.searchModal.registerSource('flight', items);
+        this.ctx.searchModal.refreshSearch();
+      }).catch(() => {/* silent — show no results */});
+    });
 
     this.boundKeydownHandler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {

@@ -81,17 +81,13 @@
 				"noImportantStyles": "off",
 				"useLiteralKeys": "off",
 				"useFlatMap": "warn",
+				"useOptionalChain": "off",
 				"noUselessSwitchCase": "warn",
 				"noUselessConstructor": "warn",
 				"noStaticOnlyClass": "off",
 				"noArguments": "error",
 				"noBannedTypes": "off",
-				"noExcessiveCognitiveComplexity": {
-					"level": "warn",
-					"options": {
-						"maxAllowedComplexity": 50
-					}
-				}
+				"noExcessiveCognitiveComplexity": "off"
 			},
 			"performance": {
 				"noDelete": "off",

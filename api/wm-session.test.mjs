@@ -80,6 +80,7 @@ test('OPTIONS preflight returns 204 with CORS', async () => {
   const resp = await handler(makeReq('OPTIONS', { origin: 'https://worldmonitor.app' }));
   assert.equal(resp.status, 204);
   assert.equal(resp.headers.get('access-control-allow-methods'), 'POST, OPTIONS');
+  assert.equal(resp.headers.get('access-control-allow-credentials'), 'true');
 });
 
 test('GET method is rejected with 405', async () => {

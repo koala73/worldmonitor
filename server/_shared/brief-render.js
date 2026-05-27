@@ -837,8 +837,9 @@ const STYLE_BLOCK = `<style>
   }
   .cover .hero h1 {
     font-family: 'Playfair Display', serif; font-weight: 900;
-    font-size: 10vw; line-height: 0.92; letter-spacing: -0.03em;
+    font-size: clamp(72px, 10vw, 156px); line-height: 0.92; letter-spacing: -0.03em;
     margin-bottom: 6vh;
+    overflow-wrap: anywhere;
   }
   .cover .hero .kicker {
     font-family: 'IBM Plex Mono', monospace;
@@ -852,7 +853,7 @@ const STYLE_BLOCK = `<style>
   .cover.back { align-items: center; justify-content: center; text-align: center; }
   .cover.back .hero { align-items: center; flex: 0; }
   .cover.back .centered-logo { margin-bottom: 5vh; opacity: 0.9; }
-  .cover.back .hero h1 { font-size: 8vw; }
+  .cover.back .hero h1 { font-size: clamp(64px, 8vw, 132px); }
   .cover.back .meta-bottom {
     width: 100%; position: absolute; bottom: 6vh; left: 0; padding: 0 6vw;
   }
@@ -872,25 +873,16 @@ const STYLE_BLOCK = `<style>
   .digest .label { color: var(--sienna); margin-bottom: 5vh; }
   .digest h2 {
     font-family: 'Playfair Display', serif; font-weight: 900;
-    font-size: 7vw; line-height: 0.98; letter-spacing: -0.02em;
+    font-size: clamp(54px, 7vw, 112px); line-height: 0.98; letter-spacing: -0.02em;
     margin-bottom: 6vh; max-width: 18ch;
-    overflow-wrap: anywhere;
-  }
-  .digest blockquote,
-  .digest .stat-label,
-  .digest .thread,
-  .digest .signal,
-  .story h3,
-  .story .desc,
-  .story .source,
-  .story .callout .note {
     overflow-wrap: anywhere;
   }
   .digest blockquote {
     font-family: 'Source Serif 4', serif; font-style: italic;
-    font-size: 2vw; line-height: 1.38; max-width: 32ch;
+    font-size: clamp(20px, 2vw, 34px); line-height: 1.38; max-width: 32ch;
     margin-bottom: 5vh; padding-left: 2vw;
     border-left: 3px solid var(--sienna);
+    overflow-wrap: anywhere;
   }
   .digest .rule {
     border: none; height: 2px; background: var(--sienna);
@@ -905,19 +897,21 @@ const STYLE_BLOCK = `<style>
   .digest .stat-row:last-child { border-bottom: none; }
   .digest .stat-num {
     font-family: 'Playfair Display', serif; font-weight: 900;
-    font-size: 11vw; line-height: 0.9; color: var(--cream-ink);
+    font-size: clamp(84px, 11vw, 168px); line-height: 0.9; color: var(--cream-ink);
   }
   .digest .stat-label {
     font-family: 'Source Serif 4', serif; font-style: italic;
     font-size: max(18px, 1.7vw); line-height: 1.3;
     color: var(--cream-ink); opacity: 0.85;
+    overflow-wrap: anywhere;
   }
   .digest .footer-caption { margin-top: 4vh; color: var(--sienna); opacity: 0.85; }
   .digest .threads { display: flex; flex-direction: column; gap: 3.2vh; max-width: 62ch; }
   .digest .thread {
     font-family: 'Source Serif 4', serif;
-    font-size: max(17px, 1.55vw); line-height: 1.45;
+    font-size: clamp(17px, 1.55vw, 28px); line-height: 1.45;
     color: var(--cream-ink);
+    overflow-wrap: anywhere;
   }
   .digest .thread .tag {
     font-family: 'IBM Plex Mono', monospace; font-weight: 600;
@@ -926,9 +920,10 @@ const STYLE_BLOCK = `<style>
   .digest .signals { display: flex; flex-direction: column; gap: 3.5vh; max-width: 60ch; }
   .digest .signal {
     font-family: 'Source Serif 4', serif;
-    font-size: max(18px, 1.65vw); line-height: 1.45;
+    font-size: clamp(18px, 1.65vw, 30px); line-height: 1.45;
     color: var(--cream-ink); padding-left: 2vw;
     border-left: 2px solid var(--sienna);
+    overflow-wrap: anywhere;
   }
   .digest .end-marker {
     margin-top: 5vh; display: flex; align-items: center; gap: 1.5vw;
@@ -967,13 +962,15 @@ const STYLE_BLOCK = `<style>
   .story.dark .tag.crit { background: var(--bone); color: var(--ink); border-color: var(--bone); }
   .story h3 {
     font-family: 'Playfair Display', serif; font-weight: 900;
-    font-size: 5vw; line-height: 0.98; letter-spacing: -0.02em;
+    font-size: clamp(44px, 5vw, 86px); line-height: 0.98; letter-spacing: -0.02em;
     margin-bottom: 5vh; max-width: 18ch;
+    overflow-wrap: anywhere;
   }
   .story .desc {
     font-family: 'Source Serif 4', serif;
-    font-size: max(17px, 1.55vw); line-height: 1.45;
+    font-size: clamp(17px, 1.55vw, 28px); line-height: 1.45;
     max-width: 40ch; margin-bottom: 4vh; opacity: 0.88;
+    overflow-wrap: anywhere;
   }
   .story.dark .desc { opacity: 0.85; }
   /* Source line — the one editorial accent on story pages. Sits at
@@ -984,6 +981,7 @@ const STYLE_BLOCK = `<style>
     font-family: 'IBM Plex Mono', monospace;
     font-size: max(11px, 0.9vw); letter-spacing: 0.2em;
     text-transform: uppercase;
+    overflow-wrap: anywhere;
   }
   .story.light .source { color: var(--sienna); }
   .story.dark  .source { color: var(--mint); }
@@ -1026,7 +1024,8 @@ const STYLE_BLOCK = `<style>
   }
   .story .callout .note {
     font-family: 'Source Serif 4', serif;
-    font-size: max(17px, 1.55vw); line-height: 1.5; opacity: 0.82;
+    font-size: clamp(17px, 1.55vw, 28px); line-height: 1.5; opacity: 0.82;
+    overflow-wrap: anywhere;
   }
   .nav-dots {
     position: fixed; bottom: 3.5vh; left: 50%;
