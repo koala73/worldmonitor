@@ -22,7 +22,7 @@
 
 import { strict as assert } from 'node:assert';
 import test from 'node:test';
-import worker, { isAllowedOrigin, buildCorsHeaders } from './src/index.js';
+import worker, { isAllowedOrigin, buildCorsHeaders, hasPublicCorsPolicy } from './src/index.js';
 
 function makeRequest(method, url, headers = {}) {
   return new Request(url, { method, headers });
@@ -201,6 +201,124 @@ test('GET response from origin has CORS headers stamped by the Worker', async ()
     globalThis.fetch = original;
   }
 });
+
+// --- public-CORS path bypass (MCP / OAuth / discovery / public utilities) ----
+
+test('hasPublicCorsPolicy: exact-match paths', () => {
+  assert.equal(hasPublicCorsPolicy('/api/mcp'), true);
+  assert.equal(hasPublicCorsPolicy('/api/oauth-protected-resource'), true);
+  assert.equal(hasPublicCorsPolicy('/api/security/report'), true);
+  assert.equal(hasPublicCorsPolicy('/api/geo'), true);
+  assert.equal(hasPublicCorsPolicy('/api/version'), true);
+});
+
+test('hasPublicCorsPolicy: prefix paths for nested OAuth + MCP routes', () => {
+  // OAuth flows
+  assert.equal(hasPublicCorsPolicy('/api/oauth/register'), true);
+  assert.equal(hasPublicCorsPolicy('/api/oauth/token'), true);
+  assert.equal(hasPublicCorsPolicy('/api/oauth/authorize'), true);
+  assert.equal(hasPublicCorsPolicy('/api/oauth/authorize-pro'), true);
+  // MCP nested handlers
+  assert.equal(hasPublicCorsPolicy('/api/mcp/handler'), true);
+  assert.equal(hasPublicCorsPolicy('/api/mcp/anything'), true);
+});
+
+test('hasPublicCorsPolicy: rejects WM-app routes (so credentialed flow keeps Worker policy)', () => {
+  assert.equal(hasPublicCorsPolicy('/api/health'), false);
+  assert.equal(hasPublicCorsPolicy('/api/bootstrap'), false);
+  assert.equal(hasPublicCorsPolicy('/api/wm-session'), false);
+  assert.equal(hasPublicCorsPolicy('/api/news/v1/list-articles'), false);
+  // Tricky prefix collisions that must NOT bypass:
+  assert.equal(hasPublicCorsPolicy('/api/mcps'), false); // not the same as /api/mcp/
+  assert.equal(hasPublicCorsPolicy('/api/oauth-anything-else'), false); // not /api/oauth/...
+  assert.equal(hasPublicCorsPolicy('/api/geographic-data'), false); // not /api/geo
+});
+
+test('OPTIONS preflight to /api/mcp from https://claude.ai passes through to Vercel (Worker does NOT short-circuit)', async () => {
+  // Regression: PR review caught that the Worker was short-circuiting MCP
+  // preflights with the canonical worldmonitor.app fallback origin echo,
+  // which blocked claude.ai / claude.com MCP clients. Pin the bypass.
+  const original = globalThis.fetch;
+  let received;
+  globalThis.fetch = async (req) => {
+    received = req;
+    return new Response(null, {
+      status: 204,
+      headers: {
+        // Simulate Vercel function returning ACAO: * (getPublicCorsHeaders).
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-WorldMonitor-Key',
+      },
+    });
+  };
+  try {
+    const req = makeRequest('OPTIONS', 'https://api.worldmonitor.app/api/mcp', {
+      Origin: 'https://claude.ai',
+      'Access-Control-Request-Method': 'POST',
+    });
+    const resp = await worker.fetch(req);
+    assert.ok(received instanceof Request, 'request should have been forwarded to fetch()');
+    assert.equal(received.url, 'https://api.worldmonitor.app/api/mcp');
+    assert.equal(resp.status, 204);
+    // Vercel's ACAO: * passes through unchanged (Worker did NOT stamp).
+    assert.equal(resp.headers.get('access-control-allow-origin'), '*');
+    // Worker did NOT inject its own ACAC: true.
+    assert.equal(resp.headers.get('access-control-allow-credentials'), null);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test('OPTIONS preflight to /api/oauth/register from https://claude.com passes through (OAuth DCR)', async () => {
+  const original = globalThis.fetch;
+  let received;
+  globalThis.fetch = async (req) => {
+    received = req;
+    return new Response(null, {
+      status: 204,
+      headers: { 'Access-Control-Allow-Origin': '*' },
+    });
+  };
+  try {
+    const req = makeRequest('OPTIONS', 'https://api.worldmonitor.app/api/oauth/register', {
+      Origin: 'https://claude.com',
+      'Access-Control-Request-Method': 'POST',
+    });
+    const resp = await worker.fetch(req);
+    assert.ok(received instanceof Request);
+    assert.equal(resp.headers.get('access-control-allow-origin'), '*');
+    assert.equal(resp.headers.get('access-control-allow-credentials'), null);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+test('GET to /api/oauth/token from https://claude.ai passes Vercel headers through unchanged', async () => {
+  const original = globalThis.fetch;
+  globalThis.fetch = async () => new Response(JSON.stringify({ access_token: 'fake' }), {
+    status: 200,
+    headers: {
+      'Content-Type': 'application/json',
+      // Vercel function's ACAO: * MUST survive — Worker must not override.
+      'Access-Control-Allow-Origin': '*',
+    },
+  });
+  try {
+    const req = makeRequest('POST', 'https://api.worldmonitor.app/api/oauth/token', {
+      Origin: 'https://claude.ai',
+      'Content-Type': 'application/json',
+    });
+    const resp = await worker.fetch(req);
+    assert.equal(resp.status, 200);
+    assert.equal(resp.headers.get('access-control-allow-origin'), '*');
+    assert.equal(resp.headers.get('access-control-allow-credentials'), null);
+  } finally {
+    globalThis.fetch = original;
+  }
+});
+
+// --- end public-CORS bypass tests ---------------------------------------------
 
 test('502 fallback when origin throws still includes CORS headers', async () => {
   const original = globalThis.fetch;

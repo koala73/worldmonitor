@@ -42,6 +42,40 @@ if (!SHOULD_RUN) {
   test('LIVE smoke gated — set LIVE_SMOKE=1 to run', { skip: true }, () => {});
 }
 
+// Public-CORS paths that the Worker MUST pass through to Vercel unchanged.
+// External MCP clients (https://claude.ai, https://claude.com) hit these and
+// must receive the Vercel function's own CORS policy (typically ACAO: * for
+// OAuth/MCP), not the Worker's worldmonitor.app-only echo.
+const PUBLIC_CORS_PROBES = [
+  { url: 'https://api.worldmonitor.app/api/mcp', origin: 'https://claude.ai' },
+  { url: 'https://api.worldmonitor.app/api/oauth/register', origin: 'https://claude.com' },
+  { url: 'https://api.worldmonitor.app/api/oauth-protected-resource', origin: 'https://claude.ai' },
+];
+
+for (const { url, origin } of PUBLIC_CORS_PROBES) {
+  test(`OPTIONS ${url} from ${origin} bypasses Worker → Vercel ACAO survives`, { skip: !SHOULD_RUN }, async () => {
+    const resp = await fetch(url, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: origin,
+        'User-Agent': BROWSER_UA,
+        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Headers': 'content-type',
+      },
+    });
+    await resp.arrayBuffer();
+    // Acceptance: the response must NOT echo the canonical worldmonitor.app
+    // fallback (which would mean the Worker short-circuited and the external
+    // client gets blocked). Either ACAO: * OR ACAO echoes the request origin
+    // is fine — both are valid public-CORS dispositions.
+    const acao = resp.headers.get('access-control-allow-origin');
+    assert.ok(
+      acao === '*' || acao === origin,
+      `Public-CORS path ${url} returned ACAO=${acao} for Origin=${origin}; expected '*' or echo. Worker is short-circuiting when it should bypass.`,
+    );
+  });
+}
+
 for (const url of ENDPOINTS) {
   test(`OPTIONS ${url} returns ACAC: true for ${ORIGIN}`, { skip: !SHOULD_RUN }, async () => {
     const resp = await fetch(url, {

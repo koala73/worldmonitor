@@ -45,9 +45,47 @@ const ALLOW_HEADERS = 'Content-Type, Authorization, X-WorldMonitor-Key, X-Api-Ke
 //     preflight from a stricter future client.
 const ALLOW_METHODS = 'GET, POST, DELETE, HEAD, OPTIONS';
 
+// Paths whose Vercel functions own a DIFFERENT CORS policy than this Worker
+// (intentionally wider — e.g. MCP/OAuth endpoints accept https://claude.ai +
+// https://claude.com via getPublicCorsHeaders() ACAO: '*' or per-endpoint
+// origin validation). The Worker MUST NOT intercept these:
+//   - OPTIONS preflights must reach Vercel so the function's own policy
+//     applies (otherwise external clients like claude.ai see the canonical
+//     worldmonitor.app fallback echo and get blocked by the browser).
+//   - Non-OPTIONS responses must pass through unmodified — the Worker's
+//     header.set() loop would otherwise overwrite the function's ACAO with
+//     the Worker's origin echo (or canonical fallback) and break CORS.
+//
+// Keep this list in sync with:
+//   - api/oauth/register.js, api/oauth/token.ts, api/mcp/handler.ts
+//     (use getPublicCorsHeaders() with ACAO: '*' + their own Claude origin
+//     validation in the handler body)
+//   - api/oauth/authorize.js, api/oauth-protected-resource.ts
+//     (hardcoded ACAO: '*')
+//   - api/security/report.js (CSP/COOP/COEP reports from any origin)
+//   - api/geo.js, api/version.js (public, no credentials)
+const PUBLIC_CORS_PATHS = new Set([
+  '/api/mcp',
+  '/api/oauth-protected-resource',
+  '/api/security/report',
+  '/api/geo',
+  '/api/version',
+]);
+const PUBLIC_CORS_PREFIXES = [
+  '/api/mcp/',
+  '/api/oauth/',
+];
+
+function hasPublicCorsPolicy(pathname) {
+  if (PUBLIC_CORS_PATHS.has(pathname)) return true;
+  return PUBLIC_CORS_PREFIXES.some((p) => pathname.startsWith(p));
+}
+
 export function isAllowedOrigin(origin) {
   return Boolean(origin) && ALLOWED_ORIGIN_PATTERNS.some((p) => p.test(origin));
 }
+
+export { hasPublicCorsPolicy };
 
 export function buildCorsHeaders(origin) {
   const allowOrigin = isAllowedOrigin(origin) ? origin : 'https://worldmonitor.app';
@@ -69,6 +107,15 @@ export default {
   async fetch(request) {
     const url = new URL(request.url);
     if (!url.pathname.startsWith('/api/')) {
+      return fetch(request);
+    }
+
+    // Paths whose Vercel handler owns a wider CORS policy (MCP, OAuth,
+    // discovery, security reports, public utilities) must reach Vercel
+    // untouched. If the Worker short-circuited the OPTIONS preflight here,
+    // external clients like https://claude.ai would see the canonical
+    // worldmonitor.app fallback origin echo and the browser would block.
+    if (hasPublicCorsPolicy(url.pathname)) {
       return fetch(request);
     }
 
