@@ -714,7 +714,7 @@ export function computeCIIScores(
 
     // --- Displacement boost (UNHCR — persists after ceasefires) ---
     // Ramp anchored so the scale spans meaningful crisis sizes:
-    //   100K  → +4  |  500K → +9  |  1M → +12  |  5M → +18  |  10M+ → +20
+    //   100K  → +4  |  500K → +10  |  1M → +12  |  5M → +18  |  10M+ → +20
     // Formula: (log10(n) - 5) * 8 + 4, clamped [0, 20].
     // Below ~32K displaced → 0; cap reached at 10M.
     const displacementBoost = d.totalDisplaced > 0

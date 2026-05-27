@@ -963,9 +963,7 @@ function calcInformationScore(data: CountryData, _countryCode: string): number {
   const velocitySum = data.newsEvents.reduce((sum, e) => sum + (e.velocity?.sourcesPerHour || 0), 0);
   const avgVelocity = velocitySum / count;
 
-  const adjustedCount = count;
-
-  const baseScore = Math.min(40, adjustedCount * 5);
+  const baseScore = Math.min(40, count * 5);
 
   const velocityThreshold = 2;
   const velocityBoost = avgVelocity > velocityThreshold
