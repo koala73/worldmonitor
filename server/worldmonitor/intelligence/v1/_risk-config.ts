@@ -17,14 +17,22 @@
 //      downstream users of the proto API see why combinedScore values may
 //      shift between deploys.
 //
-// Last reviewed: 2026-05-23 (PR #3864 — Phase 3a CII unification, v1→v2).
+// Last reviewed: 2026-05-27 (CII calibration / bias reduction, v2→v3).
 // ============================================================================
 
 /**
  * Formula version emitted on every CiiScore as `methodology_version`.
  * Bump on any coefficient change so API clients can detect score drift.
  */
-export const CII_FORMULA_VERSION = 'v2';
+export const CII_FORMULA_VERSION = 'v3';
+
+/**
+ * Conflict event activity log curve used before fatality/civilian/strike boosts.
+ * Raw activity is weighted by event type and eventMultiplier, then mapped to
+ * this cap with `log1p(raw) / log1p(pivot) * cap`.
+ */
+export const CII_CONFLICT_ACTIVITY_CAP = 70;
+export const CII_CONFLICT_ACTIVITY_PIVOT = 4000;
 
 /**
  * Strategic-risk top-N positional decay step. Weight for position `i` (0-based)

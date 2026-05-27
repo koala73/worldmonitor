@@ -6,6 +6,8 @@ import { describe, it } from 'node:test';
 
 import { CURATED_COUNTRIES, TIER1_COUNTRIES } from '../src/config/countries.ts';
 import {
+  CII_CONFLICT_ACTIVITY_CAP,
+  CII_CONFLICT_ACTIVITY_PIVOT,
   CII_FORMULA_VERSION,
   STRATEGIC_RISK_POSITIONAL_DECAY,
   STRATEGIC_RISK_SCALE_FACTOR,
@@ -232,6 +234,20 @@ describe('CII scoring', () => {
       'sqrt scaling should produce diminishing returns for 4x fatalities');
   });
 
+  it('conflict activity scaling preserves the gap between moderate and extreme event volume', () => {
+    const acled = [
+      ...Array.from({ length: 46 }, () => acledEvent('China', 'Battles')),
+      ...Array.from({ length: 1549 }, () => acledEvent('Iran', 'Battles')),
+    ];
+    const scores = computeCIIScores(acled, emptyAux());
+    const cn = scoreFor(scores, 'CN')!;
+    const ir = scoreFor(scores, 'IR')!;
+    assert.ok(
+      ir.components!.geoConvergence >= cn.components!.geoConvergence + 10,
+      `IR conflict component (${ir.components!.geoConvergence}) should materially exceed CN (${cn.components!.geoConvergence})`,
+    );
+  });
+
   it('log2 scaling dampens high-volume low-multiplier countries vs linear', () => {
     const manyProtests = Array.from({ length: 100 }, () => acledEvent('United States', 'Protests'));
     const fewProtests = Array.from({ length: 10 }, () => acledEvent('United States', 'Protests'));
@@ -239,6 +255,19 @@ describe('CII scoring', () => {
     const few = scoreFor(computeCIIScores(fewProtests, emptyAux()), 'US')!;
     const ratio = many.components!.ciiContribution / Math.max(1, few.components!.ciiContribution);
     assert.ok(ratio < 5, `10x events should produce < 5x unrest ratio (got ${ratio.toFixed(2)}), log2 dampens`);
+  });
+
+  it('displacement boost preserves humanitarian scale above six figures', () => {
+    const moderateAux = emptyAux();
+    moderateAux.displacedByIso3 = { USA: 120_000 };
+    const extremeAux = emptyAux();
+    extremeAux.displacedByIso3 = { USA: 5_600_000 };
+    const moderate = scoreFor(computeCIIScores([], moderateAux), 'US')!;
+    const extreme = scoreFor(computeCIIScores([], extremeAux), 'US')!;
+    assert.ok(
+      extreme.combinedScore >= moderate.combinedScore + 10,
+      `5.6M displaced (${extreme.combinedScore}) should score materially above 120K (${moderate.combinedScore})`,
+    );
   });
 
   it('iran high severity strikes boost conflict', () => {
@@ -594,5 +623,63 @@ describe('CII scoring', () => {
     const doc = readFileSync(docPath, 'utf8');
     assert.ok(doc.includes(`**${CII_FORMULA_VERSION}**`) || doc.includes(`'${CII_FORMULA_VERSION}'`) || doc.includes(`"${CII_FORMULA_VERSION}"`),
       `methodology doc must mention current CII_FORMULA_VERSION '${CII_FORMULA_VERSION}' — bump the version and update the doc together.`);
+  });
+
+  it('methodology doc and browser CII engine expose the v3 conflict curve coefficients', () => {
+    const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
+    const doc = readFileSync(resolve(root, 'docs', 'methodology', 'cii-risk-scores.mdx'), 'utf8');
+    const browserSource = readFileSync(resolve(root, 'src', 'services', 'country-instability.ts'), 'utf8');
+
+    assert.ok(
+      doc.includes(`cap = ${CII_CONFLICT_ACTIVITY_CAP}`) && doc.includes(`pivot = ${CII_CONFLICT_ACTIVITY_PIVOT}`),
+      'methodology doc must publish the v3 conflict activity curve cap and pivot',
+    );
+    assert.ok(
+      browserSource.includes(`const CII_CONFLICT_ACTIVITY_CAP = ${CII_CONFLICT_ACTIVITY_CAP}`),
+      'browser CII engine conflict activity cap must match server _risk-config.ts',
+    );
+    assert.ok(
+      browserSource.includes(`const CII_CONFLICT_ACTIVITY_PIVOT = ${CII_CONFLICT_ACTIVITY_PIVOT}`),
+      'browser CII engine conflict activity pivot must match server _risk-config.ts',
+    );
+  });
+
+  it('risk-score Redis payload keys are bumped with the CII formula version', () => {
+    const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
+    const source = readFileSync(
+      resolve(root, 'server', 'worldmonitor', 'intelligence', 'v1', 'get-risk-scores.ts'),
+      'utf8',
+    );
+    assert.ok(
+      source.includes(`risk:scores:sebuf:${CII_FORMULA_VERSION}`),
+      `live CII cache key must include CII_FORMULA_VERSION ${CII_FORMULA_VERSION}`,
+    );
+    assert.ok(
+      source.includes(`risk:scores:sebuf:stale:${CII_FORMULA_VERSION}`),
+      `stale CII cache key must include CII_FORMULA_VERSION ${CII_FORMULA_VERSION}`,
+    );
+  });
+
+  it('legacy browser CII engine no longer carries the old compression formulas', () => {
+    const sourcePath = resolve(
+      fileURLToPath(new URL('.', import.meta.url)),
+      '..',
+      'src',
+      'services',
+      'country-instability.ts',
+    );
+    const src = readFileSync(sourcePath, 'utf8');
+    assert.ok(
+      !src.includes('Math.min(60, h.eventsPoliticalViolence * 3 * multiplier)'),
+      'browser HAPI fallback must not hard-cap moderate and extreme political-violence counts at the same value',
+    );
+    assert.ok(
+      !src.includes('data.displacementOutflow >= 1_000_000 ? 8'),
+      'browser displacement boost must not use the old +4/+8 two-tier scale',
+    );
+    assert.ok(
+      !src.includes('20 * multiplier'),
+      'browser news alert boost must not amplify salience with country eventMultiplier',
+    );
   });
 });

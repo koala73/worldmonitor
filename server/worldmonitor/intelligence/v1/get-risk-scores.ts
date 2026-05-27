@@ -14,6 +14,8 @@ import { CLIMATE_ANOMALIES_KEY } from '../../../_shared/cache-keys';
 import { TIER1_COUNTRIES } from './_shared';
 import { fetchAcledCached } from '../../../_shared/acled';
 import {
+  CII_CONFLICT_ACTIVITY_CAP,
+  CII_CONFLICT_ACTIVITY_PIVOT,
   CII_FORMULA_VERSION,
   STRATEGIC_RISK_POSITIONAL_DECAY,
   STRATEGIC_RISK_SCALE_FACTOR,
@@ -167,6 +169,12 @@ export function geoToCountry(lat: number, lon: number): string | null {
 function safeNum(v: unknown): number {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
+}
+
+function logScaledScore(raw: number, cap: number, pivot: number): number {
+  const value = Math.max(0, raw);
+  if (value === 0) return 0;
+  return Math.min(cap, (Math.log1p(value) / Math.log1p(pivot)) * cap);
 }
 
 const ISO3_TO_ISO2: Record<string, string> = iso3ToIso2Json;
@@ -648,7 +656,12 @@ export function computeCIIScores(
     const unrest = Math.min(100, Math.round(unrestBase + unrestFatalityBoost + unrestSeverityBoost + outageBoost));
 
     // --- Conflict score (ported from frontend calcConflictScore) ---
-    const acledScore = Math.min(50, Math.round((d.battles * 3 + d.explosions * 4 + d.civilianViolence * 5) * multiplier));
+    const conflictActivityRaw = (d.battles * 3 + d.explosions * 4 + d.civilianViolence * 5) * multiplier;
+    const acledScore = Math.round(logScaledScore(
+      conflictActivityRaw,
+      CII_CONFLICT_ACTIVITY_CAP,
+      CII_CONFLICT_ACTIVITY_PIVOT,
+    ));
     const fatalityScore = Math.min(40, Math.round(Math.sqrt(d.conflictFatalities) * 5 * multiplier));
     const civilianBoost = Math.min(10, d.civilianViolence * 3);
     const strikeBoost = Math.min(50, d.iranStrikes * 3 + d.highSeverityStrikes * 5);
@@ -814,17 +827,16 @@ export function computeStrategicRisks(ciiScores: CiiScore[]): StrategicRisk[] {
 // Cache keys
 // ========================================================================
 
-// Bumped v1 → v2 in #3725 (PR #3780 review): the response shape now carries
-// REQUIRED methodologyVersion (string) and eventMultiplier (double) on every
-// CiiScore. Old v1 payloads in Redis violate that shape and would fail proto
-// validation on read. Bump propagated to every reader: get-country-risk.ts,
-// chat-analyst-context.ts, brief-story-context.ts, server/_shared/cache-keys.ts,
-// api/bootstrap.js, api/health.js, api/mcp.ts, api/seed-health.js,
-// scripts/seed-cross-source-signals.mjs, scripts/seed-forecasts.mjs,
-// scripts/regional-snapshot/*. seed-meta key (`seed-meta:risk:scores:sebuf`)
-// is unchanged — that's freshness tracking, not the payload itself.
-const RISK_CACHE_KEY = 'risk:scores:sebuf:v2';
-const RISK_STALE_CACHE_KEY = 'risk:scores:sebuf:stale:v2';
+// Payload key family is bumped when CII_FORMULA_VERSION changes so old
+// methodology payloads cannot survive deploy via Redis. Bump propagated to
+// every reader: get-country-risk.ts, chat-analyst-context.ts,
+// brief-story-context.ts, server/_shared/cache-keys.ts, api/bootstrap.js,
+// api/health.js, api/mcp.ts, scripts/seed-cross-source-signals.mjs,
+// scripts/seed-forecasts.mjs, scripts/regional-snapshot/*. The seed-meta key
+// (`seed-meta:risk:scores:sebuf`) is unchanged — that's freshness tracking,
+// not the payload itself.
+const RISK_CACHE_KEY = 'risk:scores:sebuf:v3';
+const RISK_STALE_CACHE_KEY = 'risk:scores:sebuf:stale:v3';
 const RISK_CACHE_TTL = 600;
 const RISK_STALE_TTL = 3600;
 
