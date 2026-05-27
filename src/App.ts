@@ -868,6 +868,7 @@ export class App {
       refreshOpenCountryBrief: () => this.countryIntel.refreshOpenBrief(),
       stopLayerActivity: (layer) => this.dataLoader.stopLayerActivity(layer),
       mountLiveNewsIfReady: () => this.panelLayout.mountLiveNewsIfReady(),
+      reloadPanelOrderFromStorage: () => this.panelLayout.reloadPanelOrderFromStorage(),
       updateFlightSource: (adsb, military) => this.searchManager.updateFlightSource(adsb, military),
     });
 
@@ -1021,13 +1022,14 @@ export class App {
     // Verify OAuth OTT and hydrate auth session BEFORE any UI subscribes to auth state
     await initAuthState();
     initAuthAnalytics();
-    installCloudPrefsSync(SITE_VARIANT);
     // Install the followed-countries auth listener once. Drives the
     // anon→signed-in handoff (mergeAnonymousLocal mutation) and sign-out
     // cleanup. Idempotent.
     installFollowedCountriesAuthListener();
     window.addEventListener(WM_FOLLOWED_COUNTRIES_CAP_DROP, this.handleFollowedCountriesCapDrop);
     this.enforceFreeTierLimits();
+    installCloudPrefsSync(SITE_VARIANT);
+    this.eventHandlers.setupPreferenceSyncHandlers();
 
     let _prevUserId: string | null = null;
     // Track the last-seen PRO entitlement so we can re-fire PRO-gated loaders

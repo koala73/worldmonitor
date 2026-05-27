@@ -103,7 +103,7 @@ export function settledDirtyKeys(
 }
 
 /**
- * Schema-2 migrations map. Used both inline by cloud-prefs-sync.ts (against
+ * Cloud-prefs migrations map. Used both inline by cloud-prefs-sync.ts (against
  * the variant-aware FEEDS) and by tests (against fixture FEEDS).
  */
 export function buildMigrations(
@@ -111,7 +111,27 @@ export function buildMigrations(
 ): Record<number, (data: Record<string, unknown>) => Record<string, unknown>> {
   return {
     2: (data) => migrateDisabledFeedsV2(data, feedsByCategory),
+    3: migratePanelOrderV3,
   };
+}
+
+/**
+ * Schema 3 (2026-05-27): canonicalize panel order to the key the runtime
+ * actually reads/writes. `worldmonitor-panel-order` was accidentally placed
+ * in CLOUD_SYNC_KEYS, while the app uses `panel-order`.
+ */
+export function migratePanelOrderV3(data: Record<string, unknown>): Record<string, unknown> {
+  if (!Object.prototype.hasOwnProperty.call(data, 'worldmonitor-panel-order')) return data;
+
+  const out = { ...data };
+  if (
+    !Object.prototype.hasOwnProperty.call(out, 'panel-order') &&
+    typeof out['worldmonitor-panel-order'] === 'string'
+  ) {
+    out['panel-order'] = out['worldmonitor-panel-order'];
+  }
+  delete out['worldmonitor-panel-order'];
+  return out;
 }
 
 /**

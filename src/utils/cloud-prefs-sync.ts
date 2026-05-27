@@ -39,7 +39,12 @@ const KEY_LAST_SIGNED_IN_AS = 'wm-last-signed-in-as';
 // the new schema version. Defaults to 1 when missing (assumes oldest).
 const KEY_LOCAL_SCHEMA_VERSION = 'wm-cloud-prefs-local-schema-version';
 
-const CURRENT_PREFS_SCHEMA_VERSION = 2;
+const CURRENT_PREFS_SCHEMA_VERSION = 3;
+export const CLOUD_PREFS_APPLIED_EVENT = 'wm:cloud-prefs-applied';
+
+export interface CloudPrefsAppliedDetail {
+  keys: string[];
+}
 
 // Migrations live in cloud-prefs-migrations.ts to keep them testable —
 // cloud-prefs-sync.ts has a transitive `import.meta.env.DEV` dep via
@@ -155,20 +160,33 @@ function buildCloudBlob(): Record<string, string> {
   return blob;
 }
 
+function dispatchCloudPrefsApplied(keys: string[]): void {
+  const uniqueKeys = Array.from(new Set(keys));
+  if (uniqueKeys.length === 0) return;
+  window.dispatchEvent(new CustomEvent<CloudPrefsAppliedDetail>(CLOUD_PREFS_APPLIED_EVENT, {
+    detail: { keys: uniqueKeys },
+  }));
+}
+
 function applyCloudBlob(data: Record<string, unknown>): void {
+  const changedKeys: string[] = [];
   _suppressPatch = true;
   try {
     for (const key of CLOUD_SYNC_KEYS) {
       const val = data[key];
+      const before = localStorage.getItem(key);
       if (typeof val === 'string') {
+        if (before !== val) changedKeys.push(key);
         localStorage.setItem(key, val);
       } else if (!(key in data)) {
+        if (before !== null) changedKeys.push(key);
         localStorage.removeItem(key);
       }
     }
   } finally {
     _suppressPatch = false;
   }
+  dispatchCloudPrefsApplied(changedKeys);
 }
 
 function applyMigrations(
@@ -233,14 +251,24 @@ function showUndoToast(prevBlobJson: string): void {
     const action = (e.target as HTMLElement).closest('[data-action]')?.getAttribute('data-action');
     if (action === 'undo') {
       const prev = JSON.parse(prevBlobJson) as Record<string, string>;
+      const changedKeys: string[] = [];
       _suppressPatch = true;
       try {
-        for (const [k, v] of Object.entries(prev)) {
-          if (CLOUD_SYNC_KEYS.includes(k as CloudSyncKey)) localStorage.setItem(k, v);
+        for (const key of CLOUD_SYNC_KEYS) {
+          const before = localStorage.getItem(key);
+          if (Object.prototype.hasOwnProperty.call(prev, key)) {
+            const val = prev[key]!;
+            if (before !== val) changedKeys.push(key);
+            localStorage.setItem(key, val);
+          } else {
+            if (before !== null) changedKeys.push(key);
+            localStorage.removeItem(key);
+          }
         }
       } finally {
         _suppressPatch = false;
       }
+      dispatchCloudPrefsApplied(changedKeys);
       toast.remove();
       clearTimeout(autoTimer);
     } else if (action === 'dismiss') {
