@@ -90,12 +90,15 @@ while IFS= read -r f; do
   }
 done < <(find api/ -name "*.js" -not -name "_*"; find api/ -maxdepth 1 -name "*.ts" -not -name "_*")
 
-CHANGED_FILES=$(git diff --name-only origin/main...HEAD 2>/dev/null || echo "")
-if [ -z "$CHANGED_FILES" ]; then
+RUN_ALL_REASON=""
+if CHANGED_FILES=$(git diff --name-only origin/main...HEAD 2>/dev/null); then
+  :
+else
   CHANGED_FILES=$(git diff --name-only HEAD~1 2>/dev/null || echo "")
+  RUN_ALL_REASON="changed files could not be resolved from origin/main"
 fi
-if [ -z "$CHANGED_FILES" ]; then
-  echo "WARNING: Could not determine changed files, running full test suite as safety fallback."
+if [ -z "$CHANGED_FILES" ] && [ -n "$RUN_ALL_REASON" ]; then
+  echo "WARNING: Could not determine changed files, running broad invariant checks as safety fallback."
   RUN_ALL=true
 fi
 
@@ -110,23 +113,25 @@ if echo "$CHANGED_FILES" | grep -q "^scripts/"; then RUN_SEED=true; fi
 if echo "$CHANGED_FILES" | grep -q "^server/"; then RUN_SERVER=true; fi
 if echo "$CHANGED_FILES" | grep -q "resilience"; then RUN_RESILIENCE=true; fi
 if echo "$CHANGED_FILES" | grep -q "^src/\|^api/"; then RUN_FRONTEND=true; fi
-# RUN_ALL fires only on config-impacting changes (package.json, tsconfig,
-# global type rewrites). Touching tests/ used to trigger RUN_ALL too, but
-# the full suite has grown past the 300s timeout (357s as of 2026-05-27,
-# 10072 tests) so every tests/-touching PR was failing the hook by timeout
-# alone. The TESTS_CHANGED capture below runs the changed test files
-# specifically — full-suite verification still happens in CI on PR open.
-if echo "$CHANGED_FILES" | grep -q "package.json\|tsconfig"; then RUN_ALL=true; fi
+# RUN_ALL means "run broad invariant checks below", not "run every unit test".
+# Touching tests/ used to trigger the full local suite, but that suite now
+# exceeds this hook's 300s budget. CI remains the full-suite merge gate; this
+# hook stays a fast pre-flight.
+if echo "$CHANGED_FILES" | grep -q "package.json\|tsconfig"; then
+  RUN_ALL=true
+  RUN_ALL_REASON="${RUN_ALL_REASON:-config changed}"
+fi
 
 # Test files that changed in this push — run these specifically when
 # RUN_ALL didn't fire, so editing a test doesn't escalate to the full
 # 10k-test suite. Matches both .mjs and .mts under tests/.
-TESTS_CHANGED=$(echo "$CHANGED_FILES" | grep -E "^tests/.*\.test\.(mjs|mts)$" || true)
+TESTS_CHANGED=$(echo "$CHANGED_FILES" | grep -E "^tests/.*\.test\.(mjs|mts)$" | while read -r t; do [ -f "$t" ] && echo "$t"; done || true)
 
 if [ "$RUN_ALL" = true ]; then
-  echo "Running full unit test suite (config changed)..."
-  timeout 300 npx tsx --test tests/*.test.mjs tests/*.test.mts || exit 1
-else
+  echo "Skipping local full unit test suite (${RUN_ALL_REASON:-broad check requested}; CI runs the full suite on PR open)."
+fi
+
+if [ "$RUN_ALL" != true ]; then
   if [ "$RUN_RESILIENCE" = true ]; then
     echo "Running resilience tests (resilience files changed)..."
     timeout 120 npx tsx --test tests/resilience-*.test.mjs tests/resilience-*.test.mts || exit 1
@@ -144,14 +149,15 @@ else
     echo "Running server handler tests (server/ changed)..."
     timeout 120 npx tsx --test tests/handlers.test.mts tests/server-handlers.test.mjs || exit 1
   fi
-  if [ -n "$TESTS_CHANGED" ]; then
-    echo "Running changed test files only..."
-    # shellcheck disable=SC2086 — intentional word-split for tsx --test arglist
-    timeout 120 npx tsx --test $TESTS_CHANGED || exit 1
-  fi
   if [ "$RUN_RESILIENCE" = false ] && [ "$RUN_SEED" = false ] && [ "$RUN_SERVER" = false ] && [ -z "$TESTS_CHANGED" ]; then
     echo "Skipping unit tests (frontend-only changes; CI runs the full suite on PR open)."
   fi
+fi
+
+if [ -n "$TESTS_CHANGED" ]; then
+  echo "Running changed test files only..."
+  # shellcheck disable=SC2086 — intentional word-split for tsx --test arglist
+  timeout 120 npx tsx --test $TESTS_CHANGED || exit 1
 fi
 
 echo "Running edge function tests..."
