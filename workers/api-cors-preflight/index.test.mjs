@@ -31,6 +31,11 @@ function makeRequest(method, url, headers = {}) {
 const CANONICAL_FALLBACK = 'https://worldmonitor.app';
 const KNOWN_GOOD = 'https://www.worldmonitor.app';
 const ACAH_EXPECTED = 'Content-Type, Authorization, X-WorldMonitor-Key, X-Api-Key, X-Widget-Key, X-Pro-Key, X-WorldMonitor-Desktop-Timestamp, X-WorldMonitor-Desktop-Signature';
+// Must be a superset of every method any api/* route advertises. Notably
+// includes DELETE for api/product-catalog.js — pinning this prevents the
+// regression that PR review caught (Worker omitted DELETE → product-catalog
+// purge preflights silently fail in prod).
+const ACAM_EXPECTED = 'GET, POST, DELETE, HEAD, OPTIONS';
 
 // --- allowlist coverage ---------------------------------------------------
 
@@ -109,9 +114,25 @@ test('OPTIONS preflight returns 204 with Access-Control-Allow-Credentials: true'
   assert.equal(resp.status, 204);
   assert.equal(resp.headers.get('access-control-allow-origin'), KNOWN_GOOD);
   assert.equal(resp.headers.get('access-control-allow-credentials'), 'true');
-  assert.equal(resp.headers.get('access-control-allow-methods'), 'GET, POST, OPTIONS');
+  assert.equal(resp.headers.get('access-control-allow-methods'), ACAM_EXPECTED);
   assert.equal(resp.headers.get('access-control-allow-headers'), ACAH_EXPECTED);
   assert.equal(resp.headers.get('vary'), 'Origin');
+});
+
+test('OPTIONS preflight advertises DELETE (regression — api/product-catalog purge)', async () => {
+  // api/product-catalog.js handles `DELETE /api/product-catalog` with its own
+  // 'GET, DELETE, OPTIONS' Allow-Methods string. Because this Worker short-
+  // circuits the preflight before Vercel sees it, the Worker's Allow-Methods
+  // MUST be a superset — if it isn't, the browser rejects the preflight and
+  // the authenticated DELETE never reaches the function. Pin the invariant.
+  const req = makeRequest('OPTIONS', 'https://api.worldmonitor.app/api/product-catalog', {
+    Origin: KNOWN_GOOD,
+    'Access-Control-Request-Method': 'DELETE',
+  });
+  const resp = await worker.fetch(req);
+  const methods = (resp.headers.get('access-control-allow-methods') || '')
+    .split(',').map((s) => s.trim().toUpperCase());
+  assert.ok(methods.includes('DELETE'), `ACAM must include DELETE; got: ${methods.join(', ')}`);
 });
 
 test('OPTIONS preflight from disallowed origin still sets ACAC but echoes fallback origin', async () => {

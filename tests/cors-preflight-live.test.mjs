@@ -87,5 +87,19 @@ for (const url of ENDPOINTS) {
         `ACAH must include ${required}; got: ${acah}`,
       );
     }
+
+    // Worker's Allow-Methods MUST be a superset of every method any api/*
+    // route advertises. api/product-catalog.js advertises 'GET, DELETE,
+    // OPTIONS' on its preflight, so DELETE belongs in the global Worker list.
+    // Missing it silently breaks browser-origin product-catalog purges in
+    // prod — exactly the regression that PR review caught locally.
+    const acam = (resp.headers.get('access-control-allow-methods') || '')
+      .split(',').map((s) => s.trim().toUpperCase());
+    for (const required of ['GET', 'POST', 'DELETE', 'OPTIONS']) {
+      assert.ok(
+        acam.includes(required),
+        `ACAM must include ${required}; got: ${acam.join(', ')}`,
+      );
+    }
   });
 }

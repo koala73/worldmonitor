@@ -34,6 +34,17 @@ const ALLOWED_ORIGIN_PATTERNS = [
 // Keep in sync with api/_cors.js#getCorsHeaders Access-Control-Allow-Headers.
 const ALLOW_HEADERS = 'Content-Type, Authorization, X-WorldMonitor-Key, X-Api-Key, X-Widget-Key, X-Pro-Key, X-WorldMonitor-Desktop-Timestamp, X-WorldMonitor-Desktop-Signature';
 
+// Superset of every method any api/* route advertises. The Worker stamps ONE
+// fixed Allow-Methods on every preflight, so if a route handles DELETE but
+// Allow-Methods omits it, the browser rejects the preflight before the
+// authenticated DELETE can reach Vercel. Current union across api/*:
+//   - api/product-catalog.js handles GET + DELETE (`'GET, DELETE, OPTIONS'`)
+//   - most route handlers respond to GET, POST, HEAD, OPTIONS
+//   - HEAD is technically a "simple method" so browsers don't require it in
+//     Allow-Methods, but listing it costs nothing and avoids a different
+//     preflight from a stricter future client.
+const ALLOW_METHODS = 'GET, POST, DELETE, HEAD, OPTIONS';
+
 export function isAllowedOrigin(origin) {
   return Boolean(origin) && ALLOWED_ORIGIN_PATTERNS.some((p) => p.test(origin));
 }
@@ -47,7 +58,7 @@ export function buildCorsHeaders(origin) {
     // reject credentialed requests if this header is missing OR if
     // Access-Control-Allow-Origin is '*'.
     'Access-Control-Allow-Credentials': 'true',
-    'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+    'Access-Control-Allow-Methods': ALLOW_METHODS,
     'Access-Control-Allow-Headers': ALLOW_HEADERS,
     'Access-Control-Max-Age': '3600',
     'Vary': 'Origin',
