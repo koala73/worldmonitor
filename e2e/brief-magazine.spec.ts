@@ -150,35 +150,39 @@ async function currentStoryMetrics(page: Page): Promise<{
 }
 
 async function assertCurrentStoryFitsHorizontally(page: Page): Promise<void> {
-  const result = await page.locator('.page').nth(SCROLL_STORY_INDEX).evaluate((el) => {
-    const pageEl = el as HTMLElement;
-    const viewportWidth = window.innerWidth;
-    const bounds = ['.left-content', '.callout'].map((selector) => {
-      const target = pageEl.querySelector(selector) as HTMLElement | null;
-      const rect = target?.getBoundingClientRect();
-      return {
-        selector,
-        left: rect?.left ?? 0,
-        right: rect?.right ?? 0,
-      };
-    });
-    const textOverflow = [
-      '.story h3',
-      '.story .desc',
-      '.story .source',
-      '.story .callout .note',
-      '.story .tag',
-    ].flatMap((selector) =>
-      Array.from(pageEl.querySelectorAll<HTMLElement>(selector)).map((target) => ({
-        selector,
-        scrollWidth: target.scrollWidth,
-        clientWidth: target.clientWidth,
-      })),
-    );
-    return { viewportWidth, bounds, textOverflow };
-  });
+  const REQUIRED_BOUNDS_SELECTORS = ['.left-content', '.callout'];
+  const result = await page.locator('.page').nth(SCROLL_STORY_INDEX).evaluate(
+    (el, selectors) => {
+      const pageEl = el as HTMLElement;
+      const viewportWidth = window.innerWidth;
+      const bounds = selectors.map((selector) => {
+        const target = pageEl.querySelector(selector) as HTMLElement | null;
+        if (!target) {
+          return { selector, found: false, left: 0, right: 0 };
+        }
+        const rect = target.getBoundingClientRect();
+        return { selector, found: true, left: rect.left, right: rect.right };
+      });
+      const textOverflow = [
+        '.story h3',
+        '.story .desc',
+        '.story .source',
+        '.story .callout .note',
+        '.story .tag',
+      ].flatMap((selector) =>
+        Array.from(pageEl.querySelectorAll<HTMLElement>(selector)).map((target) => ({
+          selector,
+          scrollWidth: target.scrollWidth,
+          clientWidth: target.clientWidth,
+        })),
+      );
+      return { viewportWidth, bounds, textOverflow };
+    },
+    REQUIRED_BOUNDS_SELECTORS,
+  );
 
   for (const box of result.bounds) {
+    expect(box.found, `${box.selector} should be present on the current story page`).toBe(true);
     expect(box.left, `${box.selector} should not render off the left edge`).toBeGreaterThanOrEqual(-1);
     expect(box.right, `${box.selector} should not render off the right edge`).toBeLessThanOrEqual(result.viewportWidth + 1);
   }

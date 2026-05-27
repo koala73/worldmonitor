@@ -874,8 +874,8 @@ const STYLE_BLOCK = `<style>
     font-family: 'Playfair Display', serif; font-weight: 900;
     font-size: 7vw; line-height: 0.98; letter-spacing: -0.02em;
     margin-bottom: 6vh; max-width: 18ch;
+    overflow-wrap: anywhere;
   }
-  .digest h2,
   .digest blockquote,
   .digest .stat-label,
   .digest .thread,
