@@ -142,7 +142,14 @@ SERVER_TESTS=$(printf '%s\n' "tests/handlers.test.mts" "tests/server-handlers.te
 # resilience/handlers/seed test file is captured in BOTH the category run
 # AND the TESTS_CHANGED run, so the same test executes twice on every
 # push. Per greptile-apps review on PR #3928.
-if [ -n "$TESTS_CHANGED" ]; then
+#
+# IMPORTANT: gated on RUN_ALL != true. When RUN_ALL=true the category
+# runners below are skipped (only CI runs the full suite), so there's
+# nothing to dedup against — and subtracting category files unconditionally
+# would silently drop them from the TESTS_CHANGED runner too, since that
+# block runs regardless of RUN_ALL. Net effect of an unconditional dedup:
+# changed test files don't run anywhere locally when RUN_ALL fires.
+if [ "$RUN_ALL" != true ] && [ -n "$TESTS_CHANGED" ]; then
   if [ "$RUN_RESILIENCE" = true ]; then
     TESTS_CHANGED=$(echo "$TESTS_CHANGED" | grep -v "^tests/resilience-" || true)
   fi
