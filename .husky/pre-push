@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+echo "Checking for local Vercel env dumps..."
+node scripts/check-local-secret-dumps.mjs || exit 1
+
 # Ensure dependencies are installed (worktrees start with no node_modules)
 if [ ! -d node_modules ]; then
   echo "node_modules missing, running npm install..."
