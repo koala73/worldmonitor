@@ -43,5 +43,9 @@ describe('local Vercel env dump guard', () => {
     }
 
     assert.deepEqual(findLocalSecretDumps(root), ['.env.vercel-export']);
+    assert.throws(
+      () => runLocalSecretDumpCheck(root),
+      /local Vercel env dump files are present/,
+    );
   });
 });
