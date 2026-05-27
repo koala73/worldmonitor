@@ -20,39 +20,31 @@ import {
   STRATEGIC_RISK_SCALE_FLOOR,
   STRATEGIC_RISK_TOP_N,
 } from './_risk-config';
+import {
+  CII_BASELINE_RISK,
+  CII_EVENT_MULTIPLIER,
+  DEFAULT_CII_BASELINE_RISK,
+  DEFAULT_CII_EVENT_MULTIPLIER,
+} from '../../../../shared/cii-weights';
 
 // ========================================================================
 // Country risk baselines and multipliers
 // ------------------------------------------------------------------------
 // Editorial values — see docs/methodology/cii-risk-scores.mdx for the
-// published table and the rationale. These intentionally MIRROR the
-// per-country fields in src/config/countries.ts CURATED_COUNTRIES, which
-// the frontend uses for client-side scoring. Where the two tables differ,
-// the server values below are authoritative for the API response
-// (CiiScore.static_baseline and CiiScore.event_multiplier on the wire).
-// The methodology doc lists current values and flags any drift.
+// published table and the rationale. The authoritative coefficient table
+// lives in shared/cii-weights.ts so browser-side scoring and server-side
+// scoring cannot drift.
 //
-// Change protocol when editing these tables:
+// Change protocol when editing shared/cii-weights.ts:
 //   1. Bump CII_FORMULA_VERSION in ./_risk-config.ts.
 //   2. Update docs/methodology/cii-risk-scores.mdx in the SAME commit.
 //   3. Mention the change in CHANGELOG.md (public-facing section).
 // ========================================================================
 
-// Exported so tests can assert the published methodology doc rows match
-// these values exactly (drift guard — PR #3780 review).
-export const BASELINE_RISK: Record<string, number> = {
-  US: 5, RU: 35, CN: 25, UA: 50, IR: 40, IL: 45, TW: 30, KP: 45,
-  SA: 20, TR: 25, PL: 10, DE: 5, FR: 10, GB: 5, IN: 20, PK: 35,
-  SY: 50, YE: 50, MM: 45, VE: 40, CU: 45, MX: 35, BR: 15, AE: 10,
-  KR: 15, IQ: 40, AF: 45, LB: 40, EG: 20, JP: 5, QA: 10,
-};
-
-export const EVENT_MULTIPLIER: Record<string, number> = {
-  US: 0.3, RU: 2.0, CN: 2.5, UA: 0.8, IR: 2.0, IL: 0.7, TW: 1.5, KP: 3.0,
-  SA: 2.0, TR: 1.2, PL: 0.8, DE: 0.5, FR: 0.6, GB: 0.5, IN: 0.8, PK: 1.5,
-  SY: 0.7, YE: 0.7, MM: 1.8, VE: 1.8, CU: 2.0, MX: 1.0, BR: 0.6, AE: 1.5,
-  KR: 0.8, IQ: 1.2, AF: 0.8, LB: 1.5, EG: 1.0, JP: 0.5, QA: 0.8,
-};
+// Exported so tests and any internal diagnostics can assert the published
+// methodology doc rows match the shared source exactly.
+export const BASELINE_RISK: Record<string, number> = { ...CII_BASELINE_RISK };
+export const EVENT_MULTIPLIER: Record<string, number> = { ...CII_EVENT_MULTIPLIER };
 
 const COUNTRY_KEYWORDS: Record<string, string[]> = {
   US: ['united states', 'usa', 'america', 'washington', 'biden', 'trump', 'pentagon'],
@@ -632,8 +624,8 @@ export function computeCIIScores(
   const scores: CiiScore[] = [];
   for (const code of Object.keys(TIER1_COUNTRIES)) {
     const d = data[code]!;
-    const baseline = BASELINE_RISK[code] || 20;
-    const multiplier = EVENT_MULTIPLIER[code] || 1.0;
+    const baseline = BASELINE_RISK[code] ?? DEFAULT_CII_BASELINE_RISK;
+    const multiplier = EVENT_MULTIPLIER[code] ?? DEFAULT_CII_EVENT_MULTIPLIER;
 
     // --- Unrest score (ported from frontend calcUnrestScore) ---
     const unrestCount = d.protests + d.riots;

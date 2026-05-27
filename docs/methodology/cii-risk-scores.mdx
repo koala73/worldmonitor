@@ -1,11 +1,7 @@
 ---
 title: "CII Risk Scoring Methodology"
-description: "Editorial methodology behind the Composite Instability Index (CII) and Strategic Risk roll-up. Documents per-country baselineRisk, eventMultiplier, the four-component score (Unrest, Conflict, Security, Information), strategic-risk band derivation, and the v2 formula version stamped on every CiiScore."
+description: "Editorial methodology behind the Composite Instability Index (CII) and Strategic Risk roll-up. Documents per-country baselineRisk, eventMultiplier, the four-component score (Unrest, Conflict, Security, Information), strategic-risk band derivation, and the v3 formula version stamped on every CiiScore."
 ---
-
-<Warning>
-**Known drift, tracked in [#3789](https://github.com/koala73/worldmonitor/issues/3789).** The server-side `BASELINE_RISK` and `EVENT_MULTIPLIER` tables disagree with the frontend `CURATED_COUNTRIES` table for 7 countries (AF, EG, IQ, JP, KR, LB, QA). The values published below reflect what the server actually applies today; the frontend may display different values for those 7 countries until reconciliation lands. **API consumers should treat the server values as authoritative.**
-</Warning>
 
 Published methodology note for the **Composite Instability Index (CII)** and
 the **Strategic Risk** roll-up surfaced by `GET /api/intelligence/risk-scores`
@@ -21,7 +17,14 @@ agree.
 
 The on-the-wire `methodology_version` field on every `CiiScore` reflects
 which revision of this document was active when the score was computed.
-The current version is **v2**.
+The current version is **v3**.
+
+> **v3 (2026-05-27).** `baselineRisk` and `eventMultiplier` now come from
+> one shared coefficient table used by both the server and frontend. This
+> resolves the 7-country drift tracked in
+> [#3789](https://github.com/koala73/worldmonitor/issues/3789) by keeping the
+> previously published server/API values for AF, EG, IQ, JP, KR, LB and QA.
+> Frontend client-side CII rendering now uses those same values.
 
 > **v2 (2026-05-22).** The `Security` component is no longer GPS-jamming-only
 > — it now scores military flights, military vessels and aviation disruptions
@@ -86,52 +89,45 @@ the live-event contribution above the per-country baseline.
 
 ## 2. Per-country `baselineRisk` and `eventMultiplier`
 
-These are the editorial values applied server-side. They are mirrored from
-the `CURATED_COUNTRIES` table in
-[`src/config/countries.ts`](../../src/config/countries.ts), which the
-frontend uses for client-side CII rendering. Where the two have drifted, the
-server values below are authoritative for the API response (issue #3725
-calls out the drift and is the source of this published note).
+These are the editorial values applied by both server-side API scoring and
+frontend client-side CII rendering. The source of truth is
+[`shared/cii-weights.ts`](../../shared/cii-weights.ts); server and frontend
+tables derive from that module so coefficient drift fails in tests instead of
+shipping silently.
 
-**Reconciliation tracked in [#3789](https://github.com/koala73/worldmonitor/issues/3789)** —
-the 7 drift cells called out in the rightmost column below are a deliberate
-known-issue, not an oversight. That issue weighs server-authoritative vs
-frontend-authoritative vs a single-source-of-truth refactor and will land
-the reconciliation in a follow-up PR.
-
-| Code | Country | `baselineRisk` (server) | `eventMultiplier` (server) | Drift vs `CURATED_COUNTRIES` |
-|------|---------|------------------------:|---------------------------:|------------------------------|
-| AE | United Arab Emirates | 10 | 1.5 | — |
-| AF | Afghanistan | 45 | 0.8 | frontend uses baseline 15, multiplier 1 |
-| BR | Brazil | 15 | 0.6 | — |
-| CN | China | 25 | 2.5 | — |
-| CU | Cuba | 45 | 2.0 | — |
-| DE | Germany | 5 | 0.5 | — |
-| EG | Egypt | 20 | 1.0 | frontend uses baseline 15 |
-| FR | France | 10 | 0.6 | — |
-| GB | United Kingdom | 5 | 0.5 | — |
-| IL | Israel | 45 | 0.7 | — |
-| IN | India | 20 | 0.8 | — |
-| IQ | Iraq | 40 | 1.2 | frontend uses baseline 35, multiplier 1 |
-| IR | Iran | 40 | 2.0 | — |
-| JP | Japan | 5 | 0.5 | frontend uses baseline 15, multiplier 1 |
-| KP | North Korea | 45 | 3.0 | — |
-| KR | South Korea | 15 | 0.8 | frontend uses multiplier 1 |
-| LB | Lebanon | 40 | 1.5 | frontend uses baseline 15, multiplier 1 |
-| MM | Myanmar | 45 | 1.8 | — |
-| MX | Mexico | 35 | 1.0 | — |
-| PK | Pakistan | 35 | 1.5 | — |
-| PL | Poland | 10 | 0.8 | — |
-| QA | Qatar | 10 | 0.8 | frontend uses baseline 15, multiplier 1 |
-| RU | Russia | 35 | 2.0 | — |
-| SA | Saudi Arabia | 20 | 2.0 | — |
-| SY | Syria | 50 | 0.7 | — |
-| TR | Turkey | 25 | 1.2 | — |
-| TW | Taiwan | 30 | 1.5 | — |
-| UA | Ukraine | 50 | 0.8 | — |
-| US | United States | 5 | 0.3 | — |
-| VE | Venezuela | 40 | 1.8 | — |
-| YE | Yemen | 50 | 0.7 | — |
+| Code | Country | `baselineRisk` | `eventMultiplier` |
+|------|---------|---------------:|------------------:|
+| AE | United Arab Emirates | 10 | 1.5 |
+| AF | Afghanistan | 45 | 0.8 |
+| BR | Brazil | 15 | 0.6 |
+| CN | China | 25 | 2.5 |
+| CU | Cuba | 45 | 2.0 |
+| DE | Germany | 5 | 0.5 |
+| EG | Egypt | 20 | 1.0 |
+| FR | France | 10 | 0.6 |
+| GB | United Kingdom | 5 | 0.5 |
+| IL | Israel | 45 | 0.7 |
+| IN | India | 20 | 0.8 |
+| IQ | Iraq | 40 | 1.2 |
+| IR | Iran | 40 | 2.0 |
+| JP | Japan | 5 | 0.5 |
+| KP | North Korea | 45 | 3.0 |
+| KR | South Korea | 15 | 0.8 |
+| LB | Lebanon | 40 | 1.5 |
+| MM | Myanmar | 45 | 1.8 |
+| MX | Mexico | 35 | 1.0 |
+| PK | Pakistan | 35 | 1.5 |
+| PL | Poland | 10 | 0.8 |
+| QA | Qatar | 10 | 0.8 |
+| RU | Russia | 35 | 2.0 |
+| SA | Saudi Arabia | 20 | 2.0 |
+| SY | Syria | 50 | 0.7 |
+| TR | Turkey | 25 | 1.2 |
+| TW | Taiwan | 30 | 1.5 |
+| UA | Ukraine | 50 | 0.8 |
+| US | United States | 5 | 0.3 |
+| VE | Venezuela | 40 | 1.8 |
+| YE | Yemen | 50 | 0.7 |
 
 **What `baselineRisk` does.** It is the country's "always-on" instability
 floor. Independent of any live event, the country starts each scoring cycle
