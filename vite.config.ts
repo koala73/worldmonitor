@@ -874,7 +874,7 @@ export default defineConfig(({ mode }) => {
 
         workbox: {
           globPatterns: ['**/*.html'],
-          globIgnores: ['**/ml*.js', '**/onnx*.wasm', '**/locale-*.js'],
+          globIgnores: ['**/bundle-report.html', '**/ml*.js', '**/onnx*.wasm', '**/locale-*.js'],
           // Only HTML entry points are precached; keep this tight so accidental
           // asset precache regressions fail loudly.
           maximumFileSizeToCacheInBytes: 256 * 1024,

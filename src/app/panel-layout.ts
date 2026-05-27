@@ -122,6 +122,7 @@ export class PanelLayoutManager implements AppModule {
   private loadingOrLoaded = new Set<string>();
   private lazyPanelRegistrations = new Map<string, () => boolean>();
   private mapReadyNotified = false;
+  private mapReadyWithMapNotified = false;
 
   constructor(ctx: AppContext, callbacks: PanelLayoutManagerCallbacks) {
     this.ctx = ctx;
@@ -871,14 +872,45 @@ export class PanelLayoutManager implements AppModule {
 
     let mapLoadStarted = false;
     let mapFallbackTimer: ReturnType<typeof setTimeout> | null = null;
+    let mapRetryTimer: ReturnType<typeof setTimeout> | null = null;
+    let mapRetryAttempt = 0;
     let mapObserver: IntersectionObserver | null = null;
+    let mapVisibilityHandler: (() => void) | null = null;
+
+    const removeMapVisibilityHandler = () => {
+      if (!mapVisibilityHandler) return;
+      document.removeEventListener('visibilitychange', mapVisibilityHandler);
+      mapVisibilityHandler = null;
+    };
+
+    const loadMapWhenVisible = () => {
+      if (this.ctx.isDestroyed || mapLoadStarted) return;
+      if (document.visibilityState === 'hidden') {
+        if (!mapVisibilityHandler) {
+          mapVisibilityHandler = () => {
+            if (document.visibilityState !== 'visible') return;
+            removeMapVisibilityHandler();
+            void loadMap();
+          };
+          document.addEventListener('visibilitychange', mapVisibilityHandler, { passive: true });
+        }
+        return;
+      }
+      void loadMap();
+    };
+
     const loadMap = async () => {
-      if (mapLoadStarted) return;
+      if (this.ctx.isDestroyed || mapLoadStarted) return;
       mapLoadStarted = true;
+      removeMapVisibilityHandler();
       mapObserver?.disconnect();
       if (mapFallbackTimer !== null) {
         clearTimeout(mapFallbackTimer);
         mapFallbackTimer = null;
+      }
+      if (mapRetryTimer !== null) {
+        clearTimeout(mapRetryTimer);
+        mapRetryTimer = null;
       }
 
       try {
@@ -915,7 +947,12 @@ export class PanelLayoutManager implements AppModule {
         this.notifyMapReady();
       } catch (err) {
         console.error('[map] Failed to load map libraries:', err);
+        mapLoadStarted = false;
         this.notifyMapReady();
+        if (mapRetryAttempt < 2) {
+          mapRetryAttempt += 1;
+          mapRetryTimer = setTimeout(loadMapWhenVisible, mapRetryAttempt * 5000);
+        }
       }
     };
 
@@ -923,14 +960,12 @@ export class PanelLayoutManager implements AppModule {
       (entries) => {
         const entry = entries[0];
         if (!entry?.isIntersecting) return;
-        void loadMap();
+        loadMapWhenVisible();
       },
       { rootMargin: '200px' },
     );
     mapObserver.observe(mapContainer);
-    mapFallbackTimer = setTimeout(() => {
-      void loadMap();
-    }, 2500);
+    mapFallbackTimer = setTimeout(loadMapWhenVisible, 2500);
 
     this.createNewsPanel('politics', 'panels.politics');
     this.createNewsPanel('tech', 'panels.tech');
@@ -2084,7 +2119,12 @@ export class PanelLayoutManager implements AppModule {
   }
 
   private notifyMapReady(): void {
-    if (this.mapReadyNotified) return;
+    if (this.ctx.map) {
+      if (this.mapReadyWithMapNotified) return;
+      this.mapReadyWithMapNotified = true;
+    } else if (this.mapReadyNotified) {
+      return;
+    }
     this.mapReadyNotified = true;
     this.callbacks.onMapReady?.();
   }

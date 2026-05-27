@@ -832,11 +832,13 @@ const _initSentry = () => {
       beforeSend: _sentryBeforeSend,
     });
 
-    // CSP violation handler — reports non-suppressed violations to Sentry
-    window.removeEventListener('securitypolicyviolation', bufferCspViolation);
+    // CSP violation handler — reports non-suppressed violations to Sentry.
+    // Install the live listener before removing the boot buffer so there is
+    // no uncovered gap during the handoff.
     window.addEventListener('securitypolicyviolation', (e) => {
       captureCspViolation(Sentry, serializeCspViolation(e));
     });
+    window.removeEventListener('securitypolicyviolation', bufferCspViolation);
 
     // Flush buffered errors captured before Sentry loaded
     for (const { error } of __errorBuffer) {

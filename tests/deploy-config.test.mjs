@@ -67,6 +67,7 @@ describe('deploy/cache configuration guardrails', () => {
       /globPatterns:\s*\['\*\*\/\*\.html'\]/
     );
     assert.doesNotMatch(viteConfigSource, /globPatterns:\s*\['\*\*\/\*\.\{js,css/);
+    assert.match(viteConfigSource, /globIgnores:\s*\[[^\]]*'\*\*\/bundle-report\.html'/);
     assert.match(viteConfigSource, /maximumFileSizeToCacheInBytes:\s*256 \* 1024/);
   });
 

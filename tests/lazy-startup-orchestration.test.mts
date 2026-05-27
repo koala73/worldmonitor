@@ -22,6 +22,19 @@ describe('lazy startup orchestration guardrails', () => {
     assert.match(main, /for \(const violation of __cspViolationBuffer\)[\s\S]*?captureCspViolation\(Sentry, violation\)/);
   });
 
+  it('installs live CSP reporting before removing the boot buffer', () => {
+    const main = src('src/main.ts');
+    const handoffBlock = main.slice(
+      main.indexOf('// CSP violation handler'),
+      main.indexOf('// Flush buffered errors captured before Sentry loaded'),
+    );
+    const liveIdx = handoffBlock.indexOf("window.addEventListener('securitypolicyviolation', (e) =>");
+    const removeIdx = handoffBlock.indexOf("window.removeEventListener('securitypolicyviolation', bufferCspViolation)");
+    assert.ok(liveIdx !== -1, 'Sentry init must install a live CSP listener');
+    assert.ok(removeIdx !== -1, 'Sentry init must remove the boot CSP buffer listener');
+    assert.ok(liveIdx < removeIdx, 'live CSP listener must be installed before removing the boot buffer');
+  });
+
   it('suppresses YouTube NotAllowedError before deferred Sentry init', () => {
     const main = src('src/main.ts');
     const initIdx = main.indexOf('const _initSentry');
@@ -58,7 +71,9 @@ describe('lazy startup orchestration guardrails', () => {
   it('map lazy-load has a timeout fallback and app-ready path is not map-gated', () => {
     const layout = src('src/app/panel-layout.ts');
     const app = src('src/App.ts');
-    assert.match(layout, /mapFallbackTimer = setTimeout\(\(\) => \{[\s\S]*?void loadMap\(\);[\s\S]*?\}, 2500\)/);
+    assert.match(layout, /mapFallbackTimer = setTimeout\(loadMapWhenVisible, 2500\)/);
+    assert.match(layout, /if \(document\.visibilityState === 'hidden'\)[\s\S]*?document\.addEventListener\('visibilitychange', mapVisibilityHandler, \{ passive: true \}\)/);
+    assert.match(layout, /mapRetryTimer = setTimeout\(loadMapWhenVisible, mapRetryAttempt \* 5000\)/);
     assert.match(app, /if \(!this\.mapDependentModulesInitialized && this\.state\.map\)[\s\S]*?if \(this\.mapModulesInitialized\) return;/);
     assert.match(app, /this\.resolveUiReady\(\);/);
     assert.match(app, /this\.handleDeepLinks\(\);/);
