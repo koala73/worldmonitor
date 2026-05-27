@@ -19,6 +19,8 @@ export function normalizeStoredPanelSettings(
   options: PanelSettingsNormalizationOptions,
 ): Record<string, PanelConfig> {
   const settings: Record<string, PanelConfig> = {};
+  // Preserve unknown stored keys, including dynamic widget/MCP IDs whose
+  // definitions can arrive through a separate sync path after panel prefs.
   for (const [key, config] of Object.entries(stored ?? {})) {
     settings[key] = { ...config };
   }

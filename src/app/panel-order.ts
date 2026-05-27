@@ -42,3 +42,45 @@ export function resolveDefaultPanelOrder(
 
   return ordered;
 }
+
+export interface SavedPanelOrderOptions {
+  variant: string;
+}
+
+export function resolveSavedPanelOrder(
+  activePanelKeys: string[],
+  savedOrder: string[],
+  defaultOrder: string[],
+  options: SavedPanelOrderOptions,
+): string[] {
+  const activePanelSet = new Set(activePanelKeys.filter(k => k !== 'map'));
+  const valid = savedOrder.filter(k => activePanelSet.has(k));
+  const missing = activePanelKeys.filter(k => k !== 'map' && !valid.includes(k));
+
+  missing.forEach(k => {
+    if (k === 'monitors') return;
+    const defaultIdx = defaultOrder.indexOf(k);
+    if (defaultIdx === -1) {
+      valid.push(k);
+      return;
+    }
+    let inserted = false;
+    for (let i = defaultIdx + 1; i < defaultOrder.length; i++) {
+      const afterIdx = valid.indexOf(defaultOrder[i]!);
+      if (afterIdx !== -1) {
+        valid.splice(afterIdx, 0, k);
+        inserted = true;
+        break;
+      }
+    }
+    if (!inserted) valid.push(k);
+  });
+
+  const monitorsIdx = valid.indexOf('monitors');
+  if (monitorsIdx !== -1) valid.splice(monitorsIdx, 1);
+  if (options.variant !== 'happy' && activePanelSet.has('monitors')) {
+    valid.push('monitors');
+  }
+
+  return valid;
+}

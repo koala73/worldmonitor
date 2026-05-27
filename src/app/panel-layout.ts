@@ -100,7 +100,7 @@ import {
   VARIANT_DEFAULTS,
   isPanelInVariantDefaults,
 } from '@/config';
-import { resolveDefaultPanelOrder } from '@/app/panel-order';
+import { resolveDefaultPanelOrder, resolveSavedPanelOrder } from '@/app/panel-order';
 import { resolveNewsCategories, enabledNewsCategoryKeys } from '@/config/feed-resolution';
 import { BETA_MODE } from '@/config/beta';
 import { t } from '@/services/i18n';
@@ -1454,25 +1454,9 @@ export class PanelLayoutManager implements AppModule {
     let allOrder: string[];
 
     if (hasSavedOrder) {
-      const valid = savedOrder.filter(k => activePanelKeys.includes(k));
-      const missing = activePanelKeys.filter(k => !valid.includes(k));
-
-      missing.forEach(k => {
-        if (k === 'monitors') return;
-        const defaultIdx = defaultOrder.indexOf(k);
-        if (defaultIdx === -1) { valid.push(k); return; }
-        let inserted = false;
-        for (let i = defaultIdx + 1; i < defaultOrder.length; i++) {
-          const afterIdx = valid.indexOf(defaultOrder[i]!);
-          if (afterIdx !== -1) { valid.splice(afterIdx, 0, k); inserted = true; break; }
-        }
-        if (!inserted) valid.push(k);
+      allOrder = resolveSavedPanelOrder(activePanelKeys, savedOrder, defaultOrder, {
+        variant: SITE_VARIANT,
       });
-
-      const monitorsIdx = valid.indexOf('monitors');
-      if (monitorsIdx !== -1) valid.splice(monitorsIdx, 1);
-      if (SITE_VARIANT !== 'happy') valid.push('monitors');
-      allOrder = valid;
     } else {
       allOrder = [...defaultOrder];
     }
@@ -1747,9 +1731,6 @@ export class PanelLayoutManager implements AppModule {
     const mountedOrder = this.getMountedPanelOrder(grid, bottomGrid);
     if (mountedOrder.length === 0) return;
 
-    const previousOrder = this.resolvedPanelOrder.length > 0
-      ? this.resolvedPanelOrder.filter(k => mountedOrder.includes(k))
-      : mountedOrder;
     const savedOrder = this.getSavedPanelOrder();
     const validSaved = savedOrder.filter(k => mountedOrder.includes(k));
     const defaultOrder = resolveDefaultPanelOrder(mountedOrder, {
@@ -1758,12 +1739,9 @@ export class PanelLayoutManager implements AppModule {
       isDesktopApp: this.ctx.isDesktopApp,
     }).filter(k => mountedOrder.includes(k));
     const nextOrder = validSaved.length > 0
-      ? [
-        ...validSaved,
-        ...mountedOrder
-          .filter(k => !validSaved.includes(k))
-          .sort((a, b) => this.orderIndex(previousOrder, mountedOrder, a) - this.orderIndex(previousOrder, mountedOrder, b)),
-      ]
+      ? resolveSavedPanelOrder(mountedOrder, savedOrder, defaultOrder, {
+        variant: SITE_VARIANT,
+      })
       : [
         ...defaultOrder,
         ...mountedOrder.filter(k => !defaultOrder.includes(k)),
@@ -1791,13 +1769,6 @@ export class PanelLayoutManager implements AppModule {
     return [...Array.from(grid.children), ...Array.from(bottomGrid.children)]
       .map((el) => (el as HTMLElement).dataset.panel)
       .filter((key): key is string => !!key);
-  }
-
-  private orderIndex(previousOrder: string[], mountedOrder: string[], key: string): number {
-    const previousIdx = previousOrder.indexOf(key);
-    if (previousIdx !== -1) return previousIdx;
-    const mountedIdx = mountedOrder.indexOf(key);
-    return Number.MAX_SAFE_INTEGER - mountedOrder.length + mountedIdx;
   }
 
   private findMountedPanelElement(key: string, roots: HTMLElement[]): HTMLElement | null {

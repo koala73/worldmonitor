@@ -18,7 +18,7 @@ import {
   dispatchCloudPrefsAppliedEvent,
 } from '../src/utils/cloud-prefs-events.ts';
 import { CLOUD_SYNC_KEYS } from '../src/utils/sync-keys.ts';
-import { resolveDefaultPanelOrder } from '../src/app/panel-order.ts';
+import { resolveDefaultPanelOrder, resolveSavedPanelOrder } from '../src/app/panel-order.ts';
 import { normalizeStoredPanelSettings } from '../src/app/panel-settings-storage.ts';
 import { applyPreferenceStorageChanges } from '../src/app/preference-storage-sync.ts';
 import { STORAGE_KEYS } from '../src/config/variants/base.ts';
@@ -272,5 +272,31 @@ describe('cloud prefs live-restore behavior helpers', () => {
 
     assert.deepEqual(defaultOrder.slice(0, 3), ['live-news', 'runtime-config', 'live-webcams']);
     assert.notDeepEqual(defaultOrder.slice(0, 3), staleOrder.slice(0, 3));
+  });
+
+  it('uses cold-boot saved-order rules when runtime restore omits monitors', () => {
+    const activePanels = ['live-news', 'markets', 'monitors', 'world-clock'];
+    const defaultOrder = ['live-news', 'markets', 'world-clock', 'monitors'];
+
+    assert.deepEqual(
+      resolveSavedPanelOrder(activePanels, ['markets'], defaultOrder, { variant: 'full' }),
+      ['live-news', 'markets', 'world-clock', 'monitors'],
+    );
+    assert.deepEqual(
+      resolveSavedPanelOrder(activePanels, ['markets', 'monitors'], defaultOrder, { variant: 'full' }),
+      ['live-news', 'markets', 'world-clock', 'monitors'],
+    );
+  });
+
+  it('preserves the happy-variant monitors exclusion from cold boot', () => {
+    assert.deepEqual(
+      resolveSavedPanelOrder(
+        ['positive-events', 'monitors', 'world-clock'],
+        ['monitors', 'world-clock'],
+        ['positive-events', 'world-clock', 'monitors'],
+        { variant: 'happy' },
+      ),
+      ['positive-events', 'world-clock'],
+    );
   });
 });
