@@ -963,11 +963,11 @@ export default defineConfig(({ mode }) => {
         output: {
           manualChunks(id) {
             if (id.includes('node_modules')) {
-              if (id.includes('/@xenova/transformers/')) {
-                return 'transformers';
-              }
               if (id.includes('/onnxruntime-web/')) {
                 return 'onnxruntime';
+              }
+              if (id.includes('/@huggingface/transformers/') || id.includes('/@huggingface/jinja/') || id.includes('/@huggingface/tokenizers/')) {
+                return 'transformers';
               }
               // NOTE: chunk names below MUST match entries in LAZY_HTML_PRELOAD_CHUNKS
               // (top of file). The resolveDependencies filter relies on this string
