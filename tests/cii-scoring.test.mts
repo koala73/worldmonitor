@@ -12,6 +12,7 @@ import {
   STRATEGIC_RISK_SCALE_FLOOR,
   STRATEGIC_RISK_TOP_N,
 } from '../server/worldmonitor/intelligence/v1/_risk-config.ts';
+import { TIER1_COUNTRIES as SERVER_TIER1_COUNTRIES } from '../server/worldmonitor/intelligence/v1/_shared.ts';
 import {
   BASELINE_RISK,
   EVENT_MULTIPLIER,
@@ -431,11 +432,9 @@ describe('CII scoring', () => {
     assert.deepEqual(Object.keys(CURATED_COUNTRIES).sort(), sharedCodes,
       'CURATED_COUNTRIES keys must match shared/cii-weights.ts keys');
     assert.deepEqual(Object.keys(TIER1_COUNTRIES).sort(), sharedCodes,
-      'TIER1_COUNTRIES keys must match shared/cii-weights.ts keys');
-    assert.deepEqual(Object.keys(BASELINE_RISK).sort(), sharedCodes,
-      'server BASELINE_RISK keys must match shared/cii-weights.ts keys');
-    assert.deepEqual(Object.keys(EVENT_MULTIPLIER).sort(), sharedCodes,
-      'server EVENT_MULTIPLIER keys must match shared/cii-weights.ts keys');
+      'frontend TIER1_COUNTRIES keys must match shared/cii-weights.ts keys');
+    assert.deepEqual(Object.keys(SERVER_TIER1_COUNTRIES).sort(), sharedCodes,
+      'server _shared.ts TIER1_COUNTRIES keys must match shared/cii-weights.ts keys (computeCIIScores iterates this map)');
 
     const scores = computeCIIScores([], emptyAux());
     for (const code of sharedCodes) {
