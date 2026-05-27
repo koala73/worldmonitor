@@ -121,7 +121,7 @@ export class PanelLayoutManager implements AppModule {
   private lazyLoaders = new Map<string, () => void>();
   private loadingOrLoaded = new Set<string>();
   private lazyPanelRegistrations = new Map<string, () => boolean>();
-  private mapReadyNotified = false;
+  private mapReadyFallbackNotified = false;
   private mapReadyWithMapNotified = false;
 
   constructor(ctx: AppContext, callbacks: PanelLayoutManagerCallbacks) {
@@ -2125,10 +2125,10 @@ export class PanelLayoutManager implements AppModule {
     if (this.ctx.map) {
       if (this.mapReadyWithMapNotified) return;
       this.mapReadyWithMapNotified = true;
-    } else if (this.mapReadyNotified) {
-      return;
+    } else {
+      if (this.mapReadyFallbackNotified) return;
+      this.mapReadyFallbackNotified = true;
     }
-    this.mapReadyNotified = true;
     this.callbacks.onMapReady?.();
   }
 
