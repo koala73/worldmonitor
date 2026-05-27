@@ -14,12 +14,18 @@ import {
   STRATEGIC_RISK_SCALE_FLOOR,
   STRATEGIC_RISK_TOP_N,
 } from '../server/worldmonitor/intelligence/v1/_risk-config.ts';
+import { TIER1_COUNTRIES as SERVER_TIER1_COUNTRIES } from '../server/worldmonitor/intelligence/v1/_shared.ts';
 import {
   BASELINE_RISK,
   EVENT_MULTIPLIER,
   computeCIIScores,
   computeStrategicRisks,
 } from '../server/worldmonitor/intelligence/v1/get-risk-scores.ts';
+import {
+  CII_BASELINE_RISK as SHARED_BASELINE_RISK,
+  CII_COUNTRY_WEIGHTS,
+  CII_EVENT_MULTIPLIER as SHARED_EVENT_MULTIPLIER,
+} from '../shared/cii-weights.ts';
 
 function emptyAux() {
   return {
@@ -430,17 +436,15 @@ describe('CII scoring', () => {
     }
   });
 
-  it('every score carries an eventMultiplier > 0 matching a known editorial value', () => {
+  it('every score carries the shared editorial eventMultiplier', () => {
     const scores = computeCIIScores([], emptyAux());
-    // Server tables intentionally drift from CURATED_COUNTRIES for some
-    // countries (documented in docs/methodology/cii-risk-scores.mdx). The
-    // server value is authoritative on the wire — assert presence + finite
-    // > 0 rather than equality with the frontend table.
     for (const s of scores) {
       const mult = (s as unknown as { eventMultiplier: number }).eventMultiplier;
+      const expected = SHARED_EVENT_MULTIPLIER[s.region as keyof typeof SHARED_EVENT_MULTIPLIER];
       assert.ok(Number.isFinite(mult), `${s.region} eventMultiplier should be finite, got ${mult}`);
       assert.ok(mult > 0, `${s.region} eventMultiplier should be > 0, got ${mult}`);
       assert.ok(mult <= 5, `${s.region} eventMultiplier should be <= 5 (sanity), got ${mult}`);
+      assert.equal(mult, expected, `${s.region} eventMultiplier should match shared/cii-weights.ts`);
     }
   });
 
@@ -452,23 +456,38 @@ describe('CII scoring', () => {
     }
   });
 
-  it('representative countries: server staticBaseline matches CURATED_COUNTRIES (no-drift codes)', () => {
-    // Spot-check countries that we expect to NOT have drifted (per
-    // docs/methodology/cii-risk-scores.mdx drift table). If these ever drift
-    // the methodology doc must be updated too — flagged here so the test
-    // fails loudly rather than silently.
-    const noDriftCodes = ['US', 'RU', 'CN', 'UA', 'IR', 'IL', 'DE', 'GB'];
+  it('server and frontend baseline/multiplier values match shared CII weights for every country', () => {
+    const sharedCodes = Object.keys(CII_COUNTRY_WEIGHTS).sort();
+    assert.deepEqual(Object.keys(CURATED_COUNTRIES).sort(), sharedCodes,
+      'CURATED_COUNTRIES keys must match shared/cii-weights.ts keys');
+    assert.deepEqual(Object.keys(TIER1_COUNTRIES).sort(), sharedCodes,
+      'frontend TIER1_COUNTRIES keys must match shared/cii-weights.ts keys');
+    assert.deepEqual(Object.keys(SERVER_TIER1_COUNTRIES).sort(), sharedCodes,
+      'server _shared.ts TIER1_COUNTRIES keys must match shared/cii-weights.ts keys (computeCIIScores iterates this map)');
+
     const scores = computeCIIScores([], emptyAux());
-    for (const code of noDriftCodes) {
+    for (const code of sharedCodes) {
+      const expected = CII_COUNTRY_WEIGHTS[code as keyof typeof CII_COUNTRY_WEIGHTS];
+      assert.equal(CURATED_COUNTRIES[code]?.baselineRisk, expected.baselineRisk,
+        `${code} frontend baselineRisk should come from shared/cii-weights.ts`);
+      assert.equal(CURATED_COUNTRIES[code]?.eventMultiplier, expected.eventMultiplier,
+        `${code} frontend eventMultiplier should come from shared/cii-weights.ts`);
+      assert.equal(BASELINE_RISK[code], expected.baselineRisk,
+        `${code} server BASELINE_RISK should come from shared/cii-weights.ts`);
+      assert.equal(EVENT_MULTIPLIER[code], expected.eventMultiplier,
+        `${code} server EVENT_MULTIPLIER should come from shared/cii-weights.ts`);
+      assert.equal(SHARED_BASELINE_RISK[code as keyof typeof SHARED_BASELINE_RISK], expected.baselineRisk,
+        `${code} shared baseline map should be derived from CII_COUNTRY_WEIGHTS`);
+      assert.equal(SHARED_EVENT_MULTIPLIER[code as keyof typeof SHARED_EVENT_MULTIPLIER], expected.eventMultiplier,
+        `${code} shared multiplier map should be derived from CII_COUNTRY_WEIGHTS`);
+
       const s = scoreFor(scores, code);
       assert.ok(s, `${code} score missing`);
-      const expected = CURATED_COUNTRIES[code]?.baselineRisk;
-      assert.equal(s!.staticBaseline, expected,
-        `${code} staticBaseline ${s!.staticBaseline} should match CURATED_COUNTRIES.${code}.baselineRisk ${expected}`);
-      const expectedMult = CURATED_COUNTRIES[code]?.eventMultiplier;
+      assert.equal(s!.staticBaseline, expected.baselineRisk,
+        `${code} staticBaseline ${s!.staticBaseline} should match shared baselineRisk ${expected.baselineRisk}`);
       const actualMult = (s as unknown as { eventMultiplier: number }).eventMultiplier;
-      assert.equal(actualMult, expectedMult,
-        `${code} eventMultiplier ${actualMult} should match CURATED_COUNTRIES.${code}.eventMultiplier ${expectedMult}`);
+      assert.equal(actualMult, expected.eventMultiplier,
+        `${code} eventMultiplier ${actualMult} should match shared eventMultiplier ${expected.eventMultiplier}`);
     }
   });
 

@@ -2448,7 +2448,7 @@ async function seedCryptoSectors() {
   }
   const byId = new Map(data.map((c) => [c.id, c.price_change_percentage_24h]));
   const sectors = SECTORS_LIST.map((sector) => {
-    const changes = sector.tokens.map((id) => byId.get(id)).filter((v) => typeof v === 'number' && isFinite(v));
+    const changes = sector.tokens.map((id) => byId.get(id)).filter((v) => typeof v === 'number' && Number.isFinite(v));
     const change = changes.length > 0 ? changes.reduce((a, b) => a + b, 0) / changes.length : 0;
     return { id: sector.id, name: sector.name, change };
   });
@@ -4733,7 +4733,7 @@ function parseGscpiCsv(text) {
       const v = cols[j]?.trim();
       if (v && v !== '#N/A' && v !== '') {
         const num = parseFloat(v);
-        if (!isNaN(num)) { value = num; break; }
+        if (!Number.isNaN(num)) { value = num; break; }
       }
     }
     if (value === null) continue;
@@ -5833,8 +5833,8 @@ const WSB_SUBREDDITS = ['wallstreetbets', 'stocks', 'investing'];
 
 // $-prefixed: case-insensitive ($nvda, $NVDA, $BRK.B). Bare: uppercase only (NVDA, BRK.B).
 // $-prefixed tickers skip whitelist validation (strong signal). Bare uppercase validated against known set.
-const DOLLAR_TICKER_REGEX = /\$([a-zA-Z]{1,5}(?:[.\-][a-zA-Z]{1,2})?)\b/g;
-const BARE_TICKER_REGEX = /\b([A-Z]{1,5}(?:[.\-][A-Z]{1,2})?)\b/g;
+const DOLLAR_TICKER_REGEX = /\$([a-zA-Z]{1,5}(?:[.-][a-zA-Z]{1,2})?)\b/g;
+const BARE_TICKER_REGEX = /\b([A-Z]{1,5}(?:[.-][A-Z]{1,2})?)\b/g;
 const TICKER_BLACKLIST = new Set([
   'I','A','ALL','FOR','THE','CEO','GDP','IPO','SEC','FDA','IMF','ETF','ATH',
   'DD','YOLO','FOMO','FUD','HODL','WSB','USA','EU','UK','AI','EV','IT','OR',
@@ -9893,15 +9893,15 @@ function buildFlightFilters(params) {
     departureWindow, airlines, sortBy, passengers } = params;
 
   const isRoundTrip = !!(returnDate && returnDate.length === 10);
-  const adults = Math.max(1, Math.min(parseInt(passengers) || 1, 9));
+  const adults = Math.max(1, Math.min(parseInt(passengers, 10) || 1, 9));
 
   let timeFilters = null;
   if (departureWindow) {
     const parts = departureWindow.split('-');
     if (parts.length === 2) {
-      const h0 = parseInt(parts[0]);
-      const h1 = parseInt(parts[1]);
-      if (!isNaN(h0) && !isNaN(h1)) timeFilters = [h0, h1, null, null];
+      const h0 = parseInt(parts[0], 10);
+      const h1 = parseInt(parts[1], 10);
+      if (!Number.isNaN(h0) && !Number.isNaN(h1)) timeFilters = [h0, h1, null, null];
     }
   }
 
@@ -9955,16 +9955,16 @@ function buildDateFilters(params) {
     cabinClass, maxStops, departureWindow, airlines, passengers } = params;
 
   const roundTrip = isRoundTrip === 'true' || isRoundTrip === true;
-  const adults = Math.max(1, Math.min(parseInt(passengers) || 1, 9));
-  const duration = parseInt(tripDuration) || 0;
+  const adults = Math.max(1, Math.min(parseInt(passengers, 10) || 1, 9));
+  const duration = parseInt(tripDuration, 10) || 0;
 
   let timeFilters = null;
   if (departureWindow) {
     const parts = departureWindow.split('-');
     if (parts.length === 2) {
-      const h0 = parseInt(parts[0]);
-      const h1 = parseInt(parts[1]);
-      if (!isNaN(h0) && !isNaN(h1)) timeFilters = [h0, h1, null, null];
+      const h0 = parseInt(parts[0], 10);
+      const h1 = parseInt(parts[1], 10);
+      if (!Number.isNaN(h0) && !Number.isNaN(h1)) timeFilters = [h0, h1, null, null];
     }
   }
 
@@ -10079,7 +10079,7 @@ function parseGfDates(text, isRoundTrip) {
         if (!Array.isArray(item) || item.length < 3) return null;
         if (!Array.isArray(item[2]) || !Array.isArray(item[2][0]) || item[2][0].length < 2) return null;
         const price = parseFloat(item[2][0][1]);
-        if (!price || isNaN(price)) return null;
+        if (!price || Number.isNaN(price)) return null;
         return { date: item[0] ?? '', returnDate: roundTrip ? (item[1] ?? '') : '', price };
       } catch { return null; }
     }).filter(Boolean);
@@ -10148,7 +10148,7 @@ async function handleGoogleFlightsDates(req, res) {
 
     const isRoundTrip = url.searchParams.get('is_round_trip') || 'false';
     const tripDuration = url.searchParams.get('trip_duration') || '0';
-    if ((isRoundTrip === 'true') && (parseInt(tripDuration) || 0) <= 0) {
+    if ((isRoundTrip === 'true') && (parseInt(tripDuration, 10) || 0) <= 0) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'trip_duration is required for round-trip date searches' }));
       return;
@@ -10180,7 +10180,7 @@ async function handleGoogleFlightsDates(req, res) {
       const text = await gfResp.text();
       allDates.push(...parseGfDates(text, isRoundTrip));
     } else {
-      let current = new Date(start);
+      const current = new Date(start);
       while (current <= end) {
         const chunkEnd = new Date(current);
         chunkEnd.setDate(chunkEnd.getDate() + MAX_CHUNK - 1);

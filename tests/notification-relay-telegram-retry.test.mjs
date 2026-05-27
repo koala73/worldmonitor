@@ -39,9 +39,9 @@ process.env.TELEGRAM_BOT_TOKEN ??= 'stub-bot-token';
 // modules, so empty shims are sufficient.
 const originalLoad = Module._load;
 Module._load = function patchedLoad(request, parent, ...rest) {
-  if (request === 'resend') return { Resend: class { constructor() {} } };
+  if (request === 'resend') return { Resend: class {} };
   if (request === 'convex/browser') {
-    return { ConvexHttpClient: class { constructor() {} async query() {} } };
+    return { ConvexHttpClient: class { async query() {} } };
   }
   return originalLoad.call(this, request, parent, ...rest);
 };

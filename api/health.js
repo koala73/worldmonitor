@@ -1,3 +1,4 @@
+import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
 // Seed-envelope helper. PR 1 imports it here so PR 2 can wire envelope-aware
 // reads at specific call sites without further plumbing. It's a no-op on
@@ -724,12 +725,17 @@ const STATUS_COUNTS = {
 };
 
 export default async function handler(req, ctx) {
+  if (isDisallowedOrigin(req)) {
+    return new Response('Forbidden', { status: 403 });
+  }
+
+  const cors = getCorsHeaders(req, 'GET, OPTIONS');
   const headers = {
     'Content-Type': 'application/json',
     'Cache-Control': 'private, no-store, max-age=0',
     'CDN-Cache-Control': 'no-store',
     'CF-Cache-Status': 'BYPASS',
-    'Access-Control-Allow-Origin': '*',
+    ...cors,
   };
 
   if (req.method === 'OPTIONS') {

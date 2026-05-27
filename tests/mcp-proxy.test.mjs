@@ -90,7 +90,7 @@ function makeOptionsRequest(origin = 'https://worldmonitor.app') {
 
 // Minimal MCP server stub — returns valid JSON-RPC responses
 function makeMcpFetch({ initStatus = 200, listStatus = 200, callStatus = 200, tools = [], callResult = { content: [] } } = {}) {
-  return async (url, opts) => {
+  return async (_url, opts) => {
     const body = opts?.body ? JSON.parse(opts.body) : {};
     if (body.method === 'initialize' || body.method === 'notifications/initialized') {
       return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { protocolVersion: '2025-03-26', capabilities: {}, serverInfo: { name: 'test', version: '1' } } }), {
@@ -541,7 +541,7 @@ describe('api/mcp-proxy', () => {
   describe('SSE content-type response parsing', () => {
     it('parses JSON-RPC result from SSE response body', async () => {
       const sseTools = [{ name: 'web_search', description: 'Search', inputSchema: {} }];
-      globalThis.fetch = async (url, opts) => {
+      globalThis.fetch = async (_url, opts) => {
         const body = opts?.body ? JSON.parse(opts.body) : {};
         if (body.method === 'initialize') {
           const sseData = `data: ${JSON.stringify({ jsonrpc: '2.0', id: 1, result: { protocolVersion: '2025-03-26', capabilities: {} } })}\n\n`;

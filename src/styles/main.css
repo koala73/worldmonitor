@@ -778,12 +778,6 @@ canvas,
   color: var(--text);
 }
 
-.github-stars {
-  font-size: 11px;
-  margin-left: 4px;
-  opacity: 0.7;
-}
-
 /* Medium-width desktop: keep header utility actions reachable when OS scaling
    reduces the effective viewport width (e.g. 1920px @ 150% = ~1280px CSS). */
 @media (max-width: 1360px) {

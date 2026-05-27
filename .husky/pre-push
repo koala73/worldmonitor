@@ -1,4 +1,7 @@
 #!/usr/bin/env bash
+echo "Checking for local Vercel env dumps..."
+node scripts/check-local-secret-dumps.mjs || exit 1
+
 # Ensure dependencies are installed (worktrees start with no node_modules)
 if [ ! -d node_modules ]; then
   echo "node_modules missing, running npm install..."
@@ -90,12 +93,15 @@ while IFS= read -r f; do
   }
 done < <(find api/ -name "*.js" -not -name "_*"; find api/ -maxdepth 1 -name "*.ts" -not -name "_*")
 
-CHANGED_FILES=$(git diff --name-only origin/main...HEAD 2>/dev/null || echo "")
-if [ -z "$CHANGED_FILES" ]; then
+RUN_ALL_REASON=""
+if CHANGED_FILES=$(git diff --name-only origin/main...HEAD 2>/dev/null); then
+  :
+else
   CHANGED_FILES=$(git diff --name-only HEAD~1 2>/dev/null || echo "")
+  RUN_ALL_REASON="changed files could not be resolved from origin/main"
 fi
-if [ -z "$CHANGED_FILES" ]; then
-  echo "WARNING: Could not determine changed files, running full test suite as safety fallback."
+if [ -z "$CHANGED_FILES" ] && [ -n "$RUN_ALL_REASON" ]; then
+  echo "WARNING: Could not determine changed files, running broad invariant checks as safety fallback."
   RUN_ALL=true
 fi
 
@@ -110,19 +116,72 @@ if echo "$CHANGED_FILES" | grep -q "^scripts/"; then RUN_SEED=true; fi
 if echo "$CHANGED_FILES" | grep -q "^server/"; then RUN_SERVER=true; fi
 if echo "$CHANGED_FILES" | grep -q "resilience"; then RUN_RESILIENCE=true; fi
 if echo "$CHANGED_FILES" | grep -q "^src/\|^api/"; then RUN_FRONTEND=true; fi
-if echo "$CHANGED_FILES" | grep -q "^tests/\|package.json\|tsconfig"; then RUN_ALL=true; fi
+# RUN_ALL means "run broad invariant checks below", not "run every unit test".
+# Touching tests/ used to trigger the full local suite, but that suite now
+# exceeds this hook's 300s budget. CI remains the full-suite merge gate; this
+# hook stays a fast pre-flight.
+if echo "$CHANGED_FILES" | grep -q "package.json\|tsconfig"; then
+  RUN_ALL=true
+  RUN_ALL_REASON="${RUN_ALL_REASON:-config changed}"
+fi
+
+# Test files that changed in this push — run these specifically when
+# RUN_ALL didn't fire, so editing a test doesn't escalate to the full
+# 10k-test suite. Matches both .mjs and .mts under tests/.
+TESTS_CHANGED=$(echo "$CHANGED_FILES" | grep -E "^tests/.*\.test\.(mjs|mts)$" | while read -r t; do [ -f "$t" ] && echo "$t"; done || true)
+
+# Compute SEED_TESTS and SERVER_TESTS up-front (rather than inside their
+# RUN_* blocks) so the TESTS_CHANGED subtraction below can deduplicate
+# against the SAME literal file list the category run will execute. The
+# RUN_SEED / RUN_SERVER blocks consume these same variables — single
+# source of truth prevents drift between "what runs" and "what's
+# subtracted from TESTS_CHANGED".
+SEED_TESTS=$(echo "$CHANGED_FILES" | grep "^scripts/" | sed 's|scripts/seed-\(.*\)\.mjs|tests/\1-seed.test.mjs|' | grep "^tests/" | while read -r t; do [ -f "$t" ] && echo "$t"; done)
+SERVER_TESTS=$(printf '%s\n' "tests/handlers.test.mts" "tests/server-handlers.test.mjs")
+
+# Subtract any test file that's already going to be run by a category
+# glob (RUN_RESILIENCE's resilience-* glob, RUN_SERVER's SERVER_TESTS
+# list, or RUN_SEED's derived SEED_TESTS list). Without this, a changed
+# resilience/handlers/seed test file is captured in BOTH the category run
+# AND the TESTS_CHANGED run, so the same test executes twice on every
+# push. Per greptile-apps review on PR #3928.
+#
+# IMPORTANT: gated on RUN_ALL != true. When RUN_ALL=true the category
+# runners below are skipped (only CI runs the full suite), so there's
+# nothing to dedup against — and subtracting category files unconditionally
+# would silently drop them from the TESTS_CHANGED runner too, since that
+# block runs regardless of RUN_ALL. Net effect of an unconditional dedup:
+# changed test files don't run anywhere locally when RUN_ALL fires.
+if [ "$RUN_ALL" != true ] && [ -n "$TESTS_CHANGED" ]; then
+  if [ "$RUN_RESILIENCE" = true ]; then
+    TESTS_CHANGED=$(echo "$TESTS_CHANGED" | grep -v "^tests/resilience-" || true)
+  fi
+  if [ "$RUN_SERVER" = true ]; then
+    # grep -vxF -f <(...): drop lines from TESTS_CHANGED that exactly
+    # match (full line, literal string, no regex) the SERVER_TESTS list.
+    # Exact literal match here — not a regex like (handlers|server-handlers)
+    # over (mjs|mts) — so we never strip a file from TESTS_CHANGED that
+    # the category run isn't actually going to execute.
+    TESTS_CHANGED=$(echo "$TESTS_CHANGED" | grep -vxF -f <(echo "$SERVER_TESTS") || true)
+  fi
+  if [ -n "$SEED_TESTS" ]; then
+    # grep -vxF -f <(...): drop lines from TESTS_CHANGED that exactly
+    # match (full line, literal string, no regex) any line in SEED_TESTS.
+    TESTS_CHANGED=$(echo "$TESTS_CHANGED" | grep -vxF -f <(echo "$SEED_TESTS") || true)
+  fi
+fi
 
 if [ "$RUN_ALL" = true ]; then
-  echo "Running full unit test suite (test files or config changed)..."
-  timeout 300 npx tsx --test tests/*.test.mjs tests/*.test.mts || exit 1
-else
+  echo "Skipping local full unit test suite (${RUN_ALL_REASON:-broad check requested}; CI runs the full suite on PR open)."
+fi
+
+if [ "$RUN_ALL" != true ]; then
   if [ "$RUN_RESILIENCE" = true ]; then
     echo "Running resilience tests (resilience files changed)..."
     timeout 120 npx tsx --test tests/resilience-*.test.mjs tests/resilience-*.test.mts || exit 1
   fi
   if [ "$RUN_SEED" = true ]; then
     echo "Running seed tests (scripts/ changed)..."
-    SEED_TESTS=$(echo "$CHANGED_FILES" | grep "^scripts/" | sed 's|scripts/seed-\(.*\)\.mjs|tests/\1-seed.test.mjs|' | grep "^tests/" | while read -r t; do [ -f "$t" ] && echo "$t"; done)
     if [ -n "$SEED_TESTS" ]; then
       timeout 120 npx tsx --test $SEED_TESTS || exit 1
     else
@@ -131,11 +190,18 @@ else
   fi
   if [ "$RUN_SERVER" = true ]; then
     echo "Running server handler tests (server/ changed)..."
-    timeout 120 npx tsx --test tests/handlers.test.mts tests/server-handlers.test.mjs || exit 1
+    # shellcheck disable=SC2086 — intentional word-split for tsx --test arglist
+    timeout 120 npx tsx --test $SERVER_TESTS || exit 1
   fi
-  if [ "$RUN_RESILIENCE" = false ] && [ "$RUN_SEED" = false ] && [ "$RUN_SERVER" = false ]; then
-    echo "Skipping unit tests (frontend-only changes)."
+  if [ "$RUN_RESILIENCE" = false ] && [ "$RUN_SEED" = false ] && [ "$RUN_SERVER" = false ] && [ -z "$TESTS_CHANGED" ]; then
+    echo "Skipping unit tests (frontend-only changes; CI runs the full suite on PR open)."
   fi
+fi
+
+if [ -n "$TESTS_CHANGED" ]; then
+  echo "Running changed test files only..."
+  # shellcheck disable=SC2086 — intentional word-split for tsx --test arglist
+  timeout 120 npx tsx --test $TESTS_CHANGED || exit 1
 fi
 
 echo "Running edge function tests..."

@@ -17,7 +17,8 @@
 //      downstream users of the proto API see why combinedScore values may
 //      shift between deploys.
 //
-// Last reviewed: 2026-05-27 (CII calibration / bias reduction, v2→v3).
+// Last reviewed: 2026-05-27 (CII calibration / bias reduction, v2→v3; lands on
+// top of the v2-stable CII weights source-of-truth refactor #3789).
 // ============================================================================
 
 /**

@@ -64,7 +64,7 @@ async function fetchEcbYieldCurve() {
   for (const [seriesKey, seriesData] of Object.entries(dataSet.series)) {
     const keyParts = seriesKey.split(':');
     const tenorIdx = parseInt(keyParts[tenorDimIdx], 10);
-    if (isNaN(tenorIdx)) continue;
+    if (Number.isNaN(tenorIdx)) continue;
 
     const tenorId = tenorDim.values[tenorIdx]?.id;
     if (!tenorId) continue;

@@ -686,7 +686,7 @@ async function computeCorrelation() {
   // Logs signals, clusters, topScore (max regardless of threshold), and
   // cards (count clearing threshold). topScore=0 when no clusters formed,
   // distinguishing "scoring rejected everything" from "nothing to score".
-  const buildDomain = (domain, signals, clusters, scored, threshold, titleFn) => {
+  const buildDomain = (domain, signals, _clusters, scored, threshold, titleFn) => {
     const topScore = scored.length > 0
       ? Math.round(Math.max(...scored.map(s => s.score)))
       : 0;

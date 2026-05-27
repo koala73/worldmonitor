@@ -190,7 +190,7 @@ export async function summarizeArticle(
         const tokens = (data.usage?.total_tokens as number) || 0;
         const message = data.choices?.[0]?.message;
         const rawText = typeof message?.content === 'string' ? message.content.trim() : '';
-        let rawContent = stripThinkingTags(rawText);
+        const rawContent = stripThinkingTags(rawText);
 
         if (['brief', 'analysis'].includes(mode) && rawContent.length < 20) {
           console.warn(`[SummarizeArticle:${provider}] Output too short after stripping (${rawContent.length} chars), rejecting`);

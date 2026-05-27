@@ -131,7 +131,7 @@ function makeFakeConvex({
   mergeRejection = null, // optional Error to throw from mergeAnonymousLocal
   mergeDelayMs = 0,
 } = {}) {
-  let rows = initialRows.map((c, i) => ({ country: c, addedAt: 1000 + i }));
+  const rows = initialRows.map((c, i) => ({ country: c, addedAt: 1000 + i }));
   let listFollowedCb = null;
   const calls = { follow: [], unfollow: [], merge: [] };
 
@@ -1170,7 +1170,7 @@ describe('Codex round-4 P1 — UNAUTHENTICATED transient retry path', () => {
     // simulates the exact production race: Clerk fires "signed in" first
     // tick, Convex setAuth resolves on a later tick, the visibility
     // retry then succeeds.
-    let rows = [];
+    const rows = [];
     let listCb = null;
     let mergeCalls = 0;
     const ConvexErrorCtor = class extends Error {
@@ -1295,7 +1295,7 @@ describe('Codex round-4 P1 — UNAUTHENTICATED transient retry path', () => {
     const fake = makeFakeConvex({ tier: 1 });
     // Wrap the fake's mutation to observe call ordering vs. auth-resolved.
     const innerMutation = fake.mutation.bind(fake);
-    fake.mutation = async function (ref, args) {
+    fake.mutation = async (ref, args) => {
       if (ref === FAKE_API.followedCountries.mergeAnonymousLocal && !authResolved) {
         mergeCalledWhileAuthPending = true;
       }

@@ -193,7 +193,7 @@ const ConvexErrorCtor = class extends Error {
 };
 
 function makeFakeConvex({ tier = 1, capLimit = 3, initialRows = [] } = {}) {
-  let rows = initialRows.map((c, i) => ({ country: c, addedAt: 1000 + i }));
+  const rows = initialRows.map((c, i) => ({ country: c, addedAt: 1000 + i }));
   let listFollowedCb = null;
   const calls = { follow: [], unfollow: [], merge: [] };
   const fireSnapshot = () => {
@@ -642,7 +642,7 @@ describe('renderFollowButton — P2 #17 inFlight prevents rapid double-click dup
     // click would queue a second addCountry; with it, the second click
     // is dropped silently.
     let resolveFirst;
-    let pending = new Promise((r) => { resolveFirst = r; });
+    const pending = new Promise((r) => { resolveFirst = r; });
     const calls = [];
     const fakeClient = {
       async mutation(ref, args) {
