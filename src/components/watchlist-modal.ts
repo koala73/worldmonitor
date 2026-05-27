@@ -13,6 +13,8 @@ import {
   setMarketWatchlistEntries,
 } from '@/services/market-watchlist';
 import { WatchlistEditor } from './WatchlistEditor';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 let activeOverlay: HTMLElement | null = null;
 
@@ -39,7 +41,7 @@ export function openWatchlistModal(): void {
   modal.className = 'modal unified-settings-modal';
   modal.style.maxWidth = '680px';
 
-  modal.innerHTML = `
+  setTrustedHtml(modal, trustedHtml(`
     <div class="modal-header">
       <span class="modal-title">Market watchlist</span>
       <button class="modal-close" aria-label="Close">×</button>
@@ -58,7 +60,7 @@ export function openWatchlistModal(): void {
         <button type="button" class="panels-reset-layout" id="wmMarketSaveBtn" style="border-color:var(--text-dim);color:var(--text)">Save</button>
       </div>
     </div>
-  `;
+  `, "legacy direct innerHTML migration"));
 
   modal.querySelector('.modal-close')?.addEventListener('click', close);
   modal.querySelector<HTMLDivElement>('#wmWatchlistEditorMount')?.append(editor.element);

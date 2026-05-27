@@ -3,6 +3,8 @@ import { invokeTauri } from '@/services/tauri-bridge';
 import { trackUpdateShown, trackUpdateClicked, trackUpdateDismissed } from '@/services/analytics';
 import { escapeHtml } from '@/utils/sanitize';
 import { getDismissed, setDismissed } from '@/utils/cross-domain-storage';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 interface DesktopRuntimeInfo {
   os: string;
@@ -169,7 +171,7 @@ export class DesktopUpdater implements AppModule {
     const toast = document.createElement('div');
     toast.className = 'update-toast';
     toast.dataset.version = version;
-    toast.innerHTML = `
+    setTrustedHtml(toast, trustedHtml(`
       <div class="update-toast-icon">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
@@ -183,7 +185,7 @@ export class DesktopUpdater implements AppModule {
       </div>
       <button class="update-toast-action" data-action="download">Download</button>
       <button class="update-toast-dismiss" data-action="dismiss" aria-label="Dismiss">\u00d7</button>
-    `;
+    `, "legacy direct innerHTML migration"));
 
     const dismissToast = () => {
       setDismissed(`wm-update-dismissed-${version}`);

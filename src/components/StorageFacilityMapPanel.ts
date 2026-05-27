@@ -1,5 +1,5 @@
 import { Panel } from './Panel';
-import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
+import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { attributionFooterHtml, ATTRIBUTION_FOOTER_CSS } from '@/utils/attribution-footer';
 import { SupplyChainServiceClient } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
@@ -338,7 +338,7 @@ export class StorageFacilityMapPanel extends Panel {
 
     const drawer = this.selectedId ? this.renderDrawer() : '';
 
-    this.setContent(`
+    this.setSafeContent(unsafeRawHtml(`
       <div class="sf-wrap">
         <table class="sf-table">
           <thead>
@@ -375,7 +375,7 @@ export class StorageFacilityMapPanel extends Panel {
         .sf-ev-item a { color: #4ade80; text-decoration: none; }
         .sf-ev-item a:hover { text-decoration: underline; }
       </style>
-    `);
+    `, 'legacy Panel.setContent() migration'));
 
     const table = this.element?.querySelector('.sf-table') as HTMLTableElement | null;
     table?.querySelectorAll<HTMLTableRowElement>('tr.sf-row').forEach(tr => {

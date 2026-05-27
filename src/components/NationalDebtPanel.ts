@@ -1,6 +1,6 @@
 import { Panel } from './Panel';
 import { getNationalDebtData, type NationalDebtEntry } from '@/services/economic';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 
 type SortMode = 'total' | 'gdp-ratio' | 'growth';
 
@@ -186,11 +186,11 @@ export class NationalDebtPanel extends Panel {
   }
 
   private showLoadingState(): void {
-    this.setContent(`
+    this.setSafeContent(unsafeRawHtml(`
       <div style="display:flex;align-items:center;justify-content:center;height:80px;color:var(--text-dim);font-size:13px;">
         Loading debt data from IMF...
       </div>
-    `);
+    `, 'legacy Panel.setContent() migration'));
   }
 
   private applyFilters(): void {
@@ -273,7 +273,7 @@ export class NationalDebtPanel extends Panel {
       </div>
     `;
 
-    this.setContent(html);
+    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
   }
 
   private renderRow(entry: NationalDebtEntry, rank: number): string {

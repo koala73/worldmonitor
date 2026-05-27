@@ -1,7 +1,7 @@
 import type { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { formatChange, getChangeClass } from '@/utils';
 
 let _client: MarketServiceClient | null = null;
@@ -134,7 +134,7 @@ export class LiquidityShiftsPanel extends Panel {
         ? `<div class="market-symbol liquidity-report-date">${t('components.liquidityShifts.reportDate', { date: cotResp.reportDate })}</div>`
         : '';
 
-      this.setContent(`
+      this.setSafeContent(unsafeRawHtml(`
         <div class="liquidity-shifts-panel">
           <div class="liquidity-shifts-panel__section-title">${t('components.liquidityShifts.cotSection')}</div>
           ${cotHtml || emptyCot}
@@ -142,7 +142,7 @@ export class LiquidityShiftsPanel extends Panel {
           ${stockRows || emptyStocks}
           ${reportDateLine}
         </div>
-      `);
+      `, 'legacy Panel.setContent() migration'));
       return true;
     } catch (e) {
       if (!this._hasData) this.showError(e instanceof Error ? e.message : t('components.liquidityShifts.failed'), () => void this.fetchData());

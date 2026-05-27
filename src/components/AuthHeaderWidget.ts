@@ -1,6 +1,8 @@
 import { subscribeAuthState, type AuthSession } from '@/services/auth-state';
 import { mountUserButton, openSignIn, openSignUp } from '@/services/clerk';
 import { t } from '@/services/i18n';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 export class AuthHeaderWidget {
   private container: HTMLElement;
@@ -17,7 +19,7 @@ export class AuthHeaderWidget {
 
     this.unsubscribeAuth = subscribeAuthState((state: AuthSession) => {
       if (state.isPending) {
-        this.container.innerHTML = '';
+        setTrustedHtml(this.container, trustedHtml('', "legacy direct innerHTML migration"));
         return;
       }
       this.render(state);
@@ -40,7 +42,7 @@ export class AuthHeaderWidget {
   private render(state: AuthSession): void {
     this.unmountUserButton?.();
     this.unmountUserButton = null;
-    this.container.innerHTML = '';
+    setTrustedHtml(this.container, trustedHtml('', "legacy direct innerHTML migration"));
 
     if (!state.user) {
       this.renderSignedOut();
@@ -78,7 +80,7 @@ export class AuthHeaderWidget {
       settingsBtn.type = 'button';
       settingsBtn.setAttribute('aria-label', t('auth.settings'));
       settingsBtn.title = t('auth.settings');
-      settingsBtn.innerHTML = SETTINGS_ICON;
+      setTrustedHtml(settingsBtn, trustedHtml(SETTINGS_ICON, "legacy direct innerHTML migration"));
       settingsBtn.addEventListener('click', () => this.onSettingsClick?.());
       this.container.appendChild(settingsBtn);
     }

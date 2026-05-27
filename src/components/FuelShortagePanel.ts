@@ -1,5 +1,5 @@
 import { Panel } from './Panel';
-import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
+import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { attributionFooterHtml, ATTRIBUTION_FOOTER_CSS } from '@/utils/attribution-footer';
 import { SupplyChainServiceClient } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
@@ -260,7 +260,7 @@ export class FuelShortagePanel extends Panel {
 
     const drawer = this.selectedId ? this.renderDrawer() : '';
 
-    this.setContent(`
+    this.setSafeContent(unsafeRawHtml(`
       <div class="fs-wrap">
         <div class="fs-summary">${escapeHtml(summary)}</div>
         <table class="fs-table">
@@ -304,7 +304,7 @@ export class FuelShortagePanel extends Panel {
         .fs-src-type-operator { background: #27ae60; color: #fff; }
         .fs-src-type-press { background: #555; color: #ccc; }
       </style>
-    `);
+    `, 'legacy Panel.setContent() migration'));
 
     const table = this.element?.querySelector('.fs-table') as HTMLTableElement | null;
     table?.querySelectorAll<HTMLTableRowElement>('tr.fs-row').forEach(tr => {

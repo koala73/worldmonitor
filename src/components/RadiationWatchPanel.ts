@@ -1,7 +1,7 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import type { RadiationObservation, RadiationWatchResult } from '@/services/radiation';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 
 export class RadiationWatchPanel extends Panel {
   private observations: RadiationObservation[] = [];
@@ -50,7 +50,7 @@ export class RadiationWatchPanel extends Panel {
 
   private render(): void {
     if (this.observations.length === 0) {
-      this.setContent(`<div class="panel-empty">${escapeHtml(t('components.radiationWatch.empty'))}</div>`);
+      this.setSafeContent(unsafeRawHtml(`<div class="panel-empty">${escapeHtml(t('components.radiationWatch.empty'))}</div>`, 'legacy Panel.setContent() migration'));
       return;
     }
 
@@ -116,7 +116,7 @@ export class RadiationWatchPanel extends Panel {
       ? t('components.radiationWatch.footer.updated', { time: this.fetchedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })
       : '';
 
-    this.setContent(`
+    this.setSafeContent(unsafeRawHtml(`
       <div class="radiation-panel-content">
         ${summary}
         <table class="radiation-table">
@@ -133,7 +133,7 @@ export class RadiationWatchPanel extends Panel {
         </table>
         <div class="radiation-footer">${escapeHtml(footer)}</div>
       </div>
-    `);
+    `, 'legacy Panel.setContent() migration'));
 
   }
 }

@@ -10,6 +10,8 @@ import { loadFromStorage, saveToStorage } from '@/utils';
 import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
 import { isDesktopRuntime } from '@/services/runtime';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 function getLocalizedPanelName(panelKey: string, fallback: string): string {
   if (panelKey === 'runtime-config') {
@@ -63,7 +65,7 @@ export function initSettingsWindow(): void {
 
     const grid = document.getElementById('panelToggles');
     if (grid) {
-      grid.innerHTML = panelHtml;
+      setTrustedHtml(grid, trustedHtml(panelHtml, "legacy direct innerHTML migration"));
       grid.querySelectorAll('.panel-toggle-item').forEach((item) => {
         item.addEventListener('click', () => {
           const panelKey = (item as HTMLElement).dataset.panel!;
@@ -83,7 +85,7 @@ export function initSettingsWindow(): void {
     }
   }
 
-  appEl.innerHTML = `
+  setTrustedHtml(appEl, trustedHtml(`
     <div class="settings-window-shell">
       <div class="settings-window-header">
         <div class="settings-window-header-text">
@@ -94,7 +96,7 @@ export function initSettingsWindow(): void {
       </div>
       <div class="panel-toggle-grid" id="panelToggles"></div>
     </div>
-  `;
+  `, "legacy direct innerHTML migration"));
 
   document.getElementById('settingsWindowClose')?.addEventListener('click', () => {
     window.close();

@@ -1,7 +1,7 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import { getTechReadinessRankings, type TechReadinessScore } from '@/services/economic';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 
 const COUNTRY_FLAGS: Record<string, string> = {
   'USA': '🇺🇸', 'CHN': '🇨🇳', 'JPN': '🇯🇵', 'DEU': '🇩🇪', 'KOR': '🇰🇷',
@@ -158,13 +158,13 @@ export class TechReadinessPanel extends Panel {
    */
   private renderTerminalError(): void {
     this.hideCountBadge();
-    this.setContent(`
+    this.setSafeContent(unsafeRawHtml(`
       <div class="panel-error-state" style="padding:24px 16px;text-align:center">
         <div class="panel-error-msg" style="color:var(--danger,#e0654b);font-size:13px">
           ${escapeHtml(t('common.failedTechReadiness'))}
         </div>
       </div>
-    `);
+    `, 'legacy Panel.setContent() migration'));
     this.setErrorState(true);
   }
 
@@ -173,16 +173,16 @@ export class TechReadinessPanel extends Panel {
     // doesn't paint red on a benign empty payload. Caller schedules an
     // auto-retry; this is just the visual placeholder while we wait.
     this.hideCountBadge();
-    this.setContent(`
+    this.setSafeContent(unsafeRawHtml(`
       <div class="panel-soft-empty" style="padding:24px 16px;color:var(--text-dim);font-size:12px;text-align:center;line-height:1.5">
         <div style="font-size:20px;margin-bottom:8px">⌛</div>
         <div>${escapeHtml(t('components.techReadiness.dataPreparing'))}</div>
       </div>
-    `);
+    `, 'legacy Panel.setContent() migration'));
   }
 
   private showFetchingState(): void {
-    this.setContent(`
+    this.setSafeContent(unsafeRawHtml(`
       <div class="tech-fetch-progress">
         <div class="tech-fetch-icon">
           <div class="tech-globe-ring"></div>
@@ -213,7 +213,7 @@ export class TechReadinessPanel extends Panel {
         </div>
         <div class="tech-fetch-note">${t('components.techReadiness.analyzingCountries')}</div>
       </div>
-    `);
+    `, 'legacy Panel.setContent() migration'));
   }
 
   private getFlag(countryCode: string): string {
@@ -267,6 +267,6 @@ export class TechReadinessPanel extends Panel {
       </div>
     `;
 
-    this.setContent(html);
+    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
   }
 }

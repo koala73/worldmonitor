@@ -54,6 +54,8 @@ const DEPENDENCY_FLAG_LABELS: Record<string, { text: string; cls: string }> = {
 };
 import { toApiUrl } from '@/services/runtime';
 import type { ComputeEnergyShockScenarioResponse, ProductImpact } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 type ThreatLevel = 'critical' | 'high' | 'medium' | 'low' | 'info';
 type TrendDirection = 'up' | 'down' | 'flat';
@@ -1898,21 +1900,21 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       const pathStr = pathParts.map(p => escapeHtml(p)).join(' \u2192 ');
 
       const pathEl = this.el('div', 'cdp-route-path');
-      pathEl.innerHTML = `${escapeHtml(route.name)}: ${pathStr}`;
+      setTrustedHtml(pathEl, trustedHtml(`${escapeHtml(route.name)}: ${pathStr}`, "legacy direct innerHTML migration"));
       wrap.append(pathEl);
     }
 
     const statsEl = this.el('div', 'cdp-route-stats');
     const distEl = this.el('div');
-    distEl.innerHTML = `Distance: <span>\u2014</span>`;
+    setTrustedHtml(distEl, trustedHtml(`Distance: <span>\u2014</span>`, "legacy direct innerHTML migration"));
     const transitEl = this.el('div');
-    transitEl.innerHTML = `Transit: <span>\u2014</span>`;
+    setTrustedHtml(transitEl, trustedHtml(`Transit: <span>\u2014</span>`, "legacy direct innerHTML migration"));
     const riskEl = this.el('div');
     const riskScore = sector.exposureScore;
     const riskColor = riskScore >= 70 ? '#ef4444' : riskScore > 30 ? '#f59e0b' : '#94a3b8';
-    riskEl.innerHTML = `Chokepoint Risk: <span style="color:${riskColor}">${riskScore.toFixed(0)}/100</span>`;
+    setTrustedHtml(riskEl, trustedHtml(`Chokepoint Risk: <span style="color:${riskColor}">${riskScore.toFixed(0)}/100</span>`, "legacy direct innerHTML migration"));
     const routeCountEl = this.el('div');
-    routeCountEl.innerHTML = `Routes via chokepoint: <span>${matchingRoutes.length}</span>`;
+    setTrustedHtml(routeCountEl, trustedHtml(`Routes via chokepoint: <span>${matchingRoutes.length}</span>`, "legacy direct innerHTML migration"));
     statsEl.append(distEl, transitEl, riskEl, routeCountEl);
     wrap.append(statsEl);
 
@@ -2311,7 +2313,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
     const summaryHtml = this.formatBrief(this.summarizeBrief(data.brief), 0);
     const text = this.el('div', 'cdp-assessment-text cdp-summary-only');
-    text.innerHTML = summaryHtml;
+    setTrustedHtml(text, trustedHtml(summaryHtml, "legacy direct innerHTML migration"));
 
     const metaTokens: string[] = [];
     if (data.cached) metaTokens.push('Cached');
@@ -2322,7 +2324,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
     const expandedBrief = this.el('div', 'cdp-expanded-only');
     const fullText = this.el('div', 'cdp-assessment-text');
-    fullText.innerHTML = this.formatBrief(data.brief, this.currentHeadlineCount);
+    setTrustedHtml(fullText, trustedHtml(this.formatBrief(data.brief, this.currentHeadlineCount), "legacy direct innerHTML migration"));
     expandedBrief.append(fullText);
     this.briefBody.append(expandedBrief);
   }
@@ -2360,7 +2362,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       countryName: country,
       size: 'md',
     });
-    followHost.innerHTML = handle.html;
+    setTrustedHtml(followHost, trustedHtml(handle.html, "legacy direct innerHTML migration"));
     this.followButtonTeardown = handle.attach(followHost);
 
     // U8 (degraded path) — "Notify me about this country" sub-action.
@@ -2375,7 +2377,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       countryCode: code,
       countryName: country,
     });
-    notifyHost.innerHTML = notifyHandle.html;
+    setTrustedHtml(notifyHost, trustedHtml(notifyHandle.html, "legacy direct innerHTML migration"));
     this.notifyLinkTeardown = notifyHandle.attach(notifyHost);
 
     left.append(flag, titleWrap, followHost, notifyHost);
@@ -2394,14 +2396,14 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     const shareBtn = this.el('button', 'cdp-action-btn cdp-share-btn') as HTMLButtonElement;
     shareBtn.setAttribute('type', 'button');
     shareBtn.setAttribute('aria-label', t('components.countryBrief.shareLink'));
-    shareBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 002 2h12a2 2 0 002-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>';
+    setTrustedHtml(shareBtn, trustedHtml('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 002 2h12a2 2 0 002-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>', "legacy direct innerHTML migration"));
     shareBtn.addEventListener('click', () => {
       if (!this.currentCode || !this.currentName) return;
       const url = `${window.location.origin}/?c=${encodeURIComponent(this.currentCode)}`;
       navigator.clipboard.writeText(url).then(() => {
         const orig = shareBtn.innerHTML;
-        shareBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
-        setTimeout(() => { shareBtn.innerHTML = orig; }, 1500);
+        setTrustedHtml(shareBtn, trustedHtml('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>', "legacy direct innerHTML migration"));
+        setTimeout(() => { setTrustedHtml(shareBtn, trustedHtml(orig, "legacy direct innerHTML migration")); }, 1500);
       }).catch(() => {});
     });
 

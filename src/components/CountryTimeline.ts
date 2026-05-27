@@ -2,6 +2,8 @@ import * as d3 from 'd3';
 import { escapeHtml } from '@/utils/sanitize';
 import { getCSSColor } from '@/utils';
 import { t } from '@/services/i18n';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 export interface TimelineEvent {
   timestamp: number;
@@ -257,7 +259,7 @@ export class CountryTimeline {
       .on('mouseenter', function (event: MouseEvent, d: TimelineEvent) {
         d3.select(this).attr('opacity', 1).attr('stroke', getCSSColor('--text')).attr('stroke-width', 1.5);
         const dateStr = fmt(new Date(d.timestamp));
-        tooltip.innerHTML = `<strong>${escapeHtml(d.label)}</strong><br/>${escapeHtml(dateStr)}`;
+        setTrustedHtml(tooltip, trustedHtml(`<strong>${escapeHtml(d.label)}</strong><br/>${escapeHtml(dateStr)}`, "legacy direct innerHTML migration"));
         tooltip.style.display = 'block';
         const rect = container.getBoundingClientRect();
         const x = event.clientX - rect.left + 12;

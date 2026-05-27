@@ -1,6 +1,8 @@
 import '../styles/main.css';
 import { MapPopup } from '../components/MapPopup';
 import type { Hotspot } from '../types';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 type MobileMapHarness = {
   ready: boolean;
@@ -63,7 +65,7 @@ const hotspot = document.createElement('div');
 hotspot.className = 'hotspot';
 hotspot.style.left = '50%';
 hotspot.style.top = '50%';
-hotspot.innerHTML = '<div class="hotspot-marker high"></div>';
+setTrustedHtml(hotspot, trustedHtml('<div class="hotspot-marker high"></div>', "legacy direct innerHTML migration"));
 hotspot.addEventListener('click', (e) => {
   e.stopPropagation();
   const rect = app.getBoundingClientRect();

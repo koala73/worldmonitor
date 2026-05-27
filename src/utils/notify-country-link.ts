@@ -31,6 +31,8 @@ import {
   subscribe,
 } from '@/services/followed-countries';
 import { escapeHtml } from '@/utils/sanitize';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -187,7 +189,7 @@ export function renderNotifyCountryLink(
       const rerender = (): void => {
         if (tornDown) return;
         const next = computeViewState(props);
-        host.innerHTML = renderHtml(next, props);
+        setTrustedHtml(host, trustedHtml(renderHtml(next, props), "legacy direct innerHTML migration"));
       };
 
       // Render once on attach to resolve any state drift between the

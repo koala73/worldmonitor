@@ -1,7 +1,7 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import type { CountrySanctionsPressure, ProgramSanctionsPressure, SanctionsEntry, SanctionsPressureResult } from '@/services/sanctions-pressure';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 
 export class SanctionsPressurePanel extends Panel {
   private data: SanctionsPressureResult | null = null;
@@ -26,7 +26,7 @@ export class SanctionsPressurePanel extends Panel {
 
   private render(): void {
     if (!this.data || this.data.totalCount === 0) {
-      this.setContent(`<div class="economic-empty">${escapeHtml(t('components.sanctionsPressure.unavailable'))}</div>`);
+      this.setSafeContent(unsafeRawHtml(`<div class="economic-empty">${escapeHtml(t('components.sanctionsPressure.unavailable'))}</div>`, 'legacy Panel.setContent() migration'));
       return;
     }
 
@@ -58,7 +58,7 @@ export class SanctionsPressurePanel extends Panel {
       t('components.sanctionsPressure.footer.source'),
     ].filter(Boolean).join(' · ');
 
-    this.setContent(`
+    this.setSafeContent(unsafeRawHtml(`
       <div class="sanctions-panel-content">
         ${summaryHtml}
         <div class="sanctions-sections">
@@ -77,7 +77,7 @@ export class SanctionsPressurePanel extends Panel {
         </div>
         <div class="economic-footer">${escapeHtml(footer)}</div>
       </div>
-    `);
+    `, 'legacy Panel.setContent() migration'));
   }
 
   private renderSummaryCard(label: string, value: string | number, tone = ''): string {

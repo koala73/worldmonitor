@@ -1,11 +1,13 @@
 import { Panel } from './Panel';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import type { UnhcrSummary, CountryDisplacement } from '@/services/displacement';
 import { formatPopulation } from '@/services/displacement';
 import { t } from '@/services/i18n';
 import { renderFollowedOnlyChip, type FollowedOnlyChipHandle } from '@/utils/followed-only-chip';
 import { isFollowed, subscribe as subscribeFollowed } from '@/services/followed-countries';
 import { toIso2 } from '@/utils/country-codes';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 type DisplacementTab = 'origins' | 'hosts';
 
@@ -57,7 +59,7 @@ export class DisplacementPanel extends Panel {
       },
     });
     if (this.followedOnlyChip.html === '') return;
-    host.innerHTML = this.followedOnlyChip.html;
+    setTrustedHtml(host, trustedHtml(this.followedOnlyChip.html, "legacy direct innerHTML migration"));
     // Insert BEFORE the close button so close stays rightmost. The Panel
     // base appends `.panel-close-btn` first; a plain `appendChild` would
     // land the chip after close and break the user expectation that X
@@ -180,7 +182,7 @@ export class DisplacementPanel extends Panel {
         </table>`;
     }
 
-    this.setContent(`
+    this.setSafeContent(unsafeRawHtml(`
       <div class="disp-panel-content">
         <div class="disp-stats-grid">${statsHtml}</div>
         ${tabsHtml}
@@ -188,7 +190,7 @@ export class DisplacementPanel extends Panel {
           ${tableHtml}
         </div>
       </div>
-    `);
+    `, 'legacy Panel.setContent() migration'));
   }
 
   public override destroy(): void {

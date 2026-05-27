@@ -1,7 +1,7 @@
 import type { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 
 let _client: MarketServiceClient | null = null;
 async function getMarketClient(): Promise<MarketServiceClient> {
@@ -101,6 +101,6 @@ export class CotPositioningPanel extends Panel {
         ${rows}
         ${dateFooter}
       </div>`;
-    this.setContent(html);
+    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
   }
 }

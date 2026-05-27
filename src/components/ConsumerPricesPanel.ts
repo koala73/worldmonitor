@@ -1,6 +1,6 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { sparkline } from '@/utils/sparkline';
 import {
   fetchConsumerPriceOverview,
@@ -231,12 +231,12 @@ export class ConsumerPricesPanel extends Panel {
 
     // All-markets global view — skip per-market tabs
     if (market === 'all') {
-      this.setContent(`
+      this.setSafeContent(unsafeRawHtml(`
         <div class="consumer-prices-panel">
           ${marketBarHtml}
           <div class="cp-body">${this.renderGlobalOverview()}</div>
         </div>
-      `);
+      `, 'legacy Panel.setContent() migration'));
       return;
     }
 
@@ -245,7 +245,7 @@ export class ConsumerPricesPanel extends Panel {
     // When seed hasn't run yet, show a single full-panel placeholder instead
     // of the ugly "No price data available yet" text inside each tab body
     if (noData) {
-      this.setContent(`
+      this.setSafeContent(unsafeRawHtml(`
         <div class="consumer-prices-panel">
           ${marketBarHtml}
           ${tabsHtml}
@@ -255,7 +255,7 @@ export class ConsumerPricesPanel extends Panel {
             <div class="cp-seeding-sub">Retail prices are being aggregated — check back in a few hours.</div>
           </div>
         </div>
-      `);
+      `, 'legacy Panel.setContent() migration'));
       return;
     }
 
@@ -280,13 +280,13 @@ export class ConsumerPricesPanel extends Panel {
         break;
     }
 
-    this.setContent(`
+    this.setSafeContent(unsafeRawHtml(`
       <div class="consumer-prices-panel">
         ${marketBarHtml}
         ${tabsHtml}
         <div class="cp-body">${bodyHtml}</div>
       </div>
-    `);
+    `, 'legacy Panel.setContent() migration'));
   }
 
   private renderGlobalOverview(): string {

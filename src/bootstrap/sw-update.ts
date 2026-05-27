@@ -1,3 +1,4 @@
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 interface VisibleElementLike {
   checkVisibility?: () => boolean;
   getClientRects?: () => { length: number };
@@ -157,7 +158,7 @@ export function installSwUpdateHandler(options: SwUpdateHandlerOptions = {}): vo
 
     const toast = doc.createElement('div');
     toast.className = 'update-toast';
-    toast.innerHTML = `
+    setTrustedHtml(toast, trustedHtml(`
       <div class="update-toast-icon">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <polyline points="23 4 23 10 17 10"/>
@@ -170,7 +171,7 @@ export function installSwUpdateHandler(options: SwUpdateHandlerOptions = {}): vo
       </div>
       <button class="update-toast-action" data-action="reload">Reload</button>
       <button class="update-toast-dismiss" data-action="dismiss" aria-label="Dismiss">\u00d7</button>
-    `;
+    `, "legacy direct innerHTML migration"));
 
     let dismissed = false;
     let autoReloadAllowed = false;

@@ -5,6 +5,8 @@ import { t } from '@/services/i18n';
 import { getSignalContext } from '@/utils/analysis-constants';
 import { escapeHtml } from '@/utils/sanitize';
 import { trackFindingClicked } from '@/services/analytics';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 const LOW_COUNT_THRESHOLD = 3;
 const MAX_VISIBLE_FINDINGS = 10;
@@ -59,7 +61,7 @@ export class IntelligenceFindingsBadge {
     this.badge = document.createElement('button');
     this.badge.className = 'intel-findings-badge';
     this.badge.title = t('components.intelligenceFindings.badgeTitle');
-    this.badge.innerHTML = '<span class="findings-icon">🎯</span><span class="findings-count">0</span>';
+    setTrustedHtml(this.badge, trustedHtml('<span class="findings-icon">🎯</span><span class="findings-count">0</span>', "legacy direct innerHTML migration"));
 
     this.dropdown = document.createElement('div');
     this.dropdown.className = 'intel-findings-dropdown';
@@ -197,7 +199,7 @@ export class IntelligenceFindingsBadge {
     menu.className = 'intel-findings-context-menu';
     menu.style.left = `${x}px`;
     menu.style.top = `${y}px`;
-    menu.innerHTML = `<div class="context-menu-item">${t('components.intelligenceFindings.hideFindings')}</div>`;
+    setTrustedHtml(menu, trustedHtml(`<div class="context-menu-item">${t('components.intelligenceFindings.hideFindings')}</div>`, "legacy direct innerHTML migration"));
 
     menu.querySelector('.context-menu-item')!.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -340,7 +342,7 @@ export class IntelligenceFindingsBadge {
     const toggleHtml = this.renderPopupToggle();
 
     if (this.findings.length === 0) {
-      this.dropdown.innerHTML = `
+      setTrustedHtml(this.dropdown, trustedHtml(`
         <div class="findings-header">
           <span class="header-title">${t('components.intelligenceFindings.title')}</span>
           <span class="findings-badge none">${t('components.intelligenceFindings.monitoring')}</span>
@@ -352,7 +354,7 @@ export class IntelligenceFindingsBadge {
             <span class="empty-text">${t('components.intelligenceFindings.scanning')}</span>
           </div>
         </div>
-      `;
+      `, "legacy direct innerHTML migration"));
       return;
     }
 
@@ -391,7 +393,7 @@ export class IntelligenceFindingsBadge {
     }).join('');
 
     const moreCount = this.findings.length - MAX_VISIBLE_FINDINGS;
-    this.dropdown.innerHTML = `
+    setTrustedHtml(this.dropdown, trustedHtml(`
       <div class="findings-header">
         <span class="header-title">${t('components.intelligenceFindings.title')}</span>
         <span class="findings-badge ${statusClass}">${statusText}</span>
@@ -403,7 +405,7 @@ export class IntelligenceFindingsBadge {
         </div>
         ${moreCount > 0 ? `<div class="findings-more">${t('components.intelligenceFindings.more', { count: String(moreCount) })}</div>` : ''}
       </div>
-    `;
+    `, "legacy direct innerHTML migration"));
   }
 
   private getInsight(finding: UnifiedFinding): string {
@@ -499,7 +501,7 @@ export class IntelligenceFindingsBadge {
       `;
     }).join('');
 
-    overlay.innerHTML = `
+    setTrustedHtml(overlay, trustedHtml(`
       <div class="findings-modal">
         <div class="findings-modal-header">
           <span class="findings-modal-title">🎯 ${t('components.intelligenceFindings.all', { count: String(this.findings.length) })}</span>
@@ -509,7 +511,7 @@ export class IntelligenceFindingsBadge {
           ${findingsHtml}
         </div>
       </div>
-    `;
+    `, "legacy direct innerHTML migration"));
 
     const closeOverlay = () => {
       overlay.remove();

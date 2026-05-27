@@ -1,5 +1,5 @@
 import { Panel } from './Panel';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { attributionFooterHtml, ATTRIBUTION_FOOTER_CSS } from '@/utils/attribution-footer';
 import { SupplyChainServiceClient } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
@@ -210,7 +210,7 @@ export class EnergyDisruptionsPanel extends Panel {
       creditUrl: '/docs/methodology/disruptions',
     });
 
-    this.setContent(`
+    this.setSafeContent(unsafeRawHtml(`
       <div class="ed-wrap">
         <div class="ed-summary">${escapeHtml(summary)}</div>
         <div class="ed-filters">${typeButtons}${ongoingBtn}</div>
@@ -249,7 +249,7 @@ export class EnergyDisruptionsPanel extends Panel {
         .ed-empty { text-align: center; color: var(--text-dim, #888); padding: 20px; font-style: italic; }
         .ed-offline { font-family: monospace; font-size: 10px; color: var(--text, #eee); }
       </style>
-    `);
+    `, 'legacy Panel.setContent() migration'));
 
     // No inline listener attachment — the constructor registers a single
     // delegated click handler on `this.content` that routes by data-

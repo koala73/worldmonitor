@@ -62,6 +62,8 @@ import { getCountryAtCoordinates, getCountryBbox } from '@/services/country-geom
 import type { CountryClickPayload } from './DeckGLMap';
 import { t } from '@/services/i18n';
 import type { ScenarioVisualState } from '@/config/scenario-templates';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
 export type MapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
@@ -286,11 +288,11 @@ export class MapComponent {
   private createControls(): HTMLElement {
     const controls = document.createElement('div');
     controls.className = 'map-controls';
-    controls.innerHTML = `
+    setTrustedHtml(controls, trustedHtml(`
       <button class="map-control-btn" data-action="zoom-in" aria-label="Zoom in">+</button>
       <button class="map-control-btn" data-action="zoom-out" aria-label="Zoom out">−</button>
       <button class="map-control-btn" data-action="reset" aria-label="Reset rotation">⟲</button>
-    `;
+    `, "legacy direct innerHTML migration"));
 
     controls.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
@@ -317,7 +319,7 @@ export class MapComponent {
       { value: 'all', label: 'ALL' },
     ];
 
-    slider.innerHTML = `
+    setTrustedHtml(slider, trustedHtml(`
       <span class="time-slider-label">TIME RANGE</span>
       <div class="time-slider-buttons">
         ${ranges
@@ -327,7 +329,7 @@ export class MapComponent {
         )
         .join('')}
       </div>
-    `;
+    `, "legacy direct innerHTML migration"));
 
     slider.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
@@ -642,11 +644,11 @@ export class MapComponent {
       </div>
     `;
 
-    popup.innerHTML = SITE_VARIANT === 'tech'
+    setTrustedHtml(popup, trustedHtml(SITE_VARIANT === 'tech'
       ? techHelpContent
       : SITE_VARIANT === 'finance'
         ? financeHelpContent
-        : fullHelpContent;
+        : fullHelpContent, "legacy direct innerHTML migration"));
 
     popup.querySelector('.layer-help-close')?.addEventListener('click', () => popup.remove());
 
@@ -685,28 +687,28 @@ export class MapComponent {
 
     if (SITE_VARIANT === 'tech') {
       // Tech variant legend
-      legend.innerHTML = `
+      setTrustedHtml(legend, trustedHtml(`
         <div class="map-legend-item"><span class="legend-dot" style="background:#8b5cf6"></span>${escapeHtml(t('components.deckgl.layers.techHQs').toUpperCase())}</div>
         <div class="map-legend-item"><span class="legend-dot" style="background:#06b6d4"></span>${escapeHtml(t('components.deckgl.layers.startupHubs').toUpperCase())}</div>
         <div class="map-legend-item"><span class="legend-dot" style="background:#f59e0b"></span>${escapeHtml(t('components.deckgl.layers.cloudRegions').toUpperCase())}</div>
         <div class="map-legend-item"><span class="map-legend-icon" style="color:#a855f7">📅</span>${escapeHtml(t('components.deckgl.layers.techEvents').toUpperCase())}</div>
         <div class="map-legend-item"><span class="map-legend-icon" style="color:#4ecdc4">💾</span>${escapeHtml(t('components.deckgl.layers.aiDataCenters').toUpperCase())}</div>
-      `;
+      `, "legacy direct innerHTML migration"));
     } else if (SITE_VARIANT === 'happy') {
       // Happy variant legend — natural events only
-      legend.innerHTML = `
+      setTrustedHtml(legend, trustedHtml(`
         <div class="map-legend-item"><span class="map-legend-icon earthquake">●</span>${escapeHtml(t('components.deckgl.layers.naturalEvents').toUpperCase())}</div>
-      `;
+      `, "legacy direct innerHTML migration"));
     } else {
       // Geopolitical variant legend
-      legend.innerHTML = `
+      setTrustedHtml(legend, trustedHtml(`
         <div class="map-legend-item"><span class="legend-dot high"></span>${escapeHtml((t('popups.hotspot.levels.high') ?? 'HIGH').toUpperCase())}</div>
         <div class="map-legend-item"><span class="legend-dot elevated"></span>${escapeHtml((t('popups.hotspot.levels.elevated') ?? 'ELEVATED').toUpperCase())}</div>
         <div class="map-legend-item"><span class="legend-dot low"></span>${escapeHtml((t('popups.monitoring') ?? 'MONITORING').toUpperCase())}</div>
         <div class="map-legend-item"><span class="map-legend-icon conflict">⚔</span>${escapeHtml(t('modals.search.types.conflict').toUpperCase())}</div>
         <div class="map-legend-item"><span class="map-legend-icon earthquake">●</span>${escapeHtml(t('modals.search.types.earthquake').toUpperCase())}</div>
         <div class="map-legend-item"><span class="map-legend-icon apt">⚠</span>APT</div>
-      `;
+      `, "legacy direct innerHTML migration"));
     }
     return legend;
   }
@@ -1420,7 +1422,7 @@ export class MapComponent {
   }
 
   private renderOverlays(projection: d3.GeoProjection): void {
-    this.overlays.innerHTML = '';
+    setTrustedHtml(this.overlays, trustedHtml('', "legacy direct innerHTML migration"));
 
     // Strategic waterways
     if (this.state.layers.waterways) {
@@ -1565,9 +1567,9 @@ export class MapComponent {
         div.style.left = `${pos[0]}px`;
         div.style.top = `${pos[1]}px`;
 
-        div.innerHTML = `
+        setTrustedHtml(div, trustedHtml(`
           <div class="hotspot-marker ${escapeHtml(spot.level || 'low')}"></div>
-        `;
+        `, "legacy direct innerHTML migration"));
 
         div.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -3216,10 +3218,10 @@ export class MapComponent {
       div.className = 'apt-marker';
       div.style.left = `${pos[0]}px`;
       div.style.top = `${pos[1]}px`;
-      div.innerHTML = `
+      setTrustedHtml(div, trustedHtml(`
         <div class="apt-icon">⚠</div>
         <div class="apt-label">${escapeHtml(apt.name)}</div>
-      `;
+      `, "legacy direct innerHTML migration"));
 
       div.addEventListener('click', (e) => {
         e.stopPropagation();

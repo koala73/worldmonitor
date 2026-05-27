@@ -9,6 +9,8 @@ import {
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
 import { getCSSColor } from '@/utils';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 export class RegulationPanel extends Panel {
   private viewMode: 'timeline' | 'deadlines' | 'regulations' | 'countries' = 'timeline';
@@ -19,7 +21,7 @@ export class RegulationPanel extends Panel {
   }
 
   protected render(): void {
-    this.content.innerHTML = `
+    setTrustedHtml(this.content, trustedHtml(`
       <div class="regulation-panel">
         <div class="regulation-header">
           <h3>${t('components.regulation.dashboard')}</h3>
@@ -34,7 +36,7 @@ export class RegulationPanel extends Panel {
           ${this.renderContent()}
         </div>
       </div>
-    `;
+    `, "legacy direct innerHTML migration"));
 
     // Add event listeners for tabs
     this.content.querySelectorAll('.panel-tab').forEach(tab => {

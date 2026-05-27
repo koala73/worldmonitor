@@ -32,6 +32,8 @@ import { getAuthState } from '@/services/auth-state';
 import { trackGateHit, track, type UmamiEvent } from '@/services/analytics';
 
 import { TRADE_ROUTES } from '@/config/trade-routes';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 const TAB_LABELS: Record<ExplorerTab, string> = { 1: 'Current', 2: 'Alternatives', 3: 'Land', 4: 'Impact' };
 const FETCH_DEBOUNCE_MS = 250;
@@ -329,13 +331,13 @@ export class RouteExplorer {
 
   private showLoading(): void {
     if (this.contentEl) {
-      this.contentEl.innerHTML = '<div class="re-content__loading">Loading lane data\u2026</div>';
+      setTrustedHtml(this.contentEl, trustedHtml('<div class="re-content__loading">Loading lane data\u2026</div>', "legacy direct innerHTML migration"));
     }
   }
 
   private showError(): void {
     if (this.contentEl) {
-      this.contentEl.innerHTML = '<div class="re-content__error">Failed to load lane data. Try again.</div>';
+      setTrustedHtml(this.contentEl, trustedHtml('<div class="re-content__error">Failed to load lane data. Try again.</div>', "legacy direct innerHTML migration"));
     }
   }
 
@@ -343,12 +345,11 @@ export class RouteExplorer {
     this.leftRail?.element.classList.add('re-leftrail--blurred');
     this.leftRail?.element.setAttribute('aria-hidden', 'true');
     if (this.contentEl) {
-      this.contentEl.innerHTML =
-        '<div class="re-content__gate">' +
+      setTrustedHtml(this.contentEl, trustedHtml('<div class="re-content__gate">' +
         '<h3>Unlock route intelligence</h3>' +
         '<ul><li>Current route with chokepoint risk</li><li>Ranked bypass alternatives</li><li>Overland corridor options</li></ul>' +
         '<button class="re-content__upgrade" type="button">Upgrade to PRO</button>' +
-        '</div>';
+        '</div>', "legacy direct innerHTML migration"));
       const btn = this.contentEl.querySelector<HTMLButtonElement>('.re-content__upgrade');
       btn?.addEventListener('click', () => {
         this.trackEvent('route-explorer:free-cta-click', {
@@ -388,7 +389,7 @@ export class RouteExplorer {
     if (this.displayMode === 'loading' || this.displayMode === 'error' || this.displayMode === 'gate') {
       return;
     }
-    this.contentEl.innerHTML = '';
+    setTrustedHtml(this.contentEl, trustedHtml('', "legacy direct innerHTML migration"));
     switch (this.state.tab) {
       case 1: this.contentEl.append(this.currentTab.element); break;
       case 2: this.contentEl.append(this.alternativesTab.element); break;
@@ -474,7 +475,7 @@ export class RouteExplorer {
       button.setAttribute('role', 'tab');
       button.setAttribute('aria-selected', n === this.state.tab ? 'true' : 'false');
       if (n === this.state.tab) button.classList.add('re-tabstrip__tab--active');
-      button.innerHTML = `<span class="re-tabstrip__digit">${n}</span><span class="re-tabstrip__label">${TAB_LABELS[n]}</span>`;
+      setTrustedHtml(button, trustedHtml(`<span class="re-tabstrip__digit">${n}</span><span class="re-tabstrip__label">${TAB_LABELS[n]}</span>`, "legacy direct innerHTML migration"));
       button.addEventListener('click', () => this.setTab(n));
       this.tabStrip.append(button);
     }

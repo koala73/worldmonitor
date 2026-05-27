@@ -1,6 +1,6 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { toApiUrl } from '@/services/runtime';
 
 // SVG chart constants
@@ -276,8 +276,8 @@ export class OilInventoriesPanel extends Panel {
       <span><svg width="14" height="4" style="vertical-align:middle"><line x1="0" y1="2" x2="14" y2="2" stroke="#f59e0b" stroke-width="2"/></svg> SPR</span>
     </div>`;
 
-    this.setContent(`<div class="energy-complex-content">${parts[0]}${legend}${parts.slice(1).join('')}
+    this.setSafeContent(unsafeRawHtml(`<div class="energy-complex-content">${parts[0]}${legend}${parts.slice(1).join('')}
       <div class="indicator-date" style="margin-top:6px">Source: EIA, IEA, GIE AGSI+</div>
-    </div>`);
+    </div>`, 'legacy Panel.setContent() migration'));
   }
 }

@@ -16,6 +16,8 @@
 import { escapeHtml } from '@/utils/sanitize';
 import { searchSymbols, toWatchlistEntry, type SymbolSearchResult } from '@/services/symbol-search';
 import type { MarketWatchlistEntry } from '@/services/market-watchlist';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 const SEARCH_DEBOUNCE_MS = 280;
 const MAX_ENTRIES = 50;
@@ -210,7 +212,7 @@ export class WatchlistEditor {
   private hideDropdown(): void { this.dropdown.style.display = 'none'; }
 
   private renderDropdown(): void {
-    this.dropdown.innerHTML = '';
+    setTrustedHtml(this.dropdown, trustedHtml('', "legacy direct innerHTML migration"));
 
     if (this.loading) {
       this.dropdown.append(this.messageRow('Searching…'));
@@ -232,10 +234,9 @@ export class WatchlistEditor {
         `font-size:12px;${active ? 'background:rgba(255,255,255,0.08);' : ''}` +
         (added ? 'opacity:0.5;' : '');
       if (active) li.setAttribute('aria-selected', 'true');
-      li.innerHTML =
-        `<span style="font-family:var(--font-mono);font-weight:600;min-width:64px">${escapeHtml(r.display || r.symbol)}</span>` +
+      setTrustedHtml(li, trustedHtml(`<span style="font-family:var(--font-mono);font-weight:600;min-width:64px">${escapeHtml(r.display || r.symbol)}</span>` +
         `<span style="color:var(--text-dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${escapeHtml(r.name)}</span>` +
-        (added ? `<span style="margin-left:auto;color:var(--semantic-normal);font-size:11px">added</span>` : '');
+        (added ? `<span style="margin-left:auto;color:var(--semantic-normal);font-size:11px">added</span>` : ''), "legacy direct innerHTML migration"));
       this.dropdown.append(li);
     });
   }
@@ -248,18 +249,17 @@ export class WatchlistEditor {
   }
 
   private renderChips(): void {
-    this.chipsEl.innerHTML = '';
+    setTrustedHtml(this.chipsEl, trustedHtml('', "legacy direct innerHTML migration"));
     for (const e of this.entries) {
       const chip = document.createElement('span');
       chip.style.cssText =
         'display:inline-flex;align-items:center;gap:6px;padding:4px 6px 4px 9px;border:1px solid var(--border);' +
         'border-radius:999px;font-size:11px;background:rgba(255,255,255,0.03)';
       const label = e.name && e.name !== e.symbol ? `${e.display || e.symbol} · ${e.name}` : (e.display || e.symbol);
-      chip.innerHTML =
-        `<span><span style="font-family:var(--font-mono);font-weight:600">${escapeHtml(e.display || e.symbol)}</span>` +
+      setTrustedHtml(chip, trustedHtml(`<span><span style="font-family:var(--font-mono);font-weight:600">${escapeHtml(e.display || e.symbol)}</span>` +
         `${e.name && e.name !== e.symbol ? `<span style="color:var(--text-dim)"> · ${escapeHtml(e.name)}</span>` : ''}</span>` +
         `<button type="button" data-remove="${escapeHtml(e.symbol)}" aria-label="Remove ${escapeHtml(label)}" ` +
-        `style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:13px;line-height:1;padding:0 2px">×</button>`;
+        `style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:13px;line-height:1;padding:0 2px">×</button>`, "legacy direct innerHTML migration"));
       this.chipsEl.append(chip);
     }
     this.renderStatus();

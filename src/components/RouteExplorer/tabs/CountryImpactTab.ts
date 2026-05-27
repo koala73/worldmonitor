@@ -12,6 +12,8 @@ import type {
   StrategicProduct,
 } from '@/generated/server/worldmonitor/supply_chain/v1/service_server';
 import { escapeHtml } from './route-utils';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 export interface CountryImpactTabOptions {
   onDrillSideways?: (hs2: string) => void;
@@ -56,33 +58,29 @@ export class CountryImpactTab {
   }
 
   private renderPlaceholder(): void {
-    this.element.innerHTML =
-      '<div class="re-tab__placeholder">Pick a country pair and product to see the impact analysis.</div>';
+    setTrustedHtml(this.element, trustedHtml('<div class="re-tab__placeholder">Pick a country pair and product to see the impact analysis.</div>', "legacy direct innerHTML migration"));
   }
 
   private renderMissing(): void {
-    this.element.innerHTML =
-      '<div class="re-tab__empty">' +
+    setTrustedHtml(this.element, trustedHtml('<div class="re-tab__empty">' +
       '<h3>No trade data available</h3>' +
       '<p>WorldMonitor does not have bilateral trade data for this destination country yet.</p>' +
-      '</div>';
+      '</div>', "legacy direct innerHTML migration"));
   }
 
   private renderEmpty(): void {
-    this.element.innerHTML =
-      '<div class="re-tab__empty">' +
+    setTrustedHtml(this.element, trustedHtml('<div class="re-tab__empty">' +
       '<h3>No strategic products found</h3>' +
       '<p>The bilateral trade store returned empty data for this destination.</p>' +
-      '</div>';
+      '</div>', "legacy direct innerHTML migration"));
   }
 
   private renderLazy(): void {
-    this.element.innerHTML =
-      '<div class="re-tab__empty">' +
+    setTrustedHtml(this.element, trustedHtml('<div class="re-tab__empty">' +
       '<h3>Loading trade data</h3>' +
       '<p>WorldMonitor is fetching trade data for this destination for the first time. ' +
       'Try again in a few seconds.</p>' +
-      '</div>';
+      '</div>', "legacy direct innerHTML migration"));
   }
 
   private renderData(data: GetRouteImpactResponse): void {
@@ -108,7 +106,7 @@ export class CountryImpactTab {
 
     const productsHtml = this.renderProducts(data.topStrategicProducts);
 
-    this.element.innerHTML = `${bannerHtml}${laneHtml}${flagsHtml}${resHtml}<h3 class="re-impact__products-title">Top strategic products</h3>${productsHtml}`;
+    setTrustedHtml(this.element, trustedHtml(`${bannerHtml}${laneHtml}${flagsHtml}${resHtml}<h3 class="re-impact__products-title">Top strategic products</h3>${productsHtml}`, "legacy direct innerHTML migration"));
     this.attachDrillListeners();
   }
 

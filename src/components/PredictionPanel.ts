@@ -1,6 +1,6 @@
 import { Panel } from './Panel';
 import type { PredictionMarket } from '@/services/prediction';
-import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
+import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
 
 export class PredictionPanel extends Panel {
@@ -80,6 +80,6 @@ export class PredictionPanel extends Panel {
       })
       .join('');
 
-    this.setContent(html);
+    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
   }
 }

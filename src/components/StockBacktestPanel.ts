@@ -1,7 +1,7 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import type { StockBacktestResult } from '@/services/stock-backtest';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { createWatchlistButton } from './watchlist-modal';
 import { WatchlistTableView } from './WatchlistTableView';
 
@@ -101,7 +101,7 @@ export class StockBacktestPanel extends Panel {
 
   private rerender(): void {
     if (!this.tableView) return;
-    this.setContent(this.tableView.render());
+    this.setSafeContent(unsafeRawHtml(this.tableView.render(), 'legacy Panel.setContent() migration'));
     this.tableView.bind(this.content, () => this.rerender());
   }
 

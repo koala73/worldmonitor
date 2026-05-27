@@ -11,13 +11,15 @@ import type { ScenarioResult } from '@/config/scenario-templates';
 import { SCENARIO_TEMPLATES } from '@/config/scenario-templates';
 import { TransitChart } from '@/utils/transit-chart';
 import { t } from '@/services/i18n';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { isFeatureAvailable } from '@/services/runtime-config';
 import { isDesktopRuntime } from '@/services/runtime';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { trackGateHit } from '@/services/analytics';
 import { runScenario, getScenarioStatus } from '@/services/scenario';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 type TabId = 'chokepoints' | 'shipping' | 'indicators' | 'minerals' | 'stress';
 
@@ -152,11 +154,11 @@ export class SupplyChainPanel extends Panel {
       case 'stress': contentHtml = this.renderStress(); break;
     }
 
-    this.setContent(`
+    this.setSafeContent(unsafeRawHtml(`
       ${tabsHtml}
       ${unavailableBanner}
       <div class="economic-content">${contentHtml}</div>
-    `);
+    `, 'legacy Panel.setContent() migration'));
 
     if (this.activeTab === 'chokepoints' && this.expandedChokepoint) {
       const expandedCpName = this.expandedChokepoint;
@@ -281,7 +283,7 @@ export class SupplyChainPanel extends Panel {
 
     const applyAuthState = (isPro: boolean, bypassOptions?: import('@/services/supply-chain').BypassOption[]): void => {
       if (!isPro) {
-        container.innerHTML = renderGate();
+        setTrustedHtml(container, trustedHtml(renderGate(), "legacy direct innerHTML migration"));
         if (!this.bypassGateTracked) {
           trackGateHit('bypass-corridors');
           this.bypassGateTracked = true;
@@ -289,7 +291,7 @@ export class SupplyChainPanel extends Panel {
         return;
       }
       if (bypassOptions !== undefined) {
-        container.innerHTML = renderRows(bypassOptions);
+        setTrustedHtml(container, trustedHtml(renderRows(bypassOptions), "legacy direct innerHTML migration"));
       }
     };
 
@@ -301,13 +303,13 @@ export class SupplyChainPanel extends Panel {
         if (hasPremiumAccess(state)) {
           if (this.bypassUnsubscribe) { this.bypassUnsubscribe(); this.bypassUnsubscribe = null; }
           if (!this.content.contains(container)) return;
-          container.innerHTML = `<div class="sc-bypass-loading">Loading bypass options\u2026</div>`;
+          setTrustedHtml(container, trustedHtml(`<div class="sc-bypass-loading">Loading bypass options\u2026</div>`, "legacy direct innerHTML migration"));
           void fetchBypassOptions(chokepointId, 'container', 100).then(resp => {
             if (!this.content.contains(container)) return;
-            container.innerHTML = renderRows(resp.options);
+            setTrustedHtml(container, trustedHtml(renderRows(resp.options), "legacy direct innerHTML migration"));
           }).catch(() => {
             if (!this.content.contains(container)) return;
-            container.innerHTML = `<div class="sc-bypass-error">Bypass data unavailable</div>`;
+            setTrustedHtml(container, trustedHtml(`<div class="sc-bypass-error">Bypass data unavailable</div>`, "legacy direct innerHTML migration"));
           });
         }
       });
@@ -319,7 +321,7 @@ export class SupplyChainPanel extends Panel {
       applyAuthState(true, resp.options);
     }).catch(() => {
       if (!this.content.contains(container)) return;
-      container.innerHTML = `<div class="sc-bypass-error">Bypass data unavailable</div>`;
+      setTrustedHtml(container, trustedHtml(`<div class="sc-bypass-error">Bypass data unavailable</div>`, "legacy direct innerHTML migration"));
     });
   }
 
@@ -781,7 +783,7 @@ export class SupplyChainPanel extends Panel {
       ? `<div class="sc-scenario-tagline">Simulating ${escapeHtml(taglineParts)} on ${result.affectedChokepointIds.length} chokepoint${result.affectedChokepointIds.length === 1 ? '' : 's'}. Chokepoint card below shows projected score; map highlights disrupted routes.</div>`
       : '';
 
-    banner.innerHTML = [
+    setTrustedHtml(banner, trustedHtml([
       `<div class="sc-scenario-top">`,
       `<span class="sc-scenario-icon">\u26A0</span>`,
       `<span class="sc-scenario-name">${escapeHtml(scenarioName)}</span>`,
@@ -790,7 +792,7 @@ export class SupplyChainPanel extends Panel {
       `<button class="sc-scenario-dismiss" aria-label="Dismiss scenario">\u00D7</button>`,
       `</div>`,
       taglineHtml,
-    ].join('');
+    ].join(''), "legacy direct innerHTML migration"));
     banner.querySelector('.sc-scenario-dismiss')!.addEventListener('click', () => this.onDismissScenario?.());
     this.content.prepend(banner);
   }

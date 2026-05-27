@@ -27,6 +27,8 @@ import {
   getActiveFrameworkForPanel,
   type AnalysisPanelId,
 } from '@/services/analysis-framework-store';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 const DESKTOP_RELEASES_URL = 'https://github.com/koala73/worldmonitor/releases';
 
@@ -66,9 +68,9 @@ function renderMapThemeDropdown(container: HTMLElement, provider: MapProvider): 
   const select = container.querySelector<HTMLSelectElement>('#us-map-theme');
   if (!select) return;
   const currentTheme = getMapTheme(provider);
-  select.innerHTML = MAP_THEME_OPTIONS[provider]
+  setTrustedHtml(select, trustedHtml(MAP_THEME_OPTIONS[provider]
     .map(opt => `<option value="${opt.value}"${opt.value === currentTheme ? ' selected' : ''}>${escapeHtml(opt.label)}</option>`)
-    .join('');
+    .join(''), "legacy direct innerHTML migration"));
 }
 
 function updateSyncStatusUI(container: HTMLElement): void {
@@ -698,7 +700,7 @@ function renderFrameworkLibraryHtml(): string {
 
 function refreshFrameworkLibrary(container: HTMLElement): void {
   const list = container.querySelector('#fwLibraryList');
-  if (list) list.innerHTML = renderFrameworkLibraryHtml();
+  if (list) setTrustedHtml(list, trustedHtml(renderFrameworkLibraryHtml(), "legacy direct innerHTML migration"));
 }
 
 function showImportError(el: HTMLElement | null, msg: string): void {
@@ -717,9 +719,9 @@ function showToast(container: HTMLElement, msg: string, success: boolean): void 
   const toast = container.querySelector('#usDataMgmtToast');
   if (!toast) return;
   toast.className = `us-data-mgmt-toast ${success ? 'ok' : 'error'}`;
-  toast.innerHTML = success
+  setTrustedHtml(toast, trustedHtml(success
     ? `${escapeHtml(msg)} <a href="#" class="us-toast-reload">${t('components.settings.reloadNow')}</a>`
-    : escapeHtml(msg);
+    : escapeHtml(msg), "legacy direct innerHTML migration"));
   toast.querySelector('.us-toast-reload')?.addEventListener('click', (e) => {
     e.preventDefault();
     window.location.reload();
