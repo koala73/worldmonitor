@@ -266,3 +266,84 @@ describe('assertBriefEnvelope is shared between renderer and preview', () => {
     assert.throws(() => assertBriefEnvelope(partial), /digest\.numbers/);
   });
 });
+
+describe('api/latest-brief retry-on-Upstash-timeout', () => {
+  // Regression guard for WORLDMONITOR-QJ. Locks in the retry contract:
+  // (a) one retry fires on DOMException-like `name === 'TimeoutError'`,
+  // (b) no retry on other error shapes, (c) per-attempt budgets are
+  // FIRST_ATTEMPT_MS then RETRY_ATTEMPT_MS so worst-case wall time stays
+  // under Vercel Edge's response cap. If the err-name check or attempt
+  // budgets are refactored these tests must update — they're the source
+  // of truth for the retry semantics.
+
+  it('retries once on TimeoutError and returns the second attempt result', async () => {
+    const { readWithOneRetry } = await import('../api/latest-brief.ts');
+    let calls = 0;
+    const attempt = async () => {
+      calls += 1;
+      if (calls === 1) {
+        const err = new Error('The operation was aborted due to timeout');
+        err.name = 'TimeoutError';
+        throw err;
+      }
+      return 'second-attempt-payload';
+    };
+    const out = await readWithOneRetry(attempt, 'test-label');
+    assert.equal(calls, 2, 'helper must invoke the attempt twice on TimeoutError');
+    assert.equal(out, 'second-attempt-payload');
+  });
+
+  it('does NOT retry on non-TimeoutError (preserves fast-fail on real bugs)', async () => {
+    const { readWithOneRetry } = await import('../api/latest-brief.ts');
+    let calls = 0;
+    const attempt = async () => {
+      calls += 1;
+      throw new Error('readRawJsonFromUpstash: Upstash GET key returned HTTP 500');
+    };
+    await assert.rejects(
+      () => readWithOneRetry(attempt, 'test-label'),
+      /HTTP 500/,
+    );
+    assert.equal(calls, 1, 'non-Timeout error must surface on first attempt without retry');
+  });
+
+  it('re-throws when BOTH attempts fail with TimeoutError (503 fallback path)', async () => {
+    const { readWithOneRetry } = await import('../api/latest-brief.ts');
+    let calls = 0;
+    const attempt = async () => {
+      calls += 1;
+      const err = new Error('The operation was aborted due to timeout');
+      err.name = 'TimeoutError';
+      throw err;
+    };
+    await assert.rejects(
+      () => readWithOneRetry(attempt, 'test-label'),
+      /aborted due to timeout/,
+    );
+    assert.equal(calls, 2, 'helper must exhaust exactly two attempts on sustained outage');
+  });
+
+  it('first attempt receives FIRST_ATTEMPT_MS, retry receives RETRY_ATTEMPT_MS', async () => {
+    const mod = await import('../api/latest-brief.ts');
+    const observed = [];
+    const attempt = async (timeoutMs) => {
+      observed.push(timeoutMs);
+      if (observed.length === 1) {
+        const err = new Error('The operation was aborted due to timeout');
+        err.name = 'TimeoutError';
+        throw err;
+      }
+      return null;
+    };
+    await mod.readWithOneRetry(attempt, 'test-label');
+    assert.deepEqual(
+      observed,
+      [mod.FIRST_ATTEMPT_MS, mod.RETRY_ATTEMPT_MS],
+      'per-attempt budgets must shrink on retry to bound worst-case wall time',
+    );
+    // Sanity-check the absolute values so a future bump above the Vercel
+    // Edge response cap is loudly caught.
+    assert.equal(mod.FIRST_ATTEMPT_MS, 6_000);
+    assert.equal(mod.RETRY_ATTEMPT_MS, 3_000);
+  });
+});
