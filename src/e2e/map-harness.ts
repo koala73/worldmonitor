@@ -403,6 +403,11 @@ const commodityAllLayersEnabled: MapLayers = {
 
 const energyAllLayersEnabled: MapLayers = {
   ...allLayersEnabled,
+  // commodityPorts is base-false in allLayersEnabled post-#3925 isolation
+  // refactor (was true in an earlier snapshot Greptile reviewed) — energy
+  // explicitly enables it because the energy harness ships seeded port
+  // fixtures and tests/energy-variant-atlas-guard asserts on this line.
+  commodityPorts: true,
   storageFacilities: true,
   fuelShortages: true,
   liveTankers: true,
