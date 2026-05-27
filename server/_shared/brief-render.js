@@ -875,6 +875,17 @@ const STYLE_BLOCK = `<style>
     font-size: 7vw; line-height: 0.98; letter-spacing: -0.02em;
     margin-bottom: 6vh; max-width: 18ch;
   }
+  .digest h2,
+  .digest blockquote,
+  .digest .stat-label,
+  .digest .thread,
+  .digest .signal,
+  .story h3,
+  .story .desc,
+  .story .source,
+  .story .callout .note {
+    overflow-wrap: anywhere;
+  }
   .digest blockquote {
     font-family: 'Source Serif 4', serif; font-style: italic;
     font-size: 2vw; line-height: 1.38; max-width: 32ch;
@@ -950,6 +961,7 @@ const STYLE_BLOCK = `<style>
     font-size: max(11px, 0.85vw); font-weight: 600;
     letter-spacing: 0.22em; text-transform: uppercase;
     padding: 0.5em 1em; border: 1px solid currentColor; opacity: 0.82;
+    max-width: 100%; overflow-wrap: anywhere;
   }
   .story .tag.crit { background: currentColor; color: var(--paper); }
   .story.dark .tag.crit { background: var(--bone); color: var(--ink); border-color: var(--bone); }
