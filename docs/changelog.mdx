@@ -23,7 +23,7 @@ All notable changes to World Monitor are documented here. Subscribe via [RSS](/c
 
 ### Changed
 
-- **CII weights source of truth (#3789, foundation for #2457)**: `baselineRisk` and `eventMultiplier` now come from one shared coefficient table used by both server-side risk scoring and frontend client-side CII rendering. The previous 7-country frontend/server drift was resolved to the published server/API values and `CII_FORMULA_VERSION` was bumped to `v3`.
+- **CII weights source of truth (#3789, foundation for #2457)**: `baselineRisk` and `eventMultiplier` now come from one shared coefficient table used by both server-side risk scoring and frontend client-side CII rendering. The previous 7-country frontend/server drift was resolved to the published server/API values. Because those server/API values did not change, `CII_FORMULA_VERSION` remains `v2`.
 
 - **Sebuf API migration (#3207)** — scenario + supply-chain endpoints moved to the typed sebuf contract. RPC URLs now derive from method names; five renamed v1 URLs remain live as thin aliases so existing integrations keep working:
   - `/api/scenario/v1/run` → `/api/scenario/v1/run-scenario`

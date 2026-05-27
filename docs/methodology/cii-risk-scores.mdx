@@ -1,6 +1,6 @@
 ---
 title: "CII Risk Scoring Methodology"
-description: "Editorial methodology behind the Composite Instability Index (CII) and Strategic Risk roll-up. Documents per-country baselineRisk, eventMultiplier, the four-component score (Unrest, Conflict, Security, Information), strategic-risk band derivation, and the v3 formula version stamped on every CiiScore."
+description: "Editorial methodology behind the Composite Instability Index (CII) and Strategic Risk roll-up. Documents per-country baselineRisk, eventMultiplier, the four-component score (Unrest, Conflict, Security, Information), strategic-risk band derivation, and the v2 formula version stamped on every CiiScore."
 ---
 
 Published methodology note for the **Composite Instability Index (CII)** and
@@ -16,15 +16,16 @@ opinions inspectable so downstream consumers can decide whether they
 agree.
 
 The on-the-wire `methodology_version` field on every `CiiScore` reflects
-which revision of this document was active when the score was computed.
-The current version is **v3**.
+the server/API scoring formula and coefficient values active when the score was
+computed. The current version is **v2**.
 
-> **v3 (2026-05-27).** `baselineRisk` and `eventMultiplier` now come from
-> one shared coefficient table used by both the server and frontend. This
-> resolves the 7-country drift tracked in
+> **Implementation note (2026-05-27).** `baselineRisk` and `eventMultiplier`
+> now come from one shared coefficient table used by both the server and
+> frontend. This resolves the 7-country drift tracked in
 > [#3789](https://github.com/koala73/worldmonitor/issues/3789) by keeping the
 > previously published server/API values for AF, EG, IQ, JP, KR, LB and QA.
-> Frontend client-side CII rendering now uses those same values.
+> Frontend client-side CII rendering now uses those same values. Because the
+> server/API values did not change, `methodology_version` remains **v2**.
 
 > **v2 (2026-05-22).** The `Security` component is no longer GPS-jamming-only
 > — it now scores military flights, military vessels and aviation disruptions
@@ -34,12 +35,13 @@ The current version is **v3**.
 > counts. `combinedScore` values shift accordingly — clients pinned on
 > `methodology_version` should re-baseline.
 
-> **Heads up — coefficient changes.** Any edit to the per-country baselines,
-> event multipliers, or the strategic-risk roll-up coefficients MUST come
-> with a bump of `CII_FORMULA_VERSION` in
+> **Heads up — coefficient changes.** Any edit that changes server/API
+> per-country baselines, event multipliers, or strategic-risk roll-up
+> coefficients MUST come with a bump of `CII_FORMULA_VERSION` in
 > `server/worldmonitor/intelligence/v1/_risk-config.ts`, an update to this
-> document in the same commit, and a public CHANGELOG entry. Tests in
-> `tests/cii-scoring.test.mts` enforce that this document lists every
+> document in the same commit, and a public CHANGELOG entry. Source-of-truth
+> refactors that preserve server/API scores do not bump the wire version. Tests
+> in `tests/cii-scoring.test.mts` enforce that this document lists every
 > country code in `CURATED_COUNTRIES`.
 
 ---

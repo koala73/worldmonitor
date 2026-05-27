@@ -35,8 +35,8 @@ import {
 // lives in shared/cii-weights.ts so browser-side scoring and server-side
 // scoring cannot drift.
 //
-// Change protocol when editing shared/cii-weights.ts:
-//   1. Bump CII_FORMULA_VERSION in ./_risk-config.ts.
+// Change protocol when editing coefficient values in shared/cii-weights.ts:
+//   1. Bump CII_FORMULA_VERSION in ./_risk-config.ts if server/API scores shift.
 //   2. Update docs/methodology/cii-risk-scores.mdx in the SAME commit.
 //   3. Mention the change in CHANGELOG.md (public-facing section).
 // ========================================================================

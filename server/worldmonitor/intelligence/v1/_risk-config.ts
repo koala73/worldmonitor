@@ -17,14 +17,14 @@
 //      downstream users of the proto API see why combinedScore values may
 //      shift between deploys.
 //
-// Last reviewed: 2026-05-27 (CII weights source-of-truth, v2→v3).
+// Last reviewed: 2026-05-27 (CII weights source-of-truth; no score change).
 // ============================================================================
 
 /**
  * Formula version emitted on every CiiScore as `methodology_version`.
  * Bump on any coefficient change so API clients can detect score drift.
  */
-export const CII_FORMULA_VERSION = 'v3';
+export const CII_FORMULA_VERSION = 'v2';
 
 /**
  * Strategic-risk top-N positional decay step. Weight for position `i` (0-based)
