@@ -576,11 +576,14 @@ describe('mountCountryChipPicker', () => {
 
   it('destroy clears innerHTML and detaches listeners', () => {
     const root = makeFakeElement() as unknown as HTMLElement;
-    const picker = mountCountryChipPicker(root, { initial: ['US'] });
+    let emitted = false;
+    const picker = mountCountryChipPicker(root, {
+      initial: ['US'],
+      onChange: () => { emitted = true; },
+    });
     picker.destroy();
     assert.equal(root.innerHTML, '', 'innerHTML cleared on destroy');
     // Sanity: post-destroy click is a no-op (listener removed).
-    const emitted = false;
     picker.destroy(); // idempotent
     const fakeChip = {
       dataset: { code: 'GB' },
