@@ -39,4 +39,20 @@ describe('normalizeTokenClassificationOutput', () => {
       { text: 'New York', type: 'LOC', confidence: 0.955, start: 18, end: 26 },
     ]);
   });
+
+  it('normalizes BIOES tags while preserving singleton entity boundaries', () => {
+    const entities = normalizeTokenClassificationOutput([
+      { entity: 'S-PER', score: 0.99, word: 'Obama' },
+      { entity: 'B-PER', score: 0.96, word: 'John' },
+      { entity: 'I-PER', score: 0.94, word: 'Fitzgerald' },
+      { entity: 'E-PER', score: 0.95, word: 'Kennedy' },
+    ], 'Obama met John Fitzgerald Kennedy');
+
+    assert.deepEqual(entities.map(({ text, type, start, end }) => ({ text, type, start, end })), [
+      { text: 'Obama', type: 'PER', start: 0, end: 5 },
+      { text: 'John Fitzgerald Kennedy', type: 'PER', start: 10, end: 33 },
+    ]);
+    assert.equal(entities[0]!.confidence, 0.99);
+    assert.ok(entities[1]!.confidence > 0.949 && entities[1]!.confidence < 0.951);
+  });
 });
