@@ -264,6 +264,14 @@ describe('security header guardrails', () => {
     );
   });
 
+  it('Permissions-Policy explicitly opts embedded documents into unload handlers', () => {
+    const policy = getHeaderValue('Permissions-Policy');
+    assert.ok(
+      policy.includes('unload=(*)'),
+      'Permissions-Policy should explicitly allow embedded unload handlers to avoid third-party iframe console violations'
+    );
+  });
+
   it('CSP connect-src does not allow unencrypted WebSocket (ws:)', () => {
     const csp = getHeaderValue('Content-Security-Policy');
     const connectSrc = csp.match(/connect-src\s+([^;]+)/)?.[1] ?? '';
