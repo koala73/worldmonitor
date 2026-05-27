@@ -4,6 +4,8 @@ import { t } from '@/services/i18n';
 import { trackSearchUsed } from '@/services/analytics';
 import { getAllCommands, type Command } from '@/config/commands';
 import { isMobileDevice } from '@/utils';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 interface CommandResult {
   command: Command;
@@ -217,7 +219,7 @@ export class SearchModal {
 
     if (this.isMobile) {
       this.overlay.className = 'search-overlay search-mobile';
-      this.overlay.innerHTML = `
+      setTrustedHtml(this.overlay, trustedHtml(`
         <div class="search-sheet">
           <div class="search-sheet-handle"></div>
           <div class="search-sheet-header">
@@ -228,7 +230,7 @@ export class SearchModal {
           <div class="search-sheet-chips"></div>
           <div class="search-results"></div>
         </div>
-      `;
+      `, "legacy direct innerHTML migration"));
 
       this.overlay.addEventListener('click', (e) => {
         if (e.target === this.overlay) this.close();
@@ -252,7 +254,7 @@ export class SearchModal {
       }
     } else {
       this.overlay.className = 'search-overlay';
-      this.overlay.innerHTML = `
+      setTrustedHtml(this.overlay, trustedHtml(`
         <div class="search-modal">
           <div class="search-header">
             <span class="search-icon">\u2318</span>
@@ -266,7 +268,7 @@ export class SearchModal {
             <span><kbd>esc</kbd> ${t('modals.search.close')}</span>
           </div>
         </div>
-      `;
+      `, "legacy direct innerHTML migration"));
 
       this.overlay.addEventListener('click', (e) => {
         if (e.target === this.overlay) this.close();
@@ -424,7 +426,7 @@ export class SearchModal {
   private renderRecent(): void {
     if (!this.resultsList) return;
 
-    this.resultsList.innerHTML = `<div class="search-section-header">${t('modals.search.recent')}</div>`;
+    setTrustedHtml(this.resultsList, trustedHtml(`<div class="search-section-header">${t('modals.search.recent')}</div>`, "legacy direct innerHTML migration"));
 
     this.recentSearches.forEach((term, i) => {
       const item = document.createElement('div');
@@ -483,7 +485,7 @@ export class SearchModal {
         </div>`;
     });
 
-    this.resultsList.innerHTML = html;
+    setTrustedHtml(this.resultsList, trustedHtml(html, "legacy direct innerHTML migration"));
 
     this.resultsList.querySelectorAll('.tip-item').forEach((el) => {
       el.addEventListener('click', () => {
@@ -565,7 +567,7 @@ export class SearchModal {
       html += `</div></details>`;
     }
 
-    this.resultsList.innerHTML = html;
+    setTrustedHtml(this.resultsList, trustedHtml(html, "legacy direct innerHTML migration"));
 
     const backLink = this.resultsList.querySelector('.search-all-commands-back');
     backLink?.addEventListener('click', (e) => {
@@ -596,22 +598,22 @@ export class SearchModal {
     if (this.commandResults.length === 0 && this.results.length === 0) {
       if (this.currentFlightCallsign && this.onFlightSearch) {
         if (this.flightSearchFired) {
-          this.resultsList.innerHTML = `
+          setTrustedHtml(this.resultsList, trustedHtml(`
             <div class="search-empty">
               <div class="search-empty-icon">\u2708\uFE0F</div>
               <div>${escapeHtml(t('modals.search.flightNotFound', { callsign: this.currentFlightCallsign }))}</div>
-            </div>`;
+            </div>`, "legacy direct innerHTML migration"));
         } else {
           this.renderFlightSearchTrigger(this.currentFlightCallsign);
         }
         return;
       }
-      this.resultsList.innerHTML = `
+      setTrustedHtml(this.resultsList, trustedHtml(`
         <div class="search-empty">
           <div class="search-empty-icon">\u2205</div>
           <div>${t('modals.search.noResults')}</div>
         </div>
-      `;
+      `, "legacy direct innerHTML migration"));
       return;
     }
 
@@ -677,7 +679,7 @@ export class SearchModal {
       globalIndex++;
     }
 
-    this.resultsList.innerHTML = html;
+    setTrustedHtml(this.resultsList, trustedHtml(html, "legacy direct innerHTML migration"));
 
     this.resultsList.querySelectorAll('.search-result-item').forEach((el) => {
       el.addEventListener('click', () => {
@@ -689,7 +691,7 @@ export class SearchModal {
 
   private renderFlightSearchTrigger(callsign: string): void {
     if (!this.resultsList) return;
-    this.resultsList.innerHTML = `
+    setTrustedHtml(this.resultsList, trustedHtml(`
       <div class="search-result-item selected" data-flight-trigger="${escapeHtml(callsign)}">
         <span class="search-result-icon">\u2708\uFE0F</span>
         <div class="search-result-content">
@@ -697,7 +699,7 @@ export class SearchModal {
           <div class="search-result-subtitle">${escapeHtml(t('modals.search.flightSearchHint'))}</div>
         </div>
         <span class="search-result-type">${escapeHtml(t('modals.search.types.flight'))}</span>
-      </div>`;
+      </div>`, "legacy direct innerHTML migration"));
     this.resultsList.querySelector('[data-flight-trigger]')?.addEventListener('click', () => {
       this.triggerFlightSearch(callsign);
     });
@@ -706,20 +708,20 @@ export class SearchModal {
   private triggerFlightSearch(callsign: string): void {
     if (!this.onFlightSearch || !this.resultsList) return;
     this.flightSearchFired = true;
-    this.resultsList.innerHTML = `
+    setTrustedHtml(this.resultsList, trustedHtml(`
       <div class="search-result-item">
         <span class="search-result-icon">\u2708\uFE0F</span>
         <div class="search-result-content">
           <div class="search-result-title">Searching for <strong>${escapeHtml(callsign)}</strong>\u2026</div>
         </div>
-      </div>`;
+      </div>`, "legacy direct innerHTML migration"));
     this.onFlightSearch(callsign);
   }
 
   private renderChips(query?: string): void {
     if (!this.chipsContainer) return;
     if (query && query.length >= 1) {
-      this.chipsContainer.innerHTML = '';
+      setTrustedHtml(this.chipsContainer, trustedHtml('', "legacy direct innerHTML migration"));
       return;
     }
 
@@ -735,9 +737,9 @@ export class SearchModal {
       chips.push({ label, value: label.toLowerCase() });
     }
 
-    this.chipsContainer.innerHTML = chips.map(c =>
+    setTrustedHtml(this.chipsContainer, trustedHtml(chips.map(c =>
       `<button class="search-chip" data-value="${escapeHtml(c.value)}">${escapeHtml(c.label)}</button>`
-    ).join('');
+    ).join(''), "legacy direct innerHTML migration"));
 
     this.chipsContainer.querySelectorAll('.search-chip').forEach(el => {
       el.addEventListener('click', () => {

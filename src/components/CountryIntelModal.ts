@@ -10,6 +10,8 @@ import type { CountryScore } from '@/services/country-instability';
 import type { PredictionMarket } from '@/services/prediction';
 import { toFlagEmoji } from '@/utils/country-flag';
 import { renderFollowButton } from '@/utils/follow-button';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 interface CountryIntelData {
   brief: string;
@@ -60,7 +62,7 @@ export class CountryIntelModal {
     this.overlay.className = 'country-intel-overlay';
     this.overlay.setAttribute('role', 'dialog');
     this.overlay.setAttribute('aria-modal', 'true');
-    this.overlay.innerHTML = `
+    setTrustedHtml(this.overlay, trustedHtml(`
       <div class="country-intel-modal">
         <div class="country-intel-header">
           <div class="country-intel-title"></div>
@@ -68,7 +70,7 @@ export class CountryIntelModal {
         </div>
         <div class="country-intel-content"></div>
       </div>
-    `;
+    `, "legacy direct innerHTML migration"));
     document.body.appendChild(this.overlay);
 
     this.headerEl = this.overlay.querySelector('.country-intel-title')!;
@@ -134,7 +136,7 @@ export class CountryIntelModal {
       countryName: name,
       size: 'md',
     });
-    host.innerHTML = handle.html;
+    setTrustedHtml(host, trustedHtml(handle.html, "legacy direct innerHTML migration"));
     this.followButtonTeardown = handle.attach(host);
   }
 
@@ -144,11 +146,11 @@ export class CountryIntelModal {
     // loading-state header obliterates the host element.
     this.tearDownFollowButton();
     document.addEventListener('keydown', this.keydownHandler);
-    this.headerEl.innerHTML = `
+    setTrustedHtml(this.headerEl, trustedHtml(`
       <span class="country-flag">🌍</span>
       <span class="country-name">${t('modals.countryIntel.identifying')}</span>
-    `;
-    this.contentEl.innerHTML = `
+    `, "legacy direct innerHTML migration"));
+    setTrustedHtml(this.contentEl, trustedHtml(`
       <div class="intel-brief-section">
         <div class="intel-brief-loading">
           <div class="intel-skeleton"></div>
@@ -156,7 +158,7 @@ export class CountryIntelModal {
           <span class="intel-loading-text">${t('modals.countryIntel.locating')}</span>
         </div>
       </div>
-    `;
+    `, "legacy direct innerHTML migration"));
     this.overlay.classList.add('active');
   }
 
@@ -171,13 +173,13 @@ export class CountryIntelModal {
     // mountFollowButton() tears down the prior subscription before
     // attaching to the new host span; we rely on that to drop the
     // stale subscription orphaned by replacing the header markup.
-    this.headerEl.innerHTML = `
+    setTrustedHtml(this.headerEl, trustedHtml(`
       <span class="country-flag">${flag}</span>
       <span class="country-name">${escapeHtml(country)}</span>
       <span class="country-intel-follow-host" data-country="${escapeHtml(code)}"></span>
       ${score ? this.levelBadge(score.level) : ''}
       <button class="country-intel-share-btn" title="${t('modals.story.shareTitle')}"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 002 2h12a2 2 0 002-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg></button>
-    `;
+    `, "legacy direct innerHTML migration"));
     this.mountFollowButton(code, country);
 
     if (score) {
@@ -220,7 +222,7 @@ export class CountryIntelModal {
       </div>
     `;
 
-    this.contentEl.innerHTML = html;
+    setTrustedHtml(this.contentEl, trustedHtml(html, "legacy direct innerHTML migration"));
 
     const shareBtn = this.headerEl.querySelector('.country-intel-share-btn');
     shareBtn?.addEventListener('click', (e) => {
@@ -241,7 +243,7 @@ export class CountryIntelModal {
       const msg = data.error || data.reason || t('modals.countryIntel.unavailable');
       const briefSection = this.contentEl.querySelector('.intel-brief-section');
       if (briefSection) {
-        briefSection.innerHTML = `<div class="intel-error">${escapeHtml(msg)}</div>`;
+        setTrustedHtml(briefSection, trustedHtml(`<div class="intel-error">${escapeHtml(msg)}</div>`, "legacy direct innerHTML migration"));
       }
       return;
     }
@@ -250,13 +252,13 @@ export class CountryIntelModal {
     if (!briefSection) return;
 
     const formatted = this.formatBrief(data.brief);
-    briefSection.innerHTML = `
+    setTrustedHtml(briefSection, trustedHtml(`
       <div class="intel-brief">${formatted}</div>
       <div class="intel-footer">
         ${data.cached ? `<span class="intel-cached">📋 ${t('modals.countryIntel.cached')}</span>` : `<span class="intel-fresh">✨ ${t('modals.countryIntel.fresh')}</span>`}
         <span class="intel-timestamp">${data.generatedAt ? new Date(data.generatedAt).toLocaleTimeString() : ''}</span>
       </div>
-    `;
+    `, "legacy direct innerHTML migration"));
   }
 
   public updateMarkets(markets: PredictionMarket[]): void {
@@ -264,7 +266,7 @@ export class CountryIntelModal {
     if (!section) return;
 
     if (markets.length === 0) {
-      section.innerHTML = `<span class="intel-loading-text" style="opacity:0.5">${t('modals.countryIntel.noMarkets')}</span>`;
+      setTrustedHtml(section, trustedHtml(`<span class="intel-loading-text" style="opacity:0.5">${t('modals.countryIntel.noMarkets')}</span>`, "legacy direct innerHTML migration"));
       return;
     }
 
@@ -280,7 +282,7 @@ export class CountryIntelModal {
     `;
     }).join('');
 
-    section.innerHTML = `<div class="markets-label">📊 ${t('modals.countryIntel.predictionMarkets')}</div>${items}`;
+    setTrustedHtml(section, trustedHtml(`<div class="markets-label">📊 ${t('modals.countryIntel.predictionMarkets')}</div>${items}`, "legacy direct innerHTML migration"));
   }
 
   public updateStock(data: StockIndexData): void {
@@ -297,7 +299,7 @@ export class CountryIntelModal {
     const cls = pct >= 0 ? 'stock-up' : 'stock-down';
     const arrow = pct >= 0 ? '📈' : '📉';
     el.className = `signal-chip stock ${cls}`;
-    el.innerHTML = `${arrow} ${escapeHtml(data.indexName)}: ${sign}${data.weekChangePercent}% (1W)`;
+    setTrustedHtml(el, trustedHtml(`${arrow} ${escapeHtml(data.indexName)}: ${sign}${data.weekChangePercent}% (1W)`, "legacy direct innerHTML migration"));
   }
 
   private formatBrief(text: string): string {

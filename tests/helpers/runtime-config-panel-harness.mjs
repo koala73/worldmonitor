@@ -651,6 +651,14 @@ async function loadRuntimeConfigPanel() {
         children.forEach((child) => append(el, child));
       }
 
+      export function trustedHtml(html) {
+        return String(html ?? '');
+      }
+
+      export function setTrustedHtml(el, html) {
+        el.innerHTML = String(html ?? '');
+      }
+
       export function safeHtml() {
         return document.createDocumentFragment();
       }

@@ -3,6 +3,7 @@ import type { CustomWidgetSpec } from '@/services/widget-store';
 import { t } from '@/services/i18n';
 import { wrapWidgetHtml, wrapProWidgetHtml } from '@/utils/widget-sanitizer';
 import { h } from '@/utils/dom-utils';
+import { unsafeRawHtml } from '@/utils/sanitize';
 
 export class CustomWidgetPanel extends Panel {
   private spec: CustomWidgetSpec;
@@ -53,9 +54,9 @@ export class CustomWidgetPanel extends Panel {
 
   renderWidget(): void {
     if (this.spec.tier === 'pro') {
-      this.setContent(wrapProWidgetHtml(this.spec.html));
+      this.setSafeContent(unsafeRawHtml(wrapProWidgetHtml(this.spec.html), 'legacy Panel.setContent() migration'));
     } else {
-      this.setContent(wrapWidgetHtml(this.spec.html));
+      this.setSafeContent(unsafeRawHtml(wrapWidgetHtml(this.spec.html), 'legacy Panel.setContent() migration'));
     }
     this.applyAccentColor();
   }

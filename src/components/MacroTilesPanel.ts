@@ -1,7 +1,7 @@
 import type { EconomicServiceClient } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { getEurostatCountryData } from '@/services/economic';
 import type { GetEurostatCountryDataResponse } from '@/services/economic';
 
@@ -194,7 +194,7 @@ export class MacroTilesPanel extends Panel {
       body = this._buildEuBody();
     }
 
-    this.setContent(tabBar + body);
+    this.setSafeContent(unsafeRawHtml(tabBar + body, 'legacy Panel.setContent() migration'));
   }
 
   private _buildEuBody(): string {

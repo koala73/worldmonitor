@@ -75,6 +75,9 @@ node scripts/check-unicode-safety.mjs || exit 1
 echo "Running architectural boundary check..."
 npm run lint:boundaries || exit 1
 
+echo "Running safe HTML sink check..."
+npm run lint:safe-html || exit 1
+
 echo "Running Sentry-coverage check..."
 node scripts/check-sentry-coverage.mjs || exit 1
 

@@ -22,6 +22,8 @@ import { getCurrentClerkUser } from '@/services/clerk';
 import { hasTier } from '@/services/entitlements';
 import { SITE_VARIANT } from '@/config/variant';
 import { mountCountryChipPicker, loadFollowedCountriesSafe, type CountryChipPickerHandle } from '@/utils/country-chip-picker';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 const QUIET_HOURS_BATCH_ENABLED = import.meta.env.VITE_QUIET_HOURS_BATCH_ENABLED !== '0';
 const DIGEST_CRON_ENABLED = import.meta.env.VITE_DIGEST_CRON_ENABLED !== '0';
@@ -55,6 +57,14 @@ function normalizePreselectCountry(input: string | undefined): string | null {
   const trimmed = input.trim().toUpperCase();
   if (!/^[A-Z]{2}$/.test(trimmed)) return null;
   return trimmed;
+}
+
+function appendNotificationError(rowEl: HTMLElement, message: string): void {
+  rowEl.querySelector('.us-notif-error')?.remove();
+  const errorEl = document.createElement('span');
+  errorEl.className = 'us-notif-error';
+  errorEl.textContent = message;
+  rowEl.appendChild(errorEl);
 }
 
 export function renderNotificationsSettings(host: NotificationsSettingsHost): NotificationsSettingsResult {
@@ -429,7 +439,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         if (signal.aborted) return;
         getChannelsData().then((data) => {
           if (signal.aborted) return;
-          contentEl.innerHTML = renderNotifContent(data);
+          setTrustedHtml(contentEl, trustedHtml(renderNotifContent(data), "legacy direct innerHTML migration"));
           loadingEl.style.display = 'none';
           contentEl.style.display = 'block';
 
@@ -769,7 +779,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         }
 
         const startTelegramPairing = (rowEl: HTMLElement) => {
-          rowEl.innerHTML = `<div class="us-notif-ch-icon">${channelIcon('telegram')}</div><div class="us-notif-ch-body"><div class="us-notif-ch-name">Telegram</div><div class="us-notif-ch-sub">Generating code…</div></div>`;
+          setTrustedHtml(rowEl, trustedHtml(`<div class="us-notif-ch-icon">${channelIcon('telegram')}</div><div class="us-notif-ch-body"><div class="us-notif-ch-name">Telegram</div><div class="us-notif-ch-sub">Generating code…</div></div>`, "legacy direct innerHTML migration"));
           createPairingToken().then(({ token, expiresAt }) => {
             if (signal.aborted) return;
             const botUsername = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_TELEGRAM_BOT_USERNAME as string | undefined) ?? 'WorldMonitorBot';
@@ -777,7 +787,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             const startCmd = `/start ${token}`;
             const secsLeft = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
             const qrSvg = renderSVG(deepLink, { ecc: 'M', border: 1 });
-            rowEl.innerHTML = `
+            setTrustedHtml(rowEl, trustedHtml(`
               <div class="us-notif-ch-icon">${channelIcon('telegram')}</div>
               <div class="us-notif-ch-body">
                 <div class="us-notif-ch-name">Connect Telegram</div>
@@ -796,7 +806,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
               <div class="us-notif-ch-actions">
                 <span class="us-notif-tg-countdown" id="usTgCountdown">Waiting… ${secsLeft}s</span>
               </div>
-            `;
+            `, "legacy direct innerHTML migration"));
             let remaining = secsLeft;
             clearNotifPoll();
             notifPollInterval = setInterval(() => {
@@ -807,7 +817,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
               const expired = remaining <= 0;
               if (expired) {
                 clearNotifPoll();
-                rowEl.innerHTML = `
+                setTrustedHtml(rowEl, trustedHtml(`
                   <div class="us-notif-ch-icon">${channelIcon('telegram')}</div>
                   <div class="us-notif-ch-body">
                     <div class="us-notif-ch-name">Telegram</div>
@@ -816,7 +826,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
                   <div class="us-notif-ch-actions">
                     <button type="button" class="us-notif-ch-btn us-notif-ch-btn-primary us-notif-tg-regen">Generate new code</button>
                   </div>
-                `;
+                `, "legacy direct innerHTML migration"));
                 return;
               }
               getChannelsData().then((data) => {
@@ -829,7 +839,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
               }).catch(() => {});
             }, 3000);
           }).catch(() => {
-            rowEl.innerHTML = `<div class="us-notif-ch-icon">${channelIcon('telegram')}</div><div class="us-notif-ch-body"><div class="us-notif-ch-name">Telegram</div><div class="us-notif-ch-sub us-notif-tg-expired">Failed to generate code</div></div><div class="us-notif-ch-actions"><button type="button" class="us-notif-ch-btn us-notif-ch-btn-primary us-notif-tg-regen">Try again</button></div>`;
+            setTrustedHtml(rowEl, trustedHtml(`<div class="us-notif-ch-icon">${channelIcon('telegram')}</div><div class="us-notif-ch-body"><div class="us-notif-ch-name">Telegram</div><div class="us-notif-ch-sub us-notif-tg-expired">Failed to generate code</div></div><div class="us-notif-ch-actions"><button type="button" class="us-notif-ch-btn us-notif-ch-btn-primary us-notif-tg-regen">Try again</button></div>`, "legacy direct innerHTML migration"));
           });
         };
 
@@ -846,8 +856,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           if (!email) {
             const rowEl = target.closest('.us-notif-ch-row') as HTMLElement | null;
             if (rowEl) {
-              rowEl.querySelector('.us-notif-error')?.remove();
-              rowEl.insertAdjacentHTML('beforeend', '<span class="us-notif-error">No email found on your account</span>');
+              appendNotificationError(rowEl, 'No email found on your account');
             }
             return;
           }
@@ -871,8 +880,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
               if (btn) btn.textContent = 'Add to Slack';
               const rowEl = btn?.closest<HTMLElement>('[data-channel-type="slack"]');
               if (rowEl) {
-                rowEl.querySelector('.us-notif-error')?.remove();
-                rowEl.insertAdjacentHTML('beforeend', '<span class="us-notif-error">Popup blocked — please allow popups for this site, then try again.</span>');
+                appendNotificationError(rowEl, 'Popup blocked — please allow popups for this site, then try again.');
               }
             } else {
               slackOAuthPopup = popup;
@@ -897,8 +905,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
               if (btn) btn.textContent = 'Connect Discord';
               const rowEl = btn?.closest<HTMLElement>('[data-channel-type="discord"]');
               if (rowEl) {
-                rowEl.querySelector('.us-notif-error')?.remove();
-                rowEl.insertAdjacentHTML('beforeend', '<span class="us-notif-error">Popup blocked — please allow popups for this site, then try again.</span>');
+                appendNotificationError(rowEl, 'Popup blocked — please allow popups for this site, then try again.');
               }
             } else {
               discordOAuthPopup = popup;
@@ -912,7 +919,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         if (target.closest('#usConnectWebhook')) {
           const rowEl = target.closest<HTMLElement>('[data-channel-type="webhook"]');
           if (!rowEl) return;
-          rowEl.querySelector('.us-notif-ch-actions')!.innerHTML = `
+          setTrustedHtml(rowEl.querySelector('.us-notif-ch-actions')!, trustedHtml(`
             <div style="display:flex;flex-direction:column;gap:6px;width:100%">
               <input type="url" id="usWebhookUrl" placeholder="https://hooks.example.com/..." class="unified-settings-input" style="font-size:12px;width:100%">
               <input type="text" id="usWebhookLabel" placeholder="Label (optional)" class="unified-settings-input" style="font-size:12px;width:100%">
@@ -920,7 +927,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
                 <button type="button" class="us-notif-ch-btn us-notif-ch-btn-primary" id="usWebhookSave">Save</button>
                 <button type="button" class="us-notif-ch-btn" id="usWebhookCancel">Cancel</button>
               </div>
-            </div>`;
+            </div>`, "legacy direct innerHTML migration"));
           const urlInput = rowEl.querySelector<HTMLInputElement>('#usWebhookUrl');
           urlInput?.focus();
           return;
@@ -1017,8 +1024,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         } else if (e.data?.type === 'wm:slack_error') {
           const rowEl = container.querySelector<HTMLElement>('[data-channel-type="slack"]');
           if (rowEl) {
-            rowEl.querySelector('.us-notif-error')?.remove();
-            rowEl.insertAdjacentHTML('beforeend', `<span class="us-notif-error">Slack connection failed: ${escapeHtml(String(e.data.error ?? 'unknown'))}</span>`);
+            appendNotificationError(rowEl, `Slack connection failed: ${String(e.data.error ?? 'unknown')}`);
             const btn = rowEl.querySelector<HTMLButtonElement>('#usConnectSlack');
             if (btn) btn.textContent = 'Add to Slack';
           }
@@ -1027,8 +1033,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         } else if (e.data?.type === 'wm:discord_error') {
           const rowEl = container.querySelector<HTMLElement>('[data-channel-type="discord"]');
           if (rowEl) {
-            rowEl.querySelector('.us-notif-error')?.remove();
-            rowEl.insertAdjacentHTML('beforeend', `<span class="us-notif-error">Discord connection failed: ${escapeHtml(String(e.data.error ?? 'unknown'))}</span>`);
+            appendNotificationError(rowEl, `Discord connection failed: ${String(e.data.error ?? 'unknown')}`);
             const btn = rowEl.querySelector<HTMLButtonElement>('#usConnectDiscord');
             if (btn) btn.textContent = 'Connect Discord';
           }

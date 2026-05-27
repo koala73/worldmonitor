@@ -16,7 +16,7 @@ import {
   type ProgressDataSource,
 } from '@/services/progress-data';
 import { getCSSColor } from '@/utils';
-import { replaceChildren } from '@/utils/dom-utils';
+import { replaceChildren, setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { escapeHtml } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
 
@@ -55,7 +55,7 @@ export class ProgressChartsPanel extends Panel {
     // Filter out empty datasets
     const valid = datasets.filter(ds => ds.data.length > 0);
     if (valid.length === 0) {
-      this.content.innerHTML = `<div class="progress-charts-empty" style="padding:16px;color:var(--text-dim);text-align:center;">${escapeHtml(t('components.progressCharts.noData'))}</div>`;
+      setTrustedHtml(this.content, trustedHtml(`<div class="progress-charts-empty" style="padding:16px;color:var(--text-dim);text-align:center;">${escapeHtml(t('components.progressCharts.noData'))}</div>`, "legacy direct innerHTML migration"));
       return;
     }
 

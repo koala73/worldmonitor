@@ -4,6 +4,8 @@ import type { IntelligenceCache } from '@/app/app-context';
 import type { GpsJamData } from '@/services/gps-interference';
 import type { ConvergenceCard } from '@/services/correlation-engine';
 import { t } from '@/services/i18n';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 type ExportFormat = 'json' | 'csv';
 
@@ -358,13 +360,13 @@ export class ExportPanel {
     this.getData = getDataFn;
     this.element = document.createElement('div');
     this.element.className = 'export-panel-container';
-    this.element.innerHTML = `
+    setTrustedHtml(this.element, trustedHtml(`
       <button class="export-btn" title="${t('common.exportData')}">⬇</button>
       <div class="export-menu hidden">
         <button class="export-option" data-format="csv">${t('common.exportCsv')}</button>
         <button class="export-option" data-format="json">${t('common.exportJson')}</button>
       </div>
-    `;
+    `, "legacy direct innerHTML migration"));
 
     this.setupEventListeners();
   }

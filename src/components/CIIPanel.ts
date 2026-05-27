@@ -2,7 +2,7 @@ import { Panel } from './Panel';
 import { getCSSColor } from '@/utils';
 import { calculateCII, type CountryScore } from '@/services/country-instability';
 import { t } from '../services/i18n';
-import { h, replaceChildren, rawHtml, trustedHtml, type TrustedHtml } from '@/utils/dom-utils';
+import { h, replaceChildren, rawHtml, setTrustedHtml, trustedHtml, type TrustedHtml } from '@/utils/dom-utils';
 import type { CachedRiskScores } from '@/services/cached-risk-scores';
 import { toCountryScore } from '@/services/cached-risk-scores';
 import { renderFollowButton } from '@/utils/follow-button';
@@ -121,7 +121,7 @@ export class CIIPanel extends Panel {
       countryName: country.name,
       size: 'sm',
     });
-    followHost.innerHTML = handle.html;
+    setTrustedHtml(followHost, trustedHtml(handle.html, "legacy direct innerHTML migration"));
     // Attach immediately. The host doesn't need to be DOM-connected for
     // `attach()` to install its delegated click + subscription listeners,
     // and `attach()` re-renders into the host so any state drift is

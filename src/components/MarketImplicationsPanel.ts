@@ -1,6 +1,6 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { describeFreshness } from '@/services/persistent-cache';
 import type { MarketImplicationCard, MarketImplicationsData, TransmissionNode } from '@/services/market-implications';
 import { FrameworkSelector } from './FrameworkSelector';
@@ -119,7 +119,7 @@ export class MarketImplicationsPanel extends Panel {
       </div>
     `;
 
-    this.setContent(html);
+    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
   }
 
   public showUnavailable(message = t('components.marketImplications.unavailable')): void {
@@ -127,6 +127,6 @@ export class MarketImplicationsPanel extends Panel {
     const html = `
       <div style="font-size:12px;color:var(--text-dim);line-height:1.5;padding:16px 0;text-align:center">${escapeHtml(message)}</div>
     `;
-    this.setContent(html);
+    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
   }
 }

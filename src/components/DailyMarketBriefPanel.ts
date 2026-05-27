@@ -4,7 +4,7 @@ import { hasPremiumAccess } from '@/services/panel-gating';
 import { FrameworkSelector } from './FrameworkSelector';
 import type { DailyMarketBrief } from '@/services/daily-market-brief';
 import { describeFreshness } from '@/services/persistent-cache';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { getChangeClass } from '@/utils';
 import { createWatchlistButton } from './watchlist-modal';
 
@@ -107,7 +107,7 @@ export class DailyMarketBriefPanel extends Panel {
       </div>
     `;
 
-    this.setContent(html);
+    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
   }
 
   public showUnavailable(message = 'The daily brief needs live market data before it can be generated.'): void {

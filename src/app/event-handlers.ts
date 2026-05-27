@@ -69,6 +69,8 @@ import { AuthHeaderWidget } from '@/components/AuthHeaderWidget';
 import { t } from '@/services/i18n';
 import { TvModeController } from '@/services/tv-mode';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 export interface EventHandlerCallbacks {
   updateSearchIndex: () => void;
@@ -803,12 +805,12 @@ export class EventHandlerManager implements AppModule {
         `<a class="dl-dd-btn ${b.cls}" href="${b.href}">${b.label}</a>`
       ).join('');
 
-      dropdown.innerHTML = `
+      setTrustedHtml(dropdown, trustedHtml(`
         <div class="dl-dd-tagline">${t('modals.downloadBanner.description')}</div>
         <div class="dl-dd-buttons">${primaryHtml}</div>
         ${others.length ? `<button class="dl-dd-toggle" id="dlDdToggle">${t('modals.downloadBanner.showAllPlatforms')}</button>
         <div class="dl-dd-others" id="dlDdOthers">${othersHtml}</div>` : ''}
-      `;
+      `, "legacy direct innerHTML migration"));
 
       dropdown.querySelectorAll<HTMLAnchorElement>('.dl-dd-btn').forEach(a => {
         a.addEventListener('click', (e) => {
@@ -1548,7 +1550,7 @@ export class EventHandlerManager implements AppModule {
       isFullscreen = !isFullscreen;
       mapSection.classList.toggle('live-news-fullscreen', isFullscreen);
       document.body.classList.toggle('live-news-fullscreen-active', isFullscreen);
-      btn.innerHTML = isFullscreen ? shrinkSvg : expandSvg;
+      setTrustedHtml(btn, trustedHtml(isFullscreen ? shrinkSvg : expandSvg, "legacy direct innerHTML migration"));
       btn.title = isFullscreen ? 'Exit fullscreen' : 'Fullscreen';
       this.syncMapAfterLayoutChange();
     };

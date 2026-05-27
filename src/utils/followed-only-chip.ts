@@ -35,6 +35,8 @@ import {
   isFollowFeatureEnabled,
 } from '@/services/followed-countries';
 import { escapeHtml } from '@/utils/sanitize';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -221,7 +223,7 @@ export function renderFollowedOnlyChip(
       const rerender = (): void => {
         if (tornDown) return;
         const next = computeViewState(props);
-        host.innerHTML = renderHtml(next);
+        setTrustedHtml(host, trustedHtml(renderHtml(next), "legacy direct innerHTML migration"));
       };
 
       // Render once on attach so any state drift between the initial

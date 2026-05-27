@@ -17,6 +17,8 @@ import {
   warRiskTierClass,
   escapeHtml,
 } from '../tabs/route-utils';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 export class LeftRail {
   public readonly element: HTMLElement;
@@ -47,28 +49,23 @@ export class LeftRail {
   }
 
   private renderPlaceholder(): void {
-    this.element.innerHTML =
-      '<div class="re-leftrail__placeholder">Pick a country pair and product to see the lane summary.</div>';
+    setTrustedHtml(this.element, trustedHtml('<div class="re-leftrail__placeholder">Pick a country pair and product to see the lane summary.</div>', "legacy direct innerHTML migration"));
   }
 
   private renderNoLane(): void {
-    this.element.innerHTML =
-      '<div class="re-leftrail__empty">No modeled lane for this pair.</div>';
+    setTrustedHtml(this.element, trustedHtml('<div class="re-leftrail__empty">No modeled lane for this pair.</div>', "legacy direct innerHTML migration"));
   }
 
   private renderLoading(): void {
-    this.element.innerHTML =
-      '<div class="re-leftrail__placeholder">Loading lane data\u2026</div>';
+    setTrustedHtml(this.element, trustedHtml('<div class="re-leftrail__placeholder">Loading lane data\u2026</div>', "legacy direct innerHTML migration"));
   }
 
   private renderError(): void {
-    this.element.innerHTML =
-      '<div class="re-leftrail__empty">Failed to load lane data.</div>';
+    setTrustedHtml(this.element, trustedHtml('<div class="re-leftrail__empty">Failed to load lane data.</div>', "legacy direct innerHTML migration"));
   }
 
   private renderGate(): void {
-    this.element.innerHTML =
-      '<div class="re-leftrail__empty">Upgrade to PRO for route intelligence.</div>';
+    setTrustedHtml(this.element, trustedHtml('<div class="re-leftrail__empty">Upgrade to PRO for route intelligence.</div>', "legacy direct innerHTML migration"));
   }
 
   private static readonly FLAG_LABELS: Record<string, string> = {
@@ -82,13 +79,13 @@ export class LeftRail {
     const el = this.element.querySelector('.re-leftrail__card--flags');
     if (!el) return;
     if (flags.length === 0) {
-      el.innerHTML = '<h3 class="re-leftrail__title">Dependency Flags</h3><div class="re-leftrail__placeholder-text">No critical dependencies identified</div>';
+      setTrustedHtml(el, trustedHtml('<h3 class="re-leftrail__title">Dependency Flags</h3><div class="re-leftrail__placeholder-text">No critical dependencies identified</div>', "legacy direct innerHTML migration"));
       return;
     }
     const flagHtml = flags.map((f) =>
       `<span class="re-leftrail__flag re-leftrail__flag--${f.toLowerCase().replace(/^dependency_flag_/, '')}">${escapeHtml(LeftRail.FLAG_LABELS[f] ?? f)}</span>`,
     ).join('');
-    el.innerHTML = `<h3 class="re-leftrail__title">Dependency Flags</h3><div class="re-leftrail__flags">${flagHtml}</div>`;
+    setTrustedHtml(el, trustedHtml(`<h3 class="re-leftrail__title">Dependency Flags</h3><div class="re-leftrail__flags">${flagHtml}</div>`, "legacy direct innerHTML migration"));
   }
 
   private renderSummary(data: GetRouteExplorerLaneResponse): void {
@@ -96,7 +93,7 @@ export class LeftRail {
     const disruptCls = disruptionScoreClass(data.disruptionScore);
     const resValue = this.resilienceScore !== null ? `${Math.round(this.resilienceScore)}/100` : '\u2014';
 
-    this.element.innerHTML = [
+    setTrustedHtml(this.element, trustedHtml([
       '<div class="re-leftrail__card">',
       '  <h3 class="re-leftrail__title">Route Summary</h3>',
       '  <div class="re-leftrail__row">',
@@ -127,6 +124,6 @@ export class LeftRail {
       '  <h3 class="re-leftrail__title">Dependency Flags</h3>',
       '  <div class="re-leftrail__placeholder-text">Available in Sprint 4 (Impact tab)</div>',
       '</div>',
-    ].join('\n');
+    ].join('\n'), "legacy direct innerHTML migration"));
   }
 }

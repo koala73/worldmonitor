@@ -14,6 +14,8 @@
  */
 
 import { toFlagEmoji } from '@/utils/country-flag';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 // Curated short-list of countries that show up on the picker by default.
 // Users can type any 2-letter ISO code into the input to add others; this
@@ -107,7 +109,7 @@ export function mountCountryChipPicker(
       `<button type="button" class="us-notif-country-chip us-notif-country-chip-on" data-code="${code}" aria-pressed="true" title="${code}">${toFlagEmoji(code)} ${code}</button>`,
     ).join('');
 
-    root.innerHTML = `
+    setTrustedHtml(root, trustedHtml(`
       <div class="us-notif-country-chips" data-country-chip-row>${chipRow}${extraChips}</div>
       <div class="us-notif-country-add-row" style="margin-top:6px;display:flex;gap:6px;align-items:center">
         <input type="text" class="unified-settings-input" data-country-add-input placeholder="Add code (e.g. PL)" maxlength="2" style="width:90px;text-transform:uppercase">
@@ -115,7 +117,7 @@ export function mountCountryChipPicker(
         <span class="us-notif-country-error" data-country-error style="color:#c00;font-size:12px;display:none">Enter a 2-letter ISO country code (e.g. US, GB).</span>
       </div>
       ${showAllHint ? '<div class="ai-flow-toggle-desc" style="margin-top:4px">Leave empty to receive alerts from all countries.</div>' : ''}
-    `;
+    `, "legacy direct innerHTML migration"));
   }
 
   function onClick(e: Event): void {
@@ -187,7 +189,7 @@ export function mountCountryChipPicker(
     destroy: () => {
       root.removeEventListener('click', onClick);
       root.removeEventListener('keydown', onKeydown);
-      root.innerHTML = '';
+      setTrustedHtml(root, trustedHtml('', "legacy direct innerHTML migration"));
     },
   };
 }

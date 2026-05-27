@@ -1,6 +1,8 @@
 import { fetchFlightStatus, fetchAirportOpsSummary, fetchFlightPrices, fetchAviationNews, fetchGoogleFlights } from '@/services/aviation';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { MONITORED_AIRPORTS } from '@/config/airports';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 // ---- Intent types ----
 
@@ -313,7 +315,7 @@ export class AviationCommandBar {
 
         this.overlay = document.createElement('div');
         this.overlay.id = 'aviation-cmd-overlay';
-        this.overlay.innerHTML = `
+        setTrustedHtml(this.overlay, trustedHtml(`
       <div id="aviation-cmd-box">
         <div id="aviation-cmd-header">
           <span>✈️ Aviation Command</span>
@@ -324,7 +326,7 @@ export class AviationCommandBar {
         <div id="aviation-cmd-result"></div>
         <div id="aviation-cmd-history-list"></div>
         <div id="aviation-cmd-hint">Press <kbd>Enter</kbd> to run · <kbd>Esc</kbd> to close · <kbd>Ctrl+J</kbd> to toggle</div>
-      </div>`;
+      </div>`, "legacy direct innerHTML migration"));
 
         document.body.appendChild(this.overlay);
 
@@ -369,14 +371,14 @@ export class AviationCommandBar {
     private async run(raw: string): Promise<void> {
         const resultEl = this.overlay?.querySelector('#aviation-cmd-result');
         if (!resultEl) return;
-        resultEl.innerHTML = '<div style="color:var(--text-dim,#9ca3af);font-size:12px">Running…</div>';
+        setTrustedHtml(resultEl, trustedHtml('<div style="color:var(--text-dim,#9ca3af);font-size:12px">Running…</div>', "legacy direct innerHTML migration"));
 
         try {
             const intent = parseIntent(raw);
             const result = await executeIntent(intent);
-            resultEl.innerHTML = result.html;
+            setTrustedHtml(resultEl, trustedHtml(result.html, "legacy direct innerHTML migration"));
         } catch (err) {
-            resultEl.innerHTML = `<div style="color:#ef4444">Error: ${err instanceof Error ? escapeHtml(err.message) : 'Unknown error'}</div>`;
+            setTrustedHtml(resultEl, trustedHtml(`<div style="color:#ef4444">Error: ${err instanceof Error ? escapeHtml(err.message) : 'Unknown error'}</div>`, "legacy direct innerHTML migration"));
         }
     }
 
@@ -395,10 +397,10 @@ export class AviationCommandBar {
         const el = this.overlay?.querySelector('#aviation-cmd-history-list');
         if (!el) return;
         const h = this.getHistory().slice(0, 5);
-        if (!h.length) { el.innerHTML = ''; return; }
-        el.innerHTML = `<div style="font-size:11px;color:#6b7280;margin-top:4px">${h.map(c =>
+        if (!h.length) { setTrustedHtml(el, trustedHtml('', "legacy direct innerHTML migration")); return; }
+        setTrustedHtml(el, trustedHtml(`<div style="font-size:11px;color:#6b7280;margin-top:4px">${h.map(c =>
             `<button class="cmd-hist-btn" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:11px;padding:1px 4px;border-radius:2px">${escapeHtml(c)}</button>`
-        ).join('')}</div>`;
+        ).join('')}</div>`, "legacy direct innerHTML migration"));
         el.querySelectorAll('.cmd-hist-btn').forEach((btn, i) => {
             btn.addEventListener('click', () => {
                 const input = this.overlay?.querySelector('#aviation-cmd-input') as HTMLInputElement;
@@ -416,10 +418,10 @@ export class AviationCommandBar {
             'fly IST LHR', 'fly Dubai London', 'fly LHR to DXB', 'fly BEY DXB',
             'brief', 'brief TK',
         ].filter(s => s.toLowerCase().startsWith(val.toLowerCase()) && s.toLowerCase() !== val.toLowerCase());
-        if (!val || !suggestions.length) { el.innerHTML = ''; return; }
-        el.innerHTML = suggestions.slice(0, 4).map(s =>
+        if (!val || !suggestions.length) { setTrustedHtml(el, trustedHtml('', "legacy direct innerHTML migration")); return; }
+        setTrustedHtml(el, trustedHtml(suggestions.slice(0, 4).map(s =>
             `<button class="cmd-sug-btn" style="background:none;border:1px solid var(--border,#2a2a2a);border-radius:3px;color:var(--text-dim,#9ca3af);cursor:pointer;font-size:11px;padding:2px 6px;margin:2px">${escapeHtml(s)}</button>`
-        ).join('');
+        ).join(''), "legacy direct innerHTML migration"));
         el.querySelectorAll('.cmd-sug-btn').forEach((btn) => {
             btn.addEventListener('click', async () => {
                 const input = this.overlay?.querySelector('#aviation-cmd-input') as HTMLInputElement;

@@ -3,6 +3,8 @@ import { hasPremiumAccess } from '@/services/panel-gating';
 import { onEntitlementChange, getEntitlementState } from '@/services/entitlements';
 import { getCurrentClerkUser } from '@/services/clerk';
 import { t } from '@/services/i18n';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 let bannerEl: HTMLElement | null = null;
 // Cached at first showProBanner() call (App.ts always calls it once at init,
@@ -78,14 +80,14 @@ export function showProBanner(container: HTMLElement): void {
 
   const banner = document.createElement('div');
   banner.className = 'pro-banner';
-  banner.innerHTML = `
+  setTrustedHtml(banner, trustedHtml(`
     <span class="pro-banner-badge">${t('components.proBanner.badge')}</span>
     <span class="pro-banner-text">
       <strong>${t('components.proBanner.headline')}</strong> — ${t('components.proBanner.tagline')}
     </span>
     <a class="pro-banner-cta" href="/pro#pricing">${t('components.proBanner.cta')}</a>
     <button class="pro-banner-close" aria-label="${t('components.proBanner.dismiss')}">×</button>
-  `;
+  `, "legacy direct innerHTML migration"));
 
   banner.querySelector('.pro-banner-close')!.addEventListener('click', (e) => {
     e.preventDefault();

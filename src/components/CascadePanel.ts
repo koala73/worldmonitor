@@ -10,6 +10,8 @@ import {
   type DependencyGraph,
 } from '@/services/infrastructure-cascade';
 import type { CascadeResult, CascadeImpactLevel, InfrastructureNode } from '@/types';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 type NodeFilter = 'all' | 'cable' | 'pipeline' | 'port' | 'chokepoint';
 
@@ -190,13 +192,13 @@ export class CascadePanel extends Panel {
       </div>
     `;
 
-    this.content.innerHTML = `
+    setTrustedHtml(this.content, trustedHtml(`
       <div class="cascade-panel">
         ${statsHtml}
         ${this.renderSelector()}
         ${this.cascadeResult ? this.renderCascadeResult() : `<div class="cascade-hint">${t('components.cascade.selectInfrastructureHint')}</div>`}
       </div>
-    `;
+    `, "legacy direct innerHTML migration"));
   }
 
   /**

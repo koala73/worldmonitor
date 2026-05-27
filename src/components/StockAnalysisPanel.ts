@@ -5,7 +5,7 @@ import { isAnalyzableSymbol } from '@/services/stock-analysis';
 import { getMarketWatchlistEntries } from '@/services/market-watchlist';
 import type { AnalystConsensus, PriceTarget, UpgradeDowngrade } from '@/generated/client/worldmonitor/market/v1/service_client';
 import type { InsiderTransactionsResult } from '@/services/insider-transactions';
-import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
+import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
 import type { StockAnalysisHistory } from '@/services/stock-analysis-history';
 import { sparkline } from '@/utils/sparkline';
 import { createWatchlistButton } from './watchlist-modal';
@@ -144,7 +144,7 @@ export class StockAnalysisPanel extends Panel {
     // Keep the intro in sync with current item count + skipped-symbol
     // note even as the table view persists across refreshes.
     this.tableView.updateIntro(this.buildIntro(this.lastItems.length));
-    this.setContent(this.tableView.render());
+    this.setSafeContent(unsafeRawHtml(this.tableView.render(), 'legacy Panel.setContent() migration'));
     this.tableView.bind(this.content, () => this.rerender());
   }
 

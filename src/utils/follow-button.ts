@@ -49,6 +49,8 @@ import {
 } from '@/services/followed-countries';
 import { onEntitlementChange } from '@/services/entitlements';
 import { escapeHtml } from '@/utils/sanitize';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -304,7 +306,7 @@ export function renderFollowButton(
       const rerender = () => {
         if (tornDown) return;
         const next = computeViewState(props.countryCode);
-        host.innerHTML = renderHtml(next, props);
+        setTrustedHtml(host, trustedHtml(renderHtml(next, props), "legacy direct innerHTML migration"));
       };
 
       // Render once on attach so any state drift between the initial

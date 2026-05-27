@@ -19,7 +19,7 @@
 // stuck Hormuz tracker must not freeze the whole executive overview.
 
 import { Panel } from './Panel';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { fetchHormuzTracker, type HormuzTrackerData } from '@/services/hormuz-tracker';
 import { getEuGasStorageData } from '@/services/economic';
@@ -139,7 +139,7 @@ export class EnergyRiskOverviewPanel extends Panel {
         ${this.renderCrisisDayTile()}
       </div>
     `;
-    this.setContent(html);
+    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
   }
 
   private renderHormuzTile(): string {

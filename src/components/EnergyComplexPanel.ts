@@ -3,7 +3,7 @@ import type { OilAnalytics, CrudeInventoryWeek, NatGasStorageWeek, GetEuGasStora
 import { formatOilValue, getTrendColor, getTrendIndicator } from '@/services/economic';
 import type { MarketData } from '@/types';
 import { t } from '@/services/i18n';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { formatPrice, formatChange, getChangeClass } from '@/utils';
 import { miniSparkline } from '@/utils/sparkline';
 
@@ -149,7 +149,7 @@ export class EnergyComplexPanel extends Panel {
     ].filter(Boolean);
 
     if (metrics.length === 0 && this.tape.length === 0 && this.crudeWeeks.length === 0 && this.natGasWeeks.length === 0 && !this.euGas && !this.oilStocksAnalysis && !this.lngVulnerability) {
-      this.setContent(`<div class="economic-empty">${t('components.energyComplex.noData')}</div>`);
+      this.setSafeContent(unsafeRawHtml(`<div class="economic-empty">${t('components.energyComplex.noData')}</div>`, 'legacy Panel.setContent() migration'));
       return;
     }
 
@@ -181,7 +181,7 @@ export class EnergyComplexPanel extends Panel {
     const euTrend = this.euGas?.trend ?? '';
     const euSparklineValues = (this.euGas?.history ?? []).slice().reverse().map(h => h.fillPct);
 
-    this.setContent(`
+    this.setSafeContent(unsafeRawHtml(`
       <div class="energy-complex-content">
         ${metrics.length > 0 ? `
           <div class="energy-summary-grid">
@@ -264,6 +264,6 @@ export class EnergyComplexPanel extends Panel {
       <div class="economic-footer">
         <span class="economic-source">${escapeHtml(footerParts.join(' • '))}</span>
       </div>
-    `);
+    `, 'legacy Panel.setContent() migration'));
   }
 }

@@ -1,10 +1,12 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
-import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
+import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
 import { fetchDiseaseOutbreaks, type DiseaseOutbreakItem } from '@/services/disease-outbreaks';
 import { renderFollowedOnlyChip, type FollowedOnlyChipHandle } from '@/utils/followed-only-chip';
 import { isFollowed, subscribe as subscribeFollowed } from '@/services/followed-countries';
 import { toIso2 } from '@/utils/country-codes';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 function alertColor(level: string): string {
   if (level === 'alert') return '#e74c3c';
@@ -81,7 +83,7 @@ export class DiseaseOutbreaksPanel extends Panel {
       // Feature flag off — don't even insert the host.
       return;
     }
-    host.innerHTML = this._followedOnlyChip.html;
+    setTrustedHtml(host, trustedHtml(this._followedOnlyChip.html, "legacy direct innerHTML migration"));
     // Insert BEFORE the close button so close stays rightmost. The Panel
     // base appends `.panel-close-btn` first; a plain `appendChild` would
     // land the chip after close and break the user expectation that X
@@ -204,13 +206,13 @@ export class DiseaseOutbreaksPanel extends Panel {
       ? `<div style="padding:16px;text-align:center;color:var(--text-dim);font-size:12px">${escapeHtml(emptyMessage)}</div>`
       : '';
 
-    this.setContent(`
+    this.setSafeContent(unsafeRawHtml(`
       ${filterBar}
       <div style="overflow-y:auto;max-height:420px">
         ${rows || empty}
       </div>
       <div style="margin-top:6px;font-size:9px;color:var(--text-dim)">${escapeHtml(t('components.diseaseOutbreaks.attribution'))}</div>
-    `);
+    `, 'legacy Panel.setContent() migration'));
   }
 
   public override destroy(): void {

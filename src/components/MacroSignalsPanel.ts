@@ -1,6 +1,6 @@
 import { Panel } from './Panel';
 import { getRpcBaseUrl } from '@/services/rpc-client';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
 import { EconomicServiceClient } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import type { GetMacroSignalsResponse } from '@/generated/client/worldmonitor/economic/v1/service_client';
@@ -216,7 +216,7 @@ export class MacroSignalsPanel extends Panel {
       </div>
     `;
 
-    this.setContent(html);
+    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
   }
 
   private renderSignalCard(name: string, status: string, value: string, sparkline: string, detail: string, link: string | null): string {

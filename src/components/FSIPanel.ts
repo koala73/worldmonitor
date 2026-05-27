@@ -2,7 +2,7 @@ import type { MarketServiceClient } from '@/generated/client/worldmonitor/market
 import type { EconomicServiceClient, GetEuFsiResponse } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { getHydratedData } from '@/services/bootstrap';
 import { CISS_STALE_THRESHOLD_MS } from '@/shared/ciss-staleness';
 
@@ -210,6 +210,6 @@ export class FSIPanel extends Panel {
       ${cissSection}
     </div>`;
 
-    this.setContent(html);
+    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
   }
 }

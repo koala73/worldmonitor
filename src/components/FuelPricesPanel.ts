@@ -1,6 +1,6 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { getHydratedData } from '@/services/bootstrap';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { EconomicServiceClient } from '@/generated/client/worldmonitor/economic/v1/service_client';
@@ -96,6 +96,6 @@ export class FuelPricesPanel extends Panel {
       </div>
     `;
 
-    this.setContent(html);
+    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
   }
 }

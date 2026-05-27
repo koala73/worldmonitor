@@ -27,6 +27,8 @@ import { getAuthState } from '@/services/auth-state';
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { trackGateHit } from '@/services/analytics';
 import { renderPopupSourceLinks } from './map-popup-source-links';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 // ── Static HS2 sector breakdown per chokepoint ────────────────────────────────
 // Based on IEA/UNCTAD estimated trade composition. Updated periodically.
@@ -253,9 +255,9 @@ export class MapPopup {
     this.popup.className = this.isMobileSheet ? 'map-popup map-popup-sheet' : 'map-popup';
 
     const content = this.renderContent(data);
-    this.popup.innerHTML = this.isMobileSheet
+    setTrustedHtml(this.popup, trustedHtml(this.isMobileSheet
       ? `<button class="map-popup-sheet-handle" aria-label="${t('common.close')}"></button>${content}`
-      : content;
+      : content, "legacy direct innerHTML migration"));
 
     // Get container's viewport position for absolute positioning
     const containerRect = this.container.getBoundingClientRect();
@@ -445,7 +447,7 @@ export class MapPopup {
     this.isMobileSheet = false;
     this.popup = document.createElement('div');
     this.popup.className = 'map-popup map-popup-route-breakdown';
-    this.popup.innerHTML = html;
+    setTrustedHtml(this.popup, trustedHtml(html, "legacy direct innerHTML migration"));
 
     const containerRect = this.container.getBoundingClientRect();
     this.positionDesktopPopup({ x, y, type: 'waterway', data: {} as never }, containerRect);
@@ -1060,25 +1062,25 @@ export class MapPopup {
       if (!this.popup || !container.isConnected) return;
 
       if (articles.length === 0) {
-        container.innerHTML = `
+        setTrustedHtml(container, trustedHtml(`
           <div class="hotspot-gdelt-header">${t('popups.liveIntel')}</div>
           <div class="hotspot-gdelt-loading">${t('popups.noCoverage')}</div>
-        `;
+        `, "legacy direct innerHTML migration"));
         return;
       }
 
-      container.innerHTML = `
+      setTrustedHtml(container, trustedHtml(`
         <div class="hotspot-gdelt-header">${t('popups.liveIntel')}</div>
         <div class="hotspot-gdelt-articles">
           ${articles.slice(0, 5).map(article => this.renderGdeltArticle(article)).join('')}
         </div>
-      `;
+      `, "legacy direct innerHTML migration"));
     } catch (error) {
       if (container.isConnected) {
-        container.innerHTML = `
+        setTrustedHtml(container, trustedHtml(`
           <div class="hotspot-gdelt-header">${t('popups.liveIntel')}</div>
           <div class="hotspot-gdelt-loading">${t('common.error')}</div>
-        `;
+        `, "legacy direct innerHTML migration"));
       }
     }
   }
@@ -1095,7 +1097,7 @@ export class MapPopup {
       if (!this.popup || !section.isConnected) return;
 
       if (!live) {
-        section.innerHTML = '';
+        setTrustedHtml(section, trustedHtml('', "legacy direct innerHTML migration"));
         return;
       }
 
@@ -1163,17 +1165,17 @@ export class MapPopup {
       if (live.verticalRate !== 0) rows.push(`<div class="popup-stat"><span class="stat-label">Climb</span><span class="stat-value">${live.verticalRate > 0 ? '+' : ''}${Math.round(live.verticalRate)} fpm</span></div>`);
 
       if (parts.length === 0 && rows.length === 0 && !photoHtml) {
-        section.innerHTML = '';
+        setTrustedHtml(section, trustedHtml('', "legacy direct innerHTML migration"));
         return;
       }
 
       const statsHtml = rows.length > 0 ? `<div class="popup-stats">${rows.join('')}</div>` : '';
-      section.innerHTML = `
+      setTrustedHtml(section, trustedHtml(`
         <div class="popup-section-label" style="font-size:10px;opacity:0.5;text-transform:uppercase;letter-spacing:.05em;margin-top:8px">Live Data</div>
         ${parts.join('')}
         ${statsHtml}
         ${photoHtml}
-      `;
+      `, "legacy direct innerHTML migration"));
       // Clamp for text content immediately, then re-clamp once the photo is sized.
       this.clampPopupToViewport();
       if (photoHtml) {
@@ -1185,7 +1187,7 @@ export class MapPopup {
       }
     } catch {
       if (section.isConnected) {
-        section.innerHTML = '';
+        setTrustedHtml(section, trustedHtml('', "legacy direct innerHTML migration"));
       }
     }
   }

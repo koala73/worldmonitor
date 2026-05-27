@@ -9,6 +9,8 @@ import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
 import { getStreamQuality } from '@/services/ai-flow-settings';
 import { getLiveStreamsAlwaysOn, subscribeLiveStreamsSettingsChange } from '@/services/live-stream-settings';
 import { track } from '@/services/analytics';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 // YouTube IFrame Player API types
 type YouTubePlayer = {
@@ -433,7 +435,7 @@ export class LiveNewsPanel extends Panel {
   }
 
   private renderPlaceholder(): void {
-    this.content.innerHTML = '';
+    setTrustedHtml(this.content, trustedHtml('', "legacy direct innerHTML migration"));
     const container = document.createElement('div');
     container.className = 'live-news-placeholder';
     container.style.cssText = 'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;gap:12px;cursor:pointer;';
@@ -685,7 +687,7 @@ export class LiveNewsPanel extends Panel {
 
     // Clear the container to remove player/iframe
     if (this.playerContainer) {
-      this.playerContainer.innerHTML = '';
+      setTrustedHtml(this.playerContainer, trustedHtml('', "legacy direct innerHTML migration"));
 
       if (!this.useDesktopEmbedProxy) {
         // Recreate player element for JS API mode
@@ -719,9 +721,9 @@ export class LiveNewsPanel extends Panel {
 
   private updateLiveIndicator(): void {
     if (!this.liveBtn) return;
-    this.liveBtn.innerHTML = this.isPlaying
+    setTrustedHtml(this.liveBtn, trustedHtml(this.isPlaying
       ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>'
-      : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
+      : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>', "legacy direct innerHTML migration"));
   }
 
   private togglePlayback(): void {
@@ -757,7 +759,7 @@ export class LiveNewsPanel extends Panel {
     this.fullscreenBtn = document.createElement('button');
     this.fullscreenBtn.className = 'live-mute-btn';
     this.fullscreenBtn.title = 'Fullscreen';
-    this.fullscreenBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>';
+    setTrustedHtml(this.fullscreenBtn, trustedHtml('<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>', "legacy direct innerHTML migration"));
     this.fullscreenBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       track('live-news-fullscreen', { entering: !this.isFullscreen });
@@ -774,9 +776,9 @@ export class LiveNewsPanel extends Panel {
 
     if (this.fullscreenBtn) {
       this.fullscreenBtn.title = this.isFullscreen ? 'Exit fullscreen' : 'Fullscreen';
-      this.fullscreenBtn.innerHTML = this.isFullscreen
+      setTrustedHtml(this.fullscreenBtn, trustedHtml(this.isFullscreen
         ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 14h6v6"/><path d="M20 10h-6V4"/><path d="M14 10l7-7"/><path d="M3 21l7-7"/></svg>'
-        : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>';
+        : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>', "legacy direct innerHTML migration"));
     }
   }
 
@@ -786,9 +788,9 @@ export class LiveNewsPanel extends Panel {
 
   private updateMuteIcon(): void {
     if (!this.muteBtn) return;
-    this.muteBtn.innerHTML = this.isMuted
+    setTrustedHtml(this.muteBtn, trustedHtml(this.isMuted
       ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5L6 9H2v6h4l5 4V5z"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>'
-      : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
+      : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>', "legacy direct innerHTML migration"));
     this.muteBtn.classList.toggle('unmuted', !this.isMuted);
   }
 
@@ -894,8 +896,7 @@ export class LiveNewsPanel extends Panel {
     openBtn.type = 'button';
     openBtn.className = 'live-news-settings-btn';
     openBtn.title = t('components.liveNews.channelSettings') ?? 'Channel Settings';
-    openBtn.innerHTML =
-      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
+    setTrustedHtml(openBtn, trustedHtml('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>', "legacy direct innerHTML migration"));
     openBtn.addEventListener('click', () => {
       this.openChannelManagementModal();
     });
@@ -917,7 +918,7 @@ export class LiveNewsPanel extends Panel {
     closeBtn.type = 'button';
     closeBtn.className = 'live-channels-modal-close';
     closeBtn.setAttribute('aria-label', t('common.close') ?? 'Close');
-    closeBtn.innerHTML = '&times;';
+    setTrustedHtml(closeBtn, trustedHtml('&times;', "legacy direct innerHTML migration"));
 
     const container = document.createElement('div');
 
@@ -949,7 +950,7 @@ export class LiveNewsPanel extends Panel {
 
   private refreshChannelSwitcher(): void {
     if (!this.channelSwitcher) return;
-    this.channelSwitcher.innerHTML = '';
+    setTrustedHtml(this.channelSwitcher, trustedHtml('', "legacy direct innerHTML migration"));
     for (const channel of this.channels) {
       this.channelSwitcher.appendChild(this.createChannelButton(channel));
     }
@@ -1050,13 +1051,13 @@ export class LiveNewsPanel extends Panel {
   private showOfflineMessage(channel: LiveChannel): void {
     this.destroyPlayer();
     const safeName = escapeHtml(channel.name);
-    this.content.innerHTML = `
+    setTrustedHtml(this.content, trustedHtml(`
       <div class="live-offline">
         <div class="offline-icon">📺</div>
         <div class="offline-text">${t('components.liveNews.notLive', { name: safeName })}</div>
         <button class="offline-retry" onclick="this.closest('.panel').querySelector('.live-channel-btn.active')?.click()">${t('common.retry')}</button>
       </div>
-    `;
+    `, "legacy direct innerHTML migration"));
   }
 
   private showEmbedError(channel: LiveChannel, errorCode: number): void {
@@ -1068,13 +1069,13 @@ export class LiveNewsPanel extends Panel {
       : 'https://www.youtube.com';
     const safeName = escapeHtml(channel.name);
 
-    this.content.innerHTML = `
+    setTrustedHtml(this.content, trustedHtml(`
       <div class="live-offline">
         <div class="offline-icon">!</div>
         <div class="offline-text">${t('components.liveNews.cannotEmbed', { name: safeName, code: String(errorCode) })}</div>
         <a class="offline-retry" href="${sanitizeUrl(watchUrl)}" target="_blank" rel="noopener noreferrer">${t('components.liveNews.openOnYouTube')}</a>
       </div>
-    `;
+    `, "legacy direct innerHTML migration"));
   }
 
   private renderPlayer(): void {
@@ -1084,7 +1085,7 @@ export class LiveNewsPanel extends Panel {
 
   private ensurePlayerContainer(): void {
     this.deferredInit = true;
-    this.content.innerHTML = '';
+    setTrustedHtml(this.content, trustedHtml('', "legacy direct innerHTML migration"));
     this.playerContainer = document.createElement('div');
     this.playerContainer.className = 'live-news-player';
 
@@ -1140,7 +1141,7 @@ export class LiveNewsPanel extends Panel {
       return;
     }
 
-    this.playerContainer.innerHTML = '';
+    setTrustedHtml(this.playerContainer, trustedHtml('', "legacy direct innerHTML migration"));
 
     // Use local sidecar embed — YouTube rejects tauri:// parent origin with error 153,
     // and Vercel WAF blocks cloud bridge iframe loads. The sidecar serves the embed from
@@ -1186,7 +1187,7 @@ export class LiveNewsPanel extends Panel {
     this.destroyPlayer();
     this.ensurePlayerContainer();
     if (!this.playerContainer) return;
-    this.playerContainer.innerHTML = '';
+    setTrustedHtml(this.playerContainer, trustedHtml('', "legacy direct innerHTML migration"));
 
     const video = document.createElement('video');
     video.className = 'live-news-native-video';
@@ -1502,7 +1503,7 @@ export class LiveNewsPanel extends Panel {
       : 'https://www.youtube.com';
 
     this.destroyPlayer();
-    this.content.innerHTML = '';
+    setTrustedHtml(this.content, trustedHtml('', "legacy direct innerHTML migration"));
 
     const wrapper = document.createElement('div');
     wrapper.className = 'live-offline';

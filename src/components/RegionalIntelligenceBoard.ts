@@ -6,7 +6,7 @@ import { hasPremiumAccess } from '@/services/panel-gating';
 import { subscribeAuthState } from '@/services/auth-state';
 import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import type { RegionalSnapshot, RegimeTransition, RegionalBrief } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
-import { h, replaceChildren } from '@/utils/dom-utils';
+import { h, replaceChildren, setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { escapeHtml } from '@/utils/sanitize';
 import { BOARD_REGIONS, DEFAULT_REGION_ID, buildBoardHtml, buildRegimeHistoryBlock, buildWeeklyBriefBlock, isLatestSequence } from './regional-intelligence-board-utils';
 
@@ -284,17 +284,15 @@ export class RegionalIntelligenceBoard extends Panel {
   }
 
   private renderLoading(): void {
-    this.body.innerHTML =
-      '<div class="rib-status" style="padding:16px;color:var(--text-dim);font-size:12px">Loading regional intelligence…</div>';
+    setTrustedHtml(this.body, trustedHtml('<div class="rib-status" style="padding:16px;color:var(--text-dim);font-size:12px">Loading regional intelligence…</div>', "legacy direct innerHTML migration"));
   }
 
   private renderEmpty(): void {
-    this.body.innerHTML =
-      '<div class="rib-status" style="padding:16px;color:var(--text-dim);font-size:12px">Regional intelligence is being refreshed. Try selecting another region above.</div>';
+    setTrustedHtml(this.body, trustedHtml('<div class="rib-status" style="padding:16px;color:var(--text-dim);font-size:12px">Regional intelligence is being refreshed. Try selecting another region above.</div>', "legacy direct innerHTML migration"));
   }
 
   private renderError(message: string): void {
-    this.body.innerHTML = `<div class="rib-status rib-status-error" style="padding:16px;color:var(--danger);font-size:12px">We couldn't load this region right now: ${escapeHtml(message)}</div>`;
+    setTrustedHtml(this.body, trustedHtml(`<div class="rib-status rib-status-error" style="padding:16px;color:var(--danger);font-size:12px">We couldn't load this region right now: ${escapeHtml(message)}</div>`, "legacy direct innerHTML migration"));
   }
 
   /** Render the full board HTML from a hydrated snapshot + optional Phase 3 data.
@@ -327,6 +325,6 @@ export class RegionalIntelligenceBoard extends Panel {
     if (brief !== null) {
       html += buildWeeklyBriefBlock(brief);
     }
-    this.body.innerHTML = html;
+    setTrustedHtml(this.body, trustedHtml(html, "legacy direct innerHTML migration"));
   }
 }

@@ -8,7 +8,7 @@ import type {
   GulfInvestmentStatus,
 } from '@/types';
 import { toUniqueSorted } from '@/utils';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
 
 interface InvestmentFilters {
@@ -190,7 +190,7 @@ export class InvestmentsPanel extends Panel {
         ${rows || `<div class="fdi-empty">${t('components.investments.noMatch')}</div>`}
       </div>`;
 
-    this.setContent(html);
+    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
     if (this.countEl) this.countEl.textContent = String(filtered.length);
   }
 

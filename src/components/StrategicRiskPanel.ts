@@ -22,6 +22,8 @@ import { getLearningProgress } from '@/services/country-instability';
 import { fetchCachedRiskScores } from '@/services/cached-risk-scores';
 import { getCachedPosture } from '@/services/cached-theater-posture';
 import { refreshDataFreshnessFromHealth } from '@/services/health-freshness';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 export class StrategicRiskPanel extends Panel {
   private overview: StrategicRiskOverview | null = null;
@@ -516,7 +518,7 @@ export class StrategicRiskPanel extends Panel {
           ? this.renderInsufficientData()
           : this.renderFullData();
 
-      this.content.innerHTML = html;
+      setTrustedHtml(this.content, trustedHtml(html, "legacy direct innerHTML migration"));
       this.attachEventListeners();
     } catch (e: unknown) {
       console.error('[StrategicRiskPanel] Render error:', e);

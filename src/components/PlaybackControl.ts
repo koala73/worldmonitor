@@ -1,5 +1,7 @@
 import { getSnapshotTimestamps, getSnapshotAt, type DashboardSnapshot } from '@/services/storage';
 import { t } from '@/services/i18n';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 export class PlaybackControl {
   private element: HTMLElement;
@@ -11,7 +13,7 @@ export class PlaybackControl {
   constructor() {
     this.element = document.createElement('div');
     this.element.className = 'playback-control';
-    this.element.innerHTML = `
+    setTrustedHtml(this.element, trustedHtml(`
       <button class="playback-toggle" title="${t('components.playback.toggleMode')}" aria-label="${t('components.playback.toggleMode')}">
         <span class="playback-icon">⏪</span>
       </button>
@@ -32,7 +34,7 @@ export class PlaybackControl {
           <button class="playback-btn" data-action="end" aria-label="${t('components.playback.skipToEnd')}">⏭</button>
         </div>
       </div>
-    `;
+    `, "legacy direct innerHTML migration"));
 
     this.setupEventListeners();
   }
