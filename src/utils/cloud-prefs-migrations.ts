@@ -10,6 +10,15 @@
 
 import { findFullyDisabledCategories, type FeedsByCategory } from '@/services/source-cap';
 
+export const LEGACY_PANEL_ORDER_KEY = 'worldmonitor-panel-order';
+export const CANONICAL_PANEL_ORDER_KEY = 'panel-order';
+
+export interface PreferenceStorageLike {
+  getItem(key: string): string | null;
+  setItem(key: string, value: string): void;
+  removeItem(key: string): void;
+}
+
 /**
  * Apply all migrations from `fromVersion + 1` up through `toVersion`
  * inclusive. Pure function — no I/O. Caller controls migrations map and
@@ -121,17 +130,35 @@ export function buildMigrations(
  * in CLOUD_SYNC_KEYS, while the app uses `panel-order`.
  */
 export function migratePanelOrderV3(data: Record<string, unknown>): Record<string, unknown> {
-  if (!Object.prototype.hasOwnProperty.call(data, 'worldmonitor-panel-order')) return data;
+  if (!Object.prototype.hasOwnProperty.call(data, LEGACY_PANEL_ORDER_KEY)) return data;
 
   const out = { ...data };
   if (
-    !Object.prototype.hasOwnProperty.call(out, 'panel-order') &&
-    typeof out['worldmonitor-panel-order'] === 'string'
+    !Object.prototype.hasOwnProperty.call(out, CANONICAL_PANEL_ORDER_KEY) &&
+    typeof out[LEGACY_PANEL_ORDER_KEY] === 'string'
   ) {
-    out['panel-order'] = out['worldmonitor-panel-order'];
+    out[CANONICAL_PANEL_ORDER_KEY] = out[LEGACY_PANEL_ORDER_KEY];
   }
-  delete out['worldmonitor-panel-order'];
+  delete out[LEGACY_PANEL_ORDER_KEY];
   return out;
+}
+
+/**
+ * Local-storage companion to schema 3.
+ *
+ * `buildCloudBlob()` intentionally iterates current CLOUD_SYNC_KEYS only, so
+ * local orphan copies of the old key would never reach migratePanelOrderV3().
+ * Clean them once at sync install time, preserving the value if the canonical
+ * runtime key is still absent.
+ */
+export function migrateLegacyPanelOrderStorage(storage: PreferenceStorageLike): boolean {
+  const legacy = storage.getItem(LEGACY_PANEL_ORDER_KEY);
+  if (legacy === null) return false;
+  if (storage.getItem(CANONICAL_PANEL_ORDER_KEY) === null) {
+    storage.setItem(CANONICAL_PANEL_ORDER_KEY, legacy);
+  }
+  storage.removeItem(LEGACY_PANEL_ORDER_KEY);
+  return true;
 }
 
 /**

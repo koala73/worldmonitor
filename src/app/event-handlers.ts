@@ -29,7 +29,7 @@ import {
   getCurrentTheme,
   setTheme,
 } from '@/utils';
-import { CLOUD_PREFS_APPLIED_EVENT, type CloudPrefsAppliedDetail } from '@/utils/cloud-prefs-sync';
+import { addCloudPrefsAppliedListener } from '@/utils/cloud-prefs-events';
 import {
   IDLE_PAUSE_MS,
   STORAGE_KEYS,
@@ -74,6 +74,7 @@ import { AuthHeaderWidget } from '@/components/AuthHeaderWidget';
 import { t } from '@/services/i18n';
 import { TvModeController } from '@/services/tv-mode';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
+import { applyPreferenceStorageChanges, loadDisabledSourcesFromStorage } from '@/app/preference-storage-sync';
 import { normalizeStoredPanelSettings } from '@/app/panel-settings-storage';
 
 export interface EventHandlerCallbacks {
@@ -102,7 +103,7 @@ export class EventHandlerManager implements AppModule {
   private boundDesktopExternalLinkHandler: ((e: MouseEvent) => void) | null = null;
   private boundIdleResetHandler: (() => void) | null = null;
   private boundStorageHandler: ((e: StorageEvent) => void) | null = null;
-  private boundCloudPrefsAppliedHandler: ((e: Event) => void) | null = null;
+  private removeCloudPrefsAppliedListener: (() => void) | null = null;
   private boundTvKeydownHandler: ((e: KeyboardEvent) => void) | null = null;
   private boundFocalPointsReadyHandler: (() => void) | null = null;
   private boundThemeChangedHandler: (() => void) | null = null;
@@ -254,9 +255,9 @@ export class EventHandlerManager implements AppModule {
       window.removeEventListener('storage', this.boundStorageHandler);
       this.boundStorageHandler = null;
     }
-    if (this.boundCloudPrefsAppliedHandler) {
-      window.removeEventListener(CLOUD_PREFS_APPLIED_EVENT, this.boundCloudPrefsAppliedHandler);
-      this.boundCloudPrefsAppliedHandler = null;
+    if (this.removeCloudPrefsAppliedListener) {
+      this.removeCloudPrefsAppliedListener();
+      this.removeCloudPrefsAppliedListener = null;
     }
     if (this.boundTvKeydownHandler) {
       document.removeEventListener('keydown', this.boundTvKeydownHandler);
@@ -340,7 +341,7 @@ export class EventHandlerManager implements AppModule {
   }
 
   public setupPreferenceSyncHandlers(): void {
-    if (this.boundStorageHandler || this.boundCloudPrefsAppliedHandler) return;
+    if (this.boundStorageHandler || this.removeCloudPrefsAppliedListener) return;
     this.boundStorageHandler = (e: StorageEvent) => {
       this.applyPreferenceStorageChanges(e.key ? [e.key] : []);
       if (e.key === STORAGE_KEYS.liveChannels && e.newValue) {
@@ -356,40 +357,20 @@ export class EventHandlerManager implements AppModule {
     };
     window.addEventListener('storage', this.boundStorageHandler);
 
-    this.boundCloudPrefsAppliedHandler = ((e: CustomEvent<CloudPrefsAppliedDetail>) => {
-      const keys = Array.isArray(e.detail?.keys)
-        ? e.detail.keys.filter((key): key is string => typeof key === 'string')
-        : [];
+    this.removeCloudPrefsAppliedListener = addCloudPrefsAppliedListener(window, (keys) => {
       this.applyPreferenceStorageChanges(keys);
-    }) as EventListener;
-    window.addEventListener(CLOUD_PREFS_APPLIED_EVENT, this.boundCloudPrefsAppliedHandler);
+    });
   }
 
   private applyPreferenceStorageChanges(keys: Iterable<string | null>): void {
-    const changedKeys = new Set<string>();
-    for (const key of keys) {
-      if (typeof key === 'string') changedKeys.add(key);
-    }
-    if (changedKeys.size === 0) return;
-
-    if (changedKeys.has(STORAGE_KEYS.panels)) {
-      this.ctx.panelSettings = this.loadPanelSettingsFromStorage();
-      this.applyPanelSettings();
-      this.ctx.unifiedSettings?.refreshPanelToggles();
-      this.callbacks.updateSearchIndex();
-    }
-
-    if (changedKeys.has(STORAGE_KEYS.disabledFeeds)) {
-      this.ctx.disabledSources = new Set(loadFromStorage<string[]>(STORAGE_KEYS.disabledFeeds, []));
-      this.ctx.unifiedSettings?.refreshSourceToggles();
-    }
-
-    if (
-      changedKeys.has(this.ctx.PANEL_ORDER_KEY) ||
-      changedKeys.has(`${this.ctx.PANEL_ORDER_KEY}-bottom-set`)
-    ) {
-      this.callbacks.reloadPanelOrderFromStorage?.();
-    }
+    applyPreferenceStorageChanges(this.ctx, keys, {
+      applyPanelSettings: () => this.applyPanelSettings(),
+      updateSearchIndex: this.callbacks.updateSearchIndex,
+      reloadPanelOrderFromStorage: this.callbacks.reloadPanelOrderFromStorage,
+    }, {
+      loadPanelSettingsFromStorage: () => this.loadPanelSettingsFromStorage(),
+      loadDisabledSourcesFromStorage,
+    });
   }
 
   private loadPanelSettingsFromStorage(): Record<string, PanelConfig> {

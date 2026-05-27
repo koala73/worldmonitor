@@ -7,14 +7,44 @@ import { fileURLToPath } from 'node:url';
 import {
   applyMigrationChain,
   buildMigrations,
+  CANONICAL_PANEL_ORDER_KEY,
+  LEGACY_PANEL_ORDER_KEY,
+  migrateLegacyPanelOrderStorage,
   migratePanelOrderV3,
 } from '../src/utils/cloud-prefs-migrations.ts';
+import {
+  addCloudPrefsAppliedListener,
+  CLOUD_PREFS_APPLIED_EVENT,
+  dispatchCloudPrefsAppliedEvent,
+} from '../src/utils/cloud-prefs-events.ts';
 import { CLOUD_SYNC_KEYS } from '../src/utils/sync-keys.ts';
 import { resolveDefaultPanelOrder } from '../src/app/panel-order.ts';
 import { normalizeStoredPanelSettings } from '../src/app/panel-settings-storage.ts';
+import { applyPreferenceStorageChanges } from '../src/app/preference-storage-sync.ts';
+import { STORAGE_KEYS } from '../src/config/variants/base.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const readSource = (path: string) => readFileSync(resolve(__dirname, '..', path), 'utf-8');
+
+class MemoryStorage {
+  private readonly values = new Map<string, string>();
+
+  getItem(key: string): string | null {
+    return this.values.has(key) ? this.values.get(key)! : null;
+  }
+
+  setItem(key: string, value: string): void {
+    this.values.set(key, String(value));
+  }
+
+  removeItem(key: string): void {
+    this.values.delete(key);
+  }
+
+  clear(): void {
+    this.values.clear();
+  }
+}
 
 describe('cloud prefs panel order sync keys', () => {
   it('syncs the runtime panel order keys and not the legacy key', () => {
@@ -62,20 +92,124 @@ describe('cloud prefs schema-3 panel order migration', () => {
     assert.equal(migrated['panel-order'], '["legacy"]');
     assert.equal('worldmonitor-panel-order' in migrated, false);
   });
+
+  it('cleans orphan local legacy panel-order storage without overwriting canonical storage', () => {
+    const storage = new MemoryStorage();
+    storage.setItem(LEGACY_PANEL_ORDER_KEY, '["legacy"]');
+
+    assert.equal(migrateLegacyPanelOrderStorage(storage), true);
+    assert.equal(storage.getItem(CANONICAL_PANEL_ORDER_KEY), '["legacy"]');
+    assert.equal(storage.getItem(LEGACY_PANEL_ORDER_KEY), null);
+
+    storage.setItem(CANONICAL_PANEL_ORDER_KEY, '["canonical"]');
+    storage.setItem(LEGACY_PANEL_ORDER_KEY, '["legacy-again"]');
+
+    assert.equal(migrateLegacyPanelOrderStorage(storage), true);
+    assert.equal(storage.getItem(CANONICAL_PANEL_ORDER_KEY), '["canonical"]');
+    assert.equal(storage.getItem(LEGACY_PANEL_ORDER_KEY), null);
+  });
 });
 
 describe('cloud prefs live-restore wiring', () => {
-  it('dispatches and handles the same-tab cloud prefs applied event', () => {
-    const syncSrc = readSource('src/utils/cloud-prefs-sync.ts');
-    const eventsSrc = readSource('src/app/event-handlers.ts');
+  it('dispatches a same-tab cloud prefs applied event only when keys changed', () => {
+    const events: CustomEvent[] = [];
+    const target = {
+      dispatchEvent(event: Event): boolean {
+        events.push(event as CustomEvent);
+        return true;
+      },
+    };
 
-    assert.match(syncSrc, /CURRENT_PREFS_SCHEMA_VERSION = 3/);
-    assert.match(syncSrc, /CLOUD_PREFS_APPLIED_EVENT = 'wm:cloud-prefs-applied'/);
-    assert.match(syncSrc, /dispatchCloudPrefsApplied\(changedKeys\)/);
-    assert.match(eventsSrc, /addEventListener\(CLOUD_PREFS_APPLIED_EVENT/);
-    assert.match(eventsSrc, /refreshPanelToggles\(\)/);
-    assert.match(eventsSrc, /refreshSourceToggles\(\)/);
-    assert.match(eventsSrc, /reloadPanelOrderFromStorage\?\.\(\)/);
+    dispatchCloudPrefsAppliedEvent([], target);
+    assert.equal(events.length, 0);
+
+    dispatchCloudPrefsAppliedEvent(['panel-order', 'panel-order', STORAGE_KEYS.panels], target);
+    assert.equal(events.length, 1);
+    assert.equal(events[0]!.type, CLOUD_PREFS_APPLIED_EVENT);
+    assert.deepEqual(events[0]!.detail, {
+      keys: ['panel-order', STORAGE_KEYS.panels],
+    });
+  });
+
+  it('listens for same-tab cloud prefs applied events and extracts changed keys', () => {
+    const target = new EventTarget();
+    const observed: string[][] = [];
+    const remove = addCloudPrefsAppliedListener(target, (keys) => {
+      observed.push(keys);
+    });
+
+    target.dispatchEvent(new CustomEvent(CLOUD_PREFS_APPLIED_EVENT, {
+      detail: { keys: ['panel-order', 42, STORAGE_KEYS.disabledFeeds] },
+    }));
+    assert.deepEqual(observed, [['panel-order', STORAGE_KEYS.disabledFeeds]]);
+
+    remove();
+    target.dispatchEvent(new CustomEvent(CLOUD_PREFS_APPLIED_EVENT, {
+      detail: { keys: [STORAGE_KEYS.panels] },
+    }));
+    assert.deepEqual(observed, [['panel-order', STORAGE_KEYS.disabledFeeds]]);
+  });
+
+  it('applies cloud-restored preference keys to live app state', () => {
+    const storage = new MemoryStorage();
+    Object.defineProperty(globalThis, 'localStorage', {
+      configurable: true,
+      value: storage,
+    });
+    try {
+      storage.setItem(STORAGE_KEYS.panels, JSON.stringify({
+        map: { name: 'Map', enabled: false, priority: 1 },
+        'live-news': { name: 'Live News', enabled: true, priority: 1 },
+      }));
+      storage.setItem(STORAGE_KEYS.disabledFeeds, JSON.stringify(['feed-a', 'feed-b']));
+
+      const calls = {
+        applyPanelSettings: 0,
+        refreshPanelToggles: 0,
+        refreshSourceToggles: 0,
+        updateSearchIndex: 0,
+        reloadPanelOrderFromStorage: 0,
+      };
+      const ctx = {
+        panelSettings: {
+          map: { name: 'Map', enabled: true, priority: 1 },
+        },
+        disabledSources: new Set<string>(),
+        PANEL_ORDER_KEY: 'panel-order',
+        unifiedSettings: {
+          refreshPanelToggles: () => { calls.refreshPanelToggles += 1; },
+          refreshSourceToggles: () => { calls.refreshSourceToggles += 1; },
+        },
+      };
+
+      applyPreferenceStorageChanges(ctx, [
+        STORAGE_KEYS.panels,
+        STORAGE_KEYS.disabledFeeds,
+        'panel-order',
+      ], {
+        applyPanelSettings: () => { calls.applyPanelSettings += 1; },
+        updateSearchIndex: () => { calls.updateSearchIndex += 1; },
+        reloadPanelOrderFromStorage: () => { calls.reloadPanelOrderFromStorage += 1; },
+      }, {
+        loadPanelSettingsFromStorage: () => ({
+          map: { name: 'Map', enabled: false, priority: 1 },
+          'live-news': { name: 'Live News', enabled: true, priority: 1 },
+        }),
+      });
+
+      assert.equal(ctx.panelSettings.map?.enabled, false);
+      assert.equal(ctx.panelSettings['live-news']?.enabled, true);
+      assert.deepEqual([...ctx.disabledSources], ['feed-a', 'feed-b']);
+      assert.deepEqual(calls, {
+        applyPanelSettings: 1,
+        refreshPanelToggles: 1,
+        refreshSourceToggles: 1,
+        updateSearchIndex: 1,
+        reloadPanelOrderFromStorage: 1,
+      });
+    } finally {
+      delete (globalThis as { localStorage?: Storage }).localStorage;
+    }
   });
 
   it('keeps cloud sync installation after startup writes and before auth subscription', () => {
