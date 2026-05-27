@@ -230,10 +230,6 @@ export class SearchManager implements AppModule {
     });
     this.ctx.searchModal.setOnSelect((result) => this.handleSearchResult(result));
     this.ctx.searchModal.setOnCommand((cmd) => this.handleCommand(cmd));
-
-    // Always wire flight search — check pro status reactively inside the callback
-    // so mid-session sign-ins get the feature without a page reload.
-    {
       this.ctx.searchModal.setOnFlightSearch((callsign) => {
         if (!isProUser() && getAuthState().user?.role !== 'pro') return;
         fetchAircraftPositions({ callsign }).then((positions) => {
@@ -265,7 +261,6 @@ export class SearchManager implements AppModule {
           this.ctx.searchModal.refreshSearch();
         }).catch(() => {/* silent — show no results */});
       });
-    }
 
     this.boundKeydownHandler = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {

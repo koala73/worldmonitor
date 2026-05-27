@@ -32,7 +32,7 @@ const EVENTS_JSON = resolve(OUT, 'events.json');
 // Escape markdown specials so a crafted RSS title can't render as formatting,
 // embed `[label](javascript:...)` links, or break the table layout.
 function escapeMd(s) {
-  return String(s ?? '').replace(/[\\\[\]()<>|*_`~]/g, (ch) => '\\' + ch);
+  return String(s ?? '').replace(/[\\[\]()<>|*_`~]/g, (ch) => '\\' + ch);
 }
 
 const BANDS = [

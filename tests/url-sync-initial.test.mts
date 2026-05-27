@@ -100,7 +100,7 @@ class DeckGLMapStub {
   }
 
   /** Called by the real moveend listener. */
-  simulateMoveEnd(finalLat: number, finalLon: number, finalZoom: number): void {
+  simulateMoveEnd(_finalLat: number, _finalLon: number, finalZoom: number): void {
     this.pendingCenter = null;
     this.state.zoom = finalZoom;
     // (onStateChange?.(this.getState()) would fire here)

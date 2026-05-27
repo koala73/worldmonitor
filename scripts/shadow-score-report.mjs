@@ -119,7 +119,7 @@ function summary(events) {
   return { total, mean, p50: p(0.5), p75: p(0.75), p90: p(0.9), p95: p(0.95), p99: p(0.99), min: scores[0], max: scores[total - 1], hist, gates, byDay, byType, dupesLikely: dupes };
 }
 
-function renderReport(s, events) {
+function renderReport(s, _events) {
   const lines = [];
   const push = (...a) => lines.push(a.join(''));
   push(`# ${KEY} report`);

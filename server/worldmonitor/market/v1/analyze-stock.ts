@@ -263,7 +263,7 @@ function computeDividendCagr(annualTotals: Map<number, number>): number {
   if (earliest <= 0 || latest <= 0) return 0;
   const span = fullYears[fullYears.length - 1]! - fullYears[0]!;
   if (span < 1) return 0;
-  return (Math.pow(latest / earliest, 1 / span) - 1) * 100;
+  return ((latest / earliest) ** (1 / span) - 1) * 100;
 }
 
 export async function fetchDividendProfile(symbol: string, currentPrice: number): Promise<DividendProfile> {

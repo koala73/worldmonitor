@@ -586,8 +586,6 @@ window.addEventListener('unhandledrejection', (e) => {
 
 // CSP violation filter — exported for testability.
 // Returns true if the violation should be suppressed (not reported to Sentry).
-// @ts-ignore — exported for tests, not consumed by other modules
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function shouldSuppressCspViolation(
   disposition: string,
   directive: string,
@@ -723,7 +721,7 @@ const _firstPartyConvexHost = ((): string | null => {
   if (typeof url !== 'string' || url.length === 0) return null;
   try { return new URL(url).hostname; } catch { return null; }
 })();
-// @ts-ignore — expose for tests
+// @ts-expect-error — expose for tests
 window.__shouldSuppressCspViolation = shouldSuppressCspViolation;
 
 // Report CSP violations in the parent page to Sentry.

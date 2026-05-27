@@ -54,7 +54,7 @@ export function parseDigestOnlyUser(raw, nowMs) {
   // ISO 8601 — gate with a rough regex so non-ISO values are rejected
   // by shape, not just by the 48h cap catching a random valid date.
   // Accept YYYY-MM-DD with optional time / fractional / timezone.
-  if (!/^\d{4}-\d{2}-\d{2}(?:[T\s]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+\-]\d{2}:?\d{2})?)?$/.test(untilRaw)) {
+  if (!/^\d{4}-\d{2}-\d{2}(?:[T\s]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/.test(untilRaw)) {
     return {
       kind: 'reject',
       reason: `expiry "${untilRaw}" is not a parseable ISO8601 timestamp`,

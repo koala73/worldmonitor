@@ -191,7 +191,7 @@ async function fetchSource(source) {
       return Date.UTC(y, Math.max(1, m) - 1, Math.max(1, d));
     }
 
-    function resolveLocation(locId) {
+    function resolveLocation(_locId) {
       const ids = locAreaCodeIds;
       const mapped = ids.map((id) => areaCodes.get(id)).filter(Boolean);
       const pairs = [...new Map(mapped.map((item) => [item.code, item.name])).entries()]

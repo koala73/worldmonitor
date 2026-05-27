@@ -164,7 +164,7 @@ async function fetchPbiCharts() {
         if (!yr || !mo || !dy) return null;
         const dateStr = `${yr}-${String(mo).padStart(2, '0')}-${String(dy).padStart(2, '0')}`;
         const d = new Date(dateStr);
-        if (isNaN(d.getTime()) || d < cutoff) return null;
+        if (Number.isNaN(d.getTime()) || d < cutoff) return null;
         return { date: dateStr, value: typeof val === 'number' ? val : (Number(val) || 0) };
       })
       .filter(Boolean)

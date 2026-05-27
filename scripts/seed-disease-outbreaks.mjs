@@ -140,7 +140,7 @@ async function fetchThinkGlobalHealth() {
     for (const rec of records) {
       if (rec.lat == null || rec.lng == null || !rec.disease || !rec.date) continue;
       const publishedMs = new Date(rec.date).getTime();
-      if (isNaN(publishedMs) || publishedMs < cutoff) continue;
+      if (Number.isNaN(publishedMs) || publishedMs < cutoff) continue;
       // Per-item normalization lives in _disease-outbreaks-helpers.mjs
       // (tghNormalizeItem) so tests verify the exact contract without duplicating logic.
       items.push(tghNormalizeItem(rec));

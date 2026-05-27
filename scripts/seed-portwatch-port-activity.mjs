@@ -583,7 +583,7 @@ export function _resetArcgisDateFieldCache() {
 // twice per country — once for each aggregation window (last30, prev30) —
 // in parallel so heavy countries no longer have to serialise through both
 // windows inside a single 90s cap.
-async function paginateWindowInto(portAccumMap, iso3, where, windowKind, { signal, dateField } = {}) {
+async function paginateWindowInto(portAccumMap, _iso3, where, windowKind, { signal, dateField } = {}) {
   // Defensive: callers should always thread dateField through, but if a
   // future caller forgets, fall back to the resolver (idempotent + cached).
   const df = dateField || (await resolveArcgisDateField({ signal }));
@@ -863,8 +863,7 @@ async function redisMgetJson(keys) {
 // fetchAll is the orchestrator (refs → schema → preflight → cache-partition
 // → batched fetch → finalise); splitting it would move complexity into a
 // hidden seam and obscure the linear pipeline. Each stage is short and
-// well-commented; suppress the cognitive-complexity warning on the line.
-// biome-ignore lint/complexity/noExcessiveCognitiveComplexity: orchestrator pipeline
+// well-commented.
 export async function fetchAll(progress, { signal } = {}) {
   const { iso3ToIso2 } = createCountryResolvers();
 

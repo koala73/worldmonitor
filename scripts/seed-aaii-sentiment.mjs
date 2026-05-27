@@ -183,7 +183,7 @@ export function extractSentimentData(rows) {
       date = excelDateToISO(rawDate);
     } else if (typeof rawDate === 'string') {
       const parsed = new Date(rawDate);
-      if (!isNaN(parsed.getTime())) {
+      if (!Number.isNaN(parsed.getTime())) {
         date = parsed.toISOString().slice(0, 10);
       }
     }

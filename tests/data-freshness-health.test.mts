@@ -258,7 +258,7 @@ describe('health freshness ingestion', () => {
 
   it('keeps health freshness failures debounced by updating the timestamp in finally', () => {
     const panelSrc = readFileSync(resolve(repoRoot, 'src/components/StrategicRiskPanel.ts'), 'utf8');
-    const methodMatch = panelSrc.match(/private async refreshHealthFreshness\(\): Promise<void> \{[\s\S]*?\n  \}/);
+    const methodMatch = panelSrc.match(/private async refreshHealthFreshness\(\): Promise<void> \{[\s\S]*?\n {2}\}/);
     assert.ok(methodMatch, 'StrategicRiskPanel.refreshHealthFreshness method should exist');
 
     const methodSrc = methodMatch[0];

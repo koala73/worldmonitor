@@ -129,7 +129,7 @@ async function fetchTier(tier: 'fast' | 'slow', signal: AbortSignal): Promise<Bo
     return { ...EMPTY_TIER_STATE };
   }
 
-  let mergedData = { ...liveData };
+  const mergedData = { ...liveData };
   let tierState: BootstrapTierHydrationState = { source: 'live', updatedAt: null };
   let saveUpdatedAt: number | undefined;
 

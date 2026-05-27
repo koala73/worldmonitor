@@ -1163,7 +1163,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         // allocate the residual to "Other" so the breakdown sums to the Fossil legend value (see #2971).
         // If independent rounding pushes coal+gas above fossilR, trim the larger of the two so
         // the breakdown never sums above the Fossil legend.
-        let overshoot = (coalR + gasR) - fossilR;
+        const overshoot = (coalR + gasR) - fossilR;
         if (overshoot > 0) {
           if (coalR >= gasR) coalR -= overshoot;
           else gasR -= overshoot;

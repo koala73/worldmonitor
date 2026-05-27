@@ -140,7 +140,7 @@ export function getBundleRunStartedAtMs() {
 // Single source of truth shared by seed-bigmac, seed-grocery-basket, seed-fx-rates.
 // EGP: 0.0192 is the most recently observed live rate (2026-03-21 seed run).
 export const SHARED_FX_FALLBACKS = {
-  USD: 1.0000, GBP: 1.2700, EUR: 1.0850, JPY: 0.0067, CHF: 1.1300,
+  USD: 1, GBP: 1.2700, EUR: 1.0850, JPY: 0.0067, CHF: 1.1300,
   CNY: 0.1380, INR: 0.0120, AUD: 0.6500, CAD: 0.7400, NZD: 0.5900,
   BRL: 0.1900, MXN: 0.0490, ZAR: 0.0540, TRY: 0.0290, KRW: 0.0007,
   SGD: 0.7400, HKD: 0.1280, TWD: 0.0310, THB: 0.0280, IDR: 0.000063,

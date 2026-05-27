@@ -56,7 +56,7 @@ function buildHarness(
   let activeCb: (() => void) | null = null;
   let nextId = 1;
   let fakeNow = 1_000;
-  let tickIndex = 0;
+  const tickIndex = 0;
   const harness: Harness = {
     deps: {} as EntitlementWatchdogDeps,
     tickTimes: async (n: number): Promise<void> => {

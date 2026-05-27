@@ -145,7 +145,7 @@ describe('parseCsvRows', () => {
 });
 
 describe('buildCountryRecords', () => {
-  function makeRows(area, period, flowObs, assess = '1') {
+  function makeRows(area, period, flowObs, _assess = '1') {
     return flowObs.map(([flow, obs]) => ({
       area,
       period,
@@ -214,7 +214,7 @@ describe('buildCountryRecords', () => {
     const rows = [{ area: 'GB', period: '2025-10', flow: 'INDPROD', obs: 50000 }];
     const records = buildCountryRecords(rows);
     assert.ok(typeof records[0].seededAt === 'string');
-    assert.ok(!isNaN(Date.parse(records[0].seededAt)));
+    assert.ok(!Number.isNaN(Date.parse(records[0].seededAt)));
   });
 
   it('maps all FLOW_MAP codes to correct record fields', () => {

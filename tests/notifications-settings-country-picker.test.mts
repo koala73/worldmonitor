@@ -580,7 +580,7 @@ describe('mountCountryChipPicker', () => {
     picker.destroy();
     assert.equal(root.innerHTML, '', 'innerHTML cleared on destroy');
     // Sanity: post-destroy click is a no-op (listener removed).
-    let emitted = false;
+    const emitted = false;
     picker.destroy(); // idempotent
     const fakeChip = {
       dataset: { code: 'GB' },

@@ -178,7 +178,7 @@ test('runSeed SIGTERM handler fires once even if multiple SIGTERMs arrive', asyn
           setTimeout(() => { try { child.kill('SIGTERM'); } catch {} }, 50);
         }
       }, 25);
-      child.on('close', (code) => {
+      child.on('close', (_code) => {
         clearInterval(ready);
         assert.equal(sigtermLinesSeen, 1,
           `handler must fire once (process.once); saw ${sigtermLinesSeen} SIGTERM lines\nstderr:\n${stderr}`);

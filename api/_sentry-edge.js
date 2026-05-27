@@ -51,6 +51,6 @@ export const captureSilentError = makeCaptureSilentError({
  *   `captureSilentError` so the isolate is held alive for delivery.
  * @returns {Promise<void>}
  */
-export async function captureEdgeException(err, context = {}, vctx) {
+export async function captureEdgeException(err, context = {}, vctx = undefined) {
   await captureSilentError(err, { extra: context, ctx: vctx });
 }
