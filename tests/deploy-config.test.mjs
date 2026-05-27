@@ -158,6 +158,16 @@ const getHeaderValue = (key) => {
   return header?.value ?? null;
 };
 
+const getNginxHeaderValue = (key) => {
+  const nginxConf = readFileSync(resolve(__dirname, '../docker/nginx-security-headers.conf'), 'utf-8');
+  const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const line = nginxConf
+    .split('\n')
+    .find((candidate) => new RegExp(`^add_header\\s+${escapedKey}\\s+"`, 'i').test(candidate));
+  const match = line?.match(/^add_header\s+\S+\s+"(.*)"\s+always;$/i);
+  return match?.[1].replace(/\\"/g, '"') ?? null;
+};
+
 describe('security header guardrails', () => {
   it('includes required security headers on catch-all route', () => {
     const required = [
@@ -272,6 +282,14 @@ describe('security header guardrails', () => {
     );
   });
 
+  it('Permissions-Policy is in sync between vercel.json header and docker/nginx-security-headers.conf', () => {
+    assert.equal(
+      getNginxHeaderValue('Permissions-Policy'),
+      getHeaderValue('Permissions-Policy'),
+      'Self-hosted docker users must have the same Permissions-Policy as Vercel.'
+    );
+  });
+
   it('CSP connect-src does not allow unencrypted WebSocket (ws:)', () => {
     const csp = getHeaderValue('Content-Security-Policy');
     const connectSrc = csp.match(/connect-src\s+([^;]+)/)?.[1] ?? '';
@@ -370,11 +388,9 @@ describe('security header guardrails', () => {
   });
 
   it('CSP script-src is in sync between vercel.json header and docker/nginx-security-headers.conf', () => {
-    const nginxConf = readFileSync(resolve(__dirname, '../docker/nginx-security-headers.conf'), 'utf-8');
     const headerCsp = getHeaderValue('Content-Security-Policy');
-    const nginxMatch = nginxConf.match(/add_header\s+Content-Security-Policy\s+"([^"]+)"/i);
-    assert.ok(nginxMatch, 'nginx-security-headers.conf must have a Content-Security-Policy header');
-    const nginxCsp = nginxMatch[1];
+    const nginxCsp = getNginxHeaderValue('Content-Security-Policy');
+    assert.ok(nginxCsp, 'nginx-security-headers.conf must have a Content-Security-Policy header');
 
     const headerTokens = getCspDirectiveTokens(headerCsp, 'script-src');
     const nginxTokens = getCspDirectiveTokens(nginxCsp, 'script-src');
