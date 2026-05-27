@@ -202,16 +202,16 @@ const allLayersEnabled: MapLayers = {
   positiveEvents: true,
   kindness: true,
   happiness: false,
-  speciesRecovery: true,
-  renewableInstallations: true,
+  speciesRecovery: false,
+  renewableInstallations: false,
   tradeRoutes: true,
   iranAttacks: false,
   ciiChoropleth: false,
   resilienceScore: false,
   dayNight: true,
-  miningSites: true,
-  processingPlants: true,
-  commodityPorts: true,
+  miningSites: false,
+  processingPlants: false,
+  commodityPorts: false,
   webcams: false,
   diseaseOutbreaks: true,
   storageFacilities: false,
@@ -394,6 +394,13 @@ const SEEDED_DISEASE_OUTBREAKS: DiseaseOutbreakItem[] = [
 const SEEDED_MILITARY_BASES: MilitaryBaseEnriched[] = (MILITARY_BASES as MilitaryBaseEnriched[])
   .map((base) => ({ ...base }));
 
+const commodityAllLayersEnabled: MapLayers = {
+  ...allLayersEnabled,
+  miningSites: true,
+  processingPlants: true,
+  commodityPorts: true,
+};
+
 const energyAllLayersEnabled: MapLayers = {
   ...allLayersEnabled,
   commodityPorts: true,
@@ -402,8 +409,18 @@ const energyAllLayersEnabled: MapLayers = {
   liveTankers: true,
 };
 
+const happyAllLayersEnabled: MapLayers = {
+  ...allLayersEnabled,
+  speciesRecovery: true,
+  renewableInstallations: true,
+};
+
 const seededAllLayers: MapLayers = isEnergyHarnessVariant
   ? energyAllLayersEnabled
+  : SITE_VARIANT === 'commodity'
+  ? commodityAllLayersEnabled
+  : SITE_VARIANT === 'happy'
+  ? happyAllLayersEnabled
   : allLayersEnabled;
 
 const initialLayers: MapLayers = {

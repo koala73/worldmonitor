@@ -80,7 +80,15 @@ const apiPath = (rawUrl: string): string => {
 };
 
 const isExpected401 = (path: string): boolean => {
-  if (PREMIUM_RPC_PATHS.has(path)) return true;
+  if (
+    typeof (PREMIUM_RPC_PATHS as { has?: unknown }).has === 'function' &&
+    (PREMIUM_RPC_PATHS as Set<string>).has(path)
+  ) {
+    return true;
+  }
+  if (Array.isArray(PREMIUM_RPC_PATHS) && PREMIUM_RPC_PATHS.includes(path)) {
+    return true;
+  }
   return AUTH_OR_PREMIUM_401_PREFIXES.some((prefix) => path.startsWith(prefix));
 };
 
