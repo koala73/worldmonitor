@@ -176,6 +176,8 @@ function applyCloudBlob(data: Record<string, unknown>): void {
       } else if (!(key in data)) {
         if (before !== null) changedKeys.push(key);
         localStorage.removeItem(key);
+      } else if (import.meta.env.DEV) {
+        console.warn(`[cloud-prefs] ignoring non-string cloud value for ${key}`);
       }
     }
   } finally {

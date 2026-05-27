@@ -214,15 +214,16 @@ describe('cloud prefs live-restore wiring', () => {
 
   it('keeps cloud sync installation after startup writes and before auth subscription', () => {
     const appSrc = readSource('src/App.ts');
-    const enforceIdx = appSrc.indexOf('this.enforceFreeTierLimits();');
-    const installIdx = appSrc.indexOf('installCloudPrefsSync(SITE_VARIANT);');
-    const subscribeIdx = appSrc.indexOf('this.unsubFreeTier = subscribeAuthState');
+    const installCall = 'installCloudPrefsSync(SITE_VARIANT);';
+    const installCalls = appSrc.match(new RegExp(installCall.replace(/[()]/g, '\\$&'), 'g')) ?? [];
+    const startupOrder = /this\.enforceFreeTierLimits\(\);\s*installCloudPrefsSync\(SITE_VARIANT\);[\s\S]*?this\.unsubFreeTier = subscribeAuthState\(/;
 
-    assert.notEqual(enforceIdx, -1, 'free-tier enforcement call must exist');
-    assert.notEqual(installIdx, -1, 'cloud prefs install call must exist');
-    assert.notEqual(subscribeIdx, -1, 'auth subscription must exist');
-    assert.ok(enforceIdx < installIdx, 'cloud sync must install after startup local writes');
-    assert.ok(installIdx < subscribeIdx, 'cloud sync must install before auth subscription');
+    assert.equal(installCalls.length, 1, 'cloud prefs install call must remain unique');
+    assert.match(
+      appSrc,
+      startupOrder,
+      'cloud sync must install after startup local writes and before auth subscription',
+    );
   });
 
   it('keeps Convex fallback schema version aligned with the browser client', () => {

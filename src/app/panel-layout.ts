@@ -1731,6 +1731,8 @@ export class PanelLayoutManager implements AppModule {
     if (!grid || !bottomGrid) return;
 
     const mountedOrder = this.getMountedPanelOrder(grid, bottomGrid);
+    // If cloud restore lands before initial panel mount, createPanels() will
+    // read the just-written localStorage order during normal startup.
     if (mountedOrder.length === 0) return;
 
     const savedOrder = this.getSavedPanelOrder();

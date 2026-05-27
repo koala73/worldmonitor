@@ -125,7 +125,7 @@ export function buildMigrations(
 }
 
 /**
- * Schema 3 (2026-05-27): canonicalize panel order to the key the runtime
+ * Schema 3: canonicalize panel order to the key the runtime
  * actually reads/writes. `worldmonitor-panel-order` was accidentally placed
  * in CLOUD_SYNC_KEYS, while the app uses `panel-order`.
  */
