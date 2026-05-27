@@ -146,6 +146,11 @@ function mountProWidget(iframe: HTMLIFrameElement): void {
     const last = iframeLastDeliveryMs.get(iframe) ?? 0;
     if (now - last < MIN_DELIVERY_INTERVAL_MS) return;
     iframeLastDeliveryMs.set(iframe, now);
+    // The iframe deliberately uses sandbox="allow-scripts" without
+    // allow-same-origin, so its origin is opaque. A concrete targetOrigin
+    // cannot match that sandbox origin; '*' is the strictest deliverable
+    // target here. The sandbox still gates the HTML write on source,
+    // per-widget id/token, and an allowlisted parent origin from referrer.
     iframe.contentWindow?.postMessage(
       { type: 'wm-html', id: mounted.id, token: mounted.token, html: storedHtml },
       '*',

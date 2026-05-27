@@ -1241,6 +1241,32 @@ describe('PRO widget — store and sanitizer', () => {
     );
   });
 
+  it('PRO widget postMessage targetOrigins match the opaque sandbox model', () => {
+    const parentDelivery = san.match(
+      /iframe\.contentWindow\?\.postMessage\(\s*\{[\s\S]*?type:\s*['"]wm-html['"][\s\S]*?\},\s*(['"])\*\1,\s*\)/,
+    );
+    assert.ok(
+      parentDelivery,
+      'parent-to-sandbox HTML delivery must use "*" because sandbox="allow-scripts" gives the iframe an opaque origin',
+    );
+    assert.ok(
+      san.includes('origin is opaque') && san.includes('per-widget id/token'),
+      'wildcard targetOrigin must be documented as required after source and nonce gating',
+    );
+
+    const readyDelivery = sandbox.match(
+      /window\.parent\.postMessage\(\s*\{[\s\S]*?type:\s*['"]wm-widget-ready['"][\s\S]*?\},\s*parentOrigin,\s*\)/,
+    );
+    assert.ok(
+      readyDelivery,
+      'sandbox-to-parent readiness must target the parsed parentOrigin, not a wildcard',
+    );
+    assert.ok(
+      !/window\.parent\.postMessage\(\s*\{[\s\S]*?type:\s*['"]wm-widget-ready['"][\s\S]*?\},\s*(['"])\*\1/.test(sandbox),
+      'sandbox readiness postMessage must not use wildcard targetOrigin',
+    );
+  });
+
   it('widget sandbox allows approved Vercel previews and rejects lookalike origins', () => {
     assert.ok(
       sandbox.includes("url.hostname === 'worldmonitor.app'")
