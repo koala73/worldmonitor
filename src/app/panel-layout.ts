@@ -867,7 +867,10 @@ export class PanelLayoutManager implements AppModule {
       background-size: 30px 30px;
       display:flex;align-items:center;justify-content:center;
     `;
-    mapPlaceholder.innerHTML = '<span style="color:var(--text-secondary,#8888aa);font-size:0.85rem;">Loading map...</span>';
+    const mapPlaceholderLabel = document.createElement('span');
+    mapPlaceholderLabel.style.cssText = 'color:var(--text-secondary,#8888aa);font-size:0.85rem;';
+    mapPlaceholderLabel.textContent = 'Loading map...';
+    mapPlaceholder.appendChild(mapPlaceholderLabel);
     mapContainer.appendChild(mapPlaceholder);
 
     let mapLoadStarted = false;
