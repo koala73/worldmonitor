@@ -2132,6 +2132,20 @@ export class PanelLayoutManager implements AppModule {
       return grid.querySelector('.add-panel-block');
     };
 
+    const canAppendToGrid = (grid: HTMLElement, clientY: number): boolean => {
+      if (grid !== originalParent) return true;
+      const panelBottoms = Array.from(grid.children)
+        .filter((child): child is HTMLElement =>
+          child instanceof HTMLElement &&
+          child !== el &&
+          child.classList.contains('panel') &&
+          !child.classList.contains('hidden'),
+        )
+        .map((panel) => panel.getBoundingClientRect().bottom);
+      if (panelBottoms.length === 0) return false;
+      return clientY > Math.max(...panelBottoms);
+    };
+
     const commitDrop = (dropPos: DropPosition, clientX: number, clientY: number): boolean => {
       const { grid, panel, insertBefore } = dropPos;
 
@@ -2149,6 +2163,7 @@ export class PanelLayoutManager implements AppModule {
       if (grid === originalParent && isWithinOriginalRect(clientX, clientY)) {
         return false;
       }
+      if (!canAppendToGrid(grid, clientY)) return false;
 
       const referenceNode = getAppendReference(grid);
       if (referenceNode && referenceNode.parentNode !== grid) return false;
@@ -2215,7 +2230,9 @@ export class PanelLayoutManager implements AppModule {
       const { grid, panel, insertBefore } = dropPos;
       if (!dropIndicator) return;
 
-      if (!panel && grid === originalParent && isWithinOriginalRect(clientX, clientY)) {
+      const noOpEmptyDrop = !panel &&
+        ((grid === originalParent && isWithinOriginalRect(clientX, clientY)) || !canAppendToGrid(grid, clientY));
+      if (noOpEmptyDrop) {
         dropIndicator.style.opacity = '0';
         if (lastTargetPanel) {
           lastTargetPanel.classList.remove('panel-drop-target');
