@@ -425,6 +425,16 @@ describe('resilience-ranking snapshots', () => {
           assert.equal(uniqueCodes.size, snapshot.items.length, 'country codes in items[] must be unique');
         });
 
+        it('live ranked items are headline-eligible', () => {
+          for (const item of snapshot.items) {
+            assert.notEqual(
+              item.headlineEligible,
+              false,
+              `${item.countryCode} in items[] must not have headlineEligible=false`,
+            );
+          }
+        });
+
         it('live greyedOut items are either headline-ineligible or below the coverage threshold', () => {
           for (const entry of snapshot.greyedOut) {
             assert.ok(

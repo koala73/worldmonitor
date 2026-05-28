@@ -236,8 +236,7 @@ function computeFormulaScores(scorePayload, countryCode) {
 }
 
 async function verifyDeclaredFormula(headers) {
-  const checks = [];
-  for (const countryCode of FORMULA_CHECK_COUNTRIES) {
+  const checks = await Promise.all(FORMULA_CHECK_COUNTRIES.map(async (countryCode) => {
     const scorePayload = await fetchScore(countryCode, headers);
     const scores = computeFormulaScores(scorePayload, countryCode);
     const declaredFormulaScore = METHODOLOGY_FORMULA === 'pillar-combined-penalized-v1'
@@ -249,20 +248,22 @@ async function verifyDeclaredFormula(headers) {
     const absoluteError = round2(Math.abs(scores.observedOverallScore - declaredFormulaScore));
     const alternateAbsoluteError = round2(Math.abs(scores.observedOverallScore - alternateFormulaScore));
 
-    if (absoluteError > FORMULA_SCORE_TOLERANCE) {
-      throw new Error(
-        `${countryCode} overallScore=${scores.observedOverallScore} does not match declared ${METHODOLOGY_FORMULA} score=${declaredFormulaScore} within tolerance=${FORMULA_SCORE_TOLERANCE} (alternate=${alternateFormulaScore})`,
-      );
-    }
-
-    checks.push({
+    return {
       countryCode,
       observedOverallScore: scores.observedOverallScore,
       declaredFormulaScore,
       alternateFormulaScore,
       absoluteError,
       alternateAbsoluteError,
-    });
+    };
+  }));
+
+  for (const check of checks) {
+    if (check.absoluteError > FORMULA_SCORE_TOLERANCE) {
+      throw new Error(
+        `${check.countryCode} overallScore=${check.observedOverallScore} does not match declared ${METHODOLOGY_FORMULA} score=${check.declaredFormulaScore} within tolerance=${FORMULA_SCORE_TOLERANCE} (alternate=${check.alternateFormulaScore})`,
+      );
+    }
   }
 
   if (!checks.some((check) => check.alternateAbsoluteError > FORMULA_SCORE_TOLERANCE)) {
