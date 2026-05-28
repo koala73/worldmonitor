@@ -16,6 +16,7 @@ jobs:
     outputs:
       code: ${{ steps.diff.outputs.code }}
       digest: ${{ steps.diff.outputs.digest }}
+      validation: ${{ steps.diff.outputs.validation }}
     steps:
       - id: diff
         env:
@@ -24,19 +25,48 @@ jobs:
           if [ "${{ github.event_name }}" = "push" ]; then
             echo "code=true" >> "$GITHUB_OUTPUT"
             echo "digest=true" >> "$GITHUB_OUTPUT"
+            echo "validation=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           FILES=$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.number }}/files" \
             --paginate --jq '.[].filename')
-          CODE=$(echo "$FILES" | grep -vcE '\.md$|^docs/|^src-tauri/|^CHANGELOG\.md$|^LICENSE$|\.github/workflows/(build-desktop|docker-publish)\.yml$' || echo 0)
+          CODE=$(echo "$FILES" | awk '
+            /\.md$/ { next }
+            /^docs\// { next }
+            /^src-tauri\// && $0 !~ /^src-tauri\/sidecar\// { next }
+            /^CHANGELOG\.md$/ { next }
+            /^LICENSE$/ { next }
+            /^\.github\/workflows\/(build-desktop|docker-publish)\.yml$/ { next }
+            { count++ }
+            END { print count + 0 }
+          ')
           echo "code=$( [ "$CODE" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
           # digest-image job: build Dockerfile.digest-notifications when a PR
           # touches its inputs (scripts/, shared/, server/_shared/, api/, the
           # Dockerfile itself, or the root package manifest). Catches the
           # cross-directory-import + native-dep breakage class documented in
           # tests/dockerfile-digest-notifications-imports.test.mjs.
-          DIGEST=$(echo "$FILES" | grep -cE '^(scripts/|shared/|server/_shared/|api/|Dockerfile\.digest-notifications|package\.json|package-lock\.json)' || echo 0)
+          DIGEST=$(echo "$FILES" | awk '
+            /^(scripts\/|shared\/|server\/_shared\/|api\/|Dockerfile\.digest-notifications|package\.json|package-lock\.json)/ { count++ }
+            END { print count + 0 }
+          ')
           echo "digest=$( [ "$DIGEST" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
+          # resilience-validation-smoke job: run the no-secrets artifact/schema
+          # and script-contract gate when the validation bundle, its Dockerfile,
+          # its committed artifacts, or its focused tests change.
+          VALIDATION=$(echo "$FILES" | awk '
+            /^Dockerfile\.seed-bundle-resilience-validation$/ { count++ }
+            /^docs\/methodology\/country-resilience-index\/validation\// { count++ }
+            /^package\.json$/ || /^package-lock\.json$/ { count++ }
+            /^scripts\/benchmark-resilience-external\.mjs$/ { count++ }
+            /^scripts\/backtest-resilience-outcomes\.mjs$/ { count++ }
+            /^scripts\/validate-resilience-sensitivity\.mjs$/ { count++ }
+            /^scripts\/seed-bundle-resilience-validation\.mjs$/ { count++ }
+            /^scripts\/_bundle-runner\.mjs$/ { count++ }
+            /^tests\/(resilience-validation-artifacts-schema|benchmark-resilience-external|backtest-resilience-outcomes|resilience-sensitivity-v2|seed-bundle-resilience-validation)\.test\.(mjs|mts)$/ { count++ }
+            END { print count + 0 }
+          ')
+          echo "validation=$( [ "$VALIDATION" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
 
   unit:
     needs: changes
@@ -71,6 +101,66 @@ jobs:
               exit 1
             }
           done
+
+  sidecar:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run test:sidecar
+
+  convex-tests:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run test:convex
+
+  variant-smoke-full:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    # No secrets are injected here. The smoke allows provider-level
+    # unavailable/stale states and gates app-level boot, variant, 401,
+    # page-error, and expected-panel invariants.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e:variant-smoke:full
+
+  resilience-validation-smoke:
+    needs: changes
+    if: needs.changes.outputs.code == 'true' || needs.changes.outputs.validation == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+      - run: npm ci
+      - run: npm run test:resilience-validation-smoke
 
   digest-image:
     needs: changes

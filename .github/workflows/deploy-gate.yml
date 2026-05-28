@@ -1,7 +1,7 @@
 name: Deploy Gate
 
 # Runs whenever Test or Typecheck completes on a PR/push.
-# Checks whether BOTH workflows have passed for the same commit SHA.
+# Checks whether all required PR smoke gates have passed for the same commit SHA.
 # Posts a commit status on the PR's head SHA so branch protection can see it.
 
 on:
@@ -16,54 +16,61 @@ jobs:
   gate:
     runs-on: ubuntu-latest
     steps:
-      - name: Check unit + typecheck both passed for this SHA
+      - name: Check required PR gates passed for this SHA
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          # Poll check-runs for this SHA and find the latest result for each required job
-          runs=$(gh api "repos/$REPO/commits/$SHA/check-runs" \
-            --jq '.check_runs | map(select(.name == "unit" or .name == "typecheck"))')
+          required='["unit","typecheck","sidecar","convex-tests","variant-smoke-full","resilience-validation-smoke"]'
 
-          unit=$(echo "$runs" | python3 -c "
-          import sys, json
-          runs = json.load(sys.stdin)
-          matches = [r for r in runs if r['name'] == 'unit']
-          if not matches: print('pending')
-          else: print(sorted(matches, key=lambda r: r.get('completed_at') or '')[-1]['conclusion'] or 'pending')
+          # Poll check-runs for this SHA and find the latest result for each required job.
+          runs=$(gh api "repos/$REPO/commits/$SHA/check-runs?per_page=100" \
+            --jq ".check_runs | map(select(.name as \$name | $required | index(\$name)))")
+
+          status=$(RUNS_JSON="$runs" REQUIRED_JOBS="$required" python3 -c "
+          import json
+          import os
+
+          runs = json.loads(os.environ['RUNS_JSON'])
+          required = json.loads(os.environ['REQUIRED_JOBS'])
+          latest = {}
+
+          for name in required:
+            matches = [r for r in runs if r.get('name') == name]
+            if matches:
+              latest_run = sorted(matches, key=lambda r: r.get('completed_at') or '')[-1]
+              latest[name] = latest_run.get('conclusion') or 'pending'
+            else:
+              latest[name] = 'pending'
+
+          print(' '.join(f'{name}={latest[name]}' for name in required))
+          print('pending=' + ','.join(name for name in required if latest[name] == 'pending'))
+          print('failed=' + ','.join(name for name in required if latest[name] not in ('success', 'skipped')))
           ")
 
-          typecheck=$(echo "$runs" | python3 -c "
-          import sys, json
-          runs = json.load(sys.stdin)
-          matches = [r for r in runs if r['name'] == 'typecheck']
-          if not matches: print('pending')
-          else: print(sorted(matches, key=lambda r: r.get('completed_at') or '')[-1]['conclusion'] or 'pending')
-          ")
+          echo "$status"
+          pending=$(echo "$status" | awk -F= '/^pending=/ { print $2 }')
+          failed=$(echo "$status" | awk -F= '/^failed=/ { print $2 }')
 
-          echo "unit=$unit  typecheck=$typecheck"
-
-          if [ "$unit" = "pending" ] || [ "$typecheck" = "pending" ]; then
+          if [ -n "$pending" ]; then
             gh api "repos/$REPO/statuses/$SHA" --method POST \
               --field state="pending" \
               --field context="gate" \
-              --field description="Waiting for unit + typecheck to complete"
+              --field description="Waiting for required PR gates: $pending"
             exit 0
           fi
 
           # Treat "skipped" as passing (docs-only PRs skip code checks)
-          for v in "$unit" "$typecheck"; do
-            if [ "$v" != "success" ] && [ "$v" != "skipped" ]; then
-              gh api "repos/$REPO/statuses/$SHA" --method POST \
-                --field state="failure" \
-                --field context="gate" \
-                --field description="Required checks did not pass (unit=$unit typecheck=$typecheck)"
-              exit 0
-            fi
-          done
+          if [ -n "$failed" ]; then
+            gh api "repos/$REPO/statuses/$SHA" --method POST \
+              --field state="failure" \
+              --field context="gate" \
+              --field description="Required PR gates did not pass: $failed"
+            exit 0
+          fi
 
           gh api "repos/$REPO/statuses/$SHA" --method POST \
             --field state="success" \
             --field context="gate" \
-            --field description="unit + typecheck both passed"
+            --field description="All required PR gates passed"
