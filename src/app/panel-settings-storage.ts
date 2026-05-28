@@ -15,7 +15,7 @@ export interface PanelSettingsNormalizationOptions {
 
 export function normalizeStoredPanelSettings(
   stored: Record<string, PanelConfig> | null | undefined,
-  dynamicPanels: DynamicPanelSetting[] = [],
+  dynamicPanels: DynamicPanelSetting[],
   options: PanelSettingsNormalizationOptions,
 ): Record<string, PanelConfig> {
   const settings: Record<string, PanelConfig> = {};
