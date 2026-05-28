@@ -242,11 +242,13 @@ function pruneRedisValue(key: string, value: unknown, countryRefs: CountryRefere
   }
 
   if (isRecord(value.countries)) {
+    console.warn(`[freeze] generic country-slice fallthrough for key=${key} via top-level "countries" (no explicit prune branch) — confirm this is an intended global feed`);
     const countries = filterCountryMap(value.countries, countryRefs);
     return withReferenceSlice({ ...value, countries }, countryRefs, Object.keys(value.countries).length, Object.keys(countries).length);
   }
 
   if (isRecord(value.byCountry)) {
+    console.warn(`[freeze] generic country-slice fallthrough for key=${key} via top-level "byCountry" (no explicit prune branch) — confirm this is an intended global feed`);
     const byCountry = filterCountryMap(value.byCountry, countryRefs);
     return withReferenceSlice({ ...value, byCountry }, countryRefs, Object.keys(value.byCountry).length, Object.keys(byCountry).length);
   }
@@ -365,6 +367,9 @@ async function main(): Promise<void> {
   loadEnvFile(import.meta.url);
   process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = 'true';
 
+  // Captured once at startup so the committed timestamp reflects when the
+  // Redis snapshot was taken, not when post-capture recompute finished.
+  const capturedAt = new Date().toISOString();
   const countries = parseListArg('countries', DEFAULT_COUNTRIES);
   const dimensions = parseListArg('dimensions', DEFAULT_DIMENSIONS) as ResilienceDimensionId[];
   const countryRefs = buildCountryReferences(countries);
@@ -425,7 +430,7 @@ async function main(): Promise<void> {
   const manifestForRecompute: ResilienceReferenceManifest = {
     schemaVersion: 1,
     referenceEdition: '2026',
-    capturedAt: new Date().toISOString(),
+    capturedAt,
     formula,
     sample: { countries, dimensions },
     tolerances: {
@@ -466,7 +471,7 @@ async function main(): Promise<void> {
   const manifest = {
     schemaVersion: 1,
     referenceEdition: '2026',
-    capturedAt: new Date().toISOString(),
+    capturedAt,
     captureSource: 'production Upstash Redis snapshot',
     formula,
     sourceControl: {

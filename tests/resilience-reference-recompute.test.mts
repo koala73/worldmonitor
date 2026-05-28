@@ -130,8 +130,10 @@ describe('country resilience reference-edition recompute artifact', () => {
     assert.ok((cyber.threats?.length ?? 0) < (keys['cyber:threats:v2'].sourceRecordCount ?? 0));
     assert.ok((displacement.summary?.countries?.length ?? 0) < (keys['displacement:summary:v1:2026'].sourceRecordCount ?? 0));
     assert.ok((gps.hexes?.length ?? 0) < (keys['intelligence:gpsjam:v2'].sourceRecordCount ?? 0));
+    const byCountryKeys = Object.keys(threatSummary.byCountry ?? {});
+    assert.ok(byCountryKeys.length > 0, 'news threat slice must retain at least one sampled country');
     assert.ok(
-      Object.keys(threatSummary.byCountry ?? {}).every((countryCode) => EXPECTED_COUNTRIES.includes(countryCode)),
+      byCountryKeys.every((countryCode) => EXPECTED_COUNTRIES.includes(countryCode)),
       'news threat slice must not retain non-sampled countries',
     );
   });
