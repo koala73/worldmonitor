@@ -11,72 +11,6 @@ import { VARIANT_META, type VariantMeta } from './src/config/variant-meta';
 // Env-dependent constants moved inside defineConfig function
 
 
-// Panel chunk assignment — derived from src/config/panels.ts variant definitions.
-// Panels in 3+ variants go to core-panels. Panels in 1-2 variants go to their
-// most specific variant chunk. Base components always go to core-panels.
-const CORE_PANEL_FILES = new Set([
-  // Base components and shared infrastructure
-  'Panel', 'VirtualList', 'Map', 'DeckGLMap', 'MapContainer', 'MapPopup',
-  'SignalModal', 'PlaybackControl', 'SearchModal', 'MobileWarningModal',
-  'PizzIntIndicator', 'LlmStatusIndicator', 'IntelligenceGapBadge',
-  'UnifiedSettings', 'BreakingNewsBanner', 'ResilienceWidget', 'StatusPanel',
-  'AviationCommandBar',
-  // Panels in 3+ variants (full, tech, finance, commodity share many)
-  'NewsPanel', 'MarketPanel', 'LiveNewsPanel', 'LiveWebcamsPanel',
-  'PinnedWebcamsPanel', 'InsightsPanel', 'PredictionPanel', 'MonitorPanel',
-  'EconomicPanel', 'MacroSignalsPanel', 'ETFFlowsPanel', 'StablecoinPanel',
-  'WorldClockPanel', 'AirlineIntelPanel',
-  // Shared across full + finance + commodity (3 variants)
-  // Note: CommoditiesPanel and HeatmapPanel are sub-exports of MarketPanel.ts, not standalone files
-  'EnergyComplexPanel', 'OilInventoriesPanel', 'LatestBriefPanel',
-  'PipelineStatusPanel', 'PositioningPanel',
-  'TradePolicyPanel', 'SupplyChainPanel',
-  'SanctionsPressurePanel', 'GulfEconomiesPanel', 'ConsumerPricesPanel',
-  'LiquidityShiftsPanel', 'GoldIntelligencePanel',
-  // Programmatic / multi-variant panels (used dynamically or across 2+ variants)
-  'CustomWidgetPanel', 'McpDataPanel', 'CountryBriefPanel',
-  'CountryDeepDivePanel', 'TechHubsPanel', 'RegulationPanel',
-]);
-
-const HAPPY_PANEL_FILES = new Set([
-  'PositiveNewsFeedPanel', 'ProgressChartsPanel', 'CountersPanel',
-  'HeroSpotlightPanel', 'BreakthroughsTickerPanel', 'GoodThingsDigestPanel',
-  'SpeciesComebackPanel', 'RenewableEnergyPanel', 'GivingPanel',
-]);
-
-const FINANCE_PANEL_FILES = new Set([
-  'StockAnalysisPanel', 'StockBacktestPanel', 'DailyMarketBriefPanel',
-  'FearGreedPanel', 'AAIISentimentPanel', 'MarketBreadthPanel',
-  'MacroTilesPanel', 'FSIPanel', 'YieldCurvePanel',
-  'EarningsCalendarPanel', 'EconomicCalendarPanel', 'CotPositioningPanel',
-  'WsbTickerScannerPanel',
-  'GroceryBasketPanel', 'BigMacPanel', 'FuelPricesPanel', 'FaoFoodPriceIndexPanel',
-]);
-
-const FULL_PANEL_FILES = new Set([
-  'GdeltIntelPanel', 'CIIPanel', 'CascadePanel',
-  'StrategicRiskPanel', 'StrategicPosturePanel',
-  'CorrelationPanel', 'MilitaryCorrelationPanel', 'EscalationCorrelationPanel',
-  'EconomicCorrelationPanel', 'DisasterCorrelationPanel',
-  'DisplacementPanel', 'ClimateAnomalyPanel', 'PopulationExposurePanel',
-  'SecurityAdvisoriesPanel', 'DefensePatentsPanel',
-  'RadiationWatchPanel', 'ThermalEscalationPanel', 'OrefSirensPanel',
-  'TelegramIntelPanel', 'InvestmentsPanel', 'NationalDebtPanel',
-  'MarketImplicationsPanel', 'SatelliteFiresPanel', 'HormuzPanel',
-  'UcdpEventsPanel', 'ClimateNewsPanel', 'DiseaseOutbreaksPanel',
-  'SocialVelocityPanel', 'EnergyCrisisPanel',
-  'ChokepointStripPanel', 'StorageFacilityMapPanel', 'FuelShortagePanel',
-  'EnergyDisruptionsPanel', 'EnergyRiskOverviewPanel',
-  // Full-only panels
-  'ForecastPanel', 'ChatAnalystPanel', 'CrossSourceSignalsPanel',
-  'DeductionPanel', 'GeoHubsPanel',
-]);
-
-const TECH_PANEL_FILES = new Set([
-  'TechEventsPanel', 'ServiceStatusPanel', 'InternetDisruptionsPanel',
-  'TechReadinessPanel', 'RuntimeConfigPanel',
-]);
-
 const brotliCompressAsync = promisify(brotliCompress);
 const BROTLI_EXTENSIONS = new Set(['.js', '.mjs', '.css', '.html', '.svg', '.json', '.txt', '.xml', '.wasm']);
 
@@ -92,79 +26,6 @@ const LAZY_HTML_PRELOAD_CHUNKS = ['maplibre', 'deck-stack', 'MapContainer'] as c
 const LAZY_HTML_PRELOAD_RE = new RegExp(
   `/(${LAZY_HTML_PRELOAD_CHUNKS.join('|')})-[A-Za-z0-9_-]+\\.js$`,
 );
-
-// Panel-cluster manualChunks map. Splits the previously monolithic ~2.3MB
-// `panels` chunk into per-domain chunks so cache invalidation is local to
-// the cluster a panel lives in and per-variant builds can prune unused
-// clusters. Unmapped panels fall through to a generic `panels` chunk.
-const PANEL_CLUSTER: Record<string, string> = {
-  // Markets / equities / crypto positioning
-  AAIISentiment: 'panels-markets', CotPositioning: 'panels-markets',
-  ETFFlows: 'panels-markets', EarningsCalendar: 'panels-markets',
-  EconomicCalendar: 'panels-markets', FearGreed: 'panels-markets',
-  GoldIntelligence: 'panels-markets', LiquidityShifts: 'panels-markets',
-  MacroSignals: 'panels-markets', Market: 'panels-markets',
-  MarketBreadth: 'panels-markets', MarketImplications: 'panels-markets',
-  Positioning: 'panels-markets', Stablecoin: 'panels-markets',
-  StockAnalysis: 'panels-markets', StockBacktest: 'panels-markets',
-  WsbTickerScanner: 'panels-markets', YieldCurve: 'panels-markets',
-  // Energy / commodities / supply infra
-  ChokepointStrip: 'panels-energy', EnergyComplex: 'panels-energy',
-  EnergyCrisis: 'panels-energy', EnergyDisruptions: 'panels-energy',
-  EnergyRiskOverview: 'panels-energy', FuelPrices: 'panels-energy',
-  FuelShortage: 'panels-energy', Hormuz: 'panels-energy',
-  OilInventories: 'panels-energy', PipelineStatus: 'panels-energy',
-  StorageFacilityMap: 'panels-energy', RenewableEnergy: 'panels-energy',
-  // Defense / military / aviation
-  AirlineIntel: 'panels-defense', DefensePatents: 'panels-defense',
-  OrefSirens: 'panels-defense', StrategicPosture: 'panels-defense',
-  StrategicRisk: 'panels-defense', ThermalEscalation: 'panels-defense',
-  UcdpEvents: 'panels-defense',
-  // News / feeds / briefs
-  BreakthroughsTicker: 'panels-news', ClimateNews: 'panels-news',
-  DailyMarketBrief: 'panels-news', GdeltIntel: 'panels-news',
-  GoodThingsDigest: 'panels-news', LatestBrief: 'panels-news',
-  LiveNews: 'panels-news', News: 'panels-news',
-  PositiveNewsFeed: 'panels-news', TelegramIntel: 'panels-news',
-  // Macro / prices / trade
-  BigMac: 'panels-economy', ConsumerPrices: 'panels-economy',
-  Economic: 'panels-economy',
-  FaoFoodPriceIndex: 'panels-economy', FSI: 'panels-economy',
-  GroceryBasket: 'panels-economy', GulfEconomies: 'panels-economy',
-  Investments: 'panels-economy', MacroTiles: 'panels-economy',
-  NationalDebt: 'panels-economy', SanctionsPressure: 'panels-economy',
-  SupplyChain: 'panels-economy', TradePolicy: 'panels-economy',
-  // Country briefs / signals / monitors / agent surfaces.
-  // CorrelationPanel base lives here, so all *Correlation consumers MUST stay
-  // in this cluster — splitting them across clusters caused TDZ on init.
-  ChatAnalyst: 'panels-intel', CII: 'panels-intel',
-  Cascade: 'panels-intel', Correlation: 'panels-intel',
-  CountryBrief: 'panels-intel', CountryDeepDive: 'panels-intel',
-  CrossSourceSignals: 'panels-intel', CustomWidget: 'panels-intel',
-  Deduction: 'panels-intel',
-  DisasterCorrelation: 'panels-intel',
-  EconomicCorrelation: 'panels-intel',
-  EscalationCorrelation: 'panels-intel',
-  MilitaryCorrelation: 'panels-intel',
-  Forecast: 'panels-intel',
-  HeroSpotlight: 'panels-intel', Insights: 'panels-intel',
-  LiveWebcams: 'panels-intel', McpData: 'panels-intel',
-  Monitor: 'panels-intel', PinnedWebcams: 'panels-intel',
-  Prediction: 'panels-intel', ProgressCharts: 'panels-intel',
-  Regulation: 'panels-intel',
-  // Disasters / climate / connectivity / society
-  ClimateAnomaly: 'panels-risk', Counters: 'panels-risk',
-  DiseaseOutbreaks: 'panels-risk',
-  Displacement: 'panels-risk', GeoHubs: 'panels-risk',
-  Giving: 'panels-risk', InternetDisruptions: 'panels-risk',
-  PopulationExposure: 'panels-risk', RadiationWatch: 'panels-risk',
-  RuntimeConfig: 'panels-risk', SatelliteFires: 'panels-risk',
-  SecurityAdvisories: 'panels-risk', ServiceStatus: 'panels-risk',
-  SocialVelocity: 'panels-risk', SpeciesComeback: 'panels-risk',
-  Status: 'panels-risk', TechEvents: 'panels-risk',
-  TechHubs: 'panels-risk', TechReadiness: 'panels-risk',
-  WorldClock: 'panels-risk',
-};
 
 function brotliPrecompressPlugin(): Plugin {
   return {
@@ -1083,24 +944,13 @@ export default defineConfig(({ mode }) => {
                 return 'sentry';
               }
             }
-            if (id.includes('/src/components/') && id.endsWith('.ts')) {
-              const match = id.match(/\/([^/]+)\.ts$/);
-              if (match) {
-                const fileName = match[1];
-                if (CORE_PANEL_FILES.has(fileName)) return 'core-panels';
-                if (HAPPY_PANEL_FILES.has(fileName)) return 'happy-panels';
-                if (FINANCE_PANEL_FILES.has(fileName)) return 'finance-panels';
-                if (FULL_PANEL_FILES.has(fileName)) return 'full-panels';
-                if (TECH_PANEL_FILES.has(fileName)) return 'tech-panels';
-                // Fail on unassigned panel files — add new panels to the correct set above
-                if (fileName.endsWith('Panel') || fileName === 'Panel') {
-                  throw new Error(
-                    `[manualChunks] Unassigned panel component: ${fileName}. ` +
-                    `Add it to CORE_PANEL_FILES, FULL_PANEL_FILES, HAPPY_PANEL_FILES, ` +
-                    `FINANCE_PANEL_FILES, or TECH_PANEL_FILES in vite.config.ts.`
-                  );
-                }
-              }
+            if (id.includes('/src/components/') && id.endsWith('Panel.ts')) {
+              // Keep panel modules in one chunk for now. Splitting them by
+              // variant or domain exposes ESM TDZ crashes because several
+              // panel modules still create generated service clients at the
+              // top level. Revisit finer panel chunking only after those
+              // imports are lazy-initialized.
+              return 'panels';
             }
             // Give lazy-loaded locale chunks a recognizable prefix so the
             // service worker can exclude them from precache (en.json is
