@@ -130,16 +130,17 @@ npm run build:full       # Production build
 
 ## License
 
-**AGPL-3.0** for non-commercial use. **Commercial license** required for any commercial use.
+**AGPL-3.0-only** for the source code. Commercial use is permitted under the AGPL when you comply with its copyleft and source-availability terms.
 
 | Use Case | Allowed? |
 |----------|----------|
-| Personal / research / educational | Yes |
-| Self-hosted (non-commercial) | Yes, with attribution |
-| Fork and modify (non-commercial) | Yes, share source under AGPL-3.0 |
-| Commercial use / SaaS / rebranding | Requires commercial license |
+| Personal / research / educational | Yes, under AGPL-3.0-only |
+| Self-hosted instance | Yes, under AGPL-3.0-only |
+| Fork and modify | Yes, share source under AGPL-3.0-only when required |
+| Commercial use / SaaS | Yes, under AGPL-3.0-only when you comply with AGPL obligations |
+| Private-source proprietary use or official branding rights | Separate commercial or trademark permission needed |
 
-See [LICENSE](LICENSE) for full terms. For commercial licensing, contact the maintainer.
+See [LICENSE](LICENSE) for the full code license and [docs/license.mdx](docs/license.mdx) for a plain-language summary. Commercial licensing is available as an alternative option for teams that need non-AGPL terms.
 
 Copyright (C) 2024-2026 Elie Habib. All rights reserved.
 
