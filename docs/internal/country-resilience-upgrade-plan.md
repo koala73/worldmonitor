@@ -98,11 +98,12 @@ citation-grade index and a live operational monitor as one object"*.)
 - Inputs frozen as of a cut date.
 - Scores and ranks fixed for 12 months.
 - Methodology locked to a specific version string.
-- Snapshot manifest: SHA-pinned Redis dump + commit SHA of the scorer code
-  + retrieval date + URL + SHA of every third-party file used.
-- Reproducibility notebook under
-  `docs/methodology/country-resilience-index/reference-edition/2026/reproduce.ipynb`
-  that regenerates every published number from the manifest.
+- Snapshot manifest: SHA-pinned, country-sliced Redis input dump + commit SHA
+  of the scorer code + retrieval date + URL + SHA of every third-party file
+  used.
+- Reproducibility script under
+  `docs/methodology/country-resilience-index/reference-edition/2026/recompute.mts`
+  that regenerates the sampled published score-cache values from the manifest.
 - Published as signed JSON + CSV + methodology PDF.
 - **This is what external citations point at.**
 
@@ -767,8 +768,9 @@ tools.
   and only when, all five conditions are met:
   (a) every dimension has a required subsection in the methodology mdx
       (linter-enforced);
-  (b) the reproducibility notebook regenerates every published score from the
-      snapshot manifest to within ≤0.5 points;
+  (b) the reference-edition recompute script regenerates the sampled published
+      score-cache values from the country-sliced snapshot manifest to within
+      ≤0.02 points;
   (c) sensitivity suite shows no single-axis perturbation moving a top-50
       country by more than 5 rank positions;
   (d) cross-index benchmark hypotheses are within expected bands for all 5
@@ -793,7 +795,7 @@ tools.
 - **T3.11** First cut of the **2026 Reference Edition** shipped as a signed
   JSON + CSV + PDF bundle under
   `docs/methodology/country-resilience-index/reference-edition/2026/` with a
-  reproducibility notebook and snapshot manifest.
+  reproducibility script and country-sliced snapshot manifest.
 
 **Phase 3 acceptance:**
 - [ ] Widget renders waterfall + peer comparison + freshness badges + pillar
@@ -806,7 +808,7 @@ tools.
 - [ ] **Internal methodology gate (T3.8a) met**, all five conditions passing.
       This is the shipping gate. External review is parallel.
 - [ ] 2026 Reference Edition published: signed JSON + CSV + PDF +
-      reproducibility notebook + snapshot manifest.
+      reproducibility script + snapshot manifest.
 - [ ] Scorecard re-rating (internal, pre-external-review): all six axes
       ≥9.0.
 - [ ] External reviewer sign-off tracked as a follow-up workstream; once
@@ -932,7 +934,7 @@ rewrites the key.
 - [ ] Waterfall chart + peer comparison + change attribution in widget.
 - [ ] Pillar toggle (structural / live-shock / recovery / overall) in widget.
 - [ ] **Internal methodology gate (T3.8a) met** (shipping gate): every
-      dimension has a mdx subsection, reproducibility notebook passes,
+      dimension has a mdx subsection, reference recompute script passes,
       sensitivity ≤5 top-50 swing, benchmark hypothesis gates above,
       per-family backtest gates above.
 - [ ] **External expert review workstream (T3.8b)** in flight; the public
@@ -941,7 +943,7 @@ rewrites the key.
 - [ ] Licensing & Legal Review workstream deliverables 1–4 complete before
       any Phase 2 T2.4 public artifact lands.
 - [ ] 2026 Reference Edition published as signed JSON + CSV + PDF + snapshot
-      manifest + reproducibility notebook.
+      manifest + reproducibility script.
 - [ ] T1.1 ceiling-bug investigation completed: regression test written,
       root cause identified, and EITHER the fix landed if a real bug is
       reproduced OR the origin document's changelog updated if the symptom
@@ -980,7 +982,7 @@ third-party behavior, or uncontrollable journalism/citation dynamics.
 ones"*.)
 
 - **Reproducibility pass rate**: % of published Reference Edition scores
-  that the reproducibility notebook regenerates from the snapshot manifest
+  that the reference recompute script regenerates from the snapshot manifest
   to within ≤0.5 points. **Target: 100%.**
 - **Stability under perturbation**: maximum rank change of any top-50 country
   when any single sensitivity axis is perturbed at its ±1σ level.

@@ -620,9 +620,9 @@ Given a Redis snapshot at time T:
 3. Read the live-signal keys (UCDP, UNHCR, OFAC, outages, cyber threats, prices, shipping stress, and so on) for the country's slice.
 4. For each of the 20 active dimensions, apply the formulas in the Scoring Formula section with the goalposts from the Dimensions and Indicators tables. For missing signals, consult the Imputation Taxonomy table in this document.
 5. Aggregate dimension scores into domain scores via coverage-weighted mean.
-6. Aggregate domain scores into the overall score via domain-weighted sum.
+6. Aggregate domain scores into the three pillar scores, then compute the overall score with the pillar-combined penalized formula used by the production `pc` cache tag.
 
-A reference Python notebook under `docs/methodology/country-resilience-index/reference-edition/` is tracked as a future deliverable and will regenerate every published score from the snapshot manifest.
+The reference-edition bundle under `docs/methodology/country-resilience-index/reference-edition/2026/` includes a frozen country-sliced Redis input manifest, the production score-cache values used as the published baseline, and a deterministic recompute script for the sampled published score run. The manifest records which large global feeds were pruned to the sampled countries so the artifact remains auditable without committing full live-event dumps.
 
 ## Changelog
 

@@ -352,7 +352,7 @@ function classifyResilienceLevel(score: number): string {
   return 'low';
 }
 
-function buildDimensionList(
+export function buildDimensionList(
   scores: Record<
     ResilienceDimensionId,
     {
@@ -438,7 +438,7 @@ export function penalizedPillarScore(pillars: { score: number; weight: number }[
   return Math.round(weighted * penalty * 100) / 100;
 }
 
-function buildDomainList(dimensions: ResilienceDimension[]): ResilienceDomain[] {
+export function buildDomainList(dimensions: ResilienceDimension[]): ResilienceDomain[] {
   const grouped = new Map<ResilienceDomainId, ResilienceDimension[]>();
   for (const domainId of RESILIENCE_DOMAIN_ORDER) grouped.set(domainId, []);
 
