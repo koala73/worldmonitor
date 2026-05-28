@@ -7,7 +7,7 @@ This bundle is the reproducibility artifact for the Country Resilience Index ref
 - `manifest.json` - frozen country-sliced Redis key/value snapshot, score-cache metadata, sampled countries, sampled dimensions, pinned reference outputs, and tolerances.
 - `recompute.mts` - local verifier that recomputes the sampled scores from `manifest.json`.
 
-The 2026 sample covers Norway, the United States, Turkey, and Yemen. The pinned dimensions cover governance, conflict/border pressure, fiscal space, active reserve adequacy (`liquidReserveAdequacy`), external-debt coverage, and sovereign fiscal buffers. The retired `reserveAdequacy` dimension remains in the production schema for structural continuity, but the active reserve mechanism is `liquidReserveAdequacy`.
+The 2026 sample covers Norway, the United States, Turkey, Yemen, Switzerland, the United Arab Emirates, India, Syria, Nauru, and Eritrea — chosen to span balanced high-resilience, large economies, GCC/sovereign-wealth, imbalanced conflict states, a greyed microstate, and a low-coverage/high-imputation case. The pinned dimensions cover governance, conflict/border pressure, fiscal space, active reserve adequacy (`liquidReserveAdequacy`), external-debt coverage, and sovereign fiscal buffers. The retired `reserveAdequacy` dimension remains in the production schema for structural continuity, but the active reserve mechanism is `liquidReserveAdequacy`.
 
 ## Refresh
 

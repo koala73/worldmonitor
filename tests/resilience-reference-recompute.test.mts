@@ -26,7 +26,7 @@ const MANIFEST_PATH = path.join(
   'manifest.json',
 );
 
-const EXPECTED_COUNTRIES = ['NO', 'US', 'TR', 'YE'];
+const EXPECTED_COUNTRIES = ['NO', 'US', 'TR', 'YE', 'CH', 'AE', 'IN', 'SY', 'NR', 'ER'];
 const EXPECTED_DIMENSIONS = [
   'governanceInstitutional',
   'borderSecurity',
