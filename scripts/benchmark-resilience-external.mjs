@@ -57,8 +57,8 @@ export const HYPOTHESES = [
   // Higher WM resilience ↔ higher human development: expect positive
   // correlation with HDI (0-1, higher = more developed).
   { index: 'HDI', pillar: 'overall', direction: 'positive', minSpearman: 0.65 },
-  // Higher WM resilience ↔ lower disaster risk: expect negative correlation
-  // with WRI (0-100, higher = more risk).
+  // Higher WM resilience ↔ lower disaster vulnerability: expect negative
+  // correlation with WRI's V component (0-100, higher = more vulnerable).
   { index: 'WorldRiskIndex', pillar: 'overall', direction: 'negative', minSpearman: 0.55 },
 ];
 
@@ -213,8 +213,10 @@ export async function fetchInformGlobal() {
 
 // WorldRiskIndex — HDX publishes a multi-year "trend" CSV
 // (worldriskindex-trend.csv) with columns: WRI.Country, ISO3.Code, Year, W
-// (composite), plus pillar components. Filter to each country's latest
-// year and use W as the composite score (0-100 scale).
+// (composite), E (exposure), and V (vulnerability), plus pillar components.
+// Filter to each country's latest year and use V because the full W composite
+// is dominated by hazard exposure while CRI's overall score is a resilience /
+// vulnerability construct.
 export async function fetchWorldRiskIndex() {
   const { text, source } = await fetchCSV(WRI_CSV_URL, 'WorldRiskIndex');
   if (!text) return { scores: new Map(), source };
@@ -225,7 +227,7 @@ export async function fetchWorldRiskIndex() {
     const code = toIso2(row['ISO3.Code'] || row.iso3 || row.ISO3);
     if (!code) continue;
     const year = parseInt(row.Year ?? row.year, 10);
-    const val = parseFloat(row.W ?? row.WRI ?? row.worldriskindex);
+    const val = parseFloat(row.V ?? row['WRI.Vulnerability'] ?? row.Vulnerability ?? row.vulnerability);
     if (!Number.isFinite(year) || !Number.isFinite(val)) continue;
     const prev = latestYear.get(code);
     if (prev == null || year > prev) {
@@ -350,8 +352,8 @@ function generateCommentary(outlier, indexName, wmScores, _extScores) {
       ? `${countryCode}: WM resilience tracks HDI human-development levels; external rank ${direction} than expected`
       : `${countryCode}: WM resilience and HDI diverge — HDI weights health/education/income; WM weights stress buffers`,
     'WorldRiskIndex': wmHigh
-      ? `${countryCode}: WM rates resilience high; WRI emphasizes exposure/vulnerability dimensions differently`
-      : `${countryCode}: WM rates resilience low; WRI susceptibility weighting drives rank ${direction}`,
+      ? `${countryCode}: WM rates resilience high; WRI vulnerability components weight social/coping/adaptive capacity differently`
+      : `${countryCode}: WM rates resilience low; WRI vulnerability weighting drives rank ${direction}`,
   };
   return templates[indexName] || `${countryCode}: WM diverges from ${indexName} by ${residual} sigma`;
 }
@@ -497,7 +499,7 @@ export async function runBenchmark(opts = {}) {
 
   const result = {
     generatedAt: Date.now(),
-    license: 'INFORM Risk (JRC) CC-BY 4.0, UNDP HDI public, WorldRiskIndex (HDX) CC-BY 4.0. Internal validation only.',
+    license: 'INFORM Risk (JRC) CC-BY 4.0, UNDP HDI public, WorldRiskIndex vulnerability component (HDX) CC-BY 4.0. Internal validation only.',
     hypotheses: hypothesisResults,
     correlations,
     outliers: allOutliers,
@@ -532,11 +534,28 @@ export async function runBenchmark(opts = {}) {
 }
 
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+function isStrictValidationCli(argv = process.argv, env = process.env) {
+  return argv.includes('--strict') || /^(1|true|yes|on)$/i.test(String(env.RESILIENCE_VALIDATION_STRICT ?? ''));
+}
+
+function benchmarkCliExitCode(result, strict = false) {
+  if (result?.skipped) return strict ? 1 : 0;
+  const failed = (result?.hypotheses ?? []).filter(h => !h.pass);
+  return failed.length > 0 ? 1 : 0;
+}
+
 if (isMain) {
+  const strict = isStrictValidationCli();
   runBenchmark()
     .then(result => {
       if (result.skipped) {
-        console.log(`\n[benchmark] Skipped: ${result.reason}`);
+        const msg = `\n[benchmark] Skipped: ${result.reason}`;
+        if (strict) {
+          console.error(msg);
+        } else {
+          console.warn(`${msg} (non-strict cron mode; leaving previous artifact in place)`);
+        }
+        process.exitCode = benchmarkCliExitCode(result, strict);
         return;
       }
       console.log('\n=== Benchmark Results ===');
@@ -552,9 +571,19 @@ if (isMain) {
       for (const o of (result.outliers ?? []).slice(0, 10)) {
         console.log(`  ${o.countryCode} (${o.index}): residual=${o.residual} - ${o.commentary}`);
       }
+      const failed = (result.hypotheses ?? []).filter(h => !h.pass);
+      if (failed.length > 0) {
+        console.error(`\n[benchmark] ${failed.length} hypothesis gate(s) failed: ${failed.map(h => h.index).join(', ')}`);
+      }
+      process.exitCode = benchmarkCliExitCode(result, strict);
     })
     .catch(err => {
       console.error('[benchmark] Fatal:', err);
       process.exit(1);
     });
 }
+
+export {
+  benchmarkCliExitCode,
+  isStrictValidationCli,
+};

@@ -13,8 +13,14 @@ import {
   detectConflictSpillover,
   findFalseNegatives,
   findFalsePositives,
+  fetchResilienceRankingScores,
   EVENT_FAMILIES,
+  backtestCliExitCode,
+  isStrictValidationCli,
   SOVEREIGN_STRESS_COUNTRIES_2024_2025,
+  FX_STRESS_COUNTRIES_2024_2025,
+  POWER_OUTAGE_COUNTRIES_2024_2025,
+  SANCTIONS_SHOCK_COUNTRIES_2024_2025,
   AUC_THRESHOLD,
   GATE_WIDTH,
 } from '../scripts/backtest-resilience-outcomes.mjs';
@@ -140,8 +146,15 @@ describe('event detectors', () => {
       assert.equal(labels.get('JP'), false);
     });
 
-    it('returns empty map for null or malformed data', () => {
-      assert.equal(detectFxStress(null).size, 0);
+    it('uses the frozen holdout list when no live payload is provided', () => {
+      const labels = detectFxStress(null);
+      assert.equal(labels.size, FX_STRESS_COUNTRIES_2024_2025.size);
+      assert.equal(labels.get('AR'), true);
+      assert.equal(labels.get('EG'), true);
+      assert.equal(labels.get('NG'), true);
+    });
+
+    it('returns empty map for malformed data', () => {
       assert.equal(detectFxStress({}).size, 0);
       assert.equal(detectFxStress({ rates: 'not-an-array' }).size, 0);
     });
@@ -187,8 +200,15 @@ describe('event detectors', () => {
       assert.equal(labels.get('IR'), true);
     });
 
-    it('returns empty for null data or unrecognized country names', () => {
-      assert.equal(detectPowerOutages(null).size, 0);
+    it('uses the frozen holdout list when no live payload is provided', () => {
+      const labels = detectPowerOutages(null);
+      assert.equal(labels.size, POWER_OUTAGE_COUNTRIES_2024_2025.size);
+      assert.equal(labels.get('CU'), true);
+      assert.equal(labels.get('EC'), true);
+      assert.equal(labels.get('YE'), true);
+    });
+
+    it('returns empty for unrecognized country names', () => {
       assert.equal(detectPowerOutages({ outages: [{ country: 'Westeros' }] }).size, 0);
     });
   });
@@ -271,8 +291,15 @@ describe('event detectors', () => {
       assert.equal(labels.size, 0, 'no country above threshold — none flagged');
     });
 
-    it('returns empty for null data', () => {
-      assert.equal(detectSanctionsShocks(null).size, 0);
+    it('uses the frozen holdout list when no live payload is provided', () => {
+      const labels = detectSanctionsShocks(null);
+      assert.equal(labels.size, SANCTIONS_SHOCK_COUNTRIES_2024_2025.size);
+      assert.equal(labels.get('RU'), true);
+      assert.equal(labels.get('IR'), true);
+      assert.equal(labels.get('YE'), true);
+    });
+
+    it('returns empty for malformed data', () => {
       assert.equal(detectSanctionsShocks({}).size, 0);
     });
   });
@@ -326,7 +353,57 @@ describe('findFalsePositives', () => {
   });
 });
 
+describe('ranking-cache score fallback', () => {
+  const originalFetch = globalThis.fetch;
+
+  it('reads same-formula ranking cache scores for cold per-country score-key states', async () => {
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      result: JSON.stringify({
+        _formula: 'd6',
+        items: [
+          { countryCode: 'US', overallScore: 82.1 },
+          { countryCode: 'GB', overallScore: 78.4 },
+          { countryCode: 'SO', overallScore: 22.3 },
+        ],
+      }),
+    }));
+    try {
+      const scores = await fetchResilienceRankingScores('https://redis.example', 'token', 'd6');
+      assert.equal(scores.size, 3);
+      assert.equal(scores.get('US'), 82.1);
+      assert.equal(scores.get('SO'), 22.3);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('rejects ranking fallback when the cache formula does not match current formula', async () => {
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      result: JSON.stringify({
+        _formula: 'd6',
+        items: [{ countryCode: 'US', overallScore: 82.1 }],
+      }),
+    }));
+    try {
+      const scores = await fetchResilienceRankingScores('https://redis.example', 'token', 'pc');
+      assert.equal(scores.size, 0);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
 describe('output shape', () => {
+  const expectedDataSources = new Map([
+    ['fx-stress', 'hardcoded'],
+    ['sovereign-stress', 'hardcoded'],
+    ['power-outages', 'hardcoded'],
+    ['food-crisis', 'live'],
+    ['refugee-surges', 'live'],
+    ['sanctions-shocks', 'hardcoded'],
+    ['conflict-spillover', 'live'],
+  ]);
+
   it('EVENT_FAMILIES has exactly 7 entries', () => {
     assert.equal(EVENT_FAMILIES.length, 7);
   });
@@ -337,7 +414,15 @@ describe('output shape', () => {
       assert.equal(typeof family.label, 'string');
       assert.equal(typeof family.description, 'string');
       assert.equal(typeof family.detect, 'function');
-      assert.ok(['live', 'hardcoded'].includes(family.dataSource));
+      assert.equal(family.dataSource, expectedDataSources.get(family.id), `${family.id} dataSource drifted`);
+      assert.ok(Array.isArray(family.labelSources), `${family.id} must carry label source provenance`);
+      assert.ok(family.labelSources.length > 0, `${family.id} labelSources must not be empty`);
+      if (family.dataSource === 'hardcoded') {
+        assert.ok(
+          family.labelSources.some((source) => /^https?:\/\//.test(source)),
+          `${family.id} hardcoded reference set must include at least one source URL`,
+        );
+      }
     }
   });
 
@@ -358,6 +443,28 @@ describe('output shape', () => {
   });
 });
 
+describe('backtest CLI exit policy', () => {
+  it('does not fail non-strict cron mode for cold-start skips', () => {
+    assert.equal(backtestCliExitCode(null, false), 0);
+    assert.equal(backtestCliExitCode(null, true), 1);
+  });
+
+  it('fails completed runs with failed families even outside strict mode', () => {
+    const result = {
+      overallPass: false,
+      families: [{ id: 'fx-stress', pass: true }, { id: 'power-outages', pass: false }],
+    };
+    assert.equal(backtestCliExitCode(result, false), 1);
+    assert.equal(backtestCliExitCode(result, true), 1);
+  });
+
+  it('recognizes explicit strict mode only', () => {
+    assert.equal(isStrictValidationCli(['node', 'script.mjs'], {}), false);
+    assert.equal(isStrictValidationCli(['node', 'script.mjs', '--strict'], {}), true);
+    assert.equal(isStrictValidationCli(['node', 'script.mjs'], { RESILIENCE_VALIDATION_STRICT: 'true' }), true);
+  });
+});
+
 describe('constants', () => {
   it('AUC_THRESHOLD is 0.75', () => {
     assert.equal(AUC_THRESHOLD, 0.75);
@@ -369,5 +476,11 @@ describe('constants', () => {
 
   it('sovereign stress reference list is non-empty', () => {
     assert.ok(SOVEREIGN_STRESS_COUNTRIES_2024_2025.size > 0);
+  });
+
+  it('frozen holdout reference lists are non-empty', () => {
+    assert.ok(FX_STRESS_COUNTRIES_2024_2025.size > 0);
+    assert.ok(POWER_OUTAGE_COUNTRIES_2024_2025.size > 0);
+    assert.ok(SANCTIONS_SHOCK_COUNTRIES_2024_2025.size > 0);
   });
 });
