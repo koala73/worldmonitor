@@ -361,13 +361,6 @@ export class UnifiedSettings {
     if (this.activeTab === 'panels') this.renderPanelsTab();
   }
 
-  public refreshSourceToggles(): void {
-    if (this.activeTab === 'sources') {
-      this.renderSourcesGrid();
-      this.updateSourcesCounter();
-    }
-  }
-
   public getButton(): HTMLButtonElement {
     const btn = document.createElement('button');
     btn.className = 'unified-settings-btn';

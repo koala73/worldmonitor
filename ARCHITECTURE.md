@@ -104,7 +104,7 @@ No external state library. `AppContext` is a central mutable object holding: map
 ### Web Workers
 
 - **analysis.worker.ts**: News clustering (Jaccard similarity), cross-domain correlation detection
-- **ml.worker.ts**: ONNX inference via `@huggingface/transformers` (MiniLM-L6 embeddings, sentiment, summarization, NER), in-worker vector store for headline memory
+- **ml.worker.ts**: ONNX inference via `@xenova/transformers` (MiniLM-L6 embeddings, sentiment, summarization, NER), in-worker vector store for headline memory
 - **vector-db.ts**: IndexedDB-backed vector store for semantic search
 
 ### Variant System

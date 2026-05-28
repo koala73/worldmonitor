@@ -709,7 +709,7 @@ graph TD
     subgraph WorkerPipeline["ML Worker Pipeline"]
         Manager["MLWorkerManager<br/>(ml-worker.ts)"]
         Worker["ml.worker.ts<br/>(Web Worker)"]
-        ONNX["ONNX Runtime Web<br/>(@huggingface/transformers)"]
+        ONNX["ONNX Runtime Web<br/>(@xenova/transformers)"]
         Manager -->|"postMessage"| Worker
         Worker --> ONNX
     end

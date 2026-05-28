@@ -75,7 +75,7 @@ describe('LiveNewsPanel instantiation guard', () => {
 
   it('panel-layout.ts live-news guard checks getDefaultLiveChannels()', () => {
     const layout = src('src/app/panel-layout.ts');
-    const guardBlock = layout.match(/['"]live-news['"][^}]*getDefaultLiveChannels\(\)\.length/s);
+    const guardBlock = layout.match(/shouldCreatePanel\('live-news'\)[^}]*getDefaultLiveChannels\(\)\.length/s);
     assert.ok(
       guardBlock,
       "panel-layout.ts must guard 'live-news' with getDefaultLiveChannels().length > 0",
@@ -84,7 +84,7 @@ describe('LiveNewsPanel instantiation guard', () => {
 
   it('panel-layout.ts live-news guard also checks loadChannelsFromStorage()', () => {
     const layout = src('src/app/panel-layout.ts');
-    const guardBlock = layout.match(/['"]live-news['"][^}]*loadChannelsFromStorage\(\)\.length/s);
+    const guardBlock = layout.match(/shouldCreatePanel\('live-news'\)[^}]*loadChannelsFromStorage\(\)\.length/s);
     assert.ok(
       guardBlock,
       "panel-layout.ts must also check loadChannelsFromStorage().length > 0 so users with saved channels can use the panel on happy variant",
@@ -100,22 +100,6 @@ describe('LiveNewsPanel instantiation guard', () => {
     assert.ok(
       layout.includes('loadChannelsFromStorage'),
       'panel-layout.ts must import loadChannelsFromStorage',
-    );
-  });
-
-  it('panel-layout.ts resolves empty live-news channels without throwing', () => {
-    const layout = src('src/app/panel-layout.ts');
-    const liveNewsBlock = layout.match(/lazyPanel\('live-news'[\s\S]*?new m\.LiveNewsPanel\(\);[\s\S]*?\n\s*\}\),/);
-    assert.ok(liveNewsBlock, "lazyPanel('live-news') block not found");
-    assert.match(
-      liveNewsBlock[0],
-      /getDefaultLiveChannels\(\)\.length === 0 && m\.loadChannelsFromStorage\(\)\.length === 0[\s\S]*?return null;/,
-      'empty live-news channel state must resolve null so lazy loading removes the skeleton without logging an error',
-    );
-    assert.doesNotMatch(
-      liveNewsBlock[0],
-      /throw new Error\(['"]No live channels configured['"]\)/,
-      'empty live-news channel state must not throw inside the lazy-loader promise',
     );
   });
 

@@ -61,26 +61,12 @@ describe('deploy/cache configuration guardrails', () => {
     );
   });
 
-  it('restricts PWA precache to HTML entry points only', () => {
+  it('keeps PWA precache glob free of HTML files', () => {
     assert.match(
       viteConfigSource,
-      /globPatterns:\s*\['\*\*\/\*\.html'\]/
+      /globPatterns:\s*\['\*\*\/\*\.\{js,css,ico,png,svg,woff2\}'\]/
     );
-    assert.doesNotMatch(viteConfigSource, /globPatterns:\s*\['\*\*\/\*\.\{js,css/);
-    assert.match(viteConfigSource, /globIgnores:\s*\[[^\]]*'\*\*\/bundle-report\.html'/);
-    assert.match(viteConfigSource, /maximumFileSizeToCacheInBytes:\s*256 \* 1024/);
-  });
-
-  it('caches same-origin hashed JS/CSS assets only on HTTP 200 responses', () => {
-    const appAssetsBlock = viteConfigSource.match(/cacheName:\s*'app-assets'[\s\S]*?cacheableResponse:\s*\{ statuses:\s*\[([^\]]+)\] \}/);
-    assert.ok(appAssetsBlock, 'expected app-assets runtime cache block');
-    assert.equal(appAssetsBlock[1].replace(/\s/g, ''), '200');
-  });
-
-  it('caches same-origin locale chunks only on HTTP 200 responses', () => {
-    const localeBlock = viteConfigSource.match(/cacheName:\s*'locale-files'[\s\S]*?cacheableResponse:\s*\{ statuses:\s*\[([^\]]+)\] \}/);
-    assert.ok(localeBlock, 'expected locale-files runtime cache block');
-    assert.equal(localeBlock[1].replace(/\s/g, ''), '200');
+    assert.doesNotMatch(viteConfigSource, /globPatterns:\s*\['\*\*\/\*\.\{js,css,html/);
   });
 
   it('explicitly disables navigateFallback when HTML is not precached', () => {
@@ -155,16 +141,7 @@ describe('docker runtime dependency guardrails', () => {
     );
 
     const lockPackageNames = Object.keys(runtimeLock.packages);
-    // Keep the legacy and current Transformers.js package paths excluded so a
-    // future migration cannot accidentally copy browser ML deps into runtime.
-    for (const omitted of [
-      'node_modules/@xenova/transformers',
-      'node_modules/@huggingface/transformers',
-      'node_modules/@huggingface/jinja',
-      'node_modules/@huggingface/tokenizers',
-      'node_modules/onnxruntime-web',
-      'node_modules/playwright',
-    ]) {
+    for (const omitted of ['node_modules/@xenova/transformers', 'node_modules/onnxruntime-web', 'node_modules/playwright']) {
       assert.ok(!lockPackageNames.includes(omitted), `${omitted} should not be in Docker runtime deps`);
     }
   });

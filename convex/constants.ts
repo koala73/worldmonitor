@@ -28,7 +28,7 @@ export const digestModeValidator = v.union(
   v.literal("weekly"),
 );
 
-export const CURRENT_PREFS_SCHEMA_VERSION = 3;
+export const CURRENT_PREFS_SCHEMA_VERSION = 1;
 
 export const MAX_PREFS_BLOB_SIZE = 65536;
 

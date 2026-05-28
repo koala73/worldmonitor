@@ -13,7 +13,6 @@ import {
   getEffectivePanelConfig,
   FREE_MAX_PANELS,
   FREE_MAX_SOURCES,
-  isPanelInVariantDefaults,
 } from '@/config';
 import { sanitizeLayersForVariant } from '@/config/map-layer-definitions';
 import type { MapVariant } from '@/config/map-layer-definitions';
@@ -24,10 +23,7 @@ import { getAiFlowSettings, subscribeAiFlowChange, isHeadlineMemoryEnabled } fro
 import { startLearning } from '@/services/country-instability';
 import { loadFromStorage, parseMapUrlState, saveToStorage, isMobileDevice } from '@/utils';
 import type { ParsedMapUrlState } from '@/utils';
-import { isLoadedPanelNearViewport } from '@/utils/viewport';
-import { SignalModal } from '@/components/SignalModal';
-import { IntelligenceGapBadge } from '@/components/IntelligenceGapBadge';
-import { BreakingNewsBanner } from '@/components/BreakingNewsBanner';
+import { SignalModal, IntelligenceGapBadge, BreakingNewsBanner } from '@/components';
 import { initBreakingNewsAlerts, destroyBreakingNewsAlerts } from '@/services/breaking-news-alerts';
 import type { ServiceStatusPanel } from '@/components/ServiceStatusPanel';
 import type { StablecoinPanel } from '@/components/StablecoinPanel';
@@ -82,7 +78,6 @@ import { RefreshScheduler } from '@/app/refresh-scheduler';
 import { PanelLayoutManager } from '@/app/panel-layout';
 import { DataLoaderManager } from '@/app/data-loader';
 import { EventHandlerManager } from '@/app/event-handlers';
-import { enqueuePanelCall } from '@/app/pending-panel-data';
 import { resolveUserRegion, resolvePreciseUserCoordinates, type PreciseCoordinates } from '@/utils/user-location';
 import { showProBanner } from '@/components/ProBanner';
 import { initAuthState, subscribeAuthState } from '@/services/auth-state';
@@ -108,6 +103,7 @@ import {
   economicAdapter,
   disasterAdapter,
 } from '@/services/correlation-engine';
+import type { CorrelationPanel } from '@/components/CorrelationPanel';
 
 const CYBER_LAYER_ENABLED = import.meta.env.VITE_ENABLE_CYBER_LAYER === 'true';
 
@@ -146,9 +142,6 @@ export class App {
   private visiblePanelPrimed = new Set<string>();
   private visiblePanelPrimeRaf: number | null = null;
   private followedCountriesCapDropToastTimer: number | null = null;
-  private mapModulesInitialized = false;
-  private mapDependentModulesInitialized = false;
-  private pendingMobileGeoCoords: PreciseCoordinates | null = null;
   private bootstrapHydrationState: BootstrapHydrationState = getBootstrapHydrationState();
   private cachedModeBannerEl: HTMLElement | null = null;
   private readonly handleViewportPrime = (): void => {
@@ -157,9 +150,6 @@ export class App {
       this.visiblePanelPrimeRaf = null;
       void this.primeVisiblePanelData();
     });
-  };
-  private readonly handlePanelReady = (_key: string): void => {
-    this.handleViewportPrime();
   };
   private readonly handleConnectivityChange = (): void => {
     this.updateConnectivityUi();
@@ -173,28 +163,12 @@ export class App {
   };
 
   private isPanelNearViewport(panelId: string, marginPx = 400): boolean {
-    return isLoadedPanelNearViewport(this.state.panels, panelId, marginPx);
+    const panel = this.state.panels[panelId] as { isNearViewport?: (marginPx?: number) => boolean } | undefined;
+    return panel?.isNearViewport?.(marginPx) ?? false;
   }
 
   private isAnyPanelNearViewport(panelIds: string[], marginPx = 400): boolean {
     return panelIds.some((panelId) => this.isPanelNearViewport(panelId, marginPx));
-  }
-
-  private async runLoadedPanelTask<T>(panelId: string, task: (panel: T) => Promise<unknown> | unknown): Promise<void> {
-    const panel = this.state.panels[panelId] as T | undefined;
-    if (!panel) return;
-    await task(panel);
-  }
-
-  private callPanel(key: string, method: string, ...args: unknown[]): void {
-    const panel = this.state.panels[key];
-    const obj = panel as Record<string, unknown> | undefined;
-    const fn = obj?.[method];
-    if (typeof fn === 'function') {
-      fn.apply(panel, args);
-      return;
-    }
-    enqueuePanelCall(key, method, args);
   }
 
   private shouldRefreshIntelligence(): boolean {
@@ -208,34 +182,6 @@ export class App {
 
   private shouldRefreshCorrelation(): boolean {
     return this.isAnyPanelNearViewport(['military-correlation', 'escalation-correlation', 'economic-correlation', 'disaster-correlation']);
-  }
-
-  private setupMapReadyModules(): void {
-    if (!this.mapDependentModulesInitialized && this.state.map) {
-      this.mapDependentModulesInitialized = true;
-      this.eventHandlers.setupMapLayerHandlers();
-      this.eventHandlers.setupUrlStateSync();
-      if (this.pendingMobileGeoCoords) {
-        this.state.map.setCenter(this.pendingMobileGeoCoords.lat, this.pendingMobileGeoCoords.lon, 6);
-        this.pendingMobileGeoCoords = null;
-      }
-      this.eventHandlers.syncUrlState();
-    }
-
-    if (this.mapModulesInitialized) return;
-    this.mapModulesInitialized = true;
-    this.countryIntel.init();
-    // Unblock any WebMCP tool invocations that arrived during startup, even if
-    // the deferred map has not loaded yet.
-    this.resolveUiReady();
-    if (this.pendingMobileGeoCoords && this.state.map) {
-      this.state.map.setCenter(this.pendingMobileGeoCoords.lat, this.pendingMobileGeoCoords.lon, 6);
-      this.pendingMobileGeoCoords = null;
-    }
-    this.state.countryBriefPage?.onStateChange?.(() => {
-      this.eventHandlers.syncUrlState();
-    });
-    this.handleDeepLinks();
   }
 
   private getCachedBootstrapUpdatedAt(): number | null {
@@ -489,22 +435,16 @@ export class App {
     if (shouldPrime('market-breadth')) {
       primeTask('marketBreadth', () => this.dataLoader.loadMarketBreadth());
     }
-    if (shouldPrimeAny(['markets', 'heatmap', 'commodities', 'crypto', 'energy-complex', 'crypto-heatmap', 'defi-tokens', 'ai-tokens', 'other-tokens'])) {
+    if (shouldPrimeAny(['markets', 'heatmap', 'commodities', 'crypto', 'energy-complex'])) {
       primeTask('markets', () => this.dataLoader.loadMarkets());
     }
     if (shouldPrime('polymarket')) {
       primeTask('predictions', () => this.dataLoader.loadPredictions());
     }
-    if (shouldPrime('forecast')) {
-      primeTask('forecasts', () => this.dataLoader.loadForecasts());
-      primeTask('simulation-outcome', () => this.dataLoader.loadSimulationOutcome());
-    }
     if (shouldPrime('economic')) {
       primeTask('fred', () => this.dataLoader.loadFredData());
       primeTask('spending', () => this.dataLoader.loadGovernmentSpending());
       primeTask('bis', () => this.dataLoader.loadBisData());
-      primeTask('bls', () => this.dataLoader.loadBlsData());
-      primeTask('economicStress', () => this.dataLoader.loadEconomicStress());
     }
     if (shouldPrime('energy-complex')) {
       primeTask('oil', () => this.dataLoader.loadOilAnalytics());
@@ -517,42 +457,6 @@ export class App {
     }
     if (shouldPrime('cross-source-signals')) {
       primeTask('crossSourceSignals', () => this.dataLoader.loadCrossSourceSignals());
-    }
-    if (shouldPrime('giving')) {
-      primeTask('giving', () => this.dataLoader.loadGivingData());
-    }
-    if (shouldPrime('renewable')) {
-      primeTask('renewable', () => this.dataLoader.loadRenewableData());
-    }
-    if (shouldPrime('progress')) {
-      primeTask('progress', () => this.dataLoader.loadProgressData());
-    }
-    if (shouldPrime('species')) {
-      primeTask('species', () => this.dataLoader.loadSpeciesData());
-    }
-    if (shouldPrimeAny(['cii', 'strategic-risk', 'strategic-posture', 'climate', 'population-exposure', 'security-advisories', 'radiation-watch', 'displacement', 'ucdp-events', 'oref-sirens', 'internet-disruptions'])) {
-      primeTask('intelligence', () => this.dataLoader.loadIntelligenceSignals());
-    }
-    if (shouldPrime('satellite-fires')) {
-      primeTask('firms', () => this.dataLoader.loadFirmsData());
-    }
-    if (shouldPrime('disease-outbreaks')) {
-      primeTask('diseaseOutbreaks', () => this.dataLoader.loadDiseaseOutbreaks());
-    }
-    if (shouldPrime('social-velocity')) {
-      primeTask('socialVelocity', () => this.dataLoader.loadSocialVelocity());
-    }
-    if (shouldPrime('sanctions-pressure')) {
-      primeTask('sanctions', () => this.dataLoader.loadSanctionsPressure());
-    }
-    if (shouldPrime('radiation-watch')) {
-      primeTask('radiation', () => this.dataLoader.loadRadiationWatch());
-    }
-    if (shouldPrime('thermal-escalation')) {
-      primeTask('thermalEscalation', () => this.dataLoader.loadThermalEscalations());
-    }
-    if (SITE_VARIANT !== 'happy' && isPanelInVariantDefaults('tech-readiness') && shouldPrime('tech-readiness')) {
-      primeTask('techReadiness', () => this.dataLoader.loadTechReadiness());
     }
 
     const _wmAccess = hasPremiumAccess();
@@ -572,9 +476,6 @@ export class App {
       if (shouldPrime('market-implications')) {
         primeTask('marketImplications', () => this.dataLoader.loadMarketImplications());
       }
-      if (shouldPrime('wsb-ticker-scanner')) {
-        primeTask('wsbTickers', () => this.dataLoader.loadWsbTickers());
-      }
     }
 
     if (tasks.length > 0) {
@@ -591,7 +492,7 @@ export class App {
     });
 
     const PANEL_ORDER_KEY = 'panel-order';
-    const PANEL_SPANS_KEY = STORAGE_KEYS.panelSpans;
+    const PANEL_SPANS_KEY = 'worldmonitor-panel-spans';
 
     const isMobile = isMobileDevice();
     const isDesktopApp = isDesktopRuntime();
@@ -953,8 +854,6 @@ export class App {
       loadAllData: () => this.dataLoader.loadAllData(),
       updateMonitorResults: () => this.dataLoader.updateMonitorResults(),
       loadSecurityAdvisories: () => this.dataLoader.loadSecurityAdvisories(),
-      onMapReady: () => this.setupMapReadyModules(),
-      onPanelReady: (key) => this.handlePanelReady(key),
     });
 
     this.eventHandlers = new EventHandlerManager(this.state, {
@@ -969,7 +868,6 @@ export class App {
       refreshOpenCountryBrief: () => this.countryIntel.refreshOpenBrief(),
       stopLayerActivity: (layer) => this.dataLoader.stopLayerActivity(layer),
       mountLiveNewsIfReady: () => this.panelLayout.mountLiveNewsIfReady(),
-      reloadPanelOrderFromStorage: () => this.panelLayout.reloadPanelOrderFromStorage(),
       updateFlightSource: (adsb, military) => this.searchManager.updateFlightSource(adsb, military),
     });
 
@@ -1123,14 +1021,13 @@ export class App {
     // Verify OAuth OTT and hydrate auth session BEFORE any UI subscribes to auth state
     await initAuthState();
     initAuthAnalytics();
+    installCloudPrefsSync(SITE_VARIANT);
     // Install the followed-countries auth listener once. Drives the
     // anon→signed-in handoff (mergeAnonymousLocal mutation) and sign-out
     // cleanup. Idempotent.
     installFollowedCountriesAuthListener();
     window.addEventListener(WM_FOLLOWED_COUNTRIES_CAP_DROP, this.handleFollowedCountriesCapDrop);
     this.enforceFreeTierLimits();
-    installCloudPrefsSync(SITE_VARIANT);
-    this.eventHandlers.setupPreferenceSyncHandlers();
 
     let _prevUserId: string | null = null;
     // Track the last-seen PRO entitlement so we can re-fire PRO-gated loaders
@@ -1235,14 +1132,10 @@ export class App {
 
     const resolvedRegion = await resolveUserRegion();
     this.state.resolvedLocation = resolvedRegion;
-    const initState = parseMapUrlState(window.location.search, this.state.mapLayers);
-    this.pendingDeepLinkCountry = initState.country ?? null;
-    this.pendingDeepLinkExpanded = initState.expanded === true;
-    const earlyParams = new URLSearchParams(window.location.search);
-    this.pendingDeepLinkStoryCode = earlyParams.get('c') ?? null;
 
-    // Phase 1: Layout (registers lazy map + panels — they'll find hydrated data).
-    // Map-dependent modules are wired from onMapReady after MapContainer loads.
+    // Phase 1: Layout (creates map + panels — they'll find hydrated data).
+    // init() is async so the dynamic MapContainer import can resolve before
+    // downstream code (e.g. mobileGeoCoords→state.map.setCenter) reads ctx.map.
     await this.panelLayout.init();
     showProBanner(this.state.container);
     this.updateConnectivityUi();
@@ -1250,12 +1143,8 @@ export class App {
     window.addEventListener('offline', this.handleConnectivityChange);
 
     const mobileGeoCoords = await geoCoordsPromise;
-    if (mobileGeoCoords) {
-      if (this.state.map) {
-        this.state.map.setCenter(mobileGeoCoords.lat, mobileGeoCoords.lon, 6);
-      } else {
-        this.pendingMobileGeoCoords = mobileGeoCoords;
-      }
+    if (mobileGeoCoords && this.state.map) {
+      this.state.map.setCenter(mobileGeoCoords.lat, mobileGeoCoords.lon, 6);
     }
 
     // Happy variant: pre-populate panels from persistent cache for instant render
@@ -1329,11 +1218,30 @@ export class App {
       });
     }
 
-    // Phase 4: SearchManager. Map-dependent modules are wired from onMapReady.
+    // Phase 4: SearchManager, MapLayerHandlers, CountryIntel
     this.searchManager.init();
+    this.eventHandlers.setupMapLayerHandlers();
+    this.countryIntel.init();
+    // Unblock any WebMCP tool invocations that arrived during startup.
+    this.resolveUiReady();
 
-    // Phase 5: Event listeners. Map URL sync is wired from onMapReady.
+    // Phase 5: Event listeners + URL sync
     this.eventHandlers.init();
+    // Capture deep link params BEFORE URL sync overwrites them
+    const initState = parseMapUrlState(window.location.search, this.state.mapLayers);
+    this.pendingDeepLinkCountry = initState.country ?? null;
+    this.pendingDeepLinkExpanded = initState.expanded === true;
+    const earlyParams = new URLSearchParams(window.location.search);
+    this.pendingDeepLinkStoryCode = earlyParams.get('c') ?? null;
+    this.eventHandlers.setupUrlStateSync();
+
+    this.state.countryBriefPage?.onStateChange?.(() => {
+      this.eventHandlers.syncUrlState();
+    });
+
+    // Start deep link handling early — its retry loop polls hasSufficientData()
+    // independently, so it must not be gated behind loadAllData() which can hang.
+    this.handleDeepLinks();
 
     // Phase 6: Data loading
     this.dataLoader.syncDataFreshnessWithLayers();
@@ -1345,8 +1253,8 @@ export class App {
     window.addEventListener('scroll', this.handleViewportPrime, { passive: true });
     window.addEventListener('resize', this.handleViewportPrime);
     await Promise.all([
-      this.dataLoader.loadAllData(),
-      this.primeVisiblePanelData(),
+      this.dataLoader.loadAllData(true),
+      this.primeVisiblePanelData(true),
     ]);
 
     // If bootstrap was served from cache but live data just loaded, promote the status indicator
@@ -1358,7 +1266,8 @@ export class App {
     if (this.state.correlationEngine) {
       void this.state.correlationEngine.run(this.state).then(() => {
         for (const domain of ['military', 'escalation', 'economic', 'disaster'] as const) {
-          this.callPanel(`${domain}-correlation`, 'updateCards', this.state.correlationEngine!.getCards(domain));
+          const panel = this.state.panels[`${domain}-correlation`] as CorrelationPanel | undefined;
+          panel?.updateCards(this.state.correlationEngine!.getCards(domain));
         }
       });
     }
@@ -1742,67 +1651,67 @@ export class App {
     // Panel-level refreshes (moved from panel constructors into scheduler for hidden-tab awareness + jitter)
     this.refreshScheduler.scheduleRefresh(
       'service-status',
-      () => this.runLoadedPanelTask<ServiceStatusPanel>('service-status', panel => panel.fetchStatus()),
+      () => (this.state.panels['service-status'] as ServiceStatusPanel).fetchStatus(),
       REFRESH_INTERVALS.serviceStatus,
       () => this.isPanelNearViewport('service-status')
     );
     this.refreshScheduler.scheduleRefresh(
       'stablecoins',
-      () => this.runLoadedPanelTask<StablecoinPanel>('stablecoins', panel => panel.fetchData()),
+      () => (this.state.panels.stablecoins as StablecoinPanel).fetchData(),
       REFRESH_INTERVALS.stablecoins,
       () => this.isPanelNearViewport('stablecoins')
     );
     this.refreshScheduler.scheduleRefresh(
       'energy-crisis',
-      () => this.runLoadedPanelTask<EnergyCrisisPanel>('energy-crisis', panel => panel.fetchData()),
+      () => (this.state.panels['energy-crisis'] as EnergyCrisisPanel).fetchData(),
       REFRESH_INTERVALS.energyCrisis,
       () => this.isPanelNearViewport('energy-crisis')
     );
     this.refreshScheduler.scheduleRefresh(
       'etf-flows',
-      () => this.runLoadedPanelTask<ETFFlowsPanel>('etf-flows', panel => panel.fetchData()),
+      () => (this.state.panels['etf-flows'] as ETFFlowsPanel).fetchData(),
       REFRESH_INTERVALS.etfFlows,
       () => this.isPanelNearViewport('etf-flows')
     );
     this.refreshScheduler.scheduleRefresh(
       'macro-signals',
-      () => this.runLoadedPanelTask<MacroSignalsPanel>('macro-signals', panel => panel.fetchData()),
+      () => (this.state.panels['macro-signals'] as MacroSignalsPanel).fetchData(),
       REFRESH_INTERVALS.macroSignals,
       () => this.isPanelNearViewport('macro-signals')
     );
     this.refreshScheduler.scheduleRefresh(
       'defense-patents',
-      () => this.runLoadedPanelTask<DefensePatentsPanel>('defense-patents', panel => panel.refresh()),
+      () => { (this.state.panels['defense-patents'] as DefensePatentsPanel).refresh(); return Promise.resolve(); },
       REFRESH_INTERVALS.defensePatents,
       () => this.isPanelNearViewport('defense-patents')
     );
     this.refreshScheduler.scheduleRefresh(
       'fear-greed',
-      () => this.runLoadedPanelTask<FearGreedPanel>('fear-greed', panel => panel.fetchData()),
+      () => (this.state.panels['fear-greed'] as FearGreedPanel).fetchData(),
       REFRESH_INTERVALS.fearGreed,
       () => this.isPanelNearViewport('fear-greed')
     );
     this.refreshScheduler.scheduleRefresh(
       'hormuz-tracker',
-      () => this.runLoadedPanelTask<HormuzPanel>('hormuz-tracker', panel => panel.fetchData()),
+      () => (this.state.panels['hormuz-tracker'] as HormuzPanel).fetchData(),
       REFRESH_INTERVALS.hormuzTracker,
       () => this.isPanelNearViewport('hormuz-tracker')
     );
     this.refreshScheduler.scheduleRefresh(
       'positioning-247',
-      () => this.runLoadedPanelTask<PositioningPanel>('positioning-247', panel => panel.fetchData()),
+      () => (this.state.panels['positioning-247'] as PositioningPanel).fetchData(),
       REFRESH_INTERVALS.hyperliquidFlow,
       () => this.isPanelNearViewport('positioning-247')
     );
     this.refreshScheduler.scheduleRefresh(
       'strategic-posture',
-      () => this.runLoadedPanelTask<StrategicPosturePanel>('strategic-posture', panel => panel.refresh()),
+      () => (this.state.panels['strategic-posture'] as StrategicPosturePanel).refresh(),
       REFRESH_INTERVALS.strategicPosture,
       () => this.isPanelNearViewport('strategic-posture')
     );
     this.refreshScheduler.scheduleRefresh(
       'strategic-risk',
-      () => this.runLoadedPanelTask<StrategicRiskPanel>('strategic-risk', panel => panel.refresh()),
+      () => (this.state.panels['strategic-risk'] as StrategicRiskPanel).refresh(),
       REFRESH_INTERVALS.strategicRisk,
       () => this.isPanelNearViewport('strategic-risk')
     );
@@ -1845,134 +1754,134 @@ export class App {
 
     this.refreshScheduler.scheduleRefresh(
       'gulf-economies',
-      () => this.runLoadedPanelTask<GulfEconomiesPanel>('gulf-economies', panel => panel.fetchData()),
+      () => (this.state.panels['gulf-economies'] as GulfEconomiesPanel).fetchData(),
       REFRESH_INTERVALS.gulfEconomies,
       () => this.isPanelNearViewport('gulf-economies')
     );
 
     this.refreshScheduler.scheduleRefresh(
       'grocery-basket',
-      () => this.runLoadedPanelTask<GroceryBasketPanel>('grocery-basket', panel => panel.fetchData()),
+      () => (this.state.panels['grocery-basket'] as GroceryBasketPanel).fetchData(),
       REFRESH_INTERVALS.groceryBasket,
       () => this.isPanelNearViewport('grocery-basket')
     );
 
     this.refreshScheduler.scheduleRefresh(
       'bigmac',
-      () => this.runLoadedPanelTask<BigMacPanel>('bigmac', panel => panel.fetchData()),
+      () => (this.state.panels['bigmac'] as BigMacPanel).fetchData(),
       REFRESH_INTERVALS.groceryBasket,
       () => this.isPanelNearViewport('bigmac')
     );
 
     this.refreshScheduler.scheduleRefresh(
       'fuel-prices',
-      () => this.runLoadedPanelTask<FuelPricesPanel>('fuel-prices', panel => panel.fetchData()),
+      () => (this.state.panels['fuel-prices'] as FuelPricesPanel).fetchData(),
       REFRESH_INTERVALS.fuelPrices,
       () => this.isPanelNearViewport('fuel-prices')
     );
 
     this.refreshScheduler.scheduleRefresh(
       'fao-food-price-index',
-      () => this.runLoadedPanelTask<FaoFoodPriceIndexPanel>('fao-food-price-index', panel => panel.fetchData()),
+      () => (this.state.panels['fao-food-price-index'] as FaoFoodPriceIndexPanel).fetchData(),
       REFRESH_INTERVALS.faoFoodPriceIndex,
       () => this.isPanelNearViewport('fao-food-price-index')
     );
 
     this.refreshScheduler.scheduleRefresh(
       'oil-inventories',
-      () => this.runLoadedPanelTask<OilInventoriesPanel>('oil-inventories', panel => panel.fetchData()),
+      () => (this.state.panels['oil-inventories'] as OilInventoriesPanel).fetchData(),
       REFRESH_INTERVALS.oilInventories,
       () => this.isPanelNearViewport('oil-inventories')
     );
 
     this.refreshScheduler.scheduleRefresh(
       'pipeline-status',
-      () => this.runLoadedPanelTask<PipelineStatusPanel>('pipeline-status', panel => panel.fetchData()),
+      () => (this.state.panels['pipeline-status'] as PipelineStatusPanel).fetchData(),
       REFRESH_INTERVALS.pipelineStatus,
       () => this.isPanelNearViewport('pipeline-status')
     );
 
     this.refreshScheduler.scheduleRefresh(
       'storage-facility-map',
-      () => this.runLoadedPanelTask<StorageFacilityMapPanel>('storage-facility-map', panel => panel.fetchData()),
+      () => (this.state.panels['storage-facility-map'] as StorageFacilityMapPanel).fetchData(),
       REFRESH_INTERVALS.storageFacilityMap,
       () => this.isPanelNearViewport('storage-facility-map')
     );
 
     this.refreshScheduler.scheduleRefresh(
       'fuel-shortages',
-      () => this.runLoadedPanelTask<FuelShortagePanel>('fuel-shortages', panel => panel.fetchData()),
+      () => (this.state.panels['fuel-shortages'] as FuelShortagePanel).fetchData(),
       REFRESH_INTERVALS.fuelShortages,
       () => this.isPanelNearViewport('fuel-shortages')
     );
 
     this.refreshScheduler.scheduleRefresh(
       'energy-disruptions',
-      () => this.runLoadedPanelTask<EnergyDisruptionsPanel>('energy-disruptions', panel => panel.fetchData()),
+      () => (this.state.panels['energy-disruptions'] as EnergyDisruptionsPanel).fetchData(),
       REFRESH_INTERVALS.energyDisruptions,
       () => this.isPanelNearViewport('energy-disruptions')
     );
 
     this.refreshScheduler.scheduleRefresh(
       'energy-risk-overview',
-      () => this.runLoadedPanelTask<EnergyRiskOverviewPanel>('energy-risk-overview', panel => panel.fetchData()),
+      () => (this.state.panels['energy-risk-overview'] as EnergyRiskOverviewPanel).fetchData(),
       REFRESH_INTERVALS.energyRiskOverview,
       () => this.isPanelNearViewport('energy-risk-overview')
     );
 
     this.refreshScheduler.scheduleRefresh(
       'chokepoint-strip',
-      () => this.runLoadedPanelTask<ChokepointStripPanel>('chokepoint-strip', panel => panel.fetchData()),
+      () => (this.state.panels['chokepoint-strip'] as ChokepointStripPanel).fetchData(),
       REFRESH_INTERVALS.chokepointStrip,
       () => this.isPanelNearViewport('chokepoint-strip')
     );
 
     this.refreshScheduler.scheduleRefresh(
       'climate-news',
-      () => this.runLoadedPanelTask<ClimateNewsPanel>('climate-news', panel => panel.fetchData()),
+      () => (this.state.panels['climate-news'] as ClimateNewsPanel).fetchData(),
       REFRESH_INTERVALS.climateNews,
       () => this.isPanelNearViewport('climate-news')
     );
 
     this.refreshScheduler.scheduleRefresh(
       'macro-tiles',
-      () => this.runLoadedPanelTask<MacroTilesPanel>('macro-tiles', panel => panel.fetchData()),
+      () => (this.state.panels['macro-tiles'] as MacroTilesPanel).fetchData(),
       REFRESH_INTERVALS.macroTiles,
       () => this.isPanelNearViewport('macro-tiles')
     );
     this.refreshScheduler.scheduleRefresh(
       'fsi',
-      () => this.runLoadedPanelTask<FSIPanel>('fsi', panel => panel.fetchData()),
+      () => (this.state.panels['fsi'] as FSIPanel).fetchData(),
       REFRESH_INTERVALS.fsi,
       () => this.isPanelNearViewport('fsi')
     );
     this.refreshScheduler.scheduleRefresh(
       'yield-curve',
-      () => this.runLoadedPanelTask<YieldCurvePanel>('yield-curve', panel => panel.fetchData()),
+      () => (this.state.panels['yield-curve'] as YieldCurvePanel).fetchData(),
       REFRESH_INTERVALS.yieldCurve,
       () => this.isPanelNearViewport('yield-curve')
     );
     this.refreshScheduler.scheduleRefresh(
       'earnings-calendar',
-      () => this.runLoadedPanelTask<EarningsCalendarPanel>('earnings-calendar', panel => panel.fetchData()),
+      () => (this.state.panels['earnings-calendar'] as EarningsCalendarPanel).fetchData(),
       REFRESH_INTERVALS.earningsCalendar,
       () => this.isPanelNearViewport('earnings-calendar')
     );
     this.refreshScheduler.scheduleRefresh(
       'economic-calendar',
-      () => this.runLoadedPanelTask<EconomicCalendarPanel>('economic-calendar', panel => panel.fetchData()),
+      () => (this.state.panels['economic-calendar'] as EconomicCalendarPanel).fetchData(),
       REFRESH_INTERVALS.economicCalendar,
       () => this.isPanelNearViewport('economic-calendar')
     );
     this.refreshScheduler.scheduleRefresh(
       'cot-positioning',
-      () => this.runLoadedPanelTask<CotPositioningPanel>('cot-positioning', panel => panel.fetchData()),
+      () => (this.state.panels['cot-positioning'] as CotPositioningPanel).fetchData(),
       REFRESH_INTERVALS.cotPositioning,
       () => this.isPanelNearViewport('cot-positioning')
     );
     this.refreshScheduler.scheduleRefresh(
       'gold-intelligence',
-      () => this.runLoadedPanelTask<GoldIntelligencePanel>('gold-intelligence', panel => panel.fetchData()),
+      () => (this.state.panels['gold-intelligence'] as GoldIntelligencePanel).fetchData(),
       REFRESH_INTERVALS.goldIntelligence,
       () => this.isPanelNearViewport('gold-intelligence')
     );
@@ -2008,7 +1917,8 @@ export class App {
         if (!engine) return;
         await engine.run(this.state);
         for (const domain of ['military', 'escalation', 'economic', 'disaster'] as const) {
-          this.callPanel(`${domain}-correlation`, 'updateCards', engine.getCards(domain));
+          const panel = this.state.panels[`${domain}-correlation`] as CorrelationPanel | undefined;
+          panel?.updateCards(engine.getCards(domain));
         }
       },
       REFRESH_INTERVALS.correlationEngine,

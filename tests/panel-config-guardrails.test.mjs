@@ -57,7 +57,7 @@ describe('panel-config guardrails', () => {
 
       const preceding20 = lines.slice(Math.max(0, i - 20), i).join('\n');
       const isGuarded =
-        preceding20.includes('hasPanelConfig') ||
+        preceding20.includes('shouldCreatePanel') ||
         preceding20.includes('createPanel') ||
         preceding20.includes('createNewsPanel');
       if (isGuarded) continue;
@@ -68,9 +68,9 @@ describe('panel-config guardrails', () => {
     assert.deepStrictEqual(
       violations,
       [],
-      `Found unguarded panel assignments that bypass createPanel/hasPanelConfig guards:\n` +
+      `Found unguarded panel assignments that bypass createPanel/shouldCreatePanel guards:\n` +
       violations.map(v => `  L${v.line}: ${v.text}`).join('\n') +
-      `\n\nUse this.createPanel(), this.createNewsPanel(), or wrap with hasPanelConfig().`
+      `\n\nUse this.createPanel(), this.createNewsPanel(), or wrap with shouldCreatePanel().`
     );
   });
 

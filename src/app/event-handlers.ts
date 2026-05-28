@@ -1,38 +1,37 @@
 import type { AppContext, AppModule } from '@/app/app-context';
-import { enqueuePanelCall } from '@/app/pending-panel-data';
+import type { AirlineIntelPanel } from '@/components/AirlineIntelPanel';
+import type { CustomWidgetPanel } from '@/components/CustomWidgetPanel';
 import { openWidgetChatModal } from '@/components/WidgetChatModal';
-import { deleteWidget, getWidget, loadWidgets, saveWidget, isProUser } from '@/services/widget-store';
+import { deleteWidget, getWidget, saveWidget, isProUser } from '@/services/widget-store';
 import { FREE_MAX_PANELS, FREE_MAX_SOURCES } from '@/config/panels';
+import type { McpDataPanel } from '@/components/McpDataPanel';
 import { openMcpConnectModal } from '@/components/McpConnectModal';
-import { deleteMcpPanel, getMcpPanel, loadMcpPanels, saveMcpPanel } from '@/services/mcp-store';
+import { deleteMcpPanel, getMcpPanel, saveMcpPanel } from '@/services/mcp-store';
 import type { PanelConfig, MapLayers, MilitaryFlight } from '@/types';
-import type { MapView } from '@/components/MapContainer';
+import type { MapView } from '@/components';
 import type { PositionSample } from '@/services/aviation';
 import type { ClusteredEvent } from '@/types';
 import type { DashboardSnapshot } from '@/services/storage';
-import { PlaybackControl } from '@/components/PlaybackControl';
-import { StatusPanel } from '@/components/StatusPanel';
-import { PizzIntIndicator } from '@/components/PizzIntIndicator';
-import { LlmStatusIndicator } from '@/components/LlmStatusIndicator';
-import { CIIPanel } from '@/components/CIIPanel';
-import { PredictionPanel } from '@/components/PredictionPanel';
+import {
+  PlaybackControl,
+  StatusPanel,
+  PizzIntIndicator,
+  LlmStatusIndicator,
+  CIIPanel,
+  PredictionPanel,
+} from '@/components';
 import {
   buildMapUrl,
   debounce,
-  loadFromStorage,
   saveToStorage,
   ExportPanel,
   getCurrentTheme,
   setTheme,
 } from '@/utils';
-import { addCloudPrefsAppliedListener } from '@/utils/cloud-prefs-events';
 import {
   IDLE_PAUSE_MS,
   STORAGE_KEYS,
   SITE_VARIANT,
-  ALL_PANELS,
-  VARIANT_DEFAULTS,
-  getEffectivePanelConfig,
   LAYER_TO_SOURCE,
   FEEDS,
   CANONICAL_FEEDS,
@@ -70,9 +69,8 @@ import { AuthHeaderWidget } from '@/components/AuthHeaderWidget';
 import { t } from '@/services/i18n';
 import { TvModeController } from '@/services/tv-mode';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
-import { applyPreferenceStorageChanges, loadDisabledSourcesFromStorage } from '@/app/preference-storage-sync';
-import { normalizeStoredPanelSettings } from '@/app/panel-settings-storage';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 export interface EventHandlerCallbacks {
   updateSearchIndex: () => void;
@@ -87,7 +85,6 @@ export interface EventHandlerCallbacks {
   refreshOpenCountryBrief?: () => void;
   stopLayerActivity?: (layer: keyof MapLayers) => void;
   mountLiveNewsIfReady?: () => void;
-  reloadPanelOrderFromStorage?: () => void;
 }
 
 export class EventHandlerManager implements AppModule {
@@ -100,7 +97,6 @@ export class EventHandlerManager implements AppModule {
   private boundDesktopExternalLinkHandler: ((e: MouseEvent) => void) | null = null;
   private boundIdleResetHandler: (() => void) | null = null;
   private boundStorageHandler: ((e: StorageEvent) => void) | null = null;
-  private removeCloudPrefsAppliedListener: (() => void) | null = null;
   private boundTvKeydownHandler: ((e: KeyboardEvent) => void) | null = null;
   private boundFocalPointsReadyHandler: (() => void) | null = null;
   private boundThemeChangedHandler: (() => void) | null = null;
@@ -141,17 +137,6 @@ export class EventHandlerManager implements AppModule {
     this.callbacks = callbacks;
   }
 
-  private callPanel(key: string, method: string, ...args: unknown[]): void {
-    const panel = this.ctx.panels[key];
-    const obj = panel as Record<string, unknown> | undefined;
-    const fn = obj?.[method];
-    if (typeof fn === 'function') {
-      fn.apply(panel, args);
-      return;
-    }
-    enqueuePanelCall(key, method, args);
-  }
-
   init(): void {
     this.setupEventListeners();
     this.setupIdleDetection();
@@ -174,7 +159,10 @@ export class EventHandlerManager implements AppModule {
     this.ctx.unifiedSettings?.refreshPanelToggles();
 
     // Ensure restored panel fetches fresh data (otherwise it may show no content)
-    this.callPanel(panelId, 'fetchData');
+    const panel = this.ctx.panels[panelId];
+    if (panel && 'fetchData' in panel && typeof (panel as { fetchData: unknown }).fetchData === 'function') {
+      (panel as { fetchData: () => void }).fetchData();
+    }
   }
 
   private setupTvMode(): void {
@@ -260,10 +248,6 @@ export class EventHandlerManager implements AppModule {
       window.removeEventListener('storage', this.boundStorageHandler);
       this.boundStorageHandler = null;
     }
-    if (this.removeCloudPrefsAppliedListener) {
-      this.removeCloudPrefsAppliedListener();
-      this.removeCloudPrefsAppliedListener = null;
-    }
     if (this.boundTvKeydownHandler) {
       document.removeEventListener('keydown', this.boundTvKeydownHandler);
       this.boundTvKeydownHandler = null;
@@ -345,49 +329,6 @@ export class EventHandlerManager implements AppModule {
     this.ctx.authModal = null;
   }
 
-  public setupPreferenceSyncHandlers(): void {
-    if (this.boundStorageHandler || this.removeCloudPrefsAppliedListener) return;
-    this.boundStorageHandler = (e: StorageEvent) => {
-      this.applyPreferenceStorageChanges(e.key ? [e.key] : []);
-      if (e.key === STORAGE_KEYS.liveChannels && e.newValue) {
-        if (this.ctx.panels['live-news']) {
-          this.callPanel('live-news', 'refreshChannelsFromStorage');
-        } else {
-          this.callbacks.mountLiveNewsIfReady?.();
-        }
-      }
-    };
-    window.addEventListener('storage', this.boundStorageHandler);
-
-    this.removeCloudPrefsAppliedListener = addCloudPrefsAppliedListener(window, (keys) => {
-      this.applyPreferenceStorageChanges(keys);
-    });
-  }
-
-  private applyPreferenceStorageChanges(keys: Iterable<string | null>): void {
-    applyPreferenceStorageChanges(this.ctx, keys, {
-      applyPanelSettings: () => this.applyPanelSettings(),
-      updateSearchIndex: this.callbacks.updateSearchIndex,
-      reloadPanelOrderFromStorage: this.callbacks.reloadPanelOrderFromStorage,
-    }, {
-      loadPanelSettingsFromStorage: () => this.loadPanelSettingsFromStorage(),
-      loadDisabledSourcesFromStorage,
-    });
-  }
-
-  private loadPanelSettingsFromStorage(): Record<string, PanelConfig> {
-    const stored = loadFromStorage<Record<string, PanelConfig>>(STORAGE_KEYS.panels, {});
-    return normalizeStoredPanelSettings(stored, [
-      ...loadWidgets().map(spec => ({ id: spec.id, name: spec.title })),
-      ...loadMcpPanels().map(spec => ({ id: spec.id, name: spec.title })),
-    ], {
-      allPanels: ALL_PANELS,
-      variant: SITE_VARIANT,
-      variantDefaults: VARIANT_DEFAULTS,
-      getPanelConfig: getEffectivePanelConfig,
-    });
-  }
-
   private setupEventListeners(): void {
     const openSearch = () => {
       this.callbacks.updateSearchIndex();
@@ -421,7 +362,27 @@ export class EventHandlerManager implements AppModule {
 
     this.initDownloadDropdown();
     this.initFooterDownload();
-    this.setupPreferenceSyncHandlers();
+
+    this.boundStorageHandler = (e: StorageEvent) => {
+      if (e.key === STORAGE_KEYS.panels && e.newValue) {
+        try {
+          this.ctx.panelSettings = JSON.parse(e.newValue) as Record<string, PanelConfig>;
+          this.applyPanelSettings();
+          this.ctx.unifiedSettings?.refreshPanelToggles();
+        } catch (_) { }
+      }
+      if (e.key === STORAGE_KEYS.liveChannels && e.newValue) {
+        const panel = this.ctx.panels['live-news'];
+        if (panel) {
+          if (typeof (panel as unknown as { refreshChannelsFromStorage?: () => void }).refreshChannelsFromStorage === 'function') {
+            (panel as unknown as { refreshChannelsFromStorage: () => void }).refreshChannelsFromStorage();
+          }
+        } else {
+          this.callbacks.mountLiveNewsIfReady?.();
+        }
+      }
+    };
+    window.addEventListener('storage', this.boundStorageHandler);
 
     // Handle panel close (X) button clicks
     this.boundPanelCloseHandler = ((e: CustomEvent<{ panelId: string }>) => {
@@ -472,7 +433,7 @@ export class EventHandlerManager implements AppModule {
         existingSpec: spec,
         onComplete: (updated) => {
           saveWidget(updated);
-          this.callPanel(updated.id, 'updateSpec', updated);
+          (this.ctx.panels[updated.id] as CustomWidgetPanel | undefined)?.updateSpec(updated);
         },
       });
     }) as EventListener;
@@ -485,7 +446,7 @@ export class EventHandlerManager implements AppModule {
         existingSpec: spec,
         onComplete: (updated) => {
           saveMcpPanel(updated);
-          this.callPanel(updated.id, 'updateSpec', updated);
+          (this.ctx.panels[updated.id] as McpDataPanel | undefined)?.updateSpec(updated);
         },
       });
     }) as EventListener);
@@ -1301,7 +1262,8 @@ export class EventHandlerManager implements AppModule {
       }
 
       if (layer === 'flights') {
-        this.callPanel('airline-intel', 'setLiveMode', enabled);
+        const airlineIntel = this.ctx.panels['airline-intel'] as AirlineIntelPanel | undefined;
+        airlineIntel?.setLiveMode(enabled);
       }
 
       if (enabled) {
@@ -1314,7 +1276,8 @@ export class EventHandlerManager implements AppModule {
     // Forward live aircraft positions from map to AirlineIntelPanel + cache + search index
     this.ctx.map?.setOnAircraftPositionsUpdate((positions) => {
       this.ctx.intelligenceCache.aircraftPositions = positions;
-      this.callPanel('airline-intel', 'updateLivePositions', positions);
+      const airlineIntel = this.ctx.panels['airline-intel'] as AirlineIntelPanel | undefined;
+      airlineIntel?.updateLivePositions(positions);
       const military = this.ctx.intelligenceCache.military?.flights ?? [];
       this.callbacks.updateFlightSource?.(positions, military);
     });
@@ -1633,7 +1596,8 @@ export class EventHandlerManager implements AppModule {
         }
         return;
       }
-      this.callPanel(key, 'toggle', config.enabled);
+      const panel = this.ctx.panels[key];
+      panel?.toggle(config.enabled);
     });
   }
 }

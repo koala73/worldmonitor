@@ -1,82 +1,12 @@
 import './styles/base-layer.css';
 import './styles/happy-theme.css';
-
-// === Pre-Sentry error buffer ===
-// Captures errors thrown before Sentry loads (deferred to requestIdleCallback).
-// Errors are flushed to Sentry.captureException() once the SDK initializes.
-interface BufferedError { error: unknown; timestamp: number }
-interface BufferedCspViolation {
-  violatedDirective: string;
-  effectiveDirective: string;
-  blockedURI: string;
-  sourceFile: string;
-  lineNumber: number;
-  disposition: string;
-  timestamp: number;
-}
-interface SentryCapture {
-  captureMessage: (message: string, context: {
-    level: 'warning';
-    tags: Record<string, string>;
-    extra: Record<string, unknown>;
-  }) => void;
-}
-const __errorBuffer: BufferedError[] = [];
-const __cspViolationBuffer: BufferedCspViolation[] = [];
-const MAX_BUFFERED = 20;
-
-const _origOnError = window.onerror;
-const _origOnUnhandled = window.onunhandledrejection;
-
-const isSuppressedPreSentryRejection = (reason: unknown): boolean =>
-  !!reason &&
-  typeof reason === 'object' &&
-  (reason as { name?: unknown }).name === 'NotAllowedError';
-
-const serializeCspViolation = (e: SecurityPolicyViolationEvent): BufferedCspViolation => ({
-  violatedDirective: e.violatedDirective ?? '',
-  effectiveDirective: e.effectiveDirective ?? '',
-  blockedURI: e.blockedURI ?? '',
-  sourceFile: e.sourceFile ?? '',
-  lineNumber: e.lineNumber ?? 0,
-  disposition: e.disposition ?? '',
-  timestamp: Date.now(),
-});
-
-const bufferCspViolation = (e: SecurityPolicyViolationEvent): void => {
-  if (__cspViolationBuffer.length >= MAX_BUFFERED) __cspViolationBuffer.shift();
-  __cspViolationBuffer.push(serializeCspViolation(e));
-};
-
-window.addEventListener('securitypolicyviolation', bufferCspViolation);
-
-// Suppress NotAllowedError from YouTube IFrame API's internal play() before
-// Sentry loads. The YT IFrame API does not expose the play() promise, so browser
-// autoplay policy can leak it as an unhandled rejection during initial paint.
-window.addEventListener('unhandledrejection', (e) => {
-  if (isSuppressedPreSentryRejection(e.reason)) e.preventDefault();
-});
-
-window.onerror = (msg, source, line, col, error) => {
-  if (__errorBuffer.length >= MAX_BUFFERED) __errorBuffer.shift();
-  __errorBuffer.push({ error: error || new Error(String(msg)), timestamp: Date.now() });
-  if (_origOnError) return _origOnError.call(window, msg, source, line, col, error);
-  return false;
-};
-
-window.onunhandledrejection = (event: PromiseRejectionEvent) => {
-  if (isSuppressedPreSentryRejection(event.reason)) {
-    event.preventDefault();
-    return;
-  }
-  if (__errorBuffer.length >= MAX_BUFFERED) __errorBuffer.shift();
-  __errorBuffer.push({ error: event.reason, timestamp: Date.now() });
-  _origOnUnhandled?.call(window, event);
-};
-
+import 'maplibre-gl/dist/maplibre-gl.css';
+import * as Sentry from '@sentry/browser';
 import { inject } from '@vercel/analytics';
 import { App } from './App';
 import { installUtmInterceptor } from './utils/utm';
+
+const sentryDsn = import.meta.env.VITE_SENTRY_DSN?.trim();
 
 // Known third-party hosts fetched by MapLibre (tiles, styles, glyphs, sprites).
 // Hosts whose `Failed to fetch (<host>)` errors are suppressed in beforeSend.
@@ -94,8 +24,21 @@ const THIRD_PARTY_FETCH_HOST_ALLOWLIST = new Set([
   'protomaps.github.io',
 ]);
 
-// Sentry ignoreErrors list — kept outside the dynamic import so it can be a static array.
-const _sentryIgnoreErrors: Array<string | RegExp> = [
+// Initialize Sentry error tracking (early as possible)
+Sentry.init({
+  dsn: sentryDsn || undefined,
+  release: `worldmonitor@${__APP_VERSION__}`,
+  environment: (location.hostname === 'worldmonitor.app' || location.hostname.endsWith('.worldmonitor.app')) ? 'production'
+    : location.hostname.includes('vercel.app') ? 'preview'
+    : 'development',
+  enabled: Boolean(sentryDsn) && !location.hostname.startsWith('localhost') && !('__TAURI_INTERNALS__' in window),
+  allowUrls: [
+    /https?:\/\/(www\.|tech\.|finance\.|commodity\.|happy\.)?worldmonitor\.app/,
+    /https?:\/\/.*\.vercel\.app/,
+  ],
+  sendDefaultPii: true,
+  tracesSampleRate: 0.1,
+  ignoreErrors: [
     'Invalid WebGL2RenderingContext',
     'WebGL context lost',
     /imageManager/,
@@ -355,20 +298,12 @@ const _sentryIgnoreErrors: Array<string | RegExp> = [
     /Octal literals are not allowed in strict mode/, // Runtime SyntaxError from injected extension script; our TS bundle never emits octal literals and doesn't eval (WORLDMONITOR-NV)
     /Unexpected identifier 'm'/, // Foreign script injection on Opera; pre-compiled bundle can't parse-fail at runtime (WORLDMONITOR-NT)
     /PlayerControlsInterface\.\w+ is not a function/, // Android Chrome WebView native bridge injection (Bilibili/UC/QQ-style host) — never emitted by our code (WORLDMONITOR-P2)
-];
-
-// Minimal Sentry frame type for the beforeSend filter (avoids importing @sentry/browser).
-interface _SentryFrame { filename?: string; function?: string; lineno?: number }
-
-// Sentry beforeSend filter — extracted so it can be referenced inside the deferred init.
-// Uses `any` for the event parameter because the Sentry ErrorEvent type cannot be imported
-// without creating a static dependency on @sentry/browser (which defeats the lazy load).
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-function _sentryBeforeSend(event: any): any {
-    const msg: string = event.exception?.values?.[0]?.value ?? '';
+  ],
+  beforeSend(event) {
+    const msg = event.exception?.values?.[0]?.value ?? '';
     if (msg.length <= 3 && /^[a-zA-Z_$]+$/.test(msg)) return null;
-    const frames: _SentryFrame[] = event.exception?.values?.[0]?.stacktrace?.frames ?? [];
-    const vendorChunk = /(?:^|\/)(maplibre|deck-stack|d3|topojson|i18n|sentry|transformers|onnxruntime)-[A-Za-z0-9_-]+\.js(?:\?|$)/;
+    const frames = event.exception?.values?.[0]?.stacktrace?.frames ?? [];
+    const vendorChunk = /\/(maplibre|deck-stack|d3|topojson|i18n|sentry|transformers|onnxruntime)-[A-Za-z0-9_-]+\.js/;
     const firstPartyFile = (filename: string) => {
       if (/\.(ts|tsx)$/.test(filename) || /^src\//.test(filename)) return true;
       if (/\/assets\/[A-Za-z0-9_-]+(-[A-Za-z0-9_-]+)*\.js/.test(filename)) return !vendorChunk.test(filename);
@@ -379,7 +314,7 @@ function _sentryBeforeSend(event: any): any {
     const hasAnyStack = nonInfraFrames.length > 0;
     // Suppress maplibre internal null-access crashes (light, placement) only when stack is in map chunk
     if (/this\.style\._layers|reading '_layers'|this\.(light|sky) is null|can't access property "(id|type|setFilter|bind)"[,] ?[\w.]+ is (null|undefined)|can't access property "(id|type)" of null|Cannot read properties of null \(reading '(id|type|setFilter|_layers)'\)|null is not an object \(evaluating '\w{1,3}\.(id|style)|^\w{1,2} is null$/.test(msg)) {
-      if (frames.some(f => /(?:^|\/)(map|maplibre|deck-stack)-[A-Za-z0-9_-]+\.js(?:\?|$)/.test(f.filename ?? ''))) return null;
+      if (frames.some(f => /\/(map|maplibre|deck-stack)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
     }
     // Suppress any TypeError / RangeError that happens entirely within maplibre or deck.gl internals.
     // RangeError: "Invalid array length" during deck.gl bindVertexArray / _updateCache on large
@@ -387,16 +322,16 @@ function _sentryBeforeSend(event: any): any {
     // EXCEPTION: `Failed to fetch (<host>)` is routed through the host-allowlist block below
     // so a self-hosted R2 PMTiles / first-party basemap regression isn't silently dropped just
     // because its stack happens to be all-vendor frames (WORLDMONITOR-NE/NF follow-up).
+    const excType = event.exception?.values?.[0]?.type ?? '';
     // `TypeError: Failed to fetch (<host>)` shape — emitted by maplibre's AJAX
     // wrapper AND by first-party fetch callers that surface a host-suffixed
     // network error. The host allowlist below is the load-bearing safety;
     // this match is just the shape detector.
-    const excType: string = event.exception?.values?.[0]?.type ?? '';
     const isHostScopedFetchFailure = excType === 'TypeError' && /^Failed to fetch \([^)]+\)$/.test(msg);
     if (!isHostScopedFetchFailure
         && (excType === 'TypeError' || excType === 'RangeError' || /^(?:TypeError|RangeError):/.test(msg))
         && frames.length > 0) {
-      if (nonInfraFrames.length > 0 && nonInfraFrames.every(f => /(?:^|\/)(map|maplibre|deck-stack)-[A-Za-z0-9_-]+\.js(?:\?|$)/.test(f.filename ?? ''))) return null;
+      if (nonInfraFrames.length > 0 && nonInfraFrames.every(f => /\/(map|maplibre|deck-stack)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
     }
     // Suppress `Failed to fetch (<host>)` for known third-party hosts. Originally
     // scoped to maplibre's tile/style/glyph fetches (which wrap transient network
@@ -641,7 +576,13 @@ function _sentryBeforeSend(event: any): any {
       || /WEBGLRenderPipeline.*Link error/.test(msg)
     )) return null;
     return event;
-}
+  },
+});
+// Suppress NotAllowedError from YouTube IFrame API's internal play() — browser autoplay policy,
+// not actionable. The YT IFrame API doesn't expose the play() promise so it leaks as unhandled.
+window.addEventListener('unhandledrejection', (e) => {
+  if (e.reason?.name === 'NotAllowedError') e.preventDefault();
+});
 
 // CSP violation filter — exported for testability.
 // Returns true if the violation should be suppressed (not reported to Sentry).
@@ -783,86 +724,31 @@ const _firstPartyConvexHost = ((): string | null => {
 // @ts-expect-error — expose for tests
 window.__shouldSuppressCspViolation = shouldSuppressCspViolation;
 
-const captureCspViolation = (Sentry: SentryCapture, violation: BufferedCspViolation): void => {
-  const blocked = violation.blockedURI;
+// Report CSP violations in the parent page to Sentry.
+// Sandbox iframe violations are isolated and not captured here.
+window.addEventListener('securitypolicyviolation', (e) => {
+  const blocked = e.blockedURI ?? '';
   if (shouldSuppressCspViolation(
-    violation.disposition,
-    violation.effectiveDirective,
+    e.disposition ?? '',
+    e.effectiveDirective ?? '',
     blocked,
-    violation.sourceFile,
+    e.sourceFile ?? '',
     _cspAllowsHttps,
     _firstPartyConvexHost,
   )) return;
-  Sentry.captureMessage(`CSP: ${violation.effectiveDirective} blocked ${blocked || '(inline)'}`, {
+  Sentry.captureMessage(`CSP: ${e.effectiveDirective} blocked ${blocked || '(inline)'}`, {
     level: 'warning',
     tags: { kind: 'csp_violation' },
     extra: {
-      violatedDirective: violation.violatedDirective,
-      effectiveDirective: violation.effectiveDirective,
+      violatedDirective: e.violatedDirective,
+      effectiveDirective: e.effectiveDirective,
       blockedURI: blocked,
-      sourceFile: violation.sourceFile,
-      lineNumber: violation.lineNumber,
-      disposition: violation.disposition,
-      bufferedAt: violation.timestamp,
+      sourceFile: e.sourceFile,
+      lineNumber: e.lineNumber,
+      disposition: e.disposition,
     },
   });
-};
-
-// === Deferred Sentry initialization ===
-// Sentry loads via dynamic import() triggered by requestIdleCallback.
-// All config (ignoreErrors, beforeSend, CSP handler) is preserved inside the callback.
-const _initSentry = () => {
-  import('@sentry/browser').then((Sentry) => {
-    const sentryDsn = import.meta.env.VITE_SENTRY_DSN?.trim();
-
-    Sentry.init({
-      dsn: sentryDsn || undefined,
-      release: `worldmonitor@${__APP_VERSION__}`,
-      environment: (location.hostname === 'worldmonitor.app' || location.hostname.endsWith('.worldmonitor.app')) ? 'production'
-        : location.hostname.includes('vercel.app') ? 'preview'
-        : 'development',
-      enabled: Boolean(sentryDsn) && !location.hostname.startsWith('localhost') && !('__TAURI_INTERNALS__' in window),
-      allowUrls: [
-        /https?:\/\/(www\.|tech\.|finance\.|commodity\.|happy\.)?worldmonitor\.app/,
-        /https?:\/\/.*\.vercel\.app/,
-      ],
-      sendDefaultPii: true,
-      tracesSampleRate: 0.1,
-      ignoreErrors: _sentryIgnoreErrors,
-      beforeSend: _sentryBeforeSend,
-    });
-
-    // CSP violation handler — reports non-suppressed violations to Sentry.
-    // Install the live listener before removing the boot buffer so there is
-    // no uncovered gap during the handoff.
-    window.addEventListener('securitypolicyviolation', (e) => {
-      captureCspViolation(Sentry, serializeCspViolation(e));
-    });
-    window.removeEventListener('securitypolicyviolation', bufferCspViolation);
-
-    // Flush buffered errors captured before Sentry loaded
-    for (const { error } of __errorBuffer) {
-      Sentry.captureException(error);
-    }
-    __errorBuffer.length = 0;
-    for (const violation of __cspViolationBuffer) {
-      captureCspViolation(Sentry, violation);
-    }
-    __cspViolationBuffer.length = 0;
-
-    // Remove temporary error handlers — Sentry now owns global error capture
-    window.onerror = _origOnError;
-    window.onunhandledrejection = _origOnUnhandled;
-  }).catch((err) => {
-    console.warn('[Sentry] Failed to load:', err);
-  });
-};
-
-if ('requestIdleCallback' in window) {
-  (window as unknown as { requestIdleCallback: (cb: () => void, opts?: { timeout: number }) => void }).requestIdleCallback(_initSentry, { timeout: 3000 });
-} else {
-  setTimeout(_initSentry, 1000);
-}
+});
 
 import { debugGetCells, getCellCount } from '@/services/geo-convergence';
 import { initMetaTags } from '@/services/meta-tags';

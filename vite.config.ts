@@ -1,5 +1,4 @@
-import { defineConfig, loadEnv, type Plugin, type PluginOption } from 'vite';
-import { visualizer } from 'rollup-plugin-visualizer';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
 import { resolve, dirname, extname } from 'path';
 import { mkdir, readFile, writeFile } from 'fs/promises';
@@ -26,6 +25,79 @@ const LAZY_HTML_PRELOAD_CHUNKS = ['maplibre', 'deck-stack', 'MapContainer'] as c
 const LAZY_HTML_PRELOAD_RE = new RegExp(
   `/(${LAZY_HTML_PRELOAD_CHUNKS.join('|')})-[A-Za-z0-9_-]+\\.js$`,
 );
+
+// Panel-cluster manualChunks map. Splits the previously monolithic ~2.3MB
+// `panels` chunk into per-domain chunks so cache invalidation is local to
+// the cluster a panel lives in and per-variant builds can prune unused
+// clusters. Unmapped panels fall through to a generic `panels` chunk.
+const PANEL_CLUSTER: Record<string, string> = {
+  // Markets / equities / crypto positioning
+  AAIISentiment: 'panels-markets', CotPositioning: 'panels-markets',
+  ETFFlows: 'panels-markets', EarningsCalendar: 'panels-markets',
+  EconomicCalendar: 'panels-markets', FearGreed: 'panels-markets',
+  GoldIntelligence: 'panels-markets', LiquidityShifts: 'panels-markets',
+  MacroSignals: 'panels-markets', Market: 'panels-markets',
+  MarketBreadth: 'panels-markets', MarketImplications: 'panels-markets',
+  Positioning: 'panels-markets', Stablecoin: 'panels-markets',
+  StockAnalysis: 'panels-markets', StockBacktest: 'panels-markets',
+  WsbTickerScanner: 'panels-markets', YieldCurve: 'panels-markets',
+  // Energy / commodities / supply infra
+  ChokepointStrip: 'panels-energy', EnergyComplex: 'panels-energy',
+  EnergyCrisis: 'panels-energy', EnergyDisruptions: 'panels-energy',
+  EnergyRiskOverview: 'panels-energy', FuelPrices: 'panels-energy',
+  FuelShortage: 'panels-energy', Hormuz: 'panels-energy',
+  OilInventories: 'panels-energy', PipelineStatus: 'panels-energy',
+  StorageFacilityMap: 'panels-energy', RenewableEnergy: 'panels-energy',
+  // Defense / military / aviation
+  AirlineIntel: 'panels-defense', DefensePatents: 'panels-defense',
+  OrefSirens: 'panels-defense', StrategicPosture: 'panels-defense',
+  StrategicRisk: 'panels-defense', ThermalEscalation: 'panels-defense',
+  UcdpEvents: 'panels-defense',
+  // News / feeds / briefs
+  BreakthroughsTicker: 'panels-news', ClimateNews: 'panels-news',
+  DailyMarketBrief: 'panels-news', GdeltIntel: 'panels-news',
+  GoodThingsDigest: 'panels-news', LatestBrief: 'panels-news',
+  LiveNews: 'panels-news', News: 'panels-news',
+  PositiveNewsFeed: 'panels-news', TelegramIntel: 'panels-news',
+  // Macro / prices / trade
+  BigMac: 'panels-economy', ConsumerPrices: 'panels-economy',
+  Economic: 'panels-economy',
+  FaoFoodPriceIndex: 'panels-economy', FSI: 'panels-economy',
+  GroceryBasket: 'panels-economy', GulfEconomies: 'panels-economy',
+  Investments: 'panels-economy', MacroTiles: 'panels-economy',
+  NationalDebt: 'panels-economy', SanctionsPressure: 'panels-economy',
+  SupplyChain: 'panels-economy', TradePolicy: 'panels-economy',
+  // Country briefs / signals / monitors / agent surfaces.
+  // CorrelationPanel base lives here, so all *Correlation consumers MUST stay
+  // in this cluster — splitting them across clusters caused TDZ on init.
+  ChatAnalyst: 'panels-intel', CII: 'panels-intel',
+  Cascade: 'panels-intel', Correlation: 'panels-intel',
+  CountryBrief: 'panels-intel', CountryDeepDive: 'panels-intel',
+  CrossSourceSignals: 'panels-intel', CustomWidget: 'panels-intel',
+  Deduction: 'panels-intel',
+  DisasterCorrelation: 'panels-intel',
+  EconomicCorrelation: 'panels-intel',
+  EscalationCorrelation: 'panels-intel',
+  MilitaryCorrelation: 'panels-intel',
+  Forecast: 'panels-intel',
+  HeroSpotlight: 'panels-intel', Insights: 'panels-intel',
+  LiveWebcams: 'panels-intel', McpData: 'panels-intel',
+  Monitor: 'panels-intel', PinnedWebcams: 'panels-intel',
+  Prediction: 'panels-intel', ProgressCharts: 'panels-intel',
+  Regulation: 'panels-intel',
+  // Disasters / climate / connectivity / society
+  ClimateAnomaly: 'panels-risk', Counters: 'panels-risk',
+  DiseaseOutbreaks: 'panels-risk',
+  Displacement: 'panels-risk', GeoHubs: 'panels-risk',
+  Giving: 'panels-risk', InternetDisruptions: 'panels-risk',
+  PopulationExposure: 'panels-risk', RadiationWatch: 'panels-risk',
+  RuntimeConfig: 'panels-risk', SatelliteFires: 'panels-risk',
+  SecurityAdvisories: 'panels-risk', ServiceStatus: 'panels-risk',
+  SocialVelocity: 'panels-risk', SpeciesComeback: 'panels-risk',
+  Status: 'panels-risk', TechEvents: 'panels-risk',
+  TechHubs: 'panels-risk', TechReadiness: 'panels-risk',
+  WorldClock: 'panels-risk',
+};
 
 function brotliPrecompressPlugin(): Plugin {
   return {
@@ -734,11 +806,10 @@ export default defineConfig(({ mode }) => {
         },
 
         workbox: {
-          globPatterns: ['**/*.html'],
-          globIgnores: ['**/bundle-report.html', '**/ml*.js', '**/onnx*.wasm', '**/locale-*.js'],
-          // Only HTML entry points are precached; keep this tight so accidental
-          // asset precache regressions fail loudly.
-          maximumFileSizeToCacheInBytes: 256 * 1024,
+          globPatterns: ['**/*.{js,css,ico,png,svg,woff2}'],
+          globIgnores: ['**/ml*.js', '**/onnx*.wasm', '**/locale-*.js'],
+          // globe.gl + three.js grows main bundle past the 2 MiB default limit
+          maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
           navigateFallback: null,
           skipWaiting: true,
           clientsClaim: true,
@@ -815,13 +886,12 @@ export default defineConfig(({ mode }) => {
               },
             },
             {
-              urlPattern: ({ url, sameOrigin }: { url: URL; sameOrigin: boolean }) =>
-                sameOrigin && /^\/assets\/locale-.*\.js$/i.test(url.pathname),
+              urlPattern: /\/assets\/locale-.*\.js$/i,
               handler: 'CacheFirst',
               options: {
                 cacheName: 'locale-files',
                 expiration: { maxEntries: 20, maxAgeSeconds: 30 * 24 * 60 * 60 },
-                cacheableResponse: { statuses: [200] },
+                cacheableResponse: { statuses: [0, 200] },
               },
             },
             {
@@ -832,16 +902,6 @@ export default defineConfig(({ mode }) => {
                 expiration: { maxEntries: 100, maxAgeSeconds: 7 * 24 * 60 * 60 },
               },
             },
-            {
-              urlPattern: ({ url, sameOrigin }: { url: URL; sameOrigin: boolean }) =>
-                sameOrigin && /^\/assets\/.*\.(js|css)$/.test(url.pathname),
-              handler: 'StaleWhileRevalidate',
-              options: {
-                cacheName: 'app-assets',
-                expiration: { maxEntries: 200, maxAgeSeconds: 30 * 24 * 60 * 60 },
-                cacheableResponse: { statuses: [200] },
-              },
-            },
           ],
         },
 
@@ -849,12 +909,6 @@ export default defineConfig(({ mode }) => {
           enabled: false,
         },
       }),
-      ...(process.env.ANALYZE === '1' ? [visualizer({
-        filename: 'dist/bundle-report.html',
-        template: 'treemap',
-        gzipSize: true,
-        brotliSize: true,
-      }) as PluginOption] : []),
     ],
     resolve: {
       alias: {
@@ -909,11 +963,11 @@ export default defineConfig(({ mode }) => {
         output: {
           manualChunks(id) {
             if (id.includes('node_modules')) {
+              if (id.includes('/@xenova/transformers/')) {
+                return 'transformers';
+              }
               if (id.includes('/onnxruntime-web/')) {
                 return 'onnxruntime';
-              }
-              if (id.includes('/@huggingface/transformers/') || id.includes('/@huggingface/jinja/') || id.includes('/@huggingface/tokenizers/')) {
-                return 'transformers';
               }
               // NOTE: chunk names below MUST match entries in LAZY_HTML_PRELOAD_CHUNKS
               // (top of file). The resolveDependencies filter relies on this string
@@ -945,11 +999,10 @@ export default defineConfig(({ mode }) => {
               }
             }
             if (id.includes('/src/components/') && id.endsWith('Panel.ts')) {
-              // Keep panel modules in one chunk for now. Splitting them by
-              // variant or domain exposes ESM TDZ crashes because several
-              // panel modules still create generated service clients at the
-              // top level. Revisit finer panel chunking only after those
-              // imports are lazy-initialized.
+              // Cluster split (PANEL_CLUSTER) is staged but disabled: it exposes
+              // a systemic TDZ in panels with top-level `new XxxServiceClient(...)`
+              // singletons (~20+ panels). They each need lazy-init refactors
+              // before the cluster split can ship. See ce-doc-review followup.
               return 'panels';
             }
             // Give lazy-loaded locale chunks a recognizable prefix so the

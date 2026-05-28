@@ -26,13 +26,13 @@ export interface IntelligenceCache {
 }
 
 export interface AppContext {
-  map: import('@/components/MapContainer').MapContainer | null;
+  map: import('@/components').MapContainer | null;
   readonly isMobile: boolean;
   readonly isDesktopApp: boolean;
   readonly container: HTMLElement;
 
-  panels: Record<string, import('@/components/Panel').Panel>;
-  newsPanels: Record<string, import('@/components/NewsPanel').NewsPanel>;
+  panels: Record<string, import('@/components').Panel>;
+  newsPanels: Record<string, import('@/components').NewsPanel>;
   panelSettings: Record<string, PanelConfig>;
 
   mapLayers: MapLayers;
@@ -46,23 +46,23 @@ export interface AppContext {
   cyberThreatsCache: CyberThreat[] | null;
 
   disabledSources: Set<string>;
-  currentTimeRange: import('@/components/MapContainer').TimeRange;
+  currentTimeRange: import('@/components').TimeRange;
 
   inFlight: Set<string>;
   seenGeoAlerts: Set<string>;
   monitors: Monitor[];
 
-  signalModal: import('@/components/SignalModal').SignalModal | null;
-  statusPanel: import('@/components/StatusPanel').StatusPanel | null;
-  searchModal: import('@/components/SearchModal').SearchModal | null;
-  findingsBadge: import('@/components/IntelligenceGapBadge').IntelligenceGapBadge | null;
+  signalModal: import('@/components').SignalModal | null;
+  statusPanel: import('@/components').StatusPanel | null;
+  searchModal: import('@/components').SearchModal | null;
+  findingsBadge: import('@/components').IntelligenceGapBadge | null;
   breakingBanner: import('@/components/BreakingNewsBanner').BreakingNewsBanner | null;
-  playbackControl: import('@/components/PlaybackControl').PlaybackControl | null;
+  playbackControl: import('@/components').PlaybackControl | null;
   exportPanel: import('@/utils').ExportPanel | null;
   unifiedSettings: import('@/components/UnifiedSettings').UnifiedSettings | null;
-  pizzintIndicator: import('@/components/PizzIntIndicator').PizzIntIndicator | null;
+  pizzintIndicator: import('@/components').PizzIntIndicator | null;
   correlationEngine: import('@/services/correlation-engine').CorrelationEngine | null;
-  llmStatusIndicator: import('@/components/LlmStatusIndicator').LlmStatusIndicator | null;
+  llmStatusIndicator: import('@/components').LlmStatusIndicator | null;
   countryBriefPage: import('@/components/CountryBriefPanel').CountryBriefPanel | null;
   countryTimeline: import('@/components/CountryTimeline').CountryTimeline | null;
 

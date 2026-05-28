@@ -100,29 +100,22 @@ describe('withRetry', () => {
 
   it('honors err.retryAfterMs when caller attaches it (e.g. from 429 Retry-After header)', async () => {
     // Trip-wire: if the caller attaches retryAfterMs=200 and the default
-    // exponential backoff would have been ~1ms, we MUST request a 200ms sleep so the
+    // exponential backoff would have been ~1ms, we MUST sleep ≥200ms so the
     // upstream rate-limit hint is respected.
     let attempts = 0;
-    const originalSetTimeout = globalThis.setTimeout;
-    const sleepDelays = [];
-    globalThis.setTimeout = (callback, ms, ...args) => {
-      sleepDelays.push(ms);
-      return originalSetTimeout(callback, 0, ...args);
-    };
-    try {
-      await assert.rejects(
-        withRetry(async () => {
-          attempts++;
-          const err = new Error('rate limited');
-          if (attempts === 1) err.retryAfterMs = 200;  // hint only on first failure
-          throw err;
-        }, 1, 1),  // baseWait would otherwise be 1ms
-        /rate limited/,
-      );
-    } finally {
-      globalThis.setTimeout = originalSetTimeout;
-    }
-    assert.deepEqual(sleepDelays, [200]);
+    const t0 = Date.now();
+    await assert.rejects(
+      withRetry(async () => {
+        attempts++;
+        const err = new Error('rate limited');
+        if (attempts === 1) err.retryAfterMs = 200;  // hint only on first failure
+        throw err;
+      }, 1, 1),  // baseWait would otherwise be 1ms
+      /rate limited/,
+    );
+    const elapsed = Date.now() - t0;
+    assert.ok(elapsed >= 200, `expected ≥200ms (Retry-After hint), got ${elapsed}ms`);
+    assert.ok(elapsed < 1000, `expected <1000ms (cap respected), got ${elapsed}ms`);
   });
 });
 

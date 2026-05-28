@@ -1,5 +1,4 @@
 import { loadFromStorage, saveToStorage } from '@/utils';
-import { STORAGE_KEYS } from '@/config/variants/base';
 import { sanitizeWidgetHtml } from '@/utils/widget-sanitizer';
 import { getAuthState } from '@/services/auth-state';
 import { isEntitled } from '@/services/entitlements';
@@ -10,7 +9,7 @@ import {
 } from '@/services/browser-key-session';
 
 const STORAGE_KEY = 'wm-custom-widgets';
-const PANEL_SPANS_KEY = STORAGE_KEYS.panelSpans;
+const PANEL_SPANS_KEY = 'worldmonitor-panel-spans';
 const PANEL_COL_SPANS_KEY = 'worldmonitor-panel-col-spans';
 const MAX_WIDGETS = 10;
 const MAX_HISTORY = 10;
