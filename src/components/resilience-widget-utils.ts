@@ -252,6 +252,10 @@ export function formatBaselineStress(baseline: number, stress: number): string {
 }
 
 type ScoreIntervalDisplayInput = ResilienceScoreResponse['scoreInterval'] | null | undefined;
+export interface ResilienceScoreIntervalDisplay {
+  label: string;
+  title: string;
+}
 
 function normalizeScoreInterval(interval: ScoreIntervalDisplayInput): { p05: number; p95: number } | null {
   if (!interval) return null;
@@ -261,16 +265,13 @@ function normalizeScoreInterval(interval: ScoreIntervalDisplayInput): { p05: num
   return { p05, p95 };
 }
 
-export function formatResilienceScoreInterval(interval: ScoreIntervalDisplayInput): string {
+export function formatResilienceScoreInterval(interval: ScoreIntervalDisplayInput): ResilienceScoreIntervalDisplay | null {
   const normalized = normalizeScoreInterval(interval);
-  if (!normalized) return '';
-  return `[${Math.round(normalized.p05)}\u2013${Math.round(normalized.p95)}]`;
-}
-
-export function formatResilienceScoreIntervalTitle(interval: ScoreIntervalDisplayInput): string {
-  const normalized = normalizeScoreInterval(interval);
-  if (!normalized) return '';
-  return `95% confidence interval: ${normalized.p05} - ${normalized.p95}`;
+  if (!normalized) return null;
+  return {
+    label: `[${Math.round(normalized.p05)}\u2013${Math.round(normalized.p95)}]`,
+    title: `95% confidence interval: ${normalized.p05} - ${normalized.p95}`,
+  };
 }
 
 // Formats the dataVersion field (ISO date YYYY-MM-DD, sourced from the

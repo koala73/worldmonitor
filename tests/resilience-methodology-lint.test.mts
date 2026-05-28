@@ -166,8 +166,18 @@ describe('resilience methodology doc linter (T1.8)', () => {
   it('does not describe shipped source-failure and score-interval features as future work', () => {
     assert.doesNotMatch(
       source,
-      /source-failure[\s\S]{0,240}(not yet|later Phase 1 task|not represented)/i,
+      /The `source-failure` class is reserved for the runtime path/i,
+      'The methodology must not preserve the old source-failure placeholder paragraph.',
+    );
+    assert.doesNotMatch(
+      source,
+      /that wiring lands with a later Phase 1 task/i,
       'The methodology must not claim source-failure re-tagging is future work; the scorer aggregation path is wired.',
+    );
+    assert.doesNotMatch(
+      source,
+      /not yet represented in the table above/i,
+      'The methodology must not claim the source-failure table entry is missing.',
     );
     assert.doesNotMatch(
       source,
@@ -181,7 +191,7 @@ describe('resilience methodology doc linter (T1.8)', () => {
     );
     assert.match(
       source,
-      /widget renders the overall `\[p05-p95\]` range/i,
+      /widget renders the overall `\[p05\u2013p95\]` range/i,
       'The methodology should document that the widget renders the overall score interval.',
     );
   });

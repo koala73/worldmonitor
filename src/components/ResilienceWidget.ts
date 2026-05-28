@@ -16,7 +16,6 @@ import {
   formatResilienceConfidence,
   formatResilienceDataVersion,
   formatResilienceScoreInterval,
-  formatResilienceScoreIntervalTitle,
   getImputationClassIcon,
   getImputationClassLabel,
   getResilienceDomainLabel,
@@ -242,8 +241,7 @@ export class ResilienceWidget {
     const visualLevel = getResilienceVisualLevel(data.overallScore);
     const levelLabel = visualLevel.replace('_', ' ').toUpperCase();
     const levelColor = RESILIENCE_VISUAL_LEVEL_COLORS[visualLevel];
-    const scoreIntervalLabel = formatResilienceScoreInterval(data.scoreInterval);
-    const scoreIntervalTitle = formatResilienceScoreIntervalTitle(data.scoreInterval);
+    const scoreInterval = formatResilienceScoreInterval(data.scoreInterval);
 
     return h(
       'div',
@@ -258,11 +256,11 @@ export class ResilienceWidget {
             'div',
             { className: 'resilience-widget__overall-meta' },
             h('span', { className: 'resilience-widget__overall-score' }, String(Math.round(clampScore(data.overallScore)))),
-            ...(scoreIntervalLabel
+            ...(scoreInterval
               ? [h('span', {
                   className: 'resilience-widget__overall-interval',
-                  title: scoreIntervalTitle,
-                }, scoreIntervalLabel)]
+                  title: scoreInterval.title,
+                }, scoreInterval.label)]
               : []),
             h('span', { className: 'resilience-widget__overall-level', style: { color: levelColor } }, levelLabel),
             h('span', { className: 'resilience-widget__overall-trend' }, `${getResilienceTrendArrow(data.trend)} ${data.trend}`),

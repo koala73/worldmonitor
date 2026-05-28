@@ -10,7 +10,6 @@ import {
   formatResilienceConfidence,
   formatResilienceDataVersion,
   formatResilienceScoreInterval,
-  formatResilienceScoreIntervalTitle,
   getImputationClassIcon,
   getImputationClassLabel,
   getResilienceDimensionLabel,
@@ -164,15 +163,17 @@ test('formatBaselineStress renders the expected breakdown string (no Impact)', (
 });
 
 test('formatResilienceScoreInterval renders the overall score interval badge', () => {
-  assert.equal(formatResilienceScoreInterval({ p05: 65.2, p95: 72.8 }), '[65\u201373]');
-  assert.equal(formatResilienceScoreIntervalTitle({ p05: 65.2, p95: 72.8 }), '95% confidence interval: 65.2 - 72.8');
+  assert.deepEqual(formatResilienceScoreInterval({ p05: 65.2, p95: 72.8 }), {
+    label: '[65\u201373]',
+    title: '95% confidence interval: 65.2 - 72.8',
+  });
 });
 
 test('formatResilienceScoreInterval omits malformed intervals', () => {
-  assert.equal(formatResilienceScoreInterval(null), '');
-  assert.equal(formatResilienceScoreInterval(undefined), '');
-  assert.equal(formatResilienceScoreInterval({ p05: Number.NaN, p95: 72.8 }), '');
-  assert.equal(formatResilienceScoreIntervalTitle({ p05: 65.2, p95: Number.POSITIVE_INFINITY }), '');
+  assert.equal(formatResilienceScoreInterval(null), null);
+  assert.equal(formatResilienceScoreInterval(undefined), null);
+  assert.equal(formatResilienceScoreInterval({ p05: Number.NaN, p95: 72.8 }), null);
+  assert.equal(formatResilienceScoreInterval({ p05: 65.2, p95: Number.POSITIVE_INFINITY }), null);
 });
 
 // T1.4 Phase 1 of the country-resilience reference-grade upgrade plan.
