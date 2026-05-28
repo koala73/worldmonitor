@@ -448,7 +448,7 @@ function installDeckInterleavedRaceFilter(): void {
     const file = ev.filename ?? '';
     if (
       /Cannot read properties of null \(reading 'id'\)|null is not an object \(evaluating '[\w.]+\.id'\)/.test(msg)
-      && /\/deck-stack-[A-Za-z0-9_-]+\.js/.test(file)
+      && /(?:^|\/)deck-stack-[A-Za-z0-9_-]+\.js(?:\?|$)/.test(file)
     ) {
       ev.preventDefault();
       ev.stopImmediatePropagation();

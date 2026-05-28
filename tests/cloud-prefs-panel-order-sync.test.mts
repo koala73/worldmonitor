@@ -300,4 +300,28 @@ describe('cloud prefs live-restore behavior helpers', () => {
       ['positive-events', 'world-clock'],
     );
   });
+
+  it('does not rewrite unchanged panel-order storage during savePanelOrder', () => {
+    const layout = readSource('src/app/panel-layout.ts');
+
+    assert.match(
+      layout,
+      /if \(localStorage\.getItem\(this\.ctx\.PANEL_ORDER_KEY\) !== orderJson\) \{[\s\S]*?localStorage\.setItem\(this\.ctx\.PANEL_ORDER_KEY, orderJson\);[\s\S]*?\}/,
+      'panel-order writes must be skipped when the serialized order is unchanged',
+    );
+    assert.match(
+      layout,
+      /if \(localStorage\.getItem\(bottomSetKey\) !== bottomSetJson\) \{[\s\S]*?localStorage\.setItem\(bottomSetKey, bottomSetJson\);[\s\S]*?\}/,
+      'panel-order bottom-set writes must be skipped when unchanged',
+    );
+  });
+
+  it('eagerly loads the Live News panel after registering its lazy loader', () => {
+    const layout = readSource('src/app/panel-layout.ts');
+    assert.match(
+      layout,
+      /this\.lazyPanel\('live-news'[\s\S]*?new m\.LiveNewsPanel\(\);[\s\S]*?\n\s*\}\),\n\s*\);\n\s*this\.triggerPanelLoad\('live-news'\);/,
+      'live-news should not stay as a viewport-gated skeleton on startup',
+    );
+  });
 });

@@ -9,6 +9,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // Extract the beforeSend function body from main.ts source.
 // We parse it as a standalone function to avoid importing Sentry/App bootstrap.
 const mainSrc = readFileSync(resolve(__dirname, '../src/main.ts'), 'utf-8');
+const deckGLMapSrc = readFileSync(resolve(__dirname, '../src/components/DeckGLMap.ts'), 'utf-8');
 
 // Extract the beforeSend function body from main.ts source.
 // Supports both inline `beforeSend(event) {` and extracted `function _sentryBeforeSend(event: any): any {`.
@@ -105,6 +106,7 @@ describe('first-party file detection', () => {
 
   const vendorChunks = [
     ['/assets/deck-stack-x1y2z3.js', 'deck-stack (vendor)'],
+    ['deck-stack-x1y2z3.js', 'bare deck-stack filename (vendor)'],
     ['/assets/maplibre-AbC123.js', 'maplibre (vendor)'],
     ['/assets/d3-xyz.js', 'd3 (vendor)'],
     ['/assets/transformers-xyz.js', 'transformers (vendor)'],
@@ -561,6 +563,21 @@ describe('existing beforeSend filters', () => {
       { filename: '/assets/maplibre-AbC123.js', lineno: 100, function: 'paint' },
     ]);
     assert.equal(beforeSend(event), null);
+  });
+
+  it("suppresses deck-stack null 'id' race when the browser reports a bare chunk filename", () => {
+    const event = makeEvent("Cannot read properties of null (reading 'id')", 'TypeError', [
+      { filename: 'deck-stack-cas5ZjXa.js', lineno: 1525, function: 'DeckRenderer._drawLayers' },
+    ]);
+    assert.equal(beforeSend(event), null);
+  });
+
+  it("DeckGLMap's console race filter also matches bare deck-stack filenames", () => {
+    const match = deckGLMapSrc.match(/&& \/(.+deck-stack.+)\/\.test\(file\)/);
+    assert.ok(match, 'DeckGLMap deck-stack filename guard must be present');
+    const filenameRe = new RegExp(match[1]);
+    assert.ok(filenameRe.test('deck-stack-cas5ZjXa.js'));
+    assert.ok(filenameRe.test('/assets/deck-stack-cas5ZjXa.js'));
   });
 
   it('suppresses blob-only errors', () => {

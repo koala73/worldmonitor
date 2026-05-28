@@ -368,7 +368,7 @@ function _sentryBeforeSend(event: any): any {
     const msg: string = event.exception?.values?.[0]?.value ?? '';
     if (msg.length <= 3 && /^[a-zA-Z_$]+$/.test(msg)) return null;
     const frames: _SentryFrame[] = event.exception?.values?.[0]?.stacktrace?.frames ?? [];
-    const vendorChunk = /\/(maplibre|deck-stack|d3|topojson|i18n|sentry|transformers|onnxruntime)-[A-Za-z0-9_-]+\.js/;
+    const vendorChunk = /(?:^|\/)(maplibre|deck-stack|d3|topojson|i18n|sentry|transformers|onnxruntime)-[A-Za-z0-9_-]+\.js(?:\?|$)/;
     const firstPartyFile = (filename: string) => {
       if (/\.(ts|tsx)$/.test(filename) || /^src\//.test(filename)) return true;
       if (/\/assets\/[A-Za-z0-9_-]+(-[A-Za-z0-9_-]+)*\.js/.test(filename)) return !vendorChunk.test(filename);
@@ -379,7 +379,7 @@ function _sentryBeforeSend(event: any): any {
     const hasAnyStack = nonInfraFrames.length > 0;
     // Suppress maplibre internal null-access crashes (light, placement) only when stack is in map chunk
     if (/this\.style\._layers|reading '_layers'|this\.(light|sky) is null|can't access property "(id|type|setFilter|bind)"[,] ?[\w.]+ is (null|undefined)|can't access property "(id|type)" of null|Cannot read properties of null \(reading '(id|type|setFilter|_layers)'\)|null is not an object \(evaluating '\w{1,3}\.(id|style)|^\w{1,2} is null$/.test(msg)) {
-      if (frames.some(f => /\/(map|maplibre|deck-stack)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
+      if (frames.some(f => /(?:^|\/)(map|maplibre|deck-stack)-[A-Za-z0-9_-]+\.js(?:\?|$)/.test(f.filename ?? ''))) return null;
     }
     // Suppress any TypeError / RangeError that happens entirely within maplibre or deck.gl internals.
     // RangeError: "Invalid array length" during deck.gl bindVertexArray / _updateCache on large
@@ -396,7 +396,7 @@ function _sentryBeforeSend(event: any): any {
     if (!isHostScopedFetchFailure
         && (excType === 'TypeError' || excType === 'RangeError' || /^(?:TypeError|RangeError):/.test(msg))
         && frames.length > 0) {
-      if (nonInfraFrames.length > 0 && nonInfraFrames.every(f => /\/(map|maplibre|deck-stack)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
+      if (nonInfraFrames.length > 0 && nonInfraFrames.every(f => /(?:^|\/)(map|maplibre|deck-stack)-[A-Za-z0-9_-]+\.js(?:\?|$)/.test(f.filename ?? ''))) return null;
     }
     // Suppress `Failed to fetch (<host>)` for known third-party hosts. Originally
     // scoped to maplibre's tile/style/glyph fetches (which wrap transient network

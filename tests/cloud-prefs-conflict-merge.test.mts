@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { describe, it } from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import { mergeCloudWithLocalDirty, settledDirtyKeys } from '../src/utils/cloud-prefs-migrations.ts';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const cloudPrefsSyncSrc = readFileSync(resolve(__dirname, '../src/utils/cloud-prefs-sync.ts'), 'utf-8');
 
 describe('mergeCloudWithLocalDirty', () => {
   it('with no dirty keys, returns the cloud blob verbatim (string values only)', () => {
@@ -73,6 +79,30 @@ describe('mergeCloudWithLocalDirty', () => {
     mergeCloudWithLocalDirty(cloud, local, ['worldmonitor-theme']);
     assert.deepEqual(cloud, cloudCopy);
     assert.deepEqual(local, localCopy);
+  });
+});
+
+describe('cloud prefs upload conflict guardrails', () => {
+  it('coalesces overlapping uploads instead of stacking stale expectedSyncVersion posts', () => {
+    assert.match(cloudPrefsSyncSrc, /let _uploadInFlight = false;/);
+    assert.match(
+      cloudPrefsSyncSrc,
+      /if \(_uploadInFlight\) \{[\s\S]*?_uploadQueued = true;[\s\S]*?setState\('pending'\);[\s\S]*?return;[\s\S]*?\}/,
+    );
+    assert.match(
+      cloudPrefsSyncSrc,
+      /finally \{[\s\S]*?_uploadInFlight = false;[\s\S]*?if \(_uploadQueued[\s\S]*?schedulePrefUpload\(_currentVariant\);[\s\S]*?\}/,
+    );
+  });
+
+  it('does not advance local syncVersion from a 409 before fetching and merging the cloud row', () => {
+    const conflictBranch = cloudPrefsSyncSrc.match(/if \('conflict' in result\) \{[\s\S]*?await resolveConflictWithMerge\(token, variant\);[\s\S]*?\}/);
+    assert.ok(conflictBranch, 'uploadNow conflict branch must call resolveConflictWithMerge');
+    assert.doesNotMatch(
+      conflictBranch[0],
+      /setSyncVersion\(result\.actualSyncVersion\)/,
+      'the 409 actualSyncVersion must not bypass the fresh-cloud merge path',
+    );
   });
 });
 

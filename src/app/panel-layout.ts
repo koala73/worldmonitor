@@ -1344,6 +1344,7 @@ export class PanelLayoutManager implements AppModule {
         return new m.LiveNewsPanel();
       }),
     );
+    this.triggerPanelLoad('live-news');
 
     this.lazyPanel('live-webcams', () =>
       import('@/components/LiveWebcamsPanel').then(m => new m.LiveWebcamsPanel()),
@@ -1911,8 +1912,15 @@ export class PanelLayoutManager implements AppModule {
 
     const allOrder = this.buildUnifiedOrder(sidebarIds, bottomIds);
     this.resolvedPanelOrder = allOrder;
-    localStorage.setItem(this.ctx.PANEL_ORDER_KEY, JSON.stringify(allOrder));
-    localStorage.setItem(this.ctx.PANEL_ORDER_KEY + '-bottom-set', JSON.stringify(Array.from(this.bottomSetMemory)));
+    const orderJson = JSON.stringify(allOrder);
+    const bottomSetKey = this.ctx.PANEL_ORDER_KEY + '-bottom-set';
+    const bottomSetJson = JSON.stringify(Array.from(this.bottomSetMemory));
+    if (localStorage.getItem(this.ctx.PANEL_ORDER_KEY) !== orderJson) {
+      localStorage.setItem(this.ctx.PANEL_ORDER_KEY, orderJson);
+    }
+    if (localStorage.getItem(bottomSetKey) !== bottomSetJson) {
+      localStorage.setItem(bottomSetKey, bottomSetJson);
+    }
   }
 
   private buildUnifiedOrder(sidebarIds: string[], bottomIds: string[]): string[] {

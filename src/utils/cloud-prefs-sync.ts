@@ -85,6 +85,8 @@ let _cachedToken: string | null = null; // synchronous token cache for flush()
 // install() setItem/removeItem patch records them; a clean upload clears the
 // SETTLED ones. See resolveConflictWithMerge + mergeCloudWithLocalDirty.
 const _dirtyKeys = new Set<CloudSyncKey>();
+let _uploadInFlight = false;
+let _uploadQueued = false;
 
 /**
  * Clear dirty keys that a just-succeeded upload actually durably synced —
@@ -364,9 +366,10 @@ async function postCloudPrefs(
   });
   if (res.status === 409) {
     // Server now echoes the row's current syncVersion in the 409 body
-    // (when available) so we can advance local state without a follow-up
-    // GET. Fall back to undefined for older edge deploys that don't yet
-    // include the field — the existing re-fetch path still handles those.
+    // (when available) so callers can classify the conflict. We still
+    // fetch the fresh row before advancing local sync state; otherwise a
+    // failed follow-up GET could let the next upload skip the merge and
+    // overwrite another device's edits.
     const body = await res.json().catch(() => ({} as Record<string, unknown>));
     const actualSyncVersion = typeof body.actualSyncVersion === 'number' ? body.actualSyncVersion : undefined;
     return { conflict: true, actualSyncVersion };
@@ -547,6 +550,7 @@ export function onSignOut(): void {
   // Dirty-key tracking is per-user session state — drop it so edits made by
   // the next signed-in user don't merge against the prior user's pending set.
   _dirtyKeys.clear();
+  _uploadQueued = false;
 
   // Preserve prefs; only clear sync metadata
   localStorage.removeItem(KEY_SYNC_VERSION);
@@ -555,6 +559,14 @@ export function onSignOut(): void {
 }
 
 async function uploadNow(variant: string): Promise<void> {
+  if (_uploadInFlight) {
+    _uploadQueued = true;
+    setState('pending');
+    return;
+  }
+  _uploadInFlight = true;
+  let deferQueuedReplay = false;
+
   // Capture the auth generation at entry. If sign-out / user-switch happens
   // while we're awaiting fetch, the generation guard on any 503 retry below
   // will detect it and abort the scheduled retry. We do NOT increment the
@@ -563,13 +575,13 @@ async function uploadNow(variant: string): Promise<void> {
   // generation, not start a new one.
   const myGeneration = _authGeneration;
 
-  const token = await getClerkToken();
-  if (!token) return;
-  _cachedToken = token;
-
-  setState('syncing');
-
   try {
+    const token = await getClerkToken();
+    if (!token) return;
+    _cachedToken = token;
+
+    setState('syncing');
+
     const postedBlob = migrateLocalBlobIfNeeded();
     const result = await postCloudPrefs(token, variant, postedBlob, getSyncVersion());
 
@@ -600,6 +612,8 @@ async function uploadNow(variant: string): Promise<void> {
       console.warn(`[cloud-prefs] uploadNow 503; retrying in ${err.retryAfterSec}s`);
       setState('pending');
       clearRetryTimer();
+      deferQueuedReplay = true;
+      _uploadQueued = false;
       _retryTimer = setTimeout(() => {
         _retryTimer = null;
         if (_authGeneration !== myGeneration) return;
@@ -609,6 +623,12 @@ async function uploadNow(variant: string): Promise<void> {
     }
     console.warn('[cloud-prefs] uploadNow failed:', err);
     setState(!navigator.onLine || (err instanceof TypeError && err.message.includes('fetch')) ? 'offline' : 'error');
+  } finally {
+    _uploadInFlight = false;
+    if (_uploadQueued && !deferQueuedReplay && _authGeneration === myGeneration) {
+      _uploadQueued = false;
+      schedulePrefUpload(_currentVariant);
+    }
   }
 }
 
