@@ -224,18 +224,23 @@ export class App {
 
     if (this.mapModulesInitialized) return;
     this.mapModulesInitialized = true;
-    this.countryIntel.init();
-    // Unblock any WebMCP tool invocations that arrived during startup, even if
-    // the deferred map has not loaded yet.
-    this.resolveUiReady();
-    if (this.pendingMobileGeoCoords && this.state.map) {
-      this.state.map.setCenter(this.pendingMobileGeoCoords.lat, this.pendingMobileGeoCoords.lon, 6);
-      this.pendingMobileGeoCoords = null;
-    }
-    this.state.countryBriefPage?.onStateChange?.(() => {
-      this.eventHandlers.syncUrlState();
-    });
-    this.handleDeepLinks();
+    void this.countryIntel.init()
+      .catch((err) => {
+        console.error('[CountryIntel] init failed:', err);
+      })
+      .then(() => {
+        // Unblock any WebMCP tool invocations that arrived during startup, even if
+        // the deferred map has not loaded yet.
+        this.resolveUiReady();
+        if (this.pendingMobileGeoCoords && this.state.map) {
+          this.state.map.setCenter(this.pendingMobileGeoCoords.lat, this.pendingMobileGeoCoords.lon, 6);
+          this.pendingMobileGeoCoords = null;
+        }
+        this.state.countryBriefPage?.onStateChange?.(() => {
+          this.eventHandlers.syncUrlState();
+        });
+        this.handleDeepLinks();
+      });
   }
 
   private getCachedBootstrapUpdatedAt(): number | null {
@@ -1290,7 +1295,7 @@ export class App {
     // Phase 3: UI setup methods
     this.eventHandlers.startHeaderClock();
     this.eventHandlers.setupPlaybackControl();
-    this.eventHandlers.setupStatusPanel();
+    await this.eventHandlers.setupStatusPanel();
     this.eventHandlers.setupPizzIntIndicator();
     this.eventHandlers.setupLlmStatusIndicator();
     this.eventHandlers.setupExportPanel();

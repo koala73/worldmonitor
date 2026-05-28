@@ -2,11 +2,11 @@ import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { getHydratedData } from '@/services/bootstrap';
-import { getRpcBaseUrl } from '@/services/rpc-client';
+import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
 import { EconomicServiceClient } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import type { ListBigMacPricesResponse } from '@/generated/client/worldmonitor/economic/v1/service_client';
 
-const client = new EconomicServiceClient(getRpcBaseUrl(), { fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args) });
+const getEconomicClient = createLazyClient(() => new EconomicServiceClient(getRpcBaseUrl(), { fetch: rpcFetch }));
 
 export class BigMacPanel extends Panel {
   constructor() {
@@ -19,13 +19,13 @@ export class BigMacPanel extends Panel {
       if (hydrated?.countries?.length) {
         if (!this.element?.isConnected) return;
         this.renderIndex(hydrated);
-        void client.listBigMacPrices({}).then(data => {
+        void getEconomicClient().listBigMacPrices({}).then(data => {
           if (!this.element?.isConnected || !data.countries?.length) return;
           this.renderIndex(data);
         }).catch(() => {});
         return;
       }
-      const data = await client.listBigMacPrices({});
+      const data = await getEconomicClient().listBigMacPrices({});
       if (!this.element?.isConnected) return;
       this.renderIndex(data);
     } catch (err) {

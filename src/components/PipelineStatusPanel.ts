@@ -1,6 +1,6 @@
 import { Panel } from './Panel';
 import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
-import { getRpcBaseUrl } from '@/services/rpc-client';
+import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
 import { attributionFooterHtml, ATTRIBUTION_FOOTER_CSS } from '@/utils/attribution-footer';
 import { SupplyChainServiceClient } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
 import type {
@@ -22,9 +22,9 @@ import {
   type RawPipelineRegistry,
 } from '@/shared/pipeline-registry-store';
 
-const client = new SupplyChainServiceClient(getRpcBaseUrl(), {
-  fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args),
-});
+const getSupplyChainClient = createLazyClient(() => new SupplyChainServiceClient(getRpcBaseUrl(), {
+  fetch: rpcFetch,
+}));
 
 // Shape of the raw Redis registry hydrated by bootstrap. This mirrors
 // scripts/data/pipelines-{gas,oil}.json verbatim — the seeder does NOT
@@ -224,7 +224,7 @@ export class PipelineStatusPanel extends Panel {
         // classifierVersion + updatedAt into the shared store so the map's
         // next re-render uses the newer stamps too — prevents map/panel
         // drift during rollouts.
-        void client.listPipelines({ commodityType: '' }).then(live => {
+        void getSupplyChainClient().listPipelines({ commodityType: '' }).then(live => {
           if (!this.element?.isConnected || !live?.pipelines?.length) return;
           this.data = live;
           this.render();
@@ -242,7 +242,7 @@ export class PipelineStatusPanel extends Panel {
         return;
       }
 
-      const live = await client.listPipelines({ commodityType: '' });
+      const live = await getSupplyChainClient().listPipelines({ commodityType: '' });
       if (!this.element?.isConnected) return;
       if (live.upstreamUnavailable || !live.pipelines?.length) {
         this.showError('Pipeline registry unavailable', () => void this.fetchData());
@@ -272,8 +272,8 @@ export class PipelineStatusPanel extends Panel {
     this.render();
     try {
       const [d, events] = await Promise.all([
-        client.getPipelineDetail({ pipelineId }),
-        client.listEnergyDisruptions({ assetId: pipelineId, assetType: 'pipeline', ongoingOnly: false }),
+        getSupplyChainClient().getPipelineDetail({ pipelineId }),
+        getSupplyChainClient().listEnergyDisruptions({ assetId: pipelineId, assetType: 'pipeline', ongoingOnly: false }),
       ]);
       if (!this.element?.isConnected || this.selectedId !== pipelineId) return;
       this.detail = d;

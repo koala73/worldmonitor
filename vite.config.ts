@@ -14,6 +14,18 @@ import { VARIANT_META, type VariantMeta } from './src/config/variant-meta';
 const brotliCompressAsync = promisify(brotliCompress);
 const BROTLI_EXTENSIONS = new Set(['.js', '.mjs', '.css', '.html', '.svg', '.json', '.txt', '.xml', '.wasm']);
 
+const PANEL_CHUNK_NAMES = [
+  'panels-core',
+  'panels-markets',
+  'panels-energy',
+  'panels-defense',
+  'panels-news',
+  'panels-economy',
+  'panels-intel',
+  'panels-risk',
+] as const;
+type PanelChunkName = typeof PANEL_CHUNK_NAMES[number];
+
 // Single source of truth for chunk names that must NOT be hoisted into the
 // entry HTML's modulepreload list. Used by both `manualChunks` (return values
 // must literally match these strings) and `modulePreload.resolveDependencies`
@@ -22,10 +34,208 @@ const BROTLI_EXTENSIONS = new Set(['.js', '.mjs', '.css', '.html', '.svg', '.jso
 // re-eagerises the WebGL stack without any build-time error.
 //   - maplibre, deck-stack: heavy WebGL deps, only reachable via MapContainer
 //   - MapContainer: the dynamic-import target itself
-const LAZY_HTML_PRELOAD_CHUNKS = ['maplibre', 'deck-stack', 'MapContainer'] as const;
+//   - panel-support: shared base/helper modules for lazy panel chunks
+//   - panels-*: lazy panel clusters; keep them out of the entry HTML preload
+const LAZY_HTML_PRELOAD_CHUNKS = ['maplibre', 'deck-stack', 'MapContainer', 'panel-support', ...PANEL_CHUNK_NAMES] as const;
 const LAZY_HTML_PRELOAD_RE = new RegExp(
   `/(${LAZY_HTML_PRELOAD_CHUNKS.join('|')})-[A-Za-z0-9_-]+\\.js$`,
 );
+
+const EXTRA_PANEL_COMPONENT_FILES = new Set(['CountryBriefPage', 'RegionalIntelligenceBoard']);
+
+function panelKeyForComponentFile(fileName: string): string | null {
+  if (fileName === 'Panel') return fileName;
+  if (fileName.endsWith('Panel')) return fileName.slice(0, -'Panel'.length);
+  if (EXTRA_PANEL_COMPONENT_FILES.has(fileName)) return fileName;
+  return null;
+}
+
+function panelChunkForComponentId(id: string): PanelChunkName | 'panel-support' | null {
+  if (!id.includes('/src/components/') || !id.endsWith('.ts')) return null;
+  const match = id.match(/\/([^/]+)\.ts$/);
+  if (!match) return null;
+  const panelKey = panelKeyForComponentFile(match[1]);
+  if (panelKey === 'Panel') return 'panel-support';
+  if (!panelKey) return null;
+  const chunkName = PANEL_CLUSTER[panelKey];
+  if (chunkName) return chunkName;
+  throw new Error(`[manualChunks] Unassigned panel component ${match[1]}. Add ${panelKey} to PANEL_CLUSTER in vite.config.ts.`);
+}
+
+function isPanelSupportCandidate(id: string): boolean {
+  return (
+    id.includes('/src/components/')
+    || id.includes('/src/services/')
+    || id.includes('/src/utils/')
+    || id.includes('/src/config/')
+    || id.includes('/src/generated/')
+    || id.includes('/src/shared/')
+  );
+}
+
+type ChunkModuleInfo = { importers: string[]; dynamicImporters: string[]; isEntry?: boolean };
+type GetChunkModuleInfo = (moduleId: string) => ChunkModuleInfo | null;
+
+function hasPanelComponentImporter(
+  id: string,
+  getModuleInfo: GetChunkModuleInfo,
+  seen = new Set<string>(),
+): boolean {
+  if (seen.has(id)) return false;
+  seen.add(id);
+  const info = getModuleInfo(id);
+  if (!info) return false;
+  for (const importer of [...info.importers, ...info.dynamicImporters]) {
+    if (panelChunkForComponentId(importer)) return true;
+    if (isPanelSupportCandidate(importer) && hasPanelComponentImporter(importer, getModuleInfo, seen)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function hasStaticEntryImporter(
+  id: string,
+  getModuleInfo: GetChunkModuleInfo,
+  seen = new Set<string>(),
+): boolean {
+  if (seen.has(id)) return false;
+  seen.add(id);
+  const info = getModuleInfo(id);
+  if (!info) return false;
+  if (info.isEntry) return true;
+  for (const importer of info.importers) {
+    if (hasStaticEntryImporter(importer, getModuleInfo, seen)) return true;
+  }
+  return false;
+}
+
+// Panel-cluster manualChunks map. The keys are component file basenames without
+// the trailing "Panel" suffix. These chunks are lazy dynamic-import targets, so
+// editing one panel no longer invalidates the entire panel surface.
+const PANEL_CLUSTER: Record<string, PanelChunkName> = {
+  // Boot shell / base panel infrastructure
+  Status: 'panels-core',
+
+  // Markets / equities / crypto positioning
+  AAIISentiment: 'panels-markets',
+  CotPositioning: 'panels-markets',
+  ETFFlows: 'panels-markets',
+  EarningsCalendar: 'panels-markets',
+  EconomicCalendar: 'panels-markets',
+  FearGreed: 'panels-markets',
+  GoldIntelligence: 'panels-markets',
+  LiquidityShifts: 'panels-markets',
+  MacroSignals: 'panels-markets',
+  Market: 'panels-markets',
+  MarketBreadth: 'panels-markets',
+  MarketImplications: 'panels-markets',
+  Positioning: 'panels-markets',
+  Stablecoin: 'panels-markets',
+  StockAnalysis: 'panels-markets',
+  StockBacktest: 'panels-markets',
+  WsbTickerScanner: 'panels-markets',
+  YieldCurve: 'panels-markets',
+
+  // Energy / commodities / supply infrastructure
+  ChokepointStrip: 'panels-energy',
+  EnergyComplex: 'panels-energy',
+  EnergyCrisis: 'panels-energy',
+  EnergyDisruptions: 'panels-energy',
+  EnergyRiskOverview: 'panels-energy',
+  FuelPrices: 'panels-energy',
+  FuelShortage: 'panels-energy',
+  Hormuz: 'panels-energy',
+  OilInventories: 'panels-energy',
+  PipelineStatus: 'panels-energy',
+  RenewableEnergy: 'panels-energy',
+  StorageFacilityMap: 'panels-energy',
+
+  // Defense / military / aviation
+  AirlineIntel: 'panels-defense',
+  DefensePatents: 'panels-defense',
+  OrefSirens: 'panels-defense',
+  StrategicPosture: 'panels-defense',
+  StrategicRisk: 'panels-defense',
+  ThermalEscalation: 'panels-defense',
+  UcdpEvents: 'panels-defense',
+
+  // News / feeds / briefs
+  BreakthroughsTicker: 'panels-news',
+  ClimateNews: 'panels-news',
+  DailyMarketBrief: 'panels-news',
+  GdeltIntel: 'panels-news',
+  GoodThingsDigest: 'panels-news',
+  LatestBrief: 'panels-news',
+  LiveNews: 'panels-news',
+  News: 'panels-news',
+  PositiveNewsFeed: 'panels-news',
+  TelegramIntel: 'panels-news',
+
+  // Macro / prices / trade
+  BigMac: 'panels-economy',
+  ConsumerPrices: 'panels-economy',
+  Economic: 'panels-economy',
+  FSI: 'panels-economy',
+  FaoFoodPriceIndex: 'panels-economy',
+  GroceryBasket: 'panels-economy',
+  GulfEconomies: 'panels-economy',
+  Investments: 'panels-economy',
+  MacroTiles: 'panels-economy',
+  NationalDebt: 'panels-economy',
+  SanctionsPressure: 'panels-economy',
+  SupplyChain: 'panels-economy',
+  TradePolicy: 'panels-economy',
+
+  // Country briefs / signals / monitors / agent surfaces. Keep the
+  // CorrelationPanel base and all correlation consumers together.
+  Cascade: 'panels-intel',
+  ChatAnalyst: 'panels-intel',
+  CII: 'panels-intel',
+  Correlation: 'panels-intel',
+  CountryBrief: 'panels-intel',
+  CountryBriefPage: 'panels-intel',
+  CountryDeepDive: 'panels-intel',
+  CrossSourceSignals: 'panels-intel',
+  CustomWidget: 'panels-intel',
+  Deduction: 'panels-intel',
+  DisasterCorrelation: 'panels-intel',
+  EconomicCorrelation: 'panels-intel',
+  EscalationCorrelation: 'panels-intel',
+  Forecast: 'panels-intel',
+  HeroSpotlight: 'panels-intel',
+  Insights: 'panels-intel',
+  LiveWebcams: 'panels-intel',
+  McpData: 'panels-intel',
+  MilitaryCorrelation: 'panels-intel',
+  Monitor: 'panels-intel',
+  PinnedWebcams: 'panels-intel',
+  Prediction: 'panels-intel',
+  ProgressCharts: 'panels-intel',
+  RegionalIntelligenceBoard: 'panels-intel',
+  Regulation: 'panels-intel',
+
+  // Disasters / climate / connectivity / society
+  ClimateAnomaly: 'panels-risk',
+  Counters: 'panels-risk',
+  DiseaseOutbreaks: 'panels-risk',
+  Displacement: 'panels-risk',
+  GeoHubs: 'panels-risk',
+  Giving: 'panels-risk',
+  InternetDisruptions: 'panels-risk',
+  PopulationExposure: 'panels-risk',
+  RadiationWatch: 'panels-risk',
+  RuntimeConfig: 'panels-risk',
+  SatelliteFires: 'panels-risk',
+  SecurityAdvisories: 'panels-risk',
+  ServiceStatus: 'panels-risk',
+  SocialVelocity: 'panels-risk',
+  SpeciesComeback: 'panels-risk',
+  TechEvents: 'panels-risk',
+  TechHubs: 'panels-risk',
+  TechReadiness: 'panels-risk',
+  WorldClock: 'panels-risk',
+};
 
 function brotliPrecompressPlugin(): Plugin {
   return {
@@ -907,7 +1117,7 @@ export default defineConfig(({ mode }) => {
           mcpGrant: resolve(__dirname, 'mcp-grant.html'),
         },
         output: {
-          manualChunks(id) {
+          manualChunks(id, { getModuleInfo }) {
             if (id.includes('node_modules')) {
               if (id.includes('/onnxruntime-web/')) {
                 return 'onnxruntime';
@@ -944,13 +1154,12 @@ export default defineConfig(({ mode }) => {
                 return 'sentry';
               }
             }
-            if (id.includes('/src/components/') && id.endsWith('Panel.ts')) {
-              // Keep panel modules in one chunk for now. Splitting them by
-              // variant or domain exposes ESM TDZ crashes because several
-              // panel modules still create generated service clients at the
-              // top level. Revisit finer panel chunking only after those
-              // imports are lazy-initialized.
-              return 'panels';
+            if (id.includes('/src/components/') && id.endsWith('.ts')) {
+              const panelChunk = panelChunkForComponentId(id);
+              if (panelChunk) return panelChunk;
+            }
+            if (isPanelSupportCandidate(id) && hasPanelComponentImporter(id, getModuleInfo)) {
+              return hasStaticEntryImporter(id, getModuleInfo) ? 'app-shared' : 'panel-support';
             }
             // Give lazy-loaded locale chunks a recognizable prefix so the
             // service worker can exclude them from precache (en.json is

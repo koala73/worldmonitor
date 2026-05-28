@@ -1,5 +1,5 @@
 import { Panel } from './Panel';
-import { getRpcBaseUrl } from '@/services/rpc-client';
+import { createLazyClient, getRpcBaseUrl } from '@/services/rpc-client';
 import { premiumFetch } from '@/services/premium-fetch';
 import { IS_EMBEDDED_PREVIEW } from '@/utils/embedded-preview';
 import { hasPremiumAccess } from '@/services/panel-gating';
@@ -13,7 +13,7 @@ import { BOARD_REGIONS, DEFAULT_REGION_ID, buildBoardHtml, buildRegimeHistoryBlo
 // get-regional-snapshot + get-regime-history + get-regional-brief are
 // premium-gated. Plain globalThis.fetch skips Clerk/tester/api-key injection
 // and returns 401 for pro users — premiumFetch is the correct fetcher here.
-const client = new IntelligenceServiceClient(getRpcBaseUrl(), { fetch: premiumFetch });
+const getIntelligenceClient = createLazyClient(() => new IntelligenceServiceClient(getRpcBaseUrl(), { fetch: premiumFetch }));
 
 /**
  * RegionalIntelligenceBoard — premium panel rendering a canonical
@@ -181,7 +181,7 @@ export class RegionalIntelligenceBoard extends Panel {
     let actualRegion = myRegion;
     let fallbackFrom: string | null = null;
     try {
-      const resp = await client.getRegionalSnapshot({ regionId: myRegion });
+      const resp = await getIntelligenceClient().getRegionalSnapshot({ regionId: myRegion });
       if (!isLatestSequence(mySequence, this.latestSequence)) return;
       snapshot = resp.snapshot;
     } catch (err) {
@@ -214,7 +214,7 @@ export class RegionalIntelligenceBoard extends Panel {
         };
         const timer = setTimeout(() => settle(null), FALLBACK_TIMEOUT_MS);
         for (const id of fallbackIds) {
-          client.getRegionalSnapshot({ regionId: id })
+          getIntelligenceClient().getRegionalSnapshot({ regionId: id })
             .then(resp => {
               if (resp.snapshot?.regionId) {
                 clearTimeout(timer);
@@ -257,8 +257,8 @@ export class RegionalIntelligenceBoard extends Panel {
 
     // Phase 2: fire history + brief RPCs in background. Use actualRegion so
     // the enrichments match the rendered snapshot when we fell back.
-    const historyPromise = client.getRegimeHistory({ regionId: actualRegion, limit: 20 }).catch(() => null);
-    const briefPromise = client.getRegionalBrief({ regionId: actualRegion }).catch(() => null);
+    const historyPromise = getIntelligenceClient().getRegimeHistory({ regionId: actualRegion, limit: 20 }).catch(() => null);
+    const briefPromise = getIntelligenceClient().getRegionalBrief({ regionId: actualRegion }).catch(() => null);
 
     Promise.allSettled([historyPromise, briefPromise]).then(([hResult, bResult]) => {
       if (!isLatestSequence(mySequence, this.latestSequence)) return;

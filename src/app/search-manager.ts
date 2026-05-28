@@ -4,7 +4,7 @@ import type { NewsItem, MapLayers } from '@/types';
 import type { MapView } from '@/components/MapContainer';
 import type { Command } from '@/config/commands';
 import { SearchModal } from '@/components/SearchModal';
-import { CIIPanel } from '@/components/CIIPanel';
+import type { CIIPanel } from '@/components/CIIPanel';
 import { SITE_VARIANT, STORAGE_KEYS } from '@/config';
 import { getAllowedLayerKeys, isLayerExecutable } from '@/config/map-layer-definitions';
 import type { MapRenderer } from '@/config/map-layer-definitions';

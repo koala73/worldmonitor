@@ -1,6 +1,6 @@
 import { Panel } from './Panel';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
-import { getRpcBaseUrl } from '@/services/rpc-client';
+import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
 import { attributionFooterHtml, ATTRIBUTION_FOOTER_CSS } from '@/utils/attribution-footer';
 import { SupplyChainServiceClient } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
 import type {
@@ -14,9 +14,9 @@ import {
   type DisruptionStatus,
 } from '@/shared/disruption-timeline';
 
-const client = new SupplyChainServiceClient(getRpcBaseUrl(), {
-  fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args),
-});
+const getSupplyChainClient = createLazyClient(() => new SupplyChainServiceClient(getRpcBaseUrl(), {
+  fetch: rpcFetch,
+}));
 
 // One glyph per event type so readers can scan the timeline by nature of
 // disruption. Kept terse — the type string itself is shown next to the glyph.
@@ -127,7 +127,7 @@ export class EnergyDisruptionsPanel extends Panel {
 
   public async fetchData(): Promise<void> {
     try {
-      const live = await client.listEnergyDisruptions({
+      const live = await getSupplyChainClient().listEnergyDisruptions({
         assetId: '',
         assetType: '',
         ongoingOnly: false,

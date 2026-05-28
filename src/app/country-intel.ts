@@ -9,7 +9,6 @@ import type {
   CountryDeepDiveMilitarySummary,
   CountryDeepDiveSignalDetails,
 } from '@/components/CountryBriefPanel';
-import { CountryDeepDivePanel } from '@/components/CountryDeepDivePanel';
 import { reverseGeocode } from '@/utils/reverse-geocode';
 import { effectivePubDateMs } from '@/services/feed-date';
 import {
@@ -86,8 +85,8 @@ export class CountryIntelManager implements AppModule {
     this.ctx = ctx;
   }
 
-  init(): void {
-    this.setupCountryIntel();
+  async init(): Promise<void> {
+    await this.setupCountryIntel();
     this.frameworkUnsubscribe = subscribeFrameworkChange('country-brief', () => {
       const page = this.ctx.countryBriefPage;
       if (!page?.isVisible()) return;
@@ -124,8 +123,10 @@ export class CountryIntelManager implements AppModule {
     this.authUnsubscribe = null;
   }
 
-  private setupCountryIntel(): void {
+  private async setupCountryIntel(): Promise<void> {
     if (!this.ctx.map) return;
+    const { CountryDeepDivePanel } = await import('@/components/CountryDeepDivePanel');
+    if (!this.ctx.map || this.ctx.isDestroyed) return;
     this.ctx.countryBriefPage = new CountryDeepDivePanel(this.ctx.map);
     this.ctx.countryBriefPage.setShareStoryHandler((code, name) => {
       this.ctx.countryBriefPage?.hide();

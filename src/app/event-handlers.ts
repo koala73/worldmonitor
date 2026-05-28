@@ -11,11 +11,10 @@ import type { PositionSample } from '@/services/aviation';
 import type { ClusteredEvent } from '@/types';
 import type { DashboardSnapshot } from '@/services/storage';
 import { PlaybackControl } from '@/components/PlaybackControl';
-import { StatusPanel } from '@/components/StatusPanel';
 import { PizzIntIndicator } from '@/components/PizzIntIndicator';
 import { LlmStatusIndicator } from '@/components/LlmStatusIndicator';
-import { CIIPanel } from '@/components/CIIPanel';
-import { PredictionPanel } from '@/components/PredictionPanel';
+import type { CIIPanel } from '@/components/CIIPanel';
+import type { PredictionPanel } from '@/components/PredictionPanel';
 import {
   buildMapUrl,
   debounce,
@@ -1021,7 +1020,9 @@ export class EventHandlerManager implements AppModule {
     this.clockIntervalId = setInterval(tick, 1000);
   }
 
-  setupStatusPanel(): void {
+  async setupStatusPanel(): Promise<void> {
+    const { StatusPanel } = await import('@/components/StatusPanel');
+    if (this.ctx.isDestroyed) return;
     this.ctx.statusPanel = new StatusPanel();
   }
 

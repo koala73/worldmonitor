@@ -20,16 +20,16 @@
 
 import { Panel } from './Panel';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
-import { getRpcBaseUrl } from '@/services/rpc-client';
+import { createLazyClient, getRpcBaseUrl, rpcFetch } from '@/services/rpc-client';
 import { fetchHormuzTracker, type HormuzTrackerData } from '@/services/hormuz-tracker';
 import { getEuGasStorageData } from '@/services/economic';
 import { fetchCommodityQuotes } from '@/services/market';
 import { SupplyChainServiceClient } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
 import { buildOverviewState, type OverviewState } from './_energy-risk-overview-state';
 
-const supplyChain = new SupplyChainServiceClient(getRpcBaseUrl(), {
-  fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args),
-});
+const getSupplyChainClient = createLazyClient(() => new SupplyChainServiceClient(getRpcBaseUrl(), {
+  fetch: rpcFetch,
+}));
 
 const BRENT_SYMBOL = 'BZ=F';
 const BRENT_META = [{ symbol: BRENT_SYMBOL, name: 'Brent Crude', display: 'BRENT' }];
@@ -111,7 +111,7 @@ export class EnergyRiskOverviewPanel extends Panel {
       // a Greptile P2 finding (over-fetch); buildOverviewState's count
       // calculation handles either response (the redundant client-side
       // filter remains as defense-in-depth in the state builder).
-      supplyChain.listEnergyDisruptions({ assetId: '', assetType: '', ongoingOnly: true }),
+      getSupplyChainClient().listEnergyDisruptions({ assetId: '', assetType: '', ongoingOnly: true }),
     ]);
     this.state = buildOverviewState(hormuz, euGas, brent, disruptions, Date.now());
 
