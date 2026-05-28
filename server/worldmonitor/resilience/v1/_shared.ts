@@ -54,7 +54,7 @@ export const RESILIENCE_SCHEMA_V2_ENABLED =
 //   - `overallScore` = penalizedPillarScore(pillars), α=0.5 (pillar
 //     weights 0.40 / 0.35 / 0.25 per the plan).
 //   - Published numbers drop ~13 points on average across the
-//     52-country sample; Spearman vs the 6-domain ranking is 0.9935.
+//     52-country sample; Spearman vs the 6-domain ranking is 0.9863.
 //
 // Read dynamically rather than captured at module load so tests can
 // flip `process.env.RESILIENCE_PILLAR_COMBINE_ENABLED` per-case without
