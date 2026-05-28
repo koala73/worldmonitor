@@ -5,6 +5,8 @@ import { describe, it } from 'node:test';
 
 const root = new URL('..', import.meta.url).pathname;
 
+// Keep this scoped to project-license docs so third-party source license notes
+// do not create false positives.
 const PROJECT_LICENSE_DOCS = [
   'README.md',
   'docs/license.mdx',
@@ -28,10 +30,12 @@ function snippet(text, index, radius = 80) {
 
 function assertNoMatch(relativePath, text, pattern, label) {
   const match = pattern.exec(text);
+  const diagnostic = match ? snippet(text, match.index, Math.max(120, match[0].length + 40)) : '';
+
   assert.equal(
     match,
     null,
-    `${relativePath} still contains ${label}: ${match ? snippet(text, match.index) : ''}`,
+    `${relativePath} still contains ${label}: ${diagnostic}`,
   );
 }
 
