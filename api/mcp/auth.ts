@@ -41,7 +41,7 @@ function getMcpRatelimit(): Ratelimit | null {
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
   mcpRatelimit = new Ratelimit({
-    redis: new Redis({ url, token }),
+    redis: new Redis({ url, token, retry: false }),
     limiter: Ratelimit.slidingWindow(60, '60 s'),
     prefix: 'rl:mcp',
     analytics: false,
@@ -55,7 +55,7 @@ function getMcpProMinRatelimit(): Ratelimit | null {
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
   mcpProMinRatelimit = new Ratelimit({
-    redis: new Redis({ url, token }),
+    redis: new Redis({ url, token, retry: false }),
     limiter: Ratelimit.slidingWindow(60, '60 s'),
     prefix: 'rl:mcp:pro-min',
     analytics: false,
