@@ -9,6 +9,8 @@ import {
   formatResilienceChange30d,
   formatResilienceConfidence,
   formatResilienceDataVersion,
+  formatResilienceScoreInterval,
+  formatResilienceScoreIntervalTitle,
   getImputationClassIcon,
   getImputationClassLabel,
   getResilienceDimensionLabel,
@@ -159,6 +161,18 @@ test('formatBaselineStress renders the expected breakdown string (no Impact)', (
   assert.equal(formatBaselineStress(80, 100), 'Baseline: 80 | Stress: 100');
   assert.equal(formatBaselineStress(50, 0), 'Baseline: 50 | Stress: 0');
   assert.equal(formatBaselineStress(NaN, 50), 'Baseline: 0 | Stress: 50');
+});
+
+test('formatResilienceScoreInterval renders the overall score interval badge', () => {
+  assert.equal(formatResilienceScoreInterval({ p05: 65.2, p95: 72.8 }), '[65\u201373]');
+  assert.equal(formatResilienceScoreIntervalTitle({ p05: 65.2, p95: 72.8 }), '95% confidence interval: 65.2 - 72.8');
+});
+
+test('formatResilienceScoreInterval omits malformed intervals', () => {
+  assert.equal(formatResilienceScoreInterval(null), '');
+  assert.equal(formatResilienceScoreInterval(undefined), '');
+  assert.equal(formatResilienceScoreInterval({ p05: Number.NaN, p95: 72.8 }), '');
+  assert.equal(formatResilienceScoreIntervalTitle({ p05: 65.2, p95: Number.POSITIVE_INFINITY }), '');
 });
 
 // T1.4 Phase 1 of the country-resilience reference-grade upgrade plan.
