@@ -1189,10 +1189,12 @@ export class EventHandlerManager implements AppModule {
     const modal = new AuthLauncher();
     this.ctx.authModal = modal;
 
-    const widget = new AuthHeaderWidget(
-      () => modal.open(),
-      () => this.ctx.unifiedSettings?.open(),
-    );
+    // The settings gear is rendered once by the standalone unifiedSettings
+    // button (#unifiedSettingsMount), which is mounted regardless of auth state
+    // (so signed-out users keep it too). Passing onSettingsClick here makes
+    // AuthHeaderWidget render a second gear next to the avatar for signed-in
+    // users — a duplicate. Leave it unset.
+    const widget = new AuthHeaderWidget(() => modal.open());
     this.ctx.authHeaderWidget = widget;
     const mount = document.getElementById('authWidgetMount');
     if (mount) {
