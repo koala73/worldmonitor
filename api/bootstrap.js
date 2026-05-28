@@ -291,6 +291,18 @@ export default async function handler(req) {
     else missing.push(names[i]);
   }
 
+  // Per-execution summary so bootstrap isn't a black box on the happy path.
+  // Only fires on a cache MISS (cache hits never run the function), but every
+  // run now reports how many sections were served from Redis vs missing — and
+  // the region — so we can see whether the missing-section pattern clusters in
+  // one region (e.g. iad1/US) without having to catch an intermittent upstream 401.
+  const region = process.env.VERCEL_REGION || '-';
+  console.log(
+    `[bootstrap] tier=${tier ?? 'custom'} region=${region} ` +
+    `keys=${names.length} present=${names.length - missing.length} missing=${missing.length}` +
+    (missing.length ? ` [${missing.join(',')}]` : ''),
+  );
+
   // ② If we have missing keys → backfill from upstream
   if (missing.length > 0 && (tier === 'fast' || tier === 'slow')) {
     const upstreamData = await fetchUpstreamBootstrap(tier);
