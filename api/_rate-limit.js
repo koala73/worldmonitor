@@ -59,6 +59,25 @@ export function getClientIp(request) {
   return cf || xr || UNKNOWN_CLIENT_IP;
 }
 
+// Decide the Sentry level for a degraded-rate-limit capture. Upstash runtime
+// transients — the Lua limiter script timing out under fan-out load
+// (`ERR Error running script: execution timed out`), a dropped command, or a
+// network/timeout blip — are absorbed by the fail-open / `failClosed`-503 path,
+// so the user is unaffected. Capture those at `warning` so a sustained Redis
+// outage still escalates by volume without a transient script-timeout drowning
+// genuine error-level signal in the dashboard (WORLDMONITOR-RX; mirrors the
+// SERVICE_UNAVAILABLE `level: 'warning'` precedent in api/user-prefs.ts). A
+// `missing-config` stage is a real deploy misconfiguration and any novel error
+// is unclassified — both stay at `error` so on-call still sees them.
+// Mirrored verbatim in server/_shared/rate-limit.ts.
+function rateLimitErrorLevel(stage, msg) {
+  if (stage.includes('missing-config')) return 'error';
+  if (/Error running script|execution timed out|Command failed|ETIMEDOUT|ECONNRESET|ENOTFOUND|fetch failed|network|timed out|socket hang up/i.test(msg)) {
+    return 'warning';
+  }
+  return 'error';
+}
+
 function logRateLimitDegraded(stage, err, ctx) {
   const msg = err instanceof Error ? err.message : String(err);
   // Keep the prefix stable — server/_shared/rate-limit.ts emits the same
@@ -68,6 +87,7 @@ function logRateLimitDegraded(stage, err, ctx) {
     tags: { surface: 'api', component: 'rate-limit', stage },
     fingerprint: ['rate-limit', 'redis-error', stage],
     ctx,
+    level: rateLimitErrorLevel(stage, msg),
   });
 }
 

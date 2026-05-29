@@ -593,6 +593,7 @@ function shouldSuppressCspViolation(
   sourceFile: string,
   cspConnectSrcAllowsHttps: boolean,
   firstPartyConvexHost: string | null,
+  cspMediaSrcAllowsHttps: boolean = false,
 ): boolean {
   // Skip non-enforced violations (report-only from dual-CSP interaction).
   if (disposition && disposition !== 'enforce') return true;
@@ -602,6 +603,44 @@ function shouldSuppressCspViolation(
     try {
       if (new URL(blockedURI).protocol === 'https:') return true;
     } catch { /* scheme-only values like "blob" fall through */ }
+  }
+  // media-src + HTTPS: HLS / live-stream media-element loads. Our media-src
+  // policy allows the `https:` scheme (`media-src 'self' data: blob: https:` in
+  // BOTH the index.html meta tag and the vercel.json header), so an *enforced*
+  // https: media-src block means a corporate proxy / privacy extension stripped
+  // `https:` from the user's effective media-src — the same environmental policy
+  // mutation as the connect-src case above. The HLS *manifest* fetch is
+  // connect-src (already suppressed via the foxnews-style rule); this covers the
+  // media element load of that same stream. Built-in and user-added custom HLS
+  // channels (LiveNewsPanel) both hit this — WORLDMONITOR-HV (bloomberg.com
+  // us.m3u8, 4 users). Gated on policy detection so it stays scoped to the
+  // current policy state, not a blanket protocol assumption. http: media-src
+  // blocks (real mixed-content) still surface.
+  if (directive === 'media-src' && cspMediaSrcAllowsHttps) {
+    try {
+      if (new URL(blockedURI).protocol === 'https:') return true;
+    } catch { /* scheme-only values fall through */ }
+  }
+  // default-src + HTTP: mixed-content block on a fetch type we set no explicit
+  // directive for — i.e. browser link-prefetch ("Preload pages" speculation) or
+  // an extension article-prefetcher. News article links render as plain
+  // <a target="_blank"> navigations (NewsPanel/ClimateNewsPanel/etc.) carrying
+  // feed-supplied URLs; some sources / downgrading proxies emit them over http:,
+  // and the browser/extension speculatively fetches them — the load falls to the
+  // default-src fallback because we set no prefetch-src. Our app is HTTPS-only and
+  // ships no http:// subresource loads, and every fetch directive we DO use
+  // (connect-src, img-src, script-src, media-src) is set explicitly, so a genuine
+  // first-party mixed-content fetch surfaces under its specific directive — never
+  // this default-src fallback. Preserve first-party worldmonitor.app http blocks
+  // so a real mixed-content regression on our own assets still surfaces
+  // (WORLDMONITOR-S0 — http://www.euronews.com article prefetch, 1 user/775 ev).
+  if (directive === 'default-src') {
+    try {
+      const u = new URL(blockedURI);
+      if (u.protocol === 'http:'
+          && u.hostname !== 'worldmonitor.app'
+          && !u.hostname.endsWith('.worldmonitor.app')) return true;
+    } catch { /* scheme-only values fall through */ }
   }
   // First-party Convex backend: corporate proxies / privacy extensions that mutate the
   // page CSP (stripping bare `https:` from connect-src) cause our Convex sync calls to
@@ -711,6 +750,19 @@ const _cspAllowsHttps = (() => {
   if (!metaEl) return false;
   return metaAllows;
 })();
+// media-src counterpart of `_cspAllowsHttps`. Detect whether the meta-tag CSP
+// allows the `https:` scheme in media-src so the filter only suppresses https:
+// media-src blocks when our own policy actually permits them (the block then
+// being an environmental policy mutation, not a real regression). Browsers
+// enforce meta + header independently; our header media-src also carries
+// `https:`, so the meta check is a sufficient (conservative) proxy.
+const _cspMediaSrcAllowsHttps = (() => {
+  const metaEl = document.querySelector('meta[http-equiv="Content-Security-Policy"]');
+  if (!metaEl) return false;
+  const metaCsp = metaEl.getAttribute('content') ?? '';
+  const metaMediaSrc = metaCsp.match(/media-src\s+([^;]*)/)?.[1] ?? '';
+  return /\bhttps:\b/.test(metaMediaSrc);
+})();
 // Resolve our configured Convex deployment hostname once. Convex is multi-tenant —
 // the CSP filter must scope its first-party suppression to OUR specific hostname,
 // not all *.convex.cloud, otherwise blocks to foreign/attacker tenants get silently
@@ -735,6 +787,7 @@ window.addEventListener('securitypolicyviolation', (e) => {
     e.sourceFile ?? '',
     _cspAllowsHttps,
     _firstPartyConvexHost,
+    _cspMediaSrcAllowsHttps,
   )) return;
   Sentry.captureMessage(`CSP: ${e.effectiveDirective} blocked ${blocked || '(inline)'}`, {
     level: 'warning',

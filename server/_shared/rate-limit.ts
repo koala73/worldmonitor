@@ -30,12 +30,32 @@ export const UNKNOWN_CLIENT_IP = 'unknown';
 // Structured one-line log so api/server log aggregation can grep for the
 // "rate-limit available" gap independently of Sentry. Keep the prefix
 // stable — operators and the api/_rate-limit.js mirror both emit it.
+// Decide the Sentry level for a degraded-rate-limit capture. Upstash runtime
+// transients — the Lua limiter script timing out under fan-out load
+// (`ERR Error running script: execution timed out`), a dropped command, or a
+// network/timeout blip — are absorbed by the fail-open / `failClosed`-503 path,
+// so the user is unaffected. Capture those at `warning` so a sustained Redis
+// outage still escalates by volume without a transient script-timeout drowning
+// genuine error-level signal in the dashboard (WORLDMONITOR-RX; mirrors the
+// SERVICE_UNAVAILABLE `level: 'warning'` precedent in api/user-prefs.ts). A
+// `missing-config` stage is a real deploy misconfiguration and any novel error
+// is unclassified — both stay at `error` so on-call still sees them.
+// Mirrored verbatim in api/_rate-limit.js.
+function rateLimitErrorLevel(stage: string, msg: string): 'warning' | 'error' {
+  if (stage.includes('missing-config')) return 'error';
+  if (/Error running script|execution timed out|Command failed|ETIMEDOUT|ECONNRESET|ENOTFOUND|fetch failed|network|timed out|socket hang up/i.test(msg)) {
+    return 'warning';
+  }
+  return 'error';
+}
+
 function logRateLimitDegraded(stage: string, err: unknown): void {
   const msg = err instanceof Error ? err.message : String(err);
   console.error(`[rate-limit] redis-error stage=${stage} msg=${msg}`);
   captureSilentError(err, {
     tags: { surface: 'server', component: 'rate-limit', stage },
     fingerprint: ['rate-limit', 'redis-error', stage],
+    level: rateLimitErrorLevel(stage, msg),
   });
 }
 
