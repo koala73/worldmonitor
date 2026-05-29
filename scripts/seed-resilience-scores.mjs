@@ -7,6 +7,12 @@ import {
 } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { isInRankableUniverse } from './shared/rankable-universe.mjs';
+import {
+  DRAWS,
+  RESILIENCE_INTERVAL_KEY_PREFIX as INTERVAL_KEY_PREFIX,
+  buildScoreIntervalPayload,
+  computeIntervals,
+} from './_resilience-intervals.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -43,48 +49,8 @@ export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v18';
 export const RESILIENCE_RANKING_CACHE_TTL_SECONDS = 12 * 60 * 60;
 export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
 
-const INTERVAL_KEY_PREFIX = 'resilience:intervals:v2:';
 const INTERVAL_TTL_SECONDS = 7 * 24 * 60 * 60;
-const DRAWS = 100;
-
-// Plan 2026-04-26-002 review fix: 6-domain weights (recovery added) in
-// lockstep with server/worldmonitor/resilience/v1/_dimension-scorers.ts
-// `RESILIENCE_DOMAIN_WEIGHTS`. Bumped INTERVAL_KEY_PREFIX v1 → v2 in
-// lockstep so old 5-domain bands don't feed scoreInterval/rankStable
-// after the v15→v16 score-prefix bump.
-const DOMAIN_WEIGHTS = {
-  economic: 0.17,
-  infrastructure: 0.15,
-  energy: 0.11,
-  'social-governance': 0.19,
-  'health-food': 0.13,
-  recovery: 0.25,
-};
-
-const DOMAIN_ORDER = [
-  'economic',
-  'infrastructure',
-  'energy',
-  'social-governance',
-  'health-food',
-  'recovery',
-];
-
-export function computeIntervals(domainScores, domainWeights, draws = DRAWS) {
-  const samples = [];
-  for (let i = 0; i < draws; i++) {
-    const jittered = domainWeights.map((w) => w * (0.9 + Math.random() * 0.2));
-    const sum = jittered.reduce((s, w) => s + w, 0);
-    const normalized = jittered.map((w) => w / sum);
-    const score = domainScores.reduce((s, d, idx) => s + d * normalized[idx], 0);
-    samples.push(score);
-  }
-  samples.sort((a, b) => a - b);
-  return {
-    p05: Math.round(samples[Math.max(0, Math.ceil(draws * 0.05) - 1)] * 10) / 10,
-    p95: Math.round(samples[Math.min(draws - 1, Math.ceil(draws * 0.95) - 1)] * 10) / 10,
-  };
-}
+export { computeIntervals };
 
 async function redisGetJson(url, token, key) {
   const resp = await fetch(`${url}/get/${encodeURIComponent(key)}`, {
@@ -122,28 +88,15 @@ function countCachedFromPipeline(results) {
 }
 
 async function computeAndWriteIntervals(url, token, countryCodes, pipelineResults) {
-  const weights = DOMAIN_ORDER.map((id) => DOMAIN_WEIGHTS[id]);
   const commands = [];
 
   for (let i = 0; i < countryCodes.length; i++) {
     const raw = pipelineResults[i]?.result ?? null;
     if (!raw || raw === 'null') continue;
     try {
-      const score = JSON.parse(raw);
-      if (!score.domains?.length) continue;
-
-      const domainScores = DOMAIN_ORDER.map((id) => {
-        const d = score.domains.find((dom) => dom.id === id);
-        return d?.score ?? 0;
-      });
-
-      const interval = computeIntervals(domainScores, weights, DRAWS);
-      const payload = {
-        p05: interval.p05,
-        p95: interval.p95,
-        draws: DRAWS,
-        computedAt: new Date().toISOString(),
-      };
+      const score = unwrapEnvelope(JSON.parse(raw)).data;
+      const payload = buildScoreIntervalPayload(score, { draws: DRAWS });
+      if (!payload) continue;
       commands.push(['SET', `${INTERVAL_KEY_PREFIX}${countryCodes[i]}`, JSON.stringify(payload), 'EX', INTERVAL_TTL_SECONDS]);
     } catch { /* skip malformed */ }
   }

@@ -8,6 +8,7 @@ import {
   RESILIENCE_SCORE_CACHE_PREFIX,
   RESILIENCE_RANKING_CACHE_KEY,
   RESILIENCE_HISTORY_KEY_PREFIX,
+  RESILIENCE_INTERVAL_KEY_PREFIX,
 } from '../server/worldmonitor/resilience/v1/_shared.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -61,6 +62,14 @@ describe('resilience cache-key health-registry sync (T1.9)', () => {
     assert.ok(
       versionMatch,
       `RESILIENCE_HISTORY_KEY_PREFIX must match resilience:history:v<n>: shape, got ${RESILIENCE_HISTORY_KEY_PREFIX}`,
+    );
+  });
+
+  it('RESILIENCE_INTERVAL_KEY_PREFIX probe literal appears in api/health.js', () => {
+    const probeKey = `${RESILIENCE_INTERVAL_KEY_PREFIX}US`;
+    assert.ok(
+      healthText.includes(`'${probeKey}'`) || healthText.includes(`"${probeKey}"`),
+      `api/health.js must reference ${probeKey} for the resilienceIntervals probe. Did you bump the interval key without updating health?`,
     );
   });
 

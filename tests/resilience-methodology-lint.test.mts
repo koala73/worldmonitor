@@ -182,7 +182,7 @@ describe('resilience methodology doc linter (T1.8)', () => {
     assert.doesNotMatch(
       source,
       /widget does not render (?:them|the overall score interval) yet/i,
-      'The methodology must not claim the widget omits score intervals; it renders the overall [p05-p95] range.',
+      'The methodology must not claim the widget omits score sensitivity bands; it renders the overall [p05-p95] range.',
     );
     assert.match(
       source,
@@ -192,7 +192,7 @@ describe('resilience methodology doc linter (T1.8)', () => {
     assert.match(
       source,
       /widget renders the overall `\[p05\u2013p95\]` range/i,
-      'The methodology should document that the widget renders the overall score interval.',
+      'The methodology should document that the widget renders the overall score sensitivity band.',
     );
   });
 });

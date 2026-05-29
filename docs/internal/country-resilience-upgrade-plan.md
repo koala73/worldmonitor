@@ -237,7 +237,7 @@ intervals, change attribution, external expert review).
 - **Cache keys** (all in `_shared.ts`): `resilience:score:v7:<cc>` (6h),
   `resilience:ranking:v8` (6h, written only when all countries scored),
   `resilience:history:v4:<cc>` (daily sorted set, 30-day retention),
-  `resilience:intervals:v2:<cc>` (95% CI from backtest).
+  `resilience:intervals:v3:<cc>` (formula-tagged score sensitivity band).
 - **Warmup:** handler-owned, up to 200 missing countries per ranking request
   via `warmMissingResilienceScores()` in `get-resilience-ranking.ts`.
 - **Static seeding**, 11 slots in `scripts/seed-resilience-static.mjs` (WGI,
@@ -459,7 +459,7 @@ interval computation anywhere near the read path"*.)
   - Combine bootstrap and MC samples into a joint distribution; store
     per-pillar p05/p50/p95 and a joint overall p05/p50/p95.
   - Re-rank each sample and store per-country p05/p95 **rank band**.
-  - Persist under `resilience:intervals:v2:<cc>` as
+  - Persist under `resilience:intervals:v3:<cc>` as
     `{ computedAt, schemaVersion, pillarIntervals, overallInterval, rankBand }`.
 - **Read path** (`buildResilienceScore`): always reads the latest interval
   payload. If `computedAt` is older than 48 hours the response sets
@@ -740,7 +740,7 @@ tools.
 - **T3.1** Bootstrap + MC intervals implemented **fully offline** per
   *Technical Approach → Decomposed uncertainty*. Extend
   `scripts/seed-resilience-intervals.mjs` to write pillar-level intervals,
-  joint overall intervals, and rank bands to `resilience:intervals:v2:<cc>`
+  joint overall intervals, and rank bands to `resilience:intervals:v3:<cc>`
   every 6 hours. **Zero lazy computation on the read path**, missing key
   means intervals are omitted from the response; the read path never blocks
   on bootstrap or MC work. Add `staleIntervals: true` flag when payload is
@@ -825,7 +825,7 @@ tools.
 keys (UCDP, displacement, sanctions, WGI, RSF, etc.) → aggregates into
 domains → aggregates into pillars (new) → overall. History sorted set
 updated if current day not yet written. **Interval cache read only**: if
-`resilience:intervals:v2:<cc>` is present and fresh, it is attached; if
+`resilience:intervals:v3:<cc>` is present and fresh, it is attached; if
 the payload is >48h old the response sets `staleIntervals: true`; if the
 key is missing (warmup path), intervals are **omitted** from the response.
 The read path never computes intervals inline. All bootstrap and Monte

@@ -2,6 +2,17 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { computeIntervals } from '../scripts/seed-resilience-intervals.mjs';
+import {
+  RESILIENCE_INTERVAL_METHODOLOGY,
+  buildScoreIntervalPayload,
+  domainAggregate,
+  penalizedPillarScore,
+} from '../scripts/_resilience-intervals.mjs';
+
+function cycle(values) {
+  let index = 0;
+  return () => values[index++ % values.length];
+}
 
 describe('computeIntervals', () => {
   it('returns p05 and p95 within expected bounds', () => {
@@ -54,6 +65,63 @@ describe('computeIntervals', () => {
   });
 });
 
+describe('formula-aware resilience score intervals', () => {
+  const liveStyleDomains = [
+    { id: 'economic', score: 78.96, weight: 0.17 },
+    { id: 'infrastructure', score: 85.54, weight: 0.15 },
+    { id: 'energy', score: 83, weight: 0.11 },
+    { id: 'social-governance', score: 70.97, weight: 0.19 },
+    { id: 'health-food', score: 71.13, weight: 0.13 },
+    { id: 'recovery', score: 70.91, weight: 0.25 },
+  ];
+  const liveStylePillars = [
+    { id: 'structural-readiness', score: 80, weight: 0.40 },
+    { id: 'live-shock-exposure', score: 78, weight: 0.35 },
+    { id: 'recovery-capacity', score: 68, weight: 0.25 },
+  ];
+
+  it('uses pillar-combined sensitivity when the active score is pc-shaped', () => {
+    const overallScore = penalizedPillarScore(liveStylePillars);
+    const d6Aggregate = domainAggregate(liveStyleDomains);
+    assert.ok(d6Aggregate - overallScore > 10, 'fixture must separate d6 and pc enough to catch #3967');
+
+    const payload = buildScoreIntervalPayload({
+      overallScore,
+      domains: liveStyleDomains,
+      pillars: liveStylePillars,
+    }, {
+      draws: 100,
+      rng: cycle([0.01, 0.99, 0.5, 0.2, 0.8]),
+      computedAt: '2026-05-29T00:00:00.000Z',
+    });
+
+    assert.ok(payload, 'expected interval payload');
+    assert.equal(payload._formula, 'pc');
+    assert.equal(payload.methodology, RESILIENCE_INTERVAL_METHODOLOGY);
+    assert.ok(payload.p05 <= overallScore && overallScore <= payload.p95, `pc score ${overallScore} must be inside ${payload.p05}-${payload.p95}`);
+    const center = (payload.p05 + payload.p95) / 2;
+    assert.ok(Math.abs(center - overallScore) < 1, `pc interval center ${center} should track pc score ${overallScore}`);
+    assert.ok(Math.abs(center - d6Aggregate) > 10, `pc interval center ${center} must not track d6 aggregate ${d6Aggregate}`);
+  });
+
+  it('uses legacy domain sensitivity when the active score is d6-shaped', () => {
+    const overallScore = domainAggregate(liveStyleDomains);
+    const payload = buildScoreIntervalPayload({
+      overallScore,
+      domains: liveStyleDomains,
+      pillars: liveStylePillars,
+    }, {
+      draws: 100,
+      rng: cycle([0.01, 0.99, 0.5, 0.2, 0.8]),
+      computedAt: '2026-05-29T00:00:00.000Z',
+    });
+
+    assert.ok(payload, 'expected interval payload');
+    assert.equal(payload._formula, 'd6');
+    assert.ok(payload.p05 <= overallScore && overallScore <= payload.p95, `d6 score ${overallScore} must be inside ${payload.p05}-${payload.p95}`);
+  });
+});
+
 describe('seed script is self-contained .mjs', () => {
   it('does not import from ../server/', async () => {
     const { readFileSync } = await import('node:fs');
@@ -75,5 +143,15 @@ describe('seed script is self-contained .mjs', () => {
     for (const imp of imports) {
       assert.ok(imp.startsWith('./'), `Import "${imp}" must be a local ./ relative path`);
     }
+  });
+
+  it('uses the shared resilience interval helper', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const { dirname, join } = await import('node:path');
+    const dir = dirname(fileURLToPath(import.meta.url));
+    const src = readFileSync(join(dir, '..', 'scripts', 'seed-resilience-intervals.mjs'), 'utf8');
+    assert.match(src, /from ['"]\.\/_resilience-intervals\.mjs['"]/);
+    assert.doesNotMatch(src, /const DOMAIN_WEIGHTS =/);
   });
 });

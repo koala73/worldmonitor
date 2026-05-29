@@ -29,6 +29,7 @@ import {
   RESILIENCE_SCORE_CACHE_PREFIX,
   RESILIENCE_RANKING_CACHE_KEY,
   RESILIENCE_HISTORY_KEY_PREFIX,
+  RESILIENCE_INTERVAL_KEY_PREFIX,
 } from '../server/worldmonitor/resilience/v1/_shared.ts';
 import {
   RESILIENCE_DIMENSION_ORDER,
@@ -50,6 +51,7 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
     const scoreVersion = RESILIENCE_SCORE_CACHE_PREFIX;       // e.g. 'resilience:score:v17:'
     const rankingKey = RESILIENCE_RANKING_CACHE_KEY;          // e.g. 'resilience:ranking:v17'
     const historyPrefix = RESILIENCE_HISTORY_KEY_PREFIX;      // e.g. 'resilience:history:v12:'
+    const intervalPrefix = RESILIENCE_INTERVAL_KEY_PREFIX;    // e.g. 'resilience:intervals:v3:'
 
     assert.ok(
       docText.includes(scoreVersion.replace(/:$/, '')) || docText.includes(scoreVersion),
@@ -65,6 +67,11 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
       docText.includes(historyPrefix.replace(/:$/, '')) || docText.includes(historyPrefix),
       `methodology doc must reference current history key prefix "${historyPrefix}". ` +
       'Bump the doc when bumping the cache.',
+    );
+    assert.ok(
+      docText.includes(intervalPrefix.replace(/:$/, '')) || docText.includes(intervalPrefix),
+      `methodology doc must reference current interval key prefix "${intervalPrefix}". ` +
+      'Bump the doc when bumping the interval cache.',
     );
   });
 

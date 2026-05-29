@@ -165,7 +165,7 @@ test('formatBaselineStress renders the expected breakdown string (no Impact)', (
 test('formatResilienceScoreInterval renders the overall score interval badge', () => {
   assert.deepEqual(formatResilienceScoreInterval({ p05: 65.2, p95: 72.8 }), {
     label: '[65\u201373]',
-    title: '95% confidence interval: 65.2 - 72.8',
+    title: '95% score sensitivity band: 65.2 - 72.8',
   });
 });
 

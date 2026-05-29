@@ -270,7 +270,7 @@ export function formatResilienceScoreInterval(interval: ScoreIntervalDisplayInpu
   if (!normalized) return null;
   return {
     label: `[${Math.round(normalized.p05)}\u2013${Math.round(normalized.p95)}]`,
-    title: `95% confidence interval: ${normalized.p05} - ${normalized.p95}`,
+    title: `95% score sensitivity band: ${normalized.p05} - ${normalized.p95}`,
   };
 }
 
