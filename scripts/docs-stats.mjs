@@ -14,7 +14,7 @@
  * Stats are parsed from source text (no TS execution / import-graph / env deps)
  * so this runs anywhere Node runs, including bare CI.
  */
-import { readFileSync, readdirSync, writeFileSync, mkdirSync, statSync } from 'node:fs';
+import { readFileSync, readdirSync, writeFileSync, mkdirSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 
