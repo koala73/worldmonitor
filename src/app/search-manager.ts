@@ -5,7 +5,7 @@ import type { MapView } from '@/components';
 import type { Command } from '@/config/commands';
 import { SearchModal } from '@/components';
 import { CIIPanel } from '@/components';
-import { SITE_VARIANT, STORAGE_KEYS } from '@/config';
+import { SITE_VARIANT, STORAGE_KEYS, ALL_PANELS, isPanelEntitled } from '@/config';
 import { getAllowedLayerKeys, isLayerExecutable } from '@/config/map-layer-definitions';
 import type { MapRenderer } from '@/config/map-layer-definitions';
 import type { MapVariant } from '@/config/map-layer-definitions';
@@ -34,6 +34,8 @@ import { getAuthState } from '@/services/auth-state';
 
 export interface SearchManagerCallbacks {
   openCountryBriefByCode: (code: string, country: string) => void;
+  /** Enables a currently-disabled panel (CMD+K "Add"). Returns false if blocked (unknown / free-tier cap). */
+  enablePanel: (panelId: string) => boolean;
 }
 
 export class SearchManager implements AppModule {
@@ -209,9 +211,7 @@ export class SearchManager implements AppModule {
 
     this.ctx.searchModal.registerSource('country', this.buildCountrySearchItems());
 
-    this.ctx.searchModal.setActivePanels(
-      Object.entries(this.ctx.panelSettings).filter(([, v]) => v.enabled).map(([k]) => k)
-    );
+    this.syncPanelSearchIndex();
     // Filter CMD+K layer commands by (a) variant-allowed, (b) renderer
     // compatibility, (c) DeckGL state for deckGLOnly layers. Without this,
     // layer commands surface in CMD+K on variants where they'd silently
@@ -536,9 +536,19 @@ export class SearchManager implements AppModule {
         break;
       }
 
-      case 'panel':
+      case 'panel': {
+        // CMD+K can now surface disabled-but-available panels (Add affordance).
+        // Enable first so the element exists, then scroll once it renders.
+        const cfg = this.ctx.panelSettings[action];
+        if (cfg && !cfg.enabled) {
+          if (this.callbacks.enablePanel(action)) {
+            this.scrollToPanelWhenReady(action);
+            break;
+          }
+        }
         this.scrollToPanel(action);
         break;
+      }
 
       case 'view':
         if (action === 'dark' || action === 'light') {
@@ -610,6 +620,21 @@ export class SearchManager implements AppModule {
     }
   }
 
+  /**
+   * Scrolls to a panel that may have just been enabled. Async-mounted panels
+   * (e.g. deduction, regional-intelligence mount via dynamic import) aren't in
+   * the DOM on the next tick, so retry over ~1s before giving up. The panel is
+   * already enabled regardless — only the scroll is best-effort.
+   */
+  private scrollToPanelWhenReady(panelId: string, attemptsLeft = 12): void {
+    if (document.querySelector(`[data-panel="${panelId}"]`)) {
+      this.scrollToPanel(panelId);
+      return;
+    }
+    if (attemptsLeft <= 0) return;
+    setTimeout(() => this.scrollToPanelWhenReady(panelId, attemptsLeft - 1), 80);
+  }
+
   private scrollToPanel(panelId: string): void {
     const panel = document.querySelector(`[data-panel="${panelId}"]`);
     if (panel) {
@@ -669,9 +694,7 @@ export class SearchManager implements AppModule {
   updateSearchIndex(): void {
     if (!this.ctx.searchModal) return;
 
-    this.ctx.searchModal.setActivePanels(
-      Object.entries(this.ctx.panelSettings).filter(([, v]) => v.enabled).map(([k]) => k)
-    );
+    this.syncPanelSearchIndex();
     this.ctx.searchModal.registerSource('country', this.buildCountrySearchItems());
 
     const newsItems = this.ctx.allNews.slice(0, 500).map(n => ({
@@ -700,6 +723,28 @@ export class SearchManager implements AppModule {
         data: m,
       })));
     }
+  }
+
+  /**
+   * Feeds CMD+K two panel sets: `active` (currently enabled) and `available`
+   * (every entitled panel the user could cross-enable on this variant — all
+   * of ALL_PANELS merge into panelSettings per App.ts). The modal surfaces
+   * available-but-disabled panels with an "Add" affordance; selecting one
+   * routes through enablePanel(). Without the available set, search could
+   * only jump to panels already on screen — the core discoverability gap.
+   */
+  private syncPanelSearchIndex(): void {
+    if (!this.ctx.searchModal) return;
+    const isPro = isProUser() || getAuthState().user?.role === 'pro';
+    this.ctx.searchModal.setActivePanels(
+      Object.entries(this.ctx.panelSettings).filter(([, v]) => v.enabled).map(([k]) => k)
+    );
+    this.ctx.searchModal.setAvailablePanels(
+      Object.keys(this.ctx.panelSettings).filter((k) => {
+        const cfg = ALL_PANELS[k];
+        return cfg ? isPanelEntitled(k, cfg, isPro) : false;
+      })
+    );
   }
 
   private buildCountrySearchItems(): { id: string; title: string; subtitle: string; data: { code: string; name: string } }[] {

@@ -10236,6 +10236,17 @@ a.prediction-link:hover {
   border-radius: 3px;
 }
 
+/* "Add" pill for CMD+K results that enable a currently-disabled panel. */
+.search-result-item.command-addable .search-result-type-add {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  opacity: 1;
+  font-weight: 600;
+}
+.search-result-item.command-addable .search-result-icon {
+  opacity: 0.7;
+}
+
 .search-empty {
   padding: 40px 16px;
   text-align: center;

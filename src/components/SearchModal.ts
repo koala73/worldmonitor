@@ -102,6 +102,14 @@ export class SearchModal {
   private placeholder: string;
   private activePanelIds: Set<string> = new Set();
   /**
+   * Panels the user *could* enable on this variant (entitled superset),
+   * vs `activePanelIds` which is the currently-enabled subset. A panel in
+   * `available` but not `active` is rendered with an "Add" affordance and
+   * gets enabled on selection. When unset (size 0) we fall back to
+   * active-only gating for back-compat.
+   */
+  private availablePanelIds: Set<string> = new Set();
+  /**
    * Caller-supplied predicate that returns true iff a `layer:<key>` command
    * can actually execute right now (current renderer supports the layer +
    * DeckGL gate for DeckGL-only layers). Hooked from SearchManager so
@@ -151,6 +159,23 @@ export class SearchModal {
 
   public setActivePanels(panelIds: string[]): void {
     this.activePanelIds = new Set(panelIds);
+  }
+
+  public setAvailablePanels(panelIds: string[]): void {
+    this.availablePanelIds = new Set(panelIds);
+  }
+
+  /** A panel command is shown iff enabled OR available-to-add (back-compat: active-only when no available set). */
+  private isPanelCommandVisible(panelId: string): boolean {
+    if (this.availablePanelIds.size === 0) return this.activePanelIds.has(panelId);
+    return this.activePanelIds.has(panelId) || this.availablePanelIds.has(panelId);
+  }
+
+  /** True when a panel command would add a currently-disabled panel (drives the "Add" affordance). */
+  private isAddablePanel(cmd: Command): boolean {
+    if (!cmd.id.startsWith('panel:')) return false;
+    const id = cmd.id.slice(6);
+    return !this.activePanelIds.has(id) && this.availablePanelIds.has(id);
   }
 
   public setLayerExecutableFn(fn: (layerKey: string) => boolean): void {
@@ -290,7 +315,7 @@ export class SearchModal {
     for (const cmd of getAllCommands()) {
       if (cmd.id.startsWith('panel:')) {
         const panelId = cmd.id.slice(6);
-        if (!this.activePanelIds.has(panelId)) continue;
+        if (!this.isPanelCommandVisible(panelId)) continue;
       }
       // Hide layer commands whose layer can't render under the current
       // map renderer / DeckGL mode. Without this, CMD+K surfaces toggles
@@ -517,7 +542,13 @@ export class SearchModal {
     this.resultsList.appendChild(wrap);
   }
 
-  /** Renders the full command list by category. Commands are sourced from getAllCommands(); no separate list to maintain. */
+  /**
+   * Renders the full command list by category. Commands are sourced from
+   * getAllCommands(); no separate list to maintain. This view intentionally
+   * includes available-but-disabled panels (each tagged with an "Add" pill via
+   * isAddablePanel) so it doubles as a browse-and-add surface — the list is
+   * kept navigable by the collapsible per-category <details> grouping below.
+   */
   private renderAllCommandsList(): void {
     if (!this.resultsList) return;
 
@@ -525,7 +556,7 @@ export class SearchModal {
     const commands = allCommands.filter(cmd => {
       if (cmd.id.startsWith('panel:')) {
         const panelId = cmd.id.slice(6);
-        if (!this.activePanelIds.has(panelId)) return false;
+        if (!this.isPanelCommandVisible(panelId)) return false;
       }
       if (cmd.id.startsWith('layer:')) {
         if (!this.layerExecutableFn(cmd.id.slice(6))) return false;
@@ -556,12 +587,16 @@ export class SearchModal {
       html += `<summary class="search-command-category-summary">${escapeHtml(label)}</summary>`;
       html += `<div class="search-command-category-list">`;
       for (const cmd of list) {
+        const addable = this.isAddablePanel(cmd);
+        const addLabel = t('modals.search.addPanel', { defaultValue: 'Add' });
+        const ariaLabel = addable ? ` aria-label="${escapeHtml(`${addLabel}: ${resolveCommandLabel(cmd)}`)}"` : '';
         html += `
-          <div class="search-result-item command-item" data-command="${escapeHtml(cmd.id)}">
+          <div class="search-result-item command-item ${addable ? 'command-addable' : ''}" data-command="${escapeHtml(cmd.id)}"${ariaLabel}>
             <span class="search-result-icon">${escapeHtml(cmd.icon)}</span>
             <div class="search-result-content">
               <div class="search-result-title">${escapeHtml(resolveCommandLabel(cmd))}</div>
             </div>
+            ${addable ? `<span class="search-result-type search-result-type-add">${escapeHtml(addLabel)}</span>` : ''}
           </div>`;
       }
       html += `</div></details>`;
@@ -651,13 +686,17 @@ export class SearchModal {
     if (this.commandResults.length > 0) {
       html += `<div class="search-section-header">${t('modals.search.commands')}</div>`;
       for (const { command } of this.commandResults) {
+        const addable = this.isAddablePanel(command);
+        const addLabel = t('modals.search.addPanel', { defaultValue: 'Add' });
+        const typeLabel = addable ? addLabel : resolveCategoryLabel(command);
+        const ariaLabel = addable ? ` aria-label="${escapeHtml(`${addLabel}: ${resolveCommandLabel(command)}`)}"` : '';
         html += `
-          <div class="search-result-item command-item ${globalIndex === this.selectedIndex ? 'selected' : ''}" data-index="${globalIndex}" data-command="${command.id}">
-            <span class="search-result-icon">${command.icon}</span>
+          <div class="search-result-item command-item ${addable ? 'command-addable' : ''} ${globalIndex === this.selectedIndex ? 'selected' : ''}" data-index="${globalIndex}" data-command="${escapeHtml(command.id)}"${ariaLabel}>
+            <span class="search-result-icon">${escapeHtml(command.icon)}</span>
             <div class="search-result-content">
               <div class="search-result-title">${escapeHtml(resolveCommandLabel(command))}</div>
             </div>
-            <span class="search-result-type">${escapeHtml(resolveCategoryLabel(command))}</span>
+            <span class="search-result-type${addable ? ' search-result-type-add' : ''}">${escapeHtml(typeLabel)}</span>
           </div>`;
         globalIndex++;
       }

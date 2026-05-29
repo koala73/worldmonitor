@@ -843,6 +843,7 @@ export class App {
 
     this.searchManager = new SearchManager(this.state, {
       openCountryBriefByCode: (code, country) => this.countryIntel.openCountryBriefByCode(code, country),
+      enablePanel: (panelId) => this.eventHandlers.enablePanelById(panelId),
     });
 
     this.panelLayout = new PanelLayoutManager(this.state, {

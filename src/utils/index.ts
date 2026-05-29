@@ -186,6 +186,7 @@ export { getCSSColor, invalidateColorCache } from './theme-colors';
 export { getStoredTheme, getCurrentTheme, setTheme, applyStoredTheme, getThemePreference, setThemePreference } from './theme-manager';
 export type { Theme, ThemePreference } from './theme-manager';
 export { toFlagEmoji } from './country-flag';
+export { showToast } from './toast';
 
 import { getCurrentLanguage } from '../services/i18n';
 import { isStorageQuotaExceeded, isQuotaError, markStorageQuotaExceeded } from './storage-quota';

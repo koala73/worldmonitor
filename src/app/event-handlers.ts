@@ -27,6 +27,7 @@ import {
   ExportPanel,
   getCurrentTheme,
   setTheme,
+  showToast,
 } from '@/utils';
 import {
   IDLE_PAUSE_MS,
@@ -146,11 +147,28 @@ export class EventHandlerManager implements AppModule {
   private performUndo(): void {
     const panelId = this.closedPanelStack.pop();
     if (!panelId) return;
+    this.enablePanelById(panelId);
+  }
+
+  /**
+   * Enables a registered panel (undo-restore, CMD+K "Add", etc.). Returns
+   * false when the panel is unknown or the free-tier cap blocks it. Already
+   * enabled → true (no-op). Single source of truth for runtime panel-enable
+   * so search-add and undo-restore stay in lockstep.
+   */
+  enablePanelById(panelId: string): boolean {
     const config = this.ctx.panelSettings[panelId];
-    if (!config) return;
+    if (!config) return false;
+    if (config.enabled) return true;
     if (!isProUser()) {
       const enabledCount = Object.entries(this.ctx.panelSettings).filter(([k, p]) => p.enabled && !k.startsWith('cw-')).length;
-      if (enabledCount >= FREE_MAX_PANELS) return;
+      if (enabledCount >= FREE_MAX_PANELS) {
+        // Tell the user why nothing happened instead of failing silently.
+        // (Undo-restore can't reach this branch — closing a panel frees a
+        // slot first — so only the CMD+K "Add" path surfaces the toast.)
+        showToast(t('modals.settingsWindow.freePanelLimit', { max: String(FREE_MAX_PANELS) }));
+        return false;
+      }
     }
     config.enabled = true;
     trackPanelToggled(panelId, true);
@@ -163,6 +181,7 @@ export class EventHandlerManager implements AppModule {
     if (panel && 'fetchData' in panel && typeof (panel as { fetchData: unknown }).fetchData === 'function') {
       (panel as { fetchData: () => void }).fetchData();
     }
+    return true;
   }
 
   private setupTvMode(): void {
