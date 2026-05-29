@@ -79,11 +79,18 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Regenerated stats.json matches committed
+      - name: stats.json is tracked and current
+        # `git diff --exit-code` ignores untracked paths, so a PR that deletes
+        # the committed snapshot would regenerate it untracked and still pass.
+        # `git status --porcelain` reports stale (` M`), deleted (` D`), and
+        # untracked (`??`) alike, so it catches all three.
         run: |
           node scripts/docs-stats.mjs
-          git diff --exit-code docs/generated/stats.json \
-            || { echo '::error::docs/generated/stats.json is stale — run `npm run docs:stats` and commit.'; exit 1; }
+          if [ -n "$(git status --porcelain -- docs/generated/stats.json)" ]; then
+            echo '::error::docs/generated/stats.json is missing, untracked, or stale — run `npm run docs:stats` and commit it.'
+            git status --porcelain -- docs/generated/stats.json
+            exit 1
+          fi
       - name: Doc claims match code
         run: node scripts/docs-stats.mjs --check
 
