@@ -59,9 +59,21 @@ function panelCommandKeywordCounts() {
 }
 
 // Collects every panelKey listed anywhere in PANEL_CATEGORY_MAP.
+// Brace-walks from the map's opening `{` to its matching `}` (same robust
+// approach as topLevelPanelIds) rather than a `\n};` end-sentinel, which would
+// silently truncate if a later const reused that closing pattern.
 function categoryMappedPanelIds() {
-  const start = panelsSrc.indexOf('PANEL_CATEGORY_MAP');
-  const body = panelsSrc.slice(start, panelsSrc.indexOf('\n};', start));
+  const decl = panelsSrc.indexOf('PANEL_CATEGORY_MAP');
+  // Anchor on the assignment `= {`, not the first `{` — the type annotation
+  // `Record<string, { labelKey... }>` contains braces ahead of the value.
+  const open = panelsSrc.indexOf('{', panelsSrc.indexOf('= {', decl));
+  let depth = 0, end = open;
+  for (let i = open; i < panelsSrc.length; i++) {
+    const c = panelsSrc[i];
+    if (c === '{') depth++;
+    else if (c === '}') { depth--; if (depth === 0) { end = i; break; } }
+  }
+  const body = panelsSrc.slice(open + 1, end);
   const ids = new Set();
   for (const block of body.matchAll(/panelKeys\s*:\s*\[([^\]]*)\]/g)) {
     for (const tok of block[1].split(',')) {

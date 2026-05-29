@@ -735,7 +735,8 @@ export class SearchManager implements AppModule {
    */
   private syncPanelSearchIndex(): void {
     if (!this.ctx.searchModal) return;
-    const isPro = isProUser() || getAuthState().user?.role === 'pro';
+    // isProUser() already folds in getAuthState().user?.role === 'pro'.
+    const isPro = isProUser();
     this.ctx.searchModal.setActivePanels(
       Object.entries(this.ctx.panelSettings).filter(([, v]) => v.enabled).map(([k]) => k)
     );
