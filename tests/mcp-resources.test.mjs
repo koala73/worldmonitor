@@ -481,26 +481,51 @@ describe('api/mcp.ts — resources capability + stability + auth-symmetry', () =
     // tools/call attaches Retry-After (seconds until UTC midnight on quota
     // cap, "5" on reservation failure); resources/read must forward it
     // verbatim or the auth-symmetry contract is broken on the error path.
-    const { deps: depsR } = makeProDeps({ pipelineOpts: { initialCount: 50 } });
-    const resR = await mcpHandler(
-      proReq('POST', readBody('worldmonitor://countries/de/risk')),
-      depsR,
-    );
-    assert.equal(resR.status, 429);
-    const retryAfterR = resR.headers.get('Retry-After');
-    assert.ok(retryAfterR, 'resources/read 429 MUST attach a Retry-After header (Greptile P1)');
-    // Cross-check: tools/call against the same backing tool from the same
-    // pre-seeded state must attach the SAME header. Drift in the resources
-    // re-emission would surface here as a string mismatch.
-    const { deps: depsT } = makeProDeps({ pipelineOpts: { initialCount: 50 } });
-    const resT = await mcpHandler(
-      proReq('POST', callBody('get_country_risk', { country_code: 'DE' })),
-      depsT,
-    );
-    assert.equal(resT.status, 429);
-    const retryAfterT = resT.headers.get('Retry-After');
-    assert.equal(retryAfterR, retryAfterT,
-      `Retry-After symmetry: resources/read="${retryAfterR}" must match tools/call="${retryAfterT}"`);
+    const RealDate = globalThis.Date;
+    const fixedNowMs = RealDate.parse('2026-05-29T12:00:00.000Z');
+    globalThis.Date = class FixedDate extends RealDate {
+      constructor(...args) {
+        super(...(args.length === 0 ? [fixedNowMs] : args));
+      }
+
+      static now() {
+        return fixedNowMs;
+      }
+
+      static parse(value) {
+        return RealDate.parse(value);
+      }
+
+      static UTC(...args) {
+        return RealDate.UTC(...args);
+      }
+    };
+
+    try {
+      const { deps: depsR } = makeProDeps({ pipelineOpts: { initialCount: 50 } });
+      const resR = await mcpHandler(
+        proReq('POST', readBody('worldmonitor://countries/de/risk')),
+        depsR,
+      );
+      assert.equal(resR.status, 429);
+      const retryAfterR = resR.headers.get('Retry-After');
+      assert.ok(retryAfterR, 'resources/read 429 MUST attach a Retry-After header (Greptile P1)');
+      // Cross-check: tools/call against the same backing tool from the same
+      // pre-seeded state must attach the SAME header. Date is pinned for this
+      // assertion so CI scheduling cannot create a one-second midnight-delta
+      // drift between the two sequential requests.
+      const { deps: depsT } = makeProDeps({ pipelineOpts: { initialCount: 50 } });
+      const resT = await mcpHandler(
+        proReq('POST', callBody('get_country_risk', { country_code: 'DE' })),
+        depsT,
+      );
+      assert.equal(resT.status, 429);
+      const retryAfterT = resT.headers.get('Retry-After');
+      assert.equal(retryAfterR, retryAfterT,
+        `Retry-After symmetry: resources/read="${retryAfterR}" must match tools/call="${retryAfterT}"`);
+    } finally {
+      globalThis.Date = RealDate;
+    }
   });
 
   it('_budget_exceeded soft envelope from country-risk RPC passes through unchanged (no freshness merge)', async () => {
