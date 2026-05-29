@@ -1,6 +1,6 @@
 # Architecture
 
-> **Last verified**: 2026-03-14 against commit `24b502d0`
+> **Capability counts** (map layers, services, protos, locales, CI workflows, freshness sources) are derived from code and CI-verified by `npm run docs:check` (`scripts/docs-stats.mjs`, source of truth `docs/generated/stats.json`). Do not hand-edit those numbers — change the code, run `npm run docs:stats`.
 >
 > **Ownership rule**: When deployment topology, API surface, desktop runtime, or bootstrap keys change, this document must be updated in the same PR.
 
@@ -46,7 +46,7 @@ World Monitor is a real-time global intelligence dashboard built as a TypeScript
         │ CoinGeck│ │  FRED   │ │ FIRMS   │
         │   ...   │ │   ...   │ │   ...   │
         └─────────┘ └─────────┘ └─────────┘
-              30+ upstream data sources
+           65+ upstream providers and APIs
 ```
 
 **Source files**: `package.json`, `vercel.json`
@@ -119,7 +119,12 @@ Detected by hostname (`tech.worldmonitor.app` → tech, `finance.worldmonitor.ap
 
 ### Edge Functions
 
-All API endpoints live in `api/` as self-contained JavaScript files deployed as Vercel Edge Functions. They cannot import from `../src/` or `../server/` (different runtime). Only same-directory `_*.js` helpers and npm packages are allowed. This constraint is enforced by `tests/edge-functions.test.mjs` and the pre-push esbuild bundle check.
+The `api/` directory holds two kinds of endpoints, both deployed as Vercel Edge Functions:
+
+- **Domain intelligence gateways** — generated from proto contracts and backed by handlers under `server/worldmonitor/**`. The per-domain thin entry points (`api/<domain>/v<N>/[rpc].ts`) are produced via `createDomainGateway` (`server/gateway.ts`) and esbuild-bundled, so the *deployed* artifact is self-contained even though the source composes server-side modules.
+- **Operational endpoints** — hand-written for concerns that don't fit the contract model: auth/session, checkout and customer portal, MCP, bootstrap/health, notifications, cache invalidation, and user workflows (e.g. `api/create-checkout.ts`, `api/customer-portal.ts`, `api/mcp.ts`, `api/user-prefs.ts`).
+
+Edge functions are bundled per file: each deployed function may not pull in unrelated modules at runtime, a constraint enforced by `tests/edge-functions.test.mjs` and the pre-push esbuild bundle check. Hand-written endpoints that genuinely cannot be proto-defined are listed in `api/api-route-exceptions.json` and enforced by `npm run lint:api-contract`.
 
 ### Shared Helpers
 
@@ -351,13 +356,21 @@ Runs before every `git push`:
 | Workflow | Trigger | Checks |
 |----------|---------|--------|
 | `typecheck.yml` | PR, push to main | `tsc --noEmit` for src and API tsconfigs |
+| `lint-code.yml` | PR, push to main | Biome lint + sebuf API-contract enforcement |
 | `lint.yml` | PR (markdown changes) | markdownlint-cli2 |
+| `test.yml` | PR, push to main | Unit/integration suite, docs-stats guardrail, plus conditional digest-image and resilience-validation smoke gates |
 | `proto-check.yml` | PR (proto changes) | Generated code matches committed output |
-| `build-desktop.yml` | Release tag, manual | 5-platform matrix build, code signing (macOS), AppImage library stripping (Linux), smoke test |
+| `pro-bundle-freshness.yml` | PR (pro bundle changes) | Committed pro data bundle artifacts are fresh |
+| `feed-validation.yml` | PR (feed changes), daily cron | RSS feed reachability and validation |
+| `contributor-trust.yml` | PR | Gates untrusted first-time-contributor runs |
+| `deploy-gate.yml` | After Test/Typecheck complete | Aggregates required smoke-gate statuses onto the head SHA for branch protection |
+| `convex-deploy.yml` | Push to main, manual | Deploys Convex backend functions |
+| `deploy-worker.yml` | Push to main (worker paths), manual | Deploys the `api-cors-preflight` Cloudflare Worker |
+| `build-desktop.yml` | Release tag, push, manual | Multi-platform Tauri build, code signing (macOS), AppImage library stripping (Linux), smoke test |
 | `docker-publish.yml` | Release, manual | Multi-arch image (amd64, arm64) pushed to GHCR |
 | `test-linux-app.yml` | Manual | Linux AppImage build + headless smoke test with screenshot verification |
 
-**Source files**: `.github/workflows/`, `.husky/pre-push`
+**Source files**: `.github/workflows/`, `.husky/pre-push`. The workflow list is CI-checked against `.github/workflows/*.yml` by `npm run docs:check` — a new workflow file must be added to this table.
 
 ---
 

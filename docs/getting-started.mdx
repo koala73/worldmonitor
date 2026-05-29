@@ -72,30 +72,36 @@ const header = `World Monitor v${__APP_VERSION__}`;
 
 ## Installation
 
-**Requirements:** Go 1.21+ and Node.js 18+.
+WorldMonitor has three setup tracks depending on what you're doing.
+
+### 1. App-only local dev
+
+Runs the Vite dashboard with **no required environment variables**. Optional API keys (see below) unlock extra layers and feeds.
 
 ```bash
-# Clone the repository
 git clone https://github.com/koala73/worldmonitor.git
 cd worldmonitor
-
-# Install everything (buf, sebuf plugins, npm deps, proto deps)
-make install
-
-# Start development server
-npm run dev
-
-# Build for production
-npm run build
+npm install
+npm run dev          # http://localhost:5173
 ```
 
-If you modify any `.proto` files, regenerate before building or pushing:
+Variant dashboards run from the same checkout: `npm run dev:tech`, `dev:finance`, `dev:commodity`, `dev:happy`, and `dev:energy`.
+
+### 2. Contributor / full codegen dev
+
+Needed when you touch `.proto` contracts or regenerate clients. **Requires Go 1.21+** (for the `buf` CLI and sebuf protoc plugins) **and Node.js 22+**.
 
 ```bash
-make generate   # regenerate TypeScript clients, servers, and OpenAPI docs
+make install         # buf, sebuf plugins, npm deps, proto deps, Playwright browsers
+make generate        # regenerate TypeScript clients, servers, and OpenAPI docs
+npm run dev
 ```
 
-See [Adding Endpoints](/adding-endpoints) for the full proto workflow.
+Run `make generate` before building or pushing whenever you modify `.proto` files — CI's `proto-check.yml` fails if generated output drifts from committed files. See [Adding Endpoints](/adding-endpoints) for the full proto workflow.
+
+### 3. Self-hosted Docker stack
+
+The full self-hosted stack (dashboard + Railway-style relay + Redis + seed scripts) requires **Node.js 22+**, Docker or Podman, and secrets with no safe defaults — `RELAY_SHARED_SECRET`, `REDIS_PASSWORD`, and `REDIS_TOKEN` must be set before `docker compose up`. See the `SELF_HOSTING.md` guide in the repository for the complete walkthrough.
 
 ## API Dependencies
 
@@ -233,24 +239,24 @@ src/
 │   └── analysis-constants.ts # Shared thresholds for worker sync
 ├── styles/
 └── types/
-api/                          # Vercel Edge serverless proxies
-├── cloudflare-outages.js     # Proxies Cloudflare Radar
-├── coingecko.js              # Crypto prices with validation
-├── eia/[[...path]].js        # EIA petroleum data (oil prices, production)
-├── faa-status.js             # FAA ground stops/delays
-├── finnhub.js                # Stock quotes (batch, primary)
-├── fred-data.js              # Federal Reserve economic data
-├── gdelt-doc.js              # GDELT Doc API (topic intelligence)
-├── gdelt-geo.js              # GDELT Geo API (event geolocation)
-├── polymarket.js             # Prediction markets with validation
-├── yahoo-finance.js          # Stock indices/commodities (backup)
-├── opensky-relay.js          # Military aircraft tracking
-├── wingbits.js               # Aircraft enrichment proxy
-├── risk-scores.js            # Pre-computed CII and strategic risk (Redis cached)
-├── theater-posture.js        # Theater-level force aggregation (Redis cached)
-├── groq-summarize.js         # AI summarization with Groq API
-└── openrouter-summarize.js   # AI summarization fallback via OpenRouter
+api/                          # Vercel Edge Functions (two kinds, see Architecture)
+├── <domain>/v<N>/[rpc].ts    # Generated domain gateways — aviation, market,
+│                             #   conflict, climate, cyber, sanctions, maritime,
+│                             #   resilience, ... (34 proto-backed domains)
+├── bootstrap.js              # Two-tier Redis hydration for the SPA
+├── health/                   # Per-key freshness + cascade status
+├── mcp.ts / mcp-proxy.ts     # Model Context Protocol server endpoints
+├── create-checkout.ts        # Stripe checkout (hand-written operational)
+├── customer-portal.ts        # Stripe billing portal (hand-written operational)
+├── user-prefs.ts             # User preference sync (hand-written operational)
+└── notify.ts                 # Notification dispatch (hand-written operational)
+server/                       # Server-side handlers (bundled into Edge functions)
+├── gateway.ts                # createDomainGateway — per-domain Edge bundles
+├── worldmonitor/<domain>/    # 34 proto-backed domain handler implementations
+└── _shared/                  # Redis client, source tiers, shared utilities
 ```
+
+The flat `api/*.js` proxies described in older revisions have been replaced by proto-generated domain gateways. See the [Architecture](/architecture) doc for the full request path.
 
 ## Data Attribution
 

@@ -68,6 +68,25 @@ jobs:
           ')
           echo "validation=$( [ "$VALIDATION" -gt 0 ] && echo true || echo false )" >> "$GITHUB_OUTPUT"
 
+  docs-stats:
+    # Always-on: guards the capability counts quoted in README / ARCHITECTURE /
+    # docs against the code sources of truth. Runs on every PR/push (docs-only
+    # PRs set changes.code=false and skip `unit`, so this must not gate on it).
+    # Pure Node builtins — no npm install required.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Regenerated stats.json matches committed
+        run: |
+          node scripts/docs-stats.mjs
+          git diff --exit-code docs/generated/stats.json \
+            || { echo '::error::docs/generated/stats.json is stale — run `npm run docs:stats` and commit.'; exit 1; }
+      - name: Doc claims match code
+        run: node scripts/docs-stats.mjs --check
+
   unit:
     needs: changes
     if: needs.changes.outputs.code == 'true'
