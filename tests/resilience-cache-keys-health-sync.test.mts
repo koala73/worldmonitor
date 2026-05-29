@@ -9,7 +9,9 @@ import {
   RESILIENCE_RANKING_CACHE_KEY,
   RESILIENCE_HISTORY_KEY_PREFIX,
   RESILIENCE_INTERVAL_KEY_PREFIX,
+  RESILIENCE_INTERVAL_METHODOLOGY,
 } from '../server/worldmonitor/resilience/v1/_shared.ts';
+import { RESILIENCE_INTERVAL_METHODOLOGY as SCRIPT_INTERVAL_METHODOLOGY } from '../scripts/_resilience-intervals.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
@@ -317,5 +319,26 @@ describe('resilience cache-key health-registry sync (T1.9)', () => {
         `the same underlying signal — see api/health.js:380 comment.`,
       );
     });
+  });
+});
+
+// Greptile PR #3972 review P2 — methodology constant parity across the
+// server/script boundary. RESILIENCE_INTERVAL_METHODOLOGY is duplicated in
+// server/worldmonitor/resilience/v1/_shared.ts (where it gates ranking-cache
+// invalidation via stampRankingCacheTag/rankingCacheTagMatches) and in
+// scripts/_resilience-intervals.mjs (where it only labels the interval
+// payload's informational `methodology` field). The server never reads the
+// script copy, so a one-sided bump diverges silently: bumping only the script
+// constant would NOT invalidate ranking caches as an engineer might expect.
+describe('resilience interval methodology constant parity (#3972)', () => {
+  it('server _shared.ts and scripts/_resilience-intervals.mjs agree', () => {
+    assert.equal(
+      SCRIPT_INTERVAL_METHODOLOGY,
+      RESILIENCE_INTERVAL_METHODOLOGY,
+      `RESILIENCE_INTERVAL_METHODOLOGY must match across the boundary: ` +
+      `script="${SCRIPT_INTERVAL_METHODOLOGY}" vs server="${RESILIENCE_INTERVAL_METHODOLOGY}". ` +
+      `The server constant gates ranking-cache invalidation (rankingCacheTagMatches); ` +
+      `the script constant only labels the interval payload. Bump both together.`,
+    );
   });
 });
