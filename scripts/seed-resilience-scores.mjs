@@ -12,6 +12,7 @@ import {
   RESILIENCE_INTERVAL_KEY_PREFIX as INTERVAL_KEY_PREFIX,
   buildScoreIntervalPayload,
   computeIntervals,
+  createIntervalDiagnostics,
 } from './_resilience-intervals.mjs';
 
 loadEnvFile(import.meta.url);
@@ -89,13 +90,14 @@ function countCachedFromPipeline(results) {
 
 async function computeAndWriteIntervals(url, token, countryCodes, pipelineResults) {
   const commands = [];
+  const diagnostics = createIntervalDiagnostics();
 
   for (let i = 0; i < countryCodes.length; i++) {
     const raw = pipelineResults[i]?.result ?? null;
     if (!raw || raw === 'null') continue;
     try {
       const score = unwrapEnvelope(JSON.parse(raw)).data;
-      const payload = buildScoreIntervalPayload(score, { draws: DRAWS });
+      const payload = buildScoreIntervalPayload(score, { draws: DRAWS, diagnostics });
       if (!payload) continue;
       commands.push(['SET', `${INTERVAL_KEY_PREFIX}${countryCodes[i]}`, JSON.stringify(payload), 'EX', INTERVAL_TTL_SECONDS]);
     } catch { /* skip malformed */ }
@@ -103,7 +105,7 @@ async function computeAndWriteIntervals(url, token, countryCodes, pipelineResult
 
   if (commands.length === 0) {
     console.log('[resilience-scores] No domain data available for intervals');
-    return 0;
+    return { recordCount: 0, diagnostics };
   }
 
   const PIPE_BATCH = 50;
@@ -111,9 +113,15 @@ async function computeAndWriteIntervals(url, token, countryCodes, pipelineResult
     await redisPipeline(url, token, commands.slice(i, i + PIPE_BATCH));
   }
   console.log(`[resilience-scores] Wrote ${commands.length} interval keys`);
+  if (diagnostics.activeScoreClampCount > 0) {
+    console.warn(
+      `[resilience-scores] Clamped ${diagnostics.activeScoreClampCount} interval bands to contain the active score ` +
+      `(maxDelta=${diagnostics.activeScoreClampMaxDelta}; samples=${JSON.stringify(diagnostics.activeScoreClampSamples)})`,
+    );
+  }
 
   await writeFreshnessMetadata('resilience', 'intervals', commands.length, '', INTERVAL_TTL_SECONDS);
-  return commands.length;
+  return { recordCount: commands.length, diagnostics };
 }
 
 async function seedResilienceScores() {
@@ -217,19 +225,35 @@ async function seedResilienceScores() {
     const finalWarmed = countCachedFromPipeline(finalResults);
     console.log(`[resilience-scores] Final: ${finalWarmed}/${countryCodes.length} cached`);
 
-    const intervalsWritten = await computeAndWriteIntervals(url, token, countryCodes, finalResults);
+    const intervalResult = await computeAndWriteIntervals(url, token, countryCodes, finalResults);
     const rankingPresent = await refreshRankingAggregate({ url, token, laggardsWarmed });
-    return { skipped: false, recordCount: finalWarmed, total: countryCodes.length, intervalsWritten, rankingPresent };
+    return {
+      skipped: false,
+      recordCount: finalWarmed,
+      total: countryCodes.length,
+      intervalsWritten: intervalResult.recordCount,
+      intervalClampCount: intervalResult.diagnostics.activeScoreClampCount,
+      intervalClampMaxDelta: intervalResult.diagnostics.activeScoreClampMaxDelta,
+      rankingPresent,
+    };
   }
 
-  const intervalsWritten = await computeAndWriteIntervals(url, token, countryCodes, preResults);
+  const intervalResult = await computeAndWriteIntervals(url, token, countryCodes, preResults);
   // Refresh the ranking aggregate on every cron, even when per-country
   // scores are still warm from the previous tick. Ranking has a 12h TTL vs
   // a 6h cron cadence — skipping the refresh when the key is still alive
   // would let it drift toward expiry without a rebuild, and a single missed
   // cron would then produce an EMPTY_ON_DEMAND gap before the next one runs.
   const rankingPresent = await refreshRankingAggregate({ url, token, laggardsWarmed: 0 });
-  return { skipped: false, recordCount: preWarmed, total: countryCodes.length, intervalsWritten, rankingPresent };
+  return {
+    skipped: false,
+    recordCount: preWarmed,
+    total: countryCodes.length,
+    intervalsWritten: intervalResult.recordCount,
+    intervalClampCount: intervalResult.diagnostics.activeScoreClampCount,
+    intervalClampMaxDelta: intervalResult.diagnostics.activeScoreClampMaxDelta,
+    rankingPresent,
+  };
 }
 
 // Trigger a ranking rebuild via the public endpoint EVERY cron, regardless of
@@ -318,6 +342,8 @@ async function main() {
     ...(result.total != null && { total: result.total }),
     ...(result.reason != null && { reason: result.reason }),
     ...(result.intervalsWritten != null && { intervalsWritten: result.intervalsWritten }),
+    ...(result.intervalClampCount != null && { intervalClampCount: result.intervalClampCount }),
+    ...(result.intervalClampMaxDelta != null && { intervalClampMaxDelta: result.intervalClampMaxDelta }),
   });
   if (!result.skipped && (result.recordCount ?? 0) > 0 && !result.rankingPresent) {
     // Observability only — seeder never writes seed-meta. Health will flag the

@@ -12,6 +12,7 @@ import {
   RESILIENCE_INTERVAL_KEY_PREFIX as INTERVAL_KEY_PREFIX,
   buildScoreIntervalPayload,
   computeIntervals,
+  createIntervalDiagnostics,
 } from './_resilience-intervals.mjs';
 
 loadEnvFile(import.meta.url);
@@ -81,6 +82,7 @@ async function seedResilienceIntervals() {
     const BATCH = 10;
     let computed = 0;
     const commands = [];
+    const diagnostics = createIntervalDiagnostics();
 
     for (let i = 0; i < allItems.length; i += BATCH) {
       const batch = allItems.slice(i, i + BATCH);
@@ -95,7 +97,7 @@ async function seedResilienceIntervals() {
           continue;
         }
         const scoreData = result.value;
-        const payload = buildScoreIntervalPayload(scoreData, { draws: DRAWS });
+        const payload = buildScoreIntervalPayload(scoreData, { draws: DRAWS, diagnostics });
         if (!payload) continue;
 
         const key = `${INTERVAL_KEY_PREFIX}${scoreData.countryCode}`;
@@ -111,8 +113,21 @@ async function seedResilienceIntervals() {
       }
     }
 
+    if (diagnostics.activeScoreClampCount > 0) {
+      console.warn(
+        `[resilience-intervals] Clamped ${diagnostics.activeScoreClampCount} interval bands to contain the active score ` +
+        `(maxDelta=${diagnostics.activeScoreClampMaxDelta}; samples=${JSON.stringify(diagnostics.activeScoreClampSamples)})`,
+      );
+    }
+
     console.log(`[resilience-intervals] Wrote ${computed}/${allItems.length} intervals`);
-    return { skipped: false, recordCount: computed, total: allItems.length };
+    return {
+      skipped: false,
+      recordCount: computed,
+      total: allItems.length,
+      intervalClampCount: diagnostics.activeScoreClampCount,
+      intervalClampMaxDelta: diagnostics.activeScoreClampMaxDelta,
+    };
   } finally {
     await releaseLock('resilience:intervals', runId);
   }
@@ -125,6 +140,8 @@ async function main() {
     skipped: Boolean(result.skipped),
     ...(result.total != null && { total: result.total }),
     ...(result.reason != null && { reason: result.reason }),
+    ...(result.intervalClampCount != null && { intervalClampCount: result.intervalClampCount }),
+    ...(result.intervalClampMaxDelta != null && { intervalClampMaxDelta: result.intervalClampMaxDelta }),
   });
   if (!result.skipped) {
     await writeFreshnessMetadata('resilience', 'intervals', result.recordCount ?? 0, '', 7 * 24 * 3600);

@@ -51,6 +51,14 @@ function ceilInterval(value) {
   return Math.ceil(value * 10) / 10;
 }
 
+export function createIntervalDiagnostics() {
+  return {
+    activeScoreClampCount: 0,
+    activeScoreClampMaxDelta: 0,
+    activeScoreClampSamples: [],
+  };
+}
+
 function normalizeFormula(value) {
   return value === 'pc' || value === 'd6' ? value : null;
 }
@@ -61,12 +69,39 @@ export function currentEnvFormula() {
   return pillarCombine && schemaV2 ? 'pc' : 'd6';
 }
 
-function clampToActiveScore(interval, activeScore) {
+function recordActiveScoreClamp(options, before, after, activeScore) {
+  if (before.p05 === after.p05 && before.p95 === after.p95) return;
+  const diagnostics = options?.diagnostics;
+  if (!diagnostics || typeof diagnostics !== 'object') return;
+
+  const delta = activeScore < before.p05
+    ? before.p05 - activeScore
+    : activeScore > before.p95
+      ? activeScore - before.p95
+      : 0;
+  diagnostics.activeScoreClampCount = (Number(diagnostics.activeScoreClampCount) || 0) + 1;
+  diagnostics.activeScoreClampMaxDelta = Math.max(Number(diagnostics.activeScoreClampMaxDelta) || 0, round(delta, 4));
+  if (Array.isArray(diagnostics.activeScoreClampSamples) && diagnostics.activeScoreClampSamples.length < 5) {
+    diagnostics.activeScoreClampSamples.push({
+      countryCode: typeof options.countryCode === 'string' ? options.countryCode : undefined,
+      formula: normalizeFormula(options.formula) ?? undefined,
+      activeScore: round(activeScore, 4),
+      before,
+      after,
+      delta: round(delta, 4),
+    });
+  }
+}
+
+function clampToActiveScore(interval, activeScore, options = {}) {
   if (!Number.isFinite(activeScore)) return interval;
-  let { p05, p95 } = interval;
+  const before = { ...interval };
+  let { p05, p95 } = before;
   if (activeScore < p05) p05 = floorInterval(activeScore);
   if (activeScore > p95) p95 = ceilInterval(activeScore);
-  return { p05, p95 };
+  const after = { p05, p95 };
+  recordActiveScoreClamp(options, before, after, activeScore);
+  return after;
 }
 
 function percentile(samples, quantile) {
@@ -96,7 +131,7 @@ export function computeIntervals(domainScores, domainWeights, draws = DRAWS, opt
   return clampToActiveScore({
     p05: roundInterval(percentile(samples, 0.05)),
     p95: roundInterval(percentile(samples, 0.95)),
-  }, activeScore);
+  }, activeScore, options);
 }
 
 export function penalizedPillarScore(pillars) {
@@ -122,7 +157,7 @@ export function computePillarIntervals(pillars, draws = DRAWS, options = {}) {
   return clampToActiveScore({
     p05: roundInterval(percentile(samples, 0.05)),
     p95: roundInterval(percentile(samples, 0.95)),
-  }, activeScore);
+  }, activeScore, options);
 }
 
 function extractDomains(scoreData) {
@@ -174,6 +209,11 @@ export function inferScoreFormula(scoreData, options = {}) {
     if (pcDiff + 0.05 < d6Diff) return 'pc';
     if (d6Diff + 0.05 < pcDiff) return 'd6';
   }
+  // Ambiguous d6 ~= pc ties intentionally fall back to the active seed env.
+  // Railway seeders must keep RESILIENCE_PILLAR_COMBINE_ENABLED and
+  // RESILIENCE_SCHEMA_V2_ENABLED aligned with the server rollout flags;
+  // otherwise an untagged score payload that fits both formulas closely
+  // can only be resolved by those env flags.
   return fallback;
 }
 
@@ -187,13 +227,27 @@ export function buildScoreIntervalPayload(scoreData, options = {}) {
   const formula = inferScoreFormula(scoreData, { ...options, domains, pillars });
 
   const interval = formula === 'pc'
-    ? (pillars.length > 0 ? computePillarIntervals(pillars, draws, { rng: options.rng, activeScore: overallScore }) : null)
+    ? (pillars.length > 0
+        ? computePillarIntervals(pillars, draws, {
+            rng: options.rng,
+            activeScore: overallScore,
+            diagnostics: options.diagnostics,
+            countryCode: scoreData?.countryCode,
+            formula,
+          })
+        : null)
     : (domains.length > 0
         ? computeIntervals(
             domains.map((domain) => domain.score),
             domains.map((domain) => domain.weight),
             draws,
-            { rng: options.rng, activeScore: overallScore },
+            {
+              rng: options.rng,
+              activeScore: overallScore,
+              diagnostics: options.diagnostics,
+              countryCode: scoreData?.countryCode,
+              formula,
+            },
           )
         : null);
   if (!interval) return null;

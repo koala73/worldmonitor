@@ -5,6 +5,7 @@ import { computeIntervals } from '../scripts/seed-resilience-intervals.mjs';
 import {
   RESILIENCE_INTERVAL_METHODOLOGY,
   buildScoreIntervalPayload,
+  createIntervalDiagnostics,
   domainAggregate,
   penalizedPillarScore,
 } from '../scripts/_resilience-intervals.mjs';
@@ -62,6 +63,29 @@ describe('computeIntervals', () => {
     const p95Decimals = String(result.p95).split('.')[1]?.length ?? 0;
     assert.ok(p05Decimals <= 1, `p05 should have at most 1 decimal, got ${result.p05}`);
     assert.ok(p95Decimals <= 1, `p95 should have at most 1 decimal, got ${result.p95}`);
+  });
+
+  it('records when active-score clamping widens the rounded band', () => {
+    const diagnostics = createIntervalDiagnostics();
+    const result = computeIntervals([50, 50, 50, 50, 50], [0.2, 0.2, 0.2, 0.2, 0.2], 20, {
+      activeScore: 65.04,
+      diagnostics,
+      countryCode: 'ZZ',
+      formula: 'd6',
+    });
+
+    assert.equal(result.p05, 50);
+    assert.equal(result.p95, 65.1);
+    assert.equal(diagnostics.activeScoreClampCount, 1);
+    assert.ok(diagnostics.activeScoreClampMaxDelta > 15);
+    assert.deepEqual(diagnostics.activeScoreClampSamples[0], {
+      countryCode: 'ZZ',
+      formula: 'd6',
+      activeScore: 65.04,
+      before: { p05: 50, p95: 50 },
+      after: { p05: 50, p95: 65.1 },
+      delta: 15.04,
+    });
   });
 });
 
@@ -153,5 +177,18 @@ describe('seed script is self-contained .mjs', () => {
     const src = readFileSync(join(dir, '..', 'scripts', 'seed-resilience-intervals.mjs'), 'utf8');
     assert.match(src, /from ['"]\.\/_resilience-intervals\.mjs['"]/);
     assert.doesNotMatch(src, /const DOMAIN_WEIGHTS =/);
+    assert.match(src, /createIntervalDiagnostics/);
+    assert.match(src, /intervalClampCount/);
+  });
+
+  it('documents ambiguous formula inference fallback to seeder env', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const { dirname, join } = await import('node:path');
+    const dir = dirname(fileURLToPath(import.meta.url));
+    const src = readFileSync(join(dir, '..', 'scripts', '_resilience-intervals.mjs'), 'utf8');
+    assert.match(src, /Ambiguous d6 ~= pc ties intentionally fall back to the active seed env/);
+    assert.match(src, /RESILIENCE_PILLAR_COMBINE_ENABLED/);
+    assert.match(src, /RESILIENCE_SCHEMA_V2_ENABLED/);
   });
 });
