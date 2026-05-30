@@ -44,9 +44,10 @@ const RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE_IDS: ReadonlySet<string> = ne
 // visible to non-entitled users. The preview is blurred and
 // non-interactive via the .resilience-widget__preview CSS class, so
 // the exact values do not need to match any real country. They just
-// need to populate the 6 domain bars AND the 19-cell per-dimension
-// confidence grid (T1.6) with realistic-looking data so the gated
-// card is not a blank gap. Raised in PR #2949 review. Lives in this
+// need to populate the 6 domain bars AND the 22-cell serialized
+// per-dimension confidence grid (20 active + 2 retired) with
+// realistic-looking data so the gated card is not a blank gap. Raised
+// in PR #2949 review. Lives in this
 // dependency-free utils module so tests can import it without
 // pulling in the full ResilienceWidget class (the class indirectly
 // depends on `import.meta.env.DEV` via proxy.ts, which breaks plain
@@ -76,6 +77,7 @@ export const LOCKED_PREVIEW: ResilienceScoreResponse = {
         { id: 'macroFiscal', score: 85, coverage: 0.95, observedWeight: 0.95, imputedWeight: 0.05, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
         { id: 'currencyExternal', score: 80, coverage: 0.88, observedWeight: 0.88, imputedWeight: 0.12, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
         { id: 'tradePolicy', score: 78, coverage: 0.9, observedWeight: 0.9, imputedWeight: 0.1, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
+        { id: 'financialSystemExposure', score: 74, coverage: 0.72, observedWeight: 0.72, imputedWeight: 0.28, imputationClass: 'unmonitored', freshness: { lastObservedAtMs: LOCKED_PREVIEW_AGING_AT_MS, staleness: 'aging' } },
       ],
     },
     {
@@ -122,11 +124,13 @@ export const LOCKED_PREVIEW: ResilienceScoreResponse = {
       weight: 1.0,
       dimensions: [
         { id: 'fiscalSpace', score: 72, coverage: 0.9, observedWeight: 0.9, imputedWeight: 0.1, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
-        { id: 'reserveAdequacy', score: 55, coverage: 0.85, observedWeight: 0.85, imputedWeight: 0.15, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
+        { id: 'reserveAdequacy', score: 50, coverage: 0, observedWeight: 0, imputedWeight: 0, imputationClass: '', freshness: { lastObservedAtMs: '0', staleness: '' } },
         { id: 'externalDebtCoverage', score: 60, coverage: 0.8, observedWeight: 0.8, imputedWeight: 0.2, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
         { id: 'importConcentration', score: 70, coverage: 0.75, observedWeight: 0.75, imputedWeight: 0.25, imputationClass: 'unmonitored', freshness: { lastObservedAtMs: LOCKED_PREVIEW_AGING_AT_MS, staleness: 'aging' } },
         { id: 'stateContinuity', score: 80, coverage: 0.92, observedWeight: 0.92, imputedWeight: 0.08, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
-        { id: 'fuelStockDays', score: 50, coverage: 0.3, observedWeight: 0, imputedWeight: 1, imputationClass: 'unmonitored', freshness: { lastObservedAtMs: LOCKED_PREVIEW_STALE_AT_MS, staleness: 'stale' } },
+        { id: 'fuelStockDays', score: 50, coverage: 0, observedWeight: 0, imputedWeight: 0, imputationClass: '', freshness: { lastObservedAtMs: '0', staleness: '' } },
+        { id: 'liquidReserveAdequacy', score: 67, coverage: 0.82, observedWeight: 0.82, imputedWeight: 0.18, imputationClass: '', freshness: { lastObservedAtMs: LOCKED_PREVIEW_FRESH_AT_MS, staleness: 'fresh' } },
+        { id: 'sovereignFiscalBuffer', score: 54, coverage: 0.65, observedWeight: 0.65, imputedWeight: 0.35, imputationClass: 'unmonitored', freshness: { lastObservedAtMs: LOCKED_PREVIEW_AGING_AT_MS, staleness: 'aging' } },
       ],
     },
   ],
@@ -308,7 +312,7 @@ export function formatResilienceDataVersion(dataVersion: string | null | undefin
 // `freshness`) already on every response, so no proto or schema
 // changes are needed to render the full grid.
 
-// Short labels for each of the 19 dimensions so the compact grid does
+// Short labels for each serialized dimension so the compact grid does
 // not wrap. Keys match `ResilienceDimensionId` from
 // server/worldmonitor/resilience/v1/_dimension-scorers.ts. The doc
 // linter test (resilience-methodology-lint.test.mts) already pins the
@@ -338,8 +342,8 @@ const DIMENSION_LABELS: Record<string, string> = {
   stateContinuity: 'Continuity',
   fuelStockDays: 'Fuel',
   // PR 2 §3.4 — new active dimensions. Labels chosen to stay short
-  // enough for the 19/21-cell confidence grid without leaking the
-  // internal ID. "Reserves" is already taken by the retired
+  // enough for the 20-active/22-serialized-cell confidence grid
+  // without leaking the internal ID. "Reserves" is already taken by the retired
   // reserveAdequacy so the replacement disambiguates with "Liquid".
   liquidReserveAdequacy: 'Liquid Reserves',
   sovereignFiscalBuffer: 'Sovereign Wealth',

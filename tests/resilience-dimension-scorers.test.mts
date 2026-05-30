@@ -100,7 +100,7 @@ describe('resilience dimension scorers', () => {
     assertOrdered('foodWater', foodWater.no.score, foodWater.us.score, foodWater.ye.score);
   });
 
-  it('returns all 19 dimensions with bounded scores and coverage', async () => {
+  it('returns all serialized dimensions with bounded scores and coverage', async () => {
     const dimensions = await scoreAllDimensions('US', fixtureReader);
 
     assert.deepEqual(Object.keys(dimensions).sort(), [...RESILIENCE_DIMENSION_ORDER].sort());

@@ -14,8 +14,8 @@
 // We assert the few facts that are most likely to silently rot:
 //
 // 1. Cache prefixes named in the changelog match `_shared.ts`.
-// 2. The "6 domains × 19 dimensions" claim matches
-//    `RESILIENCE_DOMAIN_ORDER` and `RESILIENCE_DIMENSION_ORDER`.
+// 2. The "6 domains × 20 active dimensions" claim matches
+//    `RESILIENCE_DOMAIN_ORDER` and `RESILIENCE_DIMENSION_ORDER − retired`.
 // 3. Each domain's weight in the Domains table matches
 //    `getResilienceDomainWeight(...)`.
 
@@ -41,7 +41,22 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url));
 const DOC_PATH = resolve(here, '../docs/methodology/country-resilience-index.mdx');
+const DOCUMENTATION_PATH = resolve(here, '../docs/documentation.mdx');
+const FEATURES_PATH = resolve(here, '../docs/features.mdx');
 const docText = readFileSync(DOC_PATH, 'utf8');
+const CURRENT_DIMENSION_COUNT_SURFACES = [
+  { label: 'methodology doc', path: DOC_PATH, text: docText },
+  {
+    label: 'documentation intro',
+    path: DOCUMENTATION_PATH,
+    text: readFileSync(DOCUMENTATION_PATH, 'utf8'),
+  },
+  {
+    label: 'features page',
+    path: FEATURES_PATH,
+    text: readFileSync(FEATURES_PATH, 'utf8'),
+  },
+];
 
 describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
   it('cache prefixes named in the changelog match the live constants', () => {
@@ -107,7 +122,7 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
     // Tighten: stale CURRENT-total claims in older changelog narrative
     // contradict the live count and confuse readers. The previous
     // version of this test allowed any mention of "20 dimensions" to
-    // pass even if a contradictory "19 dimensions" still appeared in
+    // pass even if a contradictory stale dimension count still appeared in
     // older prose. Now reject any mention in the plausible-current-
     // total band [15, 25] that doesn't equal activeCount or totalCount.
     // Numbers outside that band (5, 6, 13) are legitimate sub-pillar /
@@ -129,6 +144,29 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
       `Current active count is ${activeCount} (or total ${totalCount} if including retired). ` +
       'Update stale claims, or move to historical-state phrasing if they describe a past version.',
     );
+  });
+
+  it('current public CRI surfaces claim the live active dimension count', () => {
+    const activeCount = RESILIENCE_DIMENSION_ORDER.length - RESILIENCE_RETIRED_DIMENSIONS.size;
+    const totalCount = RESILIENCE_DIMENSION_ORDER.length;
+    const activeRe = new RegExp(`${activeCount}\\s+(?:active\\s+)?dimensions?`);
+
+    for (const surface of CURRENT_DIMENSION_COUNT_SURFACES) {
+      assert.ok(
+        activeRe.test(surface.text),
+        `${surface.label} (${surface.path}) must mention "${activeCount} dimensions" or ` +
+          `"${activeCount} active dimensions" for the current Country Resilience Index.`,
+      );
+
+      const stale = findPlausibleCurrentTotalDimensionCounts(surface.text, activeCount, totalCount);
+      assert.deepEqual(
+        stale,
+        [],
+        `${surface.label} (${surface.path}) contains plausible-current-total dimension counts that ` +
+          `contradict the live count: ${stale.join(', ')}. Current active count is ${activeCount} ` +
+          `(or total ${totalCount} if explicitly including retired dimensions).`,
+      );
+    }
   });
 
   it('Domains table weights match getResilienceDomainWeight()', () => {
@@ -169,4 +207,17 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
 
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function findPlausibleCurrentTotalDimensionCounts(text: string, activeCount: number, totalCount: number): number[] {
+  const PLAUSIBLE_CURRENT_TOTAL_MIN = 15;
+  const PLAUSIBLE_CURRENT_TOTAL_MAX = 25;
+  return [...text.matchAll(/(\d+)\s+(?:active\s+)?dimensions?/g)]
+    .map((m) => Number(m[1]))
+    .filter((n) =>
+      n !== activeCount &&
+      n !== totalCount &&
+      n >= PLAUSIBLE_CURRENT_TOTAL_MIN &&
+      n <= PLAUSIBLE_CURRENT_TOTAL_MAX,
+    );
 }

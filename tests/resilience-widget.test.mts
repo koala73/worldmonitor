@@ -239,6 +239,7 @@ test('getResilienceDimensionLabel returns short stable labels for all 22 dimensi
   assert.equal(getResilienceDimensionLabel('macroFiscal'), 'Macro');
   assert.equal(getResilienceDimensionLabel('currencyExternal'), 'Currency');
   assert.equal(getResilienceDimensionLabel('tradePolicy'), 'Trade');
+  assert.equal(getResilienceDimensionLabel('financialSystemExposure'), 'Fin. Exposure');
   assert.equal(getResilienceDimensionLabel('cyberDigital'), 'Cyber');
   assert.equal(getResilienceDimensionLabel('logisticsSupply'), 'Logistics');
   assert.equal(getResilienceDimensionLabel('infrastructure'), 'Infra');
@@ -398,9 +399,23 @@ test('collectDimensionConfidences returns an empty list for an empty response', 
 // representative card instead of a blank gap between the domain rows
 // and the footer. If a future edit accidentally drops a dimension
 // from the preview, this regression test fails loudly.
-test('LOCKED_PREVIEW populates all 19 dimensions for the gated preview (PR #2949 review)', () => {
+test('LOCKED_PREVIEW populates all 22 serialized dimensions for the gated preview (PR #2949 review)', async () => {
+  const {
+    RESILIENCE_DIMENSION_ORDER,
+    RESILIENCE_RETIRED_DIMENSIONS,
+  } = await import('../server/worldmonitor/resilience/v1/_dimension-scorers.ts');
+  const retiredDimensions = new Set<string>(RESILIENCE_RETIRED_DIMENSIONS);
   const all = collectDimensionConfidences(LOCKED_PREVIEW.domains);
-  assert.equal(all.length, 19, `locked preview should carry all 19 dimensions, got ${all.length}`);
+  assert.equal(
+    all.length,
+    22,
+    `locked preview should carry all 22 serialized dimensions (20 active + 2 retired), got ${all.length}`,
+  );
+  assert.deepEqual(
+    all.map((dim) => dim.id),
+    RESILIENCE_DIMENSION_ORDER,
+    'locked preview dimension order must match RESILIENCE_DIMENSION_ORDER',
+  );
   // Every cell should resolve to a short label (no raw IDs leaking through).
   for (const dim of all) {
     assert.ok(
@@ -408,14 +423,22 @@ test('LOCKED_PREVIEW populates all 19 dimensions for the gated preview (PR #2949
       `${dim.id} should resolve to a short display label in the preview, got "${dim.label}"`,
     );
   }
-  // Every dimension in the preview should have non-absent status so
-  // the blurred grid renders a meaningful visual, never a row of empty
-  // "n/a" cells.
+  // Every active dimension in the preview should have non-absent status
+  // so the blurred grid renders a meaningful visual. Retired dimensions
+  // deliberately mirror the live retired shape: coverage=0 and absent.
   for (const dim of all) {
+    if (retiredDimensions.has(dim.id)) {
+      assert.equal(
+        dim.status,
+        'absent',
+        `${dim.id} should mirror the live retired zero-coverage shape`,
+      );
+      continue;
+    }
     assert.notEqual(
       dim.status,
       'absent',
-      `${dim.id} should not be absent in the locked preview (all fixture values are populated)`,
+      `${dim.id} should not be absent in the locked preview (active fixture values are populated)`,
     );
   }
 });

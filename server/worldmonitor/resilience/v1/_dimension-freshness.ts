@@ -6,7 +6,7 @@
 // explicitly deferred the dimension-level propagation. This module owns
 // that propagation pass.
 //
-// Design: aggregation happens one level above the 19 dimension scorers.
+// Design: aggregation happens one level above the 22 serialized dimension scorers.
 // The scorers stay unchanged; this module reads every seed-meta key
 // referenced by INDICATOR_REGISTRY, builds a sourceKey → fetchedAtMs
 // map, and aggregates per dimension:
