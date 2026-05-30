@@ -110,6 +110,10 @@ export function isEnergyV2Enabled(): boolean {
   return (process.env.RESILIENCE_ENERGY_V2_ENABLED ?? 'false').toLowerCase() === 'true';
 }
 
+export function isFinancialSystemExposureEnabled(): boolean {
+  return (process.env.RESILIENCE_FIN_SYS_EXPOSURE_ENABLED ?? 'false').toLowerCase() === 'true';
+}
+
 export const RESILIENCE_SCORE_CACHE_TTL_SECONDS = 6 * 60 * 60;
 // Ranking TTL must exceed the cron interval (6h) by enough to tolerate one
 // missed/slow cron tick. With TTL==cron_interval, writing near the end of a
@@ -257,7 +261,9 @@ export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
 // stale-formula entries, mirroring score/ranking cache isolation.
 export const RESILIENCE_INTERVAL_KEY_PREFIX = 'resilience:intervals:v3:';
 export const RESILIENCE_INTERVAL_METHODOLOGY = 'weight-perturbation-sensitivity-v1';
-const RESILIENCE_STATIC_META_KEY = 'seed-meta:resilience:static';
+export const RESILIENCE_STATIC_META_KEY = 'seed-meta:resilience:static';
+export const RESILIENCE_RANKING_META_KEY = 'seed-meta:resilience:ranking';
+export const RESILIENCE_RANKING_META_TTL_SECONDS = 7 * 24 * 60 * 60;
 const RANK_STABLE_MAX_INTERVAL_WIDTH = 8;
 
 const LOW_CONFIDENCE_COVERAGE_THRESHOLD = 0.55;

@@ -66,11 +66,11 @@ message ResilienceRankingItem {
 // pressure (live-shock-exposure), and recovery capability (recovery-capacity).
 // Pillar scores and coverage are real coverage-weighted aggregates computed
 // from the constituent domains; see _pillar-membership.ts for the mapping.
-// The top-level overall_score on GetResilienceScoreResponse remains a
-// domain-weighted aggregate (Σ domain.score * domain.weight) for this
-// release cycle; a pillar-combined score with penalty term is staged in
-// _shared.ts#penalizedPillarScore and validated by
-// scripts/validate-resilience-sensitivity.mjs ahead of the activation PR.
+// When RESILIENCE_SCHEMA_V2_ENABLED and RESILIENCE_PILLAR_COMBINE_ENABLED
+// are both true, the top-level overall_score on GetResilienceScoreResponse
+// uses the pillar-combined score with the min-pillar penalty term in
+// _shared.ts#penalizedPillarScore. The legacy six-domain weighted aggregate
+// remains the flag-off rollback path.
 message ResiliencePillar {
   // "structural-readiness" | "live-shock-exposure" | "recovery-capacity".
   string id = 1;

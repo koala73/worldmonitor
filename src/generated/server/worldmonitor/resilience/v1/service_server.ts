@@ -77,6 +77,41 @@ export interface ResilienceRankingItem {
   headlineEligible: boolean;
 }
 
+export interface GetResilienceRuntimeManifestRequest {
+}
+
+export interface GetResilienceRuntimeManifestResponse {
+  manifestVersion: number;
+  generatedAt: string;
+  deployedCommitSha: string;
+  vercelEnv: string;
+  formulaTag: string;
+  dataVersion: string;
+  flags: ResilienceRuntimeFlag[];
+  cache?: ResilienceRuntimeCacheState;
+  rankingCache?: ResilienceRankingCacheState;
+}
+
+export interface ResilienceRuntimeFlag {
+  name: string;
+  enabled: boolean;
+}
+
+export interface ResilienceRuntimeCacheState {
+  scorePrefix: string;
+  rankingKey: string;
+  historyPrefix: string;
+  intervalPrefix: string;
+  intervalMethodology: string;
+}
+
+export interface ResilienceRankingCacheState {
+  fetchedAt: string;
+  count: number;
+  scored: number;
+  total: number;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -124,6 +159,7 @@ export interface RouteDescriptor {
 export interface ResilienceServiceHandler {
   getResilienceScore(ctx: ServerContext, req: GetResilienceScoreRequest): Promise<GetResilienceScoreResponse>;
   getResilienceRanking(ctx: ServerContext, req: GetResilienceRankingRequest): Promise<GetResilienceRankingResponse>;
+  getResilienceRuntimeManifest(ctx: ServerContext, req: GetResilienceRuntimeManifestRequest): Promise<GetResilienceRuntimeManifestResponse>;
 }
 
 export function createResilienceServiceRoutes(
@@ -194,6 +230,43 @@ export function createResilienceServiceRoutes(
 
           const result = await handler.getResilienceRanking(ctx, body);
           return new Response(JSON.stringify(result as GetResilienceRankingResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/resilience/v1/get-runtime-manifest",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const body = {} as GetResilienceRuntimeManifestRequest;
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.getResilienceRuntimeManifest(ctx, body);
+          return new Response(JSON.stringify(result as GetResilienceRuntimeManifestResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

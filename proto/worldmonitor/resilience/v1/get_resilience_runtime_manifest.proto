@@ -1,0 +1,37 @@
+syntax = "proto3";
+
+package worldmonitor.resilience.v1;
+
+message GetResilienceRuntimeManifestRequest {}
+
+message ResilienceRuntimeFlag {
+  string name = 1;
+  bool enabled = 2;
+}
+
+message ResilienceRuntimeCacheState {
+  string score_prefix = 1;
+  string ranking_key = 2;
+  string history_prefix = 3;
+  string interval_prefix = 4;
+  string interval_methodology = 5;
+}
+
+message ResilienceRankingCacheState {
+  string fetched_at = 1;
+  int32 count = 2;
+  int32 scored = 3;
+  int32 total = 4;
+}
+
+message GetResilienceRuntimeManifestResponse {
+  int32 manifest_version = 1;
+  string generated_at = 2;
+  string deployed_commit_sha = 3;
+  string vercel_env = 4;
+  string formula_tag = 5;
+  string data_version = 6;
+  repeated ResilienceRuntimeFlag flags = 7;
+  ResilienceRuntimeCacheState cache = 8;
+  ResilienceRankingCacheState ranking_cache = 9;
+}

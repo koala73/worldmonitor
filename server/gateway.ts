@@ -315,6 +315,7 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
   '/api/intelligence/v1/get-regional-brief': 'slow',
   '/api/resilience/v1/get-resilience-score': 'slow',
   '/api/resilience/v1/get-resilience-ranking': 'slow',
+  '/api/resilience/v1/get-runtime-manifest': 'no-store',
 
   // Partner-facing shipping/v2. route-intelligence is premium-gated; gateway
   // short-circuits to slow-browser. Entry required by tests/route-cache-tier.test.mjs.
@@ -325,6 +326,10 @@ const RPC_CACHE_TIER: Record<string, CacheTier> = {
 };
 
 import { PREMIUM_RPC_PATHS } from '../src/shared/premium-paths';
+
+export const PUBLIC_NO_AUTH_RPC_PATHS = new Set<string>([
+  '/api/resilience/v1/get-runtime-manifest',
+]);
 
 /**
  * Creates a Vercel Edge handler for a single domain's routes.
@@ -735,8 +740,9 @@ export function createDomainGateway(
     // entirely: we already resolved the userId via HMAC verify and confirmed
     // tier ≥ 1 + mcpAccess === true. Re-running the JWT path on a request
     // that has no Authorization header would just no-op anyway.
-    const isTierGated = !internalMcpVerified && getRequiredTier(pathname) !== null;
-    const needsLegacyProBearerGate = !internalMcpVerified && PREMIUM_RPC_PATHS.has(pathname) && !isTierGated;
+    const isPublicNoAuthRpc = PUBLIC_NO_AUTH_RPC_PATHS.has(pathname);
+    const isTierGated = !internalMcpVerified && !isPublicNoAuthRpc && getRequiredTier(pathname) !== null;
+    const needsLegacyProBearerGate = !internalMcpVerified && !isPublicNoAuthRpc && PREMIUM_RPC_PATHS.has(pathname) && !isTierGated;
 
     // Session resolution — extract userId from bearer token (Clerk JWT) if present.
     // Only runs for tier-gated endpoints to avoid JWKS lookup on every request.
@@ -760,7 +766,7 @@ export function createDomainGateway(
     // request). Telemetry stays attributed via the verified userId set
     // above; entitlement re-check (`features.tier ≥ 1 && mcpAccess`) was
     // already performed before flipping `internalMcpVerified = true`.
-    let keyCheck: { valid: boolean; required: boolean; error?: string; kind?: 'enterprise' | 'session' | 'user' } = internalMcpVerified
+    let keyCheck: { valid: boolean; required: boolean; error?: string; kind?: 'enterprise' | 'session' | 'user' } = internalMcpVerified || isPublicNoAuthRpc
       ? { valid: true, required: false }
       : ((await validateApiKey(request, {
           forceKey: (isTierGated && !sessionUserId) || needsLegacyProBearerGate,

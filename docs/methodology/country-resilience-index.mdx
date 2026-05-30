@@ -8,7 +8,9 @@ The WorldMonitor Country Resilience Index (CRI) scores every country in the worl
 This document describes the **currently shipping** behavior of the index. The versioning has two independent axes:
 
 - **Response shape**: `schemaVersion: "2.0"` is the current default. Every response carries a real coverage-weighted `pillars[]` array regrouping the six domains into structural readiness / live shock exposure / recovery capacity. The legacy `schemaVersion: "1.0"` shape (pillars empty) remains available via the `RESILIENCE_SCHEMA_V2_ENABLED=false` env flag for one release cycle.
-- **Scoring formula**: the top-level `overall_score` is the v2 non-compensatory pillar-combined formula with a min-pillar penalty. The legacy six-domain weighted aggregate remains in code as the rollback path when `RESILIENCE_PILLAR_COMBINE_ENABLED=false`, but production and validation cron are activated on the pillar-combined formula. The annual Reference Edition at citation quality is a separate Phase 3 deliverable and is not yet shipped.
+- **Scoring formula**: the top-level `overall_score` is the v2 non-compensatory pillar-combined formula with a min-pillar penalty. The legacy six-domain weighted aggregate remains in code as the rollback path when `RESILIENCE_PILLAR_COMBINE_ENABLED=false`, but production and validation cron are activated on the pillar-combined formula. The annual Reference Edition is a frozen, citation-quality artifact; it is intentionally separate from the live deployment manifest.
+
+For the live deployment state, use the [runtime manifest](/api/resilience/v1/get-runtime-manifest). It reports the deployed SHA, active formula tag, `RESILIENCE_*` flag states, cache identifiers, static `dataVersion`, and ranking-cache metadata. The Reference Edition remains a frozen shipped bundle; it should not be treated as proof of the flags or cache keys currently active in production.
 
 Everything documented below describes the **currently shipping** state: schemaVersion `"2.0"` shape, 6 domains × 20 active dimensions × 3 pillars (plus 2 structurally-retired dimensions kept in the registry for schema continuity at `coverage=0`), and the pillar-combined penalized `overall_score`. The subsection on [Pillar-combined score activation](#pillar-combined-score-activation-active) records the activation evidence and rollback mechanics.
 
@@ -43,7 +45,7 @@ CRI is surfaced across three places in the product, all driven from the same cur
 - **Country Deep-Dive** — inside the per-country drill-down panel, CRI appears alongside CII (Country Instability Index) as a structural complement to the short-horizon stress signal. CII and CRI are intentionally **not interchangeable**: CII answers "how much stress is on this country right now?"; CRI answers "how well-positioned is this country to absorb and recover from shocks?"
 - **Map choropleth** — the resilience score drives a country-level choropleth layer on the main map. Toggle it from the map's layer panel or via Cmd+K.
 
-All three surfaces are free to view. The underlying data served at `/api/resilience/v1/*` is public; see [Resilience service](/api/ResilienceService.openapi.yaml) for the HTTP contract.
+All three dashboard surfaces are free to view. Direct score and ranking API calls require the normal Pro/API auth path, while the runtime manifest is public at `/api/resilience/v1/get-runtime-manifest`; see [Resilience service](/api/ResilienceService.openapi.yaml) for the HTTP contract.
 
 ## Overview
 
@@ -481,21 +483,25 @@ Coverage weighting ensures that dimensions with sparse data (low coverage) contr
 
 ### Overall Score
 
-The overall score is a **domain-weighted sum**:
+The currently active overall score is the **pillar-combined penalized score**:
 
 ```
-overallScore = sum(domainScore_i * domainWeight_i)
+weightedPillarMean = sum(pillarScore_i * pillarWeight_i)
+penalty = 1 - 0.5 * (1 - minPillarScore / 100)
+overallScore = weightedPillarMean * penalty
 ```
 
-Each domain's weight is defined in the configuration. The weights sum to 1.0, so the overall score is a straightforward weighted average of domain scores. This is the post-PR #2847 formula; an earlier multiplicative form (`baseline * (1 - stressFactor)`) over-penalized every country and was reverted. See the [Changelog](#changelog) for the full version history.
+Domain scores are first regrouped into the three pillars (`structural-readiness`, `live-shock-exposure`, and `recovery-capacity`) with weights 0.40 / 0.35 / 0.25. The penalty term is anchored to the weakest pillar, so an otherwise strong country cannot fully compensate for a severe weakness in one pillar. The legacy six-domain weighted aggregate remains the rollback formula when `RESILIENCE_PILLAR_COMBINE_ENABLED=false`; an earlier multiplicative form (`baseline * (1 - stressFactor)`) over-penalized every country and was reverted. See the [Changelog](#changelog) for the full version history.
 
 ### Resilience Level Classification
 
 | Score Range | Level |
 |---|---|
-| 70-100 | High |
-| 40-69 | Medium |
-| 0-39 | Low |
+| 60-100 | High |
+| 30-59 | Medium |
+| 0-29 | Low |
+
+The legacy six-domain rollback formula uses the older 70/40 cutoffs. The active pillar-combined formula uses the 60/30 cutoffs above to keep qualitative labels aligned after the score scale compression introduced by the min-pillar penalty.
 
 ## Missing Data Handling
 

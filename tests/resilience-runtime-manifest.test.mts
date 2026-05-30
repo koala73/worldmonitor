@@ -1,0 +1,175 @@
+import assert from 'node:assert/strict';
+import { afterEach, describe, it } from 'node:test';
+
+import { installRedis } from './helpers/fake-upstash-redis.mts';
+
+const originalFetch = globalThis.fetch;
+const originalRedisUrl = process.env.UPSTASH_REDIS_REST_URL;
+const originalRedisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+const originalVercelEnv = process.env.VERCEL_ENV;
+const originalVercelSha = process.env.VERCEL_GIT_COMMIT_SHA;
+const originalSchemaV2 = process.env.RESILIENCE_SCHEMA_V2_ENABLED;
+const originalPillarCombine = process.env.RESILIENCE_PILLAR_COMBINE_ENABLED;
+const originalEnergyV2 = process.env.RESILIENCE_ENERGY_V2_ENABLED;
+const originalFinSysExposure = process.env.RESILIENCE_FIN_SYS_EXPOSURE_ENABLED;
+const originalValidKeys = process.env.WORLDMONITOR_VALID_KEYS;
+const originalApiKey = process.env.WORLDMONITOR_API_KEY;
+
+function restoreEnv(name: string, original: string | undefined): void {
+  if (original == null) delete process.env[name];
+  else process.env[name] = original;
+}
+
+afterEach(async () => {
+  globalThis.fetch = originalFetch;
+  restoreEnv('UPSTASH_REDIS_REST_URL', originalRedisUrl);
+  restoreEnv('UPSTASH_REDIS_REST_TOKEN', originalRedisToken);
+  restoreEnv('VERCEL_ENV', originalVercelEnv);
+  restoreEnv('VERCEL_GIT_COMMIT_SHA', originalVercelSha);
+  restoreEnv('RESILIENCE_SCHEMA_V2_ENABLED', originalSchemaV2);
+  restoreEnv('RESILIENCE_PILLAR_COMBINE_ENABLED', originalPillarCombine);
+  restoreEnv('RESILIENCE_ENERGY_V2_ENABLED', originalEnergyV2);
+  restoreEnv('RESILIENCE_FIN_SYS_EXPOSURE_ENABLED', originalFinSysExposure);
+  restoreEnv('WORLDMONITOR_VALID_KEYS', originalValidKeys);
+  restoreEnv('WORLDMONITOR_API_KEY', originalApiKey);
+  const { __resetKeyPrefixCacheForTests } = await import('../server/_shared/redis.ts');
+  __resetKeyPrefixCacheForTests();
+});
+
+async function loadRuntimeManifestModules() {
+  process.env.RESILIENCE_SCHEMA_V2_ENABLED = 'true';
+  const [handler, shared, responseHeaders] = await Promise.all([
+    import('../server/worldmonitor/resilience/v1/get-resilience-runtime-manifest.ts'),
+    import('../server/worldmonitor/resilience/v1/_shared.ts'),
+    import('../server/_shared/response-headers.ts'),
+  ]);
+  return { ...handler, ...shared, ...responseHeaders };
+}
+
+function flagMap(flags: Array<{ name: string; enabled: boolean }>): Map<string, boolean> {
+  return new Map(flags.map((flag) => [flag.name, flag.enabled]));
+}
+
+describe('resilience runtime manifest', () => {
+  it('returns pc formula, exact flags, cache identifiers, dataVersion, and ranking metadata', async () => {
+    const modules = await loadRuntimeManifestModules();
+    process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = 'true';
+    process.env.RESILIENCE_ENERGY_V2_ENABLED = 'false';
+    process.env.RESILIENCE_FIN_SYS_EXPOSURE_ENABLED = 'true';
+    process.env.VERCEL_GIT_COMMIT_SHA = '0123456789abcdef0123456789abcdef01234567';
+    process.env.VERCEL_ENV = 'production';
+
+    installRedis({
+      [modules.RESILIENCE_STATIC_META_KEY]: { fetchedAt: Date.parse('2026-05-28T15:41:37.635Z') },
+      [modules.RESILIENCE_RANKING_META_KEY]: {
+        fetchedAt: Date.parse('2026-05-29T12:00:00.000Z'),
+        count: 196,
+        scored: 171,
+        total: 196,
+      },
+    }, { keepVercelEnv: true });
+
+    const request = new Request('https://worldmonitor.app/api/resilience/v1/get-runtime-manifest');
+    const response = await modules.getResilienceRuntimeManifest({ request } as never);
+
+    assert.equal(response.manifestVersion, 1);
+    assert.match(response.generatedAt, /^\d{4}-\d{2}-\d{2}T/);
+    assert.equal(response.deployedCommitSha, '0123456789abcdef0123456789abcdef01234567');
+    assert.equal(response.vercelEnv, 'production');
+    assert.equal(response.formulaTag, 'pc');
+    assert.equal(response.dataVersion, '2026-05-28');
+    assert.deepEqual([...flagMap(response.flags).entries()], [
+      ['RESILIENCE_SCHEMA_V2_ENABLED', true],
+      ['RESILIENCE_PILLAR_COMBINE_ENABLED', true],
+      ['RESILIENCE_ENERGY_V2_ENABLED', false],
+      ['RESILIENCE_FIN_SYS_EXPOSURE_ENABLED', true],
+    ]);
+    assert.deepEqual(response.cache, {
+      scorePrefix: modules.RESILIENCE_SCORE_CACHE_PREFIX,
+      rankingKey: modules.RESILIENCE_RANKING_CACHE_KEY,
+      historyPrefix: modules.RESILIENCE_HISTORY_KEY_PREFIX,
+      intervalPrefix: modules.RESILIENCE_INTERVAL_KEY_PREFIX,
+      intervalMethodology: modules.RESILIENCE_INTERVAL_METHODOLOGY,
+    });
+    assert.deepEqual(response.rankingCache, {
+      fetchedAt: '2026-05-29T12:00:00.000Z',
+      count: 196,
+      scored: 171,
+      total: 196,
+    });
+    assert.deepEqual(modules.drainResponseHeaders(request), { 'X-No-Cache': '1' });
+  });
+
+  it('returns safe empty/zero metadata when Redis keys are absent', async () => {
+    const modules = await loadRuntimeManifestModules();
+    process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = 'false';
+    delete process.env.VERCEL_GIT_COMMIT_SHA;
+    delete process.env.VERCEL_ENV;
+    installRedis({}, { keepVercelEnv: true });
+
+    const response = await modules.getResilienceRuntimeManifest({
+      request: new Request('https://worldmonitor.app/api/resilience/v1/get-runtime-manifest'),
+    } as never);
+
+    assert.equal(response.deployedCommitSha, 'unknown');
+    assert.equal(response.vercelEnv, '');
+    assert.equal(response.formulaTag, 'd6');
+    assert.equal(response.dataVersion, '');
+    assert.deepEqual(response.rankingCache, { fetchedAt: '', count: 0, scored: 0, total: 0 });
+  });
+
+  it('does not expose secret env values, Redis credentials, or API keys', async () => {
+    const modules = await loadRuntimeManifestModules();
+    process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = 'true';
+    process.env.WORLDMONITOR_VALID_KEYS = 'operator-secret-key';
+    process.env.WORLDMONITOR_API_KEY = 'legacy-secret-key';
+    installRedis({}, { keepVercelEnv: true });
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'super-secret-upstash-token';
+
+    const response = await modules.getResilienceRuntimeManifest({
+      request: new Request('https://worldmonitor.app/api/resilience/v1/get-runtime-manifest'),
+    } as never);
+    const serialized = JSON.stringify(response);
+
+    assert.equal(serialized.includes('super-secret-upstash-token'), false);
+    assert.equal(serialized.includes('operator-secret-key'), false);
+    assert.equal(serialized.includes('legacy-secret-key'), false);
+    assert.equal(serialized.includes('UPSTASH_REDIS_REST_TOKEN'), false);
+    assert.equal(serialized.includes('WORLDMONITOR_VALID_KEYS'), false);
+    assert.equal(serialized.includes('WORLDMONITOR_API_KEY'), false);
+  });
+});
+
+describe('resilience runtime manifest gateway auth', () => {
+  it('allows no-key manifest access while score and ranking remain premium gated', async () => {
+    const [{ createDomainGateway, PUBLIC_NO_AUTH_RPC_PATHS, serverOptions }, generated, { resilienceHandler }, { PREMIUM_RPC_PATHS }] = await Promise.all([
+      import('../server/gateway.ts'),
+      import('../src/generated/server/worldmonitor/resilience/v1/service_server.ts'),
+      import('../server/worldmonitor/resilience/v1/handler.ts'),
+      import('../src/shared/premium-paths.ts'),
+    ]);
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    delete process.env.WORLDMONITOR_VALID_KEYS;
+    process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = 'true';
+
+    assert.deepEqual([...PUBLIC_NO_AUTH_RPC_PATHS], ['/api/resilience/v1/get-runtime-manifest']);
+    assert.equal(PREMIUM_RPC_PATHS.has('/api/resilience/v1/get-runtime-manifest'), false);
+
+    const gateway = createDomainGateway(generated.createResilienceServiceRoutes(resilienceHandler, serverOptions));
+
+    const manifest = await gateway(new Request('https://worldmonitor.app/api/resilience/v1/get-runtime-manifest?_debug=1'));
+    assert.equal(manifest.status, 200);
+    assert.equal(manifest.headers.get('Cache-Control'), 'no-store');
+    assert.equal(manifest.headers.get('X-Cache-Tier'), 'no-store');
+    const body = await manifest.json() as { manifestVersion: number; formulaTag: string };
+    assert.equal(body.manifestVersion, 1);
+    assert.equal(body.formulaTag, 'pc');
+
+    const score = await gateway(new Request('https://worldmonitor.app/api/resilience/v1/get-resilience-score?countryCode=US'));
+    assert.equal(score.status, 401);
+
+    const ranking = await gateway(new Request('https://worldmonitor.app/api/resilience/v1/get-resilience-ranking'));
+    assert.equal(ranking.status, 401);
+  });
+});

@@ -77,6 +77,41 @@ export interface ResilienceRankingItem {
   headlineEligible: boolean;
 }
 
+export interface GetResilienceRuntimeManifestRequest {
+}
+
+export interface GetResilienceRuntimeManifestResponse {
+  manifestVersion: number;
+  generatedAt: string;
+  deployedCommitSha: string;
+  vercelEnv: string;
+  formulaTag: string;
+  dataVersion: string;
+  flags: ResilienceRuntimeFlag[];
+  cache?: ResilienceRuntimeCacheState;
+  rankingCache?: ResilienceRankingCacheState;
+}
+
+export interface ResilienceRuntimeFlag {
+  name: string;
+  enabled: boolean;
+}
+
+export interface ResilienceRuntimeCacheState {
+  scorePrefix: string;
+  rankingKey: string;
+  historyPrefix: string;
+  intervalPrefix: string;
+  intervalMethodology: string;
+}
+
+export interface ResilienceRankingCacheState {
+  fetchedAt: string;
+  count: number;
+  scored: number;
+  total: number;
+}
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -171,6 +206,29 @@ export class ResilienceServiceClient {
     }
 
     return await resp.json() as GetResilienceRankingResponse;
+  }
+
+  async getResilienceRuntimeManifest(_req: GetResilienceRuntimeManifestRequest, options?: ResilienceServiceCallOptions): Promise<GetResilienceRuntimeManifestResponse> {
+    let path = "/api/resilience/v1/get-runtime-manifest";
+    const url = this.baseURL + path;
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetResilienceRuntimeManifestResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

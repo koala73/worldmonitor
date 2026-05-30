@@ -13,6 +13,8 @@ import {
   RESILIENCE_INTERVAL_KEY_PREFIX,
   RESILIENCE_RANKING_CACHE_KEY,
   RESILIENCE_RANKING_CACHE_TTL_SECONDS,
+  RESILIENCE_RANKING_META_KEY,
+  RESILIENCE_RANKING_META_TTL_SECONDS,
   buildRankingItem,
   getCachedResilienceScores,
   getCurrentCacheFormula,
@@ -24,9 +26,6 @@ import {
   warmMissingResilienceScores,
   type ScoreInterval,
 } from './_shared';
-
-const RESILIENCE_RANKING_META_KEY = 'seed-meta:resilience:ranking';
-const RESILIENCE_RANKING_META_TTL_SECONDS = 7 * 24 * 60 * 60;
 
 // Hard ceiling on one synchronous warm pass — purely a safety net against a
 // runaway static index. The shared memoized reader means global Redis keys are
