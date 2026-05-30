@@ -5,6 +5,14 @@ import {
   fetchServiceStatuses,
   type ServiceStatusResult as ServiceStatus,
 } from '@/services/infrastructure';
+import {
+  getDesktopReadinessChecks,
+  getKeyBackedAvailabilitySummary,
+  getNonParityFeatures,
+  type DesktopReadinessCheck,
+} from '@/services/desktop-readiness';
+import { hasTauriInvokeBridge } from '@/services/tauri-bridge';
+import { isDesktopRuntime } from '@/services/runtime';
 import { h, replaceChildren } from '@/utils/dom-utils';
 
 type CategoryFilter = 'all' | 'cloud' | 'dev' | 'comm' | 'ai' | 'saas';
@@ -89,6 +97,7 @@ export class ServiceStatusPanel extends Panel {
     const issues = filtered.filter(s => s.status !== 'operational');
 
     replaceChildren(this.content,
+      this.buildDesktopReadiness(),
       this.buildSummary(filtered),
       this.buildFilters(),
       h('div', { className: 'service-status-list' },
@@ -96,6 +105,80 @@ export class ServiceStatusPanel extends Panel {
       ),
       issues.length === 0 ? h('div', { className: 'all-operational' }, t('components.serviceStatus.allOperational')) : false,
     );
+  }
+
+  private buildDesktopReadiness(): HTMLElement | false {
+    if (!isDesktopRuntime()) return false;
+
+    const localBackendEnabled = hasTauriInvokeBridge();
+    const checks = getDesktopReadinessChecks(localBackendEnabled);
+    const readyCount = checks.filter(check => check.ready).length;
+    const keyBacked = getKeyBackedAvailabilitySummary();
+    const fallbacks = [...getNonParityFeatures()].sort((a, b) => a.priority - b.priority);
+
+    return h('section', { className: 'service-status-readiness' },
+      h('div', { className: 'service-status-readiness-title' }, t('components.serviceStatus.desktopReadiness')),
+      h('div', { className: 'service-status-readiness-meta' },
+        t('components.serviceStatus.acceptanceChecks', {
+          ready: String(readyCount),
+          total: String(checks.length),
+          available: String(keyBacked.available),
+          featureTotal: String(keyBacked.total),
+        }),
+      ),
+      !localBackendEnabled
+        ? h('div', { className: 'service-status-readiness-warning' }, t('components.serviceStatus.backendUnavailable'))
+        : false,
+      h('div', { className: 'service-status-readiness-list' },
+        ...checks.map((check) => this.buildReadinessItem(check)),
+      ),
+      fallbacks.length > 0
+        ? h('div', { className: 'service-status-fallbacks' },
+            h('div', { className: 'service-status-fallbacks-title' },
+              t('components.serviceStatus.nonParityFallbacks', { count: String(fallbacks.length) }),
+            ),
+            h('div', { className: 'service-status-fallbacks-list' },
+              ...fallbacks.map((feature) =>
+                h('div', { className: 'service-status-fallback-item' },
+                  h('div', { className: 'service-status-fallback-panel' }, feature.panel),
+                  h('div', { className: 'service-status-fallback-copy' }, feature.fallback),
+                ),
+              ),
+            ),
+          )
+        : false,
+    );
+  }
+
+  private buildReadinessItem(check: DesktopReadinessCheck): HTMLElement {
+    const status = check.ready ? 'operational' : 'outage';
+    const hint = this.getReadinessHint(check);
+
+    return h('div', { className: `service-status-item ${status} service-status-readiness-item` },
+      h('span', { className: 'status-icon' }, this.getStatusIcon(status)),
+      h('div', { className: 'service-status-readiness-copy' },
+        h('div', { className: 'status-name' }, check.label),
+        hint ? h('div', { className: 'service-status-readiness-hint' }, hint) : false,
+      ),
+      h('span', { className: `status-badge ${status}` },
+        check.ready ? t('components.serviceStatus.ok').toUpperCase() : t('components.serviceStatus.outage').toUpperCase(),
+      ),
+    );
+  }
+
+  private getReadinessHint(check: DesktopReadinessCheck): string | null {
+    if (check.ready) return null;
+
+    switch (check.id) {
+      case 'startup':
+        return t('components.serviceStatus.backendUnavailable');
+      case 'summaries':
+        return 'Configure Ollama, Groq, or OpenRouter in Settings to restore provider-backed summaries.';
+      case 'live-tracking':
+        return 'Configure AISStream or OpenSky credentials in Settings to restore live vessel and flight tracking.';
+      default:
+        return null;
+    }
   }
 
   private buildSummary(services: ServiceStatus[]): HTMLElement {
@@ -118,7 +201,6 @@ export class ServiceStatusPanel extends Panel {
       ),
     );
   }
-
 
   private buildFilters(): HTMLElement {
     const categories: CategoryFilter[] = ['all', 'cloud', 'dev', 'comm', 'ai', 'saas'];
