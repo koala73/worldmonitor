@@ -44,15 +44,20 @@ function snapshotSession(): AuthSession {
  * and 96% unused on first paint, so awaiting it here would block the
  * App.init() chain (panel layout, data fetches, etc.) on a load that
  * isn't needed until the user reaches for auth. Instead, schedule the
- * load via `scheduleClerkLoad()` (idle-callback after first paint) and
- * snapshot the session as signed-out for now. When Clerk finishes
- * loading, the subscribeClerk pending-callback queue (see clerk.ts)
- * fires the listener registered below with the real session — cookie-
- * backed signed-in users light up the UI without a refresh.
+ * load via `scheduleClerkLoad()` (idle-callback after first paint).
+ *
+ * Leaves `_currentSession` at the module-level default
+ * `{ user: null, isPending: true }` — calling `snapshotSession()` here
+ * would flip `isPending` to `false` while `clerkInstance` is still
+ * null, which subscribers cannot distinguish from a settled signed-out
+ * session. Cookie-backed signed-in users would then see Sign In / the
+ * locked-panel state for up to 4 s (the `requestIdleCallback` timeout)
+ * before Clerk hydrates. The pending-callback queue in clerk.ts fires
+ * the subscribeAuthState listener as soon as Clerk loads, snapshots
+ * the real session, and flips `isPending` to `false`.
  */
 export async function initAuthState(): Promise<void> {
   scheduleClerkLoad();
-  _currentSession = snapshotSession();
 }
 
 /**

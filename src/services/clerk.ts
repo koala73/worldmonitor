@@ -138,8 +138,13 @@ export function scheduleClerkLoad(): void {
     // initClerk's idempotency guard handles re-entry from a concurrent
     // force-load (e.g. the user clicked Sign In before the idle callback
     // fired). Swallow rejection here — initClerk's own callers see the
-    // throw via the promise it returns.
-    void initClerk().catch(() => { /* surfaced to direct callers */ });
+    // throw via the promise it returns. Reset `loadScheduled` on failure
+    // so a future `scheduleClerkLoad()` (e.g. retry after recovery from
+    // a transient network blip) is not silently blocked by the guard —
+    // initClerk's catch clears `loadPromise` for the same reason.
+    void initClerk().catch(() => {
+      loadScheduled = false;
+    });
   };
 
   const ric = (window as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback;
