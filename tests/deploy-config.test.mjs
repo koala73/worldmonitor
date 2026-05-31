@@ -26,7 +26,7 @@ const getCspDirectiveTokens = (csp, directive) => {
 };
 
 describe('deploy/cache configuration guardrails', () => {
-  it('disables caching for HTML entry routes on Vercel', () => {
+  it('requires revalidation for HTML entry routes on Vercel without disabling bfcache', () => {
     // /mcp-grant added to the negative-lookahead by plan 2026-05-10-001 U3 — apex
     // Pro-MCP consent page must opt out of the SPA catch-all rewrite (it is its
     // own HTML entry registered in vite.config.ts rollupOptions.input).
@@ -35,8 +35,17 @@ describe('deploy/cache configuration guardrails', () => {
     // rather than a non-capturing group with `?` quantifier — Vercel's
     // path-to-regexp source-pattern parser rejects `(?:...)` in `source` fields
     // (deploy-fail PR #3646 round-2 review).
+    //
+    // The header uses `private, no-cache, must-revalidate` rather than the
+    // previous `no-cache, no-store, must-revalidate` (PR #4004 / issue #3993).
+    // `no-store` fully disabled Chrome's bfcache (Lighthouse flagged 7 failure
+    // reasons rooted in this header). `no-cache` without `no-store` still
+    // revalidates on every navigation but lets bfcache restore on back/forward.
+    // `private` keeps shared caches (CDN, corporate proxies) from holding
+    // personalized HTML.
     const spaNoCache = getCacheHeaderValue('/((?!api|mcp|oauth|assets|blog|docs|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|sitemap\\.xml|llms\\.txt|llms-full\\.txt|openapi\\.yaml|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant).*)');
-    assert.equal(spaNoCache, 'no-cache, no-store, must-revalidate');
+    assert.equal(spaNoCache, 'private, no-cache, must-revalidate');
+    assert.ok(!spaNoCache.includes('no-store'), 'HTML must not set no-store — it disables bfcache');
   });
 
   it('disables caching for the apex /mcp-grant Pro-MCP consent page (both URL forms)', () => {
