@@ -249,6 +249,7 @@ export class Panel {
   private _savedContent: ChildNode[] | null = null;
   private _collapsed = false;
   private _collapseBtn: HTMLButtonElement | null = null;
+  private viewportObserver: IntersectionObserver | null = null;
 
   constructor(options: PanelOptions) {
     this.panelId = options.id;
@@ -761,6 +762,46 @@ export class Panel {
     return this.element;
   }
 
+  /**
+   * Fire `callback` once when this panel's element scrolls within
+   * `marginPx` of the viewport. Uses IntersectionObserver where
+   * available; falls back to an idle-callback tick when not (Node/SSR
+   * or very old browsers). Idempotent — repeat calls are ignored
+   * once an observation is registered. Disconnected automatically on
+   * destroy() and on first firing (loadAllData is idempotent and the
+   * refresh scheduler owns repeat fetches, so re-firing is wasted
+   * work). (#3990)
+   */
+  public observeNearViewport(callback: () => void, marginPx = 200): void {
+    if (this.viewportObserver) return;
+    if (typeof IntersectionObserver === 'undefined' || typeof window === 'undefined') {
+      const tick = (): void => {
+        if (this.element.isConnected) callback();
+      };
+      const ric = (window as unknown as { requestIdleCallback?: (cb: () => void) => number }).requestIdleCallback;
+      if (typeof ric === 'function') ric(tick);
+      else setTimeout(tick, 0);
+      return;
+    }
+    this.viewportObserver = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          this.unobserveViewport();
+          callback();
+          return;
+        }
+      }
+    }, { rootMargin: `${marginPx}px` });
+    this.viewportObserver.observe(this.element);
+  }
+
+  private unobserveViewport(): void {
+    if (this.viewportObserver) {
+      this.viewportObserver.disconnect();
+      this.viewportObserver = null;
+    }
+  }
+
   public isNearViewport(marginPx = 400): boolean {
     if (!this.element.isConnected) return false;
     if (typeof window === 'undefined') return true;
@@ -1172,6 +1213,7 @@ export class Panel {
   public destroy(): void {
     this.abortController.abort();
     this.clearRetryCountdown();
+    this.unobserveViewport();
     if (this.colSpanReconcileRaf !== null) {
       cancelAnimationFrame(this.colSpanReconcileRaf);
       this.colSpanReconcileRaf = null;

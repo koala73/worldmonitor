@@ -149,6 +149,13 @@ export class App {
     this.visiblePanelPrimeRaf = window.requestAnimationFrame(() => {
       this.visiblePanelPrimeRaf = null;
       void this.primeVisiblePanelData();
+      // loadAllData covers panels primeVisiblePanelData does not (news,
+      // markets, intelligence, fred, …). Now that bootstrap runs with
+      // forceAll=false, below-fold panels need this re-trigger on scroll
+      // so their data lands when they enter the viewport. Both are
+      // viewport-gated and inflight-guarded — repeat invocations are
+      // cheap.
+      void this.dataLoader.loadAllData();
     });
   };
   private readonly handleConnectivityChange = (): void => {
@@ -1253,9 +1260,15 @@ export class App {
     // panels from being blocked when a loadAllData batch is slow.
     window.addEventListener('scroll', this.handleViewportPrime, { passive: true });
     window.addEventListener('resize', this.handleViewportPrime);
+    // forceAll=false at bootstrap: data-loader's existing per-panel
+    // viewport gate (shouldLoad(id) = forceAll || isPanelNearViewport(id))
+    // now actually fires, cutting the ~80-request fan-out down to the
+    // panels currently above the fold. IntersectionObserver wiring in
+    // panel-layout.ts plus handleViewportPrime above re-trigger
+    // loadAllData() as below-fold panels enter the viewport. (#3990)
     await Promise.all([
-      this.dataLoader.loadAllData(true),
-      this.primeVisiblePanelData(true),
+      this.dataLoader.loadAllData(),
+      this.primeVisiblePanelData(),
     ]);
 
     // If bootstrap was served from cache but live data just loaded, promote the status indicator
