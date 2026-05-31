@@ -229,21 +229,15 @@ describe('Comtrade bilateral HS4 seeder (scripts/seed-comtrade-bilateral-hs4.mjs
 
   it('defines COMTRADE_REPORTER_OVERRIDES for all countries with non-standard Comtrade codes', () => {
     assert.ok(
-      src.includes('COMTRADE_REPORTER_OVERRIDES'),
-      'seeder: must define COMTRADE_REPORTER_OVERRIDES to handle non-standard Comtrade reporter codes',
+      src.includes("require('./shared/comtrade-reporter-overrides.json')"),
+      'seeder: must read the shared reporter override file to handle non-standard Comtrade reporter codes',
     );
-    assert.ok(
-      src.includes("FR: '251'"),
-      "seeder: COMTRADE_REPORTER_OVERRIDES must map FR to '251' (Comtrade reporter code, not UN M49 250)",
-    );
-    assert.ok(
-      src.includes("IT: '381'"),
-      "seeder: COMTRADE_REPORTER_OVERRIDES must map IT to '381' (Comtrade reporter code, not UN M49 380)",
-    );
-    assert.ok(
-      src.includes("US: '842'"),
-      "seeder: COMTRADE_REPORTER_OVERRIDES must map US to '842' (Comtrade reporter code, not UN M49 840)",
-    );
+    const overrides = JSON.parse(readFileSync(join(root, 'scripts', 'shared', 'comtrade-reporter-overrides.json'), 'utf8'));
+    assert.equal(overrides.FR, '251', "shared overrides must map FR to '251'");
+    assert.equal(overrides.IT, '381', "shared overrides must map IT to '381'");
+    assert.equal(overrides.US, '842', "shared overrides must map US to '842'");
+    assert.equal(overrides.IN, '699', "shared overrides must map IN to '699'");
+    assert.equal(overrides.TW, '490', "shared overrides must map TW to '490'");
   });
 
   it('applies COMTRADE_REPORTER_OVERRIDES before falling back to ISO2_TO_UN for reporter code lookup', () => {

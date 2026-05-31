@@ -7,6 +7,7 @@ loadEnvFile(import.meta.url);
 
 const require = createRequire(import.meta.url);
 const UN_TO_ISO2 = require('./shared/un-to-iso2.json');
+const COMTRADE_REPORTER_OVERRIDES = require('./shared/comtrade-reporter-overrides.json');
 
 const CANONICAL_KEY = 'resilience:recovery:import-hhi:v1';
 // Separate checkpoint key so partial writes cannot overwrite the canonical
@@ -16,11 +17,11 @@ const CACHE_TTL = 90 * 24 * 3600;
 const CHECKPOINT_TTL = 45 * 24 * 3600;
 // Resume TTL must outlive the bundle-runner freshness gate (intervalMs * 0.8
 // ≈ 24 days for a 30-day interval), otherwise consecutive partial runs cannot
-// accumulate coverage: a run that passes validate() with >=80 countries
-// refreshes seed-meta, suppressing the next bundle run for ~24 days, by which
-// point a shorter resume window would have already expired. 45 days gives a
-// safe buffer across two bundle cycles. Comtrade annual data changes on a
-// yearly cadence, so 45-day-old HHI values are still representative.
+// accumulate coverage: a run that passes validate() refreshes seed-meta,
+// suppressing the next bundle run for ~24 days, by which point a shorter
+// resume window would have already expired. 45 days gives a safe buffer
+// across two bundle cycles. Comtrade annual data changes on a yearly cadence,
+// so 45-day-old HHI values are still representative.
 const RESUME_TTL_MS = 45 * 24 * 3600 * 1000;
 // Checkpoint cadence: write partial progress every N successful fetches so a
 // timeout or crash does not discard an entire run.
@@ -38,11 +39,11 @@ if (COMTRADE_KEYS.length === 0) {
 }
 const COMTRADE_URL = 'https://comtradeapi.un.org/data/v1/get/C/A/HS';
 const PER_KEY_DELAY_MS = 600;
+const MIN_IMPORT_HHI_COUNTRY_COUNT = 190;
 
-// UN M49 codes mostly match UN Comtrade reporterCodes, except for India (699,
-// not 356) and Taiwan (490 "Other Asia, nes", not 158). Using M49 codes for
-// these silently returns count:0 from the Comtrade API.
-const COMTRADE_REPORTER_OVERRIDES = { IN: '699', TW: '490' };
+// UN M49 codes mostly match UN Comtrade reporterCodes, except for known
+// non-standard reporters listed in scripts/shared/comtrade-reporter-overrides.json.
+// Using M49 codes for these silently returns count:0 from the Comtrade API.
 const ISO2_TO_UN = Object.fromEntries(
   Object.entries(UN_TO_ISO2).map(([un, iso2]) => [iso2, un]),
 );
@@ -132,6 +133,12 @@ export async function fetchImportsForReporter(reporterCode, apiKey) {
   url.searchParams.set('flowCode', 'M');
   url.searchParams.set('cmdCode', 'TOTAL');
   url.searchParams.set('period', buildPeriodParam());
+  // Keep the response at country-total customs / total transport mode
+  // granularity. Without these filters, large reporters can return very large
+  // detail pages even for cmdCode=TOTAL, making the monthly bundle vulnerable
+  // to the 30-minute section timeout.
+  url.searchParams.set('customsCode', 'C00');
+  url.searchParams.set('motCode', '0');
   // Mirror seed-recovery-reexport-share.mjs (PR #3385): explicit
   // maxRecords cap so Comtrade doesn't apply its silent default
   // truncation. cmdCode=TOTAL with the 4y window typically returns
@@ -323,8 +330,9 @@ async function fetchImportHhi() {
 // Note: worker queue is shared mutably — simplest dispatcher. Each worker
 // shifts until empty; no coordination needed because Array.shift is atomic
 // in single-threaded Node.js.
-function validate(data) {
-  return typeof data?.countries === 'object' && Object.keys(data.countries).length >= 80;
+export function validate(data) {
+  return typeof data?.countries === 'object'
+    && Object.keys(data.countries).length >= MIN_IMPORT_HHI_COUNTRY_COUNT;
 }
 
 export function declareRecords(data) {
@@ -341,7 +349,8 @@ if (process.argv[1]?.endsWith('seed-recovery-import-hhi.mjs')) {
   
     declareRecords,
     schemaVersion: 1,
-    maxStaleMin: 86400,
+    maxStaleMin: 50400,
+    emptyDataIsFailure: true,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);

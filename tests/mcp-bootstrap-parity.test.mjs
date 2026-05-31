@@ -115,24 +115,24 @@ const EXCLUDED_FROM_MCP = new Map([
     'on-demand: written by writeSimulationOutcome after simulation runs (matches api/health.js:467 ON_DEMAND_KEYS rationale). Internal pipeline artifact, not a queryable slice.'],
 
   // ===========================================================================
-  // Recovery pillar (stub seeders, not yet deployed) — per api/health.js:470-471
+  // Recovery pillar scorer inputs — no dedicated recovery-data MCP tool yet.
   // ===========================================================================
   ['resilience:recovery:fiscal-space:v1',
-    'deferred: recovery pillar stub seeder, not yet deployed (api/health.js:470-471 ON_DEMAND_KEYS). Future resilience tool will expose recovery dimensions.'],
+    'deferred: recovery pillar scorer input. Future resilience tool will expose recovery dimensions.'],
   ['resilience:recovery:reserve-adequacy:v1',
-    'deferred: recovery pillar stub seeder, not yet deployed (api/health.js:470-471).'],
+    'deferred: recovery pillar scorer input. Future resilience tool will expose recovery dimensions.'],
   ['resilience:recovery:external-debt:v1',
-    'deferred: recovery pillar stub seeder, not yet deployed (api/health.js:470-471).'],
+    'deferred: recovery pillar scorer input. Future resilience tool will expose recovery dimensions.'],
   ['resilience:recovery:import-hhi:v1',
-    'deferred: recovery pillar stub seeder, not yet deployed (api/health.js:470-471).'],
+    'deferred: strict seeded recovery pillar scorer input. Future resilience tool will expose recovery dimensions.'],
   // resilience:recovery:fuel-stocks:v1 exclusion removed alongside PR #3764
   // (api/health.js probe removal). The seeder still runs and writes the key
   // but scoreFuelStockDays does not read it, so the key is no longer in
   // STANDALONE_KEYS and an MCP exclusion would be a dead entry.
   ['resilience:recovery:reexport-share:v1',
-    'deferred: recovery pillar stub seeder, not yet deployed.'],
+    'deferred: recovery pillar scorer input. Future resilience tool will expose recovery dimensions.'],
   ['resilience:recovery:sovereign-wealth:v1',
-    'deferred: recovery pillar stub seeder, not yet deployed.'],
+    'deferred: recovery pillar scorer input. Future resilience tool will expose recovery dimensions.'],
 
   // ===========================================================================
   // Deferred follow-up tools (explicit gaps named in the plan or related domain)

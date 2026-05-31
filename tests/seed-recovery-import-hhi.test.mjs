@@ -1,9 +1,80 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
-import { computeHhi, buildPeriodParam, parseRecords } from '../scripts/seed-recovery-import-hhi.mjs';
+import { computeHhi, buildPeriodParam, parseRecords, validate } from '../scripts/seed-recovery-import-hhi.mjs';
+
+const seedSrc = readFileSync(new URL('../scripts/seed-recovery-import-hhi.mjs', import.meta.url), 'utf8');
+const reporterOverrides = JSON.parse(
+  readFileSync(new URL('../scripts/shared/comtrade-reporter-overrides.json', import.meta.url), 'utf8'),
+);
 
 describe('seed-recovery-import-hhi', () => {
+  it('defines Comtrade reporter overrides for all known non-standard reporter codes', () => {
+    assert.deepEqual(reporterOverrides, {
+      FR: '251',
+      IN: '699',
+      IT: '381',
+      TW: '490',
+      US: '842',
+    });
+  });
+
+  it('shared Comtrade override file mirrors the canonical reporter map deltas', () => {
+    const unToIso2 = JSON.parse(
+      readFileSync(new URL('../scripts/shared/un-to-iso2.json', import.meta.url), 'utf8'),
+    );
+    const iso2ToUn = Object.fromEntries(Object.entries(unToIso2).map(([un, iso2]) => [iso2, un]));
+    const canonicalSrc = readFileSync(
+      new URL('../server/worldmonitor/intelligence/v1/_comtrade-reporters.ts', import.meta.url),
+      'utf8',
+    );
+    const canonical = {};
+    for (const match of canonicalSrc.matchAll(/\b([A-Z]{2}): '([0-9]{3})'/g)) {
+      canonical[match[1]] = match[2];
+    }
+    const expectedOverrides = {};
+    for (const [iso2, code] of Object.entries(canonical)) {
+      if (iso2ToUn[iso2] && iso2ToUn[iso2] !== code) expectedOverrides[iso2] = code;
+    }
+    assert.deepEqual(reporterOverrides, expectedOverrides);
+  });
+
+  it('applies Comtrade reporter overrides before falling back to ISO2_TO_UN', () => {
+    const overrideIdx = seedSrc.indexOf("require('./shared/comtrade-reporter-overrides.json')");
+    const mergeIdx = seedSrc.indexOf('for (const [iso2, code] of Object.entries(COMTRADE_REPORTER_OVERRIDES))');
+    const iso2ToUnIdx = seedSrc.indexOf('ISO2_TO_UN[iso2] = code', mergeIdx);
+    assert.ok(overrideIdx !== -1, 'seeder must define COMTRADE_REPORTER_OVERRIDES');
+    assert.ok(mergeIdx !== -1, 'seeder must merge overrides into ISO2_TO_UN');
+    assert.ok(
+      iso2ToUnIdx !== -1 && iso2ToUnIdx > mergeIdx,
+      'seeder must apply overrides to ISO2_TO_UN before reporter fetches',
+    );
+  });
+
+  it('validate rejects partial import-HHI snapshots below the documented coverage floor', () => {
+    const partial = Object.fromEntries(
+      Array.from({ length: 189 }, (_, i) => [`T${i}`, { hhi: 0.1 }]),
+    );
+    const sufficient = Object.fromEntries(
+      Array.from({ length: 190 }, (_, i) => [`T${i}`, { hhi: 0.1 }]),
+    );
+    assert.equal(validate({ countries: partial }), false);
+    assert.equal(validate({ countries: sufficient }), true);
+  });
+
+  it('treats validation rejects as seed failures so partial runs do not refresh seed-meta', () => {
+    const runSeedIdx = seedSrc.indexOf("runSeed('resilience', 'recovery:import-hhi'");
+    const catchIdx = seedSrc.indexOf('}).catch', runSeedIdx);
+    assert.ok(runSeedIdx !== -1, 'seeder must call runSeed for recovery:import-hhi');
+    assert.ok(catchIdx !== -1, 'seeder runSeed options block must be locatable');
+    const optionsBlock = seedSrc.slice(runSeedIdx, catchIdx);
+    assert.ok(
+      optionsBlock.includes('emptyDataIsFailure: true'),
+      'partial import-HHI snapshots must fail the section instead of refreshing seed-meta and blocking retries',
+    );
+  });
+
   it('computes HHI=1 for single-partner imports', () => {
     const records = [{ partnerCode: '156', primaryValue: 1000 }];
     const result = computeHhi(records);
@@ -327,6 +398,10 @@ describe('seed-recovery-import-hhi — fetch retry hardening (U1, plan v19)', ()
     try {
       await mod.fetchImportsForReporter('784', 'k');
       const url = new URL(fetchCalls[0].url);
+      assert.equal(url.searchParams.get('customsCode'), 'C00',
+        'customsCode must be C00 so HHI fetches stay at total-customs granularity');
+      assert.equal(url.searchParams.get('motCode'), '0',
+        'motCode must be 0 so HHI fetches stay at total-transport-mode granularity');
       assert.equal(url.searchParams.get('maxRecords'), '250000',
         'maxRecords must be 250000 (mirrors seed-recovery-reexport-share PR #3385)');
     } finally {
