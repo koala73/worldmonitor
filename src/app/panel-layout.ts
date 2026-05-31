@@ -196,6 +196,7 @@ export class PanelLayoutManager implements AppModule {
   private boundWidgetCreatorHandler: ((e: Event) => void) | null = null;
   private unsubscribeEntitlementChange: (() => void) | null = null;
   private unsubscribePaymentFailureBanner: (() => void) | null = null;
+  private _onResizeDebounced: (() => void) & { cancel(): void } | null = null;
 
   constructor(ctx: AppContext, callbacks: PanelLayoutManagerCallbacks) {
     this.ctx = ctx;
@@ -399,7 +400,9 @@ export class PanelLayoutManager implements AppModule {
     // Reset checkout overlay so next layout init can register its callback
     destroyCheckoutOverlay();
 
-    window.removeEventListener('resize', this.ensureCorrectZones);
+    window.removeEventListener('resize', this._onResizeDebounced ?? this.ensureCorrectZones);
+    this._onResizeDebounced?.cancel();
+    this._onResizeDebounced = null;
   }
 
   /** Reactively update premium panel gating based on auth state. */
@@ -1623,7 +1626,10 @@ export class PanelLayoutManager implements AppModule {
       });
     }
 
-    window.addEventListener('resize', () => this.ensureCorrectZones());
+    window.removeEventListener('resize', this._onResizeDebounced ?? this.ensureCorrectZones);
+    this._onResizeDebounced?.cancel();
+    this._onResizeDebounced = debounce(() => this.ensureCorrectZones(), 100);
+    window.addEventListener('resize', this._onResizeDebounced);
 
     this.ctx.map.onTimeRangeChanged((range) => {
       this.ctx.currentTimeRange = range;
