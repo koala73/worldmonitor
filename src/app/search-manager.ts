@@ -458,7 +458,7 @@ export class SearchManager implements AppModule {
       case 'city': {
         const city = result.data as { city: string; lat: number; lng: number; country: string };
         this.ctx.map?.setView('global');
-        setTimeout(() => { this.ctx.map?.setCenter(city.lat, city.lng, 5); }, 300);
+        setTimeout(() => { this.ctx.map?.setCenter(city.lat, city.lng, 11); }, 300);
         break;
       }
       case 'flight': {
