@@ -250,6 +250,7 @@ export class Panel {
   private _collapsed = false;
   private _collapseBtn: HTMLButtonElement | null = null;
   private viewportObserver: IntersectionObserver | null = null;
+  private viewportObserverRegistered = false;
 
   constructor(options: PanelOptions) {
     this.panelId = options.id;
@@ -773,16 +774,24 @@ export class Panel {
    * work). (#3990)
    */
   public observeNearViewport(callback: () => void, marginPx = 200): void {
-    if (this.viewportObserver) return;
+    if (this.viewportObserverRegistered) return;
     if (typeof IntersectionObserver === 'undefined' || typeof window === 'undefined') {
+      this.viewportObserverRegistered = true;
       const tick = (): void => {
         if (this.element.isConnected) callback();
       };
-      const ric = (window as unknown as { requestIdleCallback?: (cb: () => void) => number }).requestIdleCallback;
+      // typeof window === 'undefined' takes the fallback branch alone (no IO + no
+      // window), so the requestIdleCallback lookup must be gated separately —
+      // dereferencing `window` here without that guard would ReferenceError in
+      // pure Node/SSR. Greptile #4001/P1.
+      const ric = typeof window !== 'undefined'
+        ? (window as unknown as { requestIdleCallback?: (cb: () => void) => number }).requestIdleCallback
+        : undefined;
       if (typeof ric === 'function') ric(tick);
       else setTimeout(tick, 0);
       return;
     }
+    this.viewportObserverRegistered = true;
     this.viewportObserver = new IntersectionObserver((entries) => {
       for (const entry of entries) {
         if (entry.isIntersecting) {
