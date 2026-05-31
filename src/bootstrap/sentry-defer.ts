@@ -38,6 +38,11 @@ let sentryNs: SentryNs | null = null;
 let initPromise: Promise<void> | null = null;
 let scheduled = false;
 let queueInstalled = false;
+// Set when the deferred `await import('@sentry/browser')` rejects (network
+// error, ad blocker, CDN outage). Subsequent `enqueueSentryCall` calls
+// short-circuit to a no-op so the bounded queue isn't refilled forever on
+// users where the SDK can never load.
+let loadFailed = false;
 const pendingCalls: SentryCall[] = [];
 const pendingErrors: ErrorEvent[] = [];
 const pendingRejections: PromiseRejectionEvent[] = [];
@@ -80,8 +85,24 @@ export function enqueueSentryCall(fn: SentryCall): void {
     try { fn(sentryNs); } catch { /* user-supplied closure; never break the caller */ }
     return;
   }
+  if (loadFailed) return;
   if (pendingCalls.length >= MAX_QUEUE) return;
   pendingCalls.push(fn);
+}
+
+/**
+ * Tear down the pre-init machinery — remove the buffering listeners and
+ * empty the queues. Called from the SUCCESS path (after queues drain into
+ * the live SDK) AND the FAILURE path (so users where the SDK chunk can never
+ * load don't pay for a listener + bounded queue for the rest of the page
+ * lifetime).
+ */
+function teardownPreInitState(): void {
+  window.removeEventListener('error', onError);
+  window.removeEventListener('unhandledrejection', onUnhandledRejection);
+  pendingCalls.length = 0;
+  pendingErrors.length = 0;
+  pendingRejections.length = 0;
 }
 
 // Known third-party hosts fetched by MapLibre (tiles, styles, glyphs, sprites).
@@ -671,27 +692,35 @@ async function loadAndInit(): Promise<void> {
 
   // Drain buffered `error` events. `e.error` is null when the engine fires a
   // cross-origin error; fall back to a synthesized Error so the SDK still
-  // gets a usable message.
+  // gets a usable message. Pass `mechanism: { type: 'onerror', handled: false }`
+  // so the replayed events line up with what Sentry's own globalHandlers
+  // integration would have produced — otherwise these events show up as
+  // `handled: true` in the Issues list and alert rules that filter on
+  // `handled: false` silently miss every unhandled error from the pre-init
+  // window (and crash-rate / ANR metrics are understated for it).
   const errs = pendingErrors.splice(0, pendingErrors.length);
   for (const ev of errs) {
     const err = ev.error instanceof Error
       ? ev.error
       : new Error(ev.message || 'Unknown error');
-    ns.captureException(err);
+    ns.captureException(err, { mechanism: { type: 'onerror', handled: false } });
   }
 
   // Drain buffered unhandled-rejection events. `e.reason` is whatever the
   // promise rejected with — pass through unchanged so Sentry's normalizers
-  // see the original value (string, Error, object).
+  // see the original value (string, Error, object). Same `handled: false`
+  // mechanism hint as above so alert rules behave identically.
   const rejs = pendingRejections.splice(0, pendingRejections.length);
   for (const ev of rejs) {
-    ns.captureException(ev.reason ?? new Error('Unhandled promise rejection'));
+    ns.captureException(
+      ev.reason ?? new Error('Unhandled promise rejection'),
+      { mechanism: { type: 'onunhandledrejection', handled: false } },
+    );
   }
 
   // Sentry's globalHandlers integration owns window error/unhandledrejection
   // from here on — detach our buffering listeners to avoid double-capture.
-  window.removeEventListener('error', onError);
-  window.removeEventListener('unhandledrejection', onUnhandledRejection);
+  teardownPreInitState();
 }
 
 /**
@@ -716,6 +745,14 @@ export function scheduleSentryInit(): Promise<void> {
       void loadAndInit()
         .catch((err) => {
           console.warn('[sentry] deferred init failed', err);
+          // Best-effort cleanup on failure: ad blocker / network outage /
+          // CDN failure means the SDK chunk will never load for this user.
+          // Without this, `enqueueSentryCall` would keep filling the
+          // bounded queue (and silently dropping past MAX_QUEUE) and the
+          // pre-init listeners would stay attached for the page lifetime.
+          // Set the no-op gate + tear down so runtime footprint is zero.
+          loadFailed = true;
+          teardownPreInitState();
         })
         .finally(() => resolve());
     };
@@ -739,6 +776,7 @@ export function _resetSentryDeferStateForTests(): void {
   initPromise = null;
   scheduled = false;
   queueInstalled = false;
+  loadFailed = false;
   pendingCalls.length = 0;
   pendingErrors.length = 0;
   pendingRejections.length = 0;
