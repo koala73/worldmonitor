@@ -196,6 +196,7 @@ export class PanelLayoutManager implements AppModule {
   private boundWidgetCreatorHandler: ((e: Event) => void) | null = null;
   private unsubscribeEntitlementChange: (() => void) | null = null;
   private unsubscribePaymentFailureBanner: (() => void) | null = null;
+  private scheduledLoadAllRaf: number | null = null;
   private _onResizeDebounced: (() => void) & { cancel(): void } | null = null;
 
   constructor(ctx: AppContext, callbacks: PanelLayoutManagerCallbacks) {
@@ -365,6 +366,10 @@ export class PanelLayoutManager implements AppModule {
     }
     this.panelDragCleanupHandlers.forEach((cleanup) => cleanup());
     this.panelDragCleanupHandlers = [];
+    if (this.scheduledLoadAllRaf !== null) {
+      cancelAnimationFrame(this.scheduledLoadAllRaf);
+      this.scheduledLoadAllRaf = null;
+    }
     if (this.criticalBannerEl) {
       this.criticalBannerEl.remove();
       this.criticalBannerEl = null;
@@ -837,6 +842,7 @@ export class PanelLayoutManager implements AppModule {
       else grid.appendChild(el);
     }
     this.applyPanelSettings();
+    panel.observeNearViewport(() => this.scheduleLoadAllData(), 200);
   }
 
   private shouldCreatePanel(key: string): boolean {
@@ -1639,11 +1645,39 @@ export class PanelLayoutManager implements AppModule {
     this.applyPanelSettings();
     this.applyInitialUrlState();
 
+    // Observe each panel for viewport entry. As soon as a panel scrolls
+    // within ~200px of the viewport it fires loadAllData() once
+    // (debounced via rAF to coalesce above-the-fold panels that all
+    // intersect on the first tick), so below-fold panels get their
+    // viewport-gated data without waiting on the scroll listener.
+    // Bootstrap already ran loadAllData() with forceAll=false, so this
+    // is purely the lazy-scroll trigger. (#3990)
+    this.observePanelsForViewport();
+
     if (import.meta.env.DEV) {
       const configured = new Set(Object.keys(ALL_PANELS).filter(k => k !== 'map'));
       const created = new Set(Object.keys(this.ctx.panels));
       const extra = [...created].filter(k => !configured.has(k) && k !== 'runtime-config' && !k.startsWith('cw-') && !k.startsWith('mcp-'));
       if (extra.length) console.warn('[PanelLayoutManager] Panels created but not in ALL_PANELS:', extra);
+    }
+  }
+
+  private scheduleLoadAllData(): void {
+    if (this.scheduledLoadAllRaf !== null) return;
+    if (typeof window === 'undefined') {
+      void this.callbacks.loadAllData();
+      return;
+    }
+    this.scheduledLoadAllRaf = window.requestAnimationFrame(() => {
+      this.scheduledLoadAllRaf = null;
+      void this.callbacks.loadAllData();
+    });
+  }
+
+  private observePanelsForViewport(): void {
+    for (const panel of Object.values(this.ctx.panels)) {
+      const observable = panel as { observeNearViewport?: (cb: () => void, marginPx?: number) => void };
+      observable.observeNearViewport?.(() => this.scheduleLoadAllData(), 200);
     }
   }
 
