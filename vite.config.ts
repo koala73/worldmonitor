@@ -915,10 +915,14 @@ export default defineConfig(({ mode }) => {
           __dirname,
           'src/shims/child-process-proxy.ts'
         ),
+        'three-globe': resolve(__dirname, 'node_modules/three-globe/dist/three-globe.min.js'),
       },
     },
     worker: {
       format: 'es',
+    },
+    optimizeDeps: {
+      include: ['hls.js', 'three-globe'],
     },
     build: {
       // Geospatial bundles (maplibre/deck) are expected to be large even when split.

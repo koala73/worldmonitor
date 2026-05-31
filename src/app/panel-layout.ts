@@ -32,6 +32,7 @@ import {
   LiveWebcamsPanel,
   PinnedWebcamsPanel,
   CIIPanel,
+  CountryProfilePanel,
   CascadePanel,
   StrategicRiskPanel,
   StrategicPosturePanel,
@@ -1093,6 +1094,12 @@ export class PanelLayoutManager implements AppModule {
         this.callbacks.openCountryBrief(code);
       });
       this.ctx.panels['cii'] = ciiPanel;
+    }
+
+    if (this.shouldCreatePanel('country-profile')) {
+      const countryProfilePanel = new CountryProfilePanel();
+      countryProfilePanel.setAppContext(this.ctx);
+      this.ctx.panels['country-profile'] = countryProfilePanel;
     }
 
     this.createPanel('cascade', () => new CascadePanel());

@@ -300,6 +300,13 @@ export function hasCountryGeometry(code: string): boolean {
   return countryIndex.has(code.toUpperCase());
 }
 
+export function isValidCountryCode(code: string): boolean {
+  if (typeof code !== 'string') return false;
+  const normalized = code.trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(normalized)) return false;
+  return countryIndex.has(normalized);
+}
+
 export function getCountryAtCoordinates(lat: number, lon: number, candidateCodes?: string[]): CountryHit | null {
   if (!loadedGeoJson) return null;
   const candidates = Array.isArray(candidateCodes) && candidateCodes.length > 0
