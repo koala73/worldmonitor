@@ -39,9 +39,11 @@ function makeCtx({ strens = {}, errors = {}, metaValues = {}, metaErrors = {} } 
 const seedMeta = (over = {}) => JSON.stringify({ fetchedAt: NOW - ONE_MIN_MS, recordCount: 5, ...over });
 
 // Mirror of the handler's overall-status computation (api/health.js ~850-859).
-// The handler computes this inline; replicating it here regression-locks the
-// HEALTHY/WARNING/DEGRADED/UNHEALTHY thresholds. /api/health always returns
-// HTTP 200 — UptimeRobot reads the JSON `status`, not the HTTP code.
+// The handler computes this inline; these tests exercise the LOCAL replica —
+// they document the intended HEALTHY/WARNING/DEGRADED/UNHEALTHY thresholds but
+// do NOT catch handler drift if the 0.03 constant or branch order changes in
+// api/health.js without updating here. Non-REDIS_DOWN states return HTTP 200
+// (verdict in the JSON `status`); REDIS_DOWN returns 503.
 function computeOverall(critCount, realWarnCount, totalChecks) {
   let status;
   if (critCount === 0 && realWarnCount === 0) status = 'HEALTHY';
