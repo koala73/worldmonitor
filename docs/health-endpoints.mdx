@@ -225,6 +225,6 @@ fi
 | **Scope** | Data keys + seed metadata | Seed metadata only |
 | **Auth** | None (public) | API key or allowed origin |
 | **Data fetched** | Full Redis values (to count records) | Only `seed-meta:*` keys |
-| **HTTP 503** | Yes (DEGRADED/UNHEALTHY) | No (always 200 unless Redis down) |
+| **HTTP 503** | Only `REDIS_DOWN` (DEGRADED/UNHEALTHY return 200) | No (always 200 unless Redis down) |
 | **Best for** | Uptime monitoring, dashboard health | Debugging seed loop issues |
 | **Response size** | Larger (~194 keys with record counts) | Smaller (seed-meta domains only) |
