@@ -16,9 +16,11 @@
     "@astrojs/rss": "^4.0.16",
     "@astrojs/sitemap": "^3.7.1",
     "astro": "^6.0.0",
-    "devalue": "^5.8.1",
     "gray-matter": "^4.0.3",
     "satori": "^0.25.0",
     "sharp": "^0.34.5"
+  },
+  "overrides": {
+    "devalue": "^5.8.1"
   }
 }
