@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { buildImfEconomicIndicators, type ImfCountryBundle } from '../src/services/imf-country-data.ts';
+import {
+  buildImfEconomicIndicators,
+  buildCountryInflationRows,
+  type ImfCountryBundle,
+  type ImfMacroEntry,
+} from '../src/services/imf-country-data.ts';
 
 function bundle(overrides: Partial<ImfCountryBundle> = {}): ImfCountryBundle {
   return {
@@ -268,5 +273,67 @@ describe('buildImfEconomicIndicators (panel rendering)', () => {
       },
     }));
     assert.equal(rows.length, 0);
+  });
+});
+
+function macro(overrides: Partial<ImfMacroEntry> = {}): Partial<ImfMacroEntry> {
+  return {
+    inflationPct: null, currentAccountPct: null, govRevenuePct: null,
+    cpiIndex: null, cpiEopPct: null, govExpenditurePct: null, primaryBalancePct: null,
+    year: 2025, ...overrides,
+  };
+}
+
+describe('buildCountryInflationRows (World tab)', () => {
+  it('returns an empty list for undefined / empty input', () => {
+    assert.deepEqual(buildCountryInflationRows(undefined), []);
+    assert.deepEqual(buildCountryInflationRows({}), []);
+  });
+
+  it('sorts by year-over-year inflation, highest first', () => {
+    const rows = buildCountryInflationRows({
+      US: macro({ inflationPct: 3.1 }),
+      AR: macro({ inflationPct: 120.0 }),
+      JP: macro({ inflationPct: 2.0 }),
+    });
+    assert.deepEqual(rows.map((r) => r.iso2), ['AR', 'US', 'JP']);
+    assert.equal(rows[0].inflationPct, 120);
+  });
+
+  it('drops countries with no inflation reading at all, keeps EOP-only rows', () => {
+    const rows = buildCountryInflationRows({
+      US: macro({ inflationPct: 3.1, cpiEopPct: 3.4 }),
+      ZZ: macro({ inflationPct: null, cpiEopPct: null }), // dropped
+      EG: macro({ inflationPct: null, cpiEopPct: 28.0 }), // kept (EOP only)
+    });
+    const codes = rows.map((r) => r.iso2);
+    assert.ok(codes.includes('US'));
+    assert.ok(codes.includes('EG'));
+    assert.ok(!codes.includes('ZZ'));
+  });
+
+  it('sorts null-YoY rows last regardless of EOP value', () => {
+    const rows = buildCountryInflationRows({
+      US: macro({ inflationPct: 3.1 }),
+      EG: macro({ inflationPct: null, cpiEopPct: 99.0 }),
+    });
+    assert.deepEqual(rows.map((r) => r.iso2), ['US', 'EG']);
+    assert.equal(rows[1].inflationPct, null);
+    assert.equal(rows[1].cpiEopPct, 99);
+  });
+
+  it('treats NaN / Infinity as missing', () => {
+    const rows = buildCountryInflationRows({
+      US: macro({ inflationPct: Number.NaN, cpiEopPct: Number.POSITIVE_INFINITY }),
+      JP: macro({ inflationPct: 2.0 }),
+    });
+    assert.deepEqual(rows.map((r) => r.iso2), ['JP']);
+  });
+
+  it('uppercases the ISO2 code and resolves a human-readable name', () => {
+    const rows = buildCountryInflationRows({ us: macro({ inflationPct: 3.1 }) });
+    assert.equal(rows[0].iso2, 'US');
+    assert.ok(rows[0].name.length > 0);
+    assert.notEqual(rows[0].name, 'US'); // Intl.DisplayNames → "United States"
   });
 });
