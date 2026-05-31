@@ -39,7 +39,10 @@ if (COMTRADE_KEYS.length === 0) {
 }
 const COMTRADE_URL = 'https://comtradeapi.un.org/data/v1/get/C/A/HS';
 const PER_KEY_DELAY_MS = 600;
-const MIN_IMPORT_HHI_COUNTRY_COUNT = 190;
+// 190 is nominal registry coverage, not an achievable Comtrade publish floor.
+// Keep the floor high enough to reject catastrophic partial runs while allowing
+// the realistic ~140-country import-HHI coverage band to publish.
+const MIN_IMPORT_HHI_PUBLISH_COUNTRY_COUNT = 135;
 
 // UN M49 codes mostly match UN Comtrade reporterCodes, except for known
 // non-standard reporters listed in scripts/shared/comtrade-reporter-overrides.json.
@@ -332,7 +335,7 @@ async function fetchImportHhi() {
 // in single-threaded Node.js.
 export function validate(data) {
   return typeof data?.countries === 'object'
-    && Object.keys(data.countries).length >= MIN_IMPORT_HHI_COUNTRY_COUNT;
+    && Object.keys(data.countries).length >= MIN_IMPORT_HHI_PUBLISH_COUNTRY_COUNT;
 }
 
 export function declareRecords(data) {

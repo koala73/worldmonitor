@@ -52,12 +52,12 @@ describe('seed-recovery-import-hhi', () => {
     );
   });
 
-  it('validate rejects partial import-HHI snapshots below the documented coverage floor', () => {
+  it('validate rejects catastrophic partial import-HHI snapshots below the publish floor', () => {
     const partial = Object.fromEntries(
-      Array.from({ length: 189 }, (_, i) => [`T${i}`, { hhi: 0.1 }]),
+      Array.from({ length: 134 }, (_, i) => [`T${i}`, { hhi: 0.1 }]),
     );
     const sufficient = Object.fromEntries(
-      Array.from({ length: 190 }, (_, i) => [`T${i}`, { hhi: 0.1 }]),
+      Array.from({ length: 135 }, (_, i) => [`T${i}`, { hhi: 0.1 }]),
     );
     assert.equal(validate({ countries: partial }), false);
     assert.equal(validate({ countries: sufficient }), true);
