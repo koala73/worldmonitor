@@ -11,7 +11,7 @@
  * UI code calls startCheckout(productId) -- everything else is internal.
  */
 
-import * as Sentry from '@sentry/browser';
+import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import { DodoPayments } from 'dodopayments-checkout';
 import type { CheckoutEvent } from 'dodopayments-checkout';
 import { openBillingPortal, prereserveBillingPortalTab } from './billing';
@@ -225,29 +225,29 @@ export function initCheckoutOverlay(onSuccess?: () => void): void {
     successFired = true;
     stopWatchdog();
 
-    Sentry.addBreadcrumb({
+    enqueueSentryCall((s) => s.addBreadcrumb({
       category: 'checkout',
       message: `terminal success (${reason})`,
       level: 'info',
       data: { reason },
-    });
+    }));
     if (reason === 'watchdog') {
       // Counter-signal so Dodo's wallet-return deadlock prevalence is
       // measurable in Sentry. `info` level, not `error`, per
       // feedback_sentry_level_expected_user_states.
-      Sentry.captureMessage('Dodo wallet-return deadlock — watchdog resolved', {
+      enqueueSentryCall((s) => s.captureMessage('Dodo wallet-return deadlock — watchdog resolved', {
         level: 'info',
         tags: { component: 'dodo-checkout', code: 'watchdog_resolved' },
-      });
+      }));
     }
 
     try {
       onSuccessCallback?.();
     } catch (err) {
       console.error('[checkout] onSuccessCallback threw:', err);
-      Sentry.captureException(err, {
+      enqueueSentryCall((s) => s.captureException(err, {
         tags: { component: 'dodo-checkout', action: 'on-success' },
-      });
+      }));
     }
     // Terminal success: clear both keys. LAST_CHECKOUT_ATTEMPT_KEY
     // is no longer needed (no retry context required); PENDING is
@@ -360,7 +360,7 @@ export function initCheckoutOverlay(onSuccess?: () => void): void {
         }
         case 'checkout.error':
           console.error('[checkout] Overlay error:', event.data?.message);
-          Sentry.captureMessage(`Dodo checkout overlay error: ${event.data?.message || 'unknown'}`, { level: 'error', tags: { component: 'dodo-checkout' } });
+          enqueueSentryCall((s) => s.captureMessage(`Dodo checkout overlay error: ${event.data?.message || 'unknown'}`, { level: 'error', tags: { component: 'dodo-checkout' } }));
           // Release the user if their overlay surfaces an error. The
           // deadlock bug (payment-link 404 + render loop) never reaches
           // this branch — it traps inside their iframe — but any error
@@ -889,9 +889,9 @@ function reportCheckoutError(
   };
   if (!shouldSkipSentryForAction(context.action)) {
     if (caught) {
-      Sentry.captureException(caught, payload);
+      enqueueSentryCall((s) => s.captureException(caught, payload));
     } else {
-      Sentry.captureMessage(`Checkout error: ${error.code}`, payload);
+      enqueueSentryCall((s) => s.captureMessage(`Checkout error: ${error.code}`, payload));
     }
   }
   const logger = level === 'info' ? console.info : console.error;
@@ -1085,10 +1085,10 @@ export function showCheckoutSuccess(
     _currentBannerCleanup = null;
     currentState = 'timeout';
     setBannerText(banner, 'timeout', currentMaskedEmail);
-    Sentry.captureMessage('Checkout entitlement-activation timeout', {
+    enqueueSentryCall((s) => s.captureMessage('Checkout entitlement-activation timeout', {
       level: 'warning',
       tags: { component: 'dodo-checkout', action: 'entitlement-timeout' },
-    });
+    }));
   }, EXTENDED_UNLOCK_TIMEOUT_MS);
 
   const unsubscribe = onEntitlementChange(() => {

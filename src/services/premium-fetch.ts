@@ -31,7 +31,7 @@
  * API-key holders (step 1) and tester-key holders (step 2) are unaffected
  * — those keys travel via X-WorldMonitor-Key which works on any path.
  */
-import * as Sentry from '@sentry/browser';
+import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import { PREMIUM_RPC_PATHS } from '@/shared/premium-paths';
 
 /**
@@ -61,11 +61,11 @@ function reportServerError(res: Response, input: RequestInfo | URL): void {
     // transient drowning genuine origin 5xx in the error dashboard
     // (WORLDMONITOR-RG). Genuine origin 5xx (500-511) stay at `error`.
     const isCloudflareEdgeError = res.status >= 520 && res.status <= 527;
-    Sentry.captureMessage(`API ${res.status}: ${path}`, {
-      level: isCloudflareEdgeError ? 'warning' : 'error',
-      tags: { kind: isCloudflareEdgeError ? 'api_cf_5xx' : 'api_5xx' },
-      extra: { path, status: res.status },
-    });
+    const message = `API ${res.status}: ${path}`;
+    const level: 'warning' | 'error' = isCloudflareEdgeError ? 'warning' : 'error';
+    const tags = { kind: isCloudflareEdgeError ? 'api_cf_5xx' : 'api_5xx' };
+    const extra = { path, status: res.status };
+    enqueueSentryCall((s) => s.captureMessage(message, { level, tags, extra }));
   } catch { /* ignore URL parse errors */ }
 }
 

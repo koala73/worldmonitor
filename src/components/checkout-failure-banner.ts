@@ -9,7 +9,7 @@
  * watches on_hold subscriptions, this one fires on return-URL status.
  */
 
-import * as Sentry from '@sentry/browser';
+import { enqueueSentryCall } from '@/bootstrap/sentry-defer';
 import {
   clearCheckoutAttempt,
   loadCheckoutAttempt,
@@ -32,10 +32,10 @@ const BANNER_ID = 'checkout-failure-banner';
 export function showCheckoutFailureBanner(rawStatus: string): void {
   if (document.getElementById(BANNER_ID)) return;
 
-  Sentry.captureMessage('Dodo checkout declined', {
+  enqueueSentryCall((s) => s.captureMessage('Dodo checkout declined', {
     level: 'warning',
     tags: { component: 'dodo-checkout', status: rawStatus },
-  });
+  }));
 
   const banner = document.createElement('div');
   banner.id = BANNER_ID;
