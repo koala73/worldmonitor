@@ -464,7 +464,7 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // so a real `t.x` regression elsewhere on desktop still surfaces.
       if (/undefined is not an object \(evaluating 't\.x'\)|Cannot read properties of undefined \(reading 'x'\)/.test(msg)) {
         if (!hasFirstParty || frames.some(f => /\b_handleTouch\w*Dolly|OrbitControls/.test(f.function ?? ''))) return null;
-        const osName = ((event.contexts as unknown as { os?: { name?: string } })?.os?.name) ?? '';
+        const osName = ((event.contexts as any)?.os?.name as string) ?? '';
         const isTouchOs = /^(iOS|iPadOS)$/.test(osName);
         const mainBundleFrames = nonInfraFrames.filter(f => /\/(main|index)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''));
         if (isTouchOs && mainBundleFrames.length === 1 && nonInfraFrames.length === mainBundleFrames.length) return null;
@@ -479,7 +479,7 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
         // Sentry wire format includes `context: [[lineno, text], ...]` per frame, but the
         // SDK's StackFrame type omits it — cast to any to read it.
         const hasOrbitControlsContext = frames.some(f => {
-          const ctx = (f as unknown as { context?: unknown }).context;
+          const ctx = (f as any).context;
           if (!Array.isArray(ctx)) return false;
           return ctx.some(row =>
             Array.isArray(row) && typeof row[1] === 'string'

@@ -6,13 +6,16 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// Extract the beforeSend function body from main.ts source.
-// We parse it as a standalone function to avoid importing Sentry/App bootstrap.
-const mainSrc = readFileSync(resolve(__dirname, '../src/main.ts'), 'utf-8');
+// Extract the beforeSend function body from src/bootstrap/sentry-defer.ts.
+// Sentry.init({...}) was moved out of main.ts when init was deferred off the
+// critical path (#3994 / PR-4005); the beforeSend closure now lives inside
+// the build factory in sentry-defer.ts. We parse it as a standalone function
+// to avoid importing Sentry/App bootstrap.
+const mainSrc = readFileSync(resolve(__dirname, '../src/bootstrap/sentry-defer.ts'), 'utf-8');
 
 // Extract everything between `beforeSend(event) {` and the matching closing `},`
 const bsStart = mainSrc.indexOf('beforeSend(event) {');
-assert.ok(bsStart !== -1, 'beforeSend must exist in src/main.ts');
+assert.ok(bsStart !== -1, 'beforeSend must exist in src/bootstrap/sentry-defer.ts');
 let braceDepth = 0;
 let bsEnd = -1;
 for (let i = bsStart + 'beforeSend(event) '.length; i < mainSrc.length; i++) {
@@ -32,7 +35,7 @@ const fnBody = mainSrc.slice(bsStart + 'beforeSend(event) '.length, bsEnd)
 // Extract the THIRD_PARTY_FETCH_HOST_ALLOWLIST Set so the test harness can evaluate
 // beforeSend with the same allowlist the real module has.
 const tpMatch = mainSrc.match(/const THIRD_PARTY_FETCH_HOST_ALLOWLIST = new Set\(\[[^\]]*\]\);/);
-assert.ok(tpMatch, 'THIRD_PARTY_FETCH_HOST_ALLOWLIST must be defined in src/main.ts');
+assert.ok(tpMatch, 'THIRD_PARTY_FETCH_HOST_ALLOWLIST must be defined in src/bootstrap/sentry-defer.ts');
 
 // Build a callable version. Input: a Sentry-shaped event object. Returns event or null.
 // eslint-disable-next-line no-new-func
