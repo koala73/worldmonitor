@@ -2,7 +2,21 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
-import { computeHhi, buildPeriodParam, parseRecords, validate } from '../scripts/seed-recovery-import-hhi.mjs';
+import {
+  computeHhi,
+  buildPeriodParam,
+  buildStalePeriodFallbackParam,
+  computeComtradeBackoffMs,
+  formatWatchReporterMisses,
+  getImportHhiFallbackPeriodParam,
+  hasRateLimitedWatchReporter,
+  isComtradeQuotaStatus,
+  orderImportHhiReporterQueue,
+  parseRecords,
+  resolveImportHhiRuntimeConfig,
+  runWorker,
+  validate,
+} from '../scripts/seed-recovery-import-hhi.mjs';
 
 const seedSrc = readFileSync(new URL('../scripts/seed-recovery-import-hhi.mjs', import.meta.url), 'utf8');
 const reporterOverrides = JSON.parse(
@@ -12,9 +26,11 @@ const reporterOverrides = JSON.parse(
 describe('seed-recovery-import-hhi', () => {
   it('defines Comtrade reporter overrides for all known non-standard reporter codes', () => {
     assert.deepEqual(reporterOverrides, {
+      CH: '757',
       FR: '251',
       IN: '699',
       IT: '381',
+      NO: '579',
       TW: '490',
       US: '842',
     });
@@ -73,6 +89,161 @@ describe('seed-recovery-import-hhi', () => {
       optionsBlock.includes('emptyDataIsFailure: true'),
       'partial import-HHI snapshots must fail the section instead of refreshing seed-meta and blocking retries',
     );
+  });
+
+  it('defaults to conservative Comtrade pacing while keeping all keys active', () => {
+    assert.deepEqual(resolveImportHhiRuntimeConfig({}, 2), {
+      perKeyDelayMs: 1_500,
+      maxConcurrency: 2,
+    });
+  });
+
+  it('lets operators widen import-HHI pacing and lower concurrency via env', () => {
+    assert.deepEqual(resolveImportHhiRuntimeConfig({
+      IMPORT_HHI_PER_KEY_DELAY_MS: '10000',
+      IMPORT_HHI_MAX_CONCURRENCY: '1',
+    }, 3), {
+      perKeyDelayMs: 10_000,
+      maxConcurrency: 1,
+    });
+  });
+
+  it('accepts PER_KEY_DELAY_MS as an operational alias for issue #3979 runbooks', () => {
+    assert.deepEqual(resolveImportHhiRuntimeConfig({
+      PER_KEY_DELAY_MS: '12000',
+    }, 2), {
+      perKeyDelayMs: 12_000,
+      maxConcurrency: 2,
+    });
+  });
+
+  it('fetches watched reporters before generic backfill when they are missing', () => {
+    assert.deepEqual(
+      orderImportHhiReporterQueue(['BR', 'NO', 'US', 'RU', 'CH', 'AE']),
+      ['AE', 'RU', 'NO', 'CH', 'BR', 'US'],
+    );
+    assert.deepEqual(
+      orderImportHhiReporterQueue(['BR', 'US']),
+      ['BR', 'US'],
+    );
+  });
+
+  it('uses per-key pacing as the 429 retry floor', () => {
+    assert.equal(computeComtradeBackoffMs(429, 1, 12_000), 12_000);
+    assert.equal(computeComtradeBackoffMs(429, 1, 1_500), 5_000);
+    assert.equal(computeComtradeBackoffMs(429, 4, 1_000), 8_000);
+    assert.equal(computeComtradeBackoffMs(503, 2, 12_000), 10_000);
+  });
+
+  it('treats Comtrade 429 and quota-exhausted 403 as operational key-budget statuses', () => {
+    assert.equal(isComtradeQuotaStatus(429), true);
+    assert.equal(isComtradeQuotaStatus(403), true);
+    assert.equal(isComtradeQuotaStatus(503), false);
+    assert.equal(isComtradeQuotaStatus(401), false);
+  });
+
+  it('formats watched-reporter misses with HTTP and row-count evidence', () => {
+    const formatted = formatWatchReporterMisses(['RU', 'NO', 'CH'], {
+      RU: {
+        status: 403,
+        rows: 0,
+        year: null,
+        periodParam: '2025,2024,2023,2022',
+        errorMessage: 'Out of call volume quota.',
+      },
+      NO: { status: 429, rows: 0, year: null, periodParam: '2025,2024,2023,2022' },
+      CH: { error: 'fetch failed' },
+    });
+    assert.equal(
+      formatted,
+      'RU:status=403 rows=0 year=n/a period=2025,2024,2023,2022 message=Out of call volume quota., NO:status=429 rows=0 year=n/a period=2025,2024,2023,2022, CH:error=fetch failed',
+    );
+    assert.equal(hasRateLimitedWatchReporter(['RU', 'NO', 'CH'], {
+      RU: { status: 200, rows: 0, year: null },
+      NO: { status: 403, rows: 0, year: null },
+    }), true);
+    assert.equal(hasRateLimitedWatchReporter(['RU'], { RU: { status: 200, rows: 0, year: null } }), false);
+  });
+
+  it('clamps invalid import-HHI pacing controls to safe bounds', () => {
+    assert.deepEqual(resolveImportHhiRuntimeConfig({
+      IMPORT_HHI_PER_KEY_DELAY_MS: '120000',
+      IMPORT_HHI_MAX_CONCURRENCY: '99',
+    }, 2), {
+      perKeyDelayMs: 60_000,
+      maxConcurrency: 2,
+    });
+    assert.deepEqual(resolveImportHhiRuntimeConfig({
+      IMPORT_HHI_PER_KEY_DELAY_MS: 'nope',
+      IMPORT_HHI_MAX_CONCURRENCY: '0',
+    }, 0), {
+      perKeyDelayMs: 1_500,
+      maxConcurrency: 0,
+    });
+  });
+
+  it('clamps below-min import-HHI pacing controls instead of falling through to fallback', () => {
+    assert.deepEqual(resolveImportHhiRuntimeConfig({
+      IMPORT_HHI_PER_KEY_DELAY_MS: '100',
+      PER_KEY_DELAY_MS: '12000',
+      IMPORT_HHI_MAX_CONCURRENCY: '0',
+    }, 2), {
+      perKeyDelayMs: 600,
+      maxConcurrency: 1,
+    });
+  });
+
+  it('wires RU primary zero-row fetch into the stale-period fallback inside runWorker', async () => {
+    const calls = [];
+    const sleeps = [];
+    const countries = {};
+    const progressRef = {
+      fetched: 0,
+      skipped: 0,
+      errors: 0,
+      rateLimited: 0,
+      rateLimitedReporters: [],
+      watchOutcomes: {},
+    };
+
+    await runWorker('key-a', ['RU'], countries, progressRef, {
+      sleep: async (ms) => { sleeps.push(ms); },
+      fetchImportsForReporter: async (reporterCode, apiKey, periodParam) => {
+        calls.push({ reporterCode, apiKey, periodParam });
+        if (calls.length === 1) return { records: [], year: null, status: 200 };
+        return {
+          records: [
+            { partnerCode: '156', primaryValue: 400 },
+            { partnerCode: '842', primaryValue: 600 },
+          ],
+          year: 2018,
+          status: 200,
+        };
+      },
+    });
+
+    assert.deepEqual(calls, [
+      { reporterCode: '643', apiKey: 'key-a', periodParam: buildPeriodParam() },
+      { reporterCode: '643', apiKey: 'key-a', periodParam: buildStalePeriodFallbackParam() },
+    ]);
+    assert.deepEqual(sleeps, [1_500, 1_500]);
+    const { fetchedAt, ...ruEntry } = countries.RU;
+    assert.deepEqual(ruEntry, {
+      hhi: 0.52,
+      concentrated: true,
+      partnerCount: 2,
+      year: 2018,
+    });
+    assert.match(fetchedAt, /^\d{4}-\d{2}-\d{2}T/);
+    assert.equal(progressRef.fetched, 1);
+    assert.equal(progressRef.skipped, 0);
+    assert.deepEqual(progressRef.watchOutcomes.RU, {
+      status: 200,
+      rows: 2,
+      year: 2018,
+      periodParam: buildStalePeriodFallbackParam(),
+      errorMessage: undefined,
+    });
   });
 
   it('computes HHI=1 for single-partner imports', () => {
@@ -199,6 +370,12 @@ describe('seed-recovery-import-hhi — period window + pick-latest', () => {
     it('never emits the current year (Comtrade is always behind by at least 1y)', () => {
       const produced = buildPeriodParam(2026).split(',').map(Number);
       assert.ok(!produced.includes(2026), `${produced} must not include the current year`);
+    });
+
+    it('emits a second 4-year fallback window for RU stale publication gaps', () => {
+      assert.equal(buildStalePeriodFallbackParam(2026), '2021,2020,2019,2018');
+      assert.equal(getImportHhiFallbackPeriodParam('RU', 2026), '2021,2020,2019,2018');
+      assert.equal(getImportHhiFallbackPeriodParam('AE', 2026), null);
     });
   });
 
@@ -387,6 +564,22 @@ describe('seed-recovery-import-hhi — fetch retry hardening (U1, plan v19)', ()
         'URL must not have any subscription-key searchParam');
       assert.equal(init.headers['Ocp-Apim-Subscription-Key'], 'super-secret-key',
         'API key must arrive in the Ocp-Apim-Subscription-Key header');
+    } finally {
+      restoreAll(mod);
+    }
+  });
+
+  it('surfaces Comtrade error messages for non-retryable quota/auth responses', async () => {
+    const mod = await loadFixture();
+    installFetchSequence([
+      makeJsonResponse(403, { error: 'Out of call volume quota. Quota will be replenished later.' }),
+    ]);
+    try {
+      const result = await mod.fetchImportsForReporter('784', 'k');
+      assert.equal(result.status, 403);
+      assert.equal(result.records.length, 0);
+      assert.match(result.errorMessage, /Out of call volume quota/);
+      assert.equal(fetchCalls.length, 1, '403 is operational key state; do not retry immediately');
     } finally {
       restoreAll(mod);
     }

@@ -15,6 +15,7 @@
 
 import { getCachedJson, setCachedJson } from '../../../_shared/redis';
 import UN_TO_ISO2 from '../../../../scripts/shared/un-to-iso2.json';
+import COMTRADE_REPORTER_OVERRIDES from '../../../../scripts/shared/comtrade-reporter-overrides.json';
 
 const COMTRADE_BASE = 'https://comtradeapi.un.org/public/v1/preview/C/A/HS';
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
@@ -43,14 +44,12 @@ const HS4_LABELS: Record<string, string> = {
   '8704': 'Commercial Vehicles', '8708': 'Auto Parts',
 };
 
-// UN M49 mostly matches UN Comtrade reporterCodes, except India (699, not 356)
-// and Taiwan (490 "Other Asia, nes", not 158). Using M49 codes silently yields
-// count:0 from the Comtrade API for these two countries.
-const COMTRADE_REPORTER_OVERRIDES: Record<string, string> = { IN: '699', TW: '490' };
+// UN M49 mostly matches UN Comtrade reporterCodes, except the shared override
+// list. Using M49 codes for those reporters silently yields count:0.
 const ISO2_TO_UN: Record<string, string> = Object.fromEntries(
   Object.entries(UN_TO_ISO2 as Record<string, string>).map(([un, iso]) => [iso, un]),
 );
-for (const [iso2, code] of Object.entries(COMTRADE_REPORTER_OVERRIDES)) {
+for (const [iso2, code] of Object.entries(COMTRADE_REPORTER_OVERRIDES as Record<string, string>)) {
   ISO2_TO_UN[iso2] = code;
 }
 

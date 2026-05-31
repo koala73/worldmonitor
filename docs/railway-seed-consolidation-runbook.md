@@ -426,3 +426,63 @@ Each bundle service inherits the same env vars as the individual seeds it replac
 - Plus any API keys used by member seeds (GIE_API_KEY, ICAO_API_KEY, etc.)
 
 The simplest approach: use Railway's "shared variables" or copy all env vars from the `worldmonitor` (ais-relay) service, which has a superset of all API keys.
+
+---
+
+## Import-HHI Comtrade 429 Runbook
+
+Issue #3979 covers the residual operational failure mode for the Country Resilience Index `importConcentration` dimension: AE/RU/NO/CH can still remain absent from `resilience:recovery:import-hhi:v1` when UN Comtrade rejects the monthly recovery bundle for key budget, pacing, or reporter metadata reasons.
+
+**Decision:** treat this as Comtrade quota/pacing while the seed logs show HTTP 429 or quota-exhausted HTTP 403 responses. Do not change `importConcentration` scoring until the rate-limit path has been addressed and a force-refresh proves that Comtrade is returning non-quota responses for the watched reporters.
+
+### Controls
+
+Set these on the Railway service that runs `node scripts/seed-bundle-resilience-recovery.mjs`:
+
+| Variable | Default | Use when |
+|---|---:|---|
+| `COMTRADE_API_KEYS` | required | Add keys first when multiple reporters are missing with 429s or quota-exhausted 403s. |
+| `IMPORT_HHI_PER_KEY_DELAY_MS` | `1500` | Increase to `10000`-`15000` if logs still show import-HHI 429s. `PER_KEY_DELAY_MS` is accepted as a legacy alias. |
+| `IMPORT_HHI_MAX_CONCURRENCY` | key count | Set to `1` if quota failures look IP-level or global, not per-key. |
+| `IMPORT_HHI_VERBOSE` | unset | Set to `1` only for a diagnostic force-refresh; logs per-reporter status. |
+
+Reporter cohort splitting is the last resort. Prefer more `COMTRADE_API_KEYS`, then wider per-key delay, then lower concurrency. The import-HHI seeder fetches the watched #3979 reporters first when they are missing, so a replenished force-refresh should recover AE/RU/NO/CH before unrelated registry backfill can consume the hourly provider budget. Aggressive incident pacing such as `IMPORT_HHI_PER_KEY_DELAY_MS=15000` with `IMPORT_HHI_MAX_CONCURRENCY=1` can exceed the 30-minute bundle window; that mode intentionally relies on checkpoint/resume across ticks, not one-pass completion. Cohort splitting should only be used if a single full pass still exhausts the provider budget after the first three controls.
+
+If a watched reporter is still missing and the seed log says `status=200 rows=0`, stop treating that reporter as a key-budget problem. Inspect Comtrade reporter metadata, data availability, and query-shape filters (`customsCode`, `motCode`, `cmdCode`) before considering any scoring change. The known non-M49 reporter-code exceptions are pinned in `scripts/shared/comtrade-reporter-overrides.json`; as of the #3979 follow-up this includes Norway (`NO=579`) and Switzerland (`CH=757`). Russia (`RU=643`) currently needs the seed-only stale period fallback (`Y-5..Y-8`) because Comtrade returns zero annual import rows for the standard `Y-1..Y-4` window but still exposes 2018 rows.
+
+### Force-Refresh
+
+After deploying a pacing/key-budget change, bypass the 30-day freshness gate:
+
+```bash
+IMPORT_HHI_VERBOSE=1 FORCE_RESEED=true node scripts/seed-recovery-import-hhi.mjs
+```
+
+Then warm live scores so `importConcentration` reads the refreshed canonical key:
+
+```bash
+WORLDMONITOR_API_KEY=<key> node scripts/seed-resilience-scores.mjs
+```
+
+### Verification
+
+Verify both Redis and the live score API:
+
+```bash
+WORLDMONITOR_API_KEY=<key> node scripts/verify-import-hhi-coverage.mjs
+```
+
+Pass condition for AE/RU/NO/CH:
+
+- `resilience:recovery:import-hhi:v1.countries.<ISO2>` is present.
+- `seed-meta:resilience:recovery:import-hhi` is fresh.
+- Live `GetResilienceScore` has `importConcentration.coverage > 0`.
+- Live `importConcentration.imputationClass` is empty.
+
+If the live API key is not available during Redis-only triage, use:
+
+```bash
+IMPORT_HHI_VERIFY_REDIS_ONLY=1 node scripts/verify-import-hhi-coverage.mjs
+```
+
+Redis-only verification is not sufficient to close #3979; it only confirms that the seeder recovered the canonical payload before score warmup.
