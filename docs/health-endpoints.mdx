@@ -198,7 +198,11 @@ Use `/api/health` as the monitor URL. The HTTP status code only distinguishes a 
 - `503` = `REDIS_DOWN` (Redis unreachable — a true hard outage)
 - `200` = every other state, including `DEGRADED` and `UNHEALTHY`
 
-So an HTTP-status-only monitor catches a full backend outage but **not** degraded/unhealthy data. For those, add a keyword monitor that alerts when `"status":"HEALTHY"` is **absent** from the response body (or parse `summary.crit > 0`).
+So an HTTP-status-only monitor catches a full backend outage but **not** degraded/unhealthy data. For those, add a keyword monitor.
+
+Point the keyword monitor at `https://api.worldmonitor.app/api/health?compact=1` and alert when the compact token `"status":"HEALTHY"` (no space after the colon) is **absent** from the response body. Compact mode serializes with no indentation, so this exact token is stable regardless of formatting.
+
+> The bare `/api/health` URL pretty-prints the body, so the healthy token there is `"status": "HEALTHY"` **with a space** after the colon. If you monitor the non-compact URL, match that spaced token instead — the no-space `"status":"HEALTHY"` is absent even when healthy and will false-alert. Prefer `?compact=1`, or parse `summary.crit > 0`.
 
 ### Custom Alerting
 
