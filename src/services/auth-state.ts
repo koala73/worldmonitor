@@ -1,5 +1,5 @@
 import * as Sentry from '@sentry/browser';
-import { initClerk, getCurrentClerkUser, subscribeClerk } from './clerk';
+import { getCurrentClerkUser, scheduleClerkLoad, subscribeClerk } from './clerk';
 
 /** Minimal user profile exposed to UI components. */
 export interface AuthUser {
@@ -39,9 +39,19 @@ function snapshotSession(): AuthSession {
 
 /**
  * Initialize auth state. Call once at app startup before UI subscribes.
+ *
+ * Does NOT await `initClerk()` — the @clerk/clerk-js bundle is ~2.98 MB
+ * and 96% unused on first paint, so awaiting it here would block the
+ * App.init() chain (panel layout, data fetches, etc.) on a load that
+ * isn't needed until the user reaches for auth. Instead, schedule the
+ * load via `scheduleClerkLoad()` (idle-callback after first paint) and
+ * snapshot the session as signed-out for now. When Clerk finishes
+ * loading, the subscribeClerk pending-callback queue (see clerk.ts)
+ * fires the listener registered below with the real session — cookie-
+ * backed signed-in users light up the UI without a refresh.
  */
 export async function initAuthState(): Promise<void> {
-  await initClerk();
+  scheduleClerkLoad();
   _currentSession = snapshotSession();
 }
 
