@@ -797,11 +797,16 @@ export default async function handler(req, ctx) {
     results = await redisPipeline(commands, 8_000);
     if (!results) throw new Error('Redis request failed');
   } catch (err) {
+    // REDIS_DOWN is the one hard-down state that returns 503: with Redis
+    // unreachable the endpoint can assess nothing, so a plain HTTP-status
+    // monitor (UptimeRobot, k8s probe, LB) must see a failure. DEGRADED/
+    // UNHEALTHY/WARNING stay 200 (verdict in body) so warn-level seed jitter
+    // doesn't flap HTTP monitors — see #2699 and the always-200 main response.
     return jsonResponse({
       status: 'REDIS_DOWN',
       error: err.message,
       checkedAt: new Date(now).toISOString(),
-    }, 200, headers);
+    }, 503, headers);
   }
 
   // keyStrens: byte length per data key (0 = missing/empty/sentinel)

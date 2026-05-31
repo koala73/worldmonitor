@@ -23,9 +23,11 @@ Primary health endpoint. Checks all Redis-backed data keys and seed freshness me
 |-------------|---------------|---------|
 | `200` | `HEALTHY` | All checks OK, no warnings |
 | `200` | `WARNING` | Some keys stale or on-demand keys empty, but no critical failures |
-| `503` | `DEGRADED` | 1-3 bootstrap keys empty |
-| `503` | `UNHEALTHY` | 4+ bootstrap keys empty |
-| `503` | `REDIS_DOWN` | Could not connect to Redis |
+| `200` | `DEGRADED` | Critical keys empty, but ≤3% of all probed keys |
+| `200` | `UNHEALTHY` | Critical keys empty, >3% of all probed keys |
+| `503` | `REDIS_DOWN` | Could not connect to Redis — the **only** state that returns a non-200 code |
+
+> The overall health verdict lives in the JSON `status` field, not the HTTP code. Every state except `REDIS_DOWN` returns `200` so warn-level seed jitter doesn't flap HTTP-status monitors (see PR #2699). `REDIS_DOWN` returns `503` because with Redis unreachable the endpoint can assess nothing, so a plain HTTP probe must see a failure.
 
 ### Response Body
 
@@ -33,9 +35,11 @@ Primary health endpoint. Checks all Redis-backed data keys and seed freshness me
 {
   "status": "HEALTHY | WARNING | DEGRADED | UNHEALTHY | REDIS_DOWN",
   "summary": {
-    "total": 57,
-    "ok": 52,
+    "total": 194,
+    "ok": 180,
     "warn": 5,
+    "onDemandWarn": 9,
+    "staleContent": 0,
     "crit": 0
   },
   "checkedAt": "2026-03-11T14:00:00.000Z",
@@ -49,6 +53,8 @@ Primary health endpoint. Checks all Redis-backed data keys and seed freshness me
   }
 }
 ```
+
+`summary` fields: `total` is one entry per probed key (currently ~194 and growing as panels are added). `warn` **excludes** on-demand-empty keys — those are surfaced separately as `onDemandWarn` so they don't drive the overall verdict to `WARNING`. `staleContent` is a **subset** of `warn` (fresh seeder but the upstream feed stopped advancing). Only `crit` (`EMPTY`/`EMPTY_DATA`) drives `DEGRADED`/`UNHEALTHY`.
 
 With `?compact=1`, the `checks` object is replaced by `problems` containing only non-OK keys.
 
@@ -69,9 +75,13 @@ Keys are grouped into three tiers that determine alert severity:
 | `OK` | Green | Data present, seed fresh |
 | `OK_CASCADE` | Green | Key empty but a sibling in the cascade group has data (e.g., theater posture fallback chain) |
 | `STALE_SEED` | Warn | Data present but `seed-meta` age exceeds `maxStaleMin` |
-| `EMPTY_ON_DEMAND` | Warn | On-demand key has no data yet |
-| `EMPTY` | Crit | Bootstrap or standalone key has no data |
-| `EMPTY_DATA` | Crit | Key exists but contains zero records |
+| `STALE_CONTENT` | Warn | Seeder is fresh but the upstream content stopped advancing (frozen feed); counted in `summary.staleContent` |
+| `COVERAGE_PARTIAL` | Warn | Record count is below the key's declared `minRecordCount` (e.g. 10/13 chokepoints) |
+| `SEED_ERROR` | Warn | `seed-meta` reports `status: "error"` from the last seed run |
+| `REDIS_PARTIAL` | Warn | A single per-command Redis error on this key's STRLEN/GET (not a full outage) |
+| `EMPTY_ON_DEMAND` | Warn | On-demand key has no data yet (expected until first request); counted in `summary.onDemandWarn` |
+| `EMPTY` | Crit | Bootstrap or seeded standalone key has no data |
+| `EMPTY_DATA` | Crit | Key exists but contains zero records (and 0 is not a valid state for it) |
 
 ### Cascade Groups
 
@@ -79,6 +89,7 @@ Some keys use fallback chains. If any sibling has data, empty siblings report `O
 
 - **Theater Posture:** `theaterPostureLive` -> `theaterPosture` (stale) -> `theaterPostureBackup`
 - **Military Flights:** `militaryFlights` -> `militaryFlightsStale`
+- **Displacement:** `displacement` (current UTC year) -> `displacementPrev` (prior year, covers the Jan-1 window before the new-year seed runs)
 
 ### Staleness Thresholds (maxStaleMin)
 
@@ -86,14 +97,16 @@ Selected thresholds from `SEED_META`:
 
 | Domain | Max Stale (min) | Notes |
 |--------|----------------|-------|
-| Market quotes, crypto, sectors | 30 | High-frequency relay loops |
-| Earthquakes, unrest, insights | 30 | Critical event data |
-| Predictions | 15 | Polymarket, fast-moving |
-| Military flights | 15 | Near-real-time tracking |
-| Flight delays (FAA) | 60 | Airport delay snapshots |
-| Wildfires, climate anomalies | 120 | Slower-moving natural events |
-| Cyber threats | 480 | APT data updated less frequently |
-| BIS data, World Bank, minerals | 2880-10080 | Institutional data, weekly/monthly updates |
+| Market quotes, crypto, sectors, earthquakes, insights | 30 | High-frequency relay loops / critical event data |
+| Military flights | 30 | Near-real-time tracking |
+| Predictions, flight delays (FAA) | 90 | Polymarket / airport snapshots |
+| Unrest | 120 | 45min cron, 2h grace |
+| Cyber threats | 240 | APT data updated less frequently |
+| Wildfires | 360 | FIRMS NRT accumulates over hours |
+| Climate anomalies | 540 | 3h cron, 3× cadence |
+| BIS extended, World Bank, IMF | 2160-100800 | Institutional data, weekly/monthly/annual |
+
+> These are illustrative; `SEED_META` in `api/health.js` is the source of truth and each entry documents its own cadence rationale.
 
 ### Example Requests
 
@@ -106,7 +119,8 @@ curl -s "https://api.worldmonitor.app/api/health?compact=1" | jq .
 
 # UptimeRobot / monitoring: check HTTP status code
 curl -o /dev/null -s -w "%{http_code}" https://api.worldmonitor.app/api/health
-# Returns 200 (healthy/warning) or 503 (degraded/unhealthy)
+# Returns 503 only when Redis is unreachable (REDIS_DOWN); 200 for every other
+# state — the verdict (HEALTHY/WARNING/DEGRADED/UNHEALTHY) is in the body's `status`.
 ```
 
 ## `/api/seed-health`
@@ -179,12 +193,12 @@ curl -s https://api.worldmonitor.app/api/seed-health \
 
 ### UptimeRobot
 
-Use `/api/health` as the monitor URL. UptimeRobot checks HTTP status:
+Use `/api/health` as the monitor URL. The HTTP status code only distinguishes a total Redis outage from everything else:
 
-- `200` = up
-- `503` = down
+- `503` = `REDIS_DOWN` (Redis unreachable — a true hard outage)
+- `200` = every other state, including `DEGRADED` and `UNHEALTHY`
 
-For keyword monitoring, check for `"status":"HEALTHY"` in the response body.
+So an HTTP-status-only monitor catches a full backend outage but **not** degraded/unhealthy data. For those, add a keyword monitor that alerts when `"status":"HEALTHY"` is **absent** from the response body (or parse `summary.crit > 0`).
 
 ### Custom Alerting
 
@@ -209,4 +223,4 @@ fi
 | **Data fetched** | Full Redis values (to count records) | Only `seed-meta:*` keys |
 | **HTTP 503** | Yes (DEGRADED/UNHEALTHY) | No (always 200 unless Redis down) |
 | **Best for** | Uptime monitoring, dashboard health | Debugging seed loop issues |
-| **Response size** | Larger (57+ keys with record counts) | Smaller (42 seed domains) |
+| **Response size** | Larger (~194 keys with record counts) | Smaller (seed-meta domains only) |
