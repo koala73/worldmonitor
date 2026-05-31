@@ -557,6 +557,11 @@ export class DeckGLMap {
   private hoveredCountryIso2: string | null = null;
   private hoveredCountryName: string | null = null;
 
+  // City boundary highlight state
+  private cityBoundaryGeoJson: GeoJSON.FeatureCollection | null = null;
+  private cityBoundaryLegend: HTMLDivElement | null = null;
+  private cityBoundaryFallback = false;
+
   // Callbacks
   private onHotspotClick?: (hotspot: Hotspot) => void;
   private onTradeArcClick?: (segment: TradeRouteSegment, waypoints: string[], x: number, y: number) => void;
@@ -698,6 +703,7 @@ export class DeckGLMap {
       localizeMapLabels(this.maplibreMap);
       this.initDeck();
       this.loadCountryBoundaries();
+      this.loadCityBoundaryLayer();
       this.fetchServerBases();
       this.render();
     });
@@ -838,6 +844,28 @@ export class DeckGLMap {
       ? '© <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'
       : '© <a href="https://protomaps.com" target="_blank" rel="noopener">Protomaps</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>';
     wrapper.appendChild(attribution);
+
+    const legend = document.createElement('div');
+    legend.className = 'deckgl-city-boundary-legend';
+    legend.style.cssText = [
+      'position:absolute',
+      'bottom:12px',
+      'left:12px',
+      'z-index:3',
+      'padding:10px 12px',
+      'background:rgba(0,0,0,0.72)',
+      'color:#FFFFFF',
+      'font-size:0.85rem',
+      'line-height:1.3',
+      'border-radius:10px',
+      'box-shadow:0 18px 40px rgba(0,0,0,0.35)',
+      'display:none',
+      'pointer-events:none',
+      'max-width:240px',
+    ].join(';');
+    legend.innerHTML = '<strong>City boundary</strong><br/>Exact city boundary data is highlighted.';
+    wrapper.appendChild(legend);
+    this.cityBoundaryLegend = legend;
 
     this.container.appendChild(wrapper);
   }
@@ -6978,9 +7006,130 @@ export class DeckGLMap {
         const paintMapTheme = getMapTheme(paintProvider);
         this.updateCountryLayerPaint(isLightMapTheme(paintMapTheme) ? 'light' : 'dark');
         if (this.highlightedCountryCode) this.highlightCountry(this.highlightedCountryCode);
+        if (this.cityBoundaryGeoJson) this.highlightCityBoundary(this.cityBoundaryGeoJson);
         this.render();
       })
       .catch((err) => console.warn('[DeckGLMap] Failed to load country boundaries:', err));
+  }
+
+  private loadCityBoundaryLayer(): void {
+    if (!this.maplibreMap || this.maplibreMap.getSource('city-boundary')) return;
+
+    this.maplibreMap.addSource('city-boundary', {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [] },
+    });
+
+    this.maplibreMap.addLayer({
+      id: 'city-boundary-fill',
+      type: 'fill',
+      source: 'city-boundary',
+      layout: { visibility: 'none' },
+      paint: {
+        'fill-color': ['case', ['==', ['get', 'fallback'], true], '#f59e0b', '#3b82f6'],
+        'fill-opacity': 0.16,
+      },
+    });
+
+    this.maplibreMap.addLayer({
+      id: 'city-boundary-border',
+      type: 'line',
+      source: 'city-boundary',
+      layout: { visibility: 'none' },
+      paint: {
+        'line-color': ['case', ['==', ['get', 'fallback'], true], '#f59e0b', '#3b82f6'],
+        'line-width': 2,
+        'line-opacity': 0.85,
+        'line-dasharray': ['case', ['==', ['get', 'fallback'], true], [4, 2], [1, 0]],
+      },
+    });
+  }
+
+  private getGeoJsonBounds(featureCollection: GeoJSON.FeatureCollection): [number, number, number, number] | null {
+    let minLon = Infinity;
+    let minLat = Infinity;
+    let maxLon = -Infinity;
+    let maxLat = -Infinity;
+
+    const walkCoordinates = (coords: any): void => {
+      if (typeof coords[0] === 'number') {
+        const [lon, lat] = coords as [number, number];
+        minLon = Math.min(minLon, lon);
+        minLat = Math.min(minLat, lat);
+        maxLon = Math.max(maxLon, lon);
+        maxLat = Math.max(maxLat, lat);
+        return;
+      }
+      for (const coord of coords) {
+        walkCoordinates(coord);
+      }
+    };
+
+    for (const feature of featureCollection.features) {
+      if (!feature.geometry) continue;
+      walkCoordinates(feature.geometry.coordinates);
+    }
+
+    if (!Number.isFinite(minLon) || !Number.isFinite(minLat) || !Number.isFinite(maxLon) || !Number.isFinite(maxLat)) {
+      return null;
+    }
+
+    return [minLon, minLat, maxLon, maxLat];
+  }
+
+  public highlightCityBoundary(boundary: GeoJSON.FeatureCollection): void {
+    this.cityBoundaryGeoJson = boundary;
+    this.cityBoundaryFallback = !!boundary.features?.[0]?.properties?.fallback;
+    if (!this.maplibreMap) return;
+    const source = this.maplibreMap.getSource('city-boundary') as maplibregl.GeoJSONSource | undefined;
+    if (!source) return;
+    source.setData(boundary);
+    if (this.maplibreMap.getLayer('city-boundary-fill')) {
+      this.maplibreMap.setLayoutProperty('city-boundary-fill', 'visibility', 'visible');
+      this.maplibreMap.setLayoutProperty('city-boundary-border', 'visibility', 'visible');
+    }
+
+    if (this.cityBoundaryLegend) {
+      this.cityBoundaryLegend.style.display = 'block';
+      this.cityBoundaryLegend.innerHTML = this.cityBoundaryFallback
+        ? '<strong>Approximate city bounds</strong><br/>This city is highlighted using a fallback boundary.'
+        : '<strong>City boundary</strong><br/>Exact city boundary data is highlighted.';
+    }
+  }
+
+  public fitCityBoundary(boundary: GeoJSON.FeatureCollection): void {
+    if (!this.maplibreMap) return;
+    const bbox = this.getGeoJsonBounds(boundary);
+    if (!bbox) return;
+
+    const [minLon, minLat, maxLon, maxLat] = bbox;
+    if (minLon === maxLon && minLat === maxLat) {
+      this.maplibreMap.flyTo({ center: [minLon, minLat], zoom: 11, duration: 500 });
+      return;
+    }
+
+    this.maplibreMap.fitBounds([[minLon, minLat], [maxLon, maxLat]], {
+      padding: 40,
+      duration: 800,
+      maxZoom: 13,
+    });
+  }
+
+  public clearCityHighlight(): void {
+    this.cityBoundaryGeoJson = null;
+    this.cityBoundaryFallback = false;
+    if (!this.maplibreMap) return;
+    const source = this.maplibreMap.getSource('city-boundary') as maplibregl.GeoJSONSource | undefined;
+    if (source) {
+      source.setData({ type: 'FeatureCollection', features: [] });
+    }
+    if (this.maplibreMap.getLayer('city-boundary-fill')) {
+      this.maplibreMap.setLayoutProperty('city-boundary-fill', 'visibility', 'none');
+      this.maplibreMap.setLayoutProperty('city-boundary-border', 'visibility', 'none');
+    }
+    if (this.cityBoundaryLegend) {
+      this.cityBoundaryLegend.style.display = 'none';
+    }
   }
 
   private setupCountryHover(): void {

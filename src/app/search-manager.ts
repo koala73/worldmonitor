@@ -13,7 +13,7 @@ import { LAYER_PRESETS, LAYER_KEY_MAP } from '@/config/commands';
 import { calculateCII, TIER1_COUNTRIES } from '@/services/country-instability';
 import { CURATED_COUNTRIES } from '@/config/countries';
 import { getCountryBbox } from '@/services/country-geometry';
-import { getCitySearchItems } from '@/services/city-geometry';
+import { getCityBoundary, getCitySearchItems } from '@/services/city-geometry';
 import { INTEL_HOTSPOTS, CONFLICT_ZONES, MILITARY_BASES, UNDERSEA_CABLES, NUCLEAR_FACILITIES } from '@/config/geo';
 import { PIPELINES } from '@/config/pipelines';
 import { AI_DATA_CENTERS } from '@/config/ai-datacenters';
@@ -458,7 +458,16 @@ export class SearchManager implements AppModule {
       case 'city': {
         const city = result.data as { city: string; lat: number; lng: number; country: string };
         this.ctx.map?.setView('global');
-        setTimeout(() => { this.ctx.map?.setCenter(city.lat, city.lng, 11); }, 300);
+        this.ctx.map?.clearCityHighlight?.();
+        const cityBoundary = getCityBoundary(city.city);
+        setTimeout(() => {
+          if (cityBoundary) {
+            this.ctx.map?.highlightCityBoundary?.(cityBoundary);
+            this.ctx.map?.fitCityBoundary?.(cityBoundary);
+          } else {
+            this.ctx.map?.setCenter(city.lat, city.lng, 11);
+          }
+        }, 300);
         break;
       }
       case 'flight': {

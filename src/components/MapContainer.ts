@@ -966,6 +966,24 @@ export class MapContainer {
     }
   }
 
+  public highlightCityBoundary(boundary: GeoJSON.FeatureCollection): void {
+    if (this.useDeckGL) {
+      this.deckGLMap?.highlightCityBoundary(boundary);
+    }
+  }
+
+  public fitCityBoundary(boundary: GeoJSON.FeatureCollection): void {
+    if (this.useDeckGL) {
+      this.deckGLMap?.fitCityBoundary(boundary);
+    }
+  }
+
+  public clearCityHighlight(): void {
+    if (this.useDeckGL) {
+      this.deckGLMap?.clearCityHighlight();
+    }
+  }
+
   public setRenderPaused(paused: boolean): void {
     if (this.useDeckGL) {
       this.deckGLMap?.setRenderPaused(paused);
