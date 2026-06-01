@@ -175,6 +175,12 @@ export const RESILIENCE_VISUAL_LEVEL_COLORS: Record<ResilienceVisualLevel, strin
   unknown: 'var(--text-faint)',
 };
 
+export const RESILIENCE_PILLAR_IDS = [
+  'structural-readiness',
+  'live-shock-exposure',
+  'recovery-capacity',
+] as const;
+
 const DOMAIN_LABELS: Record<string, string> = {
   economic: 'Economic',
   infrastructure: 'Infra & Supply',
@@ -185,12 +191,77 @@ const DOMAIN_LABELS: Record<string, string> = {
 };
 
 export function getResilienceVisualLevel(score: number): ResilienceVisualLevel {
-  if (!Number.isFinite(score)) return 'unknown';
+  if (!Number.isFinite(score) || score < 0) return 'unknown';
   if (score >= 80) return 'very_high';
   if (score >= 60) return 'high';
   if (score >= 40) return 'moderate';
   if (score >= 20) return 'low';
   return 'very_low';
+}
+
+export function formatResilienceVisualLevel(level: ResilienceVisualLevel): string {
+  if (level === 'unknown') return 'Insufficient data';
+  return level.replace(/_/g, ' ');
+}
+
+export function formatResilienceServerLevel(level: string | null | undefined): string {
+  const normalized = String(level || '').trim().toLowerCase();
+  return normalized.length > 0 ? normalized.replace(/_/g, ' ') : 'unknown';
+}
+
+export interface ResilienceOverallDisplay {
+  hasScore: boolean;
+  scoreForBar: number;
+  scoreLabel: string;
+  visualLevel: ResilienceVisualLevel;
+  visualLevelLabel: string;
+  serverLevelLabel: string;
+}
+
+export function getResilienceOverallDisplay(data: Pick<ResilienceScoreResponse, 'overallScore' | 'level'>): ResilienceOverallDisplay {
+  const rawScore = Number(data.overallScore);
+  const visualLevel = getResilienceVisualLevel(rawScore);
+  if (visualLevel === 'unknown') {
+    return {
+      hasScore: false,
+      scoreForBar: 0,
+      scoreLabel: 'n/a',
+      visualLevel,
+      visualLevelLabel: 'Insufficient data',
+      serverLevelLabel: `API level: ${formatResilienceServerLevel(data.level)}`,
+    };
+  }
+
+  const clampedScore = Math.min(100, Math.max(0, rawScore));
+  return {
+    hasScore: true,
+    scoreForBar: clampedScore,
+    scoreLabel: String(Math.round(clampedScore)),
+    visualLevel,
+    visualLevelLabel: `Visual band: ${formatResilienceVisualLevel(visualLevel).toUpperCase()}`,
+    serverLevelLabel: `API level: ${formatResilienceServerLevel(data.level)}`,
+  };
+}
+
+export interface ResilienceMethodologySummary {
+  activeDimensionCount: number;
+  serializedDimensionCount: number;
+  domainCount: number;
+  pillarCount: number;
+}
+
+export function getResilienceMethodologySummary(data: ResilienceScoreResponse = LOCKED_PREVIEW): ResilienceMethodologySummary {
+  const dimensions = data.domains.flatMap((domain) => domain.dimensions);
+  return {
+    activeDimensionCount: dimensions.filter((dimension) => !RESILIENCE_RETIRED_DIMENSION_IDS.has(dimension.id)).length,
+    serializedDimensionCount: dimensions.length,
+    domainCount: data.domains.length,
+    pillarCount: data.pillars.length > 0 ? data.pillars.length : RESILIENCE_PILLAR_IDS.length,
+  };
+}
+
+export function formatResilienceMethodologyHelpTitle(summary = getResilienceMethodologySummary()): string {
+  return `Composite resilience score from ${summary.activeDimensionCount} active dimensions across ${summary.domainCount} domains (economic, infrastructure, energy, social & governance, health & food, recovery). The current methodology groups scores into ${summary.pillarCount} pillars (structural readiness, live shock exposure, recovery capacity); pillar detail appears when the API response includes it. Weights sum to 1.00; recovery carries the largest single-domain weight (0.25).`;
 }
 
 export function getResilienceTrendArrow(trend: string): string {

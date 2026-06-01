@@ -12,10 +12,12 @@ import {
   RESILIENCE_VISUAL_LEVEL_COLORS,
   collectDimensionConfidences,
   formatBaselineStress,
+  formatResilienceMethodologyHelpTitle,
   formatResilienceChange30d,
   formatResilienceConfidence,
   formatResilienceDataVersion,
   formatResilienceScoreInterval,
+  getResilienceOverallDisplay,
   getImputationClassIcon,
   getImputationClassLabel,
   getResilienceDomainLabel,
@@ -152,7 +154,7 @@ export class ResilienceWidget {
           'span',
           {
             className: 'resilience-widget__help',
-            title: 'Composite resilience score from 20 dimensions across 6 domains (economic, infrastructure, energy, social & governance, health & food, recovery), grouped into 3 pillars (structural readiness, live shock exposure, recovery capacity). Weights sum to 1.00; recovery carries the largest single-domain weight (0.25).',
+            title: formatResilienceMethodologyHelpTitle(),
             'aria-label': 'Resilience score methodology',
           },
           '?',
@@ -238,10 +240,9 @@ export class ResilienceWidget {
   }
 
   private renderScoreCard(data: ResilienceScoreResponse, preview = false): HTMLElement {
-    const visualLevel = getResilienceVisualLevel(data.overallScore);
-    const levelLabel = visualLevel.replace('_', ' ').toUpperCase();
-    const levelColor = RESILIENCE_VISUAL_LEVEL_COLORS[visualLevel];
-    const scoreInterval = formatResilienceScoreInterval(data.scoreInterval);
+    const overallDisplay = getResilienceOverallDisplay(data);
+    const levelColor = RESILIENCE_VISUAL_LEVEL_COLORS[overallDisplay.visualLevel];
+    const scoreInterval = overallDisplay.hasScore ? formatResilienceScoreInterval(data.scoreInterval) : null;
 
     return h(
       'div',
@@ -250,20 +251,30 @@ export class ResilienceWidget {
         'div',
         { className: 'resilience-widget__overall' },
         this.renderBarBlock(
-          clampScore(data.overallScore),
+          overallDisplay.scoreForBar,
           levelColor,
           h(
             'div',
             { className: 'resilience-widget__overall-meta' },
-            h('span', { className: 'resilience-widget__overall-score' }, String(Math.round(clampScore(data.overallScore)))),
+            h('span', { className: 'resilience-widget__overall-score' }, overallDisplay.scoreLabel),
             ...(scoreInterval
               ? [h('span', {
                   className: 'resilience-widget__overall-interval',
                   title: scoreInterval.title,
                 }, scoreInterval.label)]
               : []),
-            h('span', { className: 'resilience-widget__overall-level', style: { color: levelColor } }, levelLabel),
-            h('span', { className: 'resilience-widget__overall-trend' }, `${getResilienceTrendArrow(data.trend)} ${data.trend}`),
+            h(
+              'span',
+              {
+                className: 'resilience-widget__overall-level',
+                style: { color: levelColor },
+                title: overallDisplay.serverLevelLabel,
+              },
+              overallDisplay.visualLevelLabel,
+            ),
+            ...(overallDisplay.hasScore
+              ? [h('span', { className: 'resilience-widget__overall-trend' }, `${getResilienceTrendArrow(data.trend)} ${data.trend}`)]
+              : []),
           ),
         ),
       ),

@@ -6,12 +6,15 @@ import {
   collectDimensionConfidences,
   formatBaselineStress,
   formatDimensionConfidence,
+  formatResilienceMethodologyHelpTitle,
   formatResilienceChange30d,
   formatResilienceConfidence,
   formatResilienceDataVersion,
   formatResilienceScoreInterval,
   getImputationClassIcon,
   getImputationClassLabel,
+  getResilienceMethodologySummary,
+  getResilienceOverallDisplay,
   getResilienceDimensionLabel,
   getResilienceDomainLabel,
   getResilienceTrendArrow,
@@ -47,6 +50,55 @@ test('getResilienceVisualLevel maps the score thresholds from the widget spec', 
   assert.equal(getResilienceVisualLevel(20), 'low');
   assert.equal(getResilienceVisualLevel(19), 'very_low');
   assert.equal(getResilienceVisualLevel(Number.NaN), 'unknown');
+  assert.equal(getResilienceVisualLevel(-1), 'unknown');
+});
+
+test('getResilienceOverallDisplay treats negative and non-finite scores as insufficient data', () => {
+  assert.deepEqual(getResilienceOverallDisplay({ overallScore: -1, level: 'unknown' }), {
+    hasScore: false,
+    scoreForBar: 0,
+    scoreLabel: 'n/a',
+    visualLevel: 'unknown',
+    visualLevelLabel: 'Insufficient data',
+    serverLevelLabel: 'API level: unknown',
+  });
+  assert.deepEqual(getResilienceOverallDisplay({ overallScore: Number.NaN, level: 'low' }), {
+    hasScore: false,
+    scoreForBar: 0,
+    scoreLabel: 'n/a',
+    visualLevel: 'unknown',
+    visualLevelLabel: 'Insufficient data',
+    serverLevelLabel: 'API level: low',
+  });
+});
+
+test('getResilienceOverallDisplay separates visual band from API level', () => {
+  assert.deepEqual(getResilienceOverallDisplay({ overallScore: 61.2, level: 'medium' }), {
+    hasScore: true,
+    scoreForBar: 61.2,
+    scoreLabel: '61',
+    visualLevel: 'high',
+    visualLevelLabel: 'Visual band: HIGH',
+    serverLevelLabel: 'API level: medium',
+  });
+});
+
+test('resilience methodology help copy derives current counts from the preview fixture', async () => {
+  const { RESILIENCE_DIMENSION_ORDER, RESILIENCE_RETIRED_DIMENSIONS, RESILIENCE_DOMAIN_ORDER } = await import('../server/worldmonitor/resilience/v1/_dimension-scorers.ts');
+  const { PILLAR_ORDER } = await import('../server/worldmonitor/resilience/v1/_pillar-membership.ts');
+  const summary = getResilienceMethodologySummary();
+  assert.deepEqual(summary, {
+    activeDimensionCount: RESILIENCE_DIMENSION_ORDER.length - RESILIENCE_RETIRED_DIMENSIONS.size,
+    serializedDimensionCount: RESILIENCE_DIMENSION_ORDER.length,
+    domainCount: RESILIENCE_DOMAIN_ORDER.length,
+    pillarCount: PILLAR_ORDER.length,
+  });
+
+  const title = formatResilienceMethodologyHelpTitle(summary);
+  assert.match(title, new RegExp(`${summary.activeDimensionCount} active dimensions`));
+  assert.match(title, new RegExp(`${summary.domainCount} domains`));
+  assert.match(title, new RegExp(`${summary.pillarCount} pillars`));
+  assert.match(title, /pillar detail appears when the API response includes it/i);
 });
 
 test('getResilienceTrendArrow renders the expected glyphs', () => {

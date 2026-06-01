@@ -1,5 +1,6 @@
 import type { ResilienceRankingItem } from '@/services/resilience';
 import type { MapLayers } from '@/types';
+import { getResilienceVisualLevel } from './resilience-widget-utils';
 
 export type ResilienceChoroplethLevel = 'very_low' | 'low' | 'moderate' | 'high' | 'very_high' | 'insufficient_data';
 
@@ -24,11 +25,8 @@ function clampScore(score: number): number {
 }
 
 export function getResilienceChoroplethLevel(score: number): ResilienceChoroplethLevel {
-  if (score >= 80) return 'very_high';
-  if (score >= 60) return 'high';
-  if (score >= 40) return 'moderate';
-  if (score >= 20) return 'low';
-  return 'very_low';
+  const visualLevel = getResilienceVisualLevel(score);
+  return visualLevel === 'unknown' ? 'insufficient_data' : visualLevel;
 }
 
 export function formatResilienceChoroplethLevel(level: ResilienceChoroplethLevel): string {
