@@ -245,6 +245,7 @@ export function getResilienceOverallDisplay(data: Pick<ResilienceScoreResponse, 
 
 export interface ResilienceMethodologySummary {
   activeDimensionCount: number;
+  // Kept for server/fixture parity tests; tooltip copy intentionally shows active dimensions only.
   serializedDimensionCount: number;
   domainCount: number;
   pillarCount: number;

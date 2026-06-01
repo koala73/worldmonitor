@@ -32,6 +32,7 @@ import type { CountryEnergyProfileData } from './CountryBriefPanel';
 // full ResilienceWidget class transitive graph (the class indirectly
 // depends on import.meta.env.DEV via proxy.ts, which breaks plain
 // node test runners). Moved in the PR #2949 review round.
+const METHODOLOGY_HELP_TITLE = formatResilienceMethodologyHelpTitle();
 
 function normalizeCountryCode(countryCode: string | null | undefined): string | null {
   const normalized = String(countryCode || '').trim().toUpperCase();
@@ -154,7 +155,7 @@ export class ResilienceWidget {
           'span',
           {
             className: 'resilience-widget__help',
-            title: formatResilienceMethodologyHelpTitle(),
+            title: METHODOLOGY_HELP_TITLE,
             'aria-label': 'Resilience score methodology',
           },
           '?',
