@@ -1,6 +1,7 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { sparkline } from '@/utils/sparkline';
 import {
   fetchConsumerPriceOverview,
@@ -207,17 +208,18 @@ export class ConsumerPricesPanel extends Panel {
 
   private handleInput(e: Event): void {
     const target = e.target as HTMLElement;
-    if (target instanceof HTMLInputElement && target.dataset.inflationFilter !== undefined) {
-      this.inflationFilter = target.value;
-      this.render();
-      // Re-rendering replaces the input node, so restore focus + caret.
-      const input = this.content.querySelector<HTMLInputElement>('[data-inflation-filter]');
-      if (input) {
-        input.focus();
-        const end = input.value.length;
-        input.setSelectionRange(end, end);
-      }
+    if (!(target instanceof HTMLInputElement) || target.dataset.inflationFilter === undefined) return;
+    this.inflationFilter = target.value;
+    // Patch only the rows + count in place — the live <input> node stays
+    // mounted, so its focus and caret survive without a full-panel rebuild.
+    if (this.globalInflation === null || this.globalInflation.length === 0) return;
+    const visible = this.visibleInflationRows();
+    const tbody = this.content.querySelector('.cp-world-table tbody');
+    if (tbody) {
+      setTrustedHtml(tbody, trustedHtml(this.inflationTbodyHtml(visible), 'escaped IMF inflation rows'));
     }
+    const count = this.content.querySelector('.cp-world-count');
+    if (count) count.textContent = this.inflationCountText(visible);
   }
 
   private async loadGlobalInflation(): Promise<void> {
@@ -269,8 +271,6 @@ export class ConsumerPricesPanel extends Panel {
   }
 
   private render(): void {
-    const { tab, range, categoryFilter, market } = this.settings;
-
     const allTabs: Array<{ id: TabId; label: string }> = [
       { id: 'overview', label: t('components.consumerPrices.tabs.overview') },
       { id: 'categories', label: t('components.consumerPrices.tabs.categories') },
@@ -281,9 +281,15 @@ export class ConsumerPricesPanel extends Panel {
     ];
     // Categories/Movers/Spread/Health need a single market; the all-markets
     // view only carries the two global tabs (basket Overview + World inflation).
-    const tabs = market === 'all'
+    const tabs = this.settings.market === 'all'
       ? allTabs.filter((tb) => tb.id === 'overview' || tb.id === 'world')
       : allTabs;
+    // Snap a stale/out-of-range active tab back to Overview (e.g. persisted
+    // settings landing on a per-market tab while in the all-markets view) so
+    // the tab bar never renders with nothing highlighted.
+    if (!tabs.some((tb) => tb.id === this.settings.tab)) this.settings.tab = 'overview';
+
+    const { tab, range, categoryFilter, market } = this.settings;
 
     const tabsHtml = `
       <div class="panel-tabs">
@@ -422,27 +428,29 @@ export class ConsumerPricesPanel extends Panel {
     `;
   }
 
-  private renderWorldInflation(): string {
-    if (this.globalInflation === null) {
-      if (!this.inflationLoading) void this.loadGlobalInflation();
-      return `<div class="cp-empty-state">${escapeHtml(t('components.consumerPrices.world.loading'))}</div>`;
-    }
-    if (this.globalInflation.length === 0) {
-      return this.renderEmptyState(t('components.consumerPrices.world.empty'));
-    }
-
+  // Rows currently matching the country filter. Caller guarantees
+  // globalInflation is a non-empty array.
+  private visibleInflationRows(): CountryInflationRow[] {
+    const rows = this.globalInflation ?? [];
     const filter = this.inflationFilter.trim().toLowerCase();
-    const visible = filter
-      ? this.globalInflation.filter(
-          (r) => r.name.toLowerCase().includes(filter) || r.iso2.toLowerCase().includes(filter),
-        )
-      : this.globalInflation;
+    if (!filter) return rows;
+    return rows.filter(
+      (r) => r.name.toLowerCase().includes(filter) || r.iso2.toLowerCase().includes(filter),
+    );
+  }
 
-    const countLabel = visible.length === 1
+  private inflationCountText(visible: CountryInflationRow[]): string {
+    const label = visible.length === 1
       ? t('components.consumerPrices.world.countSingular')
       : t('components.consumerPrices.world.countPlural');
+    return `${visible.length} ${label}`;
+  }
 
-    const bodyRows = visible.map((r) => {
+  private inflationTbodyHtml(visible: CountryInflationRow[]): string {
+    if (visible.length === 0) {
+      return `<tr><td colspan="4" class="cp-global-pending">${escapeHtml(t('components.consumerPrices.world.noMatches'))}</td></tr>`;
+    }
+    return visible.map((r) => {
       const cls = inflationSeverityClass(r.inflationPct);
       return `
         <tr class="cp-global-row">
@@ -452,13 +460,25 @@ export class ConsumerPricesPanel extends Panel {
           <td class="cp-infl-year">${r.year ?? '—'}</td>
         </tr>`;
     }).join('');
+  }
+
+  private renderWorldInflation(): string {
+    if (this.globalInflation === null) {
+      if (!this.inflationLoading) void this.loadGlobalInflation();
+      return `<div class="cp-empty-state">${escapeHtml(t('components.consumerPrices.world.loading'))}</div>`;
+    }
+    if (this.globalInflation.length === 0) {
+      return this.renderEmptyState(t('components.consumerPrices.world.empty'));
+    }
+
+    const visible = this.visibleInflationRows();
 
     return `
       <div class="cp-world-controls">
         <input type="search" class="cp-world-filter" data-inflation-filter
           placeholder="${escapeHtml(t('components.consumerPrices.world.filterPlaceholder'))}"
           value="${escapeHtml(this.inflationFilter)}" />
-        <span class="cp-world-count">${visible.length} ${escapeHtml(countLabel)}</span>
+        <span class="cp-world-count">${escapeHtml(this.inflationCountText(visible))}</span>
       </div>
       <table class="cp-global-table cp-world-table">
         <thead>
@@ -469,7 +489,7 @@ export class ConsumerPricesPanel extends Panel {
             <th>${escapeHtml(t('components.consumerPrices.world.year'))}</th>
           </tr>
         </thead>
-        <tbody>${bodyRows || `<tr><td colspan="4" class="cp-global-pending">${escapeHtml(t('components.consumerPrices.world.noMatches'))}</td></tr>`}</tbody>
+        <tbody>${this.inflationTbodyHtml(visible)}</tbody>
       </table>
       <div class="cp-global-hint">${escapeHtml(t('components.consumerPrices.world.source'))}</div>
     `;

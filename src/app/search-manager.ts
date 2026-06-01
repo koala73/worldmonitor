@@ -542,6 +542,7 @@ export class SearchManager implements AppModule {
         // An optional `@<tab>` suffix deep-links to a specific tab within the
         // panel (e.g. `consumer-prices@world` → global inflation view).
         const [panelId, subTab] = action.split('@');
+        if (!panelId) break;
         const cfg = this.ctx.panelSettings[panelId];
         if (cfg && !cfg.enabled) {
           if (this.callbacks.enablePanel(panelId)) {

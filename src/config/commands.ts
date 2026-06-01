@@ -176,8 +176,10 @@ export const COMMANDS: Command[] = [
   { id: 'panel:security', keywords: ['cybersecurity', 'security news', 'hacking', 'breaches', 'vulnerabilities'], label: 'Panel: Cybersecurity', icon: '\u{1F512}', category: 'panels' },
 
   // Economic / price panels
-  { id: 'panel:consumer-prices', keywords: ['consumer prices', 'cpi', 'inflation', 'cost of living', 'global inflation', 'country inflation'], label: 'Panel: Consumer Prices', icon: '\u{1F6D2}', category: 'panels' },
+  { id: 'panel:consumer-prices', keywords: ['consumer prices', 'cpi', 'inflation', 'cost of living'], label: 'Panel: Consumer Prices', icon: '\u{1F6D2}', category: 'panels' },
   // Deep-links to the World tab (IMF official inflation, all countries). The
+  // `global inflation` / `country inflation` queries route here (not the base
+  // command) so a single, unambiguous CMD+K result lands on the World tab. The
   // `@world` suffix is parsed by search-manager's panel handler — the contract
   // guardrail's `panel:<id>'` parser ignores it, so panel parity stays intact.
   { id: 'panel:consumer-prices@world', keywords: ['global inflation', 'inflation by country', 'country inflation', 'inflation ranking', 'world inflation', 'imf inflation', 'highest inflation', 'cpi by country'], label: 'Panel: Global Inflation (by country)', icon: '\u{1F4C8}', category: 'panels' },
