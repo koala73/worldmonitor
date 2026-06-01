@@ -606,8 +606,8 @@ The CRI is designed to be auditable end-to-end: given the Redis snapshot at any 
 
 | Key | Type | TTL | Written by | Read by |
 |---|---|---|---|---|
-| `resilience:score:v19:{countryCode}` | JSON | 6 hours | `buildResilienceScore` in `server/worldmonitor/resilience/v1/_shared.ts` | `getResilienceScore` handler |
-| `resilience:ranking:v19` | JSON | 12 hours | `getResilienceRanking` warm path, only when at least 75% of countries are scored (`RANKING_CACHE_MIN_COVERAGE = 0.75`) | `getResilienceRanking` handler |
+| `resilience:score:v20:{countryCode}` | JSON | 6 hours | `buildResilienceScore` in `server/worldmonitor/resilience/v1/_shared.ts` | `getResilienceScore` handler |
+| `resilience:ranking:v20` | JSON | 12 hours | `getResilienceRanking` warm path, only when at least 75% of countries are scored (`RANKING_CACHE_MIN_COVERAGE = 0.75`) | `getResilienceRanking` handler |
 | `resilience:history:v14:{countryCode}` | sorted set | indefinite, trimmed to 30 days | `appendHistory` during scoring | trend and `change30d` computation |
 | `resilience:intervals:v3:{countryCode}` | JSON | 7 days; freshness monitored via `seed-meta`/health cadence | `scripts/seed-resilience-scores.mjs` and `scripts/seed-resilience-intervals.mjs` | `getResilienceScore` (optional `scoreInterval` field) and `getResilienceRanking` (`rankStable`) |
 | `seed-meta:resilience:static` | JSON | 2 hours | `scripts/seed-resilience-static.mjs` at the end of each successful seed run | scorer for `dataVersion` population, health checks |
@@ -669,6 +669,8 @@ The fix ships with a cache-prefix bump (`v17` → `v18` for both `resilience:sco
 Expected impact at next ranking refresh (within the 6h cache TTL after deploy): AE `liquidReserveAdequacy` ≈ 38 → ≈ 64 (a +26-point dim swing); PA similar magnitude. Trend metric will show a one-time step at deploy time for these two countries; this is the corrected baseline going forward.
 
 **v17.2 — `cyberDigital` per-snapshot burst cap (#3971).** The scorer caps each country's total severity-weighted cyber-threat count at 8 per snapshot before applying the existing `normalizeLowerBetter(weightedCount, 0, 25)` transform, so a same-day spike in `cyber:threats:v2` can no longer saturate the cyber sub-component to 0 and swing a country 5+ rank positions. This is deliberately a **per-snapshot** cap, **not** multi-day smoothing: the live feed stamps `lastSeenAt` at ~fetch time and never populates `firstSeenAt` (verified live, 2026-06-01: 0/958 records carry a non-zero `firstSeenAt`, and every country's `lastSeenAt` resolves to a single day), so the feed exposes no cross-day spread for the scorer to average over. Distinguishing a transient burst from sustained multi-day pressure would require cross-snapshot state (see the `cyberDigital` caveat below) and is not claimed here. The fix ships with a cache-prefix bump (`v18` → `v19` for both `resilience:score:` and `resilience:ranking:`, plus `v13` → `v14` for `resilience:history:`) so cached uncapped scores and 30-day trend points do not mix with capped scores.
+
+**v17.3 — stale observed data derates confidence coverage (P1-3).** Freshness is no longer observability-only for confidence semantics: observed dimensions marked `aging` or `stale` reduce confidence coverage for `lowConfidence`, `overallCoverage`, and headline eligibility, while the score aggregation weights remain unchanged. The fix ships with a score/ranking cache-prefix bump (`v19` → `v20`) so cached `overallCoverage` and `headlineEligible` values cannot mix pre-fix full-confidence stale observations with post-fix derated confidence coverage.
 
 **Open construct gaps and operational caveats (documented honestly, not silently deferred):**
 
@@ -765,7 +767,7 @@ The plan's non-compensatory pillar combine is the methodologically stronger form
 4. **Re-anchored release-gate bands**: `tests/resilience-pillar-combine-activation.test.mts` pins high-band anchors (NO, CH, DK) at ≥ 55 (vs the 6-domain formula's ≥ 70 floor) and low-band anchors (YE, SO) at ≤ 40 (vs ≤ 45). The snapshot test reads `methodologyFormula` from each snapshot and applies the matching bands. The live full-universe capture confirms the bands hold with margin: NO = 75.40 (≥ 55 by 20.4 points), YE = 29.51 (≤ 40 by 10.49 points).
 5. **Projected and authoritative snapshots**: `docs/snapshots/resilience-ranking-pillar-combined-projected-2026-04-21.json` carries the 52-country preview tables used before activation. `docs/snapshots/resilience-ranking-2026-05-28.json` carries the authoritative full-universe live capture after the flag was activated.
 
-Rollback: set `RESILIENCE_PILLAR_COMBINE_ENABLED=false`, flush the current `resilience:score:v19:*`, `resilience:ranking:v19`, and `resilience:history:v14:*` keys (or wait for TTLs to expire). The 6-domain formula lives alongside the pillar combine in `_shared.ts` and needs no code change to come back.
+Rollback: set `RESILIENCE_PILLAR_COMBINE_ENABLED=false`, flush the current `resilience:score:v20:*`, `resilience:ranking:v20`, and `resilience:history:v14:*` keys (or wait for TTLs to expire). The 6-domain formula lives alongside the pillar combine in `_shared.ts` and needs no code change to come back.
 
 ### Scorecard (v2.0 self-assessment)
 

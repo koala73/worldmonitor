@@ -27,8 +27,8 @@ loadEnvFile(import.meta.url);
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const VALIDATION_DIR = join(__dirname, '..', 'docs', 'methodology', 'country-resilience-index', 'validation');
 
-const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v19:';
-const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v19';
+const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v20:';
+const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v20';
 
 // Mirror of _shared.ts#currentCacheFormula. Must stay in lockstep; see
 // the same comment in scripts/validate-resilience-correlation.mjs for

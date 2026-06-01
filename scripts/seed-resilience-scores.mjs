@@ -45,8 +45,11 @@ const SEED_UA = 'Mozilla/5.0 (compatible; WorldMonitor-Seed/1.0)';
 // v18 → v19 for issue #3971: cyberDigital caps per-snapshot cyber-feed
 // severity weight, so seeder-written scores and rankings must agree with
 // server readers.
-export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v19:';
-export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v19';
+// v19 → v20 for country-resilience audit P1-3: stale observed data now
+// derates confidence coverage and headline eligibility, so seeder-written
+// payloads must not share keys with pre-derate confidence metadata.
+export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v20:';
+export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v20';
 // Must match the server-side RESILIENCE_RANKING_CACHE_TTL_SECONDS. Extended
 // to 12h (2x the cron interval) so a missed/slow cron can't create an
 // EMPTY_ON_DEMAND gap before the next successful rebuild.

@@ -6,7 +6,7 @@
 // someone bumps a cache prefix, adds/removes a dimension, or changes
 // a domain weight without updating the doc in lockstep — the
 // alternative is finding out from a Pro user that the doc says v17
-// when production runs v19.
+// when production runs v20.
 //
 // Coverage is intentionally surgical: we don't try to parse every
 // table in the doc (markdownlint already handles structural drift,

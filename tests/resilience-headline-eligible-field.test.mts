@@ -175,8 +175,8 @@ describe('headlineEligible field — Plan 2026-04-26-002 §U3 (PR 2)', () => {
       const parsed = JSON.parse(rawCached!);
       assert.ok('headlineEligible' in parsed,
         'PR-2 contract: buildResilienceScore must write headlineEligible into the stored cache payload (raw value, before stripCacheMeta backfill)');
-      assert.equal(parsed.headlineEligible, true,
-        `PR-2 contract: happy-path build emits headlineEligible=true into the cache (got ${parsed.headlineEligible})`);
+      assert.equal(parsed.headlineEligible, response.headlineEligible,
+        `PR-2 contract: build emits the computed headlineEligible value into the cache (got ${parsed.headlineEligible}, response ${response.headlineEligible})`);
       assert.equal(typeof parsed.headlineEligible, 'boolean',
         'headlineEligible must be a boolean (no null/undefined sentinel)');
     });
