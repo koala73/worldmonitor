@@ -9,9 +9,9 @@
   },
   "scorer": {
     "schemaVersion": "2.0",
-    "scoreCachePrefix": "resilience:score:v18:",
-    "rankingCacheKey": "resilience:ranking:v18",
-    "historyKeyPrefix": "resilience:history:v13:",
+    "scoreCachePrefix": "resilience:score:v19:",
+    "rankingCacheKey": "resilience:ranking:v19",
+    "historyKeyPrefix": "resilience:history:v14:",
     "envFlags": {
       "RESILIENCE_SCHEMA_V2_ENABLED": true,
       "RESILIENCE_PILLAR_COMBINE_ENABLED": true
@@ -46,7 +46,7 @@
     "pillarScore": 0.02
   },
   "published": {
-    "source": "resilience:score:v18:{countryCode}",
+    "source": "resilience:score:v19:{countryCode}",
     "countries": {
       "NO": {
         "countryCode": "NO",
@@ -2071,7 +2071,7 @@
     }
   },
   "productionScoreCacheAtCapture": {
-    "source": "resilience:score:v18:{countryCode}",
+    "source": "resilience:score:v19:{countryCode}",
     "countries": {
       "NO": {
         "countryCode": "NO",

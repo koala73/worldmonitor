@@ -30,6 +30,7 @@ import {
   scoreSocialCohesion,
   scoreStateContinuity,
   scoreTradePolicy,
+  summarizeCyber,
 } from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
 import { RESILIENCE_FIXTURES, fixtureReader } from './helpers/resilience-fixtures.mts';
 
@@ -47,6 +48,15 @@ async function scoreTriple(
 function assertOrdered(label: string, no: number, us: number, ye: number) {
   assert.ok(no >= us, `${label}: expected NO (${no}) >= US (${us})`);
   assert.ok(us > ye, `${label}: expected US (${us}) > YE (${ye})`);
+}
+
+function cyberOnlyReader(threats: unknown[]): ResilienceSeedReader {
+  return async (key: string): Promise<unknown | null> => {
+    if (key === 'cyber:threats:v2') return { threats };
+    if (key === 'infra:outages:v1') return { outages: [] };
+    if (key === 'intelligence:gpsjam:v2') return { hexes: [] };
+    return null;
+  };
 }
 
 // Plan 2026-04-25-004 Phase 1 (Ship 1): tradePolicy formula now weights
@@ -455,6 +465,72 @@ describe('resilience dimension scorers', () => {
     assert.ok(score.score > 0, `country with real threats must have score > 0, got ${score.score}`);
     assert.ok(score.score < 100, `country with real threats must have score < 100, got ${score.score}`);
     assert.ok(score.coverage > 0, `coverage should be > 0 with real data, got ${score.coverage}`);
+  });
+
+  it('summarizeCyber: caps same-day and undated threat buckets', () => {
+    const datedBurst = Array.from({ length: 10 }, () => ({
+      country: 'Finland',
+      severity: 'CRITICALITY_LEVEL_CRITICAL',
+      lastSeenAt: '2026-05-01T12:00:00.000Z',
+    }));
+    const undatedBurst = Array.from({ length: 10 }, () => ({
+      country: 'Finland',
+      severity: 'CRITICALITY_LEVEL_HIGH',
+    }));
+
+    assert.equal(
+      summarizeCyber({ threats: [...datedBurst, ...undatedBurst] }, 'FI').weightedCount,
+      16,
+      'one dated burst and one undated burst should each be capped at weight 8',
+    );
+  });
+
+  it('summarizeCyber: falls back to firstSeenAt when lastSeenAt is the zero sentinel', () => {
+    const threats = ['2026-05-01', '2026-05-02'].flatMap((day) => (
+      Array.from({ length: 4 }, () => ({
+        country: 'Finland',
+        severity: 'CRITICALITY_LEVEL_CRITICAL',
+        firstSeenAt: `${day}T12:00:00.000Z`,
+        lastSeenAt: 0,
+      }))
+    ));
+
+    assert.equal(
+      summarizeCyber({ threats }, 'FI').weightedCount,
+      16,
+      'lastSeenAt=0 must not collapse valid firstSeenAt days into the undated cap',
+    );
+  });
+
+  it('scoreCyberDigital: single-day cyber burst has a bounded score delta', async () => {
+    const mild = await scoreCyberDigital('FI', cyberOnlyReader([
+      { country: 'Finland', severity: 'CRITICALITY_LEVEL_CRITICAL', lastSeenAt: '2026-05-01T12:00:00.000Z' },
+    ]));
+    const burst = await scoreCyberDigital('FI', cyberOnlyReader(
+      Array.from({ length: 20 }, () => ({
+        country: 'Finland',
+        severity: 'CRITICALITY_LEVEL_CRITICAL',
+        lastSeenAt: '2026-05-01T12:00:00.000Z',
+      })),
+    ));
+
+    assert.ok(burst.score > 0, `single-day burst must not collapse cyberDigital to zero, got ${burst.score}`);
+    assert.ok(
+      mild.score - burst.score <= 25,
+      `single-day burst delta must stay bounded: mild=${mild.score}, burst=${burst.score}`,
+    );
+  });
+
+  it('scoreCyberDigital: sustained multi-day cyber pressure still accumulates', async () => {
+    const sustainedThreats = ['2026-05-01', '2026-05-02', '2026-05-03', '2026-05-04']
+      .flatMap((day) => Array.from({ length: 4 }, () => ({
+        country: 'Finland',
+        severity: 'CRITICALITY_LEVEL_CRITICAL',
+        lastSeenAt: `${day}T12:00:00.000Z`,
+      })));
+
+    const score = await scoreCyberDigital('FI', cyberOnlyReader(sustainedThreats));
+    assert.ok(score.score <= 5, `multi-day sustained pressure should still materially reduce score, got ${score.score}`);
   });
 
   it('scoreCyberDigital: feed outage (null source) returns score=0 and zero coverage', async () => {
