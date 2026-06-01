@@ -43,7 +43,7 @@ GET https://api.worldmonitor.app/api/resilience/v1/get-resilience-score
   "imputationShare": 0.04,
   "baselineScore": 79.1,
   "stressScore": 78.4,
-  "stressFactor": 0.99,
+  "stressFactor": 0.216,
   "dataVersion": "2026-04-23",
   "scoreInterval": { "p05": 76.1, "p95": 80.7 },
   "schemaVersion": "2.0",

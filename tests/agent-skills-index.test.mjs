@@ -32,6 +32,13 @@ function assertType(value, type, fieldName) {
   assert.equal(typeof value, type, `${fieldName} must be a ${type}`);
 }
 
+function assertInRange(value, min, max, fieldName) {
+  assert.ok(
+    value >= min && value <= max,
+    `${fieldName} must be between ${min} and ${max}; received ${value}`,
+  );
+}
+
 // Guards for the Agent Skills discovery manifest (#3310 / epic #3306).
 // Agents trust the index.json sha256 fields; if they drift from the
 // served SKILL.md bytes, every downstream verification check fails.
@@ -131,6 +138,11 @@ describe('agent readiness: agent-skills index', () => {
     assert.ok(['low', 'medium', 'high'].includes(example.level), `unexpected level ${example.level}`);
     assert.ok(['rising', 'stable', 'falling'].includes(example.trend), `unexpected trend ${example.trend}`);
     assert.equal(example.schemaVersion, '2.0');
+    assertInRange(example.overallScore, 0, 100, 'overallScore');
+    assertInRange(example.baselineScore, 0, 100, 'baselineScore');
+    assertInRange(example.stressScore, 0, 100, 'stressScore');
+    assertInRange(example.stressFactor, 0, 0.5, 'stressFactor');
+    assertInRange(example.imputationShare, 0, 1, 'imputationShare');
 
     for (const domain of example.domains) {
       assertType(domain.id, 'string', 'domain.id');
@@ -138,6 +150,8 @@ describe('agent readiness: agent-skills index', () => {
       assertType(domain.weight, 'number', `domain ${domain.id}.weight`);
       assert.ok(Array.isArray(domain.dimensions), `domain ${domain.id}.dimensions must be an array`);
       assert.ok(domainIds.includes(domain.id), `example domain id ${domain.id} must be current`);
+      assertInRange(domain.score, 0, 100, `domain ${domain.id}.score`);
+      assertInRange(domain.weight, 0, 1, `domain ${domain.id}.weight`);
     }
     for (const pillar of example.pillars) {
       assertType(pillar.id, 'string', 'pillar.id');
@@ -146,6 +160,9 @@ describe('agent readiness: agent-skills index', () => {
       assertType(pillar.coverage, 'number', `pillar ${pillar.id}.coverage`);
       assert.ok(Array.isArray(pillar.domains), `pillar ${pillar.id}.domains must be an array`);
       assert.ok(pillarIds.includes(pillar.id), `example pillar id ${pillar.id} must be current`);
+      assertInRange(pillar.score, 0, 100, `pillar ${pillar.id}.score`);
+      assertInRange(pillar.weight, 0, 1, `pillar ${pillar.id}.weight`);
+      assertInRange(pillar.coverage, 0, 1, `pillar ${pillar.id}.coverage`);
     }
 
     assert.match(skill, /updated every 6 hours/);
