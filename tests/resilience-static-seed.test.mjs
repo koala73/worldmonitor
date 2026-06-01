@@ -482,6 +482,59 @@ describe('resilience static seed parsers', () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  it('fails energy dependency when Eurostat parses below the EU floor even if World Bank has data', async () => {
+    const collapsedEurostatPayload = {
+      id: ['freq', 'siec', 'unit', 'geo', 'time'],
+      size: [1, 1, 1, 1, 1],
+      dimension: {
+        freq: { category: { index: { A: 0 } } },
+        siec: { category: { index: { TOTAL: 0 } } },
+        unit: { category: { index: { PC: 0 } } },
+        geo: { category: { index: { DE: 0 } } },
+        time: { category: { index: { 2024: 0 } } },
+      },
+      value: { 0: 63.2 },
+    };
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      const href = String(url);
+      if (href.includes('ec.europa.eu/eurostat/')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => collapsedEurostatPayload,
+        };
+      }
+      if (href.includes('api.worldbank.org/')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [
+            { pages: 1 },
+            [
+              {
+                country: { id: 'FR', value: 'France' },
+                countryiso3code: 'FRA',
+                date: '2024',
+                value: 44.1,
+              },
+            ],
+          ],
+        };
+      }
+      throw new Error(`Unexpected test URL: ${href}`);
+    };
+
+    try {
+      await assert.rejects(
+        () => fetchEnergyDependencyDataset(),
+        /Energy dependency: Eurostat parse\/floor check failed: Eurostat energy dependency parsed 1 EU member rows \(expected at least 24\)/,
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });
 
 describe('resilience static seed payload assembly', () => {

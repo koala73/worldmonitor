@@ -513,6 +513,8 @@ export function parseEurostatEnergyDataset(data, { enforceEuMemberFloor = false 
 }
 
 export async function fetchEnergyDependencyDataset() {
+  // Eurostat is the authoritative EU slice; if it is unavailable or collapses,
+  // fail the whole iea adapter so recovery preserves the previous full snapshot.
   const [eurostatData, worldBankRows] = await Promise.all([
     withRetry(() => fetchJson(EUROSTAT_ENERGY_URL), 2, 750).catch((err) => {
       throw new Error(`Energy dependency: Eurostat fetch failed: ${err.message}`);
