@@ -155,8 +155,10 @@ describe('resilience scorer contracts', () => {
     // debt-stabilizing) normalizes to ~63 against the -5/+3 goalposts,
     // higher than the level-only blend the previous weights produced for
     // a country with debt=122% GDP.
-    // Issue #3971: infrastructure 79 -> 79.67 after capping same-day
-    // cyberDigital burst weight; sustained multi-day pressure still counts.
+    // Issue #3971: infrastructure 79 -> 79.67 after capping the cyberDigital
+    // per-snapshot cyber severity weight (fixture threats are undated, so the
+    // whole snapshot is one capped bucket — same value pre/post the day-bucket
+    // rework). This is a per-snapshot cap, not multi-day smoothing.
     assert.deepEqual(domainAverages, {
       economic: 53.25,
       infrastructure: 79.67,

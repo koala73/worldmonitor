@@ -172,8 +172,8 @@ export const RESILIENCE_RANKING_CACHE_TTL_SECONDS = 12 * 60 * 60;
 // (gross-imports-denominated) would continue to serve for the full 6h
 // TTL post-deploy, defeating the construct fix this PR delivers. Same
 // pattern as the v11→v12 bump that PR 3A used for the SWF-side fix.
-// v18→v19 bump for issue #3971: cyberDigital now caps severity-weighted
-// cyber threats per observed day before normalization. The `_formula`
+// v18→v19 bump for issue #3971: cyberDigital now caps the per-snapshot
+// severity-weighted cyber threat count before normalization. The `_formula`
 // tag does not distinguish intra-formula scorer changes, so cached v18
 // scores would otherwise serve pre-cap cyberDigital values until TTL.
 export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v19:';

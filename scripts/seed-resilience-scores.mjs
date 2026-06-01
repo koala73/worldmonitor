@@ -42,8 +42,9 @@ const SEED_UA = 'Mozilla/5.0 (compatible; WorldMonitor-Seed/1.0)';
 // reasoning as PR 3A's v11→v12: the `_formula` tag does not detect
 // intra-'d6' scorer changes, so v17 entries would serve gross-imports
 // AE/PA scores until TTL expires post-deploy.
-// v18 → v19 for issue #3971: cyberDigital caps same-day cyber-feed bursts,
-// so seeder-written scores and rankings must agree with server readers.
+// v18 → v19 for issue #3971: cyberDigital caps per-snapshot cyber-feed
+// severity weight, so seeder-written scores and rankings must agree with
+// server readers.
 export const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v19:';
 export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v19';
 // Must match the server-side RESILIENCE_RANKING_CACHE_TTL_SECONDS. Extended

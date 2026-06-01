@@ -233,8 +233,6 @@ interface TradeBarrier {
 interface CyberThreat {
   country?: string;
   severity?: string;
-  firstSeenAt?: number | string;
-  lastSeenAt?: number | string;
 }
 
 interface InternetOutage {
@@ -303,8 +301,14 @@ const RESILIENCE_FATF_LISTING_KEY = 'economic:fatf-listing:v1';
 const RESILIENCE_CYBER_KEY = 'cyber:threats:v2';
 const RESILIENCE_OUTAGES_KEY = 'infra:outages:v1';
 const RESILIENCE_GPS_KEY = 'intelligence:gpsjam:v2';
-const CYBER_DAILY_WEIGHT_CAP = 8;
-const CYBER_UNDATED_BUCKET = 'undated';
+// Issue #3971: bound the severity weight a single `cyber:threats:v2`
+// snapshot can contribute before `normalizeLowerBetter(weightedCount, 0, 25)`.
+// This is a PER-SNAPSHOT cap, not multi-day smoothing: the feed stamps
+// `lastSeenAt` at ~fetch time and never populates `firstSeenAt`, so every
+// refresh is effectively a single observation day with no cross-day spread
+// to average over. Capping the total prevents a same-day burst from
+// saturating the cyber sub-component to 0 and swinging a country 5+ ranks.
+const CYBER_SNAPSHOT_WEIGHT_CAP = 8;
 const RESILIENCE_UNREST_KEY = 'unrest:events:v1';
 const RESILIENCE_UCDP_KEY = 'conflict:ucdp-events:v1';
 const RESILIENCE_DISPLACEMENT_PREFIX = 'displacement:summary:v1';
@@ -1025,37 +1029,12 @@ export function summarizeCyber(raw: unknown, countryCode: string): { weightedCou
     CRITICALITY_LEVEL_LOW: 0.5,
   };
 
-  const byObservedDay = new Map<string, number>();
-  for (const threat of threats) {
-    if (!matchesCountryIdentifier(threat.country, countryCode)) continue;
-    const day = cyberThreatObservedDay(threat);
-    const severityWeight = SEVERITY_WEIGHT[String(threat.severity || '')] ?? 1;
-    byObservedDay.set(day, (byObservedDay.get(day) ?? 0) + severityWeight);
-  }
+  const totalWeight = threats.reduce((sum, threat) => {
+    if (!matchesCountryIdentifier(threat.country, countryCode)) return sum;
+    return sum + (SEVERITY_WEIGHT[String(threat.severity || '')] ?? 1);
+  }, 0);
 
-  return {
-    weightedCount: [...byObservedDay.values()]
-      .reduce((sum, dayWeight) => sum + Math.min(dayWeight, CYBER_DAILY_WEIGHT_CAP), 0),
-  };
-}
-
-function cyberThreatObservedDay(threat: CyberThreat): string {
-  return cyberThreatObservedDayFromValue(threat.lastSeenAt)
-    ?? cyberThreatObservedDayFromValue(threat.firstSeenAt)
-    ?? CYBER_UNDATED_BUCKET;
-}
-
-function cyberThreatObservedDayFromValue(value: number | string | undefined): string | null {
-  if (typeof value === 'number') {
-    if (!Number.isFinite(value) || value <= 0) return null;
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? null : date.toISOString().slice(0, 10);
-  }
-  if (typeof value === 'string' && value.trim()) {
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? null : date.toISOString().slice(0, 10);
-  }
-  return null;
+  return { weightedCount: Math.min(totalWeight, CYBER_SNAPSHOT_WEIGHT_CAP) };
 }
 
 export function summarizeUnrest(raw: unknown, countryCode: string): { unrestCount: number; fatalities: number } {

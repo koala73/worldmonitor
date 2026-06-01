@@ -467,70 +467,67 @@ describe('resilience dimension scorers', () => {
     assert.ok(score.coverage > 0, `coverage should be > 0 with real data, got ${score.coverage}`);
   });
 
-  it('summarizeCyber: caps same-day and undated threat buckets', () => {
-    const datedBurst = Array.from({ length: 10 }, () => ({
-      country: 'Finland',
-      severity: 'CRITICALITY_LEVEL_CRITICAL',
-      lastSeenAt: '2026-05-01T12:00:00.000Z',
-    }));
-    const undatedBurst = Array.from({ length: 10 }, () => ({
-      country: 'Finland',
-      severity: 'CRITICALITY_LEVEL_HIGH',
-    }));
+  it('summarizeCyber: caps total per-snapshot severity weight', () => {
+    // The cyber:threats:v2 feed carries no usable cross-day spread
+    // (lastSeenAt is stamped at ~fetch time, firstSeenAt is unpopulated), so
+    // the cap bounds the whole snapshot's severity weight rather than a
+    // per-day bucket. 10 critical (30) + 10 high (20) = 50 raw, capped to
+    // CYBER_SNAPSHOT_WEIGHT_CAP (8).
+    const burst = [
+      ...Array.from({ length: 10 }, () => ({ country: 'Finland', severity: 'CRITICALITY_LEVEL_CRITICAL' })),
+      ...Array.from({ length: 10 }, () => ({ country: 'Finland', severity: 'CRITICALITY_LEVEL_HIGH' })),
+    ];
 
     assert.equal(
-      summarizeCyber({ threats: [...datedBurst, ...undatedBurst] }, 'FI').weightedCount,
-      16,
-      'one dated burst and one undated burst should each be capped at weight 8',
+      summarizeCyber({ threats: burst }, 'FI').weightedCount,
+      8,
+      'a single snapshot burst is capped at the per-snapshot weight cap (8)',
     );
   });
 
-  it('summarizeCyber: falls back to firstSeenAt when lastSeenAt is the zero sentinel', () => {
-    const threats = ['2026-05-01', '2026-05-02'].flatMap((day) => (
-      Array.from({ length: 4 }, () => ({
-        country: 'Finland',
-        severity: 'CRITICALITY_LEVEL_CRITICAL',
-        firstSeenAt: `${day}T12:00:00.000Z`,
-        lastSeenAt: 0,
-      }))
-    ));
+  it('summarizeCyber: leaves sub-cap weight untouched and filters by country', () => {
+    const threats = [
+      { country: 'Finland', severity: 'CRITICALITY_LEVEL_CRITICAL' }, // 3
+      { country: 'Finland', severity: 'CRITICALITY_LEVEL_LOW' },      // 0.5
+      { country: 'Sweden', severity: 'CRITICALITY_LEVEL_CRITICAL' },  // excluded
+    ];
 
     assert.equal(
       summarizeCyber({ threats }, 'FI').weightedCount,
-      16,
-      'lastSeenAt=0 must not collapse valid firstSeenAt days into the undated cap',
+      3.5,
+      'below-cap weight passes through unchanged; other countries are excluded',
     );
   });
 
-  it('scoreCyberDigital: single-day cyber burst has a bounded score delta', async () => {
+  it('scoreCyberDigital: a same-snapshot burst is bounded, not collapsed to zero', async () => {
     const mild = await scoreCyberDigital('FI', cyberOnlyReader([
-      { country: 'Finland', severity: 'CRITICALITY_LEVEL_CRITICAL', lastSeenAt: '2026-05-01T12:00:00.000Z' },
+      { country: 'Finland', severity: 'CRITICALITY_LEVEL_CRITICAL' },
     ]));
     const burst = await scoreCyberDigital('FI', cyberOnlyReader(
-      Array.from({ length: 20 }, () => ({
-        country: 'Finland',
-        severity: 'CRITICALITY_LEVEL_CRITICAL',
-        lastSeenAt: '2026-05-01T12:00:00.000Z',
-      })),
+      Array.from({ length: 50 }, () => ({ country: 'Finland', severity: 'CRITICALITY_LEVEL_CRITICAL' })),
     ));
 
-    assert.ok(burst.score > 0, `single-day burst must not collapse cyberDigital to zero, got ${burst.score}`);
+    assert.ok(burst.score > 0, `burst must not collapse cyberDigital to zero, got ${burst.score}`);
     assert.ok(
       mild.score - burst.score <= 25,
-      `single-day burst delta must stay bounded: mild=${mild.score}, burst=${burst.score}`,
+      `burst delta must stay bounded: mild=${mild.score}, burst=${burst.score}`,
     );
   });
 
-  it('scoreCyberDigital: sustained multi-day cyber pressure still accumulates', async () => {
-    const sustainedThreats = ['2026-05-01', '2026-05-02', '2026-05-03', '2026-05-04']
-      .flatMap((day) => Array.from({ length: 4 }, () => ({
-        country: 'Finland',
-        severity: 'CRITICALITY_LEVEL_CRITICAL',
-        lastSeenAt: `${day}T12:00:00.000Z`,
-      })));
+  it('scoreCyberDigital: burst score floors at the per-snapshot cap regardless of volume', async () => {
+    // No cross-day smoothing exists for this feed: 50 vs 500 same-snapshot
+    // threats produce the same capped weight (8) and therefore the same
+    // bounded score. Genuine burst-vs-sustained discrimination would require
+    // cross-snapshot state and is intentionally NOT claimed here.
+    const fifty = await scoreCyberDigital('FI', cyberOnlyReader(
+      Array.from({ length: 50 }, () => ({ country: 'Finland', severity: 'CRITICALITY_LEVEL_CRITICAL' })),
+    ));
+    const fiveHundred = await scoreCyberDigital('FI', cyberOnlyReader(
+      Array.from({ length: 500 }, () => ({ country: 'Finland', severity: 'CRITICALITY_LEVEL_CRITICAL' })),
+    ));
 
-    const score = await scoreCyberDigital('FI', cyberOnlyReader(sustainedThreats));
-    assert.ok(score.score <= 5, `multi-day sustained pressure should still materially reduce score, got ${score.score}`);
+    assert.equal(fifty.score, fiveHundred.score, 'volume above the cap must not change the score');
+    assert.ok(fifty.score > 0, `capped burst must stay above zero, got ${fifty.score}`);
   });
 
   it('scoreCyberDigital: feed outage (null source) returns score=0 and zero coverage', async () => {
