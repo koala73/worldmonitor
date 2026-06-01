@@ -78,6 +78,7 @@ import { RefreshScheduler } from '@/app/refresh-scheduler';
 import { PanelLayoutManager } from '@/app/panel-layout';
 import { DataLoaderManager } from '@/app/data-loader';
 import { EventHandlerManager } from '@/app/event-handlers';
+import { replaceRawI18nKeyPlaceholders } from '@/app/i18n-raw-key-healer';
 import { resolveUserRegion, resolvePreciseUserCoordinates, type PreciseCoordinates } from '@/utils/user-location';
 import { showProBanner } from '@/components/ProBanner';
 import { initAuthState, subscribeAuthState } from '@/services/auth-state';
@@ -160,6 +161,13 @@ export class App {
   };
   private readonly handleConnectivityChange = (): void => {
     this.updateConnectivityUi();
+  };
+  private readonly handleI18nResourcesLoaded = (ev: Event): void => {
+    const language = (ev as CustomEvent<{ language?: unknown }>).detail?.language;
+    if (language !== 'en') return;
+    // Scope this to the app container: body-level modals are user-opened after
+    // startup, by which point the full English bundle should already be loaded.
+    replaceRawI18nKeyPlaceholders(this.state.container, t);
   };
   private readonly handleFollowedCountriesCapDrop = (ev: Event): void => {
     const detail = (ev as CustomEvent<{ kept?: unknown; dropped?: unknown }>).detail;
@@ -923,6 +931,8 @@ export class App {
       },
     });
 
+    window.addEventListener('wm:i18n:resources-loaded', this.handleI18nResourcesLoaded);
+
     await initDB();
     await initI18n();
     // Localize the static index.html shell — <title>, meta description, and
@@ -1429,6 +1439,7 @@ export class App {
     window.removeEventListener('resize', this.handleViewportPrime);
     window.removeEventListener('online', this.handleConnectivityChange);
     window.removeEventListener('offline', this.handleConnectivityChange);
+    window.removeEventListener('wm:i18n:resources-loaded', this.handleI18nResourcesLoaded);
     window.removeEventListener(WM_FOLLOWED_COUNTRIES_CAP_DROP, this.handleFollowedCountriesCapDrop);
     if (this.visiblePanelPrimeRaf !== null) {
       window.cancelAnimationFrame(this.visiblePanelPrimeRaf);

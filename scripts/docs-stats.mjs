@@ -59,8 +59,8 @@ function computeStats() {
   // ---- Server domain handlers (server/worldmonitor/*/) ----
   const serverDomains = dirsIn('server/worldmonitor').length;
 
-  // ---- Locales (src/locales/*.json) ----
-  const locales = filesIn('src/locales').filter((f) => f.endsWith('.json')).length;
+  // ---- User-facing locales (src/locales/*.json, excluding shell fragments) ----
+  const locales = filesIn('src/locales').filter((f) => f.endsWith('.json') && !f.endsWith('.shell.json')).length;
 
   // ---- CI workflows (.github/workflows/*.yml) ----
   const workflows = filesIn('.github/workflows').filter((f) => f.endsWith('.yml') || f.endsWith('.yaml')).sort();

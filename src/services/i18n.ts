@@ -1,8 +1,9 @@
 import i18next from 'i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
 
-// English is always needed as fallback — bundle it eagerly.
-import enTranslation from '../locales/en.json';
+// Keep only first-paint English strings in the entry chunk. The full English
+// dictionary is loaded through localeModules so it can split like other locales.
+import enShellTranslation from '../locales/en.shell.json';
 
 // Explicit-choice localStorage key. Written ONLY when the user manually picks
 // a language via Settings → Language. The default detector's `i18nextLng`
@@ -21,7 +22,7 @@ const loadedLanguages = new Set<SupportedLanguage>();
 
 // Lazy-load only the locale that's actually needed — all others stay out of the bundle.
 const localeModules = import.meta.glob<TranslationDictionary>(
-  ['../locales/*.json', '!../locales/en.json'],
+  ['../locales/*.json', '!../locales/en.shell.json'],
   { import: 'default' },
 );
 
@@ -52,21 +53,42 @@ async function ensureLanguageLoaded(lng: string): Promise<SupportedLanguage> {
   }
 
   let translation: TranslationDictionary;
-  if (normalized === 'en') {
-    translation = enTranslation as TranslationDictionary;
+  const loader = localeModules[`../locales/${normalized}.json`];
+  if (!loader) {
+    console.warn(`No locale file for "${normalized}", falling back to English`);
+    const englishLoader = localeModules['../locales/en.json'];
+    translation = englishLoader ? await englishLoader() : enShellTranslation as TranslationDictionary;
   } else {
-    const loader = localeModules[`../locales/${normalized}.json`];
-    if (!loader) {
-      console.warn(`No locale file for "${normalized}", falling back to English`);
-      translation = enTranslation as TranslationDictionary;
-    } else {
-      translation = await loader();
-    }
+    translation = await loader();
   }
 
   i18next.addResourceBundle(normalized, 'translation', translation, true, true);
   loadedLanguages.add(normalized);
   return normalized;
+}
+
+function notifyLanguageResourcesLoaded(language: SupportedLanguage): void {
+  if (normalizeLanguage(i18next.language || 'en') !== language) return;
+
+  void i18next.changeLanguage(i18next.language || language).catch((error) => {
+    console.warn(`Failed to notify listeners after loading "${language}" locale`, error);
+  });
+
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('wm:i18n:resources-loaded', { detail: { language } }));
+  }
+}
+
+function preloadEnglishTranslation(): void {
+  if (loadedLanguages.has('en')) return;
+  void ensureLanguageLoaded('en')
+    .then((language) => notifyLanguageResourcesLoaded(language))
+    .catch((error) => {
+      // English now lives in its own lazy chunk. If that chunk fails, the
+      // eager shell still renders first paint, but non-shell English keys may
+      // remain raw until the next successful page load.
+      console.warn('Failed to preload full English locale', error);
+    });
 }
 
 // Initialize i18n
@@ -77,8 +99,6 @@ export async function initI18n(): Promise<void> {
     applyDocumentDirection(i18next.language || currentLanguage);
     return;
   }
-
-  loadedLanguages.add('en');
 
   // One-time migration: i18next-browser-languagedetector previously cached
   // every detection result here, so users whose browser is now French but
@@ -106,7 +126,7 @@ export async function initI18n(): Promise<void> {
     .use(detector)
     .init({
       resources: {
-        en: { translation: enTranslation as TranslationDictionary },
+        en: { translation: enShellTranslation as TranslationDictionary },
       },
       supportedLngs: [...SUPPORTED_LANGUAGES],
       nonExplicitSupportedLngs: true,
@@ -121,8 +141,14 @@ export async function initI18n(): Promise<void> {
       },
     });
 
-  const detectedLanguage = await ensureLanguageLoaded(i18next.language || 'en');
-  if (detectedLanguage !== 'en') {
+  const detectedLanguage = normalizeLanguage(i18next.language || 'en');
+  if (detectedLanguage === 'en') {
+    preloadEnglishTranslation();
+  } else {
+    await Promise.all([
+      ensureLanguageLoaded(detectedLanguage),
+      ensureLanguageLoaded('en'),
+    ]);
     // Re-trigger translation resolution now that the detected bundle is loaded.
     await i18next.changeLanguage(detectedLanguage);
   }
