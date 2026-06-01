@@ -12,6 +12,17 @@ const CANONICAL_KEY = 'cyber:threats:v2';
 const BOOTSTRAP_KEY = 'cyber:threats-bootstrap:v2';
 const CACHE_TTL = 10800; // 3h — survives 1 missed 2h cron cycle
 
+// Issue #4008: the bulk sources (AbuseIPDB blacklist, C2Intel plaintext) carry
+// no upstream first-seen, so `firstSeenAt` was 0 for the majority of records,
+// leaving downstream consumers (cyberDigital discovery-day grouping, #3971/#4009)
+// without a usable discovery timestamp. We persist a WorldMonitor-observed
+// first-seen per indicator across runs: upstream first-seen wins when present,
+// otherwise the first run that observes an indicator stamps it. The map is
+// rebuilt from the current feed each run, so it self-prunes to ~feed size
+// instead of growing unbounded. Internal cache key (cache: prefix), not public.
+const FIRST_SEEN_KEY = 'cache:cyber:first-seen:v1';
+const FIRST_SEEN_TTL = 14 * 24 * 60 * 60; // 14d — refreshed every run; survives multi-day cron gaps
+
 const FEODO_URL = 'https://feodotracker.abuse.ch/downloads/ipblocklist.json';
 const URLHAUS_RECENT_URL = (limit) => `https://urlhaus-api.abuse.ch/v1/urls/recent/limit/${limit}/`;
 const C2INTEL_URL = 'https://raw.githubusercontent.com/drb-ra/C2IntelFeeds/master/feeds/IPC2s-30day.csv';
@@ -330,8 +341,11 @@ async function fetchUrlhaus(cutoffMs) {
       const indType = ipCand ? 'ip' : (hostname ? 'domain' : 'url');
       const indicator = ipCand || hostname || rawUrl;
       if (!indicator) continue;
-      const firstSeen = toEpochMs(r?.dateadded || r?.firstseen || r?.first_seen);
-      const lastSeen = toEpochMs(r?.last_online || r?.last_seen || r?.dateadded);
+      // URLhaus /v1/urls/recent/ returns `date_added` (snake_case, e.g.
+      // "2026-06-01 12:00:00 UTC"); the prior `dateadded` key never matched, so
+      // both timestamps fell through to 0 (#4008). Keep the old keys as fallbacks.
+      const firstSeen = toEpochMs(r?.date_added || r?.dateadded || r?.firstseen || r?.first_seen);
+      const lastSeen = toEpochMs(r?.last_online || r?.last_seen || r?.date_added || r?.dateadded);
       if ((lastSeen || firstSeen) && (lastSeen || firstSeen) < cutoffMs) continue;
       const threat = clean(r?.threat || r?.threat_type || '', 40).toLowerCase();
       const allTags = tags.join(' ');
@@ -510,6 +524,46 @@ function dedupeThreats(threats) {
   return Array.from(map.values());
 }
 
+// Issue #4008 — pure merge of WorldMonitor-observed first-seen. For each threat:
+// prefer a real upstream discovery date; else carry forward the earliest time we
+// previously observed the indicator; else stamp `nowMs` (first sighting). Mutates
+// each threat's `firstSeen` in place and returns the next persisted map, rebuilt
+// from only the indicators present this run (self-pruning). Keyed by indicator
+// identity (`indicatorType:indicator`) so the same IOC seen via multiple sources
+// shares one first-seen. Pure (no I/O) so it is unit-testable.
+export function mergeObservedFirstSeen(threats, priorMap, nowMs) {
+  const prior = priorMap && typeof priorMap === 'object' ? priorMap : {};
+  const next = {};
+  for (const t of threats) {
+    const key = `${t.indicatorType}:${t.indicator}`;
+    const upstream = Number(t.firstSeen) > 0 ? Number(t.firstSeen) : 0;
+    const stored = Number(prior[key]) > 0 ? Number(prior[key]) : 0;
+    const firstSeen = upstream && stored ? Math.min(upstream, stored) : (upstream || stored || nowMs);
+    t.firstSeen = firstSeen;
+    next[key] = next[key] ? Math.min(next[key], firstSeen) : firstSeen;
+  }
+  return { threats, nextMap: next };
+}
+
+// Redis wrapper around mergeObservedFirstSeen. Read/write failures are non-fatal:
+// a missing prior map degrades to stamping `nowMs`, and a failed write just means
+// next run re-stamps — neither should fail the seed.
+async function applyObservedFirstSeen(threats, nowMs) {
+  let prior = {};
+  try {
+    const raw = await verifySeedKey(FIRST_SEEN_KEY);
+    if (raw && typeof raw === 'object') prior = raw;
+  } catch (e) {
+    console.warn(`  first-seen map read failed — ${e?.message || e}`);
+  }
+  const { nextMap } = mergeObservedFirstSeen(threats, prior, nowMs);
+  try {
+    await writeExtraKey(FIRST_SEEN_KEY, nextMap, FIRST_SEEN_TTL);
+  } catch (e) {
+    console.warn(`  first-seen map write failed — ${e?.message || e}`);
+  }
+}
+
 function toProto(raw) {
   return {
     id: raw.id,
@@ -552,6 +606,11 @@ async function fetchAllThreats() {
 
   console.log(`  Combined (deduped): ${combined.length}`);
 
+  // #4008: stamp a stable per-indicator first-seen (upstream when present, else
+  // WorldMonitor-observed) before sort/proto so `firstSeenAt` is populated for
+  // every source, including AbuseIPDB/C2Intel which carry no upstream date.
+  await applyObservedFirstSeen(combined, now);
+
   const hydrated = await hydrateCoordinates(combined);
 
   // Keep all threats — geo-resolved first, then unresolved (so the seed never returns 0
@@ -580,16 +639,23 @@ export function declareRecords(data) {
   return Array.isArray(data?.threats) ? data.threats.length : 0;
 }
 
-runSeed('cyber', 'threats', CANONICAL_KEY, fetchAllThreats, {
-  validateFn: validate,
-  ttlSeconds: CACHE_TTL,
-  sourceVersion: 'multi-ioc-v2',
-  extraKeys: [{ key: BOOTSTRAP_KEY, declareRecords }],
+// isMain guard so tests can import the pure helpers (mergeObservedFirstSeen,
+// declareRecords) without triggering a live seed run. Matches the repo
+// convention (see feedback_seed_isMain_guard); Railway still runs the seed via
+// `node scripts/seed-cyber-threats.mjs` because argv[1] resolves to this file.
+const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^.*[\\/]/, ''));
+if (isMain) {
+  runSeed('cyber', 'threats', CANONICAL_KEY, fetchAllThreats, {
+    validateFn: validate,
+    ttlSeconds: CACHE_TTL,
+    sourceVersion: 'multi-ioc-v2',
+    extraKeys: [{ key: BOOTSTRAP_KEY, declareRecords }],
 
-  declareRecords,
-  schemaVersion: 1,
-  maxStaleMin: 240,
-}).catch((err) => {
-  const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
-  process.exit(1);
-});
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 240,
+  }).catch((err) => {
+    const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
+    process.exit(1);
+  });
+}
