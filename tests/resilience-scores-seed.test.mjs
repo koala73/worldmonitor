@@ -148,6 +148,23 @@ describe('script is self-contained .mjs', () => {
     assert.match(src, /formulaSkipCount/);
     assert.match(src, /missing\/ambiguous formula tags/);
   });
+
+  it('builds intervals only from tagged Redis score payloads', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const { dirname, join } = await import('node:path');
+    const dir = dirname(fileURLToPath(import.meta.url));
+    const src = readFileSync(join(dir, '..', 'scripts', 'seed-resilience-scores.mjs'), 'utf8');
+    const intervalWriter = src.slice(
+      src.indexOf('async function computeAndWriteIntervals'),
+      src.indexOf('async function seedResilienceScores'),
+    );
+    assert.match(src, /\['GET', `\$\{RESILIENCE_SCORE_CACHE_PREFIX\}\$\{c\}`\]/);
+    assert.match(intervalWriter, /unwrapEnvelope\(JSON\.parse\(raw\)\)\.data/);
+    assert.match(intervalWriter, /buildScoreIntervalPayload\(score, \{ draws: DRAWS, diagnostics \}\)/);
+    assert.doesNotMatch(intervalWriter, /get-resilience-score\?countryCode=/);
+    assert.doesNotMatch(intervalWriter, /allowLegacyFormulaInference:\s*true/);
+  });
 });
 
 describe('ensures ranking aggregate is present every cron, with truthful meta', () => {

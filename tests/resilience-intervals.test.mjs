@@ -1,10 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { computeIntervals } from '../scripts/seed-resilience-intervals.mjs';
 import {
   RESILIENCE_INTERVAL_METHODOLOGY,
   buildScoreIntervalPayload,
+  computeIntervals,
   createIntervalDiagnostics,
   domainAggregate,
   penalizedPillarScore,
@@ -229,55 +229,7 @@ describe('formula-aware resilience score intervals', () => {
   });
 });
 
-describe('seed script is self-contained .mjs', () => {
-  it('does not import from ../server/', async () => {
-    const { readFileSync } = await import('node:fs');
-    const { fileURLToPath } = await import('node:url');
-    const { dirname, join } = await import('node:path');
-    const dir = dirname(fileURLToPath(import.meta.url));
-    const src = readFileSync(join(dir, '..', 'scripts', 'seed-resilience-intervals.mjs'), 'utf8');
-    assert.equal(src.includes('../server/'), false, 'Must not import from ../server/');
-    assert.equal(src.includes('tsx/esm'), false, 'Must not reference tsx/esm');
-  });
-
-  it('all imports are local ./ relative paths', async () => {
-    const { readFileSync } = await import('node:fs');
-    const { fileURLToPath } = await import('node:url');
-    const { dirname, join } = await import('node:path');
-    const dir = dirname(fileURLToPath(import.meta.url));
-    const src = readFileSync(join(dir, '..', 'scripts', 'seed-resilience-intervals.mjs'), 'utf8');
-    const imports = [...src.matchAll(/from\s+['"]([^'"]+)['"]/g)].map((m) => m[1]);
-    for (const imp of imports) {
-      assert.ok(imp.startsWith('./'), `Import "${imp}" must be a local ./ relative path`);
-    }
-  });
-
-  it('uses the shared resilience interval helper', async () => {
-    const { readFileSync } = await import('node:fs');
-    const { fileURLToPath } = await import('node:url');
-    const { dirname, join } = await import('node:path');
-    const dir = dirname(fileURLToPath(import.meta.url));
-    const src = readFileSync(join(dir, '..', 'scripts', 'seed-resilience-intervals.mjs'), 'utf8');
-    assert.match(src, /from ['"]\.\/_resilience-intervals\.mjs['"]/);
-    assert.doesNotMatch(src, /const DOMAIN_WEIGHTS =/);
-    assert.match(src, /createIntervalDiagnostics/);
-    assert.match(src, /intervalClampCount/);
-  });
-
-  it('reads tagged Redis score payloads instead of public untagged score responses', async () => {
-    const { readFileSync } = await import('node:fs');
-    const { fileURLToPath } = await import('node:url');
-    const { dirname, join } = await import('node:path');
-    const dir = dirname(fileURLToPath(import.meta.url));
-    const src = readFileSync(join(dir, '..', 'scripts', 'seed-resilience-intervals.mjs'), 'utf8');
-    assert.match(src, /RESILIENCE_SCORE_CACHE_PREFIX/);
-    assert.match(src, /\['GET', `\$\{RESILIENCE_SCORE_CACHE_PREFIX\}\$\{countryCode\}`\]/);
-    assert.doesNotMatch(src, /get-resilience-score\?countryCode=/);
-    assert.doesNotMatch(src, /allowLegacyFormulaInference:\s*true/);
-    assert.match(src, /formulaSkipCount/);
-    assert.match(src, /missing\/ambiguous formula tags/);
-  });
-
+describe('interval helper invariants', () => {
   it('does not fall back to seeder env when formula inference is ambiguous', async () => {
     const { readFileSync } = await import('node:fs');
     const { fileURLToPath } = await import('node:url');
