@@ -110,6 +110,35 @@ test('formatResilienceConfidence: headlineEligible=true is the silent normal cas
   );
 });
 
+test('formatResilienceConfidence derates stale observed coverage like the server', () => {
+  const staleObserved: ResilienceScoreResponse = {
+    ...baseResponse,
+    domains: [
+      { id: 'economic', score: 80, weight: 0.22, dimensions: [
+        {
+          id: 'macroFiscal',
+          score: 80,
+          coverage: 1,
+          observedWeight: 1,
+          imputedWeight: 0,
+          freshness: { lastObservedAtMs: '1717200000000', staleness: 'stale' },
+        },
+        {
+          id: 'currencyExternal',
+          score: 80,
+          coverage: 1,
+          observedWeight: 1,
+          imputedWeight: 0,
+          freshness: { lastObservedAtMs: '1717200000000', staleness: 'fresh' },
+        },
+      ] },
+    ],
+  };
+
+  // Server mirror: (stale 1.0 * 0.4 + fresh 1.0) / 2 = 0.7.
+  assert.equal(formatResilienceConfidence(staleObserved), 'Coverage 70% ✓');
+});
+
 // PR 3 §3.5 follow-up: retired dimensions (fuelStockDays, post-PR-3)
 // return coverage=0 structurally (by design, not by sparsity) and
 // contribute zero weight to domain scoring. The widget's displayed
