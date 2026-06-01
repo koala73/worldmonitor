@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  computeHeadlineEligible,
   computeLowConfidence,
   computeOverallCoverage,
 } from '../server/worldmonitor/resilience/v1/_shared.ts';
@@ -47,6 +48,11 @@ describe('resilience staleness confidence derating', () => {
 
     assert.equal(computeLowConfidence(fresh as never, 0), false);
     assert.equal(computeOverallCoverage(response(fresh) as never), 1);
+    assert.equal(computeHeadlineEligible({
+      overallCoverage: computeOverallCoverage(response(fresh) as never),
+      populationMillions: 100,
+      lowConfidence: computeLowConfidence(fresh as never, 0),
+    }), true);
   });
 
   it('stale observed dimensions are less confidence-worthy than fresh observed dimensions', () => {
@@ -58,6 +64,11 @@ describe('resilience staleness confidence derating', () => {
 
     assert.equal(computeLowConfidence(stale as never, 0), true);
     assert.ok(Math.abs(computeOverallCoverage(response(stale) as never) - 0.4) < 0.001);
+    assert.equal(computeHeadlineEligible({
+      overallCoverage: computeOverallCoverage(response(stale) as never),
+      populationMillions: 100,
+      lowConfidence: computeLowConfidence(stale as never, 0),
+    }), false);
   });
 
   it('missing freshness proof does not add a second penalty on top of existing sparsity paths', () => {
