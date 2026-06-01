@@ -521,14 +521,26 @@ const ON_DEMAND_KEYS = new Set([
                                    // never-provisioned Railway promotes EMPTY_ON_DEMAND → EMPTY (CRIT).
 ]);
 
-// Keys where 0 records is a valid healthy state (e.g. no airports closed,
-// no earnings events this week, econ calendar quiet between seasons).
-// The key must still exist in Redis; only the record count can be 0.
+// Legacy broad empty-data exemptions. classifyKey uses this set in both the
+// missing-key and zero-record branches, so entries here can be OK while fresh
+// even when the data key has strlen=0. For producer-specific cases where the
+// payload must exist but recordCount=0 is valid, add to ZERO_RECORD_DATA_OK_KEYS
+// only.
 const EMPTY_DATA_OK_KEYS = new Set([
   'notamClosures', 'faaDelays', 'intlDelays', 'gpsjam', 'positiveGeoEvents', 'weatherAlerts',
   'earningsCalendar', 'econCalendar', 'cotPositioning',
   'usniFleet', // usniFleetStale covers the fallback; relay outages → WARN not CRIT
   'newsThreatSummary', // only written when classify produces country matches; quiet news periods = 0 countries, no write
+  'recoveryFiscalSpace',
+  'ddosAttacks', 'trafficAnomalies', // zero events during quiet periods is valid, not critical
+  'resilienceStaticFao', // empty aggregate = no IPC Phase 3+ countries this year (possible in theory); the key must exist but count=0 is fine
+  'cableHealth', // `cables: {}` = no active subsea cable disruptions per NGA NAVAREA warnings — all cables implicitly healthy. Also covers NGA-upstream-down windows where get-cable-health writes back the fallback response (empty cables); without this, those would alarm EMPTY_DATA.
+]);
+
+// Keys where a present payload with meta recordCount=0 is valid, but the data
+// key itself must still exist. Do not use this set in the missing-key branch.
+const ZERO_RECORD_DATA_OK_KEYS = new Set([
+  ...EMPTY_DATA_OK_KEYS,
   // retailer-spread is SUPPRESSED to an explicit 0 by the aggregate job when a
   // market's retailers share < MIN_SPREAD_ITEMS (4) common basket items —
   // consumer-prices-core/src/jobs/aggregate.ts writes `retailer_spread_pct: 0`
@@ -538,12 +550,8 @@ const EMPTY_DATA_OK_KEYS = new Set([
   // late-May 2026 while the seeder kept running fresh (seedAgeMin well inside
   // maxStaleMin) and the sibling keys (overview/categories/movers/basket-series)
   // published normally. Treat 0 records as OK while fresh; STALE_SEED still
-  // fires if the publish job itself stops. Same shape as newsThreatSummary above.
+  // fires if the publish job itself stops.
   'consumerPricesSpread',
-  'recoveryFiscalSpace',
-  'ddosAttacks', 'trafficAnomalies', // zero events during quiet periods is valid, not critical
-  'resilienceStaticFao', // empty aggregate = no IPC Phase 3+ countries this year (possible in theory); the key must exist but count=0 is fine
-  'cableHealth', // `cables: {}` = no active subsea cable disruptions per NGA NAVAREA warnings — all cables implicitly healthy. Also covers NGA-upstream-down windows where get-cable-health writes back the fallback response (empty cables); without this, those would alarm EMPTY_DATA.
 ]);
 
 // Cascade groups: if any key in the group has data, all empty siblings are OK.
@@ -680,7 +688,7 @@ function classifyKey(name, redisKey, opts, ctx) {
   } else if (records === 0) {
     // hasData is true in this branch, so cascade can never apply (isCascadeCovered
     // short-circuits when hasData=true). Cascade only shields wholly absent keys.
-    if (EMPTY_DATA_OK_KEYS.has(name)) status = seedStale === true ? 'STALE_SEED' : 'OK';
+    if (ZERO_RECORD_DATA_OK_KEYS.has(name)) status = seedStale === true ? 'STALE_SEED' : 'OK';
     else if (isOnDemand) status = 'EMPTY_ON_DEMAND';
     else status = 'EMPTY_DATA';
   } else if (seedStale === true) status = 'STALE_SEED';

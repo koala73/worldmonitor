@@ -105,7 +105,7 @@ test('classifyKey: suppressed retailer-spread (present key, 0 records) while fre
   // suppressed (N/4 common items)") when a market's retailers share < 4 common
   // basket items — a valid data-coverage state, not an outage. The key exists
   // (296-byte payload → hasData=true) with metaCount=0, so without the
-  // EMPTY_DATA_OK_KEYS exemption it would wrongly classify EMPTY_DATA (crit) and
+  // zero-record exemption it would wrongly classify EMPTY_DATA (crit) and
   // tip /api/health to DEGRADED. Fresh seed-meta → OK.
   const entry = classifyKey('consumerPricesSpread', BOOTSTRAP_KEYS.consumerPricesSpread,
     { allowOnDemand: false },
@@ -120,8 +120,24 @@ test('classifyKey: suppressed retailer-spread (present key, 0 records) while fre
   assert.equal(STATUS_COUNTS[entry.status], 'ok');
 });
 
+test('classifyKey: missing retailer-spread payload is still EMPTY even with fresh 0-record meta', () => {
+  // The suppressed-spread exemption only applies once Redis proves the payload
+  // exists. A missing canonical key is still a publish/write failure and must
+  // not be hidden by the zero-record allowance.
+  const entry = classifyKey('consumerPricesSpread', BOOTSTRAP_KEYS.consumerPricesSpread,
+    { allowOnDemand: false },
+    makeCtx({
+      metaValues: {
+        'seed-meta:consumer-prices:retailer-spread:ae:essentials-ae':
+          seedMeta({ recordCount: 0 }),
+      },
+    }));
+  assert.equal(entry.status, 'EMPTY');
+  assert.equal(STATUS_COUNTS[entry.status], 'crit');
+});
+
 test('classifyKey: suppressed retailer-spread that goes STALE still warns (publish job stopped)', () => {
-  // The EMPTY_DATA_OK exemption must NOT mask a genuine publish-job outage:
+  // The zero-record exemption must NOT mask a genuine publish-job outage:
   // once seed-meta age exceeds maxStaleMin (1500), 0 records degrades to
   // STALE_SEED (warn), not silent OK.
   const entry = classifyKey('consumerPricesSpread', BOOTSTRAP_KEYS.consumerPricesSpread,
