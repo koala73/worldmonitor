@@ -668,7 +668,8 @@ export function parseFsinRows(csvText) {
       source: 'hdx-ipc',
       year,
       // Output matches the shape that scoreFoodWater() reads from staticRecord.fao.
-      // phase3plus == total people in Phase 3 or above (IPC definition of "in crisis").
+      // phase3plus is the IPC Phase 3+ total when present; otherwise Phase 4+5
+      // is a conservative lower-bound fallback for rows missing the aggregate.
       peopleInCrisis: peopleInCrisis > 0 ? roundMetric(peopleInCrisis, 0) : null,
       phase: `IPC Phase ${highestPhase}`,
     });
