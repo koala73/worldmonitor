@@ -1,4 +1,4 @@
-import type { ResilienceDimensionId } from './_dimension-scorers.ts';
+import type { ResilienceDimensionId } from './_dimension-scorers';
 
 // Phase 2 T2.2a signal tiering. See docs/internal/country-resilience-upgrade-plan.md
 // section "Signal tiering (Core / Enrichment / Experimental)".

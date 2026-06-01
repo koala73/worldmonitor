@@ -8,8 +8,8 @@
 // dimension scorers stay oblivious.
 
 import type { ResilienceDimensionId, ResilienceSeedReader } from './_dimension-scorers';
-import { resolveSeedMetaKey } from './_dimension-freshness.ts';
-import { INDICATOR_REGISTRY } from './_indicator-registry.ts';
+import { resolveSeedMetaKey } from './_dimension-freshness';
+import { INDICATOR_REGISTRY } from './_indicator-registry';
 
 // Must match RESILIENCE_STATIC_META_KEY in scripts/seed-resilience-static.mjs.
 export const RESILIENCE_STATIC_META_KEY = 'seed-meta:resilience:static';
