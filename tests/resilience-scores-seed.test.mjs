@@ -147,6 +147,8 @@ describe('script is self-contained .mjs', () => {
     const src = readFileSync(join(dir, '..', 'scripts', 'seed-resilience-scores.mjs'), 'utf8');
     assert.match(src, /formulaSkipCount/);
     assert.match(src, /missing\/ambiguous formula tags/);
+    assert.match(src, /intervalFormulaSkipCount/);
+    assert.match(src, /intervalFormulaSkipSamples/);
   });
 
   it('builds intervals only from tagged Redis score payloads', async () => {
