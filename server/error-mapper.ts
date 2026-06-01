@@ -29,10 +29,10 @@ function isNetworkError(error: unknown): boolean {
  * Matches the `ServerOptions.onError` signature:
  *   (error: unknown, req: Request) => Response | Promise<Response>
  */
-function jsonMessageResponse(message: string, status: number, extras?: Record<string, unknown>): Response {
+function jsonMessageResponse(message: string, status: number, extras?: Record<string, unknown>, headers?: Record<string, string>): Response {
   return new Response(JSON.stringify({ message, ...(extras ?? {}) }), {
     status,
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(headers ?? {}) },
   });
 }
 
@@ -48,8 +48,11 @@ export function mapErrorToResponse(error: unknown, _req: Request): Response {
     const body: Record<string, unknown> = { message };
 
     // Rate limit: include retryAfter if present
-    if (statusCode === 429 && 'retryAfter' in error) {
-      body.retryAfter = (error as Error & { retryAfter: number }).retryAfter;
+    const retryAfter = statusCode === 429 && 'retryAfter' in error
+      ? Number((error as Error & { retryAfter: number }).retryAfter)
+      : null;
+    if (retryAfter != null && Number.isFinite(retryAfter)) {
+      body.retryAfter = retryAfter;
     }
 
     if (statusCode >= 500) {
@@ -58,7 +61,12 @@ export function mapErrorToResponse(error: unknown, _req: Request): Response {
       console.error(`[error-mapper] ${statusCode}:`, error.message, apiBody ? `| body: ${apiBody}` : '');
     }
 
-    return jsonMessageResponse(message, statusCode, statusCode === 429 ? { retryAfter: body.retryAfter } : undefined);
+    return jsonMessageResponse(
+      message,
+      statusCode,
+      retryAfter != null && Number.isFinite(retryAfter) ? { retryAfter } : undefined,
+      retryAfter != null && Number.isFinite(retryAfter) ? { 'Retry-After': String(retryAfter) } : undefined,
+    );
   }
 
   // JSON parse errors from req.json() on malformed/empty POST body → 400 not 500

@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { afterEach, describe, it } from 'node:test';
 
+import { createDomainGateway } from '../server/gateway.ts';
+import { mapErrorToResponse } from '../server/error-mapper.ts';
 import { getResilienceRanking } from '../server/worldmonitor/resilience/v1/get-resilience-ranking.ts';
+import { ApiError } from '../src/generated/server/worldmonitor/resilience/v1/service_server.ts';
 import {
   RESILIENCE_INTERVAL_METHODOLOGY,
   RESILIENCE_RANKING_CACHE_KEY,
@@ -734,23 +736,76 @@ describe('resilience ranking contracts', () => {
     );
   });
 
-  it('gateway seed-refresh bypass is scoped to ranking ?refresh=1 only', () => {
-    const gatewaySrc = readFileSync(new URL('../server/gateway.ts', import.meta.url), 'utf8');
-    assert.match(
-      gatewaySrc,
-      /function isResilienceRankingSeedRefreshRequest[\s\S]*pathname !== '\/api\/resilience\/v1\/get-resilience-ranking'[\s\S]*WORLDMONITOR_SEED_REFRESH_KEY[\s\S]*searchParams\.get\('refresh'\) !== '1'[\s\S]*headers\.get\('X-WorldMonitor-Key'\) === expected/,
-      'gateway must recognize only ranking ?refresh=1 requests carrying the dedicated seed refresh secret',
+  it('?refresh=1 seed-secret slot denial returns explicit 429 instead of empty 200 on cold cache', async () => {
+    process.env.WORLDMONITOR_SEED_REFRESH_KEY = 'seed-refresh-secret';
+    const { redis } = installRedis({ ...RESILIENCE_FIXTURES });
+    redis.set('resilience:ranking:refresh-lock:v1', 'held');
+
+    await assert.rejects(
+      () => getResilienceRanking({
+        request: new Request('https://example.com/api/resilience/v1/get-resilience-ranking?refresh=1', {
+          headers: { 'X-WorldMonitor-Key': 'seed-refresh-secret' },
+        }),
+      } as never, {}),
+      (err) => err instanceof ApiError
+        && err.statusCode === 429
+        && (err as ApiError & { retryAfter?: number }).retryAfter === 30
+        && /refresh already in progress/.test(err.message),
     );
-    assert.match(
-      gatewaySrc,
-      /internalMcpVerified \|\| isPublicNoAuthRpc \|\| seedRefreshVerified[\s\S]*\? \{ valid: true, required: false \}/,
-      'gateway must let the dedicated refresh request reach the handler without requiring a normal premium key',
-    );
-    assert.match(
-      gatewaySrc,
-      /!isEnterpriseAuth && !internalMcpVerified && !seedRefreshVerified/,
-      'gateway must not let the seed refresh secret bypass entitlement checks for normal premium reads',
-    );
+  });
+
+  it('ApiError retryAfter maps to a Retry-After header for generated gateway responses', async () => {
+    const err = new ApiError(429, 'Resilience ranking refresh already in progress', '');
+    (err as ApiError & { retryAfter: number }).retryAfter = 30;
+    const response = mapErrorToResponse(err, new Request('https://example.com'));
+    assert.equal(response.status, 429);
+    assert.equal(response.headers.get('Retry-After'), '30');
+    assert.deepEqual(await response.json(), {
+      message: 'Resilience ranking refresh already in progress',
+      retryAfter: 30,
+    });
+  });
+
+  it('gateway seed-refresh bypass is scoped to ranking ?refresh=1 only', async () => {
+    process.env.WORLDMONITOR_VALID_KEYS = 'normal-read-key';
+    process.env.WORLDMONITOR_SEED_REFRESH_KEY = 'seed-refresh-secret';
+    const handler = createDomainGateway([
+      {
+        method: 'GET',
+        path: '/api/resilience/v1/get-resilience-ranking',
+        handler: async (request) => new Response(JSON.stringify({
+          key: request.headers.get('X-WorldMonitor-Key'),
+          refresh: new URL(request.url).searchParams.get('refresh'),
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+      },
+      {
+        method: 'GET',
+        path: '/api/resilience/v1/get-resilience-score',
+        handler: async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      },
+    ]);
+
+    const seedRefresh = await handler(new Request('https://worldmonitor.app/api/resilience/v1/get-resilience-ranking?refresh=1', {
+      headers: { 'X-WorldMonitor-Key': 'seed-refresh-secret' },
+    }));
+    assert.equal(seedRefresh.status, 200);
+    assert.deepEqual(await seedRefresh.json(), { key: 'seed-refresh-secret', refresh: '1' });
+
+    const seedWithoutRefresh = await handler(new Request('https://worldmonitor.app/api/resilience/v1/get-resilience-ranking', {
+      headers: { 'X-WorldMonitor-Key': 'seed-refresh-secret' },
+    }));
+    assert.equal(seedWithoutRefresh.status, 401, 'seed secret must not bypass normal ranking-read auth');
+
+    const seedWrongPath = await handler(new Request('https://worldmonitor.app/api/resilience/v1/get-resilience-score?countryCode=US&refresh=1', {
+      headers: { 'X-WorldMonitor-Key': 'seed-refresh-secret' },
+    }));
+    assert.equal(seedWrongPath.status, 401, 'seed secret must not bypass auth on other resilience paths');
+
+    const normalReadRefresh = await handler(new Request('https://worldmonitor.app/api/resilience/v1/get-resilience-ranking?refresh=1', {
+      headers: { 'X-WorldMonitor-Key': 'normal-read-key' },
+    }));
+    assert.equal(normalReadRefresh.status, 200, 'normal read keys must keep existing ranking-read access');
+    assert.deepEqual(await normalReadRefresh.json(), { key: 'normal-read-key', refresh: '1' });
   });
 
   it('warms via batched pipeline SETs (avoids 600KB single-pipeline timeout)', async () => {

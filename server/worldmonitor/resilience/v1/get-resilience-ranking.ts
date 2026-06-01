@@ -1,9 +1,10 @@
-import type {
-  ResilienceServiceHandler,
-  ServerContext,
-  GetResilienceRankingRequest,
-  GetResilienceRankingResponse,
-  ResilienceRankingItem,
+import {
+  ApiError,
+  type ResilienceServiceHandler,
+  type ServerContext,
+  type GetResilienceRankingRequest,
+  type GetResilienceRankingResponse,
+  type ResilienceRankingItem,
 } from '../../../../src/generated/server/worldmonitor/resilience/v1/service_server';
 
 import { getCachedJson, runRedisPipeline } from '../../../_shared/redis';
@@ -67,6 +68,14 @@ async function tryAcquireRefreshSlot(): Promise<boolean> {
     ['SET', RANKING_REFRESH_LOCK_KEY, token, 'EX', RANKING_REFRESH_LOCK_TTL_SECONDS, 'NX'],
   ]);
   return result[0]?.result === 'OK';
+}
+
+function throwRefreshSlotBusy(): never {
+  const err = new ApiError(429, 'Resilience ranking refresh already in progress', JSON.stringify({
+    retryAfter: RANKING_REFRESH_LOCK_TTL_SECONDS,
+  }));
+  (err as ApiError & { retryAfter: number }).retryAfter = RANKING_REFRESH_LOCK_TTL_SECONDS;
+  throw err;
 }
 
 async function fetchIntervals(countryCodes: string[]): Promise<Map<string, ScoreInterval>> {
@@ -192,7 +201,7 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
         greyedOut: [...stillGreyed, ...ineligibleFromItems],
       };
     }
-    if (refreshSlotDenied) return { items: [], greyedOut: [] };
+    if (refreshSlotDenied) throwRefreshSlotBusy();
   }
 
   const countryCodes = await listScorableCountries();

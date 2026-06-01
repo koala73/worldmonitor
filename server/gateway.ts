@@ -755,7 +755,7 @@ export function createDomainGateway(
     // that has no Authorization header would just no-op anyway.
     const isPublicNoAuthRpc = PUBLIC_NO_AUTH_RPC_PATHS.has(pathname);
     const seedRefreshVerified = isResilienceRankingSeedRefreshRequest(request, pathname);
-    const isTierGated = !internalMcpVerified && !isPublicNoAuthRpc && getRequiredTier(pathname) !== null;
+    const isTierGated = !internalMcpVerified && !isPublicNoAuthRpc && !seedRefreshVerified && getRequiredTier(pathname) !== null;
     const needsLegacyProBearerGate = !internalMcpVerified && !isPublicNoAuthRpc && PREMIUM_RPC_PATHS.has(pathname) && !isTierGated;
 
     // Session resolution — extract userId from bearer token (Clerk JWT) if present.
