@@ -5,7 +5,7 @@ import type { MapView } from '@/components';
 import type { Command } from '@/config/commands';
 import { SearchModal } from '@/components';
 import { CIIPanel } from '@/components';
-import { SITE_VARIANT, STORAGE_KEYS, ALL_PANELS, isPanelEntitled } from '@/config';
+import { SITE_VARIANT, STORAGE_KEYS, ALL_PANELS, getEffectivePanelConfig, isPanelEntitled } from '@/config';
 import { getAllowedLayerKeys, isLayerExecutable } from '@/config/map-layer-definitions';
 import type { MapRenderer } from '@/config/map-layer-definitions';
 import type { MapVariant } from '@/config/map-layer-definitions';
@@ -765,7 +765,7 @@ export class SearchManager implements AppModule {
     );
     this.ctx.searchModal.setAvailablePanels(
       Object.keys(this.ctx.panelSettings).filter((k) => {
-        const cfg = ALL_PANELS[k];
+        const cfg = ALL_PANELS[k] ? getEffectivePanelConfig(k, SITE_VARIANT) : undefined;
         return cfg ? isPanelEntitled(k, cfg, isPro) : false;
       })
     );

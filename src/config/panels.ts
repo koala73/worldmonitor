@@ -1088,7 +1088,16 @@ const ENERGY_MOBILE_MAP_LAYERS: MapLayers = {
 // UNIFIED PANEL REGISTRY
 // ============================================
 
-/** All panels from all variants — union with FULL taking precedence for duplicate keys. */
+const VARIANT_PANEL_CONFIGS: Record<string, Record<string, PanelConfig>> = {
+  full: FULL_PANELS,
+  tech: TECH_PANELS,
+  finance: FINANCE_PANELS,
+  commodity: COMMODITY_PANELS,
+  energy: ENERGY_PANELS,
+  happy: HAPPY_PANELS,
+};
+
+/** All panels from all variants — canonical cross-variant registry. */
 export const ALL_PANELS: Record<string, PanelConfig> = {
   ...HAPPY_PANELS,
   ...COMMODITY_PANELS,
@@ -1143,7 +1152,7 @@ export const VARIANT_PANEL_OVERRIDES: Partial<Record<string, Partial<Record<stri
  * applying variant-specific display overrides (name, premium, etc.).
  */
 export function getEffectivePanelConfig(key: string, variant: string): PanelConfig {
-  const base = ALL_PANELS[key];
+  const base = VARIANT_PANEL_CONFIGS[variant]?.[key] ?? ALL_PANELS[key];
   if (!base) return { name: key, enabled: false, priority: 2 };
   const override = VARIANT_PANEL_OVERRIDES[variant]?.[key] ?? {};
   return { ...base, ...override };
