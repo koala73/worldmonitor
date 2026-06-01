@@ -151,6 +151,8 @@ export default [
   "japantoday.com",
   "www.thehindu.com",
   "indianexpress.com",
+  "www.aajtak.in",
+  "www.amarujala.com",
   "www.twz.com",
   "gcaptain.com",
   "news.un.org",
