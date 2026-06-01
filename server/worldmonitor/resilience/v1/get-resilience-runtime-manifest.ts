@@ -7,21 +7,20 @@ import type {
 import { getCachedJson } from '../../../_shared/redis';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
 import {
-  RESILIENCE_HISTORY_KEY_PREFIX,
-  RESILIENCE_INTERVAL_KEY_PREFIX,
-  RESILIENCE_INTERVAL_METHODOLOGY,
-  RESILIENCE_RANKING_CACHE_KEY,
   RESILIENCE_RANKING_META_KEY,
-  RESILIENCE_SCHEMA_V2_ENABLED,
-  RESILIENCE_SCORE_CACHE_PREFIX,
   RESILIENCE_STATIC_META_KEY,
   getCurrentCacheFormula,
-  isEnergyV2Enabled,
-  isFinancialSystemExposureEnabled,
-  isPillarCombineEnabled,
 } from './_shared';
 
-const MANIFEST_VERSION = 1;
+const MANIFEST_VERSION = 2;
+
+const PUBLIC_CACHE_STATE = {
+  scorePrefix: '',
+  rankingKey: '',
+  historyPrefix: '',
+  intervalPrefix: '',
+  intervalMethodology: '',
+};
 
 interface SeedMeta {
   fetchedAt?: unknown;
@@ -66,23 +65,12 @@ export const getResilienceRuntimeManifest: ResilienceServiceHandler['getResilien
   return {
     manifestVersion: MANIFEST_VERSION,
     generatedAt: new Date().toISOString(),
-    deployedCommitSha: process.env.VERCEL_GIT_COMMIT_SHA || 'unknown',
-    vercelEnv: process.env.VERCEL_ENV ?? '',
+    deployedCommitSha: '',
+    vercelEnv: '',
     formulaTag: getCurrentCacheFormula(),
     dataVersion: toIsoDate(staticMeta?.fetchedAt),
-    flags: [
-      { name: 'RESILIENCE_SCHEMA_V2_ENABLED', enabled: RESILIENCE_SCHEMA_V2_ENABLED },
-      { name: 'RESILIENCE_PILLAR_COMBINE_ENABLED', enabled: isPillarCombineEnabled() },
-      { name: 'RESILIENCE_ENERGY_V2_ENABLED', enabled: isEnergyV2Enabled() },
-      { name: 'RESILIENCE_FIN_SYS_EXPOSURE_ENABLED', enabled: isFinancialSystemExposureEnabled() },
-    ],
-    cache: {
-      scorePrefix: RESILIENCE_SCORE_CACHE_PREFIX,
-      rankingKey: RESILIENCE_RANKING_CACHE_KEY,
-      historyPrefix: RESILIENCE_HISTORY_KEY_PREFIX,
-      intervalPrefix: RESILIENCE_INTERVAL_KEY_PREFIX,
-      intervalMethodology: RESILIENCE_INTERVAL_METHODOLOGY,
-    },
+    flags: [],
+    cache: PUBLIC_CACHE_STATE,
     rankingCache: {
       fetchedAt: toIsoTimestamp(rankingMeta?.fetchedAt),
       count: safeNonNegativeInteger(rankingMeta?.count),
