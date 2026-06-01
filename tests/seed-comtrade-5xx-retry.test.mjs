@@ -210,7 +210,11 @@ test('fetchImportsForReporter: 429 + 503 share the 3-attempt retry budget (post-
   assert.equal(fetchCalls.length, 3, 'unified 3-attempt budget: 429 → 503 → 200 = exactly 3 fetches');
   assert.equal(status, 200);
   assert.ok(records.length >= 0);
-  assert.deepEqual(sleepCalls, [2_000, 10_000], '2s for the 429 (per-attempt linear backoff); 10s for the 5xx (5_000 * 2)');
+  assert.deepEqual(
+    sleepCalls,
+    [5_000, 10_000],
+    '429 honors the import-HHI per-key pacing floor; 5xx keeps 5_000 * attempt backoff',
+  );
 });
 
 test('fetchImportsForReporter: 4 consecutive errors exhaust the 3-attempt budget without recovery', async () => {
@@ -232,7 +236,7 @@ test('fetchImportsForReporter: 4 consecutive errors exhaust the 3-attempt budget
   assert.equal(fetchCalls.length, 3, '4th response (200) is never consumed under the unified budget');
   assert.equal(status, 502, 'returns the final upstream status — caller logs the actual failure mode');
   assert.deepEqual(records, [], 'no recovery path; resume logic re-tries on next cron tick');
-  assert.deepEqual(sleepCalls, [2_000, 10_000]);
+  assert.deepEqual(sleepCalls, [5_000, 10_000]);
 });
 
 test('fetchImportsForReporter: gives up ({records:[], status:503}) after 3 consecutive 5xx', async () => {

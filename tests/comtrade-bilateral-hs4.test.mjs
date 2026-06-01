@@ -229,21 +229,17 @@ describe('Comtrade bilateral HS4 seeder (scripts/seed-comtrade-bilateral-hs4.mjs
 
   it('defines COMTRADE_REPORTER_OVERRIDES for all countries with non-standard Comtrade codes', () => {
     assert.ok(
-      src.includes('COMTRADE_REPORTER_OVERRIDES'),
-      'seeder: must define COMTRADE_REPORTER_OVERRIDES to handle non-standard Comtrade reporter codes',
+      src.includes("require('./shared/comtrade-reporter-overrides.json')"),
+      'seeder: must read the shared reporter override file to handle non-standard Comtrade reporter codes',
     );
-    assert.ok(
-      src.includes("FR: '251'"),
-      "seeder: COMTRADE_REPORTER_OVERRIDES must map FR to '251' (Comtrade reporter code, not UN M49 250)",
-    );
-    assert.ok(
-      src.includes("IT: '381'"),
-      "seeder: COMTRADE_REPORTER_OVERRIDES must map IT to '381' (Comtrade reporter code, not UN M49 380)",
-    );
-    assert.ok(
-      src.includes("US: '842'"),
-      "seeder: COMTRADE_REPORTER_OVERRIDES must map US to '842' (Comtrade reporter code, not UN M49 840)",
-    );
+    const overrides = JSON.parse(readFileSync(join(root, 'scripts', 'shared', 'comtrade-reporter-overrides.json'), 'utf8'));
+    assert.equal(overrides.FR, '251', "shared overrides must map FR to '251'");
+    assert.equal(overrides.IT, '381', "shared overrides must map IT to '381'");
+    assert.equal(overrides.US, '842', "shared overrides must map US to '842'");
+    assert.equal(overrides.IN, '699', "shared overrides must map IN to '699'");
+    assert.equal(overrides.TW, '490', "shared overrides must map TW to '490'");
+    assert.equal(overrides.NO, '579', "shared overrides must map NO to '579'");
+    assert.equal(overrides.CH, '757', "shared overrides must map CH to '757'");
   });
 
   it('applies COMTRADE_REPORTER_OVERRIDES before falling back to ISO2_TO_UN for reporter code lookup', () => {
@@ -256,6 +252,27 @@ describe('Comtrade bilateral HS4 seeder (scripts/seed-comtrade-bilateral-hs4.mjs
     assert.ok(
       iso2ToUnIdx !== -1 && iso2ToUnIdx > overrideIdx,
       'seeder: COMTRADE_REPORTER_OVERRIDES must be checked before ISO2_TO_UN (override takes precedence)',
+    );
+  });
+});
+
+// ─── Lazy fallback reporter-code parity ─────────────────────────────────────
+
+describe('Comtrade bilateral HS4 lazy fallback (server/worldmonitor/supply-chain/v1/_bilateral-hs4-lazy.ts)', () => {
+  const filePath = join(root, 'server', 'worldmonitor', 'supply-chain', 'v1', '_bilateral-hs4-lazy.ts');
+  const src = readFileSync(filePath, 'utf-8');
+
+  it('reads the shared Comtrade reporter override file', () => {
+    assert.ok(
+      src.includes("scripts/shared/comtrade-reporter-overrides.json"),
+      'lazy fallback: must use the shared reporter override file so NO/CH drift does not regress',
+    );
+  });
+
+  it('does not carry a stale IN/TW-only inline override map', () => {
+    assert.ok(
+      !/COMTRADE_REPORTER_OVERRIDES:\s*Record<string,\s*string>\s*=\s*\{\s*IN:\s*'699',\s*TW:\s*'490'\s*\}/.test(src),
+      'lazy fallback: must not define an independent IN/TW-only override map',
     );
   });
 });

@@ -171,7 +171,7 @@ const STANDALONE_KEYS = {
   pizzint:                  'intelligence:pizzint:seed:v1',
   resilienceStaticIndex:    'resilience:static:index:v1',
   resilienceStaticFao:      'resilience:static:fao',
-  resilienceRanking:        'resilience:ranking:v18',
+  resilienceRanking:        'resilience:ranking:v19',
   productCatalog:           'product-catalog:v2',
   energySpineCountries:     'energy:spine:v1:_countries',
   energyExposure:           'energy:exposure:v1:index',
@@ -434,7 +434,7 @@ const SEED_META = {
   recoveryFiscalSpace:     { key: 'seed-meta:resilience:recovery:fiscal-space',     maxStaleMin: 129600 }, // monthly cron; 129600min = 90d = 3x interval (bumped from 86400/60d = 2x in PR #3669 for month-2 hiccup margin)
   recoveryReserveAdequacy: { key: 'seed-meta:resilience:recovery:reserve-adequacy', maxStaleMin: 86400 }, // monthly cron; 86400min = 60d = 2x interval
   recoveryExternalDebt:    { key: 'seed-meta:resilience:recovery:external-debt',    maxStaleMin: 86400 }, // monthly cron; 86400min = 60d = 2x interval
-  recoveryImportHhi:       { key: 'seed-meta:resilience:recovery:import-hhi',       maxStaleMin: 86400 }, // monthly cron; 86400min = 60d = 2x interval
+  recoveryImportHhi:       { key: 'seed-meta:resilience:recovery:import-hhi',       maxStaleMin: 50400 }, // monthly cron; 50400min = 35d catches missed import-HHI runs before stale country coverage lingers for 46d+
   // recoveryFuelStocks: probe removed (PR #3764). See STANDALONE_KEYS comment.
   recoveryReexportShare:   { key: 'seed-meta:resilience:recovery:reexport-share',   maxStaleMin: 86400 }, // monthly cron; 86400min = 60d = 2x interval
   recoverySovereignWealth: { key: 'seed-meta:resilience:recovery:sovereign-wealth', maxStaleMin: 86400 }, // monthly cron; 86400min = 60d = 2x interval
@@ -483,7 +483,6 @@ const ON_DEMAND_KEYS = new Set([
   'newsThreatSummary', // relay classify loop — only written when mergedByCountry has entries; absent on quiet news periods
   'resilienceRanking', // on-demand RPC cache populated after ranking requests; missing before first Pro use is expected
   'recoveryFiscalSpace', 'recoveryReserveAdequacy', 'recoveryExternalDebt',
-  'recoveryImportHhi', // recovery pillar: stub seeders not yet deployed, keys may be absent
   // NOTE (2026-04-24, plan 2026-04-24-001): the PR 1 v2 energy seeds
   // (`lowCarbonGeneration`, `fossilElectricityShare`, `powerLosses`)
   // are INTENTIONALLY NOT listed in ON_DEMAND_KEYS. They stay strict
@@ -522,19 +521,37 @@ const ON_DEMAND_KEYS = new Set([
                                    // never-provisioned Railway promotes EMPTY_ON_DEMAND → EMPTY (CRIT).
 ]);
 
-// Keys where 0 records is a valid healthy state (e.g. no airports closed,
-// no earnings events this week, econ calendar quiet between seasons).
-// The key must still exist in Redis; only the record count can be 0.
+// Legacy broad empty-data exemptions. classifyKey uses this set in both the
+// missing-key and zero-record branches, so entries here can be OK while fresh
+// even when the data key has strlen=0. For producer-specific cases where the
+// payload must exist but recordCount=0 is valid, add to ZERO_RECORD_DATA_OK_KEYS
+// only.
 const EMPTY_DATA_OK_KEYS = new Set([
   'notamClosures', 'faaDelays', 'intlDelays', 'gpsjam', 'positiveGeoEvents', 'weatherAlerts',
   'earningsCalendar', 'econCalendar', 'cotPositioning',
   'usniFleet', // usniFleetStale covers the fallback; relay outages → WARN not CRIT
   'newsThreatSummary', // only written when classify produces country matches; quiet news periods = 0 countries, no write
   'recoveryFiscalSpace',
-  'recoveryImportHhi', // recovery pillar seeds: stub seeders write empty payloads until real sources are wired
   'ddosAttacks', 'trafficAnomalies', // zero events during quiet periods is valid, not critical
   'resilienceStaticFao', // empty aggregate = no IPC Phase 3+ countries this year (possible in theory); the key must exist but count=0 is fine
   'cableHealth', // `cables: {}` = no active subsea cable disruptions per NGA NAVAREA warnings — all cables implicitly healthy. Also covers NGA-upstream-down windows where get-cable-health writes back the fallback response (empty cables); without this, those would alarm EMPTY_DATA.
+]);
+
+// Keys where a present payload with meta recordCount=0 is valid, but the data
+// key itself must still exist. Do not use this set in the missing-key branch.
+const ZERO_RECORD_DATA_OK_KEYS = new Set([
+  ...EMPTY_DATA_OK_KEYS,
+  // retailer-spread is SUPPRESSED to an explicit 0 by the aggregate job when a
+  // market's retailers share < MIN_SPREAD_ITEMS (4) common basket items —
+  // consumer-prices-core/src/jobs/aggregate.ts writes `retailer_spread_pct: 0`
+  // ("prevent stale noisy value persisting") and logs "spread suppressed
+  // (N/4 common items)". That is a valid data-coverage state, not a pipeline
+  // outage: the AE basket's cross-retailer overlap shrank 2/4 → 1/4 → 0/4 over
+  // late-May 2026 while the seeder kept running fresh (seedAgeMin well inside
+  // maxStaleMin) and the sibling keys (overview/categories/movers/basket-series)
+  // published normally. Treat 0 records as OK while fresh; STALE_SEED still
+  // fires if the publish job itself stops.
+  'consumerPricesSpread',
 ]);
 
 // Cascade groups: if any key in the group has data, all empty siblings are OK.
@@ -671,7 +688,7 @@ function classifyKey(name, redisKey, opts, ctx) {
   } else if (records === 0) {
     // hasData is true in this branch, so cascade can never apply (isCascadeCovered
     // short-circuits when hasData=true). Cascade only shields wholly absent keys.
-    if (EMPTY_DATA_OK_KEYS.has(name)) status = seedStale === true ? 'STALE_SEED' : 'OK';
+    if (ZERO_RECORD_DATA_OK_KEYS.has(name)) status = seedStale === true ? 'STALE_SEED' : 'OK';
     else if (isOnDemand) status = 'EMPTY_ON_DEMAND';
     else status = 'EMPTY_DATA';
   } else if (seedStale === true) status = 'STALE_SEED';
@@ -799,11 +816,16 @@ export default async function handler(req, ctx) {
     results = await redisPipeline(commands, 8_000);
     if (!results) throw new Error('Redis request failed');
   } catch (err) {
+    // REDIS_DOWN is the one hard-down state that returns 503: with Redis
+    // unreachable the endpoint can assess nothing, so a plain HTTP-status
+    // monitor (UptimeRobot, k8s probe, LB) must see a failure. DEGRADED/
+    // UNHEALTHY/WARNING stay 200 (verdict in body) so warn-level seed jitter
+    // doesn't flap HTTP monitors — see #2699 and the always-200 main response.
     return jsonResponse({
       status: 'REDIS_DOWN',
       error: err.message,
       checkedAt: new Date(now).toISOString(),
-    }, 200, headers);
+    }, 503, headers);
   }
 
   // keyStrens: byte length per data key (0 = missing/empty/sentinel)

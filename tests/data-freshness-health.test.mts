@@ -12,10 +12,10 @@ import {
 
 const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
-function jsonResponse(body: unknown): Response {
+function jsonResponse(body: unknown, status = 200): Response {
   return {
-    ok: true,
-    status: 200,
+    ok: status >= 200 && status < 300,
+    status,
     json: async () => body,
   } as Response;
 }
@@ -155,10 +155,14 @@ describe('health freshness ingestion', () => {
     const applied = await refreshDataFreshnessFromHealth({
       endpoint: '/api/health',
       urlResolver: (path) => path,
+      // REDIS_DOWN returns HTTP 503 (api/health.js). The consumer must parse the
+      // body before bailing on !resp.ok, or this outage branch never runs and
+      // mapped sources keep stale freshness. Mocking 503 (not 200) makes this a
+      // real guard for that regression.
       fetchFn: async () => jsonResponse({
         status: 'REDIS_DOWN',
         checkedAt: new Date(checkedAtMs).toISOString(),
-      }),
+      }, 503),
     });
 
     assert.equal(applied, mappedSources.size);

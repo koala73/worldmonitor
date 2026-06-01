@@ -21,6 +21,7 @@
     "sharp": "^0.34.5"
   },
   "overrides": {
-    "devalue": "^5.8.1"
+    "devalue": "^5.8.1",
+    "defu": "^6.1.5"
   }
 }

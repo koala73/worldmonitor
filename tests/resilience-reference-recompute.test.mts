@@ -9,10 +9,6 @@ import {
   recomputeReferenceManifest,
   type ResilienceReferenceManifest,
 } from '../scripts/resilience-reference-recompute.mts';
-import {
-  RESILIENCE_RANKING_CACHE_KEY,
-  RESILIENCE_SCORE_CACHE_PREFIX,
-} from '../server/worldmonitor/resilience/v1/_shared.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = path.resolve(path.dirname(__filename), '..');
@@ -35,9 +31,13 @@ const EXPECTED_DIMENSIONS = [
   'externalDebtCoverage',
   'sovereignFiscalBuffer',
 ];
+const CAPTURED_SCORE_CACHE_PREFIX = 'resilience:score:v18:';
+const CAPTURED_RANKING_CACHE_KEY = 'resilience:ranking:v18';
+const CAPTURED_HISTORY_KEY_PREFIX = 'resilience:history:v13:';
+const CAPTURED_SCORE_CACHE_SOURCE = `${CAPTURED_SCORE_CACHE_PREFIX}{countryCode}`;
 
 function loadManifest(): ResilienceReferenceManifest & {
-  scorer?: { scoreCachePrefix?: string; rankingCacheKey?: string };
+  scorer?: { scoreCachePrefix?: string; rankingCacheKey?: string; historyKeyPrefix?: string };
   redis?: ResilienceReferenceManifest['redis'] & { keyCount?: number };
   productionScoreCacheAtCapture?: {
     source?: string;
@@ -48,19 +48,20 @@ function loadManifest(): ResilienceReferenceManifest & {
 }
 
 describe('country resilience reference-edition recompute artifact', () => {
-  it('commits a non-placeholder pc manifest with current cache-key metadata', () => {
+  it('commits a non-placeholder pc manifest with captured cache-key provenance metadata', () => {
     const manifest = loadManifest();
 
     assert.equal(manifest.schemaVersion, 1);
     assert.equal(manifest.referenceEdition, '2026');
     assert.match(manifest.capturedAt, /^\d{4}-\d{2}-\d{2}T/);
     assert.equal(manifest.formula, 'pc');
-    assert.equal(manifest.scorer?.scoreCachePrefix, RESILIENCE_SCORE_CACHE_PREFIX);
-    assert.equal(manifest.scorer?.rankingCacheKey, RESILIENCE_RANKING_CACHE_KEY);
-    assert.equal(manifest.productionScoreCacheAtCapture?.source, `${RESILIENCE_SCORE_CACHE_PREFIX}{countryCode}`);
+    assert.equal(manifest.scorer?.scoreCachePrefix, CAPTURED_SCORE_CACHE_PREFIX);
+    assert.equal(manifest.scorer?.rankingCacheKey, CAPTURED_RANKING_CACHE_KEY);
+    assert.equal(manifest.scorer?.historyKeyPrefix, CAPTURED_HISTORY_KEY_PREFIX);
+    assert.equal(manifest.productionScoreCacheAtCapture?.source, CAPTURED_SCORE_CACHE_SOURCE);
     assert.deepEqual(manifest.sample.countries, EXPECTED_COUNTRIES);
     assert.deepEqual(manifest.sample.dimensions, EXPECTED_DIMENSIONS);
-    assert.equal(manifest.published.source, `${RESILIENCE_SCORE_CACHE_PREFIX}{countryCode}`);
+    assert.equal(manifest.published.source, CAPTURED_SCORE_CACHE_SOURCE);
     assert.equal(manifest.redis?.slice?.mode, 'sample-country-slice');
     assert.deepEqual(manifest.redis?.slice?.countryCodes, EXPECTED_COUNTRIES);
     assert.ok((manifest.redis?.slice?.prunedKeys ?? 0) > 0, 'manifest must record pruned source keys');

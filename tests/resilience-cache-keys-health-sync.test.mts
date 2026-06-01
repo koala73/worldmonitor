@@ -185,6 +185,31 @@ describe('resilience cache-key health-registry sync (T1.9)', () => {
     }
   });
 
+  describe('import-HHI health freshness guard', () => {
+    const healthJsText = readFileSync(join(repoRoot, 'api/health.js'), 'utf-8');
+    const onDemandBlock = healthJsText.slice(
+      healthJsText.indexOf('const ON_DEMAND_KEYS'),
+      healthJsText.indexOf('const EMPTY_DATA_OK_KEYS'),
+    );
+    const emptyOkBlock = healthJsText.slice(
+      healthJsText.indexOf('const EMPTY_DATA_OK_KEYS'),
+      healthJsText.indexOf('const CASCADE_GROUPS'),
+    );
+
+    it('recoveryImportHhi alerts before a 46-day stale snapshot can look healthy', () => {
+      assert.match(
+        healthJsText,
+        /recoveryImportHhi:\s*\{ key: 'seed-meta:resilience:recovery:import-hhi',\s*maxStaleMin: 50400 \}/,
+        'api/health.js must keep recoveryImportHhi maxStaleMin at 35d so missed monthly runs surface before day 46',
+      );
+    });
+
+    it('recoveryImportHhi is not softened as on-demand or empty-data-ok', () => {
+      assert.ok(!onDemandBlock.includes("'recoveryImportHhi'"), 'recoveryImportHhi must not be in ON_DEMAND_KEYS');
+      assert.ok(!emptyOkBlock.includes("'recoveryImportHhi'"), 'recoveryImportHhi must not be in EMPTY_DATA_OK_KEYS');
+    });
+  });
+
   describe('resilienceIntervals maxStaleMin co-pinned to actual 6h writer cadence', () => {
     // Regression-locks two prior fixes:
     //

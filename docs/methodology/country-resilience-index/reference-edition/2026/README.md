@@ -17,7 +17,7 @@ Regenerate the manifest from production Redis:
 npx tsx scripts/freeze-resilience-reference-edition.mts --refresh-score-cache
 ```
 
-The `--refresh-score-cache` flag rewrites the sampled `resilience:score:v18:{countryCode}` entries before capture so the authoritative published values and frozen input slices are from the same production input state. Omit it for a read-only audit run; the generator will fail if the existing score cache has drifted from the current inputs.
+The `--refresh-score-cache` flag rewrites the sampled `RESILIENCE_SCORE_CACHE_PREFIX` entries before capture so the authoritative published values and frozen input slices are from the same production input state. Omit it for a read-only audit run; the generator will fail if the existing score cache has drifted from the current inputs.
 
 Verify the committed artifact:
 

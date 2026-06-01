@@ -1,6 +1,7 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { sparkline } from '@/utils/sparkline';
 import {
   fetchConsumerPriceOverview,
@@ -22,11 +23,16 @@ import {
   type PriceMover,
   type RetailerSpread,
 } from '@/services/consumer-prices';
+import { getAllCountriesInflation, type CountryInflationRow } from '@/services/imf-country-data';
 
-type TabId = 'overview' | 'categories' | 'movers' | 'spread' | 'health';
+type TabId = 'overview' | 'categories' | 'movers' | 'spread' | 'health' | 'world';
 
 const SETTINGS_KEY = 'wm-consumer-prices-v1';
 const CHANGE_EVENT = 'wm-consumer-prices-settings-changed';
+// Dispatched by CMD+K (search-manager) to deep-link straight to a tab, e.g.
+// the `panel:consumer-prices@world` command landing on the World inflation tab.
+const OPEN_TAB_EVENT = 'wm-consumer-prices-open-tab';
+const TAB_IDS: readonly TabId[] = ['overview', 'categories', 'movers', 'spread', 'health', 'world'];
 
 interface PanelSettings {
   market: string;
@@ -89,6 +95,22 @@ function freshnessClass(min: number | null): string {
   return 'cp-fresh--stale';
 }
 
+// Colour band for an annual inflation reading (thresholds mirror the
+// directional logic in buildImfEconomicIndicators: >5% reads as a stability
+// risk, >10% acute, <0 deflationary).
+function inflationSeverityClass(pct: number | null): string {
+  if (pct == null) return 'cp-infl--unknown';
+  if (pct >= 10) return 'cp-infl--high';
+  if (pct >= 5) return 'cp-infl--warn';
+  if (pct < 0) return 'cp-infl--deflation';
+  return 'cp-infl--ok';
+}
+
+function fmtInflation(pct: number | null): string {
+  if (pct == null) return '—';
+  return `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`;
+}
+
 export class ConsumerPricesPanel extends Panel {
   private overview: GetConsumerPriceOverviewResponse | null = null;
   private categories: ListConsumerPriceCategoriesResponse | null = null;
@@ -96,8 +118,24 @@ export class ConsumerPricesPanel extends Panel {
   private spread: ListRetailerPriceSpreadsResponse | null = null;
   private freshness: GetConsumerPriceFreshnessResponse | null = null;
   private allMarkets: GetConsumerPriceOverviewResponse[] = [];
+  // World tab: IMF WEO official inflation for every reporting economy. Loaded
+  // lazily on first view (its own data source, independent of the market bar).
+  private globalInflation: CountryInflationRow[] | null = null;
+  private inflationLoading = false;
+  private inflationFilter = '';
   private settings: PanelSettings = loadSettings();
   private loading = false; // tracks in-flight fetch to avoid duplicates
+
+  // CMD+K deep-link: switch to the requested tab (e.g. World) when opened via
+  // the `panel:consumer-prices@world` command. Bound once so destroy() can drop it.
+  private readonly openTabHandler = (e: Event): void => {
+    const tab = (e as CustomEvent<{ tab?: string }>).detail?.tab;
+    if (!tab || !TAB_IDS.includes(tab as TabId)) return;
+    this.settings.tab = tab as TabId;
+    saveSettings(this.settings);
+    this.render();
+    if (tab === 'world' && this.globalInflation === null) void this.loadGlobalInflation();
+  };
 
   constructor() {
     super({
@@ -108,6 +146,17 @@ export class ConsumerPricesPanel extends Panel {
     });
 
     this.content.addEventListener('click', (e) => this.handleClick(e));
+    this.content.addEventListener('input', (e) => this.handleInput(e));
+    if (typeof window !== 'undefined') {
+      window.addEventListener(OPEN_TAB_EVENT, this.openTabHandler);
+    }
+  }
+
+  public destroy(): void {
+    if (typeof window !== 'undefined') {
+      window.removeEventListener(OPEN_TAB_EVENT, this.openTabHandler);
+    }
+    super.destroy?.();
   }
 
   private handleClick(e: Event): void {
@@ -157,6 +206,35 @@ export class ConsumerPricesPanel extends Panel {
     }
   }
 
+  private handleInput(e: Event): void {
+    const target = e.target as HTMLElement;
+    if (!(target instanceof HTMLInputElement) || target.dataset.inflationFilter === undefined) return;
+    this.inflationFilter = target.value;
+    // Patch only the rows + count in place — the live <input> node stays
+    // mounted, so its focus and caret survive without a full-panel rebuild.
+    if (this.globalInflation === null || this.globalInflation.length === 0) return;
+    const visible = this.visibleInflationRows();
+    const tbody = this.content.querySelector('.cp-world-table tbody');
+    if (tbody) {
+      setTrustedHtml(tbody, trustedHtml(this.inflationTbodyHtml(visible), 'escaped IMF inflation rows'));
+    }
+    const count = this.content.querySelector('.cp-world-count');
+    if (count) count.textContent = this.inflationCountText(visible);
+  }
+
+  private async loadGlobalInflation(): Promise<void> {
+    if (this.inflationLoading) return;
+    this.inflationLoading = true;
+    try {
+      const rows = await getAllCountriesInflation();
+      if (!this.element?.isConnected) return;
+      this.globalInflation = rows;
+      if (this.settings.tab === 'world') this.render();
+    } finally {
+      this.inflationLoading = false;
+    }
+  }
+
   public async fetchData(): Promise<void> {
     if (this.loading) return;
     this.loading = true;
@@ -193,15 +271,28 @@ export class ConsumerPricesPanel extends Panel {
   }
 
   private render(): void {
-    const { tab, range, categoryFilter, market } = this.settings;
-
-    const tabs: Array<{ id: TabId; label: string }> = [
+    const allTabs: Array<{ id: TabId; label: string }> = [
       { id: 'overview', label: t('components.consumerPrices.tabs.overview') },
       { id: 'categories', label: t('components.consumerPrices.tabs.categories') },
       { id: 'movers', label: t('components.consumerPrices.tabs.movers') },
       { id: 'spread', label: t('components.consumerPrices.tabs.spread') },
       { id: 'health', label: t('components.consumerPrices.tabs.health') },
+      { id: 'world', label: t('components.consumerPrices.tabs.world') },
     ];
+    // Categories/Movers/Spread/Health need a single market. Collapse to the two
+    // market-independent tabs (Overview + World) both in the all-markets view
+    // AND while the World tab is active — World hides the market bar, so showing
+    // per-market tabs there would offer no way to change the implied market.
+    const globalTabsOnly = this.settings.market === 'all' || this.settings.tab === 'world';
+    const tabs = globalTabsOnly
+      ? allTabs.filter((tb) => tb.id === 'overview' || tb.id === 'world')
+      : allTabs;
+    // Snap a stale/out-of-range active tab back to Overview (e.g. persisted
+    // settings landing on a per-market tab while in the all-markets view) so
+    // the tab bar never renders with nothing highlighted.
+    if (!tabs.some((tb) => tb.id === this.settings.tab)) this.settings.tab = 'overview';
+
+    const { tab, range, categoryFilter, market } = this.settings;
 
     const tabsHtml = `
       <div class="panel-tabs">
@@ -229,11 +320,24 @@ export class ConsumerPricesPanel extends Panel {
       </div>
     `;
 
-    // All-markets global view — skip per-market tabs
+    // Global IMF inflation — official annual CPI for every reporting economy.
+    // Market-independent, so the market/range bars are intentionally omitted.
+    if (tab === 'world') {
+      this.setSafeContent(unsafeRawHtml(`
+        <div class="consumer-prices-panel">
+          ${tabsHtml}
+          <div class="cp-body">${this.renderWorldInflation()}</div>
+        </div>
+      `, 'legacy Panel.setContent() migration'));
+      return;
+    }
+
+    // All-markets global basket view — skip per-market tabs
     if (market === 'all') {
       this.setSafeContent(unsafeRawHtml(`
         <div class="consumer-prices-panel">
           ${marketBarHtml}
+          ${tabsHtml}
           <div class="cp-body">${this.renderGlobalOverview()}</div>
         </div>
       `, 'legacy Panel.setContent() migration'));
@@ -324,6 +428,73 @@ export class ConsumerPricesPanel extends Panel {
         <tbody>${rows}</tbody>
       </table>
       <div class="cp-global-hint">Tap a market row to drill in</div>
+    `;
+  }
+
+  // Rows currently matching the country filter. Caller guarantees
+  // globalInflation is a non-empty array.
+  private visibleInflationRows(): CountryInflationRow[] {
+    const rows = this.globalInflation ?? [];
+    const filter = this.inflationFilter.trim().toLowerCase();
+    if (!filter) return rows;
+    return rows.filter(
+      (r) => r.name.toLowerCase().includes(filter) || r.iso2.toLowerCase().includes(filter),
+    );
+  }
+
+  private inflationCountText(visible: CountryInflationRow[]): string {
+    const label = visible.length === 1
+      ? t('components.consumerPrices.world.countSingular')
+      : t('components.consumerPrices.world.countPlural');
+    return `${visible.length} ${label}`;
+  }
+
+  private inflationTbodyHtml(visible: CountryInflationRow[]): string {
+    if (visible.length === 0) {
+      return `<tr><td colspan="4" class="cp-global-pending">${escapeHtml(t('components.consumerPrices.world.noMatches'))}</td></tr>`;
+    }
+    return visible.map((r) => {
+      const cls = inflationSeverityClass(r.inflationPct);
+      return `
+        <tr class="cp-global-row">
+          <td class="cp-global-flag">${escapeHtml(r.name)}</td>
+          <td class="cp-infl-yoy ${cls}">${fmtInflation(r.inflationPct)}</td>
+          <td class="cp-infl-eop">${fmtInflation(r.cpiEopPct)}</td>
+          <td class="cp-infl-year">${r.year ?? '—'}</td>
+        </tr>`;
+    }).join('');
+  }
+
+  private renderWorldInflation(): string {
+    if (this.globalInflation === null) {
+      if (!this.inflationLoading) void this.loadGlobalInflation();
+      return `<div class="cp-empty-state">${escapeHtml(t('components.consumerPrices.world.loading'))}</div>`;
+    }
+    if (this.globalInflation.length === 0) {
+      return this.renderEmptyState(t('components.consumerPrices.world.empty'));
+    }
+
+    const visible = this.visibleInflationRows();
+
+    return `
+      <div class="cp-world-controls">
+        <input type="search" class="cp-world-filter" data-inflation-filter
+          placeholder="${escapeHtml(t('components.consumerPrices.world.filterPlaceholder'))}"
+          value="${escapeHtml(this.inflationFilter)}" />
+        <span class="cp-world-count">${escapeHtml(this.inflationCountText(visible))}</span>
+      </div>
+      <table class="cp-global-table cp-world-table">
+        <thead>
+          <tr>
+            <th>${escapeHtml(t('components.consumerPrices.world.country'))}</th>
+            <th>${escapeHtml(t('components.consumerPrices.world.inflationYoY'))}</th>
+            <th>${escapeHtml(t('components.consumerPrices.world.endOfPeriod'))}</th>
+            <th>${escapeHtml(t('components.consumerPrices.world.year'))}</th>
+          </tr>
+        </thead>
+        <tbody>${this.inflationTbodyHtml(visible)}</tbody>
+      </table>
+      <div class="cp-global-hint">${escapeHtml(t('components.consumerPrices.world.source'))}</div>
     `;
   }
 

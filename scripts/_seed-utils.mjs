@@ -672,19 +672,30 @@ export async function httpsProxyFetchRaw(url, proxyAuth, { accept = '*/*', timeo
   return { buffer: result.buffer, contentType: result.contentType };
 }
 
+// Whether a proxy error should be retried (the Decodo proxy rotates exit IP per
+// attempt). Covers 5xx/522, DNS/socket errors, AND mid-handshake TLS tears — the
+// last group is load-bearing: if a TLS-tear isn't classified transient, the
+// retry loop breaks on attempt 1 and falls to a direct FRED fetch, which a
+// datacenter IP gets rate-limited/blocked on → the whole batch fails. Exported
+// for unit testing (the proxy fetch itself is network-bound and not injectable).
+export function isTransientProxyError(message) {
+  return /HTTP 5\d{2}|522|timeout|ECONNRESET|ECONNREFUSED|ETIMEDOUT|EAI_AGAIN|EPIPE|socket (disconnected|hang up)|TLS connection|tls_get_more_records|packet length too long|SSL routines|secure TLS connection/i.test(message || '');
+}
+
 // Fetch JSON from a FRED URL, routing through proxy when available.
 // Proxy-first: FRED consistently blocks/throttles Railway datacenter IPs,
 // so try proxy first to avoid 20s timeout on every direct attempt.
 export async function fredFetchJson(url, proxyAuth) {
   if (proxyAuth) {
-    // Decodo proxy flaps on 5xx/522 — retry up to 3 times with backoff before falling back direct.
+    // Retry the proxy (rotates exit IP per attempt) before falling back direct.
+    // isTransientProxyError covers TLS-handshake tears — see its doc comment.
     let lastProxyErr;
     for (let attempt = 1; attempt <= 3; attempt++) {
       try {
         return await httpsProxyFetchJson(url, proxyAuth);
       } catch (proxyErr) {
         lastProxyErr = proxyErr;
-        const transient = /HTTP 5\d{2}|522|timeout|ECONNRESET|ETIMEDOUT|EAI_AGAIN/i.test(proxyErr.message || '');
+        const transient = isTransientProxyError(proxyErr.message);
         if (attempt < 3 && transient) {
           await new Promise((r) => setTimeout(r, 400 * attempt + Math.random() * 300));
           continue;

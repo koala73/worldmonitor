@@ -30,6 +30,8 @@ import {
   scoreSocialCohesion,
   scoreStateContinuity,
   scoreTradePolicy,
+  summarizeCyber,
+  CYBER_SNAPSHOT_WEIGHT_CAP,
 } from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
 import { RESILIENCE_FIXTURES, fixtureReader } from './helpers/resilience-fixtures.mts';
 
@@ -47,6 +49,15 @@ async function scoreTriple(
 function assertOrdered(label: string, no: number, us: number, ye: number) {
   assert.ok(no >= us, `${label}: expected NO (${no}) >= US (${us})`);
   assert.ok(us > ye, `${label}: expected US (${us}) > YE (${ye})`);
+}
+
+function cyberOnlyReader(threats: unknown[]): ResilienceSeedReader {
+  return async (key: string): Promise<unknown | null> => {
+    if (key === 'cyber:threats:v2') return { threats };
+    if (key === 'infra:outages:v1') return { outages: [] };
+    if (key === 'intelligence:gpsjam:v2') return { hexes: [] };
+    return null;
+  };
 }
 
 // Plan 2026-04-25-004 Phase 1 (Ship 1): tradePolicy formula now weights
@@ -455,6 +466,74 @@ describe('resilience dimension scorers', () => {
     assert.ok(score.score > 0, `country with real threats must have score > 0, got ${score.score}`);
     assert.ok(score.score < 100, `country with real threats must have score < 100, got ${score.score}`);
     assert.ok(score.coverage > 0, `coverage should be > 0 with real data, got ${score.coverage}`);
+  });
+
+  it('summarizeCyber: caps total per-snapshot severity weight', () => {
+    // The cyber:threats:v2 feed carries no usable cross-day spread
+    // (lastSeenAt is stamped at ~fetch time, firstSeenAt is unpopulated), so
+    // the cap bounds the whole snapshot's severity weight rather than a
+    // per-day bucket. 10 critical (30) + 10 high (20) = 50 raw, capped to
+    // CYBER_SNAPSHOT_WEIGHT_CAP (8).
+    const burst = [
+      ...Array.from({ length: 10 }, () => ({ country: 'Finland', severity: 'CRITICALITY_LEVEL_CRITICAL' })),
+      ...Array.from({ length: 10 }, () => ({ country: 'Finland', severity: 'CRITICALITY_LEVEL_HIGH' })),
+    ];
+
+    assert.equal(
+      summarizeCyber({ threats: burst }, 'FI').weightedCount,
+      CYBER_SNAPSHOT_WEIGHT_CAP,
+      'a single snapshot burst is capped at the per-snapshot weight cap',
+    );
+  });
+
+  it('summarizeCyber: leaves sub-cap weight untouched and filters by country', () => {
+    const threats = [
+      { country: 'Finland', severity: 'CRITICALITY_LEVEL_CRITICAL' }, // 3
+      { country: 'Finland', severity: 'CRITICALITY_LEVEL_LOW' },      // 0.5
+      { country: 'Sweden', severity: 'CRITICALITY_LEVEL_CRITICAL' },  // excluded
+    ];
+
+    assert.equal(
+      summarizeCyber({ threats }, 'FI').weightedCount,
+      3.5,
+      'below-cap weight passes through unchanged; other countries are excluded',
+    );
+  });
+
+  it('scoreCyberDigital: a same-snapshot burst floors at the cap, not at zero', async () => {
+    // cyberOnlyReader leaves outages/gps empty, so the dimension score IS the
+    // cyber sub-score = normalizeLowerBetter(weightedCount, 0, 25). A burst is
+    // capped at CYBER_SNAPSHOT_WEIGHT_CAP, so its score floors at a fixed,
+    // cap-derived value rather than collapsing to 0 — which is what bounds the
+    // rank swing. Deriving the floor from the constant (not a literal) keeps
+    // this honest if the cap is ever retuned.
+    const burstFloor = ((25 - CYBER_SNAPSHOT_WEIGHT_CAP) / 25) * 100;
+    const mild = await scoreCyberDigital('FI', cyberOnlyReader([
+      { country: 'Finland', severity: 'CRITICALITY_LEVEL_CRITICAL' },
+    ]));
+    const burst = await scoreCyberDigital('FI', cyberOnlyReader(
+      Array.from({ length: 50 }, () => ({ country: 'Finland', severity: 'CRITICALITY_LEVEL_CRITICAL' })),
+    ));
+
+    assert.ok(burst.score > 0, `burst must not collapse cyberDigital to zero, got ${burst.score}`);
+    assert.equal(burst.score, burstFloor, `burst must floor at the cap-derived score (${burstFloor}), got ${burst.score}`);
+    assert.ok(mild.score > burst.score, `a mild day must score better than a burst: mild=${mild.score}, burst=${burst.score}`);
+  });
+
+  it('scoreCyberDigital: burst score floors at the per-snapshot cap regardless of volume', async () => {
+    // No cross-day smoothing exists for this feed: 50 vs 500 same-snapshot
+    // threats produce the same capped weight (8) and therefore the same
+    // bounded score. Genuine burst-vs-sustained discrimination would require
+    // cross-snapshot state and is intentionally NOT claimed here.
+    const fifty = await scoreCyberDigital('FI', cyberOnlyReader(
+      Array.from({ length: 50 }, () => ({ country: 'Finland', severity: 'CRITICALITY_LEVEL_CRITICAL' })),
+    ));
+    const fiveHundred = await scoreCyberDigital('FI', cyberOnlyReader(
+      Array.from({ length: 500 }, () => ({ country: 'Finland', severity: 'CRITICALITY_LEVEL_CRITICAL' })),
+    ));
+
+    assert.equal(fifty.score, fiveHundred.score, 'volume above the cap must not change the score');
+    assert.ok(fifty.score > 0, `capped burst must stay above zero, got ${fifty.score}`);
   });
 
   it('scoreCyberDigital: feed outage (null source) returns score=0 and zero coverage', async () => {

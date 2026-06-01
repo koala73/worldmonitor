@@ -3,6 +3,21 @@
  *
  * Uses dynamic import so the module is safe to import in Node.js test
  * environments where @clerk/clerk-js (browser-only) is not available.
+ *
+ * The @clerk/clerk-js bundle is ~2.98 MB and 96% unused on first paint, so
+ * the actual `await import('@clerk/clerk-js')` is deferred off the critical
+ * path. Three triggers can start the load:
+ *   1. `scheduleClerkLoad()` — requestIdleCallback after first paint (the
+ *      default for the main-app boot path; called from auth-state.ts).
+ *   2. User interaction — `openSignIn`/`openSignUp`/`mountUserButton` force
+ *      an immediate load on first call.
+ *   3. Anything that needs a JWT — `getClerkToken()` forces an immediate
+ *      load via `initClerk()` (the mcp-grant page also uses this directly).
+ *
+ * `subscribeClerk()` queues callbacks issued before the SDK is loaded so
+ * `subscribeAuthState()` keeps working across the deferred-load window —
+ * once Clerk hydrates, queued callbacks are attached and fired once so any
+ * cookie-backed signed-in session lights up the UI without a refresh.
  */
 
 import type { Clerk } from '@clerk/clerk-js';
@@ -13,6 +28,9 @@ const PUBLISHABLE_KEY = (typeof import.meta !== 'undefined' && import.meta.env?.
 
 let clerkInstance: ClerkInstance | null = null;
 let loadPromise: Promise<void> | null = null;
+let loadScheduled = false;
+const pendingSubscribers: Array<() => void> = [];
+const pendingSubscriberDetachers = new WeakMap<() => void, { detached: boolean }>();
 
 const MONO_FONT = "'SF Mono', Monaco, 'Cascadia Code', 'Fira Code', 'DejaVu Sans Mono', monospace";
 
@@ -76,7 +94,11 @@ function getAppearance() {
       };
 }
 
-/** Initialize Clerk. Call once at app startup. */
+/**
+ * Force Clerk to load now. Call when the SDK is required synchronously
+ * (mcp-grant page bootstrap, getClerkToken on first authenticated request).
+ * Idempotent — repeated calls return the same in-flight promise.
+ */
 export async function initClerk(): Promise<void> {
   if (clerkInstance) return;
   if (loadPromise) return loadPromise;
@@ -90,6 +112,7 @@ export async function initClerk(): Promise<void> {
       const clerk = new Clerk(PUBLISHABLE_KEY);
       await clerk.load({ appearance: getAppearance() });
       clerkInstance = clerk;
+      attachPendingSubscribers();
     } catch (e) {
       loadPromise = null; // allow retry on next call
       throw e;
@@ -98,6 +121,62 @@ export async function initClerk(): Promise<void> {
   return loadPromise;
 }
 
+/**
+ * Schedule Clerk to load off the critical path. Returns synchronously after
+ * scheduling; the actual `await import('@clerk/clerk-js')` happens on
+ * `requestIdleCallback` (or `load`+microtask as fallback). Callers that
+ * later need the SDK synchronously can still `await initClerk()` — it will
+ * either return the in-flight promise or kick off the load early.
+ */
+export function scheduleClerkLoad(): void {
+  if (clerkInstance || loadPromise || loadScheduled) return;
+  if (!PUBLISHABLE_KEY) return;
+  if (typeof window === 'undefined') return;
+  loadScheduled = true;
+
+  const startLoad = (): void => {
+    // initClerk's idempotency guard handles re-entry from a concurrent
+    // force-load (e.g. the user clicked Sign In before the idle callback
+    // fired). Swallow rejection here — initClerk's own callers see the
+    // throw via the promise it returns. Reset `loadScheduled` on failure
+    // so a future `scheduleClerkLoad()` (e.g. retry after recovery from
+    // a transient network blip) is not silently blocked by the guard —
+    // initClerk's catch clears `loadPromise` for the same reason.
+    void initClerk().catch(() => {
+      loadScheduled = false;
+    });
+  };
+
+  const ric = (window as unknown as { requestIdleCallback?: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback;
+  if (typeof ric === 'function') {
+    ric(startLoad, { timeout: 4000 });
+    return;
+  }
+  // Safari / older browsers: defer past `load`, then a microtask so we
+  // don't piggyback the load handler itself.
+  if (document.readyState === 'complete') {
+    setTimeout(startLoad, 0);
+  } else {
+    window.addEventListener('load', () => setTimeout(startLoad, 0), { once: true });
+  }
+}
+
+/** Drain the subscriber queue once the SDK is live. */
+function attachPendingSubscribers(): void {
+  if (!clerkInstance) return;
+  const queued = pendingSubscribers.splice(0, pendingSubscribers.length);
+  for (const cb of queued) {
+    if (pendingSubscriberDetachers.get(cb)?.detached) continue;
+    const off = clerkInstance.addListener(cb);
+    activeListenerDetachers.set(cb, off);
+    // Fire once so subscribers learn about a cookie-backed signed-in
+    // session that was already present before Clerk finished loading.
+    cb();
+  }
+}
+
+const activeListenerDetachers = new WeakMap<() => void, () => void>();
+
 /** Get the initialized Clerk instance. Returns null if not loaded. */
 export function getClerk(): ClerkInstance | null {
   return clerkInstance;
@@ -105,7 +184,14 @@ export function getClerk(): ClerkInstance | null {
 
 /** Open the Clerk sign-in modal. */
 export function openSignIn(): void {
-  clerkInstance?.openSignIn({ appearance: getAppearance() });
+  if (clerkInstance) {
+    clerkInstance.openSignIn({ appearance: getAppearance() });
+    return;
+  }
+  // Deferred-load fast path: user clicked Sign In before the idle
+  // callback fired. Trigger immediate load and open the modal once the
+  // SDK is live so the click never silently no-ops.
+  void initClerk().then(() => clerkInstance?.openSignIn({ appearance: getAppearance() }));
 }
 
 /**
@@ -118,7 +204,14 @@ export function openSignIn(): void {
  * footer link.
  */
 export function openSignUp(): void {
-  clerkInstance?.openSignUp({ appearance: getAppearance() });
+  if (clerkInstance) {
+    clerkInstance.openSignUp({ appearance: getAppearance() });
+    return;
+  }
+  // Same deferred-load fast path as openSignIn — Create Account clicks
+  // during the load window kick off the import and open the modal once
+  // the SDK is live.
+  void initClerk().then(() => clerkInstance?.openSignUp({ appearance: getAppearance() }));
 }
 
 /**
@@ -244,10 +337,27 @@ export function getCurrentClerkUser(): { id: string; name: string; email: string
 /**
  * Subscribe to Clerk auth state changes.
  * Returns unsubscribe function.
+ *
+ * Callbacks issued before the SDK has finished its deferred load are
+ * queued and attached once it does (and fired once at attach time so
+ * a cookie-backed session becomes visible without a refresh). The
+ * returned detacher works whether the SDK ever loads or not.
  */
 export function subscribeClerk(callback: () => void): () => void {
-  if (!clerkInstance) return () => {};
-  return clerkInstance.addListener(callback);
+  if (clerkInstance) return clerkInstance.addListener(callback);
+  const handle = { detached: false };
+  pendingSubscriberDetachers.set(callback, handle);
+  pendingSubscribers.push(callback);
+  return () => {
+    handle.detached = true;
+    const i = pendingSubscribers.indexOf(callback);
+    if (i >= 0) pendingSubscribers.splice(i, 1);
+    const realDetach = activeListenerDetachers.get(callback);
+    if (realDetach) {
+      realDetach();
+      activeListenerDetachers.delete(callback);
+    }
+  };
 }
 
 /**
@@ -255,7 +365,26 @@ export function subscribeClerk(callback: () => void): () => void {
  * Returns an unmount function.
  */
 export function mountUserButton(el: HTMLDivElement): () => void {
-  if (!clerkInstance) return () => {};
+  if (!clerkInstance) {
+    // Deferred-load path: the avatar widget asked to mount before Clerk
+    // finished its idle-callback load. Trigger an immediate load and
+    // mount once ready. Track unmount in a sentinel so an early
+    // teardown still cancels.
+    let cancelled = false;
+    let realUnmount: (() => void) | null = null;
+    void initClerk().then(() => {
+      if (cancelled || !clerkInstance) return;
+      clerkInstance.mountUserButton(el, {
+        afterSignOutUrl: new URL('/', window.location.origin).toString(),
+        appearance: getAppearance(),
+      });
+      realUnmount = () => clerkInstance?.unmountUserButton(el);
+    });
+    return () => {
+      cancelled = true;
+      realUnmount?.();
+    };
+  }
   // Pin the after-sign-out destination to the origin root rather than
   // `window.location.href`. The current page URL may carry stale
   // checkout params (e.g., a subscription_id/status query that

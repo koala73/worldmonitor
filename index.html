@@ -265,6 +265,16 @@
       [data-variant="happy"][data-theme="dark"] .skeleton-line{background:linear-gradient(90deg,rgba(139,175,122,.05) 25%,rgba(139,175,122,.10) 50%,rgba(139,175,122,.05) 75%);background-size:200% 100%;animation:skel-shimmer 1.5s infinite}
     </style>
 
+    <!-- Preconnect: critical first-paint origins.
+         api.worldmonitor.app: credentialed CORS (runtime.ts defaults
+         credentials: 'include') — must use `use-credentials` so the
+         pre-opened socket lands in the same connection pool as the
+         credentialed fetches.
+         Sentry ingest: anonymous (DSN key in headers, no cookies). -->
+    <link rel="preconnect" href="https://api.worldmonitor.app" crossorigin="use-credentials">
+    <link rel="preconnect" href="https://o4509927897890816.ingest.us.sentry.io" crossorigin>
+    <link rel="dns-prefetch" href="https://clerk.worldmonitor.app">
+
     <!-- Preconnect: map tiles + assets -->
     <link rel="preconnect" href="https://maps.worldmonitor.app" crossorigin>
     <link rel="dns-prefetch" href="https://protomaps.github.io">
