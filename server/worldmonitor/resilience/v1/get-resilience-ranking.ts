@@ -118,11 +118,6 @@ function buildRankingResponse(
   };
 }
 
-function coerceNonNegativeInt(value: unknown, fallback: number): number {
-  const num = Number(value);
-  return Number.isFinite(num) && num >= 0 ? Math.floor(num) : fallback;
-}
-
 function rankingCacheMetadataMatches(payload: Partial<GetResilienceRankingResponse>): boolean {
   return (
     typeof payload.fetchedAt === 'string' &&
@@ -146,20 +141,14 @@ function coerceCachedRankingResponse(
   items: ResilienceRankingItem[],
   greyedOut: ResilienceRankingItem[],
 ): GetResilienceRankingResponse {
-  const fallbackTotal = items.length + greyedOut.length;
-  const scored = coerceNonNegativeInt(payload.scored, fallbackTotal);
-  const total = coerceNonNegativeInt(payload.total, fallbackTotal);
-  const coverage = Number.isFinite(Number(payload.coverage))
-    ? roundCoverage(Number(payload.coverage))
-    : (total > 0 ? roundCoverage(scored / total) : 0);
   return {
     items,
     greyedOut,
-    fetchedAt: typeof payload.fetchedAt === 'string' ? payload.fetchedAt : '',
-    scored,
-    total,
-    coverage,
-    partial: typeof payload.partial === 'boolean' ? payload.partial : (total === 0 || coverage < RANKING_FULL_COVERAGE),
+    fetchedAt: payload.fetchedAt,
+    scored: payload.scored,
+    total: payload.total,
+    coverage: roundCoverage(payload.coverage),
+    partial: payload.partial,
   };
 }
 

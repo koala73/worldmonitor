@@ -62,6 +62,9 @@ export const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v21';
 // to 12h (2x the cron interval) so a missed/slow cron can't create an
 // EMPTY_ON_DEMAND gap before the next successful rebuild.
 export const RESILIENCE_RANKING_CACHE_TTL_SECONDS = 12 * 60 * 60;
+// Scores section health is independent from ranking-cache freshness. Keep this
+// at 6x the 2h cron cadence even if ranking cache TTL is tuned separately.
+export const RESILIENCE_SCORE_SECTION_META_TTL_SECONDS = 12 * 60 * 60;
 export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
 
 const INTERVAL_TTL_SECONDS = 7 * 24 * 60 * 60;
@@ -371,7 +374,7 @@ async function writeScoreSectionHeartbeat(result) {
       'scores',
       result.recordCount ?? 0,
       '',
-      RESILIENCE_RANKING_CACHE_TTL_SECONDS,
+      RESILIENCE_SCORE_SECTION_META_TTL_SECONDS,
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

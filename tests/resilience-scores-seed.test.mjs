@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   RESILIENCE_RANKING_CACHE_KEY,
   RESILIENCE_RANKING_CACHE_TTL_SECONDS,
+  RESILIENCE_SCORE_SECTION_META_TTL_SECONDS,
   RESILIENCE_SCORE_CACHE_PREFIX,
   RESILIENCE_STATIC_INDEX_KEY,
   computeIntervals,
@@ -25,6 +26,10 @@ describe('exported constants', () => {
     // TTL must exceed cron interval (6h) so a missed/slow cron doesn't create
     // an EMPTY_ON_DEMAND gap. Seeder and handler must agree on the TTL.
     assert.equal(RESILIENCE_RANKING_CACHE_TTL_SECONDS, 12 * 60 * 60);
+  });
+
+  it('RESILIENCE_SCORE_SECTION_META_TTL_SECONDS is 12 hours (6x score cron interval)', () => {
+    assert.equal(RESILIENCE_SCORE_SECTION_META_TTL_SECONDS, 12 * 60 * 60);
   });
 
   it('RESILIENCE_STATIC_INDEX_KEY matches expected key', () => {
@@ -281,7 +286,7 @@ describe('ensures ranking aggregate is present every cron, with truthful meta', 
   it('writes a score-section heartbeat independent of interval writes', () => {
     assert.match(
       src,
-      /async function writeScoreSectionHeartbeat\b[\s\S]*?result\?\.skipped && result\.reason === 'no_index'[\s\S]*?return;[\s\S]*?writeFreshnessMetadata\(\s*'resilience',\s*'scores'/,
+      /async function writeScoreSectionHeartbeat\b[\s\S]*?result\?\.skipped && result\.reason === 'no_index'[\s\S]*?return;[\s\S]*?writeFreshnessMetadata\(\s*'resilience',\s*'scores',[\s\S]*?RESILIENCE_SCORE_SECTION_META_TTL_SECONDS/,
       'score seeder must write seed-meta:resilience:scores for completed score/ranking work, but not for empty-index skips',
     );
     assert.match(
