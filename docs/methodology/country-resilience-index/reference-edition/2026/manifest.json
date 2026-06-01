@@ -50,7 +50,7 @@
     "countries": {
       "NO": {
         "countryCode": "NO",
-        "overallScore": 75.4,
+        "overallScore": 74.85,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -237,11 +237,11 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 82.18,
+            "score": 82.11,
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 90.18,
+            "score": 88.49,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -252,7 +252,7 @@
       },
       "US": {
         "countryCode": "US",
-        "overallScore": 52.39,
+        "overallScore": 52.2,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -439,11 +439,11 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 69.19,
+            "score": 69.08,
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 84.44,
+            "score": 83.81,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -454,7 +454,7 @@
       },
       "TR": {
         "countryCode": "TR",
-        "overallScore": 43.78,
+        "overallScore": 43.67,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -641,11 +641,11 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 53.49,
+            "score": 53.23,
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 59.43,
+            "score": 59.6,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -656,7 +656,7 @@
       },
       "YE": {
         "countryCode": "YE",
-        "overallScore": 29.51,
+        "overallScore": 29.2,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -843,11 +843,11 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 37.4,
+            "score": 36.96,
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 40.28,
+            "score": 39.91,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -858,7 +858,7 @@
       },
       "CH": {
         "countryCode": "CH",
-        "overallScore": 73.77,
+        "overallScore": 73.25,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -1045,11 +1045,11 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 84.95,
+            "score": 84.8,
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 79.77,
+            "score": 79.12,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -1060,7 +1060,7 @@
       },
       "AE": {
         "countryCode": "AE",
-        "overallScore": 58.47,
+        "overallScore": 59.26,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -1247,11 +1247,11 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 75.14,
+            "score": 74.99,
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 65.43,
+            "score": 66.73,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -1262,7 +1262,7 @@
       },
       "IN": {
         "countryCode": "IN",
-        "overallScore": 47.6,
+        "overallScore": 47.66,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -1449,11 +1449,11 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 66.15,
+            "score": 65.82,
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 54.42,
+            "score": 54.7,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -1464,7 +1464,7 @@
       },
       "SY": {
         "countryCode": "SY",
-        "overallScore": 21.93,
+        "overallScore": 21.88,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -1651,11 +1651,11 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 28.39,
+            "score": 27.54,
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 56.94,
+            "score": 57.65,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -1666,7 +1666,7 @@
       },
       "NR": {
         "countryCode": "NR",
-        "overallScore": 60.89,
+        "overallScore": 60.77,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -1853,11 +1853,11 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 76.02,
+            "score": 75.96,
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 66.53,
+            "score": 66.38,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -1868,7 +1868,7 @@
       },
       "ER": {
         "countryCode": "ER",
-        "overallScore": 35.42,
+        "overallScore": 35.03,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -2055,11 +2055,11 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 47.95,
+            "score": 47.71,
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 53.08,
+            "score": 51.78,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -2075,7 +2075,7 @@
     "countries": {
       "NO": {
         "countryCode": "NO",
-        "overallScore": 75.4,
+        "overallScore": 74.85,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -2262,11 +2262,11 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 82.18,
+            "score": 82.11,
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 90.18,
+            "score": 88.49,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -2277,7 +2277,7 @@
       },
       "US": {
         "countryCode": "US",
-        "overallScore": 52.39,
+        "overallScore": 52.2,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -2464,11 +2464,11 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 69.19,
+            "score": 69.08,
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 84.44,
+            "score": 83.81,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -2479,7 +2479,7 @@
       },
       "TR": {
         "countryCode": "TR",
-        "overallScore": 43.78,
+        "overallScore": 43.67,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -2666,11 +2666,11 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 53.49,
+            "score": 53.23,
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 59.43,
+            "score": 59.6,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -2681,7 +2681,7 @@
       },
       "YE": {
         "countryCode": "YE",
-        "overallScore": 29.51,
+        "overallScore": 29.2,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -2868,11 +2868,11 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 37.4,
+            "score": 36.96,
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 40.28,
+            "score": 39.91,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -2883,7 +2883,7 @@
       },
       "CH": {
         "countryCode": "CH",
-        "overallScore": 73.77,
+        "overallScore": 73.25,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -3070,11 +3070,11 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 84.95,
+            "score": 84.8,
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 79.77,
+            "score": 79.12,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -3085,7 +3085,7 @@
       },
       "AE": {
         "countryCode": "AE",
-        "overallScore": 58.47,
+        "overallScore": 59.26,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -3272,11 +3272,11 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 75.14,
+            "score": 74.99,
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 65.43,
+            "score": 66.73,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -3287,7 +3287,7 @@
       },
       "IN": {
         "countryCode": "IN",
-        "overallScore": 47.6,
+        "overallScore": 47.66,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -3474,11 +3474,11 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 66.15,
+            "score": 65.82,
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 54.42,
+            "score": 54.7,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -3489,7 +3489,7 @@
       },
       "SY": {
         "countryCode": "SY",
-        "overallScore": 21.93,
+        "overallScore": 21.88,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -3676,11 +3676,11 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 28.39,
+            "score": 27.54,
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 56.94,
+            "score": 57.65,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -3691,7 +3691,7 @@
       },
       "NR": {
         "countryCode": "NR",
-        "overallScore": 60.89,
+        "overallScore": 60.77,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -3878,11 +3878,11 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 76.02,
+            "score": 75.96,
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 66.53,
+            "score": 66.38,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -3893,7 +3893,7 @@
       },
       "ER": {
         "countryCode": "ER",
-        "overallScore": 35.42,
+        "overallScore": 35.03,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -4080,11 +4080,11 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 47.95,
+            "score": 47.71,
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 53.08,
+            "score": 51.78,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -4100,7 +4100,7 @@
     "countries": {
       "NO": {
         "countryCode": "NO",
-        "overallScore": 75.4,
+        "overallScore": 74.85,
         "formula": "pc",
         "dimensions": {
           "macroFiscal": {
@@ -4286,11 +4286,11 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 82.18,
+            "score": 82.11,
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 90.18,
+            "score": 88.49,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -4301,7 +4301,7 @@
       },
       "US": {
         "countryCode": "US",
-        "overallScore": 52.39,
+        "overallScore": 52.2,
         "formula": "pc",
         "dimensions": {
           "macroFiscal": {
@@ -4487,11 +4487,11 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 69.19,
+            "score": 69.08,
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 84.44,
+            "score": 83.81,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -4502,7 +4502,7 @@
       },
       "TR": {
         "countryCode": "TR",
-        "overallScore": 43.78,
+        "overallScore": 43.67,
         "formula": "pc",
         "dimensions": {
           "macroFiscal": {
@@ -4688,11 +4688,11 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 53.49,
+            "score": 53.23,
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 59.43,
+            "score": 59.6,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -4703,7 +4703,7 @@
       },
       "YE": {
         "countryCode": "YE",
-        "overallScore": 29.51,
+        "overallScore": 29.2,
         "formula": "pc",
         "dimensions": {
           "macroFiscal": {
@@ -4889,11 +4889,11 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 37.4,
+            "score": 36.96,
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 40.28,
+            "score": 39.91,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -4904,7 +4904,7 @@
       },
       "CH": {
         "countryCode": "CH",
-        "overallScore": 73.77,
+        "overallScore": 73.25,
         "formula": "pc",
         "dimensions": {
           "macroFiscal": {
@@ -5090,11 +5090,11 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 84.95,
+            "score": 84.8,
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 79.77,
+            "score": 79.12,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -5105,7 +5105,7 @@
       },
       "AE": {
         "countryCode": "AE",
-        "overallScore": 58.47,
+        "overallScore": 59.26,
         "formula": "pc",
         "dimensions": {
           "macroFiscal": {
@@ -5291,11 +5291,11 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 75.14,
+            "score": 74.99,
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 65.43,
+            "score": 66.73,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -5306,7 +5306,7 @@
       },
       "IN": {
         "countryCode": "IN",
-        "overallScore": 47.6,
+        "overallScore": 47.66,
         "formula": "pc",
         "dimensions": {
           "macroFiscal": {
@@ -5492,11 +5492,11 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 66.15,
+            "score": 65.82,
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 54.42,
+            "score": 54.7,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -5507,7 +5507,7 @@
       },
       "SY": {
         "countryCode": "SY",
-        "overallScore": 21.93,
+        "overallScore": 21.88,
         "formula": "pc",
         "dimensions": {
           "macroFiscal": {
@@ -5693,11 +5693,11 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 28.39,
+            "score": 27.54,
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 56.94,
+            "score": 57.65,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -5708,7 +5708,7 @@
       },
       "NR": {
         "countryCode": "NR",
-        "overallScore": 60.89,
+        "overallScore": 60.77,
         "formula": "pc",
         "dimensions": {
           "macroFiscal": {
@@ -5894,11 +5894,11 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 76.02,
+            "score": 75.96,
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 66.53,
+            "score": 66.38,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -5909,7 +5909,7 @@
       },
       "ER": {
         "countryCode": "ER",
-        "overallScore": 35.42,
+        "overallScore": 35.03,
         "formula": "pc",
         "dimensions": {
           "macroFiscal": {
@@ -6095,11 +6095,11 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 47.95,
+            "score": 47.71,
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 53.08,
+            "score": 51.78,
             "weight": 0.35
           },
           "recovery-capacity": {

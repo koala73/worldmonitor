@@ -32,13 +32,13 @@ describe('resilience score interval integration', () => {
 
     const fixtures = {
       ...RESILIENCE_FIXTURES,
-      'resilience:intervals:v3:US': {
+      'resilience:intervals:v5:US': {
         p05: 65.2,
         p95: 72.8,
         _formula: 'd6',
         draws: 100,
         computedAt: '2026-04-06T00:00:00.000Z',
-        methodology: 'weight-perturbation-sensitivity-v1',
+        methodology: 'weight-perturbation-sensitivity-v3',
       },
     };
 
@@ -63,13 +63,13 @@ describe('resilience score interval integration', () => {
 
     const fixtures = {
       ...RESILIENCE_FIXTURES,
-      'resilience:intervals:v3:US': {
+      'resilience:intervals:v5:US': {
         p05: 65.2,
         p95: 72.8,
         _formula: 'pc',
         draws: 100,
         computedAt: '2026-04-06T00:00:00.000Z',
-        methodology: 'weight-perturbation-sensitivity-v1',
+        methodology: 'weight-perturbation-sensitivity-v3',
       },
     };
 
@@ -92,7 +92,7 @@ describe('resilience score interval integration', () => {
 
     const fixtures = {
       ...RESILIENCE_FIXTURES,
-      'resilience:intervals:v3:US': {
+      'resilience:intervals:v5:US': {
         p05: 65.2,
         p95: 72.8,
         draws: 100,

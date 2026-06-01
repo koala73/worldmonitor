@@ -66,7 +66,7 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
     const scoreVersion = RESILIENCE_SCORE_CACHE_PREFIX;       // e.g. 'resilience:score:v17:'
     const rankingKey = RESILIENCE_RANKING_CACHE_KEY;          // e.g. 'resilience:ranking:v17'
     const historyPrefix = RESILIENCE_HISTORY_KEY_PREFIX;      // e.g. 'resilience:history:v12:'
-    const intervalPrefix = RESILIENCE_INTERVAL_KEY_PREFIX;    // e.g. 'resilience:intervals:v3:'
+    const intervalPrefix = RESILIENCE_INTERVAL_KEY_PREFIX;    // e.g. 'resilience:intervals:v4:'
 
     assert.ok(
       docText.includes(scoreVersion.replace(/:$/, '')) || docText.includes(scoreVersion),

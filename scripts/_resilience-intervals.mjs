@@ -1,5 +1,5 @@
-export const RESILIENCE_INTERVAL_KEY_PREFIX = 'resilience:intervals:v3:';
-export const RESILIENCE_INTERVAL_METHODOLOGY = 'weight-perturbation-sensitivity-v1';
+export const RESILIENCE_INTERVAL_KEY_PREFIX = 'resilience:intervals:v5:';
+export const RESILIENCE_INTERVAL_METHODOLOGY = 'weight-perturbation-sensitivity-v3';
 export const DRAWS = 100;
 
 export const DOMAIN_WEIGHTS = {

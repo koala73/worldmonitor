@@ -2,7 +2,7 @@
 // (docs/internal/country-resilience-upgrade-plan.md).
 //
 // Pins the three-pillar membership shape and the buildPillarList helper
-// behaviour. Real coverage-weighted aggregation is live (see
+// behaviour. Real domain-weighted, coverage-scaled aggregation is live (see
 // tests/resilience-pillar-aggregation.test.mts for the arithmetic tests);
 // this file focuses on structural invariants: membership disjointness,
 // pillar ordering, weight sum, and the degenerate-input semantics

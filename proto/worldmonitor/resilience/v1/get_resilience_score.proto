@@ -30,8 +30,8 @@ message GetResilienceScoreResponse {
   string data_version = 13;
   ScoreInterval score_interval = 14;
   // Phase 2 T2.1/T2.3: three-pillar schema. Populated with real
-  // coverage-weighted pillar scores when schema_version == "2.0" (the
-  // current default). Empty array when schema_version == "1.0", which is
+  // domain-weighted, coverage-scaled pillar scores when schema_version ==
+  // "2.0" (the current default). Empty array when schema_version == "1.0", which is
   // the legacy opt-out path retained for one release cycle via the
   // RESILIENCE_SCHEMA_V2_ENABLED env flag.
   repeated ResiliencePillar pillars = 15;

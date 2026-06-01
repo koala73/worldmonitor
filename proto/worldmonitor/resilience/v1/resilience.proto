@@ -64,8 +64,9 @@ message ResilienceRankingItem {
 // (economic, infrastructure, energy, social-governance, health-food,
 // recovery) into long-run capacity (structural-readiness), current shock
 // pressure (live-shock-exposure), and recovery capability (recovery-capacity).
-// Pillar scores and coverage are real coverage-weighted aggregates computed
-// from the constituent domains; see _pillar-membership.ts for the mapping.
+// Pillar scores are real domain-weighted, coverage-scaled aggregates computed
+// from the constituent domains; pillar coverage remains the mean of
+// member-domain average dimension coverage. See _pillar-membership.ts for the mapping.
 // When RESILIENCE_SCHEMA_V2_ENABLED and RESILIENCE_PILLAR_COMBINE_ENABLED
 // are both true, the top-level overall_score on GetResilienceScoreResponse
 // uses the pillar-combined score with the min-pillar penalty term in
@@ -74,7 +75,8 @@ message ResilienceRankingItem {
 message ResiliencePillar {
   // "structural-readiness" | "live-shock-exposure" | "recovery-capacity".
   string id = 1;
-  // Pillar score in [0, 100], coverage-weighted mean of member domains.
+  // Pillar score in [0, 100], mean of member domains weighted by
+  // domain.weight * average_dimension_coverage.
   double score = 2;
   // Pillar weight in the pillar-combined score. Per the plan: 0.40 / 0.35 / 0.25.
   double weight = 3;
