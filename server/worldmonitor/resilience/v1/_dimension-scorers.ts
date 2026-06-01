@@ -8,6 +8,7 @@ import {
   failedDimensionsFromDatasets,
   readFailedDatasets,
   readStandaloneSourceFailureDimensions,
+  STANDALONE_SOURCE_META_MAX_STALE_MIN,
 } from './_source-failure';
 
 export type ResilienceDimensionId =
@@ -321,6 +322,15 @@ const RESILIENCE_SOCIAL_VELOCITY_KEY = 'intelligence:social:reddit:v1';
 const RESILIENCE_NEWS_THREAT_SUMMARY_KEY = 'news:threat:summary:v1';
 const RESILIENCE_ENERGY_PRICES_KEY = 'economic:energy:v1:all';
 const RESILIENCE_ENERGY_MIX_KEY_PREFIX = 'energy:mix:v1:';
+
+async function readDisplacementSummaryWithFallback(
+  reader: ResilienceSeedReader,
+): Promise<unknown | null> {
+  const currentYear = new Date().getFullYear();
+  const current = await reader(`${RESILIENCE_DISPLACEMENT_PREFIX}:${currentYear}`);
+  if (current != null) return current;
+  return reader(`${RESILIENCE_DISPLACEMENT_PREFIX}:${currentYear - 1}`);
+}
 
 const RESILIENCE_RECOVERY_FISCAL_SPACE_KEY = 'resilience:recovery:fiscal-space:v1';
 const RESILIENCE_RECOVERY_RESERVE_ADEQUACY_KEY = 'resilience:recovery:reserve-adequacy:v1';
@@ -658,6 +668,8 @@ const IMPUTATION_CLASS_TIE_BREAK: readonly ImputationClass[] = [
   'not-applicable',
 ];
 
+const MINUTE_MS = 60 * 1000;
+
 function weightedBlend(metrics: WeightedMetric[]): ResilienceDimensionScore {
   const totalWeight = metrics.reduce((sum, metric) => sum + metric.weight, 0);
   const available = metrics.filter((metric) => metric.score != null);
@@ -734,6 +746,16 @@ function weightedBlend(metrics: WeightedMetric[]): ResilienceDimensionScore {
     imputationClass,
     freshness: { lastObservedAtMs: 0, staleness: '' },
   };
+}
+
+function isSeedMetaPreflightUnhealthy(sourceKey: string, meta: unknown, nowMs = Date.now()): boolean {
+  if (!meta || typeof meta !== 'object') return true;
+  const status = (meta as { status?: unknown }).status;
+  if (Object.prototype.hasOwnProperty.call(meta, 'status') && status !== 'ok') return true;
+  const fetchedAt = Number((meta as { fetchedAt?: unknown }).fetchedAt);
+  if (!Number.isFinite(fetchedAt) || fetchedAt <= 0) return true;
+  const maxStaleMin = STANDALONE_SOURCE_META_MAX_STALE_MIN[resolveSeedMetaKey(sourceKey)];
+  return typeof maxStaleMin === 'number' && (nowMs - fetchedAt) > maxStaleMin * MINUTE_MS;
 }
 
 function extractMetric<T>(value: T | null | undefined, scorer: (item: T) => number | null): number | null {
@@ -987,6 +1009,14 @@ function isInWtoReporterSet(raw: unknown, countryCode: string): boolean {
   const reporters = (raw as { _reporterCountries?: string[] } | null)?._reporterCountries;
   if (!Array.isArray(reporters) || reporters.length === 0) return true;
   return reporters.includes(countryCode);
+}
+
+function hasArrayField(raw: unknown, field: string): boolean {
+  return raw != null && typeof raw === 'object' && Array.isArray((raw as Record<string, unknown>)[field]);
+}
+
+function hasNonEmptyArrayField(raw: unknown, field: string): boolean {
+  return hasArrayField(raw, field) && ((raw as Record<string, unknown>)[field] as unknown[]).length > 0;
 }
 
 export function summarizeOutages(raw: unknown, countryCode: string): { total: number; major: number; partial: number } {
@@ -1383,7 +1413,7 @@ export async function scoreFinancialSystemExposure(
     };
   }
 
-  // Preflight: verify the 3 required seed envelopes are published.
+  // Preflight: verify the 3 required seed envelopes are published and fresh.
   // `runSeed` (scripts/_seed-utils.mjs) STRIPS the trailing :v\d+ from the
   // data key when it writes seed-meta — so `economic:wb-external-debt:v1`
   // gets a freshness key of `seed-meta:economic:wb-external-debt`, NOT
@@ -1398,19 +1428,19 @@ export async function scoreFinancialSystemExposure(
     RESILIENCE_BIS_LBS_KEY,
     RESILIENCE_FATF_LISTING_KEY,
   ] as const;
-  const missing: string[] = [];
+  const unhealthy: string[] = [];
   for (const key of requiredSeedKeys) {
     const meta = await reader(resolveSeedMetaKey(key));
-    if (!meta) missing.push(key);
+    if (isSeedMetaPreflightUnhealthy(key, meta)) unhealthy.push(key);
   }
-  if (missing.length > 0) {
+  if (unhealthy.length > 0) {
     throw new ResilienceConfigurationError(
-      `RESILIENCE_FIN_SYS_EXPOSURE_ENABLED=true but required seed-meta absent for: ${missing.join(', ')}. ` +
+      `RESILIENCE_FIN_SYS_EXPOSURE_ENABLED=true but required seed-meta absent or unhealthy for: ${unhealthy.join(', ')}. ` +
         'Provision the macro bundle component seeders (seed-bis-lbs, seed-fatf-listing, ' +
         'seed-wb-external-debt) and confirm Redis populates BEFORE flipping the flag. ' +
         'Or set RESILIENCE_FIN_SYS_EXPOSURE_ENABLED=false to keep the dim dark. ' +
         'See plan 2026-04-25-004 §Fail-closed preflight.',
-      missing,
+      unhealthy,
     );
   }
 
@@ -1540,9 +1570,9 @@ export async function scoreCyberDigital(
   const gpsPenalty = gps.high * 3 + gps.medium;
 
   return weightedBlend([
-    { score: cyberRaw != null && cyber.weightedCount > 0 ? normalizeLowerBetter(cyber.weightedCount, 0, 25) : null, weight: 0.45 },
-    { score: outagesRaw != null && outagePenalty > 0 ? normalizeLowerBetter(outagePenalty, 0, 20) : null, weight: 0.35 },
-    { score: gpsRaw != null && gpsPenalty > 0 ? normalizeLowerBetter(gpsPenalty, 0, 20) : null, weight: 0.2 },
+    { score: hasNonEmptyArrayField(cyberRaw, 'threats') ? normalizeLowerBetter(cyber.weightedCount, 0, 25) : null, weight: 0.45 },
+    { score: hasNonEmptyArrayField(outagesRaw, 'outages') ? normalizeLowerBetter(outagePenalty, 0, 20) : null, weight: 0.35 },
+    { score: hasNonEmptyArrayField(gpsRaw, 'hexes') ? normalizeLowerBetter(gpsPenalty, 0, 20) : null, weight: 0.2 },
   ]);
 }
 
@@ -1810,7 +1840,7 @@ export async function scoreSocialCohesion(
 ): Promise<ResilienceDimensionScore> {
   const [staticRecord, displacementRaw, unrestRaw, imfLaborRaw] = await Promise.all([
     readStaticCountry(countryCode, reader),
-    reader(`${RESILIENCE_DISPLACEMENT_PREFIX}:${new Date().getFullYear()}`),
+    readDisplacementSummaryWithFallback(reader),
     reader(RESILIENCE_UNREST_KEY),
     reader(RESILIENCE_IMF_LABOR_KEY),
   ]);
@@ -1969,7 +1999,7 @@ export async function scoreBorderSecurity(
 ): Promise<ResilienceDimensionScore> {
   const [ucdpRaw, displacementRaw, imfLaborRaw] = await Promise.all([
     reader(RESILIENCE_UCDP_KEY),
-    reader(`${RESILIENCE_DISPLACEMENT_PREFIX}:${new Date().getFullYear()}`),
+    readDisplacementSummaryWithFallback(reader),
     reader(RESILIENCE_IMF_LABOR_KEY),
   ]);
   const ucdp = summarizeUcdp(ucdpRaw, countryCode);
@@ -2421,7 +2451,7 @@ export async function scoreStateContinuity(
   const [staticRecord, ucdpRaw, displacementRaw] = await Promise.all([
     readStaticCountry(countryCode, reader),
     reader(RESILIENCE_UCDP_KEY),
-    reader(`${RESILIENCE_DISPLACEMENT_PREFIX}:${new Date().getFullYear()}`),
+    readDisplacementSummaryWithFallback(reader),
   ]);
 
   const wgiValues = getStaticWgiValues(staticRecord);

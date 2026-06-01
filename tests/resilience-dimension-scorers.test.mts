@@ -54,8 +54,6 @@ function assertOrdered(label: string, no: number, us: number, ye: number) {
 function cyberOnlyReader(threats: unknown[]): ResilienceSeedReader {
   return async (key: string): Promise<unknown | null> => {
     if (key === 'cyber:threats:v2') return { threats };
-    if (key === 'infra:outages:v1') return { outages: [] };
-    if (key === 'intelligence:gpsjam:v2') return { hexes: [] };
     return null;
   };
 }
@@ -440,16 +438,70 @@ describe('resilience dimension scorers', () => {
       `seed outage must not inflate coverage beyond ucdp weight, got ${score.coverage}`);
   });
 
-  it('scoreCyberDigital: country with zero threats in loaded feed gets null, not 100', async () => {
+  it('displacement-backed scorers fall back to previous-year summary when current-year key is absent', async () => {
+    const currentYear = new Date().getFullYear();
+    const currentKey = `displacement:summary:v1:${currentYear}`;
+    const previousKey = `displacement:summary:v1:${currentYear - 1}`;
+    const calls: string[] = [];
+    const reader = async (key: string): Promise<unknown | null> => {
+      calls.push(key);
+      if (key === currentKey) return null;
+      if (key === previousKey) {
+        return { summary: { countries: [{ code: 'FI', totalDisplaced: 100, hostTotal: 50 }] } };
+      }
+      if (key === 'conflict:ucdp-events:v1') return { events: [] };
+      if (key === 'unrest:events:v1') return { events: [] };
+      return null;
+    };
+
+    const social = await scoreSocialCohesion('FI', reader);
+    const border = await scoreBorderSecurity('FI', reader);
+    const continuity = await scoreStateContinuity('FI', reader);
+
+    assert.equal(calls.filter((key) => key === currentKey).length, 3, 'each displacement-backed scorer must try current-year key first');
+    assert.equal(calls.filter((key) => key === previousKey).length, 3, 'each displacement-backed scorer must fall back to previous-year key');
+    assert.ok(social.observedWeight > 0, `socialCohesion must consume previous-year displacement, got observedWeight=${social.observedWeight}`);
+    assert.ok(border.observedWeight > 0, `borderSecurity must consume previous-year displacement, got observedWeight=${border.observedWeight}`);
+    assert.ok(continuity.observedWeight > 0, `stateContinuity must consume previous-year displacement, got observedWeight=${continuity.observedWeight}`);
+  });
+
+  it('scoreCyberDigital: country with zero events in loaded feeds scores as observed quiet', async () => {
     const reader = async (key: string): Promise<unknown | null> => {
       if (key === 'cyber:threats:v2') return { threats: [{ country: 'United States', severity: 'CRITICALITY_LEVEL_HIGH' }] };
+      if (key === 'infra:outages:v1') return { outages: [{ countryCode: 'US', severity: 'OUTAGE_SEVERITY_PARTIAL' }] };
+      if (key === 'intelligence:gpsjam:v2') return { hexes: [{ country: 'US', level: 'high' }] };
+      return null;
+    };
+    const score = await scoreCyberDigital('FI', reader);
+    assert.equal(score.score, 100, 'zero events in loaded feeds must be a high-score observed absence');
+    assert.equal(score.coverage, 1, 'zero events in loaded feeds must contribute full observed coverage');
+    assert.equal(score.observedWeight, 1, 'zero events in loaded feeds must be observed, not imputed');
+  });
+
+  it('scoreCyberDigital: malformed non-null feeds do not score as observed quiet', async () => {
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'cyber:threats:v2') return {};
+      if (key === 'infra:outages:v1') return { outages: null };
+      if (key === 'intelligence:gpsjam:v2') return { hexes: {} };
+      return null;
+    };
+    const score = await scoreCyberDigital('FI', reader);
+    assert.equal(score.score, 0, 'malformed non-null feeds must not be treated as zero-event observations');
+    assert.equal(score.coverage, 0, 'malformed non-null feeds must not contribute observed coverage');
+    assert.equal(score.observedWeight, 0, 'malformed non-null feeds must remain no-data');
+  });
+
+  it('scoreCyberDigital: globally empty feeds do not score every country as observed quiet', async () => {
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'cyber:threats:v2') return { threats: [] };
       if (key === 'infra:outages:v1') return { outages: [] };
       if (key === 'intelligence:gpsjam:v2') return { hexes: [] };
       return null;
     };
     const score = await scoreCyberDigital('FI', reader);
-    assert.equal(score.score, 0, 'zero events in all three loaded feeds must yield score=0 (not 100)');
-    assert.equal(score.coverage, 0, 'zero events in all three loaded feeds must yield coverage=0');
+    assert.equal(score.score, 0, 'globally empty feeds must not score as all-country observed quiet');
+    assert.equal(score.coverage, 0, 'globally empty feeds must not contribute observed coverage');
+    assert.equal(score.observedWeight, 0, 'globally empty feeds must remain no-data');
   });
 
   it('scoreCyberDigital: country with real threats scores normally', async () => {
@@ -459,7 +511,7 @@ describe('resilience dimension scorers', () => {
         { country: 'Finland', severity: 'CRITICALITY_LEVEL_MEDIUM' },
       ] };
       if (key === 'infra:outages:v1') return { outages: [{ countryCode: 'FI', severity: 'OUTAGE_SEVERITY_PARTIAL' }] };
-      if (key === 'intelligence:gpsjam:v2') return { hexes: [] };
+      if (key === 'intelligence:gpsjam:v2') return { hexes: [{ country: 'US', level: 'high' }] };
       return null;
     };
     const score = await scoreCyberDigital('FI', reader);
@@ -501,7 +553,7 @@ describe('resilience dimension scorers', () => {
   });
 
   it('scoreCyberDigital: a same-snapshot burst floors at the cap, not at zero', async () => {
-    // cyberOnlyReader leaves outages/gps empty, so the dimension score IS the
+    // cyberOnlyReader leaves outages/gps null, so the dimension score IS the
     // cyber sub-score = normalizeLowerBetter(weightedCount, 0, 25). A burst is
     // capped at CYBER_SNAPSHOT_WEIGHT_CAP, so its score floors at a fixed,
     // cap-derived value rather than collapsing to 0 — which is what bounds the

@@ -50,7 +50,7 @@
     "countries": {
       "NO": {
         "countryCode": "NO",
-        "overallScore": 74.85,
+        "overallScore": 75.42,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -83,9 +83,9 @@
             "imputationClass": ""
           },
           "cyberDigital": {
-            "score": 0,
-            "coverage": 0,
-            "observedWeight": 0,
+            "score": 100,
+            "coverage": 1,
+            "observedWeight": 1,
             "imputedWeight": 0,
             "imputationClass": ""
           },
@@ -178,7 +178,7 @@
             "coverage": 0.3,
             "observedWeight": 0,
             "imputedWeight": 1,
-            "imputationClass": "unmonitored"
+            "imputationClass": "source-failure"
           },
           "stateContinuity": {
             "score": 87,
@@ -215,7 +215,7 @@
             "weight": 0.17
           },
           "infrastructure": {
-            "score": 47.53,
+            "score": 74.44,
             "weight": 0.15
           },
           "energy": {
@@ -241,7 +241,7 @@
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 88.49,
+            "score": 90.32,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -252,7 +252,7 @@
       },
       "US": {
         "countryCode": "US",
-        "overallScore": 52.2,
+        "overallScore": 52.55,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -285,9 +285,9 @@
             "imputationClass": ""
           },
           "cyberDigital": {
-            "score": 92,
-            "coverage": 0.45,
-            "observedWeight": 0.45,
+            "score": 96,
+            "coverage": 1,
+            "observedWeight": 1,
             "imputedWeight": 0,
             "imputationClass": ""
           },
@@ -380,7 +380,7 @@
             "coverage": 0.3,
             "observedWeight": 0,
             "imputedWeight": 1,
-            "imputationClass": "unmonitored"
+            "imputationClass": "source-failure"
           },
           "stateContinuity": {
             "score": 75,
@@ -417,7 +417,7 @@
             "weight": 0.17
           },
           "infrastructure": {
-            "score": 73.96,
+            "score": 81.1,
             "weight": 0.15
           },
           "energy": {
@@ -443,7 +443,7 @@
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 83.81,
+            "score": 85.16,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -454,7 +454,7 @@
       },
       "TR": {
         "countryCode": "TR",
-        "overallScore": 43.67,
+        "overallScore": 44.29,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -487,9 +487,9 @@
             "imputationClass": ""
           },
           "cyberDigital": {
-            "score": 58,
-            "coverage": 0.65,
-            "observedWeight": 0.65,
+            "score": 73,
+            "coverage": 1,
+            "observedWeight": 1,
             "imputedWeight": 0,
             "imputationClass": ""
           },
@@ -619,7 +619,7 @@
             "weight": 0.17
           },
           "infrastructure": {
-            "score": 51.78,
+            "score": 60.59,
             "weight": 0.15
           },
           "energy": {
@@ -645,7 +645,7 @@
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 59.6,
+            "score": 61.89,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -656,7 +656,7 @@
       },
       "YE": {
         "countryCode": "YE",
-        "overallScore": 29.2,
+        "overallScore": 30.97,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -689,9 +689,9 @@
             "imputationClass": ""
           },
           "cyberDigital": {
-            "score": 85,
-            "coverage": 0.2,
-            "observedWeight": 0.2,
+            "score": 97,
+            "coverage": 1,
+            "observedWeight": 1,
             "imputedWeight": 0,
             "imputationClass": ""
           },
@@ -821,7 +821,7 @@
             "weight": 0.17
           },
           "infrastructure": {
-            "score": 77.43,
+            "score": 86.69,
             "weight": 0.15
           },
           "energy": {
@@ -847,7 +847,7 @@
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 39.91,
+            "score": 47.27,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -858,7 +858,7 @@
       },
       "CH": {
         "countryCode": "CH",
-        "overallScore": 73.25,
+        "overallScore": 74.95,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -891,9 +891,9 @@
             "imputationClass": ""
           },
           "cyberDigital": {
-            "score": 0,
-            "coverage": 0,
-            "observedWeight": 0,
+            "score": 100,
+            "coverage": 1,
+            "observedWeight": 1,
             "imputedWeight": 0,
             "imputationClass": ""
           },
@@ -986,7 +986,7 @@
             "coverage": 0.3,
             "observedWeight": 0,
             "imputedWeight": 1,
-            "imputationClass": "unmonitored"
+            "imputationClass": "source-failure"
           },
           "stateContinuity": {
             "score": 88,
@@ -1023,7 +1023,7 @@
             "weight": 0.17
           },
           "infrastructure": {
-            "score": 47.53,
+            "score": 74.44,
             "weight": 0.15
           },
           "energy": {
@@ -1049,7 +1049,7 @@
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 79.12,
+            "score": 82.44,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -1060,7 +1060,7 @@
       },
       "AE": {
         "countryCode": "AE",
-        "overallScore": 59.26,
+        "overallScore": 62.32,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -1093,9 +1093,9 @@
             "imputationClass": ""
           },
           "cyberDigital": {
-            "score": 0,
-            "coverage": 0,
-            "observedWeight": 0,
+            "score": 100,
+            "coverage": 1,
+            "observedWeight": 1,
             "imputedWeight": 0,
             "imputationClass": ""
           },
@@ -1188,7 +1188,7 @@
             "coverage": 0.3,
             "observedWeight": 0,
             "imputedWeight": 1,
-            "imputationClass": "unmonitored"
+            "imputationClass": "source-failure"
           },
           "stateContinuity": {
             "score": 74,
@@ -1225,7 +1225,7 @@
             "weight": 0.17
           },
           "infrastructure": {
-            "score": 84.37,
+            "score": 92.38,
             "weight": 0.15
           },
           "energy": {
@@ -1251,7 +1251,7 @@
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 66.73,
+            "score": 72.01,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -1262,7 +1262,7 @@
       },
       "IN": {
         "countryCode": "IN",
-        "overallScore": 47.66,
+        "overallScore": 51.91,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -1295,9 +1295,9 @@
             "imputationClass": ""
           },
           "cyberDigital": {
-            "score": 0,
-            "coverage": 0,
-            "observedWeight": 0,
+            "score": 100,
+            "coverage": 1,
+            "observedWeight": 1,
             "imputedWeight": 0,
             "imputationClass": ""
           },
@@ -1427,7 +1427,7 @@
             "weight": 0.17
           },
           "infrastructure": {
-            "score": 50.74,
+            "score": 76,
             "weight": 0.15
           },
           "energy": {
@@ -1453,7 +1453,7 @@
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 54.7,
+            "score": 61.89,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -1464,7 +1464,7 @@
       },
       "SY": {
         "countryCode": "SY",
-        "overallScore": 21.88,
+        "overallScore": 23.3,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -1497,9 +1497,9 @@
             "imputationClass": ""
           },
           "cyberDigital": {
-            "score": 0,
-            "coverage": 0,
-            "observedWeight": 0,
+            "score": 100,
+            "coverage": 1,
+            "observedWeight": 1,
             "imputedWeight": 0,
             "imputationClass": ""
           },
@@ -1592,7 +1592,7 @@
             "coverage": 0.3,
             "observedWeight": 0,
             "imputedWeight": 1,
-            "imputationClass": "unmonitored"
+            "imputationClass": "source-failure"
           },
           "stateContinuity": {
             "score": 5,
@@ -1629,7 +1629,7 @@
             "weight": 0.17
           },
           "infrastructure": {
-            "score": 78.21,
+            "score": 89.38,
             "weight": 0.15
           },
           "energy": {
@@ -1655,7 +1655,7 @@
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 57.65,
+            "score": 64.38,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -1666,7 +1666,7 @@
       },
       "NR": {
         "countryCode": "NR",
-        "overallScore": 60.77,
+        "overallScore": 64.33,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -1699,9 +1699,9 @@
             "imputationClass": ""
           },
           "cyberDigital": {
-            "score": 0,
-            "coverage": 0,
-            "observedWeight": 0,
+            "score": 100,
+            "coverage": 1,
+            "observedWeight": 1,
             "imputedWeight": 0,
             "imputationClass": ""
           },
@@ -1794,7 +1794,7 @@
             "coverage": 0.3,
             "observedWeight": 0,
             "imputedWeight": 1,
-            "imputationClass": "unmonitored"
+            "imputationClass": "source-failure"
           },
           "stateContinuity": {
             "score": 75,
@@ -1831,7 +1831,7 @@
             "weight": 0.17
           },
           "infrastructure": {
-            "score": 47.53,
+            "score": 74.44,
             "weight": 0.15
           },
           "energy": {
@@ -1857,7 +1857,7 @@
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 66.38,
+            "score": 71.72,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -1868,7 +1868,7 @@
       },
       "ER": {
         "countryCode": "ER",
-        "overallScore": 35.03,
+        "overallScore": 36.75,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -1901,9 +1901,9 @@
             "imputationClass": ""
           },
           "cyberDigital": {
-            "score": 0,
-            "coverage": 0,
-            "observedWeight": 0,
+            "score": 100,
+            "coverage": 1,
+            "observedWeight": 1,
             "imputedWeight": 0,
             "imputationClass": ""
           },
@@ -1996,7 +1996,7 @@
             "coverage": 0.3,
             "observedWeight": 0,
             "imputedWeight": 1,
-            "imputationClass": "unmonitored"
+            "imputationClass": "source-failure"
           },
           "stateContinuity": {
             "score": 42,
@@ -2033,7 +2033,7 @@
             "weight": 0.17
           },
           "infrastructure": {
-            "score": 32.86,
+            "score": 57.27,
             "weight": 0.15
           },
           "energy": {
@@ -2059,7 +2059,7 @@
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 51.78,
+            "score": 58.58,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -2075,7 +2075,7 @@
     "countries": {
       "NO": {
         "countryCode": "NO",
-        "overallScore": 74.85,
+        "overallScore": 75.42,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -2108,9 +2108,9 @@
             "imputationClass": ""
           },
           "cyberDigital": {
-            "score": 0,
-            "coverage": 0,
-            "observedWeight": 0,
+            "score": 100,
+            "coverage": 1,
+            "observedWeight": 1,
             "imputedWeight": 0,
             "imputationClass": ""
           },
@@ -2203,7 +2203,7 @@
             "coverage": 0.3,
             "observedWeight": 0,
             "imputedWeight": 1,
-            "imputationClass": "unmonitored"
+            "imputationClass": "source-failure"
           },
           "stateContinuity": {
             "score": 87,
@@ -2240,7 +2240,7 @@
             "weight": 0.17
           },
           "infrastructure": {
-            "score": 47.53,
+            "score": 74.44,
             "weight": 0.15
           },
           "energy": {
@@ -2266,7 +2266,7 @@
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 88.49,
+            "score": 90.32,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -2277,7 +2277,7 @@
       },
       "US": {
         "countryCode": "US",
-        "overallScore": 52.2,
+        "overallScore": 52.55,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -2310,9 +2310,9 @@
             "imputationClass": ""
           },
           "cyberDigital": {
-            "score": 92,
-            "coverage": 0.45,
-            "observedWeight": 0.45,
+            "score": 96,
+            "coverage": 1,
+            "observedWeight": 1,
             "imputedWeight": 0,
             "imputationClass": ""
           },
@@ -2405,7 +2405,7 @@
             "coverage": 0.3,
             "observedWeight": 0,
             "imputedWeight": 1,
-            "imputationClass": "unmonitored"
+            "imputationClass": "source-failure"
           },
           "stateContinuity": {
             "score": 75,
@@ -2442,7 +2442,7 @@
             "weight": 0.17
           },
           "infrastructure": {
-            "score": 73.96,
+            "score": 81.1,
             "weight": 0.15
           },
           "energy": {
@@ -2468,7 +2468,7 @@
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 83.81,
+            "score": 85.16,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -2479,7 +2479,7 @@
       },
       "TR": {
         "countryCode": "TR",
-        "overallScore": 43.67,
+        "overallScore": 44.29,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -2512,9 +2512,9 @@
             "imputationClass": ""
           },
           "cyberDigital": {
-            "score": 58,
-            "coverage": 0.65,
-            "observedWeight": 0.65,
+            "score": 73,
+            "coverage": 1,
+            "observedWeight": 1,
             "imputedWeight": 0,
             "imputationClass": ""
           },
@@ -2644,7 +2644,7 @@
             "weight": 0.17
           },
           "infrastructure": {
-            "score": 51.78,
+            "score": 60.59,
             "weight": 0.15
           },
           "energy": {
@@ -2670,7 +2670,7 @@
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 59.6,
+            "score": 61.89,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -2681,7 +2681,7 @@
       },
       "YE": {
         "countryCode": "YE",
-        "overallScore": 29.2,
+        "overallScore": 30.97,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -2714,9 +2714,9 @@
             "imputationClass": ""
           },
           "cyberDigital": {
-            "score": 85,
-            "coverage": 0.2,
-            "observedWeight": 0.2,
+            "score": 97,
+            "coverage": 1,
+            "observedWeight": 1,
             "imputedWeight": 0,
             "imputationClass": ""
           },
@@ -2846,7 +2846,7 @@
             "weight": 0.17
           },
           "infrastructure": {
-            "score": 77.43,
+            "score": 86.69,
             "weight": 0.15
           },
           "energy": {
@@ -2872,7 +2872,7 @@
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 39.91,
+            "score": 47.27,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -2883,7 +2883,7 @@
       },
       "CH": {
         "countryCode": "CH",
-        "overallScore": 73.25,
+        "overallScore": 74.95,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -2916,9 +2916,9 @@
             "imputationClass": ""
           },
           "cyberDigital": {
-            "score": 0,
-            "coverage": 0,
-            "observedWeight": 0,
+            "score": 100,
+            "coverage": 1,
+            "observedWeight": 1,
             "imputedWeight": 0,
             "imputationClass": ""
           },
@@ -3011,7 +3011,7 @@
             "coverage": 0.3,
             "observedWeight": 0,
             "imputedWeight": 1,
-            "imputationClass": "unmonitored"
+            "imputationClass": "source-failure"
           },
           "stateContinuity": {
             "score": 88,
@@ -3048,7 +3048,7 @@
             "weight": 0.17
           },
           "infrastructure": {
-            "score": 47.53,
+            "score": 74.44,
             "weight": 0.15
           },
           "energy": {
@@ -3074,7 +3074,7 @@
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 79.12,
+            "score": 82.44,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -3085,7 +3085,7 @@
       },
       "AE": {
         "countryCode": "AE",
-        "overallScore": 59.26,
+        "overallScore": 62.32,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -3118,9 +3118,9 @@
             "imputationClass": ""
           },
           "cyberDigital": {
-            "score": 0,
-            "coverage": 0,
-            "observedWeight": 0,
+            "score": 100,
+            "coverage": 1,
+            "observedWeight": 1,
             "imputedWeight": 0,
             "imputationClass": ""
           },
@@ -3213,7 +3213,7 @@
             "coverage": 0.3,
             "observedWeight": 0,
             "imputedWeight": 1,
-            "imputationClass": "unmonitored"
+            "imputationClass": "source-failure"
           },
           "stateContinuity": {
             "score": 74,
@@ -3250,7 +3250,7 @@
             "weight": 0.17
           },
           "infrastructure": {
-            "score": 84.37,
+            "score": 92.38,
             "weight": 0.15
           },
           "energy": {
@@ -3276,7 +3276,7 @@
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 66.73,
+            "score": 72.01,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -3287,7 +3287,7 @@
       },
       "IN": {
         "countryCode": "IN",
-        "overallScore": 47.66,
+        "overallScore": 51.91,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -3320,9 +3320,9 @@
             "imputationClass": ""
           },
           "cyberDigital": {
-            "score": 0,
-            "coverage": 0,
-            "observedWeight": 0,
+            "score": 100,
+            "coverage": 1,
+            "observedWeight": 1,
             "imputedWeight": 0,
             "imputationClass": ""
           },
@@ -3452,7 +3452,7 @@
             "weight": 0.17
           },
           "infrastructure": {
-            "score": 50.74,
+            "score": 76,
             "weight": 0.15
           },
           "energy": {
@@ -3478,7 +3478,7 @@
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 54.7,
+            "score": 61.89,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -3489,7 +3489,7 @@
       },
       "SY": {
         "countryCode": "SY",
-        "overallScore": 21.88,
+        "overallScore": 23.3,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -3522,9 +3522,9 @@
             "imputationClass": ""
           },
           "cyberDigital": {
-            "score": 0,
-            "coverage": 0,
-            "observedWeight": 0,
+            "score": 100,
+            "coverage": 1,
+            "observedWeight": 1,
             "imputedWeight": 0,
             "imputationClass": ""
           },
@@ -3617,7 +3617,7 @@
             "coverage": 0.3,
             "observedWeight": 0,
             "imputedWeight": 1,
-            "imputationClass": "unmonitored"
+            "imputationClass": "source-failure"
           },
           "stateContinuity": {
             "score": 5,
@@ -3654,7 +3654,7 @@
             "weight": 0.17
           },
           "infrastructure": {
-            "score": 78.21,
+            "score": 89.38,
             "weight": 0.15
           },
           "energy": {
@@ -3680,7 +3680,7 @@
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 57.65,
+            "score": 64.38,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -3691,7 +3691,7 @@
       },
       "NR": {
         "countryCode": "NR",
-        "overallScore": 60.77,
+        "overallScore": 64.33,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -3724,9 +3724,9 @@
             "imputationClass": ""
           },
           "cyberDigital": {
-            "score": 0,
-            "coverage": 0,
-            "observedWeight": 0,
+            "score": 100,
+            "coverage": 1,
+            "observedWeight": 1,
             "imputedWeight": 0,
             "imputationClass": ""
           },
@@ -3819,7 +3819,7 @@
             "coverage": 0.3,
             "observedWeight": 0,
             "imputedWeight": 1,
-            "imputationClass": "unmonitored"
+            "imputationClass": "source-failure"
           },
           "stateContinuity": {
             "score": 75,
@@ -3856,7 +3856,7 @@
             "weight": 0.17
           },
           "infrastructure": {
-            "score": 47.53,
+            "score": 74.44,
             "weight": 0.15
           },
           "energy": {
@@ -3882,7 +3882,7 @@
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 66.38,
+            "score": 71.72,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -3893,7 +3893,7 @@
       },
       "ER": {
         "countryCode": "ER",
-        "overallScore": 35.03,
+        "overallScore": 36.75,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -3926,9 +3926,9 @@
             "imputationClass": ""
           },
           "cyberDigital": {
-            "score": 0,
-            "coverage": 0,
-            "observedWeight": 0,
+            "score": 100,
+            "coverage": 1,
+            "observedWeight": 1,
             "imputedWeight": 0,
             "imputationClass": ""
           },
@@ -4021,7 +4021,7 @@
             "coverage": 0.3,
             "observedWeight": 0,
             "imputedWeight": 1,
-            "imputationClass": "unmonitored"
+            "imputationClass": "source-failure"
           },
           "stateContinuity": {
             "score": 42,
@@ -4058,7 +4058,7 @@
             "weight": 0.17
           },
           "infrastructure": {
-            "score": 32.86,
+            "score": 57.27,
             "weight": 0.15
           },
           "energy": {
@@ -4084,7 +4084,7 @@
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 51.78,
+            "score": 58.58,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -4100,8 +4100,9 @@
     "countries": {
       "NO": {
         "countryCode": "NO",
-        "overallScore": 74.85,
+        "overallScore": 75.42,
         "formula": "pc",
+        "dataVersion": "2026-04-08",
         "dimensions": {
           "macroFiscal": {
             "score": 91,
@@ -4132,9 +4133,9 @@
             "imputationClass": ""
           },
           "cyberDigital": {
-            "score": 0,
-            "coverage": 0,
-            "observedWeight": 0,
+            "score": 100,
+            "coverage": 1,
+            "observedWeight": 1,
             "imputedWeight": 0,
             "imputationClass": ""
           },
@@ -4227,7 +4228,7 @@
             "coverage": 0.3,
             "observedWeight": 0,
             "imputedWeight": 1,
-            "imputationClass": "unmonitored"
+            "imputationClass": "source-failure"
           },
           "stateContinuity": {
             "score": 87,
@@ -4264,7 +4265,7 @@
             "weight": 0.17
           },
           "infrastructure": {
-            "score": 47.53,
+            "score": 74.44,
             "weight": 0.15
           },
           "energy": {
@@ -4290,7 +4291,7 @@
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 88.49,
+            "score": 90.32,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -4301,8 +4302,9 @@
       },
       "US": {
         "countryCode": "US",
-        "overallScore": 52.2,
+        "overallScore": 52.55,
         "formula": "pc",
+        "dataVersion": "2026-04-08",
         "dimensions": {
           "macroFiscal": {
             "score": 69,
@@ -4333,9 +4335,9 @@
             "imputationClass": ""
           },
           "cyberDigital": {
-            "score": 92,
-            "coverage": 0.45,
-            "observedWeight": 0.45,
+            "score": 96,
+            "coverage": 1,
+            "observedWeight": 1,
             "imputedWeight": 0,
             "imputationClass": ""
           },
@@ -4428,7 +4430,7 @@
             "coverage": 0.3,
             "observedWeight": 0,
             "imputedWeight": 1,
-            "imputationClass": "unmonitored"
+            "imputationClass": "source-failure"
           },
           "stateContinuity": {
             "score": 75,
@@ -4465,7 +4467,7 @@
             "weight": 0.17
           },
           "infrastructure": {
-            "score": 73.96,
+            "score": 81.1,
             "weight": 0.15
           },
           "energy": {
@@ -4491,7 +4493,7 @@
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 83.81,
+            "score": 85.16,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -4502,8 +4504,9 @@
       },
       "TR": {
         "countryCode": "TR",
-        "overallScore": 43.67,
+        "overallScore": 44.29,
         "formula": "pc",
+        "dataVersion": "2026-04-08",
         "dimensions": {
           "macroFiscal": {
             "score": 59,
@@ -4534,9 +4537,9 @@
             "imputationClass": ""
           },
           "cyberDigital": {
-            "score": 58,
-            "coverage": 0.65,
-            "observedWeight": 0.65,
+            "score": 73,
+            "coverage": 1,
+            "observedWeight": 1,
             "imputedWeight": 0,
             "imputationClass": ""
           },
@@ -4666,7 +4669,7 @@
             "weight": 0.17
           },
           "infrastructure": {
-            "score": 51.78,
+            "score": 60.59,
             "weight": 0.15
           },
           "energy": {
@@ -4692,7 +4695,7 @@
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 59.6,
+            "score": 61.89,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -4703,8 +4706,9 @@
       },
       "YE": {
         "countryCode": "YE",
-        "overallScore": 29.2,
+        "overallScore": 30.97,
         "formula": "pc",
+        "dataVersion": "2026-04-08",
         "dimensions": {
           "macroFiscal": {
             "score": 30,
@@ -4735,9 +4739,9 @@
             "imputationClass": ""
           },
           "cyberDigital": {
-            "score": 85,
-            "coverage": 0.2,
-            "observedWeight": 0.2,
+            "score": 97,
+            "coverage": 1,
+            "observedWeight": 1,
             "imputedWeight": 0,
             "imputationClass": ""
           },
@@ -4867,7 +4871,7 @@
             "weight": 0.17
           },
           "infrastructure": {
-            "score": 77.43,
+            "score": 86.69,
             "weight": 0.15
           },
           "energy": {
@@ -4893,7 +4897,7 @@
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 39.91,
+            "score": 47.27,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -4904,8 +4908,9 @@
       },
       "CH": {
         "countryCode": "CH",
-        "overallScore": 73.25,
+        "overallScore": 74.95,
         "formula": "pc",
+        "dataVersion": "2026-04-08",
         "dimensions": {
           "macroFiscal": {
             "score": 75,
@@ -4936,9 +4941,9 @@
             "imputationClass": ""
           },
           "cyberDigital": {
-            "score": 0,
-            "coverage": 0,
-            "observedWeight": 0,
+            "score": 100,
+            "coverage": 1,
+            "observedWeight": 1,
             "imputedWeight": 0,
             "imputationClass": ""
           },
@@ -5031,7 +5036,7 @@
             "coverage": 0.3,
             "observedWeight": 0,
             "imputedWeight": 1,
-            "imputationClass": "unmonitored"
+            "imputationClass": "source-failure"
           },
           "stateContinuity": {
             "score": 88,
@@ -5068,7 +5073,7 @@
             "weight": 0.17
           },
           "infrastructure": {
-            "score": 47.53,
+            "score": 74.44,
             "weight": 0.15
           },
           "energy": {
@@ -5094,7 +5099,7 @@
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 79.12,
+            "score": 82.44,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -5105,8 +5110,9 @@
       },
       "AE": {
         "countryCode": "AE",
-        "overallScore": 59.26,
+        "overallScore": 62.32,
         "formula": "pc",
+        "dataVersion": "2026-04-08",
         "dimensions": {
           "macroFiscal": {
             "score": 73,
@@ -5137,9 +5143,9 @@
             "imputationClass": ""
           },
           "cyberDigital": {
-            "score": 0,
-            "coverage": 0,
-            "observedWeight": 0,
+            "score": 100,
+            "coverage": 1,
+            "observedWeight": 1,
             "imputedWeight": 0,
             "imputationClass": ""
           },
@@ -5232,7 +5238,7 @@
             "coverage": 0.3,
             "observedWeight": 0,
             "imputedWeight": 1,
-            "imputationClass": "unmonitored"
+            "imputationClass": "source-failure"
           },
           "stateContinuity": {
             "score": 74,
@@ -5269,7 +5275,7 @@
             "weight": 0.17
           },
           "infrastructure": {
-            "score": 84.37,
+            "score": 92.38,
             "weight": 0.15
           },
           "energy": {
@@ -5295,7 +5301,7 @@
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 66.73,
+            "score": 72.01,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -5306,8 +5312,9 @@
       },
       "IN": {
         "countryCode": "IN",
-        "overallScore": 47.66,
+        "overallScore": 51.91,
         "formula": "pc",
+        "dataVersion": "2026-04-08",
         "dimensions": {
           "macroFiscal": {
             "score": 61,
@@ -5338,9 +5345,9 @@
             "imputationClass": ""
           },
           "cyberDigital": {
-            "score": 0,
-            "coverage": 0,
-            "observedWeight": 0,
+            "score": 100,
+            "coverage": 1,
+            "observedWeight": 1,
             "imputedWeight": 0,
             "imputationClass": ""
           },
@@ -5470,7 +5477,7 @@
             "weight": 0.17
           },
           "infrastructure": {
-            "score": 50.74,
+            "score": 76,
             "weight": 0.15
           },
           "energy": {
@@ -5496,7 +5503,7 @@
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 54.7,
+            "score": 61.89,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -5507,8 +5514,9 @@
       },
       "SY": {
         "countryCode": "SY",
-        "overallScore": 21.88,
+        "overallScore": 23.3,
         "formula": "pc",
+        "dataVersion": "2026-04-08",
         "dimensions": {
           "macroFiscal": {
             "score": 0,
@@ -5539,9 +5547,9 @@
             "imputationClass": ""
           },
           "cyberDigital": {
-            "score": 0,
-            "coverage": 0,
-            "observedWeight": 0,
+            "score": 100,
+            "coverage": 1,
+            "observedWeight": 1,
             "imputedWeight": 0,
             "imputationClass": ""
           },
@@ -5634,7 +5642,7 @@
             "coverage": 0.3,
             "observedWeight": 0,
             "imputedWeight": 1,
-            "imputationClass": "unmonitored"
+            "imputationClass": "source-failure"
           },
           "stateContinuity": {
             "score": 5,
@@ -5671,7 +5679,7 @@
             "weight": 0.17
           },
           "infrastructure": {
-            "score": 78.21,
+            "score": 89.38,
             "weight": 0.15
           },
           "energy": {
@@ -5697,7 +5705,7 @@
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 57.65,
+            "score": 64.38,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -5708,8 +5716,9 @@
       },
       "NR": {
         "countryCode": "NR",
-        "overallScore": 60.77,
+        "overallScore": 64.33,
         "formula": "pc",
+        "dataVersion": "2026-04-08",
         "dimensions": {
           "macroFiscal": {
             "score": 89,
@@ -5740,9 +5749,9 @@
             "imputationClass": ""
           },
           "cyberDigital": {
-            "score": 0,
-            "coverage": 0,
-            "observedWeight": 0,
+            "score": 100,
+            "coverage": 1,
+            "observedWeight": 1,
             "imputedWeight": 0,
             "imputationClass": ""
           },
@@ -5835,7 +5844,7 @@
             "coverage": 0.3,
             "observedWeight": 0,
             "imputedWeight": 1,
-            "imputationClass": "unmonitored"
+            "imputationClass": "source-failure"
           },
           "stateContinuity": {
             "score": 75,
@@ -5872,7 +5881,7 @@
             "weight": 0.17
           },
           "infrastructure": {
-            "score": 47.53,
+            "score": 74.44,
             "weight": 0.15
           },
           "energy": {
@@ -5898,7 +5907,7 @@
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 66.38,
+            "score": 71.72,
             "weight": 0.35
           },
           "recovery-capacity": {
@@ -5909,8 +5918,9 @@
       },
       "ER": {
         "countryCode": "ER",
-        "overallScore": 35.03,
+        "overallScore": 36.75,
         "formula": "pc",
+        "dataVersion": "2026-04-08",
         "dimensions": {
           "macroFiscal": {
             "score": 0,
@@ -5941,9 +5951,9 @@
             "imputationClass": ""
           },
           "cyberDigital": {
-            "score": 0,
-            "coverage": 0,
-            "observedWeight": 0,
+            "score": 100,
+            "coverage": 1,
+            "observedWeight": 1,
             "imputedWeight": 0,
             "imputationClass": ""
           },
@@ -6036,7 +6046,7 @@
             "coverage": 0.3,
             "observedWeight": 0,
             "imputedWeight": 1,
-            "imputationClass": "unmonitored"
+            "imputationClass": "source-failure"
           },
           "stateContinuity": {
             "score": 42,
@@ -6073,7 +6083,7 @@
             "weight": 0.17
           },
           "infrastructure": {
-            "score": 32.86,
+            "score": 57.27,
             "weight": 0.15
           },
           "energy": {
@@ -6099,7 +6109,7 @@
             "weight": 0.4
           },
           "live-shock-exposure": {
-            "score": 51.78,
+            "score": 58.58,
             "weight": 0.35
           },
           "recovery-capacity": {
