@@ -16,8 +16,6 @@ import { resolveProxyStringConnect } from './_proxy-utils.cjs';
 import {
   createCountryResolvers,
   isIso2,
-  isIso3,
-  normalizeCountryToken,
   resolveIso2,
 } from './_country-resolver.mjs';
 import { isInRankableUniverse } from './shared/rankable-universe.mjs';
@@ -97,11 +95,6 @@ export function shouldSkipSeedYear(meta, seedYear = nowSeedYear()) {
 function safeNum(value) {
   const numeric = typeof value === 'number' ? value : Number(value);
   return Number.isFinite(numeric) ? numeric : null;
-}
-
-function coalesceYear(...values) {
-  const numeric = values.map(v => safeNum(v)).filter(v => v != null);
-  return numeric.length ? Math.max(...numeric) : null;
 }
 
 function roundMetric(value, digits = 3) {
