@@ -514,17 +514,17 @@ export function parseEurostatEnergyDataset(data, { enforceEuMemberFloor = false 
 
 export async function fetchEnergyDependencyDataset() {
   const [eurostatData, worldBankRows] = await Promise.all([
-    withRetry(() => fetchJson(EUROSTAT_ENERGY_URL), 2, 750).catch(() => null),
+    withRetry(() => fetchJson(EUROSTAT_ENERGY_URL), 2, 750).catch((err) => {
+      throw new Error(`Energy dependency: Eurostat fetch failed: ${err.message}`);
+    }),
     fetchWorldBankIndicatorRows(WB_ENERGY_IMPORT_INDICATOR, { mrv: '12' }).catch(() => []),
   ]);
 
   let merged = new Map();
-  if (eurostatData) {
-    try {
-      merged = parseEurostatEnergyDataset(eurostatData, { enforceEuMemberFloor: true });
-    } catch (err) {
-      throw new Error(`Energy dependency: Eurostat parse/floor check failed: ${err.message}`);
-    }
+  try {
+    merged = parseEurostatEnergyDataset(eurostatData, { enforceEuMemberFloor: true });
+  } catch (err) {
+    throw new Error(`Energy dependency: Eurostat parse/floor check failed: ${err.message}`);
   }
   const worldBankFallback = selectLatestWorldBankByCountry(worldBankRows);
 

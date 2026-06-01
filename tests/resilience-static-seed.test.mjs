@@ -18,6 +18,7 @@ import {
   gpiUrlForYear,
   resolveGpiCsv,
   buildAquastatWbMap,
+  fetchEnergyDependencyDataset,
   parseEurostatEnergyDataset,
   parseFsinRows,
   parseGpiRows,
@@ -443,6 +444,43 @@ describe('resilience static seed parsers', () => {
       () => validateEurostatEnergyEuMemberFloor(parsed),
       /parsed 1 EU member rows \(expected at least 24\)/,
     );
+  });
+
+  it('fails energy dependency when Eurostat is unreachable instead of publishing World Bank-only data', async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      const href = String(url);
+      if (href.includes('ec.europa.eu/eurostat/')) {
+        throw Object.assign(new Error('Eurostat unavailable'), { nonRetryable: true });
+      }
+      if (href.includes('api.worldbank.org/')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => [
+            { pages: 1 },
+            [
+              {
+                country: { id: 'DE', value: 'Germany' },
+                countryiso3code: 'DEU',
+                date: '2024',
+                value: 63.2,
+              },
+            ],
+          ],
+        };
+      }
+      throw new Error(`Unexpected test URL: ${href}`);
+    };
+
+    try {
+      await assert.rejects(
+        () => fetchEnergyDependencyDataset(),
+        /Energy dependency: Eurostat fetch failed: Eurostat unavailable/,
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
 
