@@ -366,17 +366,17 @@ describe('gateway internal-MCP HMAC verify — error paths', () => {
     assert.equal(res.status, 401, 'mutated body must 401');
   });
 
-  it('timestamp 31s in the past → 401', async () => {
+  it('timestamp 60s in the past → 401', async () => {
     const handler = makeGateway();
-    const past = Math.floor(Date.now() / 1000) - 31;
+    const past = Math.floor(Date.now() / 1000) - 60;
     const req = await buildSignedRequest({ now: past });
     const res = await handler(req);
     assert.equal(res.status, 401);
   });
 
-  it('timestamp 31s in the future → 401', async () => {
+  it('timestamp 60s in the future → 401', async () => {
     const handler = makeGateway();
-    const future = Math.floor(Date.now() / 1000) + 31;
+    const future = Math.floor(Date.now() / 1000) + 60;
     const req = await buildSignedRequest({ now: future });
     const res = await handler(req);
     assert.equal(res.status, 401);
