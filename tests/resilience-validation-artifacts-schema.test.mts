@@ -3,6 +3,12 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import {
+  KNOWN_CACHE_FORMULAS,
+  KNOWN_METHODOLOGY_FORMULAS,
+  PC_VALIDATION_ARTIFACT_MIN_GENERATED_AT,
+  methodologyFormulaForCacheFormula,
+} from '../scripts/lib/resilience-formula.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const validationDir = resolve(here, '../docs/methodology/country-resilience-index/validation');
@@ -28,9 +34,6 @@ const EXPECTED_BACKTEST_DATA_SOURCES = new Map<string, string>([
   ['sanctions-shocks', 'hardcoded'],
   ['sovereign-stress', 'hardcoded'],
 ]);
-const KNOWN_CACHE_FORMULAS = new Set(['d6', 'pc']);
-const KNOWN_METHODOLOGY_FORMULAS = new Set(['domain-weighted-6d', 'pillar-combined-penalized-v1']);
-
 function readJson(path: string): unknown {
   assert.ok(existsSync(path), `${path} must exist`);
   return JSON.parse(readFileSync(path, 'utf8'));
@@ -51,21 +54,31 @@ function assertPositiveTimestamp(value: unknown, label: string): void {
   assert.ok(value > 0, `${label} must be non-zero`);
 }
 
+function assertString(value: unknown, label: string): string {
+  assert.equal(typeof value, 'string', `${label} must be a string`);
+  return value;
+}
+
 function assertFormulaMetadata(artifact: Record<string, unknown>, label: string): void {
-  const cacheFormula = artifact._formula;
-  const methodologyFormula = artifact.methodologyFormula;
-  assert.equal(typeof cacheFormula, 'string', `${label}._formula must be a string`);
+  const cacheFormula = assertString(artifact._formula, `${label}._formula`);
   assert.ok(KNOWN_CACHE_FORMULAS.has(cacheFormula), `${label}._formula must be one of ${[...KNOWN_CACHE_FORMULAS].join(', ')}`);
-  assert.equal(typeof methodologyFormula, 'string', `${label}.methodologyFormula must be a string`);
+  const methodologyFormula = assertString(artifact.methodologyFormula, `${label}.methodologyFormula`);
   assert.ok(
     KNOWN_METHODOLOGY_FORMULAS.has(methodologyFormula),
     `${label}.methodologyFormula must be one of ${[...KNOWN_METHODOLOGY_FORMULAS].join(', ')}`,
   );
   assert.equal(
     methodologyFormula,
-    cacheFormula === 'pc' ? 'pillar-combined-penalized-v1' : 'domain-weighted-6d',
+    methodologyFormulaForCacheFormula(cacheFormula),
     `${label}.methodologyFormula must match ${label}._formula`,
   );
+  if (cacheFormula === 'pc') {
+    assertFiniteNumber(artifact.generatedAt, `${label}.generatedAt`);
+    assert.ok(
+      artifact.generatedAt >= PC_VALIDATION_ARTIFACT_MIN_GENERATED_AT,
+      `${label} pc artifact generatedAt ${new Date(artifact.generatedAt).toISOString()} must be at or after ${new Date(PC_VALIDATION_ARTIFACT_MIN_GENERATED_AT).toISOString()}`,
+    );
+  }
 }
 
 describe('resilience validation artifacts', () => {

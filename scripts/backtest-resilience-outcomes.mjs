@@ -6,6 +6,11 @@ import { fileURLToPath } from 'node:url';
 import { resolveIso2 } from './_country-resolver.mjs';
 import { getRedisCredentials, loadEnvFile } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
+import {
+  currentCacheFormulaLocal,
+  currentMethodologyFormulaLocal,
+  validationFormulaMetadata,
+} from './lib/resilience-formula.mjs';
 
 // Normalize any country identifier the upstream seeders emit (ISO2, ISO3, or
 // full English name) to canonical uppercase ISO2, or null when unrecognized.
@@ -29,26 +34,6 @@ const VALIDATION_DIR = join(__dirname, '..', 'docs', 'methodology', 'country-res
 
 const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v21:';
 const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v21';
-
-// Mirror of _shared.ts#currentCacheFormula. Must stay in lockstep; see
-// the same comment in scripts/validate-resilience-correlation.mjs for
-// the rationale.
-function currentCacheFormulaLocal() {
-  const combine = (process.env.RESILIENCE_PILLAR_COMBINE_ENABLED ?? 'false').toLowerCase() === 'true';
-  const v2 = (process.env.RESILIENCE_SCHEMA_V2_ENABLED ?? 'true').toLowerCase() === 'true';
-  return combine && v2 ? 'pc' : 'd6';
-}
-
-function currentMethodologyFormulaLocal() {
-  return currentCacheFormulaLocal() === 'pc' ? 'pillar-combined-penalized-v1' : 'domain-weighted-6d';
-}
-
-function validationFormulaMetadata() {
-  return {
-    _formula: currentCacheFormulaLocal(),
-    methodologyFormula: currentMethodologyFormulaLocal(),
-  };
-}
 
 const BACKTEST_RESULT_KEY = 'resilience:backtest:outcomes:v1';
 const BACKTEST_TTL_SECONDS = 7 * 24 * 60 * 60;

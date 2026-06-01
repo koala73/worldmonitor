@@ -14,6 +14,11 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadEnvFile, getRedisCredentials, CHROME_UA } from './_seed-utils.mjs';
+import {
+  currentCacheFormulaLocal,
+  currentMethodologyFormulaLocal,
+  validationFormulaMetadata,
+} from './lib/resilience-formula.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -363,26 +368,6 @@ function median(arr) {
   const s = [...arr].sort((a, b) => a - b);
   const mid = Math.floor(s.length / 2);
   return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
-}
-
-// Mirror of _shared.ts#currentCacheFormula. Must stay in lockstep; a
-// mixed-formula benchmark would produce a meaningless Spearman / Pearson
-// against INFORM / HDI / WRI reference indices.
-function currentCacheFormulaLocal() {
-  const combine = (process.env.RESILIENCE_PILLAR_COMBINE_ENABLED ?? 'false').toLowerCase() === 'true';
-  const v2 = (process.env.RESILIENCE_SCHEMA_V2_ENABLED ?? 'true').toLowerCase() === 'true';
-  return combine && v2 ? 'pc' : 'd6';
-}
-
-function currentMethodologyFormulaLocal() {
-  return currentCacheFormulaLocal() === 'pc' ? 'pillar-combined-penalized-v1' : 'domain-weighted-6d';
-}
-
-function validationFormulaMetadata() {
-  return {
-    _formula: currentCacheFormulaLocal(),
-    methodologyFormula: currentMethodologyFormulaLocal(),
-  };
 }
 
 async function readWmScoresFromRedis() {
