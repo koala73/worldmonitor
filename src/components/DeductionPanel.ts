@@ -2,7 +2,7 @@ import { Panel } from './Panel';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { premiumFetch } from '@/services/premium-fetch';
 import { IntelligenceServiceClient } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
-import { h, replaceChildren } from '@/utils/dom-utils';
+import { h, replaceChildren, setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { marked } from 'marked';
 import DOMPurify from 'dompurify';
 import type { NewsItem, DeductContextDetail } from '@/types';
@@ -184,7 +184,10 @@ export class DeductionPanel extends Panel {
                 clone.querySelector('strong')?.remove();
                 const bodyDiv = document.createElement('div');
                 bodyDiv.className = group.cls === 'ds-primary' ? 'ds-primary-body' : '';
-                bodyDiv.innerHTML = clone.innerHTML.replace(/^[\s:–—-]+/, '');
+                setTrustedHtml(
+                    bodyDiv,
+                    trustedHtml(clone.innerHTML.replace(/^[\s:–—-]+/, ''), 'legacy direct innerHTML migration'),
+                );
                 section.appendChild(bodyDiv);
             } else {
                 // For alt paths: inject probability badges into li items
@@ -235,7 +238,13 @@ export class DeductionPanel extends Panel {
         this.submitBtn.disabled = true;
 
         this.resultContainer.className = 'deduction-result loading';
-        this.resultContainer.innerHTML = '<div class="deduction-loading-dots"><span></span><span></span><span></span></div>Analyzing…';
+        setTrustedHtml(
+            this.resultContainer,
+            trustedHtml(
+                '<div class="deduction-loading-dots"><span></span><span></span><span></span></div>Analyzing…',
+                'legacy direct innerHTML migration',
+            ),
+        );
 
         try {
             const resp = await client.deductSituation({
@@ -250,7 +259,7 @@ export class DeductionPanel extends Panel {
                 const parsed = await marked.parse(resp.analysis);
                 if (!this.element?.isConnected) return;
                 const safe = DOMPurify.sanitize(parsed);
-                this.resultContainer.innerHTML = safe;
+                setTrustedHtml(this.resultContainer, trustedHtml(safe, 'legacy direct innerHTML migration'));
                 this.reformatResult(this.resultContainer);
             } else {
                 this.resultContainer.textContent = resp.provider === 'error'

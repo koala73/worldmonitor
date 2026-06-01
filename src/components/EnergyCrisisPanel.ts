@@ -3,7 +3,7 @@ import { getRpcBaseUrl } from '@/services/rpc-client';
 import { getHydratedData } from '@/services/bootstrap';
 import { EconomicServiceClient } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import type { GetEnergyCrisisPoliciesResponse, EnergyCrisisPolicy } from '@/generated/client/worldmonitor/economic/v1/service_client';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 
 type PolicyData = GetEnergyCrisisPoliciesResponse;
 
@@ -109,7 +109,7 @@ export class EnergyCrisisPanel extends Panel {
     }
 
     if (!this.data.policies?.length) {
-      this.setContent('<div class="panel-empty">No energy crisis policies tracked.</div>');
+      this.setSafeContent(unsafeRawHtml('<div class="panel-empty">No energy crisis policies tracked.</div>', 'legacy Panel.setContent() migration'));
       return;
     }
 
@@ -167,7 +167,7 @@ export class EnergyCrisisPanel extends Panel {
       'Source: IEA',
     ].filter(Boolean).join(' · ');
 
-    this.setContent(`
+    this.setSafeContent(unsafeRawHtml(`
       <div class="ecp-container">
         ${summaryHtml}
         ${filterHtml}
@@ -177,7 +177,7 @@ export class EnergyCrisisPanel extends Panel {
           <a href="${escapeHtml(sourceUrl)}" target="_blank" rel="noopener noreferrer" class="ecp-source-link">IEA Tracker ↗</a>
         </div>
       </div>
-    `);
+    `, 'legacy Panel.setContent() migration'));
 
     this.content?.querySelectorAll('.ecp-filter-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {

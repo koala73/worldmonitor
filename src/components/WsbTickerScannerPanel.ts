@@ -2,7 +2,7 @@ import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import { getHydratedData } from '@/services/bootstrap';
 import { toApiUrl } from '@/services/runtime';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 
 export interface WsbTicker {
   symbol: string;
@@ -135,7 +135,7 @@ export class WsbTickerScannerPanel extends Panel {
       </tr>`;
     }).join('');
 
-    this.setContent(`
+    this.setSafeContent(unsafeRawHtml(`
       <div style="overflow-x:auto;overflow-y:auto;max-height:480px">
         <table style="width:100%;border-collapse:collapse;border-spacing:0">
           <thead>
@@ -152,6 +152,6 @@ export class WsbTickerScannerPanel extends Panel {
         </table>
       </div>
       <div style="margin-top:6px;font-size:9px;color:var(--text-dim)">Reddit \u00B7 r/wallstreetbets, r/stocks, r/investing \u00B7 sorted by ${this._sortField.replace(/([A-Z])/g, ' $1').toLowerCase()}</div>
-    `);
+    `, 'legacy Panel.setContent() migration'));
   }
 }

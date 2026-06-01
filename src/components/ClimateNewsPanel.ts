@@ -1,6 +1,6 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
-import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
+import { joinSafeHtml, safeHtml, safeUrlAttr, type SafeHtml } from '@/utils/sanitize';
 import { getHydratedData } from '@/services/bootstrap';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { ClimateServiceClient } from '@/generated/client/worldmonitor/climate/v1/service_client';
@@ -25,20 +25,20 @@ function truncateSummary(text: string, maxLen = 120): string {
   return text.slice(0, maxLen).replace(/\s+\S*$/, '') + '...';
 }
 
-function renderNewsCard(item: ClimateNewsItem): string {
+function renderNewsCard(item: ClimateNewsItem): SafeHtml {
   const timeAgo = item.publishedAt ? formatTimeAgo(item.publishedAt) : '';
   const summary = truncateSummary(item.summary);
-  const safeUrl = sanitizeUrl(item.url);
+  const safeUrl = safeUrlAttr(item.url);
 
-  const inner = `<div class="climate-news-card__header">
-      <span class="climate-news-card__source">${escapeHtml(item.sourceName)}</span>
-      <span class="climate-news-card__time">${escapeHtml(timeAgo)}</span>
+  const inner = safeHtml`<div class="climate-news-card__header">
+      <span class="climate-news-card__source">${item.sourceName}</span>
+      <span class="climate-news-card__time">${timeAgo}</span>
     </div>
-    <div class="climate-news-card__title">${escapeHtml(item.title)}</div>
-    ${summary ? `<div class="climate-news-card__summary">${escapeHtml(summary)}</div>` : ''}`;
+    <div class="climate-news-card__title">${item.title}</div>
+    ${summary ? safeHtml`<div class="climate-news-card__summary">${summary}</div>` : ''}`;
 
-  if (!safeUrl) return `<div class="climate-news-card">${inner}</div>`;
-  return `<a class="climate-news-card" href="${escapeHtml(safeUrl)}" target="_blank" rel="noopener noreferrer">${inner}</a>`;
+  if (!safeUrl.toString()) return safeHtml`<div class="climate-news-card">${inner}</div>`;
+  return safeHtml`<a class="climate-news-card" href="${safeUrl}" target="_blank" rel="noopener noreferrer">${inner}</a>`;
 }
 
 export class ClimateNewsPanel extends Panel {
@@ -74,7 +74,7 @@ export class ClimateNewsPanel extends Panel {
       return;
     }
 
-    const cards = data.items.map(renderNewsCard).join('');
-    this.setContent(`<div class="climate-news-list">${cards}</div>`);
+    const cards = joinSafeHtml(data.items.map(renderNewsCard));
+    this.setSafeContent(safeHtml`<div class="climate-news-list">${cards}</div>`);
   }
 }

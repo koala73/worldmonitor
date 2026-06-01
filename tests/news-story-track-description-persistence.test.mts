@@ -16,7 +16,11 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { __testing__ } from '../server/worldmonitor/news/v1/list-feed-digest';
 
-const { buildStoryTrackHsetFields } = __testing__;
+const {
+  buildStoryTrackHsetFields,
+  computeEntityCorroborationSignals,
+  promoteDiplomacySeverity,
+} = __testing__;
 
 function baseItem(overrides: Record<string, unknown> = {}) {
   return {
@@ -31,6 +35,7 @@ function baseItem(overrides: Record<string, unknown> = {}) {
     classSource: 'keyword' as const,
     importanceScore: 42,
     corroborationCount: 1,
+    entityCorroborationCount: 0,
     lang: 'en',
     description: '',
     isOpinion: false,
@@ -182,6 +187,90 @@ describe('buildStoryTrackHsetFields — story:track:v1 HSET contract', () => {
     assert.strictEqual(m.get('link'), 'https://x.example/a');
     assert.strictEqual(m.get('severity'), 'high');
     assert.strictEqual(m.get('lang'), 'fr');
+  });
+
+  it('persists promoted flashpoint-diplomacy severity so high-sensitivity digests can include it', () => {
+    const promoted = promoteDiplomacySeverity(
+      'medium',
+      'US and Iran close deal to ease Hormuz tensions',
+      3,
+    );
+    assert.strictEqual(promoted, 'high');
+
+    const item = baseItem({
+      title: 'US and Iran close deal to ease Hormuz tensions',
+      level: promoted,
+      isAlert: true,
+      category: 'diplomacy',
+      source: 'Reuters',
+      entityCorroborationCount: 5,
+    });
+    const fields = buildStoryTrackHsetFields(item, '1745000000001', 99);
+    const m = fieldsToMap(fields);
+    assert.strictEqual(m.get('severity'), 'high');
+    assert.strictEqual(m.get('entityCorroborationCount'), '5');
+  });
+
+  it('does not promote generic business deals or under-corroborated diplomacy titles', () => {
+    assert.strictEqual(
+      promoteDiplomacySeverity('medium', 'Apple closes deal for new supplier contract', 3),
+      'medium',
+    );
+    assert.strictEqual(
+      promoteDiplomacySeverity('medium', 'US and Iran close deal to ease Hormuz tensions', 2),
+      'medium',
+    );
+    assert.strictEqual(
+      promoteDiplomacySeverity('critical', 'US and Iran close deal to ease Hormuz tensions', 3),
+      'critical',
+    );
+    assert.strictEqual(
+      promoteDiplomacySeverity('info', 'This day in history: US and Iran close deal to ease Hormuz tensions', 3),
+      'info',
+    );
+  });
+
+  it('counts tier-1/2 entity corroboration separately from lower-tier sources', () => {
+    const now = 1_745_000_000_000;
+    const items = [
+      baseItem({
+        source: 'Reuters',
+        title: 'US and Iran close deal to ease Hormuz tensions',
+        titleHash: 'h-reuters',
+        publishedAt: now,
+      }),
+      baseItem({
+        source: 'AP News',
+        title: 'Iran deal could calm oil markets after Hormuz alarm',
+        titleHash: 'h-ap',
+        publishedAt: now,
+      }),
+      baseItem({
+        source: 'Axios',
+        title: 'US-Iran deal averts immediate Hormuz disruption',
+        titleHash: 'h-axios',
+        publishedAt: now,
+      }),
+      baseItem({
+        source: 'Hacker News',
+        title: 'Iran deal discussions draw online attention',
+        titleHash: 'h-hn',
+        publishedAt: now,
+      }),
+    ];
+
+    const signals = computeEntityCorroborationSignals(
+      items as Array<Parameters<typeof computeEntityCorroborationSignals>[0][number]>,
+      now,
+    );
+    assert.deepStrictEqual(signals.get('h-reuters'), {
+      sourceCount: 4,
+      tier12SourceCount: 3,
+    });
+    assert.deepStrictEqual(signals.get('h-hn'), {
+      sourceCount: 4,
+      tier12SourceCount: 3,
+    });
   });
 
   it('round-trips Unicode / newlines cleanly', () => {

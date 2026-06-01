@@ -8,8 +8,8 @@
 // Lifecycle (called from owning panel):
 //   1. const view = new WatchlistTableView<T>({...config});
 //   2. view.setItems(items);
-//   3. panel.setContent(view.render());
-//   4. view.bind(panel.content, () => { panel.setContent(view.render()); view.bind(...); });
+//   3. panel.setSafeContent(unsafeRawHtml(view.render(), '...'));
+//   4. view.bind(panel.content, () => { panel.setSafeContent(...); view.bind(...); });
 //
 // State is held internally so sort/filter/search/expanded persist across
 // data refreshes within a session. Reset on full page reload (no

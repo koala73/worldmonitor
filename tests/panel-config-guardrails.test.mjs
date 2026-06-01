@@ -6,8 +6,83 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const panelLayoutSrc = readFileSync(resolve(__dirname, '../src/app/panel-layout.ts'), 'utf-8');
+const panelsSrc = readFileSync(resolve(__dirname, '../src/config/panels.ts'), 'utf-8');
+const commandsSrc = readFileSync(resolve(__dirname, '../src/config/commands.ts'), 'utf-8');
 
 const VARIANT_FILES = ['full', 'tech', 'finance', 'commodity', 'energy', 'happy'];
+
+// Depth-aware extraction of the TOP-LEVEL keys of a `const X_PANELS = { ... }`
+// object literal — i.e. the panel ids, not nested config keys like
+// `defaultLayout`. Brace-walks the block so nested objects never leak in.
+function topLevelPanelIds(variant) {
+  const tag = variant.toUpperCase() + '_PANELS';
+  const m = panelsSrc.match(new RegExp(`const ${tag}[^{]*\\{`));
+  if (!m) return [];
+  const open = panelsSrc.indexOf('{', m.index);
+  let depth = 0, end = open;
+  for (let i = open; i < panelsSrc.length; i++) {
+    const c = panelsSrc[i];
+    if (c === '{') depth++;
+    else if (c === '}') { depth--; if (depth === 0) { end = i; break; } }
+  }
+  const body = panelsSrc.slice(open + 1, end);
+  const depthAt = new Array(body.length).fill(0);
+  let cur = 0;
+  for (let i = 0; i < body.length; i++) { depthAt[i] = cur; if (body[i] === '{') cur++; else if (body[i] === '}') cur--; }
+  const ids = new Set();
+  const keyRe = /['"]?([a-zA-Z0-9_-]+)['"]?\s*:\s*\{/g;
+  let mm;
+  while ((mm = keyRe.exec(body))) { if (depthAt[mm.index] === 0) ids.add(mm[1]); }
+  return [...ids];
+}
+
+function allRegistryPanelIds() {
+  const ids = new Set();
+  for (const v of VARIANT_FILES) for (const id of topLevelPanelIds(v)) ids.add(id);
+  return ids;
+}
+
+// Parses commands.ts `panel:<id>` commands → Map<id, keywordCount>.
+// Line-based on purpose: commands are one-per-line (biome-enforced) and `id`
+// always precedes `keywords`. An object-literal matcher can't be used here —
+// the `icon: '\u{...}'` escapes contain literal braces, which would break any
+// `{...}` brace-walk. The "non-empty sets" test below catches catastrophic
+// regex drift if this convention ever changes.
+function panelCommandKeywordCounts() {
+  const out = new Map();
+  const re = /id:\s*'panel:([a-zA-Z0-9_-]+)'[^\n]*?keywords:\s*\[([^\]]*)\]/g;
+  let m;
+  while ((m = re.exec(commandsSrc))) {
+    out.set(m[1], m[2].split(',').filter((s) => s.trim().length > 0).length);
+  }
+  return out;
+}
+
+// Collects every panelKey listed anywhere in PANEL_CATEGORY_MAP.
+// Brace-walks from the map's opening `{` to its matching `}` (same robust
+// approach as topLevelPanelIds) rather than a `\n};` end-sentinel, which would
+// silently truncate if a later const reused that closing pattern.
+function categoryMappedPanelIds() {
+  const decl = panelsSrc.indexOf('PANEL_CATEGORY_MAP');
+  // Anchor on the assignment `= {`, not the first `{` — the type annotation
+  // `Record<string, { labelKey... }>` contains braces ahead of the value.
+  const open = panelsSrc.indexOf('{', panelsSrc.indexOf('= {', decl));
+  let depth = 0, end = open;
+  for (let i = open; i < panelsSrc.length; i++) {
+    const c = panelsSrc[i];
+    if (c === '{') depth++;
+    else if (c === '}') { depth--; if (depth === 0) { end = i; break; } }
+  }
+  const body = panelsSrc.slice(open + 1, end);
+  const ids = new Set();
+  for (const block of body.matchAll(/panelKeys\s*:\s*\[([^\]]*)\]/g)) {
+    for (const tok of block[1].split(',')) {
+      const t = tok.trim().replace(/['"]/g, '');
+      if (t) ids.add(t);
+    }
+  }
+  return ids;
+}
 
 function parsePanelKeys(variant) {
   const src = readFileSync(resolve(__dirname, '../src/config/panels.ts'), 'utf-8');
@@ -162,6 +237,90 @@ describe('panel-config guardrails', () => {
       }
     }
     assert.deepStrictEqual(typos, [], `Possible panel key typos: ${typos.join(', ')}`);
+  });
+
+  // ── Discoverability parity ─────────────────────────────────────────────
+  // A registered panel a user cannot reach is dead weight. Every panel must
+  // be (a) reachable by CMD+K (has a `panel:<id>` command with enough
+  // keywords to actually match a query) and (b) browsable (categorized).
+  // These guards exist because oil-inventories + 33 other panels had drifted
+  // out of PANEL_CATEGORY_MAP and 5 had no command at all — the data was in
+  // the API but undiscoverable in the UI.
+
+  it('parsers resolve non-empty sets (guards against silent regex drift)', () => {
+    assert.ok(allRegistryPanelIds().size > 50, `registry parse returned ${allRegistryPanelIds().size} panels — regex likely broke`);
+    assert.ok(panelCommandKeywordCounts().size > 50, `command parse returned ${panelCommandKeywordCounts().size} commands — regex likely broke`);
+    assert.ok(categoryMappedPanelIds().size > 50, `category parse returned ${categoryMappedPanelIds().size} keys — regex likely broke`);
+  });
+
+  it('every registered panel has a CMD+K command (discoverable by search)', () => {
+    const panels = allRegistryPanelIds();
+    const commands = panelCommandKeywordCounts();
+    const missing = [...panels].filter((id) => !commands.has(id)).sort();
+    assert.deepStrictEqual(
+      missing,
+      [],
+      `Panels with no panel:<id> command in src/config/commands.ts — they can never appear in CMD+K:\n  ${missing.join(', ')}\n` +
+      `Add a { id: 'panel:<id>', keywords: [...], label, icon, category: 'panels' } entry for each.`,
+    );
+  });
+
+  it('every registered panel is categorized in PANEL_CATEGORY_MAP (browsable)', () => {
+    const panels = allRegistryPanelIds();
+    const categorized = categoryMappedPanelIds();
+    const missing = [...panels].filter((id) => !categorized.has(id)).sort();
+    assert.deepStrictEqual(
+      missing,
+      [],
+      `Panels missing from PANEL_CATEGORY_MAP — no browse path exists for them:\n  ${missing.join(', ')}\n` +
+      `Add each to an appropriate category's panelKeys in src/config/panels.ts.`,
+    );
+  });
+
+  it('every panel command carries >=3 keywords (thin keywords fail to match real queries)', () => {
+    const commands = panelCommandKeywordCounts();
+    const thin = [...commands.entries()].filter(([, n]) => n < 3).map(([id, n]) => `${id}(${n})`).sort();
+    assert.deepStrictEqual(
+      thin,
+      [],
+      `panel:<id> commands with fewer than 3 keywords — too thin for reliable CMD+K discovery:\n  ${thin.join(', ')}\n` +
+      `Add synonyms/related terms (e.g. demonyms, acronyms) to each command's keywords array.`,
+    );
+  });
+
+  it("every category:'panels' command uses the panel:<id> prefix (else handleCommand dead-clicks)", () => {
+    // search-manager.ts handleCommand splits on the first ':' and returns
+    // early when there is none — so a `category: 'panels'` command whose id
+    // lacks the `panel:` prefix can never route to scrollToPanel/enablePanel.
+    // It renders in CMD+K but does nothing on select (the maritime-activity
+    // orphan that motivated this guard).
+    // Line-based for the same reason as panelCommandKeywordCounts (brace-laden
+    // icon escapes preclude an object-literal matcher); commands are one-per-line.
+    const offenders = [];
+    const re = /\{\s*id:\s*'([^']+)'[^\n]*category:\s*'panels'/g;
+    let m;
+    while ((m = re.exec(commandsSrc))) {
+      if (!m[1].startsWith('panel:')) offenders.push(m[1]);
+    }
+    assert.deepStrictEqual(
+      offenders,
+      [],
+      `Commands tagged category:'panels' but missing the 'panel:' prefix — they dead-click in CMD+K:\n  ${offenders.join(', ')}\n` +
+      `Prefix the id with 'panel:' (and ensure the panel exists) or remove the command.`,
+    );
+  });
+
+  it('no stale panel command or category entry references a non-existent panel', () => {
+    const panels = allRegistryPanelIds();
+    const staleCommands = [...panelCommandKeywordCounts().keys()].filter((id) => !panels.has(id)).sort();
+    const staleCategory = [...categoryMappedPanelIds()].filter((id) => !panels.has(id)).sort();
+    assert.deepStrictEqual(
+      { staleCommands, staleCategory },
+      { staleCommands: [], staleCategory: [] },
+      `Dead references to panels that no longer exist in the registry.\n` +
+      `  Stale panel:<id> commands (remove from commands.ts): ${staleCommands.join(', ') || '—'}\n` +
+      `  Stale PANEL_CATEGORY_MAP panelKeys (remove from panels.ts): ${staleCategory.join(', ') || '—'}`,
+    );
   });
 });
 

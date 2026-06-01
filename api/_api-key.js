@@ -17,6 +17,22 @@ function isValidEnterpriseKey(key) {
   return validKeys.includes(key);
 }
 
+function getCookie(req, name) {
+  const raw = req.headers.get('Cookie') || req.headers.get('cookie') || '';
+  if (!raw) return '';
+  const prefix = `${name}=`;
+  for (const part of raw.split(';')) {
+    const trimmed = part.trim();
+    if (!trimmed.startsWith(prefix)) continue;
+    try {
+      return decodeURIComponent(trimmed.slice(prefix.length));
+    } catch {
+      return trimmed.slice(prefix.length);
+    }
+  }
+  return '';
+}
+
 // Note: HTTP headers like Origin / Referer / Sec-Fetch-Site are entirely
 // client-controlled at the wire level (see issue #3541 / closed PR #3554).
 // Trusting any of them as a "this is a real browser" signal is forgeable by
@@ -38,13 +54,16 @@ function isValidEnterpriseKey(key) {
 // All call sites await this — see grep for migration history.
 export async function validateApiKey(req, options = {}) {
   const forceKey = options.forceKey === true;
-  const key = req.headers.get('X-WorldMonitor-Key') || req.headers.get('X-Api-Key');
+  const headerKey = req.headers.get('X-WorldMonitor-Key') || req.headers.get('X-Api-Key') || '';
+  const sessionCookie = getCookie(req, 'wm-session');
+  const testerCookie = getCookie(req, 'wm-pro-key') || getCookie(req, 'wm-widget-key');
+  const key = headerKey || testerCookie || sessionCookie;
   const origin = req.headers.get('Origin') || '';
 
   // Desktop app — always require an enterprise key.
   if (isDesktopOrigin(origin)) {
-    if (!key) return { valid: false, required: true, error: 'API key required for desktop access' };
-    if (!isValidEnterpriseKey(key)) return { valid: false, required: true, error: 'Invalid API key' };
+    if (!headerKey) return { valid: false, required: true, error: 'API key required for desktop access' };
+    if (!isValidEnterpriseKey(headerKey)) return { valid: false, required: true, error: 'Invalid API key' };
     return { valid: true, required: true, kind: 'enterprise' };
   }
 

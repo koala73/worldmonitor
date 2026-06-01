@@ -15,6 +15,8 @@ import { t } from '@/services/i18n';
 import { escapeHtml } from '@/utils/sanitize';
 import { toApiUrl } from '@/services/runtime';
 import { resolveUserCountryCode } from '@/utils/user-location';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 /** Builds a stable custom channel id from a YouTube handle (e.g. @Foo -> custom-foo). */
 function customChannelIdFromHandle(handle: string): string {
@@ -168,7 +170,7 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
   }
 
   function renderList(listEl: HTMLElement): void {
-    listEl.innerHTML = '';
+    setTrustedHtml(listEl, trustedHtml('', "legacy direct innerHTML migration"));
     for (const ch of channels) {
       const isCustom = !BUILTIN_IDS.has(ch.id);
       const row = document.createElement('div');
@@ -250,7 +252,7 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
 
   function showEditForm(row: HTMLElement, ch: LiveChannel, listEl: HTMLElement): void {
     const isCustom = !BUILTIN_IDS.has(ch.id);
-    row.innerHTML = '';
+    setTrustedHtml(row, trustedHtml('', "legacy direct innerHTML migration"));
     row.className = 'live-news-manage-row live-news-manage-row-editing';
 
     if (isCustom) {
@@ -336,7 +338,7 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
     }
 
     // Render tab buttons
-    tabBar.innerHTML = '';
+    setTrustedHtml(tabBar, trustedHtml('', "legacy direct innerHTML migration"));
     for (const region of filteredRegions) {
       const regionChannels = region.channelIds
         .map(id => optionalChannelMap.get(id))
@@ -363,7 +365,7 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
     }
 
     // Render tab content panels
-    tabContents.innerHTML = '';
+    setTrustedHtml(tabContents, trustedHtml('', "legacy direct innerHTML migration"));
     for (const region of filteredRegions) {
       const panel = document.createElement('div');
       panel.className = 'live-news-manage-tab-content' + (region.key === activeRegionTab ? ' active' : '');
@@ -443,7 +445,7 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
 
   // ── Render shell ──
 
-  appEl.innerHTML = `
+  setTrustedHtml(appEl, trustedHtml(`
     <div class="live-channels-window-shell">
       <div class="live-channels-window-header">
         <span class="live-channels-window-title">${escapeHtml(t('components.liveNews.manage') ?? 'Channel management')}</span>
@@ -486,7 +488,7 @@ export async function initLiveChannelsWindow(containerEl?: HTMLElement): Promise
         </div>
       </div>
     </div>
-  `;
+  `, "legacy direct innerHTML migration"));
 
   const listEl = document.getElementById('liveChannelsList');
   if (!listEl) return;

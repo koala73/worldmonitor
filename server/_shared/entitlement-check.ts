@@ -207,7 +207,7 @@ async function _getEntitlementsImpl(userId: string): Promise<CachedEntitlements 
  *     or the user's tier is below the required tier (fail-closed)
  */
 export async function checkEntitlement(
-  request: Request,
+  userId: string | null,
   pathname: string,
   corsHeaders: Record<string, string>,
 ): Promise<Response | null> {
@@ -217,9 +217,6 @@ export async function checkEntitlement(
     return null;
   }
 
-  // Extract userId from request header (set by session middleware).
-  // Fail-closed: if no userId on a gated endpoint, block the request.
-  const userId = request.headers.get('x-user-id');
   if (!userId) {
     return new Response(
       JSON.stringify({ error: 'Authentication required', requiredTier }),

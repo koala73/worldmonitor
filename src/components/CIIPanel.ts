@@ -2,9 +2,19 @@ import { Panel } from './Panel';
 import { getCSSColor } from '@/utils';
 import { calculateCII, type CountryScore } from '@/services/country-instability';
 import { t } from '../services/i18n';
-import { h, replaceChildren, rawHtml } from '@/utils/dom-utils';
+import { h, replaceChildren, rawHtml, setTrustedHtml, trustedHtml, type TrustedHtml } from '@/utils/dom-utils';
 import type { CachedRiskScores } from '@/services/cached-risk-scores';
 import { toCountryScore } from '@/services/cached-risk-scores';
+import { renderFollowButton } from '@/utils/follow-button';
+import {
+  getFollowed,
+  isFollowFeatureEnabled,
+  subscribe as subscribeFollowed,
+} from '@/services/followed-countries';
+import {
+  partitionByFollowed,
+  shouldRenderSectionLabels,
+} from './_cii-panel-partition';
 
 export class CIIPanel extends Panel {
   private scores: CountryScore[] = [];
@@ -12,6 +22,17 @@ export class CIIPanel extends Panel {
   private hasCachedRender = false;
   private onShareStory?: (code: string, name: string) => void;
   private onCountryClick?: (code: string) => void;
+  // Per-row FollowButton teardowns. Keyed by ISO code so we can tear
+  // down each one before the row is re-rendered (refresh / renderFromCached
+  // both call replaceChildren on this.content). Without this the
+  // FollowButton's watchlist + entitlement subscriptions leak each
+  // refresh tick — CIIPanel re-renders very frequently.
+  private followButtonTeardowns = new Map<string, () => void>();
+  // U6 — teardown for the watchlist subscription installed in the
+  // constructor. Re-renders the current rows whenever the followed list
+  // changes (anonymous: localStorage write or cross-tab `storage` event;
+  // signed-in: Convex `listFollowed` snapshot). Fired on `destroy()`.
+  private followedUnsubscribe: (() => void) | null = null;
 
   constructor() {
     super({
@@ -25,6 +46,15 @@ export class CIIPanel extends Panel {
       defaultRowSpan: 2,
     });
     this.showLoading(t('common.loading'));
+
+    // U6 — re-render rows on every watchlist mutation so the pinned-to-top
+    // group stays in sync. We re-render the cached scores in place rather
+    // than re-fetch — the data hasn't changed, only the partition order.
+    // The handler is a no-op until `this.scores` is populated by the first
+    // `refresh()` / `renderFromCached()` call.
+    this.followedUnsubscribe = subscribeFollowed(() => {
+      this.rerenderRows();
+    });
   }
 
   public setShareStoryHandler(handler: (code: string, name: string) => void): void {
@@ -55,7 +85,10 @@ export class CIIPanel extends Panel {
     }
   }
 
-  private static readonly SHARE_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 002 2h12a2 2 0 002-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>';
+  private static readonly SHARE_SVG: TrustedHtml = trustedHtml(
+    '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v7a2 2 0 002 2h12a2 2 0 002-2v-7"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>',
+    'Static share icon SVG defined in source',
+  );
 
   private buildTrendArrow(trend: CountryScore['trend'], change: number): HTMLElement {
     if (trend === 'rising') return h('span', { className: 'trend-up' }, `↑${change > 0 ? change : ''}`);
@@ -74,7 +107,34 @@ export class CIIPanel extends Panel {
     });
     shareBtn.appendChild(rawHtml(CIIPanel.SHARE_SVG));
 
+    // First child: per-row FollowButton (size sm). Insertion happens
+    // before the existing .cii-header so the star renders at the start
+    // of the row. The host wrapper owns the button's innerHTML across
+    // re-renders; teardown is tracked in `followButtonTeardowns` and
+    // fired before every wholesale rebuild + on panel destroy.
+    const followHost = h('span', {
+      className: 'cii-follow-btn-host',
+      dataset: { code: country.code },
+    });
+    const handle = renderFollowButton({
+      countryCode: country.code,
+      countryName: country.name,
+      size: 'sm',
+    });
+    setTrustedHtml(followHost, trustedHtml(handle.html, "legacy direct innerHTML migration"));
+    // Attach immediately. The host doesn't need to be DOM-connected for
+    // `attach()` to install its delegated click + subscription listeners,
+    // and `attach()` re-renders into the host so any state drift is
+    // resolved on mount.
+    const teardown = handle.attach(followHost);
+    this.followButtonTeardowns.set(country.code, teardown);
+    // Stop click bubbling so the per-row `onCountryClick` doesn't fire
+    // when the user clicks the star (matches the `cii-share-btn`
+    // stopPropagation pattern in `bindShareButtons`).
+    followHost.addEventListener('click', (e) => e.stopPropagation());
+
     return h('div', { className: 'cii-country', dataset: { code: country.code } },
+      followHost,
       h('div', { className: 'cii-header' },
         h('span', { className: 'cii-emoji' }, emoji),
         h('span', { className: 'cii-name' }, country.name),
@@ -92,6 +152,89 @@ export class CIIPanel extends Panel {
         h('span', { title: t('common.information') }, `I:${country.components.information}`),
       ),
     );
+  }
+
+  private tearDownFollowButtons(): void {
+    for (const teardown of this.followButtonTeardowns.values()) {
+      try {
+        teardown();
+      } catch {
+        /* swallow — teardown should never throw, but be defensive */
+      }
+    }
+    this.followButtonTeardowns.clear();
+  }
+
+  /**
+   * U6 — Build the list element from already-loaded scores. Inserts a
+   * single "Following" / "All" section pair when BOTH groups are
+   * non-empty; otherwise renders the unpartitioned list (no divider, no
+   * label) so the zero-followed and all-followed cases match today's UX.
+   *
+   * Partition logic lives in `_cii-panel-partition.ts` so it's
+   * unit-testable without the Panel/DOM/i18n transitive deps.
+   *
+   * Caller must call `tearDownFollowButtons()` BEFORE invoking this
+   * (every row mounts a fresh FollowButton; the previous batch's
+   * subscriptions must be released first).
+   */
+  private buildList(scores: CountryScore[]): HTMLElement {
+    // Gate the partition input on the feature flag — `getFollowed()` reads
+    // localStorage even when the flag is off (anonymous mode reads aren't
+    // short-circuited, only mutations are). When the flag is OFF, treat
+    // the followed list as `[]` so partitionByFollowed becomes a no-op:
+    // rows render in the original score order, no FOLLOWING / ALL labels.
+    // Without this gate, flag-off users would see partitioning + section
+    // labels even though the FollowButton / chip surface is hidden.
+    const followedCodes = isFollowFeatureEnabled() ? getFollowed() : [];
+    const partition = partitionByFollowed(scores, followedCodes);
+
+    if (!shouldRenderSectionLabels(partition)) {
+      // Zero-followed OR all-followed → render the original order with
+      // no divider. Behaviour identical to pre-U6.
+      return h(
+        'div',
+        { className: 'cii-list' },
+        ...scores.map((s) => this.buildCountry(s)),
+      );
+    }
+
+    const { followed, unfollowed } = partition;
+    const followingLabel = h(
+      'div',
+      { className: 'cii-section-label' },
+      t('components.cii.sectionFollowing'),
+    );
+    const allLabel = h(
+      'div',
+      { className: 'cii-section-label' },
+      t('components.cii.sectionAll'),
+    );
+
+    return h(
+      'div',
+      { className: 'cii-list' },
+      followingLabel,
+      ...followed.map((s) => this.buildCountry(s)),
+      allLabel,
+      ...unfollowed.map((s) => this.buildCountry(s)),
+    );
+  }
+
+  /**
+   * U6 — Cheap re-render path used by the watchlist subscription. Rebuilds
+   * the row list from the cached `this.scores` (no re-fetch) so the
+   * partition order updates in one tick. No-op if no scores have been
+   * loaded yet (the next refresh / renderFromCached will pick up the
+   * watchlist on its own).
+   */
+  private rerenderRows(): void {
+    if (this.scores.length === 0) return;
+    const withData = this.scores.filter((s) => s.score > 0);
+    if (withData.length === 0) return;
+    this.tearDownFollowButtons();
+    replaceChildren(this.content, this.buildList(withData));
+    this.bindShareButtons();
   }
 
   private bindShareButtons(): void {
@@ -140,14 +283,19 @@ export class CIIPanel extends Panel {
       this.setCount(withData.length);
 
       if (withData.length === 0) {
+        // Tear down any previously-mounted FollowButtons before swapping
+        // the empty-state markup in (otherwise their subscriptions leak).
+        this.tearDownFollowButtons();
         this.setErrorState(false);
         replaceChildren(this.content, h('div', { className: 'empty-state' }, t('components.cii.noSignals')));
         return;
       }
 
       this.setErrorState(false);
-      const listEl = h('div', { className: 'cii-list' }, ...withData.map(s => this.buildCountry(s)));
-      replaceChildren(this.content, listEl);
+      // Tear down the previous batch of FollowButtons BEFORE we
+      // construct fresh rows; `buildCountry` will repopulate the map.
+      this.tearDownFollowButtons();
+      replaceChildren(this.content, this.buildList(withData));
       this.bindShareButtons();
     } catch (error) {
       console.error('[CIIPanel] Refresh error:', error);
@@ -162,13 +310,27 @@ export class CIIPanel extends Panel {
     this.hasCachedRender = true;
     this.setCount(scores.length);
     this.setErrorState(false);
-    const listEl = h('div', { className: 'cii-list' }, ...scores.map(s => this.buildCountry(s)));
-    replaceChildren(this.content, listEl);
+    // Tear down previous FollowButtons before mounting the new batch.
+    this.tearDownFollowButtons();
+    replaceChildren(this.content, this.buildList(scores));
     this.bindShareButtons();
     console.log(`[CIIPanel] Rendered ${scores.length} countries from cached/bootstrap data`);
   }
 
   public getScores(): CountryScore[] {
     return this.scores;
+  }
+
+  public override destroy(): void {
+    this.tearDownFollowButtons();
+    if (this.followedUnsubscribe) {
+      try {
+        this.followedUnsubscribe();
+      } catch {
+        /* swallow — unsubscribe should never throw, but be defensive */
+      }
+      this.followedUnsubscribe = null;
+    }
+    super.destroy();
   }
 }

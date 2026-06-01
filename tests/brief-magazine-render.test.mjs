@@ -199,6 +199,16 @@ describe('renderBriefMagazine — chrome invariants', () => {
     assert.ok(/\.page\s*\{[^}]*height:\s*100vh/.test(html));
   });
 
+  it('caps desktop magazine typography and allows long editorial text to wrap', () => {
+    const html = renderBriefMagazine(envelope());
+
+    assert.match(html, /\.digest h2\s*\{[^}]*font-size:\s*clamp\(54px,\s*7vw,\s*112px\)/);
+    assert.match(html, /\.story h3\s*\{[^}]*font-size:\s*clamp\(44px,\s*5vw,\s*86px\)/);
+    assert.match(html, /\.digest blockquote\s*\{[^}]*font-size:\s*clamp\(20px,\s*2vw,\s*34px\)/);
+    assert.match(html, /\.story \.desc\s*\{[^}]*font-size:\s*clamp\(17px,\s*1\.55vw,\s*28px\)/);
+    assert.match(html, /\.story \.callout \.note\s*\{[^}]*overflow-wrap:\s*anywhere/);
+  });
+
   it('emits the dot-navigation container and digest-index dataset', () => {
     const html = renderBriefMagazine(envelope());
     assert.ok(html.includes('id="navDots"'));

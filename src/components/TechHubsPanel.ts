@@ -1,7 +1,7 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import type { TechHubActivity } from '@/services/tech-activity';
-import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
+import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
 import { getCSSColor } from '@/utils';
 
 const COUNTRY_FLAGS: Record<string, string> = {
@@ -127,7 +127,7 @@ export class TechHubsPanel extends Panel {
       `;
     }).join('');
 
-    this.setContent(html);
+    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
     this.bindEvents();
   }
 

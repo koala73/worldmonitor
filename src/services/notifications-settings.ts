@@ -21,12 +21,30 @@ import {
 import { getCurrentClerkUser } from '@/services/clerk';
 import { hasTier } from '@/services/entitlements';
 import { SITE_VARIANT } from '@/config/variant';
+import { mountCountryChipPicker, loadFollowedCountriesSafe, type CountryChipPickerHandle } from '@/utils/country-chip-picker';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 const QUIET_HOURS_BATCH_ENABLED = import.meta.env.VITE_QUIET_HOURS_BATCH_ENABLED !== '0';
 const DIGEST_CRON_ENABLED = import.meta.env.VITE_DIGEST_CRON_ENABLED !== '0';
 
 export interface NotificationsSettingsHost {
   isSignedIn?: boolean;
+  /**
+   * Optional ISO-3166 alpha-2 country code to pre-fill into the alert-rule
+   * country picker on first render of the create form. Used by the deep-dive
+   * "Notify me about this country" sub-action (PR B U8 R9): the user clicks
+   * the link on the Iran deep-dive → notifications settings opens with 'IR'
+   * pre-checked.
+   *
+   * Only applies on NEW-rule create. Existing rules respect their stored
+   * countries[] regardless of this parameter.
+   *
+   * Validation: must match /^[A-Z]{2}$/ after trim+uppercase; otherwise
+   * silently dropped (defensive — the dispatcher should already normalize,
+   * but this is a public entry point so we don't trust the input).
+   */
+  preselectCountry?: string;
 }
 
 export interface NotificationsSettingsResult {
@@ -34,8 +52,24 @@ export interface NotificationsSettingsResult {
   attach: (container: HTMLElement) => () => void;
 }
 
+function normalizePreselectCountry(input: string | undefined): string | null {
+  if (typeof input !== 'string') return null;
+  const trimmed = input.trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(trimmed)) return null;
+  return trimmed;
+}
+
+function appendNotificationError(rowEl: HTMLElement, message: string): void {
+  rowEl.querySelector('.us-notif-error')?.remove();
+  const errorEl = document.createElement('span');
+  errorEl.className = 'us-notif-error';
+  errorEl.textContent = message;
+  rowEl.appendChild(errorEl);
+}
+
 export function renderNotificationsSettings(host: NotificationsSettingsHost): NotificationsSettingsResult {
   const isPro = !!host.isSignedIn && hasTier(1);
+  const preselectCountry = normalizePreselectCountry(host.preselectCountry);
 
   let html = '';
   if (isPro) {
@@ -374,10 +408,27 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
               </label>
             </div>
           </div>
+          <div class="ai-flow-section-label" style="margin-top:8px">Country scope</div>
+          <div class="ai-flow-toggle-desc" style="margin-bottom:6px">Restrict alerts to specific countries (ISO-3166 alpha-2). Leave empty to receive alerts from all countries.</div>
+          <div id="usNotifCountryPicker"></div>
           <div class="ai-flow-section-label" style="margin-top:8px">Timezone</div>
           <select class="unified-settings-select" id="usSharedTimezone" style="width:100%">${makeTzOptions(sharedTz)}</select>`;
         return html;
       }
+
+      // Country chip picker handle — recreated each reload. Held outside the
+      // reload closure so the change handlers (debounced save below) can read
+      // the current value via picker?.getValue().
+      let countryPicker: CountryChipPickerHandle | null = null;
+
+      // Debounce timers — declared up-front so the country picker's onChange
+      // (defined inside an async then() that fires after this scope's sync
+      // body completes) can reuse alertRuleDebounceTimer without TDZ risk.
+      let slackOAuthPopup: Window | null = null;
+      let discordOAuthPopup: Window | null = null;
+      let alertRuleDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+      let qhDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+      let digestDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
       function reloadNotifSection(): void {
         const loadingEl = container.querySelector<HTMLElement>('#usNotifLoading');
@@ -388,9 +439,55 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         if (signal.aborted) return;
         getChannelsData().then((data) => {
           if (signal.aborted) return;
-          contentEl.innerHTML = renderNotifContent(data);
+          setTrustedHtml(contentEl, trustedHtml(renderNotifContent(data), "legacy direct innerHTML migration"));
           loadingEl.style.display = 'none';
           contentEl.style.display = 'block';
+
+          // Tear down stale picker (if any) before mounting fresh one — the
+          // innerHTML rewrite above orphans the previous root.
+          if (countryPicker) {
+            try { countryPicker.destroy(); } catch { /* ignore */ }
+            countryPicker = null;
+          }
+
+          const pickerRoot = contentEl.querySelector<HTMLElement>('#usNotifCountryPicker');
+          if (!pickerRoot) return;
+
+          const existingRule = data.alertRules?.[0] ?? null;
+          const existingCountries = Array.isArray(existingRule?.countries) ? existingRule!.countries! : [];
+          // Smart-default ONLY on NEW-rule create — when there's no existing
+          // alertRules row at all. If the user already has a row (even with
+          // countries: []), respect that as an explicit "all countries" choice.
+          const isNewRule = existingRule === null;
+
+          let initial = existingCountries;
+          if (isNewRule) {
+            // Three-way precedence on NEW rules:
+            //   (1) preselectCountry from caller (deep-dive "Notify me about
+            //       this country" sub-action — PR B U8 R9 pre-fill).
+            //   (2) followed-countries from PR A's primitive (smart default).
+            //   (3) [] fallback (all countries; current behavior).
+            // (1) wins when present; the user explicitly clicked into this
+            // form FROM a country deep-dive, so that country should be
+            // pre-checked even if it's not in their watchlist.
+            if (preselectCountry) {
+              initial = [preselectCountry];
+            } else {
+              const followed = loadFollowedCountriesSafe();
+              if (followed.length > 0) initial = followed;
+            }
+          }
+
+          countryPicker = mountCountryChipPicker(pickerRoot, {
+            initial,
+            onChange: () => {
+              // Debounced save through the existing alertRule pipeline.
+              if (alertRuleDebounceTimer) clearTimeout(alertRuleDebounceTimer);
+              alertRuleDebounceTimer = setTimeout(() => {
+                saveCurrentAlertRule();
+              }, 800);
+            },
+          });
         }).catch((err) => {
           if (signal.aborted) return;
           console.error('[notifications] Failed to load settings:', err);
@@ -398,27 +495,74 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         });
       }
 
+      /**
+       * Centralized snapshot of the live alert-rule form state.
+       *
+       * EVERY alertRules save path in this file MUST source its payload from
+       * this helper (or augment its return value with overrides) — bypassing
+       * it risks dropping `countries` (the picker value lives outside the
+       * form's input elements) or any future field added to AlertRule.
+       *
+       * Why a helper instead of inlining `countries: countryPicker?.getValue()`
+       * at every call site: each save handler historically reconstructed the
+       * payload from scratch, and the picker value was easy to forget. PR
+       * #3632 review surfaced one missed call site (channel-connect saves);
+       * centralizing makes future drift impossible to introduce silently.
+       */
+      function getCurrentAlertRuleFormState(): {
+        enabled: boolean;
+        eventTypes: string[];
+        sensitivity: 'all' | 'high' | 'critical';
+        channels: ChannelType[];
+        aiDigestEnabled: boolean;
+        countries: string[] | undefined;
+      } {
+        const enabledEl = container.querySelector<HTMLInputElement>('#usNotifEnabled');
+        const sensitivityEl = container.querySelector<HTMLSelectElement>('#usNotifSensitivity');
+        const aiDigestEl = container.querySelector<HTMLInputElement>('#usAiDigestEnabled');
+        const connectedChannelTypes = Array.from(
+          container.querySelectorAll<HTMLElement>('[data-channel-type]'),
+        )
+          .filter(el => el.classList.contains('us-notif-ch-on'))
+          .map(el => el.dataset.channelType as ChannelType);
+        // Picker may be absent during async mount or gated render. In that
+        // case send undefined so insert-capable APIs preserve-on-omit instead
+        // of accidentally clearing the stored country scope.
+        const alertRuleCountries = countryPicker ? countryPicker.getValue() : undefined;
+        return {
+          enabled: enabledEl?.checked ?? false,
+          eventTypes: [],
+          sensitivity: (sensitivityEl?.value ?? 'all') as 'all' | 'high' | 'critical',
+          channels: connectedChannelTypes,
+          aiDigestEnabled: aiDigestEl?.checked ?? true,
+          countries: alertRuleCountries,
+        };
+      }
+
+      // Read all current alert-rule fields off the DOM and POST through the
+      // existing saveAlertRules pipeline. Sources its full payload from
+      // getCurrentAlertRuleFormState so `countries` flows through every time.
+      function saveCurrentAlertRule(): void {
+        const state = getCurrentAlertRuleFormState();
+        void saveAlertRules({
+          variant: SITE_VARIANT,
+          ...state,
+        });
+      }
+
       reloadNotifSection();
 
       function saveRuleWithNewChannel(newChannel: ChannelType): void {
-        const enabledEl = container.querySelector<HTMLInputElement>('#usNotifEnabled');
-        const sensitivityEl = container.querySelector<HTMLSelectElement>('#usNotifSensitivity');
-        if (!enabledEl) return;
-        const enabled = enabledEl.checked;
-        const sensitivity = (sensitivityEl?.value ?? 'all') as 'all' | 'high' | 'critical';
-        const existing = Array.from(container.querySelectorAll<HTMLElement>('[data-channel-type]'))
-          .filter(el => el.classList.contains('us-notif-ch-on'))
-          .map(el => el.dataset.channelType as ChannelType);
-        const channels = [...new Set([...existing, newChannel])];
-        const aiEl = container.querySelector<HTMLInputElement>('#usAiDigestEnabled');
-        void saveAlertRules({ variant: SITE_VARIANT, enabled, eventTypes: [], sensitivity, channels, aiDigestEnabled: aiEl?.checked ?? true });
+        const state = getCurrentAlertRuleFormState();
+        // Augment channels with the newly connected one (set semantics).
+        const channels = [...new Set([...state.channels, newChannel])];
+        void saveAlertRules({
+          variant: SITE_VARIANT,
+          ...state,
+          channels,
+        });
       }
 
-      let slackOAuthPopup: Window | null = null;
-      let discordOAuthPopup: Window | null = null;
-      let alertRuleDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-      let qhDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-      let digestDebounceTimer: ReturnType<typeof setTimeout> | null = null;
       signal.addEventListener('abort', () => {
         if (alertRuleDebounceTimer !== null) {
           clearTimeout(alertRuleDebounceTimer);
@@ -449,6 +593,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             quietHoursEnd: endEl ? Number(endEl.value) : 7,
             quietHoursTimezone: tzEl?.value || detectedTz,
             quietHoursOverride: (overrideEl?.value ?? 'critical_only') as QuietHoursOverride,
+            countries: countryPicker ? countryPicker.getValue() : undefined,
           });
         }, 800);
       };
@@ -464,6 +609,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             digestMode: (modeEl?.value ?? 'realtime') as DigestMode,
             digestHour: hourEl ? Number(hourEl.value) : 8,
             digestTimezone: tzEl?.value || detectedTz,
+            countries: countryPicker ? countryPicker.getValue() : undefined,
           });
         }, 800);
       };
@@ -533,12 +679,14 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           digestDebounceTimer = setTimeout(() => {
             void (async () => {
               try {
+                const state = getCurrentAlertRuleFormState();
                 await setNotificationConfig({
                   variant: SITE_VARIANT,
+                  ...state,
                   digestMode: target.value as DigestMode,
                   digestHour: hourEl ? Number(hourEl.value) : 8,
                   digestTimezone: tzEl?.value || detectedTz,
-                  sensitivity: snappedSensitivity, // undefined unless we just snapped
+                  ...(snappedSensitivity ? { sensitivity: snappedSensitivity } : {}),
                 });
               } catch (err) {
                 if (err instanceof IncompatibleDeliveryError) {
@@ -577,21 +725,14 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         if (target.id === 'usAiDigestEnabled') {
           if (alertRuleDebounceTimer) clearTimeout(alertRuleDebounceTimer);
           alertRuleDebounceTimer = setTimeout(() => {
-            const enabledEl = container.querySelector<HTMLInputElement>('#usNotifEnabled');
-            const sensitivityEl = container.querySelector<HTMLSelectElement>('#usNotifSensitivity');
-            const enabled = enabledEl?.checked ?? false;
-            const sensitivity = (sensitivityEl?.value ?? 'all') as 'all' | 'high' | 'critical';
-            const connectedChannelTypes = Array.from(
-              container.querySelectorAll<HTMLElement>('[data-channel-type]'),
-            )
-              .filter(el => el.classList.contains('us-notif-ch-on'))
-              .map(el => el.dataset.channelType as ChannelType);
+            // Source from the centralized helper so `countries` flows through.
+            // Override aiDigestEnabled with the just-toggled value (the helper
+            // reads from the DOM, which has already been updated by the time
+            // the debounce fires, but explicit override avoids any race).
+            const state = getCurrentAlertRuleFormState();
             void saveAlertRules({
               variant: SITE_VARIANT,
-              enabled,
-              eventTypes: [],
-              sensitivity,
-              channels: connectedChannelTypes,
+              ...state,
               aiDigestEnabled: target.checked,
             });
           }, 500);
@@ -600,23 +741,11 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         if (target.id === 'usNotifEnabled' || target.id === 'usNotifSensitivity') {
           if (alertRuleDebounceTimer) clearTimeout(alertRuleDebounceTimer);
           alertRuleDebounceTimer = setTimeout(() => {
-            const enabledEl = container.querySelector<HTMLInputElement>('#usNotifEnabled');
-            const sensitivityEl = container.querySelector<HTMLSelectElement>('#usNotifSensitivity');
-            const enabled = enabledEl?.checked ?? false;
-            const sensitivity = (sensitivityEl?.value ?? 'all') as 'all' | 'high' | 'critical';
-            const connectedChannelTypes = Array.from(
-              container.querySelectorAll<HTMLElement>('[data-channel-type]'),
-            )
-              .filter(el => el.classList.contains('us-notif-ch-on'))
-              .map(el => el.dataset.channelType as ChannelType);
-            const aiDigestEl = container.querySelector<HTMLInputElement>('#usAiDigestEnabled');
+            // Source from the centralized helper so `countries` flows through.
+            const state = getCurrentAlertRuleFormState();
             void saveAlertRules({
               variant: SITE_VARIANT,
-              enabled,
-              eventTypes: [],
-              sensitivity,
-              channels: connectedChannelTypes,
-              aiDigestEnabled: aiDigestEl?.checked ?? true,
+              ...state,
             });
           }, 1000);
         }
@@ -650,7 +779,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         }
 
         const startTelegramPairing = (rowEl: HTMLElement) => {
-          rowEl.innerHTML = `<div class="us-notif-ch-icon">${channelIcon('telegram')}</div><div class="us-notif-ch-body"><div class="us-notif-ch-name">Telegram</div><div class="us-notif-ch-sub">Generating code…</div></div>`;
+          setTrustedHtml(rowEl, trustedHtml(`<div class="us-notif-ch-icon">${channelIcon('telegram')}</div><div class="us-notif-ch-body"><div class="us-notif-ch-name">Telegram</div><div class="us-notif-ch-sub">Generating code…</div></div>`, "legacy direct innerHTML migration"));
           createPairingToken().then(({ token, expiresAt }) => {
             if (signal.aborted) return;
             const botUsername = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_TELEGRAM_BOT_USERNAME as string | undefined) ?? 'WorldMonitorBot';
@@ -658,7 +787,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
             const startCmd = `/start ${token}`;
             const secsLeft = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
             const qrSvg = renderSVG(deepLink, { ecc: 'M', border: 1 });
-            rowEl.innerHTML = `
+            setTrustedHtml(rowEl, trustedHtml(`
               <div class="us-notif-ch-icon">${channelIcon('telegram')}</div>
               <div class="us-notif-ch-body">
                 <div class="us-notif-ch-name">Connect Telegram</div>
@@ -677,7 +806,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
               <div class="us-notif-ch-actions">
                 <span class="us-notif-tg-countdown" id="usTgCountdown">Waiting… ${secsLeft}s</span>
               </div>
-            `;
+            `, "legacy direct innerHTML migration"));
             let remaining = secsLeft;
             clearNotifPoll();
             notifPollInterval = setInterval(() => {
@@ -688,7 +817,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
               const expired = remaining <= 0;
               if (expired) {
                 clearNotifPoll();
-                rowEl.innerHTML = `
+                setTrustedHtml(rowEl, trustedHtml(`
                   <div class="us-notif-ch-icon">${channelIcon('telegram')}</div>
                   <div class="us-notif-ch-body">
                     <div class="us-notif-ch-name">Telegram</div>
@@ -697,7 +826,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
                   <div class="us-notif-ch-actions">
                     <button type="button" class="us-notif-ch-btn us-notif-ch-btn-primary us-notif-tg-regen">Generate new code</button>
                   </div>
-                `;
+                `, "legacy direct innerHTML migration"));
                 return;
               }
               getChannelsData().then((data) => {
@@ -710,7 +839,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
               }).catch(() => {});
             }, 3000);
           }).catch(() => {
-            rowEl.innerHTML = `<div class="us-notif-ch-icon">${channelIcon('telegram')}</div><div class="us-notif-ch-body"><div class="us-notif-ch-name">Telegram</div><div class="us-notif-ch-sub us-notif-tg-expired">Failed to generate code</div></div><div class="us-notif-ch-actions"><button type="button" class="us-notif-ch-btn us-notif-ch-btn-primary us-notif-tg-regen">Try again</button></div>`;
+            setTrustedHtml(rowEl, trustedHtml(`<div class="us-notif-ch-icon">${channelIcon('telegram')}</div><div class="us-notif-ch-body"><div class="us-notif-ch-name">Telegram</div><div class="us-notif-ch-sub us-notif-tg-expired">Failed to generate code</div></div><div class="us-notif-ch-actions"><button type="button" class="us-notif-ch-btn us-notif-ch-btn-primary us-notif-tg-regen">Try again</button></div>`, "legacy direct innerHTML migration"));
           });
         };
 
@@ -727,8 +856,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
           if (!email) {
             const rowEl = target.closest('.us-notif-ch-row') as HTMLElement | null;
             if (rowEl) {
-              rowEl.querySelector('.us-notif-error')?.remove();
-              rowEl.insertAdjacentHTML('beforeend', '<span class="us-notif-error">No email found on your account</span>');
+              appendNotificationError(rowEl, 'No email found on your account');
             }
             return;
           }
@@ -752,8 +880,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
               if (btn) btn.textContent = 'Add to Slack';
               const rowEl = btn?.closest<HTMLElement>('[data-channel-type="slack"]');
               if (rowEl) {
-                rowEl.querySelector('.us-notif-error')?.remove();
-                rowEl.insertAdjacentHTML('beforeend', '<span class="us-notif-error">Popup blocked — please allow popups for this site, then try again.</span>');
+                appendNotificationError(rowEl, 'Popup blocked — please allow popups for this site, then try again.');
               }
             } else {
               slackOAuthPopup = popup;
@@ -778,8 +905,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
               if (btn) btn.textContent = 'Connect Discord';
               const rowEl = btn?.closest<HTMLElement>('[data-channel-type="discord"]');
               if (rowEl) {
-                rowEl.querySelector('.us-notif-error')?.remove();
-                rowEl.insertAdjacentHTML('beforeend', '<span class="us-notif-error">Popup blocked — please allow popups for this site, then try again.</span>');
+                appendNotificationError(rowEl, 'Popup blocked — please allow popups for this site, then try again.');
               }
             } else {
               discordOAuthPopup = popup;
@@ -793,7 +919,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         if (target.closest('#usConnectWebhook')) {
           const rowEl = target.closest<HTMLElement>('[data-channel-type="webhook"]');
           if (!rowEl) return;
-          rowEl.querySelector('.us-notif-ch-actions')!.innerHTML = `
+          setTrustedHtml(rowEl.querySelector('.us-notif-ch-actions')!, trustedHtml(`
             <div style="display:flex;flex-direction:column;gap:6px;width:100%">
               <input type="url" id="usWebhookUrl" placeholder="https://hooks.example.com/..." class="unified-settings-input" style="font-size:12px;width:100%">
               <input type="text" id="usWebhookLabel" placeholder="Label (optional)" class="unified-settings-input" style="font-size:12px;width:100%">
@@ -801,7 +927,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
                 <button type="button" class="us-notif-ch-btn us-notif-ch-btn-primary" id="usWebhookSave">Save</button>
                 <button type="button" class="us-notif-ch-btn" id="usWebhookCancel">Cancel</button>
               </div>
-            </div>`;
+            </div>`, "legacy direct innerHTML migration"));
           const urlInput = rowEl.querySelector<HTMLInputElement>('#usWebhookUrl');
           urlInput?.focus();
           return;
@@ -898,8 +1024,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         } else if (e.data?.type === 'wm:slack_error') {
           const rowEl = container.querySelector<HTMLElement>('[data-channel-type="slack"]');
           if (rowEl) {
-            rowEl.querySelector('.us-notif-error')?.remove();
-            rowEl.insertAdjacentHTML('beforeend', `<span class="us-notif-error">Slack connection failed: ${escapeHtml(String(e.data.error ?? 'unknown'))}</span>`);
+            appendNotificationError(rowEl, `Slack connection failed: ${String(e.data.error ?? 'unknown')}`);
             const btn = rowEl.querySelector<HTMLButtonElement>('#usConnectSlack');
             if (btn) btn.textContent = 'Add to Slack';
           }
@@ -908,8 +1033,7 @@ export function renderNotificationsSettings(host: NotificationsSettingsHost): No
         } else if (e.data?.type === 'wm:discord_error') {
           const rowEl = container.querySelector<HTMLElement>('[data-channel-type="discord"]');
           if (rowEl) {
-            rowEl.querySelector('.us-notif-error')?.remove();
-            rowEl.insertAdjacentHTML('beforeend', `<span class="us-notif-error">Discord connection failed: ${escapeHtml(String(e.data.error ?? 'unknown'))}</span>`);
+            appendNotificationError(rowEl, `Discord connection failed: ${String(e.data.error ?? 'unknown')}`);
             const btn = rowEl.querySelector<HTMLButtonElement>('#usConnectDiscord');
             if (btn) btn.textContent = 'Connect Discord';
           }

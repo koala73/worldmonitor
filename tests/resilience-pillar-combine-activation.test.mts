@@ -14,6 +14,7 @@
 // in a per-test setup/teardown cleanly.
 
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 
 import { getResilienceRanking } from '../server/worldmonitor/resilience/v1/get-resilience-ranking.ts';
@@ -48,6 +49,10 @@ import {
 const HIGH_BAND_FLOOR = 55;
 const LOW_BAND_CEILING = 40;
 const MIN_HIGH_LOW_SEPARATION = 15;
+const POST_ACTIVATION_SNAPSHOT_URL = new URL(
+  '../docs/snapshots/resilience-ranking-2026-05-28.json',
+  import.meta.url,
+);
 
 const fixtures = buildReleaseGateFixtures();
 
@@ -124,7 +129,7 @@ describe('pillar-combined score activation', () => {
     // fixtures (pinned by T1.1 regression test). Under the pillar
     // combine it drops to roughly the low-70s because penalty = 1 −
     // 0.5 × (1 − min_pillar/100) is always ≤ 1. The activated path's
-    // HIGH_BAND_FLOOR = 60 leaves plenty of headroom above mid-tier
+    // HIGH_BAND_FLOOR = 55 leaves plenty of headroom above mid-tier
     // countries while accepting that elite scores no longer sit in the
     // 85+ range.
     assert.ok(
@@ -196,6 +201,44 @@ describe('pillar-combined score activation', () => {
         );
       }
     }
+  });
+
+  it('post-activation full-universe snapshot pins pillar-combined invariants', () => {
+    const snapshot = JSON.parse(readFileSync(POST_ACTIVATION_SNAPSHOT_URL, 'utf8')) as {
+      capturedAt: string;
+      methodologyFormula?: string;
+      totals: { rankedCountries: number; greyedOutCount: number };
+      items: Array<{ countryCode: string; rank: number; overallScore: number }>;
+      greyedOut: Array<{ countryCode: string }>;
+    };
+
+    assert.equal(snapshot.capturedAt, '2026-05-28');
+    assert.equal(snapshot.methodologyFormula, 'pillar-combined-penalized-v1');
+    assert.ok(snapshot.items.length >= 160, `expected full-universe ranked list, got ${snapshot.items.length}`);
+    assert.ok(
+      snapshot.items.length + snapshot.greyedOut.length >= 190,
+      `expected full-universe capture, got ranked=${snapshot.items.length} greyedOut=${snapshot.greyedOut.length}`,
+    );
+    assert.equal(snapshot.totals.rankedCountries, snapshot.items.length);
+    assert.equal(snapshot.totals.greyedOutCount, snapshot.greyedOut.length);
+
+    const byCountry = new Map(snapshot.items.map((item) => [item.countryCode, item]));
+    for (const high of ['NO', 'CH', 'DK'] as const) {
+      const item = byCountry.get(high);
+      assert.ok(item, `${high} must appear in the ranked full-universe snapshot`);
+      assert.ok(item.overallScore >= HIGH_BAND_FLOOR, `${high} must remain high-band under pc, got ${item.overallScore}`);
+    }
+    for (const low of ['YE', 'SO'] as const) {
+      const item = byCountry.get(low);
+      assert.ok(item, `${low} must appear in the ranked full-universe snapshot`);
+      assert.ok(item.overallScore <= LOW_BAND_CEILING, `${low} must remain low-band under pc, got ${item.overallScore}`);
+    }
+
+    const no = byCountry.get('NO');
+    const us = byCountry.get('US');
+    assert.ok(no && us, 'NO and US must both appear in the ranked full-universe snapshot');
+    assert.ok(no.overallScore > us.overallScore, `NO (${no.overallScore}) must outrank US (${us.overallScore}) under pc`);
+    assert.ok(no.rank < us.rank, `NO rank ${no.rank} must be better than US rank ${us.rank}`);
   });
 
   it('disabling the flag restores the 6-domain aggregate (regression guard for the default path)', async () => {

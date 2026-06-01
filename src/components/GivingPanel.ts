@@ -3,6 +3,8 @@ import { escapeHtml } from '@/utils/sanitize';
 import type { GivingSummary, PlatformGiving, CategoryBreakdown } from '@/services/giving';
 import { formatCurrency, formatPercent, getActivityColor, getTrendIcon, getTrendColor } from '@/services/giving';
 import { t } from '@/services/i18n';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 type GivingTab = 'platforms' | 'categories' | 'crypto' | 'institutional';
 
@@ -87,13 +89,13 @@ export class GivingPanel extends Panel {
     }
 
     // Write directly to bypass debounced setContent — tabs need immediate listeners
-    this.content.innerHTML = `
+    setTrustedHtml(this.content, trustedHtml(`
       <div class="giving-panel-content">
         <div class="giving-stats-grid">${statsHtml}</div>
         ${tabsHtml}
         ${contentHtml}
       </div>
-    `;
+    `, "legacy direct innerHTML migration"));
 
     // Attach tab click listeners
     this.content.querySelectorAll('.panel-tab').forEach(btn => {

@@ -651,13 +651,24 @@ async function loadRuntimeConfigPanel() {
         children.forEach((child) => append(el, child));
       }
 
+      export function trustedHtml(html) {
+        return String(html ?? '');
+      }
+
+      export function setTrustedHtml(el, html) {
+        el.innerHTML = String(html ?? '');
+      }
+
       export function safeHtml() {
         return document.createDocumentFragment();
       }
     `],
     ['analytics-stub', `export function trackPanelResized() {} export function trackFeatureToggle() {}`],
     ['ai-flow-settings-stub', `export function getAiFlowSettings() { return { badgeAnimation: false }; }`],
-    ['sanitize-stub', `export function escapeHtml(value) { return String(value); }`],
+    ['sanitize-stub', `
+      export function escapeHtml(value) { return String(value); }
+      export function safeHtmlToString(value) { return String(value ?? ''); }
+    `],
     ['ollama-models-stub', `export async function fetchOllamaModels() { return []; }`],
     ['settings-constants-stub', `
       export const SIGNUP_URLS = {};

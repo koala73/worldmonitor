@@ -162,4 +162,37 @@ describe('resilience methodology doc linter (T1.8)', () => {
       `RESILIENCE_DIMENSION_ORDER contains dimensions that are not in HEADING_TO_DIMENSION: ${registryNotMapped.join(', ')}`,
     );
   });
+
+  it('does not describe shipped source-failure and score-interval features as future work', () => {
+    assert.doesNotMatch(
+      source,
+      /The `source-failure` class is reserved for the runtime path/i,
+      'The methodology must not preserve the old source-failure placeholder paragraph.',
+    );
+    assert.doesNotMatch(
+      source,
+      /that wiring lands with a later Phase 1 task/i,
+      'The methodology must not claim source-failure re-tagging is future work; the scorer aggregation path is wired.',
+    );
+    assert.doesNotMatch(
+      source,
+      /not yet represented in the table above/i,
+      'The methodology must not claim the source-failure table entry is missing.',
+    );
+    assert.doesNotMatch(
+      source,
+      /widget does not render (?:them|the overall score interval) yet/i,
+      'The methodology must not claim the widget omits score sensitivity bands; it renders the overall [p05-p95] range.',
+    );
+    assert.match(
+      source,
+      /seed-meta:resilience:static\.failedDatasets[\s\S]{0,160}re-tags affected imputed dimensions as `source-failure`/i,
+      'The methodology should document the live failedDatasets to source-failure re-tagging path.',
+    );
+    assert.match(
+      source,
+      /widget renders the overall `\[p05\u2013p95\]` range/i,
+      'The methodology should document that the widget renders the overall score sensitivity band.',
+    );
+  });
 });

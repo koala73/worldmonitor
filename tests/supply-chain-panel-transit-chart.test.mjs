@@ -15,11 +15,11 @@ describe('SupplyChainPanel transit chart mount contract', () => {
 
   it('render() calls clearTransitChart() before any content change', () => {
     // The first line inside render() must clear previous chart state
-    const renderMatch = panelSrc.match(/private\s+render\(\)[\s\S]*?\{([\s\S]*?)this\.setContent/);
-    assert.ok(renderMatch, 'render method should exist and call setContent');
+    const renderMatch = panelSrc.match(/private\s+render\(\)[\s\S]*?\{([\s\S]*?)this\.setSafeContent/);
+    assert.ok(renderMatch, 'render method should exist and call setSafeContent');
     assert.ok(
       renderMatch[1].includes('this.clearTransitChart()'),
-      'render must call clearTransitChart() before setContent to prevent stale chart references'
+      'render must call clearTransitChart() before setSafeContent to prevent stale chart references'
     );
   });
 
@@ -34,7 +34,7 @@ describe('SupplyChainPanel transit chart mount contract', () => {
   });
 
   it('sets up MutationObserver when chokepoint is expanded', () => {
-    // After setContent, if activeTab is chokepoints and expandedChokepoint is set,
+    // After content replacement, if activeTab is chokepoints and expandedChokepoint is set,
     // a MutationObserver should be created to detect DOM readiness
     assert.ok(
       panelSrc.includes('new MutationObserver'),
@@ -47,7 +47,7 @@ describe('SupplyChainPanel transit chart mount contract', () => {
   });
 
   it('has a fallback timer for no-op renders where MutationObserver does not fire', () => {
-    // When setContent short-circuits (identical HTML), no mutation fires.
+    // When content replacement short-circuits (identical HTML), no mutation fires.
     // A fallback timer ensures the chart still mounts.
     const timerMatch = panelSrc.match(/this\.chartMountTimer\s*=\s*setTimeout\(/);
     assert.ok(timerMatch, 'must schedule a fallback setTimeout for chart mount');

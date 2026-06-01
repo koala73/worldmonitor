@@ -163,13 +163,14 @@ Variant is set via `VITE_VARIANT` env var. Config lives in `src/config/variants/
 
 Runs automatically before `git push`:
 
-1. TypeScript check (src + API)
-2. CJS syntax validation
-3. Edge function esbuild bundle check
-4. Edge function import guardrail test
-5. Markdown lint
-6. MDX lint (Mintlify compatibility)
-7. Version sync check
+1. Local Vercel env dump guard (blocks pushes when `.env.vercel-backup` or `.env.vercel-export` exist in repo root)
+2. TypeScript check (src + API)
+3. CJS syntax validation
+4. Edge function esbuild bundle check
+5. Edge function import guardrail test
+6. Markdown lint
+7. MDX lint (Mintlify compatibility)
+8. Version sync check
 
 ## Deployment
 

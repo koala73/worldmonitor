@@ -22,7 +22,7 @@ import {
 import { computeBalanceVector, SCORING_VERSION } from '../scripts/regional-snapshot/balance-vector.mjs';
 import { deriveRegime, buildRegimeState } from '../scripts/regional-snapshot/regime-derivation.mjs';
 import { scoreActors } from '../scripts/regional-snapshot/actor-scoring.mjs';
-import { evaluateTriggers } from '../scripts/regional-snapshot/trigger-evaluator.mjs';
+import { evaluateTriggers, isCloseToThreshold } from '../scripts/regional-snapshot/trigger-evaluator.mjs';
 import { buildScenarioSets } from '../scripts/regional-snapshot/scenario-builder.mjs';
 import { resolveTransmissions, TEMPLATE_VERSION } from '../scripts/regional-snapshot/transmission-templates.mjs';
 import { collectEvidence } from '../scripts/regional-snapshot/evidence-collector.mjs';
@@ -202,7 +202,7 @@ describe('helpers', () => {
 // ────────────────────────────────────────────────────────────────────────────
 
 const baseSources = () => ({
-  'risk:scores:sebuf:stale:v2': {
+  'risk:scores:sebuf:stale:v3': {
     ciiScores: [
       { region: 'IR', combinedScore: 65, trend: 'TREND_DIRECTION_UP' },
       { region: 'IL', combinedScore: 55, trend: 'TREND_DIRECTION_STABLE' },
@@ -281,7 +281,7 @@ describe('computeBalanceVector', () => {
 
   it('weighted-tail domestic fragility amplifies high-criticality countries', () => {
     const sources = {
-      'risk:scores:sebuf:stale:v2': {
+      'risk:scores:sebuf:stale:v3': {
         ciiScores: [
           // Low CII for low-criticality countries
           { region: 'JO', combinedScore: 10 },
@@ -411,6 +411,35 @@ describe('evaluateTriggers', () => {
   });
 });
 
+describe('isCloseToThreshold', () => {
+  it('treats lt thresholds as watching only before the breach', () => {
+    assert.equal(isCloseToThreshold(0.28, { operator: 'lt', value: 0.3 }), false);
+    assert.equal(isCloseToThreshold(0.32, { operator: 'lt', value: 0.3 }), true);
+  });
+
+  it('supports lte thresholds with the same pre-breach band', () => {
+    assert.equal(isCloseToThreshold(0.3, { operator: 'lte', value: 0.3 }), false);
+    assert.equal(isCloseToThreshold(0.35, { operator: 'lte', value: 0.3 }), true);
+  });
+
+  it('keeps gt/gte watching semantics for positive thresholds', () => {
+    assert.equal(isCloseToThreshold(0.85, { operator: 'gt', value: 1.0 }), true);
+    assert.equal(isCloseToThreshold(0.85, { operator: 'gte', value: 1.0 }), true);
+    assert.equal(isCloseToThreshold(1.0, { operator: 'gte', value: 1.0 }), false);
+  });
+
+  it('handles negative fixed thresholds by distance from the threshold', () => {
+    assert.equal(isCloseToThreshold(-0.18, { operator: 'lt', value: -0.2 }), true);
+    assert.equal(isCloseToThreshold(-0.22, { operator: 'lt', value: -0.2 }), false);
+    assert.equal(isCloseToThreshold(-0.22, { operator: 'gt', value: -0.2 }), true);
+  });
+
+  it('keeps delta operators dormant in Phase 0', () => {
+    assert.equal(isCloseToThreshold(-0.18, { operator: 'delta_lt', value: -0.2 }), false);
+    assert.equal(isCloseToThreshold(14, { operator: 'delta_gt', value: 15 }), false);
+  });
+});
+
 // ────────────────────────────────────────────────────────────────────────────
 // Scenario builder
 // ────────────────────────────────────────────────────────────────────────────
@@ -520,9 +549,9 @@ describe('snapshot meta', () => {
 
   it('buildPreMeta marks stale inputs based on max-age', () => {
     const old = { fetchedAt: Date.now() - 999_999_999 };
-    const sources = { 'risk:scores:sebuf:stale:v2': old };
+    const sources = { 'risk:scores:sebuf:stale:v3': old };
     const { pre } = buildPreMeta(sources, '1.0.0', '1.0.0');
-    assert.ok(pre.stale_inputs.includes('risk:scores:sebuf:stale:v2'));
+    assert.ok(pre.stale_inputs.includes('risk:scores:sebuf:stale:v3'));
   });
 
   it('buildFinalMeta merges pre + finalFields preserving snapshot_id', () => {
@@ -543,16 +572,16 @@ describe('snapshot meta', () => {
   // snapshot_confidence whenever an upstream seeder stalled without a
   // timestamp. Flipped to stale so the confidence score reflects reality.
   it('buildPreMeta treats present-but-undated inputs as stale (#3728)', () => {
-    // risk:scores:sebuf:stale:v2 has no metaKey and the payload below has
+    // risk:scores:sebuf:stale:v3 has no metaKey and the payload below has
     // no parseable timestamp field — exactly the case that used to slip
     // through as "fresh".
     const { pre } = buildPreMeta(
-      { 'risk:scores:sebuf:stale:v2': { ciiScores: [] } },
+      { 'risk:scores:sebuf:stale:v3': { ciiScores: [] } },
       '1.0.0',
       '1.0.0',
     );
     assert.ok(
-      pre.stale_inputs.includes('risk:scores:sebuf:stale:v2'),
+      pre.stale_inputs.includes('risk:scores:sebuf:stale:v3'),
       'undated payload should land in stale_inputs, not be silently treated as fresh',
     );
   });
@@ -562,12 +591,12 @@ describe('snapshot meta', () => {
   // old would advertise validity 5.7 hours past the point where its
   // upstream input goes stale. Derive from the registry instead.
   it('valid_until reflects oldest fresh input TTL (#3728)', () => {
-    // risk:scores:sebuf:stale:v2 has maxAgeMin=30. With fetchedAt=20min
+    // risk:scores:sebuf:stale:v3 has maxAgeMin=30. With fetchedAt=20min
     // ago, the input expires in ~10min, well before the 6h cap.
     const now = Date.now();
     const fetchedAt = now - 20 * 60_000;
     const { pre } = buildPreMeta(
-      { 'risk:scores:sebuf:stale:v2': { ciiScores: [], fetchedAt } },
+      { 'risk:scores:sebuf:stale:v3': { ciiScores: [], fetchedAt } },
       '1.0.0',
       '1.0.0',
     );
@@ -670,7 +699,7 @@ describe('snapshot meta', () => {
   // metaKey hint (or the companion key going missing) would re-introduce
   // the on-deploy STALE noise this PR removes.
   for (const [inputKey, metaKey] of [
-    ['risk:scores:sebuf:stale:v2',          'seed-meta:intelligence:risk-scores'],
+    ['risk:scores:sebuf:stale:v3',          'seed-meta:intelligence:risk-scores'],
     ['intelligence:cross-source-signals:v1', 'seed-meta:intelligence:cross-source-signals'],
     ['energy:mix:v1:_all',                   'seed-meta:economic:owid-energy-mix'],
     ['supply_chain:transit-summaries:v1',    'seed-meta:supply_chain:transit-summaries'],
@@ -703,7 +732,7 @@ describe('snapshot meta', () => {
     // entry points at an existing seed-meta:* companion. Lock the wiring
     // in so a later removal will trip a test, not production.
     const expected = {
-      'risk:scores:sebuf:stale:v2':          'seed-meta:intelligence:risk-scores',
+      'risk:scores:sebuf:stale:v3':          'seed-meta:intelligence:risk-scores',
       'intelligence:cross-source-signals:v1': 'seed-meta:intelligence:cross-source-signals',
       'energy:mix:v1:_all':                   'seed-meta:economic:owid-energy-mix',
       'supply_chain:transit-summaries:v1':    'seed-meta:supply_chain:transit-summaries',
@@ -1001,7 +1030,7 @@ describe('writer-side XSS hardening (issue #3730)', () => {
         },
       ],
     },
-    'risk:scores:sebuf:stale:v2': {
+    'risk:scores:sebuf:stale:v3': {
       ciiScores: [
         { region: 'IR', combinedScore: 75, trend: `RISING${IMG_XSS}`, computedAt: Date.now() },
       ],

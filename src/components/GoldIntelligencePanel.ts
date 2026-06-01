@@ -1,6 +1,6 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { toApiUrl } from '@/services/runtime';
 import { miniSparkline } from '@/utils/sparkline';
 
@@ -420,6 +420,6 @@ export class GoldIntelligencePanel extends Panel {
       this.renderCbReserves(d),
       this.renderDrivers(d),
     ].join('');
-    this.setContent(`<div style="padding:10px 14px">${html}</div>`);
+    this.setSafeContent(unsafeRawHtml(`<div style="padding:10px 14px">${html}</div>`, 'legacy Panel.setContent() migration'));
   }
 }

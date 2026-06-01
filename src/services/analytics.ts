@@ -67,6 +67,12 @@ const EVENTS = {
   'sign-up': true,
   'sign-out': true,
   'gate-hit': true,
+  // Brief — open-rate lift measurement for U10's followed-country bias
+  // (followed-countries plan U11). Fired from the dashboard cover card
+  // and from the hosted magazine source-link clicks. `followed` flags
+  // whether the click target maps to a country the user follows;
+  // correlate with non-followed threads to size the bias's effect.
+  'brief-thread-open': true,
 } as const;
 
 export type UmamiEvent = keyof typeof EVENTS;
@@ -311,6 +317,42 @@ export function trackCountrySelected(code: string, name: string, source: string)
 
 export function trackCountryBriefOpened(countryCode: string): void {
   track('country-brief-opened', { code: countryCode });
+}
+
+// ---------------------------------------------------------------------------
+// Brief thread-open (followed-countries plan, U11)
+// ---------------------------------------------------------------------------
+
+export type BriefThreadOpenSeverity =
+  | 'critical'
+  | 'high'
+  | 'medium'
+  | 'low'
+  | 'info'
+  | null;
+
+export interface BriefThreadOpenProps {
+  /** ISO-2 country code, or null when no primary country attaches. */
+  country: string | null;
+  /** True iff the user follows `country` at click time. */
+  followed: boolean;
+  severity: BriefThreadOpenSeverity;
+  /** Where the click originated. */
+  source: 'dashboard' | 'magazine';
+}
+
+/**
+ * Fire-and-forget: `track` short-circuits when Umami hasn't loaded.
+ * Wrap call sites in try/catch anyway so a future regression in
+ * `track` (e.g. throwing identify) cannot break navigation UX.
+ */
+export function trackBriefThreadOpen(props: BriefThreadOpenProps): void {
+  track('brief-thread-open', {
+    country: props.country,
+    followed: props.followed,
+    severity: props.severity,
+    source: props.source,
+  });
 }
 
 export function trackMapLayerToggle(layerId: string, enabled: boolean, source: 'user' | 'programmatic'): void {

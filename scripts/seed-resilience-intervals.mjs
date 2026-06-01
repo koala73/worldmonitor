@@ -7,6 +7,13 @@ import {
   releaseLock,
   writeFreshnessMetadata,
 } from './_seed-utils.mjs';
+import {
+  DRAWS,
+  RESILIENCE_INTERVAL_KEY_PREFIX as INTERVAL_KEY_PREFIX,
+  buildScoreIntervalPayload,
+  computeIntervals,
+  createIntervalDiagnostics,
+} from './_resilience-intervals.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -18,50 +25,8 @@ const WM_KEY = process.env.WORLDMONITOR_API_KEY
   || '';
 const SEED_UA = 'Mozilla/5.0 (compatible; WorldMonitor-Seed/1.0)';
 
-const INTERVAL_KEY_PREFIX = 'resilience:intervals:v2:';
 const INTERVAL_TTL_SECONDS = 7 * 24 * 60 * 60;
-const DRAWS = 100;
-
-// Plan 2026-04-26-002 review fix: 6-domain weights (recovery added) in
-// lockstep with server/worldmonitor/resilience/v1/_dimension-scorers.ts
-// `RESILIENCE_DOMAIN_WEIGHTS`. The pre-PR 5-domain weights here mixed
-// recovery into nothing, then computed a 5-domain score-band band that
-// the server's 6-domain coverage-weighted overall score never matched.
-// Bumped INTERVAL_KEY_PREFIX v1 → v2 in lockstep so post-bump readers
-// see only post-fix bands.
-const DOMAIN_WEIGHTS = {
-  economic: 0.17,
-  infrastructure: 0.15,
-  energy: 0.11,
-  'social-governance': 0.19,
-  'health-food': 0.13,
-  recovery: 0.25,
-};
-
-const DOMAIN_ORDER = [
-  'economic',
-  'infrastructure',
-  'energy',
-  'social-governance',
-  'health-food',
-  'recovery',
-];
-
-export function computeIntervals(domainScores, domainWeights, draws = DRAWS) {
-  const samples = [];
-  for (let i = 0; i < draws; i++) {
-    const jittered = domainWeights.map((w) => w * (0.9 + Math.random() * 0.2));
-    const sum = jittered.reduce((s, w) => s + w, 0);
-    const normalized = jittered.map((w) => w / sum);
-    const score = domainScores.reduce((s, d, idx) => s + d * normalized[idx], 0);
-    samples.push(score);
-  }
-  samples.sort((a, b) => a - b);
-  return {
-    p05: Math.round(samples[Math.max(0, Math.ceil(draws * 0.05) - 1)] * 10) / 10,
-    p95: Math.round(samples[Math.min(draws - 1, Math.ceil(draws * 0.95) - 1)] * 10) / 10,
-  };
-}
+export { computeIntervals };
 
 async function redisPipeline(url, token, commands) {
   const resp = await fetch(`${url}/pipeline`, {
@@ -117,6 +82,7 @@ async function seedResilienceIntervals() {
     const BATCH = 10;
     let computed = 0;
     const commands = [];
+    const diagnostics = createIntervalDiagnostics();
 
     for (let i = 0; i < allItems.length; i += BATCH) {
       const batch = allItems.slice(i, i + BATCH);
@@ -131,21 +97,8 @@ async function seedResilienceIntervals() {
           continue;
         }
         const scoreData = result.value;
-        if (!scoreData?.domains?.length) continue;
-
-        const domainScores = DOMAIN_ORDER.map((id) => {
-          const d = scoreData.domains.find((dom) => dom.id === id);
-          return d?.score ?? 0;
-        });
-        const weights = DOMAIN_ORDER.map((id) => DOMAIN_WEIGHTS[id]);
-
-        const interval = computeIntervals(domainScores, weights, DRAWS);
-        const payload = {
-          p05: interval.p05,
-          p95: interval.p95,
-          draws: DRAWS,
-          computedAt: new Date().toISOString(),
-        };
+        const payload = buildScoreIntervalPayload(scoreData, { draws: DRAWS, diagnostics });
+        if (!payload) continue;
 
         const key = `${INTERVAL_KEY_PREFIX}${scoreData.countryCode}`;
         commands.push(['SET', key, JSON.stringify(payload), 'EX', INTERVAL_TTL_SECONDS]);
@@ -160,8 +113,21 @@ async function seedResilienceIntervals() {
       }
     }
 
+    if (diagnostics.activeScoreClampCount > 0) {
+      console.warn(
+        `[resilience-intervals] Clamped ${diagnostics.activeScoreClampCount} interval bands to contain the active score ` +
+        `(maxDelta=${diagnostics.activeScoreClampMaxDelta}; samples=${JSON.stringify(diagnostics.activeScoreClampSamples)})`,
+      );
+    }
+
     console.log(`[resilience-intervals] Wrote ${computed}/${allItems.length} intervals`);
-    return { skipped: false, recordCount: computed, total: allItems.length };
+    return {
+      skipped: false,
+      recordCount: computed,
+      total: allItems.length,
+      intervalClampCount: diagnostics.activeScoreClampCount,
+      intervalClampMaxDelta: diagnostics.activeScoreClampMaxDelta,
+    };
   } finally {
     await releaseLock('resilience:intervals', runId);
   }
@@ -174,6 +140,8 @@ async function main() {
     skipped: Boolean(result.skipped),
     ...(result.total != null && { total: result.total }),
     ...(result.reason != null && { reason: result.reason }),
+    ...(result.intervalClampCount != null && { intervalClampCount: result.intervalClampCount }),
+    ...(result.intervalClampMaxDelta != null && { intervalClampMaxDelta: result.intervalClampMaxDelta }),
   });
   if (!result.skipped) {
     await writeFreshnessMetadata('resilience', 'intervals', result.recordCount ?? 0, '', 7 * 24 * 3600);

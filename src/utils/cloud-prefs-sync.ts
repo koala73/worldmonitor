@@ -22,6 +22,8 @@ import {
   mergeCloudWithLocalDirty,
   settledDirtyKeys,
 } from './cloud-prefs-migrations';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 const ENABLED = import.meta.env.VITE_CLOUD_PREFS_ENABLED === 'true';
 
@@ -218,14 +220,14 @@ function showUndoToast(prevBlobJson: string): void {
 
   const toast = document.createElement('div');
   toast.className = 'wm-sync-restore-toast update-toast';
-  toast.innerHTML = `
+  setTrustedHtml(toast, trustedHtml(`
     <div class="update-toast-body">
       <div class="update-toast-title">Settings restored</div>
       <div class="update-toast-detail">Your preferences were loaded from the cloud.</div>
     </div>
     <button class="update-toast-action" data-action="undo">Undo</button>
     <button class="update-toast-dismiss" data-action="dismiss" aria-label="Dismiss">\u00d7</button>
-  `;
+  `, "legacy direct innerHTML migration"));
 
   const autoTimer = setTimeout(() => toast.remove(), 5000);
 

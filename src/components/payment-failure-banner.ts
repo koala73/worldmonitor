@@ -11,6 +11,8 @@
 
 import { onSubscriptionChange, openBillingPortal, prereserveBillingPortalTab } from '@/services/billing';
 import type { SubscriptionInfo } from '@/services/billing';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 const BANNER_ID = 'payment-failure-banner';
 const DISMISS_KEY = 'pf-banner-dismissed';
@@ -61,7 +63,7 @@ export function initPaymentFailureBanner(): () => void {
       boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
     });
 
-    banner.innerHTML = `
+    setTrustedHtml(banner, trustedHtml(`
       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;">
         <path d="M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
         <line x1="12" y1="9" x2="12" y2="13"/>
@@ -70,7 +72,7 @@ export function initPaymentFailureBanner(): () => void {
       <span>Payment failed. Update your payment method to keep your subscription active.</span>
       <button id="pf-update-btn" style="background:#fff;color:#dc2626;border:none;border-radius:4px;padding:4px 12px;font-weight:600;font-size:12px;cursor:pointer;white-space:nowrap;">Update Payment</button>
       <button id="pf-dismiss-btn" style="background:transparent;color:#fff;border:none;cursor:pointer;font-size:18px;padding:0 4px;line-height:1;">&times;</button>
-    `;
+    `, "legacy direct innerHTML migration"));
 
     document.body.appendChild(banner);
 

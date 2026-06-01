@@ -1,81 +1,71 @@
 ---
 title: "License"
-description: "World Monitor licensing terms: AGPL-3.0 for open use, commercial license for business use. Rebranding and commercial forks are prohibited without a license."
+description: "World Monitor licensing terms: AGPL-3.0-only code license, optional commercial licensing, and trademark policy separation."
 ---
 
-World Monitor is licensed under the [GNU Affero General Public License v3.0 (AGPL-3.0-only)](https://www.gnu.org/licenses/agpl-3.0.html).
+World Monitor source code is licensed under the [GNU Affero General Public License v3.0 (AGPL-3.0-only)](https://www.gnu.org/licenses/agpl-3.0.html).
 
-<Warning>
-**Copying, renaming, or rebranding World Monitor for commercial use is illegal without a commercial license.** Changing the name does not change the license. If you fork this project and use it to make money, you are in violation of the AGPL-3.0 and subject to legal action. See [enforcement](#enforcement) below.
-</Warning>
+This page is a plain-language summary for contributors and users. It is not legal advice and does not replace the license text in [`LICENSE`](https://github.com/koala73/worldmonitor/blob/main/LICENSE).
 
-## What AGPL-3.0 means
+## AGPL-3.0-only code license
 
-AGPL is a strong copyleft license designed for network software. It extends the GPL with one additional requirement: if you run a modified version of World Monitor as a publicly accessible service, you must make your source code available to users of that service.
+AGPL-3.0-only is a strong copyleft license for network software. It permits commercial use, private use, modification, copying, and redistribution when you follow the AGPL terms.
 
-| You can | You must | You cannot |
-|---------|----------|------------|
-| View, study, and learn from the source code | Distribute source code with any binary distribution | Use World Monitor commercially without a commercial license |
-| Modify and create derivative works for personal/research use | License derivative works under AGPL-3.0 | Sublicense under a different license |
-| Run a personal instance for non-commercial use | State changes you made to the code | Remove or obscure the original copyright and license notices |
-| Contribute improvements back to the project | Provide source access to users of any public-facing modified deployment | Rebrand and sell as your own product |
+Commercial use is permitted under the AGPL. A paid deployment, consulting use case, or commercial SaaS is not automatically a license violation. The key question is whether you comply with the AGPL obligations that apply to your use.
 
-## Rebranding and commercial forks are prohibited
+## What AGPL permits
 
-<Warning>
-Forking World Monitor, changing the name, logo, or branding, and deploying it as your own product is **not permitted** under any circumstances without a commercial license. The AGPL-3.0 requires that:
+Under AGPL-3.0-only, you may:
 
-1. **You must retain all original copyright notices** in the source code and UI.
-2. **You must prominently state that your version is a modified fork of World Monitor** and link back to the original project.
-3. **You must publish your complete modified source code** under AGPL-3.0, available to all users of your deployment.
-4. **You cannot use this for commercial purposes** without a separate commercial license from the maintainer.
+- use World Monitor for personal, educational, research, nonprofit, or commercial purposes
+- self-host the unmodified project
+- modify the code
+- distribute copies and modified versions
+- charge money for services, hosting, support, or distribution
 
-Renaming the project does not remove these obligations. Removing copyright headers is a separate legal violation.
-</Warning>
+These permissions come from the AGPL itself; they apply to personal, nonprofit, and business use alike.
 
-## Commercial use requires a separate license
+## What AGPL requires
 
-**Any commercial use of World Monitor requires a commercial license from the maintainer.** This includes but is not limited to:
+When AGPL obligations apply, you must follow the license terms. In practice, this includes:
 
-- **Rebranding or white-labeling**: Forking the code, changing the name/logo, and deploying it as your own product or service
-- **Running as a paid product**: Offering World Monitor (or a modified version) behind a paywall, subscription, or any fee
-- **Embedding in commercial products**: Using World Monitor code, components, UI, or data pipelines inside a product you sell
-- **SaaS or consulting**: Offering World Monitor's capabilities as part of a consulting engagement, managed service, or SaaS platform
-- **Internal corporate use**: Using World Monitor inside a for-profit company to generate revenue or competitive advantage
-- **Selling data derived from World Monitor**: Using the platform to collect, process, or resell intelligence data commercially
+- keeping copyright and license notices intact
+- licensing covered modified versions under AGPL-3.0-only
+- providing corresponding source when you distribute covered binaries
+- prominently offering corresponding source to users who interact with a modified public network deployment
+- documenting relevant changes you made
 
-The AGPL-3.0 license governs non-commercial, personal, educational, and research use only. If your use case involves any form of commercial activity, you must contact the maintainer to obtain a commercial license.
+The AGPL does not grant permission to remove license notices or make covered modified versions proprietary.
 
-**Contact**: [GitHub repository](https://github.com/koala73/worldmonitor) or email the maintainer directly.
+## Optional commercial licensing
 
-## Enforcement
+Commercial licensing is an alternative option, not a restriction on the AGPL license.
 
-The maintainer actively monitors for unauthorized commercial use, rebranding, and license violations. If you are found to be in violation:
+A separate commercial license may be useful if you want to:
 
-1. You will receive a formal takedown notice requiring immediate cessation of the infringing activity.
-2. If the violation is not resolved promptly, the maintainer reserves the right to pursue legal remedies, including injunctive relief and damages, under applicable copyright law.
-3. AGPL violations are enforceable under international copyright law (Berne Convention), the DMCA, and equivalent statutes in the EU and other jurisdictions.
+- keep modified source code private
+- combine World Monitor code into proprietary products in ways the AGPL would not permit
+- receive custom contractual terms, warranties, support, or indemnity
+- obtain separate permissions for official branding, white-labeling, or trademark use
 
-If you are aware of an unauthorized commercial fork or rebranded deployment, please report it via [GitHub Issues](https://github.com/koala73/worldmonitor/issues) or contact the maintainer directly.
+Contact the maintainer through the [GitHub repository](https://github.com/koala73/worldmonitor) to discuss commercial licensing.
+
+## Trademark and branding
+
+The AGPL covers copyright permissions for the code. It does not grant rights to use the World Monitor name, logo, visual identity, or official project branding.
+
+See the [Trademark Policy](/trademark-policy) for branding, attribution, rebranding, white-labeling, and affiliation rules.
 
 ## Common scenarios
 
-**Personal use or research**: Free to use, modify, and self-host. No restrictions beyond AGPL compliance.
+**Personal use or research**: Permitted under AGPL-3.0-only.
 
-**Self-hosting for a non-profit or educational institution**: Permitted under AGPL. If you modify the code and make it publicly accessible, you must share your modifications.
+**Internal company use**: Commercial use is permitted under AGPL-3.0-only, subject to the license terms.
 
-**Running a modified public instance (non-commercial)**: You must retain all copyright notices, state that it is a fork of World Monitor, and make your modified source code available to users who interact with your deployment.
+**Running a modified public instance**: You must prominently offer corresponding source to users who interact with that modified network deployment.
 
-**Using World Monitor's public API in your own tool**: If your tool calls World Monitor's public API and displays the results, your tool is not a derivative work. No AGPL obligations apply. However, if your tool is commercial, you must comply with the API terms of service.
+**Shipping a proprietary fork**: Request separate private-source terms for proprietary forks.
 
-**Contributing a pull request**: By submitting a PR, you agree that your contribution is licensed under AGPL-3.0, consistent with the rest of the project.
+**Using World Monitor's public API in your own tool**: API terms of service may apply separately from the source-code license.
 
-**Commercial use (any of the above in a for-profit context)**: Requires a separate commercial license. Contact the maintainer at the [GitHub repository](https://github.com/koala73/worldmonitor).
-
-## Why AGPL + Commercial License
-
-World Monitor aggregates publicly available intelligence data and makes it accessible to everyone. The dual-license model (AGPL for open use, commercial license for business use) ensures that:
-
-1. **The community benefits**: Individual researchers, journalists, students, and open-source contributors can freely use and improve the platform.
-2. **Commercial use is sustainable**: Companies that derive commercial value from World Monitor contribute back through licensing fees, which fund continued development.
-3. **The project stays open**: AGPL prevents a scenario where a commercial entity takes the open-source code, adds proprietary features, and competes with the project without contributing back.
+**Contributing a pull request**: By submitting a PR, you agree that your contribution is licensed under AGPL-3.0-only, consistent with the rest of the project.

@@ -356,7 +356,7 @@ Feeds also carry a **propaganda risk rating** and **state affiliation flag**. St
 
 ### Data Freshness & Intelligence Gaps
 
-A singleton tracker monitors 31 data sources (GDELT, GDELT Doc, RSS, AIS, OpenSky, Wingbits, USGS, weather, outages, ACLED, ACLED conflict, Polymarket, predictions, PizzINT, economic, oil, spending, NASA FIRMS, cyber threats, UCDP, UCDP events, HAPI, UNHCR, climate, WorldPop, giving, BIS, WTO trade, supply chain, security advisories, GPS jamming) with status categorization: fresh (&lt;15 min), stale (2h), very_stale (6h), no_data, error, disabled. Two sources (GDELT, RSS) are flagged as `requiredForRisk` — their absence directly impacts CII scoring quality. The tracker explicitly reports **intelligence gaps** — what analysts can't see — preventing false confidence when critical data sources are down or degraded.
+A singleton tracker monitors 35 data sources (GDELT, GDELT Doc, RSS, AIS, OpenSky, Wingbits, USGS, weather, outages, ACLED, ACLED conflict, Polymarket, predictions, PizzINT, economic, oil, spending, NASA FIRMS, cyber threats, UCDP, UCDP events, HAPI, UNHCR, climate, WorldPop, giving, BIS, BLS, WTO trade, supply chain, security advisories, sanctions pressure, radiation, GPS jamming, Treasury revenue) with status categorization: fresh (&lt;15 min), stale (2h), very_stale (6h), no_data, error, disabled. Two sources (GDELT, RSS) are flagged as `requiredForRisk` — their absence directly impacts CII scoring quality. The tracker explicitly reports **intelligence gaps** — what analysts can't see — preventing false confidence when critical data sources are down or degraded.
 
 ---
 

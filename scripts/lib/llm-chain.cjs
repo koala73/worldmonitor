@@ -106,7 +106,6 @@ async function callLLM(systemPrompt, userPrompt, opts = {}) {
       return text;
     } catch (err) {
       console.warn(`[llm-chain] ${provider.name} failed: ${err.message}`);
-      continue;
     }
   }
 

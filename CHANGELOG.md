@@ -6,6 +6,8 @@ All notable changes to World Monitor are documented here.
 
 ### Changed
 
+- **CII formula `v3`** — conflict event activity now uses log-scaled calibration before the final component cap, preserving distance between moderate and extreme event volumes. The browser CII path now matches the server displacement log-ramp instead of the old `+4/+8` tiers, and browser news-alert pressure is no longer amplified by per-country `eventMultiplier`. Public `combinedScore` values may shift and `methodology_version` is bumped `v2` → `v3`; clients pinned on it should re-baseline. See `docs/methodology/cii-risk-scores.mdx` (#2457, methodology portions of #3726).
+- **CII weights source of truth (#3789, foundation for #2457)** — `baselineRisk` and `eventMultiplier` now come from one shared coefficient table used by both server-side risk scoring and frontend client-side CII rendering. The previous 7-country frontend/server drift was resolved to the published server/API values for AF, EG, IQ, JP, KR, LB and QA. Server/API values were unchanged by this refactor — the v3 `methodology_version` bump above is from the calibration changes, not this source-of-truth move.
 - **CII formula `v2`** — the Composite Instability Index `Security` component now scores military flights, military vessels and aviation disruptions in addition to GPS jamming (previously GPS-jamming-only — issue #3738). The composite blend gains `newsUrgencyBoost`, `earthquakeBoost`, `sanctionsBoost` and an AIS-disruption boost; `cyberBoost`/`fireBoost` are now severity-weighted. Public `combinedScore` values shift accordingly and `methodology_version` is bumped `v1` → `v2` — clients pinned on it should re-baseline. See `docs/methodology/cii-risk-scores.mdx` (#3864).
 
 ### Added

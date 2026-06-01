@@ -6,10 +6,10 @@
 // Node http / raw socket. Only cryptographic proof closes that bypass class.
 //
 // Tokens are HMAC-SHA256(secret, base64url(payload)) with payload {iat,exp,n}.
-// The frontend fetches one at app boot via POST /api/wm-session and includes
-// it on subsequent API calls via the X-WorldMonitor-Key header. Curl can't
-// manufacture one without WM_SESSION_SECRET (server-only). It CAN replay a
-// stolen one, but session-start is rate-limited and tokens are short-lived.
+// The frontend fetches one at app boot via POST /api/wm-session; the endpoint
+// stores it in an HttpOnly cookie that API calls send with credentials. Curl
+// can't manufacture one without WM_SESSION_SECRET (server-only). It CAN replay
+// a stolen one, but session-start is rate-limited and tokens are short-lived.
 //
 // Uses Web Crypto API (crypto.subtle) — works in both Vercel Edge runtime
 // and Node.js test environment without `node:crypto` (which the bundle check

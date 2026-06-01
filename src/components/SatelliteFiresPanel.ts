@@ -1,6 +1,7 @@
 import { Panel } from './Panel';
 import type { FireRegionStats } from '@/services/wildfires';
 import { t } from '@/services/i18n';
+import { unsafeRawHtml } from '@/utils/sanitize';
 
 export class SatelliteFiresPanel extends Panel {
   private stats: FireRegionStats[] = [];
@@ -34,7 +35,7 @@ export class SatelliteFiresPanel extends Panel {
 
   private render(): void {
     if (this.stats.length === 0) {
-      this.setContent(`<div class="panel-empty">${t('common.noDataAvailable')}</div>`);
+      this.setSafeContent(unsafeRawHtml(`<div class="panel-empty">${t('common.noDataAvailable')}</div>`, 'legacy Panel.setContent() migration'));
       return;
     }
 
@@ -59,7 +60,7 @@ export class SatelliteFiresPanel extends Panel {
     const totalExplosions = this.stats.reduce((sum, s) => sum + s.possibleExplosionCount, 0);
     const ago = this.lastUpdated ? timeSince(this.lastUpdated) : t('components.satelliteFires.never');
 
-    this.setContent(`
+    this.setSafeContent(unsafeRawHtml(`
       <div class="fires-panel-content">
         <table class="fires-table">
           <thead>
@@ -86,7 +87,7 @@ export class SatelliteFiresPanel extends Panel {
           <span class="fires-updated">${ago}</span>
         </div>
       </div>
-    `);
+    `, 'legacy Panel.setContent() migration'));
   }
 }
 

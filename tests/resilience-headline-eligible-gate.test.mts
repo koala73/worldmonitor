@@ -16,6 +16,7 @@ import { describe, it } from 'node:test';
 
 import { getResilienceRanking } from '../server/worldmonitor/resilience/v1/get-resilience-ranking.ts';
 import {
+  RESILIENCE_INTERVAL_METHODOLOGY,
   RESILIENCE_RANKING_CACHE_KEY,
   computeHeadlineEligible,
   HEADLINE_ELIGIBLE_HIGH_COVERAGE,
@@ -24,6 +25,11 @@ import {
 } from '../server/worldmonitor/resilience/v1/_shared.ts';
 import { installRedis } from './helpers/fake-upstash-redis.mts';
 import { RESILIENCE_FIXTURES } from './helpers/resilience-fixtures.mts';
+
+const D6_RANKING_CACHE_TAG = {
+  _formula: 'd6',
+  _intervalMethodology: RESILIENCE_INTERVAL_METHODOLOGY,
+} as const;
 
 describe('computeHeadlineEligible truth table (Plan 2026-04-26-002 §U7)', () => {
   it('happy path: high coverage + large population + not lowConfidence → true', () => {
@@ -129,7 +135,7 @@ describe('ranking handler filter (Plan 2026-04-26-002 §U7)', () => {
       ],
       greyedOut: [],
     };
-    redis.set(RESILIENCE_RANKING_CACHE_KEY, JSON.stringify({ ...cachedPublic, _formula: 'd6' }));
+    redis.set(RESILIENCE_RANKING_CACHE_KEY, JSON.stringify({ ...cachedPublic, ...D6_RANKING_CACHE_TAG }));
 
     const response = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
 
@@ -164,7 +170,7 @@ describe('ranking handler filter (Plan 2026-04-26-002 §U7)', () => {
         { countryCode: 'TV', overallScore: 70, level: 'medium', lowConfidence: false, overallCoverage: 0.7, headlineEligible: false },
       ],
     };
-    redis.set(RESILIENCE_RANKING_CACHE_KEY, JSON.stringify({ ...cachedPublic, _formula: 'd6' }));
+    redis.set(RESILIENCE_RANKING_CACHE_KEY, JSON.stringify({ ...cachedPublic, ...D6_RANKING_CACHE_TAG }));
 
     const response = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
 
@@ -198,7 +204,7 @@ describe('ranking handler filter (Plan 2026-04-26-002 §U7)', () => {
         { countryCode: 'NO', overallScore: 82, level: 'high', lowConfidence: false, overallCoverage: 0.95, headlineEligible: true },
       ],
     };
-    redis.set(RESILIENCE_RANKING_CACHE_KEY, JSON.stringify({ ...cachedPublic, _formula: 'd6' }));
+    redis.set(RESILIENCE_RANKING_CACHE_KEY, JSON.stringify({ ...cachedPublic, ...D6_RANKING_CACHE_TAG }));
 
     const response = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
 
@@ -224,7 +230,7 @@ describe('ranking handler filter (Plan 2026-04-26-002 §U7)', () => {
       ],
       greyedOut: [],
     };
-    redis.set(RESILIENCE_RANKING_CACHE_KEY, JSON.stringify({ ...cachedPublic, _formula: 'd6' }));
+    redis.set(RESILIENCE_RANKING_CACHE_KEY, JSON.stringify({ ...cachedPublic, ...D6_RANKING_CACHE_TAG }));
 
     const response = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
 

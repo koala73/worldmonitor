@@ -105,6 +105,50 @@ describe('widget-agent unified tester key auth', () => {
     });
   });
 
+  it('accepts HttpOnly legacy tester key cookies without JS-readable auth headers', async () => {
+    const res = await handler(new Request('https://www.worldmonitor.app/api/widget-agent', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://www.worldmonitor.app',
+        'Content-Type': 'application/json',
+        Cookie: `wm-widget-key=${encodeURIComponent('server-widget-key')}; wm-pro-key=${encodeURIComponent('server-pro-key')}`,
+      },
+      body: JSON.stringify({ prompt: 'Build a widget', mode: 'create', tier: 'basic' }),
+    }));
+
+    assert.equal(res.status, 200);
+    assert.equal(fetchMock.mock.calls.length, 1);
+
+    const call = fetchMock.mock.calls[0];
+    const init = call.arguments[1] as RequestInit;
+    const headers = new Headers(init.headers);
+    assert.equal(headers.get('X-Widget-Key'), 'server-widget-key');
+    assert.equal(headers.get('X-Pro-Key'), 'server-pro-key');
+    assert.deepEqual(JSON.parse(String(init.body)), {
+      prompt: 'Build a widget',
+      mode: 'create',
+      tier: 'pro',
+    });
+  });
+
+  it('rejects disallowed origins before cookie-backed auth reaches the relay', async () => {
+    const res = await handler(new Request('https://www.worldmonitor.app/api/widget-agent', {
+      method: 'POST',
+      headers: {
+        Origin: 'https://evil.example.com',
+        'Content-Type': 'application/json',
+        Cookie: `wm-widget-key=${encodeURIComponent('server-widget-key')}; wm-pro-key=${encodeURIComponent('server-pro-key')}`,
+      },
+      body: JSON.stringify({ prompt: 'Build a widget', mode: 'create', tier: 'basic' }),
+    }));
+
+    assert.equal(res.status, 403);
+    assert.equal(fetchMock.mock.calls.length, 0);
+
+    const body = await res.json() as { error: string };
+    assert.equal(body.error, 'Origin not allowed');
+  });
+
   it('rejects invalid X-WorldMonitor-Key before relay fetch', async () => {
     const res = await handler(new Request('https://www.worldmonitor.app/api/widget-agent', {
       method: 'POST',

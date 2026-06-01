@@ -87,7 +87,7 @@ function resolveMetric(metric, sources, balance, regionId) {
   if (metric.startsWith('cii:')) {
     const parts = metric.split(':');
     const [, iso] = parts;
-    const cii = sources['risk:scores:sebuf:stale:v2']?.ciiScores;
+    const cii = sources['risk:scores:sebuf:stale:v3']?.ciiScores;
     if (!Array.isArray(cii)) return null;
     const entry = cii.find((s) => s?.region === iso);
     return entry ? num(entry.combinedScore) : null;
@@ -125,10 +125,23 @@ function evaluateThreshold(value, threshold) {
   }
 }
 
-function isCloseToThreshold(value, threshold) {
-  // 80% of the threshold counts as "watching"
+export function isCloseToThreshold(value, threshold) {
   const target = threshold.value;
   if (target === 0) return false;
-  const ratio = value / target;
-  return ratio > 0.8 && ratio < 1.0;
+  const band = Math.abs(target) * 0.2;
+
+  switch (threshold.operator) {
+    case 'gt':
+    case 'gte':
+      return value < target && value >= target - band;
+    case 'lt':
+    case 'lte':
+      return value > target && value <= target + band;
+    // delta_* operators need historical baselines and remain dormant in Phase 0.
+    case 'delta_gt':
+    case 'delta_lt':
+      return false;
+    default:
+      return false;
+  }
 }

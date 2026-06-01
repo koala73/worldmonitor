@@ -6,18 +6,26 @@ import { describe, it } from 'node:test';
 
 import { CURATED_COUNTRIES, TIER1_COUNTRIES } from '../src/config/countries.ts';
 import {
+  CII_CONFLICT_ACTIVITY_CAP,
+  CII_CONFLICT_ACTIVITY_PIVOT,
   CII_FORMULA_VERSION,
   STRATEGIC_RISK_POSITIONAL_DECAY,
   STRATEGIC_RISK_SCALE_FACTOR,
   STRATEGIC_RISK_SCALE_FLOOR,
   STRATEGIC_RISK_TOP_N,
 } from '../server/worldmonitor/intelligence/v1/_risk-config.ts';
+import { TIER1_COUNTRIES as SERVER_TIER1_COUNTRIES } from '../server/worldmonitor/intelligence/v1/_shared.ts';
 import {
   BASELINE_RISK,
   EVENT_MULTIPLIER,
   computeCIIScores,
   computeStrategicRisks,
 } from '../server/worldmonitor/intelligence/v1/get-risk-scores.ts';
+import {
+  CII_BASELINE_RISK as SHARED_BASELINE_RISK,
+  CII_COUNTRY_WEIGHTS,
+  CII_EVENT_MULTIPLIER as SHARED_EVENT_MULTIPLIER,
+} from '../shared/cii-weights.ts';
 
 function emptyAux() {
   return {
@@ -232,6 +240,20 @@ describe('CII scoring', () => {
       'sqrt scaling should produce diminishing returns for 4x fatalities');
   });
 
+  it('conflict activity scaling preserves the gap between moderate and extreme event volume', () => {
+    const acled = [
+      ...Array.from({ length: 46 }, () => acledEvent('China', 'Battles')),
+      ...Array.from({ length: 1549 }, () => acledEvent('Iran', 'Battles')),
+    ];
+    const scores = computeCIIScores(acled, emptyAux());
+    const cn = scoreFor(scores, 'CN')!;
+    const ir = scoreFor(scores, 'IR')!;
+    assert.ok(
+      ir.components!.geoConvergence >= cn.components!.geoConvergence + 10,
+      `IR conflict component (${ir.components!.geoConvergence}) should materially exceed CN (${cn.components!.geoConvergence})`,
+    );
+  });
+
   it('log2 scaling dampens high-volume low-multiplier countries vs linear', () => {
     const manyProtests = Array.from({ length: 100 }, () => acledEvent('United States', 'Protests'));
     const fewProtests = Array.from({ length: 10 }, () => acledEvent('United States', 'Protests'));
@@ -239,6 +261,19 @@ describe('CII scoring', () => {
     const few = scoreFor(computeCIIScores(fewProtests, emptyAux()), 'US')!;
     const ratio = many.components!.ciiContribution / Math.max(1, few.components!.ciiContribution);
     assert.ok(ratio < 5, `10x events should produce < 5x unrest ratio (got ${ratio.toFixed(2)}), log2 dampens`);
+  });
+
+  it('displacement boost preserves humanitarian scale above six figures', () => {
+    const moderateAux = emptyAux();
+    moderateAux.displacedByIso3 = { USA: 120_000 };
+    const extremeAux = emptyAux();
+    extremeAux.displacedByIso3 = { USA: 5_600_000 };
+    const moderate = scoreFor(computeCIIScores([], moderateAux), 'US')!;
+    const extreme = scoreFor(computeCIIScores([], extremeAux), 'US')!;
+    assert.ok(
+      extreme.combinedScore >= moderate.combinedScore + 10,
+      `5.6M displaced (${extreme.combinedScore}) should score materially above 120K (${moderate.combinedScore})`,
+    );
   });
 
   it('iran high severity strikes boost conflict', () => {
@@ -401,17 +436,15 @@ describe('CII scoring', () => {
     }
   });
 
-  it('every score carries an eventMultiplier > 0 matching a known editorial value', () => {
+  it('every score carries the shared editorial eventMultiplier', () => {
     const scores = computeCIIScores([], emptyAux());
-    // Server tables intentionally drift from CURATED_COUNTRIES for some
-    // countries (documented in docs/methodology/cii-risk-scores.mdx). The
-    // server value is authoritative on the wire — assert presence + finite
-    // > 0 rather than equality with the frontend table.
     for (const s of scores) {
       const mult = (s as unknown as { eventMultiplier: number }).eventMultiplier;
+      const expected = SHARED_EVENT_MULTIPLIER[s.region as keyof typeof SHARED_EVENT_MULTIPLIER];
       assert.ok(Number.isFinite(mult), `${s.region} eventMultiplier should be finite, got ${mult}`);
       assert.ok(mult > 0, `${s.region} eventMultiplier should be > 0, got ${mult}`);
       assert.ok(mult <= 5, `${s.region} eventMultiplier should be <= 5 (sanity), got ${mult}`);
+      assert.equal(mult, expected, `${s.region} eventMultiplier should match shared/cii-weights.ts`);
     }
   });
 
@@ -423,23 +456,38 @@ describe('CII scoring', () => {
     }
   });
 
-  it('representative countries: server staticBaseline matches CURATED_COUNTRIES (no-drift codes)', () => {
-    // Spot-check countries that we expect to NOT have drifted (per
-    // docs/methodology/cii-risk-scores.mdx drift table). If these ever drift
-    // the methodology doc must be updated too — flagged here so the test
-    // fails loudly rather than silently.
-    const noDriftCodes = ['US', 'RU', 'CN', 'UA', 'IR', 'IL', 'DE', 'GB'];
+  it('server and frontend baseline/multiplier values match shared CII weights for every country', () => {
+    const sharedCodes = Object.keys(CII_COUNTRY_WEIGHTS).sort();
+    assert.deepEqual(Object.keys(CURATED_COUNTRIES).sort(), sharedCodes,
+      'CURATED_COUNTRIES keys must match shared/cii-weights.ts keys');
+    assert.deepEqual(Object.keys(TIER1_COUNTRIES).sort(), sharedCodes,
+      'frontend TIER1_COUNTRIES keys must match shared/cii-weights.ts keys');
+    assert.deepEqual(Object.keys(SERVER_TIER1_COUNTRIES).sort(), sharedCodes,
+      'server _shared.ts TIER1_COUNTRIES keys must match shared/cii-weights.ts keys (computeCIIScores iterates this map)');
+
     const scores = computeCIIScores([], emptyAux());
-    for (const code of noDriftCodes) {
+    for (const code of sharedCodes) {
+      const expected = CII_COUNTRY_WEIGHTS[code as keyof typeof CII_COUNTRY_WEIGHTS];
+      assert.equal(CURATED_COUNTRIES[code]?.baselineRisk, expected.baselineRisk,
+        `${code} frontend baselineRisk should come from shared/cii-weights.ts`);
+      assert.equal(CURATED_COUNTRIES[code]?.eventMultiplier, expected.eventMultiplier,
+        `${code} frontend eventMultiplier should come from shared/cii-weights.ts`);
+      assert.equal(BASELINE_RISK[code], expected.baselineRisk,
+        `${code} server BASELINE_RISK should come from shared/cii-weights.ts`);
+      assert.equal(EVENT_MULTIPLIER[code], expected.eventMultiplier,
+        `${code} server EVENT_MULTIPLIER should come from shared/cii-weights.ts`);
+      assert.equal(SHARED_BASELINE_RISK[code as keyof typeof SHARED_BASELINE_RISK], expected.baselineRisk,
+        `${code} shared baseline map should be derived from CII_COUNTRY_WEIGHTS`);
+      assert.equal(SHARED_EVENT_MULTIPLIER[code as keyof typeof SHARED_EVENT_MULTIPLIER], expected.eventMultiplier,
+        `${code} shared multiplier map should be derived from CII_COUNTRY_WEIGHTS`);
+
       const s = scoreFor(scores, code);
       assert.ok(s, `${code} score missing`);
-      const expected = CURATED_COUNTRIES[code]?.baselineRisk;
-      assert.equal(s!.staticBaseline, expected,
-        `${code} staticBaseline ${s!.staticBaseline} should match CURATED_COUNTRIES.${code}.baselineRisk ${expected}`);
-      const expectedMult = CURATED_COUNTRIES[code]?.eventMultiplier;
+      assert.equal(s!.staticBaseline, expected.baselineRisk,
+        `${code} staticBaseline ${s!.staticBaseline} should match shared baselineRisk ${expected.baselineRisk}`);
       const actualMult = (s as unknown as { eventMultiplier: number }).eventMultiplier;
-      assert.equal(actualMult, expectedMult,
-        `${code} eventMultiplier ${actualMult} should match CURATED_COUNTRIES.${code}.eventMultiplier ${expectedMult}`);
+      assert.equal(actualMult, expected.eventMultiplier,
+        `${code} eventMultiplier ${actualMult} should match shared eventMultiplier ${expected.eventMultiplier}`);
     }
   });
 
@@ -594,5 +642,63 @@ describe('CII scoring', () => {
     const doc = readFileSync(docPath, 'utf8');
     assert.ok(doc.includes(`**${CII_FORMULA_VERSION}**`) || doc.includes(`'${CII_FORMULA_VERSION}'`) || doc.includes(`"${CII_FORMULA_VERSION}"`),
       `methodology doc must mention current CII_FORMULA_VERSION '${CII_FORMULA_VERSION}' — bump the version and update the doc together.`);
+  });
+
+  it('methodology doc and browser CII engine expose the v3 conflict curve coefficients', () => {
+    const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
+    const doc = readFileSync(resolve(root, 'docs', 'methodology', 'cii-risk-scores.mdx'), 'utf8');
+    const browserSource = readFileSync(resolve(root, 'src', 'services', 'country-instability.ts'), 'utf8');
+
+    assert.ok(
+      doc.includes(`cap = ${CII_CONFLICT_ACTIVITY_CAP}`) && doc.includes(`pivot = ${CII_CONFLICT_ACTIVITY_PIVOT}`),
+      'methodology doc must publish the v3 conflict activity curve cap and pivot',
+    );
+    assert.ok(
+      browserSource.includes(`const CII_CONFLICT_ACTIVITY_CAP = ${CII_CONFLICT_ACTIVITY_CAP}`),
+      'browser CII engine conflict activity cap must match server _risk-config.ts',
+    );
+    assert.ok(
+      browserSource.includes(`const CII_CONFLICT_ACTIVITY_PIVOT = ${CII_CONFLICT_ACTIVITY_PIVOT}`),
+      'browser CII engine conflict activity pivot must match server _risk-config.ts',
+    );
+  });
+
+  it('risk-score Redis payload keys are bumped with the CII formula version', () => {
+    const root = resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
+    const source = readFileSync(
+      resolve(root, 'server', 'worldmonitor', 'intelligence', 'v1', 'get-risk-scores.ts'),
+      'utf8',
+    );
+    assert.ok(
+      source.includes(`risk:scores:sebuf:${CII_FORMULA_VERSION}`),
+      `live CII cache key must include CII_FORMULA_VERSION ${CII_FORMULA_VERSION}`,
+    );
+    assert.ok(
+      source.includes(`risk:scores:sebuf:stale:${CII_FORMULA_VERSION}`),
+      `stale CII cache key must include CII_FORMULA_VERSION ${CII_FORMULA_VERSION}`,
+    );
+  });
+
+  it('legacy browser CII engine no longer carries the old compression formulas', () => {
+    const sourcePath = resolve(
+      fileURLToPath(new URL('.', import.meta.url)),
+      '..',
+      'src',
+      'services',
+      'country-instability.ts',
+    );
+    const src = readFileSync(sourcePath, 'utf8');
+    assert.ok(
+      !src.includes('Math.min(60, h.eventsPoliticalViolence * 3 * multiplier)'),
+      'browser HAPI fallback must not hard-cap moderate and extreme political-violence counts at the same value',
+    );
+    assert.ok(
+      !src.includes('data.displacementOutflow >= 1_000_000 ? 8'),
+      'browser displacement boost must not use the old +4/+8 two-tier scale',
+    );
+    assert.ok(
+      !src.includes('20 * multiplier'),
+      'browser news alert boost must not amplify salience with country eventMultiplier',
+    );
   });
 });

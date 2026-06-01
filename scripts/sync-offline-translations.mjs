@@ -18,7 +18,7 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
-const LOCALES = ['en', 'ar', 'bg', 'cs', 'de', 'el', 'es', 'fr', 'hu', 'it', 'ja', 'ko', 'nl', 'pl', 'pt', 'ro', 'ru', 'sv', 'th', 'tr', 'vi', 'zh'];
+const LOCALES = ['en', 'ar', 'bg', 'cs', 'de', 'el', 'es', 'fr', 'hr', 'hu', 'it', 'ja', 'ko', 'nl', 'pl', 'pt', 'ro', 'ru', 'sv', 'th', 'tr', 'vi', 'zh'];
 const OFFLINE_HTML = 'public/offline.html';
 const LOCALES_DIR = 'src/locales';
 

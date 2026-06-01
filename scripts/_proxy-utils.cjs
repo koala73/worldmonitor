@@ -137,7 +137,7 @@ function proxyConnectTunnel(targetHostname, proxyConfig, { timeoutMs = 20_000, t
           proxySock.destroy();
           return rejectOnce(
             Object.assign(new Error(`Proxy CONNECT: ${statusLine}`), {
-              status: parseInt(statusLine.split(' ')[1]) || 0,
+              status: parseInt(statusLine.split(' ')[1], 10) || 0,
             })
           );
         }

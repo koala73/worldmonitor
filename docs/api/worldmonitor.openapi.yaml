@@ -5735,6 +5735,31 @@ paths:
                         application/json:
                             schema:
                                 $ref: '#/components/schemas/Error'
+    /api/resilience/v1/get-runtime-manifest:
+        get:
+            tags:
+                - ResilienceService
+            summary: GetResilienceRuntimeManifest
+            operationId: GetResilienceRuntimeManifest
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/worldmonitor_resilience_v1_GetResilienceRuntimeManifestResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                default:
+                    description: Error response
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/Error'
     /api/sanctions/v1/list-sanctions-pressure:
         get:
             tags:
@@ -18593,11 +18618,11 @@ components:
                  pressure (live-shock-exposure), and recovery capability (recovery-capacity).
                  Pillar scores and coverage are real coverage-weighted aggregates computed
                  from the constituent domains; see _pillar-membership.ts for the mapping.
-                 The top-level overall_score on GetResilienceScoreResponse remains a
-                 domain-weighted aggregate (Σ domain.score * domain.weight) for this
-                 release cycle; a pillar-combined score with penalty term is staged in
-                 _shared.ts#penalizedPillarScore and validated by
-                 scripts/validate-resilience-sensitivity.mjs ahead of the activation PR.
+                 When RESILIENCE_SCHEMA_V2_ENABLED and RESILIENCE_PILLAR_COMBINE_ENABLED
+                 are both true, the top-level overall_score on GetResilienceScoreResponse
+                 uses the pillar-combined score with the min-pillar penalty term in
+                 _shared.ts#penalizedPillarScore. The legacy six-domain weighted aggregate
+                 remains the flag-off rollback path.
         worldmonitor_resilience_v1_GetResilienceRankingRequest:
             type: object
         worldmonitor_resilience_v1_GetResilienceRankingResponse:
@@ -18635,6 +18660,66 @@ components:
                          ranking. PR 2 populates `true` for every country; PR 6 / §U7 swaps
                          to coverage-and-population logic and the headline endpoint then
                          filters by this field.
+        worldmonitor_resilience_v1_GetResilienceRuntimeManifestRequest:
+            type: object
+        worldmonitor_resilience_v1_GetResilienceRuntimeManifestResponse:
+            type: object
+            properties:
+                manifestVersion:
+                    type: integer
+                    format: int32
+                generatedAt:
+                    type: string
+                deployedCommitSha:
+                    type: string
+                vercelEnv:
+                    type: string
+                formulaTag:
+                    type: string
+                dataVersion:
+                    type: string
+                flags:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/worldmonitor_resilience_v1_ResilienceRuntimeFlag'
+                cache:
+                    $ref: '#/components/schemas/worldmonitor_resilience_v1_ResilienceRuntimeCacheState'
+                rankingCache:
+                    $ref: '#/components/schemas/worldmonitor_resilience_v1_ResilienceRankingCacheState'
+        worldmonitor_resilience_v1_ResilienceRuntimeFlag:
+            type: object
+            properties:
+                name:
+                    type: string
+                enabled:
+                    type: boolean
+        worldmonitor_resilience_v1_ResilienceRuntimeCacheState:
+            type: object
+            properties:
+                scorePrefix:
+                    type: string
+                rankingKey:
+                    type: string
+                historyPrefix:
+                    type: string
+                intervalPrefix:
+                    type: string
+                intervalMethodology:
+                    type: string
+        worldmonitor_resilience_v1_ResilienceRankingCacheState:
+            type: object
+            properties:
+                fetchedAt:
+                    type: string
+                count:
+                    type: integer
+                    format: int32
+                scored:
+                    type: integer
+                    format: int32
+                total:
+                    type: integer
+                    format: int32
         worldmonitor_sanctions_v1_ListSanctionsPressureRequest:
             type: object
             properties:

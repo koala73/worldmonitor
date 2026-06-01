@@ -1,0 +1,80 @@
+name: Deploy api-cors-preflight Worker
+
+# Deploys the Cloudflare Worker that owns CORS for api.worldmonitor.app.
+# Triggers on push to main when workers/api-cors-preflight/** changes, OR on
+# manual dispatch. The path filter is the only thing keeping unrelated PRs
+# from re-deploying the Worker on every merge.
+#
+# Required repo secrets:
+#   CLOUDFLARE_API_TOKEN  — token scoped to Workers Scripts:Edit + Workers
+#                           Routes:Edit on the worldmonitor.app zone.
+#   CLOUDFLARE_ACCOUNT_ID — CF account that owns the Worker.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'workers/api-cors-preflight/**'
+      - '.github/workflows/deploy-worker.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  unit-test:
+    name: Unit tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: workers/api-cors-preflight
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install
+        run: npm install --no-audit --no-fund
+      - name: Run unit tests
+        run: node --test index.test.mjs
+
+  deploy:
+    name: Wrangler deploy
+    needs: unit-test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: workers/api-cors-preflight
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install
+        run: npm install --no-audit --no-fund
+      - name: Deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx wrangler deploy
+
+  live-smoke:
+    name: Live preflight smoke test
+    needs: deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Wait for Worker propagation
+        # Cloudflare documents Workers propagation to the global edge as up
+        # to ~30 s, occasionally longer. A 15 s wait races the in-flight
+        # propagation window and can either (a) false-green by smoke-testing
+        # the OLD Worker that's still serving at some PoPs, or (b) false-fail
+        # transiently. 30 s aligns with the documented propagation SLA.
+        run: sleep 30
+      - name: Smoke test live OPTIONS preflight
+        env:
+          LIVE_SMOKE: '1'
+        run: node --test tests/cors-preflight-live.test.mjs

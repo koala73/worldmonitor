@@ -95,20 +95,12 @@ const require = createRequire(import.meta.url);
 const COUNTRY_PORT_CLUSTERS = require('./shared/country-port-clusters.json');
 /** @type {Record<string, string>} */
 const UN_TO_ISO2 = require('./shared/un-to-iso2.json');
+/** @type {Record<string, string>} */
+const COMTRADE_REPORTER_OVERRIDES = require('./shared/comtrade-reporter-overrides.json');
 
 const ISO2_TO_UN = Object.fromEntries(
   Object.entries(UN_TO_ISO2).map(([un, iso2]) => [iso2, un]),
 );
-
-// UN Comtrade uses non-standard reporter codes for some countries.
-// These override the standard UN M49 codes from un-to-iso2.json.
-const COMTRADE_REPORTER_OVERRIDES = {
-  FR: '251', // UN M49 standard is 250, but Comtrade registers France as reporter 251
-  IT: '381', // UN M49 standard is 380, but Comtrade registers Italy as reporter 381
-  US: '842', // UN M49 standard is 840, but Comtrade registers the US as reporter 842
-  IN: '699', // UN M49 standard is 356, Comtrade registers India as reporter 699
-  TW: '490', // M49 has no entry; Comtrade reports Taiwan as 490 "Other Asia, nes"
-};
 
 /**
  * @param {Array<string[]>} commands

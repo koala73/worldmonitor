@@ -1,4 +1,4 @@
-import { getCorsHeaders, getPublicCorsHeaders, isDisallowedOrigin } from './_cors.js';
+import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { validateApiKey } from './_api-key.js';
 import { jsonResponse } from './_json-response.js';
 // @ts-expect-error — JS module, no declaration file
@@ -58,7 +58,7 @@ const BOOTSTRAP_CACHE_KEYS = {
   renewableEnergy:  'economic:worldbank-renewable:v1',
   positiveGeoEvents: 'positive_events:geo-bootstrap:v1',
   theaterPosture: 'theater_posture:sebuf:stale:v1',
-  riskScores: 'risk:scores:sebuf:stale:v2',
+  riskScores: 'risk:scores:sebuf:stale:v3',
   naturalEvents: 'natural:events:v1',
   flightDelays: 'aviation:delays-bootstrap:v2',
   insights: 'news:insights:v1',
@@ -282,12 +282,11 @@ export default async function handler(req) {
 
   const cacheControl = (tier && TIER_CACHE[tier]) || 'public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900';
 
-  // Bootstrap data is fully public (world events, market prices, seismic data).
-  // Use ACAO: * so CF caches one entry valid for all origins, including Vercel
-  // preview deployments. Per-origin ACAO with Vary: Origin causes CF to pin the
-  // first origin's ACAO on the cached response, breaking CORS for other origins.
+  // The browser runtime sends API requests with credentials so session and
+  // entitlement cookies can ride along. Credentialed requests cannot consume
+  // ACAO: * responses, even for public bootstrap data.
   return jsonResponse({ data, missing }, 200, {
-    ...getPublicCorsHeaders(),
+    ...cors,
     'Cache-Control': cacheControl,
     'CDN-Cache-Control': (tier && TIER_CDN_CACHE[tier]) || TIER_CDN_CACHE.fast,
   });

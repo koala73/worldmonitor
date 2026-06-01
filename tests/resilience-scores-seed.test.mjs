@@ -117,6 +117,27 @@ describe('script is self-contained .mjs', () => {
       assert.ok(imp.startsWith('./'), `Import "${imp}" must be a local ./ relative path`);
     }
   });
+
+  it('uses the shared resilience interval helper', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const { dirname, join } = await import('node:path');
+    const dir = dirname(fileURLToPath(import.meta.url));
+    const src = readFileSync(join(dir, '..', 'scripts', 'seed-resilience-scores.mjs'), 'utf8');
+    assert.match(src, /from ['"]\.\/_resilience-intervals\.mjs['"]/);
+    assert.doesNotMatch(src, /const DOMAIN_WEIGHTS =/);
+  });
+
+  it('logs interval active-score clamp diagnostics', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const { dirname, join } = await import('node:path');
+    const dir = dirname(fileURLToPath(import.meta.url));
+    const src = readFileSync(join(dir, '..', 'scripts', 'seed-resilience-scores.mjs'), 'utf8');
+    assert.match(src, /createIntervalDiagnostics/);
+    assert.match(src, /intervalClampCount/);
+    assert.match(src, /activeScoreClampMaxDelta/);
+  });
 });
 
 describe('ensures ranking aggregate is present every cron, with truthful meta', () => {

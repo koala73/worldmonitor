@@ -263,7 +263,7 @@ function computeDividendCagr(annualTotals: Map<number, number>): number {
   if (earliest <= 0 || latest <= 0) return 0;
   const span = fullYears[fullYears.length - 1]! - fullYears[0]!;
   if (span < 1) return 0;
-  return (Math.pow(latest / earliest, 1 / span) - 1) * 100;
+  return ((latest / earliest) ** (1 / span) - 1) * 100;
 }
 
 export async function fetchDividendProfile(symbol: string, currentPrice: number): Promise<DividendProfile> {
@@ -1212,6 +1212,12 @@ export async function analyzeStock(
     });
     await storeStockAnalysisSnapshot(response, includeNews);
     return response;
+  }, undefined, {
+    // Worst-case fetcher budget: 2× UPSTREAM_TIMEOUT_MS sequenced (10s+10s for
+    // history/analyst then headlines/dividend) + 20s LLM overlay + small
+    // overhead. 60s safely sits above this so the cache safety net (#3539)
+    // doesn't pre-empt the caller's own per-stage timeouts.
+    timeoutMs: 60_000,
   });
 
   if (cached) return cached;

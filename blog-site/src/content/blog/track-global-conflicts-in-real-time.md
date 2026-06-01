@@ -18,8 +18,8 @@ World Monitor's core dashboard (worldmonitor.app) is designed around one questio
 
 The answer comes from layering multiple intelligence sources onto a single interactive 3D globe:
 
-- **ACLED conflict data** for armed clashes, protests, and political violence
-- **UCDP warfare events** for state-based and non-state conflicts
+- **[ACLED](https://acleddata.com/) conflict data** for armed clashes, protests, and political violence
+- **[UCDP](https://ucdp.uu.se/) warfare events** for state-based and non-state conflicts
 - **Live ADS-B tracking** for military aircraft positions
 - **AIS vessel monitoring** merged with USNI fleet reports for naval movements
 - **26 Telegram OSINT channels** for raw, low-latency intelligence
@@ -92,7 +92,7 @@ Each base includes facility type, operating nation, and strategic context. Overl
 
 Two of World Monitor's most operationally significant layers:
 
-**ADS-B (Aircraft):** Military and civilian aircraft transponder data from OpenSky, enriched by Wingbits for aircraft type identification. Filter for military callsigns to track reconnaissance flights, tanker orbits, and transport movements in real time.
+**ADS-B (Aircraft):** Military and civilian aircraft transponder data from [OpenSky](https://opensky-network.org/), enriched by [Wingbits](https://wingbits.com/) for aircraft type identification. Filter for military callsigns to track reconnaissance flights, tanker orbits, and transport movements in real time.
 
 **AIS (Maritime):** Ship positions from AISStream.io merged with editorial analysis from USNI Fleet Reports. This fusion gives you both the "where" (transponder position) and the "why" (fleet deployment context). Dark vessel detection flags ships that have gone silent, a common indicator of sanctions evasion or military operations.
 

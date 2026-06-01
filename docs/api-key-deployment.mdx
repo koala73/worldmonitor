@@ -112,6 +112,19 @@ Indexed by `normalizedEmail` for duplicate detection.
 
 `X-WorldMonitor-Key` is allowed in both `server/cors.ts` and `api/_cors.js`.
 
+### Local Vercel env dumps
+
+Do not keep Vercel env exports in the repository root. `.env.vercel-backup`
+and `.env.vercel-export` are ignored by Git, but they are still plaintext
+production secret dumps that local tools, editor agents, backup software, or
+dependency install scripts can read.
+
+The pre-push hook fails when either file exists. Pull environment values only
+when needed, work from a short-lived local env file, and delete the file after
+use. Secret rotation and deletion from developer machines are operational
+tasks; rotate exposed keys through the owning vendor dashboards, prioritizing
+LLM, payment, auth, Redis, and Convex credentials.
+
 ## Verification Checklist
 
 After deployment:

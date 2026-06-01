@@ -1,6 +1,6 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
-import { escapeHtml } from '@/utils/sanitize';
+import { joinSafeHtml, safeHtml, unsafeRawHtml, type SafeHtml } from '@/utils/sanitize';
 import { getHydratedData } from '@/services/bootstrap';
 import { fetchChokepointStatus } from '@/services/supply-chain';
 import { attributionFooterHtml, ATTRIBUTION_FOOTER_CSS } from '@/utils/attribution-footer';
@@ -96,39 +96,39 @@ export class ChokepointStripPanel extends Panel {
       .map(id => byId.get(id))
       .filter((cp): cp is ChokepointInfo => !!cp);
 
-    const chips = ordered.map(cp => {
+    const chips = joinSafeHtml(ordered.map(cp => {
       const color = statusColor(cp.status);
       const short = shortName(cp.id) || cp.name;
       const flow = formatFlow(cp);
       const warnings = cp.activeWarnings > 0
-        ? `<span class="cp-chip-warn">${cp.activeWarnings}</span>`
-        : '';
-      return `
-        <div class="cp-chip" data-cp="${escapeHtml(cp.id)}" title="${escapeHtml(cp.name)} — ${escapeHtml(cp.status || t('components.chokepointStrip.unknown'))}">
+        ? safeHtml`<span class="cp-chip-warn">${cp.activeWarnings}</span>`
+        : safeHtml``;
+      return safeHtml`
+        <div class="cp-chip" data-cp="${cp.id}" title="${cp.name} - ${cp.status || t('components.chokepointStrip.unknown')}">
           <div class="cp-chip-dot" style="background:${color}"></div>
           <div class="cp-chip-body">
-            <div class="cp-chip-name">${escapeHtml(short)}${warnings}</div>
-            <div class="cp-chip-flow">${escapeHtml(flow)}</div>
+            <div class="cp-chip-name">${short}${warnings}</div>
+            <div class="cp-chip-flow">${flow}</div>
           </div>
         </div>`;
-    }).join('');
+    }));
 
     const nAis = ordered.reduce((sum, cp) => sum + (cp.aisDisruptions ?? 0), 0);
-    const footer = attributionFooterHtml({
+    const footer: SafeHtml = unsafeRawHtml(attributionFooterHtml({
       sourceType: 'ais',
       method: t('components.chokepointStrip.attribution.method'),
       sampleSize: nAis || undefined,
       sampleLabel: t('components.chokepointStrip.attribution.sampleLabel'),
       updatedAt: this.data.fetchedAt,
       creditName: t('components.chokepointStrip.attribution.creditName'),
-    });
+    }), 'attributionFooterHtml escapes fields and returns shared footer markup');
 
-    this.setContent(`
+    this.setSafeContent(safeHtml`
       <div class="cp-strip-wrap">
         <div class="cp-strip">${chips}</div>
         ${footer}
       </div>
-      ${ATTRIBUTION_FOOTER_CSS}
+      ${unsafeRawHtml(ATTRIBUTION_FOOTER_CSS, 'static attribution footer CSS constant')}
       <style>
         .cp-strip-wrap { padding: 4px 0; }
         .cp-strip { display: flex; flex-wrap: wrap; gap: 8px; }

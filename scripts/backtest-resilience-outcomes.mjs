@@ -28,6 +28,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const VALIDATION_DIR = join(__dirname, '..', 'docs', 'methodology', 'country-resilience-index', 'validation');
 
 const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v18:';
+const RESILIENCE_RANKING_CACHE_KEY = 'resilience:ranking:v18';
 
 // Mirror of _shared.ts#currentCacheFormula. Must stay in lockstep; see
 // the same comment in scripts/validate-resilience-correlation.mjs for
@@ -48,14 +49,30 @@ const SOVEREIGN_STRESS_COUNTRIES_2024_2025 = new Set([
   'BO', 'EG', 'TN', 'KE', 'NG',
 ]);
 
+const FX_STRESS_COUNTRIES_2024_2025 = new Set([
+  'AR', 'EG', 'NG', 'TR', 'PK', 'BD', 'LK', 'GH', 'ZM', 'ET', 'LB',
+]);
+
+const POWER_OUTAGE_COUNTRIES_2024_2025 = new Set([
+  'CU', 'EC', 'NG', 'PK', 'BD', 'IQ', 'LB', 'SY', 'SD', 'YE', 'HT', 'VE',
+]);
+
+const SANCTIONS_SHOCK_COUNTRIES_2024_2025 = new Set([
+  'RU', 'IR', 'KP', 'CU', 'SY', 'VE', 'BY', 'MM', 'LB', 'YE', 'SD',
+]);
+
 const EVENT_FAMILIES = [
   {
     id: 'fx-stress',
     label: 'FX Stress',
-    description: 'Currency peak-to-trough drawdown >= 15% over 24 months',
-    redisKey: 'economic:fx:yoy:v1',
+    description: 'Currency crisis or severe depreciation during the 2024-2025 holdout',
+    redisKey: null,
     detect: detectFxStress,
-    dataSource: 'live',
+    dataSource: 'hardcoded',
+    labelSources: [
+      'Frozen 2024-2025 reference set curated from IMF AREAER exchange-arrangement reporting and IMF country surveillance notes on major devaluations.',
+      'https://www.imf.org/en/Publications/Annual-Report-on-Exchange-Arrangements-and-Exchange-Restrictions',
+    ],
   },
   {
     id: 'sovereign-stress',
@@ -64,14 +81,23 @@ const EVENT_FAMILIES = [
     redisKey: null,
     detect: detectSovereignStress,
     dataSource: 'hardcoded',
+    labelSources: [
+      'Frozen 2024-2025 reference set curated from IMF sovereign-debt restructuring/program material plus major rating-agency default and downgrade actions.',
+      'https://www.imf.org/en/Topics/sovereign-debt',
+    ],
   },
   {
     id: 'power-outages',
     label: 'Power Outages',
-    description: 'Major grid outage affecting >= 1M people',
-    redisKey: 'infra:outages:v1',
+    description: 'Major grid or infrastructure outage during the 2024-2025 holdout',
+    redisKey: null,
     detect: detectPowerOutages,
-    dataSource: 'live',
+    dataSource: 'hardcoded',
+    labelSources: [
+      'Frozen 2024-2025 reference set curated from country-scale grid-crisis reports in IEA electricity analysis, ReliefWeb/OCHA humanitarian updates, and national operator/government notices.',
+      'https://www.iea.org/reports/electricity-2025',
+      'https://reliefweb.int/',
+    ],
   },
   {
     id: 'food-crisis',
@@ -80,6 +106,7 @@ const EVENT_FAMILIES = [
     redisKey: 'resilience:static:fao',
     detect: detectFoodCrisis,
     dataSource: 'live',
+    labelSources: ['Live Redis payload from resilience:static:fao, sourced from the IPC/FAO food-crisis seeding path.'],
   },
   {
     id: 'refugee-surges',
@@ -94,14 +121,20 @@ const EVENT_FAMILIES = [
     redisKey: `displacement:summary:v1:${new Date().getFullYear()}`,
     detect: detectRefugeeSurges,
     dataSource: 'live',
+    labelSources: ['Live Redis payload from displacement:summary:v1:<year>, sourced from the UNHCR displacement summary seeding path.'],
   },
   {
     id: 'sanctions-shocks',
     label: 'Sanctions Shocks',
-    description: 'New comprehensive sanctions package',
-    redisKey: 'sanctions:country-counts:v1',
+    description: 'Comprehensive sanctions target during the 2024-2025 holdout',
+    redisKey: null,
     detect: detectSanctionsShocks,
-    dataSource: 'live',
+    dataSource: 'hardcoded',
+    labelSources: [
+      'Frozen 2024-2025 reference set curated from OFAC sanctions-list targeting, EU Sanctions Map regimes, and UN/EU/US comprehensive sanctions program coverage.',
+      'https://sanctionssearch.ofac.treas.gov/',
+      'https://www.sanctionsmap.eu/',
+    ],
   },
   {
     id: 'conflict-spillover',
@@ -110,6 +143,7 @@ const EVENT_FAMILIES = [
     redisKey: 'conflict:ucdp-events:v1',
     detect: detectConflictSpillover,
     dataSource: 'live',
+    labelSources: ['Live Redis payload from conflict:ucdp-events:v1, sourced from the UCDP event seeding path.'],
   },
 ];
 
@@ -252,7 +286,42 @@ async function fetchAllResilienceScores(url, token) {
   if (staleFormulaSkipped > 0) {
     console.warn(`[backtest-resilience-outcomes] skipped ${staleFormulaSkipped} stale-formula score entries (current=${current})`);
   }
+  if (scores.size < 50) {
+    const rankingScores = await fetchResilienceRankingScores(url, token, current);
+    if (rankingScores.size > scores.size) {
+      console.warn(`[backtest-resilience-outcomes] using ranking-cache fallback: ${rankingScores.size} scores from ${RESILIENCE_RANKING_CACHE_KEY} vs ${scores.size} per-country score keys`);
+      return rankingScores;
+    }
+  }
   return scores;
+}
+
+async function fetchResilienceRankingScores(url, token, currentFormula) {
+  const resp = await fetch(`${url}/get/${encodeURIComponent(RESILIENCE_RANKING_CACHE_KEY)}`, {
+    headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (!resp.ok) return new Map();
+  const data = await resp.json();
+  if (!data?.result) return new Map();
+
+  try {
+    const parsed = JSON.parse(data.result);
+    if (parsed && typeof parsed === 'object' && parsed._formula !== currentFormula) {
+      console.warn(`[backtest-resilience-outcomes] ranking _formula=${parsed._formula ?? 'undefined'} does not match current=${currentFormula} — skipping ranking fallback`);
+      return new Map();
+    }
+    const items = Array.isArray(parsed) ? parsed : (parsed?.items ?? []);
+    const scores = new Map();
+    for (const item of items) {
+      if (item?.countryCode && typeof item.overallScore === 'number' && item.overallScore > 0) {
+        scores.set(item.countryCode, item.overallScore);
+      }
+    }
+    return scores;
+  } catch {
+    return new Map();
+  }
 }
 
 // FX Stress detector — reads the wider-coverage Yahoo FX payload
@@ -282,8 +351,9 @@ async function fetchAllResilienceScores(url, token) {
 const FX_STRESS_THRESHOLD_PCT = -15;
 
 function detectFxStress(data) {
+  if (data == null) return labelsFromReferenceSet(FX_STRESS_COUNTRIES_2024_2025);
   const labels = new Map();
-  if (!data || typeof data !== 'object') return labels;
+  if (typeof data !== 'object') return labels;
   const rates = Array.isArray(data) ? data : (data.rates || data.countries || data.data || []);
   if (!Array.isArray(rates)) return labels;
   for (const entry of rates) {
@@ -309,8 +379,16 @@ function detectSovereignStress(_data, _allCountries) {
   return labels;
 }
 
-// Infrastructure Outages detector — reads seed-internet-outages.mjs payload
-// (key infra:outages:v1). Shape:
+function labelsFromReferenceSet(referenceSet) {
+  const labels = new Map();
+  for (const cc of referenceSet) labels.set(cc, true);
+  return labels;
+}
+
+// Infrastructure Outages detector. The release backtest uses a frozen
+// 2024-2025 holdout list so weekly artifact generation cannot drift with the
+// current sparse outage feed. When supplied a payload, the detector still
+// supports seed-internet-outages.mjs shape:
 //   { outages: [{ id, title, country: "Iraq" (full name), detectedAt, ... }] }
 // Note: the upstream seeder collects *internet* outages (Cloudflare Radar +
 // news), not power outages specifically. We treat any appearance in the
@@ -322,8 +400,9 @@ function detectSovereignStress(_data, _allCountries) {
 // grid-operator APIs, ENTSO-E, EIA, etc.), re-introduce a count threshold
 // so noisy single events don't dominate.
 function detectPowerOutages(data) {
+  if (data == null) return labelsFromReferenceSet(POWER_OUTAGE_COUNTRIES_2024_2025);
   const labels = new Map();
-  if (!data || typeof data !== 'object') return labels;
+  if (typeof data !== 'object') return labels;
   const events = Array.isArray(data) ? data : (data.outages || data.events || []);
   if (!Array.isArray(events)) return labels;
   for (const event of events) {
@@ -402,8 +481,11 @@ function detectRefugeeSurges(data) {
   return labels;
 }
 
-// Sanctions Shocks detector — reads seed-sanctions-pressure.mjs payload
-// (key sanctions:country-counts:v1). Shape:
+// Sanctions Shocks detector. The release backtest uses a frozen 2024-2025
+// comprehensive-target reference list because cumulative entity counts include
+// intermediary hubs and do not by themselves identify new target-country
+// shocks. When supplied a payload, the detector still supports
+// seed-sanctions-pressure.mjs shape:
 //   { "CU": 35, "GB": 190, "CH": 98, ... }
 // This is the cumulative count of sanctioned entities linked to each ISO2,
 // not a yearly delta. The OFAC distribution is heavily right-skewed:
@@ -421,8 +503,9 @@ function detectRefugeeSurges(data) {
 const SANCTIONS_TARGET_THRESHOLD = 100;
 
 function detectSanctionsShocks(data) {
+  if (data == null) return labelsFromReferenceSet(SANCTIONS_SHOCK_COUNTRIES_2024_2025);
   const labels = new Map();
-  if (!data || typeof data !== 'object') return labels;
+  if (typeof data !== 'object') return labels;
 
   const counts = new Map(); // iso2 → count
   if (Array.isArray(data)) {
@@ -511,10 +594,9 @@ async function runBacktest() {
   const scores = await fetchAllResilienceScores(url, token);
   console.log(`Loaded resilience scores for ${scores.size} countries`);
   if (scores.size < 50) {
-    // Not actually fatal — the validation bundle runner reports ran:N failed:0
-    // for this branch. Happens on cold start when the validation bundle runs
-    // before the scores seeder populates Redis. Warn (not error) so ops pages
-    // don't trip on a transient.
+    // Return null so importers/tests can distinguish a cold-start skip from
+    // a computed artifact. The CLI wrapper only fails this branch in strict
+    // release mode; weekly cron leaves the previous artifact in place.
     console.warn(`[backtest] Skipping: only ${scores.size}/196 scores in Redis — scores seeder likely hasn't run yet`);
     return null;
   }
@@ -586,6 +668,7 @@ async function runBacktest() {
       label: family.label,
       description: family.description,
       dataSource: family.dataSource,
+      labelSources: family.labelSources ?? [],
       auc: Math.round(auc * 1000) / 1000,
       threshold: AUC_THRESHOLD,
       gateWidth: GATE_WIDTH,
@@ -660,11 +743,40 @@ async function runBacktest() {
 }
 
 const isMain = process.argv[1]?.replace(/\\/g, '/').endsWith('backtest-resilience-outcomes.mjs');
+function isStrictValidationCli(argv = process.argv, env = process.env) {
+  return argv.includes('--strict') || /^(1|true|yes|on)$/i.test(String(env.RESILIENCE_VALIDATION_STRICT ?? ''));
+}
+
+function backtestCliExitCode(result, strict = false) {
+  if (result == null) return strict ? 1 : 0;
+  const failed = (result.families ?? []).filter((family) => !family.pass);
+  return !result.overallPass || failed.length > 0 ? 1 : 0;
+}
+
 if (isMain) {
-  runBacktest().catch((err) => {
-    console.error(`FATAL: ${err.message || err}`);
-    process.exitCode = 1;
-  });
+  const strict = isStrictValidationCli();
+  runBacktest()
+    .then((result) => {
+      if (result == null) {
+        const msg = '[backtest] No artifact generated.';
+        if (strict) {
+          console.error(msg);
+        } else {
+          console.warn(`${msg} Non-strict cron mode leaves the previous artifact in place.`);
+        }
+        process.exitCode = backtestCliExitCode(result, strict);
+        return;
+      }
+      const failed = (result.families ?? []).filter((family) => !family.pass);
+      if (!result.overallPass || failed.length > 0) {
+        console.error(`[backtest] ${failed.length} family gate(s) failed: ${failed.map((family) => family.id).join(', ')}`);
+      }
+      process.exitCode = backtestCliExitCode(result, strict);
+    })
+    .catch((err) => {
+      console.error(`FATAL: ${err.message || err}`);
+      process.exitCode = 1;
+    });
 }
 
 export {
@@ -680,8 +792,14 @@ export {
   detectConflictSpillover,
   findFalseNegatives,
   findFalsePositives,
+  fetchResilienceRankingScores,
   EVENT_FAMILIES,
+  backtestCliExitCode,
+  isStrictValidationCli,
   SOVEREIGN_STRESS_COUNTRIES_2024_2025,
+  FX_STRESS_COUNTRIES_2024_2025,
+  POWER_OUTAGE_COUNTRIES_2024_2025,
+  SANCTIONS_SHOCK_COUNTRIES_2024_2025,
   AUC_THRESHOLD,
   GATE_WIDTH,
   runBacktest,

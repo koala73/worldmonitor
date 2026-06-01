@@ -8,14 +8,21 @@ const USGS_FEED_URL = 'https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary
 const CANONICAL_KEY = 'seismology:earthquakes:v1';
 const CACHE_TTL = 21600; // 6h — 6x the 1h cron interval (was 2x = survived only 1 missed run)
 
-// Canonical coordinates: src/config/geo.ts NUCLEAR_FACILITIES (type: 'test-site').
-// Keep in sync — drift here mislabels seismic events near nuclear infrastructure.
+// Seismic scoring intentionally uses only high-signal nuclear-test centroids.
+// Broader registry entries such as missile ranges, exercises, or one-off low-signal
+// locations would over-label routine regional earthquakes.
 const TEST_SITES = [
-  { name: 'Punggye-ri',    lat: 41.28, lon: 129.08 },
-  { name: 'Lop Nur',       lat: 41.75, lon: 88.35  },
-  { name: 'Novaya Zemlya', lat: 73.37, lon: 54.78  },
-  { name: 'Nevada NTS',    lat: 37.07, lon: -116.05 },
-  { name: 'Semipalatinsk', lat: 50.07, lon: 78.43  },
+  { name: 'Lop Nur', lat: 40.81, lon: 89.79 },
+  { name: 'Punggye-ri Nuclear Test Site', lat: 41.28, lon: 129.09 },
+  { name: 'Novaya Zemlya', lat: 73.37, lon: 54.78 },
+  { name: 'Nevada National Security Site', lat: 37.12, lon: -116.05 },
+  { name: 'Semipalatinsk Test Site', lat: 50.38, lon: 77.78 },
+  { name: 'Moruroa', lat: -21.83, lon: -138.92 },
+  { name: 'Fangataufa', lat: -22.25, lon: -138.75 },
+  { name: 'Reggane', lat: 26.31, lon: -0.06 },
+  { name: 'In Eker', lat: 24.06, lon: 5.05 },
+  { name: 'Pokhran', lat: 27.08, lon: 71.75 },
+  { name: 'Chagai-II', lat: 28.43, lon: 63.86 },
 ];
 const TEST_SITE_RADIUS_KM = 100;
 

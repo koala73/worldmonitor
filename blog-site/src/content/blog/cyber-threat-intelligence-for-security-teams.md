@@ -57,7 +57,7 @@ Additional command-and-control intelligence feeds providing broader coverage of 
 
 ## Internet Outage Detection (Cloudflare Radar)
 
-World Monitor integrates **Cloudflare Radar** data to detect and map internet outages globally. This reveals:
+World Monitor integrates **[Cloudflare Radar](https://radar.cloudflare.com/)** data to detect and map internet outages globally. This reveals:
 
 - **Government-ordered shutdowns** during protests or elections
 - **Infrastructure failures** from natural disasters or attacks
@@ -160,7 +160,7 @@ World Monitor doesn't replace your SIEM, your EDR, or your threat intelligence p
 ## Frequently Asked Questions
 
 **How often is the cyber threat data updated?**
-Threat feeds from Feodo Tracker, URLhaus, and AlienVault OTX are refreshed regularly through automated seed pipelines. Cloudflare Radar outage data updates in near real-time. The freshness of each data source is visible in the platform's health dashboard.
+Threat feeds from [Feodo Tracker](https://feodotracker.abuse.ch/), [URLhaus](https://urlhaus.abuse.ch/), and [AlienVault OTX](https://otx.alienvault.com/) are refreshed regularly through automated seed pipelines. Cloudflare Radar outage data updates in near real-time. The freshness of each data source is visible in the platform's health dashboard.
 
 **Can I integrate World Monitor's cyber threat data into my existing SIEM?**
 Yes. World Monitor's API provides typed endpoints for all cyber threat data. You can pull C2 server locations, malware URLs, and threat intelligence pulses programmatically and feed them into Splunk, Elastic, or any SIEM that accepts JSON data.

@@ -54,7 +54,7 @@ const { rows, deadEntries } = runBudgetChecks();
 let anyFailure = false;
 const tableRows = [];
 for (const r of rows) {
-  let budgetCell = typeof r.budget === 'number' ? fmtBytes(r.budget) : '—';
+  const budgetCell = typeof r.budget === 'number' ? fmtBytes(r.budget) : '—';
   let observedCell;
   let headroomCell = '—';
   let statusCell;

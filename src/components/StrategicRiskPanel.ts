@@ -21,6 +21,9 @@ import {
 import { getLearningProgress } from '@/services/country-instability';
 import { fetchCachedRiskScores } from '@/services/cached-risk-scores';
 import { getCachedPosture } from '@/services/cached-theater-posture';
+import { refreshDataFreshnessFromHealth } from '@/services/health-freshness';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 export class StrategicRiskPanel extends Panel {
   private overview: StrategicRiskOverview | null = null;
@@ -33,6 +36,7 @@ export class StrategicRiskPanel extends Panel {
   private breakingAlerts: Map<string, { threatLevel: 'critical' | 'high'; timestamp: number }> = new Map();
   private boundOnBreaking: ((e: Event) => void) | null = null;
   private breakingExpiryTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastHealthFreshnessRefreshAt = 0;
 
   constructor() {
     super({
@@ -82,6 +86,7 @@ export class StrategicRiskPanel extends Panel {
   private lastRiskFingerprint = '';
 
   public async refresh(): Promise<boolean> {
+    void this.refreshHealthFreshness();
     this.freshnessSummary = dataFreshness.getSummary();
     this.convergenceAlerts = detectConvergence();
 
@@ -138,12 +143,18 @@ export class StrategicRiskPanel extends Panel {
       }
     }
 
+    const badgeDetail = this.freshnessSummary
+      ? t('components.strategicRisk.sourcesDetail', {
+        active: this.freshnessSummary.activeSources,
+        total: this.freshnessSummary.totalSources,
+      })
+      : undefined;
     if (!this.freshnessSummary || this.freshnessSummary.activeSources === 0) {
       this.setDataBadge('unavailable');
     } else if (this.usedCachedScores) {
-      this.setDataBadge('cached');
+      this.setDataBadge('cached', badgeDetail);
     } else {
-      this.setDataBadge('live');
+      this.setDataBadge('live', badgeDetail);
     }
 
     this.render();
@@ -153,6 +164,19 @@ export class StrategicRiskPanel extends Panel {
     const changed = fp !== this.lastRiskFingerprint;
     this.lastRiskFingerprint = fp;
     return changed;
+  }
+
+  private async refreshHealthFreshness(): Promise<void> {
+    const now = Date.now();
+    if (now - this.lastHealthFreshnessRefreshAt < 60_000) return;
+    try {
+      await refreshDataFreshnessFromHealth({ signal: this.signal });
+    } catch (error) {
+      // Health is additive; local session freshness remains useful if it fails.
+      console.debug('[StrategicRiskPanel] Health freshness fetch failed (non-fatal)', error);
+    } finally {
+      this.lastHealthFreshnessRefreshAt = Date.now();
+    }
   }
 
   private getScoreColor(score: number): string {
@@ -309,6 +333,7 @@ export class StrategicRiskPanel extends Panel {
         </div>
 
         ${this.renderMetrics()}
+        ${this.renderFreshnessSurface()}
         ${this.renderTopRisks()}
         ${this.renderRecentAlerts()}
 
@@ -334,6 +359,33 @@ export class StrategicRiskPanel extends Panel {
         ${panelId && (source.status === 'no_data' || source.status === 'disabled') ? `
           <button class="risk-source-enable" data-panel="${panelId}">${t('components.strategicRisk.enable')}</button>
         ` : ''}
+      </div>
+    `;
+  }
+
+  private renderFreshnessSurface(): string {
+    if (!this.freshnessSummary) return '';
+    const sources = dataFreshness.getAllSources()
+      .filter(source => source.status !== 'no_data' && source.status !== 'disabled')
+      .sort((a, b) => {
+        const order: Record<string, number> = { error: 0, very_stale: 1, stale: 2, fresh: 3 };
+        return (order[a.status] ?? 4) - (order[b.status] ?? 4);
+      })
+      .slice(0, 6);
+
+    if (sources.length === 0) return '';
+    return `
+      <div class="risk-section">
+        <div class="risk-section-title">${t('components.strategicRisk.dataFreshness')}</div>
+        <div class="risk-sources-compact">
+          ${sources.map(source => `
+            <span class="risk-source-chip" title="${escapeHtml(source.healthStatus || source.status)}" style="border-color: ${getStatusColor(source.status)}">
+              <span class="risk-source-dot" style="color: ${getStatusColor(source.status)}">${getStatusIcon(source.status)}</span>
+              <span class="risk-source-name">${escapeHtml(source.name)}</span>
+              <span class="risk-source-time">${escapeHtml(dataFreshness.getTimeSince(source.id))}</span>
+            </span>
+          `).join('')}
+        </div>
       </div>
     `;
   }
@@ -466,7 +518,7 @@ export class StrategicRiskPanel extends Panel {
           ? this.renderInsufficientData()
           : this.renderFullData();
 
-      this.content.innerHTML = html;
+      setTrustedHtml(this.content, trustedHtml(html, "legacy direct innerHTML migration"));
       this.attachEventListeners();
     } catch (e: unknown) {
       console.error('[StrategicRiskPanel] Render error:', e);

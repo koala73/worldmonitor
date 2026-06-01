@@ -5,6 +5,8 @@ import { escapeHtml } from '@/utils/sanitize';
 import { getCSSColor } from '@/utils';
 import { getSignalContext, type SignalType } from '@/utils/analysis-constants';
 import { t } from '@/services/i18n';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 export class SignalModal {
   private element: HTMLElement;
@@ -19,7 +21,7 @@ export class SignalModal {
     this.element.className = 'signal-modal-overlay';
     this.element.setAttribute('role', 'dialog');
     this.element.setAttribute('aria-modal', 'true');
-    this.element.innerHTML = `
+    setTrustedHtml(this.element, trustedHtml(`
       <div class="signal-modal">
         <div class="signal-modal-header">
           <span class="signal-modal-title">🎯 ${t('modals.signal.title')}</span>
@@ -34,7 +36,7 @@ export class SignalModal {
           <button class="signal-dismiss-btn">${t('modals.signal.dismiss')}</button>
         </div>
       </div>
-    `;
+    `, "legacy direct innerHTML migration"));
 
     document.body.appendChild(this.element);
     this.setupEventListeners();
@@ -270,7 +272,7 @@ export class SignalModal {
       `;
     }
 
-    content.innerHTML = `
+    setTrustedHtml(content, trustedHtml(`
       <div class="signal-item" style="border-left-color: ${color}">
         <div class="signal-type">${icon} ${alert.type.toUpperCase().replace('_', ' ')}</div>
         <div class="signal-title">${escapeHtml(alert.title)}</div>
@@ -288,7 +290,7 @@ export class SignalModal {
           </div>
         ` : ''}
       </div>
-    `;
+    `, "legacy direct innerHTML migration"));
 
     this.element.classList.add('active');
     this.activateEsc();
@@ -392,7 +394,7 @@ export class SignalModal {
       `;
     }).join('');
 
-    content.innerHTML = html;
+    setTrustedHtml(content, trustedHtml(html, "legacy direct innerHTML migration"));
   }
 
   private formatTime(date: Date): string {

@@ -75,10 +75,10 @@ describe('energy atlas guardrails', () => {
 
   it('treats energy as a first-class map harness variant', () => {
     const harness = src('src/e2e/map-harness.ts');
+    const variantUnion = harness.match(/type HarnessVariant = ([^;]+);/)?.[1] ?? '';
 
-    assert.match(
-      harness,
-      /type HarnessVariant = 'full' \| 'tech' \| 'finance' \| 'energy';/,
+    assert.ok(
+      variantUnion.includes("'energy'"),
       'map harness must include energy in its runtime variant union',
     );
     assert.match(

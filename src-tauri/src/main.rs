@@ -27,7 +27,9 @@ const MENU_HELP_GITHUB_ID: &str = "help.github";
 #[cfg(feature = "devtools")]
 const MENU_HELP_DEVTOOLS_ID: &str = "help.devtools";
 const TRUSTED_WINDOWS: [&str; 3] = ["main", "settings", "live-channels"];
-const SUPPORTED_SECRET_KEYS: [&str; 28] = [
+const DESKTOP_SHARED_SECRET_KEY: &str = "WM_DESKTOP_SHARED_SECRET";
+const BUILD_TIME_SIDECAR_ENV_KEYS: [&str; 2] = ["CONVEX_URL", DESKTOP_SHARED_SECRET_KEY];
+const SUPPORTED_SECRET_KEYS: [&str; 29] = [
     "GROQ_API_KEY",
     "OPENROUTER_API_KEY",
     "TAVILY_API_KEYS",
@@ -56,6 +58,7 @@ const SUPPORTED_SECRET_KEYS: [&str; 28] = [
     "WTO_API_KEY",
     "AVIATIONSTACK_API",
     "ICAO_API_KEY",
+    DESKTOP_SHARED_SECRET_KEY,
 ];
 
 struct LocalApiState {
@@ -666,14 +669,16 @@ fn open_settings_window(app: &AppHandle) -> Result<(), String> {
         return Ok(());
     }
 
-    let _settings_window = WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("settings.html".into()))
+    #[allow(unused_mut)]
+    let mut settings_builder = WebviewWindowBuilder::new(app, "settings", WebviewUrl::App("settings.html".into()))
         .title("World Monitor Settings")
-        .title_bar_style(tauri::TitleBarStyle::Overlay)
         .inner_size(980.0, 600.0)
         .min_inner_size(820.0, 480.0)
         .resizable(true)
-        .background_color(tauri::webview::Color(26, 28, 30, 255))
-        .build()
+        .background_color(tauri::webview::Color(26, 28, 30, 255));
+    #[cfg(target_os = "macos")]
+    { settings_builder = settings_builder.title_bar_style(tauri::TitleBarStyle::Overlay); }
+    let _settings_window = settings_builder.build()
         .map_err(|e| format!("Failed to create settings window: {e}"))?;
 
     // On Windows/Linux, menus are per-window. Remove the inherited app menu
@@ -704,15 +709,17 @@ fn open_live_channels_window(app: &AppHandle, base_url: Option<String>) -> Resul
         _ => WebviewUrl::App("live-channels.html".into()),
     };
 
-    let _live_channels_window = WebviewWindowBuilder::new(app, "live-channels", url)
-    .title("Channel management - World Monitor")
-    .title_bar_style(tauri::TitleBarStyle::Overlay)
-    .inner_size(680.0, 760.0)
-    .min_inner_size(520.0, 600.0)
-    .resizable(true)
-    .background_color(tauri::webview::Color(26, 28, 30, 255))
-    .build()
-    .map_err(|e| format!("Failed to create live channels window: {e}"))?;
+    #[allow(unused_mut)]
+    let mut channels_builder = WebviewWindowBuilder::new(app, "live-channels", url)
+        .title("Channel management - World Monitor")
+        .inner_size(680.0, 760.0)
+        .min_inner_size(520.0, 600.0)
+        .resizable(true)
+        .background_color(tauri::webview::Color(26, 28, 30, 255));
+    #[cfg(target_os = "macos")]
+    { channels_builder = channels_builder.title_bar_style(tauri::TitleBarStyle::Overlay); }
+    let _live_channels_window = channels_builder.build()
+        .map_err(|e| format!("Failed to create live channels window: {e}"))?;
 
     #[cfg(not(target_os = "macos"))]
     let _ = _live_channels_window.remove_menu();
@@ -872,9 +879,27 @@ fn sanitize_path_for_node(p: &Path) -> String {
     }
 }
 
+fn build_time_sidecar_env_value(key: &str) -> Option<&'static str> {
+    match key {
+        "CONVEX_URL" => option_env!("CONVEX_URL"),
+        DESKTOP_SHARED_SECRET_KEY => option_env!("WM_DESKTOP_SHARED_SECRET"),
+        _ => None,
+    }
+    .filter(|value| !value.trim().is_empty())
+}
+
+fn sidecar_env_value(key: &str) -> Option<String> {
+    build_time_sidecar_env_value(key)
+        .map(ToString::to_string)
+        .or_else(|| std::env::var(key).ok().filter(|value| !value.trim().is_empty()))
+}
+
 #[cfg(test)]
 mod sanitize_path_tests {
-    use super::sanitize_path_for_node;
+    use super::{
+        build_time_sidecar_env_value, sanitize_path_for_node, BUILD_TIME_SIDECAR_ENV_KEYS,
+        DESKTOP_SHARED_SECRET_KEY, SUPPORTED_SECRET_KEYS,
+    };
     use std::path::Path;
 
     #[test]
@@ -902,6 +927,21 @@ mod sanitize_path_tests {
             sanitize_path_for_node(raw),
             r"C:\Users\alice\sidecar\local-api-server.mjs".to_string()
         );
+    }
+
+    #[test]
+    fn supports_desktop_shared_secret_for_keychain_injection() {
+        assert!(SUPPORTED_SECRET_KEYS.contains(&DESKTOP_SHARED_SECRET_KEY));
+    }
+
+    #[test]
+    fn supports_desktop_shared_secret_for_packaged_sidecar_env() {
+        assert!(BUILD_TIME_SIDECAR_ENV_KEYS.contains(&DESKTOP_SHARED_SECRET_KEY));
+    }
+
+    #[test]
+    fn ignores_unknown_build_time_sidecar_env_keys() {
+        assert_eq!(build_time_sidecar_env_value("NOT_A_SUPPORTED_SIDECAR_KEY"), None);
     }
 }
 
@@ -1136,11 +1176,11 @@ fn start_local_api(app: &AppHandle) -> Result<(), String> {
         &format!("injected {secret_count} keychain secrets into sidecar env"),
     );
 
-    // Inject build-time secrets (CI) with runtime env fallback (dev)
-    if let Some(url) = option_env!("CONVEX_URL") {
-        cmd.env("CONVEX_URL", url);
-    } else if let Ok(url) = std::env::var("CONVEX_URL") {
-        cmd.env("CONVEX_URL", url);
+    // Inject packaged secrets (CI) with runtime env fallback (dev).
+    for key in BUILD_TIME_SIDECAR_ENV_KEYS {
+        if let Some(value) = sidecar_env_value(key) {
+            cmd.env(key, value);
+        }
     }
 
     let child = cmd

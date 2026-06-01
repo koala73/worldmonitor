@@ -1,0 +1,10 @@
+{
+  "name": "worldmonitor-docker-runtime",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@upstash/ratelimit": "2.0.8",
+    "@upstash/redis": "1.37.0",
+    "convex": "1.34.0"
+  }
+}

@@ -1,5 +1,7 @@
 import type { TransitDayCount } from '../generated/client/worldmonitor/supply_chain/v1/service_client';
 import { getCSSColor } from '@/utils';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 type ZoomWindow = 30 | 90 | 180;
 type Tab = 'calls' | 'dwt';
@@ -129,9 +131,8 @@ export class TransitChart {
 
     const tabs = document.createElement('div');
     tabs.style.cssText = 'display:flex;gap:4px';
-    tabs.innerHTML =
-      `<button data-tab="calls" style="${btnStyle(this.tab === 'calls')}">Transit Calls</button>` +
-      `<button data-tab="dwt" style="${btnStyle(this.tab === 'dwt')}">Trade Volume</button>`;
+    setTrustedHtml(tabs, trustedHtml(`<button data-tab="calls" style="${btnStyle(this.tab === 'calls')}">Transit Calls</button>` +
+      `<button data-tab="dwt" style="${btnStyle(this.tab === 'dwt')}">Trade Volume</button>`, "legacy direct innerHTML migration"));
     tabs.addEventListener('click', (e) => {
       const btn = (e.target as HTMLElement).closest('[data-tab]') as HTMLElement | null;
       if (!btn) return;
@@ -153,7 +154,7 @@ export class TransitChart {
       zooms.appendChild(btn);
     });
 
-    ctrl.innerHTML = '';
+    setTrustedHtml(ctrl, trustedHtml('', "legacy direct innerHTML migration"));
     ctrl.appendChild(tabs);
     ctrl.appendChild(zooms);
   }
@@ -165,14 +166,14 @@ export class TransitChart {
     const data = this.visibleData();
     const last = data[data.length - 1];
 
-    leg.innerHTML = VESSEL_LABELS.map((label, i) => {
+    setTrustedHtml(leg, trustedHtml(VESSEL_LABELS.map((label, i) => {
       const key = this.tab === 'calls' ? VESSEL_KEYS[i]! : CAP_KEYS[i]!;
       const val = last ? (last[key as keyof TransitDayCount] as number) : 0;
       const display = this.tab === 'dwt' ? fmtDWT(val) : String(val);
       return `<span style="display:flex;align-items:center;gap:4px;font-size:10px;color:${textDim}">` +
         `<span style="width:7px;height:7px;border-radius:1px;background:${VESSEL_COLORS[i]}"></span>` +
         `${label} <b style="color:${VESSEL_COLORS[i]}">${display}</b></span>`;
-    }).join('');
+    }).join(''), "legacy direct innerHTML migration"));
   }
 
   private draw = (): void => {
@@ -296,13 +297,12 @@ export class TransitChart {
 
     const fmt = (v: number) => this.tab === 'dwt' ? fmtDWT(v) : String(v);
 
-    tooltip.innerHTML =
-      `<div style="font-weight:600;margin-bottom:3px">${d.date}</div>` +
+    setTrustedHtml(tooltip, trustedHtml(`<div style="font-weight:600;margin-bottom:3px">${d.date}</div>` +
       VESSEL_LABELS.map((label, i) =>
         `<div><span style="color:${VESSEL_COLORS[i]}">■</span> ${label}: ${fmt(stack[i]!)}</div>`,
       ).join('') +
       `<div style="margin-top:3px;border-top:1px solid #444;padding-top:2px">Total: <b>${fmt(total)}</b></div>` +
-      `<div><span style="color:${MA_COLOR}">—</span> 7d MA: ${fmt(Math.round(ma))}</div>`;
+      `<div><span style="color:${MA_COLOR}">—</span> 7d MA: ${fmt(Math.round(ma))}</div>`, "legacy direct innerHTML migration"));
 
     tooltip.style.display = 'block';
     const bx = PAD.left + (idx / data.length) * plotW + barW / 2;

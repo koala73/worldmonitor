@@ -129,16 +129,17 @@ describe('api/mcp.ts — per-tool output contract (envelope-shape, all 39 tools)
   // to enumerate the registry without forking the source-of-truth (the
   // `_execute` presence is determined at runtime inside each `it()` via
   // the freshly-imported module).
-  const SRC_PATH = path.resolve(
+  const REGISTRY_DIR = path.resolve(
     path.dirname(fileURLToPath(import.meta.url)),
-    '..', 'api', 'mcp.ts',
+    '..', 'api', 'mcp', 'registry',
   );
   const TOOL_NAMES = (() => {
-    const src = readFileSync(SRC_PATH, 'utf8');
-    const registryStart = src.indexOf('const TOOL_REGISTRY:');
-    assert.ok(registryStart > 0, 'TOOL_REGISTRY declaration not found in api/mcp.ts');
-    const slice = src.slice(registryStart);
-    const matches = [...slice.matchAll(/^\s{4}name:\s+'([a-z0-9_]+)'/gm)];
+    const cacheSrc = readFileSync(path.join(REGISTRY_DIR, 'cache-tools.ts'), 'utf8');
+    const rpcSrc = readFileSync(path.join(REGISTRY_DIR, 'rpc-tools.ts'), 'utf8');
+    const src = cacheSrc + '\n' + rpcSrc;
+    assert.ok(src.includes('CACHE_TOOLS'), 'CACHE_TOOLS declaration not found in api/mcp/registry/cache-tools.ts');
+    assert.ok(src.includes('RPC_TOOLS'), 'RPC_TOOLS declaration not found in api/mcp/registry/rpc-tools.ts');
+    const matches = [...src.matchAll(/^\s{4}name:\s+'([a-z0-9_]+)'/gm)];
     return matches.map((m) => m[1]);
   })();
   assert.ok(TOOL_NAMES.length >= 39, `expected >= 39 tools, got ${TOOL_NAMES.length}`);

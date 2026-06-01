@@ -34,13 +34,6 @@ import {
 
 const FUTURE = Date.now() + 86400000 * 30;
 
-function makeRequest(
-  pathname: string,
-  headers: Record<string, string> = {},
-): Request {
-  return new Request(`https://worldmonitor.app${pathname}`, { headers });
-}
-
 function makeEntitlements(tier: number, planKey = "free") {
   return {
     planKey,
@@ -80,14 +73,12 @@ describe("gateway entitlement check", () => {
   });
 
   test("checkEntitlement returns null for ungated endpoint", async () => {
-    const req = makeRequest("/api/seismology/v1/list-earthquakes");
-    const result = await checkEntitlement(req, "/api/seismology/v1/list-earthquakes", {});
+    const result = await checkEntitlement(null, "/api/seismology/v1/list-earthquakes", {});
     expect(result).toBeNull();
   });
 
-  test("checkEntitlement returns 403 when no userId in request (fail-closed)", async () => {
-    const req = makeRequest("/api/market/v1/analyze-stock");
-    const result = await checkEntitlement(req, "/api/market/v1/analyze-stock", {});
+  test("checkEntitlement returns 403 when no resolved userId is provided (fail-closed)", async () => {
+    const result = await checkEntitlement(null, "/api/market/v1/analyze-stock", {});
     expect(result).not.toBeNull();
     expect(result!.status).toBe(403);
 
@@ -98,8 +89,7 @@ describe("gateway entitlement check", () => {
 
   test("checkEntitlement returns 403 when getEntitlements returns null (fail-closed)", async () => {
     // getCachedJson returns null by default (no Redis data, no Convex URL) -> null entitlements
-    const req = makeRequest("/api/market/v1/analyze-stock", { "x-user-id": "test-user" });
-    const result = await checkEntitlement(req, "/api/market/v1/analyze-stock", {});
+    const result = await checkEntitlement("test-user", "/api/market/v1/analyze-stock", {});
     expect(result).not.toBeNull();
     expect(result!.status).toBe(403);
 
@@ -111,8 +101,7 @@ describe("gateway entitlement check", () => {
   test("checkEntitlement returns 403 for insufficient tier", async () => {
     vi.mocked(getCachedJson).mockResolvedValueOnce(makeEntitlements(0));
 
-    const req = makeRequest("/api/market/v1/analyze-stock", { "x-user-id": "test-user" });
-    const result = await checkEntitlement(req, "/api/market/v1/analyze-stock", {});
+    const result = await checkEntitlement("test-user", "/api/market/v1/analyze-stock", {});
 
     expect(result).not.toBeNull();
     expect(result!.status).toBe(403);
@@ -129,17 +118,24 @@ describe("gateway entitlement check", () => {
     // analysis is marketed as a Pro feature and must accept tier >= 1.
     vi.mocked(getCachedJson).mockResolvedValueOnce(makeEntitlements(1, "pro_monthly"));
 
-    const req = makeRequest("/api/market/v1/analyze-stock", { "x-user-id": "test-user" });
-    const result = await checkEntitlement(req, "/api/market/v1/analyze-stock", {});
+    const result = await checkEntitlement("test-user", "/api/market/v1/analyze-stock", {});
     expect(result).toBeNull();
   });
 
   test("checkEntitlement returns null for sufficient tier", async () => {
     vi.mocked(getCachedJson).mockResolvedValueOnce(makeEntitlements(2, "api_starter"));
 
-    const req = makeRequest("/api/market/v1/analyze-stock", { "x-user-id": "test-user" });
-    const result = await checkEntitlement(req, "/api/market/v1/analyze-stock", {});
+    const result = await checkEntitlement("test-user", "/api/market/v1/analyze-stock", {});
     expect(result).toBeNull();
+  });
+
+  test("checkEntitlement ignores spoofable request headers and uses explicit userId contract", async () => {
+    vi.mocked(getCachedJson).mockResolvedValueOnce(makeEntitlements(1, "pro_monthly"));
+
+    const result = await checkEntitlement("trusted-user", "/api/market/v1/analyze-stock", {});
+
+    expect(result).toBeNull();
+    expect(getCachedJson).toHaveBeenLastCalledWith("entitlements:test:trusted-user", true);
   });
 
   test("reviewer round-2 P2-cache: legacy cache entry without mcpAccess is treated as stale and falls through to Convex", async () => {
@@ -177,8 +173,7 @@ describe("gateway entitlement check", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     try {
-      const req = makeRequest("/api/market/v1/analyze-stock", { "x-user-id": "test-user" });
-      const result = await checkEntitlement(req, "/api/market/v1/analyze-stock", {});
+      const result = await checkEntitlement("test-user", "/api/market/v1/analyze-stock", {});
 
       // Expect: cache rejected as stale → Convex round-trip → tier-1 row
       // with mcpAccess: true → checkEntitlement passes (returns null).
@@ -200,8 +195,7 @@ describe("gateway entitlement check", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     try {
-      const req = makeRequest("/api/market/v1/analyze-stock", { "x-user-id": "test-user" });
-      const result = await checkEntitlement(req, "/api/market/v1/analyze-stock", {});
+      const result = await checkEntitlement("test-user", "/api/market/v1/analyze-stock", {});
 
       expect(result).toBeNull();
       expect(fetchMock).toHaveBeenCalledTimes(0); // cache hit, no Convex call
@@ -227,8 +221,7 @@ describe("gateway entitlement check", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     try {
-      const req = makeRequest("/api/market/v1/analyze-stock", { "x-user-id": "test-user" });
-      const result = await checkEntitlement(req, "/api/market/v1/analyze-stock", {});
+      const result = await checkEntitlement("test-user", "/api/market/v1/analyze-stock", {});
       expect(result).toBeNull();
       expect(fetchMock).toHaveBeenCalledWith(
         "https://example-deployment.convex.site/api/internal-entitlements",

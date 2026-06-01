@@ -754,7 +754,7 @@ if (hasPrevData && prevTooRecent) {
   console.warn(`  [WoW] Skipping WoW — previous snapshot is only ${Math.round(prevAge / 3600000)}h old (need 144h+)`);
 }
 
-let wowAvailable = hasPrevData && !prevTooRecent;
+const wowAvailable = hasPrevData && !prevTooRecent;
 
 if (wowAvailable) {
   const prevMap = new Map(prevSnapshot.countries.map(c => [c.code, c]));

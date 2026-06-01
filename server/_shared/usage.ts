@@ -61,6 +61,7 @@ export type RequestReason =
   | 'ok'
   | 'origin_403'
   | 'rate_limit_429'
+  | 'rate_limit_degraded'
   | 'preflight'
   | 'auth_401'
   | 'auth_403'

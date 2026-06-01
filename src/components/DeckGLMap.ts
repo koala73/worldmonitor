@@ -148,6 +148,8 @@ import { isAllowedPreviewUrl } from '@/utils/imagery-preview';
 import { pinWebcam, isPinned } from '@/services/webcams/pinned-store';
 import type { WebcamEntry, WebcamCluster } from '@/generated/client/worldmonitor/webcam/v1/service_client';
 import { fetchWebcamImage } from '@/services/webcams';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 export type TimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
 export type DeckMapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
@@ -840,9 +842,9 @@ export class DeckGLMap {
 
     const attribution = document.createElement('div');
     attribution.className = 'map-attribution';
-    attribution.innerHTML = isHappyVariant
+    setTrustedHtml(attribution, trustedHtml(isHappyVariant
       ? '© <a href="https://carto.com/attributions" target="_blank" rel="noopener">CARTO</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>'
-      : '© <a href="https://protomaps.com" target="_blank" rel="noopener">Protomaps</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>';
+      : '© <a href="https://protomaps.com" target="_blank" rel="noopener">Protomaps</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>', "legacy direct innerHTML migration"));
     wrapper.appendChild(attribution);
 
     const legend = document.createElement('div');
@@ -889,7 +891,7 @@ export class DeckGLMap {
     if (!isHappyVariant && typeof primaryStyle === 'string' && !primaryStyle.includes('pmtiles')) {
       this.usedFallbackStyle = true;
       const attr = this.container.querySelector('.map-attribution');
-      if (attr) attr.innerHTML = '© <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>';
+      if (attr) setTrustedHtml(attr, trustedHtml('© <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>', "legacy direct innerHTML migration"));
     }
 
     const basemapEl = document.getElementById('deckgl-basemap');
@@ -920,7 +922,7 @@ export class DeckGLMap {
       const fallback = isLightMapTheme(initialMapTheme) ? FALLBACK_LIGHT_STYLE : FALLBACK_DARK_STYLE;
       console.warn(`[DeckGLMap] Primary basemap failed, recreating with fallback: ${fallback}`);
       const attr = this.container.querySelector('.map-attribution');
-      if (attr) attr.innerHTML = '© <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>';
+      if (attr) setTrustedHtml(attr, trustedHtml('© <a href="https://openfreemap.org" target="_blank" rel="noopener">OpenFreeMap</a> © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>', "legacy direct innerHTML migration"));
       this.maplibreMap?.remove();
       const fallbackEl = document.getElementById('deckgl-basemap');
       if (!fallbackEl) return;
@@ -4995,7 +4997,7 @@ export class DeckGLMap {
   private createControls(): void {
     const controls = document.createElement('div');
     controls.className = 'map-controls deckgl-controls';
-    controls.innerHTML = `
+    setTrustedHtml(controls, trustedHtml(`
       <div class="zoom-controls">
         <button class="map-btn zoom-in" title="${t('components.deckgl.zoomIn')}">+</button>
         <button class="map-btn zoom-out" title="${t('components.deckgl.zoomOut')}">-</button>
@@ -5013,7 +5015,7 @@ export class DeckGLMap {
           <option value="oceania">${t('components.deckgl.views.oceania')}</option>
         </select>
       </div>
-    `;
+    `, "legacy direct innerHTML migration"));
 
     this.container.appendChild(controls);
 
@@ -5043,7 +5045,7 @@ export class DeckGLMap {
   private createTimeSlider(): void {
     const slider = document.createElement('div');
     slider.className = 'time-slider deckgl-time-slider';
-    slider.innerHTML = `
+    setTrustedHtml(slider, trustedHtml(`
       <div class="time-options">
         <button class="time-btn ${this.state.timeRange === '1h' ? 'active' : ''}" data-range="1h">1h</button>
         <button class="time-btn ${this.state.timeRange === '6h' ? 'active' : ''}" data-range="6h">6h</button>
@@ -5052,7 +5054,7 @@ export class DeckGLMap {
         <button class="time-btn ${this.state.timeRange === '7d' ? 'active' : ''}" data-range="7d">7d</button>
         <button class="time-btn ${this.state.timeRange === 'all' ? 'active' : ''}" data-range="all">${t('components.deckgl.timeAll')}</button>
       </div>
-    `;
+    `, "legacy direct innerHTML migration"));
 
     this.container.appendChild(slider);
 
@@ -5086,7 +5088,7 @@ export class DeckGLMap {
       premium: def.premium,
     }));
 
-    toggles.innerHTML = `
+    setTrustedHtml(toggles, trustedHtml(`
       <div class="toggle-header">
         <span>${t('components.deckgl.layersTitle')}</span>
         <button class="layer-help-btn" title="${t('components.deckgl.layerGuide')}">?</button>
@@ -5105,7 +5107,7 @@ export class DeckGLMap {
           </label>`;
         }).join('')}
       </div>
-    `;
+    `, "legacy direct innerHTML migration"));
 
     const authorBadge = document.createElement('div');
     authorBadge.className = 'map-author-badge';
@@ -5202,7 +5204,7 @@ export class DeckGLMap {
     collapseBtn?.addEventListener('click', () => {
       toggleList?.classList.toggle('collapsed');
       if (searchEl) searchEl.style.display = toggleList?.classList.contains('collapsed') ? 'none' : '';
-      if (collapseBtn) collapseBtn.innerHTML = toggleList?.classList.contains('collapsed') ? '&#9654;' : '&#9660;';
+      if (collapseBtn) setTrustedHtml(collapseBtn, trustedHtml(toggleList?.classList.contains('collapsed') ? '&#9654;' : '&#9660;', "legacy direct innerHTML migration"));
     });
   }
 
@@ -5338,11 +5340,11 @@ export class DeckGLMap {
       </div>
     `;
 
-    popup.innerHTML = SITE_VARIANT === 'tech'
+    setTrustedHtml(popup, trustedHtml(SITE_VARIANT === 'tech'
       ? techHelpContent
       : SITE_VARIANT === 'finance'
         ? financeHelpContent
-        : fullHelpContent;
+        : fullHelpContent, "legacy direct innerHTML migration"));
 
     popup.querySelector('.layer-help-close')?.addEventListener('click', () => popup.remove());
 
@@ -5454,17 +5456,17 @@ export class DeckGLMap {
               ...resilienceLegendItems,
             ];
 
-    legend.innerHTML = `
+    setTrustedHtml(legend, trustedHtml(`
       <span class="legend-label-title">${t('components.deckgl.legend.title')}</span>
       ${legendItems.map(({ shape, label, layerKey }) => `<span class="legend-item" data-layer="${layerKey}">${shape}<span class="legend-label">${label}</span></span>`).join('')}
-    `;
+    `, "legacy direct innerHTML migration"));
 
     // CII choropleth gradient legend (shown when layer is active)
     const ciiLegend = document.createElement('div');
     ciiLegend.className = 'cii-choropleth-legend';
     ciiLegend.id = 'ciiChoroplethLegend';
     ciiLegend.style.display = this.state.layers.ciiChoropleth ? 'block' : 'none';
-    ciiLegend.innerHTML = `
+    setTrustedHtml(ciiLegend, trustedHtml(`
       <span class="legend-label-title" style="font-size:9px;letter-spacing:0.5px;">CII SCALE</span>
       <div style="display:flex;align-items:center;gap:2px;margin-top:2px;">
         <div style="width:100%;height:8px;border-radius:3px;background:linear-gradient(to right,#28b33e,#dcc030,#e87425,#dc2626,#7f1d1d);"></div>
@@ -5472,7 +5474,7 @@ export class DeckGLMap {
       <div style="display:flex;justify-content:space-between;font-size:8px;opacity:0.7;margin-top:1px;">
         <span>0</span><span>31</span><span>51</span><span>66</span><span>81</span><span>100</span>
       </div>
-    `;
+    `, "legacy direct innerHTML migration"));
     legend.appendChild(ciiLegend);
 
     this.container.appendChild(legend);
@@ -7398,6 +7400,6 @@ export class DeckGLMap {
     this.maplibreMap?.getCanvas().removeEventListener('contextmenu', this.handleContextMenu);
     this.maplibreMap?.remove();
     this.maplibreMap = null;
-    this.container.innerHTML = '';
+    setTrustedHtml(this.container, trustedHtml('', "legacy direct innerHTML migration"));
   }
 }

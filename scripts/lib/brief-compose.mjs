@@ -230,6 +230,104 @@ export function composeBriefForRule(rule, insights, { nowMs = Date.now() } = {})
   });
 }
 
+// ── Followed-country soft bias ──────────────────────────────────────────────
+
+// Nominal multiplicative uplift the plan specifies (1.2–1.3×; midpoint
+// 1.25). Exposed as a constant so U11's telemetry-driven tuning has a
+// stable handle, and so the test suite can lock the headline figure
+// against accidental regressions in adjacent code. Env-tunable via
+// FOLLOWED_BIAS_MULTIPLIER for offline experiments — any non-finite
+// or out-of-band value falls back to 1.25.
+//
+// IMPLEMENTATION NOTE: in practice the digest pool comes to us as an
+// already-ranked LIST (no continuous relevance scalar), so a literal
+// `score *= 1.25` on order-rank either does nothing (for adjacent
+// pairs) or does too much (compounds across many positions). The
+// behavior the plan actually wants — "followed-country stories
+// cluster ahead of non-followed within their severity lane, preserving
+// original order within each subgroup, with critical news immune" — is
+// a stable tier sort: severityLane > isFollowed > originalIndex. The
+// multiplier constant remains exported so U11 can correlate the tune
+// knob with engagement lift even though the on-list mechanism uses
+// the tier-sort form.
+function readFollowedBiasMultiplier() {
+  const raw = process.env.FOLLOWED_BIAS_MULTIPLIER;
+  if (raw == null || raw === '') return 1.25;
+  const n = Number.parseFloat(raw);
+  if (!Number.isFinite(n) || n < 1 || n > 2) return 1.25;
+  return n;
+}
+export const FOLLOWED_BIAS_MULTIPLIER = readFollowedBiasMultiplier();
+
+// Severity priority lane. Critical stories MUST surface in the top N
+// regardless of any user-side bias — this is the R10 hard contract
+// ("soft bias, NOT a hard filter" in both directions: the bias never
+// suppresses critical news, AND it never re-orders across severity
+// lanes). Lane priority is encoded as the most-significant sort key
+// so a non-followed critical thread always outranks a followed non-
+// critical thread.
+const SEVERITY_LANE_PRIORITY = {
+  critical: 4,
+  high: 3,
+  moderate: 2, // upstream alias — same lane as 'medium'
+  medium: 2,
+  low: 1,
+};
+
+function severityLaneOf(threatLevel) {
+  const sev = typeof threatLevel === 'string' ? threatLevel.toLowerCase() : '';
+  return SEVERITY_LANE_PRIORITY[sev] ?? 0;
+}
+
+/**
+ * Stable rerank that lifts followed-country stories within their
+ * severity lane. Critical-severity stories stay critical-first;
+ * non-followed criticals always outrank followed non-criticals
+ * (memory: R10 hard contract — bias is soft, never elevates across
+ * severity boundaries).
+ *
+ * Composite sort key (descending): severityLane, followedFlag,
+ * inverse-originalIndex. Stable on ties so digest input order is
+ * preserved when nothing in the watchlist matches.
+ *
+ * Pure helper — does not mutate the input. Returns a NEW array; or
+ * the original ref unchanged on the cheap no-op paths so callers can
+ * skip allocation when the watchlist is empty.
+ *
+ * @template {{ countryCode?: unknown, threatLevel?: unknown }} T
+ * @param {T[]} stories
+ * @param {Set<string>} followedSet  Uppercased ISO-2 codes.
+ * @returns {T[]}
+ */
+export function reorderForFollowedBias(stories, followedSet) {
+  if (!Array.isArray(stories) || stories.length === 0) return stories;
+  if (!followedSet || followedSet.size === 0) return stories;
+  // Cheap pre-check: if zero stories match the watchlist, bias is a
+  // no-op — returning the input ref preserves the rare-case
+  // perf win AND avoids reordering by severity lane in the
+  // no-match case (which the digest cron's input order doesn't
+  // guarantee — sort would silently re-sort even though the bias
+  // contributed nothing). Behavior contract: bias only re-orders
+  // when it has something to lift.
+  let anyMatch = false;
+  const annotated = stories.map((story, originalIndex) => {
+    const lane = severityLaneOf(story?.threatLevel);
+    const country = typeof story?.countryCode === 'string'
+      ? story.countryCode.toUpperCase()
+      : '';
+    const followed = country.length > 0 && followedSet.has(country) ? 1 : 0;
+    if (followed === 1) anyMatch = true;
+    return { story, originalIndex, lane, followed };
+  });
+  if (!anyMatch) return stories;
+  annotated.sort((a, b) => {
+    if (a.lane !== b.lane) return b.lane - a.lane;       // critical > high > med > low
+    if (a.followed !== b.followed) return b.followed - a.followed; // followed first
+    return a.originalIndex - b.originalIndex;             // stable on ties
+  });
+  return annotated.map((a) => a.story);
+}
+
 // ── Compose from digest-accumulator stories (the live path) ─────────────────
 
 // RSS titles routinely end with " - <Publisher>" / " | <Publisher>" /
@@ -667,6 +765,13 @@ function digestStoryToUpstreamTopStory(s) {
     primaryLink: typeof s?.link === 'string' ? s.link : undefined,
     threatLevel: s?.severity,
     importanceScore: Number.isFinite(Number(s?.currentScore)) ? Number(s.currentScore) : undefined,
+    // Transient coherence signal from story:track:v1. Not written into
+    // BriefStory; shared/brief-filter.js consumes it before envelope
+    // assembly to keep an entity-corroborated flashpoint-diplomacy lead
+    // aligned with the first rendered card when the LLM ranked it first.
+    entityCorroborationCount: Number.isFinite(Number(s?.entityCorroborationCount))
+      ? Number(s.entityCorroborationCount)
+      : 0,
     // `category` IS carried on story:track:v1 (persisted by
     // buildStoryTrackHsetFields, passed through buildDigest's stories.push).
     // Pre-stamp residue rows missing the field fall back to 'General' via
@@ -730,6 +835,7 @@ function digestStoryToUpstreamTopStory(s) {
  * @param {{
  *   nowMs?: number,
  *   onDrop?: import('../../shared/brief-filter.js').DropMetricsFn,
+ *   onOrder?: import('../../shared/brief-filter.js').OrderMetricsFn,
  *   synthesis?: {
  *     lead?: string,
  *     threads?: Array<{ tag: string, teaser: string }>,
@@ -739,17 +845,28 @@ function digestStoryToUpstreamTopStory(s) {
  *     publicSignals?: string[],
  *     publicThreads?: Array<{ tag: string, teaser: string }>,
  *   },
+ *   followedCountries?: string[],
  * }} [opts]
  *   `onDrop` is forwarded to filterTopStories so the seeder can
  *   aggregate per-user filter-drop counts without this module knowing
  *   how they are reported.
+ *   `onOrder` is forwarded the same way for aggregate-only ordering
+ *   telemetry; the callback receives no raw headlines.
  *   `synthesis` (when provided) substitutes envelope.digest.lead /
  *   threads / signals / publicLead with the canonical synthesis from
  *   the orchestration layer. `synthesis.rankedStoryHashes` is passed to
  *   the filter as a tie-breaker after severity/topic-cluster ordering,
  *   before applying the cap.
+ *   `followedCountries` (PR C / U10) clusters matching stories ahead
+ *   of non-followed stories within the same severity lane while
+ *   preserving original order inside each subgroup. Critical-severity
+ *   stories always surface regardless of bias (R10 hard contract).
+ *   Caller is expected to already have applied any free-tier clamp (memory:
+ *   `paywalled-feature-needs-three-layer-entitlement-gate`).
+ *   When `synthesis.rankedStoryHashes` is supplied, that LLM-driven
+ *   editorial ranking takes priority over the followed-country bias.
  */
-export function composeBriefFromDigestStories(rule, digestStories, insightsNumbers, { nowMs = Date.now(), onDrop, synthesis } = {}) {
+export function composeBriefFromDigestStories(rule, digestStories, insightsNumbers, { nowMs = Date.now(), onDrop, onOrder, synthesis, followedCountries } = {}) {
   if (!Array.isArray(digestStories) || digestStories.length === 0) return null;
   // Default to 'high' (NOT 'all') for undefined sensitivity, aligning
   // with buildDigest at scripts/seed-digest-notifications.mjs:392 and
@@ -763,11 +880,28 @@ export function composeBriefFromDigestStories(rule, digestStories, insightsNumbe
   const sensitivity = rule.sensitivity ?? 'high';
   const tz = rule.digestTimezone ?? 'UTC';
   const upstreamLike = digestStories.map(digestStoryToUpstreamTopStory);
+
+  // PR C / U10: lift followed-country stories within their severity
+  // lane BEFORE filterTopStories runs its rankedStoryHashes sort. When
+  // synthesis.rankedStoryHashes is supplied, that LLM editorial
+  // ranking wins (filterTopStories' applyRankedOrder runs after this
+  // and re-orders by hash); when absent, the followed-country bias
+  // sets the input order. Critical-severity stories always sort first
+  // — the SEVERITY_LANE_MULTIPLIER spread (1_000_000 vs 1_000) makes
+  // it impossible for any FOLLOWED_BIAS_MULTIPLIER inside [1, 2] to
+  // promote a non-critical story over a critical one (R10 hard
+  // contract: bias is soft, never displaces critical news).
+  const followedSet = Array.isArray(followedCountries) && followedCountries.length > 0
+    ? new Set(followedCountries.filter((c) => typeof c === 'string').map((c) => c.toUpperCase()))
+    : null;
+  const orderedUpstream = followedSet ? reorderForFollowedBias(upstreamLike, followedSet) : upstreamLike;
+
   const stories = filterTopStories({
-    stories: upstreamLike,
+    stories: orderedUpstream,
     sensitivity,
     maxStories: MAX_STORIES_PER_USER,
     onDrop,
+    onOrder,
     rankedStoryHashes: synthesis?.rankedStoryHashes,
   });
   if (stories.length === 0) return null;

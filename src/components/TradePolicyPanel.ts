@@ -10,7 +10,7 @@ import type {
   EffectiveTariffRate,
 } from '@/services/trade';
 import { t } from '@/services/i18n';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { isFeatureAvailable } from '@/services/runtime-config';
 import { isDesktopRuntime } from '@/services/runtime';
 
@@ -80,7 +80,7 @@ export class TradePolicyPanel extends Panel {
     const hasComtrade = this.comtradeData && this.comtradeData.flows?.length > 0;
 
     if (!wtoAvailable && !hasRevenue && !hasComtrade) {
-      this.setContent(`<div class="economic-empty">${t('components.tradePolicy.apiKeyMissing')}</div>`);
+      this.setSafeContent(unsafeRawHtml(`<div class="economic-empty">${t('components.tradePolicy.apiKeyMissing')}</div>`, 'legacy Panel.setContent() migration'));
       return;
     }
 
@@ -148,14 +148,14 @@ export class TradePolicyPanel extends Panel {
       ? `${t('components.tradePolicy.sourceWto')} / ${this.tariffsData.effectiveTariffRate.sourceName}`
       : t('components.tradePolicy.sourceWto');
 
-    this.setContent(`
+    this.setSafeContent(unsafeRawHtml(`
       ${tabsHtml}
       ${unavailableBanner}
       <div class="economic-content">${contentHtml}</div>
       <div class="economic-footer">
         <span class="economic-source">${escapeHtml(source)}</span>
       </div>
-    `);
+    `, 'legacy Panel.setContent() migration'));
 
   }
 

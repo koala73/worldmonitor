@@ -2,7 +2,7 @@ import type { MarketServiceClient } from '@/generated/client/worldmonitor/market
 import type { HyperliquidAssetFlow } from '@/generated/client/worldmonitor/market/v1/service_client';
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { getHydratedData } from '@/services/bootstrap';
 
 let _client: MarketServiceClient | null = null;
@@ -256,7 +256,7 @@ export class PositioningPanel extends Panel {
     if (this._flow.unavailable) {
       // Empty snapshots on fresh deploy / cold seed are normal warmup, not errors.
       // Show guidance that samples populate over the next few minutes.
-      this.setContent(`<div class="pos-panel"><div class="pos-warmup">${escapeHtml(t('components.positioning247.warmup'))}</div></div>`);
+      this.setSafeContent(unsafeRawHtml(`<div class="pos-panel"><div class="pos-warmup">${escapeHtml(t('components.positioning247.warmup'))}</div></div>`, 'legacy Panel.setContent() migration'));
       return;
     }
 
@@ -272,6 +272,6 @@ export class PositioningPanel extends Panel {
 
     sections.push(`<div class="pos-footer">${escapeHtml(t('components.positioning247.footer'))}</div>`);
 
-    this.setContent(`<div class="pos-panel">${sections.join('')}</div>`);
+    this.setSafeContent(unsafeRawHtml(`<div class="pos-panel">${sections.join('')}</div>`, 'legacy Panel.setContent() migration'));
   }
 }

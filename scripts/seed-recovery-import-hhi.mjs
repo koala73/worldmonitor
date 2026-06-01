@@ -7,6 +7,7 @@ loadEnvFile(import.meta.url);
 
 const require = createRequire(import.meta.url);
 const UN_TO_ISO2 = require('./shared/un-to-iso2.json');
+const COMTRADE_REPORTER_OVERRIDES = require('./shared/comtrade-reporter-overrides.json');
 
 const CANONICAL_KEY = 'resilience:recovery:import-hhi:v1';
 // Separate checkpoint key so partial writes cannot overwrite the canonical
@@ -16,11 +17,11 @@ const CACHE_TTL = 90 * 24 * 3600;
 const CHECKPOINT_TTL = 45 * 24 * 3600;
 // Resume TTL must outlive the bundle-runner freshness gate (intervalMs * 0.8
 // ≈ 24 days for a 30-day interval), otherwise consecutive partial runs cannot
-// accumulate coverage: a run that passes validate() with >=80 countries
-// refreshes seed-meta, suppressing the next bundle run for ~24 days, by which
-// point a shorter resume window would have already expired. 45 days gives a
-// safe buffer across two bundle cycles. Comtrade annual data changes on a
-// yearly cadence, so 45-day-old HHI values are still representative.
+// accumulate coverage: a run that passes validate() refreshes seed-meta,
+// suppressing the next bundle run for ~24 days, by which point a shorter
+// resume window would have already expired. 45 days gives a safe buffer
+// across two bundle cycles. Comtrade annual data changes on a yearly cadence,
+// so 45-day-old HHI values are still representative.
 const RESUME_TTL_MS = 45 * 24 * 3600 * 1000;
 // Checkpoint cadence: write partial progress every N successful fetches so a
 // timeout or crash does not discard an entire run.
@@ -29,20 +30,109 @@ const CHECKPOINT_EVERY = 25;
 // the same so two overlapping cron invocations cannot both grab the lock.
 const LOCK_TTL_MS = 30 * 60 * 1000;
 
-// COMTRADE_API_KEYS is comma-separated; we rotate per request and also run
-// one fetch per key in parallel (bounded concurrency = key count).
+// COMTRADE_API_KEYS is comma-separated; each active worker owns one key. The
+// optional IMPORT_HHI_MAX_CONCURRENCY cap lets operators slow global request
+// pressure while IMPORT_HHI_PER_KEY_DELAY_MS controls each key's pacing.
 const COMTRADE_KEYS = (process.env.COMTRADE_API_KEYS || '').split(',').map(k => k.trim()).filter(Boolean);
 
 if (COMTRADE_KEYS.length === 0) {
   console.error('[seed] import-hhi: COMTRADE_API_KEYS is required. Set the env var (comma-separated keys) and retry.');
 }
 const COMTRADE_URL = 'https://comtradeapi.un.org/data/v1/get/C/A/HS';
-const PER_KEY_DELAY_MS = 600;
+const DEFAULT_PER_KEY_DELAY_MS = 1_500;
+const MAX_PER_KEY_DELAY_MS = 60_000;
+const MIN_429_RETRY_BACKOFF_MS = 5_000;
+const WATCH_REPORTERS = ['AE', 'RU', 'NO', 'CH'];
 
-// UN M49 codes mostly match UN Comtrade reporterCodes, except for India (699,
-// not 356) and Taiwan (490 "Other Asia, nes", not 158). Using M49 codes for
-// these silently returns count:0 from the Comtrade API.
-const COMTRADE_REPORTER_OVERRIDES = { IN: '699', TW: '490' };
+export function orderImportHhiReporterQueue(todo, watchReporters = WATCH_REPORTERS) {
+  const seen = new Set();
+  const ordered = [];
+  for (const iso2 of watchReporters) {
+    if (todo.includes(iso2) && !seen.has(iso2)) {
+      seen.add(iso2);
+      ordered.push(iso2);
+    }
+  }
+  for (const iso2 of todo) {
+    if (!seen.has(iso2)) {
+      seen.add(iso2);
+      ordered.push(iso2);
+    }
+  }
+  return ordered;
+}
+
+function readPositiveIntegerEnv(env, names, fallback, { min = 1, max = Number.MAX_SAFE_INTEGER } = {}) {
+  const candidates = Array.isArray(names) ? names : [names];
+  for (const name of candidates) {
+    const raw = env?.[name];
+    if (raw == null || String(raw).trim() === '') continue;
+    const parsed = Number(String(raw).trim());
+    if (!Number.isFinite(parsed)) continue;
+    // If an operator provided a numeric value, honor that variable and clamp it
+    // into the safe range instead of silently falling through to an alias or
+    // fallback. Non-numeric values still fall through so legacy aliases work.
+    const integer = Math.trunc(parsed);
+    return Math.min(Math.max(integer, min), max);
+  }
+  return fallback;
+}
+
+export function resolveImportHhiRuntimeConfig(env = process.env, keyCount = COMTRADE_KEYS.length) {
+  const safeKeyCount = Math.max(0, Math.trunc(Number(keyCount) || 0));
+  const perKeyDelayMs = readPositiveIntegerEnv(env, ['IMPORT_HHI_PER_KEY_DELAY_MS', 'PER_KEY_DELAY_MS'], DEFAULT_PER_KEY_DELAY_MS, {
+    min: 600,
+    max: MAX_PER_KEY_DELAY_MS,
+  });
+  const requestedConcurrency = readPositiveIntegerEnv(env, 'IMPORT_HHI_MAX_CONCURRENCY', safeKeyCount || 1, {
+    min: 1,
+    max: Math.max(1, safeKeyCount),
+  });
+  return {
+    perKeyDelayMs,
+    maxConcurrency: safeKeyCount === 0 ? 0 : Math.min(safeKeyCount, requestedConcurrency),
+  };
+}
+
+export function computeComtradeBackoffMs(status, attempt, perKeyDelayMs = PER_KEY_DELAY_MS) {
+  return status === 429
+    ? Math.max(perKeyDelayMs, MIN_429_RETRY_BACKOFF_MS, 2000 * attempt)
+    : 5000 * attempt;
+}
+
+export function isComtradeQuotaStatus(status) {
+  return status === 429 || status === 403;
+}
+
+export function formatWatchReporterMisses(missingIso2, outcomes = {}) {
+  return missingIso2.map((iso2) => {
+    const outcome = outcomes[iso2];
+    if (!outcome) return `${iso2}:not-fetched`;
+    if (outcome.error) return `${iso2}:error=${outcome.error}`;
+    const status = outcome.status ?? 'n/a';
+    const rows = outcome.rows ?? 'n/a';
+    const year = outcome.year ?? 'n/a';
+    const period = outcome.periodParam ?? 'n/a';
+    const message = outcome.errorMessage ? ` message=${outcome.errorMessage}` : '';
+    return `${iso2}:status=${status} rows=${rows} year=${year} period=${period}${message}`;
+  }).join(', ');
+}
+
+export function hasRateLimitedWatchReporter(missingIso2, outcomes = {}) {
+  return missingIso2.some(iso2 => isComtradeQuotaStatus(outcomes[iso2]?.status));
+}
+
+const IMPORT_HHI_RUNTIME_CONFIG = resolveImportHhiRuntimeConfig();
+const PER_KEY_DELAY_MS = IMPORT_HHI_RUNTIME_CONFIG.perKeyDelayMs;
+const MAX_IMPORT_HHI_CONCURRENCY = IMPORT_HHI_RUNTIME_CONFIG.maxConcurrency;
+// 190 is nominal registry coverage, not an achievable Comtrade publish floor.
+// Keep the floor high enough to reject catastrophic partial runs while allowing
+// the realistic ~140-country import-HHI coverage band to publish.
+const MIN_IMPORT_HHI_PUBLISH_COUNTRY_COUNT = 135;
+
+// UN M49 codes mostly match UN Comtrade reporterCodes, except for known
+// non-standard reporters listed in scripts/shared/comtrade-reporter-overrides.json.
+// Using M49 codes for these silently returns count:0 from the Comtrade API.
 const ISO2_TO_UN = Object.fromEntries(
   Object.entries(UN_TO_ISO2).map(([un, iso2]) => [iso2, un]),
 );
@@ -120,18 +210,54 @@ export function buildPeriodParam(nowYear = new Date().getFullYear()) {
   return years.join(',');
 }
 
+export function buildStalePeriodFallbackParam(nowYear = new Date().getFullYear()) {
+  const years = [];
+  for (let i = PERIOD_WINDOW_YEARS + 1; i <= PERIOD_WINDOW_YEARS * 2; i++) {
+    years.push(nowYear - i);
+  }
+  return years.join(',');
+}
+
+// Russia currently returns HTTP 200 with zero annual import rows for Y-1..Y-4
+// on the shaped TOTAL/C00/mot=0 query, but exposes usable 2018 rows. Keep this
+// as a seed-data fallback, not a scoring fallback: the persisted entry carries
+// year=2018 so freshness audits can see the stale source year.
+const STALE_PERIOD_FALLBACK_REPORTERS = new Set(['RU']);
+
+export function getImportHhiFallbackPeriodParam(iso2, nowYear = new Date().getFullYear()) {
+  return STALE_PERIOD_FALLBACK_REPORTERS.has(iso2)
+    ? buildStalePeriodFallbackParam(nowYear)
+    : null;
+}
+
+async function readComtradeErrorMessage(resp) {
+  try {
+    const body = await resp.clone().json();
+    const message = body?.error || body?.message || body?.statusMessage;
+    return typeof message === 'string' ? message.slice(0, 180) : '';
+  } catch {
+    return '';
+  }
+}
+
 // Verbose mode: gated by IMPORT_HHI_VERBOSE=1 in env. Logs per-country
 // HTTP status / row count / picked year. Diagnostic-only — keeps prod
 // runs quiet but lets the next tick after a flaky-country investigation
 // (2026-04-28 AE incident) capture exactly what shape Comtrade returns.
 const IMPORT_HHI_VERBOSE = process.env.IMPORT_HHI_VERBOSE === '1';
 
-export async function fetchImportsForReporter(reporterCode, apiKey) {
+export async function fetchImportsForReporter(reporterCode, apiKey, periodParam = buildPeriodParam()) {
   const url = new URL(COMTRADE_URL);
   url.searchParams.set('reporterCode', reporterCode);
   url.searchParams.set('flowCode', 'M');
   url.searchParams.set('cmdCode', 'TOTAL');
-  url.searchParams.set('period', buildPeriodParam());
+  url.searchParams.set('period', periodParam);
+  // Keep the response at country-total customs / total transport mode
+  // granularity. Without these filters, large reporters can return very large
+  // detail pages even for cmdCode=TOTAL, making the monthly bundle vulnerable
+  // to the 30-minute section timeout.
+  url.searchParams.set('customsCode', 'C00');
+  url.searchParams.set('motCode', '0');
   // Mirror seed-recovery-reexport-share.mjs (PR #3385): explicit
   // maxRecords cap so Comtrade doesn't apply its silent default
   // truncation. cmdCode=TOTAL with the 4y window typically returns
@@ -173,9 +299,10 @@ export async function fetchImportsForReporter(reporterCode, apiKey) {
     const isTransient = isTransientComtrade(resp.status);
     if (!isRateLimit && !isTransient) break;
     if (attempt === MAX_ATTEMPTS) break;
-    // 429 → 2s, 4s; transient 5xx → 5s, 10s. Backoff scales with
-    // attempt so later retries wait longer regardless of error type.
-    const backoffMs = isRateLimit ? 2000 * attempt : 5000 * attempt;
+    // 429 waits at least the configured per-key spacing so operator pacing
+    // changes affect both inter-reporter calls and immediate retry pressure.
+    // Transient 5xx keeps a shorter bounded retry budget.
+    const backoffMs = computeComtradeBackoffMs(resp.status, attempt);
     if (IMPORT_HHI_VERBOSE) {
       console.warn(`  [verbose] reporter=${reporterCode} attempt=${attempt}/${MAX_ATTEMPTS} status=${resp.status} backoff=${backoffMs}ms`);
     }
@@ -183,10 +310,12 @@ export async function fetchImportsForReporter(reporterCode, apiKey) {
   }
 
   if (!resp.ok) {
+    const errorMessage = await readComtradeErrorMessage(resp);
     if (IMPORT_HHI_VERBOSE) {
-      console.warn(`  [verbose] reporter=${reporterCode} FINAL status=${resp.status} — no records returned`);
+      const suffix = errorMessage ? ` (${errorMessage})` : '';
+      console.warn(`  [verbose] reporter=${reporterCode} FINAL status=${resp.status}${suffix} — no records returned`);
     }
-    return { records: [], year: null, status: resp.status };
+    return { records: [], year: null, status: resp.status, errorMessage };
   }
   const { rows, year } = parseRecords(await resp.json());
   if (IMPORT_HHI_VERBOSE) {
@@ -232,7 +361,9 @@ async function checkpoint(countries, progressRef) {
 // Bounded-concurrency worker: each worker owns one API key, loops pulling
 // reporters off a shared queue until empty. Concurrency == key count so we
 // never have two in-flight requests competing for the same key's rate limit.
-async function runWorker(apiKey, queue, countries, progressRef) {
+export async function runWorker(apiKey, queue, countries, progressRef, options = {}) {
+  const fetchForReporter = options.fetchImportsForReporter || fetchImportsForReporter;
+  const delay = options.sleep || sleep;
   while (queue.length > 0) {
     const iso2 = queue.shift();
     if (!iso2) break;
@@ -240,8 +371,26 @@ async function runWorker(apiKey, queue, countries, progressRef) {
     if (!unCode) { progressRef.skipped++; continue; }
 
     try {
-      const { records, year, status } = await fetchImportsForReporter(unCode, apiKey);
+      let periodParam = buildPeriodParam();
+      let { records, year, status, errorMessage } = await fetchForReporter(unCode, apiKey, periodParam);
+      const fallbackPeriodParam = records.length === 0 && status === 200
+        ? getImportHhiFallbackPeriodParam(iso2)
+        : null;
+      if (fallbackPeriodParam) {
+        await delay(PER_KEY_DELAY_MS);
+        ({ records, year, status, errorMessage } = await fetchForReporter(unCode, apiKey, fallbackPeriodParam));
+        periodParam = fallbackPeriodParam;
+      }
+      if (WATCH_REPORTERS.includes(iso2)) {
+        progressRef.watchOutcomes[iso2] = { status, rows: records.length, year, periodParam, errorMessage };
+      }
       if (records.length === 0) {
+        if (isComtradeQuotaStatus(status)) {
+          progressRef.rateLimited++;
+          if (progressRef.rateLimitedReporters.length < 20) {
+            progressRef.rateLimitedReporters.push(iso2);
+          }
+        }
         if (status && status !== 200) progressRef.errors++;
         progressRef.skipped++;
       } else {
@@ -271,12 +420,15 @@ async function runWorker(apiKey, queue, countries, progressRef) {
       }
     } catch (err) {
       console.warn(`  ${iso2}: fetch failed: ${err.message}`);
+      if (WATCH_REPORTERS.includes(iso2)) {
+        progressRef.watchOutcomes[iso2] = { error: err.message };
+      }
       progressRef.errors++;
       progressRef.skipped++;
     }
 
     // Small per-key delay to stay under Comtrade's per-key rate limit.
-    await sleep(PER_KEY_DELAY_MS);
+    await delay(PER_KEY_DELAY_MS);
   }
 }
 
@@ -308,14 +460,53 @@ async function fetchImportHhi() {
   }
 
   const todo = ALL_REPORTERS.filter(iso2 => !countries[iso2]);
-  console.log(`[seed] import-hhi: resuming with ${resumed} fresh entries, fetching ${todo.length} reporters (${COMTRADE_KEYS.length} key(s), concurrency=${COMTRADE_KEYS.length})`);
+  console.log(
+    `[seed] import-hhi: resuming with ${resumed} fresh entries, fetching ${todo.length} reporters ` +
+    `(${COMTRADE_KEYS.length} key(s), activeWorkers=${MAX_IMPORT_HHI_CONCURRENCY}, perKeyDelayMs=${PER_KEY_DELAY_MS})`,
+  );
 
-  const progressRef = { fetched: 0, skipped: 0, errors: 0 };
+  const progressRef = {
+    fetched: 0,
+    skipped: 0,
+    errors: 0,
+    rateLimited: 0,
+    rateLimitedReporters: [],
+    watchOutcomes: {},
+  };
   // Single shared queue — workers race to shift() so each reporter is fetched once.
-  const queue = [...todo];
-  const workers = COMTRADE_KEYS.map(key => runWorker(key, queue, countries, progressRef));
+  // Issue #3979 tracks AE/RU/NO/CH specifically, so missing watched reporters
+  // go first before generic registry backfill can consume the hourly key budget.
+  const queue = orderImportHhiReporterQueue(todo);
+  const prioritizedWatchReporters = queue.filter(iso2 => WATCH_REPORTERS.includes(iso2));
+  if (prioritizedWatchReporters.length > 0) {
+    console.log(`[seed] import-hhi: prioritized watched reporters first: ${prioritizedWatchReporters.join(',')}`);
+  }
+  const activeKeys = COMTRADE_KEYS.slice(0, MAX_IMPORT_HHI_CONCURRENCY);
+  const workers = activeKeys.map(key => runWorker(key, queue, countries, progressRef));
   await Promise.all(workers);
 
+  if (progressRef.rateLimited > 0) {
+    console.warn(
+      `[seed] import-hhi: ${progressRef.rateLimited} reporters ended in Comtrade quota/auth status ` +
+      `(samples=${progressRef.rateLimitedReporters.join(',') || 'n/a'}). ` +
+      `Increase COMTRADE_API_KEYS, wait for quota replenishment, or widen IMPORT_HHI_PER_KEY_DELAY_MS before changing scoring logic.`,
+    );
+  }
+  const missingWatchReporters = WATCH_REPORTERS.filter(iso2 => !countries[iso2]);
+  if (missingWatchReporters.length > 0) {
+    console.warn(
+      `[seed] import-hhi: watched reporters missing after run: ` +
+      formatWatchReporterMisses(missingWatchReporters, progressRef.watchOutcomes),
+    );
+    if (!hasRateLimitedWatchReporter(missingWatchReporters, progressRef.watchOutcomes)) {
+      console.warn(
+        `[seed] import-hhi: watched reporters missing without Comtrade quota/auth status; ` +
+        `inspect Comtrade zero-row availability/query shape before changing scoring logic.`,
+      );
+    }
+  } else {
+    console.log(`[seed] import-hhi: watched reporters present: ${WATCH_REPORTERS.join(',')}`);
+  }
   console.log(`[seed] import-hhi: ${progressRef.fetched} fetched, ${progressRef.skipped} skipped, ${progressRef.errors} errors, ${Object.keys(countries).length} total (incl. resumed)`);
   return { countries, seededAt: new Date().toISOString() };
 }
@@ -323,8 +514,9 @@ async function fetchImportHhi() {
 // Note: worker queue is shared mutably — simplest dispatcher. Each worker
 // shifts until empty; no coordination needed because Array.shift is atomic
 // in single-threaded Node.js.
-function validate(data) {
-  return typeof data?.countries === 'object' && Object.keys(data.countries).length >= 80;
+export function validate(data) {
+  return typeof data?.countries === 'object'
+    && Object.keys(data.countries).length >= MIN_IMPORT_HHI_PUBLISH_COUNTRY_COUNT;
 }
 
 export function declareRecords(data) {
@@ -341,7 +533,8 @@ if (process.argv[1]?.endsWith('seed-recovery-import-hhi.mjs')) {
   
     declareRecords,
     schemaVersion: 1,
-    maxStaleMin: 86400,
+    maxStaleMin: 50400,
+    emptyDataIsFailure: true,
   }).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);

@@ -1,5 +1,5 @@
 import { Panel } from './Panel';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import type { UcdpGeoEvent, UcdpEventType } from '@/types';
 import { t } from '@/services/i18n';
 
@@ -113,7 +113,7 @@ export class UcdpEventsPanel extends Panel {
       ? `<div class="panel-more">${t('components.ucdpEvents.moreNotShown', { count: filtered.length - 50 })}</div>`
       : '';
 
-    this.setContent(`
+    this.setSafeContent(unsafeRawHtml(`
       <div class="ucdp-panel-content">
         <div class="ucdp-header">
           <div class="panel-tabs">${tabsHtml}</div>
@@ -122,6 +122,6 @@ export class UcdpEventsPanel extends Panel {
         ${bodyHtml}
         ${moreHtml}
       </div>
-    `);
+    `, 'legacy Panel.setContent() migration'));
   }
 }

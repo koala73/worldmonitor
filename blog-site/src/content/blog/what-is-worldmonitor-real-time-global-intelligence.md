@@ -20,7 +20,7 @@ It's the kind of tool that used to be locked behind six-figure enterprise contra
 
 ## What You See When You Open World Monitor
 
-The first thing you notice is the globe. A 3D interactive map powered by globe.gl and Three.js, dotted with live data points: conflict zones pulsing red, military bases marked by operator, undersea cables tracing the ocean floor, and ADS-B aircraft positions updating in real time.
+The first thing you notice is the globe. A 3D interactive map powered by [globe.gl](https://globe.gl/) and [Three.js](https://threejs.org/), dotted with live data points: conflict zones pulsing red, military bases marked by operator, undersea cables tracing the ocean floor, and ADS-B aircraft positions updating in real time.
 
 On the left, a panel system lets you pull up any combination of 45+ data layers:
 
@@ -28,8 +28,8 @@ On the left, a panel system lets you pull up any combination of 45+ data layers:
 - **Military:** 210+ military bases, live flight tracking, naval vessel positions merged with USNI fleet reports, GPS jamming detection zones
 - **Infrastructure:** Nuclear facilities, AI datacenters (111 mapped), undersea cables, pipelines, strategic ports (83), and airports (107)
 - **Financial:** 92 stock exchanges, 13 central bank policy trackers, commodity prices, Fear & Greed Index, Bitcoin ETF flows, stablecoin peg monitoring
-- **Natural Disasters:** USGS earthquakes (M4.5+), NASA satellite fire detection, volcanic activity, flood alerts
-- **Cyber Threats:** Feodo Tracker botnet C2 servers, URLhaus malicious URLs, internet outage detection via Cloudflare Radar
+- **Natural Disasters:** [USGS](https://earthquake.usgs.gov/) earthquakes (M4.5+), [NASA satellite fire detection](https://firms.modaps.eosdis.nasa.gov/), volcanic activity, flood alerts
+- **Cyber Threats:** [Feodo Tracker](https://feodotracker.abuse.ch/) botnet C2 servers, [URLhaus](https://urlhaus.abuse.ch/) malicious URLs, internet outage detection via [Cloudflare Radar](https://radar.cloudflare.com/)
 
 Every data point is sourced from public, verifiable feeds: 435+ RSS sources, government APIs, satellite data, and open maritime/aviation transponders.
 

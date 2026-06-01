@@ -1,6 +1,6 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { getHydratedData } from '@/services/bootstrap';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { EconomicServiceClient } from '@/generated/client/worldmonitor/economic/v1/service_client';
@@ -151,6 +151,6 @@ export class FaoFoodPriceIndexPanel extends Panel {
     const legend = `<div class="fao-legend">${buildLegend()}</div>`;
     const base = `<div class="fao-base-note">${escapeHtml(t('components.faoFoodPriceIndex.baseNote'))}</div>`;
 
-    this.setContent(`<div class="fao-food-price-index-panel">${headline}${chart}${legend}${base}</div>`);
+    this.setSafeContent(unsafeRawHtml(`<div class="fao-food-price-index-panel">${headline}${chart}${legend}${base}</div>`, 'legacy Panel.setContent() migration'));
   }
 }

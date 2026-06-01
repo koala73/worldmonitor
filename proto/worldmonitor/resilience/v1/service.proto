@@ -4,6 +4,7 @@ package worldmonitor.resilience.v1;
 
 import "sebuf/http/annotations.proto";
 import "worldmonitor/resilience/v1/get_resilience_ranking.proto";
+import "worldmonitor/resilience/v1/get_resilience_runtime_manifest.proto";
 import "worldmonitor/resilience/v1/get_resilience_score.proto";
 
 service ResilienceService {
@@ -15,5 +16,9 @@ service ResilienceService {
 
   rpc GetResilienceRanking(GetResilienceRankingRequest) returns (GetResilienceRankingResponse) {
     option (sebuf.http.config) = {path: "/get-resilience-ranking", method: HTTP_METHOD_GET};
+  }
+
+  rpc GetResilienceRuntimeManifest(GetResilienceRuntimeManifestRequest) returns (GetResilienceRuntimeManifestResponse) {
+    option (sebuf.http.config) = {path: "/get-runtime-manifest", method: HTTP_METHOD_GET};
   }
 }

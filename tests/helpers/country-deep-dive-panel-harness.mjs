@@ -77,6 +77,7 @@ async function loadCountryDeepDivePanel() {
     ['sanitize-stub', `
       export function sanitizeUrl(value) { return value ?? ''; }
       export function escapeHtml(value) { return value ?? ''; }
+      export function safeHtmlToString(value) { return String(value ?? ''); }
     `],
     ['intel-brief-stub', `export function formatIntelBrief(value) { return value; }`],
     ['utils-stub', `

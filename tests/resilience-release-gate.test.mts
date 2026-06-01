@@ -55,7 +55,7 @@ describe('resilience release gate', () => {
     // widget maps 'source-failure' to a "Source down" label, which would
     // manufacture a false outage signal on every country for a deliberate
     // construct retirement. Allow-list keeps the zero-coverage placeholder
-    // check enforcing on the OTHER 19 dimensions.
+    // check enforcing on every non-allowlisted dimension.
     const RETIRED_DIMENSIONS = new Set(['fuelStockDays', 'reserveAdequacy']);
     // plan 2026-04-25-004 Phase 2: financialSystemExposure ships flag-gated
     // off by default (rollout pattern matches energy v2). With the flag

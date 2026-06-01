@@ -27,6 +27,7 @@ const crypto = require('crypto');
 const v8 = require('v8');
 const { WebSocketServer, WebSocket } = require('ws');
 const { parseProxyConfig, resolveProxyString } = require('./_proxy-utils.cjs');
+const { countryNameToIso2 } = require('./shared/country-name-to-iso2.cjs');
 const parseProxyUrl = parseProxyConfig;
 
 const httpsKeepAliveAgent = new https.Agent({ keepAlive: true, maxSockets: 6, timeout: 60_000 });
@@ -464,6 +465,10 @@ function notifySimpleHash(str) {
   let h = 0;
   for (let i = 0; i < str.length; i++) h = (Math.imul(31, h) + str.charCodeAt(i)) | 0;
   return Math.abs(h).toString(36);
+}
+
+function normalizeNotificationCountryCode(raw) {
+  return countryNameToIso2(raw) ?? undefined;
 }
 
 /**
@@ -1121,7 +1126,7 @@ async function orefFetchAlerts() {
         : '';
       publishNotificationEvent({
         eventType: 'oref_siren',
-        payload: { title: orefTitle + orefLocationSuffix, source: source === 'tzeva-adom' ? 'Tzeva Adom / Pikud HaOref' : 'OREF Pikud HaOref' },
+        payload: { title: orefTitle + orefLocationSuffix, source: source === 'tzeva-adom' ? 'Tzeva Adom / Pikud HaOref' : 'OREF Pikud HaOref', countryCode: 'IL' },
         severity: 'critical',
         variant: undefined,
       }).catch(e => console.warn('[Notify] OREF publish error:', e?.message));
@@ -1560,9 +1565,10 @@ async function seedUcdpEvents() {
     for (const e of newConflicts.slice(0, 2)) {
       ucdpPrevAlertedIds.add(e.id);
       const parties = e.sideA && e.sideB ? `${e.sideA.slice(0, 40)} vs ${e.sideB.slice(0, 40)}` : e.sideA || e.sideB || 'Unknown parties';
+      const countryCode = normalizeNotificationCountryCode(e.country);
       publishNotificationEvent({
         eventType: 'conflict_escalation',
-        payload: { title: `${e.country}: ${parties} — ${e.deathsBest} casualties`, source: 'UCDP' },
+        payload: { title: `${e.country}: ${parties} — ${e.deathsBest} casualties`, source: 'UCDP', ...(countryCode ? { countryCode } : {}) },
         severity: e.deathsBest >= 50 ? 'critical' : 'high',
         variant: undefined,
         dedupTtl: 86400,
@@ -2233,34 +2239,89 @@ const CRYPTO_PAPRIKA_MAP = _cryptoCfg.coinpaprika;
 const CRYPTO_SEED_TTL = 7200; // 2h — 1h buffer over 5min cron cadence (was 1h = 55min buffer)
 
 // Shared CoinPaprika tickers fetcher — direct first, PROXY_URL fallback.
-// Cached for 5 min so the 3 crypto seeders (crypto, stablecoins, token-panels)
-// that run in the same cycle don't triple-fetch the same 2000-item response.
-let _paprikaCached = null;
-let _paprikaCachedAt = 0;
+// Cached per ticker for 5 min so crypto, stablecoins, sectors, and token panels
+// that run in the same cycle can share overlap without fetching the full catalog.
+const _paprikaTickerCache = new Map();
 const _PAPRIKA_CACHE_MS = 5 * 60 * 1000;
-const _PAPRIKA_URL = 'https://api.coinpaprika.com/v1/tickers?quotes=USD';
+const _PAPRIKA_FETCH_CONCURRENCY = 4;
 
-async function _fetchCoinPaprikaTickers() {
-  if (_paprikaCached && Date.now() - _paprikaCachedAt < _PAPRIKA_CACHE_MS) return _paprikaCached;
-  // Try direct
-  let data = await cyberHttpGetJson(_PAPRIKA_URL, { Accept: 'application/json' }, 15000);
-  if (Array.isArray(data) && data.length > 0) { _paprikaCached = data; _paprikaCachedAt = Date.now(); return data; }
-  // Fallback via proxy
-  if (!PROXY_URL) throw new Error('CoinPaprika direct failed and no PROXY_URL configured');
+async function _fetchCoinPaprikaTickerById(id) {
+  const url = `https://api.coinpaprika.com/v1/tickers/${encodeURIComponent(id)}?quotes=USD`;
+  const direct = await cyberHttpGetJson(url, { Accept: 'application/json' }, 15000);
+  if (direct && typeof direct === 'object' && direct.id) return direct;
+
+  if (!PROXY_URL) throw new Error(`CoinPaprika ${id} direct failed and no PROXY_URL configured`);
   const proxy = { ...parseProxyUrl(PROXY_URL), tls: true };
-  const resp = await ytFetchViaProxy(_PAPRIKA_URL, proxy);
-  if (!resp?.ok) throw new Error(`CoinPaprika proxy HTTP ${resp?.status || 'unavailable'}`);
-  data = JSON.parse(resp.body);
-  if (!Array.isArray(data)) throw new Error('CoinPaprika proxy returned non-array');
-  _paprikaCached = data; _paprikaCachedAt = Date.now();
+  const resp = await ytFetchViaProxy(url, proxy);
+  if (!resp?.ok) throw new Error(`CoinPaprika ${id} proxy HTTP ${resp?.status || 'unavailable'}`);
+  const data = JSON.parse(resp.body);
+  if (!data || typeof data !== 'object' || !data.id) throw new Error(`CoinPaprika ${id} proxy returned invalid ticker`);
   return data;
 }
 
+async function _fetchCoinPaprikaTickersById(paprikaIds) {
+  const ids = [...new Set(paprikaIds.filter(Boolean))];
+  if (ids.length === 0) return [];
+
+  const now = Date.now();
+  const tickers = [];
+  const misses = [];
+  for (const id of ids) {
+    const cached = _paprikaTickerCache.get(id);
+    if (cached && now - cached.cachedAt < _PAPRIKA_CACHE_MS) {
+      tickers.push(cached.ticker);
+    } else {
+      misses.push(id);
+    }
+  }
+
+  const results = await allSettledWithConcurrency(misses, _PAPRIKA_FETCH_CONCURRENCY, async (id) => {
+    const ticker = await _fetchCoinPaprikaTickerById(id);
+    _paprikaTickerCache.set(id, { ticker, cachedAt: Date.now() });
+    return ticker;
+  });
+
+  const failures = [];
+  for (let i = 0; i < results.length; i += 1) {
+    const result = results[i];
+    if (result.status === 'fulfilled') {
+      tickers.push(result.value);
+    } else {
+      failures.push(result.reason);
+      console.warn(`[CoinPaprika] Skipping ${misses[i]}: ${result.reason?.message || result.reason}`);
+    }
+  }
+
+  if (tickers.length === 0 && failures.length > 0) {
+    throw new Error(`All ${failures.length} CoinPaprika ticker request(s) failed`);
+  }
+
+  return tickers;
+}
+
+async function allSettledWithConcurrency(items, concurrency, mapper) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  const workerCount = Math.min(Math.max(1, concurrency), items.length);
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex;
+      nextIndex += 1;
+      try {
+        results[index] = { status: 'fulfilled', value: await mapper(items[index], index) };
+      } catch (reason) {
+        results[index] = { status: 'rejected', reason };
+      }
+    }
+  }));
+  return results;
+}
+
 async function fetchCryptoCoinPaprika() {
-  const data = await _fetchCoinPaprikaTickers();
-  const paprikaIds = new Set(CRYPTO_IDS.map((id) => CRYPTO_PAPRIKA_MAP[id]).filter(Boolean));
+  const paprikaIds = CRYPTO_IDS.map((id) => CRYPTO_PAPRIKA_MAP[id]).filter(Boolean);
+  const data = await _fetchCoinPaprikaTickersById(paprikaIds);
   const reverseMap = Object.fromEntries(Object.entries(CRYPTO_PAPRIKA_MAP).map(([g, p]) => [p, g]));
-  return data.filter((t) => paprikaIds.has(t.id)).map((t) => ({
+  return data.map((t) => ({
     id: reverseMap[t.id] || t.id, current_price: t.quotes.USD.price,
     price_change_percentage_24h: t.quotes.USD.percent_change_24h,
     sparkline_in_7d: undefined, symbol: t.symbol.toLowerCase(), name: t.name,
@@ -2314,11 +2375,11 @@ const STABLECOIN_PAPRIKA_MAP = { tether: 'usdt-tether', 'usd-coin': 'usdc-usd-co
 const STABLECOIN_SEED_TTL = 7200; // 2h — 1h buffer over 5min cron cadence (was 1h = 55min buffer)
 
 async function fetchStablecoinCoinPaprika() {
-  const data = await _fetchCoinPaprikaTickers();
   const ids = STABLECOIN_IDS.split(',');
-  const paprikaIds = new Set(ids.map((id) => STABLECOIN_PAPRIKA_MAP[id]).filter(Boolean));
+  const paprikaIds = ids.map((id) => STABLECOIN_PAPRIKA_MAP[id]).filter(Boolean);
+  const data = await _fetchCoinPaprikaTickersById(paprikaIds);
   const reverseMap = Object.fromEntries(Object.entries(STABLECOIN_PAPRIKA_MAP).map(([g, p]) => [p, g]));
-  return data.filter((t) => paprikaIds.has(t.id)).map((t) => ({
+  return data.map((t) => ({
     id: reverseMap[t.id] || t.id, current_price: t.quotes.USD.price,
     price_change_percentage_24h: t.quotes.USD.percent_change_24h,
     price_change_percentage_7d_in_currency: t.quotes.USD.percent_change_7d,
@@ -2376,11 +2437,9 @@ async function seedCryptoSectors() {
   } catch (err) {
     console.warn(`[CryptoSectors] CoinGecko failed: ${err.message} — trying CoinPaprika`);
     try {
-      const paprika = await _fetchCoinPaprikaTickers();
-      data = paprika.filter((t) => {
-        const geckoId = Object.entries(CRYPTO_PAPRIKA_MAP).find(([, p]) => p === t.id)?.[0];
-        return geckoId && allIds.includes(geckoId);
-      }).map((t) => {
+      const paprikaIds = allIds.map((id) => CRYPTO_PAPRIKA_MAP[id]).filter(Boolean);
+      const paprika = await _fetchCoinPaprikaTickersById(paprikaIds);
+      data = paprika.map((t) => {
         const geckoId = Object.entries(CRYPTO_PAPRIKA_MAP).find(([, p]) => p === t.id)?.[0] || t.id;
         return { id: geckoId, price_change_percentage_24h: t.quotes?.USD?.percent_change_24h ?? 0 };
       });
@@ -2389,7 +2448,7 @@ async function seedCryptoSectors() {
   }
   const byId = new Map(data.map((c) => [c.id, c.price_change_percentage_24h]));
   const sectors = SECTORS_LIST.map((sector) => {
-    const changes = sector.tokens.map((id) => byId.get(id)).filter((v) => typeof v === 'number' && isFinite(v));
+    const changes = sector.tokens.map((id) => byId.get(id)).filter((v) => typeof v === 'number' && Number.isFinite(v));
     const change = changes.length > 0 ? changes.reduce((a, b) => a + b, 0) / changes.length : 0;
     return { id: sector.id, name: sector.name, change };
   });
@@ -2424,10 +2483,10 @@ function _mapTokens(ids, meta, byId) {
 }
 
 async function fetchTokenPanelsCoinPaprika(allIds) {
-  const data = await _fetchCoinPaprikaTickers();
-  const paprikaIds = new Set(allIds.map((id) => TOKEN_PANELS_PAPRIKA_MAP[id]).filter(Boolean));
+  const paprikaIds = allIds.map((id) => TOKEN_PANELS_PAPRIKA_MAP[id]).filter(Boolean);
+  const data = await _fetchCoinPaprikaTickersById(paprikaIds);
   const reverseMap = Object.fromEntries(Object.entries(TOKEN_PANELS_PAPRIKA_MAP).map(([g, p]) => [p, g]));
-  return data.filter((t) => paprikaIds.has(t.id)).map((t) => ({
+  return data.map((t) => ({
     id: reverseMap[t.id] || t.id,
     current_price: t.quotes.USD.price,
     price_change_percentage_24h: t.quotes.USD.percent_change_24h,
@@ -2860,9 +2919,10 @@ async function seedCyberThreats() {
       cyberPrevAlertedIds.add(t.indicator);
       const typeLabel = (t.type || 'threat').replace(/_/g, ' ');
       const familyTag = t.malwareFamily ? ` (${t.malwareFamily.slice(0, 30)})` : '';
+      const countryCode = normalizeNotificationCountryCode(t.country);
       publishNotificationEvent({
         eventType: 'cyber_threat',
-        payload: { title: `${typeLabel}: ${t.indicator?.slice(0, 50)}${familyTag}`, source: t.source || 'Cyber Intel' },
+        payload: { title: `${typeLabel}: ${t.indicator?.slice(0, 50)}${familyTag}`, source: t.source || 'Cyber Intel', ...(countryCode ? { countryCode } : {}) },
         severity: t.severity === 'critical' ? 'critical' : 'high',
         variant: undefined,
         dedupTtl: 43200,
@@ -2903,11 +2963,19 @@ const POSITIVE_EVENTS_RPC_KEY = 'positive-events:geo:v1';
 const POSITIVE_EVENTS_BOOTSTRAP_KEY = 'positive_events:geo-bootstrap:v1';
 const POSITIVE_EVENTS_MAX = 500;
 
+// Single-theme queries — v1 GKG accepts one theme tag per call.
+// http://data.gdeltproject.org/documentation/GKG-MASTER-THEMELIST.TXT
 const POSITIVE_QUERIES = [
-  '(breakthrough OR discovery OR "renewable energy")',
-  '(conservation OR "poverty decline" OR "humanitarian aid")',
-  '("good news" OR volunteer OR donation OR charity)',
+  'SOC_INNOVATION',
+  'EDUCATION',
+  'MEDICAL',
+  'TOURISM',
+  'WB_1765_CULTURE_HERITAGE_AND_SUSTAINABLE_TOURISM',
+  'PEACEKEEPING',
 ];
+
+// urltone threshold — keep only articles with urltone strictly above this value.
+const POSITIVE_TONE_THRESHOLD = 2;
 
 // Mirrors CATEGORY_KEYWORDS from src/services/positive-classifier.ts — keep in sync
 const POSITIVE_CATEGORY_KEYWORDS = [
@@ -2941,14 +3009,20 @@ function classifyPositiveName(name) {
   return 'humanity-kindness';
 }
 
-function fetchGdeltGeoPositive(query) {
+function gkgFeatureUrl(p) {
+  return p?.url || p?.source_url || p?.sourceUrl
+      || p?.document_url || p?.documentUrl
+      || p?.article_url || p?.articleUrl || null;
+}
+
+function fetchGdeltGeoPositive(query, seenUrlLocs) {
   return new Promise((resolve) => {
-    const params = new URLSearchParams({ query, maxrows: '500' });
+    const params = new URLSearchParams({ QUERY: query, MAXROWS: '500' });
     const req = https.get(`https://api.gdeltproject.org/api/v1/gkg_geojson?${params}`, {
       headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
       timeout: 15000,
     }, (resp) => {
-      if (resp.statusCode !== 200) { resp.resume(); return resolve([]); }
+      if (resp.statusCode !== 200) { resp.resume(); return resolve({ ok: false, events: [] }); }
       let body = '';
       resp.on('data', (chunk) => { body += chunk; });
       resp.on('end', () => {
@@ -2957,6 +3031,9 @@ function fetchGdeltGeoPositive(query) {
           const features = Array.isArray(data?.features) ? data.features : [];
           const locationMap = new Map();
           for (const f of features) {
+            // Tone gate — keep only positive-tone articles.
+            const tone = f.properties?.urltone;
+            if (typeof tone !== 'number' || tone <= POSITIVE_TONE_THRESHOLD) continue;
             const name = String(f.properties?.name || '').substring(0, 200);
             if (!name) continue;
             if (name.startsWith('ERROR:') || name.includes('unknown error')) continue;
@@ -2965,6 +3042,14 @@ function fetchGdeltGeoPositive(query) {
             const [lon, lat] = coords;
             if (!Number.isFinite(lat) || !Number.isFinite(lon) || lat < -90 || lat > 90 || lon < -180 || lon > 180) continue;
             const key = `${lat.toFixed(1)}:${lon.toFixed(1)}`;
+            // GKG v1 emits one feature per (article, location) pair, so an
+            // article mentioning N places contributes N features. Dedup key
+            // is (url, lat/lon bucket) so each (article × location) is counted
+            // once across all theme calls.
+            const url = gkgFeatureUrl(f.properties);
+            const dedupKey = url ? `${url}|${key}` : null;
+            if (dedupKey && seenUrlLocs.has(dedupKey)) continue;
+            if (dedupKey) seenUrlLocs.add(dedupKey);
             const existing = locationMap.get(key);
             if (existing) { existing.count++; }
             else { locationMap.set(key, { latitude: lat, longitude: lon, name, count: 1 }); }
@@ -2974,12 +3059,12 @@ function fetchGdeltGeoPositive(query) {
             if (loc.count < 3) continue;
             events.push({ latitude: loc.latitude, longitude: loc.longitude, name: loc.name, category: classifyPositiveName(loc.name), count: loc.count, timestamp: Date.now() });
           }
-          resolve(events);
-        } catch { resolve([]); }
+          resolve({ ok: true, events });
+        } catch { resolve({ ok: false, events: [] }); }
       });
     });
-    req.on('error', () => resolve([]));
-    req.on('timeout', () => { req.destroy(); resolve([]); });
+    req.on('error', () => resolve({ ok: false, events: [] }));
+    req.on('timeout', () => { req.destroy(); resolve({ ok: false, events: [] }); });
   });
 }
 
@@ -2994,13 +3079,18 @@ async function seedPositiveEvents() {
   try {
     const allEvents = [];
     const seenNames = new Set();
+    // Cross-call (article × location) dedup — same article tagged with
+    // multiple themes would otherwise double-count its location buckets.
+    const seenUrlLocs = new Set();
     let anyQuerySucceeded = false;
 
     for (let i = 0; i < POSITIVE_QUERIES.length; i++) {
       if (i > 0) await new Promise((r) => setTimeout(r, 5_500)); // GDELT rate limit: 1 req per 5s
       try {
-        const events = await fetchGdeltGeoPositive(POSITIVE_QUERIES[i]);
+        const result = await fetchGdeltGeoPositive(POSITIVE_QUERIES[i], seenUrlLocs);
+        if (!result?.ok) continue;
         anyQuerySucceeded = true;
+        const events = Array.isArray(result.events) ? result.events : [];
         for (const e of events) {
           if (!seenNames.has(e.name)) {
             seenNames.add(e.name);
@@ -3082,6 +3172,86 @@ const RELAY_TIER4_SOURCES = new Set(
 
 const RELAY_SCORE_WEIGHTS = { severity: 0.55, sourceTier: 0.2, corroboration: 0.15, recency: 0.1 };
 const RELAY_SEVERITY_SCORES = { critical: 100, high: 75, medium: 50, low: 25, info: 0 };
+const RELAY_DIPLOMACY_KEYWORDS = [
+  'ceasefire', 'truce', 'armistice', 'treaty', 'accord', 'pact', 'diplomatic',
+  'diplomacy', 'mediate', 'mediator', 'negotiation', 'negotiations', 'negotiate',
+  'normalization', 'normalisation',
+];
+const RELAY_FLASHPOINT_SCORING_KEYWORDS = [
+  'iran', 'tehran', 'russia', 'moscow', 'china', 'beijing', 'taiwan', 'ukraine', 'kyiv',
+  'north korea', 'pyongyang', 'israel', 'gaza', 'west bank', 'syria', 'damascus',
+  'yemen', 'hezbollah', 'hamas', 'kremlin', 'pentagon', 'nato', 'wagner',
+];
+const RELAY_DIPLOMACY_FLASHPOINT_PAIRS = [
+  ['iran', 'deal'],
+  ['iran', 'talks'],
+  ['iran', 'ceasefire'],
+  ['iran', 'treaty'],
+  ['iran', 'accord'],
+  ['iran', 'peace'],
+  ['israel', 'ceasefire'],
+  ['israel', 'truce'],
+  ['israel', 'accord'],
+  ['gaza', 'ceasefire'],
+  ['gaza', 'truce'],
+  ['ukraine', 'ceasefire'],
+  ['ukraine', 'talks'],
+  ['russia', 'talks'],
+  ['russia', 'treaty'],
+  ['hamas', 'truce'],
+  ['hezbollah', 'truce'],
+  ['syria', 'ceasefire'],
+  ['china', 'talks'],
+  ['china', 'accord'],
+  ['taiwan', 'talks'],
+  ['yemen', 'ceasefire'],
+  ['north korea', 'talks'],
+  ['pyongyang', 'talks'],
+];
+const RELAY_DIPLOMACY_FLASHPOINT_BOOST = 18;
+const RELAY_ENTITY_CORROBORATION_SCORE_PER_SOURCE = 4;
+
+function relayNormalizeScoringText(text) {
+  return String(text || '').toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+// Word-start containment in normalized text. Mirrors
+// shared/brief-filter.js:containsKeywordToken — prevents 'pact' inside
+// 'impact' (false positive) while still matching 'iran' inside
+// 'iranian' (demonym preserved). PR #3909 review (P2). Keeps the
+// relay aligned with digest under tests/importance-score-parity.test.mjs.
+function relayContainsKeywordToken(text, kw) {
+  if (!kw) return false;
+  const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|\\s)${escaped}`).test(text);
+}
+
+function relayHasAnySignal(text, keywords) {
+  return keywords.some((kw) => relayContainsKeywordToken(text, kw));
+}
+
+function relayHasDiplomacyFlashpointSignal(title) {
+  if (!title) return false;
+  const text = relayNormalizeScoringText(title);
+  if (
+    RELAY_DIPLOMACY_FLASHPOINT_PAIRS.some(([entity, action]) =>
+      relayContainsKeywordToken(text, entity) && relayContainsKeywordToken(text, action),
+    )
+  ) {
+    return true;
+  }
+  return relayHasAnySignal(text, RELAY_DIPLOMACY_KEYWORDS) &&
+    relayHasAnySignal(text, RELAY_FLASHPOINT_SCORING_KEYWORDS);
+}
+
+function relayDiplomacyFlashpointBoost(title) {
+  return relayHasDiplomacyFlashpointSignal(title) ? RELAY_DIPLOMACY_FLASHPOINT_BOOST : 0;
+}
+
+function relayEntityCorroborationScore(count) {
+  const finite = Number.isFinite(count) ? Number(count) : 0;
+  return Math.min(Math.max(finite, 0), 5) * RELAY_ENTITY_CORROBORATION_SCORE_PER_SOURCE;
+}
 
 // Mirrors computeImportanceScore() in list-feed-digest.ts with ONE intentional
 // deviation: the relay defensively returns 0 for unknown severity levels
@@ -3089,17 +3259,22 @@ const RELAY_SEVERITY_SCORES = { critical: 100, high: 75, medium: 50, low: 25, in
 // exercised in tests/importance-score-parity.test.mjs "unknown severity" case.
 // Caller responsibility: pass defined values; relay publish site defaults
 // corroborationCount → 1 and publishedAt → Date.now() when upstream omits them.
-function relayComputeImportanceScore(level, source, corroborationCount, publishedAt) {
+function relayComputeImportanceScore(level, source, corroborationCount, publishedAt, context = {}) {
   const tier = relayGetSourceTier(source);
   const tierScore = tier === 1 ? 100 : tier === 2 ? 75 : tier === 3 ? 50 : 25;
   const corroborationScore = Math.min(corroborationCount, 5) * 20;
   const ageMs = Date.now() - publishedAt;
   const recencyScore = Math.max(0, 1 - ageMs / (24 * 60 * 60 * 1000)) * 100;
-  return Math.round(
+  const base = Math.round(
     (RELAY_SEVERITY_SCORES[level] ?? 0) * RELAY_SCORE_WEIGHTS.severity +
     tierScore * RELAY_SCORE_WEIGHTS.sourceTier +
     corroborationScore * RELAY_SCORE_WEIGHTS.corroboration +
     recencyScore * RELAY_SCORE_WEIGHTS.recency,
+  );
+  return Math.round(
+    base +
+    relayDiplomacyFlashpointBoost(context.title) +
+    relayEntityCorroborationScore(context.entityCorroborationCount),
   );
 }
 
@@ -3466,6 +3641,14 @@ async function seedClassifyForVariant(variant, seenTitles) {
           meta.source,
           meta.corroborationCount ?? 1,
           meta.publishedAt ?? Date.now(),
+          {
+            title: chunk[idx],
+            classSource: 'llm',
+            // The relay has only exact story-merge corroboration. Entity
+            // corroboration is a separate digest-side signal computed from
+            // flashpoint+diplomacy buckets; do not proxy source count here.
+            entityCorroborationCount: 0,
+          },
         );
         publishNotificationEvent({
           eventType: 'rss_alert',
@@ -4393,6 +4576,7 @@ async function seedWeatherAlerts() {
         payload: {
           title: a.headline || a.event || 'Weather alert',
           source: 'NWS',
+          countryCode: 'US',
           ...(coalesceKey ? { coalesceKey } : {}),
         },
         severity: a.severity === 'Extreme' ? 'critical' : 'high',
@@ -4549,7 +4733,7 @@ function parseGscpiCsv(text) {
       const v = cols[j]?.trim();
       if (v && v !== '#N/A' && v !== '') {
         const num = parseFloat(v);
-        if (!isNaN(num)) { value = num; break; }
+        if (!Number.isNaN(num)) { value = num; break; }
       }
     }
     if (value === null) continue;
@@ -5649,8 +5833,8 @@ const WSB_SUBREDDITS = ['wallstreetbets', 'stocks', 'investing'];
 
 // $-prefixed: case-insensitive ($nvda, $NVDA, $BRK.B). Bare: uppercase only (NVDA, BRK.B).
 // $-prefixed tickers skip whitelist validation (strong signal). Bare uppercase validated against known set.
-const DOLLAR_TICKER_REGEX = /\$([a-zA-Z]{1,5}(?:[.\-][a-zA-Z]{1,2})?)\b/g;
-const BARE_TICKER_REGEX = /\b([A-Z]{1,5}(?:[.\-][A-Z]{1,2})?)\b/g;
+const DOLLAR_TICKER_REGEX = /\$([a-zA-Z]{1,5}(?:[.-][a-zA-Z]{1,2})?)\b/g;
+const BARE_TICKER_REGEX = /\b([A-Z]{1,5}(?:[.-][A-Z]{1,2})?)\b/g;
 const TICKER_BLACKLIST = new Set([
   'I','A','ALL','FOR','THE','CEO','GDP','IPO','SEC','FDA','IMF','ETF','ATH',
   'DD','YOLO','FOMO','FUD','HODL','WSB','USA','EU','UK','AI','EV','IT','OR',
@@ -9709,15 +9893,15 @@ function buildFlightFilters(params) {
     departureWindow, airlines, sortBy, passengers } = params;
 
   const isRoundTrip = !!(returnDate && returnDate.length === 10);
-  const adults = Math.max(1, Math.min(parseInt(passengers) || 1, 9));
+  const adults = Math.max(1, Math.min(parseInt(passengers, 10) || 1, 9));
 
   let timeFilters = null;
   if (departureWindow) {
     const parts = departureWindow.split('-');
     if (parts.length === 2) {
-      const h0 = parseInt(parts[0]);
-      const h1 = parseInt(parts[1]);
-      if (!isNaN(h0) && !isNaN(h1)) timeFilters = [h0, h1, null, null];
+      const h0 = parseInt(parts[0], 10);
+      const h1 = parseInt(parts[1], 10);
+      if (!Number.isNaN(h0) && !Number.isNaN(h1)) timeFilters = [h0, h1, null, null];
     }
   }
 
@@ -9771,16 +9955,16 @@ function buildDateFilters(params) {
     cabinClass, maxStops, departureWindow, airlines, passengers } = params;
 
   const roundTrip = isRoundTrip === 'true' || isRoundTrip === true;
-  const adults = Math.max(1, Math.min(parseInt(passengers) || 1, 9));
-  const duration = parseInt(tripDuration) || 0;
+  const adults = Math.max(1, Math.min(parseInt(passengers, 10) || 1, 9));
+  const duration = parseInt(tripDuration, 10) || 0;
 
   let timeFilters = null;
   if (departureWindow) {
     const parts = departureWindow.split('-');
     if (parts.length === 2) {
-      const h0 = parseInt(parts[0]);
-      const h1 = parseInt(parts[1]);
-      if (!isNaN(h0) && !isNaN(h1)) timeFilters = [h0, h1, null, null];
+      const h0 = parseInt(parts[0], 10);
+      const h1 = parseInt(parts[1], 10);
+      if (!Number.isNaN(h0) && !Number.isNaN(h1)) timeFilters = [h0, h1, null, null];
     }
   }
 
@@ -9895,7 +10079,7 @@ function parseGfDates(text, isRoundTrip) {
         if (!Array.isArray(item) || item.length < 3) return null;
         if (!Array.isArray(item[2]) || !Array.isArray(item[2][0]) || item[2][0].length < 2) return null;
         const price = parseFloat(item[2][0][1]);
-        if (!price || isNaN(price)) return null;
+        if (!price || Number.isNaN(price)) return null;
         return { date: item[0] ?? '', returnDate: roundTrip ? (item[1] ?? '') : '', price };
       } catch { return null; }
     }).filter(Boolean);
@@ -9964,7 +10148,7 @@ async function handleGoogleFlightsDates(req, res) {
 
     const isRoundTrip = url.searchParams.get('is_round_trip') || 'false';
     const tripDuration = url.searchParams.get('trip_duration') || '0';
-    if ((isRoundTrip === 'true') && (parseInt(tripDuration) || 0) <= 0) {
+    if ((isRoundTrip === 'true') && (parseInt(tripDuration, 10) || 0) <= 0) {
       res.writeHead(400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ error: 'trip_duration is required for round-trip date searches' }));
       return;
@@ -9996,7 +10180,7 @@ async function handleGoogleFlightsDates(req, res) {
       const text = await gfResp.text();
       allDates.push(...parseGfDates(text, isRoundTrip));
     } else {
-      let current = new Date(start);
+      const current = new Date(start);
       while (current <= end) {
         const chunkEnd = new Date(current);
         chunkEnd.setDate(chunkEnd.getDate() + MAX_CHUNK - 1);

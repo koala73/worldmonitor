@@ -14,45 +14,39 @@ import { CLIMATE_ANOMALIES_KEY } from '../../../_shared/cache-keys';
 import { TIER1_COUNTRIES } from './_shared';
 import { fetchAcledCached } from '../../../_shared/acled';
 import {
+  CII_CONFLICT_ACTIVITY_CAP,
+  CII_CONFLICT_ACTIVITY_PIVOT,
   CII_FORMULA_VERSION,
   STRATEGIC_RISK_POSITIONAL_DECAY,
   STRATEGIC_RISK_SCALE_FACTOR,
   STRATEGIC_RISK_SCALE_FLOOR,
   STRATEGIC_RISK_TOP_N,
 } from './_risk-config';
+import {
+  CII_BASELINE_RISK,
+  CII_EVENT_MULTIPLIER,
+  DEFAULT_CII_BASELINE_RISK,
+  DEFAULT_CII_EVENT_MULTIPLIER,
+} from '../../../../shared/cii-weights';
 
 // ========================================================================
 // Country risk baselines and multipliers
 // ------------------------------------------------------------------------
 // Editorial values — see docs/methodology/cii-risk-scores.mdx for the
-// published table and the rationale. These intentionally MIRROR the
-// per-country fields in src/config/countries.ts CURATED_COUNTRIES, which
-// the frontend uses for client-side scoring. Where the two tables differ,
-// the server values below are authoritative for the API response
-// (CiiScore.static_baseline and CiiScore.event_multiplier on the wire).
-// The methodology doc lists current values and flags any drift.
+// published table and the rationale. The authoritative coefficient table
+// lives in shared/cii-weights.ts so browser-side scoring and server-side
+// scoring cannot drift.
 //
-// Change protocol when editing these tables:
-//   1. Bump CII_FORMULA_VERSION in ./_risk-config.ts.
+// Change protocol when editing coefficient values in shared/cii-weights.ts:
+//   1. Bump CII_FORMULA_VERSION in ./_risk-config.ts if server/API scores shift.
 //   2. Update docs/methodology/cii-risk-scores.mdx in the SAME commit.
 //   3. Mention the change in CHANGELOG.md (public-facing section).
 // ========================================================================
 
-// Exported so tests can assert the published methodology doc rows match
-// these values exactly (drift guard — PR #3780 review).
-export const BASELINE_RISK: Record<string, number> = {
-  US: 5, RU: 35, CN: 25, UA: 50, IR: 40, IL: 45, TW: 30, KP: 45,
-  SA: 20, TR: 25, PL: 10, DE: 5, FR: 10, GB: 5, IN: 20, PK: 35,
-  SY: 50, YE: 50, MM: 45, VE: 40, CU: 45, MX: 35, BR: 15, AE: 10,
-  KR: 15, IQ: 40, AF: 45, LB: 40, EG: 20, JP: 5, QA: 10,
-};
-
-export const EVENT_MULTIPLIER: Record<string, number> = {
-  US: 0.3, RU: 2.0, CN: 2.5, UA: 0.8, IR: 2.0, IL: 0.7, TW: 1.5, KP: 3.0,
-  SA: 2.0, TR: 1.2, PL: 0.8, DE: 0.5, FR: 0.6, GB: 0.5, IN: 0.8, PK: 1.5,
-  SY: 0.7, YE: 0.7, MM: 1.8, VE: 1.8, CU: 2.0, MX: 1.0, BR: 0.6, AE: 1.5,
-  KR: 0.8, IQ: 1.2, AF: 0.8, LB: 1.5, EG: 1.0, JP: 0.5, QA: 0.8,
-};
+// Exported so tests and any internal diagnostics can assert the published
+// methodology doc rows match the shared source exactly.
+export const BASELINE_RISK: Record<string, number> = { ...CII_BASELINE_RISK };
+export const EVENT_MULTIPLIER: Record<string, number> = { ...CII_EVENT_MULTIPLIER };
 
 const COUNTRY_KEYWORDS: Record<string, string[]> = {
   US: ['united states', 'usa', 'america', 'washington', 'biden', 'trump', 'pentagon'],
@@ -167,6 +161,12 @@ export function geoToCountry(lat: number, lon: number): string | null {
 function safeNum(v: unknown): number {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
+}
+
+function logScaledScore(raw: number, cap: number, pivot: number): number {
+  const value = Math.max(0, raw);
+  if (value === 0) return 0;
+  return Math.min(cap, (Math.log1p(value) / Math.log1p(pivot)) * cap);
 }
 
 const ISO3_TO_ISO2: Record<string, string> = iso3ToIso2Json;
@@ -632,8 +632,8 @@ export function computeCIIScores(
   const scores: CiiScore[] = [];
   for (const code of Object.keys(TIER1_COUNTRIES)) {
     const d = data[code]!;
-    const baseline = BASELINE_RISK[code] || 20;
-    const multiplier = EVENT_MULTIPLIER[code] || 1.0;
+    const baseline = BASELINE_RISK[code] ?? DEFAULT_CII_BASELINE_RISK;
+    const multiplier = EVENT_MULTIPLIER[code] ?? DEFAULT_CII_EVENT_MULTIPLIER;
 
     // --- Unrest score (ported from frontend calcUnrestScore) ---
     const unrestCount = d.protests + d.riots;
@@ -648,7 +648,12 @@ export function computeCIIScores(
     const unrest = Math.min(100, Math.round(unrestBase + unrestFatalityBoost + unrestSeverityBoost + outageBoost));
 
     // --- Conflict score (ported from frontend calcConflictScore) ---
-    const acledScore = Math.min(50, Math.round((d.battles * 3 + d.explosions * 4 + d.civilianViolence * 5) * multiplier));
+    const conflictActivityRaw = (d.battles * 3 + d.explosions * 4 + d.civilianViolence * 5) * multiplier;
+    const acledScore = Math.round(logScaledScore(
+      conflictActivityRaw,
+      CII_CONFLICT_ACTIVITY_CAP,
+      CII_CONFLICT_ACTIVITY_PIVOT,
+    ));
     const fatalityScore = Math.min(40, Math.round(Math.sqrt(d.conflictFatalities) * 5 * multiplier));
     const civilianBoost = Math.min(10, d.civilianViolence * 3);
     const strikeBoost = Math.min(50, d.iranStrikes * 3 + d.highSeverityStrikes * 5);
@@ -701,7 +706,7 @@ export function computeCIIScores(
 
     // --- Displacement boost (UNHCR — persists after ceasefires) ---
     // Ramp anchored so the scale spans meaningful crisis sizes:
-    //   100K  → +4  |  500K → +9  |  1M → +12  |  5M → +18  |  10M+ → +20
+    //   100K  → +4  |  500K → +10  |  1M → +12  |  5M → +18  |  10M+ → +20
     // Formula: (log10(n) - 5) * 8 + 4, clamped [0, 20].
     // Below ~32K displaced → 0; cap reached at 10M.
     const displacementBoost = d.totalDisplaced > 0
@@ -814,17 +819,16 @@ export function computeStrategicRisks(ciiScores: CiiScore[]): StrategicRisk[] {
 // Cache keys
 // ========================================================================
 
-// Bumped v1 → v2 in #3725 (PR #3780 review): the response shape now carries
-// REQUIRED methodologyVersion (string) and eventMultiplier (double) on every
-// CiiScore. Old v1 payloads in Redis violate that shape and would fail proto
-// validation on read. Bump propagated to every reader: get-country-risk.ts,
-// chat-analyst-context.ts, brief-story-context.ts, server/_shared/cache-keys.ts,
-// api/bootstrap.js, api/health.js, api/mcp.ts, api/seed-health.js,
-// scripts/seed-cross-source-signals.mjs, scripts/seed-forecasts.mjs,
-// scripts/regional-snapshot/*. seed-meta key (`seed-meta:risk:scores:sebuf`)
-// is unchanged — that's freshness tracking, not the payload itself.
-const RISK_CACHE_KEY = 'risk:scores:sebuf:v2';
-const RISK_STALE_CACHE_KEY = 'risk:scores:sebuf:stale:v2';
+// Payload key family is bumped when CII_FORMULA_VERSION changes so old
+// methodology payloads cannot survive deploy via Redis. Bump propagated to
+// every reader: get-country-risk.ts, chat-analyst-context.ts,
+// brief-story-context.ts, server/_shared/cache-keys.ts, api/bootstrap.js,
+// api/health.js, api/mcp.ts, scripts/seed-cross-source-signals.mjs,
+// scripts/seed-forecasts.mjs, scripts/regional-snapshot/*. The seed-meta key
+// (`seed-meta:risk:scores:sebuf`) is unchanged — that's freshness tracking,
+// not the payload itself.
+const RISK_CACHE_KEY = 'risk:scores:sebuf:v3';
+const RISK_STALE_CACHE_KEY = 'risk:scores:sebuf:stale:v3';
 const RISK_CACHE_TTL = 600;
 const RISK_STALE_TTL = 3600;
 

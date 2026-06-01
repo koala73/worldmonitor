@@ -20,11 +20,16 @@ const MAX_EMAIL_LENGTH = 320;
 const MAX_META_LENGTH = 100;
 
 const DESKTOP_SOURCES = new Set<string>(['desktop-settings']);
+export const DESKTOP_AUTH_TIMESTAMP_HEADER = 'x-worldmonitor-desktop-timestamp';
+export const DESKTOP_AUTH_SIGNATURE_HEADER = 'x-worldmonitor-desktop-signature';
+export const DESKTOP_AUTH_WINDOW_MS = 5 * 60 * 1000;
+const DESKTOP_AUTH_SECRET_ENV = 'WM_DESKTOP_SHARED_SECRET';
+const DESKTOP_AUTH_ALLOW_LEGACY_ENV = 'WM_DESKTOP_AUTH_ALLOW_LEGACY';
 
 // Legacy api/register-interest.js capped desktop-source signups at 2/hr per IP
-// on top of the generic 5/hr endpoint budget. Since `source` is an unsigned
-// client-supplied field, this cap is the backstop — the signed-header fix that
-// actually authenticates the desktop bypass is tracked as a follow-up.
+// on top of the generic 5/hr endpoint budget. The desktop bypass is now
+// authenticated with HMAC headers when WM_DESKTOP_SHARED_SECRET is configured;
+// the scoped cap remains as a second-stage abuse backstop.
 const DESKTOP_RATE_SCOPE = '/api/leads/v1/register-interest#desktop';
 const DESKTOP_RATE_LIMIT = 2;
 const DESKTOP_RATE_WINDOW = '1 h' as const;
@@ -35,6 +40,91 @@ interface ConvexRegisterResult {
   referralCount: number;
   position?: number;
   emailSuppressed?: boolean;
+}
+
+function canonicalizeDesktopAuthPayload(req: RegisterInterestRequest): string {
+  return JSON.stringify({
+    email: typeof req.email === 'string' ? req.email : '',
+    source: typeof req.source === 'string' ? req.source : '',
+    appVersion: typeof req.appVersion === 'string' ? req.appVersion : '',
+    referredBy: typeof req.referredBy === 'string' ? req.referredBy : '',
+    website: typeof req.website === 'string' ? req.website : '',
+    turnstileToken: typeof req.turnstileToken === 'string' ? req.turnstileToken : '',
+  });
+}
+
+function desktopAuthMessage(timestamp: string, req: RegisterInterestRequest): string {
+  return `${timestamp}\n${canonicalizeDesktopAuthPayload(req)}`;
+}
+
+function toHex(buffer: ArrayBuffer): string {
+  return Array.from(new Uint8Array(buffer), (byte) => byte.toString(16).padStart(2, '0')).join('');
+}
+
+async function hmacSha256Hex(secret: string, message: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign'],
+  );
+  return toHex(await crypto.subtle.sign('HMAC', key, encoder.encode(message)));
+}
+
+function timingSafeStringEqual(a: string, b: string): boolean {
+  const maxLength = Math.max(a.length, b.length);
+  let diff = a.length ^ b.length;
+  for (let i = 0; i < maxLength; i += 1) {
+    diff |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
+  }
+  return diff === 0;
+}
+
+export async function createDesktopAuthSignature(
+  secret: string,
+  timestamp: string,
+  req: RegisterInterestRequest,
+): Promise<string> {
+  return `sha256=${await hmacSha256Hex(secret, desktopAuthMessage(timestamp, req))}`;
+}
+
+async function verifyDesktopAuth(request: Request, req: RegisterInterestRequest): Promise<void> {
+  const secret = process.env[DESKTOP_AUTH_SECRET_ENV];
+  const timestamp = request.headers.get(DESKTOP_AUTH_TIMESTAMP_HEADER);
+  const signature = request.headers.get(DESKTOP_AUTH_SIGNATURE_HEADER);
+
+  if (!secret) {
+    if (!timestamp && !signature && process.env[DESKTOP_AUTH_ALLOW_LEGACY_ENV] === 'true') {
+      console.warn(
+        `[register-interest] ${DESKTOP_AUTH_ALLOW_LEGACY_ENV}=true and ${DESKTOP_AUTH_SECRET_ENV} is unset; accepting unsigned legacy desktop bypass`,
+      );
+      return;
+    }
+
+    console.warn(`[register-interest] ${DESKTOP_AUTH_SECRET_ENV} not set; rejecting desktop bypass`);
+    throw new ApiError(403, 'Desktop authentication failed', '');
+  }
+
+  if (!timestamp || !signature) {
+    throw new ApiError(403, 'Desktop authentication failed', '');
+  }
+
+  const timestampMs = Number(timestamp);
+  if (!Number.isSafeInteger(timestampMs) || Math.abs(Date.now() - timestampMs) > DESKTOP_AUTH_WINDOW_MS) {
+    throw new ApiError(403, 'Desktop authentication failed', '');
+  }
+
+  const supplied = signature.trim();
+  if (!/^sha256=[a-f0-9]{64}$/.test(supplied)) {
+    throw new ApiError(403, 'Desktop authentication failed', '');
+  }
+
+  const expected = await createDesktopAuthSignature(secret, timestamp, req);
+  if (!timingSafeStringEqual(supplied, expected)) {
+    throw new ApiError(403, 'Desktop authentication failed', '');
+  }
 }
 
 async function sendConfirmationEmail(email: string, referralCode: string): Promise<void> {
@@ -201,18 +291,20 @@ export async function registerInterest(
   const ip = getClientIp(ctx.request);
   const isDesktopSource = typeof req.source === 'string' && DESKTOP_SOURCES.has(req.source);
 
-  // Desktop sources bypass Turnstile (no browser captcha). `source` is
-  // attacker-controlled, so anyone claiming desktop-settings skips the
-  // captcha — apply a tighter 2/hr per-IP cap on that path to cap abuse
-  // (matches the legacy handler's in-memory secondary cap). Proper fix is
-  // a signed desktop-secret header; tracked as a follow-up.
+  // Desktop sources bypass Turnstile because the app shell has no browser
+  // captcha surface. Authenticate that bypass with a shared-secret HMAC, then
+  // keep the tighter per-IP budget as a second-stage abuse cap.
   if (isDesktopSource) {
+    await verifyDesktopAuth(ctx.request, req);
     const scoped = await checkScopedRateLimit(
       DESKTOP_RATE_SCOPE,
       DESKTOP_RATE_LIMIT,
       DESKTOP_RATE_WINDOW,
       ip,
     );
+    if (scoped.degraded) {
+      throw new ApiError(503, 'Rate-limit service temporarily unavailable', '');
+    }
     if (!scoped.allowed) {
       throw new ApiError(429, 'Too many requests', '');
     }

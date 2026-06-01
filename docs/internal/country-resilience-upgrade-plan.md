@@ -98,11 +98,12 @@ citation-grade index and a live operational monitor as one object"*.)
 - Inputs frozen as of a cut date.
 - Scores and ranks fixed for 12 months.
 - Methodology locked to a specific version string.
-- Snapshot manifest: SHA-pinned Redis dump + commit SHA of the scorer code
-  + retrieval date + URL + SHA of every third-party file used.
-- Reproducibility notebook under
-  `docs/methodology/country-resilience-index/reference-edition/2026/reproduce.ipynb`
-  that regenerates every published number from the manifest.
+- Snapshot manifest: SHA-pinned, country-sliced Redis input dump + commit SHA
+  of the scorer code + retrieval date + URL + SHA of every third-party file
+  used.
+- Reproducibility script under
+  `docs/methodology/country-resilience-index/reference-edition/2026/recompute.mts`
+  that regenerates the sampled published score-cache values from the manifest.
 - Published as signed JSON + CSV + methodology PDF.
 - **This is what external citations point at.**
 
@@ -139,12 +140,13 @@ rationale):
    formulas, weight rationale, normalization ranges, missing-data rules,
    source recency, interval method, versioned changelog, built to OECD/JRC
    standards (see origin: "1. Publish a real methodology pack").
-4. **Cross-index benchmark + real-outcome backtest**, correlate against
-   INFORM, ND-GAIN, WorldRiskIndex, FSI; backtest against FX stress, sovereign
-   stress, prolonged power outages, food-crisis escalation, refugee surges,
-   sanctions shocks, and conflict spillover; sensitivity-test every major
-   weight and imputation rule (see origin: "3. Add a benchmark and backtest
-   suite").
+4. **Cross-index benchmark + real-outcome backtest**, correlate against the
+   currently wired public comparator set (INFORM, UNDP HDI, WorldRiskIndex);
+   ND-GAIN is deferred until ZIP ingestion lands and FSI is retired from
+   public artifacts. Backtest against FX stress, sovereign stress, prolonged
+   power outages, food-crisis escalation, refugee surges, sanctions shocks,
+   and conflict spillover; sensitivity-test every major weight and imputation
+   rule (see origin: "3. Add a benchmark and backtest suite").
 5. **Decomposed uncertainty**, replace the single `lowConfidence` label with
    per-dimension coverage, imputation share, source freshness, interval width,
    and rank stability; intervals from bootstrap or Monte Carlo perturbations on
@@ -235,7 +237,7 @@ intervals, change attribution, external expert review).
 - **Cache keys** (all in `_shared.ts`): `resilience:score:v7:<cc>` (6h),
   `resilience:ranking:v8` (6h, written only when all countries scored),
   `resilience:history:v4:<cc>` (daily sorted set, 30-day retention),
-  `resilience:intervals:v2:<cc>` (95% CI from backtest).
+  `resilience:intervals:v3:<cc>` (formula-tagged score sensitivity band).
 - **Warmup:** handler-owned, up to 200 missing countries per ranking request
   via `warmMissingResilienceScores()` in `get-resilience-ranking.ts`.
 - **Static seeding**, 11 slots in `scripts/seed-resilience-static.mjs` (WGI,
@@ -457,7 +459,7 @@ interval computation anywhere near the read path"*.)
   - Combine bootstrap and MC samples into a joint distribution; store
     per-pillar p05/p50/p95 and a joint overall p05/p50/p95.
   - Re-rank each sample and store per-country p05/p95 **rank band**.
-  - Persist under `resilience:intervals:v2:<cc>` as
+  - Persist under `resilience:intervals:v3:<cc>` as
     `{ computedAt, schemaVersion, pillarIntervals, overallInterval, rankBand }`.
 - **Read path** (`buildResilienceScore`): always reads the latest interval
   payload. If `computedAt` is older than 48 hours the response sets
@@ -476,36 +478,38 @@ interval computation anywhere near the read path"*.)
   The scorer context reads the class instead of branching on `value == null`,
   and each class has its own certainty weight.
 
-### Benchmark design, per-pillar hypotheses, not a single Spearman gate
+### Benchmark design, current comparator hypotheses
 
 A single correlation target across all comparators would reward mimicry and
 punish useful originality. Each comparator measures something different, so
-the benchmark is designed around **explicit per-pillar hypotheses with
-expected sign and strength**. (Review gap: *"benchmark design compares unlike
-things"*.)
+the current public benchmark is designed around explicit overall-score
+hypotheses with expected sign and minimum strength. (Review gap:
+*"benchmark design compares unlike things"*.)
 
 **Cross-index benchmark** (`scripts/benchmark-resilience-external.mjs`):
 
-| Pillar | Comparator | Expected sign | Expected Spearman band | Rationale |
+| Scope | Comparator | Expected sign | Minimum | Rationale |
 |---|---|---|---|---|
-| Live Shock Exposure | INFORM Risk (hazard + exposure) | positive | 0.55–0.75 | Both measure acute shock pressure; INFORM centers humanitarian crisis, we center operational disruption. Overlap but not identity. |
-| Live Shock Exposure | WorldRiskIndex (exposure × vulnerability) | positive | 0.50–0.70 | WRI centers natural hazard exposure; partial overlap on shock channels. |
-| Structural Readiness + Recovery Capacity | ND-GAIN Readiness | positive | 0.60–0.80 | Closest semantic match; both measure institutional + economic + governance readiness. |
-| Overall Resilience | FSI | negative | −0.55 to −0.75 | FSI measures fragility pressures; resilience is the inverse direction. |
-| Overall Resilience | INFORM Risk | negative | −0.40 to −0.60 | Weaker negative correlation; high risk ≠ low resilience, but strong tendency. |
+| Overall Resilience | INFORM Risk | negative | absolute Spearman ≥0.60 | Higher resilience should inversely track humanitarian/disaster risk. |
+| Overall Resilience | UNDP HDI | positive | Spearman ≥0.65 | Higher resilience should broadly track human-development capacity without copying it. |
+| Overall Resilience | WorldRiskIndex vulnerability component | negative | absolute Spearman ≥0.55 | Higher resilience should inversely track societal vulnerability to disaster risk. |
+
+ND-GAIN is deferred until the validation image can unzip the 2026 archive.
+Fragile States Index is retired from public artifacts because fresh bulk data
+is no longer available and the licensing posture blocks public comparator
+values in this repo.
 
 **Interpretation rules:**
 
-- Correlation **above** the band (e.g., Spearman 0.90 vs any comparator) is a
-  flag, not a pass. It means we are measuring the same thing and the index
-  adds no new information, investigate and annotate.
-- Correlation **below** the band is also a flag, either a measurement error
-  or a meaningful divergence. Both are investigated and annotated in
+- Unexpectedly strong correlation (e.g., Spearman 0.90 vs any comparator) is
+  a review flag because it can mean the index adds little new information.
+- Wrong-sign or below-minimum correlation fails the generation run. Meaningful
+  divergences are investigated and annotated in
   `docs/methodology/country-resilience-index/benchmark-outliers.md`.
 - The outlier commentary is **part of the product**: analysts trust indices
   that explain their disagreements, not ones that hide them.
 - The benchmark **does not** publish a single pass/fail number. Each of the
-  five hypothesis rows above is its own gate.
+  three comparator rows above is its own gate.
 
 **Event backtest, per event family** (`scripts/backtest-resilience-outcomes.mjs`):
 
@@ -516,13 +520,19 @@ families mixes different label regimes"*.)
 
 | Event family | Label source | Lead window | Naive baseline | Metrics | Release gate |
 |---|---|---|---|---|---|
-| FX stress | IMF Exchange-Rate Pressure Index, top-decile months | 30d | Prior-quarter current-account deficit rank | AUC, calibration, precision@10, lead-time uplift | AUC ≥ baseline + 0.05 |
-| Sovereign stress | EMBI+ spread top-decile blowouts | 60d | Prior debt/GDP rank | same | AUC ≥ baseline + 0.05 |
-| Power outages (prolonged) | PowerOutage.us + ENTSO-E sustained incidents | 14d | Prior SAIDI rank | same | AUC ≥ baseline + 0.05 |
-| Food-crisis escalation | IPC Phase 4+ transitions | 90d | Prior IPC phase | same | AUC ≥ baseline + 0.05 |
-| Refugee surges | UNHCR monthly flows, top-decile shifts | 60d | Prior border-security rank | same | AUC ≥ baseline + 0.05 |
-| Sanctions shocks | OFAC SDN new designations | 7d | Prior sanctions count | same | AUC ≥ baseline + 0.05 |
-| Conflict spillover | ACLED border events | 30d | Prior conflict density | same | AUC ≥ baseline + 0.05 |
+| FX stress | Frozen 2024-2025 reference set curated from IMF AREAER and IMF country surveillance devaluation notes | 30d | Prior-quarter current-account deficit rank | AUC, calibration, precision@10, lead-time uplift | AUC ≥ baseline + 0.05 |
+| Sovereign stress | Frozen 2024-2025 reference set curated from IMF sovereign-debt restructuring/program material plus major rating-agency default/downgrade actions | 60d | Prior debt/GDP rank | same | AUC ≥ baseline + 0.05 |
+| Power outages (prolonged) | Frozen 2024-2025 reference set curated from IEA electricity analysis, ReliefWeb/OCHA humanitarian updates, and national operator/government notices | 14d | Prior SAIDI rank | same | AUC ≥ baseline + 0.05 |
+| Food-crisis escalation | Live Redis label set from `resilience:static:fao` (IPC/FAO food-crisis seeding path) | 90d | Prior IPC phase | same | AUC ≥ baseline + 0.05 |
+| Refugee surges | Live Redis label set from `displacement:summary:v1:<year>` (UNHCR displacement summary seeding path) | 60d | Prior border-security rank | same | AUC ≥ baseline + 0.05 |
+| Sanctions shocks | Frozen 2024-2025 reference set curated from OFAC sanctions-list targeting, EU Sanctions Map regimes, and UN/EU/US comprehensive sanctions program coverage | 7d | Prior sanctions count | same | AUC ≥ baseline + 0.05 |
+| Conflict spillover | Live Redis label set from `conflict:ucdp-events:v1` (UCDP event seeding path) | 30d | Prior conflict density | same | AUC ≥ baseline + 0.05 |
+
+The current artifact deliberately distinguishes curated and live labels:
+`dataSource: "hardcoded"` for FX stress, sovereign stress, power outages, and
+sanctions shocks; `dataSource: "live"` for food-crisis escalation, refugee
+surges, and conflict spillover. Each family carries `labelSources` in the
+committed JSON so future source flips are visible in review.
 
 **Per-family release gates.** A pillar rebuild that improves FX-stress
 prediction but regresses food-crisis can ship if the food-crisis regression
@@ -662,21 +672,27 @@ sensitivity suite, new indicators live.
   math; pillars are computed from domain subsets. Weight rationale
   documented in the methodology changelog (v2.0 entry).
 - **T2.4** Cross-index benchmark script
-  `scripts/benchmark-resilience-external.mjs`. Targets: INFORM, ND-GAIN,
-  WorldRiskIndex, FSI. Output: Spearman + Pearson, outlier list, stored as
+  `scripts/benchmark-resilience-external.mjs`. Targets: INFORM, UNDP HDI,
+  the WorldRiskIndex vulnerability component; ND-GAIN deferred and FSI
+  retired from public artifacts.
+  Output: Spearman + Pearson, outlier list, stored as
   `resilience:benchmark:external:v1` and committed JSON under
   `docs/methodology/country-resilience-index/validation/`.
 - **T2.5** Outcome backtest script
   `scripts/backtest-resilience-outcomes.mjs`. Define event set,
-  hold-out 2024–2025, compute AUC, target ≥0.75. Outputs stored next to
-  cross-index benchmark.
+  hold-out 2024-2025, compute AUC, target 0.75 with a 0.03 gate width.
+  Current labels use four frozen independently sourced reference sets and
+  three live Redis seed outputs; outputs stored next to cross-index benchmark.
 - **T2.6** Sensitivity test extends
   `scripts/validate-resilience-sensitivity.mjs`. Perturb all weights and
   goalposts; flag dimensions where top-10 swings >3 positions; block release
   gate if >20% of dimensions fail.
 - **T2.7** Railway cron wiring for weekly benchmark + backtest. Reuse
   `scripts/ralph/` Railway seed-bundle pattern (memory:
-  `railway_seed_bundle_pattern`) if service count is a concern.
+  `railway_seed_bundle_pattern`) if service count is a concern. Validation
+  scripts run non-strict in cron so cold-start skips after cache-key flips do
+  not page; release/CI regeneration uses `--strict` or
+  `RESILIENCE_VALIDATION_STRICT=1` so skipped artifacts still fail the gate.
 - **T2.8** Fix any top-end ceiling effects the sensitivity suite finds (beyond
   the Phase 1 fix).
 - **T2.9** Language/source-density normalization for the information-cognitive
@@ -695,8 +711,9 @@ sensitivity suite, new indicators live.
 - [x] Signal tiering registry committed; every signal tagged Core /
       Enrichment / Experimental with coverage + license audit.
       (T2.2a #2979)
-- [x] Cross-index benchmark published with per-pillar hypotheses, every
-      row within expected band OR annotated with signed outlier commentary.
+- [x] Cross-index benchmark published with explicit directional hypotheses
+      for INFORM, UNDP HDI, and the WorldRiskIndex vulnerability component,
+      all passing the configured minimum Spearman gates.
       (T2.4 #2985)
 - [x] Per-event-family backtest gates met for all 7 families (or shortfall
       under 0.03 AUC and documented in changelog). (T2.5 #2986)
@@ -723,7 +740,7 @@ tools.
 - **T3.1** Bootstrap + MC intervals implemented **fully offline** per
   *Technical Approach → Decomposed uncertainty*. Extend
   `scripts/seed-resilience-intervals.mjs` to write pillar-level intervals,
-  joint overall intervals, and rank bands to `resilience:intervals:v2:<cc>`
+  joint overall intervals, and rank bands to `resilience:intervals:v3:<cc>`
   every 6 hours. **Zero lazy computation on the read path**, missing key
   means intervals are omitted from the response; the read path never blocks
   on bootstrap or MC work. Add `staleIntervals: true` flag when payload is
@@ -751,8 +768,9 @@ tools.
   and only when, all five conditions are met:
   (a) every dimension has a required subsection in the methodology mdx
       (linter-enforced);
-  (b) the reproducibility notebook regenerates every published score from the
-      snapshot manifest to within ≤0.5 points;
+  (b) the reference-edition recompute script regenerates the sampled published
+      score-cache values from the country-sliced snapshot manifest to within
+      ≤0.02 points;
   (c) sensitivity suite shows no single-axis perturbation moving a top-50
       country by more than 5 rank positions;
   (d) cross-index benchmark hypotheses are within expected bands for all 5
@@ -777,7 +795,7 @@ tools.
 - **T3.11** First cut of the **2026 Reference Edition** shipped as a signed
   JSON + CSV + PDF bundle under
   `docs/methodology/country-resilience-index/reference-edition/2026/` with a
-  reproducibility notebook and snapshot manifest.
+  reproducibility script and country-sliced snapshot manifest.
 
 **Phase 3 acceptance:**
 - [ ] Widget renders waterfall + peer comparison + freshness badges + pillar
@@ -790,7 +808,7 @@ tools.
 - [ ] **Internal methodology gate (T3.8a) met**, all five conditions passing.
       This is the shipping gate. External review is parallel.
 - [ ] 2026 Reference Edition published: signed JSON + CSV + PDF +
-      reproducibility notebook + snapshot manifest.
+      reproducibility script + snapshot manifest.
 - [ ] Scorecard re-rating (internal, pre-external-review): all six axes
       ≥9.0.
 - [ ] External reviewer sign-off tracked as a follow-up workstream; once
@@ -807,7 +825,7 @@ tools.
 keys (UCDP, displacement, sanctions, WGI, RSF, etc.) → aggregates into
 domains → aggregates into pillars (new) → overall. History sorted set
 updated if current day not yet written. **Interval cache read only**: if
-`resilience:intervals:v2:<cc>` is present and fresh, it is attached; if
+`resilience:intervals:v3:<cc>` is present and fresh, it is attached; if
 the payload is >48h old the response sets `staleIntervals: true`; if the
 key is missing (warmup path), intervals are **omitted** from the response.
 The read path never computes intervals inline. All bootstrap and Monte
@@ -895,16 +913,11 @@ rewrites the key.
 - [ ] Recovery capacity pillar has Core-tier data coverage for ≥180
       countries (matches Phase 2 acceptance; Core defined by the signal
       tiering registry).
-- [ ] **Cross-index benchmark** published with per-pillar hypotheses. Each
-      of the five hypothesis rows is its own gate and must be within its
-      expected Spearman band OR carry signed outlier commentary in
-      `benchmark-outliers.md`:
-      - [ ] Live Shock Exposure vs INFORM Risk: positive, 0.55–0.75.
-      - [ ] Live Shock Exposure vs WorldRiskIndex: positive, 0.50–0.70.
-      - [ ] Structural Readiness + Recovery Capacity vs ND-GAIN Readiness:
-            positive, 0.60–0.80.
-      - [ ] Overall Resilience vs FSI: negative, −0.55 to −0.75.
-      - [ ] Overall Resilience vs INFORM Risk: negative, −0.40 to −0.60.
+- [ ] **Cross-index benchmark** published with explicit current comparator
+      hypotheses. Each row is its own gate:
+      - [ ] Overall Resilience vs INFORM Risk: negative, absolute Spearman ≥0.60.
+      - [ ] Overall Resilience vs UNDP HDI: positive, Spearman ≥0.65.
+      - [ ] Overall Resilience vs WorldRiskIndex vulnerability: negative, absolute Spearman ≥0.55.
 - [ ] **Per-event-family backtest gates** met for all 7 families (FX stress,
       sovereign stress, prolonged power outages, food-crisis escalation,
       refugee surges, sanctions shocks, conflict spillover). Each family
@@ -921,7 +934,7 @@ rewrites the key.
 - [ ] Waterfall chart + peer comparison + change attribution in widget.
 - [ ] Pillar toggle (structural / live-shock / recovery / overall) in widget.
 - [ ] **Internal methodology gate (T3.8a) met** (shipping gate): every
-      dimension has a mdx subsection, reproducibility notebook passes,
+      dimension has a mdx subsection, reference recompute script passes,
       sensitivity ≤5 top-50 swing, benchmark hypothesis gates above,
       per-family backtest gates above.
 - [ ] **External expert review workstream (T3.8b)** in flight; the public
@@ -930,7 +943,7 @@ rewrites the key.
 - [ ] Licensing & Legal Review workstream deliverables 1–4 complete before
       any Phase 2 T2.4 public artifact lands.
 - [ ] 2026 Reference Edition published as signed JSON + CSV + PDF + snapshot
-      manifest + reproducibility notebook.
+      manifest + reproducibility script.
 - [ ] T1.1 ceiling-bug investigation completed: regression test written,
       root cause identified, and EITHER the fix landed if a real bug is
       reproduced OR the origin document's changelog updated if the symptom
@@ -969,7 +982,7 @@ third-party behavior, or uncontrollable journalism/citation dynamics.
 ones"*.)
 
 - **Reproducibility pass rate**: % of published Reference Edition scores
-  that the reproducibility notebook regenerates from the snapshot manifest
+  that the reference recompute script regenerates from the snapshot manifest
   to within ≤0.5 points. **Target: 100%.**
 - **Stability under perturbation**: maximum rank change of any top-50 country
   when any single sensitivity axis is perturbed at its ±1σ level.

@@ -47,7 +47,7 @@ describe('classify cache prefix audit (U4)', () => {
 
     // Grep across .ts/.mjs/.cjs/.js/.json — same extensions the
     // cache-prefix-bump-propagation-scope learning calls out. Excludes
-    // node_modules, .git, dist/build outputs.
+    // node_modules, local worktrees, and generated build outputs.
     let grepOut = '';
     try {
       grepOut = execSync(
@@ -55,8 +55,9 @@ describe('classify cache prefix audit (U4)', () => {
           --include="*.ts" --include="*.mjs" --include="*.cjs" \
           --include="*.js" --include="*.json" \
           --exclude-dir=node_modules --exclude-dir=.git \
+          --exclude-dir=.claude \
           --exclude-dir=dist --exclude-dir=build \
-          --exclude-dir=coverage \
+          --exclude-dir=coverage --exclude-dir=target \
           ${repoRoot}`,
         { encoding: 'utf-8' },
       );

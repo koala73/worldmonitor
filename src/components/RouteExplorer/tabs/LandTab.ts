@@ -10,6 +10,8 @@ import type {
   GetRouteExplorerLaneResponse,
 } from '@/generated/server/worldmonitor/supply_chain/v1/service_server';
 import { renderRouteCard } from '../components/RouteCard';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 export interface LandTabOptions {
   onSelectBypass: (option: BypassCorridorOption) => void;
@@ -49,27 +51,24 @@ export class LandTab {
   }
 
   private renderEmpty(): void {
-    this.element.innerHTML =
-      '<div class="re-tab__placeholder">Pick a country pair and product to see land corridors.</div>';
+    setTrustedHtml(this.element, trustedHtml('<div class="re-tab__placeholder">Pick a country pair and product to see land corridors.</div>', "legacy direct innerHTML migration"));
   }
 
   private renderNoLane(): void {
-    this.element.innerHTML =
-      '<div class="re-tab__empty"><p>No modeled lane. Land corridors require a primary route context.</p></div>';
+    setTrustedHtml(this.element, trustedHtml('<div class="re-tab__empty"><p>No modeled lane. Land corridors require a primary route context.</p></div>', "legacy direct innerHTML migration"));
   }
 
   private renderEmptyLand(): void {
-    this.element.innerHTML =
-      '<div class="re-tab__empty">' +
+    setTrustedHtml(this.element, trustedHtml('<div class="re-tab__empty">' +
       '<h3>No overland alternatives</h3>' +
       '<p>No land-bridge corridors are modeled for this lane\'s primary chokepoint. ' +
       'Only 5 land corridors are currently in the dataset (Aqaba, Djibouti-Addis, ' +
       'Baku-Tbilisi-Batumi, US Rail, Ukraine Rail).</p>' +
-      '</div>';
+      '</div>', "legacy direct innerHTML migration"));
   }
 
   private renderList(active: BypassCorridorOption[], other: BypassCorridorOption[]): void {
-    this.element.innerHTML = '';
+    setTrustedHtml(this.element, trustedHtml('', "legacy direct innerHTML migration"));
 
     if (active.length > 0) {
       const header = document.createElement('h3');

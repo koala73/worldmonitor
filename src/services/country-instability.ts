@@ -33,6 +33,12 @@ export interface ComponentScores {
   information: number;
 }
 
+// Keep these aligned with server/worldmonitor/intelligence/v1/_risk-config.ts.
+// The server remains authoritative for API scores; this legacy browser engine
+// still needs the same curve when it recalculates local CII state.
+const CII_CONFLICT_ACTIVITY_CAP = 70;
+const CII_CONFLICT_ACTIVITY_PIVOT = 4000;
+
 interface CountryData {
   protests: SocialUnrestEvent[];
   conflicts: ConflictEvent[];
@@ -790,6 +796,17 @@ function getSanctionsBoost(data: CountryData): number {
   return boost;
 }
 
+function logScaledScore(raw: number, cap: number, pivot: number): number {
+  const value = Math.max(0, raw);
+  if (value === 0) return 0;
+  return Math.min(cap, (Math.log1p(value) / Math.log1p(pivot)) * cap);
+}
+
+function getDisplacementBoost(totalDisplaced: number): number {
+  if (totalDisplaced <= 0) return 0;
+  return Math.min(20, Math.max(0, Math.round((Math.log10(totalDisplaced) - 5) * 8 + 4)));
+}
+
 function calcUnrestScore(data: CountryData, countryCode: string): number {
   const protestCount = data.protests.length;
   const multiplier = CURATED_COUNTRIES[countryCode]?.eventMultiplier ?? DEFAULT_EVENT_MULTIPLIER;
@@ -825,7 +842,7 @@ function calcUnrestScore(data: CountryData, countryCode: string): number {
   return Math.min(100, baseScore + fatalityBoost + severityBoost + outageBoost);
 }
 
-function calcNewsConflictFloor(data: CountryData, multiplier: number, now = Date.now()): number {
+function calcNewsConflictFloor(data: CountryData, now = Date.now()): number {
   const SIX_HOURS = 6 * 60 * 60 * 1000;
   const cutoff = now - SIX_HOURS;
 
@@ -851,7 +868,7 @@ function calcNewsConflictFloor(data: CountryData, multiplier: number, now = Date
 
   if (domains.size < 2 || !hasTrustedSource) return 0;
 
-  return Math.min(70, 60 * multiplier);
+  return 30 + Math.min(10, (recentConflictNews.length - 2) * 5);
 }
 
 function calcConflictScore(data: CountryData, countryCode: string): number {
@@ -865,7 +882,12 @@ function calcConflictScore(data: CountryData, countryCode: string): number {
     const civilianCount = events.filter(e => e.eventType === 'violence_against_civilians').length;
     const totalFatalities = events.reduce((sum, e) => sum + e.fatalities, 0);
 
-    const eventScore = Math.min(50, (battleCount * 3 + explosionCount * 4 + civilianCount * 5) * multiplier);
+    const eventActivityRaw = (battleCount * 3 + explosionCount * 4 + civilianCount * 5) * multiplier;
+    const eventScore = logScaledScore(
+      eventActivityRaw,
+      CII_CONFLICT_ACTIVITY_CAP,
+      CII_CONFLICT_ACTIVITY_PIVOT,
+    );
     const fatalityScore = Math.min(40, Math.sqrt(totalFatalities) * 5 * multiplier);
     const civilianBoost = civilianCount > 0 ? Math.min(10, civilianCount * 3) : 0;
     acledScore = eventScore + fatalityScore + civilianBoost;
@@ -874,12 +896,16 @@ function calcConflictScore(data: CountryData, countryCode: string): number {
   let hapiFallback = 0;
   if (events.length === 0 && data.hapiSummary) {
     const h = data.hapiSummary;
-    hapiFallback = Math.min(60, h.eventsPoliticalViolence * 3 * multiplier);
+    hapiFallback = logScaledScore(
+      h.eventsPoliticalViolence * 3 * multiplier,
+      CII_CONFLICT_ACTIVITY_CAP,
+      CII_CONFLICT_ACTIVITY_PIVOT,
+    );
   }
 
   let newsFloor = 0;
   if (events.length === 0 && hapiFallback === 0) {
-    newsFloor = calcNewsConflictFloor(data, multiplier);
+    newsFloor = calcNewsConflictFloor(data);
   }
 
   let strikeBoost = 0;
@@ -930,27 +956,21 @@ function calcSecurityScore(data: CountryData): number {
   return Math.min(100, flightScore + vesselScore + aviationScore + gpsJammingScore);
 }
 
-function calcInformationScore(data: CountryData, countryCode: string): number {
+function calcInformationScore(data: CountryData, _countryCode: string): number {
   const count = data.newsEvents.length;
   if (count === 0) return 0;
 
-  const multiplier = CURATED_COUNTRIES[countryCode]?.eventMultiplier ?? DEFAULT_EVENT_MULTIPLIER;
   const velocitySum = data.newsEvents.reduce((sum, e) => sum + (e.velocity?.sourcesPerHour || 0), 0);
   const avgVelocity = velocitySum / count;
 
-  const isHighVolume = multiplier < 0.7;
-  const adjustedCount = isHighVolume
-    ? Math.log2(count + 1) * multiplier * 3
-    : count * multiplier;
+  const baseScore = Math.min(40, count * 5);
 
-  const baseScore = Math.min(40, adjustedCount * 5);
-
-  const velocityThreshold = isHighVolume ? 5 : 2;
+  const velocityThreshold = 2;
   const velocityBoost = avgVelocity > velocityThreshold
-    ? Math.min(40, (avgVelocity - velocityThreshold) * 10 * multiplier)
+    ? Math.min(40, (avgVelocity - velocityThreshold) * 10)
     : 0;
 
-  const alertBoost = data.newsEvents.some(e => e.isAlert) ? 20 * multiplier : 0;
+  const alertBoost = data.newsEvents.some(e => e.isAlert) ? 20 : 0;
 
   return Math.min(100, baseScore + velocityBoost + alertBoost);
 }
@@ -1004,9 +1024,7 @@ export function calculateCII(): CountryScore[] {
       : focalUrgency === 'elevated' ? 4
       : 0;
 
-    const displacementBoost = data.displacementOutflow >= 1_000_000 ? 8
-      : data.displacementOutflow >= 100_000 ? 4
-      : 0;
+    const displacementBoost = getDisplacementBoost(data.displacementOutflow);
     const climateBoost = data.climateStress;
 
     const advisoryBoost = getAdvisoryBoost(data);
@@ -1060,9 +1078,7 @@ export function getCountryScore(code: string): number | null {
   const focalBoost = focalUrgency === 'critical' ? 8
     : focalUrgency === 'elevated' ? 4
     : 0;
-  const displacementBoost = data.displacementOutflow >= 1_000_000 ? 8
-    : data.displacementOutflow >= 100_000 ? 4
-    : 0;
+  const displacementBoost = getDisplacementBoost(data.displacementOutflow);
   const climateBoost = data.climateStress;
   const advisoryBoost = getAdvisoryBoost(data);
   const supplementalSignalBoost = getSupplementalSignalBoost(data);

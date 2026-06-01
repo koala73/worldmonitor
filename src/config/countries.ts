@@ -1,3 +1,10 @@
+import {
+  DEFAULT_CII_BASELINE_RISK,
+  DEFAULT_CII_EVENT_MULTIPLIER,
+  getCiiCountryWeight,
+} from '../../shared/cii-weights';
+import type { CiiCountryCode } from '../../shared/cii-weights';
+
 export interface CuratedCountryConfig {
   name: string;
   scoringKeywords: string[];
@@ -6,223 +13,196 @@ export interface CuratedCountryConfig {
   eventMultiplier: number;
 }
 
+function ciiWeights(code: CiiCountryCode): Pick<CuratedCountryConfig, 'baselineRisk' | 'eventMultiplier'> {
+  return getCiiCountryWeight(code);
+}
+
 export const CURATED_COUNTRIES: Record<string, CuratedCountryConfig> = {
   US: {
     name: 'United States',
     scoringKeywords: ['united states', 'usa', 'america', 'washington', 'biden', 'trump', 'pentagon'],
     searchAliases: ['united states', 'american', 'washington', 'pentagon', 'white house', 'usa', 'america', 'biden', 'trump'],
-    baselineRisk: 5,
-    eventMultiplier: 0.3,
+    ...ciiWeights('US'),
   },
   RU: {
     name: 'Russia',
     scoringKeywords: ['russia', 'moscow', 'kremlin', 'putin'],
     searchAliases: ['russia', 'russian', 'moscow', 'kremlin', 'putin', 'ukraine war'],
-    baselineRisk: 35,
-    eventMultiplier: 2.0,
+    ...ciiWeights('RU'),
   },
   CN: {
     name: 'China',
     scoringKeywords: ['china', 'beijing', 'xi jinping', 'prc'],
     searchAliases: ['china', 'chinese', 'beijing', 'taiwan strait', 'south china sea', 'xi jinping'],
-    baselineRisk: 25,
-    eventMultiplier: 2.5,
+    ...ciiWeights('CN'),
   },
   UA: {
     name: 'Ukraine',
     scoringKeywords: ['ukraine', 'kyiv', 'zelensky', 'donbas'],
     searchAliases: ['ukraine', 'ukrainian', 'kyiv', 'zelensky', 'zelenskyy'],
-    baselineRisk: 50,
-    eventMultiplier: 0.8,
+    ...ciiWeights('UA'),
   },
   IR: {
     name: 'Iran',
     scoringKeywords: ['iran', 'tehran', 'khamenei', 'irgc'],
     searchAliases: ['iran', 'iranian', 'tehran', 'persian', 'irgc', 'khamenei'],
-    baselineRisk: 40,
-    eventMultiplier: 2.0,
+    ...ciiWeights('IR'),
   },
   IL: {
     name: 'Israel',
     scoringKeywords: ['israel', 'tel aviv', 'netanyahu', 'idf', 'gaza'],
     searchAliases: ['israel', 'israeli', 'gaza', 'hamas', 'hezbollah', 'netanyahu', 'idf', 'west bank', 'tel aviv', 'jerusalem'],
-    baselineRisk: 45,
-    eventMultiplier: 0.7,
+    ...ciiWeights('IL'),
   },
   TW: {
     name: 'Taiwan',
     scoringKeywords: ['taiwan', 'taipei'],
     searchAliases: ['taiwan', 'taiwanese', 'taipei'],
-    baselineRisk: 30,
-    eventMultiplier: 1.5,
+    ...ciiWeights('TW'),
   },
   KP: {
     name: 'North Korea',
     scoringKeywords: ['north korea', 'pyongyang', 'kim jong'],
     searchAliases: ['north korea', 'pyongyang', 'kim jong'],
-    baselineRisk: 45,
-    eventMultiplier: 3.0,
+    ...ciiWeights('KP'),
   },
   SA: {
     name: 'Saudi Arabia',
     scoringKeywords: ['saudi arabia', 'riyadh', 'mbs'],
     searchAliases: ['saudi', 'riyadh', 'mbs'],
-    baselineRisk: 20,
-    eventMultiplier: 2.0,
+    ...ciiWeights('SA'),
   },
   TR: {
     name: 'Turkey',
     scoringKeywords: ['turkey', 'ankara', 'erdogan'],
     searchAliases: ['turkey', 'turkish', 'ankara', 'erdogan', 'türkiye'],
-    baselineRisk: 25,
-    eventMultiplier: 1.2,
+    ...ciiWeights('TR'),
   },
   PL: {
     name: 'Poland',
     scoringKeywords: ['poland', 'warsaw'],
     searchAliases: ['poland', 'polish', 'warsaw'],
-    baselineRisk: 10,
-    eventMultiplier: 0.8,
+    ...ciiWeights('PL'),
   },
   DE: {
     name: 'Germany',
     scoringKeywords: ['germany', 'berlin'],
     searchAliases: ['germany', 'german', 'berlin'],
-    baselineRisk: 5,
-    eventMultiplier: 0.5,
+    ...ciiWeights('DE'),
   },
   FR: {
     name: 'France',
     scoringKeywords: ['france', 'paris', 'macron'],
     searchAliases: ['france', 'french', 'paris', 'macron'],
-    baselineRisk: 10,
-    eventMultiplier: 0.6,
+    ...ciiWeights('FR'),
   },
   GB: {
     name: 'United Kingdom',
     scoringKeywords: ['britain', 'uk', 'london', 'starmer'],
     searchAliases: ['united kingdom', 'british', 'london', 'uk '],
-    baselineRisk: 5,
-    eventMultiplier: 0.5,
+    ...ciiWeights('GB'),
   },
   IN: {
     name: 'India',
     scoringKeywords: ['india', 'delhi', 'modi'],
     searchAliases: ['india', 'indian', 'new delhi', 'modi'],
-    baselineRisk: 20,
-    eventMultiplier: 0.8,
+    ...ciiWeights('IN'),
   },
   PK: {
     name: 'Pakistan',
     scoringKeywords: ['pakistan', 'islamabad'],
     searchAliases: ['pakistan', 'pakistani', 'islamabad'],
-    baselineRisk: 35,
-    eventMultiplier: 1.5,
+    ...ciiWeights('PK'),
   },
   SY: {
     name: 'Syria',
     scoringKeywords: ['syria', 'damascus', 'assad'],
     searchAliases: ['syria', 'syrian', 'damascus', 'assad'],
-    baselineRisk: 50,
-    eventMultiplier: 0.7,
+    ...ciiWeights('SY'),
   },
   YE: {
     name: 'Yemen',
     scoringKeywords: ['yemen', 'sanaa', 'houthi'],
     searchAliases: ['yemen', 'houthi', 'sanaa'],
-    baselineRisk: 50,
-    eventMultiplier: 0.7,
+    ...ciiWeights('YE'),
   },
   MM: {
     name: 'Myanmar',
     scoringKeywords: ['myanmar', 'burma', 'rangoon'],
     searchAliases: ['myanmar', 'burmese', 'burma', 'rangoon'],
-    baselineRisk: 45,
-    eventMultiplier: 1.8,
+    ...ciiWeights('MM'),
   },
   VE: {
     name: 'Venezuela',
     scoringKeywords: ['venezuela', 'caracas', 'maduro'],
     searchAliases: ['venezuela', 'venezuelan', 'caracas', 'maduro'],
-    baselineRisk: 40,
-    eventMultiplier: 1.8,
+    ...ciiWeights('VE'),
   },
   BR: {
     name: 'Brazil',
     scoringKeywords: ['brazil', 'brasilia', 'lula', 'bolsonaro'],
     searchAliases: ['brazil', 'brazilian', 'brasilia', 'lula', 'bolsonaro'],
-    baselineRisk: 15,
-    eventMultiplier: 0.6,
+    ...ciiWeights('BR'),
   },
   AE: {
     name: 'United Arab Emirates',
     scoringKeywords: ['uae', 'emirates', 'dubai', 'abu dhabi'],
     searchAliases: ['united arab emirates', 'uae', 'emirati', 'dubai', 'abu dhabi'],
-    baselineRisk: 10,
-    eventMultiplier: 1.5,
+    ...ciiWeights('AE'),
   },
   MX: {
     name: 'Mexico',
     scoringKeywords: ['mexico', 'mexican', 'amlo', 'sheinbaum', 'cartel', 'sinaloa', 'jalisco', 'cjng', 'tijuana', 'juarez', 'sedena'],
     searchAliases: ['mexico', 'mexican', 'amlo', 'sheinbaum', 'cartel', 'sinaloa', 'jalisco', 'cjng', 'tijuana', 'juarez', 'sedena', 'fentanyl', 'narco'],
-    baselineRisk: 35,
-    eventMultiplier: 1.0,
+    ...ciiWeights('MX'),
   },
   KR: {
     name: 'South Korea',
     scoringKeywords: ['south korea', 'seoul'],
     searchAliases: ['south korea', 'seoul'],
-    baselineRisk: 15,
-    eventMultiplier: 1.0,
+    ...ciiWeights('KR'),
   },
   IQ: {
     name: 'Iraq',
     scoringKeywords: ['iraq', 'iraqi', 'baghdad'],
     searchAliases: ['iraq', 'iraqi', 'baghdad'],
-    baselineRisk: 35,
-    eventMultiplier: 1.0,
+    ...ciiWeights('IQ'),
   },
   AF: {
     name: 'Afghanistan',
     scoringKeywords: ['afghanistan', 'afghan', 'kabul', 'taliban'],
     searchAliases: ['afghanistan', 'afghan', 'kabul', 'taliban'],
-    baselineRisk: 15,
-    eventMultiplier: 1.0,
+    ...ciiWeights('AF'),
   },
   LB: {
     name: 'Lebanon',
     scoringKeywords: ['lebanon', 'lebanese', 'beirut'],
     searchAliases: ['lebanon', 'lebanese', 'beirut'],
-    baselineRisk: 15,
-    eventMultiplier: 1.0,
+    ...ciiWeights('LB'),
   },
   EG: {
     name: 'Egypt',
     scoringKeywords: ['egypt', 'egyptian', 'cairo', 'suez'],
     searchAliases: ['egypt', 'egyptian', 'cairo', 'suez'],
-    baselineRisk: 15,
-    eventMultiplier: 1.0,
+    ...ciiWeights('EG'),
   },
   JP: {
     name: 'Japan',
     scoringKeywords: ['japan', 'japanese', 'tokyo'],
     searchAliases: ['japan', 'japanese', 'tokyo'],
-    baselineRisk: 15,
-    eventMultiplier: 1.0,
+    ...ciiWeights('JP'),
   },
   QA: {
     name: 'Qatar',
     scoringKeywords: ['qatar', 'qatari', 'doha'],
     searchAliases: ['qatar', 'qatari', 'doha'],
-    baselineRisk: 15,
-    eventMultiplier: 1.0,
+    ...ciiWeights('QA'),
   },
   CU: {
     name: 'Cuba',
     scoringKeywords: ['cuba', 'cuban', 'havana', 'diaz-canel'],
     searchAliases: ['cuba', 'cuban', 'havana', 'diaz-canel', 'canel'],
-    baselineRisk: 45,
-    eventMultiplier: 2.0,
+    ...ciiWeights('CU'),
   },
 };
 
@@ -260,8 +240,8 @@ export const TIER1_COUNTRIES: Record<string, string> = {
   QA: 'Qatar',
 };
 
-export const DEFAULT_BASELINE_RISK = 15;
-export const DEFAULT_EVENT_MULTIPLIER = 1.0;
+export const DEFAULT_BASELINE_RISK = DEFAULT_CII_BASELINE_RISK;
+export const DEFAULT_EVENT_MULTIPLIER = DEFAULT_CII_EVENT_MULTIPLIER;
 
 export const HOTSPOT_COUNTRY_MAP: Record<string, string | string[]> = {
   tehran: 'IR', moscow: 'RU', beijing: 'CN', kyiv: 'UA', taipei: 'TW',

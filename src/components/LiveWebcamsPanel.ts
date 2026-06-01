@@ -7,6 +7,8 @@ import { track, trackWebcamSelected, trackWebcamRegionFiltered } from '@/service
 import { getStreamQuality, subscribeStreamQualityChange } from '@/services/ai-flow-settings';
 import { isMobileDevice, loadFromStorage, saveToStorage } from '@/utils';
 import { getLiveStreamsAlwaysOn, subscribeLiveStreamsSettingsChange } from '@/services/live-stream-settings';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 type WebcamRegion = 'middle-east' | 'europe' | 'asia' | 'americas' | 'space';
 
@@ -146,7 +148,7 @@ export class LiveWebcamsPanel extends Panel {
     this.fullscreenBtn = document.createElement('button');
     this.fullscreenBtn.className = 'live-mute-btn';
     this.fullscreenBtn.title = 'Fullscreen';
-    this.fullscreenBtn.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>';
+    setTrustedHtml(this.fullscreenBtn, trustedHtml('<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>', "legacy direct innerHTML migration"));
     this.fullscreenBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       track('webcam-fullscreen', { entering: !this.isFullscreen });
@@ -162,9 +164,9 @@ export class LiveWebcamsPanel extends Panel {
     document.body.classList.toggle('live-news-fullscreen-active', this.isFullscreen);
     if (this.fullscreenBtn) {
       this.fullscreenBtn.title = this.isFullscreen ? 'Exit fullscreen' : 'Fullscreen';
-      this.fullscreenBtn.innerHTML = this.isFullscreen
+      setTrustedHtml(this.fullscreenBtn, trustedHtml(this.isFullscreen
         ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 14h6v6"/><path d="M20 10h-6V4"/><path d="M14 10l7-7"/><path d="M3 21l7-7"/></svg>'
-        : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>';
+        : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>', "legacy direct innerHTML migration"));
     }
   }
 
@@ -227,14 +229,14 @@ export class LiveWebcamsPanel extends Panel {
     const gridBtn = document.createElement('button');
     gridBtn.className = `webcam-view-btn${this.viewMode === 'grid' ? ' active' : ''}`;
     gridBtn.dataset.mode = 'grid';
-    gridBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/></svg>';
+    setTrustedHtml(gridBtn, trustedHtml('<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/></svg>', "legacy direct innerHTML migration"));
     gridBtn.title = 'Grid view';
     gridBtn.addEventListener('click', () => this.setViewMode('grid'));
 
     const singleBtn = document.createElement('button');
     singleBtn.className = `webcam-view-btn${this.viewMode === 'single' ? ' active' : ''}`;
     singleBtn.dataset.mode = 'single';
-    singleBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="3" y="3" width="18" height="14" rx="2"/><rect x="3" y="19" width="18" height="2" rx="1"/></svg>';
+    setTrustedHtml(singleBtn, trustedHtml('<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="3" y="3" width="18" height="14" rx="2"/><rect x="3" y="19" width="18" height="2" rx="1"/></svg>', "legacy direct innerHTML migration"));
     singleBtn.title = 'Single view';
     singleBtn.addEventListener('click', () => this.setViewMode('single'));
 
@@ -467,7 +469,7 @@ export class LiveWebcamsPanel extends Panel {
     this.destroyIframes();
 
     if (!this.isVisible || this.isIdle) {
-      this.content.innerHTML = `<div class="webcam-placeholder">${escapeHtml(t('components.webcams.paused'))}</div>`;
+      setTrustedHtml(this.content, trustedHtml(`<div class="webcam-placeholder">${escapeHtml(t('components.webcams.paused'))}</div>`, "legacy direct innerHTML migration"));
       return;
     }
 
@@ -485,7 +487,7 @@ export class LiveWebcamsPanel extends Panel {
       return;
     }
 
-    this.content.innerHTML = '';
+    setTrustedHtml(this.content, trustedHtml('', "legacy direct innerHTML migration"));
     this.content.className = 'panel-content webcam-content';
 
     const grid = document.createElement('div');
@@ -500,7 +502,7 @@ export class LiveWebcamsPanel extends Panel {
 
       const label = document.createElement('div');
       label.className = 'webcam-cell-label';
-      label.innerHTML = `<span class="webcam-live-dot"></span><span class="webcam-city">${escapeHtml(feed.city.toUpperCase())}</span>`;
+      setTrustedHtml(label, trustedHtml(`<span class="webcam-live-dot"></span><span class="webcam-city">${escapeHtml(feed.city.toUpperCase())}</span>`, "legacy direct innerHTML migration"));
 
       if (desktop) {
         // On desktop, clicks pass through label (pointer-events:none in CSS)
@@ -508,7 +510,7 @@ export class LiveWebcamsPanel extends Panel {
         const expandBtn = document.createElement('button');
         expandBtn.className = 'webcam-expand-btn';
         expandBtn.title = t('webcams.expand') || 'Expand';
-        expandBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>';
+        setTrustedHtml(expandBtn, trustedHtml('<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>', "legacy direct innerHTML migration"));
         expandBtn.addEventListener('click', (e) => {
           e.stopPropagation();
           trackWebcamSelected(feed.id, feed.city, 'grid');
@@ -548,7 +550,7 @@ export class LiveWebcamsPanel extends Panel {
   }
 
   private renderSingle(): void {
-    this.content.innerHTML = '';
+    setTrustedHtml(this.content, trustedHtml('', "legacy direct innerHTML migration"));
     this.content.className = 'panel-content webcam-content';
 
     const wrapper = document.createElement('div');
@@ -565,7 +567,7 @@ export class LiveWebcamsPanel extends Panel {
     if (!this.forceSingleView) {
       const backBtn = document.createElement('button');
       backBtn.className = 'webcam-feed-btn webcam-back-btn';
-      backBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/></svg> Grid';
+      setTrustedHtml(backBtn, trustedHtml('<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="3" y="3" width="8" height="8" rx="1"/><rect x="13" y="3" width="8" height="8" rx="1"/><rect x="3" y="13" width="8" height="8" rx="1"/><rect x="13" y="13" width="8" height="8" rx="1"/></svg> Grid', "legacy direct innerHTML migration"));
       backBtn.addEventListener('click', () => this.setViewMode('grid'));
       switcher.appendChild(backBtn);
     }
@@ -678,7 +680,7 @@ export class LiveWebcamsPanel extends Panel {
       this.idleTimeout = setTimeout(() => {
         this.isIdle = true;
         this.destroyIframes();
-        this.content.innerHTML = `<div class="webcam-placeholder">${escapeHtml(t('components.webcams.pausedIdle'))}</div>`;
+        setTrustedHtml(this.content, trustedHtml(`<div class="webcam-placeholder">${escapeHtml(t('components.webcams.pausedIdle'))}</div>`, "legacy direct innerHTML migration"));
       }, ECO_IDLE_PAUSE_MS);
     };
 

@@ -47,6 +47,18 @@ describe('classifyHttpCheckoutError', () => {
     assert.equal(err.code, 'invalid_product');
   });
 
+  // 403 on the create-checkout edge route never comes from our handler or the
+  // Convex relay — it's Vercel firewall / edge bot-protection. "Temporarily
+  // unavailable" copy is honest and retryable; the generic 4xx copy ("That
+  // product isn't available") is misleading and tells the user to refresh
+  // forever. Originally surfaced as Sentry WORLDMONITOR-RN.
+  it('maps 403 to service_unavailable (infra block, retryable)', () => {
+    const err = classifyHttpCheckoutError(403);
+    assert.equal(err.code, 'service_unavailable');
+    assert.equal(err.retryable, true);
+    assert.equal(err.httpStatus, 403);
+  });
+
   it('maps 500 to service_unavailable', () => {
     const err = classifyHttpCheckoutError(500);
     assert.equal(err.code, 'service_unavailable');

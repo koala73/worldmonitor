@@ -18,7 +18,7 @@
 export const config = { runtime: 'edge' };
 
 // @ts-expect-error — JS module, no declaration file
-import { getCorsHeaders } from './_cors.js';
+import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { validateBearerToken } from '../server/auth-session';
 import { getEntitlements } from '../server/_shared/entitlement-check';
 
@@ -36,6 +36,22 @@ function hasValidWorldMonitorKey(key: string): boolean {
   return Boolean(key) && WORLDMONITOR_VALID_KEY_SET.has(key);
 }
 
+function getCookie(req: Request, name: string): string {
+  const raw = req.headers.get('Cookie') || req.headers.get('cookie') || '';
+  if (!raw) return '';
+  const prefix = `${name}=`;
+  for (const part of raw.split(';')) {
+    const trimmed = part.trim();
+    if (!trimmed.startsWith(prefix)) continue;
+    try {
+      return decodeURIComponent(trimmed.slice(prefix.length));
+    } catch {
+      return trimmed.slice(prefix.length);
+    }
+  }
+  return '';
+}
+
 function json(body: unknown, status: number, cors: Record<string, string>): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -44,6 +60,10 @@ function json(body: unknown, status: number, cors: Record<string, string>): Resp
 }
 
 export default async function handler(req: Request): Promise<Response> {
+  if (isDisallowedOrigin(req)) {
+    return json({ error: 'Origin not allowed' }, 403, {});
+  }
+
   const corsHeaders = getCorsHeaders(req) as Record<string, string>;
 
   if (req.method === 'OPTIONS') {
@@ -60,10 +80,14 @@ export default async function handler(req: Request): Promise<Response> {
   // ── Auth ──────────────────────────────────────────────────────────────────
   let isPro = false;
 
-  const worldMonitorKey =
+  const headerWorldMonitorKey =
     req.headers.get('X-WorldMonitor-Key') ??
     req.headers.get('X-Api-Key') ??
     '';
+  const worldMonitorKey =
+    headerWorldMonitorKey ||
+    getCookie(req, 'wm-pro-key') ||
+    getCookie(req, 'wm-widget-key');
   if (hasValidWorldMonitorKey(worldMonitorKey)) {
     isPro = true;
   } else {
@@ -120,8 +144,8 @@ export default async function handler(req: Request): Promise<Response> {
       isPro = true;
     } else {
       // Legacy tester key path (wm-widget-key / wm-pro-key)
-      const widgetKey = req.headers.get('X-Widget-Key') ?? '';
-      const proKey = req.headers.get('X-Pro-Key') ?? '';
+      const widgetKey = req.headers.get('X-Widget-Key') || getCookie(req, 'wm-widget-key');
+      const proKey = req.headers.get('X-Pro-Key') || getCookie(req, 'wm-pro-key');
       const hasWidgetKey = Boolean(WIDGET_AGENT_KEY && widgetKey === WIDGET_AGENT_KEY);
       const hasProKey = Boolean(PRO_WIDGET_KEY && proKey === PRO_WIDGET_KEY);
       if (!hasWidgetKey && !hasProKey) {

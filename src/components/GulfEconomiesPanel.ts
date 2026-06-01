@@ -1,7 +1,7 @@
 import { Panel } from './Panel';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { t } from '@/services/i18n';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { formatPrice, formatChange, getChangeClass } from '@/utils';
 import { miniSparkline } from '@/utils/sparkline';
 import { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
@@ -71,6 +71,6 @@ export class GulfEconomiesPanel extends Panel {
       renderSection(t('panels.gulfCurrencies'), currencies) +
       renderSection(t('panels.gulfOil'), oil);
 
-    this.setContent(html);
+    this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
   }
 }

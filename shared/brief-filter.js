@@ -8,6 +8,7 @@
 import { BRIEF_ENVELOPE_VERSION } from './brief-envelope.js';
 import { assertBriefEnvelope } from '../server/_shared/brief-render.js';
 import { isInstitutionalStaticPage } from './url-classifier.js';
+import diplomacyKeywordsData from './diplomacy-keywords.json' with { type: 'json' };
 
 /**
  * @typedef {import('./brief-envelope.js').BriefEnvelope} BriefEnvelope
@@ -64,10 +65,73 @@ const SEVERITY_RANK = {
   low: 3,
 };
 
+const DIPLOMACY_KEYWORDS = diplomacyKeywordsData.diplomacyKeywords;
+const FLASHPOINT_KEYWORDS = diplomacyKeywordsData.flashpointKeywords;
+const DIPLOMACY_FLASHPOINT_PAIRS = diplomacyKeywordsData.diplomacyFlashpointPairs;
+
+const LEAD_COHERENCE_MIN_ENTITY_CORROBORATION = 2;
+
 /** @param {unknown} v */
 function finiteNumberOrZero(v) {
   const n = typeof v === 'number' ? v : Number(v);
   return Number.isFinite(n) ? n : 0;
+}
+
+/** @param {string} text */
+function normalizeScoringText(text) {
+  return text.toLowerCase().replace(/[^a-z0-9\s]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Word-start containment in normalized scoring text. The keyword must
+ * begin at start-of-string or after a whitespace boundary, but is
+ * allowed to continue with arbitrary characters — so 'iran' still
+ * matches inside "iranian", 'russia' inside "russian", 'pact' inside
+ * "pacts" (plural). The boundary STAYS on the left so 'pact' inside
+ * "impact" or 'deal' inside "ideal" do NOT match — preceded by a word
+ * character ('m', 'i'), not a boundary. Works for multi-word keywords
+ * like 'west bank' or 'north korea' (e.g. matches "north korean" via
+ * the "north korea" prefix). PR #3909 review (P2): the strict
+ * full-boundary form regressed demonyms like 'Iranian'/'Israeli'.
+ * @param {string} text @param {string} kw
+ */
+function containsKeywordToken(text, kw) {
+  if (!kw) return false;
+  const escaped = kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(^|\\s)${escaped}`).test(text);
+}
+
+/** @param {string} text @param {string[]} keywords */
+function hasAnySignal(text, keywords) {
+  return keywords.some((kw) => containsKeywordToken(text, kw));
+}
+
+/**
+ * @param {Record<string, unknown>} story
+ * @returns {boolean}
+ */
+function hasDiplomacyFlashpointSignal(story) {
+  const title = asTrimmedString(story?.primaryTitle);
+  const description = asTrimmedString(story?.description);
+  const text = normalizeScoringText(`${title} ${description}`.trim());
+  if (!text) return false;
+  if (
+    DIPLOMACY_FLASHPOINT_PAIRS.some(([entity, action]) =>
+      containsKeywordToken(text, entity) && containsKeywordToken(text, action),
+    )
+  ) {
+    return true;
+  }
+  return hasAnySignal(text, DIPLOMACY_KEYWORDS) && hasAnySignal(text, FLASHPOINT_KEYWORDS);
+}
+
+/**
+ * @param {Record<string, unknown>} story
+ * @returns {boolean}
+ */
+function hasEntityCorroboration(story) {
+  if (story?.entityCorroboration === true) return true;
+  return finiteNumberOrZero(story?.entityCorroborationCount) >= LEAD_COHERENCE_MIN_ENTITY_CORROBORATION;
 }
 
 /** @param {unknown} v */
@@ -139,6 +203,10 @@ function titleCase(v) {
 
 /**
  * @typedef {(event: { reason: 'severity'|'headline'|'url'|'shape'|'cap'|'source_topic_cap'|'institutional_static_page', severity?: string, sourceUrl?: string }) => void} DropMetricsFn
+ */
+
+/**
+ * @typedef {(event: { leadDiplomacyOverride: boolean }) => void} OrderMetricsFn
  */
 
 /**
@@ -216,20 +284,27 @@ function topicKeyForStory(story, originalIndex) {
  * @param {Array<Record<string, unknown>>} stories
  * @param {Set<BriefThreatLevel>} allowed
  * @param {unknown} rankedStoryHashes
+ * @param {OrderMetricsFn | undefined} onOrder
  * @returns {Array<Record<string, unknown>>}
  */
-function orderBriefCandidates(stories, allowed, rankedStoryHashes) {
+function orderBriefCandidates(stories, allowed, rankedStoryHashes, onOrder) {
   const annotated = stories.map((story, originalIndex) => {
     const threatLevel = normaliseThreatLevel(story?.threatLevel);
     const severityRank = threatLevel ? (SEVERITY_RANK[threatLevel] ?? Infinity) : Infinity;
+    const eligible = Boolean(threatLevel && allowed.has(threatLevel));
+    const rank = rankForStory(story, rankedStoryHashes);
     return {
       story,
       originalIndex,
       topicKey: topicKeyForStory(story, originalIndex),
       threatLevel,
       severityRank,
-      eligible: Boolean(threatLevel && allowed.has(threatLevel)),
-      rank: rankForStory(story, rankedStoryHashes),
+      eligible,
+      rank,
+      leadDiplomacyOverride: eligible &&
+        rank === 0 &&
+        hasEntityCorroboration(story) &&
+        hasDiplomacyFlashpointSignal(story),
       score: finiteNumberOrZero(story?.importanceScore ?? story?.currentScore),
     };
   });
@@ -252,6 +327,10 @@ function orderBriefCandidates(stories, allowed, rankedStoryHashes) {
         // Best (lowest) LLM rank seen across any eligible member in
         // this block, not the rank of the highest-scoring member.
         bestLlmRank: Infinity,
+        // Narrow coherence override: if the synthesis lead selected an
+        // entity-corroborated flashpoint-diplomacy story as rank #1, its
+        // topic block must render before severity-only conflict matches.
+        bestLeadDiplomacyRank: Infinity,
       };
       blocks.set(item.topicKey, block);
     }
@@ -261,6 +340,9 @@ function orderBriefCandidates(stories, allowed, rankedStoryHashes) {
       block.eligibleCount += 1;
       block.maxScore = Math.max(block.maxScore, item.score);
       block.bestLlmRank = Math.min(block.bestLlmRank, item.rank);
+      if (item.leadDiplomacyOverride) {
+        block.bestLeadDiplomacyRank = Math.min(block.bestLeadDiplomacyRank, item.rank);
+      }
       if (item.severityRank < block.bestSeverityRank) {
         block.bestSeverityRank = item.severityRank;
         block.bestSeverityCount = 1;
@@ -271,6 +353,12 @@ function orderBriefCandidates(stories, allowed, rankedStoryHashes) {
   }
 
   const orderedBlocks = [...blocks.values()].sort((a, b) => {
+    const aLead = Number.isFinite(a.bestLeadDiplomacyRank);
+    const bLead = Number.isFinite(b.bestLeadDiplomacyRank);
+    if (aLead !== bLead) return aLead ? -1 : 1;
+    if (aLead && a.bestLeadDiplomacyRank !== b.bestLeadDiplomacyRank) {
+      return a.bestLeadDiplomacyRank - b.bestLeadDiplomacyRank;
+    }
     if (a.bestSeverityRank !== b.bestSeverityRank) return a.bestSeverityRank - b.bestSeverityRank;
     if (a.bestSeverityCount !== b.bestSeverityCount) return b.bestSeverityCount - a.bestSeverityCount;
     if (a.eligibleCount !== b.eligibleCount) return b.eligibleCount - a.eligibleCount;
@@ -283,6 +371,7 @@ function orderBriefCandidates(stories, allowed, rankedStoryHashes) {
   for (const block of orderedBlocks) {
     block.items.sort((a, b) => {
       if (a.eligible !== b.eligible) return a.eligible ? -1 : 1;
+      if (a.leadDiplomacyOverride !== b.leadDiplomacyOverride) return a.leadDiplomacyOverride ? -1 : 1;
       if (a.severityRank !== b.severityRank) return a.severityRank - b.severityRank;
       if (a.rank !== b.rank) return a.rank - b.rank;
       if (a.score !== b.score) return b.score - a.score;
@@ -290,14 +379,18 @@ function orderBriefCandidates(stories, allowed, rankedStoryHashes) {
     });
     for (const item of block.items) ordered.push(item.story);
   }
+  if (typeof onOrder === 'function') {
+    const first = orderedBlocks[0]?.items?.[0];
+    onOrder({ leadDiplomacyOverride: first?.leadDiplomacyOverride === true });
+  }
   return ordered;
 }
 
 /**
- * @param {{ stories: UpstreamTopStory[]; sensitivity: AlertSensitivity; maxStories?: number; maxPerSourceTopic?: number; onDrop?: DropMetricsFn; rankedStoryHashes?: string[] }} input
+ * @param {{ stories: UpstreamTopStory[]; sensitivity: AlertSensitivity; maxStories?: number; maxPerSourceTopic?: number; onDrop?: DropMetricsFn; onOrder?: OrderMetricsFn; rankedStoryHashes?: string[] }} input
  * @returns {BriefStory[]}
  */
-export function filterTopStories({ stories, sensitivity, maxStories = 12, maxPerSourceTopic = 2, onDrop, rankedStoryHashes }) {
+export function filterTopStories({ stories, sensitivity, maxStories = 12, maxPerSourceTopic = 2, onDrop, onOrder, rankedStoryHashes }) {
   if (!Array.isArray(stories)) return [];
   const allowed = ALLOWED_LEVELS_BY_SENSITIVITY[sensitivity];
   if (!allowed) return [];
@@ -312,7 +405,7 @@ export function filterTopStories({ stories, sensitivity, maxStories = 12, maxPer
   // topic-block mass dominate so a critical cluster stays contiguous
   // and reaches the rendered brief ahead of lower-severity singletons;
   // rankedStoryHashes remains a tie-breaker inside that frame.
-  const orderedStories = orderBriefCandidates(stories, allowed, rankedStoryHashes);
+  const orderedStories = orderBriefCandidates(stories, allowed, rankedStoryHashes, onOrder);
 
   /** @type {BriefStory[]} */
   const out = [];

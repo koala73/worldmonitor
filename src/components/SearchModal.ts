@@ -4,6 +4,8 @@ import { t } from '@/services/i18n';
 import { trackSearchUsed } from '@/services/analytics';
 import { getAllCommands, type Command } from '@/config/commands';
 import { isMobileDevice } from '@/utils';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 interface CommandResult {
   command: Command;
@@ -100,6 +102,14 @@ export class SearchModal {
   private placeholder: string;
   private activePanelIds: Set<string> = new Set();
   /**
+   * Panels the user *could* enable on this variant (entitled superset),
+   * vs `activePanelIds` which is the currently-enabled subset. A panel in
+   * `available` but not `active` is rendered with an "Add" affordance and
+   * gets enabled on selection. When unset (size 0) we fall back to
+   * active-only gating for back-compat.
+   */
+  private availablePanelIds: Set<string> = new Set();
+  /**
    * Caller-supplied predicate that returns true iff a `layer:<key>` command
    * can actually execute right now (current renderer supports the layer +
    * DeckGL gate for DeckGL-only layers). Hooked from SearchManager so
@@ -149,6 +159,23 @@ export class SearchModal {
 
   public setActivePanels(panelIds: string[]): void {
     this.activePanelIds = new Set(panelIds);
+  }
+
+  public setAvailablePanels(panelIds: string[]): void {
+    this.availablePanelIds = new Set(panelIds);
+  }
+
+  /** A panel command is shown iff enabled OR available-to-add (back-compat: active-only when no available set). */
+  private isPanelCommandVisible(panelId: string): boolean {
+    if (this.availablePanelIds.size === 0) return this.activePanelIds.has(panelId);
+    return this.activePanelIds.has(panelId) || this.availablePanelIds.has(panelId);
+  }
+
+  /** True when a panel command would add a currently-disabled panel (drives the "Add" affordance). */
+  private isAddablePanel(cmd: Command): boolean {
+    if (!cmd.id.startsWith('panel:')) return false;
+    const id = cmd.id.slice(6);
+    return !this.activePanelIds.has(id) && this.availablePanelIds.has(id);
   }
 
   public setLayerExecutableFn(fn: (layerKey: string) => boolean): void {
@@ -217,7 +244,7 @@ export class SearchModal {
 
     if (this.isMobile) {
       this.overlay.className = 'search-overlay search-mobile';
-      this.overlay.innerHTML = `
+      setTrustedHtml(this.overlay, trustedHtml(`
         <div class="search-sheet">
           <div class="search-sheet-handle"></div>
           <div class="search-sheet-header">
@@ -228,7 +255,7 @@ export class SearchModal {
           <div class="search-sheet-chips"></div>
           <div class="search-results"></div>
         </div>
-      `;
+      `, "legacy direct innerHTML migration"));
 
       this.overlay.addEventListener('click', (e) => {
         if (e.target === this.overlay) this.close();
@@ -252,7 +279,7 @@ export class SearchModal {
       }
     } else {
       this.overlay.className = 'search-overlay';
-      this.overlay.innerHTML = `
+      setTrustedHtml(this.overlay, trustedHtml(`
         <div class="search-modal">
           <div class="search-header">
             <span class="search-icon">\u2318</span>
@@ -266,7 +293,7 @@ export class SearchModal {
             <span><kbd>esc</kbd> ${t('modals.search.close')}</span>
           </div>
         </div>
-      `;
+      `, "legacy direct innerHTML migration"));
 
       this.overlay.addEventListener('click', (e) => {
         if (e.target === this.overlay) this.close();
@@ -288,7 +315,7 @@ export class SearchModal {
     for (const cmd of getAllCommands()) {
       if (cmd.id.startsWith('panel:')) {
         const panelId = cmd.id.slice(6);
-        if (!this.activePanelIds.has(panelId)) continue;
+        if (!this.isPanelCommandVisible(panelId)) continue;
       }
       // Hide layer commands whose layer can't render under the current
       // map renderer / DeckGL mode. Without this, CMD+K surfaces toggles
@@ -424,7 +451,7 @@ export class SearchModal {
   private renderRecent(): void {
     if (!this.resultsList) return;
 
-    this.resultsList.innerHTML = `<div class="search-section-header">${t('modals.search.recent')}</div>`;
+    setTrustedHtml(this.resultsList, trustedHtml(`<div class="search-section-header">${t('modals.search.recent')}</div>`, "legacy direct innerHTML migration"));
 
     this.recentSearches.forEach((term, i) => {
       const item = document.createElement('div');
@@ -483,7 +510,7 @@ export class SearchModal {
         </div>`;
     });
 
-    this.resultsList.innerHTML = html;
+    setTrustedHtml(this.resultsList, trustedHtml(html, "legacy direct innerHTML migration"));
 
     this.resultsList.querySelectorAll('.tip-item').forEach((el) => {
       el.addEventListener('click', () => {
@@ -515,7 +542,13 @@ export class SearchModal {
     this.resultsList.appendChild(wrap);
   }
 
-  /** Renders the full command list by category. Commands are sourced from getAllCommands(); no separate list to maintain. */
+  /**
+   * Renders the full command list by category. Commands are sourced from
+   * getAllCommands(); no separate list to maintain. This view intentionally
+   * includes available-but-disabled panels (each tagged with an "Add" pill via
+   * isAddablePanel) so it doubles as a browse-and-add surface — the list is
+   * kept navigable by the collapsible per-category <details> grouping below.
+   */
   private renderAllCommandsList(): void {
     if (!this.resultsList) return;
 
@@ -523,7 +556,7 @@ export class SearchModal {
     const commands = allCommands.filter(cmd => {
       if (cmd.id.startsWith('panel:')) {
         const panelId = cmd.id.slice(6);
-        if (!this.activePanelIds.has(panelId)) return false;
+        if (!this.isPanelCommandVisible(panelId)) return false;
       }
       if (cmd.id.startsWith('layer:')) {
         if (!this.layerExecutableFn(cmd.id.slice(6))) return false;
@@ -554,18 +587,22 @@ export class SearchModal {
       html += `<summary class="search-command-category-summary">${escapeHtml(label)}</summary>`;
       html += `<div class="search-command-category-list">`;
       for (const cmd of list) {
+        const addable = this.isAddablePanel(cmd);
+        const addLabel = t('modals.search.addPanel', { defaultValue: 'Add' });
+        const ariaLabel = addable ? ` aria-label="${escapeHtml(`${addLabel}: ${resolveCommandLabel(cmd)}`)}"` : '';
         html += `
-          <div class="search-result-item command-item" data-command="${escapeHtml(cmd.id)}">
+          <div class="search-result-item command-item ${addable ? 'command-addable' : ''}" data-command="${escapeHtml(cmd.id)}"${ariaLabel}>
             <span class="search-result-icon">${escapeHtml(cmd.icon)}</span>
             <div class="search-result-content">
               <div class="search-result-title">${escapeHtml(resolveCommandLabel(cmd))}</div>
             </div>
+            ${addable ? `<span class="search-result-type search-result-type-add">${escapeHtml(addLabel)}</span>` : ''}
           </div>`;
       }
       html += `</div></details>`;
     }
 
-    this.resultsList.innerHTML = html;
+    setTrustedHtml(this.resultsList, trustedHtml(html, "legacy direct innerHTML migration"));
 
     const backLink = this.resultsList.querySelector('.search-all-commands-back');
     backLink?.addEventListener('click', (e) => {
@@ -596,22 +633,22 @@ export class SearchModal {
     if (this.commandResults.length === 0 && this.results.length === 0) {
       if (this.currentFlightCallsign && this.onFlightSearch) {
         if (this.flightSearchFired) {
-          this.resultsList.innerHTML = `
+          setTrustedHtml(this.resultsList, trustedHtml(`
             <div class="search-empty">
               <div class="search-empty-icon">\u2708\uFE0F</div>
               <div>${escapeHtml(t('modals.search.flightNotFound', { callsign: this.currentFlightCallsign }))}</div>
-            </div>`;
+            </div>`, "legacy direct innerHTML migration"));
         } else {
           this.renderFlightSearchTrigger(this.currentFlightCallsign);
         }
         return;
       }
-      this.resultsList.innerHTML = `
+      setTrustedHtml(this.resultsList, trustedHtml(`
         <div class="search-empty">
           <div class="search-empty-icon">\u2205</div>
           <div>${t('modals.search.noResults')}</div>
         </div>
-      `;
+      `, "legacy direct innerHTML migration"));
       return;
     }
 
@@ -650,13 +687,17 @@ export class SearchModal {
     if (this.commandResults.length > 0) {
       html += `<div class="search-section-header">${t('modals.search.commands')}</div>`;
       for (const { command } of this.commandResults) {
+        const addable = this.isAddablePanel(command);
+        const addLabel = t('modals.search.addPanel', { defaultValue: 'Add' });
+        const typeLabel = addable ? addLabel : resolveCategoryLabel(command);
+        const ariaLabel = addable ? ` aria-label="${escapeHtml(`${addLabel}: ${resolveCommandLabel(command)}`)}"` : '';
         html += `
-          <div class="search-result-item command-item ${globalIndex === this.selectedIndex ? 'selected' : ''}" data-index="${globalIndex}" data-command="${command.id}">
-            <span class="search-result-icon">${command.icon}</span>
+          <div class="search-result-item command-item ${addable ? 'command-addable' : ''} ${globalIndex === this.selectedIndex ? 'selected' : ''}" data-index="${globalIndex}" data-command="${escapeHtml(command.id)}"${ariaLabel}>
+            <span class="search-result-icon">${escapeHtml(command.icon)}</span>
             <div class="search-result-content">
               <div class="search-result-title">${escapeHtml(resolveCommandLabel(command))}</div>
             </div>
-            <span class="search-result-type">${escapeHtml(resolveCategoryLabel(command))}</span>
+            <span class="search-result-type${addable ? ' search-result-type-add' : ''}">${escapeHtml(typeLabel)}</span>
           </div>`;
         globalIndex++;
       }
@@ -678,7 +719,7 @@ export class SearchModal {
       globalIndex++;
     }
 
-    this.resultsList.innerHTML = html;
+    setTrustedHtml(this.resultsList, trustedHtml(html, "legacy direct innerHTML migration"));
 
     this.resultsList.querySelectorAll('.search-result-item').forEach((el) => {
       el.addEventListener('click', () => {
@@ -690,7 +731,7 @@ export class SearchModal {
 
   private renderFlightSearchTrigger(callsign: string): void {
     if (!this.resultsList) return;
-    this.resultsList.innerHTML = `
+    setTrustedHtml(this.resultsList, trustedHtml(`
       <div class="search-result-item selected" data-flight-trigger="${escapeHtml(callsign)}">
         <span class="search-result-icon">\u2708\uFE0F</span>
         <div class="search-result-content">
@@ -698,7 +739,7 @@ export class SearchModal {
           <div class="search-result-subtitle">${escapeHtml(t('modals.search.flightSearchHint'))}</div>
         </div>
         <span class="search-result-type">${escapeHtml(t('modals.search.types.flight'))}</span>
-      </div>`;
+      </div>`, "legacy direct innerHTML migration"));
     this.resultsList.querySelector('[data-flight-trigger]')?.addEventListener('click', () => {
       this.triggerFlightSearch(callsign);
     });
@@ -707,20 +748,20 @@ export class SearchModal {
   private triggerFlightSearch(callsign: string): void {
     if (!this.onFlightSearch || !this.resultsList) return;
     this.flightSearchFired = true;
-    this.resultsList.innerHTML = `
+    setTrustedHtml(this.resultsList, trustedHtml(`
       <div class="search-result-item">
         <span class="search-result-icon">\u2708\uFE0F</span>
         <div class="search-result-content">
           <div class="search-result-title">Searching for <strong>${escapeHtml(callsign)}</strong>\u2026</div>
         </div>
-      </div>`;
+      </div>`, "legacy direct innerHTML migration"));
     this.onFlightSearch(callsign);
   }
 
   private renderChips(query?: string): void {
     if (!this.chipsContainer) return;
     if (query && query.length >= 1) {
-      this.chipsContainer.innerHTML = '';
+      setTrustedHtml(this.chipsContainer, trustedHtml('', "legacy direct innerHTML migration"));
       return;
     }
 
@@ -736,9 +777,9 @@ export class SearchModal {
       chips.push({ label, value: label.toLowerCase() });
     }
 
-    this.chipsContainer.innerHTML = chips.map(c =>
+    setTrustedHtml(this.chipsContainer, trustedHtml(chips.map(c =>
       `<button class="search-chip" data-value="${escapeHtml(c.value)}">${escapeHtml(c.label)}</button>`
-    ).join('');
+    ).join(''), "legacy direct innerHTML migration"));
 
     this.chipsContainer.querySelectorAll('.search-chip').forEach(el => {
       el.addEventListener('click', () => {

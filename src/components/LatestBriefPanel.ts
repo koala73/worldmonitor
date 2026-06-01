@@ -24,7 +24,8 @@ import { getClerkToken, clearClerkTokenCache } from '@/services/clerk';
 import { PanelGateReason, hasPremiumAccess } from '@/services/panel-gating';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { hasTier, getEntitlementState } from '@/services/entitlements';
-import { h, rawHtml, replaceChildren, clearChildren } from '@/utils/dom-utils';
+import { trackBriefThreadOpen } from '@/services/analytics';
+import { h, rawHtml, replaceChildren, clearChildren, trustedHtml, type TrustedHtml } from '@/utils/dom-utils';
 
 interface LatestBriefReady {
   status: 'ready';
@@ -58,18 +59,21 @@ class BriefAccessError extends Error {
 
 const LATEST_BRIEF_ENDPOINT = '/api/latest-brief';
 
-const WM_LOGO_SVG = (
-  '<svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2" '
-  + 'stroke-linecap="round" aria-hidden="true">'
-  + '<circle cx="32" cy="32" r="28"/>'
-  + '<ellipse cx="32" cy="32" rx="5" ry="28"/>'
-  + '<ellipse cx="32" cy="32" rx="14" ry="28"/>'
-  + '<ellipse cx="32" cy="32" rx="22" ry="28"/>'
-  + '<ellipse cx="32" cy="32" rx="28" ry="5"/>'
-  + '<ellipse cx="32" cy="32" rx="28" ry="14"/>'
-  + '<path d="M 6 32 L 20 32 L 24 24 L 30 40 L 36 22 L 42 38 L 46 32 L 56 32" stroke-width="2.4"/>'
-  + '<circle cx="57" cy="32" r="1.8" fill="currentColor" stroke="none"/>'
-  + '</svg>'
+const WM_LOGO_SVG: TrustedHtml = trustedHtml(
+  (
+    '<svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="2" '
+    + 'stroke-linecap="round" aria-hidden="true">'
+    + '<circle cx="32" cy="32" r="28"/>'
+    + '<ellipse cx="32" cy="32" rx="5" ry="28"/>'
+    + '<ellipse cx="32" cy="32" rx="14" ry="28"/>'
+    + '<ellipse cx="32" cy="32" rx="22" ry="28"/>'
+    + '<ellipse cx="32" cy="32" rx="28" ry="5"/>'
+    + '<ellipse cx="32" cy="32" rx="28" ry="14"/>'
+    + '<path d="M 6 32 L 20 32 L 24 24 L 30 40 L 36 22 L 42 38 L 46 32 L 56 32" stroke-width="2.4"/>'
+    + '<circle cx="57" cy="32" r="1.8" fill="currentColor" stroke="none"/>'
+    + '</svg>'
+  ),
+  'Static WorldMonitor logo SVG defined in source',
 );
 
 // Composing-state poll interval. 60s balances "responsive when the
@@ -412,6 +416,24 @@ export class LatestBriefPanel extends Panel {
       target: '_blank',
       rel: 'noopener noreferrer',
       'aria-label': `Open today's brief — ${threadLabel}`,
+      // U11 telemetry: dashboard → magazine pull-through. The cover
+      // card is the panel's only click site; the per-story `country` /
+      // `severity` properties are only meaningful inside the magazine
+      // (which has its own per-story tracker), so the dashboard event
+      // carries nulls for those and `source: 'dashboard'`.
+      onclick: () => {
+        try {
+          trackBriefThreadOpen({
+            country: null,
+            followed: false,
+            severity: null,
+            source: 'dashboard',
+          });
+        } catch {
+          // Analytics outage must NOT break the click — the anchor
+          // navigates regardless of this handler.
+        }
+      },
     },
       h('div', { className: 'latest-brief-cover' },
         coverLogo,

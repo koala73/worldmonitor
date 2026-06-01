@@ -3,6 +3,7 @@ import { escapeHtml } from '@/services/forecast';
 import type { Forecast } from '@/services/forecast';
 import { t } from '@/services/i18n';
 import { getForecastMacroRegion } from '../../shared/forecast-macro-regions.js';
+import { unsafeRawHtml } from '@/utils/sanitize';
 
 const DOMAINS = ['all', 'conflict', 'market', 'supply_chain', 'political', 'military', 'cyber', 'infrastructure'] as const;
 const PANEL_MIN_PROBABILITY = 0.1;
@@ -365,13 +366,13 @@ export class ForecastPanel extends Panel {
       const emptyCopy = hasAnyForecasts
         ? 'No forecasts match the current filter'
         : 'No forecasts available';
-      this.setContent(`
+      this.setSafeContent(unsafeRawHtml(`
         <div class="fc-panel">
           <div class="fc-filters">${filtersHtml}</div>
           <div class="fc-filters">${regionsHtml}</div>
           <div class="fc-empty">${escapeHtml(emptyCopy)}</div>
         </div>
-      `);
+      `, 'legacy Panel.setContent() migration'));
       return;
     }
 
@@ -384,14 +385,14 @@ export class ForecastPanel extends Panel {
       : '';
     const tableHtml = this.renderProbTable(filtered);
 
-    this.setContent(`
+    this.setSafeContent(unsafeRawHtml(`
       <div class="fc-panel">
         <div class="fc-filters">${filtersHtml}</div>
         <div class="fc-filters">${regionsHtml}</div>
         ${nexusHtml}
         ${tableHtml}
       </div>
-    `);
+    `, 'legacy Panel.setContent() migration'));
   }
 
   // ── NEXUS theater grid + expandable detail ──────────────────────────────
@@ -530,7 +531,7 @@ export class ForecastPanel extends Panel {
     const sigs = f.signals || [];
     const signalsHtml = sigs.length > 0
       ? sigs.map(s =>
-          `<div class="fc-signal">${escapeHtml(s.value.replace(/^[\s\u2013\u2014\-]+/, ''))}</div>`
+          `<div class="fc-signal">${escapeHtml(s.value.replace(/^[\s\u2013\u2014-]+/, ''))}</div>`
         ).join('')
       : '';
 

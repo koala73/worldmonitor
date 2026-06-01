@@ -55,8 +55,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'cascade-mirror: live counterpart of theater_posture:sebuf:stale:v1 (covered by get_military_posture). CASCADE_GROUPS theaterPosture entry.'],
   ['theater-posture:sebuf:backup:v1',
     'cascade-mirror: backup counterpart of theater_posture:sebuf:stale:v1 (covered by get_military_posture). CASCADE_GROUPS theaterPosture entry.'],
-  ['risk:scores:sebuf:v2',
-    'cascade-mirror: live counterpart of risk:scores:sebuf:stale:v2 (covered by get_conflict_events).'],
+  ['risk:scores:sebuf:v3',
+    'cascade-mirror: live counterpart of risk:scores:sebuf:stale:v3 (covered by get_conflict_events).'],
   ['military:flights:v1',
     'cascade-mirror: live counterpart of military:flights:stale:v1 — deferred to a future expanded military tool (no current tool exposes either variant).'],
   ['military:flights:stale:v1',
@@ -115,24 +115,24 @@ const EXCLUDED_FROM_MCP = new Map([
     'on-demand: written by writeSimulationOutcome after simulation runs (matches api/health.js:467 ON_DEMAND_KEYS rationale). Internal pipeline artifact, not a queryable slice.'],
 
   // ===========================================================================
-  // Recovery pillar (stub seeders, not yet deployed) — per api/health.js:470-471
+  // Recovery pillar scorer inputs — no dedicated recovery-data MCP tool yet.
   // ===========================================================================
   ['resilience:recovery:fiscal-space:v1',
-    'deferred: recovery pillar stub seeder, not yet deployed (api/health.js:470-471 ON_DEMAND_KEYS). Future resilience tool will expose recovery dimensions.'],
+    'deferred: recovery pillar scorer input. Future resilience tool will expose recovery dimensions.'],
   ['resilience:recovery:reserve-adequacy:v1',
-    'deferred: recovery pillar stub seeder, not yet deployed (api/health.js:470-471).'],
+    'deferred: recovery pillar scorer input. Future resilience tool will expose recovery dimensions.'],
   ['resilience:recovery:external-debt:v1',
-    'deferred: recovery pillar stub seeder, not yet deployed (api/health.js:470-471).'],
+    'deferred: recovery pillar scorer input. Future resilience tool will expose recovery dimensions.'],
   ['resilience:recovery:import-hhi:v1',
-    'deferred: recovery pillar stub seeder, not yet deployed (api/health.js:470-471).'],
+    'deferred: strict seeded recovery pillar scorer input. Future resilience tool will expose recovery dimensions.'],
   // resilience:recovery:fuel-stocks:v1 exclusion removed alongside PR #3764
   // (api/health.js probe removal). The seeder still runs and writes the key
   // but scoreFuelStockDays does not read it, so the key is no longer in
   // STANDALONE_KEYS and an MCP exclusion would be a dead entry.
   ['resilience:recovery:reexport-share:v1',
-    'deferred: recovery pillar stub seeder, not yet deployed.'],
+    'deferred: recovery pillar scorer input. Future resilience tool will expose recovery dimensions.'],
   ['resilience:recovery:sovereign-wealth:v1',
-    'deferred: recovery pillar stub seeder, not yet deployed.'],
+    'deferred: recovery pillar scorer input. Future resilience tool will expose recovery dimensions.'],
 
   // ===========================================================================
   // Deferred follow-up tools (explicit gaps named in the plan or related domain)
@@ -165,8 +165,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'deferred to a future resilience tool (paired with resilience:ranking:v18).'],
   ['resilience:static:fao',
     'deferred to a future resilience tool (FAO Phase 3+ aggregate, paired with resilience:static:index:v1).'],
-  ['resilience:intervals:v2:US',
-    'deferred to a future resilience tool (uncertainty intervals on top of resilience:ranking:v18).'],
+  ['resilience:intervals:v3:US',
+    'deferred to a future resilience tool (formula-tagged sensitivity bands on top of resilience:ranking:v18).'],
   ['resilience:low-carbon-generation:v1',
     'deferred to a future resilience tool. Companion data to fossil-electricity-share (already exposed via get_energy_intelligence).'],
   ['resilience:power-losses:v1',

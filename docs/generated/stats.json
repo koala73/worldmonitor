@@ -1,0 +1,38 @@
+{
+  "_generated": "scripts/docs-stats.mjs — do not edit by hand; run `npm run docs:stats`",
+  "layerDefinitions": 56,
+  "variantLayers": {
+    "full": 37,
+    "tech": 13,
+    "finance": 17,
+    "happy": 6,
+    "commodity": 18,
+    "energy": 18
+  },
+  "protoFiles": 276,
+  "protoServices": 34,
+  "protoDomainFolders": 35,
+  "openapiServiceSpecs": 34,
+  "serverDomains": 34,
+  "locales": 23,
+  "workflows": [
+    "build-desktop.yml",
+    "contributor-trust.yml",
+    "convex-deploy.yml",
+    "deploy-gate.yml",
+    "deploy-worker.yml",
+    "docker-publish.yml",
+    "feed-validation.yml",
+    "lint-code.yml",
+    "lint.yml",
+    "pro-bundle-freshness.yml",
+    "proto-check.yml",
+    "test-linux-app.yml",
+    "test.yml",
+    "typecheck.yml"
+  ],
+  "workflowCount": 14,
+  "freshnessSources": 35,
+  "freshnessRequiredForRisk": 2,
+  "feedDefinitions": 563
+}

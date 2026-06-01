@@ -5,7 +5,13 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const MCP_SRC = readFileSync(resolve(HERE, '../api/mcp.ts'), 'utf8');
+// Registry now lives split across two files. Concatenate them so the
+// source-text greps (cabin_class fix shape, conditional-spread anti-pattern
+// audit, DEFAULT_LIST_LIMIT cache-tool audit) operate on the same byte
+// surface they did before the split.
+const MCP_SRC = readFileSync(resolve(HERE, '../api/mcp/registry/cache-tools.ts'), 'utf8')
+  + '\n'
+  + readFileSync(resolve(HERE, '../api/mcp/registry/rpc-tools.ts'), 'utf8');
 
 /**
  * MCP schema-vs-behaviour parity test.

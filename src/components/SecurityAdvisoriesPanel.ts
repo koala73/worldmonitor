@@ -1,5 +1,5 @@
 import { Panel } from './Panel';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
 import type { SecurityAdvisory } from '@/services/security-advisories';
 
@@ -113,7 +113,7 @@ export class SecurityAdvisoriesPanel extends Panel {
 
   private render(): void {
     if (this.advisories.length === 0) {
-      this.setContent(`<div class="panel-empty">${t('common.noDataAvailable')}</div>`);
+      this.setSafeContent(unsafeRawHtml(`<div class="panel-empty">${t('common.noDataAvailable')}</div>`, 'legacy Panel.setContent() migration'));
       return;
     }
 
@@ -183,14 +183,14 @@ export class SecurityAdvisoriesPanel extends Panel {
       </div>
     `;
 
-    this.setContent(`
+    this.setSafeContent(unsafeRawHtml(`
       <div class="sa-panel-content">
         ${summaryHtml}
         ${filtersHtml}
         <div class="sa-list">${itemsHtml}</div>
         ${footerHtml}
       </div>
-    `);
+    `, 'legacy Panel.setContent() migration'));
   }
 
   public setRefreshHandler(handler: () => void): void {

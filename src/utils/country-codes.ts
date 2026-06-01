@@ -1,4 +1,4 @@
-const ISO2_TO_ISO3: Record<string, string> = {
+export const ISO2_TO_ISO3: Record<string, string> = {
   AD: 'AND', AE: 'ARE', AF: 'AFG', AG: 'ATG', AI: 'AIA', AL: 'ALB', AM: 'ARM', AO: 'AGO',
   AQ: 'ATA', AR: 'ARG', AS: 'ASM', AT: 'AUT', AU: 'AUS', AW: 'ABW', AX: 'ALA', AZ: 'AZE',
   BA: 'BIH', BB: 'BRB', BD: 'BGD', BE: 'BEL', BF: 'BFA', BG: 'BGR', BH: 'BHR', BI: 'BDI',
@@ -79,4 +79,54 @@ const ISO2_TO_COMTRADE_OVERRIDES: Record<string, string> = { IN: '699', TW: '490
 export function iso2ToComtradeReporterCode(iso2: string): string | null {
   const upper = iso2.toUpperCase();
   return ISO2_TO_COMTRADE_OVERRIDES[upper] ?? ISO2_TO_UN[upper] ?? null;
+}
+
+const ISO3_TO_ISO2: Record<string, string> = Object.fromEntries(
+  Object.entries(ISO2_TO_ISO3).map(([iso2, iso3]) => [iso3, iso2]),
+);
+
+// Tight alias map for the most common name forms. Keep <30 entries; reject
+// unknown rather than try to be a full geocoder. Keys are lowercase.
+const NAME_ALIASES_TO_ISO2: Record<string, string> = {
+  'united states': 'US',
+  'united states of america': 'US',
+  'usa': 'US',
+  'u.s.': 'US',
+  'u.s.a.': 'US',
+  'america': 'US',
+  'united kingdom': 'GB',
+  'uk': 'GB',
+  'u.k.': 'GB',
+  'britain': 'GB',
+  'great britain': 'GB',
+  'england': 'GB',
+  'russia': 'RU',
+  'russian federation': 'RU',
+  'south korea': 'KR',
+  'korea, south': 'KR',
+  'republic of korea': 'KR',
+  'north korea': 'KP',
+  'korea, north': 'KP',
+  'czech republic': 'CZ',
+  'czechia': 'CZ',
+  'ivory coast': 'CI',
+  "cote d'ivoire": 'CI',
+  'vietnam': 'VN',
+  'viet nam': 'VN',
+  'iran': 'IR',
+  'syria': 'SY',
+  'taiwan': 'TW',
+  'palestine': 'PS',
+  'vatican': 'VA',
+  'uae': 'AE',
+};
+
+export function toIso2(input: string | null | undefined): string | null {
+  if (input == null) return null;
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  const upper = trimmed.toUpperCase();
+  if (upper.length === 2 && ISO2_TO_ISO3[upper]) return upper;
+  if (upper.length === 3 && ISO3_TO_ISO2[upper]) return ISO3_TO_ISO2[upper];
+  return NAME_ALIASES_TO_ISO2[trimmed.toLowerCase()] ?? null;
 }

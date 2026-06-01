@@ -297,7 +297,7 @@ describe('seed-portwatch-port-activity.mjs exports', () => {
     // point. A vague "lowered for now" edit would lose the canary.
     assert.match(src, /Revert path/);
     // Allow a newline between "was" and "50" since the comment may wrap.
-    assert.match(src, /was[\s\/\n]+50/);
+    assert.match(src, /was[\s/\n]+50/);
     // Greptile PR #3760 P1: gate=5 alone would have let a 5-country run
     // replace the 174-country canonical snapshot. The comment must call
     // out the paired MIN_CANONICAL_PUBLISH gate so a future reviewer

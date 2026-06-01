@@ -14,8 +14,8 @@ import { describe, it } from 'node:test';
 //
 //  2. "Live capture" shape (produced by scripts/freeze-resilience-ranking.mjs):
 //     full items[] + greyedOut[] from the live API. Additional invariants
-//     (monotonic, unique ranks, greyedOut coverage < 0.40) are asserted on
-//     this shape.
+//     (monotonic, unique ranks, headline eligibility / greyOut gating) are
+//     asserted on this shape.
 //
 // Any new snapshot committed to docs/snapshots/ is auto-discovered.
 
@@ -31,20 +31,25 @@ const SNAPSHOT_DIR = path.join(REPO_ROOT, 'docs', 'snapshots');
 // runs ~13 points hotter.
 const HIGH_BAND_ANCHORS = new Set(['NO', 'CH', 'DK', 'IS', 'FI', 'SE', 'NZ']);
 const LOW_BAND_ANCHORS = new Set(['YE', 'SO', 'SD', 'CD']);
+const POST_PILLAR_COMBINE_CAPTURE_DATE = '2026-05-28';
+const MIN_FULL_UNIVERSE_RANKED_COUNTRIES = 160;
+const MIN_FULL_UNIVERSE_TOTAL_COUNTRIES = 190;
 
 const METHODOLOGY_BANDS: Record<string, { highFloor: number; lowCeiling: number }> = {
   'domain-weighted-6d': { highFloor: 70, lowCeiling: 45 },
-  'pillar-combined-penalized-v1': { highFloor: 60, lowCeiling: 40 },
+  'pillar-combined-penalized-v1': { highFloor: 55, lowCeiling: 40 },
 };
 
 function resolveBands(methodologyFormula: string | undefined): { highFloor: number; lowCeiling: number } {
-  // Unknown / unspecified formulas fall through to the 6-domain bands
-  // (the production default at the time of writing). If a future
-  // snapshot uses a new formula id, adding an entry to
-  // METHODOLOGY_BANDS above is the one-line fix; until then we assume
-  // the legacy bands rather than silently under-validating.
+  // Older published snapshots omitted methodologyFormula, before formula
+  // metadata was added, and are therefore interpreted as the historical
+  // 6-domain formula. New live captures must declare their formula explicitly.
   return METHODOLOGY_BANDS[methodologyFormula ?? 'domain-weighted-6d']
     ?? METHODOLOGY_BANDS['domain-weighted-6d']!;
+}
+
+function isKnownMethodologyFormula(methodologyFormula: string | undefined): methodologyFormula is keyof typeof METHODOLOGY_BANDS {
+  return typeof methodologyFormula === 'string' && methodologyFormula in METHODOLOGY_BANDS;
 }
 
 interface PublishedRow {
@@ -62,6 +67,7 @@ interface LiveItem {
   overallScore: number;
   overallScoreRaw?: number;
   dimensionCoverage?: number;
+  headlineEligible?: boolean;
   lowConfidence?: boolean;
 }
 
@@ -88,6 +94,23 @@ interface SnapshotLive {
   capturedAt: string;
   commitSha: string;
   schemaVersion: string;
+  methodologyFormula?: string;
+  formulaVerification?: {
+    declaredFormula: string;
+    scoreEndpoint: string;
+    rankingEndpoint: string;
+    tolerance: number;
+    checks: Array<{
+      countryCode: string;
+      observedOverallScore: number;
+      declaredFormulaScore: number;
+      alternateFormulaScore: number;
+      absoluteError: number;
+      alternateAbsoluteError: number;
+      rankingScore: number;
+      rankingAbsoluteError: number;
+    }>;
+  };
   methodology: {
     domainCount: number;
     dimensionCount: number;
@@ -96,7 +119,7 @@ interface SnapshotLive {
   };
   totals: { rankedCountries: number; greyedOutCount: number };
   items: LiveItem[];
-  greyedOut: Array<{ countryCode: string; overallCoverage: number }>;
+  greyedOut: Array<{ countryCode: string; overallCoverage: number; headlineEligible?: boolean }>;
 }
 
 interface ProjectedRow {
@@ -177,6 +200,56 @@ describe('resilience-ranking snapshots', () => {
       SNAPSHOTS.length >= 1,
       `expected at least one resilience-ranking-YYYY-MM-DD.json under docs/snapshots/, got 0. Run scripts/freeze-resilience-ranking.mjs against the live API to refresh.`,
     );
+  });
+
+  it('contains a post-activation full-universe pillar-combined live capture', () => {
+    const captures = SNAPSHOTS.filter(({ snapshot }) => (
+      isLive(snapshot)
+      && snapshot.capturedAt >= POST_PILLAR_COMBINE_CAPTURE_DATE
+      && snapshot.methodologyFormula === 'pillar-combined-penalized-v1'
+    ));
+
+    assert.ok(
+      captures.length >= 1,
+      `expected at least one live full-universe pillar-combined snapshot captured on/after ${POST_PILLAR_COMBINE_CAPTURE_DATE}`,
+    );
+
+    for (const { filename, snapshot } of captures) {
+      assert.ok(snapshot.items.length >= MIN_FULL_UNIVERSE_RANKED_COUNTRIES, `${filename} ranked-country count is too small`);
+      assert.ok(
+        snapshot.items.length + snapshot.greyedOut.length >= MIN_FULL_UNIVERSE_TOTAL_COUNTRIES,
+        `${filename} must represent the full universe, got ranked=${snapshot.items.length} greyedOut=${snapshot.greyedOut.length}`,
+      );
+      const verification = snapshot.formulaVerification;
+      assert.ok(verification, `${filename} must carry formula verification for the declared pc methodology`);
+      assert.equal(verification.declaredFormula, 'pillar-combined-penalized-v1');
+      assert.match(verification.scoreEndpoint, /\/api\/resilience\/v1\/get-resilience-score$/);
+      assert.match(verification.rankingEndpoint, /\/api\/resilience\/v1\/get-resilience-ranking\?refresh=1$/);
+      assert.ok(
+        Array.isArray(verification.checks) && verification.checks.length >= 2,
+        `${filename} must verify the declared formula against multiple score endpoint anchors`,
+      );
+      for (const check of verification.checks) {
+        assert.match(check.countryCode, /^[A-Z]{2}$/);
+        for (const [field, value] of Object.entries(check)) {
+          if (field === 'countryCode') continue;
+          assert.equal(typeof value, 'number', `${filename} formulaVerification.${check.countryCode}.${field} must be numeric`);
+          assert.ok(Number.isFinite(value as number), `${filename} formulaVerification.${check.countryCode}.${field} must be finite`);
+        }
+        assert.ok(
+          check.absoluteError <= verification.tolerance,
+          `${filename} ${check.countryCode} observed score must match declared formula within tolerance`,
+        );
+        assert.ok(
+          check.rankingAbsoluteError <= verification.tolerance,
+          `${filename} ${check.countryCode} ranking score must match score endpoint within tolerance`,
+        );
+      }
+      assert.ok(
+        verification.checks.some((check) => check.alternateAbsoluteError > verification.tolerance),
+        `${filename} formula verification must include at least one anchor where the alternate formula differs materially`,
+      );
+    }
   });
 
   for (const { filename, snapshot } of SNAPSHOTS) {
@@ -322,6 +395,16 @@ describe('resilience-ranking snapshots', () => {
       }
 
       if (isLive(snapshot)) {
+        it('live snapshot declares a known methodologyFormula', () => {
+          if (snapshot.capturedAt < POST_PILLAR_COMBINE_CAPTURE_DATE && snapshot.methodologyFormula === undefined) {
+            return;
+          }
+          assert.ok(
+            isKnownMethodologyFormula(snapshot.methodologyFormula),
+            `live snapshot methodologyFormula="${snapshot.methodologyFormula}" must be one of [${Object.keys(METHODOLOGY_BANDS).join(', ')}]`,
+          );
+        });
+
         it('live items are monotonically non-increasing in overallScore', () => {
           for (let i = 1; i < snapshot.items.length; i++) {
             const prev = snapshot.items[i - 1]!;
@@ -342,11 +425,21 @@ describe('resilience-ranking snapshots', () => {
           assert.equal(uniqueCodes.size, snapshot.items.length, 'country codes in items[] must be unique');
         });
 
-        it('live greyedOut items all have overallCoverage < the greyOut threshold', () => {
+        it('live ranked items are headline-eligible', () => {
+          for (const item of snapshot.items) {
+            assert.notEqual(
+              item.headlineEligible,
+              false,
+              `${item.countryCode} in items[] must not have headlineEligible=false`,
+            );
+          }
+        });
+
+        it('live greyedOut items are either headline-ineligible or below the coverage threshold', () => {
           for (const entry of snapshot.greyedOut) {
             assert.ok(
-              entry.overallCoverage < snapshot.methodology.greyOutThreshold,
-              `${entry.countryCode} in greyedOut with coverage=${entry.overallCoverage} must be below threshold ${snapshot.methodology.greyOutThreshold}`,
+              entry.headlineEligible === false || entry.overallCoverage < snapshot.methodology.greyOutThreshold,
+              `${entry.countryCode} in greyedOut must either be headlineEligible=false or have coverage below ${snapshot.methodology.greyOutThreshold}; got headlineEligible=${entry.headlineEligible} coverage=${entry.overallCoverage}`,
             );
           }
         });

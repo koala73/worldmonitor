@@ -342,7 +342,7 @@ describe('TechReadinessPanel — empty/error retry UX', () => {
       /this\.setCount\(result\.length\)/,
       'empty result must not write count badge 0 before showSoftRefreshing()',
     );
-    assert.match(panelSrc, /this\.hideCountBadge\(\);[\s\S]*?this\.setContent\(`\s*<div class="panel-soft-empty"/);
+    assert.match(panelSrc, /this\.hideCountBadge\(\);[\s\S]*?this\.setSafeContent\(unsafeRawHtml\(`\s*<div class="panel-soft-empty"/);
     assert.match(panelSrc, /this\.showCountBadge\(this\.rankings\.length\);/);
   });
 

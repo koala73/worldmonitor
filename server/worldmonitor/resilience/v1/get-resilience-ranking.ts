@@ -13,8 +13,11 @@ import {
   RESILIENCE_INTERVAL_KEY_PREFIX,
   RESILIENCE_RANKING_CACHE_KEY,
   RESILIENCE_RANKING_CACHE_TTL_SECONDS,
+  RESILIENCE_RANKING_META_KEY,
+  RESILIENCE_RANKING_META_TTL_SECONDS,
   buildRankingItem,
   getCachedResilienceScores,
+  getCurrentCacheFormula,
   listScorableCountries,
   rankingCacheTagMatches,
   sortRankingItems,
@@ -23,9 +26,6 @@ import {
   warmMissingResilienceScores,
   type ScoreInterval,
 } from './_shared';
-
-const RESILIENCE_RANKING_META_KEY = 'seed-meta:resilience:ranking';
-const RESILIENCE_RANKING_META_TTL_SECONDS = 7 * 24 * 60 * 60;
 
 // Hard ceiling on one synchronous warm pass — purely a safety net against a
 // runaway static index. The shared memoized reader means global Redis keys are
@@ -49,13 +49,14 @@ async function fetchIntervals(countryCodes: string[]): Promise<Map<string, Score
   if (countryCodes.length === 0) return new Map();
   const results = await runRedisPipeline(countryCodes.map((cc) => ['GET', `${RESILIENCE_INTERVAL_KEY_PREFIX}${cc}`]), true);
   const map = new Map<string, ScoreInterval>();
+  const current = getCurrentCacheFormula();
   for (let i = 0; i < countryCodes.length; i++) {
     const raw = results[i]?.result;
     if (typeof raw !== 'string') continue;
     try {
       // Envelope-aware: interval keys come through seed-resilience-scores' extra-key path.
-      const parsed = unwrapEnvelope(JSON.parse(raw)).data as { p05?: number; p95?: number } | null;
-      if (parsed && typeof parsed.p05 === 'number' && typeof parsed.p95 === 'number') {
+      const parsed = unwrapEnvelope(JSON.parse(raw)).data as { p05?: number; p95?: number; _formula?: string } | null;
+      if (parsed && typeof parsed.p05 === 'number' && typeof parsed.p95 === 'number' && parsed._formula === current) {
         map.set(countryCodes[i]!, { p05: parsed.p05, p95: parsed.p95 });
       }
     } catch { /* ignore malformed interval entries */ }
@@ -92,13 +93,14 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
     return true;
   })();
   if (!forceRefresh) {
-    const cached = await getCachedJson(RESILIENCE_RANKING_CACHE_KEY) as (GetResilienceRankingResponse & { _formula?: string }) | null;
-    // Stale-formula gate: the ranking cache key is bumped at PR deploy,
-    // but the flag flip happens later, so the v10 namespace starts out
-    // filled with 6-domain rankings. Without this check, a flip would
-    // serve the legacy ranking aggregate for up to the 12h ranking TTL
-    // even as per-country reads produced pillar-combined scores. Drop
-    // stale-formula hits so the recompute-and-publish path below runs.
+    const cached = await getCachedJson(RESILIENCE_RANKING_CACHE_KEY) as (
+      GetResilienceRankingResponse & { _formula?: string; _intervalMethodology?: string }
+    ) | null;
+    // Stale-cache gate: the ranking payload carries the score formula
+    // and interval methodology that were active when rankStable was
+    // computed. Rejecting entries with stale/missing tags prevents old
+    // ranking payloads from serving baked rankStable values produced
+    // from pre-v3 interval bands after issue #3967's cache rotation.
     const tagMatches = cached != null && rankingCacheTagMatches(cached);
     if (tagMatches && (cached!.items.length > 0 || (cached!.greyedOut?.length ?? 0) > 0)) {
       // Plan 2026-04-26-002 §U2 (PR 1, review fixup): defense-in-depth
@@ -154,8 +156,9 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
       const stillGreyed = greyedWithEligibility.filter((item) => item.headlineEligible !== true);
       // Strip the cache-only tag before returning to callers so the
       // wire shape matches the generated proto response type.
-      const { _formula: _drop, ...publicResponse } = cached!;
-      void _drop;
+      const { _formula: _dropFormula, _intervalMethodology: _dropIntervalMethodology, ...publicResponse } = cached!;
+      void _dropFormula;
+      void _dropIntervalMethodology;
       // Re-sort items[] after the symmetric promotion. A high-scoring
       // item promoted from greyedOut[] would otherwise be appended at
       // the end of items[] instead of landing in its correct rank

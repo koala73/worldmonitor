@@ -28,7 +28,75 @@ if (!API_BASE) {
   process.exit(2);
 }
 
-const RANKING_URL = `${API_BASE}/api/resilience/v1/get-resilience-ranking`;
+const API_ORIGIN = new URL(API_BASE).origin;
+const RANKING_BASE_URL = `${API_BASE}/api/resilience/v1/get-resilience-ranking`;
+const SCORE_URL = `${API_BASE}/api/resilience/v1/get-resilience-score`;
+const SESSION_URL = `${API_BASE}/api/wm-session`;
+const USER_AGENT = process.env.USER_AGENT
+  || 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
+const FORCE_RANKING_REFRESH = (process.env.RESILIENCE_RANKING_REFRESH ?? '1').toLowerCase() !== 'false';
+const RANKING_URL = (() => {
+  const url = new URL(RANKING_BASE_URL);
+  if (FORCE_RANKING_REFRESH) url.searchParams.set('refresh', '1');
+  return url.toString();
+})();
+const METHODOLOGY_FORMULA =
+  process.env.RESILIENCE_RANKING_METHODOLOGY_FORMULA || 'pillar-combined-penalized-v1';
+const FORMULA_CHECK_COUNTRIES = (process.env.RESILIENCE_RANKING_FORMULA_CHECK_COUNTRIES || 'NO,US,YE')
+  .split(',')
+  .map((countryCode) => countryCode.trim().toUpperCase())
+  .filter((countryCode) => /^[A-Z]{2}$/.test(countryCode));
+const FORMULA_SCORE_TOLERANCE = Number(process.env.RESILIENCE_RANKING_FORMULA_TOLERANCE || 0.25);
+
+const METHODOLOGY_BY_FORMULA = {
+  'domain-weighted-6d': {
+    overallScoreFormula:
+      'sum(domain.score * domain.weight) across 6 domains; weights: economic=0.17, infrastructure=0.15, energy=0.11, social-governance=0.19, health-food=0.13, recovery=0.25 (sum=1.00).',
+    notes: [
+      'Legacy compensatory formula. Use only for historical snapshots captured before the pillar-combined activation.',
+      'Domain scores remain useful diagnostics under both formulas, but this formula lets a strong domain fully offset a weak pillar.',
+    ],
+  },
+  'pillar-combined-penalized-v1': {
+    overallScoreFormula:
+      'penalizedPillarScore(pillars): sum(pillar.score * pillar.weight) multiplied by (1 - 0.5 * (1 - min_pillar / 100)). Pillar weights: structural-readiness=0.40, live-shock-exposure=0.35, recovery-capacity=0.25.',
+    penaltyAlpha: 0.5,
+    notes: [
+      'Current production formula after the RESILIENCE_PILLAR_COMBINE_ENABLED activation tracked in issue #3954.',
+      'Every score is lower than or equal to the equivalent weighted pillar mean because the min-pillar penalty factor is <= 1.',
+      'The formula is intentionally non-compensatory: one weak pillar limits the overall score instead of being fully washed out by strong domains.',
+    ],
+  },
+};
+
+if (!METHODOLOGY_BY_FORMULA[METHODOLOGY_FORMULA]) {
+  console.error(
+    `[freeze-resilience-ranking] unsupported RESILIENCE_RANKING_METHODOLOGY_FORMULA=${METHODOLOGY_FORMULA}`,
+  );
+  console.error(
+    `[freeze-resilience-ranking] expected one of: ${Object.keys(METHODOLOGY_BY_FORMULA).join(', ')}`,
+  );
+  process.exit(2);
+}
+
+if (!Number.isFinite(FORMULA_SCORE_TOLERANCE) || FORMULA_SCORE_TOLERANCE <= 0) {
+  console.error(
+    `[freeze-resilience-ranking] RESILIENCE_RANKING_FORMULA_TOLERANCE must be a positive number, got ${process.env.RESILIENCE_RANKING_FORMULA_TOLERANCE}`,
+  );
+  process.exit(2);
+}
+
+if (FORMULA_CHECK_COUNTRIES.length === 0) {
+  console.error('[freeze-resilience-ranking] RESILIENCE_RANKING_FORMULA_CHECK_COUNTRIES must include at least one ISO-2 country code');
+  process.exit(2);
+}
+
+if (FORCE_RANKING_REFRESH && !process.env.WORLDMONITOR_API_KEY) {
+  console.error(
+    '[freeze-resilience-ranking] WORLDMONITOR_API_KEY is required when RESILIENCE_RANKING_REFRESH is enabled; set RESILIENCE_RANKING_REFRESH=false to capture the cached public ranking instead',
+  );
+  process.exit(2);
+}
 
 function commitSha() {
   try {
@@ -55,20 +123,195 @@ async function loadCountryNameMap() {
   return reverse;
 }
 
-async function fetchRanking() {
-  const headers = { accept: 'application/json' };
+function baseHeaders() {
+  return {
+    accept: 'application/json, text/plain, */*',
+    'accept-language': 'en-US,en;q=0.9',
+    'cache-control': 'no-cache',
+    origin: API_ORIGIN,
+    referer: `${API_ORIGIN}/`,
+    'user-agent': USER_AGENT,
+  };
+}
+
+function readSetCookies(headers) {
+  if (typeof headers.getSetCookie === 'function') return headers.getSetCookie();
+  const cookie = headers.get('set-cookie');
+  return cookie ? [cookie] : [];
+}
+
+async function mintSessionCookie() {
+  const response = await fetch(SESSION_URL, {
+    method: 'POST',
+    headers: {
+      ...baseHeaders(),
+      'content-type': 'application/json',
+    },
+    body: '{}',
+  });
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status} from ${SESSION_URL}: ${await response.text().catch(() => '')}`);
+  }
+
+  const sessionCookie = readSetCookies(response.headers)
+    .map((cookie) => cookie.match(/(?:^|,\s*)(wm-session=[^;]+)/)?.[1])
+    .find(Boolean);
+  if (!sessionCookie) throw new Error(`No wm-session cookie returned by ${SESSION_URL}`);
+  return sessionCookie;
+}
+
+async function buildAuthHeaders() {
+  const headers = baseHeaders();
   if (process.env.WORLDMONITOR_API_KEY) {
     headers['X-WorldMonitor-Key'] = process.env.WORLDMONITOR_API_KEY;
+  } else {
+    headers.cookie = await mintSessionCookie();
   }
-  const response = await fetch(RANKING_URL, { headers });
+  return headers;
+}
+
+async function fetchJson(url, headers) {
+  const response = await fetch(url, { headers });
   if (!response.ok) {
-    throw new Error(`HTTP ${response.status} from ${RANKING_URL}: ${await response.text().catch(() => '')}`);
+    throw new Error(`HTTP ${response.status} from ${url}: ${await response.text().catch(() => '')}`);
   }
   return response.json();
 }
 
+async function fetchRanking(headers) {
+  return fetchJson(RANKING_URL, headers);
+}
+
+async function fetchScore(countryCode, headers) {
+  const url = new URL(SCORE_URL);
+  url.searchParams.set('countryCode', countryCode);
+  return fetchJson(url.toString(), headers);
+}
+
 function round1(n) {
   return Math.round(n * 10) / 10;
+}
+
+function round2(n) {
+  return Math.round(n * 100) / 100;
+}
+
+function finiteNumber(value, label) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    throw new Error(`${label} must be a finite number`);
+  }
+  return value;
+}
+
+function weightedScore(parts, label) {
+  if (!Array.isArray(parts) || parts.length === 0) {
+    throw new Error(`${label} must be a non-empty array`);
+  }
+  return round2(parts.reduce((sum, part, index) => {
+    const score = finiteNumber(part?.score, `${label}[${index}].score`);
+    const weight = finiteNumber(part?.weight, `${label}[${index}].weight`);
+    return sum + score * weight;
+  }, 0));
+}
+
+function pillarCombinedScore(pillars) {
+  if (!Array.isArray(pillars) || pillars.length === 0) {
+    throw new Error('pillars must be a non-empty array for pillar-combined verification');
+  }
+  const weighted = pillars.reduce((sum, pillar, index) => {
+    const score = finiteNumber(pillar?.score, `pillars[${index}].score`);
+    const weight = finiteNumber(pillar?.weight, `pillars[${index}].weight`);
+    return sum + score * weight;
+  }, 0);
+  const minScore = Math.min(...pillars.map((pillar, index) => finiteNumber(pillar?.score, `pillars[${index}].score`)));
+  const penalty = 1 - 0.5 * (1 - minScore / 100);
+  return round2(weighted * penalty);
+}
+
+function computeFormulaScores(scorePayload, countryCode) {
+  const observedOverallScore = finiteNumber(scorePayload?.overallScore, `${countryCode}.overallScore`);
+  const domainWeightedScore = weightedScore(scorePayload?.domains, `${countryCode}.domains`);
+  const pillarScore = pillarCombinedScore(scorePayload?.pillars);
+  return { observedOverallScore, domainWeightedScore, pillarCombinedScore: pillarScore };
+}
+
+async function verifyDeclaredFormula(headers) {
+  const checks = await Promise.all(FORMULA_CHECK_COUNTRIES.map(async (countryCode) => {
+    const scorePayload = await fetchScore(countryCode, headers);
+    const scores = computeFormulaScores(scorePayload, countryCode);
+    const declaredFormulaScore = METHODOLOGY_FORMULA === 'pillar-combined-penalized-v1'
+      ? scores.pillarCombinedScore
+      : scores.domainWeightedScore;
+    const alternateFormulaScore = METHODOLOGY_FORMULA === 'pillar-combined-penalized-v1'
+      ? scores.domainWeightedScore
+      : scores.pillarCombinedScore;
+    const absoluteError = round2(Math.abs(scores.observedOverallScore - declaredFormulaScore));
+    const alternateAbsoluteError = round2(Math.abs(scores.observedOverallScore - alternateFormulaScore));
+
+    return {
+      countryCode,
+      observedOverallScore: scores.observedOverallScore,
+      declaredFormulaScore,
+      alternateFormulaScore,
+      absoluteError,
+      alternateAbsoluteError,
+    };
+  }));
+
+  for (const check of checks) {
+    if (check.absoluteError > FORMULA_SCORE_TOLERANCE) {
+      throw new Error(
+        `${check.countryCode} overallScore=${check.observedOverallScore} does not match declared ${METHODOLOGY_FORMULA} score=${check.declaredFormulaScore} within tolerance=${FORMULA_SCORE_TOLERANCE} (alternate=${check.alternateFormulaScore})`,
+      );
+    }
+  }
+
+  if (!checks.some((check) => check.alternateAbsoluteError > FORMULA_SCORE_TOLERANCE)) {
+    throw new Error(
+      `Formula verification is inconclusive: checked ${FORMULA_CHECK_COUNTRIES.join(',')} but no alternate formula differed by more than tolerance=${FORMULA_SCORE_TOLERANCE}`,
+    );
+  }
+
+  console.log(
+    `[freeze-resilience-ranking] verified ${METHODOLOGY_FORMULA} via score anchors: ${checks.map((check) => `${check.countryCode}=${check.observedOverallScore}`).join(' ')}`,
+  );
+  return {
+    declaredFormula: METHODOLOGY_FORMULA,
+    scoreEndpoint: SCORE_URL,
+    tolerance: FORMULA_SCORE_TOLERANCE,
+    checks,
+  };
+}
+
+function attachRankingVerification(ranking, formulaVerification) {
+  const rankingItems = [
+    ...(Array.isArray(ranking.items) ? ranking.items : []),
+    ...(Array.isArray(ranking.greyedOut) ? ranking.greyedOut : []),
+  ];
+  const rankingByCountry = new Map(rankingItems.map((item) => [item.countryCode, item]));
+
+  return {
+    ...formulaVerification,
+    rankingEndpoint: RANKING_URL,
+    checks: formulaVerification.checks.map((check) => {
+      const rankingItem = rankingByCountry.get(check.countryCode);
+      if (!rankingItem) {
+        throw new Error(`${check.countryCode} was checked against the score endpoint but is absent from the ranking payload`);
+      }
+      const rankingScore = finiteNumber(rankingItem.overallScore, `${check.countryCode}.ranking.overallScore`);
+      const rankingAbsoluteError = round2(Math.abs(rankingScore - check.observedOverallScore));
+      if (rankingAbsoluteError > FORMULA_SCORE_TOLERANCE) {
+        throw new Error(
+          `${check.countryCode} ranking score=${rankingScore} differs from score endpoint overallScore=${check.observedOverallScore} by ${rankingAbsoluteError}, exceeding tolerance=${FORMULA_SCORE_TOLERANCE}`,
+        );
+      }
+      return {
+        ...check,
+        rankingScore,
+        rankingAbsoluteError,
+      };
+    }),
+  };
 }
 
 function enrichItems(items, nameMap, startRank) {
@@ -81,13 +324,17 @@ function enrichItems(items, nameMap, startRank) {
     level: item.level,
     lowConfidence: Boolean(item.lowConfidence),
     dimensionCoverage: Math.round((item.overallCoverage ?? 0) * 100) / 100,
+    headlineEligible: Boolean(item.headlineEligible),
     rankStable: Boolean(item.rankStable),
   }));
 }
 
 async function main() {
   const nameMap = await loadCountryNameMap();
-  const ranking = await fetchRanking();
+  const headers = await buildAuthHeaders();
+  const formulaCheck = await verifyDeclaredFormula(headers);
+  const ranking = await fetchRanking(headers);
+  const formulaVerification = attachRankingVerification(ranking, formulaCheck);
 
   const items = Array.isArray(ranking.items) ? ranking.items : [];
   const greyedOut = Array.isArray(ranking.greyedOut) ? ranking.greyedOut : [];
@@ -100,9 +347,10 @@ async function main() {
     source: `Live capture via ${RANKING_URL}`,
     commitSha: commitSha(),
     schemaVersion: '2.0',
+    methodologyFormula: METHODOLOGY_FORMULA,
+    formulaVerification,
     methodology: {
-      overallScoreFormula:
-        'sum(domain.score * domain.weight) across 6 domains; weights: economic=0.17, infrastructure=0.15, energy=0.11, social-governance=0.19, health-food=0.13, recovery=0.25 (sum=1.00).',
+      ...METHODOLOGY_BY_FORMULA[METHODOLOGY_FORMULA],
       domainCount: 6,
       dimensionCount: 19,
       pillarCount: 3,
@@ -119,6 +367,7 @@ async function main() {
       countryCode: item.countryCode,
       countryName: nameMap[item.countryCode] ?? item.countryCode,
       overallCoverage: Math.round((item.overallCoverage ?? 0) * 100) / 100,
+      headlineEligible: Boolean(item.headlineEligible),
     })),
   };
 

@@ -1,8 +1,13 @@
 import { Panel } from './Panel';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import type { UnhcrSummary, CountryDisplacement } from '@/services/displacement';
 import { formatPopulation } from '@/services/displacement';
 import { t } from '@/services/i18n';
+import { renderFollowedOnlyChip, type FollowedOnlyChipHandle } from '@/utils/followed-only-chip';
+import { isFollowed, subscribe as subscribeFollowed } from '@/services/followed-countries';
+import { toIso2 } from '@/utils/country-codes';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 type DisplacementTab = 'origins' | 'hosts';
 
@@ -10,6 +15,10 @@ export class DisplacementPanel extends Panel {
   private data: UnhcrSummary | null = null;
   private activeTab: DisplacementTab = 'origins';
   private onCountryClick?: (lat: number, lon: number) => void;
+  private followedOnlyChip: FollowedOnlyChipHandle | null = null;
+  private followedOnlyHost: HTMLElement | null = null;
+  private followedOnlyTeardown: (() => void) | null = null;
+  private followedUnsub: (() => void) | null = null;
 
   constructor() {
     super({
@@ -35,6 +44,37 @@ export class DisplacementPanel extends Panel {
         const lon = Number(row.dataset.lon);
         if (Number.isFinite(lat) && Number.isFinite(lon)) this.onCountryClick?.(lat, lon);
       }
+    });
+    this.mountFollowedOnlyChip();
+  }
+
+  private mountFollowedOnlyChip(): void {
+    const host = document.createElement('span');
+    host.className = 'panel-header-followed-only-host';
+    this.followedOnlyHost = host;
+    this.followedOnlyChip = renderFollowedOnlyChip({
+      panelId: 'displacement',
+      onChange: () => {
+        if (this.data) this.renderContent();
+      },
+    });
+    if (this.followedOnlyChip.html === '') return;
+    setTrustedHtml(host, trustedHtml(this.followedOnlyChip.html, "legacy direct innerHTML migration"));
+    // Insert BEFORE the close button so close stays rightmost. The Panel
+    // base appends `.panel-close-btn` first; a plain `appendChild` would
+    // land the chip after close and break the user expectation that X
+    // is always the last header control.
+    const closeBtn = this.header.querySelector('.panel-close-btn');
+    if (closeBtn) {
+      this.header.insertBefore(host, closeBtn);
+    } else {
+      this.header.appendChild(host);
+    }
+    this.followedOnlyTeardown = this.followedOnlyChip.attach(host);
+    // Re-filter on external watchlist change so a follow/unfollow from
+    // another surface refreshes the displacement table immediately.
+    this.followedUnsub = subscribeFollowed(() => {
+      if (this.data) this.renderContent();
     });
   }
 
@@ -85,11 +125,26 @@ export class DisplacementPanel extends Panel {
         .sort((a, b) => (b.hostTotal || 0) - (a.hostTotal || 0));
     }
 
+    // U7 — "Followed only" filter chip. When active, drop rows whose
+    // country code is not in the user's watchlist. Items without a
+    // resolvable ISO-2 are dropped (we can't prove they belong to a
+    // followed country).
+    const followedOnlyActive = this.followedOnlyChip?.isActive() === true;
+    if (followedOnlyActive) {
+      countries = countries.filter(c => {
+        const code = toIso2(c.code ?? '');
+        return code ? isFollowed(code) : false;
+      });
+    }
+
     const displayed = countries.slice(0, 30);
     let tableHtml: string;
 
     if (displayed.length === 0) {
-      tableHtml = `<div class="panel-empty">${t('common.noDataShort')}</div>`;
+      const emptyMsg = followedOnlyActive
+        ? 'No items in your followed countries. Add countries by tapping the star, or turn off this filter.'
+        : t('common.noDataShort');
+      tableHtml = `<div class="panel-empty">${escapeHtml(emptyMsg)}</div>`;
     } else {
       const rows = displayed.map(c => {
         const hostTotal = c.hostTotal || 0;
@@ -127,7 +182,7 @@ export class DisplacementPanel extends Panel {
         </table>`;
     }
 
-    this.setContent(`
+    this.setSafeContent(unsafeRawHtml(`
       <div class="disp-panel-content">
         <div class="disp-stats-grid">${statsHtml}</div>
         ${tabsHtml}
@@ -135,6 +190,31 @@ export class DisplacementPanel extends Panel {
           ${tableHtml}
         </div>
       </div>
-    `);
+    `, 'legacy Panel.setContent() migration'));
+  }
+
+  public override destroy(): void {
+    if (this.followedOnlyTeardown) {
+      try {
+        this.followedOnlyTeardown();
+      } catch {
+        /* swallow */
+      }
+      this.followedOnlyTeardown = null;
+    }
+    if (this.followedUnsub) {
+      try {
+        this.followedUnsub();
+      } catch {
+        /* swallow */
+      }
+      this.followedUnsub = null;
+    }
+    if (this.followedOnlyHost && this.followedOnlyHost.parentElement) {
+      this.followedOnlyHost.parentElement.removeChild(this.followedOnlyHost);
+    }
+    this.followedOnlyHost = null;
+    this.followedOnlyChip = null;
+    super.destroy();
   }
 }

@@ -33,6 +33,8 @@ import { initI18n, t } from '@/services/i18n';
 import { applyStoredTheme } from '@/utils/theme-manager';
 import { applyFont } from '@/services/font-settings';
 import { trackFeatureToggle } from '@/services/analytics';
+import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+
 
 let activeSection = 'overview';
 let settingsManager: SettingsManager;
@@ -146,7 +148,7 @@ function renderSidebar(): void {
     </button>
   `);
 
-  nav.innerHTML = items.join('');
+  setTrustedHtml(nav, trustedHtml(items.join(''), "legacy direct innerHTML migration"));
 }
 
 // ── Section rendering ──
@@ -200,7 +202,7 @@ function renderOverview(area: HTMLElement): void {
     </button>`;
   }).join('');
 
-  area.innerHTML = `
+  setTrustedHtml(area, trustedHtml(`
     <div class="settings-overview">
       <div class="settings-ov-progress">
         <svg class="settings-ov-ring" viewBox="0 0 100 100" width="120" height="120">
@@ -245,7 +247,7 @@ function renderOverview(area: HTMLElement): void {
         </div>
       </section>
     </div>
-  `;
+  `, "legacy direct innerHTML migration"));
 
   initOverviewListeners(area);
 }
@@ -320,12 +322,12 @@ function renderFeatureSection(area: HTMLElement, cat: SettingsCategory): void {
     `;
   }).join('');
 
-  area.innerHTML = `
+  setTrustedHtml(area, trustedHtml(`
     <div class="settings-section-header">
       <h2>${escapeHtml(cat.label)}</h2>
     </div>
     <div class="settings-feat-list">${featureCards}</div>
-  `;
+  `, "legacy direct innerHTML migration"));
 
   initFeatureSectionListeners(area);
 }
@@ -535,7 +537,7 @@ async function loadOllamaModelsIntoSelect(select: HTMLSelectElement): Promise<vo
     || snapshot.secrets['OLLAMA_API_URL']?.value
     || '';
   if (!ollamaUrl) {
-    select.innerHTML = '<option value="" disabled selected>Set Ollama URL first</option>';
+    setTrustedHtml(select, trustedHtml('<option value="" disabled selected>Set Ollama URL first</option>', "legacy direct innerHTML migration"));
     return;
   }
 
@@ -569,15 +571,15 @@ async function loadOllamaModelsIntoSelect(select: HTMLSelectElement): Promise<vo
   }
 
   const options = currentModel ? '' : '<option value="" selected disabled>Select a model...</option>';
-  select.innerHTML = options + models.map(name =>
+  setTrustedHtml(select, trustedHtml(options + models.map(name =>
     `<option value="${escapeHtml(name)}" ${name === currentModel ? 'selected' : ''}>${escapeHtml(name)}</option>`
-  ).join('');
+  ).join(''), "legacy direct innerHTML migration"));
 }
 
 // ── Debug section ──
 
 function renderDebug(area: HTMLElement): void {
-  area.innerHTML = `
+  setTrustedHtml(area, trustedHtml(`
     <div class="settings-section-header">
       <h2>Debug &amp; Logs</h2>
     </div>
@@ -615,7 +617,7 @@ function renderDebug(area: HTMLElement): void {
       </div>
       <div id="trafficLog" class="diag-traffic-log"></div>
     </section>
-  `;
+  `, "legacy direct innerHTML migration"));
 
   area.querySelector('#openLogsBtn')?.addEventListener('click', () => {
     void invokeDesktopAction('open_logs_folder', t('modals.settingsWindow.openLogs'));
@@ -708,7 +710,7 @@ function initDiagnostics(): void {
       if (trafficCount) trafficCount.textContent = `(${entries.length})`;
 
       if (entries.length === 0) {
-        trafficLogEl.innerHTML = `<p class="diag-empty">${t('modals.settingsWindow.noTraffic')}</p>`;
+        setTrustedHtml(trafficLogEl, trustedHtml(`<p class="diag-empty">${t('modals.settingsWindow.noTraffic')}</p>`, "legacy direct innerHTML migration"));
         return;
       }
 
@@ -718,9 +720,9 @@ function initDiagnostics(): void {
         return `<tr class="diag-${cls}"><td>${escapeHtml(ts)}</td><td>${e.method}</td><td title="${escapeHtml(e.path)}">${escapeHtml(e.path)}</td><td>${e.status}</td><td>${e.durationMs}ms</td></tr>`;
       }).join('');
 
-      trafficLogEl.innerHTML = `<table class="diag-table"><thead><tr><th>${t('modals.settingsWindow.table.time')}</th><th>${t('modals.settingsWindow.table.method')}</th><th>${t('modals.settingsWindow.table.path')}</th><th>${t('modals.settingsWindow.table.status')}</th><th>${t('modals.settingsWindow.table.duration')}</th></tr></thead><tbody>${rows}</tbody></table>`;
+      setTrustedHtml(trafficLogEl, trustedHtml(`<table class="diag-table"><thead><tr><th>${t('modals.settingsWindow.table.time')}</th><th>${t('modals.settingsWindow.table.method')}</th><th>${t('modals.settingsWindow.table.path')}</th><th>${t('modals.settingsWindow.table.status')}</th><th>${t('modals.settingsWindow.table.duration')}</th></tr></thead><tbody>${rows}</tbody></table>`, "legacy direct innerHTML migration"));
     } catch {
-      trafficLogEl.innerHTML = `<p class="diag-empty">${t('modals.settingsWindow.sidecarUnreachable')}</p>`;
+      setTrustedHtml(trafficLogEl, trustedHtml(`<p class="diag-empty">${t('modals.settingsWindow.sidecarUnreachable')}</p>`, "legacy direct innerHTML migration"));
     }
   }
 
@@ -728,7 +730,7 @@ function initDiagnostics(): void {
 
   clearBtn?.addEventListener('click', async () => {
     try { await diagFetch('/api/local-traffic-log', { method: 'DELETE' }); } catch { /* ignore */ }
-    if (trafficLogEl) trafficLogEl.innerHTML = `<p class="diag-empty">${t('modals.settingsWindow.logCleared')}</p>`;
+    if (trafficLogEl) setTrustedHtml(trafficLogEl, trustedHtml(`<p class="diag-empty">${t('modals.settingsWindow.logCleared')}</p>`, "legacy direct innerHTML migration"));
     if (trafficCount) trafficCount.textContent = '(0)';
   });
 
@@ -796,7 +798,7 @@ function handleSearch(query: string): void {
   }
 
   if (matches.length === 0) {
-    area.innerHTML = `<div class="settings-search-empty"><p>No features match "${escapeHtml(query)}"</p></div>`;
+    setTrustedHtml(area, trustedHtml(`<div class="settings-search-empty"><p>No features match "${escapeHtml(query)}"</p></div>`, "legacy direct innerHTML migration"));
     return;
   }
 
@@ -836,12 +838,12 @@ function handleSearch(query: string): void {
     `;
   }).join('');
 
-  area.innerHTML = `
+  setTrustedHtml(area, trustedHtml(`
     <div class="settings-section-header">
       <h2>Search results for "${escapeHtml(query)}"</h2>
     </div>
     <div class="settings-feat-list">${cards}</div>
-  `;
+  `, "legacy direct innerHTML migration"));
 
   initFeatureSectionListeners(area);
 }

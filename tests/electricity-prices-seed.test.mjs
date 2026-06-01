@@ -8,6 +8,7 @@ import {
   ELECTRICITY_INDEX_KEY,
   ELECTRICITY_KEY_PREFIX,
   ELECTRICITY_TTL_SECONDS,
+  fetchEiaRegion,
 } from '../scripts/seed-electricity-prices.mjs';
 
 // ── parseEntsoEPrice ──────────────────────────────────────────────────────────
@@ -139,6 +140,7 @@ describe('EIA_REGIONS respondent codes', () => {
     NYISO: 'NYIS',
     ERCO: 'ERCO',
     SPP: 'SWPP',
+    ISNE: 'ISNE',
   };
 
   it('every entry has distinct region and respondent fields', () => {
@@ -161,5 +163,108 @@ describe('EIA_REGIONS respondent codes', () => {
     for (const expected of Object.keys(EXPECTED)) {
       assert.ok(regions.includes(expected), `EIA_REGIONS missing ${expected}`);
     }
+  });
+});
+
+// ── fetchEiaRegion query construction ────────────────────────────────────────
+//
+// EIA-930 region-data interleaves type=D (Demand), DF (Day-ahead Forecast),
+// NG (Net Generation), and TI (Total Interchange) in one series. Without
+// frequency=hourly + facets[type][]=D, `length=1 sort=desc` can return a
+// forecast/generation/interchange row instead of actual demand — silent data
+// corruption that goes undetected because the row still parses.
+
+describe('fetchEiaRegion query construction', () => {
+  const REGION = { region: 'ISNE', respondent: 'ISNE', name: 'New England' };
+  const TODAY = new Date('2026-05-24T00:00:00Z');
+
+  function mockFetch(response, captured) {
+    const original = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      captured.url = url;
+      return response;
+    };
+    return () => {
+      globalThis.fetch = original;
+    };
+  }
+
+  it('pins frequency=hourly and facets[type][]=D so non-Demand rows cannot win sort=desc', async () => {
+    const captured = {};
+    const restore = mockFetch(
+      {
+        ok: true,
+        json: async () => ({ response: { data: [{ period: '2026-05-24T05', value: 10271, type: 'D' }] } }),
+      },
+      captured,
+    );
+    try {
+      await fetchEiaRegion(REGION, 'test-key', TODAY);
+    } finally {
+      restore();
+    }
+    const params = new URL(captured.url).searchParams;
+    assert.equal(params.get('frequency'), 'hourly', 'must request hourly to avoid daily-aggregate fallback');
+    assert.equal(params.get('facets[type][]'), 'D', 'must filter to Demand rows');
+    assert.equal(params.get('facets[respondent][]'), 'ISNE');
+  });
+
+  it('parses a Demand row into a record with demandMwh + source=eia-930', async () => {
+    const restore = mockFetch(
+      {
+        ok: true,
+        json: async () => ({ response: { data: [{ period: '2026-05-24T05', value: 10271, type: 'D' }] } }),
+      },
+      {},
+    );
+    let result;
+    try {
+      result = await fetchEiaRegion(REGION, 'test-key', TODAY);
+    } finally {
+      restore();
+    }
+    assert.ok(result, 'expected a record');
+    assert.equal(result.region, 'ISNE');
+    assert.equal(result.demandMwh, 10271);
+    assert.equal(result.source, 'eia-930');
+    assert.equal(result.priceMwhEur, null);
+  });
+
+  it('anchors the start/end window to the today argument, not wall-clock', async () => {
+    // Backfill / test-harness scenario: caller passes a historical `today`.
+    // If start were derived from Date.now() it would land after end and EIA
+    // would return zero rows silently. Window must be self-consistent with
+    // the today argument.
+    const historicalToday = new Date('2024-01-15T00:00:00Z');
+    const captured = {};
+    const restore = mockFetch(
+      {
+        ok: true,
+        json: async () => ({ response: { data: [{ period: '2024-01-15T05', value: 9000, type: 'D' }] } }),
+      },
+      captured,
+    );
+    try {
+      await fetchEiaRegion(REGION, 'test-key', historicalToday);
+    } finally {
+      restore();
+    }
+    const params = new URL(captured.url).searchParams;
+    assert.equal(params.get('end'), '2024-01-15');
+    assert.equal(params.get('start'), '2024-01-13', 'start must be today-2d, not Date.now()-2d');
+  });
+
+  it('returns null when the API returns no data rows', async () => {
+    const restore = mockFetch(
+      { ok: true, json: async () => ({ response: { data: [] } }) },
+      {},
+    );
+    let result;
+    try {
+      result = await fetchEiaRegion(REGION, 'test-key', TODAY);
+    } finally {
+      restore();
+    }
+    assert.equal(result, null);
   });
 });

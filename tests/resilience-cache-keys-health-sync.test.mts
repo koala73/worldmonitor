@@ -8,7 +8,10 @@ import {
   RESILIENCE_SCORE_CACHE_PREFIX,
   RESILIENCE_RANKING_CACHE_KEY,
   RESILIENCE_HISTORY_KEY_PREFIX,
+  RESILIENCE_INTERVAL_KEY_PREFIX,
+  RESILIENCE_INTERVAL_METHODOLOGY,
 } from '../server/worldmonitor/resilience/v1/_shared.ts';
+import { RESILIENCE_INTERVAL_METHODOLOGY as SCRIPT_INTERVAL_METHODOLOGY } from '../scripts/_resilience-intervals.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
@@ -61,6 +64,14 @@ describe('resilience cache-key health-registry sync (T1.9)', () => {
     assert.ok(
       versionMatch,
       `RESILIENCE_HISTORY_KEY_PREFIX must match resilience:history:v<n>: shape, got ${RESILIENCE_HISTORY_KEY_PREFIX}`,
+    );
+  });
+
+  it('RESILIENCE_INTERVAL_KEY_PREFIX probe literal appears in api/health.js', () => {
+    const probeKey = `${RESILIENCE_INTERVAL_KEY_PREFIX}US`;
+    assert.ok(
+      healthText.includes(`'${probeKey}'`) || healthText.includes(`"${probeKey}"`),
+      `api/health.js must reference ${probeKey} for the resilienceIntervals probe. Did you bump the interval key without updating health?`,
     );
   });
 
@@ -172,6 +183,31 @@ describe('resilience cache-key health-registry sync (T1.9)', () => {
         );
       });
     }
+  });
+
+  describe('import-HHI health freshness guard', () => {
+    const healthJsText = readFileSync(join(repoRoot, 'api/health.js'), 'utf-8');
+    const onDemandBlock = healthJsText.slice(
+      healthJsText.indexOf('const ON_DEMAND_KEYS'),
+      healthJsText.indexOf('const EMPTY_DATA_OK_KEYS'),
+    );
+    const emptyOkBlock = healthJsText.slice(
+      healthJsText.indexOf('const EMPTY_DATA_OK_KEYS'),
+      healthJsText.indexOf('const CASCADE_GROUPS'),
+    );
+
+    it('recoveryImportHhi alerts before a 46-day stale snapshot can look healthy', () => {
+      assert.match(
+        healthJsText,
+        /recoveryImportHhi:\s*\{ key: 'seed-meta:resilience:recovery:import-hhi',\s*maxStaleMin: 50400 \}/,
+        'api/health.js must keep recoveryImportHhi maxStaleMin at 35d so missed monthly runs surface before day 46',
+      );
+    });
+
+    it('recoveryImportHhi is not softened as on-demand or empty-data-ok', () => {
+      assert.ok(!onDemandBlock.includes("'recoveryImportHhi'"), 'recoveryImportHhi must not be in ON_DEMAND_KEYS');
+      assert.ok(!emptyOkBlock.includes("'recoveryImportHhi'"), 'recoveryImportHhi must not be in EMPTY_DATA_OK_KEYS');
+    });
   });
 
   describe('resilienceIntervals maxStaleMin co-pinned to actual 6h writer cadence', () => {
@@ -308,5 +344,26 @@ describe('resilience cache-key health-registry sync (T1.9)', () => {
         `the same underlying signal — see api/health.js:380 comment.`,
       );
     });
+  });
+});
+
+// Greptile PR #3972 review P2 — methodology constant parity across the
+// server/script boundary. RESILIENCE_INTERVAL_METHODOLOGY is duplicated in
+// server/worldmonitor/resilience/v1/_shared.ts (where it gates ranking-cache
+// invalidation via stampRankingCacheTag/rankingCacheTagMatches) and in
+// scripts/_resilience-intervals.mjs (where it only labels the interval
+// payload's informational `methodology` field). The server never reads the
+// script copy, so a one-sided bump diverges silently: bumping only the script
+// constant would NOT invalidate ranking caches as an engineer might expect.
+describe('resilience interval methodology constant parity (#3972)', () => {
+  it('server _shared.ts and scripts/_resilience-intervals.mjs agree', () => {
+    assert.equal(
+      SCRIPT_INTERVAL_METHODOLOGY,
+      RESILIENCE_INTERVAL_METHODOLOGY,
+      `RESILIENCE_INTERVAL_METHODOLOGY must match across the boundary: ` +
+      `script="${SCRIPT_INTERVAL_METHODOLOGY}" vs server="${RESILIENCE_INTERVAL_METHODOLOGY}". ` +
+      `The server constant gates ranking-cache invalidation (rankingCacheTagMatches); ` +
+      `the script constant only labels the interval payload. Bump both together.`,
+    );
   });
 });

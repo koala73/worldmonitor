@@ -1,7 +1,7 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import type { ThermalEscalationCluster, ThermalEscalationWatch } from '@/services/thermal-escalation';
-import { escapeHtml } from '@/utils/sanitize';
+import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 
 // P1: allowlists prevent unescaped API values from injecting into class attribute context
 const STATUS_CLASS: Record<string, string> = {
@@ -54,7 +54,7 @@ export class ThermalEscalationPanel extends Panel {
 
   private render(): void {
     if (this.clusters.length === 0) {
-      this.setContent(`<div class="panel-empty">${escapeHtml(t('components.thermalEscalation.empty'))}</div>`);
+      this.setSafeContent(unsafeRawHtml(`<div class="panel-empty">${escapeHtml(t('components.thermalEscalation.empty'))}</div>`, 'legacy Panel.setContent() migration'));
       return;
     }
 
@@ -62,7 +62,7 @@ export class ThermalEscalationPanel extends Panel {
       ? t('components.thermalEscalation.footer.updated', { time: this.fetchedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })
       : '';
 
-    this.setContent(`
+    this.setSafeContent(unsafeRawHtml(`
       <div class="te-panel">
         ${this.renderSummary()}
         <div class="te-list">
@@ -70,7 +70,7 @@ export class ThermalEscalationPanel extends Panel {
         </div>
         ${footer ? `<div class="te-footer">${escapeHtml(footer)}</div>` : ''}
       </div>
-    `);
+    `, 'legacy Panel.setContent() migration'));
   }
 
   private renderSummary(): string {

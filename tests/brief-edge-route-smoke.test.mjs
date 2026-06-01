@@ -14,6 +14,10 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+const ROOT = resolve(new URL('.', import.meta.url).pathname, '..');
 
 describe('api/brief/[userId]/[issueDate] module resolution', () => {
   it('loads the handler and its renderer dependency without error', async () => {
@@ -74,6 +78,58 @@ describe('api/brief handler behaviour (no secrets / no Redis)', () => {
     const body = await res.text();
     assert.equal(body, '', 'HEAD must not carry a body');
     assert.equal(res.headers.get('Content-Type'), 'text/html; charset=utf-8');
+  });
+});
+
+describe('api/brief followed-countries telemetry fetch', () => {
+  const src = readFileSync(resolve(ROOT, 'api/brief/[userId]/[issueDate].ts'), 'utf8');
+
+  it('bounds followed-countries relay latency to telemetry budget', () => {
+    assert.match(
+      src,
+      /const FOLLOWED_COUNTRIES_TIMEOUT_MS = 500;/,
+      'followed-country relay must not add a 1.5s TTFB tail to magazine rendering',
+    );
+  });
+
+  it('starts followed-countries lookup before the required Redis envelope read', () => {
+    const followedIdx = src.indexOf('const followedCountriesPromise = fetchFollowedCountriesEdge(userId, ctx);');
+    const envelopeIdx = src.indexOf('envelope = await readRawJsonFromUpstash(`brief:${userId}:${issueDate}`);');
+    assert.ok(followedIdx !== -1, 'followedCountriesPromise start not found');
+    assert.ok(envelopeIdx !== -1, 'envelope read not found');
+    assert.ok(
+      followedIdx < envelopeIdx,
+      'followed-country relay lookup should overlap the Redis envelope read',
+    );
+  });
+
+  it('documents missing followed data as telemetry degradation, not ground truth', () => {
+    assert.doesNotMatch(
+      src,
+      /correct: we can't\s+prove a follow we (?:couldn't|didn't) read/,
+      'comments must not describe missing relay data as accurate negative follow state',
+    );
+    assert.match(
+      src,
+      /Best-effort telemetry only/,
+      'route comment should frame missing followed data as a telemetry-only degradation',
+    );
+  });
+
+  it('drains the in-flight telemetry lookup when envelope read returns 503', () => {
+    assert.match(
+      src,
+      /catch \(err\) \{[\s\S]*?step: 'envelope-read'[\s\S]*?ctx\?\.waitUntil\(followedCountriesPromise\)[\s\S]*?return htmlResponse\(req, 503, UNAVAILABLE_PAGE\)/,
+      '503 envelope-read path should hand the telemetry promise to waitUntil before returning',
+    );
+  });
+
+  it('drains the in-flight telemetry lookup when the envelope is missing', () => {
+    assert.match(
+      src,
+      /if \(!envelope\) \{\s*ctx\?\.waitUntil\(followedCountriesPromise\);\s*return htmlResponse\(req, 404, EXPIRED_PAGE\);\s*\}/,
+      '404 envelope-miss path should hand the telemetry promise to waitUntil before returning',
+    );
   });
 });
 
@@ -208,5 +264,103 @@ describe('assertBriefEnvelope is shared between renderer and preview', () => {
       },
     };
     assert.throws(() => assertBriefEnvelope(partial), /digest\.numbers/);
+  });
+});
+
+describe('api/latest-brief retry-on-Upstash-timeout', () => {
+  // Regression guard for WORLDMONITOR-QJ. Locks in the retry contract:
+  // (a) one retry fires on DOMException-like timeout/abort names,
+  // (b) no retry on other error shapes, (c) per-attempt budgets are
+  // FIRST_ATTEMPT_MS then RETRY_ATTEMPT_MS so worst-case wall time stays
+  // under Vercel Edge's response cap. If the err-name check or attempt
+  // budgets are refactored these tests must update — they're the source
+  // of truth for the retry semantics.
+
+  it('retries once on TimeoutError and returns the second attempt result', async () => {
+    const { readWithOneRetry } = await import('../api/latest-brief.ts');
+    let calls = 0;
+    const attempt = async () => {
+      calls += 1;
+      if (calls === 1) {
+        const err = new Error('The operation was aborted due to timeout');
+        err.name = 'TimeoutError';
+        throw err;
+      }
+      return 'second-attempt-payload';
+    };
+    const out = await readWithOneRetry(attempt, 'test-label');
+    assert.equal(calls, 2, 'helper must invoke the attempt twice on TimeoutError');
+    assert.equal(out, 'second-attempt-payload');
+  });
+
+  it('retries once on AbortError and returns the second attempt result', async () => {
+    const { readWithOneRetry } = await import('../api/latest-brief.ts');
+    let calls = 0;
+    const attempt = async () => {
+      calls += 1;
+      if (calls === 1) {
+        const err = new Error('The operation was aborted');
+        err.name = 'AbortError';
+        throw err;
+      }
+      return 'second-attempt-payload';
+    };
+    const out = await readWithOneRetry(attempt, 'test-label');
+    assert.equal(calls, 2, 'helper must invoke the attempt twice on AbortError');
+    assert.equal(out, 'second-attempt-payload');
+  });
+
+  it('does NOT retry on non-timeout/abort errors (preserves fast-fail on real bugs)', async () => {
+    const { readWithOneRetry } = await import('../api/latest-brief.ts');
+    let calls = 0;
+    const attempt = async () => {
+      calls += 1;
+      throw new Error('readRawJsonFromUpstash: Upstash GET key returned HTTP 500');
+    };
+    await assert.rejects(
+      () => readWithOneRetry(attempt, 'test-label'),
+      /HTTP 500/,
+    );
+    assert.equal(calls, 1, 'non-Timeout error must surface on first attempt without retry');
+  });
+
+  it('re-throws when BOTH attempts fail with TimeoutError (503 fallback path)', async () => {
+    const { readWithOneRetry } = await import('../api/latest-brief.ts');
+    let calls = 0;
+    const attempt = async () => {
+      calls += 1;
+      const err = new Error('The operation was aborted due to timeout');
+      err.name = 'TimeoutError';
+      throw err;
+    };
+    await assert.rejects(
+      () => readWithOneRetry(attempt, 'test-label'),
+      /aborted due to timeout/,
+    );
+    assert.equal(calls, 2, 'helper must exhaust exactly two attempts on sustained outage');
+  });
+
+  it('first attempt receives FIRST_ATTEMPT_MS, retry receives RETRY_ATTEMPT_MS', async () => {
+    const mod = await import('../api/latest-brief.ts');
+    const observed = [];
+    const attempt = async (timeoutMs) => {
+      observed.push(timeoutMs);
+      if (observed.length === 1) {
+        const err = new Error('The operation was aborted due to timeout');
+        err.name = 'TimeoutError';
+        throw err;
+      }
+      return null;
+    };
+    await mod.readWithOneRetry(attempt, 'test-label');
+    assert.deepEqual(
+      observed,
+      [mod.FIRST_ATTEMPT_MS, mod.RETRY_ATTEMPT_MS],
+      'per-attempt budgets must shrink on retry to bound worst-case wall time',
+    );
+    // Sanity-check the absolute values so a future bump above the Vercel
+    // Edge response cap is loudly caught.
+    assert.equal(mod.FIRST_ATTEMPT_MS, 6_000);
+    assert.equal(mod.RETRY_ATTEMPT_MS, 3_000);
   });
 });

@@ -8,7 +8,7 @@ if [ "$VERCEL_GIT_COMMIT_REF" = "main" ] && [ -n "$VERCEL_GIT_PREVIOUS_SHA" ]; t
     WEB_CHANGES=$(git diff --name-only "$VERCEL_GIT_PREVIOUS_SHA" HEAD -- \
       'src/' 'api/' 'server/' 'shared/' 'public/' 'blog-site/' 'pro-test/' 'proto/' 'convex/' \
       'package.json' 'package-lock.json' 'vite.config.ts' 'tsconfig.json' \
-      'tsconfig.api.json' 'vercel.json' 'middleware.ts' | head -1)
+      'tsconfig.api.json' 'vercel.json' 'middleware.ts' 'index.html' | head -1)
     [ -z "$WEB_CHANGES" ] && echo "Skipping: no web-relevant changes on main" && exit 0
   }
   exit 1
@@ -68,6 +68,7 @@ git diff --name-only "$COMPARE_SHA" HEAD -- \
   'tsconfig.api.json' \
   'vercel.json' \
   'middleware.ts' \
+  'index.html' \
   | grep -q . && exit 1
 
 # Nothing web-relevant changed, skip the build

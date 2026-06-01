@@ -10,6 +10,8 @@
  *     subscriberId / secret format (wh_ + 24 hex / 64 hex), 30-day TTL
  *     atomic pipeline (SET + SADD + EXPIRE).
  *   - listWebhooks: PRO gate, owner-filter isolation, `secret` never in response.
+ *   - deliverWebhook: delivery-time DNS re-resolution blocks private/reserved
+ *     addresses before fetch to prevent DNS rebinding SSRF.
  */
 
 import { strict as assert } from 'node:assert';
@@ -34,6 +36,8 @@ let routeIntelligence;
 let registerWebhook;
 let listWebhooks;
 let webhookShared;
+let deliverShippingV2Webhook;
+let WebhookDeliverySsrfError;
 let ValidationError;
 let ApiError;
 
@@ -46,10 +50,13 @@ describe('ShippingV2Service handlers', () => {
     const riMod = await import('../server/worldmonitor/shipping/v2/route-intelligence.ts');
     const rwMod = await import('../server/worldmonitor/shipping/v2/register-webhook.ts');
     const lwMod = await import('../server/worldmonitor/shipping/v2/list-webhooks.ts');
+    const dwMod = await import('../server/worldmonitor/shipping/v2/deliver-webhook.ts');
     webhookShared = await import('../server/worldmonitor/shipping/v2/webhook-shared.ts');
     routeIntelligence = riMod.routeIntelligence;
     registerWebhook = rwMod.registerWebhook;
     listWebhooks = lwMod.listWebhooks;
+    deliverShippingV2Webhook = dwMod.deliverShippingV2Webhook;
+    WebhookDeliverySsrfError = dwMod.WebhookDeliverySsrfError;
     const gen = await import('../src/generated/server/worldmonitor/shipping/v2/service_server.ts');
     ValidationError = gen.ValidationError;
     ApiError = gen.ApiError;
@@ -381,6 +388,99 @@ describe('ShippingV2Service handlers', () => {
       assert.equal(summary.subscriberId, record.subscriberId);
       assert.equal(summary.callbackUrl, record.callbackUrl);
       assert.ok(!('secret' in summary), '`secret` must never appear in ListWebhooks response');
+    });
+  });
+
+  describe('deliverWebhook', () => {
+    function makeRecord(callbackUrl = 'https://hooks.example.com/wm') {
+      return {
+        subscriberId: 'wh_abc123456789012345678901',
+        ownerTag: 'owner',
+        callbackUrl,
+        chokepointIds: ['hormuz_strait'],
+        alertThreshold: 60,
+        createdAt: '2026-04-01T00:00:00.000Z',
+        active: true,
+        secret: 'a'.repeat(64),
+      };
+    }
+
+    const payload = {
+      subscriberId: 'wh_abc123456789012345678901',
+      chokepointId: 'hormuz_strait',
+      score: 74,
+      alertThreshold: 60,
+      triggeredAt: '2026-04-19T12:03:00Z',
+      reason: 'ais_congestion_spike',
+      details: { source: 'test' },
+    };
+
+    it('re-resolves callbackUrl immediately before send and blocks private rebinding without fetching', async () => {
+      let fetched = false;
+      await assert.rejects(
+        () => deliverShippingV2Webhook(makeRecord(), payload, {
+          resolveHostname: async (hostname) => {
+            assert.equal(hostname, 'hooks.example.com');
+            return ['10.0.0.9'];
+          },
+          fetchImpl: async () => {
+            fetched = true;
+            return new Response('should not send', { status: 200 });
+          },
+        }),
+        (err) => err instanceof WebhookDeliverySsrfError && /private\/reserved/.test(err.message),
+      );
+      assert.equal(fetched, false, 'delivery fetch must not run after private DNS answer');
+    });
+
+    it('blocks reserved/documentation ranges returned by delivery-time DNS', async () => {
+      let fetched = false;
+      await assert.rejects(
+        () => deliverShippingV2Webhook(makeRecord(), payload, {
+          resolveHostname: async () => ['203.0.113.10'],
+          fetchImpl: async () => {
+            fetched = true;
+            return new Response('should not send', { status: 200 });
+          },
+        }),
+        (err) => err instanceof WebhookDeliverySsrfError && /203\.0\.113\.10/.test(err.message),
+      );
+      assert.equal(fetched, false, 'delivery fetch must not run after reserved DNS answer');
+    });
+
+    it('blocks mixed DNS answers if any address is private or reserved', async () => {
+      await assert.rejects(
+        () => deliverShippingV2Webhook(makeRecord(), payload, {
+          resolveHostname: async () => ['93.184.216.34', '169.254.169.254'],
+          fetchImpl: async () => new Response('should not send', { status: 200 }),
+        }),
+        (err) => err instanceof WebhookDeliverySsrfError && /169\.254\.169\.254/.test(err.message),
+      );
+    });
+
+    it('sends only after a public delivery-time DNS answer and includes delivery headers', async () => {
+      const seen = {};
+      const result = await deliverShippingV2Webhook(makeRecord(), payload, {
+        deliveryId: 'whd_test_delivery',
+        resolveHostname: async () => ['93.184.216.34'],
+        fetchImpl: async (url, init) => {
+          seen.url = String(url);
+          seen.method = init.method;
+          seen.headers = init.headers;
+          seen.body = init.body;
+          return new Response('ok', { status: 202 });
+        },
+      });
+
+      assert.deepEqual(result, { status: 202, ok: true, resolvedAddresses: ['93.184.216.34'] });
+      assert.equal(seen.url, 'https://hooks.example.com/wm');
+      assert.equal(seen.method, 'POST');
+      assert.equal(seen.headers['content-type'], 'application/json');
+      assert.equal(seen.headers['user-agent'], 'WorldMonitor-ShippingV2-Webhooks/1.0');
+      assert.equal(seen.headers['x-wm-delivery-id'], 'whd_test_delivery');
+      assert.equal(seen.headers['x-wm-event'], 'chokepoint.disruption');
+      assert.match(seen.headers['x-wm-signature'], /^sha256=[0-9a-f]{64}$/);
+      assert.equal(seen.body, JSON.stringify(payload));
     });
   });
 });
