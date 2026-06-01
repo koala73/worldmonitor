@@ -38,6 +38,18 @@ function currentCacheFormulaLocal() {
   const v2 = (process.env.RESILIENCE_SCHEMA_V2_ENABLED ?? 'true').toLowerCase() === 'true';
   return combine && v2 ? 'pc' : 'd6';
 }
+
+function currentMethodologyFormulaLocal() {
+  return currentCacheFormulaLocal() === 'pc' ? 'pillar-combined-penalized-v1' : 'domain-weighted-6d';
+}
+
+function validationFormulaMetadata() {
+  return {
+    _formula: currentCacheFormulaLocal(),
+    methodologyFormula: currentMethodologyFormulaLocal(),
+  };
+}
+
 const BACKTEST_RESULT_KEY = 'resilience:backtest:outcomes:v1';
 const BACKTEST_TTL_SECONDS = 7 * 24 * 60 * 60;
 
@@ -693,20 +705,7 @@ async function runBacktest() {
   const overallPass = familyResults.every((f) => f.pass);
   const passCount = familyResults.filter((f) => f.pass).length;
 
-  const output = {
-    generatedAt: Date.now(),
-    holdoutPeriod: '2024-2025',
-    aucThreshold: AUC_THRESHOLD,
-    gateWidth: GATE_WIDTH,
-    families: familyResults,
-    overallPass,
-    summary: {
-      totalFamilies: familyResults.length,
-      passed: passCount,
-      failed: familyResults.length - passCount,
-      totalCountries: scores.size,
-    },
-  };
+  const output = buildBacktestOutput(familyResults, scores.size);
 
   try {
     await redisSet(url, token, BACKTEST_RESULT_KEY, output, BACKTEST_TTL_SECONDS);
@@ -740,6 +739,27 @@ async function runBacktest() {
   console.log(`Overall: ${passCount}/${familyResults.length} families passed. ${overallPass ? 'ALL GATES MET.' : 'SOME GATES FAILED.'}`);
 
   return output;
+}
+
+function buildBacktestOutput(familyResults, totalCountries) {
+  const overallPass = familyResults.every((f) => f.pass);
+  const passCount = familyResults.filter((f) => f.pass).length;
+
+  return {
+    generatedAt: Date.now(),
+    ...validationFormulaMetadata(),
+    holdoutPeriod: '2024-2025',
+    aucThreshold: AUC_THRESHOLD,
+    gateWidth: GATE_WIDTH,
+    families: familyResults,
+    overallPass,
+    summary: {
+      totalFamilies: familyResults.length,
+      passed: passCount,
+      failed: familyResults.length - passCount,
+      totalCountries,
+    },
+  };
 }
 
 const isMain = process.argv[1]?.replace(/\\/g, '/').endsWith('backtest-resilience-outcomes.mjs');
@@ -803,4 +823,7 @@ export {
   AUC_THRESHOLD,
   GATE_WIDTH,
   runBacktest,
+  buildBacktestOutput,
+  currentCacheFormulaLocal,
+  currentMethodologyFormulaLocal,
 };

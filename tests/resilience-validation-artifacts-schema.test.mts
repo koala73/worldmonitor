@@ -28,6 +28,8 @@ const EXPECTED_BACKTEST_DATA_SOURCES = new Map<string, string>([
   ['sanctions-shocks', 'hardcoded'],
   ['sovereign-stress', 'hardcoded'],
 ]);
+const KNOWN_CACHE_FORMULAS = new Set(['d6', 'pc']);
+const KNOWN_METHODOLOGY_FORMULAS = new Set(['domain-weighted-6d', 'pillar-combined-penalized-v1']);
 
 function readJson(path: string): unknown {
   assert.ok(existsSync(path), `${path} must exist`);
@@ -49,11 +51,29 @@ function assertPositiveTimestamp(value: unknown, label: string): void {
   assert.ok(value > 0, `${label} must be non-zero`);
 }
 
+function assertFormulaMetadata(artifact: Record<string, unknown>, label: string): void {
+  const cacheFormula = artifact._formula;
+  const methodologyFormula = artifact.methodologyFormula;
+  assert.equal(typeof cacheFormula, 'string', `${label}._formula must be a string`);
+  assert.ok(KNOWN_CACHE_FORMULAS.has(cacheFormula), `${label}._formula must be one of ${[...KNOWN_CACHE_FORMULAS].join(', ')}`);
+  assert.equal(typeof methodologyFormula, 'string', `${label}.methodologyFormula must be a string`);
+  assert.ok(
+    KNOWN_METHODOLOGY_FORMULAS.has(methodologyFormula),
+    `${label}.methodologyFormula must be one of ${[...KNOWN_METHODOLOGY_FORMULAS].join(', ')}`,
+  );
+  assert.equal(
+    methodologyFormula,
+    cacheFormula === 'pc' ? 'pillar-combined-penalized-v1' : 'domain-weighted-6d',
+    `${label}.methodologyFormula must match ${label}._formula`,
+  );
+}
+
 describe('resilience validation artifacts', () => {
   it('commits a real benchmark artifact for the current comparator set', () => {
     const benchmark = asRecord(readJson(benchmarkPath), 'benchmark artifact');
 
     assertPositiveTimestamp(benchmark.generatedAt, 'benchmark.generatedAt');
+    assertFormulaMetadata(benchmark, 'benchmark');
     assert.ok(!('_note' in benchmark), 'benchmark artifact must not be a placeholder');
 
     assert.equal(typeof benchmark.license, 'string', 'benchmark.license must be a string');
@@ -99,6 +119,7 @@ describe('resilience validation artifacts', () => {
     const backtest = asRecord(readJson(backtestPath), 'backtest artifact');
 
     assertPositiveTimestamp(backtest.generatedAt, 'backtest.generatedAt');
+    assertFormulaMetadata(backtest, 'backtest');
     assert.ok(!('_note' in backtest), 'backtest artifact must not be a placeholder');
     assert.equal(backtest.holdoutPeriod, '2024-2025');
     assert.equal(backtest.aucThreshold, 0.75);

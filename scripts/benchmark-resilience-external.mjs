@@ -374,6 +374,17 @@ function currentCacheFormulaLocal() {
   return combine && v2 ? 'pc' : 'd6';
 }
 
+function currentMethodologyFormulaLocal() {
+  return currentCacheFormulaLocal() === 'pc' ? 'pillar-combined-penalized-v1' : 'domain-weighted-6d';
+}
+
+function validationFormulaMetadata() {
+  return {
+    _formula: currentCacheFormulaLocal(),
+    methodologyFormula: currentMethodologyFormulaLocal(),
+  };
+}
+
 async function readWmScoresFromRedis() {
   const { url, token } = getRedisCredentials();
   const rankingResp = await fetch(`${url}/get/${encodeURIComponent('resilience:ranking:v21')}`, {
@@ -439,7 +450,7 @@ export async function runBenchmark(opts = {}) {
 
   if (wmScores.size === 0) {
     console.warn('[benchmark] No WM resilience scores available — skipping benchmark run (cold start after cache key bump)');
-    return { skipped: true, reason: 'no-wm-scores', generatedAt: Date.now() };
+    return { skipped: true, reason: 'no-wm-scores', generatedAt: Date.now(), ...validationFormulaMetadata() };
   }
 
   const fetchers = [
@@ -499,6 +510,7 @@ export async function runBenchmark(opts = {}) {
 
   const result = {
     generatedAt: Date.now(),
+    ...validationFormulaMetadata(),
     license: 'INFORM Risk (JRC) CC-BY 4.0, UNDP HDI public, WorldRiskIndex vulnerability component (HDX) CC-BY 4.0. Internal validation only.',
     hypotheses: hypothesisResults,
     correlations,
@@ -586,4 +598,6 @@ if (isMain) {
 export {
   benchmarkCliExitCode,
   isStrictValidationCli,
+  currentCacheFormulaLocal,
+  currentMethodologyFormulaLocal,
 };

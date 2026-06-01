@@ -1,5 +1,7 @@
 {
   "generatedAt": 1779975045168,
+  "_formula": "pc",
+  "methodologyFormula": "pillar-combined-penalized-v1",
   "license": "INFORM Risk (JRC) CC-BY 4.0, UNDP HDI public, WorldRiskIndex vulnerability component (HDX) CC-BY 4.0. Internal validation only.",
   "hypotheses": [
     {

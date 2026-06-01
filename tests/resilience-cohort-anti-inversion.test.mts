@@ -44,6 +44,7 @@ import { describe, it } from 'node:test';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const COHORTS_DIR = resolve(here, '../server/worldmonitor/resilience/v1/cohorts');
+const FIXTURE_RANKING_PATH = resolve(here, 'fixtures/resilience-cohort-anti-inversion-ranking.json');
 
 interface CohortFile {
   name: string;
@@ -200,6 +201,85 @@ function scoresFor(cohort: CohortFile, ranking: Map<string, { score: number; ran
     .filter((s): s is number => typeof s === 'number');
 }
 
+function invariantScoresFor(cohort: CohortFile, ranking: Map<string, { score: number; rank: number }>, label: string, requireComplete = false): number[] {
+  const scores = scoresFor(cohort, ranking);
+  if (requireComplete) {
+    assert.equal(scores.length, cohort.iso2.length, `${label} fixture coverage must include every cohort member`);
+  } else {
+    assert.ok(scores.length > 0, `${label} ranking coverage must include at least one cohort member`);
+  }
+  return scores;
+}
+
+function loadFixtureRanking(): Map<string, { score: number; rank: number }> {
+  const raw = readFileSync(FIXTURE_RANKING_PATH, 'utf8');
+  const parsed = JSON.parse(raw) as RankingPayload;
+  const ranking = indexByIso2(parsed);
+  assert.ok(ranking.size > 0, 'fixture ranking must contain scored entries');
+  return ranking;
+}
+
+function assertG7MedianBeatsMicrostates(ranking: Map<string, { score: number; rank: number }>, requireComplete = false): void {
+  const g7Median = median(invariantScoresFor(cohorts.g7, ranking, 'G7', requireComplete));
+  const microMedian = median(invariantScoresFor(cohorts.microstateTerritories, ranking, 'microstate-territories', requireComplete));
+  assert.ok(g7Median > microMedian + 15,
+    `STRUCTURAL FAIL: median(G7)=${g7Median.toFixed(2)} did not exceed median(microstate-territories)=${microMedian.toFixed(2)} by >=15pt. Gap=${(g7Median - microMedian).toFixed(2)}.`);
+}
+
+function assertNordicsTrackGcc(ranking: Map<string, { score: number; rank: number }>, requireComplete = false): void {
+  const nordicMedian = median(invariantScoresFor(cohorts.nordics, ranking, 'Nordics', requireComplete));
+  const gccMedian = median(invariantScoresFor(cohorts.gcc, ranking, 'GCC', requireComplete));
+  assert.ok(nordicMedian >= gccMedian - 5,
+    `STRUCTURAL FAIL: Nordics median ${nordicMedian.toFixed(2)} dropped >5pt below GCC median ${gccMedian.toFixed(2)}.`);
+}
+
+function assertG7FloorBeatsLicCeiling(ranking: Map<string, { score: number; rank: number }>, requireComplete = false): void {
+  const g7Scores = invariantScoresFor(cohorts.g7, ranking, 'G7', requireComplete);
+  const licScores = invariantScoresFor(cohorts.subSaharanLic, ranking, 'Sub-Saharan-LIC', requireComplete);
+  const g7Min = Math.min(...g7Scores);
+  const licMax = Math.max(...licScores);
+  assert.ok(g7Min >= licMax - 10,
+    `Catastrophic floor regression: min(G7)=${g7Min.toFixed(2)} fell within 10pt of max(Sub-Saharan-LIC)=${licMax.toFixed(2)}.`);
+}
+
+function assertMicrostateTop20Limit(ranking: Map<string, { score: number; rank: number }>): void {
+  const microSet = new Set(cohorts.microstateTerritories.iso2);
+  const sorted = [...ranking.entries()]
+    .sort((a, b) => b[1].score - a[1].score)
+    .slice(0, 20);
+  const microInTop20 = sorted.filter(([iso]) => microSet.has(iso));
+  assert.ok(microInTop20.length <= 1,
+    `STRUCTURAL FAIL: ${microInTop20.length} microstate-territories appeared in top 20 (${microInTop20.map(([i]) => i).join(', ')}).`);
+}
+
+describe('cohort anti-inversion deterministic fixture (Plan 2026-04-26-002 §U1)', () => {
+  const fixtureRanking = loadFixtureRanking();
+
+  it('fixture covers every cohort member used by anti-inversion invariants', () => {
+    invariantScoresFor(cohorts.g7, fixtureRanking, 'G7', true);
+    invariantScoresFor(cohorts.nordics, fixtureRanking, 'Nordics', true);
+    invariantScoresFor(cohorts.gcc, fixtureRanking, 'GCC', true);
+    invariantScoresFor(cohorts.subSaharanLic, fixtureRanking, 'Sub-Saharan-LIC', true);
+    invariantScoresFor(cohorts.microstateTerritories, fixtureRanking, 'microstate-territories', true);
+  });
+
+  it('median(G7) > median(microstate-territories) + 15pt', () => {
+    assertG7MedianBeatsMicrostates(fixtureRanking, true);
+  });
+
+  it('median(Nordics) >= median(GCC) - 5pt', () => {
+    assertNordicsTrackGcc(fixtureRanking, true);
+  });
+
+  it('min(G7) >= max(Sub-Saharan-LIC) - 10pt', () => {
+    assertG7FloorBeatsLicCeiling(fixtureRanking, true);
+  });
+
+  it('count(microstate-territories) in top 20 <= 1', () => {
+    assertMicrostateTop20Limit(fixtureRanking);
+  });
+});
+
 describe('cohort anti-inversion against live ranking (Plan 2026-04-26-002 §U1)', () => {
   // SKIP guard: if Upstash creds are missing, all tests in this describe block
   // log + pass without running the live invariants. Required for CI-without-prod-creds.
@@ -251,8 +331,7 @@ describe('cohort anti-inversion against live ranking (Plan 2026-04-26-002 §U1)'
     // comprehensiveness flag drops unrest impute from 70 → 50 for
     // tiny states; (U6) per-capita normalization stops 0-event micros
     // from out-scoring low-rate large states.
-    assert.ok(g7Median > microMedian + 15,
-      `STRUCTURAL FAIL: median(G7)=${g7Median.toFixed(2)} did not exceed median(microstate-territories)=${microMedian.toFixed(2)} by ≥15pt. Gap=${(g7Median - microMedian).toFixed(2)}. Plan 002 PR 3+4+5 must produce this separation; if it doesn't, U4/U5/U6 levers are mis-calibrated.`);
+    assertG7MedianBeatsMicrostates(ranking);
   });
 
   it('TIGHTENED (plan 002 PR 3+4+5): median(Nordics) >= median(GCC) - 5pt', () => {
@@ -262,8 +341,7 @@ describe('cohort anti-inversion against live ranking (Plan 2026-04-26-002 §U1)'
     console.log(`[cohort-anti-inversion] median(Nordics) = ${nordicMedian.toFixed(2)}, median(GCC) = ${gccMedian.toFixed(2)}, gap = ${(nordicMedian - gccMedian).toFixed(2)}`);
     // Plan 002: Nordic median should be at least within 5pt of GCC.
     // GCC small-state inflation should be largely corrected via U4+U6.
-    assert.ok(nordicMedian >= gccMedian - 5,
-      `STRUCTURAL FAIL: Nordics median ${nordicMedian.toFixed(2)} dropped >5pt below GCC median ${gccMedian.toFixed(2)}. After plan 002 §U4+U6, GCC inflation should be largely corrected.`);
+    assertNordicsTrackGcc(ranking);
   });
 
   it('TIGHTENED (plan 002 PR 3): min(G7) >= max(Sub-Saharan-LIC) - 10pt', () => {
@@ -277,8 +355,7 @@ describe('cohort anti-inversion against live ranking (Plan 2026-04-26-002 §U1)'
     const g7Min = Math.min(...g7Scores);
     const licMax = Math.max(...licScores);
     console.log(`[cohort-anti-inversion] min(G7) = ${g7Min.toFixed(2)}, max(Sub-Saharan-LIC) = ${licMax.toFixed(2)}, gap = ${(g7Min - licMax).toFixed(2)}`);
-    assert.ok(g7Min >= licMax - 10,
-      `Catastrophic floor regression: min(G7)=${g7Min.toFixed(2)} fell within 10pt of max(Sub-Saharan-LIC)=${licMax.toFixed(2)}. Recovery domain or coverage handling has regressed.`);
+    assertG7FloorBeatsLicCeiling(ranking);
   });
 
   it('TIGHTENED (plan 002 PR 5): count(microstate-territories) in top 20 <= 1', () => {
@@ -292,8 +369,7 @@ describe('cohort anti-inversion against live ranking (Plan 2026-04-26-002 §U1)'
     // Per-capita normalization (U6) should ensure no more than 1 micro-
     // state appears in the top 20. If multiple do, U6's pop-floor
     // calibration or U4's imputation factor needs adjustment.
-    assert.ok(microInTop20.length <= 1,
-      `STRUCTURAL FAIL: ${microInTop20.length} microstate-territories appeared in top 20 (${microInTop20.map(([i]) => i).join(', ')}). Plan 002 §U6 per-capita normalization should keep this ≤ 1.`);
+    assertMicrostateTop20Limit(ranking);
   });
 
   it('REPORT-ONLY: per-cohort coverage in the live ranking [diagnostic]', () => {
