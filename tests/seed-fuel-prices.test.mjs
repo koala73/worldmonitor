@@ -62,6 +62,34 @@ test('validateFuel accepts when only a TOLERATED source (Brazil) failed', () => 
   );
 });
 
+test('validateFuel accepts when only TOLERATED New Zealand failed (Incapsula bot-wall)', () => {
+  // MBIE moved behind an Incapsula JS bot-wall ~2026-05-20 — unreachable by plain
+  // fetch from any IP (residential/datacenter/proxy). It must not gate the whole
+  // multi-source publish, or fuel-prices goes STALE_SEED while ≥30 countries +
+  // US/GB/MY are present. Same rationale as Brazil.
+  assert.equal(
+    validateFuel({ countries: HEALTHY_COUNTRIES, failedSources: ['New Zealand'] }),
+    true,
+    'NZ MBIE is JS-bot-walled; must not gate publish (≥30 countries + US/GB/MY still required)',
+  );
+});
+
+test('validateFuel still accepts when BOTH tolerated sources (Brazil + New Zealand) failed', () => {
+  assert.equal(
+    validateFuel({ countries: HEALTHY_COUNTRIES, failedSources: ['Brazil', 'New Zealand'] }),
+    true,
+  );
+});
+
+test('validateFuel still REJECTS a tolerated + an untolerated failure together', () => {
+  // Tolerating NZ must not weaken the gate for a real critical-source outage.
+  assert.equal(
+    validateFuel({ countries: HEALTHY_COUNTRIES, failedSources: ['New Zealand', 'Mexico'] }),
+    false,
+    'an untolerated failure (Mexico) must still reject even when a tolerated one (NZ) is also present',
+  );
+});
+
 test('validateFuel rejects when country count < 30', () => {
   const countries = [
     { code: 'US' }, { code: 'GB' }, { code: 'MY' },

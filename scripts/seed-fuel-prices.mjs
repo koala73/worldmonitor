@@ -613,7 +613,21 @@ export function parseCREStationPrices(xml) {
 // CONNECTs by policy, and direct fetch fails undici TLS handshake. Until a
 // working route is found, gating publish on Brazil's freshness means every
 // run exits 1 → Railway "Deployment crashed" banner + STALE_SEED flip.
-const TOLERATED_FAILURES = new Set(['Brazil']);
+//
+// New Zealand (MBIE) joined this set 2026-06-01: mbie.govt.nz moved its ENTIRE
+// domain (apex, data page, and the weekly-table.csv asset) behind an Incapsula
+// (Imperva) JS bot-wall ~2026-05-20. It now returns HTTP 200 text/html (~212B,
+// `_Incapsula_Resource` stub) instead of the CSV — verified blocked from a
+// residential IP, a datacenter IP, AND the Decodo residential proxy, so the
+// older "proxy-preferred + retry" path (written for an IP-reputation 403)
+// cannot pass it. A plain fetch can't solve a JS challenge from any IP, and
+// data.govt.nz / figure.nz fallbacks are also Incapsula-walled. Until NZ is
+// restored via a headless/challenge-solver fetch (tracked separately), gating
+// publish on NZ rejected the whole multi-source fuel-prices snapshot every run
+// (validation failed → seed-meta never refreshed → 12d STALE_SEED), even though
+// ≥30 countries + US/GB/MY were present. fetchNewZealand() still runs and
+// carries NZ automatically the moment the source returns CSV again.
+const TOLERATED_FAILURES = new Set(['Brazil', 'New Zealand']);
 
 // Publish gate. Exported so tests can lock in the contract.
 //
