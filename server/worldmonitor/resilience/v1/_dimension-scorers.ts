@@ -308,7 +308,8 @@ const RESILIENCE_GPS_KEY = 'intelligence:gpsjam:v2';
 // refresh is effectively a single observation day with no cross-day spread
 // to average over. Capping the total prevents a same-day burst from
 // saturating the cyber sub-component to 0 and swinging a country 5+ ranks.
-const CYBER_SNAPSHOT_WEIGHT_CAP = 8;
+// Exported so tests pin behaviour to the constant, not a literal.
+export const CYBER_SNAPSHOT_WEIGHT_CAP = 8;
 const RESILIENCE_UNREST_KEY = 'unrest:events:v1';
 const RESILIENCE_UCDP_KEY = 'conflict:ucdp-events:v1';
 const RESILIENCE_DISPLACEMENT_PREFIX = 'displacement:summary:v1';

@@ -31,6 +31,7 @@ import {
   scoreStateContinuity,
   scoreTradePolicy,
   summarizeCyber,
+  CYBER_SNAPSHOT_WEIGHT_CAP,
 } from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
 import { RESILIENCE_FIXTURES, fixtureReader } from './helpers/resilience-fixtures.mts';
 
@@ -480,8 +481,8 @@ describe('resilience dimension scorers', () => {
 
     assert.equal(
       summarizeCyber({ threats: burst }, 'FI').weightedCount,
-      8,
-      'a single snapshot burst is capped at the per-snapshot weight cap (8)',
+      CYBER_SNAPSHOT_WEIGHT_CAP,
+      'a single snapshot burst is capped at the per-snapshot weight cap',
     );
   });
 
@@ -499,7 +500,14 @@ describe('resilience dimension scorers', () => {
     );
   });
 
-  it('scoreCyberDigital: a same-snapshot burst is bounded, not collapsed to zero', async () => {
+  it('scoreCyberDigital: a same-snapshot burst floors at the cap, not at zero', async () => {
+    // cyberOnlyReader leaves outages/gps empty, so the dimension score IS the
+    // cyber sub-score = normalizeLowerBetter(weightedCount, 0, 25). A burst is
+    // capped at CYBER_SNAPSHOT_WEIGHT_CAP, so its score floors at a fixed,
+    // cap-derived value rather than collapsing to 0 — which is what bounds the
+    // rank swing. Deriving the floor from the constant (not a literal) keeps
+    // this honest if the cap is ever retuned.
+    const burstFloor = ((25 - CYBER_SNAPSHOT_WEIGHT_CAP) / 25) * 100;
     const mild = await scoreCyberDigital('FI', cyberOnlyReader([
       { country: 'Finland', severity: 'CRITICALITY_LEVEL_CRITICAL' },
     ]));
@@ -508,10 +516,8 @@ describe('resilience dimension scorers', () => {
     ));
 
     assert.ok(burst.score > 0, `burst must not collapse cyberDigital to zero, got ${burst.score}`);
-    assert.ok(
-      mild.score - burst.score <= 25,
-      `burst delta must stay bounded: mild=${mild.score}, burst=${burst.score}`,
-    );
+    assert.equal(burst.score, burstFloor, `burst must floor at the cap-derived score (${burstFloor}), got ${burst.score}`);
+    assert.ok(mild.score > burst.score, `a mild day must score better than a burst: mild=${mild.score}, burst=${burst.score}`);
   });
 
   it('scoreCyberDigital: burst score floors at the per-snapshot cap regardless of volume', async () => {
