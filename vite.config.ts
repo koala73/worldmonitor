@@ -26,6 +26,10 @@ const LAZY_HTML_PRELOAD_CHUNKS = ['maplibre', 'deck-stack', 'globe-stack', 'MapC
 const LAZY_HTML_PRELOAD_RE = new RegExp(
   `/(${LAZY_HTML_PRELOAD_CHUNKS.join('|')})-[A-Za-z0-9_-]+\\.js$`,
 );
+const HTML_MODULEPRELOAD_TAG_RE = /<link\b[^>]*rel=["']modulepreload["'][^>]*>/g;
+const LAZY_HTML_CHUNK_REF_RE = new RegExp(
+  `\\bhref=["'][^"']*/(${LAZY_HTML_PRELOAD_CHUNKS.join('|')})-[A-Za-z0-9_-]+\\.js["']`,
+);
 
 // Panel-cluster manualChunks map. Splits the previously monolithic ~2.3MB
 // `panels` chunk into per-domain chunks so cache invalidation is local to
@@ -121,6 +125,35 @@ function brotliPrecompressPlugin(): Plugin {
         await mkdir(dirname(compressedPath), { recursive: true });
         await writeFile(compressedPath, compressedBuffer);
       }));
+    },
+  };
+}
+
+function lazyHtmlPreloadGuardPlugin(): Plugin {
+  return {
+    name: 'lazy-html-preload-guard',
+    apply: 'build',
+    generateBundle(_outputOptions, bundle) {
+      const violations: string[] = [];
+
+      for (const [fileName, asset] of Object.entries(bundle)) {
+        if (asset.type !== 'asset' || !fileName.endsWith('.html')) continue;
+
+        const html = typeof asset.source === 'string'
+          ? asset.source
+          : new TextDecoder().decode(asset.source);
+        const preloadTags = html.match(HTML_MODULEPRELOAD_TAG_RE) ?? [];
+        const matches = preloadTags.filter((tag) => LAZY_HTML_CHUNK_REF_RE.test(tag));
+        if (matches.length > 0) {
+          violations.push(`${fileName}: ${matches.join(', ')}`);
+        }
+      }
+
+      if (violations.length > 0) {
+        this.error(
+          `Lazy chunks were emitted as entry HTML modulepreload dependencies:\n${violations.join('\n')}`,
+        );
+      }
     },
   };
 }
@@ -779,6 +812,7 @@ export default defineConfig(({ mode }) => {
       youtubeLivePlugin(),
       gpsjamDevPlugin(),
       sebufApiPlugin(),
+      lazyHtmlPreloadGuardPlugin(),
       brotliPrecompressPlugin(),
       VitePWA({
         registerType: 'autoUpdate',

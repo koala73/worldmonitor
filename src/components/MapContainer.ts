@@ -8,7 +8,7 @@
 // paint anyway. Keep this import at the top of the file so Vite associates it
 // with this module's chunk, not whichever sibling pulls it in first.
 import 'maplibre-gl/dist/maplibre-gl.css';
-import { isMobileDevice, saveToStorage, showToast } from '@/utils';
+import { isMobileDevice, showToast } from '@/utils';
 import { MapComponent } from './Map';
 import { DeckGLMap, type DeckMapView, type CountryClickPayload } from './DeckGLMap';
 import type { GlobeMap } from './GlobeMap';
@@ -53,7 +53,6 @@ import type { WebcamEntry, WebcamCluster } from '@/generated/client/worldmonitor
 import type { TrafficAnomaly as ProtoTrafficAnomaly, DdosLocationHit } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
 import type { DiseaseOutbreakItem } from '@/services/disease-outbreaks';
 import type { GetChokepointStatusResponse } from '@/services/supply-chain';
-import { STORAGE_KEYS } from '@/config';
 import type { ScenarioVisualState, ScenarioResult } from '@/config/scenario-templates';
 import { getAuthState } from '@/services/auth-state';
 import { hasPremiumAccess } from '@/services/panel-gating';
@@ -222,8 +221,7 @@ export class MapContainer {
     return this.globeMapCtorPromise;
   }
 
-  private markFlatModeAfterGlobeFailure(): void {
-    saveToStorage(STORAGE_KEYS.mapMode, 'flat');
+  private markFlatModeActiveAfterGlobeFailure(): void {
     document.querySelectorAll<HTMLButtonElement>('#mapDimensionToggle .map-dim-btn').forEach((btn) => {
       btn.classList.toggle('active', btn.dataset.mode === 'flat');
     });
@@ -257,7 +255,7 @@ export class MapContainer {
       console.warn('[MapContainer] Globe initialization failed, falling back to flat map', error);
       this.useGlobe = false;
       this.useDeckGL = this.shouldUseDeckGL();
-      this.markFlatModeAfterGlobeFailure();
+      this.markFlatModeActiveAfterGlobeFailure();
       this.init();
       if (snapshot) this.restoreViewport(snapshot, center ?? null);
       this.rehydrateActiveMap();
