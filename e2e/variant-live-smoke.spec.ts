@@ -108,18 +108,28 @@ test.describe('variant live reliability smoke', () => {
     const variant = normalizeVariant(process.env.VITE_VARIANT);
     const expectedPanelIds = EXPECTED_BOOT_PANELS[variant];
     const apiResponses: ApiDiagnostic[] = [];
+    const apiRequestMetadata = new Map<string, { method: string; resourceType: string }>();
     const failedApiRequests: Array<{ failure: string; method: string; path: string; url: string }> = [];
     const pageErrors: string[] = [];
     const consoleIssues: Array<{ text: string; type: string }> = [];
 
+    page.on('request', (request) => {
+      const url = request.url();
+      if (!isLocalApiUrl(url)) return;
+      apiRequestMetadata.set(url, {
+        method: request.method(),
+        resourceType: request.resourceType(),
+      });
+    });
+
     page.on('response', (response) => {
       const url = response.url();
       if (!isLocalApiUrl(url)) return;
-      const request = response.request();
+      const requestMetadata = apiRequestMetadata.get(url);
       apiResponses.push({
-        method: request.method(),
+        method: requestMetadata?.method ?? 'unknown',
         path: apiPath(url),
-        resourceType: request.resourceType(),
+        resourceType: requestMetadata?.resourceType ?? 'unknown',
         status: response.status(),
         url,
       });
