@@ -1375,6 +1375,25 @@ describe('resilience source-failure aggregation (T1.7)', () => {
       `tradePolicy must flip to source-failure when appliedTariffRate is in failedDatasets, got ${dims.tradePolicy.imputationClass}`);
   });
 
+  it('re-tags already-imputed dimensions to source-failure via standalone seed-meta staleness', async () => {
+    const nowMs = Date.now();
+    const thirtySixDaysMs = 36 * 24 * 60 * 60 * 1000;
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'resilience:recovery:import-hhi:v1') return null;
+      if (key === 'seed-meta:resilience:recovery:import-hhi') {
+        return { status: 'ok', fetchedAt: nowMs - thirtySixDaysMs, recordCount: 190 };
+      }
+      return null;
+    };
+
+    const dims = await scoreAllDimensions('BF', reader);
+
+    assert.equal(dims.importConcentration.observedWeight, 0, 'no observed import-HHI data for BF');
+    assert.ok(dims.importConcentration.imputedWeight > 0, 'import-HHI impute carries weight');
+    assert.equal(dims.importConcentration.imputationClass, 'source-failure',
+      `importConcentration must flip to source-failure when its standalone seed-meta is stale, got ${dims.importConcentration.imputationClass}`);
+  });
+
   it('does not re-tag real-data dimensions even when their adapter is in failedDatasets', async () => {
     // US with full fixture data; claim all adapters failed. Every
     // dimension with observedWeight > 0 must keep imputationClass=null

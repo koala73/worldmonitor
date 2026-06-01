@@ -40,6 +40,16 @@ const RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE_IDS: ReadonlySet<string> = ne
   'sovereignFiscalBuffer',
 ]);
 
+// Mirrors server/worldmonitor/resilience/v1/_shared.ts. Keep this table
+// in sync so the widget Coverage % matches API overallCoverage semantics;
+// tests/resilience-staleness-factor-parity.test.mts guards drift.
+const STALENESS_CONFIDENCE_COVERAGE_FACTOR: Readonly<Record<string, number>> = {
+  '': 1.0,
+  fresh: 1.0,
+  aging: 0.7,
+  stale: 0.4,
+};
+
 // Gated locked-preview fixture rendered when the resilience widget is
 // visible to non-entitled users. The preview is blurred and
 // non-interactive via the .resilience-widget__preview CSS class, so
@@ -213,10 +223,12 @@ export function formatResilienceConfidence(data: ResilienceScoreResponse): strin
   // coverage percentage. The same filter pair is applied server-side
   // by `_shared.ts:computeOverallCoverage` — keeping them in lockstep
   // ensures the widget Coverage % matches the server's
-  // `overallCoverage` field. Genuine data sparsity (non-retired,
-  // non-NA coverage=0) stays in the average because it reflects a
-  // real confidence signal; the server already sets `lowConfidence`
-  // when the overall picture is too sparse, which short-circuits above.
+  // `overallCoverage` field. Stale observed data uses the same
+  // derated confidence coverage as the server. Genuine data sparsity
+  // (non-retired, non-NA coverage=0) stays in the average because it
+  // reflects a real confidence signal; the server already sets
+  // `lowConfidence` when the overall picture is too sparse, which
+  // short-circuits above.
   const coverages = data.domains.flatMap((d) =>
     d.dimensions
       .filter((dim) => {
@@ -235,12 +247,21 @@ export function formatResilienceConfidence(data: ResilienceScoreResponse): strin
         ) return false;
         return true;
       })
-      .map((dim) => dim.coverage),
+      .map((dim) => confidenceCoverage(dim)),
   );
   const avgCoverage = coverages.length > 0
     ? Math.round((coverages.reduce((s, c) => s + c, 0) / coverages.length) * 100)
     : 0;
   return `Coverage ${avgCoverage}% ✓`;
+}
+
+function confidenceCoverage(dimension: ResilienceScoreResponse['domains'][number]['dimensions'][number]): number {
+  const lastObservedAtMs = Number(dimension.freshness?.lastObservedAtMs ?? 0);
+  if (!Number.isFinite(lastObservedAtMs) || lastObservedAtMs <= 0) {
+    return dimension.coverage;
+  }
+  const staleness = dimension.freshness?.staleness ?? '';
+  return dimension.coverage * (STALENESS_CONFIDENCE_COVERAGE_FACTOR[staleness] ?? 1.0);
 }
 
 export function formatResilienceChange30d(change30d: number): string {

@@ -176,6 +176,10 @@ export const RESILIENCE_RANKING_CACHE_TTL_SECONDS = 12 * 60 * 60;
 // severity-weighted cyber threat count before normalization. The `_formula`
 // tag does not distinguish intra-formula scorer changes, so cached v18
 // scores would otherwise serve pre-cap cyberDigital values until TTL.
+// v19→v20 bump for country-resilience audit P1-3: freshness/staleness
+// now derates confidence coverage and therefore can change lowConfidence
+// plus headlineEligible. Scores are unchanged, but cached v19 score
+// payloads already carry the old confidence/eligibility booleans.
 // v20→v21 bump for the P1-1 CRI contract fix: pillar member domains now
 // use domain.weight * average dimension coverage inside the active `pc`
 // formula. The `_formula` tag remains `pc`, so the prefix bump is required
@@ -272,6 +276,9 @@ export const RESILIENCE_HISTORY_KEY_PREFIX = 'resilience:history:v16:';
 // v18→v19 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX for issue
 // #3971 so the public ranking recomputes against capped cyberDigital
 // score entries instead of serving the pre-cap aggregate for 12h.
+// v19→v20 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX for P1-3
+// so ranking items recompute against staleness-derated confidence
+// coverage instead of serving old overallCoverage/headlineEligible.
 // v20→v21 bump in lockstep with RESILIENCE_SCORE_CACHE_PREFIX for the P1-1
 // `pc` aggregation fix. v20 is reserved for the parallel staleness-derate
 // rollout, so this branch sequences the next same-tag `pc` ranking into v21.
@@ -293,6 +300,12 @@ const RANK_STABLE_MAX_INTERVAL_WIDTH = 8;
 
 const LOW_CONFIDENCE_COVERAGE_THRESHOLD = 0.55;
 const LOW_CONFIDENCE_IMPUTATION_SHARE_THRESHOLD = 0.40;
+const STALENESS_CONFIDENCE_COVERAGE_FACTOR: Record<string, number> = {
+  '': 1.0,
+  fresh: 1.0,
+  aging: 0.7,
+  stale: 0.4,
+};
 
 // Cache formula tag. Stored inside score + ranking JSON payloads and as
 // a suffix in history sorted-set member strings so the reader can reject
@@ -572,6 +585,12 @@ export function computeLowConfidence(dimensions: ResilienceDimension[], imputati
   // entries SHOULD drag the confidence down — that is precisely the
   // sparse-data signal lowConfidence exists to surface.
   //
+  // Staleness now derates the coverage signal for observed-but-old data:
+  // a stale snapshot is still a measured score, but it should not look
+  // as confidence-worthy as a fresh observed snapshot. Missing freshness
+  // proof (`lastObservedAtMs=0`) is left to the existing sparse-data and
+  // source-failure paths so this slice only changes stale observed data.
+  //
   // INTENTIONALLY NOT weighted by RESILIENCE_DIMENSION_WEIGHTS. The
   // coverage signal answers a different question from the scoring
   // aggregation: "how much real data do we have on this country?"
@@ -585,7 +604,7 @@ export function computeLowConfidence(dimensions: ResilienceDimension[], imputati
   // RETIRED + NOT_APPLICABLE_WHEN_ZERO_COVERAGE decision lives in one
   // place across both readers (this one and computeOverallCoverage).
   const scoring = dimensions.filter((dimension) => !isExcludedFromConfidenceMean(dimension));
-  const averageCoverage = mean(scoring.map((dimension) => dimension.coverage)) ?? 0;
+  const averageCoverage = mean(scoring.map((dimension) => confidenceCoverage(dimension))) ?? 0;
   return averageCoverage < LOW_CONFIDENCE_COVERAGE_THRESHOLD || imputationShare > LOW_CONFIDENCE_IMPUTATION_SHARE_THRESHOLD;
 }
 
@@ -964,6 +983,10 @@ export function computeOverallCoverage(response: GetResilienceScoreResponse): nu
   // average because they reflect real data sparsity for that country.
   // See `computeLowConfidence` for the matching rationale.
   //
+  // Staleness derating mirrors `computeLowConfidence`: stale observed
+  // snapshots lower the user-facing data-quality coverage pill without
+  // changing the raw per-dimension coverage field or the score formula.
+  //
   // INTENTIONALLY NOT weighted by RESILIENCE_DIMENSION_WEIGHTS —
   // same reason as `computeLowConfidence`: this is a data-availability
   // signal ("how much real data do we have?"), not a score-composition
@@ -974,10 +997,20 @@ export function computeOverallCoverage(response: GetResilienceScoreResponse): nu
   const coverages = response.domains.flatMap((domain) =>
     domain.dimensions
       .filter((dimension) => !isExcludedFromConfidenceMean(dimension))
-      .map((dimension) => dimension.coverage),
+      .map((dimension) => confidenceCoverage(dimension)),
   );
   if (coverages.length === 0) return 0;
   return coverages.reduce((sum, coverage) => sum + coverage, 0) / coverages.length;
+}
+
+function confidenceCoverage(dimension: ResilienceDimension): number {
+  const lastObservedAtMs = Number(dimension.freshness?.lastObservedAtMs ?? 0);
+  if (!Number.isFinite(lastObservedAtMs) || lastObservedAtMs <= 0) {
+    return dimension.coverage;
+  }
+  const staleness = dimension.freshness?.staleness ?? '';
+  const factor = STALENESS_CONFIDENCE_COVERAGE_FACTOR[staleness] ?? 1.0;
+  return dimension.coverage * factor;
 }
 
 function isRankStable(interval: ScoreInterval | null | undefined): boolean {

@@ -1,10 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { computeIntervals } from '../scripts/seed-resilience-intervals.mjs';
 import {
   RESILIENCE_INTERVAL_METHODOLOGY,
   buildScoreIntervalPayload,
+  computeIntervals,
   createIntervalDiagnostics,
   domainAggregate,
   penalizedPillarScore,
@@ -104,12 +104,14 @@ describe('formula-aware resilience score intervals', () => {
     { id: 'recovery-capacity', score: 68, weight: 0.25 },
   ];
 
-  it('uses pillar-combined sensitivity when the active score is pc-shaped', () => {
+  it('uses pillar-combined sensitivity when the warmed score is tagged pc', () => {
     const overallScore = penalizedPillarScore(liveStylePillars);
     const d6Aggregate = domainAggregate(liveStyleDomains);
     assert.ok(d6Aggregate - overallScore > 10, 'fixture must separate d6 and pc enough to catch #3967');
 
     const payload = buildScoreIntervalPayload({
+      countryCode: 'PC',
+      _formula: 'pc',
       overallScore,
       domains: liveStyleDomains,
       pillars: liveStylePillars,
@@ -128,9 +130,11 @@ describe('formula-aware resilience score intervals', () => {
     assert.ok(Math.abs(center - d6Aggregate) > 10, `pc interval center ${center} must not track d6 aggregate ${d6Aggregate}`);
   });
 
-  it('uses legacy domain sensitivity when the active score is d6-shaped', () => {
+  it('uses legacy domain sensitivity when the warmed score is tagged d6', () => {
     const overallScore = domainAggregate(liveStyleDomains);
     const payload = buildScoreIntervalPayload({
+      countryCode: 'D6',
+      _formula: 'd6',
       overallScore,
       domains: liveStyleDomains,
       pillars: liveStylePillars,
@@ -144,51 +148,95 @@ describe('formula-aware resilience score intervals', () => {
     assert.equal(payload._formula, 'd6');
     assert.ok(payload.p05 <= overallScore && overallScore <= payload.p95, `d6 score ${overallScore} must be inside ${payload.p05}-${payload.p95}`);
   });
-});
 
-describe('seed script is self-contained .mjs', () => {
-  it('does not import from ../server/', async () => {
-    const { readFileSync } = await import('node:fs');
-    const { fileURLToPath } = await import('node:url');
-    const { dirname, join } = await import('node:path');
-    const dir = dirname(fileURLToPath(import.meta.url));
-    const src = readFileSync(join(dir, '..', 'scripts', 'seed-resilience-intervals.mjs'), 'utf8');
-    assert.equal(src.includes('../server/'), false, 'Must not import from ../server/');
-    assert.equal(src.includes('tsx/esm'), false, 'Must not reference tsx/esm');
+  it('keeps missing-tag legacy inference explicit for inferable historical payloads', () => {
+    const overallScore = penalizedPillarScore(liveStylePillars);
+    const payload = buildScoreIntervalPayload({
+      countryCode: 'LG',
+      overallScore,
+      domains: liveStyleDomains,
+      pillars: liveStylePillars,
+    }, {
+      draws: 100,
+      rng: cycle([0.01, 0.99, 0.5, 0.2, 0.8]),
+      computedAt: '2026-05-29T00:00:00.000Z',
+      allowLegacyFormulaInference: true,
+    });
+
+    assert.ok(payload, 'expected explicit legacy inference to build a payload');
+    assert.equal(payload._formula, 'pc');
   });
 
-  it('all imports are local ./ relative paths', async () => {
-    const { readFileSync } = await import('node:fs');
-    const { fileURLToPath } = await import('node:url');
-    const { dirname, join } = await import('node:path');
-    const dir = dirname(fileURLToPath(import.meta.url));
-    const src = readFileSync(join(dir, '..', 'scripts', 'seed-resilience-intervals.mjs'), 'utf8');
-    const imports = [...src.matchAll(/from\s+['"]([^'"]+)['"]/g)].map((m) => m[1]);
-    for (const imp of imports) {
-      assert.ok(imp.startsWith('./'), `Import "${imp}" must be a local ./ relative path`);
+  it('skips missing-tag production payloads and records an alert diagnostic', () => {
+    const diagnostics = createIntervalDiagnostics();
+    const payload = buildScoreIntervalPayload({
+      countryCode: 'MS',
+      overallScore: penalizedPillarScore(liveStylePillars),
+      domains: liveStyleDomains,
+      pillars: liveStylePillars,
+    }, {
+      draws: 100,
+      diagnostics,
+    });
+
+    assert.equal(payload, null);
+    assert.equal(diagnostics.formulaSkipCount, 1);
+    assert.deepEqual(diagnostics.formulaSkipSamples[0], {
+      countryCode: 'MS',
+      formula: undefined,
+      reason: 'missing_formula',
+    });
+  });
+
+  it('skips ambiguous missing-tag legacy payloads without falling back to env flags', () => {
+    const previousPillarCombine = process.env.RESILIENCE_PILLAR_COMBINE_ENABLED;
+    const previousSchemaV2 = process.env.RESILIENCE_SCHEMA_V2_ENABLED;
+    process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = 'true';
+    process.env.RESILIENCE_SCHEMA_V2_ENABLED = 'true';
+    try {
+      const diagnostics = createIntervalDiagnostics();
+      const payload = buildScoreIntervalPayload({
+        countryCode: 'AM',
+        overallScore: 50,
+        domains: [
+          { id: 'economic', score: 50, weight: 0.17 },
+          { id: 'infrastructure', score: 50, weight: 0.15 },
+          { id: 'energy', score: 50, weight: 0.11 },
+          { id: 'social-governance', score: 50, weight: 0.19 },
+          { id: 'health-food', score: 50, weight: 0.13 },
+          { id: 'recovery', score: 50, weight: 0.25 },
+        ],
+        pillars: [
+          { id: 'structural-readiness', score: 61.8, weight: 0.40 },
+          { id: 'live-shock-exposure', score: 61.8, weight: 0.35 },
+          { id: 'recovery-capacity', score: 61.8, weight: 0.25 },
+        ],
+      }, {
+        draws: 100,
+        diagnostics,
+        allowLegacyFormulaInference: true,
+      });
+
+      assert.equal(payload, null);
+      assert.equal(diagnostics.formulaSkipCount, 1);
+      assert.equal(diagnostics.formulaSkipSamples[0].reason, 'legacy_formula_unresolved');
+    } finally {
+      if (previousPillarCombine === undefined) delete process.env.RESILIENCE_PILLAR_COMBINE_ENABLED;
+      else process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = previousPillarCombine;
+      if (previousSchemaV2 === undefined) delete process.env.RESILIENCE_SCHEMA_V2_ENABLED;
+      else process.env.RESILIENCE_SCHEMA_V2_ENABLED = previousSchemaV2;
     }
   });
+});
 
-  it('uses the shared resilience interval helper', async () => {
-    const { readFileSync } = await import('node:fs');
-    const { fileURLToPath } = await import('node:url');
-    const { dirname, join } = await import('node:path');
-    const dir = dirname(fileURLToPath(import.meta.url));
-    const src = readFileSync(join(dir, '..', 'scripts', 'seed-resilience-intervals.mjs'), 'utf8');
-    assert.match(src, /from ['"]\.\/_resilience-intervals\.mjs['"]/);
-    assert.doesNotMatch(src, /const DOMAIN_WEIGHTS =/);
-    assert.match(src, /createIntervalDiagnostics/);
-    assert.match(src, /intervalClampCount/);
-  });
-
-  it('documents ambiguous formula inference fallback to seeder env', async () => {
+describe('interval helper invariants', () => {
+  it('does not fall back to seeder env when formula inference is ambiguous', async () => {
     const { readFileSync } = await import('node:fs');
     const { fileURLToPath } = await import('node:url');
     const { dirname, join } = await import('node:path');
     const dir = dirname(fileURLToPath(import.meta.url));
     const src = readFileSync(join(dir, '..', 'scripts', '_resilience-intervals.mjs'), 'utf8');
-    assert.match(src, /Ambiguous d6 ~= pc ties intentionally fall back to the active seed env/);
-    assert.match(src, /RESILIENCE_PILLAR_COMBINE_ENABLED/);
-    assert.match(src, /RESILIENCE_SCHEMA_V2_ENABLED/);
+    assert.doesNotMatch(src, /Ambiguous d6 ~= pc ties intentionally fall back to the active seed env/);
+    assert.doesNotMatch(src, /return fallback/);
   });
 });

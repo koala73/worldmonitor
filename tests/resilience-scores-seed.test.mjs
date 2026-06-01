@@ -138,6 +138,35 @@ describe('script is self-contained .mjs', () => {
     assert.match(src, /intervalClampCount/);
     assert.match(src, /activeScoreClampMaxDelta/);
   });
+
+  it('alerts when cached score payloads lack usable interval formula tags', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const { dirname, join } = await import('node:path');
+    const dir = dirname(fileURLToPath(import.meta.url));
+    const src = readFileSync(join(dir, '..', 'scripts', 'seed-resilience-scores.mjs'), 'utf8');
+    assert.match(src, /formulaSkipCount/);
+    assert.match(src, /missing\/ambiguous formula tags/);
+    assert.match(src, /intervalFormulaSkipCount/);
+    assert.match(src, /intervalFormulaSkipSamples/);
+  });
+
+  it('builds intervals only from tagged Redis score payloads', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const { dirname, join } = await import('node:path');
+    const dir = dirname(fileURLToPath(import.meta.url));
+    const src = readFileSync(join(dir, '..', 'scripts', 'seed-resilience-scores.mjs'), 'utf8');
+    const intervalWriter = src.slice(
+      src.indexOf('async function computeAndWriteIntervals'),
+      src.indexOf('async function seedResilienceScores'),
+    );
+    assert.match(src, /\['GET', `\$\{RESILIENCE_SCORE_CACHE_PREFIX\}\$\{c\}`\]/);
+    assert.match(intervalWriter, /unwrapEnvelope\(JSON\.parse\(raw\)\)\.data/);
+    assert.match(intervalWriter, /buildScoreIntervalPayload\(score, \{ draws: DRAWS, diagnostics \}\)/);
+    assert.doesNotMatch(intervalWriter, /get-resilience-score\?countryCode=/);
+    assert.doesNotMatch(intervalWriter, /allowLegacyFormulaInference:\s*true/);
+  });
 });
 
 describe('ensures ranking aggregate is present every cron, with truthful meta', () => {
@@ -216,6 +245,37 @@ describe('ensures ranking aggregate is present every cron, with truthful meta', 
         `ranking endpoint call must include ?refresh=1 — found: ${full}`,
       );
     }
+  });
+
+  it('uses the dedicated seed refresh key for ranking ?refresh=1 calls', () => {
+    assert.match(
+      src,
+      /const WM_REFRESH_KEY = process\.env\.WORLDMONITOR_SEED_REFRESH_KEY\?\.trim\(\) \|\| '';/,
+      'seeder must read the dedicated seed-only refresh secret',
+    );
+    assert.match(
+      src,
+      /if \(WM_REFRESH_KEY\) headers\['X-WorldMonitor-Key'\] = WM_REFRESH_KEY;/,
+      'bulk ranking warmup must send the seed-only refresh secret, not a normal read key',
+    );
+    assert.match(
+      src,
+      /if \(WM_REFRESH_KEY\) rebuildHeaders\['X-WorldMonitor-Key'\] = WM_REFRESH_KEY;/,
+      'scheduled ranking refresh must send the seed-only refresh secret, not a normal read key',
+    );
+  });
+
+  it('fails fast when the dedicated seed refresh key is missing', () => {
+    assert.match(
+      src,
+      /function requireSeedRefreshKey\(\)[\s\S]*?if \(WM_REFRESH_KEY\) return;[\s\S]*?throw new Error\('WORLDMONITOR_SEED_REFRESH_KEY is required for resilience ranking refresh'\);/,
+      'seeder main must hard-fail when the seed-only refresh secret is missing',
+    );
+    assert.match(
+      src,
+      /requireSeedRefreshKey\(\);[\s\S]*?logSeedResult\('resilience:scores', 0,[\s\S]*?reason: 'missing_seed_refresh_key'/,
+      'missing refresh-key failures must emit a seed_complete record before exiting non-zero',
+    );
   });
 
   it('seeder does NOT write seed-meta:resilience:ranking (handler is sole writer)', () => {

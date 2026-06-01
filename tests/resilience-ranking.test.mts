@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
+import { createDomainGateway } from '../server/gateway.ts';
+import { mapErrorToResponse } from '../server/error-mapper.ts';
 import { getResilienceRanking } from '../server/worldmonitor/resilience/v1/get-resilience-ranking.ts';
+import { ApiError } from '../src/generated/server/worldmonitor/resilience/v1/service_server.ts';
 import {
   RESILIENCE_INTERVAL_METHODOLOGY,
   RESILIENCE_RANKING_CACHE_KEY,
@@ -21,6 +24,9 @@ const originalRedisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
 const originalVercelEnv = process.env.VERCEL_ENV;
 const originalVercelSha = process.env.VERCEL_GIT_COMMIT_SHA;
 const originalPillarCombine = process.env.RESILIENCE_PILLAR_COMBINE_ENABLED;
+const originalValidKeys = process.env.WORLDMONITOR_VALID_KEYS;
+const originalApiKey = process.env.WORLDMONITOR_API_KEY;
+const originalSeedRefreshKey = process.env.WORLDMONITOR_SEED_REFRESH_KEY;
 const D6_RANKING_CACHE_TAG = {
   _formula: 'd6',
   _intervalMethodology: RESILIENCE_INTERVAL_METHODOLOGY,
@@ -38,6 +44,12 @@ afterEach(() => {
   else process.env.VERCEL_GIT_COMMIT_SHA = originalVercelSha;
   if (originalPillarCombine == null) delete process.env.RESILIENCE_PILLAR_COMBINE_ENABLED;
   else process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = originalPillarCombine;
+  if (originalValidKeys == null) delete process.env.WORLDMONITOR_VALID_KEYS;
+  else process.env.WORLDMONITOR_VALID_KEYS = originalValidKeys;
+  if (originalApiKey == null) delete process.env.WORLDMONITOR_API_KEY;
+  else process.env.WORLDMONITOR_API_KEY = originalApiKey;
+  if (originalSeedRefreshKey == null) delete process.env.WORLDMONITOR_SEED_REFRESH_KEY;
+  else process.env.WORLDMONITOR_SEED_REFRESH_KEY = originalSeedRefreshKey;
   // Any test that touched VERCEL_ENV / VERCEL_GIT_COMMIT_SHA must invalidate
   // the memoized key prefix so the next test recomputes it against the
   // restored env — otherwise preview/dev tests would leak a stale prefix.
@@ -609,72 +621,64 @@ describe('resilience ranking contracts', () => {
     }
   });
 
-  it('?refresh=1 is rejected without a valid X-WorldMonitor-Key (Pro bearer token is NOT enough)', async () => {
+  it('?refresh=1 is rejected without the dedicated seed refresh key (Pro bearer/static read keys are NOT enough)', async () => {
     // A full warm is expensive (~222 score computations + chunked pipeline
     // SETs). Allowing any Pro user to loop on ?refresh=1 would DoS Upstash
     // and Edge budget. refresh must be seed-service only — validated against
-    // WORLDMONITOR_VALID_KEYS / WORLDMONITOR_API_KEY.
-    const prevValidKeys = process.env.WORLDMONITOR_VALID_KEYS;
-    const prevApiKey = process.env.WORLDMONITOR_API_KEY;
-    process.env.WORLDMONITOR_VALID_KEYS = 'seed-secret';
-    delete process.env.WORLDMONITOR_API_KEY;
-    try {
-      const { redis } = installRedis({ ...RESILIENCE_FIXTURES });
-      redis.set('resilience:static:index:v1', JSON.stringify({
-        countries: ['NO', 'US'],
-        recordCount: 2,
-        failedDatasets: [],
-        seedYear: 2026,
-      }));
-      // Stale sentinel tagged with the current (flag-off default)
-      // formula so the cross-formula invalidation does NOT fire here —
-      // these refresh-auth tests exercise the auth gate, not the
-      // formula check. An untagged sentinel would be silently
-      // rejected by the formula gate and the refresh path would not
-      // get tested as intended.
-      // Plan 2026-04-26-002 §U2 fixup: the stale-cache sentinel must use
-      // an ISO2 in the rankable universe (193 UN + 3 SARs). Previously
-      // this test used 'ZZ' but PR #3435's handler-side universe filter
-      // would correctly drop ZZ as non-rankable, defeating the
-      // auth-gate test's intent (which is "stale cached payload is
-      // returned when refresh is unauthenticated", not "any sentinel").
-      // 'NR' (Nauru) is a UN member with sparse data — perfect for the
-      // sentinel: real country, but won't accidentally appear in the
-      // recomputed ranking (NR is in static-index countries=['NO','US']
-      // fixture? No — but the auth-failed path returns the stale cache
-      // unmodified, so NR survives the cache-filter).
-      // §U7: post-PR-6 cache writes stamp headlineEligible. The auth-
-      // fallback test isn't about gate filtering — keep the field
-      // present so the test exercises the auth path cleanly.
-      const stale = { items: [{ countryCode: 'NR', overallScore: 1, level: 'low', lowConfidence: true, overallCoverage: 0.5, headlineEligible: true }], greyedOut: [], ...D6_RANKING_CACHE_TAG };
-      redis.set(RESILIENCE_RANKING_CACHE_KEY, JSON.stringify(stale));
+    // WORLDMONITOR_SEED_REFRESH_KEY, not the normal premium read keys.
+    process.env.WORLDMONITOR_VALID_KEYS = 'normal-read-key';
+    process.env.WORLDMONITOR_API_KEY = 'legacy-read-key';
+    process.env.WORLDMONITOR_SEED_REFRESH_KEY = 'seed-refresh-secret';
+    const { redis } = installRedis({ ...RESILIENCE_FIXTURES });
+    redis.set('resilience:static:index:v1', JSON.stringify({
+      countries: ['NO', 'US'],
+      recordCount: 2,
+      failedDatasets: [],
+      seedYear: 2026,
+    }));
+    // Stale sentinel tagged with the current (flag-off default) formula so
+    // these refresh-auth assertions exercise the refresh gate, not formula
+    // invalidation. NR is rankable but absent from the static-index fixture.
+    const stale = { items: [{ countryCode: 'NR', overallScore: 1, level: 'low', lowConfidence: true, overallCoverage: 0.5, headlineEligible: true }], greyedOut: [], ...D6_RANKING_CACHE_TAG };
+    redis.set(RESILIENCE_RANKING_CACHE_KEY, JSON.stringify(stale));
 
-      // No X-WorldMonitor-Key → refresh must be ignored, stale cache returned.
-      const unauth = new Request('https://example.com/api/resilience/v1/get-resilience-ranking?refresh=1');
-      const unauthResp = await getResilienceRanking({ request: unauth } as never, {});
-      assert.equal(unauthResp.items.length, 1);
-      assert.equal(unauthResp.items[0]?.countryCode, 'NR', 'refresh=1 without key must fall back to cached response');
+    const assertFallsBackToCache = async (request: Request, message: string) => {
+      const response = await getResilienceRanking({ request } as never, {});
+      assert.equal(response.items.length, 1);
+      assert.equal(response.items[0]?.countryCode, 'NR', message);
+    };
 
-      // Wrong key → same as no key.
-      const wrongKey = new Request('https://example.com/api/resilience/v1/get-resilience-ranking?refresh=1', {
-        headers: { 'X-WorldMonitor-Key': 'bogus' },
-      });
-      const wrongResp = await getResilienceRanking({ request: wrongKey } as never, {});
-      assert.equal(wrongResp.items[0]?.countryCode, 'NR', 'refresh=1 with wrong key must fall back to cached response');
+    await assertFallsBackToCache(
+      new Request('https://example.com/api/resilience/v1/get-resilience-ranking?refresh=1'),
+      'refresh=1 without key must fall back to cached response',
+    );
+    await assertFallsBackToCache(
+      new Request('https://example.com/api/resilience/v1/get-resilience-ranking?refresh=1', {
+        headers: { Authorization: 'Bearer pro-session-token' },
+      }),
+      'refresh=1 with Pro bearer must fall back to cached response',
+    );
+    await assertFallsBackToCache(
+      new Request('https://example.com/api/resilience/v1/get-resilience-ranking?refresh=1', {
+        headers: { 'X-WorldMonitor-Key': 'normal-read-key' },
+      }),
+      'refresh=1 with normal static read key must fall back to cached response',
+    );
+    await assertFallsBackToCache(
+      new Request('https://example.com/api/resilience/v1/get-resilience-ranking?refresh=1', {
+        headers: { 'X-WorldMonitor-Key': 'legacy-read-key' },
+      }),
+      'refresh=1 with legacy read key must fall back to cached response',
+    );
 
-      // Valid seed key → refresh is honored, NR is NOT in the recomputed response (recompute uses static index = ['NO','US']).
-      const authed = new Request('https://example.com/api/resilience/v1/get-resilience-ranking?refresh=1', {
-        headers: { 'X-WorldMonitor-Key': 'seed-secret' },
-      });
-      const authedResp = await getResilienceRanking({ request: authed } as never, {});
-      const codes = (authedResp.items.concat(authedResp.greyedOut ?? [])).map((i) => i.countryCode);
-      assert.ok(!codes.includes('NR'), 'refresh=1 with valid seed key must recompute');
-    } finally {
-      if (prevValidKeys == null) delete process.env.WORLDMONITOR_VALID_KEYS;
-      else process.env.WORLDMONITOR_VALID_KEYS = prevValidKeys;
-      if (prevApiKey == null) delete process.env.WORLDMONITOR_API_KEY;
-      else process.env.WORLDMONITOR_API_KEY = prevApiKey;
-    }
+    // Dedicated seed refresh key → refresh is honored; NR is not in the
+    // recomputed response because recompute uses static index ['NO','US'].
+    const authed = new Request('https://example.com/api/resilience/v1/get-resilience-ranking?refresh=1', {
+      headers: { 'X-WorldMonitor-Key': 'seed-refresh-secret' },
+    });
+    const authedResp = await getResilienceRanking({ request: authed } as never, {});
+    const codes = (authedResp.items.concat(authedResp.greyedOut ?? [])).map((i) => i.countryCode);
+    assert.ok(!codes.includes('NR'), 'refresh=1 with dedicated seed refresh key must recompute');
   });
 
   it('?refresh=1 bypasses the cache-hit early-return and recomputes the ranking (with valid seed key)', async () => {
@@ -682,39 +686,126 @@ describe('resilience ranking contracts', () => {
     // this bypass, the seeder would have to DEL the ranking before rebuild
     // (the old flow) — a failed rebuild would then leave the key absent
     // instead of stale-but-present.
-    const prevValidKeys = process.env.WORLDMONITOR_VALID_KEYS;
-    process.env.WORLDMONITOR_VALID_KEYS = 'seed-secret';
-    try {
-      const { redis } = installRedis({ ...RESILIENCE_FIXTURES });
-      redis.set('resilience:static:index:v1', JSON.stringify({
-        countries: ['NO', 'US'],
-        recordCount: 2,
-        failedDatasets: [],
-        seedYear: 2026,
-      }));
-      // Seed a pre-existing ranking so the cache-hit early-return would
-      // normally fire. ?refresh=1 (with valid seed key) must ignore it.
-      // Stale sentinel tagged with the current (flag-off default)
-      // formula so the cross-formula invalidation does NOT fire here —
-      // these refresh-auth tests exercise the auth gate, not the
-      // formula check. An untagged sentinel would be silently
-      // rejected by the formula gate and the refresh path would not
-      // get tested as intended.
-      const stale = { items: [{ countryCode: 'ZZ', overallScore: 1, level: 'low', lowConfidence: true, overallCoverage: 0.5 }], greyedOut: [], ...D6_RANKING_CACHE_TAG };
-      redis.set(RESILIENCE_RANKING_CACHE_KEY, JSON.stringify(stale));
+    process.env.WORLDMONITOR_SEED_REFRESH_KEY = 'seed-refresh-secret';
+    const { redis } = installRedis({ ...RESILIENCE_FIXTURES });
+    redis.set('resilience:static:index:v1', JSON.stringify({
+      countries: ['NO', 'US'],
+      recordCount: 2,
+      failedDatasets: [],
+      seedYear: 2026,
+    }));
+    // Seed a pre-existing ranking so the cache-hit early-return would
+    // normally fire. ?refresh=1 (with valid seed key) must ignore it.
+    const stale = { items: [{ countryCode: 'ZZ', overallScore: 1, level: 'low', lowConfidence: true, overallCoverage: 0.5 }], greyedOut: [], ...D6_RANKING_CACHE_TAG };
+    redis.set(RESILIENCE_RANKING_CACHE_KEY, JSON.stringify(stale));
 
-      const request = new Request('https://example.com/api/resilience/v1/get-resilience-ranking?refresh=1', {
-        headers: { 'X-WorldMonitor-Key': 'seed-secret' },
-      });
-      const response = await getResilienceRanking({ request } as never, {});
+    const request = new Request('https://example.com/api/resilience/v1/get-resilience-ranking?refresh=1', {
+      headers: { 'X-WorldMonitor-Key': 'seed-refresh-secret' },
+    });
+    const response = await getResilienceRanking({ request } as never, {});
 
-      const returnedCountries = response.items.concat(response.greyedOut ?? []).map((i) => i.countryCode);
-      assert.ok(!returnedCountries.includes('ZZ'), 'refresh=1 must recompute, not return the stale cached ZZ entry');
-      assert.ok(returnedCountries.includes('NO') || returnedCountries.includes('US'), 'recomputed ranking must reflect the current static index');
-    } finally {
-      if (prevValidKeys == null) delete process.env.WORLDMONITOR_VALID_KEYS;
-      else process.env.WORLDMONITOR_VALID_KEYS = prevValidKeys;
-    }
+    const returnedCountries = response.items.concat(response.greyedOut ?? []).map((i) => i.countryCode);
+    assert.ok(!returnedCountries.includes('ZZ'), 'refresh=1 must recompute, not return the stale cached ZZ entry');
+    assert.ok(returnedCountries.includes('NO') || returnedCountries.includes('US'), 'recomputed ranking must reflect the current static index');
+  });
+
+  it('?refresh=1 seed-secret recomputes are bounded by a short Redis refresh slot', async () => {
+    process.env.WORLDMONITOR_SEED_REFRESH_KEY = 'seed-refresh-secret';
+    const { redis } = installRedis({ ...RESILIENCE_FIXTURES });
+    redis.set('resilience:static:index:v1', JSON.stringify({
+      countries: ['NO', 'US'],
+      recordCount: 2,
+      failedDatasets: [],
+      seedYear: 2026,
+    }));
+
+    const request = () => new Request('https://example.com/api/resilience/v1/get-resilience-ranking?refresh=1', {
+      headers: { 'X-WorldMonitor-Key': 'seed-refresh-secret' },
+    });
+    const first = await getResilienceRanking({ request: request() } as never, {});
+    const firstCodes = first.items.concat(first.greyedOut ?? []).map((i) => i.countryCode);
+    assert.ok(firstCodes.includes('NO') || firstCodes.includes('US'), 'first seed refresh must recompute');
+
+    const stale = { items: [{ countryCode: 'NR', overallScore: 1, level: 'low', lowConfidence: true, overallCoverage: 0.5, headlineEligible: true }], greyedOut: [], ...D6_RANKING_CACHE_TAG };
+    redis.set(RESILIENCE_RANKING_CACHE_KEY, JSON.stringify(stale));
+    const second = await getResilienceRanking({ request: request() } as never, {});
+    assert.equal(
+      second.items[0]?.countryCode,
+      'NR',
+      'rapid second seed refresh must use the cached path while the refresh slot is held',
+    );
+  });
+
+  it('?refresh=1 seed-secret slot denial returns explicit 429 instead of empty 200 on cold cache', async () => {
+    process.env.WORLDMONITOR_SEED_REFRESH_KEY = 'seed-refresh-secret';
+    const { redis } = installRedis({ ...RESILIENCE_FIXTURES });
+    redis.set('resilience:ranking:refresh-lock:v1', 'held');
+
+    await assert.rejects(
+      () => getResilienceRanking({
+        request: new Request('https://example.com/api/resilience/v1/get-resilience-ranking?refresh=1', {
+          headers: { 'X-WorldMonitor-Key': 'seed-refresh-secret' },
+        }),
+      } as never, {}),
+      (err) => err instanceof ApiError
+        && err.statusCode === 429
+        && (err as ApiError & { retryAfter?: number }).retryAfter === 30
+        && /refresh already in progress/.test(err.message),
+    );
+  });
+
+  it('ApiError retryAfter maps to a Retry-After header for generated gateway responses', async () => {
+    const err = new ApiError(429, 'Resilience ranking refresh already in progress', '');
+    (err as ApiError & { retryAfter: number }).retryAfter = 30;
+    const response = mapErrorToResponse(err, new Request('https://example.com'));
+    assert.equal(response.status, 429);
+    assert.equal(response.headers.get('Retry-After'), '30');
+    assert.deepEqual(await response.json(), {
+      message: 'Resilience ranking refresh already in progress',
+      retryAfter: 30,
+    });
+  });
+
+  it('gateway seed-refresh bypass is scoped to ranking ?refresh=1 only', async () => {
+    process.env.WORLDMONITOR_VALID_KEYS = 'normal-read-key';
+    process.env.WORLDMONITOR_SEED_REFRESH_KEY = 'seed-refresh-secret';
+    const handler = createDomainGateway([
+      {
+        method: 'GET',
+        path: '/api/resilience/v1/get-resilience-ranking',
+        handler: async (request) => new Response(JSON.stringify({
+          key: request.headers.get('X-WorldMonitor-Key'),
+          refresh: new URL(request.url).searchParams.get('refresh'),
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+      },
+      {
+        method: 'GET',
+        path: '/api/resilience/v1/get-resilience-score',
+        handler: async () => new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      },
+    ]);
+
+    const seedRefresh = await handler(new Request('https://worldmonitor.app/api/resilience/v1/get-resilience-ranking?refresh=1', {
+      headers: { 'X-WorldMonitor-Key': 'seed-refresh-secret' },
+    }));
+    assert.equal(seedRefresh.status, 200);
+    assert.deepEqual(await seedRefresh.json(), { key: 'seed-refresh-secret', refresh: '1' });
+
+    const seedWithoutRefresh = await handler(new Request('https://worldmonitor.app/api/resilience/v1/get-resilience-ranking', {
+      headers: { 'X-WorldMonitor-Key': 'seed-refresh-secret' },
+    }));
+    assert.equal(seedWithoutRefresh.status, 401, 'seed secret must not bypass normal ranking-read auth');
+
+    const seedWrongPath = await handler(new Request('https://worldmonitor.app/api/resilience/v1/get-resilience-score?countryCode=US&refresh=1', {
+      headers: { 'X-WorldMonitor-Key': 'seed-refresh-secret' },
+    }));
+    assert.equal(seedWrongPath.status, 401, 'seed secret must not bypass auth on other resilience paths');
+
+    const normalReadRefresh = await handler(new Request('https://worldmonitor.app/api/resilience/v1/get-resilience-ranking?refresh=1', {
+      headers: { 'X-WorldMonitor-Key': 'normal-read-key' },
+    }));
+    assert.equal(normalReadRefresh.status, 200, 'normal read keys must keep existing ranking-read access');
+    assert.deepEqual(await normalReadRefresh.json(), { key: 'normal-read-key', refresh: '1' });
   });
 
   it('warms via batched pipeline SETs (avoids 600KB single-pipeline timeout)', async () => {
