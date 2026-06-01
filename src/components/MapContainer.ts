@@ -11,7 +11,7 @@ import 'maplibre-gl/dist/maplibre-gl.css';
 import { isMobileDevice } from '@/utils';
 import { MapComponent } from './Map';
 import { DeckGLMap, type DeckMapView, type CountryClickPayload } from './DeckGLMap';
-import { GlobeMap } from './GlobeMap';
+import type { GlobeMap } from './GlobeMap';
 import type {
   MapLayers,
   Hotspot,
@@ -87,6 +87,7 @@ interface TechEventMarker {
 type FireMarker = { lat: number; lon: number; brightness: number; frp: number; confidence: number; region: string; acq_date: string; daynight: string };
 type NewsLocationMarker = { lat: number; lon: number; title: string; threatLevel: string; timestamp?: Date };
 type CIIScore = { code: string; score: number; level: string };
+type GlobeMapCtor = typeof import('./GlobeMap').GlobeMap;
 
 /**
  * Unified map interface that delegates to either DeckGLMap or MapComponent
@@ -98,10 +99,13 @@ export class MapContainer {
   private deckGLMap: DeckGLMap | null = null;
   private svgMap: MapComponent | null = null;
   private globeMap: GlobeMap | null = null;
+  private globeMapCtorPromise: Promise<GlobeMapCtor> | null = null;
+  private globeActivationId = 0;
   private supplyChainPanel: import('@/components/SupplyChainPanel').SupplyChainPanel | null = null;
   private initialState: MapContainerState;
   private useDeckGL: boolean;
   private useGlobe: boolean;
+  private destroyed = false;
   private isResizingInternal = false;
   private resizeObserver: ResizeObserver | null = null;
 
@@ -205,10 +209,39 @@ export class MapContainer {
     this.svgMap = new MapComponent(this.container, this.initialState);
   }
 
+  private loadGlobeMapCtor(): Promise<GlobeMapCtor> {
+    this.globeMapCtorPromise ??= import('./GlobeMap').then(({ GlobeMap }) => GlobeMap);
+    return this.globeMapCtorPromise;
+  }
+
+  private observeContainerResize(): void {
+    if (typeof ResizeObserver === 'undefined' || this.resizeObserver) return;
+    this.resizeObserver = new ResizeObserver(() => {
+      // Skip if we are already handling resize manually via drag handlers
+      if (this.isResizingInternal) return;
+      this.resize();
+    });
+    this.resizeObserver.observe(this.container);
+  }
+
+  private async initGlobeMap(
+    snapshot?: MapContainerState,
+    center?: { lat: number; lon: number } | null,
+  ): Promise<void> {
+    const activationId = ++this.globeActivationId;
+    console.log('[MapContainer] Initializing 3D globe (globe.gl mode)');
+    const GlobeMapCtor = await this.loadGlobeMapCtor();
+    if (this.destroyed || !this.useGlobe || activationId !== this.globeActivationId) return;
+
+    this.globeMap = new GlobeMapCtor(this.container, this.initialState);
+    this.observeContainerResize();
+    if (snapshot) this.restoreViewport(snapshot, center ?? null);
+    this.rehydrateActiveMap();
+  }
+
   private init(): void {
     if (this.useGlobe) {
-      console.log('[MapContainer] Initializing 3D globe (globe.gl mode)');
-      this.globeMap = new GlobeMap(this.container, this.initialState);
+      void this.initGlobeMap();
     } else if (this.useDeckGL) {
       console.log('[MapContainer] Initializing deck.gl map (desktop mode)');
       try {
@@ -226,14 +259,7 @@ export class MapContainer {
     }
 
     // Automatic resize on container change (fixes gaps on load/layout shift)
-    if (typeof ResizeObserver !== 'undefined') {
-      this.resizeObserver = new ResizeObserver(() => {
-        // Skip if we are already handling resize manually via drag handlers
-        if (this.isResizingInternal) return;
-        this.resize();
-      });
-      this.resizeObserver.observe(this.container);
-    }
+    this.observeContainerResize();
   }
 
   /** Switch to 3D globe mode at runtime (called from Settings). */
@@ -246,9 +272,7 @@ export class MapContainer {
     this.destroyFlatMap();
     this.useGlobe = true;
     this.useDeckGL = false;
-    this.globeMap = new GlobeMap(this.container, this.initialState);
-    this.restoreViewport(snapshot, center);
-    this.rehydrateActiveMap();
+    void this.initGlobeMap(snapshot, center);
   }
 
   /** Reload basemap style (called when map provider changes in Settings). */
@@ -266,6 +290,7 @@ export class MapContainer {
     this.globeMap?.destroy();
     this.globeMap = null;
     this.useGlobe = false;
+    this.globeActivationId++;
     this.useDeckGL = this.shouldUseDeckGL();
     this.init();
     this.restoreViewport(snapshot, center);
@@ -1048,6 +1073,8 @@ export class MapContainer {
   }
 
   public destroy(): void {
+    this.destroyed = true;
+    this.globeActivationId++;
     this.resizeObserver?.disconnect();
     this.globeMap?.destroy();
     this.deckGLMap?.destroy();

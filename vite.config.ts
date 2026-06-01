@@ -20,8 +20,9 @@ const BROTLI_EXTENSIONS = new Set(['.js', '.mjs', '.css', '.html', '.svg', '.jso
 // silent-breakage failure mode where renaming a chunk in `manualChunks`
 // re-eagerises the WebGL stack without any build-time error.
 //   - maplibre, deck-stack: heavy WebGL deps, only reachable via MapContainer
+//   - globe-stack: globe.gl + three.js, only reachable when globe mode loads
 //   - MapContainer: the dynamic-import target itself
-const LAZY_HTML_PRELOAD_CHUNKS = ['maplibre', 'deck-stack', 'MapContainer'] as const;
+const LAZY_HTML_PRELOAD_CHUNKS = ['maplibre', 'deck-stack', 'globe-stack', 'MapContainer'] as const;
 const LAZY_HTML_PRELOAD_RE = new RegExp(
   `/(${LAZY_HTML_PRELOAD_CHUNKS.join('|')})-[A-Za-z0-9_-]+\\.js$`,
 );
@@ -986,6 +987,9 @@ export default defineConfig(({ mode }) => {
                 || id.includes('/h3-js/')
               ) {
                 return 'deck-stack';
+              }
+              if (id.includes('/globe.gl/') || id.includes('/three/')) {
+                return 'globe-stack';
               }
               if (id.includes('/d3/')) {
                 return 'd3';
