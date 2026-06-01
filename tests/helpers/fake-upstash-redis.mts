@@ -73,6 +73,10 @@ export function createRedisFetch(fixtures: Record<string, unknown>): FakeRedisSt
       const command = JSON.parse(typeof init?.body === 'string' ? init.body : '[]') as string[];
       const [verb, key = '', value = ''] = command;
       if (verb === 'SET') {
+        const opts = command.slice(3).map(String).map((item) => item.toUpperCase());
+        if (opts.includes('NX') && redis.has(key)) {
+          return new Response(JSON.stringify({ result: null }), { status: 200 });
+        }
         redis.set(key, value);
         return new Response(JSON.stringify({ result: 'OK' }), { status: 200 });
       }
@@ -90,6 +94,10 @@ export function createRedisFetch(fixtures: Record<string, unknown>): FakeRedisSt
         }
 
         if (verb === 'SET') {
+          const opts = args.slice(1).map(String).map((item) => item.toUpperCase());
+          if (opts.includes('NX') && redis.has(redisKey)) {
+            return { result: null };
+          }
           redis.set(redisKey, String(args[0] || ''));
           return { result: 'OK' };
         }

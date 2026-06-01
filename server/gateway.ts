@@ -375,6 +375,19 @@ function withAuthenticatedUserId(request: Request, userId: string): Request {
   return cloneRequestWithHeaders(request, headers);
 }
 
+function isResilienceRankingSeedRefreshRequest(request: Request, pathname: string): boolean {
+  if (pathname !== '/api/resilience/v1/get-resilience-ranking') return false;
+  const expected = process.env.WORLDMONITOR_SEED_REFRESH_KEY?.trim() ?? '';
+  if (!expected) return false;
+  try {
+    const url = new URL(request.url);
+    if (url.searchParams.get('refresh') !== '1') return false;
+  } catch {
+    return false;
+  }
+  return request.headers.get('X-WorldMonitor-Key') === expected;
+}
+
 export function createDomainGateway(
   routes: RouteDescriptor[],
 ): (req: Request, ctx?: GatewayCtx) => Promise<Response> {
@@ -741,6 +754,7 @@ export function createDomainGateway(
     // tier ≥ 1 + mcpAccess === true. Re-running the JWT path on a request
     // that has no Authorization header would just no-op anyway.
     const isPublicNoAuthRpc = PUBLIC_NO_AUTH_RPC_PATHS.has(pathname);
+    const seedRefreshVerified = isResilienceRankingSeedRefreshRequest(request, pathname);
     const isTierGated = !internalMcpVerified && !isPublicNoAuthRpc && getRequiredTier(pathname) !== null;
     const needsLegacyProBearerGate = !internalMcpVerified && !isPublicNoAuthRpc && PREMIUM_RPC_PATHS.has(pathname) && !isTierGated;
 
@@ -766,7 +780,7 @@ export function createDomainGateway(
     // request). Telemetry stays attributed via the verified userId set
     // above; entitlement re-check (`features.tier ≥ 1 && mcpAccess`) was
     // already performed before flipping `internalMcpVerified = true`.
-    let keyCheck: { valid: boolean; required: boolean; error?: string; kind?: 'enterprise' | 'session' | 'user' } = internalMcpVerified || isPublicNoAuthRpc
+    let keyCheck: { valid: boolean; required: boolean; error?: string; kind?: 'enterprise' | 'session' | 'user' } = internalMcpVerified || isPublicNoAuthRpc || seedRefreshVerified
       ? { valid: true, required: false }
       : ((await validateApiKey(request, {
           forceKey: (isTierGated && !sessionUserId) || needsLegacyProBearerGate,
@@ -909,7 +923,7 @@ export function createDomainGateway(
     // routes require tier 2, but Pro MCP callers only reach the gateway
     // through the MCP edge's whitelisted tool set.
     const isEnterpriseAuth = keyCheck.valid && wmKey && !isUserApiKey && keyCheck.kind === 'enterprise';
-    if (!isEnterpriseAuth && !internalMcpVerified) {
+    if (!isEnterpriseAuth && !internalMcpVerified && !seedRefreshVerified) {
       const entitlementResponse = await checkEntitlement(sessionUserId, pathname, corsHeaders);
       if (entitlementResponse) {
         const entReason: RequestReason =

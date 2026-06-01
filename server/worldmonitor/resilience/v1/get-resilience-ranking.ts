@@ -44,6 +44,30 @@ const SYNC_WARM_LIMIT = 1000;
 // warm failures (Redis blips, data gaps) — it must NOT be tripped by the handler
 // capping how many countries it attempts. See SYNC_WARM_LIMIT above.
 const RANKING_CACHE_MIN_COVERAGE = 0.75;
+const RANKING_REFRESH_LOCK_KEY = 'resilience:ranking:refresh-lock:v1';
+const RANKING_REFRESH_LOCK_TTL_SECONDS = 30;
+
+function isRefreshRequested(ctx: ServerContext): boolean {
+  try {
+    return new URL(ctx.request.url).searchParams.get('refresh') === '1';
+  } catch {
+    return false;
+  }
+}
+
+function isSeedRefreshAuthorized(ctx: ServerContext): boolean {
+  const expected = process.env.WORLDMONITOR_SEED_REFRESH_KEY?.trim() ?? '';
+  if (!expected) return false;
+  return ctx.request.headers.get('X-WorldMonitor-Key') === expected;
+}
+
+async function tryAcquireRefreshSlot(): Promise<boolean> {
+  const token = `${Date.now()}:${Math.random().toString(36).slice(2)}`;
+  const result = await runRedisPipeline([
+    ['SET', RANKING_REFRESH_LOCK_KEY, token, 'EX', RANKING_REFRESH_LOCK_TTL_SECONDS, 'NX'],
+  ]);
+  return result[0]?.result === 'OK';
+}
 
 async function fetchIntervals(countryCodes: string[]): Promise<Map<string, ScoreInterval>> {
   if (countryCodes.length === 0) return new Map();
@@ -70,28 +94,23 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
 ): Promise<GetResilienceRankingResponse> => {
   // ?refresh=1 forces a full recompute-and-publish instead of returning the
   // existing cache. It is seed-service-only: a full warm is expensive (~222
-  // score computations + chunked pipeline SETs) and an unauthenticated or
-  // Pro-bearer caller looping on refresh=1 could DoS Upstash quota and Edge
-  // budget. Gated on a valid seed API key in X-WorldMonitor-Key (the same
-  // WORLDMONITOR_VALID_KEYS list the cron uses). Pro bearer tokens do NOT
-  // grant refresh — they get the standard cache-first path.
-  const forceRefresh = (() => {
-    try {
-      if (new URL(ctx.request.url).searchParams.get('refresh') !== '1') return false;
-    } catch { return false; }
-    const wmKey = ctx.request.headers.get('X-WorldMonitor-Key') ?? '';
-    if (!wmKey) return false;
-    const validKeys = (process.env.WORLDMONITOR_VALID_KEYS ?? '')
-      .split(',').map((k) => k.trim()).filter(Boolean);
-    const apiKey = process.env.WORLDMONITOR_API_KEY ?? '';
-    const allowed = new Set(validKeys);
-    if (apiKey) allowed.add(apiKey);
-    if (!allowed.has(wmKey)) {
-      console.warn('[resilience] refresh=1 rejected: X-WorldMonitor-Key not in seed allowlist');
-      return false;
+  // score computations + chunked pipeline SETs). Normal premium credentials
+  // (Pro bearer, WORLDMONITOR_VALID_KEYS, WORLDMONITOR_API_KEY) must keep the
+  // standard cache-first read path. Only the dedicated seed refresh secret is
+  // accepted, and a short Redis slot bounds rapid/concurrent refresh attempts.
+  const refreshRequested = isRefreshRequested(ctx);
+  const refreshAuthorized = refreshRequested && isSeedRefreshAuthorized(ctx);
+  let refreshSlotDenied = false;
+  let forceRefresh = false;
+  if (refreshRequested && !refreshAuthorized) {
+    console.warn('[resilience] refresh=1 rejected: dedicated seed refresh secret missing or invalid');
+  } else if (refreshAuthorized) {
+    forceRefresh = await tryAcquireRefreshSlot();
+    refreshSlotDenied = !forceRefresh;
+    if (refreshSlotDenied) {
+      console.warn('[resilience] refresh=1 skipped: ranking refresh slot already held');
     }
-    return true;
-  })();
+  }
   if (!forceRefresh) {
     const cached = await getCachedJson(RESILIENCE_RANKING_CACHE_KEY) as (
       GetResilienceRankingResponse & { _formula?: string; _intervalMethodology?: string }
@@ -173,6 +192,7 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
         greyedOut: [...stillGreyed, ...ineligibleFromItems],
       };
     }
+    if (refreshSlotDenied) return { items: [], greyedOut: [] };
   }
 
   const countryCodes = await listScorableCountries();
