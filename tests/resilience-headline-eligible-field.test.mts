@@ -157,7 +157,15 @@ describe('headlineEligible field — Plan 2026-04-26-002 §U3 (PR 2)', () => {
       //
       // Mutation-verified: removing `headlineEligible: true` from
       // buildResilienceScore's return object makes this test fail.
-      const { redis } = installRedis(RESILIENCE_FIXTURES);
+      const nowMs = Date.now();
+      const freshFixtures = {
+        ...RESILIENCE_FIXTURES,
+        'seed-meta:resilience:static': {
+          ...(RESILIENCE_FIXTURES['seed-meta:resilience:static'] as Record<string, unknown>),
+          fetchedAt: nowMs,
+        },
+      };
+      const { redis } = installRedis(freshFixtures);
 
       const response = await ensureResilienceScoreCached('US');
 
@@ -166,6 +174,8 @@ describe('headlineEligible field — Plan 2026-04-26-002 §U3 (PR 2)', () => {
       // build).
       assert.equal(response.countryCode, 'US',
         'sanity: response must be for the requested country');
+      assert.equal(response.headlineEligible, true,
+        `PR-2 contract: US happy-path build remains headlineEligible=true (got ${response.headlineEligible})`);
 
       // Now the load-bearing assertion: read the RAW cache entry that
       // ensureResilienceScoreCached just wrote, before stripCacheMeta's
@@ -175,8 +185,8 @@ describe('headlineEligible field — Plan 2026-04-26-002 §U3 (PR 2)', () => {
       const parsed = JSON.parse(rawCached!);
       assert.ok('headlineEligible' in parsed,
         'PR-2 contract: buildResilienceScore must write headlineEligible into the stored cache payload (raw value, before stripCacheMeta backfill)');
-      assert.equal(parsed.headlineEligible, response.headlineEligible,
-        `PR-2 contract: build emits the computed headlineEligible value into the cache (got ${parsed.headlineEligible}, response ${response.headlineEligible})`);
+      assert.equal(parsed.headlineEligible, true,
+        `PR-2 contract: happy-path build emits headlineEligible=true into the cache (got ${parsed.headlineEligible})`);
       assert.equal(typeof parsed.headlineEligible, 'boolean',
         'headlineEligible must be a boolean (no null/undefined sentinel)');
     });

@@ -71,6 +71,17 @@ describe('resilience staleness confidence derating', () => {
     }), false);
   });
 
+  it('aging observed dimensions use the intermediate confidence coverage factor', () => {
+    const aging = [
+      dimension('macroFiscal', 'aging'),
+      dimension('currencyExternal', 'aging'),
+      dimension('infrastructure', 'aging'),
+    ];
+
+    assert.equal(computeLowConfidence(aging as never, 0), false);
+    assert.ok(Math.abs(computeOverallCoverage(response(aging) as never) - 0.7) < 0.001);
+  });
+
   it('missing freshness proof does not add a second penalty on top of existing sparsity paths', () => {
     const missingFreshness = [
       { ...dimension('macroFiscal', 'stale'), freshness: { lastObservedAtMs: '0', staleness: 'stale' as const } },

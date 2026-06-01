@@ -40,6 +40,9 @@ const RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE_IDS: ReadonlySet<string> = ne
   'sovereignFiscalBuffer',
 ]);
 
+// Mirrors server/worldmonitor/resilience/v1/_shared.ts. Keep this table
+// in sync so the widget Coverage % matches API overallCoverage semantics;
+// tests/resilience-staleness-factor-parity.test.mts guards drift.
 const STALENESS_CONFIDENCE_COVERAGE_FACTOR: Readonly<Record<string, number>> = {
   '': 1.0,
   fresh: 1.0,
