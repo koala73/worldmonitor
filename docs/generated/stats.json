@@ -14,7 +14,7 @@
   "protoDomainFolders": 35,
   "openapiServiceSpecs": 34,
   "serverDomains": 34,
-  "locales": 23,
+  "locales": 24,
   "workflows": [
     "build-desktop.yml",
     "contributor-trust.yml",
@@ -34,5 +34,5 @@
   "workflowCount": 14,
   "freshnessSources": 35,
   "freshnessRequiredForRisk": 2,
-  "feedDefinitions": 563
+  "feedDefinitions": 567
 }
