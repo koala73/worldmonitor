@@ -38,13 +38,13 @@ import {
 // index (~222 countries) so every warm pass is unconditionally complete.
 const SYNC_WARM_LIMIT = 1000;
 
-// Minimum fraction of scorable countries that must have a cached score before we
-// persist the ranking to Redis. Prevents a cold-start (0% cached) from being
-// locked in, while still allowing partial-state writes (e.g. 90%) to succeed so
-// the next call doesn't re-warm everything. This is a safety rail against genuine
-// warm failures (Redis blips, data gaps) — it must NOT be tripped by the handler
-// capping how many countries it attempts. See SYNC_WARM_LIMIT above.
-const RANKING_CACHE_MIN_COVERAGE = 0.75;
+// Minimum fraction of scorable countries that must have a cached score before
+// publishing the ranking. A 75% table looked healthy to consumers while hiding
+// a large serving gap; require at least 90%, and label/shorten sub-95% publishes.
+const RANKING_CACHE_MIN_COVERAGE = 0.90;
+const RANKING_FULL_COVERAGE = 0.95;
+const PARTIAL_RANKING_CACHE_TTL_SECONDS = 2 * 60 * 60;
+const RANKING_PERSISTENCE_MIN_PARITY = 0.90;
 const RANKING_REFRESH_LOCK_KEY = 'resilience:ranking:refresh-lock:v1';
 const RANKING_REFRESH_LOCK_TTL_SECONDS = 30;
 
@@ -97,6 +97,72 @@ async function fetchIntervals(countryCodes: string[]): Promise<Map<string, Score
   return map;
 }
 
+function roundCoverage(value: number): number {
+  return Number.isFinite(value) ? Math.round(value * 10_000) / 10_000 : 0;
+}
+
+function buildRankingResponse(
+  items: ResilienceRankingItem[],
+  greyedOut: ResilienceRankingItem[],
+  args: { fetchedAtMs: number; scored: number; total: number },
+): GetResilienceRankingResponse {
+  const coverage = args.total > 0 ? roundCoverage(args.scored / args.total) : 0;
+  return {
+    items,
+    greyedOut,
+    fetchedAt: new Date(args.fetchedAtMs).toISOString(),
+    scored: args.scored,
+    total: args.total,
+    coverage,
+    partial: args.total === 0 || coverage < RANKING_FULL_COVERAGE,
+  };
+}
+
+function coerceNonNegativeInt(value: unknown, fallback: number): number {
+  const num = Number(value);
+  return Number.isFinite(num) && num >= 0 ? Math.floor(num) : fallback;
+}
+
+function rankingCacheMetadataMatches(payload: Partial<GetResilienceRankingResponse>): boolean {
+  return (
+    typeof payload.fetchedAt === 'string' &&
+    payload.fetchedAt.length > 0 &&
+    Number.isFinite(Date.parse(payload.fetchedAt)) &&
+    Number.isFinite(Number(payload.scored)) &&
+    Number(payload.scored) >= 0 &&
+    Number.isInteger(Number(payload.scored)) &&
+    Number.isFinite(Number(payload.total)) &&
+    Number(payload.total) >= 0 &&
+    Number.isInteger(Number(payload.total)) &&
+    Number.isFinite(Number(payload.coverage)) &&
+    Number(payload.coverage) >= 0 &&
+    Number(payload.coverage) <= 1 &&
+    typeof payload.partial === 'boolean'
+  );
+}
+
+function coerceCachedRankingResponse(
+  payload: GetResilienceRankingResponse & { _formula?: string; _intervalMethodology?: string },
+  items: ResilienceRankingItem[],
+  greyedOut: ResilienceRankingItem[],
+): GetResilienceRankingResponse {
+  const fallbackTotal = items.length + greyedOut.length;
+  const scored = coerceNonNegativeInt(payload.scored, fallbackTotal);
+  const total = coerceNonNegativeInt(payload.total, fallbackTotal);
+  const coverage = Number.isFinite(Number(payload.coverage))
+    ? roundCoverage(Number(payload.coverage))
+    : (total > 0 ? roundCoverage(scored / total) : 0);
+  return {
+    items,
+    greyedOut,
+    fetchedAt: typeof payload.fetchedAt === 'string' ? payload.fetchedAt : '',
+    scored,
+    total,
+    coverage,
+    partial: typeof payload.partial === 'boolean' ? payload.partial : (total === 0 || coverage < RANKING_FULL_COVERAGE),
+  };
+}
+
 export const getResilienceRanking: ResilienceServiceHandler['getResilienceRanking'] = async (
   ctx: ServerContext,
   _req: GetResilienceRankingRequest,
@@ -124,13 +190,14 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
     const cached = await getCachedJson(RESILIENCE_RANKING_CACHE_KEY) as (
       GetResilienceRankingResponse & { _formula?: string; _intervalMethodology?: string }
     ) | null;
-    // Stale-cache gate: the ranking payload carries the score formula
-    // and interval methodology that were active when rankStable was
-    // computed. Rejecting entries with stale/missing tags prevents old
-    // ranking payloads from serving baked rankStable values produced
-    // from pre-v3 interval bands after issue #3967's cache rotation.
-    const tagMatches = cached != null && rankingCacheTagMatches(cached);
-    if (tagMatches && (cached!.items.length > 0 || (cached!.greyedOut?.length ?? 0) > 0)) {
+    // Stale-cache gate: the ranking payload carries the score formula,
+    // interval methodology, and public freshness metadata that were active
+    // when rankStable was computed. Rejecting entries with stale/missing
+    // tags or metadata prevents old ranking payloads from serving baked
+    // rankStable values or blank partial/freshness fields after cache
+    // rotations.
+    const cacheMatches = cached != null && rankingCacheTagMatches(cached) && rankingCacheMetadataMatches(cached);
+    if (cacheMatches && (cached!.items.length > 0 || (cached!.greyedOut?.length ?? 0) > 0)) {
       // Plan 2026-04-26-002 §U2 (PR 1, review fixup): defense-in-depth
       // universe filter at the cached-response read too. Without this,
       // the cache hit path returns a stale 222-country payload (pre-PR-1
@@ -195,17 +262,19 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
       // a cache-hit response visibly differs from a fresh recompute
       // for the same data, breaking the front-of-house ranking sort.
       // Per Greptile P2 review of PR #3472 follow-up.
-      return {
-        ...(publicResponse as GetResilienceRankingResponse),
-        items: sortRankingItems([...eligibleItems, ...promotedFromGreyed]),
-        greyedOut: [...stillGreyed, ...ineligibleFromItems],
-      };
+      return coerceCachedRankingResponse(
+        publicResponse as GetResilienceRankingResponse,
+        sortRankingItems([...eligibleItems, ...promotedFromGreyed]),
+        [...stillGreyed, ...ineligibleFromItems],
+      );
     }
     if (refreshSlotDenied) throwRefreshSlotBusy();
   }
 
   const countryCodes = await listScorableCountries();
-  if (countryCodes.length === 0) return { items: [], greyedOut: [] };
+  if (countryCodes.length === 0) {
+    return buildRankingResponse([], [], { fetchedAtMs: Date.now(), scored: 0, total: 0 });
+  }
 
   const cachedScores = await getCachedResilienceScores(countryCodes);
   const missing = countryCodes.filter((countryCode) => !cachedScores.has(countryCode));
@@ -256,10 +325,12 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
   // truth for this decision, not coverage alone.
   const passesHeadlineGate = (item: ResilienceRankingItem): boolean =>
     item.headlineEligible === true;
-  const response: GetResilienceRankingResponse = {
-    items: sortRankingItems(allItems.filter(passesHeadlineGate)),
-    greyedOut: allItems.filter((item) => !passesHeadlineGate(item)),
-  };
+  const fetchedAtMs = Date.now();
+  const response = buildRankingResponse(
+    sortRankingItems(allItems.filter(passesHeadlineGate)),
+    allItems.filter((item) => !passesHeadlineGate(item)),
+    { fetchedAtMs, scored: cachedScores.size, total: countryCodes.length },
+  );
 
   // Cache the ranking when we have substantive coverage — don't hold out for 100%.
   // The previous gate (stillMissing === 0) meant a single failing-to-warm country
@@ -299,7 +370,7 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
       const sampleKeys = shuffled.slice(0, 20).map(scoreCacheKey);
       const verifyResults = await runRedisPipeline(sampleKeys.map((k) => ['EXISTS', k]));
       const actualPersisted = verifyResults.filter((r) => r?.result === 1).length;
-      if (actualPersisted < sampleKeys.length * 0.5) {
+      if (actualPersisted < sampleKeys.length * RANKING_PERSISTENCE_MIN_PARITY) {
         console.warn(
           `[resilience] persistence parity fail: ${actualPersisted}/${sampleKeys.length} ` +
           `sampled WARMED score keys exist in Redis (warmed=${warmedCountryCodes.length}, ` +
@@ -320,14 +391,19 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
     // detect a cross-formula cache hit after a flag flip. The tag is
     // stripped on read before the response crosses back to callers.
     const persistedRanking = stampRankingCacheTag(response);
+    const ttlSeconds = coverageRatio >= RANKING_FULL_COVERAGE
+      ? RESILIENCE_RANKING_CACHE_TTL_SECONDS
+      : PARTIAL_RANKING_CACHE_TTL_SECONDS;
     const pipelineResult = await runRedisPipeline([
-      ['SET', RESILIENCE_RANKING_CACHE_KEY, JSON.stringify(persistedRanking), 'EX', RESILIENCE_RANKING_CACHE_TTL_SECONDS],
+      ['SET', RESILIENCE_RANKING_CACHE_KEY, JSON.stringify(persistedRanking), 'EX', ttlSeconds],
       ['SET', RESILIENCE_RANKING_META_KEY, JSON.stringify({
-        fetchedAt: Date.now(),
+        fetchedAt: fetchedAtMs,
         count: response.items.length + response.greyedOut.length,
         scored: cachedScores.size,
         total: countryCodes.length,
-      }), 'EX', RESILIENCE_RANKING_META_TTL_SECONDS],
+        coverage: response.coverage,
+        partial: response.partial,
+      }), 'EX', Math.min(RESILIENCE_RANKING_META_TTL_SECONDS, ttlSeconds)],
     ]);
     const rankingOk = pipelineResult[0]?.result === 'OK';
     const metaOk = pipelineResult[1]?.result === 'OK';

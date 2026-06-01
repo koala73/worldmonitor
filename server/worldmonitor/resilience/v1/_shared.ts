@@ -1081,6 +1081,10 @@ export function sortRankingItems(items: ResilienceRankingItem[]): ResilienceRank
 // — no post-warm Redis re-read.
 export async function warmMissingResilienceScores(
   countryCodes: string[],
+  scoreBuilder: (
+    countryCode: string,
+    reader: ResilienceSeedReader,
+  ) => Promise<GetResilienceScoreResponse> = buildResilienceScore,
 ): Promise<Map<string, GetResilienceScoreResponse>> {
   const uniqueCodes = [...new Set(countryCodes.map((countryCode) => normalizeCountryCode(countryCode)).filter(Boolean))];
   const warmed = new Map<string, GetResilienceScoreResponse>();
@@ -1090,7 +1094,7 @@ export async function warmMissingResilienceScores(
   // sanctions, unrest, etc.) are fetched only once instead of once per country.
   const sharedReader = createMemoizedSeedReader();
   const computed = await Promise.allSettled(
-    uniqueCodes.map(async (cc) => ({ cc, score: await buildResilienceScore(cc, sharedReader) })),
+    uniqueCodes.map(async (cc) => ({ cc, score: await scoreBuilder(cc, sharedReader) })),
   );
 
   const scores: Array<{ cc: string; score: GetResilienceScoreResponse }> = [];

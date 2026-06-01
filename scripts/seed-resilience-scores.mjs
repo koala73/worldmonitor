@@ -282,7 +282,7 @@ async function seedResilienceScores() {
 }
 
 // Trigger a ranking rebuild via the public endpoint EVERY cron, regardless of
-// whether resilience:ranking:v9 is still live at probe time. Short-circuiting
+// whether the current resilience:ranking key is still live at probe time. Short-circuiting
 // on "key present" left a timing hole: if the key was written late in a prior
 // run and the next cron fires early, the key is still alive at probe time →
 // rebuild skipped → key expires a short while later and stays absent until a
@@ -341,16 +341,16 @@ async function refreshRankingAggregate({ url, token, laggardsWarmed }) {
   ]);
   const rankingPresent = rankingLen > 0;
   if (rankingPresent && !metaFresh) {
-    console.warn(`[resilience-scores] Partial publish: ranking:v9 present but seed-meta not fresh — next cron will retry (handler SET is idempotent)`);
+    console.warn(`[resilience-scores] Partial publish: ${RESILIENCE_RANKING_CACHE_KEY} present but seed-meta not fresh — next cron will retry (handler SET is idempotent)`);
   }
   return rankingPresent;
 }
 
 // The seeder does NOT write seed-meta:resilience:ranking. Previously it did,
 // as a "heartbeat" when Pro traffic was quiet — but it could only attest to
-// "recordCount of per-country scores", not to whether `resilience:ranking:v9`
+// "recordCount of per-country scores", not to whether the current ranking key
 // was actually published this cron. The ranking handler gates its SET on a
-// 75% coverage threshold and skips both the ranking and its meta when the
+// 90% coverage threshold and skips both the ranking and its meta when the
 // gate fails; a stale-but-present ranking key combined with a fresh seeder
 // meta write was exactly the "meta says fresh, data is stale" failure mode
 // this PR exists to eliminate. The handler is now the sole writer of meta,
@@ -358,6 +358,26 @@ async function refreshRankingAggregate({ url, token, laggardsWarmed }) {
 // passes. refreshRankingAggregate() triggers the handler every cron so meta
 // never goes silently stale during quiet Pro usage — which was the original
 // reason the seeder meta write existed.
+
+async function writeScoreSectionHeartbeat(result) {
+  if (result?.skipped && result.reason === 'no_index') {
+    console.warn('[resilience-scores] Skipping seed-meta:resilience:scores heartbeat because static index is empty');
+    return;
+  }
+
+  try {
+    await writeFreshnessMetadata(
+      'resilience',
+      'scores',
+      result.recordCount ?? 0,
+      '',
+      RESILIENCE_RANKING_CACHE_TTL_SECONDS,
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn(`[resilience-scores] Failed to write seed-meta:resilience:scores heartbeat: ${message}`);
+  }
+}
 
 async function main() {
   const startedAt = Date.now();
@@ -374,6 +394,7 @@ async function main() {
   }
 
   const result = await seedResilienceScores();
+  await writeScoreSectionHeartbeat(result);
   logSeedResult('resilience:scores', result.recordCount ?? 0, Date.now() - startedAt, {
     skipped: Boolean(result.skipped),
     ...(result.total != null && { total: result.total }),

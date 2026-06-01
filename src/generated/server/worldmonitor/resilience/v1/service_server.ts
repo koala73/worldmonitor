@@ -65,6 +65,11 @@ export interface GetResilienceRankingRequest {
 export interface GetResilienceRankingResponse {
   items: ResilienceRankingItem[];
   greyedOut: ResilienceRankingItem[];
+  fetchedAt: string;
+  scored: number;
+  total: number;
+  coverage: number;
+  partial: boolean;
 }
 
 export interface ResilienceRankingItem {

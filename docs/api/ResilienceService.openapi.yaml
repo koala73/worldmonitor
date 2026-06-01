@@ -307,6 +307,19 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/ResilienceRankingItem'
+                fetchedAt:
+                    type: string
+                scored:
+                    type: integer
+                    format: int32
+                total:
+                    type: integer
+                    format: int32
+                coverage:
+                    type: number
+                    format: double
+                partial:
+                    type: boolean
         ResilienceRankingItem:
             type: object
             properties:

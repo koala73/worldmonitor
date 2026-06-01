@@ -278,10 +278,23 @@ describe('ensures ranking aggregate is present every cron, with truthful meta', 
     );
   });
 
+  it('writes a score-section heartbeat independent of interval writes', () => {
+    assert.match(
+      src,
+      /async function writeScoreSectionHeartbeat\b[\s\S]*?result\?\.skipped && result\.reason === 'no_index'[\s\S]*?return;[\s\S]*?writeFreshnessMetadata\(\s*'resilience',\s*'scores'/,
+      'score seeder must write seed-meta:resilience:scores for completed score/ranking work, but not for empty-index skips',
+    );
+    assert.match(
+      src,
+      /const result = await seedResilienceScores\(\);\s*await writeScoreSectionHeartbeat\(result\);/,
+      'score heartbeat helper must run after the score/ranking section so it can gate completed runs and skip no_index safely',
+    );
+  });
+
   it('seeder does NOT write seed-meta:resilience:ranking (handler is sole writer)', () => {
     // A seeder-written meta can only attest to per-country score count, not
     // to whether the ranking aggregate was actually published. Handler gates
-    // its SET on 75% coverage; if the gate trips, an older ranking survives
+    // its SET on 90% coverage; if the gate trips, an older ranking survives
     // and seeder meta would lie about freshness. Remove the seeder write —
     // handler writes ranking + meta atomically, ensureRankingPresent()
     // triggers the handler every cron so meta stays fresh during quiet Pro
@@ -325,6 +338,20 @@ describe('seed-bundle-resilience section interval keeps refresh alive', () => {
       hours > 0 && hours <= 2,
       `intervalMs must be ≤ 2 hours (found ${hours}) so refreshRankingAggregate runs frequently enough to keep the ranking key alive before its 12h TTL`,
     );
+  });
+
+  it('Resilience-Scores section gates on score heartbeat, not interval heartbeat', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const { dirname, join } = await import('node:path');
+    const dir = dirname(fileURLToPath(import.meta.url));
+    const src = readFileSync(
+      join(dir, '..', 'scripts', 'seed-bundle-resilience.mjs'),
+      'utf8',
+    );
+    const section = src.match(/label:\s*'Resilience-Scores'[\s\S]{0,240}/)?.[0] ?? '';
+    assert.match(section, /seedMetaKey:\s*'resilience:scores'/);
+    assert.doesNotMatch(section, /seedMetaKey:\s*'resilience:intervals'/);
   });
 });
 

@@ -18639,6 +18639,19 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/worldmonitor_resilience_v1_ResilienceRankingItem'
+                fetchedAt:
+                    type: string
+                scored:
+                    type: integer
+                    format: int32
+                total:
+                    type: integer
+                    format: int32
+                coverage:
+                    type: number
+                    format: double
+                partial:
+                    type: boolean
         worldmonitor_resilience_v1_ResilienceRankingItem:
             type: object
             properties:

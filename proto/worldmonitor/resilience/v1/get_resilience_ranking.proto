@@ -9,4 +9,9 @@ message GetResilienceRankingRequest {}
 message GetResilienceRankingResponse {
   repeated ResilienceRankingItem items = 1;
   repeated ResilienceRankingItem greyed_out = 2;
+  string fetched_at = 3;
+  int32 scored = 4;
+  int32 total = 5;
+  double coverage = 6;
+  bool partial = 7;
 }
