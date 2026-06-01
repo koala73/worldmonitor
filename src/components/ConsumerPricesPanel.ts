@@ -279,9 +279,12 @@ export class ConsumerPricesPanel extends Panel {
       { id: 'health', label: t('components.consumerPrices.tabs.health') },
       { id: 'world', label: t('components.consumerPrices.tabs.world') },
     ];
-    // Categories/Movers/Spread/Health need a single market; the all-markets
-    // view only carries the two global tabs (basket Overview + World inflation).
-    const tabs = this.settings.market === 'all'
+    // Categories/Movers/Spread/Health need a single market. Collapse to the two
+    // market-independent tabs (Overview + World) both in the all-markets view
+    // AND while the World tab is active — World hides the market bar, so showing
+    // per-market tabs there would offer no way to change the implied market.
+    const globalTabsOnly = this.settings.market === 'all' || this.settings.tab === 'world';
+    const tabs = globalTabsOnly
       ? allTabs.filter((tb) => tb.id === 'overview' || tb.id === 'world')
       : allTabs;
     // Snap a stale/out-of-range active tab back to Overview (e.g. persisted
