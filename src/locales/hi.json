@@ -1,17 +1,12 @@
 {
-  "app": {
-    "title": "दुनिया मॉनिटर",
-    "description": "एआई की मदद से दुनिया की हालात"
-  },
   "shell": {
-    "documentTitle": "वर्ल्ड मॉनिटर — रियल-टाइम ग्लोबिल इंटेलिजेंस डैशबोर्ड",
-    "metaDescription": "रियल-टाइम ग्लोबिल जानकारी का मंच। WIRED में दिखाया गया। 190 देशों में 2 मिलियन से ज्यादा लोग इस्तेमाल करते हैं। झगड़े, बाजार, सेना, OSINT एक साथ देखें।",
+    "documentTitle": "वर्ल्ड मॉनिटर — रियल-टाइम ग्लोबल इंटेलिजेंस डैशबोर्ड",
+    "metaDescription": "रियल-टाइम ग्लोबल जानकारी का मंच। WIRED में दिखाया गया। 190 देशों में 2 मिलियन से ज्यादा लोग इस्तेमाल करते हैं। झगड़े, बाजार, सेना, OSINT एक साथ देखें।",
     "offlineTitle": "आप ऑफलाइन हैं",
     "offlineMessage": "वर्ल्ड मॉनिटर के लिए रियल-टाइम जानकारी के लिए इंटरनेट कनेक्शन चाहिए।",
     "offlineRetry": "फिर कोशिश करें"
   },
   "widgets": {
-    "createWithAi": "एआई से बनाएं",
     "confirmDelete": "क्या आप इस विजेट को हमेशा के लिए हटाना चाहते हैं?",
     "chatTitle": "विजेट बिल्डर",
     "modifyTitle": "विजेट बदलें",
@@ -19,7 +14,6 @@
     "addToDashboard": "डैशबोर्ड में जोड़ें",
     "applyChanges": "बदलाव लागू करें",
     "send": "भेजें",
-    "changeAccent": "हाइलाइट रंग बदलें",
     "modifyWithAi": "एआई से विजेट बदलें",
     "ready": "विजेट तैयार: {{title}}",
     "fetching": "{{target}} ले आया जा रहा है...",
@@ -190,7 +184,6 @@
       "internetOutages": "{{count}} इंटरनेट बाधाएं",
       "recentEarthquakes": "{{count}} हाल के भूकंप",
       "stockIndex": "स्टॉक इंडेक्स: {{value}}",
-      "recentHeadlines": "**हाल की प्रमुख खबरें:**",
       "activeStrikes": "{{count}} सक्रिय हड़तालें पाई गईं"
     },
     "countryFacts": "देश की जानकारी",
@@ -225,9 +218,7 @@
     "finance": "वित्त",
     "commodity": "माल",
     "energy": "ऊर्जा",
-    "toggleTheme": "डार्क/लाइट मोड बदलें",
     "panelDisplayCaption": "डैशबोर्ड पर दिखाने के लिए पैनल चुनें",
-    "tabGeneral": "सामान्य",
     "tabSettings": "सेटिंग्स",
     "tabPanels": "पैनल",
     "tabSources": "सूत्र",
@@ -280,7 +271,6 @@
     "panelCatCentralBanks": "सेंट्रल बैंक और अर्थव्यवस्था",
     "panelCatDeals": "डील और संस्थागत",
     "panelCatGulfMena": "गल्फ और मेना",
-    "panelCatTradePolicy": "व्यापार नीति",
     "panelCatCommodityPrices": "कीमतें और बाजार",
     "panelCatMining": "खनन और सप्लाई चेन",
     "panelCatCommodityEcon": "अर्थव्यवस्था और व्यापार",
@@ -494,11 +484,8 @@
   "modals": {
     "search": {
       "placeholder": "खोजें या कोई कमांड टाइप करें...",
-      "hint": "खोजें • देश • लेयर्स • पैनल • नेविगेशन • सेटिंग्स",
       "placeholderTech": "खोजें या कोई कमांड टाइप करें...",
-      "hintTech": "खोजें • कंपनियां • एआई लैब्स • लेयर्स • नेविगेशन • सेटिंग्स",
       "placeholderFinance": "खोजें या कोई कमांड टाइप करें...",
-      "hintFinance": "खोजें • एक्सचेंज • मार्केट • लेयर्स • नेविगेशन • सेटिंग्स",
       "recent": "हाल की खोजें",
       "empty": "डेटा खोजें या कमांड चलाएं",
       "noResults": "कोई परिणाम नहीं",
@@ -563,7 +550,6 @@
       "action": "कार्रवाई:",
       "note": "नोट:",
       "suppress": "इस शब्द को दबाएं",
-      "suppressed": "दबाया गया",
       "predictionLeading": "अनुमान अग्रणी",
       "newsLeading": "खबरें अग्रणी",
       "silentDivergence": "मौन असामंजस्य",
@@ -600,15 +586,13 @@
       "gotIt": "समझ गया"
     },
     "downloadBanner": {
-      "title": "डेस्कटॉप उपलब्ध",
       "description": "नैटिव प्रदर्शन, सुरक्षित लोकल की स्टोरेज, ऑफलाइन मैप टाइल्स।",
       "macSilicon": "macOS (एप्पल सिलिकॉन)",
       "macIntel": "macOS (इंटेल)",
       "windows": "विंडोज (.exe)",
       "linux": "लिनक्स (.AppImage)",
       "showAllPlatforms": "सभी प्लेटफॉर्म दिखाएं",
-      "showLess": "कम दिखाएं",
-      "dismiss": "बंद करें"
+      "showLess": "कम दिखाएं"
     },
     "runtimeConfig": {
       "title": "डेस्कटॉप कॉन्फ़िगरेशन",
@@ -617,7 +601,6 @@
         "needsKeys": "फीचर्स अनलॉक करने के लिए API की सेट करें",
         "some": "कुछ फीचर API की चाहते हैं"
       },
-      "openSettings": "सेटिंग्स खोलें",
       "reserveEarlyAccess": "जल्दी एक्सेस रिजर्व करें",
       "skipSetup": "सेटअप छोड़ें — एक World Monitor लाइसेंस सब अनलॉक करता है। जल्दी एक्सेस के लिए इंतजार सूची में शामिल हों।",
       "summary": {
@@ -670,30 +653,17 @@
       "sidecarUnreachable": "साइडकार उपलब्ध नहीं है।",
       "logCleared": "लॉग साफ़ किया गया।",
       "worldMonitor": {
-        "tabLabel": "World Monitor",
-        "heroTitle": "एक की। सब कुछ शामिल।",
-        "heroDescription": "एक World Monitor लाइसेंस हर API की और LLM प्रदाता की जगह लेता है। AI सारांश, रियल-टाइम इंटेलिजेंस, मार्केट डेटा, संघर्ष ट्रैकिंग, आग पता लगाना, सैटेलाइट इमेजरी — सबकुछ, बिना किसी सेटअप के।",
         "apiKey": {
           "title": "लाइसेंस की",
           "placeholder": "wm_xxxxxxxxxxxxxxxxxxxxxxxx",
-          "description": "अभी अपनी लाइसेंस चिपकाएं और हर डेटा स्रोत और AI फीचर चालू करें।",
-          "statusValid": "लाइसेंस प्राप्त",
-          "statusMissing": "लाइसेंस नहीं"
+          "description": "अभी अपनी लाइसेंस चिपकाएं और हर डेटा स्रोत और AI फीचर चालू करें।"
         },
         "dividerOr": "या",
         "register": {
           "title": "अपनी जगह आरक्षित करें",
           "description": "हम World Monitor लाइसेंस लॉन्च करने की तैयारी कर रहे हैं। अभी साइन अप करें और पहले पंक्ति में रहें — शुरुआती सदस्यों को प्राथमिकता और संस्थापक कीमत मिलेगी।",
-          "emailPlaceholder": "आपका@email.com",
-          "submitBtn": "इंतजार सूची में जुड़ें",
-          "submitting": "सबमिट कर रहे हैं...",
-          "success": "आप सूची में हैं! हम आपको सबसे पहले सूचित करेंगे।",
-          "alreadyRegistered": "आप पहले से सूची में हैं।",
-          "error": "रजिस्ट्रेशन विफल। कृपया फिर से प्रयास करें।",
-          "invalidEmail": "कृपया मान्य ईमेल पता दर्ज करें।"
-        },
-        "byokTitle": "या अपनी की लाएं",
-        "byokDescription": "पूरा नियंत्रण चाहते हैं? API की और LLM टैब में जाकर हर डेटा स्रोत और AI प्रदाता कॉन्फ़िगर करें।"
+          "submitBtn": "इंतजार सूची में जुड़ें"
+        }
       },
       "table": {
         "time": "समय",
@@ -771,36 +741,11 @@
         "base": "सेना के अड्डे",
         "nuclear": "नाभिकीय स्थल",
         "port": "बंदरगाह"
-      },
-      "levels": {
-        "critical": "गंभीर",
-        "high": "उच्च",
-        "elevated": "बढ़ा हुआ",
-        "moderate": "मध्यम",
-        "normal": "सामान्य",
-        "low": "कम"
-      },
-      "trends": {
-        "rising": "बढ़ रहा है",
-        "falling": "कम हो रहा है",
-        "stable": "स्थिर"
-      },
-      "fallback": {
-        "instabilityIndex": "**अस्थिरता सूचकांक: {{score}}/100** ({{level}}, {{trend}})",
-        "protestsDetected": "{{count}} सक्रिय धरने दर्ज",
-        "aircraftTracked": "{{count}} सैन्य विमान ट्रैक हुए",
-        "vesselsTracked": "{{count}} सैन्य जहाज ट्रैक हुए",
-        "activeStrikes": "{{count}} सक्रिय हड़ताल दर्ज",
-        "internetOutages": "{{count}} इंटरनेट कटौती हुई",
-        "recentEarthquakes": "{{count}} हाल के भूकंप",
-        "stockIndex": "स्टॉक सूचकांक: {{value}}",
-        "recentHeadlines": "**हाल की सुर्खियां:**"
       }
     }
   },
   "components": {
     "webcams": {
-      "expand": "खोलें",
       "paused": "वेबकैम रुके हुए हैं",
       "pausedIdle": "वेबकैम रुके हुए हैं — फिर से चालू करने के लिए माउस हिलाएँ",
       "regions": {
@@ -829,19 +774,14 @@
       "noTrackingData": "कोई विमान ट्रैकिंग डेटा नहीं।",
       "noNews": "कोई विमानन खबर नहीं।",
       "enterRoute": "रूट डालें और कीमतें खोजें।",
-      "cachedInsight": "कैश की गई जानकारी",
-      "demoMode": "डेमो मोड",
-      "pricesIndicative": "सभी कीमतें अनुमानित हैं",
       "searchFlights": "उड़ान खोजें",
       "bestDates": "सर्वोत्तम तारीखें",
-      "cabinClass": "केबिन",
       "enterRouteAndDate": "खोजने के लिए रूट और तारीख दर्ज करें",
       "enterDateRange": "रूट और तारीख सीमा दर्ज करें",
       "degradedResults": "कुछ परिणाम अधूरे हो सकते हैं",
       "nonstop": "नॉनस्टॉप",
       "roundTrip": "राउंड ट्रिप",
-      "tripDays": "यात्रा के दिन",
-      "cheapest": "सबसे सस्ता"
+      "tripDays": "यात्रा के दिन"
     },
     "goodThingsDigest": {
       "noStories": "कोई खबर उपलब्ध नहीं",
@@ -870,8 +810,6 @@
       "countries": "देश",
       "recentActions": "हाल की नियामक कार्रवाइयाँ (पिछले 12 माह)",
       "upcomingDeadlines": "आगामी अनुपालन समय सीमाएं",
-      "activeRegulations": "सक्रिय नियम",
-      "proposedRegulations": "प्रस्तावित नियम",
       "globalLandscape": "वैश्विक नियामक परिदृश्य",
       "emptyActions": "कोई हाल की नियामक कार्रवाइयाँ नहीं",
       "emptyDeadlines": "अगले 12 महीनों में कोई आगामी अनुपालन समय सीमा नहीं",
@@ -907,10 +845,8 @@
       "in": "में",
       "noBisData": "BIS डेटा अस्थायी रूप से अनुपलब्ध - पुनः प्रयास किया जाएगा",
       "policyRate": "नीति दर",
-      "exchangeRate": "विनिमय दर",
       "creditToGdp": "क्रेडिट / GDP",
       "realEer": "वास्तविक EER",
-      "change": "परिवर्तन",
       "cut": "कमी",
       "hike": "बढ़ोतरी",
       "hold": "रोक",
@@ -941,18 +877,12 @@
       "noChokepoints": "चोकपॉइंट डेटा लोड हो रहा है...",
       "noShipping": "शिपिंग दर डेटा उपलब्ध नहीं",
       "noMinerals": "खनिज डेटा लोड हो रहा है...",
-      "fredKeyMissing": "शिपिंग दरों के लिए FRED API कुंजी आवश्यक — सेटिंग्स में जोड़ें। चोकपॉइंट और खनिज कुंजी के बिना उपलब्ध हैं।",
       "upstreamUnavailable": "सप्लाई चेन डेटा अस्थायी रूप से अनुपलब्ध — कैश डेटा दिखा रहा है",
       "spikeAlert": "स्पाइक detected — दर 52-सप्ताह औसत से काफी ऊपर (साप्ताहिक)",
       "warnings": "चेतावनी(याँ)",
       "aisDisruptions": "AIS व्यवधान(ओं)",
-      "transit24h": "24 घंटा",
-      "tankers": "टैन्कर",
-      "cargo": "कार्गो",
       "wowChange": "साप्ताहिक परिवर्तन",
-      "vesselTransits": "जहाज पारगमन (180 दिन)",
       "riskLevel": "जोखिम स्तर",
-      "routingAction": "रूटिंग",
       "disruption": "व्यवधान",
       "vessels": "जहाज",
       "incidents7d": "घटना (7 दिन)",
@@ -969,23 +899,19 @@
       "mineral": "खनिज",
       "topProducers": "शीर्ष उत्पादक",
       "risk": "जोखिम",
-      "sources": "IMF PortWatch / AISStream / CorridorRisk / NGA / USGS",
       "infoTooltip": "<strong>सप्लाई चेन मॉनिटर</strong> वैश्विक लॉजिस्टिक्स और संसाधन ट्रैकिंग:<ul><li><strong>चोकपॉइंट</strong>: समुद्री पारगमन स्थिति, व्यवधान स्कोर, और जहाज गणना</li><li><strong>शिपिंग</strong>: बाल्टिक ड्राई इंडेक्स और फ्रेट दर प्रवृत्तियां</li><li><strong>खनिज</strong>: महत्वपूर्ण खनिज सांद्रता जोखिम (HHI) और शीर्ष उत्पादक</li></ul>ट्रांजिट इतिहास चार्ट खोलने के लिए चोकपॉइंट कार्ड पर क्लिक करें।"
     },
     "tradePolicy": {
-      "restrictions": "प्रतिबंध",
       "overview": "ओवरव्यू",
       "tariffs": "शुल्क",
       "flows": "व्यापार प्रवाह",
       "barriers": "बाधाएं",
-      "noRestrictions": "कोई सक्रिय व्यापार प्रतिबंध नहीं",
       "noOverviewData": "कोई शुल्क ओवरव्यू डेटा उपलब्ध नहीं",
       "noTariffData": "कोई शुल्क डेटा उपलब्ध नहीं",
       "noFlowData": "कोई व्यापार प्रवाह डेटा उपलब्ध नहीं",
       "noBarriers": "कोई व्यापार बाधा रिपोर्ट नहीं",
       "apiKeyMissing": "WTO API कुंजी आवश्यक — सेटिंग्स में जोड़ें",
       "upstreamUnavailable": "WTO डेटा अस्थायी रूप से अनुपलब्ध — कैश डेटा दिखा रहा है",
-      "appliedRate": "लागू दर",
       "mfnAppliedRate": "MFN लागू दर",
       "baselineMfnTariff": "मूल MFN शुल्क",
       "effectiveTariffRateLabel": "प्रभावी शुल्क दर",
@@ -997,7 +923,6 @@
       "overviewNoteNoEffective": "यह आंकड़े WTO MFN मूल दरें हैं, मौजूदा एकतरफा शुल्क भार नहीं।",
       "usBaselineLabel": "US WTO MFN मूल",
       "overviewNoteTail": "ये कार्ड WTO मूल प्रतिबद्धताएं दिखाते हैं, लाइव प्रभावी शुल्क नहीं।",
-      "boundRate": "बंधित दर",
       "exports": "निर्यात",
       "imports": "आयात",
       "yoyChange": "साल-दर-साल परिवर्तन",
@@ -1025,59 +950,41 @@
       "infoTooltip": "<strong>व्यापार नीति</strong> WTO मूल और शुल्क प्रभाव मॉनिटरिंग:<ul><li><strong>ओवरव्यू</strong>: WTO MFN मूल दरें, उपलब्ध होने पर US प्रभावी दर संदर्भ</li><li><strong>शुल्क</strong>: WTO MFN शुल्क रुझान और US प्रभावी शुल्क अनुमान</li><li><strong>व्यापार प्रवाह</strong>: निर्यात/आयात मात्रा साल-दर-साल परिवर्तन के साथ</li><li><strong>बाधाएं</strong>: तकनीकी व्यापार बाधाएं (TBT/SPS सूचनाएं)</li><li><strong>राजस्व</strong>: मासिक US कस्टम शुल्क राजस्व (US Treasury MTS डेटा)</li></ul>"
     },
     "consumerPrices": {
-      "title": "उपभोक्ता मूल्य",
-      "subtitle": "प्रमुख बाजारों में बास्केट मूल्य ट्रैकिंग",
       "tabs": {
         "overview": "ओवरव्यू",
         "categories": "श्रेणियाँ",
         "movers": "मूवर",
         "spread": "खुदरा फैलाव",
-        "health": "डेटा स्वास्थ्य"
+        "health": "डेटा स्वास्थ्य",
+        "world": "विश्व"
       },
-      "essentialsIndex": "आवश्यकता सूचकांक",
-      "valueBasketIndex": "मूल्य बास्केट",
-      "wowChange": "सप्ताह-दर-सप्ताह",
-      "momChange": "महीना-दर-महीना",
-      "retailerSpread": "खुदरा फैलाव",
-      "coveragePct": "कवरेज",
-      "freshnessLag": "ताजगी विलंब",
-      "noCategories": "कोई श्रेणी डेटा उपलब्ध नहीं",
-      "noMovers": "कोई मूल्य मूवर उपलब्ध नहीं",
-      "noSpread": "कोई खुदरा फैलाव डेटा उपलब्ध नहीं",
-      "noHealth": "कोई डेटा स्वास्थ्य जानकारी नहीं",
-      "upstreamUnavailable": "उपभोक्ता मूल्य डेटा अस्थायी रूप से अनुपलब्ध",
-      "allCategories": "सभी श्रेणियाँ",
-      "risers": "बढ़ रहे",
-      "fallers": "गिर रहे",
-      "unitPrice": "इकाई मूल्य",
-      "freshLabel": "ताजा",
-      "staleLabel": "पुराना",
-      "laggingLabel": "पीछे",
-      "stalledLabel": "रुका हुआ",
-      "retailer": "खुदरा",
-      "lastUpdated": "अंतिम अपडेट",
-      "retailers": "खुदरा विक्रेता",
-      "items": "आइटम",
-      "infoTooltip": "<strong>उपभोक्ता मूल्य</strong> रियल-टाइम बास्केट मूल्य ट्रैकिंग:<ul><li><strong>ओवरव्यू</strong>: आवश्यक सूचकांक, मूल्य बास्केट, और सप्ताह-दर-सप्ताह परिवर्तन</li><li><strong>श्रेणियाँ</strong>: श्रेणीवार मूल्य रुझान 30-दिन सीमा के साथ</li><li><strong>मूवर</strong>: इस सप्ताह के सबसे बड़े बढ़ने और गिरने वाले आइटम</li><li><strong>फैलाव</strong>: एक ही बास्केट के लिए खुदरा विक्रेताओं के बीच मूल्य भिन्नता</li></ul>डेटा स्रोत लाइव खुदरा मूल्य स्क्रैपिंग।"
+      "world": {
+        "country": "देश",
+        "inflationYoY": "मुद्रास्फीति (वार्षिक)",
+        "endOfPeriod": "अवधि के अंत में",
+        "year": "वर्ष",
+        "filterPlaceholder": "देश फ़िल्टर करें…",
+        "loading": "वैश्विक मुद्रास्फीति लोड हो रही है…",
+        "empty": "मुद्रास्फीति डेटा अभी उपलब्ध नहीं",
+        "noMatches": "कोई मिलता-जुलता देश नहीं",
+        "source": "स्रोत: IMF WEO · वार्षिक CPI मुद्रास्फीति, सभी रिपोर्टिंग अर्थव्यवस्थाएं",
+        "countSingular": "देश",
+        "countPlural": "देश"
+      },
+      "infoTooltip": "<strong>उपभोक्ता मूल्य</strong> रियल-टाइम बास्केट मूल्य ट्रैकिंग:<ul><li><strong>ओवरव्यू</strong>: आवश्यक सूचकांक, मूल्य बास्केट, और सप्ताह-दर-सप्ताह परिवर्तन</li><li><strong>श्रेणियाँ</strong>: श्रेणीवार मूल्य रुझान 30-दिन सीमा के साथ</li><li><strong>मूवर</strong>: इस सप्ताह के सबसे बड़े बढ़ने और गिरने वाले आइटम</li><li><strong>फैलाव</strong>: एक ही बास्केट के लिए खुदरा विक्रेताओं के बीच मूल्य भिन्नता</li><li><strong>विश्व</strong>: हर रिपोर्टिंग अर्थव्यवस्था के लिए आधिकारिक IMF वार्षिक मुद्रास्फीति</li></ul>डेटा स्रोत लाइव खुदरा मूल्य स्क्रैपिंग और IMF WEO।"
     },
     "gdelt": {
       "empty": "इस विषय पर हाल के कोई लेख नहीं"
     },
     "geoHubs": {
-      "tooltip": "<strong>भू-राजनीतिक गतिविधि केंद्र</strong><br>सबसे अधिक समाचार गतिविधि वाले क्षेत्र दिखाता है।<br><br><em>केंद्र प्रकार:</em><br>• 🏛️ राजधानी केंद्र — विश्व राजधानियाँ और सरकारी केंद्र<br>• ⚔️ संघर्ष क्षेत्र — सक्रिय युद्ध क्षेत्र<br>• ⚓ रणनीतिक — चोकपॉइंट और मुख्य क्षेत्र<br>• 🏢 संगठन — संयुक्त राष्ट्र, NATO, IAEA, आदि<br><br><em>गतिविधि स्तर:</em><br>• <span style=\"color: #ff4444\">उच्च</span> — ब्रेकिंग न्यूज़ या 70+ स्कोर<br>• <span style=\"color: #ff8844\">ऊँचा</span> — स्कोर 40-69<br>• <span style=\"color: #888\">कम</span> — स्कोर 40 से नीचे<br><br>किसी केंद्र पर क्लिक करके उसका स्थान देखें।",
-      "noActive": "कोई सक्रिय भू-राजनीतिक केंद्र नहीं",
       "story": "कहानी",
       "stories": "कहानियाँ",
       "infoTooltip": "<strong>भू-राजनीतिक गतिविधि केंद्र</strong><br>सबसे अधिक समाचार गतिविधि वाले क्षेत्र दिखाता है।<br><br><em>केंद्र प्रकार:</em><br>• 🏛️ राजधानी केंद्र — विश्व राजधानियाँ और सरकारी केंद्र<br>• ⚔️ संघर्ष क्षेत्र — सक्रिय युद्ध क्षेत्र<br>• ⚓ रणनीतिक — चोकपॉइंट और मुख्य क्षेत्र<br>• 🏢 संगठन — संयुक्त राष्ट्र, NATO, IAEA, आदि<br><br><em>गतिविधि स्तर:</em><br>• <span style=\"color: {{highColor}}\">उच्च</span> — ब्रेकिंग न्यूज़ या 70+ स्कोर<br>• <span style=\"color: {{elevatedColor}}\">ऊँचा</span> — स्कोर 40-69<br>• <span style=\"color: {{lowColor}}\">कम</span> — स्कोर 40 से नीचे<br><br>किसी केंद्र पर क्लिक करके उसका स्थान देखें।"
     },
     "techHubs": {
-      "tooltip": "<strong>टेक हब गतिविधि</strong><br>सबसे अधिक समाचार गतिविधि वाले टेक हब दिखाता है।<br><br><em>गतिविधि स्तर:</em><br>• <span style=\"color: #00ff88\">उच्च</span> — ब्रेकिंग न्यूज़ या 50+ स्कोर<br>• <span style=\"color: #ffc800\">ऊँचा</span> — स्कोर 20-49<br>• <span style=\"color: #888\">कम</span> — स्कोर 20 से नीचे<br><br>किसी हब पर क्लिक करके उसका स्थान देखें।",
-      "noActive": "कोई सक्रिय टेक हब नहीं",
       "infoTooltip": "<strong>टेक हब गतिविधि</strong><br>सबसे अधिक समाचार गतिविधि वाले टेक हब दिखाता है।<br><br><em>गतिविधि स्तर:</em><br>• <span style=\"color: {{highColor}}\">उच्च</span> — ब्रेकिंग न्यूज़ या 50+ स्कोर<br>• <span style=\"color: {{elevatedColor}}\">ऊँचा</span> — स्कोर 20-49<br>• <span style=\"color: {{lowColor}}\">कम</span> — स्कोर 20 से नीचे<br><br>किसी हब पर क्लिक करके उसका स्थान देखें।"
     },
     "predictions": {
-      "tooltip": "<strong>पूर्वानुमान बाजार</strong><br>रियल-मनी पूर्वानुमान बाजार:<br><ul><li>कीमतें भीड़ की संभावना अनुमानित करती हैं</li><li>ज्यादा वॉल्यूम = ज्यादा भरोसेमंद संकेत</li><li>भू-राजनीतिक और वर्तमान घटनाओं पर ध्यान केंद्रित</li></ul>स्रोत: पोलिमार्केट, काल्शि",
-      "error": "पूर्वानुमान लोड करने में विफल",
       "yes": "हाँ",
       "no": "नहीं",
       "vol": "वॉल्यूम",
@@ -1089,7 +996,6 @@
     "stablecoins": {
       "pegHealth": "पेग स्वास्थ्य",
       "supplyVolume": "सप्लाई और वॉल्यूम",
-      "unavailable": "स्टेबलकॉइन डेटा अस्थायी रूप से अनुपलब्ध",
       "token": "टोकन",
       "mcap": "मार्केट कैप",
       "vol24h": "24 घंटे वॉल्यूम",
@@ -1113,13 +1019,7 @@
       "unavailable": "एआई मार्केट प्रभाव प्रत्येक पूर्वानुमान चक्र के बाद उत्पन्न होते हैं। कृपया बाद में देखें।"
     },
     "status": {
-      "dataFeeds": "डेटा फ़ीड",
-      "apiStatus": "API स्थिति",
-      "storage": "भंडारण",
-      "systemStatus": "सिस्टम स्थिति",
-      "updatedJustNow": "अभी-अभी अपडेट हुआ",
-      "updatedAt": "अपडेट हुआ {{time}}",
-      "storageUnavailable": "भंडारण जानकारी उपलब्ध नहीं"
+      "updatedAt": "अपडेट हुआ {{time}}"
     },
     "playback": {
       "toggleMode": "प्लेबैक मोड टॉगल करें",
@@ -1224,8 +1124,7 @@
       "shareLink": "लिंक साझा करें",
       "shareStory": "कहानी साझा करें",
       "printPdf": "प्रिंट / पीडीएफ",
-      "exportData": "डेटा निर्यात करें",
-      "sourceRef": "स्रोत [{{n}}]"
+      "exportData": "डेटा निर्यात करें"
     },
     "relatedAssets": {
       "pipeline": "पाइपलाइन",
@@ -1235,10 +1134,7 @@
       "nuclear": "परमाणु"
     },
     "community": {
-      "joinDiscussion": "आगे क्या होगा में मदद करें",
-      "openDiscussion": "डिस्कॉर्ड में शामिल हों",
-      "dontShowAgain": "फिर न दिखाएं",
-      "sectionLabel": "समुदाय"
+      "joinDiscussion": "आगे क्या होगा में मदद करें"
     },
     "threatLabels": {
       "critical": "गंभीर",
@@ -1276,12 +1172,7 @@
         "conflict": "संघर्ष क्षेत्र",
         "diseaseAlert": "रोग अलर्ट",
         "diseaseWarning": "रोग चेतावनी",
-        "diseaseWatch": "रोग निगरानी",
-        "ciiLow": "निम्न (0–30)",
-        "ciiNormal": "सामान्य (31–50)",
-        "ciiElevated": "ऊँचा (51–65)",
-        "ciiHigh": "उच्च (66–80)",
-        "ciiCritical": "गंभीर (81–100)"
+        "diseaseWatch": "रोग निगरानी"
       },
       "layerGuide": "लेयर गाइड",
       "layerWarningTitle": "प्रदर्शन सूचना",
@@ -1423,38 +1314,38 @@
           "macroWaterways": "कमोडिटी शिपिंग के रणनीतिक चोकपॉइंट",
           "weatherAlertsMarket": "बाजार से संबंधित कठोर मौसम घटनाएं",
           "naturalEventsMacro": "भूकंप, आग, बाढ़ और अन्य प्राकृतिक व्यवधान",
-          "firesFull": "सक्रिय जंगल की आग और उनकी सीमाएं (NASA FIRMS)",
-          "dayNight": "वास्तविक समय सूरज की रोशनी और अंधेरा क्षेत्र",
-          "ciiChoropleth": "देश अस्थिरता सूचकांक हीटमैप — CII स्कोर के अनुसार देशों को रंगों में दर्शाता है (हरा=स्थिर, लाल=गंभीर)",
-          "climateAnomalies": "तापमान और वर्षा की असामान्यताएं",
-          "financeGulfInvestments": "GCC सरकारी संपदा कोष निवेश और प्रत्यक्ष विदेशी निवेश",
-          "geoBoundaries": "विसैन्यीकृत क्षेत्र, युद्धविराम रेखाएं और विवादित सीमाएं",
+          "timeRecent": "समय-आधारित डेटा को हाल के घंटों तक फ़िल्टर करें",
+          "timeExtended": "पिछले सप्ताह, महीने या सभी समय का डेटा दिखाएं",
           "geoConflicts": "सक्रिय युद्ध क्षेत्र (यूक्रेन, गाज़ा आदि) सीमाओं सहित",
-          "geoDisplacement": "शरणार्थी और विस्थापन प्रवाह पैटर्न",
           "geoHotspots": "तनाव क्षेत्र — समाचार गतिविधि स्तर के अनुसार रंग-कोडित",
-          "geoProtests": "नागरिक अशांति, प्रदर्शन (समय-फ़िल्टर्ड)",
           "geoSanctions": "अमेरिका/EU/UN आर्थिक प्रतिबंधों के अंतर्गत देश",
-          "geoUcdpEvents": "उप्साला संघर्ष डेटा कार्यक्रम के सशस्त्र संघर्ष की घटनाएं",
-          "infraCablesFull": "प्रमुख समुद्री फाइबर ऑप्टिक केबल (20 मुख्य मार्ग)",
-          "infraCyberThreats": "साइबर हमले और सुरक्षा संबंधी घटनाएं",
-          "infraDatacentersFull": "केवल 10,000 या अधिक GPU वाले AI कंप्यूट क्लस्टर",
-          "infraPipelinesFull": "तेल/गैस पाइपलाइन (नॉर्ड स्ट्रीम, TAPI आदि)",
-          "militaryActivity": "लाइव सैन्य विमान और जहाज ट्रैकिंग",
+          "geoProtests": "नागरिक अशांति, प्रदर्शन (समय-फ़िल्टर्ड)",
           "militaryBases": "अमेरिका/NATO, चीन, रूस की सैन्य स्थापनाएं (150+)",
-          "militaryIrradiators": "औद्योगिक गामा विकिरण सुविधाएं",
           "militaryNuclear": "बिजली संयंत्र, संवर्धन और हथियार सुविधाएं",
-          "militarySpaceports": "रॉकेट प्रक्षेपण स्थल और अंतरिक्ष सुविधाएं",
-          "mineralsFull": "रणनीतिक खनिज भंडार और खनन स्थल",
+          "militaryIrradiators": "औद्योगिक गामा विकिरण सुविधाएं",
+          "militaryActivity": "लाइव सैन्य विमान और जहाज ट्रैकिंग",
+          "infraCablesFull": "प्रमुख समुद्री फाइबर ऑप्टिक केबल (20 मुख्य मार्ग)",
+          "infraPipelinesFull": "तेल/गैस पाइपलाइन (नॉर्ड स्ट्रीम, TAPI आदि)",
+          "infraDatacentersFull": "केवल 10,000 या अधिक GPU वाले AI कंप्यूट क्लस्टर",
+          "transportShipping": "AIS के माध्यम से लाइव जहाज ट्रैकिंग (जहाज की स्थिति)",
+          "transportDelays": "हवाई अड्डे की देरी, ग्राउंड स्टॉप और NOTAM बंद",
           "naturalEventsFull": "भूकंप (USGS) + तूफान, आग, ज्वालामुखी, बाढ़ (NASA EONET)",
+          "firesFull": "सक्रिय जंगल की आग और उनकी सीमाएं (NASA FIRMS)",
+          "climateAnomalies": "तापमान और वर्षा की असामान्यताएं",
+          "waterwaysLabels": "रणनीतिक संकरे बिंदुओं के लेबल",
+          "geoUcdpEvents": "उप्साला संघर्ष डेटा कार्यक्रम के सशस्त्र संघर्ष की घटनाएं",
+          "geoDisplacement": "शरणार्थी और विस्थापन प्रवाह पैटर्न",
+          "militarySpaceports": "रॉकेट प्रक्षेपण स्थल और अंतरिक्ष सुविधाएं",
+          "infraCyberThreats": "साइबर हमले और सुरक्षा संबंधी घटनाएं",
+          "mineralsFull": "रणनीतिक खनिज भंडार और खनन स्थल",
           "techCyberThreats": "साइबर हमले और सुरक्षा संबंधी घटनाएं",
           "techEvents": "प्रमुख तकनीकी सम्मेलन और आयोजन",
           "techFires": "तकनीकी बुनियादी ढांचे के निकट सक्रिय जंगली आग",
-          "timeExtended": "पिछले सप्ताह, महीने या सभी समय का डेटा दिखाएं",
-          "timeRecent": "समय-आधारित डेटा को हाल के घंटों तक फ़िल्टर करें",
+          "financeGulfInvestments": "GCC सरकारी संपदा कोष निवेश और प्रत्यक्ष विदेशी निवेश",
           "tradeRoutes": "रणनीतिक संकरे बिंदुओं से होते हुए बंदरगाहों को जोड़ने वाले प्रमुख वैश्विक शिपिंग मार्ग",
-          "transportDelays": "हवाई अड्डे की देरी, ग्राउंड स्टॉप और NOTAM बंद",
-          "transportShipping": "AIS के माध्यम से लाइव जहाज ट्रैकिंग (जहाज की स्थिति)",
-          "waterwaysLabels": "रणनीतिक संकरे बिंदुओं के लेबल"
+          "dayNight": "वास्तविक समय सूरज की रोशनी और अंधेरा क्षेत्र",
+          "geoBoundaries": "विसैन्यीकृत क्षेत्र, युद्धविराम रेखाएं और विवादित सीमाएं",
+          "ciiChoropleth": "देश अस्थिरता सूचकांक हीटमैप — CII स्कोर के अनुसार देशों को रंगों में दर्शाता है (हरा=स्थिर, लाल=गंभीर)"
         },
         "notes": {
           "timeAffects": "प्रभाव: भूकंप, मौसम, प्रदर्शन, व्यवधान"
@@ -1462,7 +1353,6 @@
       }
     },
     "cii": {
-      "shareStory": "कहानी साझा करें",
       "noSignals": "कोई अस्थिरता संकेत नहीं मिला",
       "sectionFollowing": "फ़ॉलो कर रहे हैं",
       "sectionAll": "सभी",
@@ -1478,14 +1368,8 @@
       "analyzingSentiment": "भावना विश्लेषण...",
       "generatingBrief": "विश्व संक्षेप बना रहे हैं...",
       "infoTooltip": "<strong>एआई-चालित विश्लेषण</strong><br>• <strong>विश्व संक्षेप</strong>: AI सारांश (Groq/OpenRouter)<br>• <strong>भावना</strong>: समाचार टोन विश्लेषण<br>• <strong>गति</strong>: तेजी से बढ़ती कहानियाँ<br>• <strong>फोकल पॉइंट्स</strong>: समाचार एंटिटीज को मानचित्र संकेतों से जोड़ना (सैन्य, प्रदर्शन, व्यवधान)<br><em>केवल डेस्कटॉप · Llama 3.3 + फोकल पॉइंट डिटेक्शन से समर्थित</em>",
-      "settingsTitle": "सेटिंग्स",
-      "sectionMap": "मानचित्र",
-      "sectionAi": "एआई विश्लेषण",
-      "sectionStreaming": "स्ट्रीमिंग",
       "streamQualityLabel": "वीडियो गुणवत्ता",
       "streamQualityDesc": "सभी लाइव स्ट्रीम के लिए गुणवत्ता सेट करें (नीची गुणवत्ता बैंडविड्थ बचाती है)",
-      "globeRenderQualityLabel": "ग्लोब रेंडर गुणवत्ता",
-      "globeRenderQualityDesc": "ग्लोब कैनवास रिज़ॉल्यूशन नियंत्रित करता है। उच्च मान 4K डिस्प्ले पर चिकना दिखता है, लेकिन GPU पर भारी पड़ सकता है।",
       "globeRenderScaleOptions": {
         "1": "इको (1x)",
         "2": "4K (2x)",
@@ -1495,7 +1379,6 @@
       },
       "mapFlashLabel": "लाइव इवेंट पल्स",
       "mapFlashDesc": "ब्रेकिंग न्यूज आने पर मानचित्र पर स्थान चमकाएं",
-      "aiFlowTitle": "सेटिंग्स",
       "aiFlowCloudLabel": "क्लाउड एआई (Groq & OpenRouter)",
       "aiFlowCloudDesc": "शीर्षक क्लाउड में भेजें AI सारांश के लिए (सिफारिश की गई)",
       "aiFlowBrowserLabel": "ब्राउज़र लोकल मॉडल",
@@ -1510,10 +1393,8 @@
       "aiFlowStatusDisabled": "कोई AI प्रदाता सक्षम नहीं",
       "insightsDisabledTitle": "AI विश्लेषण अक्षम है",
       "insightsDisabledHint": "सेटिंग गियर से प्रदाता सक्षम करें मानचित्र हेडर में",
-      "sectionPanels": "पैनल",
       "badgeAnimLabel": "बैज एनीमेशन",
       "badgeAnimDesc": "पैनल हेडर पर अपडेट बैज एनिमेट करें",
-      "sectionIntelligence": "इंटेलिजेंस",
       "headlineMemoryLabel": "हेडलाइन मेमोरी",
       "headlineMemoryDesc": "देखी गई हेडलाइन याद रखें ताकि नई कहानियाँ हाइलाइट हों",
       "analysisFrameworksLabel": "विश्लेषण फ्रेमवर्क",
@@ -1555,7 +1436,6 @@
       "newsSignals": "{{news}} खबरें • {{signals}} संकेत"
     },
     "settings": {
-      "dataManagementLabel": "डेटा प्रबंधन",
       "exportSettings": "सेटिंग्स निर्यात करें",
       "importSettings": "सेटिंग्स आयात करें",
       "exportSuccess": "सेटिंग्स सफलतापूर्वक निर्यात की गईं",
@@ -1565,7 +1445,6 @@
       "reloadNow": "अभी रीलोड करें"
     },
     "cascade": {
-      "noImpacts": "कोई देश प्रभावित नहीं पाया गया",
       "filters": {
         "cables": "केबल",
         "pipelines": "पाइपलाइन",
@@ -1642,7 +1521,6 @@
       "noEvents": "दिखाने के लिए कोई ईवेंट नहीं",
       "showOnMap": "नक्शे पर दिखाएं",
       "moreInfo": "अधिक जानकारी",
-      "retry": "पुनः प्रयास करें",
       "upcoming": "आगामी",
       "conferences": "सम्मेलन",
       "earnings": "आय",
@@ -1669,7 +1547,6 @@
       "infoTooltip": "<strong>वैश्विक तकनीकी तत्परता</strong><br>विश्व बैंक डेटा पर आधारित कुल स्कोर (0-100):<br><br><strong>दर्शाए गए मेट्रिक्स:</strong><br>🌐 इंटरनेट उपयोगकर्ता (% जनसंख्या)<br>📱 मोबाइल सदस्यता (प्रति 100 लोग)<br>🔬 आर एंड डी व्यय (% GDP)<br><br><strong>भार:</strong> आर एंड डी (35%), इंटरनेट (30%), ब्रॉडबैंड (20%), मोबाइल (15%)<br><br><em>— = हाल के डेटा उपलब्ध नहीं</em><br><em>स्रोत: विश्व बैंक ओपन डेटा (2019-2024)</em>"
     },
     "populationExposure": {
-      "noData": "कोई एक्सपोजर डेटा उपलब्ध नहीं",
       "totalAffected": "कुल प्रभावित",
       "affectedCount": "{{count}} प्रभावित",
       "radiusKm": "{{km}} किमी त्रिज्या",
@@ -1702,16 +1579,12 @@
       "noAlerts": "कोई सक्रिय सायरन नहीं — सब साफ",
       "notConfigured": "सायरन सेवा कॉन्फ़िगर नहीं है",
       "activeSirens": "{{count}} सक्रिय सायरन",
-      "area": "क्षेत्र",
-      "time": "समय",
       "justNow": "अभी-अभी",
-      "historyCount": "पिछले 24 घंटे में {{count}} अलर्ट",
       "historySummary": "24 घंटे में {{count}} अलर्ट — {{waves}} लहरें",
       "loadingHistory": "इतिहास लोड हो रहा है...",
       "infoTooltip": "<strong>इज़राइल सायरन</strong><br>इज़राइल होम फ्रंट कमांड से रियल-टाइम रॉकेट और मिसाइल सायरन अलर्ट।<br><br>डेटा हर 10 सेकंड में पोल्ड किया जाता है। सक्रिय सायरन बजने का लाल संकेत।"
     },
     "satelliteFires": {
-      "noData": "कोई आग डेटा उपलब्ध नहीं",
       "region": "क्षेत्र",
       "fires": "आगें",
       "high": "उच्च",
@@ -1736,7 +1609,6 @@
       "actors": "अभिनेता",
       "deathsCount": "{{count}} मृत्यु",
       "moreNotShown": "{{count}} और घटनाएं दिखाई नहीं गईं",
-      "noEvents": "इस श्रेणी में कोई घटना नहीं",
       "infoTooltip": "<strong>सशस्त्र संघर्ष घटनाएं</strong> Uppsala विश्विद्यालय से घटना-स्तरीय संघर्ष डेटा (UCDP)।<ul><li><strong>राज्य आधारित</strong>: सरकार बनाम विद्रोही समूह</li><li><strong>गैर-राज्य</strong>: सशस्त्र समूह बनाम सशस्त्र समूह</li><li><strong>एकतरफा</strong>: नागरिकों पर हिंसा</li></ul>मृत्यु का अनुमानित आंकड़ा (न्यूनतम-उच्चतम सीमा)। ACLED डुप्लिकेट्स स्वचालित रूप से हटाए गए।"
     },
     "giving": {
@@ -1768,7 +1640,6 @@
       "infoTooltip": "<strong>वैश्विक दान गतिविधि सूचकांक</strong> व्यक्तिगत दान को ट्रैक करने वाला संयोजित सूचकांक क्राउडफंडिंग प्लेटफॉर्म और क्रिप्टो वॉलेट्स से।<ul><li><strong>प्लेटफ़ॉर्म</strong>: GoFundMe, GlobalGiving, JustGiving नमूना</li><li><strong>क्रिप्टो</strong>: ऑन-चेन चैरिटी वॉलेट इनफ्लो (Endaoment, Giving Block)</li><li><strong>संस्थागत</strong>: OECD ODA, CAF वर्ल्ड गिविंग इंडेक्स, कैंडिड ग्रांट्स</li></ul>सूचकांक दिशात्मक है (सटीक राशि नहीं)। लाइव नमूना और वार्षिक रिपोर्ट मिलाकर।"
     },
     "displacement": {
-      "noData": "कोई डेटा नहीं",
       "refugees": "शरणार्थी",
       "asylumSeekers": "आश्रय चाहने वाले",
       "idps": "अंतरिक विस्थापित लोग",
@@ -1810,17 +1681,10 @@
       "sortNewest": "नवीनतम",
       "sortRelevance": "प्रासंगिकता"
     },
-    "export": {
-      "exportData": "डेटा निर्यात करें"
-    },
-    "runtimeConfig": {
-      "getApiKey": "API कुंजी प्राप्त करें"
-    },
     "breakingNews": {
       "critical": "गंभीर",
       "high": "उच्च",
-      "dismiss": "खारिज करें",
-      "enableNotifications": "डेस्कटॉप सूचनाएं चालू करें"
+      "dismiss": "खारिज करें"
     },
     "intelligenceFindings": {
       "breakingAlerts": "ब्रेकिंग अलर्ट",
@@ -1874,9 +1738,7 @@
       "filterAll": "सभी",
       "filterBreaking": "ब्रेकिंग",
       "filterConflict": "संघर्ष",
-      "filterAlerts": "अलर्ट",
       "filterOsint": "OSINT",
-      "filterPolitics": "राजनीति",
       "filterMiddleeast": "मिडिल ईस्ट",
       "live": "लाइव",
       "viewSource": "स्रोत देखें",
@@ -1900,7 +1762,6 @@
       "asset": "संपत्ति",
       "country": "देश",
       "sector": "क्षेत्र",
-      "status": "स्थिति",
       "investment": "निवेश",
       "year": "साल",
       "noMatch": "फ़िल्टर से कोई निवेश नहीं मिला",
@@ -2044,7 +1905,6 @@
       "addPanel": "पैनल जोड़ें"
     },
     "languageSelector": {
-      "selectLanguage": "भाषा चुनें",
       "mapLabelsFallbackVi": "मैप लेबल फिलहाल वियतनामी के लिए अंग्रेज़ी में दिख रहे हैं।"
     },
     "internetDisruptions": {
@@ -2063,10 +1923,6 @@
       "ok": "ठीक है",
       "degraded": "कमजोर",
       "outage": "बंद",
-      "backendUnavailable": "डेस्कटॉप स्थानीय बैकेंड अनुपलब्ध। क्लाउड API पर स्विच कर रहे हैं।",
-      "desktopReadiness": "डेस्कटॉप तत्परता",
-      "acceptanceChecks": "स्वीकृति जांच: {{ready}}/{{total}} तैयार · key-आधारित फीचर {{available}}/{{featureTotal}}",
-      "nonParityFallbacks": "गैर-बराबरी प्रथम विकल्प ({{count}})",
       "categories": {
         "all": "सभी",
         "cloud": "क्लाउड",
@@ -2102,7 +1958,6 @@
       }
     },
     "liveNews": {
-      "retry": "पुनः प्रयास करें",
       "notLive": "{{name}} फिलहाल लाइव नहीं है",
       "cannotEmbed": "{{name}} यहाँ नहीं चलाया जा सकता — क्षेत्र में प्रतिबंधित हो सकता है (त्रुटि {{code}})",
       "botCheck": "YouTube {{name}} चलाने के लिए साइन-इन मांग रहा है",
@@ -2114,17 +1969,13 @@
       "youtubeHandle": "YouTube हैंडल (जैसे @Channel)",
       "youtubeHandleOrUrl": "YouTube हैंडल या URL",
       "displayName": "डिस्प्ले नाम (वैकल्पिक)",
-      "openPanelSettings": "पैनल प्रदर्शन सेटिंग्स",
       "channelSettings": "चैनल सेटिंग्स",
       "save": "सहेजें",
       "cancel": "रद्द करें",
-      "confirmDelete": "क्या इस चैनल को हटाना है?",
-      "confirmTitle": "पुष्टि करें",
       "restoreDefaults": "डिफ़ॉल्ट चैनल पुनर्स्थापित करें",
       "availableChannels": "उपलब्ध चैनल",
       "noResults": "\"{{term}}\" से मेल खाने वाले कोई चैनल नहीं मिले",
       "customChannel": "कस्टम चैनल",
-      "regionAll": "सभी",
       "regionNorthAmerica": "उत्तरी अमेरिका",
       "regionEurope": "यूरोप",
       "regionLatinAmerica": "लैटिन अमेरिका",
@@ -2133,7 +1984,6 @@
       "regionAfrica": "अफ्रीका",
       "regionOceania": "ओशिनिया",
       "invalidHandle": "सही YouTube हैंडल दर्ज करें (जैसे @ChannelName)",
-      "channelNotFound": "YouTube चैनल नहीं मिला",
       "verifying": "सत्यापित कर रहे हैं…",
       "hlsUrl": "HLS स्ट्रीम URL (वैकल्पिक)",
       "invalidHlsUrl": "वैध HLS स्ट्रीम URL दर्ज करें (.m3u8)"
@@ -2173,7 +2023,6 @@
       "crypto": "क्रिप्टो",
       "fx": "विदेशी मुद्रा",
       "warmup": "आधार रेखा बना रहे हैं। अगले घंटे में वॉल्यूम और OI इतिहास भरेगा।",
-      "unavailable": "स्थिति डेटा उपलब्ध नहीं",
       "footer": "5 मिनट · Hyperliquid पर्पेचुअल · 24/7"
     },
     "goldIntelligence": {
@@ -2277,9 +2126,6 @@
         "unavailable": "FSI डेटा उपलब्ध नहीं",
         "failedToLoad": "लोड करने में विफल"
       }
-    },
-    "energyCrisis": {
-      "infoTooltip": "<strong>ऊर्जा संकट ट्रैकर</strong> IEA 2026 ऊर्जा संकट नीति प्रतिक्रिया ट्रैकर। मध्य पूर्व संघर्ष और हर्मुज जलडमरूमध्य सप्लाई व्यवधान के जवाब में सरकारों के ऊर्जा संरक्षण और उपभोक्ता सहायता उपायों को ट्रैक करता है। 60+ देशों और लगभग 200 नीति उपाय।"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>हर्मुज व्यापार ट्रैकर</strong> हर्मुज स्ट्रेट के माध्यम से लाइव AIS जहाज ट्रैकिंग, विश्व का सबसे महत्वपूर्ण तेल चोकपॉइंट। टैंकर गिनती, व्यवधान घटनाएं, और साप्ताहिक प्रवाह परिवर्तन मॉनिटर करता है। लगभग 20% वैश्विक तेल दैनिक यहां से गुजरता है।",
@@ -2512,7 +2358,6 @@
   },
   "popups": {
     "startDate": "शुरुआती तारीख",
-    "endDate": "अंतिम तारीख",
     "magnitude": "माप",
     "depth": "गहराई",
     "intensity": "तीव्रता",
@@ -2527,20 +2372,9 @@
     "keyDevelopments": "मुख्य घटनाएँ",
     "unknown": "अज्ञात",
     "source": "स्रोत",
-    "target": "लक्ष्य",
     "events": "इवेंट्स",
-    "impact": "प्रभाव",
     "capacity": "क्षमता",
-    "alerts": "सक्रिय अलर्ट",
     "updated": "अपडेटेड",
-    "common": {
-      "start": "शुरू",
-      "end": "समाप्त",
-      "updated": "अपडेटेड"
-    },
-    "conflict": {
-      "title": "संघर्ष क्षेत्र"
-    },
     "earthquake": {
       "levels": {
         "major": "महीन",
@@ -2602,9 +2436,6 @@
       "position": "स्थिति",
       "ground": "जमीन पर",
       "airborne": "हवा में"
-    },
-    "apt": {
-      "description": "उच्च दर्जे का साइबर खतरा समूह, राज्य स्तर की क्षमताओं के साथ। जैविक संरचनाएं, सरकार, और रक्षा क्षेत्र को निशाना बनाने वाले परिष्कृत साइबर ऑपरेशन के लिए जाना जाता है।"
     },
     "cyberThreat": {
       "title": "साइबर खतरा"
@@ -2682,9 +2513,7 @@
     "sampledList": "{{count}} घटनाओं की चुनिंदा सूची दिखा रहा है।",
     "reason": "कारण",
     "threat": "खतरा",
-    "aka": "जिसे और भी जाना जाता है",
     "sponsor": "प्रायोजक",
-    "origin": "मूल",
     "country": "देश",
     "malware": "मैलवेयर",
     "lastSeen": "अंतिम बार देखा गया",
@@ -2705,8 +2534,6 @@
     "hotspot": {
       "escalation": "बढ़ोतरी आकलन",
       "baseline": "मूल स्तर",
-      "score": "स्कोर",
-      "trend": "रुझान",
       "components": {
         "news": "समाचार",
         "cii": "CII",
@@ -2720,10 +2547,6 @@
         "high": "उच्च",
         "critical": "संवेदनशील"
       }
-    },
-    "buttons": {
-      "track": "समस्या ट्रैक करें",
-      "details": "विवरण देखें"
     },
     "historicalContext": "ऐतिहासिक संदर्भ",
     "lastMajorEvent": "अंतिम बड़ी घटना",
@@ -2879,10 +2702,8 @@
       "speed": "गति",
       "heading": "दिशा",
       "mmsi": "MMSI",
-      "hull": "हल #",
       "region": "क्षेत्र",
       "strikeGroup": "स्ट्राइक ग्रुप",
-      "deploymentStatus": "स्थिति",
       "usniIntel": "USNI इंटेल",
       "usniSource": "स्रोत: USNI न्यूज़ फ्लीट ट्रैकर",
       "approximatePosition": "लगभग स्थिति — USNI साप्ताहिक रिपोर्ट पर आधारित, वास्तविक समय AIS नहीं।",
@@ -3133,12 +2954,9 @@
     "error": "त्रुटि",
     "noData": "कोई डेटा उपलब्ध नहीं",
     "noDataAvailable": "कोई डेटा उपलब्ध नहीं",
-    "updated": "अभी-अभी अपडेट हुआ",
-    "ago": "{{time}} पहले",
     "retrying": "पुनः प्रयास कर रहा है...",
     "failedToLoad": "फिलहाल उपलब्ध नहीं — पुनः प्रयास हो रहा है",
     "noDataShort": "कोई डेटा नहीं",
-    "dataTemporarilyUnavailable": "डेटा फिलहाल उपलब्ध नहीं है",
     "upstreamUnavailable": "ऊपरी API उपलब्ध नहीं — अपने आप पुनः प्रयास होगा",
     "loadingUcdpEvents": "सशस्त्र संघर्ष घटनाएं लोड हो रही हैं",
     "loadingStablecoins": "स्टेबलकॉइन लोड कर रहे हैं...",
@@ -3160,7 +2978,6 @@
     "failedCommodities": "कमोडिटी डेटा फिलहाल उपलब्ध नहीं",
     "failedCryptoData": "क्रिप्टो डेटा फिलहाल उपलब्ध नहीं",
     "rateLimitedMarket": "बाजार डेटा फिलहाल उपलब्ध नहीं (रेट लिमिटेड) — थोड़ी देर में पुनः प्रयास",
-    "failedClusterNews": "ख़बरों को समूहित करने में विफल",
     "noNewsAvailable": "कोई खबर उपलब्ध नहीं",
     "noActiveTechHubs": "कोई सक्रिय टेक्नोलॉजी हब नहीं",
     "noActiveGeoHubs": "कोई सक्रिय भू-राजनीतिक हब नहीं",
@@ -3220,11 +3037,8 @@
   "premium": {
     "pro": "PRO",
     "lockedDesc": "वर्ल्ड मॉनिटर लाइसेंस की जरूरत है",
-    "joinWaitlist": "वेटलिस्ट में शामिल हों",
     "signInToUnlock": "प्रीमियम फीचर्स खोलने के लिए साइन इन करें",
     "signIn": "खोलने के लिए साइन इन करें",
-    "verifyEmailToUnlock": "प्रीमियम फीचर्स पाने के लिए अपना ईमेल सत्यापित करें",
-    "resendVerification": "सत्यापन फिर से भेजें",
     "upgradeDesc": "प्रीमियम एनालिटिक्स का पूरा एक्सेस पाने के लिए प्रो में अपग्रेड करें",
     "upgradeToPro": "प्रो में अपग्रेड करें",
     "features": {
