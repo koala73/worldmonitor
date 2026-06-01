@@ -15,31 +15,34 @@
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execSync } from 'node:child_process';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, '..');
+const RESILIENCE_SCORER_PATH = path.join(
+  REPO_ROOT,
+  'server',
+  'worldmonitor',
+  'resilience',
+  'v1',
+  '_dimension-scorers.ts',
+);
 
 const API_BASE = (process.env.API_BASE || '').replace(/\/$/, '');
-if (!API_BASE) {
-  console.error('[freeze-resilience-ranking] API_BASE env var required (e.g. https://api.worldmonitor.app)');
-  process.exit(2);
-}
-
-const API_ORIGIN = new URL(API_BASE).origin;
-const RANKING_BASE_URL = `${API_BASE}/api/resilience/v1/get-resilience-ranking`;
-const SCORE_URL = `${API_BASE}/api/resilience/v1/get-resilience-score`;
-const SESSION_URL = `${API_BASE}/api/wm-session`;
+const API_ORIGIN = API_BASE ? new URL(API_BASE).origin : '';
+const RANKING_BASE_URL = API_BASE ? `${API_BASE}/api/resilience/v1/get-resilience-ranking` : '';
+const SCORE_URL = API_BASE ? `${API_BASE}/api/resilience/v1/get-resilience-score` : '';
+const SESSION_URL = API_BASE ? `${API_BASE}/api/wm-session` : '';
 const USER_AGENT = process.env.USER_AGENT
   || 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36';
 const FORCE_RANKING_REFRESH = (process.env.RESILIENCE_RANKING_REFRESH ?? '1').toLowerCase() !== 'false';
-const RANKING_URL = (() => {
+const RANKING_URL = API_BASE ? (() => {
   const url = new URL(RANKING_BASE_URL);
   if (FORCE_RANKING_REFRESH) url.searchParams.set('refresh', '1');
   return url.toString();
-})();
+})() : '';
 const METHODOLOGY_FORMULA =
   process.env.RESILIENCE_RANKING_METHODOLOGY_FORMULA || 'pillar-combined-penalized-v1';
 const FORMULA_CHECK_COUNTRIES = (process.env.RESILIENCE_RANKING_FORMULA_CHECK_COUNTRIES || 'NO,US,YE')
@@ -91,13 +94,6 @@ if (FORMULA_CHECK_COUNTRIES.length === 0) {
   process.exit(2);
 }
 
-if (FORCE_RANKING_REFRESH && !process.env.WORLDMONITOR_API_KEY) {
-  console.error(
-    '[freeze-resilience-ranking] WORLDMONITOR_API_KEY is required when RESILIENCE_RANKING_REFRESH is enabled; set RESILIENCE_RANKING_REFRESH=false to capture the cached public ranking instead',
-  );
-  process.exit(2);
-}
-
 function commitSha() {
   try {
     return execSync('git rev-parse HEAD', { cwd: REPO_ROOT, stdio: ['ignore', 'pipe', 'ignore'] })
@@ -105,6 +101,61 @@ function commitSha() {
   } catch {
     return 'unknown';
   }
+}
+
+function getExportedStringCollection(sourceText, exportName) {
+  const declarationRe = new RegExp(
+    `export\\s+const\\s+${exportName}\\b[\\s\\S]*?=\\s*(?:new\\s+Set\\s*\\()?\\s*\\[([\\s\\S]*?)\\]\\s*\\)?\\s*;`,
+  );
+  const match = sourceText.match(declarationRe);
+  if (!match) {
+    throw new Error(`Could not find exported ${exportName} in ${RESILIENCE_SCORER_PATH}`);
+  }
+
+  const arrayBody = match[1]
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/\/\/[^\n]*/g, '');
+  const values = [...arrayBody.matchAll(/['"]([^'"]+)['"]/g)].map((entry) => entry[1]);
+  if (values.length === 0) {
+    throw new Error(`${exportName} must contain at least one string literal`);
+  }
+
+  return values;
+}
+
+export function computeResilienceMethodologyMetadataFromSource(sourceText) {
+  const domainOrder = getExportedStringCollection(sourceText, 'RESILIENCE_DOMAIN_ORDER');
+  const dimensionOrder = getExportedStringCollection(sourceText, 'RESILIENCE_DIMENSION_ORDER');
+  const retiredDimensions = new Set(getExportedStringCollection(sourceText, 'RESILIENCE_RETIRED_DIMENSIONS'));
+  const activeDimensionCount = dimensionOrder.filter((dimensionId) => !retiredDimensions.has(dimensionId)).length;
+
+  if (activeDimensionCount <= 0) {
+    throw new Error(`Derived invalid active dimension count: ${activeDimensionCount}`);
+  }
+
+  return {
+    domainCount: domainOrder.length,
+    serializedDimensionCount: dimensionOrder.length,
+    retiredDimensionCount: retiredDimensions.size,
+    activeDimensionCount,
+  };
+}
+
+async function loadResilienceMethodologyMetadata() {
+  const sourceText = await fs.readFile(RESILIENCE_SCORER_PATH, 'utf8');
+  return computeResilienceMethodologyMetadataFromSource(sourceText);
+}
+
+export function buildSnapshotMethodology(methodologyConfig, methodologyMetadata) {
+  return {
+    ...methodologyConfig,
+    domainCount: methodologyMetadata.domainCount,
+    dimensionCount: methodologyMetadata.activeDimensionCount,
+    pillarCount: 3,
+    coverageLabel:
+      `Mean dimension coverage (avg of the ${methodologyMetadata.activeDimensionCount} per-dimension coverage values). Labelled 'Dimension coverage' in publications to avoid the ambiguity of 'Data coverage'.`,
+    greyOutThreshold: 0.40,
+  };
 }
 
 async function loadCountryNameMap() {
@@ -330,7 +381,19 @@ function enrichItems(items, nameMap, startRank) {
 }
 
 async function main() {
+  if (!API_BASE) {
+    console.error('[freeze-resilience-ranking] API_BASE env var required (e.g. https://api.worldmonitor.app)');
+    process.exit(2);
+  }
+  if (FORCE_RANKING_REFRESH && !process.env.WORLDMONITOR_API_KEY) {
+    console.error(
+      '[freeze-resilience-ranking] WORLDMONITOR_API_KEY is required when RESILIENCE_RANKING_REFRESH is enabled; set RESILIENCE_RANKING_REFRESH=false to capture the cached public ranking instead',
+    );
+    process.exit(2);
+  }
+
   const nameMap = await loadCountryNameMap();
+  const methodologyMetadata = await loadResilienceMethodologyMetadata();
   const headers = await buildAuthHeaders();
   const formulaCheck = await verifyDeclaredFormula(headers);
   const ranking = await fetchRanking(headers);
@@ -349,15 +412,10 @@ async function main() {
     schemaVersion: '2.0',
     methodologyFormula: METHODOLOGY_FORMULA,
     formulaVerification,
-    methodology: {
-      ...METHODOLOGY_BY_FORMULA[METHODOLOGY_FORMULA],
-      domainCount: 6,
-      dimensionCount: 19,
-      pillarCount: 3,
-      coverageLabel:
-        "Mean dimension coverage (avg of the 19 per-dimension coverage values). Labelled 'Dimension coverage' in publications to avoid the ambiguity of 'Data coverage'.",
-      greyOutThreshold: 0.40,
-    },
+    methodology: buildSnapshotMethodology(
+      METHODOLOGY_BY_FORMULA[METHODOLOGY_FORMULA],
+      methodologyMetadata,
+    ),
     totals: {
       rankedCountries: ranked.length,
       greyedOutCount: greyedOut.length,
@@ -378,7 +436,9 @@ async function main() {
   console.log(`[freeze-resilience-ranking] items=${ranked.length} greyedOut=${greyedOut.length} commit=${snapshot.commitSha.slice(0, 10)}`);
 }
 
-main().catch((err) => {
-  console.error('[freeze-resilience-ranking] failed:', err);
-  process.exit(1);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((err) => {
+    console.error('[freeze-resilience-ranking] failed:', err);
+    process.exit(1);
+  });
+}
