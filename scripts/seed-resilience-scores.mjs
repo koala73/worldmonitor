@@ -26,6 +26,7 @@ const WM_KEY = process.env.WORLDMONITOR_API_KEY
 // only this seed-only secret can force the expensive recompute path.
 const WM_REFRESH_KEY = process.env.WORLDMONITOR_SEED_REFRESH_KEY?.trim() || '';
 const SEED_UA = 'Mozilla/5.0 (compatible; WorldMonitor-Seed/1.0)';
+const NEG_SENTINEL = '__WM_NEG__';
 
 function requireSeedRefreshKey() {
   if (WM_REFRESH_KEY) return;
@@ -70,6 +71,12 @@ export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
 const INTERVAL_TTL_SECONDS = 7 * 24 * 60 * 60;
 export { computeIntervals };
 
+function currentCacheFormulaLocal() {
+  const combine = (process.env.RESILIENCE_PILLAR_COMBINE_ENABLED ?? 'false').toLowerCase() === 'true';
+  const schemaV2 = (process.env.RESILIENCE_SCHEMA_V2_ENABLED ?? 'true').toLowerCase() === 'true';
+  return combine && schemaV2 ? 'pc' : 'd6';
+}
+
 async function redisGetJson(url, token, key) {
   const resp = await fetch(`${url}/get/${encodeURIComponent(key)}`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -95,12 +102,26 @@ async function redisPipeline(url, token, commands) {
   return resp.json();
 }
 
+export function parseCachedScorePayload(raw) {
+  if (typeof raw !== 'string' || raw.length === 0 || raw === 'null') return null;
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed === NEG_SENTINEL) return null;
+    const payload = unwrapEnvelope(parsed).data;
+    if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
+    if (payload._formula !== currentCacheFormulaLocal()) return null;
+    const overallScore = Number(payload.overallScore);
+    if (!Number.isFinite(overallScore) || overallScore <= 0) return null;
+    return payload;
+  } catch {
+    return null;
+  }
+}
+
 function countCachedFromPipeline(results) {
   let count = 0;
   for (const entry of results) {
-    if (typeof entry?.result === 'string') {
-      try { JSON.parse(entry.result); count++; } catch { /* malformed */ }
-    }
+    if (parseCachedScorePayload(entry?.result) != null) count++;
   }
   return count;
 }
@@ -214,11 +235,7 @@ async function seedResilienceScores() {
     const stillMissing = [];
     for (let i = 0; i < countryCodes.length; i++) {
       const raw = postResults[i]?.result ?? null;
-      if (!raw || raw === 'null') { stillMissing.push(countryCodes[i]); continue; }
-      try {
-        const parsed = JSON.parse(raw);
-        if (parsed.overallScore <= 0) stillMissing.push(countryCodes[i]);
-      } catch { stillMissing.push(countryCodes[i]); }
+      if (parseCachedScorePayload(raw) == null) stillMissing.push(countryCodes[i]);
     }
 
     // Warm laggards individually (countries the bulk ranking timed out on)

@@ -8,6 +8,7 @@ import {
   RESILIENCE_SCORE_CACHE_PREFIX,
   RESILIENCE_STATIC_INDEX_KEY,
   computeIntervals,
+  parseCachedScorePayload,
 } from '../scripts/seed-resilience-scores.mjs';
 
 describe('exported constants', () => {
@@ -61,6 +62,43 @@ describe('seed script does not export tsx/esm helpers', () => {
   it('buildRankingPayload is not exported (ranking write removed)', async () => {
     const mod = await import('../scripts/seed-resilience-scores.mjs');
     assert.equal(typeof mod.buildRankingPayload, 'undefined');
+  });
+});
+
+describe('score cache payload validation', () => {
+  it('counts only real current-formula score payloads', () => {
+    const originalCombine = process.env.RESILIENCE_PILLAR_COMBINE_ENABLED;
+    const originalSchema = process.env.RESILIENCE_SCHEMA_V2_ENABLED;
+    process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = 'false';
+    process.env.RESILIENCE_SCHEMA_V2_ENABLED = 'true';
+    try {
+      const valid = {
+        countryCode: 'NO',
+        overallScore: 82,
+        level: 'high',
+        _formula: 'd6',
+      };
+
+      assert.deepEqual(parseCachedScorePayload(JSON.stringify(valid)), valid);
+      assert.deepEqual(
+        parseCachedScorePayload(JSON.stringify({
+          _seed: { fetchedAt: Date.now(), recordCount: 1, sourceVersion: 'test', schemaVersion: 1, state: 'OK' },
+          data: valid,
+        })),
+        valid,
+        'contract envelopes should count when their inner score payload is valid',
+      );
+      assert.equal(parseCachedScorePayload(JSON.stringify('__WM_NEG__')), null);
+      assert.equal(parseCachedScorePayload(JSON.stringify({ ...valid, _formula: 'pc' })), null);
+      assert.equal(parseCachedScorePayload(JSON.stringify({ ...valid, overallScore: 0 })), null);
+      assert.equal(parseCachedScorePayload(JSON.stringify({ countryCode: 'NO', overallScore: 82 })), null);
+      assert.equal(parseCachedScorePayload('not-json'), null);
+    } finally {
+      if (originalCombine == null) delete process.env.RESILIENCE_PILLAR_COMBINE_ENABLED;
+      else process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = originalCombine;
+      if (originalSchema == null) delete process.env.RESILIENCE_SCHEMA_V2_ENABLED;
+      else process.env.RESILIENCE_SCHEMA_V2_ENABLED = originalSchema;
+    }
   });
 });
 
