@@ -54,12 +54,15 @@ export function initSettingsWindow(): void {
     );
     const panelHtml = panelEntries
       .map(
-        ([key, panel]) => `
+        ([key, panel]) => {
+          const resolvedPanel = ALL_PANELS[key] ? getEffectivePanelConfig(key, SITE_VARIANT) : panel;
+          return `
         <div class="panel-toggle-item ${panel.enabled ? 'active' : ''}" data-panel="${escapeHtml(key)}">
           <div class="panel-toggle-checkbox">${panel.enabled ? '✓' : ''}</div>
-          <span class="panel-toggle-label">${escapeHtml(getLocalizedPanelName(key, panel.name))}</span>
+          <span class="panel-toggle-label">${escapeHtml(getLocalizedPanelName(key, resolvedPanel.name ?? panel.name))}</span>
         </div>
-      `
+      `;
+        }
       )
       .join('');
 

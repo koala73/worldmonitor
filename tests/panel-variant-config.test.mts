@@ -40,6 +40,14 @@ describe('variant panel config resolution', () => {
     assert.equal(forecast.enabled, true);
   });
 
+  it('applies variant overrides on top of the variant-specific base config', () => {
+    const financeMap = getEffectivePanelConfig('map', 'finance');
+
+    assert.equal(financeMap.name, 'Global Markets Map');
+    assert.equal(financeMap.enabled, true);
+    assert.equal(financeMap.priority, 1);
+  });
+
   it('does not use the canonical registry directly for entitlement or pro badge metadata', () => {
     const files = [
       'src/components/UnifiedSettings.ts',
@@ -60,5 +68,20 @@ describe('variant panel config resolution', () => {
         `${file} must resolve variant-specific panel config before PRO badge checks`,
       );
     }
+  });
+
+  it('standalone settings render uses resolved variant names instead of saved panel names', () => {
+    const text = src('src/settings-window.ts');
+
+    assert.match(
+      text,
+      /const resolvedPanel = ALL_PANELS\[key\] \? getEffectivePanelConfig\(key, SITE_VARIANT\) : panel;/,
+      'settings-window render must resolve variant-specific panel config per entry',
+    );
+    assert.match(
+      text,
+      /getLocalizedPanelName\(key, resolvedPanel\.name \?\? panel\.name\)/,
+      'settings-window render must prefer the resolved variant name before saved panel.name',
+    );
   });
 });
