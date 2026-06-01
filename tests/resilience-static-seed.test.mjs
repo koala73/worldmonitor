@@ -26,6 +26,7 @@ import {
   resolveIso2,
   shouldSkipSeedYear,
   transformWhoPhysicianDensity,
+  validateEurostatEnergyEuMemberFloor,
 } from '../scripts/seed-resilience-static.mjs';
 
 // Helpers for inline CSV construction
@@ -179,6 +180,22 @@ describe('resilience static seed CSV parsers', () => {
       const result = parseFsinRows(csv);
       assert.ok(!result.has('NO'), 'NO should be skipped (all phases are zero)');
       assert.ok(result.has('YE'));
+    });
+
+    it('falls back to Phase 4 + Phase 5 when Phase 3+ is blank or zero', () => {
+      const csv = csvRows(
+        'Country (ISO3),Phase 3+ #,Phase 4 #,Phase 5 #,Period',
+        [
+          'YEM,,6200000,161000,2025-03',
+          'SOM,0,3100000,0,2025-04',
+        ],
+      );
+      const result = parseFsinRows(csv);
+
+      assert.equal(result.get('YE')?.peopleInCrisis, 6361000);
+      assert.equal(result.get('YE')?.phase, 'IPC Phase 5');
+      assert.equal(result.get('SO')?.peopleInCrisis, 3100000);
+      assert.equal(result.get('SO')?.phase, 'IPC Phase 4');
     });
 
     it('throws when no usable rows parsed', () => {
@@ -414,6 +431,19 @@ describe('resilience static seed parsers', () => {
     });
     assert.equal(parsed.get('US').energyImportDependency.value, 8.5);
   });
+
+  it('fails the Eurostat EU-member floor before World Bank fallback can mask a parse collapse', () => {
+    const parsed = new Map([
+      ['NO', { energyImportDependency: { value: -13.3, year: 2024, source: 'eurostat' } }],
+      ['US', { energyImportDependency: { value: 8.5, year: 2024, source: 'eurostat' } }],
+      ['DE', { energyImportDependency: { value: 45.1, year: 2024, source: 'eurostat' } }],
+    ]);
+
+    assert.throws(
+      () => validateEurostatEnergyEuMemberFloor(parsed),
+      /parsed 1 EU member rows \(expected at least 24\)/,
+    );
+  });
 });
 
 describe('resilience static seed payload assembly', () => {
@@ -479,6 +509,7 @@ describe('resilience static seed payload assembly', () => {
       countries: ['NO', 'US', 'YE'],
       recordCount: 3,
       failedDatasets: ['aquastat', 'gpi'],
+      recoveredDatasets: {},
       seedYear: 2026,
       seededAt: '2026-04-03T12:00:00.000Z',
       sourceVersion: RESILIENCE_STATIC_SOURCE_VERSION,
@@ -529,15 +560,39 @@ describe('recoverFailedDatasets', () => {
 
   it('injects prior fao values when FSIN fails and a prior snapshot exists', async () => {
     const maps = makeDatasetMaps();
-    await recoverFailedDatasets(maps, ['fao'], {
+    const recovery = await recoverFailedDatasets(maps, ['fao'], {
       readIndex: async () => ({ countries: ['YE', 'SO'] }),
       readPipeline: async () => [
-        { result: JSON.stringify({ fao: existingFao, wgi: { source: 'worldbank-wgi' } }) },
-        { result: JSON.stringify({ fao: existingSo, wgi: null }) },
+        { result: JSON.stringify({ seedYear: 2025, seededAt: '2025-10-02T00:00:00.000Z', fao: existingFao, wgi: { source: 'worldbank-wgi' } }) },
+        { result: JSON.stringify({ seedYear: 2025, seededAt: '2025-10-02T00:00:00.000Z', fao: existingSo, wgi: null }) },
       ],
     });
-    assert.deepEqual(maps.fao.get('YE'), existingFao, 'YE fao should be recovered');
-    assert.deepEqual(maps.fao.get('SO'), existingSo, 'SO fao should be recovered');
+    assert.deepEqual(
+      maps.fao.get('YE'),
+      {
+        ...existingFao,
+        _recovered: {
+          dataset: 'fao',
+          seedYear: 2025,
+          seededAt: '2025-10-02T00:00:00.000Z',
+          sourceYears: [2025],
+        },
+      },
+      'YE fao should be recovered with field-level provenance',
+    );
+    assert.deepEqual(
+      recovery.recoveredDatasets,
+      {
+        fao: {
+          recordCount: 2,
+          countries: ['SO', 'YE'],
+          seedYears: [2025],
+          seededAts: ['2025-10-02T00:00:00.000Z'],
+          sourceYears: [2025],
+        },
+      },
+      'manifest recovery summary should preserve prior seed/source-year provenance',
+    );
     // Verify recovered shape has the fields scoreFoodWater() reads.
     // If this fails, a FSIN failover would silently produce null for the crisis sub-metric.
     assert.ok(typeof maps.fao.get('YE').peopleInCrisis === 'number', 'recovered fao must have peopleInCrisis for scoreFoodWater()');
@@ -590,13 +645,47 @@ describe('recoverFailedDatasets', () => {
     await recoverFailedDatasets(maps, ['aquastat'], {
       readIndex: async () => ({ countries: ['DE'] }),
       readPipeline: async () => [
-        { result: JSON.stringify({ aquastat: existingAquastat }) },
+        { result: JSON.stringify({ seedYear: 2026, seededAt: '2026-10-02T00:00:00.000Z', aquastat: existingAquastat }) },
       ],
     });
     const de = maps.aquastat.get('DE');
-    assert.deepEqual(de, existingAquastat, 'DE aquastat should be recovered');
+    assert.deepEqual(de, {
+      ...existingAquastat,
+      _recovered: {
+        dataset: 'aquastat',
+        seedYear: 2026,
+        seededAt: '2026-10-02T00:00:00.000Z',
+        sourceYears: [2022],
+      },
+    }, 'DE aquastat should be recovered with provenance');
     assert.ok(typeof de.value === 'number', 'recovered aquastat must have numeric value for scoreAquastatValue()');
     assert.ok(typeof de.indicator === 'string', 'recovered aquastat must have indicator string for scoreAquastatValue()');
+  });
+
+  it('adds recovered dataset provenance to the manifest', () => {
+    const countryPayloads = new Map([
+      ['DE', { coverage: { availableDatasets: 1 } }],
+      ['YE', { coverage: { availableDatasets: 1 } }],
+    ]);
+    const manifest = buildManifest(countryPayloads, ['fao'], 2026, '2026-10-03T00:00:00.000Z', {
+      fao: {
+        recordCount: 2,
+        countries: ['YE', 'DE'],
+        seedYears: [2025],
+        seededAts: ['2025-10-02T00:00:00.000Z'],
+        sourceYears: [2024, 2025],
+      },
+    });
+
+    assert.deepEqual(manifest.recoveredDatasets, {
+      fao: {
+        recordCount: 2,
+        countries: ['DE', 'YE'],
+        seedYears: [2025],
+        seededAts: ['2025-10-02T00:00:00.000Z'],
+        sourceYears: [2024, 2025],
+      },
+    });
   });
 });
 

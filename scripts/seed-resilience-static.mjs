@@ -42,7 +42,9 @@ export const RESILIENCE_STATIC_TTL_SECONDS = 400 * 24 * 60 * 60;
 // seed — the new whitelist would never run, the static index would
 // remain at ~222 entries, and the universe filter would silently
 // not take effect. Caught by reviewer post-PR-3435 push.
-export const RESILIENCE_STATIC_SOURCE_VERSION = 'resilience-static-v8';
+// v9 adds static-data quality provenance and guards, so current-year
+// successful v8 snapshots must not skip the updated publish path.
+export const RESILIENCE_STATIC_SOURCE_VERSION = 'resilience-static-v9';
 export const RESILIENCE_STATIC_WINDOW_CRON = '0 */4 1-3 10 *';
 
 const LOCK_DOMAIN = 'resilience:static';
@@ -65,6 +67,12 @@ const RSF_RANKING_URL = 'https://rsf.org/en/ranking';
 const EUROSTAT_ENERGY_URL = 'https://ec.europa.eu/eurostat/api/dissemination/statistics/1.0/data/nrg_ind_id?freq=A';
 const WB_ENERGY_IMPORT_INDICATOR = 'EG.IMP.CONS.ZS';
 const COUNTRY_RESOLVERS = createCountryResolvers();
+const EUROSTAT_ENERGY_EU_MEMBER_FLOOR = 24;
+const EUROSTAT_EU_MEMBER_ISO2 = new Set([
+  'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI',
+  'FR', 'DE', 'GR', 'HU', 'IE', 'IT', 'LV', 'LT', 'LU',
+  'MT', 'NL', 'PL', 'PT', 'RO', 'SK', 'SI', 'ES', 'SE',
+]);
 
 export function countryRedisKey(iso2) {
   return `${RESILIENCE_STATIC_PREFIX}${iso2}`;
@@ -468,7 +476,15 @@ function parseLatestEurostatValue(data, geoCode) {
   };
 }
 
-export function parseEurostatEnergyDataset(data) {
+export function validateEurostatEnergyEuMemberFloor(parsed, floor = EUROSTAT_ENERGY_EU_MEMBER_FLOOR) {
+  const euRows = [...EUROSTAT_EU_MEMBER_ISO2].filter((iso2) => parsed.has(iso2)).length;
+  if (euRows < floor) {
+    throw new Error(`Eurostat energy dependency parsed ${euRows} EU member rows (expected at least ${floor})`);
+  }
+  return { euRows, floor };
+}
+
+export function parseEurostatEnergyDataset(data, { enforceEuMemberFloor = false } = {}) {
   const ids = Array.isArray(data?.id) ? data.id : [];
   const dimensions = data?.dimension || {};
   if (!data?.value || !ids.length) {
@@ -492,6 +508,7 @@ export function parseEurostatEnergyDataset(data) {
     });
   }
 
+  if (enforceEuMemberFloor) validateEurostatEnergyEuMemberFloor(parsed);
   return parsed;
 }
 
@@ -504,9 +521,9 @@ export async function fetchEnergyDependencyDataset() {
   let merged = new Map();
   if (eurostatData) {
     try {
-      merged = parseEurostatEnergyDataset(eurostatData);
-    } catch {
-      merged = new Map();
+      merged = parseEurostatEnergyDataset(eurostatData, { enforceEuMemberFloor: true });
+    } catch (err) {
+      throw new Error(`Energy dependency: Eurostat parse/floor check failed: ${err.message}`);
     }
   }
   const worldBankFallback = selectLatestWorldBankByCountry(worldBankRows);
@@ -643,12 +660,14 @@ export function parseFsinRows(csvText) {
       .filter((v) => v != null && v > 2000);
     const year = yearCandidates.length ? Math.max(...yearCandidates) : null;
     const highestPhase = phase5 ? 5 : phase4 ? 4 : 3;
+    const higherPhaseTotal = (phase4 ?? 0) + (phase5 ?? 0);
+    const peopleInCrisis = phase3plus && phase3plus > 0 ? phase3plus : higherPhaseTotal;
     parsed.set(iso2, {
       source: 'hdx-ipc',
       year,
       // Output matches the shape that scoreFoodWater() reads from staticRecord.fao.
       // phase3plus == total people in Phase 3 or above (IPC definition of "in crisis").
-      peopleInCrisis: phase3plus != null ? roundMetric(phase3plus, 0) : null,
+      peopleInCrisis: peopleInCrisis > 0 ? roundMetric(peopleInCrisis, 0) : null,
       phase: `IPC Phase ${highestPhase}`,
     });
   }
@@ -796,12 +815,28 @@ export function finalizeCountryPayloads(datasetMaps, seedYear = nowSeedYear(), s
   return merged;
 }
 
-export function buildManifest(countryPayloads, failedDatasets, seedYear, seededAt) {
+function normalizeRecoveredDatasets(recoveredDatasets = {}) {
+  return Object.entries(recoveredDatasets)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .reduce((acc, [dataset, info]) => {
+      acc[dataset] = {
+        recordCount: Number(info?.recordCount) || 0,
+        countries: [...(info?.countries ?? [])].sort(),
+        seedYears: [...(info?.seedYears ?? [])].sort((left, right) => left - right),
+        seededAts: [...(info?.seededAts ?? [])].sort(),
+        sourceYears: [...(info?.sourceYears ?? [])].sort((left, right) => left - right),
+      };
+      return acc;
+    }, {});
+}
+
+export function buildManifest(countryPayloads, failedDatasets, seedYear, seededAt, recoveredDatasets = {}) {
   const countries = [...countryPayloads.keys()].sort();
   return {
     countries,
     recordCount: countries.length,
     failedDatasets: [...failedDatasets].sort(),
+    recoveredDatasets: normalizeRecoveredDatasets(recoveredDatasets),
     seedYear,
     seededAt,
     sourceVersion: RESILIENCE_STATIC_SOURCE_VERSION,
@@ -826,6 +861,57 @@ export function buildFailureRefreshKeys(manifest) {
     if (isIso2(iso2)) keys.add(countryRedisKey(iso2));
   }
   return [...keys];
+}
+
+function collectSourceYears(value, years = new Set()) {
+  if (!value || typeof value !== 'object') return years;
+  for (const [key, nested] of Object.entries(value)) {
+    if (key === 'seedYear') continue;
+    if (/year$/i.test(key) && typeof nested !== 'object') {
+      const numeric = safeNum(nested);
+      if (numeric != null && numeric >= 1900 && numeric <= 2100) years.add(numeric);
+      continue;
+    }
+    collectSourceYears(nested, years);
+  }
+  return years;
+}
+
+function recoveredDatasetProvenance(dataset, countryPayload, datasetValue) {
+  const seedYear = safeNum(countryPayload?.seedYear);
+  const seededAt = typeof countryPayload?.seededAt === 'string' ? countryPayload.seededAt : null;
+  const sourceYears = [...collectSourceYears(datasetValue)].sort((left, right) => left - right);
+  return {
+    dataset,
+    ...(seedYear != null ? { seedYear } : {}),
+    ...(seededAt ? { seededAt } : {}),
+    ...(sourceYears.length ? { sourceYears } : {}),
+  };
+}
+
+function annotateRecoveredDatasetValue(dataset, countryPayload, datasetValue) {
+  if (!datasetValue || typeof datasetValue !== 'object' || Array.isArray(datasetValue)) return datasetValue;
+  return {
+    ...datasetValue,
+    _recovered: recoveredDatasetProvenance(dataset, countryPayload, datasetValue),
+  };
+}
+
+function noteRecoveredDataset(recoveredDatasets, dataset, iso2, countryPayload, datasetValue) {
+  const provenance = recoveredDatasetProvenance(dataset, countryPayload, datasetValue);
+  const info = recoveredDatasets[dataset] ?? {
+    recordCount: 0,
+    countries: new Set(),
+    seedYears: new Set(),
+    seededAts: new Set(),
+    sourceYears: new Set(),
+  };
+  info.recordCount += 1;
+  info.countries.add(iso2);
+  if (provenance.seedYear != null) info.seedYears.add(provenance.seedYear);
+  if (provenance.seededAt) info.seededAts.add(provenance.seededAt);
+  for (const year of provenance.sourceYears ?? []) info.sourceYears.add(year);
+  recoveredDatasets[dataset] = info;
 }
 
 async function redisPipeline(commands) {
@@ -966,7 +1052,8 @@ async function fetchAllDatasetMaps() {
 // Throws if the Redis recovery reads themselves fail — the caller must then call
 // preservePreviousSnapshotOnFailure and abort, rather than publishing corrupt data.
 export async function recoverFailedDatasets(datasetMaps, failedDatasets, { readIndex, readPipeline }) {
-  if (failedDatasets.length === 0) return;
+  const recoveredDatasets = {};
+  if (failedDatasets.length === 0) return { recoveredDatasets };
 
   let existingIndex;
   try {
@@ -978,7 +1065,7 @@ export async function recoverFailedDatasets(datasetMaps, failedDatasets, { readI
   const existingCountries = existingIndex?.countries ?? [];
   if (existingCountries.length === 0) {
     console.warn(`  [fallback] dataset(s) failed (${failedDatasets.join(', ')}) — no prior snapshot to recover from`);
-    return;
+    return { recoveredDatasets };
   }
 
   let pipelineResults;
@@ -995,7 +1082,8 @@ export async function recoverFailedDatasets(datasetMaps, failedDatasets, { readI
     if (!existing) continue;
     for (const key of failedDatasets) {
       if (existing[key] != null && datasetMaps[key] instanceof Map && !datasetMaps[key].has(iso2)) {
-        datasetMaps[key].set(iso2, existing[key]);
+        datasetMaps[key].set(iso2, annotateRecoveredDatasetValue(key, existing, existing[key]));
+        noteRecoveredDataset(recoveredDatasets, key, iso2, existing, existing[key]);
       }
     }
   }
@@ -1003,6 +1091,8 @@ export async function recoverFailedDatasets(datasetMaps, failedDatasets, { readI
   for (const key of failedDatasets) {
     console.warn(`  [fallback] dataset '${key}' failed — preserved ${datasetMaps[key].size} existing Redis records from prior snapshot`);
   }
+
+  return { recoveredDatasets: normalizeRecoveredDatasets(recoveredDatasets) };
 }
 
 export async function seedResilienceStatic() {
@@ -1019,8 +1109,9 @@ export async function seedResilienceStatic() {
 
   const { datasetMaps, failedDatasets } = await fetchAllDatasetMaps();
 
+  let recovery = { recoveredDatasets: {} };
   try {
-    await recoverFailedDatasets(datasetMaps, failedDatasets, {
+    recovery = await recoverFailedDatasets(datasetMaps, failedDatasets, {
       readIndex: () => readJsonKey(RESILIENCE_STATIC_INDEX_KEY),
       readPipeline: redisPipeline,
     });
@@ -1037,7 +1128,7 @@ export async function seedResilienceStatic() {
 
   const seededAt = new Date().toISOString();
   const countryPayloads = finalizeCountryPayloads(datasetMaps, seedYear, seededAt);
-  const manifest = buildManifest(countryPayloads, failedDatasets, seedYear, seededAt);
+  const manifest = buildManifest(countryPayloads, failedDatasets, seedYear, seededAt, recovery?.recoveredDatasets ?? {});
 
   if (manifest.recordCount === 0) {
     const failure = await preservePreviousSnapshotOnFailure(
