@@ -9,7 +9,7 @@
 
 import type { ResilienceDimensionId, ResilienceSeedReader } from './_dimension-scorers';
 import { resolveSeedMetaKey } from './_dimension-freshness';
-import { INDICATOR_REGISTRY } from './_indicator-registry';
+import { INDICATOR_REGISTRY, type IndicatorSpec } from './_indicator-registry';
 
 // Must match RESILIENCE_STATIC_META_KEY in scripts/seed-resilience-static.mjs.
 export const RESILIENCE_STATIC_META_KEY = 'seed-meta:resilience:static';
@@ -99,10 +99,20 @@ export interface StandaloneSourceFailureResult {
 
 const MINUTE_MS = 60 * 1000;
 
-// Resolved `seed-meta:*` thresholds for standalone CRI inputs, mirrored from
-// api/health.js SEED_META. This intentionally uses seeder health cadence, not
-// INDICATOR_REGISTRY source-data cadence: an annual source can still have a
-// monthly/daily seeder whose missed runs should surface as source-failure.
+const IGNORED_STANDALONE_SOURCE_META_KEYS = new Set([
+  // Retired: scoreFuelStockDays always returns coverage=0 +
+  // imputationClass=null. The seeder still writes historical data for a
+  // possible future replacement dimension, but it should not pollute
+  // source-failure logs while the dimension is intentionally inactive.
+  'seed-meta:resilience:recovery:fuel-stocks',
+]);
+
+// Resolved `seed-meta:*` thresholds for standalone CRI inputs. Most values
+// mirror api/health.js SEED_META; a few direct scorer inputs are not health
+// probes yet and are explicitly locked in tests. This intentionally uses
+// seeder health cadence, not INDICATOR_REGISTRY source-data cadence: an annual
+// source can still have a monthly/daily seeder whose missed runs should
+// surface as source-failure.
 export const STANDALONE_SOURCE_META_MAX_STALE_MIN: Readonly<Record<string, number>> = {
   'seed-meta:economic:imf-macro': 100800,
   'seed-meta:economic:national-debt': 86400,
@@ -147,10 +157,11 @@ export async function readStandaloneSourceFailureDimensions(
   reader: ResilienceSeedReader,
   nowMs?: number,
 ): Promise<StandaloneSourceFailureResult> {
-  const metaKeyToIndicators = new Map<string, typeof INDICATOR_REGISTRY>();
+  const metaKeyToIndicators = new Map<string, IndicatorSpec[]>();
   for (const indicator of INDICATOR_REGISTRY) {
     const metaKey = resolveSeedMetaKey(indicator.sourceKey);
     if (metaKey === RESILIENCE_STATIC_META_KEY) continue;
+    if (IGNORED_STANDALONE_SOURCE_META_KEYS.has(metaKey)) continue;
     const existing = metaKeyToIndicators.get(metaKey);
     if (existing) {
       existing.push(indicator);
@@ -169,7 +180,7 @@ export async function readStandaloneSourceFailureDimensions(
         if (!meta || typeof meta !== 'object') return;
 
         const status = (meta as { status?: unknown }).status;
-        const nonOk = typeof status === 'string' && status !== 'ok';
+        const nonOk = Boolean(status) && status !== 'ok';
         const fetchedAt = Number((meta as { fetchedAt?: unknown }).fetchedAt);
         const hasFetchedAt = Number.isFinite(fetchedAt) && fetchedAt > 0;
         const maxStaleMin = STANDALONE_SOURCE_META_MAX_STALE_MIN[metaKey];

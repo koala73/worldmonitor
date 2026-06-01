@@ -262,6 +262,20 @@ describe('resilience source-failure module', () => {
       assert.deepEqual(result.failedMetaKeys, ['seed-meta:resilience:recovery:external-debt']);
     });
 
+    it('treats truthy non-string seed-meta status values as non-ok', async () => {
+      const reader = async (key: string): Promise<unknown | null> => {
+        if (key === 'seed-meta:resilience:recovery:external-debt') {
+          return { status: 1, fetchedAt: 1_700_000_000_000, recordCount: 0 };
+        }
+        return null;
+      };
+
+      const result = await readStandaloneSourceFailureDimensions(reader, 1_700_000_000_000);
+
+      assert.equal(result.dimensions.has('externalDebtCoverage'), true);
+      assert.deepEqual(result.failedMetaKeys, ['seed-meta:resilience:recovery:external-debt']);
+    });
+
     it('does not duplicate the static failedDatasets path', async () => {
       const reader = async (key: string): Promise<unknown | null> => {
         if (key === RESILIENCE_STATIC_META_KEY) {
@@ -272,6 +286,21 @@ describe('resilience source-failure module', () => {
 
       const result = await readStandaloneSourceFailureDimensions(reader, 1_700_000_000_000);
 
+      assert.equal(result.dimensions.size, 0);
+      assert.deepEqual(result.failedMetaKeys, []);
+    });
+
+    it('ignores retired standalone fuel-stock meta even when status is non-ok', async () => {
+      const reader = async (key: string): Promise<unknown | null> => {
+        if (key === 'seed-meta:resilience:recovery:fuel-stocks') {
+          return { status: 'error', fetchedAt: 1, recordCount: 0 };
+        }
+        return null;
+      };
+
+      const result = await readStandaloneSourceFailureDimensions(reader, 1_700_000_000_000);
+
+      assert.equal(result.dimensions.has('fuelStockDays'), false);
       assert.equal(result.dimensions.size, 0);
       assert.deepEqual(result.failedMetaKeys, []);
     });
