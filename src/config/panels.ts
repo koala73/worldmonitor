@@ -1088,7 +1088,9 @@ const ENERGY_MOBILE_MAP_LAYERS: MapLayers = {
 // UNIFIED PANEL REGISTRY
 // ============================================
 
-const VARIANT_PANEL_CONFIGS: Record<string, Record<string, PanelConfig>> = {
+type PanelVariant = 'full' | 'tech' | 'finance' | 'commodity' | 'energy' | 'happy';
+
+const VARIANT_PANEL_CONFIGS: Record<PanelVariant, Record<string, PanelConfig>> = {
   full: FULL_PANELS,
   tech: TECH_PANELS,
   finance: FINANCE_PANELS,
@@ -1096,6 +1098,12 @@ const VARIANT_PANEL_CONFIGS: Record<string, Record<string, PanelConfig>> = {
   energy: ENERGY_PANELS,
   happy: HAPPY_PANELS,
 };
+
+function getVariantPanelConfigs(variant: string): Record<string, PanelConfig> | undefined {
+  return Object.prototype.hasOwnProperty.call(VARIANT_PANEL_CONFIGS, variant)
+    ? VARIANT_PANEL_CONFIGS[variant as PanelVariant]
+    : undefined;
+}
 
 /** All panels from all variants — canonical cross-variant registry. */
 export const ALL_PANELS: Record<string, PanelConfig> = {
@@ -1109,12 +1117,12 @@ export const ALL_PANELS: Record<string, PanelConfig> = {
 
 /** Per-variant canonical panel order (keys = which panels are enabled by default). */
 export const VARIANT_DEFAULTS: Record<string, string[]> = {
-  full:      Object.keys(FULL_PANELS),
-  tech:      Object.keys(TECH_PANELS),
-  finance:   Object.keys(FINANCE_PANELS),
-  commodity: Object.keys(COMMODITY_PANELS),
-  energy:    Object.keys(ENERGY_PANELS),
-  happy:     Object.keys(HAPPY_PANELS),
+  full:      Object.keys(VARIANT_PANEL_CONFIGS.full),
+  tech:      Object.keys(VARIANT_PANEL_CONFIGS.tech),
+  finance:   Object.keys(VARIANT_PANEL_CONFIGS.finance),
+  commodity: Object.keys(VARIANT_PANEL_CONFIGS.commodity),
+  energy:    Object.keys(VARIANT_PANEL_CONFIGS.energy),
+  happy:     Object.keys(VARIANT_PANEL_CONFIGS.happy),
 };
 
 /**
@@ -1152,7 +1160,7 @@ export const VARIANT_PANEL_OVERRIDES: Partial<Record<string, Partial<Record<stri
  * applying variant-specific display overrides (name, premium, etc.).
  */
 export function getEffectivePanelConfig(key: string, variant: string): PanelConfig {
-  const base = VARIANT_PANEL_CONFIGS[variant]?.[key] ?? ALL_PANELS[key];
+  const base = getVariantPanelConfigs(variant)?.[key] ?? ALL_PANELS[key];
   if (!base) return { name: key, enabled: false, priority: 2 };
   const override = VARIANT_PANEL_OVERRIDES[variant]?.[key] ?? {};
   return { ...base, ...override };

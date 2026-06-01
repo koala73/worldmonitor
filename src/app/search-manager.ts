@@ -765,6 +765,8 @@ export class SearchManager implements AppModule {
     );
     this.ctx.searchModal.setAvailablePanels(
       Object.keys(this.ctx.panelSettings).filter((k) => {
+        // Keep unregistered/dynamic keys out of search; the resolver would
+        // otherwise return a disabled synthetic fallback for unknown keys.
         const cfg = ALL_PANELS[k] ? getEffectivePanelConfig(k, SITE_VARIANT) : undefined;
         return cfg ? isPanelEntitled(k, cfg, isPro) : false;
       })

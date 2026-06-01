@@ -55,6 +55,8 @@ export function initSettingsWindow(): void {
     const panelHtml = panelEntries
       .map(
         ([key, panel]) => {
+          // Preserve saved config for dynamic cw-* panels; unknown keys should
+          // not collapse to getEffectivePanelConfig's disabled synthetic fallback.
           const resolvedPanel = ALL_PANELS[key] ? getEffectivePanelConfig(key, SITE_VARIANT) : panel;
           return `
         <div class="panel-toggle-item ${panel.enabled ? 'active' : ''}" data-panel="${escapeHtml(key)}">
@@ -74,6 +76,8 @@ export function initSettingsWindow(): void {
           const panelKey = (item as HTMLElement).dataset.panel!;
           const config = panelSettings[panelKey];
           if (config) {
+            // Preserve saved config for dynamic cw-* panels; unknown keys should
+            // not collapse to getEffectivePanelConfig's disabled synthetic fallback.
             const resolvedConfig = ALL_PANELS[panelKey] ? getEffectivePanelConfig(panelKey, SITE_VARIANT) : config;
             if (!config.enabled && !isPanelEntitled(panelKey, resolvedConfig, isProUser())) return;
             if (!config.enabled && !isProUser()) {

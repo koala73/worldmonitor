@@ -33,6 +33,21 @@ describe('variant panel config resolution', () => {
     );
   });
 
+  it('does not inherit full desktop premium metadata for variant-specific supply-chain panels', () => {
+    const panels = src('src/config/panels.ts');
+    const definitionFor = (variant: string): string => {
+      const match = panels.match(new RegExp(`const ${variant}_PANELS[\\s\\S]*?'supply-chain': \\{([^}]*)\\}`));
+      assert.ok(match, `${variant}_PANELS must define supply-chain`);
+      return match[1] ?? '';
+    };
+
+    assert.match(definitionFor('FULL'), /premium:\s*'enhanced'/);
+    assert.doesNotMatch(definitionFor('COMMODITY'), /premium:/);
+    assert.doesNotMatch(definitionFor('ENERGY'), /premium:/);
+    assert.equal(getEffectivePanelConfig('supply-chain', 'commodity').premium, undefined);
+    assert.equal(getEffectivePanelConfig('supply-chain', 'energy').premium, undefined);
+  });
+
   it('still falls back to the cross-variant registry for panels outside a variant default set', () => {
     const forecast = getEffectivePanelConfig('forecast', 'happy');
 
