@@ -50,15 +50,28 @@ describe('mergeObservedFirstSeen (#4008)', () => {
     assert.deepEqual(Object.keys(nextMap), ['ip:a'], 'absent indicators are dropped, bounding map size');
   });
 
-  it('unifies first-seen across sources for the same indicator (min wins)', () => {
+  it('unifies first-seen across sources for the same indicator (dated row first)', () => {
     const threats = [
       { indicatorType: 'ip', indicator: '9.9.9.9', firstSeen: NOW - 2 * DAY }, // urlhaus
       { indicatorType: 'ip', indicator: '9.9.9.9', firstSeen: 0 },             // abuseipdb (no date)
     ];
     const { threats: out, nextMap } = mergeObservedFirstSeen(threats, {}, NOW);
     assert.equal(nextMap['ip:9.9.9.9'], NOW - 2 * DAY, 'shared indicator keeps the earliest observation');
-    // the upstream-less duplicate still gets a concrete (non-zero) stamp
-    assert.ok(out[1].firstSeen > 0, 'no record is left at firstSeen=0');
+    assert.equal(out[0].firstSeen, NOW - 2 * DAY);
+    assert.equal(out[1].firstSeen, NOW - 2 * DAY, 'both occurrences share one first-seen, even on first run');
+  });
+
+  it('unifies first-seen across sources regardless of row order (dated row second)', () => {
+    // Regression for the single-pass order bug: the dated row appears AFTER the
+    // undated one, so a one-pass merge would finalize out[0] to nowMs first.
+    const threats = [
+      { indicatorType: 'ip', indicator: '9.9.9.9', firstSeen: 0 },             // abuseipdb (no date)
+      { indicatorType: 'ip', indicator: '9.9.9.9', firstSeen: NOW - 2 * DAY }, // urlhaus
+    ];
+    const { threats: out, nextMap } = mergeObservedFirstSeen(threats, {}, NOW);
+    assert.equal(nextMap['ip:9.9.9.9'], NOW - 2 * DAY);
+    assert.equal(out[0].firstSeen, NOW - 2 * DAY, 'undated row adopts the dated sibling, not nowMs');
+    assert.equal(out[1].firstSeen, NOW - 2 * DAY);
   });
 
   it('treats invalid/zero prior entries as missing', () => {

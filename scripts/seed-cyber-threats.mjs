@@ -524,23 +524,34 @@ function dedupeThreats(threats) {
   return Array.from(map.values());
 }
 
-// Issue #4008 — pure merge of WorldMonitor-observed first-seen. For each threat:
-// prefer a real upstream discovery date; else carry forward the earliest time we
-// previously observed the indicator; else stamp `nowMs` (first sighting). Mutates
-// each threat's `firstSeen` in place and returns the next persisted map, rebuilt
-// from only the indicators present this run (self-pruning). Keyed by indicator
-// identity (`indicatorType:indicator`) so the same IOC seen via multiple sources
-// shares one first-seen. Pure (no I/O) so it is unit-testable.
+// Issue #4008 — pure merge of WorldMonitor-observed first-seen. Resolves one
+// canonical first-seen per indicator = min(every upstream date present this run,
+// the prior persisted value); if no real date exists anywhere, stamps `nowMs`
+// (first sighting). Two passes so the value is order-independent: every
+// occurrence of the same IOC (e.g. seen via URLhaus + AbuseIPDB in one run) gets
+// the SAME firstSeen even on the first run, regardless of which source's row
+// comes first. Mutates each threat's `firstSeen` in place and returns the next
+// persisted map, rebuilt from only the indicators present this run (self-pruning).
+// Keyed by indicator identity (`indicatorType:indicator`). Pure (no I/O) so it is
+// unit-testable.
 export function mergeObservedFirstSeen(threats, priorMap, nowMs) {
   const prior = priorMap && typeof priorMap === 'object' ? priorMap : {};
   const next = {};
+  // Pass 1: fold the earliest *real* (>0) date across all occurrences + prior.
+  // Keys with no real date anywhere are recorded as 0 (resolved to nowMs below).
   for (const t of threats) {
     const key = `${t.indicatorType}:${t.indicator}`;
     const upstream = Number(t.firstSeen) > 0 ? Number(t.firstSeen) : 0;
     const stored = Number(prior[key]) > 0 ? Number(prior[key]) : 0;
-    const firstSeen = upstream && stored ? Math.min(upstream, stored) : (upstream || stored || nowMs);
-    t.firstSeen = firstSeen;
-    next[key] = next[key] ? Math.min(next[key], firstSeen) : firstSeen;
+    const candidates = [upstream, stored, next[key]].filter((v) => Number(v) > 0);
+    next[key] = candidates.length ? Math.min(...candidates) : (next[key] ?? 0);
+  }
+  // Pass 2: any key still without a real date is a first sighting → nowMs; then
+  // assign the resolved value to every occurrence so the snapshot is consistent.
+  for (const t of threats) {
+    const key = `${t.indicatorType}:${t.indicator}`;
+    if (!(Number(next[key]) > 0)) next[key] = nowMs;
+    t.firstSeen = next[key];
   }
   return { threats, nextMap: next };
 }
