@@ -7,6 +7,7 @@ import {
   releaseLock,
   writeFreshnessMetadata,
 } from './_seed-utils.mjs';
+import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import {
   DRAWS,
   RESILIENCE_INTERVAL_KEY_PREFIX as INTERVAL_KEY_PREFIX,
@@ -26,6 +27,7 @@ const WM_KEY = process.env.WORLDMONITOR_API_KEY
 const SEED_UA = 'Mozilla/5.0 (compatible; WorldMonitor-Seed/1.0)';
 
 const INTERVAL_TTL_SECONDS = 7 * 24 * 60 * 60;
+const RESILIENCE_SCORE_CACHE_PREFIX = 'resilience:score:v19:';
 export { computeIntervals };
 
 async function redisPipeline(url, token, commands) {
@@ -53,15 +55,6 @@ async function fetchRanking() {
   return resp.json();
 }
 
-async function fetchScore(countryCode) {
-  const headers = { 'User-Agent': SEED_UA, Accept: 'application/json' };
-  if (WM_KEY) headers['X-WorldMonitor-Key'] = WM_KEY;
-  const url = `${API_BASE}/api/resilience/v1/get-resilience-score?countryCode=${countryCode}`;
-  const resp = await fetch(url, { headers, signal: AbortSignal.timeout(30_000) });
-  if (!resp.ok) throw new Error(`Score endpoint returned HTTP ${resp.status} for ${countryCode}`);
-  return resp.json();
-}
-
 async function seedResilienceIntervals() {
   const { url, token } = getRedisCredentials();
 
@@ -79,30 +72,36 @@ async function seedResilienceIntervals() {
       return { skipped: true, reason: 'empty_ranking' };
     }
 
-    const BATCH = 10;
     let computed = 0;
+    let cachedScores = 0;
     const commands = [];
     const diagnostics = createIntervalDiagnostics();
+    const countryCodes = allItems
+      .map((item) => String(item?.countryCode || '').trim().toUpperCase())
+      .filter((countryCode) => /^[A-Z]{2}$/.test(countryCode));
+    const scoreResults = await redisPipeline(
+      url,
+      token,
+      countryCodes.map((countryCode) => ['GET', `${RESILIENCE_SCORE_CACHE_PREFIX}${countryCode}`]),
+    );
 
-    for (let i = 0; i < allItems.length; i += BATCH) {
-      const batch = allItems.slice(i, i + BATCH);
-      const results = await Promise.allSettled(
-        batch.map((item) => fetchScore(item.countryCode)),
-      );
-
-      for (let j = 0; j < results.length; j++) {
-        const result = results[j];
-        if (result.status !== 'fulfilled') {
-          console.warn(`[resilience-intervals] Failed ${batch[j].countryCode}: ${result.reason?.message}`);
-          continue;
-        }
-        const scoreData = result.value;
-        const payload = buildScoreIntervalPayload(scoreData, { draws: DRAWS, diagnostics });
+    for (let i = 0; i < countryCodes.length; i++) {
+      const raw = scoreResults[i]?.result ?? null;
+      if (!raw || raw === 'null') continue;
+      try {
+        const scoreData = unwrapEnvelope(JSON.parse(raw)).data;
+        cachedScores++;
+        const payload = buildScoreIntervalPayload(scoreData, {
+          draws: DRAWS,
+          diagnostics,
+        });
         if (!payload) continue;
 
-        const key = `${INTERVAL_KEY_PREFIX}${scoreData.countryCode}`;
+        const key = `${INTERVAL_KEY_PREFIX}${countryCodes[i]}`;
         commands.push(['SET', key, JSON.stringify(payload), 'EX', INTERVAL_TTL_SECONDS]);
         computed++;
+      } catch {
+        // Ignore malformed cache entries; they will be rewritten by the score warmer.
       }
     }
 
@@ -119,8 +118,14 @@ async function seedResilienceIntervals() {
         `(maxDelta=${diagnostics.activeScoreClampMaxDelta}; samples=${JSON.stringify(diagnostics.activeScoreClampSamples)})`,
       );
     }
+    if (diagnostics.formulaSkipCount > 0) {
+      console.warn(
+        `[resilience-intervals] Skipped ${diagnostics.formulaSkipCount} interval payloads with missing/ambiguous formula tags ` +
+        `(samples=${JSON.stringify(diagnostics.formulaSkipSamples)})`,
+      );
+    }
 
-    console.log(`[resilience-intervals] Wrote ${computed}/${allItems.length} intervals`);
+    console.log(`[resilience-intervals] Wrote ${computed}/${allItems.length} intervals (${cachedScores} cached score payloads read)`);
     return {
       skipped: false,
       recordCount: computed,

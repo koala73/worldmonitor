@@ -56,17 +56,13 @@ export function createIntervalDiagnostics() {
     activeScoreClampCount: 0,
     activeScoreClampMaxDelta: 0,
     activeScoreClampSamples: [],
+    formulaSkipCount: 0,
+    formulaSkipSamples: [],
   };
 }
 
 function normalizeFormula(value) {
   return value === 'pc' || value === 'd6' ? value : null;
-}
-
-export function currentEnvFormula() {
-  const pillarCombine = (process.env.RESILIENCE_PILLAR_COMBINE_ENABLED ?? 'false').toLowerCase() === 'true';
-  const schemaV2 = (process.env.RESILIENCE_SCHEMA_V2_ENABLED ?? 'true').toLowerCase() === 'true';
-  return pillarCombine && schemaV2 ? 'pc' : 'd6';
 }
 
 function recordActiveScoreClamp(options, before, after, activeScore) {
@@ -89,6 +85,20 @@ function recordActiveScoreClamp(options, before, after, activeScore) {
       before,
       after,
       delta: round(delta, 4),
+    });
+  }
+}
+
+function recordFormulaSkip(options, reason, scoreData) {
+  const diagnostics = options?.diagnostics;
+  if (!diagnostics || typeof diagnostics !== 'object') return;
+
+  diagnostics.formulaSkipCount = (Number(diagnostics.formulaSkipCount) || 0) + 1;
+  if (Array.isArray(diagnostics.formulaSkipSamples) && diagnostics.formulaSkipSamples.length < 5) {
+    diagnostics.formulaSkipSamples.push({
+      countryCode: typeof scoreData?.countryCode === 'string' ? scoreData.countryCode : undefined,
+      formula: typeof scoreData?._formula === 'string' ? scoreData._formula : undefined,
+      reason,
     });
   }
 }
@@ -191,9 +201,8 @@ export function inferScoreFormula(scoreData, options = {}) {
   const cached = normalizeFormula(scoreData?._formula);
   if (cached) return cached;
 
-  const fallback = normalizeFormula(options.fallbackFormula) ?? currentEnvFormula();
   const overallScore = Number(scoreData?.overallScore);
-  if (!Number.isFinite(overallScore)) return fallback;
+  if (!Number.isFinite(overallScore)) return null;
 
   const domains = options.domains ?? extractDomains(scoreData);
   const pillars = options.pillars ?? extractPillars(scoreData);
@@ -209,12 +218,7 @@ export function inferScoreFormula(scoreData, options = {}) {
     if (pcDiff + 0.05 < d6Diff) return 'pc';
     if (d6Diff + 0.05 < pcDiff) return 'd6';
   }
-  // Ambiguous d6 ~= pc ties intentionally fall back to the active seed env.
-  // Railway seeders must keep RESILIENCE_PILLAR_COMBINE_ENABLED and
-  // RESILIENCE_SCHEMA_V2_ENABLED aligned with the server rollout flags;
-  // otherwise an untagged score payload that fits both formulas closely
-  // can only be resolved by those env flags.
-  return fallback;
+  return null;
 }
 
 export function buildScoreIntervalPayload(scoreData, options = {}) {
@@ -224,7 +228,21 @@ export function buildScoreIntervalPayload(scoreData, options = {}) {
 
   const domains = extractDomains(scoreData);
   const pillars = extractPillars(scoreData);
-  const formula = inferScoreFormula(scoreData, { ...options, domains, pillars });
+  const taggedFormula = normalizeFormula(scoreData?._formula);
+  const hasFormulaTag = scoreData != null && Object.prototype.hasOwnProperty.call(scoreData, '_formula');
+  const formula = taggedFormula
+    ?? (!hasFormulaTag && options.allowLegacyFormulaInference
+        ? inferScoreFormula(scoreData, { ...options, domains, pillars })
+        : null);
+  if (!formula) {
+    const reason = hasFormulaTag
+      ? 'invalid_formula'
+      : options.allowLegacyFormulaInference
+        ? 'legacy_formula_unresolved'
+        : 'missing_formula';
+    recordFormulaSkip(options, reason, scoreData);
+    return null;
+  }
 
   const interval = formula === 'pc'
     ? (pillars.length > 0

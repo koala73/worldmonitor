@@ -85,6 +85,7 @@ describe('resilience cache-key health-registry sync (T1.9)', () => {
   describe('cache-prefix mirror parity — every declared literal site', () => {
     const SCORE_MIRROR_FILES = [
       'scripts/seed-resilience-scores.mjs',
+      'scripts/seed-resilience-intervals.mjs',
       'scripts/validate-resilience-correlation.mjs',
       'scripts/backtest-resilience-outcomes.mjs',
       'scripts/validate-resilience-backtest.mjs',

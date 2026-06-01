@@ -106,6 +106,13 @@ async function computeAndWriteIntervals(url, token, countryCodes, pipelineResult
     } catch { /* skip malformed */ }
   }
 
+  if (diagnostics.formulaSkipCount > 0) {
+    console.warn(
+      `[resilience-scores] Skipped ${diagnostics.formulaSkipCount} interval payloads with missing/ambiguous formula tags ` +
+      `(samples=${JSON.stringify(diagnostics.formulaSkipSamples)})`,
+    );
+  }
+
   if (commands.length === 0) {
     console.log('[resilience-scores] No domain data available for intervals');
     return { recordCount: 0, diagnostics };

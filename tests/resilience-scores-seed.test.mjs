@@ -138,6 +138,16 @@ describe('script is self-contained .mjs', () => {
     assert.match(src, /intervalClampCount/);
     assert.match(src, /activeScoreClampMaxDelta/);
   });
+
+  it('alerts when cached score payloads lack usable interval formula tags', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const { dirname, join } = await import('node:path');
+    const dir = dirname(fileURLToPath(import.meta.url));
+    const src = readFileSync(join(dir, '..', 'scripts', 'seed-resilience-scores.mjs'), 'utf8');
+    assert.match(src, /formulaSkipCount/);
+    assert.match(src, /missing\/ambiguous formula tags/);
+  });
 });
 
 describe('ensures ranking aggregate is present every cron, with truthful meta', () => {
