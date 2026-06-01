@@ -100,6 +100,43 @@ test('classifyKey: empty on-demand standalone key → EMPTY_ON_DEMAND (warn)', (
   assert.equal(STATUS_COUNTS[entry.status], 'warn');
 });
 
+test('classifyKey: suppressed retailer-spread (present key, 0 records) while fresh → OK, not EMPTY_DATA', () => {
+  // The consumer-prices aggregate job writes retailer_spread_pct: 0 ("spread
+  // suppressed (N/4 common items)") when a market's retailers share < 4 common
+  // basket items — a valid data-coverage state, not an outage. The key exists
+  // (296-byte payload → hasData=true) with metaCount=0, so without the
+  // EMPTY_DATA_OK_KEYS exemption it would wrongly classify EMPTY_DATA (crit) and
+  // tip /api/health to DEGRADED. Fresh seed-meta → OK.
+  const entry = classifyKey('consumerPricesSpread', BOOTSTRAP_KEYS.consumerPricesSpread,
+    { allowOnDemand: false },
+    makeCtx({
+      strens: { [BOOTSTRAP_KEYS.consumerPricesSpread]: 296 },
+      metaValues: {
+        'seed-meta:consumer-prices:retailer-spread:ae:essentials-ae':
+          seedMeta({ recordCount: 0 }),
+      },
+    }));
+  assert.equal(entry.status, 'OK');
+  assert.equal(STATUS_COUNTS[entry.status], 'ok');
+});
+
+test('classifyKey: suppressed retailer-spread that goes STALE still warns (publish job stopped)', () => {
+  // The EMPTY_DATA_OK exemption must NOT mask a genuine publish-job outage:
+  // once seed-meta age exceeds maxStaleMin (1500), 0 records degrades to
+  // STALE_SEED (warn), not silent OK.
+  const entry = classifyKey('consumerPricesSpread', BOOTSTRAP_KEYS.consumerPricesSpread,
+    { allowOnDemand: false },
+    makeCtx({
+      strens: { [BOOTSTRAP_KEYS.consumerPricesSpread]: 296 },
+      metaValues: {
+        'seed-meta:consumer-prices:retailer-spread:ae:essentials-ae':
+          seedMeta({ recordCount: 0, fetchedAt: NOW - 2000 * ONE_MIN_MS }),
+      },
+    }));
+  assert.equal(entry.status, 'STALE_SEED');
+  assert.equal(STATUS_COUNTS[entry.status], 'warn');
+});
+
 // ── cascade coverage (proactive, via isCascadeCovered) ──────────────────────
 
 test('cascade: empty theaterPostureLive with data in a sibling → OK_CASCADE (no crit/warn leak)', () => {

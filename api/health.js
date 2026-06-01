@@ -529,6 +529,17 @@ const EMPTY_DATA_OK_KEYS = new Set([
   'earningsCalendar', 'econCalendar', 'cotPositioning',
   'usniFleet', // usniFleetStale covers the fallback; relay outages → WARN not CRIT
   'newsThreatSummary', // only written when classify produces country matches; quiet news periods = 0 countries, no write
+  // retailer-spread is SUPPRESSED to an explicit 0 by the aggregate job when a
+  // market's retailers share < MIN_SPREAD_ITEMS (4) common basket items —
+  // consumer-prices-core/src/jobs/aggregate.ts writes `retailer_spread_pct: 0`
+  // ("prevent stale noisy value persisting") and logs "spread suppressed
+  // (N/4 common items)". That is a valid data-coverage state, not a pipeline
+  // outage: the AE basket's cross-retailer overlap shrank 2/4 → 1/4 → 0/4 over
+  // late-May 2026 while the seeder kept running fresh (seedAgeMin well inside
+  // maxStaleMin) and the sibling keys (overview/categories/movers/basket-series)
+  // published normally. Treat 0 records as OK while fresh; STALE_SEED still
+  // fires if the publish job itself stops. Same shape as newsThreatSummary above.
+  'consumerPricesSpread',
   'recoveryFiscalSpace',
   'ddosAttacks', 'trafficAnomalies', // zero events during quiet periods is valid, not critical
   'resilienceStaticFao', // empty aggregate = no IPC Phase 3+ countries this year (possible in theory); the key must exist but count=0 is fine
