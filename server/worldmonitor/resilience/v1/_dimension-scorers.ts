@@ -4,7 +4,11 @@ import { normalizeCountryToken } from '../../../_shared/country-token';
 import { getCachedJson } from '../../../_shared/redis';
 import { classifyDimensionFreshness, readFreshnessMap, resolveSeedMetaKey } from './_dimension-freshness';
 import { getLanguageCoverageFactor } from './_language-coverage';
-import { failedDimensionsFromDatasets, readFailedDatasets } from './_source-failure';
+import {
+  failedDimensionsFromDatasets,
+  readFailedDatasets,
+  readStandaloneSourceFailureDimensions,
+} from './_source-failure';
 
 export type ResilienceDimensionId =
   | 'macroFiscal'
@@ -2614,7 +2618,7 @@ export async function scoreAllDimensions(
   reader: ResilienceSeedReader = defaultSeedReader,
 ): Promise<Record<ResilienceDimensionId, ResilienceDimensionScore>> {
   const memoizedReader = createMemoizedSeedReader(reader);
-  const [entries, freshnessMap, failedDatasets] = await Promise.all([
+  const [entries, freshnessMap, failedDatasets, standaloneFailures] = await Promise.all([
     Promise.all(
       RESILIENCE_DIMENSION_ORDER.map(async (dimensionId) => {
         try {
@@ -2659,6 +2663,7 @@ export async function scoreAllDimensions(
     // with the scorer keys in practice, the shared reader is cheap).
     readFreshnessMap(memoizedReader),
     readFailedDatasets(memoizedReader),
+    readStandaloneSourceFailureDimensions(memoizedReader),
   ]);
   const scores = Object.fromEntries(entries) as Record<ResilienceDimensionId, ResilienceDimensionScore>;
 
@@ -2673,32 +2678,38 @@ export async function scoreAllDimensions(
     };
   }
 
-  // T1.7 source-failure wiring. When the resilience-static seed reports
-  // failed adapter fetches in its meta, any dimension that consumes that
-  // adapter AND is already imputed (observedWeight === 0, imputationClass
-  // non-null) gets re-tagged from the table default (stable-absence /
-  // unmonitored) to source-failure. Real-data dimensions are untouched:
-  // a seed adapter failing does not invalidate a country that was served
-  // from the prior-snapshot recovery path.
-  if (failedDatasets.length > 0) {
-    const affected = failedDimensionsFromDatasets(failedDatasets);
-    if (affected.size > 0) {
-      // Single info log per request so ops can see which adapters went
-      // down without having to dump Redis. The country code is included
-      // because scoreAllDimensions runs per-country; a flood of these
-      // during a failed-seed window is the expected signal.
-      console.info(
-        `[Resilience] source-failure decoration country=${countryCode} failedDatasets=${failedDatasets.join(',')} affectedDimensions=${[...affected].join(',')}`,
-      );
-      for (const dimId of affected) {
-        const current = scores[dimId];
-        // Only re-tag imputed dimensions. Dimensions with any observed
-        // weight keep their existing null class (which is the correct
-        // semantics: the seed failing did not prevent us from producing
-        // a real-data score for this country).
-        if (current != null && current.imputationClass != null) {
-          scores[dimId] = { ...current, imputationClass: 'source-failure' };
-        }
+  // T1.7 source-failure wiring. Static adapter failures come from
+  // seed-meta:resilience:static.failedDatasets; standalone seeders come
+  // from their own seed-meta status/freshness via the registry meta-key
+  // resolver. Any affected dimension that is already fully imputed gets
+  // re-tagged from the table default (stable-absence / unmonitored) to
+  // source-failure. Real-data and not-applicable dimensions are untouched:
+  // a seed failing does not invalidate a country that was served from prior
+  // snapshot data or a structural non-applicability path.
+  const affected = failedDimensionsFromDatasets(failedDatasets);
+  for (const dimId of standaloneFailures.dimensions) {
+    affected.add(dimId);
+  }
+  if (affected.size > 0) {
+    // Single info log per request so ops can see which sources went down
+    // without having to dump Redis. The country code is included because
+    // scoreAllDimensions runs per-country; a flood of these during a failed
+    // seed window is the expected signal.
+    console.info(
+      `[Resilience] source-failure decoration country=${countryCode} failedDatasets=${failedDatasets.join(',')} failedMetaKeys=${standaloneFailures.failedMetaKeys.join(',')} affectedDimensions=${[...affected].join(',')}`,
+    );
+    for (const dimId of affected) {
+      const current = scores[dimId];
+      // Only re-tag fully imputed dimensions. Dimensions with any observed
+      // weight keep their existing null class, and structural
+      // not-applicable paths keep imputedWeight=0.
+      if (
+        current != null
+        && current.imputationClass != null
+        && current.observedWeight === 0
+        && current.imputedWeight > 0
+      ) {
+        scores[dimId] = { ...current, imputationClass: 'source-failure' };
       }
     }
   }

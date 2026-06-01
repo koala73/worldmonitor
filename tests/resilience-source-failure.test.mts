@@ -4,10 +4,14 @@ import { describe, it } from 'node:test';
 import {
   DATASET_TO_DIMENSIONS,
   RESILIENCE_STATIC_META_KEY,
+  STANDALONE_SOURCE_META_MAX_STALE_MIN,
   failedDimensionsFromDatasets,
+  readStandaloneSourceFailureDimensions,
   readFailedDatasets,
 } from '../server/worldmonitor/resilience/v1/_source-failure.ts';
-import type { ResilienceDimensionId } from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
+import { RESILIENCE_DIMENSION_ORDER } from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
+
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 // Adapter keys enumerated in scripts/seed-resilience-static.mjs
 // `fetchAllDatasetMaps()`. Every adapter that can end up in the
@@ -111,6 +115,70 @@ describe('resilience source-failure module', () => {
     });
   });
 
+  describe('readStandaloneSourceFailureDimensions', () => {
+    it('maps stale standalone recovery seed-meta to affected dimensions', async () => {
+      const nowMs = 1_700_000_000_000;
+      const reader = async (key: string): Promise<unknown | null> => {
+        if (key === 'seed-meta:resilience:recovery:import-hhi') {
+          return { status: 'ok', fetchedAt: nowMs - 36 * DAY_MS, recordCount: 190 };
+        }
+        return null;
+      };
+
+      const result = await readStandaloneSourceFailureDimensions(reader, nowMs);
+
+      assert.equal(result.dimensions.has('importConcentration'), true);
+      assert.deepEqual(result.failedMetaKeys, ['seed-meta:resilience:recovery:import-hhi']);
+    });
+
+    it('uses seeder freshness thresholds rather than annual source-data cadence', async () => {
+      const nowMs = 1_700_000_000_000;
+      const reader = async (key: string): Promise<unknown | null> => {
+        if (key === 'seed-meta:resilience:recovery:import-hhi') {
+          return { status: 'ok', fetchedAt: nowMs - 34 * DAY_MS, recordCount: 190 };
+        }
+        return null;
+      };
+
+      const result = await readStandaloneSourceFailureDimensions(reader, nowMs);
+
+      assert.equal(
+        STANDALONE_SOURCE_META_MAX_STALE_MIN['seed-meta:resilience:recovery:import-hhi'],
+        50400,
+      );
+      assert.equal(result.dimensions.has('importConcentration'), false);
+      assert.deepEqual(result.failedMetaKeys, []);
+    });
+
+    it('maps non-ok standalone seed-meta to affected dimensions even with a recent fetchedAt', async () => {
+      const reader = async (key: string): Promise<unknown | null> => {
+        if (key === 'seed-meta:resilience:recovery:external-debt') {
+          return { status: 'error', fetchedAt: 1_700_000_000_000, recordCount: 0 };
+        }
+        return null;
+      };
+
+      const result = await readStandaloneSourceFailureDimensions(reader, 1_700_000_000_000);
+
+      assert.equal(result.dimensions.has('externalDebtCoverage'), true);
+      assert.deepEqual(result.failedMetaKeys, ['seed-meta:resilience:recovery:external-debt']);
+    });
+
+    it('does not duplicate the static failedDatasets path', async () => {
+      const reader = async (key: string): Promise<unknown | null> => {
+        if (key === RESILIENCE_STATIC_META_KEY) {
+          return { status: 'error', fetchedAt: 1, failedDatasets: ['wgi'] };
+        }
+        return null;
+      };
+
+      const result = await readStandaloneSourceFailureDimensions(reader, 1_700_000_000_000);
+
+      assert.equal(result.dimensions.size, 0);
+      assert.deepEqual(result.failedMetaKeys, []);
+    });
+  });
+
   describe('DATASET_TO_DIMENSIONS coverage', () => {
     it('maps every adapter key declared by the static seed', () => {
       for (const adapter of SEED_ADAPTER_KEYS) {
@@ -126,27 +194,7 @@ describe('resilience source-failure module', () => {
     });
 
     it('only references valid ResilienceDimensionIds', () => {
-      const validIds: ReadonlySet<ResilienceDimensionId> = new Set([
-        'macroFiscal',
-        'currencyExternal',
-        'tradePolicy',
-        'cyberDigital',
-        'logisticsSupply',
-        'infrastructure',
-        'energy',
-        'governanceInstitutional',
-        'socialCohesion',
-        'borderSecurity',
-        'informationCognitive',
-        'healthPublicService',
-        'foodWater',
-        'fiscalSpace',
-        'reserveAdequacy',
-        'externalDebtCoverage',
-        'importConcentration',
-        'stateContinuity',
-        'fuelStockDays',
-      ]);
+      const validIds: ReadonlySet<string> = new Set(RESILIENCE_DIMENSION_ORDER);
       for (const [adapter, dims] of Object.entries(DATASET_TO_DIMENSIONS)) {
         for (const dim of dims) {
           assert.ok(
