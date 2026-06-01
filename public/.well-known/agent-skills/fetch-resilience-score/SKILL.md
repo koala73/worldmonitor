@@ -6,7 +6,7 @@ description: Retrieve the composite country resilience score (0-100) and its dom
 
 # fetch-resilience-score
 
-Use this skill when the user asks how "resilient" a country is, or wants the numeric resilience score, trend, or per-domain breakdown. The score is a composite of economic, institutional, security, social, infrastructure, and environmental indicators, recomputed daily.
+Use this skill when the user asks how "resilient" a country is, or wants the numeric resilience score, trend, or per-domain breakdown. The score is a composite of economic, infrastructure, energy, social-governance, health-food, and recovery domains, updated every 6 hours.
 
 ## Authentication — required
 
@@ -36,8 +36,8 @@ GET https://api.worldmonitor.app/api/resilience/v1/get-resilience-score
 {
   "countryCode": "DE",
   "overallScore": 78.4,
-  "level": "HIGH",
-  "trend": "STABLE",
+  "level": "high",
+  "trend": "stable",
   "change30d": -0.2,
   "lowConfidence": false,
   "imputationShare": 0.04,
@@ -45,19 +45,32 @@ GET https://api.worldmonitor.app/api/resilience/v1/get-resilience-score
   "stressScore": 78.4,
   "stressFactor": 0.99,
   "dataVersion": "2026-04-23",
-  "scoreInterval": { "lower": 76.1, "upper": 80.7 },
-  "domains": [ { "name": "Economic", "score": 82.1, "…": "…" } ],
-  "pillars": [ { "name": "Fiscal Capacity", "score": 80.0, "…": "…" } ]
+  "scoreInterval": { "p05": 76.1, "p95": 80.7 },
+  "schemaVersion": "2.0",
+  "headlineEligible": true,
+  "domains": [
+    { "id": "economic", "score": 82.1, "weight": 0.17, "dimensions": [] }
+  ],
+  "pillars": [
+    {
+      "id": "structural-readiness",
+      "score": 80.0,
+      "weight": 0.4,
+      "coverage": 0.92,
+      "domains": []
+    }
+  ]
 }
 ```
 
 Key fields for agents:
 
 - `overallScore` (0–100): headline number.
-- `level`: `LOW` / `MODERATE` / `HIGH` / `VERY_HIGH` — human-readable bucket.
+- `level`: `low` / `medium` / `high` — human-readable bucket.
 - `change30d`: rolling 30-day delta.
-- `scoreInterval`: `{lower, upper}` confidence band — quote this when the user asks for precision.
-- `domains` / `pillars`: drill-down components if the user asks "why".
+- `scoreInterval`: `{p05, p95}` confidence band — quote this when the user asks for precision.
+- `domains`: six domain components with IDs `economic`, `infrastructure`, `energy`, `social-governance`, `health-food`, and `recovery`.
+- `pillars`: three pillar components with IDs `structural-readiness`, `live-shock-exposure`, and `recovery-capacity`.
 
 ## Worked example
 

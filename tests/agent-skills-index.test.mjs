@@ -12,6 +12,26 @@ const ROOT = resolve(dirname(__filename), '..');
 const INDEX_PATH = join(ROOT, 'public/.well-known/agent-skills/index.json');
 const SKILLS_DIR = join(ROOT, 'public/.well-known/agent-skills');
 
+function readExportedStringArray(source, exportName) {
+  const match = source.match(new RegExp(`export const ${exportName}[^=]*= \\[([\\s\\S]*?)\\];`));
+  assert.ok(match, `missing exported array ${exportName}`);
+  return [...match[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+}
+
+function parseResponseShapeExample(markdown) {
+  const section = markdown.match(/## Response shape\b(?:(?!^##\s).)*?```json\s*([\s\S]*?)\s*```/ms);
+  assert.ok(section, 'fetch-resilience-score must have a JSON Response shape example');
+  assert.doesNotThrow(
+    () => JSON.parse(section[1]),
+    'Response shape JSON example must be valid JSON',
+  );
+  return JSON.parse(section[1]);
+}
+
+function assertType(value, type, fieldName) {
+  assert.equal(typeof value, type, `${fieldName} must be a ${type}`);
+}
+
 // Guards for the Agent Skills discovery manifest (#3310 / epic #3306).
 // Agents trust the index.json sha256 fields; if they drift from the
 // served SKILL.md bytes, every downstream verification check fails.
@@ -64,6 +84,83 @@ describe('agent readiness: agent-skills index', () => {
       .sort();
     const names = index.skills.map((s) => s.name).sort();
     assert.deepEqual(names, dirs, 'every skill directory must have an index entry');
+  });
+
+  it('fetch-resilience-score documents the generated score contract', () => {
+    const skill = readFileSync(
+      join(SKILLS_DIR, 'fetch-resilience-score', 'SKILL.md'),
+      'utf-8',
+    );
+    const example = parseResponseShapeExample(skill);
+
+    const scorer = readFileSync(
+      join(ROOT, 'server/worldmonitor/resilience/v1/_dimension-scorers.ts'),
+      'utf-8',
+    );
+    const pillars = readFileSync(
+      join(ROOT, 'server/worldmonitor/resilience/v1/_pillar-membership.ts'),
+      'utf-8',
+    );
+    const domainIds = readExportedStringArray(scorer, 'RESILIENCE_DOMAIN_ORDER');
+    const pillarIds = readExportedStringArray(pillars, 'PILLAR_ORDER');
+
+    assertType(example.countryCode, 'string', 'countryCode');
+    assertType(example.overallScore, 'number', 'overallScore');
+    assertType(example.level, 'string', 'level');
+    assertType(example.trend, 'string', 'trend');
+    assertType(example.change30d, 'number', 'change30d');
+    assertType(example.lowConfidence, 'boolean', 'lowConfidence');
+    assertType(example.imputationShare, 'number', 'imputationShare');
+    assertType(example.baselineScore, 'number', 'baselineScore');
+    assertType(example.stressScore, 'number', 'stressScore');
+    assertType(example.stressFactor, 'number', 'stressFactor');
+    assertType(example.dataVersion, 'string', 'dataVersion');
+    assertType(example.schemaVersion, 'string', 'schemaVersion');
+    assertType(example.headlineEligible, 'boolean', 'headlineEligible');
+    assert.ok(Array.isArray(example.domains), 'domains must be an array');
+    assert.ok(Array.isArray(example.pillars), 'pillars must be an array');
+    assert.ok(example.domains.length > 0, 'domains must include at least one example item');
+    assert.ok(example.pillars.length > 0, 'pillars must include at least one example item');
+
+    assert.ok(example.scoreInterval && typeof example.scoreInterval === 'object', 'scoreInterval must be an object');
+    assertType(example.scoreInterval.p05, 'number', 'scoreInterval.p05');
+    assertType(example.scoreInterval.p95, 'number', 'scoreInterval.p95');
+    assert.ok(!Object.hasOwn(example.scoreInterval, 'lower'), 'scoreInterval.lower is stale; use p05');
+    assert.ok(!Object.hasOwn(example.scoreInterval, 'upper'), 'scoreInterval.upper is stale; use p95');
+
+    assert.ok(['low', 'medium', 'high'].includes(example.level), `unexpected level ${example.level}`);
+    assert.ok(['rising', 'stable', 'falling'].includes(example.trend), `unexpected trend ${example.trend}`);
+    assert.equal(example.schemaVersion, '2.0');
+
+    for (const domain of example.domains) {
+      assertType(domain.id, 'string', 'domain.id');
+      assertType(domain.score, 'number', `domain ${domain.id}.score`);
+      assertType(domain.weight, 'number', `domain ${domain.id}.weight`);
+      assert.ok(Array.isArray(domain.dimensions), `domain ${domain.id}.dimensions must be an array`);
+      assert.ok(domainIds.includes(domain.id), `example domain id ${domain.id} must be current`);
+    }
+    for (const pillar of example.pillars) {
+      assertType(pillar.id, 'string', 'pillar.id');
+      assertType(pillar.score, 'number', `pillar ${pillar.id}.score`);
+      assertType(pillar.weight, 'number', `pillar ${pillar.id}.weight`);
+      assertType(pillar.coverage, 'number', `pillar ${pillar.id}.coverage`);
+      assert.ok(Array.isArray(pillar.domains), `pillar ${pillar.id}.domains must be an array`);
+      assert.ok(pillarIds.includes(pillar.id), `example pillar id ${pillar.id} must be current`);
+    }
+
+    assert.match(skill, /updated every 6 hours/);
+    assert.doesNotMatch(skill, /"scoreInterval": \{ "lower":/);
+    assert.doesNotMatch(skill, /"lower"\s*:/);
+    assert.doesNotMatch(skill, /"upper"\s*:/);
+    assert.doesNotMatch(skill, /LOW` \/ `MODERATE` \/ `HIGH`/);
+    assert.doesNotMatch(skill, /VERY_HIGH/);
+
+    for (const domainId of domainIds) {
+      assert.ok(skill.includes(`\`${domainId}\``), `missing domain id ${domainId}`);
+    }
+    for (const pillarId of pillarIds) {
+      assert.ok(skill.includes(`\`${pillarId}\``), `missing pillar id ${pillarId}`);
+    }
   });
 });
 
