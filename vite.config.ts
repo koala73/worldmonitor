@@ -565,6 +565,8 @@ const RSS_PROXY_ALLOWED_DOMAINS = new Set([
   'www.hurriyet.com.tr', 'tvn24.pl', 'www.polsatnews.pl', 'www.rp.pl', 'meduza.io',
   'novayagazeta.eu', 'www.bangkokpost.com', 'vnexpress.net', 'www.abc.net.au',
   'news.ycombinator.com',
+  // Hindi / India feeds
+  'www.aajtak.in', 'www.amarujala.com',
   // Hungarian / Central European feeds
   'telex.hu', 'index.hu', 'hvg.hu', '444.hu', '24.hu', 'hirado.hu', 'portfolio.hu', 'www.portfolio.hu', 'www.atv.hu',
   // Investigative journalism sources
