@@ -18,6 +18,8 @@
 //    `RESILIENCE_DOMAIN_ORDER` and `RESILIENCE_DIMENSION_ORDER − retired`.
 // 3. Each domain's weight in the Domains table matches
 //    `getResilienceDomainWeight(...)`.
+// 4. Generated Resilience OpenAPI prose still matches pillar weights
+//    and score formula semantics.
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -38,11 +40,18 @@ import {
   type ResilienceDomainId,
   getResilienceDomainWeight,
 } from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
+import {
+  PILLAR_ORDER,
+  PILLAR_WEIGHTS,
+} from '../server/worldmonitor/resilience/v1/_pillar-membership.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const DOC_PATH = resolve(here, '../docs/methodology/country-resilience-index.mdx');
 const DOCUMENTATION_PATH = resolve(here, '../docs/documentation.mdx');
 const FEATURES_PATH = resolve(here, '../docs/features.mdx');
+const RESILIENCE_OPENAPI_YAML_PATH = resolve(here, '../docs/api/ResilienceService.openapi.yaml');
+const RESILIENCE_OPENAPI_JSON_PATH = resolve(here, '../docs/api/ResilienceService.openapi.json');
+const BUNDLED_OPENAPI_YAML_PATH = resolve(here, '../docs/api/worldmonitor.openapi.yaml');
 const docText = readFileSync(DOC_PATH, 'utf8');
 const CURRENT_DIMENSION_COUNT_SURFACES = [
   { label: 'methodology doc', path: DOC_PATH, text: docText },
@@ -55,6 +64,23 @@ const CURRENT_DIMENSION_COUNT_SURFACES = [
     label: 'features page',
     path: FEATURES_PATH,
     text: readFileSync(FEATURES_PATH, 'utf8'),
+  },
+];
+const GENERATED_OPENAPI_SURFACES = [
+  {
+    label: 'ResilienceService OpenAPI YAML',
+    path: RESILIENCE_OPENAPI_YAML_PATH,
+    text: readFileSync(RESILIENCE_OPENAPI_YAML_PATH, 'utf8'),
+  },
+  {
+    label: 'ResilienceService OpenAPI JSON',
+    path: RESILIENCE_OPENAPI_JSON_PATH,
+    text: readFileSync(RESILIENCE_OPENAPI_JSON_PATH, 'utf8'),
+  },
+  {
+    label: 'bundled OpenAPI YAML',
+    path: BUNDLED_OPENAPI_YAML_PATH,
+    text: readFileSync(BUNDLED_OPENAPI_YAML_PATH, 'utf8'),
   },
 ];
 
@@ -203,6 +229,37 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
       `Domain weights must sum to 1.00, got ${sum.toFixed(4)}. The parity test above is built on this invariant.`,
     );
   });
+
+  it('generated OpenAPI pillar weight prose matches PILLAR_WEIGHTS and formula semantics', () => {
+    const expectedWeightList = PILLAR_ORDER
+      .map((id) => PILLAR_WEIGHTS[id].toFixed(2))
+      .join(' / ');
+    const expectedWeightDescription =
+      `Pillar weight in the pillar-combined score. Per the plan: ${expectedWeightList}.`;
+    const expectedScoreDescription =
+      'Pillar score in [0, 100], mean of member domains weighted by ' +
+      'domain.weight * average_dimension_coverage.';
+    const expectedPillarIdDescription = PILLAR_ORDER.map((id) => `"${id}"`).join(' | ') + '.';
+
+    for (const surface of GENERATED_OPENAPI_SURFACES) {
+      const normalized = normalizeWhitespace(surface.text);
+      assert.ok(
+        normalized.includes(expectedWeightDescription),
+        `${surface.label} (${surface.path}) must include current pillar weights ` +
+          `"${expectedWeightList}" from PILLAR_WEIGHTS.`,
+      );
+      assert.ok(
+        normalized.includes(expectedScoreDescription),
+        `${surface.label} (${surface.path}) must describe pillar score aggregation as ` +
+          '`domain.weight * average_dimension_coverage` so generated API docs stay in sync ' +
+          'with buildPillarList().',
+      );
+      assert.ok(
+        normalized.includes(expectedPillarIdDescription),
+        `${surface.label} (${surface.path}) must list pillar ids in PILLAR_ORDER.`,
+      );
+    }
+  });
 });
 
 function escapeRegex(s: string): string {
@@ -220,4 +277,8 @@ function findPlausibleCurrentTotalDimensionCounts(text: string, activeCount: num
       n >= PLAUSIBLE_CURRENT_TOTAL_MIN &&
       n <= PLAUSIBLE_CURRENT_TOTAL_MAX,
     );
+}
+
+function normalizeWhitespace(text: string): string {
+  return text.replace(/\\n/g, ' ').replace(/\\"/g, '"').replace(/\s+/g, ' ');
 }
