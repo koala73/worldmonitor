@@ -15,7 +15,9 @@ const SKILLS_DIR = join(ROOT, 'public/.well-known/agent-skills');
 function readExportedStringArray(source, exportName) {
   const match = source.match(new RegExp(`export const ${exportName}[^=]*= \\[([\\s\\S]*?)\\];`));
   assert.ok(match, `missing exported array ${exportName}`);
-  return [...match[1].matchAll(/'([^']+)'/g)].map((m) => m[1]);
+  const ids = [...match[1].matchAll(/['"]([^'"]+)['"]/g)].map((m) => m[1]);
+  assert.ok(ids.length > 0, `exported array ${exportName} contains no string literals`);
+  return ids;
 }
 
 function parseResponseShapeExample(markdown) {

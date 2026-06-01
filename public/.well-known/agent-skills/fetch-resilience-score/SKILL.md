@@ -67,6 +67,7 @@ Key fields for agents:
 
 - `overallScore` (0–100): headline number.
 - `level`: `low` / `medium` / `high` — human-readable bucket.
+- `trend`: `rising` / `stable` / `falling` — direction of the score over the past period.
 - `change30d`: rolling 30-day delta.
 - `scoreInterval`: `{p05, p95}` confidence band — quote this when the user asks for precision.
 - `domains`: six domain components with IDs `economic`, `infrastructure`, `energy`, `social-governance`, `health-food`, and `recovery`.

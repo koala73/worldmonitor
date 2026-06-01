@@ -13,7 +13,7 @@
       "type": "task",
       "description": "Retrieve the composite country resilience score (0-100) and its domain/pillar breakdown for a single country.",
       "url": "https://worldmonitor.app/.well-known/agent-skills/fetch-resilience-score/SKILL.md",
-      "sha256": "f1ce66288045891e8bca5fa8152e2ba6c66528e693ab540ceca6f9342f21a62a"
+      "sha256": "91aa9ddf809e83863e3c8b717f0478aa880e3d934e4a370c9a60122c5dbbcc58"
     }
   ]
 }
