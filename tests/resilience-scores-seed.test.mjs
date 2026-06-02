@@ -2,14 +2,44 @@ import { before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  createIntervalDiagnostics,
+} from '../scripts/_resilience-intervals.mjs';
+import {
   RESILIENCE_RANKING_CACHE_KEY,
   RESILIENCE_RANKING_CACHE_TTL_SECONDS,
   RESILIENCE_SCORE_SECTION_META_TTL_SECONDS,
   RESILIENCE_SCORE_CACHE_PREFIX,
   RESILIENCE_STATIC_INDEX_KEY,
+  buildIntervalPayloadFromCachedScore,
+  buildSeedResultLogExtra,
   computeIntervals,
+  getIntervalWriteFailure,
   parseCachedScorePayload,
 } from '../scripts/seed-resilience-scores.mjs';
+
+const D6_DOMAINS = [
+  { id: 'economic', score: 70, weight: 0.17 },
+  { id: 'infrastructure', score: 72, weight: 0.15 },
+  { id: 'energy', score: 68, weight: 0.11 },
+  { id: 'social-governance', score: 74, weight: 0.19 },
+  { id: 'health-food', score: 69, weight: 0.13 },
+  { id: 'recovery', score: 71, weight: 0.25 },
+];
+
+function withD6CacheFormula(fn) {
+  const originalCombine = process.env.RESILIENCE_PILLAR_COMBINE_ENABLED;
+  const originalSchema = process.env.RESILIENCE_SCHEMA_V2_ENABLED;
+  process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = 'false';
+  process.env.RESILIENCE_SCHEMA_V2_ENABLED = 'true';
+  try {
+    return fn();
+  } finally {
+    if (originalCombine == null) delete process.env.RESILIENCE_PILLAR_COMBINE_ENABLED;
+    else process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = originalCombine;
+    if (originalSchema == null) delete process.env.RESILIENCE_SCHEMA_V2_ENABLED;
+    else process.env.RESILIENCE_SCHEMA_V2_ENABLED = originalSchema;
+  }
+}
 
 describe('exported constants', () => {
   it('RESILIENCE_RANKING_CACHE_KEY matches the canonical resilience:ranking shape', () => {
@@ -99,6 +129,153 @@ describe('score cache payload validation', () => {
       if (originalSchema == null) delete process.env.RESILIENCE_SCHEMA_V2_ENABLED;
       else process.env.RESILIENCE_SCHEMA_V2_ENABLED = originalSchema;
     }
+  });
+});
+
+describe('interval seed health classification', () => {
+  it('does not fail interval health for an intentionally empty static index skip', () => {
+    assert.equal(getIntervalWriteFailure({ skipped: true, reason: 'no_index' }), null);
+  });
+
+  it('fails when current score cache stays missing or stale after warmup', () => {
+    const failure = getIntervalWriteFailure({
+      skipped: false,
+      total: 196,
+      recordCount: 0,
+      intervalsWritten: 0,
+      intervalMissingScorePayloadCount: 196,
+    });
+
+    assert.equal(failure?.reason, 'missing_score_cache');
+    assert.match(failure?.message ?? '', /wrote 0 interval keys for 196 rankable countries/);
+    assert.match(failure?.message ?? '', /cachedScores=0/);
+  });
+
+  it('fails with a stale-cache reason when score payloads have an old formula tag', () => {
+    const failure = getIntervalWriteFailure({
+      skipped: false,
+      total: 196,
+      recordCount: 0,
+      intervalsWritten: 0,
+      intervalStaleScorePayloadCount: 196,
+    });
+
+    assert.equal(failure?.reason, 'stale_score_cache');
+    assert.match(failure?.message ?? '', /staleScorePayloads=196/);
+  });
+
+  it('fails with a formula-specific reason when cached score payloads are unusable for intervals', () => {
+    const failure = getIntervalWriteFailure({
+      skipped: false,
+      total: 196,
+      recordCount: 196,
+      intervalsWritten: 0,
+      intervalFormulaSkipCount: 196,
+    });
+
+    assert.equal(failure?.reason, 'unusable_score_formula');
+  });
+
+  it('passes when at least one interval key is written', () => {
+    assert.equal(getIntervalWriteFailure({
+      skipped: false,
+      total: 196,
+      recordCount: 196,
+      intervalsWritten: 196,
+    }), null);
+  });
+});
+
+describe('cached score interval payload classification', () => {
+  it('records formula skips for score payloads missing formula tags', () => {
+    withD6CacheFormula(() => {
+      const diagnostics = createIntervalDiagnostics();
+      const payload = buildIntervalPayloadFromCachedScore(JSON.stringify({
+        countryCode: 'MS',
+        overallScore: 70,
+        domains: D6_DOMAINS,
+      }), 'MS', diagnostics);
+
+      assert.equal(payload, null);
+      assert.equal(diagnostics.formulaSkipCount, 1);
+      assert.deepEqual(diagnostics.formulaSkipSamples[0], {
+        countryCode: 'MS',
+        formula: undefined,
+        reason: 'missing_formula',
+      });
+      assert.equal(diagnostics.invalidScorePayloadCount, 0);
+    });
+  });
+
+  it('records stale score payloads separately from formula skips', () => {
+    withD6CacheFormula(() => {
+      const diagnostics = createIntervalDiagnostics();
+      const payload = buildIntervalPayloadFromCachedScore(JSON.stringify({
+        countryCode: 'ST',
+        _formula: 'pc',
+        overallScore: 70,
+        domains: D6_DOMAINS,
+      }), 'ST', diagnostics);
+
+      assert.equal(payload, null);
+      assert.equal(diagnostics.staleScorePayloadCount, 1);
+      assert.equal(diagnostics.formulaSkipCount, 0);
+      assert.deepEqual(diagnostics.staleScorePayloadSamples[0], {
+        countryCode: 'ST',
+        formula: 'pc',
+        expectedFormula: 'd6',
+      });
+    });
+  });
+
+  it('builds intervals for current tagged score payloads', () => {
+    withD6CacheFormula(() => {
+      const diagnostics = createIntervalDiagnostics();
+      const payload = buildIntervalPayloadFromCachedScore(JSON.stringify({
+        countryCode: 'OK',
+        _formula: 'd6',
+        overallScore: 70,
+        domains: D6_DOMAINS,
+      }), 'OK', diagnostics);
+
+      assert.ok(payload);
+      assert.equal(payload._formula, 'd6');
+      assert.equal(diagnostics.formulaSkipCount, 0);
+      assert.equal(diagnostics.staleScorePayloadCount, 0);
+      assert.equal(diagnostics.invalidScorePayloadCount, 0);
+    });
+  });
+});
+
+describe('seed result logging and exit classification', () => {
+  it('marks zero interval writes as an error and non-zero exit decision', () => {
+    const { extra, intervalFailure, exitCode } = buildSeedResultLogExtra({
+      skipped: false,
+      total: 196,
+      recordCount: 0,
+      intervalsWritten: 0,
+      intervalMissingScorePayloadCount: 196,
+    });
+
+    assert.equal(exitCode, 1);
+    assert.equal(intervalFailure?.reason, 'missing_score_cache');
+    assert.equal(extra.status, 'ERROR');
+    assert.equal(extra.intervalFailureReason, 'missing_score_cache');
+    assert.match(extra.error, /wrote 0 interval keys/);
+  });
+
+  it('keeps successful interval writes as normal seed-complete metadata', () => {
+    const { extra, intervalFailure, exitCode } = buildSeedResultLogExtra({
+      skipped: false,
+      total: 196,
+      recordCount: 196,
+      intervalsWritten: 196,
+    });
+
+    assert.equal(exitCode, 0);
+    assert.equal(intervalFailure, null);
+    assert.equal(extra.status, undefined);
+    assert.equal(extra.intervalsWritten, 196);
   });
 });
 
@@ -194,6 +371,20 @@ describe('script is self-contained .mjs', () => {
     assert.match(src, /intervalFormulaSkipSamples/);
   });
 
+  it('reports missing and malformed score payload diagnostics when interval writes are empty', async () => {
+    const { readFileSync } = await import('node:fs');
+    const { fileURLToPath } = await import('node:url');
+    const { dirname, join } = await import('node:path');
+    const dir = dirname(fileURLToPath(import.meta.url));
+    const src = readFileSync(join(dir, '..', 'scripts', 'seed-resilience-scores.mjs'), 'utf8');
+    assert.match(src, /missingScorePayloadCount/);
+    assert.match(src, /staleScorePayloadCount/);
+    assert.match(src, /invalidScorePayloadCount/);
+    assert.match(src, /malformedScorePayloadCount/);
+    assert.match(src, /intervalPayloadSkipCount/);
+    assert.match(src, /intervalFailureReason/);
+  });
+
   it('builds intervals only from tagged Redis score payloads', async () => {
     const { readFileSync } = await import('node:fs');
     const { fileURLToPath } = await import('node:url');
@@ -205,8 +396,7 @@ describe('script is self-contained .mjs', () => {
       src.indexOf('async function seedResilienceScores'),
     );
     assert.match(src, /\['GET', `\$\{RESILIENCE_SCORE_CACHE_PREFIX\}\$\{c\}`\]/);
-    assert.match(intervalWriter, /unwrapEnvelope\(JSON\.parse\(raw\)\)\.data/);
-    assert.match(intervalWriter, /buildScoreIntervalPayload\(score, \{ draws: DRAWS, diagnostics \}\)/);
+    assert.match(intervalWriter, /buildIntervalPayloadFromCachedScore\(raw, countryCode, diagnostics\)/);
     assert.doesNotMatch(intervalWriter, /get-resilience-score\?countryCode=/);
     assert.doesNotMatch(intervalWriter, /allowLegacyFormulaInference:\s*true/);
   });

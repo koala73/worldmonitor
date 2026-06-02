@@ -74,6 +74,17 @@ export const RESILIENCE_STATIC_INDEX_KEY = 'resilience:static:index:v1';
 const INTERVAL_TTL_SECONDS = 7 * 24 * 60 * 60;
 export { computeIntervals };
 
+function recordDiagnosticSample(diagnostics, sampleKey, countryCode, details = {}) {
+  const samples = diagnostics?.[sampleKey];
+  if (!Array.isArray(samples) || samples.length >= 5) return;
+  samples.push({ countryCode, ...details });
+}
+
+function recordDiagnosticCount(diagnostics, countKey, sampleKey, countryCode, details = {}) {
+  diagnostics[countKey] = (Number(diagnostics[countKey]) || 0) + 1;
+  recordDiagnosticSample(diagnostics, sampleKey, countryCode, details);
+}
+
 function currentCacheFormulaLocal() {
   const combine = (process.env.RESILIENCE_PILLAR_COMBINE_ENABLED ?? 'false').toLowerCase() === 'true';
   const schemaV2 = (process.env.RESILIENCE_SCHEMA_V2_ENABLED ?? 'true').toLowerCase() === 'true';
@@ -129,19 +140,66 @@ function countCachedFromPipeline(results) {
   return count;
 }
 
+export function buildIntervalPayloadFromCachedScore(raw, countryCode, diagnostics) {
+  if (!raw || raw === 'null') {
+    recordDiagnosticCount(diagnostics, 'missingScorePayloadCount', 'missingScorePayloadSamples', countryCode);
+    return null;
+  }
+
+  try {
+    const score = unwrapEnvelope(JSON.parse(raw)).data;
+    if (!score || typeof score !== 'object' || Array.isArray(score)) {
+      recordDiagnosticCount(diagnostics, 'invalidScorePayloadCount', 'invalidScorePayloadSamples', countryCode);
+      return null;
+    }
+
+    const formula = typeof score?._formula === 'string' ? score._formula : undefined;
+    if (formula !== 'pc' && formula !== 'd6') {
+      buildScoreIntervalPayload(score, { draws: DRAWS, diagnostics });
+      return null;
+    }
+
+    if (formula !== currentCacheFormulaLocal()) {
+      recordDiagnosticCount(diagnostics, 'staleScorePayloadCount', 'staleScorePayloadSamples', countryCode, {
+        formula,
+        expectedFormula: currentCacheFormulaLocal(),
+      });
+      return null;
+    }
+
+    const currentScore = parseCachedScorePayload(raw);
+    if (!currentScore) {
+      recordDiagnosticCount(diagnostics, 'invalidScorePayloadCount', 'invalidScorePayloadSamples', countryCode, { formula });
+      return null;
+    }
+
+    const payload = buildScoreIntervalPayload(currentScore, { draws: DRAWS, diagnostics });
+    if (!payload) {
+      recordDiagnosticCount(diagnostics, 'intervalPayloadSkipCount', 'intervalPayloadSkipSamples', countryCode, {
+        formula: typeof currentScore?._formula === 'string' ? currentScore._formula : undefined,
+      });
+      return null;
+    }
+    return payload;
+  } catch (err) {
+    recordDiagnosticCount(diagnostics, 'malformedScorePayloadCount', 'malformedScorePayloadSamples', countryCode, {
+      error: err instanceof Error ? err.message.slice(0, 120) : String(err).slice(0, 120),
+    });
+    return null;
+  }
+}
+
 async function computeAndWriteIntervals(url, token, countryCodes, pipelineResults) {
   const commands = [];
   const diagnostics = createIntervalDiagnostics();
 
   for (let i = 0; i < countryCodes.length; i++) {
     const raw = pipelineResults[i]?.result ?? null;
-    if (!raw || raw === 'null') continue;
-    try {
-      const score = unwrapEnvelope(JSON.parse(raw)).data;
-      const payload = buildScoreIntervalPayload(score, { draws: DRAWS, diagnostics });
-      if (!payload) continue;
-      commands.push(['SET', `${INTERVAL_KEY_PREFIX}${countryCodes[i]}`, JSON.stringify(payload), 'EX', INTERVAL_TTL_SECONDS]);
-    } catch { /* skip malformed */ }
+    const countryCode = countryCodes[i];
+    const payload = buildIntervalPayloadFromCachedScore(raw, countryCode, diagnostics);
+    if (payload) {
+      commands.push(['SET', `${INTERVAL_KEY_PREFIX}${countryCode}`, JSON.stringify(payload), 'EX', INTERVAL_TTL_SECONDS]);
+    }
   }
 
   if (diagnostics.formulaSkipCount > 0) {
@@ -152,7 +210,15 @@ async function computeAndWriteIntervals(url, token, countryCodes, pipelineResult
   }
 
   if (commands.length === 0) {
-    console.log('[resilience-scores] No domain data available for intervals');
+    console.warn(
+      `[resilience-scores] No interval keys written for ${countryCodes.length} countries ` +
+      `(missingScorePayloads=${diagnostics.missingScorePayloadCount}, ` +
+      `staleScorePayloads=${diagnostics.staleScorePayloadCount}, ` +
+      `invalidScorePayloads=${diagnostics.invalidScorePayloadCount}, ` +
+      `malformedScorePayloads=${diagnostics.malformedScorePayloadCount}, ` +
+      `intervalPayloadSkips=${diagnostics.intervalPayloadSkipCount}, ` +
+      `formulaSkips=${diagnostics.formulaSkipCount})`,
+    );
     return { recordCount: 0, diagnostics };
   }
 
@@ -170,6 +236,65 @@ async function computeAndWriteIntervals(url, token, countryCodes, pipelineResult
 
   await writeFreshnessMetadata('resilience', 'intervals', commands.length, '', INTERVAL_TTL_SECONDS);
   return { recordCount: commands.length, diagnostics };
+}
+
+export function getIntervalWriteFailure(result) {
+  if (result?.skipped) return null;
+  const total = Number(result?.total ?? 0);
+  const intervalsWritten = Number(result?.intervalsWritten ?? 0);
+  if (!Number.isFinite(total) || total <= 0) return null;
+  if (Number.isFinite(intervalsWritten) && intervalsWritten > 0) return null;
+
+  const scoreCount = Number(result?.recordCount ?? 0);
+  const formulaSkipCount = Number(result?.intervalFormulaSkipCount ?? 0);
+  const missingScorePayloadCount = Number(result?.intervalMissingScorePayloadCount ?? 0);
+  const staleScorePayloadCount = Number(result?.intervalStaleScorePayloadCount ?? 0);
+  const intervalPayloadSkipCount = Number(result?.intervalPayloadSkipCount ?? 0);
+  let reason = 'empty_interval_writes';
+  if (staleScorePayloadCount > 0) reason = 'stale_score_cache';
+  else if (scoreCount <= 0 || missingScorePayloadCount >= total) reason = 'missing_score_cache';
+  else if (formulaSkipCount > 0) reason = 'unusable_score_formula';
+  else if (intervalPayloadSkipCount > 0) reason = 'unusable_score_payload';
+
+  return {
+    reason,
+    message:
+      `resilience interval seed wrote 0 interval keys for ${total} rankable countries ` +
+      `(cachedScores=${Number.isFinite(scoreCount) ? scoreCount : 0}, ` +
+      `missingScorePayloads=${Number.isFinite(missingScorePayloadCount) ? missingScorePayloadCount : 0}, ` +
+      `staleScorePayloads=${Number.isFinite(staleScorePayloadCount) ? staleScorePayloadCount : 0}, ` +
+      `formulaSkips=${Number.isFinite(formulaSkipCount) ? formulaSkipCount : 0}, ` +
+      `intervalPayloadSkips=${Number.isFinite(intervalPayloadSkipCount) ? intervalPayloadSkipCount : 0})`,
+  };
+}
+
+export function buildSeedResultLogExtra(result) {
+  const intervalFailure = getIntervalWriteFailure(result);
+  return {
+    extra: {
+      skipped: Boolean(result.skipped),
+      ...(result.total != null && { total: result.total }),
+      ...(result.reason != null && { reason: result.reason }),
+      ...(result.intervalsWritten != null && { intervalsWritten: result.intervalsWritten }),
+      ...(result.intervalClampCount != null && { intervalClampCount: result.intervalClampCount }),
+      ...(result.intervalClampMaxDelta != null && { intervalClampMaxDelta: result.intervalClampMaxDelta }),
+      ...(result.intervalFormulaSkipCount != null && { intervalFormulaSkipCount: result.intervalFormulaSkipCount }),
+      ...(result.intervalFormulaSkipSamples?.length ? { intervalFormulaSkipSamples: result.intervalFormulaSkipSamples } : {}),
+      ...(result.intervalMissingScorePayloadCount != null && { intervalMissingScorePayloadCount: result.intervalMissingScorePayloadCount }),
+      ...(result.intervalMissingScorePayloadSamples?.length ? { intervalMissingScorePayloadSamples: result.intervalMissingScorePayloadSamples } : {}),
+      ...(result.intervalStaleScorePayloadCount != null && { intervalStaleScorePayloadCount: result.intervalStaleScorePayloadCount }),
+      ...(result.intervalStaleScorePayloadSamples?.length ? { intervalStaleScorePayloadSamples: result.intervalStaleScorePayloadSamples } : {}),
+      ...(result.intervalInvalidScorePayloadCount != null && { intervalInvalidScorePayloadCount: result.intervalInvalidScorePayloadCount }),
+      ...(result.intervalInvalidScorePayloadSamples?.length ? { intervalInvalidScorePayloadSamples: result.intervalInvalidScorePayloadSamples } : {}),
+      ...(result.intervalMalformedScorePayloadCount != null && { intervalMalformedScorePayloadCount: result.intervalMalformedScorePayloadCount }),
+      ...(result.intervalMalformedScorePayloadSamples?.length ? { intervalMalformedScorePayloadSamples: result.intervalMalformedScorePayloadSamples } : {}),
+      ...(result.intervalPayloadSkipCount != null && { intervalPayloadSkipCount: result.intervalPayloadSkipCount }),
+      ...(result.intervalPayloadSkipSamples?.length ? { intervalPayloadSkipSamples: result.intervalPayloadSkipSamples } : {}),
+      ...(intervalFailure && { status: 'ERROR', error: intervalFailure.message, intervalFailureReason: intervalFailure.reason }),
+    },
+    intervalFailure,
+    exitCode: intervalFailure ? 1 : 0,
+  };
 }
 
 async function seedResilienceScores() {
@@ -280,6 +405,16 @@ async function seedResilienceScores() {
       intervalClampMaxDelta: intervalResult.diagnostics.activeScoreClampMaxDelta,
       intervalFormulaSkipCount: intervalResult.diagnostics.formulaSkipCount,
       intervalFormulaSkipSamples: intervalResult.diagnostics.formulaSkipSamples,
+      intervalMissingScorePayloadCount: intervalResult.diagnostics.missingScorePayloadCount,
+      intervalMissingScorePayloadSamples: intervalResult.diagnostics.missingScorePayloadSamples,
+      intervalStaleScorePayloadCount: intervalResult.diagnostics.staleScorePayloadCount,
+      intervalStaleScorePayloadSamples: intervalResult.diagnostics.staleScorePayloadSamples,
+      intervalInvalidScorePayloadCount: intervalResult.diagnostics.invalidScorePayloadCount,
+      intervalInvalidScorePayloadSamples: intervalResult.diagnostics.invalidScorePayloadSamples,
+      intervalMalformedScorePayloadCount: intervalResult.diagnostics.malformedScorePayloadCount,
+      intervalMalformedScorePayloadSamples: intervalResult.diagnostics.malformedScorePayloadSamples,
+      intervalPayloadSkipCount: intervalResult.diagnostics.intervalPayloadSkipCount,
+      intervalPayloadSkipSamples: intervalResult.diagnostics.intervalPayloadSkipSamples,
       rankingPresent,
     };
   }
@@ -300,6 +435,16 @@ async function seedResilienceScores() {
     intervalClampMaxDelta: intervalResult.diagnostics.activeScoreClampMaxDelta,
     intervalFormulaSkipCount: intervalResult.diagnostics.formulaSkipCount,
     intervalFormulaSkipSamples: intervalResult.diagnostics.formulaSkipSamples,
+    intervalMissingScorePayloadCount: intervalResult.diagnostics.missingScorePayloadCount,
+    intervalMissingScorePayloadSamples: intervalResult.diagnostics.missingScorePayloadSamples,
+    intervalStaleScorePayloadCount: intervalResult.diagnostics.staleScorePayloadCount,
+    intervalStaleScorePayloadSamples: intervalResult.diagnostics.staleScorePayloadSamples,
+    intervalInvalidScorePayloadCount: intervalResult.diagnostics.invalidScorePayloadCount,
+    intervalInvalidScorePayloadSamples: intervalResult.diagnostics.invalidScorePayloadSamples,
+    intervalMalformedScorePayloadCount: intervalResult.diagnostics.malformedScorePayloadCount,
+    intervalMalformedScorePayloadSamples: intervalResult.diagnostics.malformedScorePayloadSamples,
+    intervalPayloadSkipCount: intervalResult.diagnostics.intervalPayloadSkipCount,
+    intervalPayloadSkipSamples: intervalResult.diagnostics.intervalPayloadSkipSamples,
     rankingPresent,
   };
 }
@@ -418,16 +563,12 @@ async function main() {
 
   const result = await seedResilienceScores();
   await writeScoreSectionHeartbeat(result);
-  logSeedResult('resilience:scores', result.recordCount ?? 0, Date.now() - startedAt, {
-    skipped: Boolean(result.skipped),
-    ...(result.total != null && { total: result.total }),
-    ...(result.reason != null && { reason: result.reason }),
-    ...(result.intervalsWritten != null && { intervalsWritten: result.intervalsWritten }),
-    ...(result.intervalClampCount != null && { intervalClampCount: result.intervalClampCount }),
-    ...(result.intervalClampMaxDelta != null && { intervalClampMaxDelta: result.intervalClampMaxDelta }),
-    ...(result.intervalFormulaSkipCount != null && { intervalFormulaSkipCount: result.intervalFormulaSkipCount }),
-    ...(result.intervalFormulaSkipSamples?.length ? { intervalFormulaSkipSamples: result.intervalFormulaSkipSamples } : {}),
-  });
+  const { extra, intervalFailure, exitCode } = buildSeedResultLogExtra(result);
+  logSeedResult('resilience:scores', result.recordCount ?? 0, Date.now() - startedAt, extra);
+  if (intervalFailure) {
+    console.error(`[resilience-scores] ${intervalFailure.message}`);
+    process.exitCode = exitCode;
+  }
   if (!result.skipped && (result.recordCount ?? 0) > 0 && !result.rankingPresent) {
     // Observability only — seeder never writes seed-meta. Health will flag the
     // stale meta on its own if this persists across multiple cron ticks.

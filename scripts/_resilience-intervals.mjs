@@ -58,6 +58,16 @@ export function createIntervalDiagnostics() {
     activeScoreClampSamples: [],
     formulaSkipCount: 0,
     formulaSkipSamples: [],
+    missingScorePayloadCount: 0,
+    missingScorePayloadSamples: [],
+    staleScorePayloadCount: 0,
+    staleScorePayloadSamples: [],
+    invalidScorePayloadCount: 0,
+    invalidScorePayloadSamples: [],
+    malformedScorePayloadCount: 0,
+    malformedScorePayloadSamples: [],
+    intervalPayloadSkipCount: 0,
+    intervalPayloadSkipSamples: [],
   };
 }
 
