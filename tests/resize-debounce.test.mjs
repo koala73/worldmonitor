@@ -99,17 +99,19 @@ describe('resize debounce lifecycle (live instance)', () => {
     tracker.calls = 0;
 
     // Simulate first init
-    const field = makeDebounceField();
-    field(); // start 100ms timer
+    const firstField = makeDebounceField();
+    firstField(); // start 100ms timer
 
-    // Simulate re-init: cancel then overwrite (this is the fix)
-    field.cancel();
-    field(); // start a new 100ms timer
+    // Simulate re-init: cancel the first debounce, then assign a NEW one
+    // (mirrors production: _onResizeDebounced.cancel(); _onResizeDebounced = debounce(...))
+    firstField.cancel();
+    const secondField = makeDebounceField();
+    secondField(); // start a new 100ms timer
 
     // Advance past the second timer's delay
     await new Promise(r => setTimeout(r, 150));
 
-    // Exactly one call — the old in-flight timer was cancelled
+    // Exactly one call — the first field's in-flight timer was cancelled
     assert.strictEqual(tracker.calls, 1);
   });
 

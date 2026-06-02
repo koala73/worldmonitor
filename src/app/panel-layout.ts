@@ -405,7 +405,7 @@ export class PanelLayoutManager implements AppModule {
     // Reset checkout overlay so next layout init can register its callback
     destroyCheckoutOverlay();
 
-    window.removeEventListener('resize', this._onResizeDebounced ?? this.ensureCorrectZones);
+    window.removeEventListener('resize', this._onResizeDebounced);
     this._onResizeDebounced?.cancel();
     this._onResizeDebounced = null;
   }
@@ -1632,7 +1632,7 @@ export class PanelLayoutManager implements AppModule {
       });
     }
 
-    window.removeEventListener('resize', this._onResizeDebounced ?? this.ensureCorrectZones);
+    window.removeEventListener('resize', this._onResizeDebounced);
     this._onResizeDebounced?.cancel();
     this._onResizeDebounced = debounce(() => this.ensureCorrectZones(), 100);
     window.addEventListener('resize', this._onResizeDebounced);
