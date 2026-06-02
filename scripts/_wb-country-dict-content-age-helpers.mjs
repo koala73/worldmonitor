@@ -10,7 +10,7 @@
 //
 //   - seed-power-reliability.mjs     (EG.ELC.LOSS.ZS)              — Sprint 4 PR #3602
 //   - seed-low-carbon-generation.mjs (EG.ELC.NUCL.ZS + RNEW + HYRO,
-//                                     summed value, MAX year of 3)
+//                                     summed at latest common component year)
 //   - seed-fossil-electricity-share.mjs (EG.ELC.FOSL.ZS)
 //
 // Why a shared helper instead of one per seeder: the contentMeta math is
