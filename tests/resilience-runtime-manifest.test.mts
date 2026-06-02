@@ -63,7 +63,7 @@ describe('resilience runtime manifest', () => {
         scored: 171,
         total: 196,
       },
-      'seed-meta:resilience:intervals': {
+      [modules.RESILIENCE_INTERVALS_META_KEY]: {
         fetchedAt: Date.parse('2026-05-29T11:45:00.000Z'),
       },
       'resilience:intervals:v6:US': {
@@ -137,7 +137,7 @@ describe('resilience runtime manifest', () => {
     const modules = await loadRuntimeManifestModules();
     process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = 'true';
     installRedis({
-      'seed-meta:resilience:intervals': {
+      [modules.RESILIENCE_INTERVALS_META_KEY]: {
         fetchedAt: Date.parse('2026-05-30T10:00:00.000Z'),
       },
       'resilience:intervals:v6:US': {
@@ -200,7 +200,7 @@ describe('resilience runtime manifest', () => {
     assert.equal(serialized.includes(modules.RESILIENCE_RANKING_CACHE_KEY), false);
     assert.equal(serialized.includes(modules.RESILIENCE_INTERVAL_KEY_PREFIX), false);
     assert.equal(serialized.includes(`${modules.RESILIENCE_INTERVAL_KEY_PREFIX}US`), false);
-    assert.equal(serialized.includes('seed-meta:resilience:intervals'), false);
+    assert.equal(serialized.includes(modules.RESILIENCE_INTERVALS_META_KEY), false);
     assert.equal(serialized.includes('resilience:fossil-electricity-share:v1'), false);
     assert.equal(serialized.includes('resilience:low-carbon-generation:v1'), false);
     assert.equal(serialized.includes('resilience:power-losses:v1'), false);

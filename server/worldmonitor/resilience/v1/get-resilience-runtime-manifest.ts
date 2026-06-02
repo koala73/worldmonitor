@@ -12,13 +12,13 @@ import {
   RESILIENCE_STATIC_META_KEY,
   RESILIENCE_INTERVAL_KEY_PREFIX,
   RESILIENCE_INTERVAL_METHODOLOGY,
+  RESILIENCE_INTERVALS_META_KEY,
   getCurrentCacheFormula,
   isEnergyV2Enabled,
 } from './_shared';
 
 const MANIFEST_VERSION = 4;
 const INTERVAL_SAMPLE_COUNTRY = 'US';
-const RESILIENCE_INTERVALS_META_KEY = 'seed-meta:resilience:intervals';
 
 const PUBLIC_CACHE_STATE = {
   scorePrefix: '',
@@ -75,7 +75,7 @@ function safeNonNegativeInteger(value: unknown): number {
 function latestIsoTimestamp(values: unknown[]): string {
   const timestamps = values
     .map(toIsoTimestamp)
-    .filter(Boolean)
+    .filter((value): value is string => value.length > 0)
     .map((value) => Date.parse(value));
   if (timestamps.length === 0) return '';
   return new Date(Math.max(...timestamps)).toISOString();

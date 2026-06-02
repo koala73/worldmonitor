@@ -312,6 +312,7 @@ export const RESILIENCE_INTERVAL_KEY_PREFIX = 'resilience:intervals:v6:';
 export const RESILIENCE_INTERVAL_METHODOLOGY = 'weight-perturbation-sensitivity-v3';
 export const RESILIENCE_STATIC_META_KEY = 'seed-meta:resilience:static';
 export const RESILIENCE_RANKING_META_KEY = 'seed-meta:resilience:ranking';
+export const RESILIENCE_INTERVALS_META_KEY = 'seed-meta:resilience:intervals';
 export const RESILIENCE_RANKING_META_TTL_SECONDS = 7 * 24 * 60 * 60;
 const RANK_STABLE_MAX_INTERVAL_WIDTH = 8;
 
