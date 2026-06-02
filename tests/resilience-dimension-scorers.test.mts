@@ -1656,11 +1656,11 @@ describe('resilience source-failure aggregation (T1.7)', () => {
     }
   });
 
-  // PR 2 §3.4 — scoreSovereignFiscalBuffer has three code paths per
-  // plan §3.4: (1) seed absent → IMPUTE, (2) seed present but country
-  // not in manifest → substantive "no SWF" (score=0, coverage=1.0),
-  // (3) country in payload → saturating transform on
-  // totalEffectiveMonths.
+  // PR 2 §3.4 — scoreSovereignFiscalBuffer has three code paths:
+  // (1) seed absent → IMPUTE, (2) seed present but country not in
+  // manifest → structurally not-applicable (score=0, coverage=0,
+  // imputationClass='not-applicable'), (3) country in payload →
+  // saturating transform on totalEffectiveMonths.
   describe('scoreSovereignFiscalBuffer — three code paths', () => {
     it('path 1: seed key absent → IMPUTE fallback', async () => {
       const emptyReader = async (_key: string): Promise<unknown | null> => null;

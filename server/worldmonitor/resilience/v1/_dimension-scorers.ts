@@ -355,8 +355,9 @@ const RESILIENCE_RECOVERY_REEXPORT_SHARE_KEY = 'resilience:recovery:reexport-sha
 // (landed in #3305, wired into the resilience-recovery Railway bundle in
 // #3319). Per-country shape: { funds: [...], totalEffectiveMonths,
 // annualImports, expectedFunds, matchedFunds, completeness }. Countries
-// not in the manifest are absent from the payload (substantive "no SWF"
-// signal, distinct from the IMPUTE fallback below).
+// not in the manifest are absent from the payload; scorer Path 3 treats
+// that as structurally not-applicable, distinct from the missing-seed
+// IMPUTE fallback below.
 const RESILIENCE_RECOVERY_SOVEREIGN_WEALTH_KEY = 'resilience:recovery:sovereign-wealth:v1';
 // RESILIENCE_RECOVERY_FUEL_STOCKS_KEY removed in PR 3: scoreFuelStockDays
 // no longer reads any source key. If a new globally-comparable

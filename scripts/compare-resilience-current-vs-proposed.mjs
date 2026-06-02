@@ -377,8 +377,8 @@ const EXTRACTION_RULES = {
   recoveryFuelStockDays: { type: 'recovery-country-field', key: 'resilience:recovery:fuel-stocks:v1', field: 'stockDays' },
   // PR 2 §3.4: SWF seed. Field is totalEffectiveMonths (pre-haircut sum
   // across a country's manifest funds). Countries without a manifest
-  // entry score 0 via the substantive-no-SWF branch in the scorer;
-  // the harness treats "absent from payload" as 0 for correlation math.
+  // entry are structurally not-applicable in the scorer; the harness
+  // treats "absent from payload" as 0 for correlation math.
   recoverySovereignWealthEffectiveMonths: { type: 'recovery-country-field', key: 'resilience:recovery:sovereign-wealth:v1', field: 'totalEffectiveMonths' },
 
   // ── stateContinuity derived signals ─────────────────────────────────

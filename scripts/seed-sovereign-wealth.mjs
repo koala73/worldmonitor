@@ -74,10 +74,11 @@
 //   }
 //
 // Countries WITHOUT an entry in the manifest are absent from this
-// payload. The scorer is expected to treat "no entry in payload" as
-// "no sovereign wealth fund" and score 0 with full coverage (plan
-// §3.4 "What happens to no-SWF countries"). This is substantively
-// different from IMPUTE fallback (which is "data-source-failed").
+// payload. When the payload exists, the scorer treats "no entry in
+// payload" as structurally not-applicable: score 0, coverage 0,
+// observedWeight 0, imputedWeight 0, imputationClass 'not-applicable'.
+// This is substantively different from the IMPUTE fallback for a
+// missing SWF seed key.
 
 import { loadEnvFile, CHROME_UA, runSeed, readSeedSnapshot, SHARED_FX_FALLBACKS, getSharedFxRates, getBundleRunStartedAtMs } from './_seed-utils.mjs';
 import iso3ToIso2 from './shared/iso3-to-iso2.json' with { type: 'json' };
@@ -810,8 +811,9 @@ export async function fetchSovereignWealth() {
       // WB `NE.IMP.GNFS.CD` missing for this country (transient outage
       // or a country with spotty WB coverage). Silently dropping would
       // let the downstream scorer interpret the absence as "no SWF" and
-      // score 0 with full coverage — substantively wrong. Log it
-      // loudly and surface via the unmatched list so the seed-meta
+      // exclude the dim as structurally not-applicable — substantively
+      // wrong for a manifest country whose import denominator is missing.
+      // Log it loudly and surface via the unmatched list so the seed-meta
       // observer can alert.
       console.warn(`[seed-sovereign-wealth] ${iso2} skipped: World Bank imports (${IMPORTS_INDICATOR}) missing — cannot compute rawMonths denominator`);
       for (const fund of funds) unmatched.push(`${fund.country}:${fund.fund} (no WB imports)`);

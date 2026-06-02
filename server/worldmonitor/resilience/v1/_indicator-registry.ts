@@ -1141,11 +1141,12 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
   // transform: score = 100 × (1 − exp(−effectiveMonths / 12)) to prevent
   // Norway-type outliers from dominating the recovery pillar.
   //
-  // Coverage for the registry entry is the current manifest size (8
-  // funds across NO / AE / SA / KW / QA / SG). Countries NOT in the
-  // manifest score 0 with full coverage (substantive "no SWF" signal,
-  // not imputation) — this is by design per plan §3.4 "What happens to
-  // no-SWF countries."
+  // Registry coverage remains 8 as conservative metadata from the first
+  // SWF seed rollout; it is not the live YAML manifest count and not the
+  // per-country Path 3 coverage. Countries NOT in the manifest are
+  // not-applicable for this construct when the SWF payload is present
+  // (score 0, coverage 0, imputationClass 'not-applicable'), distinct
+  // from missing-seed IMPUTE.
   {
     id: 'recoverySovereignWealthEffectiveMonths',
     dimension: 'sovereignFiscalBuffer',
@@ -1156,7 +1157,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     sourceKey: 'resilience:recovery:sovereign-wealth:v1',
     scope: 'global',
     cadence: 'quarterly',
-    // tier='experimental' because the manifest ships with 8 funds (< the
+    // tier='experimental' because the manifest ships below the
     // 180-country core-tier threshold / 137-country §3.6 gate). Non-SWF
     // countries are scored as dim-not-applicable (score 0, coverage 0,
     // imputationClass 'not-applicable') per plan 2026-04-26-001 §U3 —
