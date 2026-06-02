@@ -18,7 +18,8 @@
 //    `RESILIENCE_DOMAIN_ORDER` and `RESILIENCE_DIMENSION_ORDER − retired`.
 // 3. Each domain's weight in the Domains table matches
 //    `getResilienceDomainWeight(...)`.
-// 4. Generated Resilience OpenAPI prose still matches pillar weights
+// 4. Macro-Fiscal sub-indicator rows/weights match `INDICATOR_REGISTRY`.
+// 5. Generated Resilience OpenAPI prose still matches pillar weights
 //    and score formula semantics.
 
 import assert from 'node:assert/strict';
@@ -44,6 +45,12 @@ import {
   PILLAR_ORDER,
   PILLAR_WEIGHTS,
 } from '../server/worldmonitor/resilience/v1/_pillar-membership.ts';
+import {
+  INDICATOR_REGISTRY,
+} from '../server/worldmonitor/resilience/v1/_indicator-registry.ts';
+import {
+  MACRO_FISCAL_INDICATOR_WEIGHTS,
+} from '../server/worldmonitor/resilience/v1/_macro-fiscal-weights.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const DOC_PATH = resolve(here, '../docs/methodology/country-resilience-index.mdx');
@@ -230,6 +237,46 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
     );
   });
 
+  it('Macro-Fiscal sub-indicator table matches live indicator weights', () => {
+    const expected = new Map(
+      Object.entries(MACRO_FISCAL_INDICATOR_WEIGHTS),
+    );
+    const registryWeights = new Map(
+      INDICATOR_REGISTRY
+        .filter((indicator) => indicator.dimension === 'macroFiscal')
+        .map((indicator) => [indicator.id, indicator.weight]),
+    );
+    const actual = extractIndicatorWeightsForSection(docText, 'Macro-Fiscal');
+
+    assert.deepEqual(
+      registryWeights,
+      expected,
+      'Macro-Fiscal INDICATOR_REGISTRY weights must match MACRO_FISCAL_INDICATOR_WEIGHTS used by the scorer.',
+    );
+
+    const weightSum = [...expected.values()].reduce((sum, weight) => sum + weight, 0);
+    assert.ok(
+      Math.abs(weightSum - 1.0) < 0.001,
+      `Macro-Fiscal indicator weights must sum to 1.00, got ${weightSum.toFixed(4)}.`,
+    );
+
+    assert.deepEqual(
+      [...actual.keys()],
+      [...registryWeights.keys()],
+      'Macro-Fiscal methodology table must list exactly the live macroFiscal indicators in registry order.',
+    );
+
+    for (const [indicatorId, expectedWeight] of expected) {
+      const actualWeight = actual.get(indicatorId);
+      assert.equal(
+        actualWeight,
+        expectedWeight,
+        `Macro-Fiscal methodology table claims weight ${actualWeight} for ${indicatorId}; ` +
+          `INDICATOR_REGISTRY has ${expectedWeight}.`,
+      );
+    }
+  });
+
   it('generated OpenAPI pillar weight prose matches PILLAR_WEIGHTS and formula semantics', () => {
     const expectedWeightList = PILLAR_ORDER
       .map((id) => PILLAR_WEIGHTS[id].toFixed(2))
@@ -264,6 +311,26 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
 
 function escapeRegex(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function extractIndicatorWeightsForSection(text: string, sectionHeading: string): Map<string, number> {
+  const headingRe = new RegExp(`^#### ${escapeRegex(sectionHeading)}\\s*$`, 'm');
+  const headingMatch = headingRe.exec(text);
+  assert.ok(headingMatch, `Methodology section "${sectionHeading}" not found.`);
+
+  const sectionStart = headingMatch.index + headingMatch[0].length;
+  const rest = text.slice(sectionStart);
+  const nextHeadingMatch = /^#{3,4}\s.+$/m.exec(rest);
+  const sectionText = nextHeadingMatch == null ? rest : rest.slice(0, nextHeadingMatch.index);
+
+  const rows = [...sectionText.matchAll(/^\|\s*([^|\s][^|]*?)\s*\|(?:[^|]*\|){3}\s*([0-9.]+)\s*\|/gm)];
+  const weights = new Map<string, number>();
+  for (const row of rows) {
+    const indicatorId = row[1].trim();
+    if (indicatorId === 'Indicator' || indicatorId.startsWith('---')) continue;
+    weights.set(indicatorId, Number(row[2]));
+  }
+  return weights;
 }
 
 function findPlausibleCurrentTotalDimensionCounts(text: string, activeCount: number, totalCount: number): number[] {

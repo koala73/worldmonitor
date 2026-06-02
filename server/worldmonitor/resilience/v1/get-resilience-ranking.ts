@@ -7,7 +7,7 @@ import {
   type ResilienceRankingItem,
 } from '../../../../src/generated/server/worldmonitor/resilience/v1/service_server';
 
-import { getCachedJson, runRedisPipeline } from '../../../_shared/redis';
+import { compareAndDeleteRedisKey, getCachedJson, runRedisPipeline } from '../../../_shared/redis';
 import { unwrapEnvelope } from '../../../_shared/seed-envelope';
 import { isInRankableUniverse } from './_rankable-universe';
 import {
@@ -41,12 +41,14 @@ const SYNC_WARM_LIMIT = 1000;
 // Minimum fraction of scorable countries that must have a cached score before
 // publishing the ranking. A 75% table looked healthy to consumers while hiding
 // a large serving gap; require at least 90%, and label/shorten sub-95% publishes.
-const RANKING_CACHE_MIN_COVERAGE = 0.90;
+const RANKING_CACHE_MIN_COVERAGE = 0.9;
 const RANKING_FULL_COVERAGE = 0.95;
 const PARTIAL_RANKING_CACHE_TTL_SECONDS = 2 * 60 * 60;
-const RANKING_PERSISTENCE_MIN_PARITY = 0.90;
+const RANKING_PERSISTENCE_MIN_PARITY = 0.9;
 const RANKING_REFRESH_LOCK_KEY = 'resilience:ranking:refresh-lock:v1';
 const RANKING_REFRESH_LOCK_TTL_SECONDS = 30;
+const RANKING_WARM_LOCK_KEY = 'resilience:ranking:warm-lock:v1';
+const RANKING_WARM_LOCK_TTL_SECONDS = 60;
 
 function isRefreshRequested(ctx: ServerContext): boolean {
   try {
@@ -62,25 +64,51 @@ function isSeedRefreshAuthorized(ctx: ServerContext): boolean {
   return ctx.request.headers.get('X-WorldMonitor-Key') === expected;
 }
 
-async function tryAcquireRefreshSlot(): Promise<boolean> {
-  const token = `${Date.now()}:${Math.random().toString(36).slice(2)}`;
-  const result = await runRedisPipeline([
-    ['SET', RANKING_REFRESH_LOCK_KEY, token, 'EX', RANKING_REFRESH_LOCK_TTL_SECONDS, 'NX'],
-  ]);
-  return result[0]?.result === 'OK';
+function makeLockToken(): string {
+  return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}:${Math.random().toString(36).slice(2)}`;
+}
+
+async function tryAcquireRankingLock(lockKey: string, ttlSeconds: number): Promise<string | null> {
+  const token = makeLockToken();
+  const result = await runRedisPipeline([['SET', lockKey, token, 'EX', ttlSeconds, 'NX']]);
+  return result[0]?.result === 'OK' ? token : null;
+}
+
+async function releaseRankingLock(lockKey: string, token: string): Promise<void> {
+  await compareAndDeleteRedisKey(lockKey, token);
 }
 
 function throwRefreshSlotBusy(): never {
-  const err = new ApiError(429, 'Resilience ranking refresh already in progress', JSON.stringify({
-    retryAfter: RANKING_REFRESH_LOCK_TTL_SECONDS,
-  }));
+  const err = new ApiError(
+    429,
+    'Resilience ranking refresh already in progress',
+    JSON.stringify({
+      retryAfter: RANKING_REFRESH_LOCK_TTL_SECONDS,
+    }),
+  );
   (err as ApiError & { retryAfter: number }).retryAfter = RANKING_REFRESH_LOCK_TTL_SECONDS;
+  throw err;
+}
+
+function throwRankingWarmBusy(): never {
+  const err = new ApiError(
+    503,
+    'Resilience ranking temporarily unavailable while cache warm is in progress',
+    JSON.stringify({
+      retryAfter: RANKING_WARM_LOCK_TTL_SECONDS,
+    }),
+  );
+  (err as ApiError & { exposeMessage: boolean; retryAfter: number }).exposeMessage = true;
+  (err as ApiError & { exposeMessage: boolean; retryAfter: number }).retryAfter = RANKING_WARM_LOCK_TTL_SECONDS;
   throw err;
 }
 
 async function fetchIntervals(countryCodes: string[]): Promise<Map<string, ScoreInterval>> {
   if (countryCodes.length === 0) return new Map();
-  const results = await runRedisPipeline(countryCodes.map((cc) => ['GET', `${RESILIENCE_INTERVAL_KEY_PREFIX}${cc}`]), true);
+  const results = await runRedisPipeline(
+    countryCodes.map((cc) => ['GET', `${RESILIENCE_INTERVAL_KEY_PREFIX}${cc}`]),
+    true,
+  );
   const map = new Map<string, ScoreInterval>();
   const current = getCurrentCacheFormula();
   for (let i = 0; i < countryCodes.length; i++) {
@@ -88,11 +116,17 @@ async function fetchIntervals(countryCodes: string[]): Promise<Map<string, Score
     if (typeof raw !== 'string') continue;
     try {
       // Envelope-aware: interval keys come through seed-resilience-scores' extra-key path.
-      const parsed = unwrapEnvelope(JSON.parse(raw)).data as { p05?: number; p95?: number; _formula?: string } | null;
+      const parsed = unwrapEnvelope(JSON.parse(raw)).data as {
+        p05?: number;
+        p95?: number;
+        _formula?: string;
+      } | null;
       if (parsed && typeof parsed.p05 === 'number' && typeof parsed.p95 === 'number' && parsed._formula === current) {
         map.set(countryCodes[i]!, { p05: parsed.p05, p95: parsed.p95 });
       }
-    } catch { /* ignore malformed interval entries */ }
+    } catch {
+      /* ignore malformed interval entries */
+    }
   }
   return map;
 }
@@ -137,7 +171,10 @@ function rankingCacheMetadataMatches(payload: Partial<GetResilienceRankingRespon
 }
 
 function coerceCachedRankingResponse(
-  payload: GetResilienceRankingResponse & { _formula?: string; _intervalMethodology?: string },
+  payload: GetResilienceRankingResponse & {
+    _formula?: string;
+    _intervalMethodology?: string;
+  },
   items: ResilienceRankingItem[],
   greyedOut: ResilienceRankingItem[],
 ): GetResilienceRankingResponse {
@@ -150,6 +187,94 @@ function coerceCachedRankingResponse(
     coverage: roundCoverage(payload.coverage),
     partial: payload.partial,
   };
+}
+
+async function readValidCachedRankingResponse(): Promise<GetResilienceRankingResponse | null> {
+  const cached = (await getCachedJson(RESILIENCE_RANKING_CACHE_KEY)) as
+    | (GetResilienceRankingResponse & {
+        _formula?: string;
+        _intervalMethodology?: string;
+      })
+    | null;
+  // Stale-cache gate: the ranking payload carries the score formula,
+  // interval methodology, and public freshness metadata that were active
+  // when rankStable was computed. Rejecting entries with stale/missing
+  // tags or metadata prevents old ranking payloads from serving baked
+  // rankStable values or blank partial/freshness fields after cache
+  // rotations.
+  const cacheMatches = cached != null && rankingCacheTagMatches(cached) && rankingCacheMetadataMatches(cached);
+  if (!cacheMatches || (cached!.items.length === 0 && (cached!.greyedOut?.length ?? 0) === 0)) {
+    return null;
+  }
+
+  // Plan 2026-04-26-002 §U2 (PR 1, review fixup): defense-in-depth
+  // universe filter at the cached-response read too. Without this,
+  // the cache hit path returns a stale 222-country payload (pre-PR-1
+  // ranking) until either the 12h TTL expires or someone runs
+  // ?refresh=1. The filter is idempotent — a fresh post-PR-1 ranking
+  // is already universe-filtered, so this is a no-op then; a stale
+  // pre-PR-1 cached payload gets filtered at handler-time. Same
+  // recipe as `_shared.ts:listScorableCountries`. The filter
+  // preserves the rest of the cache hit (rankCounts, percentile
+  // anchors, etc.) so we don't pay the recompute cost just for
+  // universe membership.
+  const filteredItems = cached!.items.filter((item) => isInRankableUniverse(item.countryCode));
+  const filteredGreyedOut = (cached!.greyedOut ?? []).filter((item) => isInRankableUniverse(item.countryCode));
+  const droppedCount = cached!.items.length - filteredItems.length + ((cached!.greyedOut?.length ?? 0) - filteredGreyedOut.length);
+  if (droppedCount > 0) {
+    console.log(`[resilience-ranking] Filtered ${droppedCount} non-rankable territories from cached ranking response (transitional — next recompute will publish a clean payload)`);
+  }
+  // Plan 2026-04-26-002 §U7 (PR 6) — backfill semantic flips.
+  //
+  // At v16 (PR 2), every score build emitted `headlineEligible: true`
+  // unconditionally, so a cache entry missing the field meant
+  // "pre-field v16 entry" → backfilling to `true` matched the
+  // PR-2 contract.
+  //
+  // At v17 (PR 6), every legitimate cache writer STAMPS the field
+  // explicitly (true or false based on the gate). A v17 cache entry
+  // missing the field is anomalous — partially-migrated cache,
+  // manual seed that forgot the field, or a future writer bug.
+  // Defaulting missing → `true` would let the anomaly through as
+  // headline-eligible. Per Greptile P2 review, the conservative
+  // default at v17 is `false`: the gate is the single source of
+  // truth, and anything not stamped is not trusted to pass it.
+  // The next recompute will write a clean payload.
+  const backfillEligibilityConservative = <T extends { headlineEligible?: boolean }>(item: T): T =>
+    item.headlineEligible === undefined ? { ...item, headlineEligible: false } : item;
+  // Plan 2026-04-26-002 §U7 (PR 6) — apply the headline-eligible
+  // gate SYMMETRICALLY across both arrays: any item with
+  // `headlineEligible === true` ends up in items[] regardless of
+  // which cached array it was in; anything else ends up in
+  // greyedOut[]. Asymmetric gating (only filtering items → greyedOut)
+  // would leave a cached greyedOut entry permanently demoted even
+  // if it now passes the gate, until a full recompute. Symmetric
+  // gating makes the predicate the single source of truth across
+  // every code path that returns items[] / greyedOut[] to callers.
+  // Per Greptile P2 review of PR #3472.
+  const itemsWithEligibility = filteredItems.map(backfillEligibilityConservative);
+  const greyedWithEligibility = filteredGreyedOut.map(backfillEligibilityConservative);
+  const eligibleItems = itemsWithEligibility.filter((item) => item.headlineEligible === true);
+  const ineligibleFromItems = itemsWithEligibility.filter((item) => item.headlineEligible !== true);
+  const promotedFromGreyed = greyedWithEligibility.filter((item) => item.headlineEligible === true);
+  const stillGreyed = greyedWithEligibility.filter((item) => item.headlineEligible !== true);
+  // Strip the cache-only tag before returning to callers so the
+  // wire shape matches the generated proto response type.
+  const { _formula: _dropFormula, _intervalMethodology: _dropIntervalMethodology, ...publicResponse } = cached!;
+  void _dropFormula;
+  void _dropIntervalMethodology;
+  // Re-sort items[] after the symmetric promotion. A high-scoring
+  // item promoted from greyedOut[] would otherwise be appended at
+  // the end of items[] instead of landing in its correct rank
+  // position. The recompute path always sorts before publishing
+  // (line ~225 below), so the cache-hit path must too — otherwise
+  // a cache-hit response visibly differs from a fresh recompute
+  // for the same data, breaking the front-of-house ranking sort.
+  // Per Greptile P2 review of PR #3472 follow-up.
+  return coerceCachedRankingResponse(publicResponse as GetResilienceRankingResponse, sortRankingItems([...eligibleItems, ...promotedFromGreyed]), [
+    ...stillGreyed,
+    ...ineligibleFromItems,
+  ]);
 }
 
 export const getResilienceRanking: ResilienceServiceHandler['getResilienceRanking'] = async (
@@ -166,254 +291,197 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
   const refreshAuthorized = refreshRequested && isSeedRefreshAuthorized(ctx);
   let refreshSlotDenied = false;
   let forceRefresh = false;
+  let lockToRelease: { key: string; token: string } | null = null;
   if (refreshRequested && !refreshAuthorized) {
     console.warn('[resilience] refresh=1 rejected: dedicated seed refresh secret missing or invalid');
   } else if (refreshAuthorized) {
-    forceRefresh = await tryAcquireRefreshSlot();
+    const token = await tryAcquireRankingLock(RANKING_REFRESH_LOCK_KEY, RANKING_REFRESH_LOCK_TTL_SECONDS);
+    forceRefresh = token !== null;
+    if (token) lockToRelease = { key: RANKING_REFRESH_LOCK_KEY, token };
     refreshSlotDenied = !forceRefresh;
     if (refreshSlotDenied) {
       console.warn('[resilience] refresh=1 skipped: ranking refresh slot already held');
     }
   }
   if (!forceRefresh) {
-    const cached = await getCachedJson(RESILIENCE_RANKING_CACHE_KEY) as (
-      GetResilienceRankingResponse & { _formula?: string; _intervalMethodology?: string }
-    ) | null;
-    // Stale-cache gate: the ranking payload carries the score formula,
-    // interval methodology, and public freshness metadata that were active
-    // when rankStable was computed. Rejecting entries with stale/missing
-    // tags or metadata prevents old ranking payloads from serving baked
-    // rankStable values or blank partial/freshness fields after cache
-    // rotations.
-    const cacheMatches = cached != null && rankingCacheTagMatches(cached) && rankingCacheMetadataMatches(cached);
-    if (cacheMatches && (cached!.items.length > 0 || (cached!.greyedOut?.length ?? 0) > 0)) {
-      // Plan 2026-04-26-002 §U2 (PR 1, review fixup): defense-in-depth
-      // universe filter at the cached-response read too. Without this,
-      // the cache hit path returns a stale 222-country payload (pre-PR-1
-      // ranking) until either the 12h TTL expires or someone runs
-      // ?refresh=1. The filter is idempotent — a fresh post-PR-1 ranking
-      // is already universe-filtered, so this is a no-op then; a stale
-      // pre-PR-1 cached payload gets filtered at handler-time. Same
-      // recipe as `_shared.ts:listScorableCountries`. The filter
-      // preserves the rest of the cache hit (rankCounts, percentile
-      // anchors, etc.) so we don't pay the recompute cost just for
-      // universe membership.
-      const filteredItems = cached!.items.filter((item) => isInRankableUniverse(item.countryCode));
-      const filteredGreyedOut = (cached!.greyedOut ?? []).filter((item) => isInRankableUniverse(item.countryCode));
-      const droppedCount = (cached!.items.length - filteredItems.length) + ((cached!.greyedOut?.length ?? 0) - filteredGreyedOut.length);
-      if (droppedCount > 0) {
-        console.log(`[resilience-ranking] Filtered ${droppedCount} non-rankable territories from cached ranking response (transitional — next recompute will publish a clean payload)`);
-      }
-      // Plan 2026-04-26-002 §U7 (PR 6) — backfill semantic flips.
-      //
-      // At v16 (PR 2), every score build emitted `headlineEligible: true`
-      // unconditionally, so a cache entry missing the field meant
-      // "pre-field v16 entry" → backfilling to `true` matched the
-      // PR-2 contract.
-      //
-      // At v17 (PR 6), every legitimate cache writer STAMPS the field
-      // explicitly (true or false based on the gate). A v17 cache entry
-      // missing the field is anomalous — partially-migrated cache,
-      // manual seed that forgot the field, or a future writer bug.
-      // Defaulting missing → `true` would let the anomaly through as
-      // headline-eligible. Per Greptile P2 review, the conservative
-      // default at v17 is `false`: the gate is the single source of
-      // truth, and anything not stamped is not trusted to pass it.
-      // The next recompute will write a clean payload.
-      const backfillEligibilityConservative = <T extends { headlineEligible?: boolean }>(item: T): T =>
-        (item.headlineEligible === undefined ? { ...item, headlineEligible: false } : item);
-      // Plan 2026-04-26-002 §U7 (PR 6) — apply the headline-eligible
-      // gate SYMMETRICALLY across both arrays: any item with
-      // `headlineEligible === true` ends up in items[] regardless of
-      // which cached array it was in; anything else ends up in
-      // greyedOut[]. Asymmetric gating (only filtering items → greyedOut)
-      // would leave a cached greyedOut entry permanently demoted even
-      // if it now passes the gate, until a full recompute. Symmetric
-      // gating makes the predicate the single source of truth across
-      // every code path that returns items[] / greyedOut[] to callers.
-      // Per Greptile P2 review of PR #3472.
-      const itemsWithEligibility = filteredItems.map(backfillEligibilityConservative);
-      const greyedWithEligibility = filteredGreyedOut.map(backfillEligibilityConservative);
-      const eligibleItems = itemsWithEligibility.filter((item) => item.headlineEligible === true);
-      const ineligibleFromItems = itemsWithEligibility.filter((item) => item.headlineEligible !== true);
-      const promotedFromGreyed = greyedWithEligibility.filter((item) => item.headlineEligible === true);
-      const stillGreyed = greyedWithEligibility.filter((item) => item.headlineEligible !== true);
-      // Strip the cache-only tag before returning to callers so the
-      // wire shape matches the generated proto response type.
-      const { _formula: _dropFormula, _intervalMethodology: _dropIntervalMethodology, ...publicResponse } = cached!;
-      void _dropFormula;
-      void _dropIntervalMethodology;
-      // Re-sort items[] after the symmetric promotion. A high-scoring
-      // item promoted from greyedOut[] would otherwise be appended at
-      // the end of items[] instead of landing in its correct rank
-      // position. The recompute path always sorts before publishing
-      // (line ~225 below), so the cache-hit path must too — otherwise
-      // a cache-hit response visibly differs from a fresh recompute
-      // for the same data, breaking the front-of-house ranking sort.
-      // Per Greptile P2 review of PR #3472 follow-up.
-      return coerceCachedRankingResponse(
-        publicResponse as GetResilienceRankingResponse,
-        sortRankingItems([...eligibleItems, ...promotedFromGreyed]),
-        [...stillGreyed, ...ineligibleFromItems],
-      );
-    }
+    const cached = await readValidCachedRankingResponse();
+    if (cached) return cached;
     if (refreshSlotDenied) throwRefreshSlotBusy();
-  }
 
-  const countryCodes = await listScorableCountries();
-  if (countryCodes.length === 0) {
-    return buildRankingResponse([], [], { fetchedAtMs: Date.now(), scored: 0, total: 0 });
-  }
-
-  const cachedScores = await getCachedResilienceScores(countryCodes);
-  const missing = countryCodes.filter((countryCode) => !cachedScores.has(countryCode));
-  // Track the country codes whose scores were JUST warmed by this invocation.
-  // The persistence parity check below samples from THIS set specifically —
-  // pre-warmed entries from `getCachedResilienceScores` already proved they
-  // exist (we just read them), so verifying them is uninformative; the keys
-  // whose durability is in question are the ones we just SET via the
-  // batched pipeline inside `warmMissingResilienceScores`.
-  const warmedCountryCodes: string[] = [];
-  const warmPersistenceFailureCountryCodes = new Set<string>();
-  if (missing.length > 0) {
-    try {
-      // Merge warm results into cachedScores directly rather than re-reading
-      // from Redis. Upstash REST writes (/set) aren't always visible to an
-      // immediately-following /pipeline GET in the same Vercel invocation,
-      // which collapsed coverage to 0/N and silently dropped the ranking
-      // publish. The warmer already holds every score in memory — trust it.
-      // See `feedback_upstash_write_reread_race_in_handler.md`.
-      const warmed = await warmMissingResilienceScores(missing.slice(0, SYNC_WARM_LIMIT));
-      for (const [countryCode, score] of warmed) {
-        cachedScores.set(countryCode, score);
-        warmedCountryCodes.push(countryCode);
-      }
-      for (const failure of warmed.failures) {
-        if (failure.stage === 'persist') warmPersistenceFailureCountryCodes.add(failure.countryCode);
-      }
-    } catch (err) {
-      console.warn('[resilience] ranking warmup failed:', err);
+    const token = await tryAcquireRankingLock(RANKING_WARM_LOCK_KEY, RANKING_WARM_LOCK_TTL_SECONDS);
+    if (!token) {
+      const fallback = await readValidCachedRankingResponse();
+      if (fallback) return fallback;
+      throwRankingWarmBusy();
     }
+    lockToRelease = { key: RANKING_WARM_LOCK_KEY, token };
   }
 
-  const intervals = await fetchIntervals([...cachedScores.keys()]);
-  const allItems = countryCodes.map((countryCode) => buildRankingItem(countryCode, cachedScores.get(countryCode), intervals.get(countryCode)));
-  // Plan 2026-04-26-002 §U7 (PR 6) — headline-eligible gate. The
-  // headline ranking endpoint returns ONLY items with
-  // `headlineEligible: true`; ineligible items move to `greyedOut`
-  // alongside the existing low-coverage greyout. This is the load-
-  // bearing change from PR 2's "headlineEligible: true everywhere"
-  // contract: real eligibility logic now decides the front-of-house
-  // ranking. Raw API endpoints (get-resilience-score per-country)
-  // continue to return the full set with `headlineEligible: false`
-  // surfaced; only the *ranking* endpoint applies the filter.
-  //
-  // `headlineEligible: true` already implies overallCoverage >= 0.65
-  // (HEADLINE_ELIGIBLE_MIN_COVERAGE in _shared.ts), which is well
-  // above GREY_OUT_COVERAGE_THRESHOLD (0.40); checking the threshold
-  // here would be dead code per Greptile P2. Reduced to the single
-  // load-bearing predicate. Items with low coverage that somehow
-  // arrive with headlineEligible:true (e.g. from a corrupted cache
-  // entry) are intentionally trusted — the gate is the source of
-  // truth for this decision, not coverage alone.
-  const passesHeadlineGate = (item: ResilienceRankingItem): boolean =>
-    item.headlineEligible === true;
-  const fetchedAtMs = Date.now();
-  const response = buildRankingResponse(
-    sortRankingItems(allItems.filter(passesHeadlineGate)),
-    allItems.filter((item) => !passesHeadlineGate(item)),
-    { fetchedAtMs, scored: cachedScores.size, total: countryCodes.length },
-  );
-
-  // Cache the ranking when we have substantive coverage — don't hold out for 100%.
-  // The previous gate (stillMissing === 0) meant a single failing-to-warm country
-  // permanently blocked the write, leaving the cache null for days while the 6h TTL
-  // expired between cron ticks. Countries that fail to warm already land in
-  // `greyedOut` with coverage 0, so the response is correct for partial states.
-  const coverageRatio = cachedScores.size / countryCodes.length;
-  if (coverageRatio >= RANKING_CACHE_MIN_COVERAGE) {
-    if (warmPersistenceFailureCountryCodes.size > 0) {
-      console.warn(
-        `[resilience] ranking not cached — ${warmPersistenceFailureCountryCodes.size} score warm SETs failed ` +
-        `persistence/transport after retry; returning live response without freezing them as greyed-out missing coverage.`,
-      );
-      return response;
+  try {
+    const countryCodes = await listScorableCountries();
+    if (countryCodes.length === 0) {
+      return buildRankingResponse([], [], {
+        fetchedAtMs: Date.now(),
+        scored: 0,
+        total: 0,
+      });
     }
 
-    // Persistence parity check: confirm the score SETs actually landed in
-    // Redis before declaring success and writing seed-meta. Upstash REST
-    // /pipeline returns `result:'OK'` per command, but under saturated edge-
-    // runtime conditions that OK can be a transport-level acknowledgement
-    // that doesn't translate to durable persistence — observed 2026-04-27
-    // when seed-meta:resilience:ranking said scored=196 while a SCAN of
-    // resilience:score:v16:* returned just 2 keys. Without this check the
-    // meta would lie about success, downstream health flips between OK and
-    // EMPTY, and operators chase phantom TTL/cron issues.
+    const cachedScores = await getCachedResilienceScores(countryCodes);
+    const missing = countryCodes.filter((countryCode) => !cachedScores.has(countryCode));
+    // Track the country codes whose scores were JUST warmed by this invocation.
+    // The persistence parity check below samples from THIS set specifically —
+    // pre-warmed entries from `getCachedResilienceScores` already proved they
+    // exist (we just read them), so verifying them is uninformative; the keys
+    // whose durability is in question are the ones we just SET via the
+    // batched pipeline inside `warmMissingResilienceScores`.
+    const warmedCountryCodes: string[] = [];
+    const warmPersistenceFailureCountryCodes = new Set<string>();
+    if (missing.length > 0) {
+      try {
+        // Merge warm results into cachedScores directly rather than re-reading
+        // from Redis. Upstash REST writes (/set) aren't always visible to an
+        // immediately-following /pipeline GET in the same Vercel invocation,
+        // which collapsed coverage to 0/N and silently dropped the ranking
+        // publish. The warmer already holds every score in memory — trust it.
+        // See `feedback_upstash_write_reread_race_in_handler.md`.
+        const warmed = await warmMissingResilienceScores(missing.slice(0, SYNC_WARM_LIMIT));
+        for (const [countryCode, score] of warmed) {
+          cachedScores.set(countryCode, score);
+          warmedCountryCodes.push(countryCode);
+        }
+        for (const failure of warmed.failures) {
+          if (failure.stage === 'persist') warmPersistenceFailureCountryCodes.add(failure.countryCode);
+        }
+      } catch (err) {
+        console.warn('[resilience] ranking warmup failed:', err);
+      }
+    }
+
+    const intervals = await fetchIntervals([...cachedScores.keys()]);
+    const allItems = countryCodes.map((countryCode) => buildRankingItem(countryCode, cachedScores.get(countryCode), intervals.get(countryCode)));
+    // Plan 2026-04-26-002 §U7 (PR 6) — headline-eligible gate. The
+    // headline ranking endpoint returns ONLY items with
+    // `headlineEligible: true`; ineligible items move to `greyedOut`
+    // alongside the existing low-coverage greyout. This is the load-
+    // bearing change from PR 2's "headlineEligible: true everywhere"
+    // contract: real eligibility logic now decides the front-of-house
+    // ranking. Raw API endpoints (get-resilience-score per-country)
+    // continue to return the full set with `headlineEligible: false`
+    // surfaced; only the *ranking* endpoint applies the filter.
     //
-    // Critical: sample from `warmedCountryCodes` (entries SET by THIS
-    // invocation), NOT from all of cachedScores. Pre-warmed entries came
-    // from `getCachedResilienceScores` — we just READ them, so they are
-    // tautologically present. The keys whose durability is uncertain are
-    // the ones we just WROTE. A naïve `slice(0, 20)` over cachedScores
-    // creates a blind spot: if the first 20 are pre-warmed and the
-    // durability failure only affects the warmed tail, the check passes
-    // and meta still lies (reviewer catch on PR #3458).
-    //
-    // Within the warmed set, shuffle before slicing so the same N entries
-    // aren't checked every invocation — partial-failure modes that
-    // consistently affect the same subset (e.g. last batch of 30 fails
-    // due to queue saturation) are more likely to be sampled.
-    //
-    // Cost: one extra ~50-200ms round-trip on Edge. Skip entirely when
-    // there were no warmed writes (cache hit on every country).
-    if (warmedCountryCodes.length > 0) {
-      const shuffled = [...warmedCountryCodes].sort(() => Math.random() - 0.5);
-      const sampleKeys = shuffled.slice(0, 20).map(scoreCacheKey);
-      const verifyResults = await runRedisPipeline(sampleKeys.map((k) => ['EXISTS', k]));
-      const actualPersisted = verifyResults.filter((r) => r?.result === 1).length;
-      if (actualPersisted < sampleKeys.length * RANKING_PERSISTENCE_MIN_PARITY) {
+    // `headlineEligible: true` already implies overallCoverage >= 0.65
+    // (HEADLINE_ELIGIBLE_MIN_COVERAGE in _shared.ts), which is well
+    // above GREY_OUT_COVERAGE_THRESHOLD (0.40); checking the threshold
+    // here would be dead code per Greptile P2. Reduced to the single
+    // load-bearing predicate. Items with low coverage that somehow
+    // arrive with headlineEligible:true (e.g. from a corrupted cache
+    // entry) are intentionally trusted — the gate is the source of
+    // truth for this decision, not coverage alone.
+    const passesHeadlineGate = (item: ResilienceRankingItem): boolean => item.headlineEligible === true;
+    const fetchedAtMs = Date.now();
+    const response = buildRankingResponse(
+      sortRankingItems(allItems.filter(passesHeadlineGate)),
+      allItems.filter((item) => !passesHeadlineGate(item)),
+      { fetchedAtMs, scored: cachedScores.size, total: countryCodes.length },
+    );
+
+    // Cache the ranking when we have substantive coverage — don't hold out for 100%.
+    // The previous gate (stillMissing === 0) meant a single failing-to-warm country
+    // permanently blocked the write, leaving the cache null for days while the 6h TTL
+    // expired between cron ticks. Countries that fail to warm already land in
+    // `greyedOut` with coverage 0, so the response is correct for partial states.
+    const coverageRatio = cachedScores.size / countryCodes.length;
+    if (coverageRatio >= RANKING_CACHE_MIN_COVERAGE) {
+      if (warmPersistenceFailureCountryCodes.size > 0) {
         console.warn(
-          `[resilience] persistence parity fail: ${actualPersisted}/${sampleKeys.length} ` +
-          `sampled WARMED score keys exist in Redis (warmed=${warmedCountryCodes.length}, ` +
-          `cachedScores.size=${cachedScores.size}, coverage=${(coverageRatio * 100).toFixed(0)}%) — ` +
-          `refusing meta write to avoid lying about ranking publish.`,
+          `[resilience] ranking not cached — ${warmPersistenceFailureCountryCodes.size} score warm SETs failed ` +
+            `persistence/transport after retry; returning live response without freezing them as greyed-out missing coverage.`,
         );
         return response;
       }
+
+      // Persistence parity check: confirm the score SETs actually landed in
+      // Redis before declaring success and writing seed-meta. Upstash REST
+      // /pipeline returns `result:'OK'` per command, but under saturated edge-
+      // runtime conditions that OK can be a transport-level acknowledgement
+      // that doesn't translate to durable persistence — observed 2026-04-27
+      // when seed-meta:resilience:ranking said scored=196 while a SCAN of
+      // resilience:score:v16:* returned just 2 keys. Without this check the
+      // meta would lie about success, downstream health flips between OK and
+      // EMPTY, and operators chase phantom TTL/cron issues.
+      //
+      // Critical: sample from `warmedCountryCodes` (entries SET by THIS
+      // invocation), NOT from all of cachedScores. Pre-warmed entries came
+      // from `getCachedResilienceScores` — we just READ them, so they are
+      // tautologically present. The keys whose durability is uncertain are
+      // the ones we just WROTE. A naïve `slice(0, 20)` over cachedScores
+      // creates a blind spot: if the first 20 are pre-warmed and the
+      // durability failure only affects the warmed tail, the check passes
+      // and meta still lies (reviewer catch on PR #3458).
+      //
+      // Within the warmed set, shuffle before slicing so the same N entries
+      // aren't checked every invocation — partial-failure modes that
+      // consistently affect the same subset (e.g. last batch of 30 fails
+      // due to queue saturation) are more likely to be sampled.
+      //
+      // Cost: one extra ~50-200ms round-trip on Edge. Skip entirely when
+      // there were no warmed writes (cache hit on every country).
+      if (warmedCountryCodes.length > 0) {
+        const shuffled = [...warmedCountryCodes].sort(() => Math.random() - 0.5);
+        const sampleKeys = shuffled.slice(0, 20).map(scoreCacheKey);
+        const verifyResults = await runRedisPipeline(sampleKeys.map((k) => ['EXISTS', k]));
+        const actualPersisted = verifyResults.filter((r) => r?.result === 1).length;
+        if (actualPersisted < sampleKeys.length * RANKING_PERSISTENCE_MIN_PARITY) {
+          console.warn(
+            `[resilience] persistence parity fail: ${actualPersisted}/${sampleKeys.length} ` +
+              `sampled WARMED score keys exist in Redis (warmed=${warmedCountryCodes.length}, ` +
+              `cachedScores.size=${cachedScores.size}, coverage=${(coverageRatio * 100).toFixed(0)}%) — ` +
+              `refusing meta write to avoid lying about ranking publish.`,
+          );
+          return response;
+        }
+      }
+
+      // Upstash REST /pipeline is not transactional: each SET can succeed or
+      // fail independently. A partial write (ranking OK, meta missed) would
+      // leave health.js reading a stale meta over a fresh ranking — the seeder
+      // self-heal here ensures we at least log it, and the seeder also verifies
+      // BOTH keys post-refresh. If either SET didn't return OK we log a warning
+      // that ops can grep for, rather than silently succeeding.
+      // Tag the persisted ranking so the stale-formula gate above can
+      // detect a cross-formula cache hit after a flag flip. The tag is
+      // stripped on read before the response crosses back to callers.
+      const persistedRanking = stampRankingCacheTag(response);
+      const ttlSeconds = coverageRatio >= RANKING_FULL_COVERAGE ? RESILIENCE_RANKING_CACHE_TTL_SECONDS : PARTIAL_RANKING_CACHE_TTL_SECONDS;
+      const pipelineResult = await runRedisPipeline([
+        ['SET', RESILIENCE_RANKING_CACHE_KEY, JSON.stringify(persistedRanking), 'EX', ttlSeconds],
+        [
+          'SET',
+          RESILIENCE_RANKING_META_KEY,
+          JSON.stringify({
+            fetchedAt: fetchedAtMs,
+            count: response.items.length + response.greyedOut.length,
+            scored: cachedScores.size,
+            total: countryCodes.length,
+            coverage: response.coverage,
+            partial: response.partial,
+          }),
+          'EX',
+          Math.min(RESILIENCE_RANKING_META_TTL_SECONDS, ttlSeconds),
+        ],
+      ]);
+      const rankingOk = pipelineResult[0]?.result === 'OK';
+      const metaOk = pipelineResult[1]?.result === 'OK';
+      if (!rankingOk || !metaOk) {
+        console.warn(`[resilience] ranking publish partial: ranking=${rankingOk ? 'OK' : 'FAIL'} meta=${metaOk ? 'OK' : 'FAIL'}`);
+      }
+    } else {
+      console.warn(`[resilience] ranking not cached — coverage ${cachedScores.size}/${countryCodes.length} below ${RANKING_CACHE_MIN_COVERAGE * 100}% threshold`);
     }
 
-    // Upstash REST /pipeline is not transactional: each SET can succeed or
-    // fail independently. A partial write (ranking OK, meta missed) would
-    // leave health.js reading a stale meta over a fresh ranking — the seeder
-    // self-heal here ensures we at least log it, and the seeder also verifies
-    // BOTH keys post-refresh. If either SET didn't return OK we log a warning
-    // that ops can grep for, rather than silently succeeding.
-    // Tag the persisted ranking so the stale-formula gate above can
-    // detect a cross-formula cache hit after a flag flip. The tag is
-    // stripped on read before the response crosses back to callers.
-    const persistedRanking = stampRankingCacheTag(response);
-    const ttlSeconds = coverageRatio >= RANKING_FULL_COVERAGE
-      ? RESILIENCE_RANKING_CACHE_TTL_SECONDS
-      : PARTIAL_RANKING_CACHE_TTL_SECONDS;
-    const pipelineResult = await runRedisPipeline([
-      ['SET', RESILIENCE_RANKING_CACHE_KEY, JSON.stringify(persistedRanking), 'EX', ttlSeconds],
-      ['SET', RESILIENCE_RANKING_META_KEY, JSON.stringify({
-        fetchedAt: fetchedAtMs,
-        count: response.items.length + response.greyedOut.length,
-        scored: cachedScores.size,
-        total: countryCodes.length,
-        coverage: response.coverage,
-        partial: response.partial,
-      }), 'EX', Math.min(RESILIENCE_RANKING_META_TTL_SECONDS, ttlSeconds)],
-    ]);
-    const rankingOk = pipelineResult[0]?.result === 'OK';
-    const metaOk = pipelineResult[1]?.result === 'OK';
-    if (!rankingOk || !metaOk) {
-      console.warn(`[resilience] ranking publish partial: ranking=${rankingOk ? 'OK' : 'FAIL'} meta=${metaOk ? 'OK' : 'FAIL'}`);
-    }
-  } else {
-    console.warn(`[resilience] ranking not cached — coverage ${cachedScores.size}/${countryCodes.length} below ${RANKING_CACHE_MIN_COVERAGE * 100}% threshold`);
+    return response;
+  } finally {
+    if (lockToRelease) await releaseRankingLock(lockToRelease.key, lockToRelease.token);
   }
-
-  return response;
 };

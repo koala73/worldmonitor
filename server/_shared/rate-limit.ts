@@ -88,11 +88,7 @@ export function getClientIp(request: Request): string {
   return cf || xr || UNKNOWN_CLIENT_IP;
 }
 
-function tooManyRequestsResponse(
-  limit: number,
-  reset: number,
-  corsHeaders: Record<string, string>,
-): Response {
+function tooManyRequestsResponse(limit: number, reset: number, corsHeaders: Record<string, string>): Response {
   return new Response(JSON.stringify({ error: 'Too many requests' }), {
     status: 429,
     headers: {
@@ -107,17 +103,14 @@ function tooManyRequestsResponse(
 }
 
 function rateLimitDegradedResponse(corsHeaders: Record<string, string>): Response {
-  return new Response(
-    JSON.stringify({ error: 'Rate-limit service temporarily unavailable' }),
-    {
-      status: 503,
-      headers: {
-        'Content-Type': 'application/json',
-        ...RATE_LIMIT_DEGRADED_HEADERS,
-        ...corsHeaders,
-      },
+  return new Response(JSON.stringify({ error: 'Rate-limit service temporarily unavailable' }), {
+    status: 503,
+    headers: {
+      'Content-Type': 'application/json',
+      ...RATE_LIMIT_DEGRADED_HEADERS,
+      ...corsHeaders,
     },
-  );
+  });
 }
 
 export interface RateLimitOptions {
@@ -132,11 +125,7 @@ export interface RateLimitOptions {
   failClosed?: boolean;
 }
 
-export async function checkRateLimit(
-  request: Request,
-  corsHeaders: Record<string, string>,
-  opts: RateLimitOptions = {},
-): Promise<Response | null> {
+export async function checkRateLimit(request: Request, corsHeaders: Record<string, string>, opts: RateLimitOptions = {}): Promise<Response | null> {
   const rl = getRatelimit();
   if (!rl) {
     if (opts.failClosed) {
@@ -197,6 +186,9 @@ export const ENDPOINT_RATE_POLICIES: Record<string, EndpointRatePolicy> = {
   // = 6 req/min/IP base load. 60/min headroom covers tab refreshes + zoom
   // pans within a single user without flagging legitimate traffic.
   '/api/maritime/v1/get-vessel-snapshot': { limit: 60, window: '60 s' },
+  // Country Resilience ranking can synchronously warm the full country table
+  // on cold/stale cache paths; keep it well below the global 600/min fallback.
+  '/api/resilience/v1/get-resilience-ranking': { limit: 30, window: '60 s' },
   // #3805 / PR #3821: MCP proxy is a top-level Vercel Edge Function in
   // `api/mcp-proxy.ts` (registered as `external-protocol` in
   // api/api-route-exceptions.json — JSON-RPC shape dictated by the MCP spec),
@@ -237,22 +229,14 @@ export function hasEndpointRatePolicy(pathname: string): boolean {
   return pathname in ENDPOINT_RATE_POLICIES;
 }
 
-export async function checkEndpointRateLimit(
-  request: Request,
-  pathname: string,
-  corsHeaders: Record<string, string>,
-  opts: RateLimitOptions = {},
-): Promise<Response | null> {
+export async function checkEndpointRateLimit(request: Request, pathname: string, corsHeaders: Record<string, string>, opts: RateLimitOptions = {}): Promise<Response | null> {
   if (!hasEndpointRatePolicy(pathname)) return null;
 
   const rl = getEndpointRatelimit(pathname);
   if (!rl) {
     const failClosed = opts.failClosed ?? true;
     if (failClosed) {
-      logRateLimitDegraded(
-        `checkEndpointRateLimit:${pathname}:missing-config`,
-        new Error('Upstash Redis is not configured'),
-      );
+      logRateLimitDegraded(`checkEndpointRateLimit:${pathname}:missing-config`, new Error('Upstash Redis is not configured'));
       return rateLimitDegradedResponse(corsHeaders);
     }
     return null;
@@ -330,12 +314,7 @@ export interface ScopedRateLimitResult {
  * (#3531). The Redis error itself is logged once per call so silent bypass
  * windows are visible in logs / Sentry.
  */
-export async function checkScopedRateLimit(
-  scope: string,
-  limit: number,
-  window: Duration,
-  identifier: string,
-): Promise<ScopedRateLimitResult> {
+export async function checkScopedRateLimit(scope: string, limit: number, window: Duration, identifier: string): Promise<ScopedRateLimitResult> {
   const rl = getScopedRatelimit(scope, limit, window);
   if (!rl) return { allowed: true, limit, reset: 0, degraded: true };
   try {

@@ -4,6 +4,7 @@ import { normalizeCountryToken } from '../../../_shared/country-token';
 import { getCachedJson } from '../../../_shared/redis';
 import { classifyDimensionFreshness, readFreshnessMap, resolveSeedMetaKey } from './_dimension-freshness';
 import { getLanguageCoverageFactor } from './_language-coverage';
+import { MACRO_FISCAL_INDICATOR_WEIGHTS } from './_macro-fiscal-weights';
 import {
   failedDimensionsFromDatasets,
   readFailedDatasets,
@@ -86,6 +87,10 @@ interface WeightedMetric {
   // countries — the inverse of the intended semantic. Omit when `weight` is
   // already the nominal design-time value (default = weight).
   nominalWeight?: number;
+}
+
+function hasFiniteMetricScore(metric: WeightedMetric): metric is WeightedMetric & { score: number } {
+  return Number.isFinite(metric.score);
 }
 
 // Four-class imputation taxonomy (Phase 1 T1.7 of the country-resilience
@@ -603,6 +608,14 @@ function normalizeHigherBetter(value: number, worst: number, best: number): numb
   return roundScore(ratio * 100);
 }
 
+export function scoreInflationStability(inflationPct: number): number {
+  if (!Number.isFinite(inflationPct)) return 0;
+  if (inflationPct >= 1 && inflationPct <= 3) return 100;
+  if (inflationPct <= -5) return 0;
+  if (inflationPct < 1) return normalizeHigherBetter(inflationPct, -5, 1);
+  return normalizeLowerBetter(Math.min(inflationPct, 50), 3, 50);
+}
+
 // U-shaped band normalization. Used by `financialSystemExposure` Component 2
 // (BIS LBS cross-border claims as % of GDP). Both extremes are bad — too
 // little integration suggests financial isolation (sanctions-target
@@ -672,14 +685,14 @@ const MINUTE_MS = 60 * 1000;
 
 function weightedBlend(metrics: WeightedMetric[]): ResilienceDimensionScore {
   const totalWeight = metrics.reduce((sum, metric) => sum + metric.weight, 0);
-  const available = metrics.filter((metric) => metric.score != null);
+  const available = metrics.filter(hasFiniteMetricScore);
   const availableWeight = available.reduce((sum, metric) => sum + metric.weight, 0);
 
   if (!availableWeight || !totalWeight) {
     return { score: 0, coverage: 0, observedWeight: 0, imputedWeight: 0, imputationClass: null, freshness: { lastObservedAtMs: 0, staleness: '' } };
   }
 
-  const weightedScore = available.reduce((sum, metric) => sum + (metric.score || 0) * metric.weight, 0) / availableWeight;
+  const weightedScore = available.reduce((sum, metric) => sum + metric.score * metric.weight, 0) / availableWeight;
 
   // Coverage: weighted average of certainty per metric, computed against the
   // NOMINAL design-time weight rather than the runtime weight. Real data → 1.0;
@@ -696,7 +709,7 @@ function weightedBlend(metrics: WeightedMetric[]): ResilienceDimensionScore {
   // of the confidence weighting applied to the score.
   const totalNominalWeight = metrics.reduce((sum, metric) => sum + (metric.nominalWeight ?? metric.weight), 0);
   const weightedCertainty = metrics.reduce((sum, metric) => {
-    const certainty = metric.certaintyCoverage ?? (metric.score != null ? 1 : 0);
+    const certainty = metric.certaintyCoverage ?? (hasFiniteMetricScore(metric) ? 1 : 0);
     const nominalWeight = metric.nominalWeight ?? metric.weight;
     return sum + nominalWeight * certainty;
   }, 0) / totalNominalWeight;
@@ -709,7 +722,7 @@ function weightedBlend(metrics: WeightedMetric[]): ResilienceDimensionScore {
   let imputedWeight = 0;
   const classWeights = new Map<ImputationClass, number>();
   for (const metric of metrics) {
-    if (metric.score == null) continue;
+    if (!hasFiniteMetricScore(metric)) continue;
     if (metric.imputed === true) {
       imputedWeight += metric.weight;
       if (metric.imputationClass) {
@@ -1206,20 +1219,35 @@ export async function scoreMacroFiscal(
     // states (Somalia 5% debt ≠ fiscal prudence; it reflects that no one will lend to them).
     // Anchor: 5% (Somalia, war-torn states) → 0, 45% (OECD median) → 100.
     imfMacroRaw == null
-      ? { score: null, weight: 0.4 }
-      : { score: imfEntry?.govRevenuePct == null ? null : normalizeHigherBetter(imfEntry.govRevenuePct, 5, 45), weight: 0.4 },
+      ? { score: null, weight: MACRO_FISCAL_INDICATOR_WEIGHTS.govRevenuePct }
+      : {
+          score: imfEntry?.govRevenuePct == null ? null : normalizeHigherBetter(imfEntry.govRevenuePct, 5, 45),
+          weight: MACRO_FISCAL_INDICATOR_WEIGHTS.govRevenuePct,
+        },
     // Debt growth rate: rapid debt accumulation = fiscal stress even at moderate levels.
-    { score: extractMetric(debtEntry, (entry) => normalizeLowerBetter(Math.max(0, safeNum(entry.annualGrowth) ?? 0), 0, 20)), weight: 0.2 },
+    {
+      score: extractMetric(debtEntry, (entry) => normalizeLowerBetter(Math.max(0, safeNum(entry.annualGrowth) ?? 0), 0, 20)),
+      weight: MACRO_FISCAL_INDICATOR_WEIGHTS.debtGrowthRate,
+    },
     // Current account balance: external position — deficit = more vulnerable to FX shocks.
     imfMacroRaw == null
-      ? { score: null, weight: 0.2 }
-      : { score: imfEntry?.currentAccountPct == null ? null : normalizeHigherBetter(Math.max(-20, Math.min(imfEntry.currentAccountPct, 20)), -20, 20), weight: 0.2 },
+      ? { score: null, weight: MACRO_FISCAL_INDICATOR_WEIGHTS.currentAccountPct }
+      : {
+          score: imfEntry?.currentAccountPct == null ? null : normalizeHigherBetter(Math.max(-20, Math.min(imfEntry.currentAccountPct, 20)), -20, 20),
+          weight: MACRO_FISCAL_INDICATOR_WEIGHTS.currentAccountPct,
+        },
     imfLaborRaw == null
-      ? { score: null, weight: 0.15 }
-      : { score: laborEntry?.unemploymentPct == null ? null : normalizeLowerBetter(Math.max(3, Math.min(laborEntry.unemploymentPct, 25)), 3, 25), weight: 0.15 },
+      ? { score: null, weight: MACRO_FISCAL_INDICATOR_WEIGHTS.unemploymentPct }
+      : {
+          score: laborEntry?.unemploymentPct == null ? null : normalizeLowerBetter(Math.max(3, Math.min(laborEntry.unemploymentPct, 25)), 3, 25),
+          weight: MACRO_FISCAL_INDICATOR_WEIGHTS.unemploymentPct,
+        },
     bisDsrRaw == null || dsrEntry == null
-      ? { score: null, weight: 0.05 }
-      : { score: normalizeLowerBetter(Math.max(0, Math.min(dsrEntry.dsrPct, 20)), 0, 20), weight: 0.05 },
+      ? { score: null, weight: MACRO_FISCAL_INDICATOR_WEIGHTS.householdDebtService }
+      : {
+          score: normalizeLowerBetter(Math.max(0, Math.min(dsrEntry.dsrPct, 20)), 0, 20),
+          weight: MACRO_FISCAL_INDICATOR_WEIGHTS.householdDebtService,
+        },
   ]);
 }
 
@@ -1258,9 +1286,10 @@ export async function scoreCurrencyExternal(
   ]);
 
   const imfEntry = getImfMacroEntry(imfMacroRaw, countryCode);
-  const hasInflation = imfMacroRaw != null && imfEntry?.inflationPct != null;
+  const inflationPct = safeNum(imfEntry?.inflationPct);
+  const hasInflation = imfMacroRaw != null && inflationPct != null;
   const inflationScore = hasInflation
-    ? normalizeLowerBetter(Math.min(imfEntry!.inflationPct!, 50), 0, 50)
+    ? scoreInflationStability(inflationPct!)
     : null;
 
   const reservesMonths = getFxReservesMonths(staticRecord);

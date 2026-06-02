@@ -1,4 +1,5 @@
 import type { ResilienceDimensionId } from './_dimension-scorers';
+import { MACRO_FISCAL_INDICATOR_WEIGHTS } from './_macro-fiscal-weights';
 
 // Phase 2 T2.2a signal tiering. See docs/internal/country-resilience-upgrade-plan.md
 // section "Signal tiering (Core / Enrichment / Experimental)".
@@ -49,14 +50,14 @@ export type IndicatorSpec = {
 };
 
 export const INDICATOR_REGISTRY: IndicatorSpec[] = [
-  // ── macroFiscal (4 sub-metrics) ───────────────────────────────────────────
+  // ── macroFiscal (5 sub-metrics) ───────────────────────────────────────────
   {
     id: 'govRevenuePct',
     dimension: 'macroFiscal',
     description: 'Government revenue as % of GDP (IMF GGR_G01_GDP_PT); fiscal capacity proxy',
     direction: 'higherBetter',
     goalposts: { worst: 5, best: 45 },
-    weight: 0.4,
+    weight: MACRO_FISCAL_INDICATOR_WEIGHTS.govRevenuePct,
     sourceKey: 'economic:imf:macro:v2',
     scope: 'global',
     cadence: 'annual',
@@ -71,7 +72,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     description: 'Annual debt growth rate; rapid accumulation signals fiscal stress',
     direction: 'lowerBetter',
     goalposts: { worst: 20, best: 0 },
-    weight: 0.2,
+    weight: MACRO_FISCAL_INDICATOR_WEIGHTS.debtGrowthRate,
     sourceKey: 'economic:national-debt:v1',
     scope: 'global',
     cadence: 'annual',
@@ -86,7 +87,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     description: 'Current account balance as % of GDP (IMF); external position vulnerability',
     direction: 'higherBetter',
     goalposts: { worst: -20, best: 20 },
-    weight: 0.2,
+    weight: MACRO_FISCAL_INDICATOR_WEIGHTS.currentAccountPct,
     sourceKey: 'economic:imf:macro:v2',
     scope: 'global',
     cadence: 'annual',
@@ -101,7 +102,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     description: 'Unemployment rate (IMF WEO LUR); higher = labor-market slack & lower fiscal absorption capacity',
     direction: 'lowerBetter',
     goalposts: { worst: 25, best: 3 },
-    weight: 0.15,
+    weight: MACRO_FISCAL_INDICATOR_WEIGHTS.unemploymentPct,
     sourceKey: 'economic:imf:labor:v1',
     scope: 'global',
     cadence: 'annual',
@@ -116,7 +117,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     description: 'BIS household debt service ratio (% income, quarterly). DSR > 10% precedes banking crises (Drehmann 2011). Lower is safer; goalposts anchor 20% → 0, 0% → 100.',
     direction: 'lowerBetter',
     goalposts: { worst: 20, best: 0 },
-    weight: 0.05,
+    weight: MACRO_FISCAL_INDICATOR_WEIGHTS.householdDebtService,
     sourceKey: 'economic:bis:dsr:v1',
     scope: 'curated',
     cadence: 'quarterly',

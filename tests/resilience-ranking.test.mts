@@ -3,6 +3,7 @@ import { afterEach, describe, it } from 'node:test';
 
 import { createDomainGateway } from '../server/gateway.ts';
 import { mapErrorToResponse } from '../server/error-mapper.ts';
+import { ENDPOINT_RATE_POLICIES } from '../server/_shared/rate-limit.ts';
 import { getResilienceRanking } from '../server/worldmonitor/resilience/v1/get-resilience-ranking.ts';
 import { ApiError } from '../src/generated/server/worldmonitor/resilience/v1/service_server.ts';
 import {
@@ -16,7 +17,7 @@ import {
   sortRankingItems,
   warmMissingResilienceScores,
 } from '../server/worldmonitor/resilience/v1/_shared.ts';
-import { __resetKeyPrefixCacheForTests } from '../server/_shared/redis.ts';
+import { __resetKeyPrefixCacheForTests, compareAndDeleteRedisKey } from '../server/_shared/redis.ts';
 import { installRedis } from './helpers/fake-upstash-redis.mts';
 import { RESILIENCE_FIXTURES } from './helpers/resilience-fixtures.mts';
 
@@ -69,16 +70,47 @@ afterEach(() => {
 describe('resilience ranking contracts', () => {
   it('sorts descending by overall score and keeps unscored placeholders at the end', () => {
     const sorted = sortRankingItems([
-      { countryCode: 'US', overallScore: 61, level: 'medium', lowConfidence: false },
-      { countryCode: 'YE', overallScore: -1, level: 'unknown', lowConfidence: true },
-      { countryCode: 'NO', overallScore: 82, level: 'high', lowConfidence: false },
-      { countryCode: 'DE', overallScore: -1, level: 'unknown', lowConfidence: true },
-      { countryCode: 'JP', overallScore: 61, level: 'medium', lowConfidence: false },
+      {
+        countryCode: 'US',
+        overallScore: 61,
+        level: 'medium',
+        lowConfidence: false,
+      },
+      {
+        countryCode: 'YE',
+        overallScore: -1,
+        level: 'unknown',
+        lowConfidence: true,
+      },
+      {
+        countryCode: 'NO',
+        overallScore: 82,
+        level: 'high',
+        lowConfidence: false,
+      },
+      {
+        countryCode: 'DE',
+        overallScore: -1,
+        level: 'unknown',
+        lowConfidence: true,
+      },
+      {
+        countryCode: 'JP',
+        overallScore: 61,
+        level: 'medium',
+        lowConfidence: false,
+      },
     ]);
 
     assert.deepEqual(
       sorted.map((item) => [item.countryCode, item.overallScore]),
-      [['NO', 82], ['JP', 61], ['US', 61], ['DE', -1], ['YE', -1]],
+      [
+        ['NO', 82],
+        ['JP', 61],
+        ['US', 61],
+        ['DE', -1],
+        ['YE', -1],
+      ],
     );
   });
 
@@ -89,8 +121,22 @@ describe('resilience ranking contracts', () => {
     // dedicated backfill test in resilience-headline-eligible-field.test.mts.
     const cachedPublic = {
       items: [
-        { countryCode: 'NO', overallScore: 82, level: 'high', lowConfidence: false, overallCoverage: 0.95, headlineEligible: true },
-        { countryCode: 'US', overallScore: 61, level: 'medium', lowConfidence: false, overallCoverage: 0.88, headlineEligible: true },
+        {
+          countryCode: 'NO',
+          overallScore: 82,
+          level: 'high',
+          lowConfidence: false,
+          overallCoverage: 0.95,
+          headlineEligible: true,
+        },
+        {
+          countryCode: 'US',
+          overallScore: 61,
+          level: 'medium',
+          lowConfidence: false,
+          overallCoverage: 0.88,
+          headlineEligible: true,
+        },
       ],
       greyedOut: [],
       ...RANKING_META,
@@ -119,10 +165,22 @@ describe('resilience ranking contracts', () => {
     const { redis } = installRedis(RESILIENCE_FIXTURES);
     const legacyCached = {
       items: [
-        { countryCode: 'NO', overallScore: 82, level: 'high', lowConfidence: false, overallCoverage: 0.95 },
+        {
+          countryCode: 'NO',
+          overallScore: 82,
+          level: 'high',
+          lowConfidence: false,
+          overallCoverage: 0.95,
+        },
       ],
       greyedOut: [
-        { countryCode: 'SS', overallScore: 12, level: 'critical', lowConfidence: true, overallCoverage: 0.15 },
+        {
+          countryCode: 'SS',
+          overallScore: 12,
+          level: 'critical',
+          lowConfidence: true,
+          overallCoverage: 0.15,
+        },
       ],
       ...RANKING_META,
     };
@@ -134,14 +192,13 @@ describe('resilience ranking contracts', () => {
     // backfill flips it to false, then the gate routes it to greyedOut.
     const noItem = [...response.items, ...response.greyedOut].find((item) => item.countryCode === 'NO');
     const ssItem = [...response.items, ...response.greyedOut].find((item) => item.countryCode === 'SS');
-    assert.equal(noItem?.headlineEligible, false,
-      'v17 cache-read backfill must default missing headlineEligible to false (conservative — gate is SoT)');
-    assert.equal(ssItem?.headlineEligible, false,
-      'v17 cache-read backfill must default missing headlineEligible to false on greyedOut[] too');
-    assert.ok(response.greyedOut.some((item) => item.countryCode === 'NO'),
-      'NO with missing headlineEligible must route to greyedOut[] (not items[]) after conservative backfill + gate filter');
-    assert.ok(!response.items.some((item) => item.countryCode === 'NO'),
-      'NO must NOT appear in items[] — conservative default sends it to greyedOut');
+    assert.equal(noItem?.headlineEligible, false, 'v17 cache-read backfill must default missing headlineEligible to false (conservative — gate is SoT)');
+    assert.equal(ssItem?.headlineEligible, false, 'v17 cache-read backfill must default missing headlineEligible to false on greyedOut[] too');
+    assert.ok(
+      response.greyedOut.some((item) => item.countryCode === 'NO'),
+      'NO with missing headlineEligible must route to greyedOut[] (not items[]) after conservative backfill + gate filter',
+    );
+    assert.ok(!response.items.some((item) => item.countryCode === 'NO'), 'NO must NOT appear in items[] — conservative default sends it to greyedOut');
   });
 
   it('returns all-greyed-out cached payload without rewarming (items=[], greyedOut non-empty)', async () => {
@@ -157,8 +214,22 @@ describe('resilience ranking contracts', () => {
     const cachedPublic = {
       items: [],
       greyedOut: [
-        { countryCode: 'SS', overallScore: 12, level: 'critical', lowConfidence: true, overallCoverage: 0.15, headlineEligible: false },
-        { countryCode: 'ER', overallScore: 10, level: 'critical', lowConfidence: true, overallCoverage: 0.12, headlineEligible: false },
+        {
+          countryCode: 'SS',
+          overallScore: 12,
+          level: 'critical',
+          lowConfidence: true,
+          overallCoverage: 0.15,
+          headlineEligible: false,
+        },
+        {
+          countryCode: 'ER',
+          overallScore: 10,
+          level: 'critical',
+          lowConfidence: true,
+          overallCoverage: 0.12,
+          headlineEligible: false,
+        },
       ],
       ...RANKING_META,
     };
@@ -185,27 +256,62 @@ describe('resilience ranking contracts', () => {
     // ranking warm path runs for the untagged country (meaning the
     // bulk read skipped it).
     const { redis } = installRedis(RESILIENCE_FIXTURES);
-    redis.set('resilience:static:index:v1', JSON.stringify({
-      countries: ['NO', 'US'],
-      recordCount: 2,
-      failedDatasets: [],
-      seedYear: 2026,
-    }));
+    redis.set(
+      'resilience:static:index:v1',
+      JSON.stringify({
+        countries: ['NO', 'US'],
+        recordCount: 2,
+        failedDatasets: [],
+        seedYear: 2026,
+      }),
+    );
 
-    const domain = [{ id: 'political', score: 80, weight: 0.2, dimensions: [{ id: 'd1', score: 80, coverage: 0.9, observedWeight: 1, imputedWeight: 0 }] }];
+    const domain = [
+      {
+        id: 'political',
+        score: 80,
+        weight: 0.2,
+        dimensions: [
+          {
+            id: 'd1',
+            score: 80,
+            coverage: 0.9,
+            observedWeight: 1,
+            imputedWeight: 0,
+          },
+        ],
+      },
+    ];
     // Tagged entry: served as-is.
-    redis.set(`${RESILIENCE_SCORE_CACHE_PREFIX}NO`, JSON.stringify({
-      countryCode: 'NO', overallScore: 82, level: 'high',
-      domains: domain, trend: 'stable', change30d: 1.2,
-      lowConfidence: false, imputationShare: 0.05, _formula: 'd6',
-    }));
+    redis.set(
+      `${RESILIENCE_SCORE_CACHE_PREFIX}NO`,
+      JSON.stringify({
+        countryCode: 'NO',
+        overallScore: 82,
+        level: 'high',
+        domains: domain,
+        trend: 'stable',
+        change30d: 1.2,
+        lowConfidence: false,
+        imputationShare: 0.05,
+        _formula: 'd6',
+      }),
+    );
     // Untagged entry: must be rejected, ranking warm rebuilds US.
-    redis.set(`${RESILIENCE_SCORE_CACHE_PREFIX}US`, JSON.stringify({
-      countryCode: 'US', overallScore: 61, level: 'medium',
-      domains: domain, trend: 'rising', change30d: 4.3,
-      lowConfidence: false, imputationShare: 0.1,
-      // NOTE: no _formula field.
-    }));
+    redis.set(
+      `${RESILIENCE_SCORE_CACHE_PREFIX}US`,
+      JSON.stringify({
+        countryCode: 'US',
+        overallScore: 61,
+        level: 'medium',
+        domains: domain,
+        trend: 'rising',
+        change30d: 4.3,
+        lowConfidence: false,
+        imputationShare: 0.1,
+        // NOTE: no _formula field.
+      }),
+    );
 
     await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
 
@@ -235,7 +341,13 @@ describe('resilience ranking contracts', () => {
     const { redis } = installRedis(RESILIENCE_FIXTURES);
     const stale = {
       items: [
-        { countryCode: 'NO', overallScore: 99, level: 'high', lowConfidence: false, overallCoverage: 0.95 },
+        {
+          countryCode: 'NO',
+          overallScore: 99,
+          level: 'high',
+          lowConfidence: false,
+          overallCoverage: 0.95,
+        },
       ],
       greyedOut: [],
       ...RANKING_META,
@@ -246,17 +358,10 @@ describe('resilience ranking contracts', () => {
 
     const response = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
 
-    assert.notDeepEqual(
-      response,
-      { items: stale.items, greyedOut: stale.greyedOut },
-      'stale-formula ranking must be rejected, not served',
-    );
+    assert.notDeepEqual(response, { items: stale.items, greyedOut: stale.greyedOut }, 'stale-formula ranking must be rejected, not served');
     // Recompute path warms missing per-country scores, so YE (in
     // RESILIENCE_FIXTURES) must get scored during this call.
-    assert.ok(
-      redis.has(`${RESILIENCE_SCORE_CACHE_PREFIX}YE`),
-      'stale-formula reject must trigger the recompute-and-warm path',
-    );
+    assert.ok(redis.has(`${RESILIENCE_SCORE_CACHE_PREFIX}YE`), 'stale-formula reject must trigger the recompute-and-warm path');
   });
 
   it('rejects a same-formula ranking cache entry missing interval methodology metadata', async () => {
@@ -265,77 +370,197 @@ describe('resilience ranking contracts', () => {
     // Current cache hits must therefore prove both the score formula and
     // interval methodology, not just `_formula`.
     const { redis } = installRedis(RESILIENCE_FIXTURES);
-    redis.set('resilience:static:index:v1', JSON.stringify({
-      countries: ['NO', 'US'],
-      recordCount: 2,
-      failedDatasets: [],
-      seedYear: 2026,
-    }));
-    const domainWithCoverage = [{ id: 'political', score: 80, weight: 0.2, dimensions: [{ id: 'd1', score: 80, coverage: 0.9, observedWeight: 1, imputedWeight: 0 }] }];
-    redis.set(`${RESILIENCE_SCORE_CACHE_PREFIX}NO`, JSON.stringify({
-      countryCode: 'NO', overallScore: 82, level: 'high',
-      domains: domainWithCoverage, trend: 'stable', change30d: 1.2,
-      lowConfidence: false, imputationShare: 0.05, headlineEligible: true, _formula: 'd6',
-    }));
-    redis.set(`${RESILIENCE_SCORE_CACHE_PREFIX}US`, JSON.stringify({
-      countryCode: 'US', overallScore: 61, level: 'medium',
-      domains: domainWithCoverage, trend: 'rising', change30d: 4.3,
-      lowConfidence: false, imputationShare: 0.1, headlineEligible: true, _formula: 'd6',
-    }));
-    redis.set(RESILIENCE_RANKING_CACHE_KEY, JSON.stringify({
-      items: [
-        { countryCode: 'NO', overallScore: 99, level: 'high', lowConfidence: false, overallCoverage: 0.95, headlineEligible: true, rankStable: true },
-        { countryCode: 'US', overallScore: 98, level: 'high', lowConfidence: false, overallCoverage: 0.95, headlineEligible: true, rankStable: true },
-      ],
-      greyedOut: [],
-      ...RANKING_META,
-      _formula: 'd6',
-      // Deliberately missing _intervalMethodology: old ranking payload.
-    }));
+    redis.set(
+      'resilience:static:index:v1',
+      JSON.stringify({
+        countries: ['NO', 'US'],
+        recordCount: 2,
+        failedDatasets: [],
+        seedYear: 2026,
+      }),
+    );
+    const domainWithCoverage = [
+      {
+        id: 'political',
+        score: 80,
+        weight: 0.2,
+        dimensions: [
+          {
+            id: 'd1',
+            score: 80,
+            coverage: 0.9,
+            observedWeight: 1,
+            imputedWeight: 0,
+          },
+        ],
+      },
+    ];
+    redis.set(
+      `${RESILIENCE_SCORE_CACHE_PREFIX}NO`,
+      JSON.stringify({
+        countryCode: 'NO',
+        overallScore: 82,
+        level: 'high',
+        domains: domainWithCoverage,
+        trend: 'stable',
+        change30d: 1.2,
+        lowConfidence: false,
+        imputationShare: 0.05,
+        headlineEligible: true,
+        _formula: 'd6',
+      }),
+    );
+    redis.set(
+      `${RESILIENCE_SCORE_CACHE_PREFIX}US`,
+      JSON.stringify({
+        countryCode: 'US',
+        overallScore: 61,
+        level: 'medium',
+        domains: domainWithCoverage,
+        trend: 'rising',
+        change30d: 4.3,
+        lowConfidence: false,
+        imputationShare: 0.1,
+        headlineEligible: true,
+        _formula: 'd6',
+      }),
+    );
+    redis.set(
+      RESILIENCE_RANKING_CACHE_KEY,
+      JSON.stringify({
+        items: [
+          {
+            countryCode: 'NO',
+            overallScore: 99,
+            level: 'high',
+            lowConfidence: false,
+            overallCoverage: 0.95,
+            headlineEligible: true,
+            rankStable: true,
+          },
+          {
+            countryCode: 'US',
+            overallScore: 98,
+            level: 'high',
+            lowConfidence: false,
+            overallCoverage: 0.95,
+            headlineEligible: true,
+            rankStable: true,
+          },
+        ],
+        greyedOut: [],
+        ...RANKING_META,
+        _formula: 'd6',
+        // Deliberately missing _intervalMethodology: old ranking payload.
+      }),
+    );
 
     const response = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
 
     assert.deepEqual(
       response.items.map((item) => [item.countryCode, item.overallScore, item.rankStable]),
-      [['NO', 82, false], ['US', 61, false]],
+      [
+        ['NO', 82, false],
+        ['US', 61, false],
+      ],
       'same-formula cache without interval methodology must recompute and not preserve baked rankStable',
     );
   });
 
   it('rejects a same-formula ranking cache entry missing response metadata', async () => {
     const { redis } = installRedis(RESILIENCE_FIXTURES);
-    redis.set('resilience:static:index:v1', JSON.stringify({
-      countries: ['NO', 'US'],
-      recordCount: 2,
-      failedDatasets: [],
-      seedYear: 2026,
-    }));
-    const domainWithCoverage = [{ id: 'political', score: 80, weight: 0.2, dimensions: [{ id: 'd1', score: 80, coverage: 0.9, observedWeight: 1, imputedWeight: 0 }] }];
-    redis.set(`${RESILIENCE_SCORE_CACHE_PREFIX}NO`, JSON.stringify({
-      countryCode: 'NO', overallScore: 82, level: 'high',
-      domains: domainWithCoverage, trend: 'stable', change30d: 1.2,
-      lowConfidence: false, imputationShare: 0.05, headlineEligible: true, _formula: 'd6',
-    }));
-    redis.set(`${RESILIENCE_SCORE_CACHE_PREFIX}US`, JSON.stringify({
-      countryCode: 'US', overallScore: 61, level: 'medium',
-      domains: domainWithCoverage, trend: 'rising', change30d: 4.3,
-      lowConfidence: false, imputationShare: 0.1, headlineEligible: true, _formula: 'd6',
-    }));
-    redis.set(RESILIENCE_RANKING_CACHE_KEY, JSON.stringify({
-      items: [
-        { countryCode: 'NO', overallScore: 99, level: 'high', lowConfidence: false, overallCoverage: 0.95, headlineEligible: true, rankStable: true },
-        { countryCode: 'US', overallScore: 98, level: 'high', lowConfidence: false, overallCoverage: 0.95, headlineEligible: true, rankStable: true },
-      ],
-      greyedOut: [],
-      ...D6_RANKING_CACHE_TAG,
-      // Deliberately missing fetchedAt/scored/total/coverage/partial.
-    }));
+    redis.set(
+      'resilience:static:index:v1',
+      JSON.stringify({
+        countries: ['NO', 'US'],
+        recordCount: 2,
+        failedDatasets: [],
+        seedYear: 2026,
+      }),
+    );
+    const domainWithCoverage = [
+      {
+        id: 'political',
+        score: 80,
+        weight: 0.2,
+        dimensions: [
+          {
+            id: 'd1',
+            score: 80,
+            coverage: 0.9,
+            observedWeight: 1,
+            imputedWeight: 0,
+          },
+        ],
+      },
+    ];
+    redis.set(
+      `${RESILIENCE_SCORE_CACHE_PREFIX}NO`,
+      JSON.stringify({
+        countryCode: 'NO',
+        overallScore: 82,
+        level: 'high',
+        domains: domainWithCoverage,
+        trend: 'stable',
+        change30d: 1.2,
+        lowConfidence: false,
+        imputationShare: 0.05,
+        headlineEligible: true,
+        _formula: 'd6',
+      }),
+    );
+    redis.set(
+      `${RESILIENCE_SCORE_CACHE_PREFIX}US`,
+      JSON.stringify({
+        countryCode: 'US',
+        overallScore: 61,
+        level: 'medium',
+        domains: domainWithCoverage,
+        trend: 'rising',
+        change30d: 4.3,
+        lowConfidence: false,
+        imputationShare: 0.1,
+        headlineEligible: true,
+        _formula: 'd6',
+      }),
+    );
+    redis.set(
+      RESILIENCE_RANKING_CACHE_KEY,
+      JSON.stringify({
+        items: [
+          {
+            countryCode: 'NO',
+            overallScore: 99,
+            level: 'high',
+            lowConfidence: false,
+            overallCoverage: 0.95,
+            headlineEligible: true,
+            rankStable: true,
+          },
+          {
+            countryCode: 'US',
+            overallScore: 98,
+            level: 'high',
+            lowConfidence: false,
+            overallCoverage: 0.95,
+            headlineEligible: true,
+            rankStable: true,
+          },
+        ],
+        greyedOut: [],
+        ...D6_RANKING_CACHE_TAG,
+        // Deliberately missing fetchedAt/scored/total/coverage/partial.
+      }),
+    );
 
     const response = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
 
     assert.deepEqual(
       response.items.map((item) => [item.countryCode, item.overallScore]),
-      [['NO', 82], ['US', 61]],
+      [
+        ['NO', 82],
+        ['US', 61],
+      ],
       'same-formula cache without response metadata must recompute so freshness/partial fields are real',
     );
     assert.match(response.fetchedAt, /^\d{4}-\d{2}-\d{2}T/);
@@ -344,50 +569,94 @@ describe('resilience ranking contracts', () => {
   it('warms missing scores synchronously and returns complete ranking on first call', async () => {
     const { redis } = installRedis(RESILIENCE_FIXTURES);
     const domainWithCoverage = [{ name: 'political', dimensions: [{ name: 'd1', coverage: 0.9 }] }];
-    redis.set(`${RESILIENCE_SCORE_CACHE_PREFIX}NO`, JSON.stringify({
-      countryCode: 'NO',
-      overallScore: 82,
-      level: 'high',
-      domains: domainWithCoverage,
-      trend: 'stable',
-      change30d: 1.2,
-      lowConfidence: false,
-      imputationShare: 0.05,
-    }));
-    redis.set(`${RESILIENCE_SCORE_CACHE_PREFIX}US`, JSON.stringify({
-      countryCode: 'US',
-      overallScore: 61,
-      level: 'medium',
-      domains: domainWithCoverage,
-      trend: 'rising',
-      change30d: 4.3,
-      lowConfidence: false,
-      imputationShare: 0.1,
-    }));
+    redis.set(
+      `${RESILIENCE_SCORE_CACHE_PREFIX}NO`,
+      JSON.stringify({
+        countryCode: 'NO',
+        overallScore: 82,
+        level: 'high',
+        domains: domainWithCoverage,
+        trend: 'stable',
+        change30d: 1.2,
+        lowConfidence: false,
+        imputationShare: 0.05,
+      }),
+    );
+    redis.set(
+      `${RESILIENCE_SCORE_CACHE_PREFIX}US`,
+      JSON.stringify({
+        countryCode: 'US',
+        overallScore: 61,
+        level: 'medium',
+        domains: domainWithCoverage,
+        trend: 'rising',
+        change30d: 4.3,
+        lowConfidence: false,
+        imputationShare: 0.1,
+      }),
+    );
 
     const response = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
 
     const totalItems = response.items.length + (response.greyedOut?.length ?? 0);
     assert.equal(totalItems, 3, `expected 3 total items across ranked + greyedOut, got ${totalItems}`);
     assert.ok(redis.has(`${RESILIENCE_SCORE_CACHE_PREFIX}YE`), 'missing country should be warmed during first call');
-    assert.ok(response.items.every((item) => item.overallScore >= 0), 'ranked items should all have computed scores');
+    assert.ok(
+      response.items.every((item) => item.overallScore >= 0),
+      'ranked items should all have computed scores',
+    );
     assert.ok(redis.has(RESILIENCE_RANKING_CACHE_KEY), 'fully scored ranking should be cached');
   });
 
   it('sets rankStable=true when interval data exists and width <= 8', async () => {
     process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = 'false';
     const { redis } = installRedis(RESILIENCE_FIXTURES);
-    const domainWithCoverage = [{ id: 'political', score: 80, weight: 0.2, dimensions: [{ id: 'd1', score: 80, coverage: 0.9, observedWeight: 1, imputedWeight: 0 }] }];
-    redis.set(`${RESILIENCE_SCORE_CACHE_PREFIX}NO`, JSON.stringify({
-      countryCode: 'NO', overallScore: 82, level: 'high',
-      domains: domainWithCoverage, trend: 'stable', change30d: 1.2,
-      lowConfidence: false, imputationShare: 0.05, headlineEligible: true, _formula: 'd6',
-    }));
-    redis.set(`${RESILIENCE_SCORE_CACHE_PREFIX}US`, JSON.stringify({
-      countryCode: 'US', overallScore: 61, level: 'medium',
-      domains: domainWithCoverage, trend: 'rising', change30d: 4.3,
-      lowConfidence: false, imputationShare: 0.1, headlineEligible: true, _formula: 'd6',
-    }));
+    const domainWithCoverage = [
+      {
+        id: 'political',
+        score: 80,
+        weight: 0.2,
+        dimensions: [
+          {
+            id: 'd1',
+            score: 80,
+            coverage: 0.9,
+            observedWeight: 1,
+            imputedWeight: 0,
+          },
+        ],
+      },
+    ];
+    redis.set(
+      `${RESILIENCE_SCORE_CACHE_PREFIX}NO`,
+      JSON.stringify({
+        countryCode: 'NO',
+        overallScore: 82,
+        level: 'high',
+        domains: domainWithCoverage,
+        trend: 'stable',
+        change30d: 1.2,
+        lowConfidence: false,
+        imputationShare: 0.05,
+        headlineEligible: true,
+        _formula: 'd6',
+      }),
+    );
+    redis.set(
+      `${RESILIENCE_SCORE_CACHE_PREFIX}US`,
+      JSON.stringify({
+        countryCode: 'US',
+        overallScore: 61,
+        level: 'medium',
+        domains: domainWithCoverage,
+        trend: 'rising',
+        change30d: 4.3,
+        lowConfidence: false,
+        imputationShare: 0.1,
+        headlineEligible: true,
+        _formula: 'd6',
+      }),
+    );
     redis.set(`${RESILIENCE_INTERVAL_KEY_PREFIX}NO`, JSON.stringify({ p05: 78, p95: 84, _formula: 'd6' }));
     redis.set(`${RESILIENCE_INTERVAL_KEY_PREFIX}US`, JSON.stringify({ p05: 50, p95: 72, _formula: 'd6' }));
 
@@ -402,17 +671,52 @@ describe('resilience ranking contracts', () => {
   it('sets rankStable=false for stale-formula or untagged interval data', async () => {
     process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = 'false';
     const { redis } = installRedis(RESILIENCE_FIXTURES);
-    const domainWithCoverage = [{ id: 'political', score: 80, weight: 0.2, dimensions: [{ id: 'd1', score: 80, coverage: 0.9, observedWeight: 1, imputedWeight: 0 }] }];
-    redis.set(`${RESILIENCE_SCORE_CACHE_PREFIX}NO`, JSON.stringify({
-      countryCode: 'NO', overallScore: 82, level: 'high',
-      domains: domainWithCoverage, trend: 'stable', change30d: 1.2,
-      lowConfidence: false, imputationShare: 0.05, headlineEligible: true, _formula: 'd6',
-    }));
-    redis.set(`${RESILIENCE_SCORE_CACHE_PREFIX}US`, JSON.stringify({
-      countryCode: 'US', overallScore: 61, level: 'medium',
-      domains: domainWithCoverage, trend: 'rising', change30d: 4.3,
-      lowConfidence: false, imputationShare: 0.1, headlineEligible: true, _formula: 'd6',
-    }));
+    const domainWithCoverage = [
+      {
+        id: 'political',
+        score: 80,
+        weight: 0.2,
+        dimensions: [
+          {
+            id: 'd1',
+            score: 80,
+            coverage: 0.9,
+            observedWeight: 1,
+            imputedWeight: 0,
+          },
+        ],
+      },
+    ];
+    redis.set(
+      `${RESILIENCE_SCORE_CACHE_PREFIX}NO`,
+      JSON.stringify({
+        countryCode: 'NO',
+        overallScore: 82,
+        level: 'high',
+        domains: domainWithCoverage,
+        trend: 'stable',
+        change30d: 1.2,
+        lowConfidence: false,
+        imputationShare: 0.05,
+        headlineEligible: true,
+        _formula: 'd6',
+      }),
+    );
+    redis.set(
+      `${RESILIENCE_SCORE_CACHE_PREFIX}US`,
+      JSON.stringify({
+        countryCode: 'US',
+        overallScore: 61,
+        level: 'medium',
+        domains: domainWithCoverage,
+        trend: 'rising',
+        change30d: 4.3,
+        lowConfidence: false,
+        imputationShare: 0.1,
+        headlineEligible: true,
+        _formula: 'd6',
+      }),
+    );
     redis.set(`${RESILIENCE_INTERVAL_KEY_PREFIX}NO`, JSON.stringify({ p05: 78, p95: 84, _formula: 'pc' }));
     redis.set(`${RESILIENCE_INTERVAL_KEY_PREFIX}US`, JSON.stringify({ p05: 58, p95: 64 }));
 
@@ -426,34 +730,53 @@ describe('resilience ranking contracts', () => {
 
   it('does not cache the ranking at 80% coverage', async () => {
     const { redis, fetchImpl } = installRedis(RESILIENCE_FIXTURES);
-    redis.set('resilience:static:index:v1', JSON.stringify({
-      countries: ['NO', 'US', 'YE', 'CA', 'FR', 'DE', 'JP', 'BR', 'IN', 'ZA'],
-      recordCount: 10,
-      failedDatasets: [],
-      seedYear: 2026,
-    }));
-    const domainWithCoverage = [{ id: 'political', score: 80, weight: 0.2, dimensions: [{ id: 'd1', score: 80, coverage: 0.9, observedWeight: 1, imputedWeight: 0 }] }];
+    redis.set(
+      'resilience:static:index:v1',
+      JSON.stringify({
+        countries: ['NO', 'US', 'YE', 'CA', 'FR', 'DE', 'JP', 'BR', 'IN', 'ZA'],
+        recordCount: 10,
+        failedDatasets: [],
+        seedYear: 2026,
+      }),
+    );
+    const domainWithCoverage = [
+      {
+        id: 'political',
+        score: 80,
+        weight: 0.2,
+        dimensions: [
+          {
+            id: 'd1',
+            score: 80,
+            coverage: 0.9,
+            observedWeight: 1,
+            imputedWeight: 0,
+          },
+        ],
+      },
+    ];
     for (const [index, countryCode] of ['NO', 'US', 'YE', 'CA', 'FR', 'DE', 'JP', 'BR'].entries()) {
-      redis.set(`${RESILIENCE_SCORE_CACHE_PREFIX}${countryCode}`, JSON.stringify({
-        countryCode,
-        overallScore: 80 - index,
-        level: 'high',
-        domains: domainWithCoverage,
-        trend: 'stable',
-        change30d: 0,
-        lowConfidence: false,
-        imputationShare: 0,
-        headlineEligible: true,
-        _formula: 'd6',
-      }));
+      redis.set(
+        `${RESILIENCE_SCORE_CACHE_PREFIX}${countryCode}`,
+        JSON.stringify({
+          countryCode,
+          overallScore: 80 - index,
+          level: 'high',
+          domains: domainWithCoverage,
+          trend: 'stable',
+          change30d: 0,
+          lowConfidence: false,
+          imputationShare: 0,
+          headlineEligible: true,
+          _formula: 'd6',
+        }),
+      );
     }
     const failScoreSets = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
       if (url.endsWith('/pipeline') && typeof init?.body === 'string') {
         const commands = JSON.parse(init.body) as Array<Array<string>>;
-        const allScoreSets = commands.length > 0 && commands.every(
-          (cmd) => cmd[0] === 'SET' && typeof cmd[1] === 'string' && cmd[1].startsWith(RESILIENCE_SCORE_CACHE_PREFIX),
-        );
+        const allScoreSets = commands.length > 0 && commands.every((cmd) => cmd[0] === 'SET' && typeof cmd[1] === 'string' && cmd[1].startsWith(RESILIENCE_SCORE_CACHE_PREFIX));
         if (allScoreSets) {
           return new Response(JSON.stringify(commands.map(() => ({ result: null }))), { status: 200 });
         }
@@ -470,34 +793,53 @@ describe('resilience ranking contracts', () => {
 
   it('does not cache a 90%-94% partial ranking when the gap is a warm persistence failure', async () => {
     const { redis, fetchImpl } = installRedis(RESILIENCE_FIXTURES);
-    redis.set('resilience:static:index:v1', JSON.stringify({
-      countries: ['NO', 'US', 'YE', 'CA', 'FR', 'DE', 'JP', 'BR', 'IN', 'ZA'],
-      recordCount: 10,
-      failedDatasets: [],
-      seedYear: 2026,
-    }));
-    const domainWithCoverage = [{ id: 'political', score: 80, weight: 0.2, dimensions: [{ id: 'd1', score: 80, coverage: 0.9, observedWeight: 1, imputedWeight: 0 }] }];
+    redis.set(
+      'resilience:static:index:v1',
+      JSON.stringify({
+        countries: ['NO', 'US', 'YE', 'CA', 'FR', 'DE', 'JP', 'BR', 'IN', 'ZA'],
+        recordCount: 10,
+        failedDatasets: [],
+        seedYear: 2026,
+      }),
+    );
+    const domainWithCoverage = [
+      {
+        id: 'political',
+        score: 80,
+        weight: 0.2,
+        dimensions: [
+          {
+            id: 'd1',
+            score: 80,
+            coverage: 0.9,
+            observedWeight: 1,
+            imputedWeight: 0,
+          },
+        ],
+      },
+    ];
     for (const [index, countryCode] of ['NO', 'US', 'YE', 'CA', 'FR', 'DE', 'JP', 'BR', 'IN'].entries()) {
-      redis.set(`${RESILIENCE_SCORE_CACHE_PREFIX}${countryCode}`, JSON.stringify({
-        countryCode,
-        overallScore: 80 - index,
-        level: 'high',
-        domains: domainWithCoverage,
-        trend: 'stable',
-        change30d: 0,
-        lowConfidence: false,
-        imputationShare: 0,
-        headlineEligible: true,
-        _formula: 'd6',
-      }));
+      redis.set(
+        `${RESILIENCE_SCORE_CACHE_PREFIX}${countryCode}`,
+        JSON.stringify({
+          countryCode,
+          overallScore: 80 - index,
+          level: 'high',
+          domains: domainWithCoverage,
+          trend: 'stable',
+          change30d: 0,
+          lowConfidence: false,
+          imputationShare: 0,
+          headlineEligible: true,
+          _formula: 'd6',
+        }),
+      );
     }
     const failScoreSets = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
       if (url.endsWith('/pipeline') && typeof init?.body === 'string') {
         const commands = JSON.parse(init.body) as Array<Array<string>>;
-        const allScoreSets = commands.length > 0 && commands.every(
-          (cmd) => cmd[0] === 'SET' && typeof cmd[1] === 'string' && cmd[1].startsWith(RESILIENCE_SCORE_CACHE_PREFIX),
-        );
+        const allScoreSets = commands.length > 0 && commands.every((cmd) => cmd[0] === 'SET' && typeof cmd[1] === 'string' && cmd[1].startsWith(RESILIENCE_SCORE_CACHE_PREFIX));
         if (allScoreSets) {
           return new Response(JSON.stringify(commands.map(() => ({ result: null }))), { status: 200 });
         }
@@ -574,12 +916,15 @@ describe('resilience ranking contracts', () => {
 
   it('returns explicit partial metadata for an empty scorable universe without caching', async () => {
     const { redis } = installRedis({});
-    redis.set('resilience:static:index:v1', JSON.stringify({
-      countries: [],
-      recordCount: 0,
-      failedDatasets: [],
-      seedYear: 2026,
-    }));
+    redis.set(
+      'resilience:static:index:v1',
+      JSON.stringify({
+        countries: [],
+        recordCount: 0,
+        failedDatasets: [],
+        seedYear: 2026,
+      }),
+    );
 
     const response = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
 
@@ -605,12 +950,15 @@ describe('resilience ranking contracts', () => {
     // return null, coverage = 0% < 90%, handler skips the write. Post-fix,
     // the in-memory merge carries both scores, coverage = 100%, write
     // proceeds.
-    redis.set('resilience:static:index:v1', JSON.stringify({
-      countries: ['NO', 'US'],
-      recordCount: 2,
-      failedDatasets: [],
-      seedYear: 2026,
-    }));
+    redis.set(
+      'resilience:static:index:v1',
+      JSON.stringify({
+        countries: ['NO', 'US'],
+        recordCount: 2,
+        failedDatasets: [],
+        seedYear: 2026,
+      }),
+    );
 
     // Stale pipeline-GETs for score keys: pretend Redis hasn't caught up with
     // the /set writes yet. /set calls still mutate the underlying map so the
@@ -619,15 +967,10 @@ describe('resilience ranking contracts', () => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
       if (url.endsWith('/pipeline') && typeof init?.body === 'string') {
         const commands = JSON.parse(init.body) as Array<Array<string>>;
-        const allScoreReads = commands.length > 0 && commands.every(
-          (cmd) => cmd[0] === 'GET' && typeof cmd[1] === 'string' && cmd[1].startsWith(RESILIENCE_SCORE_CACHE_PREFIX),
-        );
+        const allScoreReads = commands.length > 0 && commands.every((cmd) => cmd[0] === 'GET' && typeof cmd[1] === 'string' && cmd[1].startsWith(RESILIENCE_SCORE_CACHE_PREFIX));
         if (allScoreReads) {
           // Simulate visibility lag: pretend no scores are cached yet.
-          return new Response(
-            JSON.stringify(commands.map(() => ({ result: null }))),
-            { status: 200 },
-          );
+          return new Response(JSON.stringify(commands.map(() => ({ result: null }))), { status: 200 });
         }
       }
       return fetchImpl(input, init);
@@ -654,12 +997,15 @@ describe('resilience ranking contracts', () => {
     // doesn't lie. Simulate this by making SETs return OK in the warm path
     // but NOT actually mutating the underlying redis map for those keys.
     const { redis, fetchImpl } = installRedis(RESILIENCE_FIXTURES);
-    redis.set('resilience:static:index:v1', JSON.stringify({
-      countries: ['NO', 'US'],
-      recordCount: 2,
-      failedDatasets: [],
-      seedYear: 2026,
-    }));
+    redis.set(
+      'resilience:static:index:v1',
+      JSON.stringify({
+        countries: ['NO', 'US'],
+        recordCount: 2,
+        failedDatasets: [],
+        seedYear: 2026,
+      }),
+    );
 
     // Hijack /pipeline so SETs to score:v16:* return OK but don't actually
     // persist (simulating Upstash's optimistic-OK under load). Other commands
@@ -668,15 +1014,10 @@ describe('resilience ranking contracts', () => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
       if (url.endsWith('/pipeline') && typeof init?.body === 'string') {
         const commands = JSON.parse(init.body) as Array<Array<string>>;
-        const allScoreSets = commands.length > 0 && commands.every(
-          (cmd) => cmd[0] === 'SET' && typeof cmd[1] === 'string' && cmd[1].startsWith(RESILIENCE_SCORE_CACHE_PREFIX),
-        );
+        const allScoreSets = commands.length > 0 && commands.every((cmd) => cmd[0] === 'SET' && typeof cmd[1] === 'string' && cmd[1].startsWith(RESILIENCE_SCORE_CACHE_PREFIX));
         if (allScoreSets) {
           // Return OK without mutating redis — the lying-Upstash scenario.
-          return new Response(
-            JSON.stringify(commands.map(() => ({ result: 'OK' }))),
-            { status: 200 },
-          );
+          return new Response(JSON.stringify(commands.map(() => ({ result: 'OK' }))), { status: 200 });
         }
       }
       return fetchImpl(input, init);
@@ -685,10 +1026,8 @@ describe('resilience ranking contracts', () => {
 
     await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
 
-    assert.equal(redis.has(RESILIENCE_RANKING_CACHE_KEY), false,
-      'ranking must NOT be published when score SETs returned OK but did not durably persist');
-    assert.equal(redis.has('seed-meta:resilience:ranking'), false,
-      'seed-meta must NOT be written when parity check fails — that would be a lying meta');
+    assert.equal(redis.has(RESILIENCE_RANKING_CACHE_KEY), false, 'ranking must NOT be published when score SETs returned OK but did not durably persist');
+    assert.equal(redis.has('seed-meta:resilience:ranking'), false, 'seed-meta must NOT be written when parity check fails — that would be a lying meta');
   });
 
   it('parity check: catches mixed persisted-tail failure (pre-warmed keys exist; new warmed-tail SETs return OK but do not persist)', async () => {
@@ -708,24 +1047,60 @@ describe('resilience ranking contracts', () => {
     // (YE + ZZ) get warmed via the SET pipeline, but our mock returns
     // OK without actually persisting them.
     const { redis, fetchImpl } = installRedis(RESILIENCE_FIXTURES);
-    redis.set('resilience:static:index:v1', JSON.stringify({
-      countries: ['NO', 'US', 'YE', 'ZZ'],
-      recordCount: 4,
-      failedDatasets: [],
-      seedYear: 2026,
-    }));
-    const domainWithCoverage = [{ id: 'political', score: 80, weight: 0.2, dimensions: [{ id: 'd1', score: 80, coverage: 0.9, observedWeight: 1, imputedWeight: 0 }] }];
+    redis.set(
+      'resilience:static:index:v1',
+      JSON.stringify({
+        countries: ['NO', 'US', 'YE', 'ZZ'],
+        recordCount: 4,
+        failedDatasets: [],
+        seedYear: 2026,
+      }),
+    );
+    const domainWithCoverage = [
+      {
+        id: 'political',
+        score: 80,
+        weight: 0.2,
+        dimensions: [
+          {
+            id: 'd1',
+            score: 80,
+            coverage: 0.9,
+            observedWeight: 1,
+            imputedWeight: 0,
+          },
+        ],
+      },
+    ];
     // Pre-cache NO + US WITH formula tag so getCachedResilienceScores admits them.
-    redis.set(`${RESILIENCE_SCORE_CACHE_PREFIX}NO`, JSON.stringify({
-      countryCode: 'NO', overallScore: 82, level: 'high',
-      domains: domainWithCoverage, trend: 'stable', change30d: 1.2,
-      lowConfidence: false, imputationShare: 0.05, _formula: 'd6',
-    }));
-    redis.set(`${RESILIENCE_SCORE_CACHE_PREFIX}US`, JSON.stringify({
-      countryCode: 'US', overallScore: 61, level: 'medium',
-      domains: domainWithCoverage, trend: 'rising', change30d: 4.3,
-      lowConfidence: false, imputationShare: 0.1, _formula: 'd6',
-    }));
+    redis.set(
+      `${RESILIENCE_SCORE_CACHE_PREFIX}NO`,
+      JSON.stringify({
+        countryCode: 'NO',
+        overallScore: 82,
+        level: 'high',
+        domains: domainWithCoverage,
+        trend: 'stable',
+        change30d: 1.2,
+        lowConfidence: false,
+        imputationShare: 0.05,
+        _formula: 'd6',
+      }),
+    );
+    redis.set(
+      `${RESILIENCE_SCORE_CACHE_PREFIX}US`,
+      JSON.stringify({
+        countryCode: 'US',
+        overallScore: 61,
+        level: 'medium',
+        domains: domainWithCoverage,
+        trend: 'rising',
+        change30d: 4.3,
+        lowConfidence: false,
+        imputationShare: 0.1,
+        _formula: 'd6',
+      }),
+    );
 
     // Hijack /pipeline so SETs to score:v16:* return OK but don't persist —
     // simulating Upstash optimistic-OK on the warmed tail. Other commands
@@ -735,16 +1110,11 @@ describe('resilience ranking contracts', () => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
       if (url.endsWith('/pipeline') && typeof init?.body === 'string') {
         const commands = JSON.parse(init.body) as Array<Array<string>>;
-        const allScoreSets = commands.length > 0 && commands.every(
-          (cmd) => cmd[0] === 'SET' && typeof cmd[1] === 'string' && cmd[1].startsWith(RESILIENCE_SCORE_CACHE_PREFIX),
-        );
+        const allScoreSets = commands.length > 0 && commands.every((cmd) => cmd[0] === 'SET' && typeof cmd[1] === 'string' && cmd[1].startsWith(RESILIENCE_SCORE_CACHE_PREFIX));
         if (allScoreSets) {
           // Return OK without mutating redis — the warmed-tail keys
           // (YE, ZZ) "say" they landed but actually don't.
-          return new Response(
-            JSON.stringify(commands.map(() => ({ result: 'OK' }))),
-            { status: 200 },
-          );
+          return new Response(JSON.stringify(commands.map(() => ({ result: 'OK' }))), { status: 200 });
         }
       }
       return fetchImpl(input, init);
@@ -760,10 +1130,12 @@ describe('resilience ranking contracts', () => {
     // Post-fix (sample from warmedCountryCodes only): YE + ZZ are
     // sampled, neither exists in Redis, parity check fails, meta
     // refused.
-    assert.equal(redis.has(RESILIENCE_RANKING_CACHE_KEY), false,
-      'ranking must NOT be published when warmed-tail keys returned OK but did not persist (mixed-failure mode)');
-    assert.equal(redis.has('seed-meta:resilience:ranking'), false,
-      'seed-meta must NOT lie when only the warmed tail failed — sampling must focus on warmed entries, not cachedScores broadly');
+    assert.equal(redis.has(RESILIENCE_RANKING_CACHE_KEY), false, 'ranking must NOT be published when warmed-tail keys returned OK but did not persist (mixed-failure mode)');
+    assert.equal(
+      redis.has('seed-meta:resilience:ranking'),
+      false,
+      'seed-meta must NOT lie when only the warmed tail failed — sampling must focus on warmed entries, not cachedScores broadly',
+    );
   });
 
   it('pipeline SETs apply env prefix so preview warms do not leak into production namespace', async () => {
@@ -782,12 +1154,15 @@ describe('resilience ranking contracts', () => {
     __resetKeyPrefixCacheForTests();
 
     const { redis, fetchImpl } = installRedis({ ...RESILIENCE_FIXTURES }, { keepVercelEnv: true });
-    redis.set('resilience:static:index:v1', JSON.stringify({
-      countries: ['NO', 'US'],
-      recordCount: 2,
-      failedDatasets: [],
-      seedYear: 2026,
-    }));
+    redis.set(
+      'resilience:static:index:v1',
+      JSON.stringify({
+        countries: ['NO', 'US'],
+        recordCount: 2,
+        failedDatasets: [],
+        seedYear: 2026,
+      }),
+    );
 
     const pipelineBodies: Array<Array<Array<unknown>>> = [];
     const capturing = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -807,10 +1182,7 @@ describe('resilience ranking contracts', () => {
       .map((cmd) => cmd[1] as string);
     assert.ok(scoreSetKeys.length >= 2, `expected at least 2 score SETs, got ${scoreSetKeys.length}`);
     for (const key of scoreSetKeys) {
-      assert.ok(
-        key.startsWith('preview:abcdef12:'),
-        `score SET key must carry preview prefix; got ${key} — writes would poison the production namespace`,
-      );
+      assert.ok(key.startsWith('preview:abcdef12:'), `score SET key must carry preview prefix; got ${key} — writes would poison the production namespace`);
     }
   });
 
@@ -823,16 +1195,33 @@ describe('resilience ranking contracts', () => {
     process.env.WORLDMONITOR_API_KEY = 'legacy-read-key';
     process.env.WORLDMONITOR_SEED_REFRESH_KEY = 'seed-refresh-secret';
     const { redis } = installRedis({ ...RESILIENCE_FIXTURES });
-    redis.set('resilience:static:index:v1', JSON.stringify({
-      countries: ['NO', 'US'],
-      recordCount: 2,
-      failedDatasets: [],
-      seedYear: 2026,
-    }));
+    redis.set(
+      'resilience:static:index:v1',
+      JSON.stringify({
+        countries: ['NO', 'US'],
+        recordCount: 2,
+        failedDatasets: [],
+        seedYear: 2026,
+      }),
+    );
     // Stale sentinel tagged with the current (flag-off default) formula so
     // these refresh-auth assertions exercise the refresh gate, not formula
     // invalidation. NR is rankable but absent from the static-index fixture.
-    const stale = { items: [{ countryCode: 'NR', overallScore: 1, level: 'low', lowConfidence: true, overallCoverage: 0.5, headlineEligible: true }], greyedOut: [], ...RANKING_META, ...D6_RANKING_CACHE_TAG };
+    const stale = {
+      items: [
+        {
+          countryCode: 'NR',
+          overallScore: 1,
+          level: 'low',
+          lowConfidence: true,
+          overallCoverage: 0.5,
+          headlineEligible: true,
+        },
+      ],
+      greyedOut: [],
+      ...RANKING_META,
+      ...D6_RANKING_CACHE_TAG,
+    };
     redis.set(RESILIENCE_RANKING_CACHE_KEY, JSON.stringify(stale));
 
     const assertFallsBackToCache = async (request: Request, message: string) => {
@@ -841,10 +1230,7 @@ describe('resilience ranking contracts', () => {
       assert.equal(response.items[0]?.countryCode, 'NR', message);
     };
 
-    await assertFallsBackToCache(
-      new Request('https://example.com/api/resilience/v1/get-resilience-ranking?refresh=1'),
-      'refresh=1 without key must fall back to cached response',
-    );
+    await assertFallsBackToCache(new Request('https://example.com/api/resilience/v1/get-resilience-ranking?refresh=1'), 'refresh=1 without key must fall back to cached response');
     await assertFallsBackToCache(
       new Request('https://example.com/api/resilience/v1/get-resilience-ranking?refresh=1', {
         headers: { Authorization: 'Bearer pro-session-token' },
@@ -870,7 +1256,7 @@ describe('resilience ranking contracts', () => {
       headers: { 'X-WorldMonitor-Key': 'seed-refresh-secret' },
     });
     const authedResp = await getResilienceRanking({ request: authed } as never, {});
-    const codes = (authedResp.items.concat(authedResp.greyedOut ?? [])).map((i) => i.countryCode);
+    const codes = authedResp.items.concat(authedResp.greyedOut ?? []).map((i) => i.countryCode);
     assert.ok(!codes.includes('NR'), 'refresh=1 with dedicated seed refresh key must recompute');
   });
 
@@ -881,15 +1267,31 @@ describe('resilience ranking contracts', () => {
     // instead of stale-but-present.
     process.env.WORLDMONITOR_SEED_REFRESH_KEY = 'seed-refresh-secret';
     const { redis } = installRedis({ ...RESILIENCE_FIXTURES });
-    redis.set('resilience:static:index:v1', JSON.stringify({
-      countries: ['NO', 'US'],
-      recordCount: 2,
-      failedDatasets: [],
-      seedYear: 2026,
-    }));
+    redis.set(
+      'resilience:static:index:v1',
+      JSON.stringify({
+        countries: ['NO', 'US'],
+        recordCount: 2,
+        failedDatasets: [],
+        seedYear: 2026,
+      }),
+    );
     // Seed a pre-existing ranking so the cache-hit early-return would
     // normally fire. ?refresh=1 (with valid seed key) must ignore it.
-    const stale = { items: [{ countryCode: 'ZZ', overallScore: 1, level: 'low', lowConfidence: true, overallCoverage: 0.5 }], greyedOut: [], ...RANKING_META, ...D6_RANKING_CACHE_TAG };
+    const stale = {
+      items: [
+        {
+          countryCode: 'ZZ',
+          overallScore: 1,
+          level: 'low',
+          lowConfidence: true,
+          overallCoverage: 0.5,
+        },
+      ],
+      greyedOut: [],
+      ...RANKING_META,
+      ...D6_RANKING_CACHE_TAG,
+    };
     redis.set(RESILIENCE_RANKING_CACHE_KEY, JSON.stringify(stale));
 
     const request = new Request('https://example.com/api/resilience/v1/get-resilience-ranking?refresh=1', {
@@ -902,31 +1304,58 @@ describe('resilience ranking contracts', () => {
     assert.ok(returnedCountries.includes('NO') || returnedCountries.includes('US'), 'recomputed ranking must reflect the current static index');
   });
 
-  it('?refresh=1 seed-secret recomputes are bounded by a short Redis refresh slot', async () => {
+  it('?refresh=1 seed-secret recomputes release the Redis refresh slot by token', async () => {
     process.env.WORLDMONITOR_SEED_REFRESH_KEY = 'seed-refresh-secret';
     const { redis } = installRedis({ ...RESILIENCE_FIXTURES });
-    redis.set('resilience:static:index:v1', JSON.stringify({
-      countries: ['NO', 'US'],
-      recordCount: 2,
-      failedDatasets: [],
-      seedYear: 2026,
-    }));
+    redis.set(
+      'resilience:static:index:v1',
+      JSON.stringify({
+        countries: ['NO', 'US'],
+        recordCount: 2,
+        failedDatasets: [],
+        seedYear: 2026,
+      }),
+    );
 
-    const request = () => new Request('https://example.com/api/resilience/v1/get-resilience-ranking?refresh=1', {
-      headers: { 'X-WorldMonitor-Key': 'seed-refresh-secret' },
-    });
+    const request = () =>
+      new Request('https://example.com/api/resilience/v1/get-resilience-ranking?refresh=1', {
+        headers: { 'X-WorldMonitor-Key': 'seed-refresh-secret' },
+      });
     const first = await getResilienceRanking({ request: request() } as never, {});
     const firstCodes = first.items.concat(first.greyedOut ?? []).map((i) => i.countryCode);
     assert.ok(firstCodes.includes('NO') || firstCodes.includes('US'), 'first seed refresh must recompute');
+    assert.equal(redis.has('resilience:ranking:refresh-lock:v1'), false, 'refresh slot must be released in finally after recompute');
 
-    const stale = { items: [{ countryCode: 'NR', overallScore: 1, level: 'low', lowConfidence: true, overallCoverage: 0.5, headlineEligible: true }], greyedOut: [], ...RANKING_META, ...D6_RANKING_CACHE_TAG };
+    const stale = {
+      items: [
+        {
+          countryCode: 'NR',
+          overallScore: 1,
+          level: 'low',
+          lowConfidence: true,
+          overallCoverage: 0.5,
+          headlineEligible: true,
+        },
+      ],
+      greyedOut: [],
+      ...RANKING_META,
+      ...D6_RANKING_CACHE_TAG,
+    };
     redis.set(RESILIENCE_RANKING_CACHE_KEY, JSON.stringify(stale));
     const second = await getResilienceRanking({ request: request() } as never, {});
-    assert.equal(
-      second.items[0]?.countryCode,
-      'NR',
-      'rapid second seed refresh must use the cached path while the refresh slot is held',
-    );
+    const secondCodes = second.items.concat(second.greyedOut ?? []).map((i) => i.countryCode);
+    assert.ok(!secondCodes.includes('NR'), 'released refresh slot must allow a later authorized refresh to recompute');
+    assert.equal(redis.has('resilience:ranking:refresh-lock:v1'), false, 'second refresh must also release the slot');
+  });
+
+  it('Redis lock release uses token compare-and-delete semantics', async () => {
+    const { redis } = installRedis({});
+    redis.set('resilience:ranking:refresh-lock:v1', 'owner-a');
+
+    assert.equal(await compareAndDeleteRedisKey('resilience:ranking:refresh-lock:v1', 'owner-b'), false);
+    assert.equal(redis.get('resilience:ranking:refresh-lock:v1'), 'owner-a', 'wrong token must not delete another owner lock');
+    assert.equal(await compareAndDeleteRedisKey('resilience:ranking:refresh-lock:v1', 'owner-a'), true);
+    assert.equal(redis.has('resilience:ranking:refresh-lock:v1'), false, 'matching token must delete the lock');
   });
 
   it('?refresh=1 seed-secret slot denial returns explicit 429 instead of empty 200 on cold cache', async () => {
@@ -935,15 +1364,17 @@ describe('resilience ranking contracts', () => {
     redis.set('resilience:ranking:refresh-lock:v1', 'held');
 
     await assert.rejects(
-      () => getResilienceRanking({
-        request: new Request('https://example.com/api/resilience/v1/get-resilience-ranking?refresh=1', {
-          headers: { 'X-WorldMonitor-Key': 'seed-refresh-secret' },
-        }),
-      } as never, {}),
-      (err) => err instanceof ApiError
-        && err.statusCode === 429
-        && (err as ApiError & { retryAfter?: number }).retryAfter === 30
-        && /refresh already in progress/.test(err.message),
+      () =>
+        getResilienceRanking(
+          {
+            request: new Request('https://example.com/api/resilience/v1/get-resilience-ranking?refresh=1', {
+              headers: { 'X-WorldMonitor-Key': 'seed-refresh-secret' },
+            }),
+          } as never,
+          {},
+        ),
+      (err) =>
+        err instanceof ApiError && err.statusCode === 429 && (err as ApiError & { retryAfter?: number }).retryAfter === 30 && /refresh already in progress/.test(err.message),
     );
   });
 
@@ -959,17 +1390,113 @@ describe('resilience ranking contracts', () => {
     });
   });
 
+  it('normal cache-miss warm path returns explicit temporary unavailable when the warm lock is held and no cache exists', async () => {
+    const { redis } = installRedis({ ...RESILIENCE_FIXTURES });
+    redis.set(
+      'resilience:static:index:v1',
+      JSON.stringify({
+        countries: ['NO', 'US'],
+        recordCount: 2,
+        failedDatasets: [],
+        seedYear: 2026,
+      }),
+    );
+    redis.set('resilience:ranking:warm-lock:v1', 'held');
+
+    await assert.rejects(
+      () =>
+        getResilienceRanking(
+          {
+            request: new Request('https://example.com/api/resilience/v1/get-resilience-ranking'),
+          } as never,
+          {},
+        ),
+      (err) => err instanceof ApiError && err.statusCode === 503 && (err as ApiError & { retryAfter?: number }).retryAfter === 60 && /temporarily unavailable/.test(err.message),
+    );
+    assert.equal(redis.has(`${RESILIENCE_SCORE_CACHE_PREFIX}NO`), false, 'lock contention must not start a duplicate warm');
+    assert.equal(redis.has(`${RESILIENCE_SCORE_CACHE_PREFIX}US`), false, 'lock contention must not start a duplicate warm');
+  });
+
+  it('normal cache-miss warm path does not serve a stale-tag cache entry during lock contention', async () => {
+    const { redis } = installRedis({ ...RESILIENCE_FIXTURES });
+    redis.set('resilience:ranking:warm-lock:v1', 'held');
+    redis.set(
+      RESILIENCE_RANKING_CACHE_KEY,
+      JSON.stringify({
+        items: [
+          {
+            countryCode: 'NO',
+            overallScore: 82,
+            level: 'high',
+            lowConfidence: false,
+            overallCoverage: 0.95,
+            headlineEligible: true,
+          },
+        ],
+        greyedOut: [],
+        ...RANKING_META,
+        _formula: 'stale-formula',
+        _intervalMethodology: RESILIENCE_INTERVAL_METHODOLOGY,
+      }),
+    );
+
+    await assert.rejects(
+      () =>
+        getResilienceRanking(
+          {
+            request: new Request('https://example.com/api/resilience/v1/get-resilience-ranking'),
+          } as never,
+          {},
+        ),
+      (err) => err instanceof ApiError && err.statusCode === 503,
+    );
+  });
+
+  it('ApiError retryAfter maps temporary-unavailable warm contention to explicit 503 + Retry-After', async () => {
+    const err = new ApiError(503, 'Resilience ranking temporarily unavailable while cache warm is in progress', '');
+    (err as ApiError & { retryAfter: number }).retryAfter = 60;
+    (err as ApiError & { exposeMessage: boolean }).exposeMessage = true;
+    const response = mapErrorToResponse(err, new Request('https://example.com'));
+    assert.equal(response.status, 503);
+    assert.equal(response.headers.get('Retry-After'), '60');
+    assert.deepEqual(await response.json(), {
+      message: 'Resilience ranking temporarily unavailable while cache warm is in progress',
+      retryAfter: 60,
+    });
+  });
+
+  it('ApiError retryAfter does not expose generic 503 messages without explicit opt-in', async () => {
+    const err = new ApiError(503, 'Internal upstream URL https://secret.example failed', '');
+    (err as ApiError & { retryAfter: number }).retryAfter = 60;
+    const response = mapErrorToResponse(err, new Request('https://example.com'));
+    assert.equal(response.status, 503);
+    assert.equal(response.headers.get('Retry-After'), '60');
+    assert.deepEqual(await response.json(), {
+      message: 'Internal server error',
+      retryAfter: 60,
+    });
+  });
+
+  it('gateway has a dedicated low-RPM endpoint policy for resilience ranking', () => {
+    assert.deepEqual(ENDPOINT_RATE_POLICIES['/api/resilience/v1/get-resilience-ranking'], { limit: 30, window: '60 s' });
+  });
+
   it('gateway seed-refresh bypass is scoped to ranking ?refresh=1 only', async () => {
     process.env.WORLDMONITOR_VALID_KEYS = 'normal-read-key';
     process.env.WORLDMONITOR_SEED_REFRESH_KEY = 'seed-refresh-secret';
+    installRedis({});
     const handler = createDomainGateway([
       {
         method: 'GET',
         path: '/api/resilience/v1/get-resilience-ranking',
-        handler: async (request) => new Response(JSON.stringify({
-          key: request.headers.get('X-WorldMonitor-Key'),
-          refresh: new URL(request.url).searchParams.get('refresh'),
-        }), { status: 200, headers: { 'Content-Type': 'application/json' } }),
+        handler: async (request) =>
+          new Response(
+            JSON.stringify({
+              key: request.headers.get('X-WorldMonitor-Key'),
+              refresh: new URL(request.url).searchParams.get('refresh'),
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } },
+          ),
       },
       {
         method: 'GET',
@@ -978,27 +1505,41 @@ describe('resilience ranking contracts', () => {
       },
     ]);
 
-    const seedRefresh = await handler(new Request('https://worldmonitor.app/api/resilience/v1/get-resilience-ranking?refresh=1', {
-      headers: { 'X-WorldMonitor-Key': 'seed-refresh-secret' },
-    }));
+    const seedRefresh = await handler(
+      new Request('https://worldmonitor.app/api/resilience/v1/get-resilience-ranking?refresh=1', {
+        headers: { 'X-WorldMonitor-Key': 'seed-refresh-secret' },
+      }),
+    );
     assert.equal(seedRefresh.status, 200);
-    assert.deepEqual(await seedRefresh.json(), { key: 'seed-refresh-secret', refresh: '1' });
+    assert.deepEqual(await seedRefresh.json(), {
+      key: 'seed-refresh-secret',
+      refresh: '1',
+    });
 
-    const seedWithoutRefresh = await handler(new Request('https://worldmonitor.app/api/resilience/v1/get-resilience-ranking', {
-      headers: { 'X-WorldMonitor-Key': 'seed-refresh-secret' },
-    }));
+    const seedWithoutRefresh = await handler(
+      new Request('https://worldmonitor.app/api/resilience/v1/get-resilience-ranking', {
+        headers: { 'X-WorldMonitor-Key': 'seed-refresh-secret' },
+      }),
+    );
     assert.equal(seedWithoutRefresh.status, 401, 'seed secret must not bypass normal ranking-read auth');
 
-    const seedWrongPath = await handler(new Request('https://worldmonitor.app/api/resilience/v1/get-resilience-score?countryCode=US&refresh=1', {
-      headers: { 'X-WorldMonitor-Key': 'seed-refresh-secret' },
-    }));
+    const seedWrongPath = await handler(
+      new Request('https://worldmonitor.app/api/resilience/v1/get-resilience-score?countryCode=US&refresh=1', {
+        headers: { 'X-WorldMonitor-Key': 'seed-refresh-secret' },
+      }),
+    );
     assert.equal(seedWrongPath.status, 401, 'seed secret must not bypass auth on other resilience paths');
 
-    const normalReadRefresh = await handler(new Request('https://worldmonitor.app/api/resilience/v1/get-resilience-ranking?refresh=1', {
-      headers: { 'X-WorldMonitor-Key': 'normal-read-key' },
-    }));
+    const normalReadRefresh = await handler(
+      new Request('https://worldmonitor.app/api/resilience/v1/get-resilience-ranking?refresh=1', {
+        headers: { 'X-WorldMonitor-Key': 'normal-read-key' },
+      }),
+    );
     assert.equal(normalReadRefresh.status, 200, 'normal read keys must keep existing ranking-read access');
-    assert.deepEqual(await normalReadRefresh.json(), { key: 'normal-read-key', refresh: '1' });
+    assert.deepEqual(await normalReadRefresh.json(), {
+      key: 'normal-read-key',
+      refresh: '1',
+    });
   });
 
   it('warms via batched pipeline SETs (avoids 600KB single-pipeline timeout)', async () => {
@@ -1007,21 +1548,23 @@ describe('resilience ranking contracts', () => {
     // Splitting into smaller batches keeps each pipeline well under timeout.
     // We assert the SET path uses MULTIPLE pipelines, not one giant one.
     const { redis, fetchImpl } = installRedis({ ...RESILIENCE_FIXTURES });
-    redis.set('resilience:static:index:v1', JSON.stringify({
-      countries: ['NO', 'US', 'YE'],
-      recordCount: 3,
-      failedDatasets: [],
-      seedYear: 2026,
-    }));
+    redis.set(
+      'resilience:static:index:v1',
+      JSON.stringify({
+        countries: ['NO', 'US', 'YE'],
+        recordCount: 3,
+        failedDatasets: [],
+        seedYear: 2026,
+      }),
+    );
 
     const setPipelineSizes: number[] = [];
     const observing = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
       if (url.endsWith('/pipeline') && typeof init?.body === 'string') {
         const commands = JSON.parse(init.body) as Array<Array<string>>;
-        const isAllScoreSets = commands.length > 0 && commands.every(
-          (cmd) => cmd[0] === 'SET' && typeof cmd[1] === 'string' && (cmd[1] as string).includes(RESILIENCE_SCORE_CACHE_PREFIX),
-        );
+        const isAllScoreSets =
+          commands.length > 0 && commands.every((cmd) => cmd[0] === 'SET' && typeof cmd[1] === 'string' && (cmd[1] as string).includes(RESILIENCE_SCORE_CACHE_PREFIX));
         if (isAllScoreSets) setPipelineSizes.push(commands.length);
       }
       return fetchImpl(input, init);
@@ -1061,7 +1604,22 @@ describe('resilience ranking contracts', () => {
       warnings.push(args.map(String).join(' '));
     };
     try {
-      const domainWithCoverage = [{ id: 'political', score: 80, weight: 0.2, dimensions: [{ id: 'd1', score: 80, coverage: 0.9, observedWeight: 1, imputedWeight: 0 }] }];
+      const domainWithCoverage = [
+        {
+          id: 'political',
+          score: 80,
+          weight: 0.2,
+          dimensions: [
+            {
+              id: 'd1',
+              score: 80,
+              coverage: 0.9,
+              observedWeight: 1,
+              imputedWeight: 0,
+            },
+          ],
+        },
+      ];
       const warmed = await warmMissingResilienceScores(['NO', 'US'], async (countryCode) => {
         if (countryCode === 'US') throw new Error('synthetic compute failure');
         return {
@@ -1249,12 +1807,15 @@ describe('resilience ranking contracts', () => {
     // With writes broken at the Upstash layer, coverage should NOT pass the
     // gate and neither the ranking nor its meta should be published.
     const { redis, fetchImpl } = installRedis({ ...RESILIENCE_FIXTURES });
-    redis.set('resilience:static:index:v1', JSON.stringify({
-      countries: ['NO', 'US'],
-      recordCount: 2,
-      failedDatasets: [],
-      seedYear: 2026,
-    }));
+    redis.set(
+      'resilience:static:index:v1',
+      JSON.stringify({
+        countries: ['NO', 'US'],
+        recordCount: 2,
+        failedDatasets: [],
+        seedYear: 2026,
+      }),
+    );
 
     // Intercept any pipeline SET to resilience:score:v17:* and reply with
     // non-OK results (persisted but authoritative signal says no). /set and
@@ -1263,14 +1824,9 @@ describe('resilience ranking contracts', () => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
       if (url.endsWith('/pipeline') && typeof init?.body === 'string') {
         const commands = JSON.parse(init.body) as Array<Array<string>>;
-        const allScoreSets = commands.length > 0 && commands.every(
-          (cmd) => cmd[0] === 'SET' && typeof cmd[1] === 'string' && cmd[1].startsWith(RESILIENCE_SCORE_CACHE_PREFIX),
-        );
+        const allScoreSets = commands.length > 0 && commands.every((cmd) => cmd[0] === 'SET' && typeof cmd[1] === 'string' && cmd[1].startsWith(RESILIENCE_SCORE_CACHE_PREFIX));
         if (allScoreSets) {
-          return new Response(
-            JSON.stringify(commands.map(() => ({ error: 'simulated write failure' }))),
-            { status: 200 },
-          );
+          return new Response(JSON.stringify(commands.map(() => ({ error: 'simulated write failure' }))), { status: 200 });
         }
       }
       return fetchImpl(input, init);
@@ -1285,10 +1841,18 @@ describe('resilience ranking contracts', () => {
 
   it('defaults rankStable=false when no interval data exists', () => {
     const item = buildRankingItem('ZZ', {
-      countryCode: 'ZZ', overallScore: 50, level: 'medium',
-      domains: [], trend: 'stable', change30d: 0,
-      lowConfidence: false, imputationShare: 0,
-      baselineScore: 50, stressScore: 50, stressFactor: 0.5, dataVersion: '',
+      countryCode: 'ZZ',
+      overallScore: 50,
+      level: 'medium',
+      domains: [],
+      trend: 'stable',
+      change30d: 0,
+      lowConfidence: false,
+      imputationShare: 0,
+      baselineScore: 50,
+      stressScore: 50,
+      stressFactor: 0.5,
+      dataVersion: '',
     });
     assert.equal(item.rankStable, false, 'missing interval should default to unstable');
   });

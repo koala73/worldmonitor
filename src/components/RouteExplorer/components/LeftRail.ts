@@ -9,6 +9,11 @@
 
 import type { GetRouteExplorerLaneResponse, DependencyFlag } from '@/generated/server/worldmonitor/supply_chain/v1/service_server';
 import {
+  formatResilienceConfidence,
+  formatResilienceScoreInterval,
+} from '@/components/resilience-widget-utils';
+import type { ResilienceScoreResponse } from '@/services/resilience';
+import {
   formatTransitRange,
   formatFreightRange,
   formatDisruptionScore,
@@ -22,7 +27,7 @@ import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
 export class LeftRail {
   public readonly element: HTMLElement;
-  private resilienceScore: number | null = null;
+  private resilience: ResilienceScoreResponse | null = null;
 
   constructor() {
     this.element = document.createElement('aside');
@@ -32,7 +37,7 @@ export class LeftRail {
   }
 
   public updateLane(data: GetRouteExplorerLaneResponse | null, mode?: 'loading' | 'error' | 'gate'): void {
-    this.resilienceScore = null;
+    this.resilience = null;
     if (mode === 'loading') { this.renderLoading(); return; }
     if (mode === 'error') { this.renderError(); return; }
     if (mode === 'gate') { this.renderGate(); return; }
@@ -40,12 +45,12 @@ export class LeftRail {
     this.renderSummary(data);
   }
 
-  public updateResilience(score: number | null): void {
-    this.resilienceScore = score;
+  public updateResilience(resilience: ResilienceScoreResponse | null): void {
+    this.resilience = resilience;
     const el = this.element.querySelector('.re-leftrail__resilience-value');
-    if (el) {
-      el.textContent = score !== null ? `${Math.round(score)}/100` : '\u2014';
-    }
+    if (el) el.textContent = LeftRail.formatResilienceScore(resilience);
+    const metaEl = this.element.querySelector('.re-leftrail__resilience-meta');
+    if (metaEl) setTrustedHtml(metaEl, trustedHtml(LeftRail.renderResilienceMeta(resilience), "legacy direct innerHTML migration"));
   }
 
   private renderPlaceholder(): void {
@@ -88,10 +93,36 @@ export class LeftRail {
     setTrustedHtml(el, trustedHtml(`<h3 class="re-leftrail__title">Dependency Flags</h3><div class="re-leftrail__flags">${flagHtml}</div>`, "legacy direct innerHTML migration"));
   }
 
+  private static formatResilienceScore(resilience: ResilienceScoreResponse | null): string {
+    const score = resilience?.overallScore;
+    const rounded = typeof score === 'number' && Number.isFinite(score) ? Math.round(score) : 0;
+    return rounded > 0
+      ? `${rounded}/100`
+      : '\u2014';
+  }
+
+  private static renderResilienceMeta(resilience: ResilienceScoreResponse | null): string {
+    if (!resilience) return '';
+    const score = resilience.overallScore;
+    const rounded = typeof score === 'number' && Number.isFinite(score) ? Math.round(score) : 0;
+    if (rounded <= 0) {
+      return '<span class="re-resilience-confidence re-resilience-confidence--low">No scored resilience data</span>';
+    }
+    const confidence = formatResilienceConfidence(resilience);
+    const interval = formatResilienceScoreInterval(resilience.scoreInterval);
+    return [
+      `<span class="re-resilience-confidence${resilience.lowConfidence ? ' re-resilience-confidence--low' : ''}">${escapeHtml(confidence)}</span>`,
+      ...(interval
+        ? [`<span class="re-resilience-interval" title="${escapeHtml(interval.title)}">${escapeHtml(interval.label)}</span>`]
+        : []),
+    ].join('');
+  }
+
   private renderSummary(data: GetRouteExplorerLaneResponse): void {
     const riskCls = warRiskTierClass(data.warRiskTier);
     const disruptCls = disruptionScoreClass(data.disruptionScore);
-    const resValue = this.resilienceScore !== null ? `${Math.round(this.resilienceScore)}/100` : '\u2014';
+    const resValue = LeftRail.formatResilienceScore(this.resilience);
+    const resMeta = LeftRail.renderResilienceMeta(this.resilience);
 
     setTrustedHtml(this.element, trustedHtml([
       '<div class="re-leftrail__card">',
@@ -119,6 +150,7 @@ export class LeftRail {
       `    <span class="re-leftrail__label">${escapeHtml(data.toIso2)} score</span>`,
       `    <span class="re-leftrail__value re-leftrail__resilience-value">${resValue}</span>`,
       '  </div>',
+      `  <div class="re-leftrail__resilience-meta">${resMeta}</div>`,
       '</div>',
       '<div class="re-leftrail__card re-leftrail__card--flags">',
       '  <h3 class="re-leftrail__title">Dependency Flags</h3>',
