@@ -47,3 +47,4 @@ export * from './daily-market-brief';
 export * from './stock-analysis-history';
 export * from './stock-backtest';
 export * from './imagery';
+export * from './event-comparison';
