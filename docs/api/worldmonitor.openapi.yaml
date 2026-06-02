@@ -18743,6 +18743,7 @@ components:
             properties:
                 energy:
                     type: string
+                    description: 'Safe derived energy construct version. Valid values: "legacy" or "v2".'
         worldmonitor_sanctions_v1_ListSanctionsPressureRequest:
             type: object
             properties:

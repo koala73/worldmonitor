@@ -411,3 +411,4 @@ components:
             properties:
                 energy:
                     type: string
+                    description: 'Safe derived energy construct version. Valid values: "legacy" or "v2".'
