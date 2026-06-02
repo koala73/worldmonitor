@@ -94,6 +94,14 @@ function getAppearance() {
       };
 }
 
+function getAfterSignOutUrl(): string {
+  // Pin the after-sign-out destination to the origin root rather than
+  // `window.location.href`. The current page URL may carry stale checkout
+  // params or transient session fragments that should not persist into a
+  // signed-out state. Origin-root is also unambiguous in Tauri WKWebView.
+  return new URL('/', window.location.origin).toString();
+}
+
 /**
  * Force Clerk to load now. Call when the SDK is required synchronously
  * (mcp-grant page bootstrap, getClerkToken on first authenticated request).
@@ -110,7 +118,10 @@ export async function initClerk(): Promise<void> {
     try {
       const { Clerk } = await import('@clerk/clerk-js');
       const clerk = new Clerk(PUBLISHABLE_KEY);
-      await clerk.load({ appearance: getAppearance() });
+      await clerk.load({
+        appearance: getAppearance(),
+        afterSignOutUrl: getAfterSignOutUrl(),
+      });
       clerkInstance = clerk;
       attachPendingSubscribers();
     } catch (e) {
@@ -375,7 +386,6 @@ export function mountUserButton(el: HTMLDivElement): () => void {
     void initClerk().then(() => {
       if (cancelled || !clerkInstance) return;
       clerkInstance.mountUserButton(el, {
-        afterSignOutUrl: new URL('/', window.location.origin).toString(),
         appearance: getAppearance(),
       });
       realUnmount = () => clerkInstance?.unmountUserButton(el);
@@ -385,15 +395,7 @@ export function mountUserButton(el: HTMLDivElement): () => void {
       realUnmount?.();
     };
   }
-  // Pin the after-sign-out destination to the origin root rather than
-  // `window.location.href`. The current page URL may carry stale
-  // checkout params (e.g., a subscription_id/status query that
-  // handleCheckoutReturn hasn't cleaned yet at sign-out time) or
-  // transient session fragments that shouldn't persist into a
-  // signed-out state. Origin-root is unambiguous and identical on
-  // Tauri desktop (same absolute URL resolves correctly in WKWebView).
   clerkInstance.mountUserButton(el, {
-    afterSignOutUrl: new URL('/', window.location.origin).toString(),
     appearance: getAppearance(),
   });
   return () => clerkInstance?.unmountUserButton(el);
