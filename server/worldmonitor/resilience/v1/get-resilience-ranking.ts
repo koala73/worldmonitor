@@ -98,7 +98,8 @@ function throwRankingWarmBusy(): never {
       retryAfter: RANKING_WARM_LOCK_TTL_SECONDS,
     }),
   );
-  (err as ApiError & { retryAfter: number }).retryAfter = RANKING_WARM_LOCK_TTL_SECONDS;
+  (err as ApiError & { exposeMessage: boolean; retryAfter: number }).exposeMessage = true;
+  (err as ApiError & { exposeMessage: boolean; retryAfter: number }).retryAfter = RANKING_WARM_LOCK_TTL_SECONDS;
   throw err;
 }
 

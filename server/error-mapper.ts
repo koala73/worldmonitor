@@ -38,8 +38,11 @@ export function mapErrorToResponse(error: unknown, _req: Request): Response {
     // Only expose error.message for 4xx (client errors). Use generic message for 5xx
     // to avoid leaking internal details like upstream URLs or API key fragments (H-3 fix).
     const retryAfter = (statusCode === 429 || statusCode === 503) && 'retryAfter' in error ? Number((error as Error & { retryAfter: number }).retryAfter) : null;
-    const isRetryableUnavailable = statusCode === 503 && retryAfter != null && Number.isFinite(retryAfter);
-    const message = (statusCode >= 400 && statusCode < 500) || isRetryableUnavailable ? error.message : 'Internal server error';
+    const exposesRetryableUnavailable = statusCode === 503
+      && retryAfter != null
+      && Number.isFinite(retryAfter)
+      && (error as Error & { exposeMessage?: boolean }).exposeMessage === true;
+    const message = (statusCode >= 400 && statusCode < 500) || exposesRetryableUnavailable ? error.message : 'Internal server error';
     const body: Record<string, unknown> = { message };
 
     // Rate limit: include retryAfter if present

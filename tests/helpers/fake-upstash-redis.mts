@@ -129,6 +129,8 @@ export function createRedisFetch(fixtures: Record<string, unknown>): FakeRedisSt
         if (normalizedVerb === 'EVALSHA' || normalizedVerb === 'EVALSHA_RO') {
           const numericArgs = args.map(Number).filter((value) => Number.isFinite(value));
           const limit = numericArgs.length > 0 ? Math.max(...numericArgs) : 600;
+          // Mirrors the Upstash rate-limit Lua response shape enough for gateway
+          // policy tests: [remaining, reset_at_ms].
           return { result: [Math.max(0, limit - 1), limit] };
         }
 

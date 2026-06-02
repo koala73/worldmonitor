@@ -1410,11 +1410,24 @@ describe('resilience ranking contracts', () => {
   it('ApiError retryAfter maps temporary-unavailable warm contention to explicit 503 + Retry-After', async () => {
     const err = new ApiError(503, 'Resilience ranking temporarily unavailable while cache warm is in progress', '');
     (err as ApiError & { retryAfter: number }).retryAfter = 60;
+    (err as ApiError & { exposeMessage: boolean }).exposeMessage = true;
     const response = mapErrorToResponse(err, new Request('https://example.com'));
     assert.equal(response.status, 503);
     assert.equal(response.headers.get('Retry-After'), '60');
     assert.deepEqual(await response.json(), {
       message: 'Resilience ranking temporarily unavailable while cache warm is in progress',
+      retryAfter: 60,
+    });
+  });
+
+  it('ApiError retryAfter does not expose generic 503 messages without explicit opt-in', async () => {
+    const err = new ApiError(503, 'Internal upstream URL https://secret.example failed', '');
+    (err as ApiError & { retryAfter: number }).retryAfter = 60;
+    const response = mapErrorToResponse(err, new Request('https://example.com'));
+    assert.equal(response.status, 503);
+    assert.equal(response.headers.get('Retry-After'), '60');
+    assert.deepEqual(await response.json(), {
+      message: 'Internal server error',
       retryAfter: 60,
     });
   });
