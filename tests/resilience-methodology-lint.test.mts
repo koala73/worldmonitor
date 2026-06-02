@@ -195,4 +195,31 @@ describe('resilience methodology doc linter (T1.8)', () => {
       'The methodology should document that the widget renders the overall score sensitivity band.',
     );
   });
+
+  it('does not use stale PR0 current-state language before the changelog', () => {
+    const changelogIndex = source.indexOf('\n## Changelog');
+    assert.notEqual(changelogIndex, -1, 'Methodology doc should have a Changelog section.');
+    const currentStateSource = source.slice(0, changelogIndex);
+
+    assert.doesNotMatch(
+      currentStateSource,
+      /This PR \(the diagnostic freeze\)/i,
+      'Current methodology prose must not describe the document as the PR0 diagnostic freeze.',
+    );
+    assert.doesNotMatch(
+      currentStateSource,
+      /Published rankings today reflect the pre-repair scorer/i,
+      'Current methodology prose must not claim published rankings are pre-repair.',
+    );
+    assert.doesNotMatch(
+      currentStateSource,
+      /At the time of writing \(PR 0 shipping\)/i,
+      'Current methodology prose must not preserve stale PR0 timestamp language.',
+    );
+    assert.doesNotMatch(
+      currentStateSource,
+      /Until PR 1[\u2013-]PR 3 land/i,
+      'Current methodology prose must not describe already-landed repairs as future work.',
+    );
+  });
 });

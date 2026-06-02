@@ -36,9 +36,11 @@ import {
 } from '../server/worldmonitor/resilience/v1/_shared.ts';
 import {
   RESILIENCE_DIMENSION_ORDER,
+  RESILIENCE_DIMENSION_DOMAINS,
   RESILIENCE_DOMAIN_ORDER,
   RESILIENCE_RETIRED_DIMENSIONS,
   type ResilienceDomainId,
+  type ResilienceDimensionId,
   getResilienceDomainWeight,
 } from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
 import {
@@ -56,10 +58,14 @@ const here = dirname(fileURLToPath(import.meta.url));
 const DOC_PATH = resolve(here, '../docs/methodology/country-resilience-index.mdx');
 const DOCUMENTATION_PATH = resolve(here, '../docs/documentation.mdx');
 const FEATURES_PATH = resolve(here, '../docs/features.mdx');
+const STATIC_SEED_SCRIPT_PATH = resolve(here, '../scripts/seed-resilience-static.mjs');
+const HEALTH_API_PATH = resolve(here, '../api/health.js');
 const RESILIENCE_OPENAPI_YAML_PATH = resolve(here, '../docs/api/ResilienceService.openapi.yaml');
 const RESILIENCE_OPENAPI_JSON_PATH = resolve(here, '../docs/api/ResilienceService.openapi.json');
 const BUNDLED_OPENAPI_YAML_PATH = resolve(here, '../docs/api/worldmonitor.openapi.yaml');
 const docText = readFileSync(DOC_PATH, 'utf8');
+const staticSeedScriptText = readFileSync(STATIC_SEED_SCRIPT_PATH, 'utf8');
+const healthApiText = readFileSync(HEALTH_API_PATH, 'utf8');
 const CURRENT_DIMENSION_COUNT_SURFACES = [
   { label: 'methodology doc', path: DOC_PATH, text: docText },
   {
@@ -90,6 +96,30 @@ const GENERATED_OPENAPI_SURFACES = [
     text: readFileSync(BUNDLED_OPENAPI_YAML_PATH, 'utf8'),
   },
 ];
+const RECOVERY_DIMENSION_LABELS: Readonly<Record<ResilienceDimensionId, string>> = {
+  macroFiscal: 'Macro-Fiscal',
+  currencyExternal: 'Currency & External',
+  tradePolicy: 'Trade Policy',
+  financialSystemExposure: 'Financial System Exposure',
+  cyberDigital: 'Cyber & Digital',
+  logisticsSupply: 'Logistics & Supply',
+  infrastructure: 'Infrastructure',
+  energy: 'Energy',
+  governanceInstitutional: 'Governance',
+  socialCohesion: 'Social Cohesion',
+  borderSecurity: 'Conflict & Displacement',
+  informationCognitive: 'Information',
+  healthPublicService: 'Health & Public Service',
+  foodWater: 'Food & Water',
+  fiscalSpace: 'Fiscal Space',
+  reserveAdequacy: 'Reserve Adequacy',
+  externalDebtCoverage: 'External Debt Coverage',
+  importConcentration: 'Import Concentration',
+  stateContinuity: 'State Continuity',
+  fuelStockDays: 'Fuel Stock Days',
+  liquidReserveAdequacy: 'Liquid Reserve Adequacy',
+  sovereignFiscalBuffer: 'Sovereign Fiscal Buffer',
+};
 
 describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
   it('cache prefixes named in the changelog match the live constants', () => {
@@ -225,6 +255,30 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
     }
   });
 
+  it('Recovery domain row lists active recovery dimensions and excludes retired dimensions', () => {
+    const expectedActiveLabels = RESILIENCE_DIMENSION_ORDER
+      .filter((id) => RESILIENCE_DIMENSION_DOMAINS[id] === 'recovery')
+      .filter((id) => !RESILIENCE_RETIRED_DIMENSIONS.has(id))
+      .map((id) => RECOVERY_DIMENSION_LABELS[id]);
+    const retiredLabels = RESILIENCE_DIMENSION_ORDER
+      .filter((id) => RESILIENCE_DIMENSION_DOMAINS[id] === 'recovery')
+      .filter((id) => RESILIENCE_RETIRED_DIMENSIONS.has(id))
+      .map((id) => RECOVERY_DIMENSION_LABELS[id]);
+    const actualLabels = extractDomainRowDimensionLabels(docText, 'recovery');
+
+    assert.deepEqual(
+      actualLabels,
+      expectedActiveLabels,
+      'Recovery row in the active Domains table must list exactly the active recovery dimensions in scorer order.',
+    );
+    for (const label of retiredLabels) {
+      assert.ok(
+        !actualLabels.includes(label),
+        `Recovery row in the active Domains table must not list retired dimension "${label}".`,
+      );
+    }
+  });
+
   it('Domains table weights sum to 1.00 (sanity check on the parity test itself)', () => {
     // If the parity assertion above ever silently passes 0 / 0, this
     // catches it: the live weights MUST sum to 1.00 by construction.
@@ -277,6 +331,31 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
     }
   });
 
+  it('Currency & External inflationStability row documents target-band scoring, not lower-is-better scoring', () => {
+    const row = extractIndicatorRowForSection(docText, 'Currency & External', 'inflationStability');
+
+    assert.equal(
+      row.direction,
+      '1-3% target band is best',
+      'inflationStability direction must document the scoreInflationStability target band.',
+    );
+    assert.equal(
+      row.goalposts,
+      '<= -5 or >= 50 -> 0; 1-3 -> 100',
+      'inflationStability goalposts must document the deflation floor, target band, and high-inflation cap.',
+    );
+    assert.notEqual(
+      row.direction,
+      'Lower is better',
+      'inflationStability must not regress to stale lower-is-better wording.',
+    );
+    assert.notEqual(
+      row.goalposts,
+      '50 - 0',
+      'inflationStability must not regress to stale linear 50-to-0 goalposts.',
+    );
+  });
+
   it('generated OpenAPI pillar weight prose matches PILLAR_WEIGHTS and formula semantics', () => {
     const expectedWeightList = PILLAR_ORDER
       .map((id) => PILLAR_WEIGHTS[id].toFixed(2))
@@ -307,6 +386,23 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
       );
     }
   });
+
+  it('static resilience seed-meta TTL in Redis key table matches seed script and health threshold', () => {
+    const ttlDays = extractStaticSeedTtlDays(staticSeedScriptText);
+    const healthMaxStaleDays = extractStaticSeedHealthMaxStaleDays(healthApiText);
+    const docTtl = extractRedisKeyTableTtl(docText, 'seed-meta:resilience:static');
+
+    assert.equal(
+      healthMaxStaleDays,
+      ttlDays,
+      `api/health.js maxStaleMin for seed-meta:resilience:static should match RESILIENCE_STATIC_TTL_SECONDS (${ttlDays} days).`,
+    );
+    assert.equal(
+      docTtl,
+      `${ttlDays} days`,
+      `Redis key table must document seed-meta:resilience:static TTL as "${ttlDays} days"; got "${docTtl}".`,
+    );
+  });
 });
 
 function escapeRegex(s: string): string {
@@ -331,6 +427,69 @@ function extractIndicatorWeightsForSection(text: string, sectionHeading: string)
     weights.set(indicatorId, Number(row[2]));
   }
   return weights;
+}
+
+function extractIndicatorRowForSection(
+  text: string,
+  sectionHeading: string,
+  indicatorId: string,
+): { direction: string; goalposts: string } {
+  const headingRe = new RegExp(`^#### ${escapeRegex(sectionHeading)}\\s*$`, 'm');
+  const headingMatch = headingRe.exec(text);
+  assert.ok(headingMatch, `Methodology section "${sectionHeading}" not found.`);
+
+  const sectionStart = headingMatch.index + headingMatch[0].length;
+  const rest = text.slice(sectionStart);
+  const nextHeadingMatch = /^#{3,4}\s.+$/m.exec(rest);
+  const sectionText = nextHeadingMatch == null ? rest : rest.slice(0, nextHeadingMatch.index);
+  const rowRe = new RegExp(`^\\|\\s*${escapeRegex(indicatorId)}\\s*\\|([^\\n]+)\\|$`, 'm');
+  const rowMatch = rowRe.exec(sectionText);
+  assert.ok(rowMatch, `Indicator row "${indicatorId}" not found in section "${sectionHeading}".`);
+
+  const cells = rowMatch[0]
+    .split('|')
+    .map((cell) => cell.trim())
+    .filter(Boolean);
+  assert.equal(cells.length, 7, `Indicator row "${indicatorId}" should have seven cells.`);
+  return {
+    direction: cells[2],
+    goalposts: cells[3],
+  };
+}
+
+function extractDomainRowDimensionLabels(text: string, domainId: ResilienceDomainId): string[] {
+  const rowRe = new RegExp(`^\\|[^\\n]*\\\`${escapeRegex(domainId)}\\\`[^\\n]*\\|$`, 'm');
+  const match = rowRe.exec(text);
+  assert.ok(match, `Domains table row for "${domainId}" not found.`);
+
+  const cells = match[0]
+    .split('|')
+    .map((cell) => cell.trim())
+    .filter(Boolean);
+  assert.equal(cells.length, 4, `Domains table row for "${domainId}" should have four cells.`);
+  return cells[3]
+    .split(',')
+    .map((label) => label.trim())
+    .filter(Boolean);
+}
+
+function extractRedisKeyTableTtl(text: string, key: string): string {
+  const rowRe = new RegExp(`^\\|\\s*\\\`${escapeRegex(key)}\\\`\\s*\\|\\s*JSON\\s*\\|\\s*([^|]+?)\\s*\\|`, 'm');
+  const match = rowRe.exec(text);
+  assert.ok(match, `Redis key table row for "${key}" not found.`);
+  return match[1].trim();
+}
+
+function extractStaticSeedTtlDays(text: string): number {
+  const match = /RESILIENCE_STATIC_TTL_SECONDS\s*=\s*(\d+)\s*\*\s*24\s*\*\s*60\s*\*\s*60/.exec(text);
+  assert.ok(match, 'RESILIENCE_STATIC_TTL_SECONDS formula not found in seed-resilience-static.mjs.');
+  return Number(match[1]);
+}
+
+function extractStaticSeedHealthMaxStaleDays(text: string): number {
+  const match = /resilienceStaticIndex:\s*\{\s*key:\s*'seed-meta:resilience:static',\s*maxStaleMin:\s*(\d+)/.exec(text);
+  assert.ok(match, 'resilienceStaticIndex maxStaleMin not found in api/health.js.');
+  return Number(match[1]) / (24 * 60);
 }
 
 function findPlausibleCurrentTotalDimensionCounts(text: string, activeCount: number, totalCount: number): number[] {
