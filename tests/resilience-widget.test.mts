@@ -675,7 +675,7 @@ test('getStalenessLabel returns a non-empty string for each level', () => {
 });
 
 test('getStalenessIcon gives each visible freshness level a distinct non-color cue', () => {
-  const icons = ['fresh', 'aging', 'stale'].map((s) => getStalenessIcon(s));
+  const icons = (['fresh', 'aging', 'stale'] as const).map((s) => getStalenessIcon(s));
   assert.deepEqual(icons, ['\u25CF', '\u25D0', '\u25CB']);
   assert.equal(new Set(icons).size, icons.length);
   assert.equal(getStalenessIcon(null), '');
