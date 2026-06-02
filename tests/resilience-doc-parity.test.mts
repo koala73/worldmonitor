@@ -56,6 +56,7 @@ import {
 
 const here = dirname(fileURLToPath(import.meta.url));
 const DOC_PATH = resolve(here, '../docs/methodology/country-resilience-index.mdx');
+const INDICATOR_SOURCE_CATALOG_PATH = resolve(here, '../docs/methodology/indicator-sources.yaml');
 const DOCUMENTATION_PATH = resolve(here, '../docs/documentation.mdx');
 const FEATURES_PATH = resolve(here, '../docs/features.mdx');
 const STATIC_SEED_SCRIPT_PATH = resolve(here, '../scripts/seed-resilience-static.mjs');
@@ -64,6 +65,7 @@ const RESILIENCE_OPENAPI_YAML_PATH = resolve(here, '../docs/api/ResilienceServic
 const RESILIENCE_OPENAPI_JSON_PATH = resolve(here, '../docs/api/ResilienceService.openapi.json');
 const BUNDLED_OPENAPI_YAML_PATH = resolve(here, '../docs/api/worldmonitor.openapi.yaml');
 const docText = readFileSync(DOC_PATH, 'utf8');
+const indicatorSourceCatalogText = readFileSync(INDICATOR_SOURCE_CATALOG_PATH, 'utf8');
 const staticSeedScriptText = readFileSync(STATIC_SEED_SCRIPT_PATH, 'utf8');
 const healthApiText = readFileSync(HEALTH_API_PATH, 'utf8');
 const CURRENT_DIMENSION_COUNT_SURFACES = [
@@ -96,6 +98,20 @@ const GENERATED_OPENAPI_SURFACES = [
     text: readFileSync(BUNDLED_OPENAPI_YAML_PATH, 'utf8'),
   },
 ];
+const ACTIVE_ENERGY_V2_INDICATOR_WEIGHTS = new Map([
+  ['importedFossilDependence', 0.35],
+  ['lowCarbonGenerationShare', 0.20],
+  ['powerLossesPct', 0.20],
+  ['euGasStorageStress', 0.10],
+  ['energyPriceStress', 0.15],
+]);
+const LEGACY_ONLY_ENERGY_INDICATORS = new Set([
+  'energyImportDependency',
+  'gasShare',
+  'coalShare',
+  'renewShare',
+  'electricityConsumption',
+]);
 const DIMENSION_LABELS: Readonly<Record<ResilienceDimensionId, string>> = {
   macroFiscal: 'Macro-Fiscal',
   currencyExternal: 'Currency & External',
@@ -373,6 +389,83 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
     );
   });
 
+  it('Energy v2 methodology table matches active production registry weights', () => {
+    const tableWeights = extractIndicatorWeightsForMarkedTable(
+      docText,
+      'Energy',
+      '**v2 construct (active; framing decision: Option B, power-system security).**',
+    );
+    const registryWeights = new Map(
+      INDICATOR_REGISTRY
+        .filter((indicator) => ACTIVE_ENERGY_V2_INDICATOR_WEIGHTS.has(indicator.id))
+        .map((indicator) => [indicator.id, indicator.weight]),
+    );
+
+    assert.deepEqual(
+      [...tableWeights.keys()],
+      [...ACTIVE_ENERGY_V2_INDICATOR_WEIGHTS.keys()],
+      'Energy v2 methodology table must list exactly the active production energy-v2 indicators.',
+    );
+    assert.deepEqual(
+      registryWeights,
+      ACTIVE_ENERGY_V2_INDICATOR_WEIGHTS,
+      'Energy v2 INDICATOR_REGISTRY weights must mirror scoreEnergyV2 active production weights.',
+    );
+    assert.deepEqual(
+      tableWeights,
+      ACTIVE_ENERGY_V2_INDICATOR_WEIGHTS,
+      'Energy v2 methodology table weights must match the active production registry/scorer weights.',
+    );
+    for (const id of LEGACY_ONLY_ENERGY_INDICATORS) {
+      assert.equal(
+        tableWeights.has(id),
+        false,
+        `${id} is legacy-only under production energy v2 and must not appear in the active v2 table.`,
+      );
+    }
+  });
+
+  it('indicator source catalog labels energy-v2 rows as active and legacy-only rows as replaced', () => {
+    for (const id of ACTIVE_ENERGY_V2_INDICATOR_WEIGHTS.keys()) {
+      const block = extractIndicatorSourceBlock(indicatorSourceCatalogText, id);
+      assert.match(
+        block,
+        /reviewNotes: Active energy-v2 (?:Core|Enrichment) scorer input\./,
+        `${id} source-catalog row must identify it as an active energy-v2 scorer input.`,
+      );
+      const registrySpec = INDICATOR_REGISTRY.find((indicator) => indicator.id === id);
+      assert.ok(registrySpec, `${id} must exist in INDICATOR_REGISTRY.`);
+      if (registrySpec.tier === 'core') {
+        const coveragePct = Number(extractIndicatorSourceScalar(block, 'coveragePct'));
+        const license = extractIndicatorSourceScalar(block, 'license').toLowerCase();
+        assert.ok(
+          coveragePct >= 0.90,
+          `${id} is active Core in the registry, so indicator-sources.yaml coveragePct must be >= 0.90; got ${coveragePct}.`,
+        );
+        assert.notEqual(
+          license,
+          'internal',
+          `${id} is active Core in the registry, so indicator-sources.yaml must not leave license=Internal.`,
+        );
+      }
+    }
+
+    for (const id of LEGACY_ONLY_ENERGY_INDICATORS) {
+      const catalogId = id === 'energyImportDependency' ? 'dependency' : id;
+      const block = extractIndicatorSourceBlock(indicatorSourceCatalogText, catalogId);
+      assert.match(
+        block,
+        /reviewNotes: PR 1 §3\.[123] (?:removes|replaces|collapses)/,
+        `${id} source-catalog row must remain explicit that the standalone legacy input is replaced under energy v2.`,
+      );
+    }
+    assert.doesNotMatch(
+      indicatorSourceCatalogText,
+      /PR 1 additions \(not yet in the scorer\)/,
+      'indicator source catalog must not describe active energy-v2 inputs as pending/not yet in the scorer.',
+    );
+  });
+
   it('generated OpenAPI pillar weight prose matches PILLAR_WEIGHTS and formula semantics', () => {
     const expectedWeightList = PILLAR_ORDER
       .map((id) => PILLAR_WEIGHTS[id].toFixed(2))
@@ -445,6 +538,46 @@ function extractIndicatorWeightsForSection(text: string, sectionHeading: string)
     weights.set(indicatorId, Number(row[2]));
   }
   return weights;
+}
+
+function extractIndicatorWeightsForMarkedTable(
+  text: string,
+  sectionHeading: string,
+  marker: string,
+): Map<string, number> {
+  const headingRe = new RegExp(`^#### ${escapeRegex(sectionHeading)}\\s*$`, 'm');
+  const headingMatch = headingRe.exec(text);
+  assert.ok(headingMatch, `Methodology section "${sectionHeading}" not found.`);
+
+  const sectionStart = headingMatch.index + headingMatch[0].length;
+  const rest = text.slice(sectionStart);
+  const nextHeadingMatch = /^#{3,4}\s.+$/m.exec(rest);
+  const sectionText = nextHeadingMatch == null ? rest : rest.slice(0, nextHeadingMatch.index);
+  const markerIndex = sectionText.indexOf(marker);
+  assert.notEqual(markerIndex, -1, `Marker "${marker}" not found in section "${sectionHeading}".`);
+
+  const afterMarker = sectionText.slice(markerIndex + marker.length);
+  const rows = [...afterMarker.matchAll(/^\|\s*([^|\s][^|]*?)\s*\|(?:[^|]*\|){3}\s*([0-9.]+)\s*\|/gm)];
+  const weights = new Map<string, number>();
+  for (const row of rows) {
+    const indicatorId = row[1].trim();
+    if (indicatorId === 'Indicator' || indicatorId.startsWith('---')) continue;
+    weights.set(indicatorId, Number(row[2]));
+  }
+  return weights;
+}
+
+function extractIndicatorSourceBlock(text: string, indicatorId: string): string {
+  const blockRe = new RegExp(`^- indicator: ${escapeRegex(indicatorId)}\\n[\\s\\S]*?(?=\\n- indicator: |\\n# [A-Z]|\\n$)`, 'm');
+  const match = blockRe.exec(text);
+  assert.ok(match, `indicator-sources.yaml row for "${indicatorId}" not found.`);
+  return match[0];
+}
+
+function extractIndicatorSourceScalar(block: string, field: string): string {
+  const match = new RegExp(`^\\s*${escapeRegex(field)}:\\s*(.+)$`, 'm').exec(block);
+  assert.ok(match, `indicator-sources.yaml field "${field}" not found in block:\n${block}`);
+  return match[1].trim();
 }
 
 function extractIndicatorRowForSection(

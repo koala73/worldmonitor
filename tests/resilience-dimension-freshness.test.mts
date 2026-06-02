@@ -9,7 +9,10 @@ import {
   readFreshnessMap,
   resolveSeedMetaKey,
 } from '../server/worldmonitor/resilience/v1/_dimension-freshness.ts';
-import { INDICATOR_REGISTRY } from '../server/worldmonitor/resilience/v1/_indicator-registry.ts';
+import {
+  INDICATOR_REGISTRY,
+  getIndicatorSourceKeys,
+} from '../server/worldmonitor/resilience/v1/_indicator-registry.ts';
 import {
   AGING_MULTIPLIER,
   FRESH_MULTIPLIER,
@@ -44,7 +47,9 @@ function buildAllFreshMap(dimensionId: ResilienceDimensionId): Map<string, numbe
   const map = new Map<string, number>();
   for (const indicator of INDICATOR_REGISTRY) {
     if (indicator.dimension !== dimensionId) continue;
-    map.set(indicator.sourceKey, freshAt(indicator.cadence));
+    for (const sourceKey of getIndicatorSourceKeys(indicator)) {
+      map.set(sourceKey, freshAt(indicator.cadence));
+    }
   }
   return map;
 }
@@ -114,7 +119,7 @@ describe('classifyDimensionFreshness (T1.5 propagation pass)', () => {
     const dimensionId: ResilienceDimensionId = 'energy';
     const map = new Map<string, number>();
     const indicators = INDICATOR_REGISTRY.filter((i) => i.dimension === dimensionId);
-    const uniqueKeys = [...new Set(indicators.map((i) => i.sourceKey))];
+    const uniqueKeys = [...new Set(indicators.flatMap((i) => [...getIndicatorSourceKeys(i)]))];
     assert.ok(uniqueKeys.length >= 3, 'energy should have at least 3 unique source keys');
     // Give each unique source key a distinct fetchedAt, all within the
     // fresh band so staleness stays fresh and we can isolate the MIN
@@ -236,9 +241,9 @@ describe('readFreshnessMap (T1.5 propagation pass)', () => {
     };
     const map = await readFreshnessMap(reader);
 
-    const staticSourceKeys = INDICATOR_REGISTRY.filter((i) =>
-      /^resilience:static(:\{|:\*|$)/.test(i.sourceKey),
-    ).map((i) => i.sourceKey);
+    const staticSourceKeys = INDICATOR_REGISTRY.flatMap((i) =>
+      getIndicatorSourceKeys(i).filter((sourceKey) => /^resilience:static(:\{|:\*|$)/.test(sourceKey)),
+    );
     assert.ok(staticSourceKeys.length >= 10, 'registry should have many resilience:static:* entries');
     for (const sourceKey of staticSourceKeys) {
       assert.equal(
@@ -460,7 +465,7 @@ describe('INDICATOR_REGISTRY seed-meta coverage (T1.5 P1 regression lock)', () =
     }
 
     const unknownResolutions: { sourceKey: string; metaKey: string }[] = [];
-    const uniqueSourceKeys = [...new Set(INDICATOR_REGISTRY.map((i) => i.sourceKey))];
+    const uniqueSourceKeys = [...new Set(INDICATOR_REGISTRY.flatMap((i) => [...getIndicatorSourceKeys(i)]))];
     for (const sourceKey of uniqueSourceKeys) {
       const metaKey = resolveSeedMetaKey(sourceKey);
       if (!known.has(metaKey)) {

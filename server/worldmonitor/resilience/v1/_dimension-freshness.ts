@@ -23,7 +23,7 @@ import {
   type StalenessLevel,
 } from '../../../_shared/resilience-freshness';
 import type { ResilienceDimensionId } from './_dimension-scorers';
-import { INDICATOR_REGISTRY } from './_indicator-registry';
+import { INDICATOR_REGISTRY, getIndicatorSourceKeys } from './_indicator-registry';
 
 export interface DimensionFreshnessResult {
   /** Oldest (min) `fetchedAt` across the dimension's indicators. 0 when nothing ever observed. */
@@ -161,17 +161,19 @@ export function classifyDimensionFreshness(
   let worstStaleness: StalenessLevel = 'fresh';
 
   for (const indicator of indicators) {
-    const lastObservedAtMs = freshnessMap.get(indicator.sourceKey) ?? null;
-    const result = classifyStaleness({
-      lastObservedAtMs,
-      cadence: indicator.cadence,
-      nowMs,
-    });
-    if (STALENESS_ORDER[result.staleness] > STALENESS_ORDER[worstStaleness]) {
-      worstStaleness = result.staleness;
-    }
-    if (lastObservedAtMs != null && Number.isFinite(lastObservedAtMs) && lastObservedAtMs < oldestMs) {
-      oldestMs = lastObservedAtMs;
+    for (const sourceKey of getIndicatorSourceKeys(indicator)) {
+      const lastObservedAtMs = freshnessMap.get(sourceKey) ?? null;
+      const result = classifyStaleness({
+        lastObservedAtMs,
+        cadence: indicator.cadence,
+        nowMs,
+      });
+      if (STALENESS_ORDER[result.staleness] > STALENESS_ORDER[worstStaleness]) {
+        worstStaleness = result.staleness;
+      }
+      if (lastObservedAtMs != null && Number.isFinite(lastObservedAtMs) && lastObservedAtMs < oldestMs) {
+        oldestMs = lastObservedAtMs;
+      }
     }
   }
 
@@ -204,11 +206,13 @@ export async function readFreshnessMap(
   const map = new Map<string, number>();
 
   // sourceKey -> resolved seed-meta key. Preserves every registry
-  // sourceKey (including templated ones) so we can project back.
+  // sourceKey (including composite and templated ones) so we can project back.
   const sourceKeyToMetaKey = new Map<string, string>();
   for (const indicator of INDICATOR_REGISTRY) {
-    if (!sourceKeyToMetaKey.has(indicator.sourceKey)) {
-      sourceKeyToMetaKey.set(indicator.sourceKey, resolveSeedMetaKey(indicator.sourceKey));
+    for (const sourceKey of getIndicatorSourceKeys(indicator)) {
+      if (!sourceKeyToMetaKey.has(sourceKey)) {
+        sourceKeyToMetaKey.set(sourceKey, resolveSeedMetaKey(sourceKey));
+      }
     }
   }
 

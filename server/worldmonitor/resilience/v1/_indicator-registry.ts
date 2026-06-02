@@ -25,7 +25,11 @@ export type IndicatorSpec = {
   direction: 'higherBetter' | 'lowerBetter';
   goalposts: { worst: number; best: number };
   weight: number;
+  // Primary source key for legacy callers and simple one-source indicators.
   sourceKey: string;
+  // Composite indicators can list every upstream source they depend on.
+  // Must include `sourceKey`; freshness/source-failure audits expand this list.
+  sourceKeys?: readonly [string, ...string[]];
   scope: 'global' | 'curated';
   cadence: 'realtime' | 'daily' | 'weekly' | 'monthly' | 'quarterly' | 'annual';
   imputation?: { type: 'absenceSignal' | 'conservative'; score: number; certainty: number };
@@ -48,6 +52,12 @@ export type IndicatorSpec = {
   // impute is the safer error-mode per the plan §risk-mitigation row).
   comprehensive: boolean;
 };
+
+export function getIndicatorSourceKeys(
+  indicator: Pick<IndicatorSpec, 'sourceKey' | 'sourceKeys'>,
+): readonly [string, ...string[]] {
+  return indicator.sourceKeys ?? [indicator.sourceKey];
+}
 
 export const INDICATOR_REGISTRY: IndicatorSpec[] = [
   // ── macroFiscal (5 sub-metrics) ───────────────────────────────────────────
@@ -493,18 +503,22 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     comprehensive: false,
   },
 
-  // ── energy (7 sub-metrics) ────────────────────────────────────────────────
+  // ── energy (active production construct = v2) ─────────────────────────────
+  // The legacy standalone indicators remain registered for rollback/docs and
+  // the compare harness, but the production runtime manifest reports
+  // constructVersions.energy='v2'. The flat tier field therefore represents
+  // the active production construct, not the dormant rollback path.
   {
     id: 'energyImportDependency',
     dimension: 'energy',
-    description: 'IEA energy import dependency (% of total energy supply from imports)',
+    description: 'LEGACY rollback standalone input: IEA energy import dependency (% of total energy supply from imports). In active energy v2 this source is absorbed into importedFossilDependence rather than scored as its own indicator.',
     direction: 'lowerBetter',
     goalposts: { worst: 100, best: 0 },
     weight: 0.25,
     sourceKey: 'resilience:static:{ISO2}',
     scope: 'global',
     cadence: 'annual',
-    tier: 'core',
+    tier: 'experimental',
     coverage: 188,
     license: 'open-data',
     comprehensive: true,
@@ -512,14 +526,14 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
   {
     id: 'gasShare',
     dimension: 'energy',
-    description: 'Natural gas share of energy mix (%); high share = single-source vulnerability',
+    description: 'LEGACY rollback standalone input: natural gas share of energy mix (%). Retired under active energy v2 because it conflates domestic fossil generation with import exposure.',
     direction: 'lowerBetter',
     goalposts: { worst: 100, best: 0 },
     weight: 0.12,
     sourceKey: 'energy:mix:v1:{ISO2}',
     scope: 'global',
     cadence: 'annual',
-    tier: 'core',
+    tier: 'experimental',
     coverage: 195,
     license: 'open-attribution',
     comprehensive: true,
@@ -527,14 +541,14 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
   {
     id: 'coalShare',
     dimension: 'energy',
-    description: 'Coal share of energy mix (%); high share = transition risk and pollution',
+    description: 'LEGACY rollback standalone input: coal share of energy mix (%). Retired under active energy v2 because domestic coal is not an import-dependence signal.',
     direction: 'lowerBetter',
     goalposts: { worst: 100, best: 0 },
     weight: 0.08,
     sourceKey: 'energy:mix:v1:{ISO2}',
     scope: 'global',
     cadence: 'annual',
-    tier: 'core',
+    tier: 'experimental',
     coverage: 195,
     license: 'open-attribution',
     comprehensive: true,
@@ -542,22 +556,22 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
   {
     id: 'renewShare',
     dimension: 'energy',
-    description: 'Renewable energy share of energy mix (%); diversification and resilience',
+    description: 'LEGACY rollback standalone input: renewable energy share of energy mix (%). Absorbed by active energy v2 lowCarbonGenerationShare, which also credits nuclear and hydroelectric generation.',
     direction: 'higherBetter',
     goalposts: { worst: 0, best: 100 },
     weight: 0.05,
     sourceKey: 'energy:mix:v1:{ISO2}',
     scope: 'global',
     cadence: 'annual',
-    tier: 'core',
+    tier: 'experimental',
     coverage: 195,
     license: 'open-attribution',
     comprehensive: true,
   },
   {
-    id: 'gasStorageStress',
+    id: 'euGasStorageStress',
     dimension: 'energy',
-    description: 'Gas storage fill stress: (80 - fillPct) / 80 clamped to [0,1], scaled to 0-100',
+    description: 'EU gas storage fill stress: (80 - fillPct) / 80 clamped to [0,1], scaled to 0-100. Active energy v2 scopes the signal to EU gas-storage countries and contributes null outside that set.',
     direction: 'lowerBetter',
     goalposts: { worst: 100, best: 0 },
     weight: 0.1,
@@ -577,7 +591,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     description: 'Mean absolute energy price change across commodities',
     direction: 'lowerBetter',
     goalposts: { worst: 25, best: 0 },
-    weight: 0.1,
+    weight: 0.15,
     sourceKey: 'economic:energy:v1:all',
     scope: 'global',
     cadence: 'daily',
@@ -589,25 +603,22 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
   {
     id: 'electricityConsumption',
     dimension: 'energy',
-    description: 'Per-capita electricity consumption (kWh/year, World Bank EG.USE.ELEC.KH.PC); low = grid collapse',
+    description: 'LEGACY rollback standalone input: per-capita electricity consumption (kWh/year, World Bank EG.USE.ELEC.KH.PC). Retired under active energy v2 because it is a wealth/load proxy rather than a resilience mechanism.',
     direction: 'higherBetter',
     goalposts: { worst: 200, best: 8000 },
     weight: 0.3,
     sourceKey: 'resilience:static:{ISO2}',
     scope: 'global',
     cadence: 'annual',
-    tier: 'core',
+    tier: 'experimental',
     coverage: 217,
     license: 'open-data',
     comprehensive: true,
   },
 
-  // ── PR 1 energy-construct v2 (tier='experimental' until RESILIENCE_ENERGY_V2_ENABLED ──
-  // flips default-on and seeders land). Indicators are registered so
-  // the per-indicator harness in scripts/compare-resilience-current-vs-
-  // proposed.mjs can begin tracking them, but the 'experimental' tier
-  // keeps them OUT of the Core coverage gate (>=180 countries required
-  // per Phase 2 A4) until seed coverage is confirmed at flag-flip.
+  // ── energy v2 global inputs ───────────────────────────────────────────────
+  // Production is flipped to energy v2, so these now participate in the Core
+  // coverage/license gates. The required seed coverage is >=188 countries.
   {
     id: 'importedFossilDependence',
     dimension: 'energy',
@@ -616,10 +627,14 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     goalposts: { worst: 100, best: 0 },
     weight: 0.35,
     sourceKey: 'resilience:fossil-electricity-share:v1',
+    sourceKeys: [
+      'resilience:fossil-electricity-share:v1',
+      'resilience:static:{ISO2}',
+    ],
     scope: 'global',
     cadence: 'annual',
     imputation: { type: 'conservative', score: 50, certainty: 0.3 },
-    tier: 'experimental',
+    tier: 'core',
     coverage: 190,
     license: 'open-data',
     comprehensive: true,
@@ -635,7 +650,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     scope: 'global',
     cadence: 'annual',
     imputation: { type: 'conservative', score: 30, certainty: 0.3 },
-    tier: 'experimental',
+    tier: 'core',
     coverage: 190,
     license: 'open-data',
     comprehensive: true,
@@ -651,7 +666,7 @@ export const INDICATOR_REGISTRY: IndicatorSpec[] = [
     scope: 'global',
     cadence: 'annual',
     imputation: { type: 'conservative', score: 50, certainty: 0.3 },
-    tier: 'experimental',
+    tier: 'core',
     coverage: 188,
     license: 'open-data',
     comprehensive: true,

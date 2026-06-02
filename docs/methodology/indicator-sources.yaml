@@ -322,20 +322,20 @@
   constructStatus: regional-only
   reviewNotes: PR 1 §3.5 renames to euGasStorageStress and scopes to EU-only (weight 0 for non-EU).
 
-- indicator: exposedEnergyStress
+- indicator: energyPriceStress
   dimension: energy
   domain: energy
-  weight: 0.10
+  weight: 0.15
   direction: composite
-  source: Internal composite (energy-price-stress × import-exposure)
+  source: Energy prices + fossil-electricity exposure composite
   seriesId: Derived
-  seriesUrl: Internal seed
-  coveragePct: 0.70
+  seriesUrl: economic:energy:v1:all
+  coveragePct: 1.00
   lastObservedYear: 2026
-  license: Internal
+  license: Public-domain
   mechanismTestRationale: Combines energy-price shocks with import-exposure to measure price-shock transmission.
   constructStatus: observed-mechanism
-  reviewNotes: PR 1 may simplify given importedFossilDependence covers import-exposure directly.
+  reviewNotes: Active energy-v2 Core scorer input. Weight increased from legacy 0.10 to 0.15; exposure is derived from fossil share of electricity generation under the power-system framing.
 
 - indicator: electricityConsumption
   dimension: energy
@@ -351,6 +351,66 @@
   mechanismTestRationale: FAILS the mechanism test. Per-capita electricity consumption tracks GDP per capita; it is a level-of-load measure not a resilience mechanism. IEA energy-security framing treats EFFICIENCY (lower load for same output) as resilience, which this indicator inversely rewards.
   constructStatus: wealth-proxy
   reviewNotes: PR 1 §3.1 removes. Replaced with powerLossesPct (EG.ELC.LOSS.ZS), reserveMarginPct (IEA), and accessToElectricityPct (EG.ELC.ACCS.ZS) moved to infrastructure domain.
+
+- indicator: importedFossilDependence
+  dimension: energy
+  domain: energy
+  weight: 0.35
+  direction: lower-better
+  source: World Bank + static net-import dependency seed
+  seriesId: EG.ELC.FOSL.ZS × max(EG.IMP.CONS.ZS, 0) / 100
+  seriesUrl: https://data.worldbank.org/indicator/EG.ELC.FOSL.ZS
+  coveragePct: 0.97
+  lastObservedYear: 2024
+  license: CC-BY-4.0
+  mechanismTestRationale: Measures imported fossil exposure in the power system while not penalizing domestic fossil producers as import-dependent.
+  constructStatus: observed-mechanism
+  reviewNotes: Active energy-v2 Core scorer input. Replaces standalone energyImportDependency + gasShare + coalShare under the Option B power-system framing.
+
+- indicator: lowCarbonGenerationShare
+  dimension: energy
+  domain: energy
+  weight: 0.20
+  direction: higher-better
+  source: World Bank
+  seriesId: EG.ELC.NUCL.ZS + EG.ELC.RNEW.ZS + EG.ELC.HYRO.ZS
+  seriesUrl: https://data.worldbank.org/indicator/EG.ELC.NUCL.ZS
+  coveragePct: 0.97
+  lastObservedYear: 2024
+  license: CC-BY-4.0
+  mechanismTestRationale: Credits firm and low-carbon electricity generation across nuclear, renewables excluding hydro, and hydroelectric output.
+  constructStatus: observed-mechanism
+  reviewNotes: Active energy-v2 Core scorer input. Absorbs legacy renewShare and adds nuclear + hydro credit.
+
+- indicator: powerLossesPct
+  dimension: energy
+  domain: energy
+  weight: 0.20
+  direction: lower-better
+  source: World Bank
+  seriesId: EG.ELC.LOSS.ZS
+  seriesUrl: https://data.worldbank.org/indicator/EG.ELC.LOSS.ZS
+  coveragePct: 0.96
+  lastObservedYear: 2024
+  license: CC-BY-4.0
+  mechanismTestRationale: Transmission and distribution losses directly measure grid integrity.
+  constructStatus: observed-mechanism
+  reviewNotes: Active energy-v2 Core scorer input. Temporarily absorbs reserveMarginPct's deferred 0.10 share until an IEA reserve-margin seeder lands.
+
+- indicator: euGasStorageStress
+  dimension: energy
+  domain: energy
+  weight: 0.10
+  direction: lower-better
+  source: GIE AGSI+
+  seriesId: EU gas storage fill % (per country)
+  seriesUrl: https://agsi.gie.eu/
+  coveragePct: 0.15
+  lastObservedYear: 2026
+  license: Open
+  mechanismTestRationale: EU gas storage fill directly measures winter-heating-shock buffer for countries where the regional source applies.
+  constructStatus: regional-only
+  reviewNotes: Active energy-v2 Enrichment scorer input. Scored only for EU gas-storage countries; non-EU countries contribute null, not 0.
 
 # SOCIAL-GOVERNANCE DOMAIN (weight 0.19) ---------------------------------
 
@@ -696,14 +756,10 @@
   constructStatus: imputed-floor
   reviewNotes: PR 3 §3.5 retires from core score (permanent). Enrichment-only if IEA/EIA connector ever wires.
 
-# PENDING ADDITIONS FOR PR 1+ --------------------------------------------
+# DEFERRED ADDITIONS FOR PR 1+ --------------------------------------------
 
-# PR 1 additions (not yet in the scorer):
-# - powerLossesPct       → EG.ELC.LOSS.ZS (transmission+distribution losses, lower-better)
-# - reserveMarginPct     → IEA electricity balance (generation reserve margin, higher-better)
-# - accessToElectricityPct → EG.ELC.ACCS.ZS (threshold/saturating, moved to infrastructure domain)
-# - importedFossilDependence → EG.IMP.CONS.ZS × fossil-generation-share (Option B power-system framing)
-# - lowCarbonGenerationShare → EG.ELC.NUCL.ZS + EG.ELC.RNEW.ZS (higher-better)
+# PR 1 deferred addition:
+# - reserveMarginPct → IEA electricity balance (generation reserve margin, higher-better)
 
 # PR 2 additions (not yet in the scorer):
 # - liquidReserveAdequacy  → FI.RES.TOTL.MO (rename of current reserveMonths)

@@ -2,8 +2,27 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { RESILIENCE_DIMENSION_ORDER } from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
-import { INDICATOR_REGISTRY } from '../server/worldmonitor/resilience/v1/_indicator-registry.ts';
+import {
+  INDICATOR_REGISTRY,
+  getIndicatorSourceKeys,
+} from '../server/worldmonitor/resilience/v1/_indicator-registry.ts';
 import type { IndicatorSpec } from '../server/worldmonitor/resilience/v1/_indicator-registry.ts';
+
+const ACTIVE_ENERGY_V2_INDICATORS = new Map<string, { weight: number; tier: IndicatorSpec['tier'] }>([
+  ['importedFossilDependence', { weight: 0.35, tier: 'core' }],
+  ['lowCarbonGenerationShare', { weight: 0.2, tier: 'core' }],
+  ['powerLossesPct', { weight: 0.2, tier: 'core' }],
+  ['euGasStorageStress', { weight: 0.1, tier: 'enrichment' }],
+  ['energyPriceStress', { weight: 0.15, tier: 'core' }],
+]);
+
+const LEGACY_ONLY_ENERGY_INDICATORS = [
+  'energyImportDependency',
+  'gasShare',
+  'coalShare',
+  'renewShare',
+  'electricityConsumption',
+] as const;
 
 describe('indicator registry', () => {
   it('covers all 22 dimensions (20 active + 2 retired)', () => {
@@ -38,6 +57,36 @@ describe('indicator registry', () => {
     }
   });
 
+  it('composite sourceKeys include sourceKey and do not duplicate entries', () => {
+    for (const spec of INDICATOR_REGISTRY) {
+      const sourceKeys = getIndicatorSourceKeys(spec);
+      assert.ok(sourceKeys.length >= 1, `${spec.id} must have at least one source key`);
+      assert.equal(
+        sourceKeys[0],
+        spec.sourceKey,
+        `${spec.id} sourceKeys[0] must be the primary sourceKey for legacy callers`,
+      );
+      assert.equal(
+        sourceKeys.length,
+        new Set(sourceKeys).size,
+        `${spec.id} sourceKeys must not contain duplicates`,
+      );
+    }
+  });
+
+  it('importedFossilDependence documents both composite inputs for audits', () => {
+    const spec = INDICATOR_REGISTRY.find((indicator) => indicator.id === 'importedFossilDependence');
+    assert.ok(spec, 'importedFossilDependence must exist in registry');
+    assert.deepEqual(
+      getIndicatorSourceKeys(spec),
+      [
+        'resilience:fossil-electricity-share:v1',
+        'resilience:static:{ISO2}',
+      ],
+      'importedFossilDependence must audit both fossil-electricity share and static net-import dependency inputs',
+    );
+  });
+
   it('goalposts worst != best for every indicator', () => {
     for (const spec of INDICATOR_REGISTRY) {
       assert.notEqual(spec.goalposts.worst, spec.goalposts.best, `${spec.id} has worst === best (${spec.goalposts.worst})`);
@@ -56,11 +105,9 @@ describe('indicator registry', () => {
 
   it('every dimension has non-experimental weights that sum to ~1.0', () => {
     // Weight-sum invariant applies to the CURRENTLY-ACTIVE indicator
-    // set only. Indicators at tier='experimental' are flag-gated
-    // / in-progress work (e.g. the PR 1 v2 energy construct lands
-    // behind RESILIENCE_ENERGY_V2_ENABLED; until the flag flips,
-    // these indicators are NOT part of the live score and their
-    // weights must not be counted against the 1.0 invariant).
+    // set only. Indicators at tier='experimental' are dormant rollback,
+    // retired, or in-progress work and their weights must not be counted
+    // against the active 1.0 invariant.
     const byDimension = new Map<string, IndicatorSpec[]>();
     for (const spec of INDICATOR_REGISTRY) {
       if (spec.tier === 'experimental') continue;
@@ -77,6 +124,44 @@ describe('indicator registry', () => {
     }
   });
 
+  it('active production energy-v2 indicators are non-experimental and weight to 1.0', () => {
+    const energySpecs = INDICATOR_REGISTRY.filter((spec) => spec.dimension === 'energy');
+    const byId = new Map(energySpecs.map((spec) => [spec.id, spec]));
+    const activeSpecs: IndicatorSpec[] = [];
+
+    for (const [id, expected] of ACTIVE_ENERGY_V2_INDICATORS) {
+      const spec = byId.get(id);
+      assert.ok(spec, `active energy-v2 indicator ${id} missing from registry`);
+      assert.equal(
+        spec.tier,
+        expected.tier,
+        `${id} must be tier=${expected.tier} now that production constructVersions.energy is v2`,
+      );
+      assert.notEqual(spec.tier, 'experimental', `${id} must not be experimental in the active production construct`);
+      assert.equal(spec.weight, expected.weight, `${id} weight must mirror scoreEnergyV2`);
+      activeSpecs.push(spec);
+    }
+
+    const activeWeight = activeSpecs.reduce((sum, spec) => sum + spec.weight, 0);
+    assert.ok(
+      Math.abs(activeWeight - 1) < 0.001,
+      `active energy-v2 registry weights sum to ${activeWeight.toFixed(4)}, expected 1.0`,
+    );
+  });
+
+  it('legacy-only energy indicators stay experimental rollback surfaces under active v2', () => {
+    const byId = new Map(INDICATOR_REGISTRY.map((spec) => [spec.id, spec]));
+    for (const id of LEGACY_ONLY_ENERGY_INDICATORS) {
+      const spec = byId.get(id);
+      assert.ok(spec, `legacy energy indicator ${id} missing from registry`);
+      assert.equal(
+        spec.tier,
+        'experimental',
+        `${id} is legacy-only under energy v2 and must not re-enter Core while production constructVersions.energy is v2`,
+      );
+    }
+  });
+
   it('experimental weights are bounded at or below 1.0 per dimension', () => {
     // Loose invariant for experimental indicators. A dimension's
     // experimental set may only carry PART of the post-promotion
@@ -86,9 +171,9 @@ describe('indicator registry', () => {
     // euGasStorageStress, both already in the non-experimental set),
     // the experimental-only subsum will be < 1.0.
     //
-    // Post-promotion weight-sum correctness for flag-gated indicator
-    // sets is the SCORER's responsibility to verify (via the flag-on
-    // behavioural tests in resilience-energy-v2.test.mts), not the
+    // Post-promotion weight-sum correctness for future staged indicator
+    // sets is the SCORER's responsibility to verify (via behavioural
+    // tests for that construct), not the
     // registry's. This test enforces only the upper bound: no
     // dimension should accumulate experimental weight in excess of
     // the total it will eventually ship under the flag.

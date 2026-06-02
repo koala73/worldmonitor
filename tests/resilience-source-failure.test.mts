@@ -7,13 +7,18 @@ import {
   DATASET_TO_DIMENSIONS,
   RESILIENCE_STATIC_META_KEY,
   STANDALONE_SOURCE_META_MAX_STALE_MIN,
+  buildStandaloneMetaKeyToIndicators,
   failedDimensionsFromDatasets,
   readStandaloneSourceFailureDimensions,
   readFailedDatasets,
 } from '../server/worldmonitor/resilience/v1/_source-failure.ts';
 import { RESILIENCE_DIMENSION_ORDER } from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
 import { resolveSeedMetaKey } from '../server/worldmonitor/resilience/v1/_dimension-freshness.ts';
-import { INDICATOR_REGISTRY } from '../server/worldmonitor/resilience/v1/_indicator-registry.ts';
+import {
+  INDICATOR_REGISTRY,
+  getIndicatorSourceKeys,
+} from '../server/worldmonitor/resilience/v1/_indicator-registry.ts';
+import type { IndicatorSpec } from '../server/worldmonitor/resilience/v1/_indicator-registry.ts';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -126,7 +131,7 @@ function readHealthSeedMetaThresholds(): Map<string, number> {
 function resolvedStandaloneRegistryMetaKeys(): string[] {
   return [...new Set(
     INDICATOR_REGISTRY
-      .map((indicator) => resolveSeedMetaKey(indicator.sourceKey))
+      .flatMap((indicator) => getIndicatorSourceKeys(indicator).map((sourceKey) => resolveSeedMetaKey(sourceKey)))
       .filter((key) => key !== RESILIENCE_STATIC_META_KEY),
   )].sort();
 }
@@ -288,6 +293,27 @@ describe('resilience source-failure module', () => {
 
       assert.equal(result.dimensions.size, 0);
       assert.deepEqual(result.failedMetaKeys, []);
+    });
+
+    it('deduplicates a composite indicator whose sourceKeys resolve to the same standalone meta key', () => {
+      const base = INDICATOR_REGISTRY.find((indicator) => indicator.id === 'importedFossilDependence');
+      assert.ok(base, 'fixture base indicator must exist');
+      const duplicateMetaComposite: IndicatorSpec = {
+        ...base,
+        sourceKey: 'resilience:recovery:import-hhi:v1',
+        sourceKeys: [
+          'resilience:recovery:import-hhi:v1',
+          'resilience:recovery:import-hhi',
+        ],
+      };
+
+      const grouped = buildStandaloneMetaKeyToIndicators([duplicateMetaComposite]);
+
+      assert.deepEqual(
+        grouped.get('seed-meta:resilience:recovery:import-hhi'),
+        [duplicateMetaComposite],
+        'same indicator must appear once even when multiple composite sourceKeys collapse to one meta key',
+      );
     });
 
     it('ignores retired standalone fuel-stock meta even when status is non-ok', async () => {

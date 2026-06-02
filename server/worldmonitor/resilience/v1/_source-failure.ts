@@ -9,7 +9,7 @@
 
 import type { ResilienceDimensionId, ResilienceSeedReader } from './_dimension-scorers';
 import { resolveSeedMetaKey } from './_dimension-freshness';
-import { INDICATOR_REGISTRY, type IndicatorSpec } from './_indicator-registry';
+import { INDICATOR_REGISTRY, getIndicatorSourceKeys, type IndicatorSpec } from './_indicator-registry';
 
 // Must match RESILIENCE_STATIC_META_KEY in scripts/seed-resilience-static.mjs.
 export const RESILIENCE_STATIC_META_KEY = 'seed-meta:resilience:static';
@@ -157,18 +157,7 @@ export async function readStandaloneSourceFailureDimensions(
   reader: ResilienceSeedReader,
   nowMs?: number,
 ): Promise<StandaloneSourceFailureResult> {
-  const metaKeyToIndicators = new Map<string, IndicatorSpec[]>();
-  for (const indicator of INDICATOR_REGISTRY) {
-    const metaKey = resolveSeedMetaKey(indicator.sourceKey);
-    if (metaKey === RESILIENCE_STATIC_META_KEY) continue;
-    if (IGNORED_STANDALONE_SOURCE_META_KEYS.has(metaKey)) continue;
-    const existing = metaKeyToIndicators.get(metaKey);
-    if (existing) {
-      existing.push(indicator);
-    } else {
-      metaKeyToIndicators.set(metaKey, [indicator]);
-    }
-  }
+  const metaKeyToIndicators = buildStandaloneMetaKeyToIndicators(INDICATOR_REGISTRY);
 
   const dimensions = new Set<ResilienceDimensionId>();
   const failedMetaKeys: string[] = [];
@@ -203,4 +192,26 @@ export async function readStandaloneSourceFailureDimensions(
 
   failedMetaKeys.sort();
   return { dimensions, failedMetaKeys };
+}
+
+export function buildStandaloneMetaKeyToIndicators(
+  indicators: readonly IndicatorSpec[],
+): Map<string, IndicatorSpec[]> {
+  const metaKeyToIndicators = new Map<string, IndicatorSpec[]>();
+  for (const indicator of indicators) {
+    for (const sourceKey of getIndicatorSourceKeys(indicator)) {
+      const metaKey = resolveSeedMetaKey(sourceKey);
+      if (metaKey === RESILIENCE_STATIC_META_KEY) continue;
+      if (IGNORED_STANDALONE_SOURCE_META_KEYS.has(metaKey)) continue;
+      const existing = metaKeyToIndicators.get(metaKey);
+      if (existing) {
+        if (!existing.includes(indicator)) {
+          existing.push(indicator);
+        }
+      } else {
+        metaKeyToIndicators.set(metaKey, [indicator]);
+      }
+    }
+  }
+  return metaKeyToIndicators;
 }
