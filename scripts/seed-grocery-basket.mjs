@@ -44,6 +44,7 @@ async function searchExa(query, sites, locationCode) {
       'x-api-key': apiKey,
       'Content-Type': 'application/json',
       'User-Agent': CHROME_UA,
+      'x-exa-integration': 'worldmonitor',
     },
     body: JSON.stringify(body),
     signal: AbortSignal.timeout(15_000),
