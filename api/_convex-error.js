@@ -18,18 +18,6 @@
  */
 
 /**
- * Extract the named-error `kind` from a Convex client throw. Prefers the
- * structured `err.data.kind` (server-side `ConvexError({ kind, ... })`),
- * falls back to substring-matching the legacy string-data error message
- * (`ConvexError("CONFLICT")`) for the deploy-ordering window where the
- * Vercel build may run against an older Convex deployment.
- *
- * @param {unknown} err
- * @param {string} msg `err.message` (passed in to avoid re-coercing in
- *   callers that already computed it).
- * @returns {string | null} the kind, or null when neither path matches.
- */
-/**
  * Match a Convex platform-error JSON body's `"code":"X"` field, tolerating the
  * optional whitespace a non-default serializer may emit after the colon
  * (`"code": "X"`). Convex's runtime uses `JSON.stringify` (no spaces) today, so
@@ -47,6 +35,18 @@ function hasConvexCode(msg, code) {
   return new RegExp(`"code":\\s*"${code}"`).test(msg);
 }
 
+/**
+ * Extract the named-error `kind` from a Convex client throw. Prefers the
+ * structured `err.data.kind` (server-side `ConvexError({ kind, ... })`),
+ * falls back to substring-matching the legacy string-data error message
+ * (`ConvexError("CONFLICT")`) for the deploy-ordering window where the
+ * Vercel build may run against an older Convex deployment.
+ *
+ * @param {unknown} err
+ * @param {string} msg `err.message` (passed in to avoid re-coercing in
+ *   callers that already computed it).
+ * @returns {string | null} the kind, or null when neither path matches.
+ */
 export function extractConvexErrorKind(err, msg) {
   const data = /** @type {{ data?: unknown } | null | undefined} */ (err)?.data;
   if (data && typeof data === 'object' && 'kind' in data) {
