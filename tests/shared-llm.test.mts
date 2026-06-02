@@ -77,7 +77,7 @@ describe('callLlm', () => {
     ]);
   });
 
-  it('uses MiniMax-M2.7 as default when MINIMAX_API_KEY is set', async () => {
+  it('uses MiniMax-M3 as default when MINIMAX_API_KEY is set', async () => {
     process.env.MINIMAX_API_KEY = 'mm-test-key';
     delete process.env.GROQ_API_KEY;
     delete process.env.OPENROUTER_API_KEY;
@@ -110,10 +110,10 @@ describe('callLlm', () => {
 
     assert.ok(result);
     assert.equal(result.provider, 'minimax');
-    assert.equal(result.model, 'MiniMax-M2.7');
+    assert.equal(result.model, 'MiniMax-M3');
     assert.equal(postBodies.length, 1);
     assert.equal(postBodies[0]?.url, 'https://api.minimax.io/v1/chat/completions');
-    assert.equal(postBodies[0]?.body.model, 'MiniMax-M2.7');
+    assert.equal(postBodies[0]?.body.model, 'MiniMax-M3');
   });
 
   it('supports MiniMax model override via MINIMAX_MODEL env var', async () => {

@@ -74,7 +74,7 @@ export function getProviderCredentials(
     if (!apiKey) return null;
     return {
       apiUrl: 'https://api.minimax.io/v1/chat/completions',
-      model: overrides.model || process.env.MINIMAX_MODEL || 'MiniMax-M2.7',
+      model: overrides.model || process.env.MINIMAX_MODEL || 'MiniMax-M3',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
