@@ -114,8 +114,8 @@ function hasFiniteMetricScore(metric: WeightedMetric): metric is WeightedMetric 
 //   - not-applicable: the dimension is structurally N/A for this country
 //     (e.g., a landlocked country has no maritime exposure). Score is
 //     neutral with high certainty since the absence is by definition.
-//     (Reserved for future dimensions that need structural N/A handling;
-//     no current scorer branches on it.)
+//     Currently emitted by sovereignFiscalBuffer when the sovereign-wealth
+//     manifest is present and the country has no applicable SWF entry.
 //
 // This is the foundation-only slice of T1.7. It lands the type, tags the
 // existing imputation tables, and is covered by tests that assert every

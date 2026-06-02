@@ -78,6 +78,11 @@ describe('deploy/cache configuration guardrails', () => {
     assert.doesNotMatch(viteConfigSource, /globPatterns:\s*\['\*\*\/\*\.\{js,css,html/);
   });
 
+  it('keeps the lazy Clerk SDK out of the PWA precache', () => {
+    assert.match(viteConfigSource, /globIgnores:\s*\[[^\]]*'\*\*\/clerk-\*\.js'[^\]]*\]/s);
+    assert.match(viteConfigSource, /id\.includes\('\/@clerk\/clerk-js\/'\)[\s\S]*return 'clerk'/);
+  });
+
   it('explicitly disables navigateFallback when HTML is not precached', () => {
     assert.match(viteConfigSource, /navigateFallback:\s*null/);
     assert.doesNotMatch(viteConfigSource, /navigateFallbackDenylist:\s*\[/);

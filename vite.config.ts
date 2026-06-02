@@ -809,7 +809,7 @@ export default defineConfig(({ mode }) => {
 
         workbox: {
           globPatterns: ['**/*.{js,css,ico,png,svg,woff2}'],
-          globIgnores: ['**/ml*.js', '**/onnx*.wasm', '**/locale-*.js'],
+          globIgnores: ['**/ml*.js', '**/onnx*.wasm', '**/locale-*.js', '**/clerk-*.js'],
           // globe.gl + three.js grows main bundle past the 2 MiB default limit
           maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
           navigateFallback: null,
@@ -998,6 +998,11 @@ export default defineConfig(({ mode }) => {
               }
               if (id.includes('/@sentry/')) {
                 return 'sentry';
+              }
+              if (id.includes('/@clerk/clerk-js/')) {
+                // Clerk remains a runtime dynamic import; the stable chunk name
+                // lets Workbox keep the large auth SDK out of precache.
+                return 'clerk';
               }
             }
             if (id.includes('/src/components/') && id.endsWith('Panel.ts')) {
