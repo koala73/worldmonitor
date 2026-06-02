@@ -18702,6 +18702,8 @@ components:
                     $ref: '#/components/schemas/worldmonitor_resilience_v1_ResilienceRuntimeCacheState'
                 rankingCache:
                     $ref: '#/components/schemas/worldmonitor_resilience_v1_ResilienceRankingCacheState'
+                constructVersions:
+                    $ref: '#/components/schemas/worldmonitor_resilience_v1_ResilienceRuntimeConstructVersions'
         worldmonitor_resilience_v1_ResilienceRuntimeFlag:
             type: object
             properties:
@@ -18736,6 +18738,11 @@ components:
                 total:
                     type: integer
                     format: int32
+        worldmonitor_resilience_v1_ResilienceRuntimeConstructVersions:
+            type: object
+            properties:
+                energy:
+                    type: string
         worldmonitor_sanctions_v1_ListSanctionsPressureRequest:
             type: object
             properties:

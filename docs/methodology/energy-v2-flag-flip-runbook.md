@@ -81,6 +81,13 @@ All must be green before flipping `RESILIENCE_ENERGY_V2_ENABLED=true`:
    # (or via Vercel dashboard → Settings → Environment Variables)
    vercel deploy --prod
    ```
+   After deploy, verify the public runtime manifest reports the derived
+   construct state without exposing the raw env flag:
+   ```bash
+   curl -s https://worldmonitor.app/api/resilience/v1/get-runtime-manifest \
+     | jq '.constructVersions.energy'
+   # Expected: "v2"
+   ```
 
 5. **Capture the post-flip snapshot** immediately after the first
    post-deploy ranking refresh completes (check via

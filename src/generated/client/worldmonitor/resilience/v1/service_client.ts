@@ -95,6 +95,7 @@ export interface GetResilienceRuntimeManifestResponse {
   flags: ResilienceRuntimeFlag[];
   cache?: ResilienceRuntimeCacheState;
   rankingCache?: ResilienceRankingCacheState;
+  constructVersions?: ResilienceRuntimeConstructVersions;
 }
 
 export interface ResilienceRuntimeFlag {
@@ -115,6 +116,10 @@ export interface ResilienceRankingCacheState {
   count: number;
   scored: number;
   total: number;
+}
+
+export interface ResilienceRuntimeConstructVersions {
+  energy: string;
 }
 
 export interface FieldViolation {

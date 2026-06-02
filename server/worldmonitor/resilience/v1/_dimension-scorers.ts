@@ -369,9 +369,11 @@ const RESILIENCE_RECOVERY_SOVEREIGN_WEALTH_KEY = 'resilience:recovery:sovereign-
 // scripts/seed-low-carbon-generation.mjs, scripts/seed-fossil-
 // electricity-share.mjs, scripts/seed-power-reliability.mjs.
 // Read by scoreEnergy only when isEnergyV2Enabled() is true; until
-// the seeders land, the keys are absent and the v2 scorer path
-// degrades gracefully (returns null per sub-indicator, which the
-// weightedBlend handles via the normal coverage/imputation path).
+// production proves these seeds are present and healthy, the repo
+// default remains legacy. If an operator flips v2 while any required
+// seed is absent, scoreEnergy fails closed with
+// ResilienceConfigurationError instead of silently emitting imputed
+// energy scores.
 //
 // Shape (all three): { updatedAt: ISO, countries: { [ISO2]: { value: number, year: number | null } } }
 // Values are percent (0-100). Composites like importedFossilDependence

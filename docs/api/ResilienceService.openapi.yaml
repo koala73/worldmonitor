@@ -370,6 +370,8 @@ components:
                     $ref: '#/components/schemas/ResilienceRuntimeCacheState'
                 rankingCache:
                     $ref: '#/components/schemas/ResilienceRankingCacheState'
+                constructVersions:
+                    $ref: '#/components/schemas/ResilienceRuntimeConstructVersions'
         ResilienceRuntimeFlag:
             type: object
             properties:
@@ -404,3 +406,8 @@ components:
                 total:
                     type: integer
                     format: int32
+        ResilienceRuntimeConstructVersions:
+            type: object
+            properties:
+                energy:
+                    type: string

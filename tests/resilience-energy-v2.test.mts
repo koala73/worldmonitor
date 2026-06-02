@@ -81,7 +81,7 @@ describe('scoreEnergy — RESILIENCE_ENERGY_V2_ENABLED=false (default)', () => {
     delete process.env.RESILIENCE_ENERGY_V2_ENABLED;
   });
 
-  it('flag is off by default', () => {
+  it('repo default remains legacy until production v2 seed health is verified', () => {
     assert.equal(process.env.RESILIENCE_ENERGY_V2_ENABLED, undefined);
   });
 

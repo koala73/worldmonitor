@@ -72,8 +72,14 @@ export function isPillarCombineEnabled(): boolean {
 
 // PR 1 of the resilience repair plan (docs/plans/2026-04-22-001-fix-
 // resilience-scorer-structural-bias-plan.md §3.1–§3.3): activation
-// flag for the v2 energy construct. Default is `false` so activation
-// is an explicit operator action.
+// flag for the v2 energy construct. Default is `false` because the
+// repo cannot prove production Railway seed state at build time.
+// Activation remains an explicit operator action after
+// seed-bundle-resilience-energy-v2 is provisioned and /api/health is
+// green for seed-meta:resilience:{fossil-electricity-share,low-carbon-
+// generation,power-losses}. The public runtime manifest exposes only
+// the derived construct version (`legacy` or `v2`), never this raw env
+// flag name or internal cache keys.
 //
 // When off (default): `scoreEnergy` uses the legacy inputs
 // (energyImportDependency, gasShare, coalShare, renewShare,
@@ -101,11 +107,10 @@ export function isPillarCombineEnabled(): boolean {
 // re-importing the module.
 //
 // Cache invalidation: energy dimension scores are embedded in the
-// overall score, so flipping this flag requires either bumping
-// RESILIENCE_SCORE_CACHE_PREFIX or waiting for the 6h TTL to clear.
-// The current PR 1 plan stages the flag flip AFTER an acceptance-
-// gate rerun that produces a fresh post-flip snapshot; the cache
-// prefix bump lands in the commit that performs the acceptance run.
+// overall score, so flipping this flag requires a score-cache prefix
+// bump in the same release. The flag-flip runbook keeps that bump,
+// acceptance-gate rerun, and post-flip snapshot together so rollback
+// can simply restore the env flag to false.
 export function isEnergyV2Enabled(): boolean {
   return (process.env.RESILIENCE_ENERGY_V2_ENABLED ?? 'false').toLowerCase() === 'true';
 }

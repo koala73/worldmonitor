@@ -10,9 +10,10 @@ import {
   RESILIENCE_RANKING_META_KEY,
   RESILIENCE_STATIC_META_KEY,
   getCurrentCacheFormula,
+  isEnergyV2Enabled,
 } from './_shared';
 
-const MANIFEST_VERSION = 2;
+const MANIFEST_VERSION = 3;
 
 const PUBLIC_CACHE_STATE = {
   scorePrefix: '',
@@ -21,6 +22,12 @@ const PUBLIC_CACHE_STATE = {
   intervalPrefix: '',
   intervalMethodology: '',
 };
+
+function getConstructVersions(): { energy: 'legacy' | 'v2' } {
+  return {
+    energy: isEnergyV2Enabled() ? 'v2' : 'legacy',
+  };
+}
 
 interface SeedMeta {
   fetchedAt?: unknown;
@@ -77,5 +84,6 @@ export const getResilienceRuntimeManifest: ResilienceServiceHandler['getResilien
       scored: safeNonNegativeInteger(rankingMeta?.scored),
       total: safeNonNegativeInteger(rankingMeta?.total),
     },
+    constructVersions: getConstructVersions(),
   };
 };

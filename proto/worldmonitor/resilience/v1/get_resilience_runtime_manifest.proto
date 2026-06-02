@@ -24,6 +24,10 @@ message ResilienceRankingCacheState {
   int32 total = 4;
 }
 
+message ResilienceRuntimeConstructVersions {
+  string energy = 1;
+}
+
 message GetResilienceRuntimeManifestResponse {
   int32 manifest_version = 1;
   string generated_at = 2;
@@ -34,4 +38,5 @@ message GetResilienceRuntimeManifestResponse {
   repeated ResilienceRuntimeFlag flags = 7;
   ResilienceRuntimeCacheState cache = 8;
   ResilienceRankingCacheState ranking_cache = 9;
+  ResilienceRuntimeConstructVersions construct_versions = 10;
 }
