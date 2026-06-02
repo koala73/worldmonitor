@@ -64,7 +64,7 @@ function resolveCategoryLabel(cmd: Command): string {
   return key ? t(key, { defaultValue: cmd.category }) : cmd.category;
 }
 
-export type SearchResultType = 'country' | 'news' | 'hotspot' | 'market' | 'prediction' | 'conflict' | 'base' | 'pipeline' | 'cable' | 'datacenter' | 'earthquake' | 'outage' | 'nuclear' | 'irradiator' | 'techcompany' | 'ailab' | 'startup' | 'techevent' | 'techhq' | 'accelerator' | 'exchange' | 'financialcenter' | 'centralbank' | 'commodityhub' | 'flight';
+export type SearchResultType = 'country' | 'city' | 'news' | 'hotspot' | 'market' | 'prediction' | 'conflict' | 'base' | 'pipeline' | 'cable' | 'datacenter' | 'earthquake' | 'outage' | 'nuclear' | 'irradiator' | 'techcompany' | 'ailab' | 'startup' | 'techevent' | 'techhq' | 'accelerator' | 'exchange' | 'financialcenter' | 'centralbank' | 'commodityhub' | 'flight';
 
 export interface SearchResult {
   type: SearchResultType;
@@ -418,7 +418,7 @@ export class SearchModal {
     const priority: SearchResultType[] = [
       'flight',
       'news', 'prediction', 'market', 'earthquake', 'outage',
-      'conflict', 'hotspot', 'country',
+      'conflict', 'hotspot', 'country', 'city',
       'base', 'pipeline', 'cable', 'datacenter', 'nuclear', 'irradiator',
       'techcompany', 'ailab', 'startup', 'techevent', 'techhq', 'accelerator'
     ];
@@ -661,6 +661,7 @@ export class SearchModal {
 
     const icons: Record<SearchResultType, string> = {
       country: '\u{1F3F3}\uFE0F',
+      city: '🏙️',
       news: '\u{1F4F0}',
       hotspot: '\u{1F4CD}',
       market: '\u{1F4C8}',

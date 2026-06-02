@@ -72,6 +72,7 @@ import { ensureWmSession, installWmSessionFetchInterceptor } from '@/services/wm
 import { describeFreshness } from '@/services/persistent-cache';
 import { DesktopUpdater } from '@/app/desktop-updater';
 import { CountryIntelManager } from '@/app/country-intel';
+import { CountryProfileManager } from '@/app/country-profile-manager';
 import { registerWebMcpTools } from '@/services/webmcp';
 import { SearchManager } from '@/app/search-manager';
 import { RefreshScheduler } from '@/app/refresh-scheduler';
@@ -120,6 +121,7 @@ export class App {
   private eventHandlers: EventHandlerManager;
   private searchManager: SearchManager;
   private countryIntel: CountryIntelManager;
+  private countryProfileManager: CountryProfileManager | null = null;
   private refreshScheduler: RefreshScheduler;
   private desktopUpdater: DesktopUpdater;
 
@@ -841,6 +843,7 @@ export class App {
     // Instantiate modules (callbacks wired after all modules exist)
     this.refreshScheduler = new RefreshScheduler(this.state);
     this.countryIntel = new CountryIntelManager(this.state);
+    this.countryProfileManager = new CountryProfileManager(this.state);
     this.desktopUpdater = new DesktopUpdater(this.state);
 
     this.dataLoader = new DataLoaderManager(this.state, {
@@ -887,6 +890,7 @@ export class App {
       this.desktopUpdater,
       this.panelLayout,
       this.countryIntel,
+      this.countryProfileManager,
       this.searchManager,
       this.dataLoader,
       this.refreshScheduler,
@@ -1548,6 +1552,22 @@ export class App {
     } finally {
       if (timer !== null) clearTimeout(timer);
     }
+  }
+
+  public openCountrySelector(): void {
+    if (this.countryProfileManager) {
+      this.countryProfileManager.openCountrySelector();
+    }
+  }
+
+  public closeCountryProfile(): void {
+    if (this.countryProfileManager) {
+      this.countryProfileManager.closeCountryProfile();
+    }
+  }
+
+  public getSelectedCountryCode(): string | null {
+    return this.countryProfileManager?.getSelectedCountryCode() ?? null;
   }
 
   private handleDeepLinks(): void {

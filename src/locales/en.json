@@ -499,6 +499,7 @@
       "close": "close",
       "types": {
         "country": "Country",
+        "city": "City",
         "news": "News",
         "hotspot": "Hotspot",
         "market": "Market",
