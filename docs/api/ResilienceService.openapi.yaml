@@ -372,6 +372,8 @@ components:
                     $ref: '#/components/schemas/ResilienceRankingCacheState'
                 constructVersions:
                     $ref: '#/components/schemas/ResilienceRuntimeConstructVersions'
+                intervals:
+                    $ref: '#/components/schemas/ResilienceRuntimeIntervalState'
         ResilienceRuntimeFlag:
             type: object
             properties:
@@ -412,3 +414,18 @@ components:
                 energy:
                     type: string
                     description: 'Safe derived energy construct version. Valid values: "legacy" or "v2".'
+        ResilienceRuntimeIntervalState:
+            type: object
+            properties:
+                available:
+                    type: boolean
+                    description: True only when the public sample interval can be read for the active formula.
+                methodology:
+                    type: string
+                    description: Public methodology tag used to audit scoreInterval/rankStable semantics.
+                sampleCountry:
+                    type: string
+                    description: ISO2 country used for the public availability probe.
+                lastObservedAt:
+                    type: string
+                    description: Latest safe observed timestamp from interval seed-meta or sample payload.

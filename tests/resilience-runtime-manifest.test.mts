@@ -63,12 +63,22 @@ describe('resilience runtime manifest', () => {
         scored: 171,
         total: 196,
       },
+      'seed-meta:resilience:intervals': {
+        fetchedAt: Date.parse('2026-05-29T11:45:00.000Z'),
+      },
+      'resilience:intervals:v6:US': {
+        p05: 65.2,
+        p95: 72.8,
+        _formula: 'pc',
+        computedAt: '2026-05-29T12:15:00.000Z',
+        methodology: 'weight-perturbation-sensitivity-v3',
+      },
     }, { keepVercelEnv: true });
 
     const request = new Request('https://worldmonitor.app/api/resilience/v1/get-runtime-manifest');
     const response = await modules.getResilienceRuntimeManifest({ request } as never);
 
-    assert.equal(response.manifestVersion, 3);
+    assert.equal(response.manifestVersion, 4);
     assert.match(response.generatedAt, /^\d{4}-\d{2}-\d{2}T/);
     assert.equal(response.deployedCommitSha, '');
     assert.equal(response.vercelEnv, '');
@@ -88,6 +98,12 @@ describe('resilience runtime manifest', () => {
       count: 196,
       scored: 171,
       total: 196,
+    });
+    assert.deepEqual(response.intervals, {
+      available: true,
+      methodology: 'weight-perturbation-sensitivity-v3',
+      sampleCountry: 'US',
+      lastObservedAt: '2026-05-29T12:15:00.000Z',
     });
     assert.deepEqual(modules.drainResponseHeaders(request), { 'X-No-Cache': '1' });
   });
@@ -109,6 +125,40 @@ describe('resilience runtime manifest', () => {
     assert.equal(response.dataVersion, '');
     assert.deepEqual(response.constructVersions, { energy: 'legacy' });
     assert.deepEqual(response.rankingCache, { fetchedAt: '', count: 0, scored: 0, total: 0 });
+    assert.deepEqual(response.intervals, {
+      available: false,
+      methodology: 'weight-perturbation-sensitivity-v3',
+      sampleCountry: 'US',
+      lastObservedAt: '',
+    });
+  });
+
+  it('reports interval metadata unavailable without throwing when the sample is missing or stale', async () => {
+    const modules = await loadRuntimeManifestModules();
+    process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = 'true';
+    installRedis({
+      'seed-meta:resilience:intervals': {
+        fetchedAt: Date.parse('2026-05-30T10:00:00.000Z'),
+      },
+      'resilience:intervals:v6:US': {
+        p05: 65.2,
+        p95: 72.8,
+        _formula: 'd6',
+        computedAt: '2026-05-30T11:00:00.000Z',
+        methodology: 'weight-perturbation-sensitivity-v3',
+      },
+    }, { keepVercelEnv: true });
+
+    const response = await modules.getResilienceRuntimeManifest({
+      request: new Request('https://worldmonitor.app/api/resilience/v1/get-runtime-manifest'),
+    } as never);
+
+    assert.deepEqual(response.intervals, {
+      available: false,
+      methodology: 'weight-perturbation-sensitivity-v3',
+      sampleCountry: 'US',
+      lastObservedAt: '2026-05-30T11:00:00.000Z',
+    });
   });
 
   it('exposes derived construct state without raw env names, cache keys, or secrets', async () => {
@@ -129,6 +179,12 @@ describe('resilience runtime manifest', () => {
     const serialized = JSON.stringify(response);
 
     assert.deepEqual(response.constructVersions, { energy: 'v2' });
+    assert.deepEqual(response.intervals, {
+      available: false,
+      methodology: 'weight-perturbation-sensitivity-v3',
+      sampleCountry: 'US',
+      lastObservedAt: '',
+    });
     assert.equal(serialized.includes('super-secret-upstash-token'), false);
     assert.equal(serialized.includes('operator-secret-key'), false);
     assert.equal(serialized.includes('legacy-secret-key'), false);
@@ -139,7 +195,12 @@ describe('resilience runtime manifest', () => {
     assert.equal(serialized.includes('production'), false);
     assert.equal(serialized.includes('RESILIENCE_ENERGY_V2_ENABLED'), false);
     assert.equal(serialized.includes('RESILIENCE_FIN_SYS_EXPOSURE_ENABLED'), false);
+    assert.equal(serialized.includes('RESILIENCE_INTERVAL_METHODOLOGY'), false);
+    assert.equal(serialized.includes('RESILIENCE_INTERVAL_KEY_PREFIX'), false);
     assert.equal(serialized.includes(modules.RESILIENCE_RANKING_CACHE_KEY), false);
+    assert.equal(serialized.includes(modules.RESILIENCE_INTERVAL_KEY_PREFIX), false);
+    assert.equal(serialized.includes(`${modules.RESILIENCE_INTERVAL_KEY_PREFIX}US`), false);
+    assert.equal(serialized.includes('seed-meta:resilience:intervals'), false);
     assert.equal(serialized.includes('resilience:fossil-electricity-share:v1'), false);
     assert.equal(serialized.includes('resilience:low-carbon-generation:v1'), false);
     assert.equal(serialized.includes('resilience:power-losses:v1'), false);
@@ -168,10 +229,21 @@ describe('resilience runtime manifest gateway auth', () => {
     assert.equal(manifest.status, 200);
     assert.equal(manifest.headers.get('Cache-Control'), 'no-store');
     assert.equal(manifest.headers.get('X-Cache-Tier'), 'no-store');
-    const body = await manifest.json() as { manifestVersion: number; formulaTag: string; constructVersions?: { energy?: string } };
-    assert.equal(body.manifestVersion, 3);
+    const body = await manifest.json() as {
+      manifestVersion: number;
+      formulaTag: string;
+      constructVersions?: { energy?: string };
+      intervals?: { available?: boolean; methodology?: string; sampleCountry?: string; lastObservedAt?: string };
+    };
+    assert.equal(body.manifestVersion, 4);
     assert.equal(body.formulaTag, 'pc');
     assert.equal(body.constructVersions?.energy, 'legacy');
+    assert.deepEqual(body.intervals, {
+      available: false,
+      methodology: 'weight-perturbation-sensitivity-v3',
+      sampleCountry: 'US',
+      lastObservedAt: '',
+    });
 
     const score = await gateway(new Request('https://worldmonitor.app/api/resilience/v1/get-resilience-score?countryCode=US'));
     assert.equal(score.status, 401);

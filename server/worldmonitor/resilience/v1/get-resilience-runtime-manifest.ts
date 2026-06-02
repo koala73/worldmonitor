@@ -1,5 +1,6 @@
 import type {
   GetResilienceRuntimeManifestResponse,
+  ResilienceRuntimeIntervalState,
   ResilienceServiceHandler,
   ServerContext,
 } from '../../../../src/generated/server/worldmonitor/resilience/v1/service_server';
@@ -9,11 +10,15 @@ import { markNoCacheResponse } from '../../../_shared/response-headers';
 import {
   RESILIENCE_RANKING_META_KEY,
   RESILIENCE_STATIC_META_KEY,
+  RESILIENCE_INTERVAL_KEY_PREFIX,
+  RESILIENCE_INTERVAL_METHODOLOGY,
   getCurrentCacheFormula,
   isEnergyV2Enabled,
 } from './_shared';
 
-const MANIFEST_VERSION = 3;
+const MANIFEST_VERSION = 4;
+const INTERVAL_SAMPLE_COUNTRY = 'US';
+const RESILIENCE_INTERVALS_META_KEY = 'seed-meta:resilience:intervals';
 
 const PUBLIC_CACHE_STATE = {
   scorePrefix: '',
@@ -40,6 +45,14 @@ interface RankingMeta {
   total?: unknown;
 }
 
+interface IntervalPayload {
+  p05?: unknown;
+  p95?: unknown;
+  _formula?: unknown;
+  methodology?: unknown;
+  computedAt?: unknown;
+}
+
 function toIsoDate(value: unknown): string {
   const iso = toIsoTimestamp(value);
   return iso ? iso.slice(0, 10) : '';
@@ -59,14 +72,54 @@ function safeNonNegativeInteger(value: unknown): number {
   return Math.trunc(num);
 }
 
+function latestIsoTimestamp(values: unknown[]): string {
+  const timestamps = values
+    .map(toIsoTimestamp)
+    .filter(Boolean)
+    .map((value) => Date.parse(value));
+  if (timestamps.length === 0) return '';
+  return new Date(Math.max(...timestamps)).toISOString();
+}
+
+function isCurrentIntervalPayload(value: unknown): value is IntervalPayload {
+  if (!value || typeof value !== 'object') return false;
+  const payload = value as IntervalPayload;
+  return (
+    typeof payload.p05 === 'number' &&
+    Number.isFinite(payload.p05) &&
+    typeof payload.p95 === 'number' &&
+    Number.isFinite(payload.p95) &&
+    payload._formula === getCurrentCacheFormula() &&
+    payload.methodology === RESILIENCE_INTERVAL_METHODOLOGY
+  );
+}
+
+async function getIntervalState(): Promise<ResilienceRuntimeIntervalState> {
+  const [intervalMeta, sampleInterval] = await Promise.all([
+    getCachedJson(RESILIENCE_INTERVALS_META_KEY, true) as Promise<SeedMeta | null>,
+    getCachedJson(`${RESILIENCE_INTERVAL_KEY_PREFIX}${INTERVAL_SAMPLE_COUNTRY}`, true) as Promise<IntervalPayload | null>,
+  ]);
+
+  return {
+    available: isCurrentIntervalPayload(sampleInterval),
+    methodology: RESILIENCE_INTERVAL_METHODOLOGY,
+    sampleCountry: INTERVAL_SAMPLE_COUNTRY,
+    lastObservedAt: latestIsoTimestamp([
+      intervalMeta?.fetchedAt,
+      sampleInterval?.computedAt,
+    ]),
+  };
+}
+
 export const getResilienceRuntimeManifest: ResilienceServiceHandler['getResilienceRuntimeManifest'] = async (
   ctx: ServerContext,
 ): Promise<GetResilienceRuntimeManifestResponse> => {
   markNoCacheResponse(ctx.request);
 
-  const [staticMeta, rankingMeta] = await Promise.all([
+  const [staticMeta, rankingMeta, intervals] = await Promise.all([
     getCachedJson(RESILIENCE_STATIC_META_KEY, true) as Promise<SeedMeta | null>,
     getCachedJson(RESILIENCE_RANKING_META_KEY, true) as Promise<RankingMeta | null>,
+    getIntervalState(),
   ]);
 
   return {
@@ -85,5 +138,6 @@ export const getResilienceRuntimeManifest: ResilienceServiceHandler['getResilien
       total: safeNonNegativeInteger(rankingMeta?.total),
     },
     constructVersions: getConstructVersions(),
+    intervals,
   };
 };

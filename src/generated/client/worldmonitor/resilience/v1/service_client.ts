@@ -96,6 +96,7 @@ export interface GetResilienceRuntimeManifestResponse {
   cache?: ResilienceRuntimeCacheState;
   rankingCache?: ResilienceRankingCacheState;
   constructVersions?: ResilienceRuntimeConstructVersions;
+  intervals?: ResilienceRuntimeIntervalState;
 }
 
 export interface ResilienceRuntimeFlag {
@@ -120,6 +121,13 @@ export interface ResilienceRankingCacheState {
 
 export interface ResilienceRuntimeConstructVersions {
   energy: string;
+}
+
+export interface ResilienceRuntimeIntervalState {
+  available: boolean;
+  methodology: string;
+  sampleCountry: string;
+  lastObservedAt: string;
 }
 
 export interface FieldViolation {
