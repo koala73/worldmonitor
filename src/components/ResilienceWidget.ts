@@ -23,6 +23,7 @@ import {
   getResilienceDomainLabel,
   getResilienceTrendArrow,
   getResilienceVisualLevel,
+  getStalenessIcon,
   getStalenessLabel,
 } from './resilience-widget-utils';
 import type { CountryEnergyProfileData } from './CountryBriefPanel';
@@ -394,7 +395,7 @@ export class ResilienceWidget {
           className: freshnessClassName,
           'aria-label': dim.staleness ? getStalenessLabel(dim.staleness) : undefined,
         },
-        dim.staleness ? '\u25CF' : '',
+        getStalenessIcon(dim.staleness),
       ),
     );
   }

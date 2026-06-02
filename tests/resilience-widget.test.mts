@@ -19,6 +19,7 @@ import {
   getResilienceDomainLabel,
   getResilienceTrendArrow,
   getResilienceVisualLevel,
+  getStalenessIcon,
   getStalenessLabel,
 } from '../src/components/resilience-widget-utils';
 import type { ResilienceScoreResponse } from '../src/services/resilience';
@@ -671,6 +672,13 @@ test('getStalenessLabel returns a non-empty string for each level', () => {
     assert.ok(label.length > 0, `${s} should have a tooltip label`);
   }
   assert.ok(getStalenessLabel(null).length > 0);
+});
+
+test('getStalenessIcon gives each visible freshness level a distinct non-color cue', () => {
+  const icons = ['fresh', 'aging', 'stale'].map((s) => getStalenessIcon(s));
+  assert.deepEqual(icons, ['\u25CF', '\u25D0', '\u25CB']);
+  assert.equal(new Set(icons).size, icons.length);
+  assert.equal(getStalenessIcon(null), '');
 });
 
 test('LOCKED_PREVIEW smoke: at least one dimension has imputationClass and one has staleness set (PR 3 / T1.6)', () => {

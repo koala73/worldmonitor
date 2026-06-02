@@ -545,6 +545,12 @@ const STALENESS_LABELS: Record<Exclude<DimensionStaleness, null>, string> = {
   stale: 'Stale (beyond 3x cadence)',
 };
 
+const STALENESS_ICONS: Record<Exclude<DimensionStaleness, null>, string> = {
+  fresh: '\u25CF',
+  aging: '\u25D0',
+  stale: '\u25CB',
+};
+
 export function getImputationClassLabel(c: DimensionImputationClass): string {
   if (!c) return 'Unknown imputation class';
   return IMPUTATION_CLASS_LABELS[c];
@@ -558,6 +564,11 @@ export function getImputationClassIcon(c: DimensionImputationClass): string {
 export function getStalenessLabel(s: DimensionStaleness): string {
   if (!s) return 'Unknown freshness';
   return STALENESS_LABELS[s];
+}
+
+export function getStalenessIcon(s: DimensionStaleness): string {
+  if (!s) return '';
+  return STALENESS_ICONS[s];
 }
 
 /**
