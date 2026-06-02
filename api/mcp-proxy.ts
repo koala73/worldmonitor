@@ -222,7 +222,8 @@ function makeDeferred() {
 class SseSession {
   constructor(sseUrl, headers) {
     this._sseUrl = sseUrl;
-    this._originHost = new URL(sseUrl).hostname;
+    this._originHost = new URL(sseUrl).host;
+    this._originProtocol = new URL(sseUrl).protocol;
     this._headers = headers;
     this._endpointUrl = null;
     this._endpointDeferred = makeDeferred();
@@ -288,9 +289,9 @@ class SseSession {
                 // Pin endpoint to the same host as the original SSE URL to
                 // prevent a malicious server from redirecting via the endpoint
                 // event to an internal host (DNS rebinding / SSRF).
-                if (resolved.hostname !== this._originHost) {
+                if (resolved.host !== this._originHost || resolved.protocol !== this._originProtocol) {
                   this._endpointDeferred.reject(
-                    new Error('SSE endpoint host does not match origin server'),
+                    new Error('SSE endpoint host or protocol does not match origin server'),
                   );
                   return;
                 }
