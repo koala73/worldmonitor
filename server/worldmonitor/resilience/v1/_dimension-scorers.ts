@@ -610,6 +610,7 @@ function normalizeHigherBetter(value: number, worst: number, best: number): numb
 export function scoreInflationStability(inflationPct: number): number {
   if (!Number.isFinite(inflationPct)) return 0;
   if (inflationPct >= 1 && inflationPct <= 3) return 100;
+  if (inflationPct <= -5) return 0;
   if (inflationPct < 1) return normalizeHigherBetter(inflationPct, -5, 1);
   return normalizeLowerBetter(Math.min(inflationPct, 50), 3, 50);
 }
@@ -2762,7 +2763,3 @@ export async function scoreAllDimensions(
 export function getResilienceDomainWeight(domainId: ResilienceDomainId): number {
   return RESILIENCE_DOMAIN_WEIGHTS[domainId];
 }
-
-export const __testing__ = {
-  weightedBlend,
-};

@@ -8,7 +8,6 @@ import {
   RESILIENCE_DIMENSION_ORDER,
   RESILIENCE_DIMENSION_TYPES,
   type ResilienceSeedReader,
-  __testing__,
   scoreAllDimensions,
   scoreBorderSecurity,
   scoreCurrencyExternal,
@@ -122,15 +121,17 @@ describe('resilience dimension scorers', () => {
     }
   });
 
-  it('weightedBlend ignores NaN scores instead of treating them as zero-valued available weight', () => {
-    const score = __testing__.weightedBlend([
-      { score: Number.NaN, weight: 0.9 },
-      { score: 80, weight: 0.1 },
-    ]);
+  it('scoreMacroFiscal ignores NaN sub-scores instead of treating them as zero-valued available weight', async () => {
+    const reader = async (key: string): Promise<unknown | null> => {
+      if (key === 'economic:national-debt:v1') return { entries: [{ iso3: 'HRV', debtToGdp: 70, annualGrowth: 0 }] };
+      if (key === 'economic:imf:macro:v2') return { countries: { HR: { govRevenuePct: Number.NaN, currentAccountPct: null, year: 2024 } } };
+      return null;
+    };
+    const score = await scoreMacroFiscal('HR', reader);
 
-    assert.equal(score.score, 80, 'finite score must be blended without NaN consuming the other weight');
-    assert.equal(score.coverage, 0.10, 'coverage must count only the finite observed metric');
-    assert.equal(score.observedWeight, 0.1, 'observedWeight must exclude NaN metrics');
+    assert.equal(score.score, 100, 'finite debt-growth score must blend without NaN consuming the IMF weight');
+    assert.equal(score.coverage, 0.20, 'coverage must count only the finite observed metric');
+    assert.equal(score.observedWeight, 0.2, 'observedWeight must exclude NaN metrics');
     assert.equal(score.imputedWeight, 0, 'NaN metrics must not be counted as imputed either');
   });
 
@@ -282,6 +283,7 @@ describe('resilience dimension scorers', () => {
   });
 
   it('scoreInflationStability: deflation, zero, target-band, moderate, and high inflation are ordered', () => {
+    assert.equal(scoreInflationStability(-6), 0, 'deflation at or below the -5% floor scores 0');
     assert.equal(scoreInflationStability(-2), 50, 'deflation below 0% is penalized');
     assert.equal(scoreInflationStability(0), 83, '0% inflation is stable but not perfect');
     assert.equal(scoreInflationStability(2), 100, 'low-positive target-band inflation is perfect');
