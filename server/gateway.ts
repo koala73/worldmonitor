@@ -51,6 +51,7 @@ import {
   type CacheTier as UsageCacheTier,
   type RequestReason,
 } from './_shared/usage';
+import { timingSafeEqual } from './_shared/internal-auth';
 import type { ServerOptions } from '../src/generated/server/worldmonitor/seismology/v1/service_server';
 
 export const serverOptions: ServerOptions = { onError: mapErrorToResponse };
@@ -375,7 +376,7 @@ function withAuthenticatedUserId(request: Request, userId: string): Request {
   return cloneRequestWithHeaders(request, headers);
 }
 
-function isResilienceRankingSeedRefreshRequest(request: Request, pathname: string): boolean {
+async function isResilienceRankingSeedRefreshRequest(request: Request, pathname: string): Promise<boolean> {
   if (pathname !== '/api/resilience/v1/get-resilience-ranking') return false;
   const expected = process.env.WORLDMONITOR_SEED_REFRESH_KEY?.trim() ?? '';
   if (!expected) return false;
@@ -385,7 +386,8 @@ function isResilienceRankingSeedRefreshRequest(request: Request, pathname: strin
   } catch {
     return false;
   }
-  return request.headers.get('X-WorldMonitor-Key') === expected;
+  const candidate = request.headers.get('X-WorldMonitor-Key') ?? '';
+  return timingSafeEqual(candidate, expected);
 }
 
 export function createDomainGateway(
@@ -754,7 +756,7 @@ export function createDomainGateway(
     // tier ≥ 1 + mcpAccess === true. Re-running the JWT path on a request
     // that has no Authorization header would just no-op anyway.
     const isPublicNoAuthRpc = PUBLIC_NO_AUTH_RPC_PATHS.has(pathname);
-    const seedRefreshVerified = isResilienceRankingSeedRefreshRequest(request, pathname);
+    const seedRefreshVerified = await isResilienceRankingSeedRefreshRequest(request, pathname);
     const isTierGated = !internalMcpVerified && !isPublicNoAuthRpc && !seedRefreshVerified && getRequiredTier(pathname) !== null;
     const needsLegacyProBearerGate = !internalMcpVerified && !isPublicNoAuthRpc && PREMIUM_RPC_PATHS.has(pathname) && !isTierGated;
 

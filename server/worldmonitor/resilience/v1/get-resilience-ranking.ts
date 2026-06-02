@@ -9,6 +9,7 @@ import {
 
 import { compareAndDeleteRedisKey, getCachedJson, runRedisPipeline } from '../../../_shared/redis';
 import { unwrapEnvelope } from '../../../_shared/seed-envelope';
+import { timingSafeEqual } from '../../../_shared/internal-auth';
 import { isInRankableUniverse } from './_rankable-universe';
 import {
   RESILIENCE_INTERVAL_KEY_PREFIX,
@@ -58,10 +59,11 @@ function isRefreshRequested(ctx: ServerContext): boolean {
   }
 }
 
-function isSeedRefreshAuthorized(ctx: ServerContext): boolean {
+async function isSeedRefreshAuthorized(ctx: ServerContext): Promise<boolean> {
   const expected = process.env.WORLDMONITOR_SEED_REFRESH_KEY?.trim() ?? '';
   if (!expected) return false;
-  return ctx.request.headers.get('X-WorldMonitor-Key') === expected;
+  const candidate = ctx.request.headers.get('X-WorldMonitor-Key') ?? '';
+  return timingSafeEqual(candidate, expected);
 }
 
 function makeLockToken(): string {
@@ -288,7 +290,7 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
   // standard cache-first read path. Only the dedicated seed refresh secret is
   // accepted, and a short Redis slot bounds rapid/concurrent refresh attempts.
   const refreshRequested = isRefreshRequested(ctx);
-  const refreshAuthorized = refreshRequested && isSeedRefreshAuthorized(ctx);
+  const refreshAuthorized = refreshRequested && await isSeedRefreshAuthorized(ctx);
   let refreshSlotDenied = false;
   let forceRefresh = false;
   let lockToRelease: { key: string; token: string } | null = null;
