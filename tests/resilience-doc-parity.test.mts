@@ -96,7 +96,7 @@ const GENERATED_OPENAPI_SURFACES = [
     text: readFileSync(BUNDLED_OPENAPI_YAML_PATH, 'utf8'),
   },
 ];
-const RECOVERY_DIMENSION_LABELS: Readonly<Record<ResilienceDimensionId, string>> = {
+const DIMENSION_LABELS: Readonly<Record<ResilienceDimensionId, string>> = {
   macroFiscal: 'Macro-Fiscal',
   currencyExternal: 'Currency & External',
   tradePolicy: 'Trade Policy',
@@ -259,11 +259,11 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
     const expectedActiveLabels = RESILIENCE_DIMENSION_ORDER
       .filter((id) => RESILIENCE_DIMENSION_DOMAINS[id] === 'recovery')
       .filter((id) => !RESILIENCE_RETIRED_DIMENSIONS.has(id))
-      .map((id) => RECOVERY_DIMENSION_LABELS[id]);
+      .map((id) => DIMENSION_LABELS[id]);
     const retiredLabels = RESILIENCE_DIMENSION_ORDER
       .filter((id) => RESILIENCE_DIMENSION_DOMAINS[id] === 'recovery')
       .filter((id) => RESILIENCE_RETIRED_DIMENSIONS.has(id))
-      .map((id) => RECOVERY_DIMENSION_LABELS[id]);
+      .map((id) => DIMENSION_LABELS[id]);
     const actualLabels = extractDomainRowDimensionLabels(docText, 'recovery');
 
     assert.deepEqual(
@@ -389,13 +389,14 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
 
   it('static resilience seed-meta TTL in Redis key table matches seed script and health threshold', () => {
     const ttlDays = extractStaticSeedTtlDays(staticSeedScriptText);
-    const healthMaxStaleDays = extractStaticSeedHealthMaxStaleDays(healthApiText);
+    const ttlMinutes = ttlDays * 24 * 60;
+    const healthMaxStaleMinutes = extractStaticSeedHealthMaxStaleMinutes(healthApiText);
     const docTtl = extractRedisKeyTableTtl(docText, 'seed-meta:resilience:static');
 
     assert.equal(
-      healthMaxStaleDays,
-      ttlDays,
-      `api/health.js maxStaleMin for seed-meta:resilience:static should match RESILIENCE_STATIC_TTL_SECONDS (${ttlDays} days).`,
+      healthMaxStaleMinutes,
+      ttlMinutes,
+      `api/health.js maxStaleMin for seed-meta:resilience:static should match RESILIENCE_STATIC_TTL_SECONDS (${ttlMinutes} minutes / ${ttlDays} days).`,
     );
     assert.equal(
       docTtl,
@@ -486,10 +487,10 @@ function extractStaticSeedTtlDays(text: string): number {
   return Number(match[1]);
 }
 
-function extractStaticSeedHealthMaxStaleDays(text: string): number {
+function extractStaticSeedHealthMaxStaleMinutes(text: string): number {
   const match = /resilienceStaticIndex:\s*\{\s*key:\s*'seed-meta:resilience:static',\s*maxStaleMin:\s*(\d+)/.exec(text);
   assert.ok(match, 'resilienceStaticIndex maxStaleMin not found in api/health.js.');
-  return Number(match[1]) / (24 * 60);
+  return Number(match[1]);
 }
 
 function findPlausibleCurrentTotalDimensionCounts(text: string, activeCount: number, totalCount: number): number[] {
