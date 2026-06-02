@@ -13,6 +13,7 @@ import { LAYER_PRESETS, LAYER_KEY_MAP } from '@/config/commands';
 import { calculateCII, TIER1_COUNTRIES } from '@/services/country-instability';
 import { CURATED_COUNTRIES } from '@/config/countries';
 import { getCountryBbox } from '@/services/country-geometry';
+import { getCityBoundary, getCitySearchItems } from '@/services/city-geometry';
 import { INTEL_HOTSPOTS, CONFLICT_ZONES, MILITARY_BASES, UNDERSEA_CABLES, NUCLEAR_FACILITIES } from '@/config/geo';
 import { PIPELINES } from '@/config/pipelines';
 import { AI_DATA_CENTERS } from '@/config/ai-datacenters';
@@ -210,6 +211,7 @@ export class SearchManager implements AppModule {
     }
 
     this.ctx.searchModal.registerSource('country', this.buildCountrySearchItems());
+    this.ctx.searchModal.registerSource('city', getCitySearchItems());
 
     this.syncPanelSearchIndex();
     // Filter CMD+K layer commands by (a) variant-allowed, (b) renderer
@@ -448,6 +450,21 @@ export class SearchManager implements AppModule {
         const { code, name } = result.data as { code: string; name: string };
         trackCountrySelected(code, name, 'search');
         this.callbacks.openCountryBriefByCode(code, name);
+        break;
+      }
+      case 'city': {
+        const city = result.data as { city: string; lat: number; lng: number; country: string };
+        this.ctx.map?.setView('global');
+        this.ctx.map?.clearCityHighlight?.();
+        const cityBoundary = getCityBoundary(city.city);
+        setTimeout(() => {
+          if (cityBoundary) {
+            this.ctx.map?.highlightCityBoundary?.(cityBoundary);
+            this.ctx.map?.fitCityBoundary?.(cityBoundary);
+          } else {
+            this.ctx.map?.setCenter(city.lat, city.lng, 11);
+          }
+        }, 300);
         break;
       }
       case 'flight': {
@@ -746,6 +763,8 @@ export class SearchManager implements AppModule {
         data: m,
       })));
     }
+
+    this.ctx.searchModal.registerSource('city', getCitySearchItems());
   }
 
   /**

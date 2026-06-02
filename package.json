@@ -147,7 +147,7 @@
     "dompurify": "^3.4.0",
     "fast-xml-parser": "^5.3.7",
     "globe.gl": "^2.45.0",
-    "hls.js": "^1.6.15",
+    "hls.js": "^1.8.0",
     "i18next": "^25.8.10",
     "i18next-browser-languagedetector": "^8.2.1",
     "jmespath": "^0.16.0",

@@ -1225,7 +1225,7 @@ export class LiveNewsPanel extends Panel {
       video.addEventListener('error', onHlsFatalError);
     } else {
       // Chrome / Firefox: lazy-load hls.js only when needed
-      const { default: Hls } = await import('hls.js');
+      const { default: Hls } = await import('hls.js' as any);
       if (this.activeChannel.id !== failedChannel.id || !this.element?.isConnected) return;
       if (!Hls.isSupported()) {
         // No HLS support at all — fall through to YouTube
