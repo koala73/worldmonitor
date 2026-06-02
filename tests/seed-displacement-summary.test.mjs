@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import {
   MIN_DISPLACEMENT_COUNTRIES,
   declareRecords,
+  seedOptions,
   validate,
 } from '../scripts/seed-displacement-summary.mjs';
 
@@ -29,6 +29,11 @@ describe('seed-displacement-summary validation floor', () => {
     assert.equal(validate(payloadWithCountries(1)), false);
   });
 
+  it('returns strict false for missing payloads', () => {
+    assert.equal(validate(null), false);
+    assert.equal(validate(undefined), false);
+  });
+
   it('rejects payloads below the displacement country floor', () => {
     assert.equal(validate(payloadWithCountries(MIN_DISPLACEMENT_COUNTRIES - 1)), false);
   });
@@ -43,7 +48,7 @@ describe('seed-displacement-summary validation floor', () => {
   });
 
   it('treats sub-floor validation failure as a strict seeder failure', () => {
-    const src = readFileSync(new URL('../scripts/seed-displacement-summary.mjs', import.meta.url), 'utf8');
-    assert.match(src, /emptyDataIsFailure:\s*true/);
+    assert.equal(seedOptions.emptyDataIsFailure, true);
+    assert.equal(seedOptions.validateFn(payloadWithCountries(MIN_DISPLACEMENT_COUNTRIES - 1)), false);
   });
 });

@@ -215,7 +215,7 @@ async function fetchDisplacementSummary() {
 }
 
 export function validate(data) {
-  return (
+  return Boolean(
     data?.summary &&
     typeof data.summary.year === 'number' &&
     Array.isArray(data.summary.countries) &&
@@ -230,16 +230,18 @@ export function declareRecords(data) {
   return data?.summary?.countries?.length ?? 0;
 }
 
+export const seedOptions = {
+  validateFn: validate,
+  ttlSeconds: CACHE_TTL,
+  sourceVersion: `unhcr-${currentYear}`,
+  declareRecords,
+  schemaVersion: 1,
+  maxStaleMin: 3600,
+  emptyDataIsFailure: true,
+};
+
 if (process.argv[1]?.endsWith('seed-displacement-summary.mjs')) {
-  runSeed('displacement', 'summary', canonicalKey, fetchDisplacementSummary, {
-    validateFn: validate,
-    ttlSeconds: CACHE_TTL,
-    sourceVersion: `unhcr-${currentYear}`,
-    declareRecords,
-    schemaVersion: 1,
-    maxStaleMin: 3600,
-    emptyDataIsFailure: true,
-  }).catch((err) => {
+  runSeed('displacement', 'summary', canonicalKey, fetchDisplacementSummary, seedOptions).catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
     process.exit(1);
   });
