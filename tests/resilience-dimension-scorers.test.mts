@@ -346,7 +346,7 @@ describe('resilience dimension scorers', () => {
       return null; // economic:imf:macro:v1 + economic:imf:labor:v1 null = seed outage
     };
     const score = await scoreMacroFiscal('HR', reader);
-    // govRevenuePct (0.4), currentAccountPct (0.25) come from IMF macro (null = outage).
+    // govRevenuePct (0.4), currentAccountPct (0.2) come from IMF macro (null = outage).
     // unemploymentPct (0.15) comes from IMF labor (null = outage).
     // Only debtGrowth (weight=0.2) has real data → coverage = 0.2.
     assert.ok(score.coverage > 0.15 && score.coverage < 0.25,

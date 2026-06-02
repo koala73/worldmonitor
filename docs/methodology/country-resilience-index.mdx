@@ -80,9 +80,11 @@ Each dimension is scored from 0-100 using a weighted blend of its sub-metrics. B
 
 | Indicator | Description | Direction | Goalposts (worst-best) | Weight | Source | Cadence |
 |---|---|---|---|---|---|---|
-| govRevenuePct | Government revenue as % of GDP (IMF GGR_G01_GDP_PT) | Higher is better | 5 - 45 | 0.50 | IMF | Annual |
+| govRevenuePct | Government revenue as % of GDP (IMF GGR_G01_GDP_PT) | Higher is better | 5 - 45 | 0.40 | IMF | Annual |
 | debtGrowthRate | Annual debt growth rate | Lower is better | 20 - 0 | 0.20 | National debt data | Annual |
-| currentAccountPct | Current account balance as % of GDP (IMF) | Higher is better | -20 - 20 | 0.30 | IMF | Annual |
+| currentAccountPct | Current account balance as % of GDP (IMF) | Higher is better | -20 - 20 | 0.20 | IMF | Annual |
+| unemploymentPct | Unemployment rate (IMF WEO LUR) | Lower is better | 25 - 3 | 0.15 | IMF | Annual |
+| householdDebtService | BIS household debt service ratio (% income) | Lower is better | 20 - 0 | 0.05 | BIS | Quarterly |
 
 #### Currency & External
 
