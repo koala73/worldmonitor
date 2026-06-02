@@ -356,6 +356,23 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
     );
   });
 
+  it('Financial System Exposure bisLbsXborderPctGdp row matches registry U-shape goalpost anchors', () => {
+    const row = extractIndicatorRowForSection(docText, 'Financial System Exposure', 'bisLbsXborderPctGdp');
+    const spec = INDICATOR_REGISTRY.find((indicator) => indicator.id === 'bisLbsXborderPctGdp');
+    assert.ok(spec, 'bisLbsXborderPctGdp must exist in INDICATOR_REGISTRY.');
+
+    assert.equal(
+      row.goalposts,
+      `${spec.goalposts.worst} - ${spec.goalposts.best}`,
+      'bisLbsXborderPctGdp methodology goalposts must mirror INDICATOR_REGISTRY U-shape documentation anchors.',
+    );
+    assert.equal(
+      row.direction,
+      'Lower is better (U-shape)',
+      'bisLbsXborderPctGdp direction must keep the U-shape caveat visible in the methodology table.',
+    );
+  });
+
   it('generated OpenAPI pillar weight prose matches PILLAR_WEIGHTS and formula semantics', () => {
     const expectedWeightList = PILLAR_ORDER
       .map((id) => PILLAR_WEIGHTS[id].toFixed(2))
