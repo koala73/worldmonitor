@@ -164,6 +164,32 @@ describe('interval seed health classification', () => {
     assert.match(failure?.message ?? '', /staleScorePayloads=196/);
   });
 
+  it('fails with malformed-cache reason when cached score payload JSON cannot be parsed', () => {
+    const failure = getIntervalWriteFailure({
+      skipped: false,
+      total: 196,
+      recordCount: 0,
+      intervalsWritten: 0,
+      intervalMalformedScorePayloadCount: 196,
+    });
+
+    assert.equal(failure?.reason, 'malformed_score_cache');
+    assert.match(failure?.message ?? '', /malformedScorePayloads=196/);
+  });
+
+  it('fails with invalid-cache reason when cached score payload shape is unusable', () => {
+    const failure = getIntervalWriteFailure({
+      skipped: false,
+      total: 196,
+      recordCount: 0,
+      intervalsWritten: 0,
+      intervalInvalidScorePayloadCount: 196,
+    });
+
+    assert.equal(failure?.reason, 'invalid_score_cache');
+    assert.match(failure?.message ?? '', /invalidScorePayloads=196/);
+  });
+
   it('fails with a formula-specific reason when cached score payloads are unusable for intervals', () => {
     const failure = getIntervalWriteFailure({
       skipped: false,

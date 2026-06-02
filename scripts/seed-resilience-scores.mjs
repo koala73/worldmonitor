@@ -155,14 +155,16 @@ export function buildIntervalPayloadFromCachedScore(raw, countryCode, diagnostic
 
     const formula = typeof score?._formula === 'string' ? score._formula : undefined;
     if (formula !== 'pc' && formula !== 'd6') {
+      // buildScoreIntervalPayload records formula skip diagnostics for ambiguous cached scores.
       buildScoreIntervalPayload(score, { draws: DRAWS, diagnostics });
       return null;
     }
 
-    if (formula !== currentCacheFormulaLocal()) {
+    const expectedFormula = currentCacheFormulaLocal();
+    if (formula !== expectedFormula) {
       recordDiagnosticCount(diagnostics, 'staleScorePayloadCount', 'staleScorePayloadSamples', countryCode, {
         formula,
-        expectedFormula: currentCacheFormulaLocal(),
+        expectedFormula,
       });
       return null;
     }
@@ -249,10 +251,14 @@ export function getIntervalWriteFailure(result) {
   const formulaSkipCount = Number(result?.intervalFormulaSkipCount ?? 0);
   const missingScorePayloadCount = Number(result?.intervalMissingScorePayloadCount ?? 0);
   const staleScorePayloadCount = Number(result?.intervalStaleScorePayloadCount ?? 0);
+  const invalidScorePayloadCount = Number(result?.intervalInvalidScorePayloadCount ?? 0);
+  const malformedScorePayloadCount = Number(result?.intervalMalformedScorePayloadCount ?? 0);
   const intervalPayloadSkipCount = Number(result?.intervalPayloadSkipCount ?? 0);
   let reason = 'empty_interval_writes';
   if (staleScorePayloadCount > 0) reason = 'stale_score_cache';
-  else if (scoreCount <= 0 || missingScorePayloadCount >= total) reason = 'missing_score_cache';
+  else if (missingScorePayloadCount >= total || (scoreCount <= 0 && missingScorePayloadCount > 0)) reason = 'missing_score_cache';
+  else if (malformedScorePayloadCount > 0) reason = 'malformed_score_cache';
+  else if (invalidScorePayloadCount > 0) reason = 'invalid_score_cache';
   else if (formulaSkipCount > 0) reason = 'unusable_score_formula';
   else if (intervalPayloadSkipCount > 0) reason = 'unusable_score_payload';
 
@@ -263,6 +269,8 @@ export function getIntervalWriteFailure(result) {
       `(cachedScores=${Number.isFinite(scoreCount) ? scoreCount : 0}, ` +
       `missingScorePayloads=${Number.isFinite(missingScorePayloadCount) ? missingScorePayloadCount : 0}, ` +
       `staleScorePayloads=${Number.isFinite(staleScorePayloadCount) ? staleScorePayloadCount : 0}, ` +
+      `invalidScorePayloads=${Number.isFinite(invalidScorePayloadCount) ? invalidScorePayloadCount : 0}, ` +
+      `malformedScorePayloads=${Number.isFinite(malformedScorePayloadCount) ? malformedScorePayloadCount : 0}, ` +
       `formulaSkips=${Number.isFinite(formulaSkipCount) ? formulaSkipCount : 0}, ` +
       `intervalPayloadSkips=${Number.isFinite(intervalPayloadSkipCount) ? intervalPayloadSkipCount : 0})`,
   };
