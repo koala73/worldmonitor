@@ -1,8 +1,68 @@
 # PR 1 energy-v2 flag-flip runbook
 
 Operational procedure for graduating the v2 energy construct from flag-off
-(default shipped in PR #3289) to flag-on. Follow this runbook in order;
-each step is gated by the previous step's success.
+(default shipped in PR #3289) to flag-on. Production is now post-flip; keep
+the historical procedure for rollback/audit context and use the closeout
+section below to finish the acceptance artifact gap.
+
+## Post-flip closeout status
+
+2026-06-02 live audit evidence:
+
+- `https://www.worldmonitor.app/api/resilience/v1/get-runtime-manifest`
+  returned HTTP 200 with `formulaTag: "pc"` and
+  `constructVersions.energy: "v2"` when requested with a browser-like
+  user agent.
+- `https://www.worldmonitor.app/api/health` returned HTTP 200. The overall
+  health status was `DEGRADED` due to unrelated checks, but all three
+  energy v2 seed checks were green: `lowCarbonGeneration`,
+  `fossilElectricityShare`, and `powerLosses`.
+
+The post-flip ranking and acceptance snapshots are still not committed in
+`docs/snapshots/`. They cannot be generated from an unauthenticated shell:
+`scripts/freeze-resilience-ranking.mjs` verifies score anchors through
+`/api/resilience/v1/get-resilience-score`, which returns `401 Pro
+authentication required` without `WORLDMONITOR_API_KEY`. There is also no
+checked-in energy-v2-specific acceptance generator today. Do not use
+`scripts/compare-resilience-current-vs-proposed.mjs` for the
+`resilience-energy-v2-acceptance-*` artifact: that script compares the
+legacy six-domain aggregate against the pillar-combined formula and is not
+an energy-v2 post-flip acceptance harness.
+
+### Required operator artifact capture
+
+Run from the repo root with production credentials:
+
+```bash
+export API_BASE=https://www.worldmonitor.app
+export WORLDMONITOR_API_KEY=<pro-api-key>
+export RESILIENCE_ENERGY_V2_ENABLED=true
+export UPSTASH_REDIS_REST_URL=<production-upstash-rest-url>
+export UPSTASH_REDIS_REST_TOKEN=<production-upstash-rest-token>
+export REDIS_OP_TIMEOUT_MS=10000
+export REDIS_PIPELINE_TIMEOUT_MS=30000
+
+node scripts/freeze-resilience-ranking.mjs
+mv "docs/snapshots/resilience-ranking-$(date +%Y-%m-%d).json" \
+  "docs/snapshots/resilience-ranking-live-post-pr1-$(date +%Y-%m-%d).json"
+
+jq '.formulaVerification.declaredFormula' \
+  "docs/snapshots/resilience-ranking-live-post-pr1-$(date +%Y-%m-%d).json"
+
+git add docs/snapshots/resilience-ranking-live-post-pr1-*.json
+```
+
+Commit the ranking artifact only if the snapshot verifies the declared
+formula. The matching `resilience-energy-v2-acceptance-{date}.json` artifact
+still requires a dedicated energy-v2 acceptance harness. That harness must
+compare the active post-flip energy-v2 ranking against the pre-flip/prior
+energy baseline using the PR 1 gates (Spearman, country drift, cohort median,
+matched-pair directions, and effective influence), and must verify the live
+manifest/health state above. Until that harness exists and returns `PASS`,
+do not commit a synthetic acceptance JSON; attach the missing-harness status
+to the resilience closeout issue.
+
+Follow the original gated procedure below for future rollback/replay drills.
 
 ## Pre-flip checklist
 
@@ -31,35 +91,26 @@ All must be green before flipping `RESILIENCE_ENERGY_V2_ENABLED=true`:
    path to keep the scorer and health layers in fail-closed lockstep
    (scorer throws `ResilienceConfigurationError` → source-failure;
    health reports CRIT; both surface the gap independently).
-4. **Acceptance-gate rerun with flag-off.** Baseline Spearman vs the
-   PR 0 freeze must remain 1.0000:
-   ```bash
-   node --import tsx/esm scripts/compare-resilience-current-vs-proposed.mjs \
-     > /tmp/pre-flip-flag-off.json
-   jq '.acceptanceGates.verdict' /tmp/pre-flip-flag-off.json
-   # Expected: "PASS" (or "CONDITIONAL" if baseline is missing; confirm
-   # baseline file exists in docs/snapshots/ and re-run).
-   ```
+4. **Acceptance-gate rerun with flag-off.** Use the dedicated energy-v2
+   acceptance harness once it exists. Do not use
+   `scripts/compare-resilience-current-vs-proposed.mjs` for this step; that
+   script validates pillar-combine activation, not energy-v2 acceptance.
 
 ## Flip procedure
 
 1. **Capture a pre-flip snapshot.**
    ```bash
-   RESILIENCE_ENERGY_V2_ENABLED=false \
-     node --import tsx/esm scripts/freeze-resilience-ranking.mjs \
-     --label "live-pre-pr1-flip-$(date +%Y-%m-%d)" \
-     --output docs/snapshots/
+   API_BASE=<flag-off-deployment-url> \
+     WORLDMONITOR_API_KEY=<pro-api-key> \
+     node scripts/freeze-resilience-ranking.mjs
+   mv "docs/snapshots/resilience-ranking-$(date +%Y-%m-%d).json" \
+     "docs/snapshots/resilience-ranking-live-pre-pr1-flip-$(date +%Y-%m-%d).json"
    git add docs/snapshots/resilience-ranking-live-pre-pr1-flip-*.json
    git commit -m "chore(resilience): pre-PR-1-flip baseline snapshot"
    ```
 2. **Dry-run the flag flip locally.**
-   ```bash
-   RESILIENCE_ENERGY_V2_ENABLED=true \
-     node --import tsx/esm scripts/compare-resilience-current-vs-proposed.mjs \
-     > /tmp/flag-on-dry-run.json
-   jq '.acceptanceGates' /tmp/flag-on-dry-run.json
-   ```
-   Every gate must be `pass`. If any is `fail`, STOP and debug before
+   Run the dedicated energy-v2 acceptance harness against production-seeded
+   data. Every gate must be `pass`. If any is `fail`, STOP and debug before
    proceeding. Check in order:
    - `gate-1-spearman`: Spearman vs baseline ≥ 0.85
    - `gate-2-country-drift`: max country drift ≤ 15 points
@@ -93,12 +144,23 @@ All must be green before flipping `RESILIENCE_ENERGY_V2_ENABLED=true`:
    post-deploy ranking refresh completes (check via
    `GET resilience:ranking:v11` in Redis):
    ```bash
-   node --import tsx/esm scripts/freeze-resilience-ranking.mjs \
-     --label "live-post-pr1-$(date +%Y-%m-%d)" \
-     --output docs/snapshots/
+   API_BASE=https://www.worldmonitor.app \
+     WORLDMONITOR_API_KEY=<pro-api-key> \
+     node scripts/freeze-resilience-ranking.mjs
+   mv "docs/snapshots/resilience-ranking-$(date +%Y-%m-%d).json" \
+     "docs/snapshots/resilience-ranking-live-post-pr1-$(date +%Y-%m-%d).json"
    git add docs/snapshots/resilience-ranking-live-post-pr1-*.json
    git commit -m "chore(resilience): post-PR-1 snapshot"
    ```
+
+   Capture the matching acceptance verdict in the same closeout batch after a
+   dedicated energy-v2 acceptance harness exists. Do not use
+   `scripts/compare-resilience-current-vs-proposed.mjs` here; it validates
+   pillar-combine activation, not energy-v2 acceptance. The closeout artifact
+   should be written as
+   `docs/snapshots/resilience-energy-v2-acceptance-{date}.json`, report
+   `.acceptanceGates.verdict == "PASS"`, and be committed with the post-flip
+   ranking snapshot.
 
 6. **Update construct-contract language.** In
    `docs/methodology/country-resilience-index.mdx`, move items 1, 2,
@@ -126,7 +188,12 @@ If any acceptance gate fails post-flip or a reviewer flags a regression:
 
 ## Acceptance-gate verdict reference
 
-Generated by `scripts/compare-resilience-current-vs-proposed.mjs`:
+The energy-v2 flag flip uses the PR 1 acceptance-gate names below. The
+checked-in `scripts/compare-resilience-current-vs-proposed.mjs` script does not
+generate this verdict because it validates pillar-combine activation, not
+energy-v2 acceptance. Use this table as the contract for the dedicated
+energy-v2 harness and the eventual
+`docs/snapshots/resilience-energy-v2-acceptance-{date}.json` artifact:
 
 | Verdict | Meaning | Action |
 |---|---|---|
@@ -134,6 +201,5 @@ Generated by `scripts/compare-resilience-current-vs-proposed.mjs`:
 | `CONDITIONAL` | Some gates skipped (baseline missing, etc.) | Fix missing inputs before flipping |
 | `BLOCK` | At least one gate failed | Do NOT flip; investigate failure |
 
-The verdict is computed on every invocation of the compare script.
-Stash the full `acceptanceGates` block in PR comments when the flip
-happens.
+Stash the full `acceptanceGates` block in PR comments or the closeout issue
+when the flip evidence is recorded.

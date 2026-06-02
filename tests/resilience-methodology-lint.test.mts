@@ -221,5 +221,15 @@ describe('resilience methodology doc linter (T1.8)', () => {
       /Until PR 1[\u2013-]PR 3 land/i,
       'Current methodology prose must not describe already-landed repairs as future work.',
     );
+    assert.doesNotMatch(
+      currentStateSource,
+      /energy`? v2[\s\S]{0,120}(?:default off|default-off|staged separately|until the flag flips)/i,
+      'Current methodology prose must not describe active energy v2 as default-off or still staged.',
+    );
+    assert.match(
+      currentStateSource,
+      /constructVersions\.energy=`?"v2"`?/i,
+      'Current methodology prose should document that live runtime reports energy v2 active.',
+    );
   });
 });
