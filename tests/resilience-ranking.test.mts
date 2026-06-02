@@ -468,7 +468,7 @@ describe('resilience ranking contracts', () => {
     assert.equal(redis.has('seed-meta:resilience:ranking'), false, 'seed-meta must not be written below 90% coverage');
   });
 
-  it('caches a 90%-94% partial ranking with explicit metadata and a short TTL', async () => {
+  it('does not cache a 90%-94% partial ranking when the gap is a warm persistence failure', async () => {
     const { redis, fetchImpl } = installRedis(RESILIENCE_FIXTURES);
     redis.set('resilience:static:index:v1', JSON.stringify({
       countries: ['NO', 'US', 'YE', 'CA', 'FR', 'DE', 'JP', 'BR', 'IN', 'ZA'],
@@ -491,8 +491,7 @@ describe('resilience ranking contracts', () => {
         _formula: 'd6',
       }));
     }
-    const rankingSetCommands: Array<Array<string>> = [];
-    const failScoreSetsAndCaptureRanking = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const failScoreSets = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
       if (url.endsWith('/pipeline') && typeof init?.body === 'string') {
         const commands = JSON.parse(init.body) as Array<Array<string>>;
@@ -502,13 +501,10 @@ describe('resilience ranking contracts', () => {
         if (allScoreSets) {
           return new Response(JSON.stringify(commands.map(() => ({ result: null }))), { status: 200 });
         }
-        for (const cmd of commands) {
-          if (cmd[0] === 'SET' && cmd[1] === RESILIENCE_RANKING_CACHE_KEY) rankingSetCommands.push(cmd);
-        }
       }
       return fetchImpl(input, init);
     }) as typeof fetch;
-    globalThis.fetch = failScoreSetsAndCaptureRanking;
+    globalThis.fetch = failScoreSets;
 
     const response = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
 
@@ -517,8 +513,57 @@ describe('resilience ranking contracts', () => {
     assert.equal(response.coverage, 0.9);
     assert.equal(response.partial, true);
     assert.match(response.fetchedAt, /^\d{4}-\d{2}-\d{2}T/);
-    assert.ok(redis.has(RESILIENCE_RANKING_CACHE_KEY), '90% coverage must still publish');
-    assert.ok(redis.has('seed-meta:resilience:ranking'), '90% coverage must write matching seed-meta');
+    assert.ok(!redis.has(RESILIENCE_RANKING_CACHE_KEY), 'warm persistence failures must not be cached as true missing coverage');
+    assert.ok(!redis.has('seed-meta:resilience:ranking'), 'warm persistence failures must not write matching seed-meta');
+  });
+
+  it('retains 90%-94% partial ranking cache behavior when no warm persistence failure occurs', async () => {
+    const { redis, fetchImpl } = installRedis(RESILIENCE_FIXTURES);
+    // Synthetic duplicate index entry exercises the partial-cache branch without
+    // invoking warmMissingResilienceScores; production seed indexes are unique.
+    redis.set('resilience:static:index:v1', JSON.stringify({
+      countries: ['NO', 'US', 'YE', 'CA', 'FR', 'DE', 'JP', 'BR', 'IN', 'NO'],
+      recordCount: 10,
+      failedDatasets: [],
+      seedYear: 2026,
+    }));
+    const domainWithCoverage = [{ id: 'political', score: 80, weight: 0.2, dimensions: [{ id: 'd1', score: 80, coverage: 0.9, observedWeight: 1, imputedWeight: 0 }] }];
+    for (const [index, countryCode] of ['NO', 'US', 'YE', 'CA', 'FR', 'DE', 'JP', 'BR', 'IN'].entries()) {
+      redis.set(`${RESILIENCE_SCORE_CACHE_PREFIX}${countryCode}`, JSON.stringify({
+        countryCode,
+        overallScore: 80 - index,
+        level: 'high',
+        domains: domainWithCoverage,
+        trend: 'stable',
+        change30d: 0,
+        lowConfidence: false,
+        imputationShare: 0,
+        headlineEligible: true,
+        _formula: 'd6',
+      }));
+    }
+
+    const rankingSetCommands: Array<Array<string>> = [];
+    const captureRankingWrites = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.endsWith('/pipeline') && typeof init?.body === 'string') {
+        const commands = JSON.parse(init.body) as Array<Array<string>>;
+        for (const cmd of commands) {
+          if (cmd[0] === 'SET' && cmd[1] === RESILIENCE_RANKING_CACHE_KEY) rankingSetCommands.push(cmd);
+        }
+      }
+      return fetchImpl(input, init);
+    }) as typeof fetch;
+    globalThis.fetch = captureRankingWrites;
+
+    const response = await getResilienceRanking({ request: new Request('https://example.com') } as never, {});
+
+    assert.equal(response.scored, 9);
+    assert.equal(response.total, 10);
+    assert.equal(response.coverage, 0.9);
+    assert.equal(response.partial, true);
+    assert.ok(redis.has(RESILIENCE_RANKING_CACHE_KEY), '90% coverage without warm persistence failures must still publish');
+    assert.ok(redis.has('seed-meta:resilience:ranking'), '90% coverage without warm persistence failures must write matching seed-meta');
     assert.equal(Number(rankingSetCommands[0]?.[4]), 7200, 'sub-95% ranking publishes must use a 2h TTL');
     const persisted = JSON.parse(redis.get(RESILIENCE_RANKING_CACHE_KEY)!);
     assert.equal(persisted.partial, true);
@@ -1047,6 +1092,155 @@ describe('resilience ranking contracts', () => {
     } finally {
       console.warn = originalWarn;
     }
+  });
+
+  it('warmMissingResilienceScores retries one failed score SET batch before marking persistence failed', async () => {
+    const { redis, fetchImpl } = installRedis({});
+    let scoreSetPipelineCalls = 0;
+    const interceptFirstScoreSetBatchFailure = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.endsWith('/pipeline') && typeof init?.body === 'string') {
+        const commands = JSON.parse(init.body) as Array<Array<string>>;
+        const allScoreSets = commands.length > 0 && commands.every(
+          (cmd) => cmd[0] === 'SET' && typeof cmd[1] === 'string' && cmd[1].startsWith(RESILIENCE_SCORE_CACHE_PREFIX),
+        );
+        if (allScoreSets) {
+          scoreSetPipelineCalls++;
+          if (scoreSetPipelineCalls === 1) {
+            return new Response(JSON.stringify([]), { status: 200 });
+          }
+        }
+      }
+      return fetchImpl(input, init);
+    }) as typeof fetch;
+    globalThis.fetch = interceptFirstScoreSetBatchFailure;
+
+    const domainWithCoverage = [{ id: 'political', score: 80, weight: 0.2, dimensions: [{ id: 'd1', score: 80, coverage: 0.9, observedWeight: 1, imputedWeight: 0 }] }];
+    const warmed = await warmMissingResilienceScores(['NO'], async (countryCode) => ({
+      countryCode,
+      overallScore: 80,
+      baselineScore: 80,
+      stressScore: 80,
+      stressFactor: 0.2,
+      level: 'high',
+      domains: domainWithCoverage,
+      trend: 'stable',
+      change30d: 0,
+      lowConfidence: false,
+      imputationShare: 0,
+      dataVersion: '2026-06-01',
+      pillars: [],
+      schemaVersion: '1.0',
+      headlineEligible: true,
+    }));
+
+    assert.equal(scoreSetPipelineCalls, 2, 'failed SET batch must be retried once');
+    assert.equal(warmed.has('NO'), true, 'retry success must still return the warmed score');
+    assert.deepEqual(warmed.failures, [], 'successful retry must not be reported as a warm failure');
+    assert.ok(redis.has(`${RESILIENCE_SCORE_CACHE_PREFIX}NO`), 'retry success must persist the score cache key');
+  });
+
+  it('warmMissingResilienceScores preserves initial per-command SET successes when retry transport fails', async () => {
+    const { redis, fetchImpl } = installRedis({});
+    let scoreSetPipelineCalls = 0;
+    const interceptPartialThenTransportFailure = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.endsWith('/pipeline') && typeof init?.body === 'string') {
+        const commands = JSON.parse(init.body) as Array<Array<string>>;
+        const allScoreSets = commands.length > 0 && commands.every(
+          (cmd) => cmd[0] === 'SET' && typeof cmd[1] === 'string' && cmd[1].startsWith(RESILIENCE_SCORE_CACHE_PREFIX),
+        );
+        if (allScoreSets) {
+          scoreSetPipelineCalls++;
+          if (scoreSetPipelineCalls === 1) {
+            redis.set(String(commands[0]?.[1] ?? ''), String(commands[0]?.[2] ?? ''));
+            return new Response(JSON.stringify([{ result: 'OK' }, { result: null }]), { status: 200 });
+          }
+          return new Response(JSON.stringify([]), { status: 200 });
+        }
+      }
+      return fetchImpl(input, init);
+    }) as typeof fetch;
+    globalThis.fetch = interceptPartialThenTransportFailure;
+
+    const domainWithCoverage = [{ id: 'political', score: 80, weight: 0.2, dimensions: [{ id: 'd1', score: 80, coverage: 0.9, observedWeight: 1, imputedWeight: 0 }] }];
+    const warmed = await warmMissingResilienceScores(['NO', 'US'], async (countryCode) => ({
+      countryCode,
+      overallScore: countryCode === 'NO' ? 80 : 79,
+      baselineScore: 80,
+      stressScore: 80,
+      stressFactor: 0.2,
+      level: 'high',
+      domains: domainWithCoverage,
+      trend: 'stable',
+      change30d: 0,
+      lowConfidence: false,
+      imputationShare: 0,
+      dataVersion: '2026-06-01',
+      pillars: [],
+      schemaVersion: '1.0',
+      headlineEligible: true,
+    }));
+
+    assert.equal(scoreSetPipelineCalls, 2, 'partial batch failure must still trigger one retry');
+    assert.equal(warmed.has('NO'), true, 'initial per-command OK must survive retry transport failure');
+    assert.equal(warmed.has('US'), false, 'command without OK proof must remain failed');
+    assert.equal(warmed.failedCountryCodes.has('US'), true);
+    assert.deepEqual(warmed.failures, [{
+      countryCode: 'US',
+      stage: 'persist',
+      reason: 'SET returned null',
+      retried: true,
+    }]);
+  });
+
+  it('warmMissingResilienceScores reports transport persistence failures separately from true missing scores', async () => {
+    const { fetchImpl } = installRedis({});
+    let scoreSetPipelineCalls = 0;
+    const failScoreSetBatches = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.endsWith('/pipeline') && typeof init?.body === 'string') {
+        const commands = JSON.parse(init.body) as Array<Array<string>>;
+        const allScoreSets = commands.length > 0 && commands.every(
+          (cmd) => cmd[0] === 'SET' && typeof cmd[1] === 'string' && cmd[1].startsWith(RESILIENCE_SCORE_CACHE_PREFIX),
+        );
+        if (allScoreSets) {
+          scoreSetPipelineCalls++;
+          return new Response(JSON.stringify([]), { status: 200 });
+        }
+      }
+      return fetchImpl(input, init);
+    }) as typeof fetch;
+    globalThis.fetch = failScoreSetBatches;
+
+    const domainWithCoverage = [{ id: 'political', score: 80, weight: 0.2, dimensions: [{ id: 'd1', score: 80, coverage: 0.9, observedWeight: 1, imputedWeight: 0 }] }];
+    const warmed = await warmMissingResilienceScores(['NO'], async (countryCode) => ({
+      countryCode,
+      overallScore: 80,
+      baselineScore: 80,
+      stressScore: 80,
+      stressFactor: 0.2,
+      level: 'high',
+      domains: domainWithCoverage,
+      trend: 'stable',
+      change30d: 0,
+      lowConfidence: false,
+      imputationShare: 0,
+      dataVersion: '2026-06-01',
+      pillars: [],
+      schemaVersion: '1.0',
+      headlineEligible: true,
+    }));
+
+    assert.equal(scoreSetPipelineCalls, 2, 'permanent transport failure should still retry only once');
+    assert.equal(warmed.has('NO'), false, 'no persistence proof means no warmed score claim');
+    assert.equal(warmed.failedCountryCodes.has('NO'), true);
+    assert.deepEqual(warmed.failures, [{
+      countryCode: 'NO',
+      stage: 'persist',
+      reason: 'pipeline transport failure',
+      retried: true,
+    }]);
   });
 
   it('does NOT publish ranking when score-key /set writes silently fail (persistence guard)', async () => {

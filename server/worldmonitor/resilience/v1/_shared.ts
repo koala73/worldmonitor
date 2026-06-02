@@ -513,31 +513,67 @@ export function buildDomainList(dimensions: ResilienceDimension[]): ResilienceDo
   });
 }
 
-// Sorted-set member format: `YYYY-MM-DD:SCORE[:FORMULA]`. The optional
-// formula tag is either 'd6' or 'pc'. Legacy untagged members predate
-// the pillar-combined activation and are implicitly 'd6' (the only
-// formula in use before this PR). On activation, readHistory callers
-// filter by `currentCacheFormula()` so a 30-day window of d6 points is
-// not silently compared against a fresh pc point (which would
-// manufacture a ranking-wide fake-negative change30d / false "falling"
-// trend on day one).
+const HISTORY_SCORE_FRACTION_DIVISOR = 1_000;
+const HISTORY_SCORE_FRACTION_SCALE = 100;
+const HISTORY_SCORE_FRACTION_OFFSET = 1;
+
+function dateScoreForHistory(date: string): number {
+  return Number(date.replace(/-/g, ''));
+}
+
+function encodeHistoryScore(date: string, score: number): number {
+  const scoreInteger = Math.round(round(score) * HISTORY_SCORE_FRACTION_SCALE);
+  return dateScoreForHistory(date) + (scoreInteger + HISTORY_SCORE_FRACTION_OFFSET) / HISTORY_SCORE_FRACTION_DIVISOR / HISTORY_SCORE_FRACTION_SCALE;
+}
+
+function decodeHistoryScore(date: string, rawSortedSetScore: unknown): number {
+  const sortedSetScore = Number(rawSortedSetScore);
+  const dateScore = dateScoreForHistory(date);
+  if (!Number.isFinite(sortedSetScore)) return 0;
+  return round(
+    (((sortedSetScore - dateScore) * HISTORY_SCORE_FRACTION_DIVISOR * HISTORY_SCORE_FRACTION_SCALE) - HISTORY_SCORE_FRACTION_OFFSET)
+      / HISTORY_SCORE_FRACTION_SCALE,
+  );
+}
+
+// Sorted-set member formats:
+//   - Current: `YYYY-MM-DD:FORMULA`, with the score encoded into the ZSET
+//     score as `YYYYMMDD + ((score*100)+1)/100000`. The member is stable per
+//     day+formula, so same-day rebuilds update the existing point instead of
+//     shrinking the effective rolling window with duplicate same-day members.
+//   - Legacy: `YYYY-MM-DD:SCORE[:FORMULA]`. Untagged members predate the
+//     pillar-combined activation and are implicitly 'd6' (the only formula in
+//     use before this PR).
+//
+// On activation, readHistory callers filter by `currentCacheFormula()` so a
+// 30-day window of d6 points is not silently compared against a fresh pc point
+// (which would manufacture a ranking-wide fake-negative change30d / false
+// "falling" trend on day one).
 function parseHistoryPoints(raw: unknown): ResilienceHistoryPoint[] {
   if (!Array.isArray(raw)) return [];
-  const history: ResilienceHistoryPoint[] = [];
+  const historyByDateFormula = new Map<string, { point: ResilienceHistoryPoint; stableMember: boolean }>();
 
   for (let index = 0; index < raw.length; index += 2) {
     const member = String(raw[index] || '');
     const parts = member.split(':');
     if (parts.length < 2) continue;
     const date = parts[0]!;
-    const score = Number(parts[1]);
-    const rawFormula = parts[2];
+    const secondPart = parts[1]!;
+    const stableMember = secondPart === 'd6' || secondPart === 'pc';
+    const score = stableMember ? decodeHistoryScore(date, raw[index + 1]) : Number(secondPart);
+    const rawFormula = stableMember ? secondPart : parts[2];
     const formula: CacheFormulaTag = rawFormula === 'pc' ? 'pc' : 'd6';
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(score)) continue;
-    history.push({ date, score, formula });
+    const key = `${date}:${formula}`;
+    const previous = historyByDateFormula.get(key);
+    if (!previous || stableMember || !previous.stableMember) {
+      historyByDateFormula.set(key, { point: { date, score, formula }, stableMember });
+    }
   }
 
-  return history.sort((left, right) => left.date.localeCompare(right.date));
+  return [...historyByDateFormula.values()]
+    .map((entry) => entry.point)
+    .sort((left, right) => left.date.localeCompare(right.date));
 }
 
 // Plan 2026-04-26-002 §U7 (PR 6) — headline-eligible gate. Per origin
@@ -620,15 +656,19 @@ async function appendHistory(
   overallScore: number,
   formula: CacheFormulaTag,
 ): Promise<void> {
-  const dateScore = Number(todayIsoDate().replace(/-/g, ''));
-  // Member format `YYYY-MM-DD:SCORE:FORMULA` — see parseHistoryPoints
-  // above for the reader. The formula tag is required because the v4→v5
-  // history prefix bump happens at PR deploy, not at flag flip, so the
-  // v5 series accumulates d6-tagged entries during the default-off
-  // window; only the per-member tag lets the reader correctly filter
-  // those out when the pillar-combined formula later activates.
+  const today = todayIsoDate();
+  const dateScore = dateScoreForHistory(today);
+  // Current member format `YYYY-MM-DD:FORMULA` — see parseHistoryPoints above
+  // for the backwards-compatible reader. The formula tag is required because
+  // the history prefix bump happens at PR deploy, not at flag flip, so the
+  // series can accumulate d6-tagged entries during the default-off window; only
+  // the per-member tag lets the reader correctly filter those out when the
+  // pillar-combined formula later activates. Remove legacy same-day members
+  // first so old `YYYY-MM-DD:SCORE:FORMULA` duplicates stop consuming the
+  // 30-member rolling window after the next write.
   await runRedisPipeline([
-    ['ZADD', historyKey(countryCode), dateScore, `${todayIsoDate()}:${round(overallScore)}:${formula}`],
+    ['ZREMRANGEBYSCORE', historyKey(countryCode), dateScore, dateScore],
+    ['ZADD', historyKey(countryCode), encodeHistoryScore(today, overallScore), `${today}:${formula}`],
     ['ZREMRANGEBYRANK', historyKey(countryCode), 0, -31],
   ]);
 }
@@ -1059,6 +1099,33 @@ export function sortRankingItems(items: ResilienceRankingItem[]): ResilienceRank
   });
 }
 
+export interface ResilienceWarmFailure {
+  countryCode: string;
+  stage: 'compute' | 'persist';
+  reason: string;
+  retried: boolean;
+}
+
+export interface WarmedResilienceScores extends Map<string, GetResilienceScoreResponse> {
+  failures: ResilienceWarmFailure[];
+  failedCountryCodes: Set<string>;
+}
+
+function createWarmedResilienceScores(): WarmedResilienceScores {
+  const warmed = new Map<string, GetResilienceScoreResponse>() as WarmedResilienceScores;
+  warmed.failures = [];
+  warmed.failedCountryCodes = new Set<string>();
+  return warmed;
+}
+
+function recordWarmFailure(
+  warmed: WarmedResilienceScores,
+  failure: ResilienceWarmFailure,
+): void {
+  warmed.failures.push(failure);
+  warmed.failedCountryCodes.add(failure.countryCode);
+}
+
 // Warms the resilience score cache for the given countries and returns a map
 // of country-code → score for ONLY the scores whose writes actually landed in
 // Redis. Two subtle requirements:
@@ -1085,9 +1152,9 @@ export async function warmMissingResilienceScores(
     countryCode: string,
     reader: ResilienceSeedReader,
   ) => Promise<GetResilienceScoreResponse> = buildResilienceScore,
-): Promise<Map<string, GetResilienceScoreResponse>> {
+): Promise<WarmedResilienceScores> {
   const uniqueCodes = [...new Set(countryCodes.map((countryCode) => normalizeCountryCode(countryCode)).filter(Boolean))];
-  const warmed = new Map<string, GetResilienceScoreResponse>();
+  const warmed = createWarmedResilienceScores();
   if (uniqueCodes.length === 0) return warmed;
 
   // Share one memoized reader across all countries so global Redis keys (conflict events,
@@ -1107,6 +1174,12 @@ export async function warmMissingResilienceScores(
       computeFailures.push({
         countryCode: uniqueCodes[i]!,
         reason: result.reason instanceof Error ? result.reason.message : String(result.reason),
+      });
+      recordWarmFailure(warmed, {
+        countryCode: uniqueCodes[i]!,
+        stage: 'compute',
+        reason: result.reason instanceof Error ? result.reason.message : String(result.reason),
+        retried: false,
       });
     }
   }
@@ -1146,25 +1219,50 @@ export async function warmMissingResilienceScores(
   // Fire all batches concurrently. Serial awaits would add 7 extra Upstash
   // round-trips for a 222-country warm (~100-500ms each on Edge). Each batch
   // is independent, so Promise.all collapses them into a single wall-clock
-  // window bounded by the slowest batch. Failed batches still pad with empty
-  // entries to preserve per-command index alignment downstream.
+  // window bounded by the slowest batch. Failed batches are retried once and
+  // merged per command so an initial OK is not lost if the retry transport
+  // fails.
   const batches: Array<Array<Array<string>>> = [];
   for (let i = 0; i < allSetCommands.length; i += SET_BATCH) {
     batches.push(allSetCommands.slice(i, i + SET_BATCH));
   }
+
+  const batchPersisted = (batch: Array<Array<string>>, results: Array<{ result?: unknown }>): boolean =>
+    results.length === batch.length && results.every((result) => result?.result === 'OK');
+
   const batchOutcomes = await Promise.all(batches.map((batch) => runRedisPipeline(batch)));
-  const persistResults: Array<{ result?: unknown }> = [];
+  const retryBatchIndexes: number[] = [];
+  for (let b = 0; b < batches.length; b++) {
+    if (!batchPersisted(batches[b]!, batchOutcomes[b]!)) retryBatchIndexes.push(b);
+  }
+  const retryOutcomesByBatch = new Map<number, Array<{ result?: unknown }>>();
+  if (retryBatchIndexes.length > 0) {
+    const retryOutcomes = await Promise.all(retryBatchIndexes.map((batchIndex) => runRedisPipeline(batches[batchIndex]!)));
+    for (let i = 0; i < retryBatchIndexes.length; i++) {
+      retryOutcomesByBatch.set(retryBatchIndexes[i]!, retryOutcomes[i]!);
+    }
+  }
+
+  const resultReason = (result: { result?: unknown } | undefined, fallback: string): string =>
+    result ? `SET returned ${JSON.stringify(result.result ?? null)}` : fallback;
+  const retriedBatchIndexes = new Set(retryBatchIndexes);
+  const persistResults: Array<{ result?: unknown; reason?: string; retried: boolean }> = [];
   for (let b = 0; b < batches.length; b++) {
     const batch = batches[b]!;
     const batchResults = batchOutcomes[b]!;
-    if (batchResults.length !== batch.length) {
-      // runRedisPipeline returns [] on transport/HTTP failure. Pad with
-      // empty entries so the per-command index alignment downstream stays
-      // correct — those entries will fail the OK check and be excluded
-      // from `warmed`, which is the safe behavior (no proof = no claim).
-      for (let j = 0; j < batch.length; j++) persistResults.push({});
-    } else {
-      for (const result of batchResults) persistResults.push(result);
+    const retried = retriedBatchIndexes.has(b);
+    const retryResults = retryOutcomesByBatch.get(b);
+    for (let j = 0; j < batch.length; j++) {
+      const initialResult = batchResults.length === batch.length ? batchResults[j] : undefined;
+      const retryResult = retryResults?.length === batch.length ? retryResults[j] : undefined;
+      const persisted = initialResult?.result === 'OK' || retryResult?.result === 'OK';
+      persistResults.push({
+        result: persisted ? 'OK' : undefined,
+        reason: persisted
+          ? undefined
+          : resultReason(retryResult, resultReason(initialResult, 'pipeline transport failure')),
+        retried,
+      });
     }
   }
 
@@ -1175,10 +1273,16 @@ export async function warmMissingResilienceScores(
       warmed.set(cc, score);
     } else {
       persistFailures++;
+      recordWarmFailure(warmed, {
+        countryCode: cc,
+        stage: 'persist',
+        reason: persistResults[i]?.reason ?? 'SET did not return OK',
+        retried: persistResults[i]?.retried ?? false,
+      });
     }
   }
   if (persistFailures > 0) {
-    console.warn(`[resilience] warm persisted ${warmed.size}/${scores.length} scores (${persistFailures} SETs did not return OK)`);
+    console.warn(`[resilience] warm persisted ${warmed.size}/${scores.length} scores after retry (${persistFailures} SETs did not return OK)`);
   }
   return warmed;
 }

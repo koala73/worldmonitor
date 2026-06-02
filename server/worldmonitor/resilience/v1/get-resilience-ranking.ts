@@ -274,6 +274,7 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
   // whose durability is in question are the ones we just SET via the
   // batched pipeline inside `warmMissingResilienceScores`.
   const warmedCountryCodes: string[] = [];
+  const warmPersistenceFailureCountryCodes = new Set<string>();
   if (missing.length > 0) {
     try {
       // Merge warm results into cachedScores directly rather than re-reading
@@ -286,6 +287,9 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
       for (const [countryCode, score] of warmed) {
         cachedScores.set(countryCode, score);
         warmedCountryCodes.push(countryCode);
+      }
+      for (const failure of warmed.failures) {
+        if (failure.stage === 'persist') warmPersistenceFailureCountryCodes.add(failure.countryCode);
       }
     } catch (err) {
       console.warn('[resilience] ranking warmup failed:', err);
@@ -328,6 +332,14 @@ export const getResilienceRanking: ResilienceServiceHandler['getResilienceRankin
   // `greyedOut` with coverage 0, so the response is correct for partial states.
   const coverageRatio = cachedScores.size / countryCodes.length;
   if (coverageRatio >= RANKING_CACHE_MIN_COVERAGE) {
+    if (warmPersistenceFailureCountryCodes.size > 0) {
+      console.warn(
+        `[resilience] ranking not cached — ${warmPersistenceFailureCountryCodes.size} score warm SETs failed ` +
+        `persistence/transport after retry; returning live response without freezing them as greyed-out missing coverage.`,
+      );
+      return response;
+    }
+
     // Persistence parity check: confirm the score SETs actually landed in
     // Redis before declaring success and writing seed-meta. Upstash REST
     // /pipeline returns `result:'OK'` per command, but under saturated edge-

@@ -38,6 +38,13 @@ export function createRedisFetch(fixtures: Record<string, unknown>): FakeRedisSt
     sortedSets.set(key, items);
   };
 
+  const removeByScore = (key: string, min: number, max: number) => {
+    const items = sortedSets.get(key) ?? [];
+    const next = items.filter((item) => item.score < min || item.score > max);
+    sortedSets.set(key, next);
+    return items.length - next.length;
+  };
+
   const readByRank = (key: string, start: number, stop: number) => {
     const items = [...(sortedSets.get(key) ?? [])];
     if (items.length === 0) return [];
@@ -131,6 +138,10 @@ export function createRedisFetch(fixtures: Record<string, unknown>): FakeRedisSt
           removeByRank(redisKey, Number(args[0] ?? 0), Number(args[1] ?? 0));
           const after = (sortedSets.get(redisKey) ?? []).length;
           return { result: before - after };
+        }
+
+        if (verb === 'ZREMRANGEBYSCORE') {
+          return { result: removeByScore(redisKey, Number(args[0] ?? 0), Number(args[1] ?? 0)) };
         }
 
         if (verb === 'EXPIRE') {
