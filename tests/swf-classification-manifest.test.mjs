@@ -109,6 +109,7 @@ describe('SWF classification manifest — shipped YAML', () => {
       ['scripts/shared/swf-classification-manifest.yaml', new URL('../scripts/shared/swf-classification-manifest.yaml', import.meta.url)],
       ['scripts/seed-sovereign-wealth.mjs', new URL('../scripts/seed-sovereign-wealth.mjs', import.meta.url)],
       ['server/worldmonitor/resilience/v1/_indicator-registry.ts', new URL('../server/worldmonitor/resilience/v1/_indicator-registry.ts', import.meta.url)],
+      ['server/worldmonitor/resilience/v1/_dimension-scorers.ts', new URL('../server/worldmonitor/resilience/v1/_dimension-scorers.ts', import.meta.url)],
       ['scripts/compare-resilience-current-vs-proposed.mjs', new URL('../scripts/compare-resilience-current-vs-proposed.mjs', import.meta.url)],
     ];
 
@@ -116,7 +117,7 @@ describe('SWF classification manifest — shipped YAML', () => {
       const source = readFileSync(url, 'utf8');
       assert.doesNotMatch(
         source,
-        /score 0 with full coverage|score 0 on `sovereignFiscalBuffer` with full coverage|substantive-no-SWF branch|Coverage for the registry entry is the current manifest size/i,
+        /score 0 with full coverage|score 0 on `sovereignFiscalBuffer` with full coverage|substantive-no-SWF branch|substantive.*no.SWF|Coverage for the registry entry is the current manifest size/i,
         `${label} must not preserve the superseded non-SWF full-coverage semantics; scorer Path 3 is not-applicable coverage=0.`,
       );
     }
