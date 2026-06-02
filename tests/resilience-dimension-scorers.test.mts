@@ -8,6 +8,7 @@ import {
   RESILIENCE_DIMENSION_ORDER,
   RESILIENCE_DIMENSION_TYPES,
   type ResilienceSeedReader,
+  __testing__,
   scoreAllDimensions,
   scoreBorderSecurity,
   scoreCurrencyExternal,
@@ -29,6 +30,7 @@ import {
   scoreSovereignFiscalBuffer,
   scoreSocialCohesion,
   scoreStateContinuity,
+  scoreInflationStability,
   scoreTradePolicy,
   summarizeCyber,
   CYBER_SNAPSHOT_WEIGHT_CAP,
@@ -118,6 +120,18 @@ describe('resilience dimension scorers', () => {
       assert.ok(result.score >= 0 && result.score <= 100, `${dimensionId} score out of bounds: ${result.score}`);
       assert.ok(result.coverage >= 0 && result.coverage <= 1, `${dimensionId} coverage out of bounds: ${result.coverage}`);
     }
+  });
+
+  it('weightedBlend ignores NaN scores instead of treating them as zero-valued available weight', () => {
+    const score = __testing__.weightedBlend([
+      { score: Number.NaN, weight: 0.9 },
+      { score: 80, weight: 0.1 },
+    ]);
+
+    assert.equal(score.score, 80, 'finite score must be blended without NaN consuming the other weight');
+    assert.equal(score.coverage, 0.10, 'coverage must count only the finite observed metric');
+    assert.equal(score.observedWeight, 0.1, 'observedWeight must exclude NaN metrics');
+    assert.equal(score.imputedWeight, 0, 'NaN metrics must not be counted as imputed either');
   });
 
   it('scoreEnergy with full data uses 7-metric blend and high coverage', async () => {
@@ -262,9 +276,17 @@ describe('resilience dimension scorers', () => {
       return null;
     };
     const score = await scoreCurrencyExternal('MZ', reader);
-    // normalizeLowerBetter(min(8,50), 0, 50) = (50-8)/50*100 = 84
-    assert.equal(score.score, 84, 'low-inflation country gets high currency score via IMF proxy');
+    // 8% is above the 1-3% stability band, so it scores below target-band inflation.
+    assert.equal(score.score, 89, 'moderate inflation gets a high but non-perfect currency score via IMF proxy');
     assert.equal(score.coverage, 0.55, 'IMF inflation only (no reserves) → coverage 0.55');
+  });
+
+  it('scoreInflationStability: deflation, zero, target-band, moderate, and high inflation are ordered', () => {
+    assert.equal(scoreInflationStability(-2), 50, 'deflation below 0% is penalized');
+    assert.equal(scoreInflationStability(0), 83, '0% inflation is stable but not perfect');
+    assert.equal(scoreInflationStability(2), 100, 'low-positive target-band inflation is perfect');
+    assert.equal(scoreInflationStability(8), 89, 'moderate inflation above target is penalized');
+    assert.equal(scoreInflationStability(50), 0, 'high inflation at the cap scores 0');
   });
 
   it('scoreCurrencyExternal: hyperinflation is capped at score 0 (inflation-only path)', async () => {

@@ -50,7 +50,7 @@
     "countries": {
       "NO": {
         "countryCode": "NO",
-        "overallScore": 75.42,
+        "overallScore": 75.64,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -62,7 +62,7 @@
             "imputationClass": ""
           },
           "currencyExternal": {
-            "score": 69,
+            "score": 73,
             "coverage": 0.85,
             "observedWeight": 1,
             "imputedWeight": 0,
@@ -211,7 +211,7 @@
         },
         "domains": {
           "economic": {
-            "score": 83.68,
+            "score": 85.13,
             "weight": 0.17
           },
           "infrastructure": {
@@ -237,7 +237,7 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 82.11,
+            "score": 82.72,
             "weight": 0.4
           },
           "live-shock-exposure": {
@@ -252,7 +252,7 @@
       },
       "US": {
         "countryCode": "US",
-        "overallScore": 52.55,
+        "overallScore": 52.73,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -264,7 +264,7 @@
             "imputationClass": ""
           },
           "currencyExternal": {
-            "score": 60,
+            "score": 64,
             "coverage": 0.85,
             "observedWeight": 1,
             "imputedWeight": 0,
@@ -413,7 +413,7 @@
         },
         "domains": {
           "economic": {
-            "score": 71.49,
+            "score": 72.94,
             "weight": 0.17
           },
           "infrastructure": {
@@ -439,7 +439,7 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 69.08,
+            "score": 69.69,
             "weight": 0.4
           },
           "live-shock-exposure": {
@@ -454,7 +454,7 @@
       },
       "TR": {
         "countryCode": "TR",
-        "overallScore": 44.29,
+        "overallScore": 44.47,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -466,7 +466,7 @@
             "imputationClass": ""
           },
           "currencyExternal": {
-            "score": 39,
+            "score": 41,
             "coverage": 0.85,
             "observedWeight": 1,
             "imputedWeight": 0,
@@ -615,7 +615,7 @@
         },
         "domains": {
           "economic": {
-            "score": 58.57,
+            "score": 59.3,
             "weight": 0.17
           },
           "infrastructure": {
@@ -641,7 +641,7 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 53.23,
+            "score": 53.54,
             "weight": 0.4
           },
           "live-shock-exposure": {
@@ -656,7 +656,7 @@
       },
       "YE": {
         "countryCode": "YE",
-        "overallScore": 30.97,
+        "overallScore": 31.13,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -668,7 +668,7 @@
             "imputationClass": ""
           },
           "currencyExternal": {
-            "score": 28,
+            "score": 30,
             "coverage": 0.85,
             "observedWeight": 1,
             "imputedWeight": 0,
@@ -817,7 +817,7 @@
         },
         "domains": {
           "economic": {
-            "score": 47.08,
+            "score": 47.95,
             "weight": 0.17
           },
           "infrastructure": {
@@ -843,7 +843,7 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 36.96,
+            "score": 37.29,
             "weight": 0.4
           },
           "live-shock-exposure": {
@@ -858,7 +858,7 @@
       },
       "CH": {
         "countryCode": "CH",
-        "overallScore": 74.95,
+        "overallScore": 74.73,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -870,7 +870,7 @@
             "imputationClass": ""
           },
           "currencyExternal": {
-            "score": 99,
+            "score": 95,
             "coverage": 0.85,
             "observedWeight": 1,
             "imputedWeight": 0,
@@ -1019,7 +1019,7 @@
         },
         "domains": {
           "economic": {
-            "score": 88.15,
+            "score": 86.7,
             "weight": 0.17
           },
           "infrastructure": {
@@ -1045,7 +1045,7 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 84.8,
+            "score": 84.18,
             "weight": 0.4
           },
           "live-shock-exposure": {
@@ -1060,7 +1060,7 @@
       },
       "AE": {
         "countryCode": "AE",
-        "overallScore": 62.32,
+        "overallScore": 62.47,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -1072,7 +1072,7 @@
             "imputationClass": ""
           },
           "currencyExternal": {
-            "score": 72,
+            "score": 75,
             "coverage": 0.85,
             "observedWeight": 1,
             "imputedWeight": 0,
@@ -1221,7 +1221,7 @@
         },
         "domains": {
           "economic": {
-            "score": 78.65,
+            "score": 79.84,
             "weight": 0.17
           },
           "infrastructure": {
@@ -1247,7 +1247,7 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 74.99,
+            "score": 75.44,
             "weight": 0.4
           },
           "live-shock-exposure": {
@@ -1262,7 +1262,7 @@
       },
       "IN": {
         "countryCode": "IN",
-        "overallScore": 51.91,
+        "overallScore": 52.05,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -1274,7 +1274,7 @@
             "imputationClass": ""
           },
           "currencyExternal": {
-            "score": 78,
+            "score": 81,
             "coverage": 0.85,
             "observedWeight": 1,
             "imputedWeight": 0,
@@ -1423,7 +1423,7 @@
         },
         "domains": {
           "economic": {
-            "score": 73.11,
+            "score": 74.19,
             "weight": 0.17
           },
           "infrastructure": {
@@ -1449,7 +1449,7 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 65.82,
+            "score": 66.25,
             "weight": 0.4
           },
           "live-shock-exposure": {
@@ -1666,7 +1666,7 @@
       },
       "NR": {
         "countryCode": "NR",
-        "overallScore": 64.33,
+        "overallScore": 64.6,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -1678,7 +1678,7 @@
             "imputationClass": ""
           },
           "currencyExternal": {
-            "score": 53,
+            "score": 57,
             "coverage": 0.85,
             "observedWeight": 1,
             "imputedWeight": 0,
@@ -1827,7 +1827,7 @@
         },
         "domains": {
           "economic": {
-            "score": 77.09,
+            "score": 78.67,
             "weight": 0.17
           },
           "infrastructure": {
@@ -1853,7 +1853,7 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 75.96,
+            "score": 76.75,
             "weight": 0.4
           },
           "live-shock-exposure": {
@@ -2075,7 +2075,7 @@
     "countries": {
       "NO": {
         "countryCode": "NO",
-        "overallScore": 75.42,
+        "overallScore": 75.64,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -2087,7 +2087,7 @@
             "imputationClass": ""
           },
           "currencyExternal": {
-            "score": 69,
+            "score": 73,
             "coverage": 0.85,
             "observedWeight": 1,
             "imputedWeight": 0,
@@ -2236,7 +2236,7 @@
         },
         "domains": {
           "economic": {
-            "score": 83.68,
+            "score": 85.13,
             "weight": 0.17
           },
           "infrastructure": {
@@ -2262,7 +2262,7 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 82.11,
+            "score": 82.72,
             "weight": 0.4
           },
           "live-shock-exposure": {
@@ -2277,7 +2277,7 @@
       },
       "US": {
         "countryCode": "US",
-        "overallScore": 52.55,
+        "overallScore": 52.73,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -2289,7 +2289,7 @@
             "imputationClass": ""
           },
           "currencyExternal": {
-            "score": 60,
+            "score": 64,
             "coverage": 0.85,
             "observedWeight": 1,
             "imputedWeight": 0,
@@ -2438,7 +2438,7 @@
         },
         "domains": {
           "economic": {
-            "score": 71.49,
+            "score": 72.94,
             "weight": 0.17
           },
           "infrastructure": {
@@ -2464,7 +2464,7 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 69.08,
+            "score": 69.69,
             "weight": 0.4
           },
           "live-shock-exposure": {
@@ -2479,7 +2479,7 @@
       },
       "TR": {
         "countryCode": "TR",
-        "overallScore": 44.29,
+        "overallScore": 44.47,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -2491,7 +2491,7 @@
             "imputationClass": ""
           },
           "currencyExternal": {
-            "score": 39,
+            "score": 41,
             "coverage": 0.85,
             "observedWeight": 1,
             "imputedWeight": 0,
@@ -2640,7 +2640,7 @@
         },
         "domains": {
           "economic": {
-            "score": 58.57,
+            "score": 59.3,
             "weight": 0.17
           },
           "infrastructure": {
@@ -2666,7 +2666,7 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 53.23,
+            "score": 53.54,
             "weight": 0.4
           },
           "live-shock-exposure": {
@@ -2681,7 +2681,7 @@
       },
       "YE": {
         "countryCode": "YE",
-        "overallScore": 30.97,
+        "overallScore": 31.13,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -2693,7 +2693,7 @@
             "imputationClass": ""
           },
           "currencyExternal": {
-            "score": 28,
+            "score": 30,
             "coverage": 0.85,
             "observedWeight": 1,
             "imputedWeight": 0,
@@ -2842,7 +2842,7 @@
         },
         "domains": {
           "economic": {
-            "score": 47.08,
+            "score": 47.95,
             "weight": 0.17
           },
           "infrastructure": {
@@ -2868,7 +2868,7 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 36.96,
+            "score": 37.29,
             "weight": 0.4
           },
           "live-shock-exposure": {
@@ -2883,7 +2883,7 @@
       },
       "CH": {
         "countryCode": "CH",
-        "overallScore": 74.95,
+        "overallScore": 74.73,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -2895,7 +2895,7 @@
             "imputationClass": ""
           },
           "currencyExternal": {
-            "score": 99,
+            "score": 95,
             "coverage": 0.85,
             "observedWeight": 1,
             "imputedWeight": 0,
@@ -3044,7 +3044,7 @@
         },
         "domains": {
           "economic": {
-            "score": 88.15,
+            "score": 86.7,
             "weight": 0.17
           },
           "infrastructure": {
@@ -3070,7 +3070,7 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 84.8,
+            "score": 84.18,
             "weight": 0.4
           },
           "live-shock-exposure": {
@@ -3085,7 +3085,7 @@
       },
       "AE": {
         "countryCode": "AE",
-        "overallScore": 62.32,
+        "overallScore": 62.47,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -3097,7 +3097,7 @@
             "imputationClass": ""
           },
           "currencyExternal": {
-            "score": 72,
+            "score": 75,
             "coverage": 0.85,
             "observedWeight": 1,
             "imputedWeight": 0,
@@ -3246,7 +3246,7 @@
         },
         "domains": {
           "economic": {
-            "score": 78.65,
+            "score": 79.84,
             "weight": 0.17
           },
           "infrastructure": {
@@ -3272,7 +3272,7 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 74.99,
+            "score": 75.44,
             "weight": 0.4
           },
           "live-shock-exposure": {
@@ -3287,7 +3287,7 @@
       },
       "IN": {
         "countryCode": "IN",
-        "overallScore": 51.91,
+        "overallScore": 52.05,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -3299,7 +3299,7 @@
             "imputationClass": ""
           },
           "currencyExternal": {
-            "score": 78,
+            "score": 81,
             "coverage": 0.85,
             "observedWeight": 1,
             "imputedWeight": 0,
@@ -3448,7 +3448,7 @@
         },
         "domains": {
           "economic": {
-            "score": 73.11,
+            "score": 74.19,
             "weight": 0.17
           },
           "infrastructure": {
@@ -3474,7 +3474,7 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 65.82,
+            "score": 66.25,
             "weight": 0.4
           },
           "live-shock-exposure": {
@@ -3691,7 +3691,7 @@
       },
       "NR": {
         "countryCode": "NR",
-        "overallScore": 64.33,
+        "overallScore": 64.6,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -3703,7 +3703,7 @@
             "imputationClass": ""
           },
           "currencyExternal": {
-            "score": 53,
+            "score": 57,
             "coverage": 0.85,
             "observedWeight": 1,
             "imputedWeight": 0,
@@ -3852,7 +3852,7 @@
         },
         "domains": {
           "economic": {
-            "score": 77.09,
+            "score": 78.67,
             "weight": 0.17
           },
           "infrastructure": {
@@ -3878,7 +3878,7 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 75.96,
+            "score": 76.75,
             "weight": 0.4
           },
           "live-shock-exposure": {
@@ -4096,11 +4096,11 @@
     }
   },
   "recomputeAtCapture": {
-    "source": "country-sliced Redis input snapshot recompute",
+    "source": "resilience:score:v18:{countryCode}",
     "countries": {
       "NO": {
         "countryCode": "NO",
-        "overallScore": 75.42,
+        "overallScore": 75.64,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -4112,7 +4112,7 @@
             "imputationClass": ""
           },
           "currencyExternal": {
-            "score": 69,
+            "score": 73,
             "coverage": 0.85,
             "observedWeight": 1,
             "imputedWeight": 0,
@@ -4261,7 +4261,7 @@
         },
         "domains": {
           "economic": {
-            "score": 83.68,
+            "score": 85.13,
             "weight": 0.17
           },
           "infrastructure": {
@@ -4287,7 +4287,7 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 82.11,
+            "score": 82.72,
             "weight": 0.4
           },
           "live-shock-exposure": {
@@ -4302,7 +4302,7 @@
       },
       "US": {
         "countryCode": "US",
-        "overallScore": 52.55,
+        "overallScore": 52.73,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -4314,7 +4314,7 @@
             "imputationClass": ""
           },
           "currencyExternal": {
-            "score": 60,
+            "score": 64,
             "coverage": 0.85,
             "observedWeight": 1,
             "imputedWeight": 0,
@@ -4463,7 +4463,7 @@
         },
         "domains": {
           "economic": {
-            "score": 71.49,
+            "score": 72.94,
             "weight": 0.17
           },
           "infrastructure": {
@@ -4489,7 +4489,7 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 69.08,
+            "score": 69.69,
             "weight": 0.4
           },
           "live-shock-exposure": {
@@ -4504,7 +4504,7 @@
       },
       "TR": {
         "countryCode": "TR",
-        "overallScore": 44.29,
+        "overallScore": 44.47,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -4516,7 +4516,7 @@
             "imputationClass": ""
           },
           "currencyExternal": {
-            "score": 39,
+            "score": 41,
             "coverage": 0.85,
             "observedWeight": 1,
             "imputedWeight": 0,
@@ -4665,7 +4665,7 @@
         },
         "domains": {
           "economic": {
-            "score": 58.57,
+            "score": 59.3,
             "weight": 0.17
           },
           "infrastructure": {
@@ -4691,7 +4691,7 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 53.23,
+            "score": 53.54,
             "weight": 0.4
           },
           "live-shock-exposure": {
@@ -4706,7 +4706,7 @@
       },
       "YE": {
         "countryCode": "YE",
-        "overallScore": 30.97,
+        "overallScore": 31.13,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -4718,7 +4718,7 @@
             "imputationClass": ""
           },
           "currencyExternal": {
-            "score": 28,
+            "score": 30,
             "coverage": 0.85,
             "observedWeight": 1,
             "imputedWeight": 0,
@@ -4867,7 +4867,7 @@
         },
         "domains": {
           "economic": {
-            "score": 47.08,
+            "score": 47.95,
             "weight": 0.17
           },
           "infrastructure": {
@@ -4893,7 +4893,7 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 36.96,
+            "score": 37.29,
             "weight": 0.4
           },
           "live-shock-exposure": {
@@ -4908,7 +4908,7 @@
       },
       "CH": {
         "countryCode": "CH",
-        "overallScore": 74.95,
+        "overallScore": 74.73,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -4920,7 +4920,7 @@
             "imputationClass": ""
           },
           "currencyExternal": {
-            "score": 99,
+            "score": 95,
             "coverage": 0.85,
             "observedWeight": 1,
             "imputedWeight": 0,
@@ -5069,7 +5069,7 @@
         },
         "domains": {
           "economic": {
-            "score": 88.15,
+            "score": 86.7,
             "weight": 0.17
           },
           "infrastructure": {
@@ -5095,7 +5095,7 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 84.8,
+            "score": 84.18,
             "weight": 0.4
           },
           "live-shock-exposure": {
@@ -5110,7 +5110,7 @@
       },
       "AE": {
         "countryCode": "AE",
-        "overallScore": 62.32,
+        "overallScore": 62.47,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -5122,7 +5122,7 @@
             "imputationClass": ""
           },
           "currencyExternal": {
-            "score": 72,
+            "score": 75,
             "coverage": 0.85,
             "observedWeight": 1,
             "imputedWeight": 0,
@@ -5271,7 +5271,7 @@
         },
         "domains": {
           "economic": {
-            "score": 78.65,
+            "score": 79.84,
             "weight": 0.17
           },
           "infrastructure": {
@@ -5297,7 +5297,7 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 74.99,
+            "score": 75.44,
             "weight": 0.4
           },
           "live-shock-exposure": {
@@ -5312,7 +5312,7 @@
       },
       "IN": {
         "countryCode": "IN",
-        "overallScore": 51.91,
+        "overallScore": 52.05,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -5324,7 +5324,7 @@
             "imputationClass": ""
           },
           "currencyExternal": {
-            "score": 78,
+            "score": 81,
             "coverage": 0.85,
             "observedWeight": 1,
             "imputedWeight": 0,
@@ -5473,7 +5473,7 @@
         },
         "domains": {
           "economic": {
-            "score": 73.11,
+            "score": 74.19,
             "weight": 0.17
           },
           "infrastructure": {
@@ -5499,7 +5499,7 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 65.82,
+            "score": 66.25,
             "weight": 0.4
           },
           "live-shock-exposure": {
@@ -5716,7 +5716,7 @@
       },
       "NR": {
         "countryCode": "NR",
-        "overallScore": 64.33,
+        "overallScore": 64.6,
         "formula": "pc",
         "dataVersion": "2026-04-08",
         "dimensions": {
@@ -5728,7 +5728,7 @@
             "imputationClass": ""
           },
           "currencyExternal": {
-            "score": 53,
+            "score": 57,
             "coverage": 0.85,
             "observedWeight": 1,
             "imputedWeight": 0,
@@ -5877,7 +5877,7 @@
         },
         "domains": {
           "economic": {
-            "score": 77.09,
+            "score": 78.67,
             "weight": 0.17
           },
           "infrastructure": {
@@ -5903,7 +5903,7 @@
         },
         "pillars": {
           "structural-readiness": {
-            "score": 75.96,
+            "score": 76.75,
             "weight": 0.4
           },
           "live-shock-exposure": {

@@ -88,6 +88,10 @@ interface WeightedMetric {
   nominalWeight?: number;
 }
 
+function hasFiniteMetricScore(metric: WeightedMetric): metric is WeightedMetric & { score: number } {
+  return Number.isFinite(metric.score);
+}
+
 // Four-class imputation taxonomy (Phase 1 T1.7 of the country-resilience
 // reference-grade upgrade plan, docs/internal/country-resilience-upgrade-plan.md).
 //
@@ -603,6 +607,13 @@ function normalizeHigherBetter(value: number, worst: number, best: number): numb
   return roundScore(ratio * 100);
 }
 
+export function scoreInflationStability(inflationPct: number): number {
+  if (!Number.isFinite(inflationPct)) return 0;
+  if (inflationPct >= 1 && inflationPct <= 3) return 100;
+  if (inflationPct < 1) return normalizeHigherBetter(inflationPct, -5, 1);
+  return normalizeLowerBetter(Math.min(inflationPct, 50), 3, 50);
+}
+
 // U-shaped band normalization. Used by `financialSystemExposure` Component 2
 // (BIS LBS cross-border claims as % of GDP). Both extremes are bad — too
 // little integration suggests financial isolation (sanctions-target
@@ -672,14 +683,14 @@ const MINUTE_MS = 60 * 1000;
 
 function weightedBlend(metrics: WeightedMetric[]): ResilienceDimensionScore {
   const totalWeight = metrics.reduce((sum, metric) => sum + metric.weight, 0);
-  const available = metrics.filter((metric) => metric.score != null);
+  const available = metrics.filter(hasFiniteMetricScore);
   const availableWeight = available.reduce((sum, metric) => sum + metric.weight, 0);
 
   if (!availableWeight || !totalWeight) {
     return { score: 0, coverage: 0, observedWeight: 0, imputedWeight: 0, imputationClass: null, freshness: { lastObservedAtMs: 0, staleness: '' } };
   }
 
-  const weightedScore = available.reduce((sum, metric) => sum + (metric.score || 0) * metric.weight, 0) / availableWeight;
+  const weightedScore = available.reduce((sum, metric) => sum + metric.score * metric.weight, 0) / availableWeight;
 
   // Coverage: weighted average of certainty per metric, computed against the
   // NOMINAL design-time weight rather than the runtime weight. Real data → 1.0;
@@ -696,7 +707,7 @@ function weightedBlend(metrics: WeightedMetric[]): ResilienceDimensionScore {
   // of the confidence weighting applied to the score.
   const totalNominalWeight = metrics.reduce((sum, metric) => sum + (metric.nominalWeight ?? metric.weight), 0);
   const weightedCertainty = metrics.reduce((sum, metric) => {
-    const certainty = metric.certaintyCoverage ?? (metric.score != null ? 1 : 0);
+    const certainty = metric.certaintyCoverage ?? (hasFiniteMetricScore(metric) ? 1 : 0);
     const nominalWeight = metric.nominalWeight ?? metric.weight;
     return sum + nominalWeight * certainty;
   }, 0) / totalNominalWeight;
@@ -709,7 +720,7 @@ function weightedBlend(metrics: WeightedMetric[]): ResilienceDimensionScore {
   let imputedWeight = 0;
   const classWeights = new Map<ImputationClass, number>();
   for (const metric of metrics) {
-    if (metric.score == null) continue;
+    if (!hasFiniteMetricScore(metric)) continue;
     if (metric.imputed === true) {
       imputedWeight += metric.weight;
       if (metric.imputationClass) {
@@ -1258,9 +1269,10 @@ export async function scoreCurrencyExternal(
   ]);
 
   const imfEntry = getImfMacroEntry(imfMacroRaw, countryCode);
-  const hasInflation = imfMacroRaw != null && imfEntry?.inflationPct != null;
+  const inflationPct = safeNum(imfEntry?.inflationPct);
+  const hasInflation = imfMacroRaw != null && inflationPct != null;
   const inflationScore = hasInflation
-    ? normalizeLowerBetter(Math.min(imfEntry!.inflationPct!, 50), 0, 50)
+    ? scoreInflationStability(inflationPct!)
     : null;
 
   const reservesMonths = getFxReservesMonths(staticRecord);
@@ -2750,3 +2762,7 @@ export async function scoreAllDimensions(
 export function getResilienceDomainWeight(domainId: ResilienceDomainId): number {
   return RESILIENCE_DOMAIN_WEIGHTS[domainId];
 }
+
+export const __testing__ = {
+  weightedBlend,
+};
