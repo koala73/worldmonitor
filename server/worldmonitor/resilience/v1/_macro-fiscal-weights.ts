@@ -5,4 +5,3 @@ export const MACRO_FISCAL_INDICATOR_WEIGHTS = {
   unemploymentPct: 0.15,
   householdDebtService: 0.05,
 } as const;
-
