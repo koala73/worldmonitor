@@ -50,3 +50,22 @@ test('low-carbon generation omits countries with no common component year', () =
 
   assert.equal(countries.FR, undefined);
 });
+
+test('low-carbon generation treats an absent component series as zero', () => {
+  const nuclearByIso = collectByIsoYear(records('NOR', { 2024: 1 }));
+  const renewByIso = new Map();
+  const hydroByIso = collectByIsoYear(records('NOR', { 2024: 95 }));
+
+  const countries = buildLowCarbonCountries({ nuclearByIso, renewByIso, hydroByIso });
+
+  assert.equal(countries.NO.value, 96);
+  assert.equal(countries.NO.year, 2024);
+  assert.deepEqual(countries.NO.sourceYears, {
+    nuclear: 2024,
+    renewablesExHydro: null,
+    hydro: 2024,
+  });
+  assert.equal(countries.NO.nuclearShare, 1);
+  assert.equal(countries.NO.renewablesExHydroShare, 0);
+  assert.equal(countries.NO.hydroShare, 95);
+});
