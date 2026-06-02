@@ -1414,3 +1414,50 @@ describe('setCachedJson wire shape and failure reporting', { concurrency: 1 }, (
     }
   });
 });
+
+describe('getHashFieldsBatch empty-string handling (#3530)', { concurrency: 1 }, () => {
+  it('preserves empty-string values, omits null/missing, and retains real strings', async () => {
+    // Regression: getHashFieldsBatch used a truthy check (`if (values[i])`) that
+    // dropped valid empty-string hash values. Real Redis hash values are
+    // allowed to be the empty string, so a caller that round-trips "" will
+    // silently lose it. The fix switches to a null/undefined check so "" is
+    // preserved.
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+
+    let pipelineCalls = 0;
+    globalThis.fetch = async (_url, init = {}) => {
+      pipelineCalls += 1;
+      const pipeline = JSON.parse(String(init.body));
+      assert.equal(pipeline.length, 1);
+      assert.equal(pipeline[0][0], 'HMGET');
+      assert.deepEqual(pipeline[0].slice(2), ['name', 'empty', 'missing', 'real']);
+      // Upstash HMGET returns an array of (string | null) in field order:
+      //   - real value  -> "alice"
+      //   - valid ""    -> ""
+      //   - missing key -> null
+      //   - real value  -> "ok"
+      return jsonResponse([{ result: ['alice', '', null, 'ok'] }]);
+    };
+
+    try {
+      const map = await redis.getHashFieldsBatch('user:42', ['name', 'empty', 'missing', 'real']);
+      assert.equal(pipelineCalls, 1, 'should batch into one HMGET pipeline call');
+      assert.equal(map.get('name'), 'alice', 'non-empty value is kept');
+      assert.equal(map.get('empty'), '', 'empty-string value must be preserved (this is the bug)');
+      assert.equal(map.has('missing'), false, 'null entries are omitted');
+      assert.equal(map.get('real'), 'ok', 'non-empty value is kept');
+      assert.equal(map.size, 3, 'map should contain only the three resolvable fields');
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+});
+
