@@ -36,11 +36,6 @@ Run from the repo root with production credentials:
 ```bash
 export API_BASE=https://www.worldmonitor.app
 export WORLDMONITOR_API_KEY=<pro-api-key>
-export RESILIENCE_ENERGY_V2_ENABLED=true
-export UPSTASH_REDIS_REST_URL=<production-upstash-rest-url>
-export UPSTASH_REDIS_REST_TOKEN=<production-upstash-rest-token>
-export REDIS_OP_TIMEOUT_MS=10000
-export REDIS_PIPELINE_TIMEOUT_MS=30000
 
 node scripts/freeze-resilience-ranking.mjs
 mv "docs/snapshots/resilience-ranking-$(date +%Y-%m-%d).json" \
@@ -61,6 +56,14 @@ matched-pair directions, and effective influence), and must verify the live
 manifest/health state above. Until that harness exists and returns `PASS`,
 do not commit a synthetic acceptance JSON; attach the missing-harness status
 to the resilience closeout issue.
+
+If the dedicated acceptance harness reads production Redis directly, keep its
+operator setup separate from the ranking-freeze step above. Expected Redis
+environment names for the shared Upstash client are
+`UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`,
+`REDIS_OP_TIMEOUT_MS=10000`, and `REDIS_PIPELINE_TIMEOUT_MS=30000`; the active
+post-flip runtime state still needs to be verified through the public manifest,
+not inferred from a local `RESILIENCE_ENERGY_V2_ENABLED` value.
 
 Follow the original gated procedure below for future rollback/replay drills.
 

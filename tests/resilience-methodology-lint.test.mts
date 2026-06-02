@@ -223,7 +223,7 @@ describe('resilience methodology doc linter (T1.8)', () => {
     );
     assert.doesNotMatch(
       currentStateSource,
-      /energy`? v2[\s\S]{0,120}(?:default off|default-off|staged separately|until the flag flips)/i,
+      /energy`? v2[\s\S]{0,300}(?:default off|default-off|staged separately|until the flag flips)/i,
       'Current methodology prose must not describe active energy v2 as default-off or still staged.',
     );
     assert.match(
