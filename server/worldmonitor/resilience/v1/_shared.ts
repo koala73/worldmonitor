@@ -1165,24 +1165,21 @@ export async function warmMissingResilienceScores(
   );
 
   const scores: Array<{ cc: string; score: GetResilienceScoreResponse }> = [];
-  const computeFailures: Array<{ countryCode: string; reason: string }> = [];
   for (let i = 0; i < computed.length; i++) {
     const result = computed[i]!;
     if (result.status === 'fulfilled') {
       scores.push(result.value);
     } else {
-      computeFailures.push({
-        countryCode: uniqueCodes[i]!,
-        reason: result.reason instanceof Error ? result.reason.message : String(result.reason),
-      });
+      const reason = result.reason instanceof Error ? result.reason.message : String(result.reason);
       recordWarmFailure(warmed, {
         countryCode: uniqueCodes[i]!,
         stage: 'compute',
-        reason: result.reason instanceof Error ? result.reason.message : String(result.reason),
+        reason,
         retried: false,
       });
     }
   }
+  const computeFailures = warmed.failures.filter((failure) => failure.stage === 'compute');
   if (computeFailures.length > 0) {
     const sample = computeFailures.slice(0, 10).map((f) => `${f.countryCode}(${f.reason})`).join(', ');
     console.warn(`[resilience] warm compute failed for ${computeFailures.length}/${uniqueCodes.length} countries: ${sample}${computeFailures.length > 10 ? '...' : ''}`);
@@ -1250,7 +1247,7 @@ export async function warmMissingResilienceScores(
   for (let b = 0; b < batches.length; b++) {
     const batch = batches[b]!;
     const batchResults = batchOutcomes[b]!;
-    const retried = retriedBatchIndexes.has(b);
+    const batchRetried = retriedBatchIndexes.has(b);
     const retryResults = retryOutcomesByBatch.get(b);
     for (let j = 0; j < batch.length; j++) {
       const initialResult = batchResults.length === batch.length ? batchResults[j] : undefined;
@@ -1261,7 +1258,7 @@ export async function warmMissingResilienceScores(
         reason: persisted
           ? undefined
           : resultReason(retryResult, resultReason(initialResult, 'pipeline transport failure')),
-        retried,
+        retried: batchRetried && initialResult?.result !== 'OK',
       });
     }
   }
