@@ -35,6 +35,7 @@ const CAPTURED_SCORE_CACHE_PREFIX = 'resilience:score:v18:';
 const CAPTURED_RANKING_CACHE_KEY = 'resilience:ranking:v18';
 const CAPTURED_HISTORY_KEY_PREFIX = 'resilience:history:v13:';
 const CAPTURED_SCORE_CACHE_SOURCE = `${CAPTURED_SCORE_CACHE_PREFIX}{countryCode}`;
+const CAPTURED_RECOMPUTE_SOURCE = 'country-sliced Redis input snapshot recompute';
 
 function loadManifest(): ResilienceReferenceManifest & {
   scorer?: { scoreCachePrefix?: string; rankingCacheKey?: string; historyKeyPrefix?: string };
@@ -42,6 +43,9 @@ function loadManifest(): ResilienceReferenceManifest & {
   productionScoreCacheAtCapture?: {
     source?: string;
     countries?: Record<string, { overallScore?: unknown; formula?: unknown }>;
+  };
+  recomputeAtCapture?: {
+    source?: string;
   };
 } {
   return JSON.parse(readFileSync(MANIFEST_PATH, 'utf8'));
@@ -59,6 +63,7 @@ describe('country resilience reference-edition recompute artifact', () => {
     assert.equal(manifest.scorer?.rankingCacheKey, CAPTURED_RANKING_CACHE_KEY);
     assert.equal(manifest.scorer?.historyKeyPrefix, CAPTURED_HISTORY_KEY_PREFIX);
     assert.equal(manifest.productionScoreCacheAtCapture?.source, CAPTURED_SCORE_CACHE_SOURCE);
+    assert.equal(manifest.recomputeAtCapture?.source, CAPTURED_RECOMPUTE_SOURCE);
     assert.deepEqual(manifest.sample.countries, EXPECTED_COUNTRIES);
     assert.deepEqual(manifest.sample.dimensions, EXPECTED_DIMENSIONS);
     assert.equal(manifest.published.source, CAPTURED_SCORE_CACHE_SOURCE);

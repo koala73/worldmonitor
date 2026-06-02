@@ -4096,7 +4096,7 @@
     }
   },
   "recomputeAtCapture": {
-    "source": "resilience:score:v18:{countryCode}",
+    "source": "country-sliced Redis input snapshot recompute",
     "countries": {
       "NO": {
         "countryCode": "NO",
