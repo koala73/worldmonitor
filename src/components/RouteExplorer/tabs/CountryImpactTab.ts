@@ -11,6 +11,11 @@ import type {
   GetRouteImpactResponse,
   StrategicProduct,
 } from '@/generated/server/worldmonitor/supply_chain/v1/service_server';
+import {
+  formatResilienceConfidence,
+  formatResilienceScoreInterval,
+} from '@/components/resilience-widget-utils';
+import type { ResilienceScoreResponse } from '@/services/resilience';
 import { escapeHtml } from './route-utils';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 
@@ -40,6 +45,8 @@ const FLAG_LABELS: Record<string, string> = {
 export class CountryImpactTab {
   public readonly element: HTMLDivElement;
   private opts: CountryImpactTabOptions;
+  private data: GetRouteImpactResponse | null = null;
+  private resilience: ResilienceScoreResponse | null = null;
 
   constructor(opts: CountryImpactTabOptions = {}) {
     this.opts = opts;
@@ -50,11 +57,20 @@ export class CountryImpactTab {
   }
 
   public update(data: GetRouteImpactResponse | null): void {
+    this.data = data;
+    if (!data) this.resilience = null;
     if (!data) { this.renderPlaceholder(); return; }
     if (data.comtradeSource === 'missing') { this.renderMissing(); return; }
     if (data.comtradeSource === 'empty') { this.renderEmpty(); return; }
     if (data.comtradeSource === 'lazy') { this.renderLazy(); return; }
     this.renderData(data);
+  }
+
+  public updateResilience(resilience: ResilienceScoreResponse | null): void {
+    this.resilience = resilience;
+    if (this.data && this.data.comtradeSource !== 'missing' && this.data.comtradeSource !== 'empty' && this.data.comtradeSource !== 'lazy') {
+      this.renderData(this.data);
+    }
   }
 
   private renderPlaceholder(): void {
@@ -100,14 +116,37 @@ export class CountryImpactTab {
       ? `<div class="re-impact__flags">${data.dependencyFlags.map((f) => `<span class="re-impact__flag re-impact__flag--${f.toLowerCase().replace(/^dependency_flag_/, '')}">${escapeHtml(FLAG_LABELS[f] ?? f)}</span>`).join('')}</div>`
       : '';
 
-    const resHtml = data.resilienceScore > 0
-      ? `<div class="re-impact__resilience">Resilience: <strong>${Math.round(data.resilienceScore)}/100</strong></div>`
-      : '';
+    const resHtml = this.renderResilience(data);
 
     const productsHtml = this.renderProducts(data.topStrategicProducts);
 
     setTrustedHtml(this.element, trustedHtml(`${bannerHtml}${laneHtml}${flagsHtml}${resHtml}<h3 class="re-impact__products-title">Top strategic products</h3>${productsHtml}`, "legacy direct innerHTML migration"));
     this.attachDrillListeners();
+  }
+
+  private renderResilience(data: GetRouteImpactResponse): string {
+    const resilience = this.resilience;
+    const score = resilience?.overallScore;
+    if (resilience && typeof score === 'number' && Number.isFinite(score) && score > 0) {
+      const confidence = formatResilienceConfidence(resilience);
+      const interval = formatResilienceScoreInterval(resilience.scoreInterval);
+      return [
+        '<div class="re-impact__resilience">',
+        `  <span>Resilience: <strong>${Math.round(score)}/100</strong></span>`,
+        ...(interval
+          ? [`  <span class="re-resilience-interval" title="${escapeHtml(interval.title)}">${escapeHtml(interval.label)}</span>`]
+          : []),
+        `  <span class="re-resilience-confidence${resilience.lowConfidence ? ' re-resilience-confidence--low' : ''}">${escapeHtml(confidence)}</span>`,
+        '</div>',
+      ].join('');
+    }
+    if (resilience) {
+      return '<div class="re-impact__resilience"><span>Resilience: <strong>\u2014</strong></span><span class="re-resilience-confidence re-resilience-confidence--low">No scored resilience data</span></div>';
+    }
+    if (data.resilienceScore > 0) {
+      return `<div class="re-impact__resilience"><span>Resilience: <strong>${Math.round(data.resilienceScore)}/100</strong></span><span class="re-resilience-confidence">Confidence unavailable</span></div>`;
+    }
+    return '';
   }
 
   private renderProducts(products: StrategicProduct[]): string {

@@ -258,7 +258,8 @@ export class RouteExplorer {
       const { getResilienceScore } = await import('@/services/resilience');
       const res = await getResilienceScore(iso2);
       if (!this.isOpen || gen !== this.generationId) return;
-      this.leftRail.updateResilience(res.overallScore ?? null);
+      this.leftRail.updateResilience(res);
+      this.impactTab.updateResilience(res);
     } catch {
       if (gen !== this.generationId) return;
       this.leftRail.updateResilience(null);
@@ -275,9 +276,6 @@ export class RouteExplorer {
       this.leftRail.updateDependencyFlags(data.dependencyFlags);
       if (data.comtradeSource === 'bilateral-hs4') {
         this.trackEvent('route-explorer:impact-viewed', { toIso2, hs2 });
-      }
-      if (data.resilienceScore > 0) {
-        this.leftRail.updateResilience(data.resilienceScore);
       }
       if (this.state.tab === 4) this.showActiveTab();
     } catch {
