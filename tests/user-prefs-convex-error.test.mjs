@@ -131,6 +131,40 @@ describe('extractConvexErrorKind — Convex client error → kind', () => {
     });
   });
 
+  describe('Convex platform worker saturation — WorkerOverloaded JSON body (WORLDMONITOR-PG)', () => {
+    it('detects SERVICE_UNAVAILABLE from the {"code":"WorkerOverloaded"} JSON shape', () => {
+      // Convex runtime surfaces
+      //   `{"code":"WorkerOverloaded","message":"There are no available
+      //     workers to process the request"}`
+      // when the deployment briefly has no free function workers. Same
+      // retry-with-backoff remediation as ServiceUnavailable/InternalServerError,
+      // so we map to SERVICE_UNAVAILABLE → 503 + Retry-After instead of a 500.
+      const err = new Error('{"code":"WorkerOverloaded","message":"There are no available workers to process the request"}');
+      assert.equal(extractConvexErrorKind(err, err.message), 'SERVICE_UNAVAILABLE');
+    });
+
+    it('does NOT match the loose phrase "no available workers" without the JSON code field', () => {
+      // Defensive: detector keys off the exact JSON shape, not free-form prose.
+      const err = new Error('the pool reported no available workers, backing off');
+      assert.equal(extractConvexErrorKind(err, err.message), null);
+    });
+
+    it('tolerates optional whitespace after the colon ("code": "WorkerOverloaded")', () => {
+      // The whole platform-code family is matched whitespace-tolerantly so a
+      // body re-serialized by an intermediary (`"code": "X"`) still classifies.
+      // Convex emits no-space today; this locks in the defensive behaviour.
+      const err = new Error('{"code": "WorkerOverloaded", "message": "There are no available workers to process the request"}');
+      assert.equal(extractConvexErrorKind(err, err.message), 'SERVICE_UNAVAILABLE');
+    });
+
+    it('structured-data path still wins over JSON-shape WorkerOverloaded (forward-compat)', () => {
+      const err = Object.assign(new Error('{"code":"WorkerOverloaded","message":"x"}'), {
+        data: { kind: 'CONFLICT' },
+      });
+      assert.equal(extractConvexErrorKind(err, err.message), 'CONFLICT');
+    });
+  });
+
   describe('Vercel edge transient — "Network connection lost." (WORLDMONITOR-QE)', () => {
     it('detects SERVICE_UNAVAILABLE from the exact "Network connection lost." shape', () => {
       // Vercel/Cloudflare edge runtime surface this when the upstream socket

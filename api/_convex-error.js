@@ -29,6 +29,24 @@
  *   callers that already computed it).
  * @returns {string | null} the kind, or null when neither path matches.
  */
+/**
+ * Match a Convex platform-error JSON body's `"code":"X"` field, tolerating the
+ * optional whitespace a non-default serializer may emit after the colon
+ * (`"code": "X"`). Convex's runtime uses `JSON.stringify` (no spaces) today, so
+ * this is defensive — it keeps the whole platform-code family
+ * (ServiceUnavailable / InternalServerError / WorkerOverloaded / Unauthenticated)
+ * from sharing a brittle no-whitespace assumption that would break them all at
+ * once if an intermediary ever re-serialized the body. The `code` values are
+ * fixed internal literals (no regex metacharacters), so interpolation is safe.
+ *
+ * @param {string} msg
+ * @param {string} code
+ * @returns {boolean}
+ */
+function hasConvexCode(msg, code) {
+  return new RegExp(`"code":\\s*"${code}"`).test(msg);
+}
+
 export function extractConvexErrorKind(err, msg) {
   const data = /** @type {{ data?: unknown } | null | undefined} */ (err)?.data;
   if (data && typeof data === 'object' && 'kind' in data) {
@@ -43,7 +61,7 @@ export function extractConvexErrorKind(err, msg) {
   // we detect via the JSON-shape substring. Edge maps this to a 503
   // response with Retry-After so clients back off rather than treating
   // it as a permanent 500.
-  if (msg.includes('"code":"ServiceUnavailable"')) return 'SERVICE_UNAVAILABLE';
+  if (hasConvexCode(msg, 'ServiceUnavailable')) return 'SERVICE_UNAVAILABLE';
   // Client-side fetch timeout (AbortSignal.timeout fires) — Convex stalled
   // long enough that we aborted before Vercel's 25s edge wall-clock could
   // kill the function with a generic 500. Same remediation as the platform
@@ -80,7 +98,7 @@ export function extractConvexErrorKind(err, msg) {
   // Map to the same UNAUTHENTICATED kind as the structured-data path so
   // the edge handler maps it to 401 and tags it as `convex_auth_drift`
   // (WORLDMONITOR-PG).
-  if (msg.includes('"code":"Unauthenticated"')) return 'UNAUTHENTICATED';
+  if (hasConvexCode(msg, 'Unauthenticated')) return 'UNAUTHENTICATED';
   // Convex platform-level 500: `{"code":"InternalServerError","message":
   // "Your request couldn't be completed. Try again later."}` — runtime
   // signals an internal failure that the SDK can't classify further. Same
@@ -89,7 +107,17 @@ export function extractConvexErrorKind(err, msg) {
   // Sentry `error_shape` discriminates via msg-pattern fallback so the
   // dashboard can tell internal-500s apart from genuine ServiceUnavailable
   // 503s (WORLDMONITOR-PG / WORLDMONITOR-PH).
-  if (msg.includes('"code":"InternalServerError"')) return 'SERVICE_UNAVAILABLE';
+  if (hasConvexCode(msg, 'InternalServerError')) return 'SERVICE_UNAVAILABLE';
+  // Convex platform-level worker saturation: `{"code":"WorkerOverloaded",
+  // "message":"There are no available workers to process the request"}` —
+  // the deployment briefly has no free function workers. Same transient
+  // retry-with-back-off remediation as the platform 503/500, so reuse
+  // SERVICE_UNAVAILABLE → 503 + Retry-After rather than surfacing a 500.
+  // Without this match the catch fell to the 'unknown' error_shape bucket
+  // at error level (WORLDMONITOR-PG: 11 events / 9 users). Sentry's
+  // classifier tags these `convex_worker_overloaded` so they stay queryable
+  // apart from genuine ServiceUnavailable 503s and InternalServerError 500s.
+  if (hasConvexCode(msg, 'WorkerOverloaded')) return 'SERVICE_UNAVAILABLE';
   if (msg.includes('CONFLICT')) return 'CONFLICT';
   if (msg.includes('BLOB_TOO_LARGE')) return 'BLOB_TOO_LARGE';
   if (msg.includes('UNAUTHENTICATED')) return 'UNAUTHENTICATED';

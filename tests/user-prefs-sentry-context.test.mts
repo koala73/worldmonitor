@@ -141,6 +141,30 @@ describe('buildSentryContext — backwards-compat for non-CONFLICT callers', () 
     assert.equal(ctx.tags.error_shape, 'convex_internal_error');
   });
 
+  it('JSON-shape "code":"WorkerOverloaded" classifies as convex_worker_overloaded', () => {
+    // WORLDMONITOR-PG: Convex runtime worker saturation
+    //   `{"code":"WorkerOverloaded","message":"There are no available workers
+    //     to process the request"}`
+    // was previously bucketed as 'unknown' at error level (11 events / 9 users),
+    // conflating a transient platform-capacity event with genuinely-novel error
+    // shapes. Its own bucket + the SERVICE_UNAVAILABLE mapping in
+    // `_convex-error.js` mean on-call sees it tagged distinctly without a
+    // 500 → 503 user-impact regression.
+    const err = new Error('{"code":"WorkerOverloaded","message":"There are no available workers to process the request"}');
+    const ctx = buildSentryContext(err, err.message, baseOpts);
+    assert.equal(ctx.tags.error_shape, 'convex_worker_overloaded');
+  });
+
+  it('tolerates optional whitespace after the colon ("code": "WorkerOverloaded")', () => {
+    // Mirrors `hasConvexCode` in _convex-error.js so the Sentry bucket and the
+    // kind→503 mapping stay in lockstep: a with-whitespace body must classify
+    // identically on both sides, never splitting into a 503-but-'unknown'-tag
+    // state.
+    const err = new Error('{"code": "WorkerOverloaded", "message": "There are no available workers to process the request"}');
+    const ctx = buildSentryContext(err, err.message, baseOpts);
+    assert.equal(ctx.tags.error_shape, 'convex_worker_overloaded');
+  });
+
   it('JSON-shape "code":"Unauthenticated" classifies as convex_auth_drift (mixed-case OIDC failure)', () => {
     // WORLDMONITOR-PG: Convex platform-level 401 ships a JSON body
     //   `{"code":"Unauthenticated","message":"Could not verify OIDC token claim..."}`

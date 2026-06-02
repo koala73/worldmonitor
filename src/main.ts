@@ -21,6 +21,14 @@ const THIRD_PARTY_FETCH_HOST_ALLOWLIST = new Set([
   'basemaps.cartocdn.com',
   'tiles.openfreemap.org',
   'protomaps.github.io',
+  // Clerk Frontend API (CNAME → Clerk's auth infra). The bundled Clerk SDK
+  // fetches it for session/token refresh and retries transient failures
+  // itself (`retryImmediately`); a `Failed to fetch (clerk.worldmonitor.app)`
+  // that leaks to onunhandledrejection is a Clerk-SDK-internal network blip,
+  // not our code — same disposition as the existing `/ClerkJS: Network error/`
+  // ignoreError. NOT our `api.worldmonitor.app`, which stays off the list so
+  // genuine API regressions still surface (WORLDMONITOR-SA/SB).
+  'clerk.worldmonitor.app',
 ]);
 
 // Initialize Sentry error tracking (early as possible)
