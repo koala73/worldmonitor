@@ -898,7 +898,7 @@ export function createDomainGateway(
           // Valid pro session (Clerk role OR Dodo entitlement) — fall through to route handling.
         } else {
           emitRequest(401, 'auth_401', null);
-          return new Response(JSON.stringify({ error: keyCheck.error, _debug: (keyCheck as any)._debug }), {
+          return new Response(JSON.stringify({ error: keyCheck.error }), {
             status: 401,
             headers: { 'Content-Type': 'application/json', ...corsHeaders },
           });

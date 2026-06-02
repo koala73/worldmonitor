@@ -90,6 +90,7 @@ describe('premium gateway API key enforcement', () => {
       headers: { Origin: 'https://worldmonitor.app' },
     }));
     assert.equal(browserNoKey.status, 401);
+    assert.deepEqual(await browserNoKey.json(), { error: 'API key required' });
 
     const resilienceScoreNoKey = await handler(new Request('https://worldmonitor.app/api/resilience/v1/get-resilience-score?countryCode=US', {
       headers: { Origin: 'https://worldmonitor.app' },
