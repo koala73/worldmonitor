@@ -85,12 +85,6 @@ function recordDiagnosticCount(diagnostics, countKey, sampleKey, countryCode, de
   recordDiagnosticSample(diagnostics, sampleKey, countryCode, details);
 }
 
-function currentCacheFormulaLocal() {
-  const combine = (process.env.RESILIENCE_PILLAR_COMBINE_ENABLED ?? 'false').toLowerCase() === 'true';
-  const schemaV2 = (process.env.RESILIENCE_SCHEMA_V2_ENABLED ?? 'true').toLowerCase() === 'true';
-  return combine && schemaV2 ? 'pc' : 'd6';
-}
-
 async function redisGetJson(url, token, key) {
   const resp = await fetch(`${url}/get/${encodeURIComponent(key)}`, {
     headers: { Authorization: `Bearer ${token}` },
@@ -123,7 +117,14 @@ export function parseCachedScorePayload(raw) {
     if (parsed === NEG_SENTINEL) return null;
     const payload = unwrapEnvelope(parsed).data;
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return null;
-    if (payload._formula !== currentCacheFormulaLocal()) return null;
+    // Require a valid formula tag, but DO NOT require it to equal a formula
+    // re-derived from this process's env. Production is the source of truth for
+    // the formula it actually served; the seeder must trust the payload's tag.
+    // (Re-deriving the formula from RESILIENCE_PILLAR_COMBINE_ENABLED here was
+    // the root cause of the 2026-06-02 EMPTY-intervals incident: the seed
+    // service ran without the flag, computed 'd6', and rejected every live 'pc'
+    // payload.)
+    if (payload._formula !== 'pc' && payload._formula !== 'd6') return null;
     const overallScore = Number(payload.overallScore);
     if (!Number.isFinite(overallScore) || overallScore <= 0) return null;
     return payload;
@@ -160,15 +161,13 @@ export function buildIntervalPayloadFromCachedScore(raw, countryCode, diagnostic
       return null;
     }
 
-    const expectedFormula = currentCacheFormulaLocal();
-    if (formula !== expectedFormula) {
-      recordDiagnosticCount(diagnostics, 'staleScorePayloadCount', 'staleScorePayloadSamples', countryCode, {
-        formula,
-        expectedFormula,
-      });
-      return null;
-    }
-
+    // The payload carries a valid 'pc'|'d6' tag. Build the interval that
+    // matches THAT tag (buildScoreIntervalPayload reads `_formula` and picks
+    // pillar- vs domain-jitter accordingly). We deliberately no longer gate on
+    // a seeder-env formula: that drift left production interval-less while the
+    // ranking stayed fresh. Cross-formula isolation is already provided by the
+    // cache-prefix bump on every flip, and by the formula filter on the read
+    // side (getResilienceScore / getResilienceRanking).
     const currentScore = parseCachedScorePayload(raw);
     if (!currentScore) {
       recordDiagnosticCount(diagnostics, 'invalidScorePayloadCount', 'invalidScorePayloadSamples', countryCode, { formula });
