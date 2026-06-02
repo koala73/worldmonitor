@@ -263,6 +263,7 @@ export class RouteExplorer {
     } catch {
       if (gen !== this.generationId) return;
       this.leftRail.updateResilience(null);
+      this.impactTab.updateResilience(null);
     }
   }
 

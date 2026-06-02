@@ -69,7 +69,7 @@ export class CountryImpactTab {
   public updateResilience(resilience: ResilienceScoreResponse | null): void {
     this.resilience = resilience;
     if (this.data && this.data.comtradeSource !== 'missing' && this.data.comtradeSource !== 'empty' && this.data.comtradeSource !== 'lazy') {
-      this.renderData(this.data);
+      this.updateResilienceSlot(this.data);
     }
   }
 
@@ -116,23 +116,28 @@ export class CountryImpactTab {
       ? `<div class="re-impact__flags">${data.dependencyFlags.map((f) => `<span class="re-impact__flag re-impact__flag--${f.toLowerCase().replace(/^dependency_flag_/, '')}">${escapeHtml(FLAG_LABELS[f] ?? f)}</span>`).join('')}</div>`
       : '';
 
-    const resHtml = this.renderResilience(data);
-
     const productsHtml = this.renderProducts(data.topStrategicProducts);
 
-    setTrustedHtml(this.element, trustedHtml(`${bannerHtml}${laneHtml}${flagsHtml}${resHtml}<h3 class="re-impact__products-title">Top strategic products</h3>${productsHtml}`, "legacy direct innerHTML migration"));
+    setTrustedHtml(this.element, trustedHtml(`${bannerHtml}${laneHtml}${flagsHtml}<div class="re-impact__resilience-slot">${this.renderResilience(data)}</div><h3 class="re-impact__products-title">Top strategic products</h3>${productsHtml}`, "legacy direct innerHTML migration"));
     this.attachDrillListeners();
+  }
+
+  private updateResilienceSlot(data: GetRouteImpactResponse): void {
+    const slot = this.element.querySelector('.re-impact__resilience-slot');
+    if (!slot) return;
+    setTrustedHtml(slot, trustedHtml(this.renderResilience(data), "legacy direct innerHTML migration"));
   }
 
   private renderResilience(data: GetRouteImpactResponse): string {
     const resilience = this.resilience;
     const score = resilience?.overallScore;
-    if (resilience && typeof score === 'number' && Number.isFinite(score) && score > 0) {
+    const roundedScore = typeof score === 'number' && Number.isFinite(score) ? Math.round(score) : 0;
+    if (resilience && roundedScore > 0) {
       const confidence = formatResilienceConfidence(resilience);
       const interval = formatResilienceScoreInterval(resilience.scoreInterval);
       return [
         '<div class="re-impact__resilience">',
-        `  <span>Resilience: <strong>${Math.round(score)}/100</strong></span>`,
+        `  <span>Resilience: <strong>${roundedScore}/100</strong></span>`,
         ...(interval
           ? [`  <span class="re-resilience-interval" title="${escapeHtml(interval.title)}">${escapeHtml(interval.label)}</span>`]
           : []),
@@ -143,8 +148,9 @@ export class CountryImpactTab {
     if (resilience) {
       return '<div class="re-impact__resilience"><span>Resilience: <strong>\u2014</strong></span><span class="re-resilience-confidence re-resilience-confidence--low">No scored resilience data</span></div>';
     }
-    if (data.resilienceScore > 0) {
-      return `<div class="re-impact__resilience"><span>Resilience: <strong>${Math.round(data.resilienceScore)}/100</strong></span><span class="re-resilience-confidence">Confidence unavailable</span></div>`;
+    const fallbackScore = Number.isFinite(data.resilienceScore) ? Math.round(data.resilienceScore) : 0;
+    if (fallbackScore > 0) {
+      return `<div class="re-impact__resilience"><span>Resilience: <strong>${fallbackScore}/100</strong></span><span class="re-resilience-confidence">Confidence unavailable</span></div>`;
     }
     return '';
   }

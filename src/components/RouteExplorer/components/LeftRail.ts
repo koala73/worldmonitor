@@ -95,15 +95,17 @@ export class LeftRail {
 
   private static formatResilienceScore(resilience: ResilienceScoreResponse | null): string {
     const score = resilience?.overallScore;
-    return typeof score === 'number' && Number.isFinite(score) && score > 0
-      ? `${Math.round(score)}/100`
+    const rounded = typeof score === 'number' && Number.isFinite(score) ? Math.round(score) : 0;
+    return rounded > 0
+      ? `${rounded}/100`
       : '\u2014';
   }
 
   private static renderResilienceMeta(resilience: ResilienceScoreResponse | null): string {
     if (!resilience) return '';
     const score = resilience.overallScore;
-    if (typeof score !== 'number' || !Number.isFinite(score) || score <= 0) {
+    const rounded = typeof score === 'number' && Number.isFinite(score) ? Math.round(score) : 0;
+    if (rounded <= 0) {
       return '<span class="re-resilience-confidence re-resilience-confidence--low">No scored resilience data</span>';
     }
     const confidence = formatResilienceConfidence(resilience);
