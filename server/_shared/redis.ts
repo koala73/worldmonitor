@@ -58,10 +58,7 @@ export function __resetKeyPrefixCacheForTests(): void {
   cachedPrefix = undefined;
 }
 
-type CacheReadResult =
-  | { status: 'hit'; value: unknown }
-  | { status: 'miss' }
-  | { status: 'error'; error: unknown };
+type CacheReadResult = { status: 'hit'; value: unknown } | { status: 'miss' } | { status: 'error'; error: unknown };
 
 async function readCachedJson(key: string, raw = false): Promise<CacheReadResult> {
   if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
@@ -89,7 +86,10 @@ async function readCachedJson(key: string, raw = false): Promise<CacheReadResult
     // Envelope-aware by default — RPC consumers get the bare payload regardless
     // of whether the writer has migrated to contract mode. Legacy shapes pass
     // through unchanged (unwrapEnvelope returns {_seed: null, data: raw}).
-    return { status: 'hit', value: unwrapEnvelope(JSON.parse(data.result)).data };
+    return {
+      status: 'hit',
+      value: unwrapEnvelope(JSON.parse(data.result)).data,
+    };
   } catch (error) {
     return { status: 'error', error };
   }
@@ -212,7 +212,10 @@ export async function setCachedJson(key: string, value: unknown, ttlSeconds: num
       body: JSON.stringify(['SET', finalKey, JSON.stringify(value), 'EX', String(ttlSeconds)]),
       signal: AbortSignal.timeout(REDIS_PIPELINE_TIMEOUT_MS),
     });
-    const data = await resp.json().catch(() => null) as { result?: string; error?: string } | null;
+    const data = (await resp.json().catch(() => null)) as {
+      result?: string;
+      error?: string;
+    } | null;
     if (!resp.ok || data?.error) {
       console.warn(`[redis] setCachedJson failed:`, data?.error ?? `HTTP ${resp.status}`);
       return false;
@@ -296,7 +299,10 @@ export async function getCachedJsonBatch(keys: string[]): Promise<Map<string, un
     const pipeline = keys.map((k) => ['GET', prefixKey(k)]);
     const resp = await fetch(`${url}/pipeline`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify(pipeline),
       signal: AbortSignal.timeout(REDIS_PIPELINE_TIMEOUT_MS),
     });
@@ -312,7 +318,9 @@ export async function getCachedJsonBatch(keys: string[]): Promise<Map<string, un
           // Envelope-aware: unwrap contract-mode canonical keys; legacy values
           // pass through.
           result.set(keys[i]!, unwrapEnvelope(parsed).data);
-        } catch { /* skip malformed */ }
+        } catch {
+          /* skip malformed */
+        }
       }
     }
   } catch (err) {
@@ -330,10 +338,7 @@ function normalizePipelineCommand(command: RedisPipelineCommand, raw: boolean): 
   return [verb, prefixKey(key), ...rest];
 }
 
-export async function runRedisPipeline(
-  commands: RedisPipelineCommand[],
-  raw = false,
-): Promise<Array<{ result?: unknown }>> {
+export async function runRedisPipeline(commands: RedisPipelineCommand[], raw = false): Promise<Array<{ result?: unknown }>> {
   if (process.env.LOCAL_API_MODE === 'tauri-sidecar') return [];
   if (commands.length === 0) return [];
 
@@ -344,7 +349,10 @@ export async function runRedisPipeline(
   try {
     const response = await fetch(`${url}/pipeline`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify(commands.map((command) => normalizePipelineCommand(command, raw))),
       signal: AbortSignal.timeout(REDIS_PIPELINE_TIMEOUT_MS),
     });
@@ -352,10 +360,47 @@ export async function runRedisPipeline(
       console.warn(`[redis] runRedisPipeline HTTP ${response.status}`);
       return [];
     }
-    return await response.json() as Array<{ result?: unknown }>;
+    return (await response.json()) as Array<{ result?: unknown }>;
   } catch (err) {
     console.warn('[redis] runRedisPipeline failed:', errMsg(err));
     return [];
+  }
+}
+
+export async function compareAndDeleteRedisKey(key: string, expectedValue: string, raw = false): Promise<boolean> {
+  if (process.env.LOCAL_API_MODE === 'tauri-sidecar') return false;
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (!url || !token || !expectedValue) return false;
+
+  const finalKey = raw ? key : prefixKey(key);
+  const script = "if redis.call('GET', KEYS[1]) == ARGV[1] then return redis.call('DEL', KEYS[1]) else return 0 end";
+  try {
+    const response = await fetch(`${url}/`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(['EVAL', script, '1', finalKey, expectedValue]),
+      signal: AbortSignal.timeout(REDIS_PIPELINE_TIMEOUT_MS),
+    });
+    if (!response.ok) {
+      console.warn(`[redis] compareAndDeleteRedisKey HTTP ${response.status}`);
+      return false;
+    }
+    const data = (await response.json().catch(() => null)) as {
+      result?: unknown;
+      error?: string;
+    } | null;
+    if (data?.error) {
+      console.warn('[redis] compareAndDeleteRedisKey failed:', data.error);
+      return false;
+    }
+    return data?.result === 1;
+  } catch (err) {
+    console.warn('[redis] compareAndDeleteRedisKey failed:', errMsg(err));
+    return false;
   }
 }
 
@@ -410,12 +455,7 @@ export function __resetFetcherTimeoutForTests(): void {
  * threading an AbortSignal through the fetcher contract, which is a wider
  * refactor across every cached-fetch call site.
  */
-function withFetcherTimeout<T>(
-  promise: Promise<T>,
-  key: string,
-  timeoutMs: number,
-  callerName: 'cachedFetchJson' | 'cachedFetchJsonWithMeta',
-): Promise<T> {
+function withFetcherTimeout<T>(promise: Promise<T>, key: string, timeoutMs: number, callerName: 'cachedFetchJson' | 'cachedFetchJsonWithMeta'): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<never>((_, reject) => {
     timer = setTimeout(() => {
@@ -620,12 +660,7 @@ export async function cachedFetchJsonWithMeta<T extends object>(
   return { data, source: 'fresh' };
 }
 
-function emitUpstreamFromHook(
-  usage: UsageHook | undefined,
-  status: number,
-  durationMs: number,
-  cacheStatus: 'miss' | 'fresh' | 'stale-while-revalidate' | 'neg-sentinel',
-): void {
+function emitUpstreamFromHook(usage: UsageHook | undefined, status: number, durationMs: number, cacheStatus: 'miss' | 'fresh' | 'stale-while-revalidate' | 'neg-sentinel'): void {
   // Emit only when caller labels the provider — avoids "unknown" pollution.
   if (!usage?.provider) return;
   // Single waitUntil() registered synchronously here — no nested
@@ -655,22 +690,19 @@ function emitUpstreamFromHook(
   }
 }
 
-export async function geoSearchByBox(
-  key: string, lon: number, lat: number,
-  widthKm: number, heightKm: number, count: number, raw = false,
-): Promise<string[]> {
+export async function geoSearchByBox(key: string, lon: number, lat: number, widthKm: number, heightKm: number, count: number, raw = false): Promise<string[]> {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return [];
   try {
     const finalKey = raw ? key : prefixKey(key);
-    const pipeline = [
-      ['GEOSEARCH', finalKey, 'FROMLONLAT', String(lon), String(lat),
-       'BYBOX', String(widthKm), String(heightKm), 'km', 'ASC', 'COUNT', String(count)],
-    ];
+    const pipeline = [['GEOSEARCH', finalKey, 'FROMLONLAT', String(lon), String(lat), 'BYBOX', String(widthKm), String(heightKm), 'km', 'ASC', 'COUNT', String(count)]];
     const resp = await fetch(`${url}/pipeline`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify(pipeline),
       signal: AbortSignal.timeout(REDIS_PIPELINE_TIMEOUT_MS),
     });
@@ -683,9 +715,7 @@ export async function geoSearchByBox(
   }
 }
 
-export async function getHashFieldsBatch(
-  key: string, fields: string[], raw = false,
-): Promise<Map<string, string>> {
+export async function getHashFieldsBatch(key: string, fields: string[], raw = false): Promise<Map<string, string>> {
   const result = new Map<string, string>();
   if (fields.length === 0) return result;
   const url = process.env.UPSTASH_REDIS_REST_URL;
@@ -696,7 +726,10 @@ export async function getHashFieldsBatch(
     const pipeline = [['HMGET', finalKey, ...fields]];
     const resp = await fetch(`${url}/pipeline`, {
       method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
       body: JSON.stringify(pipeline),
       signal: AbortSignal.timeout(REDIS_PIPELINE_TIMEOUT_MS),
     });
