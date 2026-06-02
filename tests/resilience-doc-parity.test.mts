@@ -254,9 +254,15 @@ describe('methodology doc parity (Plan 2026-04-26-002 §U8)', () => {
       'Macro-Fiscal INDICATOR_REGISTRY weights must match MACRO_FISCAL_INDICATOR_WEIGHTS used by the scorer.',
     );
 
+    const weightSum = [...expected.values()].reduce((sum, weight) => sum + weight, 0);
+    assert.ok(
+      Math.abs(weightSum - 1.0) < 0.001,
+      `Macro-Fiscal indicator weights must sum to 1.00, got ${weightSum.toFixed(4)}.`,
+    );
+
     assert.deepEqual(
       [...actual.keys()],
-      [...expected.keys()],
+      [...registryWeights.keys()],
       'Macro-Fiscal methodology table must list exactly the live macroFiscal indicators in registry order.',
     );
 
